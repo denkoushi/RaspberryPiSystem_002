@@ -220,6 +220,9 @@ export type DgxResourceRuntimeSummaryApi = {
   policyLabel: string;
   runtimeSource: 'model_profile_state' | 'env_fallback' | 'unknown';
   inferenceDegraded: boolean;
+  businessRuntimeIntentProfileId?: string | null;
+  businessRuntimeIntentSource?: string | null;
+  businessRuntimeIntentAlignedWithActive?: boolean | null;
 };
 
 export type DgxModelProfilesOverviewApi = {

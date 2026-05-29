@@ -1,3 +1,5 @@
+import { resolveBusinessRuntimeStartProfile } from '../../inference/config/business-profile-intent.js';
+import type { BusinessProfileIntentEnv } from '../../inference/config/business-profile-intent.js';
 import { policyLabelJa } from './dgx-resource.policy-profile.js';
 import type { DgxPolicyMode } from './dgx-resource.policy-store.js';
 import type { OverviewProbeBundle } from './dgx-resource.control-targets.builder.js';
@@ -16,6 +18,10 @@ export type DgxResourceRuntimeSummary = {
   runtimeSource: 'model_profile_state' | 'env_fallback' | 'unknown';
   /** gateway は生きているが /v1/models が未準備 */
   inferenceDegraded: boolean;
+  /** Pi5 が業務 on-demand /start に載せる意図（DGX active とは別に保持） */
+  businessRuntimeIntentProfileId: string | null;
+  businessRuntimeIntentSource: string | null;
+  businessRuntimeIntentAlignedWithActive: boolean | null;
 };
 
 function resolveActiveProfileDisplay(
@@ -61,14 +67,38 @@ function evaluateBusinessReadySnapshot(bundle: OverviewProbeBundle): { ready: bo
 /**
  * overview 用 runtime state をプローブ束から構築（Strict Ready の待機は行わない）。
  */
+function resolveBusinessIntentSnapshot(
+  bundle: OverviewProbeBundle,
+  intentEnv: BusinessProfileIntentEnv
+): Pick<
+  DgxResourceRuntimeSummary,
+  'businessRuntimeIntentProfileId' | 'businessRuntimeIntentSource' | 'businessRuntimeIntentAlignedWithActive'
+> {
+  const resolved = resolveBusinessRuntimeStartProfile(intentEnv);
+  const intentId = resolved?.modelProfileId ?? null;
+  const activeId = bundle.modelProfiles.activeProfileId;
+  return {
+    businessRuntimeIntentProfileId: intentId,
+    businessRuntimeIntentSource: resolved?.source ?? null,
+    businessRuntimeIntentAlignedWithActive:
+      intentId && activeId ? intentId === activeId : intentId || activeId ? false : null,
+  };
+}
+
 export function buildDgxResourceRuntimeSummary(
   bundle: OverviewProbeBundle,
-  policyMode: DgxPolicyMode
+  policyMode: DgxPolicyMode,
+  intentEnv?: BusinessProfileIntentEnv
 ): DgxResourceRuntimeSummary {
   const active = resolveActiveProfileDisplay(bundle);
   const business = evaluateBusinessReadySnapshot(bundle);
   const gatewayRunning = bundle.gatewayStatus.configured && bundle.gatewayStatus.health.ok;
   const inferenceDegraded = Boolean(gatewayRunning && !bundle.modelsProbe.ok && bundle.gatewayStatus.configured);
+  const intentSnapshot = intentEnv ? resolveBusinessIntentSnapshot(bundle, intentEnv) : {
+    businessRuntimeIntentProfileId: null,
+    businessRuntimeIntentSource: null,
+    businessRuntimeIntentAlignedWithActive: null,
+  };
 
   return {
     activeProfileId: active.id,
@@ -80,5 +110,6 @@ export function buildDgxResourceRuntimeSummary(
     policyLabel: policyLabelJa(policyMode),
     runtimeSource: active.source,
     inferenceDegraded,
+    ...intentSnapshot,
   };
 }

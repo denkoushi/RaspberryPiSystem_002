@@ -41,6 +41,18 @@ describe('buildDgxResourceRuntimeSummaryItems', () => {
     expect(items[2]?.value).toBe('Ready');
   });
 
+  it('includes Pi5 business intent when present', () => {
+    const items = buildDgxResourceRuntimeSummaryItems(
+      sampleSummary({
+        businessRuntimeIntentProfileId: 'business_qwen35_35b_gguf',
+        businessRuntimeIntentSource: 'orchestration',
+        businessRuntimeIntentAlignedWithActive: true,
+      })
+    );
+    expect(items.some((i) => i.key === 'intent')).toBe(true);
+    expect(items.find((i) => i.key === 'intent')?.value).toBe('business_qwen35_35b_gguf');
+  });
+
   it('profile 未確定', () => {
     const items = buildDgxResourceRuntimeSummaryItems(
       sampleSummary({

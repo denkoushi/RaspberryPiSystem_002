@@ -18,6 +18,7 @@ import {
   waitScenarioReadiness,
 } from './dgx-resource.scenario-readiness.js';
 import { performSafeScenarioRollback } from './dgx-resource.scenario-safe-rollback.js';
+import { getBusinessProfileIntentStore } from '../../inference/config/business-profile-intent-store.js';
 
 import type { TargetRuntimeDispatchFn, TargetRuntimeEventLogMode } from './dgx-resource.target-runtime-fn.js';
 
@@ -322,6 +323,16 @@ export async function executeOrchestrationScenarioTransition(input: {
     }
 
     policyStore.clearScenarioFailure();
+
+    if (
+      modelProfileId &&
+      (scenarioId === 'private_to_business' || scenarioId === 'experiment_to_business')
+    ) {
+      getBusinessProfileIntentStore().setFromOrchestration(modelProfileId);
+      policyStore.appendEvent(
+        `業務モデル意図を更新しました（${modelProfileId}）。以降の photo_label / 要約 / 管理チャット / StackChan の on-demand start がこの profile を参照します（opt-in 時は /start に付与）。`
+      );
+    }
 
     const scenarioExecute: DgxResourceScenarioExecuteResult = {
       scenarioId,

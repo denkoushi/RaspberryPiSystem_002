@@ -354,6 +354,14 @@ const envSchema = z.object({
   INFERENCE_RUNTIME_START_PROFILE_ENABLED: z
     .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
     .transform((v) => v === 'true'),
+  /**
+   * 業務機能全体で共有する DGX modelProfileId（photo_label / document_summary / admin / stackchan）。
+   * 設定時は用途別 *_RUNTIME_START_PROFILE_ID と一致させること。
+   */
+  INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).max(128).optional()
+  ),
   /** 用途別 DGX modelProfileId 意図（shadow ログ / opt-in start）。未設定時は送信しない。 */
   INFERENCE_PHOTO_LABEL_RUNTIME_START_PROFILE_ID: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),

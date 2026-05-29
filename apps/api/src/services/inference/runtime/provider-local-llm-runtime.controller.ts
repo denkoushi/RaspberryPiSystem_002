@@ -55,6 +55,12 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
 
   private readonly controllersByCacheKey = new Map<string, LocalLlmRuntimeControllerPort>();
 
+  /**
+   * ensureReady 時に固定した HttpOnDemand インスタンス。
+   * release 時に store 再解決すると別 profile の controller に触れ refCount がずれる。
+   */
+  private readonly leasedControllerByUseCase = new Map<LocalLlmRuntimeUseCase, LocalLlmRuntimeControllerPort>();
+
   private agentContainerRuntimeResolved: LocalLlmRuntimeControllerPort | undefined;
 
   constructor(private readonly deps: ProviderLocalLlmRuntimeControllerDeps) {}
@@ -64,11 +70,42 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
   }
 
   async ensureReady(useCase: LocalLlmRuntimeUseCase): Promise<void> {
-    await this.resolveController(useCase).ensureReady(useCase);
+    const controller = this.acquireLeasedController(useCase);
+    try {
+      await controller.ensureReady(useCase);
+    } catch (error) {
+      this.releaseFailedLease(useCase, controller);
+      throw error;
+    }
   }
 
   async release(useCase: LocalLlmRuntimeUseCase): Promise<void> {
-    await this.resolveController(useCase).release(useCase);
+    const controller = this.leasedControllerByUseCase.get(useCase);
+    if (!controller) {
+      await this.resolveController(useCase).release(useCase);
+      return;
+    }
+    await controller.release(useCase);
+    if (controller instanceof HttpOnDemandLocalLlmRuntimeController && controller.getInFlightRefCount() === 0) {
+      this.leasedControllerByUseCase.delete(useCase);
+    }
+  }
+
+  private acquireLeasedController(useCase: LocalLlmRuntimeUseCase): LocalLlmRuntimeControllerPort {
+    const existing = this.leasedControllerByUseCase.get(useCase);
+    if (existing) {
+      return existing;
+    }
+    const controller = this.resolveController(useCase);
+    this.leasedControllerByUseCase.set(useCase, controller);
+    return controller;
+  }
+
+  private releaseFailedLease(useCase: LocalLlmRuntimeUseCase, controller: LocalLlmRuntimeControllerPort): void {
+    const leased = this.leasedControllerByUseCase.get(useCase);
+    if (leased === controller) {
+      this.leasedControllerByUseCase.delete(useCase);
+    }
   }
 
   private resolveController(useCase: LocalLlmRuntimeUseCase): LocalLlmRuntimeControllerPort {

@@ -10,6 +10,38 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-29 · **DGX 業務モデル意図の Pi5 伝播**·**Pi5 のみ**） {#dgx-business-profile-intent-propagation-2026-05-29}
+
+- **変更概要（正本）**: [KB-365 §業務モデル意図の Pi5 伝播](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#business-profile-intent-propagation)。業務復帰 GUI で選んだ `modelProfileId` を **`BusinessProfileIntentStore`** と **`INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID`** 経由で photo_label / document_summary / admin_console_chat / stackchan_chat の on-demand 起動意図に共有。**`INFERENCE_RUNTIME_START_PROFILE_ENABLED` 既定 `false`**（shadow 維持·opt-in 時のみ `/start` body に `modelProfileId`）。**overview 閲覧は store を更新しない**（env 固定 > orchestration 記録 > 用途別 legacy）。
+- **代表コミット**: **`fd16b711`** · **`1edebd70`** · **ブランチ** **`feat/dgx-business-profile-propagation`** · **CI** **`26618352572`** **success**（約 **11m48s**）
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`**）。**DGX / Pi4 / Pi3**: **デプロイ不要**（DGX バイナリ変更なし·Pi3 専用手順不要）
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/dgx-business-profile-propagation infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-29）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | **`20260529-141701-10018`** | **`ok=138` `changed=7` `failed=0`** | Git **`1edebd70`** · **`--follow` 約 930s** · Pi4/Pi3 **`skipping: no hosts matched`** |
+| DGX / Pi4 / Pi3 | **未実施** | — | コード差分なし |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s** · Tailscale **`100.106.158.2`**）
+- **実機（機能·Pi5）**:
+  - リポジトリ HEAD **`1edebd70`**（api コンテナ内 dist と一致）
+  - **`business-profile-intent.js`** / **`business-profile-intent-store.js`** / **`inference-use-case-runtime-intent.js`** 存在
+  - **`INFERENCE_RUNTIME_START_PROFILE_ENABLED=false`**（プロセス env）
+  - Web bundle **`/srv/site/assets/index-CZRmk5_v.js`** に **`Pi5 業務意図`** · **`businessRuntimeIntentProfileId`** を確認
+- **仕様（運用確認）**:
+  - 業務復帰 execute 成功後、管理 UI KPI **下段**の **Pi5 業務意図** と **Active Model** の一致（不一致時は再実行または `INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID` を inventory で固定）
+  - **`INFERENCE_RUNTIME_START_PROFILE_ENABLED=true`** へ切替える前に shadow ログで意図 ID を確認
+- **知見**:
+  - **コードレビュー修正（`1edebd70`）**: overview 取得だけでは store が上書きされない（passive 閲覧で env 固定が壊れない）。**env は store より優先**。`ensureReady` 失敗時は provider lease を解放（stale lease 防止）
+  - Phase12 は **業務 profile 意図の一致を直接検証しない**（広域ヘルス）。意図は **管理 UI** または **api コンテナ内 artifact / env** で補完
+- **トラブルシュート**:
+  - **KPI に Pi5 業務意図が出ない** → 業務復帰未成功·store 未記録·`runtimeSummary` 未デプロイ（Pi5 ref が **`fd16b711` 未満**）
+  - **意図と Active Model が不一致** → 想定内（次 on-demand または再業務復帰で揃える）。env 固定と orchestration 記録が食い違う場合は **`INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID`** を確認
+  - **用途別 profile env が複数で API 起動失敗** → 同一 provider で競合 ID は起動時エラー（意図的ガード）— **業務共通 ID に揃える**
+- **ナレッジ**: [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-business-profile-intent-propagation) · [Runbook §本番](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-29-business-profile-intent-propagation) · [KB-366 §2](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#2-写真ラベル要領書hermes-は別モデルか)
+
 ### 補足（2026-05-29 · **DGX profile capabilities / runtime intent**·**Pi5 + DGX**） {#dgx-profile-capabilities-runtime-intent-2026-05-29}
 
 - **変更概要（正本）**: [KB-365 §capabilities / intent](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-profile-capabilities-runtime-intent) · [ADR-20260529](../decisions/ADR-20260529-dgx-profile-capabilities-runtime-intent.md)。manifest **`declaredCapabilities`** と active state **`runtimeReadyCapabilities` / `visionReadyReason`** を分離。Pi5 は **`INFERENCE_RUNTIME_START_PROFILE_ENABLED` 既定 `false`**（shadow のみ）。opt-in 時のみ on-demand `/start` に `modelProfileId`。

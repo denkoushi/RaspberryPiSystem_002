@@ -855,7 +855,13 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         targets,
         monitoring,
       });
-      const runtimeSummary = buildDgxResourceRuntimeSummary(bundle, pb.policyMode);
+      const businessIntentEnv = {
+        businessRuntimeStartProfileId: env.INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID,
+        photoLabelRuntimeStartProfileId: env.INFERENCE_PHOTO_LABEL_RUNTIME_START_PROFILE_ID,
+        documentSummaryRuntimeStartProfileId: env.INFERENCE_DOCUMENT_SUMMARY_RUNTIME_START_PROFILE_ID,
+        adminRuntimeStartProfileId: env.INFERENCE_ADMIN_RUNTIME_START_PROFILE_ID,
+      };
+      const runtimeSummary = buildDgxResourceRuntimeSummary(bundle, pb.policyMode, businessIntentEnv);
 
       return {
         generatedAt: pb.generatedAt,

@@ -42,6 +42,22 @@ describe('inference-use-case-runtime-intent', () => {
     ).toBe('business_qwen36_27b_nvfp4');
   });
 
+  it('buildOnDemandControllerCacheKey uses shared business profile for all use cases', () => {
+    const env = {
+      runtimeStartProfileEnabled: true,
+      businessRuntimeStartProfileId: 'business_qwen35_35b_gguf',
+      photoLabelRuntimeStartProfileId: 'business_qwen36_27b_nvfp4',
+      documentSummaryRuntimeStartProfileId: 'business_qwen36_27b_nvfp4',
+    };
+    const { runtimeStartProfileId: _removed, ...noProviderProfile } = provider;
+    expect(buildOnDemandControllerCacheKey(noProviderProfile, 'photo_label', env)).toBe(
+      'dgx_primary::business_qwen35_35b_gguf'
+    );
+    expect(buildOnDemandControllerCacheKey(noProviderProfile, 'admin_console_chat', env)).toBe(
+      'dgx_primary::business_qwen35_35b_gguf'
+    );
+  });
+
   it('buildOnDemandControllerCacheKey separates profiles when opt-in enabled', () => {
     const env = {
       runtimeStartProfileEnabled: true,
