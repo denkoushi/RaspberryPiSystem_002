@@ -78,6 +78,6 @@ private_pi5_dgx_runtime_control_token: "<runtime-control-token>"
 
 ## References
 
-- PR: （マージ後に追記）
+- PR: [#370](https://github.com/denkoushi/RaspberryPiSystem_002/pull/370)
 - CI: **`26634375437`**
 - Deploy log: `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` · **`ok=138 failed=0`**
