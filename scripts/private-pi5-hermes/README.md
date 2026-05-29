@@ -20,7 +20,7 @@
 | Phase D3（file+web） | [ExecPlan D3](../../docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md) · `HERMES_TOOLS_PHASE=d3` · `verify-tools-web-smoke.sh` |
 | Phase D4（file+web+browser） | [ExecPlan D4](../../docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md) · `HERMES_TOOLS_PHASE=d4` · `verify-tools-browser-smoke.sh` |
 | Phase D5（Discord `/task` 橋） | [ExecPlan D5](../../docs/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) · `verify-discord-task-bridge-smoke.sh` · `plugin.yaml` · `hermes-discord-task-bridge` |
-| Novel profile（`/novel` 創作） | [ExecPlan](../../docs/plans/private-pi5-hermes-novel-profile-execplan.md) · `lib/novel_profile_runner.py` · DGX `qwen36_35b_uncensored` on-demand |
+| Novel profile（`/novel` 創作） | [ExecPlan](../../docs/plans/private-pi5-hermes-novel-profile-execplan.md) · [KB 本番](../../docs/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md) · `lib/novel_profile_runner.py` · DGX `qwen36_35b_uncensored` on-demand |
 | 境界ポリシー | [`lib/boundary_policy.py`](lib/boundary_policy.py) · [`config_contract.py`](lib/config_contract.py) · [`hermes_security_adapter.py`](lib/hermes_security_adapter.py) · [`config/boundary-policy.tools.yaml`](config/boundary-policy.tools.yaml) |
 
 ## 前提
@@ -69,6 +69,15 @@ sudo -u hermes bash -lc 'set -a; source ~/.hermes/.env; set +a; \
   curl -sf -o /dev/null -w "%{http_code}\n" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   http://100.118.82.72:38081/v1/models'
+```
+
+Novel profile 有効時（fragment フラグ ON 後）:
+
+```bash
+sudo -u hermes test -f ~/.hermes-novel/.env
+sudo -u hermes grep DGX_MODEL_PROFILE_ID ~/.hermes-novel/.env
+sudo -u hermes grep max_tokens ~/.hermes/.hermes/config.yaml ~/.hermes-novel/home/.hermes/config.yaml
+# Discord: /novel <creative prompt>（初回 35B cold start は数分）
 ```
 
 ## 関連

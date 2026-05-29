@@ -487,7 +487,31 @@ private_pi5_dgx_runtime_control_token: "<from vault>"
 
 **初回ロード**: uncensored プロファイルの cold start は **数分**かかる場合あり（`DGX_RUNTIME_READY_TIMEOUT_SEC` 既定 900）。
 
-正本: [Novel ExecPlan](../plans/private-pi5-hermes-novel-profile-execplan.md) · [dgx uncensored ボタン Runbook](dgx-uncensored-profile-button.md)。
+正本: [Novel ExecPlan](../plans/private-pi5-hermes-novel-profile-execplan.md) · [dgx uncensored ボタン Runbook](dgx-uncensored-profile-button.md) · [KB Novel 本番](../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md)。
+
+### Novel profile — 本番反映（2026-05-29）
+
+| # | 対象 | 手順 | 結果 |
+|---|------|------|------|
+| 1 | 私用 Pi5 `raspi5-private` | `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` | **`PLAY RECAP` ok=138 changed=13 failed=0**（約 **371s**） |
+
+**fragment（非コミット）**: D5 一式に加え `private_pi5_hermes_novel_profile_enabled: true` · `private_pi5_hermes_discord_novel_bridge_enabled: true` · `private_pi5_dgx_runtime_control_token`（既存）。
+
+**追加検証**（`cd infrastructure/ansible` 後）:
+
+```bash
+# novel 配置 + plugin register
+ansible private-pi5-stackchan-bridge -i inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m shell -a "sudo -u hermes test -f /home/hermes/.hermes-novel/.env && sudo -u hermes grep -q DGX_MODEL_PROFILE_ID=qwen36_35b_uncensored /home/hermes/.hermes-novel/.env && echo novel-env:ok" -b
+
+# D4 非回帰
+ansible private-pi5-stackchan-bridge -i inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m shell -a "HERMES_TOOLS_PHASE=d4 /tmp/verify-tools-profile-deploy.sh" -b
+```
+
+**CI / Git**: `feat/private-pi5-hermes-novel-profile` · **`8a8b43f6`** · CI **`26634375437`** success。
+
+**記録**: [KB Novel 本番](../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md)。
 
 ## Phase D5.1 — Discord 承認中継（2026-05-25 · 私用 Pi5 本番反映）
 
@@ -581,7 +605,9 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | yes/no が雑談になる | pending task なし | write タスク実行中のみ intercept · [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) |
 | write `/task` が承認なしで完了 | D5.1 が **shell 承認のみ** · LLM は `write_file` 使用 | `tool_write_gate.py` デプロイ後再試行 · [KB D5 §write ゲート](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイwrite_file-承認ゲート--2026-05-26-jst) |
 | `yes` が雑談になる（承認後） | slash 時 **`by-user/` 未作成**（session env 未設定） | `gateway_actor_context.py` デプロイ後再試行 · `verify-actor-context-bind-pi5.sh` · [KB §actor context](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイgateway-actor-context--yes-ルーティング--2026-05-26-jst) |
-| `yes` 後もファイル未作成 | poll が **`response.json` を先取り** | `runner.py` poll 修正デプロイ · `verify-poll-thread-tool-write-pi5.sh` · [KB §poll](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイpoll-スレッド--tool-write-承認応答--2026-05-26-jst) |
+| `/novel` が Discord に出ない | novel フラグ off · `novel-bridge.enabled` 未配置 · gateway 未 restart | fragment 有効 → 再デプロイ · [KB Novel §Investigation](../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md#investigationデプロイ検証トラブルシュート) |
+| `/novel` 初回が長時間無応答 | **35B uncensored cold start**（数分） | `DGX_RUNTIME_READY_TIMEOUT_SEC` 900 · DGX 側 profile 登録確認 · [dgx uncensored Runbook](dgx-uncensored-profile-button.md) |
+| smoke: `unexpected commands: set()` | repo `lib/` に plugin marker 無し | temp plugin_dir patch（[`verify-discord-task-bridge-smoke.sh`](../../scripts/private-pi5-hermes/verify-discord-task-bridge-smoke.sh) 2026-05-29 修正） |
 
 ## ロールバック
 

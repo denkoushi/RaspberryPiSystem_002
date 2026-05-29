@@ -36,6 +36,7 @@ This document must be maintained in accordance with `.agent/PLANS.md`.
 - [x] Discord plugin に `/novel` bridge を追加し、既存 `/task` と責務分離する。
 - [x] テスト・smoke・Ansible verify を追加して、chat / tools の非回帰を確認する。
 - [x] Runbook / README / 本 ExecPlan を更新し、実装完了で停止する（コミット・push はしない）。
+- [x] (2026-05-29) 私用 Pi5 本番デプロイ + 実機検証 + ドキュメント反映 + main マージ。
 
 ## Surprises & Discoveries
 
@@ -64,7 +65,9 @@ This document must be maintained in accordance with `.agent/PLANS.md`.
 
 ## Outcomes & Retrospective
 
-未記入。実装完了後に、何が動くようになったか、chat / tools 非回帰、残課題（実機 deploy など）を追記する。
+**本番（2026-05-29）**: 私用 Pi5 `raspi5-private` のみデプロイ。**`PLAY RECAP` ok=138 changed=13 failed=0**（約 **371s**）。Discord plugin に **`/novel`** が追加され、isolated `~/.hermes-novel` と `DGX_MODEL_PROFILE_ID=qwen36_35b_uncensored` が配備された。chat（128 token）と tools D4（`/task`）の非回帰を実機 verify で確認。Discord `/novel` の 35B cold start E2E は手動未実施。
+
+**記録**: [KB Novel 本番](../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md) · [Runbook §Novel 本番](../runbooks/private-pi5-hermes-deploy.md#novel-profile--discord-novel長文創作--2026-05-29-本番反映) · CI **`26634375437`**
 
 ## Context and Orientation
 
