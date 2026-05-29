@@ -8,9 +8,9 @@
 
 ## 🎯 目的別インデックス
 
-### 最新アップデート（2026-05-29 · DGX 業務モデル意図の Pi5 伝播 · **コードのみ・未デプロイ**）
+### 最新アップデート（2026-05-29 · DGX 業務モデル意図の Pi5 伝播 · **本番反映済**）
 
-- **業務復帰で選んだ modelProfileId を職場 Pi5 業務機能へ共有**: `BusinessProfileIntentStore` + `INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID`。photo_label / document_summary / admin_console_chat / stackchan_chat が同一 profile 意図を参照。`INFERENCE_RUNTIME_START_PROFILE_ENABLED` は既定 `false`（shadow 維持）。**ブランチ**: `feat/dgx-business-profile-propagation`。**記録**: [KB-365 §業務モデル意図](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#business-profile-intent-propagation) · [Runbook §業務モデル意図](./runbooks/dgx-system-prod-local-llm.md#business-profile-intent-propagation) · [KB-366 §2](./knowledge-base/KB-366-dgx-spark-operational-understanding.md#2-写真ラベル要領書hermes-は別モデルか)
+- **業務復帰で選んだ modelProfileId を職場 Pi5 業務機能へ共有**: `BusinessProfileIntentStore` + `INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID`。photo_label / document_summary / admin_console_chat / stackchan_chat が同一 profile 意図を参照。`INFERENCE_RUNTIME_START_PROFILE_ENABLED` は既定 `false`（shadow 維持）。**ブランチ**: **`feat/dgx-business-profile-propagation`** · **`fd16b711`** / **`1edebd70`** · CI **`26618352572` success** · **本番**: **`raspberrypi5` のみ** Detach **`20260529-141701-10018`**（**`failed=0`** · 約 **930s**）· DGX/Pi4/Pi3 **未実施** · Phase12 **43/0/0**（約 **30s**）· api **`business-profile-intent*.js`** · env **`INFERENCE_RUNTIME_START_PROFILE_ENABLED=false`** · Web **「Pi5 業務意図」**。**記録**: [deployment §業務モデル意図](./guides/deployment.md#dgx-business-profile-intent-propagation-2026-05-29) · [KB-365 §本番](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-business-profile-intent-propagation) · [Runbook §本番](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-29-business-profile-intent-propagation) · [KB-366 §2](./knowledge-base/KB-366-dgx-spark-operational-understanding.md#2-写真ラベル要領書hermes-は別モデルか)
 
 ### 最新アップデート（2026-05-28 · DGX 業務復帰 Strict Ready profile 一致 · **本番反映済**）
 

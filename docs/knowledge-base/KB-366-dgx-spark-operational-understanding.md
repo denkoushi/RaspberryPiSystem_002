@@ -58,7 +58,7 @@ inventory 上の正本: `inference_*_provider_id: dgx_primary`・モデル名 **
 
 **誤解しやすい点**: 「用途ごとに 27B が何本もロード」ではない。**1 つの vLLM プロセス（+ KV キャッシュ枠）を共有**する。
 
-**業務復帰で選んだモデルと各機能（2026-05-29 · コード）**: GUI で選んだ `modelProfileId` は DGX `/start` で正本化される。職場 Pi5 は **`BusinessProfileIntentStore`** に同じ ID を保持し、opt-in 時は photo_label / 要約 / 管理チャット / StackChan の on-demand `/start` に **同一 profile** を載せる。KPI 下段の **Pi5 業務意図** と **Active Model** の一致を確認（[KB-365 §業務モデル意図の Pi5 伝播](./KB-365-dgx-resource-phase3-workload-orchestration.md#business-profile-intent-propagation)）。
+**業務復帰で選んだモデルと各機能（2026-05-29 · 本番反映済）**: GUI で選んだ `modelProfileId` は DGX `/start` で正本化される。職場 Pi5 は **`BusinessProfileIntentStore`** に同じ ID を保持し、opt-in 時は photo_label / 要約 / 管理チャット / StackChan の on-demand `/start` に **同一 profile** を載せる。KPI 下段の **Pi5 業務意図** と **Active Model** の一致を確認。**本番**: Pi5 Detach **`20260529-141701-10018`** · Git **`1edebd70`** · 既定 **`INFERENCE_RUNTIME_START_PROFILE_ENABLED=false`**（shadow）。正本: [KB-365 §本番](./KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-business-profile-intent-propagation) · [deployment §2026-05-29](../guides/deployment.md#dgx-business-profile-intent-propagation-2026-05-29)。
 
 ---
 
