@@ -33,6 +33,11 @@ const actionBodySchema = z.discriminatedUnion('type', [
     reason: z.string().trim().max(200).optional(),
   }),
   z.object({
+    type: z.literal('START_MODEL_PROFILE'),
+    modelProfileId: modelProfileIdSchema,
+    reason: z.string().trim().max(200).optional(),
+  }),
+  z.object({
     type: z.literal('SET_POLICY'),
     policyMode: z.enum(['business_first', 'private_ok', 'experiment_first']),
     /** true: 運用調停に従い Comfy/experiment/gateway を順に停止試行してからモード変更 */

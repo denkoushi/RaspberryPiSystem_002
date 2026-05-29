@@ -111,10 +111,19 @@ export function DgxResourcePrimaryScenarioFlow({
     selectedScenarioId != null ? actions.find((a) => a.scenarioId === selectedScenarioId) : undefined;
   const needsModelProfile =
     selectedAction?.scenarioId === 'private_to_business' || selectedAction?.scenarioId === 'experiment_to_business';
-  const selectableProfiles = useMemo(
-    () => modelProfiles?.available.filter((profile) => profile.enabled && profile.status === 'available') ?? [],
-    [modelProfiles?.available]
-  );
+  const selectableProfiles = useMemo(() => {
+    if (modelProfiles?.businessReturnSelectable) {
+      return modelProfiles.businessReturnSelectable;
+    }
+    return (
+      modelProfiles?.available.filter(
+        (profile) =>
+          profile.enabled &&
+          profile.status === 'available' &&
+          profile.businessOrchestrationEligible !== false
+      ) ?? []
+    );
+  }, [modelProfiles?.businessReturnSelectable, modelProfiles?.available]);
   const selectedModelProfile = selectableProfiles.find((profile) => profile.id === selectedModelProfileId);
 
   useEffect(() => {

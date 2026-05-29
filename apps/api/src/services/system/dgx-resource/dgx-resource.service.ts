@@ -26,6 +26,7 @@ import {
 import { buildDgxResourceMonitoringOverview, type DgxResourceMonitoringSummary } from './dgx-resource.monitoring-overview.js';
 import { buildDgxResourceOperatorConsole, type DgxResourceOperatorConsole } from './dgx-resource.operator-overview.js';
 import {
+  assertModelProfileEligibleForBusinessReturn,
   assertModelProfileKnownAndStartable,
   assertModelProfileSelectionAllowed,
   fetchDgxModelProfilesOverview,
@@ -128,6 +129,7 @@ export type { DgxResourceRuntimeSummary };
 export type DgxResourceActionBody =
   | { type: 'LOCAL_LLM_START'; reason?: string }
   | { type: 'LOCAL_LLM_STOP'; reason?: string }
+  | { type: 'START_MODEL_PROFILE'; modelProfileId: string; reason?: string }
   | { type: 'SET_POLICY'; policyMode: DgxPolicyMode; applyWorkloadChanges?: boolean }
   | {
       type: 'EXECUTE_TARGET_ACTION';
@@ -719,6 +721,27 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     return runTargetRuntimeAction(targetId, action, reason, 'default');
   };
 
+  const handleStartModelProfile = async (
+    modelProfileId: string,
+    reason?: string
+  ): Promise<DgxResourceActionResult> => {
+    const pb = await collectOverviewProbeBundle();
+    assertModelProfileKnownAndStartable(pb.modelProfiles, modelProfileId);
+    const r = await runTargetRuntimeAction(
+      'system-prod-gateway',
+      'start',
+      reason,
+      'default',
+      modelProfileId
+    );
+    deps.policyStore.clearScenarioFailure();
+    deps.policyStore.appendEvent(`model profile「${modelProfileId}」の起動を要求しました`);
+    return {
+      ok: true,
+      message: `model profile「${modelProfileId}」: ${r.message}`,
+    };
+  };
+
   const handleSetPolicy = async (
     mode: DgxPolicyMode,
     opts?: { applyWorkloadChanges?: boolean }
@@ -747,7 +770,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     assertModelProfileSelectionAllowed(scenarioId, modelProfileId);
     const pb = await collectOverviewProbeBundle();
     if (modelProfileId) {
-      assertModelProfileKnownAndStartable(pb.modelProfiles, modelProfileId);
+      assertModelProfileEligibleForBusinessReturn(pb.modelProfiles, modelProfileId);
     }
     const hints = inferenceHeuristics(pb.bundle);
     const preview = buildOrchestrationScenarioPreview({
@@ -777,7 +800,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     assertModelProfileSelectionAllowed(scenarioId, modelProfileId);
     if (modelProfileId) {
       const pb = await collectOverviewProbeBundle();
-      assertModelProfileKnownAndStartable(pb.modelProfiles, modelProfileId);
+      assertModelProfileEligibleForBusinessReturn(pb.modelProfiles, modelProfileId);
     }
     const result = await executeOrchestrationScenarioTransition({
       scenarioId,
@@ -825,6 +848,9 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         const r = await handleExecuteTargetAction(body.targetId, body.action, body.reason);
         deps.policyStore.clearScenarioFailure();
         return r;
+      }
+      if (body.type === 'START_MODEL_PROFILE') {
+        return handleStartModelProfile(body.modelProfileId, body.reason);
       }
       if (body.type === 'LOCAL_LLM_START') {
         const r = await handleExecuteTargetAction('system-prod-gateway', 'start', body.reason);

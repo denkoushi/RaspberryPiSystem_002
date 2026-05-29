@@ -14,6 +14,7 @@ import { POLL_MS } from '../../../lib/admin-polling-intervals';
 
 import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
 import { DgxResourcePrimaryScenarioFlow } from './DgxResourcePrimaryScenarioFlow';
+import { DgxResourceQuickProfileActions } from './DgxResourceQuickProfileActions';
 import { DgxResourceSparkStatusPanel } from './DgxResourceSparkStatusPanel';
 import { DgxResourceStatusBoard } from './DgxResourceStatusBoard';
 import { DgxResourceTargetGrid } from './DgxResourceTargetGrid';
@@ -134,6 +135,11 @@ export function DgxResourceDashboard() {
         setActionError(null);
         return;
       }
+      if (variables.type === 'START_MODEL_PROFILE') {
+        setTargetActionError(null);
+        setActionError(message);
+        return;
+      }
       setTargetActionError(null);
       setActionError(message);
     },
@@ -198,6 +204,16 @@ export function DgxResourceDashboard() {
         <section className="rounded-xl border border-cyan-400/25 bg-slate-950/65 p-3">
           <DgxResourcePrimaryScenarioFlow
             operator={overview.operator}
+            modelProfiles={overview.modelProfiles}
+            postDgxAction={postDgxActionAsync}
+            actionBusy={mutateAction.isPending}
+            externalBusy={scenarioLikelyRunning}
+            onControlUiError={(message) => {
+              setActionError(message);
+              if (message == null) setTargetActionError(null);
+            }}
+          />
+          <DgxResourceQuickProfileActions
             modelProfiles={overview.modelProfiles}
             postDgxAction={postDgxActionAsync}
             actionBusy={mutateAction.isPending}

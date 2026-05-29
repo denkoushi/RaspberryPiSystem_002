@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { OverviewProbeBundle } from '../dgx-resource.control-targets.builder.js';
-import type { DgxModelProfilesOverview } from '../dgx-resource.model-profiles.js';
+import {
+  enrichModelProfilesOverview,
+  type DgxModelProfilesOverview,
+} from '../dgx-resource.model-profiles.js';
 import {
   allReadinessChecksSatisfied,
   buildScenarioReadinessTargetSpec,
@@ -9,19 +12,20 @@ import {
   waitScenarioReadiness,
 } from '../dgx-resource.scenario-readiness.js';
 
-const defaultModelProfiles: DgxModelProfilesOverview = {
+const defaultModelProfiles: DgxModelProfilesOverview = enrichModelProfilesOverview({
   configured: true,
   status: 'ok',
   available: [],
+  businessReturnSelectable: [],
   activeProfileId: null,
   activeStateBackend: null,
   activeRuntimeState: null,
   pendingProfileId: null,
   lastLoadedProfileId: null,
-};
+});
 
 function mkModelProfiles(over: Partial<DgxModelProfilesOverview>): DgxModelProfilesOverview {
-  return { ...defaultModelProfiles, ...over };
+  return enrichModelProfilesOverview({ ...defaultModelProfiles, ...over });
 }
 
 function mkBundle(over: Partial<OverviewProbeBundle>): OverviewProbeBundle {
@@ -69,6 +73,7 @@ const qwen27 = {
   backend: 'blue' as const,
   servedAlias: 'system-prod-primary',
   recommended: true,
+  businessOrchestrationEligible: true,
   enabled: true,
   status: 'available' as const,
   canonicalNames: [] as string[],
@@ -81,6 +86,7 @@ const qwen35 = {
   backend: 'green' as const,
   servedAlias: 'system-prod-primary',
   recommended: false,
+  businessOrchestrationEligible: true,
   enabled: true,
   status: 'available' as const,
   canonicalNames: [] as string[],

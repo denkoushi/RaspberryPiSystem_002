@@ -178,12 +178,24 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
   - **切り分け（業務復帰 503 `DGX_MODEL_PROFILES_UNAVAILABLE`）**: ① `curl …/system/model-profiles` で profiles 件数・各 `status` ② `activeProfileId` が null でも allowlist 取得 OK なら Pi5 は `ok`（[KB-365 §activeProfileId null](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-active-profile-id-null)）③ state 単体は `curl …/system/model-profile`。
   - **切り分け（業務復帰 success だが KPI/モデルが選択と違う）**: ① `activeProfileId` が選択 ID と一致するか ② `state.backend` が manifest の `backend` と一致するか ③ `/v1/models` だけ OK では Pi5 success にならない（[§Strict Ready profile 一致](#strict-ready-model-profile-match-2026-05-28)）。
 - 初期 profile: `business_qwen36_27b_nvfp4`（blue / Qwen3.6 27B NVFP4 / 推奨）と `business_qwen35_35b_gguf`（green / Qwen3.5 35B GGUF）
+- 私用テキスト向け（業務キオスク非対象）: `qwen36_35b_uncensored`（green / Qwen3.6 35B Uncensored GGUF / text only）— 下記 [§uncensored profile](#dgx-uncensored-profile-2026-05-29)
 - HF 移行: `sakamakismile/Qwen3.6-27B-NVFP4` は `/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4` へ寄せる。既存 cache は manifest の `currentStorageLocation` に残し、実ファイル移動は実機手動確認で行う
 - **ストレージパス契約（可用性判定）**:
   - **`storageLocation`**: 移行**先**（正規配置）。未移行なら存在しないことがある
   - **`currentStorageLocation`**: **現配置**（移行途中の実体）。HF cache 利用時は **`/srv/dgx/system-prod/data/hf-cache/hub/models--<org>--<model>`** 形式（**`hub/` 配下**）。`hf-cache/models--...` のように **`hub` を抜くと `status: unavailable` になり、管理 UI のドロップダウンに出ない**
   - DGX `model_profiles.profile_storage_available()` は **`currentStorageLocation` → `storageLocation` の OR 存在チェック**。どちらか一方でもディレクトリがあれば `GET /system/model-profiles` では `status: available`
   - **切り分け**: API で profiles が 2 件なのに UI が 1 件だけ → 各 profile の `status` と manifest の `currentStorageLocation` を `ls` で突合する（[KB-365 §model profile storage](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)）
+
+## `qwen36_35b_uncensored` と固定起動ボタン（2026-05-29） {#dgx-uncensored-profile-2026-05-29}
+
+- **用途**: 私用テキスト生成（Uncensored GGUF）。**業務キオスク・photo_label・`BusinessProfileIntent` には載せない**。
+- **manifest 正本**: `/srv/dgx/shared-models/registry/qwen36_35b_uncensored/manifest.json`（repo 例: [`model-registry.examples/qwen36_35b_uncensored`](../../scripts/dgx-local-llm-system/model-registry.examples/qwen36_35b_uncensored/manifest.json)）
+- **GGUF**: `/srv/dgx/shared-models/llm/gguf/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf`（期待サイズ **43605014656** バイト）
+- **DGX bin（業務復帰除外の必須条件）**: [`model_profiles.py`](../../scripts/dgx-local-llm-system/model_profiles.py) を **`/srv/dgx/system-prod/bin/`** へ **`scp`** し **control + gateway 再起動**。manifest だけでは `GET /system/model-profiles` に **`businessOrchestrationEligible`** が出ず、Pi5 は未送信を **eligible=true** と解釈する（混在デプロイで業務復帰ドロップダウンに uncensored が載る）
+- **反映後の確認例**（DGX）: `curl -sS -H "X-LLM-Token: …" http://127.0.0.1:38081/system/model-profiles` の `profiles[]` で `id==qwen36_35b_uncensored` の **`businessOrchestrationEligible` が `false`**
+- **Pi5 管理 UI**: `/admin/tools/dgx-resource` の **「モデルプロファイル起動」** にボタン **`qwen36_35b_uncensored`**。業務復帰シナリオは通さず **`POST /api/system/dgx-resource/actions`** の **`START_MODEL_PROFILE`** のみ（Strict Ready なし）。
+- **業務復帰ドロップダウン**: `businessOrchestrationEligible !== false` かつ `available` の profile のみ（`qwen36_35b_uncensored` は **`businessOrchestrationEligible: false`** のため **出ない**）。私用起動は **`START_MODEL_PROFILE`** 固定ボタンのみ。
+- **ExecPlan**: [dgx-uncensored-profile-button.md](../plans/dgx-uncensored-profile-button.md)
 
 **Strict Ready と model profile 一致（2026-05-28 · Pi5 API）** {#strict-ready-model-profile-match-2026-05-28}
 

@@ -53,6 +53,7 @@ class ModelProfile:
     expected_size_gb: float | None = None
     expected_cold_start_sec: int | None = None
     recommended: bool = False
+    business_orchestration_eligible: bool = True
     canonical_names: tuple[str, ...] = ()
     legacy_names: tuple[str, ...] = ()
     declared_capabilities: tuple[str, ...] = ("text",)
@@ -129,6 +130,7 @@ def load_model_profile_manifest(path: Path) -> ModelProfile:
         expected_size_gb=_number(body.get("expectedSizeGb")),
         expected_cold_start_sec=_int(body.get("expectedColdStartSec")),
         recommended=bool(body.get("recommended", False)),
+        business_orchestration_eligible=bool(body.get("businessOrchestrationEligible", True)),
         canonical_names=_string_list(body.get("canonicalNames")),
         legacy_names=_string_list(body.get("legacyNames")),
         declared_capabilities=declared_capabilities,
@@ -179,6 +181,7 @@ def model_profile_to_api(profile: ModelProfile) -> dict[str, Any]:
         "backend": profile.backend,
         "servedAlias": profile.served_alias,
         "recommended": profile.recommended,
+        "businessOrchestrationEligible": profile.business_orchestration_eligible,
         "enabled": profile.enabled,
         "canonicalNames": list(profile.canonical_names),
         "legacyNames": list(profile.legacy_names),

@@ -1,0 +1,26 @@
+{
+  "modelProfileId": "qwen36_35b_uncensored",
+  "displayNameJa": "qwen36_35b_uncensored",
+  "descriptionJa": "私用テキスト生成向け Qwen3.6 35B GGUF（Uncensored）。llama.cpp green backend。vision/mmproj 不要。業務キオスク・職場 Pi5 業務意図には載せない。",
+  "backend": "green",
+  "servedAlias": "system-prod-primary",
+  "enabled": true,
+  "recommended": false,
+  "businessOrchestrationEligible": false,
+  "declaredCapabilities": ["text"],
+  "launcherHints": {
+    "llamaServerModel": "/srv/dgx/shared-models/llm/gguf/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf",
+    "llamaServerAlias": "system-prod-primary"
+  },
+  "sourceKind": "local_file",
+  "sourceModelRef": "Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf",
+  "modelFamily": "Qwen3.6",
+  "format": "GGUF",
+  "quantization": "Q8_K_P",
+  "storageLocation": "/srv/dgx/shared-models/llm/gguf/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf",
+  "currentStorageLocation": "/srv/dgx/shared-models/llm/gguf/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf",
+  "storageStatus": "shared_models",
+  "expectedColdStartSec": 900,
+  "canonicalNames": ["Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf"],
+  "legacyNames": ["llama-server", "green"]
+}

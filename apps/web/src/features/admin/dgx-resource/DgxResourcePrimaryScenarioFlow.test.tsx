@@ -157,4 +157,40 @@ describe('DgxResourcePrimaryScenarioFlow', () => {
       expect(screen.getByRole('button', { name: '実行する →' })).not.toBeDisabled();
     });
   });
+
+  it('does not list businessOrchestrationEligible=false profiles in business return select', () => {
+    const operator = makeOperator();
+    const profilesWithUncensored: DgxModelProfilesOverviewApi = {
+      ...modelProfiles,
+      available: [
+        ...modelProfiles.available,
+        {
+          id: 'qwen36_35b_uncensored',
+          displayNameJa: 'qwen36_35b_uncensored',
+          backend: 'green',
+          servedAlias: 'system-prod-primary',
+          recommended: false,
+          businessOrchestrationEligible: false,
+          enabled: true,
+          status: 'available',
+          canonicalNames: [],
+          legacyNames: [],
+        },
+      ],
+      businessReturnSelectable: modelProfiles.available,
+    };
+
+    renderWithClient(
+      <DgxResourcePrimaryScenarioFlow
+        operator={operator}
+        modelProfiles={profilesWithUncensored}
+        postDgxAction={vi.fn()}
+        actionBusy={false}
+        onControlUiError={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('option', { name: /Qwen3\.6 27B NVFP4/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'qwen36_35b_uncensored' })).not.toBeInTheDocument();
+  });
 });
