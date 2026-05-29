@@ -10,6 +10,39 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-29 · **DGX 業務 profile スコープ runtime readiness**·**Pi5 のみ**） {#dgx-business-profile-optin-ready-2026-05-29}
+
+- **変更概要（正本）**: [KB-365 §profile-scoped readiness](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#business-profile-scoped-runtime-readiness) · [KB-366 §35B 写真ラベル cold start](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#35b-photo-label-cold-start-runtime-ready-timeout)。35B 切替直後のキオスク `photo_label` が **`runtime_ready_timeout`（約 901s）** で落ちる事象への対策。**35B は VLM 非対応ではない**（`runtimeReadyCapabilities` に `vision` · `visionReadyReason=mmproj_detected` を確認済み）。Pi5 は **HTTP `/v1/models` ready** と **用途別 profile readiness**（active profile 一致 + `photo_label` 時は vision capability）を分離。業務復帰 Strict Ready に **`model_profile_vision_runtime`** を追加。
+- **代表コミット**: **`60ec06d1`** `fix(dgx): harden profile-scoped runtime readiness` · **`efe1853f`** `test(dgx): align provider runtime tests with profile readiness` · **ブランチ** **`feat/dgx-business-profile-optin-ready`** · **CI** **`26624687386`** **success**
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`**）。**DGX / Pi4 / Pi3**: **デプロイ不要**（DGX バイナリ変更なし·Pi3 専用手順不要）
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/dgx-business-profile-optin-ready infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-29）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | **`20260529-173357-17360`** | **`ok=134` `changed=4` `failed=0`** | Git **`efe1853f`** · **`--follow` 約 924s** · Pi4/Pi3 **`skipping: no hosts matched`** |
+| DGX / Pi4 / Pi3 | **未実施** | — | コード差分なし |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **112s** · Tailscale **`100.106.158.2`**）
+- **実機（機能·Pi5 api コンテナ）**:
+  - Git **`efe1853f`**（Pi5 `/opt` と api dist 一致）
+  - dist: **`business-runtime-readiness.js`** · **`http-on-demand-local-llm-runtime.controller.js`**
+  - **`dgx-resource.scenario-readiness.js`**: readiness code **`model_profile_vision_runtime`**
+  - **`INFERENCE_RUNTIME_START_PROFILE_ENABLED=false`**（shadow 維持）· **`LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS=900000`**
+- **仕様（運用確認）**:
+  - 35B 業務復帰直後の **初回 `photo_label`** は cold start が **15 分超**し得る → タイムアウトまたは再試行で成功するまで待つ（27B は起動が速く顕在化しにくい）
+  - **`INFERENCE_RUNTIME_START_PROFILE_ENABLED=true`** へ切替える前に、本番 shadow ログで意図 profile と DGX active の一致を確認
+  - Strict Ready（`modelProfileId` 指定）で **`model_profile_vision_runtime` 未達** → 35B が text-only ready の間は execute success にならない（意図的）
+- **知見**:
+  - KPI **Unified Mem 20 GiB 台**でも 35B green は稼働し得る（メモリ KPI だけで VLM ready と判断しない）
+  - opt-in 後は **`verifyBusinessRuntimeAfterProfileStart`** が `/start` 直後の DGX state を検証（HTTP ready だけでは photo_label を通さない）
+- **トラブルシュート**:
+  - **`runtime_ready_timeout` / `photo_label`** → 35B cold start·**`LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS`**（既定 900000）·起動完了後の再撮影
+  - **Strict Ready が vision で止まる** → DGX `GET /system/model-profiles` の **`runtimeReadyCapabilities`** / **`visionReadyReason`**
+  - **Pi5 ref が旧** → `business-runtime-readiness.js` 不在 — **`efe1853f` 未満**
+- **ナレッジ**: [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-business-profile-optin-ready) · [Runbook §本番](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-29-business-profile-optin-ready) · [KB-366 §35B 写真ラベル](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#35b-photo-label-cold-start-runtime-ready-timeout)
+
 ### 補足（2026-05-29 · **DGX 業務モデル意図の Pi5 伝播**·**Pi5 のみ**） {#dgx-business-profile-intent-propagation-2026-05-29}
 
 - **変更概要（正本）**: [KB-365 §業務モデル意図の Pi5 伝播](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#business-profile-intent-propagation)。業務復帰 GUI で選んだ `modelProfileId` を **`BusinessProfileIntentStore`** と **`INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID`** 経由で photo_label / document_summary / admin_console_chat / stackchan_chat の on-demand 起動意図に共有。**`INFERENCE_RUNTIME_START_PROFILE_ENABLED` 既定 `false`**（shadow 維持·opt-in 時のみ `/start` body に `modelProfileId`）。**overview 閲覧は store を更新しない**（env 固定 > orchestration 記録 > 用途別 legacy）。

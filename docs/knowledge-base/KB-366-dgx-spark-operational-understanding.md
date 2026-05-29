@@ -42,6 +42,17 @@ category: knowledge-base
 
 **本番（2026-05-29）**: Pi5 + DGX に capabilities / intent 基盤を反映済み。**`INFERENCE_RUNTIME_START_PROFILE_ENABLED` は本番 `false` のまま**（挙動は従来どおり·ログのみ shadow）。DGX API では両 profile に **`declaredCapabilities: text+vision`** を確認。詳細: [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-profile-capabilities-runtime-intent)。
 
+### 35B 写真ラベル cold start と `runtime_ready_timeout`（2026-05-29） {#35b-photo-label-cold-start-runtime-ready-timeout}
+
+- **症状**: 管理画面で **35B** に切替後、キオスク持出の **初回** 画像認識だけ失敗。Pi5 API ログに **`runtime_ready_timeout`**（例: **latencyMs≈901707** · useCase **`photo_label`**）。**2 回目以降は成功**し得る。27B では顕在化しにくい（起動が速い）。
+- **調査結果（2026-05-29 · CONFIRMED）**:
+  - 35B は **VLM 非対応ではない**: `runtimeReadyCapabilities: ["text","vision"]` · **`visionReadyReason: mmproj_detected`**
+  - DGX 単体 `/v1/chat/completions`（画像付き）は **HTTP 200**
+  - 主因は **35B cold start が `LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS`（本番 900000）を超える**こと（HTTP `/v1/models` ready 待ちの段階）
+- **Fix（Pi5 · 本番 `efe1853f`）**: HTTP ready と **profile スコープ readiness**（active 一致 + `photo_label` 時 vision capability）を分離。業務復帰 Strict Ready に **`model_profile_vision_runtime`**。詳細: [KB-365 §profile-scoped readiness](./KB-365-dgx-resource-phase3-workload-orchestration.md#business-profile-scoped-runtime-readiness) · [deployment §optin-ready](../guides/deployment.md#dgx-business-profile-optin-ready-2026-05-29)
+- **運用**: KPI **Unified Mem 20 GiB 台**でも 35B green は稼働し得る（メモリだけで「モデル未ロード」と判断しない）。初回失敗時は **ロード完了まで待って再撮影**。
+- **次の改善候補**: `INFERENCE_RUNTIME_START_PROFILE_ENABLED=true` で業務復帰と on-demand の profile を揃えたうえで shadow 確認 · 必要なら timeout / UX（「モデル準備中」）の見直し
+
 ## 2. 写真ラベル・要領書・Hermes は「別モデル」か
 
 **用途名は複数あるが、DGX 上の業務推論は基本的に 1 系統。**
