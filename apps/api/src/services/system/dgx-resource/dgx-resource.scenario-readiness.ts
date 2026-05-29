@@ -3,6 +3,9 @@ import type { DgxOrchestrationScenarioId } from './dgx-resource.scenario-planner
 
 import type { TargetRuntimeDispatchFn } from './dgx-resource.target-runtime-fn.js';
 
+import { evaluateVisionRuntimeReadyFromOverview } from '../../inference/config/business-runtime-readiness.js';
+
+import { profileDeclaresVision } from './dgx-resource.model-profiles.js';
 import type { DgxScenarioReadinessCheckJa } from './dgx-resource.scenario-execute.types.js';
 
 /** Overview snapshot の取得（ポーリング毎）。 */
@@ -85,6 +88,34 @@ function businessModelProfileActiveReady(
     satisfied: true,
     detailJa: `選択モデル ${selected.displayNameJa} が DGX active profile と一致しています`,
   };
+}
+
+function businessModelProfileVisionRuntimeReady(
+  bundle: OverviewProbeBundle,
+  selectedProfileId: string
+): { satisfied: boolean; detailJa: string } {
+  const mp = bundle.modelProfiles;
+  if (mp.status !== 'ok') {
+    return {
+      satisfied: false,
+      detailJa:
+        mp.errorMessageJa ??
+        'DGX model profiles API が利用できないため、vision runtime ready を確認できません',
+    };
+  }
+  const selected = mp.available.find((p) => p.id === selectedProfileId);
+  if (!selected) {
+    return {
+      satisfied: false,
+      detailJa: `選択した modelProfileId が allowlist にありません: ${selectedProfileId}`,
+    };
+  }
+  return evaluateVisionRuntimeReadyFromOverview({
+    activeProfileId: mp.activeProfileId,
+    activeRuntimeState: mp.activeRuntimeState,
+    selectedProfileId,
+    selectedDeclaresVision: profileDeclaresVision(selected),
+  });
 }
 
 function businessModelProfileBackendReady(
@@ -246,6 +277,12 @@ function evaluateReadinessChecks(
         code: 'model_profile_backend',
         satisfied: backend.satisfied,
         detailJa: backend.detailJa,
+      });
+      const vision = businessModelProfileVisionRuntimeReady(bundle, options.modelProfileId);
+      checks.push({
+        code: 'model_profile_vision_runtime',
+        satisfied: vision.satisfied,
+        detailJa: vision.detailJa,
       });
     }
   }

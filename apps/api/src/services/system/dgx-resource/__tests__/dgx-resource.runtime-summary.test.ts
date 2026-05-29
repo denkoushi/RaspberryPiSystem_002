@@ -28,6 +28,7 @@ function mkBundle(partial: Partial<OverviewProbeBundle>): OverviewProbeBundle {
       ],
       activeProfileId: 'business_qwen35_35b_gguf',
       activeStateBackend: 'green',
+      activeRuntimeState: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
     },
@@ -90,6 +91,7 @@ describe('buildDgxResourceRuntimeSummary', () => {
       available: [],
       activeProfileId: null,
       activeStateBackend: null,
+      activeRuntimeState: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
     };

@@ -236,6 +236,16 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
       if (url.includes('/start') && init?.method === 'POST') {
         return new Response('', { status: 200 });
       }
+      if (url.includes('/system/model-profiles') && init?.method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            activeProfileId: 'business_qwen36_27b_nvfp4',
+            state: { runtimeReadyCapabilities: ['text', 'vision'], visionReadyReason: 'vision' },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
       if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
         return new Response('ok\n', { status: 200 });
       }
@@ -276,5 +286,99 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
     expect(body.reason).toBe('photo_label');
     expect(body.modelProfileId).toBe('business_qwen36_27b_nvfp4');
     await c.release('photo_label');
+  });
+
+  it('fails photo_label when profile sent but vision capability is missing', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/start') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      if (url.includes('/system/model-profiles') && init?.method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            activeProfileId: 'business_qwen35_35b_gguf',
+            state: { runtimeReadyCapabilities: ['text'], visionReadyReason: 'mmproj_missing' },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
+        return new Response('ok\n', { status: 200 });
+      }
+      return new Response('nope', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const c = new HttpOnDemandLocalLlmRuntimeController({
+      fetchImpl,
+      startUrl: 'http://ubuntu/start',
+      stopUrl: 'http://ubuntu/stop',
+      controlToken: 'ctrl',
+      healthCheckBaseUrl: 'http://llm:38081/',
+      llmToken: 't',
+      readyProbeModels: { photo_label: 'photo-model' },
+      readyTimeoutMs: 200,
+      startRequestTimeoutMs: 10_000,
+      stopRequestTimeoutMs: 10_000,
+      healthPollIntervalMs: 1,
+      runtimeIntentEnv: {
+        runtimeStartProfileEnabled: true,
+        businessRuntimeStartProfileId: 'business_qwen35_35b_gguf',
+      },
+      provider: testProvider,
+    });
+
+    await expect(c.ensureReady('photo_label')).rejects.toThrow(/lacks vision runtime capability/);
+  });
+
+  it('runs photo_label vision readiness even when document_summary warmed the shared controller', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/start') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      if (url.includes('/system/model-profiles') && init?.method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            activeProfileId: 'business_qwen35_35b_gguf',
+            state: { runtimeReadyCapabilities: ['text'], visionReadyReason: 'mmproj_missing' },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
+        return new Response('ok\n', { status: 200 });
+      }
+      return new Response('nope', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const c = new HttpOnDemandLocalLlmRuntimeController({
+      fetchImpl,
+      startUrl: 'http://ubuntu/start',
+      stopUrl: 'http://ubuntu/stop',
+      controlToken: 'ctrl',
+      healthCheckBaseUrl: 'http://llm:38081/',
+      llmToken: 't',
+      readyProbeModels: {
+        photo_label: 'photo-model',
+        document_summary: 'summary-model',
+      },
+      readyTimeoutMs: 200,
+      startRequestTimeoutMs: 10_000,
+      stopRequestTimeoutMs: 10_000,
+      healthPollIntervalMs: 1,
+      runtimeIntentEnv: {
+        runtimeStartProfileEnabled: true,
+        businessRuntimeStartProfileId: 'business_qwen35_35b_gguf',
+      },
+      provider: testProvider,
+    });
+
+    await c.ensureReady('document_summary');
+    await expect(c.ensureReady('photo_label')).rejects.toThrow(/lacks vision runtime capability/);
+    await c.release('photo_label');
+    await c.release('document_summary');
   });
 });

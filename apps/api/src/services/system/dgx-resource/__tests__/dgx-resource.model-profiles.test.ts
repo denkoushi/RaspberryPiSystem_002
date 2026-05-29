@@ -80,6 +80,36 @@ describe('fetchDgxModelProfilesOverview', () => {
     expect(overview.activeStateBackend).toBe('blue');
   });
 
+  it('parses activeRuntimeState capabilities from state payload', async () => {
+    const fetchImpl = vi.fn(async (): Promise<Response> => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      url: 'http://127.0.0.1:38081/system/model-profiles',
+      text: async () => '',
+      json: async () => ({
+        ok: true,
+        activeProfileId: 'business_qwen35_35b_gguf',
+        state: {
+          backend: 'green',
+          runtimeReadyCapabilities: ['text', 'vision'],
+          visionReadyReason: 'vision',
+        },
+        profiles: [],
+      }),
+    })) as typeof fetch;
+
+    const overview = await fetchDgxModelProfilesOverview({
+      baseUrl: 'http://127.0.0.1:38081',
+      sharedToken: 'x'.repeat(32),
+      fetchImpl,
+      timeoutMs: 3000,
+    });
+
+    expect(overview.activeRuntimeState?.runtimeReadyCapabilities).toEqual(['text', 'vision']);
+    expect(overview.activeRuntimeState?.visionReadyReason).toBe('vision');
+  });
+
   it('returns degraded when HTTP request fails', async () => {
     const fetchImpl = vi.fn(async (): Promise<Response> => ({
       ok: false,
@@ -111,6 +141,7 @@ describe('assertModelProfileKnownAndStartable', () => {
         status: 'ok',
         activeProfileId: null,
         activeStateBackend: null,
+        activeRuntimeState: null,
         pendingProfileId: null,
         lastLoadedProfileId: null,
         available: [
