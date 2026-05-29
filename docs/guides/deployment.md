@@ -10,6 +10,48 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-29 · **DGX `qwen36_35b_uncensored` + 固定起動ボタン**·**Pi5 → DGX 順次**） {#dgx-uncensored-profile-button-2026-05-29}
+
+- **変更概要（正本）**: [計画](../plans/dgx-uncensored-profile-button.md) · [Runbook §uncensored](../runbooks/dgx-system-prod-local-llm.md#dgx-uncensored-profile-2026-05-29) · [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-uncensored-profile-button)。私用テキスト向け GGUF profile **`qwen36_35b_uncensored`** を DGX registry に追加し、職場 Pi5 管理 UI `/admin/tools/dgx-resource` に **固定起動ボタン**（**`START_MODEL_PROFILE`**）を追加。**業務復帰 orchestration からは除外**（manifest **`businessOrchestrationEligible: false`** · overview **`businessReturnSelectable`** からも除外）。
+- **代表コミット**: **`83bb4fc0`** · **ブランチ** **`feat/dgx-uncensored-profile-button`** · **CI** **`26630868193`** **success**（約 **13m19s**）
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト（順序固定）**:
+  - **① `raspberrypi5` のみ** — Ansible 標準デプロイ
+  - **② DGX Spark** — **Ansible 対象外**（manifest + **`model_profiles.py` scp** + **control/gateway 再起動**）
+  - **Pi4 / Pi3 / Hermes**: **対象外**（Pi3 専用手順不要）
+- **標準コマンド**:
+  - Pi5: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/dgx-uncensored-profile-button infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+  - DGX（**bin と manifest は同一メンテ枠でセット**）:
+    1. `scp scripts/dgx-local-llm-system/model_profiles.py ubudgxkoushi@100.118.82.72:/srv/dgx/system-prod/bin/model_profiles.py`
+    2. `scp scripts/dgx-local-llm-system/model-registry.examples/qwen36_35b_uncensored/manifest.json ubudgxkoushi@100.118.82.72:/srv/dgx/shared-models/registry/qwen36_35b_uncensored/manifest.json`
+    3. **GGUF**（未配置時のみ）: `/srv/dgx/shared-models/llm/gguf/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf`（**43605014656** バイト）
+    4. **control-server + gateway-server**: PID 終了 → PID ファイル削除 → `start-control-server.sh` → `start-gateway-server.sh`
+- **本番デプロイ（実績·2026-05-29）**:
+
+| ホスト | Detach / 手順 | 結果 | 備考 |
+|--------|---------------|------|------|
+| `raspberrypi5` | **`20260529-191402-25013`** | **`ok=134` `changed=4` `failed=0`** | Git **`83bb4fc0`** · **`--follow` 完了** · Pi4/Pi3 **`skipping: no hosts matched`** |
+| DGX Spark | `scp` **`model_profiles.py`** + manifest · control/gateway 再起動 | `control-server` **pid=355140** · `gateway-server` **pid=355152** · `healthz` **200** | uncensored **`status: available`** · **`businessOrchestrationEligible: false`** |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **109s**）
+- **実機（機能）**:
+  - Pi5 api: **`START_MODEL_PROFILE`** in **`dgx-resource.service.js`** · **`businessReturnSelectable`** filter in **`dgx-resource.model-profiles.js`**
+  - Pi5 web: **`/srv/site/assets/index-*.js`** に **`qwen36_35b_uncensored`** 文字列を確認
+  - DGX: `curl -H "X-LLM-Token: …" http://127.0.0.1:38081/system/model-profiles` → **`qwen36_35b_uncensored`** が **`available`** かつ JSON に **`"businessOrchestrationEligible": false`**
+- **仕様（運用確認）**:
+  - **業務復帰ドロップダウン**に uncensored が **出ない**（`businessReturnSelectable` 除外）
+  - **「モデルプロファイル起動」** の固定ボタンのみで起動（Strict Ready / orchestration 非経由）
+  - cold start は profile 想定 **最大 ~900s**（運用は DGX `activeProfileId` と `/v1/models` で確認）
+- **知見**:
+  - **混在デプロイ**: manifest のみ先に入れ **`model_profiles.py` が旧**だと API に **`businessOrchestrationEligible` が無い** → Pi5 は未送信を **eligible=true** と解釈し **業務復帰 UI に uncensored が載る**（P1 再発）。**bin 更新と manifest は必ず同一窗口**
+  - DGX 検証で **Python heredoc と curl を同一 stdin に流すと JSON パース失敗** → **パイプ**（`curl … | python3 -c '…'`）を使う
+  - **`update-all-clients.sh` 前**は作業ツリー **clean**（未コミット `EXEC_PLAN` 等は **stash** 推奨）
+- **トラブルシュート**:
+  - **業務復帰に uncensored が見える** → DGX **`model_profiles.py` 未反映** or **再起動未実施** — `GET /system/model-profiles` で当該 profile に **`businessOrchestrationEligible: false` が無い**か確認
+  - **固定ボタンが無い** → Pi5 **`web` ref `83bb4fc0` 未満** or ブラウザキャッシュ — 強制リロード
+  - **profile `unavailable`** → GGUF パス・サイズ（**43605014656**）を `stat` で確認
+- **ナレッジ**: [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-uncensored-profile-button) · [Runbook §本番](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-29-dgx-uncensored-profile-button) · [計画](../plans/dgx-uncensored-profile-button.md)
+
 ### 補足（2026-05-29 · **DGX 業務 profile スコープ runtime readiness**·**Pi5 のみ**） {#dgx-business-profile-optin-ready-2026-05-29}
 
 - **変更概要（正本）**: [KB-365 §profile-scoped readiness](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#business-profile-scoped-runtime-readiness) · [KB-366 §35B 写真ラベル cold start](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#35b-photo-label-cold-start-runtime-ready-timeout)。35B 切替直後のキオスク `photo_label` が **`runtime_ready_timeout`（約 901s）** で落ちる事象への対策。**35B は VLM 非対応ではない**（`runtimeReadyCapabilities` に `vision` · `visionReadyReason=mmproj_detected` を確認済み）。Pi5 は **HTTP `/v1/models` ready** と **用途別 profile readiness**（active profile 一致 + `photo_label` 時は vision capability）を分離。業務復帰 Strict Ready に **`model_profile_vision_runtime`** を追加。

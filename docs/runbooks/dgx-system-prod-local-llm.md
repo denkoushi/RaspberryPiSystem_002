@@ -197,6 +197,24 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - **業務復帰ドロップダウン**: `businessOrchestrationEligible !== false` かつ `available` の profile のみ（`qwen36_35b_uncensored` は **`businessOrchestrationEligible: false`** のため **出ない**）。私用起動は **`START_MODEL_PROFILE`** 固定ボタンのみ。
 - **ExecPlan**: [dgx-uncensored-profile-button.md](../plans/dgx-uncensored-profile-button.md)
 
+**本番反映（2026-05-29 · `qwen36_35b_uncensored` + Pi5 固定ボタン · Pi5→DGX 順次）** {#本番反映2026-05-29-dgx-uncensored-profile-button}
+
+- **対象**: **① Pi5 のみ**（`raspberrypi5` · **`--limit raspberrypi5`**）→ **② DGX Spark のみ**（Ansible 対象外）。**Pi4 / Pi3 / Hermes**: **未実施**
+- **ブランチ**: **`feat/dgx-uncensored-profile-button`**（**`83bb4fc0`** · CI **`26630868193`** success）
+- **① Pi5**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/dgx-uncensored-profile-button infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach `20260529-191402-25013`** · **`ok=134` `changed=4` `failed=0`**
+- **② DGX**（**manifest + `model_profiles.py` + 再起動をセット**）:
+  1. `scp` repo → `/srv/dgx/system-prod/bin/model_profiles.py`
+  2. `scp` repo 例 manifest → `/srv/dgx/shared-models/registry/qwen36_35b_uncensored/manifest.json`（**`businessOrchestrationEligible: false`**）
+  3. GGUF は事前 rsync 済み（**43605014656** B）
+  4. **`control-server` + `gateway-server`**: `/srv/dgx/system-prod/logs/*.pid` の PID を `kill` → ファイル削除 → 各 `start-*.sh`（実績: control **355140** · gateway **355152** · `healthz` **200**）
+- **検証**:
+  - `./scripts/deploy/verify-phase12-real.sh` → **43/0/0**（約 **109s**）
+  - DGX: `GET /system/model-profiles` → **`qwen36_35b_uncensored`**: **`status: available`**, **`businessOrchestrationEligible: false`**
+  - Pi5 api **`83bb4fc0`**: **`START_MODEL_PROFILE`** · **`businessReturnSelectable`**
+  - Pi5 web bundle: **`qwen36_35b_uncensored`** 文字列あり（`/srv/site/assets/index-*.js`）
+- **知見**: manifest のみ先行で bin 未更新 → 業務復帰ドロップダウンに uncensored が載る混在状態。**DGX 検証は `curl | python3`**（heredoc と stdin 競合しない）
+- **KB**: [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-uncensored-profile-button) · [deployment.md §2026-05-29](../guides/deployment.md#dgx-uncensored-profile-button-2026-05-29)
+
 **Strict Ready と model profile 一致（2026-05-28 · Pi5 API）** {#strict-ready-model-profile-match-2026-05-28}
 
 - **契約**: 私用→業務 / 実験→業務で **`modelProfileId` を指定した execute** は、Strict Ready で次を **すべて**満たすまで **success にしない**。

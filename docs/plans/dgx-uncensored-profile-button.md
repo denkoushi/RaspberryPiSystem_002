@@ -2,9 +2,10 @@
 
 ## Status
 
-- **Branch（実装）**: `feat/dgx-uncensored-profile-button`
+- **Branch（実装）**: `feat/dgx-uncensored-profile-button`（**`83bb4fc0`** · **`main` マージ済み**）
 - **Scope**: DGX registry 例 + Pi5 API `START_MODEL_PROFILE` + Web 固定ボタン
-- **Out of scope**: Hermes 小説プロファイル（別タスク）、デプロイ、コミット、push
+- **本番（2026-05-29）**: Pi5 Detach **`20260529-191402-25013`** → DGX manifest + `model_profiles.py` + control/gateway 再起動 → Phase12 **43/0/0** · DGX API で **`businessOrchestrationEligible: false`** 確認済み
+- **Out of scope**: Hermes 小説プロファイル（別タスク）
 
 ## Decisions
 
