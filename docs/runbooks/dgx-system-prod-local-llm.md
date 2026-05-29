@@ -74,6 +74,21 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 
 **用途別停止（Pi5 API）**: `photo_label` / `document_summary` / `admin_console_chat` / **`stackchan_chat`** / **`agent_container_task`** は **参照カウント 0 でも `/stop` を抑止**（メインAI・Agent コンテナ・StackChan 対話の warm 維持）。**warm 窓**（`LOCAL_LLM_RUNTIME_WARM_WINDOW_*`）は、将来追加される **上記以外の用途**向けの抑止に利用（現行型定義では主にこの 5 用途）。実装は `local-llm-runtime-schedule.policy.ts` の `shouldSuppressLocalLlmRuntimeStop`。Agent 経路のラッパーは `withAgentContainerTaskOnDemandRuntime`、StackChan 経路は `withStackChanChatOnDemandRuntime`（`local-llm-on-demand-runtime.ts`）。
 
+## Model profile capabilities と runtime ready（2026-05-29） {#model-profile-capabilities-runtime-ready}
+
+- **宣言（manifest）**: `declaredCapabilities`（例: `text`, `vision`）、`visionRequiresMmproj`（green）、`launcherHints`（起動 env ヒント・optional）
+- **実測（active state / `GET /system/model-profiles` の `state`）**: `runtimeReadyCapabilities`, `visionReadyReason`（例: `mmproj_detected`, `mmproj_missing`, `blue_native_vlm`）
+- **運用判断**: 「profile が vision 可能」と「**今回の起動が vision-ready**」は別。35B で写真 VLM が効かないときは KPI だけでなく **`visionReadyReason`** を確認する
+- **Pi5 on-demand intent（opt-in）**: `INFERENCE_RUNTIME_START_PROFILE_ENABLED=true` のときのみ `/start` に `modelProfileId` を付与。既定 `false` は shadow ログのみ（[ADR-20260529](../decisions/ADR-20260529-dgx-profile-capabilities-runtime-intent.md)）
+
+**本番反映（2026-05-29 · profile capabilities / runtime intent · Pi5→DGX 順次・各 1 台）** {#本番反映2026-05-29-dgx-profile-capabilities-runtime-intent}
+
+- **① Pi5** — `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/dgx-profile-capability-intent-foundation infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。**Detach `20260529-121631-3901`** · **`ok=138` `changed=7` `failed=0`** · **`--follow` 約 994s**。
+- **② DGX** — 以下を **`scp`** → **`/srv/dgx/system-prod/bin/`**: [`control-server.py`](../../scripts/dgx-local-llm-system/control-server.py), [`model_profiles.py`](../../scripts/dgx-local-llm-system/model_profiles.py), [`active_model_state.py`](../../scripts/dgx-local-llm-system/active_model_state.py), [`profile_capabilities.py`](../../scripts/dgx-local-llm-system/profile_capabilities.py), [`profile_launcher.py`](../../scripts/dgx-local-llm-system/profile_launcher.py), [`vision_readiness.py`](../../scripts/dgx-local-llm-system/vision_readiness.py), [`start-llama-server.sh`](../../scripts/dgx-local-llm-system/start-llama-server.sh)。registry: 例 manifest → **`/srv/dgx/shared-models/registry/business_qwen35_35b_gguf/manifest.json`** および **`business_qwen36_27b_nvfp4/manifest.json`**。**再起動**: **`control-server.pid`** と **`gateway-server.pid`** の PID を **`kill` → ファイル削除 → 各 `start-*.sh`**（**gateway-server.py 本体は未更新だが `model_profiles` import 先が変わるため gateway 再起動必須**）。
+- **検証**: `./scripts/deploy/verify-phase12-real.sh` → **43/0/0**（約 **31s**）。DGX: `TOKEN=$(tr -d '\n' < /srv/dgx/system-prod/secrets/api-token)` · `curl -H "X-LLM-Token: $TOKEN" http://127.0.0.1:38081/system/model-profiles` → profiles の **`declaredCapabilities`** と state の **`runtimeReadyCapabilities`**。
+- **トラブルシュート**: `update-all-clients.sh` が **未 push** で止まる → **push 後に再実行**。gateway 再起動直後 **`healthz` Connection refused** → **数秒待って再試行**。
+- **正本**: [deployment.md §2026-05-29 capabilities](../guides/deployment.md#dgx-profile-capabilities-runtime-intent-2026-05-29) · [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-profile-capabilities-runtime-intent)
+
 **本番反映（2026-05-29 · runtime state 整合 · KPI 下段 + `stop-force` backend 正本 · Pi5→DGX 順次・各 1 台）** {#本番反映2026-05-29-runtime-state-alignment}
 
 - **① Pi5 のみ** — `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/dgx-runtime-state-alignment infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。**Detach `20260529-093340-9025`** · `PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`** · **`--follow` 約 865s**。

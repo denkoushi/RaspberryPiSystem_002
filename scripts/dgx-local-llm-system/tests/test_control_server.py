@@ -12,6 +12,10 @@ import tempfile
 MODULE_PATH = Path(__file__).resolve().parents[1] / "control-server.py"
 
 
+def append_command(calls: list, cmd: str, extra_env=None) -> None:
+    calls.append(cmd)
+
+
 def load_module():
     spec = importlib.util.spec_from_file_location("dgx_control_server", MODULE_PATH)
     module = importlib.util.module_from_spec(spec)
@@ -57,7 +61,7 @@ class ControlServerTests(unittest.TestCase):
             port=39090,
         )
         calls: list[str] = []
-        handler = module.make_handler(config, command_runner=calls.append)
+        handler = module.make_handler(config, command_runner=lambda cmd, extra_env=None: append_command(calls, cmd, extra_env))
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
@@ -143,7 +147,7 @@ class ControlServerTests(unittest.TestCase):
             port=39090,
         )
         calls: list[str] = []
-        handler = module.make_handler(config, command_runner=calls.append)
+        handler = module.make_handler(config, command_runner=lambda cmd, extra_env=None: append_command(calls, cmd, extra_env))
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
@@ -194,7 +198,7 @@ class ControlServerTests(unittest.TestCase):
 
     def _assert_stop_force_bypasses_keep_warm(self, module, config) -> None:
         calls: list[str] = []
-        handler = module.make_handler(config, command_runner=calls.append)
+        handler = module.make_handler(config, command_runner=lambda cmd, extra_env=None: append_command(calls, cmd, extra_env))
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
@@ -256,7 +260,7 @@ class ControlServerTests(unittest.TestCase):
                 active_model_state_path=str(state_path),
             )
             calls: list[str] = []
-            handler = module.make_handler(config, command_runner=calls.append)
+            handler = module.make_handler(config, command_runner=lambda cmd, extra_env=None: append_command(calls, cmd, extra_env))
             httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
             thread = threading.Thread(target=httpd.serve_forever, daemon=True)
             thread.start()
@@ -297,7 +301,7 @@ class ControlServerTests(unittest.TestCase):
             port=39090,
         )
         calls: list[str] = []
-        handler = module.make_handler(config, command_runner=calls.append)
+        handler = module.make_handler(config, command_runner=lambda cmd, extra_env=None: append_command(calls, cmd, extra_env))
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
@@ -351,7 +355,7 @@ class ControlServerTests(unittest.TestCase):
                 active_model_state_path=str(state_path),
             )
             calls: list[str] = []
-            handler = module.make_handler(config, command_runner=calls.append)
+            handler = module.make_handler(config, command_runner=lambda cmd, extra_env=None: append_command(calls, cmd, extra_env))
             httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
             thread = threading.Thread(target=httpd.serve_forever, daemon=True)
             thread.start()
@@ -359,6 +363,62 @@ class ControlServerTests(unittest.TestCase):
             try:
                 stop_req = urllib.request.Request(
                     f"{base_url}/stop-force",
+                    data=b"",
+                    method="POST",
+                    headers={"X-Runtime-Control-Token": "runtime-token"},
+                )
+                with urllib.request.urlopen(stop_req, timeout=5) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=5)
+
+            self.assertEqual(payload["backend"], "green")
+            self.assertEqual(payload["backendSource"], "model_profile_state")
+            self.assertEqual(calls, ["green-stop"])
+
+    def test_stop_uses_active_model_state_backend_over_env(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "state" / "active-model-profile.json"
+            state_path.parent.mkdir(parents=True)
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "activeProfileId": "business_qwen35_35b_gguf",
+                        "modelProfileId": "business_qwen35_35b_gguf",
+                        "displayNameJa": "35B",
+                        "backend": "green",
+                        "servedAlias": "system-prod-primary",
+                        "stateUpdatedAt": "2026-05-29T00:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config = module.ControlConfig(
+                token="runtime-token",
+                active_backend="blue",
+                start_cmd="legacy-start",
+                stop_cmd="legacy-stop",
+                green_start_cmd="green-start",
+                green_stop_cmd="green-stop",
+                blue_start_cmd="blue-start",
+                blue_stop_cmd="blue-stop",
+                blue_stop_mode="keep_warm",
+                host="127.0.0.1",
+                port=39090,
+                active_model_state_path=str(state_path),
+            )
+            calls: list[str] = []
+            handler = module.make_handler(config, command_runner=lambda cmd, _env=None: calls.append(cmd))
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{httpd.server_port}"
+            try:
+                stop_req = urllib.request.Request(
+                    f"{base_url}/stop",
                     data=b"",
                     method="POST",
                     headers={"X-Runtime-Control-Token": "runtime-token"},
@@ -394,7 +454,7 @@ class ControlServerTests(unittest.TestCase):
             port=39090,
         )
         calls: list[str] = []
-        handler = module.make_handler(config, command_runner=calls.append)
+        handler = module.make_handler(config, command_runner=lambda cmd, extra_env=None: append_command(calls, cmd, extra_env))
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()

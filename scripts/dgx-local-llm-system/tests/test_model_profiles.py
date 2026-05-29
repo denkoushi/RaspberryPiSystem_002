@@ -57,6 +57,8 @@ class ModelProfileTests(unittest.TestCase):
             self.assertIsNotNone(state)
             self.assertEqual(state.model_profile_id, "business_qwen36_27b_nvfp4")
             self.assertEqual(state.backend, "blue")
+            self.assertEqual(state.declared_capabilities, ("text", "vision"))
+            self.assertEqual(state.runtime_ready_capabilities, ("text", "vision"))
 
     def test_unknown_and_disabled_profiles_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -103,6 +105,32 @@ class ModelProfileTests(unittest.TestCase):
             api = model_profile_to_api(profile)
             self.assertEqual(api["status"], "available")
             validate_startable_profile(str(root), "business_qwen36_27b_nvfp4")
+
+    def test_declared_capabilities_and_launcher_hints_in_api(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "registry"
+            storage = Path(tmp) / "gguf"
+            storage.mkdir(parents=True)
+            self.write_manifest(
+                root,
+                "business_qwen35_35b_gguf",
+                {
+                    "modelProfileId": "business_qwen35_35b_gguf",
+                    "displayNameJa": "35B GGUF",
+                    "backend": "green",
+                    "servedAlias": "system-prod-primary",
+                    "currentStorageLocation": str(storage),
+                    "declaredCapabilities": ["text", "vision"],
+                    "visionRequiresMmproj": True,
+                    "launcherHints": {"llamaServerModel": str(storage / "model.gguf")},
+                    "enabled": True,
+                },
+            )
+            profile = load_model_profiles(str(root))[0]
+            api = model_profile_to_api(profile)
+            self.assertEqual(api["declaredCapabilities"], ["text", "vision"])
+            self.assertTrue(api["visionRequiresMmproj"])
+            self.assertIn("llamaServerModel", api["launcherHints"])
 
     def test_profile_unavailable_when_current_storage_location_missing_hub_segment(self):
         with tempfile.TemporaryDirectory() as tmp:

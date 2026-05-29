@@ -10,6 +10,32 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-29 · **DGX profile capabilities / runtime intent**·**Pi5 + DGX**） {#dgx-profile-capabilities-runtime-intent-2026-05-29}
+
+- **変更概要（正本）**: [KB-365 §capabilities / intent](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-profile-capabilities-runtime-intent) · [ADR-20260529](../decisions/ADR-20260529-dgx-profile-capabilities-runtime-intent.md)。manifest **`declaredCapabilities`** と active state **`runtimeReadyCapabilities` / `visionReadyReason`** を分離。Pi5 は **`INFERENCE_RUNTIME_START_PROFILE_ENABLED` 既定 `false`**（shadow のみ）。opt-in 時のみ on-demand `/start` に `modelProfileId`。
+- **代表コミット**: **`18591d18`** · **ブランチ** **`feat/dgx-profile-capability-intent-foundation`**
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5`**（api+web）→ **DGX Spark**（`control-server` 系 Python + `start-llama-server.sh` + registry manifest）。**Pi4 / Pi3**: **対象外**
+- **標準コマンド**:
+  - Pi5: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/dgx-profile-capability-intent-foundation infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+  - DGX: `scp` で `control-server.py`, `model_profiles.py`, `active_model_state.py`, `profile_capabilities.py`, `profile_launcher.py`, `vision_readiness.py`, `start-llama-server.sh` → `/srv/dgx/system-prod/bin/`。registry manifest 2 件を `/srv/dgx/shared-models/registry/<id>/manifest.json` へ。**control-server + gateway-server を PID 終了→各 `start-*.sh`**（gateway 本体は未変更だが **import 先モジュール更新のため再起動必須**）
+- **本番デプロイ（実績·2026-05-29）**:
+
+| ホスト | Detach / 手順 | 結果 | 備考 |
+|--------|---------------|------|------|
+| `raspberrypi5` | **`20260529-121631-3901`** | **`ok=138` `changed=7` `failed=0`** | Git **`18591d18`** · **`--follow` 約 994s** |
+| DGX Spark | `scp` 7 ファイル + manifest 2 件 · control/gateway 再起動 | `control-server` **pid=309591** · `gateway-server` **pid=309611** · `healthz` **200** | 起動直後 `curl` は **Connection refused** → **数秒後 200** |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **31s**）。
+- **実機（機能）**:
+  - Pi5 `docker-api-1`: **`inference-use-case-runtime-intent.js`** 存在 · **`INFERENCE_RUNTIME_START_PROFILE_ENABLED=false`**
+  - DGX `GET /system/model-profiles`（`X-LLM-Token`）: 両 profile に **`declaredCapabilities: ["text","vision"]`** · `state` に **`runtimeReadyCapabilities`** / **`declaredCapabilities`**（稼働中 profile は当時 **`runtimeReadyCapabilities: ["text"]`** のみ·**`visionReadyReason` なし**）
+- **知見**:
+  - **`update-all-clients.sh` は origin より ahead のコミットがあると拒否** → **push 後にデプロイ**
+  - green の vision ready は **ログ `mmproj=` だけに依存しない**（`start_env` / `launcherHints` 優先）。本番 manifest に `launcherHints` を載せたうえで profile 指定 start を検証する
+  - 用途別 profile opt-in は **同一 provider で競合 profile を設定すると API 起動時エラー**（意図的ガード）
+- **ナレッジ**: [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-profile-capabilities-runtime-intent) · [Runbook §本番](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-29-dgx-profile-capabilities-runtime-intent) · [KB-366 §宣言 vs ready](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#1b-35b-は-vlm-か宣言-vs-今回-ready)
+
 ### 補足（2026-05-29 · **DGX runtime state 整合**·**Pi5 + DGX control-server**） {#dgx-runtime-state-alignment-2026-05-29}
 
 - **変更概要（正本）**: [KB-365 §2026-05-29](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-runtime-state-alignment)。Pi5 `overview.runtimeSummary`（実行時状態スナップショット）· Web KPI 二段構成 · DGX `stop-force` が **active model state の `backend` を正本**に停止（応答 **`backendSource`**）。

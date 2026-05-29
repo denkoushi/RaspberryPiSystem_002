@@ -33,7 +33,7 @@ import sys
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Callable
+from typing import Protocol
 
 # 同一ディレクトリの policy を import 可能にする（python3 /path/to/control-server.py 実行時）
 _SCRIPT_DIR = Path(__file__).resolve().parent
@@ -48,6 +48,8 @@ from dgx_llm_single_active_guard import (  # noqa: E402
 )
 from active_model_state import active_model_state_to_api, read_active_model_state, write_active_model_state  # noqa: E402
 from model_profiles import ModelProfileError, validate_startable_profile  # noqa: E402
+from profile_launcher import launcher_env_for_profile  # noqa: E402
+from vision_readiness import assess_runtime_readiness  # noqa: E402
 from runtime_stop_policy import (  # noqa: E402
     BlueStopMode,
     should_use_noop_stop_for_blue,
@@ -111,19 +113,27 @@ def require_env(config: ControlConfig) -> None:
         )
 
 
-def run_shell(command: str) -> None:
+class CommandRunner(Protocol):
+    def __call__(self, command: str, extra_env: dict[str, str] | None = None) -> None: ...
+
+
+def run_shell(command: str, extra_env: dict[str, str] | None = None) -> None:
+    env = os.environ.copy()
+    if extra_env:
+        env.update(extra_env)
     subprocess.run(
         ["bash", "-lc", command],
         check=True,
         timeout=120,
         capture_output=True,
         text=True,
+        env=env,
     )
 
 
-def resolve_effective_backend_for_stop_force(config: ControlConfig) -> tuple[str, str]:
+def resolve_effective_backend(config: ControlConfig) -> tuple[str, str]:
     """
-    stop-force の停止対象 backend を決める。
+    停止対象 backend を決める。
     active model state があれば実稼働 backend を優先し、無ければ ACTIVE_LLM_BACKEND にフォールバック。
     戻り値: (backend, source) where source is model_profile_state | env_fallback
     """
@@ -131,6 +141,11 @@ def resolve_effective_backend_for_stop_force(config: ControlConfig) -> tuple[str
     if state is not None and state.backend in {"green", "blue"}:
         return state.backend, "model_profile_state"
     return config.active_backend, "env_fallback"
+
+
+def resolve_effective_backend_for_stop_force(config: ControlConfig) -> tuple[str, str]:
+    """後方互換の別名。"""
+    return resolve_effective_backend(config)
 
 
 def resolve_command(config: ControlConfig, action: str, backend: str | None = None) -> str:
@@ -173,7 +188,7 @@ def read_json_body(handler: BaseHTTPRequestHandler) -> dict[str, object]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def make_handler(config: ControlConfig, command_runner: Callable[[str], None] = run_shell) -> type[BaseHTTPRequestHandler]:
+def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shell) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "dgx-llm-runtime-control/1.0"
 
@@ -226,19 +241,38 @@ def make_handler(config: ControlConfig, command_runner: Callable[[str], None] = 
                             legacy_stop_cmd=config.stop_cmd,
                         )
                         command_runner(hard_stop)
-                    command_runner(resolve_command(config, "start", start_backend))
+                    start_env = launcher_env_for_profile(profile) if profile is not None else None
+                    if start_env:
+                        command_runner(resolve_command(config, "start", start_backend), start_env)
+                    else:
+                        command_runner(resolve_command(config, "start", start_backend))
                     payload: dict[str, object] = {"ok": True, "action": "start", "backend": start_backend}
                     if profile is not None:
-                        state = write_active_model_state(config.active_model_state_path, profile)
+                        ready_caps, vision_reason = assess_runtime_readiness(profile, start_env=start_env)
+                        state = write_active_model_state(
+                            config.active_model_state_path,
+                            profile,
+                            runtime_ready_capabilities=ready_caps,
+                            vision_ready_reason=vision_reason,
+                        )
                         payload["modelProfile"] = active_model_state_to_api(state)
                     self._send_json(200, payload)
                     return
                 if self.path == "/stop":
-                    command_runner(resolve_command(config, "stop"))
-                    self._send_json(200, {"ok": True, "action": "stop", "backend": config.active_backend})
+                    stop_backend, stop_source = resolve_effective_backend(config)
+                    command_runner(resolve_command(config, "stop", stop_backend))
+                    self._send_json(
+                        200,
+                        {
+                            "ok": True,
+                            "action": "stop",
+                            "backend": stop_backend,
+                            "backendSource": stop_source,
+                        },
+                    )
                     return
                 if self.path == "/stop-force":
-                    stop_backend, stop_source = resolve_effective_backend_for_stop_force(config)
+                    stop_backend, stop_source = resolve_effective_backend(config)
                     command_runner(resolve_command(config, "stop-force", stop_backend))
                     self._send_json(
                         200,

@@ -1,4 +1,8 @@
 import type { InferenceProviderDefinition, InferenceProviderRuntimeControlDefinition } from '../config/inference-provider.types.js';
+import {
+  buildOnDemandControllerCacheKey,
+  type InferenceRuntimeIntentEnv,
+} from '../config/inference-use-case-runtime-intent.js';
 import { InferenceRouter } from '../routing/inference-router.js';
 import type { InferenceUseCase } from '../types/inference-usecase.js';
 
@@ -29,6 +33,7 @@ type ProviderLocalLlmRuntimeControllerDeps = {
   };
   /** 全 HttpOnDemand インスタンスで共有。true のとき release で /stop を抑止 */
   shouldSuppressStop?: (useCase: LocalLlmRuntimeUseCase) => boolean;
+  runtimeIntentEnv: InferenceRuntimeIntentEnv;
 };
 
 class InvalidOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeControllerPort {
@@ -48,7 +53,7 @@ class InvalidOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeControl
 export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControllerPort {
   private readonly noopController = new NoopLocalLlmRuntimeController();
 
-  private readonly controllersByProviderId = new Map<string, LocalLlmRuntimeControllerPort>();
+  private readonly controllersByCacheKey = new Map<string, LocalLlmRuntimeControllerPort>();
 
   private agentContainerRuntimeResolved: LocalLlmRuntimeControllerPort | undefined;
 
@@ -74,12 +79,13 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
     if (!provider) {
       return this.noopController;
     }
-    const cached = this.controllersByProviderId.get(provider.id);
+    const cacheKey = buildOnDemandControllerCacheKey(provider, useCase, this.deps.runtimeIntentEnv);
+    const cached = this.controllersByCacheKey.get(cacheKey);
     if (cached) {
       return cached;
     }
     const created = this.createControllerForProvider(provider);
-    this.controllersByProviderId.set(provider.id, created);
+    this.controllersByCacheKey.set(cacheKey, created);
     return created;
   }
 
@@ -129,6 +135,8 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
       stopRequestTimeoutMs: this.deps.stopRequestTimeoutMs,
       healthPollIntervalMs: this.deps.healthPollIntervalMs,
       shouldSuppressStop: this.deps.shouldSuppressStop,
+      runtimeIntentEnv: this.deps.runtimeIntentEnv,
+      provider,
     });
   }
 
@@ -194,6 +202,7 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
       stopRequestTimeoutMs: this.deps.stopRequestTimeoutMs,
       healthPollIntervalMs: this.deps.healthPollIntervalMs,
       shouldSuppressStop: this.deps.shouldSuppressStop,
+      runtimeIntentEnv: this.deps.runtimeIntentEnv,
     });
     return this.agentContainerRuntimeResolved;
   }

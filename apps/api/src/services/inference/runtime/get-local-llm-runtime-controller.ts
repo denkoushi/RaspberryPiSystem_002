@@ -9,6 +9,7 @@ import {
 } from './local-llm-runtime-schedule.policy.js';
 import { NoopLocalLlmRuntimeController } from './noop-local-llm-runtime.controller.js';
 import { resetMainLocalLlmRuntimeControlQueueForTests } from './local-llm-runtime-command-queue.js';
+import { assertConsistentRuntimeProfileIntentOnSharedProviders } from '../config/inference-use-case-runtime-intent.js';
 import { ProviderLocalLlmRuntimeController } from './provider-local-llm-runtime.controller.js';
 
 const log = logger.child({ component: 'localLlmRuntimeControl' });
@@ -85,12 +86,55 @@ function buildUseCaseStopSuppress(): (useCase: LocalLlmRuntimeUseCase) => boolea
   };
 }
 
+function resolveLegacyAdminRuntimeControlFromEnv():
+  | {
+      mode: 'on_demand';
+      startUrl?: string;
+      stopUrl?: string;
+      controlToken?: string;
+      healthBaseUrl?: string;
+    }
+  | undefined {
+  return env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim() || env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim()
+    ? {
+        mode: 'on_demand',
+        startUrl: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim(),
+        stopUrl: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim(),
+        controlToken:
+          env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN?.trim() || env.LOCAL_LLM_SHARED_TOKEN?.trim() || undefined,
+        healthBaseUrl: env.LOCAL_LLM_RUNTIME_HEALTH_BASE_URL?.trim() || env.LOCAL_LLM_BASE_URL?.trim(),
+      }
+    : undefined;
+}
+
 function buildController(fetchImpl: typeof fetch = fetch): LocalLlmRuntimeControllerPort {
   if (env.LOCAL_LLM_RUNTIME_MODE !== 'on_demand') {
     return new NoopLocalLlmRuntimeController();
   }
 
   const inferenceRuntime = getInferenceRuntime();
+  const runtimeIntentEnv = {
+    runtimeStartProfileEnabled: env.INFERENCE_RUNTIME_START_PROFILE_ENABLED,
+    photoLabelRuntimeStartProfileId: env.INFERENCE_PHOTO_LABEL_RUNTIME_START_PROFILE_ID,
+    documentSummaryRuntimeStartProfileId: env.INFERENCE_DOCUMENT_SUMMARY_RUNTIME_START_PROFILE_ID,
+    adminRuntimeStartProfileId: env.INFERENCE_ADMIN_RUNTIME_START_PROFILE_ID,
+  };
+  const legacyAdminRuntimeControl = resolveLegacyAdminRuntimeControlFromEnv();
+  assertConsistentRuntimeProfileIntentOnSharedProviders(
+    inferenceRuntime.router,
+    inferenceRuntime.getAdminProvider,
+    runtimeIntentEnv,
+    (provider) => {
+      if (provider.runtimeControl) {
+        return provider.runtimeControl;
+      }
+      const adminProvider = inferenceRuntime.getAdminProvider();
+      if (adminProvider && adminProvider.id === provider.id) {
+        return legacyAdminRuntimeControl;
+      }
+      return undefined;
+    }
+  );
   return new ProviderLocalLlmRuntimeController({
     fetchImpl,
     globalMode: env.LOCAL_LLM_RUNTIME_MODE,
@@ -98,23 +142,14 @@ function buildController(fetchImpl: typeof fetch = fetch): LocalLlmRuntimeContro
     providers: inferenceRuntime.providers,
     resolveAdminProvider: inferenceRuntime.getAdminProvider,
     resolveAdminModel: resolveAdminConsoleChatModel,
-    legacyAdminRuntimeControl:
-      env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim() || env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim()
-        ? {
-            mode: 'on_demand',
-            startUrl: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim(),
-            stopUrl: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim(),
-            controlToken:
-              env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN?.trim() || env.LOCAL_LLM_SHARED_TOKEN?.trim() || undefined,
-            healthBaseUrl: env.LOCAL_LLM_RUNTIME_HEALTH_BASE_URL?.trim() || env.LOCAL_LLM_BASE_URL?.trim(),
-          }
-        : undefined,
+    legacyAdminRuntimeControl,
     readyTimeoutMs: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
     startRequestTimeoutMs: env.LOCAL_LLM_RUNTIME_START_REQUEST_TIMEOUT_MS,
     stopRequestTimeoutMs: env.LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS,
     healthPollIntervalMs: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
     shouldSuppressStop: buildUseCaseStopSuppress(),
     agentContainerRuntimeControl: resolveAgentContainerRuntimeControlFromEnv(),
+    runtimeIntentEnv,
   });
 }
 

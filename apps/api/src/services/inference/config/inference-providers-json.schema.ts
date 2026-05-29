@@ -17,6 +17,7 @@ const providerSchema = z.object({
   timeoutMs: z.coerce.number().int().min(1000).max(300000).optional(),
   defaultModel: z.string().min(1),
   runtimeControl: runtimeControlSchema.optional(),
+  runtimeStartProfileId: z.string().min(1).max(128).optional(),
 });
 
 const providersArraySchema = z.array(providerSchema).min(1).max(16);
@@ -47,6 +48,7 @@ export function parseInferenceProvidersJsonQuiet(raw: string | undefined): Infer
             healthBaseUrl: r.runtimeControl.healthBaseUrl,
           }
         : undefined,
+      runtimeStartProfileId: r.runtimeStartProfileId,
     }));
   } catch {
     return null;
