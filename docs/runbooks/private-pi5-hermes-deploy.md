@@ -467,6 +467,28 @@ REPO_ROOT=/tmp/smoke-repo /tmp/verify-discord-task-bridge-smoke.sh
 **記録**: [KB Phase D5 本番](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)。
 
 正本: [Phase D5 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) · [ADR D5](../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md)。
+
+## Novel profile — Discord `/novel`（長文創作 · 2026-05-29）
+
+**目的**: 雑談（chat）・作業（`/task`）と分離し、**`/novel <指示>`** で長文創作専用プロファイルへ委譲。DGX は on-demand で `modelProfileId=qwen36_35b_uncensored` を起動（keep-warm なし）。
+
+**fragment 例**（inventory fragment に追記）:
+
+```yaml
+private_pi5_hermes_novel_profile_enabled: true
+private_pi5_hermes_discord_novel_bridge_enabled: true
+# 必須: DGX runtime control（/start 用）
+private_pi5_dgx_runtime_control_token: "<from vault>"
+```
+
+**デプロイ**: 標準 `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh`（novel レーンはフラグ ON 時のみ active）。
+
+**Discord 利用**: `/novel Write the opening scene of a mystery`（空入力は usage を返す）。**別 gateway は不要** — chat gateway の plugin から `~/.hermes-novel` isolated HOME で `hermes chat -q` を実行。
+
+**初回ロード**: uncensored プロファイルの cold start は **数分**かかる場合あり（`DGX_RUNTIME_READY_TIMEOUT_SEC` 既定 900）。
+
+正本: [Novel ExecPlan](../plans/private-pi5-hermes-novel-profile-execplan.md) · [dgx uncensored ボタン Runbook](dgx-uncensored-profile-button.md)。
+
 ## Phase D5.1 — Discord 承認中継（2026-05-25 · 私用 Pi5 本番反映）
 
 **目的**: `/task` 実行時の **manual 承認**を Discord 上で完結（file IPC · yes/no · `/task-approve`/`/task-deny`）。

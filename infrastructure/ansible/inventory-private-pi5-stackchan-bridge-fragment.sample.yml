@@ -105,6 +105,13 @@ all:
       # private_pi5_hermes_browser_agent_args: "--no-sandbox,--disable-dev-shm-usage"
       # Phase D5: Discord /task → tools profile (requires D4 flags + gateway_enabled)
       # private_pi5_hermes_discord_tools_bridge_enabled: true
+      # Novel profile: creative writing via /novel (on-demand DGX qwen36_35b_uncensored)
+      # private_pi5_hermes_novel_profile_enabled: true
+      # private_pi5_hermes_discord_novel_bridge_enabled: true
+      # private_pi5_hermes_novel_max_tokens: 2048
+      # private_pi5_hermes_novel_runtime_ready_timeout_sec: 900
+      # optional dedicated novel DGX token (defaults to chat token)
+      # private_pi5_hermes_novel_dgx_llm_token: ""
       # private_pi5_hermes_ssh_ufw_tailscale_only: false
       # private_pi5_hermes_system_prompt: |
       #   （fragment で agent.system_prompt を上書きする場合）

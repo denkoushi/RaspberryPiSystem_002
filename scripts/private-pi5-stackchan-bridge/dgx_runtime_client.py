@@ -28,6 +28,7 @@ class DgxUpstreamConfig:
     ready_timeout_sec: float = 600.0
     ready_poll_sec: float = 1.0
     auto_start: bool = False
+    model_profile_id: str = ""
 
 
 class DgxUpstreamClient:
@@ -87,11 +88,17 @@ class DgxUpstreamClient:
         if not self._c.runtime_control_token:
             return False, {"message": "runtime control token missing"}
 
+        profile_id = (self._c.model_profile_id or "").strip()
+        if profile_id:
+            start_body = json.dumps({"modelProfileId": profile_id}).encode("utf-8")
+        else:
+            start_body = b"{}"
+
         start_req = Request(
             url=f"{self._c.base_url}{self._c.runtime_start_path}",
             method="POST",
             headers=self._runtime_headers(),
-            data=b"{}",
+            data=start_body,
         )
         start_result: dict[str, Any] = {"attempted": True}
         try:
@@ -168,4 +175,5 @@ def config_from_env() -> DgxUpstreamConfig:
         ready_timeout_sec=float(os.getenv("DGX_RUNTIME_READY_TIMEOUT_SEC", "600")),
         ready_poll_sec=float(os.getenv("DGX_RUNTIME_READY_POLL_SEC", "1")),
         auto_start=auto,
+        model_profile_id=os.getenv("DGX_MODEL_PROFILE_ID", "").strip(),
     )

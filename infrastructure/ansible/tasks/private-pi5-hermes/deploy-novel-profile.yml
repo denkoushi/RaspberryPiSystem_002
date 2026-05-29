@@ -1,0 +1,40 @@
+---
+- name: Ensure Hermes novel data directory exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_novel_data_dir }}"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
+
+- name: Ensure Hermes novel isolated HOME exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_novel_home }}"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
+
+- name: Ensure Hermes novel config directory exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_novel_config_dir }}"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
+
+- name: Deploy Hermes novel config.yaml
+  ansible.builtin.template:
+    src: "../../templates/private-pi5-hermes/config.novel.yaml.j2"
+    dest: "{{ private_pi5_hermes_novel_config_dir }}/config.yaml"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0600"
+
+- name: Deploy Hermes novel .env (secrets + DGX runtime)
+  ansible.builtin.template:
+    src: "../../templates/private-pi5-hermes/env.novel.j2"
+    dest: "{{ private_pi5_hermes_novel_data_dir }}/.env"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0600"

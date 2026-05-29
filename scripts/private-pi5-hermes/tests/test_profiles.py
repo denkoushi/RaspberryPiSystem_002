@@ -5,6 +5,7 @@ import unittest
 
 from lib.profiles import (
     CHAT_PROFILE,
+    NOVEL_PROFILE,
     TOOLS_PROFILE,
     TOOLS_PROFILE_D1,
     TOOLS_PROFILE_D2,
@@ -44,10 +45,16 @@ class HermesProfileSpecTests(unittest.TestCase):
         self.assertTrue(CHAT_PROFILE.discord_enabled)
         self.assertFalse(CHAT_PROFILE.tools_enabled)
 
+    def test_novel_profile_creative_without_tools(self) -> None:
+        self.assertEqual(NOVEL_PROFILE.data_dir_name, "hermes-novel")
+        self.assertTrue(NOVEL_PROFILE.discord_enabled)
+        self.assertFalse(NOVEL_PROFILE.tools_enabled)
+        self.assertFalse(NOVEL_PROFILE.expected_gateway_active)
+
     def test_profiles_registry(self) -> None:
         self.assertEqual(
             set(PROFILES_BY_NAME.keys()),
-            {"chat", "tools", "tools-d2", "tools-d3", "tools-d4"},
+            {"chat", "tools", "novel", "tools-d2", "tools-d3", "tools-d4"},
         )
 
 
