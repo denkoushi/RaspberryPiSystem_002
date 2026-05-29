@@ -155,7 +155,8 @@ Discord: **`/reset`** → 短いメッセージで試す。
 | 項目 | 内容 |
 |------|------|
 | 目的 | DGX コールドスタート（数十秒〜数分）を Discord 応答前に回避 |
-| 実装 | `hermes-dgx-keep-warm.timer` → `GET /v1/models`、未 ready なら `POST /start` |
+| 実装 | `hermes-dgx-keep-warm.timer` → `DGX_MODEL_PROFILE_ID` 設定時は **`POST /start` で通常 profile を維持**（未設定時は従来どおり ready のみ見て cold 時 `{}` start） |
+| 通常 profile | 既定 **`business_qwen36_27b_nvfp4`**（`private_pi5_hermes_dgx_default_model_profile_id`） |
 | 前提 | fragment に **`private_pi5_dgx_runtime_control_token`**（StackChan bridge と同値可） |
 | 無効化 | `private_pi5_hermes_dgx_keep_warm_enabled: false` または制御トークン未設定 |
 
@@ -450,6 +451,8 @@ REPO_ROOT=/tmp/smoke-repo /tmp/verify-tools-browser-smoke.sh
 ```yaml
 private_pi5_hermes_discord_tools_bridge_enabled: true
 private_pi5_hermes_gateway_enabled: true
+# 必須: /task 実行前の DGX profile 復帰（POST /start）
+private_pi5_dgx_runtime_control_token: "<from vault>"
 ```
 
 **デプロイ**: 標準 `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh`（`deploy-discord-task-bridge.yml` が **`~/.hermes/plugins/private-pi5-discord-task-bridge/`** に plugin + policy を配置 · chat テンプレに `plugins.enabled`）。
@@ -463,6 +466,12 @@ REPO_ROOT=/tmp/smoke-repo /tmp/verify-discord-task-bridge-smoke.sh
 ```
 
 **Discord 利用**: `/task List files in workspace`（read-only 推奨）。**`/task` は gateway plugin コマンド**（`hermes task` トップレベル CLI ではない）。承認待ちは [ExecPlan D5](../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) 参照。
+
+**DGX 通常 profile 復帰（`/novel` 後の `/task`）**:
+
+- **問題**: `/novel` は `qwen36_35b_uncensored`（green・llama **ctx 2048**）を起動する。`/task` は同じ `system-prod-primary` alias を使うため、復帰しないと **prompt+tool schema が 2048 超過で LLM 400** → 承認リレーまで到達しない。
+- **対策（repo）**: `/task` 実行前に tools runner が **`business_qwen36_27b_nvfp4` へ `POST /start`**（`~/.hermes-tools/.env` の `DGX_MODEL_PROFILE_ID`）。keep-warm も同 profile を定期維持。
+- **検証**: デプロイ後 `grep DGX_MODEL_PROFILE_ID=~/.hermes-tools/.env` と `~/.hermes/dgx-keep-warm.env` が **`business_qwen36_27b_nvfp4`** であること。DGX で `active-model-profile.json` の `activeProfileId` が blue 27B 系に戻っていること。
 
 **記録**: [KB Phase D5 本番](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)。
 
@@ -627,6 +636,7 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | `yes` が雑談になる（承認後） | slash 時 **`by-user/` 未作成**（session env 未設定） | `gateway_actor_context.py` デプロイ後再試行 · `verify-actor-context-bind-pi5.sh` · [KB §actor context](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイgateway-actor-context--yes-ルーティング--2026-05-26-jst) |
 | Discord `/novel` が usage のみ | plugin に **`args_hint` 未指定** → Discord slash が引数なし登録 · または **Arguments 欄が空** | `args_hint` 追加後再デプロイ · **Arguments 欄にプロンプト** · 回避: **`/novel プロット…`** 1行テキスト |
 | `/novel` 初回が長時間無応答 | **35B uncensored cold start**（数分） | `DGX_RUNTIME_READY_TIMEOUT_SEC` 900 · DGX 側 profile 登録確認 · [dgx uncensored Runbook](dgx-uncensored-profile-button.md) |
+| `/task` が **2048 context** で 400 · `request.json` なし | **`/novel` 後に green 35B が active のまま** | 上記 **DGX 通常 profile 復帰** · `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` 再デプロイ |
 | smoke: `unexpected commands: set()` | repo `lib/` に plugin marker 無し | temp plugin_dir patch（[`verify-discord-task-bridge-smoke.sh`](../../scripts/private-pi5-hermes/verify-discord-task-bridge-smoke.sh) 2026-05-29 修正） |
 
 ## ロールバック

@@ -11,9 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 try:
+    from .dgx_runtime_prepare import ensure_dgx_runtime_ready
     from .task_bridge_policy import TaskBridgePolicy, toolsets_cli_argument
+    from .tools_profile_constants import TOOLS_BUSINESS_MODEL_PROFILE_ID
 except ImportError:
+    from dgx_runtime_prepare import ensure_dgx_runtime_ready
     from task_bridge_policy import TaskBridgePolicy, toolsets_cli_argument
+    from tools_profile_constants import TOOLS_BUSINESS_MODEL_PROFILE_ID
 
 
 @dataclass(frozen=True)
@@ -26,11 +30,13 @@ class ToolsProfilePaths:
     tools_home: str
     tools_env_path: str
     hermes_bin: str
+    dgx_keep_warm_dir: str
 
     @classmethod
     def default_pi5(cls, hermes_user: str = "hermes") -> ToolsProfilePaths:
         home = f"/home/{hermes_user}"
         tools_data = f"{home}/.hermes-tools"
+        chat_data = f"{home}/.hermes"
         return cls(
             hermes_user=hermes_user,
             hermes_home=home,
@@ -38,6 +44,7 @@ class ToolsProfilePaths:
             tools_home=f"{tools_data}/home",
             tools_env_path=f"{tools_data}/.env",
             hermes_bin=f"{home}/.local/bin/hermes",
+            dgx_keep_warm_dir=f"{chat_data}/dgx-keep-warm",
         )
 
 
@@ -59,6 +66,20 @@ def _truncate_output(text: str, max_chars: int) -> str:
 def _runner_script_path() -> Path:
     base = Path(__file__).resolve().parent
     return base / "approval_relay" / "runner.py"
+
+
+def ensure_tools_dgx_runtime_ready(paths: ToolsProfilePaths) -> tuple[bool, str]:
+    """Restore DGX to the business profile before /task tools execution."""
+    ok, hint = ensure_dgx_runtime_ready(
+        Path(paths.tools_env_path),
+        keep_warm_dir=paths.dgx_keep_warm_dir,
+        default_model_profile_id=TOOLS_BUSINESS_MODEL_PROFILE_ID,
+    )
+    if ok:
+        return True, ""
+    if "tools" not in hint:
+        return False, hint.replace("DGX runtime", "tools DGX runtime", 1)
+    return False, hint
 
 
 def _resolve_hermes_python(hermes_bin: Path, hermes_home: str | None = None) -> Path:
@@ -153,6 +174,16 @@ def run_tools_profile_prompt(
             exit_code=2,
             output="",
             error_hint=f"tools .env missing: {resolved.tools_env_path}",
+            task_id=resolved_task_id,
+        )
+
+    ready_ok, ready_hint = ensure_tools_dgx_runtime_ready(resolved)
+    if not ready_ok:
+        return ToolsProfileRunResult(
+            ok=False,
+            exit_code=3,
+            output="",
+            error_hint=ready_hint,
             task_id=resolved_task_id,
         )
 

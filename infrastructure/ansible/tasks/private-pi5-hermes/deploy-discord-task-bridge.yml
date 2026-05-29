@@ -28,6 +28,8 @@
     - boundary_policy.py
     - task_bridge_policy.py
     - task_request.py
+    - dgx_runtime_prepare.py
+    - tools_profile_constants.py
     - tools_profile_runner.py
     - discord_task_bridge.py
     - novel_request.py

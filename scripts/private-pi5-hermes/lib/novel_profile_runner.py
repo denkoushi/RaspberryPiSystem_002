@@ -6,17 +6,26 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 try:
+    from .dgx_runtime_prepare import (
+        dgx_config_from_env_file as _dgx_config_from_env_file,
+        ensure_dgx_runtime_ready as _ensure_dgx_runtime_ready_impl,
+        load_dgx_runtime_client as _load_dgx_runtime_client,
+    )
     from .novel_profile_constants import (
         DEFAULT_NOVEL_MAX_OUTPUT_CHARS,
         DEFAULT_NOVEL_RUNNER_TIMEOUT_SECONDS,
         NOVEL_MODEL_PROFILE_ID,
     )
 except ImportError:
+    from dgx_runtime_prepare import (
+        dgx_config_from_env_file as _dgx_config_from_env_file,
+        ensure_dgx_runtime_ready as _ensure_dgx_runtime_ready_impl,
+        load_dgx_runtime_client as _load_dgx_runtime_client,
+    )
     from novel_profile_constants import (
         DEFAULT_NOVEL_MAX_OUTPUT_CHARS,
         DEFAULT_NOVEL_RUNNER_TIMEOUT_SECONDS,
@@ -86,89 +95,28 @@ def _resolve_hermes_python(hermes_bin: Path, hermes_home: str | None = None) -> 
     return Path("/usr/bin/python3")
 
 
-def _load_dgx_runtime_client(keep_warm_dir: str | Path | None = None):
-    """Load dgx_runtime_client from host keep-warm dir (Ansible) or dev fallbacks."""
-    candidates: list[Path] = []
-    if keep_warm_dir:
-        candidates.append(Path(keep_warm_dir))
-    # Local dev / repo layout only — not used on Pi5 when keep_warm_dir is set.
-    candidates.extend(
-        [
-            Path(__file__).resolve().parent.parent / "dgx-keep-warm",
-            Path(__file__).resolve().parent / "dgx-keep-warm",
-        ]
-    )
-    for base in candidates:
-        if not base.is_dir():
-            continue
-        path_str = str(base)
-        if path_str not in sys.path:
-            sys.path.insert(0, path_str)
-        try:
-            from dgx_runtime_client import DgxUpstreamClient, DgxUpstreamConfig  # noqa: WPS433
-
-            return DgxUpstreamClient, DgxUpstreamConfig
-        except ImportError:
-            continue
-    raise FileNotFoundError(
-        "dgx_runtime_client.py not found (expected under ~/.hermes/dgx-keep-warm on host)"
-    )
-
-
-def _parse_env_file(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    if not path.is_file():
-        return values
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, value = stripped.split("=", 1)
-        values[key.strip()] = value.strip()
-    return values
-
-
 def _dgx_config_from_novel_env(
     env_path: Path, *, keep_warm_dir: str | Path | None = None
 ) -> object:
-    _, config_cls = _load_dgx_runtime_client(keep_warm_dir)
-    values = _parse_env_file(env_path)
-    auto = values.get("DGX_RUNTIME_AUTO_START", "true").lower() in {"1", "true", "yes", "on"}
-    model_profile_id = values.get("DGX_MODEL_PROFILE_ID", NOVEL_MODEL_PROFILE_ID).strip()
-    return config_cls(
-        base_url=values.get("DGX_BASE_URL", "http://100.118.82.72:38081").rstrip("/"),
-        llm_shared_token=values.get("DGX_LLM_SHARED_TOKEN", values.get("OPENAI_API_KEY", "")),
-        runtime_control_token=values.get("DGX_RUNTIME_CONTROL_TOKEN", ""),
-        runtime_start_path=values.get("DGX_RUNTIME_START_PATH", "/start"),
-        runtime_ready_path=values.get("DGX_RUNTIME_READY_PATH", "/v1/models"),
-        upstream_timeout_sec=float(values.get("UPSTREAM_TIMEOUT_SEC", "45")),
-        ready_timeout_sec=float(values.get("DGX_RUNTIME_READY_TIMEOUT_SEC", "900")),
-        ready_poll_sec=float(values.get("DGX_RUNTIME_READY_POLL_SEC", "1")),
-        auto_start=auto,
-        model_profile_id=model_profile_id,
+    return _dgx_config_from_env_file(
+        env_path,
+        keep_warm_dir=keep_warm_dir,
+        default_model_profile_id=NOVEL_MODEL_PROFILE_ID,
     )
 
 
 def ensure_novel_dgx_runtime_ready(paths: NovelProfilePaths) -> tuple[bool, str]:
     """Start DGX with the novel model profile when cold."""
-    env_path = Path(paths.novel_env_path)
-    if not env_path.is_file():
-        return False, f"novel .env missing: {env_path}"
-
-    try:
-        client_cls, _ = _load_dgx_runtime_client(paths.dgx_keep_warm_dir)
-        config = _dgx_config_from_novel_env(
-            env_path, keep_warm_dir=paths.dgx_keep_warm_dir
-        )
-        client = client_cls(config)
-        ok, details = client.ensure_runtime_ready()
-    except (OSError, ValueError, ImportError) as exc:
-        return False, f"novel DGX runtime prepare failed: {exc}"
-
+    ok, hint = _ensure_dgx_runtime_ready_impl(
+        Path(paths.novel_env_path),
+        keep_warm_dir=paths.dgx_keep_warm_dir,
+        default_model_profile_id=NOVEL_MODEL_PROFILE_ID,
+    )
     if ok:
         return True, ""
-    message = str(details.get("message") or details)
-    return False, f"novel DGX runtime not ready: {message}"
+    if "novel" not in hint:
+        return False, hint.replace("DGX runtime", "novel DGX runtime", 1)
+    return False, hint
 
 
 def run_novel_profile_prompt(

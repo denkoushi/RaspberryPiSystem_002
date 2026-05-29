@@ -42,7 +42,7 @@ class NovelProfileRunnerTests(unittest.TestCase):
         self.assertIs(client_cls, DgxUpstreamClient)
         self.assertIs(config_cls, DgxUpstreamConfig)
 
-    @patch("lib.novel_profile_runner._load_dgx_runtime_client")
+    @patch("lib.dgx_runtime_prepare.load_dgx_runtime_client")
     def test_dgx_config_from_novel_env_reads_model_profile_id(
         self, mock_load: object
     ) -> None:

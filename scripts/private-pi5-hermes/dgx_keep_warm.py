@@ -20,7 +20,7 @@ from dgx_runtime_client import DgxUpstreamClient, config_from_env  # noqa: E402
 
 def main() -> int:
     client = DgxUpstreamClient(config_from_env())
-    ok, details = client.warm_runtime_if_needed()
+    ok, details = client.warm_runtime()
     print(json.dumps({"ok": ok, **details}, ensure_ascii=False))
     return 0 if ok else 1
 
