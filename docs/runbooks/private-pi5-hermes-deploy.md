@@ -473,7 +473,19 @@ REPO_ROOT=/tmp/smoke-repo /tmp/verify-discord-task-bridge-smoke.sh
 - **対策（repo）**: `/task` 実行前に tools runner が **`business_qwen36_27b_nvfp4` へ `POST /start`**（`~/.hermes-tools/.env` の `DGX_MODEL_PROFILE_ID`）。keep-warm も同 profile を定期維持。
 - **検証**: デプロイ後 `grep DGX_MODEL_PROFILE_ID=~/.hermes-tools/.env` と `~/.hermes/dgx-keep-warm.env` が **`business_qwen36_27b_nvfp4`** であること。DGX で `active-model-profile.json` の `activeProfileId` が blue 27B 系に戻っていること。
 
-**記録**: [KB Phase D5 本番](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)。
+### 本番反映 — `/task` DGX 通常 profile 復帰（2026-05-30）
+
+| # | 対象 | 手順 | 結果 |
+|---|------|------|------|
+| 1 | 私用 Pi5 `raspi5-private` | `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` | **`PLAY RECAP` ok=106 changed=6 failed=1**（約 **179s**）— verify で tools Bearer **502**（DGX cold）。配置は完了 |
+| 2 | 同上（keep-warm 手動） | `systemctl start hermes-dgx-keep-warm.service` | **profile_ensure OK** · `business_qwen36_27b_nvfp4` · `/v1/models` **200** |
+| 3 | 同上（事後検証） | `HERMES_TOOLS_PHASE=d4 /tmp/verify-tools-profile-deploy.sh` · `ensure_tools_dgx_runtime_ready` | **OK** |
+
+**トラブルシュート（今回）**: playbook が verify で落ちても **plugin / env は更新済み**のことがある。`healthz=200` かつ `/v1/models=502` → **keep-warm または profile `/start` 完了を待って再 curl**。詳細: [KB task DGX profile restore](../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md)。
+
+**Git**: `fix/private-pi5-hermes-task-runtime-profile-restore` · **`63aab15b`**。
+
+**記録**: [KB Phase D5 本番](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) · [KB `/task` profile 復帰](../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md)。
 
 正本: [Phase D5 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) · [ADR D5](../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md)。
 
