@@ -61,12 +61,13 @@
       - private_pi5_hermes_approval_relay_cli_stat.stat.executable
     fail_msg: "hermes-task-with-approval-relay CLI missing or not executable"
 
-- name: Smoke approval relay plugin register (3 slash commands + hook)
+- name: Smoke approval relay plugin register (task commands + hook; novel when enabled)
   ansible.builtin.command:
     argv:
       - python3
       - -c
       - |
+        import os
         import runpy
         import sys
         plugin_dir = "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
@@ -78,13 +79,15 @@
             def __init__(self):
                 self.commands = []
                 self.hooks = []
-            def register_command(self, name, handler, description=""):
+            def register_command(self, name, handler, description="", **kwargs):
                 self.commands.append(name)
             def register_hook(self, name, callback):
                 self.hooks.append(name)
         ctx = Ctx()
         register(ctx)
         assert set(ctx.commands) >= {"task", "task-approve", "task-deny"}, ctx.commands
+        if os.path.isfile(os.path.join(plugin_dir, "novel-bridge.enabled")):
+            assert "novel" in ctx.commands, ctx.commands
         assert "pre_gateway_dispatch" in ctx.hooks
         print("ok")
   register: private_pi5_hermes_approval_relay_plugin_smoke

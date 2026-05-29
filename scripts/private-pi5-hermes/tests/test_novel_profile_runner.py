@@ -22,7 +22,10 @@ from lib.novel_profile_runner import (
 
 class NovelProfileRunnerTests(unittest.TestCase):
     def test_render_novel_usage(self) -> None:
-        self.assertIn("/novel", render_novel_usage())
+        usage = render_novel_usage()
+        self.assertIn("/novel", usage)
+        self.assertIn("Arguments", usage)
+        self.assertIn("坂の上の雲", usage)
 
     def test_load_dgx_runtime_client_uses_keep_warm_dir(self) -> None:
         from dgx_runtime_client import DgxUpstreamClient, DgxUpstreamConfig

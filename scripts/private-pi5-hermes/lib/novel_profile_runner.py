@@ -248,6 +248,11 @@ set +a
 
 def render_novel_usage() -> str:
     return (
-        "usage: /novel <creative prompt>\n"
-        "example: /novel Write the opening scene for a cyberpunk mystery in Japanese"
+        "使い方: /novel <創作プロンプト>\n\n"
+        "Discord スラッシュの場合:\n"
+        "  /novel を選んだら **Arguments（プロンプト欄）** に続きを書いてから送信してください。\n"
+        "  （プロンプト欄が空だとこのメッセージになります）\n\n"
+        "確実な方法:\n"
+        "  チャットに1行で送る — 例: /novel 坂の上の雲の続きを書いて\n\n"
+        "初回は DGX 35B の cold start で数分かかることがあります。"
     )

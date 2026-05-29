@@ -58,7 +58,7 @@ private_pi5_dgx_runtime_control_token: "<runtime-control-token>"
 | plugin commands | novel + task 系 | **OK** |
 | chat `max_tokens` | 128 | **128** |
 | tools D4 契約 | `HERMES_TOOLS_PHASE=d4` | **OK** |
-| Discord `/novel` E2E | 長文応答 | **未実施** |
+| Discord `/novel` E2E | 長文応答 | **要再試行**（初回: usage のみ — 下記 Investigation） |
 
 ## Investigation（デプロイ・検証トラブルシュート）
 
@@ -68,6 +68,7 @@ private_pi5_dgx_runtime_control_token: "<runtime-control-token>"
 | `verify-discord-task-bridge-smoke.sh` が `unexpected commands: set()` | repo の `lib/` には **`task-bridge.policy.yaml` / `novel-bridge.enabled` が無い**（本番 plugin ディレクトリのみ） | smoke を **temp plugin_dir + `_plugin_dir` patch** に変更（2026-05-29） |
 | `/novel` が Discord に出ない | `discord_novel_bridge_enabled: false` または gateway 未 restart | フラグ ON → 標準デプロイ（verify 前に gateway restart） |
 | 初回 `/novel` が長時間無応答 | **35B uncensored cold start**（数分） | `DGX_RUNTIME_READY_TIMEOUT_SEC` 既定 900 · 待機または DGX で事前 warm |
+| Discord `/novel` が **usage のみ**（20:56 JST） | plugin `register_command("novel")` に **`args_hint` 未指定** → Discord ネイティブ slash は **引数なし**登録 · `get_command_args()` が空 | **`args_hint="<creative prompt>"`** を追加して再デプロイ + gateway restart · 回避: チャットに **`/novel プロットを…`** と**続けて**入力（free-form） |
 
 ## Prevention
 
