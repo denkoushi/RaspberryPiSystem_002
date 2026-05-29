@@ -28,9 +28,18 @@ vi.mock('../../../contexts/ConfirmContext', () => ({
   useConfirm: () => useConfirmMock,
 }));
 
-vi.mock('./DgxResourceKpiStrip', () => ({
-  DgxResourceKpiStrip: ({ kpis }: { kpis: DgxResourceOverview['kpis'] }) => (
-    <div data-testid="kpi-strip">policy:{kpis.policyLabel}</div>
+vi.mock('./DgxResourceStatusBoard', () => ({
+  DgxResourceStatusBoard: ({
+    kpis,
+    runtimeSummary,
+  }: {
+    kpis: DgxResourceOverview['kpis'];
+    runtimeSummary?: DgxResourceOverview['runtimeSummary'];
+  }) => (
+    <div data-testid="status-board">
+      gpu:{kpis.gpuUtilPct}
+      policy:{runtimeSummary?.policyLabel ?? kpis.policyLabel}
+    </div>
   ),
 }));
 
@@ -150,6 +159,17 @@ function makeOverview(): DgxResourceOverview {
       },
       operatorActions: [],
     },
+    runtimeSummary: {
+      activeProfileId: 'business_qwen36_27b_nvfp4',
+      activeProfileDisplayNameJa: '27B',
+      activeBackend: 'blue',
+      businessReady: true,
+      businessReadyDetailJa: 'ready',
+      policyMode: 'business_first',
+      policyLabel: '業務優先',
+      runtimeSource: 'model_profile_state',
+      inferenceDegraded: false,
+    },
   };
 }
 
@@ -168,7 +188,7 @@ describe('DgxResourceDashboard', () => {
 
     expect(screen.getByRole('heading', { name: 'DGX リソース' })).toBeInTheDocument();
 
-    expect(await screen.findByTestId('kpi-strip')).toHaveTextContent('policy:業務優先');
+    expect(await screen.findByTestId('status-board')).toHaveTextContent('policy:業務優先');
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: 'DGX リソース' })).toBeNull();
     });

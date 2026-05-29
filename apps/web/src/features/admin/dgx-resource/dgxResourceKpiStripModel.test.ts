@@ -29,7 +29,7 @@ describe('formatUnifiedMemDisplay', () => {
 });
 
 describe('buildDgxResourceKpiStripItems', () => {
-  it('4項目・キー順が安定', () => {
+  it('3項目・キー順が安定（純メトリクス）', () => {
     const items = buildDgxResourceKpiStripItems(
       sampleKpis({
         gpuUtilPct: 40,
@@ -39,11 +39,10 @@ describe('buildDgxResourceKpiStripItems', () => {
         policyLabel: '業務優先',
       })
     );
-    expect(items.map((x) => x.key)).toEqual(['gpu', 'umem', 'free', 'pol']);
+    expect(items.map((x) => x.key)).toEqual(['gpu', 'umem', 'free']);
     expect(items[0]?.value).toBe('40%');
     expect(items[1]?.value).toBe('96 / 128 GiB');
     expect(items[2]?.value).toBe('28 GiB');
-    expect(items[3]?.value).toBe('業務優先');
   });
 
   it('GPU null はプレースホルダ', () => {

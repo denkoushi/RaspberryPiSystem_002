@@ -37,6 +37,7 @@ import {
 } from './dgx-resource.workload-transition.js';
 import type { DgxResourceScenarioExecuteResult } from './dgx-resource.scenario-execute.types.js';
 import { fetchJsonMetrics, probeHttpGet, probeHttpOk, probeV1Models } from './dgx-resource.probes.js';
+import { buildDgxResourceRuntimeSummary, type DgxResourceRuntimeSummary } from './dgx-resource.runtime-summary.js';
 
 import type { LocalLlmGateway, LocalLlmRuntimeConfig } from '../local-llm-proxy.service.js';
 
@@ -118,7 +119,11 @@ export type DgxResourceOverview = {
   operator: DgxResourceOperatorConsole;
   /** DGX 正本の業務復帰 LocalLLM モデルプロファイル */
   modelProfiles: DgxModelProfilesOverview;
+  /** メトリクス KPI とは分離した実行時状態（モデル・backend・Ready ヒント） */
+  runtimeSummary: DgxResourceRuntimeSummary;
 };
+
+export type { DgxResourceRuntimeSummary };
 
 export type DgxResourceActionBody =
   | { type: 'LOCAL_LLM_START'; reason?: string }
@@ -241,15 +246,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
   const auxTimeoutMs = env.DGX_RESOURCE_AUX_RUNTIME_REQUEST_TIMEOUT_MS;
   const experimentLabHealthUrl = env.DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL?.trim() || undefined;
   const agentContainerHealthUrl = env.DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL?.trim() || undefined;
-  const emitDgxDebugLog = (
-    hypothesisId: 'H1' | 'H2' | 'H3' | 'H4' | 'H5' | 'H6',
-    location: string,
-    message: string,
-    data: Record<string, unknown>
-  ): void => {
-    fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'504530'},body:JSON.stringify({sessionId:'504530',runId:'dgx-resource-debug',hypothesisId,location,message,data,timestamp:Date.now()})}).catch(()=>{});
-  };
-
   const collectOverviewProbeBundle = async (): Promise<{
     generatedAt: string;
     policyMode: DgxPolicyMode;
@@ -320,15 +316,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       metricsPayload = await fetchJsonMetrics(candidate.url, deps.fetchImpl, deps.probeTimeoutMs, candidate.headers);
       if (metricsPayload) break;
     }
-    // #region agent log
-    emitDgxDebugLog('H2', 'dgx-resource.service.ts:collectOverviewProbeBundle:metrics', 'metrics fetch candidate/result', {
-      policyMode,
-      metricsConfigured,
-      candidateUrls: metricsProbeCandidates.map((x) => x.url),
-      metricsPayload: metricsPayload ?? null,
-    });
-    // #endregion
-
     const comfyConfigured = Boolean(deps.comfyHealthUrl?.trim());
     let comfyReachable = false;
     if (comfyConfigured) {
@@ -378,23 +365,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     const comfyRtCfg = comfyRuntimeControlConfigured();
     const expLabRtCfg = experimentLabRuntimeControlConfigured();
     const agentRtCfg = agentContainerRuntimeControlConfigured();
-    // #region agent log
-    emitDgxDebugLog('H5', 'dgx-resource.service.ts:collectOverviewProbeBundle:runtime-capability', 'runtime control capability snapshot', {
-      policyMode,
-      runtimeControlConfigured,
-      comfyRtCfg,
-      expLabRtCfg,
-      gatewayConfigured: gatewayStatus.configured,
-      gatewayHealthy: gatewayStatus.health.ok,
-      comfyConfigured,
-      comfyReachable,
-      experimentLabHealthConfigured,
-      experimentLabReachable,
-      agentRtCfg,
-      agentContainerHealthConfigured,
-      agentContainerReachable,
-    });
-    // #endregion
 
     const bundle: OverviewProbeBundle = {
       policyMode,
@@ -607,17 +577,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     });
     if (auxAction === 'stop' && experimentLabHealthUrl) {
       const firstProbe = await probeHttpGet(experimentLabHealthUrl, deps.fetchImpl, deps.probeTimeoutMs);
-      emitDgxDebugLog(
-        'H6',
-        'dgx-resource.service.ts:runExperimentLabAuxStartStop',
-        'experiment-lab stop post-check first probe',
-        {
-          healthUrl: experimentLabHealthUrl,
-          probeOk: firstProbe.ok,
-          statusCode: firstProbe.statusCode ?? null,
-          errorBrief: firstProbe.errorBrief ?? null,
-        }
-      );
       if (firstProbe.ok) {
         deps.policyStore.appendEvent('experiment-lab 停止確認: ヘルス応答が残っているため停止を再試行します');
         await executeAuxHttpRuntimeStartStop(deps, {
@@ -630,17 +589,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           errorCodePrefix: 'DGX_EXPERIMENT_LAB',
         });
         const secondProbe = await probeHttpGet(experimentLabHealthUrl, deps.fetchImpl, deps.probeTimeoutMs);
-        emitDgxDebugLog(
-          'H6',
-          'dgx-resource.service.ts:runExperimentLabAuxStartStop',
-          'experiment-lab stop post-check second probe',
-          {
-            healthUrl: experimentLabHealthUrl,
-            probeOk: secondProbe.ok,
-            statusCode: secondProbe.statusCode ?? null,
-            errorBrief: secondProbe.errorBrief ?? null,
-          }
-        );
         if (secondProbe.ok) {
           throw new ApiError(
             502,
@@ -696,17 +644,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     });
     if (auxAction === 'stop' && agentContainerHealthUrl) {
       const firstProbe = await probeHttpGet(agentContainerHealthUrl, deps.fetchImpl, deps.probeTimeoutMs);
-      emitDgxDebugLog(
-        'H6',
-        'dgx-resource.service.ts:runAgentContainerAuxStartStop',
-        'agent-container stop post-check first probe',
-        {
-          healthUrl: agentContainerHealthUrl,
-          probeOk: firstProbe.ok,
-          statusCode: firstProbe.statusCode ?? null,
-          errorBrief: firstProbe.errorBrief ?? null,
-        }
-      );
       if (firstProbe.ok) {
         deps.policyStore.appendEvent('agent-container 停止確認: ヘルス応答が残っているため停止を再試行します');
         await executeAuxHttpRuntimeStartStop(deps, {
@@ -719,17 +656,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           errorCodePrefix: 'DGX_AGENT_CONTAINER',
         });
         const secondProbe = await probeHttpGet(agentContainerHealthUrl, deps.fetchImpl, deps.probeTimeoutMs);
-        emitDgxDebugLog(
-          'H6',
-          'dgx-resource.service.ts:runAgentContainerAuxStartStop',
-          'agent-container stop post-check second probe',
-          {
-            healthUrl: agentContainerHealthUrl,
-            probeOk: secondProbe.ok,
-            statusCode: secondProbe.statusCode ?? null,
-            errorBrief: secondProbe.errorBrief ?? null,
-          }
-        );
         if (secondProbe.ok) {
           throw new ApiError(
             502,
@@ -835,24 +761,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       comfyLooksRunning: hints.comfyLooksRunning,
       ...(modelProfileId ? { modelProfileId, modelProfiles: pb.modelProfiles.available } : {}),
     });
-    // #region agent log
-    emitDgxDebugLog('H1', 'dgx-resource.service.ts:orchestrationScenarioPreview', 'preview steps generated', {
-      scenarioId,
-      modelProfileId: modelProfileId ?? null,
-      currentPolicyMode: pb.bundle.policyMode,
-      steps: preview.steps.map((s) => ({
-        order: s.order,
-        kind: s.kind,
-        summaryJa: s.summaryJa,
-        targetId: s.kind === 'workload' ? s.targetId : null,
-        action: s.kind === 'workload' ? s.action : null,
-      })),
-      warnings: preview.warnings,
-      comfyRuntimeConfigured: pb.bundle.comfyRuntimeControlConfigured,
-      gatewayRuntimeConfigured: pb.bundle.runtimeControlConfigured,
-    });
-    // #endregion
-
     const lines = preview.steps.map((s) => `${s.order}. ${s.summaryJa}`).join(' / ');
     return {
       ok: true,
@@ -893,18 +801,6 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         readinessPollIntervalMs: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
       },
     });
-    // #region agent log
-    emitDgxDebugLog('H3', 'dgx-resource.service.ts:orchestrationScenarioExecute', 'scenario execution completed', {
-      scenarioId,
-      modelProfileId: modelProfileId ?? null,
-      planFingerprintPrefix: planFingerprint.slice(0, 12),
-      success: result.scenarioExecute.success,
-      outcomeKind: result.scenarioExecute.outcomeKind,
-      completedStepOrders: result.scenarioExecute.completedStepOrders,
-      completedPolicyApplied: result.scenarioExecute.completedPolicyApplied,
-      failureMessageJa: result.scenarioExecute.failureMessageJa ?? null,
-    });
-    // #endregion
     return result;
   };
 
@@ -959,19 +855,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         targets,
         monitoring,
       });
-      // #region agent log
-      emitDgxDebugLog('H4', 'dgx-resource.service.ts:getOverview:return', 'overview payload snapshot', {
-        policyMode: pb.policyMode,
-        previousMode: pb.previousMode,
-        kpis: {
-          gpuUtilPct: bundle.metricsPayload?.gpuUtilPct ?? null,
-          unifiedMemoryUsedGiB: bundle.metricsPayload?.unifiedMemoryUsedGiB ?? null,
-          unifiedMemoryTotalGiB: bundle.metricsPayload?.unifiedMemoryTotalGiB ?? null,
-          freeMemoryGiB: bundle.metricsPayload?.freeMemoryGiB ?? null,
-        },
-        targetStatuses: targets.map((t) => ({ id: t.id, status: t.status })),
-      });
-      // #endregion
+      const runtimeSummary = buildDgxResourceRuntimeSummary(bundle, pb.policyMode);
 
       return {
         generatedAt: pb.generatedAt,
@@ -1011,6 +895,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         monitoring,
         operator,
         modelProfiles: pb.modelProfiles,
+        runtimeSummary,
       };
     },
   };

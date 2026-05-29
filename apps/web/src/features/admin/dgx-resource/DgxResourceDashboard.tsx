@@ -12,11 +12,10 @@ import {
 import { useConfirm } from '../../../contexts/ConfirmContext';
 import { POLL_MS } from '../../../lib/admin-polling-intervals';
 
-import { DgxResourceKpiStrip } from './DgxResourceKpiStrip';
 import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
 import { DgxResourcePrimaryScenarioFlow } from './DgxResourcePrimaryScenarioFlow';
-import { DGX_POLICY_PROFILES } from './dgxResourceProfiles';
 import { DgxResourceSparkStatusPanel } from './DgxResourceSparkStatusPanel';
+import { DgxResourceStatusBoard } from './DgxResourceStatusBoard';
 import { DgxResourceTargetGrid } from './DgxResourceTargetGrid';
 import { DgxResourceWarmRuntimeNotice } from './DgxResourceWarmRuntimeNotice';
 
@@ -168,8 +167,6 @@ export function DgxResourceDashboard() {
   const businessStatus = targetById.get('system-prod-inference')?.status ?? 'unknown';
   const comfyStatus = targetById.get('private-comfyui')?.status ?? 'unknown';
   const experimentStatus = targetById.get('experiment-lab')?.status ?? 'unknown';
-  const policyLabel = DGX_POLICY_PROFILES[overview.policy.mode].titleShort;
-
   return (
     <div className="-mx-4 -my-6 flex min-h-[calc(100dvh-7.75rem)] flex-col gap-3 overflow-y-auto px-4 py-2 text-base sm:-mx-6">
       <header className="space-y-1">
@@ -181,10 +178,9 @@ export function DgxResourceDashboard() {
         ) : null}
       </header>
 
-      <DgxResourceKpiStrip kpis={overview.kpis} />
+      <DgxResourceStatusBoard kpis={overview.kpis} runtimeSummary={overview.runtimeSummary} />
 
       <section className="flex flex-wrap gap-2">
-        <div className="rounded-full border border-cyan-400/35 bg-cyan-950/20 px-3 py-1.5 text-sm font-semibold text-cyan-100">{policyLabel}</div>
         <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(businessStatus))}>VLM 推論: {businessStatus}</div>
         <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(comfyStatus))}>ComfyUI: {comfyStatus}</div>
         <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(experimentStatus))}>実験: {experimentStatus}</div>

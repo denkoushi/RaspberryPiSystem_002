@@ -1,5 +1,3 @@
-import { policyBarTone } from './dgxResourceProfiles';
-
 import type { DgxResourceKpis } from '../../../api/dgx-resource.types';
 
 /** KPI ストリップの 1 カード分（描画層は JSX でこのモデルを列挙するだけにする） */
@@ -29,7 +27,8 @@ export function formatUnifiedMemDisplay(used: number | null, total: number | nul
 }
 
 /**
- * overview.kpis から KPI ストリップ用の表示モデルを構築する（React 非依存）。
+ * overview.kpis から純メトリクス KPI ストリップ用の表示モデルを構築する（React 非依存）。
+ * 運用状態（Policy / Active Model 等）は runtimeSummary 側で表示する。
  */
 export function buildDgxResourceKpiStripItems(kpis: DgxResourceKpis): readonly DgxResourceKpiStripItemModel[] {
   const u = kpis.unifiedMemoryUsedGiB;
@@ -39,9 +38,7 @@ export function buildDgxResourceKpiStripItems(kpis: DgxResourceKpis): readonly D
   const freePct =
     kpis.freeMemoryGiB != null && t != null && t > 0 ? Math.min(100, (kpis.freeMemoryGiB / t) * 100) : null;
 
-  const polBar = policyBarTone(kpis.policyMode);
-
-  const items: DgxResourceKpiStripItemModel[] = [
+  return [
     {
       key: 'gpu',
       label: 'GPU Util',
@@ -76,16 +73,5 @@ export function buildDgxResourceKpiStripItems(kpis: DgxResourceKpis): readonly D
                 : 'bg-red-500',
       },
     },
-    {
-      key: 'pol',
-      label: 'Policy',
-      value: kpis.policyLabel,
-      bar: {
-        pct: polBar.barPct,
-        barClass: polBar.barClass,
-      },
-    },
   ];
-
-  return items;
 }
