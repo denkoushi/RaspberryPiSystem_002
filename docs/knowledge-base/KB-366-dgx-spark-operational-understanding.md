@@ -40,6 +40,8 @@ category: knowledge-base
 
 **現場**: 写真ラベルが動かないのに KPI が 35B・メモリ低い → **プロセスは動いているが VLM ready ではない**可能性。DGX `GET /system/model-profiles` の `state.runtimeReadyCapabilities` を確認（[ADR-20260529](../decisions/ADR-20260529-dgx-profile-capabilities-runtime-intent.md)）。
 
+**本番（2026-05-29）**: Pi5 + DGX に capabilities / intent 基盤を反映済み。**`INFERENCE_RUNTIME_START_PROFILE_ENABLED` は本番 `false` のまま**（挙動は従来どおり·ログのみ shadow）。DGX API では両 profile に **`declaredCapabilities: text+vision`** を確認。詳細: [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-profile-capabilities-runtime-intent)。
+
 ## 2. 写真ラベル・要領書・Hermes は「別モデル」か
 
 **用途名は複数あるが、DGX 上の業務推論は基本的に 1 系統。**
