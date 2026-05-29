@@ -37,6 +37,7 @@ This document must be maintained in accordance with `.agent/PLANS.md`.
 - [x] テスト・smoke・Ansible verify を追加して、chat / tools の非回帰を確認する。
 - [x] Runbook / README / 本 ExecPlan を更新し、実装完了で停止する（コミット・push はしない）。
 - [x] (2026-05-29) 私用 Pi5 本番デプロイ + 実機検証 + ドキュメント反映 + main マージ。
+- [x] (2026-05-29 21:56 JST) **`args_hint` 修正** — Discord slash 引数欄 · 日本語 usage · verify/smoke 境界 — 私用 Pi5 再デプロイ + 実機検証。
 
 ## Surprises & Discoveries
 
@@ -48,6 +49,9 @@ This document must be maintained in accordance with `.agent/PLANS.md`.
 
 - Observation: 過去の設計会話では「小説創作は Hermes の第3プロファイル `novel / creative` として分ける」が既に合意されている。
   Evidence: 親 transcript の 2026-05-29 対話ログで「小説は第3プロファイル『novel / creative』として足すイメージが自然」と整理済み。
+
+- Observation: Discord ネイティブ slash は Hermes `register_command` の **`args_hint` 無し**だと引数欄が付かず、空送信で usage のみ返る。free-form 1行テキスト `/novel プロット…` は別経路で成功する。
+  Evidence: Pi5 `gateway.log` · `slash '/novel' invoked`（args なし）· KB [§Investigation](../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md#investigationデプロイ検証トラブルシュート)
 
 ## Decision Log
 
@@ -63,11 +67,19 @@ This document must be maintained in accordance with `.agent/PLANS.md`.
   Rationale: 単に Hermes 側 config の `model.default` を変えても、DGX 上の active model が別 profile のままなら小説用途の保証がない。private Pi5 側で start と ready の両方を制御する必要がある。
   Date/Author: 2026-05-29 / GPT-5.4
 
+- Decision: plugin `register_command` に **`args_hint="<creative prompt>"`**（`/task` は `<task instruction>`）を必須とし、verify は **有効 marker に一致**させる（approval relay は task 系のみ必須 · novel は `novel-bridge.enabled` 時のみ）。
+  Rationale: Discord slash UI と deploy verify の責務境界を揃え、args_hint 退行を smoke/unittest で検知する。
+  Date/Author: 2026-05-29 / feat/private-pi5-hermes-novel-slash-args-hint
+
 ## Outcomes & Retrospective
 
 **本番（2026-05-29）**: 私用 Pi5 `raspi5-private` のみデプロイ。**`PLAY RECAP` ok=138 changed=13 failed=0**（約 **371s**）。Discord plugin に **`/novel`** が追加され、isolated `~/.hermes-novel` と `DGX_MODEL_PROFILE_ID=qwen36_35b_uncensored` が配備された。chat（128 token）と tools D4（`/task`）の非回帰を実機 verify で確認。Discord `/novel` の 35B cold start E2E は手動未実施。
 
-**記録**: [KB Novel 本番](../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md) · [Runbook §Novel 本番](../runbooks/private-pi5-hermes-deploy.md#novel-profile--discord-novel長文創作--2026-05-29-本番反映) · CI **`26634375437`**
+**記録**: [KB Novel 本番](../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md) · [Runbook §Novel 本番](../runbooks/private-pi5-hermes-deploy.md#novel-profile--discord-novel長文創作--2026-05-29) · CI **`26634375437`**
+
+**追記（2026-05-29 args_hint）**: 私用 Pi5 再デプロイ **`ok=138 changed=5 failed=0`**（**191s**）。plugin `args_hint` · 日本語 usage · Discord sync **updated=1** · D4 非回帰 OK。Discord E2E は **Arguments 欄 or 1行テキスト**で手動確認待ち。
+
+**記録**: [KB §args_hint](../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md#追記--novel-slash-args_hint-修正2026-05-29-2156-jst) · CI **`26637722184`**
 
 ## Context and Orientation
 

@@ -483,7 +483,11 @@ private_pi5_dgx_runtime_control_token: "<from vault>"
 
 **デプロイ**: 標準 `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh`（novel レーンはフラグ ON 時のみ active）。
 
-**Discord 利用**: `/novel Write the opening scene of a mystery`（空入力は usage を返す）。**別 gateway は不要** — chat gateway の plugin から `~/.hermes-novel` isolated HOME で `hermes chat -q` を実行。
+**Discord 利用**:
+
+- **スラッシュ**: `/novel` → **Arguments（プロンプト欄）** に創作指示を入力（空だと usage）。
+- **1行テキスト（確実）**: `/novel 坂の上の雲の続きを書いて`
+- 空入力は usage（日本語案内）を返す。**別 gateway は不要** — chat gateway の plugin から `~/.hermes-novel` isolated HOME で `hermes chat -q` を実行。
 
 **初回ロード**: uncensored プロファイルの cold start は **数分**かかる場合あり（`DGX_RUNTIME_READY_TIMEOUT_SEC` 既定 900）。
 
@@ -512,6 +516,22 @@ ansible private-pi5-stackchan-bridge -i inventory-private-pi5-stackchan-bridge-f
 **CI / Git**: `feat/private-pi5-hermes-novel-profile` · **`8a8b43f6`** · CI **`26634375437`** success。
 
 **記録**: [KB Novel 本番](../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md)。
+
+### Novel profile — `args_hint` 修正デプロイ（2026-05-29 21:56 JST）
+
+| # | 対象 | 手順 | 結果 |
+|---|------|------|------|
+| 1 | 私用 Pi5 `raspi5-private` | `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` | **`PLAY RECAP` ok=138 changed=5 failed=0**（約 **191s**） |
+
+**変更概要**: `/novel` · `/task` に **`args_hint`** · 日本語 usage · approval-relay verify の novel 条件分岐 · smoke の args_hint 退行検知。
+
+**実機検証**: gateway **active** + **freshness_ok** · plugin `args_hint` **OK** · Discord **`Safely reconciled` updated=1** · D4 **`verify-tools-profile-deploy.sh` OK**。
+
+**Discord E2E**: slash **Arguments 欄**または **1行テキスト**で手動確認（cold start 数分あり）。
+
+**Git / CI**: branch **`feat/private-pi5-hermes-novel-slash-args-hint`** · **`66c1ff79`** · CI **`26637722184`** success。
+
+**記録**: [KB §args_hint 追記](../knowledge-base/KB-private-pi5-hermes-novel-profile-production.md#追記--novel-slash-args_hint-修正2026-05-29-2156-jst)。
 
 ## Phase D5.1 — Discord 承認中継（2026-05-25 · 私用 Pi5 本番反映）
 
@@ -605,7 +625,7 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | yes/no が雑談になる | pending task なし | write タスク実行中のみ intercept · [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) |
 | write `/task` が承認なしで完了 | D5.1 が **shell 承認のみ** · LLM は `write_file` 使用 | `tool_write_gate.py` デプロイ後再試行 · [KB D5 §write ゲート](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイwrite_file-承認ゲート--2026-05-26-jst) |
 | `yes` が雑談になる（承認後） | slash 時 **`by-user/` 未作成**（session env 未設定） | `gateway_actor_context.py` デプロイ後再試行 · `verify-actor-context-bind-pi5.sh` · [KB §actor context](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイgateway-actor-context--yes-ルーティング--2026-05-26-jst) |
-| Discord `/novel` が usage のみ | plugin に **`args_hint` 未指定** → Discord slash が引数なし登録 | `args_hint="<creative prompt>"` 追加後再デプロイ · 回避: **`/novel プロット…`** と続けて入力 |
+| Discord `/novel` が usage のみ | plugin に **`args_hint` 未指定** → Discord slash が引数なし登録 · または **Arguments 欄が空** | `args_hint` 追加後再デプロイ · **Arguments 欄にプロンプト** · 回避: **`/novel プロット…`** 1行テキスト |
 | `/novel` 初回が長時間無応答 | **35B uncensored cold start**（数分） | `DGX_RUNTIME_READY_TIMEOUT_SEC` 900 · DGX 側 profile 登録確認 · [dgx uncensored Runbook](dgx-uncensored-profile-button.md) |
 | smoke: `unexpected commands: set()` | repo `lib/` に plugin marker 無し | temp plugin_dir patch（[`verify-discord-task-bridge-smoke.sh`](../../scripts/private-pi5-hermes/verify-discord-task-bridge-smoke.sh) 2026-05-29 修正） |
 
