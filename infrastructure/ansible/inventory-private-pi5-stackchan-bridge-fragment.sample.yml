@@ -42,6 +42,8 @@ all:
       private_pi5_dgx_runtime_auto_start: false
       # Hermes keep-warm（/start）にも必要。未設定時は timer 無効。
       private_pi5_dgx_runtime_control_token: ""
+      # chat /tools の通常 DGX profile（/novel 後の復帰・/task 前の ensure に使用）
+      # private_pi5_hermes_dgx_default_model_profile_id: "business_qwen36_27b_nvfp4"
       private_pi5_dgx_runtime_start_path: "/start"
       private_pi5_dgx_runtime_ready_path: "/v1/models"
       private_pi5_dgx_runtime_ready_timeout_sec: 600

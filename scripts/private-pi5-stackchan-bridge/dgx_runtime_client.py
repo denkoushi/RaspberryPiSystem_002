@@ -70,6 +70,27 @@ class DgxUpstreamClient:
         except TimeoutError:
             return False, {"message": "runtime ready probe timed out"}
 
+    def fetch_active_model_profile(self) -> tuple[bool, dict[str, Any]]:
+        """Read active model profile from DGX gateway when available."""
+        probe_timeout = min(self._c.upstream_timeout_sec, 10.0)
+        req = Request(
+            url=f"{self._c.base_url}/system/model-profile",
+            method="GET",
+            headers=self._llm_headers(),
+        )
+        try:
+            with urlopen(req, timeout=probe_timeout) as resp:
+                body = resp.read().decode("utf-8", errors="ignore")
+                return True, json.loads(body)
+        except HTTPError as e:
+            return False, {"status": e.code, "body": e.read().decode("utf-8", errors="ignore")[:1000]}
+        except URLError as e:
+            return False, {"message": str(e)}
+        except TimeoutError:
+            return False, {"message": "active model profile probe timed out"}
+        except json.JSONDecodeError:
+            return False, {"message": "active model profile probe returned non-json"}
+
     def warm_runtime_if_needed(self) -> tuple[bool, dict[str, Any]]:
         """GET ready path; POST /start + poll only when not already warm."""
         ready, probe = self.probe_runtime_ready()
@@ -79,6 +100,19 @@ class DgxUpstreamClient:
         if started:
             details = {**details, "phase": "started"}
         return started, details
+
+    def warm_runtime(self) -> tuple[bool, dict[str, Any]]:
+        """Warm runtime; profile-scoped configs skip /start when already on target profile."""
+        profile_id = (self._c.model_profile_id or "").strip()
+        if profile_id:
+            active_ok, active = self.fetch_active_model_profile()
+            if active_ok and str(active.get("modelProfileId") or active.get("activeProfileId") or "").strip() == profile_id:
+                return True, {"phase": "already_target_profile", "activeProfile": active}
+            started, details = self.ensure_runtime_ready()
+            if started:
+                details = {**details, "phase": "profile_ensure"}
+            return started, details
+        return self.warm_runtime_if_needed()
 
     def ensure_runtime_ready(self) -> tuple[bool, dict[str, Any]]:
         """POST /start then poll GET ready path until 200 or timeout."""

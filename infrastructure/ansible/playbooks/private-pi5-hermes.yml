@@ -61,6 +61,11 @@
           | default(hostvars[inventory_hostname].get('private_pi5_dgx_llm_shared_token', ''), true)
           | trim }}
 
+    - name: Resolve Hermes default DGX model profile id from inventory
+      ansible.builtin.set_fact:
+        private_pi5_hermes_dgx_default_model_profile_id: >-
+          {{ hostvars[inventory_hostname].get('private_pi5_hermes_dgx_default_model_profile_id', 'business_qwen36_27b_nvfp4') | trim }}
+
     - name: Resolve Hermes tools DGX token from inventory
       ansible.builtin.set_fact:
         private_pi5_hermes_tools_dgx_llm_token_resolved: >-
@@ -129,6 +134,16 @@
         fail_msg: >-
           Phase D5 (private_pi5_hermes_discord_tools_bridge_enabled: true) requires
           D4 tools flags, tools gateway, and chat gateway (Discord) enabled.
+      when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
+
+    - name: Validate Hermes Discord task bridge requires DGX runtime control token
+      ansible.builtin.assert:
+        that:
+          - (private_pi5_dgx_runtime_control_token | default('') | trim) | length > 0
+        fail_msg: >-
+          Discord /task bridge requires private_pi5_dgx_runtime_control_token for
+          on-demand DGX model profile start (POST /start with modelProfileId) before
+          tools profile execution.
       when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
 
     - name: Resolve Hermes novel DGX token from inventory

@@ -76,6 +76,54 @@ class TestDgxRuntimeClient(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("disabled", details["message"])
 
+    def test_warm_runtime_with_profile_always_ensures(self):
+        client = DgxUpstreamClient(_config(model_profile_id="business_qwen36_27b_nvfp4"))
+
+        with patch.object(
+            client,
+            "fetch_active_model_profile",
+            return_value=(False, {"status": 503}),
+        ):
+            with patch.object(
+                client,
+                "ensure_runtime_ready",
+                return_value=(True, {"start": {"status": 200}}),
+            ) as ensure:
+                ok, details = client.warm_runtime()
+
+        ensure.assert_called_once()
+        self.assertTrue(ok)
+        self.assertEqual(details["phase"], "profile_ensure")
+
+    def test_warm_runtime_with_profile_skips_start_when_already_active(self):
+        client = DgxUpstreamClient(_config(model_profile_id="business_qwen36_27b_nvfp4"))
+
+        with patch.object(
+            client,
+            "fetch_active_model_profile",
+            return_value=(True, {"modelProfileId": "business_qwen36_27b_nvfp4"}),
+        ):
+            with patch.object(client, "ensure_runtime_ready") as ensure:
+                ok, details = client.warm_runtime()
+
+        ensure.assert_not_called()
+        self.assertTrue(ok)
+        self.assertEqual(details["phase"], "already_target_profile")
+
+    def test_warm_runtime_without_profile_delegates_to_if_needed(self):
+        client = DgxUpstreamClient(_config())
+
+        with patch.object(
+            client,
+            "warm_runtime_if_needed",
+            return_value=(True, {"phase": "already_warm"}),
+        ) as warm_if_needed:
+            ok, details = client.warm_runtime()
+
+        warm_if_needed.assert_called_once()
+        self.assertTrue(ok)
+        self.assertEqual(details["phase"], "already_warm")
+
     def test_ensure_runtime_ready_sends_model_profile_id(self):
         client = DgxUpstreamClient(
             _config(model_profile_id="qwen36_35b_uncensored")

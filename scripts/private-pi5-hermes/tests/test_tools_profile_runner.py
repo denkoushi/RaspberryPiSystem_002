@@ -66,14 +66,21 @@ class ToolsProfileRunnerTests(unittest.TestCase):
             tools_home="/tmp/hermes-tools/home",
             tools_env_path="/tmp/hermes-tools/.env",
             hermes_bin="/tmp/hermes/.local/bin/hermes",
+            dgx_keep_warm_dir="/tmp/hermes/dgx-keep-warm",
         )
         result = run_tools_profile_prompt("hello", _policy(), paths=paths)
         self.assertFalse(result.ok)
         self.assertIn("tools .env missing", result.error_hint)
 
+    @mock.patch("lib.tools_profile_runner.ensure_tools_dgx_runtime_ready", return_value=(True, ""))
     @mock.patch("lib.tools_profile_runner.subprocess.run")
     @mock.patch("lib.tools_profile_runner.Path.is_file", return_value=True)
-    def test_success_stdout(self, _is_file: mock.MagicMock, run_mock: mock.MagicMock) -> None:
+    def test_success_stdout(
+        self,
+        _is_file: mock.MagicMock,
+        run_mock: mock.MagicMock,
+        _ready: mock.MagicMock,
+    ) -> None:
         run_mock.return_value = mock.MagicMock(returncode=0, stdout="done", stderr="")
         result = run_tools_profile_prompt("hello", _policy())
         self.assertTrue(result.ok)
@@ -84,11 +91,28 @@ class ToolsProfileRunnerTests(unittest.TestCase):
         self.assertIn("chat -q 'hello' --toolsets 'file,web,browser'", shell_script)
         self.assertIn("cd '/home/hermes/.hermes-tools/home'", shell_script)
 
+    @mock.patch("lib.tools_profile_runner.ensure_tools_dgx_runtime_ready", return_value=(False, "tools DGX runtime not ready"))
+    @mock.patch("lib.tools_profile_runner.subprocess.run")
+    @mock.patch("lib.tools_profile_runner.Path.is_file", return_value=True)
+    def test_dgx_runtime_not_ready_skips_subprocess(
+        self, _is_file: mock.MagicMock, run_mock: mock.MagicMock, _ready: mock.MagicMock
+    ) -> None:
+        result = run_tools_profile_prompt("hello", _policy())
+        self.assertFalse(result.ok)
+        self.assertEqual(result.exit_code, 3)
+        self.assertIn("tools DGX runtime not ready", result.error_hint)
+        run_mock.assert_not_called()
+
+    @mock.patch("lib.tools_profile_runner.ensure_tools_dgx_runtime_ready", return_value=(True, ""))
     @mock.patch("lib.tools_profile_runner._resolve_hermes_python", return_value=Path("/usr/bin/python3"))
     @mock.patch("lib.tools_profile_runner.subprocess.run")
     @mock.patch("lib.tools_profile_runner.Path.is_file", return_value=True)
     def test_relay_enabled_uses_runner_script(
-        self, _is_file: mock.MagicMock, run_mock: mock.MagicMock, _python: mock.MagicMock
+        self,
+        _is_file: mock.MagicMock,
+        run_mock: mock.MagicMock,
+        _python: mock.MagicMock,
+        _ready: mock.MagicMock,
     ) -> None:
         run_mock.return_value = mock.MagicMock(returncode=0, stdout="done", stderr="")
         relay_policy = _policy_data(
