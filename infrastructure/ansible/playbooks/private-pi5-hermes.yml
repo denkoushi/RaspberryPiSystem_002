@@ -15,6 +15,10 @@
     private_pi5_hermes_tools_data_dir: "{{ private_pi5_hermes_home }}/.hermes-tools"
     private_pi5_hermes_tools_home: "{{ private_pi5_hermes_tools_data_dir }}/home"
     private_pi5_hermes_tools_config_dir: "{{ private_pi5_hermes_tools_home }}/.hermes"
+    private_pi5_hermes_novel_data_dir: "{{ private_pi5_hermes_home }}/.hermes-novel"
+    private_pi5_hermes_novel_home: "{{ private_pi5_hermes_novel_data_dir }}/home"
+    private_pi5_hermes_novel_config_dir: "{{ private_pi5_hermes_novel_home }}/.hermes"
+    private_pi5_hermes_novel_model_profile_id: "qwen36_35b_uncensored"
     private_pi5_hermes_bin: "{{ private_pi5_hermes_home }}/.local/bin/hermes"
     hermes_terminal_mount_cwd_to_workspace: false
     hermes_terminal_docker_volumes: >-
@@ -127,6 +131,37 @@
           D4 tools flags, tools gateway, and chat gateway (Discord) enabled.
       when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
 
+    - name: Resolve Hermes novel DGX token from inventory
+      ansible.builtin.set_fact:
+        private_pi5_hermes_novel_dgx_llm_token_resolved: >-
+          {{ hostvars[inventory_hostname].get('private_pi5_hermes_novel_dgx_llm_token', '') | trim }}
+        private_pi5_hermes_novel_effective_dgx_llm_token: >-
+          {{
+            hostvars[inventory_hostname].get('private_pi5_hermes_novel_dgx_llm_token', '') | trim
+            if (hostvars[inventory_hostname].get('private_pi5_hermes_novel_dgx_llm_token', '') | trim) | length > 0
+            else private_pi5_hermes_chat_dgx_llm_token
+          }}
+      when: private_pi5_hermes_novel_profile_enabled | default(false) | bool
+
+    - name: Validate Hermes novel profile requires runtime control token
+      ansible.builtin.assert:
+        that:
+          - (private_pi5_dgx_runtime_control_token | default('') | trim) | length > 0
+        fail_msg: >-
+          Novel profile requires private_pi5_dgx_runtime_control_token for on-demand
+          DGX model profile start (POST /start with modelProfileId).
+      when: private_pi5_hermes_novel_profile_enabled | default(false) | bool
+
+    - name: Validate Hermes Discord novel bridge prerequisites
+      ansible.builtin.assert:
+        that:
+          - private_pi5_hermes_novel_profile_enabled | default(false) | bool
+          - private_pi5_hermes_gateway_enabled | default(false) | bool
+        fail_msg: >-
+          Discord novel bridge (private_pi5_hermes_discord_novel_bridge_enabled: true)
+          requires novel profile and chat gateway (Discord) enabled.
+      when: private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool
+
     - name: Validate Hermes prerequisites
       ansible.builtin.assert:
         that:
@@ -145,13 +180,19 @@
     - name: Deploy Hermes chat profile
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-chat-profile.yml"
 
-    - name: Deploy Hermes Discord task bridge (Phase D5)
+    - name: Deploy Hermes Discord gateway plugins (task + novel bridges)
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-discord-task-bridge.yml"
-      when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
+      when: >
+        private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool or
+        private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool
 
     - name: Deploy Hermes tools profile skeleton
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-tools-profile.yml"
       when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
+
+    - name: Deploy Hermes novel profile skeleton
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-novel-profile.yml"
+      when: private_pi5_hermes_novel_profile_enabled | default(false) | bool
 
     - name: Install Hermes browser tooling (Phase D4)
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/install-browser-tooling.yml"
@@ -184,6 +225,10 @@
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-discord-approval-relay.yml"
       when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
 
+    - name: Verify Hermes novel profile deployment
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-novel-profile.yml"
+      when: private_pi5_hermes_novel_profile_enabled | default(false) | bool
+
     - name: Summarize Hermes deployment
       ansible.builtin.debug:
         msg:
@@ -197,6 +242,8 @@
           - "tools_browser_enabled={{ private_pi5_hermes_tools_browser_enabled | default(false) }}"
           - "tools_gateway_enabled={{ private_pi5_hermes_tools_gateway_enabled | default(false) }}"
           - "discord_tools_bridge_enabled={{ private_pi5_hermes_discord_tools_bridge_enabled | default(false) }}"
+          - "novel_profile_enabled={{ private_pi5_hermes_novel_profile_enabled | default(false) }}"
+          - "discord_novel_bridge_enabled={{ private_pi5_hermes_discord_novel_bridge_enabled | default(false) }}"
           - "dgx_keep_warm_active={{ private_pi5_hermes_dgx_keep_warm_active }}"
           - "discord_configured={{ (private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0 }}"
 

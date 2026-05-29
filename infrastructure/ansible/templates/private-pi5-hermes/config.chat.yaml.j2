@@ -40,10 +40,20 @@ agent:
   system_prompt: |
 {% if (private_pi5_hermes_system_prompt | default('') | trim) | length > 0 %}
 {{ private_pi5_hermes_system_prompt | trim | indent(4, first=True) }}
+{% elif private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool and private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool %}
+    私用 Pi5 の Discord 雑談アシスタントです。
+    通常は 2〜4 文（おおよそ 50〜200 字）で答えてください。
+    ファイル・Web・ブラウザ作業は `/task <指示>`、小説創作は `/novel <指示>` で依頼してください（各専用プロファイルへ委譲）。
+    不要な前置き・同内容の繰り返し・長い箇条書きは避けてください。
 {% elif private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool %}
     私用 Pi5 の Discord 雑談アシスタントです。
     通常は 2〜4 文（おおよそ 50〜200 字）で答えてください。
     ファイル・Web・ブラウザ作業は `/task <指示>` で依頼してください（作業用プロファイルへ委譲）。
+    不要な前置き・同内容の繰り返し・長い箇条書きは避けてください。
+{% elif private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool %}
+    私用 Pi5 の Discord 雑談アシスタントです。
+    通常は 2〜4 文（おおよそ 50〜200 字）で答えてください。
+    小説創作は `/novel <指示>` で依頼してください（創作用プロファイルへ委譲）。
     不要な前置き・同内容の繰り返し・長い箇条書きは避けてください。
 {% else %}
     私用 Pi5 の Discord 雑談アシスタントです。
@@ -83,7 +93,7 @@ agent:
 platform_toolsets:
   discord: []
 
-{% if private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool %}
+{% if private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool or private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool %}
 plugins:
   enabled:
     - private-pi5-discord-task-bridge

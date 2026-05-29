@@ -30,6 +30,10 @@
     - task_request.py
     - tools_profile_runner.py
     - discord_task_bridge.py
+    - novel_request.py
+    - novel_profile_constants.py
+    - novel_profile_runner.py
+    - discord_novel_bridge.py
 
 - name: Ensure approval relay package directory exists on plugin path
   ansible.builtin.file:
@@ -92,6 +96,28 @@
     owner: "{{ private_pi5_hermes_user }}"
     group: "{{ private_pi5_hermes_group }}"
     mode: "0644"
+  when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
+
+- name: Remove stale task-bridge policy when tools bridge is disabled
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/task-bridge.policy.yaml"
+    state: absent
+  when: not (private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool)
+
+- name: Mark novel bridge as enabled on host
+  ansible.builtin.copy:
+    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/novel-bridge.enabled"
+    content: "enabled=true\n"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0644"
+  when: private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool
+
+- name: Remove stale novel bridge marker when bridge is disabled
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/novel-bridge.enabled"
+    state: absent
+  when: not (private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool)
 
 - name: Verify discord-task-bridge policy from repo smoke
   ansible.builtin.command:
@@ -105,9 +131,11 @@
   changed_when: false
   delegate_to: localhost
   become: false
+  when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
 
 - name: Assert discord-task-bridge policy validation passed
   ansible.builtin.assert:
     that:
       - private_pi5_hermes_task_bridge_validate.rc == 0
     fail_msg: "task-bridge.policy.yaml validation failed on controller"
+  when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool

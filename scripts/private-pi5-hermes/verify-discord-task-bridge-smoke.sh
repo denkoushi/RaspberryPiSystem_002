@@ -117,6 +117,7 @@ echo "== plugin register + /task handler smoke =="
 python3 - <<'PY' "${REPO_ROOT}"
 import asyncio
 import sys
+import tempfile
 from pathlib import Path
 from unittest import mock
 from unittest.mock import AsyncMock
@@ -139,10 +140,17 @@ class DummyCtx:
         self.hooks.append((name, callback))
 
 
-ctx = DummyCtx()
-plugin.register(ctx)
+with tempfile.TemporaryDirectory() as tmp:
+    plugin_dir = Path(tmp)
+    (plugin_dir / "task-bridge.policy.yaml").write_text("version: 1\n", encoding="utf-8")
+    (plugin_dir / "novel-bridge.enabled").write_text("enabled=true\n", encoding="utf-8")
+    with mock.patch.object(plugin, "_plugin_dir", return_value=plugin_dir):
+        ctx = DummyCtx()
+        plugin.register(ctx)
+
 names = {item[0] for item in ctx.commands}
-if names != {"task", "task-approve", "task-deny"}:
+expected = {"task", "task-approve", "task-deny", "novel"}
+if names != expected:
     raise SystemExit(f"FAIL: unexpected commands: {names}")
 hook_names = {item[0] for item in ctx.hooks}
 if "pre_gateway_dispatch" not in hook_names:

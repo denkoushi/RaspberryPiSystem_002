@@ -3,12 +3,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 try:
     from .discord_task_bridge import (
         load_task_bridge_policy,
         render_task_usage,
         run_task_bridge_async,
     )
+    from .discord_novel_bridge import run_novel_bridge_async
+    from .novel_request import NovelRequest
+    from .novel_profile_runner import NovelProfilePaths, render_novel_usage
     from .task_request import TaskRequest
 except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
     from discord_task_bridge import (
@@ -16,6 +21,9 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
         render_task_usage,
         run_task_bridge_async,
     )
+    from discord_novel_bridge import run_novel_bridge_async
+    from novel_request import NovelRequest
+    from novel_profile_runner import NovelProfilePaths, render_novel_usage
     from task_request import TaskRequest
 
 try:
@@ -31,6 +39,20 @@ except ImportError:
 
 _COORDINATOR: DiscordApprovalRelayCoordinator | None = None
 _COORDINATOR_STORE_DIR: str = ""
+
+
+def _plugin_dir() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def _task_bridge_enabled() -> bool:
+    """True when Ansible deployed task-bridge.policy.yaml (tools bridge on)."""
+    return (_plugin_dir() / "task-bridge.policy.yaml").is_file()
+
+
+def _novel_bridge_enabled() -> bool:
+    """True when Ansible explicitly enabled the Discord novel bridge."""
+    return (_plugin_dir() / "novel-bridge.enabled").is_file()
 
 
 def _coordinator() -> DiscordApprovalRelayCoordinator | None:
@@ -57,6 +79,14 @@ async def _handle_task_command(raw_args: str) -> str:
         return render_task_usage()
     policy = load_task_bridge_policy()
     return await run_task_bridge_async(request, policy)
+
+
+async def _handle_novel_command(raw_args: str) -> str:
+    """Run novel profile creative work off the Discord gateway asyncio loop."""
+    request = NovelRequest.from_text(raw_args)
+    if not request.prompt:
+        return render_novel_usage()
+    return await run_novel_bridge_async(request)
 
 
 async def _handle_task_approve(raw_args: str) -> str:
@@ -117,21 +147,28 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
 
 
 def register(ctx) -> None:
-    """Register `/task` and D5.1 approval commands for gateway sessions."""
-    ctx.register_command(
-        "task",
-        handler=_handle_task_command,
-        description="Run a task on the isolated tools profile",
-    )
-    ctx.register_command(
-        "task-approve",
-        handler=_handle_task_approve,
-        description="Approve the pending /task dangerous operation",
-    )
-    ctx.register_command(
-        "task-deny",
-        handler=_handle_task_deny,
-        description="Deny the pending /task dangerous operation",
-    )
-    if hasattr(ctx, "register_hook"):
-        ctx.register_hook("pre_gateway_dispatch", _handle_pre_gateway_dispatch)
+    """Register bridge commands matching deployed capabilities (policy / novel .env)."""
+    if _novel_bridge_enabled():
+        ctx.register_command(
+            "novel",
+            handler=_handle_novel_command,
+            description="Run creative writing on the isolated novel profile",
+        )
+    if _task_bridge_enabled():
+        ctx.register_command(
+            "task",
+            handler=_handle_task_command,
+            description="Run a task on the isolated tools profile",
+        )
+        ctx.register_command(
+            "task-approve",
+            handler=_handle_task_approve,
+            description="Approve the pending /task dangerous operation",
+        )
+        ctx.register_command(
+            "task-deny",
+            handler=_handle_task_deny,
+            description="Deny the pending /task dangerous operation",
+        )
+        if hasattr(ctx, "register_hook"):
+            ctx.register_hook("pre_gateway_dispatch", _handle_pre_gateway_dispatch)

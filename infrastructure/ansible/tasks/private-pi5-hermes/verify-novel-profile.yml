@@ -1,0 +1,33 @@
+---
+- name: Assert Hermes novel profile directories exist
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: private_pi5_hermes_novel_paths
+  loop:
+    - "{{ private_pi5_hermes_novel_data_dir }}"
+    - "{{ private_pi5_hermes_novel_home }}"
+    - "{{ private_pi5_hermes_novel_config_dir }}"
+    - "{{ private_pi5_hermes_novel_config_dir }}/config.yaml"
+    - "{{ private_pi5_hermes_novel_data_dir }}/.env"
+
+- name: Verify Hermes novel profile paths are present
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    fail_msg: "novel profile path missing: {{ item.item }}"
+  loop: "{{ private_pi5_hermes_novel_paths.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Read Hermes novel .env for DGX model profile id
+  ansible.builtin.slurp:
+    src: "{{ private_pi5_hermes_novel_data_dir }}/.env"
+  register: private_pi5_hermes_novel_env_slurp
+
+- name: Assert novel profile requests uncensored DGX model profile
+  ansible.builtin.assert:
+    that:
+      - >-
+        'DGX_MODEL_PROFILE_ID=qwen36_35b_uncensored' in
+        (private_pi5_hermes_novel_env_slurp.content | b64decode)
+    fail_msg: "novel .env must set DGX_MODEL_PROFILE_ID=qwen36_35b_uncensored"

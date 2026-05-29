@@ -76,6 +76,38 @@ class TestDgxRuntimeClient(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("disabled", details["message"])
 
+    def test_ensure_runtime_ready_sends_model_profile_id(self):
+        client = DgxUpstreamClient(
+            _config(model_profile_id="qwen36_35b_uncensored")
+        )
+        captured: dict[str, bytes] = {}
+
+        class FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def getcode(self) -> int:
+                return 200
+
+            def read(self) -> bytes:
+                return b'{"data":[]}'
+
+        def fake_urlopen(req: object, timeout: float = 0) -> FakeResp:
+            del timeout
+            request = req  # type: ignore[assignment]
+            if getattr(request, "method", "") == "POST":
+                captured["body"] = getattr(request, "data", b"")
+            return FakeResp()
+
+        with patch("dgx_runtime_client.urlopen", side_effect=fake_urlopen):
+            ok, _details = client.ensure_runtime_ready()
+
+        self.assertTrue(ok)
+        self.assertIn(b"qwen36_35b_uncensored", captured.get("body", b""))
+
 
 if __name__ == "__main__":
     unittest.main()
