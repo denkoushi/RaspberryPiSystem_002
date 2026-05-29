@@ -12,7 +12,7 @@ export type BusinessProfileIntentEnv = {
 
 export type ResolvedBusinessProfileIntent = {
   modelProfileId: string;
-  source: 'provider' | BusinessProfileIntentSource | 'legacy_use_case_env';
+  source: 'provider' | 'env' | BusinessProfileIntentSource | 'legacy_use_case_env';
 };
 
 const BUSINESS_RUNTIME_USE_CASES: ReadonlySet<LocalLlmRuntimeUseCase> = new Set([
