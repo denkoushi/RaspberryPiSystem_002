@@ -2,13 +2,37 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-28
+last-verified: 2026-05-29
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-05-29 · **DGX runtime state 整合**·**Pi5 + DGX control-server**） {#dgx-runtime-state-alignment-2026-05-29}
+
+- **変更概要（正本）**: [KB-365 §2026-05-29](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-runtime-state-alignment)。Pi5 `overview.runtimeSummary`（実行時状態スナップショット）· Web KPI 二段構成 · DGX `stop-force` が **active model state の `backend` を正本**に停止（応答 **`backendSource`**）。
+- **代表コミット**: **`af4997fc`** · **ブランチ** **`feat/dgx-runtime-state-alignment`**
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5`**（api+web）→ **DGX Spark**（`control-server.py` のみ）。**Pi4 / Pi3**: **対象外**（Pi3 専用手順不要）。
+- **標準コマンド**:
+  - Pi5: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/dgx-runtime-state-alignment infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+  - DGX: `scp scripts/dgx-local-llm-system/control-server.py ubudgxkoushi@100.118.82.72:/srv/dgx/system-prod/bin/control-server.py` → PID 終了 → `bash /srv/dgx/system-prod/bin/start-control-server.sh`
+- **本番デプロイ（実績·2026-05-29）**:
+
+| ホスト | Detach / 手順 | 結果 | 備考 |
+|--------|---------------|------|------|
+| `raspberrypi5` | **`20260529-093340-9025`** | **`ok=134` `changed=4` `failed=0`** | Git **`af4997fc`** · **`--follow` 約 865s** |
+| DGX Spark | scp + control-server 再起動 | `start-control-server.sh` **pid=289973** · `/healthz` **401**（無トークン·正常） | **gateway 未更新** |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **33s**）。
+- **実機（機能）**:
+  - Pi5 api: **`/app/apps/api/dist/.../dgx-resource.runtime-summary.js`** 存在
+  - Web: **`DgxResourceStatusBoard`** / **`runtimeSummary`** を本番 JS に確認
+  - DGX: `POST …/stop-force` → **`backend: blue`**, **`backendSource: model_profile_state`**（検証スモーク。**業務 blue 停止後は UI から再 start**）
+- **知見**: KPI 上段だけではモード判断できない → **下段 runtimeSummary を正本**にする。`stop-force` 検証は本番ランタイムを止めるため、**スモーク後の再ロード**を Runbook に明記。
+- **ナレッジ**: [KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-runtime-state-alignment) · [Runbook](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-29-runtime-state-alignment) · [KB-366](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#管理画面-kpi-帯2026-05-29-再設計--overviewruntimesummary)
 
 ### 補足（2026-05-28 · **DGX 業務復帰 Strict Ready と model profile 一致**·**Pi5 のみ**） {#dgx-strict-ready-profile-match-2026-05-28}
 

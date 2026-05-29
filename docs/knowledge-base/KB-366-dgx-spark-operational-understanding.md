@@ -93,12 +93,13 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 - **リアルタイムに近い実測**だが、ダッシュボードの **ポーリング間隔ごとの点**（厳密な毎秒ストリームではない）。
 - **バーが 85% 付近** = 「設定が 0.85」ではなく **実測の使用率が 85% 前後**。
 
-### 管理画面 KPI 帯（2026-05-29 再設計 · `overview.runtimeSummary`）
+### 管理画面 KPI 帯（2026-05-29 再設計 · `overview.runtimeSummary`） {#管理画面-kpi-帯2026-05-29-再設計--overviewruntimesummary}
 
 - **上段（純メトリクス）**: `GPU Util` / `Unified Mem` / `Free Mem` のみ（`overview.kpis`）。**8 秒ポーリング**のスナップショット。
 - **下段（実行時状態）**: `overview.runtimeSummary` — **`Active Model`**（`activeProfileId` / 表示名）· **`Backend`**（green/blue）· **`Business Ready`**（`/v1/models` 到達のヒント）· **`Policy`**（Pi5 `policyMode`）。
 - **切替判断**: **Policy ラベルだけ**で「業務 LLM が載った/外れた」とは限らない。**Active Model + Backend + Unified Mem** をセットで見る（35B green は **20 GiB 台**のまま業務稼働し得る · 27B blue は **80〜100 GiB 台**になりやすい）。
 - **私用切替の停止**: `stop-force` は **`active-model-profile.json` の `backend` を正本**に停止対象を決める（env `ACTIVE_LLM_BACKEND` とのずれで **llama が残る**事故を防ぐ）。state 無し時のみ env フォールバック。
+- **本番反映（2026-05-29）**: Pi5 **`af4997fc`** + DGX `control-server.py`（[KB-365 §2026-05-29](./KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-runtime-state-alignment)）。実機で **`backendSource: model_profile_state`** の `stop-force` を確認済み。**検証スモークで blue 停止した場合**は画面上部の業務復帰または保守 start で再ロードする。
 
 ### なぜ業務時に 100 GiB 台に見えるか
 
