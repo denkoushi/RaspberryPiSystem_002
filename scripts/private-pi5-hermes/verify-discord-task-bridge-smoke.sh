@@ -133,8 +133,8 @@ class DummyCtx:
         self.commands = []
         self.hooks = []
 
-    def register_command(self, name, handler, description=""):
-        self.commands.append((name, handler, description))
+    def register_command(self, name, handler, description="", **kwargs):
+        self.commands.append((name, handler, description, kwargs))
 
     def register_hook(self, name, callback):
         self.hooks.append((name, callback))
@@ -156,7 +156,15 @@ hook_names = {item[0] for item in ctx.hooks}
 if "pre_gateway_dispatch" not in hook_names:
     raise SystemExit("FAIL: pre_gateway_dispatch hook not registered")
 
-task_handler = next(h for n, h, _ in ctx.commands if n == "task")
+command_meta = {name: kwargs for name, _handler, _description, kwargs in ctx.commands}
+task_hint = command_meta.get("task", {}).get("args_hint")
+if task_hint != "<task instruction>":
+    raise SystemExit(f"FAIL: task args_hint={task_hint!r}")
+novel_hint = command_meta.get("novel", {}).get("args_hint")
+if novel_hint != "<creative prompt>":
+    raise SystemExit(f"FAIL: novel args_hint={novel_hint!r}")
+
+task_handler = next(h for n, h, *_rest in ctx.commands if n == "task")
 with mock.patch.object(plugin, "load_task_bridge_policy", return_value=object()):
     with mock.patch.object(plugin, "run_task_bridge_async", new=AsyncMock(return_value="ok: bridged")):
         result = task_handler("list workspace files")
@@ -166,6 +174,49 @@ with mock.patch.object(plugin, "load_task_bridge_policy", return_value=object())
             raise SystemExit("FAIL: plugin handler did not return bridge output")
 
 print("ok: plugin commands + hook + /task handler")
+PY
+
+echo "== plugin register task-only (no novel bridge marker) =="
+python3 - <<'PY' "${REPO_ROOT}"
+import sys
+import tempfile
+from pathlib import Path
+from unittest import mock
+
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / "scripts/private-pi5-hermes"))
+
+from lib import discord_task_bridge_plugin as plugin  # noqa: E402
+
+
+class DummyCtx:
+    def __init__(self):
+        self.commands = []
+
+    def register_command(self, name, handler, description="", **kwargs):
+        self.commands.append((name, handler, description, kwargs))
+
+    def register_hook(self, name, callback):
+        pass
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    plugin_dir = Path(tmp)
+    (plugin_dir / "task-bridge.policy.yaml").write_text("version: 1\n", encoding="utf-8")
+    with mock.patch.object(plugin, "_plugin_dir", return_value=plugin_dir):
+        ctx = DummyCtx()
+        plugin.register(ctx)
+
+names = {item[0] for item in ctx.commands}
+expected = {"task", "task-approve", "task-deny"}
+if names != expected:
+    raise SystemExit(f"FAIL: task-only unexpected commands: {names}")
+command_meta = {name: kwargs for name, _handler, _description, kwargs in ctx.commands}
+if command_meta["task"].get("args_hint") != "<task instruction>":
+    raise SystemExit("FAIL: task-only args_hint missing")
+if "novel" in command_meta:
+    raise SystemExit("FAIL: novel registered without novel-bridge.enabled")
+print("ok: task-only plugin register")
 PY
 
 echo "OK"

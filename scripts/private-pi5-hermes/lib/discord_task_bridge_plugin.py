@@ -152,13 +152,15 @@ def register(ctx) -> None:
         ctx.register_command(
             "novel",
             handler=_handle_novel_command,
-            description="Run creative writing on the isolated novel profile",
+            description="Creative writing — enter your prompt in the Arguments field",
+            args_hint="<creative prompt>",
         )
     if _task_bridge_enabled():
         ctx.register_command(
             "task",
             handler=_handle_task_command,
             description="Run a task on the isolated tools profile",
+            args_hint="<task instruction>",
         )
         ctx.register_command(
             "task-approve",

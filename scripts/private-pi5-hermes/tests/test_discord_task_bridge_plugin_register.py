@@ -20,6 +20,9 @@ class PluginRegisterTests(unittest.TestCase):
 
             registered = [c[0][0] for c in ctx.register_command.call_args_list]
             self.assertEqual(registered, ["novel"])
+            novel_call = ctx.register_command.call_args_list[0]
+            self.assertEqual(novel_call[1].get("args_hint"), "<creative prompt>")
+            self.assertIn("Arguments", novel_call[1].get("description", ""))
             ctx.register_hook.assert_not_called()
 
     def test_register_nothing_when_no_bridge_markers_present(self) -> None:
@@ -52,6 +55,8 @@ class PluginRegisterTests(unittest.TestCase):
 
             registered = [c[0][0] for c in ctx.register_command.call_args_list]
             self.assertEqual(registered, ["task", "task-approve", "task-deny"])
+            task_call = ctx.register_command.call_args_list[0]
+            self.assertEqual(task_call[1].get("args_hint"), "<task instruction>")
             ctx.register_hook.assert_called_once()
 
 
