@@ -15,6 +15,7 @@ const defaultModelProfiles: DgxModelProfilesOverview = {
   available: [],
   activeProfileId: null,
   activeStateBackend: null,
+  activeRuntimeState: null,
   pendingProfileId: null,
   lastLoadedProfileId: null,
 };
@@ -310,5 +311,44 @@ describe('dgx-resource.scenario-readiness', () => {
   it('allReadinessChecksSatisfied が部分充足を検出', () => {
     const chk = [{ code: 'inference_business' as const, satisfied: false, detailJa: 'x' }];
     expect(allReadinessChecksSatisfied(chk)).toBe(false);
+  });
+
+  it('waitScenarioReadiness: vision 宣言済み profile で runtime vision 未達なら success にならない', async () => {
+    const bundle = mkBundle({
+      modelsProbe: { ok: true },
+      modelProfiles: mkModelProfiles({
+        available: [
+          {
+            ...qwen35,
+            declaredCapabilities: ['vision'],
+          },
+        ],
+        activeProfileId: 'business_qwen35_35b_gguf',
+        activeStateBackend: 'green',
+        activeRuntimeState: {
+          runtimeReadyCapabilities: ['text'],
+          visionReadyReason: 'mmproj_missing',
+        },
+      }),
+    });
+    const collect = vi.fn(async () => bundle);
+    const res = await waitScenarioReadiness({
+      spec: buildScenarioReadinessTargetSpec({
+        scenarioId: 'private_to_business',
+        willPostPolicyStartComfy: false,
+        willPostPolicyStartExperimentLab: false,
+        localLlmRuntimeMode: 'always_on',
+        gatewayRuntimeConfigured: false,
+      }),
+      collectProbeBundle: collect,
+      readinessDeadlineMs: 120,
+      readinessPollIntervalMs: 40,
+      modelProfileId: 'business_qwen35_35b_gguf',
+    });
+
+    expect(res.ok).toBe(false);
+    expect(
+      res.ok === false && res.checksJa.some((c) => c.code === 'model_profile_vision_runtime' && !c.satisfied)
+    ).toBe(true);
   });
 });

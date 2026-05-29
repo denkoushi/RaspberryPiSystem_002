@@ -5,6 +5,7 @@ import {
   assertConsistentRuntimeProfileIntentOnSharedProviders,
   buildOnDemandControllerCacheKey,
   resolveRuntimeStartProfileIdForUseCase,
+  RUNTIME_INTENT_USE_CASES,
   shouldSendRuntimeStartProfileId,
 } from '../inference-use-case-runtime-intent.js';
 
@@ -150,5 +151,18 @@ describe('inference-use-case-runtime-intent', () => {
     expect(shouldSendRuntimeStartProfileId({ runtimeStartProfileEnabled: true }, 'business_qwen36_27b_nvfp4')).toBe(
       true
     );
+  });
+
+  it('resolves the same business profile for all four runtime intent use cases', () => {
+    const env = {
+      runtimeStartProfileEnabled: true,
+      businessRuntimeStartProfileId: 'business_qwen35_35b_gguf',
+    };
+    const { runtimeStartProfileId: _removed, ...noProviderProfile } = provider;
+    for (const useCase of RUNTIME_INTENT_USE_CASES) {
+      expect(resolveRuntimeStartProfileIdForUseCase(useCase, env, noProviderProfile)).toBe(
+        'business_qwen35_35b_gguf'
+      );
+    }
   });
 });

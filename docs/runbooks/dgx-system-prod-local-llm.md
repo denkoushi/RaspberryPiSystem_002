@@ -81,6 +81,23 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - **運用判断**: 「profile が vision 可能」と「**今回の起動が vision-ready**」は別。35B で写真 VLM が効かないときは KPI だけでなく **`visionReadyReason`** を確認する
 - **Pi5 on-demand intent（opt-in）**: `INFERENCE_RUNTIME_START_PROFILE_ENABLED=true` のときのみ `/start` に `modelProfileId` を付与。既定 `false` は shadow ログのみ（[ADR-20260529](../decisions/ADR-20260529-dgx-profile-capabilities-runtime-intent.md)）
 
+## 業務 profile スコープ runtime readiness（2026-05-29） {#business-profile-scoped-runtime-readiness}
+
+- **ねらい**: 35B 切替直後の `photo_label` が HTTP ready だけで通過してタイムアウトするのを防ぎ、**profile 一致 + vision capability** を Pi5 on-demand / 業務復帰 Strict Ready で検証する。
+- **KB**: [KB-365 §profile-scoped readiness](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#business-profile-scoped-runtime-readiness) · [KB-366 §35B 写真ラベル](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#35b-photo-label-cold-start-runtime-ready-timeout)
+
+**本番反映（2026-05-29 · profile-scoped runtime readiness · Pi5 のみ）** {#本番反映2026-05-29-business-profile-optin-ready}
+
+- **対象**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`**）。**DGX / Pi4 / Pi3 未実施**
+- **手順**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/dgx-business-profile-optin-ready infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **Detach `20260529-173357-17360`** · **`ok=134` `changed=4` `failed=0`** · Git **`efe1853f`** · **`--follow` 約 924s**
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **43/0/0**（約 **112s**）
+- **実機（機能）**:
+  - api: **`business-runtime-readiness.js`** · **`model_profile_vision_runtime`** in scenario-readiness
+  - **`INFERENCE_RUNTIME_START_PROFILE_ENABLED=false`** · **`LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS=900000`**
+- **手動（推奨）**: 35B 業務復帰後、**初回持出写真認識**がタイムアウトする場合は **cold start 完了まで待って再撮影**。DGX `GET /system/model-profiles` で **`runtimeReadyCapabilities` に `vision`** を確認。
+- **正本**: [deployment.md §2026-05-29 optin-ready](../guides/deployment.md#dgx-business-profile-optin-ready-2026-05-29) · [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-business-profile-optin-ready)
+
 ## 業務モデル意図の Pi5 伝播（2026-05-29） {#business-profile-intent-propagation}
 
 - **ねらい**: 業務復帰 GUI で選んだモデルが、写真ラベル・要領書要約・管理チャット・StackChan（職場 Pi5 API 経由）の on-demand 起動意図として **同一 `modelProfileId`** になる。

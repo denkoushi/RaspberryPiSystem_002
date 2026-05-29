@@ -3,6 +3,11 @@ import { performance } from 'node:perf_hooks';
 import { logger } from '../../../lib/logger.js';
 
 import type { InferenceProviderDefinition } from '../config/inference-provider.types.js';
+import { resolveBusinessRuntimeStartProfile } from '../config/business-profile-intent.js';
+import {
+  buildRuntimeStartRequestBody,
+  verifyBusinessRuntimeAfterProfileStart,
+} from '../config/business-runtime-readiness.js';
 import {
   resolveRuntimeStartProfileIdForUseCase,
   shouldSendRuntimeStartProfileId,
@@ -68,7 +73,7 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
     this.refCount += 1;
     if (this.refCount === 1) {
       this.readyPromise = enqueueMainLocalLlmRuntimeControl(`runtime_ensure:${useCase}`, () =>
-        this.startAndWaitUntilHealthy(useCase),
+        this.startSharedRuntimeUntilHttpHealthy(useCase),
       resolveMainLocalLlmRuntimeControlPriorityForUseCase(useCase)
       );
     }
@@ -79,6 +84,7 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
     }
     try {
       await p;
+      await this.ensureUseCaseProfileReadiness(useCase);
     } catch (err) {
       this.refCount = Math.max(0, this.refCount - 1);
       if (this.refCount === 0) {
@@ -108,38 +114,70 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
     );
   }
 
-  private async startAndWaitUntilHealthy(useCase: LocalLlmRuntimeUseCase): Promise<void> {
+  /** 共有 controller の HTTP ready（/start + health probe）。用途別 capability は ensureReady 側で検証する。 */
+  private async startSharedRuntimeUntilHttpHealthy(useCase: LocalLlmRuntimeUseCase): Promise<void> {
     const started = performance.now();
     await this.postStart(useCase, started);
     await this.pollHealthUntilReady(useCase, started);
     log.info(
       {
         useCase,
-        action: 'runtime_ready',
+        action: 'runtime_http_ready',
         latencyMs: Math.round(performance.now() - started),
       },
-      '[LocalLlmRuntimeControl] runtime ready'
+      '[LocalLlmRuntimeControl] runtime HTTP ready (shared)'
     );
   }
 
-  private async postStart(useCase: LocalLlmRuntimeUseCase, batchStarted: number): Promise<void> {
+  private async ensureUseCaseProfileReadiness(useCase: LocalLlmRuntimeUseCase): Promise<void> {
     const profileId = this.deps.provider
       ? resolveRuntimeStartProfileIdForUseCase(useCase, this.deps.runtimeIntentEnv, this.deps.provider)
       : undefined;
     const sendProfile = shouldSendRuntimeStartProfileId(this.deps.runtimeIntentEnv, profileId);
-    const body: Record<string, string> = { reason: useCase };
-    if (sendProfile && profileId) {
-      body.modelProfileId = profileId;
+    if (!sendProfile || !profileId) {
+      return;
     }
+    const started = performance.now();
+    await this.pollProfileReadinessIfNeeded(useCase, started, profileId);
+    log.info(
+      {
+        useCase,
+        action: 'runtime_ready',
+        modelProfileId: profileId,
+        latencyMs: Math.round(performance.now() - started),
+      },
+      '[LocalLlmRuntimeControl] runtime ready for use case'
+    );
+  }
+
+  private async postStart(useCase: LocalLlmRuntimeUseCase, batchStarted: number): Promise<string | undefined> {
+    const profileId = this.deps.provider
+      ? resolveRuntimeStartProfileIdForUseCase(useCase, this.deps.runtimeIntentEnv, this.deps.provider)
+      : undefined;
+    const sendProfile = shouldSendRuntimeStartProfileId(this.deps.runtimeIntentEnv, profileId);
+    const body = buildRuntimeStartRequestBody({ useCase, sendProfile, profileId });
+    const profileSource = this.deps.provider
+      ? resolveBusinessRuntimeStartProfile(this.deps.runtimeIntentEnv, this.deps.provider)?.source
+      : undefined;
 
     if (profileId && !sendProfile) {
       log.info(
-        { useCase, action: 'runtime_start_profile_shadow', modelProfileId: profileId },
+        {
+          useCase,
+          action: 'runtime_start_profile_shadow',
+          modelProfileId: profileId,
+          profileSource,
+        },
         '[LocalLlmRuntimeControl] runtime start profile intent (shadow only)'
       );
     } else if (sendProfile && profileId) {
       log.info(
-        { useCase, action: 'runtime_start_profile_sent', modelProfileId: profileId },
+        {
+          useCase,
+          action: 'runtime_start_profile_sent',
+          modelProfileId: profileId,
+          profileSource,
+        },
         '[LocalLlmRuntimeControl] runtime start includes modelProfileId'
       );
     }
@@ -169,6 +207,58 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
       throw new Error(`LocalLlmRuntimeControl: start failed HTTP ${res.status}`);
     }
     await res.text().catch(() => '');
+    return sendProfile && profileId ? profileId : undefined;
+  }
+
+  private async pollProfileReadinessIfNeeded(
+    useCase: LocalLlmRuntimeUseCase,
+    batchStarted: number,
+    expectedProfileId: string | undefined
+  ): Promise<void> {
+    if (!expectedProfileId || !this.deps.llmToken?.trim()) {
+      return;
+    }
+    const deadline = batchStarted + this.deps.readyTimeoutMs;
+    const perReqMs = Math.min(10_000, Math.max(1000, this.deps.readyTimeoutMs));
+    while (performance.now() < deadline) {
+      try {
+        await verifyBusinessRuntimeAfterProfileStart({
+          fetchImpl: this.deps.fetchImpl,
+          modelProfilesBaseUrl: this.deps.healthCheckBaseUrl,
+          llmToken: this.deps.llmToken,
+          expectedProfileId,
+          useCase,
+          timeoutMs: perReqMs,
+        });
+        return;
+      } catch (err) {
+        if (err instanceof Error) {
+          if (
+            err.message.includes('ready probe auth failed') ||
+            err.message.includes('model profiles HTTP 401') ||
+            err.message.includes('model profiles HTTP 403')
+          ) {
+            throw err;
+          }
+          if (err.message.includes('lacks vision runtime capability')) {
+            throw err;
+          }
+        }
+      }
+      await new Promise((r) => setTimeout(r, this.deps.healthPollIntervalMs));
+    }
+    log.error(
+      {
+        useCase,
+        action: 'runtime_profile_ready_timeout',
+        modelProfileId: expectedProfileId,
+        latencyMs: Math.round(performance.now() - batchStarted),
+      },
+      '[LocalLlmRuntimeControl] profile-scoped runtime readiness timeout'
+    );
+    throw new Error(
+      `LocalLlmRuntimeControl: profile-scoped runtime did not become ready in time (profile=${expectedProfileId})`
+    );
   }
 
   private async pollHealthUntilReady(useCase: LocalLlmRuntimeUseCase, batchStarted: number): Promise<void> {

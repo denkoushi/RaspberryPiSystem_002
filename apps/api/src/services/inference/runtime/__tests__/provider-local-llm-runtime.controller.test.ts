@@ -317,6 +317,20 @@ describe('ProviderLocalLlmRuntimeController', () => {
         startBodies.push(JSON.parse(String(init.body)) as { modelProfileId?: string });
         return new Response('', { status: 200 });
       }
+      if (url.includes('/system/model-profiles') && init?.method === 'GET') {
+        const activeProfileId = runtimeIntentEnv.businessRuntimeStartProfileId;
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            activeProfileId,
+            state: {
+              runtimeReadyCapabilities: ['text', 'vision'],
+              visionReadyReason: 'vision',
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
       if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
         return new Response('ready', { status: 200 });
       }
@@ -375,6 +389,20 @@ describe('ProviderLocalLlmRuntimeController', () => {
           return new Response('boom', { status: 503 });
         }
         return new Response('', { status: 200 });
+      }
+      if (url.includes('/system/model-profiles') && init?.method === 'GET') {
+        const activeProfileId = runtimeIntentEnv.businessRuntimeStartProfileId;
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            activeProfileId,
+            state: {
+              runtimeReadyCapabilities: ['text', 'vision'],
+              visionReadyReason: 'vision',
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
       }
       if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
         return new Response('ready', { status: 200 });

@@ -29,6 +29,12 @@ export type DgxBusinessModelProfile = {
   launcherHints?: Record<string, string>;
 };
 
+/** DGX active_model_state の Pi5 向け最小契約（未報告フィールドは null 扱い） */
+export type DgxActiveModelRuntimeState = {
+  runtimeReadyCapabilities: readonly string[];
+  visionReadyReason: string | null;
+};
+
 export type DgxModelProfilesOverview = {
   configured: boolean;
   status: 'ok' | 'degraded' | 'unconfigured';
@@ -36,6 +42,8 @@ export type DgxModelProfilesOverview = {
   activeProfileId: string | null;
   /** DGX `GET /system/model-profiles` の `state.backend`（state 未作成時は null） */
   activeStateBackend: 'green' | 'blue' | null;
+  /** DGX state の runtime capability（後方互換: 未報告時は null） */
+  activeRuntimeState: DgxActiveModelRuntimeState | null;
   pendingProfileId: string | null;
   lastLoadedProfileId: string | null;
   errorMessageJa?: string;
@@ -67,6 +75,22 @@ const parseActiveStateBackend = (state: unknown): 'green' | 'blue' | null => {
   const backend = asString(state.backend);
   return backend === 'green' || backend === 'blue' ? backend : null;
 };
+
+export function parseDgxActiveModelRuntimeState(state: unknown): DgxActiveModelRuntimeState | null {
+  if (!isRecord(state)) {
+    return null;
+  }
+  const runtimeReadyCapabilities = asStringArray(state.runtimeReadyCapabilities);
+  const visionReadyReason = asString(state.visionReadyReason) ?? null;
+  if (runtimeReadyCapabilities.length === 0 && visionReadyReason === null) {
+    return null;
+  }
+  return { runtimeReadyCapabilities, visionReadyReason };
+}
+
+export function profileDeclaresVision(profile: DgxBusinessModelProfile): boolean {
+  return profile.declaredCapabilities?.includes('vision') === true;
+}
 
 export function normalizeDgxModelProfile(value: unknown): DgxBusinessModelProfile | null {
   if (!isRecord(value)) return null;
@@ -172,6 +196,7 @@ export async function fetchDgxModelProfilesOverview(input: {
       available: [],
       activeProfileId: null,
       activeStateBackend: null,
+      activeRuntimeState: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
       errorMessageJa: 'DGX gateway の baseUrl または共有トークンが未設定です',
@@ -192,6 +217,7 @@ export async function fetchDgxModelProfilesOverview(input: {
         available: [],
         activeProfileId: null,
         activeStateBackend: null,
+        activeRuntimeState: null,
         pendingProfileId: null,
         lastLoadedProfileId: null,
         errorMessageJa: `DGX model profiles API が HTTP ${response.status} を返しました`,
@@ -203,6 +229,7 @@ export async function fetchDgxModelProfilesOverview(input: {
       : [];
     const activeProfileId = asString(body.activeProfileId) ?? null;
     const activeStateBackend = parseActiveStateBackend(body.state);
+    const activeRuntimeState = parseDgxActiveModelRuntimeState(body.state);
     // Allowlist fetch succeeded: activeProfileId may be null before first profile-scoped /start (DGX contract).
     return {
       configured: true,
@@ -210,6 +237,7 @@ export async function fetchDgxModelProfilesOverview(input: {
       available: profiles,
       activeProfileId,
       activeStateBackend,
+      activeRuntimeState,
       pendingProfileId: null,
       lastLoadedProfileId: activeProfileId,
     };
@@ -220,6 +248,7 @@ export async function fetchDgxModelProfilesOverview(input: {
       available: [],
       activeProfileId: null,
       activeStateBackend: null,
+      activeRuntimeState: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
       errorMessageJa: 'DGX model profiles API に接続できませんでした',

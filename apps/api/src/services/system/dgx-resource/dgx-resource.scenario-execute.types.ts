@@ -9,6 +9,7 @@ export type DgxScenarioReadinessCheckJa = {
     | 'inference_business'
     | 'model_profile_active'
     | 'model_profile_backend'
+    | 'model_profile_vision_runtime'
     | 'private_comfy'
     | 'experiment_lab';
   satisfied: boolean;
