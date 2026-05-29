@@ -46,7 +46,7 @@ from dgx_llm_single_active_guard import (  # noqa: E402
     single_active_guard_enabled,
     validate_both_backend_stops_configured,
 )
-from active_model_state import active_model_state_to_api, write_active_model_state  # noqa: E402
+from active_model_state import active_model_state_to_api, read_active_model_state, write_active_model_state  # noqa: E402
 from model_profiles import ModelProfileError, validate_startable_profile  # noqa: E402
 from runtime_stop_policy import (  # noqa: E402
     BlueStopMode,
@@ -119,6 +119,18 @@ def run_shell(command: str) -> None:
         capture_output=True,
         text=True,
     )
+
+
+def resolve_effective_backend_for_stop_force(config: ControlConfig) -> tuple[str, str]:
+    """
+    stop-force の停止対象 backend を決める。
+    active model state があれば実稼働 backend を優先し、無ければ ACTIVE_LLM_BACKEND にフォールバック。
+    戻り値: (backend, source) where source is model_profile_state | env_fallback
+    """
+    state = read_active_model_state(config.active_model_state_path)
+    if state is not None and state.backend in {"green", "blue"}:
+        return state.backend, "model_profile_state"
+    return config.active_backend, "env_fallback"
 
 
 def resolve_command(config: ControlConfig, action: str, backend: str | None = None) -> str:
@@ -226,8 +238,17 @@ def make_handler(config: ControlConfig, command_runner: Callable[[str], None] = 
                     self._send_json(200, {"ok": True, "action": "stop", "backend": config.active_backend})
                     return
                 if self.path == "/stop-force":
-                    command_runner(resolve_command(config, "stop-force"))
-                    self._send_json(200, {"ok": True, "action": "stop-force", "backend": config.active_backend})
+                    stop_backend, stop_source = resolve_effective_backend_for_stop_force(config)
+                    command_runner(resolve_command(config, "stop-force", stop_backend))
+                    self._send_json(
+                        200,
+                        {
+                            "ok": True,
+                            "action": "stop-force",
+                            "backend": stop_backend,
+                            "backendSource": stop_source,
+                        },
+                    )
                     return
                 self._send_text(404, "not found")
             except subprocess.CalledProcessError as exc:

@@ -115,6 +115,9 @@ describe('createDgxResourceService', () => {
     expect(overview.modelProfiles.activeProfileId).toBe('business_qwen36_27b_nvfp4');
     expect(overview.modelProfiles.activeStateBackend).toBe('blue');
     expect(overview.modelProfiles.available[0]?.backend).toBe('blue');
+    expect(overview.runtimeSummary.activeProfileId).toBe('business_qwen36_27b_nvfp4');
+    expect(overview.runtimeSummary.activeBackend).toBe('blue');
+    expect(overview.runtimeSummary.runtimeSource).toBe('model_profile_state');
   });
 
   it('overview treats null activeProfileId as ok when allowlist is fetched', async () => {

@@ -210,6 +210,18 @@ export type DgxBusinessModelProfileApi = {
   unavailableReasonJa?: string;
 };
 
+export type DgxResourceRuntimeSummaryApi = {
+  activeProfileId: string | null;
+  activeProfileDisplayNameJa: string | null;
+  activeBackend: 'green' | 'blue' | null;
+  businessReady: boolean;
+  businessReadyDetailJa: string;
+  policyMode: DgxPolicyModeApi;
+  policyLabel: string;
+  runtimeSource: 'model_profile_state' | 'env_fallback' | 'unknown';
+  inferenceDegraded: boolean;
+};
+
 export type DgxModelProfilesOverviewApi = {
   configured: boolean;
   status: 'ok' | 'degraded' | 'unconfigured';
@@ -254,6 +266,7 @@ export type DgxResourceOverview = {
   /** 運用者向け（API が返す新モデル。互換のため一時的に省略可能） */
   operator?: DgxResourceOperatorConsoleApi;
   modelProfiles?: DgxModelProfilesOverviewApi;
+  runtimeSummary?: DgxResourceRuntimeSummaryApi;
 };
 
 export type DgxResourceEvent = {
