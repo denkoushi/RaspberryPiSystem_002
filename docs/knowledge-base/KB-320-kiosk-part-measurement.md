@@ -136,8 +136,8 @@ curl -sk "${BASE}/part-measurement/inspection-drawing/templates?limit=5" -H "x-c
 |------|-------------------|--------|---------------|------|------------|---------|------|
 | 本番導線 | `feat/kiosk-inspection-drawing-mvp` → `main` `44f91ab5` | `raspberrypi5` | `20260530-145930-18923` | `dd27791a` | `failed=0` | 43/0/0 | quantity=1 図面 edit |
 | ヘッダータブ | 同上 | `raspberrypi5` | `20260530-153416-23422` | `583aecad` | `failed=0` | 42/1/0 | タブ「検査図面作成」→後に「検査図面」へ改名 |
-| **一覧ハブ** | `feat/inspection-drawing-library-hub` → **`main`（マージ後 SHA 要記録）** | `raspberrypi5` | `20260530-180728-7767` | `ef78f4dd` | `failed=0` | 42/1/0 | 専用 API・履歴 UI・約12min・Pi3 WARN スキップ可 |
-| **未** | `main` 反映後 | Pi4×4 | — | — | — | — | キオスク実機でタブ・一覧を確認 |
+| **一覧ハブ** | PR [#374](https://github.com/denkoushi/RaspberryPiSystem_002/pull/374) → **`main` `f0a2725c`**（squash） | `raspberrypi5` | `20260530-180728-7767` | `ef78f4dd`（デプロイ時） | `failed=0` | 42/1/0 | 専用 API・履歴 UI・約12min・Pi3 WARN スキップ可 |
+| **未** | `main` で Pi4 順次 | Pi4×4 | — | — | — | — | キオスク実機でタブ・一覧を確認 |
 
 **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ**）。
 

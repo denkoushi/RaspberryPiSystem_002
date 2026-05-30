@@ -23,7 +23,8 @@ Maintained in accordance with `.agent/PLANS.md`.
   - `KioskInspectionDrawingLibraryPage` · 履歴ダイアログ · 旧版 readOnly · 有効化後専用 GET 再読込
   - レビュー対応: 汎用 `GET /templates/:id` からの破壊的改版防止・一覧 fhincd 部分一致・要約 DTO
 - [x] (2026-05-30) **Pi5 本番** 一覧ハブ — Detach `20260530-180728-7767` · Phase12 **42/1/0** · CI `26679994903`
-- [ ] **Pi4×4 本番** — `main` マージ後、各キオスクへ順次（未実施）
+- [x] (2026-05-30) **`main` マージ** — PR [#374](https://github.com/denkoushi/RaspberryPiSystem_002/pull/374) squash **`f0a2725c`**
+- [ ] **Pi4×4 本番** — `main` で各キオスクへ順次（未実施）
 
 ## Surprises & Discoveries
 

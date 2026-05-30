@@ -2434,7 +2434,7 @@
 
 | # | 項目 | 状態 | メモ |
 |---|------|------|------|
-| 1 | `main` マージ（コード+ドキュメント） | 進行 | PR `feat/inspection-drawing-library-hub` |
+| 1 | `main` マージ（コード+ドキュメント） | **済** | PR [#374](https://github.com/denkoushi/RaspberryPiSystem_002/pull/374) · squash **`f0a2725c`** |
 | 2 | Pi4×4 順次 `--limit` デプロイ | 未 | `update-all-clients.sh main` · 1 台ずつ |
 | 3 | Phase12 + キオスク目視（4 台） | 未 | 検査図面タブ・一覧・新規/編集/履歴 |
 | 4 | （任意）Phase12 に専用 API スモーク追加 | 未 | 現状は統合テスト + 手動 |
