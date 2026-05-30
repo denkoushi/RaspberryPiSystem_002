@@ -27,6 +27,12 @@ export type PartMeasurementTemplateItemDto = {
   unit: string | null;
   allowNegative: boolean;
   decimalPlaces: number;
+  /** 図面中心UI: 0–1（任意） */
+  markerXRatio: string | null;
+  markerYRatio: string | null;
+  nominalValue: string | null;
+  lowerLimit: string | null;
+  upperLimit: string | null;
 };
 
 /** 図面1枚。FIHNCD に紐づけない再利用単位。 */

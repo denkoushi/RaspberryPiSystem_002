@@ -11,6 +11,13 @@
 - テンプレートは **品番 × 工程 × 資源CD** ごとに有効版が1つあること（未登録時はキオスクのテンプレ作成、または管理コンソール `/admin/tools/part-measurement-templates` から登録可能）。
 - **図面付きテンプレート**（任意）: **visual template** に図面画像1枚を登録し、業務テンプレートから参照する。FIHNCD に紐づけず再利用できる。表面/裏面などは **資源CDが異なる業務テンプレ** に、別 visual を割り当てる。図面上の番号は項目の **図番号（表示用）** に入力する。
 
+## 検査図面 MVP（図面中心UI・評価用・本番未接続）
+
+- **作成（評価用）**: `/kiosk/part-measurement/inspection/create` を **URL 直打ち**で開く。変換済み **PNG/JPEG/WebP** をアップロードし、図面上に測定点を配置。名称・基準値・上下限を設定して **評価用テンプレ**（`POST …/inspection-drawing/evaluation-templates`・multipart 一括・バケット `__INSPECTION_DRAWING_EVAL__`）に保存。入力した品番・資源CDはラベルのみで、**本番 active テンプレは差し替えない**。評価用は **通常テンプレ一覧・候補・clone から除外**。同一画面の **テスト入力**（OK/NG 色）まで。
+- **本番導線**: 部品測定ハブ・生産スケジュール・下書き一覧・テンプレ候補からは **従来の表形式 `/edit/:sheetId` のみ**（図面中心UIへは自動遷移しない）。複数個数 order では図面入力が 1 個体分しか扱えないため。
+- **実験用ルート**: `/kiosk/part-measurement/inspection/edit/:sheetId` は残すが本番からはリンクしない。保存・確定は `inspection-drawing/evaluation-sheets/*` のみ（評価用テンプレ `__INSPECTION_DRAWING_EVAL__`・数量1）。本番 sheet は **409**。
+- **制約（Phase1）**: TIFF 非対応。順位ボード・製造order連携は未実装。詳細は [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
+
 ## オペレータ手順（キオスク）
 
 1. **推奨**: 生産スケジュール（または手動順番の下ペイン一覧）の行の **測定** 列から開く（`find-or-open` で下書き再開・確定閲覧・新規・テンプレ作成へ振り分け）。

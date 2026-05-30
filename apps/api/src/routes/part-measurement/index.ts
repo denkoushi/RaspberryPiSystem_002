@@ -15,6 +15,11 @@ import {
 } from '../../services/part-measurement/index.js';
 import { requireClientDevice, resolveDeviceScopeKey } from '../kiosk/shared.js';
 import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from '../../services/part-measurement/part-measurement-constants.js';
+import {
+  patchInspectionDrawingEvaluationSheetBodySchema,
+  toInspectionDrawingEvaluationPatchInput
+} from '../../services/part-measurement/part-measurement-evaluation-sheet.contract.js';
+import { assertInspectionDrawingEvaluationSheet } from '../../services/part-measurement/part-measurement-template-guards.js';
 
 const processGroupSchema = z.enum(['cutting', 'grinding']);
 const authOnlyErrorCodes = new Set(['AUTH_TOKEN_REQUIRED', 'AUTH_TOKEN_INVALID', 'AUTH_TOKEN_EXPIRED']);
@@ -78,7 +83,12 @@ const templateItemSchema = z.object({
   displayMarker: z.string().max(40).optional().nullable(),
   unit: z.string().max(50).optional().nullable(),
   allowNegative: z.boolean().optional(),
-  decimalPlaces: z.number().int().min(0).max(6).optional()
+  decimalPlaces: z.number().int().min(0).max(6).optional(),
+  markerXRatio: z.number().min(0).max(1).optional().nullable(),
+  markerYRatio: z.number().min(0).max(1).optional().nullable(),
+  nominalValue: z.number().optional().nullable(),
+  lowerLimit: z.number().optional().nullable(),
+  upperLimit: z.number().optional().nullable()
 });
 
 const templateScopeSchema = z.enum(['three_key', 'fhincd_resource', 'fhinmei_only']);
@@ -116,6 +126,16 @@ const createTemplateBodySchema = z
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: '資源CDが空です', path: ['resourceCd'] });
     }
   });
+
+/** 検査図面 MVP: 評価用テンプレ（本番 THREE_KEY 系譜とは別バケット） */
+const createInspectionDrawingEvaluationTemplateBodySchema = z.object({
+  referenceFhincd: z.string().min(1).max(120),
+  referenceResourceCd: z.string().min(1).max(120),
+  referenceProcessGroup: processGroupSchema,
+  name: z.string().min(1).max(200),
+  items: z.array(templateItemSchema).min(1).max(200),
+  visualTemplateId: z.string().uuid().optional()
+});
 
 /** 有効テンプレの系譜固定での改版。FHINMEI_ONLY のときのみ candidateFhinmei を変更可 */
 const reviseTemplateBodySchema = z
@@ -180,6 +200,11 @@ function serializeTemplateItem(item: {
   unit: string | null;
   allowNegative: boolean;
   decimalPlaces: number;
+  markerXRatio?: unknown;
+  markerYRatio?: unknown;
+  nominalValue?: unknown;
+  lowerLimit?: unknown;
+  upperLimit?: unknown;
 }) {
   return {
     id: item.id,
@@ -190,7 +215,12 @@ function serializeTemplateItem(item: {
     displayMarker: item.displayMarker ?? null,
     unit: item.unit,
     allowNegative: item.allowNegative,
-    decimalPlaces: item.decimalPlaces
+    decimalPlaces: item.decimalPlaces,
+    markerXRatio: decimalToString(item.markerXRatio),
+    markerYRatio: decimalToString(item.markerYRatio),
+    nominalValue: decimalToString(item.nominalValue),
+    lowerLimit: decimalToString(item.lowerLimit),
+    upperLimit: decimalToString(item.upperLimit)
   };
 }
 
@@ -729,6 +759,21 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     }
   );
 
+  app.patch(
+    '/part-measurement/inspection-drawing/evaluation-sheets/:id',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const parsed = patchInspectionDrawingEvaluationSheetBodySchema.parse(request.body);
+      const body = toInspectionDrawingEvaluationPatchInput(parsed);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const existing = await sheetService.getById(params.id);
+      assertInspectionDrawingEvaluationSheet(existing);
+      const sheet = await sheetService.patch(params.id, body, clientDeviceId);
+      return sheetResponsePair(sheet);
+    }
+  );
+
   app.post(
     '/part-measurement/sheets/:id/transfer-edit-lock',
     { preHandler: allowWriteKiosk, config: { rateLimit: false } },
@@ -747,6 +792,19 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     async (request) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const sheet = await sheetService.finalize(params.id, clientDeviceId);
+      return sheetResponsePair(sheet);
+    }
+  );
+
+  app.post(
+    '/part-measurement/inspection-drawing/evaluation-sheets/:id/finalize',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const existing = await sheetService.getById(params.id);
+      assertInspectionDrawingEvaluationSheet(existing);
       const sheet = await sheetService.finalize(params.id, clientDeviceId);
       return sheetResponsePair(sheet);
     }
@@ -850,6 +908,121 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       })
     };
   });
+
+  app.post(
+    '/part-measurement/inspection-drawing/evaluation-templates',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request) => {
+      if (request.isMultipart()) {
+        let fileBuffer: Buffer | null = null;
+        let mimetype = '';
+        let filename = '';
+        let name = '';
+        let referenceFhincd = '';
+        let referenceResourceCd = '';
+        let referenceProcessGroup: 'cutting' | 'grinding' = 'cutting';
+        let itemsJson = '';
+
+        const parts = request.parts();
+        for await (const part of parts) {
+          if (part.type === 'file') {
+            if (part.fieldname === 'file') {
+              const mf = part as MultipartFile;
+              fileBuffer = await readMultipartFile(mf);
+              mimetype = mf.mimetype || '';
+              filename = mf.filename || 'drawing';
+            }
+          } else if (part.fieldname === 'name') {
+            name = String(part.value ?? '').trim();
+          } else if (part.fieldname === 'referenceFhincd') {
+            referenceFhincd = String(part.value ?? '').trim();
+          } else if (part.fieldname === 'referenceResourceCd') {
+            referenceResourceCd = String(part.value ?? '').trim();
+          } else if (part.fieldname === 'referenceProcessGroup') {
+            const pg = String(part.value ?? '').trim();
+            referenceProcessGroup = pg === 'grinding' ? 'grinding' : 'cutting';
+          } else if (part.fieldname === 'items') {
+            itemsJson = String(part.value ?? '');
+          }
+        }
+
+        if (!fileBuffer || fileBuffer.length === 0) {
+          throw new ApiError(400, '図面画像ファイルが必要です');
+        }
+        if (fileBuffer.length > PartMeasurementDrawingStorage.getMaxBytes()) {
+          throw new ApiError(400, '図面画像が大きすぎます');
+        }
+        let mime = mimetype;
+        if (!mime || mime === 'application/octet-stream') {
+          const lower = filename.toLowerCase();
+          if (lower.endsWith('.png')) mime = 'image/png';
+          else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
+          else if (lower.endsWith('.webp')) mime = 'image/webp';
+        }
+        if (!name) {
+          name = filename.replace(/\.[^.]+$/, '') || '検査図面';
+        }
+
+        let items: z.infer<typeof templateItemSchema>[];
+        try {
+          items = z.array(templateItemSchema).min(1).max(200).parse(JSON.parse(itemsJson || '[]'));
+        } catch {
+          throw new ApiError(400, 'items が不正です（JSON 配列）');
+        }
+
+        const body = createInspectionDrawingEvaluationTemplateBodySchema.parse({
+          referenceFhincd,
+          referenceResourceCd,
+          referenceProcessGroup,
+          name,
+          items
+        });
+        const prismaProcessGroup = body.referenceProcessGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
+        const template = await templateService.createInspectionDrawingEvaluationTemplate({
+          referenceFhincd: body.referenceFhincd,
+          referenceResourceCd: body.referenceResourceCd,
+          referenceProcessGroup: prismaProcessGroup,
+          name: body.name,
+          items: body.items,
+          drawingUpload: {
+            buffer: fileBuffer,
+            mimetype: mime,
+            displayName: name
+          }
+        });
+        return {
+          template: serializeTemplate({
+            ...template,
+            visualTemplateId: template.visualTemplateId,
+            visualTemplate: template.visualTemplate,
+            items: template.items
+          })
+        };
+      }
+
+      const body = createInspectionDrawingEvaluationTemplateBodySchema.parse(request.body);
+      if (!body.visualTemplateId) {
+        throw new ApiError(400, 'visualTemplateId または multipart（file）が必要です');
+      }
+      const referenceProcessGroup = body.referenceProcessGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
+      const template = await templateService.createInspectionDrawingEvaluationTemplate({
+        referenceFhincd: body.referenceFhincd,
+        referenceResourceCd: body.referenceResourceCd,
+        referenceProcessGroup,
+        name: body.name,
+        items: body.items,
+        visualTemplateId: body.visualTemplateId
+      });
+      return {
+        template: serializeTemplate({
+          ...template,
+          visualTemplateId: template.visualTemplateId,
+          visualTemplate: template.visualTemplate,
+          items: template.items
+        })
+      };
+    }
+  );
 
   app.post(
     '/part-measurement/templates/clone-for-schedule-key',

@@ -59,6 +59,14 @@
 - `update-all-clients.sh --detach --follow` の成否は **Pi5 の `PLAY RECAP` と `*.summary.json` の両方**で見る。`failed=0` / `unreachable=0` と `totalHosts>0` が一致しない場合は success 扱いにしない。
 - `prisma migrate deploy` が `service "api" is not running` なら、まず **`docker compose ps -a` で `Created` / mount error を確認**する。再実行前に `api/web` を `up -d` できる状態かを必ず見る。
 
+## 検査図面 MVP（2026-05-30・評価用）
+
+- **ルート**: `/kiosk/part-measurement/inspection/create`（作成＋同一画面テスト）。評価は **URL 直打ち**（ハブにボタンなし）。保存 API は `inspection-drawing/evaluation-templates`（multipart 一括・本番 THREE_KEY を `isActive: false` にしない）。評価用 `__INSPECTION_DRAWING_EVAL__` は一覧・候補・clone・改版・退役から除外。
+- **本番未接続**: スケジュール・ハブ・下書き・テンプレ候補は従来 `/edit/:sheetId` のみ。`inspection/edit` は URL 直打ちのみで、評価用テンプレ・数量1以外は保存不可（API 409）。
+- **データ**: `PartMeasurementTemplateItem` に `markerXRatio` / `markerYRatio` / `nominalValue` / `lowerLimit` / `upperLimit`（任意・既存テンプレは null のまま互換）。
+- **画像**: Phase1 は PNG/JPEG/WebP のみ。TIFF は後続。
+- **実装**: `apps/web/src/features/part-measurement/inspection-drawing`
+
 ## Current UI spec（2026-04-05 までの合意）
 
 - **管理 `/admin/tools/part-measurement-templates`（2026-04-05 追補）**: 有効行の **編集** でフォームに読み込み。**登録スコープ・FIHNCD・資源CD・工程**は変更不可。**`FHINMEI_ONLY` のみ** **FHINMEI（候補キー）** を編集可能（他スコープでは従来どおり固定）。**保存**は `POST /api/part-measurement/templates/:id/revise`（名称・測定項目・図面＋**任意で `candidateFhinmei`**。DB 上は **次 `version` の新行**＋同系譜の旧版 `isActive: false`）。**削除**（最新の有効版のみ）は `POST /api/part-measurement/templates/:id/retire`（**論理削除**・旧版は**自動で有効にならない**）。一覧は既定 **有効版のみ**・**無効版も表示**で旧版の **有効化**が可能。無効版を `revise` / `retire` すると **409**。

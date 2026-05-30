@@ -2877,6 +2877,37 @@ export async function finalizePartMeasurementSheet(
   return data;
 }
 
+/** 検査図面実験用UI: 評価用テンプレート由来・数量1の記録表のみ */
+export async function patchInspectionDrawingEvaluationSheet(
+  sheetId: string,
+  body: {
+    quantity?: number | null;
+    employeeTagUid?: string | null;
+    clearEmployee?: boolean;
+    results?: Array<{ pieceIndex: number; templateItemId: string; value?: string | number | null }>;
+  },
+  clientKey?: string
+): Promise<PartMeasurementSheetWithSession> {
+  const { data } = await api.patch<PartMeasurementSheetWithSession>(
+    `/part-measurement/inspection-drawing/evaluation-sheets/${sheetId}`,
+    body,
+    { headers: clientKey ? { 'x-client-key': clientKey } : undefined }
+  );
+  return data;
+}
+
+export async function finalizeInspectionDrawingEvaluationSheet(
+  sheetId: string,
+  clientKey?: string
+): Promise<PartMeasurementSheetWithSession> {
+  const { data } = await api.post<PartMeasurementSheetWithSession>(
+    `/part-measurement/inspection-drawing/evaluation-sheets/${sheetId}/finalize`,
+    {},
+    { headers: clientKey ? { 'x-client-key': clientKey } : undefined }
+  );
+  return data;
+}
+
 export async function listPartMeasurementDrafts(
   params: { limit?: number; cursor?: string },
   clientKey?: string
@@ -3069,6 +3100,11 @@ export async function createPartMeasurementTemplate(
       unit?: string | null;
       allowNegative?: boolean;
       decimalPlaces?: number;
+      markerXRatio?: number | null;
+      markerYRatio?: number | null;
+      nominalValue?: number | null;
+      lowerLimit?: number | null;
+      upperLimit?: number | null;
     }>;
   },
   clientKey?: string
@@ -3076,6 +3112,47 @@ export async function createPartMeasurementTemplate(
   const { data } = await api.post<{ template: PartMeasurementTemplateDto }>('/part-measurement/templates', body, {
     headers: clientKey ? { 'x-client-key': clientKey } : undefined
   });
+  return data.template;
+}
+
+/** 検査図面 MVP: 評価用テンプレ（図面＋テンプレを一括保存。本番 active テンプレを差し替えない） */
+export async function createInspectionDrawingEvaluationTemplate(
+  body: {
+    referenceFhincd: string;
+    referenceResourceCd: string;
+    referenceProcessGroup: PartMeasurementProcessGroup;
+    name: string;
+    file: File;
+    items: Array<{
+      sortOrder: number;
+      datumSurface: string;
+      measurementPoint: string;
+      measurementLabel: string;
+      displayMarker?: string | null;
+      unit?: string | null;
+      allowNegative?: boolean;
+      decimalPlaces?: number;
+      markerXRatio?: number | null;
+      markerYRatio?: number | null;
+      nominalValue?: number | null;
+      lowerLimit?: number | null;
+      upperLimit?: number | null;
+    }>;
+  },
+  clientKey?: string
+): Promise<PartMeasurementTemplateDto> {
+  const form = new FormData();
+  form.append('referenceFhincd', body.referenceFhincd.trim());
+  form.append('referenceResourceCd', body.referenceResourceCd.trim());
+  form.append('referenceProcessGroup', body.referenceProcessGroup);
+  form.append('name', body.name.trim());
+  form.append('items', JSON.stringify(body.items));
+  form.append('file', body.file);
+  const { data } = await api.post<{ template: PartMeasurementTemplateDto }>(
+    '/part-measurement/inspection-drawing/evaluation-templates',
+    form,
+    { headers: clientKey ? { 'x-client-key': clientKey } : undefined }
+  );
   return data.template;
 }
 

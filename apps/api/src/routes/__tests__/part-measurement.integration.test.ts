@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
+import { PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD } from '../../services/part-measurement/part-measurement-constants.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -108,7 +109,12 @@ describe('part-measurement templates API', () => {
             datumSurface: 'A',
             measurementPoint: 'B',
             measurementLabel: 'L1',
-            displayMarker: '5'
+            displayMarker: '5',
+            markerXRatio: 0.25,
+            markerYRatio: 0.75,
+            nominalValue: 20,
+            lowerLimit: 19.98,
+            upperLimit: 20.02
           }
         ]
       }
@@ -118,6 +124,234 @@ describe('part-measurement templates API', () => {
     expect(tpl.visualTemplateId).toBe(vid);
     expect(tpl.visualTemplate?.id).toBe(vid);
     expect(tpl.items[0].displayMarker).toBe('5');
+    expect(tpl.items[0].markerXRatio).toBe('0.25');
+    expect(tpl.items[0].markerYRatio).toBe('0.75');
+    expect(tpl.items[0].nominalValue).toBe('20');
+    expect(tpl.items[0].lowerLimit).toBe('19.98');
+    expect(tpl.items[0].upperLimit).toBe('20.02');
+  });
+
+  it('inspection-drawing evaluation template save does not deactivate production THREE_KEY template', async () => {
+    const fhincd = `EVAL-PROD-${Date.now()}`;
+    const resourceCd = 'RES-EVAL-1';
+    const prodRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd,
+        name: 'production active',
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1'
+          }
+        ]
+      }
+    });
+    expect(prodRes.statusCode).toBe(200);
+    const prodId = prodRes.json().template.id as string;
+
+    const { body, contentType } = buildMultipartPng('eval drawing', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    const vid = up.json().visualTemplate.id as string;
+
+    const evalRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/inspection-drawing/evaluation-templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        referenceFhincd: fhincd,
+        referenceResourceCd: resourceCd,
+        referenceProcessGroup: 'cutting',
+        name: 'eval only',
+        visualTemplateId: vid,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1',
+            markerXRatio: 0.1,
+            markerYRatio: 0.2,
+            nominalValue: 1,
+            lowerLimit: 0.9,
+            upperLimit: 1.1
+          }
+        ]
+      }
+    });
+    expect(evalRes.statusCode).toBe(200);
+    const evalTpl = evalRes.json().template;
+    expect(evalTpl.fhincd).toBe(PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD);
+    expect(evalTpl.processGroup).toBeNull();
+    expect(evalTpl.isActive).toBe(true);
+
+    const prodAfter = await prisma.partMeasurementTemplate.findUnique({ where: { id: prodId } });
+    expect(prodAfter?.isActive).toBe(true);
+    expect(prodAfter?.fhincd).toBe(fhincd);
+    expect(prodAfter?.resourceCd).toBe(resourceCd);
+  });
+
+  it('excludes inspection-drawing evaluation templates from GET /templates list', async () => {
+    const fhincd = `EVAL-LIST-${Date.now()}`;
+    const { body, contentType } = buildMultipartPng('eval drawing', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    const vid = up.json().visualTemplate.id as string;
+
+    const evalRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/inspection-drawing/evaluation-templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        referenceFhincd: fhincd,
+        referenceResourceCd: 'RES-L',
+        referenceProcessGroup: 'cutting',
+        name: 'eval list',
+        visualTemplateId: vid,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1'
+          }
+        ]
+      }
+    });
+    expect(evalRes.statusCode).toBe(200);
+    const evalId = evalRes.json().template.id as string;
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken)
+    });
+    expect(listRes.statusCode).toBe(200);
+    const ids = (listRes.json().templates as { id: string }[]).map((t) => t.id);
+    expect(ids).not.toContain(evalId);
+  });
+
+  it('rejects inspection-drawing evaluation-sheet patch for production template sheet', async () => {
+    const fhincd = `EVAL-SHEET-PROD-${Date.now()}`;
+    const t1 = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-ES',
+        name: 'prod for eval guard',
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1',
+            markerXRatio: 0.1,
+            markerYRatio: 0.2,
+            lowerLimit: 0,
+            upperLimit: 1
+          }
+        ]
+      }
+    });
+    const templateId = t1.json().template.id as string;
+    const sheetRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        productNo: `PN-ES-${Date.now()}`,
+        fseiban: 'FS-ES',
+        fhincd,
+        fhinmei: '品',
+        resourceCdSnapshot: 'RES-ES',
+        processGroup: 'cutting',
+        templateId
+      }
+    });
+    expect(sheetRes.statusCode).toBe(200);
+    const sheetId = sheetRes.json().sheet.id as string;
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/inspection-drawing/evaluation-sheets/${sheetId}`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        results: [{ pieceIndex: 0, templateItemId: t1.json().template.items[0].id, value: '0.5' }]
+      }
+    });
+    expect(patchRes.statusCode).toBe(409);
+
+    const finalizeRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/inspection-drawing/evaluation-sheets/${sheetId}/finalize`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(finalizeRes.statusCode).toBe(409);
+  });
+
+  it('rejects clone-for-schedule-key when source is inspection-drawing evaluation template', async () => {
+    const { body, contentType } = buildMultipartPng('eval drawing', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    const vid = up.json().visualTemplate.id as string;
+
+    const evalRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/inspection-drawing/evaluation-templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        referenceFhincd: 'FH-CLONE',
+        referenceResourceCd: 'RC',
+        referenceProcessGroup: 'cutting',
+        name: 'eval clone',
+        visualTemplateId: vid,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1'
+          }
+        ]
+      }
+    });
+    const evalId = evalRes.json().template.id as string;
+
+    const cloneRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates/clone-for-schedule-key',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        sourceTemplateId: evalId,
+        fhincd: 'FH-TARGET',
+        processGroup: 'cutting',
+        resourceCd: 'RC-T'
+      }
+    });
+    expect(cloneRes.statusCode).toBe(409);
   });
 
   it('returns 401 without auth for POST /api/part-measurement/templates', async () => {

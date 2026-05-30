@@ -33,6 +33,8 @@ import { LoadBalancingOverviewChartPreviewPage } from './pages/dev/LoadBalancing
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
+import { KioskInspectionDrawingCreatePage } from './pages/kiosk/KioskInspectionDrawingCreatePage';
+import { KioskInspectionDrawingEditPage } from './pages/kiosk/KioskInspectionDrawingEditPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskMobilePalletVisualizationPage } from './pages/kiosk/KioskMobilePalletVisualizationPage';
 import { KioskMobileShelfMasterPage } from './pages/kiosk/KioskMobileShelfMasterPage';
@@ -114,6 +116,8 @@ function App() {
           <Route path="/kiosk/part-measurement/template/pick" element={<KioskPartMeasurementTemplatePickPage />} />
           <Route path="/kiosk/part-measurement/template/new" element={<KioskPartMeasurementTemplatePage />} />
           <Route path="/kiosk/part-measurement/finalized" element={<KioskPartMeasurementFinalizedPage />} />
+          <Route path="/kiosk/part-measurement/inspection/create" element={<KioskInspectionDrawingCreatePage />} />
+          <Route path="/kiosk/part-measurement/inspection/edit/:sheetId" element={<KioskInspectionDrawingEditPage />} />
           <Route path="/kiosk/rigging-analytics" element={<KioskRiggingAnalyticsPage />} />
         </Route>
       </Route>

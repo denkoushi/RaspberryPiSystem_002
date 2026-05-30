@@ -2,6 +2,7 @@ import type { PartMeasurementProcessGroup } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from './part-measurement-constants.js';
+import { productionPartMeasurementTemplateWhere } from './part-measurement-template-guards.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import {
   classifyCandidateMatch,
@@ -51,28 +52,28 @@ export class PartMeasurementTemplateCandidateService {
 
     const [threeKeyRows, twoKeyScopeRows, fhinmeiRows] = await Promise.all([
       prisma.partMeasurementTemplate.findMany({
-        where: {
+        where: productionPartMeasurementTemplateWhere({
           isActive: true,
           templateScope: 'THREE_KEY',
           fhincd: { equals: fhincdDb, mode: 'insensitive' }
-        },
+        }),
         include: partMeasurementTemplateFullInclude
       }),
       prisma.partMeasurementTemplate.findMany({
-        where: {
+        where: productionPartMeasurementTemplateWhere({
           isActive: true,
           templateScope: 'FHINCD_RESOURCE',
           fhincd: { equals: fhincdDb, mode: 'insensitive' },
           resourceCd: scheduleResourceNorm
-        },
+        }),
         include: partMeasurementTemplateFullInclude
       }),
       scheduleFhinmeiNorm.length > 0
         ? prisma.partMeasurementTemplate.findMany({
-            where: {
+            where: productionPartMeasurementTemplateWhere({
               isActive: true,
               templateScope: 'FHINMEI_ONLY'
-            },
+            }),
             include: partMeasurementTemplateFullInclude
           })
         : Promise.resolve([])

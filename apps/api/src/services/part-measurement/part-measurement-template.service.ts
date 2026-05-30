@@ -1,15 +1,22 @@
 import { randomUUID } from 'node:crypto';
 
-import type { PartMeasurementProcessGroup, PartMeasurementTemplateScope, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { PartMeasurementProcessGroup, PartMeasurementTemplateScope } from '@prisma/client';
 
+import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import {
   PART_MEASUREMENT_FHINMEI_CANDIDATE_MIN_LEN,
   PART_MEASUREMENT_FHINMEI_ONLY_BUCKET_FHINCD,
+  PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD,
   PART_MEASUREMENT_LEGACY_RESOURCE_CD
 } from './part-measurement-constants.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
+import {
+  assertOperableProductionPartMeasurementTemplate,
+  productionPartMeasurementTemplateWhere
+} from './part-measurement-template-guards.js';
 import { normalizeFhincd } from './template-candidate-rules.js';
 
 export type TemplateItemInput = {
@@ -22,11 +29,39 @@ export type TemplateItemInput = {
   unit?: string | null;
   allowNegative?: boolean;
   decimalPlaces?: number;
+  markerXRatio?: number | null;
+  markerYRatio?: number | null;
+  nominalValue?: number | null;
+  lowerLimit?: number | null;
+  upperLimit?: number | null;
 };
+
+function optionalDecimal(value: number | null | undefined): Prisma.Decimal | null {
+  if (value === null || value === undefined) return null;
+  if (!Number.isFinite(value)) return null;
+  return new Prisma.Decimal(String(value));
+}
+
+function clampRatio(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
+  return Math.min(1, Math.max(0, value));
+}
 
 function normalizeResourceCd(raw: string): string {
   const t = raw.trim();
   return t.length > 0 ? t : PART_MEASUREMENT_LEGACY_RESOURCE_CD;
+}
+
+function buildInspectionDrawingEvaluationTemplateName(
+  baseName: string,
+  referenceFhincd: string,
+  referenceResourceCd: string,
+  referenceProcessGroup: PartMeasurementProcessGroup
+): string {
+  const suffix = `[eval ${referenceFhincd}/${referenceResourceCd}/${referenceProcessGroup}]`;
+  const maxBaseLen = Math.max(1, 200 - suffix.length - 1);
+  const clippedBase = baseName.trim().slice(0, maxBaseLen);
+  return `${clippedBase} ${suffix}`.slice(0, 200);
 }
 
 type ResolvedLineage = {
@@ -81,6 +116,8 @@ async function insertNextTemplateVersionInTransaction(
           const dp = item.decimalPlaces ?? 6;
           const clamped = Math.min(6, Math.max(0, Math.floor(dp)));
           const dm = item.displayMarker?.trim();
+          const xRatio = clampRatio(item.markerXRatio);
+          const yRatio = clampRatio(item.markerYRatio);
           return {
             sortOrder: item.sortOrder,
             datumSurface: item.datumSurface.trim(),
@@ -89,7 +126,12 @@ async function insertNextTemplateVersionInTransaction(
             displayMarker: dm && dm.length > 0 ? dm.slice(0, 40) : null,
             unit: item.unit?.trim() || null,
             allowNegative: item.allowNegative !== false,
-            decimalPlaces: clamped
+            decimalPlaces: clamped,
+            markerXRatio: xRatio != null ? optionalDecimal(xRatio) : null,
+            markerYRatio: yRatio != null ? optionalDecimal(yRatio) : null,
+            nominalValue: optionalDecimal(item.nominalValue),
+            lowerLimit: optionalDecimal(item.lowerLimit),
+            upperLimit: optionalDecimal(item.upperLimit)
           };
         })
       }
@@ -134,7 +176,7 @@ export class PartMeasurementTemplateService {
       where.isActive = true;
     }
     return prisma.partMeasurementTemplate.findMany({
-      where,
+      where: productionPartMeasurementTemplateWhere(where),
       orderBy: [{ fhincd: 'asc' }, { processGroup: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }],
       include: partMeasurementTemplateFullInclude
     });
@@ -202,6 +244,91 @@ export class PartMeasurementTemplateService {
   }
 
   /**
+   * 検査図面 MVP 用の評価テンプレ。実品番・資源CD とは別バケットに保存し、本番 active テンプレを非アクティブ化しない。
+   */
+  async createInspectionDrawingEvaluationTemplate(params: {
+    referenceFhincd: string;
+    referenceResourceCd: string;
+    referenceProcessGroup: PartMeasurementProcessGroup;
+    name: string;
+    items: TemplateItemInput[];
+    visualTemplateId?: string | null;
+    /** 図面と評価テンプレを同一トランザクションで保存（失敗時は未参照ファイルを削除） */
+    drawingUpload?: { buffer: Buffer; mimetype: string; displayName: string };
+  }) {
+    const referenceFhincd = params.referenceFhincd.trim();
+    const referenceResourceCd = normalizeResourceCd(params.referenceResourceCd);
+    if (referenceFhincd.length === 0) {
+      throw new ApiError(400, '品番（評価用ラベル）が空です');
+    }
+    if (params.items.length === 0) {
+      throw new ApiError(400, 'テンプレート項目が空です');
+    }
+
+    const resourceCd = randomUUID().replace(/-/g, '').slice(0, 32);
+    const templateName = buildInspectionDrawingEvaluationTemplateName(
+      params.name,
+      referenceFhincd,
+      referenceResourceCd,
+      params.referenceProcessGroup
+    );
+
+    const lineage: ResolvedLineage = {
+      templateScope: 'THREE_KEY',
+      fhincd: PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD,
+      processGroup: 'CANDIDATE_FHINMEI_ONLY',
+      resourceCd,
+      candidateFhinmei: null
+    };
+
+    let drawingPathToCleanup: string | null = null;
+    let orphanVisualTemplateId: string | null = null;
+    try {
+      let visualTemplateId = params.visualTemplateId?.trim() || null;
+      if (params.drawingUpload) {
+        const { relativeUrl } = await PartMeasurementDrawingStorage.saveDrawing(
+          params.drawingUpload.buffer,
+          params.drawingUpload.mimetype
+        );
+        drawingPathToCleanup = relativeUrl;
+        const vt = await prisma.partMeasurementVisualTemplate.create({
+          data: {
+            name: params.drawingUpload.displayName.slice(0, 200),
+            drawingImageRelativePath: relativeUrl,
+            isActive: true
+          }
+        });
+        orphanVisualTemplateId = vt.id;
+        visualTemplateId = vt.id;
+      }
+      if (!visualTemplateId) {
+        throw new ApiError(400, 'visualTemplateId または図面ファイルが必要です');
+      }
+
+      const template = await prisma.$transaction((tx) =>
+        insertNextTemplateVersionInTransaction(tx, lineage, {
+          name: templateName,
+          items: params.items,
+          visualTemplateId
+        })
+      );
+      drawingPathToCleanup = null;
+      orphanVisualTemplateId = null;
+      return template;
+    } catch (error) {
+      if (orphanVisualTemplateId) {
+        await prisma.partMeasurementVisualTemplate
+          .delete({ where: { id: orphanVisualTemplateId } })
+          .catch(() => undefined);
+      }
+      if (drawingPathToCleanup) {
+        await PartMeasurementDrawingStorage.deleteDrawing(drawingPathToCleanup).catch(() => undefined);
+      }
+      throw error;
+    }
+  }
+
+  /**
    * 有効版テンプレの系譜を固定したまま次バージョンを作成する（管理コンソール「編集」用）。
    * FHINMEI_ONLY でも DB 上の resourceCd を変えず版だけ上げる。
    */
@@ -225,6 +352,7 @@ export class PartMeasurementTemplateService {
     if (!source) {
       throw new ApiError(404, 'テンプレートが見つかりません');
     }
+    assertOperableProductionPartMeasurementTemplate(source);
     if (!source.isActive) {
       throw new ApiError(409, '無効なテンプレートは編集できません。有効版を選び直してください。');
     }
@@ -272,6 +400,7 @@ export class PartMeasurementTemplateService {
     if (!t) {
       throw new ApiError(404, 'テンプレートが見つかりません');
     }
+    assertOperableProductionPartMeasurementTemplate(t);
     if (!t.isActive) {
       throw new ApiError(409, '無効なテンプレートは削除できません。有効版を選び直してください。');
     }
@@ -318,6 +447,7 @@ export class PartMeasurementTemplateService {
     if (!source) {
       throw new ApiError(404, 'テンプレートが見つからないか無効です');
     }
+    assertOperableProductionPartMeasurementTemplate(source);
 
     const targetFhincdNorm = normalizeFhincd(fhincd);
     const sourceFhincdNorm = normalizeFhincd(source.fhincd);
@@ -348,7 +478,12 @@ export class PartMeasurementTemplateService {
       displayMarker: item.displayMarker,
       unit: item.unit,
       allowNegative: item.allowNegative,
-      decimalPlaces: item.decimalPlaces
+      decimalPlaces: item.decimalPlaces,
+      markerXRatio: item.markerXRatio != null ? Number(item.markerXRatio) : null,
+      markerYRatio: item.markerYRatio != null ? Number(item.markerYRatio) : null,
+      nominalValue: item.nominalValue != null ? Number(item.nominalValue) : null,
+      lowerLimit: item.lowerLimit != null ? Number(item.lowerLimit) : null,
+      upperLimit: item.upperLimit != null ? Number(item.upperLimit) : null
     }));
 
     const baseName = source.name.trim().slice(0, 120);
@@ -382,6 +517,7 @@ export class PartMeasurementTemplateService {
     if (!t) {
       throw new ApiError(404, 'テンプレートが見つかりません');
     }
+    assertOperableProductionPartMeasurementTemplate(t);
     await prisma.$transaction([
       prisma.partMeasurementTemplate.updateMany({
         where: { fhincd: t.fhincd, processGroup: t.processGroup, resourceCd: t.resourceCd },

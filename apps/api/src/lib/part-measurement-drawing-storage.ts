@@ -82,4 +82,18 @@ export class PartMeasurementDrawingStorage {
     const buffer = await fs.readFile(fullPath);
     return { buffer, contentType };
   }
+
+  /** 保存に失敗した図面ファイルのロールバック用（未参照時のみ呼ぶ） */
+  static async deleteDrawing(relativeUrl: string): Promise<void> {
+    const prefix = '/api/storage/part-measurement-drawings/';
+    if (!relativeUrl.startsWith(prefix)) {
+      return;
+    }
+    const filename = relativeUrl.slice(prefix.length);
+    if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return;
+    }
+    const fullPath = path.join(getDrawingsDir(), filename);
+    await fs.unlink(fullPath).catch(() => undefined);
+  }
 }
