@@ -3,8 +3,10 @@ import { useState } from 'react';
 import { Input } from '../../components/ui/Input';
 import {
   InspectionDrawingCanvas,
+  InspectionDrawingCanvasZoomControls,
   InspectionDrawingCreateHeaderBand,
   InspectionDrawingCreateToolbar,
+  useInspectionDrawingZoom,
   InspectionDrawingPointSettingsPanel,
   InspectionDrawingValuePanel,
   inspectionDrawingCanvasColumnClassName,
@@ -31,6 +33,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
     INSPECTION_DRAWING_PREVIEW_POINTS.map((p) => ({ ...p }))
   );
   const [selectedPointId, setSelectedPointId] = useState<string | null>(INSPECTION_DRAWING_PREVIEW_POINTS[0]?.id ?? null);
+  const { zoom, zoomIn, zoomOut, fitToView, fitGeneration } = useInspectionDrawingZoom();
 
   const selectedPoint = points.find((p) => p.id === selectedPointId) ?? null;
 
@@ -45,6 +48,14 @@ export function KioskInspectionDrawingCreatePreviewPage() {
       footnote="マーカー1=OK·2=NG·3=未入力。下部 DEV バーは本番に無し"
     >
         <InspectionDrawingCreateHeaderBand
+          centerSlot={
+            <InspectionDrawingCanvasZoomControls
+              enabled
+              onZoomIn={zoomIn}
+              onZoomOut={zoomOut}
+              onFitToView={fitToView}
+            />
+          }
           metadata={
             <>
               <label className={inspectionDrawingMetadataLabelClassName}>
@@ -93,6 +104,8 @@ export function KioskInspectionDrawingCreatePreviewPage() {
               imageUrl={INSPECTION_DRAWING_PREVIEW_IMAGE_URL}
               points={points}
               mode={mode}
+              zoom={zoom}
+              fitGeneration={fitGeneration}
               selectedPointId={selectedPointId}
               onSelectPoint={setSelectedPointId}
               onAddPoint={() => undefined}

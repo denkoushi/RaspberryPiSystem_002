@@ -13,8 +13,10 @@ import { Button } from '../../components/ui/Button';
 import {
   getInspectionDrawingEditAccess,
   InspectionDrawingCanvas,
+  InspectionDrawingCanvasZoomControls,
   InspectionDrawingCreateHeaderBand,
   inspectionDrawingCanvasColumnClassName,
+  useInspectionDrawingZoom,
   InspectionDrawingValuePanel,
   inspectionDrawingKioskDisabledButtonClass,
   inspectionDrawingSideAsideClassName,
@@ -49,9 +51,14 @@ export function KioskInspectionDrawingEditPage() {
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const { zoom, zoomIn, zoomOut, fitToView, resetZoom, fitGeneration } = useInspectionDrawingZoom();
 
   const drawingPath = sheet?.template?.visualTemplate?.drawingImageRelativePath;
   const { blobUrl: drawingBlobUrl, error: drawingLoadError } = usePartMeasurementDrawingBlobUrl(drawingPath);
+
+  useEffect(() => {
+    resetZoom();
+  }, [drawingBlobUrl, resetZoom]);
 
   const supportsDrawing = useMemo(
     () => templateSupportsInspectionDrawing(sheet?.template?.items, drawingPath),
@@ -243,6 +250,16 @@ export function KioskInspectionDrawingEditPage() {
     <div className="flex min-h-0 flex-1 flex-col gap-2 p-2 text-white">
       {contextBanner}
       <InspectionDrawingCreateHeaderBand
+        centerSlot={
+          drawingBlobUrl ? (
+            <InspectionDrawingCanvasZoomControls
+              enabled={Boolean(drawingBlobUrl)}
+              onZoomIn={zoomIn}
+              onZoomOut={zoomOut}
+              onFitToView={fitToView}
+            />
+          ) : undefined
+        }
         metadata={
           <>
             <p className="text-[1.3rem] font-semibold leading-snug">
@@ -286,6 +303,8 @@ export function KioskInspectionDrawingEditPage() {
               imageUrl={drawingBlobUrl}
               points={points}
               mode="test"
+              zoom={zoom}
+              fitGeneration={fitGeneration}
               selectedPointId={selectedPointId}
               onSelectPoint={setSelectedPointId}
               onAddPoint={() => {

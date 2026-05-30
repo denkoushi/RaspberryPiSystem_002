@@ -16,8 +16,10 @@ import { formatResourceCdWithJapaneseNames } from '../../features/kiosk/leaderOr
 import {
   drawingPointToTemplateItemInput,
   InspectionDrawingCanvas,
+  InspectionDrawingCanvasZoomControls,
   InspectionDrawingCreateHeaderBand,
   InspectionDrawingCreateToolbar,
+  useInspectionDrawingZoom,
   InspectionDrawingPointSettingsPanel,
   InspectionDrawingResourceCdSelect,
   InspectionDrawingValuePanel,
@@ -75,6 +77,7 @@ export function KioskInspectionDrawingCreatePage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [template, setTemplate] = useState<PartMeasurementTemplateDto | null>(null);
+  const { zoom, zoomIn, zoomOut, fitToView, resetZoom, fitGeneration } = useInspectionDrawingZoom();
 
   const lineageLocked = isEditing;
   const readOnly = Boolean(lineageLocked && template && !template.isActive);
@@ -136,6 +139,12 @@ export function KioskInspectionDrawingCreatePage() {
       }
     })();
   }, [clientKey, templateId]);
+
+  const hasDrawingImage = Boolean(imagePreviewUrl);
+
+  useEffect(() => {
+    resetZoom();
+  }, [imagePreviewUrl, resetZoom]);
 
   const handleFile = (file: File | null) => {
     if (imagePreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(imagePreviewUrl);
@@ -270,6 +279,16 @@ export function KioskInspectionDrawingCreatePage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 p-2 text-white">
       <InspectionDrawingCreateHeaderBand
+        centerSlot={
+          hasDrawingImage ? (
+            <InspectionDrawingCanvasZoomControls
+              enabled={hasDrawingImage}
+              onZoomIn={zoomIn}
+              onZoomOut={zoomOut}
+              onFitToView={fitToView}
+            />
+          ) : undefined
+        }
         metadata={
           <>
             {lineageLocked ? (
@@ -341,7 +360,7 @@ export function KioskInspectionDrawingCreatePage() {
             showProcessGroup={!lineageLocked}
             mode={mode}
             onModeChange={setMode}
-            hasDrawingImage={Boolean(imagePreviewUrl)}
+            hasDrawingImage={hasDrawingImage}
             hasMeasurementPoints={points.length > 0}
             onSave={contentReadOnly ? undefined : () => void handleSave()}
             saveDisabled={contentReadOnly}
@@ -377,6 +396,8 @@ export function KioskInspectionDrawingCreatePage() {
               imageUrl={imagePreviewUrl}
               points={points}
               mode={mode}
+              zoom={zoom}
+              fitGeneration={fitGeneration}
               selectedPointId={selectedPointId}
               onSelectPoint={setSelectedPointId}
               onAddPoint={
