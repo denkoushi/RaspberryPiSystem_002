@@ -965,6 +965,67 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     };
   });
 
+  app.get('/part-measurement/inspection-drawing/templates', { preHandler: allowView }, async (request) => {
+    const q = listTemplatesQuerySchema.parse(request.query);
+    const processGroup =
+      q.processGroup === 'grinding' ? 'GRINDING' : q.processGroup === 'cutting' ? 'CUTTING' : undefined;
+    const rows = await templateService.listKioskInspectionDrawingTemplates({
+      fhincd: q.fhincd,
+      processGroup,
+      resourceCd: q.resourceCd,
+      includeInactive: q.includeInactive === true
+    });
+    return {
+      templates: rows.map(({ template, itemCount }) => ({
+        id: template.id,
+        fhincd: template.fhincd,
+        resourceCd: template.resourceCd,
+        processGroup: serializeTemplateProcessGroup(template.processGroup),
+        name: template.name,
+        version: template.version,
+        isActive: template.isActive,
+        visualTemplateId: template.visualTemplateId ?? null,
+        visualTemplate: template.visualTemplate ? serializeVisualTemplate(template.visualTemplate) : null,
+        itemCount
+      }))
+    };
+  });
+
+  app.get('/part-measurement/inspection-drawing/templates/:id', { preHandler: allowView }, async (request) => {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const template = await templateService.getKioskInspectionDrawingTemplateById(params.id);
+    return {
+      template: serializeTemplate({
+        ...template,
+        visualTemplateId: template.visualTemplateId,
+        visualTemplate: template.visualTemplate,
+        items: template.items
+      })
+    };
+  });
+
+  app.post(
+    '/part-measurement/inspection-drawing/templates/:id/revise',
+    { preHandler: allowWriteKiosk },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = reviseTemplateBodySchema.parse(request.body);
+      const template = await templateService.reviseKioskInspectionDrawingTemplate(params.id, {
+        name: body.name,
+        items: body.items,
+        visualTemplateId: body.visualTemplateId
+      });
+      return {
+        template: serializeTemplate({
+          ...template,
+          visualTemplateId: template.visualTemplateId,
+          visualTemplate: template.visualTemplate,
+          items: template.items
+        })
+      };
+    }
+  );
+
   app.post(
     '/part-measurement/inspection-drawing/evaluation-templates',
     { preHandler: allowWriteKiosk, config: { rateLimit: false } },

@@ -21,6 +21,8 @@ type Props = {
   onSave?: () => void;
   saveDisabled?: boolean;
   saveBusy?: boolean;
+  /** 編集時は系譜キー（品番・工程）を変えられないため非表示 */
+  showProcessGroup?: boolean;
 };
 
 export function InspectionDrawingCreateToolbar({
@@ -32,7 +34,8 @@ export function InspectionDrawingCreateToolbar({
   hasMeasurementPoints,
   onSave,
   saveDisabled = false,
-  saveBusy = false
+  saveBusy = false,
+  showProcessGroup = true
 }: Props) {
   const toggleClass = (isActive: boolean) =>
     clsx(inspectionDrawingKioskToggleInactiveClass(isActive), inspectionDrawingKioskDisabledButtonClass);
@@ -43,27 +46,30 @@ export function InspectionDrawingCreateToolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="sr-only">工程</span>
-      <Button
-        type="button"
-        variant="primary"
-        aria-pressed={processGroup === 'cutting'}
-        className={toggleClass(processGroup === 'cutting')}
-        onClick={() => onProcessGroupChange('cutting')}
-      >
-        切削
-      </Button>
-      <Button
-        type="button"
-        variant="primary"
-        aria-pressed={processGroup === 'grinding'}
-        className={toggleClass(processGroup === 'grinding')}
-        onClick={() => onProcessGroupChange('grinding')}
-      >
-        研削
-      </Button>
-
-      <span className="mx-1 hidden h-6 w-px bg-white/20 sm:block" aria-hidden />
+      {showProcessGroup ? (
+        <>
+          <span className="sr-only">工程</span>
+          <Button
+            type="button"
+            variant="primary"
+            aria-pressed={processGroup === 'cutting'}
+            className={toggleClass(processGroup === 'cutting')}
+            onClick={() => onProcessGroupChange('cutting')}
+          >
+            切削
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            aria-pressed={processGroup === 'grinding'}
+            className={toggleClass(processGroup === 'grinding')}
+            onClick={() => onProcessGroupChange('grinding')}
+          >
+            研削
+          </Button>
+          <span className="mx-1 hidden h-6 w-px bg-white/20 sm:block" aria-hidden />
+        </>
+      ) : null}
 
       <Button
         type="button"

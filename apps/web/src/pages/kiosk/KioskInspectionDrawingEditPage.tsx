@@ -18,6 +18,7 @@ import {
   InspectionDrawingValuePanel,
   inspectionDrawingKioskDisabledButtonClass,
   inspectionDrawingSideAsideClassName,
+  KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
   templateItemToDrawingPoint,
   templateSupportsInspectionDrawing
 } from '../../features/part-measurement/inspection-drawing';
@@ -234,12 +235,8 @@ export function KioskInspectionDrawingEditPage() {
     );
   }
 
-  const contextBanner = isEvaluation ? (
-    <p className="text-xs text-amber-200">
-      評価用テンプレート（URL 直打ち）。本番の日程・一覧導線とは別です。
-    </p>
-  ) : isProduction ? (
-    <p className="text-xs text-emerald-200/90">本番記録（図面付きテンプレ・数量1）。通常の記録表 API で保存・確定します。</p>
+  const contextBanner = isProduction ? (
+    <p className="text-[0.98rem] text-emerald-200/90">図面付き本番記録です。保存・確定は通常の記録表 API で行います。</p>
   ) : null;
 
   return (
@@ -261,8 +258,8 @@ export function KioskInspectionDrawingEditPage() {
         }
         toolbar={
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="secondary" onClick={() => void navigate('/kiosk/part-measurement')}>
-              一覧へ
+            <Button type="button" variant="secondary" onClick={() => void navigate(KIOSK_INSPECTION_DRAWING_LIBRARY_PATH)}>
+              検査図面一覧
             </Button>
             {sheet?.status === 'DRAFT' && editAccess.allowed ? (
               <Button

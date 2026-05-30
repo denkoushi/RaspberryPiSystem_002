@@ -18,7 +18,8 @@ type Props = {
   mode: Mode;
   selectedPointId: string | null;
   onSelectPoint: (id: string) => void;
-  onAddPoint: (xRatio: number, yRatio: number) => void;
+  /** 未指定時は図面上への新規配置を無効化（閲覧専用） */
+  onAddPoint?: (xRatio: number, yRatio: number) => void;
 };
 
 const STATUS_MARKER_CLASS: Record<string, string> = {
@@ -65,7 +66,7 @@ export function InspectionDrawingCanvas({
     if (!ratios) return;
 
     if (mode === 'place') {
-      onAddPoint(ratios.xRatio, ratios.yRatio);
+      onAddPoint?.(ratios.xRatio, ratios.yRatio);
       return;
     }
 

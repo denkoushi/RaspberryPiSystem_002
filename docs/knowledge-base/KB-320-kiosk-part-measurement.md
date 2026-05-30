@@ -67,9 +67,9 @@
 
 | 区分 | 内容 |
 |------|------|
-| **評価用作成** | キオスクヘッダー **「検査図面作成」**（アンバー・部品測定タブとは別アクティブ）。URL: `/kiosk/part-measurement/inspection/create`。`POST …/inspection-drawing/evaluation-templates`（multipart）。バケット **`__INSPECTION_DRAWING_EVAL__`**。品番・資源CDはラベルのみ（本番 active を差し替えない）。一覧・候補・clone・改版・退役から **除外**。 |
+| **一覧/作成/編集** | キオスクヘッダー **「検査図面」**（アンバー・部品測定タブとは別アクティブ）。URL: `/kiosk/part-measurement/inspection`。一覧から新規・編集・履歴を開き、保存は本番テンプレ API（`POST /templates` / `POST /templates/:id/revise`）。資源は表示名付きドロップダウン。 |
 | **本番編集** | 図面付き本番テンプレ + 記録表 **`quantity === 1`**（ちょうど1）→ 各導線から **`/kiosk/part-measurement/inspection/edit/:sheetId`**。保存・確定は **通常** `PATCH/POST …/sheets/*`。`quantity > 1`・図面なし・座標未設定 → **表形式** `/edit/:sheetId`（開いても図面UIへリダイレクト可）。 |
-| **評価用編集** | 評価用テンプレ由来 sheet のみ `evaluation-sheets/*`。本番 sheet → evaluation API は **409**。評価 sheet → 通常 PATCH/finalize は **409**。 |
+| **評価用編集** | 既存互換のため `evaluation-sheets/*` は残置。新 UI 導線からは未使用。本番 sheet → evaluation API は **409**。評価 sheet → 通常 PATCH/finalize は **409**。 |
 | **データ** | `PartMeasurementTemplateItem`: `markerXRatio` / `markerYRatio` / `nominalValue` / `lowerLimit` / `upperLimit`（任意）。 |
 | **画像** | Phase1: PNG/JPEG/WebP のみ（TIFF 後続）。 |
 | **ヘッダー判定** | `kioskInspectionDrawingRoutes.ts` — `isKioskInspectionDrawingPath` / `isKioskPartMeasurementHubPath`（`/inspection/*` は部品測定タブを **非アクティブ**）。 |
@@ -78,7 +78,7 @@
 
 | 症状 | 確認 | 対処 |
 |------|------|------|
-| **「検査図面作成」タブがない** | Pi5 `web` の Git HEAD が `583aecad` 以降か。Pi4 だけ未デプロイか | **Pi5**: 標準デプロイ済みなら強制リロード（[verification-checklist §6.6.4](../guides/verification-checklist.md)）。**Pi4 キオスク**: Pi4×4 デプロイ必須（SPA は Pi5 配信だが運用上 Pi5→Pi4 順次が正）。MVP 初版は URL 直打ちのみでタブ未実装だった |
+| **「検査図面」タブがない** | Pi5 `web` の Git HEAD が一覧ハブ対応以降か。Pi4 だけ未デプロイか | **Pi5**: 標準デプロイ済みなら強制リロード（[verification-checklist §6.6.4](../guides/verification-checklist.md)）。**Pi4 キオスク**: Pi4×4 デプロイ必須。旧 UI は「検査図面作成」表記だった |
 | 部品測定タブと検査図面タブが同時にハイライト | `KioskHeader` が `pathname.startsWith('/kiosk/part-measurement')` のまま | `583aecad` 以降の `kioskInspectionDrawingRoutes` 分離を確認 |
 | 図面UIに行かず表形式のまま | sheet の `quantity`（**1 か**）、テンプレに visual + 全項目 `markerXRatio/YRatio` | `createDraft` で図面テンプレなら **初期 quantity=1**（`45c02e0a`）。手動で数量を 2 以上にしていないか |
 | 評価保存で本番テンプレが消える | `POST /templates` を使っていないか | **必ず** `evaluation-templates`。通常 create は同キー active を無効化する |

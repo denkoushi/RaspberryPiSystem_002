@@ -18,6 +18,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 - [x] (2026-05-30) キオスクヘッダー独立タブ **「検査図面作成」**（`kioskInspectionDrawingRoutes.ts` + `KioskHeader`）
 - [x] (2026-05-30) 単体テスト・Runbook/KB/deployment 補足・CI success（`26675704712` / `26676840821`）
 - [x] (2026-05-30) **Pi5 本番先行**（`583aecad`）— 実機手動 OK・Phase12 **42/1/0**
+- [x] (2026-05-30) 一覧ハブ移行（ヘッダー **「検査図面」**・本番テンプレ create/revise・履歴UI・資源表示名ドロップダウン）
 - [ ] **Pi4×4 本番** — ヘッダータブ・図面導線を現場キオスクへ（未実施）
 
 ## Surprises & Discoveries
@@ -71,6 +72,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 ## Outcomes & Retrospective
 
 - **評価用作成**: ヘッダー「検査図面作成」→ `/kiosk/part-measurement/inspection/create`。図面・測定点・評価用テンプレ保存・同一画面テスト入力まで可能（本番 active テンプレは差し替えない）。
+- **一覧ハブ（2026-05-30 追補）**: ヘッダー **「検査図面」** → `/kiosk/part-measurement/inspection`。一覧から新規・編集・履歴を開き、保存は本番テンプレ `create/revise` に統一。評価用 API は互換残置だが UI 主導線から外した。
 - **本番編集（数量1のみ）**: 図面付き本番テンプレ + `quantity===1` の sheet は各導線から `inspection/edit` へ自動分岐。保存・確定は通常 sheet API。`quantity>1` / 図面なしは表形式 `/edit`。
 - **隔離**: 評価用 `__INSPECTION_DRAWING_EVAL__`・`evaluation-templates` / `evaluation-sheets`・通常 API との **409** 相互ブロックを維持。
 - **本番デプロイ（Pi5 のみ・2026-05-30）**: Detach `20260530-153416-23422`（HEAD `583aecad`）·Phase12 **42/0/1**·現場手動 OK。**Pi4×4 未**のためキオスク実機ではヘッダー変更は Pi5 経由のブラウザ確認まで。

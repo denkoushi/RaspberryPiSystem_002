@@ -129,6 +129,102 @@ describe('part-measurement templates API', () => {
     expect(tpl.items[0].nominalValue).toBe('20');
     expect(tpl.items[0].lowerLimit).toBe('19.98');
     expect(tpl.items[0].upperLimit).toBe('20.02');
+
+    const kioskGet = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/templates/${tpl.id}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(kioskGet.statusCode).toBe(200);
+    expect(kioskGet.json().template.id).toBe(tpl.id);
+
+    const kioskList = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/templates?fhincd=${encodeURIComponent(fhincd.slice(0, 4))}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(kioskList.statusCode).toBe(200);
+    const listed = kioskList.json().templates as Array<{ id: string; itemCount: number; items?: unknown[] }>;
+    expect(listed.some((row) => row.id === tpl.id)).toBe(true);
+    expect(listed.find((row) => row.id === tpl.id)?.itemCount).toBe(1);
+    expect(listed[0]?.items).toBeUndefined();
+
+    const noMarkerRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd: `NM-${Date.now()}`,
+        processGroup: 'cutting',
+        resourceCd: 'RES-NM',
+        name: 'no markers',
+        visualTemplateId: vid,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1'
+          }
+        ]
+      }
+    });
+    expect(noMarkerRes.statusCode).toBe(200);
+    const noMarkerTpl = noMarkerRes.json().template;
+    const kioskReject = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/templates/${noMarkerTpl.id}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(kioskReject.statusCode).toBe(409);
+
+    const reviseRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${tpl.id}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: 'with visual v2',
+        visualTemplateId: vid,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1',
+            markerXRatio: 0.3,
+            markerYRatio: 0.7,
+            nominalValue: 20,
+            lowerLimit: 19.98,
+            upperLimit: 20.02
+          }
+        ]
+      }
+    });
+    expect(reviseRes.statusCode).toBe(200);
+    const oldId = tpl.id;
+    const inactiveRevise = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/inspection-drawing/templates/${oldId}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: 'blocked on inactive',
+        visualTemplateId: vid,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1',
+            markerXRatio: 0.25,
+            markerYRatio: 0.75,
+            nominalValue: 20,
+            lowerLimit: 19.98,
+            upperLimit: 20.02
+          }
+        ]
+      }
+    });
+    expect(inactiveRevise.statusCode).toBe(409);
   });
 
   it('inspection-drawing evaluation template save does not deactivate production THREE_KEY template', async () => {

@@ -40,27 +40,24 @@ export function KioskInspectionDrawingCreatePreviewPage() {
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-slate-800 text-white">
-      <header className="shrink-0 border-b border-amber-500/40 bg-amber-950/40 px-3 py-2 text-center text-xs font-semibold text-amber-100">
+      <header className="shrink-0 border-b border-amber-500/40 bg-amber-950/40 px-3 py-2 text-center text-sm font-semibold text-amber-100">
         開発プレビュー — 実装コンポーネント（InspectionDrawingCanvas / ValuePanel）· 本番ルート:
         /kiosk/part-measurement/inspection/create
       </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
-        <p className="text-xs text-white/60">
-          Phase1: この画面内で図面・測定点・テスト入力まで。保存は評価用バケットのみ（入力した品番・資源CDで本番テンプレは差し替えません）。本番導線は未接続。
-        </p>
+      <div className="flex min-h-0 flex-1 flex-col gap-2 p-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-white/80">検査図面作成（MVP・評価用）</span>
+          <span className="text-[1.05rem] font-semibold text-white/85">検査図面作成プレビュー</span>
         </div>
 
         <InspectionDrawingCreateHeaderBand
           metadata={
             <>
               <label className={inspectionDrawingMetadataLabelClassName}>
-                品番（評価用ラベル）
+                品番
                 <Input defaultValue="DEMO-12345" className={inspectionDrawingMetadataInputClass} readOnly />
               </label>
               <label className={inspectionDrawingMetadataLabelClassName}>
-                資源CD（評価用ラベル）
+                資源
                 <Input defaultValue="R001" className={inspectionDrawingMetadataInputClass} readOnly />
               </label>
               <label className={inspectionDrawingMetadataLabelClassName}>
@@ -72,9 +69,9 @@ export function KioskInspectionDrawingCreatePreviewPage() {
                 />
               </label>
               <label className={inspectionDrawingMetadataLabelClassName}>
-                図面（PNG/JPEG/WebP）
+                図面
                 <span
-                  className={`${inspectionDrawingMetadataControlWidthClass} block truncate text-[0.975rem] text-white/50`}
+                  className={`${inspectionDrawingMetadataControlWidthClass} block truncate text-[1rem] text-white/50`}
                 >
                   （プレビュー用サンプル SVG）
                 </span>
@@ -94,11 +91,11 @@ export function KioskInspectionDrawingCreatePreviewPage() {
           }
         />
 
-        <p className="text-sm font-semibold text-amber-200">
+        <p className="text-[1rem] font-semibold text-amber-200">
           プレビュー: マーカー1=OK（緑）· 2=NG（赤）· 3=未入力（白）。「テスト入力」で右パネルを確認。
         </p>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row">
           <div className={inspectionDrawingCanvasColumnClassName}>
             <InspectionDrawingCanvas
               imageUrl={INSPECTION_DRAWING_PREVIEW_IMAGE_URL}
@@ -113,8 +110,8 @@ export function KioskInspectionDrawingCreatePreviewPage() {
           <aside className={inspectionDrawingSideAsideClassName}>
             {mode === 'place' && selectedPoint ? (
               <div className={inspectionDrawingPointSettingPanelClassName}>
-                <p className="text-sm font-bold">測定点の設定</p>
-                <label className="grid gap-1 text-xs font-semibold">
+                <p className="text-[1.02rem] font-bold">測定点の設定</p>
+                <label className="grid gap-1 text-[1rem] font-semibold">
                   名称
                   <Input
                     value={selectedPoint.name}
@@ -122,7 +119,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
                     className={inspectionDrawingPointSettingInputClassName}
                   />
                 </label>
-                <label className="grid gap-1 text-xs font-semibold">
+                <label className="grid gap-1 text-[1rem] font-semibold">
                   基準値
                   <Input
                     type="number"
@@ -133,7 +130,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
                     className={inspectionDrawingPointSettingInputClassName}
                   />
                 </label>
-                <label className="grid gap-1 text-xs font-semibold">
+                <label className="grid gap-1 text-[1rem] font-semibold">
                   下限
                   <Input
                     type="number"
@@ -144,7 +141,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
                     className={inspectionDrawingPointSettingInputClassName}
                   />
                 </label>
-                <label className="grid gap-1 text-xs font-semibold">
+                <label className="grid gap-1 text-[1rem] font-semibold">
                   上限
                   <Input
                     type="number"
@@ -170,8 +167,8 @@ export function KioskInspectionDrawingCreatePreviewPage() {
                 }}
               />
             ) : (
-              <p className="text-xs text-white/50">
-                図面をタップして点を追加。点を選んで名称と上下限を設定します。
+              <p className="text-[0.98rem] text-white/50">
+                図面をタップして点を追加し、右側で設定します。
               </p>
             )}
           </aside>

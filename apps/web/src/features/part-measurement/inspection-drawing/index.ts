@@ -16,8 +16,14 @@ export {
   templateItemToDrawingPoint,
   templateSupportsInspectionDrawing
 } from './templateItemMappers';
+export {
+  kioskInspectionDrawingTemplateEditPath,
+  KIOSK_INSPECTION_DRAWING_CREATE_PATH,
+  KIOSK_INSPECTION_DRAWING_LIBRARY_PATH
+} from './kioskInspectionDrawingRoutes';
 
 export { InspectionDrawingValuePanel } from './InspectionDrawingValuePanel';
+export { InspectionDrawingTemplateHistoryDialog } from './InspectionDrawingTemplateHistoryDialog';
 export {
   inspectionDrawingCanvasColumnClassName,
   inspectionDrawingHeaderBandClassName,
