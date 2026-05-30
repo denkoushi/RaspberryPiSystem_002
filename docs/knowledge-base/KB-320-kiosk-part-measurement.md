@@ -59,14 +59,43 @@
 - `update-all-clients.sh --detach --follow` の成否は **Pi5 の `PLAY RECAP` と `*.summary.json` の両方**で見る。`failed=0` / `unreachable=0` と `totalHosts>0` が一致しない場合は success 扱いにしない。
 - `prisma migrate deploy` が `service "api" is not running` なら、まず **`docker compose ps -a` で `Created` / mount error を確認**する。再実行前に `api/web` を `up -d` できる状態かを必ず見る。
 
-## 検査図面 MVP（2026-05-30 評価用 / 2026-05-30 本番編集導線）
+## 検査図面 MVP（2026-05-30）
 
-- **ルート**: `/kiosk/part-measurement/inspection/create`（作成＋同一画面テスト・**キオスクヘッダー「検査図面作成」タブ**＝部品測定タブとは別）。保存 API は `inspection-drawing/evaluation-templates`（multipart 一括）。評価用 `__INSPECTION_DRAWING_EVAL__` は一覧・候補・clone・改版・退役から除外。
-- **本番編集導線（2026-05-30）**: 図面付き本番テンプレ + **`quantity === 1`** の sheet は、スケジュール・ハブ下書き・テンプレ候補・確定一覧から **`/kiosk/part-measurement/inspection/edit/:sheetId`** へ自動遷移。保存・確定は **通常 sheet API**。`quantity > 1` または `quantity` 未設定は表形式。フロント判定は `productionInspectionDrawingPolicy` / `kioskPartMeasurementSheetNavigation`、API は `part-measurement-inspection-drawing-policy`。
-- **評価用編集**: `inspection/edit` + `evaluation-sheets/*` は評価用テンプレ・数量1のみ。本番 sheet を evaluation API で触ると **409**。
-- **データ**: `PartMeasurementTemplateItem` に `markerXRatio` / `markerYRatio` / `nominalValue` / `lowerLimit` / `upperLimit`（任意・既存テンプレは null のまま互換）。
-- **画像**: Phase1 は PNG/JPEG/WebP のみ。TIFF は後続。
-- **実装**: `apps/web/src/features/part-measurement/inspection-drawing`
+正本 ExecPlan: [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。Runbook: [kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)「検査図面 MVP」節。
+
+### 仕様サマリ（後続エージェント向け）
+
+| 区分 | 内容 |
+|------|------|
+| **評価用作成** | キオスクヘッダー **「検査図面作成」**（アンバー・部品測定タブとは別アクティブ）。URL: `/kiosk/part-measurement/inspection/create`。`POST …/inspection-drawing/evaluation-templates`（multipart）。バケット **`__INSPECTION_DRAWING_EVAL__`**。品番・資源CDはラベルのみ（本番 active を差し替えない）。一覧・候補・clone・改版・退役から **除外**。 |
+| **本番編集** | 図面付き本番テンプレ + 記録表 **`quantity === 1`**（ちょうど1）→ 各導線から **`/kiosk/part-measurement/inspection/edit/:sheetId`**。保存・確定は **通常** `PATCH/POST …/sheets/*`。`quantity > 1`・図面なし・座標未設定 → **表形式** `/edit/:sheetId`（開いても図面UIへリダイレクト可）。 |
+| **評価用編集** | 評価用テンプレ由来 sheet のみ `evaluation-sheets/*`。本番 sheet → evaluation API は **409**。評価 sheet → 通常 PATCH/finalize は **409**。 |
+| **データ** | `PartMeasurementTemplateItem`: `markerXRatio` / `markerYRatio` / `nominalValue` / `lowerLimit` / `upperLimit`（任意）。 |
+| **画像** | Phase1: PNG/JPEG/WebP のみ（TIFF 後続）。 |
+| **ヘッダー判定** | `kioskInspectionDrawingRoutes.ts` — `isKioskInspectionDrawingPath` / `isKioskPartMeasurementHubPath`（`/inspection/*` は部品測定タブを **非アクティブ**）。 |
+
+### トラブルシュート（検査図面）
+
+| 症状 | 確認 | 対処 |
+|------|------|------|
+| **「検査図面作成」タブがない** | Pi5 `web` の Git HEAD が `583aecad` 以降か。Pi4 だけ未デプロイか | **Pi5**: 標準デプロイ済みなら強制リロード（[verification-checklist §6.6.4](../guides/verification-checklist.md)）。**Pi4 キオスク**: Pi4×4 デプロイ必須（SPA は Pi5 配信だが運用上 Pi5→Pi4 順次が正）。MVP 初版は URL 直打ちのみでタブ未実装だった |
+| 部品測定タブと検査図面タブが同時にハイライト | `KioskHeader` が `pathname.startsWith('/kiosk/part-measurement')` のまま | `583aecad` 以降の `kioskInspectionDrawingRoutes` 分離を確認 |
+| 図面UIに行かず表形式のまま | sheet の `quantity`（**1 か**）、テンプレに visual + 全項目 `markerXRatio/YRatio` | `createDraft` で図面テンプレなら **初期 quantity=1**（`45c02e0a`）。手動で数量を 2 以上にしていないか |
+| 評価保存で本番テンプレが消える | `POST /templates` を使っていないか | **必ず** `evaluation-templates`。通常 create は同キー active を無効化する |
+| 空入力で旧測定値が残る | API が blank を delete しているか | `PATCH` で `value: null` + サービス層 `deleteMany`（`45c02e0a`） |
+| 評価用 visual を cleanup が消した | `createdVisualTemplateId` 限定か | `cleanupInspectionDrawingEvaluationTemplate` は **当該リクエストで新規作成した visual のみ**削除 |
+
+### 本番デプロイ実績（2026-05-30 · `feat/kiosk-inspection-drawing-mvp`）
+
+| 段階 | ホスト | Detach Run ID | HEAD | PLAY RECAP | Phase12 | 備考 |
+|------|--------|---------------|------|------------|---------|------|
+| 本番導線 | `raspberrypi5` のみ | `20260530-145930-18923` | `dd27791a` | `failed=0` | 43/0/0 | API+Web・約17min |
+| ヘッダータブ | `raspberrypi5` のみ | `20260530-153416-23422` | `583aecad` | `failed=0` | 42/1/0 | Web・現場手動 OK・Pi3 WARN スキップ可 |
+| **未** | Pi4×4 | — | — | — | — | 次タスク |
+
+**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-inspection-drawing-mvp infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（マージ後は `main`）。
+
+**CI**: `26675704712` / `26676840821` **success**（lint-build-unit・api-db-and-infra・e2e 含む）。
 
 ## Current UI spec（2026-04-05 までの合意）
 

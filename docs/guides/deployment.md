@@ -10,6 +10,28 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-30 · **キオスク検査図面 MVP（本番編集 quantity=1 + ヘッダー「検査図面作成」）**·**Pi5 本番先行・Pi4×4 未**） {#kiosk-inspection-drawing-mvp-2026-05-30}
+
+- **変更概要（正本）**: [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [KB-320 §検査図面](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-mvp2026-05-30) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-mvp図面中心ui)。**API+Web**: 図面付き本番テンプレ + **`quantity===1`** の sheet を `inspection/edit` へ自動分岐（通常 sheet API）。評価用は `evaluation-templates` / `evaluation-sheets` で本番と **409 隔離**。**Web**: キオスクヘッダーに **「検査図面作成」** タブ（部品測定タブとは別・`kioskInspectionDrawingRoutes.ts`）。
+- **代表コミット**: **`45c02e0a`**（本番導線）· **`dd27791a`**（export 修正）· **`583aecad`**（ヘッダータブ）· **ブランチ** **`feat/kiosk-inspection-drawing-mvp`**（マージ後は **`main` HEAD**）· **CI** **`26676840821`** **success**
+- **Prisma マイグレーション**: **`20260530120000_part_measurement_template_item_inspection_marker`**（既存 DB に未適用なら Pi5 で `migrate deploy`）
+- **対象ホスト（推奨順）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 1 台ずつ**）。**Pi3**: **`skipping: no hosts matched`**
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-inspection-drawing-mvp infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-30·Pi5 のみ）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | Phase12 | 備考 |
+|--------|---------------|----------|------------|---------|------|
+| `raspberrypi5` | `20260530-145930-18923` | `dd27791a` | `ok=134` `changed=4` `failed=0` | 43/0/0 | 本番導線 |
+| `raspberrypi5` | `20260530-153416-23422` | `583aecad` | `ok=134` `changed=4` `failed=0` | 42/1/0 | ヘッダータブ・現場手動 OK |
+| Pi4×4 | **未実施** | — | — | — | 次タスク |
+
+- **実機（手動·Pi5 済）**: ヘッダー **検査図面作成** → 作成画面。本番図面+数量1 → 図面 edit（任意）。**Pi4**: デプロイ後に各キオスクで同確認 + 強制リロード
+- **トラブルシュート**:
+  - **タブがない** → HEAD `583aecad` 未満 or **Pi4 未デプロイ**（Pi5 ブラウザのみ OK の状態あり）
+  - **表形式のまま** → `quantity!==1` or 図面座標未設定テンプレ
+  - **評価が本番を壊す** → `evaluation-templates` 以外で保存していないか
+- **ナレッジ**: [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [EXEC_PLAN.md](../../EXEC_PLAN.md)
+
 ### 補足（2026-05-29 · **DGX `qwen36_35b_uncensored` + 固定起動ボタン**·**Pi5 → DGX 順次**） {#dgx-uncensored-profile-button-2026-05-29}
 
 - **変更概要（正本）**: [計画](../plans/dgx-uncensored-profile-button.md) · [Runbook §uncensored](../runbooks/dgx-system-prod-local-llm.md#dgx-uncensored-profile-2026-05-29) · [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-uncensored-profile-button)。私用テキスト向け GGUF profile **`qwen36_35b_uncensored`** を DGX registry に追加し、職場 Pi5 管理 UI `/admin/tools/dgx-resource` に **固定起動ボタン**（**`START_MODEL_PROFILE`**）を追加。**業務復帰 orchestration からは除外**（manifest **`businessOrchestrationEligible: false`** · overview **`businessReturnSelectable`** からも除外）。

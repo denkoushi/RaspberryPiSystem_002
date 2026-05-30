@@ -13,7 +13,18 @@
 
 ## 検査図面 MVP（図面中心UI）
 
-- **作成（評価用のみ）**: キオスクヘッダーの **「検査図面作成」** タブ（部品測定タブとは別）、または `/kiosk/part-measurement/inspection/create` で開く。変換済み **PNG/JPEG/WebP** をアップロードし、図面上に測定点を配置。名称・基準値・上下限を設定して **評価用テンプレ**（`POST …/inspection-drawing/evaluation-templates`・multipart 一括・バケット `__INSPECTION_DRAWING_EVAL__`）に保存。入力した品番・資源CDはラベルのみで、**本番 active テンプレは差し替えない**。評価用は **通常テンプレ一覧・候補・clone から除外**。同一画面の **テスト入力**（OK/NG 色）まで。
+詳細・デプロイ実績・トラブルシュート: [KB-320 §検査図面](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-mvp2026-05-30) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [deployment.md §2026-05-30](../guides/deployment.md#kiosk-inspection-drawing-mvp-2026-05-30)。
+
+### キオスクナビ（2026-05-30）
+
+| ヘッダータブ | 遷移先（既定） | アクティブになるパス |
+|--------------|----------------|----------------------|
+| **部品測定** | `/kiosk/part-measurement` | `/kiosk/part-measurement/*` のうち **`/inspection/*` 以外** |
+| **検査図面作成** | `/kiosk/part-measurement/inspection/create` | `/kiosk/part-measurement/inspection/*` 全体（作成・本番/評価 edit 含む） |
+
+実装: `KioskHeader.tsx` + `kioskInspectionDrawingRoutes.ts`。
+
+- **作成（評価用のみ）**: 上記 **「検査図面作成」** タブ、または `/kiosk/part-measurement/inspection/create` を直接開く。変換済み **PNG/JPEG/WebP** をアップロードし、図面上に測定点を配置。名称・基準値・上下限を設定して **評価用テンプレ**（`POST …/inspection-drawing/evaluation-templates`・multipart 一括・バケット `__INSPECTION_DRAWING_EVAL__`）に保存。入力した品番・資源CDはラベルのみで、**本番 active テンプレは差し替えない**。評価用は **通常テンプレ一覧・候補・clone から除外**。同一画面の **テスト入力**（OK/NG 色）まで。
 - **本番導線（編集・閲覧）**: 図面付き本番テンプレかつ **記録表の `quantity` がちょうど 1** のとき、部品測定ハブ（下書き一覧）・生産スケジュール・テンプレ候補・確定一覧・`find-or-open` から **`/kiosk/part-measurement/inspection/edit/:sheetId`** へ自動遷移する。保存・確定は **通常の記録表 API**（`PATCH /api/part-measurement/sheets/:id`・`POST …/finalize`）。**数量が 2 以上**、または図面なし・座標未設定テンプレは **従来どおり表形式** `/edit/:sheetId`。表形式 URL を開いても、対象 sheet なら図面UIへ **リダイレクト**する。
 - **評価用編集 API**: 評価用テンプレ由来の sheet のみ `inspection-drawing/evaluation-sheets/*`（本番 sheet は **409**）。評価用 sheet は通常 PATCH/finalize から **409**（隔離維持）。
 - **制約（Phase1）**: 本番テンプレの新規作成は評価用 create のまま。複数個数の図面UI・TIFF・順位ボードは未対応。詳細は [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
@@ -49,7 +60,9 @@
 ## 実機検証（自動・手動）
 
 - **自動（推奨）**: `./scripts/deploy/verify-phase12-real.sh` — API ヘルス・deploy-status（Pi4 キオスク 4 台）・既存キオスク API に加え、`POST /api/part-measurement/resolve-ticket` と **`GET /api/part-measurement/templates/candidates`** のスモーク（`candidates`・未認証 **401**）を含む（**`revise` は専用 curl 無し**・統合テストで担保）。**実績**: 2026-04-05 **複数記録表（セッション親子・Pi5→Pi4×4）** 反映後も **FAIL 0**（**PASS 42 / WARN 1 / FAIL 0**・約 **135s**・Pi3 WARN は運用上スキップ可）。2026-04-05 **管理テンプレ編集反映後（Pi5 のみ）** も **FAIL 0**（例: 約 129s・同上 WARN 解釈）。詳細は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「実機・自動検証」節。
-- **手動**: 対象キオスクで `/kiosk/part-measurement` を開き、**測定値入力中** 一覧が **3列レイアウト・品名/機種名・更新日時（曜日・秒なし）** になっていることを確認。続けて実移動票で照会 → 記録表開始 → 入力・自動保存 → 確定まで通す。管理で **部品測定テンプレ** を開き、有効行の **編集→保存**（**1要素なら候補キー変更可**）・**削除**で論理削除されること（任意）。
+- **手動（部品測定）**: `/kiosk/part-measurement` で **測定値入力中** 一覧・移動票照会 → 記録 → 確定（従来どおり）。
+- **手動（検査図面・2026-05-30）**: ヘッダー **検査図面作成** → 図面アップロード → 測定点配置 → 保存 → 同一画面テスト入力。本番: 図面付きテンプレで記録開始し **数量=1** → **図面 edit** に遷移すること（`quantity=2` なら表形式のまま）。Pi5 のみデプロイ済みのときは **Pi4 実機ではタブ未反映**に注意。
+- **手動（管理・任意）**: **部品測定テンプレ** で編集/削除。
 - **チェックリスト**: [verification-checklist.md](../guides/verification-checklist.md) **6.6.9**。
 
 ## 関連

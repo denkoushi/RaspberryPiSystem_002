@@ -11,10 +11,14 @@ Maintained in accordance with `.agent/PLANS.md`.
 ## Progress
 
 - [x] (2026-05-30) ブランチ `feat/kiosk-inspection-drawing-mvp` 作成・本 ExecPlan 初期化
-- [x] (2026-05-30) Prisma / API / DTO 拡張（座標・上下限）
+- [x] (2026-05-30) Prisma / API / DTO 拡張（座標・上下限）— migration `20260530120000_part_measurement_template_item_inspection_marker`
 - [x] (2026-05-30) 共通モジュール `features/part-measurement/inspection-drawing`
-- [x] (2026-05-30) 作成画面・実験用入力画面（本番導線は未接続）
-- [x] (2026-05-30) フロント単体テスト・Runbook/KB/INDEX 更新（API 統合テストは DB 要）
+- [x] (2026-05-30) 評価用作成画面・`evaluation-sheets` / `evaluation-templates` API 隔離
+- [x] (2026-05-30) 本番編集導線（`quantity===1` + 図面付きテンプレ → `inspection/edit`、通常 sheet API）
+- [x] (2026-05-30) キオスクヘッダー独立タブ **「検査図面作成」**（`kioskInspectionDrawingRoutes.ts` + `KioskHeader`）
+- [x] (2026-05-30) 単体テスト・Runbook/KB/deployment 補足・CI success（`26675704712` / `26676840821`）
+- [x] (2026-05-30) **Pi5 本番先行**（`583aecad`）— 実機手動 OK・Phase12 **42/1/0**
+- [ ] **Pi4×4 本番** — ヘッダータブ・図面導線を現場キオスクへ（未実施）
 
 ## Surprises & Discoveries
 
@@ -22,7 +26,13 @@ Maintained in accordance with `.agent/PLANS.md`.
   Evidence: `InspectionDrawingCanvas.tsx`, `evaluateMeasurement.ts`
 
 - Observation: 図面編集は `PIECE_INDEX=0` 固定のため、本番 order（複数個）へ接続すると確定不能になる
-  Evidence: レビュー指摘 [P1] → 本番導線からの自動遷移とハブ入口を撤回（2026-05-30）
+  Evidence: レビュー指摘 [P1] → **数量1のみ**に本番自動遷移を限定（2026-05-30）
+
+- Observation: MVP 初版は作成画面が **URL 直打ちのみ**で、現場から「タブがない」と報告
+  Evidence: ExecPlan 当初「ハブボタンは出さない」+ 計画上の「専用タブ」未実装 → **ヘッダー独立タブ**で解消（`583aecad`）
+
+- Observation: `createDraft` が `visualTemplate` を include しないと図面判定できず `quantity` 初期化されない
+  Evidence: 本番導線テスト修正・`partMeasurementTemplateFullInclude` で解消（`45c02e0a`）
 
 ## Decision Log
 
@@ -30,7 +40,11 @@ Maintained in accordance with `.agent/PLANS.md`.
   Rationale: 記録・図面配信・認可を再利用し、既存表形式 UI を維持
   Date/Author: 2026-05-30 / agent
 
-- Decision: Phase1 は作成画面内テストまで。本番 order 導線・ハブボタンは出さない
+- Decision: Phase1 評価用 **作成**はヘッダー **「検査図面作成」** タブ（部品測定タブとは別）。部品測定ハブ内サブナビは採用しない
+  Rationale: ユーザー要望「部品測定タブ内ではなく新規タブ」。アクティブ状態は `isKioskPartMeasurementHubPath` / `isKioskInspectionDrawingPath` で分離
+  Date/Author: 2026-05-30 / agent
+
+- Decision: 本番 **編集**導線は `quantity===1` のみ（schedule / ハブ / 下書き / 確定 / template pick）
   Rationale: inspection 編集は `PIECE_INDEX=0` のみで複数個数 order が破綻する（レビュー [P1][P2]）
   Date/Author: 2026-05-30 / agent
 
@@ -56,9 +70,32 @@ Maintained in accordance with `.agent/PLANS.md`.
 
 ## Outcomes & Retrospective
 
-- 作成画面（URL 直打ち）で図面・測定点・テンプレ保存・同一画面テスト入力まで可能。
-- [x] (2026-05-30) **本番編集導線（数量1のみ）**: 図面付き本番テンプレ + `quantity===1` の sheet は schedule / ハブ / 下書き / 確定一覧 / template pick から `inspection/edit` へ自動分岐。保存は通常 sheet API。評価用 create・評価 API 隔離は維持。
-- 未着手: 本番テンプレ作成の昇格（評価用 create からの接続）、複数個数（個体インデックス）、TIFF、順位ボード連携。
+- **評価用作成**: ヘッダー「検査図面作成」→ `/kiosk/part-measurement/inspection/create`。図面・測定点・評価用テンプレ保存・同一画面テスト入力まで可能（本番 active テンプレは差し替えない）。
+- **本番編集（数量1のみ）**: 図面付き本番テンプレ + `quantity===1` の sheet は各導線から `inspection/edit` へ自動分岐。保存・確定は通常 sheet API。`quantity>1` / 図面なしは表形式 `/edit`。
+- **隔離**: 評価用 `__INSPECTION_DRAWING_EVAL__`・`evaluation-templates` / `evaluation-sheets`・通常 API との **409** 相互ブロックを維持。
+- **本番デプロイ（Pi5 のみ・2026-05-30）**: Detach `20260530-153416-23422`（HEAD `583aecad`）·Phase12 **42/0/1**·現場手動 OK。**Pi4×4 未**のためキオスク実機ではヘッダー変更は Pi5 経由のブラウザ確認まで。
+- **未着手**: 本番テンプレ作成の昇格、複数個数図面UI、TIFF、順位ボード連携、**Pi4×4 デプロイ**。
+
+## 代表コミット（ブランチ `feat/kiosk-inspection-drawing-mvp`）
+
+| SHA | 概要 |
+|-----|------|
+| `caff87b1` | 評価用 MVP 隔離（evaluation API・create 専用） |
+| `45c02e0a` | 本番 `quantity===1` 図面編集導線・policy・navigation |
+| `dd27791a` | 評価用 export 復元（Web テスト） |
+| `583aecad` | キオスクヘッダー「検査図面作成」タブ |
+
+## 主要ファイル（後続読者向け）
+
+| 領域 | パス |
+|------|------|
+| ヘッダー導線 | `apps/web/src/components/kiosk/KioskHeader.tsx` |
+| ルート判定 | `apps/web/src/features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes.ts` |
+| 本番分岐 | `productionInspectionDrawingPolicy.ts` / `kioskPartMeasurementSheetNavigation.ts` |
+| API 方針 | `apps/api/src/services/part-measurement/part-measurement-inspection-drawing-policy.ts` |
+| 評価アクセス | `evaluationSheetAccess.ts`（Web） |
+| 作成 UI | `KioskInspectionDrawingCreatePage.tsx` |
+| 編集 UI | `KioskInspectionDrawingEditPage.tsx` |
 
 ## Context and Orientation
 
@@ -70,6 +107,8 @@ Maintained in accordance with `.agent/PLANS.md`.
 
 ## Validation and Acceptance
 
-- 単体: `evaluateMeasurement` 相当のテスト
-- 統合: `part-measurement.integration.test.ts` に新フィールド透過
-- 手動: `/kiosk/part-measurement/inspection/create` で点配置・テスト入力・保存
+- 単体: `evaluateMeasurement` / `kioskInspectionDrawingRoutes` / `productionInspectionDrawingPolicy` / `kioskPartMeasurementSheetNavigation`
+- 統合: `part-measurement.integration.test.ts`（policy・evaluation 隔離・blank 削除）
+- 自動実機: `./scripts/deploy/verify-phase12-real.sh`（部品測定スモーク含む）
+- 手動（Pi5 実施済）: ヘッダー **検査図面作成** → 作成画面・点配置・保存・テスト入力。本番図面テンプレ + 数量1 → 図面 edit（任意）
+- 手動（Pi4 未）: 上記を **各キオスク Firefox** で再確認（強制リロード §6.6.4）
