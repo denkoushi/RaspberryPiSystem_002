@@ -15,7 +15,7 @@ update-frequency: medium
 - **変更概要（正本）**: [KB-320 §キャンバスズーム](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-canvas-zoom-2026-05-30) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-キャンバスズーム-2026-05-30)。
   - **機能**: テンプレ作成/編集・記録図面 edit の **図面表示**にズーム操作（ヘッダー余白の **`−` `＋` `□` のみ**・倍率数字なし）。**図面キャンバス列の高さは削らない**（ツールバー行は増やさない）。
   - **実装**: `useInspectionDrawingZoom` · `InspectionDrawingCanvasZoomControls` · `computeZoomedCanvasLayout`（ページ `transform: scale` 禁止・[ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md) 契約）。配置モードは **pointerup + 移動量しきい値（10px）** で確定。`pointercancel` は **中止のみ**（パン誤追加防止）。
-- **代表コミット**: **`364aa184`**（`feat(kiosk): add inspection drawing canvas zoom controls`）· ブランチ **`feat/kiosk-inspection-drawing-canvas-zoom`**
+- **代表コミット**: **`e42aff35`**（`main` · PR [#377](https://github.com/denkoushi/RaspberryPiSystem_002/pull/377) squash · 実装 tip **`364aa184`**）
 - **Prisma / API**: **変更なし**（**Web のみ** · Docker `web` 再ビルド）
 - **対象ホスト（推奨順）**: **`raspberrypi5` → Pi4×4**（各 `--limit` 1 台ずつ）。Pi3: `skipping: no hosts matched`
 - **標準コマンド**:

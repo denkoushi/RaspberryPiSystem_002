@@ -8,7 +8,7 @@
 
 ## Progress
 
-- [ ] (2026-05-30 / **Pi5 本番・Pi4×4 未・`main` マージ待ち**) **キオスク検査図面 · キャンバスズーム UI**: ブランチ **`feat/kiosk-inspection-drawing-canvas-zoom`** · tip **`364aa184`** — ヘッダー `centerSlot` に `−` `＋` `□`（倍率表示なし）· キャンバス高さ維持 · 配置 pointerup+10px · `pointercancel` 中止のみ。**Pi5 デプロイ**: `20260530-221723-1575` · **Web のみ** · `failed=0` · Phase12 **42/1/0** · **実機目視 OK**。**CI**: **`26684356891`** success。**次**: docs + PR → `main` マージ → Pi4×4（parity+overflow+ズーム一括推奨）。docs: [KB-320 §キャンバスズーム](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-canvas-zoom-2026-05-30) / [deployment §キャンバスズーム](./docs/guides/deployment.md#kiosk-inspection-drawing-canvas-zoom-2026-05-30) / [ExecPlan](./docs/plans/kiosk-inspection-drawing-mvp-execplan.md)。
+- [x] (2026-05-30 / **Pi5 本番・Pi4×4 未・`main` マージ済**) **キオスク検査図面 · キャンバスズーム UI**: PR [#377](https://github.com/denkoushi/RaspberryPiSystem_002/pull/377) squash **`e42aff35`**（実装 tip **`364aa184`**）— ヘッダー `centerSlot` に `−` `＋` `□`（倍率表示なし）· キャンバス高さ維持 · 配置 pointerup+10px · `pointercancel` 中止のみ。**Pi5 デプロイ**: `20260530-221723-1575` · **Web のみ** · `failed=0` · Phase12 **42/1/0** · **実機目視 OK**。**CI**: **`26684356891`** success。**次**: Pi4×4 順次（parity+overflow+ズーム一括推奨 · `main`）。docs: [KB-320 §キャンバスズーム](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-canvas-zoom-2026-05-30) / [deployment §キャンバスズーム](./docs/guides/deployment.md#kiosk-inspection-drawing-canvas-zoom-2026-05-30) / [ExecPlan](./docs/plans/kiosk-inspection-drawing-mvp-execplan.md)。
 
 - [x] (2026-05-30 / **Pi5 本番・Pi4×4 未・`main` マージ済**) **キオスク検査図面 · 一覧フィルタ overflow 修正**: PR [#376](https://github.com/denkoushi/RaspberryPiSystem_002/pull/376) squash **`46ec0621`**（実装 tip **`e19f9b07`**）— 共有 `InspectionDrawingResourceCdSelect` + `overflow-hidden` シェル（ネイティブ select 描画はみ出し）· 作成画面資源 select 共有化（metadata **10.5rem**）。**Pi5 デプロイ**: `20260530-212035-5804` · **Web のみ** · `failed=0` · Phase12 **42/1/0** · **実機目視 OK**。**CI**: **`26683408296`** success。**次**: Pi4×4 順次（parity + overflow 含む · `main`）。docs: [KB-320 §overflow](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-library-filter-overflow-2026-05-30) / [deployment §overflow](./docs/guides/deployment.md#kiosk-inspection-drawing-library-filter-overflow-2026-05-30) / [ExecPlan](./docs/plans/kiosk-inspection-drawing-mvp-execplan.md)。
 
@@ -2443,7 +2443,7 @@
 | 1 | `main` マージ（一覧ハブ） | **済** | PR [#374](https://github.com/denkoushi/RaspberryPiSystem_002/pull/374) · **`f0a2725c`** |
 | 2 | `main` マージ（preview parity + docs） | **済** | PR [#375](https://github.com/denkoushi/RaspberryPiSystem_002/pull/375) · squash **`504f7549`** |
 | 3 | `main` マージ（filter overflow + docs） | **済** | PR [#376](https://github.com/denkoushi/RaspberryPiSystem_002/pull/376) · squash **`46ec0621`** |
-| 4 | `main` マージ（canvas zoom + docs） | 未 | PR 作成後 · tip **`364aa184`** |
+| 4 | `main` マージ（canvas zoom + docs） | **済** | PR [#377](https://github.com/denkoushi/RaspberryPiSystem_002/pull/377) · squash **`e42aff35`** |
 | 5 | Pi5 実機目視（UI parity） | 未記録 | フィルタ折り返し・測定点縦並び・「一覧へ戻る」 |
 | 6 | Pi5 実機目視（filter overflow） | **済** | 資源 select が工程・履歴と重ならない（`20260530-212035-5804` 後） |
 | 7 | Pi5 実機目視（canvas zoom） | **済** | `−` `＋` `□` · パン誤配置なし（`20260530-221723-1575` 後） |

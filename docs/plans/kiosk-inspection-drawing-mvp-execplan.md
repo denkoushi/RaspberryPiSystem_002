@@ -41,7 +41,7 @@ Maintained in accordance with `.agent/PLANS.md`.
   - 配置: pointerup + 10px しきい値 · `pointercancel` は中止のみ
   - 単体: `inspectionDrawingCanvasLayout` / `inspectionDrawingCanvasPointer` / `inspectionDrawingZoom` · CI **`26684356891`**
 - [x] (2026-05-30) **Pi5 本番** キャンバスズーム — Detach `20260530-221723-1575` · Phase12 **42/1/0** · **実機目視 OK**
-- [ ] **`main` マージ**（キャンバスズーム + docs）— PR 作成後
+- [x] (2026-05-30) **`main` マージ**（キャンバスズーム + docs）— PR [#377](https://github.com/denkoushi/RaspberryPiSystem_002/pull/377) squash **`e42aff35`**
 - [ ] **Pi4×4 本番** — キャンバスズーム `main` マージ後に各キオスクへ順次（overflow 含む未反映分と合わせて推奨）
 - [ ] **Pi5 実機目視** プレビュー parity UI — デプロイ済・目視記録は運用側（任意 Phase12）
 
@@ -167,6 +167,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 | `e19f9b07` | `fix/kiosk-inspection-drawing-library-filter-overflow` | 資源 select overflow クリップ・共有 select |
 | `46ec0621` | `main`（PR #376 squash） | 上記 + docs マージ |
 | `364aa184` | `feat/kiosk-inspection-drawing-canvas-zoom` | キャンバスズーム UI・配置ポインタ契約 |
+| `e42aff35` | `main`（PR #377 squash） | 上記 + docs マージ |
 
 ## 主要ファイル（後続読者向け）
 

@@ -343,6 +343,7 @@ pointerup + 10px しきい値 + pointercancel は中止
 | 段階 | ブランチ / マージ | ホスト | Detach Run ID | HEAD | PLAY RECAP | 備考 |
 |------|-------------------|--------|---------------|------|------------|------|
 | 実装 + CI | `feat/kiosk-inspection-drawing-canvas-zoom` | — | — | `364aa184` | — | CI **`26684356891`** success |
+| **`main` マージ** | PR [#377](https://github.com/denkoushi/RaspberryPiSystem_002/pull/377) | — | — | **`e42aff35`** | — | squash |
 | **Pi5 先行** | 同上（未マージ時） | `raspberrypi5` | `20260530-221723-1575` | `364aa184` | **failed=0** | Phase12 **42/1/0** · **実機目視 OK** |
 | **Pi4×4** | **`main` マージ後** | 4 台 | — | — | **未** |
 
