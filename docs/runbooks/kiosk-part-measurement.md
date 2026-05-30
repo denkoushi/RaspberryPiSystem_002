@@ -48,6 +48,19 @@
 
 **注意**: DEV ルートは本番 Docker イメージには含まれるが、現場オペレータの導線ではない。現場確認は **`/kiosk/part-measurement/inspection`** を使う。
 
+### 検査図面 · キャンバスズーム（2026-05-30） {#検査図面-キャンバスズーム-2026-05-30}
+
+図面表示のズーム操作の確認手順。正本: [KB-320 §キャンバスズーム](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-canvas-zoom-2026-05-30) · [deployment §キャンバスズーム](../guides/deployment.md#kiosk-inspection-drawing-canvas-zoom-2026-05-30)。
+
+1. キオスクで **強制リロード**（[verification-checklist.md §6.6.4](../guides/verification-checklist.md)）。
+2. **検査図面** → テンプレ **新規** または **編集**（図面画像あり）。記録 **図面 edit** でも同様。
+3. ヘッダー帯の **図面ファイル選択と切削/研削のあいだ**に **`−` `＋` `□`** があること（倍率数字なし）。
+4. **`＋`** で拡大 → 図面エリア内を **スクロール**して細部を見られること。
+5. **`□`** で全面表示に戻ること。
+6. **点を配置**モードで、拡大後に **ドラッグパン**しても **測定点が増えない**こと。短いタップで 1 点追加されること。
+7. 図面表示枠の **縦の高さ**が、ズーム導入前と同程度であること（ヘッダー下に余計なツールバー行がないこと）。
+8. 開発 Mac: `pnpm dev` → `/dev/kiosk-inspection-drawing-create`（fixture 図面あり）。
+
 ### 検査図面 · 一覧フィルタ overflow（2026-05-30） {#検査図面-一覧フィルタ-overflow-2026-05-30}
 
 一覧フィルタの資源欄が工程ボタンに重なって見える事象の確認手順。正本: [KB-320 §フィルタ overflow](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-library-filter-overflow-2026-05-30) · [deployment §overflow](../guides/deployment.md#kiosk-inspection-drawing-library-filter-overflow-2026-05-30)。

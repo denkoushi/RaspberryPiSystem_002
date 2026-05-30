@@ -295,6 +295,79 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 - `inspectionDrawingBoundedSelectClasses.test.ts` は **Tailwind クラス文字列**の回帰のみ。**実際の描画崩れ**は Mac DEV（`/dev/kiosk-inspection-drawing-library`）または Pi5 キオスク目視で確認する。
 
+## 検査図面 · キャンバスズーム UI（2026-05-30） {#検査図面-canvas-zoom-2026-05-30}
+
+正本 ExecPlan: [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。Runbook: [kiosk-part-measurement.md §キャンバスズーム](../runbooks/kiosk-part-measurement.md#検査図面-キャンバスズーム-2026-05-30)。deployment: [deployment.md §2026-05-30](../guides/deployment.md#kiosk-inspection-drawing-canvas-zoom-2026-05-30)。
+
+### 仕様・スコープ（後続エージェント向け）
+
+| 区分 | 内容 |
+|------|------|
+| **変更種別** | **Web のみ**（`apps/web`）。API / Prisma / マイグレーション **なし** |
+| **対象画面** | テンプレ **作成/編集**（`KioskInspectionDrawingCreatePage`）· 記録 **図面 edit**（`KioskInspectionDrawingEditPage`）· DEV **`/dev/kiosk-inspection-drawing-create`** |
+| **非対象** | 一覧ハブ（図面ビューアなし）· 専用 API 契約 |
+| **UI 配置** | `InspectionDrawingCreateHeaderBand` の **`centerSlot`**（メタデータ列と右ツールバーの **横余白**）。**キャンバス列の上に行を足さない** |
+| **操作** | **`−`** 縮小 · **`＋`** 拡大 · **`□`** 全面表示（zoom=1 + スクロール先頭）。**倍率％表示なし** |
+| **倍率** | 既定 **1.0**（ビューポートにフィット）· 範囲 **0.5〜2.5** · 刻み **0.25**（`inspectionDrawingZoom.ts`） |
+| **座標契約** | 保存は従来どおり **xRatio / yRatio**。ズームは **表示専用**（`computeZoomedCanvasLayout` + `overflow-auto`） |
+| **ADR** | ページ全体の **`transform: scale` は使わない**（DEV プレビュー parity 契約）。図面内は **レイアウト寸法スケール** |
+
+### 配置モードのポインタ契約（重要）
+
+| イベント | 挙動 |
+|----------|------|
+| `pointerdown`（place） | 開始位置記録のみ（即 `onAddPoint` **しない**） |
+| `pointermove` | 最大移動量を追跡 |
+| `pointerup` | 移動 **&lt; 10px** なら `onAddPoint`（`inspectionDrawingCanvasPointer.ts`） |
+| `pointercancel` | **pending 解除のみ**（パンでブラウザが cancel したとき誤追加しない） |
+
+```text
+初版: pointerdown で即追加 + touch-pan → パン開始位置に測定点が増える（タブレット）
+  ↓
+pointerup + 10px しきい値 + pointercancel は中止
+```
+
+### 代表ファイル
+
+| 領域 | パス |
+|------|------|
+| ズーム state | `useInspectionDrawingZoom.ts` |
+| ズーム UI | `InspectionDrawingCanvasZoomControls.tsx`（ボタン群のみ。中央スロット flex は HeaderBand） |
+| ヘッダー | `InspectionDrawingCreateHeaderBand.tsx`（`centerSlot`） |
+| キャンバス | `InspectionDrawingCanvas.tsx` |
+| レイアウト純関数 | `inspectionDrawingCanvasLayout.ts` · `inspectionDrawingCanvasPointer.ts` |
+| 単体テスト | `inspectionDrawingCanvasLayout.test.ts` · `inspectionDrawingCanvasPointer.test.ts` · `inspectionDrawingZoom.test.ts` |
+
+### 本番デプロイ実績
+
+| 段階 | ブランチ / マージ | ホスト | Detach Run ID | HEAD | PLAY RECAP | 備考 |
+|------|-------------------|--------|---------------|------|------------|------|
+| 実装 + CI | `feat/kiosk-inspection-drawing-canvas-zoom` | — | — | `364aa184` | — | CI **`26684356891`** success |
+| **Pi5 先行** | 同上（未マージ時） | `raspberrypi5` | `20260530-221723-1575` | `364aa184` | **failed=0** | Phase12 **42/1/0** · **実機目視 OK** |
+| **Pi4×4** | **`main` マージ後** | 4 台 | — | — | **未** |
+
+**標準コマンド（Pi5・ブランチ時）**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-inspection-drawing-canvas-zoom \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+### トラブルシュート（キャンバスズーム）
+
+| 症状 | 確認 | 対処 |
+|------|------|------|
+| ズームボタンがない | 図面未選択 · HEAD &lt; `364aa184` | 図面読込後に `centerSlot` 表示 · `main` 反映 + 強制リロード |
+| 図面が矮くなった | キャンバス上にツールバー行を足していないか | `centerSlot` は HeaderBand のみ（`inspectionDrawingCanvasColumnClassName` 維持） |
+| 拡大後ドラッグで点が増える | `pointercancel` が `onAddPoint` まで届いていないか | `handlePlacePointerCancel` のみ clear（`364aa184` 以降） |
+| タップしても点が付かない | place モードか · 移動が 10px 超か | 短いタップで `pointerup` 確定 |
+| 中央スロットが二重 flex | ZoomControls と HeaderBand 両方に `flex-1` | Controls は `inspectionDrawingCanvasZoomControlsClassName`（ボタン群のみ） |
+
+### テストの限界
+
+- レイアウト・しきい値は **純関数の単体テスト**。**タブレットでのパン誤追加**は Pi5/DEV 目視で確認する（`/dev/kiosk-inspection-drawing-create` 推奨）。
+
 ## Current UI spec（2026-04-05 までの合意）
 
 - **管理 `/admin/tools/part-measurement-templates`（2026-04-05 追補）**: 有効行の **編集** でフォームに読み込み。**登録スコープ・FIHNCD・資源CD・工程**は変更不可。**`FHINMEI_ONLY` のみ** **FHINMEI（候補キー）** を編集可能（他スコープでは従来どおり固定）。**保存**は `POST /api/part-measurement/templates/:id/revise`（名称・測定項目・図面＋**任意で `candidateFhinmei`**。DB 上は **次 `version` の新行**＋同系譜の旧版 `isActive: false`）。**削除**（最新の有効版のみ）は `POST /api/part-measurement/templates/:id/retire`（**論理削除**・旧版は**自動で有効にならない**）。一覧は既定 **有効版のみ**・**無効版も表示**で旧版の **有効化**が可能。無効版を `revise` / `retire` すると **409**。

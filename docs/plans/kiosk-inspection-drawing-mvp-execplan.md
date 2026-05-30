@@ -35,7 +35,14 @@ Maintained in accordance with `.agent/PLANS.md`.
   - 単体: `inspectionDrawingBoundedSelectClasses.test.ts` · CI **`26683408296`**
 - [x] (2026-05-30) **Pi5 本番** フィルタ overflow — Detach `20260530-212035-5804` · Phase12 **42/1/0** · **実機目視 OK**
 - [x] (2026-05-30) **`main` マージ**（overflow 修正 + docs）— PR [#376](https://github.com/denkoushi/RaspberryPiSystem_002/pull/376) squash **`46ec0621`**
-- [ ] **Pi4×4 本番** — `main` マージ後に各キオスクへ順次（未実施）
+- [x] (2026-05-30) **キャンバスズーム UI**（`feat/kiosk-inspection-drawing-canvas-zoom` · **`364aa184`**）
+  - ヘッダー `centerSlot` に `−` `＋` `□`（倍率表示なし）· キャンバス列の高さ維持
+  - `useInspectionDrawingZoom` · `computeZoomedCanvasLayout`（ページ `scale` 禁止契約）
+  - 配置: pointerup + 10px しきい値 · `pointercancel` は中止のみ
+  - 単体: `inspectionDrawingCanvasLayout` / `inspectionDrawingCanvasPointer` / `inspectionDrawingZoom` · CI **`26684356891`**
+- [x] (2026-05-30) **Pi5 本番** キャンバスズーム — Detach `20260530-221723-1575` · Phase12 **42/1/0** · **実機目視 OK**
+- [ ] **`main` マージ**（キャンバスズーム + docs）— PR 作成後
+- [ ] **Pi4×4 本番** — キャンバスズーム `main` マージ後に各キオスクへ順次（overflow 含む未反映分と合わせて推奨）
 - [ ] **Pi5 実機目視** プレビュー parity UI — デプロイ済・目視記録は運用側（任意 Phase12）
 
 ## Surprises & Discoveries
@@ -69,6 +76,12 @@ Maintained in accordance with `.agent/PLANS.md`.
 
 - Observation: 作成画面の資源 select を `w-fit` にすると品番等（10.5rem）と幅不一致になる
   Evidence: コードレビュー [P2] → `widthVariant=metadata` は `inspectionDrawingMetadataResourceFieldWidthClass`（`e19f9b07`）
+
+- Observation: ズーム中の `touch-action: pan-x pan-y` と配置モードで **pointerdown 即追加**すると、パン開始位置に測定点が増える
+  Evidence: タブレット実機・レビュー [P1] → pointerup + 10px しきい値（`364aa184`）
+
+- Observation: `pointercancel` でも `onAddPoint` すると、ブラウザがパンを cancel したとき誤配置する
+  Evidence: レビュー追補 → `handlePlacePointerCancel` は `clearPendingPlace` のみ（`364aa184`）
 
 ## Decision Log
 
@@ -124,13 +137,21 @@ Maintained in accordance with `.agent/PLANS.md`.
   Rationale: ネイティブ select は flex 子の box 幅を超えて描画される（[KB-320 §overflow](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-library-filter-overflow-2026-05-30)）
   Date/Author: 2026-05-30 / agent
 
+- Decision: 図面ズームは **ヘッダー `centerSlot`**（`−` `＋` `□` のみ）。キャンバス上にツールバー行を足さない。倍率は **0.5〜2.5 / 刻み 0.25**、座標は **ratio のまま**
+  Rationale: 図面表示領域の高さを減らさない現場要望。ADR のページ `transform: scale` 禁止に合わせレイアウト寸法でスケール
+  Date/Author: 2026-05-30 / agent
+
+- Decision: 配置モードの確定は **pointerup** と **移動量 &lt; 10px**。`pointercancel` は **pending 解除のみ**
+  Rationale: ズーム後パンとタップ配置の競合（レビュー [P1]）
+  Date/Author: 2026-05-30 / agent
+
 ## Outcomes & Retrospective
 
 - **評価用作成（互換）**: `/kiosk/part-measurement/inspection/create` は残置。評価用 API は UI 主導線から外した。
 - **一覧ハブ**: ヘッダー **「検査図面」** → 一覧 → 新規/編集/履歴。専用 API + 要約 DTO。旧版は閲覧専用・有効化後に再取得。
 - **本番編集（数量1のみ）**: 変更なし（`inspection/edit` + 通常 sheet API）。
 - **隔離**: 評価用バケットと **409** 相互ブロックは維持。
-- **デプロイ**: Pi5 で MVP 導線・タブ・一覧ハブ・**プレビュー parity（`ccacef85`）**・**フィルタ overflow（`e19f9b07`）** まで反映。**Pi4×4 は overflow 含む `main` マージ後の次タスク**。
+- **デプロイ**: Pi5 で MVP 導線・タブ・一覧ハブ・**プレビュー parity（`ccacef85`）**・**フィルタ overflow（`e19f9b07`）**・**キャンバスズーム（`364aa184`）** まで反映。**Pi4×4 は `main` マージ後の次タスク**（parity + overflow + ズーム）。
 - **DEV プレビュー**: `/dev/kiosk-inspection-drawing-*` で本番コンポーネントを Mac 上で反復可能（fixture）。
 - **未着手**: 複数個数図面UI、TIFF、順位ボード連携、Phase12 への専用 API スモーク追加（任意）。
 
@@ -145,6 +166,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 | `ccacef85` | `feat/kiosk-inspection-drawing-preview-parity` | DEV 本番パリティ・共有 UI コンポーネント |
 | `e19f9b07` | `fix/kiosk-inspection-drawing-library-filter-overflow` | 資源 select overflow クリップ・共有 select |
 | `46ec0621` | `main`（PR #376 squash） | 上記 + docs マージ |
+| `364aa184` | `feat/kiosk-inspection-drawing-canvas-zoom` | キャンバスズーム UI・配置ポインタ契約 |
 
 ## 主要ファイル（後続読者向け）
 
@@ -162,6 +184,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 | 測定点パネル（共有） | `InspectionDrawingPointSettingsPanel.tsx` |
 | DEV プレビュー | `pages/dev/KioskInspectionDrawing*PreviewPage.tsx` · `KioskInspectionDrawingDevPreviewChrome.tsx` |
 | 記録図面編集 UI | `KioskInspectionDrawingEditPage.tsx` |
+| キャンバスズーム | `useInspectionDrawingZoom.ts` · `InspectionDrawingCanvasZoomControls.tsx` · `inspectionDrawingCanvasLayout.ts` |
 | テンプレサービス | `part-measurement-template.service.ts`（`list/get/reviseKioskInspectionDrawing*`） |
 
 ## Context and Orientation
@@ -180,6 +203,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 - 手動（Pi5・一覧ハブ）: **検査図面** → 一覧 → 新規/編集/履歴。旧版 readOnly・有効化→編集可
 - 手動（Pi5・UI parity）: フィルタ折り返し・測定点縦並び・「一覧へ戻る」・下部リンクなし（`ccacef85` 以降）
 - 手動（Pi5・フィルタ overflow）: 資源 select が工程・履歴と重ならない・「履歴を含む」全文（`e19f9b07` 以降 · Pi5 実機 OK）
+- 手動（Pi5・キャンバスズーム）: ヘッダー `−` `＋` `□` · 拡大パンで点が増えない · `□` フィット（`364aa184` 以降 · Pi5 実機 OK）
 - 手動（Mac DEV）: `/dev/kiosk-inspection-drawing-library` · `/dev/kiosk-inspection-drawing-create`（本番コンポーネント・fixture）
 - 手動（Pi5・記録）: 本番図面テンプレ + 数量1 → 図面 edit
 - 手動（Pi4 未）: `main` 反映後、各キオスクで同確認（強制リロード §6.6.4）
