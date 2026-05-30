@@ -39,6 +39,10 @@ export const inspectionDrawingMetadataGridClassName =
 export const inspectionDrawingMetadataLabelClassName =
   'grid w-fit justify-items-start gap-1 text-[1rem] font-semibold';
 
+/** 一覧フィルタ — フィールドラベル（メタデータの w-fit は使わない） */
+export const inspectionDrawingLibraryFilterFieldLabelClassName =
+  'grid gap-1 text-[1rem] font-semibold';
+
 /** flex-1 + min-w-0 だと狭いキオスク幅でボタンが1列縦積みになるため shrink-0 */
 export const inspectionDrawingToolbarSlotClassName =
   'flex shrink-0 flex-wrap items-center justify-end gap-2';
@@ -58,3 +62,25 @@ export const inspectionDrawingPointSettingPanelClassName =
 /** 測定点設定パネル内 Input — 既定 ~1rem の 1.3 倍 */
 export const inspectionDrawingPointSettingInputClassName =
   'text-slate-900 text-[1.12rem] leading-snug py-2';
+
+/** 一覧フィルタ — 品番欄幅 */
+export const inspectionDrawingLibraryFilterFhincdWidthClass =
+  'w-full shrink-0 sm:w-[13rem]';
+
+/** 一覧フィルタ — 資源欄幅 */
+export const inspectionDrawingLibraryFilterResourceWidthClass =
+  'w-full min-w-0 shrink-0 sm:w-[15rem] sm:max-w-[15rem]';
+
+/** 資源 select のクリップ境界（ネイティブ select の描画はみ出し防止） */
+export const inspectionDrawingBoundedSelectShellClassName =
+  'min-w-0 w-full overflow-hidden rounded-md';
+
+/** 資源 select 本体（シェル内で幅 100% に収める） */
+export const inspectionDrawingBoundedSelectClassName =
+  'box-border h-11 w-full min-w-0 max-w-full rounded-md border-2 border-slate-500 bg-white px-3 text-[1.02rem] text-slate-900';
+
+/** 作成画面メタデータ — 資源 select フィールド幅（品番・テンプレ名等と同じ 10.5rem + はみ出しクリップ用 min-w-0） */
+export const inspectionDrawingMetadataResourceFieldWidthClass = clsx(
+  inspectionDrawingMetadataControlWidthClass,
+  'min-w-0'
+);

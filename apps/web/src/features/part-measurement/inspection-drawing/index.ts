@@ -5,6 +5,11 @@ export {
   InspectionDrawingLibraryFilterBar,
   type InspectionDrawingLibraryProcessFilter
 } from './InspectionDrawingLibraryFilterBar';
+export {
+  InspectionDrawingResourceCdSelect,
+  type InspectionDrawingResourceCdSelectOption,
+  type InspectionDrawingResourceCdSelectWidthVariant
+} from './InspectionDrawingResourceCdSelect';
 export type { InspectionDrawingToolbarMode } from './InspectionDrawingCreateToolbar';
 export { InspectionDrawingCanvas } from './InspectionDrawingCanvas';
 export {
@@ -30,16 +35,21 @@ export {
 export { InspectionDrawingValuePanel } from './InspectionDrawingValuePanel';
 export { InspectionDrawingTemplateHistoryDialog } from './InspectionDrawingTemplateHistoryDialog';
 export {
+  inspectionDrawingBoundedSelectClassName,
+  inspectionDrawingBoundedSelectShellClassName,
   inspectionDrawingCanvasColumnClassName,
   inspectionDrawingHeaderBandClassName,
   inspectionDrawingKioskDisabledButtonClass,
   inspectionDrawingKioskToggleInactiveClass,
+  inspectionDrawingLibraryFilterFhincdWidthClass,
+  inspectionDrawingLibraryFilterResourceWidthClass,
   inspectionDrawingMetadataControlWidthClass,
   inspectionDrawingMetadataFileInputClass,
   inspectionDrawingMetadataFileInputClassName,
   inspectionDrawingMetadataInputClass,
   inspectionDrawingMetadataInputClassName,
   inspectionDrawingMetadataLabelClassName,
+  inspectionDrawingMetadataResourceFieldWidthClass,
   inspectionDrawingPointSettingInputClassName,
   inspectionDrawingPointSettingPanelClassName,
   inspectionDrawingSideAsideClassName

@@ -164,7 +164,7 @@ curl -sk "${BASE}/part-measurement/inspection-drawing/templates?limit=5" -H "x-c
 | **DEV URL** | `/dev/kiosk-inspection-drawing-library` · `/dev/kiosk-inspection-drawing-create`（fixture: `inspectionDrawingPreviewFixtures.ts`） |
 | **本番 URL** | `/kiosk/part-measurement/inspection`（一覧）· `/inspection/create` · `/inspection/templates/:id/edit` |
 | **共有コンポーネント** | `InspectionDrawingLibraryFilterBar` · `InspectionDrawingPointSettingsPanel` · `InspectionDrawingCreateToolbar`（本番ページ + DEV プレビューページ双方から import） |
-| **一覧フィルタ UI** | **`flex-wrap`**。旧 `lg:grid-cols-[13rem_15rem_auto_auto_auto]` は長い資源表示名が工程列と **視覚的に重なる** |
+| **一覧フィルタ UI** | **`flex-wrap`**。資源 `<select>` は **`overflow-hidden` シェル**（`InspectionDrawingResourceCdSelect`）で隣列と重ならない。旧 `lg:grid-cols-[13rem_15rem_auto_auto_auto]` は廃止 |
 | **測定点パネル** | 基準値・下限・上限は **縦並び**（1 列）。横 3 列 grid は廃止 |
 | **作成ツールバー** | 保存の右に **「一覧へ戻る」**（`libraryTo` / `Link` + `buttonClassName` — `<Link><button>` は HTML 非妥当のため不可） |
 | **作成画面下部** | 「図面をタップして測定点を追加」「一覧プレビューへ」等のリンクは **削除**（本番・DEV 共通） |

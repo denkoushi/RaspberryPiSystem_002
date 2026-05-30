@@ -19,6 +19,7 @@ import {
   InspectionDrawingCreateHeaderBand,
   InspectionDrawingCreateToolbar,
   InspectionDrawingPointSettingsPanel,
+  InspectionDrawingResourceCdSelect,
   InspectionDrawingValuePanel,
   inspectionDrawingCanvasColumnClassName,
   inspectionDrawingMetadataFileInputClass,
@@ -92,6 +93,14 @@ export function KioskInspectionDrawingCreatePage() {
     if (resourceCd.trim()) unique.add(resourceCd.trim());
     return [...unique].sort((a, b) => a.localeCompare(b, 'ja'));
   }, [resourceCd, resourcesQuery.data?.resources]);
+  const resourceSelectOptions = useMemo(
+    () =>
+      resourceOptions.map((cd) => ({
+        value: cd,
+        label: formatResourceCdWithJapaneseNames(cd, resourceNameMap)
+      })),
+    [resourceNameMap, resourceOptions]
+  );
 
   useEffect(() => {
     return () => {
@@ -294,21 +303,14 @@ export function KioskInspectionDrawingCreatePage() {
                     className={inspectionDrawingMetadataInputClass}
                   />
                 </label>
-                <label className={inspectionDrawingMetadataLabelClassName}>
-                  資源
-                  <select
-                    value={resourceCd}
-                    onChange={(e) => setResourceCd(e.target.value)}
-                    className={`${inspectionDrawingMetadataInputClass} rounded-md border-2 border-slate-500 bg-white`}
-                  >
-                    <option value="">選択してください</option>
-                    {resourceOptions.map((cd) => (
-                      <option key={cd} value={cd}>
-                        {formatResourceCdWithJapaneseNames(cd, resourceNameMap)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <InspectionDrawingResourceCdSelect
+                  value={resourceCd}
+                  onChange={setResourceCd}
+                  options={resourceSelectOptions}
+                  emptyOptionLabel="選択してください"
+                  widthVariant="metadata"
+                  disabled={contentReadOnly}
+                />
               </>
             )}
             <label className={inspectionDrawingMetadataLabelClassName}>
