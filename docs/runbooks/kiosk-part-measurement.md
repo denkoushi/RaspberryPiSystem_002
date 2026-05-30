@@ -24,7 +24,12 @@
 
 実装: `KioskHeader.tsx` + `kioskInspectionDrawingRoutes.ts`。
 
-- **一覧/作成/編集（本番テンプレ中心）**: ヘッダー **「検査図面」** → `/kiosk/part-measurement/inspection`。一覧から **新規** / **編集** / **履歴** を開く。作成・編集は本番テンプレ API（`POST /part-measurement/templates` / `POST /part-measurement/templates/:id/revise`）を使い、図面付きテンプレを版管理する。資源は表示名付きドロップダウンで選ぶ。UI は高密度・大きめ文字・短文中心。
+- **一覧/作成/編集（本番テンプレ中心）**: ヘッダー **「検査図面」** → `/kiosk/part-measurement/inspection`（一覧ハブ）。一覧から **新規**（`/inspection/create`）・**編集**（`/inspection/templates/:id/edit`）・**履歴**（ダイアログ）を開く。
+  - **新規**: `POST /api/part-measurement/templates`（multipart・図面画像必須・`THREE_KEY`）。
+  - **一覧・読込**: `GET /api/part-measurement/inspection-drawing/templates`（`fhincd` **部分一致**・要約 DTO）/ `GET …/templates/:id`（全項目・旧版閲覧可）。
+  - **編集保存**: `POST /api/part-measurement/inspection-drawing/templates/:id/revise`（**有効版のみ**）。汎用 `POST /templates/:id/revise` はキオスク検査図面からは使わない。
+  - **旧版**: `isActive: false` は **閲覧専用**。履歴から有効化後、専用 GET で再読込して編集。
+  - 資源は **表示名付きドロップダウン**。品番・資源・工程は編集時 **変更不可**（表示のみ）。
 - **本番導線（編集・閲覧）**: 図面付き本番テンプレかつ **記録表の `quantity` がちょうど 1** のとき、部品測定ハブ（下書き一覧）・生産スケジュール・テンプレ候補・確定一覧・`find-or-open` から **`/kiosk/part-measurement/inspection/edit/:sheetId`** へ自動遷移する。保存・確定は **通常の記録表 API**（`PATCH /api/part-measurement/sheets/:id`・`POST …/finalize`）。**数量が 2 以上**、または図面なし・座標未設定テンプレは **従来どおり表形式** `/edit/:sheetId`。表形式 URL を開いても、対象 sheet なら図面UIへ **リダイレクト**する。
 - **評価用編集 API**: 既存互換のため `inspection-drawing/evaluation-sheets/*` は当面残すが、新しいキオスク UI 導線からは使用しない。本番 sheet は引き続き **409**、評価用 sheet も通常 PATCH/finalize から **409**。
 - **制約（現時点）**: 複数個数の図面UI・TIFF・順位ボードは未対応。図面中心の本番編集は引き続き **quantity===1** のみ。詳細は [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
@@ -59,9 +64,10 @@
 
 ## 実機検証（自動・手動）
 
-- **自動（推奨）**: `./scripts/deploy/verify-phase12-real.sh` — API ヘルス・deploy-status（Pi4 キオスク 4 台）・既存キオスク API に加え、`POST /api/part-measurement/resolve-ticket` と **`GET /api/part-measurement/templates/candidates`** のスモーク（`candidates`・未認証 **401**）を含む（**`revise` は専用 curl 無し**・統合テストで担保）。**実績**: 2026-04-05 **複数記録表（セッション親子・Pi5→Pi4×4）** 反映後も **FAIL 0**（**PASS 42 / WARN 1 / FAIL 0**・約 **135s**・Pi3 WARN は運用上スキップ可）。2026-04-05 **管理テンプレ編集反映後（Pi5 のみ）** も **FAIL 0**（例: 約 129s・同上 WARN 解釈）。詳細は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「実機・自動検証」節。
+- **自動（推奨）**: `./scripts/deploy/verify-phase12-real.sh` — 部品測定 `resolve-ticket` / `templates/candidates` スモーク含む。**検査図面専用 API はスクリプト未収録**（統合テスト + [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) curl 例）。**2026-05-30 一覧ハブ（Pi5）**: **PASS 42 / WARN 1 / FAIL 0**（約 76s）。
 - **手動（部品測定）**: `/kiosk/part-measurement` で **測定値入力中** 一覧・移動票照会 → 記録 → 確定（従来どおり）。
-- **手動（検査図面）**: ヘッダー **検査図面** → 一覧表示 → 新規作成または既存テンプレ編集 → 履歴確認。本番: 図面付きテンプレで記録開始し **数量=1** → **図面 edit** に遷移すること（`quantity=2` なら表形式のまま）。Pi5 のみデプロイ済みのときは **Pi4 実機ではタブ未反映**に注意。
+- **手動（検査図面・テンプレ）**: **検査図面** → 一覧 → 新規/編集/履歴。旧版 readOnly・有効化後編集可。
+- **手動（検査図面・記録）**: 図面付きテンプレ + **数量=1** → **図面 edit**（`quantity≥2` は表形式）。**Pi4** は `main` デプロイ前はタブ未反映の可能性（KB-320）。
 - **手動（管理・任意）**: **部品測定テンプレ** で編集/削除。
 - **チェックリスト**: [verification-checklist.md](../guides/verification-checklist.md) **6.6.9**。
 
