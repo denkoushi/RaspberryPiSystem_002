@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Plugin register() gates commands on deployed bridge artifacts."""
 
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -58,6 +59,46 @@ class PluginRegisterTests(unittest.TestCase):
             task_call = ctx.register_command.call_args_list[0]
             self.assertEqual(task_call[1].get("args_hint"), "<task instruction>")
             ctx.register_hook.assert_called_once()
+
+    def test_task_approve_returns_expired_message_without_failed_prefix(self) -> None:
+        with unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+        ) as coord_mock, unittest.mock.patch.object(
+            plugin,
+            "read_gateway_session_context",
+            return_value=("user-1", "chan-1"),
+        ):
+            coord = MagicMock()
+            coord.resolve_for_user.return_value = (
+                False,
+                "承認期限切れ。もう一度 `/task` を実行してください。",
+            )
+            coord_mock.return_value = coord
+
+            result = asyncio.run(plugin._handle_task_approve(""))
+
+        self.assertEqual(result, "承認期限切れ。もう一度 `/task` を実行してください。")
+
+    def test_task_deny_returns_expired_message_without_failed_prefix(self) -> None:
+        with unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+        ) as coord_mock, unittest.mock.patch.object(
+            plugin,
+            "read_gateway_session_context",
+            return_value=("user-1", "chan-1"),
+        ):
+            coord = MagicMock()
+            coord.resolve_for_user.return_value = (
+                False,
+                "承認期限切れ。もう一度 `/task` を実行してください。",
+            )
+            coord_mock.return_value = coord
+
+            result = asyncio.run(plugin._handle_task_deny(""))
+
+        self.assertEqual(result, "承認期限切れ。もう一度 `/task` を実行してください。")
 
 
 if __name__ == "__main__":

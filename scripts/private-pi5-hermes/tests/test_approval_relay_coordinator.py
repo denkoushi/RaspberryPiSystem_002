@@ -49,9 +49,25 @@ class CoordinatorTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("approved", message)
         self.assertEqual(store.read_response().choice, ApprovalChoice.ONCE)
 
-    def test_try_resolve_text_passthrough_when_no_pending(self) -> None:
-        self.coord.new_task_context(discord_user_id="user-1")
+    def test_try_resolve_text_without_pending_does_not_clear_running_binding(self) -> None:
+        ctx = self.coord.new_task_context(discord_user_id="user-1")
         self.assertIsNone(self.coord.try_resolve_text("user-1", "yes"))
+        self.assertEqual(
+            FileApprovalStore.user_binding_task_id(self.store_dir, "user-1"),
+            ctx.task_id,
+        )
+
+    def test_early_yes_then_pending_request_still_resolves(self) -> None:
+        ctx = self.coord.new_task_context(discord_user_id="user-1")
+        self.assertIsNone(self.coord.try_resolve_text("user-1", "yes"))
+        store = FileApprovalStore(self.store_dir, ctx.task_id)
+        store.write_request({"command": "touch x", "description": "write"})
+        result = self.coord.try_resolve_text("user-1", "yes")
+        self.assertIsNotNone(result)
+        assert result is not None
+        ok, _message = result
+        self.assertTrue(ok)
+        self.assertEqual(store.read_response().choice, ApprovalChoice.ONCE)
 
     def test_new_task_context_rejects_concurrent_task_for_same_user(self) -> None:
         self.coord.new_task_context(discord_user_id="user-1")
@@ -80,9 +96,39 @@ class CoordinatorTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.05)
             stop.set()
 
+        async def _notifier(message: str) -> None:
+            ctx.intermediate_messages.append(message)
+
         asyncio.create_task(_emit_later())
-        await self.coord.watch_task(ctx, stop_event=stop)
+        await self.coord.watch_task(ctx, notifier=_notifier, stop_event=stop)
         self.assertTrue(ctx.intermediate_messages)
+
+    def test_finish_without_grace_allows_immediate_retry(self) -> None:
+        ctx = self.coord.new_task_context(discord_user_id="user-1")
+        self.coord.finish_task_context(ctx, enter_grace=False)
+        self.assertIsNone(FileApprovalStore.user_binding_task_id(self.store_dir, "user-1"))
+        retry = self.coord.new_task_context(discord_user_id="user-1")
+        self.assertNotEqual(retry.task_id, ctx.task_id)
+
+    def test_finish_with_grace_does_not_block_new_task(self) -> None:
+        ctx = self.coord.new_task_context(discord_user_id="user-1")
+        self.coord.finish_task_context(ctx, enter_grace=True)
+        self.assertIsNone(FileApprovalStore.running_task_id(self.store_dir, "user-1"))
+        retry = self.coord.new_task_context(discord_user_id="user-1")
+        self.assertNotEqual(retry.task_id, ctx.task_id)
+
+    def test_try_resolve_text_after_grace_finish_reports_expired(self) -> None:
+        ctx = self.coord.new_task_context(discord_user_id="user-1")
+        store = FileApprovalStore(self.store_dir, ctx.task_id)
+        store.write_request({"command": "touch x", "description": "write"})
+        store.clear_pending_files()
+        self.coord.finish_task_context(ctx, enter_grace=True)
+        result = self.coord.try_resolve_text("user-1", "yes")
+        self.assertIsNotNone(result)
+        assert result is not None
+        ok, message = result
+        self.assertFalse(ok)
+        self.assertIn("承認期限切れ", message)
 
 
 class PluginSlashActorBindTests(unittest.TestCase):
@@ -135,7 +181,7 @@ class PluginSlashActorBindTests(unittest.TestCase):
 
 
 class PluginTextApprovalTests(unittest.TestCase):
-    def test_pre_gateway_dispatch_skips_on_yes(self) -> None:
+    def test_pre_gateway_dispatch_skips_on_yes_with_pending_request(self) -> None:
         from lib import discord_task_bridge_plugin as plugin  # noqa: E402
 
         with tempfile.TemporaryDirectory() as tmp:

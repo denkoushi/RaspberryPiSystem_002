@@ -21,6 +21,7 @@ class FileApprovalStore:
 
     REQUEST_FILE = "request.json"
     RESPONSE_FILE = "response.json"
+    DELIVERY_FAILED_FILE = "delivery_failed.json"
     USER_INDEX_DIR = "by-user"
 
     def __init__(self, store_dir: Path, task_id: str) -> None:
@@ -50,7 +51,7 @@ class FileApprovalStore:
             index_path.unlink()
 
     @classmethod
-    def active_task_id(cls, store_dir: Path, discord_user_id: str) -> str | None:
+    def _read_user_index(cls, store_dir: Path, discord_user_id: str) -> dict[str, Any] | None:
         index_path = cls.user_index_path(store_dir, discord_user_id)
         if not index_path.is_file():
             return None
@@ -58,10 +59,74 @@ class FileApprovalStore:
             data = json.loads(index_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None
-        if not isinstance(data, dict):
+        return data if isinstance(data, dict) else None
+
+    @classmethod
+    def running_task_id(cls, store_dir: Path, discord_user_id: str) -> str | None:
+        """Task currently executing (blocks concurrent /task). Grace does not count."""
+        data = cls._read_user_index(store_dir, discord_user_id)
+        if not data:
+            return None
+        grace_until = float(data.get("grace_until") or 0.0)
+        if grace_until:
+            if time.time() > grace_until:
+                cls.clear_active_task(store_dir, discord_user_id)
             return None
         task_id = str(data.get("task_id") or "").strip()
         return task_id or None
+
+    @classmethod
+    def in_approval_grace(cls, store_dir: Path, discord_user_id: str) -> bool:
+        data = cls._read_user_index(store_dir, discord_user_id)
+        if not data:
+            return False
+        grace_until = float(data.get("grace_until") or 0.0)
+        if grace_until and time.time() > grace_until:
+            cls.clear_active_task(store_dir, discord_user_id)
+            return False
+        return grace_until > 0
+
+    @classmethod
+    def enter_approval_grace(
+        cls,
+        store_dir: Path,
+        discord_user_id: str,
+        task_id: str,
+        *,
+        grace_seconds: int,
+    ) -> None:
+        """Keep user→task binding so late yes/no is not routed to normal chat."""
+        if grace_seconds <= 0:
+            cls.clear_active_task(store_dir, discord_user_id)
+            return
+        index_path = cls.user_index_path(store_dir, discord_user_id)
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        cls._atomic_write(
+            index_path,
+            {
+                "task_id": task_id,
+                "bound_at": time.time(),
+                "grace_until": time.time() + float(grace_seconds),
+            },
+        )
+
+    @classmethod
+    def user_binding_task_id(cls, store_dir: Path, discord_user_id: str) -> str | None:
+        """Running or grace binding (for yes/no routing, not for /task concurrency)."""
+        data = cls._read_user_index(store_dir, discord_user_id)
+        if not data:
+            return None
+        grace_until = float(data.get("grace_until") or 0.0)
+        if grace_until and time.time() > grace_until:
+            cls.clear_active_task(store_dir, discord_user_id)
+            return None
+        task_id = str(data.get("task_id") or "").strip()
+        return task_id or None
+
+    @classmethod
+    def active_task_id(cls, store_dir: Path, discord_user_id: str) -> str | None:
+        """Backward-compatible alias for user_binding_task_id."""
+        return cls.user_binding_task_id(store_dir, discord_user_id)
 
     def ensure_task_dir(self) -> None:
         self.task_dir.mkdir(parents=True, exist_ok=True)
@@ -135,10 +200,30 @@ class FileApprovalStore:
 
     def clear_pending_files(self) -> None:
         """Remove request/response IPC files after a decision (tool-write gate)."""
-        for name in (self.REQUEST_FILE, self.RESPONSE_FILE):
+        for name in (self.REQUEST_FILE, self.RESPONSE_FILE, self.DELIVERY_FAILED_FILE):
             path = self.task_dir / name
             if path.is_file():
                 path.unlink()
+
+    def write_delivery_failed(self, reason: str) -> None:
+        self.ensure_task_dir()
+        self._atomic_write(
+            self.task_dir / self.DELIVERY_FAILED_FILE,
+            {"reason": reason.strip(), "failed_at": time.time()},
+        )
+
+    def read_delivery_failed(self) -> str | None:
+        path = self.task_dir / self.DELIVERY_FAILED_FILE
+        if not path.is_file():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return "discord approval delivery failed"
+        if not isinstance(data, dict):
+            return "discord approval delivery failed"
+        reason = str(data.get("reason") or "").strip()
+        return reason or "discord approval delivery failed"
 
     def wait_for_response(
         self,
@@ -148,6 +233,8 @@ class FileApprovalStore:
         deadline = time.monotonic() + max(timeout_seconds, 0.0)
         interval = max(poll_interval_seconds, 0.05)
         while time.monotonic() < deadline:
+            if self.read_delivery_failed():
+                return None
             response = self.read_response()
             if response is not None:
                 return response

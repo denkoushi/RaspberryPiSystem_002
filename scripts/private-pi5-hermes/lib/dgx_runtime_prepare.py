@@ -99,3 +99,43 @@ def ensure_dgx_runtime_ready(
         return True, ""
     message = str(details.get("message") or details)
     return False, f"DGX runtime not ready: {message}"
+
+
+def verify_dgx_runtime_profile(
+    env_path: Path,
+    *,
+    keep_warm_dir: str | Path | None = None,
+    expected_model_profile_id: str,
+) -> tuple[bool, str]:
+    """Confirm /v1/models is ready and active profile matches before /task."""
+    expected = (expected_model_profile_id or "").strip()
+    if not expected:
+        return False, "expected_model_profile_id is empty"
+
+    try:
+        client_cls, _ = load_dgx_runtime_client(keep_warm_dir)
+        config = dgx_config_from_env_file(
+            env_path,
+            keep_warm_dir=keep_warm_dir,
+            default_model_profile_id=expected,
+        )
+        client = client_cls(config)
+    except (OSError, ValueError, ImportError) as exc:
+        return False, f"DGX profile verify failed: {exc}"
+
+    ready_ok, probe = client.probe_runtime_ready()
+    if not ready_ok:
+        return False, f"DGX /v1/models not ready: {probe}"
+
+    active_ok, active = client.fetch_active_model_profile()
+    if not active_ok:
+        return False, f"DGX active profile probe failed: {active}"
+
+    active_id = str(
+        active.get("modelProfileId") or active.get("activeProfileId") or ""
+    ).strip()
+    if active_id != expected:
+        return False, (
+            f"DGX active profile mismatch: expected {expected} got {active_id or '(empty)'}"
+        )
+    return True, ""

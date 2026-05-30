@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 from lib.dgx_runtime_prepare import (  # noqa: E402
     dgx_config_from_env_file,
     ensure_dgx_runtime_ready,
+    verify_dgx_runtime_profile,
 )
 from lib.tools_profile_constants import TOOLS_BUSINESS_MODEL_PROFILE_ID  # noqa: E402
 
@@ -82,6 +83,50 @@ class DgxRuntimePrepareTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(hint, "")
         client.warm_runtime.assert_called_once_with()
+
+    @patch("lib.dgx_runtime_prepare.load_dgx_runtime_client")
+    def test_verify_dgx_runtime_profile_checks_active_id(self, mock_load) -> None:
+        from dgx_runtime_client import DgxUpstreamConfig
+
+        client_cls = mock_load.return_value[0]
+        mock_load.return_value = (client_cls, DgxUpstreamConfig)
+        client = client_cls.return_value
+        client.probe_runtime_ready.return_value = (True, {"status": 200})
+        client.fetch_active_model_profile.return_value = (
+            True,
+            {"modelProfileId": TOOLS_BUSINESS_MODEL_PROFILE_ID},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            env_path = Path(tmp) / ".env"
+            env_path.write_text("OPENAI_API_KEY=token\n", encoding="utf-8")
+            ok, hint = verify_dgx_runtime_profile(
+                env_path,
+                expected_model_profile_id=TOOLS_BUSINESS_MODEL_PROFILE_ID,
+            )
+        self.assertTrue(ok)
+        self.assertEqual(hint, "")
+
+    @patch("lib.dgx_runtime_prepare.load_dgx_runtime_client")
+    def test_verify_dgx_runtime_profile_rejects_mismatch(self, mock_load) -> None:
+        from dgx_runtime_client import DgxUpstreamConfig
+
+        client_cls = mock_load.return_value[0]
+        mock_load.return_value = (client_cls, DgxUpstreamConfig)
+        client = client_cls.return_value
+        client.probe_runtime_ready.return_value = (True, {"status": 200})
+        client.fetch_active_model_profile.return_value = (
+            True,
+            {"modelProfileId": "qwen36_35b_uncensored"},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            env_path = Path(tmp) / ".env"
+            env_path.write_text("OPENAI_API_KEY=token\n", encoding="utf-8")
+            ok, hint = verify_dgx_runtime_profile(
+                env_path,
+                expected_model_profile_id=TOOLS_BUSINESS_MODEL_PROFILE_ID,
+            )
+        self.assertFalse(ok)
+        self.assertIn("mismatch", hint)
 
 
 if __name__ == "__main__":

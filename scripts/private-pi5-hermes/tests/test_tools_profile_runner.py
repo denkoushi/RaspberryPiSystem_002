@@ -133,6 +133,28 @@ class ToolsProfileRunnerTests(unittest.TestCase):
         self.assertIn("--request-timeout", argv)
         self.assertIn("300", argv)
 
+    def test_emission_json_includes_approval_grace_seconds(self) -> None:
+        from lib.discord_task_bridge import emission_json
+
+        policy = TaskBridgePolicy.from_mapping(
+            _policy_data(
+                approval_relay={
+                    "enabled": True,
+                    "store_dir": "/tmp/hermes-approvals",
+                    "request_timeout_seconds": 300,
+                    "poll_interval_seconds": 0.5,
+                    "approval_grace_seconds": 90,
+                }
+            )
+        )
+
+        payload = emission_json(policy)
+
+        self.assertEqual(
+            payload["approval_relay"]["approval_grace_seconds"],
+            90,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

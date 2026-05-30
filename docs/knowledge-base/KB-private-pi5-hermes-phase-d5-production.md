@@ -176,6 +176,48 @@ private_pi5_hermes_gateway_enabled: true
 | `verify-tool-write-approval-gate-pi5.sh`（runner 直呼び · `request.json` 必須） | **FAIL**（`request.json` 未作成 · ファイルは作成 — 上表） |
 | Discord `/task` → `yes` → ファイル作成 E2E | **要確認**（手動 · poll 修正後） |
 
+### Discord 承認 UX 修正（2026-05-30 · repo）
+
+| 症状 | 根拠 | 対策（repo） |
+|------|------|----------------|
+| 承認文が **~300s 後**に最終返信へ後載せ | `request_timeout_seconds: 300` と gateway 時刻差が一致 · 即時 REST 失敗は **ログ無し** | `send_discord_channel_message` → **`DiscordSendResult` + ERROR ログ** · 失敗時 **`delivery_failed.json`** で runner を **即中断**（300s 待たない） |
+| timeout 後の **`yes` が雑談** | `finish_task_context` が by-user 索引を即消去 | **承認 timeout 時のみ** `TaskRunContext.approval_timed_out`（`_compose_task_response` 整形前に立てる）→ `enter_grace=True` · ユーザー向け文言置換後も grace が効く · grace 中の `yes` は intercept · **grace は concurrent `/task` をブロックしない**（`running_task_id` と分離） |
+| 期限切れ後に **yes を促す文言**が最終返信に残る | `intermediate_messages` 後載せ | 承認プロンプトは **Discord 即時送信のみ** · timeout 時は **`承認期限切れ。もう一度 /task`** のみ |
+| `/novel` 後 `/task` が 2048 で落ちる | DGX profile 残留 | `ensure_tools_dgx_runtime_ready` 後に **`verify_dgx_runtime_profile`**（`/v1/models` 200 + `activeProfileId` 一致） |
+
+**受け入れ（未完了）**: Discord 実機で「`/task` write → **10s 以内**に承認通知 → `yes` → ファイル作成」。read-only smoke / runner 直呼び / **`response.json` 手動投入**は **別扱い**（E2E 成功証明にならない）。
+
+### 本番デプロイ（承認 relay 完結 · 2026-05-30 JST）
+
+| 項目 | 内容 |
+|------|------|
+| **branch** | `fix/private-pi5-hermes-task-approval-finish` @ **`a6b0a940`**（CI **`26671325365`** success） |
+| **対象** | 私用 Pi5 `raspi5-private`（`private-pi5-stackchan-bridge`）**のみ** |
+| **手順** | 標準 `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` |
+| **PLAY RECAP** | **ok=140 changed=6 failed=0**（約 **193s**）· summary `dgx_health=ok` · `discord_tools_bridge_enabled=True` · `dgx_keep_warm_active=True` |
+| **gateway** | `hermes-gateway` **active** · 再起動 **2026-05-30 11:15:10 JST**（デプロイ内蔵 verify 前 restart） |
+| **配布物（主）** | `approval_relay/`（`coordinator` · `store` · `discord_relay` · `pending_approval` · `policy`）· `discord_task_bridge.py` · `tools_profile_runner.py` · `dgx_runtime_prepare.py`（`/task` 前 **profile 復帰 + `verify_dgx_runtime_profile`**）· `verify-task-bridge-readonly-state-pi5.sh` |
+
+**実機検証（2026-05-30 · デプロイ直後）**:
+
+| 検証 | 結果 | 備考 |
+|------|------|------|
+| playbook `verify.yml` · D4 tools · D5 bridge · D5.1 approval relay · novel | **PASS** | デプロイ playbook 内蔵 |
+| `verify-task-bridge-readonly-state-pi5.sh`（`sudo -u hermes`） | **OK** | plugin `tools_profile_runner.py` / `approval_relay/*.py` **2026-05-30 11:13 JST** · `approvals` root 所有行 **0** · `DGX_MODEL_PROFILE_ID=business_qwen36_27b_nvfp4` |
+| `verify-tool-write-approval-gate-pi5.sh`（runner 直呼び） | **FAIL** | **`request.json` 未作成**のまま `write_file` 完了（~24s）· 作成ファイルは **root:root**（Docker workspace 経路）— **2026-05-26 と同型**（Discord 経路とは別 · 下表参照） |
+| Discord `/task` write → 10s 内承認 → `yes` → ファイル | **未実施** | エージェントから Discord UI 操作不可 · **受け入れの正本** |
+
+**トラブルシュート（今回の runner 直呼び FAIL）**:
+
+| 症状 | 観測 | 解釈 |
+|------|------|------|
+| `FAIL: request.json was not created` | `/tmp/verify-write-gate.out` に Hermes TUI 完了ログ · task dir は空（`clear_pending_files` 後） | **`pre_tool_call` ゲートが runner 直 `hermes chat` 経路で発火しない**（2026-05-26 KB 表と同じ切り分け） |
+| ファイルは作成される | `verify-write-gate-1780107349.txt` 存在 · uid **root** | ゲート未発火の副次証拠（承認 IPC 未到達） |
+
+**運用メモ**: gateway.log には **デプロイ前**の `Unrecognized slash command /task` が残る（09:04–09:11 JST）。**11:15 再起動後**の Discord write E2E は **手動で再試行**すること（plugin は `plugins.enabled: [private-pi5-discord-task-bridge]` を確認済み）。
+
+**読み取り専用確認**: [`verify-task-bridge-readonly-state-pi5.sh`](../../scripts/private-pi5-hermes/verify-task-bridge-readonly-state-pi5.sh)（**`sudo -u hermes`**）。
+
 **仕様（poll スレッドと tool write IPC）**:
 
 - **shell 承認**（`tools.approval` notify）: `notify_cb` が同一プロセスで `wait_for_response` · poll スレッドは **`pattern_key` が `tool:*` 以外**のときのみ `response.json` を読んで `resolve_gateway_approval` + unlink
