@@ -143,6 +143,81 @@ curl -sk "${BASE}/part-measurement/inspection-drawing/templates?limit=5" -H "x-c
 
 **CI**: MVP `26676840821` · 一覧ハブ `26679994903` **success**（push `ef78f4dd`）。
 
+## 検査図面 · DEV プレビュー本番パリティ（2026-05-30） {#検査図面-preview-parity-2026-05-30}
+
+正本 ADR: [ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md)。ExecPlan / Runbook / [deployment §プレビュー](../guides/deployment.md#kiosk-inspection-drawing-preview-parity-2026-05-30) と併読。
+
+### 背景（なぜズレたか）
+
+| 仮説 | 結果 |
+|------|------|
+| `transform: scale` で縮小している | **REJECTED** — 本番でも scale は使っていない |
+| DEV が `KioskLayout` 外・`h-dvh` 全画面 | **CONFIRMED** — ヘッダー・パディング・スクロール領域が本番と不一致 |
+| プレビュー専用 JSX の複製 | **CONFIRMED** — フィルタ grid・測定点 `grid-cols-3` などが本番だけ更新されず残った |
+
+### レンダリング契約（後続エージェント向け）
+
+| 区分 | 内容 |
+|------|------|
+| **原則** | レイアウト調整は **本番ページと同じコンポーネント**を描画する。静的モックや scale は最終手段にしない |
+| **DEV シェル** | `App.tsx` で DEV ルートを **`KioskLayout` 子**に配置。`KioskInspectionDrawingDevPreviewChrome` が `min-w-[1280px]` + fixed DEV バーのみ追加 |
+| **DEV URL** | `/dev/kiosk-inspection-drawing-library` · `/dev/kiosk-inspection-drawing-create`（fixture: `inspectionDrawingPreviewFixtures.ts`） |
+| **本番 URL** | `/kiosk/part-measurement/inspection`（一覧）· `/inspection/create` · `/inspection/templates/:id/edit` |
+| **共有コンポーネント** | `InspectionDrawingLibraryFilterBar` · `InspectionDrawingPointSettingsPanel` · `InspectionDrawingCreateToolbar`（本番ページ + DEV プレビューページ双方から import） |
+| **一覧フィルタ UI** | **`flex-wrap`**。旧 `lg:grid-cols-[13rem_15rem_auto_auto_auto]` は長い資源表示名が工程列と **視覚的に重なる** |
+| **測定点パネル** | 基準値・下限・上限は **縦並び**（1 列）。横 3 列 grid は廃止 |
+| **作成ツールバー** | 保存の右に **「一覧へ戻る」**（`libraryTo` / `Link` + `buttonClassName` — `<Link><button>` は HTML 非妥当のため不可） |
+| **作成画面下部** | 「図面をタップして測定点を追加」「一覧プレビューへ」等のリンクは **削除**（本番・DEV 共通） |
+| **沉浸式** | `kioskImmersiveLayoutPolicy.ts` — `/kiosk/part-measurement` 子パスと整合。変更時は `kioskImmersiveLayoutPolicy.test.ts` を更新 |
+
+### 代表ファイル（`ccacef85`）
+
+| 領域 | パス |
+|------|------|
+| DEV chrome | `apps/web/src/pages/dev/KioskInspectionDrawingDevPreviewChrome.tsx` |
+| DEV 一覧/作成プレビュー | `KioskInspectionDrawingLibraryPreviewPage.tsx` · `KioskInspectionDrawingCreatePreviewPage.tsx` |
+| 共有フィルタ | `features/part-measurement/inspection-drawing/InspectionDrawingLibraryFilterBar.tsx` |
+| 共有測定点 | `features/part-measurement/inspection-drawing/InspectionDrawingPointSettingsPanel.tsx` |
+| 本番一覧/作成 | `pages/kiosk/KioskInspectionDrawingLibraryPage.tsx` · `KioskInspectionDrawingCreatePage.tsx` |
+| ルート | `apps/web/src/App.tsx` |
+| 契約テスト | `features/kiosk/kioskImmersiveLayoutPolicy.test.ts` |
+
+### 本番デプロイ実績（プレビュー parity）
+
+| ブランチ | ホスト | Detach Run ID | HEAD | PLAY RECAP | 備考 |
+|----------|--------|---------------|------|------------|------|
+| `feat/kiosk-inspection-drawing-preview-parity` | `raspberrypi5` | `20260530-192609-10677` | `ccacef85` | **failed=0** | Web rebuild · 約 **353s** · Pi4×4 **未** |
+
+**CI**: **`26681207121`** success。
+
+**標準コマンド（Pi5・ブランチ時）**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-inspection-drawing-preview-parity \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+### トラブルシュート（プレビュー / レイアウト）
+
+| 症状 | 確認 | 対処 |
+|------|------|------|
+| Mac DEV と Pi5 でレイアウトが違う | DEV が `KioskLayout` 外か · プレビュー専用 JSX か · `scale` か | ADR-20260530 契約どおり **共有コンポーネント + KioskLayout** · HEAD ≥ `ccacef85` |
+| 一覧フィルタで列が重なる | 旧 grid レイアウト | `InspectionDrawingLibraryFilterBar` の `flex-wrap` を確認 |
+| 測定点が横3列 | プレビューだけ古い markup | `InspectionDrawingPointSettingsPanel` を本番・DEV 双方で使用しているか |
+| 「一覧へ戻る」がない | ツールバー未更新 | `InspectionDrawingCreateToolbar` の `libraryTo` |
+| DEV `/dev/...` が 404 | 本番ビルドのみデプロイ | DEV ルートは **開発サーバー**用。Pi5 本番は `/kiosk/part-measurement/inspection*` を確認 |
+| Pi4 だけ旧 UI | Pi5 未デプロイ or Pi4 未反映 | **Pi5 先行** → `main` で Pi4 を `--limit` 順次 |
+
+### エージェント向けプロンプト（レイアウト修正依頼時）
+
+依頼文に最低限含めること:
+
+1. **本番と同じレンダリング契約**（`KioskLayout` · 共有コンポーネント · scale 禁止）
+2. 対象 URL（本番 `/kiosk/part-measurement/inspection/...` または DEV `/dev/kiosk-inspection-drawing-*`）
+3. 期待スクリーンショット or 要素（フィルタ折り返し・測定点縦並び等）
+4. 変更後は **本番ページと DEV プレビューの両方**で同じコンポーネントが変わること
+
 ## Current UI spec（2026-04-05 までの合意）
 
 - **管理 `/admin/tools/part-measurement-templates`（2026-04-05 追補）**: 有効行の **編集** でフォームに読み込み。**登録スコープ・FIHNCD・資源CD・工程**は変更不可。**`FHINMEI_ONLY` のみ** **FHINMEI（候補キー）** を編集可能（他スコープでは従来どおり固定）。**保存**は `POST /api/part-measurement/templates/:id/revise`（名称・測定項目・図面＋**任意で `candidateFhinmei`**。DB 上は **次 `version` の新行**＋同系譜の旧版 `isActive: false`）。**削除**（最新の有効版のみ）は `POST /api/part-measurement/templates/:id/retire`（**論理削除**・旧版は**自動で有効にならない**）。一覧は既定 **有効版のみ**・**無効版も表示**で旧版の **有効化**が可能。無効版を `revise` / `retire` すると **409**。
