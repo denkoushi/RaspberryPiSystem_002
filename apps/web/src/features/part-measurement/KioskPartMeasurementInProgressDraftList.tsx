@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 
 import { formatKioskPartMeasurementDraftUpdatedAt } from './formatKioskPartMeasurementDraftUpdatedAt';
+import { resolveKioskPartMeasurementSheetEditPath } from './kioskPartMeasurementSheetNavigation';
 
 import type { PartMeasurementSheetDto } from './types';
 
@@ -22,7 +23,7 @@ export function KioskPartMeasurementInProgressDraftList({ drafts }: KioskPartMea
           return (
             <div key={d.id} className="min-w-0">
               <Link
-                to={`/kiosk/part-measurement/edit/${d.id}`}
+                to={resolveKioskPartMeasurementSheetEditPath(d)}
                 aria-label={`測定値入力中の記録を開く、製造order ${d.productNo}、品番 ${d.fhincd}`}
                 className="block break-words rounded border border-slate-200 bg-white p-3 text-left text-sm text-slate-800 shadow-sm outline-none ring-offset-2 hover:border-blue-400 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-500"
               >

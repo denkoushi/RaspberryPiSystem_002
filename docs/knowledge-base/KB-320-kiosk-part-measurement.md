@@ -59,10 +59,11 @@
 - `update-all-clients.sh --detach --follow` の成否は **Pi5 の `PLAY RECAP` と `*.summary.json` の両方**で見る。`failed=0` / `unreachable=0` と `totalHosts>0` が一致しない場合は success 扱いにしない。
 - `prisma migrate deploy` が `service "api" is not running` なら、まず **`docker compose ps -a` で `Created` / mount error を確認**する。再実行前に `api/web` を `up -d` できる状態かを必ず見る。
 
-## 検査図面 MVP（2026-05-30・評価用）
+## 検査図面 MVP（2026-05-30 評価用 / 2026-05-30 本番編集導線）
 
-- **ルート**: `/kiosk/part-measurement/inspection/create`（作成＋同一画面テスト）。評価は **URL 直打ち**（ハブにボタンなし）。保存 API は `inspection-drawing/evaluation-templates`（multipart 一括・本番 THREE_KEY を `isActive: false` にしない）。評価用 `__INSPECTION_DRAWING_EVAL__` は一覧・候補・clone・改版・退役から除外。
-- **本番未接続**: スケジュール・ハブ・下書き・テンプレ候補は従来 `/edit/:sheetId` のみ。`inspection/edit` は URL 直打ちのみで、評価用テンプレ・数量1以外は保存不可（API 409）。
+- **ルート**: `/kiosk/part-measurement/inspection/create`（作成＋同一画面テスト・**評価用 URL 直打ちのみ**）。保存 API は `inspection-drawing/evaluation-templates`（multipart 一括）。評価用 `__INSPECTION_DRAWING_EVAL__` は一覧・候補・clone・改版・退役から除外。
+- **本番編集導線（2026-05-30）**: 図面付き本番テンプレ + **`quantity === 1`** の sheet は、スケジュール・ハブ下書き・テンプレ候補・確定一覧から **`/kiosk/part-measurement/inspection/edit/:sheetId`** へ自動遷移。保存・確定は **通常 sheet API**。`quantity > 1` または `quantity` 未設定は表形式。フロント判定は `productionInspectionDrawingPolicy` / `kioskPartMeasurementSheetNavigation`、API は `part-measurement-inspection-drawing-policy`。
+- **評価用編集**: `inspection/edit` + `evaluation-sheets/*` は評価用テンプレ・数量1のみ。本番 sheet を evaluation API で触ると **409**。
 - **データ**: `PartMeasurementTemplateItem` に `markerXRatio` / `markerYRatio` / `nominalValue` / `lowerLimit` / `upperLimit`（任意・既存テンプレは null のまま互換）。
 - **画像**: Phase1 は PNG/JPEG/WebP のみ。TIFF は後続。
 - **実装**: `apps/web/src/features/part-measurement/inspection-drawing`

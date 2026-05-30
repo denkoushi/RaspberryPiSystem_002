@@ -22,6 +22,7 @@ import {
   KIOSK_PART_MEASUREMENT_IN_PROGRESS_REFRESH_LABEL
 } from '../../features/part-measurement/kioskPartMeasurementInProgressCopy';
 import { KioskPartMeasurementInProgressDraftList } from '../../features/part-measurement/KioskPartMeasurementInProgressDraftList';
+import { resolveKioskPartMeasurementSheetEditPathAfterCreate } from '../../features/part-measurement/kioskPartMeasurementSheetNavigation';
 import {
   loadPartMeasurementProcessGroup,
   savePartMeasurementProcessGroup
@@ -117,7 +118,7 @@ export function KioskPartMeasurementPage() {
         clientKey
       );
       await refreshDrafts();
-      void navigate(`/kiosk/part-measurement/edit/${created.id}`);
+      void navigate(resolveKioskPartMeasurementSheetEditPathAfterCreate(created));
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
       setMessage(err.response?.data?.message ?? '記録表の作成に失敗しました。');

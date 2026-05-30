@@ -10,6 +10,7 @@ import {
 } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { resolveKioskPartMeasurementSheetEditPathAfterCreate } from '../../features/part-measurement/kioskPartMeasurementSheetNavigation';
 import { PartMeasurementTemplateCandidateCard } from '../../features/part-measurement/template-pick/PartMeasurementTemplateCandidateCard';
 import { shouldCloneTemplateBeforeSheet } from '../../features/part-measurement/template-pick/sheetClonePolicy';
 
@@ -112,7 +113,7 @@ export function KioskPartMeasurementTemplatePickPage() {
         },
         clientKey
       );
-      void navigate(`/kiosk/part-measurement/edit/${sheet.id}`);
+      void navigate(resolveKioskPartMeasurementSheetEditPathAfterCreate(sheet));
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
       setMessage(err.response?.data?.message ?? '記録表の作成に失敗しました。');

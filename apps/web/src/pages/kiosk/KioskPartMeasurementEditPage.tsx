@@ -16,6 +16,10 @@ import { Input } from '../../components/ui/Input';
 import { KioskPartMeasurementEditTopStrip } from '../../features/part-measurement/KioskPartMeasurementEditTopStrip';
 import { KioskPartMeasurementSessionSheetCards } from '../../features/part-measurement/KioskPartMeasurementSessionSheetCards';
 import { KioskPartMeasurementSheetMetaBlock } from '../../features/part-measurement/KioskPartMeasurementSheetMetaBlock';
+import {
+  resolveKioskPartMeasurementSheetEditPath,
+  shouldRedirectTableEditToInspectionDrawing
+} from '../../features/part-measurement/kioskPartMeasurementSheetNavigation';
 import { KIOSK_PART_MEASUREMENT_VALUE_INPUT_CLASSNAME } from '../../features/part-measurement/kioskPartMeasurementTableUi';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useNfcStream } from '../../hooks/useNfcStream';
@@ -81,6 +85,15 @@ export function KioskPartMeasurementEditPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!sheet || !sheetId) return;
+    if (!shouldRedirectTableEditToInspectionDrawing(sheet)) return;
+    const target = resolveKioskPartMeasurementSheetEditPath(sheet);
+    if (target !== `/kiosk/part-measurement/edit/${sheetId}`) {
+      void navigate(target, { replace: true });
+    }
+  }, [sheet, sheetId, navigate]);
 
   const buildResultsPayload = useCallback(
     (qty: number, cells: Record<string, string>, items: { id: string }[]) => {

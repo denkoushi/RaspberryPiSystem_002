@@ -3140,7 +3140,7 @@ export async function createInspectionDrawingEvaluationTemplate(
     }>;
   },
   clientKey?: string
-): Promise<PartMeasurementTemplateDto> {
+): Promise<{ template: PartMeasurementTemplateDto; sheet: PartMeasurementSheetDto }> {
   const form = new FormData();
   form.append('referenceFhincd', body.referenceFhincd.trim());
   form.append('referenceResourceCd', body.referenceResourceCd.trim());
@@ -3148,12 +3148,26 @@ export async function createInspectionDrawingEvaluationTemplate(
   form.append('name', body.name.trim());
   form.append('items', JSON.stringify(body.items));
   form.append('file', body.file);
-  const { data } = await api.post<{ template: PartMeasurementTemplateDto }>(
-    '/part-measurement/inspection-drawing/evaluation-templates',
-    form,
+  const { data } = await api.post<{
+    template: PartMeasurementTemplateDto;
+    sheet: PartMeasurementSheetDto;
+  }>('/part-measurement/inspection-drawing/evaluation-templates', form, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return { template: data.template, sheet: data.sheet };
+}
+
+/** 評価用テンプレのみ既にある場合の記録表作成（通常は evaluation-templates が sheet も返す） */
+export async function createInspectionDrawingEvaluationSheet(
+  templateId: string,
+  clientKey?: string
+): Promise<PartMeasurementSheetWithSession> {
+  const { data } = await api.post<PartMeasurementSheetWithSession>(
+    '/part-measurement/inspection-drawing/evaluation-sheets',
+    { templateId },
     { headers: clientKey ? { 'x-client-key': clientKey } : undefined }
   );
-  return data.template;
+  return data;
 }
 
 /** 有効テンプレの系譜固定で次版を作成（FHINMEI_ONLY のとき候補キーも変更可） */

@@ -19,7 +19,10 @@ import {
   patchInspectionDrawingEvaluationSheetBodySchema,
   toInspectionDrawingEvaluationPatchInput
 } from '../../services/part-measurement/part-measurement-evaluation-sheet.contract.js';
-import { assertInspectionDrawingEvaluationSheet } from '../../services/part-measurement/part-measurement-template-guards.js';
+import {
+  assertInspectionDrawingEvaluationSheet,
+  assertProductionPartMeasurementSheet
+} from '../../services/part-measurement/part-measurement-template-guards.js';
 
 const processGroupSchema = z.enum(['cutting', 'grinding']);
 const authOnlyErrorCodes = new Set(['AUTH_TOKEN_REQUIRED', 'AUTH_TOKEN_INVALID', 'AUTH_TOKEN_EXPIRED']);
@@ -288,10 +291,22 @@ function serializeTemplate(
   };
 }
 
-async function readMultipartFile(part: MultipartFile): Promise<Buffer> {
+async function readMultipartFile(
+  part: MultipartFile,
+  maxBytes = PartMeasurementDrawingStorage.getMaxBytes()
+): Promise<Buffer> {
   const chunks: Buffer[] = [];
+  let total = 0;
   for await (const chunk of part.file) {
-    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    const buf = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+    total += buf.length;
+    if (total > maxBytes) {
+      if (typeof part.file.destroy === 'function') {
+        part.file.destroy();
+      }
+      throw new ApiError(400, '図面画像が大きすぎます');
+    }
+    chunks.push(buf);
   }
   return Buffer.concat(chunks);
 }
@@ -483,6 +498,23 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   const templateService = new PartMeasurementTemplateService();
   const templateCandidateService = new PartMeasurementTemplateCandidateService();
   const visualTemplateService = new PartMeasurementVisualTemplateService();
+
+  const createInspectionDrawingEvaluationSetup = async (
+    templateParams: Parameters<PartMeasurementTemplateService['createInspectionDrawingEvaluationTemplate']>[0],
+    clientDeviceId?: string
+  ) => {
+    const { template, createdVisualTemplateId } =
+      await templateService.createInspectionDrawingEvaluationTemplate(templateParams);
+    try {
+      const sheet = await sheetService.createInspectionDrawingEvaluationDraft(template.id, clientDeviceId);
+      return { template, sheet };
+    } catch (error) {
+      await templateService.cleanupInspectionDrawingEvaluationTemplate(template.id, {
+        createdVisualTemplateId
+      });
+      throw error;
+    }
+  };
 
   app.get(
     '/part-measurement/visual-templates',
@@ -754,7 +786,23 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const body = patchSheetBodySchema.parse(request.body);
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const existing = await sheetService.getById(params.id);
+      assertProductionPartMeasurementSheet(existing);
       const sheet = await sheetService.patch(params.id, body, clientDeviceId);
+      return sheetResponsePair(sheet);
+    }
+  );
+
+  app.post(
+    '/part-measurement/inspection-drawing/evaluation-sheets',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request) => {
+      const body = z.object({ templateId: z.string().uuid() }).parse(request.body);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const sheet = await sheetService.createInspectionDrawingEvaluationDraft(
+        body.templateId,
+        clientDeviceId
+      );
       return sheetResponsePair(sheet);
     }
   );
@@ -781,6 +829,8 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const body = z.object({ confirm: z.boolean().optional().default(false) }).parse(request.body ?? {});
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const existing = await sheetService.getById(params.id);
+      assertProductionPartMeasurementSheet(existing);
       const sheet = await sheetService.transferEditLock(params.id, clientDeviceId, body.confirm);
       return sheetResponsePair(sheet);
     }
@@ -792,6 +842,8 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     async (request) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const existing = await sheetService.getById(params.id);
+      assertProductionPartMeasurementSheet(existing);
       const sheet = await sheetService.finalize(params.id, clientDeviceId);
       return sheetResponsePair(sheet);
     }
@@ -817,6 +869,8 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const body = z.object({ reason: z.string().min(1).max(2000) }).parse(request.body);
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const existing = await sheetService.getById(params.id);
+      assertProductionPartMeasurementSheet(existing);
       const sheet = await sheetService.cancelDraft(params.id, body.reason, clientDeviceId);
       return sheetResponsePair(sheet);
     }
@@ -829,6 +883,8 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const body = z.object({ reason: z.string().min(1).max(2000) }).parse(request.body);
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const existing = await sheetService.getById(params.id);
+      assertProductionPartMeasurementSheet(existing);
       const sheet = await sheetService.invalidateFinalized(params.id, body.reason, clientDeviceId);
       return sheetResponsePair(sheet);
     }
@@ -949,9 +1005,6 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         if (!fileBuffer || fileBuffer.length === 0) {
           throw new ApiError(400, '図面画像ファイルが必要です');
         }
-        if (fileBuffer.length > PartMeasurementDrawingStorage.getMaxBytes()) {
-          throw new ApiError(400, '図面画像が大きすぎます');
-        }
         let mime = mimetype;
         if (!mime || mime === 'application/octet-stream') {
           const lower = filename.toLowerCase();
@@ -978,25 +1031,30 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
           items
         });
         const prismaProcessGroup = body.referenceProcessGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
-        const template = await templateService.createInspectionDrawingEvaluationTemplate({
-          referenceFhincd: body.referenceFhincd,
-          referenceResourceCd: body.referenceResourceCd,
-          referenceProcessGroup: prismaProcessGroup,
-          name: body.name,
-          items: body.items,
-          drawingUpload: {
-            buffer: fileBuffer,
-            mimetype: mime,
-            displayName: name
-          }
-        });
+        const clientDeviceId = await tryGetClientDeviceId(request.headers);
+        const { template, sheet } = await createInspectionDrawingEvaluationSetup(
+          {
+            referenceFhincd: body.referenceFhincd,
+            referenceResourceCd: body.referenceResourceCd,
+            referenceProcessGroup: prismaProcessGroup,
+            name: body.name,
+            items: body.items,
+            drawingUpload: {
+              buffer: fileBuffer,
+              mimetype: mime,
+              displayName: name
+            }
+          },
+          clientDeviceId
+        );
         return {
           template: serializeTemplate({
             ...template,
             visualTemplateId: template.visualTemplateId,
             visualTemplate: template.visualTemplate,
             items: template.items
-          })
+          }),
+          sheet: serializeSheet(sheet)
         };
       }
 
@@ -1005,21 +1063,26 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         throw new ApiError(400, 'visualTemplateId または multipart（file）が必要です');
       }
       const referenceProcessGroup = body.referenceProcessGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
-      const template = await templateService.createInspectionDrawingEvaluationTemplate({
-        referenceFhincd: body.referenceFhincd,
-        referenceResourceCd: body.referenceResourceCd,
-        referenceProcessGroup,
-        name: body.name,
-        items: body.items,
-        visualTemplateId: body.visualTemplateId
-      });
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const { template, sheet } = await createInspectionDrawingEvaluationSetup(
+        {
+          referenceFhincd: body.referenceFhincd,
+          referenceResourceCd: body.referenceResourceCd,
+          referenceProcessGroup,
+          name: body.name,
+          items: body.items,
+          visualTemplateId: body.visualTemplateId
+        },
+        clientDeviceId
+      );
       return {
         template: serializeTemplate({
           ...template,
           visualTemplateId: template.visualTemplateId,
           visualTemplate: template.visualTemplate,
           items: template.items
-        })
+        }),
+        sheet: serializeSheet(sheet)
       };
     }
   );

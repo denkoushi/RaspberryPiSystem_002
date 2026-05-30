@@ -5,6 +5,7 @@ import { getResolvedClientKey, listPartMeasurementFinalized } from '../../api/cl
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { resolveKioskPartMeasurementSheetEditPath } from '../../features/part-measurement/kioskPartMeasurementSheetNavigation';
 
 import type { PartMeasurementProcessGroup, PartMeasurementSheetDto } from '../../features/part-measurement/types';
 
@@ -136,7 +137,7 @@ export function KioskPartMeasurementFinalizedPage() {
                     {s.resourceCdSnapshot ?? '—'} / {s.finalizedAt ? new Date(s.finalizedAt).toLocaleString() : '—'}
                   </div>
                   <Link
-                    to={`/kiosk/part-measurement/edit/${s.id}`}
+                    to={resolveKioskPartMeasurementSheetEditPath(s)}
                     className="font-semibold text-blue-700 underline"
                   >
                     開く

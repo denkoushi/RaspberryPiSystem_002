@@ -15,6 +15,7 @@ import {
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import {
   assertOperableProductionPartMeasurementTemplate,
+  isInspectionDrawingEvaluationTemplate,
   productionPartMeasurementTemplateWhere
 } from './part-measurement-template-guards.js';
 import { normalizeFhincd } from './template-candidate-rules.js';
@@ -313,8 +314,9 @@ export class PartMeasurementTemplateService {
         })
       );
       drawingPathToCleanup = null;
+      const createdVisualTemplateId = orphanVisualTemplateId;
       orphanVisualTemplateId = null;
-      return template;
+      return { template, createdVisualTemplateId };
     } catch (error) {
       if (orphanVisualTemplateId) {
         await prisma.partMeasurementVisualTemplate
@@ -325,6 +327,48 @@ export class PartMeasurementTemplateService {
         await PartMeasurementDrawingStorage.deleteDrawing(drawingPathToCleanup).catch(() => undefined);
       }
       throw error;
+    }
+  }
+
+  /**
+   * 評価用テンプレ作成直後に記録表作成が失敗したときの片残り回収（通常一覧からは非表示のため）。
+   * 既存 visual template を再利用した場合は `createdVisualTemplateId` を渡さず、図面資産を削除しない。
+   */
+  async cleanupInspectionDrawingEvaluationTemplate(
+    templateId: string,
+    options?: { createdVisualTemplateId?: string | null }
+  ): Promise<void> {
+    const template = await prisma.partMeasurementTemplate.findUnique({
+      where: { id: templateId },
+      include: { visualTemplate: true }
+    });
+    if (!template || !isInspectionDrawingEvaluationTemplate(template)) {
+      return;
+    }
+    const visualTemplateId = template.visualTemplateId;
+    const mayDeleteVisual =
+      visualTemplateId != null &&
+      options?.createdVisualTemplateId != null &&
+      options.createdVisualTemplateId === visualTemplateId;
+    const drawingPath = mayDeleteVisual
+      ? (template.visualTemplate?.drawingImageRelativePath ?? null)
+      : null;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.partMeasurementSheet.deleteMany({ where: { templateId } });
+      await tx.partMeasurementTemplate.delete({ where: { id: templateId } });
+      if (mayDeleteVisual && visualTemplateId) {
+        const otherTemplates = await tx.partMeasurementTemplate.count({
+          where: { visualTemplateId, id: { not: templateId } }
+        });
+        if (otherTemplates === 0) {
+          await tx.partMeasurementVisualTemplate.delete({ where: { id: visualTemplateId } });
+        }
+      }
+    });
+
+    if (drawingPath) {
+      await PartMeasurementDrawingStorage.deleteDrawing(drawingPath).catch(() => undefined);
     }
   }
 

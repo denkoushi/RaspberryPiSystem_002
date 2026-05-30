@@ -6,8 +6,17 @@ import { EmployeeService } from '../tools/employee.service.js';
 import { apiProcessGroupToPrisma, parseApiProcessGroup } from './part-measurement-process-group.adapter.js';
 import {
   PART_MEASUREMENT_EDIT_LOCK_TTL_MS,
+  PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD,
   PART_MEASUREMENT_LEGACY_RESOURCE_CD
 } from './part-measurement-constants.js';
+import {
+  isInspectionDrawingEvaluationTemplate,
+  productionPartMeasurementSheetWhere
+} from './part-measurement-template-guards.js';
+import {
+  INSPECTION_DRAWING_UI_QUANTITY,
+  templateSupportsInspectionDrawing as templateSupportsInspectionDrawingPolicy
+} from './part-measurement-inspection-drawing-policy.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import { PartMeasurementSessionService } from './part-measurement-session.service.js';
 
@@ -34,6 +43,18 @@ const sheetFullIncludeWithSession = {
     }
   }
 } satisfies Prisma.PartMeasurementSheetInclude;
+
+function initialQuantityForTemplate(template: {
+  visualTemplate: { drawingImageRelativePath: string } | null;
+  items: Array<{
+    markerXRatio: Prisma.Decimal | string | number | null;
+    markerYRatio: Prisma.Decimal | string | number | null;
+    lowerLimit: Prisma.Decimal | string | number | null;
+    upperLimit: Prisma.Decimal | string | number | null;
+  }>;
+}): number | null {
+  return templateSupportsInspectionDrawingPolicy(template) ? INSPECTION_DRAWING_UI_QUANTITY : null;
+}
 
 export type CreateSheetInput = {
   productNo: string;
@@ -211,11 +232,15 @@ export class PartMeasurementSheetService {
         orderBy: { updatedAt: 'desc' },
         include: sheetListInclude
       });
-      const drafts = sheets.filter((s) => s.status === 'DRAFT');
+      const drafts = sheets.filter(
+        (s) => s.status === 'DRAFT' && (!s.template || !isInspectionDrawingEvaluationTemplate(s.template))
+      );
       if (drafts.length > 0) {
         return { mode: 'resume_draft' as const, sheet: drafts[0] };
       }
-      const finalizedSheets = sheets.filter((s) => s.status === 'FINALIZED');
+      const finalizedSheets = sheets.filter(
+        (s) => s.status === 'FINALIZED' && (!s.template || !isInspectionDrawingEvaluationTemplate(s.template))
+      );
       if (finalizedSheets.length > 0) {
         return { mode: 'view_finalized' as const, sheet: finalizedSheets[0] };
       }
@@ -283,10 +308,16 @@ export class PartMeasurementSheetService {
 
     const template = await prisma.partMeasurementTemplate.findFirst({
       where: { id: input.templateId, isActive: true },
-      include: { items: true }
+      include: partMeasurementTemplateFullInclude
     });
     if (!template) {
       throw new ApiError(404, 'テンプレートが見つかりません');
+    }
+    if (isInspectionDrawingEvaluationTemplate(template)) {
+      throw new ApiError(
+        409,
+        '評価用テンプレートから記録表を作るには POST /part-measurement/inspection-drawing/evaluation-sheets を使用してください'
+      );
     }
     if (template.fhincd.trim().toUpperCase() !== input.fhincd.trim().toUpperCase()) {
       throw new ApiError(400, 'テンプレートと品番が一致しません');
@@ -321,12 +352,66 @@ export class PartMeasurementSheetService {
           machineName: input.machineName?.trim() || null,
           resourceCdSnapshot: resourceCd,
           processGroupSnapshot: prismaGroup,
+          quantity: initialQuantityForTemplate(template),
           sessionId: session.id,
           templateId: template.id,
           scannedBarcodeRaw: input.scannedBarcodeRaw?.trim() || null,
           clientDeviceId: input.clientDeviceId ?? undefined,
           editLockClientDeviceId: input.clientDeviceId ?? undefined,
           editLockExpiresAt: input.clientDeviceId ? lockExpiryFromNow() : null
+        },
+        include: sheetFullIncludeWithSession
+      });
+    });
+  }
+
+  /**
+   * 検査図面 MVP: 評価用テンプレから数量1の下書き記録表を作成（通常 createDraft の品番・工程一致は不要）。
+   */
+  async createInspectionDrawingEvaluationDraft(templateId: string, clientDeviceId?: string | null) {
+    const template = await prisma.partMeasurementTemplate.findFirst({
+      where: { id: templateId, isActive: true },
+      include: { items: true }
+    });
+    if (!template) {
+      throw new ApiError(404, 'テンプレートが見つかりません');
+    }
+    if (!isInspectionDrawingEvaluationTemplate(template)) {
+      throw new ApiError(409, '評価用テンプレートのみこの API で記録表を作成できます');
+    }
+    if (template.processGroup !== 'CANDIDATE_FHINMEI_ONLY') {
+      throw new ApiError(409, '検査図面評価用テンプレートの工程が不正です');
+    }
+
+    const productNo = PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD;
+    const resourceCd = normalizeResourceCd(template.resourceCd);
+    const session = await this.sessions.ensureSession(productNo, 'CANDIDATE_FHINMEI_ONLY', resourceCd);
+    await this.sessions.assertTemplateUniqueInSession(session.id, template.id);
+
+    return prisma.$transaction(async (tx) => {
+      if (session.completedAt) {
+        await tx.partMeasurementSession.update({
+          where: { id: session.id },
+          data: { completedAt: null }
+        });
+      }
+
+      return tx.partMeasurementSheet.create({
+        data: {
+          status: 'DRAFT',
+          productNo,
+          fseiban: 'EVAL',
+          fhincd: PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD,
+          fhinmei: template.name.trim().slice(0, 500),
+          machineName: null,
+          resourceCdSnapshot: resourceCd,
+          processGroupSnapshot: 'CANDIDATE_FHINMEI_ONLY',
+          quantity: 1,
+          sessionId: session.id,
+          templateId: template.id,
+          clientDeviceId: clientDeviceId ?? undefined,
+          editLockClientDeviceId: clientDeviceId ?? undefined,
+          editLockExpiresAt: clientDeviceId ? lockExpiryFromNow() : null
         },
         include: sheetFullIncludeWithSession
       });
@@ -347,7 +432,7 @@ export class PartMeasurementSheetService {
   async listDrafts(params: { limit: number; cursor?: string | null }) {
     const take = Math.min(Math.max(params.limit, 1), 100);
     const rows = await prisma.partMeasurementSheet.findMany({
-      where: { status: 'DRAFT' },
+      where: productionPartMeasurementSheetWhere({ status: 'DRAFT' }),
       orderBy: [{ updatedAt: 'desc' }],
       take: take + 1,
       cursor: params.cursor ? { id: params.cursor } : undefined,
@@ -390,24 +475,24 @@ export class PartMeasurementSheetService {
     if (params.includeCancelled) statuses.push('CANCELLED');
     if (params.includeInvalidated) statuses.push('INVALIDATED');
 
-    const where: Prisma.PartMeasurementSheetWhereInput = {
+    const baseWhere: Prisma.PartMeasurementSheetWhereInput = {
       status: { in: statuses }
     };
-    if (params.productNo?.trim()) where.productNo = { contains: params.productNo.trim(), mode: 'insensitive' };
-    if (params.fseiban?.trim()) where.fseiban = { contains: params.fseiban.trim(), mode: 'insensitive' };
-    if (params.fhincd?.trim()) where.fhincd = { contains: params.fhincd.trim(), mode: 'insensitive' };
-    if (params.processGroup) where.processGroupSnapshot = params.processGroup;
+    if (params.productNo?.trim()) baseWhere.productNo = { contains: params.productNo.trim(), mode: 'insensitive' };
+    if (params.fseiban?.trim()) baseWhere.fseiban = { contains: params.fseiban.trim(), mode: 'insensitive' };
+    if (params.fhincd?.trim()) baseWhere.fhincd = { contains: params.fhincd.trim(), mode: 'insensitive' };
+    if (params.processGroup) baseWhere.processGroupSnapshot = params.processGroup;
     if (params.resourceCd?.trim()) {
-      where.resourceCdSnapshot = normalizeResourceCd(params.resourceCd);
+      baseWhere.resourceCdSnapshot = normalizeResourceCd(params.resourceCd);
     }
     if (params.dateFrom || params.dateTo) {
-      where.finalizedAt = {};
-      if (params.dateFrom) where.finalizedAt.gte = params.dateFrom;
-      if (params.dateTo) where.finalizedAt.lte = params.dateTo;
+      baseWhere.finalizedAt = {};
+      if (params.dateFrom) baseWhere.finalizedAt.gte = params.dateFrom;
+      if (params.dateTo) baseWhere.finalizedAt.lte = params.dateTo;
     }
 
     const rows = await prisma.partMeasurementSheet.findMany({
-      where,
+      where: productionPartMeasurementSheetWhere(baseWhere),
       orderBy: [{ finalizedAt: 'desc' }, { updatedAt: 'desc' }],
       take: take + 1,
       cursor: params.cursor ? { id: params.cursor } : undefined,
@@ -539,6 +624,16 @@ export class PartMeasurementSheetService {
             if (places > item.decimalPlaces) {
               throw new ApiError(400, `小数桁数は最大${item.decimalPlaces}桁です`);
             }
+          }
+          if (isBlankValue(r.value)) {
+            await tx.partMeasurementResult.deleteMany({
+              where: {
+                sheetId: id,
+                pieceIndex: r.pieceIndex,
+                templateItemId: r.templateItemId
+              }
+            });
+            continue;
           }
           await tx.partMeasurementResult.upsert({
             where: {

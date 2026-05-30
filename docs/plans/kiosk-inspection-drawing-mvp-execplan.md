@@ -57,8 +57,8 @@ Maintained in accordance with `.agent/PLANS.md`.
 ## Outcomes & Retrospective
 
 - 作成画面（URL 直打ち）で図面・測定点・テンプレ保存・同一画面テスト入力まで可能。
-- 本番の日程照会・order・ハブから inspection 編集へは接続しない（複数個数未対応のため）。図面付きテンプレでも表形式 `/edit/:sheetId` を使用。
-- 次: 個体インデックス対応後に本番導線再接続、TIFF、順位ボード連携を検討。
+- [x] (2026-05-30) **本番編集導線（数量1のみ）**: 図面付き本番テンプレ + `quantity===1` の sheet は schedule / ハブ / 下書き / 確定一覧 / template pick から `inspection/edit` へ自動分岐。保存は通常 sheet API。評価用 create・評価 API 隔離は維持。
+- 未着手: 本番テンプレ作成の昇格（評価用 create からの接続）、複数個数（個体インデックス）、TIFF、順位ボード連携。
 
 ## Context and Orientation
 

@@ -3,15 +3,21 @@ import { Link, useMatch, useNavigate, useParams } from 'react-router-dom';
 
 import {
   finalizeInspectionDrawingEvaluationSheet,
+  finalizePartMeasurementSheet,
   getPartMeasurementSheet,
   getResolvedClientKey,
-  patchInspectionDrawingEvaluationSheet
+  patchInspectionDrawingEvaluationSheet,
+  patchPartMeasurementSheet
 } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import {
-  getInspectionDrawingEvaluationEditAccess,
+  getInspectionDrawingEditAccess,
   InspectionDrawingCanvas,
+  InspectionDrawingCreateHeaderBand,
+  inspectionDrawingCanvasColumnClassName,
   InspectionDrawingValuePanel,
+  inspectionDrawingKioskDisabledButtonClass,
+  inspectionDrawingSideAsideClassName,
   templateItemToDrawingPoint,
   templateSupportsInspectionDrawing
 } from '../../features/part-measurement/inspection-drawing';
@@ -30,7 +36,9 @@ export function KioskInspectionDrawingEditPage() {
   const clientKey = getResolvedClientKey();
   const isActiveRoute = useMatch('/kiosk/part-measurement/inspection/edit/:sheetId');
   const [sheet, setSheet] = useState<PartMeasurementSheetDto | null>(null);
-  const editAccess = useMemo(() => getInspectionDrawingEvaluationEditAccess(sheet), [sheet]);
+  const editAccess = useMemo(() => getInspectionDrawingEditAccess(sheet), [sheet]);
+  const isEvaluation = editAccess.mode === 'evaluation';
+  const isProduction = editAccess.mode === 'production';
   const nfcEnabled = Boolean(isActiveRoute && sheet?.status === 'DRAFT' && editAccess.allowed);
   const nfcEvent = useNfcStream(nfcEnabled);
   const lastNfcKeyRef = useRef<string | null>(null);
@@ -91,18 +99,45 @@ export function KioskInspectionDrawingEditPage() {
     sheet?.status === 'FINALIZED' || sheet?.status === 'CANCELLED' || sheet?.status === 'INVALIDATED';
   const readOnly = statusReadOnly || !editAccess.allowed;
 
+  const patchSheet = useCallback(
+    async (
+      id: string,
+      body: {
+        quantity?: number;
+        employeeTagUid?: string;
+        results?: Array<{
+          pieceIndex: number;
+          templateItemId: string;
+          value: string | null;
+        }>;
+      }
+    ) => {
+      if (isEvaluation) {
+        return patchInspectionDrawingEvaluationSheet(id, body, clientKey);
+      }
+      return patchPartMeasurementSheet(id, body, clientKey);
+    },
+    [clientKey, isEvaluation]
+  );
+
+  const finalizeSheet = useCallback(
+    async (id: string) => {
+      if (isEvaluation) {
+        return finalizeInspectionDrawingEvaluationSheet(id, clientKey);
+      }
+      return finalizePartMeasurementSheet(id, clientKey);
+    },
+    [clientKey, isEvaluation]
+  );
+
   useEffect(() => {
-    if (!nfcEvent || !sheet || readOnly || sheet.status !== 'DRAFT') return;
+    if (!nfcEvent || !sheet || readOnly || sheet.status !== 'DRAFT' || !editAccess.allowed) return;
     const key = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
     if (lastNfcKeyRef.current === key) return;
     lastNfcKeyRef.current = key;
     void (async () => {
       try {
-        const { sheet: updated } = await patchInspectionDrawingEvaluationSheet(
-          sheet.id,
-          { employeeTagUid: nfcEvent.uid },
-          clientKey
-        );
+        const { sheet: updated } = await patchSheet(sheet.id, { employeeTagUid: nfcEvent.uid });
         setSheet(updated);
         setMessage(null);
       } catch (e: unknown) {
@@ -110,35 +145,26 @@ export function KioskInspectionDrawingEditPage() {
         setMessage(err.response?.data?.message ?? '社員タグの反映に失敗しました。');
       }
     })();
-  }, [nfcEvent, sheet, readOnly, clientKey]);
+  }, [nfcEvent, sheet, readOnly, editAccess.allowed, patchSheet]);
 
   const selectedPoint = points.find((p) => p.id === selectedPointId) ?? null;
 
   const flushSave = useCallback(
     async (nextPoints: InspectionDrawingPoint[]) => {
-      if (!sheet || readOnly) return;
-      const results = nextPoints
-        .map((pt) => ({
-          pieceIndex: PIECE_INDEX,
-          templateItemId: pt.id,
-          value: pt.testValue.trim()
-        }))
-        .filter((r) => r.value.length > 0);
+      if (!sheet || readOnly || !editAccess.allowed || sheet.status !== 'DRAFT') return;
+      const results = nextPoints.map((pt) => ({
+        pieceIndex: PIECE_INDEX,
+        templateItemId: pt.id,
+        value: pt.testValue.trim() === '' ? null : pt.testValue.trim()
+      }));
       try {
-        const { sheet: updated } = await patchInspectionDrawingEvaluationSheet(
-          sheet.id,
-          {
-            quantity: 1,
-            results
-          },
-          clientKey
-        );
+        const { sheet: updated } = await patchSheet(sheet.id, { quantity: 1, results });
         setSheet(updated);
       } catch {
         /* 自動保存失敗は次回に委ねる */
       }
     },
-    [sheet, readOnly, clientKey]
+    [sheet, readOnly, editAccess.allowed, patchSheet]
   );
 
   const scheduleSave = useCallback(
@@ -160,12 +186,12 @@ export function KioskInspectionDrawingEditPage() {
   };
 
   const handleFinalize = async () => {
-    if (!sheet || !editAccess.allowed) return;
+    if (!sheet || !editAccess.allowed || sheet.status !== 'DRAFT') return;
     setBusy(true);
     try {
       if (autosaveRef.current) clearTimeout(autosaveRef.current);
       await flushSave(points);
-      const { sheet: finalized } = await finalizeInspectionDrawingEvaluationSheet(sheet.id, clientKey);
+      const { sheet: finalized } = await finalizeSheet(sheet.id);
       setSheet(finalized);
       setMessage('確定しました。');
     } catch (e: unknown) {
@@ -183,15 +209,12 @@ export function KioskInspectionDrawingEditPage() {
   if (sheet && !editAccess.allowed) {
     return (
       <div className="flex flex-col gap-3 p-4 text-white">
-        <p className="text-xs text-amber-200">
-          実験用画面（本番導線からは開きません）。この記録表は保存・確定の対象外です。
-        </p>
         <p className="text-sm text-amber-200">{editAccess.reason}</p>
         <Link
           to={`/kiosk/part-measurement/edit/${sheetId}`}
           className="text-sm font-semibold text-blue-200 underline"
         >
-          通常の測定画面を開く
+          表形式の測定画面を開く
         </Link>
       </div>
     );
@@ -205,46 +228,62 @@ export function KioskInspectionDrawingEditPage() {
           to={`/kiosk/part-measurement/edit/${sheetId}`}
           className="text-sm font-semibold text-blue-200 underline"
         >
-          通常の測定画面を開く
+          表形式の測定画面を開く
         </Link>
       </div>
     );
   }
 
+  const contextBanner = isEvaluation ? (
+    <p className="text-xs text-amber-200">
+      評価用テンプレート（URL 直打ち）。本番の日程・一覧導線とは別です。
+    </p>
+  ) : isProduction ? (
+    <p className="text-xs text-emerald-200/90">本番記録（図面付きテンプレ・数量1）。通常の記録表 API で保存・確定します。</p>
+  ) : null;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 p-2 text-white">
-      <p className="text-xs text-amber-200">
-        実験用画面（評価用テンプレート・数量1のみ）。本番の日程／order導線からは開きません。
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="secondary" onClick={() => void navigate('/kiosk/part-measurement')}>
-          一覧へ
-        </Button>
-        {sheet ? (
-          <span className="text-sm text-white/80">
-            {sheet.productNo} / {sheet.fhincd} / {sheet.status}
-          </span>
-        ) : null}
-        {sheet?.status === 'DRAFT' && editAccess.allowed ? (
-          <Button type="button" variant="primary" onClick={() => void handleFinalize()} disabled={busy}>
-            確定
-          </Button>
-        ) : null}
-        {sheet ? (
-          <Link
-            to={`/kiosk/part-measurement/edit/${sheet.id}`}
-            className="text-xs text-blue-200 underline"
-          >
-            表形式
-          </Link>
-        ) : null}
-      </div>
+      {contextBanner}
+      <InspectionDrawingCreateHeaderBand
+        metadata={
+          <>
+            <p className="text-[1.3rem] font-semibold leading-snug">
+              {sheet ? `${sheet.productNo} / ${sheet.fhincd}` : '読み込み中…'}
+            </p>
+            {sheet ? (
+              <p className="text-sm text-white/75">
+                {sheet.status}
+                {sheet.employeeNameSnapshot ? ` / ${sheet.employeeNameSnapshot}` : ''}
+              </p>
+            ) : null}
+          </>
+        }
+        toolbar={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="secondary" onClick={() => void navigate('/kiosk/part-measurement')}>
+              一覧へ
+            </Button>
+            {sheet?.status === 'DRAFT' && editAccess.allowed ? (
+              <Button
+                type="button"
+                variant="primary"
+                className={inspectionDrawingKioskDisabledButtonClass}
+                onClick={() => void handleFinalize()}
+                disabled={busy}
+              >
+                確定
+              </Button>
+            ) : null}
+          </div>
+        }
+      />
 
       {message ? <p className="text-sm font-semibold text-amber-200">{message}</p> : null}
       {drawingLoadError ? <p className="text-sm text-red-300">{drawingLoadError}</p> : null}
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row">
-        <div className="flex min-h-[min(55dvh,520px)] min-w-0 flex-1 flex-col">
+        <div className={inspectionDrawingCanvasColumnClassName}>
           {drawingBlobUrl ? (
             <InspectionDrawingCanvas
               imageUrl={drawingBlobUrl}
@@ -260,10 +299,10 @@ export function KioskInspectionDrawingEditPage() {
             <p className="text-sm text-white/70">{busy ? '読み込み中…' : '図面を読み込み中…'}</p>
           )}
         </div>
-        <aside className="w-full shrink-0 lg:w-80">
+        <aside className={inspectionDrawingSideAsideClassName}>
           <InspectionDrawingValuePanel
             point={selectedPoint}
-            readOnly={readOnly}
+            readOnly={readOnly || sheet?.status !== 'DRAFT'}
             onValueChange={(v) => {
               if (!selectedPoint) return;
               updatePointValue(selectedPoint.id, v);

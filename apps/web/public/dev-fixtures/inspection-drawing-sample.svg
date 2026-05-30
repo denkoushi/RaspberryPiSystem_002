@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#f8fafc"/>
+  <rect x="40" y="40" width="720" height="520" fill="none" stroke="#334155" stroke-width="2"/>
+  <circle cx="400" cy="300" r="120" fill="none" stroke="#0f172a" stroke-width="3"/>
+  <line x1="120" y1="300" x2="680" y2="300" stroke="#64748b" stroke-width="1" stroke-dasharray="8 6"/>
+  <line x1="400" y1="80" x2="400" y2="520" stroke="#64748b" stroke-width="1" stroke-dasharray="8 6"/>
+  <text x="60" y="70" font-family="sans-serif" font-size="18" fill="#475569">検査図面サンプル（開発プレビュー）</text>
+  <text x="60" y="560" font-family="sans-serif" font-size="14" fill="#94a3b8">φ240 ±0.05 · 穴位置 A/B/C</text>
+</svg>

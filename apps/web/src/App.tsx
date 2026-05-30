@@ -29,6 +29,7 @@ import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
 import { SignagePreviewPage } from './pages/admin/SignagePreviewPage';
 import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
 import { VisualizationDashboardsPage } from './pages/admin/VisualizationDashboardsPage';
+import { KioskInspectionDrawingCreatePreviewPage } from './pages/dev/KioskInspectionDrawingCreatePreviewPage';
 import { LoadBalancingOverviewChartPreviewPage } from './pages/dev/LoadBalancingOverviewChartPreviewPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
@@ -123,7 +124,13 @@ function App() {
       </Route>
       {/* 開発用: UI確認のための一時的なルート */}
       {import.meta.env.DEV ? (
-        <Route path="/dev/load-balancing-overview-chart" element={<LoadBalancingOverviewChartPreviewPage />} />
+        <>
+          <Route
+            path="/dev/kiosk-inspection-drawing-create"
+            element={<KioskInspectionDrawingCreatePreviewPage />}
+          />
+          <Route path="/dev/load-balancing-overview-chart" element={<LoadBalancingOverviewChartPreviewPage />} />
+        </>
       ) : null}
       <Route
         path="/preview"

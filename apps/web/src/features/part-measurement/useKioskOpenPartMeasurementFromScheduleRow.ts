@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { findOrOpenPartMeasurementSheet, getResolvedClientKey } from '../../api/client';
 import { isGrindingResourceCd } from '../kiosk/productionSchedule/resourceCategory';
 
+import { resolveKioskPartMeasurementSheetEditPath } from './kioskPartMeasurementSheetNavigation';
 import { savePartMeasurementProcessGroup } from './processGroupStorage';
 
 import type { PartMeasurementProcessGroup } from './types';
@@ -48,7 +49,7 @@ export function useKioskOpenPartMeasurementFromScheduleRow() {
           clientKey
         );
         if (res.mode === 'resume_draft' || res.mode === 'created_draft' || res.mode === 'view_finalized') {
-          void navigate(`/kiosk/part-measurement/edit/${res.sheet.id}`);
+          void navigate(resolveKioskPartMeasurementSheetEditPath(res.sheet));
           return;
         }
         if (res.mode === 'needs_template' && res.header) {

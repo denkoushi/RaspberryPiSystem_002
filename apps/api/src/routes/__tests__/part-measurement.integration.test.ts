@@ -193,7 +193,10 @@ describe('part-measurement templates API', () => {
     });
     expect(evalRes.statusCode).toBe(200);
     const evalTpl = evalRes.json().template;
+    const evalSheetFromCreate = evalRes.json().sheet;
     expect(evalTpl.fhincd).toBe(PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD);
+    expect(evalSheetFromCreate.templateId).toBe(evalTpl.id);
+    expect(evalSheetFromCreate.quantity).toBe(1);
     expect(evalTpl.processGroup).toBeNull();
     expect(evalTpl.isActive).toBe(true);
 
@@ -245,6 +248,309 @@ describe('part-measurement templates API', () => {
     expect(listRes.statusCode).toBe(200);
     const ids = (listRes.json().templates as { id: string }[]).map((t) => t.id);
     expect(ids).not.toContain(evalId);
+  });
+
+  it('creates evaluation draft sheet with template and blocks production sheet APIs', async () => {
+    const fhincd = `EVAL-SHEET-CREATE-${Date.now()}`;
+    const { body, contentType } = buildMultipartPng('eval drawing', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    const vid = up.json().visualTemplate.id as string;
+
+    const evalRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/inspection-drawing/evaluation-templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        referenceFhincd: fhincd,
+        referenceResourceCd: 'RES-EVAL-SHEET',
+        referenceProcessGroup: 'cutting',
+        name: 'eval sheet flow',
+        visualTemplateId: vid,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1',
+            markerXRatio: 0.1,
+            markerYRatio: 0.2,
+            nominalValue: 1,
+            lowerLimit: 0.9,
+            upperLimit: 1.1
+          }
+        ]
+      }
+    });
+    expect(evalRes.statusCode).toBe(200);
+    const templateId = evalRes.json().template.id as string;
+    const sheet = evalRes.json().sheet;
+    expect(sheet.quantity).toBe(1);
+    expect(sheet.templateId).toBe(templateId);
+    expect(sheet.fhincd).toBe(PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD);
+
+    const itemId = evalRes.json().template.items[0].id as string;
+    const evalPatch = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/inspection-drawing/evaluation-sheets/${sheet.id}`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        results: [{ pieceIndex: 0, templateItemId: itemId, value: '1.0' }]
+      }
+    });
+    expect(evalPatch.statusCode).toBe(200);
+
+    const prodPatch = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/sheets/${sheet.id}`,
+      headers: createAuthHeader(adminToken),
+      payload: { quantity: 1 }
+    });
+    expect(prodPatch.statusCode).toBe(409);
+
+    const prodFinalize = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/sheets/${sheet.id}/finalize`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(prodFinalize.statusCode).toBe(409);
+  });
+
+  it('excludes evaluation sheets from GET /sheets/drafts', async () => {
+    const fhincd = `EVAL-DRAFT-LIST-${Date.now()}`;
+    const { body, contentType } = buildMultipartPng('eval drawing', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    const vid = up.json().visualTemplate.id as string;
+
+    const evalRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/inspection-drawing/evaluation-templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        referenceFhincd: fhincd,
+        referenceResourceCd: 'RES-DRAFT-LIST',
+        referenceProcessGroup: 'cutting',
+        name: 'eval draft list',
+        visualTemplateId: vid,
+        items: [{ sortOrder: 0, datumSurface: 'A', measurementPoint: 'B', measurementLabel: 'L1' }]
+      }
+    });
+    expect(evalRes.statusCode).toBe(200);
+    const evalSheetId = evalRes.json().sheet.id as string;
+
+    const prodFhincd = `PROD-DRAFT-LIST-${Date.now()}`;
+    const t1 = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd: prodFhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-PDL',
+        name: 'prod draft list',
+        items: [{ sortOrder: 0, datumSurface: 'A', measurementPoint: 'B', measurementLabel: 'L1' }]
+      }
+    });
+    const prodSheet = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        productNo: `PN-PDL-${Date.now()}`,
+        fseiban: 'FS-PDL',
+        fhincd: prodFhincd,
+        fhinmei: '品',
+        resourceCdSnapshot: 'RES-PDL',
+        processGroup: 'cutting',
+        templateId: t1.json().template.id
+      }
+    });
+    expect(prodSheet.statusCode).toBe(200);
+    const prodSheetId = prodSheet.json().sheet.id as string;
+
+    const draftsRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/sheets/drafts?limit=50',
+      headers: createAuthHeader(adminToken)
+    });
+    expect(draftsRes.statusCode).toBe(200);
+    const draftIds = (draftsRes.json().sheets as { id: string }[]).map((s) => s.id);
+    expect(draftIds).toContain(prodSheetId);
+    expect(draftIds).not.toContain(evalSheetId);
+  });
+
+  it('allows production drawing sheet patch and finalize via normal sheet APIs when quantity is 1', async () => {
+    const employee = await createTestEmployee({
+      displayName: 'Inspection Drawing Tester',
+      nfcTagUid: `TAG-PD-${Date.now()}`
+    });
+    const { body, contentType } = buildMultipartPng('prod drawing', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    const vid = up.json().visualTemplate.id as string;
+    const fhincd = `PROD-DRAW-${Date.now()}`;
+    const tRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-PD',
+        name: 'prod drawing tpl',
+        visualTemplateId: vid,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1',
+            markerXRatio: 0.1,
+            markerYRatio: 0.2,
+            nominalValue: 0,
+            lowerLimit: 0,
+            upperLimit: 1
+          }
+        ]
+      }
+    });
+    const templateId = tRes.json().template.id as string;
+    const itemId = tRes.json().template.items[0].id as string;
+    const sheetRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        productNo: `PN-PD-${Date.now()}`,
+        fseiban: 'FS',
+        fhincd,
+        fhinmei: '品',
+        resourceCdSnapshot: 'RES-PD',
+        processGroup: 'cutting',
+        templateId
+      }
+    });
+    const sheetId = sheetRes.json().sheet.id as string;
+
+    const setQty = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/sheets/${sheetId}`,
+      headers: createAuthHeader(adminToken),
+      payload: { quantity: 1, results: [{ pieceIndex: 0, templateItemId: itemId, value: '0.5' }] }
+    });
+    expect(setQty.statusCode).toBe(200);
+
+    const clearValue = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/sheets/${sheetId}`,
+      headers: createAuthHeader(adminToken),
+      payload: { results: [{ pieceIndex: 0, templateItemId: itemId, value: null }] }
+    });
+    expect(clearValue.statusCode).toBe(200);
+    const afterClear = await prisma.partMeasurementResult.findFirst({
+      where: { sheetId, templateItemId: itemId, pieceIndex: 0 }
+    });
+    expect(afterClear).toBeNull();
+
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/sheets/${sheetId}`,
+      headers: createAuthHeader(adminToken),
+      payload: { results: [{ pieceIndex: 0, templateItemId: itemId, value: '0.5' }] }
+    });
+
+    const tagRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/sheets/${sheetId}`,
+      headers: createAuthHeader(adminToken),
+      payload: { employeeTagUid: employee.nfcTagUid }
+    });
+    expect(tagRes.statusCode).toBe(200);
+
+    const evalPatch = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/inspection-drawing/evaluation-sheets/${sheetId}`,
+      headers: createAuthHeader(adminToken),
+      payload: { results: [{ pieceIndex: 0, templateItemId: itemId, value: '0.6' }] }
+    });
+    expect(evalPatch.statusCode).toBe(409);
+
+    const finalizeRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/sheets/${sheetId}/finalize`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(finalizeRes.statusCode).toBe(200);
+    expect(finalizeRes.json().sheet.status).toBe('FINALIZED');
+  });
+
+  it('creates quantity 1 draft immediately for production drawing templates', async () => {
+    const { body, contentType } = buildMultipartPng('prod drawing default qty', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    const vid = up.json().visualTemplate.id as string;
+    const fhincd = `PROD-DRAW-DEFAULT-${Date.now()}`;
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-PDD',
+        name: 'prod drawing default qty',
+        visualTemplateId: vid,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1',
+            markerXRatio: 0.1,
+            markerYRatio: 0.2,
+            nominalValue: 0,
+            lowerLimit: 0,
+            upperLimit: 1
+          }
+        ]
+      }
+    });
+    expect(templateRes.statusCode).toBe(200);
+
+    const sheetRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        productNo: `PN-PDD-${Date.now()}`,
+        fseiban: 'FS-PDD',
+        fhincd,
+        fhinmei: '品',
+        resourceCdSnapshot: 'RES-PDD',
+        processGroup: 'cutting',
+        templateId: templateRes.json().template.id
+      }
+    });
+    expect(sheetRes.statusCode).toBe(200);
+    expect(sheetRes.json().sheet.quantity).toBe(1);
   });
 
   it('rejects inspection-drawing evaluation-sheet patch for production template sheet', async () => {

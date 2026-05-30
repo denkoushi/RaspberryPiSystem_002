@@ -1,38 +1,32 @@
+import {
+  getInspectionDrawingEditAccess,
+  type InspectionDrawingEditAccess as UnifiedInspectionDrawingEditAccess
+} from './productionInspectionDrawingPolicy';
+
 import type { PartMeasurementSheetDto } from '../types';
 
-/** API の評価用テンプレバケット（`part-measurement-constants` と同期） */
-export const PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD = '__INSPECTION_DRAWING_EVAL__';
-
-export function isInspectionDrawingEvaluationTemplateDto(
-  template: { fhincd: string } | null | undefined
-): boolean {
-  return template?.fhincd === PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD;
-}
-
+/** @deprecated 互換のため残す。新規は `getInspectionDrawingEditAccess` を使う */
 export type InspectionDrawingEvaluationEditAccess = {
   allowed: boolean;
   reason?: string;
 };
 
+/** 評価用テンプレの記録表のみ「許可」扱い（本番 sheet は拒否） */
 export function getInspectionDrawingEvaluationEditAccess(
   sheet: PartMeasurementSheetDto | null
 ): InspectionDrawingEvaluationEditAccess {
-  if (!sheet) {
-    return { allowed: false };
+  const access = getInspectionDrawingEditAccess(sheet);
+  if (access.mode === 'evaluation') {
+    return { allowed: access.allowed, reason: access.reason };
   }
-  if (!isInspectionDrawingEvaluationTemplateDto(sheet.template)) {
+  if (access.mode === 'production') {
     return {
       allowed: false,
-      reason:
-        'この画面は評価用テンプレートの記録表のみ編集できます。本番の記録表は通常の測定画面をご利用ください。'
+      reason: '本番の記録表はこの評価専用画面では編集できません。日程・一覧から開いた図面画面をご利用ください。'
     };
   }
-  const quantity = sheet.quantity ?? 1;
-  if (quantity !== 1) {
-    return {
-      allowed: false,
-      reason: '数量が2個以上の記録表は、この実験用画面では編集・確定できません。'
-    };
-  }
-  return { allowed: true };
+  return { allowed: false, reason: access.reason };
 }
+
+export type { UnifiedInspectionDrawingEditAccess as InspectionDrawingEditAccess };
+export { getInspectionDrawingEditAccess };

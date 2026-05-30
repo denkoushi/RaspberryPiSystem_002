@@ -79,7 +79,7 @@ export function drawingPointToTemplateItemInput(
   };
 }
 
-/** 実験用ルート（MVPでは本番 order 導線からはリンクしない） */
+/** 図面中心UIの編集ルート（本番 quantity=1 / 評価用） */
 export function kioskPartMeasurementInspectionEditPath(sheetId: string): string {
   return `/kiosk/part-measurement/inspection/edit/${sheetId}`;
 }

@@ -1,3 +1,6 @@
+export { InspectionDrawingCreateHeaderBand } from './InspectionDrawingCreateHeaderBand';
+export { InspectionDrawingCreateToolbar } from './InspectionDrawingCreateToolbar';
+export type { InspectionDrawingToolbarMode } from './InspectionDrawingCreateToolbar';
 export { InspectionDrawingCanvas } from './InspectionDrawingCanvas';
 export {
   evaluateMeasurementValue,
@@ -15,10 +18,40 @@ export {
 } from './templateItemMappers';
 
 export { InspectionDrawingValuePanel } from './InspectionDrawingValuePanel';
+export {
+  inspectionDrawingCanvasColumnClassName,
+  inspectionDrawingHeaderBandClassName,
+  inspectionDrawingKioskDisabledButtonClass,
+  inspectionDrawingKioskToggleInactiveClass,
+  inspectionDrawingMetadataControlWidthClass,
+  inspectionDrawingMetadataFileInputClass,
+  inspectionDrawingMetadataFileInputClassName,
+  inspectionDrawingMetadataInputClass,
+  inspectionDrawingMetadataInputClassName,
+  inspectionDrawingMetadataLabelClassName,
+  inspectionDrawingPointSettingInputClassName,
+  inspectionDrawingPointSettingPanelClassName,
+  inspectionDrawingSideAsideClassName
+} from './inspectionDrawingKioskUi';
 
 export {
-  getInspectionDrawingEvaluationEditAccess,
   isInspectionDrawingEvaluationTemplateDto,
   PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD
+} from './inspectionDrawingTemplateBuckets';
+export {
+  getInspectionDrawingEditAccess,
+  getInspectionDrawingEvaluationEditAccess
 } from './evaluationSheetAccess';
-export type { InspectionDrawingEvaluationEditAccess } from './evaluationSheetAccess';
+export type {
+  InspectionDrawingEditAccess,
+  InspectionDrawingEvaluationEditAccess
+} from './evaluationSheetAccess';
+
+export {
+  INSPECTION_DRAWING_UI_QUANTITY,
+  productionTemplateEligibleForInspectionDrawingUi,
+  resolveInspectionDrawingEditMode,
+  sheetUsesInspectionDrawingEvaluationUi,
+  sheetUsesProductionInspectionDrawingUi
+} from './productionInspectionDrawingPolicy';
+export type { InspectionDrawingEditMode } from './productionInspectionDrawingPolicy';

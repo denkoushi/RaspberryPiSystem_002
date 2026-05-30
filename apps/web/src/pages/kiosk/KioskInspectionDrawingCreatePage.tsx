@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { createInspectionDrawingEvaluationTemplate, getResolvedClientKey } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import {
   drawingPointToTemplateItemInput,
+  kioskPartMeasurementInspectionEditPath,
   InspectionDrawingCanvas,
-  InspectionDrawingValuePanel
+  InspectionDrawingCreateHeaderBand,
+  InspectionDrawingCreateToolbar,
+  InspectionDrawingValuePanel,
+  inspectionDrawingCanvasColumnClassName,
+  inspectionDrawingMetadataFileInputClass,
+  inspectionDrawingMetadataInputClass,
+  inspectionDrawingMetadataLabelClassName,
+  inspectionDrawingPointSettingInputClassName,
+  inspectionDrawingPointSettingPanelClassName,
+  inspectionDrawingSideAsideClassName
 } from '../../features/part-measurement/inspection-drawing';
 
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
@@ -40,6 +51,7 @@ export function KioskInspectionDrawingCreatePage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [savedTemplateId, setSavedTemplateId] = useState<string | null>(null);
+  const [savedSheetId, setSavedSheetId] = useState<string | null>(null);
 
   const selectedPoint = useMemo(
     () => points.find((p) => p.id === selectedPointId) ?? null,
@@ -59,6 +71,7 @@ export function KioskInspectionDrawingCreatePage() {
     setPoints([]);
     setSelectedPointId(null);
     setSavedTemplateId(null);
+    setSavedSheetId(null);
   };
 
   const updatePoint = (id: string, patch: Partial<InspectionDrawingPoint>) => {
@@ -101,7 +114,7 @@ export function KioskInspectionDrawingCreatePage() {
     setBusy(true);
     setMessage(null);
     try {
-      const template = await createInspectionDrawingEvaluationTemplate(
+      const { template, sheet } = await createInspectionDrawingEvaluationTemplate(
         {
           referenceFhincd: f,
           referenceResourceCd: r,
@@ -113,8 +126,9 @@ export function KioskInspectionDrawingCreatePage() {
         clientKey
       );
       setSavedTemplateId(template.id);
+      setSavedSheetId(sheet.id);
       setMessage(
-        'テンプレートを保存しました。この画面の「テスト入力」で動作を確認してください（本番の日程照会・order入力には未接続）。'
+        '評価用テンプレートと下書き記録表を作成しました。この画面の「テスト入力」または「図面入力へ」で続けられます（本番の日程照会・order入力には未接続）。'
       );
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
@@ -133,73 +147,75 @@ export function KioskInspectionDrawingCreatePage() {
         <span className="text-sm font-semibold text-white/80">検査図面作成（MVP・評価用）</span>
       </div>
 
-      <div className="grid shrink-0 gap-2 rounded border border-white/15 bg-slate-900/50 p-3 md:grid-cols-2 lg:grid-cols-4">
-        <label className="grid gap-1 text-xs font-semibold">
-          品番（評価用ラベル）
-          <Input value={fhincd} onChange={(e) => setFhincd(e.target.value)} className="text-slate-900" />
-        </label>
-        <label className="grid gap-1 text-xs font-semibold">
-          資源CD（評価用ラベル）
-          <Input value={resourceCd} onChange={(e) => setResourceCd(e.target.value)} className="text-slate-900" />
-        </label>
-        <label className="grid gap-1 text-xs font-semibold">
-          テンプレ名
-          <Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} className="text-slate-900" />
-        </label>
-        <label className="grid gap-1 text-xs font-semibold">
-          図面（PNG/JPEG/WebP）
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            className="text-xs text-white"
-            onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+      <InspectionDrawingCreateHeaderBand
+        metadata={
+          <>
+            <label className={inspectionDrawingMetadataLabelClassName}>
+              品番（評価用ラベル）
+              <Input
+                value={fhincd}
+                onChange={(e) => setFhincd(e.target.value)}
+                className={inspectionDrawingMetadataInputClass}
+              />
+            </label>
+            <label className={inspectionDrawingMetadataLabelClassName}>
+              資源CD（評価用ラベル）
+              <Input
+                value={resourceCd}
+                onChange={(e) => setResourceCd(e.target.value)}
+                className={inspectionDrawingMetadataInputClass}
+              />
+            </label>
+            <label className={inspectionDrawingMetadataLabelClassName}>
+              テンプレ名
+              <Input
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                className={inspectionDrawingMetadataInputClass}
+              />
+            </label>
+            <label className={inspectionDrawingMetadataLabelClassName}>
+              図面（PNG/JPEG/WebP）
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className={inspectionDrawingMetadataFileInputClass}
+                onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+          </>
+        }
+        toolbar={
+          <InspectionDrawingCreateToolbar
+            processGroup={processGroup}
+            onProcessGroupChange={setProcessGroup}
+            mode={mode}
+            onModeChange={setMode}
+            hasDrawingImage={Boolean(imagePreviewUrl)}
+            hasMeasurementPoints={points.length > 0}
+            onSave={() => void handleSave()}
+            saveBusy={busy}
           />
-        </label>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant={processGroup === 'cutting' ? 'primary' : 'secondary'}
-          onClick={() => setProcessGroup('cutting')}
-        >
-          切削
-        </Button>
-        <Button
-          type="button"
-          variant={processGroup === 'grinding' ? 'primary' : 'secondary'}
-          onClick={() => setProcessGroup('grinding')}
-        >
-          研削
-        </Button>
-        <Button
-          type="button"
-          variant={mode === 'place' ? 'primary' : 'secondary'}
-          onClick={() => setMode('place')}
-          disabled={!imagePreviewUrl}
-        >
-          点を配置
-        </Button>
-        <Button
-          type="button"
-          variant={mode === 'test' ? 'primary' : 'secondary'}
-          onClick={() => setMode('test')}
-          disabled={!imagePreviewUrl || points.length === 0}
-        >
-          テスト入力
-        </Button>
-        <Button type="button" variant="primary" onClick={() => void handleSave()} disabled={busy}>
-          {busy ? '保存中…' : '保存'}
-        </Button>
-      </div>
+        }
+      />
 
       {message ? <p className="text-sm font-semibold text-amber-200">{message}</p> : null}
-      {savedTemplateId ? (
-        <p className="text-xs text-white/50">保存済みテンプレID（評価用）: {savedTemplateId}</p>
+      {savedSheetId ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            to={kioskPartMeasurementInspectionEditPath(savedSheetId)}
+            className="inline-flex rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600"
+          >
+            図面入力へ
+          </Link>
+          <p className="text-xs text-white/50">
+            評価用テンプレ: {savedTemplateId} / 記録表: {savedSheetId}
+          </p>
+        </div>
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-        <div className="flex min-h-[min(50dvh,480px)] min-w-0 flex-1 flex-col">
+        <div className={inspectionDrawingCanvasColumnClassName}>
           {imagePreviewUrl ? (
             <InspectionDrawingCanvas
               imageUrl={imagePreviewUrl}
@@ -220,16 +236,16 @@ export function KioskInspectionDrawingCreatePage() {
           )}
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col gap-3 lg:w-80">
+        <aside className={inspectionDrawingSideAsideClassName}>
           {mode === 'place' && selectedPoint ? (
-            <div className="grid gap-2 rounded border border-white/15 bg-slate-900/80 p-3">
+            <div className={inspectionDrawingPointSettingPanelClassName}>
               <p className="text-sm font-bold">測定点の設定</p>
               <label className="grid gap-1 text-xs font-semibold">
                 名称
                 <Input
                   value={selectedPoint.name}
                   onChange={(e) => updatePoint(selectedPoint.id, { name: e.target.value })}
-                  className="text-slate-900"
+                  className={inspectionDrawingPointSettingInputClassName}
                 />
               </label>
               <label className="grid gap-1 text-xs font-semibold">
@@ -241,7 +257,7 @@ export function KioskInspectionDrawingCreatePage() {
                   onChange={(e) =>
                     updatePoint(selectedPoint.id, { nominal: parseFloat(e.target.value) || 0 })
                   }
-                  className="text-slate-900"
+                  className={inspectionDrawingPointSettingInputClassName}
                 />
               </label>
               <label className="grid gap-1 text-xs font-semibold">
@@ -251,7 +267,7 @@ export function KioskInspectionDrawingCreatePage() {
                   inputMode="decimal"
                   value={selectedPoint.lower}
                   onChange={(e) => updatePoint(selectedPoint.id, { lower: parseFloat(e.target.value) || 0 })}
-                  className="text-slate-900"
+                  className={inspectionDrawingPointSettingInputClassName}
                 />
               </label>
               <label className="grid gap-1 text-xs font-semibold">
@@ -261,7 +277,7 @@ export function KioskInspectionDrawingCreatePage() {
                   inputMode="decimal"
                   value={selectedPoint.upper}
                   onChange={(e) => updatePoint(selectedPoint.id, { upper: parseFloat(e.target.value) || 0 })}
-                  className="text-slate-900"
+                  className={inspectionDrawingPointSettingInputClassName}
                 />
               </label>
               <Button type="button" variant="secondary" onClick={removeSelected}>
