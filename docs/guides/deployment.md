@@ -27,7 +27,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
-（**`main` マージ後**は第2引数を **`main`**。Pi4 は Pi5 目視 OK 後に 1 台ずつ。）
+（**`main` マージ済** PR [#376](https://github.com/denkoushi/RaspberryPiSystem_002/pull/376) · squash **`46ec0621`** — Pi4 は第2引数 **`main`** で 1 台ずつ。）
 
 - **デプロイ前**: ローカルが `origin/<branch>` より **ahead だと拒否** → **push 後**に実行
 - **本番デプロイ（実績·2026-05-30）**:

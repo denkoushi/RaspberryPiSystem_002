@@ -34,7 +34,7 @@ Maintained in accordance with `.agent/PLANS.md`.
   - 作成画面新規時の資源 select も共有化（metadata 幅 **10.5rem** 維持）
   - 単体: `inspectionDrawingBoundedSelectClasses.test.ts` · CI **`26683408296`**
 - [x] (2026-05-30) **Pi5 本番** フィルタ overflow — Detach `20260530-212035-5804` · Phase12 **42/1/0** · **実機目視 OK**
-- [ ] **`main` マージ**（overflow 修正 + docs）— PR 作成後 squash
+- [x] (2026-05-30) **`main` マージ**（overflow 修正 + docs）— PR [#376](https://github.com/denkoushi/RaspberryPiSystem_002/pull/376) squash **`46ec0621`**
 - [ ] **Pi4×4 本番** — `main` マージ後に各キオスクへ順次（未実施）
 - [ ] **Pi5 実機目視** プレビュー parity UI — デプロイ済・目視記録は運用側（任意 Phase12）
 
@@ -144,6 +144,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 | `ef78f4dd` | `feat/inspection-drawing-library-hub` | 一覧ハブ・専用 API・履歴 UI |
 | `ccacef85` | `feat/kiosk-inspection-drawing-preview-parity` | DEV 本番パリティ・共有 UI コンポーネント |
 | `e19f9b07` | `fix/kiosk-inspection-drawing-library-filter-overflow` | 資源 select overflow クリップ・共有 select |
+| `46ec0621` | `main`（PR #376 squash） | 上記 + docs マージ |
 
 ## 主要ファイル（後続読者向け）
 

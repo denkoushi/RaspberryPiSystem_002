@@ -8,7 +8,7 @@
 
 ## Progress
 
-- [x] (2026-05-30 / **Pi5 本番・Pi4×4 未・`main` マージ待ち**) **キオスク検査図面 · 一覧フィルタ overflow 修正**: ブランチ **`fix/kiosk-inspection-drawing-library-filter-overflow`** · **`e19f9b07`** — 共有 `InspectionDrawingResourceCdSelect` + `overflow-hidden` シェル（ネイティブ select 描画はみ出し）· 作成画面資源 select 共有化（metadata **10.5rem**）。**Pi5 デプロイ**: `20260530-212035-5804` · **Web のみ** · `failed=0` · Phase12 **42/1/0** · **実機目視 OK**。**CI**: **`26683408296`** success。**次**: PR → `main` マージ → Pi4×4 順次（parity + overflow 含む）。docs: [KB-320 §overflow](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-library-filter-overflow-2026-05-30) / [deployment §overflow](./docs/guides/deployment.md#kiosk-inspection-drawing-library-filter-overflow-2026-05-30) / [ExecPlan](./docs/plans/kiosk-inspection-drawing-mvp-execplan.md)。
+- [x] (2026-05-30 / **Pi5 本番・Pi4×4 未・`main` マージ済**) **キオスク検査図面 · 一覧フィルタ overflow 修正**: PR [#376](https://github.com/denkoushi/RaspberryPiSystem_002/pull/376) squash **`46ec0621`**（実装 tip **`e19f9b07`**）— 共有 `InspectionDrawingResourceCdSelect` + `overflow-hidden` シェル（ネイティブ select 描画はみ出し）· 作成画面資源 select 共有化（metadata **10.5rem**）。**Pi5 デプロイ**: `20260530-212035-5804` · **Web のみ** · `failed=0` · Phase12 **42/1/0** · **実機目視 OK**。**CI**: **`26683408296`** success。**次**: Pi4×4 順次（parity + overflow 含む · `main`）。docs: [KB-320 §overflow](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-library-filter-overflow-2026-05-30) / [deployment §overflow](./docs/guides/deployment.md#kiosk-inspection-drawing-library-filter-overflow-2026-05-30) / [ExecPlan](./docs/plans/kiosk-inspection-drawing-mvp-execplan.md)。
 
 - [x] (2026-05-30 / **Pi5 本番・Pi4×4 未・`main` マージ済**) **キオスク検査図面 · DEV プレビュー本番パリティ + UI**: PR [#375](https://github.com/denkoushi/RaspberryPiSystem_002/pull/375) squash **`504f7549`**（実装 tip **`ccacef85`**）— `KioskLayout` 配下 DEV ルート・共有 `InspectionDrawingLibraryFilterBar` / `InspectionDrawingPointSettingsPanel`・フィルタ flex-wrap・測定点縦並び・ツールバー「一覧へ戻る」。**Pi5 デプロイ**: `20260530-192609-10677`（`ccacef85`）· **Web のみ** · `failed=0` · 約 **353s**。**CI**: **`26681207121`** success。**次**: Pi4×4 順次（overflow マージ後に一括推奨）。docs: [ADR-20260530](./docs/decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md) / [KB-320 §parity](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-preview-parity-2026-05-30) / [deployment §parity](./docs/guides/deployment.md#kiosk-inspection-drawing-preview-parity-2026-05-30)。
 
@@ -2440,7 +2440,7 @@
 |---|------|------|------|
 | 1 | `main` マージ（一覧ハブ） | **済** | PR [#374](https://github.com/denkoushi/RaspberryPiSystem_002/pull/374) · **`f0a2725c`** |
 | 2 | `main` マージ（preview parity + docs） | **済** | PR [#375](https://github.com/denkoushi/RaspberryPiSystem_002/pull/375) · squash **`504f7549`** |
-| 3 | `main` マージ（filter overflow + docs） | **未** | ブランチ **`fix/kiosk-inspection-drawing-library-filter-overflow`** · tip **`e19f9b07`** + docs |
+| 3 | `main` マージ（filter overflow + docs） | **済** | PR [#376](https://github.com/denkoushi/RaspberryPiSystem_002/pull/376) · squash **`46ec0621`** |
 | 4 | Pi5 実機目視（UI parity） | 未記録 | フィルタ折り返し・測定点縦並び・「一覧へ戻る」 |
 | 5 | Pi5 実機目視（filter overflow） | **済** | 資源 select が工程・履歴と重ならない（`20260530-212035-5804` 後） |
 | 6 | Pi4×4 順次 `--limit` デプロイ | 未 | **overflow の `main` マージ後** · `main` · 1 台ずつ |
