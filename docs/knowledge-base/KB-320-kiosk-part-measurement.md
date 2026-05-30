@@ -67,35 +67,81 @@
 
 | 区分 | 内容 |
 |------|------|
-| **評価用作成** | キオスクヘッダー **「検査図面作成」**（アンバー・部品測定タブとは別アクティブ）。URL: `/kiosk/part-measurement/inspection/create`。`POST …/inspection-drawing/evaluation-templates`（multipart）。バケット **`__INSPECTION_DRAWING_EVAL__`**。品番・資源CDはラベルのみ（本番 active を差し替えない）。一覧・候補・clone・改版・退役から **除外**。 |
-| **本番編集** | 図面付き本番テンプレ + 記録表 **`quantity === 1`**（ちょうど1）→ 各導線から **`/kiosk/part-measurement/inspection/edit/:sheetId`**。保存・確定は **通常** `PATCH/POST …/sheets/*`。`quantity > 1`・図面なし・座標未設定 → **表形式** `/edit/:sheetId`（開いても図面UIへリダイレクト可）。 |
-| **評価用編集** | 評価用テンプレ由来 sheet のみ `evaluation-sheets/*`。本番 sheet → evaluation API は **409**。評価 sheet → 通常 PATCH/finalize は **409**。 |
-| **データ** | `PartMeasurementTemplateItem`: `markerXRatio` / `markerYRatio` / `nominalValue` / `lowerLimit` / `upperLimit`（任意）。 |
+| **一覧/作成/編集** | キオスクヘッダー **「検査図面」**（アンバー・部品測定タブとは別アクティブ）。URL: `/kiosk/part-measurement/inspection`（一覧ハブ）。一覧から **新規** / **編集** / **履歴**。**新規**は `POST /api/part-measurement/templates`（図面必須・`THREE_KEY`）。**編集保存**は専用 `POST /api/part-measurement/inspection-drawing/templates/:id/revise`（有効版のみ）。**読込**は専用 `GET …/inspection-drawing/templates` / `GET …/:id`（汎用 `GET /templates/:id` はキオスク検査図面編集から使わない）。資源は **表示名付きドロップダウン**（`listResourceOptions`）。品番・資源・工程は編集画面で **表示専用**（改版でキーは変えない）。 |
+| **一覧 API 契約** | `GET /api/part-measurement/inspection-drawing/templates` — クエリ `fhincd`（**部分一致・case-insensitive**）、`processGroup`（`cutting`/`grinding`）、`resourceCd`、`includeInactive`。応答は **要約 DTO**（`itemCount` のみ・全 `items` は載せない）。対象は **本番** `THREE_KEY` + 切削/研削 + `visualTemplateId` あり + `templateSupportsInspectionDrawing`（全項目に図面座標と上下限）。 |
+| **取得 API 契約** | `GET …/inspection-drawing/templates/:id` — 上記条件を満たす本番テンプレのみ。**無効版（履歴）も閲覧可**。条件外は **409**「検査図面編集の対象外」。 |
+| **改版 API 契約** | `POST …/inspection-drawing/templates/:id/revise` — **有効版（`isActive: true`）のみ**。無効版は **409**「無効なテンプレートは編集できません」。内部は既存 `reviseActiveTemplate`（新 `version` 行・旧版 inactive）。 |
+| **一覧 UI** | `KioskInspectionDrawingLibraryPage.tsx` — 品番フィルタは API の部分一致と一致。カードは **有効版を優先表示**（同キーで active があればそれを先頭）。**履歴**は `InspectionDrawingTemplateHistoryDialog`（同系譜の版一覧・閲覧/有効化導線）。 |
+| **編集 UI** | `KioskInspectionDrawingCreatePage.tsx` — 新規/編集兼用。旧版は **readOnly**（保存・改版不可）。**有効化**後は専用 GET で再取得し readOnly 解除（同一 URL のまま）。 |
+| **本番記録編集** | 図面付き本番テンプレ + 記録表 **`quantity === 1`** → **`/kiosk/part-measurement/inspection/edit/:sheetId`**。保存・確定は **通常** `PATCH/POST …/sheets/*`。`quantity > 1`・図面なし・座標/上下限未設定 → **表形式** `/edit/:sheetId`。 |
+| **評価用** | `evaluation-templates` / `evaluation-sheets/*` は **互換残置**。キオスク UI 主導線からは未使用。本番 sheet ↔ 評価 API は **409** 相互ブロック。 |
+| **図面対象判定** | `part-measurement-inspection-drawing-policy.ts` — `templateSupportsInspectionDrawing`: visual に `drawingImageRelativePath`、全 item で `markerXRatio`/`markerYRatio`/`lowerLimit`/`upperLimit` が非 null。 |
 | **画像** | Phase1: PNG/JPEG/WebP のみ（TIFF 後続）。 |
-| **ヘッダー判定** | `kioskInspectionDrawingRoutes.ts` — `isKioskInspectionDrawingPath` / `isKioskPartMeasurementHubPath`（`/inspection/*` は部品測定タブを **非アクティブ**）。 |
+| **ヘッダー・ルート** | `kioskInspectionDrawingRoutes.ts` — 既定 `inspection`、作成 `inspection/create`、テンプレ編集 `inspection/templates/:id/edit`、記録図面 `inspection/edit/:sheetId`。`isKioskInspectionDrawingPath` で部品測定タブを非アクティブ。 |
+
+### 代表 Web/API ファイル（一覧ハブ `ef78f4dd`）
+
+| 領域 | パス |
+|------|------|
+| 一覧ページ | `apps/web/src/pages/kiosk/KioskInspectionDrawingLibraryPage.tsx` |
+| 作成/編集 | `apps/web/src/pages/kiosk/KioskInspectionDrawingCreatePage.tsx` |
+| 履歴ダイアログ | `apps/web/src/features/part-measurement/inspection-drawing/InspectionDrawingTemplateHistoryDialog.tsx` |
+| クライアント | `apps/web/src/api/client.ts`（`listKioskInspectionDrawingTemplates` 等） |
+| ルート登録 | `apps/web/src/App.tsx` |
+| API ルート | `apps/api/src/routes/part-measurement/index.ts`（`inspection-drawing/templates*`） |
+| サービス | `apps/api/src/services/part-measurement/part-measurement-template.service.ts` |
+| 統合テスト | `apps/api/src/routes/__tests__/part-measurement.integration.test.ts`（専用 API・409・部分一致） |
+
+### 知見（実装・デプロイ・レビュー）
+
+- **デプロイ前 push 必須**: `update-all-clients.sh` はローカルブランチが `origin/<branch>` より ahead だと **即終了**（未 push コミットがあると Pi5 だけ古い SHA を取る事故を防ぐ）。
+- **専用 API の理由**: 汎用 `GET/POST /templates/:id` だと `FHINMEI_ONLY` や図面未設定テンプレを編集でき、**改版で本番キーを壊す**リスクがある。一覧も汎用 `GET /templates` の完全一致 `fhincd` では現場の部分検索と合わない。
+- **要約 DTO**: 一覧で全 `items` を返すとキオスクが重い。`itemCount` のみに限定。
+- **有効化後の readOnly 残留**: クライアント state だけ更新すると編集不可のまま残る → **専用 GET で `applyLoadedTemplate`** してから編集モードへ。
+- **Phase12**: `verify-phase12-real.sh` は **検査図面専用 API を個別 grep しない**（`resolve-ticket` / `templates/candidates` の部品測定スモークのみ）。専用 API は **統合テスト** + 手動／下記 curl で担保。
 
 ### トラブルシュート（検査図面）
 
 | 症状 | 確認 | 対処 |
 |------|------|------|
-| **「検査図面作成」タブがない** | Pi5 `web` の Git HEAD が `583aecad` 以降か。Pi4 だけ未デプロイか | **Pi5**: 標準デプロイ済みなら強制リロード（[verification-checklist §6.6.4](../guides/verification-checklist.md)）。**Pi4 キオスク**: Pi4×4 デプロイ必須（SPA は Pi5 配信だが運用上 Pi5→Pi4 順次が正）。MVP 初版は URL 直打ちのみでタブ未実装だった |
-| 部品測定タブと検査図面タブが同時にハイライト | `KioskHeader` が `pathname.startsWith('/kiosk/part-measurement')` のまま | `583aecad` 以降の `kioskInspectionDrawingRoutes` 分離を確認 |
-| 図面UIに行かず表形式のまま | sheet の `quantity`（**1 か**）、テンプレに visual + 全項目 `markerXRatio/YRatio` | `createDraft` で図面テンプレなら **初期 quantity=1**（`45c02e0a`）。手動で数量を 2 以上にしていないか |
-| 評価保存で本番テンプレが消える | `POST /templates` を使っていないか | **必ず** `evaluation-templates`。通常 create は同キー active を無効化する |
-| 空入力で旧測定値が残る | API が blank を delete しているか | `PATCH` で `value: null` + サービス層 `deleteMany`（`45c02e0a`） |
-| 評価用 visual を cleanup が消した | `createdVisualTemplateId` 限定か | `cleanupInspectionDrawingEvaluationTemplate` は **当該リクエストで新規作成した visual のみ**削除 |
+| **「検査図面」タブがない** | Git HEAD ≥ `ef78f4dd`（一覧ハブ）か。Pi4 未デプロイか | Pi5: 強制リロード（§6.6.4）。Pi4: `--limit` 各台で `main` 反映後に同確認 |
+| タブ表記が **「検査図面作成」** のまま | HEAD &lt; `ef78f4dd` | 一覧ハブブランチをデプロイ |
+| 部品測定タブと検査図面が同時ハイライト | `kioskInspectionDrawingRoutes` 未反映 | `583aecad` 以降を確認 |
+| 一覧にテンプレが出ない | `THREE_KEY`・図面・全マーカー/上下限・本番（評価バケット除外） | 管理画面で visual + 座標・上下限を揃える。`templateSupportsInspectionDrawing` を満たすか |
+| 編集で **409 対象外** | 汎用 API で取得していないか。スコープ/工程/図面条件 | **専用** `GET …/inspection-drawing/templates/:id` を使う |
+| 旧版で保存できない | `isActive: false` | 想定どおり閲覧専用。履歴から **有効化** または有効版を開く |
+| 有効化しても編集できない | 再取得していない | `ef78f4dd` 以降の「有効化→専用 GET 再読込」を確認 |
+| 品番検索でヒットしない | 完全一致フィルタになっていないか | 一覧は API **部分一致**。クライアント側で追加絞り込みしない |
+| デプロイが始まらない | `git status` で ahead | **push** してから `update-all-clients.sh` |
+| 図面UIに行かず表形式 | `quantity !== 1` または図面条件不足 | `45c02e0a` 参照。数量・テンプレを確認 |
+| 評価保存で本番テンプレが消える | 誤 API | **evaluation-templates** のみ |
+| 空入力で旧測定値が残る | PATCH null 未送信 | サービス層 `deleteMany`（`45c02e0a`） |
 
-### 本番デプロイ実績（2026-05-30 · `feat/kiosk-inspection-drawing-mvp`）
+### 検証コマンド例（専用 API・Tailscale）
 
-| 段階 | ホスト | Detach Run ID | HEAD | PLAY RECAP | Phase12 | 備考 |
-|------|--------|---------------|------|------------|---------|------|
-| 本番導線 | `raspberrypi5` のみ | `20260530-145930-18923` | `dd27791a` | `failed=0` | 43/0/0 | API+Web・約17min |
-| ヘッダータブ | `raspberrypi5` のみ | `20260530-153416-23422` | `583aecad` | `failed=0` | 42/1/0 | Web・現場手動 OK・Pi3 WARN スキップ可 |
-| **未** | Pi4×4 | — | — | — | — | 次タスク |
+```bash
+BASE="https://100.106.158.2/api"
+KEY="client-key-raspi4-kensaku-stonebase01-kiosk1"   # キオスク x-client-key の例
 
-**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-inspection-drawing-mvp infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（マージ後は `main`）。
+# 未認証 → 401
+curl -sk -o /dev/null -w "%{http_code}\n" "${BASE}/part-measurement/inspection-drawing/templates"
 
-**CI**: `26675704712` / `26676840821` **success**（lint-build-unit・api-db-and-infra・e2e 含む）。
+# 一覧（要約 DTO）
+curl -sk "${BASE}/part-measurement/inspection-drawing/templates?limit=5" -H "x-client-key: ${KEY}"
+```
+
+### 本番デプロイ実績（2026-05-30）
+
+| 段階 | ブランチ / マージ | ホスト | Detach Run ID | HEAD | PLAY RECAP | Phase12 | 備考 |
+|------|-------------------|--------|---------------|------|------------|---------|------|
+| 本番導線 | `feat/kiosk-inspection-drawing-mvp` → `main` `44f91ab5` | `raspberrypi5` | `20260530-145930-18923` | `dd27791a` | `failed=0` | 43/0/0 | quantity=1 図面 edit |
+| ヘッダータブ | 同上 | `raspberrypi5` | `20260530-153416-23422` | `583aecad` | `failed=0` | 42/1/0 | タブ「検査図面作成」→後に「検査図面」へ改名 |
+| **一覧ハブ** | `feat/inspection-drawing-library-hub` → **`main`（マージ後 SHA 要記録）** | `raspberrypi5` | `20260530-180728-7767` | `ef78f4dd` | `failed=0` | 42/1/0 | 専用 API・履歴 UI・約12min・Pi3 WARN スキップ可 |
+| **未** | `main` 反映後 | Pi4×4 | — | — | — | — | キオスク実機でタブ・一覧を確認 |
+
+**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ**）。
+
+**CI**: MVP `26676840821` · 一覧ハブ `26679994903` **success**（push `ef78f4dd`）。
 
 ## Current UI spec（2026-04-05 までの合意）
 

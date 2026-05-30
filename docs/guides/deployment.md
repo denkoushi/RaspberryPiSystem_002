@@ -10,26 +10,33 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-### 補足（2026-05-30 · **キオスク検査図面 MVP（本番編集 quantity=1 + ヘッダー「検査図面作成」）**·**Pi5 本番先行・Pi4×4 未**） {#kiosk-inspection-drawing-mvp-2026-05-30}
+### 補足（2026-05-30 · **キオスク検査図面（MVP + 一覧ハブ）**·**Pi5 本番先行・Pi4×4 未**） {#kiosk-inspection-drawing-mvp-2026-05-30}
 
-- **変更概要（正本）**: [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [KB-320 §検査図面](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-mvp2026-05-30) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-mvp図面中心ui)。**API+Web**: 図面付き本番テンプレ + **`quantity===1`** の sheet を `inspection/edit` へ自動分岐（通常 sheet API）。評価用は `evaluation-templates` / `evaluation-sheets` で本番と **409 隔離**。**Web**: キオスクヘッダーに **「検査図面作成」** タブ（部品測定タブとは別・`kioskInspectionDrawingRoutes.ts`）。
-- **代表コミット**: **`45c02e0a`**（本番導線）· **`dd27791a`**（export 修正）· **`583aecad`**（ヘッダータブ）· **ブランチ** **`feat/kiosk-inspection-drawing-mvp`**（マージ後は **`main` HEAD**）· **CI** **`26676840821`** **success**
-- **Prisma マイグレーション**: **`20260530120000_part_measurement_template_item_inspection_marker`**（既存 DB に未適用なら Pi5 で `migrate deploy`）
-- **対象ホスト（推奨順）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 1 台ずつ**）。**Pi3**: **`skipping: no hosts matched`**
-- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-inspection-drawing-mvp infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）
-- **本番デプロイ（実績·2026-05-30·Pi5 のみ）**:
+- **変更概要（正本）**: [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [KB-320 §検査図面](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-mvp2026-05-30) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-mvp図面中心ui)。
+  - **MVP（`main` にマージ済 `44f91ab5` 系）**: 図面付き本番テンプレ + **`quantity===1`** → `inspection/edit`（通常 sheet API）。評価用は `evaluation-templates` / `evaluation-sheets` で **409 隔離**。
+  - **一覧ハブ（`feat/inspection-drawing-library-hub` → `main`）**: ヘッダー **「検査図面」** → `/kiosk/part-measurement/inspection`。**専用 API** `GET/POST /api/part-measurement/inspection-drawing/templates`（一覧要約・取得・改版）。新規は従来どおり `POST /api/part-measurement/templates`（図面必須）。評価用 API は UI から外したが **互換残置**。
+- **代表コミット**: MVP **`45c02e0a`** · **`583aecad`**（タブ）· 一覧ハブ **`ef78f4dd`**（`feat(kiosk): add inspection drawing library hub`）
+- **Prisma**: MVP 時 **`20260530120000_part_measurement_template_item_inspection_marker`**。一覧ハブブランチは **新規 migration なし**。
+- **対象ホスト（推奨順）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 1 台ずつ**）。**Pi3**: `skipping: no hosts matched`
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+- **デプロイ前**: ローカルが `origin/<branch>` より **ahead だとスクリプトが拒否** → **push 後**に実行
+- **本番デプロイ（実績·2026-05-30）**:
 
 | ホスト | Detach Run ID | Git HEAD | PLAY RECAP | Phase12 | 備考 |
 |--------|---------------|----------|------------|---------|------|
-| `raspberrypi5` | `20260530-145930-18923` | `dd27791a` | `ok=134` `changed=4` `failed=0` | 43/0/0 | 本番導線 |
-| `raspberrypi5` | `20260530-153416-23422` | `583aecad` | `ok=134` `changed=4` `failed=0` | 42/1/0 | ヘッダータブ・現場手動 OK |
-| Pi4×4 | **未実施** | — | — | — | 次タスク |
+| `raspberrypi5` | `20260530-145930-18923` | `dd27791a` | `failed=0` | 43/0/0 | MVP 本番導線 |
+| `raspberrypi5` | `20260530-153416-23422` | `583aecad` | `failed=0` | 42/1/0 | ヘッダータブ |
+| `raspberrypi5` | `20260530-180728-7767` | `ef78f4dd` | `failed=0` | 42/1/0 | **一覧ハブ**（branch デプロイ時） |
+| Pi4×4 | **未実施** | — | — | — | **`main` マージ後**に順次 |
 
-- **実機（手動·Pi5 済）**: ヘッダー **検査図面作成** → 作成画面。本番図面+数量1 → 図面 edit（任意）。**Pi4**: デプロイ後に各キオスクで同確認 + 強制リロード
-- **トラブルシュート**:
-  - **タブがない** → HEAD `583aecad` 未満 or **Pi4 未デプロイ**（Pi5 ブラウザのみ OK の状態あり）
-  - **表形式のまま** → `quantity!==1` or 図面座標未設定テンプレ
-  - **評価が本番を壊す** → `evaluation-templates` 以外で保存していないか
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` — 部品測定スモーク含む。**検査図面専用 API の個別 grep は未追加**（統合テスト + 手動）。
+- **実機（手動）**: **検査図面** タブ → 一覧 → 新規/編集/履歴。本番記録は図面テンプレ + **数量=1** → 図面 edit。**Pi4** は `main` 反映後に各キオスク + 強制リロード（§6.6.4）
+- **トラブルシュート**（詳細は KB-320）:
+  - **タブ/一覧がない** → HEAD &lt; `ef78f4dd` or Pi4 未デプロイ
+  - **デプロイ拒否** → 未 push
+  - **旧版で保存不可** → 想定（有効化してから編集）
+  - **409 対象外** → 専用 GET/改版 API を使っているか
+- **CI**: MVP `26676840821` · 一覧ハブ `26679994903` **success**
 - **ナレッジ**: [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [EXEC_PLAN.md](../../EXEC_PLAN.md)
 
 ### 補足（2026-05-29 · **DGX `qwen36_35b_uncensored` + 固定起動ボタン**·**Pi5 → DGX 順次**） {#dgx-uncensored-profile-button-2026-05-29}

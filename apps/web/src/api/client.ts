@@ -45,6 +45,7 @@ import type { PartPlacementSearchSuggestResponse } from '../features/mobile-plac
 import type { RegisteredShelfEntryDto } from '../features/mobile-placement/registeredShelves/types';
 import type {
   FindOrOpenPartMeasurementResponse,
+  KioskInspectionDrawingTemplateSummaryDto,
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
   PartMeasurementSheetWithSession,
@@ -3010,6 +3011,73 @@ export async function listPartMeasurementTemplates(
   return data.templates;
 }
 
+/** キオスク検査図面一覧（本番図面テンプレのみ・要約。fhincd は部分一致） */
+export async function listKioskInspectionDrawingTemplates(
+  params: {
+    fhincd?: string;
+    processGroup?: PartMeasurementProcessGroup;
+    resourceCd?: string;
+    includeInactive?: boolean;
+  },
+  clientKey?: string
+): Promise<KioskInspectionDrawingTemplateSummaryDto[]> {
+  const { data } = await api.get<{ templates: KioskInspectionDrawingTemplateSummaryDto[] }>(
+    '/part-measurement/inspection-drawing/templates',
+    {
+      params,
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.templates;
+}
+
+/** キオスク検査図面テンプレ編集用（本番 + 図面・全マーカー必須。履歴版も閲覧可） */
+export async function getKioskInspectionDrawingTemplate(
+  templateId: string,
+  clientKey?: string
+): Promise<PartMeasurementTemplateDto> {
+  const { data } = await api.get<{ template: PartMeasurementTemplateDto }>(
+    `/part-measurement/inspection-drawing/templates/${templateId}`,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.template;
+}
+
+export async function reviseKioskInspectionDrawingTemplate(
+  templateId: string,
+  body: {
+    name: string;
+    visualTemplateId?: string | null;
+    items: Array<{
+      sortOrder: number;
+      datumSurface: string;
+      measurementPoint: string;
+      measurementLabel: string;
+      displayMarker?: string | null;
+      unit?: string | null;
+      allowNegative?: boolean;
+      decimalPlaces?: number;
+      markerXRatio?: number | null;
+      markerYRatio?: number | null;
+      nominalValue?: number | null;
+      lowerLimit?: number | null;
+      upperLimit?: number | null;
+    }>;
+  },
+  clientKey?: string
+): Promise<PartMeasurementTemplateDto> {
+  const { data } = await api.post<{ template: PartMeasurementTemplateDto }>(
+    `/part-measurement/inspection-drawing/templates/${templateId}/revise`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.template;
+}
+
 export async function listPartMeasurementTemplateCandidates(
   params: {
     fhincd: string;
@@ -3186,6 +3254,11 @@ export async function revisePartMeasurementTemplate(
       unit?: string | null;
       allowNegative?: boolean;
       decimalPlaces?: number;
+      markerXRatio?: number | null;
+      markerYRatio?: number | null;
+      nominalValue?: number | null;
+      lowerLimit?: number | null;
+      upperLimit?: number | null;
     }>;
   },
   clientKey?: string

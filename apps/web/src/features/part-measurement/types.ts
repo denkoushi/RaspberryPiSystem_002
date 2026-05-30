@@ -52,6 +52,20 @@ export type PartMeasurementTemplateMatchKind =
   | 'two_key_fhincd_resource'
   | 'one_key_fhinmei';
 
+/** キオスク検査図面一覧（要約のみ。測定点詳細は含まない） */
+export type KioskInspectionDrawingTemplateSummaryDto = {
+  id: string;
+  fhincd: string;
+  resourceCd: string;
+  processGroup: PartMeasurementProcessGroup | null;
+  name: string;
+  version: number;
+  isActive: boolean;
+  visualTemplateId: string | null;
+  visualTemplate: PartMeasurementVisualTemplateDto | null;
+  itemCount: number;
+};
+
 export type PartMeasurementTemplateDto = {
   id: string;
   fhincd: string;

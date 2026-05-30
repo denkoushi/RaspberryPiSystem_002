@@ -8,7 +8,7 @@
 
 ## Progress
 
-- [x] (2026-05-30 / **Pi5 本番・実機 OK・Pi4×4 未・`main` merged `44f91ab5`**) **キオスク検査図面 MVP**: 本番編集（`quantity===1` + 図面テンプレ → `inspection/edit`、通常 sheet API）+ 評価用隔離 + ヘッダー **「検査図面作成」** タブ。**デプロイ Pi5**: Detach `20260530-153416-23422` · HEAD `583aecad` · Phase12 **42/1/0** · 現場手動 OK。**CI**: `26676840821` success。**次**: Pi4×4 デプロイ（`main` 第2引数）。docs: [Runbook](./docs/runbooks/kiosk-part-measurement.md) / [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-mvp2026-05-30) / [ExecPlan](./docs/plans/kiosk-inspection-drawing-mvp-execplan.md) / [deployment](./docs/guides/deployment.md#kiosk-inspection-drawing-mvp-2026-05-30)。
+- [x] (2026-05-30 / **Pi5 本番・Pi4×4 未・`main` に一覧ハブマージ後 SHA 記録**) **キオスク検査図面 MVP + 一覧ハブ**: MVP（`quantity===1` 図面 edit・評価隔離・タブ）+ **一覧ハブ**（`feat/inspection-drawing-library-hub` · **`ef78f4dd`**）— 専用 API `inspection-drawing/templates*`・`KioskInspectionDrawingLibraryPage`・履歴・旧版 readOnly。**Pi5 デプロイ**: MVP `20260530-153416-23422`（`583aecad`）· 一覧ハブ `20260530-180728-7767`（`ef78f4dd`）· Phase12 **42/1/0**。**CI**: `26676840821` · `26679994903` success。**次**: Pi4×4 を `main` で順次デプロイ。docs: [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-mvp2026-05-30) / [ExecPlan](./docs/plans/kiosk-inspection-drawing-mvp-execplan.md) / [Runbook](./docs/runbooks/kiosk-part-measurement.md) / [deployment](./docs/guides/deployment.md#kiosk-inspection-drawing-mvp-2026-05-30)。
 
 - [x] (2026-05-29 / **Pi5+DGX ? real machine OK ? `main` merged**) **DGX `qwen36_35b_uncensored` + fixed START_MODEL_PROFILE button** ? branch **`feat/dgx-uncensored-profile-button`** ? PR [#369](https://github.com/denkoushi/RaspberryPiSystem_002/pull/369) squash **`f10e7986`** ? CI **`26630868193`** success ? **deploy: Pi5** Detach **`20260529-191402-25013`** (`failed=0`) **then DGX** `model_profiles.py`+manifest scp + control/gateway restart ? Phase12 **43/0/0** (~109s) ? verify: DGX **`businessOrchestrationEligible: false`** ? Pi5 **`START_MODEL_PROFILE`** ? web bundle **`qwen36_35b_uncensored`** ? docs: [KB-365 �uncensored](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-uncensored-profile-button) ? [deployment](./docs/guides/deployment.md#dgx-uncensored-profile-button-2026-05-29) ? [Runbook](./docs/runbooks/dgx-system-prod-local-llm.md#????2026-05-29-dgx-uncensored-profile-button)
 
@@ -2427,6 +2427,25 @@
 ---
 
 ## Next Steps????????
+
+### キオスク検査図面 · Pi4×4 デプロイ（2026-05-30） {#kiosk-inspection-drawing-library-hub-pi4-2026-05-30}
+
+**状態**: 一覧ハブ **`ef78f4dd`** は **Pi5 反映済**（Detach `20260530-180728-7767`）· **Pi4×4 未** · 正本 [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-mvp2026-05-30) / [deployment](./docs/guides/deployment.md#kiosk-inspection-drawing-mvp-2026-05-30)
+
+| # | 項目 | 状態 | メモ |
+|---|------|------|------|
+| 1 | `main` マージ（コード+ドキュメント） | 進行 | PR `feat/inspection-drawing-library-hub` |
+| 2 | Pi4×4 順次 `--limit` デプロイ | 未 | `update-all-clients.sh main` · 1 台ずつ |
+| 3 | Phase12 + キオスク目視（4 台） | 未 | 検査図面タブ・一覧・新規/編集/履歴 |
+| 4 | （任意）Phase12 に専用 API スモーク追加 | 未 | 現状は統合テスト + 手動 |
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+for h in raspberrypi4 raspi4-robodrill01 raspi4-fjv60-80 raspi4-kensaku-stonebase01; do
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "$h" --detach --follow
+done
+./scripts/deploy/verify-phase12-real.sh
+```
 
 ### ???????? ? ???? + Pi4 ???2026-05-27? {#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27}
 

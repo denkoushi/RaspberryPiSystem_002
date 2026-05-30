@@ -7,7 +7,7 @@ import { useVerifyKioskDueManagementAccessPassword } from '../../api/hooks';
 import {
   isKioskInspectionDrawingPath,
   isKioskPartMeasurementHubPath,
-  KIOSK_INSPECTION_DRAWING_CREATE_PATH
+  KIOSK_INSPECTION_DRAWING_LIBRARY_PATH
 } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 import { resolveClientKeyForPower } from '../../lib/client-key';
 import { Row } from '../layout/Row';
@@ -295,10 +295,10 @@ export function KioskHeader({
             部品測定
           </NavLink>
           <NavLink
-            to={KIOSK_INSPECTION_DRAWING_CREATE_PATH}
+            to={KIOSK_INSPECTION_DRAWING_LIBRARY_PATH}
             className={() => navClass(isInspectionDrawingActive, 'bg-amber-700 text-white')}
           >
-            検査図面作成
+            検査図面
           </NavLink>
           <NavLink
             to="/kiosk/rigging-analytics"

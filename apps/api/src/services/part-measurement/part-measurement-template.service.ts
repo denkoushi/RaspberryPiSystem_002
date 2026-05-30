@@ -13,6 +13,7 @@ import {
   PART_MEASUREMENT_LEGACY_RESOURCE_CD
 } from './part-measurement-constants.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
+import { templateSupportsInspectionDrawing } from './part-measurement-inspection-drawing-policy.js';
 import {
   assertOperableProductionPartMeasurementTemplate,
   isInspectionDrawingEvaluationTemplate,
@@ -142,6 +143,101 @@ async function insertNextTemplateVersionInTransaction(
 }
 
 export class PartMeasurementTemplateService {
+  /**
+   * キオスク検査図面テンプレ編集用。本番テンプレ条件 + 図面・全測定点マーカー必須。
+   * 履歴版（isActive=false）も閲覧用に返す。
+   */
+  async getKioskInspectionDrawingTemplateById(id: string) {
+    const template = await prisma.partMeasurementTemplate.findFirst({
+      where: productionPartMeasurementTemplateWhere({ id }),
+      include: partMeasurementTemplateFullInclude
+    });
+    if (!template) {
+      throw new ApiError(404, '検査図面テンプレートが見つかりません');
+    }
+    assertOperableProductionPartMeasurementTemplate(template);
+    if (template.templateScope !== 'THREE_KEY') {
+      throw new ApiError(409, 'このテンプレートは検査図面編集の対象外です');
+    }
+    if (template.processGroup !== 'CUTTING' && template.processGroup !== 'GRINDING') {
+      throw new ApiError(409, 'このテンプレートは検査図面編集の対象外です');
+    }
+    if (!templateSupportsInspectionDrawing(template)) {
+      throw new ApiError(409, 'このテンプレートは検査図面編集の対象外です');
+    }
+    return template;
+  }
+
+  /**
+   * キオスク検査図面一覧用。本番 THREE_KEY（切削/研削）かつ図面・全マーカーありのみ。
+   * fhincd は部分一致（大文字小文字無視）。
+   */
+  async listKioskInspectionDrawingTemplates(query: {
+    fhincd?: string;
+    processGroup?: PartMeasurementProcessGroup;
+    resourceCd?: string;
+    includeInactive?: boolean;
+  }) {
+    const where: Prisma.PartMeasurementTemplateWhereInput = {
+      templateScope: 'THREE_KEY',
+      processGroup: { in: ['CUTTING', 'GRINDING'] },
+      visualTemplateId: { not: null }
+    };
+    const fhincdQ = query.fhincd?.trim();
+    if (fhincdQ) {
+      where.fhincd = { contains: fhincdQ, mode: 'insensitive' };
+    }
+    if (query.processGroup) {
+      where.processGroup = query.processGroup;
+    }
+    if (query.resourceCd !== undefined) {
+      where.resourceCd = normalizeResourceCd(query.resourceCd);
+    }
+    if (!query.includeInactive) {
+      where.isActive = true;
+    }
+
+    const rows = await prisma.partMeasurementTemplate.findMany({
+      where: productionPartMeasurementTemplateWhere(where),
+      orderBy: [{ fhincd: 'asc' }, { processGroup: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }],
+      include: {
+        visualTemplate: true,
+        items: {
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            markerXRatio: true,
+            markerYRatio: true,
+            lowerLimit: true,
+            upperLimit: true
+          }
+        }
+      }
+    });
+
+    return rows
+      .filter((row) => templateSupportsInspectionDrawing(row))
+      .map((row) => ({
+        template: row,
+        itemCount: row.items.length
+      }));
+  }
+
+  /** キオスク検査図面テンプレの改版（有効版かつ図面対象のみ） */
+  async reviseKioskInspectionDrawingTemplate(
+    sourceTemplateId: string,
+    body: {
+      name: string;
+      items: TemplateItemInput[];
+      visualTemplateId?: string | null;
+    }
+  ) {
+    const source = await this.getKioskInspectionDrawingTemplateById(sourceTemplateId);
+    if (!source.isActive) {
+      throw new ApiError(409, '無効なテンプレートは編集できません。有効版を選び直してください。');
+    }
+    return this.reviseActiveTemplate(sourceTemplateId, body);
+  }
+
   async findActiveByFhincdGroupAndResource(
     fhincd: string,
     processGroup: PartMeasurementProcessGroup,
