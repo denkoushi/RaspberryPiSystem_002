@@ -10,6 +10,37 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-30 · **キオスク検査図面・キャンバスズーム UI**·**Web のみ**·**Pi5 本番・Pi4×4 未**） {#kiosk-inspection-drawing-canvas-zoom-2026-05-30}
+
+- **変更概要（正本）**: [KB-320 §キャンバスズーム](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-canvas-zoom-2026-05-30) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-キャンバスズーム-2026-05-30)。
+  - **機能**: テンプレ作成/編集・記録図面 edit の **図面表示**にズーム操作（ヘッダー余白の **`−` `＋` `□` のみ**・倍率数字なし）。**図面キャンバス列の高さは削らない**（ツールバー行は増やさない）。
+  - **実装**: `useInspectionDrawingZoom` · `InspectionDrawingCanvasZoomControls` · `computeZoomedCanvasLayout`（ページ `transform: scale` 禁止・[ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md) 契約）。配置モードは **pointerup + 移動量しきい値（10px）** で確定。`pointercancel` は **中止のみ**（パン誤追加防止）。
+- **代表コミット**: **`364aa184`**（`feat(kiosk): add inspection drawing canvas zoom controls`）· ブランチ **`feat/kiosk-inspection-drawing-canvas-zoom`**
+- **Prisma / API**: **変更なし**（**Web のみ** · Docker `web` 再ビルド）
+- **対象ホスト（推奨順）**: **`raspberrypi5` → Pi4×4**（各 `--limit` 1 台ずつ）。Pi3: `skipping: no hosts matched`
+- **標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-inspection-drawing-canvas-zoom \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+（**`main` マージ後**は第2引数 **`main`**。Pi4 は Pi5 目視 OK 後に 1 台ずつ。）
+
+- **デプロイ前**: ローカルが `origin/<branch>` より **ahead だと拒否** → **push 後**に実行
+- **本番デプロイ（実績·2026-05-30）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | Phase12 | 備考 |
+|--------|---------------|----------|------------|---------|------|
+| `raspberrypi5` | `20260530-221723-1575` | `364aa184` | ok=134 changed=4 **failed=0** | **42/1/0**（約 129s） | **Pi5 実機目視 OK** · 強制リロード後ズーム・パン確認 |
+| Pi4×4 | **未実施** | — | — | — | **`main` マージ後** · 下記 for ループ |
+
+- **実機（手動·Pi5）**: **検査図面** → テンプレ **新規/編集**（図面あり）— ヘッダー余白に `−` `＋` `□` · 拡大後スクロール · `□` で全面表示 · 配置モードで **パンしても点が増えない** · キャンバス高さが従来どおり
+- **CI**: **`26684356891`** **success**（ブランチ push `364aa184`）
+- **トラブルシュート**: [KB-320 §キャンバスズーム](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-canvas-zoom-2026-05-30)
+- **ナレッジ**: [EXEC_PLAN.md](../../EXEC_PLAN.md) · [verification-checklist §6.6.9](../guides/verification-checklist.md)
+
 ### 補足（2026-05-30 · **キオスク検査図面・一覧フィルタ overflow 修正**·**Web のみ**·**Pi5 本番・Pi4×4 未**） {#kiosk-inspection-drawing-library-filter-overflow-2026-05-30}
 
 - **変更概要（正本）**: [KB-320 §フィルタ overflow](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-library-filter-overflow-2026-05-30) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-一覧フィルタ-overflow-2026-05-30)。

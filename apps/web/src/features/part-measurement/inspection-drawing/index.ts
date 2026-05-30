@@ -12,6 +12,14 @@ export {
 } from './InspectionDrawingResourceCdSelect';
 export type { InspectionDrawingToolbarMode } from './InspectionDrawingCreateToolbar';
 export { InspectionDrawingCanvas } from './InspectionDrawingCanvas';
+export { InspectionDrawingCanvasZoomControls } from './InspectionDrawingCanvasZoomControls';
+export { useInspectionDrawingZoom } from './useInspectionDrawingZoom';
+export {
+  INSPECTION_DRAWING_ZOOM_DEFAULT,
+  INSPECTION_DRAWING_ZOOM_MAX,
+  INSPECTION_DRAWING_ZOOM_MIN,
+  INSPECTION_DRAWING_ZOOM_STEP
+} from './inspectionDrawingZoom';
 export {
   evaluateMeasurementValue,
   parseMeasurementNumber,
@@ -38,7 +46,10 @@ export {
   inspectionDrawingBoundedSelectClassName,
   inspectionDrawingBoundedSelectShellClassName,
   inspectionDrawingCanvasColumnClassName,
+  inspectionDrawingCanvasZoomButtonClassName,
+  inspectionDrawingCanvasZoomControlsClassName,
   inspectionDrawingHeaderBandClassName,
+  inspectionDrawingHeaderBandCenterSlotClassName,
   inspectionDrawingKioskDisabledButtonClass,
   inspectionDrawingKioskToggleInactiveClass,
   inspectionDrawingLibraryFilterFhincdWidthClass,

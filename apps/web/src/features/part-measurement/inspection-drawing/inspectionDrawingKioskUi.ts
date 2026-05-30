@@ -47,6 +47,17 @@ export const inspectionDrawingLibraryFilterFieldLabelClassName =
 export const inspectionDrawingToolbarSlotClassName =
   'flex shrink-0 flex-wrap items-center justify-end gap-2';
 
+/** ヘッダーバンド中央 — メタデータとツールバー間の余白（図面ズーム等） */
+export const inspectionDrawingHeaderBandCenterSlotClassName =
+  'flex min-w-0 flex-1 items-end justify-center gap-1 px-1';
+
+/** 図面ズームボタン（記号のみ・キオスクタップ領域） */
+export const inspectionDrawingCanvasZoomButtonClassName =
+  'min-h-11 min-w-11 px-2 text-[1.25rem] font-semibold leading-none';
+
+/** 図面ズーム操作 — ボタン群のみ（中央スロットの flex は HeaderBand が担当） */
+export const inspectionDrawingCanvasZoomControlsClassName = 'flex items-center gap-1';
+
 /** 右サイドバー — 従来 lg:w-80（20rem）の 2/3。空きを図面エリアへ */
 export const inspectionDrawingSideAsideClassName =
   'flex w-full shrink-0 flex-col gap-2 lg:w-[15rem]';

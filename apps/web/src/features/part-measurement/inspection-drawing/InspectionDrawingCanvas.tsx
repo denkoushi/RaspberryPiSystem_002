@@ -1,12 +1,14 @@
 import clsx from 'clsx';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
-import {
-  clientToImageRatios,
-  computeObjectContainLayout,
-  type ObjectContainRect
-} from './computeObjectContainLayout';
 import { statusForPoint } from './evaluateMeasurement';
+import {
+  computeZoomedCanvasLayout,
+  pointerClientToImageRatios,
+  type ZoomedCanvasLayout
+} from './inspectionDrawingCanvasLayout';
+import { shouldConfirmPlacePointFromPointerMovement } from './inspectionDrawingCanvasPointer';
+import { INSPECTION_DRAWING_ZOOM_DEFAULT } from './inspectionDrawingZoom';
 
 import type { InspectionDrawingPoint } from './types';
 
@@ -20,6 +22,17 @@ type Props = {
   onSelectPoint: (id: string) => void;
   /** 未指定時は図面上への新規配置を無効化（閲覧専用） */
   onAddPoint?: (xRatio: number, yRatio: number) => void;
+  /** 1 = ビューポートにフィット。表示専用（保存座標は ratio のまま） */
+  zoom?: number;
+  /** 全面表示（fit）操作のたびに増える。スクロール位置リセット用 */
+  fitGeneration?: number;
+};
+
+type PendingPlacePointer = {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  maxMovementPx: number;
 };
 
 const STATUS_MARKER_CLASS: Record<string, string> = {
@@ -34,89 +47,216 @@ export function InspectionDrawingCanvas({
   mode,
   selectedPointId,
   onSelectPoint,
-  onAddPoint
+  onAddPoint,
+  zoom = INSPECTION_DRAWING_ZOOM_DEFAULT,
+  fitGeneration = 0
 }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [layout, setLayout] = useState<ObjectContainRect | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const pendingPlaceRef = useRef<PendingPlacePointer | null>(null);
+  const [zoomedLayout, setZoomedLayout] = useState<ZoomedCanvasLayout | null>(null);
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
 
   const recomputeLayout = useCallback(() => {
-    const el = containerRef.current;
+    const el = viewportRef.current;
     if (!el || naturalSize.w <= 0 || naturalSize.h <= 0) {
-      setLayout(null);
+      setZoomedLayout(null);
       return;
     }
-    setLayout(computeObjectContainLayout(el.clientWidth, el.clientHeight, naturalSize.w, naturalSize.h));
-  }, [naturalSize.h, naturalSize.w]);
+    setZoomedLayout(
+      computeZoomedCanvasLayout(
+        el.clientWidth,
+        el.clientHeight,
+        naturalSize.w,
+        naturalSize.h,
+        zoom
+      )
+    );
+  }, [naturalSize.h, naturalSize.w, zoom]);
+
+  const ratiosAtClient = useCallback(
+    (clientX: number, clientY: number): { xRatio: number; yRatio: number } | null => {
+      const viewport = viewportRef.current;
+      if (!viewport || !zoomedLayout) return null;
+      return pointerClientToImageRatios(
+        clientX,
+        clientY,
+        viewport.getBoundingClientRect(),
+        viewport.scrollLeft,
+        viewport.scrollTop,
+        zoomedLayout
+      );
+    },
+    [zoomedLayout]
+  );
 
   useLayoutEffect(() => {
     recomputeLayout();
-    const el = containerRef.current;
+    const el = viewportRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => recomputeLayout());
     ro.observe(el);
     return () => ro.disconnect();
   }, [recomputeLayout]);
 
-  const handlePointer = (e: React.PointerEvent<HTMLDivElement>) => {
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    el.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+  }, [fitGeneration]);
+
+  useLayoutEffect(() => {
+    setNaturalSize({ w: 0, h: 0 });
+    pendingPlaceRef.current = null;
+  }, [imageUrl]);
+
+  const clearPendingPlace = useCallback((pointerId: number) => {
+    const viewport = viewportRef.current;
+    if (pendingPlaceRef.current?.pointerId === pointerId) {
+      pendingPlaceRef.current = null;
+    }
+    if (viewport?.hasPointerCapture(pointerId)) {
+      try {
+        viewport.releasePointerCapture(pointerId);
+      } catch {
+        /* already released */
+      }
+    }
+  }, []);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    const container = containerRef.current;
-    if (!container || !layout) return;
-    const ratios = clientToImageRatios(e.clientX, e.clientY, container.getBoundingClientRect(), layout);
-    if (!ratios) return;
+    const viewport = viewportRef.current;
+    if (!viewport || !zoomedLayout) return;
 
     if (mode === 'place') {
-      onAddPoint?.(ratios.xRatio, ratios.yRatio);
+      if (!onAddPoint) return;
+      pendingPlaceRef.current = {
+        pointerId: e.pointerId,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        maxMovementPx: 0
+      };
+      viewport.setPointerCapture(e.pointerId);
       return;
     }
 
+    const ratios = ratiosAtClient(e.clientX, e.clientY);
+    if (!ratios) return;
     const hit = findNearestPoint(points, ratios.xRatio, ratios.yRatio);
     if (hit) onSelectPoint(hit.id);
   };
 
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const pending = pendingPlaceRef.current;
+    if (!pending || pending.pointerId !== e.pointerId) return;
+    pending.maxMovementPx = Math.max(
+      pending.maxMovementPx,
+      Math.hypot(e.clientX - pending.startClientX, e.clientY - pending.startClientY)
+    );
+  };
+
+  const handlePlacePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const pending = pendingPlaceRef.current;
+    if (!pending || pending.pointerId !== e.pointerId) return;
+
+    const { maxMovementPx } = pending;
+    clearPendingPlace(e.pointerId);
+
+    if (!shouldConfirmPlacePointFromPointerMovement(maxMovementPx)) return;
+
+    const ratios = ratiosAtClient(e.clientX, e.clientY);
+    if (ratios) onAddPoint?.(ratios.xRatio, ratios.yRatio);
+  };
+
+  const handlePlacePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (pendingPlaceRef.current?.pointerId !== e.pointerId) return;
+    clearPendingPlace(e.pointerId);
+  };
+
+  const image = zoomedLayout?.image;
+  const allowPan = zoom > INSPECTION_DRAWING_ZOOM_DEFAULT;
+
   return (
     <div
-      ref={containerRef}
-      className="relative min-h-0 flex-1 touch-none select-none overflow-hidden rounded border border-white/20 bg-black/40"
-      onPointerDown={handlePointer}
+      ref={viewportRef}
+      className={clsx(
+        'relative min-h-0 flex-1 select-none overflow-auto rounded border border-white/20 bg-black/40',
+        allowPan ? 'touch-pan-x touch-pan-y' : 'touch-none'
+      )}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePlacePointerUp}
+      onPointerCancel={handlePlacePointerCancel}
       role="presentation"
     >
-      <img
-        src={imageUrl}
-        alt=""
-        className="pointer-events-none absolute inset-0 h-full w-full object-contain"
-        onLoad={(ev) => {
-          const img = ev.currentTarget;
-          setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
-        }}
-      />
-      {layout
-        ? points.map((pt, index) => {
-            const status = statusForPoint(pt.testValue, pt.lower, pt.upper);
-            const left = layout.offsetX + pt.xRatio * layout.width;
-            const top = layout.offsetY + pt.yRatio * layout.height;
-            const selected = pt.id === selectedPointId;
-            return (
-              <button
-                key={pt.id}
-                type="button"
-                aria-label={pt.name || `測定点 ${index + 1}`}
-                className={clsx(
-                  'absolute z-10 flex h-9 min-w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full px-1 text-sm font-bold tabular-nums shadow-md',
-                  STATUS_MARKER_CLASS[status],
-                  selected && 'ring-4 ring-amber-300'
-                )}
-                style={{ left, top }}
-                onPointerDown={(ev) => {
-                  ev.stopPropagation();
-                  onSelectPoint(pt.id);
-                }}
-              >
-                {index + 1}
-              </button>
-            );
-          })
-        : null}
+      {zoomedLayout ? (
+        <div
+          className="relative"
+          style={{
+            width: zoomedLayout.contentWidth,
+            height: zoomedLayout.contentHeight,
+            minWidth: '100%',
+            minHeight: '100%'
+          }}
+        >
+          <img
+            src={imageUrl}
+            alt=""
+            className="pointer-events-none absolute"
+            style={
+              image
+                ? {
+                    left: image.offsetX,
+                    top: image.offsetY,
+                    width: image.width,
+                    height: image.height
+                  }
+                : undefined
+            }
+            onLoad={(ev) => {
+              const img = ev.currentTarget;
+              setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+            }}
+          />
+          {image
+            ? points.map((pt, index) => {
+                const status = statusForPoint(pt.testValue, pt.lower, pt.upper);
+                const left = image.offsetX + pt.xRatio * image.width;
+                const top = image.offsetY + pt.yRatio * image.height;
+                const selected = pt.id === selectedPointId;
+                return (
+                  <button
+                    key={pt.id}
+                    type="button"
+                    aria-label={pt.name || `測定点 ${index + 1}`}
+                    className={clsx(
+                      'absolute z-10 flex h-9 min-w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full px-1 text-sm font-bold tabular-nums shadow-md',
+                      STATUS_MARKER_CLASS[status],
+                      selected && 'ring-4 ring-amber-300'
+                    )}
+                    style={{ left, top }}
+                    onPointerDown={(ev) => {
+                      ev.stopPropagation();
+                      onSelectPoint(pt.id);
+                    }}
+                  >
+                    {index + 1}
+                  </button>
+                );
+              })
+            : null}
+        </div>
+      ) : (
+        <img
+          src={imageUrl}
+          alt=""
+          className="pointer-events-none absolute inset-0 h-full w-full object-contain opacity-0"
+          onLoad={(ev) => {
+            const img = ev.currentTarget;
+            setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+          }}
+        />
+      )}
     </div>
   );
 }
