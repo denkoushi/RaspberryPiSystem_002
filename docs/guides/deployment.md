@@ -10,6 +10,44 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-30 · **キオスク検査図面・DEV プレビュー本番パリティ + UI**·**Web のみ**·**Pi5 本番・Pi4×4 未**） {#kiosk-inspection-drawing-preview-parity-2026-05-30}
+
+- **変更概要（正本）**: [ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md) · [KB-320 §プレビュー](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-preview-parity-2026-05-30) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-dev-プレビュー本番パリティ)。
+  - **目的**: Mac DEV と Pi5 本番の **レイアウト差**を解消。`transform: scale` ではなく **`KioskLayout` + 本番コンポーネント共有**。
+  - **共有 UI**: `InspectionDrawingLibraryFilterBar`（`flex-wrap`）· `InspectionDrawingPointSettingsPanel`（基準値/下限/上限 **縦並び**）· 作成ツールバー **「一覧へ戻る」**（`libraryTo`）· 作成画面下部の余計なリンク **削除**。
+  - **DEV ルート**（開発ビルド）: `/dev/kiosk-inspection-drawing-library` · `/dev/kiosk-inspection-drawing-create`（`KioskInspectionDrawingDevPreviewChrome` · fixture）。
+- **代表コミット**: **`ccacef85`**（`fix(kiosk): align inspection drawing preview with production layout`）· ブランチ **`feat/kiosk-inspection-drawing-preview-parity`**
+- **Prisma / API**: **変更なし**（**Web のみ** · Docker `web` 再ビルド）
+- **対象ホスト（推奨順）**: **`raspberrypi5` → Pi4×4**（各 `--limit` 1 台ずつ）。Pi3: `skipping: no hosts matched`
+- **標準コマンド（Pi5 先行・ブランチデプロイ時）**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-inspection-drawing-preview-parity \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+（**`main` マージ後**は第2引数を **`main`** に変更。Pi4 は Pi5 実機 OK 後に 1 台ずつ。）
+
+- **デプロイ前**: ローカルが `origin/<branch>` より **ahead だと拒否** → **push 後**に実行
+- **本番デプロイ（実績·2026-05-30）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 備考 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | `20260530-192609-10677` | `ccacef85` | ok=134 changed=4 **failed=0** | **`--follow` 約 353s** · Docker compose 再起動 · `prisma migrate deploy` ok |
+| Pi4×4 | **未実施** | — | — | **`main` マージ + Pi5 目視 OK 後** |
+
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` — 部品測定スモーク含む（**検査図面専用 API の個別 grep は未追加**）。
+- **実機（手動·Pi5）**: 強制リロード後 — **検査図面** → 一覧（フィルタ折り返し・列重なりなし）→ 新規/編集（測定点縦並び・ツールバー「一覧へ戻る」・下部余計なリンクなし）。
+- **実機（手動·Mac DEV）**: `pnpm dev` → 上記 `/dev/kiosk-inspection-drawing-*` で本番と同コンポーネントの見た目確認（fixture・認証なし）。
+- **トラブルシュート**（詳細 KB-320）:
+  - **DEV と本番がまだ違う** → DEV が `KioskLayout` 外 / 複製 JSX / `scale` ではないか · HEAD ≥ `ccacef85` か
+  - **一覧で資源名が工程列に重なる** → `InspectionDrawingLibraryFilterBar` 未反映（旧 grid）
+  - **測定点が横3列のまま** → `InspectionDrawingPointSettingsPanel` 未共有
+  - **デプロイ拒否** → 未 push
+- **CI**: GitHub Actions **`26681207121`** **success**（機能 push `ccacef85`）
+- **ナレッジ**: [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) · [ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md) · [EXEC_PLAN.md](../../EXEC_PLAN.md)
+
 ### 補足（2026-05-30 · **キオスク検査図面（MVP + 一覧ハブ）**·**Pi5 本番先行・Pi4×4 未**） {#kiosk-inspection-drawing-mvp-2026-05-30}
 
 - **変更概要（正本）**: [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [KB-320 §検査図面](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-mvp2026-05-30) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-mvp図面中心ui)。

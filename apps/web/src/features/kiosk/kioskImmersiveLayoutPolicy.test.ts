@@ -38,6 +38,8 @@ describe('usesKioskImmersiveLayout', () => {
     ['/kiosk/part-measurement/finalized'],
     ['/kiosk/part-measurement/inspection/create'],
     ['/kiosk/part-measurement/inspection/edit/00000000-0000-4000-8000-000000000002'],
+    ['/dev/kiosk-inspection-drawing-library'],
+    ['/dev/kiosk-inspection-drawing-create'],
     ['/kiosk/mobile-placement'],
     ['/kiosk/mobile-placement/register'],
     ['/kiosk/mobile-placement/shelf-register'],

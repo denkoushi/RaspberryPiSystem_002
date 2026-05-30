@@ -34,13 +34,14 @@ export const inspectionDrawingHeaderBandClassName =
   'flex shrink-0 flex-col gap-2 rounded border border-white/15 bg-slate-900/50 p-2 lg:flex-row lg:items-end lg:justify-between lg:gap-3';
 
 export const inspectionDrawingMetadataGridClassName =
-  'grid shrink-0 grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-4 lg:max-w-[58rem]';
+  'grid min-w-0 shrink grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-4 lg:max-w-[58rem] lg:min-w-0 lg:flex-1';
 
 export const inspectionDrawingMetadataLabelClassName =
   'grid w-fit justify-items-start gap-1 text-[1rem] font-semibold';
 
+/** flex-1 + min-w-0 だと狭いキオスク幅でボタンが1列縦積みになるため shrink-0 */
 export const inspectionDrawingToolbarSlotClassName =
-  'flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:justify-end';
+  'flex shrink-0 flex-wrap items-center justify-end gap-2';
 
 /** 右サイドバー — 従来 lg:w-80（20rem）の 2/3。空きを図面エリアへ */
 export const inspectionDrawingSideAsideClassName =

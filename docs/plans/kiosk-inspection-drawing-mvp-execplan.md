@@ -24,7 +24,13 @@ Maintained in accordance with `.agent/PLANS.md`.
   - レビュー対応: 汎用 `GET /templates/:id` からの破壊的改版防止・一覧 fhincd 部分一致・要約 DTO
 - [x] (2026-05-30) **Pi5 本番** 一覧ハブ — Detach `20260530-180728-7767` · Phase12 **42/1/0** · CI `26679994903`
 - [x] (2026-05-30) **`main` マージ** — PR [#374](https://github.com/denkoushi/RaspberryPiSystem_002/pull/374) squash **`f0a2725c`**
-- [ ] **Pi4×4 本番** — `main` で各キオスクへ順次（未実施）
+- [x] (2026-05-30) **DEV プレビュー本番パリティ + UI 調整**（`feat/kiosk-inspection-drawing-preview-parity` · **`ccacef85`**）
+  - `KioskLayout` 配下 DEV ルート · 共有 `InspectionDrawingLibraryFilterBar` / `InspectionDrawingPointSettingsPanel`
+  - UI: フィルタ `flex-wrap` · 測定点縦並び · ツールバー「一覧へ戻る」 · 作成画面下部リンク削除
+  - ADR: [ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md)
+- [x] (2026-05-30) **Pi5 本番** プレビュー parity — Detach `20260530-192609-10677` · CI `26681207121`
+- [ ] **Pi4×4 本番** — `main` マージ後に各キオスクへ順次（未実施）
+- [ ] **Pi5 実機目視** プレビュー parity UI — デプロイ済・目視記録は運用側（任意 Phase12）
 
 ## Surprises & Discoveries
 
@@ -45,6 +51,12 @@ Maintained in accordance with `.agent/PLANS.md`.
 
 - Observation: 汎用テンプレ GET + キオスク改版は、図面未対象テンプレや旧版で **意図しない改版**が起きうる
   Evidence: コードレビュー → 専用 `inspection-drawing/templates/*` + `reviseKioskInspectionDrawingTemplate`（`ef78f4dd`）
+
+- Observation: DEV プレビューと本番のレイアウト差の主因は **`transform: scale` ではなく**、`KioskLayout` 外・全画面・**プレビュー専用 JSX 複製**
+  Evidence: 2026-05-30 調査 → `ccacef85` で本番コンポーネント共有 + `KioskLayout` 配下 DEV ルートへ移行
+
+- Observation: 一覧フィルタの `lg:grid-cols-[13rem_15rem_auto…]` は長い資源表示名で **工程列と視覚的に重なる**
+  Evidence: 現場レイアウト指摘 → `InspectionDrawingLibraryFilterBar` で `flex-wrap`（`ccacef85`）
 
 ## Decision Log
 
@@ -88,13 +100,22 @@ Maintained in accordance with `.agent/PLANS.md`.
   Rationale: 既存 create フローと visual アップロードを再利用。改版は `reviseActiveTemplate` で版管理
   Date/Author: 2026-05-30 / agent
 
+- Decision: 検査図面のレイアウト調整用 DEV プレビューは **本番と同じコンポーネント + `KioskLayout`**。scale や JSX 複製は使わない
+  Rationale: 修正指示が出せないズレの根本原因がレンダリング契約だった（[ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md)）
+  Date/Author: 2026-05-30 / agent
+
+- Decision: 一覧フィルタは **flex-wrap**、測定点は **縦並び**、作成ツールバーに **「一覧へ戻る」**（`libraryTo`）
+  Rationale: 現場フィードバック・プレビュー/本番の単一コンポーネント化
+  Date/Author: 2026-05-30 / agent
+
 ## Outcomes & Retrospective
 
 - **評価用作成（互換）**: `/kiosk/part-measurement/inspection/create` は残置。評価用 API は UI 主導線から外した。
 - **一覧ハブ**: ヘッダー **「検査図面」** → 一覧 → 新規/編集/履歴。専用 API + 要約 DTO。旧版は閲覧専用・有効化後に再取得。
 - **本番編集（数量1のみ）**: 変更なし（`inspection/edit` + 通常 sheet API）。
 - **隔離**: 評価用バケットと **409** 相互ブロックは維持。
-- **デプロイ**: Pi5 のみ 3 段（MVP 導線・タブ・一覧ハブ）。**Pi4×4 は `main` マージ後の次タスク**。
+- **デプロイ**: Pi5 で MVP 導線・タブ・一覧ハブに加え **プレビュー parity（`ccacef85`）** まで反映。**Pi4×4 は `main` マージ後の次タスク**。
+- **DEV プレビュー**: `/dev/kiosk-inspection-drawing-*` で本番コンポーネントを Mac 上で反復可能（fixture）。
 - **未着手**: 複数個数図面UI、TIFF、順位ボード連携、Phase12 への専用 API スモーク追加（任意）。
 
 ## 代表コミット
@@ -105,6 +126,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 | `45c02e0a` | 同上 | 本番 quantity=1 図面 edit |
 | `583aecad` | 同上 | ヘッダー独立タブ |
 | `ef78f4dd` | `feat/inspection-drawing-library-hub` | 一覧ハブ・専用 API・履歴 UI |
+| `ccacef85` | `feat/kiosk-inspection-drawing-preview-parity` | DEV 本番パリティ・共有 UI コンポーネント |
 
 ## 主要ファイル（後続読者向け）
 
@@ -116,7 +138,10 @@ Maintained in accordance with `.agent/PLANS.md`.
 | API 方針 | `apps/api/src/services/part-measurement/part-measurement-inspection-drawing-policy.ts` |
 | 評価アクセス | `evaluationSheetAccess.ts`（Web） |
 | 一覧 UI | `KioskInspectionDrawingLibraryPage.tsx` |
+| 一覧フィルタ（共有） | `InspectionDrawingLibraryFilterBar.tsx` |
 | 作成/テンプレ編集 UI | `KioskInspectionDrawingCreatePage.tsx` |
+| 測定点パネル（共有） | `InspectionDrawingPointSettingsPanel.tsx` |
+| DEV プレビュー | `pages/dev/KioskInspectionDrawing*PreviewPage.tsx` · `KioskInspectionDrawingDevPreviewChrome.tsx` |
 | 記録図面編集 UI | `KioskInspectionDrawingEditPage.tsx` |
 | テンプレサービス | `part-measurement-template.service.ts`（`list/get/reviseKioskInspectionDrawing*`） |
 
@@ -134,5 +159,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 - 統合: `part-measurement.integration.test.ts`（policy・evaluation 隔離・blank 削除）
 - 自動実機: `./scripts/deploy/verify-phase12-real.sh`（部品測定スモーク含む）
 - 手動（Pi5・一覧ハブ）: **検査図面** → 一覧 → 新規/編集/履歴。旧版 readOnly・有効化→編集可
+- 手動（Pi5・UI parity）: フィルタ折り返し・測定点縦並び・「一覧へ戻る」・下部リンクなし（`ccacef85` 以降）
+- 手動（Mac DEV）: `/dev/kiosk-inspection-drawing-library` · `/dev/kiosk-inspection-drawing-create`（本番コンポーネント・fixture）
 - 手動（Pi5・記録）: 本番図面テンプレ + 数量1 → 図面 edit
 - 手動（Pi4 未）: `main` 反映後、各キオスクで同確認（強制リロード §6.6.4）

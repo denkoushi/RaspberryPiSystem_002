@@ -34,6 +34,20 @@
 - **評価用編集 API**: 既存互換のため `inspection-drawing/evaluation-sheets/*` は当面残すが、新しいキオスク UI 導線からは使用しない。本番 sheet は引き続き **409**、評価用 sheet も通常 PATCH/finalize から **409**。
 - **制約（現時点）**: 複数個数の図面UI・TIFF・順位ボードは未対応。図面中心の本番編集は引き続き **quantity===1** のみ。詳細は [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
 
+### 検査図面 · DEV プレビュー（本番パリティ）
+
+開発者が Mac 上でレイアウトを本番に近い状態で確認する手順。正本: [ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md) · [KB-320 §プレビュー](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-preview-parity-2026-05-30)。
+
+1. リポジトリで `pnpm dev`（またはプロジェクト標準の Web 開発サーバー）を起動する。
+2. ブラウザで次を開く（**認証不要** · fixture データ）:
+   - 一覧: **`/dev/kiosk-inspection-drawing-library`**
+   - 作成/編集: **`/dev/kiosk-inspection-drawing-create`**
+3. 画面上部の DEV バー（fixed）以外は **本番と同じ `KioskLayout` + 共有コンポーネント** で描画される。`transform: scale` は使わない。
+4. UI 変更時は **共有コンポーネント**（`InspectionDrawingLibraryFilterBar` / `InspectionDrawingPointSettingsPanel` / `InspectionDrawingCreateToolbar`）を編集し、DEV と本番の両方が同時に変わることを確認する。
+5. Pi5 本番反映は [deployment.md §プレビュー parity](../guides/deployment.md#kiosk-inspection-drawing-preview-parity-2026-05-30) の `update-all-clients.sh`（**Pi5 先行** → 目視 OK 後 Pi4）。
+
+**注意**: DEV ルートは本番 Docker イメージには含まれるが、現場オペレータの導線ではない。現場確認は **`/kiosk/part-measurement/inspection`** を使う。
+
 ## オペレータ手順（キオスク）
 
 1. **推奨**: 生産スケジュール（または手動順番の下ペイン一覧）の行の **測定** 列から開く（`find-or-open` で下書き再開・確定閲覧・新規・テンプレ作成へ振り分け）。
@@ -73,5 +87,5 @@
 
 ## 関連
 
-- ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](../decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2） / [ADR-20260330-part-measurement-visual-template.md](../decisions/ADR-20260330-part-measurement-visual-template.md)（visual template） / [ADR-20260404-part-measurement-template-pick-kiosk.md](../decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)（候補選択・`FHINMEI_ONLY` 照合の経時追補含む）
+- ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](../decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2） / [ADR-20260330-part-measurement-visual-template.md](../decisions/ADR-20260330-part-measurement-visual-template.md)（visual template） / [ADR-20260404-part-measurement-template-pick-kiosk.md](../decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)（候補選択・`FHINMEI_ONLY` 照合の経時追補含む） / [ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md)（検査図面 DEV プレビュー本番契約）
 - 沉浸式ヘッダー対象: `usesKioskImmersiveLayout` に `/kiosk/part-measurement` **およびその子パス**が含まれる（変更時は `kioskImmersiveLayoutPolicy.test.ts` を更新）

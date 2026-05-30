@@ -1,24 +1,24 @@
 import { useState } from 'react';
 
-import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import {
   InspectionDrawingCanvas,
   InspectionDrawingCreateHeaderBand,
   InspectionDrawingCreateToolbar,
+  InspectionDrawingPointSettingsPanel,
   InspectionDrawingValuePanel,
   inspectionDrawingCanvasColumnClassName,
   inspectionDrawingMetadataControlWidthClass,
   inspectionDrawingMetadataInputClass,
   inspectionDrawingMetadataLabelClassName,
-  inspectionDrawingPointSettingInputClassName,
-  inspectionDrawingPointSettingPanelClassName,
   inspectionDrawingSideAsideClassName
 } from '../../features/part-measurement/inspection-drawing';
 import {
   INSPECTION_DRAWING_PREVIEW_IMAGE_URL,
   INSPECTION_DRAWING_PREVIEW_POINTS
 } from '../../features/part-measurement/inspection-drawing/inspectionDrawingPreviewFixtures';
+
+import { KioskInspectionDrawingDevPreviewChrome } from './KioskInspectionDrawingDevPreviewChrome';
 
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
 import type { PartMeasurementProcessGroup } from '../../features/part-measurement/types';
@@ -39,16 +39,11 @@ export function KioskInspectionDrawingCreatePreviewPage() {
   };
 
   return (
-    <div className="flex h-dvh min-h-0 flex-col bg-slate-800 text-white">
-      <header className="shrink-0 border-b border-amber-500/40 bg-amber-950/40 px-3 py-2 text-center text-sm font-semibold text-amber-100">
-        開発プレビュー — 実装コンポーネント（InspectionDrawingCanvas / ValuePanel）· 本番ルート:
-        /kiosk/part-measurement/inspection/create
-      </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-2 p-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[1.05rem] font-semibold text-white/85">検査図面作成プレビュー</span>
-        </div>
-
+    <KioskInspectionDrawingDevPreviewChrome
+      productionPath="/kiosk/part-measurement/inspection/create"
+      rootClassName="flex min-h-0 flex-1 flex-col gap-2 p-2 text-white"
+      footnote="マーカー1=OK·2=NG·3=未入力。下部 DEV バーは本番に無し"
+    >
         <InspectionDrawingCreateHeaderBand
           metadata={
             <>
@@ -87,13 +82,10 @@ export function KioskInspectionDrawingCreatePreviewPage() {
               hasDrawingImage
               hasMeasurementPoints={points.length > 0}
               saveDisabled
+              libraryTo="/dev/kiosk-inspection-drawing-library"
             />
           }
         />
-
-        <p className="text-[1rem] font-semibold text-amber-200">
-          プレビュー: マーカー1=OK（緑）· 2=NG（赤）· 3=未入力（白）。「テスト入力」で右パネルを確認。
-        </p>
 
         <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row">
           <div className={inspectionDrawingCanvasColumnClassName}>
@@ -109,53 +101,11 @@ export function KioskInspectionDrawingCreatePreviewPage() {
 
           <aside className={inspectionDrawingSideAsideClassName}>
             {mode === 'place' && selectedPoint ? (
-              <div className={inspectionDrawingPointSettingPanelClassName}>
-                <p className="text-[1.02rem] font-bold">測定点の設定</p>
-                <label className="grid gap-1 text-[1rem] font-semibold">
-                  名称
-                  <Input
-                    value={selectedPoint.name}
-                    onChange={(e) => updatePoint(selectedPoint.id, { name: e.target.value })}
-                    className={inspectionDrawingPointSettingInputClassName}
-                  />
-                </label>
-                <label className="grid gap-1 text-[1rem] font-semibold">
-                  基準値
-                  <Input
-                    type="number"
-                    value={selectedPoint.nominal}
-                    onChange={(e) =>
-                      updatePoint(selectedPoint.id, { nominal: parseFloat(e.target.value) || 0 })
-                    }
-                    className={inspectionDrawingPointSettingInputClassName}
-                  />
-                </label>
-                <label className="grid gap-1 text-[1rem] font-semibold">
-                  下限
-                  <Input
-                    type="number"
-                    value={selectedPoint.lower}
-                    onChange={(e) =>
-                      updatePoint(selectedPoint.id, { lower: parseFloat(e.target.value) || 0 })
-                    }
-                    className={inspectionDrawingPointSettingInputClassName}
-                  />
-                </label>
-                <label className="grid gap-1 text-[1rem] font-semibold">
-                  上限
-                  <Input
-                    type="number"
-                    value={selectedPoint.upper}
-                    onChange={(e) =>
-                      updatePoint(selectedPoint.id, { upper: parseFloat(e.target.value) || 0 })
-                    }
-                    className={inspectionDrawingPointSettingInputClassName}
-                  />
-                </label>
-                <Button type="button" variant="secondary">
-                  この点を削除
-                </Button>
-              </div>
+              <InspectionDrawingPointSettingsPanel
+                point={selectedPoint}
+                onChange={(patch) => updatePoint(selectedPoint.id, patch)}
+                onRemove={() => undefined}
+              />
             ) : null}
 
             {mode === 'test' ? (
@@ -166,14 +116,9 @@ export function KioskInspectionDrawingCreatePreviewPage() {
                   updatePoint(selectedPoint.id, { testValue: v });
                 }}
               />
-            ) : (
-              <p className="text-[0.98rem] text-white/50">
-                図面をタップして点を追加し、右側で設定します。
-              </p>
-            )}
+            ) : null}
           </aside>
         </div>
-      </div>
-    </div>
+    </KioskInspectionDrawingDevPreviewChrome>
   );
 }

@@ -1,5 +1,10 @@
 export { InspectionDrawingCreateHeaderBand } from './InspectionDrawingCreateHeaderBand';
 export { InspectionDrawingCreateToolbar } from './InspectionDrawingCreateToolbar';
+export { InspectionDrawingPointSettingsPanel } from './InspectionDrawingPointSettingsPanel';
+export {
+  InspectionDrawingLibraryFilterBar,
+  type InspectionDrawingLibraryProcessFilter
+} from './InspectionDrawingLibraryFilterBar';
 export type { InspectionDrawingToolbarMode } from './InspectionDrawingCreateToolbar';
 export { InspectionDrawingCanvas } from './InspectionDrawingCanvas';
 export {
