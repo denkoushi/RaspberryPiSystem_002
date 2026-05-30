@@ -11,11 +11,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 try:
-    from .dgx_runtime_prepare import ensure_dgx_runtime_ready
+    from .dgx_runtime_prepare import ensure_dgx_runtime_ready, verify_dgx_runtime_profile
     from .task_bridge_policy import TaskBridgePolicy, toolsets_cli_argument
     from .tools_profile_constants import TOOLS_BUSINESS_MODEL_PROFILE_ID
 except ImportError:
-    from dgx_runtime_prepare import ensure_dgx_runtime_ready
+    from dgx_runtime_prepare import ensure_dgx_runtime_ready, verify_dgx_runtime_profile
     from task_bridge_policy import TaskBridgePolicy, toolsets_cli_argument
     from tools_profile_constants import TOOLS_BUSINESS_MODEL_PROFILE_ID
 
@@ -75,11 +75,21 @@ def ensure_tools_dgx_runtime_ready(paths: ToolsProfilePaths) -> tuple[bool, str]
         keep_warm_dir=paths.dgx_keep_warm_dir,
         default_model_profile_id=TOOLS_BUSINESS_MODEL_PROFILE_ID,
     )
-    if ok:
-        return True, ""
-    if "tools" not in hint:
-        return False, hint.replace("DGX runtime", "tools DGX runtime", 1)
-    return False, hint
+    if not ok:
+        if "tools" not in hint:
+            return False, hint.replace("DGX runtime", "tools DGX runtime", 1)
+        return False, hint
+
+    verify_ok, verify_hint = verify_dgx_runtime_profile(
+        Path(paths.tools_env_path),
+        keep_warm_dir=paths.dgx_keep_warm_dir,
+        expected_model_profile_id=TOOLS_BUSINESS_MODEL_PROFILE_ID,
+    )
+    if not verify_ok:
+        if "tools" not in verify_hint:
+            return False, verify_hint.replace("DGX", "tools DGX", 1)
+        return False, verify_hint
+    return True, ""
 
 
 def _resolve_hermes_python(hermes_bin: Path, hermes_home: str | None = None) -> Path:

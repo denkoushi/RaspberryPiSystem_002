@@ -75,7 +75,19 @@ keep-warm 成功ログ（抜粋）:
 | repo `verify-discord-task-bridge-smoke.sh`（ローカル） | **OK** |
 | `verify-tool-write-approval-gate-pi5.sh`（**approval_relay/runner.py 直呼び**） | **FAIL** — `request.json` 未作成（ファイルは作成）。**本 Fix の経路（Discord `/task` → `run_tools_profile_prompt`）とは別**。既知: [KB D5 §write ゲート](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) |
 
-**Discord `/task` E2E（承認リレー完結）**: 本デプロイでは **手動未実施**。profile 復帰後に `/novel` → `/task` で `request.json` 出現を確認するのが最終受け入れ。
+**Discord `/task` E2E（承認リレー完結）**: 本デプロイでは **手動未実施**。profile 復帰後に `/novel` → `/task` で `request.json` 出現を確認するのが最終受け入れ。承認 UX（即時通知・期限切れ文言・`yes` ルーティング）は [KB D5 §2026-05-30 承認 UX](./KB-private-pi5-hermes-phase-d5-production.md#discord-承認-ux-修正2026-05-30--repo) を参照。
+
+### Investigation（2026-05-30 · `Unknown command /task`）
+
+| 仮説 | 検証 | 結果 |
+|------|------|------|
+| plugin 未登録（`discover_plugins` no-op） | Pi5 `gateway/run.py` に `discover_plugins(force=True)` · 別プロセス smoke | **REJECTED** — handler 取得可 |
+| 孤児 `hermes-tools-gateway` が Discord を奪う | `ss -tpn` · `HOME` on PIDs | **REJECTED** — Discord TCP は **chat** `hermes-gateway`（`HOME=/home/hermes`）のみ。`hermes-tools-gateway` は **意図した第 2 gateway**（`HOME=~/.hermes-tools/home`） |
+| handler 内例外 → gateway が DEBUG で握りつぶし Unknown 表示 | `sudo -u hermes` で handler 直呼び | **CONFIRMED** — `PermissionError` on `task-bridge/approvals/manual-write-gate-*/request.json`（**root:root** サブディレクトリ。過去 verify を **root** で実行した痕跡） |
+| 同上の修復 | `chown -R hermes:hermes ~/.hermes/task-bridge` 後に `/task` 直呼び | **CONFIRMED** — `List files in workspace` **~39s OK**（2026-05-30 09:3x JST） |
+| chat gateway 再起動 | `systemctl restart hermes-gateway` · MAINPID **212165** | **実施** — 09:11 以前の `Unrecognized slash command /task` は旧 PID **209020** のみ（再起動後 journal **新規なし**） |
+
+**再発防止**: Pi5 実機 smoke / verify は **`sudo -u hermes`**（Runbook 記載どおり）。root で `approvals/` 配下を作らない。Unknown が続く場合は `find ~/.hermes/task-bridge -user root` → `chown -R hermes:hermes`。
 
 ### 仕様要約（後続読者向け）
 

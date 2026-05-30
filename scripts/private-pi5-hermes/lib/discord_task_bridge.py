@@ -33,11 +33,28 @@ except ImportError:
     from tools_profile_runner import ToolsProfilePaths, run_tools_profile_prompt
 
 try:
-    from .approval_relay.coordinator import DiscordApprovalRelayCoordinator, read_gateway_session_context
+    from .approval_relay.coordinator import (
+        APPROVAL_EXPIRED_USER_MESSAGE,
+        DiscordApprovalRelayCoordinator,
+        notify_discord_approval_prompt,
+        read_gateway_session_context,
+    )
     from .approval_relay.models import TaskRunContext
 except ImportError:
-    from approval_relay.coordinator import DiscordApprovalRelayCoordinator, read_gateway_session_context
+    from approval_relay.coordinator import (
+        APPROVAL_EXPIRED_USER_MESSAGE,
+        DiscordApprovalRelayCoordinator,
+        notify_discord_approval_prompt,
+        read_gateway_session_context,
+    )
     from approval_relay.models import TaskRunContext
+
+_APPROVAL_PROMPT_MARKER = "task approval required"
+_APPROVAL_TIMEOUT_MARKERS = (
+    "file write approval timed out",
+    "approval timed out",
+    "manual approval may be pending",
+)
 
 
 def _default_policy_path() -> Path:
@@ -71,6 +88,62 @@ def render_task_usage() -> str:
         "usage: /task <instructions>\n"
         "example: /task List files in workspace and summarize notes.txt if present"
     )
+
+
+def _is_approval_prompt_message(text: str) -> bool:
+    lowered = (text or "").lower()
+    return _APPROVAL_PROMPT_MARKER in lowered or "⚠️" in (text or "")
+
+
+def _task_output_looks_like_approval_timeout(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(marker in lowered for marker in _APPROVAL_TIMEOUT_MARKERS)
+
+
+def should_enter_approval_grace(task_context: TaskRunContext | None) -> bool:
+    """Grace only after approval timed out — not after every /task completion."""
+    if task_context is None:
+        return False
+    if task_context.approval_delivery_error:
+        return False
+    return task_context.approval_timed_out
+
+
+def _compose_task_response(
+    output: str,
+    *,
+    task_context: TaskRunContext | None,
+    ok: bool,
+    error_hint: str,
+) -> str:
+    if task_context and task_context.approval_delivery_error:
+        return (
+            "task failed: 承認通知を Discord に送れませんでした "
+            f"({task_context.approval_delivery_error})"
+        )
+
+    if not ok and _task_output_looks_like_approval_timeout(
+        f"{error_hint}\n{output}"
+    ):
+        if task_context is not None:
+            task_context.approval_timed_out = True
+        return APPROVAL_EXPIRED_USER_MESSAGE
+
+    if task_context and task_context.intermediate_messages:
+        non_approval = [
+            message
+            for message in task_context.intermediate_messages
+            if not _is_approval_prompt_message(message)
+        ]
+        if non_approval:
+            prefix = "\n\n".join(non_approval)
+            output = f"{prefix}\n\n{output}" if output else prefix
+
+    if not ok:
+        if output:
+            return f"task failed: {error_hint}\n\n{output}"
+        return f"task failed: {error_hint}"
+    return output
 
 
 def format_task_output_for_discord(text: str) -> str:
@@ -117,15 +190,12 @@ def run_task_bridge(
         task_id=task_id,
     )
     output = format_task_output_for_discord(result.output)
-    if task_context and task_context.intermediate_messages:
-        prefix = "\n\n".join(task_context.intermediate_messages)
-        output = f"{prefix}\n\n{output}" if output else prefix
-
-    if result.ok:
-        return output
-    if output:
-        return f"task failed: {result.error_hint}\n\n{output}"
-    return f"task failed: {result.error_hint}"
+    return _compose_task_response(
+        output,
+        task_context=task_context,
+        ok=result.ok,
+        error_hint=result.error_hint,
+    )
 
 
 async def run_task_bridge_async(
@@ -152,10 +222,26 @@ async def run_task_bridge_async(
             )
         except RuntimeError as exc:
             return f"task rejected: {exc}"
+        store_dir = Path(policy.approval_relay.store_dir)
+
+        async def _approval_notifier(message: str) -> None:
+            assert task_context is not None
+            await notify_discord_approval_prompt(
+                task_context,
+                message,
+                store_dir=store_dir,
+                stop_event=stop_event,
+            )
+
         watcher = asyncio.create_task(
-            coordinator.watch_task(task_context, stop_event=stop_event)
+            coordinator.watch_task(
+                task_context,
+                notifier=_approval_notifier,
+                stop_event=stop_event,
+            )
         )
 
+    message = ""
     try:
         message = await asyncio.to_thread(
             run_task_bridge,
@@ -168,8 +254,21 @@ async def run_task_bridge_async(
         stop_event.set()
         if watcher is not None:
             await watcher
+        if (
+            task_context is not None
+            and task_context.approval_delivery_error
+            and message
+            and not message.startswith("task failed:")
+        ):
+            message = (
+                "task failed: 承認通知を Discord に送れませんでした "
+                f"({task_context.approval_delivery_error})"
+            )
         if coordinator is not None and task_context is not None:
-            coordinator.finish_task_context(task_context)
+            coordinator.finish_task_context(
+                task_context,
+                enter_grace=should_enter_approval_grace(task_context),
+            )
 
     return message
 
@@ -216,6 +315,7 @@ def emission_json(policy: TaskBridgePolicy) -> dict[str, Any]:
             "store_dir": policy.approval_relay.store_dir,
             "request_timeout_seconds": policy.approval_relay.request_timeout_seconds,
             "poll_interval_seconds": policy.approval_relay.poll_interval_seconds,
+            "approval_grace_seconds": policy.approval_relay.approval_grace_seconds,
         },
     }
 

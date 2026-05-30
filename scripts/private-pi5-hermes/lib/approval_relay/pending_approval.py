@@ -23,6 +23,8 @@ def wait_for_discord_approval(
     """Write request.json, block until response.json or timeout; clear pending files."""
     store.clear_pending_files()
     store.write_request(approval_data)
+    if store.read_delivery_failed():
+        return None
     response = store.wait_for_response(
         timeout_seconds=max(float(timeout_seconds), 1.0),
         poll_interval_seconds=max(float(poll_interval_seconds), 0.05),

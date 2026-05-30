@@ -113,6 +113,9 @@ class TaskRunContext:
     discord_channel_id: str = ""
     session_key: str = ""
     intermediate_messages: list[str] = field(default_factory=list)
+    approval_delivery_error: str = ""
+    approval_prompt_delivered: bool = False
+    approval_timed_out: bool = False
 
     def __post_init__(self) -> None:
         if not self.session_key:

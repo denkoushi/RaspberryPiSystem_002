@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from lib.approval_relay.discord_relay import (  # noqa: E402
+    DiscordSendResult,
     format_approval_prompt,
     parse_task_approve_args,
 )
@@ -131,6 +132,25 @@ class ApprovalRelayParseTests(unittest.TestCase):
         self.assertEqual(ApprovalChoice.from_text("yes"), ApprovalChoice.ONCE)
         self.assertEqual(ApprovalChoice.from_text("no"), ApprovalChoice.DENY)
         self.assertIsNone(ApprovalChoice.from_text("hello"))
+
+    def test_wait_for_response_aborts_on_delivery_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = FileApprovalStore(Path(tmp), "task-delivery")
+            store.write_request({"command": "write_file path=x", "description": "write"})
+            store.write_delivery_failed("token missing")
+            started = time.time()
+            result = store.wait_for_response(
+                timeout_seconds=5.0,
+                poll_interval_seconds=0.05,
+            )
+            elapsed = time.time() - started
+        self.assertIsNone(result)
+        self.assertLess(elapsed, 1.0)
+
+    def test_discord_send_result_shape(self) -> None:
+        result = DiscordSendResult(ok=False, status_code=401, error="unauthorized")
+        self.assertFalse(result.ok)
+        self.assertEqual(result.status_code, 401)
 
 
 if __name__ == "__main__":

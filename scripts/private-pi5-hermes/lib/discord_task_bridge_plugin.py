@@ -98,7 +98,9 @@ async def _handle_task_approve(raw_args: str) -> str:
         return "could not resolve Discord user for approval"
     choice = parse_task_approve_args(raw_args)
     ok, message = coord.resolve_for_user(user_id, choice)
-    return message if ok else f"task approve failed: {message}"
+    if ok or "承認期限切れ" in message:
+        return message
+    return f"task approve failed: {message}"
 
 
 async def _handle_task_deny(_raw_args: str) -> str:
@@ -109,7 +111,9 @@ async def _handle_task_deny(_raw_args: str) -> str:
     if not user_id:
         return "could not resolve Discord user for denial"
     ok, message = coord.resolve_for_user(user_id, ApprovalChoice.DENY)
-    return message if ok else f"task deny failed: {message}"
+    if ok or "承認期限切れ" in message:
+        return message
+    return f"task deny failed: {message}"
 
 
 def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
