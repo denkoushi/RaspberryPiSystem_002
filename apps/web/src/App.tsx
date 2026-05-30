@@ -30,6 +30,7 @@ import { SignagePreviewPage } from './pages/admin/SignagePreviewPage';
 import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
 import { VisualizationDashboardsPage } from './pages/admin/VisualizationDashboardsPage';
 import { KioskInspectionDrawingCreatePreviewPage } from './pages/dev/KioskInspectionDrawingCreatePreviewPage';
+import { KioskInspectionDrawingLibraryPreviewPage } from './pages/dev/KioskInspectionDrawingLibraryPreviewPage';
 import { LoadBalancingOverviewChartPreviewPage } from './pages/dev/LoadBalancingOverviewChartPreviewPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
@@ -126,17 +127,22 @@ function App() {
           />
           <Route path="/kiosk/part-measurement/inspection/edit/:sheetId" element={<KioskInspectionDrawingEditPage />} />
           <Route path="/kiosk/rigging-analytics" element={<KioskRiggingAnalyticsPage />} />
+          {import.meta.env.DEV ? (
+            <>
+              <Route
+                path="/dev/kiosk-inspection-drawing-library"
+                element={<KioskInspectionDrawingLibraryPreviewPage />}
+              />
+              <Route
+                path="/dev/kiosk-inspection-drawing-create"
+                element={<KioskInspectionDrawingCreatePreviewPage />}
+              />
+            </>
+          ) : null}
         </Route>
       </Route>
-      {/* 開発用: UI確認のための一時的なルート */}
       {import.meta.env.DEV ? (
-        <>
-          <Route
-            path="/dev/kiosk-inspection-drawing-create"
-            element={<KioskInspectionDrawingCreatePreviewPage />}
-          />
-          <Route path="/dev/load-balancing-overview-chart" element={<LoadBalancingOverviewChartPreviewPage />} />
-        </>
+        <Route path="/dev/load-balancing-overview-chart" element={<LoadBalancingOverviewChartPreviewPage />} />
       ) : null}
       <Route
         path="/preview"

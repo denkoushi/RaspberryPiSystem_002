@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import {
   activatePartMeasurementTemplate,
@@ -18,13 +18,12 @@ import {
   InspectionDrawingCanvas,
   InspectionDrawingCreateHeaderBand,
   InspectionDrawingCreateToolbar,
+  InspectionDrawingPointSettingsPanel,
   InspectionDrawingValuePanel,
   inspectionDrawingCanvasColumnClassName,
   inspectionDrawingMetadataFileInputClass,
   inspectionDrawingMetadataInputClass,
   inspectionDrawingMetadataLabelClassName,
-  inspectionDrawingPointSettingInputClassName,
-  inspectionDrawingPointSettingPanelClassName,
   inspectionDrawingSideAsideClassName,
   kioskInspectionDrawingTemplateEditPath,
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
@@ -345,6 +344,7 @@ export function KioskInspectionDrawingCreatePage() {
             onSave={contentReadOnly ? undefined : () => void handleSave()}
             saveDisabled={contentReadOnly}
             saveBusy={busy}
+            libraryTo={KIOSK_INSPECTION_DRAWING_LIBRARY_PATH}
           />
         }
       />
@@ -357,12 +357,6 @@ export function KioskInspectionDrawingCreatePage() {
       {message ? <p className="px-1 text-[1rem] font-semibold text-amber-200">{message}</p> : null}
       {template ? (
         <div className="flex flex-wrap items-center gap-2 px-1">
-          <Link
-            to={KIOSK_INSPECTION_DRAWING_LIBRARY_PATH}
-            className="text-[1rem] font-semibold text-blue-200 underline"
-          >
-            一覧へ戻る
-          </Link>
           <span className="text-[0.98rem] text-white/60">
             v{template.version} / {template.isActive ? '有効' : '履歴'}
           </span>
@@ -402,64 +396,12 @@ export function KioskInspectionDrawingCreatePage() {
 
         <aside className={inspectionDrawingSideAsideClassName}>
           {mode === 'place' && selectedPoint ? (
-            <div className={inspectionDrawingPointSettingPanelClassName}>
-              <p className="text-[1.02rem] font-bold">測定点の設定</p>
-              <label className="grid gap-1 text-[1rem] font-semibold">
-                名称
-                <Input
-                  value={selectedPoint.name}
-                  onChange={(e) => updatePoint(selectedPoint.id, { name: e.target.value })}
-                  className={inspectionDrawingPointSettingInputClassName}
-                  disabled={contentReadOnly}
-                />
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                <label className="grid gap-1 text-[1rem] font-semibold">
-                  基準値
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    value={selectedPoint.nominal}
-                    onChange={(e) =>
-                      updatePoint(selectedPoint.id, { nominal: parseFloat(e.target.value) || 0 })
-                    }
-                    className={inspectionDrawingPointSettingInputClassName}
-                    disabled={contentReadOnly}
-                  />
-                </label>
-                <label className="grid gap-1 text-[1rem] font-semibold">
-                  下限
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    value={selectedPoint.lower}
-                    onChange={(e) =>
-                      updatePoint(selectedPoint.id, { lower: parseFloat(e.target.value) || 0 })
-                    }
-                    className={inspectionDrawingPointSettingInputClassName}
-                    disabled={contentReadOnly}
-                  />
-                </label>
-                <label className="grid gap-1 text-[1rem] font-semibold">
-                  上限
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    value={selectedPoint.upper}
-                    onChange={(e) =>
-                      updatePoint(selectedPoint.id, { upper: parseFloat(e.target.value) || 0 })
-                    }
-                    className={inspectionDrawingPointSettingInputClassName}
-                    disabled={contentReadOnly}
-                  />
-                </label>
-              </div>
-              {!contentReadOnly ? (
-                <Button type="button" variant="secondary" onClick={removeSelected}>
-                  この点を削除
-                </Button>
-              ) : null}
-            </div>
+            <InspectionDrawingPointSettingsPanel
+              point={selectedPoint}
+              disabled={contentReadOnly}
+              onChange={(patch) => updatePoint(selectedPoint.id, patch)}
+              onRemove={contentReadOnly ? undefined : removeSelected}
+            />
           ) : null}
 
           {mode === 'test' ? (
@@ -471,15 +413,11 @@ export function KioskInspectionDrawingCreatePage() {
                 updatePoint(selectedPoint.id, { testValue: v });
               }}
             />
-          ) : (
+          ) : contentReadOnly && mode === 'place' ? (
             <p className="px-1 text-[0.98rem] text-white/55">
-              {mode === 'place'
-                ? contentReadOnly
-                  ? '履歴版は表示のみです。点の選択とテスト入力はできます。'
-                  : '図面をタップして点を追加し、右側で設定します。'
-                : null}
+              履歴版は表示のみです。点の選択とテスト入力はできます。
             </p>
-          )}
+          ) : null}
         </aside>
       </div>
     </div>

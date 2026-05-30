@@ -1,6 +1,7 @@
 import clsx from 'clsx';
+import { Link } from 'react-router-dom';
 
-import { Button } from '../../../components/ui/Button';
+import { Button, buttonClassName } from '../../../components/ui/Button';
 
 import {
   inspectionDrawingKioskDisabledButtonClass,
@@ -23,6 +24,8 @@ type Props = {
   saveBusy?: boolean;
   /** 編集時は系譜キー（品番・工程）を変えられないため非表示 */
   showProcessGroup?: boolean;
+  /** 指定時は保存ボタン右に一覧へ戻るを表示 */
+  libraryTo?: string;
 };
 
 export function InspectionDrawingCreateToolbar({
@@ -35,7 +38,8 @@ export function InspectionDrawingCreateToolbar({
   onSave,
   saveDisabled = false,
   saveBusy = false,
-  showProcessGroup = true
+  showProcessGroup = true,
+  libraryTo
 }: Props) {
   const toggleClass = (isActive: boolean) =>
     clsx(inspectionDrawingKioskToggleInactiveClass(isActive), inspectionDrawingKioskDisabledButtonClass);
@@ -101,6 +105,12 @@ export function InspectionDrawingCreateToolbar({
       >
         {saveBusy ? '保存中…' : '保存'}
       </Button>
+
+      {libraryTo ? (
+        <Link to={libraryTo} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}>
+          一覧へ戻る
+        </Link>
+      ) : null}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { InspectionDrawingPoint } from './types';
+import type { KioskInspectionDrawingTemplateSummaryDto } from '../types';
 
 const previewSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
   <rect width="800" height="600" fill="#f8fafc"/>
@@ -44,3 +45,73 @@ export const INSPECTION_DRAWING_PREVIEW_POINTS: InspectionDrawingPoint[] = [
     testValue: ''
   }
 ];
+
+const previewVisualUpdatedAt = '2026-05-30T08:30:00.000Z';
+
+/** 開発プレビュー — 一覧カード用モック（API 不要） */
+export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawingTemplateSummaryDto[] =
+  [
+    {
+      id: 'preview-tpl-active',
+      fhincd: 'DEMO-12345',
+      resourceCd: 'R001',
+      processGroup: 'cutting',
+      name: '検査図面プレビュー（有効）',
+      version: 3,
+      isActive: true,
+      visualTemplateId: 'preview-visual-1',
+      visualTemplate: {
+        id: 'preview-visual-1',
+        name: 'サンプル図面 A',
+        drawingImageRelativePath: '/preview/sample-a.svg',
+        isActive: true,
+        createdAt: previewVisualUpdatedAt,
+        updatedAt: previewVisualUpdatedAt
+      },
+      itemCount: 12
+    },
+    {
+      id: 'preview-tpl-active-v2',
+      fhincd: 'DEMO-12345',
+      resourceCd: 'R001',
+      processGroup: 'cutting',
+      name: '検査図面プレビュー（有効）',
+      version: 2,
+      isActive: false,
+      visualTemplateId: 'preview-visual-1-old',
+      visualTemplate: {
+        id: 'preview-visual-1-old',
+        name: 'サンプル図面 A（旧）',
+        drawingImageRelativePath: '/preview/sample-a-v2.svg',
+        isActive: true,
+        createdAt: '2026-05-20T08:00:00.000Z',
+        updatedAt: '2026-05-25T10:00:00.000Z'
+      },
+      itemCount: 10
+    },
+    {
+      id: 'preview-tpl-history',
+      fhincd: 'DEMO-67890',
+      resourceCd: 'R002',
+      processGroup: 'grinding',
+      name: '研削工程サンプル',
+      version: 2,
+      isActive: false,
+      visualTemplateId: 'preview-visual-2',
+      visualTemplate: {
+        id: 'preview-visual-2',
+        name: 'サンプル図面 B',
+        drawingImageRelativePath: '/preview/sample-b.svg',
+        isActive: true,
+        createdAt: previewVisualUpdatedAt,
+        updatedAt: '2026-05-28T14:00:00.000Z'
+      },
+      itemCount: 8
+    }
+  ];
+
+/** 開発プレビュー — 資源表示名（resources API の resourceNameMap 形式） */
+export const INSPECTION_DRAWING_PREVIEW_RESOURCE_NAME_MAP: Record<string, string[]> = {
+  R001: ['FJV50/80'],
+  R002: ['研削ライン2']
+};

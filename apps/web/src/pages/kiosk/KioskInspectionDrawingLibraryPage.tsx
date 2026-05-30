@@ -4,21 +4,17 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { listKioskInspectionDrawingTemplates } from '../../api/client';
 import { useKioskProductionScheduleResources } from '../../api/hooks';
-import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
+import { Button, buttonClassName } from '../../components/ui/Button';
 import { formatResourceCdWithJapaneseNames } from '../../features/kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
 import {
+  InspectionDrawingLibraryFilterBar,
   InspectionDrawingTemplateHistoryDialog,
   kioskInspectionDrawingTemplateEditPath,
-  KIOSK_INSPECTION_DRAWING_CREATE_PATH
+  KIOSK_INSPECTION_DRAWING_CREATE_PATH,
+  type InspectionDrawingLibraryProcessFilter
 } from '../../features/part-measurement/inspection-drawing';
 
-import type {
-  KioskInspectionDrawingTemplateSummaryDto,
-  PartMeasurementProcessGroup
-} from '../../features/part-measurement/types';
-
-type ProcessFilter = PartMeasurementProcessGroup | 'all';
+import type { KioskInspectionDrawingTemplateSummaryDto } from '../../features/part-measurement/types';
 
 function processLabel(processGroup: KioskInspectionDrawingTemplateSummaryDto['processGroup']): string {
   if (processGroup === 'cutting') return '切削';
@@ -55,7 +51,7 @@ export function KioskInspectionDrawingLibraryPage() {
   const resourcesQuery = useKioskProductionScheduleResources();
   const [fhincd, setFhincd] = useState('');
   const [resourceCd, setResourceCd] = useState('');
-  const [processFilter, setProcessFilter] = useState<ProcessFilter>('all');
+  const [processFilter, setProcessFilter] = useState<InspectionDrawingLibraryProcessFilter>('all');
   const [includeInactive, setIncludeInactive] = useState(false);
   const [templates, setTemplates] = useState<KioskInspectionDrawingTemplateSummaryDto[]>([]);
   const [busy, setBusy] = useState(false);
@@ -98,7 +94,7 @@ export function KioskInspectionDrawingLibraryPage() {
       includeInactive: boolean;
       fhincd: string;
       resourceCd: string;
-      processFilter: ProcessFilter;
+      processFilter: InspectionDrawingLibraryProcessFilter;
     }) =>
       listKioskInspectionDrawingTemplates({
         includeInactive: filters.includeInactive,
@@ -167,80 +163,29 @@ export function KioskInspectionDrawingLibraryPage() {
           >
             部品測定へ
           </Button>
-          <Link to={KIOSK_INSPECTION_DRAWING_CREATE_PATH}>
-            <Button type="button" variant="primary" className="min-h-11 text-[1.02rem]">
-              新規
-            </Button>
+          <Link
+            to={KIOSK_INSPECTION_DRAWING_CREATE_PATH}
+            className={buttonClassName('primary', 'inline-flex min-h-11 items-center text-[1.02rem]')}
+          >
+            新規
           </Link>
         </div>
       </div>
 
-      <div className="grid gap-2 rounded border border-white/15 bg-slate-900/60 p-2 lg:grid-cols-[13rem_15rem_auto_auto_auto]">
-        <label className="grid gap-1 text-[1rem] font-semibold">
-          品番
-          <Input
-            value={fhincd}
-            onChange={(e) => setFhincd(e.target.value)}
-            className="h-11 text-[1.08rem] text-slate-900"
-            placeholder="例: ABC（部分一致）"
-          />
-        </label>
-        <label className="grid gap-1 text-[1rem] font-semibold">
-          資源
-          <select
-            value={resourceCd}
-            onChange={(e) => setResourceCd(e.target.value)}
-            className="h-11 rounded-md border-2 border-slate-500 bg-white px-3 text-[1.02rem] text-slate-900"
-          >
-            <option value="">すべて</option>
-            {resourceOptions.map((cd) => (
-              <option key={cd} value={cd}>
-                {formatResourceCdWithJapaneseNames(cd, resourceNameMap)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="grid gap-1">
-          <span className="text-[1rem] font-semibold">工程</span>
-          <div className="flex flex-wrap gap-2">
-            {([
-              ['all', 'すべて'],
-              ['cutting', '切削'],
-              ['grinding', '研削']
-            ] as const).map(([value, label]) => (
-              <Button
-                key={value}
-                type="button"
-                variant={processFilter === value ? 'primary' : 'ghostOnDark'}
-                className={clsx('min-h-11 px-3 text-[1rem]', processFilter !== value && 'opacity-80')}
-                onClick={() => setProcessFilter(value)}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
-        </div>
-        <label className="flex items-center gap-2 self-end pb-1 text-[1rem] font-semibold text-white/90">
-          <input
-            type="checkbox"
-            checked={includeInactive}
-            onChange={(e) => setIncludeInactive(e.target.checked)}
-            className="h-5 w-5"
-          />
-          履歴を含む
-        </label>
-        <div className="flex items-end justify-start lg:justify-end">
-          <Button
-            type="button"
-            variant="secondary"
-            className="min-h-11 min-w-[7rem] text-[1.02rem]"
-            onClick={() => void refresh()}
-            disabled={busy}
-          >
-            {busy ? '取得中…' : '更新'}
-          </Button>
-        </div>
-      </div>
+      <InspectionDrawingLibraryFilterBar
+        fhincd={fhincd}
+        onFhincdChange={setFhincd}
+        resourceCd={resourceCd}
+        onResourceCdChange={setResourceCd}
+        resourceOptions={resourceOptions}
+        resourceNameMap={resourceNameMap}
+        processFilter={processFilter}
+        onProcessFilterChange={setProcessFilter}
+        includeInactive={includeInactive}
+        onIncludeInactiveChange={setIncludeInactive}
+        onRefresh={() => void refresh()}
+        refreshBusy={busy}
+      />
 
       {message ? <p className="text-[1rem] font-semibold text-amber-200">{message}</p> : null}
 
@@ -294,10 +239,11 @@ export function KioskInspectionDrawingLibraryPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 pt-1">
-                  <Link to={kioskInspectionDrawingTemplateEditPath(template.id)}>
-                    <Button type="button" variant="primary" className="min-h-11 text-[1rem]">
-                      編集
-                    </Button>
+                  <Link
+                    to={kioskInspectionDrawingTemplateEditPath(template.id)}
+                    className={buttonClassName('primary', 'inline-flex min-h-11 items-center text-[1rem]')}
+                  >
+                    編集
                   </Link>
                   <Button
                     type="button"
