@@ -8,7 +8,7 @@
 
 ## Progress
 
-- [x] (2026-05-30 / **Pi5 本番・Pi4×4 未・preview parity マージ待ち**) **キオスク検査図面 · DEV プレビュー本番パリティ + UI**: ブランチ **`feat/kiosk-inspection-drawing-preview-parity`** · **`ccacef85`** — `KioskLayout` 配下 DEV ルート・共有 `InspectionDrawingLibraryFilterBar` / `InspectionDrawingPointSettingsPanel`・フィルタ flex-wrap・測定点縦並び・ツールバー「一覧へ戻る」。**Pi5 デプロイ**: `20260530-192609-10677`（`ccacef85`）· **Web のみ** · `failed=0` · 約 **353s**。**CI**: **`26681207121`** success。**次**: `main` マージ → Pi5 目視記録 → Pi4×4 順次。docs: [ADR-20260530](./docs/decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md) / [KB-320 §parity](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-preview-parity-2026-05-30) / [deployment §parity](./docs/guides/deployment.md#kiosk-inspection-drawing-preview-parity-2026-05-30)。
+- [x] (2026-05-30 / **Pi5 本番・Pi4×4 未・`main` マージ済**) **キオスク検査図面 · DEV プレビュー本番パリティ + UI**: PR [#375](https://github.com/denkoushi/RaspberryPiSystem_002/pull/375) squash **`504f7549`**（実装 tip **`ccacef85`**）— `KioskLayout` 配下 DEV ルート・共有 `InspectionDrawingLibraryFilterBar` / `InspectionDrawingPointSettingsPanel`・フィルタ flex-wrap・測定点縦並び・ツールバー「一覧へ戻る」。**Pi5 デプロイ**: `20260530-192609-10677`（`ccacef85`）· **Web のみ** · `failed=0` · 約 **353s**。**CI**: **`26681207121`** success。**次**: `main` マージ → Pi5 目視記録 → Pi4×4 順次。docs: [ADR-20260530](./docs/decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md) / [KB-320 §parity](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-preview-parity-2026-05-30) / [deployment §parity](./docs/guides/deployment.md#kiosk-inspection-drawing-preview-parity-2026-05-30)。
 
 - [x] (2026-05-30 / **Pi5 本番・Pi4×4 未・`main` に一覧ハブマージ後 SHA 記録**) **キオスク検査図面 MVP + 一覧ハブ**: MVP（`quantity===1` 図面 edit・評価隔離・タブ）+ **一覧ハブ**（`feat/inspection-drawing-library-hub` · **`ef78f4dd`**）— 専用 API `inspection-drawing/templates*`・`KioskInspectionDrawingLibraryPage`・履歴・旧版 readOnly。**Pi5 デプロイ**: MVP `20260530-153416-23422`（`583aecad`）· 一覧ハブ `20260530-180728-7767`（`ef78f4dd`）· Phase12 **42/1/0**。**CI**: `26676840821` · `26679994903` success。docs: [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-mvp2026-05-30) / [ExecPlan](./docs/plans/kiosk-inspection-drawing-mvp-execplan.md) / [deployment](./docs/guides/deployment.md#kiosk-inspection-drawing-mvp-2026-05-30)。
 
@@ -2437,7 +2437,7 @@
 | # | 項目 | 状態 | メモ |
 |---|------|------|------|
 | 1 | `main` マージ（一覧ハブ） | **済** | PR [#374](https://github.com/denkoushi/RaspberryPiSystem_002/pull/374) · **`f0a2725c`** |
-| 2 | `main` マージ（preview parity + docs） | **実施中** | ブランチ `feat/kiosk-inspection-drawing-preview-parity` · **`ccacef85`** |
+| 2 | `main` マージ（preview parity + docs） | **済** | PR [#375](https://github.com/denkoushi/RaspberryPiSystem_002/pull/375) · squash **`504f7549`** |
 | 3 | Pi5 実機目視（UI parity） | 未記録 | フィルタ折り返し・測定点縦並び・「一覧へ戻る」 |
 | 4 | Pi4×4 順次 `--limit` デプロイ | 未 | **`main` マージ後** · 1 台ずつ |
 | 5 | Phase12 + キオスク目視（4 台） | 未 | 検査図面タブ・一覧・新規/編集/履歴 |

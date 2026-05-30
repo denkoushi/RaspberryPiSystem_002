@@ -46,6 +46,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
   - **測定点が横3列のまま** → `InspectionDrawingPointSettingsPanel` 未共有
   - **デプロイ拒否** → 未 push
 - **CI**: GitHub Actions **`26681207121`** **success**（機能 push `ccacef85`）
+- **`main` マージ**: PR [#375](https://github.com/denkoushi/RaspberryPiSystem_002/pull/375) squash **`504f7549`**（2026-05-30）
 - **ナレッジ**: [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) · [ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md) · [EXEC_PLAN.md](../../EXEC_PLAN.md)
 
 ### 補足（2026-05-30 · **キオスク検査図面（MVP + 一覧ハブ）**·**Pi5 本番先行・Pi4×4 未**） {#kiosk-inspection-drawing-mvp-2026-05-30}
