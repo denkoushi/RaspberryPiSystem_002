@@ -75,7 +75,7 @@ keep-warm 成功ログ（抜粋）:
 | repo `verify-discord-task-bridge-smoke.sh`（ローカル） | **OK** |
 | `verify-tool-write-approval-gate-pi5.sh`（**approval_relay/runner.py 直呼び**） | **FAIL** — `request.json` 未作成（ファイルは作成）。**本 Fix の経路（Discord `/task` → `run_tools_profile_prompt`）とは別**。既知: [KB D5 §write ゲート](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) |
 
-**Discord `/task` E2E（承認リレー完結）**: 本デプロイでは **手動未実施**。profile 復帰後に `/novel` → `/task` で `request.json` 出現を確認するのが最終受け入れ。承認 UX（即時通知・期限切れ文言・`yes` ルーティング）は [KB D5 §2026-05-30 承認 UX](./KB-private-pi5-hermes-phase-d5-production.md#discord-承認-ux-修正2026-05-30--repo) を参照。
+**Discord `/task` E2E（承認リレー完結）**: **2026-05-30 11:15 JST** デプロイ（`fix/private-pi5-hermes-task-approval-finish` · **`a6b0a940`**）済み · **手動 E2E 未実施**。profile 復帰後に `/novel` → `/task` で `request.json` 出現を確認するのが最終受け入れ。承認 UX とデプロイ記録: [KB D5 §承認 relay 完結](./KB-private-pi5-hermes-phase-d5-production.md#本番デプロイ承認-relay-完結--2026-05-30-jst) · [KB D5 §承認 UX（repo）](./KB-private-pi5-hermes-phase-d5-production.md#discord-承認-ux-修正2026-05-30--repo)。
 
 ### Investigation（2026-05-30 · `Unknown command /task`）
 

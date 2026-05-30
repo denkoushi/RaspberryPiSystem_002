@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-05-24（Phase D0 実機完了・トークン分離・Tailscale grants 適用済）
+最終更新: 2026-05-30（Phase D5.1 承認 relay 完結デプロイ・Runbook 追記）
 
 ## 運用状態サマリ（2026-05-24 時点）
 
@@ -486,6 +486,37 @@ REPO_ROOT=/tmp/smoke-repo /tmp/verify-discord-task-bridge-smoke.sh
 **Git**: `fix/private-pi5-hermes-task-runtime-profile-restore` · **`63aab15b`**。
 
 **記録**: [KB Phase D5 本番](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) · [KB `/task` profile 復帰](../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md)。
+
+### 本番反映 — Discord 承認 relay 完結（2026-05-30）
+
+| # | 対象 | 手順 | 結果 |
+|---|------|------|------|
+| 1 | 私用 Pi5 `raspi5-private` | `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` | **`PLAY RECAP` ok=140 changed=6 failed=0**（約 **193s**）· DGX health **ok** |
+
+**変更概要（repo `a6b0a940`）**: 承認プロンプト **即時 Discord 送信**（失敗時 `delivery_failed.json` + ERROR ログ）· timeout 後 **grace + `approval_timed_out`** · 承認文の **最終返信後載せ禁止** · `/task` 前 **DGX profile 検証強化**。
+
+**事後検証（Pi5 · `cd infrastructure/ansible`）**:
+
+```bash
+# read-only 状態（必ず hermes ユーザー）
+ansible private-pi5-stackchan-bridge -i inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m copy -a "src=../../scripts/private-pi5-hermes/verify-task-bridge-readonly-state-pi5.sh dest=/tmp/verify-task-bridge-readonly-state-pi5.sh mode=0755" -b
+ansible private-pi5-stackchan-bridge -i inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m shell -a "sudo -u hermes bash /tmp/verify-task-bridge-readonly-state-pi5.sh" -b
+
+# write ゲート（runner 直呼び · Discord E2E ではない）
+ansible private-pi5-stackchan-bridge -i inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m copy -a "src=../../scripts/private-pi5-hermes/verify-tool-write-approval-gate-pi5.sh dest=/tmp/verify-tool-write-approval-gate-pi5.sh mode=0755" -b
+ansible private-pi5-stackchan-bridge -i inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m shell -a "sudo -u hermes /tmp/verify-tool-write-approval-gate-pi5.sh" -b
+# 2026-05-30: request.json 未作成で FAIL（Discord 手動 E2E が受け入れ正本）
+```
+
+**Discord 手動 E2E（受け入れ）**: `/task Create <unique>.txt in workspace with content ok` → **10s 以内**に承認依頼 → `yes` または `/task-approve` → workspace にファイル。**`sudo -u hermes` 以外で `approvals/` を触らない**。
+
+**Git**: `fix/private-pi5-hermes-task-approval-finish` · **`a6b0a940`** · CI **`26671325365`** success。
+
+**記録**: [KB Phase D5 §承認 relay 完結](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイ承認-relay-完結--2026-05-30-jst)。
 
 正本: [Phase D5 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) · [ADR D5](../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md)。
 
