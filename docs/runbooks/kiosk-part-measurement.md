@@ -48,6 +48,19 @@
 
 **注意**: DEV ルートは本番 Docker イメージには含まれるが、現場オペレータの導線ではない。現場確認は **`/kiosk/part-measurement/inspection`** を使う。
 
+### 検査図面 · 一覧フィルタ overflow（2026-05-30） {#検査図面-一覧フィルタ-overflow-2026-05-30}
+
+一覧フィルタの資源欄が工程ボタンに重なって見える事象の確認手順。正本: [KB-320 §フィルタ overflow](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-library-filter-overflow-2026-05-30) · [deployment §overflow](../guides/deployment.md#kiosk-inspection-drawing-library-filter-overflow-2026-05-30)。
+
+1. キオスクで **強制リロード**（[verification-checklist.md §6.6.4](../guides/verification-checklist.md)）。
+2. **検査図面** → 一覧（`/kiosk/part-measurement/inspection`）。
+3. フィルタ行で次を確認する:
+   - 品番入力と資源 select の間に **視認できる隙間**
+   - 資源 select が **工程の「すべて/切削/研削」ボタンにかぶらない**
+   - **「履歴を含む」** が全文表示される
+4. （任意）**新規** → 資源 select の幅が品番・テンプレ名と **同程度（約 10.5rem）** であること。
+5. 開発 Mac では `pnpm dev` → `/dev/kiosk-inspection-drawing-library`（本番と同コンポーネント · fixture）。
+
 ## オペレータ手順（キオスク）
 
 1. **推奨**: 生産スケジュール（または手動順番の下ペイン一覧）の行の **測定** 列から開く（`find-or-open` で下書き再開・確定閲覧・新規・テンプレ作成へ振り分け）。

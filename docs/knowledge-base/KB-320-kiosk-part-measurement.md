@@ -203,7 +203,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | 症状 | 確認 | 対処 |
 |------|------|------|
 | Mac DEV と Pi5 でレイアウトが違う | DEV が `KioskLayout` 外か · プレビュー専用 JSX か · `scale` か | ADR-20260530 契約どおり **共有コンポーネント + KioskLayout** · HEAD ≥ `ccacef85` |
-| 一覧フィルタで列が重なる | 旧 grid レイアウト | `InspectionDrawingLibraryFilterBar` の `flex-wrap` を確認 |
+| 一覧フィルタで列が重なる | 旧 grid レイアウト · または select overflow | `flex-wrap`（`ccacef85`）· それでも重なる場合は [§overflow](#検査図面-library-filter-overflow-2026-05-30)（`e19f9b07`） |
 | 測定点が横3列 | プレビューだけ古い markup | `InspectionDrawingPointSettingsPanel` を本番・DEV 双方で使用しているか |
 | 「一覧へ戻る」がない | ツールバー未更新 | `InspectionDrawingCreateToolbar` の `libraryTo` |
 | DEV `/dev/...` が 404 | 本番ビルドのみデプロイ | DEV ルートは **開発サーバー**用。Pi5 本番は `/kiosk/part-measurement/inspection*` を確認 |
@@ -217,6 +217,83 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 2. 対象 URL（本番 `/kiosk/part-measurement/inspection/...` または DEV `/dev/kiosk-inspection-drawing-*`）
 3. 期待スクリーンショット or 要素（フィルタ折り返し・測定点縦並び等）
 4. 変更後は **本番ページと DEV プレビューの両方**で同じコンポーネントが変わること
+
+## 検査図面 · 一覧フィルタ overflow 修正（2026-05-30） {#検査図面-library-filter-overflow-2026-05-30}
+
+正本 ExecPlan: [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。Runbook: [kiosk-part-measurement.md §フィルタ overflow](../runbooks/kiosk-part-measurement.md#検査図面-一覧フィルタ-overflow-2026-05-30)。deployment: [deployment.md §2026-05-30](../guides/deployment.md#kiosk-inspection-drawing-library-filter-overflow-2026-05-30)。
+
+### 仕様・スコープ（後続エージェント向け）
+
+| 区分 | 内容 |
+|------|------|
+| **変更種別** | **Web のみ**（`apps/web`）。API / Prisma / マイグレーション **なし** |
+| **対象画面** | キオスク **検査図面** 一覧フィルタ（`InspectionDrawingLibraryFilterBar`）· 作成画面 **新規時**の資源 select（`KioskInspectionDrawingCreatePage`） |
+| **非対象** | 記録図面 edit（`KioskInspectionDrawingEditPage`）· 専用 API 契約 · フィルタのクエリ意味（`fhincd` 部分一致等は不変） |
+| **新規共有コンポーネント** | `InspectionDrawingResourceCdSelect` — 資源 CD の境界付きネイティブ `<select>` |
+| **レイアウトトークン** | `inspectionDrawingKioskUi.ts` — `inspectionDrawingBoundedSelectShellClassName`（`overflow-hidden`）· `inspectionDrawingBoundedSelectClassName` · 一覧/作成の幅クラス |
+| **一覧フィルタ** | 外枠は従来どおり `flex-wrap` + `gap-3` + `min-w-0`。資源欄のみ **クリップシェル**で隣列と重ならない |
+| **作成 metadata 幅** | **`inspectionDrawingMetadataControlWidthClass`（`w-[10.5rem]`）を再利用** — `w-fit` への拡大は **しない**（コードレビュー [P2] 対応） |
+| **履歴チェック** | `whitespace-nowrap` — 「履歴を含む」が「含む」だけに潰れない |
+
+### 根本原因（調査結果）
+
+```text
+flex gap-3 は「flex アイテムの箱」間にしか効かない
+  ↓
+資源 <select> の描画幅が 15rem を超える（truncate はネイティブ select で実質無効）
+  ↓
+overflow: visible のまま右へはみ出し
+  ↓
+工程の緑ボタン・select の ▼・「履歴を含む」チェックが 1 本の白バーのように見える
+```
+
+| 仮説 | 結果 |
+|------|------|
+| CSS `gap` / `padding` が欠落 | **REJECTED** — `gap-3` は指定済み。見えないのは **はみ出し描画** |
+| 旧 `lg:grid-cols-[13rem_15rem_auto…]` が残存 | **REJECTED**（Pi5 未デプロイ時のみ）— `ccacef85` 以降は flex-wrap。本件は **select overflow** が残課題 |
+| `transform: scale` | **REJECTED** — 未使用 |
+| 作成画面だけ列幅が広がる | **CONFIRMED（初版実装）** — `w-fit` 化で品番と不一致 → **`10.5rem` に修正** |
+
+### 代表ファイル
+
+| 領域 | パス |
+|------|------|
+| 共有 select | `apps/web/src/features/part-measurement/inspection-drawing/InspectionDrawingResourceCdSelect.tsx` |
+| 一覧フィルタ | `InspectionDrawingLibraryFilterBar.tsx` |
+| 作成 | `apps/web/src/pages/kiosk/KioskInspectionDrawingCreatePage.tsx` |
+| トークン | `inspectionDrawingKioskUi.ts` |
+| 回帰テスト | `inspectionDrawingBoundedSelectClasses.test.ts`（クラス定数に `overflow-hidden` 等が含まれること） |
+
+### 本番デプロイ実績
+
+| 段階 | ブランチ / マージ | ホスト | Detach Run ID | HEAD | PLAY RECAP | 備考 |
+|------|-------------------|--------|---------------|------|------------|------|
+| 実装 + CI | `fix/kiosk-inspection-drawing-library-filter-overflow` | — | — | `e19f9b07` | — | CI **`26683408296`** success |
+| **Pi5 先行** | 同上（未マージ時） | `raspberrypi5` | `20260530-212035-5804` | `e19f9b07` | **failed=0** | Phase12 **42/1/0** · **実機目視 OK** |
+| **Pi4×4** | **`main` マージ後** | 4 台 | — | — | **未** |
+
+**標準コマンド（Pi5・ブランチ時）**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh fix/kiosk-inspection-drawing-library-filter-overflow \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+### トラブルシュート（一覧フィルタ）
+
+| 症状 | 確認 | 対処 |
+|------|------|------|
+| 資源・工程・履歴が重なる | Pi5 HEAD &lt; `e19f9b07` · ブラウザキャッシュ | `main` 反映 + [強制リロード](../guides/verification-checklist.md) §6.6.4 |
+| 工程下に select の ▼ だけ見える | 上記と同型（資源 select の矢印が隣列に重なっている） | `InspectionDrawingResourceCdSelect` + シェル `overflow-hidden` |
+| 「含む」だけ表示 | 履歴ラベルが横潰れ | `whitespace-nowrap` on 履歴 checkbox ラベル |
+| 作成画面だけ資源が幅いっぱい | `widthVariant=metadata` が `w-fit` のまま | HEAD ≥ 修正後 `e19f9b07`（`inspectionDrawingMetadataResourceFieldWidthClass` = 10.5rem） |
+| flex-wrap なのに直らない | **overflow** 問題（grid ではない） | bounded select を確認。`truncate` だけでは不十分 |
+| デプロイ拒否 | `git status` ahead | **push** してから `update-all-clients.sh` |
+
+### テストの限界
+
+- `inspectionDrawingBoundedSelectClasses.test.ts` は **Tailwind クラス文字列**の回帰のみ。**実際の描画崩れ**は Mac DEV（`/dev/kiosk-inspection-drawing-library`）または Pi5 キオスク目視で確認する。
 
 ## Current UI spec（2026-04-05 までの合意）
 

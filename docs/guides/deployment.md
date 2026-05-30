@@ -10,6 +10,38 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-30 · **キオスク検査図面・一覧フィルタ overflow 修正**·**Web のみ**·**Pi5 本番・Pi4×4 未**） {#kiosk-inspection-drawing-library-filter-overflow-2026-05-30}
+
+- **変更概要（正本）**: [KB-320 §フィルタ overflow](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-library-filter-overflow-2026-05-30) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-一覧フィルタ-overflow-2026-05-30)。
+  - **症状**: 一覧フィルタで資源 `<select>` の白背景が工程ボタン・「履歴を含む」に **視覚的に重なる**（`gap` があっても描画はみ出しで無効）。
+  - **原因**: ネイティブ `<select>` は `truncate` が効かず、親 flex アイテム幅（15rem）を超えて **overflow: visible** で描画される。
+  - **修正**: 共有 `InspectionDrawingResourceCdSelect` + `overflow-hidden` シェル（`inspectionDrawingBoundedSelectShellClassName`）。作成画面の資源 select も同コンポーネント化（**metadata 幅は既存 `w-[10.5rem]` を維持**）。
+- **代表コミット**: **`e19f9b07`**（`fix(kiosk): clip inspection drawing resource select overflow`）· ブランチ **`fix/kiosk-inspection-drawing-library-filter-overflow`**
+- **Prisma / API**: **変更なし**（**Web のみ** · Docker `web` 再ビルド）
+- **対象ホスト（推奨順）**: **`raspberrypi5` → Pi4×4**（各 `--limit` 1 台ずつ）。Pi3: `skipping: no hosts matched`
+- **標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh fix/kiosk-inspection-drawing-library-filter-overflow \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+（**`main` マージ後**は第2引数を **`main`**。Pi4 は Pi5 目視 OK 後に 1 台ずつ。）
+
+- **デプロイ前**: ローカルが `origin/<branch>` より **ahead だと拒否** → **push 後**に実行
+- **本番デプロイ（実績·2026-05-30）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | Phase12 | 備考 |
+|--------|---------------|----------|------------|---------|------|
+| `raspberrypi5` | `20260530-212035-5804` | `e19f9b07` | ok=134 changed=4 **failed=0** | **42/1/0**（約 128s） | **Pi5 実機目視 OK** · 強制リロード後フィルタ重なり解消 |
+| Pi4×4 | **未実施** | — | — | — | **`main` マージ後** · 下記 for ループ |
+
+- **実機（手動·Pi5）**: **検査図面** → 一覧 — 品番・資源・工程・履歴が **重ならない** · 「履歴を含む」全文表示 · （任意）新規で資源 select が **約 10.5rem**（他メタデータと同幅）
+- **CI**: **`26683408296`** **success**（ブランチ push `e19f9b07`）
+- **トラブルシュート**: [KB-320 §フィルタ overflow](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-library-filter-overflow-2026-05-30)
+- **ナレッジ**: [EXEC_PLAN.md](../../EXEC_PLAN.md) · [verification-checklist §6.6.9](../guides/verification-checklist.md)
+
 ### 補足（2026-05-30 · **キオスク検査図面・DEV プレビュー本番パリティ + UI**·**Web のみ**·**Pi5 本番・Pi4×4 未**） {#kiosk-inspection-drawing-preview-parity-2026-05-30}
 
 - **変更概要（正本）**: [ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md) · [KB-320 §プレビュー](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-preview-parity-2026-05-30) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-dev-プレビュー本番パリティ)。

@@ -29,6 +29,12 @@ Maintained in accordance with `.agent/PLANS.md`.
   - UI: フィルタ `flex-wrap` · 測定点縦並び · ツールバー「一覧へ戻る」 · 作成画面下部リンク削除
   - ADR: [ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md)
 - [x] (2026-05-30) **Pi5 本番** プレビュー parity — Detach `20260530-192609-10677` · CI `26681207121`
+- [x] (2026-05-30) **一覧フィルタ overflow 修正**（`fix/kiosk-inspection-drawing-library-filter-overflow` · **`e19f9b07`**）
+  - 共有 `InspectionDrawingResourceCdSelect` + `overflow-hidden` シェル（ネイティブ select の描画はみ出し）
+  - 作成画面新規時の資源 select も共有化（metadata 幅 **10.5rem** 維持）
+  - 単体: `inspectionDrawingBoundedSelectClasses.test.ts` · CI **`26683408296`**
+- [x] (2026-05-30) **Pi5 本番** フィルタ overflow — Detach `20260530-212035-5804` · Phase12 **42/1/0** · **実機目視 OK**
+- [ ] **`main` マージ**（overflow 修正 + docs）— PR 作成後 squash
 - [ ] **Pi4×4 本番** — `main` マージ後に各キオスクへ順次（未実施）
 - [ ] **Pi5 実機目視** プレビュー parity UI — デプロイ済・目視記録は運用側（任意 Phase12）
 
@@ -57,6 +63,12 @@ Maintained in accordance with `.agent/PLANS.md`.
 
 - Observation: 一覧フィルタの `lg:grid-cols-[13rem_15rem_auto…]` は長い資源表示名で **工程列と視覚的に重なる**
   Evidence: 現場レイアウト指摘 → `InspectionDrawingLibraryFilterBar` で `flex-wrap`（`ccacef85`）
+
+- Observation: `flex-wrap` 後も資源 `<select>` は **親幅を超えて overflow 描画**し、工程ボタン・履歴チェックと重なって見える（`gap` は効かない）
+  Evidence: 2026-05-30 調査 → `InspectionDrawingResourceCdSelect` + `inspectionDrawingBoundedSelectShellClassName`（`e19f9b07`）
+
+- Observation: 作成画面の資源 select を `w-fit` にすると品番等（10.5rem）と幅不一致になる
+  Evidence: コードレビュー [P2] → `widthVariant=metadata` は `inspectionDrawingMetadataResourceFieldWidthClass`（`e19f9b07`）
 
 ## Decision Log
 
@@ -108,13 +120,17 @@ Maintained in accordance with `.agent/PLANS.md`.
   Rationale: 現場フィードバック・プレビュー/本番の単一コンポーネント化
   Date/Author: 2026-05-30 / agent
 
+- Decision: 資源 `<select>` は **`InspectionDrawingResourceCdSelect`** で包み、外側に **`overflow-hidden` シェル**を付ける。`truncate` のみでは不十分
+  Rationale: ネイティブ select は flex 子の box 幅を超えて描画される（[KB-320 §overflow](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-library-filter-overflow-2026-05-30)）
+  Date/Author: 2026-05-30 / agent
+
 ## Outcomes & Retrospective
 
 - **評価用作成（互換）**: `/kiosk/part-measurement/inspection/create` は残置。評価用 API は UI 主導線から外した。
 - **一覧ハブ**: ヘッダー **「検査図面」** → 一覧 → 新規/編集/履歴。専用 API + 要約 DTO。旧版は閲覧専用・有効化後に再取得。
 - **本番編集（数量1のみ）**: 変更なし（`inspection/edit` + 通常 sheet API）。
 - **隔離**: 評価用バケットと **409** 相互ブロックは維持。
-- **デプロイ**: Pi5 で MVP 導線・タブ・一覧ハブに加え **プレビュー parity（`ccacef85`）** まで反映。**Pi4×4 は `main` マージ後の次タスク**。
+- **デプロイ**: Pi5 で MVP 導線・タブ・一覧ハブ・**プレビュー parity（`ccacef85`）**・**フィルタ overflow（`e19f9b07`）** まで反映。**Pi4×4 は overflow 含む `main` マージ後の次タスク**。
 - **DEV プレビュー**: `/dev/kiosk-inspection-drawing-*` で本番コンポーネントを Mac 上で反復可能（fixture）。
 - **未着手**: 複数個数図面UI、TIFF、順位ボード連携、Phase12 への専用 API スモーク追加（任意）。
 
@@ -127,6 +143,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 | `583aecad` | 同上 | ヘッダー独立タブ |
 | `ef78f4dd` | `feat/inspection-drawing-library-hub` | 一覧ハブ・専用 API・履歴 UI |
 | `ccacef85` | `feat/kiosk-inspection-drawing-preview-parity` | DEV 本番パリティ・共有 UI コンポーネント |
+| `e19f9b07` | `fix/kiosk-inspection-drawing-library-filter-overflow` | 資源 select overflow クリップ・共有 select |
 
 ## 主要ファイル（後続読者向け）
 
@@ -139,6 +156,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 | 評価アクセス | `evaluationSheetAccess.ts`（Web） |
 | 一覧 UI | `KioskInspectionDrawingLibraryPage.tsx` |
 | 一覧フィルタ（共有） | `InspectionDrawingLibraryFilterBar.tsx` |
+| 資源 select（共有） | `InspectionDrawingResourceCdSelect.tsx` · `inspectionDrawingKioskUi.ts` |
 | 作成/テンプレ編集 UI | `KioskInspectionDrawingCreatePage.tsx` |
 | 測定点パネル（共有） | `InspectionDrawingPointSettingsPanel.tsx` |
 | DEV プレビュー | `pages/dev/KioskInspectionDrawing*PreviewPage.tsx` · `KioskInspectionDrawingDevPreviewChrome.tsx` |
@@ -160,6 +178,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 - 自動実機: `./scripts/deploy/verify-phase12-real.sh`（部品測定スモーク含む）
 - 手動（Pi5・一覧ハブ）: **検査図面** → 一覧 → 新規/編集/履歴。旧版 readOnly・有効化→編集可
 - 手動（Pi5・UI parity）: フィルタ折り返し・測定点縦並び・「一覧へ戻る」・下部リンクなし（`ccacef85` 以降）
+- 手動（Pi5・フィルタ overflow）: 資源 select が工程・履歴と重ならない・「履歴を含む」全文（`e19f9b07` 以降 · Pi5 実機 OK）
 - 手動（Mac DEV）: `/dev/kiosk-inspection-drawing-library` · `/dev/kiosk-inspection-drawing-create`（本番コンポーネント・fixture）
 - 手動（Pi5・記録）: 本番図面テンプレ + 数量1 → 図面 edit
 - 手動（Pi4 未）: `main` 反映後、各キオスクで同確認（強制リロード §6.6.4）
