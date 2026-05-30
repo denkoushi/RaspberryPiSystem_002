@@ -1,8 +1,15 @@
 import clsx from 'clsx';
+import { useMemo } from 'react';
 
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { formatResourceCdWithJapaneseNames } from '../../kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
+
+import {
+  inspectionDrawingLibraryFilterFieldLabelClassName,
+  inspectionDrawingLibraryFilterFhincdWidthClass
+} from './inspectionDrawingKioskUi';
+import { InspectionDrawingResourceCdSelect } from './InspectionDrawingResourceCdSelect';
 
 import type { PartMeasurementProcessGroup } from '../types';
 
@@ -47,9 +54,24 @@ export function InspectionDrawingLibraryFilterBar({
   onRefresh,
   refreshBusy = false
 }: Props) {
+  const resourceSelectOptions = useMemo(
+    () =>
+      resourceOptions.map((cd) => ({
+        value: cd,
+        label: formatResourceCdWithJapaneseNames(cd, resourceNameMap)
+      })),
+    [resourceNameMap, resourceOptions]
+  );
+
   return (
-    <div className="flex flex-col gap-3 rounded border border-white/15 bg-slate-900/60 p-2 sm:flex-row sm:flex-wrap sm:items-end">
-      <label className="grid w-full shrink-0 gap-1 text-[1rem] font-semibold sm:w-[13rem]">
+    <div className="flex min-w-0 flex-col gap-3 rounded border border-white/15 bg-slate-900/60 p-2 sm:flex-row sm:flex-wrap sm:items-end">
+      <label
+        className={clsx(
+          'shrink-0',
+          inspectionDrawingLibraryFilterFieldLabelClassName,
+          inspectionDrawingLibraryFilterFhincdWidthClass
+        )}
+      >
         品番
         <Input
           value={fhincd}
@@ -59,21 +81,13 @@ export function InspectionDrawingLibraryFilterBar({
         />
       </label>
 
-      <label className="grid w-full min-w-0 shrink-0 gap-1 text-[1rem] font-semibold sm:w-[15rem] sm:max-w-[15rem]">
-        資源
-        <select
-          value={resourceCd}
-          onChange={(e) => onResourceCdChange(e.target.value)}
-          className="h-11 max-w-full truncate rounded-md border-2 border-slate-500 bg-white px-3 text-[1.02rem] text-slate-900"
-        >
-          <option value="">すべて</option>
-          {resourceOptions.map((cd) => (
-            <option key={cd} value={cd}>
-              {formatResourceCdWithJapaneseNames(cd, resourceNameMap)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <InspectionDrawingResourceCdSelect
+        value={resourceCd}
+        onChange={onResourceCdChange}
+        options={resourceSelectOptions}
+        emptyOptionLabel="すべて"
+        widthVariant="library"
+      />
 
       <div className="grid w-full shrink-0 gap-1 sm:w-auto">
         <span className="text-[1rem] font-semibold">工程</span>
@@ -92,7 +106,7 @@ export function InspectionDrawingLibraryFilterBar({
         </div>
       </div>
 
-      <label className="flex shrink-0 items-center gap-2 pb-1 text-[1rem] font-semibold text-white/90 sm:pb-1">
+      <label className="flex shrink-0 items-center gap-2 whitespace-nowrap pb-1 text-[1rem] font-semibold text-white/90 sm:pb-1">
         <input
           type="checkbox"
           checked={includeInactive}
