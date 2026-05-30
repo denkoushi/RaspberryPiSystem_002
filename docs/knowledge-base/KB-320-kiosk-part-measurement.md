@@ -61,7 +61,7 @@
 
 ## 検査図面 MVP（2026-05-30 評価用 / 2026-05-30 本番編集導線）
 
-- **ルート**: `/kiosk/part-measurement/inspection/create`（作成＋同一画面テスト・**評価用 URL 直打ちのみ**）。保存 API は `inspection-drawing/evaluation-templates`（multipart 一括）。評価用 `__INSPECTION_DRAWING_EVAL__` は一覧・候補・clone・改版・退役から除外。
+- **ルート**: `/kiosk/part-measurement/inspection/create`（作成＋同一画面テスト・**キオスクヘッダー「検査図面作成」タブ**＝部品測定タブとは別）。保存 API は `inspection-drawing/evaluation-templates`（multipart 一括）。評価用 `__INSPECTION_DRAWING_EVAL__` は一覧・候補・clone・改版・退役から除外。
 - **本番編集導線（2026-05-30）**: 図面付き本番テンプレ + **`quantity === 1`** の sheet は、スケジュール・ハブ下書き・テンプレ候補・確定一覧から **`/kiosk/part-measurement/inspection/edit/:sheetId`** へ自動遷移。保存・確定は **通常 sheet API**。`quantity > 1` または `quantity` 未設定は表形式。フロント判定は `productionInspectionDrawingPolicy` / `kioskPartMeasurementSheetNavigation`、API は `part-measurement-inspection-drawing-policy`。
 - **評価用編集**: `inspection/edit` + `evaluation-sheets/*` は評価用テンプレ・数量1のみ。本番 sheet を evaluation API で触ると **409**。
 - **データ**: `PartMeasurementTemplateItem` に `markerXRatio` / `markerYRatio` / `nominalValue` / `lowerLimit` / `upperLimit`（任意・既存テンプレは null のまま互換）。

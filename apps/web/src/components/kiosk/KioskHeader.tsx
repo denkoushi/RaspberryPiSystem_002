@@ -4,6 +4,11 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 
 import { postKioskPower } from '../../api/client';
 import { useVerifyKioskDueManagementAccessPassword } from '../../api/hooks';
+import {
+  isKioskInspectionDrawingPath,
+  isKioskPartMeasurementHubPath,
+  KIOSK_INSPECTION_DRAWING_CREATE_PATH
+} from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 import { resolveClientKeyForPower } from '../../lib/client-key';
 import { Row } from '../layout/Row';
 
@@ -90,7 +95,8 @@ export function KioskHeader({
   const isShelfMasterActive = pathname.startsWith('/kiosk/mobile-placement/shelf-master');
   const isDueManagementActive = pathname.startsWith('/kiosk/production-schedule/due-management');
   const isDocumentsActive = pathname.startsWith('/kiosk/documents');
-  const isPartMeasurementActive = pathname.startsWith('/kiosk/part-measurement');
+  const isPartMeasurementActive = isKioskPartMeasurementHubPath(pathname);
+  const isInspectionDrawingActive = isKioskInspectionDrawingPath(pathname);
   const isRiggingAnalyticsActive = pathname.startsWith('/kiosk/rigging-analytics');
   const formatKey = (value: string) => {
     if (!value) return '未設定';
@@ -287,6 +293,12 @@ export function KioskHeader({
             className={() => navClass(isPartMeasurementActive, 'bg-rose-600 text-white')}
           >
             部品測定
+          </NavLink>
+          <NavLink
+            to={KIOSK_INSPECTION_DRAWING_CREATE_PATH}
+            className={() => navClass(isInspectionDrawingActive, 'bg-amber-700 text-white')}
+          >
+            検査図面作成
           </NavLink>
           <NavLink
             to="/kiosk/rigging-analytics"

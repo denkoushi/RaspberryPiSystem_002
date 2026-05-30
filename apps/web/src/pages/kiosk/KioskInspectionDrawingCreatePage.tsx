@@ -141,11 +141,8 @@ export function KioskInspectionDrawingCreatePage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 text-white">
       <p className="text-xs text-white/60">
-        Phase1: この画面内で図面・測定点・テスト入力まで。保存は評価用バケットのみ（入力した品番・資源CDで本番テンプレは差し替えません）。本番導線は未接続。
+        評価用: 図面・測定点・テスト入力まで。保存は評価用バケットのみ（本番 active テンプレは差し替えません）。本番記録の編集は図面付きテンプレかつ数量1の記録表から自動で図面UIへ遷移します。
       </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-white/80">検査図面作成（MVP・評価用）</span>
-      </div>
 
       <InspectionDrawingCreateHeaderBand
         metadata={
