@@ -51,7 +51,7 @@ Maintained in accordance with `.agent/PLANS.md`.
   - `useZoomedCanvasLayout` · `areZoomedCanvasLayoutsEqual` · `scrollbar-gutter: stable` · `minWidth/minHeight: 100%` 削除
   - **実機: 拡大2回目（1.5）の震え解消 OK**（Pi5 · 2026-05-31）
   - CI: **`26700061664`** success
-- [ ] **`main` マージ** — 上記2コミット + docs（PR squash 後 · ドキュメント反映コミット含む）
+- [x] (2026-05-31) **`main` マージ** — PR [#378](https://github.com/denkoushi/RaspberryPiSystem_002/pull/378) squash **`19112272`**
 - [ ] **Pi4×4 本番** — `main` マージ後に各キオスクへ順次（parity + overflow + ズーム + 図面読込を一括推奨）
 - [ ] **Pi5 実機目視** プレビュー parity UI — デプロイ済・目視記録は運用側（任意 Phase12）
 
