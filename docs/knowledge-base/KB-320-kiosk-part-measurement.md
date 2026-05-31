@@ -113,6 +113,7 @@
 | 有効化しても編集できない | 再取得していない | `ef78f4dd` 以降の「有効化→専用 GET 再読込」を確認 |
 | 品番検索でヒットしない | 完全一致フィルタになっていないか | 一覧は API **部分一致**。クライアント側で追加絞り込みしない |
 | デプロイが始まらない | `git status` で ahead | **push** してから `update-all-clients.sh` |
+| **一覧から編集で図面が出ない**（測定点は見える） | テンプレ編集画面が `drawingImageRelativePath` を `<img src>` 直指定している | **`usePartMeasurementDrawingBlobUrl`** 経由か確認（storage は `x-client-key` 必須・直リンク不可）。`fix/kiosk-inspection-drawing-edit-image-load` 以降 |
 | 図面UIに行かず表形式 | `quantity !== 1` または図面条件不足 | `45c02e0a` 参照。数量・テンプレを確認 |
 | 評価保存で本番テンプレが消える | 誤 API | **evaluation-templates** のみ |
 | 空入力で旧測定値が残る | PATCH null 未送信 | サービス層 `deleteMany`（`45c02e0a`） |

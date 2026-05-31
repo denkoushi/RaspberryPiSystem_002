@@ -21,6 +21,11 @@ export {
   INSPECTION_DRAWING_ZOOM_STEP
 } from './inspectionDrawingZoom';
 export {
+  inspectionDrawingBlobFetchPath,
+  inspectionDrawingCanvasImageUrl,
+  inspectionDrawingHasImageSource
+} from './inspectionDrawingTemplateImageDisplay';
+export {
   evaluateMeasurementValue,
   parseMeasurementNumber,
   statusForPoint
