@@ -365,6 +365,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | 拡大後ドラッグで点が増える | `pointercancel` が `onAddPoint` まで届いていないか | `handlePlacePointerCancel` のみ clear（`364aa184` 以降） |
 | タップしても点が付かない | place モードか · 移動が 10px 超か | 短いタップで `pointerup` 確定 |
 | 中央スロットが二重 flex | ZoomControls と HeaderBand 両方に `flex-1` | Controls は `inspectionDrawingCanvasZoomControlsClassName`（ボタン群のみ） |
+| 拡大2回付近で図面が震える | `ResizeObserver` + スクロールバーで `clientWidth`/`Height` が揺れ再レイアウトループ | `scrollbar-gutter: stable` + `areZoomedCanvasLayoutsEqual`（`useZoomedCanvasLayout`）反映後 · 強制リロード |
 
 ### テストの限界
 

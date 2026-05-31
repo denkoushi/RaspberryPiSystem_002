@@ -17,6 +17,14 @@ describe('computeZoomedCanvasLayout', () => {
     expect(layout!.image.offsetY).toBe(0);
   });
 
+  it('at zoom 1.5 expands content for scrolling (regression: kiosk jitter report)', () => {
+    const layout = computeZoomedCanvasLayout(800, 600, 1600, 1200, 1.5);
+    expect(layout!.image.width).toBe(1200);
+    expect(layout!.image.height).toBe(900);
+    expect(layout!.contentWidth).toBe(1200);
+    expect(layout!.contentHeight).toBe(900);
+  });
+
   it('at zoom 2 expands content for scrolling without shrinking viewport', () => {
     const layout = computeZoomedCanvasLayout(800, 600, 1600, 1200, 2);
     expect(layout!.image.width).toBe(1600);

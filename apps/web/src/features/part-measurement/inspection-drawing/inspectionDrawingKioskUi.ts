@@ -66,6 +66,10 @@ export const inspectionDrawingSideAsideClassName =
 export const inspectionDrawingCanvasColumnClassName =
   'flex min-h-[min(72dvh,760px)] min-w-0 flex-1 flex-col';
 
+/** 図面キャンバス scrollport — スクロールバー出現時の client 寸法揺れを抑える */
+export const inspectionDrawingCanvasViewportBaseClassName =
+  'relative min-h-0 flex-1 select-none overflow-auto rounded border border-white/20 bg-black/40 [scrollbar-gutter:stable]';
+
 /** 測定点設定パネル — サイドバー幅いっぱい */
 export const inspectionDrawingPointSettingPanelClassName =
   'grid w-full max-w-full gap-2 rounded border border-white/15 bg-slate-900/80 p-2';
