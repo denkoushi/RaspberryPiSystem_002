@@ -2,7 +2,7 @@
 title: "KB: StackChan コミュニティファーム（AI_StackChan_Ex）供給鎖・セキュリティ"
 tags: [StackChan, supply-chain, firmware, security, Pi5, DGX]
 audience: [開発者, 運用者]
-last-verified: 2026-05-14
+last-verified: 2026-05-31
 category: knowledge-base
 update-frequency: high
 ---
@@ -567,6 +567,138 @@ update-frequency: high
 | utterance E2E（聞こえるまで） | **未完了** |
 
 **次のタスク（再開時）**: 実機 **USB 認識・電源** の復旧 → シリアルで boot 完走確認 → Pi5 bridge 到達 → utterance WAV スモーク → WakeWord 再設定。
+
+## 2026-05-31: voice-turn 再設計（Pi5 VOICEVOX 正本・utterance 除外）
+
+### Decision
+
+- **初期正本**を `POST /api/stackchan/voice-turn` に変更。StackChan は **録音 → WAV POST → `audioUrl` 再生**のみ。STT / LLM / VOICEVOX / 会話状態は **私用 Pi5 bridge**。
+- **`POST /api/stackchan/utterance`** と [`apply_utterance_overlay.py`](../../scripts/stackchan-ai-stackchan-ex/apply_utterance_overlay.py) は **新規 Mac USB フローから除外**（2026-05-23 実機不安定化の再発防止）。
+- [`mac_usb_dev.sh`](../../scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh) safe mode（**既定**）: `CHATGPT_API_URL=/api/stackchan/chat/simple` のみ。録音 overlay は `STACKCHAN_ENABLE_VOICE_OVERLAY=1` の明示 opt-in。`setup` は毎回 [`revert_firmware_overlays.py`](../../scripts/stackchan-ai-stackchan-ex/revert_firmware_overlays.py) で `PrivateBridge/` 削除と overlay 変更ファイルを `git checkout` 復元してから chat パッチを当てる。
+- Pi5 `audioUrl` は **`VOICE_AUDIO_PUBLIC_BASE_URL`（または compat IP から Ansible 自動設定）必須**。未設定時は `127.0.0.1` にフォールバックしない。
+
+### Repo 成果物
+
+| 層 | ファイル | 役割 |
+|----|----------|------|
+| Pi5 | [`voice_assistant_core.py`](../../scripts/private-pi5-stackchan-bridge/voice_assistant_core.py) | STT → chat → VOICEVOX → `audioUrl` |
+| Pi5 | [`bridge_server.py`](../../scripts/private-pi5-stackchan-bridge/bridge_server.py) | `POST /voice-turn`・`GET /audio/<id>.wav` |
+| ファーム | [`apply_voice_rework_overlay.py`](../../scripts/stackchan-ai-stackchan-ex/apply_voice_rework_overlay.py) | `PrivateBridgeVoiceTurn`・`private-bridge/*` Web ルート |
+| テスト | [`test_voice_assistant_core.py`](../../scripts/private-pi5-stackchan-bridge/tests/test_voice_assistant_core.py) 等 | ワークフロー・safe mode 分岐 |
+
+### 実機検証（未実施・再開時）
+
+1. 公式／安定ファームで USB・表示復旧（utterance 書き込み機は **safe mode 再 flash**）。
+2. Pi5: `VOICEVOX_*`・`VOICE_AUDIO_PUBLIC_BASE_URL`（StackChan から到達可能な Pi5 URL）。
+3. `mac_usb_dev.sh all` → シリアル `[VOICE] POST` → `audioUrl` GET 再生。
+
+## 2026-05-31: safe mode 後の黒画面 → 公式復旧 → CoreS3 probe 方針
+
+### Symptoms
+
+- safe mode（`STACKCHAN_ENABLE_VOICE_OVERLAY=0`）upload 後、画面真っ黒。USB JTAG/serial は Mac から認識。
+- フル erase + esptool で公式 bin 書き込み後も黒画面の事例あり。
+
+### Fix（復旧）
+
+- 完全電源 OFF → USB 挿し直し → 電源 ON で公式画面復旧した報告あり。
+- 復旧しない場合は **M5Burner** で公式ファームを優先（単体 bin より初期化が揃う可能性）。
+
+### Prevention / 次の正本
+
+- **voice-turn が原因ではない**（overlay 無しでも不安定）→ `AI_StackChan_Ex` 再 flash より **CoreS3 bring-up probe** を先に実施。
+- 正本（**停止中**）: [stackchan-cores3-bringup-probe.md](../runbooks/stackchan-cores3-bringup-probe.md)
+
+### 2026-05-31: Step C（Avatar-only）— シリアル OK・画面 FAIL
+
+- **CONFIRMED**: `cores3-probe-stepc` upload 後、Serial は `avatar: init OK`・再起動ループなし。
+- **CONFIRMED**: 実機目視は **真っ黒**（probe テキスト・顔とも見えない）→ **Step C は FAIL**。Step D（safe mode）へは進めない。
+- **切り分け probe**: **停止**（2026-05-31）。Step B 再確認も目視真っ黒（シリアル・SD・YAML 正常）。E2 / C 系 / 本体 upload は行わない。
+- **復旧**: `erase_flash` + `StackChan-UserDemo-V1.4.1.bin` @ 0x0（esptool）。**probe は復旧確認後も即 upload しない**。
+
+### 2026-05-31: CoreS3 表示 — 確定結論（probe 全面停止）
+
+**Status**: StackChan 実機への **probe / `AI_StackChan_Ex` upload 全面停止**。当面 **追加 flash 禁止**。実機は **公式ファームのまま**。
+
+| 確定 | 内容 |
+|------|------|
+| 公式 | **StackChan-UserDemo-V1.4.1** — full erase + write 後 **画面表示 OK** → **ハード故障ではない** |
+| Step B | **以前一度**「CoreS3 probe B」表示できた。**その後**はシリアル・SD・3 YAML 正常でも **真っ黒**（再確認 2026-05-31） |
+| E1 | **m5stack-avatar なし**・M5Unified/`M5Canvas` のみでも **真っ黒**（brightness=255、createSprite OK） |
+| 原因 | **m5stack-avatar 単体ではない**。疑い: PlatformIO / M5Unified / board(`esp32s3box`) / Arduino core / LCD・backlight 初期化 / flash・partition・boot と **公式 stack-chan (IDF+LVGL)** の **表示互換性ギャップ** |
+| 禁止 | **full `AI_StackChan_Ex`**、**safe mode**、**voice overlay**、**utterance overlay**、**bring-up probe 再 upload** |
+
+**ADR**: [ADR-20260531-stackchan-cores3-probe-display-halt.md](../decisions/ADR-20260531-stackchan-cores3-probe-display-halt.md)  
+**正本手順（履歴・全 Step ログ）**: [stackchan-cores3-bringup-probe.md](../runbooks/stackchan-cores3-bringup-probe.md)
+
+#### 経緯（時系列）
+
+| 日付 | 事象 | シリアル | 目視 |
+|------|------|----------|------|
+| 以前 | Step B 初回 upload | SD/YAML OK | **CoreS3 probe B 表示 OK** |
+| 2026-05-31 | safe mode / probe 試行後 | 各 Step で論理正常多い | **黒画面化** |
+| 同日 | Step C `avatar.init(16)` | init OK、再起動なし | 真っ黒 |
+| 同日 | C1 `avatar.init()` | **xQueueGenericSend assert**、再起動ループ | 真っ黒 |
+| 同日 | C2 loop+Avatar 同時描画 | overlay 数回後 **assert** | 真っ黒 |
+| 同日 | C3 vendored avatar | init OK、再起動なし | 真っ黒 |
+| 同日 | Step E スプライト+Face 単発 | createSprite OK、draw done | 真っ黒（未分離） |
+| 同日 | E1 スプライトのみ | createSprite OK、brightness=255 | 真っ黒 |
+| 同日 | Step B **再確認** | SD + 3 YAML OK | **真っ黒** |
+| 同日 | 公式 UserDemo V1.4.1 | stack-chan 1.4.1、IlI9342/LVGL 起動ログ | **公式 UI 表示 OK** |
+
+#### Probe 一覧（実測サマリ）
+
+| ID | ディレクトリ | 目的 | lib | 目視 | シリアル特記 |
+|----|--------------|------|-----|------|----------------|
+| A/B | `cores3-probe/` | SD + YAML + 直接 `M5.Display` テキスト | M5Unified 0.2.7 | B: 以前 OK → 再確認 **FAIL** | 再確認: 3 YAML OK |
+| C | `cores3-probe-stepc/` | `avatar.init(16)` のみ | GitHub avatar v0.8.2 | FAIL | 安定 |
+| C1 | `cores3-probe-stepc1/` | `init()` colorDepth=1 | 同上 | FAIL | **assert ループ** |
+| C2 | `cores3-probe-stepc2/` | 1Hz `fillScreen` 上書きテスト | 同上 | FAIL | loop vs drawLoop **競合** |
+| C3 | `cores3-probe-stepc3/` | vendored avatar | AI_StackChan_Ex lib | FAIL | 安定 |
+| E | `cores3-probe-stepe/` | スプライト + Face 1 回 | vendored | FAIL | 安定 |
+| E1 | `cores3-probe-stepe1/` | **スプライトのみ** | avatar **なし** | **FAIL** | 安定 |
+| E2 | `cores3-probe-stepe2/` | Face のみ（3s 待ち） | vendored | **upload 見送り** | build のみ |
+
+#### PlatformIO probe 共通設定（`cores3-probe` 系）
+
+| 項目 | probe 値 | 公式 UserDemo（参考） |
+|------|----------|------------------------|
+| platform | `espressif32@6.3.2` | ESP-IDF **v5.5.4**（シリアルログ） |
+| board | `esp32s3box` | `m5stack-stack-chan` 専用 HAL |
+| framework | Arduino | IDF native app |
+| M5Unified | **0.2.7** | 不使用（専用 display スタック） |
+| partition | `my_cores3_16MB.csv`（16MB） | OTA + assets 複合（公式ログ） |
+| 表示 API | `M5.Display` / `M5Canvas` | **IlI9342** + **LVGL** + `StackChanAvatarDisplay` |
+| バックライト | `setBrightness()`（probe 側） | AXP2101 + 専用 `Backlight` クラス（例: 75） |
+
+**仮説（優先度順）**
+
+1. **公式 stack-chan と Arduino 経路の LCD 初期化が別物**（パネルドライバ・バックライト PMIC・リセットシーケンス）。
+2. **`esp32s3box` board 定義**が CoreS3 StackChan 実機のピン/バスと一致していない可能性（GPIO / SPI / RGB パネル差）。
+3. **partition / boot 状態** — probe 書き込み後に公式 full erase で復旧したため、**壊れた partition や app 領域**の影響も否定できない（ただし Step B 一度表示できた事実と両立させるには「累積状態 or ハードリセット依存」も疑う）。
+4. **vendored Face** の `M5Canvas(&M5.Lcd)` と `pushSprite(&M5.Display)` の混在（E 系）— ただし **E1 は avatar 無しでも黒**のため主因ではない。
+5. **m5stack-avatar** — C3 で GitHub/vendored 差は主因ではないと判断済み。
+
+#### トラブルシュート（再開時のチェックリスト）
+
+1. **実機は公式ファームのまま**か（probe を焼いていないか）。
+2. 公式が黒い場合 → USB 抜き差し / 電源 OFF → **M5Burner**（esptool 単体 bin より優先）。
+3. probe 再開時は **Step A 相当の直接 `M5.Display` テキストのみ**から（スプライト・Avatar は後段）。
+4. **Avatar 利用時** — `avatar.init()` は CoreS3 で **assert**。`init(16)` はシリアル安定だが目視黒。**`M5.Display` を複数タスクから無ロック共有しない**（C2 教訓）。
+5. 公式と probe の **board 定義・起動ログ（IlI9342 / LVGL）** を並べて差分を取る。
+6. Pi5 bridge / LLM は **表示問題解決後**に再開（`CHATGPT_API_URL` ビルドフラグ固定は従来どおり）。
+
+#### 公式復旧コマンド（実施済み・参考）
+
+```bash
+export PORT=/dev/cu.usbmodem1101
+python3 ~/.platformio/packages/tool-esptoolpy/esptool.py --chip auto --port "$PORT" --baud 921600 erase_flash
+python3 ~/.platformio/packages/tool-esptoolpy/esptool.py --chip auto --port "$PORT" --baud 921600 \
+  --before default_reset write_flash -z --flash_mode dio --flash_freq 80m --flash_size detect \
+  0x000 /path/to/StackChan-UserDemo-V1.4.1.bin
+```
+
+書き込み後: **USB 抜き差しまたは電源リセット** → 公式 UI 目視確認 → **probe は焼かない**。
 
 ## References
 
