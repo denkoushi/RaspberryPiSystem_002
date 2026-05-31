@@ -2,13 +2,11 @@ import clsx from 'clsx';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 import { statusForPoint } from './evaluateMeasurement';
-import {
-  computeZoomedCanvasLayout,
-  pointerClientToImageRatios,
-  type ZoomedCanvasLayout
-} from './inspectionDrawingCanvasLayout';
+import { pointerClientToImageRatios } from './inspectionDrawingCanvasLayout';
 import { shouldConfirmPlacePointFromPointerMovement } from './inspectionDrawingCanvasPointer';
+import { inspectionDrawingCanvasViewportBaseClassName } from './inspectionDrawingKioskUi';
 import { INSPECTION_DRAWING_ZOOM_DEFAULT } from './inspectionDrawingZoom';
+import { useZoomedCanvasLayout } from './useZoomedCanvasLayout';
 
 import type { InspectionDrawingPoint } from './types';
 
@@ -53,25 +51,8 @@ export function InspectionDrawingCanvas({
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const pendingPlaceRef = useRef<PendingPlacePointer | null>(null);
-  const [zoomedLayout, setZoomedLayout] = useState<ZoomedCanvasLayout | null>(null);
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
-
-  const recomputeLayout = useCallback(() => {
-    const el = viewportRef.current;
-    if (!el || naturalSize.w <= 0 || naturalSize.h <= 0) {
-      setZoomedLayout(null);
-      return;
-    }
-    setZoomedLayout(
-      computeZoomedCanvasLayout(
-        el.clientWidth,
-        el.clientHeight,
-        naturalSize.w,
-        naturalSize.h,
-        zoom
-      )
-    );
-  }, [naturalSize.h, naturalSize.w, zoom]);
+  const zoomedLayout = useZoomedCanvasLayout(viewportRef, naturalSize, zoom);
 
   const ratiosAtClient = useCallback(
     (clientX: number, clientY: number): { xRatio: number; yRatio: number } | null => {
@@ -88,15 +69,6 @@ export function InspectionDrawingCanvas({
     },
     [zoomedLayout]
   );
-
-  useLayoutEffect(() => {
-    recomputeLayout();
-    const el = viewportRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => recomputeLayout());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [recomputeLayout]);
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
@@ -175,12 +147,13 @@ export function InspectionDrawingCanvas({
 
   const image = zoomedLayout?.image;
   const allowPan = zoom > INSPECTION_DRAWING_ZOOM_DEFAULT;
+  const hasNaturalSize = naturalSize.w > 0 && naturalSize.h > 0;
 
   return (
     <div
       ref={viewportRef}
       className={clsx(
-        'relative min-h-0 flex-1 select-none overflow-auto rounded border border-white/20 bg-black/40',
+        inspectionDrawingCanvasViewportBaseClassName,
         allowPan ? 'touch-pan-x touch-pan-y' : 'touch-none'
       )}
       onPointerDown={handlePointerDown}
@@ -189,14 +162,22 @@ export function InspectionDrawingCanvas({
       onPointerCancel={handlePlacePointerCancel}
       role="presentation"
     >
-      {zoomedLayout ? (
+      {!hasNaturalSize ? (
+        <img
+          src={imageUrl}
+          alt=""
+          className="pointer-events-none absolute inset-0 h-full w-full object-contain opacity-0"
+          onLoad={(ev) => {
+            const img = ev.currentTarget;
+            setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+          }}
+        />
+      ) : zoomedLayout ? (
         <div
           className="relative"
           style={{
             width: zoomedLayout.contentWidth,
-            height: zoomedLayout.contentHeight,
-            minWidth: '100%',
-            minHeight: '100%'
+            height: zoomedLayout.contentHeight
           }}
         >
           <img
@@ -246,17 +227,7 @@ export function InspectionDrawingCanvas({
               })
             : null}
         </div>
-      ) : (
-        <img
-          src={imageUrl}
-          alt=""
-          className="pointer-events-none absolute inset-0 h-full w-full object-contain opacity-0"
-          onLoad={(ev) => {
-            const img = ev.currentTarget;
-            setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
-          }}
-        />
-      )}
+      ) : null}
     </div>
   );
 }

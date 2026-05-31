@@ -5,6 +5,8 @@ import { api } from '../../api/client';
 /**
  * `/api/storage/...` の図面を x-client-key 付きで取得し、Blob URL を返す。
  * `<img src>` ではヘッダを付けられないためこの方式を使う。
+ *
+ * パス変更時は取得完了まで blobUrl を null にし、旧図面と新測定点の重なりを防ぐ。
  */
 export function usePartMeasurementDrawingBlobUrl(drawingImageRelativePath: string | null | undefined): {
   blobUrl: string | null;
@@ -15,23 +17,30 @@ export function usePartMeasurementDrawingBlobUrl(drawingImageRelativePath: strin
 
   useEffect(() => {
     if (!drawingImageRelativePath?.trim()) {
-      setBlobUrl(null);
+      setBlobUrl((prev) => {
+        if (prev) revokePartMeasurementDrawingBlobUrl(prev);
+        return null;
+      });
       setError(null);
       return;
     }
 
-    let revoked: string | null = null;
+    setBlobUrl((prev) => {
+      if (prev) revokePartMeasurementDrawingBlobUrl(prev);
+      return null;
+    });
+    setError(null);
+
+    let objectUrl: string | null = null;
     let cancelled = false;
 
     const run = async () => {
-      setError(null);
       try {
         const path = drawingImageRelativePath.replace(/^\/api\//, '');
         const { data } = await api.get<Blob>(path, { responseType: 'blob' });
         if (cancelled) return;
-        const url = URL.createObjectURL(data);
-        revoked = url;
-        setBlobUrl(url);
+        objectUrl = URL.createObjectURL(data);
+        setBlobUrl(objectUrl);
       } catch {
         if (!cancelled) {
           setBlobUrl(null);
@@ -44,11 +53,17 @@ export function usePartMeasurementDrawingBlobUrl(drawingImageRelativePath: strin
 
     return () => {
       cancelled = true;
-      if (revoked) {
-        URL.revokeObjectURL(revoked);
+      if (objectUrl) {
+        revokePartMeasurementDrawingBlobUrl(objectUrl);
       }
     };
   }, [drawingImageRelativePath]);
 
   return { blobUrl, error };
+}
+
+function revokePartMeasurementDrawingBlobUrl(url: string): void {
+  if (typeof URL.revokeObjectURL === 'function') {
+    URL.revokeObjectURL(url);
+  }
 }

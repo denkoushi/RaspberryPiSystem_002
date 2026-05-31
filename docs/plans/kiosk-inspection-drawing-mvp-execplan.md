@@ -42,7 +42,17 @@ Maintained in accordance with `.agent/PLANS.md`.
   - 単体: `inspectionDrawingCanvasLayout` / `inspectionDrawingCanvasPointer` / `inspectionDrawingZoom` · CI **`26684356891`**
 - [x] (2026-05-30) **Pi5 本番** キャンバスズーム — Detach `20260530-221723-1575` · Phase12 **42/1/0** · **実機目視 OK**
 - [x] (2026-05-30) **`main` マージ**（キャンバスズーム + docs）— PR [#377](https://github.com/denkoushi/RaspberryPiSystem_002/pull/377) squash **`e42aff35`**
-- [ ] **Pi4×4 本番** — キャンバスズーム `main` マージ後に各キオスクへ順次（overflow 含む未反映分と合わせて推奨）
+- [x] (2026-05-31) **テンプレ編集・認可付き図面読込**（`fix/kiosk-inspection-drawing-edit-image-load` · **`e12a5a9c`**）
+  - `usePartMeasurementDrawingBlobUrl` + `inspectionDrawingTemplateImageDisplay`（ローカル優先・読込エラー UI）
+  - フック: path 変更時 blob 即クリア（テンプレ切替の旧図面残り防止）
+  - **Pi5 デプロイ**: `20260531-092334-26185` · **実機: 一覧→編集で図面表示 OK**
+  - CI: **`26698822834`** success
+- [x] (2026-05-31) **キャンバスズーム痙攣修正**（同一ブランチ · **`f6a9544a`**）
+  - `useZoomedCanvasLayout` · `areZoomedCanvasLayoutsEqual` · `scrollbar-gutter: stable` · `minWidth/minHeight: 100%` 削除
+  - **実機: 拡大2回目（1.5）の震え解消 OK**（Pi5 · 2026-05-31）
+  - CI: **`26700061664`** success
+- [ ] **`main` マージ** — 上記2コミット + docs（PR squash 後 · ドキュメント反映コミット含む）
+- [ ] **Pi4×4 本番** — `main` マージ後に各キオスクへ順次（parity + overflow + ズーム + 図面読込を一括推奨）
 - [ ] **Pi5 実機目視** プレビュー parity UI — デプロイ済・目視記録は運用側（任意 Phase12）
 
 ## Surprises & Discoveries
@@ -82,6 +92,15 @@ Maintained in accordance with `.agent/PLANS.md`.
 
 - Observation: `pointercancel` でも `onAddPoint` すると、ブラウザがパンを cancel したとき誤配置する
   Evidence: レビュー追補 → `handlePlacePointerCancel` は `clearPendingPlace` のみ（`364aa184`）
+
+- Observation: テンプレ編集だけ `drawingImageRelativePath` を `<img src>` 直指定すると storage 401 で図面が空白になる（記録編集は Blob 経由で正常）
+  Evidence: 2026-05-31 調査 → `e12a5a9c` で `inspectionDrawingTemplateImageDisplay` + 共有フックに統一
+
+- Observation: ズーム `＋` 2回目（倍率 1.5）で `ResizeObserver` とスクロールバーの client 寸法揺れが連鎖し図面が震える。Blob 読込修正とは別ファイル
+  Evidence: 実機報告 + コードレビュー → `f6a9544a`（`useZoomedCanvasLayout` + 等価比較 + `scrollbar-gutter: stable`）
+
+- Observation: 新規フック3ファイルを `git add -u` だけでコミットすると CI が import 解決失敗する
+  Evidence: レビュー [P1] 2026-05-31 → 必ず `useZoomedCanvasLayout.ts` 等を同コミットに含める
 
 ## Decision Log
 
