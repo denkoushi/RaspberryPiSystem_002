@@ -10,6 +10,36 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-31 · **キオスク検査図面・テンプレ編集図面読込 + ズーム痙攣**·**Web のみ**·**Pi5 実機 OK・Pi4×4 未**） {#kiosk-inspection-drawing-edit-image-and-zoom-jitter-2026-05-31}
+
+- **変更概要（正本）**: [KB-320 §認可付き図面読込](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-テンプレ編集-認可付き図面読込-2026-05-31) · [KB-320 §ズーム痙攣](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-キャンバスズーム痙攣修正-2026-05-31) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-テンプレ編集-認可付き図面読込-2026-05-31)。
+  - **(1) テンプレ編集で図面が出ない**: `KioskInspectionDrawingCreatePage` を記録編集と同型の **`usePartMeasurementDrawingBlobUrl`** + `inspectionDrawingTemplateImageDisplay` に統一（storage 直 `<img src>` 廃止）。
+  - **(2) 拡大2回目で震える**: `useZoomedCanvasLayout` + `areZoomedCanvasLayoutsEqual` + **`scrollbar-gutter: stable`** + 内側 `minWidth/minHeight: 100%` 削除。
+  - **(3) テンプレ切替時の旧図面残り**: フックで path 変更時に **即 blob クリア**。
+- **代表コミット**: **`e12a5a9c`**（図面 Blob 読込）· **`f6a9544a`**（ズーム痙攣）— ブランチ **`fix/kiosk-inspection-drawing-edit-image-load`** → **`main` マージ後**は第2引数 **`main`**
+- **Prisma / API**: **変更なし**（**Web のみ** · Docker `web` 再ビルド）
+- **対象ホスト（推奨順）**: **`raspberrypi5` → Pi4×4**（各 `--limit` 1 台ずつ）。Pi3: `skipping: no hosts matched`
+- **標準コマンド**（マージ後）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh main \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+- **デプロイ前**: ローカルが `origin/<branch>` より **ahead だと拒否** → **push 後**に実行
+- **本番デプロイ（実績·2026-05-31）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 実機 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | `20260531-092334-26185` | `e12a5a9c` | **failed=0** | 一覧→**編集で図面表示 OK** · 強制リロード |
+| `raspberrypi5` | （再デプロイ任意） | `f6a9544a` | — | **拡大2回目の震えなし OK**（2026-05-31 確認） |
+| Pi4×4 | **未実施** | — | — | **`main` マージ後** 1 台ずつ |
+
+- **実機（手動·Pi5）**: **検査図面** → 保存済みテンプレ **編集**（図面表示）· **`＋` 連続（1.25 / 1.5 / 1.75）で震えない** · 新規保存→編集遷移でも図面表示 · 読込失敗時は赤メッセージ
+- **CI**: **`26698822834`**（`e12a5a9c`）· **`26700061664`**（`f6a9544a`）**success**
+- **トラブルシュート**: KB-320 トラブルシュート表「一覧から編集で図面が出ない」「拡大2回付近で震える」
+
 ### 補足（2026-05-30 · **キオスク検査図面・キャンバスズーム UI**·**Web のみ**·**Pi5 本番・Pi4×4 未**） {#kiosk-inspection-drawing-canvas-zoom-2026-05-30}
 
 - **変更概要（正本）**: [KB-320 §キャンバスズーム](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-canvas-zoom-2026-05-30) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-キャンバスズーム-2026-05-30)。

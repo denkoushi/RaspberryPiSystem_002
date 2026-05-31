@@ -48,6 +48,18 @@
 
 **注意**: DEV ルートは本番 Docker イメージには含まれるが、現場オペレータの導線ではない。現場確認は **`/kiosk/part-measurement/inspection`** を使う。
 
+### 検査図面 · テンプレ編集・認可付き図面読込（2026-05-31） {#検査図面-テンプレ編集-認可付き図面読込-2026-05-31}
+
+一覧から **編集**で図面が表示されない事象の確認手順。正本: [KB-320 §認可付き図面読込](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-テンプレ編集-認可付き図面読込-2026-05-31) · [deployment §2026-05-31](../guides/deployment.md#kiosk-inspection-drawing-edit-image-and-zoom-jitter-2026-05-31)。
+
+1. キオスクで **強制リロード**（[verification-checklist.md §6.6.4](../guides/verification-checklist.md)）。
+2. **検査図面** → 一覧 → 図面付きテンプレの **編集**（`/inspection/templates/:id/edit`）。
+3. **図面が表示**され、測定点が図面上に重なること（測定点だけ・図面空白は NG）。
+4. **新規作成 → 保存**後の自動遷移（編集 URL）でも図面が出ること。
+5. 失敗時: 画面上に **「図面の読み込みに失敗しました」** 等が出ないか。DevTools で `/api/storage/part-measurement-drawings/` が **401** になっていないか（直 `<img src>` 残存の疑い）。
+
+**ズーム震え**は下記 [§キャンバスズーム](#検査図面-キャンバスズーム-2026-05-30) 手順 4 を併用。
+
 ### 検査図面 · キャンバスズーム（2026-05-30） {#検査図面-キャンバスズーム-2026-05-30}
 
 図面表示のズーム操作の確認手順。正本: [KB-320 §キャンバスズーム](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-canvas-zoom-2026-05-30) · [deployment §キャンバスズーム](../guides/deployment.md#kiosk-inspection-drawing-canvas-zoom-2026-05-30)。

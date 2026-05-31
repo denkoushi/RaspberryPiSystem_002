@@ -113,7 +113,9 @@
 | 有効化しても編集できない | 再取得していない | `ef78f4dd` 以降の「有効化→専用 GET 再読込」を確認 |
 | 品番検索でヒットしない | 完全一致フィルタになっていないか | 一覧は API **部分一致**。クライアント側で追加絞り込みしない |
 | デプロイが始まらない | `git status` で ahead | **push** してから `update-all-clients.sh` |
-| **一覧から編集で図面が出ない**（測定点は見える） | テンプレ編集画面が `drawingImageRelativePath` を `<img src>` 直指定している | **`usePartMeasurementDrawingBlobUrl`** 経由か確認（storage は `x-client-key` 必須・直リンク不可）。`fix/kiosk-inspection-drawing-edit-image-load` 以降 |
+| **一覧から編集で図面が出ない**（測定点は見える） | テンプレ編集画面が `drawingImageRelativePath` を `<img src>` 直指定している | 下記 [§テンプレ編集・認可付き図面読込](#検査図面-テンプレ編集-認可付き図面読込-2026-05-31) · **`main` `e12a5a9c` 以降** |
+| 編集で図面は出るが **拡大2回目（倍率1.5付近）だけ震える** | `ResizeObserver` + スクロールバーで `clientWidth`/`Height` が揺れ再レイアウトループ | 下記 [§キャンバスズーム痙攣](#検査図面-キャンバスズーム痙攣修正-2026-05-31) · **`main` `f6a9544a` 以降** · 強制リロード |
+| テンプレ切替直後に **旧図面＋新測定点** が一瞬重なる | `usePartMeasurementDrawingBlobUrl` が path 変更時に旧 `blobUrl` を残す | **`main` `e12a5a9c` 以降**（path 変更で即 `null` + revoke） |
 | 図面UIに行かず表形式 | `quantity !== 1` または図面条件不足 | `45c02e0a` 参照。数量・テンプレを確認 |
 | 評価保存で本番テンプレが消える | 誤 API | **evaluation-templates** のみ |
 | 空入力で旧測定値が残る | PATCH null 未送信 | サービス層 `deleteMany`（`45c02e0a`） |
@@ -336,8 +338,10 @@ pointerup + 10px しきい値 + pointercancel は中止
 | ズーム UI | `InspectionDrawingCanvasZoomControls.tsx`（ボタン群のみ。中央スロット flex は HeaderBand） |
 | ヘッダー | `InspectionDrawingCreateHeaderBand.tsx`（`centerSlot`） |
 | キャンバス | `InspectionDrawingCanvas.tsx` |
+| レイアウト計測フック | `useZoomedCanvasLayout.ts`（2026-05-31 痙攣対策） |
+| レイアウト等価比較 | `inspectionDrawingCanvasLayoutCompare.ts` |
 | レイアウト純関数 | `inspectionDrawingCanvasLayout.ts` · `inspectionDrawingCanvasPointer.ts` |
-| 単体テスト | `inspectionDrawingCanvasLayout.test.ts` · `inspectionDrawingCanvasPointer.test.ts` · `inspectionDrawingZoom.test.ts` |
+| 単体テスト | 上記 + `inspectionDrawingZoom.test.ts` |
 
 ### 本番デプロイ実績
 
@@ -365,11 +369,111 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | 拡大後ドラッグで点が増える | `pointercancel` が `onAddPoint` まで届いていないか | `handlePlacePointerCancel` のみ clear（`364aa184` 以降） |
 | タップしても点が付かない | place モードか · 移動が 10px 超か | 短いタップで `pointerup` 確定 |
 | 中央スロットが二重 flex | ZoomControls と HeaderBand 両方に `flex-1` | Controls は `inspectionDrawingCanvasZoomControlsClassName`（ボタン群のみ） |
-| 拡大2回付近で図面が震える | `ResizeObserver` + スクロールバーで `clientWidth`/`Height` が揺れ再レイアウトループ | `scrollbar-gutter: stable` + `areZoomedCanvasLayoutsEqual`（`useZoomedCanvasLayout`）反映後 · 強制リロード |
+| 拡大2回付近で図面が震える | `ResizeObserver` + スクロールバーで `clientWidth`/`Height` が揺れ再レイアウトループ | [§キャンバスズーム痙攣修正](#検査図面-キャンバスズーム痙攣修正-2026-05-31) · 強制リロード |
 
 ### テストの限界
 
 - レイアウト・しきい値は **純関数の単体テスト**。**タブレットでのパン誤追加**は Pi5/DEV 目視で確認する（`/dev/kiosk-inspection-drawing-create` 推奨）。
+- **ResizeObserver ループ**は `areZoomedCanvasLayoutsEqual` でユニット固定。**実機の「2回目だけ震える」**は Pi5 目視で確認（2026-05-31 修正後 OK）。
+
+## 検査図面 · テンプレ編集・認可付き図面読込（2026-05-31） {#検査図面-テンプレ編集-認可付き図面読込-2026-05-31}
+
+正本 Runbook: [kiosk-part-measurement.md §テンプレ編集図面](../runbooks/kiosk-part-measurement.md#検査図面-テンプレ編集-認可付き図面読込-2026-05-31) · deployment: [deployment.md §2026-05-31](../guides/deployment.md#kiosk-inspection-drawing-edit-image-and-zoom-jitter-2026-05-31) · ExecPlan: [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
+
+### 背景・症状
+
+| 項目 | 内容 |
+|------|------|
+| **報告** | 1枚図面を保存 → 一覧に表示 → **編集**で図面が出ず測定点だけ見える（編集不可に近い） |
+| **再現** | 一覧ハブ導入（`f0a2725c` / `ef78f4dd`）以降の `KioskInspectionDrawingCreatePage` |
+| **非原因** | キャンバスズーム PR #377 · 専用 GET 409 · API 上の `visualTemplate` 欠落 |
+
+### 根本原因（CONFIRMED）
+
+- ストレージ `GET /api/storage/part-measurement-drawings/*` は **`x-client-key` または JWT** 必須（[part-measurement-drawings.ts](../../apps/api/src/routes/storage/part-measurement-drawings.ts)）。
+- **記録編集**（`KioskInspectionDrawingEditPage`）は `usePartMeasurementDrawingBlobUrl` で axios 取得 → `blob:` URL をキャンバスへ渡している。
+- **テンプレ作成/編集**（同一 `KioskInspectionDrawingCreatePage`）だけ、`applyLoadedTemplate` が `drawingImageRelativePath` を **そのまま `<img src>`** にしていた → 401/空応答で `onLoad` しない → キャンバス枠は `hasDrawingImage` で出るが **画像は空白**。
+
+### 仕様（修正後の表示契約）
+
+| 状態 | 入力 | 表示 URL |
+|------|------|----------|
+| 新規ファイル選択中 | `File` + ローカル `blob:` | **ローカルプレビュー優先**（サーバー fetch 抑止） |
+| 編集読込・保存後 | `visualTemplate.drawingImageRelativePath` | `usePartMeasurementDrawingBlobUrl` → `blob:` |
+| キャンバスへ渡す値 | — | `inspectionDrawingCanvasImageUrl(local, serverBlob)` |
+
+**純関数（ページから分離）**: `inspectionDrawingTemplateImageDisplay.ts`
+
+- `inspectionDrawingBlobFetchPath` — ローカル選択中は `null`（不要な storage GET を止める）
+- `inspectionDrawingCanvasImageUrl` — `local ?? serverBlob`
+- `inspectionDrawingHasImageSource` — 読込中も枠を出す（path または local あり）
+
+**フック拡張**（`usePartMeasurementDrawingBlobUrl.ts`）:
+
+- **パス変更時**に即 `setBlobUrl(null)` + 旧 URL `revoke`（同一 edit ルートで `:templateId` が変わったとき **旧図面＋新測定点** の誤表示を防ぐ）
+- 単体: `usePartMeasurementDrawingBlobUrl.test.ts`
+
+**UI**:
+
+- `drawingLoadError` を赤文字表示（サイレント失敗を減らす）
+- Blob 未解決時は「図面を読み込み中…」
+- 保存後 `applyLoadedTemplate(saved)` でサーバー path を再設定
+
+### 代表ファイル
+
+| 領域 | パス |
+|------|------|
+| ページ | `apps/web/src/pages/kiosk/KioskInspectionDrawingCreatePage.tsx` |
+| Blob フック | `apps/web/src/features/part-measurement/usePartMeasurementDrawingBlobUrl.ts` |
+| URL 解決 | `apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingTemplateImageDisplay.ts` |
+| 対照（正しい既存実装） | `apps/web/src/pages/kiosk/KioskInspectionDrawingEditPage.tsx` |
+
+### 本番デプロイ・検証（2026-05-31）
+
+| 段階 | ブランチ / マージ | ホスト | Detach Run ID | HEAD | 備考 |
+|------|-------------------|--------|---------------|------|------|
+| 実装 + CI | `fix/kiosk-inspection-drawing-edit-image-load` | — | — | `e12a5a9c` | CI **`26698822834`** success |
+| **Pi5 先行** | 同上（画像読込のみ時点） | `raspberrypi5` | `20260531-092334-26185` | `e12a5a9c` | **failed=0** · 強制リロード後 **編集で図面表示 OK** |
+| **Pi5 再検証** | 同上（ズーム痙攣修正込み） | — | — | `f6a9544a` | **実機: 拡大2回目の震え解消 OK**（ユーザー確認 2026-05-31） |
+| **Pi4×4** | **`main` マージ後** | 4 台 | — | — | **未**（Web のみ · 1 台ずつ） |
+
+**CI（ブランチ先端）**: **`26700061664`** success（`f6a9544a` push）。
+
+## 検査図面 · キャンバスズーム痙攣修正（2026-05-31） {#検査図面-キャンバスズーム痙攣修正-2026-05-31}
+
+[§キャンバスズーム](#検査図面-canvas-zoom-2026-05-30) の表示契約は維持。本節は **編集画面で図面が表示できるようになった後**に表面化した **拡大 `＋` 2回目（倍率 1.5）付近の震え**の修正。
+
+### 症状と調査
+
+| 押下 | 倍率（0.25 刻み） | 報告 |
+|------|-------------------|------|
+| 1回 | 1.25 | 正常 |
+| **2回** | **1.50** | **痙攣** |
+| 3回 | 1.75 | 正常 |
+
+**最有力原因**: `InspectionDrawingCanvas` の `ResizeObserver` → `clientWidth`/`clientHeight` 再計算 → スクロールバー出現で寸法が揺れる → **再レイアウトループ**。毎回 `setState` すると震えが増幅。
+
+**Blob 読込修正との関係**: ズーム実装（#377）自体は未変更。テンプレ編集で図面が見えるようになったことで **初めて実機でズームが使われた**。
+
+### 修正内容（Web のみ）
+
+| 対策 | 実装 |
+|------|------|
+| スクロールバー用ガター | `inspectionDrawingCanvasViewportBaseClassName` に **`[scrollbar-gutter:stable]`**（`inspectionDrawingKioskUi.ts`） |
+| 等価 layout で setState 抑制 | `areZoomedCanvasLayoutsEqual`（ε=0.5px）· `inspectionDrawingCanvasLayoutCompare.ts` |
+| RO 責務の分離 | `useZoomedCanvasLayout.ts` — 計測 + RO · `layoutRef` と比較でスキップ |
+| 内側ラッパー | `minWidth/minHeight: 100%` **削除**（`contentWidth/Height` で十分） |
+| プレースホルダ img | **`naturalSize` 未確定時のみ**（`hasNaturalSize`）。計測済みで layout 未計算の瞬間に二重 img へ落とさない |
+
+**単体テスト**: `inspectionDrawingCanvasLayoutCompare.test.ts` · layout zoom **1.5** 回帰 · inspection-drawing 配下 **44 passed**（2026-05-31 ローカル）。
+
+### 代表ファイル（追加分）
+
+| 領域 | パス |
+|------|------|
+| フック | `useZoomedCanvasLayout.ts` |
+| 比較 | `inspectionDrawingCanvasLayoutCompare.ts` |
+| キャンバス | `InspectionDrawingCanvas.tsx`（RO 削除・フック利用） |
 
 ## Current UI spec（2026-04-05 までの合意）
 
