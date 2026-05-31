@@ -113,7 +113,7 @@
 
 **Summary**:
 
-- Ubuntu（RTX 4060）由来 workflow を DGX へ移行し **実用化完了**。標準は **`0525_flux2_klein_9b_DGXSpark_photoreal_nvfp4.json`**（UNET **nvfp4**、LoRA 強度調整済み）。
+- Ubuntu（RTX 4060）由来 workflow を DGX へ移行。**2026-05-25** に破綻除去（Enhancer 禁止）·**2026-05-31** に **実在モデルと整合した基準線** `0531_flux2_klein_9b_DGXSpark_NEXT_standard_available_models.json`（UNET nvfp4 · CLIP **bf16** · SNOFS 0.35 · 大幅改善）。レガシー `0525_…` は fp8mixed/r64 未配置で **そのまま実行しない**。
 - **破綻画像の主因は `Flux2KleinEnhancer`（CONFIRMED）** → Enhancer 除去 workflow で解消。LoRA / ReferenceLatent / 2段サンプラーは正常。
 - **速度**: 1248×1824 で NVFP4 **2回目約3分台**（FP8 は約5分台）。`system-prod-trtllm` **約57GB** 占有時は Comfy 優先で一時 `docker stop`。
 - Compose 実用フラグ: `--disable-dynamic-vram`・`--reserve-vram 8`・`--disable-pinned-memory`・`--disable-mmap`（`force-recreate` で反映）。

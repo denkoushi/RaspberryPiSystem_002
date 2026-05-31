@@ -4,7 +4,7 @@
 
 tags: [DGX Spark, LocalLLM, NVIDIA, Docker, Tailscale, セキュリティ, 運用, 計画]
 audience: [運用者, 開発者, AIアシスタント]
-last-verified: 2026-05-17
+last-verified: 2026-05-31
 related:
 
 - ../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md
@@ -31,6 +31,7 @@ update-frequency: high
 
 ## Progress
 
+- (2026-05-31 JST) **private Comfy FLUX.2 Klein 9B 基準線 workflow（実在モデル整合）**: Pi5 から `http://100.118.82.72:38081/private-comfyui/health` **200**（gateway 経路）。Pi5→DGX **SSH :22 は timeout**（コンテナ内作業は Mac 管理 SSH）。DGX `dgx-private-comfyui` **ComfyUI 0.22.0**・compose フラグは既存推奨のまま・当該確認時 **`system-prod-trtllm` 未稼働**。**0525 標準 workflow とディスク上モデル（fp8mixed CLIP・r64 等未配置）の不整合**を確認。**基準線** `0531_flux2_klein_9b_DGXSpark_NEXT_standard_available_models.json` を作成（nvfp4 + bf16 CLIP・SNOFS 0.35・Enhancer なし）。**ユーザー評価: 大幅改善**（プロンプト追随は今後の主課題）。正本 **[KB-379 §2026-05-31](../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md#2026-05-31-現状確認実機モデル配置基準線-workflow)**・Runbook **2026-05-31 追補**・[`scripts/dgx-private-comfyui/workflows/`](../scripts/dgx-private-comfyui/workflows/)。
 - (2026-05-25 JST) **private Comfy FLUX.2 Klein 9B workflow 実用化（Ubuntu RTX4060 → DGX）**: 元 JSON `flux2_klein_9b_bloodforce88_snofs …` を移行。**破綻画像の主因は `Flux2KleinEnhancer`（CONFIRMED）** → `0525_flux2_klein_9b_DGXSpark_fixed_no_enhancer.json` 系で解消。**標準 workflow**: **`0525_flux2_klein_9b_DGXSpark_photoreal_nvfp4.json`**（UNET nvfp4・LoRA 0.08/0.45/0.35・1248×1824 で **2回目約3分台**）。**Compose 実用フラグ**: `--disable-dynamic-vram`・`--reserve-vram 8`・`--disable-pinned-memory`・`--disable-mmap`。**競合**: `system-prod-trtllm` **約57GB** 時は Comfy 優先で一時停止。正本 **[KB-379](../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)**・Runbook **2026-05-25 追補**・[`compose.yaml.example`](../../scripts/dgx-private-comfyui/compose.yaml.example) 整合。
 - (2026-05-17 JST) **private Comfy と Mac と SSH とトンネル（運用手順・誤認の再発防止）**: **転送があるときのみ** Mac のブラウザで **`http://127.0.0.1:8188` が開く**ことを再確認済み運用。**先に `ssh -N -L …`（例: `-i ~/.ssh/id_ed25519_raspi`・tailnet **`100.118.82.72`** が文書一例）**。**`-N` の無出力待機が正常**。**`<user>@…` が `<>` **`parse error`** になる**。**LAN 実 IP の `ssh` と tailnet で別判定**。**`Ctrl+C`** で転送終了すると **ブラウザが開かなくなる**のが転送証拠。**管理コンソール `private_ok`** は経路とは無関係（GPU と業務ワークロードの話は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)）。詳細 **[KB-378](../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md)** と Runbook **2026-05-17 追補**。
 - (2026-05-17 JST) **private Comfy の性能問題を 3層で固定化（NVFP4 移行準備）**: **モザイク（fp8 NaN）**は `--bf16-unet` 系で抑止、**17分超遅延**は `--disable-mmap` + `copy=False` で回避、残る遅さは **6.16MP/2pass/LoRA3本**の計算量が主因。運用記録と次手順（HF token・NVFP4 モデル取得・UNET 差し替え・比較検証）は **[KB-379](../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)** に集約。Runbook は **2026-05-17 追補2**として整合。

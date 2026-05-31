@@ -2,7 +2,7 @@
 title: Runbook DGX Spark private ComfyUI（コンテナ・Tailscale）
 tags: [運用, DGX Spark, ComfyUI, Docker, Tailscale, private-personal]
 audience: [運用者, 開発者]
-last-verified: 2026-05-25
+last-verified: 2026-05-31
 related:
   - ../plans/dgx-spark-local-llm-migration-execplan.md
   - ../../scripts/dgx-private-comfyui/README.md
@@ -94,7 +94,7 @@ ComfyUI のホスト公開は **`127.0.0.1:8188`（ループバック）のみ**
 
 `--use-sage-attention` は環境に導入済みの場合のみ追加する（未導入では起動失敗）。
 
-**workflow 側**: 標準は [KB-379](../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md) の **`0525_flux2_klein_9b_DGXSpark_photoreal_nvfp4.json`**。**`Flux2KleinEnhancer` は使用しない**。
+**workflow 側**: 基準線（2026-05-31 以降）は [KB-379](../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md) の **`0531_flux2_klein_9b_DGXSpark_NEXT_standard_available_models.json`**（リポジトリ [`scripts/dgx-private-comfyui/workflows/`](../../scripts/dgx-private-comfyui/workflows/)）。**`Flux2KleinEnhancer` は使用しない**。レガシー `0525_…` は **モデル未配置と参照ずれ**のためそのまま実行しない（KB-379 §2026-05-31）。
 
 ### safetensors コピー回避パッチ
 
@@ -134,6 +134,20 @@ sudo nvidia-smi -lgc 300,2100
 7. **業務推論との競合**: 重いモデル利用時に Pi5→DGX の **`on_demand` LocalLLM** とタイミングが被る場合、どちらかが失敗・遅延しないかを観測（必要なら時間帯を分ける）。
 
 別ユーザ・別マシンへ広げる場合は **ACL・認証・HTTPS 終端**を別途設計する（本 Runbook の既定範囲外）。
+
+## Pi5・gateway・SSH の役割分担（2026-05-31）
+
+Private ComfyUI の **生存確認**と **管理画面の running 表示**には、職場 Pi5 から DGX gateway へ到達する経路を使える（Ansible 既定例: `http://100.118.82.72:38081/private-comfyui/health` — [inventory.yml](../../infrastructure/ansible/inventory.yml) の `api_dgx_resource_comfyui_health_url`）。
+
+| 経路 | 典型結果 | 用途 |
+|------|----------|------|
+| Pi5 → `…/38081/healthz` | 200 | system-prod gateway 生存 |
+| Pi5 → `…/38081/private-comfyui/health` | 200（ComfyUI HTML） | **ヘルスプローブ・DGX リソース画面** |
+| Pi5 → DGX `:22` SSH | **timeout**（現行 ACL） | コンテナ内の workflow 編集には **使えない** |
+| Mac → DGX 管理 SSH | 成功 | **compose / モデル / workflow の変更** |
+| Mac → `ssh -N -L 8188:…` | 転送維持中のみ UI | **ブラウザで ComfyUI 編集・生成** |
+
+**運用**: コンテナ内部作業（workflow 配置・`docker exec`）は **Mac から DGX 管理 SSH** で行う。Pi5 からコンテナを直接操作したい場合は **Tailscale ACL で Pi5→DGX `tcp:22` を許可**するか、**gateway 経由の起停 POST**（`DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_*`）を正本とする（[KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)）。詳細な workflow・モデル一覧は [KB-379 §2026-05-31](../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md#2026-05-31-現状確認実機モデル配置基準線-workflow)。
 
 ## 2026-04-29 実測結果
 
@@ -184,29 +198,36 @@ sudo nvidia-smi -lgc 300,2100
 
 Ubuntu（RTX 4060）から移行した元 JSON を DGX で実行すると **約10分・破綻画像**（模様異常増幅）となった。**段階的切り分け**の結果、**`Flux2KleinEnhancer`（ComfyUI-Flux2Klein-Enhancer）が破綻原因（CONFIRMED）**。LoRA 3本・2段サンプラー・ReferenceLatent は正常。
 
-**現行推奨 workflow**（運用者が ComfyUI にインポート）:
+当時の推奨 **`0525_flux2_klein_9b_DGXSpark_photoreal_nvfp4.json`** は **2026-05-31 にモデル配置と不整合**が判明。**以降の基準線は 0531**（下記・KB-379 正本）。
+
+**速度（1248×1824・2026-05-25 実測）**: NVFP4 で **1回目約5分台・2回目約3分台**。**Compose**・**vLLM 57GB 競合**の手順は変わらず（[KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)）。
+
+## 2026-05-31 追補（基準線 workflow・モデル整合・大幅改善）
+
+**背景**: 破綻は 0525 系で抑えたが、**プロンプト追随が約 5 割**に留まるなど実用水準には未達。Ubuntu 成功 workflow の単純移植は DGX で破綻するため、**実在モデルと JSON 参照の一致**を優先した。
+
+**基準線 workflow**（ComfyUI に読み込む正本）:
 
 ```text
-0525_flux2_klein_9b_DGXSpark_photoreal_nvfp4.json
+0531_flux2_klein_9b_DGXSpark_NEXT_standard_available_models.json
 ```
 
-**推奨モデル/LoRA**（KB-379 正本）:
+リポジトリ同梱: [`scripts/dgx-private-comfyui/workflows/0531_flux2_klein_9b_DGXSpark_NEXT_standard_available_models.json`](../../scripts/dgx-private-comfyui/workflows/0531_flux2_klein_9b_DGXSpark_NEXT_standard_available_models.json)
 
-| 項目 | 値 |
-|------|-----|
+| 項目 | 値（2026-05-31 実機） |
+|------|------------------------|
 | UNET | `flux-2-klein-base-9b-nvfp4.safetensors` |
-| CLIP | `qwen_3_8b_fp8mixed.safetensors` |
+| CLIP | `qwen_3_8b_bf16.safetensors`（**fp8mixed は未配置**） |
 | VAE | `flux2-vae.safetensors` |
-| LoRA | Turbo r64 **0.08**, r128 **0.45**, SNOFS **0.35** |
+| LoRA | r64 **無効**（ファイル未配置）· r128 **0.45** · SNOFS **0.35** |
 | 禁止 | **`Flux2KleinEnhancer`** |
+| 評価 | ユーザー **大幅改善**（最終形ではない） |
 
-**速度（1248×1824・実測）**: NVFP4 で **1回目約5分台・2回目約3分台**。FP8 単独では連続実行でも劇的短縮せず、**解像度によるサンプリング負荷**が支配。
+**0525 系をそのまま使わない理由**: `qwen_3_8b_fp8mixed`・`klein_9B_Turbo_r64`・`flux-2-klein-base-9b-fp8` が **コンテナ内に無い**（KB-379 の一覧と突合）。
 
-**Compose（実用寄り）**: `--disable-dynamic-vram`・`--reserve-vram 8`・`--disable-pinned-memory`・`--disable-mmap`（任意 `PYTORCH_NO_CUDA_MEMORY_CACHING=1`）。反映は **`docker compose up -d --force-recreate`**。雛形は [`compose.yaml.example`](../../scripts/dgx-private-comfyui/compose.yaml.example)。
+**確認時の VRAM**: `system-prod-trtllm` は **停止中**で、遅延の主因は workflow 不整合側だった。
 
-**メモリ競合**: `system-prod-trtllm` が **約57GB** 占有時は Comfy が遅化・失敗しうる。Comfy 優先時は `docker stop system-prod-trtllm`、業務復帰時は `docker start system-prod-trtllm`（[KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)）。
-
-**関連 workflow バリアント**: `0525_flux2_klein_9b_DGXSpark_fixed_no_enhancer.json`（Enhancer 除去）、`0525_flux2_klein_9b_DGXSpark_photoreal_tuned.json`（写真寄せ・FP8 UNET）。詳細・依頼テンプレは [KB-379](../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)。
+**今後**: 破綻防止より **プロンプト追随・base-edit 構成・不足モデル復旧後の A/B**。workflow の乱立はしない（KB-379 §運用ルール）。
 
 ## トラブルシュート（公式 Playbook との対応）
 
@@ -227,9 +248,10 @@ Ubuntu（RTX 4060）から移行した元 JSON を DGX で実行すると **約1
 | 起動時に `--use-sage-attention` で失敗 | SageAttention 未導入 | フラグを外して起動し、導入済みイメージに切り替えてから再度有効化 |
 | BF16指定でモデルが見つからない | BF16実体ファイル未配置 | `models/diffusion_models` と `models/text_encoders` に BF16実体を配置し、必要なら不要なFP8を削除して容量を確保 |
 | **破綻画像**（模様・ノイズ・参照質感の異常増幅） | **`Flux2KleinEnhancer` が現環境で破綻原因**（2026-05-25 切り分け） | **Enhancer を使わない** workflow（例: `0525_flux2_klein_9b_DGXSpark_fixed_no_enhancer.json`）へ置換。[KB-379](../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md) |
-| 生成が **5〜10分超**・体感遅い | **1248×1824 のサンプリング**・**vLLM 約57GB占有**・FP8 UNET | **NVFP4 workflow**（`photoreal_nvfp4`）・必要時 `docker stop system-prod-trtllm`・解像度を 1024×1536 等へ下げる候補 |
+| 生成が **5〜10分超**・体感遅い | **1248×1824 のサンプリング**・**vLLM 約57GB占有**・旧 workflow 参照ずれ | **基準線 0531**・必要時 `docker stop system-prod-trtllm`・解像度を 1024×1536 等へ下げる候補 |
 | workflow 実行時に `mid_layer_scale ... could not convert string to float: 'linear'` | **Enhancer 付き旧 JSON** の型不一致 | **Enhancer 除去 workflow へ移行**（正攻法）。暫定ホットフィックスは 2026-05-01 実施分のみ |
-| `UNETLoader/CLIPLoader Value not in list` | workflow が存在しないモデル名（`fp8`/`bf16`/`nvfp4` 混在）を参照 | 実体に合わせる（推奨: `flux-2-klein-base-9b-nvfp4.safetensors` + `qwen_3_8b_fp8mixed.safetensors`） |
+| `UNETLoader/CLIPLoader Value not in list` | workflow が **未配置**のモデル名を参照（0525 系で fp8mixed / r64 等） | **基準線 0531** を使うか、コンテナ内 `models/` を列挙して実ファイル名に合わせる（[KB-379 §2026-05-31](../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md#2026-05-31-現状確認実機モデル配置基準線-workflow)） |
+| **プロンプトが効きにくい**（破綻はない） | 0525 系の **参照ずれ**・SNOFS 0.8 のまま等 | **0531 基準線**・KB-379 §今後の改善。CFG だけでなく CLIP/参照/LoRA を疑う |
 | `Node 'Note' not found` | カスタムノード未導入 | ノードを削除するか、必要なら該当 custom node を導入する |
 
 ## 参照
