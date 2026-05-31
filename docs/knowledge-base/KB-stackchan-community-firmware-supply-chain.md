@@ -568,6 +568,30 @@ update-frequency: high
 
 **次のタスク（再開時）**: 実機 **USB 認識・電源** の復旧 → シリアルで boot 完走確認 → Pi5 bridge 到達 → utterance WAV スモーク → WakeWord 再設定。
 
+## 2026-05-31: voice-turn 再設計（Pi5 VOICEVOX 正本・utterance 除外）
+
+### Decision
+
+- **初期正本**を `POST /api/stackchan/voice-turn` に変更。StackChan は **録音 → WAV POST → `audioUrl` 再生**のみ。STT / LLM / VOICEVOX / 会話状態は **私用 Pi5 bridge**。
+- **`POST /api/stackchan/utterance`** と [`apply_utterance_overlay.py`](../../scripts/stackchan-ai-stackchan-ex/apply_utterance_overlay.py) は **新規 Mac USB フローから除外**（2026-05-23 実機不安定化の再発防止）。
+- [`mac_usb_dev.sh`](../../scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh) safe mode（**既定**）: `CHATGPT_API_URL=/api/stackchan/chat/simple` のみ。録音 overlay は `STACKCHAN_ENABLE_VOICE_OVERLAY=1` の明示 opt-in。`setup` は毎回 [`revert_firmware_overlays.py`](../../scripts/stackchan-ai-stackchan-ex/revert_firmware_overlays.py) で `PrivateBridge/` 削除と overlay 変更ファイルを `git checkout` 復元してから chat パッチを当てる。
+- Pi5 `audioUrl` は **`VOICE_AUDIO_PUBLIC_BASE_URL`（または compat IP から Ansible 自動設定）必須**。未設定時は `127.0.0.1` にフォールバックしない。
+
+### Repo 成果物
+
+| 層 | ファイル | 役割 |
+|----|----------|------|
+| Pi5 | [`voice_assistant_core.py`](../../scripts/private-pi5-stackchan-bridge/voice_assistant_core.py) | STT → chat → VOICEVOX → `audioUrl` |
+| Pi5 | [`bridge_server.py`](../../scripts/private-pi5-stackchan-bridge/bridge_server.py) | `POST /voice-turn`・`GET /audio/<id>.wav` |
+| ファーム | [`apply_voice_rework_overlay.py`](../../scripts/stackchan-ai-stackchan-ex/apply_voice_rework_overlay.py) | `PrivateBridgeVoiceTurn`・`private-bridge/*` Web ルート |
+| テスト | [`test_voice_assistant_core.py`](../../scripts/private-pi5-stackchan-bridge/tests/test_voice_assistant_core.py) 等 | ワークフロー・safe mode 分岐 |
+
+### 実機検証（未実施・再開時）
+
+1. 公式／安定ファームで USB・表示復旧（utterance 書き込み機は **safe mode 再 flash**）。
+2. Pi5: `VOICEVOX_*`・`VOICE_AUDIO_PUBLIC_BASE_URL`（StackChan から到達可能な Pi5 URL）。
+3. `mac_usb_dev.sh all` → シリアル `[VOICE] POST` → `audioUrl` GET 再生。
+
 ## References
 
 - 手順の中心: [`scripts/stackchan-ai-stackchan-ex/README.md`](../../scripts/stackchan-ai-stackchan-ex/README.md)

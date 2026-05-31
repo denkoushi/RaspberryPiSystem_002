@@ -17,6 +17,10 @@
 - [`home_assistant_client.py`](./home_assistant_client.py) — 任意の Home Assistant 読み取り専用 context（許可 entity の状態）を LLM prompt に注入
 - [`stt_bridge_core.py`](./stt_bridge_core.py) — STT 入力検証と失敗マッピング（`SttWorkflow`）
 - [`stt_runtime_client.py`](./stt_runtime_client.py) — STT 上流呼び出し（OpenAI 互換 transcription）/ optional `faster-whisper` ローカル実行
+- [`voice_assistant_core.py`](./voice_assistant_core.py) — 音声 1 ターン（STT → chat → Pi5 VOICEVOX → 任意で StackChan 再生）
+- [`voicevox_client.py`](./voicevox_client.py) — Pi5 上 VOICEVOX engine HTTP
+- [`stackchan_device_client.py`](./stackchan_device_client.py) — StackChan への薄い HTTP 制御（状態・再生 URL）
+- [`audio_artifact_store.py`](./audio_artifact_store.py) — 合成 WAV の短期保持（`GET /api/stackchan/audio/<id>.wav`）
 
 ## ローカル検証（Python）
 
@@ -42,9 +46,16 @@ uv run --project scripts/private-pi5-stackchan-bridge \
 - `POST /api/stackchan/chat/simple`
   - StackChan 実装向けの簡易レスポンスを返す（`replyText`）
   - 任意設定で、upstream `502` / `503` 時、および **`DGX_RUNTIME_AUTO_START` 有効時の初回到達不能（`URLError`）** に **DGX runtime `/start` -> `/v1/models` ready wait -> 1回再試行** ができる
-- `POST /api/stackchan/utterance`
-  - **推奨（音声会話1回）**: `audio/wav` または JSON (`audioBase64`) → Pi5 で STT → DGX で LLM → `{ sttText, replyText }` を返す
-  - デバイスはこの API だけ叩けばよい（STT + chat の2段を不要化）
+- `POST /api/stackchan/voice-turn`（**初期正本・2026-05-31**）
+  - `audio/wav` または JSON (`audioBase64`) → Pi5 で STT → DGX chat → **Pi5 VOICEVOX** → `{ sttText, replyText, audioUrl }`
+  - エイリアス: `POST /api/stackchan/audio-capture`（同一ハンドラ）
+  - StackChan は **録音と POST のみ**（ファームは `STACKCHAN_ENABLE_VOICE_OVERLAY=1` のときのみ）。再生はレスポンスの **`audioUrl` をデバイスが GET**（Pi5 からの `/private-bridge/play-audio` で同一 bridge URL を叩かない — デッドロック回避）
+  - **`VOICE_AUDIO_PUBLIC_BASE_URL` 必須**（未設定時は `/speech?say=` フォールバック）
+  - リクエスト上限: `VOICE_TURN_MAX_AUDIO_BYTES`（既定 2 MiB、超過は `413`）
+- `GET /api/stackchan/audio/<id>.wav`
+  - `voice-turn` が生成した VOICEVOX WAV（短期 TTL・メモリ保持）
+- `POST /api/stackchan/utterance`（**レガシー・新規ファームでは非推奨**）
+  - STT → chat → `replyText` のみ（デバイス TTS 前提）。`mac_usb_dev.sh` safe mode では適用しない
 - `POST /api/stackchan/stt`
   - STT 変換 API。`audio/wav` の生バイナリ、または JSON (`audioBase64`) を受け取って `text` を返す
   - provider は `STT_PROVIDER` で切り替え:

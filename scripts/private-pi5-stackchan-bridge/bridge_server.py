@@ -5,6 +5,7 @@ import os
 import socket
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
 from typing import Any, ClassVar
 from urllib.parse import urlsplit
 
@@ -27,6 +28,19 @@ from stackchan_utterance_core import (
     format_utterance_success,
     validate_utterance_json_payload,
 )
+from audio_artifact_store import AudioArtifactStore
+from stackchan_device_client import StackChanDeviceClient, config_from_env as device_config_from_env
+from voice_assistant_core import (
+    VoiceTurnFailure,
+    VoiceTurnSuccess,
+    VoiceTurnWorkflow,
+    format_voice_turn_success,
+    resolve_public_audio_base_url,
+    validate_voice_turn_json_payload,
+    voice_turn_max_audio_bytes,
+    voice_turn_max_json_body_bytes,
+)
+from voicevox_client import VoicevoxClient, config_from_env as voicevox_config_from_env
 
 LISTEN_HOST = os.getenv("STACKCHAN_BRIDGE_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.getenv("STACKCHAN_BRIDGE_PORT", "18080"))
@@ -91,6 +105,13 @@ def _error_response(
     _json_response(handler, status_code, payload)
 
 
+def _voice_turn_error_response(handler: BaseHTTPRequestHandler, message: str) -> None:
+    if "exceeds limit" in message:
+        _error_response(handler, 413, "PAYLOAD_TOO_LARGE", message)
+    else:
+        _error_response(handler, 400, "BAD_REQUEST", message)
+
+
 def _read_json(handler: BaseHTTPRequestHandler):
     try:
         content_length = int(handler.headers.get("Content-Length", "0"))
@@ -105,13 +126,23 @@ def _read_json(handler: BaseHTTPRequestHandler):
         return None, "invalid json"
 
 
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    """Allow concurrent GET /api/stackchan/audio while POST /voice-turn is in flight."""
+
+    daemon_threads = True
+
+
 class Handler(BaseHTTPRequestHandler):
     """HTTP adapter; DGX behaviour is in ChatCompletionWorkflow + DgxUpstreamClient."""
 
     dgx_client: ClassVar[DgxUpstreamClient] = DgxUpstreamClient(config_from_env())
     stt_client: ClassVar[SttRuntimeClient] = SttRuntimeClient(stt_config_from_env())
     home_assistant_client: ClassVar[HomeAssistantClient] = HomeAssistantClient(ha_config_from_env())
+    voicevox_client: ClassVar[VoicevoxClient] = VoicevoxClient(voicevox_config_from_env())
+    device_client: ClassVar[StackChanDeviceClient] = StackChanDeviceClient(device_config_from_env())
+    audio_store: ClassVar[AudioArtifactStore] = AudioArtifactStore()
     dgx_model: ClassVar[str] = _default_dgx_model()
+    public_audio_base_url: ClassVar[str | None] = resolve_public_audio_base_url(LISTEN_HOST, LISTEN_PORT)
 
     @classmethod
     def install_upstream(cls, client: DgxUpstreamClient, model: str | None = None) -> None:
@@ -127,6 +158,18 @@ class Handler(BaseHTTPRequestHandler):
         route_path = urlsplit(self.path).path
         if route_path == "/healthz":
             _json_response(self, 200, {"ok": True, "service": "stackchan-private-bridge"})
+            return
+        if route_path.startswith("/api/stackchan/audio/") and route_path.endswith(".wav"):
+            audio_id = route_path.removeprefix("/api/stackchan/audio/").removesuffix(".wav")
+            artifact = self.audio_store.get(audio_id)
+            if artifact is None:
+                _error_response(self, 404, "NOT_FOUND", "audio artifact not found or expired")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", artifact.content_type)
+            self.send_header("Content-Length", str(len(artifact.wav_bytes)))
+            self.end_headers()
+            self.wfile.write(artifact.wav_bytes)
             return
         _error_response(self, 404, "NOT_FOUND", "endpoint not found")
 
@@ -159,23 +202,124 @@ class Handler(BaseHTTPRequestHandler):
         simple_paths = {"/api/stackchan/chat/simple", "/api/stackchan/chat/simple/"}
         stt_paths = {"/api/stackchan/stt", "/api/stackchan/stt/"}
         utterance_paths = {"/api/stackchan/utterance", "/api/stackchan/utterance/"}
+        voice_turn_paths = {
+            "/api/stackchan/voice-turn",
+            "/api/stackchan/voice-turn/",
+            "/api/stackchan/audio-capture",
+            "/api/stackchan/audio-capture/",
+        }
         if (
             route_path not in raw_paths
             and route_path not in simple_paths
             and route_path not in stt_paths
             and route_path not in utterance_paths
+            and route_path not in voice_turn_paths
         ):
             _error_response(self, 404, "NOT_FOUND", "endpoint not found")
             return
         simple_mode = route_path in simple_paths
         stt_mode = route_path in stt_paths
         utterance_mode = route_path in utterance_paths
+        voice_turn_mode = route_path in voice_turn_paths
 
         if STACKCHAN_TOKEN:
             client_token = self.headers.get("X-Stackchan-Token", "")
             if client_token != STACKCHAN_TOKEN:
                 _error_response(self, 401, "UNAUTHORIZED", "invalid stackchan token")
                 return
+
+        if voice_turn_mode:
+            max_audio = voice_turn_max_audio_bytes()
+            try:
+                declared_length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                _error_response(self, 400, "BAD_REQUEST", "invalid content-length")
+                return
+
+            content_type = self.headers.get("Content-Type", "")
+            is_json_voice = "application/json" in content_type
+            if is_json_voice:
+                json_cap = voice_turn_max_json_body_bytes()
+                if declared_length > json_cap:
+                    _error_response(
+                        self,
+                        413,
+                        "PAYLOAD_TOO_LARGE",
+                        f"json body exceeds limit ({json_cap} bytes); decoded audio limit is {max_audio} bytes",
+                    )
+                    return
+            elif declared_length > max_audio:
+                _error_response(
+                    self,
+                    413,
+                    "PAYLOAD_TOO_LARGE",
+                    f"audio payload exceeds limit ({max_audio} bytes)",
+                )
+                return
+
+            if is_json_voice:
+                payload, err = _read_json(self)
+                if err:
+                    _error_response(self, 400, "BAD_REQUEST", err)
+                    return
+                validated_voice, verr = validate_voice_turn_json_payload(
+                    payload if isinstance(payload, dict) else None,
+                    CHAT_VALIDATION_CONFIG,
+                )
+            else:
+                raw = self.rfile.read(declared_length) if declared_length > 0 else b""
+                if not raw:
+                    _error_response(self, 400, "BAD_REQUEST", "empty body")
+                    return
+                raw_headers: dict[str, Any] = {
+                    "audioBase64": base64.b64encode(raw).decode("ascii"),
+                    "contentType": content_type or "audio/wav",
+                }
+                if lang := self.headers.get("X-Stt-Language"):
+                    raw_headers["language"] = lang
+                if stt_model := self.headers.get("X-Stt-Model"):
+                    raw_headers["sttModel"] = stt_model
+                if max_tok := self.headers.get("X-Chat-Max-Tokens"):
+                    raw_headers["maxTokens"] = max_tok
+                if temp := self.headers.get("X-Chat-Temperature"):
+                    raw_headers["temperature"] = temp
+                if emotion := self.headers.get("X-Voice-Emotion"):
+                    raw_headers["emotion"] = emotion
+                trigger = self.headers.get("X-Trigger-Device-Playback", "true")
+                raw_headers["triggerDevicePlayback"] = trigger.strip().lower() not in {
+                    "0",
+                    "false",
+                    "no",
+                    "off",
+                }
+                validated_voice, verr = validate_voice_turn_json_payload(raw_headers, CHAT_VALIDATION_CONFIG)
+            if verr or validated_voice is None:
+                _voice_turn_error_response(self, verr or "bad request")
+                return
+
+            voice_workflow = VoiceTurnWorkflow(
+                SttWorkflow(self.stt_client),
+                ChatCompletionWorkflow(self.dgx_client, self.dgx_model, self.home_assistant_client),
+                self.voicevox_client,
+                self.audio_store,
+                self.device_client,
+                self.public_audio_base_url,
+            )
+            voice_outcome = voice_workflow.run(validated_voice, log=self.log_message)
+            if isinstance(voice_outcome, VoiceTurnSuccess):
+                _json_response(self, voice_outcome.status_code, format_voice_turn_success(voice_outcome))
+                return
+            if isinstance(voice_outcome, VoiceTurnFailure):
+                _error_response(
+                    self,
+                    voice_outcome.http_status,
+                    voice_outcome.code,
+                    voice_outcome.message,
+                    voice_outcome.retryable,
+                    {**(voice_outcome.details or {}), "stage": voice_outcome.stage},
+                )
+                return
+            return
 
         if utterance_mode:
             content_type = self.headers.get("Content-Type", "")
@@ -324,7 +468,11 @@ def main():
     Handler.install_upstream(DgxUpstreamClient(config_from_env()), _default_dgx_model())
     Handler.stt_client = SttRuntimeClient(stt_config_from_env())
     Handler.home_assistant_client = HomeAssistantClient(ha_config_from_env())
-    server = HTTPServer((LISTEN_HOST, LISTEN_PORT), Handler)
+    Handler.voicevox_client = VoicevoxClient(voicevox_config_from_env())
+    Handler.device_client = StackChanDeviceClient(device_config_from_env())
+    Handler.audio_store = AudioArtifactStore()
+    Handler.public_audio_base_url = resolve_public_audio_base_url(LISTEN_HOST, LISTEN_PORT)
+    server = ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), Handler)
     print(f"stackchan bridge listening on {LISTEN_HOST}:{LISTEN_PORT}", flush=True)
     server.serve_forever()
 

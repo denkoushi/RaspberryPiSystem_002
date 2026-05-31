@@ -202,6 +202,7 @@ git apply /path/to/RaspberryPiSystem_002/scripts/private-pi5-stackchan-bridge/pa
 - 2026-05-10: DGX upstream 復旧後、StackChan 実機 (`192.168.128.124`) は **旧 bridge IP `192.168.128.112`** を見ており、private Pi5 の当日 DHCP IP **`192.168.128.113`** とのズレで `GET /chat?...` が bridge に届かないことを確認。private Pi5 `wlan0` に **`192.168.128.112/24` の互換 alias** を一時追加すると、bridge ログに **`POST /api/stackchan/chat/simple 200`** が出て通信が成立した。
 - 2026-05-10: private Pi5 の標準 playbook に **compatibility alias 管理**（`private_pi5_stackchan_compat_ip` -> `stackchan-bridge-compat-ip.service`）を追加し、**`enabled` / `active`** 状態で **`wlan0: 192.168.128.113/24 192.168.128.112/24`** を確認。標準手順の範囲で StackChan 旧設定との互換を維持できるようにした。
 - 2026-05-23: **ESP32 多段 HTTP をやめ Pi5 `POST /api/stackchan/utterance` に集約**する方針で実装（`stackchan_utterance_core.py`・ファーム `apply_utterance_overlay.py`・`mac_usb_dev.sh`）。Realtime 全面移行は見送り。**実機は utterance ファーム書き込み後、画面真っ黒・無音・USB 未認識まで悪化し作業中断**（復旧手順は [KB §2026-05-23](../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断)）。
+- 2026-05-31: **voice-turn 再設計** — StackChan はマイク録音と Pi5 生成音声の再生のみ。Pi5 が STT・DGX chat・**VOICEVOX**・`audioUrl` 配信。`mac_usb_dev.sh` は **utterance overlay を適用せず** `apply_voice_rework_overlay.py` を正本とする（[KB §2026-05-31](../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-31-voice-turn-再設計pi5-voicevox-正本utterance-除外)）。
 
 ## Hermes Agent（別系統・2026-05-24）
 
@@ -217,11 +218,21 @@ git apply /path/to/RaspberryPiSystem_002/scripts/private-pi5-stackchan-bridge/pa
 
 **次**: Discord アカウント・Bot 作成 → inventory fragment に token / `DISCORD_ALLOWED_USERS` → `private_pi5_hermes_gateway_enabled: true` → Playbook 再実行。
 
-## フェーズ追記（2026-05-23・中断時）
+## フェーズ追記（2026-05-31）
 
 | 項目 | 状態 |
 |------|------|
-| repo: utterance API + テスト + Ansible | 完了（`main` マージ予定） |
+| repo: `voice-turn` + VOICEVOX + device client + テスト | **実装済み**（ブランチ `feat/stackchan-private-pi5-voice-rework`） |
+| Ansible 同期（voice 系 Python） | 実装済み |
+| ファーム safe mode + voice overlay | 実装済み（`mac_usb_dev.sh`） |
+| voice-turn E2E（実機） | **未検証**（utterance 試行機は復旧後に safe mode 再 flash） |
+| utterance 経路 | **初期正本から除外**（bridge レガシー互換のみ） |
+
+## フェーズ追記（2026-05-23・中断時・参考）
+
+| 項目 | 状態 |
+|------|------|
+| repo: utterance API + テスト + Ansible | 完了 |
 | Pi5 `faster-whisper-local` + `/utterance` ルート | 部分（404→再 deploy で解消の記録あり） |
 | ファーム utterance overlay USB 書き込み | 実施済み |
 | utterance E2E（`replyText` 聞こえる） | **未完了** |

@@ -84,16 +84,25 @@ ssh <private-pi5-user>@<private-pi5-host> \
 - `systemctl is-active` が `active`
 - `/healthz` が `ok`
 
-**utterance（2026-05-23 以降・任意）**:
+**voice-turn（2026-05-31 以降・音声正本）**:
+
+```bash
+curl -fsS -X POST "http://127.0.0.1:18080/api/stackchan/voice-turn" \
+  -H "Content-Type: audio/wav" \
+  -H "X-Trigger-Device-Playback: false" \
+  --data-binary @/path/to/sample.wav
+```
+
+- **期待**: `200` + 非空 `replyText` + 非空 `audioUrl`（Pi5 VOICEVOX 前提。`.env` の `VOICEVOX_*` と `VOICE_AUDIO_PUBLIC_BASE_URL` を設定）。
+- **404**: playbook 未反映 → 再デプロイ（`voice_assistant_core.py` 等が同期されているか確認）。
+
+**utterance（レガシー・非推奨）**:
 
 ```bash
 curl -fsS -X POST "http://127.0.0.1:18080/api/stackchan/utterance" \
   -H "Content-Type: audio/wav" \
   --data-binary @/path/to/sample.wav
 ```
-
-- **期待**: `200` + 非空 `replyText`（`sttText` も返る）。
-- **404**: playbook 未反映 or サービス再起動前 → 再デプロイ。
 
 StackChan 側が **旧 bridge IP** を見ている疑いがある場合は、追加で次を確認する。
 

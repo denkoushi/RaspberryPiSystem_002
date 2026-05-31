@@ -14,10 +14,11 @@ cd AI_StackChan_Ex
 git checkout d894859648d4323044761cd49615694027abeb25   # supply-chain-lock.json と一致させる
 # 推奨: 壊れた monolithic patch の代わりに Python 適用スクリプトを使う
 python3 /path/to/RaspberryPiSystem_002/scripts/stackchan-ai-stackchan-ex/apply_chatgpt_private_bridge.py .
-python3 /path/to/RaspberryPiSystem_002/scripts/stackchan-ai-stackchan-ex/apply_utterance_overlay.py .
+# voice overlay は明示 opt-in のみ:
+# STACKCHAN_ENABLE_VOICE_OVERLAY=1 python3 .../apply_voice_rework_overlay.py .
 ```
 
-**注意**: [`patches/ai_stackchan_ex_private_bridge.patch`](../private-pi5-stackchan-bridge/patches/ai_stackchan_ex_private_bridge.patch) は **二重 diff で `git apply` 不可**。Mac USB 一括は [`mac_usb_dev.sh`](./mac_usb_dev.sh) の `setup` が上記 2 スクリプトを実行する。
+**注意**: [`patches/ai_stackchan_ex_private_bridge.patch`](../private-pi5-stackchan-bridge/patches/ai_stackchan_ex_private_bridge.patch) は **二重 diff で `git apply` 不可**。Mac USB 一括は [`mac_usb_dev.sh`](./mac_usb_dev.sh) の `setup` が **既定では chat パッチのみ**（`STACKCHAN_ENABLE_VOICE_OVERLAY=1` で voice overlay）。
 
 ## 2) PlatformIO の GitHub 依存をコミットにピン留め
 
@@ -69,17 +70,27 @@ env PLATFORMIO_BUILD_FLAGS='-DCHATGPT_API_URL=\"http://192.168.128.112:18080/api
 | OpenAI / 他クラウド API キー | 原則 **不要**（bridge 経由なら） | YAML/SPIFFS に残さない運用を推奨 |
 | Wi-Fi パスワード | デバイス設定 | ゲスト SSID / セグメント分割を推奨 |
 
-## 5) 音声（STT/TTS）最小方針 — 正本経路（2026-05-11）
+## 5) 音声（STT/TTS）最小方針 — 正本経路（2026-05-31 更新）
 
-private Pi5 bridge は **LLM 境界に加えて STT 境界（`POST /api/stackchan/stt`）**を担当する。TTS 音声合成/再生はデバイス側（VOICEVOX 利用）で運用する。
+private Pi5 bridge は **STT・会話オーケストレーション・VOICEVOX 合成**を担当する。StackChan は **マイク録音・短時間 WAV アップロード・Pi5 生成音声の再生・最小状態表示**に限定する。
 
-### 推奨アーキテクチャ
+### 推奨アーキテクチャ（voice-turn）
 
 | 処理 | 担当 | 注記 |
 |------|------|------|
-| STT | StackChan 実機 -> Pi5 bridge | 生音声を bridge `POST /api/stackchan/stt` へ送り、`faster-whisper-local` で文字起こし |
-| LLM | Pi5 bridge -> DGX Spark | `CHATGPT_API_URL` は `POST /api/stackchan/chat` / `/simple` を使用 |
-| TTS | StackChan 実機（VOICEVOX） | 返答文字列をデバイス側で音声化・再生 |
+| 録音・アップロード | StackChan 実機 | `POST /api/stackchan/voice-turn`（`STACKCHAN_VOICE_TURN_URL`） |
+| STT | Pi5 bridge | `faster-whisper-local` 推奨 |
+| LLM | Pi5 bridge -> DGX Spark | `CHATGPT_API_URL` は text/chat 用に `/api/stackchan/chat/simple` |
+| TTS | **Pi5 VOICEVOX** | `audioUrl` → StackChan が GET して `M5.Speaker.playWav` |
+| 任意制御 | Pi5 → StackChan HTTP | `/private-bridge/state`・`/private-bridge/play-audio`（overlay 実装） |
+
+### レガシー（2026-05-11 までの分割経路）
+
+| 処理 | 担当 | 注記 |
+|------|------|------|
+| STT | StackChan → Pi5 `POST /api/stackchan/stt` | 多段 HTTP |
+| LLM | Pi5 → DGX | `CHATGPT_API_URL` |
+| TTS | StackChan デバイス VOICEVOX | `robot->speech` |
 
 ### 最小手順（ビルドは text-only と同じ前提）
 
@@ -95,20 +106,30 @@ private Pi5 bridge は **LLM 境界に加えて STT 境界（`POST /api/stackcha
 
 ### パッチとの関係
 
-- **chat 経路**: [`apply_chatgpt_private_bridge.py`](./apply_chatgpt_private_bridge.py)（旧 [`ai_stackchan_ex_private_bridge.patch`](../private-pi5-stackchan-bridge/patches/ai_stackchan_ex_private_bridge.patch) の代替）。
-- **utterance 経路**: [`apply_utterance_overlay.py`](./apply_utterance_overlay.py) + [`firmware-overlay/`](./firmware-overlay/)（`STACKCHAN_UTTERANCE_URL` 有効時、`STT_ChatGPT` が Pi5 へ WAV 1 回 POST）。
-- いずれも **音声コーデックやマイク入力とは独立**。utterance 利用時は bridge に **`POST /api/stackchan/utterance`** が必要（[bridge README](../private-pi5-stackchan-bridge/README.md)）。
+- **chat 経路**: [`apply_chatgpt_private_bridge.py`](./apply_chatgpt_private_bridge.py)（旧 patch の代替）。
+- **voice-turn 経路（opt-in）**: [`apply_voice_rework_overlay.py`](./apply_voice_rework_overlay.py) + [`firmware-overlay/`](./firmware-overlay/)（`STACKCHAN_ENABLE_VOICE_OVERLAY=1` 時のみ。Pi5 `audioUrl` は `VOICE_AUDIO_PUBLIC_BASE_URL` 必須）。
+- **utterance 経路（非推奨）**: [`apply_utterance_overlay.py`](./apply_utterance_overlay.py) — **`mac_usb_dev.sh` では適用しない**。bridge の `/utterance` はレガシー互換のみ。
 
-**実機ステータス（2026-05-23）**: utterance ファーム書き込み後、**画面真っ黒・無音・USB 未認識**で E2E 未完了。再開手順は [KB §2026-05-23](../../docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断)。
+**実機ステータス**: 2026-05-23 utterance 試行は [KB §2026-05-23](../../docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断) のとおり未完了。以降は **safe mode で起動確認後、必要なら `STACKCHAN_ENABLE_VOICE_OVERLAY=1`**（[KB §2026-05-31](../../docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-31-voice-turn-再設計pi5-voicevox-正本utterance-除外)）。
 
 ## 5.2) Mac USB 開発（実機接続）
 
 ```bash
-# 初回: clone・パッチ・依存ピン留め
+# 推奨: 手作業用 ~/AI_StackChan_Ex とは別の build 専用 clone
+# export STACKCHAN_FW_DIR=~/AI_StackChan_Ex-bridge-build
+
+# 初回: clone・パッチ・依存ピン留め（overlay 関連の未コミット変更があると setup は停止）
 STACKCHAN_BRIDGE_BASE_URL=http://<私用Pi5-LAN-IP>:18080 \
   ./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh setup
 
-# ビルド・書き込み（USB は /dev/cu.usbmodem* を自動検出）
+# 未コミット変更を捨てて掃除する場合のみ:
+# STACKCHAN_FORCE_CLEAN=1 ./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh setup
+
+# 録音 overlay を試す場合のみ:
+# STACKCHAN_ENABLE_VOICE_OVERLAY=1 STACKCHAN_BRIDGE_BASE_URL=http://<Pi5-IP>:18080 \
+#   ./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh all
+
+# ビルド・書き込み（safe mode・USB は /dev/cu.usbmodem* を自動検出）
 STACKCHAN_BRIDGE_BASE_URL=http://<私用Pi5-LAN-IP>:18080 \
   ./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh all
 
@@ -116,7 +137,7 @@ STACKCHAN_BRIDGE_BASE_URL=http://<私用Pi5-LAN-IP>:18080 \
 ./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh monitor
 ```
 
-`STACKCHAN_UTTERANCE_URL` 付きビルドでは、会話1回分を `POST /api/stackchan/utterance` に集約する（[`firmware-overlay/`](./firmware-overlay/) + [`apply_utterance_overlay.py`](./apply_utterance_overlay.py)）。
+**既定（safe mode）**の `pio run` では `CHATGPT_API_URL=/api/stackchan/chat/simple` のみで、**`STACKCHAN_VOICE_TURN_URL` は付きません**。録音 overlay を使うときだけ `STACKCHAN_ENABLE_VOICE_OVERLAY=1` を付けて `setup` / `all` を実行してください。
 
 ## 6) 関連ドキュメント
 
