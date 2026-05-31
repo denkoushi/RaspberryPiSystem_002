@@ -88,6 +88,27 @@ private Pi5 bridge は **LLM 境界に加えて STT 境界（`POST /api/stackcha
 3. `app/AiStackChanEx/SC_ExConfig.yaml` で **`stt.type` / `tts.type` / `wakeword.type`** を、**AI_StackChan_Ex 本家ドキュメント**に従い有効化する。クラウド STT を使う場合のみ `apikey.stt` を設定（**DGX 共有トークンとは別**）。
 4. SD に設定を反映して再起動し、**発話 → bridge ログに LLM 用 POST が増える**ことを確認する。増えない場合は **STT 結果が空**または **会話開始トリガが未発火**を疑う。
 
+### 5.0) CoreS3 bring-up probe（AI_StackChan_Ex の前）
+
+safe mode でも起動不良が出る場合は、**voice overlay 以前に**画面・Serial・SD を切り分ける。
+
+```bash
+# build のみ（upload は許可後）
+./scripts/stackchan-ai-stackchan-ex/mac_usb_cores3_probe.sh build
+
+# Step B: SD YAML 3ファイル（/app/AiStackChanEx + /yaml）の存在と deserializeYml
+# 失敗時も再起動しない。画面・Serial に OK/FAIL。
+
+# 許可後:
+# STACKCHAN_USB_PORT=/dev/cu.usbmodem1101 ./scripts/stackchan-ai-stackchan-ex/mac_usb_cores3_probe.sh upload
+```
+
+手順・段階ロードマップ: [stackchan-cores3-bringup-probe.md](../../docs/runbooks/stackchan-cores3-bringup-probe.md)
+
+**CoreS3 実機: probe / `AI_StackChan_Ex` upload 全面停止**（追加 flash 禁止）。公式 **UserDemo-V1.4.1** 復旧・画面表示確認済み。確定事項は [stackchan-cores3-bringup-probe.md](../../docs/runbooks/stackchan-cores3-bringup-probe.md) と KB。
+
+**復旧直後は** `mac_usb_dev.sh` / safe mode `upload` **を行わない**。公式画面が戻ってから Step A を検討する。
+
 ### 5.1) CoreS3 の WakeWord 操作（復旧仕様）
 
 - 物理ボタンを使わない CoreS3 構成では、左タッチを `BtnA` 相当（WakeWord 有効/無効）、右タッチを `BtnB` 長押し相当（WakeWord 登録）として扱う。

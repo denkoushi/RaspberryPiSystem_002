@@ -328,6 +328,19 @@ STACKCHAN_BRIDGE_BASE_URL=http://<私用Pi5-LAN-IP>:18080 \
 
 **作業中断時点**: 上記のうち **完全無反応（USB 未認識）** まで悪化。**再開はハード復旧が先**。
 
+### 6.6) 2026-05-31: CoreS3 bring-up probe 停止（表示未解決）
+
+**前提**: text-only / 音声 E2E は **実機に `AI_StackChan_Ex` 系ファームが表示できること**が前提。2026-05-31 時点で **Arduino/M5Unified bring-up probe は全面停止**。
+
+| 確定 | 内容 |
+|------|------|
+| 公式 UserDemo V1.4.1 | full erase + write 後 **画面 OK** — ハード正常 |
+| probe（Step B 再確認・E1 含む） | シリアル・SD/YAML 正常でも **目視真っ黒** |
+| 原因の切り分け | **m5stack-avatar 単体ではない**（E1 で否定） |
+| 実機運用 | **公式ファーム保持** — **`AI_StackChan_Ex` / safe mode / voice overlay / probe の再 flash 禁止** |
+
+**text-only E2E を再開する前に**: [stackchan-cores3-bringup-probe.md](./stackchan-cores3-bringup-probe.md) の表示互換性問題の解決、または **公式経路のみ**での検証方針を別途決める。
+
 ### 6.4) 2026-05-14 引き継ぎ: ウェイクワード登録／オフライン／シリアル
 
 - **`Smart Config failed. Running in offline mode.`** や **`IP addr: 0.0.0.0`** のときは、[§4（実機確認・IP 取得）](#4-実機確認まず-ip-取得) を先に直す。**タッチ UI が効いても、この条件が崩れていると STT⇄bridge の検証が成立しない**。
@@ -352,4 +365,6 @@ STACKCHAN_BRIDGE_BASE_URL=http://<私用Pi5-LAN-IP>:18080 \
 ## 関連
 
 - 供給鎖: [KB-stackchan-community-firmware-supply-chain.md](../knowledge-base/KB-stackchan-community-firmware-supply-chain.md)
+- CoreS3 bring-up probe（**停止中**）: [stackchan-cores3-bringup-probe.md](./stackchan-cores3-bringup-probe.md)
+- ADR（probe 停止）: [ADR-20260531-stackchan-cores3-probe-display-halt.md](../decisions/ADR-20260531-stackchan-cores3-probe-display-halt.md)
 - Realtime 段階移行: [stackchan-community-realtime-api-migration.md](./stackchan-community-realtime-api-migration.md)

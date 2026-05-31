@@ -1,0 +1,13 @@
+servo:
+  pin:
+    x: 18
+    y: 17
+  center:
+    x: 90
+    y: 90
+  offset:
+    x: 0
+    y: 0
+
+servo_type: "PWM"
+takao_base: false
