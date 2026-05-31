@@ -2,7 +2,7 @@
 title: KB-378 DGX Spark private ComfyUI と Mac アクセス（SSH 順序・トンネル・切り分け）
 tags: [DGX Spark, ComfyUI, Tailscale, SSH, private-personal, 運用, Mac]
 audience: [運用者, 開発者]
-last-verified: 2026-05-17
+last-verified: 2026-05-31
 category: knowledge-base
 related:
   - ../runbooks/dgx-private-comfyui.md
@@ -69,9 +69,11 @@ related:
 - 「トンネルが無言」の **仕様説明を必ず同梱**（初見での「SSH 不要」誤認の抑止）。
 - 「トンネル切断で UI 不通」での **単回検証を推奨**（オンボーディング時）。
 
-## Relation to DGX Resource UI
+## Relation to DGX Resource UI / Pi5 gateway
 
-管理コンソールの運用モード **`private_ok`**（[KB-365](./KB-365-dgx-resource-phase3-workload-orchestration.md)）へ切り替えても、**Mac が ComfyUI に届ける経路（SSH ローカルフォワード）の要否は変わらない**。競合や GPU は [KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md) と正本 Runbook へ。
+管理コンソールの運用モード **`private_ok`**（[KB-365](./KB-365-dgx-resource-phase3-workload-orchestration.md)）へ切り替えても、**Mac が ComfyUI UI に届ける経路（SSH ローカルフォワード）の要否は変わらない**。競合や GPU は [KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md) と正本 Runbook へ。
+
+**Pi5 からのヘルス確認（2026-05-31）**: 職場 Pi5 は DGX gateway の **`GET http://100.118.82.72:38081/private-comfyui/health`** で ComfyUI 生存を確認できる（管理画面 `DGX_RESOURCE_COMFYUI_HEALTH_URL`）。**Pi5→DGX SSH `:22` は現行 ACL で timeout** のため、**workflow 配置・`docker exec` は Mac 管理 SSH**（[KB-379 §2026-05-31](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md#2026-05-31-現状確認実機モデル配置基準線-workflow)・Runbook **Pi5・gateway・SSH** 節）。
 
 ## References
 

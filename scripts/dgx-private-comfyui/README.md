@@ -71,7 +71,9 @@ docker run --rm --gpus=all nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04 nvidia-s
 - `NCCL_P2P_DISABLE=1`
 - `PYTORCH_NO_CUDA_MEMORY_CACHING=1`（任意。compose 雛形では既定 `1`）
 
-**推奨 workflow**（ComfyUI にインポート）: `0525_flux2_klein_9b_DGXSpark_photoreal_nvfp4.json`。**`Flux2KleinEnhancer` は使わない**（破綻原因。詳細は [KB-379](../../docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)）。
+**基準線 workflow**（2026-05-31 以降・ComfyUI にインポート）: [`workflows/0531_flux2_klein_9b_DGXSpark_NEXT_standard_available_models.json`](./workflows/0531_flux2_klein_9b_DGXSpark_NEXT_standard_available_models.json)。**`Flux2KleinEnhancer` は使わない**。レガシー `0525_…` は **モデル未配置と参照ずれ**のためそのまま使わない（[KB-379 §2026-05-31](../../docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md#2026-05-31-現状確認実機モデル配置基準線-workflow)）。
+
+**Pi5 からの疎通**: `http://<dgx_tailnet>:38081/private-comfyui/health`（gateway）。**コンテナ内の workflow 更新は Mac→DGX 管理 SSH**（Pi5→DGX SSH は現行 ACL で不可 — Runbook 追補）。
 
 `--use-sage-attention` は導入済み環境でのみ有効化してください（未導入で付けると起動失敗）。
 
