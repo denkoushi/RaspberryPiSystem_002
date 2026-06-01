@@ -59,6 +59,8 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
       name: '検査図面プレビュー（有効）',
       version: 3,
       isActive: true,
+      selfInspectionMode: 'full',
+      selfInspectionSampleSize: null,
       visualTemplateId: 'preview-visual-1',
       visualTemplate: {
         id: 'preview-visual-1',
@@ -78,6 +80,8 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
       name: '検査図面プレビュー（有効）',
       version: 2,
       isActive: false,
+      selfInspectionMode: 'sample',
+      selfInspectionSampleSize: 3,
       visualTemplateId: 'preview-visual-1-old',
       visualTemplate: {
         id: 'preview-visual-1-old',
@@ -97,6 +101,8 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
       name: '研削工程サンプル',
       version: 2,
       isActive: false,
+      selfInspectionMode: 'full',
+      selfInspectionSampleSize: null,
       visualTemplateId: 'preview-visual-2',
       visualTemplate: {
         id: 'preview-visual-2',

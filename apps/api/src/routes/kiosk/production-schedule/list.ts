@@ -54,7 +54,10 @@ export async function registerProductionScheduleListRoute(
       allowResourceOnly: query.allowResourceOnly === true,
       locationKey: assignmentLocationKey,
       siteKey: locationScopeContext.siteKey,
-      responseProfile: query.responseProfile
+      // 自主検査候補一覧は `listSelfInspectionEligibleProductionScheduleRows` が OFFSET 付きダッシュボード SQL で走査する。
+      // leaderboard プロファイル（page/offset 非対応）は使わない。
+      responseProfile: query.selfInspectionEligibleOnly === true ? 'full' : query.responseProfile,
+      selfInspectionEligibleOnly: query.selfInspectionEligibleOnly === true
     });
 
     return result;

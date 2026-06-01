@@ -46,7 +46,10 @@ export function fingerprintLeaderboardBoardDecorations(
 ): string {
   const rowPart = [...decorations.rowDecorationsById.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([id, d]) => `${id}:${d.resolvedMachineName ?? ''}:${d.customerName ?? ''}`)
+    .map(
+      ([id, d]) =>
+        `${id}:${d.resolvedMachineName ?? ''}:${d.customerName ?? ''}:${d.hasSelfInspectionDrawing ? 1 : 0}:${d.selfInspectionStatus ?? ''}:${d.selfInspectionEntryPath ?? ''}`
+    )
     .join('\u0003');
 
   const chipPart = Object.keys(decorations.leaderboardFooterChipsByPartKey)

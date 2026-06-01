@@ -79,6 +79,68 @@
 | **画像** | Phase1: PNG/JPEG/WebP のみ（TIFF 後続）。 |
 | **ヘッダー・ルート** | `kioskInspectionDrawingRoutes.ts` — 既定 `inspection`、作成 `inspection/create`、テンプレ編集 `inspection/templates/:id/edit`、記録図面 `inspection/edit/:sheetId`。`isKioskInspectionDrawingPath` で部品測定タブを非アクティブ。 |
 
+## 自主検査 MVP（2026-06-01） {#自主検査-mvp-2026-06-01}
+
+### 仕様サマリ
+
+| 区分 | 内容 |
+|------|------|
+| **タブ** | キオスクヘッダーに **`自主検査`** を追加。`/kiosk/part-measurement/self-inspection/*` 全体をアクティブ扱い。 |
+| **一覧 UI** | `KioskSelfInspectionPage.tsx`。生産スケジュールを leaderboard profile で取得し、**図面付き `THREE_KEY` テンプレ**に一致する行だけを表示。 |
+| **入力 UI** | `KioskSelfInspectionSessionPage.tsx`。既存 `InspectionDrawingCanvas` / `InspectionDrawingValuePanel` / `useInspectionDrawingZoom` を再利用。図面画像は **`usePartMeasurementDrawingBlobUrl`** を通して認可付き取得。 |
+| **管理 UI** | 管理テンプレ画面に `selfInspectionMode`（`full`/`sample`）と `selfInspectionSampleSize` を追加。抜取時は sampleSize 必須。 |
+| **保存モデル** | `SelfInspectionSession -> SelfInspectionLotEntry -> SelfInspectionMeasurementValue` の3層。既存 `PartMeasurementSheet` / `PartMeasurementResult` には混ぜない。 |
+| **完了条件** | `full` は補助データの `plannedQuantity` 件（**2,000 件超は開始不可・一覧非表示**）、`sample` は `selfInspectionSampleSize` 件。到達後に `POST /self-inspection/sessions/:id/complete` で確定。全数は `expectedEntryCount` と `plannedQuantity` の大きい方で完了判定（旧データの誤丸め防止）。 |
+| **順位ボード連携** | decoration に `hasSelfInspectionDrawing` / `selfInspectionStatus` / `selfInspectionEntryPath` を追加。図面あり行だけ **検** ボタンを表示。 |
+
+### API 契約
+
+- `POST /api/part-measurement/self-inspection/sessions/resolve-or-create`
+- `GET /api/part-measurement/self-inspection/sessions`
+- `GET /api/part-measurement/self-inspection/sessions/:id`
+- `POST /api/part-measurement/self-inspection/sessions/:id/entries`
+- `PATCH /api/part-measurement/self-inspection/sessions/:id/entries/:entryId`
+- `POST /api/part-measurement/self-inspection/sessions/:id/complete`
+
+補足:
+
+- `sessionBusinessKey` は `productNo + processGroup + resourceCd + scheduleRowId`（**日程行単位・templateId は含めない**）。改版後も同一セッションに戻る。`resolve-or-create` は **`scheduleRowId` と `fseiban` 必須**（生産日程行の存在・整合を検証）。
+- **業務キー移行（`20260601120000_self_inspection_session_business_key_v2`）**: templateId 違いの重複セッションは自動で勝者 1 件に寄せる。空セッションは削除、エントリは `entryIndex` がぶつからない分だけ移す。**両方に同一 index のエントリがある**場合は migration が止まる → Runbook「業務キー移行の事前確認」の SQL で検出し、手動統合後に再デプロイ。
+- **公差・完了**: 保存/完了は `lowerLimit`/`upperLimit` 内のみ許可（公差外は 400/409）。抜取は `sampleSize <= plannedQuantity`。小数桁は数値 JSON も `Decimal` 量子化で検証。セッション行は `FOR UPDATE` で完了競合を防止。
+- **入力更新**: `PATCH …/entries/:id` は `ifUnmodifiedSince`（entry `updatedAt` の ISO）必須。不一致・同時更新は **409**（再読込案内）。
+- **旧形式セッション**: 全数で `expectedEntryCount < plannedQuantity` のとき、API は `requiredEntryCount` と `entryCountBlockedReason` を返す。指示数が 2,000 超の不整合は **保存・完了不可**（再作成導線）。2,000 以下の不整合は初回 mutation で `expectedEntryCount` を `plannedQuantity` に修復。
+- **キオスク入力 UI**: ドラフトは選択中の入力件のみ生成。入力件ボタンは 48 件ずつページング。
+- **一覧装飾**: 抜取数 > 指示数のテンプレ、または **全数で指示数 > 2,000** の行は `hasSelfInspectionDrawing: false`（一覧全体は落とさない）。**既存セッション**はテンプレ退役後も `scheduleRowId` で再開導線を出す。
+- **詳細 API**: `GET …/sessions/:id?entryIndex=N` で `focusedEntry` のみ測定値を返す。一覧 `entries` はメタデータのみ。保存後は React Query を該当 entry だけ `setQueryData` 更新。
+- **キオスク一覧**: `GET /kiosk/production-schedule?selfInspectionEligibleOnly=true` で開始可能行のみをサーバー側抽出（生産日程をチャンク走査、`page` / `pageSize` / `hasMore`）。
+- 順位ボードの `selfInspectionEntryPath` は `/start?...` を返し、UI 側で resolve-or-create して **既存セッションへ再入場**できる。
+- 検査図面一覧 API `GET /inspection-drawing/templates` も `selfInspectionMode` / `selfInspectionSampleSize` を返す。
+
+### 代表ファイル
+
+| 領域 | パス |
+|------|------|
+| Prisma | `apps/api/prisma/schema.prisma` |
+| Migration | `apps/api/prisma/migrations/20260601090000_add_self_inspection_mvp/migration.sql` |
+| Service | `apps/api/src/services/part-measurement/self-inspection.service.ts` |
+| API route | `apps/api/src/routes/part-measurement/index.ts` |
+| Admin UI | `apps/web/src/pages/admin/PartMeasurementTemplatesPage.tsx` |
+| Kiosk 一覧 | `apps/web/src/pages/kiosk/KioskSelfInspectionPage.tsx` |
+| Kiosk 入力 | `apps/web/src/pages/kiosk/KioskSelfInspectionSessionPage.tsx` |
+| Leaderboard row | `apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx` |
+
+### 知見
+
+- **図面 URL 直渡し禁止**: 自主検査入力画面でも `<img src="/api/storage/...">` を直に使うと kiosk 認可で 401 になりうる。既存検査図面と同じく **Blob 読込フック**へ寄せる。
+- **セッション突合せは `scheduleRowId` 優先**: 一覧画面で `productNo/resourceCd/fhincd` だけだと同一品番の別 order が混ざる余地がある。`scheduleRowId` がある場合は最優先キーにする。
+- **テスト DB 手順**: ローカルでは `start-postgres -> prisma migrate deploy -> prisma generate -> test -> stop-postgres` の順が安全。起動待ち前に migrate/test を並列で走らせると `P1001` になりうる。
+
+### 既知制約
+
+- 一覧 API/入力 UI は **図面付き `THREE_KEY` テンプレ**前提。`FHINMEI_ONLY` / `FHINCD_RESOURCE` は自主検査対象にしていない。
+- 入力画面は現時点で **社員タグ/NFC** をまだ統合していない。
+- ローカル API 統合テストは、本件追加分の契約テストは通る想定だが、既存 `part-measurement.integration.test.ts` 全体は DB 初期条件依存のため、既存スクリプト順守が必要。
+
 ### 代表 Web/API ファイル（一覧ハブ `ef78f4dd`）
 
 | 領域 | パス |

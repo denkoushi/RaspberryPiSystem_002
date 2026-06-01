@@ -124,6 +124,7 @@ model Employee {
   partMeasurementSheetsWorker   PartMeasurementSheet[] @relation("PartMeasurementSheetWorker")
   partMeasurementSheetsCreated  PartMeasurementSheet[] @relation("PartMeasurementSheetCreatedBy")
   partMeasurementSheetsFinalized PartMeasurementSheet[] @relation("PartMeasurementSheetFinalizedBy")
+  selfInspectionLotEntries SelfInspectionLotEntry[]
 }
 
 model Item {
@@ -322,6 +323,7 @@ model ClientDevice {
   transactions            Transaction[]
   partMeasurementSheets   PartMeasurementSheet[] @relation("PartMeasurementSheetOwningDevice")
   partMeasurementEditLocks PartMeasurementSheet[] @relation("PartMeasurementSheetEditLock")
+  selfInspectionSessions  SelfInspectionSession[]
   mobilePlacementEvents   MobilePlacementEvent[]
   orderPlacementEvents    OrderPlacementEvent[]
   mobilePlacementShelvesCreated MobilePlacementShelf[]
@@ -1858,6 +1860,11 @@ enum PartMeasurementSheetStatus {
   INVALIDATED
 }
 
+enum SelfInspectionMode {
+  FULL
+  SAMPLE
+}
+
 /// 同一測定対象（製造order・工程・資源CD）に複数の記録表をぶら下げる親集約。
 model PartMeasurementSession {
   id           String                      @id @default(uuid())
@@ -1901,11 +1908,14 @@ model PartMeasurementTemplate {
   name               String
   version            Int                          @default(1)
   isActive           Boolean                      @default(true)
+  selfInspectionMode SelfInspectionMode           @default(FULL)
+  selfInspectionSampleSize Int?
   visualTemplateId   String?
   createdAt          DateTime                     @default(now())
   updatedAt          DateTime                     @updatedAt
   items              PartMeasurementTemplateItem[]
   sheets             PartMeasurementSheet[]
+  selfInspectionSessions SelfInspectionSession[]
   visualTemplate     PartMeasurementVisualTemplate? @relation(fields: [visualTemplateId], references: [id], onDelete: SetNull)
 
   @@unique([fhincd, processGroup, resourceCd, version], map: "PartMeasurementTemplate_unique_fhincd_group_resource_version")
@@ -1941,6 +1951,7 @@ model PartMeasurementTemplateItem {
   updatedAt        DateTime                  @updatedAt
   template         PartMeasurementTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
   results          PartMeasurementResult[]
+  selfInspectionMeasurementValues SelfInspectionMeasurementValue[]
 
   @@index([templateId, sortOrder])
 }
@@ -2008,4 +2019,63 @@ model PartMeasurementResult {
 
   @@unique([sheetId, pieceIndex, templateItemId], map: "PartMeasurementResult_unique_cell")
   @@index([sheetId], map: "PartMeasurementResult_idx_sheet")
+}
+
+model SelfInspectionSession {
+  id                 String                      @id @default(uuid())
+  sessionBusinessKey String                      @unique
+  templateId         String
+  productNo          String
+  processGroup       PartMeasurementProcessGroup
+  resourceCd         String
+  scheduleRowId      String?
+  fseiban            String?
+  fhincd             String
+  fhinmei            String
+  machineName        String?
+  plannedQuantity    Int
+  expectedEntryCount Int
+  clientDeviceId     String?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  template           PartMeasurementTemplate     @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  clientDevice       ClientDevice?               @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  entries            SelfInspectionLotEntry[]
+
+  @@index([productNo, processGroup, resourceCd], map: "SelfInspectionSession_idx_business_lookup")
+  @@index([scheduleRowId], map: "SelfInspectionSession_idx_schedule_row")
+  @@index([templateId], map: "SelfInspectionSession_idx_template")
+  @@index([completedAt], map: "SelfInspectionSession_idx_completed_at")
+}
+
+model SelfInspectionLotEntry {
+  id                           String                         @id @default(uuid())
+  sessionId                    String
+  entryIndex                   Int
+  createdByEmployeeId          String?
+  createdByEmployeeNameSnapshot String?
+  createdAt                    DateTime                       @default(now())
+  updatedAt                    DateTime                       @updatedAt
+  session                      SelfInspectionSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdByEmployee            Employee?                      @relation(fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  values                       SelfInspectionMeasurementValue[]
+
+  @@unique([sessionId, entryIndex], map: "SelfInspectionLotEntry_unique_session_entry")
+  @@index([sessionId], map: "SelfInspectionLotEntry_idx_session")
+}
+
+model SelfInspectionMeasurementValue {
+  id             String                      @id @default(uuid())
+  entryId         String
+  templateItemId String
+  value          Decimal?                    @db.Decimal(18, 6)
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+  entry          SelfInspectionLotEntry      @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  templateItem   PartMeasurementTemplateItem @relation(fields: [templateItemId], references: [id], onDelete: Restrict)
+
+  @@unique([entryId, templateItemId], map: "SelfInspectionMeasurementValue_unique_entry_item")
+  @@index([entryId], map: "SelfInspectionMeasurementValue_idx_entry")
 }

@@ -3,6 +3,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
 import { PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD } from '../../services/part-measurement/part-measurement-constants.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
+import { SelfInspectionService } from '../../services/part-measurement/self-inspection.service.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -10,6 +12,9 @@ process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
 async function cleanPartMeasurementTables() {
+  await prisma.selfInspectionMeasurementValue.deleteMany({});
+  await prisma.selfInspectionLotEntry.deleteMany({});
+  await prisma.selfInspectionSession.deleteMany({});
   await prisma.partMeasurementResult.deleteMany({});
   await prisma.partMeasurementSheet.deleteMany({});
   await prisma.partMeasurementSession.deleteMany({});
@@ -22,6 +27,63 @@ const MIN_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64'
 );
+
+const PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_SOURCE_DASHBOARD_ID = '8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31';
+
+async function seedProductionScheduleRow(input: {
+  productNo: string;
+  fseiban: string;
+  fhincd: string;
+  resourceCd: string;
+  plannedQuantity?: number;
+}): Promise<string> {
+  await prisma.csvDashboard.upsert({
+    where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+    update: {},
+    create: {
+      id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      name: 'ProductionSchedule_Test',
+      columnDefinitions: [],
+      templateType: 'CARD_GRID',
+      templateConfig: {},
+      ingestMode: 'DEDUP',
+      dedupKeyColumns: ['ProductNo'],
+      dateColumnName: 'registeredAt',
+      enabled: true
+    }
+  });
+  const row = await prisma.csvDashboardRow.create({
+    data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      occurredAt: new Date(),
+      dataHash: `self-inspection-${Date.now()}-${Math.random()}`,
+      rowData: {
+        ProductNo: input.productNo,
+        FSEIBAN: input.fseiban,
+        FHINCD: input.fhincd,
+        FSIGENCD: input.resourceCd,
+        FHINMEI: '自主検査品'
+      }
+    }
+  });
+  const plannedQuantity = input.plannedQuantity ?? 5;
+  const supplementProductNo = input.productNo.slice(0, 20);
+  const supplementResourceCd = input.resourceCd.slice(0, 20);
+  await prisma.productionScheduleOrderSupplement.upsert({
+    where: { csvDashboardRowId: row.id },
+    update: { plannedQuantity },
+    create: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      csvDashboardRowId: row.id,
+      sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_SOURCE_DASHBOARD_ID,
+      productNo: supplementProductNo,
+      resourceCd: supplementResourceCd,
+      processOrder: '10',
+      plannedQuantity
+    }
+  });
+  return row.id;
+}
 
 function buildMultipartPng(name: string, png: Buffer): { body: Buffer; contentType: string } {
   const boundary = `----testPmVt${Date.now()}`;
@@ -1513,6 +1575,526 @@ describe('part-measurement templates API', () => {
       }
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  it('includes self-inspection settings in inspection-drawing template summaries', async () => {
+    const { body, contentType } = buildMultipartPng('自主検査図面', MIN_PNG);
+    const visualRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(visualRes.statusCode).toBe(200);
+    const visualTemplateId = visualRes.json().visualTemplate.id as string;
+
+    const fhincd = `SELF-TPL-${Date.now()}`;
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SELF-TPL',
+        name: '自主検査テンプレ',
+        visualTemplateId,
+        selfInspectionMode: 'sample',
+        selfInspectionSampleSize: 3,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'P1',
+            measurementLabel: '寸法1',
+            displayMarker: '1',
+            markerXRatio: 0.2,
+            markerYRatio: 0.4,
+            nominalValue: 10,
+            lowerLimit: 9.8,
+            upperLimit: 10.2
+          }
+        ]
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/templates?fhincd=${encodeURIComponent(fhincd)}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(listRes.statusCode).toBe(200);
+    const template = (listRes.json().templates as Array<Record<string, unknown>>).find((row) => row.fhincd === fhincd);
+    expect(template).toBeTruthy();
+    expect(template?.selfInspectionMode).toBe('sample');
+    expect(template?.selfInspectionSampleSize).toBe(3);
+  });
+
+  it('resolves, saves, and completes a self-inspection session', async () => {
+    const { body, contentType } = buildMultipartPng('自主検査図面', MIN_PNG);
+    const visualRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(visualRes.statusCode).toBe(200);
+    const visualTemplateId = visualRes.json().visualTemplate.id as string;
+
+    const fhincd = `SELF-${Date.now()}`;
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SELF',
+        name: '自主検査テンプレ',
+        visualTemplateId,
+        selfInspectionMode: 'sample',
+        selfInspectionSampleSize: 2,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'P1',
+            measurementLabel: '寸法1',
+            displayMarker: '1',
+            markerXRatio: 0.2,
+            markerYRatio: 0.4,
+            nominalValue: 10,
+            lowerLimit: 9.8,
+            upperLimit: 10.2,
+            allowNegative: false,
+            decimalPlaces: 2
+          }
+        ]
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+    const templateId = createRes.json().template.id as string;
+    const templateItemId = createRes.json().template.items[0].id as string;
+
+    const productNo = `PN-SELF-${Date.now()}`;
+    const fseiban = `FS-SELF-${Date.now()}`;
+    const scheduleRowId = await seedProductionScheduleRow({
+      productNo,
+      fseiban,
+      fhincd,
+      resourceCd: 'RES-SELF'
+    });
+
+    const missingScheduleRowRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/self-inspection/sessions/resolve-or-create',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        templateId,
+        productNo,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SELF',
+        plannedQuantity: 5,
+        fseiban,
+        fhincd,
+        fhinmei: '自主検査品'
+      }
+    });
+    expect(missingScheduleRowRes.statusCode).toBe(400);
+
+    const missingFseibanRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/self-inspection/sessions/resolve-or-create',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        templateId,
+        productNo,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SELF',
+        plannedQuantity: 5,
+        scheduleRowId,
+        fhincd,
+        fhinmei: '自主検査品'
+      }
+    });
+    expect(missingFseibanRes.statusCode).toBe(400);
+
+    const resolveRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/self-inspection/sessions/resolve-or-create',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        templateId,
+        productNo,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SELF',
+        plannedQuantity: 5,
+        scheduleRowId,
+        fseiban,
+        fhincd,
+        fhinmei: '自主検査品'
+      }
+    });
+    expect(resolveRes.statusCode).toBe(200);
+    expect(resolveRes.json().session.selfInspectionMode).toBe('sample');
+    expect(resolveRes.json().session.expectedEntryCount).toBe(2);
+    const sessionId = resolveRes.json().session.id as string;
+
+    await prisma.productionScheduleOrderSupplement.deleteMany({
+      where: { csvDashboardRowId: scheduleRowId }
+    });
+    const decorationsAfterSupplementRemoved = await new SelfInspectionService().buildLeaderboardDecorations(
+      [
+        {
+          id: scheduleRowId,
+          rowData: {
+            ProductNo: productNo,
+            FSEIBAN: fseiban,
+            FHINCD: fhincd,
+            FSIGENCD: 'RES-SELF',
+            FHINMEI: '自主検査品'
+          },
+          plannedQuantity: null
+        }
+      ],
+      {}
+    );
+    expect(decorationsAfterSupplementRemoved[0]?.hasSelfInspectionDrawing).toBe(true);
+    expect(decorationsAfterSupplementRemoved[0]?.selfInspectionEntryPath).toBe(
+      `/kiosk/part-measurement/self-inspection/sessions/${sessionId}`
+    );
+
+    const supplementProductNo = productNo.slice(0, 20);
+    const supplementResourceCd = 'RES-SELF'.slice(0, 20);
+    await prisma.productionScheduleOrderSupplement.upsert({
+      where: { csvDashboardRowId: scheduleRowId },
+      update: { plannedQuantity: 5 },
+      create: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId: scheduleRowId,
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_SOURCE_DASHBOARD_ID,
+        productNo: supplementProductNo,
+        resourceCd: supplementResourceCd,
+        processOrder: '10',
+        plannedQuantity: 5
+      }
+    });
+
+    const createEntryRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        entryIndex: 0,
+        values: [{ templateItemId, value: '10.01' }]
+      }
+    });
+    expect(createEntryRes.statusCode).toBe(200);
+    const firstEntryId = createEntryRes.json().entry.id as string;
+    const auditEmployee = await createTestEmployee();
+    const auditedUpdateRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${firstEntryId}`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        ifUnmodifiedSince: createEntryRes.json().entry.updatedAt as string,
+        employeeTagUid: auditEmployee.nfcTagUid,
+        values: [{ templateItemId, value: '10.01' }]
+      }
+    });
+    expect(auditedUpdateRes.statusCode).toBe(200);
+    expect(auditedUpdateRes.json().entry.createdByEmployeeId).toBe(auditEmployee.id);
+
+    const detailWithValuesRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}?entryIndex=0`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(detailWithValuesRes.statusCode).toBe(200);
+    expect(detailWithValuesRes.json().session.focusedEntry?.entryIndex).toBe(0);
+    expect(detailWithValuesRes.json().session.focusedEntry?.values).toHaveLength(1);
+    expect(detailWithValuesRes.json().session.entries[0]?.values).toEqual([]);
+
+    const reviseTemplateRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${templateId}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: '自主検査テンプレ改版',
+        visualTemplateId,
+        selfInspectionMode: 'sample',
+        selfInspectionSampleSize: 2,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'P1',
+            measurementLabel: '寸法1改',
+            displayMarker: '1',
+            markerXRatio: 0.2,
+            markerYRatio: 0.4,
+            nominalValue: 10,
+            lowerLimit: 9.8,
+            upperLimit: 10.2,
+            allowNegative: false,
+            decimalPlaces: 2
+          }
+        ]
+      }
+    });
+    expect(reviseTemplateRes.statusCode).toBe(200);
+    const revisedTemplateId = reviseTemplateRes.json().template.id as string;
+
+    const resolveAfterReviseRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/self-inspection/sessions/resolve-or-create',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        templateId: revisedTemplateId,
+        productNo,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SELF',
+        plannedQuantity: 5,
+        scheduleRowId,
+        fseiban,
+        fhincd,
+        fhinmei: '自主検査品'
+      }
+    });
+    expect(resolveAfterReviseRes.statusCode).toBe(200);
+    expect(resolveAfterReviseRes.json().session.id).toBe(sessionId);
+    expect(resolveAfterReviseRes.json().session.templateId).toBe(templateId);
+
+    const idempotentRetryRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        entryIndex: 0,
+        values: [{ templateItemId, value: '10.01' }]
+      }
+    });
+    expect(idempotentRetryRes.statusCode).toBe(200);
+    expect(idempotentRetryRes.json().entry.entryIndex).toBe(0);
+
+    const negativeValueRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        entryIndex: 1,
+        values: [{ templateItemId, value: '-1' }]
+      }
+    });
+    expect(negativeValueRes.statusCode).toBe(400);
+
+    const outOfToleranceRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        entryIndex: 1,
+        values: [{ templateItemId, value: '10.5' }]
+      }
+    });
+    expect(outOfToleranceRes.statusCode).toBe(400);
+
+    const numericPrecisionRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        entryIndex: 1,
+        values: [{ templateItemId, value: 10.001 }]
+      }
+    });
+    expect(numericPrecisionRes.statusCode).toBe(400);
+
+    const listRes1 = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/self-inspection/sessions?status=in_progress&productNo=${encodeURIComponent(productNo)}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(listRes1.statusCode).toBe(200);
+    expect((listRes1.json().sessions as Array<Record<string, unknown>>).some((row) => row.id === sessionId)).toBe(true);
+
+    const secondEntryRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        entryIndex: 1,
+        values: [{ templateItemId, value: '9.99' }]
+      }
+    });
+    expect(secondEntryRes.statusCode).toBe(200);
+
+    const duplicateIndexRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        entryIndex: 0,
+        values: [{ templateItemId, value: '10.02' }]
+      }
+    });
+    expect(duplicateIndexRes.statusCode).toBe(409);
+
+    const beforeCompleteRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(beforeCompleteRes.statusCode).toBe(200);
+    expect(beforeCompleteRes.json().session.status).toBe('in_progress');
+    expect(beforeCompleteRes.json().session.completedAt).toBeNull();
+
+    const completeRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/complete`,
+      headers: createAuthHeader(adminToken),
+      payload: {}
+    });
+    expect(completeRes.statusCode).toBe(200);
+    expect(completeRes.json().session.status).toBe('completed');
+    expect(completeRes.json().session.completedAt).toBeTruthy();
+    const completedAtAfterFirst = completeRes.json().session.completedAt as string;
+
+    const completeAgainRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/complete`,
+      headers: createAuthHeader(adminToken),
+      payload: {}
+    });
+    expect(completeAgainRes.statusCode).toBe(200);
+    expect(completeAgainRes.json().session.completedAt).toBe(completedAtAfterFirst);
+
+    const sessionAfterCompleteRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(sessionAfterCompleteRes.statusCode).toBe(200);
+    expect(sessionAfterCompleteRes.json().session.id).toBe(sessionId);
+    expect(sessionAfterCompleteRes.json().session.expectedEntryCount).toBe(2);
+    expect(sessionAfterCompleteRes.json().session.plannedQuantity).toBe(5);
+    expect(sessionAfterCompleteRes.json().session.completedAt).toBeTruthy();
+
+    const detailRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(detailRes.statusCode).toBe(200);
+    expect(detailRes.json().session.entries).toHaveLength(2);
+
+    const updateAfterCompleteRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${detailRes.json().session.entries[0].id}`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        ifUnmodifiedSince: detailRes.json().session.entries[0].updatedAt as string,
+        values: [{ templateItemId, value: '10.00' }]
+      }
+    });
+    expect(updateAfterCompleteRes.statusCode).toBe(409);
+  });
+
+  it('rejects self-inspection resolve when sample size exceeds planned quantity', async () => {
+    const { body, contentType } = buildMultipartPng('自主検査図面', MIN_PNG);
+    const visualRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(visualRes.statusCode).toBe(200);
+    const visualTemplateId = visualRes.json().visualTemplate.id as string;
+
+    const fhincd = `SELF-SAMPLE-${Date.now()}`;
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SAMPLE',
+        name: '抜取過大テンプレ',
+        visualTemplateId,
+        selfInspectionMode: 'sample',
+        selfInspectionSampleSize: 10,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'P1',
+            measurementLabel: '寸法1',
+            displayMarker: '1',
+            markerXRatio: 0.2,
+            markerYRatio: 0.4,
+            nominalValue: 10,
+            lowerLimit: 9.8,
+            upperLimit: 10.2
+          }
+        ]
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+    const templateId = createRes.json().template.id as string;
+
+    const productNo = `PN-SAMPLE-${Date.now()}`;
+    const fseiban = `FS-SAMPLE-${Date.now()}`;
+    const scheduleRowId = await seedProductionScheduleRow({
+      productNo,
+      fseiban,
+      fhincd,
+      resourceCd: 'RES-SAMPLE'
+    });
+
+    const resolveRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/self-inspection/sessions/resolve-or-create',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        templateId,
+        productNo,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SAMPLE',
+        plannedQuantity: 5,
+        scheduleRowId,
+        fseiban,
+        fhincd,
+        fhinmei: '自主検査品'
+      }
+    });
+    expect(resolveRes.statusCode).toBe(400);
+
+    const scheduleRowId2 = await seedProductionScheduleRow({
+      productNo: `PN-BOARD-${Date.now()}`,
+      fseiban: `FS-BOARD-${Date.now()}`,
+      fhincd,
+      resourceCd: 'RES-SAMPLE'
+    });
+    const decorations = await new SelfInspectionService().buildLeaderboardDecorations(
+      [
+        {
+          id: scheduleRowId2,
+          rowData: {
+            ProductNo: `PN-BOARD`,
+            FHINCD: fhincd,
+            FHINMEI: '自主検査品',
+            FSIGENCD: 'RES-SAMPLE',
+            FSEIBAN: 'FS-BOARD'
+          },
+          plannedQuantity: 5
+        }
+      ],
+      {}
+    );
+    expect(decorations[0]?.hasSelfInspectionDrawing).toBe(false);
+    expect(decorations[0]?.selfInspectionEntryPath).toBeNull();
   });
 
   it('clone-for-schedule-key creates template for target resource so sheets need no allowAlternateResourceTemplate', async () => {

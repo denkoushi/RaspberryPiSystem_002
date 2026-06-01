@@ -51,6 +51,8 @@ import { KioskPartMeasurementTemplatePickPage } from './pages/kiosk/KioskPartMea
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskRiggingAnalyticsPage } from './pages/kiosk/KioskRiggingAnalyticsPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
+import { KioskSelfInspectionPage } from './pages/kiosk/KioskSelfInspectionPage';
+import { KioskSelfInspectionSessionPage } from './pages/kiosk/KioskSelfInspectionSessionPage';
 import { MobilePlacementPage } from './pages/kiosk/MobilePlacementPage';
 import { MobilePlacementPartSearchPage } from './pages/kiosk/MobilePlacementPartSearchPage';
 import { ProductionScheduleDueManagementPage } from './pages/kiosk/ProductionScheduleDueManagementPage';
@@ -115,6 +117,12 @@ function App() {
           <Route path="/kiosk/pallet-visualization" element={<KioskPalletVisualizationPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
           <Route path="/kiosk/part-measurement" element={<KioskPartMeasurementPage />} />
+          <Route path="/kiosk/part-measurement/self-inspection" element={<KioskSelfInspectionPage />} />
+          <Route path="/kiosk/part-measurement/self-inspection/start" element={<KioskSelfInspectionSessionPage />} />
+          <Route
+            path="/kiosk/part-measurement/self-inspection/sessions/:sessionId"
+            element={<KioskSelfInspectionSessionPage />}
+          />
           <Route path="/kiosk/part-measurement/edit/:sheetId" element={<KioskPartMeasurementEditPage />} />
           <Route path="/kiosk/part-measurement/template/pick" element={<KioskPartMeasurementTemplatePickPage />} />
           <Route path="/kiosk/part-measurement/template/new" element={<KioskPartMeasurementTemplatePage />} />

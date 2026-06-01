@@ -9,6 +9,7 @@ import {
   isKioskPartMeasurementHubPath,
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH
 } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
+import { isKioskSelfInspectionPath } from '../../features/part-measurement/selfInspectionRoutes';
 import { resolveClientKeyForPower } from '../../lib/client-key';
 import { Row } from '../layout/Row';
 
@@ -97,6 +98,7 @@ export function KioskHeader({
   const isDocumentsActive = pathname.startsWith('/kiosk/documents');
   const isPartMeasurementActive = isKioskPartMeasurementHubPath(pathname);
   const isInspectionDrawingActive = isKioskInspectionDrawingPath(pathname);
+  const isSelfInspectionActive = isKioskSelfInspectionPath(pathname);
   const isRiggingAnalyticsActive = pathname.startsWith('/kiosk/rigging-analytics');
   const formatKey = (value: string) => {
     if (!value) return '未設定';
@@ -220,6 +222,12 @@ export function KioskHeader({
         <nav className="flex items-center gap-1 min-w-0 flex-nowrap overflow-x-auto whitespace-nowrap">
           <NavLink to="/kiosk" className={() => navClass(isBorrowActive, 'bg-emerald-500 text-white')}>
             持出
+          </NavLink>
+          <NavLink
+            to="/kiosk/part-measurement/self-inspection"
+            className={() => navClass(isSelfInspectionActive, 'bg-amber-500 text-slate-950')}
+          >
+            自主検査
           </NavLink>
           <NavLink
             to="/kiosk/instruments/borrow"

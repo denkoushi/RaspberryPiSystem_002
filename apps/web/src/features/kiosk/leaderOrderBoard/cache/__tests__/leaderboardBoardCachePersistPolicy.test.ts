@@ -43,6 +43,44 @@ describe('leaderboardBoardCachePersistPolicy', () => {
     ).toBe(false);
   });
 
+  it('fingerprintLeaderboardBoardDecorations は自主検査状態の変化で変わる', () => {
+    const base = createEmptyAccumulatedLeaderboardDecorations();
+    const rowId = 'row-self-inspection';
+    const withoutInspection = {
+      ...base,
+      rowDecorationsById: new Map([
+        [
+          rowId,
+          {
+            resolvedMachineName: null,
+            customerName: null,
+            hasSelfInspectionDrawing: false,
+            selfInspectionStatus: null,
+            selfInspectionEntryPath: null
+          }
+        ]
+      ])
+    };
+    const withInspection = {
+      ...base,
+      rowDecorationsById: new Map([
+        [
+          rowId,
+          {
+            resolvedMachineName: null,
+            customerName: null,
+            hasSelfInspectionDrawing: true,
+            selfInspectionStatus: 'in_progress' as const,
+            selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/start?x=1'
+          }
+        ]
+      ])
+    };
+    expect(fingerprintLeaderboardBoardDecorations(withoutInspection)).not.toBe(
+      fingerprintLeaderboardBoardDecorations(withInspection)
+    );
+  });
+
   it('fingerprintLeaderboardBoardDecorations はチップ追加で変わる', () => {
     const empty = createEmptyAccumulatedLeaderboardDecorations();
     const withChips = {

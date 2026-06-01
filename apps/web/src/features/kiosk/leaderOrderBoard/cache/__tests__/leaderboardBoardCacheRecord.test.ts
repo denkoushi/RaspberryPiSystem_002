@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createEmptyAccumulatedLeaderboardDecorations } from '../../mergeLeaderboardBoardWithDecorations';
+import { LEADERBOARD_BOARD_CACHE_SCHEMA_VERSION } from '../leaderboardBoardCacheConstants';
 import {
   buildLeaderboardBoardCacheRecord,
   fingerprintLeaderboardBoardRowIds,
@@ -62,13 +63,55 @@ describe('leaderboardBoardCacheRecord', () => {
 
   it('Map 装飾の serialize/deserialize 往復', () => {
     const acc = createEmptyAccumulatedLeaderboardDecorations();
-    acc.rowDecorationsById.set('r1', { resolvedMachineName: 'M', customerName: 'C' });
+    acc.rowDecorationsById.set('r1', {
+      resolvedMachineName: 'M',
+      customerName: 'C',
+      hasSelfInspectionDrawing: true,
+      selfInspectionStatus: 'in_progress',
+      selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/sessions/s1'
+    });
     const ser = serializeAccumulatedDecorations(acc);
     const back = deserializeAccumulatedDecorations(ser);
     expect(back.rowDecorationsById.get('r1')).toEqual({
       resolvedMachineName: 'M',
-      customerName: 'C'
+      customerName: 'C',
+      hasSelfInspectionDrawing: true,
+      selfInspectionStatus: 'in_progress',
+      selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/sessions/s1'
     });
+  });
+
+  it('deserialize は自主検査フィールド欠落を既定値で補完する', () => {
+    const back = deserializeAccumulatedDecorations({
+      rowDecorationsById: {
+        r1: { resolvedMachineName: 'M', customerName: null }
+      },
+      leaderboardFooterChipsByPartKey: {}
+    });
+    expect(back.rowDecorationsById.get('r1')).toEqual({
+      resolvedMachineName: 'M',
+      customerName: null,
+      hasSelfInspectionDrawing: false,
+      selfInspectionStatus: null,
+      selfInspectionEntryPath: null
+    });
+  });
+
+  it('parse は旧 schemaVersion を拒否する', () => {
+    const b = board({
+      total: 1,
+      rows: [{ id: 'x' }] as ProductionScheduleLeaderboardBoardResponse['rows'],
+      resources: [{ resourceCd: '1', hasMore: false, total: 1, pageSize: 80 }]
+    });
+    const rec = buildLeaderboardBoardCacheRecord({
+      cacheKey: 'k',
+      siteKey: 's',
+      paramsKey: 'p',
+      board: b,
+      decorations: createEmptyAccumulatedLeaderboardDecorations()
+    })!;
+    expect(parseLeaderboardBoardCacheRecord({ ...rec, schemaVersion: 1 })).toBeNull();
+    expect(rec.schemaVersion).toBe(LEADERBOARD_BOARD_CACHE_SCHEMA_VERSION);
   });
 
   it('parse は fingerprint 不一致を拒否', () => {

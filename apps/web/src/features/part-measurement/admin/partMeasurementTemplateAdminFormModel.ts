@@ -1,7 +1,8 @@
 import type {
   PartMeasurementProcessGroup,
   PartMeasurementTemplateDto,
-  PartMeasurementTemplateScope
+  PartMeasurementTemplateScope,
+  SelfInspectionMode
 } from '../types';
 
 /** 管理画面テンプレフォームの1行（ページの state と同一形状） */
@@ -23,6 +24,8 @@ export type AdminTemplateFormFields = {
   processGroup: PartMeasurementProcessGroup;
   candidateFhinmei: string;
   name: string;
+  selfInspectionMode: SelfInspectionMode;
+  selfInspectionSampleSize: string;
   items: AdminTemplateFormItemRow[];
   visualChoice: 'none' | 'pick' | 'upload';
   pickedVisualId: string;
@@ -43,6 +46,8 @@ export function mapTemplateDtoToAdminFormFields(t: PartMeasurementTemplateDto): 
     processGroup,
     candidateFhinmei: t.candidateFhinmei ?? '',
     name: t.name,
+    selfInspectionMode: t.selfInspectionMode,
+    selfInspectionSampleSize: t.selfInspectionSampleSize != null ? String(t.selfInspectionSampleSize) : '',
     items: t.items.map((it, idx) => ({
       sortOrder: idx,
       datumSurface: it.datumSurface,

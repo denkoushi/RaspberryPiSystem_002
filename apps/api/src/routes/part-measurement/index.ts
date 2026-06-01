@@ -5,13 +5,14 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { prisma } from '../../lib/prisma.js';
-import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
+import { verifyProductionScheduleRowOrThrow } from '../../services/production-schedule/verify-production-schedule-row.js';
 import {
   PartMeasurementResolveService,
   PartMeasurementSheetService,
   PartMeasurementTemplateCandidateService,
   PartMeasurementTemplateService,
-  PartMeasurementVisualTemplateService
+  PartMeasurementVisualTemplateService,
+  SelfInspectionService
 } from '../../services/part-measurement/index.js';
 import { requireClientDevice, resolveDeviceScopeKey } from '../kiosk/shared.js';
 import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from '../../services/part-measurement/part-measurement-constants.js';
@@ -95,6 +96,7 @@ const templateItemSchema = z.object({
 });
 
 const templateScopeSchema = z.enum(['three_key', 'fhincd_resource', 'fhinmei_only']);
+const selfInspectionModeSchema = z.enum(['full', 'sample']);
 
 const createTemplateBodySchema = z
   .object({
@@ -105,7 +107,9 @@ const createTemplateBodySchema = z
     name: z.string().min(1).max(200),
     items: z.array(templateItemSchema).min(1).max(200),
     visualTemplateId: z.string().uuid().optional().nullable(),
-    candidateFhinmei: z.string().max(500).optional().nullable()
+    candidateFhinmei: z.string().max(500).optional().nullable(),
+    selfInspectionMode: selfInspectionModeSchema.optional().default('full'),
+    selfInspectionSampleSize: z.number().int().min(1).max(2000).optional().nullable()
   })
   .superRefine((val, ctx) => {
     if (val.templateScope === 'fhinmei_only') {
@@ -128,6 +132,13 @@ const createTemplateBodySchema = z
     if (r.length === 0) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: '資源CDが空です', path: ['resourceCd'] });
     }
+    if (val.selfInspectionMode === 'sample' && (val.selfInspectionSampleSize ?? null) == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '抜取検査では抜取数が必須です',
+        path: ['selfInspectionSampleSize']
+      });
+    }
   });
 
 /** 検査図面 MVP: 評価用テンプレ（本番 THREE_KEY 系譜とは別バケット） */
@@ -146,7 +157,9 @@ const reviseTemplateBodySchema = z
     name: z.string().min(1).max(200),
     items: z.array(templateItemSchema).min(1).max(200),
     visualTemplateId: z.string().uuid().optional().nullable(),
-    candidateFhinmei: z.string().max(500).optional().nullable()
+    candidateFhinmei: z.string().max(500).optional().nullable(),
+    selfInspectionMode: selfInspectionModeSchema.optional(),
+    selfInspectionSampleSize: z.number().int().min(1).max(2000).optional().nullable()
   })
   .superRefine((val, ctx) => {
     if (val.candidateFhinmei === undefined || val.candidateFhinmei === null) {
@@ -158,6 +171,13 @@ const reviseTemplateBodySchema = z
         code: z.ZodIssueCode.custom,
         message: 'FHINMEI 候補キーは 2 文字以上にしてください',
         path: ['candidateFhinmei']
+      });
+    }
+    if (val.selfInspectionMode === 'sample' && (val.selfInspectionSampleSize ?? null) == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '抜取検査では抜取数が必須です',
+        path: ['selfInspectionSampleSize']
       });
     }
   });
@@ -183,6 +203,68 @@ const listTemplateCandidatesQuerySchema = z.object({
   resourceCd: z.string().min(1).max(120),
   fhinmei: z.string().max(500).optional(),
   q: z.string().max(200).optional()
+});
+
+const selfInspectionSessionResolveBodySchema = z.object({
+  templateId: z.string().uuid(),
+  productNo: z.string().min(1).max(120),
+  processGroup: processGroupSchema,
+  resourceCd: z.string().min(1).max(120),
+  /** 互換用（無視）。実際の指示数は日程行の補助データから取得する */
+  plannedQuantity: z.number().int().min(1).optional(),
+  scheduleRowId: z.string().uuid(),
+  fseiban: z.string().min(1).max(120),
+  fhincd: z.string().min(1).max(120),
+  fhinmei: z.string().min(1).max(500),
+  machineName: z.string().max(500).optional().nullable()
+});
+
+const listSelfInspectionSessionsQuerySchema = z.object({
+  productNo: z.string().max(120).optional(),
+  resourceCd: z.string().max(120).optional(),
+  processGroup: processGroupSchema.optional(),
+  status: z.enum(['not_started', 'in_progress', 'completed']).optional()
+});
+
+const getSelfInspectionSessionQuerySchema = z.object({
+  entryIndex: z.coerce.number().int().min(0).optional()
+});
+
+const selfInspectionSessionIdParamsSchema = z.object({
+  id: z.string().uuid()
+});
+
+const selfInspectionEntryIdParamsSchema = z.object({
+  id: z.string().uuid(),
+  entryId: z.string().uuid()
+});
+
+const selfInspectionCreateEntryBodySchema = z.object({
+  entryIndex: z.number().int().min(0),
+  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  values: z
+    .array(
+      z.object({
+        templateItemId: z.string().uuid(),
+        value: z.union([z.string(), z.number(), z.null()])
+      })
+    )
+    .min(1)
+    .max(200)
+});
+
+const selfInspectionUpdateEntryBodySchema = z.object({
+  ifUnmodifiedSince: z.string().min(1).max(100),
+  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  values: z
+    .array(
+      z.object({
+        templateItemId: z.string().uuid(),
+        value: z.union([z.string(), z.number(), z.null()])
+      })
+    )
+    .min(1)
+    .max(200)
 });
 
 function decimalToString(value: unknown): string | null {
@@ -270,6 +352,8 @@ function serializeTemplate(
     name: string;
     version: number;
     isActive: boolean;
+    selfInspectionMode?: string;
+    selfInspectionSampleSize?: number | null;
     visualTemplateId?: string | null;
     visualTemplate?: Parameters<typeof serializeVisualTemplate>[0] | null;
     items?: Array<Parameters<typeof serializeTemplateItem>[0]>;
@@ -285,6 +369,8 @@ function serializeTemplate(
     name: t.name,
     version: t.version,
     isActive: t.isActive,
+    selfInspectionMode: t.selfInspectionMode === 'SAMPLE' ? 'sample' : 'full',
+    selfInspectionSampleSize: t.selfInspectionSampleSize ?? null,
     visualTemplateId: t.visualTemplateId ?? null,
     visualTemplate: t.visualTemplate ? serializeVisualTemplate(t.visualTemplate) : null,
     items: (t.items ?? []).map(serializeTemplateItem)
@@ -410,20 +496,6 @@ async function tryGetClientDeviceId(headers: FastifyRequest['headers']): Promise
   }
 }
 
-async function verifyScheduleRowOrThrow(scheduleRowId: string, expected: { productNo: string; fseiban: string }) {
-  const row = await prisma.csvDashboardRow.findFirst({
-    where: { id: scheduleRowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }
-  });
-  if (!row) {
-    throw new ApiError(400, '日程行が見つかりません');
-  }
-  const data = row.rowData as Record<string, unknown>;
-  const pn = typeof data.ProductNo === 'string' ? data.ProductNo.trim() : '';
-  const fs = typeof data.FSEIBAN === 'string' ? data.FSEIBAN.trim() : '';
-  if (pn !== expected.productNo.trim() || fs !== expected.fseiban.trim()) {
-    throw new ApiError(400, '日程行が製造order番号・製番と一致しません');
-  }
-}
 
 export async function registerPartMeasurementRoutes(app: FastifyInstance): Promise<void> {
   const isAuthOnlyError = (error: unknown): boolean => {
@@ -496,6 +568,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   const resolveService = new PartMeasurementResolveService();
   const sheetService = new PartMeasurementSheetService();
   const templateService = new PartMeasurementTemplateService();
+  const selfInspectionService = new SelfInspectionService();
   const templateCandidateService = new PartMeasurementTemplateCandidateService();
   const visualTemplateService = new PartMeasurementVisualTemplateService();
 
@@ -646,7 +719,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     async (request) => {
       const body = createSheetBodySchema.parse(request.body);
       if (body.scheduleRowId) {
-        await verifyScheduleRowOrThrow(body.scheduleRowId, {
+        await verifyProductionScheduleRowOrThrow(body.scheduleRowId, {
           productNo: body.productNo,
           fseiban: body.fseiban
         });
@@ -679,7 +752,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     async (request) => {
       const body = findOrOpenSheetBodySchema.parse(request.body);
       if (body.scheduleRowId && body.fseiban) {
-        await verifyScheduleRowOrThrow(body.scheduleRowId, {
+        await verifyProductionScheduleRowOrThrow(body.scheduleRowId, {
           productNo: body.productNo,
           fseiban: body.fseiban
         });
@@ -936,6 +1009,82 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     return { templates: list.map((t) => serializeTemplate({ ...t, items: t.items })) };
   });
 
+  app.post('/part-measurement/self-inspection/sessions/resolve-or-create', { preHandler: allowWriteKiosk }, async (request) => {
+    const body = selfInspectionSessionResolveBodySchema.parse(request.body);
+    const clientDeviceId = await tryGetClientDeviceId(request.headers);
+    const session = await selfInspectionService.resolveOrCreateSession({
+      templateId: body.templateId,
+      productNo: body.productNo,
+      processGroup: body.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING',
+      resourceCd: body.resourceCd,
+      scheduleRowId: body.scheduleRowId,
+      fseiban: body.fseiban,
+      fhincd: body.fhincd,
+      fhinmei: body.fhinmei,
+      machineName: body.machineName,
+      clientDeviceId
+    });
+    return { session };
+  });
+
+  app.get('/part-measurement/self-inspection/sessions', { preHandler: allowView }, async (request) => {
+    const query = listSelfInspectionSessionsQuerySchema.parse(request.query);
+    const sessions = await selfInspectionService.listSessions({
+      productNo: query.productNo,
+      resourceCd: query.resourceCd,
+      processGroup: query.processGroup ? (query.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING') : undefined,
+      status: query.status
+    });
+    return { sessions };
+  });
+
+  app.get('/part-measurement/self-inspection/sessions/:id', { preHandler: allowView }, async (request) => {
+    const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+    const query = getSelfInspectionSessionQuerySchema.parse(request.query ?? {});
+    const session = await selfInspectionService.getSessionDetail(params.id, {
+      entryIndex: query.entryIndex
+    });
+    return {
+      session: {
+        ...session,
+        template: serializeTemplate({
+          ...session.template,
+          visualTemplateId: session.template.visualTemplateId,
+          visualTemplate: session.template.visualTemplate,
+          items: session.template.items
+        })
+      }
+    };
+  });
+
+  app.post('/part-measurement/self-inspection/sessions/:id/entries', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+    const body = selfInspectionCreateEntryBodySchema.parse(request.body);
+    const entry = await selfInspectionService.createEntry(params.id, {
+      entryIndex: body.entryIndex,
+      employeeTagUid: body.employeeTagUid,
+      values: body.values
+    });
+    return { entry };
+  });
+
+  app.patch('/part-measurement/self-inspection/sessions/:id/entries/:entryId', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = selfInspectionEntryIdParamsSchema.parse(request.params);
+    const body = selfInspectionUpdateEntryBodySchema.parse(request.body);
+    const entry = await selfInspectionService.updateEntry(params.id, params.entryId, {
+      ifUnmodifiedSince: body.ifUnmodifiedSince,
+      employeeTagUid: body.employeeTagUid,
+      values: body.values
+    });
+    return { entry };
+  });
+
+  app.post('/part-measurement/self-inspection/sessions/:id/complete', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+    const session = await selfInspectionService.completeSession(params.id);
+    return { session };
+  });
+
   app.post('/part-measurement/templates', { preHandler: allowWriteKiosk }, async (request) => {
     const body = createTemplateBodySchema.parse(request.body);
     const processGroup = body.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
@@ -953,7 +1102,9 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       items: body.items,
       visualTemplateId: body.visualTemplateId ?? null,
       templateScope,
-      candidateFhinmei: body.candidateFhinmei
+      candidateFhinmei: body.candidateFhinmei,
+      selfInspectionMode: body.selfInspectionMode === 'sample' ? 'SAMPLE' : 'FULL',
+      selfInspectionSampleSize: body.selfInspectionSampleSize ?? null
     });
     return {
       template: serializeTemplate({
@@ -984,6 +1135,8 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         name: template.name,
         version: template.version,
         isActive: template.isActive,
+        selfInspectionMode: template.selfInspectionMode === 'SAMPLE' ? 'sample' : 'full',
+        selfInspectionSampleSize: template.selfInspectionSampleSize ?? null,
         visualTemplateId: template.visualTemplateId ?? null,
         visualTemplate: template.visualTemplate ? serializeVisualTemplate(template.visualTemplate) : null,
         itemCount
@@ -1180,7 +1333,9 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       name: body.name,
       items: body.items,
       visualTemplateId: body.visualTemplateId,
-      candidateFhinmei: body.candidateFhinmei
+      candidateFhinmei: body.candidateFhinmei,
+      selfInspectionMode: body.selfInspectionMode ? (body.selfInspectionMode === 'sample' ? 'SAMPLE' : 'FULL') : undefined,
+      selfInspectionSampleSize: body.selfInspectionSampleSize
     });
     return {
       template: serializeTemplate({

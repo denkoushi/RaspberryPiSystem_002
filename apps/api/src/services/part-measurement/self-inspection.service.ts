@@ -1,0 +1,1201 @@
+import { Prisma } from '@prisma/client';
+import type { PartMeasurementProcessGroup, SelfInspectionMode } from '@prisma/client';
+
+import { ApiError } from '../../lib/errors.js';
+import { prisma } from '../../lib/prisma.js';
+import {
+  getResourceCategoryPolicy,
+  isProductionScheduleGrindingResourceCd
+} from '../production-schedule/policies/resource-category-policy.service.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
+import { resolveProductionSchedulePlannedQuantity } from '../production-schedule/self-inspection-schedule-eligibility.js';
+import { verifyProductionScheduleRowOrThrow } from '../production-schedule/verify-production-schedule-row.js';
+
+import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
+
+const LIST_SESSIONS_MAX = 200;
+
+/** 自主検査の必要件数・指示数の上限（API Zod `plannedQuantity` と整合） */
+export const SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT = 2000;
+
+type SelfInspectionTemplate = Prisma.PartMeasurementTemplateGetPayload<{
+  include: typeof partMeasurementTemplateFullInclude;
+}>;
+
+type SessionWithCounts = Prisma.SelfInspectionSessionGetPayload<{
+  include: {
+    template: {
+      include: typeof partMeasurementTemplateFullInclude;
+    };
+    _count: {
+      select: {
+        entries: true;
+      };
+    };
+  };
+}>;
+
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? '').trim();
+}
+
+function isBlankValue(value: string | number | null | undefined): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim().length === 0;
+  return false;
+}
+
+function countDecimalPlacesString(raw: string): number {
+  const s = raw.trim();
+  const i = s.indexOf('.');
+  if (i < 0) return 0;
+  return s.length - i - 1;
+}
+
+function assertDecimalPlacesWithinLimit(decimalValue: Prisma.Decimal, decimalPlaces: number): void {
+  const quantized = decimalValue.toDecimalPlaces(decimalPlaces, Prisma.Decimal.ROUND_HALF_UP);
+  if (!decimalValue.equals(quantized)) {
+    throw new ApiError(400, `小数桁数は最大${decimalPlaces}桁です`);
+  }
+}
+
+function isValueWithinTolerance(
+  item: { lowerLimit: Prisma.Decimal | null; upperLimit: Prisma.Decimal | null },
+  decimalValue: Prisma.Decimal
+): boolean {
+  if (item.lowerLimit == null || item.upperLimit == null) {
+    return false;
+  }
+  const lower = item.lowerLimit;
+  const upper = item.upperLimit;
+  const lo = lower.lessThanOrEqualTo(upper) ? lower : upper;
+  const hi = lower.lessThanOrEqualTo(upper) ? upper : lower;
+  return decimalValue.greaterThanOrEqualTo(lo) && decimalValue.lessThanOrEqualTo(hi);
+}
+
+function parseDecimal(value: string | number | null | undefined): Prisma.Decimal | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null;
+    return new Prisma.Decimal(String(value));
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    return new Prisma.Decimal(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function hasInspectionDrawingTemplate(template: SelfInspectionTemplate): boolean {
+  if (!template.isActive || !template.visualTemplate?.drawingImageRelativePath?.trim()) return false;
+  return template.items.length > 0 && template.items.every((item) => {
+    return item.markerXRatio != null && item.markerYRatio != null && item.lowerLimit != null && item.upperLimit != null;
+  });
+}
+
+function serializeProcessGroup(processGroup: PartMeasurementProcessGroup): 'cutting' | 'grinding' {
+  return processGroup === 'GRINDING' ? 'grinding' : 'cutting';
+}
+
+function serializeSelfInspectionMode(mode: SelfInspectionMode): 'full' | 'sample' {
+  return mode === 'SAMPLE' ? 'sample' : 'full';
+}
+
+function buildSessionBusinessKey(input: {
+  productNo: string;
+  processGroup: PartMeasurementProcessGroup;
+  resourceCd: string;
+  scheduleRowId: string;
+}): string {
+  return [
+    normalizeText(input.productNo),
+    input.processGroup,
+    normalizeText(input.resourceCd),
+    normalizeText(input.scheduleRowId)
+  ].join('::');
+}
+
+function pickSessionForScheduleRow<
+  T extends { scheduleRowId: string | null; completedAt: Date | null; updatedAt: Date }
+>(sessions: T[], scheduleRowId: string): T | null {
+  const candidates = sessions.filter((session) => session.scheduleRowId === scheduleRowId);
+  if (candidates.length === 0) return null;
+  return [...candidates].sort((a, b) => {
+    if (a.completedAt && !b.completedAt) return 1;
+    if (!a.completedAt && b.completedAt) return -1;
+    return b.updatedAt.getTime() - a.updatedAt.getTime();
+  })[0] ?? null;
+}
+
+export type SelfInspectionSessionForDecoration = {
+  id: string;
+  scheduleRowId: string | null;
+  templateId: string;
+  plannedQuantity: number;
+  expectedEntryCount: number;
+  completedAt: Date | null;
+  updatedAt: Date;
+  _count: { entries: number };
+};
+
+export type SelfInspectionDecorationCache = {
+  policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>;
+  templateByKey: Map<string, SelfInspectionTemplate>;
+  /** 値 null = 問い合わせ済み・セッションなし（negative cache） */
+  sessionsByScheduleRowId: Map<string, SelfInspectionSessionForDecoration | null>;
+};
+
+function templateKeyForRow(
+  fhincd: string,
+  processGroup: PartMeasurementProcessGroup,
+  resourceCd: string
+): string {
+  return `${fhincd}::${processGroup}::${resourceCd}`;
+}
+
+/** 装飾用キャッシュ。テンプレは resourceCds 指定時のみ資源で絞って preload し、それ以外は行キー単位で ensure する。 */
+export async function createSelfInspectionDecorationCache(scope?: {
+  siteKey?: string;
+  resourceCds?: string[];
+}): Promise<SelfInspectionDecorationCache> {
+  const policy = await getResourceCategoryPolicy({ siteKey: scope?.siteKey });
+  const normalizedResourceCds = (scope?.resourceCds ?? [])
+    .map((cd) => normalizeText(cd))
+    .filter((cd) => cd.length > 0);
+  const templateByKey = new Map<string, SelfInspectionTemplate>();
+  if (normalizedResourceCds.length > 0) {
+    const templates = await prisma.partMeasurementTemplate.findMany({
+      where: {
+        isActive: true,
+        templateScope: 'THREE_KEY',
+        resourceCd: { in: normalizedResourceCds }
+      },
+      include: partMeasurementTemplateFullInclude
+    });
+    for (const template of templates) {
+      if (!hasInspectionDrawingTemplate(template)) {
+        continue;
+      }
+      templateByKey.set(
+        templateKeyForRow(template.fhincd, template.processGroup, template.resourceCd),
+        template
+      );
+    }
+  }
+  return {
+    policy,
+    templateByKey,
+    sessionsByScheduleRowId: new Map()
+  };
+}
+
+export async function ensureSelfInspectionTemplatesForRows(
+  cache: SelfInspectionDecorationCache,
+  rows: Array<{ rowData: Prisma.JsonValue }>
+): Promise<void> {
+  const missingKeys = new Map<string, { fhincd: string; processGroup: PartMeasurementProcessGroup; resourceCd: string }>();
+  for (const row of rows) {
+    const rowData = (row.rowData ?? {}) as Record<string, unknown>;
+    const resourceCd = normalizeText(String(rowData.FSIGENCD ?? ''));
+    const fhincd = normalizeText(String(rowData.FHINCD ?? ''));
+    if (!resourceCd || !fhincd) continue;
+    const processGroup = isProductionScheduleGrindingResourceCd(resourceCd, cache.policy) ? 'GRINDING' : 'CUTTING';
+    const key = templateKeyForRow(fhincd, processGroup, resourceCd);
+    if (!cache.templateByKey.has(key) && !missingKeys.has(key)) {
+      missingKeys.set(key, { fhincd, processGroup, resourceCd });
+    }
+  }
+  if (missingKeys.size === 0) {
+    return;
+  }
+  const templates = await prisma.partMeasurementTemplate.findMany({
+    where: {
+      isActive: true,
+      templateScope: 'THREE_KEY',
+      OR: [...missingKeys.values()].map((key) => ({
+        fhincd: key.fhincd,
+        processGroup: key.processGroup,
+        resourceCd: key.resourceCd
+      }))
+    },
+    include: partMeasurementTemplateFullInclude
+  });
+  for (const template of templates) {
+    if (!hasInspectionDrawingTemplate(template)) {
+      continue;
+    }
+    cache.templateByKey.set(
+      templateKeyForRow(template.fhincd, template.processGroup, template.resourceCd),
+      template
+    );
+  }
+}
+
+export async function ensureSelfInspectionSessionsInCache(
+  cache: SelfInspectionDecorationCache,
+  scheduleRowIds: string[]
+): Promise<void> {
+  const missingIds = scheduleRowIds.filter((id) => id.length > 0 && !cache.sessionsByScheduleRowId.has(id));
+  if (missingIds.length === 0) {
+    return;
+  }
+  const sessions = await prisma.selfInspectionSession.findMany({
+    where: { scheduleRowId: { in: missingIds } },
+    include: {
+      _count: { select: { entries: true } }
+    }
+  });
+  const foundScheduleRowIds = new Set<string>();
+  for (const session of sessions) {
+    if (!session.scheduleRowId) {
+      continue;
+    }
+    foundScheduleRowIds.add(session.scheduleRowId);
+    const existing = cache.sessionsByScheduleRowId.get(session.scheduleRowId);
+    if (!existing) {
+      cache.sessionsByScheduleRowId.set(session.scheduleRowId, session);
+      continue;
+    }
+    const merged = pickSessionForScheduleRow([existing, session], session.scheduleRowId);
+    if (merged) {
+      cache.sessionsByScheduleRowId.set(session.scheduleRowId, merged);
+    }
+  }
+  for (const scheduleRowId of missingIds) {
+    if (!foundScheduleRowIds.has(scheduleRowId)) {
+      cache.sessionsByScheduleRowId.set(scheduleRowId, null);
+    }
+  }
+}
+
+function buildStartPath(input: {
+  templateId: string;
+  productNo: string;
+  processGroup: 'cutting' | 'grinding';
+  resourceCd: string;
+  scheduleRowId: string;
+  fseiban: string;
+  fhincd: string;
+  fhinmei: string;
+  machineName?: string | null;
+}): string {
+  const params = new URLSearchParams({
+    templateId: input.templateId,
+    productNo: input.productNo,
+    processGroup: input.processGroup,
+    resourceCd: input.resourceCd,
+    fhincd: input.fhincd,
+    fhinmei: input.fhinmei
+  });
+  params.set('scheduleRowId', input.scheduleRowId);
+  params.set('fseiban', input.fseiban);
+  if (input.machineName) params.set('machineName', input.machineName);
+  return `/kiosk/part-measurement/self-inspection/start?${params.toString()}`;
+}
+
+function normalizeSelfInspectionPlannedQuantity(plannedQuantity: number): number {
+  return Math.max(Math.floor(plannedQuantity), 1);
+}
+
+export function isFullSelfInspectionPlannedQuantityWithinLimit(plannedQuantity: number): boolean {
+  return (
+    normalizeSelfInspectionPlannedQuantity(plannedQuantity) <= SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT
+  );
+}
+
+export const SELF_INSPECTION_FULL_MODE_PLANNED_QUANTITY_LIMIT_MESSAGE = `全数検査は指示数が${SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT}件以下の場合のみ開始できます`;
+
+/** 一覧装飾用。不正な抜取設定・全数の上限超過のとき null（例外にしない） */
+export function tryResolveExpectedEntryCount(
+  template: {
+    selfInspectionMode: SelfInspectionMode;
+    selfInspectionSampleSize: number | null;
+  },
+  plannedQuantity: number
+): number | null {
+  const normalizedPlanned = normalizeSelfInspectionPlannedQuantity(plannedQuantity);
+  if (template.selfInspectionMode === 'FULL') {
+    if (!isFullSelfInspectionPlannedQuantityWithinLimit(normalizedPlanned)) {
+      return null;
+    }
+    return normalizedPlanned;
+  }
+  const sampleSize = template.selfInspectionSampleSize ?? 0;
+  if (sampleSize < 1 || sampleSize > normalizedPlanned) {
+    return null;
+  }
+  return sampleSize;
+}
+
+type SessionForEntryCountPolicy = {
+  expectedEntryCount: number;
+  plannedQuantity: number;
+  template: { selfInspectionMode: SelfInspectionMode };
+};
+
+function isMisalignedLegacyFullSelfInspectionSession(session: SessionForEntryCountPolicy): boolean {
+  if (session.template.selfInspectionMode !== 'FULL') {
+    return false;
+  }
+  const planned = resolveProductionSchedulePlannedQuantity(session.plannedQuantity);
+  if (planned == null) {
+    return false;
+  }
+  return session.expectedEntryCount < planned;
+}
+
+/** 旧形式で指示数が上限超・必要件数が食い違うセッション（再作成が必要） */
+export function resolveLegacyFullSelfInspectionBlockedReason(
+  session: SessionForEntryCountPolicy
+): string | null {
+  if (!isMisalignedLegacyFullSelfInspectionSession(session)) {
+    return null;
+  }
+  const planned = resolveProductionSchedulePlannedQuantity(session.plannedQuantity);
+  if (planned != null && planned > SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT) {
+    return (
+      `このセッションは旧形式のため、指示数 ${planned} 件の全数検査を完了できません。` +
+      '生産日程から自主検査をやり直し、新しいセッションを作成してください。'
+    );
+  }
+  return null;
+}
+
+/** 入力件の上限・完了判定の必要件数（修復後は expected と一致） */
+export function resolveRequiredEntryCountForCompletion(session: SessionForEntryCountPolicy): number {
+  if (session.template.selfInspectionMode !== 'FULL') {
+    return session.expectedEntryCount;
+  }
+  const planned = resolveProductionSchedulePlannedQuantity(session.plannedQuantity);
+  if (planned == null) {
+    return session.expectedEntryCount;
+  }
+  return Math.max(session.expectedEntryCount, planned);
+}
+
+function enrichSessionEntryCountFields<
+  T extends SessionForEntryCountPolicy & { completedEntryCount?: number }
+>(session: T) {
+  const requiredEntryCount = resolveRequiredEntryCountForCompletion(session);
+  return {
+    requiredEntryCount,
+    entryCountBlockedReason: resolveLegacyFullSelfInspectionBlockedReason(session)
+  };
+}
+
+function assertEntryUnmodifiedSince(ifUnmodifiedSince: string, entryUpdatedAt: Date): void {
+  const clientAt = new Date(ifUnmodifiedSince);
+  if (Number.isNaN(clientAt.getTime())) {
+    throw new ApiError(400, 'ifUnmodifiedSince の形式が不正です');
+  }
+  if (clientAt.getTime() !== entryUpdatedAt.getTime()) {
+    throw new ApiError(409, '他端末で更新されています。再読み込みしてください。');
+  }
+}
+
+function resolveExpectedEntryCount(
+  template: {
+    selfInspectionMode: SelfInspectionMode;
+    selfInspectionSampleSize: number | null;
+  },
+  plannedQuantity: number
+): number {
+  const count = tryResolveExpectedEntryCount(template, plannedQuantity);
+  if (count != null) {
+    return count;
+  }
+  if (template.selfInspectionMode === 'FULL') {
+    if (!isFullSelfInspectionPlannedQuantityWithinLimit(plannedQuantity)) {
+      throw new ApiError(400, SELF_INSPECTION_FULL_MODE_PLANNED_QUANTITY_LIMIT_MESSAGE);
+    }
+  }
+  if (template.selfInspectionMode === 'SAMPLE') {
+    const sampleSize = template.selfInspectionSampleSize ?? 0;
+    if (sampleSize < 1) {
+      throw new ApiError(400, '抜取検査では抜取数が必須です');
+    }
+    if (sampleSize > normalizeSelfInspectionPlannedQuantity(plannedQuantity)) {
+      throw new ApiError(400, '抜取数は指示数以下である必要があります');
+    }
+  }
+  throw new ApiError(400, '自主検査の必要件数を決定できません');
+}
+
+function resolveStatus(
+  completedEntryCount: number,
+  _expectedEntryCount: number,
+  completedAt: Date | null
+): 'not_started' | 'in_progress' | 'completed' {
+  if (completedAt) return 'completed';
+  if (completedEntryCount <= 0) return 'not_started';
+  return 'in_progress';
+}
+
+type LeaderboardSelfInspectionDecoration = {
+  id: string;
+  hasSelfInspectionDrawing: boolean;
+  selfInspectionTemplateId: string | null;
+  selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+  selfInspectionEntryPath: string | null;
+  resolvedPlannedQuantity?: number | null;
+};
+
+function emptyLeaderboardSelfInspectionDecoration(rowId: string): LeaderboardSelfInspectionDecoration {
+  return {
+    id: rowId,
+    hasSelfInspectionDrawing: false,
+    selfInspectionTemplateId: null,
+    selfInspectionStatus: null,
+    selfInspectionEntryPath: null
+  };
+}
+
+/** 既存セッションは現行テンプレ有無に関わらず再開導線を出す */
+function buildLeaderboardDecorationFromSession(
+  rowId: string,
+  session: SelfInspectionSessionForDecoration,
+  plannedQuantity: number | null
+): LeaderboardSelfInspectionDecoration {
+  return {
+    id: rowId,
+    hasSelfInspectionDrawing: true,
+    selfInspectionTemplateId: session.templateId,
+    selfInspectionStatus: resolveStatus(
+      session._count.entries,
+      session.expectedEntryCount,
+      session.completedAt
+    ),
+    selfInspectionEntryPath: `/kiosk/part-measurement/self-inspection/sessions/${session.id}`,
+    resolvedPlannedQuantity:
+      plannedQuantity ?? resolveProductionSchedulePlannedQuantity(session.plannedQuantity)
+  };
+}
+
+function serializeSessionSummary(session: SessionWithCounts) {
+  const completedEntryCount = session._count.entries;
+  const requiredEntryCount = resolveRequiredEntryCountForCompletion(session);
+  const status = resolveStatus(completedEntryCount, requiredEntryCount, session.completedAt);
+  return {
+    id: session.id,
+    sessionBusinessKey: session.sessionBusinessKey,
+    templateId: session.templateId,
+    templateName: session.template.name,
+    productNo: session.productNo,
+    fseiban: session.fseiban,
+    fhincd: session.fhincd,
+    fhinmei: session.fhinmei,
+    processGroup: serializeProcessGroup(session.processGroup),
+    resourceCd: session.resourceCd,
+    scheduleRowId: session.scheduleRowId,
+    machineName: session.machineName,
+    plannedQuantity: session.plannedQuantity,
+    expectedEntryCount: session.expectedEntryCount,
+    ...enrichSessionEntryCountFields({ ...session, completedEntryCount }),
+    completedEntryCount,
+    selfInspectionMode: serializeSelfInspectionMode(session.template.selfInspectionMode),
+    selfInspectionSampleSize: session.template.selfInspectionSampleSize,
+    status,
+    startedAt: session.startedAt?.toISOString() ?? null,
+    completedAt: session.completedAt?.toISOString() ?? null,
+    updatedAt: session.updatedAt.toISOString()
+  };
+}
+
+export class SelfInspectionService {
+  private async resolveEntryActor(employeeTagUid?: string | null): Promise<{
+    createdByEmployeeId: string | null;
+    createdByEmployeeNameSnapshot: string | null;
+  }> {
+    const tag = (employeeTagUid ?? '').trim();
+    if (!tag) {
+      return { createdByEmployeeId: null, createdByEmployeeNameSnapshot: null };
+    }
+    const employee = await prisma.employee.findFirst({
+      where: { nfcTagUid: tag }
+    });
+    if (!employee) {
+      throw new ApiError(404, '従業員が登録されていません');
+    }
+    return {
+      createdByEmployeeId: employee.id,
+      createdByEmployeeNameSnapshot: employee.displayName
+    };
+  }
+
+  async resolveOrCreateSession(input: {
+    templateId: string;
+    productNo: string;
+    processGroup: PartMeasurementProcessGroup;
+    resourceCd: string;
+    scheduleRowId: string;
+    fseiban: string;
+    fhincd?: string | null;
+    fhinmei?: string | null;
+    machineName?: string | null;
+    clientDeviceId?: string | null;
+  }) {
+    const productNo = normalizeText(input.productNo);
+    const resourceCd = normalizeText(input.resourceCd);
+    if (!productNo || !resourceCd) {
+      throw new ApiError(400, '製造order と資源CDが必要です');
+    }
+    const template = await prisma.partMeasurementTemplate.findFirst({
+      where: {
+        id: input.templateId,
+        isActive: true,
+        processGroup: input.processGroup,
+        resourceCd,
+        templateScope: 'THREE_KEY'
+      },
+      include: partMeasurementTemplateFullInclude
+    });
+    if (!template) {
+      throw new ApiError(404, '自主検査テンプレートが見つかりません');
+    }
+    if (!hasInspectionDrawingTemplate(template)) {
+      throw new ApiError(409, '自主検査対象の検査図面テンプレートではありません');
+    }
+    const fhincdInput = normalizeText(input.fhincd);
+    const fhincd = fhincdInput || template.fhincd;
+    if (fhincdInput && fhincdInput !== normalizeText(template.fhincd)) {
+      throw new ApiError(400, '品番がテンプレートと一致しません');
+    }
+    const fhinmei = normalizeText(input.fhinmei);
+    if (!fhincd || !fhinmei) {
+      throw new ApiError(400, '品番と品名が必要です');
+    }
+    const scheduleRowId = normalizeText(input.scheduleRowId);
+    if (!scheduleRowId) {
+      throw new ApiError(400, '日程行IDが必要です');
+    }
+    const fseiban = normalizeText(input.fseiban);
+    if (!fseiban) {
+      throw new ApiError(400, '製番が必要です');
+    }
+    await verifyProductionScheduleRowOrThrow(scheduleRowId, {
+      productNo,
+      fseiban,
+      fhincd,
+      resourceCd
+    });
+    const supplement = await prisma.productionScheduleOrderSupplement.findFirst({
+      where: {
+        csvDashboardRowId: scheduleRowId,
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
+      },
+      select: { plannedQuantity: true }
+    });
+    const plannedQuantity = resolveProductionSchedulePlannedQuantity(supplement?.plannedQuantity ?? null);
+    if (plannedQuantity == null) {
+      throw new ApiError(400, '指示数が補助データにないため自主検査を開始できません');
+    }
+    const expectedEntryCount = resolveExpectedEntryCount(template, plannedQuantity);
+    const sessionBusinessKey = buildSessionBusinessKey({
+      productNo,
+      processGroup: input.processGroup,
+      resourceCd,
+      scheduleRowId
+    });
+
+    const sessionInclude = {
+      template: { include: partMeasurementTemplateFullInclude },
+      _count: { select: { entries: true } }
+    } as const;
+
+    const session = await prisma.selfInspectionSession.upsert({
+      where: { sessionBusinessKey },
+      create: {
+        sessionBusinessKey,
+        templateId: template.id,
+        productNo,
+        processGroup: input.processGroup,
+        resourceCd,
+        scheduleRowId,
+        fseiban,
+        fhincd,
+        fhinmei,
+        machineName: normalizeText(input.machineName) || null,
+        plannedQuantity,
+        expectedEntryCount,
+        clientDeviceId: input.clientDeviceId ?? null,
+        startedAt: new Date()
+      },
+      update: {},
+      include: sessionInclude
+    });
+
+    return serializeSessionSummary(session);
+  }
+
+  async listSessions(query: {
+    productNo?: string;
+    resourceCd?: string;
+    processGroup?: PartMeasurementProcessGroup;
+    status?: 'not_started' | 'in_progress' | 'completed';
+  }) {
+    const productNo = normalizeText(query.productNo);
+    const resourceCd = normalizeText(query.resourceCd);
+    if (!productNo && !resourceCd) {
+      throw new ApiError(400, '製造order または資源CDのいずれかで絞り込んでください');
+    }
+    const rows = await prisma.selfInspectionSession.findMany({
+      where: {
+        ...(productNo ? { productNo: { contains: productNo, mode: 'insensitive' } } : {}),
+        ...(resourceCd ? { resourceCd: { equals: resourceCd, mode: 'insensitive' } } : {}),
+        ...(query.processGroup ? { processGroup: query.processGroup } : {}),
+        ...(query.status === 'not_started' ? { entries: { none: {} } } : {}),
+        ...(query.status === 'in_progress'
+          ? { completedAt: null, entries: { some: {} } }
+          : {}),
+        ...(query.status === 'completed' ? { completedAt: { not: null } } : {})
+      },
+      include: {
+        template: { include: partMeasurementTemplateFullInclude },
+        _count: { select: { entries: true } }
+      },
+      orderBy: [{ updatedAt: 'desc' }],
+      take: LIST_SESSIONS_MAX
+    });
+    const summaries = rows.map(serializeSessionSummary);
+    if (query.status === 'in_progress') {
+      return summaries.filter((row) => row.status === 'in_progress');
+    }
+    if (query.status === 'completed') {
+      return summaries.filter((row) => row.status === 'completed');
+    }
+    return summaries;
+  }
+
+  async getSessionDetail(sessionId: string, options?: { entryIndex?: number }) {
+    const entryIndex =
+      options?.entryIndex != null && Number.isFinite(options.entryIndex)
+        ? Math.floor(options.entryIndex)
+        : null;
+
+    const session = await prisma.selfInspectionSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        template: { include: partMeasurementTemplateFullInclude },
+        entries: {
+          orderBy: { entryIndex: 'asc' },
+          select: {
+            id: true,
+            entryIndex: true,
+            createdByEmployeeId: true,
+            createdByEmployeeNameSnapshot: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        },
+        _count: { select: { entries: true } }
+      }
+    });
+    if (!session) {
+      throw new ApiError(404, '自主検査セッションが見つかりません');
+    }
+
+    const focusedEntryRow =
+      entryIndex != null
+        ? await prisma.selfInspectionLotEntry.findUnique({
+            where: {
+              sessionId_entryIndex: {
+                sessionId,
+                entryIndex
+              }
+            },
+            include: {
+              values: {
+                orderBy: { createdAt: 'asc' }
+              }
+            }
+          })
+        : null;
+
+    const completedEntryCount = session._count.entries;
+    const requiredEntryCount = resolveRequiredEntryCountForCompletion(session);
+    return {
+      id: session.id,
+      sessionBusinessKey: session.sessionBusinessKey,
+      templateId: session.templateId,
+      templateName: session.template.name,
+      productNo: session.productNo,
+      fseiban: session.fseiban,
+      fhincd: session.fhincd,
+      fhinmei: session.fhinmei,
+      processGroup: serializeProcessGroup(session.processGroup),
+      resourceCd: session.resourceCd,
+      scheduleRowId: session.scheduleRowId,
+      machineName: session.machineName,
+      plannedQuantity: session.plannedQuantity,
+      expectedEntryCount: session.expectedEntryCount,
+      ...enrichSessionEntryCountFields({ ...session, completedEntryCount }),
+      completedEntryCount,
+      selfInspectionMode: serializeSelfInspectionMode(session.template.selfInspectionMode),
+      selfInspectionSampleSize: session.template.selfInspectionSampleSize,
+      status: resolveStatus(completedEntryCount, requiredEntryCount, session.completedAt),
+      startedAt: session.startedAt?.toISOString() ?? null,
+      completedAt: session.completedAt?.toISOString() ?? null,
+      updatedAt: session.updatedAt.toISOString(),
+      template: session.template,
+      entries: session.entries.map((entry) => ({
+        id: entry.id,
+        entryIndex: entry.entryIndex,
+        createdByEmployeeId: entry.createdByEmployeeId,
+        createdByEmployeeNameSnapshot: entry.createdByEmployeeNameSnapshot,
+        createdAt: entry.createdAt.toISOString(),
+        updatedAt: entry.updatedAt.toISOString(),
+        values: [] as Array<{ id: string; templateItemId: string; value: string | null }>
+      })),
+      focusedEntry: focusedEntryRow ? this.serializeLotEntry(focusedEntryRow) : null
+    };
+  }
+
+  private async loadSessionForMutation(
+    db: Prisma.TransactionClient | typeof prisma,
+    sessionId: string
+  ) {
+    let session = await db.selfInspectionSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        template: { include: partMeasurementTemplateFullInclude },
+        entries: {
+          select: { id: true, entryIndex: true }
+        }
+      }
+    });
+    if (!session) {
+      throw new ApiError(404, '自主検査セッションが見つかりません');
+    }
+    if (session.completedAt) {
+      throw new ApiError(409, '完了済みの自主検査は編集できません');
+    }
+    if (isMisalignedLegacyFullSelfInspectionSession(session)) {
+      const planned = resolveProductionSchedulePlannedQuantity(session.plannedQuantity);
+      if (planned != null && planned <= SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT) {
+        session = await db.selfInspectionSession.update({
+          where: { id: sessionId },
+          data: { expectedEntryCount: planned },
+          include: {
+            template: { include: partMeasurementTemplateFullInclude },
+            entries: {
+              select: { id: true, entryIndex: true }
+            }
+          }
+        });
+      }
+    }
+    return session;
+  }
+
+  private assertSessionEntryCountWritable(session: SessionForEntryCountPolicy): void {
+    const blocked = resolveLegacyFullSelfInspectionBlockedReason(session);
+    if (blocked) {
+      throw new ApiError(409, blocked);
+    }
+  }
+
+  private async lockSessionRow(db: Prisma.TransactionClient, sessionId: string) {
+    const rows = await db.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "SelfInspectionSession" WHERE id = ${sessionId} FOR UPDATE
+    `;
+    if (rows.length === 0) {
+      throw new ApiError(404, '自主検査セッションが見つかりません');
+    }
+  }
+
+  private validateMeasurementPayload(
+    template: SelfInspectionTemplate,
+    values: Array<{ templateItemId: string; value: string | number | null }>
+  ) {
+    if (values.length !== template.items.length) {
+      throw new ApiError(400, '全測定点の値を送信してください');
+    }
+    const expectedIds = new Set(template.items.map((item) => item.id));
+    const seen = new Set<string>();
+    const normalized = values.map((value) => {
+      if (!expectedIds.has(value.templateItemId) || seen.has(value.templateItemId)) {
+        throw new ApiError(400, '測定点の指定が不正です');
+      }
+      seen.add(value.templateItemId);
+      const item = template.items.find((row) => row.id === value.templateItemId);
+      if (!item) {
+        throw new ApiError(400, '測定点の指定が不正です');
+      }
+      const decimalValue = parseDecimal(value.value);
+      if (!isBlankValue(value.value) && decimalValue == null) {
+        throw new ApiError(400, '測定値は数値で入力してください');
+      }
+      if (decimalValue == null) {
+        throw new ApiError(400, '測定値は数値で入力してください');
+      }
+      if (!item.allowNegative && decimalValue.lessThan(0)) {
+        throw new ApiError(400, '負の値は入力できません');
+      }
+      if (typeof value.value === 'string') {
+        const places = countDecimalPlacesString(value.value);
+        if (places > item.decimalPlaces) {
+          throw new ApiError(400, `小数桁数は最大${item.decimalPlaces}桁です`);
+        }
+      }
+      assertDecimalPlacesWithinLimit(decimalValue, item.decimalPlaces);
+      if (!isValueWithinTolerance(item, decimalValue)) {
+        throw new ApiError(400, '公差外の測定値は保存できません');
+      }
+      return {
+        templateItemId: value.templateItemId,
+        value: decimalValue
+      };
+    });
+    return normalized;
+  }
+
+  private async assertAllEntriesWithinTolerance(
+    db: Prisma.TransactionClient,
+    sessionId: string,
+    template: SelfInspectionTemplate
+  ) {
+    const entries = await db.selfInspectionLotEntry.findMany({
+      where: { sessionId },
+      include: { values: true }
+    });
+    for (const entry of entries) {
+      const valuesByItem = new Map(entry.values.map((value) => [value.templateItemId, value.value]));
+      for (const item of template.items) {
+        const stored = valuesByItem.get(item.id);
+        if (stored == null) {
+          throw new ApiError(409, '測定値が未登録のため完了できません');
+        }
+        if (!isValueWithinTolerance(item, stored)) {
+          throw new ApiError(409, '公差外の測定値があるため完了できません');
+        }
+      }
+    }
+  }
+
+  private assertLotEntryValuesMatchPayload(
+    existing: Prisma.SelfInspectionLotEntryGetPayload<{ include: { values: true } }>,
+    normalized: Array<{ templateItemId: string; value: Prisma.Decimal }>
+  ) {
+    if (existing.values.length !== normalized.length) {
+      throw new ApiError(409, '他端末で既に登録された入力と競合しています');
+    }
+    const existingByItem = new Map(
+      existing.values.map((value) => [value.templateItemId, value.value])
+    );
+    for (const value of normalized) {
+      const existingValue = existingByItem.get(value.templateItemId);
+      if (existingValue == null) {
+        throw new ApiError(409, '他端末で既に登録された入力と競合しています');
+      }
+      if (!existingValue.equals(value.value)) {
+        throw new ApiError(409, '他端末で既に登録された測定値と競合しています');
+      }
+    }
+  }
+
+  private serializeLotEntry(
+    entry: Prisma.SelfInspectionLotEntryGetPayload<{ include: { values: true } }>
+  ) {
+    return {
+      id: entry.id,
+      entryIndex: entry.entryIndex,
+      createdByEmployeeId: entry.createdByEmployeeId,
+      createdByEmployeeNameSnapshot: entry.createdByEmployeeNameSnapshot,
+      createdAt: entry.createdAt.toISOString(),
+      updatedAt: entry.updatedAt.toISOString(),
+      values: entry.values.map((value) => ({
+        id: value.id,
+        templateItemId: value.templateItemId,
+        value: value.value != null ? String(value.value) : null
+      }))
+    };
+  }
+
+  async createEntry(sessionId: string, input: {
+    entryIndex: number;
+    values: Array<{ templateItemId: string; value: string | number | null }>;
+    employeeTagUid?: string | null;
+    createdByEmployeeId?: string | null;
+    createdByEmployeeNameSnapshot?: string | null;
+  }) {
+    const entryIndex = Math.floor(input.entryIndex);
+    const actor =
+      input.createdByEmployeeId != null || input.createdByEmployeeNameSnapshot != null
+        ? {
+            createdByEmployeeId: input.createdByEmployeeId ?? null,
+            createdByEmployeeNameSnapshot: normalizeText(input.createdByEmployeeNameSnapshot) || null
+          }
+        : await this.resolveEntryActor(input.employeeTagUid);
+    return prisma.$transaction(async (tx) => {
+      await this.lockSessionRow(tx, sessionId);
+      const session = await this.loadSessionForMutation(tx, sessionId);
+      this.assertSessionEntryCountWritable(session);
+      const maxEntryIndexExclusive = resolveRequiredEntryCountForCompletion(session);
+      if (entryIndex < 0 || entryIndex >= maxEntryIndexExclusive) {
+        throw new ApiError(400, '入力件番号が範囲外です');
+      }
+      const values = this.validateMeasurementPayload(session.template, input.values);
+
+      const existingAtIndex = await tx.selfInspectionLotEntry.findUnique({
+        where: {
+          sessionId_entryIndex: {
+            sessionId,
+            entryIndex
+          }
+        },
+        include: { values: true }
+      });
+      if (existingAtIndex) {
+        this.assertLotEntryValuesMatchPayload(existingAtIndex, values);
+        if (!existingAtIndex.createdByEmployeeId && actor.createdByEmployeeId) {
+          const backfilled = await tx.selfInspectionLotEntry.update({
+            where: { id: existingAtIndex.id },
+            data: {
+              createdByEmployeeId: actor.createdByEmployeeId,
+              createdByEmployeeNameSnapshot: actor.createdByEmployeeNameSnapshot
+            },
+            include: { values: true }
+          });
+          return this.serializeLotEntry(backfilled);
+        }
+        return this.serializeLotEntry(existingAtIndex);
+      }
+
+      try {
+        const entry = await tx.selfInspectionLotEntry.create({
+          data: {
+            sessionId,
+            entryIndex,
+            createdByEmployeeId: actor.createdByEmployeeId,
+            createdByEmployeeNameSnapshot: actor.createdByEmployeeNameSnapshot,
+            values: {
+              create: values
+            }
+          },
+          include: {
+            values: true
+          }
+        });
+        return this.serializeLotEntry(entry);
+      } catch (error) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+          throw error;
+        }
+        const raced = await tx.selfInspectionLotEntry.findUnique({
+          where: {
+            sessionId_entryIndex: {
+              sessionId,
+              entryIndex
+            }
+          },
+          include: { values: true }
+        });
+        if (!raced) {
+          throw error;
+        }
+        this.assertLotEntryValuesMatchPayload(raced, values);
+        if (!raced.createdByEmployeeId && actor.createdByEmployeeId) {
+          const backfilled = await tx.selfInspectionLotEntry.update({
+            where: { id: raced.id },
+            data: {
+              createdByEmployeeId: actor.createdByEmployeeId,
+              createdByEmployeeNameSnapshot: actor.createdByEmployeeNameSnapshot
+            },
+            include: { values: true }
+          });
+          return this.serializeLotEntry(backfilled);
+        }
+        return this.serializeLotEntry(raced);
+      }
+    });
+  }
+
+  async updateEntry(
+    sessionId: string,
+    entryId: string,
+    input: {
+      ifUnmodifiedSince: string;
+      values: Array<{ templateItemId: string; value: string | number | null }>;
+      employeeTagUid?: string | null;
+    }
+  ) {
+    const actor = await this.resolveEntryActor(input.employeeTagUid);
+    return prisma.$transaction(async (tx) => {
+      await this.lockSessionRow(tx, sessionId);
+      const session = await this.loadSessionForMutation(tx, sessionId);
+      this.assertSessionEntryCountWritable(session);
+      const existingEntry = await tx.selfInspectionLotEntry.findFirst({
+        where: { id: entryId, sessionId },
+        include: { values: true }
+      });
+      if (!existingEntry) {
+        throw new ApiError(404, '自主検査入力が見つかりません');
+      }
+      assertEntryUnmodifiedSince(input.ifUnmodifiedSince, existingEntry.updatedAt);
+      const values = this.validateMeasurementPayload(session.template, input.values);
+      const locked = await tx.selfInspectionLotEntry.updateMany({
+        where: { id: entryId, sessionId, updatedAt: existingEntry.updatedAt },
+        data: {
+          updatedAt: new Date(),
+          ...(existingEntry.createdByEmployeeId == null && actor.createdByEmployeeId
+            ? {
+                createdByEmployeeId: actor.createdByEmployeeId,
+                createdByEmployeeNameSnapshot: actor.createdByEmployeeNameSnapshot
+              }
+            : {})
+        }
+      });
+      if (locked.count === 0) {
+        throw new ApiError(409, '他端末で更新されています。再読み込みしてください。');
+      }
+      await tx.selfInspectionMeasurementValue.deleteMany({ where: { entryId } });
+      if (values.length > 0) {
+        await tx.selfInspectionMeasurementValue.createMany({
+          data: values.map((value) => ({
+            entryId,
+            templateItemId: value.templateItemId,
+            value: value.value
+          }))
+        });
+      }
+      const updated = await tx.selfInspectionLotEntry.findUniqueOrThrow({
+        where: { id: entryId },
+        include: { values: true }
+      });
+      return this.serializeLotEntry(updated);
+    });
+  }
+
+  async completeSession(sessionId: string) {
+    const sessionInclude = {
+      template: { include: partMeasurementTemplateFullInclude },
+      _count: { select: { entries: true } }
+    } as const;
+
+    return prisma.$transaction(async (tx) => {
+      await this.lockSessionRow(tx, sessionId);
+      const session = await tx.selfInspectionSession.findUnique({
+        where: { id: sessionId },
+        include: sessionInclude
+      });
+      if (!session) {
+        throw new ApiError(404, '自主検査セッションが見つかりません');
+      }
+      if (session.completedAt) {
+        return serializeSessionSummary(session);
+      }
+      this.assertSessionEntryCountWritable(session);
+      const entryCount = await tx.selfInspectionLotEntry.count({ where: { sessionId } });
+      const requiredEntryCount = resolveRequiredEntryCountForCompletion(session);
+      if (entryCount < requiredEntryCount) {
+        throw new ApiError(409, '必要件数に達していないため完了できません');
+      }
+      await this.assertAllEntriesWithinTolerance(tx, sessionId, session.template);
+      const finalized = await tx.selfInspectionSession.updateMany({
+        where: { id: sessionId, completedAt: null },
+        data: { completedAt: new Date() }
+      });
+      if (finalized.count === 0) {
+        const current = await tx.selfInspectionSession.findUnique({
+          where: { id: sessionId },
+          include: sessionInclude
+        });
+        if (current?.completedAt) {
+          return serializeSessionSummary(current);
+        }
+        throw new ApiError(409, '自主検査セッションを完了できません');
+      }
+      const completed = await tx.selfInspectionSession.findUnique({
+        where: { id: sessionId },
+        include: sessionInclude
+      });
+      if (!completed) {
+        throw new ApiError(404, '自主検査セッションが見つかりません');
+      }
+      return serializeSessionSummary(completed);
+    });
+  }
+
+  async buildLeaderboardDecorations(
+    rows: Array<{
+      id: string;
+      rowData: Prisma.JsonValue;
+      plannedQuantity?: number | null;
+    }>,
+    scope?: { siteKey?: string },
+    cache?: SelfInspectionDecorationCache
+  ) {
+    const activeCache =
+      cache ??
+      (await createSelfInspectionDecorationCache({
+        siteKey: scope?.siteKey
+      }));
+    if (!cache) {
+      await ensureSelfInspectionTemplatesForRows(activeCache, rows);
+      await ensureSelfInspectionSessionsInCache(
+        activeCache,
+        rows.map((row) => row.id)
+      );
+    }
+
+    return rows.map((row) => {
+      const session =
+        row.id && activeCache.sessionsByScheduleRowId.has(row.id)
+          ? activeCache.sessionsByScheduleRowId.get(row.id) ?? null
+          : null;
+      const plannedQuantity =
+        resolveProductionSchedulePlannedQuantity(row.plannedQuantity) ??
+        (session ? resolveProductionSchedulePlannedQuantity(session.plannedQuantity) : null);
+
+      if (session) {
+        return buildLeaderboardDecorationFromSession(row.id, session, plannedQuantity);
+      }
+
+      const rowData = (row.rowData ?? {}) as Record<string, unknown>;
+      const resourceCd = normalizeText(String(rowData.FSIGENCD ?? ''));
+      const fhincd = normalizeText(String(rowData.FHINCD ?? ''));
+      const productNo = normalizeText(String(rowData.ProductNo ?? ''));
+      const fhinmei = normalizeText(String(rowData.FHINMEI ?? ''));
+      const fseiban = normalizeText(String(rowData.FSEIBAN ?? ''));
+      if (!resourceCd || !fhincd || !productNo || !fhinmei || !fseiban) {
+        return emptyLeaderboardSelfInspectionDecoration(row.id);
+      }
+      const processGroup = isProductionScheduleGrindingResourceCd(resourceCd, activeCache.policy)
+        ? 'GRINDING'
+        : 'CUTTING';
+      const template = activeCache.templateByKey.get(templateKeyForRow(fhincd, processGroup, resourceCd));
+      if (!template || !hasInspectionDrawingTemplate(template)) {
+        return emptyLeaderboardSelfInspectionDecoration(row.id);
+      }
+      if (plannedQuantity == null) {
+        return emptyLeaderboardSelfInspectionDecoration(row.id);
+      }
+
+      const expectedEntryCount = tryResolveExpectedEntryCount(template, plannedQuantity);
+      if (expectedEntryCount == null) {
+        return emptyLeaderboardSelfInspectionDecoration(row.id);
+      }
+
+      return {
+        id: row.id,
+        hasSelfInspectionDrawing: true,
+        selfInspectionTemplateId: template.id,
+        selfInspectionStatus: resolveStatus(0, expectedEntryCount, null),
+        selfInspectionEntryPath: buildStartPath({
+          templateId: template.id,
+          productNo,
+          processGroup: serializeProcessGroup(processGroup),
+          resourceCd,
+          scheduleRowId: row.id,
+          fseiban,
+          fhincd,
+          fhinmei,
+          machineName: null
+        }),
+        resolvedPlannedQuantity: plannedQuantity
+      };
+    });
+  }
+}

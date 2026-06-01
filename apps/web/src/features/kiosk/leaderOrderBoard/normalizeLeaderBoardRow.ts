@@ -72,7 +72,16 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     plannedQuantity,
     processingOrder: parseProcessingOrder(row.processingOrder),
     isCompleted: isRowCompleted(data),
-    note
+    note,
+    hasSelfInspectionDrawing: Boolean((row as ProductionScheduleRow & { hasSelfInspectionDrawing?: boolean }).hasSelfInspectionDrawing),
+    selfInspectionStatus:
+      (row as ProductionScheduleRow & {
+        selfInspectionStatus?: 'not_started' | 'in_progress' | 'completed' | null;
+      }).selfInspectionStatus ?? null,
+    selfInspectionEntryPath:
+      (row as ProductionScheduleRow & {
+        selfInspectionEntryPath?: string | null;
+      }).selfInspectionEntryPath ?? null
   };
 }
 

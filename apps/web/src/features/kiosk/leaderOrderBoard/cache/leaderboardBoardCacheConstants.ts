@@ -1,6 +1,7 @@
 import { LEADER_BOARD_SCHEDULE_REFETCH_MS } from '../performance/leaderBoardRefetchPolicy';
 
-export const LEADERBOARD_BOARD_CACHE_SCHEMA_VERSION = 1;
+/** v2: 行装飾に自主検査フィールドを追加（v1 キャッシュは破棄） */
+export const LEADERBOARD_BOARD_CACHE_SCHEMA_VERSION = 2;
 
 export const LEADERBOARD_BOARD_CACHE_IDB_NAME = 'kiosk-leader-order-board-cache';
 export const LEADERBOARD_BOARD_CACHE_IDB_STORE = 'boardSnapshots';

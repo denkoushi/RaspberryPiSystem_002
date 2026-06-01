@@ -49,6 +49,9 @@ import type {
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
   PartMeasurementSheetWithSession,
+  SelfInspectionLotEntryDto,
+  SelfInspectionSessionDetailDto,
+  SelfInspectionSessionSummaryDto,
   PartMeasurementTemplateCandidateDto,
   PartMeasurementTemplateDto,
   PartMeasurementTemplateScope,
@@ -338,13 +341,23 @@ export interface ProductionScheduleRow {
   plannedQuantity?: number | null;
   plannedStartDate?: string | null;
   plannedEndDate?: string | null;
+  /** `responseProfile=leaderboard` のとき。自主検査/部品測定テンプレ突合せ用 */
+  partMeasurementProcessGroup?: 'cutting' | 'grinding';
+  /** `responseProfile=leaderboard` のとき。自主検査開始用テンプレ ID */
+  selfInspectionTemplateId?: string | null;
+  hasSelfInspectionDrawing?: boolean;
+  selfInspectionStatus?: 'not_started' | 'in_progress' | 'completed' | null;
+  selfInspectionEntryPath?: string | null;
 }
 
 export interface ProductionScheduleListResponse {
   page: number;
   pageSize: number;
-  total: number;
+  /** 自主検査候補一覧など、全件数を返さない経路では省略 */
+  total?: number;
   rows: ProductionScheduleRow[];
+  /** `selfInspectionEligibleOnly` のとき。さらに候補がありうる */
+  hasMore?: boolean;
   /**
    * `responseProfile=leaderboard` のときのみ。行下工程チップ用。
    */
@@ -375,6 +388,9 @@ export type ProductionScheduleLeaderboardDecorationsResponse = {
     id: string;
     resolvedMachineName: string | null;
     customerName: string | null;
+    hasSelfInspectionDrawing: boolean;
+    selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+    selfInspectionEntryPath: string | null;
   }>;
   leaderboardFooterChipsByPartKey?: ProductionScheduleListResponse['leaderboardFooterChipsByPartKey'];
 };
@@ -991,6 +1007,8 @@ export async function getKioskProductionSchedule(params?: {
   targetDeviceScopeKey?: string;
   /** `leaderboard`: API が軽量プロファイルで応答（actual-hours は省略、機種名は付与） */
   responseProfile?: 'full' | 'leaderboard';
+  /** 自主検査キオスク一覧: 開始可能行のみ（サーバー側フィルタ・ページング） */
+  selfInspectionEligibleOnly?: boolean;
 }) {
   const { data } = await api.get<ProductionScheduleListResponse>('/kiosk/production-schedule', { params });
   return data;
@@ -1059,6 +1077,7 @@ export type LeaderboardBoardResourceSliceResponse = {
 };
 
 export type ProductionScheduleLeaderboardBoardResponse = ProductionScheduleListResponse & {
+  total: number;
   snapshotExpired?: boolean;
   /** 続きチャンクのみ（スロット順連結）。古いサーバまたは安全フォールバック時は未定義 */
   deltaRows?: ProductionScheduleRow[];
@@ -3031,6 +3050,122 @@ export async function listKioskInspectionDrawingTemplates(
   return data.templates;
 }
 
+export async function resolveOrCreateSelfInspectionSession(
+  body: {
+    templateId: string;
+    productNo: string;
+    processGroup: PartMeasurementProcessGroup;
+    resourceCd: string;
+    /** 互換用。指示数はサーバーが日程行の補助データから取得する */
+    plannedQuantity?: number;
+    scheduleRowId: string;
+    fseiban: string;
+    fhincd: string;
+    fhinmei: string;
+    machineName?: string | null;
+  },
+  clientKey?: string
+): Promise<SelfInspectionSessionSummaryDto> {
+  const { data } = await api.post<{ session: SelfInspectionSessionSummaryDto }>(
+    '/part-measurement/self-inspection/sessions/resolve-or-create',
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.session;
+}
+
+export async function listSelfInspectionSessions(
+  params?: {
+    productNo?: string;
+    resourceCd?: string;
+    processGroup?: PartMeasurementProcessGroup;
+    status?: 'not_started' | 'in_progress' | 'completed';
+  },
+  clientKey?: string
+): Promise<SelfInspectionSessionSummaryDto[]> {
+  const { data } = await api.get<{ sessions: SelfInspectionSessionSummaryDto[] }>(
+    '/part-measurement/self-inspection/sessions',
+    {
+      params,
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.sessions;
+}
+
+export async function getSelfInspectionSession(
+  sessionId: string,
+  options?: { entryIndex?: number; clientKey?: string }
+): Promise<SelfInspectionSessionDetailDto> {
+  const clientKey = options?.clientKey;
+  const { data } = await api.get<{ session: SelfInspectionSessionDetailDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}`,
+    {
+      params:
+        options?.entryIndex != null && Number.isFinite(options.entryIndex)
+          ? { entryIndex: Math.floor(options.entryIndex) }
+          : undefined,
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.session;
+}
+
+export async function createSelfInspectionEntry(
+  sessionId: string,
+  body: {
+    entryIndex: number;
+    employeeTagUid?: string | null;
+    values: Array<{ templateItemId: string; value: string | number | null }>;
+  },
+  clientKey?: string
+): Promise<SelfInspectionLotEntryDto> {
+  const { data } = await api.post<{ entry: SelfInspectionLotEntryDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/entries`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.entry;
+}
+
+export async function updateSelfInspectionEntry(
+  sessionId: string,
+  entryId: string,
+  body: {
+    ifUnmodifiedSince: string;
+    employeeTagUid?: string | null;
+    values: Array<{ templateItemId: string; value: string | number | null }>;
+  },
+  clientKey?: string
+): Promise<SelfInspectionLotEntryDto> {
+  const { data } = await api.patch<{ entry: SelfInspectionLotEntryDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/entries/${entryId}`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.entry;
+}
+
+export async function completeSelfInspectionSession(
+  sessionId: string,
+  clientKey?: string
+): Promise<SelfInspectionSessionSummaryDto> {
+  const { data } = await api.post<{ session: SelfInspectionSessionSummaryDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/complete`,
+    {},
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.session;
+}
+
 /** キオスク検査図面テンプレ編集用（本番 + 図面・全マーカー必須。履歴版も閲覧可） */
 export async function getKioskInspectionDrawingTemplate(
   templateId: string,
@@ -3159,6 +3294,8 @@ export async function createPartMeasurementTemplate(
     name: string;
     visualTemplateId?: string | null;
     candidateFhinmei?: string | null;
+    selfInspectionMode?: 'full' | 'sample';
+    selfInspectionSampleSize?: number | null;
     items: Array<{
       sortOrder: number;
       datumSurface: string;
@@ -3245,6 +3382,8 @@ export async function revisePartMeasurementTemplate(
     name: string;
     visualTemplateId?: string | null;
     candidateFhinmei?: string | null;
+    selfInspectionMode?: 'full' | 'sample';
+    selfInspectionSampleSize?: number | null;
     items: Array<{
       sortOrder: number;
       datumSurface: string;

@@ -39,7 +39,12 @@ export const productionScheduleQuerySchema = z.object({
    * 手動+製番展開が `pageSize` を超える場合でも手動側は切り捨てない。
    * 機種名（`resolvedMachineName`）は full と同じバッチ解決を行い、順位ボードの表示欠落を防ぐ（既定は full）。
    */
-  responseProfile: z.enum(['full', 'leaderboard']).optional()
+  responseProfile: z.enum(['full', 'leaderboard']).optional(),
+  /** 自主検査キオスク一覧: 開始可能な生産行だけをサーバー側で抽出（ページング） */
+  selfInspectionEligibleOnly: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true' || v === '1')
 });
 
 /** 順位ボード段階取得用（一覧と同一クエリ、`responseProfile` は不要）。 */

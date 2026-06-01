@@ -134,6 +134,16 @@ export function isProductionScheduleExcludedCuttingResourceCd(resourceCd: string
   return policy.cuttingExcludedResourceCds.includes(normalized);
 }
 
+export type PartMeasurementProcessGroupApi = 'cutting' | 'grinding';
+
+/** 部品測定/自主検査テンプレの工程キー（拠点別 resource policy 準拠） */
+export function resolvePartMeasurementProcessGroupForApi(
+  resourceCd: string,
+  policy: ResourceCategoryPolicy
+): PartMeasurementProcessGroupApi {
+  return isProductionScheduleGrindingResourceCd(resourceCd, policy) ? 'grinding' : 'cutting';
+}
+
 export function isProductionScheduleCuttingResourceCd(resourceCd: string, policy: ResourceCategoryPolicy): boolean {
   const normalized = normalizeProductionScheduleResourceCd(resourceCd);
   if (normalized.length === 0) return false;

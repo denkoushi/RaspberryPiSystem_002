@@ -8,6 +8,7 @@ import {
   patchOrderUsageForProcessingOrderChange,
   patchScheduleListProcessingOrder
 } from '../features/kiosk/productionSchedule/cache/kioskProductionScheduleOrderCachePatch';
+import { patchSelfInspectionSessionCachesAfterEntrySave } from '../features/part-measurement/mergeSelfInspectionSessionAfterEntrySave';
 import { POLL_MS } from '../lib/admin-polling-intervals';
 import { buildClientDevicesByApiKey } from '../lib/signageTargetClientDevices';
 
@@ -223,6 +224,12 @@ import {
   createInspectionItem,
   updateInspectionItem,
   deleteInspectionItem,
+  resolveOrCreateSelfInspectionSession,
+  listSelfInspectionSessions,
+  getSelfInspectionSession,
+  createSelfInspectionEntry,
+  updateSelfInspectionEntry,
+  completeSelfInspectionSession,
   getInstrumentTags,
   createInstrumentTag,
   deleteInstrumentTag,
@@ -336,6 +343,7 @@ export function useKioskProductionSchedule(
     allowResourceOnly?: boolean;
     targetDeviceScopeKey?: string;
     responseProfile?: 'full' | 'leaderboard';
+    selfInspectionEligibleOnly?: boolean;
   },
   options?: { enabled?: boolean; pauseRefetch?: boolean; refetchIntervalMs?: number | false }
 ) {
@@ -350,6 +358,95 @@ export function useKioskProductionSchedule(
     refetchInterval: interval,
     placeholderData: (previousData) => previousData,
     enabled: options?.enabled ?? true
+  });
+}
+
+export function useSelfInspectionSessions(
+  params?: {
+    productNo?: string;
+    resourceCd?: string;
+    processGroup?: 'cutting' | 'grinding';
+    status?: 'not_started' | 'in_progress' | 'completed';
+  },
+  options?: { enabled?: boolean; pauseRefetch?: boolean; refetchIntervalMs?: number | false }
+) {
+  const interval =
+    options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 30000);
+  return useQuery({
+    queryKey: ['self-inspection-sessions', params],
+    queryFn: () => listSelfInspectionSessions(params),
+    placeholderData: (previousData) => previousData,
+    refetchInterval: interval,
+    enabled: options?.enabled ?? true
+  });
+}
+
+function selfInspectionSessionQueryKey(sessionId: string, entryIndex?: number) {
+  return ['self-inspection-session', sessionId, entryIndex ?? null] as const;
+}
+
+export function useSelfInspectionSession(
+  sessionId?: string | null,
+  options?: { enabled?: boolean; entryIndex?: number }
+) {
+  const entryIndex = options?.entryIndex;
+  return useQuery({
+    queryKey: selfInspectionSessionQueryKey(sessionId!, entryIndex),
+    queryFn: () => getSelfInspectionSession(sessionId!, { entryIndex }),
+    enabled: (options?.enabled ?? true) && Boolean(sessionId)
+  });
+}
+
+export function useResolveSelfInspectionSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof resolveOrCreateSelfInspectionSession>[0]) => resolveOrCreateSelfInspectionSession(body),
+    onSuccess: (session) => {
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
+    }
+  });
+}
+
+export function useCreateSelfInspectionEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId, body }: { sessionId: string; body: Parameters<typeof createSelfInspectionEntry>[1] }) =>
+      createSelfInspectionEntry(sessionId, body),
+    onSuccess: (entry, variables) => {
+      patchSelfInspectionSessionCachesAfterEntrySave(queryClient, variables.sessionId, entry);
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+    }
+  });
+}
+
+export function useUpdateSelfInspectionEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      entryId,
+      body
+    }: {
+      sessionId: string;
+      entryId: string;
+      body: Parameters<typeof updateSelfInspectionEntry>[2];
+    }) => updateSelfInspectionEntry(sessionId, entryId, body),
+    onSuccess: (entry, variables) => {
+      patchSelfInspectionSessionCachesAfterEntrySave(queryClient, variables.sessionId, entry);
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+    }
+  });
+}
+
+export function useCompleteSelfInspectionSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) => completeSelfInspectionSession(sessionId),
+    onSuccess: (session) => {
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+    }
   });
 }
 

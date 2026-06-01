@@ -45,6 +45,13 @@ export {
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH
 } from './kioskInspectionDrawingRoutes';
 
+export {
+  isKioskSelfInspectionPath,
+  KIOSK_SELF_INSPECTION_LIST_PATH,
+  KIOSK_SELF_INSPECTION_START_PATH,
+  kioskSelfInspectionSessionPath
+} from '../selfInspectionRoutes';
+
 export { InspectionDrawingValuePanel } from './InspectionDrawingValuePanel';
 export { InspectionDrawingTemplateHistoryDialog } from './InspectionDrawingTemplateHistoryDialog';
 export {

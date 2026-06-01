@@ -21,6 +21,7 @@ import {
   getResourceCategoryPolicy,
   isProductionScheduleExcludedCuttingResourceCd,
   normalizeProductionScheduleResourceCd,
+  resolvePartMeasurementProcessGroupForApi,
   type ResourceCategoryPolicy
 } from './policies/resource-category-policy.service.js';
 import {
@@ -34,6 +35,13 @@ import {
 import { enrichProductionScheduleRowsWithResolvedMachineName } from './production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from './production-schedule-customer-name-enrichment.service.js';
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard/leaderboard-part-footer-processes.service.js';
+import {
+  SelfInspectionService,
+  createSelfInspectionDecorationCache,
+  ensureSelfInspectionSessionsInCache,
+  ensureSelfInspectionTemplatesForRows,
+  type SelfInspectionDecorationCache
+} from '../part-measurement/self-inspection.service.js';
 import type { LeaderboardPartFooterProcessItem } from './leaderboard/leaderboard-part-footer-processes.service.js';
 import {
   fetchLeaderboardScheduleRowsWithSeibanAwarePriority,
@@ -51,6 +59,14 @@ import {
   sliceLeaderboardSnapshotIdsByExcludePrefix
 } from './leaderboard/leaderboard-shell-continue.slice.js';
 import { countProductionScheduleDashboardVisibleRows } from './production-schedule-list-count.service.js';
+import {
+  filterSelfInspectionEligibleProductionScheduleRows,
+  hasSelfInspectionCandidateListFilters
+} from './self-inspection-schedule-eligibility.js';
+
+const SELF_INSPECTION_SCHEDULE_SCAN_CHUNK_SIZE = 200;
+/** 1 リクエストあたりの生産日程スキャン上限（200 × 50 行） */
+const SELF_INSPECTION_SCHEDULE_MAX_SCAN_PAGES = 50;
 
 /** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
 function normalizeMachineNameForCompare(value: string | null | undefined): string {
@@ -80,6 +96,13 @@ export type ProductionScheduleRow = {
   plannedEndDate: Date | null;
   resolvedMachineName?: string | null;
   customerName: string | null;
+  /** `responseProfile=leaderboard` のとき。部品測定/自主検査テンプレ突合せ用（拠点別 resource policy） */
+  partMeasurementProcessGroup?: 'cutting' | 'grinding';
+  /** `responseProfile=leaderboard` のとき。自主検査開始に使う active テンプレ ID */
+  selfInspectionTemplateId?: string | null;
+  hasSelfInspectionDrawing?: boolean;
+  selfInspectionStatus?: 'not_started' | 'in_progress' | 'completed' | null;
+  selfInspectionEntryPath?: string | null;
 };
 
 export type ProductionScheduleListParams = {
@@ -101,6 +124,8 @@ export type ProductionScheduleListParams = {
    * `resolvedMachineName` は full と同様にバッチ解決する（省略時は full）。
    */
   responseProfile?: 'full' | 'leaderboard';
+  /** true のとき自主検査開始可能行だけを返す（生産日程をチャンク走査） */
+  selfInspectionEligibleOnly?: boolean;
 };
 
 /** 順位ボード phased read（shell / continue）の共通レスポンス形（snapshotId は shell・正常 continue で付与） */
@@ -570,6 +595,11 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
 
   const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
   const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
+  const selfInspectionService = new SelfInspectionService();
+  const selfInspectionDecorations = await selfInspectionService.buildLeaderboardDecorations(enrichedRows, {
+    siteKey
+  });
+  const selfInspectionById = new Map(selfInspectionDecorations.map((row) => [row.id, row]));
 
   const leaderboardFooterChipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
     rows: enrichedRows,
@@ -582,7 +612,11 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
     rowDecorations: enrichedRows.map((r) => ({
       id: r.id,
       resolvedMachineName: r.resolvedMachineName ?? null,
-      customerName: r.customerName ?? null
+      customerName: r.customerName ?? null,
+      hasSelfInspectionDrawing: selfInspectionById.get(r.id)?.hasSelfInspectionDrawing ?? false,
+      selfInspectionTemplateId: selfInspectionById.get(r.id)?.selfInspectionTemplateId ?? null,
+      selfInspectionStatus: selfInspectionById.get(r.id)?.selfInspectionStatus ?? null,
+      selfInspectionEntryPath: selfInspectionById.get(r.id)?.selfInspectionEntryPath ?? null
     })),
     leaderboardFooterChipsByPartKey: leaderboardFooterChipsByPartKey ?? {}
   };
@@ -633,6 +667,10 @@ export type ProductionScheduleLeaderboardDecorationPayload = {
     id: string;
     resolvedMachineName: string | null;
     customerName: string | null;
+    hasSelfInspectionDrawing: boolean;
+    selfInspectionTemplateId: string | null;
+    selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+    selfInspectionEntryPath: string | null;
   }>;
   leaderboardFooterChipsByPartKey: Record<string, LeaderboardPartFooterProcessItem[]>;
 };
@@ -654,16 +692,20 @@ const buildTextConditions = (queryText: string): Prisma.Sql[] => {
 
   const textConditions: Prisma.Sql[] = [];
   for (const token of tokens) {
+    const isEightCharSeibanToken = /^[A-Za-z0-9*]{8}$/.test(token);
     const isNumeric = /^\d+$/.test(token);
-    const isFseiban = /^[A-Za-z0-9*]{8}$/.test(token);
     const likeValue = `%${token}%`;
-    if (isNumeric) {
-      textConditions.push(Prisma.sql`("CsvDashboardRow"."rowData"->>'ProductNo') ILIKE ${likeValue}`);
-    } else if (isFseiban) {
-      textConditions.push(Prisma.sql`("CsvDashboardRow"."rowData"->>'FSEIBAN') = ${token}`);
+    if (isEightCharSeibanToken) {
+      textConditions.push(
+        Prisma.sql`(("CsvDashboardRow"."rowData"->>'FSEIBAN') = ${token} OR ("CsvDashboardRow"."rowData"->>'ProductNo') ILIKE ${likeValue} OR ("CsvDashboardRow"."rowData"->>'FHINCD') ILIKE ${likeValue})`
+      );
+    } else if (isNumeric) {
+      textConditions.push(
+        Prisma.sql`(("CsvDashboardRow"."rowData"->>'ProductNo') ILIKE ${likeValue} OR ("CsvDashboardRow"."rowData"->>'FHINCD') ILIKE ${likeValue})`
+      );
     } else {
       textConditions.push(
-        Prisma.sql`(("CsvDashboardRow"."rowData"->>'ProductNo') ILIKE ${likeValue} OR ("CsvDashboardRow"."rowData"->>'FSEIBAN') ILIKE ${likeValue})`
+        Prisma.sql`(("CsvDashboardRow"."rowData"->>'ProductNo') ILIKE ${likeValue} OR ("CsvDashboardRow"."rowData"->>'FSEIBAN') ILIKE ${likeValue} OR ("CsvDashboardRow"."rowData"->>'FHINCD') ILIKE ${likeValue})`
       );
     }
   }
@@ -861,10 +903,13 @@ const buildMachineNameCondition = async (machineName: string | undefined): Promi
 export type ProductionScheduleListResult = {
   page: number;
   pageSize: number;
-  total: number;
+  /** 自主検査候補一覧では全件数を算出しないため省略可 */
+  total?: number;
   rows: ProductionScheduleRow[];
   /** `responseProfile=leaderboard` のときのみ。progress-overview を二重取得せず行下工程チップへ供給する。 */
   leaderboardFooterChipsByPartKey?: Record<string, LeaderboardPartFooterProcessItem[]>;
+  /** `selfInspectionEligibleOnly` のとき。さらに候補がありうる（走査上限または未走査の日程が残る） */
+  hasMore?: boolean;
 };
 
 async function enrichLeaderboardListRowsAndFooter(params: {
@@ -884,24 +929,321 @@ async function enrichLeaderboardListRowsAndFooter(params: {
 
   const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
   const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
+  const resourcePolicy = await getResourceCategoryPolicy({ siteKey });
+  const rowsWithProcessGroup = enrichedRows.map((row) => {
+    const rowData = (row.rowData ?? {}) as Record<string, unknown>;
+    const resourceCd = typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD.trim() : '';
+    return {
+      ...row,
+      partMeasurementProcessGroup: resourceCd
+        ? resolvePartMeasurementProcessGroupForApi(resourceCd, resourcePolicy)
+        : undefined
+    };
+  });
+
+  const selfInspectionService = new SelfInspectionService();
+  const selfInspectionByRowId = new Map(
+    (
+      await selfInspectionService.buildLeaderboardDecorations(
+        rowsWithProcessGroup.map((row) => ({
+          id: row.id,
+          rowData: row.rowData,
+          plannedQuantity: row.plannedQuantity
+        })),
+        { siteKey }
+      )
+    ).map((decoration) => [decoration.id, decoration])
+  );
+  const rowsWithSelfInspection = rowsWithProcessGroup.map((row) => {
+    const decoration = selfInspectionByRowId.get(row.id);
+    return {
+      ...row,
+      hasSelfInspectionDrawing: decoration?.hasSelfInspectionDrawing ?? false,
+      selfInspectionTemplateId: decoration?.selfInspectionTemplateId ?? null,
+      selfInspectionStatus: decoration?.selfInspectionStatus ?? null,
+      selfInspectionEntryPath: decoration?.selfInspectionEntryPath ?? null
+    };
+  });
 
   const leaderboardFooterChipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
-    rows: enrichedRows,
+    rows: rowsWithSelfInspection,
     locationKey,
     siteKey,
-    preferredDisplayRowIds: normalizeLeaderboardDisplayRowIdScope(enrichedRows.map((r) => r.id))
+    preferredDisplayRowIds: normalizeLeaderboardDisplayRowIdScope(rowsWithSelfInspection.map((r) => r.id))
   });
 
   return {
     page,
     pageSize,
     total,
-    rows: enrichedRows,
+    rows: rowsWithSelfInspection,
     ...(leaderboardFooterChipsByPartKey ? { leaderboardFooterChipsByPartKey } : {})
   };
 }
 
+async function fetchProductionScheduleDashboardRowsRawPage(params: {
+  baseWhere: Prisma.Sql;
+  queryWhere: Prisma.Sql;
+  locationKey: string;
+  siteScopedGlobalRankLocation: string;
+  offset: number;
+  limit: number;
+}): Promise<ProductionScheduleRow[]> {
+  const { baseWhere, queryWhere, locationKey, siteScopedGlobalRankLocation, offset, limit } = params;
+  const safeOffset = Math.max(0, Math.floor(offset));
+  const safeLimit = Math.max(1, Math.floor(limit));
+
+  return prisma.$queryRaw<ProductionScheduleRow[]>`
+    SELECT
+      "CsvDashboardRow"."id",
+      NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
+      "CsvDashboardRow"."occurredAt",
+      jsonb_build_object(
+        'ProductNo', "CsvDashboardRow"."rowData"->>'ProductNo',
+        'FSEIBAN', "CsvDashboardRow"."rowData"->>'FSEIBAN',
+        'FHINCD', "CsvDashboardRow"."rowData"->>'FHINCD',
+        'FHINMEI', "CsvDashboardRow"."rowData"->>'FHINMEI',
+        'FSIGENCD', "CsvDashboardRow"."rowData"->>'FSIGENCD',
+        'FSIGENSHOYORYO', "CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO',
+        'FKOJUN', "CsvDashboardRow"."rowData"->>'FKOJUN',
+        'FKOJUNST', ( ${buildFkojunstProductionScheduleListRowDataFkojunstSql()} ),
+        'progress', (CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
+      ) AS "rowData",
+      (
+        SELECT "orderNumber"
+        FROM "ProductionScheduleOrderAssignment"
+        WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
+          AND (
+            "location" = ${locationKey}
+            OR "siteKey" = ${locationKey}
+          )
+        ORDER BY
+          CASE WHEN "location" = ${locationKey} THEN 0 ELSE 1 END ASC,
+          "updatedAt" DESC
+        LIMIT 1
+      ) AS "processingOrder",
+      (
+        SELECT "globalRank"
+        FROM "ProductionScheduleGlobalRowRank"
+        WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
+          AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+          AND "location" IN (${siteScopedGlobalRankLocation}, ${GLOBAL_SHARED_LOCATION_KEY}, ${locationKey})
+        ORDER BY CASE
+          WHEN "location" = ${siteScopedGlobalRankLocation} THEN 0
+          WHEN "location" = ${GLOBAL_SHARED_LOCATION_KEY} THEN 1
+          ELSE 2
+        END ASC
+        LIMIT 1
+      ) AS "globalRank",
+      NULLIF(TRIM("n"."note"), '') AS "note",
+      COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
+      "n"."dueDate" AS "dueDate",
+      "supplement"."plannedQuantity" AS "plannedQuantity",
+      "supplement"."plannedStartDate" AS "plannedStartDate",
+      "supplement"."plannedEndDate" AS "plannedEndDate"
+    FROM "CsvDashboardRow"
+    LEFT JOIN "ProductionScheduleProgress" AS "p"
+      ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+      ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleRowNote" AS "n"
+      ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
+      ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
+    LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
+      ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
+      ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
+      ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()}
+    ORDER BY
+      ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
+      ("CsvDashboardRow"."rowData"->>'ProductNo') ASC,
+      (CASE
+        WHEN ("CsvDashboardRow"."rowData"->>'FKOJUN') ~ '^\\d+$' THEN (("CsvDashboardRow"."rowData"->>'FKOJUN'))::int
+        ELSE NULL
+      END) ASC,
+      ("CsvDashboardRow"."rowData"->>'FHINCD') ASC
+    LIMIT ${safeLimit} OFFSET ${safeOffset}
+  `;
+}
+
+async function enrichProductionScheduleRowsForSelfInspectionCandidate(
+  rows: ProductionScheduleRow[],
+  locationKey: string,
+  siteKey: string | undefined,
+  decorationCache: SelfInspectionDecorationCache
+): Promise<ProductionScheduleRow[]> {
+  if (rows.length === 0) {
+    return rows;
+  }
+
+  const rowsWithProcessGroup = rows.map((row) => {
+    const rowData = (row.rowData ?? {}) as Record<string, unknown>;
+    const resourceCd = typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD.trim() : '';
+    return {
+      ...row,
+      actualPerPieceMinutes: null,
+      customerName: null,
+      partMeasurementProcessGroup: resourceCd
+        ? resolvePartMeasurementProcessGroupForApi(resourceCd, decorationCache.policy)
+        : undefined
+    };
+  });
+
+  const selfInspectionService = new SelfInspectionService();
+  const selfInspectionDecorations = await selfInspectionService.buildLeaderboardDecorations(
+    rowsWithProcessGroup.map((row) => ({
+      id: row.id,
+      rowData: row.rowData,
+      plannedQuantity: row.plannedQuantity
+    })),
+    { siteKey },
+    decorationCache
+  );
+  const selfInspectionById = new Map(selfInspectionDecorations.map((row) => [row.id, row]));
+
+  return rowsWithProcessGroup.map((row) => {
+    const decoration = selfInspectionById.get(row.id);
+    return {
+      ...row,
+      plannedQuantity: decoration?.resolvedPlannedQuantity ?? row.plannedQuantity ?? null,
+      hasSelfInspectionDrawing: decoration?.hasSelfInspectionDrawing ?? false,
+      selfInspectionTemplateId: decoration?.selfInspectionTemplateId ?? null,
+      selfInspectionStatus: decoration?.selfInspectionStatus ?? null,
+      selfInspectionEntryPath: decoration?.selfInspectionEntryPath ?? null
+    };
+  });
+}
+
+/**
+ * 自主検査開始可能行のみ返す。生産日程を `fetchProductionScheduleDashboardRowsRawPage` で
+ * LIMIT/OFFSET チャンク走査し、各行に自主検査装飾を付与してから eligibility で絞る。
+ * `responseProfile=leaderboard` は page/offset を持たないため、ここでは使用しない。
+ */
+export async function listSelfInspectionEligibleProductionScheduleRows(
+  params: Omit<ProductionScheduleListParams, 'responseProfile' | 'selfInspectionEligibleOnly'>
+): Promise<ProductionScheduleListResult> {
+  const page = Math.max(1, params.page);
+  const pageSize = Math.max(1, Math.min(params.pageSize, 200));
+  const skip = (page - 1) * pageSize;
+  const needThrough = skip + pageSize;
+
+  if (
+    !hasSelfInspectionCandidateListFilters({
+      queryText: params.queryText,
+      resourceCds: params.resourceCds,
+      productNos: params.productNos
+    })
+  ) {
+    return {
+      page,
+      pageSize,
+      rows: [],
+      hasMore: false
+    };
+  }
+
+  const filters = await prepareProductionScheduleDashboardFilters(params);
+  if (filters.kind === 'blocked_empty_search') {
+    return {
+      page,
+      pageSize,
+      rows: [],
+      hasMore: false
+    };
+  }
+
+  const { baseWhere, queryWhere, siteScopedGlobalRankLocation } = filters;
+  const decorationCache = await createSelfInspectionDecorationCache({
+    siteKey: params.siteKey,
+    resourceCds: params.resourceCds
+  });
+  const eligibleCollected: ProductionScheduleRow[] = [];
+  const seenRowIds = new Set<string>();
+  let scheduleOffset = 0;
+  let scheduleExhausted = false;
+  let hitScanCap = false;
+  let scanIterations = 0;
+
+  while (eligibleCollected.length < needThrough && scanIterations < SELF_INSPECTION_SCHEDULE_MAX_SCAN_PAGES) {
+    scanIterations += 1;
+    const rawRows = await fetchProductionScheduleDashboardRowsRawPage({
+      baseWhere,
+      queryWhere,
+      locationKey: params.locationKey,
+      siteScopedGlobalRankLocation,
+      offset: scheduleOffset,
+      limit: SELF_INSPECTION_SCHEDULE_SCAN_CHUNK_SIZE
+    });
+    if (rawRows.length === 0) {
+      scheduleExhausted = true;
+      break;
+    }
+
+    await ensureSelfInspectionTemplatesForRows(decorationCache, rawRows);
+    await ensureSelfInspectionSessionsInCache(
+      decorationCache,
+      rawRows.map((row) => row.id)
+    );
+    const enrichedRows = await enrichProductionScheduleRowsForSelfInspectionCandidate(
+      rawRows,
+      params.locationKey,
+      params.siteKey,
+      decorationCache
+    );
+    for (const row of filterSelfInspectionEligibleProductionScheduleRows(enrichedRows)) {
+      if (seenRowIds.has(row.id)) {
+        continue;
+      }
+      seenRowIds.add(row.id);
+      eligibleCollected.push(row);
+    }
+
+    scheduleOffset += rawRows.length;
+    if (rawRows.length < SELF_INSPECTION_SCHEDULE_SCAN_CHUNK_SIZE) {
+      scheduleExhausted = true;
+      break;
+    }
+    if (scanIterations >= SELF_INSPECTION_SCHEDULE_MAX_SCAN_PAGES) {
+      hitScanCap = true;
+      break;
+    }
+  }
+
+  const pageRows = eligibleCollected.slice(skip, skip + pageSize);
+  const hasMore = eligibleCollected.length > needThrough || !scheduleExhausted || hitScanCap;
+
+  return {
+    page,
+    pageSize,
+    rows: pageRows,
+    hasMore
+  };
+}
+
+function toSelfInspectionEligibleListParams(
+  params: ProductionScheduleListParams
+): Parameters<typeof listSelfInspectionEligibleProductionScheduleRows>[0] {
+  const rest = { ...params };
+  delete rest.selfInspectionEligibleOnly;
+  delete rest.responseProfile;
+  return rest;
+}
+
 export async function listProductionScheduleRows(params: ProductionScheduleListParams): Promise<ProductionScheduleListResult> {
+  if (params.selfInspectionEligibleOnly) {
+    return listSelfInspectionEligibleProductionScheduleRows(toSelfInspectionEligibleListParams(params));
+  }
+
   const {
     page,
     pageSize,
@@ -987,87 +1329,14 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     });
   }
 
-  const rowsPromiseFull = prisma.$queryRaw<ProductionScheduleRow[]>`
-    SELECT
-      "CsvDashboardRow"."id",
-      NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
-      "CsvDashboardRow"."occurredAt",
-      jsonb_build_object(
-        'ProductNo', "CsvDashboardRow"."rowData"->>'ProductNo',
-        'FSEIBAN', "CsvDashboardRow"."rowData"->>'FSEIBAN',
-        'FHINCD', "CsvDashboardRow"."rowData"->>'FHINCD',
-        'FHINMEI', "CsvDashboardRow"."rowData"->>'FHINMEI',
-        'FSIGENCD', "CsvDashboardRow"."rowData"->>'FSIGENCD',
-        'FSIGENSHOYORYO', "CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO',
-        'FKOJUN', "CsvDashboardRow"."rowData"->>'FKOJUN',
-        'FKOJUNST', ( ${buildFkojunstProductionScheduleListRowDataFkojunstSql()} ),
-        'progress', (CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
-      ) AS "rowData",
-      (
-        SELECT "orderNumber"
-        FROM "ProductionScheduleOrderAssignment"
-        WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
-          AND (
-            "location" = ${locationKey}
-            OR "siteKey" = ${locationKey}
-          )
-        ORDER BY
-          CASE WHEN "location" = ${locationKey} THEN 0 ELSE 1 END ASC,
-          "updatedAt" DESC
-        LIMIT 1
-      ) AS "processingOrder",
-      (
-        SELECT "globalRank"
-        FROM "ProductionScheduleGlobalRowRank"
-        WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
-          AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-          AND "location" IN (${siteScopedGlobalRankLocation}, ${GLOBAL_SHARED_LOCATION_KEY}, ${locationKey})
-        ORDER BY CASE
-          WHEN "location" = ${siteScopedGlobalRankLocation} THEN 0
-          WHEN "location" = ${GLOBAL_SHARED_LOCATION_KEY} THEN 1
-          ELSE 2
-        END ASC
-        LIMIT 1
-      ) AS "globalRank",
-      NULLIF(TRIM("n"."note"), '') AS "note",
-      COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
-      "n"."dueDate" AS "dueDate",
-      "supplement"."plannedQuantity" AS "plannedQuantity",
-      "supplement"."plannedStartDate" AS "plannedStartDate",
-      "supplement"."plannedEndDate" AS "plannedEndDate"
-    FROM "CsvDashboardRow"
-    LEFT JOIN "ProductionScheduleProgress" AS "p"
-      ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
-      ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleRowNote" AS "n"
-      ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
-      ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
-    LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
-      ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
-      ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
-      ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()}
-    ORDER BY
-      ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
-      ("CsvDashboardRow"."rowData"->>'ProductNo') ASC,
-      (CASE
-        WHEN ("CsvDashboardRow"."rowData"->>'FKOJUN') ~ '^\\d+$' THEN (("CsvDashboardRow"."rowData"->>'FKOJUN'))::int
-        ELSE NULL
-      END) ASC,
-      ("CsvDashboardRow"."rowData"->>'FHINCD') ASC
-    LIMIT ${pageSize} OFFSET ${offset}
-  `;
+  const rowsPromiseFull = fetchProductionScheduleDashboardRowsRawPage({
+    baseWhere,
+    queryWhere,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    offset,
+    limit: pageSize
+  });
 
   const [totalBig, fullRows] = await Promise.all([totalPromise, rowsPromiseFull]);
   const total = Number(totalBig);

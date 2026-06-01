@@ -34,6 +34,87 @@
 - **評価用編集 API**: 既存互換のため `inspection-drawing/evaluation-sheets/*` は当面残すが、新しいキオスク UI 導線からは使用しない。本番 sheet は引き続き **409**、評価用 sheet も通常 PATCH/finalize から **409**。
 - **制約（現時点）**: 複数個数の図面UI・TIFF・順位ボードは未対応。図面中心の本番編集は引き続き **quantity===1** のみ。詳細は [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
 
+## 自主検査 MVP（2026-06-01）
+
+詳細・背景: [KB-320 §自主検査 MVP](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01)。
+
+### キオスクナビ
+
+| ヘッダータブ | 遷移先（既定） | アクティブになるパス |
+|--------------|----------------|----------------------|
+| **自主検査** | `/kiosk/part-measurement/self-inspection` | `/kiosk/part-measurement/self-inspection/*` |
+
+- **一覧**: `/kiosk/part-measurement/self-inspection`
+  - 生産スケジュール行をもとに、**図面ありの `THREE_KEY` テンプレ**だけを対象表示。
+  - 同じ行に対応する既存セッションがあれば **再開**、なければ **開始**。
+- **入力画面**: `/kiosk/part-measurement/self-inspection/start` または `/kiosk/part-measurement/self-inspection/sessions/:sessionId`
+  - 図面キャンバスと測定値パネルは既存検査図面 UI を再利用。
+  - 画像は **`usePartMeasurementDrawingBlobUrl`** で Blob 化し、`x-client-key` 付きで取得する。
+- **順位ボード導線**:
+  - 各行で図面ありなら **「検」** ボタンを表示。
+  - 状態色は **白=未開始 / 黄=入力中 / 青=完了**。
+  - ボタンは `/self-inspection/start?...` の query を持ち、同じ業務キーで resolve-or-create する。
+
+### テンプレ設定
+
+- 管理画面 `/admin/tools/part-measurement-templates` に以下を追加:
+  - `selfInspectionMode`: `全数` / `抜取`
+  - `selfInspectionSampleSize`: 抜取時のみ必須
+- 一覧/詳細 DTO にも同値を返す。
+- 検査図面一覧 API `GET /api/part-measurement/inspection-drawing/templates` でも要約 DTO に返すため、キオスク一覧と将来の導線で再利用できる。
+
+### データ構造
+
+- `SelfInspectionSession`
+  - 1 つの生産対象コンテキストに対する自主検査作業単位。
+  - 一意キーは `productNo + processGroup + resourceCd + scheduleRowId` の `sessionBusinessKey`（日程行単位。改版でテンプレ ID が変わっても同一セッション）。`resolve-or-create` は `scheduleRowId` と `fseiban` 必須。
+  - **マイグレーション `20260601120000_self_inspection_session_business_key_v2`**: 旧キー（templateId 含む）から新キーへ移行する。同一日程行の重複セッションは **エントリ数最多 → 未完了優先 → 更新日時が新しい** 順で 1 件を残し、空の重複は削除、非衝突の `entryIndex` のみ勝者へ移す。移行後も重複にエントリが残る場合は **マイグレーションが例外で停止**（手動統合が必要）。
+
+#### 業務キー移行の事前確認（本番・ステージング）
+
+`20260601090000_add_self_inspection_mvp` 適用済みで、改版前の二重セッションが疑われるとき、デプロイ前に PostgreSQL で重複候補を確認する:
+
+```sql
+SELECT
+  CONCAT(
+    BTRIM(split_part(s."sessionBusinessKey", '::', 1)), '::',
+    BTRIM(split_part(s."sessionBusinessKey", '::', 2)), '::',
+    BTRIM(split_part(s."sessionBusinessKey", '::', 3)), '::',
+    COALESCE(NULLIF(BTRIM(s."scheduleRowId"), ''), BTRIM(split_part(s."sessionBusinessKey", '::', 5)))
+  ) AS new_key,
+  COUNT(*) AS session_count,
+  COUNT(*) FILTER (WHERE EXISTS (
+    SELECT 1 FROM "SelfInspectionLotEntry" e WHERE e."sessionId" = s.id
+  )) AS sessions_with_entries
+FROM "SelfInspectionSession" s
+WHERE array_length(string_to_array(s."sessionBusinessKey", '::'), 1) = 5
+GROUP BY 1
+HAVING COUNT(*) > 1;
+```
+
+- `sessions_with_entries > 1` の行がある場合、移行は **entryIndex 衝突時に失敗**しうる。先に不要な空セッションを削除するか、運用でどちらを正とするか決めてから `prisma migrate deploy` する。
+- 移行が失敗した環境で SQL を直したあと再実行する場合、失敗した migration を `prisma migrate resolve` で整理してから再デプロイする（既に成功済みの環境では当該 migration は再実行されない）。
+- `SelfInspectionLotEntry`
+  - 全数なら 1 個分、抜取なら 1 サンプル分の入力。
+- `SelfInspectionMeasurementValue`
+  - 各測定点の数値。
+
+### 完了条件
+
+- `全数`: `expectedEntryCount = plannedQuantity`
+- `抜取`: `expectedEntryCount = selfInspectionSampleSize`
+- `completedAt` は必要件数到達後に **明示的な完了 API** で確定する。
+
+### 実機確認ポイント
+
+1. **自主検査** タブが **持出** の隣に表示される。
+2. 一覧で図面付き対象だけが表示される。
+3. **開始** で全画面入力へ遷移し、図面が表示される。
+4. **再開** で既存 entry が反映される。
+5. 順位ボードの **検** ボタンから同じセッションへ入れる。
+6. `抜取` テンプレでは entry ボタン数が `sampleSize` と一致する。
+7. 保存後に状態が **未開始→入力中→完了** と進む。
+
 ### 検査図面 · DEV プレビュー（本番パリティ）
 
 開発者が Mac 上でレイアウトを本番に近い状態で確認する手順。正本: [ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md) · [KB-320 §プレビュー](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-preview-parity-2026-05-30)。
@@ -120,6 +201,7 @@
 - **手動（部品測定）**: `/kiosk/part-measurement` で **測定値入力中** 一覧・移動票照会 → 記録 → 確定（従来どおり）。
 - **手動（検査図面・テンプレ）**: **検査図面** → 一覧 → 新規/編集/履歴。旧版 readOnly・有効化後編集可。
 - **手動（検査図面・記録）**: 図面付きテンプレ + **数量=1** → **図面 edit**（`quantity≥2` は表形式）。**Pi4** は `main` デプロイ前はタブ未反映の可能性（KB-320）。
+- **手動（自主検査）**: **自主検査** → 一覧 → **開始/再開**、または順位ボードの **検** ボタン → 入力保存 → 完了。
 - **手動（管理・任意）**: **部品測定テンプレ** で編集/削除。
 - **チェックリスト**: [verification-checklist.md](../guides/verification-checklist.md) **6.6.9**。
 

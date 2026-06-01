@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { memo } from 'react';
+import { Link } from 'react-router-dom';
 
 import { KioskPencilGlyph } from '../../../components/kiosk/KioskPencilGlyph';
 import {
@@ -58,6 +59,12 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   const dueLabel = formatDueDate(row.displayDue) || '—';
   const pres = presentLeaderOrderRow(row);
   const hasNote = Boolean(row.note && row.note.trim().length > 0);
+  const selfInspectionStatusClass =
+    row.selfInspectionStatus === 'completed'
+      ? 'border-sky-300 bg-sky-500 text-slate-950'
+      : row.selfInspectionStatus === 'in_progress'
+        ? 'border-yellow-300 bg-yellow-400 text-slate-950'
+        : 'border-white/70 bg-white text-slate-950';
 
   return (
     <div
@@ -147,6 +154,20 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
           >
             <KioskPencilGlyph />
           </button>
+        )}
+        {isSignage || !row.hasSelfInspectionDrawing || !row.selfInspectionEntryPath ? null : (
+          <Link
+            to={row.selfInspectionEntryPath}
+            onClick={(e) => e.stopPropagation()}
+            className={clsx(
+              'flex h-7 min-w-7 shrink-0 items-center justify-center rounded border px-2 text-[10px] font-bold transition-colors',
+              selfInspectionStatusClass
+            )}
+            aria-label="自主検査を開く"
+            title="自主検査を開く"
+          >
+            検
+          </Link>
         )}
       </div>
       {pres.clusterSegments.length > 0 || pres.quantityInlineJa ? (

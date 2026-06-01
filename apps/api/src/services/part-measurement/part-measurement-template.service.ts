@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Prisma } from '@prisma/client';
-import type { PartMeasurementProcessGroup, PartMeasurementTemplateScope } from '@prisma/client';
+import type { PartMeasurementProcessGroup, PartMeasurementTemplateScope, SelfInspectionMode } from '@prisma/client';
 
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { prisma } from '../../lib/prisma.js';
@@ -77,7 +77,13 @@ type ResolvedLineage = {
 async function insertNextTemplateVersionInTransaction(
   tx: Prisma.TransactionClient,
   lineage: ResolvedLineage,
-  content: { name: string; items: TemplateItemInput[]; visualTemplateId: string | null }
+  content: {
+    name: string;
+    items: TemplateItemInput[];
+    visualTemplateId: string | null;
+    selfInspectionMode: SelfInspectionMode;
+    selfInspectionSampleSize: number | null;
+  }
 ) {
   const visualId = content.visualTemplateId?.trim() || null;
   if (visualId) {
@@ -112,6 +118,8 @@ async function insertNextTemplateVersionInTransaction(
       name: content.name.trim(),
       version: nextVersion,
       isActive: true,
+      selfInspectionMode: content.selfInspectionMode,
+      selfInspectionSampleSize: content.selfInspectionSampleSize,
       visualTemplateId: visualId,
       items: {
         create: content.items.map((item) => {
@@ -292,6 +300,8 @@ export class PartMeasurementTemplateService {
     /** 既定 THREE_KEY（clone / 正本登録）。候補登録では FHINCD_RESOURCE / FHINMEI_ONLY */
     templateScope?: PartMeasurementTemplateScope;
     candidateFhinmei?: string | null;
+    selfInspectionMode?: SelfInspectionMode;
+    selfInspectionSampleSize?: number | null;
   }) {
     const templateScope: PartMeasurementTemplateScope = params.templateScope ?? 'THREE_KEY';
     let fhincd = params.fhincd.trim();
@@ -328,6 +338,11 @@ export class PartMeasurementTemplateService {
     if (params.items.length === 0) {
       throw new ApiError(400, 'テンプレート項目が空です');
     }
+    const selfInspectionMode = params.selfInspectionMode ?? 'FULL';
+    const selfInspectionSampleSize = selfInspectionMode === 'SAMPLE' ? (params.selfInspectionSampleSize ?? null) : null;
+    if (selfInspectionMode === 'SAMPLE' && (selfInspectionSampleSize == null || selfInspectionSampleSize < 1)) {
+      throw new ApiError(400, '抜取検査では抜取数が必須です');
+    }
 
     const visualId = params.visualTemplateId?.trim() || null;
 
@@ -335,7 +350,13 @@ export class PartMeasurementTemplateService {
       insertNextTemplateVersionInTransaction(
         tx,
         { templateScope, fhincd, processGroup, resourceCd, candidateFhinmei },
-        { name: params.name, items: params.items, visualTemplateId: visualId }
+        {
+          name: params.name,
+          items: params.items,
+          visualTemplateId: visualId,
+          selfInspectionMode,
+          selfInspectionSampleSize
+        }
       )
     );
   }
@@ -406,7 +427,9 @@ export class PartMeasurementTemplateService {
         insertNextTemplateVersionInTransaction(tx, lineage, {
           name: templateName,
           items: params.items,
-          visualTemplateId
+          visualTemplateId,
+          selfInspectionMode: 'FULL',
+          selfInspectionSampleSize: null
         })
       );
       drawingPathToCleanup = null;
@@ -480,6 +503,8 @@ export class PartMeasurementTemplateService {
       visualTemplateId?: string | null;
       /** FHINMEI_ONLY の改版でのみ指定可 */
       candidateFhinmei?: string | null;
+      selfInspectionMode?: SelfInspectionMode;
+      selfInspectionSampleSize?: number | null;
     }
   ) {
     if (body.items.length === 0) {
@@ -520,12 +545,22 @@ export class PartMeasurementTemplateService {
 
     const visualId = body.visualTemplateId !== undefined ? body.visualTemplateId : source.visualTemplateId;
     const normalizedVisual = visualId?.trim() ? visualId.trim() : null;
+    const selfInspectionMode = body.selfInspectionMode ?? source.selfInspectionMode;
+    const selfInspectionSampleSize =
+      selfInspectionMode === 'SAMPLE'
+        ? (body.selfInspectionSampleSize !== undefined ? body.selfInspectionSampleSize : source.selfInspectionSampleSize) ?? null
+        : null;
+    if (selfInspectionMode === 'SAMPLE' && (selfInspectionSampleSize == null || selfInspectionSampleSize < 1)) {
+      throw new ApiError(400, '抜取検査では抜取数が必須です');
+    }
 
     return prisma.$transaction((tx) =>
       insertNextTemplateVersionInTransaction(tx, lineage, {
         name: body.name,
         items: body.items,
-        visualTemplateId: normalizedVisual
+        visualTemplateId: normalizedVisual,
+        selfInspectionMode,
+        selfInspectionSampleSize
       })
     );
   }
@@ -642,7 +677,9 @@ export class PartMeasurementTemplateService {
       items,
       visualTemplateId: source.visualTemplateId,
       templateScope: 'THREE_KEY',
-      candidateFhinmei: null
+      candidateFhinmei: null,
+      selfInspectionMode: source.selfInspectionMode,
+      selfInspectionSampleSize: source.selfInspectionSampleSize
     });
 
     return {

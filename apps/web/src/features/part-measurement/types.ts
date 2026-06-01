@@ -3,6 +3,8 @@ export type PartMeasurementProcessGroup = 'cutting' | 'grinding';
 /** POST /part-measurement/templates の templateScope（API と同期） */
 export type PartMeasurementTemplateScope = 'three_key' | 'fhincd_resource' | 'fhinmei_only';
 
+export type SelfInspectionMode = 'full' | 'sample';
+
 export type PartMeasurementSheetStatus = 'DRAFT' | 'FINALIZED' | 'CANCELLED' | 'INVALIDATED';
 
 export type PartMeasurementResolvedCandidate = {
@@ -61,6 +63,8 @@ export type KioskInspectionDrawingTemplateSummaryDto = {
   name: string;
   version: number;
   isActive: boolean;
+  selfInspectionMode: SelfInspectionMode;
+  selfInspectionSampleSize: number | null;
   visualTemplateId: string | null;
   visualTemplate: PartMeasurementVisualTemplateDto | null;
   itemCount: number;
@@ -77,9 +81,65 @@ export type PartMeasurementTemplateDto = {
   name: string;
   version: number;
   isActive: boolean;
+  selfInspectionMode: SelfInspectionMode;
+  selfInspectionSampleSize: number | null;
   visualTemplateId: string | null;
   visualTemplate: PartMeasurementVisualTemplateDto | null;
   items: PartMeasurementTemplateItemDto[];
+};
+
+export type SelfInspectionStatus = 'not_started' | 'in_progress' | 'completed';
+
+export type SelfInspectionSessionSummaryDto = {
+  id: string;
+  sessionBusinessKey: string;
+  templateId: string;
+  templateName: string;
+  productNo: string;
+  fseiban: string | null;
+  fhincd: string;
+  fhinmei: string;
+  processGroup: PartMeasurementProcessGroup;
+  resourceCd: string;
+  scheduleRowId: string | null;
+  machineName: string | null;
+  plannedQuantity: number;
+  expectedEntryCount: number;
+  /** 完了・入力範囲の実効必要件数（旧形式修復後は expected と一致） */
+  requiredEntryCount: number;
+  /** 旧形式で操作不能なときの案内（再作成導線） */
+  entryCountBlockedReason?: string | null;
+  completedEntryCount: number;
+  selfInspectionMode: SelfInspectionMode;
+  selfInspectionSampleSize: number | null;
+  status: SelfInspectionStatus;
+  startedAt: string | null;
+  completedAt: string | null;
+  updatedAt: string;
+};
+
+export type SelfInspectionMeasurementValueDto = {
+  id: string;
+  templateItemId: string;
+  value: string | null;
+};
+
+export type SelfInspectionLotEntryDto = {
+  id: string;
+  entryIndex: number;
+  createdByEmployeeId: string | null;
+  createdByEmployeeNameSnapshot: string | null;
+  createdAt: string;
+  updatedAt: string;
+  values: SelfInspectionMeasurementValueDto[];
+};
+
+export type SelfInspectionSessionDetailDto = SelfInspectionSessionSummaryDto & {
+  template: PartMeasurementTemplateDto;
+  /** 測定値は含まない（大量件数対策）。値は focusedEntry を参照 */
+  entries: SelfInspectionLotEntryDto[];
+  /** `entryIndex` クエリ指定時のみ、当該入力件の測定値 */
+  focusedEntry?: SelfInspectionLotEntryDto | null;
 };
 
 export type PartMeasurementTemplateCandidateDto = {

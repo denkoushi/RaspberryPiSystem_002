@@ -1,7 +1,33 @@
 import { LEADERBOARD_BOARD_CACHE_SCHEMA_VERSION } from './leaderboardBoardCacheConstants';
 
 import type { ProductionScheduleLeaderboardBoardResponse } from '../../../../api/client';
-import type { AccumulatedLeaderboardDecorations } from '../mergeLeaderboardBoardWithDecorations';
+import type {
+  AccumulatedLeaderboardDecorations,
+  LeaderboardRowDecoration
+} from '../mergeLeaderboardBoardWithDecorations';
+
+const DEFAULT_LEADERBOARD_ROW_DECORATION: LeaderboardRowDecoration = {
+  resolvedMachineName: null,
+  customerName: null,
+  hasSelfInspectionDrawing: false,
+  selfInspectionStatus: null,
+  selfInspectionEntryPath: null
+};
+
+function normalizeLeaderboardRowDecoration(
+  raw: Partial<LeaderboardRowDecoration> | undefined
+): LeaderboardRowDecoration {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_LEADERBOARD_ROW_DECORATION };
+  }
+  return {
+    resolvedMachineName: raw.resolvedMachineName ?? null,
+    customerName: raw.customerName ?? null,
+    hasSelfInspectionDrawing: raw.hasSelfInspectionDrawing === true,
+    selfInspectionStatus: raw.selfInspectionStatus ?? null,
+    selfInspectionEntryPath: raw.selfInspectionEntryPath ?? null
+  };
+}
 
 export type PersistedLeaderboardBoardCacheRecord = {
   schemaVersion: typeof LEADERBOARD_BOARD_CACHE_SCHEMA_VERSION;
@@ -12,7 +38,16 @@ export type PersistedLeaderboardBoardCacheRecord = {
   rowIdsFingerprint: string;
   board: ProductionScheduleLeaderboardBoardResponse;
   decorations: {
-    rowDecorationsById: Record<string, { resolvedMachineName: string | null; customerName: string | null }>;
+    rowDecorationsById: Record<
+      string,
+      {
+        resolvedMachineName: string | null;
+        customerName: string | null;
+        hasSelfInspectionDrawing: boolean;
+        selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+        selfInspectionEntryPath: string | null;
+      }
+    >;
     leaderboardFooterChipsByPartKey: Record<string, unknown>;
   };
 };
@@ -50,8 +85,12 @@ export function serializeAccumulatedDecorations(
 export function deserializeAccumulatedDecorations(
   persisted: PersistedLeaderboardBoardCacheRecord['decorations']
 ): AccumulatedLeaderboardDecorations {
+  const rowDecorationsById = new Map<string, LeaderboardRowDecoration>();
+  for (const [id, raw] of Object.entries(persisted.rowDecorationsById ?? {})) {
+    rowDecorationsById.set(id, normalizeLeaderboardRowDecoration(raw));
+  }
   return {
-    rowDecorationsById: new Map(Object.entries(persisted.rowDecorationsById)),
+    rowDecorationsById,
     leaderboardFooterChipsByPartKey: persisted.leaderboardFooterChipsByPartKey as AccumulatedLeaderboardDecorations['leaderboardFooterChipsByPartKey']
   };
 }

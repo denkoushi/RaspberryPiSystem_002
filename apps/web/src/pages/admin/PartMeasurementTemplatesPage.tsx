@@ -21,7 +21,8 @@ import {
 import type {
   PartMeasurementProcessGroup,
   PartMeasurementTemplateDto,
-  PartMeasurementTemplateScope
+  PartMeasurementTemplateScope,
+  SelfInspectionMode
 } from '../../features/part-measurement/types';
 
 function templateScopeLabel(s: PartMeasurementTemplateScope): string {
@@ -56,6 +57,8 @@ export function PartMeasurementTemplatesPage() {
   const [templateScope, setTemplateScope] = useState<PartMeasurementTemplateScope>('three_key');
   const [candidateFhinmei, setCandidateFhinmei] = useState('');
   const [name, setName] = useState('');
+  const [selfInspectionMode, setSelfInspectionMode] = useState<SelfInspectionMode>('full');
+  const [selfInspectionSampleSize, setSelfInspectionSampleSize] = useState('');
   const [items, setItems] = useState([emptyItem()]);
   const [message, setMessage] = useState<string | null>(null);
   const [visualChoice, setVisualChoice] = useState<'none' | 'pick' | 'upload'>('none');
@@ -83,6 +86,8 @@ export function PartMeasurementTemplatesPage() {
     setTemplateScope('three_key');
     setCandidateFhinmei('');
     setItems([emptyItem()]);
+    setSelfInspectionMode('full');
+    setSelfInspectionSampleSize('');
     setVisualChoice('none');
     setPickedVisualId('');
     setNewVisualName('');
@@ -149,6 +154,8 @@ export function PartMeasurementTemplatesPage() {
     setProcessGroup(fields.processGroup);
     setCandidateFhinmei(fields.candidateFhinmei);
     setName(fields.name);
+    setSelfInspectionMode(fields.selfInspectionMode);
+    setSelfInspectionSampleSize(fields.selfInspectionSampleSize);
     setItems(fields.items);
     setVisualChoice(fields.visualChoice);
     setPickedVisualId(fields.pickedVisualId);
@@ -175,6 +182,25 @@ export function PartMeasurementTemplatesPage() {
         return;
       }
       const trimmedItems = itemsPayload;
+      const parsedSelfInspectionSampleSize =
+        selfInspectionMode === 'sample'
+          ? (() => {
+              const raw = selfInspectionSampleSize.trim();
+              if (!raw) return null;
+              const num = Number(raw);
+              return Number.isInteger(num) && num > 0 ? num : Number.NaN;
+            })()
+          : null;
+      if (selfInspectionMode === 'sample') {
+        if (parsedSelfInspectionSampleSize == null) {
+          setMessage('抜取検査では抜取数を入力してください。');
+          return;
+        }
+        if (Number.isNaN(parsedSelfInspectionSampleSize)) {
+          setMessage('抜取数は 1 以上の整数で入力してください。');
+          return;
+        }
+      }
 
       if (editingTemplateId) {
         if (
@@ -228,6 +254,8 @@ export function PartMeasurementTemplatesPage() {
             name: templateName,
             items: trimmedItems,
             visualTemplateId,
+            selfInspectionMode,
+            selfInspectionSampleSize: selfInspectionMode === 'sample' ? parsedSelfInspectionSampleSize : null,
             ...(templateScope === 'fhinmei_only' ? { candidateFhinmei: candidateFhinmei.trim() } : {})
           }
         });
@@ -286,6 +314,8 @@ export function PartMeasurementTemplatesPage() {
         name: templateName,
         visualTemplateId,
         candidateFhinmei: templateScope === 'fhinmei_only' ? candidateFhinmei.trim() : null,
+        selfInspectionMode,
+        selfInspectionSampleSize: selfInspectionMode === 'sample' ? parsedSelfInspectionSampleSize : null,
         items: trimmedItems
       });
     })();
@@ -371,6 +401,39 @@ export function PartMeasurementTemplatesPage() {
             テンプレート名
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="省略時は品番+工程" />
           </label>
+
+          <fieldset className="grid gap-2 rounded border border-slate-200 p-3">
+            <legend className="px-1 text-sm font-semibold text-slate-700">自主検査設定</legend>
+            <label className="grid gap-1 text-sm font-semibold text-slate-700">
+              検査方式
+              <select
+                className="rounded border border-slate-300 px-3 py-2 text-sm"
+                value={selfInspectionMode}
+                onChange={(e) => setSelfInspectionMode(e.target.value as SelfInspectionMode)}
+              >
+                <option value="full">全数検査</option>
+                <option value="sample">抜取検査</option>
+              </select>
+            </label>
+            {selfInspectionMode === 'sample' ? (
+              <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                抜取数
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={selfInspectionSampleSize}
+                  onChange={(e) => setSelfInspectionSampleSize(e.target.value)}
+                  placeholder="例: 3"
+                  required
+                />
+              </label>
+            ) : (
+              <p className="text-xs text-slate-500">
+                全数検査では指示数がそのまま入力必要件数になります（補助データの指示数は 2,000 件以下のみ開始可能）。
+              </p>
+            )}
+          </fieldset>
 
           <fieldset className="grid gap-2 rounded border border-slate-200 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">図面テンプレート（任意）</legend>
@@ -584,6 +647,9 @@ export function PartMeasurementTemplatesPage() {
                     {t.processGroup ?? '—'} / v{t.version} {t.isActive ? '（有効）' : ''}
                   </p>
                   <p className="text-sm text-slate-600">{t.name}</p>
+                  <p className="text-xs text-slate-600">
+                    自主検査: {t.selfInspectionMode === 'sample' ? `抜取（${t.selfInspectionSampleSize ?? '未設定'}件）` : '全数'}
+                  </p>
                   {t.candidateFhinmei ? (
                     <p className="text-xs text-slate-600">FHINMEI候補: {t.candidateFhinmei}</p>
                   ) : null}

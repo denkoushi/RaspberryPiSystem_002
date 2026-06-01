@@ -1,0 +1,473 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+
+import {
+  useCompleteSelfInspectionSession,
+  useCreateSelfInspectionEntry,
+  useResolveSelfInspectionSession,
+  useSelfInspectionSession,
+  useUpdateSelfInspectionEntry
+} from '../../api/hooks';
+import { Button } from '../../components/ui/Button';
+import {
+  InspectionDrawingCanvas,
+  InspectionDrawingCanvasZoomControls,
+  InspectionDrawingValuePanel,
+  templateItemToDrawingPoint,
+  useInspectionDrawingZoom
+} from '../../features/part-measurement/inspection-drawing';
+import {
+  buildSelfInspectionEntryDraft,
+  listDirtySelfInspectionEntryIndices,
+  SELF_INSPECTION_ENTRY_INDEX_PAGE_SIZE,
+  selfInspectionEntryDraftHasNg,
+  selfInspectionEntryIndicesForPage,
+  selfInspectionEntryPageCount
+} from '../../features/part-measurement/selfInspectionEntryDraft';
+import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
+import { resolveSelfInspectionRequiredEntryCount } from '../../features/part-measurement/selfInspectionSessionEntryCount';
+import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
+import { useNfcStream } from '../../hooks/useNfcStream';
+
+function readApiErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const message = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
+    }
+  }
+  return fallback;
+}
+
+type StartState = {
+  id: string;
+  templateId: string;
+  productNo: string;
+  fseiban: string;
+  resourceCd: string;
+  fhincd: string;
+  fhinmei: string;
+  processGroup: 'cutting' | 'grinding';
+};
+
+export function KioskSelfInspectionSessionPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const { sessionId } = useParams();
+  const startState = useMemo(() => {
+    const locationState = (location.state ?? null) as StartState | null;
+    if (locationState) return locationState;
+    const templateId = searchParams.get('templateId')?.trim() ?? '';
+    const productNo = searchParams.get('productNo')?.trim() ?? '';
+    const processGroup = searchParams.get('processGroup') === 'grinding' ? 'grinding' : 'cutting';
+    const resourceCd = searchParams.get('resourceCd')?.trim() ?? '';
+    const fhincd = searchParams.get('fhincd')?.trim() ?? '';
+    const fhinmei = searchParams.get('fhinmei')?.trim() ?? '';
+    const scheduleRowId = searchParams.get('scheduleRowId')?.trim() ?? '';
+    const fseiban = searchParams.get('fseiban')?.trim() ?? '';
+    if (!templateId || !productNo || !resourceCd || !fhincd || !fhinmei || !scheduleRowId || !fseiban) return null;
+    return {
+      id: scheduleRowId,
+      templateId,
+      productNo,
+      fseiban,
+      resourceCd,
+      fhincd,
+      fhinmei,
+      processGroup
+    } satisfies StartState;
+  }, [location.state, searchParams]);
+  const resolveMutation = useResolveSelfInspectionSession();
+  const createEntryMutation = useCreateSelfInspectionEntry();
+  const updateEntryMutation = useUpdateSelfInspectionEntry();
+  const completeSessionMutation = useCompleteSelfInspectionSession();
+  const [resolvedSessionId, setResolvedSessionId] = useState<string | null>(sessionId ?? null);
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const [selectedEntryIndex, setSelectedEntryIndex] = useState(0);
+  const [entryIndexPage, setEntryIndexPage] = useState(0);
+  const [draftValuesByEntryIndex, setDraftValuesByEntryIndex] = useState<Record<number, Record<string, string>>>({});
+  /** 入力件ごとの「保存済み」スナップショット（非フォーカス件は API が値を返さないためローカルで保持） */
+  const [savedDraftByEntryIndex, setSavedDraftByEntryIndex] = useState<Record<number, Record<string, string>>>({});
+  const [resolveError, setResolveError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const resolveAttemptedRef = useRef(false);
+  const persistInFlightRef = useRef(false);
+  const employeeTagUidRef = useRef<string | null>(null);
+  const isActiveRoute = useMatch('/kiosk/part-measurement/self-inspection/sessions/:sessionId');
+  const nfcEvent = useNfcStream(Boolean(isActiveRoute));
+  useEffect(() => {
+    if (!nfcEvent?.uid) return;
+    employeeTagUidRef.current = nfcEvent.uid;
+  }, [nfcEvent]);
+
+  useEffect(() => {
+    if (sessionId) {
+      setResolvedSessionId(sessionId);
+    }
+  }, [sessionId]);
+
+  const sessionQuery = useSelfInspectionSession(resolvedSessionId, {
+    enabled: Boolean(resolvedSessionId),
+    entryIndex: selectedEntryIndex
+  });
+  const session = sessionQuery.data;
+  const requiredEntryCount = session ? resolveSelfInspectionRequiredEntryCount(session) : 0;
+  const isSessionReadOnly = Boolean(session?.completedAt || session?.entryCountBlockedReason);
+  const { zoom, zoomIn, zoomOut, fitToView, fitGeneration } = useInspectionDrawingZoom();
+  const drawingPath = session?.template.visualTemplate?.drawingImageRelativePath ?? null;
+  const { blobUrl: drawingBlobUrl, error: drawingLoadError } = usePartMeasurementDrawingBlobUrl(drawingPath);
+
+  const startStateKey = startState
+    ? `${startState.templateId}:${startState.productNo}:${startState.resourceCd}:${startState.id}`
+    : null;
+
+  useEffect(() => {
+    resolveAttemptedRef.current = false;
+    setResolveError(null);
+  }, [startStateKey]);
+
+  useEffect(() => {
+    if (resolvedSessionId || !startState || resolveAttemptedRef.current) {
+      return;
+    }
+    resolveAttemptedRef.current = true;
+    void resolveMutation
+      .mutateAsync({
+        templateId: startState.templateId,
+        productNo: startState.productNo,
+        processGroup: startState.processGroup,
+        resourceCd: startState.resourceCd,
+        scheduleRowId: startState.id,
+        fseiban: startState.fseiban,
+        fhincd: startState.fhincd,
+        fhinmei: startState.fhinmei
+      })
+      .then((nextSession) => {
+        setResolveError(null);
+        navigate(kioskSelfInspectionSessionPath(nextSession.id), { replace: true });
+      })
+      .catch((error: unknown) => {
+        const message =
+          typeof error === 'object' &&
+          error !== null &&
+          'response' in error &&
+          typeof (error as { response?: { data?: { message?: unknown } } }).response?.data?.message === 'string'
+            ? ((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? null)
+            : null;
+        setResolveError(message ?? '自主検査セッションの開始に失敗しました。');
+      });
+  }, [navigate, resolvedSessionId, startState, startStateKey, resolveMutation]);
+
+  useEffect(() => {
+    if (!session?.id) return;
+    setEntryIndexPage(0);
+    setSelectedEntryIndex(0);
+    setDraftValuesByEntryIndex({});
+    setSavedDraftByEntryIndex({});
+  }, [session?.id]);
+
+  useEffect(() => {
+    if (!session) return;
+    const baseline = buildSelfInspectionEntryDraft(session, selectedEntryIndex);
+    setDraftValuesByEntryIndex((prev) => {
+      if (prev[selectedEntryIndex]) return prev;
+      return {
+        ...prev,
+        [selectedEntryIndex]: baseline
+      };
+    });
+    setSavedDraftByEntryIndex((prev) => {
+      if (prev[selectedEntryIndex]) return prev;
+      return {
+        ...prev,
+        [selectedEntryIndex]: baseline
+      };
+    });
+  }, [session, selectedEntryIndex]);
+
+  const entryPageCount = session ? selfInspectionEntryPageCount(requiredEntryCount) : 1;
+  const visibleEntryIndices = useMemo(
+    () => (session ? selfInspectionEntryIndicesForPage(requiredEntryCount, entryIndexPage) : []),
+    [requiredEntryCount, session, entryIndexPage]
+  );
+
+  const activeDraft = useMemo(() => {
+    if (!session) return null;
+    const values = draftValuesByEntryIndex[selectedEntryIndex] ?? {};
+    return {
+      entryIndex: selectedEntryIndex,
+      points: session.template.items.map((item) => templateItemToDrawingPoint(item, values[item.id] ?? ''))
+    };
+  }, [draftValuesByEntryIndex, selectedEntryIndex, session]);
+
+  const selectedPoint = activeDraft?.points.find((point) => point.id === selectedPointId) ?? activeDraft?.points[0] ?? null;
+  const imageUrl = drawingBlobUrl ?? '';
+
+  const activeEntryHasNg = useMemo(() => {
+    if (!activeDraft || !session) return false;
+    const draft = draftValuesByEntryIndex[selectedEntryIndex];
+    return draft ? selfInspectionEntryDraftHasNg(session, draft) : false;
+  }, [activeDraft, draftValuesByEntryIndex, selectedEntryIndex, session]);
+
+  const dirtyEntryIndices = useMemo(() => {
+    if (!session) return [];
+    return listDirtySelfInspectionEntryIndices(session, draftValuesByEntryIndex, savedDraftByEntryIndex);
+  }, [draftValuesByEntryIndex, savedDraftByEntryIndex, session]);
+
+  const hasUnsavedDraftChanges = dirtyEntryIndices.length > 0;
+
+  const isSavingEntry = createEntryMutation.isPending || updateEntryMutation.isPending;
+  const isCompletingSession = completeSessionMutation.isPending;
+
+  const persistEntry = async (entryIndex: number, draft: Record<string, string>) => {
+    if (!session || isSessionReadOnly || persistInFlightRef.current || isSavingEntry) {
+      return false;
+    }
+    if (selfInspectionEntryDraftHasNg(session, draft)) {
+      setActionError('公差外の測定値があるため保存できません。');
+      return false;
+    }
+    persistInFlightRef.current = true;
+    setActionError(null);
+    const payload = {
+      employeeTagUid: employeeTagUidRef.current,
+      values: session.template.items.map((item) => ({
+        templateItemId: item.id,
+        value: draft[item.id] ?? ''
+      }))
+    };
+    try {
+      const existing = session.entries.find((entry) => entry.entryIndex === entryIndex);
+      if (existing) {
+        await updateEntryMutation.mutateAsync({
+          sessionId: session.id,
+          entryId: existing.id,
+          body: {
+            ...payload,
+            ifUnmodifiedSince: existing.updatedAt
+          }
+        });
+      } else {
+        await createEntryMutation.mutateAsync({
+          sessionId: session.id,
+          body: {
+            entryIndex,
+            ...payload
+          }
+        });
+      }
+      setSavedDraftByEntryIndex((prev) => ({
+        ...prev,
+        [entryIndex]: { ...draft }
+      }));
+      return true;
+    } catch (error: unknown) {
+      setActionError(readApiErrorMessage(error, '入力の保存に失敗しました。'));
+      return false;
+    } finally {
+      persistInFlightRef.current = false;
+    }
+  };
+
+  const persistCurrentEntry = async () => {
+    if (!activeDraft) return;
+    const draft = draftValuesByEntryIndex[activeDraft.entryIndex];
+    if (!draft) return;
+    await persistEntry(activeDraft.entryIndex, draft);
+  };
+
+  const completeSession = async () => {
+    if (!session || isSessionReadOnly || isCompletingSession || hasUnsavedDraftChanges) {
+      return;
+    }
+    setActionError(null);
+    try {
+      await completeSessionMutation.mutateAsync(session.id);
+    } catch (error: unknown) {
+      setActionError(readApiErrorMessage(error, '完了処理に失敗しました。'));
+    }
+  };
+
+  if (!resolvedSessionId && resolveMutation.isPending) {
+    return <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-900 text-white">セッション作成中…</div>;
+  }
+
+  if (!resolvedSessionId && !startState) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-900 p-4 text-center text-amber-200">
+        自主検査の開始情報が不足しています。一覧または順位ボードから開き直してください。
+      </div>
+    );
+  }
+
+  if (!resolvedSessionId && resolveError) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-900 p-4 text-center text-amber-200">
+        {resolveError}
+      </div>
+    );
+  }
+
+  if (sessionQuery.isLoading || !session) {
+    return <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-900 text-white">読込中…</div>;
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3 bg-slate-900 p-3 text-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-800/80 p-3">
+        <div>
+          <p className="text-xl font-bold">{session.productNo}</p>
+          <p className="text-sm text-white/70">
+            {session.fhincd} / {session.resourceCd} / {session.fhinmei}
+          </p>
+          <p className="text-xs text-white/55">
+            {session.selfInspectionMode === 'sample'
+              ? `抜取 ${requiredEntryCount} 件`
+              : `全数 ${requiredEntryCount} 件`}
+          </p>
+          {session.entryCountBlockedReason ? (
+            <p className="mt-1 text-xs text-amber-200">{session.entryCountBlockedReason}</p>
+          ) : null}
+          {drawingLoadError ? <p className="mt-1 text-xs text-amber-200">{drawingLoadError}</p> : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <InspectionDrawingCanvasZoomControls enabled={Boolean(imageUrl)} onZoomIn={zoomIn} onZoomOut={zoomOut} onFitToView={fitToView} />
+          <Button type="button" variant="ghostOnDark" onClick={() => navigate('/kiosk/part-measurement/self-inspection')}>
+            一覧へ
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-h-0 rounded border border-white/15 bg-slate-950/50 p-2">
+          {imageUrl ? (
+            <InspectionDrawingCanvas
+              imageUrl={imageUrl}
+              points={activeDraft?.points ?? []}
+              mode="test"
+              selectedPointId={selectedPoint?.id ?? null}
+              onSelectPoint={setSelectedPointId}
+              zoom={zoom}
+              fitGeneration={fitGeneration}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-white/60">図面がありません。</div>
+          )}
+        </div>
+
+        <div className="flex min-h-0 flex-col gap-3">
+          <div className="rounded border border-white/15 bg-slate-800/70 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-white/80">
+                入力件（{selectedEntryIndex + 1} / {requiredEntryCount}）
+              </p>
+              {entryPageCount > 1 ? (
+                <div className="flex items-center gap-2 text-xs text-white/70">
+                  <Button
+                    type="button"
+                    variant="ghostOnDark"
+                    className="min-h-8 px-2 py-1 text-xs"
+                    disabled={entryIndexPage <= 0}
+                    onClick={() => setEntryIndexPage((page) => Math.max(0, page - 1))}
+                  >
+                    前へ
+                  </Button>
+                  <span>
+                    {entryIndexPage + 1} / {entryPageCount}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghostOnDark"
+                    className="min-h-8 px-2 py-1 text-xs"
+                    disabled={entryIndexPage >= entryPageCount - 1}
+                    onClick={() => setEntryIndexPage((page) => Math.min(entryPageCount - 1, page + 1))}
+                  >
+                    次へ
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {visibleEntryIndices.map((idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className={`rounded px-3 py-2 text-sm font-semibold ${
+                    idx === selectedEntryIndex ? 'bg-cyan-500 text-slate-950' : 'bg-white/10 text-white'
+                  }`}
+                  onClick={() => {
+                    setSelectedEntryIndex(idx);
+                    setEntryIndexPage(Math.floor(idx / SELF_INSPECTION_ENTRY_INDEX_PAGE_SIZE));
+                    setActionError(null);
+                  }}
+                >
+                  {idx + 1}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <InspectionDrawingValuePanel
+            point={selectedPoint}
+            readOnly={isSessionReadOnly}
+            onValueChange={(value) => {
+              if (!selectedPoint || isSessionReadOnly || !session) return;
+              setDraftValuesByEntryIndex((prev) => {
+                const current =
+                  prev[selectedEntryIndex] ?? buildSelfInspectionEntryDraft(session, selectedEntryIndex);
+                return {
+                  ...prev,
+                  [selectedEntryIndex]: {
+                    ...current,
+                    [selectedPoint.id]: value
+                  }
+                };
+              });
+            }}
+          />
+
+          <div className="flex flex-col gap-2 rounded border border-white/15 bg-slate-800/70 p-3">
+            {actionError ? (
+              <p className="rounded border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-100">
+                {actionError}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                disabled={isSessionReadOnly || isSavingEntry || activeEntryHasNg}
+                onClick={() => void persistCurrentEntry()}
+              >
+                入力を保存
+              </Button>
+              <Button
+                type="button"
+                variant="ghostOnDark"
+                disabled={
+                  isSessionReadOnly ||
+                  isCompletingSession ||
+                  isSavingEntry ||
+                  activeEntryHasNg ||
+                  hasUnsavedDraftChanges ||
+                  session.completedEntryCount < requiredEntryCount
+                }
+                onClick={() => void completeSession()}
+              >
+                完了
+              </Button>
+            </div>
+            {activeEntryHasNg ? (
+              <p className="text-xs text-amber-200">公差外の測定値があるため保存・完了できません。</p>
+            ) : null}
+            {hasUnsavedDraftChanges ? (
+              <p className="text-xs text-amber-200">
+                未保存の入力があります。「入力を保存」してから完了してください。
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

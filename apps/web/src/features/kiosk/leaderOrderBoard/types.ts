@@ -24,4 +24,7 @@ export type LeaderBoardRow = {
   isCompleted: boolean;
   /** 行単位の備考（生産スケジュール API の note と同一） */
   note: string | null;
+  hasSelfInspectionDrawing: boolean;
+  selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+  selfInspectionEntryPath: string | null;
 };
