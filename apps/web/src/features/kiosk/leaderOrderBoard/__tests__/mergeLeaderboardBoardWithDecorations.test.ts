@@ -46,5 +46,7 @@ describe('mergeLeaderboardBoardWithDecorations', () => {
   it('未装飾行 id を列挙する', () => {
     const decorated = new Set(['a']);
     expect(listUndecoratedLeaderboardRowIds(['a', 'b'], decorated)).toEqual(['b']);
+    decorated.delete('a');
+    expect(listUndecoratedLeaderboardRowIds(['a', 'b'], decorated)).toEqual(['a', 'b']);
   });
 });

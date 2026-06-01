@@ -32,6 +32,7 @@ describe('resolveDisplayBoardMutationUpdate', () => {
     });
     expect(result.nextAppendOverride?.rows[0]?.processingOrder).toBe(5);
     expect(result.patchedDisplayBoard?.rows[0]?.processingOrder).toBe(5);
+    expect(result.staleDecorationRowIds).toEqual([]);
   });
 
   it('appendOverride が表示正本のとき append を patch する', () => {
@@ -46,6 +47,7 @@ describe('resolveDisplayBoardMutationUpdate', () => {
       mutation: { kind: 'order', rowId: 'r2', processingOrder: 9 }
     });
     expect(result.nextAppendOverride?.rows[1]?.processingOrder).toBe(9);
+    expect(result.staleDecorationRowIds).toEqual([]);
   });
 
   it('未知 rowId のときは更新しない', () => {
@@ -57,5 +59,28 @@ describe('resolveDisplayBoardMutationUpdate', () => {
     });
     expect(result.nextAppendOverride).toBeNull();
     expect(result.patchedDisplayBoard?.rows[0]?.processingOrder).toBe(1);
+    expect(result.staleDecorationRowIds).toEqual([]);
+  });
+
+  it('completion mutation は rowData を更新し staleDecorationRowIds を返す', () => {
+    const shell = {
+      ...board([{ id: 'r1' }]),
+      leaderboardFooterChipsByPartKey: {
+        p1: [{ rowId: 'r1', isCompleted: false }]
+      }
+    } as ProductionScheduleLeaderboardBoardResponse;
+    const result = resolveDisplayBoardMutationUpdate({
+      shell,
+      appendOverride: null,
+      mutation: { kind: 'completion', rowId: 'r1', rowData: { progress: '完了' } }
+    });
+    expect((result.nextAppendOverride?.rows[0]?.rowData as Record<string, unknown>)?.progress).toBe(
+      '完了'
+    );
+    expect(result.staleDecorationRowIds).toEqual(['r1']);
+    const footer = result.nextAppendOverride?.leaderboardFooterChipsByPartKey as
+      | Record<string, Array<{ rowId?: string; isCompleted?: boolean }>>
+      | undefined;
+    expect(footer?.p1?.[0]?.isCompleted).toBe(false);
   });
 });

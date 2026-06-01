@@ -221,15 +221,28 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   });
   const networkDisplayBoard = pickLeaderboardBoardForDisplay(resolvedShell, scopedAppendOverride);
 
-  const { accumulatedDecorations, isDecorationsFetching, decorationsError, resetDecorations } =
-    useLeaderboardDeferredBoardDecorations({
-      scheduleEnabled,
-      paramsKey,
-      displayBoard: networkDisplayBoard,
-      macManualOrderV2,
-      activeDeviceScopeKey,
-      pauseRefetch
-    });
+  const boardNetworkSyncToken = useMemo(() => {
+    if (!boardQuery.isSuccess || boardQuery.isPlaceholderData) {
+      return '';
+    }
+    return `${shellFingerprint}\u0004${boardQuery.dataUpdatedAt}`;
+  }, [boardQuery.dataUpdatedAt, boardQuery.isPlaceholderData, boardQuery.isSuccess, shellFingerprint]);
+
+  const {
+    accumulatedDecorations,
+    isDecorationsFetching,
+    decorationsError,
+    resetDecorations,
+    markDecorationRowsStale
+  } = useLeaderboardDeferredBoardDecorations({
+    scheduleEnabled,
+    paramsKey,
+    displayBoard: networkDisplayBoard,
+    boardNetworkSyncToken,
+    macManualOrderV2,
+    activeDeviceScopeKey,
+    pauseRefetch
+  });
 
   const networkBoardComplete = useMemo(() => {
     if (!networkDisplayBoard) return false;
@@ -293,18 +306,23 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
         overrideParamsKey: appendOverrideParamsKeyRef.current,
         override: appendOverrideRef.current
       });
-      const { nextAppendOverride } = resolveDisplayBoardMutationUpdate({
+      const { nextAppendOverride, staleDecorationRowIds } = resolveDisplayBoardMutationUpdate({
         shell,
         appendOverride: scopedAppend,
         mutation
       });
-      if (nextAppendOverride == null) return;
 
-      setAppendOverride(nextAppendOverride);
-      appendOverrideRef.current = nextAppendOverride;
-      appendOverrideParamsKeyRef.current = paramsKey;
+      if (nextAppendOverride != null) {
+        setAppendOverride(nextAppendOverride);
+        appendOverrideRef.current = nextAppendOverride;
+        appendOverrideParamsKeyRef.current = paramsKey;
+      }
+
+      if (staleDecorationRowIds.length > 0) {
+        markDecorationRowsStale(staleDecorationRowIds);
+      }
     },
-    [applyIdbMutationPatch, paramsKey]
+    [applyIdbMutationPatch, markDecorationRowsStale, paramsKey]
   );
 
   const listIncomplete = useMemo(() => {

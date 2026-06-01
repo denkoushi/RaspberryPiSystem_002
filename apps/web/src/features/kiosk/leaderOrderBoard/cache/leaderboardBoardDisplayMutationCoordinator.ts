@@ -1,4 +1,5 @@
 import { pickLeaderboardBoardForDisplay } from '../leaderboardBoardDisplayPolicy';
+import { resolveStaleDecorationRowIds } from '../leaderboardDecorationStalePolicy';
 
 import { applyMutationToLeaderboardBoard } from './leaderboardBoardApplyMutation';
 
@@ -16,6 +17,8 @@ export type ResolveDisplayBoardMutationUpdateResult = {
   patchedDisplayBoard: ProductionScheduleLeaderboardBoardResponse | undefined;
   /** appendOverride state へ書き込む値（null のときは更新不要） */
   nextAppendOverride: ProductionScheduleLeaderboardBoardResponse | null;
+  /** 装飾の増分再取得が必要な rowId（completion のみ） */
+  staleDecorationRowIds: readonly string[];
 };
 
 /**
@@ -25,19 +28,21 @@ export type ResolveDisplayBoardMutationUpdateResult = {
 export function resolveDisplayBoardMutationUpdate(
   input: ResolveDisplayBoardMutationUpdateInput
 ): ResolveDisplayBoardMutationUpdateResult {
+  const staleDecorationRowIds = resolveStaleDecorationRowIds(input.mutation);
   const displaySource = pickLeaderboardBoardForDisplay(input.shell, input.appendOverride);
   if (displaySource == null) {
-    return { patchedDisplayBoard: undefined, nextAppendOverride: null };
+    return { patchedDisplayBoard: undefined, nextAppendOverride: null, staleDecorationRowIds };
   }
 
   const patchedDisplayBoard = applyMutationToLeaderboardBoard(displaySource, input.mutation);
   const rowExists = displaySource.rows.some((row) => row.id === input.mutation.rowId);
   if (!rowExists) {
-    return { patchedDisplayBoard: displaySource, nextAppendOverride: null };
+    return { patchedDisplayBoard: displaySource, nextAppendOverride: null, staleDecorationRowIds };
   }
 
   return {
     patchedDisplayBoard,
-    nextAppendOverride: patchedDisplayBoard
+    nextAppendOverride: patchedDisplayBoard,
+    staleDecorationRowIds
   };
 }
