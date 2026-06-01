@@ -913,6 +913,53 @@ pnpm --filter @raspi-system/web build
 - **製番 OR** は **board の API `q`** だけでなく、**遅延装飾 hook のキー設計**まで含めて一体で見る（[§製番 OR §装飾](#製番-or-クライアントキャッシュフィルタ2026-05-20) 5 項を更新済み）。
 - **Pi5 先行 → StoneBase01 実機 OK → 残 Pi4×3** の順で、**回帰の切り分けコスト**が小さい（標準 [deployment.md §フッタチップ](../guides/deployment.md#kiosk-leaderboard-footer-chips-terminal-cache-2026-05-20)）。
 
+## 完了後フッタ工程チップ装飾の再同期（2026-06-01 · `fix/kiosk-leaderboard-completion-decoration-resync`）
+
+**目的**: [装飾後取り](#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial) と [操作即表示](#操作即表示--120秒キャッシュ両立2026-05-20--featkiosk-leaderboard-mutation-instant-display) 反映後も、**行の完了（✓）** と **行下フッタの資源CD工程チップ**（`leaderboardFooterChipsByPartKey`）の **グレーアウトがずれる**事象を、**API 不変・Web のみ**で解消する。完了意味の正本は [KB-375 §2026-05-26](./KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-05-26-completion-status-only) を維持。
+
+**ブランチ**: **`fix/kiosk-leaderboard-completion-decoration-resync`** · 代表 **`fe31aa99`**
+
+### Symptoms
+
+- **手動 ✓ 直後**: 行本体は完了表示だが **フッタ工程チップだけ未完色**のまま。
+- **同一 partKey の別工程**を他経路で完了後、**120s ポーリング / shell 再取得**してもチップが古い。
+- **操作即表示**で行の `isCompleted` は即更新されるが、**装飾 POST が走らない**（IDB ミラーだけ更新されたケース）。
+
+### Root cause
+
+| 要因 | 内容 |
+| --- | --- |
+| stale 判定の不足 | `useLeaderboardDeferredBoardDecorations` が **`fetchedProgressByRowId`（`rowData.progress`）** 変化のみで POST 対象を決め、**完了 mutation** や **board ネットワーク同期**と **footer 取得成功時の `boardNetworkSyncToken`** が揃っていなかった |
+| partKey の重複 POST リスク | 初期案は board 同期ごとに **同一 part の全表示行**を pending にしうる → **代表 row 1 件/partKey** に集約（負荷・レビュー指摘） |
+
+### Fix（`leaderboardDecorationStalePolicy.ts`）
+
+| API | 挙動 |
+| --- | --- |
+| `listLeaderboardRowIdsNeedingDecorationFetch` | **`progress` 変化** → 行単位 pending · **`boardNetworkSyncToken` 変化** → partKey 代表 1 行のみ（progress pending が無い part のみ） |
+| `resolveStaleDecorationRowIds` | **completion mutation** の `rowId` のみ |
+| `removeLeaderboardFetchedFooterSyncTokensForRows` | 手動完了時に **footer 同期指紋**を削除し次 fetch を強制 |
+
+**配線**: [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx)（`markDecorationRowsStale` on completion）· [`leaderboardBoardDisplayMutationCoordinator.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardDisplayMutationCoordinator.ts)
+
+### 本番デプロイ（2026-06-01 · **Pi5 のみ**）
+
+| 項目 | 値 |
+| --- | --- |
+| Detach Run ID | **`20260601-210522-21919`**（`failed=0`） |
+| 実機（自動） | `verify-phase12-real.sh` **43/0/0**（約 **63s**） |
+| Pi4 / Pi3 | **`no hosts matched`**（SPA 配信は Pi5·**Pi4 順次不要**） |
+
+**記録**: [deployment.md §2026-06-01](../guides/deployment.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01) · [KB-375 §2026-06-01](./KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync)
+
+### Troubleshooting
+
+| 症状 | 切り分け | 対処 |
+| --- | --- | --- |
+| 行だけ完了・チップ未完 | Pi5 `web` ref · Network **`leaderboard-decorations`** が completion 後に 1 回以上 | **`fe31aa99` 以降** + 強制リロード |
+| ポーリング毎に decorations POST が多い | 代表行/partKey 未適用 | 本 Fix 再デプロイ |
+| 他端末完了が即反映されない | 120s SLA | [Phase 2 改訂](#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock)（仕様） |
+
 ## 並列化事前検証（Pi5 実データ · 2026-05-20 · 実装前）
 
 **目的**: スロット並列 fan-out が **壁時計短縮**と **Pi5 耐久**の両方を満たすか、本番相当データで判定する（**読み取りのみ**）。

@@ -10,6 +10,41 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-06-01 · **キオスク順位ボード・完了後フッタ工程チップ装飾の再同期**·**Web のみ**·**Pi5 本番・実機 OK**） {#kiosk-leaderboard-completion-decoration-resync-2026-06-01}
+
+- **変更概要（正本）**: [KB-375 §装飾再同期](./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync) · [KB-374 §装飾 stale ポリシー](./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync) · [verification-checklist §6.6.29](./verification-checklist.md#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01)。
+  - **症状**: 行の **✓ 完了** と **行下フッタの資源CD工程チップ**（`leaderboardFooterChipsByPartKey`）のグレーアウトがずれる。手動完了直後だけでなく、**同一部品の他工程完了**・**120s ポーリング / shell 再取得**後もチップが古いまま残りうる。
+  - **原因**: [装飾後取り](./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial) 経路で **`leaderboard-decorations` POST** の再取得条件が **`rowData.progress` 変化**に偏り、**完了 mutation 直後**や **board ネットワーク同期**と **footer 取得成功時点**の指紋が揃っていなかった。
+  - **Fix（Web のみ）**: [`leaderboardDecorationStalePolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardDecorationStalePolicy.ts) に集約。
+    - **`progress` トークン変化** → 行単位で装飾 pending。
+    - **`boardNetworkSyncToken`**（shell 更新・ポーリング refetch）→ **partKey あたり代表 row 1 件**のみ footer 再検証（全行再 POST しない）。
+    - **手動完了 mutation** → `markDecorationRowsStale` で即時 stale + coordinator から `resolveStaleDecorationRowIds`。
+- **代表コミット**: **`fe31aa99`**（`fix(kiosk): resync leaderboard footer decorations after completion changes`）· ブランチ **`fix/kiosk-leaderboard-completion-decoration-resync`**
+- **Prisma / API**: **変更なし**（**Web のみ** · Docker `web` 再ビルド）
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5` · 1 台）。**Pi4×4 / Pi3**: **`skipping: no hosts matched`**（キオスク SPA は Pi5 配信·[KB-375 §2026-05-10](./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-05-10--本番反映実機検証) の 5 台ロールアウトとは別判断）
+- **標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh fix/kiosk-leaderboard-completion-decoration-resync \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+（**`main` マージ後**は第2引数 **`main`**。）
+
+- **本番デプロイ（実績·2026-06-01）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | Phase12 | 備考 |
+|--------|---------------|------------|---------|------|
+| `raspberrypi5` | **`20260601-210522-21919`** | `ok=134` `changed=4` **`failed=0`** | **43/0/0**（約 **63s**） | **`Git: changed`** · Docker compose 再起動 · Mac **`--follow` 約 406s** |
+
+- **実機（手動·推奨）**: 順位ボードで **行 ✓ 完了** → 当該製番の **フッタ工程チップが即グレー** · **別工程を他端末/管理で完了** → 最大 **120s** 以内にチップ整合 · **強制リロード**（§6.6.4）後も再現しないこと。
+- **ローカル回帰**: `leaderboardDecorationStalePolicy` / `mergeLeaderboardBoardWithDecorations` / `leaderboardBoardDisplayMutationCoordinator` 関連 Vitest **15 PASS**（本番反映前）。
+- **トラブルシュート**:
+  - **チップだけ未完のまま** → Pi5 **`web` ref** が **`fe31aa99` 以降**か · キオスク **強制リロード** · DevTools で **`leaderboard-decorations`** が partKey 代表行のみ POST されているか。
+  - **ポーリング直後に API 負荷が跳ねる** → 旧 bundle（全行 stale）の可能性 → 本 Fix（代表行 1 件）を再デプロイ。
+  - **Pi4 だけ直らない** → 本変更は **Pi5 `web` のみ**が正本（Pi4 は `kiosk-browser` キャッシュ·通常 Pi5 反映 + リロードで足りる）。
+
 ### 補足（2026-05-31 · **キオスク検査図面・テンプレ編集図面読込 + ズーム痙攣**·**Web のみ**·**Pi5 実機 OK・Pi4×4 未**） {#kiosk-inspection-drawing-edit-image-and-zoom-jitter-2026-05-31}
 
 - **変更概要（正本）**: [KB-320 §認可付き図面読込](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-テンプレ編集-認可付き図面読込-2026-05-31) · [KB-320 §ズーム痙攣](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-キャンバスズーム痙攣修正-2026-05-31) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-テンプレ編集-認可付き図面読込-2026-05-31)。

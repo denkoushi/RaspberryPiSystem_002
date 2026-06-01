@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-05-22（順位ボード·製番左縁全件無色 §6.6.28 追記·§6.6.27 は行内順位ピッカー）。**2026-05-20 追記**: 順位ボード製番左縁アクセント 24 色（§6.6.23·**2026-05-22 以降は全件無色が正**）。
+最終更新: 2026-06-01（順位ボード·完了後フッタ工程チップ装飾再同期 §6.6.29 追記）。**2026-05-22 追記**: 製番左縁全件無色 §6.6.28·行内順位ピッカー §6.6.27。
 
 ## 概要
 
@@ -813,6 +813,21 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **トラブルシュート**: 左縁が 8 色のまま → Pi5 ref / `web` 再ビルド・強制リロード。OR フィルタ 1〜5 色目が変わった → 先頭 8 色不変のはず（ref 確認）。
 
 **検証日時**: 2026-05-20（自動 **43/0/0**·Pi5→Pi4×4 **`--limit` 順次**·Detach **`20260520-141147-19965`** ほか 4 本·**Pi3 除外**）
+**検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
+
+**6.6.29 キオスク リーダー順位ボード（完了後フッタ工程チップ装飾の再同期）** {#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01}
+
+**確認ポイント**（[KB-375 §2026-06-01](../knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync)·[KB-374 §装飾 stale](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync)·[deployment §2026-06-01](./deployment.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01)）:
+
+- [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-06-01 本番反映後 **約 63s**）。
+- [ ] **手動 ✓ 直後**: 順位ボードで行 **完了** → **行本体のグレーアウト**と **行下フッタの資源CD工程チップ**が **同時に完了表示**（チップだけ未完が残らない）。
+- [ ] **Network（任意）**: 完了操作後 **`leaderboard-decorations` POST** が走ること。同一 **partKey**（製番×品番×部品）の複数表示行がある場合、**代表 row 1 件/partKey** 程度に抑えられていること（全行一括 POST しない）。
+- [ ] **他工程完了の追従**: 同一 part の **別工程**を別端末等で完了 → **120s 以内**（ポーリング / shell 再取得後）にフッタチップが整合（[KB-374 Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock) SLA と併用）。
+- [ ] **強制リロード**: 反映直後は **キオスク強制リロード**（§6.6.4）。Pi5 **`web`** が **`fe31aa99` 以降**（または `main` マージ後 HEAD）であること。
+
+**トラブルシュート**: チップだけ未完 → Pi5 ref / 強制リロード / 旧 bundle（装飾後取りのみ）。POST が行数分 → 代表行/partKey 未適用。
+
+**検証日時**: 2026-06-01（自動 **43/0/0**·**`raspberrypi5` のみ**·Detach **`20260601-210522-21919`**·**Pi3/Pi4 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
 **6.6.28 キオスク リーダー順位ボード（製番左縁 — 全件無色・OR フィルタ時のみ色分け）** {#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22}

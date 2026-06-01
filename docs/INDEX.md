@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-01 · キオスク順位ボード・完了後フッタ工程チップ装飾の再同期 · **Pi5 本番・実機 OK（自動）**）
+
+- **完了とフッタ工程チップの表示ずれを解消**: 装飾後取り経路で **`leaderboard-decorations` POST** を **手動完了直後**・**`rowData.progress` 変化**・**board ネットワーク同期（shell/ポーリング）**で再実行。**partKey 代表 row 1 件**のみ footer 再検証（全行 POST しない）。**ブランチ**: **`fix/kiosk-leaderboard-completion-decoration-resync`** · **`fe31aa99`** · **本番**: **`raspberrypi5` のみ** · Detach **`20260601-210522-21919`**（**`failed=0`**）· Phase12 **43/0/0**（約 **63s**）· Pi4/Pi3 **除外**。**記録**: [deployment §2026-06-01](./guides/deployment.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01) · [KB-375 §2026-06-01](./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync) · [KB-374 §装飾 stale](./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync) · [verification-checklist §6.6.29](./guides/verification-checklist.md#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01)
+
 ### 最新アップデート（2026-05-29 · 私用 Pi5 Hermes `/novel` slash `args_hint` · **本番反映済**）
 
 - **Discord `/novel` slash 引数欄 + verify 境界**: `args_hint="<creative prompt>"` · 日本語 usage · approval-relay verify は task 系のみ必須 · smoke が args_hint 退行検知。**ブランチ**: **`feat/private-pi5-hermes-novel-slash-args-hint`** · **`66c1ff79`** · CI **`26637722184`** success · **本番**: **私用 Pi5 のみ** · **`PLAY RECAP` ok=138 changed=5 failed=0**（約 **191s**）· plugin `args_hint` **OK** · Discord sync **updated=1** · D4 **OK** · Discord E2E **手動待ち**（Arguments 欄 or 1行テキスト）。**記録**: [KB §args_hint](./knowledge-base/KB-private-pi5-hermes-novel-profile-production.md#追記--novel-slash-args_hint-修正2026-05-29-2156-jst) · [Runbook §args_hint デプロイ](./runbooks/private-pi5-hermes-deploy.md#novel-profile--args_hint-修正デプロイ2026-05-29-2156-jst)

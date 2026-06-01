@@ -81,6 +81,32 @@ update-frequency: medium
 - **運用スモーク（自動·DB）**: 製番 **BA1S6202** / **`FSIGENCD=035`** で **`csv_disappeared=f`**。**`fk_status=C`** の行は **意図どおりグレー**（5/22 の **`R` + 消失完了** は再現しない）
 - **記録**: [deployment.md §2026-05-26](../guides/deployment.md#kiosk-completion-status-only-2026-05-26)·[ADR-20260526](../decisions/ADR-20260526-production-schedule-completion-status-only.md)
 
+## Production（2026-06-01 · **完了後フッタ工程チップ装飾の再同期**） {#production-2026-06-01-completion-decoration-resync}
+
+- **ブランチ**: **`fix/kiosk-leaderboard-completion-decoration-resync`**（代表 **`fe31aa99`**）
+- **スコープ**: **Web のみ**（`leaderboardDecorationStalePolicy.ts` · `useLeaderboardDeferredBoardDecorations` · `useCompositeLeaderboardPhasedScheduleWithAutoAppend` · `leaderboardBoardDisplayMutationCoordinator`）。**API / DB 不変**。
+- **完了意味の正本**: [§2026-05-26](#production-2026-05-26-completion-status-only) の **手動 + `C`/`X`** を維持。本 Fix は **表示層**で **実効完了（`row.isCompleted`）と footer チップ**の **見え方を再同期**する（完了判定ロジックそのものは変更しない）。
+- **再同期トリガー（要約）**:
+
+| トリガー | 挙動 | 意図 |
+|----------|------|------|
+| `rowData.progress` 変化 | 当該 **rowId** を decorations pending | CSV / shell 更新で progress が変わった行の機種名・顧客名も追従 |
+| `boardNetworkSyncToken` 変化 | **partKey 代表 row 1 件**のみ pending（同一 part の複数表示行はまとめる） | 120s ポーリング・shell refetch 後に **footer チップだけ古い**状態を解消。**全行 POST はしない**（負荷・PR レビュー指摘対応） |
+| 手動 **completion** mutation | `markDecorationRowsStale` + `resolveStaleDecorationRowIds` | **✓ 操作直後**にチップを即再取得 |
+
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4 / Pi3 **`no hosts matched`**（SPA 配信元は Pi5·Pi4 順次デプロイは **不要**）。
+- **Detach Run ID**: **`20260601-210522-21919`**（`failed=0` · `changed=4`）
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **63s**）
+- **運用スモーク（手動·推奨）**:
+  1. 順位ボードで行 **✓** → **行本体とフッタ工程チップが同時に完了表示**（グレー）。
+  2. 同一 **製番×品番×部品** の **別工程行**を別経路で完了 → **ポーリング / 手動 refetch 後**にフッタが追従（最大 **120s** SLA は [KB-374 Phase 2](./KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock) と併用）。
+  3. **操作即表示**（[KB-374 §操作即表示](./KB-374-leaderboard-board-continue-cursor-contract.md#操作即表示--120秒キャッシュ両立2026-05-20--featkiosk-leaderboard-mutation-instant-display)）後も **チップだけ巻き戻らない**こと。
+- **トラブルシュート**:
+  - **行だけ完了・チップ未完** → 装飾後取り bundle 未反映 / **`fe31aa99` 未デプロイ** / 強制リロード。
+  - **ポーリングごとに decorations POST が数十件** → **代表行 1 件/partKey** 未適用の旧 JS。
+  - **他端末完了が即反映されない** → **120s キャッシュ SLA**（仕様）·本 Fix は **自端末の stale 検出**が主目的。
+- **記録**: [deployment.md §2026-06-01](../guides/deployment.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01)·[KB-374 §装飾 stale](./KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync)·[verification-checklist §6.6.29](../guides/verification-checklist.md#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01)
+
 ## References
 
 - [deployment.md §KB-375 本番（2026-05-10）](../guides/deployment.md#kiosk-leaderboard-completion-integrity-2026-05-10)
