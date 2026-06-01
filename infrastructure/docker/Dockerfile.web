@@ -69,7 +69,7 @@ FROM alpine:3.23
 WORKDIR /srv
 # envsubst を導入し、CI の Trivy が検出した Alpine の修正版パッケージへ追従する
 RUN apk add --no-cache ca-certificates gettext libcap \
-  && apk upgrade --no-cache musl musl-utils openssl libcrypto3 libssl3 zlib
+  && apk upgrade --no-cache musl musl-utils openssl libcrypto3 libssl3 zlib libxml2
 COPY --from=caddy-build /usr/bin/caddy /usr/bin/caddy
 RUN setcap cap_net_bind_service=+ep /usr/bin/caddy
 COPY --from=build /app/apps/web/dist ./site
