@@ -60,8 +60,8 @@ Maintained in accordance with `.agent/PLANS.md`.
   - レビュー: abort レース · 失敗時 pending 解除 · unmount cleanup · デバッグ fetch 撤去
   - 単体/統合テスト追加 · CI **`26812045529`** success
 - [x] (2026-06-02) **Pi5 本番** PDF プレビュー — Detach **`20260602-190538-1780`** · Phase12 **41/1/1** · **実機目視 OK**
-- [ ] **`main` マージ** — PR 作成・squash 後 Pi4×4 順次
-- [ ] **Pi4×4 本番** — `main` マージ後に各キオスクへ順次（parity + overflow + ズーム + 図面読込 + PDF preview を一括推奨）
+- [x] (2026-06-02) **`main` マージ** — PR [#382](https://github.com/denkoushi/RaspberryPiSystem_002/pull/382) squash **`a3ce2284`**
+- [ ] **Pi4×4 本番** — `main` 反映後に各キオスクへ順次（parity + overflow + ズーム + 図面読込 + PDF preview を一括推奨）
 - [ ] **Pi5 実機目視** プレビュー parity UI — デプロイ済・目視記録は運用側（任意 Phase12）
 
 ## Surprises & Discoveries

@@ -30,7 +30,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 （**`main` マージ後**は第2引数 **`main`**。Pi4 は Pi5 目視 OK 後に 1 台ずつ。）
 
 - **デプロイ前**: ローカルが `origin/<branch>` より **ahead だと拒否** → **push 後**に実行
-- **本番デプロイ（実績·2026-06-02）**:
+- **本番デプロイ（実績·2026-06-02）** — **`main` マージ**: PR [#382](https://github.com/denkoushi/RaspberryPiSystem_002/pull/382) squash **`a3ce2284`**（デプロイ時 HEAD は **`8307c995`**）:
 
 | ホスト | Detach Run ID | Git HEAD | PLAY RECAP | Phase12 | 備考 |
 |--------|---------------|----------|------------|---------|------|
