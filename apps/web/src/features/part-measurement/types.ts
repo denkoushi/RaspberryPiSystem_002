@@ -3,7 +3,7 @@ export type PartMeasurementProcessGroup = 'cutting' | 'grinding';
 /** POST /part-measurement/templates の templateScope（API と同期） */
 export type PartMeasurementTemplateScope = 'three_key' | 'fhincd_resource' | 'fhinmei_only';
 
-export type SelfInspectionMode = 'full' | 'sample';
+export type SelfInspectionMode = 'full' | 'single' | 'first_last' | 'fixed_count';
 
 export type PartMeasurementSheetStatus = 'DRAFT' | 'FINALIZED' | 'CANCELLED' | 'INVALIDATED';
 
@@ -64,6 +64,8 @@ export type KioskInspectionDrawingTemplateSummaryDto = {
   version: number;
   isActive: boolean;
   selfInspectionMode: SelfInspectionMode;
+  selfInspectionFixedCount: number | null;
+  /** API 互換（fixed_count 時は fixedCount と同値） */
   selfInspectionSampleSize: number | null;
   visualTemplateId: string | null;
   visualTemplate: PartMeasurementVisualTemplateDto | null;
@@ -82,6 +84,8 @@ export type PartMeasurementTemplateDto = {
   version: number;
   isActive: boolean;
   selfInspectionMode: SelfInspectionMode;
+  selfInspectionFixedCount: number | null;
+  /** API 互換（fixed_count 時は fixedCount と同値） */
   selfInspectionSampleSize: number | null;
   visualTemplateId: string | null;
   visualTemplate: PartMeasurementVisualTemplateDto | null;
@@ -111,6 +115,8 @@ export type SelfInspectionSessionSummaryDto = {
   entryCountBlockedReason?: string | null;
   completedEntryCount: number;
   selfInspectionMode: SelfInspectionMode;
+  selfInspectionFixedCount: number | null;
+  /** API 互換（fixed_count 時は fixedCount と同値） */
   selfInspectionSampleSize: number | null;
   status: SelfInspectionStatus;
   startedAt: string | null;
@@ -127,6 +133,8 @@ export type SelfInspectionMeasurementValueDto = {
 export type SelfInspectionLotEntryDto = {
   id: string;
   entryIndex: number;
+  entrySlotKind: 'single' | 'first' | 'last' | 'fixed';
+  entrySlotLabel: string;
   createdByEmployeeId: string | null;
   createdByEmployeeNameSnapshot: string | null;
   createdAt: string;

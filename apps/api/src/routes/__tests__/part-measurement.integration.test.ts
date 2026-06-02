@@ -1690,7 +1690,8 @@ describe('part-measurement templates API', () => {
     expect(listRes.statusCode).toBe(200);
     const template = (listRes.json().templates as Array<Record<string, unknown>>).find((row) => row.fhincd === fhincd);
     expect(template).toBeTruthy();
-    expect(template?.selfInspectionMode).toBe('sample');
+    expect(template?.selfInspectionMode).toBe('fixed_count');
+    expect(template?.selfInspectionFixedCount).toBe(3);
     expect(template?.selfInspectionSampleSize).toBe(3);
   });
 
@@ -1800,7 +1801,7 @@ describe('part-measurement templates API', () => {
       }
     });
     expect(resolveRes.statusCode).toBe(200);
-    expect(resolveRes.json().session.selfInspectionMode).toBe('sample');
+    expect(resolveRes.json().session.selfInspectionMode).toBe('fixed_count');
     expect(resolveRes.json().session.expectedEntryCount).toBe(2);
     const sessionId = resolveRes.json().session.id as string;
 

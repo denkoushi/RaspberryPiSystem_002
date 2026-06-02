@@ -1,4 +1,6 @@
 import { statusForPoint, templateItemToDrawingPoint } from './inspection-drawing';
+import { toleranceBoundsFromPoint } from './inspection-drawing/markerNumbering';
+import { listSelfInspectionEntrySlots } from './selfInspectionEntrySlots';
 
 import type { SelfInspectionSessionDetailDto } from './types';
 
@@ -63,20 +65,48 @@ export function selfInspectionEntryDraftHasNg(
 ): boolean {
   return session.template.items.some((item) => {
     const point = templateItemToDrawingPoint(item, draft[item.id] ?? '');
-    return statusForPoint(point.testValue, point.lower, point.upper) === 'ng';
+    const bounds = toleranceBoundsFromPoint(point);
+    if ('error' in bounds) return true;
+    return statusForPoint(point.testValue, bounds.lowerLimit, bounds.upperLimit) === 'ng';
   });
 }
 
 export const SELF_INSPECTION_ENTRY_INDEX_PAGE_SIZE = 48;
 
-export function selfInspectionEntryPageCount(expectedEntryCount: number): number {
-  return Math.max(1, Math.ceil(expectedEntryCount / SELF_INSPECTION_ENTRY_INDEX_PAGE_SIZE));
+export function selfInspectionEntryPageCount(slots: { entryIndex: number }[]): number {
+  return Math.max(1, Math.ceil(slots.length / SELF_INSPECTION_ENTRY_INDEX_PAGE_SIZE));
 }
 
-export function selfInspectionEntryIndicesForPage(expectedEntryCount: number, page: number): number[] {
-  const pageCount = selfInspectionEntryPageCount(expectedEntryCount);
+export function selfInspectionEntryPageCountForSession(
+  session: Pick<
+    SelfInspectionSessionDetailDto,
+    'selfInspectionMode' | 'plannedQuantity' | 'expectedEntryCount' | 'requiredEntryCount'
+  >
+): number {
+  return selfInspectionEntryPageCount(listSelfInspectionEntrySlots(session));
+}
+
+export function selfInspectionEntrySlotsForPage(
+  session: SelfInspectionSessionDetailDto,
+  page: number
+): ReturnType<typeof listSelfInspectionEntrySlots> {
+  const slots = listSelfInspectionEntrySlots(session);
+  const pageCount = selfInspectionEntryPageCount(slots);
   const safePage = Math.min(Math.max(0, page), pageCount - 1);
   const start = safePage * SELF_INSPECTION_ENTRY_INDEX_PAGE_SIZE;
-  const end = Math.min(expectedEntryCount, start + SELF_INSPECTION_ENTRY_INDEX_PAGE_SIZE);
-  return Array.from({ length: Math.max(0, end - start) }, (_, offset) => start + offset);
+  return slots.slice(start, start + SELF_INSPECTION_ENTRY_INDEX_PAGE_SIZE);
+}
+
+/** slot 配列上の位置からページ番号を求める（first_last の last など entryIndex が大きい場合用） */
+export function selfInspectionEntryPageForEntryIndex(
+  session: Pick<
+    SelfInspectionSessionDetailDto,
+    'selfInspectionMode' | 'plannedQuantity' | 'expectedEntryCount' | 'requiredEntryCount'
+  >,
+  entryIndex: number
+): number {
+  const slots = listSelfInspectionEntrySlots(session);
+  const slotIndex = slots.findIndex((slot) => slot.entryIndex === entryIndex);
+  if (slotIndex < 0) return 0;
+  return Math.floor(slotIndex / SELF_INSPECTION_ENTRY_INDEX_PAGE_SIZE);
 }

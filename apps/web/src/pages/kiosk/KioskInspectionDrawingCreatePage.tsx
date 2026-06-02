@@ -15,6 +15,7 @@ import { Input } from '../../components/ui/Input';
 import { formatResourceCdWithJapaneseNames } from '../../features/kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
 import {
   drawingPointToTemplateItemInput,
+  mergeInspectionDrawingPointPatch,
   InspectionDrawingCanvas,
   InspectionDrawingCanvasZoomControls,
   InspectionDrawingCreateHeaderBand,
@@ -36,35 +37,32 @@ import {
   inspectionDrawingHasImageSource
 } from '../../features/part-measurement/inspection-drawing';
 import {
+  createInspectionDrawingPoint,
+  nextAvailableMarkerNo,
+  toleranceBoundsFromPoint
+} from '../../features/part-measurement/inspection-drawing/markerNumbering';
+import {
   PART_MEASUREMENT_DRAWING_FILE_ACCEPT,
   PART_MEASUREMENT_DRAWING_FILE_LABEL
 } from '../../features/part-measurement/partMeasurementDrawingFileInput';
+import {
+  mapTemplateFixedCountToFormString,
+  buildSelfInspectionTemplateApiBody
+} from '../../features/part-measurement/selfInspectionTemplateForm';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { usePartMeasurementDrawingLocalPreview } from '../../features/part-measurement/usePartMeasurementDrawingLocalPreview';
 
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
 import type {
   PartMeasurementProcessGroup,
-  PartMeasurementTemplateDto
+  PartMeasurementTemplateDto,
+  SelfInspectionMode
 } from '../../features/part-measurement/types';
 
 function processGroupDisplayLabel(processGroup: PartMeasurementProcessGroup | null | undefined): string {
   if (processGroup === 'cutting') return '切削';
   if (processGroup === 'grinding') return '研削';
   return '—';
-}
-
-function newPoint(xRatio: number, yRatio: number, index: number): InspectionDrawingPoint {
-  return {
-    id: crypto.randomUUID(),
-    name: `測定点${index}`,
-    xRatio,
-    yRatio,
-    nominal: 0,
-    lower: 0,
-    upper: 0,
-    testValue: ''
-  };
 }
 
 export function KioskInspectionDrawingCreatePage() {
@@ -85,6 +83,8 @@ export function KioskInspectionDrawingCreatePage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [template, setTemplate] = useState<PartMeasurementTemplateDto | null>(null);
+  const [selfInspectionMode, setSelfInspectionMode] = useState<SelfInspectionMode>('full');
+  const [selfInspectionFixedCount, setSelfInspectionFixedCount] = useState('');
   const { zoom, zoomIn, zoomOut, fitToView, resetZoom, fitGeneration } = useInspectionDrawingZoom();
 
   const {
@@ -149,6 +149,14 @@ export function KioskInspectionDrawingCreatePage() {
     setPoints(loaded.items.map((item) => templateItemToDrawingPoint(item)));
     setSelectedPointId(loaded.items[0]?.id ?? null);
     setServerDrawingPath(loaded.visualTemplate?.drawingImageRelativePath ?? null);
+    setSelfInspectionMode(loaded.selfInspectionMode);
+    setSelfInspectionFixedCount(
+      mapTemplateFixedCountToFormString(
+        loaded.selfInspectionMode,
+        loaded.selfInspectionFixedCount,
+        loaded.selfInspectionSampleSize
+      )
+    );
     resetLocalPreview();
   };
 
@@ -201,7 +209,9 @@ export function KioskInspectionDrawingCreatePage() {
 
   const updatePoint = (id: string, patch: Partial<InspectionDrawingPoint>) => {
     if (contentReadOnly) return;
-    setPoints((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    setPoints((prev) =>
+      prev.map((p) => (p.id === id ? mergeInspectionDrawingPointPatch(p, patch) : p))
+    );
   };
 
   const removeSelected = () => {
@@ -255,10 +265,20 @@ export function KioskInspectionDrawingCreatePage() {
         setMessage('すべての測定点に名称を入れてください。');
         return;
       }
-      if (pt.lower > pt.upper) {
-        setMessage(`「${pt.name}」の下限が上限より大きいです。`);
+      const bounds = toleranceBoundsFromPoint(pt);
+      if ('error' in bounds) {
+        setMessage(`「${pt.name}」: ${bounds.error}`);
         return;
       }
+    }
+
+    const selfInspectionPayload = buildSelfInspectionTemplateApiBody(
+      selfInspectionMode,
+      selfInspectionFixedCount
+    );
+    if ('error' in selfInspectionPayload) {
+      setMessage(selfInspectionPayload.error);
+      return;
     }
 
     if (!isEditing) {
@@ -291,6 +311,8 @@ export function KioskInspectionDrawingCreatePage() {
           {
             name,
             visualTemplateId,
+            selfInspectionMode: selfInspectionPayload.selfInspectionMode,
+            selfInspectionFixedCount: selfInspectionPayload.selfInspectionFixedCount,
             items
           },
           clientKey
@@ -307,6 +329,8 @@ export function KioskInspectionDrawingCreatePage() {
             processGroup,
             name,
             visualTemplateId,
+            selfInspectionMode: selfInspectionPayload.selfInspectionMode,
+            selfInspectionFixedCount: selfInspectionPayload.selfInspectionFixedCount,
             items
           },
           clientKey
@@ -398,6 +422,34 @@ export function KioskInspectionDrawingCreatePage() {
                 onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
               />
             </label>
+            <label className={inspectionDrawingMetadataLabelClassName}>
+              自主検査（検査数）
+              <select
+                className={inspectionDrawingMetadataInputClass}
+                value={selfInspectionMode}
+                disabled={contentReadOnly}
+                onChange={(e) => setSelfInspectionMode(e.target.value as SelfInspectionMode)}
+              >
+                <option value="full">全数</option>
+                <option value="single">抜き取り1個</option>
+                <option value="first_last">最初と最後</option>
+                <option value="fixed_count">指定数</option>
+              </select>
+            </label>
+            {selfInspectionMode === 'fixed_count' ? (
+              <label className={inspectionDrawingMetadataLabelClassName}>
+                指定数
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={selfInspectionFixedCount}
+                  disabled={contentReadOnly}
+                  onChange={(e) => setSelfInspectionFixedCount(e.target.value)}
+                  className={inspectionDrawingMetadataInputClass}
+                />
+              </label>
+            ) : null}
           </>
         }
         toolbar={
@@ -453,7 +505,8 @@ export function KioskInspectionDrawingCreatePage() {
                 contentReadOnly
                   ? undefined
                   : (x, y) => {
-                      const pt = newPoint(x, y, points.length + 1);
+                      const markerNo = nextAvailableMarkerNo(points);
+                      const pt = createInspectionDrawingPoint(x, y, markerNo);
                       setPoints((prev) => [...prev, pt]);
                       setSelectedPointId(pt.id);
                     }

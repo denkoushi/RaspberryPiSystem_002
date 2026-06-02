@@ -88,9 +88,9 @@
 | **タブ** | キオスクヘッダーに **`自主検査`** を追加。`/kiosk/part-measurement/self-inspection/*` 全体をアクティブ扱い。 |
 | **一覧 UI** | `KioskSelfInspectionPage.tsx`。生産スケジュールを leaderboard profile で取得し、**図面付き `THREE_KEY` テンプレ**に一致する行だけを表示。 |
 | **入力 UI** | `KioskSelfInspectionSessionPage.tsx`。既存 `InspectionDrawingCanvas` / `InspectionDrawingValuePanel` / `useInspectionDrawingZoom` を再利用。図面画像は **`usePartMeasurementDrawingBlobUrl`** を通して認可付き取得。 |
-| **管理 UI** | 管理テンプレ画面に `selfInspectionMode`（`full`/`sample`）と `selfInspectionSampleSize` を追加。抜取時は sampleSize 必須。 |
-| **保存モデル** | `SelfInspectionSession -> SelfInspectionLotEntry -> SelfInspectionMeasurementValue` の3層。既存 `PartMeasurementSheet` / `PartMeasurementResult` には混ぜない。 |
-| **完了条件** | `full` は補助データの `plannedQuantity` 件（**2,000 件超は開始不可・一覧非表示**）、`sample` は `selfInspectionSampleSize` 件。到達後に `POST /self-inspection/sessions/:id/complete` で確定。全数は `expectedEntryCount` と `plannedQuantity` の大きい方で完了判定（旧データの誤丸め防止）。 |
+| **管理 UI** | 管理テンプレ・キオスク検査図面作成/改版に `selfInspectionMode`（`full` / `single` / `first_last` / `fixed_count`）と `selfInspectionFixedCount`（`fixed_count` 時のみ必須）。API は `sample` を `fixed_count` のエイリアスとして受理。 |
+| **保存モデル** | `SelfInspectionSession -> SelfInspectionLotEntry -> SelfInspectionMeasurementValue` の3層。`SelfInspectionLotEntry.entrySlotKind` で「最初/最終」等の意味を保持。 |
+| **完了条件** | 必須 **slot 集合**がすべて測定値保存済みかで判定（件数だけにしない）。`full` は `plannedQuantity`（**2,000 件超は開始不可**）。`single` は 1 件。`first_last` は `plannedQuantity >= 2` のみ、index `0` と `plannedQuantity-1` の 2 slot。`fixed_count` は `1 <= selfInspectionFixedCount <= plannedQuantity`。 |
 | **順位ボード連携** | decoration に `hasSelfInspectionDrawing` / `selfInspectionStatus` / `selfInspectionEntryPath` を追加。図面あり行だけ **検** ボタンを表示。 |
 
 ### API 契約
@@ -106,7 +106,8 @@
 
 - `sessionBusinessKey` は `productNo + processGroup + resourceCd + scheduleRowId`（**日程行単位・templateId は含めない**）。改版後も同一セッションに戻る。`resolve-or-create` は **`scheduleRowId` と `fseiban` 必須**（生産日程行の存在・整合を検証）。
 - **業務キー移行（`20260601120000_self_inspection_session_business_key_v2`）**: templateId 違いの重複セッションは自動で勝者 1 件に寄せる。空セッションは削除、エントリは `entryIndex` がぶつからない分だけ移す。**両方に同一 index のエントリがある**場合は migration が止まる → Runbook「業務キー移行の事前確認」の SQL で検出し、手動統合後に再デプロイ。
-- **公差・完了**: 保存/完了は `lowerLimit`/`upperLimit` 内のみ許可（公差外は 400/409）。抜取は `sampleSize <= plannedQuantity`。小数桁は数値 JSON も `Decimal` 量子化で検証。セッション行は `FOR UPDATE` で完了競合を防止。
+- **公差・完了**: 保存/完了は `lowerLimit`/`upperLimit` 内のみ許可（公差外は 400/409）。`fixed_count` は `fixedCount <= plannedQuantity`。`first_last` は `plannedQuantity === 1` でテンプレ保存・開始不可（1 件への自動縮退なし）。小数桁は数値 JSON も `Decimal` 量子化で検証。セッション行は `FOR UPDATE` で完了競合を防止。
+- **正本契約（コード）**: `apps/api/src/services/part-measurement/self-inspection-config.ts`（`validateSelfInspectionConfig` / `listRequiredEntrySlots`）。Migration: `20260602120000_self_inspection_four_modes`（enum/カラム）→ `20260602120100_self_inspection_sample_to_fixed_count`（`SAMPLE`→`FIXED_COUNT`。**Postgres は新 enum 値を別マイグレーションで使う**）。
 - **入力更新**: `PATCH …/entries/:id` は `ifUnmodifiedSince`（entry `updatedAt` の ISO）必須。不一致・同時更新は **409**（再読込案内）。
 - **旧形式セッション**: 全数で `expectedEntryCount < plannedQuantity` のとき、API は `requiredEntryCount` と `entryCountBlockedReason` を返す。指示数が 2,000 超の不整合は **保存・完了不可**（再作成導線）。2,000 以下の不整合は初回 mutation で `expectedEntryCount` を `plannedQuantity` に修復。
 - **キオスク入力 UI**: ドラフトは選択中の入力件のみ生成。入力件ボタンは 48 件ずつページング。
@@ -114,7 +115,8 @@
 - **詳細 API**: `GET …/sessions/:id?entryIndex=N` で `focusedEntry` のみ測定値を返す。一覧 `entries` はメタデータのみ。保存後は React Query を該当 entry だけ `setQueryData` 更新。
 - **キオスク一覧**: `GET /kiosk/production-schedule?selfInspectionEligibleOnly=true` で開始可能行のみをサーバー側抽出（生産日程をチャンク走査、`page` / `pageSize` / `hasMore`）。
 - 順位ボードの `selfInspectionEntryPath` は `/start?...` を返し、UI 側で resolve-or-create して **既存セッションへ再入場**できる。
-- 検査図面一覧 API `GET /inspection-drawing/templates` も `selfInspectionMode` / `selfInspectionSampleSize` を返す。
+- 検査図面一覧 API `GET /inspection-drawing/templates` も `selfInspectionMode` / `selfInspectionFixedCount`（互換で `selfInspectionSampleSize`）を返す。キオスク改版 `POST …/inspection-drawing/templates/:id/revise` も自主検査設定を受け付ける。
+- **検査図面編集（丸数字・公差）**: 測定点は `markerNo` 独立採番（削除で他番号は変えない・追加は最小欠番）。UI は基準値＋上側/下側公差（正の幅）→ 保存時に絶対 `lowerLimit`/`upperLimit`（`apps/web/.../toleranceFields.ts`）。
 
 ### 代表ファイル
 
@@ -123,10 +125,12 @@
 | Prisma | `apps/api/prisma/schema.prisma` |
 | Migration | `apps/api/prisma/migrations/20260601090000_add_self_inspection_mvp/migration.sql` |
 | Service | `apps/api/src/services/part-measurement/self-inspection.service.ts` |
+| 契約 | `apps/api/src/services/part-measurement/self-inspection-config.ts` |
 | API route | `apps/api/src/routes/part-measurement/index.ts` |
 | Admin UI | `apps/web/src/pages/admin/PartMeasurementTemplatesPage.tsx` |
 | Kiosk 一覧 | `apps/web/src/pages/kiosk/KioskSelfInspectionPage.tsx` |
 | Kiosk 入力 | `apps/web/src/pages/kiosk/KioskSelfInspectionSessionPage.tsx` |
+| キオスク検査図面編集 | `apps/web/src/pages/kiosk/KioskInspectionDrawingCreatePage.tsx` |
 | Leaderboard row | `apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx` |
 
 ### 知見

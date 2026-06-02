@@ -3185,6 +3185,9 @@ export async function reviseKioskInspectionDrawingTemplate(
   body: {
     name: string;
     visualTemplateId?: string | null;
+    selfInspectionMode?: 'full' | 'single' | 'first_last' | 'fixed_count' | 'sample';
+    selfInspectionFixedCount?: number | null;
+    selfInspectionSampleSize?: number | null;
     items: Array<{
       sortOrder: number;
       datumSurface: string;
@@ -3310,7 +3313,9 @@ export async function createPartMeasurementTemplate(
     name: string;
     visualTemplateId?: string | null;
     candidateFhinmei?: string | null;
-    selfInspectionMode?: 'full' | 'sample';
+    selfInspectionMode?: 'full' | 'single' | 'first_last' | 'fixed_count' | 'sample';
+    selfInspectionFixedCount?: number | null;
+    /** @deprecated API 互換。fixed_count 時は fixedCount を優先 */
     selfInspectionSampleSize?: number | null;
     items: Array<{
       sortOrder: number;
@@ -3398,7 +3403,8 @@ export async function revisePartMeasurementTemplate(
     name: string;
     visualTemplateId?: string | null;
     candidateFhinmei?: string | null;
-    selfInspectionMode?: 'full' | 'sample';
+    selfInspectionMode?: 'full' | 'single' | 'first_last' | 'fixed_count' | 'sample';
+    selfInspectionFixedCount?: number | null;
     selfInspectionSampleSize?: number | null;
     items: Array<{
       sortOrder: number;

@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { Input } from '../../../components/ui/Input';
 
 import { evaluateMeasurementValue, parseMeasurementNumber } from './evaluateMeasurement';
+import { toleranceBoundsFromPoint } from './markerNumbering';
 
 import type { InspectionDrawingPoint } from './types';
 
@@ -34,14 +35,22 @@ export function InspectionDrawingValuePanel({ point, readOnly, onValueChange }: 
   }
 
   const parsed = parseMeasurementNumber(point.testValue);
-  const status = evaluateMeasurementValue(parsed, point.lower, point.upper);
+  const bounds = toleranceBoundsFromPoint(point);
+  const status =
+    'error' in bounds ? 'empty' : evaluateMeasurementValue(parsed, bounds.lowerLimit, bounds.upperLimit);
 
   return (
     <div className="flex flex-col gap-3 rounded border border-white/20 bg-slate-900/90 p-4 text-white shadow-lg">
       <div>
-        <p className="text-lg font-bold">{point.name || '測定点'}</p>
+        <p className="text-lg font-bold">
+          {point.name || '測定点'}（No.{point.markerNo}）
+        </p>
         <p className="text-sm text-white/70">
-          基準 {point.nominal} / {point.lower} – {point.upper}
+          {'error' in bounds
+            ? '基準・公差を設定してください'
+            : point.legacyAbsoluteBounds && !point.nominalRaw.trim()
+              ? `合格範囲 ${bounds.lowerLimit} – ${bounds.upperLimit}（基準値未設定）`
+              : `基準 ${bounds.nominal} / ${bounds.lowerLimit} – ${bounds.upperLimit}`}
         </p>
       </div>
       <label className="grid gap-1 text-sm font-semibold">

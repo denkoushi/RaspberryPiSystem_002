@@ -29,6 +29,8 @@ export function applySelfInspectionEntrySaveToSessionCache(
         {
           id: savedEntry.id,
           entryIndex: savedEntry.entryIndex,
+          entrySlotKind: savedEntry.entrySlotKind,
+          entrySlotLabel: savedEntry.entrySlotLabel,
           createdByEmployeeId: savedEntry.createdByEmployeeId,
           createdByEmployeeNameSnapshot: savedEntry.createdByEmployeeNameSnapshot,
           createdAt: savedEntry.createdAt,

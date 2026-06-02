@@ -12,11 +12,29 @@ import { resolveProductionSchedulePlannedQuantity } from '../production-schedule
 import { verifyProductionScheduleRowOrThrow } from '../production-schedule/verify-production-schedule-row.js';
 
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
+import {
+  assertEntryIndexAllowed,
+  entrySlotLabelFromKind,
+  inferEntrySlotKindForIndex,
+  isFullSelfInspectionPlannedQuantityWithinLimit,
+  isSessionCompletionReady,
+  resolveTemplateFixedCount,
+  serializeEntrySlotKind,
+  serializeSelfInspectionMode,
+  tryResolveExpectedEntryCount,
+  type SelfInspectionTemplateConfig,
+  SELF_INSPECTION_FULL_MODE_PLANNED_QUANTITY_LIMIT_MESSAGE,
+  SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT
+} from './self-inspection-config.js';
 
 const LIST_SESSIONS_MAX = 200;
 
-/** 自主検査の必要件数・指示数の上限（API Zod `plannedQuantity` と整合） */
-export const SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT = 2000;
+export {
+  isFullSelfInspectionPlannedQuantityWithinLimit,
+  SELF_INSPECTION_FULL_MODE_PLANNED_QUANTITY_LIMIT_MESSAGE,
+  SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT,
+  tryResolveExpectedEntryCount
+};
 
 type SelfInspectionTemplate = Prisma.PartMeasurementTemplateGetPayload<{
   include: typeof partMeasurementTemplateFullInclude;
@@ -99,8 +117,16 @@ function serializeProcessGroup(processGroup: PartMeasurementProcessGroup): 'cutt
   return processGroup === 'GRINDING' ? 'grinding' : 'cutting';
 }
 
-function serializeSelfInspectionMode(mode: SelfInspectionMode): 'full' | 'sample' {
-  return mode === 'SAMPLE' ? 'sample' : 'full';
+function templateConfigFromTemplate(template: {
+  selfInspectionMode: SelfInspectionMode;
+  selfInspectionFixedCount?: number | null;
+  selfInspectionSampleSize?: number | null;
+}): SelfInspectionTemplateConfig {
+  return {
+    selfInspectionMode: template.selfInspectionMode,
+    selfInspectionFixedCount: template.selfInspectionFixedCount ?? null,
+    selfInspectionSampleSize: template.selfInspectionSampleSize ?? null
+  };
 }
 
 function buildSessionBusinessKey(input: {
@@ -295,44 +321,10 @@ function buildStartPath(input: {
   return `/kiosk/part-measurement/self-inspection/start?${params.toString()}`;
 }
 
-function normalizeSelfInspectionPlannedQuantity(plannedQuantity: number): number {
-  return Math.max(Math.floor(plannedQuantity), 1);
-}
-
-export function isFullSelfInspectionPlannedQuantityWithinLimit(plannedQuantity: number): boolean {
-  return (
-    normalizeSelfInspectionPlannedQuantity(plannedQuantity) <= SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT
-  );
-}
-
-export const SELF_INSPECTION_FULL_MODE_PLANNED_QUANTITY_LIMIT_MESSAGE = `全数検査は指示数が${SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT}件以下の場合のみ開始できます`;
-
-/** 一覧装飾用。不正な抜取設定・全数の上限超過のとき null（例外にしない） */
-export function tryResolveExpectedEntryCount(
-  template: {
-    selfInspectionMode: SelfInspectionMode;
-    selfInspectionSampleSize: number | null;
-  },
-  plannedQuantity: number
-): number | null {
-  const normalizedPlanned = normalizeSelfInspectionPlannedQuantity(plannedQuantity);
-  if (template.selfInspectionMode === 'FULL') {
-    if (!isFullSelfInspectionPlannedQuantityWithinLimit(normalizedPlanned)) {
-      return null;
-    }
-    return normalizedPlanned;
-  }
-  const sampleSize = template.selfInspectionSampleSize ?? 0;
-  if (sampleSize < 1 || sampleSize > normalizedPlanned) {
-    return null;
-  }
-  return sampleSize;
-}
-
 type SessionForEntryCountPolicy = {
   expectedEntryCount: number;
   plannedQuantity: number;
-  template: { selfInspectionMode: SelfInspectionMode };
+  template: SelfInspectionTemplateConfig;
 };
 
 function isMisalignedLegacyFullSelfInspectionSession(session: SessionForEntryCountPolicy): boolean {
@@ -395,30 +387,10 @@ function assertEntryUnmodifiedSince(ifUnmodifiedSince: string, entryUpdatedAt: D
   }
 }
 
-function resolveExpectedEntryCount(
-  template: {
-    selfInspectionMode: SelfInspectionMode;
-    selfInspectionSampleSize: number | null;
-  },
-  plannedQuantity: number
-): number {
+function resolveExpectedEntryCount(template: SelfInspectionTemplateConfig, plannedQuantity: number): number {
   const count = tryResolveExpectedEntryCount(template, plannedQuantity);
   if (count != null) {
     return count;
-  }
-  if (template.selfInspectionMode === 'FULL') {
-    if (!isFullSelfInspectionPlannedQuantityWithinLimit(plannedQuantity)) {
-      throw new ApiError(400, SELF_INSPECTION_FULL_MODE_PLANNED_QUANTITY_LIMIT_MESSAGE);
-    }
-  }
-  if (template.selfInspectionMode === 'SAMPLE') {
-    const sampleSize = template.selfInspectionSampleSize ?? 0;
-    if (sampleSize < 1) {
-      throw new ApiError(400, '抜取検査では抜取数が必須です');
-    }
-    if (sampleSize > normalizeSelfInspectionPlannedQuantity(plannedQuantity)) {
-      throw new ApiError(400, '抜取数は指示数以下である必要があります');
-    }
   }
   throw new ApiError(400, '自主検査の必要件数を決定できません');
 }
@@ -473,10 +445,28 @@ function buildLeaderboardDecorationFromSession(
   };
 }
 
+function sessionForEntryCountPolicy(session: {
+  expectedEntryCount: number;
+  plannedQuantity: number;
+  template: {
+    selfInspectionMode: SelfInspectionMode;
+    selfInspectionFixedCount?: number | null;
+    selfInspectionSampleSize?: number | null;
+  };
+}): SessionForEntryCountPolicy {
+  return {
+    expectedEntryCount: session.expectedEntryCount,
+    plannedQuantity: session.plannedQuantity,
+    template: templateConfigFromTemplate(session.template)
+  };
+}
+
 function serializeSessionSummary(session: SessionWithCounts) {
+  const policy = sessionForEntryCountPolicy(session);
   const completedEntryCount = session._count.entries;
-  const requiredEntryCount = resolveRequiredEntryCountForCompletion(session);
+  const requiredEntryCount = resolveRequiredEntryCountForCompletion(policy);
   const status = resolveStatus(completedEntryCount, requiredEntryCount, session.completedAt);
+  const templateConfig = templateConfigFromTemplate(session.template);
   return {
     id: session.id,
     sessionBusinessKey: session.sessionBusinessKey,
@@ -492,10 +482,11 @@ function serializeSessionSummary(session: SessionWithCounts) {
     machineName: session.machineName,
     plannedQuantity: session.plannedQuantity,
     expectedEntryCount: session.expectedEntryCount,
-    ...enrichSessionEntryCountFields({ ...session, completedEntryCount }),
+    ...enrichSessionEntryCountFields({ ...policy, completedEntryCount }),
     completedEntryCount,
     selfInspectionMode: serializeSelfInspectionMode(session.template.selfInspectionMode),
-    selfInspectionSampleSize: session.template.selfInspectionSampleSize,
+    selfInspectionFixedCount: resolveTemplateFixedCount(templateConfig),
+    selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
     status,
     startedAt: session.startedAt?.toISOString() ?? null,
     completedAt: session.completedAt?.toISOString() ?? null,
@@ -591,7 +582,10 @@ export class SelfInspectionService {
     if (plannedQuantity == null) {
       throw new ApiError(400, '指示数が補助データにないため自主検査を開始できません');
     }
-    const expectedEntryCount = resolveExpectedEntryCount(template, plannedQuantity);
+    const expectedEntryCount = resolveExpectedEntryCount(
+      templateConfigFromTemplate(template),
+      plannedQuantity
+    );
     const sessionBusinessKey = buildSessionBusinessKey({
       productNo,
       processGroup: input.processGroup,
@@ -683,6 +677,7 @@ export class SelfInspectionService {
           select: {
             id: true,
             entryIndex: true,
+            entrySlotKind: true,
             createdByEmployeeId: true,
             createdByEmployeeNameSnapshot: true,
             createdAt: true,
@@ -713,8 +708,10 @@ export class SelfInspectionService {
           })
         : null;
 
+    const policy = sessionForEntryCountPolicy(session);
     const completedEntryCount = session._count.entries;
-    const requiredEntryCount = resolveRequiredEntryCountForCompletion(session);
+    const requiredEntryCount = resolveRequiredEntryCountForCompletion(policy);
+    const templateConfig = templateConfigFromTemplate(session.template);
     return {
       id: session.id,
       sessionBusinessKey: session.sessionBusinessKey,
@@ -730,24 +727,17 @@ export class SelfInspectionService {
       machineName: session.machineName,
       plannedQuantity: session.plannedQuantity,
       expectedEntryCount: session.expectedEntryCount,
-      ...enrichSessionEntryCountFields({ ...session, completedEntryCount }),
+      ...enrichSessionEntryCountFields({ ...policy, completedEntryCount }),
       completedEntryCount,
       selfInspectionMode: serializeSelfInspectionMode(session.template.selfInspectionMode),
-      selfInspectionSampleSize: session.template.selfInspectionSampleSize,
+      selfInspectionFixedCount: resolveTemplateFixedCount(templateConfig),
+      selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
       status: resolveStatus(completedEntryCount, requiredEntryCount, session.completedAt),
       startedAt: session.startedAt?.toISOString() ?? null,
       completedAt: session.completedAt?.toISOString() ?? null,
       updatedAt: session.updatedAt.toISOString(),
       template: session.template,
-      entries: session.entries.map((entry) => ({
-        id: entry.id,
-        entryIndex: entry.entryIndex,
-        createdByEmployeeId: entry.createdByEmployeeId,
-        createdByEmployeeNameSnapshot: entry.createdByEmployeeNameSnapshot,
-        createdAt: entry.createdAt.toISOString(),
-        updatedAt: entry.updatedAt.toISOString(),
-        values: [] as Array<{ id: string; templateItemId: string; value: string | null }>
-      })),
+      entries: session.entries.map((entry) => this.serializeLotEntryMeta(entry)),
       focusedEntry: focusedEntryRow ? this.serializeLotEntry(focusedEntryRow) : null
     };
   }
@@ -895,12 +885,38 @@ export class SelfInspectionService {
     }
   }
 
-  private serializeLotEntry(
-    entry: Prisma.SelfInspectionLotEntryGetPayload<{ include: { values: true } }>
-  ) {
+  private serializeLotEntryMeta(entry: {
+    id: string;
+    entryIndex: number;
+    entrySlotKind: import('@prisma/client').SelfInspectionEntrySlotKind;
+    createdByEmployeeId: string | null;
+    createdByEmployeeNameSnapshot: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
+    const slotDto = serializeEntrySlotKind(entry.entrySlotKind);
     return {
       id: entry.id,
       entryIndex: entry.entryIndex,
+      entrySlotKind: slotDto,
+      entrySlotLabel: entrySlotLabelFromKind(slotDto, entry.entryIndex),
+      createdByEmployeeId: entry.createdByEmployeeId,
+      createdByEmployeeNameSnapshot: entry.createdByEmployeeNameSnapshot,
+      createdAt: entry.createdAt.toISOString(),
+      updatedAt: entry.updatedAt.toISOString(),
+      values: [] as Array<{ id: string; templateItemId: string; value: string | null }>
+    };
+  }
+
+  private serializeLotEntry(
+    entry: Prisma.SelfInspectionLotEntryGetPayload<{ include: { values: true } }>
+  ) {
+    const slotDto = serializeEntrySlotKind(entry.entrySlotKind);
+    return {
+      id: entry.id,
+      entryIndex: entry.entryIndex,
+      entrySlotKind: slotDto,
+      entrySlotLabel: entrySlotLabelFromKind(slotDto, entry.entryIndex),
       createdByEmployeeId: entry.createdByEmployeeId,
       createdByEmployeeNameSnapshot: entry.createdByEmployeeNameSnapshot,
       createdAt: entry.createdAt.toISOString(),
@@ -932,10 +948,13 @@ export class SelfInspectionService {
       await this.lockSessionRow(tx, sessionId);
       const session = await this.loadSessionForMutation(tx, sessionId);
       this.assertSessionEntryCountWritable(session);
-      const maxEntryIndexExclusive = resolveRequiredEntryCountForCompletion(session);
-      if (entryIndex < 0 || entryIndex >= maxEntryIndexExclusive) {
-        throw new ApiError(400, '入力件番号が範囲外です');
-      }
+      const templateConfig = templateConfigFromTemplate(session.template);
+      assertEntryIndexAllowed(templateConfig, session.plannedQuantity, entryIndex);
+      const slotKind = inferEntrySlotKindForIndex(
+        templateConfig,
+        session.plannedQuantity,
+        entryIndex
+      );
       const values = this.validateMeasurementPayload(session.template, input.values);
 
       const existingAtIndex = await tx.selfInspectionLotEntry.findUnique({
@@ -968,6 +987,7 @@ export class SelfInspectionService {
           data: {
             sessionId,
             entryIndex,
+            entrySlotKind: slotKind,
             createdByEmployeeId: actor.createdByEmployeeId,
             createdByEmployeeNameSnapshot: actor.createdByEmployeeNameSnapshot,
             values: {
@@ -1087,9 +1107,18 @@ export class SelfInspectionService {
         return serializeSessionSummary(session);
       }
       this.assertSessionEntryCountWritable(session);
-      const entryCount = await tx.selfInspectionLotEntry.count({ where: { sessionId } });
-      const requiredEntryCount = resolveRequiredEntryCountForCompletion(session);
-      if (entryCount < requiredEntryCount) {
+      const templateConfig = templateConfigFromTemplate(session.template);
+      const entryRows = await tx.selfInspectionLotEntry.findMany({
+        where: { sessionId },
+        select: { entryIndex: true }
+      });
+      if (
+        !isSessionCompletionReady(
+          templateConfig,
+          session.plannedQuantity,
+          entryRows.map((row) => row.entryIndex)
+        )
+      ) {
         throw new ApiError(409, '必要件数に達していないため完了できません');
       }
       await this.assertAllEntriesWithinTolerance(tx, sessionId, session.template);

@@ -119,8 +119,8 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 ### テンプレ設定
 
 - 管理画面 `/admin/tools/part-measurement-templates` に以下を追加:
-  - `selfInspectionMode`: `全数` / `抜取`
-  - `selfInspectionSampleSize`: 抜取時のみ必須
+  - `selfInspectionMode`: `全数` / `抜き取り1個` / `最初と最後` / `指定数`（API: `full` / `single` / `first_last` / `fixed_count`）
+  - `selfInspectionFixedCount`: `指定数` 時のみ必須（`1 <= 件数 <= 指示数`）。`sample` は API 互換エイリアス
 - 一覧/詳細 DTO にも同値を返す。
 - 検査図面一覧 API `GET /api/part-measurement/inspection-drawing/templates` でも要約 DTO に返すため、キオスク一覧と将来の導線で再利用できる。
 
@@ -163,7 +163,8 @@ HAVING COUNT(*) > 1;
 ### 完了条件
 
 - `全数`: `expectedEntryCount = plannedQuantity`
-- `抜取`: `expectedEntryCount = selfInspectionSampleSize`
+- `指定数`: `expectedEntryCount = selfInspectionFixedCount`（旧 `sample` は DB 上 `FIXED_COUNT`）
+- `最初と最後`: 指示数 >= 2 のみ。入力 index は `0` と `指示数-1`（ラベル「最初」「最終」）
 - `completedAt` は必要件数到達後に **明示的な完了 API** で確定する。
 
 ### 実機確認ポイント

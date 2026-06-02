@@ -1,3 +1,5 @@
+import { mapTemplateFixedCountToFormString } from '../selfInspectionTemplateForm';
+
 import type {
   PartMeasurementProcessGroup,
   PartMeasurementTemplateDto,
@@ -25,7 +27,7 @@ export type AdminTemplateFormFields = {
   candidateFhinmei: string;
   name: string;
   selfInspectionMode: SelfInspectionMode;
-  selfInspectionSampleSize: string;
+  selfInspectionFixedCount: string;
   items: AdminTemplateFormItemRow[];
   visualChoice: 'none' | 'pick' | 'upload';
   pickedVisualId: string;
@@ -47,7 +49,11 @@ export function mapTemplateDtoToAdminFormFields(t: PartMeasurementTemplateDto): 
     candidateFhinmei: t.candidateFhinmei ?? '',
     name: t.name,
     selfInspectionMode: t.selfInspectionMode,
-    selfInspectionSampleSize: t.selfInspectionSampleSize != null ? String(t.selfInspectionSampleSize) : '',
+    selfInspectionFixedCount: mapTemplateFixedCountToFormString(
+      t.selfInspectionMode,
+      t.selfInspectionFixedCount,
+      t.selfInspectionSampleSize
+    ),
     items: t.items.map((it, idx) => ({
       sortOrder: idx,
       datumSurface: it.datumSurface,

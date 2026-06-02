@@ -35,6 +35,7 @@ export type { InspectionDrawingPoint, InspectionPointStatus } from './types';
 export {
   drawingPointToTemplateItemInput,
   kioskPartMeasurementInspectionEditPath,
+  mergeInspectionDrawingPointPatch,
   templateItemHasInspectionMarker,
   templateItemToDrawingPoint,
   templateSupportsInspectionDrawing

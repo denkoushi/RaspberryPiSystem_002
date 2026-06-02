@@ -22,7 +22,8 @@ function sessionFixture(entryIndices: number[]): SelfInspectionSessionDetailDto 
     expectedEntryCount: 2,
     requiredEntryCount: 2,
     completedEntryCount: entryIndices.length,
-    selfInspectionMode: 'sample',
+    selfInspectionMode: 'fixed_count',
+    selfInspectionFixedCount: 2,
     selfInspectionSampleSize: 2,
     status: 'in_progress',
     startedAt: null,
@@ -36,7 +37,8 @@ function sessionFixture(entryIndices: number[]): SelfInspectionSessionDetailDto 
       resourceCd: '581',
       templateScope: 'three_key',
       isActive: true,
-      selfInspectionMode: 'sample',
+      selfInspectionMode: 'fixed_count',
+      selfInspectionFixedCount: 2,
       selfInspectionSampleSize: 2,
       items: [],
       visualTemplate: null
@@ -44,6 +46,8 @@ function sessionFixture(entryIndices: number[]): SelfInspectionSessionDetailDto 
     entries: entryIndices.map((entryIndex) => ({
       id: `e-${entryIndex}`,
       entryIndex,
+      entrySlotKind: 'fixed' as const,
+      entrySlotLabel: String(entryIndex + 1),
       createdByEmployeeId: null,
       createdByEmployeeNameSnapshot: null,
       createdAt: '2026-06-01T00:00:00.000Z',
@@ -57,6 +61,8 @@ function sessionFixture(entryIndices: number[]): SelfInspectionSessionDetailDto 
 const savedEntry = {
   id: 'e-1',
   entryIndex: 1,
+  entrySlotKind: 'fixed' as const,
+  entrySlotLabel: '2',
   createdByEmployeeId: null,
   createdByEmployeeNameSnapshot: null,
   createdAt: '2026-06-01T00:00:01.000Z',

@@ -19,11 +19,12 @@ import {
 import {
   buildSelfInspectionEntryDraft,
   listDirtySelfInspectionEntryIndices,
-  SELF_INSPECTION_ENTRY_INDEX_PAGE_SIZE,
   selfInspectionEntryDraftHasNg,
-  selfInspectionEntryIndicesForPage,
-  selfInspectionEntryPageCount
+  selfInspectionEntryPageCountForSession,
+  selfInspectionEntryPageForEntryIndex,
+  selfInspectionEntrySlotsForPage
 } from '../../features/part-measurement/selfInspectionEntryDraft';
+import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionEntrySlots';
 import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
 import { resolveSelfInspectionRequiredEntryCount } from '../../features/part-measurement/selfInspectionSessionEntryCount';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
@@ -186,11 +187,16 @@ export function KioskSelfInspectionSessionPage() {
     });
   }, [session, selectedEntryIndex]);
 
-  const entryPageCount = session ? selfInspectionEntryPageCount(requiredEntryCount) : 1;
-  const visibleEntryIndices = useMemo(
-    () => (session ? selfInspectionEntryIndicesForPage(requiredEntryCount, entryIndexPage) : []),
-    [requiredEntryCount, session, entryIndexPage]
+  const entryPageCount = session ? selfInspectionEntryPageCountForSession(session) : 1;
+  const visibleEntrySlots = useMemo(
+    () => (session ? selfInspectionEntrySlotsForPage(session, entryIndexPage) : []),
+    [session, entryIndexPage]
   );
+  const selectedSlotLabel = useMemo(() => {
+    if (!session) return '';
+    const slot = visibleEntrySlots.find((s) => s.entryIndex === selectedEntryIndex);
+    return slot?.entrySlotLabel ?? String(selectedEntryIndex + 1);
+  }, [selectedEntryIndex, session, visibleEntrySlots]);
 
   const activeDraft = useMemo(() => {
     if (!session) return null;
@@ -322,9 +328,11 @@ export function KioskSelfInspectionSessionPage() {
             {session.fhincd} / {session.resourceCd} / {session.fhinmei}
           </p>
           <p className="text-xs text-white/55">
-            {session.selfInspectionMode === 'sample'
-              ? `抜取 ${requiredEntryCount} 件`
-              : `全数 ${requiredEntryCount} 件`}
+            {selfInspectionModeDisplayLabel(
+              session.selfInspectionMode,
+              session.selfInspectionFixedCount ?? session.selfInspectionSampleSize
+            )}{' '}
+            / 必要 {requiredEntryCount} 件
           </p>
           {session.entryCountBlockedReason ? (
             <p className="mt-1 text-xs text-amber-200">{session.entryCountBlockedReason}</p>
@@ -360,7 +368,7 @@ export function KioskSelfInspectionSessionPage() {
           <div className="rounded border border-white/15 bg-slate-800/70 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-white/80">
-                入力件（{selectedEntryIndex + 1} / {requiredEntryCount}）
+                入力件（{selectedSlotLabel} / {requiredEntryCount}）
               </p>
               {entryPageCount > 1 ? (
                 <div className="flex items-center gap-2 text-xs text-white/70">
@@ -389,20 +397,22 @@ export function KioskSelfInspectionSessionPage() {
               ) : null}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              {visibleEntryIndices.map((idx) => (
+              {visibleEntrySlots.map((slot) => (
                 <button
-                  key={idx}
+                  key={`${slot.entrySlotKind}-${slot.entryIndex}`}
                   type="button"
                   className={`rounded px-3 py-2 text-sm font-semibold ${
-                    idx === selectedEntryIndex ? 'bg-cyan-500 text-slate-950' : 'bg-white/10 text-white'
+                    slot.entryIndex === selectedEntryIndex ? 'bg-cyan-500 text-slate-950' : 'bg-white/10 text-white'
                   }`}
                   onClick={() => {
-                    setSelectedEntryIndex(idx);
-                    setEntryIndexPage(Math.floor(idx / SELF_INSPECTION_ENTRY_INDEX_PAGE_SIZE));
+                    setSelectedEntryIndex(slot.entryIndex);
+                    if (session) {
+                      setEntryIndexPage(selfInspectionEntryPageForEntryIndex(session, slot.entryIndex));
+                    }
                     setActionError(null);
                   }}
                 >
-                  {idx + 1}
+                  {slot.entrySlotLabel}
                 </button>
               ))}
             </div>

@@ -1,11 +1,12 @@
 import clsx from 'clsx';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
-import { statusForPoint } from './evaluateMeasurement';
+import { evaluateMeasurementValue, parseMeasurementNumber } from './evaluateMeasurement';
 import { pointerClientToImageRatios } from './inspectionDrawingCanvasLayout';
 import { shouldConfirmPlacePointFromPointerMovement } from './inspectionDrawingCanvasPointer';
 import { inspectionDrawingCanvasViewportBaseClassName } from './inspectionDrawingKioskUi';
 import { INSPECTION_DRAWING_ZOOM_DEFAULT } from './inspectionDrawingZoom';
+import { toleranceBoundsFromPoint } from './markerNumbering';
 import { useZoomedCanvasLayout } from './useZoomedCanvasLayout';
 
 import type { InspectionDrawingPoint } from './types';
@@ -200,8 +201,13 @@ export function InspectionDrawingCanvas({
             }}
           />
           {image
-            ? points.map((pt, index) => {
-                const status = statusForPoint(pt.testValue, pt.lower, pt.upper);
+            ? points.map((pt) => {
+                const bounds = toleranceBoundsFromPoint(pt);
+                const parsed = parseMeasurementNumber(pt.testValue);
+                const status =
+                  'error' in bounds
+                    ? 'empty'
+                    : evaluateMeasurementValue(parsed, bounds.lowerLimit, bounds.upperLimit);
                 const left = image.offsetX + pt.xRatio * image.width;
                 const top = image.offsetY + pt.yRatio * image.height;
                 const selected = pt.id === selectedPointId;
@@ -209,7 +215,7 @@ export function InspectionDrawingCanvas({
                   <button
                     key={pt.id}
                     type="button"
-                    aria-label={pt.name || `測定点 ${index + 1}`}
+                    aria-label={pt.name || `測定点 ${pt.markerNo}`}
                     className={clsx(
                       'absolute z-10 flex h-9 min-w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full px-1 text-sm font-bold tabular-nums shadow-md',
                       STATUS_MARKER_CLASS[status],
@@ -221,7 +227,7 @@ export function InspectionDrawingCanvas({
                       onSelectPoint(pt.id);
                     }}
                   >
-                    {index + 1}
+                    {pt.markerNo}
                   </button>
                 );
               })

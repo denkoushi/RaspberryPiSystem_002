@@ -5,9 +5,11 @@ import {
   buildSelfInspectionEntryDraft,
   isSelfInspectionEntryDraftDirty,
   listDirtySelfInspectionEntryIndices,
-  selfInspectionEntryIndicesForPage,
-  selfInspectionEntryPageCount
+  selfInspectionEntryPageCountForSession,
+  selfInspectionEntryPageForEntryIndex,
+  selfInspectionEntrySlotsForPage
 } from '../selfInspectionEntryDraft';
+import { listSelfInspectionEntrySlots } from '../selfInspectionEntrySlots';
 
 import type { SelfInspectionSessionDetailDto } from '../types';
 
@@ -30,6 +32,7 @@ function sessionFixture(expectedEntryCount: number): SelfInspectionSessionDetail
     requiredEntryCount: expectedEntryCount,
     completedEntryCount: 0,
     selfInspectionMode: 'full',
+    selfInspectionFixedCount: null,
     selfInspectionSampleSize: null,
     status: 'not_started',
     startedAt: null,
@@ -54,9 +57,9 @@ function sessionFixture(expectedEntryCount: number): SelfInspectionSessionDetail
           decimalPlaces: 2,
           markerXRatio: 0.1,
           markerYRatio: 0.2,
-          nominalValue: 10,
-          lowerLimit: 9,
-          upperLimit: 11
+          nominalValue: '10',
+          lowerLimit: '9',
+          upperLimit: '11'
         }
       ],
       visualTemplate: null
@@ -65,6 +68,8 @@ function sessionFixture(expectedEntryCount: number): SelfInspectionSessionDetail
       {
         id: 'entry-0',
         entryIndex: 99,
+        entrySlotKind: 'fixed',
+        entrySlotLabel: '100',
         createdByEmployeeId: null,
         createdByEmployeeNameSnapshot: null,
         createdAt: new Date().toISOString(),
@@ -75,6 +80,8 @@ function sessionFixture(expectedEntryCount: number): SelfInspectionSessionDetail
     focusedEntry: {
       id: 'entry-0',
       entryIndex: 99,
+      entrySlotKind: 'fixed',
+      entrySlotLabel: '100',
       createdByEmployeeId: null,
       createdByEmployeeNameSnapshot: null,
       createdAt: new Date().toISOString(),
@@ -93,12 +100,14 @@ describe('selfInspectionEntryDraft', () => {
     expect(empty['item-1']).toBe('');
   });
 
-  it('pages entry indices', () => {
-    expect(selfInspectionEntryPageCount(100)).toBe(3);
-    expect(selfInspectionEntryIndicesForPage(100, 0)).toEqual(
-      Array.from({ length: 48 }, (_, i) => i)
+  it('pages entry slots for full mode', () => {
+    const session = sessionFixture(100);
+    const slots = listSelfInspectionEntrySlots(session);
+    expect(selfInspectionEntryPageCountForSession(session)).toBe(3);
+    expect(selfInspectionEntrySlotsForPage(session, 0).map((s) => s.entryIndex)).toEqual(
+      slots.slice(0, 48).map((s) => s.entryIndex)
     );
-    expect(selfInspectionEntryIndicesForPage(100, 2)).toEqual([96, 97, 98, 99]);
+    expect(selfInspectionEntrySlotsForPage(session, 2).map((s) => s.entryIndex)).toEqual([96, 97, 98, 99]);
   });
 
   it('detects dirty draft against saved snapshot', () => {
@@ -129,10 +138,28 @@ describe('selfInspectionEntryDraft', () => {
   });
 
   it('exposes entry index 49 on page 2 when required count is 49', () => {
-    expect(selfInspectionEntryPageCount(49)).toBe(2);
-    expect(selfInspectionEntryIndicesForPage(49, 0)).toEqual(
+    const session = sessionFixture(49);
+    expect(selfInspectionEntryPageCountForSession(session)).toBe(2);
+    expect(selfInspectionEntrySlotsForPage(session, 0).map((s) => s.entryIndex)).toEqual(
       Array.from({ length: 48 }, (_, index) => index)
     );
-    expect(selfInspectionEntryIndicesForPage(49, 1)).toEqual([48]);
+    expect(selfInspectionEntrySlotsForPage(session, 1).map((s) => s.entryIndex)).toEqual([48]);
+  });
+
+  it('first_last slots use first and last indices', () => {
+    const session = {
+      ...sessionFixture(5),
+      selfInspectionMode: 'first_last' as const,
+      plannedQuantity: 5,
+      expectedEntryCount: 2,
+      requiredEntryCount: 2
+    };
+    const slots = listSelfInspectionEntrySlots(session);
+    expect(slots).toEqual([
+      { entryIndex: 0, entrySlotKind: 'first', entrySlotLabel: '最初' },
+      { entryIndex: 4, entrySlotKind: 'last', entrySlotLabel: '最終' }
+    ]);
+    expect(selfInspectionEntryPageForEntryIndex(session, 4)).toBe(0);
+    expect(selfInspectionEntryPageCountForSession(session)).toBe(1);
   });
 });

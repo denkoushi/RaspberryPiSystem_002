@@ -1,3 +1,5 @@
+import { absoluteBoundsToToleranceRaw } from './toleranceFields';
+
 import type { InspectionDrawingPoint } from './types';
 import type { KioskInspectionDrawingTemplateSummaryDto } from '../types';
 
@@ -13,37 +15,35 @@ const previewSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="
 /** 開発プレビュー用（data URL で Vite / キオスク双方で確実に表示） */
 export const INSPECTION_DRAWING_PREVIEW_IMAGE_URL = `data:image/svg+xml,${encodeURIComponent(previewSvg)}`;
 
+function previewPoint(
+  id: string,
+  name: string,
+  markerNo: number,
+  xRatio: number,
+  yRatio: number,
+  nominal: number,
+  lower: number,
+  upper: number,
+  testValue: string
+): InspectionDrawingPoint {
+  const raw = absoluteBoundsToToleranceRaw(nominal, lower, upper);
+  return {
+    id,
+    name,
+    markerNo,
+    xRatio,
+    yRatio,
+    nominalRaw: raw.nominalRaw,
+    lowerToleranceRaw: raw.lowerToleranceRaw,
+    upperToleranceRaw: raw.upperToleranceRaw,
+    testValue
+  };
+}
+
 export const INSPECTION_DRAWING_PREVIEW_POINTS: InspectionDrawingPoint[] = [
-  {
-    id: 'preview-pt-1',
-    name: '穴径 A',
-    xRatio: 0.35,
-    yRatio: 0.42,
-    nominal: 10.0,
-    lower: 9.95,
-    upper: 10.05,
-    testValue: '10.01'
-  },
-  {
-    id: 'preview-pt-2',
-    name: '穴径 B',
-    xRatio: 0.62,
-    yRatio: 0.38,
-    nominal: 8.0,
-    lower: 7.9,
-    upper: 8.1,
-    testValue: '8.25'
-  },
-  {
-    id: 'preview-pt-3',
-    name: '面取り C',
-    xRatio: 0.5,
-    yRatio: 0.68,
-    nominal: 0.5,
-    lower: 0.3,
-    upper: 0.7,
-    testValue: ''
-  }
+  previewPoint('preview-pt-1', '穴径 A', 1, 0.35, 0.42, 10.0, 9.95, 10.05, '10.01'),
+  previewPoint('preview-pt-2', '穴径 B', 2, 0.62, 0.38, 8.0, 7.9, 8.1, '8.25'),
+  previewPoint('preview-pt-3', '面取り C', 3, 0.5, 0.68, 0.5, 0.3, 0.7, '')
 ];
 
 const previewVisualUpdatedAt = '2026-05-30T08:30:00.000Z';
@@ -60,6 +60,7 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
       version: 3,
       isActive: true,
       selfInspectionMode: 'full',
+      selfInspectionFixedCount: null,
       selfInspectionSampleSize: null,
       visualTemplateId: 'preview-visual-1',
       visualTemplate: {
@@ -80,7 +81,8 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
       name: '検査図面プレビュー（有効）',
       version: 2,
       isActive: false,
-      selfInspectionMode: 'sample',
+      selfInspectionMode: 'fixed_count',
+      selfInspectionFixedCount: 3,
       selfInspectionSampleSize: 3,
       visualTemplateId: 'preview-visual-1-old',
       visualTemplate: {
@@ -102,6 +104,7 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
       version: 2,
       isActive: false,
       selfInspectionMode: 'full',
+      selfInspectionFixedCount: null,
       selfInspectionSampleSize: null,
       visualTemplateId: 'preview-visual-2',
       visualTemplate: {

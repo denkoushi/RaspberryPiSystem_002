@@ -1862,7 +1862,18 @@ enum PartMeasurementSheetStatus {
 
 enum SelfInspectionMode {
   FULL
+  /// @deprecated 移行後は FIXED_COUNT。読取時は adapter で正規化
   SAMPLE
+  SINGLE
+  FIRST_LAST
+  FIXED_COUNT
+}
+
+enum SelfInspectionEntrySlotKind {
+  SINGLE
+  FIRST
+  LAST
+  FIXED
 }
 
 /// 同一測定対象（製造order・工程・資源CD）に複数の記録表をぶら下げる親集約。
@@ -1909,6 +1920,9 @@ model PartMeasurementTemplate {
   version            Int                          @default(1)
   isActive           Boolean                      @default(true)
   selfInspectionMode SelfInspectionMode           @default(FULL)
+  /// 指定数（FIXED_COUNT）。旧 SAMPLE は migration でコピー
+  selfInspectionFixedCount Int?
+  /// @deprecated 新規は selfInspectionFixedCount を使用
   selfInspectionSampleSize Int?
   visualTemplateId   String?
   createdAt          DateTime                     @default(now())
@@ -2054,6 +2068,7 @@ model SelfInspectionLotEntry {
   id                           String                         @id @default(uuid())
   sessionId                    String
   entryIndex                   Int
+  entrySlotKind                SelfInspectionEntrySlotKind    @default(FIXED)
   createdByEmployeeId          String?
   createdByEmployeeNameSnapshot String?
   createdAt                    DateTime                       @default(now())

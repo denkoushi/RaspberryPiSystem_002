@@ -20,6 +20,10 @@ import {
   productionPartMeasurementTemplateWhere
 } from './part-measurement-template-guards.js';
 import { normalizeFhincd } from './template-candidate-rules.js';
+import {
+  resolveReviseSelfInspectionFields,
+  validateSelfInspectionConfigFromDb
+} from './self-inspection-config.js';
 
 export type TemplateItemInput = {
   sortOrder: number;
@@ -82,7 +86,7 @@ async function insertNextTemplateVersionInTransaction(
     items: TemplateItemInput[];
     visualTemplateId: string | null;
     selfInspectionMode: SelfInspectionMode;
-    selfInspectionSampleSize: number | null;
+    selfInspectionFixedCount: number | null;
   }
 ) {
   const visualId = content.visualTemplateId?.trim() || null;
@@ -119,7 +123,8 @@ async function insertNextTemplateVersionInTransaction(
       version: nextVersion,
       isActive: true,
       selfInspectionMode: content.selfInspectionMode,
-      selfInspectionSampleSize: content.selfInspectionSampleSize,
+      selfInspectionFixedCount: content.selfInspectionFixedCount,
+      selfInspectionSampleSize: null,
       visualTemplateId: visualId,
       items: {
         create: content.items.map((item) => {
@@ -237,6 +242,9 @@ export class PartMeasurementTemplateService {
       name: string;
       items: TemplateItemInput[];
       visualTemplateId?: string | null;
+      selfInspectionMode?: SelfInspectionMode;
+      selfInspectionFixedCount?: number | null;
+      selfInspectionSampleSize?: number | null;
     }
   ) {
     const source = await this.getKioskInspectionDrawingTemplateById(sourceTemplateId);
@@ -301,6 +309,8 @@ export class PartMeasurementTemplateService {
     templateScope?: PartMeasurementTemplateScope;
     candidateFhinmei?: string | null;
     selfInspectionMode?: SelfInspectionMode;
+    selfInspectionFixedCount?: number | null;
+    /** @deprecated API 互換 */
     selfInspectionSampleSize?: number | null;
   }) {
     const templateScope: PartMeasurementTemplateScope = params.templateScope ?? 'THREE_KEY';
@@ -338,11 +348,11 @@ export class PartMeasurementTemplateService {
     if (params.items.length === 0) {
       throw new ApiError(400, 'テンプレート項目が空です');
     }
-    const selfInspectionMode = params.selfInspectionMode ?? 'FULL';
-    const selfInspectionSampleSize = selfInspectionMode === 'SAMPLE' ? (params.selfInspectionSampleSize ?? null) : null;
-    if (selfInspectionMode === 'SAMPLE' && (selfInspectionSampleSize == null || selfInspectionSampleSize < 1)) {
-      throw new ApiError(400, '抜取検査では抜取数が必須です');
-    }
+    const validated = validateSelfInspectionConfigFromDb(
+      params.selfInspectionMode ?? 'FULL',
+      params.selfInspectionFixedCount,
+      params.selfInspectionSampleSize
+    );
 
     const visualId = params.visualTemplateId?.trim() || null;
 
@@ -354,8 +364,8 @@ export class PartMeasurementTemplateService {
           name: params.name,
           items: params.items,
           visualTemplateId: visualId,
-          selfInspectionMode,
-          selfInspectionSampleSize
+          selfInspectionMode: validated.mode,
+          selfInspectionFixedCount: validated.fixedCount
         }
       )
     );
@@ -429,7 +439,7 @@ export class PartMeasurementTemplateService {
           items: params.items,
           visualTemplateId,
           selfInspectionMode: 'FULL',
-          selfInspectionSampleSize: null
+          selfInspectionFixedCount: null
         })
       );
       drawingPathToCleanup = null;
@@ -504,6 +514,8 @@ export class PartMeasurementTemplateService {
       /** FHINMEI_ONLY の改版でのみ指定可 */
       candidateFhinmei?: string | null;
       selfInspectionMode?: SelfInspectionMode;
+      selfInspectionFixedCount?: number | null;
+      /** @deprecated API 互換 */
       selfInspectionSampleSize?: number | null;
     }
   ) {
@@ -545,22 +557,15 @@ export class PartMeasurementTemplateService {
 
     const visualId = body.visualTemplateId !== undefined ? body.visualTemplateId : source.visualTemplateId;
     const normalizedVisual = visualId?.trim() ? visualId.trim() : null;
-    const selfInspectionMode = body.selfInspectionMode ?? source.selfInspectionMode;
-    const selfInspectionSampleSize =
-      selfInspectionMode === 'SAMPLE'
-        ? (body.selfInspectionSampleSize !== undefined ? body.selfInspectionSampleSize : source.selfInspectionSampleSize) ?? null
-        : null;
-    if (selfInspectionMode === 'SAMPLE' && (selfInspectionSampleSize == null || selfInspectionSampleSize < 1)) {
-      throw new ApiError(400, '抜取検査では抜取数が必須です');
-    }
+    const validated = resolveReviseSelfInspectionFields(body, source);
 
     return prisma.$transaction((tx) =>
       insertNextTemplateVersionInTransaction(tx, lineage, {
         name: body.name,
         items: body.items,
         visualTemplateId: normalizedVisual,
-        selfInspectionMode,
-        selfInspectionSampleSize
+        selfInspectionMode: validated.mode,
+        selfInspectionFixedCount: validated.fixedCount
       })
     );
   }
@@ -679,6 +684,7 @@ export class PartMeasurementTemplateService {
       templateScope: 'THREE_KEY',
       candidateFhinmei: null,
       selfInspectionMode: source.selfInspectionMode,
+      selfInspectionFixedCount: source.selfInspectionFixedCount,
       selfInspectionSampleSize: source.selfInspectionSampleSize
     });
 

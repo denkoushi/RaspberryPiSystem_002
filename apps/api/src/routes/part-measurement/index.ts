@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
+import type { SelfInspectionMode } from '@prisma/client';
 import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
@@ -20,7 +21,12 @@ import {
   SelfInspectionService
 } from '../../services/part-measurement/index.js';
 import { requireClientDevice, resolveDeviceScopeKey } from '../kiosk/shared.js';
-import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from '../../services/part-measurement/part-measurement-constants.js';
+import {
+  resolveTemplateFixedCount,
+  selfInspectionPatchFromReviseBody,
+  serializeSelfInspectionMode,
+  validateSelfInspectionConfig
+} from '../../services/part-measurement/self-inspection-config.js';
 import {
   patchInspectionDrawingEvaluationSheetBodySchema,
   toInspectionDrawingEvaluationPatchInput
@@ -29,6 +35,7 @@ import {
   assertInspectionDrawingEvaluationSheet,
   assertProductionPartMeasurementSheet
 } from '../../services/part-measurement/part-measurement-template-guards.js';
+import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from '../../services/part-measurement/part-measurement-constants.js';
 
 const processGroupSchema = z.enum(['cutting', 'grinding']);
 const authOnlyErrorCodes = new Set(['AUTH_TOKEN_REQUIRED', 'AUTH_TOKEN_INVALID', 'AUTH_TOKEN_EXPIRED']);
@@ -101,7 +108,53 @@ const templateItemSchema = z.object({
 });
 
 const templateScopeSchema = z.enum(['three_key', 'fhincd_resource', 'fhinmei_only']);
-const selfInspectionModeSchema = z.enum(['full', 'sample']);
+const selfInspectionModeSchema = z.enum(['full', 'single', 'first_last', 'fixed_count', 'sample']);
+
+function refineSelfInspectionConfig(
+  val: {
+    selfInspectionMode?: z.infer<typeof selfInspectionModeSchema>;
+    selfInspectionFixedCount?: number | null;
+    selfInspectionSampleSize?: number | null;
+  },
+  ctx: z.RefinementCtx
+): void {
+  const modeRaw = val.selfInspectionMode ?? 'full';
+  const mode = modeRaw === 'sample' ? 'fixed_count' : modeRaw;
+  try {
+    validateSelfInspectionConfig({
+      mode,
+      fixedCount: val.selfInspectionFixedCount ?? val.selfInspectionSampleSize ?? null
+    });
+  } catch (error) {
+    if (error instanceof ApiError) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: error.message,
+        path: ['selfInspectionFixedCount']
+      });
+    } else {
+      throw error;
+    }
+  }
+}
+
+/** 新規作成用: 未指定時は full */
+function selfInspectionFieldsFromBody(body: {
+  selfInspectionMode?: z.infer<typeof selfInspectionModeSchema>;
+  selfInspectionFixedCount?: number | null;
+  selfInspectionSampleSize?: number | null;
+}): { selfInspectionMode: SelfInspectionMode; selfInspectionFixedCount: number | null } {
+  const modeRaw = body.selfInspectionMode ?? 'full';
+  const modeDto = modeRaw === 'sample' ? 'fixed_count' : modeRaw;
+  const validated = validateSelfInspectionConfig({
+    mode: modeDto,
+    fixedCount: body.selfInspectionFixedCount ?? body.selfInspectionSampleSize ?? null
+  });
+  return {
+    selfInspectionMode: validated.mode,
+    selfInspectionFixedCount: validated.fixedCount
+  };
+}
 
 const createTemplateBodySchema = z
   .object({
@@ -114,6 +167,7 @@ const createTemplateBodySchema = z
     visualTemplateId: z.string().uuid().optional().nullable(),
     candidateFhinmei: z.string().max(500).optional().nullable(),
     selfInspectionMode: selfInspectionModeSchema.optional().default('full'),
+    selfInspectionFixedCount: z.number().int().min(1).max(2000).optional().nullable(),
     selfInspectionSampleSize: z.number().int().min(1).max(2000).optional().nullable()
   })
   .superRefine((val, ctx) => {
@@ -128,22 +182,17 @@ const createTemplateBodySchema = z
           path: ['candidateFhinmei']
         });
       }
-      return;
     }
-    if (val.fhincd.trim().length === 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'FIHNCD が空です', path: ['fhincd'] });
+    if (val.templateScope !== 'fhinmei_only') {
+      if (val.fhincd.trim().length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'FIHNCD が空です', path: ['fhincd'] });
+      }
+      const r = val.resourceCd.trim();
+      if (r.length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: '資源CDが空です', path: ['resourceCd'] });
+      }
     }
-    const r = val.resourceCd.trim();
-    if (r.length === 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: '資源CDが空です', path: ['resourceCd'] });
-    }
-    if (val.selfInspectionMode === 'sample' && (val.selfInspectionSampleSize ?? null) == null) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '抜取検査では抜取数が必須です',
-        path: ['selfInspectionSampleSize']
-      });
-    }
+    refineSelfInspectionConfig(val, ctx);
   });
 
 /** 検査図面 MVP: 評価用テンプレ（本番 THREE_KEY 系譜とは別バケット） */
@@ -164,26 +213,22 @@ const reviseTemplateBodySchema = z
     visualTemplateId: z.string().uuid().optional().nullable(),
     candidateFhinmei: z.string().max(500).optional().nullable(),
     selfInspectionMode: selfInspectionModeSchema.optional(),
+    selfInspectionFixedCount: z.number().int().min(1).max(2000).optional().nullable(),
     selfInspectionSampleSize: z.number().int().min(1).max(2000).optional().nullable()
   })
   .superRefine((val, ctx) => {
-    if (val.candidateFhinmei === undefined || val.candidateFhinmei === null) {
-      return;
+    if (val.candidateFhinmei !== undefined && val.candidateFhinmei !== null) {
+      const c = String(val.candidateFhinmei).trim();
+      if (c.length > 0 && c.length < 2) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'FHINMEI 候補キーは 2 文字以上にしてください',
+          path: ['candidateFhinmei']
+        });
+      }
     }
-    const c = String(val.candidateFhinmei).trim();
-    if (c.length > 0 && c.length < 2) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'FHINMEI 候補キーは 2 文字以上にしてください',
-        path: ['candidateFhinmei']
-      });
-    }
-    if (val.selfInspectionMode === 'sample' && (val.selfInspectionSampleSize ?? null) == null) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '抜取検査では抜取数が必須です',
-        path: ['selfInspectionSampleSize']
-      });
+    if (val.selfInspectionMode !== undefined) {
+      refineSelfInspectionConfig(val, ctx);
     }
   });
 
@@ -358,6 +403,7 @@ function serializeTemplate(
     version: number;
     isActive: boolean;
     selfInspectionMode?: string;
+    selfInspectionFixedCount?: number | null;
     selfInspectionSampleSize?: number | null;
     visualTemplateId?: string | null;
     visualTemplate?: Parameters<typeof serializeVisualTemplate>[0] | null;
@@ -374,8 +420,19 @@ function serializeTemplate(
     name: t.name,
     version: t.version,
     isActive: t.isActive,
-    selfInspectionMode: t.selfInspectionMode === 'SAMPLE' ? 'sample' : 'full',
-    selfInspectionSampleSize: t.selfInspectionSampleSize ?? null,
+    selfInspectionMode: serializeSelfInspectionMode(
+      (t.selfInspectionMode ?? 'FULL') as import('@prisma/client').SelfInspectionMode
+    ),
+    selfInspectionFixedCount: resolveTemplateFixedCount({
+      selfInspectionMode: (t.selfInspectionMode ?? 'FULL') as import('@prisma/client').SelfInspectionMode,
+      selfInspectionFixedCount: t.selfInspectionFixedCount ?? null,
+      selfInspectionSampleSize: t.selfInspectionSampleSize ?? null
+    }),
+    selfInspectionSampleSize: resolveTemplateFixedCount({
+      selfInspectionMode: (t.selfInspectionMode ?? 'FULL') as import('@prisma/client').SelfInspectionMode,
+      selfInspectionFixedCount: t.selfInspectionFixedCount ?? null,
+      selfInspectionSampleSize: t.selfInspectionSampleSize ?? null
+    }),
     visualTemplateId: t.visualTemplateId ?? null,
     visualTemplate: t.visualTemplate ? serializeVisualTemplate(t.visualTemplate) : null,
     items: (t.items ?? []).map(serializeTemplateItem)
@@ -1148,6 +1205,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         : body.templateScope === 'fhinmei_only'
           ? 'FHINMEI_ONLY'
           : 'THREE_KEY';
+    const selfInspection = selfInspectionFieldsFromBody(body);
     const template = await templateService.createTemplateVersion({
       fhincd: body.fhincd,
       processGroup,
@@ -1157,8 +1215,8 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       visualTemplateId: body.visualTemplateId ?? null,
       templateScope,
       candidateFhinmei: body.candidateFhinmei,
-      selfInspectionMode: body.selfInspectionMode === 'sample' ? 'SAMPLE' : 'FULL',
-      selfInspectionSampleSize: body.selfInspectionSampleSize ?? null
+      selfInspectionMode: selfInspection.selfInspectionMode,
+      selfInspectionFixedCount: selfInspection.selfInspectionFixedCount
     });
     return {
       template: serializeTemplate({
@@ -1189,8 +1247,9 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         name: template.name,
         version: template.version,
         isActive: template.isActive,
-        selfInspectionMode: template.selfInspectionMode === 'SAMPLE' ? 'sample' : 'full',
-        selfInspectionSampleSize: template.selfInspectionSampleSize ?? null,
+        selfInspectionMode: serializeSelfInspectionMode(template.selfInspectionMode),
+        selfInspectionFixedCount: resolveTemplateFixedCount(template),
+        selfInspectionSampleSize: resolveTemplateFixedCount(template),
         visualTemplateId: template.visualTemplateId ?? null,
         visualTemplate: template.visualTemplate ? serializeVisualTemplate(template.visualTemplate) : null,
         itemCount
@@ -1217,10 +1276,12 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     async (request) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const body = reviseTemplateBodySchema.parse(request.body);
+      const selfInspectionPatch = selfInspectionPatchFromReviseBody(body);
       const template = await templateService.reviseKioskInspectionDrawingTemplate(params.id, {
         name: body.name,
         items: body.items,
-        visualTemplateId: body.visualTemplateId
+        visualTemplateId: body.visualTemplateId,
+        ...selfInspectionPatch
       });
       return {
         template: serializeTemplate({
@@ -1388,13 +1449,13 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   app.post('/part-measurement/templates/:id/revise', { preHandler: allowWriteKiosk }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
     const body = reviseTemplateBodySchema.parse(request.body);
+    const selfInspectionPatch = selfInspectionPatchFromReviseBody(body);
     const template = await templateService.reviseActiveTemplate(params.id, {
       name: body.name,
       items: body.items,
       visualTemplateId: body.visualTemplateId,
       candidateFhinmei: body.candidateFhinmei,
-      selfInspectionMode: body.selfInspectionMode ? (body.selfInspectionMode === 'sample' ? 'SAMPLE' : 'FULL') : undefined,
-      selfInspectionSampleSize: body.selfInspectionSampleSize
+      ...selfInspectionPatch
     });
     return {
       template: serializeTemplate({
