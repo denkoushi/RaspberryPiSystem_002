@@ -177,6 +177,50 @@
 | **保存制御** | PDF 変換中・preview JPEG 未確定は保存不可 |
 | **編集時失敗** | 新 PDF preview 失敗時は **既存図面維持** + エラー表示 |
 
+**代表ファイル（`8307c995`）**:
+
+| 領域 | パス |
+|------|------|
+| preview 変換（副作用なし） | `apps/api/src/lib/part-measurement-drawing-preview.ts` |
+| save 取込（preview 関数再利用） | `apps/api/src/lib/part-measurement-drawing-import.ts` |
+| preview エンドポイント | `apps/api/src/routes/part-measurement/index.ts`（`POST …/drawings/preview`） |
+| Web ローカル preview | `apps/web/src/features/part-measurement/usePartMeasurementDrawingLocalPreview.ts` |
+| preview 契約・MIME 判定 | `apps/web/src/features/part-measurement/partMeasurementDrawingLocalPreview.ts` |
+| Canvas 表示統合 | `inspectionDrawingTemplateImageDisplay.ts` · `KioskInspectionDrawingCreatePage.tsx` |
+| クライアント API | `apps/web/src/api/client.ts`（`previewPartMeasurementDrawing`） |
+| 単体/統合テスト | `part-measurement-drawing-preview.test.ts` · `part-measurement-drawing-preview.integration.test.ts` · Web `*LocalPreview*.test.ts` |
+
+**本番デプロイ実績（PDF プレビュー整合 · 2026-06-02）**:
+
+| 段階 | ブランチ | ホスト | Detach Run ID | HEAD | PLAY RECAP | Phase12 | 備考 |
+|------|----------|--------|---------------|------|------------|---------|------|
+| Pi5 先行 | `feat/inspection-drawing-pdf-import` | `raspberrypi5` | **`20260602-190538-1780`** | **`8307c995`** | **`failed=0`** | **41/1/1** | **キオスク目視 OK** · `pdftoppm` 22.12.0 |
+| **未** | `main` マージ後 | Pi4×4 | — | — | — | — | 1 台ずつ `--limit` |
+
+**CI**: **`26812045529`** success（`8307c995`）。
+
+**preview curl（Tailscale）**:
+
+```bash
+BASE="https://100.106.158.2/api"
+KEY="client-key-raspberrypi4-kiosk1"
+
+curl -sk -o /dev/null -w "%{http_code}\n" -X POST "${BASE}/part-measurement/drawings/preview"
+curl -sk -D - -o /tmp/preview-out.jpg \
+  -H "x-client-key: ${KEY}" \
+  -F "file=@/tmp/test-drawing.pdf;type=application/pdf" \
+  "${BASE}/part-measurement/drawings/preview"
+```
+
+**知見（実装・レビュー · 2026-06-02）**:
+
+- **PDF Blob を `<img>` に渡さない**: ブラウザは PDF を img で描画できない。必ず API preview → JPEG `blob:`。
+- **save と preview は同一ラスタ**: `convertDrawingUploadToPreviewBuffer` を save 側 `importDrawingAndSave` からも共有し、座標ずれを防ぐ。
+- **AbortController**: ファイル差し替え時は前リクエストを abort。成功コールバックでも `signal.aborted` を再確認（レース防止）。
+- **preview 失敗時の pending**: 失敗で `hasPendingLocalSelection` を残すと保存が永久ブロック → 失敗パスで解除。
+- **Pi5 実機 curl**: SSH 先 `127.0.0.1:3000` は Caddy 構成では **000** になりうる。**Tailscale HTTPS** で `/api/...` を叩く（[deployment §PDF プレビュー](../guides/deployment.md#kiosk-inspection-drawing-pdf-preview-parity-2026-06-02)）。
+- **Phase12**: `verify-phase12-real.sh` は **`drawings/preview` を個別 grep しない**。上記 curl + キオスク目視で担保。
+
 ### トラブルシュート（検査図面）
 
 | 症状 | 確認 | 対処 |
@@ -198,6 +242,9 @@
 | PDF 変換中に保存できて座標がずれる | 保存前 preview JPEG と save ラスタが不一致 | preview で得た JPEG File を save に再利用 |
 | PDF 取込が **503** | 変換待ちが上限超過 | しばらく待って再送。同時 PDF アップロードを減らす |
 | PDF 変換後に文字欠け | Arial 等のフォント | 本番コンテナのフォント追加を検討 |
+| PDF 変換失敗後 **保存できない** | preview 失敗時に pending が残る | **`8307c995` 以降** — 失敗時 pending 解除 · 強制リロード |
+| ファイル差し替えで **古い図面が一瞬表示** | abort レース | **`8307c995` 以降** — 成功パスでも `signal.aborted` 確認 |
+| Pi5 SSH で API health **000** | localhost:3000 直叩き | **HTTPS Tailscale IP** 経由で確認 |
 | 図面UIに行かず表形式 | `quantity !== 1` または図面条件不足 | `45c02e0a` 参照。数量・テンプレを確認 |
 | 評価保存で本番テンプレが消える | 誤 API | **evaluation-templates** のみ |
 | 空入力で旧測定値が残る | PATCH null 未送信 | サービス層 `deleteMany`（`45c02e0a`） |
@@ -597,6 +644,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - **2026-04-05 実績（ハブ「測定値入力中」ペイン・`feat/kiosk-part-measurement-in-progress-pane`）**: Web のみ（一覧の **FHINMEI / 機種名** 表示・3列レイアウト・日時整形・文言統一）。API 契約変更不要（`listDrafts` が既に `fhinmei` / `machineName` を返す）。**デプロイ**: [deployment.md](../guides/deployment.md) に従い **Pi5 → Pi4×4** を **`--limit` 1 台ずつ**・`RASPI_SERVER_HOST`・`--detach --follow`（**Pi3 除外**）。Detach Run ID: `20260405-132318-28009`（`raspberrypi5`）→ `20260405-132940-8795`（`raspberrypi4`）→ `20260405-133535-3351`（`raspi4-robodrill01`）→ `20260405-134028-28183`（`raspi4-fjv60-80`）→ `20260405-134837-31511`（`raspi4-kensaku-stonebase01`）、各 **`PLAY RECAP failed=0` / `unreachable=0`**。**知見**: `--follow` 未完了のまま別端末のデプロイを起動すると **Mac 側ローカルロック**で停止しうる（Investigation 表）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 99s・Mac / Tailscale・Pi3 WARN は運用上スキップ可）。**手動残り**: 実下書きがあるとき一覧の識別性・折り返し・タップ領域をキオスクで目視。
 - **2026-04-05 実績（管理テンプレ「編集」・版上げ API・`feat/admin-part-measurement-template-revise`）**: API `POST /api/part-measurement/templates/:id/revise`・`PartMeasurementTemplateService.reviseActiveTemplate`（トランザクション共通化）。Web 管理画面で **編集**／`revisePartMeasurementTemplate`・`partMeasurementTemplateAdminFormModel`。**デプロイ**: [deployment.md](../guides/deployment.md) に従い **`--limit raspberrypi5` のみ**・`RASPI_SERVER_HOST`・`--detach --follow`（Pi4/Pi3 は当該変更の**必須対象外**。**Pi3** はリソース僅少のため専用手順は未実行）。Detach Run ID: **`20260405-163655-1727`**（`PLAY RECAP` **`failed=0`**・Pi4/Pi3 は `no hosts matched`）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 129s・Mac / Tailscale・Pi3 WARN は運用上スキップ可）。**手動残り**: 管理で **編集→保存**し新 `version`・旧版が無効になること、**図面なし**で `visualTemplateId` が外れることを目視。
 - **2026-04-05 実績（管理テンプレ `FHINMEI_ONLY` 候補キー編集・論理削除・`feat/admin-part-measurement-template-edit-key-and-delete`）**: `revise` に **`candidateFhinmei`（`FHINMEI_ONLY` のみ）**。`POST /api/part-measurement/templates/:id/retire` で **有効版のみ `isActive: false`**（旧版**自動復活なし**）。統合テスト 23 件に拡張。**デプロイ**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`、**`--limit raspberrypi5` のみ**・`--detach --follow`。Detach Run ID: **`20260405-190119-2287`**（**`failed=0`**・Pi4/Pi3 `no hosts matched`）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 126s・Mac / Tailscale）。**手動残り**: 管理で **1要素テンプレの候補キー変更**・**削除**後に既定一覧から消え **無効版も表示**で残ることを目視。
+- **2026-06-02 実績（検査図面 PDF プレビュー整合・`feat/inspection-drawing-pdf-import`）**: `POST /api/part-measurement/drawings/preview`（副作用なし JPEG）+ Web `usePartMeasurementDrawingLocalPreview` で **表示と保存の同一ラスタ**契約。**デプロイ**: [deployment.md §PDF プレビュー](../guides/deployment.md#kiosk-inspection-drawing-pdf-preview-parity-2026-06-02) に従い **`--limit raspberrypi5` のみ**・`RASPI_SERVER_HOST`・`--detach --follow`。Detach Run ID: **`20260602-190538-1780`**（HEAD **`8307c995`** · **`PLAY RECAP failed=0`** · Docker `api`/`web` 再起動）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 41 / WARN 1 / FAIL 1**（約 **84s** · FAIL は `raspberrypi4` SSH タイムアウトの既知到達性）。**自動**: preview API **401/200** · `pdftoppm` 22.12.0。**Pi5 キオスク目視 OK**（PDF プレビュー · 保存 · 再読込座標一致）。**CI**: **`26812045529`** success。**手動残り**: **`main` マージ後** Pi4×4 順次 · PDF 連打 503 の現場確認（任意）。
 - **2026-04-05 実績（`FHINMEI_ONLY` 部分一致・`feat/part-measurement-fhinmei-partial-match`）**: `template-candidate-rules.ts` で **NFKC+lower+空白正規化**、`日程fhinmei.includes(候補キー)`、候補キー **最短 2 文字**（`PART_MEASUREMENT_FHINMEI_CANDIDATE_MIN_LEN`）、`one_key_fhinmei` 同士は **正規化後キー長降順**でタイブレーク。管理／キオスクの **`candidateFhinmei` は 2 文字以上**（Zod）。**デプロイ**: [deployment.md](../guides/deployment.md) に従い **Pi5 → Pi4×4** を **`--limit` 1 台ずつ**・`RASPI_SERVER_HOST`・`--detach --follow`（**Pi3 は対象外**・サイネージ専用手順は未実行）。Detach Run ID（記録されている後段例）: `20260405-115713-13575`（`raspi4-robodrill01`）→ `20260405-120152-18819`（`raspi4-fjv60-80`）→ `20260405-120844-9596`（`raspi4-kensaku-stonebase01`）；`raspberrypi5` / `raspberrypi4` は同一作業連の先行分（各 **`PLAY RECAP failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 132s・Mac / Tailscale）。**WARN**: Pi3 `signage-lite/timer` がオフライン扱い（スクリプト注記どおり **運用上スキップ可**）。**手動残り**: 日程品名が候補キーを **含むが完全一致ではない** 行で `/template/pick` に `one_key_fhinmei` が期待どおり並ぶか現場で目視。
 - **2026-04-05 実績（複数記録表・セッション親子・`feat/part-measurement-multi-sheet-parent`）**: Prisma `PartMeasurementSession`・マイグレーション `20260406120000_part_measurement_multi_sheet_session`。キオスク API 応答に **`{ sheet, session }`**。編集画面は **上部セッションカード**・**別テンプレ追加**。親 **`completedAt`** と新規下書きの整合はサービス層（統合テストで担保）。**デプロイ**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`、**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**・`RASPI_SERVER_HOST`・`--detach --follow`（**Pi3 除外**・サイネージ専用手順は未実行）。Detach Run ID: **`20260405-214901-25613`**（`raspberrypi5`）→ **`raspberrypi4` / `raspi4-robodrill01` は同一作業連で先行順次・各 `PLAY RECAP failed=0`（厳密な runId は Pi5 `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-*.summary.json` を時系列で突合）** → `20260405-221648-17798`（`raspi4-fjv60-80`）→ `20260405-222224-6819`（`raspi4-kensaku-stonebase01`）。**トラブルシュート**: Mac 側の `--follow` が **15 分超**でタイムアウトしても、Pi5 上のデタッチ Ansible は **継続**し **`remote exit` 0** まで完走しうる → Pi5 の `*.exit` / `*.summary.json` で確認。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 **135s**・Mac / Tailscale）。**WARN**: Pi3（**今回未デプロイ**）の SSH 系チェックはスクリプト注記どおり **運用上スキップ可**。**手動残り**: 同一日程で **複数子シート**・カード切替・**別テンプレ追加**・親完了後の状態・CSV **`sessionId`** を現場で目視。
 - **知見**: Pi4 単体 `--limit` でも Ansible は Pi5 上で実行される（`RASPI_SERVER_HOST` 設定が前提）。`--foreground` のキオスクデプロイは IME/ibus 等を含み **15〜25 分**/台かかることがある（タイムアウトに注意）。

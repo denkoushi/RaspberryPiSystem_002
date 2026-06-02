@@ -57,6 +57,44 @@
 - **運用**: API コンテナに `poppler-utils`（`pdftoppm`）必須。Arial 依存 PDF は文字欠けの可能性（`fonts-noto-cjk` のみ）。
 - **実機確認（Pi）**: preview / save / storage GET が kiosk `client-key` で通ること · `pdftoppm` 有無 · フォント欠け · preview の semaphore / queue 上限（同時 PDF 連打で 503 にならない運用）
 
+#### 本番反映実績（2026-06-02 · Pi5 先行）
+
+| 項目 | 内容 |
+|------|------|
+| ブランチ | `feat/inspection-drawing-pdf-import` → **`main` マージ後** Pi4 順次 |
+| Pi5 Detach Run ID | **`20260602-190538-1780`** |
+| Git HEAD | **`8307c995`** |
+| PLAY RECAP | `failed=0` · Docker `api`/`web` 再起動 |
+| Phase12 | **41 PASS / WARN 1 / FAIL 1**（`raspberrypi4` SSH タイムアウトは既知） |
+| Pi5 キオスク目視 | **OK**（PDF プレビュー表示 · 保存 · 再読込座標一致 · 変換中保存不可） |
+| Pi4×4 | **未** — `main` 反映後 `--limit` 1 台ずつ（SPA は Pi5 配信のため多くは強制リロードで足りるが、検査図面系は Pi5 OK 後に順次が標準） |
+
+**preview API 自動確認（Tailscale · 2026-06-02）**:
+
+```bash
+BASE="https://100.106.158.2/api"
+KEY="client-key-raspberrypi4-kiosk1"
+
+# 未認証 → 401
+curl -sk -o /dev/null -w "%{http_code}\n" -X POST "${BASE}/part-measurement/drawings/preview"
+
+# 最小 PDF → 200 image/jpeg（Mac 上で /tmp/test-drawing.pdf を用意してから）
+curl -sk -D - -o /tmp/preview-out.jpg \
+  -H "x-client-key: ${KEY}" \
+  -F "file=@/tmp/test-drawing.pdf;type=application/pdf" \
+  "${BASE}/part-measurement/drawings/preview"
+# 期待: HTTP 200 · Content-Type: image/jpeg · Cache-Control: no-store
+```
+
+**レビュー・実装知見（後続向け）**:
+
+| 事象 | 対処 |
+|------|------|
+| PDF 変換失敗後に保存ボタンがずっと無効 | `usePartMeasurementDrawingLocalPreview` で失敗時 `setHasPendingLocalSelection(false)` · CreatePage で `previewError` 時に pending ref リセット（`8307c995`） |
+| ファイル差し替え連打で古い preview が勝つ | 成功パスでも `controller.signal.aborted` を確認してから state 更新 |
+| unmount 後の setState 警告 | `previewUrlRef` + `replaceLocalPreviewUrl` で cleanup |
+| 編集画面で新 PDF が失敗 | **既存図面 Blob を維持**しエラーメッセージのみ（`inspectionDrawingTemplateImageDisplay` の local-first 契約） |
+
 ## 自主検査 MVP（2026-06-01）
 
 詳細・背景: [KB-320 §自主検査 MVP](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01)。

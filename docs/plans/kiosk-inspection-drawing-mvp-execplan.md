@@ -52,7 +52,16 @@ Maintained in accordance with `.agent/PLANS.md`.
   - **実機: 拡大2回目（1.5）の震え解消 OK**（Pi5 · 2026-05-31）
   - CI: **`26700061664`** success
 - [x] (2026-05-31) **`main` マージ** — PR [#378](https://github.com/denkoushi/RaspberryPiSystem_002/pull/378) squash **`19112272`**
-- [ ] **Pi4×4 本番** — `main` マージ後に各キオスクへ順次（parity + overflow + ズーム + 図面読込を一括推奨）
+- [x] (2026-06-02) **PDF 取込基盤**（`feat/inspection-drawing-pdf-import` · **`12072afa`**）
+  - `importDrawingAndSave` · poppler `pdftoppm` · 30MB PDF / 12MB 保存上限 · semaphore（同時1・待ち4）
+- [x] (2026-06-02) **PDF プレビュー整合**（同一ブランチ · **`8307c995`**）
+  - `POST /api/part-measurement/drawings/preview`（副作用なし）
+  - `usePartMeasurementDrawingLocalPreview` · 保存時同一 JPEG File 再利用
+  - レビュー: abort レース · 失敗時 pending 解除 · unmount cleanup · デバッグ fetch 撤去
+  - 単体/統合テスト追加 · CI **`26812045529`** success
+- [x] (2026-06-02) **Pi5 本番** PDF プレビュー — Detach **`20260602-190538-1780`** · Phase12 **41/1/1** · **実機目視 OK**
+- [ ] **`main` マージ** — PR 作成・squash 後 Pi4×4 順次
+- [ ] **Pi4×4 本番** — `main` マージ後に各キオスクへ順次（parity + overflow + ズーム + 図面読込 + PDF preview を一括推奨）
 - [ ] **Pi5 実機目視** プレビュー parity UI — デプロイ済・目視記録は運用側（任意 Phase12）
 
 ## Surprises & Discoveries
@@ -101,6 +110,18 @@ Maintained in accordance with `.agent/PLANS.md`.
 
 - Observation: 新規フック3ファイルを `git add -u` だけでコミットすると CI が import 解決失敗する
   Evidence: レビュー [P1] 2026-05-31 → 必ず `useZoomedCanvasLayout.ts` 等を同コミットに含める
+
+- Observation: PDF Blob を Canvas `<img>` に直接渡すと **プレビュー空白**になり、save 経路（`pdftoppm`→JPEG）と表示ラスタが不一致で **座標ずれ**する
+  Evidence: 2026-06-02 調査 → `8307c995` で preview API + 同一 JPEG File 再利用
+
+- Observation: PDF preview 失敗後に `hasPendingLocalSelection` が true のままだと **保存が永久ブロック**される
+  Evidence: コードレビュー → 失敗パスで pending 解除 + CreatePage で previewError 時 ref リセット（`8307c995`）
+
+- Observation: ファイル差し替え連打で abort 済みリクエストの成功コールバックが後から走ると **古い preview が勝つ**
+  Evidence: レビュー → 成功パスでも `controller.signal.aborted` を確認（`8307c995`）
+
+- Observation: Pi5 上で `curl http://127.0.0.1:3000/api/system/health` が **000** でも、Tailscale **`https://100.106.158.2/api/...`** は正常（Caddy 経由）
+  Evidence: 2026-06-02 デプロイ後検証 — SSH localhost 直は本番構成では使わない
 
 ## Decision Log
 
@@ -174,9 +195,10 @@ Maintained in accordance with `.agent/PLANS.md`.
 - **一覧ハブ**: ヘッダー **「検査図面」** → 一覧 → 新規/編集/履歴。専用 API + 要約 DTO。旧版は閲覧専用・有効化後に再取得。
 - **本番編集（数量1のみ）**: 変更なし（`inspection/edit` + 通常 sheet API）。
 - **隔離**: 評価用バケットと **409** 相互ブロックは維持。
-- **デプロイ**: Pi5 で MVP 導線・タブ・一覧ハブ・**プレビュー parity（`ccacef85`）**・**フィルタ overflow（`e19f9b07`）**・**キャンバスズーム（`364aa184`）** まで反映。**Pi4×4 は `main` マージ後の次タスク**（parity + overflow + ズーム）。
+- **デプロイ**: Pi5 で MVP 導線・タブ・一覧ハブ・**プレビュー parity（`ccacef85`）**・**フィルタ overflow（`e19f9b07`）**・**キャンバスズーム（`364aa184`）**・**図面読込/ズーム痙攣（`e12a5a9c`/`f6a9544a`）**・**PDF プレビュー整合（`8307c995`）** まで反映。**Pi4×4 は `main` マージ後の次タスク**。
+- **PDF プレビュー（2026-06-02）**: Pi5 Detach `20260602-190538-1780` · キオスク目視 OK · preview API は副作用なし JPEG 契約で save と座標一致。
 - **DEV プレビュー**: `/dev/kiosk-inspection-drawing-*` で本番コンポーネントを Mac 上で反復可能（fixture）。
-- **未着手**: 複数個数図面UI、TIFF、順位ボード連携、Phase12 への専用 API スモーク追加（任意）。
+- **未着手**: 複数個数図面UI、TIFF、順位ボード連携、Phase12 への専用 API / preview スモーク追加（任意）。
 
 ## 代表コミット
 
@@ -191,6 +213,8 @@ Maintained in accordance with `.agent/PLANS.md`.
 | `46ec0621` | `main`（PR #376 squash） | 上記 + docs マージ |
 | `364aa184` | `feat/kiosk-inspection-drawing-canvas-zoom` | キャンバスズーム UI・配置ポインタ契約 |
 | `e42aff35` | `main`（PR #377 squash） | 上記 + docs マージ |
+| `12072afa` | `feat/inspection-drawing-pdf-import` | PDF 取込基盤（pdftoppm・上限・semaphore） |
+| `8307c995` | 同上 | PDF preview API + Web 同一 JPEG 契約 |
 
 ## 主要ファイル（後続読者向け）
 
@@ -210,6 +234,8 @@ Maintained in accordance with `.agent/PLANS.md`.
 | 記録図面編集 UI | `KioskInspectionDrawingEditPage.tsx` |
 | キャンバスズーム | `useInspectionDrawingZoom.ts` · `InspectionDrawingCanvasZoomControls.tsx` · `inspectionDrawingCanvasLayout.ts` |
 | テンプレサービス | `part-measurement-template.service.ts`（`list/get/reviseKioskInspectionDrawing*`） |
+| PDF preview API | `part-measurement-drawing-preview.ts` · `POST …/drawings/preview` |
+| Web PDF preview | `usePartMeasurementDrawingLocalPreview.ts` · `partMeasurementDrawingLocalPreview.ts` |
 
 ## Context and Orientation
 
@@ -230,4 +256,5 @@ Maintained in accordance with `.agent/PLANS.md`.
 - 手動（Pi5・キャンバスズーム）: ヘッダー `−` `＋` `□` · 拡大パンで点が増えない · `□` フィット（`364aa184` 以降 · Pi5 実機 OK）
 - 手動（Mac DEV）: `/dev/kiosk-inspection-drawing-library` · `/dev/kiosk-inspection-drawing-create`（本番コンポーネント・fixture）
 - 手動（Pi5・記録）: 本番図面テンプレ + 数量1 → 図面 edit
+- 手動（Pi5・PDF プレビュー）: 作成/編集で PDF 選択 → JPEG 表示 · 変換中保存不可 · 保存→再読込で座標一致（`8307c995` 以降 · **2026-06-02 目視 OK**）
 - 手動（Pi4 未）: `main` 反映後、各キオスクで同確認（強制リロード §6.6.4）
