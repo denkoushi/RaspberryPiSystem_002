@@ -2459,6 +2459,16 @@
 
 ## Next Steps????????
 
+### キオスク順位ボード・過去納期（資源035）上流確認（2026-06-02） {#kiosk-leaderboard-stale-past-due-upstream-verify-2026-06-02}
+
+**状態**: **アプリ側原因調査は打ち切り**（[KB-383](./docs/knowledge-base/KB-383-kiosk-leaderboard-stale-past-due-investigation.md)）。**コード変更・デプロイなし**。
+
+| # | 項目 | 担当 | メモ |
+|---|------|------|------|
+| 1 | [KB-383 §上流確認リスト](./docs/knowledge-base/KB-383-kiosk-leaderboard-stale-past-due-investigation.md#上流確認リスト11-件2026-06-01-時点) の **11 件**を現場・上流へ照会 | 運用・現場 | 統一質問 3 点（本当に未完か / なぜ C/X にならないか / S/R 維持が正しい運用か） |
+| 2 | 6 件（他工程 C/X・035 だけ S/R）を **更新漏れ vs 工程保留** で分類 | 運用・上流 | ProductNo 例: `0003774808`, `0003800853` ほか KB 表参照 |
+| 3 | アプリ対応が必要なら **長期滞留・要確認** UI のみ設計 | 開発 | **完了化・非表示・3 キー緩和は不可**（KB-383 Prevention） |
+
 ### 自主検査 MVP 検証と仕上げ（2026-06-01）
 
 **状態**: 実装は feature branch `feat/kiosk-self-inspection-mvp` 上で完了。**未コミット / 未プッシュ**。ローカルでは migrate deploy と web 単体テストは確認済み。API 統合テストは既存 test DB 手順に依存するため、既存スクリプト順守で再確認を継続。
