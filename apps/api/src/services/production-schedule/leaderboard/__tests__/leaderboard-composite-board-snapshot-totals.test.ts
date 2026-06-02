@@ -12,6 +12,16 @@ describe('leaderboard-composite-board-snapshot-totals', () => {
     vi.useRealTimers();
   });
 
+  async function withFakeSystemTime<T>(now: Date, run: () => T | Promise<T>): Promise<T> {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    try {
+      return await run();
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
   it('seeds and resolves total by snapshotId', () => {
     seedLeaderboardBoardSnapshotResourceTotal('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 142);
     expect(resolveLeaderboardBoardSnapshotResourceTotal('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')).toBe(142);
@@ -23,16 +33,22 @@ describe('leaderboard-composite-board-snapshot-totals', () => {
     expect(resolveLeaderboardBoardSnapshotResourceTotal('aaaaaaaa-bbbb-cccc-dddd-ffffffffffff')).toBeUndefined();
   });
 
-  it('expires entries after TTL', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-05-19T12:00:00.000Z'));
-    process.env.LEADERBOARD_SHELL_SNAPSHOT_TTL_MS = '60000';
-
-    seedLeaderboardBoardSnapshotResourceTotal('aaaaaaaa-bbbb-cccc-dddd-111111111111', 10);
-    vi.advanceTimersByTime(61_000);
-    expect(resolveLeaderboardBoardSnapshotResourceTotal('aaaaaaaa-bbbb-cccc-dddd-111111111111')).toBeUndefined();
-
-    delete process.env.LEADERBOARD_SHELL_SNAPSHOT_TTL_MS;
+  it('expires entries after TTL', async () => {
+    await withFakeSystemTime(new Date('2026-05-19T12:00:00.000Z'), () => {
+      const previousTtl = process.env.LEADERBOARD_SHELL_SNAPSHOT_TTL_MS;
+      process.env.LEADERBOARD_SHELL_SNAPSHOT_TTL_MS = '60000';
+      try {
+        seedLeaderboardBoardSnapshotResourceTotal('aaaaaaaa-bbbb-cccc-dddd-111111111111', 10);
+        vi.setSystemTime(new Date('2026-05-19T12:01:01.000Z'));
+        expect(resolveLeaderboardBoardSnapshotResourceTotal('aaaaaaaa-bbbb-cccc-dddd-111111111111')).toBeUndefined();
+      } finally {
+        if (previousTtl === undefined) {
+          delete process.env.LEADERBOARD_SHELL_SNAPSHOT_TTL_MS;
+        } else {
+          process.env.LEADERBOARD_SHELL_SNAPSHOT_TTL_MS = previousTtl;
+        }
+      }
+    });
   });
 
   it('normalizes negative totals to zero', () => {

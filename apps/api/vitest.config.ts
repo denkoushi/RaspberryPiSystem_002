@@ -14,10 +14,12 @@ export default defineConfig({
     },
     testTimeout: 30000, // 30秒のタイムアウト
     hookTimeout: 30000, // フックのタイムアウトも30秒
+    include: ['src/**/*.{test,spec}.ts'],
+    exclude: ['dist/**', 'node_modules/**'],
     coverage: {
       provider: 'istanbul',
       reporter: ['text', 'lcov'],
-      exclude: ['src/types/**']
+      exclude: ['dist/**', 'src/types/**']
     },
     // CI環境での詳細なログ出力
     reporters: process.env.CI ? ['verbose'] : ['default']

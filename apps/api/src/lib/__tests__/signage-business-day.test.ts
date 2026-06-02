@@ -9,18 +9,26 @@ describe('signage business day', () => {
     vi.useRealTimers();
   });
 
-  it('8:59 JST uses previous calendar day', () => {
+  async function withFakeSystemTime<T>(now: Date, run: () => T | Promise<T>): Promise<T> {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-02-10T23:59:00.000Z'));
+    vi.setSystemTime(now);
+    try {
+      return await run();
+    } finally {
+      vi.useRealTimers();
+    }
+  }
 
-    expect(resolveJstSignageBusinessDate()).toBe('2026-02-10');
+  it('8:59 JST uses previous calendar day', async () => {
+    await withFakeSystemTime(new Date('2026-02-10T23:59:00.000Z'), () => {
+      expect(resolveJstSignageBusinessDate()).toBe('2026-02-10');
+    });
   });
 
-  it('9:00 JST uses same calendar day', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-02-11T00:00:00.000Z'));
-
-    expect(resolveJstSignageBusinessDate()).toBe('2026-02-11');
+  it('9:00 JST uses same calendar day', async () => {
+    await withFakeSystemTime(new Date('2026-02-11T00:00:00.000Z'), () => {
+      expect(resolveJstSignageBusinessDate()).toBe('2026-02-11');
+    });
   });
 
   it('returns a half-open 9:00 JST business-day range', () => {

@@ -21,17 +21,21 @@ vi.mock('../storage-provider-factory.js', () => ({
 }));
 
 vi.mock('../backup.service.js', () => ({
-  BackupService: vi.fn().mockImplementation(() => ({
-    listBackups: listBackupsMock,
-    deleteBackup: deleteBackupMock,
-  })),
+  BackupService: vi.fn().mockImplementation(function () {
+    return {
+      listBackups: listBackupsMock,
+      deleteBackup: deleteBackupMock,
+    };
+  }),
 }));
 
 vi.mock('../backup-history.service.js', () => ({
-  BackupHistoryService: vi.fn().mockImplementation(() => ({
-    markHistoryAsDeletedByPath: markHistoryAsDeletedByPathMock,
-    markExcessHistoryAsDeleted: markExcessHistoryAsDeletedMock,
-  })),
+  BackupHistoryService: vi.fn().mockImplementation(function () {
+    return {
+      markHistoryAsDeletedByPath: markHistoryAsDeletedByPathMock,
+      markExcessHistoryAsDeleted: markExcessHistoryAsDeletedMock,
+    };
+  }),
 }));
 
 import { cleanupBackupsAfterManualExecution } from '../post-backup-cleanup.service.js';

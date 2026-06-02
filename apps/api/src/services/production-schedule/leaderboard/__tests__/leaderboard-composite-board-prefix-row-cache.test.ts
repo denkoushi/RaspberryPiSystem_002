@@ -15,6 +15,16 @@ describe('leaderboard-composite-board-prefix-row-cache', () => {
     vi.useRealTimers();
   });
 
+  async function withFakeSystemTime<T>(now: Date, run: () => T | Promise<T>): Promise<T> {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    try {
+      return await run();
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
   it('snapshot 単位で行をキャッシュし順序付きで取り出す', () => {
     const rows = [
       { id: 'a', rowData: {} },
@@ -33,15 +43,15 @@ describe('leaderboard-composite-board-prefix-row-cache', () => {
     expect(missingIds).toEqual(['c']);
   });
 
-  it('snapshot TTL を過ぎたキャッシュは返さない', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-05-19T04:00:00.000Z'));
-    putLeaderboardBoardPrefixRowsInCache('snap-1', [{ id: 'a', rowData: {} } as never]);
+  it('snapshot TTL を過ぎたキャッシュは返さない', async () => {
+    await withFakeSystemTime(new Date('2026-05-19T04:00:00.000Z'), () => {
+      putLeaderboardBoardPrefixRowsInCache('snap-1', [{ id: 'a', rowData: {} } as never]);
 
-    vi.setSystemTime(new Date('2026-05-19T04:06:00.000Z'));
-    const { cachedRows, missingIds } = resolveLeaderboardBoardPrefixRowsFromCache('snap-1', ['a']);
+      vi.setSystemTime(new Date('2026-05-19T04:06:00.000Z'));
+      const { cachedRows, missingIds } = resolveLeaderboardBoardPrefixRowsFromCache('snap-1', ['a']);
 
-    expect(cachedRows).toEqual([]);
-    expect(missingIds).toEqual(['a']);
+      expect(cachedRows).toEqual([]);
+      expect(missingIds).toEqual(['a']);
+    });
   });
 });

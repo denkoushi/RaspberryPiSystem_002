@@ -6,9 +6,11 @@ const { markHistoryAsDeletedByPathMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('../backup-history.service.js', () => ({
-  BackupHistoryService: vi.fn().mockImplementation(() => ({
-    markHistoryAsDeletedByPath: markHistoryAsDeletedByPathMock
-  }))
+  BackupHistoryService: vi.fn().mockImplementation(function () {
+    return {
+      markHistoryAsDeletedByPath: markHistoryAsDeletedByPathMock
+    };
+  })
 }));
 
 describe('backup-space-recovery.service', () => {

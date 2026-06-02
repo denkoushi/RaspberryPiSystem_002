@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useKeyboardWedgeScan } from '../useKeyboardWedgeScan';
 
@@ -15,15 +15,10 @@ describe('useKeyboardWedgeScan', () => {
     vi.setSystemTime(new Date('2026-04-22T12:00:00.000Z'));
   });
 
-  afterEach(() => {
-    vi.runOnlyPendingTimers();
-    vi.useRealTimers();
-  });
-
   it('高速入力とEnterでスキャン確定する', () => {
     const onScan = vi.fn();
 
-    renderHook(() =>
+    const { unmount } = renderHook(() =>
       useKeyboardWedgeScan({ active: true, onScan, minChars: 4, maxInterKeyDelayMs: 50, idleFlushMs: 120 })
     );
 
@@ -41,12 +36,13 @@ describe('useKeyboardWedgeScan', () => {
 
     expect(onScan).toHaveBeenCalledTimes(1);
     expect(onScan).toHaveBeenCalledWith('1234');
+    unmount();
   });
 
   it('Enterがなくてもアイドルタイムアウトで確定する', () => {
     const onScan = vi.fn();
 
-    renderHook(() =>
+    const { unmount } = renderHook(() =>
       useKeyboardWedgeScan({ active: true, onScan, minChars: 4, maxInterKeyDelayMs: 50, idleFlushMs: 120 })
     );
 
@@ -63,12 +59,13 @@ describe('useKeyboardWedgeScan', () => {
 
     expect(onScan).toHaveBeenCalledTimes(1);
     expect(onScan).toHaveBeenCalledWith('ABCD');
+    unmount();
   });
 
   it('人手タイピング相当の遅い入力は無視する', () => {
     const onScan = vi.fn();
 
-    renderHook(() =>
+    const { unmount } = renderHook(() =>
       useKeyboardWedgeScan({ active: true, onScan, minChars: 4, maxInterKeyDelayMs: 50, idleFlushMs: 120 })
     );
 
@@ -85,6 +82,7 @@ describe('useKeyboardWedgeScan', () => {
     });
 
     expect(onScan).not.toHaveBeenCalled();
+    unmount();
   });
 
   it('フォーム入力中のキーイベントは取り込まない', () => {
@@ -92,7 +90,7 @@ describe('useKeyboardWedgeScan', () => {
     const input = document.createElement('input');
     document.body.appendChild(input);
 
-    renderHook(() =>
+    const { unmount } = renderHook(() =>
       useKeyboardWedgeScan({ active: true, onScan, minChars: 4, maxInterKeyDelayMs: 50, idleFlushMs: 120 })
     );
 
@@ -110,6 +108,7 @@ describe('useKeyboardWedgeScan', () => {
     });
 
     expect(onScan).not.toHaveBeenCalled();
+    unmount();
     input.remove();
   });
 });

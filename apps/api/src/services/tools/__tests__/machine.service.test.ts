@@ -32,6 +32,16 @@ describe('MachineService', () => {
     vi.useRealTimers();
   });
 
+  async function withFakeSystemTime<T>(now: Date, run: () => T | Promise<T>): Promise<T> {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    try {
+      return await run();
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
   it('稼働中マスター - 当日点検済みの差分で未点検を返す', async () => {
     const machines = [
       {
@@ -347,59 +357,57 @@ describe('MachineService', () => {
   });
 
   it('findDailyInspectionSummaries は date 未指定時、JST 8:59 なら前日ラベルの暦日 0:00〜24:00 窓で取得する', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-02-11T08:59:00+09:00'));
+    await withFakeSystemTime(new Date('2026-02-11T08:59:00+09:00'), async () => {
+      vi.mocked(prisma.machine.findMany).mockResolvedValue([] as any);
+      vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([] as any);
 
-    vi.mocked(prisma.machine.findMany).mockResolvedValue([] as any);
-    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([] as any);
-
-    const result = await service.findDailyInspectionSummaries({
-      csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
-    });
-
-    expect(prisma.csvDashboardRow.findMany).toHaveBeenCalledWith({
-      where: {
+      const result = await service.findDailyInspectionSummaries({
         csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
-        occurredAt: {
-          gte: new Date('2026-02-09T15:00:00.000Z'),
-          lt: new Date('2026-02-10T15:00:00.000Z'),
+      });
+
+      expect(prisma.csvDashboardRow.findMany).toHaveBeenCalledWith({
+        where: {
+          csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
+          occurredAt: {
+            gte: new Date('2026-02-09T15:00:00.000Z'),
+            lt: new Date('2026-02-10T15:00:00.000Z'),
+          },
         },
-      },
-      select: {
-        id: true,
-        occurredAt: true,
-        rowData: true,
-      },
+        select: {
+          id: true,
+          occurredAt: true,
+          rowData: true,
+        },
+      });
+      expect(result.date).toBe('2026-02-10');
     });
-    expect(result.date).toBe('2026-02-10');
   });
 
   it('findDailyInspectionSummaries は date 未指定時、JST 9:00 から当日ラベルの暦日 0:00〜24:00 窓で取得する', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-02-11T09:00:00+09:00'));
+    await withFakeSystemTime(new Date('2026-02-11T09:00:00+09:00'), async () => {
+      vi.mocked(prisma.machine.findMany).mockResolvedValue([] as any);
+      vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([] as any);
 
-    vi.mocked(prisma.machine.findMany).mockResolvedValue([] as any);
-    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([] as any);
-
-    const result = await service.findDailyInspectionSummaries({
-      csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
-    });
-
-    expect(prisma.csvDashboardRow.findMany).toHaveBeenCalledWith({
-      where: {
+      const result = await service.findDailyInspectionSummaries({
         csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
-        occurredAt: {
-          gte: new Date('2026-02-10T15:00:00.000Z'),
-          lt: new Date('2026-02-11T15:00:00.000Z'),
+      });
+
+      expect(prisma.csvDashboardRow.findMany).toHaveBeenCalledWith({
+        where: {
+          csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
+          occurredAt: {
+            gte: new Date('2026-02-10T15:00:00.000Z'),
+            lt: new Date('2026-02-11T15:00:00.000Z'),
+          },
         },
-      },
-      select: {
-        id: true,
-        occurredAt: true,
-        rowData: true,
-      },
+        select: {
+          id: true,
+          occurredAt: true,
+          rowData: true,
+        },
+      });
+      expect(result.date).toBe('2026-02-11');
     });
-    expect(result.date).toBe('2026-02-11');
   });
 
   it('findDailyInspectionSummaries は 点検結果が未使用なら異常件数へ加算しない', async () => {

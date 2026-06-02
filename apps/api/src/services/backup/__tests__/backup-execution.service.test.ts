@@ -24,17 +24,19 @@ vi.mock('../storage-provider-factory.js', () => ({
 }));
 
 vi.mock('../backup.service.js', () => ({
-  BackupService: vi.fn().mockImplementation(() => ({
-    backup: backupMock,
-  })),
+  BackupService: vi.fn().mockImplementation(function () {
+    return { backup: backupMock };
+  }),
 }));
 
 vi.mock('../backup-history.service.js', () => ({
-  BackupHistoryService: vi.fn().mockImplementation(() => ({
-    createHistory: createHistoryMock,
-    completeHistory: completeHistoryMock,
-    failHistory: failHistoryMock,
-  })),
+  BackupHistoryService: vi.fn().mockImplementation(function () {
+    return {
+      createHistory: createHistoryMock,
+      completeHistory: completeHistoryMock,
+      failHistory: failHistoryMock,
+    };
+  }),
 }));
 
 import { executeBackupAcrossProviders, resolveBackupProviders } from '../backup-execution.service.js';

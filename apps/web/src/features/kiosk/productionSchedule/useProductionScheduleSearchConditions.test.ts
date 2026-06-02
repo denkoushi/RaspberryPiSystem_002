@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_SEARCH_CONDITIONS,
@@ -12,12 +12,6 @@ describe('useProductionScheduleSearchConditions', () => {
   beforeEach(() => {
     window.localStorage.clear();
     vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.runOnlyPendingTimers();
-    vi.useRealTimers();
-    window.localStorage.clear();
   });
 
   it('localStorage から初期値を復元する', () => {
@@ -35,16 +29,17 @@ describe('useProductionScheduleSearchConditions', () => {
       })
     );
 
-    const { result } = renderHook(() => useProductionScheduleSearchConditions());
+    const { result, unmount } = renderHook(() => useProductionScheduleSearchConditions());
 
     expect(result.current[0].inputQuery).toBe('SEIBAN-001');
     expect(result.current[0].hasNoteOnlyFilter).toBe(true);
     expect(result.current[0].selectedMachineName).toBe('MACHINE-A');
     expect(result.current[0].selectedPartName).toBe('PART-A');
+    unmount();
   });
 
   it('条件変更時に debounce 後 localStorage へ保存する', () => {
-    const { result } = renderHook(() => useProductionScheduleSearchConditions());
+    const { result, unmount } = renderHook(() => useProductionScheduleSearchConditions());
 
     act(() => {
       result.current[1]({
@@ -81,5 +76,6 @@ describe('useProductionScheduleSearchConditions', () => {
     expect(parsed.conditions.hasDueDateOnlyFilter).toBe(true);
     expect(parsed.conditions.selectedMachineName).toBe('MACHINE-B');
     expect(parsed.conditions.selectedPartName).toBe('PART-B');
+    unmount();
   });
 });

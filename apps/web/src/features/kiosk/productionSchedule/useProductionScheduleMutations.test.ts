@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useProductionScheduleMutations } from './useProductionScheduleMutations';
 
@@ -49,13 +49,8 @@ describe('useProductionScheduleMutations', () => {
     dueDateMutation.mutate.mockClear();
   });
 
-  afterEach(() => {
-    vi.runOnlyPendingTimers();
-    vi.useRealTimers();
-  });
-
   it('書き込み終了後に pauseRefetch のクールダウンを維持する', () => {
-    const { result, rerender } = renderHook(
+    const { result, rerender, unmount } = renderHook(
       ({ isSearchStateWriting }) =>
         useProductionScheduleMutations({
           isSearchStateWriting,
@@ -80,10 +75,11 @@ describe('useProductionScheduleMutations', () => {
       vi.advanceTimersByTime(2500);
     });
     expect(result.current.pauseRefetch).toBe(false);
+    unmount();
   });
 
   it('saveNote で改行除去・trim・最大長制限を適用する', () => {
-    const { result } = renderHook(() =>
+    const { result, unmount } = renderHook(() =>
       useProductionScheduleMutations({
         isSearchStateWriting: false,
         noteMaxLength: 5
@@ -104,10 +100,11 @@ describe('useProductionScheduleMutations', () => {
       { rowId: 'row-1', note: 'abcde' },
       expect.objectContaining({ onSettled, onSuccess: expect.any(Function) })
     );
+    unmount();
   });
 
   it('updateOrder で空文字を null に変換する', () => {
-    const { result } = renderHook(() =>
+    const { result, unmount } = renderHook(() =>
       useProductionScheduleMutations({
         isSearchStateWriting: false,
         noteMaxLength: 100
@@ -133,10 +130,11 @@ describe('useProductionScheduleMutations', () => {
       },
       expect.objectContaining({ onSuccess: expect.any(Function) })
     );
+    unmount();
   });
 
   it('updateOrderAsync は orderNumber をそのまま mutateAsync へ渡す', async () => {
-    const { result } = renderHook(() =>
+    const { result, unmount } = renderHook(() =>
       useProductionScheduleMutations({
         isSearchStateWriting: false,
         noteMaxLength: 100,
@@ -160,10 +158,11 @@ describe('useProductionScheduleMutations', () => {
       },
       cachePolicy: 'leaderBoardFastPath'
     });
+    unmount();
   });
 
   it('completeRow は intent 付きで完了ミューテーションを呼ぶ', async () => {
-    const { result } = renderHook(() =>
+    const { result, unmount } = renderHook(() =>
       useProductionScheduleMutations({
         isSearchStateWriting: false,
         noteMaxLength: 100
@@ -178,5 +177,6 @@ describe('useProductionScheduleMutations', () => {
       rowId: 'row-z',
       intent: 'incomplete'
     });
+    unmount();
   });
 });

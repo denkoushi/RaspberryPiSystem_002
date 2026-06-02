@@ -32,7 +32,9 @@ describe('GmailStorageProvider', () => {
       archiveMessage: vi.fn()
     };
 
-    (GmailApiClient as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => mockGmailApiClient);
+    (GmailApiClient as unknown as ReturnType<typeof vi.fn>).mockImplementation(function () {
+      return mockGmailApiClient;
+    });
 
     mockOAuthService = {
       refreshAccessToken: vi.fn()
@@ -649,4 +651,3 @@ describe('GmailStorageProvider', () => {
     });
   });
 });
-
