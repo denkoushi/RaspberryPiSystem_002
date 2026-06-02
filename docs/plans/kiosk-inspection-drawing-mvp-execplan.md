@@ -132,9 +132,13 @@ Maintained in accordance with `.agent/PLANS.md`.
   Rationale: 評価用 API 直叩きで quantity/pieceIndex 制約を破れる（レビュー [P2]）
   Date/Author: 2026-05-30 / agent
 
-- Decision: Phase1 は PNG/JPEG/WebP のみ（TIFF 後回し）
-  Rationale: 既存 `PartMeasurementDrawingStorage` 制約と Pi4 負荷
-  Date/Author: 2026-05-30 / agent
+- Decision: Phase1 は PNG/JPEG/WebP に加え **PDF（1ページ目→JPEG）** を preview API + save で同一ラスタ契約（TIFF 後回し）
+  Rationale: 保存前プレビュー空白を解消し、座標ずれを防ぐ。Canvas は常に画像 URL
+  Date/Author: 2026-06-02 / agent
+
+- Decision: PDF 保存前プレビューは `POST /api/part-measurement/drawings/preview`（副作用なし・rate limit 有効）。Web は `usePartMeasurementDrawingLocalPreview` で AbortController 競合制御
+  Rationale: フロント専用 PDF 描画を持たず、API 変換経路を save と共有
+  Date/Author: 2026-06-02 / agent
 
 - Decision: キオスク検査図面の **一覧・取得・改版**は `/part-measurement/inspection-drawing/templates*` に限定。`THREE_KEY` + 図面 + 全マーカー/上下限のみ
   Rationale: 汎用 API では対象外テンプレの改版・一覧の過大 payload・fhincd 完全一致が現場とずれる

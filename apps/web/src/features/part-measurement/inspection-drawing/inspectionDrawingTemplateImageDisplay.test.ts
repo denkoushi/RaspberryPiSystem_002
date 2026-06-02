@@ -51,5 +51,9 @@ describe('inspectionDrawingTemplateImageDisplay', () => {
     it('is false with no source', () => {
       expect(inspectionDrawingHasImageSource(null, null)).toBe(false);
     });
+
+    it('is true while pdf preview is resolving', () => {
+      expect(inspectionDrawingHasImageSource(null, null, true)).toBe(true);
+    });
   });
 });

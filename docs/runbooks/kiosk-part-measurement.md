@@ -37,16 +37,25 @@
 ### 検査図面 · PDF 取込（2026-06-02）
 
 - **UI**: 図面ファイル選択は **「図面画像またはPDF（PDFは1ページ目のみ）」**。`accept` に `application/pdf` を含む（検査図面作成・管理/キオスクテンプレ作成）。
+- **保存前プレビュー（2026-06-02 追記）**:
+  - Canvas には **常に画像 Blob URL のみ**を渡す（PDF Blob を `<img>` に直接渡さない）。
+  - PDF 選択時は `POST /api/part-measurement/drawings/preview` で **副作用なし**に JPEG 化し、表示と保存で **同一 JPEG** を再利用する。
+  - 変換中（`previewResolving`）および preview JPEG 未確定の PDF は **保存不可**。
+  - 編集画面で新 PDF の preview が失敗した場合は **既存図面表示を維持**し、利用者向けエラーを表示する。
+  - 代表実装: `usePartMeasurementDrawingLocalPreview.ts` · `part-measurement-drawing-preview.ts`
 - **API 入口（multipart）**: いずれも `importDrawingAndSave` 経由。
   - `POST /api/part-measurement/visual-templates`
   - `POST /api/part-measurement/inspection-drawing/evaluation-templates`（`file` フィールド）
+- **preview 入口（保存なし）**: `POST /api/part-measurement/drawings/preview`（multipart `file` · `allowWriteKiosk` · **rate limit 有効** · DB/storage 書き込みなし）
+  - レスポンス: 元画像 MIME または `image/jpeg` · `Cache-Control: no-store` · `X-Content-Type-Options: nosniff`
 - **契約**:
   - 画像入力上限 **12MB**、PDF 入力上限 **30MB**、保存画像（変換後 JPEG 含む）上限 **12MB**
   - PDF は **1 ページ目のみ** `pdftoppm -f 1 -l 1 -singlefile -jpeg -r 144 -jpegopt quality=85` で JPEG 化し、以後は通常の画像図面として表示
   - 元 PDF は保存しない（`drawingImageRelativePath` は `.jpg` 等の画像 URL のみ）
-- **代表実装**: `apps/api/src/lib/part-measurement-drawing-import.ts` · `convert-pdf-first-page-to-jpeg.ts`
+- **代表実装**: `apps/api/src/lib/part-measurement-drawing-import.ts` · `part-measurement-drawing-preview.ts` · `convert-pdf-first-page-to-jpeg.ts`
 - **エラー（400 例）**: 未対応形式 / PDF 形式不正 / PDF 大きすぎ / 変換失敗 / 暗号化 PDF / 変換後画像大きすぎ
 - **運用**: API コンテナに `poppler-utils`（`pdftoppm`）必須。Arial 依存 PDF は文字欠けの可能性（`fonts-noto-cjk` のみ）。
+- **実機確認（Pi）**: preview / save / storage GET が kiosk `client-key` で通ること · `pdftoppm` 有無 · フォント欠け · preview の semaphore / queue 上限（同時 PDF 連打で 503 にならない運用）
 
 ## 自主検査 MVP（2026-06-01）
 

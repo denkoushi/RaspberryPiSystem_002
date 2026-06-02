@@ -3285,6 +3285,22 @@ export async function createPartMeasurementVisualTemplate(
   return data.visualTemplate;
 }
 
+/** 図面プレビュー（PDF→JPEG 変換含む）。storage / DB 書き込みなし。 */
+export async function previewPartMeasurementDrawing(
+  file: File,
+  clientKey?: string,
+  signal?: AbortSignal
+): Promise<Blob> {
+  const form = new FormData();
+  form.append('file', file);
+  const { data } = await api.post<Blob>('/part-measurement/drawings/preview', form, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined,
+    responseType: 'blob',
+    signal
+  });
+  return data;
+}
+
 export async function createPartMeasurementTemplate(
   body: {
     templateScope?: PartMeasurementTemplateScope;

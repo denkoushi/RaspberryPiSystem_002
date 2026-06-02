@@ -603,6 +603,10 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 - [ ] （手動・**検査図面 · キャンバスズーム** · 2026-05-30 · `364aa184` 以降）テンプレ作成/編集・記録図面 edit でヘッダー余白に **`−` `＋` `□`**（倍率数字なし）· 拡大後パンで **測定点が増えない** · 短タップで 1 点 · 図面枠の高さが従来どおり（[KB-320 §キャンバスズーム](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-canvas-zoom-2026-05-30) · [Runbook §キャンバスズーム](../runbooks/kiosk-part-measurement.md#検査図面-キャンバスズーム-2026-05-30)）
 - [ ] （手動・**検査図面 DEV プレビュー** · 開発 Mac · 任意）`pnpm dev` → `/dev/kiosk-inspection-drawing-library` と `/dev/kiosk-inspection-drawing-create` が **KioskLayout 配下**で本番と同コンポーネント表示になること（[ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md)）
 - [ ] （手動・検査図面・記録）図面付き本番テンプレで **数量=1** の記録が **図面 edit** に遷移すること（`quantity≥2` は表形式）
+- [ ] （手動・**検査図面 · PDF プレビュー** · 2026-06-02）作成/編集で PDF 選択後 **1 ページ目 JPEG が表示**されること（空白にならない）。変換中は保存不可。保存後再読込でも測定点位置がずれないこと（[Runbook §PDF 取込](../runbooks/kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02) · [KB-320 §PDF 取込](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02)）
+- [ ] （手動・**検査図面 · PDF プレビュー失敗** · 2026-06-02）編集画面で不正 PDF / 変換失敗時、**既存図面が維持**されエラーが表示されること
+- [ ] （Mac 自動 · 2026-06-02）`pnpm --dir apps/api exec vitest run part-measurement-drawing-preview` · `pnpm --dir apps/web exec vitest run partMeasurementDrawingLocalPreview usePartMeasurementDrawingLocalPreview inspectionDrawingTemplateImageDisplay` が PASS すること
+- [ ] （Pi 実機 · 2026-06-02）kiosk `client-key` で `POST /api/part-measurement/drawings/preview` · save · storage GET が通ること。`pdftoppm` 有無・フォント欠け・PDF 連打時の 503/semaphore を確認
 
 **検証コマンド例（resolve-ticket・401）**:
 

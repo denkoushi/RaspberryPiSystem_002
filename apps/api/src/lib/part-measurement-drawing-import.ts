@@ -1,17 +1,11 @@
-import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
-import os from 'os';
-import path from 'path';
-
-import { convertPdfFirstPageToJpeg } from './convert-pdf-first-page-to-jpeg.js';
 import { ApiError } from './errors.js';
 import {
-  assertPdfMagic,
   classifyDrawingUpload,
   getDrawingInputMaxBytes,
   getDrawingInputTooLargeMessage,
   resolveDrawingMime
 } from './part-measurement-drawing-import-mime.js';
+import { convertDrawingUploadToPreviewBuffer } from './part-measurement-drawing-preview.js';
 import { PartMeasurementDrawingStorage } from './part-measurement-drawing-storage.js';
 
 export type DrawingImportInput = {
@@ -24,10 +18,6 @@ export type DrawingImportResult = {
   relativeUrl: string;
   contentType: string;
 };
-
-async function removeDirQuietly(dir: string): Promise<void> {
-  await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
-}
 
 function wrapStorageError(error: unknown): never {
   if (error instanceof ApiError) {
@@ -44,25 +34,15 @@ function wrapStorageError(error: unknown): never {
 }
 
 async function importPdfDrawing(buffer: Buffer): Promise<DrawingImportResult> {
+  const { buffer: jpegBuffer } = await convertDrawingUploadToPreviewBuffer({
+    buffer,
+    mimetype: 'application/pdf',
+    filename: 'drawing.pdf'
+  });
   try {
-    assertPdfMagic(buffer);
-  } catch {
-    throw new ApiError(400, 'PDF ファイルの形式が不正です');
-  }
-
-  const tempDir = path.join(os.tmpdir(), `pm-drawing-import-${randomUUID()}`);
-  const pdfPath = path.join(tempDir, 'input.pdf');
-  try {
-    await fs.mkdir(tempDir, { recursive: true });
-    await fs.writeFile(pdfPath, buffer);
-    const jpegBuffer = await convertPdfFirstPageToJpeg(pdfPath, tempDir);
-    try {
-      return await PartMeasurementDrawingStorage.saveDrawing(jpegBuffer, 'image/jpeg');
-    } catch (error) {
-      wrapStorageError(error);
-    }
-  } finally {
-    await removeDirQuietly(tempDir);
+    return await PartMeasurementDrawingStorage.saveDrawing(jpegBuffer, 'image/jpeg');
+  } catch (error) {
+    wrapStorageError(error);
   }
 }
 

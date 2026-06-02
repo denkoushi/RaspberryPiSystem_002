@@ -166,12 +166,16 @@
 
 | 区分 | 内容 |
 |------|------|
-| **入口** | `POST …/visual-templates` · `POST …/inspection-drawing/evaluation-templates`（multipart `file`） |
-| **変換** | `importDrawingAndSave` → 1 ページ目 JPEG → `PartMeasurementDrawingStorage` |
+| **保存入口** | `POST …/visual-templates` · `POST …/inspection-drawing/evaluation-templates`（multipart `file`） |
+| **preview 入口** | `POST …/drawings/preview`（multipart `file` · **DB/storage なし** · rate limit 有効） |
+| **変換** | `importDrawingAndSave` / `convertDrawingUploadToPreviewBuffer` → 1 ページ目 JPEG（同一 `pdftoppm` 契約） |
+| **Web プレビュー** | 画像はローカル `blob:` · PDF は preview API → JPEG `blob:` + 保存時 **同一 JPEG File** |
 | **上限** | 画像 12MB / PDF 30MB / 保存 12MB |
-| **負荷** | PDF 変換はプロセス内 **同時 1 件**・待ち **最大 4**（超過時 **503**） |
+| **負荷** | PDF 変換はプロセス内 **同時 1 件**・待ち **最大 4**（超過時 **503**）— preview / save 共通 |
 | **検証順** | evaluation multipart は **items/body 検証後**に `importDrawingAndSave`（孤立ファイル防止） |
-| **表示** | 既存 Blob + `<img>` 契約のまま（PDF 直表示なし） |
+| **表示** | Canvas は **画像 URL のみ**（PDF Blob 直 `<img>` なし） |
+| **保存制御** | PDF 変換中・preview JPEG 未確定は保存不可 |
+| **編集時失敗** | 新 PDF preview 失敗時は **既存図面維持** + エラー表示 |
 
 ### トラブルシュート（検査図面）
 
@@ -190,6 +194,8 @@
 | 編集で図面は出るが **拡大2回目（倍率1.5付近）だけ震える** | `ResizeObserver` + スクロールバーで `clientWidth`/`Height` が揺れ再レイアウトループ | 下記 [§キャンバスズーム痙攣](#検査図面-キャンバスズーム痙攣修正-2026-05-31) · **`main` `f6a9544a` 以降** · 強制リロード |
 | テンプレ切替直後に **旧図面＋新測定点** が一瞬重なる | `usePartMeasurementDrawingBlobUrl` が path 変更時に旧 `blobUrl` を残す | **`main` `e12a5a9c` 以降**（path 変更で即 `null` + revoke） |
 | PDF を選んでも取込できない | 12MB 上限で変換前 reject していないか · `pdftoppm` 有無 | **30MB** PDF 入力契約・API ログ · poppler-utils |
+| PDF 選択後プレビューが空白 | PDF Blob を `<img>` に直接渡している旧実装 | preview API 経由 JPEG · `usePartMeasurementDrawingLocalPreview` |
+| PDF 変換中に保存できて座標がずれる | 保存前 preview JPEG と save ラスタが不一致 | preview で得た JPEG File を save に再利用 |
 | PDF 取込が **503** | 変換待ちが上限超過 | しばらく待って再送。同時 PDF アップロードを減らす |
 | PDF 変換後に文字欠け | Arial 等のフォント | 本番コンテナのフォント追加を検討 |
 | 図面UIに行かず表形式 | `quantity !== 1` または図面条件不足 | `45c02e0a` 参照。数量・テンプレを確認 |
@@ -474,9 +480,10 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 | 状態 | 入力 | 表示 URL |
 |------|------|----------|
-| 新規ファイル選択中 | `File` + ローカル `blob:` | **ローカルプレビュー優先**（サーバー fetch 抑止） |
+| 新規ファイル選択中（画像） | `File` + ローカル `blob:` | **ローカルプレビュー優先**（サーバー fetch 抑止） |
+| 新規ファイル選択中（PDF） | preview API → JPEG `blob:` | **preview JPEG**（save も同一 File） |
 | 編集読込・保存後 | `visualTemplate.drawingImageRelativePath` | `usePartMeasurementDrawingBlobUrl` → `blob:` |
-| キャンバスへ渡す値 | — | `inspectionDrawingCanvasImageUrl(local, serverBlob)` |
+| キャンバスへ渡す値 | — | `inspectionDrawingCanvasImageUrl(local, serverBlob)` — **PDF Blob は渡さない** |
 
 **純関数（ページから分離）**: `inspectionDrawingTemplateImageDisplay.ts`
 

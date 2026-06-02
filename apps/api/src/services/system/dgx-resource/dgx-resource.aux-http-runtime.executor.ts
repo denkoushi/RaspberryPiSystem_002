@@ -5,18 +5,6 @@ export type AuxHttpRuntimeExecutorDeps = {
   fetchImpl: typeof fetch;
 };
 
-function emitAuxDebugLog(
-  runId: string,
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>
-): void {
-  // #region agent log
-  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'504530'},body:JSON.stringify({sessionId:'504530',runId,hypothesisId,location,message,data,timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-}
-
 /**
  * 補助ランタイム（私用 ComfyUI・experiment-lab 等）への POST。
  * gateway と同様 `X-Runtime-Control-Token` を使用（DGX 側側車輪で統一しやすい）。
@@ -50,19 +38,6 @@ export async function executeAuxHttpRuntimeStartStop(
 
   const { signal, cleanup } = createTimeoutSignal(opts.timeoutMs);
   try {
-    emitAuxDebugLog(
-      'pre-fix',
-      'H10',
-      'dgx-resource.aux-http-runtime.executor.ts:executeAuxHttpRuntimeStartStop',
-      'aux runtime request start',
-      {
-        action: opts.action,
-        targetUrl,
-        timeoutMs: opts.timeoutMs,
-        hasControlToken: Boolean(opts.controlToken?.trim()),
-        errorCodePrefix: code,
-      }
-    );
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const tok = opts.controlToken?.trim();
     if (tok) {
@@ -84,57 +59,15 @@ export async function executeAuxHttpRuntimeStartStop(
         });
         const text = await response.text().catch(() => '');
         if (response.ok) {
-          emitAuxDebugLog(
-            'post-fix',
-            'H11',
-            'dgx-resource.aux-http-runtime.executor.ts:executeAuxHttpRuntimeStartStop',
-            'aux runtime response ok',
-            {
-              action: opts.action,
-              targetUrl,
-              attempt,
-              maxAttempts,
-              errorCodePrefix: code,
-            }
-          );
           return;
         }
 
         lastStatus = response.status;
         lastBody = text.slice(0, 500);
-        emitAuxDebugLog(
-          'pre-fix',
-          'H10',
-          'dgx-resource.aux-http-runtime.executor.ts:executeAuxHttpRuntimeStartStop',
-          'aux runtime response not ok',
-          {
-            action: opts.action,
-            targetUrl,
-            attempt,
-            maxAttempts,
-            httpStatus: response.status,
-            bodyPreview: text.slice(0, 160),
-            errorCodePrefix: code,
-          }
-        );
       } catch (error: unknown) {
         const message =
           typeof error === 'object' && error != null && 'message' in error ? String((error as { message: unknown }).message) : String(error);
         lastNetworkError = message.slice(0, 300);
-        emitAuxDebugLog(
-          'pre-fix',
-          'H10',
-          'dgx-resource.aux-http-runtime.executor.ts:executeAuxHttpRuntimeStartStop',
-          'aux runtime network error',
-          {
-            action: opts.action,
-            targetUrl,
-            attempt,
-            maxAttempts,
-            networkError: lastNetworkError,
-            errorCodePrefix: code,
-          }
-        );
       }
     }
 

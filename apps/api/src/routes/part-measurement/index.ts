@@ -7,6 +7,7 @@ import {
   importDrawingAndSave,
   resolveDrawingMultipartReadLimit
 } from '../../lib/part-measurement-drawing-import.js';
+import { convertDrawingUploadToPreviewBuffer } from '../../lib/part-measurement-drawing-preview.js';
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { prisma } from '../../lib/prisma.js';
 import { verifyProductionScheduleRowOrThrow } from '../../services/production-schedule/verify-production-schedule-row.js';
@@ -664,6 +665,53 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         throw error;
       }
       return { visualTemplate: serializeVisualTemplate(created) };
+    }
+  );
+
+  app.post(
+    '/part-measurement/drawings/preview',
+    { preHandler: allowWriteKiosk },
+    async (request, reply) => {
+      if (!request.isMultipart()) {
+        throw new ApiError(
+          400,
+          'マルチパートフォームデータが必要です（file）',
+          undefined,
+          'MULTIPART_REQUIRED'
+        );
+      }
+
+      let fileBuffer: Buffer | null = null;
+      let mimetype = '';
+      let filename = '';
+
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          if (part.fieldname === 'file') {
+            const mf = part as MultipartFile;
+            mimetype = mf.mimetype || '';
+            filename = mf.filename || 'drawing';
+            const { maxBytes, tooLargeMessage } = resolveDrawingMultipartReadLimit(mimetype, filename);
+            fileBuffer = await readMultipartFile(mf, maxBytes, tooLargeMessage);
+          }
+        }
+      }
+
+      if (!fileBuffer || fileBuffer.length === 0) {
+        throw new ApiError(400, '図面ファイルが必要です');
+      }
+
+      const { buffer, contentType } = await convertDrawingUploadToPreviewBuffer({
+        buffer: fileBuffer,
+        mimetype,
+        filename
+      });
+
+      reply.header('Content-Type', contentType);
+      reply.header('Cache-Control', 'no-store');
+      reply.header('X-Content-Type-Options', 'nosniff');
+      return reply.send(buffer);
     }
   );
 
