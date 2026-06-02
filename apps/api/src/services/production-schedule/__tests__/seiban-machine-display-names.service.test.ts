@@ -14,9 +14,9 @@ vi.mock('../seiban-progress.service.js', () => ({
 }));
 
 vi.mock('../seiban-machine-name-supplement.repository.js', () => ({
-  SeibanMachineNameSupplementRepository: vi.fn().mockImplementation(() => ({
-    findByFseibans,
-  })),
+  SeibanMachineNameSupplementRepository: vi.fn().mockImplementation(function () {
+    return { findByFseibans };
+  }),
 }));
 
 describe('resolveSeibanMachineDisplayNames', () => {

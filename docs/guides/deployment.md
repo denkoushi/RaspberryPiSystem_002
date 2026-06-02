@@ -2,13 +2,54 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-29
+last-verified: 2026-06-02
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-06-02 · **キオスク検査図面 · PDF プレビュー整合**·**API + Web**·**Pi5 本番・実機 OK・Pi4×4 未**） {#kiosk-inspection-drawing-pdf-preview-parity-2026-06-02}
+
+- **変更概要（正本）**: [KB-320 §PDF 取込](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02) · [Runbook §PDF 取込](../runbooks/kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [verification-checklist §6.6](./verification-checklist.md)。
+  - **症状（旧）**: PDF を `<img src={blob:…}>` に直接渡すとブラウザで描画できず **プレビュー空白**。保存経路（`pdftoppm` → JPEG）と表示ラスタが不一致で **測定点座標がずれる**。
+  - **Fix**: `POST /api/part-measurement/drawings/preview`（**DB/storage 書き込みなし**）で 1 ページ目 JPEG 化。Web は `usePartMeasurementDrawingLocalPreview` が preview JPEG を `blob:` 化し、**保存時に同一 File を再利用**。Canvas は常に画像 URL のみ。
+  - **レビュー追補（`8307c995`）**: PDF 変換失敗時に `hasPendingLocalSelection` を解除（保存ブロック解消）· 成功パスでも `AbortController.signal.aborted` を確認（レース防止）· unmount 時 `previewUrlRef` で setState 回避 · `dgx-resource.aux-http-runtime.executor.ts` のデバッグ fetch 撤去。
+- **代表コミット**: **`12072afa`**（PDF 取込基盤）· **`8307c995`**（preview 整合）— ブランチ **`feat/inspection-drawing-pdf-import`**
+- **Prisma / migration**: **変更なし**（**API + Web** · Docker `api` / `web` 再ビルド）
+- **対象ホスト（推奨順）**: **`raspberrypi5` → Pi4×4**（各 `--limit` 1 台ずつ）。Pi3: `skipping: no hosts matched`
+- **標準コマンド**（マージ前）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/inspection-drawing-pdf-import \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+（**`main` マージ後**は第2引数 **`main`**。Pi4 は Pi5 目視 OK 後に 1 台ずつ。）
+
+- **デプロイ前**: ローカルが `origin/<branch>` より **ahead だと拒否** → **push 後**に実行
+- **本番デプロイ（実績·2026-06-02）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | Phase12 | 備考 |
+|--------|---------------|----------|------------|---------|------|
+| `raspberrypi5` | **`20260602-190538-1780`** | **`8307c995`** | `ok=134` `changed=4` **`failed=0`** | **41/1/1**（約 **84s**） | **`Git: changed`** · Docker compose 再起動 · Mac **`--follow` 約 810s** · **Pi5 キオスク目視 OK** |
+| Pi4×4 | **未実施** | — | — | — | **`main` マージ後** 1 台ずつ |
+
+- **自動実機（Pi5 反映後）**:
+  - `pdftoppm` **22.12.0**（API コンテナ内）
+  - 未認証 `POST …/drawings/preview` → **401**
+  - kiosk `client-key` + 最小 PDF → **200** · `image/jpeg` · `Cache-Control: no-store`
+- **実機（手動·Pi5·2026-06-02 OK）**: 検査図面作成/編集で PDF 選択 → **1 ページ目 JPEG 表示** · 変換中 **保存不可** · 保存→再読込で **測定点位置一致** · 編集で preview 失敗時 **既存図面維持**
+- **CI**: **`26812045529`**（`8307c995` push 後）**success**（lint-build-unit / e2e / api-db 等）
+- **Phase12 注記**: FAIL 1 は **`raspberrypi4` SSH タイムアウト**（既知到達性・本変更とは無関係）。WARN 1 は `raspi4-fjv60-80` SSH 不可（deploy-status は PASS）
+- **トラブルシュート**:
+  - **PDF 選択後空白** → Pi5 **`api`/`web` ref** が **`8307c995` 以降**か · DevTools で **`POST …/drawings/preview`** が **200 / image/jpeg** か
+  - **保存できないまま** → preview 失敗後に pending が残っていないか（`8307c995` 以降は失敗時解除）
+  - **座標ずれ** → 保存時に preview 由来 JPEG を再利用しているか（旧 bundle は save 経路と別ラスタ）
+  - **503** → PDF 変換 semaphore 上限（同時 1・待ち最大 4）— 連打を避けて再送
+  - **Pi5 SSH で `curl 127.0.0.1:3000` が 000** → Caddy 経由の **`https://<Tailscale IP>/api/...`** で確認（localhost 直は本番構成では到達しない）
 
 ### 補足（2026-06-01 · **キオスク順位ボード・完了後フッタ工程チップ装飾の再同期**·**Web のみ**·**Pi5 本番・実機 OK**） {#kiosk-leaderboard-completion-decoration-resync-2026-06-01}
 

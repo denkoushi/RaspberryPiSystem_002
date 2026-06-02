@@ -22,51 +22,51 @@ const syncFromFkobainoDashboard = vi.fn();
 const syncFromRiggingIngestRun = vi.fn();
 
 vi.mock('../../production-schedule/order-supplement-sync.service.js', () => ({
-  ProductionScheduleOrderSupplementSyncService: vi.fn().mockImplementation(() => ({
-    syncFromSupplementDashboard,
-  })),
+  ProductionScheduleOrderSupplementSyncService: vi.fn().mockImplementation(function () {
+    return { syncFromSupplementDashboard };
+  }),
 }));
 
 vi.mock('../../production-schedule/fkojunst-sync.service.js', () => ({
-  ProductionScheduleFkojunstSyncService: vi.fn().mockImplementation(() => ({
-    syncFromFkojunstDashboard,
-  })),
+  ProductionScheduleFkojunstSyncService: vi.fn().mockImplementation(function () {
+    return { syncFromFkojunstDashboard };
+  }),
 }));
 
 vi.mock('../../production-schedule/fkojunst-status-mail-sync.service.js', () => ({
-  ProductionScheduleFkojunstMailStatusSyncService: vi.fn().mockImplementation(() => ({
-    syncFromStatusMailDashboard,
-  })),
+  ProductionScheduleFkojunstMailStatusSyncService: vi.fn().mockImplementation(function () {
+    return { syncFromStatusMailDashboard };
+  }),
 }));
 
 vi.mock('../../production-schedule/external-completion/fkojunst-external-completion-sync.service.js', () => ({
-  FkojunstExternalCompletionSyncService: vi.fn().mockImplementation(() => ({
-    syncFromCurrentStatusMailDashboard,
-  })),
+  FkojunstExternalCompletionSyncService: vi.fn().mockImplementation(function () {
+    return { syncFromCurrentStatusMailDashboard };
+  }),
 }));
 
 vi.mock('../../production-schedule/seiban-machine-name-supplement-sync.service.js', () => ({
-  ProductionScheduleSeibanMachineNameSupplementSyncService: vi.fn().mockImplementation(() => ({
-    syncFromSupplementDashboard: syncFromSeibanMachineNameSupplementDashboard,
-  })),
+  ProductionScheduleSeibanMachineNameSupplementSyncService: vi.fn().mockImplementation(function () {
+    return { syncFromSupplementDashboard: syncFromSeibanMachineNameSupplementDashboard };
+  }),
 }));
 
 vi.mock('../../production-schedule/customer-scaw-sync.service.js', () => ({
-  ProductionScheduleCustomerScawSyncService: vi.fn().mockImplementation(() => ({
-    syncFromCustomerScawDashboard,
-  })),
+  ProductionScheduleCustomerScawSyncService: vi.fn().mockImplementation(function () {
+    return { syncFromCustomerScawDashboard };
+  }),
 }));
 
 vi.mock('../../purchase-order-lookup/purchase-order-lookup-sync.service.js', () => ({
-  PurchaseOrderLookupSyncService: vi.fn().mockImplementation(() => ({
-    syncFromFkobainoDashboard,
-  })),
+  PurchaseOrderLookupSyncService: vi.fn().mockImplementation(function () {
+    return { syncFromFkobainoDashboard };
+  }),
 }));
 
 vi.mock('../../rigging/inspection/rigging-inspection-projection.service.js', () => ({
-  RiggingInspectionProjectionService: vi.fn().mockImplementation(() => ({
-    syncFromIngestRun: syncFromRiggingIngestRun,
-  })),
+  RiggingInspectionProjectionService: vi.fn().mockImplementation(function () {
+    return { syncFromIngestRun: syncFromRiggingIngestRun };
+  }),
 }));
 
 describe('CsvDashboardPostIngestService', () => {

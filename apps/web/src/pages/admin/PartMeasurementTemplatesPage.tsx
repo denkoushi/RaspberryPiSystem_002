@@ -17,6 +17,11 @@ import {
   buildTemplateItemsPayload,
   mapTemplateDtoToAdminFormFields
 } from '../../features/part-measurement/admin/partMeasurementTemplateAdminFormModel';
+import {
+  PART_MEASUREMENT_DRAWING_FILE_ACCEPT,
+  PART_MEASUREMENT_DRAWING_FILE_LABEL,
+  PART_MEASUREMENT_DRAWING_FILE_REQUIRED_MESSAGE
+} from '../../features/part-measurement/partMeasurementDrawingFileInput';
 
 import type {
   PartMeasurementProcessGroup,
@@ -235,7 +240,7 @@ export function PartMeasurementTemplatesPage() {
           visualTemplateId = id;
         } else {
           if (!newVisualFile) {
-            setMessage('図面画像ファイルを選択してください。');
+            setMessage(PART_MEASUREMENT_DRAWING_FILE_REQUIRED_MESSAGE);
             return;
           }
           try {
@@ -290,7 +295,7 @@ export function PartMeasurementTemplatesPage() {
         visualTemplateId = pickedVisualId.trim();
       } else if (visualChoice === 'upload') {
         if (!newVisualFile) {
-          setMessage('図面画像ファイルを選択してください。');
+          setMessage(PART_MEASUREMENT_DRAWING_FILE_REQUIRED_MESSAGE);
           return;
         }
         try {
@@ -489,10 +494,10 @@ export function PartMeasurementTemplatesPage() {
                   />
                 </label>
                 <label className="grid gap-1 text-sm text-slate-700">
-                  画像ファイル
+                  {PART_MEASUREMENT_DRAWING_FILE_LABEL}
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/webp"
+                    accept={PART_MEASUREMENT_DRAWING_FILE_ACCEPT}
                     className="text-sm"
                     onChange={(e) => setNewVisualFile(e.target.files?.[0] ?? null)}
                   />

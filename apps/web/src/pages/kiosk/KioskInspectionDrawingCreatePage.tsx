@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import {
@@ -35,7 +35,12 @@ import {
   inspectionDrawingCanvasImageUrl,
   inspectionDrawingHasImageSource
 } from '../../features/part-measurement/inspection-drawing';
+import {
+  PART_MEASUREMENT_DRAWING_FILE_ACCEPT,
+  PART_MEASUREMENT_DRAWING_FILE_LABEL
+} from '../../features/part-measurement/partMeasurementDrawingFileInput';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
+import { usePartMeasurementDrawingLocalPreview } from '../../features/part-measurement/usePartMeasurementDrawingLocalPreview';
 
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
 import type {
@@ -73,8 +78,6 @@ export function KioskInspectionDrawingCreatePage() {
   const [fhincd, setFhincd] = useState('');
   const [resourceCd, setResourceCd] = useState('');
   const [templateName, setTemplateName] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
   const [serverDrawingPath, setServerDrawingPath] = useState<string | null>(null);
   const [points, setPoints] = useState<InspectionDrawingPoint[]>([]);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
@@ -83,6 +86,17 @@ export function KioskInspectionDrawingCreatePage() {
   const [message, setMessage] = useState<string | null>(null);
   const [template, setTemplate] = useState<PartMeasurementTemplateDto | null>(null);
   const { zoom, zoomIn, zoomOut, fitToView, resetZoom, fitGeneration } = useInspectionDrawingZoom();
+
+  const {
+    localPreviewUrl,
+    saveFile,
+    previewResolving,
+    previewError,
+    hasLocalRenderablePreview,
+    hasPendingLocalSelection,
+    selectFile,
+    reset: resetLocalPreview
+  } = usePartMeasurementDrawingLocalPreview(clientKey);
 
   const lineageLocked = isEditing;
   const readOnly = Boolean(lineageLocked && template && !template.isActive);
@@ -110,18 +124,21 @@ export function KioskInspectionDrawingCreatePage() {
     [resourceNameMap, resourceOptions]
   );
 
-  const blobFetchPath = inspectionDrawingBlobFetchPath(serverDrawingPath, Boolean(imageFile));
+  const blobFetchPath = inspectionDrawingBlobFetchPath(serverDrawingPath, hasLocalRenderablePreview);
   const { blobUrl: serverDrawingBlobUrl, error: drawingLoadError } =
     usePartMeasurementDrawingBlobUrl(blobFetchPath);
 
   const canvasImageUrl = inspectionDrawingCanvasImageUrl(localPreviewUrl, serverDrawingBlobUrl);
-  const hasDrawingImage = inspectionDrawingHasImageSource(localPreviewUrl, serverDrawingPath);
+  const hasDrawingImage = inspectionDrawingHasImageSource(
+    localPreviewUrl,
+    serverDrawingPath,
+    previewResolving
+  );
 
-  useEffect(() => {
-    return () => {
-      if (localPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(localPreviewUrl);
-    };
-  }, [localPreviewUrl]);
+  const saveBlockedByPreview =
+    previewResolving || (hasPendingLocalSelection && !saveFile);
+
+  const drawingReplacePendingRef = useRef(false);
 
   const applyLoadedTemplate = (loaded: PartMeasurementTemplateDto) => {
     setTemplate(loaded);
@@ -132,11 +149,7 @@ export function KioskInspectionDrawingCreatePage() {
     setPoints(loaded.items.map((item) => templateItemToDrawingPoint(item)));
     setSelectedPointId(loaded.items[0]?.id ?? null);
     setServerDrawingPath(loaded.visualTemplate?.drawingImageRelativePath ?? null);
-    setLocalPreviewUrl((prev) => {
-      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
-      return null;
-    });
-    setImageFile(null);
+    resetLocalPreview();
   };
 
   useEffect(() => {
@@ -154,6 +167,7 @@ export function KioskInspectionDrawingCreatePage() {
         setBusy(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- templateId / clientKey のみで再取得
   }, [clientKey, templateId]);
 
   useEffect(() => {
@@ -161,16 +175,29 @@ export function KioskInspectionDrawingCreatePage() {
   }, [canvasImageUrl, resetZoom]);
 
   const handleFile = (file: File | null) => {
-    setLocalPreviewUrl((prev) => {
-      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
-      return file ? URL.createObjectURL(file) : null;
-    });
-    setImageFile(file);
+    setMessage(null);
+    if (isEditing && file) {
+      drawingReplacePendingRef.current = true;
+    }
+    selectFile(file);
     if (!isEditing) {
       setPoints([]);
       setSelectedPointId(null);
     }
   };
+
+  useEffect(() => {
+    if (!drawingReplacePendingRef.current || !hasLocalRenderablePreview || !saveFile) return;
+    drawingReplacePendingRef.current = false;
+    setPoints([]);
+    setSelectedPointId(null);
+    setMessage('図面を差し替えました。測定点を置き直してください。');
+  }, [hasLocalRenderablePreview, saveFile]);
+
+  useEffect(() => {
+    if (!previewError) return;
+    drawingReplacePendingRef.current = false;
+  }, [previewError]);
 
   const updatePoint = (id: string, patch: Partial<InspectionDrawingPoint>) => {
     if (contentReadOnly) return;
@@ -208,6 +235,10 @@ export function KioskInspectionDrawingCreatePage() {
       setMessage('履歴版は閲覧のみです。編集するには有効化してください。');
       return;
     }
+    if (saveBlockedByPreview) {
+      setMessage('図面のプレビュー変換が完了するまで保存できません。');
+      return;
+    }
     const f = fhincd.trim();
     const r = resourceCd.trim();
     const name = templateName.trim() || `検査図面 ${f}`;
@@ -231,11 +262,11 @@ export function KioskInspectionDrawingCreatePage() {
     }
 
     if (!isEditing) {
-      if (!imageFile) {
-        setMessage('新規作成には図面画像を選んでください。');
+      if (!saveFile) {
+        setMessage('新規作成には図面画像またはPDFを選んでください（PDFは1ページ目のみ）。');
         return;
       }
-    } else if (!imageFile && !template?.visualTemplateId?.trim()) {
+    } else if (!saveFile && !template?.visualTemplateId?.trim()) {
       setMessage('図面を設定してください。');
       return;
     }
@@ -244,8 +275,8 @@ export function KioskInspectionDrawingCreatePage() {
     setMessage(null);
     try {
       let visualTemplateId = template?.visualTemplateId?.trim() ? template.visualTemplateId : null;
-      if (imageFile) {
-        const visualTemplate = await createPartMeasurementVisualTemplate(name, imageFile, clientKey);
+      if (saveFile) {
+        const visualTemplate = await createPartMeasurementVisualTemplate(name, saveFile, clientKey);
         visualTemplateId = visualTemplate.id;
       }
       if (!visualTemplateId?.trim()) {
@@ -358,10 +389,10 @@ export function KioskInspectionDrawingCreatePage() {
               />
             </label>
             <label className={inspectionDrawingMetadataLabelClassName}>
-              図面
+              {PART_MEASUREMENT_DRAWING_FILE_LABEL}
               <input
                 type="file"
-                accept="image/png,image/jpeg,image/webp"
+                accept={PART_MEASUREMENT_DRAWING_FILE_ACCEPT}
                 className={inspectionDrawingMetadataFileInputClass}
                 disabled={contentReadOnly}
                 onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
@@ -379,7 +410,7 @@ export function KioskInspectionDrawingCreatePage() {
             hasDrawingImage={hasDrawingImage}
             hasMeasurementPoints={points.length > 0}
             onSave={contentReadOnly ? undefined : () => void handleSave()}
-            saveDisabled={contentReadOnly}
+            saveDisabled={contentReadOnly || saveBlockedByPreview}
             saveBusy={busy}
             libraryTo={KIOSK_INSPECTION_DRAWING_LIBRARY_PATH}
           />
@@ -392,6 +423,7 @@ export function KioskInspectionDrawingCreatePage() {
         </p>
       ) : null}
       {message ? <p className="px-1 text-[1rem] font-semibold text-amber-200">{message}</p> : null}
+      {previewError ? <p className="px-1 text-sm text-red-300">{previewError}</p> : null}
       {drawingLoadError ? <p className="px-1 text-sm text-red-300">{drawingLoadError}</p> : null}
       {template ? (
         <div className="flex flex-wrap items-center gap-2 px-1">
@@ -427,9 +459,9 @@ export function KioskInspectionDrawingCreatePage() {
                     }
               }
             />
-          ) : hasDrawingImage && !drawingLoadError ? (
+          ) : hasDrawingImage && !drawingLoadError && !previewError ? (
             <div className="flex flex-1 items-center justify-center rounded border border-dashed border-white/30 text-[1rem] text-white/60">
-              図面を読み込み中…
+              {previewResolving ? 'PDF を変換中…' : '図面を読み込み中…'}
             </div>
           ) : (
             <div className="flex flex-1 items-center justify-center rounded border border-dashed border-white/30 text-[1rem] text-white/60">

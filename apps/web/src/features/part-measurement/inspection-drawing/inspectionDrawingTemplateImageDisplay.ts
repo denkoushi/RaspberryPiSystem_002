@@ -21,11 +21,13 @@ export function inspectionDrawingCanvasImageUrl(
   return localPreviewUrl ?? serverDrawingBlobUrl ?? null;
 }
 
-/** 図面あり判定（読込中も含む — サーバー path またはローカル preview） */
+/** 図面あり判定（読込中も含む — サーバー path・ローカル preview・PDF 変換中） */
 export function inspectionDrawingHasImageSource(
   localPreviewUrl: string | null | undefined,
-  serverDrawingRelativePath: string | null | undefined
+  serverDrawingRelativePath: string | null | undefined,
+  previewResolving = false
 ): boolean {
   if (localPreviewUrl?.trim()) return true;
+  if (previewResolving) return true;
   return Boolean(serverDrawingRelativePath?.trim());
 }

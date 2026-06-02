@@ -34,6 +34,67 @@
 - **評価用編集 API**: 既存互換のため `inspection-drawing/evaluation-sheets/*` は当面残すが、新しいキオスク UI 導線からは使用しない。本番 sheet は引き続き **409**、評価用 sheet も通常 PATCH/finalize から **409**。
 - **制約（現時点）**: 複数個数の図面UI・TIFF・順位ボードは未対応。図面中心の本番編集は引き続き **quantity===1** のみ。詳細は [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
 
+### 検査図面 · PDF 取込（2026-06-02）
+
+- **UI**: 図面ファイル選択は **「図面画像またはPDF（PDFは1ページ目のみ）」**。`accept` に `application/pdf` を含む（検査図面作成・管理/キオスクテンプレ作成）。
+- **保存前プレビュー（2026-06-02 追記）**:
+  - Canvas には **常に画像 Blob URL のみ**を渡す（PDF Blob を `<img>` に直接渡さない）。
+  - PDF 選択時は `POST /api/part-measurement/drawings/preview` で **副作用なし**に JPEG 化し、表示と保存で **同一 JPEG** を再利用する。
+  - 変換中（`previewResolving`）および preview JPEG 未確定の PDF は **保存不可**。
+  - 編集画面で新 PDF の preview が失敗した場合は **既存図面表示を維持**し、利用者向けエラーを表示する。
+  - 代表実装: `usePartMeasurementDrawingLocalPreview.ts` · `part-measurement-drawing-preview.ts`
+- **API 入口（multipart）**: いずれも `importDrawingAndSave` 経由。
+  - `POST /api/part-measurement/visual-templates`
+  - `POST /api/part-measurement/inspection-drawing/evaluation-templates`（`file` フィールド）
+- **preview 入口（保存なし）**: `POST /api/part-measurement/drawings/preview`（multipart `file` · `allowWriteKiosk` · **rate limit 有効** · DB/storage 書き込みなし）
+  - レスポンス: 元画像 MIME または `image/jpeg` · `Cache-Control: no-store` · `X-Content-Type-Options: nosniff`
+- **契約**:
+  - 画像入力上限 **12MB**、PDF 入力上限 **30MB**、保存画像（変換後 JPEG 含む）上限 **12MB**
+  - PDF は **1 ページ目のみ** `pdftoppm -f 1 -l 1 -singlefile -jpeg -r 144 -jpegopt quality=85` で JPEG 化し、以後は通常の画像図面として表示
+  - 元 PDF は保存しない（`drawingImageRelativePath` は `.jpg` 等の画像 URL のみ）
+- **代表実装**: `apps/api/src/lib/part-measurement-drawing-import.ts` · `part-measurement-drawing-preview.ts` · `convert-pdf-first-page-to-jpeg.ts`
+- **エラー（400 例）**: 未対応形式 / PDF 形式不正 / PDF 大きすぎ / 変換失敗 / 暗号化 PDF / 変換後画像大きすぎ
+- **運用**: API コンテナに `poppler-utils`（`pdftoppm`）必須。Arial 依存 PDF は文字欠けの可能性（`fonts-noto-cjk` のみ）。
+- **実機確認（Pi）**: preview / save / storage GET が kiosk `client-key` で通ること · `pdftoppm` 有無 · フォント欠け · preview の semaphore / queue 上限（同時 PDF 連打で 503 にならない運用）
+
+#### 本番反映実績（2026-06-02 · Pi5 先行）
+
+| 項目 | 内容 |
+|------|------|
+| ブランチ | `feat/inspection-drawing-pdf-import` → **`main` マージ後** Pi4 順次 |
+| Pi5 Detach Run ID | **`20260602-190538-1780`** |
+| Git HEAD | **`8307c995`** |
+| PLAY RECAP | `failed=0` · Docker `api`/`web` 再起動 |
+| Phase12 | **41 PASS / WARN 1 / FAIL 1**（`raspberrypi4` SSH タイムアウトは既知） |
+| Pi5 キオスク目視 | **OK**（PDF プレビュー表示 · 保存 · 再読込座標一致 · 変換中保存不可） |
+| Pi4×4 | **未** — `main` 反映後 `--limit` 1 台ずつ（SPA は Pi5 配信のため多くは強制リロードで足りるが、検査図面系は Pi5 OK 後に順次が標準） |
+
+**preview API 自動確認（Tailscale · 2026-06-02）**:
+
+```bash
+BASE="https://100.106.158.2/api"
+KEY="client-key-raspberrypi4-kiosk1"
+
+# 未認証 → 401
+curl -sk -o /dev/null -w "%{http_code}\n" -X POST "${BASE}/part-measurement/drawings/preview"
+
+# 最小 PDF → 200 image/jpeg（Mac 上で /tmp/test-drawing.pdf を用意してから）
+curl -sk -D - -o /tmp/preview-out.jpg \
+  -H "x-client-key: ${KEY}" \
+  -F "file=@/tmp/test-drawing.pdf;type=application/pdf" \
+  "${BASE}/part-measurement/drawings/preview"
+# 期待: HTTP 200 · Content-Type: image/jpeg · Cache-Control: no-store
+```
+
+**レビュー・実装知見（後続向け）**:
+
+| 事象 | 対処 |
+|------|------|
+| PDF 変換失敗後に保存ボタンがずっと無効 | `usePartMeasurementDrawingLocalPreview` で失敗時 `setHasPendingLocalSelection(false)` · CreatePage で `previewError` 時に pending ref リセット（`8307c995`） |
+| ファイル差し替え連打で古い preview が勝つ | 成功パスでも `controller.signal.aborted` を確認してから state 更新 |
+| unmount 後の setState 警告 | `previewUrlRef` + `replaceLocalPreviewUrl` で cleanup |
+| 編集画面で新 PDF が失敗 | **既存図面 Blob を維持**しエラーメッセージのみ（`inspectionDrawingTemplateImageDisplay` の local-first 契約） |
+
 ## 自主検査 MVP（2026-06-01）
 
 詳細・背景: [KB-320 §自主検査 MVP](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01)。

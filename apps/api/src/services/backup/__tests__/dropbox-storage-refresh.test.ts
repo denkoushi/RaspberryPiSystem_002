@@ -43,7 +43,9 @@ describe('DropboxStorageProvider - Refresh Token Auto-Refresh', () => {
       filesListFolder: vi.fn()
     };
 
-    (Dropbox as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => mockDbx);
+    (Dropbox as unknown as ReturnType<typeof vi.fn>).mockImplementation(function () {
+      return mockDbx;
+    });
 
     // OAuthサービスのモック
     mockOAuthService = {
@@ -91,7 +93,9 @@ describe('DropboxStorageProvider - Refresh Token Auto-Refresh', () => {
       });
 
       // リフレッシュ後にDropboxインスタンスが再作成されることをモック
-      (Dropbox as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => mockDbx);
+      (Dropbox as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function () {
+        return mockDbx;
+      });
 
       await storageProvider.upload(mockFile, mockPath);
 
@@ -134,7 +138,9 @@ describe('DropboxStorageProvider - Refresh Token Auto-Refresh', () => {
       });
 
       // リフレッシュ後にDropboxインスタンスが再作成されることをモック
-      (Dropbox as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => mockDbx);
+      (Dropbox as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function () {
+        return mockDbx;
+      });
 
       const result = await storageProvider.download(mockPath);
 
@@ -256,7 +262,9 @@ describe('DropboxStorageProvider - Refresh Token Auto-Refresh', () => {
         tokenType: 'bearer'
       });
 
-      (Dropbox as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => mockDbx);
+      (Dropbox as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function () {
+        return mockDbx;
+      });
 
       const result = await storageProvider.download(mockPath);
       expect(result.equals(mockFileBinary)).toBe(true);

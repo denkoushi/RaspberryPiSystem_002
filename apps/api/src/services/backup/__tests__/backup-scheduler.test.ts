@@ -10,10 +10,12 @@ const markHistoryAsDeletedByPath = vi.fn().mockResolvedValue(1);
 const markExcessHistoryAsDeleted = vi.fn().mockResolvedValue(1);
 
 vi.mock('../backup-history.service', () => ({
-  BackupHistoryService: vi.fn().mockImplementation(() => ({
-    markHistoryAsDeletedByPath,
-    markExcessHistoryAsDeleted
-  }))
+  BackupHistoryService: vi.fn().mockImplementation(function () {
+    return {
+      markHistoryAsDeletedByPath,
+      markExcessHistoryAsDeleted
+    };
+  })
 }));
 
 describe('BackupScheduler.cleanupOldBackups', () => {
