@@ -35,6 +35,10 @@ import {
   inspectionDrawingCanvasImageUrl,
   inspectionDrawingHasImageSource
 } from '../../features/part-measurement/inspection-drawing';
+import {
+  PART_MEASUREMENT_DRAWING_FILE_ACCEPT,
+  PART_MEASUREMENT_DRAWING_FILE_LABEL
+} from '../../features/part-measurement/partMeasurementDrawingFileInput';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
@@ -232,7 +236,7 @@ export function KioskInspectionDrawingCreatePage() {
 
     if (!isEditing) {
       if (!imageFile) {
-        setMessage('新規作成には図面画像を選んでください。');
+        setMessage('新規作成には図面画像またはPDFを選んでください（PDFは1ページ目のみ）。');
         return;
       }
     } else if (!imageFile && !template?.visualTemplateId?.trim()) {
@@ -358,10 +362,10 @@ export function KioskInspectionDrawingCreatePage() {
               />
             </label>
             <label className={inspectionDrawingMetadataLabelClassName}>
-              図面
+              {PART_MEASUREMENT_DRAWING_FILE_LABEL}
               <input
                 type="file"
-                accept="image/png,image/jpeg,image/webp"
+                accept={PART_MEASUREMENT_DRAWING_FILE_ACCEPT}
                 className={inspectionDrawingMetadataFileInputClass}
                 disabled={contentReadOnly}
                 onChange={(e) => handleFile(e.target.files?.[0] ?? null)}

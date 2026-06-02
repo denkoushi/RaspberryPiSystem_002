@@ -3,6 +3,10 @@ import type { MultipartFile } from '@fastify/multipart';
 import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
+import {
+  importDrawingAndSave,
+  resolveDrawingMultipartReadLimit
+} from '../../lib/part-measurement-drawing-import.js';
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { prisma } from '../../lib/prisma.js';
 import { verifyProductionScheduleRowOrThrow } from '../../services/production-schedule/verify-production-schedule-row.js';
@@ -379,7 +383,8 @@ function serializeTemplate(
 
 async function readMultipartFile(
   part: MultipartFile,
-  maxBytes = PartMeasurementDrawingStorage.getMaxBytes()
+  maxBytes = PartMeasurementDrawingStorage.getMaxBytes(),
+  tooLargeMessage = '図面画像が大きすぎます'
 ): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let total = 0;
@@ -390,7 +395,7 @@ async function readMultipartFile(
       if (typeof part.file.destroy === 'function') {
         part.file.destroy();
       }
-      throw new ApiError(400, '図面画像が大きすぎます');
+      throw new ApiError(400, tooLargeMessage);
     }
     chunks.push(buf);
   }
@@ -625,9 +630,10 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         if (part.type === 'file') {
           if (part.fieldname === 'file') {
             const mf = part as MultipartFile;
-            fileBuffer = await readMultipartFile(mf);
             mimetype = mf.mimetype || '';
             filename = mf.filename || 'drawing';
+            const { maxBytes, tooLargeMessage } = resolveDrawingMultipartReadLimit(mimetype, filename);
+            fileBuffer = await readMultipartFile(mf, maxBytes, tooLargeMessage);
           }
         } else if (part.fieldname === 'name') {
           name = String(part.value ?? '').trim();
@@ -635,28 +641,28 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       }
 
       if (!fileBuffer || fileBuffer.length === 0) {
-        throw new ApiError(400, '図面画像ファイルが必要です');
-      }
-      if (fileBuffer.length > PartMeasurementDrawingStorage.getMaxBytes()) {
-        throw new ApiError(400, '図面画像が大きすぎます');
+        throw new ApiError(400, '図面ファイルが必要です');
       }
       if (!name) {
         name = filename.replace(/\.[^.]+$/, '') || '図面テンプレート';
       }
 
-      let mime = mimetype;
-      if (!mime || mime === 'application/octet-stream') {
-        const lower = filename.toLowerCase();
-        if (lower.endsWith('.png')) mime = 'image/png';
-        else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
-        else if (lower.endsWith('.webp')) mime = 'image/webp';
-      }
-
-      const { relativeUrl } = await PartMeasurementDrawingStorage.saveDrawing(fileBuffer, mime);
-      const created = await visualTemplateService.create({
-        name: name.slice(0, 200),
-        drawingImageRelativePath: relativeUrl
+      const { relativeUrl } = await importDrawingAndSave({
+        buffer: fileBuffer,
+        mimetype,
+        filename
       });
+
+      let created;
+      try {
+        created = await visualTemplateService.create({
+          name: name.slice(0, 200),
+          drawingImageRelativePath: relativeUrl
+        });
+      } catch (error) {
+        await PartMeasurementDrawingStorage.deleteDrawing(relativeUrl).catch(() => undefined);
+        throw error;
+      }
       return { visualTemplate: serializeVisualTemplate(created) };
     }
   );
@@ -1198,9 +1204,10 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
           if (part.type === 'file') {
             if (part.fieldname === 'file') {
               const mf = part as MultipartFile;
-              fileBuffer = await readMultipartFile(mf);
               mimetype = mf.mimetype || '';
               filename = mf.filename || 'drawing';
+              const { maxBytes, tooLargeMessage } = resolveDrawingMultipartReadLimit(mimetype, filename);
+              fileBuffer = await readMultipartFile(mf, maxBytes, tooLargeMessage);
             }
           } else if (part.fieldname === 'name') {
             name = String(part.value ?? '').trim();
@@ -1217,14 +1224,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         }
 
         if (!fileBuffer || fileBuffer.length === 0) {
-          throw new ApiError(400, '図面画像ファイルが必要です');
-        }
-        let mime = mimetype;
-        if (!mime || mime === 'application/octet-stream') {
-          const lower = filename.toLowerCase();
-          if (lower.endsWith('.png')) mime = 'image/png';
-          else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
-          else if (lower.endsWith('.webp')) mime = 'image/webp';
+          throw new ApiError(400, '図面ファイルが必要です');
         }
         if (!name) {
           name = filename.replace(/\.[^.]+$/, '') || '検査図面';
@@ -1244,32 +1244,43 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
           name,
           items
         });
+
+        const { relativeUrl } = await importDrawingAndSave({
+          buffer: fileBuffer,
+          mimetype,
+          filename
+        });
+
         const prismaProcessGroup = body.referenceProcessGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
-        const { template, sheet } = await createInspectionDrawingEvaluationSetup(
-          {
-            referenceFhincd: body.referenceFhincd,
-            referenceResourceCd: body.referenceResourceCd,
-            referenceProcessGroup: prismaProcessGroup,
-            name: body.name,
-            items: body.items,
-            drawingUpload: {
-              buffer: fileBuffer,
-              mimetype: mime,
-              displayName: name
-            }
-          },
-          clientDeviceId
-        );
-        return {
-          template: serializeTemplate({
-            ...template,
-            visualTemplateId: template.visualTemplateId,
-            visualTemplate: template.visualTemplate,
-            items: template.items
-          }),
-          sheet: serializeSheet(sheet)
-        };
+        try {
+          const { template, sheet } = await createInspectionDrawingEvaluationSetup(
+            {
+              referenceFhincd: body.referenceFhincd,
+              referenceResourceCd: body.referenceResourceCd,
+              referenceProcessGroup: prismaProcessGroup,
+              name: body.name,
+              items: body.items,
+              drawingUpload: {
+                relativeUrl,
+                displayName: name
+              }
+            },
+            clientDeviceId
+          );
+          return {
+            template: serializeTemplate({
+              ...template,
+              visualTemplateId: template.visualTemplateId,
+              visualTemplate: template.visualTemplate,
+              items: template.items
+            }),
+            sheet: serializeSheet(sheet)
+          };
+        } catch (error) {
+          await PartMeasurementDrawingStorage.deleteDrawing(relativeUrl).catch(() => undefined);
+          throw error;
+        }
       }
 
       const body = createInspectionDrawingEvaluationTemplateBodySchema.parse(request.body);

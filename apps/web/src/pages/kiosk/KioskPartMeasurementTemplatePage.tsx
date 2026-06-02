@@ -10,6 +10,11 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import {
+  PART_MEASUREMENT_DRAWING_FILE_ACCEPT,
+  PART_MEASUREMENT_DRAWING_FILE_LABEL,
+  PART_MEASUREMENT_DRAWING_FILE_REQUIRED_MESSAGE
+} from '../../features/part-measurement/partMeasurementDrawingFileInput';
 
 import type {
   PartMeasurementProcessGroup,
@@ -134,7 +139,7 @@ export function KioskPartMeasurementTemplatePage() {
         visualTemplateId = pickedVisualId.trim();
       } else if (visualChoice === 'upload') {
         if (!newVisualFile) {
-          setMessage('図面画像ファイルを選択してください。');
+          setMessage(PART_MEASUREMENT_DRAWING_FILE_REQUIRED_MESSAGE);
           setBusy(false);
           return;
         }
@@ -269,10 +274,10 @@ export function KioskPartMeasurementTemplatePage() {
                   />
                 </label>
                 <label className="grid gap-1 text-sm text-slate-700">
-                  画像ファイル
+                  {PART_MEASUREMENT_DRAWING_FILE_LABEL}
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/webp"
+                    accept={PART_MEASUREMENT_DRAWING_FILE_ACCEPT}
                     className="text-sm text-slate-900"
                     onChange={(e) => setNewVisualFile(e.target.files?.[0] ?? null)}
                   />

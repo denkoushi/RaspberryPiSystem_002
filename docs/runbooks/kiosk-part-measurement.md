@@ -34,6 +34,20 @@
 - **評価用編集 API**: 既存互換のため `inspection-drawing/evaluation-sheets/*` は当面残すが、新しいキオスク UI 導線からは使用しない。本番 sheet は引き続き **409**、評価用 sheet も通常 PATCH/finalize から **409**。
 - **制約（現時点）**: 複数個数の図面UI・TIFF・順位ボードは未対応。図面中心の本番編集は引き続き **quantity===1** のみ。詳細は [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
 
+### 検査図面 · PDF 取込（2026-06-02）
+
+- **UI**: 図面ファイル選択は **「図面画像またはPDF（PDFは1ページ目のみ）」**。`accept` に `application/pdf` を含む（検査図面作成・管理/キオスクテンプレ作成）。
+- **API 入口（multipart）**: いずれも `importDrawingAndSave` 経由。
+  - `POST /api/part-measurement/visual-templates`
+  - `POST /api/part-measurement/inspection-drawing/evaluation-templates`（`file` フィールド）
+- **契約**:
+  - 画像入力上限 **12MB**、PDF 入力上限 **30MB**、保存画像（変換後 JPEG 含む）上限 **12MB**
+  - PDF は **1 ページ目のみ** `pdftoppm -f 1 -l 1 -singlefile -jpeg -r 144 -jpegopt quality=85` で JPEG 化し、以後は通常の画像図面として表示
+  - 元 PDF は保存しない（`drawingImageRelativePath` は `.jpg` 等の画像 URL のみ）
+- **代表実装**: `apps/api/src/lib/part-measurement-drawing-import.ts` · `convert-pdf-first-page-to-jpeg.ts`
+- **エラー（400 例）**: 未対応形式 / PDF 形式不正 / PDF 大きすぎ / 変換失敗 / 暗号化 PDF / 変換後画像大きすぎ
+- **運用**: API コンテナに `poppler-utils`（`pdftoppm`）必須。Arial 依存 PDF は文字欠けの可能性（`fonts-noto-cjk` のみ）。
+
 ## 自主検査 MVP（2026-06-01）
 
 詳細・背景: [KB-320 §自主検査 MVP](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01)。

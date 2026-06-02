@@ -1,6 +1,10 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { execFile } from 'child_process';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { promisify } from 'util';
 
 import { buildServer } from '../../app.js';
+import { buildMinimalValidPdfBuffer } from '../../lib/__tests__/fixtures/minimal-pdf.js';
+import * as drawingImport from '../../lib/part-measurement-drawing-import.js';
 import { prisma } from '../../lib/prisma.js';
 import { PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD } from '../../services/part-measurement/part-measurement-constants.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
@@ -86,7 +90,17 @@ async function seedProductionScheduleRow(input: {
 }
 
 function buildMultipartPng(name: string, png: Buffer): { body: Buffer; contentType: string } {
-  const boundary = `----testPmVt${Date.now()}`;
+  return buildMultipartDrawingFile(name, png, { filename: 't.png', contentType: 'image/png' });
+}
+
+const MIN_PDF = buildMinimalValidPdfBuffer();
+
+function buildMultipartDrawingFile(
+  name: string,
+  fileBuffer: Buffer,
+  opts: { filename: string; contentType: string }
+): { body: Buffer; contentType: string } {
+  const boundary = `----testPmDraw${Date.now()}`;
   const crlf = '\r\n';
   const parts: Buffer[] = [];
   const push = (s: string) => parts.push(Buffer.from(s, 'utf8'));
@@ -94,15 +108,64 @@ function buildMultipartPng(name: string, png: Buffer): { body: Buffer; contentTy
   push(`Content-Disposition: form-data; name="name"${crlf}${crlf}${name}${crlf}`);
   push(`--${boundary}${crlf}`);
   push(
-    `Content-Disposition: form-data; name="file"; filename="t.png"${crlf}Content-Type: image/png${crlf}${crlf}`
+    `Content-Disposition: form-data; name="file"; filename="${opts.filename}"${crlf}Content-Type: ${opts.contentType}${crlf}${crlf}`
   );
-  parts.push(png);
+  parts.push(fileBuffer);
   push(`${crlf}--${boundary}--${crlf}`);
   return {
     body: Buffer.concat(parts),
     contentType: `multipart/form-data; boundary=${boundary}`
   };
 }
+
+function buildMultipartPdf(name: string, pdf: Buffer, contentType = 'application/pdf') {
+  return buildMultipartDrawingFile(name, pdf, { filename: 'drawing.pdf', contentType });
+}
+
+function buildMultipartEvaluationTemplate(opts: {
+  name?: string;
+  referenceFhincd: string;
+  referenceResourceCd: string;
+  referenceProcessGroup?: string;
+  itemsJson: string;
+  fileBuffer: Buffer;
+  filename: string;
+  contentType: string;
+}): { body: Buffer; contentType: string } {
+  const boundary = `----testPmEval${Date.now()}`;
+  const crlf = '\r\n';
+  const parts: Buffer[] = [];
+  const push = (s: string) => parts.push(Buffer.from(s, 'utf8'));
+  const name = opts.name ?? 'eval-multipart';
+  push(`--${boundary}${crlf}`);
+  push(`Content-Disposition: form-data; name="name"${crlf}${crlf}${name}${crlf}`);
+  push(`--${boundary}${crlf}`);
+  push(
+    `Content-Disposition: form-data; name="referenceFhincd"${crlf}${crlf}${opts.referenceFhincd}${crlf}`
+  );
+  push(`--${boundary}${crlf}`);
+  push(
+    `Content-Disposition: form-data; name="referenceResourceCd"${crlf}${crlf}${opts.referenceResourceCd}${crlf}`
+  );
+  push(`--${boundary}${crlf}`);
+  push(
+    `Content-Disposition: form-data; name="referenceProcessGroup"${crlf}${crlf}${opts.referenceProcessGroup ?? 'cutting'}${crlf}`
+  );
+  push(`--${boundary}${crlf}`);
+  push(`Content-Disposition: form-data; name="items"${crlf}${crlf}${opts.itemsJson}${crlf}`);
+  push(`--${boundary}${crlf}`);
+  push(
+    `Content-Disposition: form-data; name="file"; filename="${opts.filename}"${crlf}Content-Type: ${opts.contentType}${crlf}${crlf}`
+  );
+  parts.push(opts.fileBuffer);
+  push(`${crlf}--${boundary}--${crlf}`);
+  return {
+    body: Buffer.concat(parts),
+    contentType: `multipart/form-data; boundary=${boundary}`
+  };
+}
+
+const execFileAsync = promisify(execFile);
 
 describe('part-measurement templates API', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
@@ -2455,5 +2518,128 @@ describe('part-measurement templates API', () => {
     });
     expect(csvRes.statusCode).toBe(200);
     expect(csvRes.payload).toContain('H,sessionId,');
+  });
+});
+
+describe('part-measurement drawing PDF import', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let adminToken: string;
+  let pdftoppmAvailable = false;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+    try {
+      await execFileAsync('pdftoppm', ['-v']);
+      pdftoppmAvailable = true;
+    } catch {
+      pdftoppmAvailable = false;
+    }
+  });
+
+  beforeEach(async () => {
+    await cleanPartMeasurementTables();
+    const admin = await createTestUser('ADMIN');
+    adminToken = admin.token;
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('creates visual template from PDF (first page only) when pdftoppm is available', async (ctx) => {
+    if (!pdftoppmAvailable) {
+      ctx.skip();
+    }
+    const { body, contentType } = buildMultipartPdf('pdf-drawing', MIN_PDF);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    const path = up.json().visualTemplate.drawingImageRelativePath as string;
+    expect(path).toMatch(/\.jpg$/);
+
+    const img = await app.inject({
+      method: 'GET',
+      url: path,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(img.statusCode).toBe(200);
+    expect(img.headers['content-type']).toMatch(/image\/jpeg/);
+  });
+
+  it('accepts application/octet-stream with .pdf filename', async (ctx) => {
+    if (!pdftoppmAvailable) {
+      ctx.skip();
+    }
+    const { body, contentType } = buildMultipartPdf('pdf-octet', MIN_PDF, 'application/octet-stream');
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    expect(up.json().visualTemplate.drawingImageRelativePath).toMatch(/\.jpg$/);
+  });
+
+  it('rejects .pdf extension when content is not a PDF', async () => {
+    const { body, contentType } = buildMultipartDrawingFile('fake', MIN_PNG, {
+      filename: 'fake.pdf',
+      contentType: 'application/pdf'
+    });
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(400);
+    expect(up.json().message).toContain('PDF');
+    const count = await prisma.partMeasurementVisualTemplate.count();
+    expect(count).toBe(0);
+  });
+
+  it('keeps PNG visual template upload working', async () => {
+    const { body, contentType } = buildMultipartPng('png-drawing', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    expect(up.json().visualTemplate.drawingImageRelativePath).toMatch(/\.png$/);
+  });
+
+  it('does not save drawing when evaluation multipart items are invalid', async () => {
+    const importSpy = vi.spyOn(drawingImport, 'importDrawingAndSave');
+    const { body, contentType } = buildMultipartEvaluationTemplate({
+      referenceFhincd: 'FH-INVALID-ITEMS',
+      referenceResourceCd: 'RES-1',
+      itemsJson: 'not-a-json-array',
+      fileBuffer: MIN_PDF,
+      filename: 'drawing.pdf',
+      contentType: 'application/pdf'
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/inspection-drawing/evaluation-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(res.statusCode).toBe(400);
+    expect(importSpy).not.toHaveBeenCalled();
+    const visualCount = await prisma.partMeasurementVisualTemplate.count();
+    expect(visualCount).toBe(0);
+    importSpy.mockRestore();
   });
 });

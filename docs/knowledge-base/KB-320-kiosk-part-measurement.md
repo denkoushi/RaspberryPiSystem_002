@@ -76,7 +76,7 @@
 | **本番記録編集** | 図面付き本番テンプレ + 記録表 **`quantity === 1`** → **`/kiosk/part-measurement/inspection/edit/:sheetId`**。保存・確定は **通常** `PATCH/POST …/sheets/*`。`quantity > 1`・図面なし・座標/上下限未設定 → **表形式** `/edit/:sheetId`。 |
 | **評価用** | `evaluation-templates` / `evaluation-sheets/*` は **互換残置**。キオスク UI 主導線からは未使用。本番 sheet ↔ 評価 API は **409** 相互ブロック。 |
 | **図面対象判定** | `part-measurement-inspection-drawing-policy.ts` — `templateSupportsInspectionDrawing`: visual に `drawingImageRelativePath`、全 item で `markerXRatio`/`markerYRatio`/`lowerLimit`/`upperLimit` が非 null。 |
-| **画像** | Phase1: PNG/JPEG/WebP のみ（TIFF 後続）。 |
+| **画像** | PNG/JPEG/WebP に加え **PDF（1ページ目のみ→JPEG化して保存）**。TIFF は後続。PDF 入力上限 **30MB**、保存画像上限 **12MB**、変換 **DPI 144 / quality 85 / timeout 30s**。 |
 | **ヘッダー・ルート** | `kioskInspectionDrawingRoutes.ts` — 既定 `inspection`、作成 `inspection/create`、テンプレ編集 `inspection/templates/:id/edit`、記録図面 `inspection/edit/:sheetId`。`isKioskInspectionDrawingPath` で部品測定タブを非アクティブ。 |
 
 ## 自主検査 MVP（2026-06-01） {#自主検査-mvp-2026-06-01}
@@ -162,6 +162,17 @@
 - **有効化後の readOnly 残留**: クライアント state だけ更新すると編集不可のまま残る → **専用 GET で `applyLoadedTemplate`** してから編集モードへ。
 - **Phase12**: `verify-phase12-real.sh` は **検査図面専用 API を個別 grep しない**（`resolve-ticket` / `templates/candidates` の部品測定スモークのみ）。専用 API は **統合テスト** + 手動／下記 curl で担保。
 
+### 検査図面 · PDF 取込（2026-06-02）
+
+| 区分 | 内容 |
+|------|------|
+| **入口** | `POST …/visual-templates` · `POST …/inspection-drawing/evaluation-templates`（multipart `file`） |
+| **変換** | `importDrawingAndSave` → 1 ページ目 JPEG → `PartMeasurementDrawingStorage` |
+| **上限** | 画像 12MB / PDF 30MB / 保存 12MB |
+| **負荷** | PDF 変換はプロセス内 **同時 1 件**・待ち **最大 4**（超過時 **503**） |
+| **検証順** | evaluation multipart は **items/body 検証後**に `importDrawingAndSave`（孤立ファイル防止） |
+| **表示** | 既存 Blob + `<img>` 契約のまま（PDF 直表示なし） |
+
 ### トラブルシュート（検査図面）
 
 | 症状 | 確認 | 対処 |
@@ -178,6 +189,9 @@
 | **一覧から編集で図面が出ない**（測定点は見える） | テンプレ編集画面が `drawingImageRelativePath` を `<img src>` 直指定している | 下記 [§テンプレ編集・認可付き図面読込](#検査図面-テンプレ編集-認可付き図面読込-2026-05-31) · **`main` `e12a5a9c` 以降** |
 | 編集で図面は出るが **拡大2回目（倍率1.5付近）だけ震える** | `ResizeObserver` + スクロールバーで `clientWidth`/`Height` が揺れ再レイアウトループ | 下記 [§キャンバスズーム痙攣](#検査図面-キャンバスズーム痙攣修正-2026-05-31) · **`main` `f6a9544a` 以降** · 強制リロード |
 | テンプレ切替直後に **旧図面＋新測定点** が一瞬重なる | `usePartMeasurementDrawingBlobUrl` が path 変更時に旧 `blobUrl` を残す | **`main` `e12a5a9c` 以降**（path 変更で即 `null` + revoke） |
+| PDF を選んでも取込できない | 12MB 上限で変換前 reject していないか · `pdftoppm` 有無 | **30MB** PDF 入力契約・API ログ · poppler-utils |
+| PDF 取込が **503** | 変換待ちが上限超過 | しばらく待って再送。同時 PDF アップロードを減らす |
+| PDF 変換後に文字欠け | Arial 等のフォント | 本番コンテナのフォント追加を検討 |
 | 図面UIに行かず表形式 | `quantity !== 1` または図面条件不足 | `45c02e0a` 参照。数量・テンプレを確認 |
 | 評価保存で本番テンプレが消える | 誤 API | **evaluation-templates** のみ |
 | 空入力で旧測定値が残る | PATCH null 未送信 | サービス層 `deleteMany`（`45c02e0a`） |

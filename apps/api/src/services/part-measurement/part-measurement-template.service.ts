@@ -371,8 +371,8 @@ export class PartMeasurementTemplateService {
     name: string;
     items: TemplateItemInput[];
     visualTemplateId?: string | null;
-    /** 図面と評価テンプレを同一トランザクションで保存（失敗時は未参照ファイルを削除） */
-    drawingUpload?: { buffer: Buffer; mimetype: string; displayName: string };
+    /** 取込済み図面 URL と表示名（multipart 経路では importDrawingAndSave 済み） */
+    drawingUpload?: { relativeUrl: string; displayName: string };
   }) {
     const referenceFhincd = params.referenceFhincd.trim();
     const referenceResourceCd = normalizeResourceCd(params.referenceResourceCd);
@@ -404,10 +404,10 @@ export class PartMeasurementTemplateService {
     try {
       let visualTemplateId = params.visualTemplateId?.trim() || null;
       if (params.drawingUpload) {
-        const { relativeUrl } = await PartMeasurementDrawingStorage.saveDrawing(
-          params.drawingUpload.buffer,
-          params.drawingUpload.mimetype
-        );
+        const relativeUrl = params.drawingUpload.relativeUrl.trim();
+        if (!relativeUrl.startsWith('/api/storage/part-measurement-drawings/')) {
+          throw new ApiError(400, '図面の保存パスが不正です');
+        }
         drawingPathToCleanup = relativeUrl;
         const vt = await prisma.partMeasurementVisualTemplate.create({
           data: {
