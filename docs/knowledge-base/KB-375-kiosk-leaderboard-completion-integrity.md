@@ -115,4 +115,5 @@ update-frequency: medium
 - [KB-369 順位ボードAPI内部レイテンシ](./KB-369-leader-order-board-api-internal-latency.md)
 - [KB-376 装飾スコープとフッタwinner整合](./KB-376-leaderboard-footer-display-scope-winner-alignment.md)
 - [KB-377 資源CDチップ・グレーアウトと差分消失の検証ナレッジ](./KB-377-kiosk-leaderboard-resource-chip-completion-verification.md)
+- [KB-383 過去納期・資源035滞留調査（2026-06-01・調査中断）](./KB-383-kiosk-leaderboard-stale-past-due-investigation.md)
 - [docs INDEX](../INDEX.md)
