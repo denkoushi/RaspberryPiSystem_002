@@ -345,6 +345,7 @@ update-frequency: high
 | [KB-265](./infrastructure/security.md#kb-265-tailscaleハードニング段階導入完了横移動面削減) | Tailscaleハードニング段階導入完了（横移動面削減） | ✅ 解決済み（2026-02-17） |
 | [KB-266](./infrastructure/security.md#kb-266-nfcストリーム端末分離の実装完了acl維持横漏れ防止) | NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止） | ✅ 解決済み（2026-02-18） |
 | [KB-277](./infrastructure/security.md#kb-277-tailscale経由でのvnc接続問題acl設定不足) | Tailscale経由でのVNC接続問題（ACL設定不足） | ✅ 解決済み（2026-02-28） |
+| [KB-278](./infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) | Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落） | ✅ 解決済み（2026-06-03） |
 | [KB-278](./infrastructure/security.md#kb-278-クライアント端末管理の重複登録inventory未解決テンプレキー混入) | クライアント端末管理の重複登録（inventory未解決テンプレキー混入） | ✅ 解決済み（2026-02-28） |
 | [KB-293](./infrastructure/security.md#kb-293-pi4pi3のrealvnc接続復旧pi5経由sshトンネル方式) | Pi4/Pi3のRealVNC接続復旧（Pi5経由SSHトンネル方式） | ✅ 解決済み（2026-03-06） |
 | [KB-309](./infrastructure/security.md) | GitHub メンテナ衛生（ForceMemo / GlassWorm 系サプライチェーン対策手順とトラブルシュート） | ✅ 記録（2026-03-20） |

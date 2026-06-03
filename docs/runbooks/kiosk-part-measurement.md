@@ -95,6 +95,36 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 | unmount 後の setState 警告 | `previewUrlRef` + `replaceLocalPreviewUrl` で cleanup |
 | 編集画面で新 PDF が失敗 | **既存図面 Blob を維持**しエラーメッセージのみ（`inspectionDrawingTemplateImageDisplay` の local-first 契約） |
 
+## 自主検査・検査図面 仕様拡張（2026-06-03） {#自主検査-検査図面-仕様拡張-2026-06-03}
+
+正本: [KB-320 §仕様拡張 本番](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03) · [deployment.md §2026-06-03](../guides/deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) · ブランチ **`feat/inspection-drawing-count-and-tolerance`** · **`2f3979ce`**
+
+### デプロイ
+
+1. **push 済み**の `feat/inspection-drawing-count-and-tolerance`（または **`main` マージ後**は `main`）を用意する。
+2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`（LAN のみのとき `denkon5sd02@192.168.10.230`）。
+3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+4. Pi5 で **管理画面**・**キオスク検査図面/自主検査**を目視確認。
+5. **Pi4×4** を `--limit` 1 台ずつ同コマンドで順次（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
+6. 各 Pi4 でキオスク **強制リロード**（§6.6.4）後、下記「実機確認ポイント（拡張）」を実施。
+
+### 実機確認ポイント（拡張）
+
+1. **管理** `/admin/tools/part-measurement-templates` — 自主検査 **全数/1件/最初最終/指定数** の保存・改版（`fixed_count` 件数上限 = 指示数）。
+2. **検査図面** テンプレ新規/改版 — 測定点 **丸数字**（削除後の欠番再利用）· **基準値+公差幅** 保存 · 既存「基準値未設定」行の上下限が意図せず変わらないこと。
+3. **自主検査** — `first_last` で **最初/最終** ラベル · `fixed_count` で N 件ボタン · 旧 `full` セッション再開で **必要件数ぶん** ボタン。
+4. **順位ボード** の **検** から再入場できること。
+
+### トラブルシュート（拡張）
+
+| 症状 | 確認 |
+|------|------|
+| Mac で `https://100.106.158.2/admin` が開けない | Mac に **`tag:admin`** があるか · [KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) |
+| `migrate deploy` が `FIXED_COUNT` で失敗 | 2 段 migration が揃っているか（[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03)） |
+| キオスクだけ旧仕様 | Pi5 `web` ref · Pi4 強制リロード |
+
+---
+
 ## 自主検査 MVP（2026-06-01）
 
 詳細・背景: [KB-320 §自主検査 MVP](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01)。

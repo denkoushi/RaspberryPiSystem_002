@@ -317,6 +317,34 @@ ping -c 1 192.168.128.131
 ssh -v denkon5sd02@192.168.128.131
 ```
 
+### Tailscale 接続済みなのに `https://100.106.158.2/admin` が開けない場合（2026-06-03）
+
+**症状**:
+
+- Tailscale メニューは **Connected**（例: Mac `100.64.230.31`）
+- ブックマーク `https://100.106.158.2/admin` が **タイムアウト**
+- `tailscale ping 100.106.158.2` → **`no matching peer`**
+- 工場 LAN では `https://192.168.10.230/admin` は開ける
+
+**原因（典型）**:
+
+- 運用 Mac の **`tag:admin` が外れている**（Pi5 は `tag:server`）。ACL で `tag:admin` → `tag:server` の `tcp:443` のみ許可されているため、タグなし Mac から Pi5 に届かない（[KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）。
+
+**確認**:
+
+```bash
+/Applications/Tailscale.app/Contents/MacOS/Tailscale status
+/Applications/Tailscale.app/Contents/MacOS/Tailscale status --json | python3 -c "import json,sys; print(json.load(sys.stdin)['Self'].get('Tags'))"
+/Applications/Tailscale.app/Contents/MacOS/Tailscale ping 100.106.158.2
+```
+
+**解決**:
+
+1. [Tailscale 管理画面](https://login.tailscale.com/admin/machines) で Mac に **`tag:admin`** を付与
+2. Tailscale を再接続後、上記 `ping` が通ることを確認してから `/admin` を開く
+
+**参照**: [tailscale-policy.md](../security/tailscale-policy.md) · [deployment.md §2026-06-03](./deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03)
+
 ### fail2banによるBanが発生した場合
 
 **症状**:

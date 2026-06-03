@@ -31,6 +31,7 @@
 | Phase12 で **`deploy-status` が一時的に `isMaintenance:true`** と FAIL | 直後に `curl …/api/system/deploy-status -H "x-client-key: …"` で再確認。デプロイ直後・`deploy-status.json` 更新タイミングで **数秒〜数十秒** だけメンテ表示になりうる | **再実行**で `isMaintenance:false` に戻れば環境差ではなく一時状態。常時 true のときは Pi5 の `config/deploy-status.json` とクライアント解決（`statusClientId`）を確認（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)） |
 | Phase12 終盤 **`verify-services-real.sh` だけ**「Pi5に到達できません」 | `verify-phase12-real.sh` 本体は API/SSH で Pi5 に届いているのに、子スクリプトが **別途 ICMP** だけで判定している | **`verify-services-real.sh`** は ping 失敗時に **`GET …/api/system/health` が 200 相当なら Pi5 IP を確定**するフォールバックを持つ（2026-04-04 追補）。それでも失敗する場合は Tailscale/LAN の経路を確認 |
 | Mac で **`update-all-clients.sh` が「Another update… local lock」**で即終了 | 同一マシンから **`--detach --follow` を 2 プロセス並列**で起動した | **1 台ずつ順次**：前の `--follow` が **`Remote run finished`** になるまで待ってから次の `--limit`。ロックは `logs/.update-all-clients.local.lock`（`owner` に pid）。**同一 `RASPI_SERVER_HOST`（Pi5）ロック**とも重なるので、並列は避ける（[deployment.md](../guides/deployment.md)） |
+| Mac で **`https://100.106.158.2/admin` がタイムアウト**（Tailscale アプリは Connected） | Mac: `tailscale status` に **`raspberrypi` / `100.106.158.2` が無い** · `tailscale ping 100.106.158.2` → **`no matching peer`** · Mac の `Self.Tags` が **空**（Pi5 は **`tag:server`**） | **Tailscale ACL**（`tag:admin` → `tag:server` の `tcp:443`）が効くため、Mac に **`tag:admin` を再付与**（[KB-278](./infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）· 暫定は LAN `https://192.168.10.230/admin` |
 
 ## Root cause（典型）
 
@@ -116,7 +117,45 @@
 - **キオスク一覧**: `GET /kiosk/production-schedule?selfInspectionEligibleOnly=true` で開始可能行のみをサーバー側抽出（生産日程をチャンク走査、`page` / `pageSize` / `hasMore`）。
 - 順位ボードの `selfInspectionEntryPath` は `/start?...` を返し、UI 側で resolve-or-create して **既存セッションへ再入場**できる。
 - 検査図面一覧 API `GET /inspection-drawing/templates` も `selfInspectionMode` / `selfInspectionFixedCount`（互換で `selfInspectionSampleSize`）を返す。キオスク改版 `POST …/inspection-drawing/templates/:id/revise` も自主検査設定を受け付ける。
-- **検査図面編集（丸数字・公差）**: 測定点は `markerNo` 独立採番（削除で他番号は変えない・追加は最小欠番）。UI は基準値＋上側/下側公差（正の幅）→ 保存時に絶対 `lowerLimit`/`upperLimit`（`apps/web/.../toleranceFields.ts`）。
+- **検査図面編集（丸数字・公差）**: 測定点は `markerNo` 独立採番（削除で他番号は変えない・追加は最小欠番）。UI は基準値＋上側/下側公差（正の幅）→ 保存時に絶対 `lowerLimit`/`upperLimit`（`apps/web/.../toleranceFields.ts`）。**基準値は符号付き可**（幅のみ非負）。`nominalValue=null` で下限/上限だけある既存行は **`legacyAbsoluteBounds`** を編集するまで絶対値を維持（`markerNumbering.ts` / `mergeInspectionDrawingPointPatch`）。
+
+## 自主検査・検査図面 仕様拡張 本番（2026-06-03） {#自主検査-検査図面-仕様拡張-本番-2026-06-03}
+
+### 進捗・デプロイ
+
+| 項目 | 内容 |
+|------|------|
+| ブランチ | **`feat/inspection-drawing-count-and-tolerance`** → **`main` マージ（2026-06-03）** |
+| 代表コミット | **`2f3979ce`** — `feat(part-measurement): expand self-inspection count modes and drawing tolerance editing` |
+| 変更種別 | **API + Web + Prisma**（Pi5: `api`/`web` 再ビルド + `prisma migrate deploy`）· Pi4: **`kiosk-browser` 再起動** + Pi5 SPA 反映 |
+| Pi5 Detach | **`20260603-074547-17661`** · `failed=0` · HEAD **`2f3979ce`** · migrations **103 件・up to date** |
+| Pi4 代表 Detach | **`raspi4-kensaku-stonebase01`**: **`20260603-075813-27911`** · `failed=0` |
+| 本番実機 | **Pi5 + Pi4×4 全台 OK**（管理テンプレ 4 モード · キオスク検査図面 公差/採番 · 自主検査 入力 slot ラベル） |
+| 参照デプロイ手順 | [deployment.md §2026-06-03](../guides/deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) |
+
+### 実装レビューで入れた契約（後続エージェント向け）
+
+| 論点 | 決定 |
+|------|------|
+| Postgres enum | 新値 `FIXED_COUNT` の **UPDATE は別 migration**（同一ファイル内で commit 前に使わない） |
+| 改版 `fixed_count` → 他モード | body の `selfInspectionFixedCount`: **`undefined`=継承** · **`null`=クリア**（`??` だけにしない） |
+| キオスク改版 `selfInspectionMode` 省略 | **既存テンプレ設定を継承**（未指定を `full` に落とさない） |
+| 旧 `full` セッション UI | Web slot 数は **`requiredEntryCount` 優先**（`expectedEntryCount` のみだとボタン不足） |
+| `first_last` ページ表示 | slot 配列上の index でページ計算（raw `entryIndex/plannedQuantity` 禁止） |
+| `entrySlotLabel`（API） | `FIXED` は **`entryIndex+1`** · `FIRST`/`LAST` は日本語ラベル |
+| 公差 UI 既存データ | `nominalValue=null` + 絶対上下限あり → **未編集なら絶対値維持** |
+
+### 代表ファイル（追加分）
+
+| 領域 | パス |
+|------|------|
+| 契約・検証 | `apps/api/src/services/part-measurement/self-inspection-config.ts` |
+| migration 1 | `apps/api/prisma/migrations/20260602120000_self_inspection_four_modes/migration.sql` |
+| migration 2 | `apps/api/prisma/migrations/20260602120100_self_inspection_sample_to_fixed_count/migration.sql` |
+| 公差 adapter | `apps/web/src/features/part-measurement/inspection-drawing/toleranceFields.ts` |
+| 採番 | `apps/web/src/features/part-measurement/inspection-drawing/markerNumbering.ts` |
+| キオスク slot | `apps/web/src/features/part-measurement/selfInspectionEntrySlots.ts` |
+| 単体テスト | `apps/api/.../self-inspection-config.test.ts` · `apps/web/.../selfInspectionEntrySlots.test.ts` · `toleranceFields.test.ts` · `markerNumbering.test.ts` |
 
 ### 代表ファイル
 

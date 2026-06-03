@@ -905,6 +905,56 @@ update-frequency: medium
 
 ---
 
+### [KB-278] Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落） {#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落}
+
+**発生日**: 2026-06-03（本番デプロイ後の Mac 運用確認）
+
+**Context**: 運用 Mac は Tailscale **Connected**（例: `100.64.230.31`）。ブックマーク `https://100.106.158.2/admin` で管理画面を開く。Pi5 は `tag:server`（`100.106.158.2`）で稼働中。Pi4 キオスクは Pi5 API 経由で正常。
+
+**Symptoms**:
+
+- ブラウザで `https://100.106.158.2/admin` が **タイムアウト**（または長時間待って失敗）
+- `ping 100.106.158.2` が **100% loss**（ICMP 自体が ACL で通らない場合あり）
+- Mac: `/Applications/Tailscale.app/Contents/MacOS/Tailscale ping 100.106.158.2` → **`no matching peer`**
+- Mac: `tailscale status` の peer 一覧に **`raspberrypi` / `100.106.158.2` が出ない**
+- 同一 LAN では `https://192.168.10.230/admin` は **開ける**（Pi5 本体は正常）
+
+**Investigation**:
+
+| 仮説 | 検証 | 結果 |
+|------|------|------|
+| Pi5 ダウン | LAN SSH / Pi5 上 `curl https://100.106.158.2/api/system/health` | **REJECTED**（Pi5 は応答） |
+| Mac の Tailscale 未接続 | メニューバー Connected | **REJECTED** |
+| Mac に `tag:admin` なし | Mac `status --json` → `Self.Tags: null` · Pi5 `Self.Tags: ['tag:server']` | **CONFIRMED** |
+| UFW / Caddy 障害 | Pi5 上 443 listen · LAN から `/admin` 200 | **REJECTED** |
+
+**Root cause**:
+
+- [tailscale-policy.md](../../security/tailscale-policy.md) の **最小 Allowlist** により、**`tag:admin` → `tag:server`** の **`tcp:443`**（および `22`）のみ Mac から Pi5 へ許可される。
+- 運用 Mac の端末タグ **`tag:admin` が外れていた**（再インストール・再ログイン・管理画面での誤操作・端末再登録など）。Tailscale は接続済みでも **peer として Pi5 とマップ上で結ばれず**、HTTPS は ACL 層で実質ブロック（タイムアウトに見える）。KB-277（VNC 5900）と同型。
+
+**Fix**:
+
+1. [Tailscale 管理画面](https://login.tailscale.com/admin/machines) → 運用 Mac → **Tags** に **`tag:admin`** を付与
+2. Mac の Tailscale を **オフ→オン** またはアプリ再起動
+3. `tailscale status` で **`100.106.158.2` / `raspberrypi` が peer に出る**こと · `tailscale ping 100.106.158.2` が成功することを確認
+4. `https://100.106.158.2/admin` を再試行
+
+**Prevention**:
+
+- 管理画面アクセス不能時は **UFW より先に** `tailscale status` / **`Self.Tags`** / **`ping 100.106.158.2`** を確認する（[mac-ssh-access.md](../../guides/mac-ssh-access.md) 追補）
+- Mac の Tailscale 再セットアップ後は **`tag:admin` 付与**をチェックリストに含める
+- 新規ポート追加時は KB-277 と同様 **grants に `tcp:<port>` を追加**する
+
+**References**:
+
+- [KB-277](#kb-277-tailscale経由でのvnc接続問題acl設定不足)（ACL タイムアウトの先例）
+- [tailscale-policy.md](../../security/tailscale-policy.md)
+- [KB-320 §仕様拡張 本番](../KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03)
+- [deployment.md §2026-06-03](../../guides/deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03)
+
+---
+
 ### [KB-293] Pi4/Pi3のRealVNC接続復旧（Pi5経由SSHトンネル方式）
 
 **発生日**: 2026-03-06

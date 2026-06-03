@@ -2,13 +2,55 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-06-02
+last-verified: 2026-06-03
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-06-03 · **キオスク自主検査・検査図面仕様拡張**·**API + Web + DB**·**Pi5 + Pi4×4 本番・実機 OK**） {#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03}
+
+- **変更概要（正本）**: [KB-320 §仕様拡張 本番](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03) · [Runbook §仕様拡張](../runbooks/kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-2026-06-03) · ブランチ **`feat/inspection-drawing-count-and-tolerance`** · 代表コミット **`2f3979ce`**
+  - **自主検査**: `full` / `single` / `first_last` / `fixed_count` · `SelfInspectionEntrySlotKind` · `selfInspectionFixedCount` · `validateSelfInspectionConfig` / `listRequiredEntrySlots`（`apps/api/.../self-inspection-config.ts`）
+  - **検査図面**: 測定点 `markerNo` 独立採番（欠番再利用）· 公差 UI（基準値＋上側/下側幅）→ 絶対 `lowerLimit`/`upperLimit` · `legacyAbsoluteBounds`（`nominalValue=null` の既存データ保護）
+  - **改版**: `undefined` 継承 / `null` クリア（`resolveReviseSelfInspectionFields`）· キオスク改版で `selfInspectionMode` 未指定時は既存設定継承
+- **Prisma migration（2段・Postgres enum 安全）**:
+  1. `20260602120000_self_inspection_four_modes` — enum/カラム追加のみ（同一 TX で新 enum 値を UPDATE に使わない）
+  2. `20260602120100_self_inspection_sample_to_fixed_count` — `SAMPLE` → `FIXED_COUNT` と `selfInspectionFixedCount` コピー
+- **対象ホスト（推奨順・各 `--limit` 1 台）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**。Pi3: `skipping: no hosts matched`
+- **標準コマンド**（マージ前）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+# 工場 LAN から Mac が Tailscale に届かない場合のみ:
+# export RASPI_SERVER_HOST="denkon5sd02@192.168.10.230"
+
+./scripts/update-all-clients.sh feat/inspection-drawing-count-and-tolerance \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+# Pi5 目視 OK 後、上記と同コマンドで Pi4 を 1 台ずつ --limit 変更
+```
+
+（**`main` マージ後**は第2引数 **`main`**。）
+
+- **デプロイ前**: `origin/<branch>` より ahead だと拒否 → **push 後**に実行 · 作業ツリー **clean**
+- **本番デプロイ（実績·2026-06-03）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 実機 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | **`20260603-074547-17661`** | **`2f3979ce`** | `ok=134` `changed=4` **`failed=0`** | migration **103 件 up to date** · `api` healthy · 管理/キオスク自主検査・検査図面 OK |
+| `raspberrypi4` | （運用者確認・全台） | **`2f3979ce`** | **`failed=0`** | キオスク **強制リロード**後 OK |
+| `raspi4-robodrill01` | 同上 | **`2f3979ce`** | **`failed=0`** | 同上 |
+| `raspi4-fjv60-80` | 同上 | **`2f3979ce`** | **`failed=0`** | 同上 |
+| `raspi4-kensaku-stonebase01` | **`20260603-075813-27911`** | **`2f3979ce`** | `ok=129` `changed=10` **`failed=0`** | キオスク実機 OK |
+
+- **CI（実装ブランチ）**: push 後 GitHub Actions **success**（`lint-build-unit` / `api-db-and-infra` / `e2e-*`）
+- **トラブルシュート**:
+  - **Mac から `100.106.158.2` に届かない** → Mac の **`tag:admin`** が外れていないか（[KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）· 同一 tailnet でも `tailscale ping 100.106.158.2` が **`no matching peer`** なら ACL/タグを疑う
+  - **LAN のみ届く** → `RASPI_SERVER_HOST=denkon5sd02@192.168.10.230` でデプロイ可（Pi5 上 Ansible は `network_mode: tailscale` のまま）
+  - **`prisma migrate deploy` が enum で失敗** → 2 段 migration を再確認（1 ファイルに schema+data UPDATE を混ぜない）
+  - **キオスクだけ旧 UI** → Pi5 `web` ref が **`2f3979ce` 以降**か · Pi4 は **強制リロード**
 
 ### 補足（2026-06-02 · **キオスク検査図面 · PDF プレビュー整合**·**API + Web**·**Pi5 本番・実機 OK・Pi4×4 未**） {#kiosk-inspection-drawing-pdf-preview-parity-2026-06-02}
 
