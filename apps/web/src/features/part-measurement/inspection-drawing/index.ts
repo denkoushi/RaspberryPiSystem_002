@@ -1,4 +1,8 @@
 export { InspectionDrawingCreateHeaderBand } from './InspectionDrawingCreateHeaderBand';
+export type { InspectionDrawingHeaderBandMetadataLayout } from './InspectionDrawingCreateHeaderBand';
+export { InspectionDrawingCreateMetaChip } from './InspectionDrawingCreateMetaChip';
+export { InspectionDrawingCreateMetadataRow } from './InspectionDrawingCreateMetadataRow';
+export type { InspectionDrawingCreateMetadataRowProps } from './InspectionDrawingCreateMetadataRow';
 export { InspectionDrawingCreateToolbar } from './InspectionDrawingCreateToolbar';
 export { InspectionDrawingPointSettingsPanel } from './InspectionDrawingPointSettingsPanel';
 export { InspectionDrawingPointSummaryList } from './InspectionDrawingPointSummaryList';
@@ -84,7 +88,10 @@ export {
   inspectionDrawingCanvasZoomControlsClassName,
   inspectionDrawingCreateCanvasColumnClassName,
   inspectionDrawingCreateHeaderBandClassName,
+  inspectionDrawingCreateMetaChipControlClassName,
+  inspectionDrawingCreateMetaRowClassName,
   inspectionDrawingCreatePageRootClassName,
+  inspectionDrawingCreateVersionBadgeClassName,
   inspectionDrawingCreateSideAsideClassName,
   inspectionDrawingCreateWorkspaceClassName,
   inspectionDrawingHeaderBandClassName,

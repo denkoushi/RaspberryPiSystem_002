@@ -37,6 +37,46 @@ export const inspectionDrawingHeaderBandClassName =
 export const inspectionDrawingCreateHeaderBandClassName =
   'flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded border border-white/15 bg-slate-900/50 px-2 py-1';
 
+/** 作成/改版ヘッダー — メタデータスロット（chip 行 + 図面ファイル） */
+export const inspectionDrawingCreateMetadataSlotClassName =
+  'flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1';
+
+/** 作成/改版 — meta-chip 行（dl） */
+export const inspectionDrawingCreateMetaRowClassName =
+  'flex min-w-0 flex-1 flex-wrap list-none items-center gap-x-2 gap-y-1';
+
+export const inspectionDrawingCreateMetaChipClassName =
+  'inline-flex items-baseline gap-1.5 whitespace-nowrap text-[0.9rem]';
+
+export const inspectionDrawingCreateMetaChipTermClassName =
+  'font-semibold text-slate-400';
+
+export const inspectionDrawingCreateMetaChipValueClassName = 'm-0 min-w-0';
+
+/** chip 内の読取専用値 */
+export const inspectionDrawingCreateMetaChipReadonlyValueClassName =
+  'max-w-[11rem] truncate rounded border border-slate-600 bg-slate-800/90 px-1.5 py-0.5 text-[0.95rem] text-white';
+
+/** chip 内の Input / select */
+export const inspectionDrawingCreateMetaChipControlClassName =
+  'box-border h-9 max-w-[11rem] min-w-0 rounded-md border-2 border-slate-500 bg-white px-2 text-[0.95rem] text-slate-900';
+
+export const inspectionDrawingCreateMetaChipSelectClassName = clsx(
+  inspectionDrawingCreateMetaChipControlClassName,
+  'w-full max-w-[11rem]'
+);
+
+/** 版バッジ（v2 · 有効） */
+export const inspectionDrawingCreateVersionBadgeClassName =
+  'rounded border border-white/20 px-1.5 py-0.5 text-[0.75rem] text-white/55';
+
+/** 図面ファイル — バンド内インライン */
+export const inspectionDrawingCreateFileLabelClassName =
+  'inline-flex shrink-0 items-center gap-1 text-[0.75rem] text-white/55';
+
+export const inspectionDrawingCreateFileInputClassName =
+  'max-w-[7rem] text-[0.7rem] text-white/70 file:mr-1 file:rounded file:border-0 file:bg-white/10 file:px-1.5 file:py-0.5 file:text-[0.7rem] file:text-white/80';
+
 /** 作成/改版ページ root */
 export const inspectionDrawingCreatePageRootClassName =
   'flex min-h-0 flex-1 flex-col gap-1 p-1 text-white';

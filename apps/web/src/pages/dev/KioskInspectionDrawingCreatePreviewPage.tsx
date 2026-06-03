@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
-import { Input } from '../../components/ui/Input';
 import {
   InspectionDrawingCanvas,
   InspectionDrawingCanvasZoomControls,
   InspectionDrawingCreateHeaderBand,
+  InspectionDrawingCreateMetadataRow,
   InspectionDrawingCreateToolbar,
   useInspectionDrawingZoom,
   InspectionDrawingPointSidebar,
@@ -13,10 +13,7 @@ import {
   inspectionDrawingCreateHeaderBandClassName,
   inspectionDrawingCreatePageRootClassName,
   inspectionDrawingCreateSideAsideClassName,
-  inspectionDrawingCreateWorkspaceClassName,
-  inspectionDrawingMetadataControlWidthClass,
-  inspectionDrawingMetadataInputClass,
-  inspectionDrawingMetadataLabelClassName
+  inspectionDrawingCreateWorkspaceClassName
 } from '../../features/part-measurement/inspection-drawing';
 import {
   INSPECTION_DRAWING_PREVIEW_IMAGE_URL,
@@ -60,6 +57,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
     >
         <InspectionDrawingCreateHeaderBand
           bandClassName={inspectionDrawingCreateHeaderBandClassName}
+          metadataLayout="createCompact"
           centerSlot={
             <InspectionDrawingCanvasZoomControls
               enabled
@@ -69,32 +67,27 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             />
           }
           metadata={
-            <>
-              <label className={inspectionDrawingMetadataLabelClassName}>
-                品番
-                <Input defaultValue="DEMO-12345" className={inspectionDrawingMetadataInputClass} readOnly />
-              </label>
-              <label className={inspectionDrawingMetadataLabelClassName}>
-                資源
-                <Input defaultValue="R001" className={inspectionDrawingMetadataInputClass} readOnly />
-              </label>
-              <label className={inspectionDrawingMetadataLabelClassName}>
-                テンプレ名
-                <Input
-                  defaultValue="検査図面プレビュー"
-                  className={inspectionDrawingMetadataInputClass}
-                  readOnly
-                />
-              </label>
-              <label className={inspectionDrawingMetadataLabelClassName}>
-                図面
-                <span
-                  className={`${inspectionDrawingMetadataControlWidthClass} block truncate text-[1rem] text-white/50`}
-                >
-                  （プレビュー用サンプル SVG）
-                </span>
-              </label>
-            </>
+            <InspectionDrawingCreateMetadataRow
+              lineageLocked
+              fhincd="DEMO-12345"
+              onFhincdChange={() => undefined}
+              resourceCd="033"
+              onResourceCdChange={() => undefined}
+              resourceSelectOptions={[{ value: '033', label: '033 (横型プレビュー)' }]}
+              resourceNameMap={{}}
+              processGroup={processGroup}
+              templateProcessGroup={processGroup}
+              templateName="検査図面プレビュー"
+              onTemplateNameChange={() => undefined}
+              selfInspectionMode="first_last"
+              onSelfInspectionModeChange={() => undefined}
+              selfInspectionFixedCount=""
+              onSelfInspectionFixedCountChange={() => undefined}
+              contentReadOnly
+              onDrawingFileChange={() => undefined}
+              templateVersion={2}
+              templateIsActive
+            />
           }
           toolbar={
             <InspectionDrawingCreateToolbar
@@ -131,10 +124,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
               points={points}
               selectedPoint={selectedPoint}
               contentReadOnly={false}
-              onSelectPoint={(id) => {
-                setSelectedPointId(id);
-                if (mode !== 'place') setMode('place');
-              }}
+              onSelectPoint={setSelectedPointId}
               onPointChange={(patch) => {
                 if (!selectedPoint) return;
                 updatePoint(selectedPoint.id, patch);

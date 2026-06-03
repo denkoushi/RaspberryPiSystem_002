@@ -11,7 +11,6 @@ import {
 } from '../../api/client';
 import { useKioskProductionScheduleResources } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
 import { formatResourceCdWithJapaneseNames } from '../../features/kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
 import {
   drawingPointToTemplateItemInput,
@@ -19,18 +18,15 @@ import {
   InspectionDrawingCanvas,
   InspectionDrawingCanvasZoomControls,
   InspectionDrawingCreateHeaderBand,
+  InspectionDrawingCreateMetadataRow,
   InspectionDrawingCreateToolbar,
   useInspectionDrawingZoom,
   InspectionDrawingPointSidebar,
-  InspectionDrawingResourceCdSelect,
   inspectionDrawingCreateCanvasColumnClassName,
   inspectionDrawingCreateHeaderBandClassName,
   inspectionDrawingCreatePageRootClassName,
   inspectionDrawingCreateSideAsideClassName,
   inspectionDrawingCreateWorkspaceClassName,
-  inspectionDrawingMetadataFileInputClass,
-  inspectionDrawingMetadataInputClass,
-  inspectionDrawingMetadataLabelClassName,
   kioskInspectionDrawingTemplateEditPath,
   templateItemToDrawingPoint,
   inspectionDrawingBlobFetchPath,
@@ -42,10 +38,6 @@ import {
   nextAvailableMarkerNo,
   toleranceBoundsFromPoint
 } from '../../features/part-measurement/inspection-drawing/markerNumbering';
-import {
-  PART_MEASUREMENT_DRAWING_FILE_ACCEPT,
-  PART_MEASUREMENT_DRAWING_FILE_LABEL
-} from '../../features/part-measurement/partMeasurementDrawingFileInput';
 import {
   mapTemplateFixedCountToFormString,
   buildSelfInspectionTemplateApiBody
@@ -61,12 +53,6 @@ import type {
   PartMeasurementTemplateDto,
   SelfInspectionMode
 } from '../../features/part-measurement/types';
-
-function processGroupDisplayLabel(processGroup: PartMeasurementProcessGroup | null | undefined): string {
-  if (processGroup === 'cutting') return '切削';
-  if (processGroup === 'grinding') return '研削';
-  return '—';
-}
 
 export function KioskInspectionDrawingCreatePage() {
   const { templateId } = useParams<{ templateId: string }>();
@@ -366,13 +352,13 @@ export function KioskInspectionDrawingCreatePage() {
 
   const handleSelectPointFromList = (id: string) => {
     setSelectedPointId(id);
-    if (mode !== 'place') setMode('place');
   };
 
   return (
     <div className={inspectionDrawingCreatePageRootClassName}>
       <InspectionDrawingCreateHeaderBand
         bandClassName={inspectionDrawingCreateHeaderBandClassName}
+        metadataLayout="createCompact"
         centerSlot={
           hasDrawingImage ? (
             <InspectionDrawingCanvasZoomControls
@@ -384,96 +370,27 @@ export function KioskInspectionDrawingCreatePage() {
           ) : undefined
         }
         metadata={
-          <>
-            {lineageLocked ? (
-              <>
-                <div className={inspectionDrawingMetadataLabelClassName}>
-                  <span>品番</span>
-                  <p className={`${inspectionDrawingMetadataInputClass} flex items-center rounded-md border-2 border-slate-600 bg-slate-800/80 px-3 text-white`}>
-                    {fhincd}
-                  </p>
-                </div>
-                <div className={inspectionDrawingMetadataLabelClassName}>
-                  <span>資源</span>
-                  <p className={`${inspectionDrawingMetadataInputClass} flex items-center rounded-md border-2 border-slate-600 bg-slate-800/80 px-3 text-white`}>
-                    {formatResourceCdWithJapaneseNames(resourceCd, resourceNameMap)}
-                  </p>
-                </div>
-                <div className={inspectionDrawingMetadataLabelClassName}>
-                  <span>工程</span>
-                  <p className={`${inspectionDrawingMetadataInputClass} flex items-center rounded-md border-2 border-slate-600 bg-slate-800/80 px-3 text-white`}>
-                    {processGroupDisplayLabel(template?.processGroup ?? processGroup)}
-                  </p>
-                </div>
-              </>
-            ) : (
-              <>
-                <label className={inspectionDrawingMetadataLabelClassName}>
-                  品番
-                  <Input
-                    value={fhincd}
-                    onChange={(e) => setFhincd(e.target.value)}
-                    className={inspectionDrawingMetadataInputClass}
-                  />
-                </label>
-                <InspectionDrawingResourceCdSelect
-                  value={resourceCd}
-                  onChange={setResourceCd}
-                  options={resourceSelectOptions}
-                  emptyOptionLabel="選択してください"
-                  widthVariant="metadata"
-                  disabled={contentReadOnly}
-                />
-              </>
-            )}
-            <label className={inspectionDrawingMetadataLabelClassName}>
-              テンプレ名
-              <Input
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-                className={inspectionDrawingMetadataInputClass}
-                disabled={contentReadOnly}
-              />
-            </label>
-            <label className={inspectionDrawingMetadataLabelClassName}>
-              {PART_MEASUREMENT_DRAWING_FILE_LABEL}
-              <input
-                type="file"
-                accept={PART_MEASUREMENT_DRAWING_FILE_ACCEPT}
-                className={inspectionDrawingMetadataFileInputClass}
-                disabled={contentReadOnly}
-                onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            <label className={inspectionDrawingMetadataLabelClassName}>
-              自主検査（検査数）
-              <select
-                className={inspectionDrawingMetadataInputClass}
-                value={selfInspectionMode}
-                disabled={contentReadOnly}
-                onChange={(e) => setSelfInspectionMode(e.target.value as SelfInspectionMode)}
-              >
-                <option value="full">全数</option>
-                <option value="single">抜き取り1個</option>
-                <option value="first_last">最初と最後</option>
-                <option value="fixed_count">指定数</option>
-              </select>
-            </label>
-            {selfInspectionMode === 'fixed_count' ? (
-              <label className={inspectionDrawingMetadataLabelClassName}>
-                指定数
-                <Input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={selfInspectionFixedCount}
-                  disabled={contentReadOnly}
-                  onChange={(e) => setSelfInspectionFixedCount(e.target.value)}
-                  className={inspectionDrawingMetadataInputClass}
-                />
-              </label>
-            ) : null}
-          </>
+          <InspectionDrawingCreateMetadataRow
+            lineageLocked={lineageLocked}
+            fhincd={fhincd}
+            onFhincdChange={setFhincd}
+            resourceCd={resourceCd}
+            onResourceCdChange={setResourceCd}
+            resourceSelectOptions={resourceSelectOptions}
+            resourceNameMap={resourceNameMap}
+            processGroup={processGroup}
+            templateProcessGroup={template?.processGroup}
+            templateName={templateName}
+            onTemplateNameChange={setTemplateName}
+            selfInspectionMode={selfInspectionMode}
+            onSelfInspectionModeChange={setSelfInspectionMode}
+            selfInspectionFixedCount={selfInspectionFixedCount}
+            onSelfInspectionFixedCountChange={setSelfInspectionFixedCount}
+            contentReadOnly={contentReadOnly}
+            onDrawingFileChange={handleFile}
+            templateVersion={template?.version}
+            templateIsActive={template?.isActive}
+          />
         }
         toolbar={
           <InspectionDrawingCreateToolbar
@@ -501,16 +418,11 @@ export function KioskInspectionDrawingCreatePage() {
       {message ? <p className="px-1 text-[1rem] font-semibold text-amber-200">{message}</p> : null}
       {previewError ? <p className="px-1 text-sm text-red-300">{previewError}</p> : null}
       {drawingLoadError ? <p className="px-1 text-sm text-red-300">{drawingLoadError}</p> : null}
-      {template ? (
-        <div className="flex flex-wrap items-center gap-2 px-1">
-          <span className="text-[0.98rem] text-white/60">
-            v{template.version} / {template.isActive ? '有効' : '履歴'}
-          </span>
-          {readOnly ? (
-            <Button type="button" variant="primary" disabled={busy} onClick={() => void handleActivate()}>
-              {busy ? '処理中…' : 'この版を有効化して編集'}
-            </Button>
-          ) : null}
+      {template && readOnly ? (
+        <div className="px-1">
+          <Button type="button" variant="primary" disabled={busy} onClick={() => void handleActivate()}>
+            {busy ? '処理中…' : 'この版を有効化して編集'}
+          </Button>
         </div>
       ) : null}
 

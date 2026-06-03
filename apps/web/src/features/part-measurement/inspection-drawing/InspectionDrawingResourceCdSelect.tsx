@@ -1,9 +1,11 @@
 import clsx from 'clsx';
 import { useId } from 'react';
 
+import { InspectionDrawingCreateMetaChip } from './InspectionDrawingCreateMetaChip';
 import {
   inspectionDrawingBoundedSelectClassName,
   inspectionDrawingBoundedSelectShellClassName,
+  inspectionDrawingCreateMetaChipSelectClassName,
   inspectionDrawingLibraryFilterFieldLabelClassName,
   inspectionDrawingLibraryFilterResourceWidthClass,
   inspectionDrawingMetadataLabelClassName,
@@ -15,7 +17,7 @@ export type InspectionDrawingResourceCdSelectOption = {
   label: string;
 };
 
-export type InspectionDrawingResourceCdSelectWidthVariant = 'library' | 'metadata';
+export type InspectionDrawingResourceCdSelectWidthVariant = 'library' | 'metadata' | 'createChip';
 
 type Props = {
   value: string;
@@ -29,7 +31,10 @@ type Props = {
   ariaLabel?: string;
 };
 
-const FIELD_WIDTH_BY_VARIANT: Record<InspectionDrawingResourceCdSelectWidthVariant, string> = {
+const FIELD_WIDTH_BY_VARIANT: Record<
+  Exclude<InspectionDrawingResourceCdSelectWidthVariant, 'createChip'>,
+  string
+> = {
   library: inspectionDrawingLibraryFilterResourceWidthClass,
   metadata: inspectionDrawingMetadataResourceFieldWidthClass
 };
@@ -51,6 +56,29 @@ export function InspectionDrawingResourceCdSelect({
 }: Props) {
   const generatedId = useId();
   const id = idProp ?? generatedId;
+  if (widthVariant === 'createChip') {
+    return (
+      <InspectionDrawingCreateMetaChip term={label} controlId={id}>
+        <div className="min-w-0 max-w-[11rem] overflow-hidden rounded-md">
+          <select
+            id={id}
+            value={value}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.value)}
+            className={inspectionDrawingCreateMetaChipSelectClassName}
+          >
+            <option value="">{emptyOptionLabel}</option>
+            {options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </InspectionDrawingCreateMetaChip>
+    );
+  }
+
   const labelClassName =
     widthVariant === 'library'
       ? inspectionDrawingLibraryFilterFieldLabelClassName
