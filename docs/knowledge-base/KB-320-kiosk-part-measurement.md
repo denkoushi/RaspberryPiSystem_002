@@ -169,6 +169,35 @@
 | キオスク slot | `apps/web/src/features/part-measurement/selfInspectionEntrySlots.ts` |
 | 単体テスト | `apps/api/.../self-inspection-config.test.ts` · `apps/web/.../selfInspectionEntrySlots.test.ts` · `toleranceFields.test.ts` · `markerNumbering.test.ts` |
 
+## 順位ボード「検」→ 自主検査で図面が空白（2026-06-03） {#self-inspection-session-drawing-blank-2026-06-03}
+
+### 症状
+
+- 順位ボードの **検** から自主検査入力を開くと、**測定値パネルは表示**されるが **図面エリアだけ空白**（または「図面がありません。」）。
+- API・ストレージは正常なケースあり（`GET …/self-inspection/sessions/:id` に `drawingImageRelativePath` あり、`GET /api/storage/part-measurement-drawings/…` が **200**）。
+
+### 根本原因（Web）
+
+- `KioskSelfInspectionSessionPage` の図面列だけ、検査図面 Create/Edit が使う **`inspectionDrawingCanvasColumnClassName`**（`flex` + `min-h-[min(72dvh,760px)]`）を適用していなかった。
+- その結果 `InspectionDrawingCanvas` の viewport の **`clientHeight` が 0** のまま `zoomedLayout` が組めず、図面が描画されない。
+- 副次: `blobUrl` 未取得中を「図面がありません」と表示していた（読込中と区別なし）。
+
+### 修正内容
+
+| 項目 | 内容 |
+|------|------|
+| レイアウト | 左カラムへ **既存** `inspectionDrawingCanvasColumnClassName` をそのまま適用（共有クラス本体は変更しない） |
+| 表示分岐 | `hasDrawingPath` / 読込中 / エラー / 図面なしを `selfInspectionSessionDrawingPanelState.ts` で明示。図面取得失敗メッセージは **図面パネル内のみ**（ヘッダー重複なし） |
+| 関連 Web | `KioskSelfInspectionSessionPage.tsx` · `selfInspectionSessionDrawingPanelState.ts` · `inspectionDrawingKioskUi.ts` |
+
+### 確認方法
+
+| 種別 | 手順 |
+|------|------|
+| 単体 | `pnpm --filter web test selfInspectionSessionDrawingPanelState`（表示フェーズ） |
+| 手動 | キオスク **検** → 自主検査入力。図面パスありで **読込中 → キャンバス表示**。DevTools で viewport **`clientHeight > 0`** |
+| 任意 E2E | `e2e/self-inspection-session-drawing-layout.spec.ts` — **`E2E_SELF_INSPECTION_SESSION_ID` 未設定時は skip**（Pi5 実セッション fixture 前提の手動検証用） |
+
 ### 代表ファイル
 
 | 領域 | パス |

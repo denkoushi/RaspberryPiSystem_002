@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
@@ -13,6 +14,7 @@ import {
   InspectionDrawingCanvas,
   InspectionDrawingCanvasZoomControls,
   InspectionDrawingValuePanel,
+  inspectionDrawingCanvasColumnClassName,
   templateItemToDrawingPoint,
   useInspectionDrawingZoom
 } from '../../features/part-measurement/inspection-drawing';
@@ -26,6 +28,10 @@ import {
 } from '../../features/part-measurement/selfInspectionEntryDraft';
 import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionEntrySlots';
 import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
+import {
+  resolveSelfInspectionDrawingPanelPhase,
+  selfInspectionDrawingZoomEnabled
+} from '../../features/part-measurement/selfInspectionSessionDrawingPanelState';
 import { resolveSelfInspectionRequiredEntryCount } from '../../features/part-measurement/selfInspectionSessionEntryCount';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useNfcStream } from '../../hooks/useNfcStream';
@@ -118,6 +124,12 @@ export function KioskSelfInspectionSessionPage() {
   const { zoom, zoomIn, zoomOut, fitToView, fitGeneration } = useInspectionDrawingZoom();
   const drawingPath = session?.template.visualTemplate?.drawingImageRelativePath ?? null;
   const { blobUrl: drawingBlobUrl, error: drawingLoadError } = usePartMeasurementDrawingBlobUrl(drawingPath);
+  const drawingPanelPhase = resolveSelfInspectionDrawingPanelPhase({
+    drawingPath,
+    blobUrl: drawingBlobUrl,
+    loadError: drawingLoadError
+  });
+  const isDrawingCanvasReady = drawingPanelPhase === 'canvas';
 
   const startStateKey = startState
     ? `${startState.templateId}:${startState.productNo}:${startState.resourceCd}:${startState.id}`
@@ -208,7 +220,6 @@ export function KioskSelfInspectionSessionPage() {
   }, [draftValuesByEntryIndex, selectedEntryIndex, session]);
 
   const selectedPoint = activeDraft?.points.find((point) => point.id === selectedPointId) ?? activeDraft?.points[0] ?? null;
-  const imageUrl = drawingBlobUrl ?? '';
 
   const activeEntryHasNg = useMemo(() => {
     if (!activeDraft || !session) return false;
@@ -337,21 +348,30 @@ export function KioskSelfInspectionSessionPage() {
           {session.entryCountBlockedReason ? (
             <p className="mt-1 text-xs text-amber-200">{session.entryCountBlockedReason}</p>
           ) : null}
-          {drawingLoadError ? <p className="mt-1 text-xs text-amber-200">{drawingLoadError}</p> : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          <InspectionDrawingCanvasZoomControls enabled={Boolean(imageUrl)} onZoomIn={zoomIn} onZoomOut={zoomOut} onFitToView={fitToView} />
+          <InspectionDrawingCanvasZoomControls
+            enabled={selfInspectionDrawingZoomEnabled(drawingBlobUrl)}
+            onZoomIn={zoomIn}
+            onZoomOut={zoomOut}
+            onFitToView={fitToView}
+          />
           <Button type="button" variant="ghostOnDark" onClick={() => navigate('/kiosk/part-measurement/self-inspection')}>
             一覧へ
           </Button>
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="min-h-0 rounded border border-white/15 bg-slate-950/50 p-2">
-          {imageUrl ? (
+      <div className="flex min-h-0 flex-1 flex-col gap-3 xl:flex-row">
+        <div
+          className={clsx(
+            inspectionDrawingCanvasColumnClassName,
+            'rounded border border-white/15 bg-slate-950/50 p-2'
+          )}
+        >
+          {isDrawingCanvasReady && drawingBlobUrl ? (
             <InspectionDrawingCanvas
-              imageUrl={imageUrl}
+              imageUrl={drawingBlobUrl}
               points={activeDraft?.points ?? []}
               mode="test"
               selectedPointId={selectedPoint?.id ?? null}
@@ -359,12 +379,18 @@ export function KioskSelfInspectionSessionPage() {
               zoom={zoom}
               fitGeneration={fitGeneration}
             />
+          ) : drawingPanelPhase === 'loading' ? (
+            <div className="flex flex-1 items-center justify-center text-white/60">図面を読み込み中…</div>
+          ) : drawingPanelPhase === 'error' ? (
+            <div className="flex flex-1 items-center justify-center text-amber-200">
+              {drawingLoadError ?? '図面の読み込みに失敗しました'}
+            </div>
           ) : (
-            <div className="flex h-full items-center justify-center text-white/60">図面がありません。</div>
+            <div className="flex flex-1 items-center justify-center text-white/60">図面がありません。</div>
           )}
         </div>
 
-        <div className="flex min-h-0 flex-col gap-3">
+        <div className="flex min-h-0 min-w-0 flex-col gap-3 xl:w-[360px] xl:shrink-0">
           <div className="rounded border border-white/15 bg-slate-800/70 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-white/80">
