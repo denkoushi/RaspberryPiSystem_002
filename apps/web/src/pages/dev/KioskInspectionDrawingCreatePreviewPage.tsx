@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { Input } from '../../components/ui/Input';
 import {
@@ -21,12 +22,20 @@ import {
 } from '../../features/part-measurement/inspection-drawing/inspectionDrawingPreviewFixtures';
 
 import { KioskInspectionDrawingDevPreviewChrome } from './KioskInspectionDrawingDevPreviewChrome';
+import { parseDevInspectionDrawingReturnFromLocation } from './kioskInspectionDrawingDevReturnNavigation';
+
 
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
 import type { PartMeasurementProcessGroup } from '../../features/part-measurement/types';
 
 /** 開発専用 — KioskInspectionDrawingCreatePage と同じコンポーネント構成で UI プレビュー */
 export function KioskInspectionDrawingCreatePreviewPage() {
+  const location = useLocation();
+  const inspectionReturn = useMemo(
+    () =>
+      parseDevInspectionDrawingReturnFromLocation(location.state),
+    [location.state]
+  );
   const [processGroup, setProcessGroup] = useState<PartMeasurementProcessGroup>('cutting');
   const [mode, setMode] = useState<'place' | 'test'>('place');
   const [points, setPoints] = useState<InspectionDrawingPoint[]>(() =>
@@ -93,7 +102,8 @@ export function KioskInspectionDrawingCreatePreviewPage() {
               hasDrawingImage
               hasMeasurementPoints={points.length > 0}
               saveDisabled
-              libraryTo="/dev/kiosk-inspection-drawing-library"
+              returnTo={inspectionReturn.inspectionDrawingReturnTo}
+              returnLabel={inspectionReturn.inspectionDrawingReturnLabel}
             />
           }
         />

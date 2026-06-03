@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
   activatePartMeasurementTemplate,
@@ -31,7 +31,6 @@ import {
   inspectionDrawingMetadataLabelClassName,
   inspectionDrawingSideAsideClassName,
   kioskInspectionDrawingTemplateEditPath,
-  KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
   templateItemToDrawingPoint,
   inspectionDrawingBlobFetchPath,
   inspectionDrawingCanvasImageUrl,
@@ -53,6 +52,8 @@ import {
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { usePartMeasurementDrawingLocalPreview } from '../../features/part-measurement/usePartMeasurementDrawingLocalPreview';
 
+import { parseKioskInspectionDrawingReturnFromLocation } from './kioskInspectionDrawingReturnNavigation';
+
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
 import type {
   PartMeasurementProcessGroup,
@@ -68,7 +69,12 @@ function processGroupDisplayLabel(processGroup: PartMeasurementProcessGroup | nu
 
 export function KioskInspectionDrawingCreatePage() {
   const { templateId } = useParams<{ templateId: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
+  const inspectionReturn = useMemo(
+    () => parseKioskInspectionDrawingReturnFromLocation(location.state),
+    [location.state]
+  );
   const clientKey = getResolvedClientKey();
   const resourcesQuery = useKioskProductionScheduleResources();
   const isEditing = Boolean(templateId);
@@ -231,7 +237,10 @@ export function KioskInspectionDrawingCreatePage() {
       applyLoadedTemplate(loaded);
       setMessage('有効版にしました。編集できます。');
       if (activated.id !== templateId) {
-        void navigate(kioskInspectionDrawingTemplateEditPath(activated.id), { replace: true });
+        void navigate(kioskInspectionDrawingTemplateEditPath(activated.id), {
+          replace: true,
+          state: inspectionReturn
+        });
       }
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
@@ -320,7 +329,10 @@ export function KioskInspectionDrawingCreatePage() {
         );
         applyLoadedTemplate(saved);
         setMessage('保存しました。履歴から旧版を確認できます。');
-        void navigate(kioskInspectionDrawingTemplateEditPath(saved.id), { replace: true });
+        void navigate(kioskInspectionDrawingTemplateEditPath(saved.id), {
+          replace: true,
+          state: inspectionReturn
+        });
       } else {
         const created = await createPartMeasurementTemplate(
           {
@@ -338,7 +350,10 @@ export function KioskInspectionDrawingCreatePage() {
         );
         applyLoadedTemplate(created);
         setMessage('保存しました。一覧から続けて編集できます。');
-        void navigate(kioskInspectionDrawingTemplateEditPath(created.id), { replace: true });
+        void navigate(kioskInspectionDrawingTemplateEditPath(created.id), {
+          replace: true,
+          state: inspectionReturn
+        });
       }
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
@@ -465,7 +480,8 @@ export function KioskInspectionDrawingCreatePage() {
             onSave={contentReadOnly ? undefined : () => void handleSave()}
             saveDisabled={contentReadOnly || saveBlockedByPreview}
             saveBusy={busy}
-            libraryTo={KIOSK_INSPECTION_DRAWING_LIBRARY_PATH}
+            returnTo={inspectionReturn.inspectionDrawingReturnTo}
+            returnLabel={inspectionReturn.inspectionDrawingReturnLabel}
           />
         }
         pointListSlot={

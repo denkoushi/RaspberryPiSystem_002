@@ -46,6 +46,13 @@ export {
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH
 } from './kioskInspectionDrawingRoutes';
+export {
+  isSafeInspectionDrawingReturnPath,
+  normalizeInternalInspectionDrawingReturnPath,
+  parseInspectionDrawingReturnFromLocation,
+  type InspectionDrawingLocationReturn,
+  type ParseInspectionDrawingReturnOptions
+} from './inspectionDrawingReturnNavigation';
 
 export {
   isKioskSelfInspectionPath,
