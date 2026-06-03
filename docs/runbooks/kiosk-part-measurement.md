@@ -122,6 +122,20 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 | Mac で `https://100.106.158.2/admin` が開けない | Mac に **`tag:admin`** があるか · [KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) |
 | `migrate deploy` が `FIXED_COUNT` で失敗 | 2 段 migration が揃っているか（[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03)） |
 | キオスクだけ旧仕様 | Pi5 `web` ref · Pi4 強制リロード |
+| Pi4 画面真っ白 · TS `curl` 000 · LAN 200 | [KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) — `tailscaled` 再起動 · `tag:kiosk --reset` · `kiosk-launch.sh` を `100.106.158.2` に戻す |
+| Pi4 `_appRef` が古い | Pi4 で `git pull` しない · `update-all-clients.sh main --limit raspberrypi4`（実績 **`20260603-115435-29435`**） |
+| Mac admin 不通 | [KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) · Pi5 [KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効) |
+
+### Pi4 再デプロイ（研削メイン · TS 復旧後 · 2026-06-03）
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
+  --limit raspberrypi4 --detach --follow
+```
+
+- **前提**: Pi4 で `tailscale ping 100.106.158.2` 成功 · `curl` キオスク URL が **200**
+- **確認**: `git -C /opt/RaspberryPiSystem_002 rev-parse --short HEAD` が Pi5 と一致 · Firefox URL の `_appRef` が同 SHA
 
 ---
 

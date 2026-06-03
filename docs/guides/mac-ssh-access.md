@@ -345,6 +345,22 @@ ssh -v denkon5sd02@192.168.128.131
 
 **参照**: [tailscale-policy.md](../security/tailscale-policy.md) · [deployment.md §2026-06-03](./deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03)
 
+### Pi5 が `NeedsLogin` で admin が再び開けない場合（2026-06-03）
+
+**症状**: Mac の `tag:admin` は付いているが、`https://100.106.158.2/admin` が再び不通 · Pi5 で `tailscale status` → **`NeedsLogin`**（node key expired / netmap 更新失敗のあと自動ログアウトしうる）
+
+**対処（Pi5 · LAN SSH 可）**:
+
+```bash
+ssh denkon5sd02@192.168.10.230
+sudo tailscale up --advertise-tags=tag:server
+# 表示 URL を Tailscale 管理画面で承認
+```
+
+**注意**: Pi4 キオスク復旧は **`tag:kiosk`**（[KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）。Pi5 に `tag:kiosk` を付けない。
+
+**参照**: [KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)
+
 ### fail2banによるBanが発生した場合
 
 **症状**:

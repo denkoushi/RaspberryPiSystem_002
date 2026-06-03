@@ -11,7 +11,7 @@
 - [x] (2026-06-01 / **Pi5 本番・実機 OK（自動）·`main` マージ予定**) **キオスク順位ボード・完了後フッタ工程チップ装飾の再同期**: ブランチ **`fix/kiosk-leaderboard-completion-decoration-resync`** · **`fe31aa99`** · **Web のみ** · **`leaderboardDecorationStalePolicy.ts`**（progress / boardNetworkSyncToken / completion stale）· **Pi5 デプロイ**: Detach **`20260601-210522-21919`** · Phase12 **43/0/0**（約 **63s**）· Pi4/Pi3 **不要**。docs: [KB-375 §2026-06-01](./docs/knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync) / [KB-374 §装飾 stale](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync) / [deployment §2026-06-01](./docs/guides/deployment.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01)。
 
 - [x] (2026-06-01 / **実装完了・未コミット・ローカル検証継続中**) **キオスク自主検査 MVP**: ブランチ **`feat/kiosk-self-inspection-mvp`** — `PartMeasurementTemplate.selfInspectionMode/selfInspectionSampleSize` 追加、専用 DB `SelfInspectionSession` / `SelfInspectionLotEntry` / `SelfInspectionMeasurementValue`、API `self-inspection/sessions*`、管理画面設定、キオスク **自主検査** タブ・一覧・全画面入力、順位ボード **検** アイコン（白/黄/青）を追加。検査図面一覧要約 DTO に自主検査設定も返す。docs: [KB-320 §自主検査 MVP](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01) / [runbook](./docs/runbooks/kiosk-part-measurement.md#自主検査-mvp2026-06-01)。
-- [x] (2026-06-03 / **Pi5 + Pi4×4 本番・実機 OK・`main` マージ**) **検査図面・自主検査仕様拡張**: ブランチ **`feat/inspection-drawing-count-and-tolerance`** · **`2f3979ce`** — 検査数4モード（`full`/`single`/`first_last`/`fixed_count`）· `entrySlotKind` · `validateSelfInspectionConfig` · 丸数字 `markerNo` · 公差 raw UI → 絶対上下限 · 2段 migration · **Pi5 Detach `20260603-074547-17661`** · Pi4×4 順次 **`failed=0`**（代表 stonebase **`20260603-075813-27911`**）。**運用 TS**: Mac `tag:admin` 欠落で `100.106.158.2/admin` 不通 → タグ再付与で復旧（[KB-278](./docs/knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）。docs: [KB-320 §仕様拡張 本番](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03) / [deployment §2026-06-03](./docs/guides/deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) / [runbook §2026-06-03](./docs/runbooks/kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-2026-06-03)。
+- [x] (2026-06-03 / **Pi5 + Pi4×4 本番・実機 OK・`main` マージ**) **検査図面・自主検査仕様拡張**: ブランチ **`feat/inspection-drawing-count-and-tolerance`** · **`2f3979ce`** — 検査数4モード（`full`/`single`/`first_last`/`fixed_count`）· `entrySlotKind` · `validateSelfInspectionConfig` · 丸数字 `markerNo` · 公差 raw UI → 絶対上下限 · 2段 migration · **Pi5 Detach `20260603-074547-17661`** · Pi4×4 順次 **`failed=0`**（代表 stonebase **`20260603-075813-27911`**）。**運用 TS（同日）**: Mac **`tag:admin` 欠落** → 再付与（[KB-278](./docs/knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）· Pi5 **`NeedsLogin` / node key expired** → `tag:server` で再ログイン（[KB-385](./docs/knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)）· 研削メイン Pi4 キオスク非表示 → TS 再認証 + **`tag:kiosk --reset`** + LAN 暫定 URL 解除（[KB-384](./docs/knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）· **`raspberrypi4` 再デプロイ `20260603-115435-29435`**（HEAD **`b787c273`** · 現場 OK）。docs: [KB-320 §仕様拡張 本番](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03) / [deployment §2026-06-03](./docs/guides/deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) / [runbook §2026-06-03](./docs/runbooks/kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-2026-06-03)。
 - [x] (2026-05-31 / **Pi5 実機 OK・Pi4×4 未・`main` マージ済**) **キオスク検査図面 · テンプレ編集図面読込 + ズーム痙攣**: ブランチ **`fix/kiosk-inspection-drawing-edit-image-load`** — **`e12a5a9c`**（`usePartMeasurementDrawingBlobUrl` + `inspectionDrawingTemplateImageDisplay` · path 変更時 blob クリア）· **`f6a9544a`**（`useZoomedCanvasLayout` · `areZoomedCanvasLayoutsEqual` · `scrollbar-gutter: stable`）。**Pi5 デプロイ**: `20260531-092334-26185`（`e12a5a9c`）· **実機**: 一覧→編集で図面表示 OK · 拡大2回目の震えなし OK。**CI**: **`26698822834`** · **`26700061664`** success。docs: [KB-320 §図面読込](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-テンプレ編集-認可付き図面読込-2026-05-31) / [KB-320 §痙攣](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-キャンバスズーム痙攣修正-2026-05-31) / [deployment §2026-05-31](./docs/guides/deployment.md#kiosk-inspection-drawing-edit-image-and-zoom-jitter-2026-05-31) / [ExecPlan](./docs/plans/kiosk-inspection-drawing-mvp-execplan.md)。**次**: `main` マージ → Pi4×4 順次。
 
 - [x] (2026-05-30 / **Pi5 本番・Pi4×4 未・`main` マージ済**) **キオスク検査図面 · キャンバスズーム UI**: PR [#377](https://github.com/denkoushi/RaspberryPiSystem_002/pull/377) squash **`e42aff35`**（実装 tip **`364aa184`**）— ヘッダー `centerSlot` に `−` `＋` `□`（倍率表示なし）· キャンバス高さ維持 · 配置 pointerup+10px · `pointercancel` 中止のみ。**Pi5 デプロイ**: `20260530-221723-1575` · **Web のみ** · `failed=0` · Phase12 **42/1/0** · **実機目視 OK**。**CI**: **`26684356891`** success。**次**: Pi4×4 順次（parity+overflow+ズーム一括推奨 · `main`）。docs: [KB-320 §キャンバスズーム](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-canvas-zoom-2026-05-30) / [deployment §キャンバスズーム](./docs/guides/deployment.md#kiosk-inspection-drawing-canvas-zoom-2026-05-30) / [ExecPlan](./docs/plans/kiosk-inspection-drawing-mvp-execplan.md)。
@@ -1273,6 +1273,12 @@
 - 観測 2026-06-03 / **Postgres は同一 migration 内で新 enum 値を追加直後に UPDATE に使えない**
   根拠: `20260602120000` + `FIXED_COUNT` UPDATE 同一ファイル → `55P04 unsafe use of new value`。**2 migration に分割**で `prisma migrate deploy` 103 件成功。
 
+- 観測 2026-06-03 / **Pi4 Tailscale 再ログイン承認後も `InMagicSock: false` のまま Pi5 に ping 不可**
+  根拠: `tailscale status --json` で `BackendState: Running`・`InNetworkMap: true` だが peer 1 件・`tailscale ping 100.106.158.2` → `no matching peer`。**`systemctl restart tailscaled` + `tailscale up --advertise-tags=tag:kiosk --reset`** で Pi5 が `active; direct 192.168.10.224` に復帰。KB-384。
+
+- 観測 2026-06-03 / **Pi4 キオスクは TS URL 不通時 LAN `192.168.10.230` なら表示できる（層の切り分け）**
+  根拠: 同一端末で `curl` TS `000` / LAN `200`。`kiosk-launch.sh` の手変更は暫定のみ — TS 復旧後は **`100.106.158.2` に戻す**。リポジトリ同期は Pi4 上 `git pull` ではなく Ansible（Run ID **`20260603-115435-29435`**）。
+
 - 観測 2026-06-01 / **自主検査入力画面でも図面 URL を直渡しすると kiosk 認可で 401 を再発しうる**
   根拠: `KioskSelfInspectionSessionPage.tsx` 初版は `drawingImageRelativePath` をそのまま `InspectionDrawingCanvas` に渡していた。既存検査図面のテンプレ編集不具合と同系統。**`usePartMeasurementDrawingBlobUrl`** へ寄せて解消。
 
@@ -2465,6 +2471,17 @@
 ---
 
 ## Next Steps????????
+
+### 部品測定・運用フォロー（2026-06-03 以降） {#part-measurement-ops-follow-up-2026-06-03}
+
+**状態**: 仕様拡張 **Pi5 + Pi4×4 本番 OK** · 研削メイン **`raspberrypi4` 再同期済**（`20260603-115435-29435` · `b787c273`）。Tailscale 障害は [KB-384](./docs/knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) / [KB-385](./docs/knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効) に手順化済み。
+
+| # | 項目 | 優先 | メモ |
+|---|------|------|------|
+| 1 | 他 Pi4（`raspi4-robodrill01` / `fjv60` / `stonebase01`）の **Tailscale + `_appRef`** が Pi5 と一致しているか定期確認 | 中 | 到達不可時は [deployment §2026-06-03](./docs/guides/deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) の `--limit` 1 台ずつ |
+| 2 | 自主検査・検査図面の **現場シナリオ目視**（4 モード · 公差 · `first_last` ラベル）を他拠点でもサンプル確認 | 低 | [Runbook §拡張](./docs/runbooks/kiosk-part-measurement.md#実機確認ポイント拡張) |
+| 3 | [KB-383](./docs/knowledge-base/KB-383-kiosk-leaderboard-stale-past-due-investigation.md) **上流 11 件照会** | 運用 | アプリ変更なし |
+| 4 | 未マージの検査図面 Pi4 系タスク（parity/overflow/ズーム）が **実質 `main` 済み**なら Next Steps の古い「Pi4×4 未」をクローズ | 低 | §下記 `#kiosk-inspection-drawing-library-hub-pi4-2026-05-30` と整合 |
 
 ### キオスク順位ボード・過去納期（資源035）上流確認（2026-06-02） {#kiosk-leaderboard-stale-past-due-upstream-verify-2026-06-02}
 
