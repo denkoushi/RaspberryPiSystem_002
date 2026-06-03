@@ -1,6 +1,7 @@
 export { InspectionDrawingCreateHeaderBand } from './InspectionDrawingCreateHeaderBand';
 export { InspectionDrawingCreateToolbar } from './InspectionDrawingCreateToolbar';
 export { InspectionDrawingPointSettingsPanel } from './InspectionDrawingPointSettingsPanel';
+export { InspectionDrawingPointSummaryStrip } from './InspectionDrawingPointSummaryStrip';
 export {
   InspectionDrawingLibraryFilterBar,
   type InspectionDrawingLibraryProcessFilter
@@ -53,7 +54,18 @@ export {
   kioskSelfInspectionSessionPath
 } from '../selfInspectionRoutes';
 
-export { InspectionDrawingValuePanel } from './InspectionDrawingValuePanel';
+export {
+  InspectionDrawingValuePanel,
+  type InspectionDrawingValueInputMode
+} from './InspectionDrawingValuePanel';
+export {
+  buildSelfInspectionMeasurementValueOptions,
+  SELF_INSPECTION_MEASUREMENT_VALUE_OPTION_MAX
+} from './selfInspectionMeasurementValueOptions';
+export {
+  buildMeasurementLabelSelectOptions,
+  INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS
+} from './inspectionDrawingMeasurementLabelOptions';
 export { InspectionDrawingTemplateHistoryDialog } from './InspectionDrawingTemplateHistoryDialog';
 export {
   inspectionDrawingBoundedSelectClassName,
@@ -63,6 +75,9 @@ export {
   inspectionDrawingCanvasZoomControlsClassName,
   inspectionDrawingHeaderBandClassName,
   inspectionDrawingHeaderBandCenterSlotClassName,
+  inspectionDrawingHeaderPointListSlotClassName,
+  inspectionDrawingPointSummaryCardClassName,
+  inspectionDrawingPointSummaryStripClassName,
   inspectionDrawingKioskDisabledButtonClass,
   inspectionDrawingKioskToggleInactiveClass,
   inspectionDrawingLibraryFilterFhincdWidthClass,

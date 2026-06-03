@@ -22,6 +22,7 @@ import {
   InspectionDrawingCreateToolbar,
   useInspectionDrawingZoom,
   InspectionDrawingPointSettingsPanel,
+  InspectionDrawingPointSummaryStrip,
   InspectionDrawingResourceCdSelect,
   InspectionDrawingValuePanel,
   inspectionDrawingCanvasColumnClassName,
@@ -466,6 +467,19 @@ export function KioskInspectionDrawingCreatePage() {
             saveBusy={busy}
             libraryTo={KIOSK_INSPECTION_DRAWING_LIBRARY_PATH}
           />
+        }
+        pointListSlot={
+          points.length > 0 ? (
+            <InspectionDrawingPointSummaryStrip
+              points={points}
+              selectedPointId={selectedPointId}
+              disabled={false}
+              onSelectPoint={(id) => {
+                setSelectedPointId(id);
+                if (mode !== 'place') setMode('place');
+              }}
+            />
+          ) : undefined
         }
       />
 

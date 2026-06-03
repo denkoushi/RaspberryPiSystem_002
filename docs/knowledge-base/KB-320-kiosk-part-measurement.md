@@ -117,7 +117,7 @@
 - **キオスク一覧**: `GET /kiosk/production-schedule?selfInspectionEligibleOnly=true` で開始可能行のみをサーバー側抽出（生産日程をチャンク走査、`page` / `pageSize` / `hasMore`）。
 - 順位ボードの `selfInspectionEntryPath` は `/start?...` を返し、UI 側で resolve-or-create して **既存セッションへ再入場**できる。
 - 検査図面一覧 API `GET /inspection-drawing/templates` も `selfInspectionMode` / `selfInspectionFixedCount`（互換で `selfInspectionSampleSize`）を返す。キオスク改版 `POST …/inspection-drawing/templates/:id/revise` も自主検査設定を受け付ける。
-- **検査図面編集（丸数字・公差）**: 測定点は `markerNo` 独立採番（削除で他番号は変えない・追加は最小欠番）。UI は基準値＋上側/下側公差（正の幅）→ 保存時に絶対 `lowerLimit`/`upperLimit`（`apps/web/.../toleranceFields.ts`）。**基準値は符号付き可**（幅のみ非負）。`nominalValue=null` で下限/上限だけある既存行は **`legacyAbsoluteBounds`** を編集するまで絶対値を維持（`markerNumbering.ts` / `mergeInspectionDrawingPointPatch`）。
+- **検査図面編集（丸数字・公差）**: 測定点は `markerNo` 独立採番（削除で他番号は変えない・追加は最小欠番）。UI は **基準値＋下限/上限公差（基準値への符号付きオフセット）** → 保存時に絶対 `lowerLimit`/`upperLimit`（`lowerLimit = nominal + lowerOffset`, `upperLimit = nominal + upperOffset` · `apps/web/.../toleranceFields.ts`）。`nominalValue=null` で下限/上限だけある既存行は **`legacyAbsoluteBounds`**（名称のみ変更・基準値のみ入力は絶対値維持。片側公差入力で符号付きモードへ移行し両側 offset を seed · `markerNumbering.ts` / `mergeInspectionDrawingPointPatch`）。名称は固定候補 select（`inspectionDrawingMeasurementLabelOptions.ts`、候補外既存値は一時 option）。作成/改版は上辺 `pointListSlot` に測定点一覧（`InspectionDrawingPointSummaryStrip`）。自主検査セッションのみ測定値 **候補 dropdown + 手入力**（`selfInspectionMeasurementValueOptions.ts`、最大 200 件・超過は手入力のみ）。本番記録画面の測定値入力は **自由入力のまま**。
 
 ## 自主検査・検査図面 仕様拡張 本番（2026-06-03） {#自主検査-検査図面-仕様拡張-本番-2026-06-03}
 
@@ -156,6 +156,19 @@
 | `first_last` ページ表示 | slot 配列上の index でページ計算（raw `entryIndex/plannedQuantity` 禁止） |
 | `entrySlotLabel`（API） | `FIXED` は **`entryIndex+1`** · `FIRST`/`LAST` は日本語ラベル |
 | 公差 UI 既存データ | `nominalValue=null` + 絶対上下限あり → **未編集なら絶対値維持** |
+| 公差 UI（2026-06-03 追補） | **符号付き offset** · legacy 片側入力で移行 + 両側 seed · 候補外名称は一時 option |
+| 自主検査測定値 UI | **セッション画面のみ** dropdown+手入力 · 刻み=offset 最小桁 · **>200 件は手入力のみ** |
+
+### キオスク検査図面 UI/UX（符号付き公差・一覧・候補入力）（2026-06-03 ローカル） {#検査図面-uiux-符号付き公差-2026-06-03}
+
+| 項目 | 内容 |
+|------|------|
+| ブランチ（作業中） | **`feat/inspection-drawing-signed-tolerance-uiux`**（未コミット） |
+| ExecPlan | [inspection-drawing-signed-tolerance-uiux.md](../plans/inspection-drawing-signed-tolerance-uiux.md) |
+| 公差 | `toleranceFields.ts` · `markerNumbering.ts` |
+| 名称候補 | `inspectionDrawingMeasurementLabelOptions.ts` |
+| 上辺一覧 | `InspectionDrawingCreateHeaderBand` の `pointListSlot` · `InspectionDrawingPointSummaryStrip` |
+| 自主検査候補 | `selfInspectionMeasurementValueOptions.ts` · `InspectionDrawingValuePanel` の `valueInputMode` |
 
 ### 代表ファイル（追加分）
 
@@ -166,6 +179,9 @@
 | migration 2 | `apps/api/prisma/migrations/20260602120100_self_inspection_sample_to_fixed_count/migration.sql` |
 | 公差 adapter | `apps/web/src/features/part-measurement/inspection-drawing/toleranceFields.ts` |
 | 採番 | `apps/web/src/features/part-measurement/inspection-drawing/markerNumbering.ts` |
+| 名称候補 | `apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingMeasurementLabelOptions.ts` |
+| 自主検査候補値 | `apps/web/src/features/part-measurement/inspection-drawing/selfInspectionMeasurementValueOptions.ts` |
+| 測定点一覧 | `apps/web/src/features/part-measurement/inspection-drawing/InspectionDrawingPointSummaryStrip.tsx` |
 | キオスク slot | `apps/web/src/features/part-measurement/selfInspectionEntrySlots.ts` |
 | 単体テスト | `apps/api/.../self-inspection-config.test.ts` · `apps/web/.../selfInspectionEntrySlots.test.ts` · `toleranceFields.test.ts` · `markerNumbering.test.ts` |
 

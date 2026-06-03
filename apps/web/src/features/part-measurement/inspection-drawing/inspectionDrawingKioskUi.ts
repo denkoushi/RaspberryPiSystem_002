@@ -31,7 +31,17 @@ export const inspectionDrawingMetadataFileInputClass = clsx(
 
 /** 上部1行バンド（メタデータ + ツールバー） */
 export const inspectionDrawingHeaderBandClassName =
-  'flex shrink-0 flex-col gap-2 rounded border border-white/15 bg-slate-900/50 p-2 lg:flex-row lg:items-end lg:justify-between lg:gap-3';
+  'flex shrink-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-900/50 p-1.5 lg:flex-row lg:items-end lg:justify-between lg:gap-2';
+
+/** 作成/改版 — 測定点一覧スロット（縦行は増やさずバンド直下） */
+export const inspectionDrawingHeaderPointListSlotClassName = 'min-w-0 shrink-0 px-0.5';
+
+/** 測定点一覧 — 横スクロール・最大高さ制限 */
+export const inspectionDrawingPointSummaryStripClassName =
+  'flex max-h-[7.5rem] gap-2 overflow-x-auto overflow-y-hidden pb-1 [scrollbar-gutter:stable]';
+
+export const inspectionDrawingPointSummaryCardClassName =
+  'flex min-w-[9.5rem] max-w-[11rem] shrink-0 flex-col gap-0.5 rounded border border-white/20 bg-slate-800/90 px-2 py-1.5 text-left text-[0.82rem] text-white transition hover:border-white/35 disabled:opacity-50';
 
 export const inspectionDrawingMetadataGridClassName =
   'grid min-w-0 shrink grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-4 lg:max-w-[58rem] lg:min-w-0 lg:flex-1';
@@ -58,9 +68,9 @@ export const inspectionDrawingCanvasZoomButtonClassName =
 /** 図面ズーム操作 — ボタン群のみ（中央スロットの flex は HeaderBand が担当） */
 export const inspectionDrawingCanvasZoomControlsClassName = 'flex items-center gap-1';
 
-/** 右サイドバー — 従来 lg:w-80（20rem）の 2/3。空きを図面エリアへ */
+/** 右サイドバー — 測定点設定の入力幅確保（作成/改版） */
 export const inspectionDrawingSideAsideClassName =
-  'flex w-full shrink-0 flex-col gap-2 lg:w-[15rem]';
+  'flex w-full shrink-0 flex-col gap-2 lg:w-[20rem]';
 
 /** 図面キャンバス列 — サイドバー縮小分を flex で確保 */
 export const inspectionDrawingCanvasColumnClassName =

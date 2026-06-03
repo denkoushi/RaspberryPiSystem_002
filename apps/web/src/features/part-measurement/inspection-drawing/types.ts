@@ -12,6 +12,8 @@ export type InspectionDrawingPoint = {
   upperToleranceRaw: string;
   lowerToleranceRaw: string;
   testValue: string;
+  /** テンプレ項目の小数桁（候補値生成・保存に利用） */
+  decimalPlaces?: number;
   /**
    * DB に絶対上下限のみあり nominalValue が null の読込スナップショット。
    * 公差欄を編集するまで保存時にそのまま復元する。

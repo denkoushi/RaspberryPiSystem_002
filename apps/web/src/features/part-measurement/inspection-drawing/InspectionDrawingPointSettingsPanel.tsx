@@ -2,9 +2,14 @@ import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 
 import {
+  inspectionDrawingBoundedSelectClassName,
   inspectionDrawingPointSettingInputClassName,
   inspectionDrawingPointSettingPanelClassName
 } from './inspectionDrawingKioskUi';
+import {
+  buildMeasurementLabelSelectOptions,
+  INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS
+} from './inspectionDrawingMeasurementLabelOptions';
 
 import type { InspectionDrawingPoint } from './types';
 
@@ -22,17 +27,25 @@ export function InspectionDrawingPointSettingsPanel({
   onChange,
   onRemove
 }: Props) {
+  const labelOptions = buildMeasurementLabelSelectOptions(point.name);
+
   return (
     <div className={inspectionDrawingPointSettingPanelClassName}>
       <p className="text-[1.02rem] font-bold">測定点の設定（No.{point.markerNo}）</p>
       <label className="grid gap-1 text-[1rem] font-semibold">
         名称
-        <Input
+        <select
           value={point.name}
           onChange={(e) => onChange({ name: e.target.value })}
-          className={inspectionDrawingPointSettingInputClassName}
+          className={inspectionDrawingBoundedSelectClassName}
           disabled={disabled}
-        />
+        >
+          {labelOptions.map((opt) => (
+            <option key={`${opt.value}-${opt.label}`} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
       </label>
       <label className="grid gap-1 text-[1rem] font-semibold">
         基準値
@@ -46,7 +59,7 @@ export function InspectionDrawingPointSettingsPanel({
         />
       </label>
       <label className="grid gap-1 text-[1rem] font-semibold">
-        下側公差（幅）
+        下限公差
         <Input
           type="text"
           inputMode="decimal"
@@ -57,7 +70,7 @@ export function InspectionDrawingPointSettingsPanel({
         />
       </label>
       <label className="grid gap-1 text-[1rem] font-semibold">
-        上側公差（幅）
+        上限公差
         <Input
           type="text"
           inputMode="decimal"
@@ -67,7 +80,9 @@ export function InspectionDrawingPointSettingsPanel({
           disabled={disabled}
         />
       </label>
-      <p className="text-xs text-white/55">合格範囲は「基準値 − 下側」〜「基準値 ＋ 上側」です。</p>
+      <p className="text-xs text-white/55">
+        合格範囲は「基準値＋下限公差」〜「基準値＋上限公差」です（符号付きオフセット）。
+      </p>
       {onRemove ? (
         <Button type="button" variant="secondary" disabled={disabled} onClick={onRemove}>
           この点を削除
@@ -75,4 +90,9 @@ export function InspectionDrawingPointSettingsPanel({
       ) : null}
     </div>
   );
+}
+
+/** 将来の管理コンソール連携用（テスト・参照） */
+export function getInspectionDrawingMeasurementLabelOptions(): readonly string[] {
+  return INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS;
 }

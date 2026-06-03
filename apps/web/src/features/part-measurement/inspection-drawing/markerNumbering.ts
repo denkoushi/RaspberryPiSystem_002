@@ -1,5 +1,7 @@
 import {
   dbAbsoluteBoundsToToleranceRawFields,
+  formatToleranceRawNumber,
+  inferDecimalPlacesFromToleranceRaw,
   parseToleranceRawFields,
   type ParsedToleranceBounds
 } from './toleranceFields';
@@ -31,14 +33,15 @@ export function createInspectionDrawingPoint(
 ): InspectionDrawingPoint {
   return {
     id: crypto.randomUUID(),
-    name: `測定点${markerNo}`,
+    name: '',
     markerNo,
     xRatio,
     yRatio,
     nominalRaw: '',
     upperToleranceRaw: '',
     lowerToleranceRaw: '',
-    testValue: ''
+    testValue: '',
+    decimalPlaces: 3
   };
 }
 
@@ -62,6 +65,7 @@ export function templateItemToDrawingPoint(
     yRatio: parseOptionalNumber(item.markerYRatio) ?? 0,
     ...raw,
     testValue,
+    decimalPlaces: item.decimalPlaces,
     ...(legacyAbsoluteBounds ? { legacyAbsoluteBounds } : {})
   };
 }
@@ -74,6 +78,21 @@ function parseOptionalNumber(raw: string | null | undefined): number | null {
 
 function toleranceFieldsEdited(pt: InspectionDrawingPoint): boolean {
   return pt.lowerToleranceRaw.trim() !== '' || pt.upperToleranceRaw.trim() !== '';
+}
+
+/** 表示用: DB 上 nominal なしで絶対上下限のみ維持する legacy 行 */
+export function isLegacyAbsoluteOnlyPoint(pt: InspectionDrawingPoint): boolean {
+  return Boolean(pt.legacyAbsoluteBounds && !pt.nominalRaw.trim() && !toleranceFieldsEdited(pt));
+}
+
+function resolveNominalForLegacySeed(pt: InspectionDrawingPoint): number {
+  const parsed = parseOptionalNumber(pt.nominalRaw);
+  if (parsed != null) return parsed;
+  if (pt.legacyAbsoluteBounds) {
+    const { lowerLimit, upperLimit } = pt.legacyAbsoluteBounds;
+    return (lowerLimit + upperLimit) / 2;
+  }
+  return 0;
 }
 
 export type ResolvedPointToleranceBounds =
@@ -142,6 +161,16 @@ export function drawingPointToTemplateItemInput(
   if ('error' in bounds) {
     throw new Error(bounds.error);
   }
+  const inferredDp = inferDecimalPlacesFromToleranceRaw({
+    nominalRaw: pt.nominalRaw,
+    lowerToleranceRaw: pt.lowerToleranceRaw,
+    upperToleranceRaw: pt.upperToleranceRaw
+  });
+  const decimalPlaces = Math.min(
+    6,
+    Math.max(pt.decimalPlaces ?? 0, inferredDp)
+  );
+
   if (bounds.kind === 'legacyAbsoluteOnly') {
     return {
       sortOrder,
@@ -151,7 +180,7 @@ export function drawingPointToTemplateItemInput(
       displayMarker: String(pt.markerNo),
       unit: null,
       allowNegative: true,
-      decimalPlaces: 3,
+      decimalPlaces,
       markerXRatio: pt.xRatio,
       markerYRatio: pt.yRatio,
       nominalValue: null,
@@ -167,7 +196,7 @@ export function drawingPointToTemplateItemInput(
     displayMarker: String(pt.markerNo),
     unit: null,
     allowNegative: true,
-    decimalPlaces: 3,
+    decimalPlaces,
     markerXRatio: pt.xRatio,
     markerYRatio: pt.yRatio,
     nominalValue: bounds.nominal,
@@ -194,7 +223,7 @@ export function toleranceBoundsFromPoint(
   });
 }
 
-/** 公差欄の明示編集時に legacy スナップショットを外す */
+/** 公差欄の明示編集時に legacy スナップショットを外し、必要なら legacy から offset を seed */
 export function mergeInspectionDrawingPointPatch(
   point: InspectionDrawingPoint,
   patch: Partial<InspectionDrawingPoint>
@@ -203,13 +232,29 @@ export function mergeInspectionDrawingPointPatch(
   if (!point.legacyAbsoluteBounds) {
     return next;
   }
-  const toleranceTouched =
-    (patch.lowerToleranceRaw !== undefined && patch.lowerToleranceRaw.trim() !== '') ||
-    (patch.upperToleranceRaw !== undefined && patch.upperToleranceRaw.trim() !== '');
-  if (toleranceTouched) {
-    const rest = { ...next };
-    delete rest.legacyAbsoluteBounds;
-    return rest;
+
+  const mergedLower = patch.lowerToleranceRaw ?? point.lowerToleranceRaw;
+  const mergedUpper = patch.upperToleranceRaw ?? point.upperToleranceRaw;
+  const startingSignedMode =
+    mergedLower.trim() !== '' || mergedUpper.trim() !== '';
+
+  if (!startingSignedMode) {
+    return next;
   }
-  return next;
+
+  const legacy = point.legacyAbsoluteBounds;
+  const rest: InspectionDrawingPoint = { ...next };
+  delete rest.legacyAbsoluteBounds;
+
+  const nominal = resolveNominalForLegacySeed({
+    ...rest,
+    legacyAbsoluteBounds: legacy
+  });
+  if (!rest.lowerToleranceRaw.trim()) {
+    rest.lowerToleranceRaw = formatToleranceRawNumber(legacy.lowerLimit - nominal);
+  }
+  if (!rest.upperToleranceRaw.trim()) {
+    rest.upperToleranceRaw = formatToleranceRawNumber(legacy.upperLimit - nominal);
+  }
+  return rest;
 }

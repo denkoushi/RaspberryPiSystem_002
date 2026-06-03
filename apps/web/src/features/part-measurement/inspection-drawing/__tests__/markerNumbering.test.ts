@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   drawingPointToTemplateItemInput,
+  isLegacyAbsoluteOnlyPoint,
+  mergeInspectionDrawingPointPatch,
   nextAvailableMarkerNo,
   parseDisplayMarkerAsMarkerNo,
   templateItemToDrawingPoint
@@ -36,6 +38,8 @@ describe('markerNumbering', () => {
       upperLimit: '11'
     });
     expect(pt.markerNo).toBe(5);
+    expect(pt.lowerToleranceRaw).toBe('-1');
+    expect(pt.upperToleranceRaw).toBe('1');
   });
 
   it('preserves absolute limits when nominalValue is null on load and save without edits', () => {
@@ -56,12 +60,85 @@ describe('markerNumbering', () => {
       upperLimit: '20.02'
     });
     expect(pt.nominalRaw).toBe('');
-    expect(pt.lowerToleranceRaw).toBe('');
     expect(pt.legacyAbsoluteBounds).toEqual({ lowerLimit: 19.98, upperLimit: 20.02 });
 
     const saved = drawingPointToTemplateItemInput(pt, 0);
     expect(saved.nominalValue).toBeNull();
     expect(saved.lowerLimit).toBe(19.98);
     expect(saved.upperLimit).toBe(20.02);
+  });
+
+  it('keeps legacy bounds when only name changes', () => {
+    const pt = templateItemToDrawingPoint({
+      id: 'i1',
+      sortOrder: 0,
+      datumSurface: 'A',
+      measurementPoint: '外径',
+      measurementLabel: '外径',
+      displayMarker: '1',
+      unit: null,
+      allowNegative: true,
+      decimalPlaces: 2,
+      markerXRatio: '0.2',
+      markerYRatio: '0.4',
+      nominalValue: null,
+      lowerLimit: '19.98',
+      upperLimit: '20.02'
+    });
+    const updated = mergeInspectionDrawingPointPatch(pt, { name: '内径' });
+    const saved = drawingPointToTemplateItemInput(updated, 0);
+    expect(saved.lowerLimit).toBe(19.98);
+    expect(saved.upperLimit).toBe(20.02);
+  });
+
+  it('detects legacy absolute-only row for display', () => {
+    const pt = templateItemToDrawingPoint({
+      id: 'i1',
+      sortOrder: 0,
+      datumSurface: 'A',
+      measurementPoint: 'P',
+      measurementLabel: 'L',
+      displayMarker: '1',
+      unit: null,
+      allowNegative: true,
+      decimalPlaces: 2,
+      markerXRatio: '0.2',
+      markerYRatio: '0.4',
+      nominalValue: null,
+      lowerLimit: '100.95',
+      upperLimit: '101.05'
+    });
+    expect(isLegacyAbsoluteOnlyPoint(pt)).toBe(true);
+    expect(pt.legacyAbsoluteBounds).toEqual({ lowerLimit: 100.95, upperLimit: 101.05 });
+  });
+
+  it('seeds both offsets when migrating legacy with one-sided edit', () => {
+    const pt = templateItemToDrawingPoint({
+      id: 'i1',
+      sortOrder: 0,
+      datumSurface: 'A',
+      measurementPoint: 'P',
+      measurementLabel: 'L',
+      displayMarker: '1',
+      unit: null,
+      allowNegative: true,
+      decimalPlaces: 2,
+      markerXRatio: '0.2',
+      markerYRatio: '0.4',
+      nominalValue: null,
+      lowerLimit: '100.95',
+      upperLimit: '101.05'
+    });
+    const migrated = mergeInspectionDrawingPointPatch(pt, { lowerToleranceRaw: '-0.05' });
+    expect(migrated.legacyAbsoluteBounds).toBeUndefined();
+    expect(migrated.lowerToleranceRaw).toBe('-0.05');
+    expect(migrated.upperToleranceRaw).toBe('0.05');
+
+    const saved = drawingPointToTemplateItemInput(
+      { ...migrated, nominalRaw: '101' },
+      0
+    );
+    expect(saved.lowerLimit).toBe(100.95);
+    expect(saved.upperLimit).toBe(101.05);
   });
 });

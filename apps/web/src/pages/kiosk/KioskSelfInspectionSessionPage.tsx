@@ -446,6 +446,7 @@ export function KioskSelfInspectionSessionPage() {
 
           <InspectionDrawingValuePanel
             point={selectedPoint}
+            valueInputMode="self_inspection_options"
             readOnly={isSessionReadOnly}
             onValueChange={(value) => {
               if (!selectedPoint || isSessionReadOnly || !session) return;
