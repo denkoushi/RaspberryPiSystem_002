@@ -20,7 +20,7 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 - [x] KB / Runbook / deployment / EXEC_PLAN 反映
 - [x] **`main` マージ**（2026-06-03）
 - [ ] 残 Pi4×3 ロールアウト（`raspberrypi4` · `raspi4-robodrill01` · `raspi4-fjv60-80`）
-- [ ] **レイアウト改善**（図面表示面積不足 — プレビューのみ着手、実装は別タスク）
+- [x] **レイアウト改善（作成/改版）** — 別 ExecPlan [inspection-drawing-create-layout-and-return-nav.md](./inspection-drawing-create-layout-and-return-nav.md) · **`5274f1ee`** · Pi5 Detach **`20260603-211122-29648`**
 
 ## Decision Log
 
@@ -42,7 +42,7 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 - `mergeInspectionDrawingPointPatch` で `legacyAbsoluteBounds` を delete した **後** に `resolveNominalForLegacySeed(rest)` を呼ぶと、legacy 行の seed offset が誤る（例: 上限 `0.05` が `101.05` になる）。**Fix**: seed 時のみ `legacyAbsoluteBounds` を渡す。
 - 候補生成で `Math.round` 両端だと 9.95–10.05・刻み 0.1 で **10.1** が候補に入り NG になる。**Fix**: `Math.ceil(lower*scale)` / `Math.floor(upper*scale)`。
 - `formatToleranceRawNumber` に `round6` 未適用だと seed 文字列が `0.04999999999999716` になる。
-- 上辺 `pointListSlot` + ヘッダー `p-1.5` + 右ペイン `lg:w-[20rem]` + ページ `p-2` の積み重ねで、**図面キャンバスの実表示面積が著しく減る**（Pi5 実機フィードバック 2026-06-03）。レイアウトは別途改善タスク。
+- 上辺 `pointListSlot` + ヘッダー `p-1.5` + 右ペイン `lg:w-[20rem]` + ページ `p-2` の積み重ねで、**図面キャンバスの実表示面積が著しく減る**（Pi5 実機フィードバック 2026-06-03）。**作成/改版は [layout ExecPlan](./inspection-drawing-create-layout-and-return-nav.md) で対応済**（`5274f1ee`）。
 
 ## Concrete Steps（実装ファイル）
 

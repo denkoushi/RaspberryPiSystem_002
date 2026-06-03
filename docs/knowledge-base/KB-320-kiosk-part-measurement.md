@@ -174,7 +174,7 @@
 - **公差 UI**: 基準値 + **符号付き**下限/上限公差 → 保存時 `lowerLimit = nominal + lowerOffset`, `upperLimit = nominal + upperOffset`（`toleranceFields.ts`）。
 - **legacy**（`nominalValue=null` + 絶対上下限のみ）: 名称のみ・基準値のみ入力は絶対値維持。片側公差入力で符号付きモードへ移行し、legacy から両側 offset を seed（`mergeInspectionDrawingPointPatch`）。
 - **名称**: 固定候補 `inspectionDrawingMeasurementLabelOptions.ts`。候補外既存値は `（既存）` option。新規点は名称未選択から select。
-- **上辺一覧**: `InspectionDrawingCreateHeaderBand` の `pointListSlot` + `InspectionDrawingPointSummaryStrip`（丸数字順・横スクロール・最大高 `7.5rem`）。
+- **上辺一覧（〜2026-06-03 旧 UI）**: `pointListSlot` + `InspectionDrawingPointSummaryStrip` — **作成/改版では廃止**（[§作成レイアウト](#検査図面-作成改版レイアウト-2026-06-03)）。
 - **自主検査のみ**: `valueInputMode="self_inspection_options"` — 候補 dropdown + 手入力。刻みは offset 最小桁・最大 **200** 件・格子は **ceil/floor**（`selfInspectionMeasurementValueOptions.ts`）。
 - **本番記録**（`KioskInspectionDrawingEditPage`）: 測定値は **自由入力のまま**。
 
@@ -195,7 +195,7 @@
 | 自主検査候補に範囲外（例 10.1） | `Math.round` で格子端がはみ出す | 下限 **ceil**・上限 **floor**（`selfInspectionMeasurementValueOptions.ts`） |
 | 「基準値未設定」が出ない | 表示が合成 `bounds.nominal` 依存 | `isLegacyAbsoluteOnlyPoint` + `legacyAbsoluteBounds` 表示（`InspectionDrawingValuePanel.tsx`） |
 | 公差入力の枠・タップ領域が小さい | 素の `<input>` に変更した際 | 共有 **`Input`** コンポーネントに戻す |
-| **図面が小さく見える** | ヘッダー（メタデータ+ツールバー+測定点一覧）+ 右ペイン 20rem + ページ余白が縦を奪う | **未修正** — レイアウト改善は別タスク（[layout preview](../plans/kiosk-inspection-drawing-layout-preview.html)） |
+| **図面が小さく見える** | 旧 UI: ヘッダー2行グリッド + `pointListSlot` 横一覧 + 右ペイン 20rem | **作成/改版は 2026-06-03 改善済**（[§作成レイアウト](#検査図面-作成改版レイアウト-2026-06-03)）· 本番記録 edit は従来 20rem |
 
 #### 代表ファイル
 
@@ -205,8 +205,79 @@
 | legacy・採番 | `apps/web/src/features/part-measurement/inspection-drawing/markerNumbering.ts` |
 | 名称候補 | `apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingMeasurementLabelOptions.ts` |
 | 自主検査候補値 | `apps/web/src/features/part-measurement/inspection-drawing/selfInspectionMeasurementValueOptions.ts` |
-| 測定点一覧 | `apps/web/src/features/part-measurement/inspection-drawing/InspectionDrawingPointSummaryStrip.tsx` |
+| 測定点一覧（旧・上辺） | ~~`InspectionDrawingPointSummaryStrip.tsx`~~（作成/改版から削除） |
 | レイアウト共有 | `apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingKioskUi.ts` |
+
+### キオスク検査図面 作成/改版レイアウト（2026-06-03） {#検査図面-作成改版レイアウト-2026-06-03}
+
+| 項目 | 内容 |
+|------|------|
+| ブランチ | **`fix/inspection-drawing-return-navigation-review`**（レイアウト + 戻り先を同一ブランチで積み上げ） |
+| 代表コミット | **`dcc82226`**（ワークスペース・右ペイン一覧）· **`5274f1ee`**（コンパクト meta-chip ヘッダー） |
+| CI | **`26883229358`** · **success**（`5274f1ee` push 後） |
+| 変更種別 | **Web のみ** |
+| ExecPlan | [inspection-drawing-create-layout-and-return-nav.md](../plans/inspection-drawing-create-layout-and-return-nav.md) |
+| 正本 HTML | [kiosk-inspection-drawing-layout-preview.html](../plans/kiosk-inspection-drawing-layout-preview.html) |
+
+#### 仕様（作成/改版のみ）
+
+- **上辺バンド**: `InspectionDrawingCreateHeaderBand` + `metadataLayout="createCompact"` — **meta-chip 1行**（品番・資源・工程・テンプレ・検査数·指定数）· 版バッジ **`dl` 外** · インライン図面ファイル · 中央 `centerSlot` ズーム · 右ツールバー。
+- **測定点一覧**: `InspectionDrawingPointSidebar` 内 `InspectionDrawingPointSummaryList`（`variant="sidebar"`）— **2行カード**・縦スクロール。**`pointListSlot` / `InspectionDrawingPointSummaryStrip` は廃止**。
+- **ワークスペース**: `inspectionDrawingCreateWorkspaceClassName` — 狭幅 `flex-col` · `lg:flex-row`（図面 + 右ペイン）。
+- **右ペイン幅**: `inspectionDrawingCreateSideAsideClassName` — **`lg:w-[17rem]`**（本番記録 `inspectionDrawingSideAsideClassName` **20rem** は不変）。
+- **テスト入力**: 右一覧で点選択しても **`mode` は維持**（`handleSelectPointFromList` は `selectedPointId` のみ更新）。
+- **a11y**: `InspectionDrawingCreateMetaChip` の `controlId` + `label htmlFor`（品番・資源・テンプレ・検査数・指定数）。
+
+#### 本番反映（2026-06-03）
+
+| ホスト | Detach Run ID | Git HEAD | 実機 |
+|--------|---------------|----------|------|
+| `raspberrypi5` | **`20260603-211122-29648`** | **`5274f1ee`** | `failed=0` · web 再ビルド · **実機確認は運用者継続** |
+| Pi4×4 | — | — | **未** — `main` マージ後 1 台ずつ + 強制リロード |
+
+中間デプロイ: **`20260603-202513-13104`** · **`dcc82226`**（右ペインまで。ヘッダー chip は **`5274f1ee`** まで未反映だった）。
+
+#### トラブルシュート（レイアウト）
+
+| 症状 | 原因 | 対処 |
+|------|------|------|
+| 上辺が依然 **2行の大きい Input** | Pi5 が **`dcc82226` のみ**（`5274f1ee` 未デプロイ） | Pi5 ref ≥ **`5274f1ee`** · 強制リロード |
+| 上辺に **横スクロール測定点一覧** | 旧 `pointListSlot` SPA | 同上 |
+| テスト入力中に一覧クリックで **配置モードに戻る** | 旧 `setMode('place')` | **`5274f1ee` 以降** |
+| ヘッダーが再び **grid 2行** | `metadataLayout` 未指定 + `bandClassName` だけ create | ページで **`metadataLayout="createCompact"`** を確認 |
+| 版バッジで HTML 警告 | `span` が `dl` 直下 | **`5274f1ee` 以降** は `dl` 外 |
+
+### キオスク検査図面 戻り先ナビ（2026-06-03） {#検査図面-戻り先ナビ-2026-06-03}
+
+| 項目 | 内容 |
+|------|------|
+| 代表コミット | **`01a059dd`** — `fix: harden inspection drawing return navigation` |
+| 変更種別 | **Web のみ** |
+
+#### 契約
+
+- **入力**: React Router `location.state` の `inspectionDrawingReturnTo`（内部 pathname のみ）。
+- **出力**: ツールバー `Link` の `to` + 表示文言。**ラベルは `returnPresets` から決定**（state の任意 `inspectionDrawingReturnLabel` は **無視**）。
+- **安全**: `normalizeInternalInspectionDrawingReturnPath`（`..` 解決・`://` 拒否）+ **allowlist 完全一致**。
+- **一覧導線**: `INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE` を `Link`/`navigate` に付与（生 `location.state` を navigate に渡さない）。
+- **本番 preset**: `kioskInspectionDrawingReturnNavigation.ts` — 現状は検査図面一覧のみ（「一覧へ戻る」）。
+
+#### 代表ファイル
+
+| 領域 | パス |
+|------|------|
+| 純関数 | `inspectionDrawingReturnNavigation.ts` |
+| 本番 preset | `kioskInspectionDrawingReturnNavigation.ts` |
+| DEV preset | `kioskInspectionDrawingDevReturnNavigation.ts` |
+| テスト | `inspectionDrawingReturnNavigation.test.ts` |
+
+#### トラブルシュート（戻り先）
+
+| 症状 | 確認 |
+|------|------|
+| 戻る先が想定外 URL | state の pathname が allowlist 外 → **fallback（一覧）** |
+| ラベルが state と違う | **仕様**（preset 正本）— 偽装防止 |
+| 順位ボードからの戻りが欲しい | `KIOSK_INSPECTION_DRAWING_PRODUCTION_RETURN_PRESETS` に preset 追加が必要 |
 
 ### 代表ファイル（追加分）
 

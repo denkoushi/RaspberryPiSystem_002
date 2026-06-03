@@ -105,10 +105,35 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 2. 目視 OK 後、必要 Pi4 を `--limit` 1 台ずつ（実績: **`raspberrypi5`** `20260603-154307-28721` · **`raspi4-kensaku-stonebase01`** `20260603-154818-15503`）。
 3. Pi4 はキオスク **強制リロード**（§6.6.4）後、[§実機確認ポイント（拡張）](#実機確認ポイント拡張) の 2–4 を実施。
 
-### レイアウト（未実装）
+## 検査図面 作成/改版レイアウト + 戻り先ナビ（2026-06-03） {#検査図面-作成-layout-return-nav-2026-06-03}
 
-- **症状**: 作成/改版で図面周りの黒余白が大きく、右設定パネルが画面下端で切れる。
-- **プレビュー**: [kiosk-inspection-drawing-layout-preview.html](../plans/kiosk-inspection-drawing-layout-preview.html)（HTML のみ · 実装別タスク）。
+正本: [KB-320 §作成レイアウト](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成改版レイアウト-2026-06-03) · [KB-320 §戻り先](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-戻り先ナビ-2026-06-03) · [ExecPlan](../plans/inspection-drawing-create-layout-and-return-nav.md) · [deployment §2026-06-03](../guides/deployment.md#kiosk-inspection-drawing-create-layout-return-nav-2026-06-03) · ブランチ **`fix/inspection-drawing-return-navigation-review`** · **`5274f1ee`** · CI **`26883229358`**
+
+### デプロイ（Web のみ）
+
+1. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+2. **`main` マージ後**（またはマージ前はブランチ名）: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+3. Pi5 目視 OK 後、Pi4 を 1 台ずつ `--limit` 変更（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
+4. 各 Pi4 でキオスク **強制リロード**（§6.6.4）。
+
+**Pi5 実績**: Detach **`20260603-211122-29648`** · HEAD **`5274f1ee`** · `failed=0`。
+
+### 実機確認ポイント
+
+1. **検査図面** 新規/改版 — 上辺 **コンパクト meta-chip 1行**（旧2行グリッドでない）· **右ペイン下部**に測定点縦一覧（上辺横一覧なし）。
+2. **図面エリア**が旧 UI より広い · ズーム `−` `＋` `□` はヘッダー中央。
+3. **一覧へ戻る**（一覧からの導線）が機能すること。
+4. **テスト入力**中に右一覧で別点を選んでも **テスト入力モード維持**（連続入力）。
+5. 公差 **上限左/下限右**（[§UI/UX](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-uiux-符号付き公差-2026-06-03) と整合）。
+
+### トラブルシュート
+
+| 症状 | 確認 |
+|------|------|
+| ヘッダーが旧 **2行 Input** | Pi5 HEAD ≥ **`5274f1ee`**（`dcc82226` のみだと右ペインだけ新 UI）· 強制リロード |
+| 上辺に横一覧 | 旧 SPA · 同上 |
+| テスト入力が一覧クリックで中断 | HEAD ≥ **`5274f1ee`** |
+| 戻る先がおかしい | [KB-320 §戻り先](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-戻り先ナビ-2026-06-03) — allowlist 外は一覧 fallback |
 
 ## 自主検査・検査図面 仕様拡張（2026-06-03） {#自主検査-検査図面-仕様拡張-2026-06-03}
 
@@ -142,7 +167,7 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 | Pi4 画面真っ白 · TS `curl` 000 · LAN 200 | [KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) — `tailscaled` 再起動 · `tag:kiosk --reset` · `kiosk-launch.sh` を `100.106.158.2` に戻す |
 | Pi4 `_appRef` が古い | Pi4 で `git pull` しない · `update-all-clients.sh main --limit raspberrypi4`（実績 **`20260603-115435-29435`**） |
 | Mac admin 不通 | [KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) · Pi5 [KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効) |
-| 検査図面作成で **図面が小さい**・設定パネルが切れる | ヘッダー+`pointListSlot` の縦消費（仕様バグではない）· [layout preview](../plans/kiosk-inspection-drawing-layout-preview.html) 参照 · 実装待ち |
+| 検査図面作成で **図面が小さい**（旧 UI） | `pointListSlot` + 2行ヘッダー — **作成/改版は 2026-06-03 改善済**（[§作成レイアウト](#検査図面-作成-layout-return-nav-2026-06-03)）· Pi5 ≥ **`5274f1ee`** + 強制リロード |
 
 ### Pi4 再デプロイ（研削メイン · TS 復旧後 · 2026-06-03）
 
