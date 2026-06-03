@@ -122,6 +122,7 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 | Mac で `https://100.106.158.2/admin` が開けない | Mac に **`tag:admin`** があるか · [KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) |
 | `migrate deploy` が `FIXED_COUNT` で失敗 | 2 段 migration が揃っているか（[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03)） |
 | キオスクだけ旧仕様 | Pi5 `web` ref · Pi4 強制リロード |
+| 順位ボード **検** → 自主検査で図面だけ空白 | [KB-320 §図面空白](../knowledge-base/KB-320-kiosk-part-measurement.md#self-inspection-session-drawing-blank-2026-06-03) · [§図面空白 Runbook](#自主検査セッション図面空白-2026-06-03) — API/storage **200** なら **`web` レイアウト**（`9f3f0bac` 以降）· Pi4 は **強制リロード** |
 | Pi4 画面真っ白 · TS `curl` 000 · LAN 200 | [KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) — `tailscaled` 再起動 · `tag:kiosk --reset` · `kiosk-launch.sh` を `100.106.158.2` に戻す |
 | Pi4 `_appRef` が古い | Pi4 で `git pull` しない · `update-all-clients.sh main --limit raspberrypi4`（実績 **`20260603-115435-29435`**） |
 | Mac admin 不通 | [KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) · Pi5 [KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効) |
@@ -136,6 +137,41 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 - **前提**: Pi4 で `tailscale ping 100.106.158.2` 成功 · `curl` キオスク URL が **200**
 - **確認**: `git -C /opt/RaspberryPiSystem_002 rev-parse --short HEAD` が Pi5 と一致 · Firefox URL の `_appRef` が同 SHA
+
+---
+
+## 自主検査セッション図面空白（2026-06-03） {#自主検査セッション図面空白-2026-06-03}
+
+正本: [KB-320 §図面空白](../knowledge-base/KB-320-kiosk-part-measurement.md#self-inspection-session-drawing-blank-2026-06-03) · [deployment.md §図面空白](../guides/deployment.md#kiosk-self-inspection-session-drawing-blank-2026-06-03) · **`9f3f0bac`** · **`main` マージ**
+
+### 仕様（要点）
+
+- 対象画面: `/kiosk/part-measurement/self-inspection/sessions/:sessionId`（順位ボード **検** からの再入場を含む）。
+- 図面列は検査図面 Create/Edit と同じ **`inspectionDrawingCanvasColumnClassName`**。
+- 表示フェーズ: `missing` / `loading` / `error` / `canvas`（`selfInspectionSessionDrawingPanelState.ts`）。
+- API/DB 変更なし。図面バイナリは既存 `usePartMeasurementDrawingBlobUrl`。
+
+### デプロイ（標準）
+
+1. **push 済み**の `fix/self-inspection-session-drawing-display`（**`main` マージ後**は `main`）。
+2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+3. **Pi5**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+4. 必要な **Pi4** を 1 台ずつ `--limit`（実績: **`raspi4-kensaku-stonebase01`** · Detach **`20260603-132523-31144`**）。
+5. 各 Pi4 でキオスク **強制リロード**後、下記「実機確認」を実施。
+
+### 実機確認
+
+1. 順位ボードで図面あり行の **検** を押す。
+2. 自主検査入力で **測定値パネル + 図面キャンバス** が表示されること。
+3. 図面パスあり: 一瞬 **読込中** ののちキャンバス（**「図面がありません」だけ**が続くのは NG）。
+4. 取得失敗時: **図面パネル内** にエラー（ヘッダー重複なし）。
+
+### トラブルシュート
+
+| 症状 | 対処 |
+|------|------|
+| storage 200 なのに空白 | Pi5 `web` が **`9f3f0bac` 以降**か · [KB-320 トラブルシュート](../knowledge-base/KB-320-kiosk-part-measurement.md#トラブルシュート本件) |
+| Pi4 のみ旧 UI | `git pull` しない · `update-all-clients.sh` · **強制リロード** · `_appRef` と Pi5 HEAD 一致 |
 
 ---
 

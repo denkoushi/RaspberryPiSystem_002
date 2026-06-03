@@ -169,7 +169,71 @@
 | キオスク slot | `apps/web/src/features/part-measurement/selfInspectionEntrySlots.ts` |
 | 単体テスト | `apps/api/.../self-inspection-config.test.ts` · `apps/web/.../selfInspectionEntrySlots.test.ts` · `toleranceFields.test.ts` · `markerNumbering.test.ts` |
 
-### 代表ファイル
+## 順位ボード「検」→ 自主検査で図面が空白（2026-06-03） {#self-inspection-session-drawing-blank-2026-06-03}
+
+**正本 Runbook**: [kiosk-part-measurement §図面空白](../runbooks/kiosk-part-measurement.md#自主検査セッション図面空白-2026-06-03) · **デプロイ**: [deployment.md §図面空白](../guides/deployment.md#kiosk-self-inspection-session-drawing-blank-2026-06-03) · コミット **`9f3f0bac`** · **`main` マージ**
+
+### 症状
+
+- 順位ボードの **検** から自主検査入力を開くと、**測定値パネルは表示**されるが **図面エリアだけ空白**（または「図面がありません。」）。
+- API・ストレージは正常なケースあり（`GET …/self-inspection/sessions/:id` に `drawingImageRelativePath` あり、`GET /api/storage/part-measurement-drawings/…` が **200**）。
+
+### 根本原因（Web · CONFIRMED）
+
+| 層 | 内容 |
+|----|------|
+| **主因** | 図面列に **`inspectionDrawingCanvasColumnClassName`** 未適用 → viewport **`clientHeight === 0`** → `useZoomedCanvasLayout` 不成立 |
+| **副因** | `blobUrl` 未取得を **「図面がありません」** と誤表示（**loading** 未分岐） |
+| **除外** | API / DB / decoration DTO / ストレージは正常でも再現（Web 表示責務のみ） |
+
+### 修正内容
+
+| 項目 | 内容 |
+|------|------|
+| **変更種別** | **Web のみ**（`inspectionDrawingCanvasColumnClassName` は**再利用のみ**・本体変更なし） |
+| **レイアウト** | `KioskSelfInspectionSessionPage` 左カラムに共有クラス + `xl:flex-row` |
+| **表示分岐** | `selfInspectionSessionDrawingPanelState.ts` — `missing` / `loading` / `error` / `canvas` |
+| **UX** | 図面エラーは **パネル内のみ**（ヘッダー重複廃止） |
+
+### 表示フェーズ仕様
+
+`resolveSelfInspectionDrawingPanelPhase`: (1) path 空 → `missing` (2) `loadError` → `error` (3) `blobUrl` → `canvas` (4) それ以外 → `loading`。図面取得は **`usePartMeasurementDrawingBlobUrl`**（storage 直 `<img>` 禁止）。
+
+### 本番反映・実機検証（2026-06-03）
+
+| 項目 | 内容 |
+|------|------|
+| **CI** | **`26863128347`** · **success** |
+| **Pi5** | Detach **`20260603-131923-13993`** · `failed=0` · **`9f3f0bac`** |
+| **Pi4 stonebase** | Detach **`20260603-132523-31144`** · `failed=0` · **実機 OK**（強制リロード後） |
+| **残 Pi4** | 未ロールアウト可。利用現場は Pi5 同 SHA + 強制リロード |
+
+### 確認方法
+
+| 種別 | 手順 |
+|------|------|
+| 単体 | `pnpm --filter @raspi-system/web exec vitest run src/features/part-measurement/__tests__/selfInspectionSessionDrawingPanelState.test.ts` |
+| 手動 | **検** → 自主検査 · 読込中→キャンバス · viewport **`clientHeight > 0`** |
+| 任意 E2E | `e2e/self-inspection-session-drawing-layout.spec.ts`（**`E2E_SELF_INSPECTION_SESSION_ID` 未設定時 skip**） |
+
+### トラブルシュート（本件） {#トラブルシュート本件}
+
+| 症状 | 対処 |
+|------|------|
+| storage 200 なのに空白 | Pi5 `web` **`9f3f0bac` 以降** · `inspectionDrawingCanvasColumnClassName` |
+| Pi4 のみ旧 UI | `git pull` 禁止 · `update-all-clients.sh` · **強制リロード** |
+
+### 関連ファイル（本件）
+
+| 領域 | パス |
+|------|------|
+| 画面 | `apps/web/src/pages/kiosk/KioskSelfInspectionSessionPage.tsx` |
+| 表示フェーズ | `apps/web/src/features/part-measurement/selfInspectionSessionDrawingPanelState.ts` |
+| テスト | `apps/web/src/features/part-measurement/__tests__/selfInspectionSessionDrawingPanelState.test.ts` |
+| レイアウト | `apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingKioskUi.ts` |
+| 順位ボード | `apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx` |
+
+### 代表ファイル（自主検査 MVP 全体）
 
 | 領域 | パス |
 |------|------|

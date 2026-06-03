@@ -10,6 +10,38 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-06-03 · **キオスク自主検査セッション・順位ボード「検」図面空白**·**Web のみ**·**Pi5 + stonebase 本番・実機 OK**） {#kiosk-self-inspection-session-drawing-blank-2026-06-03}
+
+- **変更概要（正本）**: [KB-320 §図面空白](./knowledge-base/KB-320-kiosk-part-measurement.md#self-inspection-session-drawing-blank-2026-06-03) · [Runbook §図面空白](../runbooks/kiosk-part-measurement.md#自主検査セッション図面空白-2026-06-03) · ブランチ **`fix/self-inspection-session-drawing-display`** · 代表コミット **`9f3f0bac`**
+  - **症状**: 順位ボード **検** → 自主検査入力で図面エリアのみ空白（API/storage **200** でも再現）。
+  - **Fix**: `inspectionDrawingCanvasColumnClassName` を `KioskSelfInspectionSessionPage` に適用 · `selfInspectionSessionDrawingPanelState` で読込中/エラー/なしを分岐。
+- **Prisma / API**: **変更なし**（**Web のみ** · Pi5 Docker **`web` 再ビルド**）
+- **対象ホスト（実績·先行検証）**: **`raspberrypi5` → `raspi4-kensaku-stonebase01`**（各 `--limit` 1 台）。他 Pi4 は必要時に同コマンドで順次。Pi3: `skipping: no hosts matched`
+- **標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh fix/self-inspection-session-drawing-display \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+# Pi5 目視 OK 後、必要な Pi4 を 1 台ずつ --limit 変更（例: raspi4-kensaku-stonebase01）
+```
+
+（**`main` マージ後**は第2引数 **`main`**。）
+
+- **本番デプロイ（実績·2026-06-03）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 実機 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | **`20260603-131923-13993`** | **`9f3f0bac`** | `ok=134` `changed=4` **`failed=0`** | `Git: changed` · キオスク自主検査図面（Pi5 から確認可） |
+| `raspi4-kensaku-stonebase01` | **`20260603-132523-31144`** | **`9f3f0bac`** | `ok=129` `changed=11` **`failed=0`** | **強制リロード**後 · 順位ボード **検** → 図面表示 **OK** |
+
+- **実機確認ポイント**: 順位ボード **検** → 自主検査 · 図面パスありで **「図面を読み込み中…」→ キャンバス** · エラー時は **図面パネル内のみ**（ヘッダー重複なし）· DevTools で viewport **`clientHeight > 0`**
+- **CI**: GitHub Actions run **`26863128347`** · **`success`**
+- **トラブルシュート**:
+  - **図面だけ空白** → Pi5 **`web` ref** が **`9f3f0bac` 以降**か · 旧 UI は `inspectionDrawingCanvasColumnClassName` 未適用
+  - **Pi4 だけ旧 UI** → Pi5 SPA 配信 · Pi4 **`git pull` 禁止** · `update-all-clients.sh` + **強制リロード**（§6.6.4）
+  - **キオスクだけ旧仕様** → 上記と同型（[KB-320 §図面空白](./knowledge-base/KB-320-kiosk-part-measurement.md#self-inspection-session-drawing-blank-2026-06-03)）
+
 ### 補足（2026-06-03 · **キオスク自主検査・検査図面仕様拡張**·**API + Web + DB**·**Pi5 + Pi4×4 本番・実機 OK**） {#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03}
 
 - **変更概要（正本）**: [KB-320 §仕様拡張 本番](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03) · [Runbook §仕様拡張](../runbooks/kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-2026-06-03) · ブランチ **`feat/inspection-drawing-count-and-tolerance`** · 代表コミット **`2f3979ce`**
