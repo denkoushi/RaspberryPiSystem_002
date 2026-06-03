@@ -29,19 +29,74 @@ export const inspectionDrawingMetadataFileInputClass = clsx(
   inspectionDrawingMetadataControlWidthClass
 );
 
-/** 上部1行バンド（メタデータ + ツールバー） */
+/** 上部1行バンド（メタデータ + ツールバー）— 本番記録など */
 export const inspectionDrawingHeaderBandClassName =
   'flex shrink-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-900/50 p-1.5 lg:flex-row lg:items-end lg:justify-between lg:gap-2';
 
-/** 作成/改版 — 測定点一覧スロット（縦行は増やさずバンド直下） */
-export const inspectionDrawingHeaderPointListSlotClassName = 'min-w-0 shrink-0 px-0.5';
+/** 作成/改版 — コンパクト1バンド（測定点一覧は右ペインへ） */
+export const inspectionDrawingCreateHeaderBandClassName =
+  'flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded border border-white/15 bg-slate-900/50 px-2 py-1';
 
-/** 測定点一覧 — 横スクロール・最大高さ制限 */
-export const inspectionDrawingPointSummaryStripClassName =
-  'flex max-h-[7.5rem] gap-2 overflow-x-auto overflow-y-hidden pb-1 [scrollbar-gutter:stable]';
+/** 作成/改版ヘッダー — メタデータスロット（chip 行 + 図面ファイル） */
+export const inspectionDrawingCreateMetadataSlotClassName =
+  'flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1';
 
-export const inspectionDrawingPointSummaryCardClassName =
-  'flex min-w-[9.5rem] max-w-[11rem] shrink-0 flex-col gap-0.5 rounded border border-white/20 bg-slate-800/90 px-2 py-1.5 text-left text-[0.82rem] text-white transition hover:border-white/35 disabled:opacity-50';
+/** 作成/改版 — meta-chip 行（dl） */
+export const inspectionDrawingCreateMetaRowClassName =
+  'flex min-w-0 flex-1 flex-wrap list-none items-center gap-x-2 gap-y-1';
+
+export const inspectionDrawingCreateMetaChipClassName =
+  'inline-flex items-baseline gap-1.5 whitespace-nowrap text-[0.9rem]';
+
+export const inspectionDrawingCreateMetaChipTermClassName =
+  'font-semibold text-slate-400';
+
+export const inspectionDrawingCreateMetaChipValueClassName = 'm-0 min-w-0';
+
+/** chip 内の読取専用値 */
+export const inspectionDrawingCreateMetaChipReadonlyValueClassName =
+  'max-w-[11rem] truncate rounded border border-slate-600 bg-slate-800/90 px-1.5 py-0.5 text-[0.95rem] text-white';
+
+/** chip 内の Input / select */
+export const inspectionDrawingCreateMetaChipControlClassName =
+  'box-border h-9 max-w-[11rem] min-w-0 rounded-md border-2 border-slate-500 bg-white px-2 text-[0.95rem] text-slate-900';
+
+export const inspectionDrawingCreateMetaChipSelectClassName = clsx(
+  inspectionDrawingCreateMetaChipControlClassName,
+  'w-full max-w-[11rem]'
+);
+
+/** 版バッジ（v2 · 有効） */
+export const inspectionDrawingCreateVersionBadgeClassName =
+  'rounded border border-white/20 px-1.5 py-0.5 text-[0.75rem] text-white/55';
+
+/** 図面ファイル — バンド内インライン */
+export const inspectionDrawingCreateFileLabelClassName =
+  'inline-flex shrink-0 items-center gap-1 text-[0.75rem] text-white/55';
+
+export const inspectionDrawingCreateFileInputClassName =
+  'max-w-[7rem] text-[0.7rem] text-white/70 file:mr-1 file:rounded file:border-0 file:bg-white/10 file:px-1.5 file:py-0.5 file:text-[0.7rem] file:text-white/80';
+
+/** 作成/改版ページ root */
+export const inspectionDrawingCreatePageRootClassName =
+  'flex min-h-0 flex-1 flex-col gap-1 p-1 text-white';
+
+/** 作成/改版ワークスペース（キャンバス + サイドバー）— 狭幅は縦積み */
+export const inspectionDrawingCreateWorkspaceClassName =
+  'flex min-h-0 flex-1 flex-col gap-1.5 lg:flex-row';
+
+/** 測定点一覧（右ペイン縦リスト） */
+export const inspectionDrawingPointSummaryListSidebarClassName =
+  'flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto [scrollbar-gutter:stable]';
+
+export const inspectionDrawingPointSummaryListSidebarCardClassName =
+  'flex w-full flex-col gap-0.5 rounded border border-white/20 bg-slate-800/90 px-2 py-1 text-left text-[0.82rem] leading-snug text-white transition hover:border-white/35 disabled:opacity-50';
+
+export const inspectionDrawingPointSummaryListSidebarSectionClassName =
+  'mt-1.5 flex min-h-0 flex-1 flex-col gap-1 border-t border-white/10 pt-1.5';
+
+export const inspectionDrawingPointSummaryListSidebarTitleClassName =
+  'shrink-0 text-[0.8rem] font-semibold text-white/50';
 
 export const inspectionDrawingMetadataGridClassName =
   'grid min-w-0 shrink grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-4 lg:max-w-[58rem] lg:min-w-0 lg:flex-1';
@@ -68,13 +123,21 @@ export const inspectionDrawingCanvasZoomButtonClassName =
 /** 図面ズーム操作 — ボタン群のみ（中央スロットの flex は HeaderBand が担当） */
 export const inspectionDrawingCanvasZoomControlsClassName = 'flex items-center gap-1';
 
-/** 右サイドバー — 測定点設定の入力幅確保（作成/改版） */
+/** 右サイドバー — 本番記録など（作成/改版は create 用を使う） */
 export const inspectionDrawingSideAsideClassName =
   'flex w-full shrink-0 flex-col gap-2 lg:w-[20rem]';
+
+/** 右サイドバー — 作成/改版（設定 + 縦一覧） */
+export const inspectionDrawingCreateSideAsideClassName =
+  'flex min-h-0 w-full shrink-0 flex-col rounded border border-white/15 bg-slate-900/80 p-1.5 lg:w-[17rem]';
 
 /** 図面キャンバス列 — サイドバー縮小分を flex で確保 */
 export const inspectionDrawingCanvasColumnClassName =
   'flex min-h-[min(72dvh,760px)] min-w-0 flex-1 flex-col';
+
+/** 図面キャンバス列 — 作成/改版（親 workspace の残高を使う） */
+export const inspectionDrawingCreateCanvasColumnClassName =
+  'flex min-h-0 min-w-0 flex-1 flex-col';
 
 /** 図面キャンバス scrollport — スクロールバー出現時の client 寸法揺れを抑える */
 export const inspectionDrawingCanvasViewportBaseClassName =

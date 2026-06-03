@@ -1,7 +1,12 @@
 export { InspectionDrawingCreateHeaderBand } from './InspectionDrawingCreateHeaderBand';
+export type { InspectionDrawingHeaderBandMetadataLayout } from './InspectionDrawingCreateHeaderBand';
+export { InspectionDrawingCreateMetaChip } from './InspectionDrawingCreateMetaChip';
+export { InspectionDrawingCreateMetadataRow } from './InspectionDrawingCreateMetadataRow';
+export type { InspectionDrawingCreateMetadataRowProps } from './InspectionDrawingCreateMetadataRow';
 export { InspectionDrawingCreateToolbar } from './InspectionDrawingCreateToolbar';
 export { InspectionDrawingPointSettingsPanel } from './InspectionDrawingPointSettingsPanel';
-export { InspectionDrawingPointSummaryStrip } from './InspectionDrawingPointSummaryStrip';
+export { InspectionDrawingPointSummaryList } from './InspectionDrawingPointSummaryList';
+export { InspectionDrawingPointSidebar } from './InspectionDrawingPointSidebar';
 export {
   InspectionDrawingLibraryFilterBar,
   type InspectionDrawingLibraryProcessFilter
@@ -46,6 +51,14 @@ export {
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH
 } from './kioskInspectionDrawingRoutes';
+export {
+  isSafeInspectionDrawingReturnPath,
+  normalizeInternalInspectionDrawingReturnPath,
+  parseInspectionDrawingReturnFromLocation,
+  type InspectionDrawingLocationReturn,
+  type InspectionDrawingReturnPreset,
+  type ParseInspectionDrawingReturnOptions
+} from './inspectionDrawingReturnNavigation';
 
 export {
   isKioskSelfInspectionPath,
@@ -73,11 +86,20 @@ export {
   inspectionDrawingCanvasColumnClassName,
   inspectionDrawingCanvasZoomButtonClassName,
   inspectionDrawingCanvasZoomControlsClassName,
+  inspectionDrawingCreateCanvasColumnClassName,
+  inspectionDrawingCreateHeaderBandClassName,
+  inspectionDrawingCreateMetaChipControlClassName,
+  inspectionDrawingCreateMetaRowClassName,
+  inspectionDrawingCreatePageRootClassName,
+  inspectionDrawingCreateVersionBadgeClassName,
+  inspectionDrawingCreateSideAsideClassName,
+  inspectionDrawingCreateWorkspaceClassName,
   inspectionDrawingHeaderBandClassName,
   inspectionDrawingHeaderBandCenterSlotClassName,
-  inspectionDrawingHeaderPointListSlotClassName,
-  inspectionDrawingPointSummaryCardClassName,
-  inspectionDrawingPointSummaryStripClassName,
+  inspectionDrawingPointSummaryListSidebarCardClassName,
+  inspectionDrawingPointSummaryListSidebarClassName,
+  inspectionDrawingPointSummaryListSidebarSectionClassName,
+  inspectionDrawingPointSummaryListSidebarTitleClassName,
   inspectionDrawingKioskDisabledButtonClass,
   inspectionDrawingKioskToggleInactiveClass,
   inspectionDrawingLibraryFilterFhincdWidthClass,

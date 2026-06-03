@@ -1,41 +1,46 @@
 import {
-  inspectionDrawingHeaderBandClassName,
+  inspectionDrawingCreateMetadataSlotClassName,
   inspectionDrawingHeaderBandCenterSlotClassName,
-  inspectionDrawingHeaderPointListSlotClassName,
+  inspectionDrawingHeaderBandClassName,
   inspectionDrawingMetadataGridClassName,
   inspectionDrawingToolbarSlotClassName
 } from './inspectionDrawingKioskUi';
 
 import type { ReactNode } from 'react';
 
+export type InspectionDrawingHeaderBandMetadataLayout = 'grid' | 'createCompact';
+
 type Props = {
   metadata: ReactNode;
   toolbar: ReactNode;
   /** メタデータ列とツールバー間の余白（図面ズーム等）。縦行は増やさない */
   centerSlot?: ReactNode;
-  /** 作成/改版のみ — バンド直下の測定点一覧（main row の縦行は増やさない） */
-  pointListSlot?: ReactNode;
+  /** 既定は本番記録向け band。作成/改版は create 用 class を渡す */
+  bandClassName?: string;
+  /** メタデータスロットのレイアウト（bandClassName とは独立） */
+  metadataLayout?: InspectionDrawingHeaderBandMetadataLayout;
 };
 
-/** 上部: メタデータ（左）+ 中央余白（任意）+ ツールバー（右） */
+/** 上部: メタデータ + 中央余白（任意）+ ツールバー */
 export function InspectionDrawingCreateHeaderBand({
   metadata,
   toolbar,
   centerSlot,
-  pointListSlot
+  bandClassName = inspectionDrawingHeaderBandClassName,
+  metadataLayout = 'grid'
 }: Props) {
+  const metadataSlotClassName =
+    metadataLayout === 'createCompact'
+      ? inspectionDrawingCreateMetadataSlotClassName
+      : inspectionDrawingMetadataGridClassName;
+
   return (
-    <div className="flex shrink-0 flex-col gap-1.5">
-      <div className={inspectionDrawingHeaderBandClassName}>
-        <div className={inspectionDrawingMetadataGridClassName}>{metadata}</div>
-        {centerSlot ? (
-          <div className={inspectionDrawingHeaderBandCenterSlotClassName}>{centerSlot}</div>
-        ) : null}
-        <div className={inspectionDrawingToolbarSlotClassName}>{toolbar}</div>
-      </div>
-      {pointListSlot ? (
-        <div className={inspectionDrawingHeaderPointListSlotClassName}>{pointListSlot}</div>
+    <div className={bandClassName}>
+      <div className={metadataSlotClassName}>{metadata}</div>
+      {centerSlot ? (
+        <div className={inspectionDrawingHeaderBandCenterSlotClassName}>{centerSlot}</div>
       ) : null}
+      <div className={inspectionDrawingToolbarSlotClassName}>{toolbar}</div>
     </div>
   );
 }

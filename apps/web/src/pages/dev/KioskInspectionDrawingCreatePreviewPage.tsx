@@ -1,19 +1,19 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
-import { Input } from '../../components/ui/Input';
 import {
   InspectionDrawingCanvas,
   InspectionDrawingCanvasZoomControls,
   InspectionDrawingCreateHeaderBand,
+  InspectionDrawingCreateMetadataRow,
   InspectionDrawingCreateToolbar,
   useInspectionDrawingZoom,
-  InspectionDrawingPointSettingsPanel,
-  InspectionDrawingValuePanel,
-  inspectionDrawingCanvasColumnClassName,
-  inspectionDrawingMetadataControlWidthClass,
-  inspectionDrawingMetadataInputClass,
-  inspectionDrawingMetadataLabelClassName,
-  inspectionDrawingSideAsideClassName
+  InspectionDrawingPointSidebar,
+  inspectionDrawingCreateCanvasColumnClassName,
+  inspectionDrawingCreateHeaderBandClassName,
+  inspectionDrawingCreatePageRootClassName,
+  inspectionDrawingCreateSideAsideClassName,
+  inspectionDrawingCreateWorkspaceClassName
 } from '../../features/part-measurement/inspection-drawing';
 import {
   INSPECTION_DRAWING_PREVIEW_IMAGE_URL,
@@ -21,12 +21,20 @@ import {
 } from '../../features/part-measurement/inspection-drawing/inspectionDrawingPreviewFixtures';
 
 import { KioskInspectionDrawingDevPreviewChrome } from './KioskInspectionDrawingDevPreviewChrome';
+import { parseDevInspectionDrawingReturnFromLocation } from './kioskInspectionDrawingDevReturnNavigation';
+
 
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
 import type { PartMeasurementProcessGroup } from '../../features/part-measurement/types';
 
 /** 開発専用 — KioskInspectionDrawingCreatePage と同じコンポーネント構成で UI プレビュー */
 export function KioskInspectionDrawingCreatePreviewPage() {
+  const location = useLocation();
+  const inspectionReturn = useMemo(
+    () =>
+      parseDevInspectionDrawingReturnFromLocation(location.state),
+    [location.state]
+  );
   const [processGroup, setProcessGroup] = useState<PartMeasurementProcessGroup>('cutting');
   const [mode, setMode] = useState<'place' | 'test'>('place');
   const [points, setPoints] = useState<InspectionDrawingPoint[]>(() =>
@@ -44,10 +52,12 @@ export function KioskInspectionDrawingCreatePreviewPage() {
   return (
     <KioskInspectionDrawingDevPreviewChrome
       productionPath="/kiosk/part-measurement/inspection/create"
-      rootClassName="flex min-h-0 flex-1 flex-col gap-2 p-2 text-white"
+      rootClassName={inspectionDrawingCreatePageRootClassName}
       footnote="マーカー1=OK·2=NG·3=未入力。下部 DEV バーは本番に無し"
     >
         <InspectionDrawingCreateHeaderBand
+          bandClassName={inspectionDrawingCreateHeaderBandClassName}
+          metadataLayout="createCompact"
           centerSlot={
             <InspectionDrawingCanvasZoomControls
               enabled
@@ -57,32 +67,27 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             />
           }
           metadata={
-            <>
-              <label className={inspectionDrawingMetadataLabelClassName}>
-                品番
-                <Input defaultValue="DEMO-12345" className={inspectionDrawingMetadataInputClass} readOnly />
-              </label>
-              <label className={inspectionDrawingMetadataLabelClassName}>
-                資源
-                <Input defaultValue="R001" className={inspectionDrawingMetadataInputClass} readOnly />
-              </label>
-              <label className={inspectionDrawingMetadataLabelClassName}>
-                テンプレ名
-                <Input
-                  defaultValue="検査図面プレビュー"
-                  className={inspectionDrawingMetadataInputClass}
-                  readOnly
-                />
-              </label>
-              <label className={inspectionDrawingMetadataLabelClassName}>
-                図面
-                <span
-                  className={`${inspectionDrawingMetadataControlWidthClass} block truncate text-[1rem] text-white/50`}
-                >
-                  （プレビュー用サンプル SVG）
-                </span>
-              </label>
-            </>
+            <InspectionDrawingCreateMetadataRow
+              lineageLocked
+              fhincd="DEMO-12345"
+              onFhincdChange={() => undefined}
+              resourceCd="033"
+              onResourceCdChange={() => undefined}
+              resourceSelectOptions={[{ value: '033', label: '033 (横型プレビュー)' }]}
+              resourceNameMap={{}}
+              processGroup={processGroup}
+              templateProcessGroup={processGroup}
+              templateName="検査図面プレビュー"
+              onTemplateNameChange={() => undefined}
+              selfInspectionMode="first_last"
+              onSelfInspectionModeChange={() => undefined}
+              selfInspectionFixedCount=""
+              onSelfInspectionFixedCountChange={() => undefined}
+              contentReadOnly
+              onDrawingFileChange={() => undefined}
+              templateVersion={2}
+              templateIsActive
+            />
           }
           toolbar={
             <InspectionDrawingCreateToolbar
@@ -93,13 +98,14 @@ export function KioskInspectionDrawingCreatePreviewPage() {
               hasDrawingImage
               hasMeasurementPoints={points.length > 0}
               saveDisabled
-              libraryTo="/dev/kiosk-inspection-drawing-library"
+              returnTo={inspectionReturn.inspectionDrawingReturnTo}
+              returnLabel={inspectionReturn.inspectionDrawingReturnLabel}
             />
           }
         />
 
-        <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row">
-          <div className={inspectionDrawingCanvasColumnClassName}>
+        <div className={inspectionDrawingCreateWorkspaceClassName}>
+          <div className={inspectionDrawingCreateCanvasColumnClassName}>
             <InspectionDrawingCanvas
               imageUrl={INSPECTION_DRAWING_PREVIEW_IMAGE_URL}
               points={points}
@@ -112,24 +118,23 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             />
           </div>
 
-          <aside className={inspectionDrawingSideAsideClassName}>
-            {mode === 'place' && selectedPoint ? (
-              <InspectionDrawingPointSettingsPanel
-                point={selectedPoint}
-                onChange={(patch) => updatePoint(selectedPoint.id, patch)}
-                onRemove={() => undefined}
-              />
-            ) : null}
-
-            {mode === 'test' ? (
-              <InspectionDrawingValuePanel
-                point={selectedPoint}
-                onValueChange={(v) => {
-                  if (!selectedPoint) return;
-                  updatePoint(selectedPoint.id, { testValue: v });
-                }}
-              />
-            ) : null}
+          <aside className={inspectionDrawingCreateSideAsideClassName}>
+            <InspectionDrawingPointSidebar
+              mode={mode}
+              points={points}
+              selectedPoint={selectedPoint}
+              contentReadOnly={false}
+              onSelectPoint={setSelectedPointId}
+              onPointChange={(patch) => {
+                if (!selectedPoint) return;
+                updatePoint(selectedPoint.id, patch);
+              }}
+              onRemovePoint={() => undefined}
+              onTestValueChange={(v) => {
+                if (!selectedPoint) return;
+                updatePoint(selectedPoint.id, { testValue: v });
+              }}
+            />
           </aside>
         </div>
     </KioskInspectionDrawingDevPreviewChrome>

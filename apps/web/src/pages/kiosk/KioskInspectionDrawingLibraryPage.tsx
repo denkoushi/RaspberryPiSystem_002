@@ -14,6 +14,8 @@ import {
   type InspectionDrawingLibraryProcessFilter
 } from '../../features/part-measurement/inspection-drawing';
 
+import { INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE } from './kioskInspectionDrawingReturnNavigation';
+
 import type { KioskInspectionDrawingTemplateSummaryDto } from '../../features/part-measurement/types';
 
 function processLabel(processGroup: KioskInspectionDrawingTemplateSummaryDto['processGroup']): string {
@@ -165,6 +167,7 @@ export function KioskInspectionDrawingLibraryPage() {
           </Button>
           <Link
             to={KIOSK_INSPECTION_DRAWING_CREATE_PATH}
+            state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
             className={buttonClassName('primary', 'inline-flex min-h-11 items-center text-[1.02rem]')}
           >
             新規
@@ -196,7 +199,9 @@ export function KioskInspectionDrawingLibraryPage() {
         onClose={() => setHistoryGroupKey(null)}
         onOpen={(template) => {
           setHistoryGroupKey(null);
-          void navigate(kioskInspectionDrawingTemplateEditPath(template.id));
+          void navigate(kioskInspectionDrawingTemplateEditPath(template.id), {
+            state: INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE
+          });
         }}
       />
 
@@ -241,6 +246,7 @@ export function KioskInspectionDrawingLibraryPage() {
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Link
                     to={kioskInspectionDrawingTemplateEditPath(template.id)}
+                    state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
                     className={buttonClassName('primary', 'inline-flex min-h-11 items-center text-[1rem]')}
                   >
                     編集

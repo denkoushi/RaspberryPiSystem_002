@@ -24,8 +24,10 @@ type Props = {
   saveBusy?: boolean;
   /** 編集時は系譜キー（品番・工程）を変えられないため非表示 */
   showProcessGroup?: boolean;
-  /** 指定時は保存ボタン右に一覧へ戻るを表示 */
-  libraryTo?: string;
+  /** 指定時は保存ボタン右に戻るリンクを表示 */
+  returnTo?: string;
+  /** `returnTo` とセットで表示文言を渡す（例: 順位ボード / 一覧へ戻る） */
+  returnLabel?: string;
 };
 
 export function InspectionDrawingCreateToolbar({
@@ -39,7 +41,8 @@ export function InspectionDrawingCreateToolbar({
   saveDisabled = false,
   saveBusy = false,
   showProcessGroup = true,
-  libraryTo
+  returnTo,
+  returnLabel
 }: Props) {
   const toggleClass = (isActive: boolean) =>
     clsx(inspectionDrawingKioskToggleInactiveClass(isActive), inspectionDrawingKioskDisabledButtonClass);
@@ -106,9 +109,9 @@ export function InspectionDrawingCreateToolbar({
         {saveBusy ? '保存中…' : '保存'}
       </Button>
 
-      {libraryTo ? (
-        <Link to={libraryTo} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}>
-          一覧へ戻る
+      {returnTo && returnLabel ? (
+        <Link to={returnTo} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}>
+          {returnLabel}
         </Link>
       ) : null}
     </div>

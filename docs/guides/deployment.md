@@ -10,6 +10,31 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-06-03 · **キオスク検査図面 作成/改版レイアウト + 戻り先ナビ**·**Web のみ**·**Pi5 先行**） {#kiosk-inspection-drawing-create-layout-return-nav-2026-06-03}
+
+- **変更概要（正本）**: [KB-320 §作成レイアウト](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成改版レイアウト-2026-06-03) · [KB-320 §戻り先](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-戻り先ナビ-2026-06-03) · [ExecPlan](../plans/inspection-drawing-create-layout-and-return-nav.md) · ブランチ **`fix/inspection-drawing-return-navigation-review`** · 代表 **`5274f1ee`**
+  - **内容**: コンパクト meta-chip ヘッダー · 右ペイン縦測定点一覧 · `metadataLayout` · 戻り先 allowlist · テスト入力中の一覧選択で mode 維持。
+  - **Prisma / API**: **変更なし**（**Web のみ** · Pi5 Docker **`web` 再ビルド**）
+- **標準コマンド**（`main` マージ後は第2引数 **`main`**）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh main \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+# Pi5 目視 OK 後、Pi4 を 1 台ずつ --limit 変更
+```
+
+- **本番デプロイ（実績·Pi5 先行 2026-06-03）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 実機 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | **`20260603-211122-29648`** | **`5274f1ee`** | **`failed=0`** | `Git: changed` · web 再ビルド · 実機確認継続 |
+| Pi4×4 | — | — | — | **未** — `main` 反映後 1 台ずつ + 強制リロード |
+
+- **中間デプロイ（参考）**: **`20260603-202513-13104`** · **`dcc82226`** — 右ペイン一覧まで。**ヘッダー chip は `5274f1ee` 必須**。
+- **CI**: **`26883229358`** success（`5274f1ee`）。
+- **実機確認**: [Runbook §作成レイアウト+戻り先](../runbooks/kiosk-part-measurement.md#検査図面-作成-layout-return-nav-2026-06-03)。
+
 ### 補足（2026-06-03 · **キオスク検査図面 UI/UX（符号付き公差・一覧・候補入力）**·**Web のみ**·**Pi5 + stonebase 先行**） {#kiosk-inspection-drawing-signed-tolerance-uiux-2026-06-03}
 
 - **変更概要（正本）**: [KB-320 §UI/UX](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-uiux-符号付き公差-2026-06-03) · [ExecPlan](../plans/inspection-drawing-signed-tolerance-uiux.md) · ブランチ **`feat/inspection-drawing-signed-tolerance-uiux`** · 代表コミット **`6e436cfc`**
@@ -32,7 +57,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | `raspi4-kensaku-stonebase01` | **`20260603-154818-15503`** | **`6e436cfc`** | **`failed=0`** | `kiosk-browser` 再起動 · **強制リロード**後 · 検査図面作成/改版・自主検査候補 |
 
 - **実機確認**: [Runbook §仕様拡張](../runbooks/kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-2026-06-03) 手順 2–3 · legacy 行の上下限維持 · 候補外名称の `（既存）` 表示。
-- **既知課題**: 作成画面で **図面表示面積が不足**（ヘッダー+測定点一覧の縦消費）— レイアウト改善は未実装（[HTML プレビュー](../plans/kiosk-inspection-drawing-layout-preview.html)）。
+- **レイアウト（作成/改版）**: **2026-06-03 改善済** — [§作成レイアウト+戻り先](#kiosk-inspection-drawing-create-layout-return-nav-2026-06-03) · [HTML プレビュー](../plans/kiosk-inspection-drawing-layout-preview.html)。
 
 ### 補足（2026-06-03 · **キオスク自主検査セッション・順位ボード「検」図面空白**·**Web のみ**·**Pi5 + stonebase 本番・実機 OK**） {#kiosk-self-inspection-session-drawing-blank-2026-06-03}
 

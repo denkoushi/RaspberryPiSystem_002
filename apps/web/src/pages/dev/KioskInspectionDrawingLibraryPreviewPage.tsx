@@ -16,6 +16,8 @@ import {
 } from '../../features/part-measurement/inspection-drawing/inspectionDrawingPreviewFixtures';
 
 import { KioskInspectionDrawingDevPreviewChrome } from './KioskInspectionDrawingDevPreviewChrome';
+import { INSPECTION_DRAWING_DEV_RETURN_TO_LIBRARY_STATE } from './kioskInspectionDrawingDevReturnNavigation';
+
 
 import type { KioskInspectionDrawingTemplateSummaryDto } from '../../features/part-measurement/types';
 
@@ -119,6 +121,7 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
             </Button>
             <Link
               to="/dev/kiosk-inspection-drawing-create"
+              state={INSPECTION_DRAWING_DEV_RETURN_TO_LIBRARY_STATE}
               className={buttonClassName('primary', 'inline-flex min-h-11 items-center text-[1.02rem]')}
             >
               新規
@@ -188,6 +191,7 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
                   <div className="flex flex-wrap gap-2 pt-1">
                     <Link
                       to="/dev/kiosk-inspection-drawing-create"
+                      state={INSPECTION_DRAWING_DEV_RETURN_TO_LIBRARY_STATE}
                       className={buttonClassName('primary', 'inline-flex min-h-11 items-center text-[1rem]')}
                     >
                       編集

@@ -58,28 +58,30 @@ export function InspectionDrawingPointSettingsPanel({
           disabled={disabled}
         />
       </label>
-      <label className="grid gap-1 text-[1rem] font-semibold">
-        下限公差
-        <Input
-          type="text"
-          inputMode="decimal"
-          value={point.lowerToleranceRaw}
-          onChange={(e) => onChange({ lowerToleranceRaw: e.target.value })}
-          className={inspectionDrawingPointSettingInputClassName}
-          disabled={disabled}
-        />
-      </label>
-      <label className="grid gap-1 text-[1rem] font-semibold">
-        上限公差
-        <Input
-          type="text"
-          inputMode="decimal"
-          value={point.upperToleranceRaw}
-          onChange={(e) => onChange({ upperToleranceRaw: e.target.value })}
-          className={inspectionDrawingPointSettingInputClassName}
-          disabled={disabled}
-        />
-      </label>
+      <div className="grid grid-cols-2 gap-1.5">
+        <label className="grid gap-1 text-[1rem] font-semibold">
+          上限公差
+          <Input
+            type="text"
+            inputMode="decimal"
+            value={point.upperToleranceRaw}
+            onChange={(e) => onChange({ upperToleranceRaw: e.target.value })}
+            className={inspectionDrawingPointSettingInputClassName}
+            disabled={disabled}
+          />
+        </label>
+        <label className="grid gap-1 text-[1rem] font-semibold">
+          下限公差
+          <Input
+            type="text"
+            inputMode="decimal"
+            value={point.lowerToleranceRaw}
+            onChange={(e) => onChange({ lowerToleranceRaw: e.target.value })}
+            className={inspectionDrawingPointSettingInputClassName}
+            disabled={disabled}
+          />
+        </label>
+      </div>
       <p className="text-xs text-white/55">
         合格範囲は「基準値＋下限公差」〜「基準値＋上限公差」です（符号付きオフセット）。
       </p>
