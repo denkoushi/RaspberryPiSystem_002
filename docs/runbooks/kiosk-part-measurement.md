@@ -95,6 +95,21 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 | unmount 後の setState 警告 | `previewUrlRef` + `replaceLocalPreviewUrl` で cleanup |
 | 編集画面で新 PDF が失敗 | **既存図面 Blob を維持**しエラーメッセージのみ（`inspectionDrawingTemplateImageDisplay` の local-first 契約） |
 
+## 検査図面 UI/UX（符号付き公差・2026-06-03） {#検査図面-uiux-符号付き公差-デプロイ-2026-06-03}
+
+正本: [KB-320 §UI/UX](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-uiux-符号付き公差-2026-06-03) · [deployment.md §UI/UX](../guides/deployment.md#kiosk-inspection-drawing-signed-tolerance-uiux-2026-06-03) · **`6e436cfc`** · **`main` マージ** · CI **`26867660917`**
+
+### デプロイ（Web のみ · 先行実績）
+
+1. **`main`**（またはマージ前は `feat/inspection-drawing-signed-tolerance-uiux`）を Pi5 に `./scripts/update-all-clients.sh main … --limit raspberrypi5 --detach --follow`。
+2. 目視 OK 後、必要 Pi4 を `--limit` 1 台ずつ（実績: **`raspberrypi5`** `20260603-154307-28721` · **`raspi4-kensaku-stonebase01`** `20260603-154818-15503`）。
+3. Pi4 はキオスク **強制リロード**（§6.6.4）後、[§実機確認ポイント（拡張）](#実機確認ポイント拡張) の 2–4 を実施。
+
+### レイアウト（未実装）
+
+- **症状**: 作成/改版で図面周りの黒余白が大きく、右設定パネルが画面下端で切れる。
+- **プレビュー**: [kiosk-inspection-drawing-layout-preview.html](../plans/kiosk-inspection-drawing-layout-preview.html)（HTML のみ · 実装別タスク）。
+
 ## 自主検査・検査図面 仕様拡張（2026-06-03） {#自主検査-検査図面-仕様拡張-2026-06-03}
 
 正本: [KB-320 §仕様拡張 本番](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03) · [deployment.md §2026-06-03](../guides/deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) · ブランチ **`feat/inspection-drawing-count-and-tolerance`** · **`2f3979ce`**
@@ -127,6 +142,7 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 | Pi4 画面真っ白 · TS `curl` 000 · LAN 200 | [KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) — `tailscaled` 再起動 · `tag:kiosk --reset` · `kiosk-launch.sh` を `100.106.158.2` に戻す |
 | Pi4 `_appRef` が古い | Pi4 で `git pull` しない · `update-all-clients.sh main --limit raspberrypi4`（実績 **`20260603-115435-29435`**） |
 | Mac admin 不通 | [KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) · Pi5 [KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効) |
+| 検査図面作成で **図面が小さい**・設定パネルが切れる | ヘッダー+`pointListSlot` の縦消費（仕様バグではない）· [layout preview](../plans/kiosk-inspection-drawing-layout-preview.html) 参照 · 実装待ち |
 
 ### Pi4 再デプロイ（研削メイン · TS 復旧後 · 2026-06-03）
 

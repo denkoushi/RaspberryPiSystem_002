@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>キオスク検査図面 — レイアウト改善案（プレビュー・未実装）</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: rgba(15, 23, 42, 0.8);
+      --border: rgba(255, 255, 255, 0.15);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #22c55e;
+      --canvas-bg: rgba(0, 0, 0, 0.4);
+      --drawing: #fff;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #1e293b;
+      color: var(--text);
+      padding: 1rem;
+      line-height: 1.4;
+    }
+    h1 { font-size: 1.1rem; margin-bottom: 0.25rem; }
+    .lead { color: var(--muted); font-size: 0.85rem; margin-bottom: 1rem; max-width: 52rem; }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .tabs button {
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .tabs button.active { border-color: var(--accent); background: #14532d; }
+    .compare { display: grid; gap: 1rem; }
+    @media (min-width: 1100px) {
+      .compare.side-by-side { grid-template-columns: 1fr 1fr; }
+    }
+    .frame-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+    .frame-label.proposed { color: #86efac; }
+    /* キオスク想定: 1280×800 相当 */
+    .kiosk {
+      width: 100%;
+      max-width: 1280px;
+      aspect-ratio: 16 / 10;
+      background: var(--bg);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-size: 11px;
+    }
+    .kiosk .page-pad { padding: 0.5rem; flex: 1; display: flex; flex-direction: column; min-height: 0; gap: 0.35rem; }
+    .kiosk.current .page-pad { padding: 0.5rem; gap: 0.5rem; }
+
+    /* --- 現状（近似） --- */
+    .header-band {
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 4px;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px 8px;
+      max-width: 58rem;
+    }
+    .field label { display: block; font-weight: 600; font-size: 10px; margin-bottom: 2px; }
+    .field input, .field select {
+      width: 10.5rem;
+      max-width: 100%;
+      padding: 6px 8px;
+      font-size: 12px;
+      border-radius: 4px;
+      border: none;
+      color: #0f172a;
+    }
+    .toolbar-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .toolbar-row .center { flex: 1; display: flex; justify-content: center; gap: 4px; min-width: 0; }
+    .btn {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #334155;
+      color: var(--text);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .btn.primary { background: var(--accent); color: #052e16; font-weight: 600; }
+    .point-strip {
+      display: flex;
+      gap: 8px;
+      max-height: 7.5rem;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      flex-shrink: 0;
+    }
+    .point-card {
+      min-width: 9.5rem;
+      max-width: 11rem;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      background: rgba(30, 41, 59, 0.9);
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .point-card strong { font-size: 12px; }
+    .version-row { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+    .main-row { display: flex; flex: 1; min-height: 0; gap: 8px; }
+    .canvas-col {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: min(72dvh, 760px);
+    }
+    .kiosk.current .canvas-col { min-height: 0; flex: 1; }
+    .canvas-viewport {
+      flex: 1;
+      min-height: 0;
+      background: var(--canvas-bg);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .drawing-sheet {
+      width: 42%;
+      height: 55%;
+      background: var(--drawing);
+      box-shadow: 0 0 0 1px #cbd5e1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+      font-size: 10px;
+    }
+    .aside {
+      width: 20rem;
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.8);
+      border-radius: 4px;
+      padding: 8px;
+      overflow: hidden;
+    }
+    .aside h3 { font-size: 12px; margin-bottom: 6px; }
+
+    /* --- 提案 --- */
+    .kiosk.proposed .page-pad { padding: 4px; gap: 4px; }
+    .compact-top {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 4px 8px;
+      align-items: end;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 4px;
+      padding: 4px 6px;
+      flex-shrink: 0;
+    }
+    .meta-inline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      align-items: center;
+      font-size: 10px;
+    }
+    .meta-inline .item { display: flex; gap: 4px; align-items: baseline; }
+    .meta-inline .item span:first-child { color: var(--muted); font-weight: 600; }
+    .meta-inline .item span:last-child {
+      background: #e2e8f0;
+      color: #0f172a;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    .actions-inline { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: flex-end; }
+    .actions-inline .file-mini { font-size: 9px; color: var(--muted); margin-right: 4px; }
+    .overlay-strip {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      right: 4px;
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+      padding: 4px;
+      background: rgba(15, 23, 42, 0.85);
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      max-height: 3.2rem;
+      z-index: 2;
+    }
+    .overlay-strip .point-card {
+      min-width: 7rem;
+      max-width: 8.5rem;
+      padding: 4px 6px;
+      font-size: 9px;
+    }
+    .kiosk.proposed .canvas-col { min-height: 0; flex: 1; }
+    .kiosk.proposed .canvas-viewport { flex: 1; }
+    .kiosk.proposed .drawing-sheet { width: 78%; height: 88%; }
+    .kiosk.proposed .aside { width: 17rem; }
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 9px;
+      background: #334155;
+      color: var(--muted);
+    }
+    .notes {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      max-width: 1280px;
+    }
+    .notes ul { margin: 0.5rem 0 0 1.2rem; }
+    .notes li { margin: 0.35rem 0; }
+    .hidden { display: none !important; }
+    .measure {
+      position: absolute;
+      bottom: 4px;
+      right: 6px;
+      font-size: 9px;
+      color: #fbbf24;
+      background: rgba(0,0,0,0.6);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <h1>キオスク検査図面 — レイアウト改善案</h1>
+  <p class="lead">
+    実装禁止の HTML プレビュー（2026-06-03）。根拠: 実機スクリーンショット・
+    <code>inspectionDrawingKioskUi.ts</code>（ヘッダー <code>p-1.5</code>、一覧 <code>max-h-[7.5rem]</code>、右ペイン <code>lg:w-[20rem]</code>、キャンバス <code>min-h-[min(72dvh,760px)]</code>）。
+  </p>
+
+  <div class="tabs">
+    <button type="button" class="active" data-view="compare">左右比較</button>
+    <button type="button" data-view="current">現状のみ</button>
+    <button type="button" data-view="proposed">提案のみ</button>
+  </div>
+
+  <div id="compare" class="compare side-by-side">
+    <div>
+      <div class="frame-label">現状（近似再現）</div>
+      <div class="kiosk current" id="mock-current">
+        <div class="page-pad">
+          <div class="header-band">
+            <div class="meta-grid">
+              <div class="field"><label>品番</label><input value="MD100469601" readonly /></div>
+              <div class="field"><label>資源</label><input value="033…" readonly /></div>
+              <div class="field"><label>工程</label><input value="切削" readonly /></div>
+              <div class="field"><label>テンプレ名</label><input value="7161サドル" readonly /></div>
+            </div>
+            <div class="toolbar-row">
+              <div class="field"><label>図面画像またはPDF</label><input type="text" value="ファイル選択" readonly /></div>
+              <div class="center">
+                <button class="btn">−</button><button class="btn">＋</button><button class="btn">□</button>
+              </div>
+              <div style="display:flex;gap:4px;">
+                <button class="btn primary">点を配置</button>
+                <button class="btn">テスト入力</button>
+                <button class="btn primary">保存</button>
+                <button class="btn">一覧へ戻る</button>
+              </div>
+            </div>
+          </div>
+          <div class="point-strip">
+            <div class="point-card"><strong>① 測定点1</strong><br />基準 125 · 下限 -0.1 · 上限 0.1</div>
+          </div>
+          <div class="version-row">v2 / 有効</div>
+          <div class="main-row">
+            <div class="canvas-col">
+              <div class="canvas-viewport">
+                <div class="drawing-sheet">図面（表示面積 小）</div>
+                <span class="measure">キャンバス利用率 ≈35%</span>
+              </div>
+            </div>
+            <aside class="aside">
+              <h3>測定点の設定 (No.1)</h3>
+              <div class="field"><label>名称</label><input value="測定点1" readonly /></div>
+              <p style="color:var(--muted);margin-top:8px;">… 画面下端で切れる …</p>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="frame-label proposed">提案 A（図面最大化・推奨）</div>
+      <div class="kiosk proposed" id="mock-proposed">
+        <div class="page-pad">
+          <div class="compact-top">
+            <div class="meta-inline">
+              <div class="item"><span>品番</span><span>MD100469601</span></div>
+              <div class="item"><span>資源</span><span>033 横型…</span></div>
+              <div class="item"><span>工程</span><span>切削</span></div>
+              <div class="item"><span>テンプレ</span><span>7161サドル</span></div>
+              <span class="badge">v2 · 有効</span>
+            </div>
+            <div class="actions-inline">
+              <span class="file-mini">PDF/画像</span>
+              <button class="btn">−</button><button class="btn">＋</button><button class="btn">□</button>
+              <button class="btn primary">配置</button>
+              <button class="btn primary">保存</button>
+              <button class="btn">戻る</button>
+            </div>
+          </div>
+          <div class="main-row">
+            <div class="canvas-col">
+              <div class="canvas-viewport">
+                <div class="overlay-strip">
+                  <div class="point-card"><strong>①</strong> 125 / -0.1 / +0.1</div>
+                </div>
+                <div class="drawing-sheet">図面（表示面積 大）</div>
+                <span class="measure">キャンバス利用率 ≈75%</span>
+              </div>
+            </div>
+            <aside class="aside">
+              <h3>測定点 (①)</h3>
+              <div class="field"><label>名称</label><input value="測定点1" readonly /></div>
+              <p style="color:var(--muted);margin-top:6px;font-size:10px;">スクロール可能・幅 17rem</p>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="notes">
+    <strong>変更の要点（コード未着手）</strong>
+    <ul>
+      <li><strong>メタデータ</strong>: 4フィールド×大きめ Input の2段グリッド → 1行インライン表示（読み取り専用時はラベル+テキストチップ）。ツールバーと同一バンドに統合し縦高さを約40%削減。</li>
+      <li><strong>測定点一覧</strong>: バンド直下の専用行（最大 7.5rem）→ キャンバス上オーバーレイ（横スクロール・max 3.2rem）。図面の flex 領域を奪わない。</li>
+      <li><strong>バージョン表示</strong>: 独立行を廃止しメタ行の <code>badge</code> に統合。</li>
+      <li><strong>キャンバス列</strong>: <code>min-h-[min(72dvh,760px)]</code> をやめ、親 <code>flex-1 min-h-0</code> のみで残りビューポートを占有（ズームは既存ロジック維持）。</li>
+      <li><strong>右ペイン</strong>: <code>20rem → 17rem</code>（設定はスクロール）。未選択時は折りたたみ可能にする案 B も検討可。</li>
+      <li><strong>ページ余白</strong>: キオスクページ <code>p-2</code> → <code>p-1</code>（タップ領域はボタン側で維持）。</li>
+    </ul>
+    <p style="margin-top:0.75rem;color:var(--muted);">
+      関連: EXEC_PLAN 残タスク「レイアウト改善」· KB-320 トラブルシュート「図面が小さく見える」· 実装時は <code>inspectionDrawingKioskUi.ts</code> / <code>InspectionDrawingCreateHeaderBand.tsx</code> / <code>KioskInspectionDrawingCreatePage.tsx</code>。
+    </p>
+  </section>
+
+  <script>
+    const tabs = document.querySelectorAll('.tabs button');
+    const compare = document.getElementById('compare');
+    tabs.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        tabs.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const v = btn.dataset.view;
+        compare.classList.toggle('side-by-side', v === 'compare');
+        const cols = compare.children;
+        cols[0].classList.toggle('hidden', v === 'proposed');
+        cols[1].classList.toggle('hidden', v === 'current');
+      });
+    });
+  </script>
+</body>
+</html>

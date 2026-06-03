@@ -159,16 +159,54 @@
 | 公差 UI（2026-06-03 追補） | **符号付き offset** · legacy 片側入力で移行 + 両側 seed · 候補外名称は一時 option |
 | 自主検査測定値 UI | **セッション画面のみ** dropdown+手入力 · 刻み=offset 最小桁 · **>200 件は手入力のみ** |
 
-### キオスク検査図面 UI/UX（符号付き公差・一覧・候補入力）（2026-06-03 ローカル） {#検査図面-uiux-符号付き公差-2026-06-03}
+### キオスク検査図面 UI/UX（符号付き公差・一覧・候補入力）（2026-06-03） {#検査図面-uiux-符号付き公差-2026-06-03}
 
 | 項目 | 内容 |
 |------|------|
-| ブランチ（作業中） | **`feat/inspection-drawing-signed-tolerance-uiux`**（未コミット） |
+| ブランチ | **`feat/inspection-drawing-signed-tolerance-uiux`** → **`main` マージ（2026-06-03）** |
+| 代表コミット | **`6e436cfc`** — `feat(part-measurement): improve inspection drawing kiosk UI` |
+| CI | GitHub Actions **`26867660917`** · **success** |
+| 変更種別 | **Web のみ**（Prisma/API 変更なし） |
 | ExecPlan | [inspection-drawing-signed-tolerance-uiux.md](../plans/inspection-drawing-signed-tolerance-uiux.md) |
-| 公差 | `toleranceFields.ts` · `markerNumbering.ts` |
-| 名称候補 | `inspectionDrawingMeasurementLabelOptions.ts` |
-| 上辺一覧 | `InspectionDrawingCreateHeaderBand` の `pointListSlot` · `InspectionDrawingPointSummaryStrip` |
-| 自主検査候補 | `selfInspectionMeasurementValueOptions.ts` · `InspectionDrawingValuePanel` の `valueInputMode` |
+
+#### 仕様（保存契約は不変）
+
+- **公差 UI**: 基準値 + **符号付き**下限/上限公差 → 保存時 `lowerLimit = nominal + lowerOffset`, `upperLimit = nominal + upperOffset`（`toleranceFields.ts`）。
+- **legacy**（`nominalValue=null` + 絶対上下限のみ）: 名称のみ・基準値のみ入力は絶対値維持。片側公差入力で符号付きモードへ移行し、legacy から両側 offset を seed（`mergeInspectionDrawingPointPatch`）。
+- **名称**: 固定候補 `inspectionDrawingMeasurementLabelOptions.ts`。候補外既存値は `（既存）` option。新規点は名称未選択から select。
+- **上辺一覧**: `InspectionDrawingCreateHeaderBand` の `pointListSlot` + `InspectionDrawingPointSummaryStrip`（丸数字順・横スクロール・最大高 `7.5rem`）。
+- **自主検査のみ**: `valueInputMode="self_inspection_options"` — 候補 dropdown + 手入力。刻みは offset 最小桁・最大 **200** 件・格子は **ceil/floor**（`selfInspectionMeasurementValueOptions.ts`）。
+- **本番記録**（`KioskInspectionDrawingEditPage`）: 測定値は **自由入力のまま**。
+
+#### 先行デプロイ（2026-06-03）
+
+| ホスト | Detach Run ID | 実機 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260603-154307-28721`** | `6e436cfc` · web 再ビルド · 管理/キオスク確認用 |
+| `raspi4-kensaku-stonebase01` | **`20260603-154818-15503`** | `kiosk-browser` 再起動 · 強制リロード後に検証 |
+
+残り Pi4（`raspberrypi4` · `raspi4-robodrill01` · `raspi4-fjv60-80`）は未ロールアウト可。
+
+#### トラブルシュート（実装・レビュー）
+
+| 症状 | 原因 | 対処 |
+|------|------|------|
+| legacy 片側公差 seed で上限が `101.05` 等になる | seed 前に `legacyAbsoluteBounds` を削除して nominal を 0 扱い | `resolveNominalForLegacySeed` に legacy を渡す（`markerNumbering.ts`） |
+| 自主検査候補に範囲外（例 10.1） | `Math.round` で格子端がはみ出す | 下限 **ceil**・上限 **floor**（`selfInspectionMeasurementValueOptions.ts`） |
+| 「基準値未設定」が出ない | 表示が合成 `bounds.nominal` 依存 | `isLegacyAbsoluteOnlyPoint` + `legacyAbsoluteBounds` 表示（`InspectionDrawingValuePanel.tsx`） |
+| 公差入力の枠・タップ領域が小さい | 素の `<input>` に変更した際 | 共有 **`Input`** コンポーネントに戻す |
+| **図面が小さく見える** | ヘッダー（メタデータ+ツールバー+測定点一覧）+ 右ペイン 20rem + ページ余白が縦を奪う | **未修正** — レイアウト改善は別タスク（[layout preview](../plans/kiosk-inspection-drawing-layout-preview.html)） |
+
+#### 代表ファイル
+
+| 領域 | パス |
+|------|------|
+| 公差 | `apps/web/src/features/part-measurement/inspection-drawing/toleranceFields.ts` |
+| legacy・採番 | `apps/web/src/features/part-measurement/inspection-drawing/markerNumbering.ts` |
+| 名称候補 | `apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingMeasurementLabelOptions.ts` |
+| 自主検査候補値 | `apps/web/src/features/part-measurement/inspection-drawing/selfInspectionMeasurementValueOptions.ts` |
+| 測定点一覧 | `apps/web/src/features/part-measurement/inspection-drawing/InspectionDrawingPointSummaryStrip.tsx` |
+| レイアウト共有 | `apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingKioskUi.ts` |
 
 ### 代表ファイル（追加分）
 
