@@ -40,7 +40,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 実機 |
 |--------|---------------|----------|------------|------|
 | `raspberrypi5` | **`20260603-074547-17661`** | **`2f3979ce`** | `ok=134` `changed=4` **`failed=0`** | migration **103 件 up to date** · `api` healthy · 管理/キオスク自主検査・検査図面 OK |
-| `raspberrypi4` | （運用者確認・全台） | **`2f3979ce`** | **`failed=0`** | キオスク **強制リロード**後 OK |
+| `raspberrypi4` | **`20260603-115435-29435`**（TS 復旧後の **再同期**） | **`b787c273`** | `ok=122` `changed=11` **`failed=0`** | 旧 `_appRef=cd503aa4` → **`b787c273`** · TS URL 復帰 · **現場 OK** |
+| `raspberrypi4`（初回ロールアウト） | （運用者確認・他 Pi4 同型） | **`2f3979ce`** | **`failed=0`** | キオスク **強制リロード**後 OK |
 | `raspi4-robodrill01` | 同上 | **`2f3979ce`** | **`failed=0`** | 同上 |
 | `raspi4-fjv60-80` | 同上 | **`2f3979ce`** | **`failed=0`** | 同上 |
 | `raspi4-kensaku-stonebase01` | **`20260603-075813-27911`** | **`2f3979ce`** | `ok=129` `changed=10` **`failed=0`** | キオスク実機 OK |
@@ -51,6 +52,9 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
   - **LAN のみ届く** → `RASPI_SERVER_HOST=denkon5sd02@192.168.10.230` でデプロイ可（Pi5 上 Ansible は `network_mode: tailscale` のまま）
   - **`prisma migrate deploy` が enum で失敗** → 2 段 migration を再確認（1 ファイルに schema+data UPDATE を混ぜない）
   - **キオスクだけ旧 UI** → Pi5 `web` ref が **`2f3979ce` 以降**か · Pi4 は **強制リロード**
+  - **Pi4 キオスク真っ白・`curl` TS が `000`** → Pi4 Tailscale（[KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）· 承認後も不可なら `tailscaled` 再起動 + `tag:kiosk --reset` · **LAN だけ `200` のとき**は `kiosk-launch.sh` の暫定 LAN URL を TS に戻す
+  - **Mac admin 不通（Pi5 は LAN OK）** → Mac `tag:admin`（[KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）· Pi5 `NeedsLogin`（[KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)）
+  - **`raspberrypi4` だけ古い `_appRef`** → Pi4 で `git pull` せず **`update-all-clients.sh main --limit raspberrypi4`**（上表 Run ID）
 
 ### 補足（2026-06-02 · **キオスク検査図面 · PDF プレビュー整合**·**API + Web**·**Pi5 本番・実機 OK・Pi4×4 未**） {#kiosk-inspection-drawing-pdf-preview-parity-2026-06-02}
 

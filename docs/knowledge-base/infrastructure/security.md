@@ -955,6 +955,138 @@ update-frequency: medium
 
 ---
 
+### [KB-384] Pi4 キオスク非表示（Tailscale 再認証後の netmap 未同期・LAN 暫定迂回） {#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期}
+
+**発生日**: 2026-06-03（仕様拡張本番後 · **研削メイン `raspberrypi4`**）
+
+**Context**:
+
+- キオスク端末: inventory **`raspberrypi4`** · LAN **`192.168.10.224`**（`tools03`）· Tailscale **`100.74.144.79`**（DNS **`raspberrypi-1`** · `tag:kiosk`）
+- Pi5 API/Web: **`100.106.158.2`**（`tag:server`）
+- `/usr/local/bin/kiosk-launch.sh` の正本 URL は **`https://100.106.158.2/kiosk?clientKey=client-key-raspberrypi4-kiosk1`**（Ansible テンプレ `kiosk-launch.sh.j2` と同型）
+- 同一日に Mac **`tag:admin` 欠落**（[KB-278](#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）と Pi5 **`NeedsLogin` / node key expired**（下記 [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)）も発生 — 切り分けを混同しないこと
+
+**Symptoms**:
+
+- 現場で **キオスク画面が真っ白 / 表示されない**
+- Pi4 上 Firefox は `https://100.106.158.2/kiosk?...` を開いているが **読み込めない**
+- Pi4: `curl -sk -o /dev/null -w "%{http_code}" "https://100.106.158.2/kiosk?..."` → **`000`**
+- Pi4: `curl -sk ... "https://192.168.10.230/kiosk?..."` → **`200`**（Pi5 は LAN では正常）
+- `tailscale status`（Pi4）で **`Logged out`** または、管理画面で **再ログイン承認直後**でも Pi5 が peer に出ない
+- 承認直後の `tailscale status --json` で **`BackendState: Running`** かつ **`InNetworkMap: true`** だが **`InMagicSock: false` / `InEngine: false`** · peer が **1 件程度** · `tailscale ping 100.106.158.2` → **`no matching peer`**
+
+**Investigation**:
+
+| 仮説 | 検証 | 結果 |
+|------|------|------|
+| Pi5 ダウン | LAN `curl` Pi5 `/kiosk` | **REJECTED** |
+| Pi4 `kiosk-browser` 停止 | `systemctl is-active kiosk-browser` | **REJECTED**（active） |
+| Firefox クラッシュのみ | プロセスあり・URL は TS IP | **REJECTED**（到達性） |
+| Pi4 Tailscale 未接続 / ログアウト | `tailscale status` · `curl` TS vs LAN | **CONFIRMED** |
+| 承認だけでは netmap 同期完了 | `InMagicSock` / peer 数 / ping Pi5 | **CONFIRMED**（再認証直後の中間状態） |
+| `kiosk-launch.sh` が LAN 固定のまま | `grep KIOSK_TARGET_URL` | **暫定対処時 CONFIRMED**（復旧後は TS URL に戻す） |
+| Pi5 に誤って `tag:kiosk` で `tailscale up` | Pi5 は **`tag:server`** 必須 | **運用ミス**（Pi4 と混同しない） |
+
+**Root cause**:
+
+1. **Pi4 の Tailscale セッション失効**（`Logged out` 相当）により、Pi5 の Tailscale IP へルーティングできず、キオスク URL が開けない。
+2. **再ログイン承認だけ**では、一時的に **コントロールプレーンとの netmap / MagicSock が未同期**のまま残り、Pi5（`100.106.158.2`）が peer 一覧に現れないことがある。
+3. 調査中の **暫定**として `kiosk-launch.sh` の URL を **`192.168.10.230`（LAN）** に手変更すると LAN 経由では表示できるが、**標準運用（Tailscale URL + `tag:kiosk` ACL）から外れる**。
+
+**Fix（Pi4 · 標準復旧）**:
+
+```bash
+# Pi5 経由 LAN SSH（例）
+ssh denkon5sd02@192.168.10.230
+ssh tools03@192.168.10.224
+
+# 1) 再認証（未ログイン時は URL を表示して管理画面で承認）
+sudo tailscale up --advertise-tags=tag:kiosk
+
+# 2) 承認後も ping 不可なら daemon 再起動 + 全フラグ明示（--reset）
+sudo systemctl restart tailscaled
+sleep 4
+sudo tailscale up --advertise-tags=tag:kiosk --reset
+
+# 3) 疎通確認（Pi5 が peer に出る · ping 成功）
+tailscale status | head -5
+tailscale ping -c 2 100.106.158.2
+curl -sk -o /dev/null -w "ts:%{http_code}\n" \
+  "https://100.106.158.2/kiosk?clientKey=client-key-raspberrypi4-kiosk1" \
+  -H "x-client-key: client-key-raspberrypi4-kiosk1"
+
+# 4) kiosk-launch を標準 URL に戻す（手変更していた場合）
+sudo sed -i 's|https://192.168.10.230/kiosk|https://100.106.158.2/kiosk|' /usr/local/bin/kiosk-launch.sh
+# または .bak.202606031139 等から復元
+sudo systemctl restart kiosk-browser.service
+```
+
+**Fix（コード・リポジトリ同期）**:
+
+- Pi4 `/opt/RaspberryPiSystem_002` で **ローカル `git pull` は避ける**（未コミット変更・古い HEAD が残り `_appRef` がずれる）。
+- **`main` + Ansible 標準デプロイ**で Pi5 と揃える（実績: [deployment.md §2026-06-03](../../guides/deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) の `raspberrypi4` 行）。
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
+  --limit raspberrypi4 --detach --follow
+```
+
+**本番再デプロイ実績（`raspberrypi4` · 2026-06-03）**:
+
+| 項目 | 値 |
+|------|-----|
+| Detach Run ID | **`20260603-115435-29435`** |
+| Git HEAD（Pi4） | **`b787c273`**（`main` · docs 先頭だが Pi5 と同 SHA） |
+| PLAY RECAP | `ok=122` `changed=11` **`failed=0`** |
+| Ansible サマリ | **`Git: changed`** · `kiosk-browser.service` 再起動 **ok** |
+| 実機 | Firefox `https://100.106.158.2/kiosk?...&_appRef=b787c273` · **現場正常化 OK** |
+
+**Prevention**:
+
+- キオスク真っ白時は **Firefox より先に** Pi4 の `tailscale ping 100.106.158.2` と `curl`（TS vs LAN）で層を切る。
+- Tailscale **承認後**も ping 不可なら **`tailscaled` 再起動 + `tailscale up --advertise-tags=tag:kiosk --reset`** を手順化する（承認だけでは不十分なことがある）。
+- **Pi5 では `tag:server`**、**Pi4 では `tag:kiosk`** — `tailscale up` のタグを端末ごとに固定（Pi5 に `tag:kiosk` は誤り）。
+- LAN URL への手変更は **`.bak.<timestamp>` を残し**、TS 復旧後は **必ず `100.106.158.2` に戻す**。
+- inventory の **`100.74.144.79`（raspberrypi-1）** と **`100.105.224.86`（raspberrypi-2）** は別ノード。研削メインの到達確認は **LAN `192.168.10.224`** または Pi5 から `tailscale status` の **`active; direct 192.168.10.224`** を正とする。
+
+**References**:
+
+- [KB-278](#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)（Mac 管理画面）
+- [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)（Pi5）
+- [KB-320 §仕様拡張 本番](../KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03)
+- [Runbook §仕様拡張](../../runbooks/kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-2026-06-03)
+- `infrastructure/ansible/group_vars/all.yml`（`kiosk_ip` / `network_mode: tailscale`）
+
+---
+
+### [KB-385] Pi5 Tailscale `NeedsLogin` と node key 失効 {#kb-385-pi5-tailscale-needslogin-と-node-key-失効}
+
+**発生日**: 2026-06-03（KB-278 対応後の Mac 管理画面再確認）
+
+**Context**: Pi5 **`raspberrypi`** · **`100.106.158.2`** · 正しい advertise タグは **`tag:server`**（`tag:kiosk` ではない）
+
+**Symptoms**:
+
+- Mac で `tag:admin` 復旧後も **`https://100.106.158.2/admin` が不通**になることがある
+- Pi5: `tailscale status` → **`NeedsLogin`** または netmap 更新失敗ログ
+- ログ例: **node key expired** · control plane への **netmap 更新が約 10 分失敗** → 自動ログアウト
+
+**Fix**:
+
+```bash
+ssh denkon5sd02@192.168.10.230   # または LAN
+sudo tailscale up --advertise-tags=tag:server
+# 表示された https://login.tailscale.com/a/... を管理画面で承認 → Success
+tailscale status | head -3
+```
+
+**Prevention**: Pi5 の Tailscale 状態をデプロイ前チェックに含める。Pi4 復旧手順（[KB-384](#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）と **タグ取り違え**を混同しない。
+
+**References**: [mac-ssh-access.md §admin 不通](../../guides/mac-ssh-access.md#tailscale-接続済みなのに-https1001061582admin-が開けない場合2026-06-03) · [KB-278](#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)
+
+---
+
 ### [KB-293] Pi4/Pi3のRealVNC接続復旧（Pi5経由SSHトンネル方式）
 
 **発生日**: 2026-03-06

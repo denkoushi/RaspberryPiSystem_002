@@ -130,8 +130,20 @@
 | 変更種別 | **API + Web + Prisma**（Pi5: `api`/`web` 再ビルド + `prisma migrate deploy`）· Pi4: **`kiosk-browser` 再起動** + Pi5 SPA 反映 |
 | Pi5 Detach | **`20260603-074547-17661`** · `failed=0` · HEAD **`2f3979ce`** · migrations **103 件・up to date** |
 | Pi4 代表 Detach | **`raspi4-kensaku-stonebase01`**: **`20260603-075813-27911`** · `failed=0` |
+| Pi4 研削メイン再同期 | **`raspberrypi4`**: **`20260603-115435-29435`** · HEAD **`b787c273`** · TS 障害復旧後（[KB-384](./infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)） |
 | 本番実機 | **Pi5 + Pi4×4 全台 OK**（管理テンプレ 4 モード · キオスク検査図面 公差/採番 · 自主検査 入力 slot ラベル） |
 | 参照デプロイ手順 | [deployment.md §2026-06-03](../guides/deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) |
+
+### 運用障害・復旧（2026-06-03 午後 · `raspberrypi4`）
+
+| 時系列 | 事象 | 対処 |
+|--------|------|------|
+| 1 | Mac `https://100.106.158.2/admin` 不通 | **`tag:admin` 再付与**（[KB-278](./infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)） |
+| 2 | 続けて Pi5 **`NeedsLogin` / node key expired** | Pi5: `sudo tailscale up --advertise-tags=tag:server` + 承認（[KB-385](./infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)） |
+| 3 | 研削メイン Pi4 **キオスク非表示** · TS `curl` **000** · LAN **200** | Pi4 TS 再ログイン承認後も **netmap 未同期** → `tailscaled` 再起動 + **`tag:kiosk --reset`** · 暫定 **LAN URL** → TS URL へ戻し（[KB-384](./infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)） |
+| 4 | Pi4 リポジトリ **`_appRef=cd503aa4`（古い）** | **`update-all-clients.sh main --limit raspberrypi4`** → **`b787c273`** · 現場 **正常化 OK** |
+
+**知見**: Tailscale **ブラウザ承認だけ**では Pi4 の `InMagicSock` / Pi5 peer 表示が揃わないことがある。**`--reset` 付き `tailscale up`** が必要。Pi5 に **`tag:kiosk` で up する誤操作**は避ける（正は **`tag:server`**）。
 
 ### 実装レビューで入れた契約（後続エージェント向け）
 
