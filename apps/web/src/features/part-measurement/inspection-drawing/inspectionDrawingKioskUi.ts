@@ -33,15 +33,26 @@ export const inspectionDrawingMetadataFileInputClass = clsx(
 export const inspectionDrawingHeaderBandClassName =
   'flex shrink-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-900/50 p-1.5 lg:flex-row lg:items-end lg:justify-between lg:gap-2';
 
-/** 作成/改版 — コンパクト1バンド（測定点一覧は右ペインへ） */
+/** 作成/改版 — コンパクト1バンド（測定点一覧は右ペインへ）— 旧3スロット HeaderBand 用 */
 export const inspectionDrawingCreateHeaderBandClassName =
   'flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded border border-white/15 bg-slate-900/50 px-2 py-1';
 
-/** 作成/改版ヘッダー — メタデータスロット（chip 行 + 図面ファイル） */
+/** 作成/改版 — フラット band（CompactHeader 専用・top-band 相当） */
+export const inspectionDrawingCreateFlatBandClassName =
+  'flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded border border-white/15 bg-slate-900/50 px-2 py-1';
+
+/** フラット band — meta-row（dl）。band 直下・内部 nowrap */
+export const inspectionDrawingCreateFlatMetaRowClassName =
+  'flex shrink min-w-0 flex-nowrap list-none items-center gap-x-2';
+
+/** フラット band — zoom / toolbar 等の shrink-0 スロット */
+export const inspectionDrawingCreateFlatBandItemClassName = 'shrink-0';
+
+/** 作成/改版ヘッダー — メタデータスロット（chip 行 + 図面ファイル）— 旧 createCompact 用 */
 export const inspectionDrawingCreateMetadataSlotClassName =
   'flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1';
 
-/** 作成/改版 — meta-chip 行（dl） */
+/** 作成/改版 — meta-chip 行（dl）— 旧 createCompact / MetadataRow fragment 用 */
 export const inspectionDrawingCreateMetaRowClassName =
   'flex min-w-0 flex-1 flex-wrap list-none items-center gap-x-2 gap-y-1';
 
@@ -55,7 +66,7 @@ export const inspectionDrawingCreateMetaChipValueClassName = 'm-0 min-w-0';
 
 /** chip 内の読取専用値 */
 export const inspectionDrawingCreateMetaChipReadonlyValueClassName =
-  'max-w-[11rem] truncate rounded border border-slate-600 bg-slate-800/90 px-1.5 py-0.5 text-[0.95rem] text-white';
+  'inline-block max-w-[11rem] overflow-hidden text-ellipsis whitespace-nowrap rounded border border-slate-600 bg-slate-800/90 px-1.5 py-0.5 text-[0.95rem] text-white';
 
 /** chip 内の Input / select */
 export const inspectionDrawingCreateMetaChipControlClassName =

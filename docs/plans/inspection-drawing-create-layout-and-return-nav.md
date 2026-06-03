@@ -48,11 +48,11 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 |------|----------|
 | 戻り先ナビ | `inspectionDrawingReturnNavigation.ts` · `kioskInspectionDrawingReturnNavigation.ts` |
 | コンパクトヘッダー | `InspectionDrawingCreateMetadataRow.tsx` · `InspectionDrawingCreateMetaChip.tsx` |
-| ヘッダーバンド | `InspectionDrawingCreateHeaderBand.tsx`（`metadataLayout`） |
+| ヘッダーバンド | `InspectionDrawingCreateCompactHeader.tsx` · `InspectionDrawingCreateMetaChipList.tsx`（内部） |
 | 右ペイン | `InspectionDrawingPointSidebar.tsx` · `InspectionDrawingPointSummaryList.tsx` |
 | レイアウトトークン | `inspectionDrawingKioskUi.ts` |
 | 画面 | `KioskInspectionDrawingCreatePage.tsx` · `KioskInspectionDrawingCreatePreviewPage.tsx` |
-| テスト | `inspectionDrawingReturnNavigation.test.ts` · `inspectionDrawingCreateHeaderBand.test.tsx` · `inspectionDrawingPointSummaryList.test.tsx` |
+| テスト | `inspectionDrawingReturnNavigation.test.ts` · `inspectionDrawingCreateCompactHeader.test.tsx` · `inspectionDrawingPointSummaryList.test.tsx` · `e2e/inspection-drawing-create-header-layout.spec.ts` |
 | 正本 HTML | [kiosk-inspection-drawing-layout-preview.html](./kiosk-inspection-drawing-layout-preview.html) |
 
 ## Validation and Acceptance
@@ -62,6 +62,7 @@ pnpm --filter @raspi-system/web test
 pnpm --filter @raspi-system/web lint
 pnpm --filter @raspi-system/web exec tsc --noEmit
 pnpm --filter @raspi-system/web build
+pnpm exec playwright test e2e/inspection-drawing-create-header-layout.spec.ts
 ```
 
 手動（Pi5 キオスク · 強制リロード後）:

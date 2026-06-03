@@ -1,5 +1,6 @@
 export { InspectionDrawingCreateHeaderBand } from './InspectionDrawingCreateHeaderBand';
 export type { InspectionDrawingHeaderBandMetadataLayout } from './InspectionDrawingCreateHeaderBand';
+export { InspectionDrawingCreateCompactHeader } from './InspectionDrawingCreateCompactHeader';
 export { InspectionDrawingCreateMetaChip } from './InspectionDrawingCreateMetaChip';
 export { InspectionDrawingCreateMetadataRow } from './InspectionDrawingCreateMetadataRow';
 export type { InspectionDrawingCreateMetadataRowProps } from './InspectionDrawingCreateMetadataRow';
@@ -87,6 +88,9 @@ export {
   inspectionDrawingCanvasZoomButtonClassName,
   inspectionDrawingCanvasZoomControlsClassName,
   inspectionDrawingCreateCanvasColumnClassName,
+  inspectionDrawingCreateFlatBandClassName,
+  inspectionDrawingCreateFlatBandItemClassName,
+  inspectionDrawingCreateFlatMetaRowClassName,
   inspectionDrawingCreateHeaderBandClassName,
   inspectionDrawingCreateMetaChipControlClassName,
   inspectionDrawingCreateMetaRowClassName,

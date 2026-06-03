@@ -17,13 +17,11 @@ import {
   mergeInspectionDrawingPointPatch,
   InspectionDrawingCanvas,
   InspectionDrawingCanvasZoomControls,
-  InspectionDrawingCreateHeaderBand,
-  InspectionDrawingCreateMetadataRow,
+  InspectionDrawingCreateCompactHeader,
   InspectionDrawingCreateToolbar,
   useInspectionDrawingZoom,
   InspectionDrawingPointSidebar,
   inspectionDrawingCreateCanvasColumnClassName,
-  inspectionDrawingCreateHeaderBandClassName,
   inspectionDrawingCreatePageRootClassName,
   inspectionDrawingCreateSideAsideClassName,
   inspectionDrawingCreateWorkspaceClassName,
@@ -356,9 +354,7 @@ export function KioskInspectionDrawingCreatePage() {
 
   return (
     <div className={inspectionDrawingCreatePageRootClassName}>
-      <InspectionDrawingCreateHeaderBand
-        bandClassName={inspectionDrawingCreateHeaderBandClassName}
-        metadataLayout="createCompact"
+      <InspectionDrawingCreateCompactHeader
         centerSlot={
           hasDrawingImage ? (
             <InspectionDrawingCanvasZoomControls
@@ -369,29 +365,27 @@ export function KioskInspectionDrawingCreatePage() {
             />
           ) : undefined
         }
-        metadata={
-          <InspectionDrawingCreateMetadataRow
-            lineageLocked={lineageLocked}
-            fhincd={fhincd}
-            onFhincdChange={setFhincd}
-            resourceCd={resourceCd}
-            onResourceCdChange={setResourceCd}
-            resourceSelectOptions={resourceSelectOptions}
-            resourceNameMap={resourceNameMap}
-            processGroup={processGroup}
-            templateProcessGroup={template?.processGroup}
-            templateName={templateName}
-            onTemplateNameChange={setTemplateName}
-            selfInspectionMode={selfInspectionMode}
-            onSelfInspectionModeChange={setSelfInspectionMode}
-            selfInspectionFixedCount={selfInspectionFixedCount}
-            onSelfInspectionFixedCountChange={setSelfInspectionFixedCount}
-            contentReadOnly={contentReadOnly}
-            onDrawingFileChange={handleFile}
-            templateVersion={template?.version}
-            templateIsActive={template?.isActive}
-          />
-        }
+        metadata={{
+          lineageLocked,
+          fhincd,
+          onFhincdChange: setFhincd,
+          resourceCd,
+          onResourceCdChange: setResourceCd,
+          resourceSelectOptions,
+          resourceNameMap,
+          processGroup,
+          templateProcessGroup: template?.processGroup,
+          templateName,
+          onTemplateNameChange: setTemplateName,
+          selfInspectionMode,
+          onSelfInspectionModeChange: setSelfInspectionMode,
+          selfInspectionFixedCount,
+          onSelfInspectionFixedCountChange: setSelfInspectionFixedCount,
+          contentReadOnly,
+          onDrawingFileChange: handleFile,
+          templateVersion: template?.version,
+          templateIsActive: template?.isActive
+        }}
         toolbar={
           <InspectionDrawingCreateToolbar
             processGroup={processGroup}

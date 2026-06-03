@@ -221,7 +221,7 @@
 
 #### 仕様（作成/改版のみ）
 
-- **上辺バンド**: `InspectionDrawingCreateHeaderBand` + `metadataLayout="createCompact"` — **meta-chip 1行**（品番・資源・工程・テンプレ・検査数·指定数）· 版バッジ **`dl` 外** · インライン図面ファイル · 中央 `centerSlot` ズーム · 右ツールバー。
+- **上辺バンド**: `InspectionDrawingCreateCompactHeader` — **meta-chip 1バンド（狭幅時は最大2物理行 wrap 可）**（品番・資源・工程・テンプレ・検査数·指定数）· 版バッジ **`dl` 外** · インライン図面ファイル · ズーム · ツールバー。**band 直下フラット DOM**（旧 `metadataSlot` 3スロット廃止）。
 - **測定点一覧**: `InspectionDrawingPointSidebar` 内 `InspectionDrawingPointSummaryList`（`variant="sidebar"`）— **2行カード**・縦スクロール。**`pointListSlot` / `InspectionDrawingPointSummaryStrip` は廃止**。
 - **ワークスペース**: `inspectionDrawingCreateWorkspaceClassName` — 狭幅 `flex-col` · `lg:flex-row`（図面 + 右ペイン）。
 - **右ペイン幅**: `inspectionDrawingCreateSideAsideClassName` — **`lg:w-[17rem]`**（本番記録 `inspectionDrawingSideAsideClassName` **20rem** は不変）。
@@ -244,7 +244,8 @@
 | 上辺が依然 **2行の大きい Input** | Pi5 が **`dcc82226` のみ**（`5274f1ee` 未デプロイ） | Pi5 ref ≥ **`5274f1ee`** · 強制リロード |
 | 上辺に **横スクロール測定点一覧** | 旧 `pointListSlot` SPA | 同上 |
 | テスト入力中に一覧クリックで **配置モードに戻る** | 旧 `setMode('place')` | **`5274f1ee` 以降** |
-| ヘッダーが再び **grid 2行** | `metadataLayout` 未指定 + `bandClassName` だけ create | ページで **`metadataLayout="createCompact"`** を確認 |
+| ヘッダーが再び **grid 2行** | `metadataLayout` 未指定 + `bandClassName` だけ create | ページで **`InspectionDrawingCreateCompactHeader`** を確認 |
+| **検査数だけ3行目**に孤立 | 旧3スロット + `dl flex-wrap` + 長い資源名 | **`InspectionDrawingCreateCompactHeader`** + Playwright `e2e/inspection-drawing-create-header-layout.spec.ts` |
 | 版バッジで HTML 警告 | `span` が `dl` 直下 | **`5274f1ee` 以降** は `dl` 外 |
 
 ### キオスク検査図面 戻り先ナビ（2026-06-03） {#検査図面-戻り先ナビ-2026-06-03}

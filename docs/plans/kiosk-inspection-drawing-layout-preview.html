@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>検査図面レイアウト</title>
+  <title>検査図面レイアウト — 1280px・長い資源名・Playwright 検証参照</title>
   <style>
     * { box-sizing: border-box; margin: 0; }
     html, body { height: 100%; overflow: hidden; }
@@ -21,7 +21,7 @@
       gap: 0.25rem 0.5rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15);
       background: rgba(15,23,42,0.5); padding: 0.25rem 0.5rem;
     }
-    .meta-row { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; list-style: none; }
+    .meta-row { display: flex; min-width: 0; flex-shrink: 1; flex-wrap: nowrap; align-items: center; gap: 0.25rem 0.75rem; list-style: none; }
     .meta-chip { display: inline-flex; align-items: baseline; gap: 0.35rem; white-space: nowrap; font-size: 0.9rem; }
     .meta-chip dt { color: #94a3b8; font-weight: 600; }
     .meta-chip dd {
@@ -103,7 +103,7 @@
         <div class="top-band">
           <dl class="meta-row">
             <div class="meta-chip"><dt>品番</dt><dd>MD100469601</dd></div>
-            <div class="meta-chip"><dt>資源</dt><dd>033 横型…</dd></div>
+            <div class="meta-chip"><dt>資源</dt><dd>033 (三井HS3A(25号機) / 横型)</dd></div>
             <div class="meta-chip"><dt>工程</dt><dd>切削</dd></div>
             <div class="meta-chip"><dt>テンプレ</dt><dd>7161サドル</dd></div>
             <div class="meta-chip"><dt>検査数</dt><dd>最初と最後</dd></div>
