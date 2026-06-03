@@ -21,15 +21,16 @@ import {
   InspectionDrawingCreateHeaderBand,
   InspectionDrawingCreateToolbar,
   useInspectionDrawingZoom,
-  InspectionDrawingPointSettingsPanel,
-  InspectionDrawingPointSummaryStrip,
+  InspectionDrawingPointSidebar,
   InspectionDrawingResourceCdSelect,
-  InspectionDrawingValuePanel,
-  inspectionDrawingCanvasColumnClassName,
+  inspectionDrawingCreateCanvasColumnClassName,
+  inspectionDrawingCreateHeaderBandClassName,
+  inspectionDrawingCreatePageRootClassName,
+  inspectionDrawingCreateSideAsideClassName,
+  inspectionDrawingCreateWorkspaceClassName,
   inspectionDrawingMetadataFileInputClass,
   inspectionDrawingMetadataInputClass,
   inspectionDrawingMetadataLabelClassName,
-  inspectionDrawingSideAsideClassName,
   kioskInspectionDrawingTemplateEditPath,
   templateItemToDrawingPoint,
   inspectionDrawingBlobFetchPath,
@@ -363,9 +364,15 @@ export function KioskInspectionDrawingCreatePage() {
     }
   };
 
+  const handleSelectPointFromList = (id: string) => {
+    setSelectedPointId(id);
+    if (mode !== 'place') setMode('place');
+  };
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 p-2 text-white">
+    <div className={inspectionDrawingCreatePageRootClassName}>
       <InspectionDrawingCreateHeaderBand
+        bandClassName={inspectionDrawingCreateHeaderBandClassName}
         centerSlot={
           hasDrawingImage ? (
             <InspectionDrawingCanvasZoomControls
@@ -484,19 +491,6 @@ export function KioskInspectionDrawingCreatePage() {
             returnLabel={inspectionReturn.inspectionDrawingReturnLabel}
           />
         }
-        pointListSlot={
-          points.length > 0 ? (
-            <InspectionDrawingPointSummaryStrip
-              points={points}
-              selectedPointId={selectedPointId}
-              disabled={false}
-              onSelectPoint={(id) => {
-                setSelectedPointId(id);
-                if (mode !== 'place') setMode('place');
-              }}
-            />
-          ) : undefined
-        }
       />
 
       {readOnly ? (
@@ -520,8 +514,8 @@ export function KioskInspectionDrawingCreatePage() {
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row">
-        <div className={inspectionDrawingCanvasColumnClassName}>
+      <div className={inspectionDrawingCreateWorkspaceClassName}>
+        <div className={inspectionDrawingCreateCanvasColumnClassName}>
           {canvasImageUrl ? (
             <InspectionDrawingCanvas
               imageUrl={canvasImageUrl}
@@ -553,30 +547,23 @@ export function KioskInspectionDrawingCreatePage() {
           )}
         </div>
 
-        <aside className={inspectionDrawingSideAsideClassName}>
-          {mode === 'place' && selectedPoint ? (
-            <InspectionDrawingPointSettingsPanel
-              point={selectedPoint}
-              disabled={contentReadOnly}
-              onChange={(patch) => updatePoint(selectedPoint.id, patch)}
-              onRemove={contentReadOnly ? undefined : removeSelected}
-            />
-          ) : null}
-
-          {mode === 'test' ? (
-            <InspectionDrawingValuePanel
-              point={selectedPoint}
-              readOnly={contentReadOnly}
-              onValueChange={(v) => {
-                if (!selectedPoint) return;
-                updatePoint(selectedPoint.id, { testValue: v });
-              }}
-            />
-          ) : contentReadOnly && mode === 'place' ? (
-            <p className="px-1 text-[0.98rem] text-white/55">
-              履歴版は表示のみです。点の選択とテスト入力はできます。
-            </p>
-          ) : null}
+        <aside className={inspectionDrawingCreateSideAsideClassName}>
+          <InspectionDrawingPointSidebar
+            mode={mode}
+            points={points}
+            selectedPoint={selectedPoint}
+            contentReadOnly={contentReadOnly}
+            onSelectPoint={handleSelectPointFromList}
+            onPointChange={(patch) => {
+              if (!selectedPoint) return;
+              updatePoint(selectedPoint.id, patch);
+            }}
+            onRemovePoint={contentReadOnly ? undefined : removeSelected}
+            onTestValueChange={(v) => {
+              if (!selectedPoint) return;
+              updatePoint(selectedPoint.id, { testValue: v });
+            }}
+          />
         </aside>
       </div>
     </div>

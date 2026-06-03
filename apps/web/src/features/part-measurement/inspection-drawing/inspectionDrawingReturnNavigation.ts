@@ -57,16 +57,30 @@ export function isSafeInspectionDrawingReturnPath(
   return allowedReturnPaths.includes(normalized);
 }
 
+/** 許可された戻り先 pathname と表示ラベルの対（ラベルは state ではなくここから決定） */
+export type InspectionDrawingReturnPreset = {
+  pathname: string;
+  label: string;
+};
+
 export type ParseInspectionDrawingReturnOptions = {
   fallback: InspectionDrawingLocationReturn;
-  allowedReturnPaths: readonly string[];
+  returnPresets: readonly InspectionDrawingReturnPreset[];
 };
+
+function findReturnPresetByPathname(
+  normalizedPathname: string,
+  presets: readonly InspectionDrawingReturnPreset[]
+): InspectionDrawingReturnPreset | undefined {
+  return presets.find((preset) => preset.pathname === normalizedPathname);
+}
 
 export function parseInspectionDrawingReturnFromLocation(
   state: unknown,
   options: ParseInspectionDrawingReturnOptions
 ): InspectionDrawingLocationReturn {
-  const { fallback, allowedReturnPaths } = options;
+  const { fallback, returnPresets } = options;
+  const allowedReturnPaths = returnPresets.map((preset) => preset.pathname);
 
   if (!state || typeof state !== 'object') {
     return fallback;
@@ -74,8 +88,7 @@ export function parseInspectionDrawingReturnFromLocation(
 
   const record = state as Record<string, unknown>;
   const to = readTrimmedString(record.inspectionDrawingReturnTo);
-  const label = readTrimmedString(record.inspectionDrawingReturnLabel);
-  if (!to || !label || !isSafeInspectionDrawingReturnPath(to, allowedReturnPaths)) {
+  if (!to || !isSafeInspectionDrawingReturnPath(to, allowedReturnPaths)) {
     return fallback;
   }
 
@@ -84,5 +97,10 @@ export function parseInspectionDrawingReturnFromLocation(
     return fallback;
   }
 
-  return { inspectionDrawingReturnTo: normalizedTo, inspectionDrawingReturnLabel: label };
+  const preset = findReturnPresetByPathname(normalizedTo, returnPresets);
+  if (!preset) {
+    return fallback;
+  }
+
+  return { inspectionDrawingReturnTo: normalizedTo, inspectionDrawingReturnLabel: preset.label };
 }

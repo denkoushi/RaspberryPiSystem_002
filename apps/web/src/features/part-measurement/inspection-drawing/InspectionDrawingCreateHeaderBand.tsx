@@ -1,7 +1,6 @@
 import {
-  inspectionDrawingHeaderBandClassName,
   inspectionDrawingHeaderBandCenterSlotClassName,
-  inspectionDrawingHeaderPointListSlotClassName,
+  inspectionDrawingHeaderBandClassName,
   inspectionDrawingMetadataGridClassName,
   inspectionDrawingToolbarSlotClassName
 } from './inspectionDrawingKioskUi';
@@ -13,29 +12,24 @@ type Props = {
   toolbar: ReactNode;
   /** メタデータ列とツールバー間の余白（図面ズーム等）。縦行は増やさない */
   centerSlot?: ReactNode;
-  /** 作成/改版のみ — バンド直下の測定点一覧（main row の縦行は増やさない） */
-  pointListSlot?: ReactNode;
+  /** 既定は本番記録向け band。作成/改版は create 用 class を渡す */
+  bandClassName?: string;
 };
 
-/** 上部: メタデータ（左）+ 中央余白（任意）+ ツールバー（右） */
+/** 上部: メタデータ + 中央余白（任意）+ ツールバー */
 export function InspectionDrawingCreateHeaderBand({
   metadata,
   toolbar,
   centerSlot,
-  pointListSlot
+  bandClassName = inspectionDrawingHeaderBandClassName
 }: Props) {
   return (
-    <div className="flex shrink-0 flex-col gap-1.5">
-      <div className={inspectionDrawingHeaderBandClassName}>
-        <div className={inspectionDrawingMetadataGridClassName}>{metadata}</div>
-        {centerSlot ? (
-          <div className={inspectionDrawingHeaderBandCenterSlotClassName}>{centerSlot}</div>
-        ) : null}
-        <div className={inspectionDrawingToolbarSlotClassName}>{toolbar}</div>
-      </div>
-      {pointListSlot ? (
-        <div className={inspectionDrawingHeaderPointListSlotClassName}>{pointListSlot}</div>
+    <div className={bandClassName}>
+      <div className={inspectionDrawingMetadataGridClassName}>{metadata}</div>
+      {centerSlot ? (
+        <div className={inspectionDrawingHeaderBandCenterSlotClassName}>{centerSlot}</div>
       ) : null}
+      <div className={inspectionDrawingToolbarSlotClassName}>{toolbar}</div>
     </div>
   );
 }

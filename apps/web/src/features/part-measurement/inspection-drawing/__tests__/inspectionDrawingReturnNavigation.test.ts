@@ -13,7 +13,8 @@ const FALLBACK: InspectionDrawingLocationReturn = {
   inspectionDrawingReturnLabel: '一覧へ戻る'
 };
 const PRODUCTION_ALLOWED = [LIBRARY_PATH] as const;
-const PARSE_OPTIONS = { fallback: FALLBACK, allowedReturnPaths: PRODUCTION_ALLOWED };
+const PRODUCTION_PRESETS = [{ pathname: LIBRARY_PATH, label: '一覧へ戻る' }] as const;
+const PARSE_OPTIONS = { fallback: FALLBACK, returnPresets: PRODUCTION_PRESETS };
 
 describe('normalizeInternalInspectionDrawingReturnPath', () => {
   it('.. を解決する', () => {
@@ -59,6 +60,27 @@ describe('parseInspectionDrawingReturnFromLocation', () => {
           inspectionDrawingReturnTo: '/kiosk/production-schedule/leader-order-board',
           inspectionDrawingReturnLabel: '順位ボード'
         },
+        PARSE_OPTIONS
+      )
+    ).toEqual(FALLBACK);
+  });
+
+  it('allowlist 内の pathname でも state の偽装ラベルは使わず preset のラベルを返す', () => {
+    expect(
+      parseInspectionDrawingReturnFromLocation(
+        {
+          inspectionDrawingReturnTo: LIBRARY_PATH,
+          inspectionDrawingReturnLabel: '偽装表示'
+        },
+        PARSE_OPTIONS
+      )
+    ).toEqual(FALLBACK);
+  });
+
+  it('allowlist 内の pathname のみで preset ラベルを返す', () => {
+    expect(
+      parseInspectionDrawingReturnFromLocation(
+        { inspectionDrawingReturnTo: LIBRARY_PATH },
         PARSE_OPTIONS
       )
     ).toEqual(FALLBACK);

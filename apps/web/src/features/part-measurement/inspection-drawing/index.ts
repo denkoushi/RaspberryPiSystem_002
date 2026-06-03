@@ -1,7 +1,8 @@
 export { InspectionDrawingCreateHeaderBand } from './InspectionDrawingCreateHeaderBand';
 export { InspectionDrawingCreateToolbar } from './InspectionDrawingCreateToolbar';
 export { InspectionDrawingPointSettingsPanel } from './InspectionDrawingPointSettingsPanel';
-export { InspectionDrawingPointSummaryStrip } from './InspectionDrawingPointSummaryStrip';
+export { InspectionDrawingPointSummaryList } from './InspectionDrawingPointSummaryList';
+export { InspectionDrawingPointSidebar } from './InspectionDrawingPointSidebar';
 export {
   InspectionDrawingLibraryFilterBar,
   type InspectionDrawingLibraryProcessFilter
@@ -51,6 +52,7 @@ export {
   normalizeInternalInspectionDrawingReturnPath,
   parseInspectionDrawingReturnFromLocation,
   type InspectionDrawingLocationReturn,
+  type InspectionDrawingReturnPreset,
   type ParseInspectionDrawingReturnOptions
 } from './inspectionDrawingReturnNavigation';
 
@@ -80,11 +82,17 @@ export {
   inspectionDrawingCanvasColumnClassName,
   inspectionDrawingCanvasZoomButtonClassName,
   inspectionDrawingCanvasZoomControlsClassName,
+  inspectionDrawingCreateCanvasColumnClassName,
+  inspectionDrawingCreateHeaderBandClassName,
+  inspectionDrawingCreatePageRootClassName,
+  inspectionDrawingCreateSideAsideClassName,
+  inspectionDrawingCreateWorkspaceClassName,
   inspectionDrawingHeaderBandClassName,
   inspectionDrawingHeaderBandCenterSlotClassName,
-  inspectionDrawingHeaderPointListSlotClassName,
-  inspectionDrawingPointSummaryCardClassName,
-  inspectionDrawingPointSummaryStripClassName,
+  inspectionDrawingPointSummaryListSidebarCardClassName,
+  inspectionDrawingPointSummaryListSidebarClassName,
+  inspectionDrawingPointSummaryListSidebarSectionClassName,
+  inspectionDrawingPointSummaryListSidebarTitleClassName,
   inspectionDrawingKioskDisabledButtonClass,
   inspectionDrawingKioskToggleInactiveClass,
   inspectionDrawingLibraryFilterFhincdWidthClass,

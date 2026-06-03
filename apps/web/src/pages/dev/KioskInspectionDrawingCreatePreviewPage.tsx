@@ -8,13 +8,15 @@ import {
   InspectionDrawingCreateHeaderBand,
   InspectionDrawingCreateToolbar,
   useInspectionDrawingZoom,
-  InspectionDrawingPointSettingsPanel,
-  InspectionDrawingValuePanel,
-  inspectionDrawingCanvasColumnClassName,
+  InspectionDrawingPointSidebar,
+  inspectionDrawingCreateCanvasColumnClassName,
+  inspectionDrawingCreateHeaderBandClassName,
+  inspectionDrawingCreatePageRootClassName,
+  inspectionDrawingCreateSideAsideClassName,
+  inspectionDrawingCreateWorkspaceClassName,
   inspectionDrawingMetadataControlWidthClass,
   inspectionDrawingMetadataInputClass,
-  inspectionDrawingMetadataLabelClassName,
-  inspectionDrawingSideAsideClassName
+  inspectionDrawingMetadataLabelClassName
 } from '../../features/part-measurement/inspection-drawing';
 import {
   INSPECTION_DRAWING_PREVIEW_IMAGE_URL,
@@ -53,10 +55,11 @@ export function KioskInspectionDrawingCreatePreviewPage() {
   return (
     <KioskInspectionDrawingDevPreviewChrome
       productionPath="/kiosk/part-measurement/inspection/create"
-      rootClassName="flex min-h-0 flex-1 flex-col gap-2 p-2 text-white"
+      rootClassName={inspectionDrawingCreatePageRootClassName}
       footnote="マーカー1=OK·2=NG·3=未入力。下部 DEV バーは本番に無し"
     >
         <InspectionDrawingCreateHeaderBand
+          bandClassName={inspectionDrawingCreateHeaderBandClassName}
           centerSlot={
             <InspectionDrawingCanvasZoomControls
               enabled
@@ -108,8 +111,8 @@ export function KioskInspectionDrawingCreatePreviewPage() {
           }
         />
 
-        <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row">
-          <div className={inspectionDrawingCanvasColumnClassName}>
+        <div className={inspectionDrawingCreateWorkspaceClassName}>
+          <div className={inspectionDrawingCreateCanvasColumnClassName}>
             <InspectionDrawingCanvas
               imageUrl={INSPECTION_DRAWING_PREVIEW_IMAGE_URL}
               points={points}
@@ -122,24 +125,26 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             />
           </div>
 
-          <aside className={inspectionDrawingSideAsideClassName}>
-            {mode === 'place' && selectedPoint ? (
-              <InspectionDrawingPointSettingsPanel
-                point={selectedPoint}
-                onChange={(patch) => updatePoint(selectedPoint.id, patch)}
-                onRemove={() => undefined}
-              />
-            ) : null}
-
-            {mode === 'test' ? (
-              <InspectionDrawingValuePanel
-                point={selectedPoint}
-                onValueChange={(v) => {
-                  if (!selectedPoint) return;
-                  updatePoint(selectedPoint.id, { testValue: v });
-                }}
-              />
-            ) : null}
+          <aside className={inspectionDrawingCreateSideAsideClassName}>
+            <InspectionDrawingPointSidebar
+              mode={mode}
+              points={points}
+              selectedPoint={selectedPoint}
+              contentReadOnly={false}
+              onSelectPoint={(id) => {
+                setSelectedPointId(id);
+                if (mode !== 'place') setMode('place');
+              }}
+              onPointChange={(patch) => {
+                if (!selectedPoint) return;
+                updatePoint(selectedPoint.id, patch);
+              }}
+              onRemovePoint={() => undefined}
+              onTestValueChange={(v) => {
+                if (!selectedPoint) return;
+                updatePoint(selectedPoint.id, { testValue: v });
+              }}
+            />
           </aside>
         </div>
     </KioskInspectionDrawingDevPreviewChrome>
