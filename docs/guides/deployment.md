@@ -2,13 +2,43 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-06-03
+last-verified: 2026-06-04
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-06-04 · **キオスク検査図面 作成/改版ヘッダー フラット band**·**Web のみ**·**Pi5 + Pi4×4 本番・実機 OK**） {#kiosk-inspection-drawing-create-header-flat-layout-2026-06-04}
+
+- **変更概要（正本）**: [KB-320 §作成レイアウト §フラット band](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成改版ヘッダー-フラット-band-2026-06-04) · [ExecPlan](../plans/inspection-drawing-create-layout-and-return-nav.md) · ブランチ **`fix/inspection-drawing-create-header-flat-layout`** · 代表 **`d96da485`**
+  - **内容**: 旧 `InspectionDrawingCreateHeaderBand` 3スロット（`metadataSlot` + `centerSlot` + `toolbar`）を廃止し、**`InspectionDrawingCreateCompactHeader`** で dl / badge / file / zoom / toolbar を **band 直下フラット配置**。狭幅（1280px 実効幅）で **最大2物理行 wrap** · **検査数 chip 孤児化防止**。
+  - **Prisma / API**: **変更なし**（**Web のみ** · Pi5 Docker **`web` 再ビルド**）
+  - **テスト**: Vitest `inspectionDrawingCreateCompactHeader.test.tsx` · Playwright `e2e/inspection-drawing-create-header-layout.spec.ts`（3 scenario · 1280px）
+- **標準コマンド**（`main` マージ後は第2引数 **`main`**）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh main \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+# Pi5 目視 OK 後、Pi4 を 1 台ずつ --limit 変更
+# 順序: raspberrypi4 → raspi4-robodrill01 → raspi4-fjv60-80 → raspi4-kensaku-stonebase01
+```
+
+- **本番デプロイ（実績·2026-06-04）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 実機 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | **`20260604-074525-7036`** | **`d96da485`** | **`failed=0`** | `Git: changed` · **web** 再ビルド · バンドルに `inspection-drawing-create-header-band` 確認 |
+| `raspi4-kensaku-stonebase01` | **`20260604-075147-21404`** | **`d96da485`** | **`failed=0`** | `kiosk-browser` 再起動 · **実機検証 OK** |
+| `raspberrypi4` | **`20260604-080658-2223`** | **`d96da485`** | **`failed=0`** | `kiosk-browser` 再起動 |
+| `raspi4-robodrill01` | **`20260604-081126-19736`** | **`d96da485`** | **`failed=0`** | `kiosk-browser` 再起動 |
+| `raspi4-fjv60-80` | **`20260604-081502-25798`** | **`d96da485`** | **`failed=0`** | `kiosk-browser` 再起動 |
+
+- **CI**: **`26917349311`** success（`d96da485` push 後）
+- **実機確認**: [Runbook §フラット band](../runbooks/kiosk-part-measurement.md#検査図面-作成改版ヘッダー-フラット-band-2026-06-04) · Phase12 **42/0/0**
+- **前提（2026-06-03 レイアウト）**: 右ペイン縦一覧・戻り先ナビは [§作成レイアウト+戻り先](#kiosk-inspection-drawing-create-layout-return-nav-2026-06-03) 済。**本項は上辺ヘッダーの wrap 孤児化修正**。
 
 ### 補足（2026-06-03 · **キオスク検査図面 作成/改版レイアウト + 戻り先ナビ**·**Web のみ**·**Pi5 先行**） {#kiosk-inspection-drawing-create-layout-return-nav-2026-06-03}
 
@@ -29,7 +59,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 実機 |
 |--------|---------------|----------|------------|------|
 | `raspberrypi5` | **`20260603-211122-29648`** | **`5274f1ee`** | **`failed=0`** | `Git: changed` · web 再ビルド · 実機確認継続 |
-| Pi4×4 | — | — | — | **未** — `main` 反映後 1 台ずつ + 強制リロード |
+| Pi4×4 | — | — | — | **2026-06-04 フラット band で全台反映済** — [§フラット band](./deployment.md#kiosk-inspection-drawing-create-header-flat-layout-2026-06-04) |
 
 - **中間デプロイ（参考）**: **`20260603-202513-13104`** · **`dcc82226`** — 右ペイン一覧まで。**ヘッダー chip は `5274f1ee` 必須**。
 - **CI**: **`26883229358`** success（`5274f1ee`）。

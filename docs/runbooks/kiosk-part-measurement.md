@@ -105,6 +105,39 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 2. 目視 OK 後、必要 Pi4 を `--limit` 1 台ずつ（実績: **`raspberrypi5`** `20260603-154307-28721` · **`raspi4-kensaku-stonebase01`** `20260603-154818-15503`）。
 3. Pi4 はキオスク **強制リロード**（§6.6.4）後、[§実機確認ポイント（拡張）](#実機確認ポイント拡張) の 2–4 を実施。
 
+## 検査図面 作成/改版ヘッダー フラット band（2026-06-04） {#検査図面-作成改版ヘッダー-フラット-band-2026-06-04}
+
+正本: [KB-320 §フラット band](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成改版ヘッダー-フラット-band-2026-06-04) · [ExecPlan](../plans/inspection-drawing-create-layout-and-return-nav.md) · [deployment §2026-06-04](../guides/deployment.md#kiosk-inspection-drawing-create-header-flat-layout-2026-06-04) · ブランチ **`fix/inspection-drawing-create-header-flat-layout`** · **`d96da485`** · CI **`26917349311`**
+
+### デプロイ（Web のみ · 完了）
+
+1. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+2. `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+3. Pi5 OK 後、Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
+4. 各 Pi4 **強制リロード**（§6.6.4）。
+
+| ホスト | Detach Run ID | 実機 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260604-074525-7036`** | web 再ビルド · HEAD **`d96da485`** |
+| `raspi4-kensaku-stonebase01` | **`20260604-075147-21404`** | **実機 OK** |
+| `raspberrypi4` | **`20260604-080658-2223`** | `kiosk-browser` 再起動 |
+| `raspi4-robodrill01` | **`20260604-081126-19736`** | 同上 |
+| `raspi4-fjv60-80` | **`20260604-081502-25798`** | 同上 |
+
+### 実機確認ポイント
+
+1. 改版（長い資源名 · chip 5個）で上辺 **最大2物理行** · **検査数 chip 孤児なし**。
+2. 版バッジ · 図面 · ズーム · ツールバーが **同一 band** 内。
+3. 右ペイン縦一覧 · テスト入力 mode 維持 · 戻り先ナビ（初版レイアウトと整合）。
+
+### トラブルシュート
+
+| 症状 | 確認 |
+|------|------|
+| 検査数だけ3行目 | Pi5 HEAD ≥ **`d96da485`** · `InspectionDrawingCreateCompactHeader` |
+| Pi4 だけ旧 UI | 強制リロード · Pi5 SPA · `_appRef` |
+| Playwright 白画面 | API モックが `/src/api/` を intercept — [helpers](../../e2e/helpers/inspectionDrawingCreateHeaderLayout.ts) |
+
 ## 検査図面 作成/改版レイアウト + 戻り先ナビ（2026-06-03） {#検査図面-作成-layout-return-nav-2026-06-03}
 
 正本: [KB-320 §作成レイアウト](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成改版レイアウト-2026-06-03) · [KB-320 §戻り先](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-戻り先ナビ-2026-06-03) · [ExecPlan](../plans/inspection-drawing-create-layout-and-return-nav.md) · [deployment §2026-06-03](../guides/deployment.md#kiosk-inspection-drawing-create-layout-return-nav-2026-06-03) · ブランチ **`fix/inspection-drawing-return-navigation-review`** · **`5274f1ee`** · CI **`26883229358`**
@@ -120,7 +153,7 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 
 ### 実機確認ポイント
 
-1. **検査図面** 新規/改版 — 上辺 **コンパクト meta-chip 1行**（旧2行グリッドでない）· **右ペイン下部**に測定点縦一覧（上辺横一覧なし）。
+1. **検査図面** 新規/改版 — 上辺 **フラット band**（最大2物理行 · 検査数孤児なし · [§2026-06-04](#検査図面-作成改版ヘッダー-フラット-band-2026-06-04)）· **右ペイン下部**に測定点縦一覧。
 2. **図面エリア**が旧 UI より広い · ズーム `−` `＋` `□` はヘッダー中央。
 3. **一覧へ戻る**（一覧からの導線）が機能すること。
 4. **テスト入力**中に右一覧で別点を選んでも **テスト入力モード維持**（連続入力）。
@@ -133,6 +166,7 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 | ヘッダーが旧 **2行 Input** | Pi5 HEAD ≥ **`5274f1ee`**（`dcc82226` のみだと右ペインだけ新 UI）· 強制リロード |
 | 上辺に横一覧 | 旧 SPA · 同上 |
 | テスト入力が一覧クリックで中断 | HEAD ≥ **`5274f1ee`** |
+| 検査数だけ3行目 | [§フラット band](#検査図面-作成改版ヘッダー-フラット-band-2026-06-04) · HEAD ≥ **`d96da485`** |
 | 戻る先がおかしい | [KB-320 §戻り先](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-戻り先ナビ-2026-06-03) — allowlist 外は一覧 fallback |
 
 ## 自主検査・検査図面 仕様拡張（2026-06-03） {#自主検査-検査図面-仕様拡張-2026-06-03}

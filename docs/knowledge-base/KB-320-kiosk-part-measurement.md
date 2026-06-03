@@ -212,9 +212,10 @@
 
 | 項目 | 内容 |
 |------|------|
-| ブランチ | **`fix/inspection-drawing-return-navigation-review`**（レイアウト + 戻り先を同一ブランチで積み上げ） |
-| 代表コミット | **`dcc82226`**（ワークスペース・右ペイン一覧）· **`5274f1ee`**（コンパクト meta-chip ヘッダー） |
-| CI | **`26883229358`** · **success**（`5274f1ee` push 後） |
+| ブランチ（初版） | **`fix/inspection-drawing-return-navigation-review`**（レイアウト + 戻り先を同一ブランチで積み上げ） |
+| ブランチ（フラット band） | **`fix/inspection-drawing-create-header-flat-layout`** → **`main` マージ（2026-06-04）** |
+| 代表コミット | **`dcc82226`**（右ペイン）· **`5274f1ee`**（コンパクト meta-chip 3スロット）· **`d96da485`**（**フラット band** · 孤児 chip 修正） |
+| CI | **`26883229358`**（`5274f1ee`）· **`26917349311`**（`d96da485`）· **success** |
 | 変更種別 | **Web のみ** |
 | ExecPlan | [inspection-drawing-create-layout-and-return-nav.md](../plans/inspection-drawing-create-layout-and-return-nav.md) |
 | 正本 HTML | [kiosk-inspection-drawing-layout-preview.html](../plans/kiosk-inspection-drawing-layout-preview.html) |
@@ -228,16 +229,85 @@
 - **テスト入力**: 右一覧で点選択しても **`mode` は維持**（`handleSelectPointFromList` は `selectedPointId` のみ更新）。
 - **a11y**: `InspectionDrawingCreateMetaChip` の `controlId` + `label htmlFor`（品番・資源・テンプレ・検査数・指定数）。
 
-#### 本番反映（2026-06-03）
+#### 本番反映
 
-| ホスト | Detach Run ID | Git HEAD | 実機 |
-|--------|---------------|----------|------|
-| `raspberrypi5` | **`20260603-211122-29648`** | **`5274f1ee`** | `failed=0` · web 再ビルド · **実機確認は運用者継続** |
-| Pi4×4 | — | — | **未** — `main` マージ後 1 台ずつ + 強制リロード |
+| 段階 | ホスト | Detach Run ID | Git HEAD | 実機 |
+|------|--------|---------------|----------|------|
+| 2026-06-03 初版 | `raspberrypi5` | **`20260603-211122-29648`** | **`5274f1ee`** | 右ペイン + 3スロット chip ヘッダー |
+| **2026-06-04 フラット band** | `raspberrypi5` | **`20260604-074525-7036`** | **`d96da485`** | web 再ビルド · バンドル testid 確認 |
+| **2026-06-04 フラット band** | Pi4×4 全台 | 下表 | **`d96da485`** | stonebase **実機 OK** · 他3台 deploy 済 |
+
+| Pi4 ホスト | Detach Run ID | 備考 |
+|------------|---------------|------|
+| `raspi4-kensaku-stonebase01` | **`20260604-075147-21404`** | **実機検証 OK** |
+| `raspberrypi4` | **`20260604-080658-2223`** | `kiosk-browser` 再起動 |
+| `raspi4-robodrill01` | **`20260604-081126-19736`** | 同上 |
+| `raspi4-fjv60-80` | **`20260604-081502-25798`** | 同上 |
 
 中間デプロイ: **`20260603-202513-13104`** · **`dcc82226`**（右ペインまで。ヘッダー chip は **`5274f1ee`** まで未反映だった）。
 
-#### トラブルシュート（レイアウト）
+### キオスク検査図面 作成/改版ヘッダー フラット band（2026-06-04） {#検査図面-作成改版ヘッダー-フラット-band-2026-06-04}
+
+**正本 Runbook**: [kiosk-part-measurement §フラット band](../runbooks/kiosk-part-measurement.md#検査図面-作成改版ヘッダー-フラット-band-2026-06-04) · **デプロイ**: [deployment.md §2026-06-04](../guides/deployment.md#kiosk-inspection-drawing-create-header-flat-layout-2026-06-04)
+
+#### 背景・症状（`5274f1ee` 以降も残存）
+
+| 症状 | 条件 |
+|------|------|
+| 上辺が **3物理行** になる | 改版（`lineageLocked=true`）で chip **5個** + **長い資源名** + 1280px 実効幅 |
+| **検査数 chip だけ3行目**に孤立 | 旧 `InspectionDrawingCreateHeaderBand` + `metadataLayout="createCompact"` が **metadataSlot 内で二重 flex-wrap**（slot 全体 vs `dl` 内）し、折り返し順序が正本 HTML と非等価 |
+| DEV プレビューでは再現しにくい | fixture 資源名が短い · `min-w-[1280px]` のみで KioskLayout `px-4` 相当幅を再現していなかった |
+
+#### 採用方針（flat_wrap）
+
+- **`InspectionDrawingCreateCompactHeader`**（作成/改版専用）— band 直下に **dl / version-badge / drawing-file / zoom-slot / toolbar-slot** を兄弟配置（[正本 HTML](../plans/kiosk-inspection-drawing-layout-preview.html) と同型）。
+- **meta-row（dl）**: `flex-nowrap` + `shrink min-w-0` — chip 列内では折り返さない。
+- **band**: `flex-wrap` — 狭幅時 **最大2物理行** を許容。版バッジ・図面ファイル・zoom・toolbar は **`shrink-0`**。
+- **公開 export**: `InspectionDrawingCreateCompactHeader` のみ。`MetaChipList` / `VersionBadge` / `DrawingFileControl` は内部。
+- **本番記録 edit**（`KioskInspectionDrawingEditPage`）: **非変更** — 引き続き `InspectionDrawingCreateHeaderBand`（`metadataLayout` 既定 `grid`）。
+
+#### DOM 契約（E2E / Vitest）
+
+```
+data-testid=inspection-drawing-create-header-band
+  ├─ inspection-drawing-create-meta-row (dl, flex-nowrap)
+  ├─ inspection-drawing-create-version-badge (任意)
+  ├─ inspection-drawing-create-drawing-file
+  ├─ inspection-drawing-create-zoom-slot
+  └─ inspection-drawing-create-toolbar-slot
+```
+
+- meta-chip: `data-testid=inspection-drawing-create-meta-chip` · `data-chip-term`（例: `検査数`）
+- 読取専用 chip 値: `inline-block max-w overflow-hidden`（長い資源名）
+
+#### DEV プレビュー
+
+- ルート: `/dev/kiosk-inspection-drawing-create?scenario=revise|fixed_count|create_new`
+- fixture: [inspectionDrawingCreatePreviewScenarios.ts](../../apps/web/src/pages/dev/inspectionDrawingCreatePreviewScenarios.ts) — 長い資源名 `033 (三井HS3A(25号機) / 横型)`
+- `KioskInspectionDrawingDevPreviewChrome` の **`simulateKioskContentWidth`** — KioskLayout `px-4` 相当の有効幅再現（作成プレビューのみ）
+
+#### 代表ファイル
+
+| 領域 | パス |
+|------|------|
+| コンポーザ | `InspectionDrawingCreateCompactHeader.tsx` |
+| 内部部品 | `InspectionDrawingCreateMetaChipList.tsx` · `InspectionDrawingCreateVersionBadge.tsx` · `InspectionDrawingCreateDrawingFileControl.tsx` |
+| トークン | `inspectionDrawingKioskUi.ts`（`inspectionDrawingCreateFlatBandClassName` 等） |
+| 旧 API（記録 edit 用） | `InspectionDrawingCreateHeaderBand.tsx`（`metadataLayout` 維持） |
+| Vitest | `__tests__/inspectionDrawingCreateCompactHeader.test.tsx` |
+| Playwright | `e2e/inspection-drawing-create-header-layout.spec.ts` · `e2e/helpers/inspectionDrawingCreateHeaderLayout.ts` |
+
+#### トラブルシュート（フラット band）
+
+| 症状 | 原因 | 対処 |
+|------|------|------|
+| **検査数だけ3行目**に孤立 | 旧 CompactHeader 未反映 · または `dl flex-wrap` 回帰 | Pi5 HEAD ≥ **`d96da485`** · `InspectionDrawingCreateCompactHeader` 使用確認 |
+| Playwright E2E **白画面** | `page.route('**/api/**')` が Vite ソース **`/src/api/client.ts`** を JSON で fulfill | ヘルパーで `/src/api/` は **`route.continue()`** · 未知 API も continue（[helpers](../../e2e/helpers/inspectionDrawingCreateHeaderLayout.ts)） |
+| E2E で **3行目に badge/file だけ**落ちても pass | 行数集計対象に version-badge / drawing-file が漏れていた | `collectHeaderLayoutBoxes` に両 testid を含める（修正済 **`d96da485`**） |
+| DEV で1行に見える | 短い fixture · 有効幅未シミュレート | `?scenario=revise` + `simulateKioskContentWidth` |
+| キオスクだけ旧ヘッダー | Pi4 `_appRef` 古い · SPA キャッシュ | **`update-all-clients.sh`** + **強制リロード**（§6.6.4）· Pi5 SPA 配信元 HEAD 確認 |
+
+#### トラブルシュート（レイアウト全般）
 
 | 症状 | 原因 | 対処 |
 |------|------|------|
