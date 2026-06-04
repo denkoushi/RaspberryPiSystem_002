@@ -1,5 +1,6 @@
 import type {
   PartMeasurementTemplateItemDto,
+  SelfInspectionLotEntryDto,
   SelfInspectionSessionDetailDto
 } from '../types';
 
@@ -19,6 +20,23 @@ export function makeSelfInspectionTemplateItemForTest(
     nominalValue: '10',
     lowerLimit: '9',
     upperLimit: '11',
+    ...overrides
+  };
+}
+
+export function makeSelfInspectionLotEntryForTest(
+  overrides: Partial<SelfInspectionLotEntryDto> & Pick<SelfInspectionLotEntryDto, 'entryIndex'>
+): SelfInspectionLotEntryDto {
+  const now = '2026-06-04T00:00:00.000Z';
+  return {
+    id: `entry-${overrides.entryIndex}`,
+    entrySlotKind: 'fixed',
+    entrySlotLabel: String(overrides.entryIndex + 1),
+    createdByEmployeeId: null,
+    createdByEmployeeNameSnapshot: null,
+    createdAt: now,
+    updatedAt: now,
+    values: [],
     ...overrides
   };
 }

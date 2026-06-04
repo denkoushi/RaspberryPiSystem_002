@@ -38,6 +38,19 @@ export function listSelfInspectionEntrySlots(
   }));
 }
 
+/** API の required slot 充足と同型: 必須 entryIndex がすべて session.entries に存在するか */
+export function areRequiredSelfInspectionSlotsFilled(
+  session: Pick<
+    SelfInspectionSessionDetailDto,
+    'selfInspectionMode' | 'plannedQuantity' | 'expectedEntryCount' | 'requiredEntryCount' | 'entries'
+  >
+): boolean {
+  const required = listSelfInspectionEntrySlots(session);
+  if (required.length === 0) return false;
+  const present = new Set(session.entries.map((entry) => entry.entryIndex));
+  return required.every((slot) => present.has(slot.entryIndex));
+}
+
 export function selfInspectionModeDisplayLabel(mode: SelfInspectionMode, fixedCount: number | null): string {
   switch (mode) {
     case 'single':

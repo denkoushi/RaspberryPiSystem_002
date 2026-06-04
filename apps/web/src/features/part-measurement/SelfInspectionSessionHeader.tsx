@@ -4,7 +4,7 @@ import { Button } from '../../components/ui/Button';
 
 import { InspectionDrawingCanvasZoomControls } from './inspection-drawing/InspectionDrawingCanvasZoomControls';
 import {
-  inspectionDrawingKioskToggleInactiveClass,
+  inspectionDrawingKioskDisabledButtonClass,
   selfInspectionSessionFlatBandClassName,
   selfInspectionSessionMetaChipClassName,
   selfInspectionSessionMetaRowClassName,
@@ -23,6 +23,7 @@ type Props = {
   entryCountBlockedReason: string | null;
   guideMode: SelfInspectionGuideMode;
   guideActionsEnabled: boolean;
+  canResumeGuide: boolean;
   zoomEnabled: boolean;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -46,6 +47,7 @@ export function SelfInspectionSessionHeader({
   entryCountBlockedReason,
   guideMode,
   guideActionsEnabled,
+  canResumeGuide,
   zoomEnabled,
   onZoomIn,
   onZoomOut,
@@ -96,8 +98,8 @@ export function SelfInspectionSessionHeader({
         <Button
           type="button"
           variant="ghostOnDark"
-          className={clsx('min-h-11 px-2 text-sm', inspectionDrawingKioskToggleInactiveClass(guideMode === 'guided'))}
-          disabled={!zoomEnabled || !guideActionsEnabled}
+          className={clsx('min-h-11 px-2 text-sm', inspectionDrawingKioskDisabledButtonClass)}
+          disabled={!zoomEnabled || !guideActionsEnabled || !canResumeGuide}
           onClick={onResumeGuide}
         >
           再開

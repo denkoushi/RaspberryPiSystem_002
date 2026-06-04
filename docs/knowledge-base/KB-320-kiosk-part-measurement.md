@@ -150,19 +150,40 @@
 | **件切替** | 初回 priming はセッション入室時 1 回。他入力件タップ後は **manual**（再開で guided 復帰）— 仕様維持 |
 | **ガイド試行** | **対象外**（`GUIDED_TRIAL_ZOOM=1.5` 固定） |
 
+#### セッション操作ボタン活性（2026-06-04） {#自主検査-セッション操作ボタン活性-2026-06-04}
+
+判定は [`selfInspectionSessionActionState.ts`](../../apps/web/src/features/part-measurement/selfInspectionSessionActionState.ts)（理由コード）と [`selfInspectionEntrySlots.ts`](../../apps/web/src/features/part-measurement/selfInspectionEntrySlots.ts) の `areRequiredSelfInspectionSlotsFilled()`。表示 `disabled` と `onClick` ガードは同一判定。
+
+| ボタン | 有効条件（UI） | 補足 |
+|--------|----------------|------|
+| **入力を保存** | 現在入力件が **dirty** かつ全測定点 **ok**（空欄・不正値・公差外・公差未設定は不可）· readOnly でない · 保存/完了処理中でない | 他入力件の dirty は見ない。完了処理中は値入力パネルも readOnly |
+| **自主検査を完了** | **required slot** がすべて DB 保存済み（`listSelfInspectionEntrySlots` と `session.entries` の index 一致）· **未保存ドラフトなし**（`hasDirtySelfInspectionDrafts`）· readOnly でない · 保存/完了処理中でない | 保存済み全件の公差最終判定は **API 正本**（409 時はエラー表示を維持） |
+| **再開** | **manual** · 図面 ready · `guideActionsEnabled` · 当該入力件に **未完了測定点**（`findFirstPendingPointId`） | `guided` 中は無効。全点 OK で dirty あり → 保存促し、dirty なし →「未完了の測定点はありません」 |
+
 | 項目 | 内容 |
 |------|------|
-| ブランチ | **`feat/kiosk-self-inspection-guided-polish`** → **`main` マージ** |
-| 代表コミット | **`c90647ac`**（polish 一式）· **`fb10f0e0`**（倍率 2.0 + 保存 blur + テスト fixture） |
+| ブランチ | **`feat/kiosk-self-inspection-button-actions`** → **`main` マージ**（予定） |
+| 代表コミット | **`4f44dbb9`**（`selfInspectionSessionActionState` · required slot 完了 · ヘッダー再開分離） |
 | 変更種別 | **Web のみ** |
-| CI | **`26942260394`** success（`c90647ac`）· **`26944967237`** success（`fb10f0e0`） |
-| Pi5 デプロイ | **`20260604-181929-755`**（`c90647ac`）· **`20260604-191118-31485`**（`fb10f0e0`）· 各 `failed=0` · **web** 再ビルド |
-| Pi4×4 | **未** — Pi5 目視 OK 後に順次 |
-| Phase12 | **43/0/0**（`fb10f0e0` デプロイ直後） |
+| CI | **`26949777126`** success（`4f44dbb9`） |
+| Pi5 デプロイ | **`20260604-205746-21197`** · HEAD **`4f44dbb9`** · `failed=0` · **web** 再ビルド |
+| Pi4×4 | **`20260604-210423-13676`** / **`210915-5507`** / **`211304-30742`** / **`211651-9374`** · 各 `failed=0` · **強制リロード**後に手動 11–13 |
+| Phase12 | **43/0/0**（Pi5 デプロイ直後 **約 61s** · 全台後 **約 53s**） |
+| バンドル確認 | `docker-web-1` `/srv/site/assets/index-Dmzem2DM.js` に **`自主検査を完了`** |
 
-代表ファイル: `selfInspectionGuidedFocus.ts` · `useSelfInspectionGuidedFocus.ts` · `inspectionDrawingKioskUi.ts` · `KioskSelfInspectionSessionPage.tsx` · `inspectionDrawingMarkerStyles.ts` · `__tests__/selfInspectionSessionTestFixtures.ts`
+代表ファイル: `selfInspectionSessionActionState.ts` · `selfInspectionEntrySlots.ts` · `KioskSelfInspectionSessionPage.tsx` · `SelfInspectionSessionHeader.tsx` · `__tests__/selfInspectionSessionActionState.test.ts`
 
-Runbook: [§ガイド polish](../runbooks/kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · [deployment §polish](../guides/deployment.md#kiosk-self-inspection-guided-zoom-2-polish-2026-06-04)
+Runbook: [§ボタン活性](../runbooks/kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) · [deployment §ボタン活性](../guides/deployment.md#kiosk-self-inspection-session-button-actions-2026-06-04)
+
+##### トラブルシュート（ボタン活性）
+
+| 症状 | 確認 | 対処 |
+|------|------|------|
+| **入力を保存** が常にグレー | 現入力件が dirty か · 全測定点が `ok` か（空欄・公差外・未設定） | 値を修正して dirty にする · 他件の未保存は保存ボタンには影響しない |
+| **完了** がグレーだが全点入力済み | **他入力件**が未保存ドラフトか · required slot が DB 保存済みか | 件ごとに **入力を保存** · `listSelfInspectionEntrySlots` と `entries` index のずれがないか API ログ |
+| **完了** API が 409 | 保存済みでも公差外が残っている（API 正本） | 該当点を修正して再保存 |
+| **再開** がグレー（手動のはず） | `guided` 表示か · 当該件で未完了点があるか · 図面 `ready` か | **再開** は manual のみ · 全点 OK なら「未完了の測定点はありません」 |
+| Pi4 だけ旧挙動 | Pi5 HEAD **`4f44dbb9`** か · 強制リロードしたか | Pi4 は `update-all-clients` + §6.6.4 リロード |
 
 ##### 調査メモ（拡大が変わらない）
 

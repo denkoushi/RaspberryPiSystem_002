@@ -21,14 +21,20 @@ import {
 } from '../../features/part-measurement/inspection-drawing';
 import {
   buildSelfInspectionEntryDraft,
-  listDirtySelfInspectionEntryIndices,
-  selfInspectionEntryDraftHasNg,
   selfInspectionEntryPageCountForSession,
   selfInspectionEntryPageForEntryIndex,
   selfInspectionEntrySlotsForPage
 } from '../../features/part-measurement/selfInspectionEntryDraft';
 import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionEntrySlots';
 import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
+import {
+  countMissingRequiredSelfInspectionSlots,
+  hasDirtySelfInspectionDrafts,
+  resolveSelfInspectionCompleteActionState,
+  resolveSelfInspectionResumeGuideActionState,
+  resolveSelfInspectionSaveActionState,
+  selfInspectionActionReasonMessage
+} from '../../features/part-measurement/selfInspectionSessionActionState';
 import {
   resolveSelfInspectionDrawingPanelPhase,
   selfInspectionDrawingZoomEnabled
@@ -282,25 +288,84 @@ export function KioskSelfInspectionSessionPage() {
 
   const selectedPoint = activeDraft?.points.find((point) => point.id === selectedPointId) ?? activeDraft?.points[0] ?? null;
 
-  const activeEntryHasNg = useMemo(() => {
-    if (!activeDraft || !session) return false;
-    const draft = draftValuesByEntryIndex[selectedEntryIndex];
-    return draft ? selfInspectionEntryDraftHasNg(session, draft) : false;
-  }, [activeDraft, draftValuesByEntryIndex, selectedEntryIndex, session]);
-
-  const dirtyEntryIndices = useMemo(() => {
-    if (!session) return [];
-    return listDirtySelfInspectionEntryIndices(session, draftValuesByEntryIndex, savedDraftByEntryIndex);
-  }, [draftValuesByEntryIndex, savedDraftByEntryIndex, session]);
-
-  const hasUnsavedDraftChanges = dirtyEntryIndices.length > 0;
-
   const isSavingEntry = createEntryMutation.isPending || updateEntryMutation.isPending;
   const isCompletingSession = completeSessionMutation.isPending;
   const isResettingSession = resetSessionMutation.isPending;
   const resetDisabled = isSavingEntry || isCompletingSession || isResettingSession;
 
-  const resetDestructiveDescription = hasUnsavedDraftChanges
+  const sessionActionContext = useMemo(() => {
+    if (!session) return null;
+    return {
+      session,
+      selectedEntryIndex,
+      draftValuesByEntryIndex,
+      savedDraftByEntryIndex,
+      isSessionReadOnly,
+      isSavingEntry,
+      isCompletingSession,
+      isDrawingCanvasReady,
+      guideMode,
+      guideActionsEnabled
+    };
+  }, [
+    draftValuesByEntryIndex,
+    guideActionsEnabled,
+    guideMode,
+    isCompletingSession,
+    isDrawingCanvasReady,
+    isSavingEntry,
+    isSessionReadOnly,
+    savedDraftByEntryIndex,
+    selectedEntryIndex,
+    session
+  ]);
+
+  const saveActionState = useMemo(
+    () =>
+      sessionActionContext
+        ? resolveSelfInspectionSaveActionState(sessionActionContext)
+        : { enabled: false, reason: 'read_only' as const },
+    [sessionActionContext]
+  );
+
+  const completeActionState = useMemo(
+    () =>
+      sessionActionContext
+        ? resolveSelfInspectionCompleteActionState(sessionActionContext)
+        : { enabled: false, reason: 'read_only' as const },
+    [sessionActionContext]
+  );
+
+  const resumeGuideActionState = useMemo(
+    () =>
+      sessionActionContext
+        ? resolveSelfInspectionResumeGuideActionState(sessionActionContext)
+        : { enabled: false, reason: 'read_only' as const },
+    [sessionActionContext]
+  );
+
+  const saveActionHint = selfInspectionActionReasonMessage(saveActionState.reason);
+  const completeActionHint = useMemo(() => {
+    if (completeActionState.enabled) return null;
+    if (completeActionState.reason === 'missing_required_entries' && session) {
+      const missing = countMissingRequiredSelfInspectionSlots(session);
+      return missing > 0
+        ? `必要な入力件が ${missing} 件未保存です。各入力件を保存してください。`
+        : selfInspectionActionReasonMessage('missing_required_entries');
+    }
+    return selfInspectionActionReasonMessage(completeActionState.reason);
+  }, [completeActionState.enabled, completeActionState.reason, session]);
+
+  const resumeGuideActionHint = selfInspectionActionReasonMessage(resumeGuideActionState.reason);
+
+  const hasUnsavedDraftChangesForReset = useMemo(() => {
+    if (!session) return false;
+    return hasDirtySelfInspectionDrafts(session, draftValuesByEntryIndex, savedDraftByEntryIndex);
+  }, [draftValuesByEntryIndex, savedDraftByEntryIndex, session]);
+
+  const isSessionInputLocked = isSessionReadOnly || isCompletingSession;
+
+  const resetDestructiveDescriptionText = hasUnsavedDraftChangesForReset
     ? '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。未保存の入力があります。リセットすると破棄されます。'
     : '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。';
 
@@ -324,11 +389,24 @@ export function KioskSelfInspectionSessionPage() {
   };
 
   const persistEntry = async (entryIndex: number, draft: Record<string, string>) => {
-    if (!session || isSessionReadOnly || persistInFlightRef.current || isSavingEntry) {
+    if (!session || persistInFlightRef.current) {
       return false;
     }
-    if (selfInspectionEntryDraftHasNg(session, draft)) {
-      setActionError('公差外の測定値があるため保存できません。');
+    const saveState = resolveSelfInspectionSaveActionState({
+      session,
+      selectedEntryIndex: entryIndex,
+      draftValuesByEntryIndex: { ...draftValuesByEntryIndex, [entryIndex]: draft },
+      savedDraftByEntryIndex,
+      isSessionReadOnly,
+      isSavingEntry,
+      isCompletingSession,
+      isDrawingCanvasReady,
+      guideMode,
+      guideActionsEnabled
+    });
+    if (!saveState.enabled) {
+      const message = selfInspectionActionReasonMessage(saveState.reason);
+      if (message) setActionError(message);
       return false;
     }
     persistInFlightRef.current = true;
@@ -374,7 +452,7 @@ export function KioskSelfInspectionSessionPage() {
   };
 
   const persistCurrentEntry = async () => {
-    if (!activeDraft) return;
+    if (!saveActionState.enabled || !activeDraft) return;
     const draft = draftValuesByEntryIndex[activeDraft.entryIndex];
     if (!draft) return;
     const saved = await persistEntry(activeDraft.entryIndex, draft);
@@ -384,7 +462,7 @@ export function KioskSelfInspectionSessionPage() {
   };
 
   const completeSession = async () => {
-    if (!session || isSessionReadOnly || isCompletingSession || hasUnsavedDraftChanges) {
+    if (!completeActionState.enabled || !session) {
       return;
     }
     setActionError(null);
@@ -401,7 +479,7 @@ export function KioskSelfInspectionSessionPage() {
       value: string;
       source: 'dropdown' | 'enter' | 'blur' | 'blur_without_guide';
     }) => {
-      if (!session) return;
+      if (!session || isCompletingSession) return;
       const commit: SelfInspectionValueCommitPayload = {
         pointId: panelCommit.pointId,
         entryIndex: selectedEntryIndex,
@@ -410,7 +488,7 @@ export function KioskSelfInspectionSessionPage() {
       };
       handleCommitValue(commit);
     },
-    [handleCommitValue, selectedEntryIndex, session]
+    [handleCommitValue, isCompletingSession, selectedEntryIndex, session]
   );
 
   if (!resolvedSessionId && resolveMutation.isPending) {
@@ -452,6 +530,7 @@ export function KioskSelfInspectionSessionPage() {
         entryCountBlockedReason={session.entryCountBlockedReason ?? null}
         guideMode={guideMode}
         guideActionsEnabled={guideActionsEnabled}
+        canResumeGuide={resumeGuideActionState.enabled}
         zoomEnabled={selfInspectionDrawingZoomEnabled(drawingBlobUrl)}
         onZoomIn={() => {
           handleManualZoom();
@@ -476,7 +555,7 @@ export function KioskSelfInspectionSessionPage() {
       <ConfirmDialog
         isOpen={resetPhase === 'destructive'}
         title="自主検査を初期化しますか？"
-        description={resetDestructiveDescription}
+        description={resetDestructiveDescriptionText}
         confirmLabel="初期化する"
         tone="danger"
         onCancel={() => setResetPhase(null)}
@@ -502,6 +581,9 @@ export function KioskSelfInspectionSessionPage() {
         <p className="shrink-0 rounded border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-xs text-cyan-100">
           {guideHint}
         </p>
+      ) : null}
+      {resumeGuideActionHint && guideMode === 'manual' && !resumeGuideActionState.enabled ? (
+        <p className="shrink-0 px-2 text-xs text-white/55">{resumeGuideActionHint}</p>
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col gap-1 xl:flex-row">
@@ -597,9 +679,9 @@ export function KioskSelfInspectionSessionPage() {
             valueCommitScopeKey={
               session ? `${session.id}:${selectedEntryIndex}` : undefined
             }
-            readOnly={isSessionReadOnly}
+            readOnly={isSessionInputLocked}
             onValueChange={(value) => {
-              if (!selectedPoint || isSessionReadOnly || !session) return;
+              if (!selectedPoint || isSessionInputLocked || !session) return;
               setDraftValuesByEntryIndex((prev) => {
                 const current =
                   prev[selectedEntryIndex] ?? buildSelfInspectionEntryDraft(session, selectedEntryIndex);
@@ -612,7 +694,7 @@ export function KioskSelfInspectionSessionPage() {
                 };
               });
             }}
-            onCommitValue={isSessionReadOnly ? undefined : onValuePanelCommit}
+            onCommitValue={isSessionInputLocked ? undefined : onValuePanelCommit}
           />
 
           <div className="flex flex-col gap-2 rounded border border-white/15 bg-slate-800/70 p-2">
@@ -627,7 +709,7 @@ export function KioskSelfInspectionSessionPage() {
             >
               <Button
                 type="button"
-                disabled={isSessionReadOnly || isSavingEntry || activeEntryHasNg}
+                disabled={!saveActionState.enabled}
                 onPointerDownCapture={consumeNextBlurGuideAdvance}
                 onClick={() => void persistCurrentEntry()}
               >
@@ -636,27 +718,18 @@ export function KioskSelfInspectionSessionPage() {
               <Button
                 type="button"
                 variant="ghostOnDark"
-                disabled={
-                  isSessionReadOnly ||
-                  isCompletingSession ||
-                  isSavingEntry ||
-                  activeEntryHasNg ||
-                  hasUnsavedDraftChanges ||
-                  session.completedEntryCount < requiredEntryCount
-                }
+                disabled={!completeActionState.enabled}
                 onPointerDownCapture={consumeNextBlurGuideAdvance}
                 onClick={() => void completeSession()}
               >
-                完了
+                自主検査を完了
               </Button>
             </div>
-            {activeEntryHasNg ? (
-              <p className="text-xs text-amber-200">公差外の測定値があるため保存・完了できません。</p>
+            {saveActionHint && !saveActionState.enabled ? (
+              <p className="text-xs text-amber-200">{saveActionHint}</p>
             ) : null}
-            {hasUnsavedDraftChanges ? (
-              <p className="text-xs text-amber-200">
-                未保存の入力があります。「入力を保存」してから完了してください。
-              </p>
+            {completeActionHint && !completeActionState.enabled ? (
+              <p className="text-xs text-amber-200">{completeActionHint}</p>
             ) : null}
           </div>
         </div>
