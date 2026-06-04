@@ -17,73 +17,34 @@ import {
   SELF_INSPECTION_GUIDED_ZOOM_STEPS
 } from '../selfInspectionGuidedFocus';
 
-import type { PartMeasurementTemplateItemDto, SelfInspectionSessionDetailDto } from '../types';
+import {
+  makeSelfInspectionSessionDetailForTest,
+  makeSelfInspectionTemplateItemForTest
+} from './selfInspectionSessionTestFixtures';
+
+import type { PartMeasurementTemplateItemDto } from '../types';
 
 function makeItem(
   overrides: Partial<PartMeasurementTemplateItemDto> & { id: string; sortOrder: number }
 ): PartMeasurementTemplateItemDto {
-  return {
-    datumSurface: '',
-    measurementPoint: '',
-    measurementLabel: '測定',
-    displayMarker: String(overrides.sortOrder + 1),
-    unit: 'mm',
-    allowNegative: false,
-    decimalPlaces: 2,
-    markerXRatio: '0.5',
-    markerYRatio: '0.5',
-    nominalValue: '10',
-    lowerLimit: '9',
-    upperLimit: '11',
-    ...overrides
-  };
+  return makeSelfInspectionTemplateItemForTest(overrides);
 }
 
-function makeSession(items: PartMeasurementTemplateItemDto[]): SelfInspectionSessionDetailDto {
-  return {
-    id: 'session-1',
-    templateId: 'tpl-1',
-    productNo: 'P1',
-    fseiban: 'S1',
-    resourceCd: 'R1',
-    fhincd: 'H1',
-    fhinmei: '品名',
-    processGroup: 'cutting',
+function makeSession(items: PartMeasurementTemplateItemDto[]) {
+  return makeSelfInspectionSessionDetailForTest({
+    items,
     selfInspectionMode: 'single',
-    selfInspectionFixedCount: null,
-    selfInspectionSampleSize: null,
-    plannedQuantity: 1,
-    expectedEntryCount: 1,
-    requiredEntryCount: 1,
-    completedEntryCount: 0,
-    completedAt: null,
-    entryCountBlockedReason: null,
-    template: {
-      id: 'tpl-1',
-      fhincd: 'H1',
-      resourceCd: 'R1',
-      processGroup: 'cutting',
-      name: 'tpl',
-      version: 1,
-      isActive: true,
-      selfInspectionMode: 'single',
-      selfInspectionFixedCount: null,
-      selfInspectionSampleSize: null,
-      visualTemplateId: 'vt-1',
-      visualTemplate: null,
-      items
-    },
-    entries: [],
-    focusedEntry: null
-  } as SelfInspectionSessionDetailDto;
+    expectedEntryCount: 1
+  });
 }
 
 describe('selfInspectionGuidedFocus', () => {
   it('guided zoom matches default + SELF_INSPECTION_GUIDED_ZOOM_STEPS', () => {
+    expect(SELF_INSPECTION_GUIDED_ZOOM_STEPS).toBe(4);
     expect(resolveSelfInspectionGuidedZoom()).toBe(
       resolveInspectionDrawingZoomFromDefaultSteps(SELF_INSPECTION_GUIDED_ZOOM_STEPS)
     );
-    expect(SELF_INSPECTION_GUIDED_ZOOM).toBe(1.5);
+    expect(SELF_INSPECTION_GUIDED_ZOOM).toBe(2);
   });
 
   it('sorts by markerNo then template sortOrder then id', () => {
@@ -254,6 +215,7 @@ describe('selfInspectionGuidedFocus', () => {
     });
     expect(target?.pointId).toBe('p1');
     expect(target?.zoom).toBe(SELF_INSPECTION_GUIDED_ZOOM);
+    expect(target?.focusRequest.zoom).toBe(SELF_INSPECTION_GUIDED_ZOOM);
     expect(target?.focusRequest.requestId).toBe(10);
   });
 

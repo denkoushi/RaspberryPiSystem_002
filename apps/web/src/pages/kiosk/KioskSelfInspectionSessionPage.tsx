@@ -621,10 +621,14 @@ export function KioskSelfInspectionSessionPage() {
                 {actionError}
               </p>
             ) : null}
-            <div className="flex flex-wrap gap-2">
+            <div
+              className="flex flex-wrap gap-2"
+              data-self-inspection-session-actions
+            >
               <Button
                 type="button"
                 disabled={isSessionReadOnly || isSavingEntry || activeEntryHasNg}
+                onPointerDownCapture={consumeNextBlurGuideAdvance}
                 onClick={() => void persistCurrentEntry()}
               >
                 入力を保存
@@ -640,6 +644,7 @@ export function KioskSelfInspectionSessionPage() {
                   hasUnsavedDraftChanges ||
                   session.completedEntryCount < requiredEntryCount
                 }
+                onPointerDownCapture={consumeNextBlurGuideAdvance}
                 onClick={() => void completeSession()}
               >
                 完了

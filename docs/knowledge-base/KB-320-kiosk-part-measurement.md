@@ -126,14 +126,14 @@
 | 項目 | 内容 |
 |------|------|
 | **ガイド対象** | `selectedEntryIndex` のみ。件またぎ自動進行はしない |
-| **初期** | 図面 ready 後、未入力の最小 `markerNo`（なければ先頭）へ。ズームは fit 基準から **+2 step**（`SELF_INSPECTION_GUIDED_ZOOM_STEPS=2` → 現行 **1.5**、`resolveInspectionDrawingZoomFromDefaultSteps`） |
+| **初期** | 図面 ready 後、未入力の最小 `markerNo`（なければ先頭）へ。ズームは fit 基準 **+4 step**（内訳: 旧ガイド +2 + 追加 +2 → `SELF_INSPECTION_GUIDED_ZOOM_STEPS=4` → **2.0**、`resolveInspectionDrawingZoomFromDefaultSteps`） |
 | **確定して次へ** | dropdown 即時 / 手入力は **Enter** または単独 **blur**、**公差内 OK のみ** |
 | **留まる** | NG・公差不備・不正値。保存 API 契約は従来どおり |
 | **手動化** | 全体表示・±ズーム・パン・他マーカー・**他入力件タップ**・**入力を保存成功**。`fitToView` は未消化 `focusRequest` を破棄 |
-| **再開** | 手動後に **再開** で当該件の未入力最小 `markerNo` からガイド再開（同じ +2 step 倍率） |
+| **再開** | 手動後に **再開** で当該件の未入力最小 `markerNo` からガイド再開（同じ **2.0** 倍率） |
 | **入力対象の見た目** | 値入力パネルが向いている測定点（`selectedPoint`）の丸数字外周を **青系 outline**（状態 ring とは独立） |
 | **全点 OK** | ガイド停止。「入力を保存」導線（件自動切替なし） |
-| **センタリング** | `focusRequest: { pointId, requestId, zoom }` を **1 回だけ**適用（`selectedPointId` 連動再スクロールなし） |
+| **センタリング** | `focusRequest: { pointId, requestId, zoom }` を **1 回だけ**適用（`selectedPointId` 連動再スクロールなし）。**2.0** でも震えないことは Runbook 手動確認で回帰（[§キャンバスズーム痙攣](#検査図面-キャンバスズーム痙攣修正-2026-05-31) の 1.5 履歴は変更しない） |
 | **ガイド試行（検査図面作成）** | 今回の倍率変更は **対象外**（`GUIDED_TRIAL_ZOOM=1.5` 固定のまま） |
 | **並び** | `markerNo` → 配列 index → `id`（`sortGuidedTrialPointsStable` と同型） |
 

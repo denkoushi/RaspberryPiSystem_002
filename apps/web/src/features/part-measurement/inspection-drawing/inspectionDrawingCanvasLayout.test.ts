@@ -57,6 +57,37 @@ describe('computeZoomedCanvasLayout', () => {
     expect(zoomedLayoutMatchesCanvasZoom(atOneFive, 800, 600, 1600, 1200, 1.5)).toBe(true);
   });
 
+  describe('guided self-inspection zoom 2.0 (regression)', () => {
+    const guidedZoom = 2;
+
+    it('at zoom 2.0 expands content for guided centering', () => {
+      const layout = computeZoomedCanvasLayout(800, 600, 1600, 1200, guidedZoom);
+      expect(layout!.image.width).toBe(1600);
+      expect(layout!.image.height).toBe(1200);
+      expect(layout!.contentWidth).toBe(1600);
+      expect(layout!.contentHeight).toBe(1200);
+    });
+
+    it('zoomedLayoutMatchesCanvasZoom at 2.0', () => {
+      const atTwo = computeZoomedCanvasLayout(800, 600, 1600, 1200, guidedZoom)!;
+      expect(zoomedLayoutMatchesCanvasZoom(atTwo, 800, 600, 1600, 1200, guidedZoom)).toBe(true);
+      expect(zoomedLayoutMatchesCanvasZoom(atTwo, 800, 600, 1600, 1200, 1.5)).toBe(false);
+    });
+
+    it('computeScrollToCenterMarker centers marker at viewport middle at 2.0', () => {
+      const layout = computeZoomedCanvasLayout(800, 600, 1600, 1200, guidedZoom)!;
+      const scroll = computeScrollToCenterMarker({
+        layout,
+        xRatio: 0.5,
+        yRatio: 0.5,
+        viewportWidth: 800,
+        viewportHeight: 600
+      });
+      expect(scroll.scrollLeft).toBe(400);
+      expect(scroll.scrollTop).toBe(300);
+    });
+  });
+
   it('computeScrollToCenterMarker centers marker at viewport middle', () => {
     const layout = computeZoomedCanvasLayout(800, 600, 1600, 1200, 1.5)!;
     const scroll = computeScrollToCenterMarker({

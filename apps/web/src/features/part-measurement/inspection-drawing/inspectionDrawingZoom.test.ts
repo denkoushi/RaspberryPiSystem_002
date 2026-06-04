@@ -27,5 +27,6 @@ describe('inspectionDrawingZoom', () => {
       INSPECTION_DRAWING_ZOOM_DEFAULT + 2 * INSPECTION_DRAWING_ZOOM_STEP
     );
     expect(resolveInspectionDrawingZoomFromDefaultSteps(2)).toBe(1.5);
+    expect(resolveInspectionDrawingZoomFromDefaultSteps(4)).toBe(2);
   });
 });

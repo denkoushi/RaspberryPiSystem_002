@@ -51,8 +51,17 @@ export type SelfInspectionGuidedCommitResult =
       next: SelfInspectionGuidedFocusTarget | null;
     };
 
-/** 自主検査ガイドの拡大段数（fit 基準から +N step） */
-export const SELF_INSPECTION_GUIDED_ZOOM_STEPS = 2;
+/** 旧ガイド相当: fit から 2 段（1.0 + 2×0.25 = 1.5） */
+const SELF_INSPECTION_GUIDED_ZOOM_BASE_STEPS_FROM_FIT = 2;
+/** 仕様追加: 旧 1.5 から UI「＋」2 段（+0.5 → 2.0） */
+const SELF_INSPECTION_GUIDED_ZOOM_EXTRA_STEPS = 2;
+
+/**
+ * 自主検査ガイドの拡大段数（fit 基準からの合計 step 数）。
+ * 内訳: BASE {@link SELF_INSPECTION_GUIDED_ZOOM_BASE_STEPS_FROM_FIT} + EXTRA {@link SELF_INSPECTION_GUIDED_ZOOM_EXTRA_STEPS} → 4 段 = **2.0** 倍。
+ */
+export const SELF_INSPECTION_GUIDED_ZOOM_STEPS =
+  SELF_INSPECTION_GUIDED_ZOOM_BASE_STEPS_FROM_FIT + SELF_INSPECTION_GUIDED_ZOOM_EXTRA_STEPS;
 
 export function resolveSelfInspectionGuidedZoom(): number {
   return resolveInspectionDrawingZoomFromDefaultSteps(SELF_INSPECTION_GUIDED_ZOOM_STEPS);
