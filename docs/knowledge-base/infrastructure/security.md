@@ -1087,6 +1087,25 @@ tailscale status | head -3
 
 ---
 
+### [KB-387] 常時稼働端末の Tailscale Key expiry 無効化（全端末 Disable key expiry） {#kb-387-常時稼働端末の-tailscale-key-expiry-無効化全端末-disable-key-expiry}
+
+**発生日**: 2026-06-04（Pi3 サイネージ障害の恒久対策）
+
+**Context**: 2026-06-03〜04 に Pi3（`raspberrypi-2`・Expired）・Pi4 キオスク・Pi5 管理で Tailscale 起因の疎通不良が連続。Key expiry は [Tailscale 公式仕様](https://tailscale.com/docs/features/access-control/key-expiry)。
+
+**Decision**: Tailscale 管理画面で **本番の常時稼働端末すべて**に **`Disable key expiry`** を適用（ユーザー実施）。
+
+**Consequences**:
+
+- **良い**: 定期 Expired によるサイネージ／キオスク／リモート運用の突然停止を抑制
+- **注意**: 端末紛失・侵害時は自動ローテーションに頼れない → ACL（`tag:*`）・端末削除で無効化
+
+**関連**: [KB-386 サイネージ詳細](./signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) · [tailscale-policy.md §Key expiry](../../security/tailscale-policy.md#key-expiry-常時稼働端末) · [KB-384](#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) · [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)
+
+**解決状況**: ✅ **運用決定・適用済み**（2026-06-04）
+
+---
+
 ### [KB-293] Pi4/Pi3のRealVNC接続復旧（Pi5経由SSHトンネル方式）
 
 **発生日**: 2026-03-06
