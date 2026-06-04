@@ -1,4 +1,5 @@
 import { parseMeasurementNumber, statusForPoint } from './inspection-drawing/evaluateMeasurement';
+import { resolveInspectionDrawingZoomFromDefaultSteps } from './inspection-drawing/inspectionDrawingZoom';
 import { templateItemToDrawingPoint, toleranceBoundsFromPoint } from './inspection-drawing/markerNumbering';
 
 import type { InspectionDrawingPoint } from './inspection-drawing/types';
@@ -50,8 +51,15 @@ export type SelfInspectionGuidedCommitResult =
       next: SelfInspectionGuidedFocusTarget | null;
     };
 
-/** ガイド初期倍率（＋2回相当） */
-export const SELF_INSPECTION_GUIDED_ZOOM = 1.5;
+/** 自主検査ガイドの拡大段数（fit 基準から +N step） */
+export const SELF_INSPECTION_GUIDED_ZOOM_STEPS = 2;
+
+export function resolveSelfInspectionGuidedZoom(): number {
+  return resolveInspectionDrawingZoomFromDefaultSteps(SELF_INSPECTION_GUIDED_ZOOM_STEPS);
+}
+
+/** 自主検査ガイドのセンタリング倍率（{@link resolveSelfInspectionGuidedZoom} の結果をキャッシュ） */
+export const SELF_INSPECTION_GUIDED_ZOOM = resolveSelfInspectionGuidedZoom();
 
 export function canStartSelfInspectionGuidedFocus(input: {
   isSessionReadOnly: boolean;

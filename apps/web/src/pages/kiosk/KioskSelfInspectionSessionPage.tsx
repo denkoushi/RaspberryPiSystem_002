@@ -202,7 +202,8 @@ export function KioskSelfInspectionSessionPage() {
     handleSelectPointManual,
     handleEntrySwitch,
     handleCommitValue,
-    consumeNextBlurGuideAdvance
+    consumeNextBlurGuideAdvance,
+    enterManualAfterPersist
   } = useSelfInspectionGuidedFocus({
     session,
     selectedEntryIndex,
@@ -376,7 +377,10 @@ export function KioskSelfInspectionSessionPage() {
     if (!activeDraft) return;
     const draft = draftValuesByEntryIndex[activeDraft.entryIndex];
     if (!draft) return;
-    await persistEntry(activeDraft.entryIndex, draft);
+    const saved = await persistEntry(activeDraft.entryIndex, draft);
+    if (saved) {
+      enterManualAfterPersist();
+    }
   };
 
   const completeSession = async () => {

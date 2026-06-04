@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { resolveInspectionDrawingZoomFromDefaultSteps } from '../inspection-drawing/inspectionDrawingZoom';
 import { templateItemToDrawingPoint } from '../inspection-drawing/markerNumbering';
 import {
   applySelfInspectionGuidedCommit,
@@ -9,9 +10,11 @@ import {
   findNextGuidedPointIdAfter,
   resolvePointInputStatus,
   resolveResumeGuidedFocusTarget,
+  resolveSelfInspectionGuidedZoom,
   shouldAdvanceGuideOnCommit,
   sortPointsByMarkerNoStable,
-  SELF_INSPECTION_GUIDED_ZOOM
+  SELF_INSPECTION_GUIDED_ZOOM,
+  SELF_INSPECTION_GUIDED_ZOOM_STEPS
 } from '../selfInspectionGuidedFocus';
 
 import type { PartMeasurementTemplateItemDto, SelfInspectionSessionDetailDto } from '../types';
@@ -76,6 +79,13 @@ function makeSession(items: PartMeasurementTemplateItemDto[]): SelfInspectionSes
 }
 
 describe('selfInspectionGuidedFocus', () => {
+  it('guided zoom matches default + SELF_INSPECTION_GUIDED_ZOOM_STEPS', () => {
+    expect(resolveSelfInspectionGuidedZoom()).toBe(
+      resolveInspectionDrawingZoomFromDefaultSteps(SELF_INSPECTION_GUIDED_ZOOM_STEPS)
+    );
+    expect(SELF_INSPECTION_GUIDED_ZOOM).toBe(1.5);
+  });
+
   it('sorts by markerNo then template sortOrder then id', () => {
     const items = [
       makeItem({ id: 'b', sortOrder: 1, displayMarker: '2' }),

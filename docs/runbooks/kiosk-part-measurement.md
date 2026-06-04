@@ -270,20 +270,27 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ### 手動確認（Pi4/Pi5）
 
-1. 順位ボード **検** → セッション入室。図面で **No.1** が **1.5 倍**付近で中央付近に表示されること。
+1. 順位ボード **検** → セッション入室。図面で **No.1** が **fit 基準 +2 step（現行 1.5 倍）**付近で中央付近に表示されること。
 2. 候補選択または Enter/blur で **OK** 入力後、**No.2** へ自動移動すること。
 3. **NG** 入力時は同一点に留まり、次へ進まないこと。
 4. **全体表示（□）** 後は **手動** 表示。勝手に再センタリングしないこと。
-5. **再開** で当該入力件の未入力最小番号からガイド再開すること。
-6. 他入力件タップ後は **手動**。blur だけで次点に進まないこと。
-7. 当該件の全測定点 OK 後、ガイド停止と保存促しメッセージ。
-8. 拡大 **2 回目付近**で図面が震えないこと（既存ズーム安定化の回帰）。
+5. **再開** で当該入力件の未入力最小番号からガイド再開すること（同じ +2 step 倍率）。
+6. 他入力件タップ後は **手動**。blur だけで次点に進まないこと。**再開** で guided 復帰すること。
+7. **入力を保存** 成功後は **手動**。次の入力件では **再開** 後に guided 復帰すること。
+8. 値入力パネルが向いている測定点の丸数字外周が **青系 outline** で強調されること（目視）。
+9. 当該件の全測定点 OK 後、ガイド停止と保存促しメッセージ。
+10. 拡大 **2 回目付近**で図面が震えないこと（既存ズーム安定化の回帰）。
+
+**注**: 検査図面 **ガイド試行** の倍率（1.5 固定）は今回の変更対象外。
 
 ### 単体テスト
 
 ```bash
 cd apps/web && pnpm exec vitest run \
   src/features/part-measurement/__tests__/selfInspectionGuidedFocus.test.ts \
+  src/features/part-measurement/__tests__/useSelfInspectionGuidedFocus.test.ts \
+  src/features/part-measurement/inspection-drawing/inspectionDrawingZoom.test.ts \
+  src/features/part-measurement/inspection-drawing/inspectionDrawingMarkerStyles.test.ts \
   src/features/part-measurement/inspection-drawing/inspectionDrawingCanvasLayout.test.ts
 ```
 

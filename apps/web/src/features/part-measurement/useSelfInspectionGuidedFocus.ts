@@ -235,6 +235,12 @@ export function useSelfInspectionGuidedFocus({
     onSelectPointId(null);
   }, [consumeNextBlurGuideAdvance, enterManual, onSelectPointId]);
 
+  /** 入力件保存成功後: guided を止め、再開ボタンで当該件を再開する */
+  const enterManualAfterPersist = useCallback(() => {
+    clearConsumeNextBlurGuideAdvance();
+    enterManual();
+  }, [clearConsumeNextBlurGuideAdvance, enterManual]);
+
   const handleCommitValue = useCallback(
     (commit: SelfInspectionValueCommitPayload) => {
       if (!session || !activeDraft) return;
@@ -355,6 +361,7 @@ export function useSelfInspectionGuidedFocus({
     handleEntrySwitch,
     handleCommitValue,
     consumeNextBlurGuideAdvance,
+    enterManualAfterPersist,
     activePoints
   };
 }

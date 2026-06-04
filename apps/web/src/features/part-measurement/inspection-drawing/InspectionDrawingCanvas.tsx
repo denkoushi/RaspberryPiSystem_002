@@ -9,6 +9,10 @@ import {
 } from './inspectionDrawingCanvasLayout';
 import { shouldConfirmPlacePointFromPointerMovement } from './inspectionDrawingCanvasPointer';
 import { inspectionDrawingCanvasViewportBaseClassName } from './inspectionDrawingKioskUi';
+import {
+  inspectionDrawingMarkerButtonClass,
+  inspectionDrawingMarkerInputTargetOutlineClass
+} from './inspectionDrawingMarkerStyles';
 import { INSPECTION_DRAWING_ZOOM_DEFAULT } from './inspectionDrawingZoom';
 import { toleranceBoundsFromPoint } from './markerNumbering';
 import { useZoomedCanvasLayout } from './useZoomedCanvasLayout';
@@ -40,12 +44,6 @@ type PendingPlacePointer = {
   startClientX: number;
   startClientY: number;
   maxMovementPx: number;
-};
-
-const STATUS_MARKER_CLASS: Record<string, string> = {
-  empty: 'bg-white text-slate-900 ring-2 ring-slate-400',
-  ok: 'bg-emerald-500 text-white ring-2 ring-emerald-200',
-  ng: 'bg-red-600 text-white ring-2 ring-red-200'
 };
 
 export function InspectionDrawingCanvas({
@@ -273,25 +271,28 @@ export function InspectionDrawingCanvas({
                     : evaluateMeasurementValue(parsed, bounds.lowerLimit, bounds.upperLimit);
                 const left = image.offsetX + pt.xRatio * image.width;
                 const top = image.offsetY + pt.yRatio * image.height;
-                const selected = pt.id === selectedPointId;
+                const isInputTarget = pt.id === selectedPointId;
                 return (
-                  <button
+                  <div
                     key={pt.id}
-                    type="button"
-                    aria-label={pt.name || `測定点 ${pt.markerNo}`}
                     className={clsx(
-                      'absolute z-10 flex h-9 min-w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full px-1 text-sm font-bold tabular-nums shadow-md',
-                      STATUS_MARKER_CLASS[status],
-                      selected && 'ring-4 ring-amber-300'
+                      'absolute z-10 -translate-x-1/2 -translate-y-1/2',
+                      inspectionDrawingMarkerInputTargetOutlineClass(isInputTarget)
                     )}
                     style={{ left, top }}
-                    onPointerDown={(ev) => {
-                      ev.stopPropagation();
-                      onSelectPoint(pt.id);
-                    }}
                   >
-                    {pt.markerNo}
-                  </button>
+                    <button
+                      type="button"
+                      aria-label={pt.name || `測定点 ${pt.markerNo}`}
+                      className={inspectionDrawingMarkerButtonClass(status)}
+                      onPointerDown={(ev) => {
+                        ev.stopPropagation();
+                        onSelectPoint(pt.id);
+                      }}
+                    >
+                      {pt.markerNo}
+                    </button>
+                  </div>
                 );
               })
             : null}
