@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-04 · キオスク自主検査・セッション操作ボタン活性 · **Pi5→Pi4×4 本番・Phase12 OK**）
+
+- **保存 / 自主検査を完了 / 再開**の活性を `selfInspectionSessionActionState` に集約。完了は **required slot** + 未保存ドラフトなし（公差最終は API 正本）。**ブランチ**: **`feat/kiosk-self-inspection-button-actions`** · **`4f44dbb9`** · **CI** **`26949777126`** success · **本番**: Pi5 **`20260604-205746-21197`** → Pi4×4 順次（各 `failed=0`）· Phase12 **43/0/0** · Pi3 **対象外**。**記録**: [deployment §ボタン活性](./guides/deployment.md#kiosk-self-inspection-session-button-actions-2026-06-04) · [KB-320 §ボタン活性](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) · [Runbook §ボタン活性](./runbooks/kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04)
+
 ### 最新アップデート（2026-06-04 · Pi3 サイネージ・Tailscale Key expiry · **復旧・Disable key expiry 全端末**）
 
 - **事象**: 現場 Pi3（`raspberrypi-2`）で **デスクトップのみ**・管理画面 **Expired**・Pi5 の `current-image` は **200**。**復旧**: オフィス移設後 tailnet 復旧 → 現場戻し後もサイネージ表示 OK（Pi3 上コマンド未実行の例あり）。**恒久**: Tailscale **Disable key expiry** を全常時稼働端末に適用。**記録**: [KB-386](./knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) · [KB-387](./knowledge-base/infrastructure/security.md#kb-387-常時稼働端末の-tailscale-key-expiry-無効化全端末-disable-key-expiry) · [Runbook](./runbooks/pi3-signage-tailscale-recovery.md) · [deployment §2026-06-04](./guides/deployment.md#pi3-signage-tailscale-key-expiry-2026-06-04) · `scripts/ops/recover-pi3-signage-remote.sh`

@@ -251,6 +251,46 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ---
 
+## 自主検査・セッション操作ボタン活性（2026-06-04） {#自主検査-セッション操作ボタン活性-2026-06-04}
+
+正本: [KB-320 §ボタン活性](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) · [deployment §ボタン活性](../guides/deployment.md#kiosk-self-inspection-session-button-actions-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-button-actions`** · **`4f44dbb9`** · **Web のみ**
+
+### デプロイ（標準）
+
+1. **`main` マージ後**は第2引数 **`main`**（マージ前は `feat/kiosk-self-inspection-button-actions`）。
+2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+4. Pi5 で Phase12 `./scripts/deploy/verify-phase12-real.sh`（任意だが推奨）と、必要なら `docker exec docker-web-1` でバンドルに **`自主検査を完了`** を確認。
+5. Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
+6. 各 Pi4 **強制リロード**（§6.6.4）後、下記「手動確認」を実施。
+
+| ホスト | Detach Run ID | Git HEAD | 備考 |
+|--------|---------------|----------|------|
+| `raspberrypi5` | **`20260604-205746-21197`** | **`4f44dbb9`** | `failed=0` · **web** 再ビルド |
+| `raspberrypi4` | **`20260604-210423-13676`** | **`4f44dbb9`** | `kiosk-browser` 再起動 |
+| `raspi4-robodrill01` | **`20260604-210915-5507`** | **`4f44dbb9`** | 同上 |
+| `raspi4-fjv60-80` | **`20260604-211304-30742`** | **`4f44dbb9`** | 同上 |
+| `raspi4-kensaku-stonebase01` | **`20260604-211651-9374`** | **`4f44dbb9`** | 同上 |
+
+### 手動確認（Pi4/Pi5）
+
+1. 未保存の測定値があるときだけ **入力を保存** が有効。変更なし・空欄・公差外ではグレーアウトし、**理由**が表示されること。
+2. 必要入力件がすべて保存済み・画面上に未保存ドラフトがないときだけ **自主検査を完了** が有効。不足時は件数付き理由表示。
+3. **手動**モードで未完了測定点があるときだけ **再開** が有効。**ガイド中**はグレーアウト。
+4. **完了**押下中は保存ボタンと値入力がロックされること（二重送信防止）。
+5. 1 件目保存成功 → **manual** → 次入力件選択 → **再開** で guided 復帰 → 全必須件保存後に **完了** の運用フローが維持されること。
+6. 全点 OK だが未保存のとき **再開** は保存促しメッセージ、保存済みで全点 OK のときは「未完了の測定点はありません」となること。
+
+### 単体テスト
+
+```bash
+cd apps/web && pnpm exec vitest run \
+  src/features/part-measurement/__tests__/selfInspectionSessionActionState.test.ts \
+  src/features/part-measurement/__tests__/selfInspectionEntrySlots.test.ts
+```
+
+---
+
 ## 自主検査・ガイド polish（倍率 2.0）（2026-06-04） {#自主検査-ガイド-polish-倍率2-0-2026-06-04}
 
 正本: [KB-320 §ガイド polish](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · [deployment §polish](../guides/deployment.md#kiosk-self-inspection-guided-zoom-2-polish-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-polish`** → **`main` マージ** · **`fb10f0e0`** · **Web のみ**

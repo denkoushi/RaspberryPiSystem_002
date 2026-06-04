@@ -10,6 +10,47 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-06-04 · **キオスク自主検査 セッション操作ボタン活性**·**Web のみ**·**Pi5→Pi4×4 本番**） {#kiosk-self-inspection-session-button-actions-2026-06-04}
+
+- **変更概要（正本）**: [KB-320 §ボタン活性](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) · [Runbook §ボタン活性](../runbooks/kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-button-actions`** · 代表 **`4f44dbb9`**（`fix(kiosk): align self-inspection session action states`）
+  - **判定の正本**: [`selfInspectionSessionActionState.ts`](../../apps/web/src/features/part-measurement/selfInspectionSessionActionState.ts)（理由コード）+ [`areRequiredSelfInspectionSlotsFilled()`](../../apps/web/src/features/part-measurement/selfInspectionEntrySlots.ts)。UI `disabled` と `persistCurrentEntry` / `completeSession` の押下ガードは同一。
+  - **完了 UI**: ラベル **「自主検査を完了」**。完了は **required slot** 充足 + **未保存ドラフトなし**（保存済み件の公差最終判定は API 正本）。
+  - **再開**: `canResumeGuide` と `guideActionsEnabled` を分離。`guided` 中は無効。全点 OK で dirty あり → 保存促し / dirty なし →「未完了の測定点はありません」。
+  - **完了処理中**: `isCompletingSession` 中は保存・値入力パネルも readOnly。
+  - **Prisma / API**: **変更なし**（**Web のみ** · Pi5 Docker **`web` 再ビルド**）
+- **対象ホスト（推奨順・各 `--limit` 1 台）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**。**Pi3**: `skipping: no hosts matched`（キオスク SPA 対象外 · Pi3 専用手順不要）
+- **標準コマンド**（`main` マージ後は第2引数 **`main`**）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-self-inspection-button-actions \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+# Pi5 OK 後、Pi4 を 1 台ずつ --limit 変更（上記順）
+```
+
+- **本番デプロイ（実績·2026-06-04）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 備考 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | **`20260604-205746-21197`** | **`4f44dbb9`** | **`ok=134` `changed=4` `failed=0`** | `Git: changed` · **web** 再ビルド · バンドル `/srv/site/assets/index-Dmzem2DM.js` に **`自主検査を完了`** |
+| `raspberrypi4` | **`20260604-210423-13676`** | **`4f44dbb9`** | **`ok=122` `changed=10` `failed=0`** | `kiosk-browser` 再起動 · メンテ解除 `changed` |
+| `raspi4-robodrill01` | **`20260604-210915-5507`** | **`4f44dbb9`** | **`ok=122` `changed=9` `failed=0`** | 同上 |
+| `raspi4-fjv60-80` | **`20260604-211304-30742`** | **`4f44dbb9`** | **`ok=122` `changed=9` `failed=0`** | 同上 |
+| `raspi4-kensaku-stonebase01` | **`20260604-211651-9374`** | **`4f44dbb9`** | **`ok=129` `changed=10` `failed=0`** | 同上 |
+
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 単独デプロイ直後 **約 61s** · 全台完了後再実行 **約 53s**）
+- **実機（手動·キオスク）**: [Runbook §ボタン活性](../runbooks/kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) 手順 1–6（保存/完了/再開のグレーアウトと理由表示）。Pi4 は各台 **強制リロード**（§6.6.4）後に確認。
+- **ローカル検証**: `selfInspectionSessionActionState.test.ts` 等 **14 passed** · `selfInspectionEntrySlots` 拡張 · web lint/tsc OK
+- **CI**: GitHub Actions **`26949777126`** **success**（`4f44dbb9` push 後）
+- **知見**:
+  - **guided-polish（`fb10f0e0`）と独立ブランチ**: Pi5 には polish 済み。本改修は **活性判定のみ** — デプロイ HEAD は **`4f44dbb9`** で上書きビルド。
+  - **Pi4 は SPA 再取得のみ**: `git pull` しない。Pi5 配信の `index-*.js` を **強制リロード**で取り込む。
+  - **`docker compose` パス**: Pi5 ホスト上の検証は **`docker exec docker-web-1`** + `/srv/site/assets/*.js`（リポジトリ直下 `infrastructure/docker/docker-compose.yml` は Pi5 本番パスと一致しない場合あり）。
+- **トラブルシュート**:
+  - **保存/完了が常にグレー** → 現入力件の dirty / 全点 OK / required slot を [KB-320 §ボタン活性](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) の表で照合 · HEAD &lt; `4f44dbb9` or Pi4 未リロード
+  - **再開だけ効かない** → `guided` 中か · 全点 OK 済みか · `guideActionsEnabled`（図面未 ready 等）
+  - **デプロイ拒否** → ローカルが `origin/<branch>` より ahead（未 push）
+
 ### 補足（2026-06-04 · **キオスク自主検査 ガイド倍率 2.0 + 保存 blur 抑止**·**Web のみ**·**Pi5 先行**） {#kiosk-self-inspection-guided-zoom-2-polish-2026-06-04}
 
 - **変更概要（正本）**: [KB-320 §ガイド polish](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · [Runbook §ガイド polish](../runbooks/kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-polish`** → **`main` マージ** · 代表 **`fb10f0e0`**（倍率 2.0 + 保存 blur）· 同ブランチ **`c90647ac`**（保存後 manual・青 outline・ズーム helper 化）
