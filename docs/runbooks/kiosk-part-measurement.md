@@ -251,13 +251,13 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ---
 
-## 自主検査・ガイド付きフォーカス（2026-06-04） {#自主検査-ガイド付きフォーカス-2026-06-04}
+## 自主検査・ガイド polish（倍率 2.0）（2026-06-04） {#自主検査-ガイド-polish-倍率2-0-2026-06-04}
 
-正本: [KB-320 §ガイドフォーカス](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ガイド付きフォーカス-2026-06-04) · [deployment §2026-06-04](../guides/deployment.md#kiosk-self-inspection-guided-focus-reset-trial-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-focus`** · **`main` マージ** · **`32c4858f`** / 同梱デプロイ **`f16cb7ca`** · **Web のみ**
+正本: [KB-320 §ガイド polish](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · [deployment §polish](../guides/deployment.md#kiosk-self-inspection-guided-zoom-2-polish-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-polish`** → **`main` マージ** · **`fb10f0e0`** · **Web のみ**
 
 ### デプロイ（標準）
 
-1. **push 済み**の `feat/kiosk-self-inspection-guided-focus`（**`main` マージ後**は第2引数 **`main`**）。
+1. **`main` マージ後**は第2引数 **`main`**（マージ前は `feat/kiosk-self-inspection-guided-polish`）。
 2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
 3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
 4. Pi5 目視 OK 後、Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
@@ -265,23 +265,24 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 | ホスト | Detach Run ID | Git HEAD | 備考 |
 |--------|---------------|----------|------|
-| `raspberrypi5` | **`20260604-155553-5452`** | **`f16cb7ca`** | `failed=0` · **web** 再ビルド（reset 同梱） |
-| Pi4×4 | — | — | **未** — Pi5 実機 OK 後に順次 |
+| `raspberrypi5` | **`20260604-191118-31485`** | **`fb10f0e0`** | `failed=0` · **web** 再ビルド · **Pi5 目視 OK** |
+| `raspberrypi5`（polish 初回） | **`20260604-181929-755`** | **`c90647ac`** | `failed=0` · 保存後 manual 等（倍率は当時 1.5 のまま） |
+| Pi4×4 | — | — | **未** — Pi5 OK 後に順次 |
 
 ### 手動確認（Pi4/Pi5）
 
-1. 順位ボード **検** → セッション入室。図面で **No.1** が **fit+4 step（2.0 倍・旧 1.5 からさらに UI「＋」2 段相当）**付近で中央付近に表示されること。
+1. 順位ボード **検** → セッション入室。図面で **No.1** が **fit+4 step（2.0 倍）**付近で中央付近に表示されること。
 2. 候補選択または Enter/blur で **OK** 入力後、**No.2** へ自動移動すること。
 3. **NG** 入力時は同一点に留まり、次へ進まないこと。
 4. **全体表示（□）** 後は **手動** 表示。勝手に再センタリングしないこと。
 5. **再開** で当該入力件の未入力最小番号からガイド再開すること（同じ **2.0** 倍率）。
-6. 他入力件タップ後は **手動**。blur だけで次点に進まないこと。**再開** で guided 復帰すること。
-7. **入力を保存** 成功後は **手動**。次の入力件では **再開** 後に guided 復帰すること。
+6. 他入力件タップ後は **手動**。**再開** で guided 復帰すること。
+7. **入力を保存** 成功後は **手動**（保存ボタン押下の blur だけで次点に進まないこと）。次の入力件では **再開** 後に guided 復帰すること。
 8. 値入力パネルが向いている測定点の丸数字外周が **青系 outline** で強調されること（目視）。
 9. 当該件の全測定点 OK 後、ガイド停止と保存促しメッセージ。
-10. 拡大 **2 回目付近（1.5）**で図面が震えないこと（既存ズーム安定化の回帰）。**ガイド自動センタリングの 2.0** でも震えないこと。
+10. 拡大 **2 回目付近（1.5）**で図面が震えないこと。**ガイド 2.0** でも震えないこと。
 
-**注**: 検査図面 **ガイド試行** の倍率（1.5 固定）は今回の変更対象外。
+**注**: 検査図面 **ガイド試行** の倍率（1.5 固定）は対象外。
 
 ### 単体テスト
 
@@ -294,6 +295,37 @@ cd apps/web && pnpm exec vitest run \
   src/features/part-measurement/inspection-drawing/inspectionDrawingCanvasLayout.test.ts \
   src/features/part-measurement/inspection-drawing/inspectionDrawingKioskUi.test.ts
 ```
+
+---
+
+## 自主検査・ガイド付きフォーカス（2026-06-04 · 初回） {#自主検査-ガイド付きフォーカス-2026-06-04}
+
+正本: [KB-320 §ガイドフォーカス](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ガイド付きフォーカス-2026-06-04) · [deployment §2026-06-04](../guides/deployment.md#kiosk-self-inspection-guided-focus-reset-trial-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-focus`** · **`main` マージ** · **`32c4858f`** / 同梱デプロイ **`f16cb7ca`** · **Web のみ**
+
+### デプロイ（標準）
+
+1. **push 済み**の `feat/kiosk-self-inspection-guided-focus`（**`main` マージ後**は第2引数 **`main`**）。
+2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+4. Pi5 目視 OK 後、Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
+5. 各 Pi4 **強制リロード**（§6.6.4）後、手動確認を実施。
+
+| ホスト | Detach Run ID | Git HEAD | 備考 |
+|--------|---------------|----------|------|
+| `raspberrypi5` | **`20260604-155553-5452`** | **`f16cb7ca`** | `failed=0` · **web** 再ビルド（reset 同梱） |
+| Pi4×4 | — | — | **未** — Pi5 実機 OK 後に順次 |
+
+### 手動確認（Pi4/Pi5 · 初回は 1.5 倍）
+
+1. 順位ボード **検** → セッション入室。図面で **No.1** が **fit+2 step（1.5 倍）**付近で中央付近に表示されること。
+2. 候補選択または Enter/blur で **OK** 入力後、**No.2** へ自動移動すること。
+3. **NG** 入力時は同一点に留まり、次へ進まないこと。
+4. **全体表示（□）** 後は **手動** 表示。勝手に再センタリングしないこと。
+5. **再開** で当該入力件の未入力最小番号からガイド再開すること（同じ **1.5** 倍率）。
+6. 他入力件タップ後は **手動**。blur だけで次点に進まないこと。**再開** で guided 復帰すること。
+7. 件切替・保存後の guided 挙動は [§ガイド polish](#自主検査-ガイド-polish-倍率2-0-2026-06-04) を参照。
+
+**注**: 検査図面 **ガイド試行** の倍率（1.5 固定）は対象外。現行の手動確認・単体テストは **§ガイド polish** を正とする。
 
 ---
 

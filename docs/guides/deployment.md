@@ -10,6 +10,33 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-06-04 · **キオスク自主検査 ガイド倍率 2.0 + 保存 blur 抑止**·**Web のみ**·**Pi5 先行**） {#kiosk-self-inspection-guided-zoom-2-polish-2026-06-04}
+
+- **変更概要（正本）**: [KB-320 §ガイド polish](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · [Runbook §ガイド polish](../runbooks/kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-polish`** → **`main` マージ** · 代表 **`fb10f0e0`**（倍率 2.0 + 保存 blur）· 同ブランチ **`c90647ac`**（保存後 manual・青 outline・ズーム helper 化）
+  - **ガイド倍率**: `SELF_INSPECTION_GUIDED_ZOOM_STEPS=4`（fit+4 = **2.0**）。内訳はモジュール内 `BASE 2`（旧 1.5 相当）+ `EXTRA 2`（UI「＋」2 段）。**`c90647ac` の `STEPS=2` は数値 1.5 のまま**だったため実機で「拡大が変わらない」と報告。
+  - **保存 blur**: `data-self-inspection-session-actions` + 保存/完了ボタン `onPointerDownCapture={consumeNextBlurGuideAdvance}` + `isSelfInspectionSessionChromeFocusTarget` 拡張（**入力を保存成功後は手動**と整合）。
+  - **Prisma / API**: **変更なし**（**Web のみ** · Pi5 Docker **`web` 再ビルド**）
+- **標準コマンド**（`main` マージ後は第2引数 **`main`**）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh main \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+# Pi5 目視 OK 後、Pi4 を 1 台ずつ --limit 変更
+# 順序: raspberrypi4 → raspi4-robodrill01 → raspi4-fjv60-80 → raspi4-kensaku-stonebase01
+```
+
+- **本番デプロイ（実績·2026-06-04 · Pi5 先行）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 実機 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | **`20260604-191118-31485`** | **`fb10f0e0`** | **`failed=0`** | `Git: changed` · **web** 再ビルド · バンドル `data-self-inspection-session-actions` 確認 · Phase12 **43/0/0** · **Pi5 目視 OK** |
+| Pi4×4 | — | — | — | **未** — Pi5 OK 後に順次 + 強制リロード |
+
+- **CI**: **`26944967237`** success（`fb10f0e0` push 後 · lint-build-unit / security-docker / api-db-and-infra / e2e 全ジョブ成功）
+- **ローカル検証**: `apps/web` Vitest 6 files **36 passed** · `tsc --noEmit` OK · 変更ファイル eslint OK
+- **実機確認**: [Runbook §ガイド polish](../runbooks/kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04)
+
 ### 補足（2026-06-04 · **キオスク自主検査 ガイドフォーカス + フルリセット + 図面ガイド試行**·**API+Web+migration**·**Pi5 先行**） {#kiosk-self-inspection-guided-focus-reset-trial-2026-06-04}
 
 - **変更概要（正本）**: [KB-320 §ガイドフォーカス](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ガイド付きフォーカス-2026-06-04) · [KB-320 §リセット・試行](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04) · [Runbook §リセット・試行](../runbooks/kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-focus`** · 代表 **`f16cb7ca`**
