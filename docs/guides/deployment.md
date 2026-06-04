@@ -3797,6 +3797,18 @@ curl http://localhost:7071/api/agent/status
 
 ## ラズパイ3（サイネージ）の更新
 
+<a id="pi3-signage-tailscale-key-expiry-2026-06-04"></a>
+
+### 補足（2026-06-04）: Pi3 サイネージ非表示と Tailscale Key expiry
+
+**事象**: 現場で **デスクトップのみ**・Pi5 から Pi3 SSH 不可・管理画面 `raspberrypi-2` **Expired**。Pi5 の `GET /api/signage/current-image`（`client-key-raspberrypi3-signage1`）は **200**（サーバ正常）。
+
+**原因**: Tailscale **Key expiry**（定期失効は製品仕様）により Pi3 が tailnet から外れ、JPEG 取得経路（`https://100.106.158.2`）が断たれる。Pi5（`192.168.10.x`）と Pi3 工場 LAN（`192.168.128.x`）は **直結しない**。
+
+**復旧例（2026-06-04）**: 管理画面 **Extend key** + **オフィス移設後** tailnet 復旧（Pi3 上コマンド未実行でも表示復帰の例あり）→ 現場戻し後も表示 OK。**恒久**: 全常時稼働端末で **Disable key expiry**。
+
+**手順**: [Runbook: pi3-signage-tailscale-recovery.md](../runbooks/pi3-signage-tailscale-recovery.md) · [KB-386](../knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) · Pi5 監視: `scripts/ops/recover-pi3-signage-remote.sh`
+
 **重要**: Pi3はメモリが少ない（1GB、実質416MB）ため、デプロイ時にサイネージ関連サービスを停止してメモリを確保する必要があります。**この停止処理はプレフライトチェックで自動実行**されます。
 
 **重要（2026-01-03更新）**: 

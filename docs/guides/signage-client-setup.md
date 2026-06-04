@@ -2,7 +2,7 @@
 title: デジタルサイネージクライアント端末セットアップガイド
 tags: [デジタルサイネージ, セットアップ, ラズパイ3, ラズパイZero2W, Android]
 audience: [運用者, 開発者]
-last-verified: 2026-04-08
+last-verified: 2026-06-04
 related: [../modules/signage/README.md, deployment.md]
 category: guides
 update-frequency: medium
@@ -119,6 +119,18 @@ sudo reboot
 再起動後、自動的にサイネージが表示されることを確認してください。
 
 ## トラブルシューティング
+
+### デスクトップだけ表示されサイネージ画像が出ない（Pi3・Tailscale）
+
+**症状**: HDMI には **Raspberry Pi OS デスクトップ**のみ。全画面 JPEG なし。
+
+**よくある原因**: Tailscale 管理画面で端末（`raspberrypi-2`）が **Expired**（Key expiry）。Pi3 は Pi5 を **Tailscale IP**（`https://100.106.158.2`）経由で参照するため、失効中は画像取得不可。
+
+**対処**:
+
+1. 管理画面: **Temporarily extend key**（30 分窓）→ Pi3 で `sudo tailscale up --advertise-tags=tag:signage --force-reauth`
+2. 恒久: **`Disable key expiry`**（常時稼働サイネージ推奨・2026-06-04 本番は全端末適用済み）
+3. 詳細: [Runbook: pi3-signage-tailscale-recovery.md](../runbooks/pi3-signage-tailscale-recovery.md) · [KB-386](../knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路)
 
 ### Chromiumが起動しない
 

@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-04 · Pi3 サイネージ・Tailscale Key expiry · **復旧・Disable key expiry 全端末**）
+
+- **事象**: 現場 Pi3（`raspberrypi-2`）で **デスクトップのみ**・管理画面 **Expired**・Pi5 の `current-image` は **200**。**復旧**: オフィス移設後 tailnet 復旧 → 現場戻し後もサイネージ表示 OK（Pi3 上コマンド未実行の例あり）。**恒久**: Tailscale **Disable key expiry** を全常時稼働端末に適用。**記録**: [KB-386](./knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) · [KB-387](./knowledge-base/infrastructure/security.md#kb-387-常時稼働端末の-tailscale-key-expiry-無効化全端末-disable-key-expiry) · [Runbook](./runbooks/pi3-signage-tailscale-recovery.md) · [deployment §2026-06-04](./guides/deployment.md#pi3-signage-tailscale-key-expiry-2026-06-04) · `scripts/ops/recover-pi3-signage-remote.sh`
+
 ### 最新アップデート（2026-06-02 · キオスク順位ボード・過去納期滞留調査 · **調査中断・ドキュメントのみ**）
 
 - **資源 `035` など数か月前の納期が順位ボードに残る件**: **アプリ側原因調査は打ち切り**（コード変更・本番デプロイ **なし**）。技術結論は **表示仕様どおり + 上流 `FKOJUNST_Status` 最新が `S/R`（11 件）**。CSV 差分消失・取込遅延主因説は **弱い**。**次**: [KB-383 §上流確認リスト](./knowledge-base/KB-383-kiosk-leaderboard-stale-past-due-investigation.md#上流確認リスト11-件2026-06-01-時点) を現場・上流へ。**アプリ案**: 完了化ではなく **長期滞留・要確認** 分離表示のみ検討。**記録**: [KB-383](./knowledge-base/KB-383-kiosk-leaderboard-stale-past-due-investigation.md) · [KB-297 §調査](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-stale-past-due-investigation-2026-06-01) · [EXEC_PLAN Next Steps](../EXEC_PLAN.md#kiosk-leaderboard-stale-past-due-upstream-verify-2026-06-02)
@@ -1452,6 +1456,7 @@
 | [runbooks/kiosk-ime-diagnosis.md](./runbooks/kiosk-ime-diagnosis.md) | **Runbook**: キオスク備考欄 日本語入力不具合の診断 |
 | [runbooks/kiosk-power-operation-recovery.md](./runbooks/kiosk-power-operation-recovery.md) | **Runbook**: 電源操作・連打防止オーバーレイ不具合の復旧 |
 | [runbooks/vnc-tailscale-recovery.md](./runbooks/vnc-tailscale-recovery.md) | **Runbook**: RealVNC接続不可時の復旧（Tailscale ACL設定） |
+| [runbooks/pi3-signage-tailscale-recovery.md](./runbooks/pi3-signage-tailscale-recovery.md) | **Runbook**: Pi3 サイネージ非表示（Tailscale Key expiry・`signage-lite` 復旧） |
 | [runbooks/deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) | **Runbook**: メンテナンス画面が戻らない場合の復旧（deploy-status強制解除） |
 | [runbooks/actual-hours-canonical-backfill.md](./runbooks/actual-hours-canonical-backfill.md) | **Runbook**: 実績工数 Canonical/Feature バックフィル（Deploy後・既存Raw反映） |
 | [guides/operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |

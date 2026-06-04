@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-04-13
+last-verified: 2026-06-04
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 29件  
+**件数**: 31件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -24,7 +24,95 @@ update-frequency: medium
 
 **Android 軽量ページ（2026-04-07・ブランチ `feat/android-signage-lite-page`）**: Web の **`/signage-lite`**（`clientKey` クエリ／`localStorage`・`GET /api/signage/current-image` の **`key=`** 整合・未設定時は案内表示）。**本番は Pi5 のみ**で可（`web` バンドル正本）。**デプロイ**: [deployment.md](../../guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit raspberrypi5`**・**`--detach --follow`**（対象が Pi5 のみのため **1 台・1 回**）。**Detach Run ID**: `20260407-174723-18058`（**`PLAY RECAP failed=0`**・Pi4/Pi3 は `no hosts matched`）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 53s・Mac / Tailscale）。**TS**: `clientKey` 未設定で **誤デフォルト画像**へ寄せない（`allowDefaultFallback: false`）。Pi3 は本変更の必須デプロイ対象外（専用手順は従来どおり・リソース僅少）。セットアップは [signage-client-setup.md](../../guides/signage-client-setup.md#android-signage-lite)。**実機（2026-04-08）**: 未登録 `apiKey` では `current-image` が **401** → **`heartbeat` 登録後に 200**。`/signage-lite` のみ不調時は **Chrome のサイトデータ／キャッシュ削除**で復旧した例あり → [KB-337](#kb-337-android-signage-lite-401-chrome)。
 
+**Pi3 サイネージ非表示・Tailscale Key expiry（2026-06-03〜04）**: 現場で **デスクトップのみ**・Pi5 から SSH 不可。**管理画面** `raspberrypi-2`（`100.105.224.86`・`tag:signage`）が **Expired**。**Pi5 の `current-image` は 200**（サーバ側は正常）。**Extend key** 後も Pi3 側再認証なしでは不通。**オフィス移設後**は tailnet 復旧・`signage-lite` active・**現場戻し後も表示 OK**。**恒久**: 全常時稼働端末で **Disable key expiry**。**Runbook**: [pi3-signage-tailscale-recovery.md](../../runbooks/pi3-signage-tailscale-recovery.md)・**KB**: [KB-386](#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路)・**復旧監視**: `scripts/ops/recover-pi3-signage-remote.sh`（Pi5 上）。
+
 **配膳 Android 部品棚 9 枠（2026-04-13・ブランチ `feat/pi3-android-parts-signage`）**: FULL スロット **`mobile_placement_parts_shelf_grid`**（`OrderPlacementBranchState` を 3×3 ゾーンに集約・**SVG→JPEG**・任意 **`maxItemsPerZone`**）。**本番**: API/Web 正本は **Pi5**、表示の `/signage` 用 Web 更新と **`signage-lite-update`** 経路を取り込むなら **Pi3 も順次**（[KB-321](#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) と同型の **Pi3 専用プレフライト**）。**デプロイ**: [deployment.md](../../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pi3-android-parts-signage infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow` の **成功後**に `./scripts/update-all-clients.sh … --limit "raspberrypi3" --detach --follow`（**1 台ずつ・同一ホストへ並列起動しない**）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-190750-1020`（`raspberrypi5`）→ `20260413-192539-10430`（`raspberrypi3`）、各 **`PLAY RECAP failed=0` / `unreachable=0`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **54s**・Mac / Tailscale）。**ナレッジ**: [KB-341](#kb-341-mobile-placement-parts-shelf-grid-deploy)・[signage-mobile-placement-parts-shelf-grid.md](../../guides/signage-mobile-placement-parts-shelf-grid.md)。
+
+---
+
+<a id="kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路"></a>
+
+### [KB-386] Pi3 サイネージ非表示（Tailscale Key expiry とネットワーク経路）
+
+**実施日**: 2026-06-03〜2026-06-04（JST・第2工場 signageMakoRoom / オフィス移設検証）
+
+**Context**:
+
+- 端末: inventory **`raspberrypi3`** · Tailscale **`raspberrypi-2`** · **`100.105.224.86`** · **`tag:signage`**
+- クライアントキー: **`client-key-raspberrypi3-signage1`**
+- 表示経路: Pi3 の **`signage-lite`**（`feh` 全画面）が Pi5 の **`GET /api/signage/current-image`**（`x-client-key`）から JPEG を取得（[signage-lite.md](../../modules/signage/signage-lite.md)）
+- ネットワーク: `group_vars/all.yml` の **`network_mode: tailscale`**。Pi5 は通常 **`192.168.10.230`**（`local_network`）、Pi3 は **`192.168.128.152`**（別サブネット）。**Pi5 → Pi3 の LAN ping/SSH は不通**（tailnet または同一 10.x 上の direct が前提）
+
+**Symptoms**:
+
+1. サイネージモニターに **Raspberry Pi OS デスクトップのみ**（壁紙・パネル）。**全画面 JPEG なし**
+2. Pi3 本体は **電源 ON**（ユーザー認識: 「Pi3 は起動している」）
+3. Tailscale 管理画面: **`raspberrypi-2` · Expired 23 hours ago**（Key expiry）
+4. Pi5 から: `tailscale ping 100.105.224.86` → **`peer's node key has expired`** または **timeout** · Ansible **`UNREACHABLE`**
+5. Pi5 側 API: `curl -k -H 'x-client-key: client-key-raspberrypi3-signage1' https://127.0.0.1/api/signage/current-image` → **HTTP 200**（約 190KB JPEG）— **サーバ・スケジュールは正常**
+
+**Investigation**:
+
+| 仮説 | 検証 | 結果 |
+|------|------|------|
+| Pi5 サイネージレンダラー障害 | Pi5 上 `current-image` | **REJECTED**（200） |
+| `signage-lite` / `feh` 停止のみ | リモート未接続のため後追い | **INCONCLUSIVE**（復旧後は active + feh 確認） |
+| Pi3 Tailscale 切断 | `tailscale status` · ping · 管理画面 Expired | **CONFIRMED** |
+| 工場 LAN 直で Pi5→Pi3 | Pi5 から `192.168.128.152` ping/SSH | **REJECTED**（不通） |
+| Extend key のみで復旧 | 管理画面で Extend · Pi3 でコマンド未実行 | **REJECTED**（Pi5 から依然 SSH 不可） |
+| ネットワーク変更で復旧 | Pi3 をオフィスへ移設（ユーザー操作） | **CONFIRMED**（tailnet 復旧・表示復帰・Pi3 上コマンド未実行） |
+
+**Root cause**:
+
+1. **Tailscale Key expiry（製品仕様）**: 端末ノード鍵の定期失効により `raspberrypi-2` が tailnet から外れる（[Tailscale Key expiry](https://tailscale.com/docs/features/access-control/key-expiry)）
+2. **Pi3 の API 到達は Tailscale 依存**: `signage_server_url` は `https://{{ server_ip }}`（Tailscale IP）のため、失効中は **JPEG 取得不可** → `/run/signage/current.jpg` 空・`feh` 起動失敗またはデスクトップのみ
+3. **工場配置では Pi5 と Pi3 が L2 で直結しない**ため、Tailscale 不通時に **LAN 迂回不可**
+
+**Fix（実施済み・2026-06-04）**:
+
+1. 管理画面: **`Temporarily extend key`**（期限切れ端末の 30 分窓）— 単体では不十分
+2. **オフィスへ移設**後、Tailscale が **Online** になり、**サイネージ表示復帰**（ユーザー報告: Pi3 でコマンド未実行）
+3. Pi5 からの復旧確認（2026-06-04 08:51 JST）: `tailscale ping` **pong**（`active; direct 192.168.10.109`）· `signage-lite.service` **active** · `feh` 実行中 · `current.jpg` **約 185KB**
+4. Pi5 上の監視スクリプト **`scripts/ops/recover-pi3-signage-remote.sh`** が疎通復帰を検知し **復旧コマンド完了**（ログ: `~/recover-pi3-signage.log`）
+5. **恒久**: Tailscale 管理画面で **`raspberrypi-2` および他全常時稼働端末**に **`Disable key expiry`** を設定（ユーザー実施）
+
+**Fix（手動・現場でコマンドが必要な場合）**:
+
+Runbook [pi3-signage-tailscale-recovery.md](../../runbooks/pi3-signage-tailscale-recovery.md) を参照。要点:
+
+```bash
+# Pi3（tag:signage）
+sudo tailscale up --advertise-tags=tag:signage --force-reauth
+# または Extend key 窓内で
+sudo tailscale up --advertise-tags=tag:signage --reset
+
+tailscale ping -c 2 100.106.158.2
+sudo /usr/local/bin/signage-update.sh
+sudo systemctl restart signage-lite.service
+```
+
+**Prevention**:
+
+| 対策 | 内容 |
+|------|------|
+| **Disable key expiry** | `tag:server` / `tag:kiosk` / `tag:signage` の無人端末で推奨（2026-06-04 全端末適用済み・[KB-387](../infrastructure/security.md#kb-387-常時稼働端末の-tailscale-key-expiry-無効化全端末-disable-key-expiry)） |
+| デプロイ前 | Pi5 で `tailscale status` · 対象端末が **Online** でない場合はデプロイ後も表示不可になり得る |
+| 現場戻し後 | 管理画面 **Online** + モニター **全画面 JPEG** を確認 |
+| リモート復旧 | Pi5 で `recover-pi3-signage-remote.sh` を常駐させると SSH 復帰後に `signage-lite` を再起動可能 |
+
+**切り分け早見表**:
+
+| 見え方 | まず確認 |
+|--------|----------|
+| デスクトップのみ | Pi3: `systemctl is-active signage-lite` · `ls /run/signage/current.jpg` |
+| 上記 + Expired | Tailscale 再認証 or Disable key expiry |
+| 画像古い | `signage-lite-update.timer` · Pi5 `current-image` |
+
+**関連 KB**: [KB-384](../infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)（Pi4 キオスク・TS 失効同型）· [KB-385](../infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)（Pi5 NeedsLogin / node key expired）· [KB-236](#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ)（xset・feh ループ）
+
+**References**: [Runbook: pi3-signage-tailscale-recovery](../../runbooks/pi3-signage-tailscale-recovery.md) · [deployment.md §ラズパイ3](../../guides/deployment.md#ラズパイ3サイネージの更新) · [tailscale-policy.md §Key expiry](../../security/tailscale-policy.md#key-expiry-常時稼働端末) · `scripts/ops/recover-pi3-signage-remote.sh`
+
+**解決状況**: ✅ **復旧済み**（2026-06-04・現場設置・Disable key expiry 適用）
 
 ---
 

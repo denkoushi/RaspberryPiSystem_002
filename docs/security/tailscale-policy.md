@@ -314,6 +314,27 @@ Stage 3（Tailscale SSH）:
 - ✅ WebRTC: `local`モード（工場LAN）でのみ通話が成立（実機検証完了）
 - ✅ LocalLLM: `38081/healthz` が `ok`、認証なし `/v1/models` は `403`、トークン付き `/v1/models` は応答を確認
 
+### Key expiry（常時稼働端末）
+
+<a id="key-expiry-常時稼働端末"></a>
+
+Tailscale の **Key expiry** はセキュリティ機能であり、端末ごとに定期的な再認証を要求する（既定はテナント設定により **90〜180 日** 等）。期限切れ端末は管理画面に **Expired** と表示され、tailnet から切り離される。
+
+**本番影響（2026-06-04 実例）**:
+
+- **`tag:signage`（Pi3）**: 失効中は Pi5 の `current-image` に届かず、**デスクトップのみ**表示（[KB-386](../knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路)）
+- **`tag:kiosk`（Pi4）**: キオスク URL（`https://100.106.158.2/kiosk`）が開けない（[KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）
+- **`tag:server`（Pi5）**: `NeedsLogin` / node key expired（[KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)）
+
+**運用方針（2026-06-04 決定）**:
+
+| 端末種別 | Key expiry |
+|----------|------------|
+| Pi5 / Pi4 キオスク / Pi3 サイネージ 等の **無人常時稼働** | **`Disable key expiry`**（管理画面 `...` メニュー） |
+| Mac `tag:admin` 等、人がログインする端末 | 必要に応じて expiry **有効のまま**可 |
+
+**期限切れ時の復旧**: [Tailscale: Renewing keys for an expired device](https://tailscale.com/docs/features/access-control/key-expiry) — **Extend key**（30 分）のあと、端末で `tailscale up --force-reauth`（タグは端末ごと: `tag:server` / `tag:kiosk` / `tag:signage`）。Pi3 手順は [pi3-signage-tailscale-recovery.md](../runbooks/pi3-signage-tailscale-recovery.md)。
+
 ### Phase 4: Tailscale SSH（無料プランでは利用不可）
 
 **注意**: Tailscale SSHはPersonal Plus/Premium/Enterpriseプランでのみ利用可能です。Personal（無料）プランでは利用できません。
