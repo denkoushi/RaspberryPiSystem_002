@@ -144,6 +144,21 @@
 
 Runbook: [kiosk-part-measurement §ガイドフォーカス](../runbooks/kiosk-part-measurement.md#自主検査-ガイド付きフォーカス-2026-06-04)
 
+### 自主検査フルリセット + 検査図面ガイド試行（2026-06-04） {#自主検査-フルリセット-ガイド試行-2026-06-04}
+
+| 機能 | 要点 |
+|------|------|
+| **フルリセット** | 入口は **セッション画面のみ**。`POST …/sessions/:id/reset` が preflight → 削除 → **最新 active テンプレ**で新 UUID セッション作成まで原子的に完了。完了済みは API でも `confirmCompletedSessionReset` 必須。監査は `SelfInspectionSessionResetAuditLog` + pino（削除 session への強 FK なし）。 |
+| **クライアント** | 2 段階 `ConfirmDialog` → `newSession.id` へ `replace`。`useResetSelfInspectionSession` が query 無効化 + **IndexedDB board cache の row 単位 purge**。 |
+| **ガイド試行** | **検査図面 作成/改版**（`KioskInspectionDrawingCreatePage`）のみ。`inspectionDrawingGuidedTrial.ts` / `useInspectionDrawingGuidedTrial.ts`。並びは `markerNo` → 配列 index → `id`。永続化なし。 |
+
+代表ファイル:
+
+- API: `self-inspection-reset-preflight.ts` · `self-inspection.service.ts`（`resetSession`）· `SelfInspectionSessionResetAuditLog`
+- Web: `purgeLeaderboardBoardCacheForScheduleRow.ts` · `KioskSelfInspectionSessionPage.tsx`（初期化）
+
+Runbook: [kiosk-part-measurement §フルリセット・ガイド試行](../runbooks/kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04)
+
 ## 自主検査・検査図面 仕様拡張 本番（2026-06-03） {#自主検査-検査図面-仕様拡張-本番-2026-06-03}
 
 ### 進捗・デプロイ

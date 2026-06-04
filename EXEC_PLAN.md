@@ -8,7 +8,7 @@
 
 ## Progress
 
-- [ ] (2026-06-04 / **実装完了・未コミット・未 push**) **キオスク自主検査・ガイド付きフォーカス**: ブランチ **`feat/kiosk-self-inspection-guided-focus`** — 丸数字順ガイド（`markerNo` 昇順・入力件スコープ）· `focusRequest` 1 回センタリング · 上辺フラット band（再開/次の測定点）· `selfInspectionGuidedFocus.ts` / `useSelfInspectionGuidedFocus.ts`。**Web のみ**。**docs**: [KB-320 §ガイドフォーカス](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ガイド付きフォーカス-2026-06-04) / [runbook §ガイドフォーカス](./docs/runbooks/kiosk-part-measurement.md#自主検査-ガイド付きフォーカス-2026-06-04)。
+- [ ] (2026-06-04 / **実装完了・未コミット・未 push**) **キオスク自主検査・ガイド付きフォーカス + フルリセット + 図面ガイド試行**: ブランチ **`feat/kiosk-self-inspection-guided-focus`**（想定）— セッションガイド · **`POST …/sessions/:id/reset`**（preflight→削除→最新 active テンプレで再作成・監査 DB+pino）· セッション **初期化** 2 段階確認 · 検査図面作成/改版 **ガイド試行**（非永続）· IndexedDB board cache row purge。**API + Web + migration**。**docs**: [KB-320 §ガイド](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ガイド付きフォーカス-2026-06-04) · [KB-320 §リセット・試行](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04) · [runbook](./docs/runbooks/kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04)。
 
 - [x] (2026-06-04 / **ドキュメント・`main` 反映**) **Pi3 サイネージ非表示・Tailscale Key expiry**: 現場デスクトップのみ・`Expired`·Pi5 API 200·オフィス移設で復旧·**Disable key expiry 全端末**。**docs**: [KB-386](./docs/knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) / [KB-387](./docs/knowledge-base/infrastructure/security.md#kb-387-常時稼働端末の-tailscale-key-expiry-無効化全端末-disable-key-expiry) / [Runbook](./docs/runbooks/pi3-signage-tailscale-recovery.md) / [deployment §2026-06-04](./docs/guides/deployment.md#pi3-signage-tailscale-key-expiry-2026-06-04) / `scripts/ops/recover-pi3-signage-remote.sh`
 

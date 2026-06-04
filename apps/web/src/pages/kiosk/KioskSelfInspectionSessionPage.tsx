@@ -5,11 +5,13 @@ import { useLocation, useMatch, useNavigate, useParams, useSearchParams } from '
 import {
   useCompleteSelfInspectionSession,
   useCreateSelfInspectionEntry,
+  useResetSelfInspectionSession,
   useResolveSelfInspectionSession,
   useSelfInspectionSession,
   useUpdateSelfInspectionEntry
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import {
   InspectionDrawingCanvas,
   InspectionDrawingValuePanel,
@@ -57,6 +59,7 @@ type StartState = {
   resourceCd: string;
   fhincd: string;
   fhinmei: string;
+  machineName: string | null;
   processGroup: 'cutting' | 'grinding';
 };
 
@@ -76,6 +79,7 @@ export function KioskSelfInspectionSessionPage() {
     const fhinmei = searchParams.get('fhinmei')?.trim() ?? '';
     const scheduleRowId = searchParams.get('scheduleRowId')?.trim() ?? '';
     const fseiban = searchParams.get('fseiban')?.trim() ?? '';
+    const machineName = searchParams.get('machineName')?.trim() ?? '';
     if (!templateId || !productNo || !resourceCd || !fhincd || !fhinmei || !scheduleRowId || !fseiban) return null;
     return {
       id: scheduleRowId,
@@ -85,6 +89,7 @@ export function KioskSelfInspectionSessionPage() {
       resourceCd,
       fhincd,
       fhinmei,
+      machineName: machineName || null,
       processGroup
     } satisfies StartState;
   }, [location.state, searchParams]);
@@ -92,6 +97,8 @@ export function KioskSelfInspectionSessionPage() {
   const createEntryMutation = useCreateSelfInspectionEntry();
   const updateEntryMutation = useUpdateSelfInspectionEntry();
   const completeSessionMutation = useCompleteSelfInspectionSession();
+  const resetSessionMutation = useResetSelfInspectionSession();
+  const [resetPhase, setResetPhase] = useState<null | 'destructive' | 'completed'>(null);
   const [resolvedSessionId, setResolvedSessionId] = useState<string | null>(sessionId ?? null);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [selectedEntryIndex, setSelectedEntryIndex] = useState(0);
@@ -233,7 +240,8 @@ export function KioskSelfInspectionSessionPage() {
         scheduleRowId: startState.id,
         fseiban: startState.fseiban,
         fhincd: startState.fhincd,
-        fhinmei: startState.fhinmei
+        fhinmei: startState.fhinmei,
+        machineName: startState.machineName
       })
       .then((nextSession) => {
         setResolveError(null);
@@ -288,6 +296,31 @@ export function KioskSelfInspectionSessionPage() {
 
   const isSavingEntry = createEntryMutation.isPending || updateEntryMutation.isPending;
   const isCompletingSession = completeSessionMutation.isPending;
+  const isResettingSession = resetSessionMutation.isPending;
+  const resetDisabled = isSavingEntry || isCompletingSession || isResettingSession;
+
+  const resetDestructiveDescription = hasUnsavedDraftChanges
+    ? '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。未保存の入力があります。リセットすると破棄されます。'
+    : '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。';
+
+  const runSessionReset = async (confirmCompletedSessionReset: boolean) => {
+    if (!session || !resolvedSessionId) return;
+    setResetPhase(null);
+    setActionError(null);
+    try {
+      const result = await resetSessionMutation.mutateAsync({
+        sessionId: resolvedSessionId,
+        body: {
+          confirmDestructiveReset: true,
+          confirmCompletedSessionReset,
+          requestId: crypto.randomUUID()
+        }
+      });
+      navigate(kioskSelfInspectionSessionPath(result.newSession.id), { replace: true });
+    } catch (error: unknown) {
+      setActionError(readApiErrorMessage(error, '初期化に失敗しました。'));
+    }
+  };
 
   const persistEntry = async (entryIndex: number, draft: Record<string, string>) => {
     if (!session || isSessionReadOnly || persistInFlightRef.current || isSavingEntry) {
@@ -432,6 +465,33 @@ export function KioskSelfInspectionSessionPage() {
         onPrepareNextPoint={consumeNextBlurGuideAdvance}
         onNextPoint={goToNextPointManual}
         onBackToList={() => navigate('/kiosk/part-measurement/self-inspection')}
+        onReset={() => setResetPhase('destructive')}
+        resetDisabled={resetDisabled}
+      />
+
+      <ConfirmDialog
+        isOpen={resetPhase === 'destructive'}
+        title="自主検査を初期化しますか？"
+        description={resetDestructiveDescription}
+        confirmLabel="初期化する"
+        tone="danger"
+        onCancel={() => setResetPhase(null)}
+        onConfirm={() => {
+          if (session.completedAt) {
+            setResetPhase('completed');
+            return;
+          }
+          void runSessionReset(false);
+        }}
+      />
+      <ConfirmDialog
+        isOpen={resetPhase === 'completed'}
+        title="完了済みの実績を削除します"
+        description="完了済みを含む本番の入力実績がすべて削除され、最新図面の新しいセッションで再開します。この操作は取り消せません。"
+        confirmLabel="削除して再開"
+        tone="danger"
+        onCancel={() => setResetPhase(null)}
+        onConfirm={() => void runSessionReset(true)}
       />
 
       {guideHint ? (
@@ -595,3 +655,4 @@ export function KioskSelfInspectionSessionPage() {
     </div>
   );
 }
+

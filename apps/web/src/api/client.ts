@@ -3166,6 +3166,48 @@ export async function completeSelfInspectionSession(
   return data.session;
 }
 
+export type SelfInspectionResetNewSessionDto = {
+  id: string;
+  templateId: string;
+  productNo: string;
+  processGroup: PartMeasurementProcessGroup;
+  resourceCd: string;
+  scheduleRowId: string | null;
+  fseiban: string | null;
+  fhincd: string;
+  fhinmei: string;
+  machineName: string | null;
+  plannedQuantity: number;
+  expectedEntryCount: number;
+};
+
+export type SelfInspectionResetSessionResult = {
+  deletedSessionId: string;
+  deletedEntryCount: number;
+  deletedValueCount: number;
+  newSession: SelfInspectionResetNewSessionDto;
+};
+
+export async function resetSelfInspectionSession(
+  sessionId: string,
+  body: {
+    confirmDestructiveReset: true;
+    confirmCompletedSessionReset: boolean;
+    requestId: string;
+    reason?: string | null;
+  },
+  clientKey?: string
+): Promise<SelfInspectionResetSessionResult> {
+  const { data } = await api.post<SelfInspectionResetSessionResult>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/reset`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data;
+}
+
 /** キオスク検査図面テンプレ編集用（本番 + 図面・全マーカー必須。履歴版も閲覧可） */
 export async function getKioskInspectionDrawingTemplate(
   templateId: string,

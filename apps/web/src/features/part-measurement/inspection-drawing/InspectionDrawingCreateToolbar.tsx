@@ -10,7 +10,7 @@ import {
 
 import type { PartMeasurementProcessGroup } from '../types';
 
-export type InspectionDrawingToolbarMode = 'place' | 'test';
+export type InspectionDrawingToolbarMode = 'place' | 'test' | 'guidedTrial';
 
 type Props = {
   processGroup: PartMeasurementProcessGroup;
@@ -49,6 +49,7 @@ export function InspectionDrawingCreateToolbar({
 
   const placeDisabled = !hasDrawingImage;
   const testDisabled = !hasDrawingImage || !hasMeasurementPoints;
+  const guidedTrialDisabled = testDisabled;
   const saveBlocked = saveDisabled || saveBusy || !onSave;
 
   return (
@@ -97,6 +98,16 @@ export function InspectionDrawingCreateToolbar({
         onClick={() => onModeChange('test')}
       >
         テスト入力
+      </Button>
+      <Button
+        type="button"
+        variant="primary"
+        aria-pressed={mode === 'guidedTrial'}
+        className={toggleClass(mode === 'guidedTrial')}
+        disabled={guidedTrialDisabled}
+        onClick={() => onModeChange('guidedTrial')}
+      >
+        ガイド試行
       </Button>
 
       <Button

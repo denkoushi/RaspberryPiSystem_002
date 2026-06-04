@@ -32,6 +32,8 @@ type Props = {
   /** 次の blur 1 回だけガイド進行を抑止（pointer/touch の実行直前。Tab の onFocus では立てない） */
   onPrepareNextPoint?: () => void;
   onBackToList: () => void;
+  onReset?: () => void;
+  resetDisabled?: boolean;
 };
 
 export function SelfInspectionSessionHeader({
@@ -51,7 +53,9 @@ export function SelfInspectionSessionHeader({
   onResumeGuide,
   onNextPoint,
   onPrepareNextPoint,
-  onBackToList
+  onBackToList,
+  onReset,
+  resetDisabled = false
 }: Props) {
   return (
     <div data-testid="self-inspection-session-header-band" className={selfInspectionSessionFlatBandClassName}>
@@ -109,6 +113,17 @@ export function SelfInspectionSessionHeader({
         >
           次の測定点
         </Button>
+        {onReset ? (
+          <Button
+            type="button"
+            variant="ghostOnDark"
+            className="min-h-11 px-2 text-sm text-amber-100"
+            disabled={resetDisabled}
+            onClick={onReset}
+          >
+            初期化
+          </Button>
+        ) : null}
         <Button type="button" variant="ghostOnDark" className="min-h-11 px-2 text-sm" onClick={onBackToList}>
           一覧へ
         </Button>

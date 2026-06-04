@@ -317,6 +317,13 @@ const selfInspectionUpdateEntryBodySchema = z.object({
     .max(200)
 });
 
+const selfInspectionResetSessionBodySchema = z.object({
+  confirmDestructiveReset: z.literal(true),
+  confirmCompletedSessionReset: z.boolean(),
+  requestId: z.string().min(1).max(120),
+  reason: z.string().max(500).optional().nullable()
+});
+
 function decimalToString(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value === 'object' && value !== null && 'toFixed' in value) {
@@ -1194,6 +1201,24 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const params = selfInspectionSessionIdParamsSchema.parse(request.params);
     const session = await selfInspectionService.completeSession(params.id);
     return { session };
+  });
+
+  app.post('/part-measurement/self-inspection/sessions/:id/reset', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+    const body = selfInspectionResetSessionBodySchema.parse(request.body);
+    const clientDeviceId = await tryGetClientDeviceId(request.headers);
+    const authMode = request.user ? 'bearer' : 'client_key';
+    const result = await selfInspectionService.resetSession(params.id, {
+      confirmDestructiveReset: body.confirmDestructiveReset,
+      confirmCompletedSessionReset: body.confirmCompletedSessionReset,
+      requestId: body.requestId,
+      reason: body.reason,
+      clientDeviceId,
+      actorUserId: request.user?.id,
+      actorUsername: request.user?.username,
+      authMode
+    });
+    return result;
   });
 
   app.post('/part-measurement/templates', { preHandler: allowWriteKiosk }, async (request) => {

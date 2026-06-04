@@ -276,6 +276,33 @@ cd apps/web && pnpm exec vitest run \
 
 ---
 
+## 自主検査フルリセット + 検査図面ガイド試行（2026-06-04） {#自主検査-フルリセット-ガイド試行-2026-06-04}
+
+正本: [KB-320 §フルリセット・ガイド試行](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04)
+
+### フルリセット（セッション画面のみ）
+
+- API: `POST /api/part-measurement/self-inspection/sessions/:id/reset`
+- Body: `confirmDestructiveReset: true` 必須。完了済みは `confirmCompletedSessionReset: true` も必須。`requestId`（監査相関）必須。
+- サーバーは **preflight 成功後のみ** 旧セッション削除 → **最新 active THREE_KEY 検査図面テンプレ** で新セッション作成 → `newSession` 返却。
+- UI: セッション画面上部 **初期化** → 2 段階確認 → 成功後 `replace` で新 `/sessions/:id` へ。保存中・完了中は無効。
+- 順位ボード: React Query 無効化に加え、端末 IndexedDB の **該当 `scheduleRowId` を含む board cache のみ purge**（全スキーマ消去はしない）。
+
+### ガイド試行（検査図面 作成/改版のみ）
+
+- モード **ガイド試行**: 非永続。OK のみ次の `markerNo` へ（配列 index → id で tie-break）。**再開** は未完了の最小番号。
+- 点削除・図面差し替えで試行 state リセット。履歴版 readOnly でも試行可（保存なしの文言あり）。
+
+### 単体テスト
+
+```bash
+cd apps/api && pnpm exec vitest run src/services/part-measurement/__tests__/self-inspection-reset-preflight.test.ts
+cd apps/web && pnpm exec vitest run \
+  src/features/part-measurement/inspection-drawing/__tests__/inspectionDrawingGuidedTrial.test.ts
+```
+
+---
+
 ## 自主検査 MVP（2026-06-01）
 
 詳細・背景: [KB-320 §自主検査 MVP](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01)。
