@@ -142,9 +142,36 @@ export const inspectionDrawingSideAsideClassName =
 export const inspectionDrawingCreateSideAsideClassName =
   'flex min-h-0 w-full shrink-0 flex-col rounded border border-white/15 bg-slate-900/80 p-1.5 lg:w-[17rem]';
 
+/** 自主検査セッション — フラット top-band（作成/改版と同型の密度） */
+export const selfInspectionSessionFlatBandClassName =
+  'flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded border border-white/15 bg-slate-800/80 px-2 py-1';
+
+export const selfInspectionSessionMetaRowClassName =
+  'flex min-w-0 flex-1 flex-nowrap items-center gap-x-2 overflow-x-auto text-[0.82rem]';
+
+export const selfInspectionSessionMetaChipClassName =
+  'inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap text-white/80';
+
+/** 自主検査セッション上辺ツールバー（blur 時の relatedTarget 判定用） */
+export const SELF_INSPECTION_SESSION_TOOLBAR_SELECTOR = '[data-self-inspection-session-toolbar]';
+
+export const SELF_INSPECTION_ENTRY_SLOTS_SELECTOR = '[data-self-inspection-entry-slots]';
+
+/** 自主検査セッション上の操作 UI（blur 時にガイド自動進行しないフォーカス先） */
+export function isSelfInspectionSessionChromeFocusTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.closest(SELF_INSPECTION_SESSION_TOOLBAR_SELECTOR) !== null ||
+    target.closest(SELF_INSPECTION_ENTRY_SLOTS_SELECTOR) !== null
+  );
+}
+
+export const selfInspectionSessionToolbarSlotClassName =
+  'flex shrink-0 flex-nowrap items-center gap-1';
+
 /** 図面キャンバス列 — サイドバー縮小分を flex で確保 */
 export const inspectionDrawingCanvasColumnClassName =
-  'flex min-h-[min(72dvh,760px)] min-w-0 flex-1 flex-col';
+  'flex min-h-[min(76dvh,820px)] min-w-0 flex-1 flex-col';
 
 /** 図面キャンバス列 — 作成/改版（親 workspace の残高を使う） */
 export const inspectionDrawingCreateCanvasColumnClassName =

@@ -18,6 +18,7 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 async function cleanPartMeasurementTables() {
   await prisma.selfInspectionMeasurementValue.deleteMany({});
   await prisma.selfInspectionLotEntry.deleteMany({});
+  await prisma.selfInspectionSessionResetAuditLog.deleteMany({});
   await prisma.selfInspectionSession.deleteMany({});
   await prisma.partMeasurementResult.deleteMany({});
   await prisma.partMeasurementSheet.deleteMany({});
@@ -2063,6 +2064,53 @@ describe('part-measurement templates API', () => {
       }
     });
     expect(updateAfterCompleteRes.statusCode).toBe(409);
+
+    const resetWithoutCompletedConfirmRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/reset`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        confirmDestructiveReset: true,
+        confirmCompletedSessionReset: false,
+        requestId: 'reset-req-missing-completed-confirm'
+      }
+    });
+    expect(resetWithoutCompletedConfirmRes.statusCode).toBe(400);
+
+    const resetRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/reset`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        confirmDestructiveReset: true,
+        confirmCompletedSessionReset: true,
+        requestId: 'reset-req-success',
+        reason: 'integration test'
+      }
+    });
+    expect(resetRes.statusCode).toBe(200);
+    expect(resetRes.json().deletedSessionId).toBe(sessionId);
+    expect(resetRes.json().deletedEntryCount).toBe(2);
+    expect(resetRes.json().deletedValueCount).toBe(2);
+    expect(resetRes.json().newSession.id).not.toBe(sessionId);
+    expect(resetRes.json().newSession.templateId).toBe(revisedTemplateId);
+    expect(resetRes.json().newSession.expectedEntryCount).toBe(2);
+
+    const oldSessionRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(oldSessionRes.statusCode).toBe(404);
+
+    const auditRows = await prisma.selfInspectionSessionResetAuditLog.findMany({
+      where: { sessionId }
+    });
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0]?.nextTemplateId).toBe(revisedTemplateId);
+    expect(auditRows[0]?.entryCount).toBe(2);
+    expect(auditRows[0]?.valueCount).toBe(2);
+    expect(auditRows[0]?.completedAtWasSet).toBe(true);
   });
 
   it('rejects self-inspection resolve when sample size exceeds planned quantity', async () => {

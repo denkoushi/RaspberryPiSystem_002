@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-06-04 / **実装・CI・Pi5 先行デプロイ済 · `main` マージ**) **キオスク自主検査・ガイド付きフォーカス + フルリセット + 図面ガイド試行**: ブランチ **`feat/kiosk-self-inspection-guided-focus`** · **`5d7dd6f6`** / **`32c4858f`**（ガイド）· **`f16cb7ca`**（reset+試行）— セッションガイド · **`POST …/sessions/:id/reset`**（**ロック後** preflight→削除→最新 active テンプレで再作成·監査 `SelfInspectionSessionResetAuditLog`+pino）· **初期化** 2 段階確認 · 図面 **ガイド試行**（非永続·DEV parity）· IndexedDB board cache row purge。**API + Web + migration**。**CI**: **`26925365886`** · **`26935485926`** success。**デプロイ**: Pi5 **`20260604-155553-5452`** · **`failed=0`** · Phase12 **43/0/0**。**残**: Pi4×4 順次 + 実機目視完了記録。**docs**: [KB-320 §ガイド](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ガイド付きフォーカス-2026-06-04) · [KB-320 §リセット](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04) · [deployment §2026-06-04](./docs/guides/deployment.md#kiosk-self-inspection-guided-focus-reset-trial-2026-06-04) · [runbook](./docs/runbooks/kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04)。
+
 - [x] (2026-06-04 / **ドキュメント・`main` 反映**) **Pi3 サイネージ非表示・Tailscale Key expiry**: 現場デスクトップのみ・`Expired`·Pi5 API 200·オフィス移設で復旧·**Disable key expiry 全端末**。**docs**: [KB-386](./docs/knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) / [KB-387](./docs/knowledge-base/infrastructure/security.md#kb-387-常時稼働端末の-tailscale-key-expiry-無効化全端末-disable-key-expiry) / [Runbook](./docs/runbooks/pi3-signage-tailscale-recovery.md) / [deployment §2026-06-04](./docs/guides/deployment.md#pi3-signage-tailscale-key-expiry-2026-06-04) / `scripts/ops/recover-pi3-signage-remote.sh`
 
 - [x] (2026-06-04 / **Pi5 + Pi4×4 本番・実機 OK · `main` マージ**) **キオスク検査図面 作成/改版ヘッダー フラット band**: ブランチ **`fix/inspection-drawing-create-header-flat-layout`** · **`d96da485`** — `InspectionDrawingCreateCompactHeader` · 最大2物理行 wrap · 検査数 chip 孤児化解消 · Playwright 行数 E2E。**Web のみ**。**CI**: **`26917349311`** success。**デプロイ**: Pi5 **`20260604-074525-7036`** · Pi4×4（stonebase **実機 OK** · Detach **`20260604-075147-21404`** 他）· **`failed=0`**。**docs**: [KB-320 §フラット band](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成改版ヘッダー-フラット-band-2026-06-04) / [ExecPlan](./docs/plans/inspection-drawing-create-layout-and-return-nav.md) / [deployment §2026-06-04](./docs/guides/deployment.md#kiosk-inspection-drawing-create-header-flat-layout-2026-06-04) / [runbook §フラット band](./docs/runbooks/kiosk-part-measurement.md#検査図面-作成改版ヘッダー-フラット-band-2026-06-04)。
@@ -1277,6 +1279,18 @@
 
 ## Surprises & Discoveries
 
+- 観測 2026-06-04 / **自主検査 reset の preflight を行ロック前に実行すると、完了確認・active テンプレ・restart payload がレースで古くなる**
+  根拠: コードレビュー — ロック前 `completedAt` 確認では別リクエストの完了が割り込みうる · ロック前 `activeTemplate` では改版直後に旧テンプレで再作成しうる。**対処**: `lockSessionRow` 後の `lockedSession` のみで確認・snapshot・payload・テンプレ再取得（**`f16cb7ca`**）。
+
+- 観測 2026-06-04 / **Prisma schema の `@@index(..., map: "...")` と migration SQL のデフォルト索引名が不一致だと drift になる**
+  根拠: `20260604120000_self_inspection_session_reset_audit` が `SelfInspectionSessionResetAuditLog_sessionId_idx` 等を生成 · schema は `SelfInspectionSessionResetAuditLog_idx_session`。**対処**: migration SQL の `CREATE INDEX` 名を schema `map` に揃える。
+
+- 観測 2026-06-04 / **ローカル integration 用 `postgres:16` では `vector` extension 不足で migrate が止まる**
+  根拠: `20260330120000_photo_tool_similarity_gallery_pgvector`。**対処**: 一時 DB に **`pgvector/pgvector:pg16`** を使用。
+
+- 観測 2026-06-04 / **DEV プレビューに「ガイド試行」ボタンだけ出すと Enter/blur 進行が動かない**
+  根拠: `KioskInspectionDrawingCreatePreviewPage` が hook 未接続。**対処**: `useInspectionDrawingGuidedTrial` + `focusRequest` + `onCommitTestValue` を本番と同配線 · Canvas は `guidedTrial` 時 `mode='test'`。
+
 - 観測 2026-06-03 / **Mac の Tailscale は Connected でも `tag:admin` 欠落で Pi5（`tag:server`）に peer として見えず、`https://100.106.158.2/admin` がタイムアウト**
   根拠: Mac `tailscale status` に `100.106.158.2` なし · `ping` → `no matching peer` · `Self.Tags: null`。Pi5 は正常（LAN `192.168.10.230` OK）。**管理画面で `tag:admin` 再付与**で復旧（KB-277 と同型の ACL 層）。**再発**: Tailscale 再インストール/再ログイン後はタグ確認をチェックリスト化。
 
@@ -1634,6 +1648,22 @@
   ??: Ansible???????????`repo_changed`??????`git pull`???HEAD??????????????????`api/web`?`--force-recreate --build`????????????`scripts/update-all-clients.sh`?`git rev-list`???`awk`?????????????????????????????????????????????????????????????????????????????**[KB-217]**
 
 ## Decision Log
+
+- 決定 2026-06-04: **自主検査フルリセットはセッション行ロック後にのみ preflight・削除・再作成・監査 snapshot を行う**
+  理由: 完了状態・active テンプレ・entry 数のレースで破壊的操作の前提がずれるため。
+  参照: `apps/api/src/services/part-measurement/self-inspection.service.ts` `resetSession` · [KB-320 §リセット](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04)
+
+- 決定 2026-06-04: **reset 監査は `SelfInspectionSessionResetAuditLog` に残し、削除済み session への強 FK は付けない**
+  理由: セッション削除後も監査行を保持する。pino と `requestId` で相関。
+  参照: migration `20260604120000_self_inspection_session_reset_audit`
+
+- 決定 2026-06-04: **順位ボード cache purge は `scheduleRowId` を含む board レコードのみ削除（全 IndexedDB 消去はしない）**
+  理由: reset 後の装飾 stale を局所解消し、他行の terminal cache を壊さない。
+  参照: `purgeLeaderboardBoardCacheForScheduleRow.ts`
+
+- 決定 2026-06-04: **検査図面ガイド試行は純関数 state machine + 薄い React hook（永続化なし）**
+  理由: 本番セッションの `selfInspectionGuidedFocus` と責務分離 · 作成/改版のみ sandbox。
+  参照: `inspectionDrawingGuidedTrial.ts` · `useInspectionDrawingGuidedTrial.ts`
 
 - 決定 2026-06-01: **自主検査実績は `PartMeasurementSheet/Result` に混ぜず、`SelfInspectionSession -> LotEntry -> MeasurementValue` の専用3層に分離する**
   理由: 将来の **CSV / CPK / 管理図 / サイネージ** へ流用するため、業務意味の違う既存シートモデルとの結合を避ける。

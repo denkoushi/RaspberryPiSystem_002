@@ -6,6 +6,7 @@ import {
   InspectionDrawingCanvasZoomControls,
   InspectionDrawingCreateCompactHeader,
   InspectionDrawingCreateToolbar,
+  useInspectionDrawingGuidedTrial,
   useInspectionDrawingZoom,
   InspectionDrawingPointSidebar,
   inspectionDrawingCreateCanvasColumnClassName,
@@ -43,17 +44,36 @@ export function KioskInspectionDrawingCreatePreviewPage() {
     [location.state]
   );
   const [processGroup, setProcessGroup] = useState<PartMeasurementProcessGroup>(scenarioConfig.processGroup);
-  const [mode, setMode] = useState<'place' | 'test'>('place');
+  const [mode, setMode] = useState<'place' | 'test' | 'guidedTrial'>('place');
   const [points, setPoints] = useState<InspectionDrawingPoint[]>(() =>
     INSPECTION_DRAWING_PREVIEW_POINTS.map((p) => ({ ...p }))
   );
   const [selectedPointId, setSelectedPointId] = useState<string | null>(INSPECTION_DRAWING_PREVIEW_POINTS[0]?.id ?? null);
-  const { zoom, zoomIn, zoomOut, fitToView, fitGeneration } = useInspectionDrawingZoom();
+  const { zoom, zoomIn, zoomOut, fitToView, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
+
+  const guidedTrial = useInspectionDrawingGuidedTrial({
+    enabled: mode === 'guidedTrial',
+    points,
+    onPointsChange: setPoints,
+    selectedPointId,
+    onSelectPointId: setSelectedPointId,
+    hasDrawingReady: true,
+    onZoomLevel: setZoomLevel,
+    canvasZoom: zoom
+  });
 
   const selectedPoint = points.find((p) => p.id === selectedPointId) ?? null;
 
   const updatePoint = (id: string, patch: Partial<InspectionDrawingPoint>) => {
     setPoints((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  };
+
+  const handleSelectPoint = (id: string) => {
+    if (mode === 'guidedTrial') {
+      guidedTrial.handleManualSelect(id);
+      return;
+    }
+    setSelectedPointId(id);
   };
 
   return (
@@ -99,16 +119,23 @@ export function KioskInspectionDrawingCreatePreviewPage() {
         }
       />
 
+      {mode === 'guidedTrial' && guidedTrial.hint ? (
+        <p className="shrink-0 rounded border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-xs text-cyan-100">
+          {guidedTrial.hint}
+        </p>
+      ) : null}
+
       <div className={inspectionDrawingCreateWorkspaceClassName}>
         <div className={inspectionDrawingCreateCanvasColumnClassName}>
           <InspectionDrawingCanvas
             imageUrl={INSPECTION_DRAWING_PREVIEW_IMAGE_URL}
             points={points}
-            mode={mode}
+            mode={mode === 'guidedTrial' ? 'test' : mode}
             zoom={zoom}
             fitGeneration={fitGeneration}
+            focusRequest={mode === 'guidedTrial' ? guidedTrial.focusRequest : null}
             selectedPointId={selectedPointId}
-            onSelectPoint={setSelectedPointId}
+            onSelectPoint={handleSelectPoint}
             onAddPoint={() => undefined}
           />
         </div>
@@ -119,7 +146,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             points={points}
             selectedPoint={selectedPoint}
             contentReadOnly={false}
-            onSelectPoint={setSelectedPointId}
+            onSelectPoint={handleSelectPoint}
             onPointChange={(patch) => {
               if (!selectedPoint) return;
               updatePoint(selectedPoint.id, patch);
@@ -129,6 +156,13 @@ export function KioskInspectionDrawingCreatePreviewPage() {
               if (!selectedPoint) return;
               updatePoint(selectedPoint.id, { testValue: v });
             }}
+            onCommitTestValue={
+              mode === 'guidedTrial'
+                ? (payload) => guidedTrial.handleCommitValue(payload)
+                : undefined
+            }
+            guidedTrialHint={mode === 'guidedTrial' ? guidedTrial.hint : null}
+            onResumeGuidedTrial={mode === 'guidedTrial' ? guidedTrial.resumeTrial : undefined}
           />
         </aside>
       </div>

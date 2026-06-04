@@ -251,6 +251,113 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ---
 
+## 自主検査・ガイド付きフォーカス（2026-06-04） {#自主検査-ガイド付きフォーカス-2026-06-04}
+
+正本: [KB-320 §ガイドフォーカス](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ガイド付きフォーカス-2026-06-04) · [deployment §2026-06-04](../guides/deployment.md#kiosk-self-inspection-guided-focus-reset-trial-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-focus`** · **`main` マージ** · **`32c4858f`** / 同梱デプロイ **`f16cb7ca`** · **Web のみ**
+
+### デプロイ（標準）
+
+1. **push 済み**の `feat/kiosk-self-inspection-guided-focus`（**`main` マージ後**は第2引数 **`main`**）。
+2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+4. Pi5 目視 OK 後、Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
+5. 各 Pi4 **強制リロード**（§6.6.4）後、下記「手動確認」を実施。
+
+| ホスト | Detach Run ID | Git HEAD | 備考 |
+|--------|---------------|----------|------|
+| `raspberrypi5` | **`20260604-155553-5452`** | **`f16cb7ca`** | `failed=0` · **web** 再ビルド（reset 同梱） |
+| Pi4×4 | — | — | **未** — Pi5 実機 OK 後に順次 |
+
+### 手動確認（Pi4/Pi5）
+
+1. 順位ボード **検** → セッション入室。図面で **No.1** が **1.5 倍**付近で中央付近に表示されること。
+2. 候補選択または Enter/blur で **OK** 入力後、**No.2** へ自動移動すること。
+3. **NG** 入力時は同一点に留まり、次へ進まないこと。
+4. **全体表示（□）** 後は **手動** 表示。勝手に再センタリングしないこと。
+5. **再開** で当該入力件の未入力最小番号からガイド再開すること。
+6. 他入力件タップ後は **手動**。blur だけで次点に進まないこと。
+7. 当該件の全測定点 OK 後、ガイド停止と保存促しメッセージ。
+8. 拡大 **2 回目付近**で図面が震えないこと（既存ズーム安定化の回帰）。
+
+### 単体テスト
+
+```bash
+cd apps/web && pnpm exec vitest run \
+  src/features/part-measurement/__tests__/selfInspectionGuidedFocus.test.ts \
+  src/features/part-measurement/inspection-drawing/inspectionDrawingCanvasLayout.test.ts
+```
+
+---
+
+## 自主検査フルリセット + 検査図面ガイド試行（2026-06-04） {#自主検査-フルリセット-ガイド試行-2026-06-04}
+
+正本: [KB-320 §フルリセット・ガイド試行](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04) · [deployment §2026-06-04](../guides/deployment.md#kiosk-self-inspection-guided-focus-reset-trial-2026-06-04) · **`f16cb7ca`** · migration **`20260604120000_self_inspection_session_reset_audit`** · CI **`26935485926`**
+
+### デプロイ（API + Web + migration）
+
+1. ブランチを Pi5 に反映（**`main` マージ後**は `main`）。
+2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+3. `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+4. ログで **`Run prisma migrate deploy`** が success · **`SelfInspectionSessionResetAuditLog`** 作成を確認。
+5. `./scripts/deploy/verify-phase12-real.sh` — 期待 **43/0/0**。
+6. Pi5 実機 OK 後、Pi4 を 1 台ずつ `--limit` + **強制リロード**。
+
+**Pi5 実績（2026-06-04）**: Detach **`20260604-155553-5452`** · HEAD **`f16cb7ca`** · `failed=0` · migrations **104 件 up to date** · web バンドルに `guidedTrial` / `confirmDestructiveReset` 確認済。
+
+### フルリセット（セッション画面のみ）
+
+- API: `POST /api/part-measurement/self-inspection/sessions/:id/reset`
+- Body: `confirmDestructiveReset: true` 必須。完了済みは `confirmCompletedSessionReset: true` も必須。`requestId`（監査相関）必須。
+- サーバー: **`lockSessionRow` 後**に preflight → 削除 → **ロック時点の最新 active THREE_KEY テンプレ**で新セッション → `newSession`（**1 トランザクション**）。
+- UI: セッション画面上部 **初期化** → 2 段階確認 → 成功後 `replace` で新 `/sessions/:id` へ。保存中・完了中は無効。
+- 順位ボード: React Query 無効化 + **`purgeLeaderboardBoardCacheForScheduleRow(scheduleRowId)`**（該当 row の board cache のみ）。
+
+### ガイド試行（検査図面 作成/改版のみ）
+
+- モード **ガイド試行**: 非永続。OK のみ次の `markerNo` へ（配列 index → id で tie-break）。**再開** は未完了の最小番号。
+- 点削除・図面差し替えで試行 state リセット。履歴版 readOnly でも試行可（保存なしの文言あり）。
+- DEV: `/dev/kiosk-inspection-drawing-create` も本番と同 hook 配線（プレビュー parity）。
+
+### 実機確認（Pi5 先行）
+
+**フルリセット**
+
+1. 順位ボード **検** → 自主検査セッションで数点入力。
+2. **初期化** → 1 段目（破壊的警告）→ 2 段目（未完了/完了で文言差）→ 実行。
+3. URL が **新しい session UUID** に `replace` され、入力が空であること。
+4. 完了済みセッションでは 2 段目に **完了実績削除** の明示があること。
+5. 順位ボードの **検** 色がリセット後状態と矛盾しないこと（必要なら board 再読込）。
+
+**ガイド試行**
+
+1. **検査図面** → 作成または改版 → ツールバー **ガイド試行**。
+2. テスト値を **公差内 OK** で Enter/blur → 次の `markerNo` へ自動フォーカス。
+3. **再開** で未完了最小番号へ戻ること。
+4. 点削除・図面差し替えでガイド state がリセットされること。
+
+### トラブルシュート
+
+| 症状 | 対処 |
+|------|------|
+| reset 後も旧 session URL | mutation 成功後の `replace` 導線 · Network で `newSession.id` |
+| 完了済みなのに 1 段目だけで通る | API が 400 — `confirmCompletedSessionReset` · サーバーがロック後 `completedAt` を見ているか（HEAD **`f16cb7ca` 以降**） |
+| migrate 失敗 | Pi5 ログの `prisma migrate deploy` · `20260604120000` の適用有無 |
+| ガイド試行が進まない（DEV） | プレビューに `useInspectionDrawingGuidedTrial` 未配線 — [KB-320 §レビュー知見](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04) |
+| Pi4 のみ旧 UI | `git pull` しない · Ansible + **強制リロード** |
+
+### 単体テスト（ローカル）
+
+```bash
+cd apps/api && pnpm exec vitest run src/services/part-measurement/__tests__/self-inspection-reset-preflight.test.ts
+cd apps/web && pnpm exec vitest run \
+  src/features/part-measurement/inspection-drawing/__tests__/inspectionDrawingGuidedTrial.test.ts \
+  src/features/part-measurement/__tests__/selfInspectionGuidedFocus.test.ts
+```
+
+**integration（API）**: 一時 DB は `pgvector/pgvector:pg16` · `part-measurement.integration.test.ts` の reset ケース。
+
+---
+
 ## 自主検査 MVP（2026-06-01）
 
 詳細・背景: [KB-320 §自主検査 MVP](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01)。

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/
 import { useMemo } from 'react';
 
 import { kioskDocumentDetailQueryKey } from '../features/kiosk/documents/kioskDocumentQueryKeys';
+import { purgeLeaderboardBoardCacheForScheduleRow } from '../features/kiosk/leaderOrderBoard/cache/purgeLeaderboardBoardCacheForScheduleRow';
 import { LEADER_BOARD_LEADER_PHASED_STALE_MS } from '../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
 import {
   findProcessingOrderForRow,
@@ -230,6 +231,7 @@ import {
   createSelfInspectionEntry,
   updateSelfInspectionEntry,
   completeSelfInspectionSession,
+  resetSelfInspectionSession,
   getInstrumentTags,
   createInstrumentTag,
   deleteInstrumentTag,
@@ -446,6 +448,30 @@ export function useCompleteSelfInspectionSession() {
     onSuccess: (session) => {
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+    }
+  });
+}
+
+export function useResetSelfInspectionSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      body
+    }: {
+      sessionId: string;
+      body: Parameters<typeof resetSelfInspectionSession>[1];
+    }) => resetSelfInspectionSession(sessionId, body),
+    onSuccess: async (result, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', variables.sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', result.newSession.id] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      const scheduleRowId = result.newSession.scheduleRowId;
+      if (scheduleRowId) {
+        await purgeLeaderboardBoardCacheForScheduleRow(scheduleRowId);
+      }
     }
   });
 }

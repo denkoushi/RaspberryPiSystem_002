@@ -1,18 +1,19 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import {
   useCompleteSelfInspectionSession,
   useCreateSelfInspectionEntry,
+  useResetSelfInspectionSession,
   useResolveSelfInspectionSession,
   useSelfInspectionSession,
   useUpdateSelfInspectionEntry
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import {
   InspectionDrawingCanvas,
-  InspectionDrawingCanvasZoomControls,
   InspectionDrawingValuePanel,
   inspectionDrawingCanvasColumnClassName,
   templateItemToDrawingPoint,
@@ -33,8 +34,12 @@ import {
   selfInspectionDrawingZoomEnabled
 } from '../../features/part-measurement/selfInspectionSessionDrawingPanelState';
 import { resolveSelfInspectionRequiredEntryCount } from '../../features/part-measurement/selfInspectionSessionEntryCount';
+import { SelfInspectionSessionHeader } from '../../features/part-measurement/SelfInspectionSessionHeader';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
+import { useSelfInspectionGuidedFocus } from '../../features/part-measurement/useSelfInspectionGuidedFocus';
 import { useNfcStream } from '../../hooks/useNfcStream';
+
+import type { SelfInspectionValueCommitPayload } from '../../features/part-measurement/selfInspectionGuidedFocus';
 
 function readApiErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -54,6 +59,7 @@ type StartState = {
   resourceCd: string;
   fhincd: string;
   fhinmei: string;
+  machineName: string | null;
   processGroup: 'cutting' | 'grinding';
 };
 
@@ -73,6 +79,7 @@ export function KioskSelfInspectionSessionPage() {
     const fhinmei = searchParams.get('fhinmei')?.trim() ?? '';
     const scheduleRowId = searchParams.get('scheduleRowId')?.trim() ?? '';
     const fseiban = searchParams.get('fseiban')?.trim() ?? '';
+    const machineName = searchParams.get('machineName')?.trim() ?? '';
     if (!templateId || !productNo || !resourceCd || !fhincd || !fhinmei || !scheduleRowId || !fseiban) return null;
     return {
       id: scheduleRowId,
@@ -82,6 +89,7 @@ export function KioskSelfInspectionSessionPage() {
       resourceCd,
       fhincd,
       fhinmei,
+      machineName: machineName || null,
       processGroup
     } satisfies StartState;
   }, [location.state, searchParams]);
@@ -89,13 +97,16 @@ export function KioskSelfInspectionSessionPage() {
   const createEntryMutation = useCreateSelfInspectionEntry();
   const updateEntryMutation = useUpdateSelfInspectionEntry();
   const completeSessionMutation = useCompleteSelfInspectionSession();
+  const resetSessionMutation = useResetSelfInspectionSession();
+  const [resetPhase, setResetPhase] = useState<null | 'destructive' | 'completed'>(null);
   const [resolvedSessionId, setResolvedSessionId] = useState<string | null>(sessionId ?? null);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [selectedEntryIndex, setSelectedEntryIndex] = useState(0);
   const [entryIndexPage, setEntryIndexPage] = useState(0);
   const [draftValuesByEntryIndex, setDraftValuesByEntryIndex] = useState<Record<number, Record<string, string>>>({});
-  /** 入力件ごとの「保存済み」スナップショット（非フォーカス件は API が値を返さないためローカルで保持） */
   const [savedDraftByEntryIndex, setSavedDraftByEntryIndex] = useState<Record<number, Record<string, string>>>({});
+  /** 現在 session の baseline draft が載ったあとだけガイド初回開始を許可する */
+  const [draftBoundSessionId, setDraftBoundSessionId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const resolveAttemptedRef = useRef(false);
@@ -119,9 +130,11 @@ export function KioskSelfInspectionSessionPage() {
     entryIndex: selectedEntryIndex
   });
   const session = sessionQuery.data;
+  const latestSessionRef = useRef(session);
+  latestSessionRef.current = session;
   const requiredEntryCount = session ? resolveSelfInspectionRequiredEntryCount(session) : 0;
   const isSessionReadOnly = Boolean(session?.completedAt || session?.entryCountBlockedReason);
-  const { zoom, zoomIn, zoomOut, fitToView, fitGeneration } = useInspectionDrawingZoom();
+  const { zoom, zoomIn, zoomOut, fitToView, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
   const drawingPath = session?.template.visualTemplate?.drawingImageRelativePath ?? null;
   const { blobUrl: drawingBlobUrl, error: drawingLoadError } = usePartMeasurementDrawingBlobUrl(drawingPath);
   const drawingPanelPhase = resolveSelfInspectionDrawingPanelPhase({
@@ -130,6 +143,79 @@ export function KioskSelfInspectionSessionPage() {
     loadError: drawingLoadError
   });
   const isDrawingCanvasReady = drawingPanelPhase === 'canvas';
+
+  const handleDraftChange = useCallback((entryIndex: number, draft: Record<string, string>) => {
+    setDraftValuesByEntryIndex((prev) => ({
+      ...prev,
+      [entryIndex]: draft
+    }));
+  }, []);
+
+  useEffect(() => {
+    const currentSession = latestSessionRef.current;
+    if (!session?.id || !currentSession) return;
+    setEntryIndexPage(0);
+    setSelectedEntryIndex(0);
+    setSelectedPointId(null);
+    setDraftBoundSessionId(null);
+    const baseline = buildSelfInspectionEntryDraft(currentSession, 0);
+    setDraftValuesByEntryIndex({ 0: baseline });
+    setSavedDraftByEntryIndex({ 0: baseline });
+    setDraftBoundSessionId(currentSession.id);
+  }, [session?.id]);
+
+  useEffect(() => {
+    if (!session?.id) return;
+    if (selectedEntryIndex === 0 && draftBoundSessionId === session.id) return;
+    const baseline = buildSelfInspectionEntryDraft(session, selectedEntryIndex);
+    setDraftValuesByEntryIndex((prev) => {
+      if (prev[selectedEntryIndex]) return prev;
+      return {
+        ...prev,
+        [selectedEntryIndex]: baseline
+      };
+    });
+    setSavedDraftByEntryIndex((prev) => {
+      if (prev[selectedEntryIndex]) return prev;
+      return {
+        ...prev,
+        [selectedEntryIndex]: baseline
+      };
+    });
+  }, [draftBoundSessionId, session, selectedEntryIndex]);
+
+  const isDraftReadyForGuidedFocus =
+    Boolean(session?.id) &&
+    draftBoundSessionId === session?.id &&
+    draftValuesByEntryIndex[selectedEntryIndex] !== undefined;
+
+  const {
+    guideMode,
+    focusRequest,
+    guideHint,
+    guideActionsEnabled,
+    resumeGuided,
+    goToNextPointManual,
+    handleFitToView,
+    handleManualZoom,
+    handleUserScroll,
+    handleSelectPointManual,
+    handleEntrySwitch,
+    handleCommitValue,
+    consumeNextBlurGuideAdvance
+  } = useSelfInspectionGuidedFocus({
+    session,
+    selectedEntryIndex,
+    selectedPointId,
+    draftValuesByEntryIndex,
+    isSessionReadOnly,
+    isDrawingCanvasReady,
+    isDraftReadyForGuidedFocus,
+    onDraftChange: handleDraftChange,
+    onSelectPointId: setSelectedPointId,
+    onZoomLevel: setZoomLevel,
+    canvasZoom: zoom
+  });
 
   const startStateKey = startState
     ? `${startState.templateId}:${startState.productNo}:${startState.resourceCd}:${startState.id}`
@@ -154,7 +240,8 @@ export function KioskSelfInspectionSessionPage() {
         scheduleRowId: startState.id,
         fseiban: startState.fseiban,
         fhincd: startState.fhincd,
-        fhinmei: startState.fhinmei
+        fhinmei: startState.fhinmei,
+        machineName: startState.machineName
       })
       .then((nextSession) => {
         setResolveError(null);
@@ -171,33 +258,6 @@ export function KioskSelfInspectionSessionPage() {
         setResolveError(message ?? '自主検査セッションの開始に失敗しました。');
       });
   }, [navigate, resolvedSessionId, startState, startStateKey, resolveMutation]);
-
-  useEffect(() => {
-    if (!session?.id) return;
-    setEntryIndexPage(0);
-    setSelectedEntryIndex(0);
-    setDraftValuesByEntryIndex({});
-    setSavedDraftByEntryIndex({});
-  }, [session?.id]);
-
-  useEffect(() => {
-    if (!session) return;
-    const baseline = buildSelfInspectionEntryDraft(session, selectedEntryIndex);
-    setDraftValuesByEntryIndex((prev) => {
-      if (prev[selectedEntryIndex]) return prev;
-      return {
-        ...prev,
-        [selectedEntryIndex]: baseline
-      };
-    });
-    setSavedDraftByEntryIndex((prev) => {
-      if (prev[selectedEntryIndex]) return prev;
-      return {
-        ...prev,
-        [selectedEntryIndex]: baseline
-      };
-    });
-  }, [session, selectedEntryIndex]);
 
   const entryPageCount = session ? selfInspectionEntryPageCountForSession(session) : 1;
   const visibleEntrySlots = useMemo(
@@ -236,6 +296,31 @@ export function KioskSelfInspectionSessionPage() {
 
   const isSavingEntry = createEntryMutation.isPending || updateEntryMutation.isPending;
   const isCompletingSession = completeSessionMutation.isPending;
+  const isResettingSession = resetSessionMutation.isPending;
+  const resetDisabled = isSavingEntry || isCompletingSession || isResettingSession;
+
+  const resetDestructiveDescription = hasUnsavedDraftChanges
+    ? '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。未保存の入力があります。リセットすると破棄されます。'
+    : '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。';
+
+  const runSessionReset = async (confirmCompletedSessionReset: boolean) => {
+    if (!session || !resolvedSessionId) return;
+    setResetPhase(null);
+    setActionError(null);
+    try {
+      const result = await resetSessionMutation.mutateAsync({
+        sessionId: resolvedSessionId,
+        body: {
+          confirmDestructiveReset: true,
+          confirmCompletedSessionReset,
+          requestId: crypto.randomUUID()
+        }
+      });
+      navigate(kioskSelfInspectionSessionPath(result.newSession.id), { replace: true });
+    } catch (error: unknown) {
+      setActionError(readApiErrorMessage(error, '初期化に失敗しました。'));
+    }
+  };
 
   const persistEntry = async (entryIndex: number, draft: Record<string, string>) => {
     if (!session || isSessionReadOnly || persistInFlightRef.current || isSavingEntry) {
@@ -306,6 +391,24 @@ export function KioskSelfInspectionSessionPage() {
     }
   };
 
+  const onValuePanelCommit = useCallback(
+    (panelCommit: {
+      pointId: string;
+      value: string;
+      source: 'dropdown' | 'enter' | 'blur' | 'blur_without_guide';
+    }) => {
+      if (!session) return;
+      const commit: SelfInspectionValueCommitPayload = {
+        pointId: panelCommit.pointId,
+        entryIndex: selectedEntryIndex,
+        value: panelCommit.value,
+        source: panelCommit.source
+      };
+      handleCommitValue(commit);
+    },
+    [handleCommitValue, selectedEntryIndex, session]
+  );
+
   if (!resolvedSessionId && resolveMutation.isPending) {
     return <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-900 text-white">セッション作成中…</div>;
   }
@@ -331,42 +434,77 @@ export function KioskSelfInspectionSessionPage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 bg-slate-900 p-3 text-white">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-800/80 p-3">
-        <div>
-          <p className="text-xl font-bold">{session.productNo}</p>
-          <p className="text-sm text-white/70">
-            {session.fhincd} / {session.resourceCd} / {session.fhinmei}
-          </p>
-          <p className="text-xs text-white/55">
-            {selfInspectionModeDisplayLabel(
-              session.selfInspectionMode,
-              session.selfInspectionFixedCount ?? session.selfInspectionSampleSize
-            )}{' '}
-            / 必要 {requiredEntryCount} 件
-          </p>
-          {session.entryCountBlockedReason ? (
-            <p className="mt-1 text-xs text-amber-200">{session.entryCountBlockedReason}</p>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <InspectionDrawingCanvasZoomControls
-            enabled={selfInspectionDrawingZoomEnabled(drawingBlobUrl)}
-            onZoomIn={zoomIn}
-            onZoomOut={zoomOut}
-            onFitToView={fitToView}
-          />
-          <Button type="button" variant="ghostOnDark" onClick={() => navigate('/kiosk/part-measurement/self-inspection')}>
-            一覧へ
-          </Button>
-        </div>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col gap-1 bg-slate-900 p-1 text-white">
+      <SelfInspectionSessionHeader
+        productNo={session.productNo}
+        fhincd={session.fhincd}
+        resourceCd={session.resourceCd}
+        fhinmei={session.fhinmei}
+        modeLabel={selfInspectionModeDisplayLabel(
+          session.selfInspectionMode,
+          session.selfInspectionFixedCount ?? session.selfInspectionSampleSize
+        )}
+        requiredEntryCount={requiredEntryCount}
+        entryCountBlockedReason={session.entryCountBlockedReason ?? null}
+        guideMode={guideMode}
+        guideActionsEnabled={guideActionsEnabled}
+        zoomEnabled={selfInspectionDrawingZoomEnabled(drawingBlobUrl)}
+        onZoomIn={() => {
+          handleManualZoom();
+          zoomIn();
+        }}
+        onZoomOut={() => {
+          handleManualZoom();
+          zoomOut();
+        }}
+        onFitToView={() => {
+          handleFitToView();
+          fitToView();
+        }}
+        onResumeGuide={resumeGuided}
+        onPrepareNextPoint={consumeNextBlurGuideAdvance}
+        onNextPoint={goToNextPointManual}
+        onBackToList={() => navigate('/kiosk/part-measurement/self-inspection')}
+        onReset={() => setResetPhase('destructive')}
+        resetDisabled={resetDisabled}
+      />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 xl:flex-row">
+      <ConfirmDialog
+        isOpen={resetPhase === 'destructive'}
+        title="自主検査を初期化しますか？"
+        description={resetDestructiveDescription}
+        confirmLabel="初期化する"
+        tone="danger"
+        onCancel={() => setResetPhase(null)}
+        onConfirm={() => {
+          if (session.completedAt) {
+            setResetPhase('completed');
+            return;
+          }
+          void runSessionReset(false);
+        }}
+      />
+      <ConfirmDialog
+        isOpen={resetPhase === 'completed'}
+        title="完了済みの実績を削除します"
+        description="完了済みを含む本番の入力実績がすべて削除され、最新図面の新しいセッションで再開します。この操作は取り消せません。"
+        confirmLabel="削除して再開"
+        tone="danger"
+        onCancel={() => setResetPhase(null)}
+        onConfirm={() => void runSessionReset(true)}
+      />
+
+      {guideHint ? (
+        <p className="shrink-0 rounded border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-xs text-cyan-100">
+          {guideHint}
+        </p>
+      ) : null}
+
+      <div className="flex min-h-0 flex-1 flex-col gap-1 xl:flex-row">
         <div
           className={clsx(
             inspectionDrawingCanvasColumnClassName,
-            'rounded border border-white/15 bg-slate-950/50 p-2'
+            'rounded border border-white/15 bg-slate-950/50 p-1'
           )}
         >
           {isDrawingCanvasReady && drawingBlobUrl ? (
@@ -375,9 +513,11 @@ export function KioskSelfInspectionSessionPage() {
               points={activeDraft?.points ?? []}
               mode="test"
               selectedPointId={selectedPoint?.id ?? null}
-              onSelectPoint={setSelectedPointId}
+              onSelectPoint={handleSelectPointManual}
               zoom={zoom}
               fitGeneration={fitGeneration}
+              focusRequest={focusRequest}
+              onUserScroll={handleUserScroll}
             />
           ) : drawingPanelPhase === 'loading' ? (
             <div className="flex flex-1 items-center justify-center text-white/60">図面を読み込み中…</div>
@@ -390,8 +530,8 @@ export function KioskSelfInspectionSessionPage() {
           )}
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-col gap-3 xl:w-[360px] xl:shrink-0">
-          <div className="rounded border border-white/15 bg-slate-800/70 p-3">
+        <div className="flex min-h-0 min-w-0 flex-col gap-2 xl:w-[360px] xl:shrink-0">
+          <div className="rounded border border-white/15 bg-slate-800/70 p-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-white/80">
                 入力件（{selectedSlotLabel} / {requiredEntryCount}）
@@ -422,7 +562,7 @@ export function KioskSelfInspectionSessionPage() {
                 </div>
               ) : null}
             </div>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="mt-1 flex flex-wrap gap-2" data-self-inspection-entry-slots>
               {visibleEntrySlots.map((slot) => (
                 <button
                   key={`${slot.entrySlotKind}-${slot.entryIndex}`}
@@ -430,7 +570,10 @@ export function KioskSelfInspectionSessionPage() {
                   className={`rounded px-3 py-2 text-sm font-semibold ${
                     slot.entryIndex === selectedEntryIndex ? 'bg-cyan-500 text-slate-950' : 'bg-white/10 text-white'
                   }`}
+                  onPointerDownCapture={consumeNextBlurGuideAdvance}
+                  onPointerDown={consumeNextBlurGuideAdvance}
                   onClick={() => {
+                    handleEntrySwitch();
                     setSelectedEntryIndex(slot.entryIndex);
                     if (session) {
                       setEntryIndexPage(selfInspectionEntryPageForEntryIndex(session, slot.entryIndex));
@@ -447,6 +590,9 @@ export function KioskSelfInspectionSessionPage() {
           <InspectionDrawingValuePanel
             point={selectedPoint}
             valueInputMode="self_inspection_options"
+            valueCommitScopeKey={
+              session ? `${session.id}:${selectedEntryIndex}` : undefined
+            }
             readOnly={isSessionReadOnly}
             onValueChange={(value) => {
               if (!selectedPoint || isSessionReadOnly || !session) return;
@@ -462,9 +608,10 @@ export function KioskSelfInspectionSessionPage() {
                 };
               });
             }}
+            onCommitValue={isSessionReadOnly ? undefined : onValuePanelCommit}
           />
 
-          <div className="flex flex-col gap-2 rounded border border-white/15 bg-slate-800/70 p-3">
+          <div className="flex flex-col gap-2 rounded border border-white/15 bg-slate-800/70 p-2">
             {actionError ? (
               <p className="rounded border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-100">
                 {actionError}
@@ -508,3 +655,4 @@ export function KioskSelfInspectionSessionPage() {
     </div>
   );
 }
+

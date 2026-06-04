@@ -14,6 +14,13 @@ type Props = {
   onPointChange: (patch: Partial<InspectionDrawingPoint>) => void;
   onRemovePoint?: () => void;
   onTestValueChange: (value: string) => void;
+  onCommitTestValue?: (payload: {
+    pointId: string;
+    value: string;
+    source: 'dropdown' | 'enter' | 'blur' | 'blur_without_guide' | 'manual_switch';
+  }) => void;
+  guidedTrialHint?: string | null;
+  onResumeGuidedTrial?: () => void;
 };
 
 /** 作成/改版 — 右ペイン（設定 or テスト入力 + 測定点一覧） */
@@ -25,7 +32,10 @@ export function InspectionDrawingPointSidebar({
   onSelectPoint,
   onPointChange,
   onRemovePoint,
-  onTestValueChange
+  onTestValueChange,
+  onCommitTestValue,
+  guidedTrialHint,
+  onResumeGuidedTrial
 }: Props) {
   const showHistoryPlaceHint = contentReadOnly && mode === 'place' && !selectedPoint;
 
@@ -53,12 +63,33 @@ export function InspectionDrawingPointSidebar({
           </p>
         ) : null}
 
-        {mode === 'test' ? (
+        {mode === 'guidedTrial' ? (
+          <p className="px-1 text-[0.92rem] text-cyan-100/90">
+            ガイド試行のみ（保存されません）。OK の測定値だけ次の No. へ進みます。
+          </p>
+        ) : null}
+
+        {mode === 'test' || mode === 'guidedTrial' ? (
           <InspectionDrawingValuePanel
             point={selectedPoint}
             readOnly={contentReadOnly}
             onValueChange={onTestValueChange}
+            onCommitValue={mode === 'guidedTrial' ? onCommitTestValue : undefined}
           />
+        ) : null}
+
+        {mode === 'guidedTrial' && onResumeGuidedTrial ? (
+          <button
+            type="button"
+            className="rounded border border-cyan-400/40 bg-cyan-500/15 px-3 py-2 text-sm font-semibold text-cyan-100"
+            onClick={onResumeGuidedTrial}
+          >
+            再開
+          </button>
+        ) : null}
+
+        {guidedTrialHint ? (
+          <p className="px-1 text-[0.85rem] text-cyan-100/80">{guidedTrialHint}</p>
         ) : null}
       </div>
 

@@ -2094,3 +2094,32 @@ model SelfInspectionMeasurementValue {
   @@unique([entryId, templateItemId], map: "SelfInspectionMeasurementValue_unique_entry_item")
   @@index([entryId], map: "SelfInspectionMeasurementValue_idx_entry")
 }
+
+model SelfInspectionSessionResetAuditLog {
+  id                String   @id @default(uuid())
+  actionType        String
+  sessionId         String
+  scheduleRowId     String?
+  productNo         String
+  resourceCd        String
+  fhincd            String
+  templateId        String
+  nextTemplateId    String
+  actorUserId       String?
+  actorUsername     String?
+  authMode          String
+  clientDeviceId    String?
+  clientDeviceName  String?
+  requestId         String
+  reason            String?
+  completedAtWasSet Boolean
+  entryCount        Int
+  valueCount        Int
+  sessionSnapshot   Json
+  createdAt         DateTime @default(now())
+
+  @@index([sessionId], map: "SelfInspectionSessionResetAuditLog_idx_session")
+  @@index([scheduleRowId], map: "SelfInspectionSessionResetAuditLog_idx_schedule_row")
+  @@index([createdAt], map: "SelfInspectionSessionResetAuditLog_idx_created_at")
+  @@index([actionType], map: "SelfInspectionSessionResetAuditLog_idx_action_type")
+}

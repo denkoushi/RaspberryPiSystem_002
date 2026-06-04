@@ -119,6 +119,107 @@
 - 検査図面一覧 API `GET /inspection-drawing/templates` も `selfInspectionMode` / `selfInspectionFixedCount`（互換で `selfInspectionSampleSize`）を返す。キオスク改版 `POST …/inspection-drawing/templates/:id/revise` も自主検査設定を受け付ける。
 - **検査図面編集（丸数字・公差）**: 測定点は `markerNo` 独立採番（削除で他番号は変えない・追加は最小欠番）。UI は **基準値＋下限/上限公差（基準値への符号付きオフセット）** → 保存時に絶対 `lowerLimit`/`upperLimit`（`lowerLimit = nominal + lowerOffset`, `upperLimit = nominal + upperOffset` · `apps/web/.../toleranceFields.ts`）。`nominalValue=null` で下限/上限だけある既存行は **`legacyAbsoluteBounds`**（名称のみ変更・基準値のみ入力は絶対値維持。片側公差入力で符号付きモードへ移行し両側 offset を seed · `markerNumbering.ts` / `mergeInspectionDrawingPointPatch`）。名称は固定候補 select（`inspectionDrawingMeasurementLabelOptions.ts`、候補外既存値は一時 option）。作成/改版は上辺 `pointListSlot` に測定点一覧（`InspectionDrawingPointSummaryStrip`）。自主検査セッションのみ測定値 **候補 dropdown + 手入力**（`selfInspectionMeasurementValueOptions.ts`、最大 200 件・超過は手入力のみ）。本番記録画面の測定値入力は **自由入力のまま**。
 
+### 自主検査セッション・ガイド付きフォーカス（2026-06-04） {#自主検査-セッション-ガイド付きフォーカス-2026-06-04}
+
+順位ボード **検** → 自主検査入力画面で、**現在の入力件**内の測定点を `markerNo` 昇順にガイドする。**永続化なし**（セッション API とは独立した UI 状態機械）。
+
+| 項目 | 内容 |
+|------|------|
+| **ガイド対象** | `selectedEntryIndex` のみ。件またぎ自動進行はしない |
+| **初期** | 図面 ready 後、未入力の最小 `markerNo`（なければ先頭）へ。ズーム **1.5**（`SELF_INSPECTION_GUIDED_ZOOM`） |
+| **確定して次へ** | dropdown 即時 / 手入力は **Enter** または単独 **blur**、**公差内 OK のみ** |
+| **留まる** | NG・公差不備・不正値。保存 API 契約は従来どおり |
+| **手動化** | 全体表示・±ズーム・パン・他マーカー・他入力件。`fitToView` は未消化 `focusRequest` を破棄 |
+| **再開** | 手動後に **再開** で当該件の未入力最小 `markerNo` からガイド再開 |
+| **全点 OK** | ガイド停止。「入力を保存」導線（件自動切替なし） |
+| **センタリング** | `focusRequest: { pointId, requestId }` を **1 回だけ**適用（`selectedPointId` 連動再スクロールなし） |
+| **並び** | `markerNo` → 配列 index → `id`（`sortGuidedTrialPointsStable` と同型） |
+
+#### 進捗・デプロイ（2026-06-04）
+
+| 項目 | 内容 |
+|------|------|
+| ブランチ | **`feat/kiosk-self-inspection-guided-focus`** → **`main` マージ** |
+| 代表コミット | **`5d7dd6f6`**（純関数・hook）· **`32c4858f`**（`KioskSelfInspectionSessionPage` 配線）· 同ブランチで reset/試行は **`f16cb7ca`** |
+| 変更種別 | **Web のみ**（本機能単体） |
+| CI | **`26925365886`** success（`32c4858f`）· リセット同梱 push は **`26935485926`** success（`f16cb7ca`） |
+| Pi5 デプロイ | **`20260604-155553-5452`** · HEAD **`f16cb7ca`** · `failed=0` · Docker **`web`/`api` 再ビルド**（reset 同梱デプロイ） |
+| Pi4×4 | **未** — Pi5 実機目視 OK 後に `--limit` 1 台ずつ（SPA は Pi5 配信のため **強制リロード**が標準） |
+| Phase12 | **43 PASS / 0 WARN / 0 FAIL**（デプロイ直後） |
+
+代表ファイル: `selfInspectionGuidedFocus.ts` · `useSelfInspectionGuidedFocus.ts` · `SelfInspectionSessionHeader.tsx` · `InspectionDrawingCanvas.tsx`（`focusRequest`）· `inspectionDrawingCanvasLayout.ts`（`computeScrollToCenterMarker`）
+
+Runbook: [§ガイドフォーカス](../runbooks/kiosk-part-measurement.md#自主検査-ガイド付きフォーカス-2026-06-04) · [deployment §2026-06-04](../guides/deployment.md#kiosk-self-inspection-guided-focus-reset-trial-2026-06-04)
+
+#### トラブルシュート（ガイドフォーカス）
+
+| 症状 | 確認 | 対処 |
+|------|------|------|
+| 図面は出るがガイドが動かない | Pi5 `web` が **`32c4858f` 以降**か · バンドルに `selfInspectionGuidedFocus` があるか | Pi5 再デプロイ · キオスク強制リロード |
+| OK 後も同一点に留まる | 公差外 NG か · DevTools で PATCH 400/409 | 仕様どおり留まる · 値を公差内に修正 |
+| 手動選択後に勝手に戻る | `focusRequest` が未消化で再適用されていないか | **再開** を使う · `fitToView` 後は手動モードが正 |
+| 拡大 2 回目で震える | ズーム痙攣修正（`f6a9544a`）の回帰 | [§ズーム痙攣](#検査図面-キャンバスズーム痙攣修正-2026-05-31) を参照 |
+
+### 自主検査フルリセット + 検査図面ガイド試行（2026-06-04） {#自主検査-フルリセット-ガイド試行-2026-06-04}
+
+| 機能 | 要点 |
+|------|------|
+| **フルリセット** | 入口は **セッション画面のみ**（一覧・順位ボードからは不可）。`POST /api/part-measurement/self-inspection/sessions/:id/reset` が **行ロック後**に preflight → 旧セッション削除 → **最新 active `THREE_KEY` 検査図面テンプレ**で新 UUID セッション作成まで **1 トランザクション**で完了 |
+| **確認フラグ** | `confirmDestructiveReset: true` 必須。`completedAt` ありは **`confirmCompletedSessionReset: true` も必須**（ロック後の `lockedSession.completedAt` で再検証） |
+| **監査** | `SelfInspectionSessionResetAuditLog`（migration **`20260604120000_self_inspection_session_reset_audit`**）+ pino 構造化ログ。**削除済み session への強 FK は付けない**（監査行が連鎖削除されないため） |
+| **クライアント** | ヘッダー **初期化** → 2 段階 `ConfirmDialog` → 成功後 `navigate(..., { replace: true })` で新 `/sessions/:id`。`useResetSelfInspectionSession` が React Query 無効化 + **`purgeLeaderboardBoardCacheForScheduleRow`**（該当 `scheduleRowId` を含む board cache のみ・全 DB 消去はしない） |
+| **ガイド試行** | **検査図面 作成/改版**（`KioskInspectionDrawingCreatePage`）+ DEV **`KioskInspectionDrawingCreatePreviewPage`**（parity）。`inspectionDrawingGuidedTrial.ts` / `useInspectionDrawingGuidedTrial.ts`。並びは `markerNo` → 配列 index → `id`。**永続化・API 呼び出しなし** |
+| **試行の進行** | テスト値コミットが **OK** のときのみ次点。点削除・図面差し替えで `resetTrialState()` |
+
+#### API 契約（reset）
+
+| 項目 | 内容 |
+|------|------|
+| Body | `confirmDestructiveReset`, `confirmCompletedSessionReset?`, `requestId`（監査相関・必須）, `reason?`, `clientDeviceId?`, `clientDeviceName?` |
+| 成功 | `{ newSession: SelfInspectionSessionDto }` — 新 UUID・同一 `sessionBusinessKey` 系の業務キー・**現時点の active テンプレ** |
+| preflight 失敗例 | テンプレなし / 図面・座標未設定 / `expectedEntryCount` 不整合 / 確認フラグ不足 → **400** |
+| 実装境界 | 純関数 **`self-inspection-reset-preflight.ts`**（確認・snapshot・restart payload）· サービス **`resetSession`**（`lockSessionRow` 後に active テンプレ再取得・`buildRestartPayloadFromSessionSnapshot` は **locked 行**から生成） |
+
+#### 進捗・デプロイ（2026-06-04）
+
+| 項目 | 内容 |
+|------|------|
+| ブランチ | **`feat/kiosk-self-inspection-guided-focus`** → **`main` マージ** |
+| 代表コミット | **`f16cb7ca`** — `feat(kiosk): add self-inspection reset and guided trial flow` |
+| 変更種別 | **API + Web + Prisma**（Pi5: `api`/`web` 再ビルド + **`prisma migrate deploy`**） |
+| Migration | **`20260604120000_self_inspection_session_reset_audit`** — インデックス名は schema `@@index(..., map: "...")` と SQL を一致（`SelfInspectionSessionResetAuditLog_idx_*`） |
+| CI | **`26935485926`** success |
+| Pi5 デプロイ | **`20260604-155553-5452`** · HEAD **`f16cb7ca`** · `failed=0` · migrate **104 件・up to date** |
+| Pi4×4 | **未** — Pi5 実機 OK 後に順次 `--limit` |
+| Phase12 | **43/0/0** |
+
+代表ファイル: `self-inspection-reset-preflight.ts` · `self-inspection.service.ts`（`resetSession`）· `SelfInspectionSessionResetAuditLog` · `purgeLeaderboardBoardCacheForScheduleRow.ts` · `KioskSelfInspectionSessionPage.tsx` · `inspectionDrawingGuidedTrial.ts` · `useInspectionDrawingGuidedTrial.ts`
+
+Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04) · [deployment §2026-06-04](../guides/deployment.md#kiosk-self-inspection-guided-focus-reset-trial-2026-06-04)
+
+#### 実装レビュー知見（後続エージェント向け）
+
+| 論点 | 決定 |
+|------|------|
+| 完了確認の TOCTOU | `completedAt`・`confirmCompletedSessionReset`・snapshot・restart payload は **すべて `lockSessionRow` 後**の `lockedSession` で判定・生成（ロック前 read のみでは不可） |
+| active テンプレの鮮度 | `activeTemplate` / `plannedQuantity` / `expectedEntryCount` も **トランザクション内・ロック後**に再取得（改版・有効化のレースを避ける） |
+| 監査 FK | 削除された `sessionId` を参照する監査行は残すため **強 FK なし** |
+| Prisma インデックス | migration SQL の `CREATE INDEX` 名は schema の `map:` と一致させる（不一致は `migrate diff` drift の原因） |
+| DEV プレビュー | `guidedTrial` は `useInspectionDrawingGuidedTrial` + `focusRequest` + `onCommitTestValue` まで配線（ボタンのみ出すと Enter/blur 進行が動かない） |
+| ローカル integration test | 一時 Postgres は **`pgvector/pgvector:pg16`**（`vector` extension 必須）· `cleanPartMeasurementTables` に **`selfInspectionSessionResetAuditLog.deleteMany`** を含める |
+| `machineName` | `KioskSelfInspectionSessionPage` の start/resolve payload に **`machineName` を含める**（reset 再作成 payload と整合） |
+
+#### トラブルシュート（reset・ガイド試行）
+
+| 症状 | 確認 | 対処 |
+|------|------|------|
+| **初期化** が出ない | セッション画面か · 保存中/完了処理中で `resetDisabled` か | 操作完了後に再表示 |
+| reset 400（確認不足） | body の `confirmDestructiveReset` / 完了済みの `confirmCompletedSessionReset` | UI の 2 段階確認どおりに送信 |
+| reset 後も順位ボード色が古い | IndexedDB board cache が残っていないか | `purgeLeaderboardBoardCacheForScheduleRow` 配線確認 · 強制リロード |
+| migrate drift（インデックス名） | `prisma migrate diff` が rename を提案していないか | [§実装レビュー](#自主検査-フルリセット-ガイド試行-2026-06-04) のインデックス名表 |
+| ガイド試行で次に進まない | OK 判定か · DEV プレビューで hook 未接続か | 公差内 OK のみ進行 · 本番/プレビュー両方で `useInspectionDrawingGuidedTrial` 確認 |
+| Pi5 のみ新 UI・Pi4 は旧 | Pi4 は SPA キャッシュ | Pi5 HEAD 一致 · **強制リロード**（Pi4 本体の git pull は不要） |
+
 ## 自主検査・検査図面 仕様拡張 本番（2026-06-03） {#自主検査-検査図面-仕様拡張-本番-2026-06-03}
 
 ### 進捗・デプロイ

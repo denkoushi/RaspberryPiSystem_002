@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { PartMeasurementProcessGroup, SelfInspectionMode } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
+import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import {
   getResourceCategoryPolicy,
@@ -26,6 +27,15 @@ import {
   SELF_INSPECTION_FULL_MODE_PLANNED_QUANTITY_LIMIT_MESSAGE,
   SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT
 } from './self-inspection-config.js';
+import {
+  assertSelfInspectionResetConfirmation,
+  buildRestartPayloadFromSessionSnapshot,
+  buildSessionResetSnapshot,
+  hasInspectionDrawingTemplateForReset,
+  resolveExpectedEntryCountForReset,
+  SELF_INSPECTION_RESET_ACTION_TYPE,
+  templateConfigFromTemplateForReset
+} from './self-inspection-reset-preflight.js';
 
 const LIST_SESSIONS_MAX = 200;
 
@@ -458,6 +468,36 @@ function sessionForEntryCountPolicy(session: {
     expectedEntryCount: session.expectedEntryCount,
     plannedQuantity: session.plannedQuantity,
     template: templateConfigFromTemplate(session.template)
+  };
+}
+
+function serializeResetNewSession(session: {
+  id: string;
+  templateId: string;
+  productNo: string;
+  processGroup: PartMeasurementProcessGroup;
+  resourceCd: string;
+  scheduleRowId: string | null;
+  fseiban: string | null;
+  fhincd: string;
+  fhinmei: string;
+  machineName: string | null;
+  plannedQuantity: number;
+  expectedEntryCount: number;
+}) {
+  return {
+    id: session.id,
+    templateId: session.templateId,
+    productNo: session.productNo,
+    processGroup: serializeProcessGroup(session.processGroup),
+    resourceCd: session.resourceCd,
+    scheduleRowId: session.scheduleRowId,
+    fseiban: session.fseiban,
+    fhincd: session.fhincd,
+    fhinmei: session.fhinmei,
+    machineName: session.machineName,
+    plannedQuantity: session.plannedQuantity,
+    expectedEntryCount: session.expectedEntryCount
   };
 }
 
@@ -1144,6 +1184,196 @@ export class SelfInspectionService {
         throw new ApiError(404, '自主検査セッションが見つかりません');
       }
       return serializeSessionSummary(completed);
+    });
+  }
+
+  async resetSession(
+    sessionId: string,
+    input: {
+      confirmDestructiveReset: boolean;
+      confirmCompletedSessionReset: boolean;
+      requestId: string;
+      reason?: string | null;
+      clientDeviceId?: string | null;
+      actorUserId?: string | null;
+      actorUsername?: string | null;
+      authMode: 'bearer' | 'client_key';
+    }
+  ) {
+    const requestId = input.requestId.trim();
+    if (!requestId) {
+      throw new ApiError(400, 'requestId が必要です');
+    }
+
+    const session = await prisma.selfInspectionSession.findUnique({
+      where: { id: sessionId }
+    });
+    if (!session) {
+      throw new ApiError(404, '自主検査セッションが見つかりません');
+    }
+
+    let clientDeviceName: string | null = null;
+    if (input.clientDeviceId) {
+      const device = await prisma.clientDevice.findUnique({
+        where: { id: input.clientDeviceId },
+        select: { name: true }
+      });
+      clientDeviceName = device?.name ?? null;
+    }
+
+    return prisma.$transaction(async (tx) => {
+      await this.lockSessionRow(tx, sessionId);
+      const lockedSession = await tx.selfInspectionSession.findUnique({
+        where: { id: sessionId }
+      });
+      if (!lockedSession) {
+        throw new ApiError(404, '自主検査セッションが見つかりません');
+      }
+
+      assertSelfInspectionResetConfirmation({
+        confirmDestructiveReset: input.confirmDestructiveReset,
+        confirmCompletedSessionReset: input.confirmCompletedSessionReset,
+        completedAt: lockedSession.completedAt
+      });
+
+      const scheduleRowId = normalizeText(lockedSession.scheduleRowId);
+      if (!scheduleRowId) {
+        throw new ApiError(400, '日程行IDがないためリセットできません');
+      }
+
+      await verifyProductionScheduleRowOrThrow(scheduleRowId, {
+        productNo: lockedSession.productNo,
+        fseiban: normalizeText(lockedSession.fseiban) || undefined,
+        fhincd: lockedSession.fhincd,
+        resourceCd: lockedSession.resourceCd
+      });
+
+      const supplement = await tx.productionScheduleOrderSupplement.findFirst({
+        where: {
+          csvDashboardRowId: scheduleRowId,
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
+        },
+        select: { plannedQuantity: true }
+      });
+      const plannedQuantity = resolveProductionSchedulePlannedQuantity(supplement?.plannedQuantity ?? null);
+      if (plannedQuantity == null) {
+        throw new ApiError(400, '指示数が補助データにないためリセットできません');
+      }
+
+      const activeTemplate = await tx.partMeasurementTemplate.findFirst({
+        where: {
+          fhincd: lockedSession.fhincd.trim(),
+          processGroup: lockedSession.processGroup,
+          resourceCd: lockedSession.resourceCd,
+          isActive: true,
+          templateScope: 'THREE_KEY'
+        },
+        orderBy: { version: 'desc' },
+        include: partMeasurementTemplateFullInclude
+      });
+      if (!activeTemplate || !hasInspectionDrawingTemplateForReset(activeTemplate)) {
+        throw new ApiError(400, '有効な自主検査図面テンプレートがないためリセットできません');
+      }
+
+      const templateConfig = templateConfigFromTemplateForReset(activeTemplate);
+      const expectedEntryCount = resolveExpectedEntryCountForReset(templateConfig, plannedQuantity);
+
+      const restartPayload = buildRestartPayloadFromSessionSnapshot({
+        session: lockedSession,
+        activeTemplateId: activeTemplate.id,
+        plannedQuantity,
+        expectedEntryCount
+      });
+      const sessionSnapshot = buildSessionResetSnapshot(lockedSession);
+      const completedAtWasSet = lockedSession.completedAt != null;
+
+      const entryCount = await tx.selfInspectionLotEntry.count({ where: { sessionId } });
+      const valueCount = await tx.selfInspectionMeasurementValue.count({
+        where: { entry: { sessionId } }
+      });
+
+      await tx.selfInspectionSession.delete({ where: { id: sessionId } });
+
+      const sessionBusinessKey = buildSessionBusinessKey({
+        productNo: restartPayload.productNo,
+        processGroup: restartPayload.processGroup,
+        resourceCd: restartPayload.resourceCd,
+        scheduleRowId: restartPayload.scheduleRowId
+      });
+
+      const newSession = await tx.selfInspectionSession.create({
+        data: {
+          sessionBusinessKey,
+          templateId: restartPayload.templateId,
+          productNo: restartPayload.productNo,
+          processGroup: restartPayload.processGroup,
+          resourceCd: restartPayload.resourceCd,
+          scheduleRowId: restartPayload.scheduleRowId,
+          fseiban: restartPayload.fseiban,
+          fhincd: restartPayload.fhincd,
+          fhinmei: restartPayload.fhinmei,
+          machineName: restartPayload.machineName,
+          plannedQuantity: restartPayload.plannedQuantity,
+          expectedEntryCount: restartPayload.expectedEntryCount,
+          clientDeviceId: input.clientDeviceId ?? null,
+          startedAt: new Date()
+        }
+      });
+
+      await tx.selfInspectionSessionResetAuditLog.create({
+        data: {
+          actionType: SELF_INSPECTION_RESET_ACTION_TYPE,
+          sessionId,
+          scheduleRowId: restartPayload.scheduleRowId,
+          productNo: restartPayload.productNo,
+          resourceCd: restartPayload.resourceCd,
+          fhincd: restartPayload.fhincd,
+          templateId: lockedSession.templateId,
+          nextTemplateId: restartPayload.templateId,
+          actorUserId: input.actorUserId ?? null,
+          actorUsername: input.actorUsername ?? null,
+          authMode: input.authMode,
+          clientDeviceId: input.clientDeviceId ?? null,
+          clientDeviceName,
+          requestId,
+          reason: input.reason?.trim() || null,
+          completedAtWasSet,
+          entryCount,
+          valueCount,
+          sessionSnapshot
+        }
+      });
+
+      const auditPayload = {
+        actionType: SELF_INSPECTION_RESET_ACTION_TYPE,
+        sessionId,
+        scheduleRowId: restartPayload.scheduleRowId,
+        productNo: restartPayload.productNo,
+        resourceCd: restartPayload.resourceCd,
+        fhincd: restartPayload.fhincd,
+        templateId: lockedSession.templateId,
+        nextTemplateId: restartPayload.templateId,
+        actorUserId: input.actorUserId ?? null,
+        actorUsername: input.actorUsername ?? null,
+        authMode: input.authMode,
+        clientDeviceId: input.clientDeviceId ?? null,
+        clientDeviceName,
+        requestId,
+        reason: input.reason?.trim() || null,
+        completedAtWasSet,
+        entryCount,
+        valueCount,
+        deletedSessionId: sessionId,
+        newSessionId: newSession.id
+      };
+      logger.info(auditPayload, 'self_inspection_session_reset');
+
+      return {
+        deletedSessionId: sessionId,
+        deletedEntryCount: entryCount,
+        deletedValueCount: valueCount,
+        newSession: serializeResetNewSession(newSession)
+      };
     });
   }
 

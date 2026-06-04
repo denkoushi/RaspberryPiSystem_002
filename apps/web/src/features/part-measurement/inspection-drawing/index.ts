@@ -21,6 +21,12 @@ export type { InspectionDrawingToolbarMode } from './InspectionDrawingCreateTool
 export { InspectionDrawingCanvas } from './InspectionDrawingCanvas';
 export { InspectionDrawingCanvasZoomControls } from './InspectionDrawingCanvasZoomControls';
 export { useInspectionDrawingZoom } from './useInspectionDrawingZoom';
+export { useInspectionDrawingGuidedTrial } from './useInspectionDrawingGuidedTrial';
+export {
+  applyGuidedTrialValue,
+  resolveGuidedTrialInitialTarget,
+  resolveGuidedTrialResumeTarget
+} from './inspectionDrawingGuidedTrial';
 export {
   INSPECTION_DRAWING_ZOOM_DEFAULT,
   INSPECTION_DRAWING_ZOOM_MAX,
