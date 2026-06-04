@@ -281,6 +281,9 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 8. 値入力パネルが向いている測定点の丸数字外周が **青系 outline** で強調されること（目視）。
 9. 当該件の全測定点 OK 後、ガイド停止と保存促しメッセージ。
 10. 拡大 **2 回目付近（1.5）**で図面が震えないこと。**ガイド 2.0** でも震えないこと。
+11. **入力を保存** は未保存変更かつ全点 OK のときだけ押せる（変更なし・空欄・公差外ではグレーアウト＋理由表示）。
+12. **自主検査を完了** は必要入力件がすべて保存済み・未保存なしのときだけ押せる（不足時は件数付き理由表示）。
+13. **再開** は手動モードかつ未完了測定点があるときだけ押せる（ガイド中はグレーアウト）。
 
 **注**: 検査図面 **ガイド試行** の倍率（1.5 固定）は対象外。
 
@@ -290,6 +293,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 cd apps/web && pnpm exec vitest run \
   src/features/part-measurement/__tests__/selfInspectionGuidedFocus.test.ts \
   src/features/part-measurement/__tests__/useSelfInspectionGuidedFocus.test.ts \
+  src/features/part-measurement/__tests__/selfInspectionSessionActionState.test.ts \
+  src/features/part-measurement/__tests__/selfInspectionEntrySlots.test.ts \
   src/features/part-measurement/inspection-drawing/inspectionDrawingZoom.test.ts \
   src/features/part-measurement/inspection-drawing/inspectionDrawingMarkerStyles.test.ts \
   src/features/part-measurement/inspection-drawing/inspectionDrawingCanvasLayout.test.ts \

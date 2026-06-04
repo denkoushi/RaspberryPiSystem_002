@@ -150,6 +150,16 @@
 | **件切替** | 初回 priming はセッション入室時 1 回。他入力件タップ後は **manual**（再開で guided 復帰）— 仕様維持 |
 | **ガイド試行** | **対象外**（`GUIDED_TRIAL_ZOOM=1.5` 固定） |
 
+#### セッション操作ボタン活性（2026-06-04） {#自主検査-セッション操作ボタン活性-2026-06-04}
+
+判定は [`selfInspectionSessionActionState.ts`](../../apps/web/src/features/part-measurement/selfInspectionSessionActionState.ts)（理由コード）と [`selfInspectionEntrySlots.ts`](../../apps/web/src/features/part-measurement/selfInspectionEntrySlots.ts) の `areRequiredSelfInspectionSlotsFilled()`。表示 `disabled` と `onClick` ガードは同一判定。
+
+| ボタン | 有効条件（UI） | 補足 |
+|--------|----------------|------|
+| **入力を保存** | 現在入力件が **dirty** かつ全測定点 **ok**（空欄・不正値・公差外・公差未設定は不可）· readOnly でない · 保存/完了処理中でない | 他入力件の dirty は見ない。完了処理中は値入力パネルも readOnly |
+| **自主検査を完了** | **required slot** がすべて DB 保存済み（`listSelfInspectionEntrySlots` と `session.entries` の index 一致）· **未保存ドラフトなし**（`hasDirtySelfInspectionDrafts`）· readOnly でない · 保存/完了処理中でない | 保存済み全件の公差最終判定は **API 正本**（409 時はエラー表示を維持） |
+| **再開** | **manual** · 図面 ready · `guideActionsEnabled` · 当該入力件に **未完了測定点**（`findFirstPendingPointId`） | `guided` 中は無効。全点 OK で dirty あり → 保存促し、dirty なし →「未完了の測定点はありません」 |
+
 | 項目 | 内容 |
 |------|------|
 | ブランチ | **`feat/kiosk-self-inspection-guided-polish`** → **`main` マージ** |
