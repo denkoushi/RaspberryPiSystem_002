@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import {
+  clampInspectionDrawingZoom,
   INSPECTION_DRAWING_ZOOM_DEFAULT,
   INSPECTION_DRAWING_ZOOM_STEP,
   stepInspectionDrawingZoom
@@ -28,12 +29,17 @@ export function useInspectionDrawingZoom(initialZoom = INSPECTION_DRAWING_ZOOM_D
     setFitGeneration(0);
   }, []);
 
+  const setZoomLevel = useCallback((value: number) => {
+    setZoom(clampInspectionDrawingZoom(value));
+  }, []);
+
   return {
     zoom,
     zoomIn,
     zoomOut,
     fitToView,
     resetZoom,
+    setZoomLevel,
     /** 全面表示時にキャンバスへスクロールリセットを伝える世代カウンタ */
     fitGeneration
   };

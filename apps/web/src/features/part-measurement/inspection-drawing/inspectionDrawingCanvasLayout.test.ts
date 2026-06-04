@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  computeScrollToCenterMarker,
   computeZoomedCanvasLayout,
-  pointerClientToImageRatios
+  pointerClientToImageRatios,
+  zoomedLayoutMatchesCanvasZoom
 } from './inspectionDrawingCanvasLayout';
 
 describe('computeZoomedCanvasLayout', () => {
@@ -46,6 +48,39 @@ describe('computeZoomedCanvasLayout', () => {
       layout
     );
     expect(ratios).toEqual({ xRatio: 0.5, yRatio: 0.5 });
+  });
+
+  it('zoomedLayoutMatchesCanvasZoom is false for stale layout at different zoom', () => {
+    const atOne = computeZoomedCanvasLayout(800, 600, 1600, 1200, 1)!;
+    expect(zoomedLayoutMatchesCanvasZoom(atOne, 800, 600, 1600, 1200, 1.5)).toBe(false);
+    const atOneFive = computeZoomedCanvasLayout(800, 600, 1600, 1200, 1.5)!;
+    expect(zoomedLayoutMatchesCanvasZoom(atOneFive, 800, 600, 1600, 1200, 1.5)).toBe(true);
+  });
+
+  it('computeScrollToCenterMarker centers marker at viewport middle', () => {
+    const layout = computeZoomedCanvasLayout(800, 600, 1600, 1200, 1.5)!;
+    const scroll = computeScrollToCenterMarker({
+      layout,
+      xRatio: 0.5,
+      yRatio: 0.5,
+      viewportWidth: 800,
+      viewportHeight: 600
+    });
+    expect(scroll.scrollLeft).toBe(200);
+    expect(scroll.scrollTop).toBe(150);
+  });
+
+  it('computeScrollToCenterMarker clamps when image smaller than viewport', () => {
+    const layout = computeZoomedCanvasLayout(1000, 800, 400, 300, 1)!;
+    const scroll = computeScrollToCenterMarker({
+      layout,
+      xRatio: 0.5,
+      yRatio: 0.5,
+      viewportWidth: 1000,
+      viewportHeight: 800
+    });
+    expect(scroll.scrollLeft).toBe(0);
+    expect(scroll.scrollTop).toBe(0);
   });
 
   it('returns null for pointer outside image', () => {

@@ -2,7 +2,11 @@ import clsx from 'clsx';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 import { evaluateMeasurementValue, parseMeasurementNumber } from './evaluateMeasurement';
-import { pointerClientToImageRatios } from './inspectionDrawingCanvasLayout';
+import {
+  computeScrollToCenterMarker,
+  pointerClientToImageRatios,
+  zoomedLayoutMatchesCanvasZoom
+} from './inspectionDrawingCanvasLayout';
 import { shouldConfirmPlacePointFromPointerMovement } from './inspectionDrawingCanvasPointer';
 import { inspectionDrawingCanvasViewportBaseClassName } from './inspectionDrawingKioskUi';
 import { INSPECTION_DRAWING_ZOOM_DEFAULT } from './inspectionDrawingZoom';
@@ -25,6 +29,10 @@ type Props = {
   zoom?: number;
   /** 全面表示（fit）操作のたびに増える。スクロール位置リセット用 */
   fitGeneration?: number;
+  /** 1 回限りのセンタリング要求（selectedPointId とは独立） */
+  focusRequest?: { pointId: string; requestId: number; zoom: number } | null;
+  /** プログラムスクロール中は scroll 由来の manual 通知を抑止 */
+  onUserScroll?: () => void;
 };
 
 type PendingPlacePointer = {
@@ -48,9 +56,13 @@ export function InspectionDrawingCanvas({
   onSelectPoint,
   onAddPoint,
   zoom = INSPECTION_DRAWING_ZOOM_DEFAULT,
-  fitGeneration = 0
+  fitGeneration = 0,
+  focusRequest = null,
+  onUserScroll
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const appliedFocusRequestIdRef = useRef<number | null>(null);
+  const suppressScrollNotifyRef = useRef(false);
   const pendingPlaceRef = useRef<PendingPlacePointer | null>(null);
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
   const zoomedLayout = useZoomedCanvasLayout(viewportRef, naturalSize, zoom);
@@ -74,12 +86,59 @@ export function InspectionDrawingCanvas({
   useLayoutEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
+    suppressScrollNotifyRef.current = true;
     el.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+    appliedFocusRequestIdRef.current = null;
+    requestAnimationFrame(() => {
+      suppressScrollNotifyRef.current = false;
+    });
   }, [fitGeneration]);
+
+  useLayoutEffect(() => {
+    appliedFocusRequestIdRef.current = null;
+  }, [zoom]);
+
+  useLayoutEffect(() => {
+    if (!focusRequest || !zoomedLayout) return;
+    if (appliedFocusRequestIdRef.current === focusRequest.requestId) return;
+    if (Math.abs(zoom - focusRequest.zoom) > 1e-6) return;
+    const point = points.find((pt) => pt.id === focusRequest.pointId);
+    const viewport = viewportRef.current;
+    if (!point || !viewport || viewport.clientWidth <= 0 || viewport.clientHeight <= 0) return;
+    if (
+      naturalSize.w <= 0 ||
+      naturalSize.h <= 0 ||
+      !zoomedLayoutMatchesCanvasZoom(
+        zoomedLayout,
+        viewport.clientWidth,
+        viewport.clientHeight,
+        naturalSize.w,
+        naturalSize.h,
+        focusRequest.zoom
+      )
+    ) {
+      return;
+    }
+
+    const scroll = computeScrollToCenterMarker({
+      layout: zoomedLayout,
+      xRatio: point.xRatio,
+      yRatio: point.yRatio,
+      viewportWidth: viewport.clientWidth,
+      viewportHeight: viewport.clientHeight
+    });
+    suppressScrollNotifyRef.current = true;
+    viewport.scrollTo({ left: scroll.scrollLeft, top: scroll.scrollTop, behavior: 'instant' });
+    appliedFocusRequestIdRef.current = focusRequest.requestId;
+    requestAnimationFrame(() => {
+      suppressScrollNotifyRef.current = false;
+    });
+  }, [focusRequest, naturalSize.h, naturalSize.w, points, zoom, zoomedLayout]);
 
   useLayoutEffect(() => {
     setNaturalSize({ w: 0, h: 0 });
     pendingPlaceRef.current = null;
+    appliedFocusRequestIdRef.current = null;
   }, [imageUrl]);
 
   const clearPendingPlace = useCallback((pointerId: number) => {
@@ -161,6 +220,10 @@ export function InspectionDrawingCanvas({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePlacePointerUp}
       onPointerCancel={handlePlacePointerCancel}
+      onScroll={() => {
+        if (suppressScrollNotifyRef.current || !onUserScroll) return;
+        onUserScroll();
+      }}
       role="presentation"
     >
       {!hasNaturalSize ? (

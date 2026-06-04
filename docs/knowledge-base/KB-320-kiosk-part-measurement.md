@@ -119,6 +119,31 @@
 - 検査図面一覧 API `GET /inspection-drawing/templates` も `selfInspectionMode` / `selfInspectionFixedCount`（互換で `selfInspectionSampleSize`）を返す。キオスク改版 `POST …/inspection-drawing/templates/:id/revise` も自主検査設定を受け付ける。
 - **検査図面編集（丸数字・公差）**: 測定点は `markerNo` 独立採番（削除で他番号は変えない・追加は最小欠番）。UI は **基準値＋下限/上限公差（基準値への符号付きオフセット）** → 保存時に絶対 `lowerLimit`/`upperLimit`（`lowerLimit = nominal + lowerOffset`, `upperLimit = nominal + upperOffset` · `apps/web/.../toleranceFields.ts`）。`nominalValue=null` で下限/上限だけある既存行は **`legacyAbsoluteBounds`**（名称のみ変更・基準値のみ入力は絶対値維持。片側公差入力で符号付きモードへ移行し両側 offset を seed · `markerNumbering.ts` / `mergeInspectionDrawingPointPatch`）。名称は固定候補 select（`inspectionDrawingMeasurementLabelOptions.ts`、候補外既存値は一時 option）。作成/改版は上辺 `pointListSlot` に測定点一覧（`InspectionDrawingPointSummaryStrip`）。自主検査セッションのみ測定値 **候補 dropdown + 手入力**（`selfInspectionMeasurementValueOptions.ts`、最大 200 件・超過は手入力のみ）。本番記録画面の測定値入力は **自由入力のまま**。
 
+### 自主検査セッション・ガイド付きフォーカス（2026-06-04） {#自主検査-セッション-ガイド付きフォーカス-2026-06-04}
+
+順位ボード **検** → 自主検査入力画面で、**現在の入力件**内の測定点を `markerNo` 昇順にガイドする。
+
+| 項目 | 内容 |
+|------|------|
+| **ガイド対象** | `selectedEntryIndex` のみ。件またぎ自動進行はしない |
+| **初期** | 図面 ready 後、未入力の最小 `markerNo`（なければ先頭）へ。ズーム **1.5**（`SELF_INSPECTION_GUIDED_ZOOM`） |
+| **確定して次へ** | dropdown 即時 / 手入力は **Enter** または単独 **blur**、**公差内 OK のみ** |
+| **留まる** | NG・公差不備・不正値。保存 API 契約は従来どおり |
+| **手動化** | 全体表示・±ズーム・パン・他マーカー・他入力件。`fitToView` は未消化 `focusRequest` を破棄 |
+| **再開** | 手動後に **再開** で当該件の未入力最小 `markerNo` からガイド再開 |
+| **全点 OK** | ガイド停止。「入力を保存」導線（件自動切替なし） |
+| **センタリング** | `focusRequest: { pointId, requestId }` を **1 回だけ**適用（`selectedPointId` 連動再スクロールなし） |
+
+代表ファイル:
+
+- `apps/web/src/features/part-measurement/selfInspectionGuidedFocus.ts`
+- `apps/web/src/features/part-measurement/useSelfInspectionGuidedFocus.ts`
+- `apps/web/src/features/part-measurement/SelfInspectionSessionHeader.tsx`
+- `apps/web/src/features/part-measurement/inspection-drawing/InspectionDrawingCanvas.tsx`（`focusRequest`）
+- `apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingCanvasLayout.ts`（`computeScrollToCenterMarker`）
+
+Runbook: [kiosk-part-measurement §ガイドフォーカス](../runbooks/kiosk-part-measurement.md#自主検査-ガイド付きフォーカス-2026-06-04)
+
 ## 自主検査・検査図面 仕様拡張 本番（2026-06-03） {#自主検査-検査図面-仕様拡張-本番-2026-06-03}
 
 ### 進捗・デプロイ

@@ -251,6 +251,31 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ---
 
+## 自主検査・ガイド付きフォーカス（2026-06-04） {#自主検査-ガイド付きフォーカス-2026-06-04}
+
+正本: [KB-320 §ガイドフォーカス](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ガイド付きフォーカス-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-focus`** · **Web のみ** · **未コミット**
+
+### 手動確認（Pi4/Pi5）
+
+1. 順位ボード **検** → セッション入室。図面で **No.1** が **1.5 倍**付近で中央付近に表示されること。
+2. 候補選択または Enter/blur で **OK** 入力後、**No.2** へ自動移動すること。
+3. **NG** 入力時は同一点に留まり、次へ進まないこと。
+4. **全体表示（□）** 後は **手動** 表示。勝手に再センタリングしないこと。
+5. **再開** で当該入力件の未入力最小番号からガイド再開すること。
+6. 他入力件タップ後は **手動**。blur だけで次点に進まないこと。
+7. 当該件の全測定点 OK 後、ガイド停止と保存促しメッセージ。
+8. 拡大 **2 回目付近**で図面が震えないこと（既存ズーム安定化の回帰）。
+
+### 単体テスト
+
+```bash
+cd apps/web && pnpm exec vitest run \
+  src/features/part-measurement/__tests__/selfInspectionGuidedFocus.test.ts \
+  src/features/part-measurement/inspection-drawing/inspectionDrawingCanvasLayout.test.ts
+```
+
+---
+
 ## 自主検査 MVP（2026-06-01）
 
 詳細・背景: [KB-320 §自主検査 MVP](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01)。
