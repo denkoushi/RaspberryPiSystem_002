@@ -193,6 +193,15 @@ Runbook: [§ボタン活性](../runbooks/kiosk-part-measurement.md#自主検査-
 | 配線不具合 | **REJECTED** — `onZoomLevel` → `focusRequest.zoom` は有効 |
 | **`STEPS=2` が fit+2 で 1.5 のまま** | **CONFIRMED** — `c90647ac` は helper 化のみ。実倍率変更は **`fb10f0e0`（STEPS=4）** |
 
+#### セッション ボタンUI統一（2026-06-05） {#自主検査-セッション-ボタンui統一-2026-06-05}
+
+- **見た目のみ**（活性は §セッション操作ボタン活性 のまま）。
+- 押せる＝1形（`bg-slate-700` / `border-slate-500`）、押せない＝1形（枠・文字を弱める。`opacity-60` / `grayscale` 禁止）。
+- 切替ボタン（`1` `2` `最初`…）は色分けなし。件の判別は見出し `入力件（ラベル / 必要件数）` + 測定値パネル + `aria-pressed`。
+- 常時の amber 理由文は削除。`selfInspectionActionReasonMessage` は保存ガード・`actionError` のみ。
+- コード: [`selfInspectionKioskTheme.ts`](../../apps/web/src/features/part-measurement/selfInspectionKioskTheme.ts) · [`SelfInspectionKioskButton.tsx`](../../apps/web/src/features/part-measurement/SelfInspectionKioskButton.tsx) · 要件: [kiosk-self-inspection-session-buttons-requirements.md](../design-previews/kiosk-self-inspection-session-buttons-requirements.md)
+- ブランチ: **`feat/kiosk-self-inspection-button-ui`**（実装時点・未マージ）
+
 #### 進捗・デプロイ（2026-06-04 · 初回ガイドフォーカス）
 
 | 項目 | 内容 |

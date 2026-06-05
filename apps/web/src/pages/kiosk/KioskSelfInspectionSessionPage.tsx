@@ -10,7 +10,6 @@ import {
   useSelfInspectionSession,
   useUpdateSelfInspectionEntry
 } from '../../api/hooks';
-import { Button } from '../../components/ui/Button';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import {
   InspectionDrawingCanvas,
@@ -26,9 +25,9 @@ import {
   selfInspectionEntrySlotsForPage
 } from '../../features/part-measurement/selfInspectionEntryDraft';
 import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionEntrySlots';
+import { SelfInspectionKioskButton } from '../../features/part-measurement/SelfInspectionKioskButton';
 import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
 import {
-  countMissingRequiredSelfInspectionSlots,
   hasDirtySelfInspectionDrafts,
   resolveSelfInspectionCompleteActionState,
   resolveSelfInspectionResumeGuideActionState,
@@ -344,20 +343,6 @@ export function KioskSelfInspectionSessionPage() {
     [sessionActionContext]
   );
 
-  const saveActionHint = selfInspectionActionReasonMessage(saveActionState.reason);
-  const completeActionHint = useMemo(() => {
-    if (completeActionState.enabled) return null;
-    if (completeActionState.reason === 'missing_required_entries' && session) {
-      const missing = countMissingRequiredSelfInspectionSlots(session);
-      return missing > 0
-        ? `必要な入力件が ${missing} 件未保存です。各入力件を保存してください。`
-        : selfInspectionActionReasonMessage('missing_required_entries');
-    }
-    return selfInspectionActionReasonMessage(completeActionState.reason);
-  }, [completeActionState.enabled, completeActionState.reason, session]);
-
-  const resumeGuideActionHint = selfInspectionActionReasonMessage(resumeGuideActionState.reason);
-
   const hasUnsavedDraftChangesForReset = useMemo(() => {
     if (!session) return false;
     return hasDirtySelfInspectionDrafts(session, draftValuesByEntryIndex, savedDraftByEntryIndex);
@@ -582,10 +567,6 @@ export function KioskSelfInspectionSessionPage() {
           {guideHint}
         </p>
       ) : null}
-      {resumeGuideActionHint && guideMode === 'manual' && !resumeGuideActionState.enabled ? (
-        <p className="shrink-0 px-2 text-xs text-white/55">{resumeGuideActionHint}</p>
-      ) : null}
-
       <div className="flex min-h-0 flex-1 flex-col gap-1 xl:flex-row">
         <div
           className={clsx(
@@ -624,52 +605,53 @@ export function KioskSelfInspectionSessionPage() {
               </p>
               {entryPageCount > 1 ? (
                 <div className="flex items-center gap-2 text-xs text-white/70">
-                  <Button
+                  <SelfInspectionKioskButton
                     type="button"
-                    variant="ghostOnDark"
-                    className="min-h-8 px-2 py-1 text-xs"
+                    size="compact"
                     disabled={entryIndexPage <= 0}
                     onClick={() => setEntryIndexPage((page) => Math.max(0, page - 1))}
                   >
                     前へ
-                  </Button>
+                  </SelfInspectionKioskButton>
                   <span>
                     {entryIndexPage + 1} / {entryPageCount}
                   </span>
-                  <Button
+                  <SelfInspectionKioskButton
                     type="button"
-                    variant="ghostOnDark"
-                    className="min-h-8 px-2 py-1 text-xs"
+                    size="compact"
                     disabled={entryIndexPage >= entryPageCount - 1}
                     onClick={() => setEntryIndexPage((page) => Math.min(entryPageCount - 1, page + 1))}
                   >
                     次へ
-                  </Button>
+                  </SelfInspectionKioskButton>
                 </div>
               ) : null}
             </div>
             <div className="mt-1 flex flex-wrap gap-2" data-self-inspection-entry-slots>
-              {visibleEntrySlots.map((slot) => (
-                <button
-                  key={`${slot.entrySlotKind}-${slot.entryIndex}`}
-                  type="button"
-                  className={`rounded px-3 py-2 text-sm font-semibold ${
-                    slot.entryIndex === selectedEntryIndex ? 'bg-cyan-500 text-slate-950' : 'bg-white/10 text-white'
-                  }`}
-                  onPointerDownCapture={consumeNextBlurGuideAdvance}
-                  onPointerDown={consumeNextBlurGuideAdvance}
-                  onClick={() => {
-                    handleEntrySwitch();
-                    setSelectedEntryIndex(slot.entryIndex);
-                    if (session) {
-                      setEntryIndexPage(selfInspectionEntryPageForEntryIndex(session, slot.entryIndex));
-                    }
-                    setActionError(null);
-                  }}
-                >
-                  {slot.entrySlotLabel}
-                </button>
-              ))}
+              {visibleEntrySlots.map((slot) => {
+                const isSelected = slot.entryIndex === selectedEntryIndex;
+                return (
+                  <SelfInspectionKioskButton
+                    key={`${slot.entrySlotKind}-${slot.entryIndex}`}
+                    type="button"
+                    size="default"
+                    pressed={isSelected}
+                    aria-label={isSelected ? `${slot.entrySlotLabel}（選択中）` : slot.entrySlotLabel}
+                    onPointerDownCapture={consumeNextBlurGuideAdvance}
+                    onPointerDown={consumeNextBlurGuideAdvance}
+                    onClick={() => {
+                      handleEntrySwitch();
+                      setSelectedEntryIndex(slot.entryIndex);
+                      if (session) {
+                        setEntryIndexPage(selfInspectionEntryPageForEntryIndex(session, slot.entryIndex));
+                      }
+                      setActionError(null);
+                    }}
+                  >
+                    {slot.entrySlotLabel}
+                  </SelfInspectionKioskButton>
+                );
+              })}
             </div>
           </div>
 
@@ -707,30 +689,24 @@ export function KioskSelfInspectionSessionPage() {
               className="flex flex-wrap gap-2"
               data-self-inspection-session-actions
             >
-              <Button
+              <SelfInspectionKioskButton
                 type="button"
                 disabled={!saveActionState.enabled}
                 onPointerDownCapture={consumeNextBlurGuideAdvance}
                 onClick={() => void persistCurrentEntry()}
               >
                 入力を保存
-              </Button>
-              <Button
+              </SelfInspectionKioskButton>
+              <SelfInspectionKioskButton
                 type="button"
-                variant="ghostOnDark"
+                wide
                 disabled={!completeActionState.enabled}
                 onPointerDownCapture={consumeNextBlurGuideAdvance}
                 onClick={() => void completeSession()}
               >
                 自主検査を完了
-              </Button>
+              </SelfInspectionKioskButton>
             </div>
-            {saveActionHint && !saveActionState.enabled ? (
-              <p className="text-xs text-amber-200">{saveActionHint}</p>
-            ) : null}
-            {completeActionHint && !completeActionState.enabled ? (
-              <p className="text-xs text-amber-200">{completeActionHint}</p>
-            ) : null}
           </div>
         </div>
       </div>
