@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   createPartMeasurementTemplate,
   createPartMeasurementVisualTemplate,
+  deleteUnusedPartMeasurementVisualTemplate,
   getResolvedClientKey,
   listPartMeasurementVisualTemplates
 } from '../../api/client';
@@ -133,6 +134,7 @@ export function KioskPartMeasurementTemplatePage() {
       return;
     }
     setBusy(true);
+    let uploadedVisualCleanup: { id: string; cleanupToken: string } | null = null;
     try {
       let visualTemplateId: string | null = null;
       if (visualChoice === 'pick' && pickedVisualId.trim()) {
@@ -148,7 +150,11 @@ export function KioskPartMeasurementTemplatePage() {
           newVisualFile,
           clientKey
         );
-        visualTemplateId = createdVt.id;
+        visualTemplateId = createdVt.visualTemplate.id;
+        uploadedVisualCleanup = {
+          id: createdVt.visualTemplate.id,
+          cleanupToken: createdVt.cleanupToken
+        };
       }
 
       await createPartMeasurementTemplate(
@@ -166,6 +172,13 @@ export function KioskPartMeasurementTemplatePage() {
       );
       void navigate('/kiosk/part-measurement', { replace: true, state: { templateCreated: true } });
     } catch (err: unknown) {
+      if (uploadedVisualCleanup) {
+        await deleteUnusedPartMeasurementVisualTemplate(
+          uploadedVisualCleanup.id,
+          uploadedVisualCleanup.cleanupToken,
+          clientKey
+        ).catch(() => undefined);
+      }
       const e = err as { response?: { data?: { message?: string } } };
       setMessage(e.response?.data?.message ?? '登録に失敗しました。');
     } finally {

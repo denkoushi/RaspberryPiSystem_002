@@ -1,4 +1,3 @@
-import { InspectionDrawingCreateDrawingFileControl } from './InspectionDrawingCreateDrawingFileControl';
 import { InspectionDrawingCreateMetaChipList } from './InspectionDrawingCreateMetaChipList';
 import { InspectionDrawingCreateVersionBadge } from './InspectionDrawingCreateVersionBadge';
 import {
@@ -11,6 +10,7 @@ import type { ReactNode } from 'react';
 
 type Props = {
   metadata: InspectionDrawingCreateMetadataRowProps;
+  drawingSourceControl: ReactNode;
   centerSlot?: ReactNode;
   toolbar: ReactNode;
 };
@@ -19,7 +19,12 @@ type Props = {
  * 作成/改版専用 — フラット top-band（正本 HTML と同型）。
  * dl / badge / file / zoom / toolbar が band 直下の兄弟。
  */
-export function InspectionDrawingCreateCompactHeader({ metadata, centerSlot, toolbar }: Props) {
+export function InspectionDrawingCreateCompactHeader({
+  metadata,
+  drawingSourceControl,
+  centerSlot,
+  toolbar
+}: Props) {
   const showVersionBadge = metadata.templateVersion != null && metadata.templateIsActive != null;
 
   return (
@@ -34,10 +39,7 @@ export function InspectionDrawingCreateCompactHeader({ metadata, centerSlot, too
           isActive={metadata.templateIsActive!}
         />
       ) : null}
-      <InspectionDrawingCreateDrawingFileControl
-        contentReadOnly={metadata.contentReadOnly}
-        onDrawingFileChange={metadata.onDrawingFileChange}
-      />
+      {drawingSourceControl}
       {centerSlot ? (
         <div
           data-testid="inspection-drawing-create-zoom-slot"

@@ -5,6 +5,7 @@ import {
   activatePartMeasurementTemplate,
   createPartMeasurementTemplate,
   createPartMeasurementVisualTemplate,
+  deleteUnusedPartMeasurementVisualTemplate,
   listPartMeasurementTemplates,
   listPartMeasurementVisualTemplates,
   retirePartMeasurementTemplate,
@@ -74,6 +75,7 @@ export function PartMeasurementTemplatesPage() {
   const [newVisualFile, setNewVisualFile] = useState<File | null>(null);
   const [showInactiveTemplates, setShowInactiveTemplates] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [submitBusy, setSubmitBusy] = useState(false);
 
   const listQuery = useQuery({
     queryKey: ['part-measurement-templates', { includeInactive: showInactiveTemplates }],
@@ -173,6 +175,7 @@ export function PartMeasurementTemplatesPage() {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (submitBusy) return;
     void (async () => {
       setMessage(null);
 
@@ -219,42 +222,59 @@ export function PartMeasurementTemplatesPage() {
           }
         }
 
-        let visualTemplateId: string | null | undefined;
-        if (visualChoice === 'none') {
-          visualTemplateId = null;
-        } else if (visualChoice === 'pick') {
-          const id = pickedVisualId.trim();
-          if (!id) {
-            setMessage('図面テンプレを選択するか、「図面なし」にしてください。');
-            return;
+        setSubmitBusy(true);
+        let uploadedVisualCleanup: { id: string; cleanupToken: string } | null = null;
+        try {
+          let visualTemplateId: string | null | undefined;
+          if (visualChoice === 'none') {
+            visualTemplateId = null;
+          } else if (visualChoice === 'pick') {
+            const id = pickedVisualId.trim();
+            if (!id) {
+              setMessage('図面テンプレを選択するか、「図面なし」にしてください。');
+              return;
+            }
+            visualTemplateId = id;
+          } else {
+            if (!newVisualFile) {
+              setMessage(PART_MEASUREMENT_DRAWING_FILE_REQUIRED_MESSAGE);
+              return;
+            }
+            const v = await createPartMeasurementVisualTemplate(
+              newVisualName.trim() || templateName,
+              newVisualFile
+            );
+            visualTemplateId = v.visualTemplate.id;
+            uploadedVisualCleanup = {
+              id: v.visualTemplate.id,
+              cleanupToken: v.cleanupToken
+            };
           }
-          visualTemplateId = id;
-        } else {
-          if (!newVisualFile) {
-            setMessage(PART_MEASUREMENT_DRAWING_FILE_REQUIRED_MESSAGE);
-            return;
-          }
-          try {
-            const v = await createPartMeasurementVisualTemplate(newVisualName.trim() || templateName, newVisualFile);
-            visualTemplateId = v.id;
-          } catch (err: unknown) {
+
+          await reviseMutation.mutateAsync({
+            templateId: editingTemplateId,
+            body: {
+              name: templateName,
+              items: trimmedItems,
+              visualTemplateId,
+              selfInspectionMode: selfInspectionPayload.selfInspectionMode,
+              selfInspectionFixedCount: selfInspectionPayload.selfInspectionFixedCount,
+              ...(templateScope === 'fhinmei_only' ? { candidateFhinmei: candidateFhinmei.trim() } : {})
+            }
+          });
+        } catch (err: unknown) {
+          if (uploadedVisualCleanup) {
+            await deleteUnusedPartMeasurementVisualTemplate(
+              uploadedVisualCleanup.id,
+              uploadedVisualCleanup.cleanupToken
+            ).catch(() => undefined);
+          } else if (visualChoice === 'upload') {
             const er = err as { response?: { data?: { message?: string } }; message?: string };
             setMessage(er.response?.data?.message ?? er.message ?? '図面のアップロードに失敗しました。');
-            return;
           }
+        } finally {
+          setSubmitBusy(false);
         }
-
-        reviseMutation.mutate({
-          templateId: editingTemplateId,
-          body: {
-            name: templateName,
-            items: trimmedItems,
-            visualTemplateId,
-            selfInspectionMode: selfInspectionPayload.selfInspectionMode,
-            selfInspectionFixedCount: selfInspectionPayload.selfInspectionFixedCount,
-            ...(templateScope === 'fhinmei_only' ? { candidateFhinmei: candidateFhinmei.trim() } : {})
-          }
-        });
         return;
       }
 
@@ -281,39 +301,53 @@ export function PartMeasurementTemplatesPage() {
         }
       }
 
-      let visualTemplateId: string | null = null;
-      if (visualChoice === 'pick' && pickedVisualId.trim()) {
-        visualTemplateId = pickedVisualId.trim();
-      } else if (visualChoice === 'upload') {
-        if (!newVisualFile) {
-          setMessage(PART_MEASUREMENT_DRAWING_FILE_REQUIRED_MESSAGE);
-          return;
-        }
-        try {
+      setSubmitBusy(true);
+      let uploadedVisualCleanup: { id: string; cleanupToken: string } | null = null;
+      try {
+        let visualTemplateId: string | null = null;
+        if (visualChoice === 'pick' && pickedVisualId.trim()) {
+          visualTemplateId = pickedVisualId.trim();
+        } else if (visualChoice === 'upload') {
+          if (!newVisualFile) {
+            setMessage(PART_MEASUREMENT_DRAWING_FILE_REQUIRED_MESSAGE);
+            return;
+          }
           const v = await createPartMeasurementVisualTemplate(
             newVisualName.trim() || templateName,
             newVisualFile
           );
-          visualTemplateId = v.id;
-        } catch (err: unknown) {
+          visualTemplateId = v.visualTemplate.id;
+          uploadedVisualCleanup = {
+            id: v.visualTemplate.id,
+            cleanupToken: v.cleanupToken
+          };
+        }
+
+        await createMutation.mutateAsync({
+          templateScope,
+          fhincd: templateScope === 'fhinmei_only' ? '' : trimmedFhincd,
+          resourceCd: templateScope === 'fhinmei_only' ? '' : trimmedResourceCd,
+          processGroup,
+          name: templateName,
+          visualTemplateId,
+          candidateFhinmei: templateScope === 'fhinmei_only' ? candidateFhinmei.trim() : null,
+          selfInspectionMode: selfInspectionPayload.selfInspectionMode,
+          selfInspectionFixedCount: selfInspectionPayload.selfInspectionFixedCount,
+          items: trimmedItems
+        });
+      } catch (err: unknown) {
+        if (uploadedVisualCleanup) {
+          await deleteUnusedPartMeasurementVisualTemplate(
+            uploadedVisualCleanup.id,
+            uploadedVisualCleanup.cleanupToken
+          ).catch(() => undefined);
+        } else if (visualChoice === 'upload') {
           const er = err as { response?: { data?: { message?: string } }; message?: string };
           setMessage(er.response?.data?.message ?? er.message ?? '図面のアップロードに失敗しました。');
-          return;
         }
+      } finally {
+        setSubmitBusy(false);
       }
-
-      createMutation.mutate({
-        templateScope,
-        fhincd: templateScope === 'fhinmei_only' ? '' : trimmedFhincd,
-        resourceCd: templateScope === 'fhinmei_only' ? '' : trimmedResourceCd,
-        processGroup,
-        name: templateName,
-        visualTemplateId,
-        candidateFhinmei: templateScope === 'fhinmei_only' ? candidateFhinmei.trim() : null,
-        selfInspectionMode: selfInspectionPayload.selfInspectionMode,
-        selfInspectionFixedCount: selfInspectionPayload.selfInspectionFixedCount,
-        items: trimmedItems
-      });
     })();
   };
 
@@ -595,13 +629,18 @@ export function PartMeasurementTemplatesPage() {
           <div className="flex flex-wrap gap-2">
             <Button
               type="submit"
-              disabled={createMutation.isPending || reviseMutation.isPending || retireMutation.isPending}
+              disabled={
+                submitBusy ||
+                createMutation.isPending ||
+                reviseMutation.isPending ||
+                retireMutation.isPending
+              }
             >
               {editingTemplateId
-                ? reviseMutation.isPending
+                ? submitBusy || reviseMutation.isPending
                   ? '保存中…'
                   : '保存'
-                : createMutation.isPending
+                : submitBusy || createMutation.isPending
                   ? '登録中…'
                   : '登録'}
             </Button>

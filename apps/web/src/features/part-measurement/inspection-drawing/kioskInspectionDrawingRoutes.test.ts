@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   isKioskInspectionDrawingPath,
   isKioskPartMeasurementHubPath,
+  kioskInspectionDrawingCreatePathWithSource,
   kioskInspectionDrawingTemplateEditPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
-  KIOSK_INSPECTION_DRAWING_LIBRARY_PATH
+  KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
+  parseInspectionDrawingSourceTemplateIdFromSearch
 } from './kioskInspectionDrawingRoutes';
 
 describe('kioskInspectionDrawingRoutes', () => {
@@ -20,6 +22,21 @@ describe('kioskInspectionDrawingRoutes', () => {
   it('template edit path helper', () => {
     expect(kioskInspectionDrawingTemplateEditPath('abc')).toBe(
       '/kiosk/part-measurement/inspection/templates/abc/edit'
+    );
+  });
+
+  it('parses sourceTemplateId from query', () => {
+    expect(
+      parseInspectionDrawingSourceTemplateIdFromSearch(
+        '?sourceTemplateId=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+      )
+    ).toBe('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
+    expect(parseInspectionDrawingSourceTemplateIdFromSearch('')).toBeNull();
+  });
+
+  it('create path with sourceTemplateId query', () => {
+    expect(kioskInspectionDrawingCreatePathWithSource('src-uuid')).toBe(
+      '/kiosk/part-measurement/inspection/create?sourceTemplateId=src-uuid'
     );
   });
 

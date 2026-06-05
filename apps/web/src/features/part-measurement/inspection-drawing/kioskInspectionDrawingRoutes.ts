@@ -34,3 +34,18 @@ export function isKioskPartMeasurementHubPath(pathname: string): boolean {
 export function kioskInspectionDrawingTemplateEditPath(templateId: string): string {
   return `${KIOSK_INSPECTION_DRAWING_TEMPLATE_EDIT_PATH_PREFIX}/${templateId}/edit`;
 }
+
+const KIOSK_INSPECTION_DRAWING_SOURCE_TEMPLATE_ID_QUERY = 'sourceTemplateId';
+
+export function parseInspectionDrawingSourceTemplateIdFromSearch(search: string): string | null {
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  const raw = params.get(KIOSK_INSPECTION_DRAWING_SOURCE_TEMPLATE_ID_QUERY)?.trim();
+  return raw && raw.length > 0 ? raw : null;
+}
+
+export function kioskInspectionDrawingCreatePathWithSource(sourceTemplateId: string): string {
+  const params = new URLSearchParams({
+    [KIOSK_INSPECTION_DRAWING_SOURCE_TEMPLATE_ID_QUERY]: sourceTemplateId
+  });
+  return `${KIOSK_INSPECTION_DRAWING_CREATE_PATH}?${params.toString()}`;
+}

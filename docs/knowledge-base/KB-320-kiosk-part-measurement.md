@@ -79,6 +79,99 @@
 | **図面対象判定** | `part-measurement-inspection-drawing-policy.ts` — `templateSupportsInspectionDrawing`: visual に `drawingImageRelativePath`、全 item で `markerXRatio`/`markerYRatio`/`lowerLimit`/`upperLimit` が非 null。 |
 | **画像** | PNG/JPEG/WebP に加え **PDF（1ページ目のみ→JPEG化して保存）**。TIFF は後続。PDF 入力上限 **30MB**、保存画像上限 **12MB**、変換 **DPI 144 / quality 85 / timeout 30s**。 |
 | **ヘッダー・ルート** | `kioskInspectionDrawingRoutes.ts` — 既定 `inspection`、作成 `inspection/create`、テンプレ編集 `inspection/templates/:id/edit`、記録図面 `inspection/edit/:sheetId`。`isKioskInspectionDrawingPath` で部品測定タブを非アクティブ。 |
+| **流用導線（2026-06-05）** | 詳細は [§流用導線強化](#検査図面-流用導線-2026-06-05)。一覧 **雛形として新規** · 図面 **既存 visual 選択** · `failIfActiveExists` + lineage lock · FIHNCD **case-insensitive** 統一 · visual 一覧 **サーバー検索** |
+
+### 検査図面・流用導線強化（2026-06-05） {#検査図面-流用導線-2026-06-05}
+
+同一図面・測定点を **別品番×工程×資源CD** へ展開する導線と、保存競合・orphan visual 回収・FIHNCD 正規化を一体で強化した変更。
+
+| 項目 | 内容 |
+|------|------|
+| ブランチ | **`feat/kiosk-inspection-drawing-reuse-flow`** |
+| 代表コミット | **`6c7da8c7`**（`feat(kiosk): harden inspection drawing reuse flow`） |
+| 変更種別 | **API + Web**（**Prisma migration 追加なし**） |
+| CI | GitHub Actions **`27008474510`** **success**（`6c7da8c7` push 後 · 全ジョブ） |
+
+#### UI 導線
+
+| 導線 | 操作 | 正本 state / ルート |
+|------|------|---------------------|
+| **雛形から新規** | 一覧有効版カード → **雛形として新規** | `?sourceTemplateId=` → 専用 `GET …/inspection-drawing/templates/:id` で再取得 → `templateToCreateDraft`（**point id は新規採番**） |
+| **既存図面再利用** | 新規作成 → **図面** ボタン → **既存から選択** | `visualSource='pickExisting'` · `visualTemplateId` のみで保存可（upload 不要） |
+| **新規アップロード** | 同上ダイアログ → ファイル選択 | `visualSource='upload'` · `createPartMeasurementVisualTemplate` → `cleanupToken` 保持 |
+| **改版（既存キー）** | 一覧 → **編集** → 保存 | `POST …/inspection-drawing/templates/:id/revise`（新規作成ではない） |
+
+**`visualSource`（`unselected` / `upload` / `pickExisting`）** が保存時の単一真実源。図面切替時は測定点があると confirm でクリア。
+
+#### キー衝突ガード（二段）
+
+| 段 | 内容 |
+|----|------|
+| **UI 事前** | `resolveInspectionDrawingCreateKeyCollision` — `same_as_source`（雛形元と同一キー）· `active_exists`（`GET …/templates/active-exists` を 400ms debounce）→ 保存ボタン無効 + 案内 |
+| **API 409** | 新規 `POST /api/part-measurement/templates` に **`failIfActiveExists: true`** — 本番 THREE_KEY で active があれば 409 |
+
+**FIHNCD 照合は UI・API・lock で統一**（`normalizeFhincd` = trim + `toUpperCase`、DB 照合は `mode: 'insensitive'`）:
+
+- 作成・改版・`failIfActiveExists` · `active-exists` · 版採番 · **`setActiveVersion` の旧 active 落とし**
+- advisory lock キー: `buildThreeKeyLineageLockKey`（`part-measurement-template-lineage-lock.ts`）
+- legacy で `ABC` / `abc` が別 active として残っていても、活性版切替で **case-insensitive に片系譜へ収束**
+
+#### API 契約（追加分）
+
+| エンドポイント | 用途 |
+|----------------|------|
+| `GET /api/part-measurement/templates/active-exists` | 軽量存在確認（`{ exists: boolean }`）· kiosk `x-client-key` 可 |
+| `GET /api/part-measurement/visual-templates?q=&limit=` | 図面名 **部分一致（case-insensitive）** · `limit` 1–200（未指定時は管理画面互換で全件） |
+| `POST /api/part-measurement/visual-templates` | 応答に **`cleanupToken`**（作成直後の未参照回収用） |
+| `DELETE /api/part-measurement/visual-templates/:id` | ヘッダ **`X-Visual-Cleanup-Token` 必須**（トークン不一致は 403） |
+
+**同時作成直列化（本番 THREE_KEY）**:
+
+1. `pg_advisory_xact_lock`（lineage: `normalizeFhincd|processGroup|resourceCd`）
+2. visual 行 `FOR UPDATE`（紐付けと `deleteIfUnused` の直列化）
+3. `failIfActiveExists` 時は同一 tx 内で lineage lock 取得済みフラグ（`lineageLockHeld`）により二重 lock 回避
+
+**orphan visual 回収**: テンプレ保存失敗時、作成レスポンスの `cleanupToken` のみで `DELETE` 可能（一覧の ID だけでは不可）。
+
+#### Web 実装メモ
+
+| モジュール | 役割 |
+|-----------|------|
+| `inspectionDrawingCreateDraft.ts` | `normalizeFhincdForTemplateKey` · `templateBusinessKeysEqual` · `resolveInspectionDrawingCreateKeyCollision` |
+| `InspectionDrawingVisualSourceControl.tsx` | 図面ピッカー · 検索 **400ms debounce** → API `q` + `limit: 80` |
+| `KioskInspectionDrawingCreatePage.tsx` | `visualSearchRequestSeqRef` で **古い検索レスポンスの上書きを防止** |
+| `kioskInspectionDrawingRoutes.ts` | `kioskInspectionDrawingCreatePathWithSource` · `parseInspectionDrawingSourceTemplateIdFromSearch` |
+
+キオスク初回は **先頭 80 件**（`q` なし）。それ以外は検索必須。管理画面は `includeInactive` 時 **limit 未指定で全件**（従来互換）。
+
+#### 本番デプロイ（実績·2026-06-05 · Pi5 先行）
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | Phase12 | 備考 |
+|--------|---------------|----------|------------|---------|------|
+| `raspberrypi5` | **`20260605-191525-16964`** | **`6c7da8c7`** | **`ok=134` `changed=4` `failed=0`** | **43/0/0**（約 58s） | `Git: changed` · Docker **`api`/`web`** 再ビルド |
+| Pi4×4 | — | — | — | — | **未** — Pi5 目視 OK 後に 1 台ずつ |
+
+**Pi5 自動スモーク（Tailscale）**:
+
+- `GET …/visual-templates?q=test&limit=5` → **200**
+- `GET …/templates/active-exists` → **200** `{"exists":false}`
+- `docker-web-1` バンドル `index-BAzZiLdt.js` に `雛形として新規` · `sourceTemplateId` · `failIfActiveExists` · `active-exists` を確認
+
+**ローカル検証**: integration `part-measurement.integration.test.ts` **51 passed | 2 skipped**（一時 Postgres `pgvector/pgvector:pg15`）· unit（lineage lock / cleanup token / visual list / draft helper）PASS
+
+Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) · deployment: [§2026-06-05](../guides/deployment.md#kiosk-inspection-drawing-reuse-flow-2026-06-05)
+
+##### トラブルシュート（流用導線）
+
+| 事象 | 対処 |
+|------|------|
+| **雛形から保存できない（同一キー）** | 意図どおり。工程または資源CDを変える · UI `same_as_source` 案内を確認 |
+| **`abc` で保存できたが `ABC` と重複 active** | HEAD &lt; `6c7da8c7` or migration 前データ。現行は作成・active-exists・setActiveVersion が case-insensitive |
+| **図面ピッカーが遅い / 全件取得** | キオスクは `q`+`limit=80` API 検索。旧 bundle はクライアント `filter` 全件 |
+| **検索入力が戻る** | `visualSearchRequestSeqRef` 未反映の旧 bundle。強制リロード or Pi5 `web` 再デプロイ |
+| **保存失敗後に orphan visual** | `cleanupToken` で `DELETE`（403 → トークン不一致 or 既に参照） |
+| **integration が DB 接続失敗** | テスト中に Postgres コンテナを先に `stop` しない。CI 手順どおり migrate 後に vitest |
+| **デプロイ拒否（ahead）** | `origin/feat/kiosk-inspection-drawing-reuse-flow` へ push 後に再実行 |
 
 ## 自主検査 MVP（2026-06-01） {#自主検査-mvp-2026-06-01}
 

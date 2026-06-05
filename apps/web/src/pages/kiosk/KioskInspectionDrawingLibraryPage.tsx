@@ -9,6 +9,7 @@ import { formatResourceCdWithJapaneseNames } from '../../features/kiosk/leaderOr
 import {
   InspectionDrawingLibraryFilterBar,
   InspectionDrawingTemplateHistoryDialog,
+  kioskInspectionDrawingCreatePathWithSource,
   kioskInspectionDrawingTemplateEditPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
   type InspectionDrawingLibraryProcessFilter
@@ -251,6 +252,18 @@ export function KioskInspectionDrawingLibraryPage() {
                   >
                     編集
                   </Link>
+                  {template.isActive ? (
+                    <Link
+                      to={kioskInspectionDrawingCreatePathWithSource(template.id)}
+                      state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
+                      className={buttonClassName(
+                        'ghostOnDark',
+                        'inline-flex min-h-11 items-center text-[1rem]'
+                      )}
+                    >
+                      雛形として新規
+                    </Link>
+                  ) : null}
                   <Button
                     type="button"
                     variant="ghostOnDark"

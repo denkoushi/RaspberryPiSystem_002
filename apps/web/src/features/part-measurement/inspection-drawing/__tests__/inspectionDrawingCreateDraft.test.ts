@@ -1,0 +1,118 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  inspectionDrawingCreateKeyCollisionMessage,
+  resolveInspectionDrawingCreateKeyCollision,
+  templateItemsToDraftDrawingPoints,
+  templateToCreateDraft
+} from '../inspectionDrawingCreateDraft';
+
+import type { PartMeasurementTemplateDto } from '../../types';
+
+function buildTemplate(overrides: Partial<PartMeasurementTemplateDto> = {}): PartMeasurementTemplateDto {
+  return {
+    id: '11111111-1111-4111-8111-111111111111',
+    fhincd: 'ABC',
+    resourceCd: '033',
+    processGroup: 'cutting',
+    templateScope: 'three_key',
+    candidateFhinmei: null,
+    name: 'テスト図面',
+    version: 1,
+    isActive: true,
+    selfInspectionMode: 'single',
+    selfInspectionFixedCount: null,
+    selfInspectionSampleSize: null,
+    visualTemplateId: '22222222-2222-4222-8222-222222222222',
+    visualTemplate: {
+      id: '22222222-2222-4222-8222-222222222222',
+      name: '共有図面A',
+      drawingImageRelativePath: '/api/storage/part-measurement-drawings/a.png',
+      isActive: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    },
+    items: [
+      {
+        id: '33333333-3333-4333-8333-333333333333',
+        sortOrder: 0,
+        datumSurface: 'A',
+        measurementPoint: 'P1',
+        measurementLabel: '寸法1',
+        displayMarker: '1',
+        unit: 'mm',
+        allowNegative: true,
+        decimalPlaces: 3,
+        markerXRatio: '0.1',
+        markerYRatio: '0.2',
+        nominalValue: '10',
+        lowerLimit: '9',
+        upperLimit: '11'
+      }
+    ],
+    ...overrides
+  };
+}
+
+describe('inspectionDrawingCreateDraft', () => {
+  it('templateToCreateDraft returns new point ids without template entity state', () => {
+    const draft = templateToCreateDraft(buildTemplate());
+    expect(draft.sourceDraft.sourceTemplateId).toBe(buildTemplate().id);
+    expect(draft.points).toHaveLength(1);
+    expect(draft.points[0]?.id).not.toBe('33333333-3333-4333-8333-333333333333');
+    expect(draft.visualTemplateId).toBe(buildTemplate().visualTemplateId);
+    expect(draft.visualTemplateName).toBe('共有図面A');
+  });
+
+  it('templateItemsToDraftDrawingPoints always assigns fresh ids', () => {
+    const template = buildTemplate();
+    const first = templateItemsToDraftDrawingPoints(template.items);
+    const second = templateItemsToDraftDrawingPoints(template.items);
+    expect(first[0]?.id).not.toBe(template.items[0]?.id);
+    expect(second[0]?.id).not.toBe(first[0]?.id);
+  });
+
+  it('detects same_as_source key collision', () => {
+    const reason = resolveInspectionDrawingCreateKeyCollision({
+      fhincd: 'ABC',
+      processGroup: 'cutting',
+      resourceCd: '033',
+      sourceDraft: {
+        sourceTemplateId: 'src',
+        sourceFhincd: 'ABC',
+        sourceProcessGroup: 'cutting',
+        sourceResourceCd: '033'
+      },
+      activeExists: false
+    });
+    expect(reason).toBe('same_as_source');
+    expect(inspectionDrawingCreateKeyCollisionMessage('same_as_source')).toContain('工程または資源CD');
+  });
+
+  it('treats fhincd case-insensitively for same_as_source', () => {
+    const reason = resolveInspectionDrawingCreateKeyCollision({
+      fhincd: 'abc',
+      processGroup: 'cutting',
+      resourceCd: '033',
+      sourceDraft: {
+        sourceTemplateId: 'src',
+        sourceFhincd: 'ABC',
+        sourceProcessGroup: 'cutting',
+        sourceResourceCd: '033'
+      },
+      activeExists: false
+    });
+    expect(reason).toBe('same_as_source');
+  });
+
+  it('detects active_exists key collision for normal create', () => {
+    const reason = resolveInspectionDrawingCreateKeyCollision({
+      fhincd: 'ABC',
+      processGroup: 'grinding',
+      resourceCd: '033',
+      sourceDraft: null,
+      activeExists: true
+    });
+    expect(reason).toBe('active_exists');
+  });
+});
