@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>自主検査 — ボタン（押せる＝1形・青外枠強調）</title>
+  <style>
+    :root {
+      --font: system-ui, "Hiragino Sans", Meiryo, sans-serif;
+      --bg: #0f172a;
+      --btn-bg: #334155;
+      --line-faint: rgba(255, 255, 255, 0.12);
+      --text: #f8fafc;
+      --text-dim: rgba(248, 250, 252, 0.38);
+      --accent: #38bdf8;
+      --r: 8px;
+      --h: 44px;
+      --px: 16px;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      padding: 20px;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    .meta { font-size: 14px; color: rgba(248, 250, 252, 0.55); margin-bottom: 12px; }
+    .legend {
+      font-size: 13px;
+      color: #fbbf24;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    /* 押せる — 1形・白枠なし */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: var(--h);
+      padding: 0 var(--px);
+      border-radius: var(--r);
+      border: 0;
+      background: var(--btn-bg);
+      color: var(--text);
+      font: 600 15px/1 var(--font);
+    }
+    .btn.is-wide { padding: 0 22px; min-width: 11rem; }
+
+    /* 押せる + 青外枠（ring 相当。border 幅は変えない） */
+    .btn.is-highlighted {
+      box-shadow:
+        0 0 0 2px var(--accent),
+        0 0 10px rgba(56, 189, 248, 0.55);
+    }
+
+    /* 押せない */
+    .btn.is-disabled {
+      background: rgba(30, 41, 59, 0.5);
+      color: var(--text-dim);
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .hint {
+      margin-top: 8px;
+      font-size: 12px;
+      color: rgba(248, 250, 252, 0.45);
+    }
+    .section {
+      margin-top: 20px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line-faint);
+    }
+    .section-title {
+      font-size: 12px;
+      color: rgba(248, 250, 252, 0.42);
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="meta">12345 · ABC-001 · 必要 3 件 · ガイド · <strong>いま 2件目</strong></p>
+    <p class="legend">
+      押せる＝1種類（同じスレート背景 #334155）。白枠なし。<br />
+      `入力を保存` と `自主検査を完了` だけ、押せる条件のとき青外枠。
+    </p>
+
+    <div class="row">
+      <span class="btn is-disabled">再開</span>
+      <span class="btn">次の測定点</span>
+      <span class="btn">一覧へ</span>
+    </div>
+
+    <div class="row">
+      <span class="btn">1件目</span>
+      <span class="btn">2件目</span>
+      <span class="btn">最終</span>
+    </div>
+    <p class="hint">↑ 3つとも同じ見た目。2件目が選択中でも色は変えない。</p>
+
+    <div class="row">
+      <span class="btn is-highlighted">入力を保存</span>
+      <span class="btn is-wide is-disabled">自主検査を完了</span>
+    </div>
+    <p class="hint">↑ 保存だけ青外枠（押せる条件がそろっている例）。完了は押せないので通常見た目。</p>
+
+    <div class="section">
+      <p class="section-title">押せないとき</p>
+      <div class="row">
+        <span class="btn is-disabled">入力を保存</span>
+        <span class="btn is-disabled">自主検査を完了</span>
+        <span class="btn is-disabled">再開</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <p class="section-title">完了だけ押せるとき</p>
+      <div class="row">
+        <span class="btn is-disabled">入力を保存</span>
+        <span class="btn is-wide is-highlighted">自主検査を完了</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

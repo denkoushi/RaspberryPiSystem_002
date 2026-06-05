@@ -16,13 +16,30 @@ describe('selfInspectionKioskButtonClass', () => {
     }
   );
 
-  it('enabled and disabled use different border tokens', () => {
+  it('enabled and disabled use borderless base styles', () => {
     const enabled = selfInspectionKioskButtonClass({ disabled: false });
     const disabled = selfInspectionKioskButtonClass({ disabled: true });
-    expect(enabled).toContain('border-slate-500');
+    expect(enabled).toContain('border-0');
     expect(enabled).toContain('bg-slate-700');
-    expect(disabled).toContain('border-white/12');
+    expect(disabled).toContain('border-0');
     expect(disabled).toContain('text-white/40');
+  });
+
+  it('highlighted uses ring and shadow without changing border width', () => {
+    const highlighted = selfInspectionKioskButtonClass({ highlighted: true });
+    expect(highlighted).toContain('ring-sky-400');
+    expect(highlighted).toContain('shadow-');
+    expect(highlighted).toContain('border-0');
+    expect(highlighted).not.toContain('border-2');
+  });
+
+  it('highlighted is ignored when disabled', () => {
+    const highlightedDisabled = selfInspectionKioskButtonClass({
+      highlighted: true,
+      disabled: true
+    });
+    expect(highlightedDisabled).not.toContain('ring-sky-400');
+    expect(highlightedDisabled).toContain('border-0');
   });
 
   it('wide keeps min width when disabled (no layout shift)', () => {

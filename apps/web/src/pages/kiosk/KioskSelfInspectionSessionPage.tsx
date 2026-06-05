@@ -692,6 +692,7 @@ export function KioskSelfInspectionSessionPage() {
               <SelfInspectionKioskButton
                 type="button"
                 disabled={!saveActionState.enabled}
+                highlighted={saveActionState.enabled}
                 onPointerDownCapture={consumeNextBlurGuideAdvance}
                 onClick={() => void persistCurrentEntry()}
               >
@@ -701,6 +702,7 @@ export function KioskSelfInspectionSessionPage() {
                 type="button"
                 wide
                 disabled={!completeActionState.enabled}
+                highlighted={completeActionState.enabled}
                 onPointerDownCapture={consumeNextBlurGuideAdvance}
                 onClick={() => void completeSession()}
               >

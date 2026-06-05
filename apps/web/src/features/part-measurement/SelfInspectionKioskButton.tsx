@@ -10,6 +10,7 @@ type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className' | 'disabl
   size?: SelfInspectionKioskButtonSize;
   wide?: boolean;
   pressed?: boolean;
+  highlighted?: boolean;
 };
 
 /**
@@ -20,6 +21,7 @@ export function SelfInspectionKioskButton({
   size = 'default',
   wide = false,
   pressed,
+  highlighted = false,
   type = 'button',
   ...rest
 }: Props) {
@@ -28,7 +30,7 @@ export function SelfInspectionKioskButton({
       type={type}
       disabled={disabled}
       aria-pressed={pressed}
-      className={selfInspectionKioskButtonClass({ disabled, size, wide, pressed })}
+      className={selfInspectionKioskButtonClass({ disabled, size, wide, pressed, highlighted })}
       {...rest}
     />
   );
