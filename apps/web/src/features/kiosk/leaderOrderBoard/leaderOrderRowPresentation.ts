@@ -11,8 +11,13 @@ export type LeaderOrderRowPresentation = {
   machinePartLine: string;
   /**
    * 順位ボード1行目クラスタ用: 製番・品目コード（空は含めない）。
+   * @deprecated 表示は {@link fseibanLine} と {@link clusterTailSegments} を使う。
    */
   clusterSegments: string[];
+  /** 品名行右に表示する製番（空なら非表示） */
+  fseibanLine: string;
+  /** クラスタ行: 品目コードのみ（製番は {@link fseibanLine} へ） */
+  clusterTailSegments: string[];
   /** CustomerSCAW 顧客名（空なら表示しない） */
   customerLine: string;
   /**
@@ -45,13 +50,16 @@ export function presentLeaderOrderRow(row: LeaderBoardRow): LeaderOrderRowPresen
     row.fhincd.length > 0 ? row.fhincd : ''
   ]);
 
+  const clusterTailSegments: string[] = [];
+  if (row.fhincd.length > 0) {
+    clusterTailSegments.push(row.fhincd.trim());
+  }
+
   const clusterSegments: string[] = [];
   if (fseiban.length > 0) {
     clusterSegments.push(fseiban);
   }
-  if (row.fhincd.length > 0) {
-    clusterSegments.push(row.fhincd.trim());
-  }
+  clusterSegments.push(...clusterTailSegments);
 
   const machineTypeNameLine = joinMiddleDot([row.machineTypeCode, machineNameNormalized]);
 
@@ -61,6 +69,8 @@ export function presentLeaderOrderRow(row: LeaderBoardRow): LeaderOrderRowPresen
   return {
     machinePartLine,
     clusterSegments,
+    fseibanLine: fseiban,
+    clusterTailSegments,
     customerLine,
     machineTypeNameLine,
     partNameLine,

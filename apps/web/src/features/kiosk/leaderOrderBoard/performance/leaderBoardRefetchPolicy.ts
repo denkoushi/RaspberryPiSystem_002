@@ -20,4 +20,4 @@ export const LEADER_BOARD_DEVICE_SNAPSHOT_REFETCH_MS = 180_000;
 /** これを超えた行数は仮想スクロール化（DOM 削減） */
 export const LEADER_BOARD_VIRTUAL_ROW_THRESHOLD = 14;
 
-export const LEADER_BOARD_ROW_ESTIMATE_PX = 80;
+export const LEADER_BOARD_ROW_ESTIMATE_PX = 96;

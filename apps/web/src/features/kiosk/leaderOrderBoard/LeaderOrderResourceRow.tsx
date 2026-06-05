@@ -58,6 +58,14 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   const manual = isManualDueDateSet(row.dueDate);
   const dueLabel = formatDueDate(row.displayDue) || '—';
   const pres = presentLeaderOrderRow(row);
+  const hasClusterTail = pres.clusterTailSegments.length > 0 || pres.quantityInlineJa != null;
+  const hasCustomer = pres.customerLine.length > 0;
+  const hasClusterCustomerRow = hasClusterTail || hasCustomer;
+  const hasPart = pres.partNameLine.length > 0;
+  const hasFseiban = pres.fseibanLine.length > 0;
+  const hasPartFseibanRow = hasPart || hasFseiban;
+  const pairLeftColumnClass = (hasRight: boolean) =>
+    hasRight ? 'min-w-0 max-w-[50%] flex-[0_0_50%]' : 'min-w-0 flex-1';
   const hasNote = Boolean(row.note && row.note.trim().length > 0);
   const selfInspectionStatusClass =
     row.selfInspectionStatus === 'completed'
@@ -65,6 +73,10 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
       : row.selfInspectionStatus === 'in_progress'
         ? 'border-yellow-300 bg-yellow-400 text-slate-950'
         : 'border-white/70 bg-white text-slate-950';
+  const dueDateClass = clsx(
+    'shrink-0 font-mono text-[20px] leading-tight',
+    manual ? 'font-medium text-amber-200' : 'text-cyan-300/90'
+  );
 
   return (
     <div
@@ -109,14 +121,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
           </span>
         </div>
         {isSignage ? (
-          <span
-            className={clsx(
-              'shrink-0 font-mono text-[10px]',
-              manual ? 'font-medium text-amber-200' : 'text-cyan-300/90'
-            )}
-          >
-            {dueLabel}
-          </span>
+          <span className={dueDateClass}>{dueLabel}</span>
         ) : (
           <button
             type="button"
@@ -126,8 +131,8 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
               onOpenDueDatePicker?.(row);
             }}
             className={clsx(
-              'shrink-0 rounded px-1 py-0 font-mono text-[10px] transition-colors',
-              manual ? 'font-medium text-amber-200' : 'text-cyan-300/90',
+              dueDateClass,
+              'rounded px-1 py-0 transition-colors',
               onOpenDueDatePicker && !dueDatePending ? 'hover:bg-white/10' : 'cursor-default opacity-70'
             )}
             title={manual ? '手動納期（タップで変更）' : '表示納期（タップで変更）'}
@@ -170,15 +175,50 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
           </Link>
         )}
       </div>
-      {pres.clusterSegments.length > 0 || pres.quantityInlineJa ? (
-        <LeaderOrderRowClusterLine segments={pres.clusterSegments} quantityInlineJa={pres.quantityInlineJa} />
+      {hasClusterCustomerRow ? (
+        <div className="flex w-full items-baseline gap-1.5">
+          {hasClusterTail ? (
+            <div className={pairLeftColumnClass(hasCustomer)}>
+              <LeaderOrderRowClusterLine
+                segments={pres.clusterTailSegments}
+                quantityInlineJa={pres.quantityInlineJa}
+              />
+            </div>
+          ) : null}
+          {hasCustomer ? (
+            <div className="min-w-0 flex-1 truncate text-[11px] text-white/70">{pres.customerLine}</div>
+          ) : null}
+        </div>
       ) : null}
-      {pres.customerLine.length > 0 ? (
-        <div className="min-w-0 break-words text-[11px] text-white/70">{pres.customerLine}</div>
+      {hasPartFseibanRow ? (
+        <div className="flex w-full items-baseline gap-1.5">
+          {hasPart ? (
+            <div
+              className={clsx(
+                pairLeftColumnClass(hasFseiban),
+                hasFseiban ? 'truncate' : 'break-words',
+                'text-[16.5px] leading-tight text-white/60'
+              )}
+            >
+              {pres.partNameLine}
+            </div>
+          ) : null}
+          {hasFseiban ? (
+            <div
+              className={clsx(
+                hasPart ? 'min-w-0 flex-1 truncate' : 'min-w-0 flex-1 break-words',
+                'font-mono text-[16.5px] font-semibold leading-tight text-white/85'
+              )}
+            >
+              {pres.fseibanLine}
+            </div>
+          ) : null}
+        </div>
       ) : null}
-      {pres.partNameLine.length > 0 ? <div className="text-white/60">{pres.partNameLine}</div> : null}
       {pres.machineTypeNameLine.length > 0 ? (
-        <div className="min-w-0 break-words text-[11px] text-white/80">{pres.machineTypeNameLine}</div>
+        <div className="min-w-0 break-words text-[16.5px] leading-tight text-white/80">
+          {pres.machineTypeNameLine}
+        </div>
       ) : null}
       {footerResourceChips.length > 0 ? (
         <div className="mt-1 overflow-x-auto overflow-y-hidden border-t border-white/10 pt-1">
