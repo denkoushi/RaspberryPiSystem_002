@@ -175,9 +175,27 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 
 ## 8. `gpu-memory-utilization` を下げる場合（参考）
 
-- **変更場所**: `/srv/dgx/system-prod/secrets/control-server.env` の **`BLUE_SERVER_COMMAND`** 内 `--gpu-memory-utilization 0.85`。
+- **変更場所**: `/srv/dgx/system-prod/secrets/control-server.env` の **`BLUE_SERVER_COMMAND`** 内 `--gpu-memory-utilization`。Hermes `/task` 復旧時（**2026-06-05**）は **`0.65`** で 27B NVFP4 の起動を確認（従来例示の **`0.85`** は当該実機では **起動失敗**）。
 - **反映**: `control-server.pid` ガード手順で **control-server 再起動** → 業務 LLM の **stop/start**（Runbook 標準）。
 - **トレードオフ**: Comfy 用の空きは **少し**増え得るが、**業務推論の同時処理・安定性**が落ちる可能性。変更前後で **写真ラベル / 要領書** の体感を確認する。
+
+### 8.1 blue 27B 起動失敗と Hermes `/task` 502（2026-06-05）
+
+**症状**: Pi5 tools から DGX **`/v1/models` が 502** · `system-prod-trtllm` 未起動または即 exit。
+
+**根本原因（実機）**:
+
+| 要因 | 対策 |
+|------|------|
+| `vllm serve sakamakismile/Qwen3.6-27B-NVFP4`（repo id）が HF metadata で失敗 | **ローカル snapshot path** を `BLUE_SERVER_COMMAND` に指定（`hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4/snapshots/<sha>`）。`<sha>` は **`${BLUE_MODEL_DIR}/refs/main`** |
+| `--gpu-memory-utilization 0.85` で空きメモリ不足 | **`0.65`** に下げて起動確認 |
+| vision 系ロードが Hermes テキスト `/task` に不要 | **`--hf-overrides "{\"language_model_only\": true}"`** |
+
+**repo 例示（secret ではない）**: [`control-server.env.example`](../../scripts/dgx-local-llm-system/systemd/control-server.env.example) · [Runbook §Phase2 blue 最小例](../runbooks/dgx-system-prod-local-llm.md) · [KB `/task` profile restore §blue 502](./KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05)。
+
+**起動待ち**: 初回は重みロード・compile・autotuneで **数分**。起動中 `/v1/models` が **`Connection reset by peer`** でも **コンテナ生存なら待つ**。
+
+**秘密情報**: 実機 `control-server.env` の全文は **Git 禁止**。snapshot SHA 等は KB に **例として**残してよいが、トークンは載せない。
 
 ---
 

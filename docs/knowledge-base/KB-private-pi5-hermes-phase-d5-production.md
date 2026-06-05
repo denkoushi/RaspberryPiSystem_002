@@ -338,6 +338,81 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 
 **修正後実機（2026-05-25）**: `container_disk: 0` 反映 + イメージ pull 後、`hermes chat -q 'List files in workspace' --toolsets file` → **~54s** · workspace 参照 OK（Docker コンテナ起動成功）。
 
+## 本番復旧 — Discord `/task` 二段障害（2026-06-05）
+
+**背景**: D5.1 承認 relay・DGX profile 復帰デプロイ後も、Discord `/task` が実用応答しない事象が再発。原因は **独立した 2 段**だった。
+
+### 症状
+
+| 段 | 観測 | 影響 |
+|----|------|------|
+| **1. 承認通知** | `/task` handler は到達するが、承認通知の Discord REST POST が **`status=403 body=error code: 1010`** | write タスクで承認フローが止まる · read-only でも relay ログに失敗が残る |
+| **2. DGX blue backend** | Pi5 tools から DGX **`/v1/models` が `502`** · `system-prod-trtllm` 未起動または起動失敗 | tools `hermes chat` が LLM 到達不能 · `/task` 全体が無応答〜失敗 |
+
+### Investigation
+
+| 仮説 | 検証 | 結果 |
+|------|------|------|
+| plugin 未登録 / `/task` Unknown | Pi5 `hermes-gateway` ログ · plugin register | **REJECTED** — `novel` / `task` / `task-approve` / `task-deny` + `pre_gateway_dispatch` 登録済 |
+| Discord Bot token 失効 | 他 Discord 経路（gateway 本体） | **REJECTED** — 雑談は正常 |
+| **`urllib` 既定 User-Agent が Cloudflare で拒否** | 承認 relay の `send_discord_channel_message` が **`urllib.request`** · ログ `1010` | **CONFIRMED** — Discord API は Bot 用 **明示 User-Agent** が必要 |
+| DGX gateway 停止 | `curl …/healthz` | **REJECTED** — **200** |
+| **`vllm serve sakamakismile/Qwen3.6-27B-NVFP4` が HF metadata 取得で失敗** | DGX control-server ログ · container exit | **CONFIRMED** — repo id 直指定は外部 metadata 依存 |
+| **`--gpu-memory-utilization 0.85` で空きメモリ不足** | vLLM 起動ログ · `nvidia-smi` | **CONFIRMED** — **`0.65`** で起動成功 |
+| vision 系モデル構成が Hermes テキスト `/task` に不要な重さ | モデル family が omni/vision 含む | **CONFIRMED** — **`--hf-overrides "{\"language_model_only\": true}"`** でテキスト用途に限定 |
+
+### Fix（repo + 実機 hotfix）
+
+#### A. Discord 承認通知（`discord_relay.py`）
+
+| 項目 | 内容 |
+|------|------|
+| **モジュール** | [`approval_relay/discord_relay.py`](../../scripts/private-pi5-hermes/lib/approval_relay/discord_relay.py) |
+| **変更** | `Accept: application/json` · **`User-Agent: DiscordBot (https://github.com/denkoushi/RaspberryPiSystem_002, 1.0)`** |
+| **テスト** | [`test_approval_relay.py`](../../scripts/private-pi5-hermes/tests/test_approval_relay.py) · `test_discord_send_uses_discordbot_user_agent` |
+| **Pi5 配置先** | `/home/hermes/.hermes/plugins/private-pi5-discord-task-bridge/approval_relay/discord_relay.py` |
+| **反映** | ファイル copy + **`hermes-gateway` restart**（標準デプロイでも可） |
+
+**実機確認**: 承認通知 POST **`200`** · テスト通知削除 **`204`**。
+
+#### B. DGX blue 27B backend（`control-server.env` · secret 配下）
+
+| 項目 | 内容 |
+|------|------|
+| **変更場所** | `/srv/dgx/system-prod/secrets/control-server.env` の **`BLUE_SERVER_COMMAND`**（**Git 禁止**） |
+| **model path** | HF cache の **ローカル snapshot**（例: `…/snapshots/c12989315a26e1cc5d3f8a5d4b96fdd5921adc8c`）— `<snapshot-sha>` は **`${BLUE_MODEL_DIR}/refs/main`** で解決 |
+| **`BLUE_MODEL_DIR`** | `/srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4` |
+| **主要パラメータ** | `--gpu-memory-utilization 0.65` · `--hf-overrides "{\"language_model_only\": true}"` |
+| **repo 正本（例示のみ）** | [`control-server.env.example`](../../scripts/dgx-local-llm-system/systemd/control-server.env.example) · [Runbook](../runbooks/dgx-system-prod-local-llm.md) · [KB-366 §8](./KB-366-dgx-spark-operational-understanding.md#8-gpu-memory-utilization-を下げる場合参考) |
+| **反映** | `control-server` 再起動 → **`POST /start`** で `business_qwen36_27b_nvfp4` |
+
+**実機確認**: `system-prod-trtllm` 起動 · `http://127.0.0.1:38083/v1/models` **`200`** · `root` が snapshot path · served id **`system-prod-primary`**。
+
+**起動メモ**: 初回は重みロード・torch compile・FlashInfer autotune・CUDA graph captureで **数分**。起動中は `/v1/models` が **`Connection reset by peer`** を返すことがある — **コンテナが落ちていなければ待つ**。
+
+### 検証結果（2026-06-05）
+
+| 層 | コマンド / 観測 | 結果 |
+|----|-----------------|------|
+| **ローカル unittest** | `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -v` | **127 OK** |
+| **smoke** | `./scripts/private-pi5-hermes/verify-discord-task-bridge-smoke.sh` | **OK** |
+| **Pi5 systemd** | `hermes-gateway` / `hermes-tools-gateway` | **active** |
+| **Pi5 直接 `/task` 相当** | `List files in workspace`（read-only） | **成功** — workspace 5 件列挙 |
+| **Discord UI E2E** | `/task` write → 承認 → `yes` | **手動確認推奨**（エージェントから Discord 操作不可） |
+
+### Prevention
+
+- 承認 relay の Discord REST は **`discord.py` ではなく `urllib`** — **User-Agent を Bot 形式で固定**し、単体テストでヘッダ regress を検知する。
+- DGX blue 復旧時は **repo id ではなくローカル snapshot path** を優先（HF metadata 不通でも起動可）。
+- Hermes `/task` だけテキスト用途なら **`language_model_only`** を検討（vision ロード回避）。
+- **`gpu-memory-utilization`** は環境依存 — `0.85` 固定を前提にしない（[KB-366 §8](./KB-366-dgx-spark-operational-understanding.md#8-gpu-memory-utilization-を下げる場合参考)）。
+- **`control-server.env` 実値は secret のみ** — example / Runbook / KB に再発防止の形だけ残す。
+
+### 既知のトレードオフ
+
+- **`0.65`**: 27B 起動安定優先。同時処理余力・長文は `0.85` より下がり得るが、実機では `0.85` だと **起動失敗**し Hermes `/task` が復旧不能だった。
+- **runner 直呼び write gate smoke**（`verify-tool-write-approval-gate-pi5.sh`）は **別経路** — 本 Fix 後も **FAIL のまま既知**（Discord `/task` → `run_tools_profile_prompt` 経路で受け入れ）。
+
 ## References
 
 - [ADR D5](../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md)

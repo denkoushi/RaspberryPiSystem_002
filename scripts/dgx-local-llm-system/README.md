@@ -256,8 +256,9 @@ BLUE_SERVER_IMAGE=ghcr.io/aeon-7/vllm-spark-omni-q36:v1.2
 BLUE_SERVER_PORT=38083
 BLUE_SERVER_CONTAINER_PORT=8000
 # BLUE_SERVER_ENTRYPOINT=bash
-BLUE_MODEL_DIR=/srv/dgx/shared-models/vllm/qwen36-27b-nvfp4
-BLUE_SERVER_COMMAND='export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 && export TORCH_MATMUL_PRECISION=high && export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && export NVIDIA_FORWARD_COMPAT=1 && export VLLM_TEST_FORCE_FP8_MARLIN=1 && exec vllm serve /srv/dgx/shared-models/vllm/qwen36-27b-nvfp4 --served-model-name system-prod-primary --host 0.0.0.0 --port 8000 --dtype auto --quantization compressed-tensors --max-model-len 8192 --max-num-seqs 4 --max-num-batched-tokens 16384 --gpu-memory-utilization 0.85 --kv-cache-dtype fp8 --enable-chunked-prefill --enable-prefix-caching --load-format safetensors --trust-remote-code --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3'
+BLUE_MODEL_DIR=/srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4
+# <snapshot-sha> は ${BLUE_MODEL_DIR}/refs/main の内容で置き換える
+BLUE_SERVER_COMMAND='export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 && export TORCH_MATMUL_PRECISION=high && export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && export NVIDIA_FORWARD_COMPAT=1 && export VLLM_TEST_FORCE_FP8_MARLIN=1 && exec vllm serve /srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4/snapshots/<snapshot-sha> --served-model-name system-prod-primary --host 0.0.0.0 --port 8000 --dtype auto --quantization compressed-tensors --max-model-len 8192 --max-num-seqs 4 --max-num-batched-tokens 16384 --gpu-memory-utilization 0.65 --kv-cache-dtype fp8 --enable-chunked-prefill --enable-prefix-caching --load-format safetensors --trust-remote-code --hf-overrides "{\"language_model_only\": true}" --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3'
 BLUE_EXTRA_DOCKER_ARGS='--ipc host --ulimit memlock=-1 --ulimit stack=67108864'
 ```
 
@@ -273,6 +274,8 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 この例のポイントは、**Pi5 から見える `38081` / token / alias を固定したまま**、DGX 内部だけで green / blue を切り替えることにある。
 
 `TRTLLM_*` という env 名は歴史的な互換のため残しているだけで、blue backend の実体は TRT-LLM に限らない。`start-trtllm-server.sh` は **任意 image + 任意 command** を受けるため、Spark 向け `vLLM` + `Qwen3.6-27B-NVFP4` をそのまま起動できる。新しい設定では意味が明確な `BLUE_SERVER_*` / `BLUE_MODEL_DIR` / `BLUE_EXTRA_DOCKER_ARGS` も同じ launcher で受けられる。image 既定 entrypoint が shell でない場合は、`BLUE_SERVER_ENTRYPOINT=bash` を併用する。
+
+**Hermes `/task` 向けメモ（2026-06-05）**: repo id 直指定は HF metadata で失敗し得るため **snapshot path** を推奨。実機では **`--gpu-memory-utilization 0.65`** と **`--hf-overrides "{\"language_model_only\": true}"`** で 27B NVFP4 起動を確認。トラブルシュート: [Runbook §blue 502](../../docs/runbooks/dgx-system-prod-local-llm.md#トラブルシュート--blue-backend-起動失敗--v1models-5022026-06-05) · [KB-366 §8.1](../../docs/knowledge-base/KB-366-dgx-spark-operational-understanding.md#81-blue-27b-起動失敗と-hermes-task-5022026-06-05)。
 
 ### Blue backend の優先順
 

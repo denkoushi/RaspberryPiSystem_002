@@ -18,6 +18,10 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+_DISCORD_API_USER_AGENT = (
+    "DiscordBot (https://github.com/denkoushi/RaspberryPiSystem_002, 1.0)"
+)
+
 
 @dataclass(frozen=True)
 class DiscordSendResult:
@@ -81,6 +85,8 @@ async def send_discord_channel_message(channel_id: str, content: str) -> Discord
         headers={
             "Authorization": f"Bot {token}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": _DISCORD_API_USER_AGENT,
         },
     )
 
