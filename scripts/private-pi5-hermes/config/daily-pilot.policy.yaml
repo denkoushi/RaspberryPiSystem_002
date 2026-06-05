@@ -1,0 +1,54 @@
+# Hermes daily-use pilot policy (D6-pre)
+# Purpose: try Hermes as a safe daily coordinator before connecting it to
+# production repos, Cursor/Codex workers, git, or deploy flows.
+
+phase: daily_pilot_v0
+model_route: spark_localai
+output_mode: markdown_only
+workspace_root: /home/hermes/.hermes-daily/workspace
+max_prompt_chars: 2000
+
+# Hard gates for the first pilot.
+cursor_codex_auto_run: false
+terminal_enabled: false
+git_enabled: false
+deploy_enabled: false
+secret_access_enabled: false
+
+allowed_task_classes:
+  - summarize_user_notes
+  - draft_cursor_instruction
+  - draft_codex_review_prompt
+  - draft_ci_checklist
+  - draft_deploy_checklist
+  - draft_daily_log
+
+deferred_task_classes:
+  - run_cursor_or_codex_cli
+  - edit_production_repo
+  - git_commit_push_merge
+  - deploy_or_restart_services
+  - read_secrets_or_tokens
+  - terminal_shell_execution
+  - tailnet_or_lan_scan
+
+deny_prompt_substrings:
+  - "rm -rf"
+  - "ignore previous"
+  - "ignore all previous"
+  - "bypass policy"
+  - "ignore policy"
+  - ".env"
+  - "token"
+  - "secret"
+
+deny_prompt_patterns:
+  - "\\b(codex|cursor|cursor-agent)\\b.*\\b(run|execute|start|invoke|use|launch)\\b"
+  - "\\b(run|execute|start|invoke|use|launch)\\b.*\\b(codex|cursor|cursor-agent)\\b"
+  - "(codex|cursor).*(実行|起動|使役|操作)"
+  - "(実行|起動|使役|操作).*(codex|cursor)"
+  - "\\bgit\\s+(commit|push|merge|reset|checkout|rebase)\\b"
+  - "\\b(systemctl|sudo|ssh|scp)\\b"
+  - "\\bdocker\\s+(run|exec|compose|restart|stop|rm)\\b"
+  - "\\b(deploy|terminal|shell|bash|zsh)\\b"
+  - "(デプロイ|コミット|プッシュ|ターミナル|シェル|秘密|トークン|\\.env)"

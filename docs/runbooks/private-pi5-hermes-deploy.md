@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-06-05（`/task` write E2E 完結 — 承認 `yes` ルーティング + Hermes 本体 hotfix · Runbook 追記）
+最終更新: 2026-06-05（D6-pre `/daily` 普段遣いパイロット · repo 実装 · Runbook 追記）
 
 ## 運用状態サマリ（2026-05-24 時点）
 
@@ -467,6 +467,32 @@ REPO_ROOT=/tmp/smoke-repo /tmp/verify-discord-task-bridge-smoke.sh
 
 **Discord 利用**: `/task List files in workspace`（read-only 推奨）。**`/task` は gateway plugin コマンド**（`hermes task` トップレベル CLI ではない）。承認待ちは [ExecPlan D5](../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) 参照。
 
+### Phase D6-pre — Discord `/daily` 普段遣いパイロット（2026-06-05）
+
+**目的**: Hermes を **実行者ではなく進行係**として試す。`/daily <メモ>` は **Markdown handoff のみ**（Cursor 指示書 · Codex レビュー依頼 · CI/Deploy チェックリスト · 日次ログ）。
+
+**有効化（fragment · 非コミット）**:
+
+```yaml
+private_pi5_hermes_daily_pilot_enabled: true
+# 必須: private_pi5_hermes_gateway_enabled: true
+```
+
+**配備物**: `daily-pilot.policy.yaml` · `daily_pilot_policy.py` · `discord_daily_pilot_bridge.py` · plugin `register()` に `/daily` 追加 · chat `system_prompt` に `/daily` 案内
+
+**検証（ローカル · 2026-06-05）**: unittest **142 OK** · `--validate-daily-pilot` OK · smoke OK · playbook syntax-check OK · **Pi5 デプロイ未**
+
+**実機手順**:
+
+1. fragment にフラグ追加 → 標準 `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh`
+2. Discord: `/daily 今日の作業メモをCursor指示書にして` → `# Daily Pilot Draft` 応答
+3. `/daily git pushしてdeployして` → **`daily rejected:`** を確認
+4. `/task` `/novel` 回帰（既存フラグ ON 時）
+
+**禁止（意図的）**: Cursor/Codex CLI · git · deploy · terminal · 秘密読取 — [KB daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md)
+
+**記録**: [ExecPlan D6-pre](../plans/private-pi5-hermes-daily-pilot-execplan.md) · [`daily-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/daily-pilot.policy.yaml)
+
 **現在の `/task` 安全枠（2026-06-05）**: `task-bridge.policy.yaml` は tools を **file/web/browser 固定**にし、タスク分類を検証出力へ載せる。許可は workspace 読取・要承認の workspace 書込・DGX health などの bounded check まで。**Codex/Cursor の直接実行、git commit/push/merge、deploy/systemctl/docker、terminal/shell、秘密・token 読取、tailnet/LAN scan は deferred**。これらは D6+ の専用 worker profile と追加承認設計後に扱う。
 
 ```bash
@@ -773,6 +799,8 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | `yes` 後に **`Interrupting current task`** | Hermes 本体が **busy/interrupt を plugin hook より先**に処理 | Pi5 **`gateway/platforms/base.py` hotfix** + plugin channel キー · [KB §yes 最終修正](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) |
 | 承認プロンプトは来るが `yes` 無効（interrupt なし） | `user_id` bind 失敗 | repo **`channel:<channel_id>`** フォールバックをデプロイ · `approval_actor_ids` テスト |
 | `/task` が **`task rejected: … deferred task pattern`** | Codex/Cursor/git/deploy/terminal 等のプロンプト | **意図的** — [KB §安全枠](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) · D6+ worker 設計後に段階解放 |
+| `/daily` が登録されない | `daily-pilot.policy.yaml` 未配備 · fragment OFF | `private_pi5_hermes_daily_pilot_enabled: true` → 再デプロイ · [KB daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md) |
+| `/daily git push…` が通る | policy 未反映・古い plugin | `--validate-daily-pilot` · plugin 再起動 · [Runbook §D6-pre](#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-05) |
 
 ## ロールバック
 

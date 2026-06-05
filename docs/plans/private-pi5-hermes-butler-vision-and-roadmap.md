@@ -103,6 +103,7 @@ update-frequency: medium
 |-------|------|------|--------------|------|
 | **D4** | browser 隔離 | sandbox · `AGENT_BROWSER_ARGS` · agent-browser symlink | 将来ブラウザ操作の足場 | **完了**（[KB D4 本番](../knowledge-base/KB-private-pi5-hermes-phase-d4-production.md)） |
 | **D5** | Discord ↔ tools 橋（最小） | `/task` + exec ブリッジ · manual 承認維持 | **執事の「指示→実行」第一歩** | **repo 完了**（[ExecPlan D5](./private-pi5-hermes-tools-security-phase-d5-execplan.md)） |
+| **D6-pre** | 普段遣いパイロット | `/daily` · Markdown handoff のみ（Cursor 指示書 · Codex レビュー · CI/Deploy チェックリスト）· **実行なし** | 執事の「進行係」試験運用 | **repo 完了**（[ExecPlan D6-pre](./private-pi5-hermes-daily-pilot-execplan.md) · [KB daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md) · Pi5 deploy 待ち） |
 | **D6** | memory + リマインド（限定） | `memory` のスコープ設計 · 保持/削除ポリシー · Discord 通知 | 執事 §1 | 中 |
 | **D6+（並行設計）** | Codex/Cursor worker 境界 | 1 task = 1 worktree = 1 branch · 別 HOME/token · `/task-code` 等 · commit/push/deploy 前承認 | Discord → 開発使役（**`/task` から直接解放しない**） | 中（2026-06-05 Handoff） |
 | **D7** | 定時ジョブ基盤 | `cronjob` + 失敗時 Discord 通知 · 1 本の smoke タスク | 執事 §2 の土台 | 中 |

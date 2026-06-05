@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hermes plugin exposing `/task` and approval relay commands (Phase D5 / D5.1)."""
+"""Hermes plugin exposing Discord bridge commands."""
 
 from __future__ import annotations
 
@@ -11,6 +11,10 @@ try:
         render_task_usage,
         run_task_bridge_async,
     )
+    from .discord_daily_pilot_bridge import (
+        render_daily_usage,
+        run_daily_pilot_bridge_async,
+    )
     from .discord_novel_bridge import run_novel_bridge_async
     from .novel_request import NovelRequest
     from .novel_profile_runner import NovelProfilePaths, render_novel_usage
@@ -20,6 +24,10 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
         load_task_bridge_policy,
         render_task_usage,
         run_task_bridge_async,
+    )
+    from discord_daily_pilot_bridge import (
+        render_daily_usage,
+        run_daily_pilot_bridge_async,
     )
     from discord_novel_bridge import run_novel_bridge_async
     from novel_request import NovelRequest
@@ -57,6 +65,11 @@ def _novel_bridge_enabled() -> bool:
     return (_plugin_dir() / "novel-bridge.enabled").is_file()
 
 
+def _daily_pilot_enabled() -> bool:
+    """True when Ansible deployed daily-pilot.policy.yaml (D6-pre)."""
+    return (_plugin_dir() / "daily-pilot.policy.yaml").is_file()
+
+
 def _coordinator() -> DiscordApprovalRelayCoordinator | None:
     global _COORDINATOR, _COORDINATOR_STORE_DIR
     try:
@@ -89,6 +102,14 @@ async def _handle_novel_command(raw_args: str) -> str:
     if not request.prompt:
         return render_novel_usage()
     return await run_novel_bridge_async(request)
+
+
+async def _handle_daily_command(raw_args: str) -> str:
+    """Render a safe Markdown handoff without invoking workers or tools."""
+    prompt = (raw_args or "").strip()
+    if not prompt:
+        return render_daily_usage()
+    return await run_daily_pilot_bridge_async(prompt)
 
 
 async def _handle_task_approve(raw_args: str) -> str:
@@ -169,6 +190,13 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
 
 def register(ctx) -> None:
     """Register bridge commands matching deployed capabilities (policy / novel .env)."""
+    if _daily_pilot_enabled():
+        ctx.register_command(
+            "daily",
+            handler=_handle_daily_command,
+            description="Draft a safe daily-use Markdown handoff without execution",
+            args_hint="<memo or request>",
+        )
     if _novel_bridge_enabled():
         ctx.register_command(
             "novel",

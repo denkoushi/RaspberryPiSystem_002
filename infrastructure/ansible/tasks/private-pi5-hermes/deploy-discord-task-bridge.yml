@@ -36,6 +36,8 @@
     - novel_profile_constants.py
     - novel_profile_runner.py
     - discord_novel_bridge.py
+    - daily_pilot_policy.py
+    - discord_daily_pilot_bridge.py
 
 - name: Ensure approval relay package directory exists on plugin path
   ansible.builtin.file:
@@ -121,6 +123,21 @@
     state: absent
   when: not (private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool)
 
+- name: Deploy daily-pilot policy reference on host
+  ansible.builtin.copy:
+    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/daily-pilot.policy.yaml"
+    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/daily-pilot.policy.yaml"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0644"
+  when: private_pi5_hermes_daily_pilot_enabled | default(false) | bool
+
+- name: Remove stale daily-pilot policy when pilot is disabled
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/daily-pilot.policy.yaml"
+    state: absent
+  when: not (private_pi5_hermes_daily_pilot_enabled | default(false) | bool)
+
 - name: Verify discord-task-bridge policy from repo smoke
   ansible.builtin.command:
     argv:
@@ -134,6 +151,27 @@
   delegate_to: localhost
   become: false
   when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
+
+- name: Verify daily-pilot policy from repo smoke
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/validate_boundary_policy.py"
+      - --validate-daily-pilot
+      - --daily-pilot-policy
+      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/daily-pilot.policy.yaml"
+  register: private_pi5_hermes_daily_pilot_validate
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  when: private_pi5_hermes_daily_pilot_enabled | default(false) | bool
+
+- name: Assert daily-pilot policy validation passed
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_daily_pilot_validate.rc == 0
+    fail_msg: "daily-pilot.policy.yaml validation failed on controller"
+  when: private_pi5_hermes_daily_pilot_enabled | default(false) | bool
 
 - name: Assert discord-task-bridge policy validation passed
   ansible.builtin.assert:

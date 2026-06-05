@@ -1,0 +1,51 @@
+---
+# D6-pre: Discord /daily pilot (Markdown-only handoff; no worker execution).
+- name: Check daily-pilot policy is deployed
+  ansible.builtin.stat:
+    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/daily-pilot.policy.yaml"
+  register: private_pi5_hermes_daily_pilot_policy_stat
+
+- name: Assert daily-pilot policy is present
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_daily_pilot_policy_stat.stat.exists
+    fail_msg: >-
+      daily-pilot.policy.yaml missing under private-pi5-discord-task-bridge plugin.
+
+- name: Smoke /daily plugin register and handler
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import asyncio
+        import runpy
+        import sys
+        plugin_dir = "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
+        sys.path.insert(0, plugin_dir)
+        ns = runpy.run_path(plugin_dir + "/__init__.py")
+        register = ns.get("register")
+        assert callable(register), "register() missing"
+        class Ctx:
+            def __init__(self):
+                self.commands = []
+            def register_command(self, name, handler, description="", **kwargs):
+                self.commands.append(name)
+        ctx = Ctx()
+        register(ctx)
+        assert "daily" in ctx.commands, ctx.commands
+        handler = ns.get("_handle_daily_command")
+        result = asyncio.run(handler("今日の作業メモをCursor指示書にして"))
+        assert "# Daily Pilot Draft" in result, result
+        assert "Markdown only" in result, result
+        rejected = asyncio.run(handler("git pushしてdeployして"))
+        assert "daily rejected:" in rejected, rejected
+        print("ok")
+  register: private_pi5_hermes_daily_pilot_smoke
+  changed_when: false
+
+- name: Assert /daily smoke passed
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_daily_pilot_smoke.rc == 0
+    fail_msg: "Discord /daily pilot smoke failed"
