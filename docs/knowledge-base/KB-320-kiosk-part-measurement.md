@@ -433,6 +433,32 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 | 測定点一覧（旧・上辺） | ~~`InspectionDrawingPointSummaryStrip.tsx`~~（作成/改版から削除） |
 | レイアウト共有 | `apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingKioskUi.ts` |
 
+### キオスク検査図面 測定点位置微調整（十字ボタン · 2026-06-05） {#検査図面-測定点位置微調整-十字ボタン-2026-06-05}
+
+| 項目 | 内容 |
+|------|------|
+| ブランチ | **`feat/inspection-drawing-point-nudge`** |
+| 変更種別 | **Web のみ** |
+| ExecPlan | [inspection-drawing-point-nudge-execplan.md](../plans/inspection-drawing-point-nudge-execplan.md) |
+
+#### 仕様（作成/改版のみ）
+
+- **UI**: 右ペイン `InspectionDrawingPointSettingsPanel` 上部に **3×3 十字ボタン**（↑←→↓）。タイトル「測定点の設定」の **上**。
+- **レイアウト**: 名称・基準値を **1 行 2 列**（各列 `min-w-0` · select は `overflow-hidden` シェル）。削除ボタン上の説明文「合格範囲は…」は **削除**。
+- **ステップ**: `INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO = 0.0025`（800×600 DEV 図面で約横 2px / 縦 1.5px 相当）。
+- **座標**: `xRatio` / `yRatio` を更新。フロントで **必ず clamp 済み patch**（0..1）。`NaN` / `Infinity` / 非 number は **0**。
+- **表示条件**: `InspectionDrawingPointSidebar` の **`mode === 'place' && selectedPoint`** のみ（test / guidedTrial では非表示）。`contentReadOnly` 時は disabled。
+- **保存**: 既存 `drawingPointToTemplateItemInput` → `markerXRatio` / `markerYRatio`（API/DB 変更なし）。route schema も 0..1 検証あり。
+
+#### 代表ファイル
+
+| 領域 | パス |
+|------|------|
+| 座標演算 | `inspectionDrawingPointPosition.ts` |
+| 十字 UI | `InspectionDrawingPointPositionNudge.tsx` |
+| 設定パネル | `InspectionDrawingPointSettingsPanel.tsx` |
+| スタイル | `inspectionDrawingKioskUi.ts`（`inspectionDrawingPointNudgeButtonClassName` 等） |
+
 ### キオスク検査図面 作成/改版レイアウト（2026-06-03） {#検査図面-作成改版レイアウト-2026-06-03}
 
 | 項目 | 内容 |

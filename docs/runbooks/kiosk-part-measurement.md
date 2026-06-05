@@ -105,6 +105,21 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 2. 目視 OK 後、必要 Pi4 を `--limit` 1 台ずつ（実績: **`raspberrypi5`** `20260603-154307-28721` · **`raspi4-kensaku-stonebase01`** `20260603-154818-15503`）。
 3. Pi4 はキオスク **強制リロード**（§6.6.4）後、[§実機確認ポイント（拡張）](#実機確認ポイント拡張) の 2–4 を実施。
 
+## 検査図面 測定点位置微調整（十字ボタン · 2026-06-05） {#検査図面-測定点位置微調整-十字ボタン-2026-06-05}
+
+正本: [KB-320 §十字ボタン](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [ExecPlan](../plans/inspection-drawing-point-nudge-execplan.md) · ブランチ **`feat/inspection-drawing-point-nudge`** · **Web のみ** · **未デプロイ**
+
+### 手動確認（作成/改版）
+
+1. **検査図面** 新規/改版を開き、ツールバー **「点を配置」** を選択。
+2. 図面上の丸数字または右ペイン一覧で測定点を選択。
+3. 右ペイン **「測定点の位置調整」**（十字ボタン）がタイトル **上** に表示されること。
+4. ↑↓←→ でマーカーが **約 1–2px 刻み** で動くこと。端（0/1）でそれ以上はみ出さないこと。
+5. **テスト入力** / **ガイド試行** に切り替えると設定パネル（十字ボタン含む）が **非表示** になること。
+6. 保存後、再読込でも位置が維持されること。
+
+DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネント）。
+
 ## 検査図面 作成/改版ヘッダー フラット band（2026-06-04） {#検査図面-作成改版ヘッダー-フラット-band-2026-06-04}
 
 正本: [KB-320 §フラット band](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成改版ヘッダー-フラット-band-2026-06-04) · [ExecPlan](../plans/inspection-drawing-create-layout-and-return-nav.md) · [deployment §2026-06-04](../guides/deployment.md#kiosk-inspection-drawing-create-header-flat-layout-2026-06-04) · ブランチ **`fix/inspection-drawing-create-header-flat-layout`** · **`d96da485`** · CI **`26917349311`**
