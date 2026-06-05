@@ -10,6 +10,50 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-06-05 · **キオスク順位ボード 資源カード行 強調レイアウト**·**Web のみ**·**Pi5→Pi4×4 本番・実機 OK**） {#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05}
+
+- **変更概要（正本）**: [KB-297 §カード行強調](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05) · [verification-checklist §6.6.30](./verification-checklist.md#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05) · [プレビュー](../design-previews/kiosk-rank-board-card-single-preview.html) · ブランチ **`fix/kiosk-leaderboard-card-layout-2`** · PR [**#390**](https://github.com/denkoushi/RaspberryPiSystem_002/pull/390) · 代表 **`05ae1a70`**
+  - **カード外寸は不変**。納期 **20px** · 品名/製番/機種名 **16.5px** · **製番を品名行右** · クラスタ行は **品目コード+個数のみ**。
+  - **2列幅**: 右側要素がある行のみ左 **50%** · **単独時は全幅**（顧客名なし/製番なし行の truncate 回帰防止）。
+  - **Presentation**: `fseibanLine` / `clusterTailSegments` を [`leaderOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts) が正本（component 側で `clusterSegments` 先頭比較しない）。
+  - **仮想化**: `LEADER_BOARD_ROW_ESTIMATE_PX` **80→96**。
+  - **サイネージ JPEG**（`kiosk_leader_order_cards`）: **変更なし**（別 SVG レンダラ）。
+  - **Prisma / API**: **変更なし**（**Web のみ** · Pi5 Docker **`web` 再ビルド**）
+- **対象ホスト（推奨順）**: **`raspberrypi5` → `raspi4-kensaku-stonebase01`（先行実機）→ `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80`**。**Pi3**: 対象外
+- **標準コマンド**（`main` マージ後は第2引数 **`main`**）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh fix/kiosk-leaderboard-card-layout-2 \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+# Pi5 OK 後、Pi4 を 1 台ずつ --limit 変更 + 各台強制リロード（§6.6.4）
+```
+
+- **本番デプロイ（実績·2026-06-05）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 備考 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | **`20260605-123252-7617`** | **`05ae1a70`** | **`ok=134` `changed=4` `failed=0`** | `Git: changed` · **web** 再ビルド · バンドル `index-DvR9H4yG.js` |
+| `raspi4-kensaku-stonebase01` | **`20260605-123929-3009`** | **`05ae1a70`** | **`ok=129` `changed=11` `failed=0`** | `kiosk-browser` 再起動 · **実機 OK** |
+| `raspberrypi4` | **`20260605-124846-14986`** | **`05ae1a70`** | **`ok=122` `changed=10` `failed=0`** | 同上 |
+| `raspi4-robodrill01` | **`20260605-125308-28951`** | **`05ae1a70`** | **`ok=122` `changed=9` `failed=0`** | 同上 |
+| `raspi4-fjv60-80` | **`20260605-125638-9078`** | **`05ae1a70`** | **`ok=122` `changed=9` `failed=0`** | 同上 |
+
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 後約 **29s** · 全台完了後約 **25s**）
+- **実機（手動·キオスク）**: [verification-checklist §6.6.30](./verification-checklist.md#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05) — 納期/品名/製番/機種名のサイズ · 製番の右配置 · 単独行の全幅 · カード外寸不変
+- **ローカル検証**: `leaderOrderRowPresentation.test.ts` **10 passed** · web lint/tsc/build OK
+- **CI**: GitHub Actions **`26993180248`** **success**（`05ae1a70` · 全ジョブ）
+- **知見**:
+  - **Presentation 契約に fseiban 分割を寄せる**と、将来 `clusterSegments` 順序変更時の製番重複/欠落を防げる（レビュー指摘を反映）。
+  - **50% 固定幅は回帰源** — 顧客名/製番が無い行は **flex-1 全幅**に戻す。
+  - **Pi4 は SPA 再取得のみ**: `git pull` しない。Pi5 配信の `index-*.js` を **強制リロード**で取り込む。
+  - **先行実機**: stonebase で OK 確認後に残 Pi4×3 を展開する手順が有効。
+- **トラブルシュート**:
+  - **フォントが小さいまま** → Pi5 **`web`** ref &lt; `05ae1a70` or Pi4 未リロード
+  - **製番がクラスタ行左** → 旧 bundle（`fseibanLine` 未分割）
+  - **品名/品目コードだけ半幅で truncate** → `pairLeftColumnClass` 未適用版
+  - **PR 作成失敗（No commits between main and branch）** → リモート ref 更新後 **`fix/kiosk-leaderboard-card-layout-2`** で再作成（本番デプロイ HEAD は **`05ae1a70`**）
+
 ### 補足（2026-06-05 · **キオスク自主検査 セッション ボタンUI統一 + 操作誘導**·**Web のみ**·**Pi5 本番・実機 OK**） {#kiosk-self-inspection-session-button-ui-2026-06-05}
 
 - **変更概要（正本）**: [KB-320 §ボタンUI](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [Runbook §ボタンUI](../runbooks/kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [要件](../design-previews/kiosk-self-inspection-session-buttons-requirements.md) · ブランチ **`feat/kiosk-self-inspection-button-ui`** · 代表 **`f2b374f5`**（スタイル統一）· **`ffdaebda`**（保存/完了の青外枠）

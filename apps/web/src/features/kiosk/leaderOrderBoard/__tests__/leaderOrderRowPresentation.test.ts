@@ -29,6 +29,8 @@ describe('presentLeaderOrderRow', () => {
     const p = presentLeaderOrderRow({ ...base(), machineTypeCode: 'DAD3350' });
     expect(p.machinePartLine).toBe('DAD3350 · 立マシンA · S1 · MH001');
     expect(p.clusterSegments).toEqual(['S1', 'MH001']);
+    expect(p.fseibanLine).toBe('S1');
+    expect(p.clusterTailSegments).toEqual(['MH001']);
     expect(p.machineTypeNameLine).toBe('DAD3350 · 立マシンA');
   });
 
@@ -36,6 +38,8 @@ describe('presentLeaderOrderRow', () => {
     const p = presentLeaderOrderRow(base());
     expect(p.machinePartLine).toBe('立マシンA · S1 · MH001');
     expect(p.clusterSegments).toEqual(['S1', 'MH001']);
+    expect(p.fseibanLine).toBe('S1');
+    expect(p.clusterTailSegments).toEqual(['MH001']);
     expect(p.machineTypeNameLine).toBe('立マシンA');
   });
 
@@ -44,6 +48,8 @@ describe('presentLeaderOrderRow', () => {
     const p = presentLeaderOrderRow(row);
     expect(p.machinePartLine).toBe('S1');
     expect(p.clusterSegments).toEqual(['S1']);
+    expect(p.fseibanLine).toBe('S1');
+    expect(p.clusterTailSegments).toEqual([]);
     expect(p.machineTypeNameLine).toBe('');
   });
 
@@ -53,6 +59,8 @@ describe('presentLeaderOrderRow', () => {
     expect(p.machinePartLine).toBe('');
     expect(p.machinePartLine).not.toContain('P99');
     expect(p.clusterSegments).toEqual([]);
+    expect(p.fseibanLine).toBe('');
+    expect(p.clusterTailSegments).toEqual([]);
     expect(p.machineTypeNameLine).toBe('');
   });
 
@@ -70,6 +78,19 @@ describe('presentLeaderOrderRow', () => {
   it('customer line is trimmed customerName when present', () => {
     expect(presentLeaderOrderRow(base()).customerLine).toBe('');
     expect(presentLeaderOrderRow({ ...base(), customerName: '  ACME  ' }).customerLine).toBe('ACME');
+  });
+
+  it('splits fseiban from cluster tail for card row layout', () => {
+    const p = presentLeaderOrderRow({ ...base(), fseiban: 'BA1', fhincd: 'MH99' });
+    expect(p.fseibanLine).toBe('BA1');
+    expect(p.clusterTailSegments).toEqual(['MH99']);
+    expect(p.clusterSegments).toEqual(['BA1', 'MH99']);
+  });
+
+  it('cluster tail is fhincd only when fseiban empty', () => {
+    const p = presentLeaderOrderRow({ ...base(), fseiban: '', fhincd: 'MH99' });
+    expect(p.fseibanLine).toBe('');
+    expect(p.clusterTailSegments).toEqual(['MH99']);
   });
 
   it('formats quantity inline Japanese suffix', () => {

@@ -2933,9 +2933,69 @@ category: knowledge-base
 - **ナレッジ（正本）**: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[deployment.md](../guides/deployment.md)（2026-05-07 · カード単位項）。
 - **トラブルシュート**: 挙動が **全カード同一製番に偏る**ときは **API が旧版**（一括＋常時展開）の疑い。**Network** で shell の **クエリ `resourceCds`** が **単一 CD**か確認。続き・失効は [KB-369](./KB-369-leader-order-board-api-internal-latency.md) の **snapshot / cursor** 項を参照。
 
-### Leader order resource card: preview alignment (2026-04-17)
+### Leader order board: card row emphasis layout (2026-06-05) {#leader-order-board-card-row-emphasis-layout-2026-06-05}
+
+- **目的**: **カード外寸を維持**したまま、現場からの可読性要望に応じ **納期・品名・製番・機種名**のフォントを拡大し、横余白を **2 列レイアウト**で活用する。**Web のみ** · API/Prisma 不変 · **サイネージ JPEG**（`kiosk_leader_order_cards`）は **別レンダラのため対象外**。
+- **ブランチ / PR**: **`fix/kiosk-leaderboard-card-layout-2`** · [PR #390](https://github.com/denkoushi/RaspberryPiSystem_002/pull/390) · 代表コミット **`05ae1a70`**（`fix(kiosk): refine leaderboard card row emphasis layout`）。
+- **仕様（フォント・レイアウト）**:
+  | 要素 | 変更前（目安） | 変更後 | 備考 |
+  |------|----------------|--------|------|
+  | 納期 | `text-[10px]` | **`text-[20px]`** | 2 倍 |
+  | 品名 | `text-[11px]` 相当 | **`text-[16.5px]`** | 1.5 倍 |
+  | 製番（`fseiban`） | クラスタ行内 | **品名行の右** · **`text-[16.5px]`** | `font-mono` · semibold |
+  | 機種名 | `text-[11px]` 相当 | **`text-[16.5px]`** | |
+  | クラスタ行 | 製番+品目+個数 | **品目コード+個数のみ** | 製番は上表どおり分離 |
+  | 顧客名 | `text-[11px]` | **変更なし** | クラスタ行右 |
+  | 資源CDヘッダ | 15px / 12px | **変更なし** | `LeaderOrderResourceCard` |
+  | カード外寸 | — | **変更なし** | 現場合意 |
+  - **2 列幅（`pairLeftColumnClass`）**: 右側要素（顧客名 / 製番）が **あるときのみ** 左 **`max-w-[50%] flex-[0_0_50%]`** · **単独時は `flex-1` 全幅**。常時 50% 固定は **品目コード半幅・品名 truncate** の回帰源だったため却下。
+- **Presentation 契約（[`leaderOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）**:
+  - **`fseibanLine`**: 品名行右に出す製番（trim 済み・空なら非表示）。
+  - **`clusterTailSegments`**: クラスタ行用（**`fhincd` のみ** · 製番は含めない）。
+  - **`clusterSegments`**: **`@deprecated`** — 後方互換（製番+品目の旧配列）。**新規表示は `fseibanLine` + `clusterTailSegments` を使う**。
+  - **却下パターン**: component 側で `clusterSegments[0]` と `row.fseiban` を比較して製番を剥がす（presentation 変更時に重複/欠落しやすい）。
+- **その他実装**:
+  - [`LeaderOrderResourceRow.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx) — 行 JSX・2 列グループ（`cluster-customer-row` / `part-fseiban-row`）。
+  - [`leaderBoardRefetchPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy.ts) — **`LEADER_BOARD_ROW_ESTIMATE_PX` 80→96**（行高増に追随）。
+  - [`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html) — **本番相当プレビュー**（React と同期）。途中案 **`kiosk-rank-board-card-font-size-proposal-preview.html`** は **削除**（14px/13px 等の誤導線防止）。
+- **設計経緯（要約）**:
+  1. **v1（+1px）**: 現場フィードバックで効果不足 → 却下。
+  2. **v2–v3**: フォント拡大 + 配置変更。全幅占有で余白が逆に目立つ → 却下。
+  3. **v4**: 条件付き 50% / 単独全幅 + presentation 契約整理 → **採用**。
+- **ローカル検証**: `leaderOrderRowPresentation.test.ts` **10 passed**（`fseibanLine` / `clusterTailSegments` 分割含む）· web lint · tsc · build OK。
+- **CI**: GitHub Actions **`26993180248`** **success**（`05ae1a70` push 後 · lint-build-unit / security-docker / api-db-and-infra / e2e 全ジョブ）。
+- **本番デプロイ（2026-06-05 · 標準 `update-all-clients.sh` · `--limit` 1 台ずつ）**:
+  - **手順**: [deployment.md §2026-06-05 カード行強調](../guides/deployment.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05) · **`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`** · **`--detach --follow`**。
+  - **順序**: **`raspberrypi5`** → **`raspi4-kensaku-stonebase01`（先行実機 OK）** → **`raspberrypi4`** → **`raspi4-robodrill01`** → **`raspi4-fjv60-80`**。**Pi3 除外**。
+  - **Detach Run ID**（接頭辞 `ansible-update-`）:
+
+    | ホスト | Run ID | PLAY RECAP |
+    |--------|--------|------------|
+    | `raspberrypi5` | **`20260605-123252-7617`** | **`ok=134` `changed=4` `failed=0`** |
+    | `raspi4-kensaku-stonebase01` | **`20260605-123929-3009`** | **`ok=129` `changed=11` `failed=0`** |
+    | `raspberrypi4` | **`20260605-124846-14986`** | **`ok=122` `changed=10` `failed=0`** |
+    | `raspi4-robodrill01` | **`20260605-125308-28951`** | **`ok=122` `changed=9` `failed=0`** |
+    | `raspi4-fjv60-80` | **`20260605-125638-9078`** | **`ok=122` `changed=9` `failed=0`** |
+
+  - **Pi5 web バンドル**: `index-DvR9H4yG.js`（`text-[20px]` · `fseibanLine` · `clusterTailSegments` 含有確認済み）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 後約 **29s** · 全台後約 **25s**）。
+- **知見**:
+  - **可読性と外寸のトレードオフ**はフォント+内部再配置で解決可能（外寸固定が現場要件のとき有効）。
+  - **Presentation 境界に分割ロジックを置く**と、UI レイアウト変更がデータ契約と一緒に追跡できる。
+  - **仮想化見積もり**（`LEADER_BOARD_ROW_ESTIMATE_PX`）はフォント変更時に忘れやすい — 行高が増えたら更新必須。
+  - **Pi4 先行 1 台実機 OK → 残展開**は、Web-only 変更のリスク低減に有効（本件 stonebase 先行）。
+- **トラブルシュート**:
+  - **フォントが旧サイズ** → Pi5 `docker-web-1` の `/srv/site/assets/index-*.js` が **`05ae1a70` ビルドか** · Pi4 **強制リロード**（§6.6.4）。
+  - **製番がクラスタ左に残る** → `fseibanLine` 未デプロイ（旧 `clusterSegments` 表示）。
+  - **品名だけ半幅で切れる** → 製番が空なのに左 50% 固定 — **`pairLeftColumnClass(false)`** 版へ。
+  - **プレビュー HTML と本番が不一致** → 正本は **`kiosk-rank-board-card-single-preview.html` のみ**（proposal ファイルは削除済み）。
+  - **PR #390 作成時 `No commits between main and branch`** → リモート ref 不整合 — **`fix/kiosk-leaderboard-card-layout-2`** で再 push/PR（デプロイ HEAD **`05ae1a70`**）。
+- **参照**: [deployment §2026-06-05](../guides/deployment.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05) · [verification-checklist §6.6.30](../guides/verification-checklist.md#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05) · [§preview alignment（2026-04-17）](#leader-order-resource-card-preview-alignment-2026-04-17)（前身レイアウト） · [`EXEC_PLAN.md`](../../EXEC_PLAN.md) Progress 先頭項。
+
+### Leader order resource card: preview alignment (2026-04-17) {#leader-order-resource-card-preview-alignment-2026-04-17}
 
 - **目的**: レビュー済み静的プレビュー（[`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html)）と **キオスク順位ボードの資源カード**（`LeaderOrderResourceCard`・[`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）の **表示順・クラスタ行・個数色・完了ボタン（白系）・備考ありの鉛筆強調**を揃える。**Web のみ**・API 契約は不変。
+- **後続（2026-06-05）**: フォント拡大・製番右配置・2 列幅 — [§カード行強調（2026-06-05）](#leader-order-board-card-row-emphasis-layout-2026-06-05)。
 - **仕様（要約）**:
   - **クラスタ行**: `clusterSegments`（製番・品目コード・個数）を中黒区切りで 1 行（`LeaderOrderRowClusterLine`）。
   - **表示順**: クラスタブロック → 品名 → `machineTypeNameLine`（機種記号·機種名）。従来の **`machinePartLine`** は後方互換のため維持。
