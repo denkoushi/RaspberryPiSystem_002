@@ -167,7 +167,8 @@ update-frequency: medium
 - **2026-06-05（夜）**: **Discord write E2E 完結** — `yes` が **Interrupting current task** に吸われる問題を、**channel 承認キー**（repo）+ **Hermes `gateway/platforms/base.py` hotfix**（Pi5 実機）で解消。正本 [KB D5 §yes 最終修正](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結)。
 - **2026-06-05（引き継ぎ整理）**: **`/task` 安全枠を明文化** — `allowed_task_classes` / `deferred_task_classes` と regex deny を `task-bridge.policy.yaml` に追加。Codex/Cursor 使役、git、deploy、terminal、秘密読取、tailnet scan は **D6+ 専用 worker profile 設計まで deferred**。
 - **2026-06-05（D6-pre 開始）**: **普段遣いパイロットを追加** — `daily-pilot.policy.yaml` と [ExecPlan](./private-pi5-hermes-daily-pilot-execplan.md)。Hermes は Spark LocalAI を使う進行係として、Cursor 指示書・Codex レビュー依頼・CI/Deploy チェックリストの Markdown 作成だけを行う。Cursor/Codex CLI 自動実行はまだ禁止。
-- **2026-06-05（D6-pre `/daily` repo 実装）**: Discord plugin に **`/daily`** を追加。`private_pi5_hermes_daily_pilot_enabled: true` の時だけ `daily-pilot.policy.yaml` を配備し、Markdown-only の handoff を返す。Ansible verify は `/daily` 登録・許可入力・拒否入力を smoke する。実機デプロイは次工程。
+- **2026-06-05（D6-pre `/daily` repo 実装）**: Discord plugin に **`/daily`** を追加。`private_pi5_hermes_daily_pilot_enabled: true` の時だけ `daily-pilot.policy.yaml` を配備し、Markdown-only の handoff を返す。Ansible verify は `/daily` 登録・許可入力・拒否入力を smoke する。
+- **2026-06-06（D6-pre 私用 Pi5 実機検証完了）**: Discord 安全/危険プロンプト E2E OK。**policy regex 修正**（`git pushして` 拒否 · Cursor 文案の誤拒否解消）。初回は手動最小配置 → **Ansible 収束・Discord command sync** が次運用タスク。正本 [KB daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md)。
 
 ## 実装構成（repo・境界）
 
