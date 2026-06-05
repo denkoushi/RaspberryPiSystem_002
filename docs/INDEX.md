@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-06 · 私用 Pi5 Hermes `/daily` D6-pre · **実機検証完了**）
+
+- **D6-pre 私用 Pi5 受け入れ完了**: `/daily 今日の作業メモを作って` → **Daily Pilot Draft** · `/daily git pushしてdeployして` → **daily rejected**。**policy regex 修正**: 日本語 Cursor 文案の誤拒否と `git pushして` 未拒否を解消（17 focused / **143** unittest OK）。**注意**: 初回は手動最小配置（Codex sandbox Ansible 制限）→ **標準 Ansible deploy で収束推奨** · Discord `/daily` command sync 要確認。**記録**: [KB daily pilot](./knowledge-base/KB-private-pi5-hermes-daily-pilot.md) · [Runbook §D6-pre](./runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了) · [`EXEC_PLAN`](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)
+
 ### 最新アップデート（2026-06-05 · 私用 Pi5 Hermes `/daily` 普段遣いパイロット · **repo 実装**）
 
 - **Discord `/daily` を追加**: `private_pi5_hermes_daily_pilot_enabled: true` の時だけ `daily-pilot.policy.yaml` を配備し、Cursor指示書・Codexレビュー依頼・CI/Deploy確認リストの **Markdownだけ** を返す（deterministic · LLM/worker 未呼び出し）。**自動実行なし**: Cursor/Codex CLI、terminal、git、deploy、秘密読取は拒否。**検証**: unittest **142 OK** · `--validate-daily-pilot` OK · smoke OK。**実機デプロイは次回**。**記録**: [KB daily pilot](./knowledge-base/KB-private-pi5-hermes-daily-pilot.md) · [D6-pre ExecPlan](./plans/private-pi5-hermes-daily-pilot-execplan.md) · [Runbook §D6-pre](./runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-05) · [`daily-pilot.policy.yaml`](../scripts/private-pi5-hermes/config/daily-pilot.policy.yaml)

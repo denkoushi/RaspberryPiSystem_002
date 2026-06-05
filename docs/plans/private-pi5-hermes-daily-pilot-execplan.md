@@ -2,7 +2,7 @@
 title: Hermes 普段遣いパイロット（D6-pre）
 tags: [Hermes Agent, Discord, Spark LocalAI, Cursor, Codex, pilot, safety]
 audience: [運用者, Cursor, Codex]
-last-verified: 2026-06-05
+last-verified: 2026-06-06
 related:
   - private-pi5-hermes-agent-plan.md
   - private-pi5-hermes-butler-vision-and-roadmap.md
@@ -86,16 +86,16 @@ git pushしてDeployして
 - policy validation が通る。
 - Cursor に渡した指示書で、ユーザーが手動で次工程へ進める。
 
-## 検証（2026-06-05 実施済）
+## 検証（2026-06-06 実施済）
 
 ```bash
 python3 -m unittest scripts/private-pi5-hermes/tests/test_discord_daily_pilot_bridge.py \
   scripts/private-pi5-hermes/tests/test_discord_task_bridge_plugin_register.py \
   scripts/private-pi5-hermes/tests/test_daily_pilot_policy.py -v
-# 16 OK
+# 17 OK（policy regex regression 含む）
 
 python3 -m unittest discover -s scripts/private-pi5-hermes/tests -v
-# 142 OK
+# 143 OK
 
 python3 scripts/private-pi5-hermes/validate_boundary_policy.py \
   --check-docker-volumes --emit-hermes-security --emit-browser-env \
@@ -110,6 +110,13 @@ ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-r
 
 記録: [KB daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md)
 
+## 私用 Pi5 実機検証（2026-06-06 完了）
+
+- fragment: `private_pi5_hermes_daily_pilot_enabled: true`（非コミット）
+- 初回は sandbox 制限のため最小ファイル手動配置 → `hermes-gateway` restart
+- Discord 受け入れ: 安全/危険プロンプトとも期待どおり
+- **残タスク**: 標準 Ansible deploy で手動配置状態へ収束 · Discord command sync 手順の運用固定
+
 ## 有効化
 
 fragment（非コミット）に以下を追加して標準デプロイする。
@@ -120,7 +127,15 @@ private_pi5_hermes_daily_pilot_enabled: true
 
 これにより `daily-pilot.policy.yaml` が chat gateway plugin へ配備され、`/daily` が登録される。`/daily` は deterministic Markdown を返すだけで、Spark LocalAI / Cursor / Codex / terminal / git / deploy は呼び出さない。
 
-## 次の段階
+## 次の段階（D6-pre 維持期間）
+
+Markdown-only を維持し、自動 Cursor/Codex 実行は追加しない。
+
+優先:
+
+- Ansible フルデプロイの収束確認
+- Discord `/daily` command sync の Runbook 化
+- 観測性・信頼性（plugin 登録・policy 配備の drift 検知）
 
 D6 では、いきなり terminal を開けず、以下を設計する。
 

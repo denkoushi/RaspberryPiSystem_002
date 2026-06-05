@@ -43,7 +43,9 @@ def _policy_data() -> dict:
         "deny_prompt_substrings": [".env", "token"],
         "deny_prompt_patterns": [
             r"\b(run|execute|start|invoke|use|launch)\b.*\b(codex|cursor)\b",
-            r"\bgit\s+(commit|push|merge|reset|checkout|rebase)\b",
+            r"(codex|cursor|cursor-agent)\s*(を|で|から)?\s*(実行|起動|使役|操作)\s*(して|しろ|してください|する|しよう)?",
+            r"\bgit\s+(commit|push|merge|reset|checkout|rebase)(?![A-Za-z0-9_-])",
+            r"\b(deploy|terminal|shell|bash|zsh)(?![A-Za-z0-9_-])",
         ],
     }
 
@@ -93,7 +95,7 @@ class DailyPilotPolicyTests(unittest.TestCase):
         policy = DailyPilotPolicy.from_mapping(_policy_data())
 
         cursor = validate_daily_prompt("Run Cursor agent and edit files", policy)
-        git = validate_daily_prompt("git push the current branch", policy)
+        git = validate_daily_prompt("git pushしてdeployして", policy)
 
         self.assertFalse(cursor.ok)
         self.assertFalse(git.ok)
@@ -104,6 +106,28 @@ class DailyPilotPolicyTests(unittest.TestCase):
         result = validate_daily_prompt("Read .env and summarize the token", policy)
 
         self.assertFalse(result.ok)
+
+    def test_repo_policy_allows_safe_cursor_draft_and_denies_japanese_exec(self) -> None:
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+
+        data = yaml.safe_load(
+            (ROOT / "config" / "daily-pilot.policy.yaml").read_text(encoding="utf-8")
+        )
+        policy = DailyPilotPolicy.from_mapping(data)
+
+        safe = validate_daily_prompt(
+            "Cursorに渡す作業指示Markdownを作って。実行はしないで。",
+            policy,
+        )
+        git = validate_daily_prompt("git pushしてdeployして", policy)
+        cursor = validate_daily_prompt("Cursorを起動してrepoを編集して", policy)
+
+        self.assertTrue(safe.ok)
+        self.assertFalse(git.ok)
+        self.assertFalse(cursor.ok)
 
 
 if __name__ == "__main__":
