@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-05 夜 · 私用 Pi5 Hermes `/task` write E2E · **Discord 受け入れ完了**）
+
+- **承認 `yes` が割り込みに吸われる問題を解消**: repo は **`channel:<channel_id>` 承認キー** + plugin hook 強化 · Pi5 実機は Hermes **`gateway/platforms/base.py` hotfix**（承認短文本を interrupt より先に `pre_gateway_dispatch` へ）。**E2E**: `/task Create test-20260605-2.txt …` → `yes` → workspace 作成 OK · unittest **129 OK**。**記録**: [KB D5 §yes 最終修正](./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) · [Runbook §base.py hotfix](./runbooks/private-pi5-hermes-deploy.md#hermes-agent-本体-hotfix承認-yes-の割り込み回避2026-06-05) · [`EXEC_PLAN`](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)
+
 ### 最新アップデート（2026-06-05 · 私用 Pi5 Hermes `/task` 復旧 · **repo + 実機 hotfix 済**）
 
 - **二段障害の復旧**: (1) Discord 承認通知 **`403` / Cloudflare `1010`** → [`discord_relay.py`](../scripts/private-pi5-hermes/lib/approval_relay/discord_relay.py) に **Bot User-Agent** · (2) DGX blue 27B 起動失敗 → **`/v1/models` 502** → snapshot path · **`gpu-memory-utilization 0.65`** · **`language_model_only`**（secret は Git 禁止、example/runbook/KB のみ）。**検証**: unittest **127 OK** · smoke OK · Pi5 read-only `/task` 相当 OK · Discord write E2E **手動推奨**。**記録**: [KB D5 §2026-06-05](./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) · [KB `/task` blue 502](./knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05) · [Hermes Runbook](./runbooks/private-pi5-hermes-deploy.md#本番復旧--task-二段障害2026-06-05) · [dgx Runbook](./runbooks/dgx-system-prod-local-llm.md) · [`EXEC_PLAN`](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)

@@ -31,11 +31,13 @@ try:
     from .approval_relay.discord_relay import parse_task_approve_args
     from .approval_relay.gateway_actor_context import stash_from_message_source
     from .approval_relay.models import ApprovalChoice
+    from .approval_relay.session_context import approval_actor_ids
 except ImportError:
     from approval_relay.coordinator import DiscordApprovalRelayCoordinator, read_gateway_session_context
     from approval_relay.discord_relay import parse_task_approve_args
     from approval_relay.gateway_actor_context import stash_from_message_source
     from approval_relay.models import ApprovalChoice
+    from approval_relay.session_context import approval_actor_ids
 
 _COORDINATOR: DiscordApprovalRelayCoordinator | None = None
 _COORDINATOR_STORE_DIR: str = ""
@@ -93,13 +95,16 @@ async def _handle_task_approve(raw_args: str) -> str:
     coord = _coordinator()
     if coord is None:
         return "task approval relay is disabled"
-    user_id, _ = read_gateway_session_context()
-    if not user_id:
+    user_id, channel_id = read_gateway_session_context()
+    actors = approval_actor_ids(user_id, channel_id)
+    if not actors:
         return "could not resolve Discord user for approval"
     choice = parse_task_approve_args(raw_args)
-    ok, message = coord.resolve_for_user(user_id, choice)
-    if ok or "承認期限切れ" in message:
-        return message
+    message = "no active /task awaiting approval"
+    for actor_id in actors:
+        ok, message = coord.resolve_for_user(actor_id, choice)
+        if ok or "承認期限切れ" in message:
+            return message
     return f"task approve failed: {message}"
 
 
@@ -107,12 +112,15 @@ async def _handle_task_deny(_raw_args: str) -> str:
     coord = _coordinator()
     if coord is None:
         return "task approval relay is disabled"
-    user_id, _ = read_gateway_session_context()
-    if not user_id:
+    user_id, channel_id = read_gateway_session_context()
+    actors = approval_actor_ids(user_id, channel_id)
+    if not actors:
         return "could not resolve Discord user for denial"
-    ok, message = coord.resolve_for_user(user_id, ApprovalChoice.DENY)
-    if ok or "承認期限切れ" in message:
-        return message
+    message = "no active /task awaiting approval"
+    for actor_id in actors:
+        ok, message = coord.resolve_for_user(actor_id, ApprovalChoice.DENY)
+        if ok or "承認期限切れ" in message:
+            return message
     return f"task deny failed: {message}"
 
 
@@ -127,12 +135,21 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
     if coord is None:
         return None
     user_id = str(getattr(source, "user_id", "") or "").strip()
-    if not user_id:
-        user_id, _channel_id = read_gateway_session_context()
+    channel_id = str(getattr(source, "chat_id", "") or "").strip()
+    if not channel_id:
+        channel_id = str(getattr(source, "thread_id", "") or "").strip()
+    if not user_id or not channel_id:
+        fallback_user_id, fallback_channel_id = read_gateway_session_context()
+        user_id = user_id or fallback_user_id
+        channel_id = channel_id or fallback_channel_id
     text = str(getattr(event, "text", "") or "").strip()
-    if not user_id or not text or text.startswith("/"):
+    if not text or text.startswith("/"):
         return None
-    resolved = coord.try_resolve_text(user_id, text)
+    resolved = None
+    for actor_id in approval_actor_ids(user_id, channel_id):
+        resolved = coord.try_resolve_text(actor_id, text)
+        if resolved is not None:
+            break
     if resolved is None:
         return None
     ok, message = resolved

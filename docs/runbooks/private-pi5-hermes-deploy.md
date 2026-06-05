@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-06-05（`/task` 復旧 — Discord 承認通知 1010 + DGX blue 502 · Runbook 追記）
+最終更新: 2026-06-05（`/task` write E2E 完結 — 承認 `yes` ルーティング + Hermes 本体 hotfix · Runbook 追記）
 
 ## 運用状態サマリ（2026-05-24 時点）
 
@@ -550,6 +550,53 @@ python3 -m unittest discover -s scripts/private-pi5-hermes/tests -v
 
 **記録**: [KB D5 §2026-06-05 復旧](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) · [KB `/task` blue 502](../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05)。
 
+### 本番復旧 — 承認 `yes` ルーティング（2026-06-05 夜 · Discord write E2E 完結）
+
+**症状**: 承認プロンプト後に `yes` → **`⚡ Interrupting current task...`** · ファイル未作成。
+
+**Fix（2 層）**:
+
+| 層 | 内容 |
+|----|------|
+| **repo（plugin）** | `approval_actor_ids` — user キー + **`channel:<id>`** フォールバック · `discord_task_bridge` / plugin hook 更新 |
+| **Pi5 hotfix（Hermes 本体）** | `~/.hermes/hermes-agent/gateway/platforms/base.py` — 承認短文本を interrupt より先に `pre_gateway_dispatch` へ |
+
+**受け入れ（実機 E2E）**:
+
+```text
+/task Create test-20260605-2.txt in workspace with content ok -- write
+yes
+→ ファイルを作成しました：/workspace/test-20260605-2.txt、内容は ok
+```
+
+**検証**:
+
+```bash
+python3 -m unittest discover -s scripts/private-pi5-hermes/tests -v   # 129 OK
+./scripts/private-pi5-hermes/verify-discord-task-bridge-smoke.sh
+```
+
+**記録**: [KB D5 §承認 yes 最終修正](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結)
+
+#### Hermes Agent 本体 hotfix（承認 `yes` の割り込み回避 · 2026-06-05）
+
+**対象ファイル（Pi5 · `hermes` ユーザー）**:
+
+```text
+/home/hermes/.hermes/hermes-agent/gateway/platforms/base.py
+```
+
+**目的**: tools 実行中セッションで `yes` / `no` が **busy/interrupt** に吸われず、plugin `pre_gateway_dispatch` で `{"action": "skip"}` として承認解決できるようにする。
+
+**承認として先送りする短文本（例）**: `yes` `no` `approve` `deny` `ok` `go` `once` `session` `always` `cancel` 等（実機 hotfix 参照）。
+
+**反映後**: `systemctl restart hermes-gateway` · 古い `~/.hermes/task-bridge/approvals/*` を必要ならクリア。
+
+**再発防止**:
+
+- **Hermes 再 install / アップデート後**に hotfix が消えていないか確認（`grep -n pre_gateway_dispatch` 等）。
+- repo デプロイだけでは **本体 hotfix は再適用されない** — 消えた場合は同 patch を再投入するか、Ansible で patch 管理を検討。
+
 正本: [Phase D5 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) · [ADR D5](../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md)。
 
 ## Novel profile — Discord `/novel`（長文創作 · 2026-05-29）
@@ -716,6 +763,8 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | 承認通知 **`403` / `error code: 1010`** | `discord_relay.py` が **`urllib` 既定 UA** で Cloudflare 拒否 | repo の **`DiscordBot` User-Agent** をデプロイ · gateway restart · [KB D5 §2026-06-05](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) |
 | `/task` 無応答 · DGX **`/v1/models` 502** | blue **27B vLLM 未起動**（HF metadata / GPU mem / vision ロード） | DGX `control-server.env` · snapshot path · **`0.65`** · **`language_model_only`** · [dgx Runbook §blue 502](./dgx-system-prod-local-llm.md#トラブルシュート--blue-backend-起動失敗--v1models-5022026-06-05) |
 | `/v1/models` が起動中 **`Connection reset by peer`** | vLLM 初回 compile/autotune 中 | **container 生存なら数分待つ** — [KB D5 §2026-06-05](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) |
+| `yes` 後に **`Interrupting current task`** | Hermes 本体が **busy/interrupt を plugin hook より先**に処理 | Pi5 **`gateway/platforms/base.py` hotfix** + plugin channel キー · [KB §yes 最終修正](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) |
+| 承認プロンプトは来るが `yes` 無効（interrupt なし） | `user_id` bind 失敗 | repo **`channel:<channel_id>`** フォールバックをデプロイ · `approval_actor_ids` テスト |
 
 ## ロールバック
 

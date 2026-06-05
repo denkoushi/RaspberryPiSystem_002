@@ -398,7 +398,7 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | **smoke** | `./scripts/private-pi5-hermes/verify-discord-task-bridge-smoke.sh` | **OK** |
 | **Pi5 systemd** | `hermes-gateway` / `hermes-tools-gateway` | **active** |
 | **Pi5 直接 `/task` 相当** | `List files in workspace`（read-only） | **成功** — workspace 5 件列挙 |
-| **Discord UI E2E** | `/task` write → 承認 → `yes` | **手動確認推奨**（エージェントから Discord 操作不可） |
+| **Discord UI E2E（write）** | `/task` write → 承認 → `yes` | **未完了**（下記 §承認 `yes` 最終修正 まで） |
 
 ### Prevention
 
@@ -412,6 +412,87 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 
 - **`0.65`**: 27B 起動安定優先。同時処理余力・長文は `0.85` より下がり得るが、実機では `0.85` だと **起動失敗**し Hermes `/task` が復旧不能だった。
 - **runner 直呼び write gate smoke**（`verify-tool-write-approval-gate-pi5.sh`）は **別経路** — 本 Fix 後も **FAIL のまま既知**（Discord `/task` → `run_tools_profile_prompt` 経路で受け入れ）。
+
+## 本番復旧 — 承認 `yes` が割り込みに吸われる（2026-06-05 夜 · Discord write E2E 完結）
+
+**背景**: §二段障害（1010 + DGX 502）復旧後、Discord 上で write `/task` は **承認通知まで届く**が、ユーザーが **`yes`** と返すと **`⚡ Interrupting current task...`** となり、ファイルが作成されない事象が残っていた。
+
+### 症状（Discord UI）
+
+```text
+/task Create test-20260605-2.txt in workspace with content ok -- write
+（承認プロンプト表示）
+yes
+⚡ Interrupting current task. I'll respond to your message shortly.
+```
+
+- 承認通知は届く（§1010 Fix 後）
+- `yes` は **承認として解決されず**、タスクは承認待ちのまま
+
+### Investigation
+
+| 仮説 | 検証 | 結果 |
+|------|------|------|
+| `by-user/` 未作成（actor bind 失敗） | approvals ディレクトリ | **部分** — 状況により `user_id` が空で bind できないケースあり |
+| `pre_gateway_dispatch` が `yes` を処理していない | plugin hook ログ | **CONFIRMED** — 実行中セッションでは **busy/interrupt が hook より先** |
+| チャンネル単位の承認キー不足 | task bind が raw `user_id` のみ | **CONFIRMED** — `user_id` 欠落時に active task を解決できない |
+
+**根本原因（2 段）**:
+
+1. **承認キーが user_id のみ** — gateway から `user_id` が取れないとき、pending task と `yes` を紐づけられない。
+2. **Hermes 本体の busy/interrupt 先行** — 同一セッションで tools 実行中に通常テキストが来ると、platform adapter が **割り込み**として処理し、plugin の `pre_gateway_dispatch` に届かない。
+
+### Fix
+
+#### A. repo（plugin / approval relay）
+
+| モジュール | 変更 |
+|-----------|------|
+| [`session_context.py`](../../scripts/private-pi5-hermes/lib/approval_relay/session_context.py) | `approval_channel_actor_id` · `approval_actor_ids` · `primary_approval_actor_id` — **`channel:<channel_id>`** フォールバック |
+| [`discord_task_bridge.py`](../../scripts/private-pi5-hermes/lib/discord_task_bridge.py) | `new_task_context(discord_user_id=primary_approval_actor_id(...))` |
+| [`discord_task_bridge_plugin.py`](../../scripts/private-pi5-hermes/lib/discord_task_bridge_plugin.py) | `/task-approve` · `/task-deny` · `pre_gateway_dispatch` で **user キー → channel キー**の順に解決 · `chat_id` 空時は `thread_id` |
+
+**承認キー解決順**:
+
+1. `user_id`（取れる場合）
+2. `channel:<channel_id>`（user が空または不一致時のフォールバック）
+
+**テスト**: [`test_session_context.py`](../../scripts/private-pi5-hermes/tests/test_session_context.py) · [`test_approval_relay_coordinator.py`](../../scripts/private-pi5-hermes/tests/test_approval_relay_coordinator.py)（channel bind + `yes` → `{"action": "skip"}`）
+
+#### B. Pi5 実機 hotfix（Hermes Agent 本体 · **本 repo 外**）
+
+| 項目 | 内容 |
+|------|------|
+| **パス** | `/home/hermes/.hermes/hermes-agent/gateway/platforms/base.py` |
+| **内容** | active session 中でも、承認用短文本（`yes` / `no` / `approve` / `deny` 等）は **busy/interrupt より先**に `pre_gateway_dispatch` を呼ぶ |
+| **hook 戻り** | `{"action": "skip"}` なら通常会話へ流さない |
+| **対象テキスト** | `yes,y,approve,ok,go,once,o` · `session,s,always,a` · `no,n,deny,d,cancel` |
+
+**注意**: Hermes 公式 install 更新で **上書きされ得る**。恒久化は upstream / fork / Ansible patch のいずれかが必要（[Runbook §Hermes base.py hotfix](../runbooks/private-pi5-hermes-deploy.md#hermes-agent-本体-hotfix承認-yes-の割り込み回避2026-06-05)）。
+
+### 実機反映（2026-06-05 夜）
+
+| 配置 | 状態 |
+|------|------|
+| plugin: `session_context.py` · `discord_task_bridge.py` · `__init__.py` | **反映済** |
+| Hermes 本体 `gateway/platforms/base.py` | **hotfix 反映済** |
+| `hermes-gateway` | **restart 済 · active** |
+| 古い承認待ちファイル | **クリア済** |
+
+### 検証結果
+
+| 層 | 結果 |
+|----|------|
+| unittest | **129 OK** |
+| `verify-discord-task-bridge-smoke.sh` | **OK** |
+| **Discord write E2E** | **PASS** — `/task Create test-20260605-2.txt …` → `yes` → `ファイルを作成しました：/workspace/test-20260605-2.txt、内容は ok` |
+
+### Prevention
+
+- write E2E 受け入れは **Discord UI** で実施（`yes` が interrupt にならないこと）。
+- `user_id` 解決に依存しすぎない — **channel フォールバック**を維持。
+- Hermes Agent **バージョンアップ後**は `base.py` hotfix の有無を Runbook 手順で確認。
+- 再発時ログ: `Interrupting current task` と同時刻の `yes` → **本体 hotfix 欠落**を疑う。
 
 ## References
 
