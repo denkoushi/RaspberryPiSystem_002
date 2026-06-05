@@ -2,13 +2,54 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-06-04
+last-verified: 2026-06-05
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-06-05 · **キオスク自主検査 セッション ボタンUI統一 + 操作誘導**·**Web のみ**·**Pi5 本番・実機 OK**） {#kiosk-self-inspection-session-button-ui-2026-06-05}
+
+- **変更概要（正本）**: [KB-320 §ボタンUI](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [Runbook §ボタンUI](../runbooks/kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [要件](../design-previews/kiosk-self-inspection-session-buttons-requirements.md) · ブランチ **`feat/kiosk-self-inspection-button-ui`** · 代表 **`f2b374f5`**（スタイル統一）· **`ffdaebda`**（保存/完了の青外枠）
+  - **見た目のみ**: 押せる＝`bg-slate-700` + **`border-0`** · 押せない＝統一の弱い見た目（`opacity-60` / `grayscale` 禁止）。
+  - **操作誘導**: **`入力を保存`** / **`自主検査を完了`** のみ — `highlighted={saveActionState.enabled}` / `highlighted={completeActionState.enabled}` → `ring-2 ring-sky-400` + shadow。**再開・入力件チップには強調なし**。押下消灯 state なし。
+  - **活性**: [§ボタン活性](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) の `selfInspectionSessionActionState` は **変更なし**。
+  - **却下**: guided 優先ハイライト · 補助文言追加 · `selfInspectionGuidedButtonTarget` 系（未依頼差分は削除済み）。
+  - **維持**: `useSelfInspectionGuidedFocus` 等の測定点ガイド。
+  - **Prisma / API**: **変更なし**（**Web のみ** · Pi5 Docker **`web` 再ビルド**）
+- **対象ホスト（推奨順）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**。**Pi3**: 対象外
+- **標準コマンド**（`main` マージ後は第2引数 **`main`**）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-self-inspection-button-ui \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+# Pi5 OK 後、Pi4 を 1 台ずつ --limit 変更（上記順）+ 各台強制リロード（§6.6.4）
+```
+
+- **本番デプロイ（実績·2026-06-05）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 備考 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | **`20260605-105452-27065`** | **`ffdaebda`** | **`ok=134` `changed=4` `failed=0`** | `Git: changed` · **web** 再ビルド · バンドル `index-D2jVY8TP.js` に **`ring-2 ring-sky-400`** · **`border-0`** · **Pi5 目視 OK** |
+| Pi4×4 | — | — | — | **未** — Pi5 OK 後に順次 |
+
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **28s** · Tailscale）
+- **実機（手動·キオスク）**: [Runbook §ボタンUI](../runbooks/kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) 手順 1–7。Pi4 は **強制リロード**後に確認。
+- **ローカル検証**: `selfInspectionKioskTheme.test.ts` · `SelfInspectionKioskButton.test.tsx` · web lint/build OK
+- **CI**: GitHub Actions **`26990244892`** **success**（`ffdaebda` push 後 · 全ジョブ）
+- **知見**:
+  - **`highlighted` = `enabled` 直結**で操作誘導を実現。専用 hook や押下消灯は不要（現場フィードバックで採用）。
+  - **白枠廃止**（`border-0`）は全ボタン共通。青外枠は `ring` のみでレイアウトシフトなし。
+  - **将来横展開**: 他キオスク画面への同パターン展開は別機会（本デプロイは自主検査セッションのみ）。
+  - **Pi4 は SPA 再取得のみ**: `git pull` しない。Pi5 配信の `index-*.js` を **強制リロード**で取り込む。
+- **トラブルシュート**:
+  - **白枠・緑保存・シアン選択が残る** → HEAD &lt; `f2b374f5` or Pi4 未リロード
+  - **青外枠が付かない** → `enabled` が false（§ボタン活性）· HEAD &lt; `ffdaebda`
+  - **再開に青外枠** → 誤配線（本番は `highlighted` 未使用）— 再ビルド確認
+  - **デプロイ拒否** → ローカルが `origin/<branch>` より ahead（未 push）
 
 ### 補足（2026-06-04 · **キオスク自主検査 セッション操作ボタン活性**·**Web のみ**·**Pi5→Pi4×4 本番**） {#kiosk-self-inspection-session-button-actions-2026-06-04}
 

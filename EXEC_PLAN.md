@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-06-05 / **実装・CI・Pi5 本番・実機 OK · `main` マージ**) **キオスク自主検査・セッション ボタンUI統一 + 操作誘導**: ブランチ **`feat/kiosk-self-inspection-button-ui`** · **`f2b374f5`**（スタイル統一）· **`ffdaebda`**（保存/完了の `ring-sky-400` 青外枠）— `selfInspectionKioskTheme` · `SelfInspectionKioskButton` · `highlighted={enabled}` 直結 · 白枠廃止 · 未依頼 guided 誘導差分は削除。**Web のみ**。**CI**: **`26990244892`** success。**デプロイ**: Pi5 **`20260605-105452-27065`** · **`failed=0`** · Phase12 **43/0/0** · **Pi5 目視 OK**。**残**: Pi4×4 順次。**将来**: 他画面横展開は別タスク。**docs**: [KB-320 §ボタンUI](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [deployment §ボタンUI](./docs/guides/deployment.md#kiosk-self-inspection-session-button-ui-2026-06-05) · [runbook §ボタンUI](./docs/runbooks/kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [要件](./docs/design-previews/kiosk-self-inspection-session-buttons-requirements.md)。
+
 - [x] (2026-06-04 / **実装・CI・Pi5→Pi4×4 本番・Phase12 OK · `main` マージ**) **キオスク自主検査・セッション操作ボタン活性**: ブランチ **`feat/kiosk-self-inspection-button-actions`** · **`4f44dbb9`** — `selfInspectionSessionActionState`（理由コード）· `areRequiredSelfInspectionSlotsFilled` · ラベル **自主検査を完了** · 再開 `canResumeGuide` 分離 · 完了処理中 readOnly。**Web のみ**。**CI**: **`26949777126`** success。**デプロイ**: Pi5 **`20260604-205746-21197`** → Pi4×4 **`210423-13676`** / **`210915-5507`** / **`211304-30742`** / **`211651-9374`** · 各 **`failed=0`** · Phase12 **43/0/0**。**docs**: [KB-320 §ボタン活性](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) · [deployment §ボタン活性](./docs/guides/deployment.md#kiosk-self-inspection-session-button-actions-2026-06-04) · [runbook §ボタン活性](./docs/runbooks/kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04)。
 
 - [x] (2026-06-04 / **実装・CI・Pi5 実機 OK · `main` マージ**) **キオスク自主検査・ガイド polish（倍率 2.0・保存 blur 抑止）**: ブランチ **`feat/kiosk-self-inspection-guided-polish`** · **`c90647ac`**（保存後 manual・青 outline・ズーム helper）· **`fb10f0e0`**（**`SELF_INSPECTION_GUIDED_ZOOM_STEPS=4` → 2.0** · `resolveInspectionDrawingZoomFromDefaultSteps` · 保存/完了 `onPointerDownCapture` + `consumeNextBlurGuideAdvance` · `inspectionDrawingKioskUi.test.ts` · `selfInspectionSessionTestFixtures.ts`）。**Web のみ**。**CI**: **`26944967237`** success。**デプロイ**: Pi5 **`20260604-191118-31485`** · **`fb10f0e0`** · **`failed=0`** · Phase12 **43/0/0** · **Pi5 目視 OK**。**残**: Pi4×4 順次（`main` マージ後 `<ref>=main`）。**docs**: [KB-320 §ガイド polish](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · [deployment §polish](./docs/guides/deployment.md#kiosk-self-inspection-guided-zoom-2-polish-2026-06-04) · [runbook §polish](./docs/runbooks/kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04)。
@@ -2515,6 +2517,16 @@
 ---
 
 ## Next Steps????????
+
+### キオスク自主検査・ボタンUI（2026-06-05 以降） {#kiosk-self-inspection-button-ui-follow-up-2026-06-05}
+
+**状態**: **Pi5 本番・実機 OK** · **`main` マージ済** · Pi4×4 **未デプロイ**。
+
+| # | 項目 | 優先 | メモ |
+|---|------|------|------|
+| 1 | **Pi4×4 順次デプロイ** + 各台 **強制リロード**（§6.6.4）+ 目視 7 項目 | 高 | [deployment §ボタンUI](./docs/guides/deployment.md#kiosk-self-inspection-session-button-ui-2026-06-05) · `<ref>=main` |
+| 2 | **操作誘導パターンの他画面横展開**（`highlighted` = `enabled`）の対象画面選定と要件化 | 中 | 現場合意済み · ADR/要件は未作成 |
+| 3 | 検査図面ツールバー・部品計測トップ等への **テーマ共通化** が必要か判断 | 低 | 本改修スコープ外だった箇所 |
 
 ### 部品測定・運用フォロー（2026-06-03 以降） {#part-measurement-ops-follow-up-2026-06-03}
 

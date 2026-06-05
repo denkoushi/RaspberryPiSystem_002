@@ -193,14 +193,68 @@ Runbook: [§ボタン活性](../runbooks/kiosk-part-measurement.md#自主検査-
 | 配線不具合 | **REJECTED** — `onZoomLevel` → `focusRequest.zoom` は有効 |
 | **`STEPS=2` が fit+2 で 1.5 のまま** | **CONFIRMED** — `c90647ac` は helper 化のみ。実倍率変更は **`fb10f0e0`（STEPS=4）** |
 
-#### セッション ボタンUI統一（2026-06-05） {#自主検査-セッション-ボタンui統一-2026-06-05}
+#### セッション ボタンUI統一 + 操作誘導（2026-06-05） {#自主検査-セッション-ボタンui統一-2026-06-05}
 
-- **見た目のみ**（活性は §セッション操作ボタン活性 のまま）。
-- 押せる＝1形（`bg-slate-700` / `border-slate-500`）、押せない＝1形（枠・文字を弱める。`opacity-60` / `grayscale` 禁止）。
-- 切替ボタン（`1` `2` `最初`…）は色分けなし。件の判別は見出し `入力件（ラベル / 必要件数）` + 測定値パネル + `aria-pressed`。
-- 常時の amber 理由文は削除。`selfInspectionActionReasonMessage` は保存ガード・`actionError` のみ。
-- コード: [`selfInspectionKioskTheme.ts`](../../apps/web/src/features/part-measurement/selfInspectionKioskTheme.ts) · [`SelfInspectionKioskButton.tsx`](../../apps/web/src/features/part-measurement/SelfInspectionKioskButton.tsx) · 要件: [kiosk-self-inspection-session-buttons-requirements.md](../design-previews/kiosk-self-inspection-session-buttons-requirements.md)
-- ブランチ: **`feat/kiosk-self-inspection-button-ui`**（実装時点・未マージ）
+**見た目のみ**（活性判定は §セッション操作ボタン活性 のまま）。**カラーテーマによる操作誘導**は **`入力を保存`** と **`自主検査を完了`** のみ — `saveActionState.enabled` / `completeActionState.enabled` を `highlighted` に直結（専用誘導 hook なし）。
+
+##### 視覚ルール（正本）
+
+| 状態 | スタイル |
+|------|----------|
+| 押せる（全ボタン共通） | `bg-slate-700` · **`border-0`**（白枠なし）· 白文字 semibold |
+| 押せない（全ボタン共通） | 同形状 · 背景・文字を弱める · **`opacity-60` / `grayscale` / `saturate` 禁止** |
+| 操作誘導（保存・完了のみ） | `ring-2 ring-sky-400` + 青系軽い `box-shadow`（**`border` 幅は変えない** · レイアウト不変） |
+| 入力件チップ | 選択も **色変更なし**（`aria-pressed` + 見出し `入力件（…）` + 測定値パネル） |
+| 再開・ズーム等 | 青外枠 **なし** |
+
+##### 実装境界
+
+- テーマ: [`selfInspectionKioskTheme.ts`](../../apps/web/src/features/part-measurement/selfInspectionKioskTheme.ts) — `selfInspectionKioskButtonClass({ disabled?, size?, wide?, pressed?, highlighted? })`
+- コンポーネント: [`SelfInspectionKioskButton.tsx`](../../apps/web/src/features/part-measurement/SelfInspectionKioskButton.tsx) — 共通 `Button` 不使用 · 外部 `className` 禁止
+- ページ配線: `KioskSelfInspectionSessionPage.tsx` — `highlighted={saveActionState.enabled}` / `highlighted={completeActionState.enabled}`
+- ズーム: `InspectionDrawingCanvasZoomControls` — 親から `getButtonClassName` 注入時のみネイティブ `<button>`
+- 削除した常時表示: `saveActionHint` / `completeActionHint` / `resumeGuideActionHint`
+- **却下・削除した未依頼差分**: `selfInspectionGuidedButtonTarget.ts` · `useSelfInspectionGuidedButtonHighlight.ts` · `resumeGuideHighlighted` · 押下消灯の `dismiss...` — **guided 優先誘導は採用しない**
+- **維持**: `useSelfInspectionGuidedFocus` · `resolveSelfInspectionResumeGuideActionState` · `consumeNextBlurGuideAdvance` · `selfInspectionActionReasonMessage`（保存ガード・`actionError` のみ）
+
+##### 進捗・デプロイ
+
+| 項目 | 内容 |
+|------|------|
+| ブランチ | **`feat/kiosk-self-inspection-button-ui`** → **`main` マージ** |
+| 代表コミット | **`f2b374f5`**（`fix(kiosk): unify self-inspection session button styles`）· **`ffdaebda`**（`fix(kiosk): highlight self-inspection save and complete actions`） |
+| 変更種別 | **Web のみ** |
+| CI | **`26990244892`** success（lint-build-unit / security-docker / api-db-and-infra / e2e-smoke / e2e-tests） |
+| Pi5 デプロイ | Detach **`20260605-105452-27065`** · HEAD **`ffdaebda`** · **`ok=134` `changed=4` `failed=0`** · **web** 再ビルド |
+| Pi4×4 | **未** — Pi5 実機 OK 後に順次 `--limit` + 強制リロード |
+| Phase12 | **43/0/0**（約 28s · Mac / Tailscale） |
+| バンドル | `docker-web-1` `/srv/site/assets/index-D2jVY8TP.js` — `ring-2 ring-sky-400` · `border-0` · `入力を保存` · `自主検査を完了` |
+| 実機 | **Pi5 キオスク目視 OK**（白枠なし · 保存/完了のみ青外枠 · 再開に強調なし） |
+
+代表テスト: `__tests__/selfInspectionKioskTheme.test.ts` · `__tests__/SelfInspectionKioskButton.test.tsx`（ページ配線ミラー）
+
+要件: [kiosk-self-inspection-session-buttons-requirements.md](../design-previews/kiosk-self-inspection-session-buttons-requirements.md) · プレビュー: [kiosk-self-inspection-session-buttons-preview.html](../design-previews/kiosk-self-inspection-session-buttons-preview.html)
+
+Runbook: [§ボタンUI](../runbooks/kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [deployment §ボタンUI](../guides/deployment.md#kiosk-self-inspection-session-button-ui-2026-06-05)
+
+**将来**: 本パターン（`highlighted` = 既存 `enabled`）の他画面横展開は別タスク（ADR 未作成 · 要件ドキュメント §8 参照）。
+
+##### トラブルシュート（ボタンUI・操作誘導）
+
+| 症状 | 確認 | 対処 |
+|------|------|------|
+| 保存/完了に **白枠** が残る | HEAD **`f2b374f5` 以降**か · バンドルに `border-0` があるか | Pi5 再デプロイ · キオスク強制リロード |
+| 保存可能なのに **青外枠なし** | `saveActionState.enabled` が false か（dirty/全点 OK） | §ボタン活性の表で照合 · HEAD **`ffdaebda` 以降** |
+| **再開** に青外枠 | 誤って `highlighted` を渡していないか（本番は未配線） | コード差分確認 · 再ビルド |
+| Pi4 だけ旧 UI（緑保存・シアン選択等） | Pi5 HEAD · Pi4 **強制リロード** | `update-all-clients.sh` + §6.6.4 |
+| 青外枠で **レイアウトがずれる** | `ring` が `border` 幅を増やしていないか | テーマは `ring` + shadow のみ（要件どおり） |
+| CI `security-docker` Trivy 失敗 | ランナー **ディスク不足**（Pi5 SSD とは無関係） | 再実行 or インフラ確認 · 本 UI 変更とは独立 |
+
+##### 実装レビュー知見
+
+- **境界の分離**: 操作誘導は **見た目責務**（`highlighted` prop）に閉じ、活性は `selfInspectionSessionActionState` のまま — 業務順序の「次に何を押すか」判定を UI に持ち込まない。
+- **用語**: 画面文言は **「入力を保存」**（「保存ボタン」と略さない — 会話とコードの混同防止）。
+- **未依頼実装の撤回**: エージェントが先行して入れた guided 優先ハイライトはユーザー指摘で削除。以後は要件ドキュメント合意後に実装。
 
 #### 進捗・デプロイ（2026-06-04 · 初回ガイドフォーカス）
 

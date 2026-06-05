@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-05 · キオスク自主検査・セッション ボタンUI統一 + 操作誘導 · **Pi5 本番・実機 OK**）
+
+- **見た目統一**（押せる/押せない 1 形 · 白枠なし）+ **`入力を保存` / `自主検査を完了` のみ** 押せるとき **青外枠**（`highlighted` = 既存 `enabled` · 文言追加なし）。**ブランチ**: **`feat/kiosk-self-inspection-button-ui`** · **`f2b374f5`** / **`ffdaebda`** · **CI** **`26990244892`** success · **本番**: Pi5 Detach **`20260605-105452-27065`** · Phase12 **43/0/0** · **Pi5 目視 OK** · Pi4×4 **未**。**将来**: 他画面への横展開は別機会。**記録**: [deployment §ボタンUI](./guides/deployment.md#kiosk-self-inspection-session-button-ui-2026-06-05) · [KB-320 §ボタンUI](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [Runbook §ボタンUI](./runbooks/kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [要件](./design-previews/kiosk-self-inspection-session-buttons-requirements.md)
+
 ### 最新アップデート（2026-06-04 · キオスク自主検査・セッション操作ボタン活性 · **Pi5→Pi4×4 本番・Phase12 OK**）
 
 - **保存 / 自主検査を完了 / 再開**の活性を `selfInspectionSessionActionState` に集約。完了は **required slot** + 未保存ドラフトなし（公差最終は API 正本）。**ブランチ**: **`feat/kiosk-self-inspection-button-actions`** · **`4f44dbb9`** · **CI** **`26949777126`** success · **本番**: Pi5 **`20260604-205746-21197`** → Pi4×4 順次（各 `failed=0`）· Phase12 **43/0/0** · Pi3 **対象外**。**記録**: [deployment §ボタン活性](./guides/deployment.md#kiosk-self-inspection-session-button-actions-2026-06-04) · [KB-320 §ボタン活性](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) · [Runbook §ボタン活性](./runbooks/kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04)

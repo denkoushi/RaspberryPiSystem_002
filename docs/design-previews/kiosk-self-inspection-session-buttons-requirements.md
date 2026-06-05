@@ -1,6 +1,6 @@
 # キオスク自主検査セッション — ボタンUI要件
 
-**Status**: 実装中（`feat/kiosk-self-inspection-button-ui`）  
+**Status**: **Pi5 本番反映・実機 OK**（`feat/kiosk-self-inspection-button-ui` → **`main` マージ**）  
 **Preview**: [kiosk-self-inspection-session-buttons-preview.html](./kiosk-self-inspection-session-buttons-preview.html)（参照用）  
 **対象画面**: `/kiosk/part-measurement/self-inspection/sessions/:sessionId`  
 **実装**: [`selfInspectionKioskTheme.ts`](../../apps/web/src/features/part-measurement/selfInspectionKioskTheme.ts) · [`SelfInspectionKioskButton.tsx`](../../apps/web/src/features/part-measurement/SelfInspectionKioskButton.tsx) · `KioskSelfInspectionSessionPage.tsx` · `SelfInspectionSessionHeader.tsx` · `InspectionDrawingCanvasZoomControls`（`getButtonClassName`）
@@ -174,19 +174,61 @@
 
 ## 7. 検証
 
-- [ ] プレビュー HTML と本番のクラスが対応している
-- [ ] 押せるボタンがすべて同じ背景・白枠なしに見える
-- [ ] 押せないボタンが保存・完了・再開で同じ弱さ
-- [ ] `入力を保存` は `saveActionState.enabled` のときだけ青外枠
-- [ ] `自主検査を完了` は `completeActionState.enabled` のときだけ青外枠
-- [ ] `再開` は青外枠にならない
-- [ ] 青外枠の有無でボタンサイズや詰まり方が変わらない
-- [ ] 選択中入力件だけ色が変わっていない
-- [ ] Pi4 キオスクで強制リロード後目視
+- [x] プレビュー HTML と本番のクラスが対応している（`ring-2 ring-sky-400` · `border-0`）
+- [x] 押せるボタンがすべて同じ背景・白枠なしに見える（Pi5 実機 OK）
+- [x] 押せないボタンが保存・完了・再開で同じ弱さ
+- [x] `入力を保存` は `saveActionState.enabled` のときだけ青外枠
+- [x] `自主検査を完了` は `completeActionState.enabled` のときだけ青外枠
+- [x] `再開` は青外枠にならない
+- [x] 青外枠の有無でボタンサイズや詰まり方が変わらない（`ring` + shadow · `border` 幅不変）
+- [x] 選択中入力件だけ色が変わっていない
+- [ ] Pi4 キオスクで強制リロード後目視（**Pi4×4 未デプロイ** — Pi5 OK 後に順次）
+
+### ローカル自動
+
+- `selfInspectionKioskTheme.test.ts` · `SelfInspectionKioskButton.test.tsx`（ページ配線ミラー含む）
+- web lint · build OK
+
+### Pi5 バンドル（`docker exec docker-web-1`）
+
+`/srv/site/assets/index-D2jVY8TP.js` に `ring-2 ring-sky-400` · `border-0` · `入力を保存` · `自主検査を完了` を確認（Detach **`20260605-105452-27065`** · HEAD **`ffdaebda`**）。
 
 ---
 
-## 8. 参照
+## 8. 本番反映（2026-06-05）
 
-- 調査・議論: チャット（自主検査ボタン統一）
+| 項目 | 内容 |
+|------|------|
+| ブランチ | **`feat/kiosk-self-inspection-button-ui`** → **`main` マージ** |
+| 代表コミット | **`f2b374f5`**（ボタンスタイル統一）· **`ffdaebda`**（保存/完了の青外枠） |
+| 変更種別 | **Web のみ** |
+| CI | **`26990244892`** success（全ジョブ · `security-docker` 含む） |
+| Pi5 デプロイ | Detach **`20260605-105452-27065`** · HEAD **`ffdaebda`** · **`failed=0`** · **web** 再ビルド |
+| Pi4×4 | **未** — Pi5 実機 OK 後に `--limit` 1 台ずつ + 強制リロード |
+| Phase12 | **43/0/0**（約 28s · Tailscale） |
+
+**将来展開**: カラーテーマによる操作誘導（`highlighted` + `enabled` 直結）は他キオスク画面への横展開を別機会で検討（本画面のみスコープ）。
+
+---
+
+## 9. 設計判断・却下した案
+
+| 案 | 判断 | 理由 |
+|----|------|------|
+| `guided` / `resume_guide` 優先の誘導ハイライト | **却下・削除** | 未依頼実装。業務順序の優先判定を UI に持ち込まない |
+| 押下後に青外枠を消す state/hook | **却下** | 操作誘導は活性条件と同期するだけで十分 |
+| 補助文言（「次は保存」等） | **却下** | 文言追加なしの合意 |
+| 再開・入力件チップへの青外枠 | **却下** | 保存/完了のみが対象 |
+| 白枠（`border-slate-500` 等） | **廃止** | 全ボタン `border-0` で統一 |
+
+測定点ガイド（`useSelfInspectionGuidedFocus` 等）は **既存のまま維持**（本改修のスコープ外）。
+
+---
+
+## 10. 参照
+
+- 調査・議論: チャット（自主検査ボタン統一 · 操作誘導合意）
+- KB 正本: [KB-320 §ボタンUI統一](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05)
 - KB 活性: [KB-320 §セッション操作ボタン活性](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04)
+- デプロイ: [deployment §ボタンUI](../guides/deployment.md#kiosk-self-inspection-session-button-ui-2026-06-05)
+- Runbook: [§ボタンUI](../runbooks/kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05)
