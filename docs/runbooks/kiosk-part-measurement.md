@@ -291,6 +291,58 @@ cd apps/web && pnpm exec vitest run \
 
 ---
 
+## 自主検査・セッション ボタンUI統一 + 操作誘導（2026-06-05） {#自主検査-セッション-ボタンui統一-2026-06-05}
+
+正本: [KB-320 §ボタンUI](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [deployment §ボタンUI](../guides/deployment.md#kiosk-self-inspection-session-button-ui-2026-06-05) · [要件](../design-previews/kiosk-self-inspection-session-buttons-requirements.md) · ブランチ **`feat/kiosk-self-inspection-button-ui`** → **`main` マージ** · **`f2b374f5`** / **`ffdaebda`** · **Web のみ**
+
+### デプロイ（標準）
+
+1. **`main` マージ後**は第2引数 **`main`**（マージ前は `feat/kiosk-self-inspection-button-ui`）。
+2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+4. Pi5 で Phase12 `./scripts/deploy/verify-phase12-real.sh`（推奨）と、必要なら:
+
+```bash
+ssh denkon5sd02@100.106.158.2 'docker exec docker-web-1 sh -c "grep -l ring-sky-400 /srv/site/assets/*.js"'
+```
+
+5. Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
+6. 各 Pi4 **強制リロード**（§6.6.4）後、下記「手動確認」を実施。
+
+| ホスト | Detach Run ID | Git HEAD | 備考 |
+|--------|---------------|----------|------|
+| `raspberrypi5` | **`20260605-105452-27065`** | **`ffdaebda`** | `failed=0` · **web** 再ビルド · **Pi5 目視 OK** |
+| Pi4×4 | — | — | **未** |
+
+### 手動確認（Pi4/Pi5）
+
+1. 全ボタンに **白枠なし**（`border-0` 相当の見た目）。
+2. 押せるボタンは **同じスレート背景**（保存だけ緑・選択だけシアン等の色分けなし）。
+3. 押せないボタンは保存・完了・再開で **同じ弱さ**（全体 `opacity` / `grayscale` なし）。
+4. **入力を保存** は `saveActionState.enabled` のときだけ **青外枠**（`ring-sky-400`）。
+5. **自主検査を完了** は `completeActionState.enabled` のときだけ **青外枠**。
+6. **再開**・入力件チップ・ズームに **青外枠なし**。
+7. 青外枠の有無でボタンサイズやヘッダー詰まりが変わらないこと。
+8. §ボタン活性の運用フロー（保存 → manual → 件切替 → 再開 → guided → 完了）が維持されること。
+
+### 単体テスト
+
+```bash
+cd apps/web && pnpm exec vitest run \
+  src/features/part-measurement/__tests__/selfInspectionKioskTheme.test.ts \
+  src/features/part-measurement/__tests__/SelfInspectionKioskButton.test.tsx
+```
+
+### トラブルシュート
+
+| 症状 | 対処 |
+|------|------|
+| 旧 UI（緑保存・白枠・シアン選択） | Pi5 HEAD **`f2b374f5` 以降** · Pi4 **強制リロード** |
+| 保存可能なのに青外枠なし | `enabled` 判定（§ボタン活性）· HEAD **`ffdaebda` 以降** |
+| 再開に青外枠 | 誤ビルド — バンドル再確認 |
+
+---
+
 ## 自主検査・ガイド polish（倍率 2.0）（2026-06-04） {#自主検査-ガイド-polish-倍率2-0-2026-06-04}
 
 正本: [KB-320 §ガイド polish](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · [deployment §polish](../guides/deployment.md#kiosk-self-inspection-guided-zoom-2-polish-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-polish`** → **`main` マージ** · **`fb10f0e0`** · **Web のみ**

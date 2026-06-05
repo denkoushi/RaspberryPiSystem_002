@@ -1,15 +1,14 @@
 import clsx from 'clsx';
 
-import { Button } from '../../components/ui/Button';
-
 import { InspectionDrawingCanvasZoomControls } from './inspection-drawing/InspectionDrawingCanvasZoomControls';
 import {
-  inspectionDrawingKioskDisabledButtonClass,
   selfInspectionSessionFlatBandClassName,
   selfInspectionSessionMetaChipClassName,
   selfInspectionSessionMetaRowClassName,
   selfInspectionSessionToolbarSlotClassName
 } from './inspection-drawing/inspectionDrawingKioskUi';
+import { SelfInspectionKioskButton } from './SelfInspectionKioskButton';
+import { selfInspectionKioskButtonClass } from './selfInspectionKioskTheme';
 
 import type { SelfInspectionGuideMode } from './selfInspectionGuidedFocus';
 
@@ -59,6 +58,8 @@ export function SelfInspectionSessionHeader({
   onReset,
   resetDisabled = false
 }: Props) {
+  const resumeDisabled = !zoomEnabled || !guideActionsEnabled || !canResumeGuide;
+
   return (
     <div data-testid="self-inspection-session-header-band" className={selfInspectionSessionFlatBandClassName}>
       <div className={selfInspectionSessionMetaRowClassName}>
@@ -91,44 +92,44 @@ export function SelfInspectionSessionHeader({
       <div className={selfInspectionSessionToolbarSlotClassName} data-self-inspection-session-toolbar>
         <InspectionDrawingCanvasZoomControls
           enabled={zoomEnabled}
+          getButtonClassName={(disabled) =>
+            selfInspectionKioskButtonClass({ disabled, size: 'icon' })
+          }
           onZoomIn={onZoomIn}
           onZoomOut={onZoomOut}
           onFitToView={onFitToView}
         />
-        <Button
+        <SelfInspectionKioskButton
           type="button"
-          variant="ghostOnDark"
-          className={clsx('min-h-11 px-2 text-sm', inspectionDrawingKioskDisabledButtonClass)}
-          disabled={!zoomEnabled || !guideActionsEnabled || !canResumeGuide}
+          size="compact"
+          disabled={resumeDisabled}
           onClick={onResumeGuide}
         >
           再開
-        </Button>
-        <Button
+        </SelfInspectionKioskButton>
+        <SelfInspectionKioskButton
           type="button"
-          variant="ghostOnDark"
-          className="min-h-11 px-2 text-sm"
+          size="compact"
           onPointerDownCapture={() => onPrepareNextPoint?.()}
           onPointerDown={() => onPrepareNextPoint?.()}
           onTouchStart={() => onPrepareNextPoint?.()}
           onClick={onNextPoint}
         >
           次の測定点
-        </Button>
+        </SelfInspectionKioskButton>
         {onReset ? (
-          <Button
+          <SelfInspectionKioskButton
             type="button"
-            variant="ghostOnDark"
-            className="min-h-11 px-2 text-sm text-amber-100"
+            size="compact"
             disabled={resetDisabled}
             onClick={onReset}
           >
             初期化
-          </Button>
+          </SelfInspectionKioskButton>
         ) : null}
-        <Button type="button" variant="ghostOnDark" className="min-h-11 px-2 text-sm" onClick={onBackToList}>
+        <SelfInspectionKioskButton type="button" size="compact" onClick={onBackToList}>
           一覧へ
-        </Button>
+        </SelfInspectionKioskButton>
       </div>
     </div>
   );

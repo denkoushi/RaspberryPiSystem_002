@@ -2,10 +2,7 @@ import {
   isSelfInspectionEntryDraftDirty,
   listDirtySelfInspectionEntryIndices
 } from './selfInspectionEntryDraft';
-import {
-  areRequiredSelfInspectionSlotsFilled,
-  listSelfInspectionEntrySlots
-} from './selfInspectionEntrySlots';
+import { areRequiredSelfInspectionSlotsFilled } from './selfInspectionEntrySlots';
 import {
   buildEntryDrawingPoints,
   findFirstPendingPointId,
@@ -228,11 +225,4 @@ export function selfInspectionActionReasonMessage(
     default:
       return null;
   }
-}
-
-/** 完了ボタン用: 不足している required slot 件数（補助表示） */
-export function countMissingRequiredSelfInspectionSlots(session: SelfInspectionSessionDetailDto): number {
-  const required = listSelfInspectionEntrySlots(session);
-  const present = new Set(session.entries.map((entry) => entry.entryIndex));
-  return required.filter((slot) => !present.has(slot.entryIndex)).length;
 }

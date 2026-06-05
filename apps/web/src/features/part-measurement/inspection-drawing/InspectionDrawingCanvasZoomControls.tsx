@@ -10,7 +10,59 @@ type Props = {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFitToView: () => void;
+  /** 指定時: ネイティブ button + 親渡しクラス（Button/ghostOnDark を通さない） */
+  getButtonClassName?: (disabled: boolean) => string;
 };
+
+type ZoomAction = {
+  label: string;
+  symbol: string;
+  onClick: () => void;
+};
+
+function CustomClassZoomButton({
+  action,
+  enabled,
+  getButtonClassName
+}: {
+  action: ZoomAction;
+  enabled: boolean;
+  getButtonClassName: (disabled: boolean) => string;
+}) {
+  const disabled = !enabled;
+  return (
+    <button
+      type="button"
+      aria-label={action.label}
+      disabled={disabled}
+      className={getButtonClassName(disabled)}
+      onClick={action.onClick}
+    >
+      {action.symbol}
+    </button>
+  );
+}
+
+function LegacyZoomButton({
+  action,
+  enabled
+}: {
+  action: ZoomAction;
+  enabled: boolean;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghostOnDark"
+      className={inspectionDrawingCanvasZoomButtonClassName}
+      aria-label={action.label}
+      disabled={!enabled}
+      onClick={action.onClick}
+    >
+      {action.symbol}
+    </Button>
+  );
+}
 
 /**
  * ヘッダーバンド中央余白用の図面ズーム操作（記号のみ・倍率表示なし）。
@@ -19,40 +71,29 @@ export function InspectionDrawingCanvasZoomControls({
   enabled,
   onZoomIn,
   onZoomOut,
-  onFitToView
+  onFitToView,
+  getButtonClassName
 }: Props) {
+  const actions: ZoomAction[] = [
+    { label: '縮小', symbol: '−', onClick: onZoomOut },
+    { label: '拡大', symbol: '＋', onClick: onZoomIn },
+    { label: '全面表示', symbol: '□', onClick: onFitToView }
+  ];
+
   return (
     <div className={inspectionDrawingCanvasZoomControlsClassName}>
-      <Button
-        type="button"
-        variant="ghostOnDark"
-        className={inspectionDrawingCanvasZoomButtonClassName}
-        aria-label="縮小"
-        disabled={!enabled}
-        onClick={onZoomOut}
-      >
-        −
-      </Button>
-      <Button
-        type="button"
-        variant="ghostOnDark"
-        className={inspectionDrawingCanvasZoomButtonClassName}
-        aria-label="拡大"
-        disabled={!enabled}
-        onClick={onZoomIn}
-      >
-        ＋
-      </Button>
-      <Button
-        type="button"
-        variant="ghostOnDark"
-        className={inspectionDrawingCanvasZoomButtonClassName}
-        aria-label="全面表示"
-        disabled={!enabled}
-        onClick={onFitToView}
-      >
-        □
-      </Button>
+      {actions.map((action) =>
+        getButtonClassName ? (
+          <CustomClassZoomButton
+            key={action.label}
+            action={action}
+            enabled={enabled}
+            getButtonClassName={getButtonClassName}
+          />
+        ) : (
+          <LegacyZoomButton key={action.label} action={action} enabled={enabled} />
+        )
+      )}
     </div>
   );
 }
