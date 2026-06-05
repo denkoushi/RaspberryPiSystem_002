@@ -34,27 +34,68 @@
 - **評価用編集 API**: 既存互換のため `inspection-drawing/evaluation-sheets/*` は当面残すが、新しいキオスク UI 導線からは使用しない。本番 sheet は引き続き **409**、評価用 sheet も通常 PATCH/finalize から **409**。
 - **制約（現時点）**: 複数個数の図面UI・TIFF・順位ボードは未対応。図面中心の本番編集は引き続き **quantity===1** のみ。詳細は [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
 
-### 検査図面 · 流用導線（2026-06-05）
+### 検査図面 · 流用導線（2026-06-05） {#検査図面-流用導線-2026-06-05}
+
+正本: [KB-320 §流用導線強化](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) · [deployment §2026-06-05](../guides/deployment.md#kiosk-inspection-drawing-reuse-flow-2026-06-05) · ブランチ **`feat/kiosk-inspection-drawing-reuse-flow`** · 代表 **`6c7da8c7`**
 
 同一図面を **別工程・別資源** へ展開する手順（`品番 × 工程 × 資源CD = 1テンプレ` を維持）。
 
 | 導線 | 操作 | 備考 |
 |------|------|------|
-| **既存図面の再利用** | 新規作成画面 → 図面ボタン → **既存から選択** または **新規アップロード** | `visualSource` が単一真実源。`pickExisting` 時は `visualTemplateId` のみで保存可 |
-| **テンプレ雛形から新規** | 一覧の有効版カード → **雛形として新規** | `?sourceTemplateId=` で詳細再取得。履歴版は不可 |
+| **既存図面の再利用** | 新規作成画面 → 図面ボタン → **既存から選択** または **新規アップロード** | `visualSource` が単一真実源。`pickExisting` 時は `visualTemplateId` のみで保存可。検索は **API `q` + `limit=80`**（400ms debounce） |
+| **テンプレ雛形から新規** | 一覧の有効版カード → **雛形として新規** | `?sourceTemplateId=` で詳細再取得。履歴版は不可。無効 ID / 消失時は blank form 復帰 |
 | **改版（既存キー）** | 一覧 → **編集** → 保存 | 新規作成ではなく `revise` |
 
 **キー衝突ガード（新規作成全体）**
 
-- 保存先が既存 active と同一キー、または雛形元と同一キーのまま → **保存ボタン無効** + 案内表示。
-- API は `failIfActiveExists: true` で **409**（検査図面の新規作成のみ）。意図的な改版は編集導線を使う。
+- UI: `same_as_source` / `active_exists`（`GET …/templates/active-exists`）→ **保存ボタン無効** + 案内。
+- FIHNCD は **trim + 大文字化 + case-insensitive 照合**（`abc` と `ABC` は同一キー）。
+- API: `failIfActiveExists: true` で **409**。本番 THREE_KEY は **lineage advisory lock** で同時作成を直列化。
 
-**手動確認**
+**orphan visual 回収**
 
-1. 一覧 → 有効版 → **雛形として新規** → 工程または資源CDを変更 → 保存成功。
-2. 雛形元と同一キーのままでは保存不可。
-3. 既存 visual のみ選択で保存成功（ファイル upload 不要）。
+- アップロード後にテンプレ保存が失敗した場合、`POST visual-templates` 応答の **`cleanupToken`** で `DELETE`（`X-Visual-Cleanup-Token` ヘッダ必須）。
+
+#### 手動確認（Pi5 キオスク）
+
+1. **検査図面** タブ → 一覧 → 有効版 **雛形として新規** → 工程または資源CDを変更 → 保存成功。
+2. 雛形元と **同一キー**（FIHNCD の大文字小文字のみ違い含む）では保存不可。
+3. 新規作成 → 図面 → **既存から選択**（検索で絞り込み）→ upload なしで保存成功。
 4. 図面切替時、測定点がある場合は確認ダイアログ。キャンセルで元状態維持。
+5. （任意）管理画面で visual 作成 → テンプレ保存を意図的に失敗 → `cleanupToken` 回収。
+
+#### 本番反映実績（2026-06-05 · Pi5 先行）
+
+| 項目 | 内容 |
+|------|------|
+| Pi5 Detach Run ID | **`20260605-191525-16964`** |
+| Git HEAD | **`6c7da8c7`** |
+| PLAY RECAP | `failed=0` · Docker `api`/`web` 再起動 |
+| Phase12 | **43/0/0** |
+| Pi5 キオスク目視 | **未記録**（手動 1–5 を実施） |
+| Pi4×4 | **未** |
+
+**API スモーク（Tailscale）**
+
+```bash
+BASE="https://100.106.158.2/api"
+KEY="client-key-raspberrypi4-kiosk1"
+
+curl -sk -H "x-client-key: ${KEY}" \
+  "${BASE}/part-measurement/visual-templates?q=test&limit=5"
+
+curl -sk -H "x-client-key: ${KEY}" \
+  "${BASE}/part-measurement/templates/active-exists?fhincd=NONEXIST&processGroup=cutting&resourceCd=RES-TEST"
+```
+
+#### トラブルシュート
+
+| 事象 | 対処 |
+|------|------|
+| 雛形ボタンが出ない | 有効版カードのみ。履歴版は不可 |
+| 図面一覧が空 | 検索 `q` を変える · Pi5 `api`/`web` ref が `6c7da8c7` 以降か |
+| 保存 409 | 同一キー active あり → 改版導線か別キーへ |
+| orphan 削除 403 | `cleanupToken` 不一致 · 既にテンプレ参照あり（409） |
 
 ### 検査図面 · PDF 取込（2026-06-02）
 

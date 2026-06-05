@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-06-05 / **実装・CI・Pi5 先行デプロイ · `main` マージ**) **キオスク検査図面・流用導線強化**: ブランチ **`feat/kiosk-inspection-drawing-reuse-flow`** · **`6c7da8c7`** — 一覧 **雛形として新規**（`?sourceTemplateId=`）· 新規作成 **図面ピッカー**（既存 visual / upload）· `visualSource` 単一真実源 · **`failIfActiveExists` + lineage advisory lock** · **FIHNCD case-insensitive 統一**（`normalizeFhincd` · `setActiveVersion` 含む）· visual **`q`+`limit` サーバー検索** · **`cleanupToken` orphan 回収** · `visualSearchRequestSeqRef` 競合ガード。**API + Web**（migration なし）。**CI**: **`27008474510`** success。**デプロイ**: Pi5 **`20260605-191525-16964`** · **`failed=0`** · Phase12 **43/0/0** · API/Web スモーク OK。**残**: Pi5 キオスク目視 · Pi4×4 順次。**docs**: [KB-320 §流用導線](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) · [deployment §2026-06-05](./docs/guides/deployment.md#kiosk-inspection-drawing-reuse-flow-2026-06-05) · [runbook §流用導線](./docs/runbooks/kiosk-part-measurement.md#検査図面-流用導線-2026-06-05)。
+
 - [x] (2026-06-05 / **実装・CI・Pi5+stonebase 本番・実機 OK · `main` マージ**) **キオスク検査図面 測定点位置微調整（十字ボタン）**: ブランチ **`feat/inspection-drawing-point-nudge`** · PR [#391](https://github.com/denkoushi/RaspberryPiSystem_002/pull/391) · **`791f1074`** — 右ペイン上部 3×3 十字ボタン · `INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO=0.0025` · 名称/基準値 2 列化 · フロント clamp 必須 · **Web のみ**。**CI**: **`26996602603`** success。**デプロイ**: Pi5 **`20260605-141538-27072`** → stonebase **`20260605-142229-22757`** · 各 **`failed=0`** · Phase12 **43/0/0** · **Pi5+stonebase 実機 OK**。**残**: Pi4×3 順次。**docs**: [KB-320 §十字ボタン](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [ExecPlan](./docs/plans/inspection-drawing-point-nudge-execplan.md) · [deployment §2026-06-05](./docs/guides/deployment.md#kiosk-inspection-drawing-point-nudge-2026-06-05) · [Runbook](./docs/runbooks/kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05)。
 
 - [x] (2026-06-05 / **Pi5→Pi4×4 本番・stonebase 実機 OK · `main` マージ**) **キオスク順位ボード・資源カード行 強調レイアウト**: ブランチ **`fix/kiosk-leaderboard-card-layout-2`** · PR [#390](https://github.com/denkoushi/RaspberryPiSystem_002/pull/390) · **`05ae1a70`** — 納期 **20px** · 品名/製番/機種名 **16.5px** · 製番を品名行右 · `fseibanLine`/`clusterTailSegments` presentation 契約 · `LEADER_BOARD_ROW_ESTIMATE_PX` **96** · **Web のみ**。**CI**: **`26993180248`** success。**デプロイ**: Pi5 **`20260605-123252-7617`** → stonebase **`20260605-123929-3009`**（**実機 OK**）→ Pi4×3 **`124846-14986`** / **`125308-28951`** / **`125638-9078`** · 各 **`failed=0`** · Phase12 **43/0/0**。**docs**: [KB-297 §カード行強調](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05) · [deployment §2026-06-05](./docs/guides/deployment.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05) · [verification-checklist §6.6.30](./docs/guides/verification-checklist.md#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05) · [プレビュー](./docs/design-previews/kiosk-rank-board-card-single-preview.html)
@@ -2521,6 +2523,18 @@
 ---
 
 ## Next Steps（優先候補）
+
+### キオスク検査図面・流用導線（2026-06-05 以降） {#kiosk-inspection-drawing-reuse-flow-follow-up-2026-06-05}
+
+**状態**: **Pi5 先行デプロイ済** · **`main` マージ済** · Pi5 キオスク目視 **未記録** · Pi4×4 **未デプロイ**。
+
+| # | 項目 | 優先 | メモ |
+|---|------|------|------|
+| 1 | **Pi5 キオスク目視**（雛形新規 · 既存図面選択 · キー衝突 · orphan 回収）を Runbook 手順 1–5 で実施し KB/Runbook に **実機 OK** を追記 | 高 | [Runbook §流用導線](./docs/runbooks/kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) |
+| 2 | **Pi4×4 順次デプロイ**（`--limit` 1 台ずつ）+ 各台 **強制リロード**（§6.6.4） | 高 | [deployment §2026-06-05](./docs/guides/deployment.md#kiosk-inspection-drawing-reuse-flow-2026-06-05) · `<ref>=main` |
+| 3 | legacy **FIHNCD 大小文字重複 active** が現場に残っていないか管理画面でサンプル確認（`setActiveVersion` 収束） | 中 | [KB-320 §流用導線 TS](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) |
+| 4 | 管理画面 visual orphan 回収の **運用手順**（`cleanupToken`）を現場オペレータ向けに要約するか判断 | 低 | 現状は KB/Runbook のみ |
+| 5 | visual 一覧の **virtualize / ページング**（図面件数増加時） | 低 | キオスクは `q`+`limit=80` で緩和済み |
 
 ### キオスク順位ボード·資源カード行強調（2026-06-05 以降） {#kiosk-leaderboard-card-row-emphasis-follow-up-2026-06-05}
 

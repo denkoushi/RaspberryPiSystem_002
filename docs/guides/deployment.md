@@ -10,6 +10,44 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-06-05 · **キオスク検査図面・流用導線強化**·**API + Web**·**Pi5 先行**） {#kiosk-inspection-drawing-reuse-flow-2026-06-05}
+
+- **変更概要（正本）**: [KB-320 §流用導線](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) · [Runbook §流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) · ブランチ **`feat/kiosk-inspection-drawing-reuse-flow`** · 代表 **`6c7da8c7`**
+  - **UI**: 一覧 **雛形として新規** · 新規作成 **図面ピッカー**（既存 visual / upload）· `visualSource` 単一真実源 · キー衝突 UI ブロック
+  - **API**: `failIfActiveExists` · `GET …/templates/active-exists` · visual **`q`+`limit`** 一覧 · **`cleanupToken`** 付き visual 作成/削除 · **FIHNCD case-insensitive** 統一 · **lineage advisory lock** + visual 行ロック
+  - **Prisma / migration**: **変更なし**（**API + Web** · Pi5 Docker **`api`/`web` 再ビルド**）
+- **対象ホスト（推奨順）**: **`raspberrypi5` → `raspi4-kensaku-stonebase01`（先行実機）→ `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80`**。**Pi3**: 対象外
+- **標準コマンド**（`main` マージ後は第2引数 **`main`**）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-inspection-drawing-reuse-flow \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+# Pi5 目視 OK 後、Pi4 を 1 台ずつ --limit 変更 + 各台強制リロード（§6.6.4）
+```
+
+- **本番デプロイ（実績·2026-06-05 · Pi5 先行）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 備考 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | **`20260605-191525-16964`** | **`6c7da8c7`** | **`ok=134` `changed=4` `failed=0`** | `Git: changed` · **api/web** 再ビルド · バンドル `index-BAzZiLdt.js` |
+| Pi4×4 | — | — | — | **未** — Pi5 目視 OK 後に順次 |
+
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 デプロイ後約 **58s**）
+- **実機（手動·キオスク）**: [Runbook §流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) 手順 1–5
+- **ローカル検証**: integration **51 passed | 2 skipped** · API/Web unit PASS · lint/build OK
+- **CI**: GitHub Actions **`27008474510`** **success**（`6c7da8c7` push 後）
+- **知見**:
+  - **FIHNCD は UI・lock・存在確認・setActiveVersion を `normalizeFhincd` で統一**しないと、`ABC`/`abc` で重複 active が残り得る
+  - **visual 一覧はキオスクでサーバー `q`+`limit`**。クライアント全件 filter は図面増加時に payload/描画コスト増
+  - **orphan visual 削除は `cleanupToken` のみ**（一覧 ID だけでは不可）
+  - **図面検索の非同期競合**は `visualSearchRequestSeqRef` で最新レスポンスのみ反映
+  - **integration 用 Postgres** はテスト完了まで `docker stop` しない（途中停止で全件 DB 接続失敗）
+- **トラブルシュート**:
+  - **雛形/図面ピッカーが無い** → HEAD &lt; `6c7da8c7` or Pi4 未リロード
+  - **同一キーなのに保存できた** → 旧 API（case-sensitive）· legacy データは `setActiveVersion` で収束確認
+  - **図面検索がチラつく** → 旧 bundle（競合ガード未反映）
+
 ### 補足（2026-06-05 · **キオスク検査図面 測定点位置微調整（十字ボタン）**·**Web のみ**·**Pi5 + stonebase 本番・実機 OK**） {#kiosk-inspection-drawing-point-nudge-2026-06-05}
 
 - **変更概要（正本）**: [KB-320 §十字ボタン](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [ExecPlan](../plans/inspection-drawing-point-nudge-execplan.md) · [Runbook §十字ボタン](../runbooks/kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [layout preview](../plans/kiosk-inspection-drawing-layout-preview.html) · ブランチ **`feat/inspection-drawing-point-nudge`** · 代表 **`da9d2675`**
