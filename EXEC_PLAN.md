@@ -2668,7 +2668,7 @@ RECONCILE_RESOURCE=033 RECONCILE_YEAR_MONTH=2026-07 RECONCILE_REMAIN_H=706 RECON
 
 ### ?? Pi5 Hermes Agent ? ???????AI??????2026-05-24?25? {#private-pi5-hermes-discord-2026-05-24}
 
-**現状**: **Phase D4・D5 本番反映済（2026-05-25）** → **D5.1 承認中継 + hotfix（2026-05-26）** → write ゲート #342・actor context #343・poll 競合修正 → **2026-05-30** 承認 UX デプロイ → **2026-06-05 `/task` 復旧**（1010 + DGX 502）→ **2026-06-05 夜 Discord write E2E 完結**（`yes` 割り込み回避: **channel 承認キー** + Hermes **`gateway/platforms/base.py` hotfix**）· 実機: `test-20260605-2.txt` 作成確認 · unittest **129 OK** · [KB §yes 最終修正](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結)
+**現状**: **Phase D4・D5 本番反映済（2026-05-25）** → **D5.1 完了**（write E2E 2026-06-05 夜）→ **2026-06-05 `/task` 安全枠を repo 明文化**（`allowed_task_classes` / `deferred_task_classes` / `deny_prompt_patterns` · Codex/Cursor/git/deploy/terminal は **D6+ worker まで deferred**）· unittest **131 OK** · **Pi5 デプロイ未**（次回 deploy）· [KB §安全枠](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) · [Handoff 次: D6 Codex/Cursor worker 設計](./docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md)
 
 **???????????????2026-05-25?**: ????? **Discord ?? AI??**???/????? ? X ?? ? ????? ? HA/??????? ? **?? tools ??**??**????????????**?Phase ????????????????????
 
@@ -2686,6 +2686,7 @@ RECONCILE_RESOURCE=033 RECONCILE_YEAR_MONTH=2026-07 RECONCILE_REMAIN_H=706 RECON
 | ✅ | D5.1 承認 UX 完結（2026-05-30） | **デプロイ済** | branch `fix/private-pi5-hermes-task-approval-finish` · Pi5 **`ok=140`** · Ansible verify **PASS** · runner 直呼び gate smoke **FAIL**（既知）· [KB §2026-05-30](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイ承認-relay-完結--2026-05-30-jst) |
 | ✅ | `/task` 復旧（2026-06-05） | **repo + 実機 hotfix 済** | Discord **`1010`** → `discord_relay` Bot UA · DGX **502** → blue snapshot + `0.65` + `language_model_only` · unittest **127 OK** · [KB §2026-06-05](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) |
 | ✅ | Discord write E2E（2026-06-05 夜） | **完了** | `yes` interrupt 回避 · channel actor · Hermes `base.py` hotfix · `test-20260605-2.txt` OK · [KB §yes](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) |
+| ✅ | `/task` 安全枠明文化（2026-06-05） | **repo のみ** | task class labels · regex deny · 131 tests OK · Pi5 deploy 待ち · [KB §安全枠](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) |
 
 #### D5 以降 — バトラー機能ロードマップ
 
@@ -2694,7 +2695,8 @@ RECONCILE_RESOURCE=033 RECONCILE_YEAR_MONTH=2026-07 RECONCILE_REMAIN_H=706 RECON
 | **1** | **D5.1** | **Discord write E2E 受け入れ** | **✅** | 2026-06-05 夜: `/task Create test-20260605-2.txt …` → `yes` → workspace 作成確認 |
 | 2 | D5.1 | runner ??? `verify-tool-write-approval-gate-pi5.sh` ??????? | ? | `request.json` ?????? `write_file` ??????????? |
 | 3 | ? | Discord `/task` read-only + ???? | ? | read-only `/task` ? ???????? chat ?? |
-| 3 | **D6** | memory + ????????????? | ? | ??/?????? ? ADR |
+| 3 | **D6** | memory + リマインド（限定） | 未 | ADR · 保持/削除ポリシー |
+| 3b | **D6+** | Codex/Cursor worker 境界設計 | 未 | 1 worktree/branch · 別 HOME/token · `/task-code` 等 · **terminal 直解放はしない** |
 | 4 | **D7** | ????????`cronjob`? | ? | ??? Discord ?? ? smoke 1 ? |
 | 5 | **D8** | X ???????? | ? | API/?? ? D7 ? |
 | 6 | **D9** | Home Assistant / ????????? | ??? | egress/UFW ??? |

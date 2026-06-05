@@ -97,9 +97,10 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 - [x] chat **`disabled_toolsets` 不変**（delegation 含む）
 - [x] tools 実行は **isolated HOME** + **tools Bearer** · toolsets **file,web,browser 固定**
 - [x] `task-bridge.policy.yaml` + prompt deny list
+- [x] **`allowed_task_classes` / `deferred_task_classes` / `deny_prompt_patterns`**（2026-06-05 · Codex/Cursor/git/deploy/terminal 等を regex で deferred）
 - [x] Ansible deploy/verify D5
 - [x] 実機デプロイ（私用 Pi5）· Ansible verify + smoke — [KB D5 本番](./KB-private-pi5-hermes-phase-d5-production.md)
-- [ ] Discord `/task` E2E（手動 · write + 承認 — D5.1 デプロイ後）
+- [x] Discord `/task` write E2E（2026-06-05 夜）— [KB §yes](./KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結)
 - [x] D5.1 承認 Discord 中継（repo 実装 · [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) · [ADR D5.1](../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md)）
 
 ## D5.1 チェックリスト（repo 実装 · 2026-05-25）
@@ -111,7 +112,7 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 - [x] unittest + smoke PASS（ローカル）
 - [x] 実機デプロイ（私用 Pi5）· Ansible verify + smoke — 2026-05-25
 - [x] Pi5: read-only tools · write + file IPC 承認 sim — [KB D5 §D5.1](./KB-private-pi5-hermes-phase-d5-production.md#phase-d51-追記2026-05-25--repo-実装--私用-pi5-本番反映)
-- [ ] Discord `/task` E2E（手動 · write + 承認 UX）
+- [x] Discord `/task` write E2E（2026-06-05 夜 · `test-20260605-2.txt`）
 
 正本: [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md)
 
@@ -127,7 +128,8 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 
 | 能力 | 主なリスク | 有効化前に必要 |
 |------|------------|----------------|
-| Discord → tools 委譲 | プロンプトインジェクション · 承認 fatigue | **D5 本番（Pi5）** · `/task` 明示 · [task-bridge.policy.yaml](../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml) · [KB D5](./KB-private-pi5-hermes-phase-d5-production.md) |
+| Discord → tools 委譲 | プロンプトインジェクション · 承認 fatigue | **D5 本番（Pi5）** · `/task` 明示 · [task-bridge.policy.yaml](../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml) · [KB D5](./KB-private-pi5-hermes-phase-d5-production.md) · **安全枠ラベル + regex deny（2026-06-05）** |
+| Codex/Cursor worker 使役 | git/deploy/terminal 誤解放 · 秘密漏洩 | **deferred** — 専用 worker profile · 1 task = 1 worktree · 追加承認 · [KB D5 §安全枠](./KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) |
 | memory / リマインド | プライバシー · 保持範囲 | D6 · 削除手順 · Discord 通知設計 |
 | X 定時 | API/規約 · egress | D8 · boundary 拡張 |
 | Home Assistant / カメラ | LAN 横移動 · 物理セキュリティ | D9 · grants/UFW · 読取専用から |

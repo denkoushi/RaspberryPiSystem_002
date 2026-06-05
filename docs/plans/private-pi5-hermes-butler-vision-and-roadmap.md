@@ -104,6 +104,7 @@ update-frequency: medium
 | **D4** | browser 隔離 | sandbox · `AGENT_BROWSER_ARGS` · agent-browser symlink | 将来ブラウザ操作の足場 | **完了**（[KB D4 本番](../knowledge-base/KB-private-pi5-hermes-phase-d4-production.md)） |
 | **D5** | Discord ↔ tools 橋（最小） | `/task` + exec ブリッジ · manual 承認維持 | **執事の「指示→実行」第一歩** | **repo 完了**（[ExecPlan D5](./private-pi5-hermes-tools-security-phase-d5-execplan.md)） |
 | **D6** | memory + リマインド（限定） | `memory` のスコープ設計 · 保持/削除ポリシー · Discord 通知 | 執事 §1 | 中 |
+| **D6+（並行設計）** | Codex/Cursor worker 境界 | 1 task = 1 worktree = 1 branch · 別 HOME/token · `/task-code` 等 · commit/push/deploy 前承認 | Discord → 開発使役（**`/task` から直接解放しない**） | 中（2026-06-05 Handoff） |
 | **D7** | 定時ジョブ基盤 | `cronjob` + 失敗時 Discord 通知 · 1 本の smoke タスク | 執事 §2 の土台 | 中 |
 | **D8** | X 定時ダイジェスト | API/規約 · 好みフィルタ · D7 上に実装 | 執事 §2 | 中（外部依存大） |
 | **D9** | Home Assistant / カメラ（読み取り中心） | `homeassistant` · vision · Tailscale/UFW 追加境界 | 執事 §4 | 中〜低 |
@@ -111,7 +112,9 @@ update-frequency: medium
 
 **並行・任意**: Discord 回帰（D3 後 chat 不変の確認）· Hermes プロンプト短縮 · `title_generation` 無効化。
 
-**明示的に後回し**: 全ツール一括有効化 · 承認の全面自動化 · 業務 Pi / `update-all-clients.sh` への混載。
+**明示的に後回し**: 全ツール一括有効化 · 承認の全面自動化 · 業務 Pi / `update-all-clients.sh` への混載 · **Codex/Cursor の `/task` 直実行**（[KB D5 §安全枠](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo)）。
+
+**2026-06-05 Handoff 整理**: `/task` は workspace 読取・要承認書込・bounded check まで。**git / deploy / terminal / 秘密読取 / tailnet scan / Codex・Cursor 使役**は `deferred_task_classes` + regex deny でプロンプト拒否。次は terminal 解放ではなく **専用 worker profile 設計**。
 
 ### D5（橋）の受け入れイメージ（草案）
 

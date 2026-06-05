@@ -12,6 +12,23 @@ allowed_toolsets:
   - web
   - browser
 
+# Phase D5 safety envelope. These labels are emitted by validate_boundary_policy.py
+# so Cursor/Codex handoffs can see what `/task` may do before worker orchestration exists.
+allowed_task_classes:
+  - read_workspace
+  - summarize_workspace
+  - create_or_update_workspace_file_with_approval
+  - bounded_dgx_health_check
+  - bounded_web_browser_check
+
+deferred_task_classes:
+  - codex_or_cursor_worker_execution
+  - git_commit_push_merge
+  - deploy_or_system_service_changes
+  - terminal_or_shell_commands
+  - secret_or_token_access
+  - tailnet_or_lan_scan
+
 # Case-insensitive substring deny list (prompt injection / obvious exfil)
 deny_prompt_substrings:
   - "rm -rf"
@@ -22,6 +39,21 @@ deny_prompt_substrings:
   - "disabled_toolsets"
   - "ignore previous"
   - "ignore all previous"
+  - "bypass policy"
+  - "ignore policy"
+
+# Regex deny list for work that should wait for a dedicated Codex/Cursor worker
+# profile and stronger approval flow. Keep these broad until Phase D6+.
+deny_prompt_patterns:
+  - "\\b(codex|cursor)\\b.*\\b(run|execute|start|invoke|use|launch)\\b"
+  - "\\b(run|execute|start|invoke|use|launch)\\b.*\\b(codex|cursor)\\b"
+  - "(codex|cursor).*(実行|起動|使役|操作)"
+  - "(実行|起動|使役|操作).*(codex|cursor)"
+  - "\\bgit\\s+(commit|push|merge|reset|checkout|rebase)\\b"
+  - "\\b(systemctl|sudo|ssh|scp)\\b"
+  - "\\bdocker\\s+(run|exec|compose|restart|stop|rm)\\b"
+  - "\\b(deploy|terminal|shell|bash|zsh)\\b"
+  - "(デプロイ|コミット|プッシュ|ターミナル|シェル|秘密|トークン|\\.env)"
 
 # Hermes quick_command path on Pi5 (must match config.chat.yaml.j2 when bridge enabled)
 bridge_executable_basename: hermes-discord-task-bridge

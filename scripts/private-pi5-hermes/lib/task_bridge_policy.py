@@ -25,6 +25,9 @@ class TaskBridgePolicy:
     deny_prompt_substrings: tuple[str, ...]
     bridge_executable_basename: str
     approval_relay: ApprovalRelayPolicy
+    allowed_task_classes: tuple[str, ...] = ()
+    deferred_task_classes: tuple[str, ...] = ()
+    deny_prompt_patterns: tuple[str, ...] = ()
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> TaskBridgePolicy:
@@ -53,6 +56,13 @@ class TaskBridgePolicy:
         if allowed != expected:
             raise ValueError(f"allowed_toolsets must be exactly {expected!r}, got {allowed!r}")
 
+        deny_patterns = _str_tuple("deny_prompt_patterns")
+        for pattern in deny_patterns:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ValueError(f"invalid deny_prompt_patterns entry {pattern!r}: {exc}") from exc
+
         basename = str(data.get("bridge_executable_basename", "")).strip()
         if not basename:
             raise ValueError("bridge_executable_basename is required")
@@ -70,7 +80,10 @@ class TaskBridgePolicy:
             max_output_chars=_positive_int("max_output_chars"),
             runner_timeout_seconds=_positive_int("runner_timeout_seconds"),
             allowed_toolsets=allowed,
+            allowed_task_classes=_str_tuple("allowed_task_classes"),
+            deferred_task_classes=_str_tuple("deferred_task_classes"),
             deny_prompt_substrings=_str_tuple("deny_prompt_substrings"),
+            deny_prompt_patterns=deny_patterns,
             bridge_executable_basename=basename,
             approval_relay=ApprovalRelayPolicy.from_mapping(
                 relay_raw if isinstance(relay_raw, dict) else None
@@ -111,6 +124,12 @@ def validate_task_prompt(prompt: str, policy: TaskBridgePolicy) -> TaskPromptVal
     for needle in policy.deny_prompt_substrings:
         if needle.lower() in lowered:
             return TaskPromptValidationResult(False, f"prompt contains forbidden phrase: {needle!r}")
+    for pattern in policy.deny_prompt_patterns:
+        if re.search(pattern, text, re.IGNORECASE):
+            return TaskPromptValidationResult(
+                False,
+                f"prompt matches deferred task pattern: {pattern!r}",
+            )
     if re.search(r"https?://", text, re.IGNORECASE):
         return TaskPromptValidationResult(
             False,

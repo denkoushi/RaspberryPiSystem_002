@@ -9,6 +9,71 @@
 
 **対象**: 私用 Pi5（`private-pi5-stackchan-bridge` / `raspi5-private`）**のみ** · 業務 Pi5 / Pi3 / Pi4 / DGX 本体への D5 デプロイは対象外。
 
+## 現在状態（2026-06-05 夜以降）
+
+| 項目 | 状態 |
+|------|------|
+| Discord `/task` write E2E | **完結** — 承認 `yes` が interrupt に吸われる問題は channel 承認キー + Hermes 本体 hotfix で解消 |
+| `/task` toolsets | **file/web/browser 固定**（terminal / code_execution / delegation は無効） |
+| `/task` タスク分類 | `task-bridge.policy.yaml` に `allowed_task_classes` / `deferred_task_classes` を追加 |
+| 今すぐ許可 | workspace 読取、要承認の workspace 書込、DGX health、bounded web/browser check |
+| まだ deferred | Codex/Cursor worker 実行、git commit/push/merge、deploy/systemctl/docker、terminal/shell、秘密・token 読取、tailnet/LAN scan |
+
+**意図**: Discord から Hermes に作業依頼する導線は維持しつつ、Codex/Cursor 使役は D6+ の専用 worker profile・worktree・承認設計ができるまで `/task` から直接実行しない。
+
+### `/task` 安全枠の明文化（2026-06-05 · repo）
+
+**背景（Handoff）**: 最終目標は Discord → Hermes → **承認境界** → Cursor/Codex/DGX/tools の使役。現段階では **Codex/Cursor の直接実行は解放しない**。Hermes は入口と承認ゲートを担い、作業権限は段階的に分離する。
+
+**正本**: [`task-bridge.policy.yaml`](../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml) · [`task_bridge_policy.py`](../../scripts/private-pi5-hermes/lib/task_bridge_policy.py)
+
+| 契約フィールド | 役割 |
+|---------------|------|
+| `allowed_task_classes` | **今すぐ許可**するタスク種別（ラベル・検証出力用） |
+| `deferred_task_classes` | **D6+ まで保留**するタスク種別（ラベル・Handoff 用） |
+| `deny_prompt_substrings` | 既存の部分一致 deny（`rm -rf` 等） |
+| `deny_prompt_patterns` | **regex deny** — Codex/Cursor/git/deploy/terminal/秘密読取等をプロンプト段階で拒否 |
+
+**`allowed_task_classes`（現行）**:
+
+- `read_workspace`
+- `summarize_workspace`
+- `create_or_update_workspace_file_with_approval`
+- `bounded_dgx_health_check`
+- `bounded_web_browser_check`
+
+**`deferred_task_classes`（現行）**:
+
+- `codex_or_cursor_worker_execution`
+- `git_commit_push_merge`
+- `deploy_or_system_service_changes`
+- `terminal_or_shell_commands`
+- `secret_or_token_access`
+- `tailnet_or_lan_scan`
+
+**`deny_prompt_patterns` の例（抜粋）**:
+
+- `\b(codex|cursor)\b.*\b(run|execute|…)\b` および逆順
+- `\bgit\s+(commit|push|merge|reset|checkout|rebase)\b`
+- `\b(systemctl|sudo|ssh|scp)\b` · `\bdocker\s+(run|exec|…)\b`
+- `\b(deploy|terminal|shell|bash|zsh)\b` · 日本語（デプロイ/コミット/秘密/`.env` 等）
+
+**実装メモ**:
+
+- `validate_task_prompt()` が regex を **case-insensitive** で評価 · 拒否理由は `prompt matches deferred task pattern: …`
+- `emission_json()` / `validate_boundary_policy.py --validate-task-bridge` が **allowed/deferred ラベルを JSON 出力** — Cursor/Codex handoff が現状境界を機械可読で参照できる
+- **Pi5 デプロイは本ターン未実施** — repo 正本更新のみ。実機反映は次回 `deploy-private-pi5-hermes.sh`
+
+**検証（ローカル · 2026-06-05）**:
+
+| コマンド | 結果 |
+|----------|------|
+| `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -v` | **131 OK** |
+| `validate_boundary_policy.py --validate-task-bridge`（フル flags 含む） | **OK** |
+| `verify-discord-task-bridge-smoke.sh` | **OK** |
+
+**次の推奨（Handoff）**: **terminal 解放ではなく D6 設計** — 専用 Codex/Cursor worker 境界（1 task = 1 worktree = 1 branch · 別 HOME/token/workspace · write/commit/push/deploy 前承認 · 明示 `/task-code` 等）。Cursor は repo 管理と handoff markdown 受け取りを継続。
+
 ## 確定仕様（運用時点）
 
 | 領域 | 仕様 |

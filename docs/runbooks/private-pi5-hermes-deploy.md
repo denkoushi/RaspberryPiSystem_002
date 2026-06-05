@@ -467,6 +467,13 @@ REPO_ROOT=/tmp/smoke-repo /tmp/verify-discord-task-bridge-smoke.sh
 
 **Discord 利用**: `/task List files in workspace`（read-only 推奨）。**`/task` は gateway plugin コマンド**（`hermes task` トップレベル CLI ではない）。承認待ちは [ExecPlan D5](../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) 参照。
 
+**現在の `/task` 安全枠（2026-06-05）**: `task-bridge.policy.yaml` は tools を **file/web/browser 固定**にし、タスク分類を検証出力へ載せる。許可は workspace 読取・要承認の workspace 書込・DGX health などの bounded check まで。**Codex/Cursor の直接実行、git commit/push/merge、deploy/systemctl/docker、terminal/shell、秘密・token 読取、tailnet/LAN scan は deferred**。これらは D6+ の専用 worker profile と追加承認設計後に扱う。
+
+```bash
+python3 scripts/private-pi5-hermes/validate_boundary_policy.py --validate-task-bridge
+# task_bridge.allowed_task_classes / deferred_task_classes を確認
+```
+
 **DGX 通常 profile 復帰（`/novel` 後の `/task`）**:
 
 - **問題**: `/novel` は `qwen36_35b_uncensored`（green・llama **ctx 2048**）を起動する。`/task` は同じ `system-prod-primary` alias を使うため、復帰しないと **prompt+tool schema が 2048 超過で LLM 400** → 承認リレーまで到達しない。
@@ -765,6 +772,7 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | `/v1/models` が起動中 **`Connection reset by peer`** | vLLM 初回 compile/autotune 中 | **container 生存なら数分待つ** — [KB D5 §2026-06-05](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) |
 | `yes` 後に **`Interrupting current task`** | Hermes 本体が **busy/interrupt を plugin hook より先**に処理 | Pi5 **`gateway/platforms/base.py` hotfix** + plugin channel キー · [KB §yes 最終修正](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) |
 | 承認プロンプトは来るが `yes` 無効（interrupt なし） | `user_id` bind 失敗 | repo **`channel:<channel_id>`** フォールバックをデプロイ · `approval_actor_ids` テスト |
+| `/task` が **`task rejected: … deferred task pattern`** | Codex/Cursor/git/deploy/terminal 等のプロンプト | **意図的** — [KB §安全枠](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) · D6+ worker 設計後に段階解放 |
 
 ## ロールバック
 
