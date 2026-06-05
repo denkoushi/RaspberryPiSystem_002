@@ -18,7 +18,7 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 - [x] CI — **`26996602603`** success（全ジョブ）
 - [x] デプロイ先行 — Pi5 **`20260605-141538-27072`** · stonebase **`20260605-142229-22757`** · **実機 OK**
 - [ ] Pi4×3 順次デプロイ（`raspberrypi4` · `raspi4-robodrill01` · `raspi4-fjv60-80`）
-- [ ] `main` マージ（ドキュメント更新コミット後）
+- [x] `main` マージ — PR [#391](https://github.com/denkoushi/RaspberryPiSystem_002/pull/391) · **`791f1074`**
 
 ## Decision Log
 

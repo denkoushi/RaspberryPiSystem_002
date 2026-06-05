@@ -437,7 +437,7 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 
 | 項目 | 内容 |
 |------|------|
-| ブランチ | **`feat/inspection-drawing-point-nudge`** → **`main` マージ予定** |
+| ブランチ | **`feat/inspection-drawing-point-nudge`** · PR [**#391**](https://github.com/denkoushi/RaspberryPiSystem_002/pull/391) · **`main` マージ（`791f1074`）** |
 | 代表コミット | **`da9d2675`**（`feat(web): add inspection drawing point nudge controls`） |
 | CI | **`26996602603`** · **success**（全ジョブ） |
 | 変更種別 | **Web のみ**（Prisma / API / migration **なし**） |
