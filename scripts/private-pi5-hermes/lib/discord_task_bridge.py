@@ -310,6 +310,8 @@ def emission_json(policy: TaskBridgePolicy) -> dict[str, Any]:
     return {
         "require_tools_phase": policy.require_tools_phase,
         "allowed_toolsets": list(policy.allowed_toolsets),
+        "allowed_task_classes": list(policy.allowed_task_classes),
+        "deferred_task_classes": list(policy.deferred_task_classes),
         "max_prompt_chars": policy.max_prompt_chars,
         "bridge_executable_basename": policy.bridge_executable_basename,
         "toolsets_cli": toolsets_cli_argument(policy),

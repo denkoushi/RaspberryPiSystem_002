@@ -58,6 +58,22 @@ Discord 有効化後は fragment を更新して再実行。初回のみ Pi5 ven
 
 fragment に `private_pi5_dgx_runtime_control_token` を設定してデプロイすると、`hermes-dgx-keep-warm.timer` が **10 分毎**（起動 **3 分**後も）DGX を warm します。既定では **`DGX_MODEL_PROFILE_ID=business_qwen36_27b_nvfp4`** を維持（`/novel` 後のドリフト矯正）。`/task` も実行前に同 profile へ復帰します。詳細は [Runbook §keep-warm](../../docs/runbooks/private-pi5-hermes-deploy.md#dgx-keep-warm体感速度)。
 
+## `/task` 安全枠（2026-06-05）
+
+正本: [`config/task-bridge.policy.yaml`](config/task-bridge.policy.yaml)
+
+| 区分 | 内容 |
+|------|------|
+| **許可（allowed）** | workspace 読取・要承認の書込・DGX health・bounded web/browser |
+| **保留（deferred）** | Codex/Cursor 使役 · git commit/push/merge · deploy/systemctl/docker · terminal/shell · 秘密/token · tailnet/LAN scan |
+| **拒否** | `deny_prompt_substrings` + **`deny_prompt_patterns`**（regex） |
+
+```bash
+python3 scripts/private-pi5-hermes/validate_boundary_policy.py --validate-task-bridge
+```
+
+詳細: [KB D5 §安全枠](../../docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo)
+
 ## トラブルシュート（`/task` · 2026-06-05 追記）
 
 | 症状 | 正本 |

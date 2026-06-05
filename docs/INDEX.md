@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-05 · 私用 Pi5 Hermes `/task` 安全枠 · **repo 明文化**）
+
+- **`/task` の許可/保留境界を policy に固定**: `allowed_task_classes` / `deferred_task_classes` / `deny_prompt_patterns`（Codex/Cursor/git/deploy/terminal/秘密読取/tailnet scan は **D6+ worker まで deferred**）。**検証**: unittest **131 OK** · boundary validate OK · smoke OK · **Pi5 デプロイは次回**。**次**: D6 設計（memory）と並行で **Codex/Cursor worker 境界**（1 task = 1 worktree）。**記録**: [KB D5 §安全枠](./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) · [脅威モデル](./knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md) · [執事ロードマップ](./plans/private-pi5-hermes-butler-vision-and-roadmap.md) · [`EXEC_PLAN`](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)
+
 ### 最新アップデート（2026-06-05 夜 · 私用 Pi5 Hermes `/task` write E2E · **Discord 受け入れ完了**）
 
 - **承認 `yes` が割り込みに吸われる問題を解消**: repo は **`channel:<channel_id>` 承認キー** + plugin hook 強化 · Pi5 実機は Hermes **`gateway/platforms/base.py` hotfix**（承認短文本を interrupt より先に `pre_gateway_dispatch` へ）。**E2E**: `/task Create test-20260605-2.txt …` → `yes` → workspace 作成 OK · unittest **129 OK**。**記録**: [KB D5 §yes 最終修正](./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) · [Runbook §base.py hotfix](./runbooks/private-pi5-hermes-deploy.md#hermes-agent-本体-hotfix承認-yes-の割り込み回避2026-06-05) · [`EXEC_PLAN`](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)
