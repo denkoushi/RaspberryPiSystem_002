@@ -614,8 +614,9 @@ BLUE_SERVER_IMAGE=ghcr.io/aeon-7/vllm-spark-omni-q36:v1.2
 BLUE_SERVER_PORT=38083
 BLUE_SERVER_CONTAINER_PORT=8000
 # BLUE_SERVER_ENTRYPOINT=bash
-BLUE_MODEL_DIR=/srv/dgx/shared-models/vllm/qwen36-27b-nvfp4
-BLUE_SERVER_COMMAND='export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 && export TORCH_MATMUL_PRECISION=high && export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && export NVIDIA_FORWARD_COMPAT=1 && export VLLM_TEST_FORCE_FP8_MARLIN=1 && exec vllm serve /srv/dgx/shared-models/vllm/qwen36-27b-nvfp4 --served-model-name system-prod-primary --host 0.0.0.0 --port 8000 --dtype auto --quantization compressed-tensors --max-model-len 8192 --max-num-seqs 4 --max-num-batched-tokens 16384 --gpu-memory-utilization 0.85 --kv-cache-dtype fp8 --enable-chunked-prefill --enable-prefix-caching --load-format safetensors --trust-remote-code --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3'
+BLUE_MODEL_DIR=/srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4
+# <snapshot-sha> は ${BLUE_MODEL_DIR}/refs/main の内容で置き換える
+BLUE_SERVER_COMMAND='export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 && export TORCH_MATMUL_PRECISION=high && export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && export NVIDIA_FORWARD_COMPAT=1 && export VLLM_TEST_FORCE_FP8_MARLIN=1 && exec vllm serve /srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4/snapshots/<snapshot-sha> --served-model-name system-prod-primary --host 0.0.0.0 --port 8000 --dtype auto --quantization compressed-tensors --max-model-len 8192 --max-num-seqs 4 --max-num-batched-tokens 16384 --gpu-memory-utilization 0.65 --kv-cache-dtype fp8 --enable-chunked-prefill --enable-prefix-caching --load-format safetensors --trust-remote-code --hf-overrides "{\"language_model_only\": true}" --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3'
 BLUE_EXTRA_DOCKER_ARGS='--ipc host --ulimit memlock=-1 --ulimit stack=67108864'
 ```
 
@@ -636,6 +637,19 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 
 - `TRTLLM_*` という env 名は互換のため残しているだけで、blue backend の実体は TRT-LLM に限らない
 - 新しい設定では `BLUE_SERVER_*` / `BLUE_MODEL_DIR` / `BLUE_EXTRA_DOCKER_ARGS` の別名も使える
+- **`<snapshot-sha>` の解決**: `cat ${BLUE_MODEL_DIR}/refs/main`（実機例: `c12989315a26e1cc5d3f8a5d4b96fdd5921adc8c`）— **secret の実値は Git 禁止**、example はプレースホルダのまま
+- **Hermes `/task` 復旧（2026-06-05）**: repo id ではなく **snapshot path** · **`gpu-memory-utilization 0.65`** · **`language_model_only`** が実機で必須だった — 詳細 [KB-366 §8.1](./../knowledge-base/KB-366-dgx-spark-operational-understanding.md#81-blue-27b-起動失敗と-hermes-task-5022026-06-05) · [KB `/task` blue 502](./../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05)
+
+### トラブルシュート — blue backend 起動失敗 / `/v1/models` 502（2026-06-05）
+
+| 症状 | 確認 | 対処 |
+|------|------|------|
+| `POST /start` 200 だが `/v1/models` **502** | `docker ps` · `docker logs system-prod-trtllm` | 起動中なら **数分待ち**（compile/autotune）。container exit なら下記 |
+| vLLM が HF metadata で落ちる | `BLUE_SERVER_COMMAND` が **repo id** か **snapshot path** か | **snapshot path** + `BLUE_MODEL_DIR` を [上記例](#phase-2-blue-単体) に合わせる |
+| `CUDA out of memory` / メモリ不足 | `--gpu-memory-utilization` | **`0.65`** から試す（実機で Hermes `/task` 復旧確認済） |
+| Hermes `/task` のみ失敗・業務 Pi5 は別症状 | Pi5 から `curl …/v1/models`（tools Bearer） | DGX backend 正本。profile 切替は [Hermes Runbook §profile 復帰](./private-pi5-hermes-deploy.md#本番反映--task-dgx-通常-profile-復帰2026-05-30) |
+
+**反映手順（DGX のみ）**: `control-server.env` 編集 → **control-server 再起動**（PID ガード手順）→ **`POST /start`**（`business_qwen36_27b_nvfp4`）→ `curl http://127.0.0.1:38083/v1/models` が **200** になるまで待つ。
 - image 既定 entrypoint が shell でない場合は `BLUE_SERVER_ENTRYPOINT=bash` を併用する
 - 最初の成功条件は **`/v1/models` が `system-prod-primary` を返し、Pi5 の on-demand ready probe が通ること**
 - DFlash を後から足す場合は、drafter mount と `--attention-backend flash_attn` / `--speculative-config ...` を追加する
@@ -1090,4 +1104,3 @@ NODE
 4. Ubuntu fallback の rollback 手順と token 依存を縮退し、退役判断の条件を明文化する
 5. `ねじゲージ` / `金属棒` / `てこ式ダイヤルゲージ` などの hard case は、困りごととして再浮上した時点で将来課題として再開する
 6. 最後に必要になった時点で、同じ alias / 同じ入口のまま `Qwen3.6` 系へ置き換えるかを判断する
-

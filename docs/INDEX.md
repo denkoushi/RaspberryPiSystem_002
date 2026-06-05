@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-05 · 私用 Pi5 Hermes `/task` 復旧 · **repo + 実機 hotfix 済**）
+
+- **二段障害の復旧**: (1) Discord 承認通知 **`403` / Cloudflare `1010`** → [`discord_relay.py`](../scripts/private-pi5-hermes/lib/approval_relay/discord_relay.py) に **Bot User-Agent** · (2) DGX blue 27B 起動失敗 → **`/v1/models` 502** → snapshot path · **`gpu-memory-utilization 0.65`** · **`language_model_only`**（secret は Git 禁止、example/runbook/KB のみ）。**検証**: unittest **127 OK** · smoke OK · Pi5 read-only `/task` 相当 OK · Discord write E2E **手動推奨**。**記録**: [KB D5 §2026-06-05](./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) · [KB `/task` blue 502](./knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05) · [Hermes Runbook](./runbooks/private-pi5-hermes-deploy.md#本番復旧--task-二段障害2026-06-05) · [dgx Runbook](./runbooks/dgx-system-prod-local-llm.md) · [`EXEC_PLAN`](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)
+
 ### 最新アップデート（2026-06-05 · キオスク順位ボード・資源カード行 強調レイアウト · **Pi5→Pi4×4 本番・実機 OK**）
 
 - **カード外寸維持**のまま納期 **20px** · 品名/製番/機種名 **16.5px** · **製番を品名行右** · クラスタ行は品目+個数のみ · **右側要素がある行のみ 50% 幅**。**ブランチ**: **`fix/kiosk-leaderboard-card-layout-2`** · **`05ae1a70`** · **PR [#390](https://github.com/denkoushi/RaspberryPiSystem_002/pull/390)** · **CI** **`26993180248`** success · **本番**: Pi5 **`20260605-123252-7617`** → stonebase **実機 OK** → Pi4×3 順次 · Phase12 **43/0/0** · **サイネージ JPEG 対象外**。**記録**: [deployment §カード行強調](./guides/deployment.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05) · [KB-297 §カード行強調](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05) · [verification-checklist §6.6.30](./guides/verification-checklist.md#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05) · [プレビュー](./design-previews/kiosk-rank-board-card-single-preview.html)

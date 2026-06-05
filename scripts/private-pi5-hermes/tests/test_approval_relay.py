@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,7 @@ from lib.approval_relay.discord_relay import (  # noqa: E402
     DiscordSendResult,
     format_approval_prompt,
     parse_task_approve_args,
+    send_discord_channel_message,
 )
 from lib.approval_relay.models import ApprovalChoice, ApprovalRequest  # noqa: E402
 from lib.approval_relay.policy import ApprovalRelayPolicy  # noqa: E402
@@ -151,6 +153,36 @@ class ApprovalRelayParseTests(unittest.TestCase):
         result = DiscordSendResult(ok=False, status_code=401, error="unauthorized")
         self.assertFalse(result.ok)
         self.assertEqual(result.status_code, 401)
+
+    def test_discord_send_uses_discordbot_user_agent(self) -> None:
+        import asyncio
+
+        captured = {}
+
+        class DummyResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self) -> bytes:
+                return b"{}"
+
+        def fake_urlopen(req, timeout=0):
+            captured["user_agent"] = req.get_header("User-agent")
+            captured["accept"] = req.get_header("Accept")
+            return DummyResponse()
+
+        with mock.patch.dict("os.environ", {"DISCORD_BOT_TOKEN": "token"}):
+            with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                result = asyncio.run(send_discord_channel_message("channel-1", "ok"))
+
+        self.assertTrue(result.ok)
+        self.assertEqual(captured["accept"], "application/json")
+        self.assertTrue(captured["user_agent"].startswith("DiscordBot ("))
 
 
 if __name__ == "__main__":

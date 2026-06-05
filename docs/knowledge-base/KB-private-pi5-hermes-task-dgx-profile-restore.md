@@ -2,7 +2,7 @@
 title: KB-private-pi5-hermes-task-dgx-profile-restore
 tags: [Hermes Agent, private Pi5, DGX, /task, /novel, model profile]
 audience: [開発者, 運用者]
-last-verified: 2026-05-30
+last-verified: 2026-06-05
 category: knowledge-base
 ---
 
@@ -95,6 +95,48 @@ keep-warm 成功ログ（抜粋）:
 2. `/novel` は **green 35B（ctx 2048）** を起動し得る。`/task` は tool schema 込みで **2048 を超えやすい**。
 3. **Fix**: `run_tools_profile_prompt` の先頭で `ensure_tools_dgx_runtime_ready` → **`business_qwen36_27b_nvfp4`** へ `POST /start`（既に active なら `/system/model-profile` で **skip**）。
 4. **keep-warm**: 同 profile を `DGX_MODEL_PROFILE_ID` 付きで定期 ensure（novel 残留の矯正）。
+
+## 追記 — blue backend 起動失敗で `/v1/models` 502（2026-06-05）
+
+**Context**: Pi5 側の profile 復帰（`POST /start`）は成功しても、DGX **blue vLLM コンテナ自体が起動しない**と `/task` は依然として失敗する。2026-06-05 の `/task` 復旧では **Discord 承認通知（Cloudflare 1010）** と **本節の DGX backend** が **別段階の障害**だった。
+
+### Symptoms
+
+- Pi5: `curl -H "Authorization: Bearer …" http://100.118.82.72:38081/v1/models` → **`502`**
+- DGX: `docker ps` に **`system-prod-trtllm` なし**、または起動直後に exit
+- `POST /start` with `business_qwen36_27b_nvfp4` は **200** でも backend ready まで **`/v1/models` 502** が続く場合あり
+
+### Root cause（CONFIRMED）
+
+| 要因 | 詳細 |
+|------|------|
+| **HF repo id 直指定** | `vllm serve sakamakismile/Qwen3.6-27B-NVFP4` が **Hugging Face metadata 取得**で失敗 |
+| **GPU メモリ** | `--gpu-memory-utilization 0.85` では **空きメモリ不足**で vLLM 起動失敗 |
+| **vision 構成** | Qwen3.6-27B-NVFP4 が vision 系を含む — Hermes `/task`（テキスト+tool）では **`language_model_only`** が有効 |
+
+### Fix（DGX 実機 hotfix · secret のみ）
+
+```text
+BLUE_MODEL_DIR=/srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4
+# snapshot: ${BLUE_MODEL_DIR}/refs/main の内容（例: c12989315a26e1cc5d3f8a5d4b96fdd5921adc8c）
+vllm serve …/snapshots/<snapshot-sha> … --gpu-memory-utilization 0.65 --hf-overrides '{"language_model_only": true}'
+```
+
+- **反映**: `control-server` 再起動 → `POST /start`（`business_qwen36_27b_nvfp4`）
+- **repo 例示**: [`control-server.env.example`](../../scripts/dgx-local-llm-system/systemd/control-server.env.example) · [Runbook §blue 最小例](../runbooks/dgx-system-prod-local-llm.md) · [KB-366 §8](./KB-366-dgx-spark-operational-understanding.md#8-gpu-memory-utilization-を下げる場合参考)
+
+### 切り分け（Pi5 から見た `/task` 無応答）
+
+| 観測 | 次の確認 |
+|------|----------|
+| `healthz=200` かつ `/v1/models=502` | DGX blue backend 未 ready — **container ログ** · **数分待ち**（初回 compile/autotune） |
+| `/v1/models=200` だが承認が来ない | [KB D5 §2026-06-05 Discord 1010](./KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) |
+| LLM 400 · `n_ctx: 2048` | 本 KB §Context（**novel 残留**）— profile 復帰 Fix |
+
+### 検証（2026-06-05 実機）
+
+- DGX `http://127.0.0.1:38083/v1/models` → **200** · `system-prod-primary`
+- Pi5 read-only `/task` 相当 → **成功**（workspace ファイル列挙）
 
 ## References
 

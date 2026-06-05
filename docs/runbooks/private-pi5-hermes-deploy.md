@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-05-30（Phase D5.1 承認 relay 完結デプロイ・Runbook 追記）
+最終更新: 2026-06-05（`/task` 復旧 — Discord 承認通知 1010 + DGX blue 502 · Runbook 追記）
 
 ## 運用状態サマリ（2026-05-24 時点）
 
@@ -518,6 +518,38 @@ ansible private-pi5-stackchan-bridge -i inventory-private-pi5-stackchan-bridge-f
 
 **記録**: [KB Phase D5 §承認 relay 完結](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイ承認-relay-完結--2026-05-30-jst)。
 
+### 本番復旧 — `/task` 二段障害（2026-06-05）
+
+**症状**: Discord `/task` が実用応答しない（read-only 失敗または write で承認が来ない）。
+
+**原因（独立した 2 段）**:
+
+1. **承認通知**: `approval_relay/discord_relay.py` の Discord REST POST が **`403` / Cloudflare `1010`**（`urllib` 既定 User-Agent）。
+2. **DGX LLM**: blue 27B backend 起動失敗 → Pi5 から **`/v1/models` 502**。
+
+**repo Fix**:
+
+| 対象 | 変更 |
+|------|------|
+| [`discord_relay.py`](../../scripts/private-pi5-hermes/lib/approval_relay/discord_relay.py) | `User-Agent: DiscordBot (…)` · `Accept: application/json` |
+| [`test_approval_relay.py`](../../scripts/private-pi5-hermes/tests/test_approval_relay.py) | ヘッダ regress テスト |
+| DGX example / Runbook / KB-366 | snapshot path · `gpu-memory-utilization 0.65` · `language_model_only` |
+
+**Pi5 反映（実機済み）**: plugin 配置先へ `discord_relay.py` copy → **`systemctl restart hermes-gateway`**。標準 `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` でも配布可。
+
+**DGX 反映（実機済み · secret のみ）**: `/srv/dgx/system-prod/secrets/control-server.env` の `BLUE_SERVER_COMMAND` hotfix → **control-server 再起動** → `POST /start`（`business_qwen36_27b_nvfp4`）。手順: [dgx-system-prod-local-llm.md §blue 502](./dgx-system-prod-local-llm.md#トラブルシュート--blue-backend-起動失敗--v1models-5022026-06-05)。
+
+**検証**:
+
+```bash
+python3 -m unittest discover -s scripts/private-pi5-hermes/tests -v
+./scripts/private-pi5-hermes/verify-discord-task-bridge-smoke.sh
+# Pi5: read-only /task 相当（workspace 列挙）— 実機 2026-06-05 OK
+# Discord UI: /task List files in workspace — 手動推奨
+```
+
+**記録**: [KB D5 §2026-06-05 復旧](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) · [KB `/task` blue 502](../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05)。
+
 正本: [Phase D5 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) · [ADR D5](../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md)。
 
 ## Novel profile — Discord `/novel`（長文創作 · 2026-05-29）
@@ -681,6 +713,9 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | `/novel` 初回が長時間無応答 | **35B uncensored cold start**（数分） | `DGX_RUNTIME_READY_TIMEOUT_SEC` 900 · DGX 側 profile 登録確認 · [dgx uncensored Runbook](dgx-uncensored-profile-button.md) |
 | `/task` が **2048 context** で 400 · `request.json` なし | **`/novel` 後に green 35B が active のまま** | 上記 **DGX 通常 profile 復帰** · `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` 再デプロイ |
 | smoke: `unexpected commands: set()` | repo `lib/` に plugin marker 無し | temp plugin_dir patch（[`verify-discord-task-bridge-smoke.sh`](../../scripts/private-pi5-hermes/verify-discord-task-bridge-smoke.sh) 2026-05-29 修正） |
+| 承認通知 **`403` / `error code: 1010`** | `discord_relay.py` が **`urllib` 既定 UA** で Cloudflare 拒否 | repo の **`DiscordBot` User-Agent** をデプロイ · gateway restart · [KB D5 §2026-06-05](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) |
+| `/task` 無応答 · DGX **`/v1/models` 502** | blue **27B vLLM 未起動**（HF metadata / GPU mem / vision ロード） | DGX `control-server.env` · snapshot path · **`0.65`** · **`language_model_only`** · [dgx Runbook §blue 502](./dgx-system-prod-local-llm.md#トラブルシュート--blue-backend-起動失敗--v1models-5022026-06-05) |
+| `/v1/models` が起動中 **`Connection reset by peer`** | vLLM 初回 compile/autotune 中 | **container 生存なら数分待つ** — [KB D5 §2026-06-05](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) |
 
 ## ロールバック
 

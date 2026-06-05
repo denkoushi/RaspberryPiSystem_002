@@ -58,6 +58,16 @@ Discord 有効化後は fragment を更新して再実行。初回のみ Pi5 ven
 
 fragment に `private_pi5_dgx_runtime_control_token` を設定してデプロイすると、`hermes-dgx-keep-warm.timer` が **10 分毎**（起動 **3 分**後も）DGX を warm します。既定では **`DGX_MODEL_PROFILE_ID=business_qwen36_27b_nvfp4`** を維持（`/novel` 後のドリフト矯正）。`/task` も実行前に同 profile へ復帰します。詳細は [Runbook §keep-warm](../../docs/runbooks/private-pi5-hermes-deploy.md#dgx-keep-warm体感速度)。
 
+## トラブルシュート（`/task` · 2026-06-05 追記）
+
+| 症状 | 正本 |
+|------|------|
+| 承認通知 **`403` / Cloudflare `1010`** | [`discord_relay.py`](lib/approval_relay/discord_relay.py) に **DiscordBot User-Agent** — [KB D5 §2026-06-05](../../docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) |
+| DGX **`/v1/models` 502** · `/task` 無応答 | DGX blue 27B 起動 — [KB `/task` blue 502](../../docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05) · [dgx Runbook](../../docs/runbooks/dgx-system-prod-local-llm.md) |
+| `/novel` 後に `/task` が **2048 context 400** | DGX profile 復帰 — [KB task profile restore](../../docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md) |
+
+**注意**: `/task` は **gateway plugin スラッシュコマンド**（`hermes task` CLI ではない）。write は **承認 relay**（`yes` / `/task-approve`）が動く。
+
 ## 手動確認
 
 ```bash
