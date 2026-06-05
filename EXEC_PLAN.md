@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-06-05 / **Pi5→Pi4×4 本番・stonebase 実機 OK · `main` マージ**) **キオスク順位ボード・資源カード行 強調レイアウト**: ブランチ **`fix/kiosk-leaderboard-card-layout-2`** · PR [#390](https://github.com/denkoushi/RaspberryPiSystem_002/pull/390) · **`05ae1a70`** — 納期 **20px** · 品名/製番/機種名 **16.5px** · 製番を品名行右 · `fseibanLine`/`clusterTailSegments` presentation 契約 · `LEADER_BOARD_ROW_ESTIMATE_PX` **96** · **Web のみ**。**CI**: **`26993180248`** success。**デプロイ**: Pi5 **`20260605-123252-7617`** → stonebase **`20260605-123929-3009`**（**実機 OK**）→ Pi4×3 **`124846-14986`** / **`125308-28951`** / **`125638-9078`** · 各 **`failed=0`** · Phase12 **43/0/0**。**docs**: [KB-297 §カード行強調](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05) · [deployment §2026-06-05](./docs/guides/deployment.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05) · [verification-checklist §6.6.30](./docs/guides/verification-checklist.md#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05) · [プレビュー](./docs/design-previews/kiosk-rank-board-card-single-preview.html)
+
 - [x] (2026-06-05 / **実装・CI・Pi5 本番・実機 OK · `main` マージ**) **キオスク自主検査・セッション ボタンUI統一 + 操作誘導**: ブランチ **`feat/kiosk-self-inspection-button-ui`** · **`f2b374f5`**（スタイル統一）· **`ffdaebda`**（保存/完了の `ring-sky-400` 青外枠）— `selfInspectionKioskTheme` · `SelfInspectionKioskButton` · `highlighted={enabled}` 直結 · 白枠廃止 · 未依頼 guided 誘導差分は削除。**Web のみ**。**CI**: **`26990244892`** success。**デプロイ**: Pi5 **`20260605-105452-27065`** · **`failed=0`** · Phase12 **43/0/0** · **Pi5 目視 OK**。**残**: Pi4×4 順次。**将来**: 他画面横展開は別タスク。**docs**: [KB-320 §ボタンUI](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [deployment §ボタンUI](./docs/guides/deployment.md#kiosk-self-inspection-session-button-ui-2026-06-05) · [runbook §ボタンUI](./docs/runbooks/kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [要件](./docs/design-previews/kiosk-self-inspection-session-buttons-requirements.md)。
 
 - [x] (2026-06-04 / **実装・CI・Pi5→Pi4×4 本番・Phase12 OK · `main` マージ**) **キオスク自主検査・セッション操作ボタン活性**: ブランチ **`feat/kiosk-self-inspection-button-actions`** · **`4f44dbb9`** — `selfInspectionSessionActionState`（理由コード）· `areRequiredSelfInspectionSlotsFilled` · ラベル **自主検査を完了** · 再開 `canResumeGuide` 分離 · 完了処理中 readOnly。**Web のみ**。**CI**: **`26949777126`** success。**デプロイ**: Pi5 **`20260604-205746-21197`** → Pi4×4 **`210423-13676`** / **`210915-5507`** / **`211304-30742`** / **`211651-9374`** · 各 **`failed=0`** · Phase12 **43/0/0**。**docs**: [KB-320 §ボタン活性](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) · [deployment §ボタン活性](./docs/guides/deployment.md#kiosk-self-inspection-session-button-actions-2026-06-04) · [runbook §ボタン活性](./docs/runbooks/kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04)。
@@ -2516,7 +2518,16 @@
 
 ---
 
-## Next Steps????????
+## Next Steps（優先候補）
+
+### キオスク順位ボード·資源カード行強調（2026-06-05 以降） {#kiosk-leaderboard-card-row-emphasis-follow-up-2026-06-05}
+
+**状態**: **Pi5→Pi4×4 本番·stonebase 実機 OK** · **`main` マージ済** · 追加デプロイ **不要**。
+
+| # | 項目 | 優先 | メモ |
+|---|------|------|------|
+| 1 | **サイネージ `kiosk_leader_order_cards` へのフォント/レイアウト同期** | 低 | キオスクと意図的分岐可（別 SVG レンダラ）· 現場要望があれば別 PR |
+| 2 | 長期滞留製番（[KB-383](./docs/knowledge-base/KB-383-kiosk-leaderboard-stale-past-due-investigation.md)）上流 11 件照会 | 運用 | アプリ変更なし |
 
 ### キオスク自主検査・ボタンUI（2026-06-05 以降） {#kiosk-self-inspection-button-ui-follow-up-2026-06-05}
 
