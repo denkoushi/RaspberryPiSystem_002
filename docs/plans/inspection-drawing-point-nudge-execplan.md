@@ -11,11 +11,14 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 - [x] (2026-06-05) ブランチ `feat/inspection-drawing-point-nudge` 作成
 - [x] 純関数 `inspectionDrawingPointPosition.ts`（`INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO = 0.0025`）
 - [x] UI `InspectionDrawingPointPositionNudge.tsx` + `InspectionDrawingPointSettingsPanel` レイアウト更新
-- [x] 単体テスト（純関数 + UI + Sidebar 表示責務）
-- [x] ローカル検証（web test 対象ファイル · 14 passed · `tsc --noEmit` OK）
-- [x] ドキュメント（KB-320 · Runbook · verification-checklist · INDEX · EXEC_PLAN · layout preview HTML）
-- [x] コミット / push（ユーザー指示により実施）
-- [ ] CI 確認 / デプロイ（デプロイは未実施）
+- [x] 単体テスト（純関数 + UI + Sidebar 表示責務 · **14 passed**）
+- [x] ローカル検証（web lint 全体 · `tsc` · build · web test **849 passed**）
+- [x] ドキュメント（KB-320 · Runbook · verification-checklist · INDEX · EXEC_PLAN · deployment · layout preview HTML）
+- [x] コミット / push — **`da9d2675`**
+- [x] CI — **`26996602603`** success（全ジョブ）
+- [x] デプロイ先行 — Pi5 **`20260605-141538-27072`** · stonebase **`20260605-142229-22757`** · **実機 OK**
+- [ ] Pi4×3 順次デプロイ（`raspberrypi4` · `raspi4-robodrill01` · `raspi4-fjv60-80`）
+- [ ] `main` マージ（ドキュメント更新コミット後）
 
 ## Decision Log
 
@@ -53,6 +56,14 @@ pnpm --filter @raspi-system/web exec vitest run \
 
 手動: 「点を配置」+ 測定点選択 → 右ペイン上部の十字ボタンでマーカーが移動 · test/ガイド試行では設定パネル非表示 · 保存後 `markerXRatio`/`markerYRatio` 反映。
 
+## Surprises & Discoveries
+
+- **ESLint `import/order`**: case-insensitive 昇順のため PascalCase sibling より `inspectionDrawing*` を先に並べる必要あり（CI ゲート）。
+- **Vitest パス**: `pnpm --filter @raspi-system/web exec` では **`src/features/...`** が正。`apps/web/src/...` は再現不能。
+- **Pi5 バンドル確認**: `docker exec docker-web-1 grep 測定点の位置調整 /srv/site/assets/index-*.js` でデプロイ反映を即確認できる。
+
 ## Outcomes & Retrospective
 
-- **未デプロイ** — 実装完了・ローカルテスト OK・コミット/push 禁止で停止。
+- **実装完了** — Web のみ · 純関数 + 既存 `onChange` / 保存契約維持 · テスト 14 + CI 全成功。
+- **本番先行** — Pi5 + stonebase **実機 OK**（2026-06-05）。残 Pi4×3 は stonebase パターンどおり順次。
+- **参照**: [KB-320 §十字ボタン](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [deployment §2026-06-05](../guides/deployment.md#kiosk-inspection-drawing-point-nudge-2026-06-05)

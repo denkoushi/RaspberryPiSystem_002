@@ -10,6 +10,46 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-06-05 · **キオスク検査図面 測定点位置微調整（十字ボタン）**·**Web のみ**·**Pi5 + stonebase 本番・実機 OK**） {#kiosk-inspection-drawing-point-nudge-2026-06-05}
+
+- **変更概要（正本）**: [KB-320 §十字ボタン](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [ExecPlan](../plans/inspection-drawing-point-nudge-execplan.md) · [Runbook §十字ボタン](../runbooks/kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [layout preview](../plans/kiosk-inspection-drawing-layout-preview.html) · ブランチ **`feat/inspection-drawing-point-nudge`** · 代表 **`da9d2675`**
+  - **UI**: 右ペイン `InspectionDrawingPointSettingsPanel` 上部 **3×3 十字ボタン**（↑←→↓）· 名称/基準値 **2 列化** · 説明文「合格範囲は…」削除。
+  - **座標**: `INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO = 0.0025` · フロントで **clamp 済み** `{ xRatio, yRatio }` patch → 既存 `onPointChange` → `drawingPointToTemplateItemInput`。
+  - **表示**: `InspectionDrawingPointSidebar` の **`place` + 選択中のみ**（test / guidedTrial 非表示）· `contentReadOnly` 時 disabled。
+  - **Prisma / API**: **変更なし**（**Web のみ** · Pi5 Docker **`web` 再ビルド**）
+- **対象ホスト（推奨順）**: **`raspberrypi5` → `raspi4-kensaku-stonebase01`（先行実機）→ `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80`**。**Pi3**: 対象外
+- **標準コマンド**（`main` マージ後は第2引数 **`main`**）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/inspection-drawing-point-nudge \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+# Pi5 目視 OK 後、Pi4 を 1 台ずつ --limit 変更 + 各台強制リロード（§6.6.4）
+```
+
+- **本番デプロイ（実績·2026-06-05 · 先行 2 台）**:
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 備考 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | **`20260605-141538-27072`** | **`da9d2675`** | **`ok=134` `changed=4` `failed=0`** | `Git: changed` · **web** 再ビルド · バンドル `index-IJxgQ0ZH.js` に `測定点の位置調整` |
+| `raspi4-kensaku-stonebase01` | **`20260605-142229-22757`** | **`da9d2675`** | **`ok=129` `changed=11` `failed=0`** | `kiosk-browser` 再起動 · **実機 OK** |
+| Pi4×3 | — | — | — | **未** — stonebase OK 後に順次 |
+
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 デプロイ後約 **29s**）
+- **実機（手動·キオスク）**: [Runbook §十字ボタン](../runbooks/kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) 手順 1–6。**Pi5 + stonebase 実機 OK（2026-06-05）**。
+- **ローカル検証**: Vitest 対象 14 passed · web lint（全体）· `tsc` · build OK · CI 全ジョブ success
+- **CI**: GitHub Actions **`26996602603`** **success**（`da9d2675` push 後 · lint-build-unit / security-docker / api-db-and-infra / e2e-smoke / e2e-tests）
+- **知見**:
+  - **座標演算を純関数化**（`inspectionDrawingPointPosition.ts`）すると UI と保存契約のテストが分離しやすい。
+  - **`import/order` は case-insensitive 昇順** — 小文字始まり sibling（`inspectionDrawingPointPosition`）は PascalCase（`InspectionDrawingPointPositionNudge`）より前。本番 `SettingsPanel` とテスト 3 ファイルでレビュー指摘あり。
+  - **ExecPlan の vitest パス**は `pnpm --filter @raspi-system/web exec` 時 **`src/features/...`**（`apps/web/src/...` は No test files found）。
+  - **Pi4 は SPA 再取得**: `git pull` しない。Pi5 配信の `index-*.js` を **強制リロード**（§6.6.4）で取り込む。デプロイ時 `kiosk-browser` 再起動でも足りることが多い。
+- **トラブルシュート**:
+  - **十字ボタンが出ない** → `place` モード + 測定点選択か · test/guidedTrial では **意図的に非表示**
+  - **Pi4 だけ旧 UI** → Pi5 `web` ref &lt; `da9d2675` or 未リロード · `_appRef` 確認
+  - **ESLint import/order で CI 落ち** → sibling import をアルファベット順（`inspectionDrawing*` → `InspectionDrawing*`）
+  - **保存後に位置が戻る** → ネットワーク/API ではなくフロント patch 未反映を疑う（`markerXRatio`/`markerYRatio` は既存契約）
+
 ### 補足（2026-06-05 · **キオスク順位ボード 資源カード行 強調レイアウト**·**Web のみ**·**Pi5→Pi4×4 本番・実機 OK**） {#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05}
 
 - **変更概要（正本）**: [KB-297 §カード行強調](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05) · [verification-checklist §6.6.30](./verification-checklist.md#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05) · [プレビュー](../design-previews/kiosk-rank-board-card-single-preview.html) · ブランチ **`fix/kiosk-leaderboard-card-layout-2`** · PR [**#390**](https://github.com/denkoushi/RaspberryPiSystem_002/pull/390) · 代表 **`05ae1a70`**

@@ -437,27 +437,62 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 
 | 項目 | 内容 |
 |------|------|
-| ブランチ | **`feat/inspection-drawing-point-nudge`** |
-| 変更種別 | **Web のみ** |
+| ブランチ | **`feat/inspection-drawing-point-nudge`** → **`main` マージ予定** |
+| 代表コミット | **`da9d2675`**（`feat(web): add inspection drawing point nudge controls`） |
+| CI | **`26996602603`** · **success**（全ジョブ） |
+| 変更種別 | **Web のみ**（Prisma / API / migration **なし**） |
 | ExecPlan | [inspection-drawing-point-nudge-execplan.md](../plans/inspection-drawing-point-nudge-execplan.md) |
+| デプロイ | [deployment §2026-06-05](../guides/deployment.md#kiosk-inspection-drawing-point-nudge-2026-06-05) |
+| レイアウト参照 | [kiosk-inspection-drawing-layout-preview.html](../plans/kiosk-inspection-drawing-layout-preview.html) |
 
 #### 仕様（作成/改版のみ）
 
-- **UI**: 右ペイン `InspectionDrawingPointSettingsPanel` 上部に **3×3 十字ボタン**（↑←→↓）。タイトル「測定点の設定」の **上**。
-- **レイアウト**: 名称・基準値を **1 行 2 列**（各列 `min-w-0` · select は `overflow-hidden` シェル）。削除ボタン上の説明文「合格範囲は…」は **削除**。
-- **ステップ**: `INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO = 0.0025`（800×600 DEV 図面で約横 2px / 縦 1.5px 相当）。
-- **座標**: `xRatio` / `yRatio` を更新。フロントで **必ず clamp 済み patch**（0..1）。`NaN` / `Infinity` / 非 number は **0**。
-- **表示条件**: `InspectionDrawingPointSidebar` の **`mode === 'place' && selectedPoint`** のみ（test / guidedTrial では非表示）。`contentReadOnly` 時は disabled。
-- **保存**: 既存 `drawingPointToTemplateItemInput` → `markerXRatio` / `markerYRatio`（API/DB 変更なし）。route schema も 0..1 検証あり。
+- **UI**: 右ペイン `InspectionDrawingPointSettingsPanel` 上部に **3×3 十字ボタン**（↑←→↓ · 中央に「位置」ラベル）。タイトル「測定点の設定（No.N）」の **上**。`role="group"` · `aria-label="測定点の位置調整"` · 各方向 `aria-label`（例: 上へ移動）。
+- **レイアウト**: 名称・基準値を **1 行 2 列**（`inspectionDrawingPointSettingDualRowClassName` · 各列 `min-w-0` · select は `inspectionDrawingBoundedSelectShellClassName`）。削除ボタン上の説明文「合格範囲は…」は **削除**（公差 2 欄は維持）。
+- **ステップ**: `INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO = 0.0025`（800×600 DEV 図面で約横 2px / 縦 1.5px 相当）。ズーム倍率に依存しない固定 ratio（`computeZoomedCanvasLayout` 非依存）。
+- **座標正本**: `xRatio` / `yRatio`（0–1）。`clampInspectionDrawingRatio` — 有限 number は 0..1 clamp · `NaN` / `Infinity` / 非 number は **0**。
+- **更新経路**: 十字押下 → `inspectionDrawingPointPositionPatch` → 既存 `onChange(patch)` → ページ側 `updatePoint`（契約変更なし）。
+- **表示条件**: `InspectionDrawingPointSidebar` の **`mode === 'place' && selectedPoint`** のみ（test / guidedTrial では設定パネルごと非表示）。`SettingsPanel` に `mode` prop は **増やさない**（モード責務の集約）。`contentReadOnly` 時は disabled。
+- **保存**: `drawingPointToTemplateItemInput` → `markerXRatio` / `markerYRatio`。route schema も 0..1。フロントで **必ず clamp 済み patch**（API `clampRatio` に依存しない）。
 
 #### 代表ファイル
 
 | 領域 | パス |
 |------|------|
-| 座標演算 | `inspectionDrawingPointPosition.ts` |
-| 十字 UI | `InspectionDrawingPointPositionNudge.tsx` |
-| 設定パネル | `InspectionDrawingPointSettingsPanel.tsx` |
-| スタイル | `inspectionDrawingKioskUi.ts`（`inspectionDrawingPointNudgeButtonClassName` 等） |
+| 座標演算 | `apps/web/.../inspectionDrawingPointPosition.ts` |
+| 十字 UI | `apps/web/.../InspectionDrawingPointPositionNudge.tsx` |
+| 設定パネル | `apps/web/.../InspectionDrawingPointSettingsPanel.tsx` |
+| 表示責務 | `apps/web/.../InspectionDrawingPointSidebar.tsx`（**変更なし**） |
+| スタイル | `apps/web/.../inspectionDrawingKioskUi.ts`（`inspectionDrawingPointNudgeButtonClassName` 等） |
+| テスト | `__tests__/inspectionDrawingPointPosition.test.ts` 他 3 ファイル · **14 passed** |
+
+#### 本番反映（2026-06-05 · 先行 2 台）
+
+| ホスト | Detach Run ID | HEAD | 実機 |
+|--------|---------------|------|------|
+| `raspberrypi5` | **`20260605-141538-27072`** | **`da9d2675`** | web 再ビルド · バンドル `index-IJxgQ0ZH.js` |
+| `raspi4-kensaku-stonebase01` | **`20260605-142229-22757`** | **`da9d2675`** | **実機 OK**（十字ボタン · 微動 · 保存後位置維持） |
+| Pi4×3 | — | — | **未** |
+
+Phase12: **43/0/0**（デプロイ後）。
+
+#### 知見・レビュー指摘（再発防止）
+
+- **ESLint `import/order`**: `alphabetize: asc` + `caseInsensitive: true` のため、**`../inspectionDrawingPointPosition` は `../InspectionDrawingPointPositionNudge` より前**。本番 `InspectionDrawingPointSettingsPanel.tsx` とテスト 3 ファイルで修正済み。
+- **ExecPlan 検証コマンド**: `pnpm --filter @raspi-system/web exec vitest run` の cwd は `apps/web` のためパスは **`src/features/...`**（`apps/web/src/...` は失敗）。
+- **責務分離**: 座標演算・十字 UI・Sidebar 表示条件を分離したことで、ズーム/place モード/保存契約への回帰リスクを局所化できた。
+
+#### トラブルシュート
+
+| 症状 | 確認 |
+|------|------|
+| 十字ボタンが出ない | **点を配置** + 測定点選択か · test/ガイド試行では **非表示が正** |
+| ボタンはあるが動かない | `contentReadOnly`（履歴版）では disabled |
+| Pi4 だけ旧 UI | Pi5 `web` HEAD · Pi4 **強制リロード**（§6.6.4）· `git pull` 禁止 |
+| 端でそれ以上動かない | clamp 正常（0/1 で停止） |
+| CI lint 失敗 | sibling import のアルファベット順 |
+
+Runbook: [§十字ボタン](../runbooks/kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05)
 
 ### キオスク検査図面 作成/改版レイアウト（2026-06-03） {#検査図面-作成改版レイアウト-2026-06-03}
 

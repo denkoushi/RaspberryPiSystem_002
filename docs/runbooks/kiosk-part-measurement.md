@@ -107,7 +107,20 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 
 ## 検査図面 測定点位置微調整（十字ボタン · 2026-06-05） {#検査図面-測定点位置微調整-十字ボタン-2026-06-05}
 
-正本: [KB-320 §十字ボタン](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [ExecPlan](../plans/inspection-drawing-point-nudge-execplan.md) · ブランチ **`feat/inspection-drawing-point-nudge`** · **Web のみ** · **未デプロイ**
+正本: [KB-320 §十字ボタン](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [ExecPlan](../plans/inspection-drawing-point-nudge-execplan.md) · [deployment §2026-06-05](../guides/deployment.md#kiosk-inspection-drawing-point-nudge-2026-06-05) · ブランチ **`feat/inspection-drawing-point-nudge`** · **`da9d2675`** · CI **`26996602603`** · **Web のみ**
+
+### デプロイ（Web のみ · Pi5 + stonebase 反映済 · 2026-06-05）
+
+1. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+2. `./scripts/update-all-clients.sh feat/inspection-drawing-point-nudge infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+3. Pi5 目視 OK 後、`--limit raspi4-kensaku-stonebase01`（先行実機）→ 残 Pi4×3 を 1 台ずつ（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80`）。
+4. 各 Pi4 **強制リロード**（§6.6.4）。`kiosk-browser` 再起動のみで足りることもあるが、旧 bundle 残存時は必須。
+
+| ホスト | Detach Run ID | 実機 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260605-141538-27072`** | web 再ビルド · **`da9d2675`** |
+| `raspi4-kensaku-stonebase01` | **`20260605-142229-22757`** | **実機 OK** |
+| Pi4×3 | — | **未** |
 
 ### 手動確認（作成/改版）
 
