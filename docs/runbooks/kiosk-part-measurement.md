@@ -105,6 +105,34 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 2. 目視 OK 後、必要 Pi4 を `--limit` 1 台ずつ（実績: **`raspberrypi5`** `20260603-154307-28721` · **`raspi4-kensaku-stonebase01`** `20260603-154818-15503`）。
 3. Pi4 はキオスク **強制リロード**（§6.6.4）後、[§実機確認ポイント（拡張）](#実機確認ポイント拡張) の 2–4 を実施。
 
+## 検査図面 測定点位置微調整（十字ボタン · 2026-06-05） {#検査図面-測定点位置微調整-十字ボタン-2026-06-05}
+
+正本: [KB-320 §十字ボタン](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [ExecPlan](../plans/inspection-drawing-point-nudge-execplan.md) · [deployment §2026-06-05](../guides/deployment.md#kiosk-inspection-drawing-point-nudge-2026-06-05) · ブランチ **`feat/inspection-drawing-point-nudge`** · **`da9d2675`** · CI **`26996602603`** · **Web のみ**
+
+### デプロイ（Web のみ · Pi5 + stonebase 反映済 · 2026-06-05）
+
+1. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+2. `./scripts/update-all-clients.sh feat/inspection-drawing-point-nudge infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+3. Pi5 目視 OK 後、`--limit raspi4-kensaku-stonebase01`（先行実機）→ 残 Pi4×3 を 1 台ずつ（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80`）。
+4. 各 Pi4 **強制リロード**（§6.6.4）。`kiosk-browser` 再起動のみで足りることもあるが、旧 bundle 残存時は必須。
+
+| ホスト | Detach Run ID | 実機 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260605-141538-27072`** | web 再ビルド · **`da9d2675`** |
+| `raspi4-kensaku-stonebase01` | **`20260605-142229-22757`** | **実機 OK** |
+| Pi4×3 | — | **未** |
+
+### 手動確認（作成/改版）
+
+1. **検査図面** 新規/改版を開き、ツールバー **「点を配置」** を選択。
+2. 図面上の丸数字または右ペイン一覧で測定点を選択。
+3. 右ペイン **「測定点の位置調整」**（十字ボタン）がタイトル **上** に表示されること。
+4. ↑↓←→ でマーカーが **約 1–2px 刻み** で動くこと。端（0/1）でそれ以上はみ出さないこと。
+5. **テスト入力** / **ガイド試行** に切り替えると設定パネル（十字ボタン含む）が **非表示** になること。
+6. 保存後、再読込でも位置が維持されること。
+
+DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネント）。
+
 ## 検査図面 作成/改版ヘッダー フラット band（2026-06-04） {#検査図面-作成改版ヘッダー-フラット-band-2026-06-04}
 
 正本: [KB-320 §フラット band](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成改版ヘッダー-フラット-band-2026-06-04) · [ExecPlan](../plans/inspection-drawing-create-layout-and-return-nav.md) · [deployment §2026-06-04](../guides/deployment.md#kiosk-inspection-drawing-create-header-flat-layout-2026-06-04) · ブランチ **`fix/inspection-drawing-create-header-flat-layout`** · **`d96da485`** · CI **`26917349311`**

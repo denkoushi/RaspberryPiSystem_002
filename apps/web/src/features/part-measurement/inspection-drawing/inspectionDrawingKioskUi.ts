@@ -193,6 +193,21 @@ export const inspectionDrawingPointSettingPanelClassName =
 export const inspectionDrawingPointSettingInputClassName =
   'text-slate-900 text-[1.12rem] leading-snug py-2';
 
+/** 測定点設定 — 名称・基準値 2 列行（17rem 右ペイン向け） */
+export const inspectionDrawingPointSettingDualRowClassName =
+  'grid min-w-0 grid-cols-2 gap-1.5';
+
+/** 測定点設定 — 2 列行の各セル */
+export const inspectionDrawingPointSettingDualCellClassName = 'grid min-w-0 gap-1';
+
+/** 測定点位置微調整 — 3x3 十字ボタン配置 */
+export const inspectionDrawingPointNudgeGridClassName =
+  'grid w-fit grid-cols-3 grid-rows-3 gap-0.5 self-center';
+
+/** 測定点位置微調整 — icon-only 方向ボタン（既存 Button の px-4 を使わない） */
+export const inspectionDrawingPointNudgeButtonClassName =
+  'inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-white/25 bg-slate-800/90 text-[1.1rem] font-bold leading-none text-white/90 hover:bg-slate-700/90 disabled:cursor-not-allowed';
+
 /** 一覧フィルタ — 品番欄幅 */
 export const inspectionDrawingLibraryFilterFhincdWidthClass =
   'w-full shrink-0 sm:w-[13rem]';
