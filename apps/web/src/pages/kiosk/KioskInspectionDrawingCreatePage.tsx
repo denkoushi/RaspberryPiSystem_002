@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
   activatePartMeasurementTemplate,
   createPartMeasurementTemplate,
   createPartMeasurementVisualTemplate,
+  deleteUnusedPartMeasurementVisualTemplate,
   getKioskInspectionDrawingTemplate,
   getResolvedClientKey,
+  existsActivePartMeasurementTemplate,
+  listPartMeasurementVisualTemplates,
   reviseKioskInspectionDrawingTemplate
 } from '../../api/client';
 import { useKioskProductionScheduleResources } from '../../api/hooks';
@@ -19,6 +22,7 @@ import {
   InspectionDrawingCanvasZoomControls,
   InspectionDrawingCreateCompactHeader,
   InspectionDrawingCreateToolbar,
+  InspectionDrawingVisualSourceControl,
   useInspectionDrawingZoom,
   InspectionDrawingPointSidebar,
   useInspectionDrawingGuidedTrial,
@@ -30,7 +34,11 @@ import {
   templateItemToDrawingPoint,
   inspectionDrawingBlobFetchPath,
   inspectionDrawingCanvasImageUrl,
-  inspectionDrawingHasImageSource
+  inspectionDrawingHasImageSource,
+  parseInspectionDrawingSourceTemplateIdFromSearch,
+  templateToCreateDraft,
+  resolveInspectionDrawingCreateKeyCollision,
+  inspectionDrawingCreateKeyCollisionMessage
 } from '../../features/part-measurement/inspection-drawing';
 import {
   createInspectionDrawingPoint,
@@ -46,12 +54,23 @@ import { usePartMeasurementDrawingLocalPreview } from '../../features/part-measu
 
 import { parseKioskInspectionDrawingReturnFromLocation } from './kioskInspectionDrawingReturnNavigation';
 
+import type {
+  InspectionDrawingCreateDraftForm,
+  InspectionDrawingSourceTemplateDraft,
+  InspectionDrawingVisualSource
+} from '../../features/part-measurement/inspection-drawing/inspectionDrawingCreateDraft';
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
 import type {
   PartMeasurementProcessGroup,
   PartMeasurementTemplateDto,
+  PartMeasurementVisualTemplateDto,
   SelfInspectionMode
 } from '../../features/part-measurement/types';
+
+function confirmVisualChange(message: string): boolean {
+  if (typeof window === 'undefined') return true;
+  return window.confirm(message);
+}
 
 export function KioskInspectionDrawingCreatePage() {
   const { templateId } = useParams<{ templateId: string }>();
@@ -78,6 +97,14 @@ export function KioskInspectionDrawingCreatePage() {
   const [template, setTemplate] = useState<PartMeasurementTemplateDto | null>(null);
   const [selfInspectionMode, setSelfInspectionMode] = useState<SelfInspectionMode>('full');
   const [selfInspectionFixedCount, setSelfInspectionFixedCount] = useState('');
+  const [visualSource, setVisualSource] = useState<InspectionDrawingVisualSource>('unselected');
+  const [selectedVisualTemplateId, setSelectedVisualTemplateId] = useState<string | null>(null);
+  const [selectedVisualLabel, setSelectedVisualLabel] = useState<string | null>(null);
+  const [sourceTemplateDraft, setSourceTemplateDraft] =
+    useState<InspectionDrawingSourceTemplateDraft | null>(null);
+  const [visuals, setVisuals] = useState<PartMeasurementVisualTemplateDto[]>([]);
+  const [visualsLoading, setVisualsLoading] = useState(false);
+  const [activeKeyExists, setActiveKeyExists] = useState(false);
   const { zoom, zoomIn, zoomOut, fitToView, resetZoom, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
 
   const {
@@ -117,6 +144,24 @@ export function KioskInspectionDrawingCreatePage() {
     [resourceNameMap, resourceOptions]
   );
 
+  const keyCollision = useMemo(() => {
+    if (isEditing) return null;
+    const f = fhincd.trim();
+    const r = resourceCd.trim();
+    if (!f || !r) return null;
+    return resolveInspectionDrawingCreateKeyCollision({
+      fhincd: f,
+      processGroup,
+      resourceCd: r,
+      sourceDraft: sourceTemplateDraft,
+      activeExists: activeKeyExists
+    });
+  }, [activeKeyExists, fhincd, isEditing, processGroup, resourceCd, sourceTemplateDraft]);
+
+  const keyCollisionMessage = keyCollision
+    ? inspectionDrawingCreateKeyCollisionMessage(keyCollision)
+    : null;
+
   const blobFetchPath = inspectionDrawingBlobFetchPath(serverDrawingPath, hasLocalRenderablePreview);
   const { blobUrl: serverDrawingBlobUrl, error: drawingLoadError } =
     usePartMeasurementDrawingBlobUrl(blobFetchPath);
@@ -140,29 +185,164 @@ export function KioskInspectionDrawingCreatePage() {
   });
 
   const saveBlockedByPreview =
-    previewResolving || (hasPendingLocalSelection && !saveFile);
+    visualSource === 'upload' &&
+    (previewResolving ||
+      Boolean(previewError) ||
+      !hasLocalRenderablePreview ||
+      (hasPendingLocalSelection && !saveFile));
 
   const drawingReplacePendingRef = useRef(false);
+  const prevSourceTemplateIdRef = useRef<string | null>(null);
+  const visualSearchRequestSeqRef = useRef(0);
 
-  const applyLoadedTemplate = (loaded: PartMeasurementTemplateDto) => {
-    setTemplate(loaded);
-    setTemplateName(loaded.name);
-    setFhincd(loaded.fhincd);
-    setResourceCd(loaded.resourceCd);
-    setProcessGroup(loaded.processGroup === 'grinding' ? 'grinding' : 'cutting');
-    setPoints(loaded.items.map((item) => templateItemToDrawingPoint(item)));
-    setSelectedPointId(loaded.items[0]?.id ?? null);
-    setServerDrawingPath(loaded.visualTemplate?.drawingImageRelativePath ?? null);
-    setSelfInspectionMode(loaded.selfInspectionMode);
-    setSelfInspectionFixedCount(
-      mapTemplateFixedCountToFormString(
-        loaded.selfInspectionMode,
-        loaded.selfInspectionFixedCount,
-        loaded.selfInspectionSampleSize
-      )
-    );
+  const applyLoadedTemplate = useCallback(
+    (loaded: PartMeasurementTemplateDto) => {
+      setTemplate(loaded);
+      setTemplateName(loaded.name);
+      setFhincd(loaded.fhincd);
+      setResourceCd(loaded.resourceCd);
+      setProcessGroup(loaded.processGroup === 'grinding' ? 'grinding' : 'cutting');
+      setPoints(loaded.items.map((item) => templateItemToDrawingPoint(item)));
+      setSelectedPointId(loaded.items[0]?.id ?? null);
+      setServerDrawingPath(loaded.visualTemplate?.drawingImageRelativePath ?? null);
+      setSelfInspectionMode(loaded.selfInspectionMode);
+      setSelfInspectionFixedCount(
+        mapTemplateFixedCountToFormString(
+          loaded.selfInspectionMode,
+          loaded.selfInspectionFixedCount,
+          loaded.selfInspectionSampleSize
+        )
+      );
+      if (loaded.visualTemplateId?.trim()) {
+        setVisualSource('pickExisting');
+        setSelectedVisualTemplateId(loaded.visualTemplateId);
+        setSelectedVisualLabel(loaded.visualTemplate?.name ?? null);
+      } else {
+        setVisualSource('unselected');
+        setSelectedVisualTemplateId(null);
+        setSelectedVisualLabel(null);
+      }
+      resetLocalPreview();
+    },
+    [resetLocalPreview]
+  );
+
+  const resetBlankCreateForm = useCallback(() => {
+    setSourceTemplateDraft(null);
+    setTemplateName('');
+    setFhincd('');
+    setResourceCd('');
+    setProcessGroup('cutting');
+    setPoints([]);
+    setSelectedPointId(null);
+    setSelfInspectionMode('full');
+    setSelfInspectionFixedCount('');
+    setVisualSource('unselected');
+    setSelectedVisualTemplateId(null);
+    setSelectedVisualLabel(null);
+    setServerDrawingPath(null);
     resetLocalPreview();
-  };
+  }, [resetLocalPreview]);
+
+  const applyCreateDraft = useCallback(
+    (draft: InspectionDrawingCreateDraftForm) => {
+      setSourceTemplateDraft(draft.sourceDraft);
+      setTemplateName(draft.templateName);
+      setFhincd(draft.fhincd);
+      setResourceCd(draft.resourceCd);
+      setProcessGroup(draft.processGroup);
+      setPoints(draft.points);
+      setSelectedPointId(draft.points[0]?.id ?? null);
+      setSelfInspectionMode(draft.selfInspectionMode);
+      setSelfInspectionFixedCount(draft.selfInspectionFixedCount);
+      if (draft.visualTemplateId && draft.drawingImageRelativePath) {
+        setVisualSource('pickExisting');
+        setSelectedVisualTemplateId(draft.visualTemplateId);
+        setSelectedVisualLabel(draft.visualTemplateName);
+        setServerDrawingPath(draft.drawingImageRelativePath);
+        resetLocalPreview();
+      } else {
+        setVisualSource('unselected');
+        setSelectedVisualTemplateId(null);
+        setSelectedVisualLabel(null);
+        setServerDrawingPath(null);
+      }
+    },
+    [resetLocalPreview]
+  );
+
+  const clearPointsIfConfirmed = useCallback((): boolean => {
+    if (points.length === 0) return true;
+    return confirmVisualChange(
+      '図面を変更すると測定点がクリアされます。続行しますか？'
+    );
+  }, [points.length]);
+
+  const applyPickExistingVisual = useCallback(
+    (visual: PartMeasurementVisualTemplateDto): boolean => {
+      if (selectedVisualTemplateId === visual.id) {
+        setVisualSource('pickExisting');
+        setSelectedVisualLabel(visual.name);
+        setServerDrawingPath(visual.drawingImageRelativePath);
+        return true;
+      }
+      if (!clearPointsIfConfirmed()) return false;
+      resetLocalPreview();
+      setVisualSource('pickExisting');
+      setSelectedVisualTemplateId(visual.id);
+      setSelectedVisualLabel(visual.name);
+      setServerDrawingPath(visual.drawingImageRelativePath);
+      setPoints([]);
+      setSelectedPointId(null);
+      guidedTrial.resetTrialState();
+      return true;
+    },
+    [clearPointsIfConfirmed, guidedTrial, resetLocalPreview, selectedVisualTemplateId]
+  );
+
+  const applyUploadVisual = useCallback(
+    (file: File): boolean => {
+      if (visualSource === 'pickExisting' || points.length > 0) {
+        if (!clearPointsIfConfirmed()) return false;
+      }
+      setVisualSource('upload');
+      setSelectedVisualTemplateId(null);
+      setSelectedVisualLabel(null);
+      setServerDrawingPath(null);
+      if (file && (points.length > 0 || visualSource === 'pickExisting')) {
+        drawingReplacePendingRef.current = true;
+      }
+      selectFile(file);
+      guidedTrial.resetTrialState();
+      return true;
+    },
+    [clearPointsIfConfirmed, guidedTrial, points.length, selectFile, visualSource]
+  );
+
+  const loadVisualTemplates = useCallback(
+    async (searchQuery?: string) => {
+      const requestSeq = ++visualSearchRequestSeqRef.current;
+      setVisualsLoading(true);
+      try {
+        const list = await listPartMeasurementVisualTemplates(
+          { q: searchQuery?.trim() || undefined, limit: 80 },
+          clientKey
+        );
+        if (visualSearchRequestSeqRef.current === requestSeq) {
+          setVisuals(list);
+        }
+      } catch {
+        if (visualSearchRequestSeqRef.current === requestSeq) {
+          setVisuals([]);
+        }
+      } finally {
+        if (visualSearchRequestSeqRef.current === requestSeq) {
+          setVisualsLoading(false);
+        }
+      }
+    },
+    [clientKey]
+  );
 
   useEffect(() => {
     if (!templateId) return;
@@ -179,25 +359,94 @@ export function KioskInspectionDrawingCreatePage() {
         setBusy(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- templateId / clientKey のみで再取得
-  }, [clientKey, templateId]);
+  }, [applyLoadedTemplate, clientKey, templateId]);
+
+  useEffect(() => {
+    if (isEditing) return;
+
+    const sourceId = parseInspectionDrawingSourceTemplateIdFromSearch(location.search);
+    const prevSourceId = prevSourceTemplateIdRef.current;
+    prevSourceTemplateIdRef.current = sourceId;
+
+    if (!sourceId) {
+      if (prevSourceId) {
+        resetBlankCreateForm();
+        setMessage(null);
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (prevSourceId !== sourceId) {
+      resetBlankCreateForm();
+    }
+
+    let cancelled = false;
+    setBusy(true);
+    setMessage(null);
+    void (async () => {
+      try {
+        const loaded = await getKioskInspectionDrawingTemplate(sourceId, clientKey);
+        if (cancelled) return;
+        if (!loaded.isActive) {
+          resetBlankCreateForm();
+          setMessage('有効版のみ雛形にできます。履歴版は流用できません。');
+          return;
+        }
+        applyCreateDraft(templateToCreateDraft(loaded));
+      } catch (e: unknown) {
+        if (cancelled) return;
+        resetBlankCreateForm();
+        const err = e as { response?: { data?: { message?: string } } };
+        setMessage(err.response?.data?.message ?? '雛形テンプレートの読み込みに失敗しました。');
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applyCreateDraft, clientKey, isEditing, location.search, resetBlankCreateForm]);
+
+  useEffect(() => {
+    if (isEditing) {
+      setActiveKeyExists(false);
+      return;
+    }
+    const f = fhincd.trim();
+    const r = resourceCd.trim();
+    if (!f || !r) {
+      setActiveKeyExists(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const exists = await existsActivePartMeasurementTemplate(
+            { fhincd: f, processGroup, resourceCd: r },
+            clientKey
+          );
+          if (!cancelled) {
+            setActiveKeyExists(exists);
+          }
+        } catch {
+          if (!cancelled) setActiveKeyExists(false);
+        }
+      })();
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [clientKey, fhincd, isEditing, processGroup, resourceCd]);
 
   useEffect(() => {
     resetZoom();
   }, [canvasImageUrl, resetZoom]);
-
-  const handleFile = (file: File | null) => {
-    setMessage(null);
-    if (isEditing && file) {
-      drawingReplacePendingRef.current = true;
-    }
-    selectFile(file);
-    if (!isEditing) {
-      setPoints([]);
-      setSelectedPointId(null);
-    }
-    guidedTrial.resetTrialState();
-  };
 
   useEffect(() => {
     if (!drawingReplacePendingRef.current || !hasLocalRenderablePreview || !saveFile) return;
@@ -210,7 +459,22 @@ export function KioskInspectionDrawingCreatePage() {
   useEffect(() => {
     if (!previewError) return;
     drawingReplacePendingRef.current = false;
-  }, [previewError]);
+    if (!isEditing || !template) return;
+
+    resetLocalPreview();
+    if (template.visualTemplateId?.trim() && template.visualTemplate) {
+      setVisualSource('pickExisting');
+      setSelectedVisualTemplateId(template.visualTemplateId);
+      setSelectedVisualLabel(template.visualTemplate.name ?? null);
+      setServerDrawingPath(template.visualTemplate.drawingImageRelativePath ?? null);
+    } else {
+      setVisualSource('unselected');
+      setSelectedVisualTemplateId(null);
+      setSelectedVisualLabel(null);
+      setServerDrawingPath(null);
+    }
+    setMessage('図面のプレビュー変換に失敗しました。前の図面に戻しました。');
+  }, [isEditing, previewError, resetLocalPreview, template]);
 
   const updatePoint = (id: string, patch: Partial<InspectionDrawingPoint>) => {
     if (contentReadOnly) return;
@@ -254,6 +518,10 @@ export function KioskInspectionDrawingCreatePage() {
       setMessage('履歴版は閲覧のみです。編集するには有効化してください。');
       return;
     }
+    if (keyCollision) {
+      setMessage(keyCollisionMessage);
+      return;
+    }
     if (saveBlockedByPreview) {
       setMessage('図面のプレビュー変換が完了するまで保存できません。');
       return;
@@ -291,23 +559,52 @@ export function KioskInspectionDrawingCreatePage() {
     }
 
     if (!isEditing) {
-      if (!saveFile) {
-        setMessage('新規作成には図面画像またはPDFを選んでください（PDFは1ページ目のみ）。');
+      if (visualSource === 'unselected') {
+        setMessage('図面を選択するかアップロードしてください。');
         return;
       }
-    } else if (!saveFile && !template?.visualTemplateId?.trim()) {
-      setMessage('図面を設定してください。');
-      return;
+      if (visualSource === 'upload' && !saveFile) {
+        setMessage('新規アップロードの図面ファイルを選んでください（PDFは1ページ目のみ）。');
+        return;
+      }
+      if (visualSource === 'pickExisting' && !selectedVisualTemplateId?.trim()) {
+        setMessage('既存図面を選択してください。');
+        return;
+      }
+    } else {
+      if (
+        visualSource === 'upload' &&
+        (!saveFile || Boolean(previewError) || !hasLocalRenderablePreview)
+      ) {
+        setMessage('図面のプレビュー変換に失敗したか、ファイルが未選択です。');
+        return;
+      }
+      if (visualSource === 'unselected' && !template?.visualTemplateId?.trim()) {
+        setMessage('図面を設定してください。');
+        return;
+      }
     }
 
     setBusy(true);
     setMessage(null);
+    let uploadedVisualCleanup: { id: string; cleanupToken: string } | null = null;
     try {
-      let visualTemplateId = template?.visualTemplateId?.trim() ? template.visualTemplateId : null;
-      if (saveFile) {
-        const visualTemplate = await createPartMeasurementVisualTemplate(name, saveFile, clientKey);
-        visualTemplateId = visualTemplate.id;
+      let visualTemplateId =
+        visualSource === 'pickExisting'
+          ? selectedVisualTemplateId
+          : template?.visualTemplateId?.trim()
+            ? template.visualTemplateId
+            : null;
+
+      if (visualSource === 'upload' && saveFile) {
+        const createdVisual = await createPartMeasurementVisualTemplate(name, saveFile, clientKey);
+        visualTemplateId = createdVisual.visualTemplate.id;
+        uploadedVisualCleanup = {
+          id: createdVisual.visualTemplate.id,
+          cleanupToken: createdVisual.cleanupToken
+        };
       }
+
       if (!visualTemplateId?.trim()) {
         setMessage('図面の登録に失敗しました。もう一度お試しください。');
         return;
@@ -343,6 +640,7 @@ export function KioskInspectionDrawingCreatePage() {
             visualTemplateId,
             selfInspectionMode: selfInspectionPayload.selfInspectionMode,
             selfInspectionFixedCount: selfInspectionPayload.selfInspectionFixedCount,
+            failIfActiveExists: true,
             items
           },
           clientKey
@@ -355,6 +653,13 @@ export function KioskInspectionDrawingCreatePage() {
         });
       }
     } catch (e: unknown) {
+      if (uploadedVisualCleanup) {
+        await deleteUnusedPartMeasurementVisualTemplate(
+          uploadedVisualCleanup.id,
+          uploadedVisualCleanup.cleanupToken,
+          clientKey
+        ).catch(() => undefined);
+      }
       const err = e as { response?: { data?: { message?: string } } };
       setMessage(err.response?.data?.message ?? '保存に失敗しました。');
     } finally {
@@ -369,6 +674,9 @@ export function KioskInspectionDrawingCreatePage() {
     }
     setSelectedPointId(id);
   };
+
+  const saveDisabled =
+    contentReadOnly || saveBlockedByPreview || Boolean(keyCollision) || busy;
 
   return (
     <div className={inspectionDrawingCreatePageRootClassName}>
@@ -400,10 +708,25 @@ export function KioskInspectionDrawingCreatePage() {
           selfInspectionFixedCount,
           onSelfInspectionFixedCountChange: setSelfInspectionFixedCount,
           contentReadOnly,
-          onDrawingFileChange: handleFile,
+          onDrawingFileChange: () => undefined,
           templateVersion: template?.version,
           templateIsActive: template?.isActive
         }}
+        drawingSourceControl={
+          <InspectionDrawingVisualSourceControl
+            contentReadOnly={contentReadOnly}
+            visualSource={visualSource}
+            selectedVisualTemplateId={selectedVisualTemplateId}
+            selectedVisualLabel={selectedVisualLabel}
+            visuals={visuals}
+            visualsLoading={visualsLoading}
+            onPickExisting={applyPickExistingVisual}
+            onUploadFile={applyUploadVisual}
+            onSearchChange={(query) => {
+              void loadVisualTemplates(query);
+            }}
+          />
+        }
         toolbar={
           <InspectionDrawingCreateToolbar
             processGroup={processGroup}
@@ -414,7 +737,7 @@ export function KioskInspectionDrawingCreatePage() {
             hasDrawingImage={hasDrawingImage}
             hasMeasurementPoints={points.length > 0}
             onSave={contentReadOnly ? undefined : () => void handleSave()}
-            saveDisabled={contentReadOnly || saveBlockedByPreview}
+            saveDisabled={saveDisabled}
             saveBusy={busy}
             returnTo={inspectionReturn.inspectionDrawingReturnTo}
             returnLabel={inspectionReturn.inspectionDrawingReturnLabel}
@@ -422,10 +745,20 @@ export function KioskInspectionDrawingCreatePage() {
         }
       />
 
+      {!isEditing ? (
+        <p className="px-1 text-[0.95rem] font-semibold text-sky-100">
+          {sourceTemplateDraft
+            ? '雛形から新規作成 — 品番・工程・資源CDを変えて別テンプレとして保存します。'
+            : '新規作成 — 品番・工程・資源CDごとに1テンプレートです。'}
+        </p>
+      ) : null}
       {readOnly ? (
         <p className="px-1 text-[1rem] font-semibold text-sky-200">
           履歴版は閲覧のみです。編集するには有効化してください。
         </p>
+      ) : null}
+      {keyCollisionMessage ? (
+        <p className="px-1 text-[1rem] font-semibold text-amber-200">{keyCollisionMessage}</p>
       ) : null}
       {message ? <p className="px-1 text-[1rem] font-semibold text-amber-200">{message}</p> : null}
       {previewError ? <p className="px-1 text-sm text-red-300">{previewError}</p> : null}

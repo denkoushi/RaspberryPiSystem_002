@@ -24,6 +24,11 @@ import {
   resolveReviseSelfInspectionFields,
   validateSelfInspectionConfigFromDb
 } from './self-inspection-config.js';
+import {
+  acquireThreeKeyLineageTransactionLock,
+  isProductionThreeKeyLineage
+} from './part-measurement-template-lineage-lock.js';
+import { lockActiveVisualTemplateForBindingInTransaction } from './part-measurement-visual-template.service.js';
 
 export type TemplateItemInput = {
   sortOrder: number;
@@ -58,6 +63,28 @@ function normalizeResourceCd(raw: string): string {
   return t.length > 0 ? t : PART_MEASUREMENT_LEGACY_RESOURCE_CD;
 }
 
+function threeKeyFhincdEqualsFilter(fhincd: string): Prisma.StringFilter {
+  return { equals: normalizeFhincd(fhincd), mode: 'insensitive' };
+}
+
+function lineageFhincdWhere(
+  templateScope: PartMeasurementTemplateScope,
+  processGroup: PartMeasurementProcessGroup,
+  fhincd: string
+): string | Prisma.StringFilter {
+  return isProductionThreeKeyLineage(templateScope, processGroup)
+    ? threeKeyFhincdEqualsFilter(fhincd)
+    : fhincd;
+}
+
+function storageFhincdForLineage(
+  templateScope: PartMeasurementTemplateScope,
+  processGroup: PartMeasurementProcessGroup,
+  fhincd: string
+): string {
+  return isProductionThreeKeyLineage(templateScope, processGroup) ? normalizeFhincd(fhincd) : fhincd;
+}
+
 function buildInspectionDrawingEvaluationTemplateName(
   baseName: string,
   referenceFhincd: string,
@@ -78,6 +105,35 @@ type ResolvedLineage = {
   candidateFhinmei: string | null;
 };
 
+type InsertNextTemplateVersionOptions = {
+  /** createTemplateVersion 等で同一 tx 内に既に lineage lock を取得済みのとき true */
+  lineageLockHeld?: boolean;
+};
+
+const ACTIVE_PRODUCTION_THREE_KEY_EXISTS_MESSAGE =
+  '同一品番・工程・資源CDの有効テンプレートが既にあります。改版する場合は既存テンプレを編集してください。';
+
+async function assertNoActiveProductionThreeKeyTemplateInTransaction(
+  tx: Prisma.TransactionClient,
+  fhincd: string,
+  processGroup: PartMeasurementProcessGroup,
+  resourceCd: string
+): Promise<void> {
+  const existingActive = await tx.partMeasurementTemplate.findFirst({
+    where: {
+      fhincd: threeKeyFhincdEqualsFilter(fhincd),
+      processGroup,
+      resourceCd,
+      isActive: true,
+      templateScope: 'THREE_KEY'
+    },
+    select: { id: true }
+  });
+  if (existingActive) {
+    throw new ApiError(409, ACTIVE_PRODUCTION_THREE_KEY_EXISTS_MESSAGE);
+  }
+}
+
 async function insertNextTemplateVersionInTransaction(
   tx: Prisma.TransactionClient,
   lineage: ResolvedLineage,
@@ -87,35 +143,38 @@ async function insertNextTemplateVersionInTransaction(
     visualTemplateId: string | null;
     selfInspectionMode: SelfInspectionMode;
     selfInspectionFixedCount: number | null;
-  }
+  },
+  options?: InsertNextTemplateVersionOptions
 ) {
-  const visualId = content.visualTemplateId?.trim() || null;
-  if (visualId) {
-    const vt = await tx.partMeasurementVisualTemplate.findFirst({
-      where: { id: visualId, isActive: true }
-    });
-    if (!vt) {
-      throw new ApiError(400, 'visual template が見つからないか無効です');
-    }
-  }
-
   const { fhincd, processGroup, resourceCd, templateScope, candidateFhinmei } = lineage;
 
+  if (isProductionThreeKeyLineage(templateScope, processGroup) && !options?.lineageLockHeld) {
+    await acquireThreeKeyLineageTransactionLock(tx, fhincd, processGroup, resourceCd);
+  }
+
+  const visualId = content.visualTemplateId?.trim() || null;
+  if (visualId) {
+    await lockActiveVisualTemplateForBindingInTransaction(tx, visualId);
+  }
+
+  const fhincdWhere = lineageFhincdWhere(templateScope, processGroup, fhincd);
+  const persistedFhincd = storageFhincdForLineage(templateScope, processGroup, fhincd);
+
   const agg = await tx.partMeasurementTemplate.aggregate({
-    where: { fhincd, processGroup, resourceCd },
+    where: { fhincd: fhincdWhere, processGroup, resourceCd },
     _max: { version: true }
   });
   const nextVersion = (agg._max.version ?? 0) + 1;
 
   await tx.partMeasurementTemplate.updateMany({
-    where: { fhincd, processGroup, resourceCd },
+    where: { fhincd: fhincdWhere, processGroup, resourceCd },
     data: { isActive: false }
   });
 
   return tx.partMeasurementTemplate.create({
     data: {
       templateScope,
-      fhincd,
+      fhincd: persistedFhincd,
       processGroup,
       resourceCd,
       candidateFhinmei,
@@ -259,14 +318,44 @@ export class PartMeasurementTemplateService {
     processGroup: PartMeasurementProcessGroup,
     resourceCd: string
   ) {
-    const f = fhincd.trim();
+    const f = normalizeFhincd(fhincd);
     const r = normalizeResourceCd(resourceCd);
     if (f.length === 0) return null;
     return prisma.partMeasurementTemplate.findFirst({
-      where: { fhincd: f, processGroup, resourceCd: r, isActive: true, templateScope: 'THREE_KEY' },
+      where: {
+        fhincd: threeKeyFhincdEqualsFilter(f),
+        processGroup,
+        resourceCd: r,
+        isActive: true,
+        templateScope: 'THREE_KEY'
+      },
       orderBy: { version: 'desc' },
       include: partMeasurementTemplateFullInclude
     });
+  }
+
+  /** 本番 THREE_KEY の有効テンプレ存在確認（items/visual を読まない） */
+  async existsActiveProductionThreeKeyTemplate(
+    fhincd: string,
+    processGroup: PartMeasurementProcessGroup,
+    resourceCd: string
+  ): Promise<boolean> {
+    const f = normalizeFhincd(fhincd);
+    const r = normalizeResourceCd(resourceCd);
+    if (f.length === 0 || !isProductionThreeKeyLineage('THREE_KEY', processGroup)) {
+      return false;
+    }
+    const row = await prisma.partMeasurementTemplate.findFirst({
+      where: productionPartMeasurementTemplateWhere({
+        fhincd: threeKeyFhincdEqualsFilter(f),
+        processGroup,
+        resourceCd: r,
+        isActive: true,
+        templateScope: 'THREE_KEY'
+      }),
+      select: { id: true }
+    });
+    return row !== null;
   }
 
   async listTemplates(query: {
@@ -312,6 +401,8 @@ export class PartMeasurementTemplateService {
     selfInspectionFixedCount?: number | null;
     /** @deprecated API 互換 */
     selfInspectionSampleSize?: number | null;
+    /** true のとき同一キーに active があると 409（検査図面の新規作成向け） */
+    failIfActiveExists?: boolean;
   }) {
     const templateScope: PartMeasurementTemplateScope = params.templateScope ?? 'THREE_KEY';
     let fhincd = params.fhincd.trim();
@@ -328,6 +419,7 @@ export class PartMeasurementTemplateService {
       if (fhincd.length === 0) {
         throw new ApiError(400, 'FIHNCD が空です');
       }
+      fhincd = normalizeFhincd(fhincd);
     } else if (templateScope === 'FHINMEI_ONLY') {
       processGroup = 'CANDIDATE_FHINMEI_ONLY';
       fhincd = PART_MEASUREMENT_FHINMEI_ONLY_BUCKET_FHINCD;
@@ -343,6 +435,7 @@ export class PartMeasurementTemplateService {
       if (fhincd.length === 0) {
         throw new ApiError(400, 'FIHNCD が空です');
       }
+      fhincd = normalizeFhincd(fhincd);
     }
 
     if (params.items.length === 0) {
@@ -356,8 +449,22 @@ export class PartMeasurementTemplateService {
 
     const visualId = params.visualTemplateId?.trim() || null;
 
-    return prisma.$transaction((tx) =>
-      insertNextTemplateVersionInTransaction(
+    return prisma.$transaction(async (tx) => {
+      let lineageLockHeld = false;
+      if (isProductionThreeKeyLineage(templateScope, processGroup)) {
+        await acquireThreeKeyLineageTransactionLock(tx, fhincd, processGroup, resourceCd);
+        lineageLockHeld = true;
+        if (params.failIfActiveExists) {
+          await assertNoActiveProductionThreeKeyTemplateInTransaction(
+            tx,
+            fhincd,
+            processGroup,
+            resourceCd
+          );
+        }
+      }
+
+      return insertNextTemplateVersionInTransaction(
         tx,
         { templateScope, fhincd, processGroup, resourceCd, candidateFhinmei },
         {
@@ -366,9 +473,10 @@ export class PartMeasurementTemplateService {
           visualTemplateId: visualId,
           selfInspectionMode: validated.mode,
           selfInspectionFixedCount: validated.fixedCount
-        }
-      )
-    );
+        },
+        { lineageLockHeld }
+      );
+    });
   }
 
   /**
@@ -559,15 +667,31 @@ export class PartMeasurementTemplateService {
     const normalizedVisual = visualId?.trim() ? visualId.trim() : null;
     const validated = resolveReviseSelfInspectionFields(body, source);
 
-    return prisma.$transaction((tx) =>
-      insertNextTemplateVersionInTransaction(tx, lineage, {
-        name: body.name,
-        items: body.items,
-        visualTemplateId: normalizedVisual,
-        selfInspectionMode: validated.mode,
-        selfInspectionFixedCount: validated.fixedCount
-      })
-    );
+    return prisma.$transaction(async (tx) => {
+      let lineageLockHeld = false;
+      if (isProductionThreeKeyLineage(lineage.templateScope, lineage.processGroup)) {
+        await acquireThreeKeyLineageTransactionLock(
+          tx,
+          lineage.fhincd,
+          lineage.processGroup,
+          lineage.resourceCd
+        );
+        lineageLockHeld = true;
+      }
+
+      return insertNextTemplateVersionInTransaction(
+        tx,
+        lineage,
+        {
+          name: body.name,
+          items: body.items,
+          visualTemplateId: normalizedVisual,
+          selfInspectionMode: validated.mode,
+          selfInspectionFixedCount: validated.fixedCount
+        },
+        { lineageLockHeld }
+      );
+    });
   }
 
   /**
@@ -601,23 +725,10 @@ export class PartMeasurementTemplateService {
     targetProcessGroup: PartMeasurementProcessGroup;
     targetResourceCd: string;
   }) {
-    const fhincd = params.targetFhincd.trim();
+    const fhincd = normalizeFhincd(params.targetFhincd);
     const resourceCd = normalizeResourceCd(params.targetResourceCd);
     if (fhincd.length === 0) {
       throw new ApiError(400, 'FIHNCD が空です');
-    }
-
-    const existingActive = await this.findActiveByFhincdGroupAndResource(
-      fhincd,
-      params.targetProcessGroup,
-      resourceCd
-    );
-    if (existingActive) {
-      return {
-        template: existingActive,
-        reusedExistingActive: true,
-        didClone: false
-      };
     }
 
     const source = await prisma.partMeasurementTemplate.findFirst({
@@ -674,22 +785,57 @@ export class PartMeasurementTemplateService {
         : `${baseName}（資源${resourceCd}へ流用）`
     ).slice(0, 200);
 
-    const template = await this.createTemplateVersion({
-      fhincd,
-      processGroup: params.targetProcessGroup,
-      resourceCd,
-      name,
-      items,
-      visualTemplateId: source.visualTemplateId,
-      templateScope: 'THREE_KEY',
-      candidateFhinmei: null,
-      selfInspectionMode: source.selfInspectionMode,
-      selfInspectionFixedCount: source.selfInspectionFixedCount,
-      selfInspectionSampleSize: source.selfInspectionSampleSize
+    const outcome = await prisma.$transaction(async (tx) => {
+      if (isProductionThreeKeyLineage('THREE_KEY', params.targetProcessGroup)) {
+        await acquireThreeKeyLineageTransactionLock(tx, fhincd, params.targetProcessGroup, resourceCd);
+      }
+
+      const existingActive = await tx.partMeasurementTemplate.findFirst({
+        where: productionPartMeasurementTemplateWhere({
+          fhincd: threeKeyFhincdEqualsFilter(fhincd),
+          processGroup: params.targetProcessGroup,
+          resourceCd,
+          isActive: true,
+          templateScope: 'THREE_KEY'
+        }),
+        orderBy: { version: 'desc' },
+        include: partMeasurementTemplateFullInclude
+      });
+      if (existingActive) {
+        return { kind: 'reused' as const, template: existingActive };
+      }
+
+      const created = await insertNextTemplateVersionInTransaction(
+        tx,
+        {
+          templateScope: 'THREE_KEY',
+          fhincd,
+          processGroup: params.targetProcessGroup,
+          resourceCd,
+          candidateFhinmei: null
+        },
+        {
+          name,
+          items,
+          visualTemplateId: source.visualTemplateId,
+          selfInspectionMode: source.selfInspectionMode,
+          selfInspectionFixedCount: source.selfInspectionFixedCount
+        },
+        { lineageLockHeld: true }
+      );
+      return { kind: 'created' as const, template: created };
     });
 
+    if (outcome.kind === 'reused') {
+      return {
+        template: outcome.template,
+        reusedExistingActive: true,
+        didClone: false
+      };
+    }
+
     return {
-      template,
+      template: outcome.template,
       reusedExistingActive: false,
       didClone: true
     };
@@ -701,16 +847,23 @@ export class PartMeasurementTemplateService {
       throw new ApiError(404, 'テンプレートが見つかりません');
     }
     assertOperableProductionPartMeasurementTemplate(t);
-    await prisma.$transaction([
-      prisma.partMeasurementTemplate.updateMany({
-        where: { fhincd: t.fhincd, processGroup: t.processGroup, resourceCd: t.resourceCd },
+    await prisma.$transaction(async (tx) => {
+      if (isProductionThreeKeyLineage(t.templateScope, t.processGroup)) {
+        await acquireThreeKeyLineageTransactionLock(tx, t.fhincd, t.processGroup, t.resourceCd);
+      }
+      await tx.partMeasurementTemplate.updateMany({
+        where: {
+          fhincd: lineageFhincdWhere(t.templateScope, t.processGroup, t.fhincd),
+          processGroup: t.processGroup,
+          resourceCd: t.resourceCd
+        },
         data: { isActive: false }
-      }),
-      prisma.partMeasurementTemplate.update({
+      });
+      await tx.partMeasurementTemplate.update({
         where: { id: templateId },
         data: { isActive: true }
-      })
-    ]);
+      });
+    });
     return prisma.partMeasurementTemplate.findUniqueOrThrow({
       where: { id: templateId },
       include: partMeasurementTemplateFullInclude

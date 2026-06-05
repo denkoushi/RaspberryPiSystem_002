@@ -92,6 +92,9 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             onFitToView={fitToView}
           />
         }
+        drawingSourceControl={
+          <span data-testid="inspection-drawing-create-visual-source">図面（プレビュー）</span>
+        }
         metadata={{
           ...toPreviewMetadataRowProps(scenarioConfig),
           onFhincdChange: () => undefined,

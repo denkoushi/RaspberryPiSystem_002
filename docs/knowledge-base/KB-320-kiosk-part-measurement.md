@@ -79,6 +79,7 @@
 | **図面対象判定** | `part-measurement-inspection-drawing-policy.ts` — `templateSupportsInspectionDrawing`: visual に `drawingImageRelativePath`、全 item で `markerXRatio`/`markerYRatio`/`lowerLimit`/`upperLimit` が非 null。 |
 | **画像** | PNG/JPEG/WebP に加え **PDF（1ページ目のみ→JPEG化して保存）**。TIFF は後続。PDF 入力上限 **30MB**、保存画像上限 **12MB**、変換 **DPI 144 / quality 85 / timeout 30s**。 |
 | **ヘッダー・ルート** | `kioskInspectionDrawingRoutes.ts` — 既定 `inspection`、作成 `inspection/create`、テンプレ編集 `inspection/templates/:id/edit`、記録図面 `inspection/edit/:sheetId`。`isKioskInspectionDrawingPath` で部品測定タブを非アクティブ。 |
+| **流用導線（2026-06-05）** | 一覧有効版 → **雛形として新規**（`?sourceTemplateId=` + 専用 GET で詳細再取得）。新規作成画面 → 図面ボタンで **既存 visual 選択** または upload（**編集画面でも visual 一覧を取得**）。`visualSource`（`unselected`/`upload`/`pickExisting`）が保存時の単一真実源。新規保存は `failIfActiveExists: true` で同一キー active 置換を **409 + UI 事前ブロック**。`THREE_KEY` 作成は `pg_advisory_xact_lock` で系譜キー単位に直列化し競合を防止。雛形元と同一キーは保存不可。履歴版は雛形化不可。 |
 
 ## 自主検査 MVP（2026-06-01） {#自主検査-mvp-2026-06-01}
 

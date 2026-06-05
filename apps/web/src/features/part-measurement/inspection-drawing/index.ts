@@ -1,6 +1,20 @@
 export { InspectionDrawingCreateHeaderBand } from './InspectionDrawingCreateHeaderBand';
 export type { InspectionDrawingHeaderBandMetadataLayout } from './InspectionDrawingCreateHeaderBand';
 export { InspectionDrawingCreateCompactHeader } from './InspectionDrawingCreateCompactHeader';
+export { InspectionDrawingVisualSourceControl } from './InspectionDrawingVisualSourceControl';
+export {
+  inspectionDrawingCreateKeyCollisionMessage,
+  normalizeTemplateBusinessKey,
+  resolveInspectionDrawingCreateKeyCollision,
+  templateBusinessKeysEqual,
+  templateItemsToDraftDrawingPoints,
+  templateToCreateDraft,
+  type InspectionDrawingCreateDraftForm,
+  type InspectionDrawingCreateKeyCollision,
+  type InspectionDrawingSourceTemplateDraft,
+  type InspectionDrawingVisualSource,
+  type TemplateBusinessKey
+} from './inspectionDrawingCreateDraft';
 export { InspectionDrawingCreateMetaChip } from './InspectionDrawingCreateMetaChip';
 export { InspectionDrawingCreateMetadataRow } from './InspectionDrawingCreateMetadataRow';
 export type { InspectionDrawingCreateMetadataRowProps } from './InspectionDrawingCreateMetadataRow';
@@ -54,9 +68,11 @@ export {
   templateSupportsInspectionDrawing
 } from './templateItemMappers';
 export {
+  kioskInspectionDrawingCreatePathWithSource,
   kioskInspectionDrawingTemplateEditPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
-  KIOSK_INSPECTION_DRAWING_LIBRARY_PATH
+  KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
+  parseInspectionDrawingSourceTemplateIdFromSearch
 } from './kioskInspectionDrawingRoutes';
 export {
   isSafeInspectionDrawingReturnPath,

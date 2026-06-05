@@ -20,6 +20,10 @@ import {
   PartMeasurementVisualTemplateService,
   SelfInspectionService
 } from '../../services/part-measurement/index.js';
+import {
+  assertVisualCleanupToken,
+  signVisualCleanupToken
+} from '../../services/part-measurement/part-measurement-visual-cleanup-token.js';
 import { requireClientDevice, resolveDeviceScopeKey } from '../kiosk/shared.js';
 import {
   resolveTemplateFixedCount,
@@ -168,7 +172,8 @@ const createTemplateBodySchema = z
     candidateFhinmei: z.string().max(500).optional().nullable(),
     selfInspectionMode: selfInspectionModeSchema.optional().default('full'),
     selfInspectionFixedCount: z.number().int().min(1).max(2000).optional().nullable(),
-    selfInspectionSampleSize: z.number().int().min(1).max(2000).optional().nullable()
+    selfInspectionSampleSize: z.number().int().min(1).max(2000).optional().nullable(),
+    failIfActiveExists: z.boolean().optional().default(false)
   })
   .superRefine((val, ctx) => {
     if (val.templateScope === 'fhinmei_only') {
@@ -245,6 +250,12 @@ const listTemplatesQuerySchema = z.object({
   processGroup: processGroupSchema.optional(),
   resourceCd: z.string().max(120).optional(),
   includeInactive: z.coerce.boolean().optional()
+});
+
+const activeTemplateExistsQuerySchema = z.object({
+  fhincd: z.string().min(1).max(120),
+  processGroup: processGroupSchema,
+  resourceCd: z.string().min(1).max(120)
 });
 
 const listTemplateCandidatesQuerySchema = z.object({
@@ -665,10 +676,16 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     async (request) => {
       const q = z
         .object({
-          includeInactive: z.coerce.boolean().optional()
+          includeInactive: z.coerce.boolean().optional(),
+          q: z.string().optional(),
+          limit: z.coerce.number().int().min(1).max(200).optional()
         })
         .parse(request.query);
-      const list = await visualTemplateService.list(q.includeInactive === true);
+      const list = await visualTemplateService.list({
+        includeInactive: q.includeInactive === true,
+        q: q.q,
+        limit: q.limit
+      });
       return { visualTemplates: list.map(serializeVisualTemplate) };
     }
   );
@@ -728,7 +745,33 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         await PartMeasurementDrawingStorage.deleteDrawing(relativeUrl).catch(() => undefined);
         throw error;
       }
-      return { visualTemplate: serializeVisualTemplate(created) };
+      return {
+        visualTemplate: serializeVisualTemplate(created),
+        cleanupToken: signVisualCleanupToken(created.id)
+      };
+    }
+  );
+
+  app.delete(
+    '/part-measurement/visual-templates/:id',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request, reply) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const cleanupToken = request.headers['x-visual-cleanup-token'];
+      if (typeof cleanupToken !== 'string' || cleanupToken.trim().length === 0) {
+        throw new ApiError(400, '図面回収トークンが必要です。', undefined, 'VISUAL_CLEANUP_TOKEN_REQUIRED');
+      }
+      assertVisualCleanupToken(cleanupToken.trim(), params.id);
+      const outcome = await visualTemplateService.deleteIfUnused(params.id);
+      if (outcome === 'not_found') {
+        return reply.status(404).send({ message: '図面テンプレートが見つかりません。' });
+      }
+      if (outcome === 'in_use') {
+        return reply.status(409).send({
+          message: '図面テンプレートは使用中のため削除できません。'
+        });
+      }
+      return reply.status(204).send();
     }
   );
 
@@ -1114,6 +1157,17 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     };
   });
 
+  app.get('/part-measurement/templates/active-exists', { preHandler: allowView }, async (request) => {
+    const q = activeTemplateExistsQuerySchema.parse(request.query);
+    const processGroup = q.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
+    const exists = await templateService.existsActiveProductionThreeKeyTemplate(
+      q.fhincd,
+      processGroup,
+      q.resourceCd
+    );
+    return { exists };
+  });
+
   app.get('/part-measurement/templates', { preHandler: allowView }, async (request) => {
     const q = listTemplatesQuerySchema.parse(request.query);
     const processGroup =
@@ -1241,7 +1295,8 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       templateScope,
       candidateFhinmei: body.candidateFhinmei,
       selfInspectionMode: selfInspection.selfInspectionMode,
-      selfInspectionFixedCount: selfInspection.selfInspectionFixedCount
+      selfInspectionFixedCount: selfInspection.selfInspectionFixedCount,
+      failIfActiveExists: body.failIfActiveExists === true
     });
     return {
       template: serializeTemplate({

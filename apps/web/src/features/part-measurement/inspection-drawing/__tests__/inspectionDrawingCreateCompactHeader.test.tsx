@@ -9,6 +9,10 @@ import {
   inspectionDrawingMetadataGridClassName
 } from '../inspectionDrawingKioskUi';
 
+const drawingSourceControl = (
+  <span data-testid="inspection-drawing-create-visual-source">図面</span>
+);
+
 const metadataProps = {
   lineageLocked: true,
   fhincd: 'SD000107240',
@@ -36,6 +40,7 @@ describe('InspectionDrawingCreateCompactHeader', () => {
     render(
       <InspectionDrawingCreateCompactHeader
         metadata={metadataProps}
+        drawingSourceControl={drawingSourceControl}
         centerSlot={<span data-testid="zoom-controls">zoom</span>}
         toolbar={<div data-testid="toolbar-root">toolbar</div>}
       />
@@ -49,7 +54,7 @@ describe('InspectionDrawingCreateCompactHeader', () => {
     expect(directChildTestIds).toEqual([
       'inspection-drawing-create-meta-row',
       'inspection-drawing-create-version-badge',
-      'inspection-drawing-create-drawing-file',
+      'inspection-drawing-create-visual-source',
       'inspection-drawing-create-zoom-slot',
       'inspection-drawing-create-toolbar-slot'
     ]);
@@ -59,6 +64,7 @@ describe('InspectionDrawingCreateCompactHeader', () => {
     render(
       <InspectionDrawingCreateCompactHeader
         metadata={metadataProps}
+        drawingSourceControl={drawingSourceControl}
         toolbar={<div data-testid="toolbar-root">toolbar</div>}
       />
     );
@@ -71,6 +77,7 @@ describe('InspectionDrawingCreateCompactHeader', () => {
     render(
       <InspectionDrawingCreateCompactHeader
         metadata={metadataProps}
+        drawingSourceControl={drawingSourceControl}
         toolbar={<div>tools</div>}
       />
     );
@@ -82,6 +89,7 @@ describe('InspectionDrawingCreateCompactHeader', () => {
     render(
       <InspectionDrawingCreateCompactHeader
         metadata={metadataProps}
+        drawingSourceControl={drawingSourceControl}
         toolbar={<div>tools</div>}
       />
     );

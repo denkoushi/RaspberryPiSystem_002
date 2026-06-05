@@ -891,6 +891,185 @@ describe('part-measurement templates API', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('returns 409 for failIfActiveExists when fhincd differs only by case', async () => {
+    const fhincd = `CASE-${Date.now()}`;
+    const payload = {
+      fhincd,
+      processGroup: 'cutting',
+      resourceCd: 'RES-CASE',
+      name: '大文字小文字衝突',
+      items: [
+        {
+          sortOrder: 0,
+          datumSurface: 'A',
+          measurementPoint: 'B',
+          measurementLabel: 'L1'
+        }
+      ]
+    };
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        ...payload,
+        fhincd: fhincd.toLowerCase(),
+        name: '小文字で新規',
+        failIfActiveExists: true
+      }
+    });
+    expect(second.statusCode).toBe(409);
+  });
+
+  it('returns 409 when failIfActiveExists and active template already exists', async () => {
+    const fhincd = `COLL-${Date.now()}`;
+    const payload = {
+      fhincd,
+      processGroup: 'cutting',
+      resourceCd: 'RES-COLL',
+      name: '衝突テスト',
+      items: [
+        {
+          sortOrder: 0,
+          datumSurface: 'A',
+          measurementPoint: 'B',
+          measurementLabel: 'L1'
+        }
+      ]
+    };
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: { ...payload, name: '衝突テスト2', failIfActiveExists: true }
+    });
+    expect(second.statusCode).toBe(409);
+  });
+
+  it('serializes concurrent failIfActiveExists creates so only one succeeds and one active remains', async () => {
+    const fhincd = `CONC-${Date.now()}`;
+    const resourceCd = 'RES-CONC';
+    const basePayload = {
+      fhincd,
+      processGroup: 'cutting',
+      resourceCd,
+      failIfActiveExists: true,
+      items: [
+        {
+          sortOrder: 0,
+          datumSurface: 'A',
+          measurementPoint: 'B',
+          measurementLabel: 'L1'
+        }
+      ]
+    };
+
+    const [first, second] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: '/api/part-measurement/templates',
+        headers: createAuthHeader(adminToken),
+        payload: { ...basePayload, name: '同時作成A' }
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/api/part-measurement/templates',
+        headers: createAuthHeader(adminToken),
+        payload: { ...basePayload, name: '同時作成B' }
+      })
+    ]);
+
+    expect([first.statusCode, second.statusCode].sort()).toEqual([200, 409]);
+
+    const activeCount = await prisma.partMeasurementTemplate.count({
+      where: {
+        fhincd,
+        processGroup: 'CUTTING',
+        resourceCd,
+        isActive: true,
+        templateScope: 'THREE_KEY'
+      }
+    });
+    expect(activeCount).toBe(1);
+
+    const totalCount = await prisma.partMeasurementTemplate.count({
+      where: {
+        fhincd,
+        processGroup: 'CUTTING',
+        resourceCd,
+        templateScope: 'THREE_KEY'
+      }
+    });
+    expect(totalCount).toBe(1);
+  });
+
+  it('reports active template existence without loading full template payload', async () => {
+    const fhincd = `EXISTS-${Date.now()}`;
+    const resourceCd = 'RES-EXISTS';
+    const missing = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/templates/active-exists?fhincd=${fhincd}&processGroup=cutting&resourceCd=${resourceCd}`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(missing.statusCode).toBe(200);
+    expect(missing.json()).toEqual({ exists: false });
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd,
+        name: '存在確認テスト',
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1'
+          }
+        ]
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+
+    const found = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/templates/active-exists?fhincd=${fhincd}&processGroup=cutting&resourceCd=${resourceCd}`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(found.statusCode).toBe(200);
+    expect(found.json()).toEqual({ exists: true });
+
+    const mixedCase = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/templates/active-exists?fhincd=${encodeURIComponent(fhincd.toLowerCase())}&processGroup=cutting&resourceCd=${resourceCd}`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(mixedCase.statusCode).toBe(200);
+    expect(mixedCase.json()).toEqual({ exists: true });
+  });
+
   it('creates and lists active template (ADMIN)', async () => {
     const fhincd = `T-${Date.now()}`;
     const createRes = await app.inject({
@@ -1058,6 +1237,49 @@ describe('part-measurement templates API', () => {
     const body = activateRes.json().template;
     expect(body.id).toBe(id1);
     expect(body.isActive).toBe(true);
+  });
+
+  it('activate deactivates mixed-case fhincd siblings in the same THREE_KEY lineage', async () => {
+    const base = `MIX-${Date.now()}`;
+    const upperFhincd = base.toUpperCase();
+    const lowerFhincd = base.toLowerCase();
+    const resourceCd = 'RES-MIX-CASE';
+    const processGroup = 'CUTTING' as const;
+
+    const upper = await prisma.partMeasurementTemplate.create({
+      data: {
+        templateScope: 'THREE_KEY',
+        fhincd: upperFhincd,
+        processGroup,
+        resourceCd,
+        name: 'legacy upper',
+        version: 1,
+        isActive: true
+      }
+    });
+    const lower = await prisma.partMeasurementTemplate.create({
+      data: {
+        templateScope: 'THREE_KEY',
+        fhincd: lowerFhincd,
+        processGroup,
+        resourceCd,
+        name: 'legacy lower',
+        version: 2,
+        isActive: true
+      }
+    });
+
+    const activateRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${upper.id}/activate`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(activateRes.statusCode).toBe(200);
+
+    const upperAfter = await prisma.partMeasurementTemplate.findUnique({ where: { id: upper.id } });
+    const lowerAfter = await prisma.partMeasurementTemplate.findUnique({ where: { id: lower.id } });
+    expect(upperAfter?.isActive).toBe(true);
+    expect(lowerAfter?.isActive).toBe(false);
   });
 
   it('revises active template into next version and deactivates prior (ADMIN)', async () => {
@@ -2319,6 +2541,80 @@ describe('part-measurement templates API', () => {
     expect(body.didClone).toBe(false);
   });
 
+  it('serializes concurrent clone-for-schedule-key so target key keeps a single active template', async () => {
+    const fhincd = `CLONE-CONC-${Date.now()}`;
+    const targetResourceCd = 'RES-TARGET-CONC';
+    const sourceRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SRC-CONC',
+        name: 'clone source',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'c' }]
+      }
+    });
+    expect(sourceRes.statusCode).toBe(200);
+    const sourceId = sourceRes.json().template.id as string;
+
+    const clonePayload = {
+      sourceTemplateId: sourceId,
+      fhincd,
+      processGroup: 'cutting',
+      resourceCd: targetResourceCd
+    };
+
+    const [first, second] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: '/api/part-measurement/templates/clone-for-schedule-key',
+        headers: createAuthHeader(adminToken),
+        payload: clonePayload
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/api/part-measurement/templates/clone-for-schedule-key',
+        headers: createAuthHeader(adminToken),
+        payload: clonePayload
+      })
+    ]);
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+
+    const bodies = [first.json(), second.json()] as Array<{
+      template: { id: string };
+      reusedExistingActive: boolean;
+      didClone: boolean;
+    }>;
+    expect(bodies.filter((body) => body.didClone).length).toBe(1);
+    expect(bodies.filter((body) => body.reusedExistingActive).length).toBe(1);
+    expect(new Set(bodies.map((body) => body.template.id)).size).toBe(1);
+
+    const activeCount = await prisma.partMeasurementTemplate.count({
+      where: {
+        fhincd,
+        processGroup: 'CUTTING',
+        resourceCd: targetResourceCd,
+        isActive: true,
+        templateScope: 'THREE_KEY'
+      }
+    });
+    expect(activeCount).toBe(1);
+
+    const totalCount = await prisma.partMeasurementTemplate.count({
+      where: {
+        fhincd,
+        processGroup: 'CUTTING',
+        resourceCd: targetResourceCd,
+        templateScope: 'THREE_KEY'
+      }
+    });
+    expect(totalCount).toBe(1);
+  });
+
   it('allows a second sheet in the same session with a different template (allowAlternate) and rejects duplicate template', async () => {
     const fhincd = `MS-${Date.now()}`;
     const scheduleRes = 'RES-SCHEDULE';
@@ -2667,6 +2963,7 @@ describe('part-measurement drawing PDF import', () => {
     });
     expect(up.statusCode).toBe(200);
     expect(up.json().visualTemplate.drawingImageRelativePath).toMatch(/\.png$/);
+    expect(up.json().cleanupToken).toEqual(expect.any(String));
   });
 
   it('does not save drawing when evaluation multipart items are invalid', async () => {
@@ -2690,5 +2987,153 @@ describe('part-measurement drawing PDF import', () => {
     const visualCount = await prisma.partMeasurementVisualTemplate.count();
     expect(visualCount).toBe(0);
     importSpy.mockRestore();
+  });
+});
+
+describe('part-measurement visual template cleanup DELETE', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let adminToken: string;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+  });
+
+  beforeEach(async () => {
+    await cleanPartMeasurementTables();
+    const admin = await createTestUser('ADMIN');
+    adminToken = admin.token;
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  async function uploadVisualForCleanup(): Promise<{ id: string; cleanupToken: string }> {
+    const { body, contentType } = buildMultipartPng('cleanup-visual', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    const json = up.json() as {
+      visualTemplate: { id: string };
+      cleanupToken: string;
+    };
+    return { id: json.visualTemplate.id, cleanupToken: json.cleanupToken };
+  }
+
+  it('returns 204 and deletes unused visual template with matching cleanup token', async () => {
+    const { id, cleanupToken } = await uploadVisualForCleanup();
+
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/api/part-measurement/visual-templates/${id}`,
+      headers: {
+        ...createAuthHeader(adminToken),
+        'x-visual-cleanup-token': cleanupToken
+      }
+    });
+    expect(del.statusCode).toBe(204);
+
+    const row = await prisma.partMeasurementVisualTemplate.findUnique({ where: { id } });
+    expect(row).toBeNull();
+  });
+
+  it('returns 400 when cleanup token header is missing', async () => {
+    const { id } = await uploadVisualForCleanup();
+
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/api/part-measurement/visual-templates/${id}`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(del.statusCode).toBe(400);
+    expect(del.json().errorCode).toBe('VISUAL_CLEANUP_TOKEN_REQUIRED');
+
+    const row = await prisma.partMeasurementVisualTemplate.findUnique({ where: { id } });
+    expect(row).not.toBeNull();
+  });
+
+  it('returns 403 when cleanup token is invalid', async () => {
+    const { id } = await uploadVisualForCleanup();
+
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/api/part-measurement/visual-templates/${id}`,
+      headers: {
+        ...createAuthHeader(adminToken),
+        'x-visual-cleanup-token': 'not-a-valid-token'
+      }
+    });
+    expect(del.statusCode).toBe(403);
+    expect(del.json().errorCode).toBe('VISUAL_CLEANUP_TOKEN_INVALID');
+  });
+
+  it('returns 403 when cleanup token targets a different visual template id', async () => {
+    const first = await uploadVisualForCleanup();
+    const second = await uploadVisualForCleanup();
+
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/api/part-measurement/visual-templates/${first.id}`,
+      headers: {
+        ...createAuthHeader(adminToken),
+        'x-visual-cleanup-token': second.cleanupToken
+      }
+    });
+    expect(del.statusCode).toBe(403);
+
+    const firstRow = await prisma.partMeasurementVisualTemplate.findUnique({ where: { id: first.id } });
+    const secondRow = await prisma.partMeasurementVisualTemplate.findUnique({ where: { id: second.id } });
+    expect(firstRow).not.toBeNull();
+    expect(secondRow).not.toBeNull();
+  });
+
+  it('returns 409 when visual template is referenced by a business template', async () => {
+    const { id, cleanupToken } = await uploadVisualForCleanup();
+    const fhincd = `VT-CLEAN-${Date.now()}`;
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-CLEAN',
+        name: 'bound visual',
+        visualTemplateId: id,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1'
+          }
+        ]
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `/api/part-measurement/visual-templates/${id}`,
+      headers: {
+        ...createAuthHeader(adminToken),
+        'x-visual-cleanup-token': cleanupToken
+      }
+    });
+    expect(del.statusCode).toBe(409);
+
+    const row = await prisma.partMeasurementVisualTemplate.findUnique({ where: { id } });
+    expect(row).not.toBeNull();
   });
 });

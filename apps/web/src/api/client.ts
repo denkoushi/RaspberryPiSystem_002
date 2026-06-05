@@ -3030,6 +3030,22 @@ export async function listPartMeasurementTemplates(
   return data.templates;
 }
 
+/** 本番 THREE_KEY の有効テンプレ存在確認（items/visual を取得しない） */
+export async function existsActivePartMeasurementTemplate(
+  params: {
+    fhincd: string;
+    processGroup: PartMeasurementProcessGroup;
+    resourceCd: string;
+  },
+  clientKey?: string
+): Promise<boolean> {
+  const { data } = await api.get<{ exists: boolean }>('/part-measurement/templates/active-exists', {
+    params,
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data.exists;
+}
+
 /** キオスク検査図面一覧（本番図面テンプレのみ・要約。fhincd は部分一致） */
 export async function listKioskInspectionDrawingTemplates(
   params: {
@@ -3299,7 +3315,7 @@ export async function clonePartMeasurementTemplateForScheduleKey(
 }
 
 export async function listPartMeasurementVisualTemplates(
-  params?: { includeInactive?: boolean },
+  params?: { includeInactive?: boolean; q?: string; limit?: number },
   clientKey?: string
 ): Promise<PartMeasurementVisualTemplateDto[]> {
   const { data } = await api.get<{ visualTemplates: PartMeasurementVisualTemplateDto[] }>(
@@ -3312,22 +3328,43 @@ export async function listPartMeasurementVisualTemplates(
   return data.visualTemplates;
 }
 
+export type PartMeasurementVisualTemplateCreateResult = {
+  visualTemplate: PartMeasurementVisualTemplateDto;
+  /** 作成直後の未参照回収に必要（他図面の削除には使えない） */
+  cleanupToken: string;
+};
+
 export async function createPartMeasurementVisualTemplate(
   name: string,
   file: File,
   clientKey?: string
-): Promise<PartMeasurementVisualTemplateDto> {
+): Promise<PartMeasurementVisualTemplateCreateResult> {
   const form = new FormData();
   form.append('name', name.trim() || '図面テンプレート');
   form.append('file', file);
-  const { data } = await api.post<{ visualTemplate: PartMeasurementVisualTemplateDto }>(
+  const { data } = await api.post<PartMeasurementVisualTemplateCreateResult>(
     '/part-measurement/visual-templates',
     form,
     {
       headers: clientKey ? { 'x-client-key': clientKey } : undefined
     }
   );
-  return data.visualTemplate;
+  return data;
+}
+
+/** 未参照の visual template と図面ファイルを回収する（テンプレ作成失敗時など） */
+export async function deleteUnusedPartMeasurementVisualTemplate(
+  visualTemplateId: string,
+  cleanupToken: string,
+  clientKey?: string
+): Promise<void> {
+  await api.delete(`/part-measurement/visual-templates/${visualTemplateId}`, {
+    headers: {
+      'X-Visual-Cleanup-Token': cleanupToken,
+      ...(clientKey ? { 'x-client-key': clientKey } : {})
+    },
+    validateStatus: (status) => status === 204 || status === 404 || status === 409
+  });
 }
 
 /** 図面プレビュー（PDF→JPEG 変換含む）。storage / DB 書き込みなし。 */
@@ -3359,6 +3396,8 @@ export async function createPartMeasurementTemplate(
     selfInspectionFixedCount?: number | null;
     /** @deprecated API 互換。fixed_count 時は fixedCount を優先 */
     selfInspectionSampleSize?: number | null;
+    /** true のとき同一キーに active があると API が 409 */
+    failIfActiveExists?: boolean;
     items: Array<{
       sortOrder: number;
       datumSurface: string;
