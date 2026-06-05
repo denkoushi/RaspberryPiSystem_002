@@ -2668,7 +2668,7 @@ RECONCILE_RESOURCE=033 RECONCILE_YEAR_MONTH=2026-07 RECONCILE_REMAIN_H=706 RECON
 
 ### ?? Pi5 Hermes Agent ? ???????AI??????2026-05-24?25? {#private-pi5-hermes-discord-2026-05-24}
 
-**現状**: **Phase D4・D5 本番反映済（2026-05-25）** → **D5.1 承認中継 + hotfix（2026-05-26）** → write ゲート #342・actor context #343・poll 競合修正 → **2026-05-30** `fix/private-pi5-hermes-task-approval-finish`（**`a6b0a940`**）を **私用 Pi5 のみ** 標準デプロイ（**`ok=140` failed=0**）· CI **`26671325365`** success → **2026-06-05 `/task` 復旧**（Discord 承認通知 **Cloudflare 1010** + DGX blue **`/v1/models` 502**）— repo: `discord_relay` User-Agent · DGX example/runbook/KB · **Pi5/DGX 実機 hotfix 済** · read-only `/task` 相当 **OK** · **Discord UI write E2E は手動推奨**。
+**現状**: **Phase D4・D5 本番反映済（2026-05-25）** → **D5.1 承認中継 + hotfix（2026-05-26）** → write ゲート #342・actor context #343・poll 競合修正 → **2026-05-30** 承認 UX デプロイ → **2026-06-05 `/task` 復旧**（1010 + DGX 502）→ **2026-06-05 夜 Discord write E2E 完結**（`yes` 割り込み回避: **channel 承認キー** + Hermes **`gateway/platforms/base.py` hotfix**）· 実機: `test-20260605-2.txt` 作成確認 · unittest **129 OK** · [KB §yes 最終修正](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結)
 
 **???????????????2026-05-25?**: ????? **Discord ?? AI??**???/????? ? X ?? ? ????? ? HA/??????? ? **?? tools ??**??**????????????**?Phase ????????????????????
 
@@ -2685,12 +2685,13 @@ RECONCILE_RESOURCE=033 RECONCILE_YEAR_MONTH=2026-07 RECONCILE_REMAIN_H=706 RECON
 | ✅ | D5.1 承認中継 + hotfix | **完了** | write ゲート #342 · actor #343 · poll race fix · Pi5 **`ok=123`** · smoke: poll/actor **OK** · [KB §poll](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイpoll-スレッド競合--tool-write-ipc--2026-05-26-jst) |
 | ✅ | D5.1 承認 UX 完結（2026-05-30） | **デプロイ済** | branch `fix/private-pi5-hermes-task-approval-finish` · Pi5 **`ok=140`** · Ansible verify **PASS** · runner 直呼び gate smoke **FAIL**（既知）· [KB §2026-05-30](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイ承認-relay-完結--2026-05-30-jst) |
 | ✅ | `/task` 復旧（2026-06-05） | **repo + 実機 hotfix 済** | Discord **`1010`** → `discord_relay` Bot UA · DGX **502** → blue snapshot + `0.65` + `language_model_only` · unittest **127 OK** · [KB §2026-06-05](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) |
+| ✅ | Discord write E2E（2026-06-05 夜） | **完了** | `yes` interrupt 回避 · channel actor · Hermes `base.py` hotfix · `test-20260605-2.txt` OK · [KB §yes](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) |
 
 #### D5 以降 — バトラー機能ロードマップ
 
 | # | Phase | ??? | ?? | ???? |
 |---|-------|--------|------|----------|
-| **1** | **D5.1** | **Discord write E2E 手動受け入れ** | **△** | 2026-06-05: read-only `/task` 相当 OK · 承認通知 POST 200 · write→`yes`→ファイルは **Discord 上で手動確認** |
+| **1** | **D5.1** | **Discord write E2E 受け入れ** | **✅** | 2026-06-05 夜: `/task Create test-20260605-2.txt …` → `yes` → workspace 作成確認 |
 | 2 | D5.1 | runner ??? `verify-tool-write-approval-gate-pi5.sh` ??????? | ? | `request.json` ?????? `write_file` ??????????? |
 | 3 | ? | Discord `/task` read-only + ???? | ? | read-only `/task` ? ???????? chat ?? |
 | 3 | **D6** | memory + ????????????? | ? | ??/?????? ? ADR |

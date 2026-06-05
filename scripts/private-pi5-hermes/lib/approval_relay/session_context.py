@@ -13,6 +13,7 @@ _SESSION_CHANNEL_KEYS: tuple[str, ...] = (
     "HERMES_SESSION_CHAT_ID",
     "HERMES_SESSION_THREAD_ID",
 )
+_CHANNEL_ACTOR_PREFIX = "channel:"
 
 
 def _first_non_empty(values: tuple[str, ...]) -> str:
@@ -75,3 +76,29 @@ def read_gateway_session_context(
     if not channel_id:
         channel_id = _read_from_os_environ(_SESSION_CHANNEL_KEYS)
     return user_id, channel_id
+
+
+def approval_channel_actor_id(channel_id: str) -> str:
+    """Return a stable approval actor key for channel-scoped fallback binding."""
+    cleaned = str(channel_id or "").strip()
+    if not cleaned:
+        return ""
+    return f"{_CHANNEL_ACTOR_PREFIX}{cleaned}"
+
+
+def approval_actor_ids(user_id: str, channel_id: str) -> list[str]:
+    """User-scoped approval first, then channel fallback when user id is absent/mismatched."""
+    actors: list[str] = []
+    cleaned_user = str(user_id or "").strip()
+    if cleaned_user:
+        actors.append(cleaned_user)
+    channel_actor = approval_channel_actor_id(channel_id)
+    if channel_actor and channel_actor not in actors:
+        actors.append(channel_actor)
+    return actors
+
+
+def primary_approval_actor_id(user_id: str, channel_id: str) -> str:
+    """Actor id used to bind a new task when gateway user id is unavailable."""
+    actors = approval_actor_ids(user_id, channel_id)
+    return actors[0] if actors else ""

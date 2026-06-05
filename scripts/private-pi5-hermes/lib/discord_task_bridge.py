@@ -40,6 +40,7 @@ try:
         read_gateway_session_context,
     )
     from .approval_relay.models import TaskRunContext
+    from .approval_relay.session_context import primary_approval_actor_id
 except ImportError:
     from approval_relay.coordinator import (
         APPROVAL_EXPIRED_USER_MESSAGE,
@@ -48,6 +49,7 @@ except ImportError:
         read_gateway_session_context,
     )
     from approval_relay.models import TaskRunContext
+    from approval_relay.session_context import primary_approval_actor_id
 
 _APPROVAL_PROMPT_MARKER = "task approval required"
 _APPROVAL_TIMEOUT_MARKERS = (
@@ -207,6 +209,7 @@ async def run_task_bridge_async(
     import asyncio
 
     user_id, channel_id = read_gateway_session_context()
+    approval_actor_id = primary_approval_actor_id(user_id, channel_id)
     coordinator: DiscordApprovalRelayCoordinator | None = None
     task_context: TaskRunContext | None = None
     stop_event = asyncio.Event()
@@ -217,7 +220,7 @@ async def run_task_bridge_async(
         coordinator.purge_stale()
         try:
             task_context = coordinator.new_task_context(
-                discord_user_id=user_id,
+                discord_user_id=approval_actor_id,
                 discord_channel_id=channel_id,
             )
         except RuntimeError as exc:

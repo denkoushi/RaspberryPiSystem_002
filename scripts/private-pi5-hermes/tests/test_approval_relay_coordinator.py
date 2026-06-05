@@ -212,6 +212,42 @@ class PluginTextApprovalTests(unittest.TestCase):
             self.assertEqual(result, {"action": "skip", "reason": "task-approval-text"})
             self.assertEqual(store.read_response().choice, ApprovalChoice.ONCE)
 
+    def test_pre_gateway_dispatch_uses_channel_fallback_when_task_has_no_user(self) -> None:
+        from lib import discord_task_bridge_plugin as plugin  # noqa: E402
+        from lib.approval_relay.session_context import approval_channel_actor_id  # noqa: E402
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store_dir = Path(tmp)
+            relay = ApprovalRelayPolicy(
+                enabled=True,
+                store_dir=str(store_dir),
+                request_timeout_seconds=30,
+                poll_interval_seconds=0.05,
+            )
+            coord = DiscordApprovalRelayCoordinator(relay)
+            channel_actor = approval_channel_actor_id("chan-1")
+            ctx = coord.new_task_context(
+                discord_user_id=channel_actor,
+                discord_channel_id="chan-1",
+            )
+            store = FileApprovalStore(store_dir, ctx.task_id)
+            store.write_request({"command": "touch x", "description": "write"})
+
+            class Source:
+                user_id = "user-99"
+                platform = "discord"
+                chat_id = "chan-1"
+
+            class Event:
+                text = "yes"
+                source = Source()
+                internal = False
+
+            with mock.patch.object(plugin, "_coordinator", return_value=coord):
+                result = plugin._handle_pre_gateway_dispatch(Event())
+            self.assertEqual(result, {"action": "skip", "reason": "task-approval-text"})
+            self.assertEqual(store.read_response().choice, ApprovalChoice.ONCE)
+
     def test_pre_gateway_dispatch_passthrough_for_chat(self) -> None:
         from lib import discord_task_bridge_plugin as plugin  # noqa: E402
 

@@ -14,7 +14,12 @@ from lib.approval_relay.gateway_actor_context import (  # noqa: E402
     clear_gateway_actor_context,
     stash_from_message_source,
 )
-from lib.approval_relay.session_context import read_gateway_session_context  # noqa: E402
+from lib.approval_relay.session_context import (  # noqa: E402
+    approval_actor_ids,
+    approval_channel_actor_id,
+    primary_approval_actor_id,
+    read_gateway_session_context,
+)
 
 
 class SessionContextTests(unittest.TestCase):
@@ -120,6 +125,14 @@ class SessionContextTests(unittest.TestCase):
         from lib.approval_relay.coordinator import read_gateway_session_context as from_coord  # noqa: E402
 
         self.assertIs(from_coord, read_gateway_session_context)
+
+    def test_approval_actor_ids_use_channel_fallback(self) -> None:
+        self.assertEqual(approval_channel_actor_id("chan-1"), "channel:chan-1")
+        self.assertEqual(primary_approval_actor_id("", "chan-1"), "channel:chan-1")
+        self.assertEqual(
+            approval_actor_ids("user-1", "chan-1"),
+            ["user-1", "channel:chan-1"],
+        )
 
 
 if __name__ == "__main__":

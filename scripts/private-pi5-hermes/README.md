@@ -65,8 +65,9 @@ fragment に `private_pi5_dgx_runtime_control_token` を設定してデプロイ
 | 承認通知 **`403` / Cloudflare `1010`** | [`discord_relay.py`](lib/approval_relay/discord_relay.py) に **DiscordBot User-Agent** — [KB D5 §2026-06-05](../../docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) |
 | DGX **`/v1/models` 502** · `/task` 無応答 | DGX blue 27B 起動 — [KB `/task` blue 502](../../docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05) · [dgx Runbook](../../docs/runbooks/dgx-system-prod-local-llm.md) |
 | `/novel` 後に `/task` が **2048 context 400** | DGX profile 復帰 — [KB task profile restore](../../docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md) |
+| `yes` 後に **Interrupting current task** | Hermes 本体 `gateway/platforms/base.py` hotfix + plugin **channel 承認キー** — [KB §yes 最終修正](../../docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) |
 
-**注意**: `/task` は **gateway plugin スラッシュコマンド**（`hermes task` CLI ではない）。write は **承認 relay**（`yes` / `/task-approve`）が動く。
+**注意**: `/task` は **gateway plugin スラッシュコマンド**（`hermes task` CLI ではない）。write は **承認 relay**（`yes` / `/task-approve`）が動く。**Hermes 再 install 後**は Pi5 本体 hotfix の有無を [Runbook](../../docs/runbooks/private-pi5-hermes-deploy.md#hermes-agent-本体-hotfix承認-yes-の割り込み回避2026-06-05) で確認。
 
 ## 手動確認
 
