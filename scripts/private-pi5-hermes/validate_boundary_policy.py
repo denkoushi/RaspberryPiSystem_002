@@ -17,6 +17,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib.boundary_policy import BoundaryPolicy, validate_policy_document  # noqa: E402
 from lib.config_contract import workspace_mounts_from_policy  # noqa: E402
+from lib.daily_pilot_policy import (  # noqa: E402
+    DailyPilotPolicy,
+    daily_pilot_emission_json,
+    validate_daily_pilot_document,
+)
 from lib.discord_task_bridge import emission_json as task_bridge_emission_json  # noqa: E402
 from lib.hermes_browser_adapter import hermes_browser_emission  # noqa: E402
 from lib.hermes_security_adapter import hermes_security_emission  # noqa: E402
@@ -73,6 +78,17 @@ def main() -> int:
         default=Path(__file__).resolve().parent / "config" / "task-bridge.policy.yaml",
         help="Path to task bridge policy YAML (D5)",
     )
+    parser.add_argument(
+        "--validate-daily-pilot",
+        action="store_true",
+        help="Validate daily-pilot.policy.yaml (D6-pre) and emit contract JSON",
+    )
+    parser.add_argument(
+        "--daily-pilot-policy",
+        type=Path,
+        default=Path(__file__).resolve().parent / "config" / "daily-pilot.policy.yaml",
+        help="Path to daily pilot policy YAML (D6-pre)",
+    )
     args = parser.parse_args()
 
     try:
@@ -122,6 +138,21 @@ def main() -> int:
             else:
                 bridge_policy = TaskBridgePolicy.from_mapping(bridge_data)
                 payload["task_bridge"] = task_bridge_emission_json(bridge_policy)
+        except Exception as exc:
+            errors.append(str(exc))
+            payload["ok"] = False
+            payload["errors"] = errors
+    if args.validate_daily_pilot:
+        try:
+            daily_data = load_policy(args.daily_pilot_policy)
+            daily_errors = validate_daily_pilot_document(daily_data)
+            if daily_errors:
+                errors.extend(daily_errors)
+                payload["ok"] = False
+                payload["errors"] = errors
+            else:
+                daily_policy = DailyPilotPolicy.from_mapping(daily_data)
+                payload["daily_pilot"] = daily_pilot_emission_json(daily_policy)
         except Exception as exc:
             errors.append(str(exc))
             payload["ok"] = False

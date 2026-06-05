@@ -60,6 +60,22 @@ class PluginRegisterTests(unittest.TestCase):
             self.assertEqual(task_call[1].get("args_hint"), "<task instruction>")
             ctx.register_hook.assert_called_once()
 
+    def test_register_daily_command_when_policy_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plugin_dir = Path(tmp)
+            (plugin_dir / "daily-pilot.policy.yaml").write_text(
+                "phase: daily_pilot_v0\n", encoding="utf-8"
+            )
+            with unittest.mock.patch.object(plugin, "_plugin_dir", return_value=plugin_dir):
+                ctx = MagicMock()
+                plugin.register(ctx)
+
+            registered = [c[0][0] for c in ctx.register_command.call_args_list]
+            self.assertEqual(registered, ["daily"])
+            daily_call = ctx.register_command.call_args_list[0]
+            self.assertEqual(daily_call[1].get("args_hint"), "<memo or request>")
+            ctx.register_hook.assert_not_called()
+
     def test_task_approve_returns_expired_message_without_failed_prefix(self) -> None:
         with unittest.mock.patch.object(
             plugin,

@@ -107,6 +107,8 @@ all:
       # private_pi5_hermes_browser_agent_args: "--no-sandbox,--disable-dev-shm-usage"
       # Phase D5: Discord /task → tools profile (requires D4 flags + gateway_enabled)
       # private_pi5_hermes_discord_tools_bridge_enabled: true
+      # D6-pre: Discord /daily → Markdown-only daily handoff (requires gateway_enabled)
+      # private_pi5_hermes_daily_pilot_enabled: true
       # Novel profile: creative writing via /novel (on-demand DGX qwen36_35b_uncensored)
       # private_pi5_hermes_novel_profile_enabled: true
       # private_pi5_hermes_discord_novel_bridge_enabled: true

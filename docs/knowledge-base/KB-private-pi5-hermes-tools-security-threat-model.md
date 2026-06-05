@@ -129,7 +129,8 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 | 能力 | 主なリスク | 有効化前に必要 |
 |------|------------|----------------|
 | Discord → tools 委譲 | プロンプトインジェクション · 承認 fatigue | **D5 本番（Pi5）** · `/task` 明示 · [task-bridge.policy.yaml](../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml) · [KB D5](./KB-private-pi5-hermes-phase-d5-production.md) · **安全枠ラベル + regex deny（2026-06-05）** |
-| Codex/Cursor worker 使役 | git/deploy/terminal 誤解放 · 秘密漏洩 | **deferred** — 専用 worker profile · 1 task = 1 worktree · 追加承認 · [KB D5 §安全枠](./KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) |
+| Discord `/daily` 進行係（D6-pre） | 文案のみなら低リスク · 誤って実行経路を開くと高リスク | **Markdown-only** · `daily-pilot.policy.yaml` · `cursor_codex_auto_run: false` · regex deny（git/deploy/terminal/秘密）· [KB daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · **Pi5 deploy 未** |
+| Codex/Cursor worker 使役 | git/deploy/terminal 誤解放 · 秘密漏洩 | **deferred**（`/task` と `/daily` 両方）— 専用 worker profile · 1 task = 1 worktree · 追加承認 · [KB D5 §安全枠](./KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) |
 | memory / リマインド | プライバシー · 保持範囲 | D6 · 削除手順 · Discord 通知設計 |
 | X 定時 | API/規約 · egress | D8 · boundary 拡張 |
 | Home Assistant / カメラ | LAN 横移動 · 物理セキュリティ | D9 · grants/UFW · 読取専用から |

@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-05 · 私用 Pi5 Hermes `/daily` 普段遣いパイロット · **repo 実装**）
+
+- **Discord `/daily` を追加**: `private_pi5_hermes_daily_pilot_enabled: true` の時だけ `daily-pilot.policy.yaml` を配備し、Cursor指示書・Codexレビュー依頼・CI/Deploy確認リストの **Markdownだけ** を返す（deterministic · LLM/worker 未呼び出し）。**自動実行なし**: Cursor/Codex CLI、terminal、git、deploy、秘密読取は拒否。**検証**: unittest **142 OK** · `--validate-daily-pilot` OK · smoke OK。**実機デプロイは次回**。**記録**: [KB daily pilot](./knowledge-base/KB-private-pi5-hermes-daily-pilot.md) · [D6-pre ExecPlan](./plans/private-pi5-hermes-daily-pilot-execplan.md) · [Runbook §D6-pre](./runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-05) · [`daily-pilot.policy.yaml`](../scripts/private-pi5-hermes/config/daily-pilot.policy.yaml)
+
 ### 最新アップデート（2026-06-05 · 私用 Pi5 Hermes `/task` 安全枠 · **repo 明文化**）
 
 - **`/task` の許可/保留境界を policy に固定**: `allowed_task_classes` / `deferred_task_classes` / `deny_prompt_patterns`（Codex/Cursor/git/deploy/terminal/秘密読取/tailnet scan は **D6+ worker まで deferred**）。**検証**: unittest **131 OK** · boundary validate OK · smoke OK · **Pi5 デプロイは次回**。**次**: D6 設計（memory）と並行で **Codex/Cursor worker 境界**（1 task = 1 worktree）。**記録**: [KB D5 §安全枠](./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) · [脅威モデル](./knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md) · [執事ロードマップ](./plans/private-pi5-hermes-butler-vision-and-roadmap.md) · [`EXEC_PLAN`](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)
@@ -1768,4 +1772,3 @@ APIの概要と詳細。
 - 2025-12-04: 工具スキャン重複対策（KB-067）と黒画像対策（KB-068）を実装完了、ナレッジベース更新（65件）
 - 2025-12-01: Ansible堅牢化・安定化計画追加、Ansibleで管理すべき設定ファイル一覧追加、ナレッジベースKB-061追加、統計更新（59件、実装計画セクション追加）
 - 2025-12-01: Ansible設定ファイル管理化実装完了（systemdサービス・アプリケーション設定）、ナレッジベースKB-062追加、統計更新（60件、インフラ関連26件、実装計画5件）
-

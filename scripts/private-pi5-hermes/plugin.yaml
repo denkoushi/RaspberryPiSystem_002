@@ -1,3 +1,3 @@
 name: private-pi5-discord-task-bridge
 version: "1.0"
-description: Expose `/task` to the isolated tools profile on the private Pi5 chat gateway
+description: Expose private Pi5 Discord bridge commands for task, daily pilot, and novel flows
