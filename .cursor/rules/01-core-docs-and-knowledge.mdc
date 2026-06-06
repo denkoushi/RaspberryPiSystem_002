@@ -12,11 +12,13 @@ alwaysApply: true
 
 ## 最低限の運用（毎回）
 
-- 重要な変更には、以下のいずれか（または複数）を更新する:
+- 重要な変更には、情報の性質に応じて以下のいずれか**1つを詳細正本**として更新する:
   - **KB**: 事象と対処（再発防止まで）
   - **ADR**: 意思決定（トレードオフ含む）
   - **Runbook**: 手順（運用/復旧）
-  - **Index**: 追加/更新したドキュメントへのリンク
+  - **Plan**: 未完了作業、実装計画、検証計画
+- **Index** は詳細正本ではない。追加/更新した正本への短いリンクだけを書く
+- 同じ事実を複数文書へ全文コピーしない。必要な場合はリンクで参照する
 
 ## 推奨のドキュメント体系（汎用）
 
@@ -25,36 +27,54 @@ alwaysApply: true
 - `docs/decisions/**`: ADR（意思決定ログ）
 - `docs/runbooks/**`: 運用手順（復旧含む）
 - `docs/plans/**`: 計画（実装/移行/検証）
+- `docs/AI_START_HERE.md`: AI向けの最小入口
 
 ## 知識の置き場所
 
 - 設計上の判断・トレードオフは **ADR** に残す
 - 障害・調査結果・再発防止は **KB** に残す
 - 実行手順・確認手順・復旧手順は **Runbook** に残す
+- 未完了作業・実装計画・検証計画は **Plan** に残す
 - 会話中に得た重要知見は、その場限りにせず適切なドキュメントへ昇格させる
+- `EXEC_PLAN.md` は legacy historical log として扱う。詳細正本として使わず、新規詳細追記は原則禁止する
+- `docs/INDEX.md` と `docs/knowledge-base/index.md` は薄い索引に限定し、本文級の説明を追加しない
+
+## 新規ドキュメントの言語方針
+
+- 新規 KB / ADR / Runbook / Plan は英語ベースの固定見出しと構造化メタデータを優先する
+- 日本語の現場用語、UI文言、ログ、ユーザー発話は原文のまま残す
+- 日本語でないと意味が落ちる補足は `Local Notes JA` または `notes_ja` に置く
+- 既存日本語文書へ追記する場合は、既存文書の言語に合わせる
 
 ## KBテンプレ（コピーして使う）
 
-- Title: `KB-xxx: <短い要約>`
-- Context: 何が起きた/いつ/どこで
-- Symptoms: 症状・ログ・再現手順
-- Investigation: 仮説→検証→結果（CONFIRMED/REJECTED/INCONCLUSIVE）
-- Root cause: 根本原因
-- Fix: 実施した対策（最小変更）
-- Prevention: 再発防止（テスト/監視/手順/ガード）
-- References: 関連PR/issue/docs/ログ/外部リンク
+- Title: `KB-xxx: <short summary>`
+- Status: `active | superseded | archived`
+- Scope: affected feature/system
+- Context: what happened, when, where
+- Symptoms Or Trigger: logs, behavior, reproduction
+- Investigation: hypothesis -> evidence -> result
+- Root Cause: confirmed cause, or `unknown`
+- Fix: smallest effective change
+- Prevention: test, monitor, guard, runbook update
+- Validation: commands and observed results
+- Open Items: remaining work
+- References: PR, issue, docs, logs, code
 
 ## ADRテンプレ（コピーして使う）
 
-- Title: `ADR-YYYYMMDD: <決定事項>`
+- Title: `ADR-YYYYMMDD: <decision>`
 - Status: proposed/accepted/superseded
-- Context: 前提・制約
-- Decision: 決定
-- Alternatives: 検討した選択肢
-- Consequences: 影響（良い/悪い）
+- Context: problem, constraints
+- Decision: chosen approach
+- Alternatives: options considered
+- Consequences: benefits, costs, risks
+- Validation: how the decision is checked
+- Supersedes / Superseded By
 - References: 関連リンク
 
 ## 検索性のルール
 
 - ドキュメントタイトル/見出しは、**検索語になりやすい固有名詞**を含める
-- 新規追加したら、必ずどこかの索引（`INDEX.md`や各index）からリンクする
+- 新規追加したら、必ず `AGENTS.md`、`docs/AI_START_HERE.md`、または薄い索引から辿れるようにする
+- 索引の説明は1件1行を目安にし、長文の検証ログや経緯は正本文書へ置く

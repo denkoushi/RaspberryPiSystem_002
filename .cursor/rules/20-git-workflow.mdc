@@ -25,6 +25,17 @@ alwaysApply: false
 
 - `git status` / `git diff` で範囲確認
 - 秘密情報（`.env`等）が含まれないことを確認
+- `git diff --check` で空白・差分破損を確認
+- 変更に未コミットのユーザー作業が混ざっていないことを確認
+
+## ドキュメント変更時の追加チェック
+
+- 追加・変更した Markdown の相対リンクが壊れていないこと
+- 不自然な連続疑問符などの文字化けを追加していないこと
+- 1,000文字を超える長大な1行を追加していないこと
+- `docs/INDEX.md` と `docs/knowledge-base/index.md` に本文級の追記をしていないこと
+- 同じ事実を KB / Runbook / ADR / Plan / Index / `EXEC_PLAN.md` へ全文コピーしていないこと
+- `EXEC_PLAN.md` へ詳細ログを追記していないこと
 
 ## 実行手順（固定）
 
@@ -32,3 +43,8 @@ alwaysApply: false
 2. `git checkout -b feat/<scope>`
 3. 変更を実装し、`lint/test/build` を通す
 4. PR を作成してレビュー後に main へマージ
+
+## マージ後
+
+- ローカルを `main` に戻し、`git pull --ff-only origin main` で最新化する
+- 未コミット変更が残る場合は、自分の作業かユーザーの既存作業かを区別して報告する
