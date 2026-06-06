@@ -43,6 +43,8 @@
         digest = asyncio.run(ns["_handle_digest_command"](""))
         assert "Focus: recent life notes" in digest, digest
         assert "Recent notes:" in digest, digest
+        assert "Scheduled reminders:" in digest, digest
+        assert "Pending without time:" in digest, digest
         assert "# Life Digest" not in digest, digest
         assert "-# debug:" in digest, digest
         reminder = asyncio.run(ns["_handle_remind_command"]("明日の朝、燃えるごみを出す"))
@@ -50,6 +52,8 @@
         assert "# Reminder Recorded" not in reminder, reminder
         assert "\n>" not in reminder, reminder
         assert "status=pending" in reminder, reminder
+        assert "notification=needs-channel" in reminder, reminder
+        assert "scheduled:" in reminder, reminder
         assert "-# debug:" in reminder, reminder
         recommend = asyncio.run(ns["_handle_recommend_command"](""))
         assert "Focus: next small action" in recommend, recommend
@@ -68,3 +72,20 @@
     that:
       - private_pi5_hermes_life_pilot_smoke.rc == 0
     fail_msg: "Discord Life Pilot smoke failed"
+
+- name: Check Life Pilot reminder scheduler timer state
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - hermes-life-reminder.timer
+  register: private_pi5_hermes_life_reminder_timer_active
+  changed_when: false
+  when: private_pi5_hermes_life_reminder_scheduler_active | bool
+
+- name: Assert Life Pilot reminder scheduler timer is active
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_life_reminder_timer_active.stdout == "active"
+    fail_msg: "hermes-life-reminder.timer is not active"
+  when: private_pi5_hermes_life_reminder_scheduler_active | bool

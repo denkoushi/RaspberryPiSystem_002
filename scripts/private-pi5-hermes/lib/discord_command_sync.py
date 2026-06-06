@@ -62,7 +62,7 @@ LIFE_COMMANDS: tuple[dict[str, Any], ...] = (
     },
     {
         "name": "remind",
-        "description": "Record a private Life Pilot reminder request",
+        "description": "Schedule a private Life Pilot reminder notification",
         "type": 1,
         "dm_permission": True,
         "integration_types": [0, 1],
@@ -70,8 +70,8 @@ LIFE_COMMANDS: tuple[dict[str, Any], ...] = (
             {
                 "type": 3,
                 "name": "args",
-                "description": "Arguments: <reminder>",
-                "required": False,
+                "description": "When and reminder, e.g. 明日の朝、燃えるごみを出す",
+                "required": True,
             }
         ],
     },

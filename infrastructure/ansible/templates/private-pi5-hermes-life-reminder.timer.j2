@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic Hermes Life Pilot reminder notification dispatch
+
+[Timer]
+OnBootSec={{ private_pi5_hermes_life_reminder_boot_delay_sec | default(30) }}sec
+OnUnitActiveSec={{ private_pi5_hermes_life_reminder_interval_min | default(1) }}min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

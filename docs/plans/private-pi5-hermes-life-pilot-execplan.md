@@ -27,7 +27,7 @@ Discord global slash commands:
 ```text
 /memo <life note>
 /digest [focus]
-/remind <reminder>
+/remind <when and reminder>
 /recommend [focus]
 ```
 
@@ -49,7 +49,7 @@ Discord global slash commands:
 
 - private life memo の保存
 - ローカル Life Pilot note/reminder の要約
-- reminder request の記録
+- reminder request の記録と、日時を読めた reminder の Discord 通知
 - ローカル記録に基づく小さな次アクション提案
 
 保留:
@@ -67,10 +67,21 @@ Discord global slash commands:
 ## 実装（2026-06-06 · repo）
 
 - `life_pilot_policy.py`: policy 読込・hard gate・prompt deny
-- `discord_life_pilot_bridge.py`: memo/reminder 保存、digest/recommend
-- `discord_task_bridge_plugin.py`: `life-pilot.policy.yaml` 配備時のみ `/memo` `/digest` `/remind` `/recommend` 登録
+- `discord_life_pilot_bridge.py`: memo/reminder 保存、日時解析、digest/recommend
+- `life_reminder_scheduler.py`: due reminder を Discord へ送信し `status=notified` に更新
+- `discord_task_bridge_plugin.py`: `life-pilot.policy.yaml` 配備時のみ `/memo` `/digest` `/remind` `/recommend` 登録、Life Pilot 単体でも送信先 context を取得
 - `discord_command_sync.py` / `sync-discord-commands.py`: Discord global slash を `present`/`absent` 管理
-- Ansible: policy/module 配備、`~/.hermes-life` 作成、smoke verify
+- Ansible: policy/module 配備、`~/.hermes-life` 作成、`hermes-life-reminder.timer` 配備、smoke verify
+
+## D7-life reminder scheduler（2026-06-06 · repo）
+
+`/remind` は common Japanese/ISO forms を deterministic に読む。対応範囲は `今日` `明日` `明後日` `来週月曜日`、`YYYY-MM-DD HH:MM`、`M/D HH:MM`、`朝` `昼` `夕方` `夜` など。時刻がない日付は 09:00、`朝` は 08:00。
+
+保存する JSONL は後方互換のまま、日時を読めた行だけ `dueAt`、Discord 送信先を取れた行だけ `notifyChannelId` を追加する。timer は `dueAt <= now` かつ `status=pending` かつ `notifyChannelId` ありの行だけ送信し、成功後に `status=notified` と `notifiedAt` を書く。日時を読めない行は `pending without time` として digest/recommend に残す。
+
+`/digest` は scheduled reminders と pending without time を分けて表示する。`/recommend` は期限到来、次の予定、日時未指定 reminder、最新memoの順に小さな次アクションを出す。
+
+`hermes-life-reminder.timer` は Life Pilot 有効、Discord token 設定済み、`private_pi5_hermes_life_reminder_scheduler_enabled` 未無効化のときだけ active。既定は 1 分間隔。journal には件数 JSON のみを出し、個人メモ本文や token は出さない。
 
 ## 検証（2026-06-06 · local）
 
@@ -80,6 +91,13 @@ Discord global slash commands:
 - `python3 -m compileall`: OK
 - `git diff --check`: OK
 - `ansible-playbook --syntax-check`: OK（`ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local` を指定）
+
+2026-06-06 D7-life reminder scheduler 追加後:
+
+- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests`: **170 OK**
+- `python3 -m py_compile`（Life Pilot / scheduler / plugin / command sync）: OK
+- `validate_boundary_policy.py --validate-life-pilot`: OK
+- `deploy-private-pi5-hermes.sh --syntax-check`: OK
 
 ## 私用 Pi5 実機検証（2026-06-06 完了）
 
@@ -107,8 +125,8 @@ Discord global slash command を同期するには `private_pi5_hermes_discord_b
 ## 未完了
 
 - export/delete/retention の運用設計
-- 本物の通知スケジューラ
-- `/remind` 入力経路による `Unknown argument` UXノイズの再現確認
+- リマインダー通知の実機Discord E2E（deploy後）
+- 通知済み reminder の一覧/削除 UX
 
 ## 次の判断
 
@@ -116,7 +134,7 @@ D6-life を Pi5 に入れて数日使い、以下を見る。
 
 - メモが自然に残せるか
 - digest/recommend が役に立つか
-- 自動通知なしでも不便すぎないか
+- 自動通知が想定チャンネルへ届くか
 - 保存・削除・見返しの運用が明確か
 
-ここで体感を得てから、D6 memory/retention、D7 cronjob、D6+ Codex/Cursor worker 境界へ進む。
+ここで体感を得てから、D6 memory/retention、通知済み reminder UX、D6+ Codex/Cursor worker 境界へ進む。

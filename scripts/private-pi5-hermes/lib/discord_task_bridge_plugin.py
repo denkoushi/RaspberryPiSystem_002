@@ -16,6 +16,7 @@ try:
         run_daily_pilot_bridge_async,
     )
     from .discord_life_pilot_bridge import (
+        normalize_life_command_args,
         render_digest_usage,
         render_memo_usage,
         render_recommend_usage,
@@ -40,6 +41,7 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
         run_daily_pilot_bridge_async,
     )
     from discord_life_pilot_bridge import (
+        normalize_life_command_args,
         render_digest_usage,
         render_memo_usage,
         render_recommend_usage,
@@ -139,7 +141,7 @@ async def _handle_daily_command(raw_args: str) -> str:
 
 async def _handle_memo_command(raw_args: str) -> str:
     """Record a private life memo without invoking workers or tools."""
-    prompt = (raw_args or "").strip()
+    prompt = normalize_life_command_args(raw_args or "", "memo")
     if not prompt:
         return render_memo_usage()
     return await run_life_memo_bridge_async(prompt)
@@ -147,20 +149,29 @@ async def _handle_memo_command(raw_args: str) -> str:
 
 async def _handle_digest_command(raw_args: str) -> str:
     """Summarize local Life Pilot notes without external access."""
-    return await run_life_digest_bridge_async((raw_args or "").strip())
+    return await run_life_digest_bridge_async(
+        normalize_life_command_args(raw_args or "", "digest")
+    )
 
 
 async def _handle_remind_command(raw_args: str) -> str:
-    """Record a private reminder request without scheduling automation."""
-    prompt = (raw_args or "").strip()
+    """Record a private reminder request and schedule Discord notification when possible."""
+    prompt = normalize_life_command_args(raw_args or "", "remind")
     if not prompt:
         return render_remind_usage()
-    return await run_life_remind_bridge_async(prompt)
+    user_id, channel_id = read_gateway_session_context()
+    return await run_life_remind_bridge_async(
+        prompt,
+        notify_channel_id=channel_id,
+        notify_user_id=user_id,
+    )
 
 
 async def _handle_recommend_command(raw_args: str) -> str:
     """Suggest small next steps from local Life Pilot notes only."""
-    return await run_life_recommend_bridge_async((raw_args or "").strip())
+    return await run_life_recommend_bridge_async(
+        normalize_life_command_args(raw_args or "", "recommend")
+    )
 
 
 async def _handle_task_approve(raw_args: str) -> str:
@@ -241,6 +252,8 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
 
 def register(ctx) -> None:
     """Register bridge commands matching deployed capabilities (policy / novel .env)."""
+    life_enabled = _life_pilot_enabled()
+    task_enabled = _task_bridge_enabled()
     if _daily_pilot_enabled():
         ctx.register_command(
             "daily",
@@ -248,7 +261,7 @@ def register(ctx) -> None:
             description="Draft a safe daily-use Markdown handoff without execution",
             args_hint="<memo or request>",
         )
-    if _life_pilot_enabled():
+    if life_enabled:
         ctx.register_command(
             "memo",
             handler=_handle_memo_command,
@@ -264,8 +277,8 @@ def register(ctx) -> None:
         ctx.register_command(
             "remind",
             handler=_handle_remind_command,
-            description="Record a private Life Pilot reminder request",
-            args_hint="<reminder>",
+            description="Schedule a private Life Pilot reminder notification",
+            args_hint="<when and reminder>",
         )
         ctx.register_command(
             "recommend",
@@ -280,7 +293,7 @@ def register(ctx) -> None:
             description="Creative writing — enter your prompt in the Arguments field",
             args_hint="<creative prompt>",
         )
-    if _task_bridge_enabled():
+    if task_enabled:
         ctx.register_command(
             "task",
             handler=_handle_task_command,
@@ -297,5 +310,5 @@ def register(ctx) -> None:
             handler=_handle_task_deny,
             description="Deny the pending /task dangerous operation",
         )
-        if hasattr(ctx, "register_hook"):
-            ctx.register_hook("pre_gateway_dispatch", _handle_pre_gateway_dispatch)
+    if (life_enabled or task_enabled) and hasattr(ctx, "register_hook"):
+        ctx.register_hook("pre_gateway_dispatch", _handle_pre_gateway_dispatch)
