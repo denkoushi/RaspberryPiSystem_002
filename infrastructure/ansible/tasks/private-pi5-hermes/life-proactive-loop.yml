@@ -14,6 +14,10 @@
       dest: /etc/systemd/system/hermes-life-proactive-morning.timer
     - src: "../templates/private-pi5-hermes-life-proactive-evening.timer.j2"
       dest: /etc/systemd/system/hermes-life-proactive-evening.timer
+    - src: "../templates/private-pi5-hermes-life-followup.service.j2"
+      dest: /etc/systemd/system/hermes-life-followup.service
+    - src: "../templates/private-pi5-hermes-life-followup.timer.j2"
+      dest: /etc/systemd/system/hermes-life-followup.timer
     - src: "../templates/private-pi5-hermes-life-discord-ui.service.j2"
       dest: /etc/systemd/system/hermes-life-discord-ui.service
   notify: Reload systemd daemon
@@ -39,6 +43,22 @@
     - hermes-life-proactive-morning.timer
     - hermes-life-proactive-evening.timer
   when: not (private_pi5_hermes_life_proactive_loop_active | bool)
+
+- name: Enable Hermes Life Pilot follow-up timer
+  ansible.builtin.systemd:
+    name: hermes-life-followup.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: private_pi5_hermes_life_followup_loop_active | bool
+
+- name: Disable Hermes Life Pilot follow-up timer when inactive
+  ansible.builtin.systemd:
+    name: hermes-life-followup.timer
+    enabled: false
+    state: stopped
+    daemon_reload: true
+  when: not (private_pi5_hermes_life_followup_loop_active | bool)
 
 - name: Warn when Life Pilot proactive loop is inactive
   ansible.builtin.debug:

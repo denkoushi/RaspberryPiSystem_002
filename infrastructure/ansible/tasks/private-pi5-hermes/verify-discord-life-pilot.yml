@@ -23,7 +23,11 @@
         import sys
         plugin_dir = "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
         sys.path.insert(0, plugin_dir)
-        from life_proactive_loop import build_proactive_checkin_message, build_proactive_components
+        from life_proactive_loop import (
+            build_followup_checkin_message,
+            build_proactive_checkin_message,
+            build_proactive_components,
+        )
         ns = runpy.run_path(plugin_dir + "/__init__.py")
         register = ns.get("register")
         assert callable(register), "register() missing"
@@ -68,12 +72,18 @@
             __import__("pathlib").Path("{{ private_pi5_hermes_life_data_dir }}"),
         )
         assert "おはようございます" in proactive, proactive
-        assert "[1] まず1つやる" in proactive, proactive
+        assert "今日まず見るなら:" in proactive, proactive
+        assert "[1] これをやる" in proactive, proactive
+        assert "[2] 夕方にもう一度" in proactive, proactive
         assert "ボタンで返信できます" in proactive, proactive
         assert "-# debug:" in proactive, proactive
         components = build_proactive_components("2026-06-06-morning", "morning")
         assert components[0]["components"][0]["custom_id"] == "life:reply:2026-06-06-morning:1", components
+        assert components[0]["components"][1]["label"] == "夕方にもう一度", components
         assert components[0]["components"][3]["custom_id"] == "life:free:2026-06-06-morning", components
+        followup = build_followup_checkin_message("風呂洗い")
+        assert "今ならこれだけ見ますか:" in followup, followup
+        assert "[1] やる" in followup, followup
         print("ok")
   register: private_pi5_hermes_life_pilot_smoke
   changed_when: false
@@ -122,6 +132,23 @@
     fail_msg: "Life Pilot proactive timer is not active"
   loop: "{{ private_pi5_hermes_life_proactive_timer_active.results | default([]) }}"
   when: private_pi5_hermes_life_proactive_loop_active | bool
+
+- name: Check Life Pilot follow-up timer state
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - hermes-life-followup.timer
+  register: private_pi5_hermes_life_followup_timer_active
+  changed_when: false
+  when: private_pi5_hermes_life_followup_loop_active | bool
+
+- name: Assert Life Pilot follow-up timer is active
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_life_followup_timer_active.stdout == "active"
+    fail_msg: "hermes-life-followup.timer is not active"
+  when: private_pi5_hermes_life_followup_loop_active | bool
 
 - name: Check Life Pilot Discord UI relay state
   ansible.builtin.command:

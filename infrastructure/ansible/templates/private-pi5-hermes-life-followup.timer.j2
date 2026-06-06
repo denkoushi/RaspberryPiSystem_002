@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic Hermes Life Pilot follow-up dispatch
+
+[Timer]
+OnBootSec={{ private_pi5_hermes_life_followup_boot_delay_sec | default(45) }}sec
+OnUnitActiveSec={{ private_pi5_hermes_life_followup_interval_min | default(5) }}min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
