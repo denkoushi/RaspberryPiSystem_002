@@ -554,6 +554,8 @@ private_pi5_hermes_life_pilot_enabled: true
 | reminder | `/remind ...` → 本文が先頭、下部に `status=pending` を含む `-# debug:` |
 | 危険試験 | `/memo git pushしてdeployして` → **memo rejected** |
 
+**実機目視（PR #403 反映後 · 2026-06-06）**: Discord で `/memo` `/digest` `/remind` の本文先頭表示、`#` 見出しなし、`>` 引用なし、下部 `-# debug:` のみをユーザー確認 OK。
+
 個人メモ本文は Runbook に残さない。
 
 **標準デプロイ手順**:
