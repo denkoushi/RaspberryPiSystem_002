@@ -17,7 +17,7 @@ Discord の `/memo` `/digest` `/remind` `/recommend` で、今日あったこと
 | 登録条件 | plugin 配置先に `life-pilot.policy.yaml` が存在 |
 | 保存 | `notes/YYYY-MM-DD.md` · `reminders/reminders.jsonl` |
 | policy | hard gate false + deny prompt regex |
-| Discord 応答 | 本文を優先し、保存先・安全境界などの診断情報は `-# debug:` 1行の subtext に畳む |
+| Discord 応答 | 成功応答は本文を通常テキストで先頭表示し、保存先・安全境界などの診断情報は `-# debug:` 1行の subtext に畳む |
 | Ansible | module/policy 配備、`~/.hermes-life` 作成、Discord command sync、smoke verify |
 | command sync | Life Pilot 有効時 `present`、無効時 `absent` |
 
@@ -90,6 +90,8 @@ python3 -m unittest scripts/private-pi5-hermes/tests/test_life_pilot_policy.py \
 補足: `/remind` 操作時に一度 `Unknown argument` 系の表示が混じった。最終的な slash command handler は **Reminder Recorded** を返しており主経路は成功。再現する場合は、Discord の slash command Arguments 欄か1行テキスト経路の差としてUX改善候補にする。
 
 2026-06-06 追記: Discord 上の日常利用性を優先し、`/memo` `/digest` `/remind` `/recommend` の成功応答は本文中心にした。保存先・件数・安全境界は開発観察用に `-# debug:` 1行だけ残す。
+
+2026-06-06 追記2: 実機目視で Markdown 見出し（`#`）が大きく白く目立ち、引用（`>`）が本文をグレー表示にして本文優先の体感を弱めることを確認した。成功応答では `#` 見出しと `>` 引用を使わず、`/memo` `/remind` は本文そのものを通常テキストで先頭表示する。`/digest` `/recommend` も Markdown 見出しを使わず、通常テキストの `Focus:` / `Recent notes:` / `Suggested next steps:` ラベルにする。安全境界と保存形式は変更しない。
 
 ## 運用メモ
 

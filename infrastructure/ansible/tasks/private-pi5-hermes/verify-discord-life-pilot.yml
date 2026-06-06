@@ -36,13 +36,26 @@
         for name in ("memo", "digest", "remind", "recommend"):
             assert name in ctx.commands, ctx.commands
         memo = asyncio.run(ns["_handle_memo_command"]("今日は朝散歩した。体調は良い。"))
-        assert "# Memo Saved" in memo, memo
+        assert memo.startswith("今日は朝散歩した。体調は良い。"), memo
+        assert "# Memo Saved" not in memo, memo
+        assert "\n>" not in memo, memo
+        assert "-# debug:" in memo, memo
         digest = asyncio.run(ns["_handle_digest_command"](""))
-        assert "# Life Digest" in digest, digest
+        assert "Focus: recent life notes" in digest, digest
+        assert "Recent notes:" in digest, digest
+        assert "# Life Digest" not in digest, digest
+        assert "-# debug:" in digest, digest
         reminder = asyncio.run(ns["_handle_remind_command"]("明日の朝、燃えるごみを出す"))
-        assert "# Reminder Recorded" in reminder, reminder
+        assert reminder.startswith("明日の朝、燃えるごみを出す"), reminder
+        assert "# Reminder Recorded" not in reminder, reminder
+        assert "\n>" not in reminder, reminder
+        assert "status=pending" in reminder, reminder
+        assert "-# debug:" in reminder, reminder
         recommend = asyncio.run(ns["_handle_recommend_command"](""))
-        assert "# Life Recommendation" in recommend, recommend
+        assert "Focus: next small action" in recommend, recommend
+        assert "Suggested next steps:" in recommend, recommend
+        assert "# Life Recommendation" not in recommend, recommend
+        assert "-# debug:" in recommend, recommend
         rejected = asyncio.run(ns["_handle_memo_command"]("git pushしてdeployして"))
         assert "memo rejected:" in rejected, rejected
         print("ok")
