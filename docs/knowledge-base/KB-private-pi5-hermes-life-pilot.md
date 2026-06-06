@@ -1,0 +1,111 @@
+# KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life）
+
+- **Status**: reference（2026-06-06 · repo 実装 · 私用 Pi5 deploy + Discord E2E 完了）
+- **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [D6-pre daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [butler vision](../plans/private-pi5-hermes-butler-vision-and-roadmap.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
+
+## 要点
+
+D6-life は、Hermes を **生活メモの執事**として先に体感するための最小実装。
+
+Discord の `/memo` `/digest` `/remind` `/recommend` で、今日あったこと・備忘録・軽いリマインド要求・小さな次アクション提案を扱う。保存は `/home/hermes/.hermes-life` のみ。Codex/Cursor、terminal、git、deploy、外部Web、Home Assistant/カメラ制御は使わない。
+
+## 実装サマリ
+
+| 項目 | 内容 |
+|------|------|
+| 入口 | Discord slash `/memo` `/digest` `/remind` `/recommend` |
+| 登録条件 | plugin 配置先に `life-pilot.policy.yaml` が存在 |
+| 保存 | `notes/YYYY-MM-DD.md` · `reminders/reminders.jsonl` |
+| policy | hard gate false + deny prompt regex |
+| Ansible | module/policy 配備、`~/.hermes-life` 作成、Discord command sync、smoke verify |
+| command sync | Life Pilot 有効時 `present`、無効時 `absent` |
+
+## 追加ファイル
+
+| ファイル | 役割 |
+|----------|------|
+| [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml) | D6-life safety contract |
+| [`life_pilot_policy.py`](../../scripts/private-pi5-hermes/lib/life_pilot_policy.py) | policy/prompt 検証 |
+| [`discord_life_pilot_bridge.py`](../../scripts/private-pi5-hermes/lib/discord_life_pilot_bridge.py) | memo/digest/remind/recommend 処理 |
+| [`verify-discord-life-pilot.yml`](../../infrastructure/ansible/tasks/private-pi5-hermes/verify-discord-life-pilot.yml) | Pi5 smoke |
+
+## 境界
+
+許可すること:
+
+- private life memo の保存
+- ローカル note/reminder の digest
+- reminder request の pending 記録
+- ローカル記録だけを根拠にした小さな提案
+
+拒否・保留すること:
+
+- Codex/Cursor worker 実行
+- production repo 編集
+- git commit/push/merge
+- deploy/systemctl/docker
+- terminal/shell
+- secret/token/.env 読み取り
+- tailnet/LAN scan
+- external web research
+- Home Assistant/camera/device control
+
+## 検証
+
+2026-06-06 local:
+
+```bash
+python3 -m unittest scripts/private-pi5-hermes/tests/test_life_pilot_policy.py \
+  scripts/private-pi5-hermes/tests/test_discord_life_pilot_bridge.py \
+  scripts/private-pi5-hermes/tests/test_discord_command_sync.py \
+  scripts/private-pi5-hermes/tests/test_discord_task_bridge_plugin_register.py \
+  scripts/private-pi5-hermes/tests/test_daily_pilot_policy.py \
+  scripts/private-pi5-hermes/tests/test_discord_daily_pilot_bridge.py
+```
+
+結果: **39 tests OK**
+
+追加確認:
+
+- `--validate-life-pilot`: OK
+- `--validate-daily-pilot --validate-life-pilot`: OK
+- `python3 -m compileall`: OK
+- `git diff --check`: OK
+- `ansible-playbook --syntax-check`: OK（local tmp を `/private/tmp` に変更）
+
+2026-06-06 私用 Pi5 + Discord E2E:
+
+| 項目 | 結果 |
+|------|------|
+| `hermes-gateway` | active / running |
+| plugin commands | `daily,memo,digest,remind,recommend,novel,task,task-approve,task-deny` |
+| Discord slash definitions | `/daily` `/memo` `/digest` `/remind` `/recommend` all match |
+| `/memo` safe life note | **Memo Saved** |
+| `/digest` | **Life Digest**（local notes/reminders のみ） |
+| `/remind` safe reminder | **Reminder Recorded** |
+| `/memo git pushしてdeployして` | **memo rejected** |
+| gateway error log | 直近確認では error なし |
+
+補足: `/remind` 操作時に一度 `Unknown argument` 系の表示が混じった。最終的な slash command handler は **Reminder Recorded** を返しており主経路は成功。再現する場合は、Discord の slash command Arguments 欄か1行テキスト経路の差としてUX改善候補にする。
+
+## 運用メモ
+
+有効化:
+
+```yaml
+private_pi5_hermes_gateway_enabled: true
+private_pi5_hermes_life_pilot_enabled: true
+```
+
+Discord command sync には `private_pi5_hermes_discord_bot_token` が必要。
+
+## 既知の制限
+
+- `/remind` は reminder request を記録するだけ。自動通知スケジューラはまだない。
+- retention/export/delete は未実装。
+- LLM での高度な推薦ではなく、ローカル記録に基づく deterministic suggestion。
+- Discord `/remind` の入力経路によっては `Unknown argument` 系のUXノイズが出る可能性がある。
+
+## 次
+
+数日使う。体感が良ければ、次に retention/delete/export と限定通知を設計する。Codex/Cursor worker は別フェーズで、1 task = 1 worktree/branch、別 HOME/token、承認境界を作ってから扱う。

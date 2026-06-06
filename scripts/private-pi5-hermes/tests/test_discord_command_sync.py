@@ -17,7 +17,9 @@ from lib.discord_command_sync import (  # noqa: E402
     DiscordCommandSyncError,
     commands_match,
     daily_command_payload,
+    life_command_payloads,
     sync_daily_command_with_client,
+    sync_life_commands_with_client,
 )
 
 
@@ -70,6 +72,16 @@ class DiscordCommandSyncTests(unittest.TestCase):
             ],
         )
 
+    def test_life_payloads_match_expected_command_names(self) -> None:
+        payloads = life_command_payloads()
+
+        self.assertEqual(
+            [payload["name"] for payload in payloads],
+            ["memo", "digest", "remind", "recommend"],
+        )
+        self.assertTrue(all(payload["dm_permission"] is True for payload in payloads))
+        self.assertTrue(all(payload["integration_types"] == [0, 1] for payload in payloads))
+
     def test_present_matching_command_is_unchanged(self) -> None:
         existing = {"id": "daily-1", **daily_command_payload(), "version": "99"}
         client = FakeDiscordClient([existing])
@@ -121,6 +133,41 @@ class DiscordCommandSyncTests(unittest.TestCase):
         self.assertEqual(result["changed"], True)
         self.assertEqual(result["action"], "deleted")
         self.assertEqual(client.deletes, [("app-1", "daily-1")])
+        self.assertEqual(client.upserts, [])
+
+    def test_present_life_commands_creates_missing_commands(self) -> None:
+        client = FakeDiscordClient([])
+
+        result = sync_life_commands_with_client(client, "present")
+
+        self.assertEqual(result["changed"], True)
+        self.assertEqual(result["state"], "present")
+        self.assertEqual(
+            [item["name"] for item in result["commands"]],
+            ["memo", "digest", "remind", "recommend"],
+        )
+        self.assertEqual(len(client.upserts), 4)
+        self.assertEqual(client.deletes, [])
+
+    def test_absent_life_commands_deletes_existing_life_commands_only(self) -> None:
+        existing = [
+            {"id": f"{payload['name']}-1", **payload}
+            for payload in life_command_payloads()
+        ]
+        client = FakeDiscordClient(existing + [{"id": "task-1", "name": "task"}])
+
+        result = sync_life_commands_with_client(client, "absent")
+
+        self.assertEqual(result["changed"], True)
+        self.assertEqual(
+            client.deletes,
+            [
+                ("app-1", "memo-1"),
+                ("app-1", "digest-1"),
+                ("app-1", "remind-1"),
+                ("app-1", "recommend-1"),
+            ],
+        )
         self.assertEqual(client.upserts, [])
 
     def test_http_error_redacts_token(self) -> None:

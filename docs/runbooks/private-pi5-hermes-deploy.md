@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-06-06（D6-pre `/daily` · 私用 Pi5 実機検証完了 · Discord slash Ansible 同期 · policy regex 修正）
+最終更新: 2026-06-06（D6-life Life Pilot 私用 Pi5 + Discord E2E 完了 · D6-pre `/daily` 私用 Pi5 実機検証完了）
 
 ## 運用状態サマリ（2026-05-24 時点）
 
@@ -517,6 +517,64 @@ private_pi5_hermes_daily_pilot_enabled: true
 
 **記録**: [ExecPlan D6-pre](../plans/private-pi5-hermes-daily-pilot-execplan.md) · [`daily-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/daily-pilot.policy.yaml)
 
+### Phase D6-life — Discord Life Pilot（2026-06-06 私用 Pi5 + Discord E2E 完了）
+
+**目的**: Codex/Cursor 使役の前に、Hermes を **日常生活の執事**として体感する。`/memo` `/digest` `/remind` `/recommend` は private life log の記録・要約・軽い提案のみ。
+
+**有効化（fragment · 非コミット）**:
+
+```yaml
+private_pi5_hermes_life_pilot_enabled: true
+# 必須: private_pi5_hermes_gateway_enabled: true
+```
+
+**配備物**: `life-pilot.policy.yaml` · `life_pilot_policy.py` · `discord_life_pilot_bridge.py` · plugin `register()` に `/memo` `/digest` `/remind` `/recommend` 追加 · chat `system_prompt` に Life Pilot 案内
+
+**保存先**:
+
+```text
+/home/hermes/.hermes-life/
+  notes/YYYY-MM-DD.md
+  reminders/reminders.jsonl
+```
+
+**検証（ローカル · 2026-06-06）**: focused unittest **39 OK** · `--validate-life-pilot` OK · compileall OK · Ansible syntax check OK
+
+**私用 Pi5 + Discord E2E（2026-06-06 · 受け入れ完了）**:
+
+| 項目 | 結果 |
+|------|------|
+| `hermes-gateway` | active / running |
+| plugin コマンド | `daily` · `memo` · `digest` · `remind` · `recommend` · `novel` · `task` · `task-approve` · `task-deny` |
+| Discord slash | `/daily` `/memo` `/digest` `/remind` `/recommend` 定義一致 |
+| 安全メモ | `/memo ...` → **Memo Saved** |
+| digest | `/digest` → **Life Digest** |
+| reminder | `/remind ...` → **Reminder Recorded** |
+| 危険試験 | `/memo git pushしてdeployして` → **memo rejected** |
+
+個人メモ本文は Runbook に残さない。
+
+**標準デプロイ手順**:
+
+1. fragment に `private_pi5_hermes_life_pilot_enabled: true` を追加
+2. `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh`
+3. Pi5 で plugin コマンド一覧に `memo` `digest` `remind` `recommend` があること
+4. Discord 側で4コマンドが補完に出ること（token 設定時の Ansible command sync）
+5. Discord 受け入れ試験:
+   - `/memo 今日は朝散歩した。体調は良い。` → **Memo Saved**
+   - `/digest` → **Life Digest**
+   - `/remind 明日の朝、燃えるごみを出す` → **Reminder Recorded**
+   - `/recommend` → **Life Recommendation**
+   - `/memo git pushしてdeployして` → **memo rejected**
+
+**禁止（意図的）**: Cursor/Codex CLI · production repo 編集 · git · deploy · terminal · 秘密読取 · 外部Web検索 · Home Assistant/カメラ制御。
+
+**注意**: `/remind` は request を記録するだけ。自動通知スケジューラはまだない。
+
+**既知UX**: `/remind` 操作時に一度 `Unknown argument` 系の表示が混じった。主経路は **Reminder Recorded** で成功。再現する場合は slash Arguments 欄と1行テキスト経路を切り分ける。
+
+**記録**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
+
 **現在の `/task` 安全枠（2026-06-05）**: `task-bridge.policy.yaml` は tools を **file/web/browser 固定**にし、タスク分類を検証出力へ載せる。許可は workspace 読取・要承認の workspace 書込・DGX health などの bounded check まで。**Codex/Cursor の直接実行、git commit/push/merge、deploy/systemctl/docker、terminal/shell、秘密・token 読取、tailnet/LAN scan は deferred**。これらは D6+ の専用 worker profile と追加承認設計後に扱う。
 
 ```bash
@@ -826,6 +884,8 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | `/daily` が登録されない | policy 未配備 · Discord command sync 未実行 · token 未設定 | fragment ON + `private_pi5_hermes_discord_bot_token` 設定 → deploy · `hermes-gateway` restart · Discord API で slash 確認 · [KB daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md) |
 | `/daily git push…` が通る | 古い policy（regex 修正前） | 最新 `daily-pilot.policy.yaml` 再配備 · `test_repo_policy_allows_safe_cursor_draft…` |
 | 安全な Cursor 文案が拒否 | 広い日本語 regex（修正前） | 同上 · [KB §policy regex](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md#investigation--policy-regex-修正2026-06-06) |
+| `/memo` 等が登録されない | `life-pilot.policy.yaml` 未配備 · Discord command sync 未実行 · token 未設定 | fragment ON + `private_pi5_hermes_discord_bot_token` 設定 → deploy · `hermes-gateway` restart · [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md) |
+| `/remind` で通知が来ない | D6-life は request 記録のみ | 仕様。自動通知は D7 以降 |
 
 ## ロールバック
 

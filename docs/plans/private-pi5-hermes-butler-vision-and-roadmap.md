@@ -2,10 +2,12 @@
 title: 私用 Pi5 Hermes — AI執事ビジョンとロードマップ（北極星）
 tags: [Hermes Agent, private Pi5, Discord, tools profile, product vision, butler]
 audience: [開発者, 運用者, ステークホルダー（非エンジニア向け要約あり）]
-last-verified: 2026-05-25
+last-verified: 2026-06-06
 related:
   - private-pi5-hermes-agent-plan.md
   - private-pi5-hermes-tools-security-phase-d3-execplan.md
+  - private-pi5-hermes-life-pilot-execplan.md
+  - ../knowledge-base/KB-private-pi5-hermes-life-pilot.md
   - ../knowledge-base/KB-private-pi5-hermes-phase-d3-production.md
   - ../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md
   - ../runbooks/private-pi5-hermes-deploy.md
@@ -19,7 +21,7 @@ update-frequency: medium
 
 **最終的に欲しいもの**: 自宅の **Discord** から普段話しかけると、裏で安全に **ファイル・Web・（将来）家の設備やカメラ** などを使い、**メモとリマインド**、**定時の情報（例: X）**、**簡単なアプリ作成**、**定点観測の報告** まで任せられる **AI執事**。
 
-**いま（2026-05-25）**: そのための **安全な土台の途中**。Discord は **雑談専用（ツールなし）**。**作業用（file+web）** は別プロファイルで本番稼働済みだが、**Discord からはまだつながっていない**。
+**いま（2026-06-06）**: `/task` は安全枠つきで稼働し、`/daily` は実機合格済み。Codex/Cursor 使役の前段として **D6-life Life Pilot**（`/memo` `/digest` `/remind` `/recommend`）も私用 Pi5 + Discord E2E まで完了した。これは生活メモの private log だけで、実行系はまだ開けない。
 
 **進め方（合意）**: 執事機能を **一気に ON にしない**。これまで通り **Phase 単位でセキュアな運用環境を丁寧に構築**し、あとから **1 機能ずつ**足す。
 
@@ -29,7 +31,7 @@ update-frequency: medium
 
 | # | 要望（ステークホルダー） | Hermes / インフラ上の相当 | いま |
 |---|-------------------------|---------------------------|------|
-| 1 | **メモを覚え、必要時にリマインド** | `memory` · `cronjob` · 将来 Discord からのタスク委譲 | **無効**（chat/tools とも `memory_enabled: false`） |
+| 1 | **メモを覚え、必要時にリマインド** | D6-life private log · 将来 `memory` · `cronjob` | **私用 Pi5 E2E 完了**（`/memo` `/digest` `/remind` `/recommend` · 自動通知なし） |
 | 2 | **X から好みの情報を毎日定時で教える** | `x_search` · `cronjob` · Web/認証設計 | **無効**（`x_search` disabled） |
 | 3 | **簡単なアプリを作る** | `file` · 将来 `code_execution` / `terminal`（最後） | **file のみ tools 側** · Discord からは不可 |
 | 4 | **カメラ・Home Assistant・定点観測と状況通知** | `homeassistant` · `vision` · カメラ連携 · egress 設計 | **無効** |
@@ -45,7 +47,7 @@ update-frequency: medium
 
 ---
 
-## いま実現されていること（2026-05-25 時点）
+## いま実現されていること（2026-06-06 時点）
 
 ### 完了済みフェーズ
 
@@ -56,6 +58,8 @@ update-frequency: medium
 | D1 | tools 骨格・専用 Bearer・gateway 停止検証 | [KB D1](../knowledge-base/KB-private-pi5-hermes-phase-d1-production.md) |
 | D2 | file のみ・workspace マウント・`hermes-tools-gateway` active | [KB D2](../knowledge-base/KB-private-pi5-hermes-phase-d2-production.md) |
 | D3 | file+web · `website_blocklist` 同期 · 実機デプロイ | [KB D3](../knowledge-base/KB-private-pi5-hermes-phase-d3-production.md) |
+| D6-pre | `/daily` Markdown handoff · 私用 Pi5 実機合格 | [KB daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md) |
+| D6-life | `/memo` `/digest` `/remind` `/recommend` · private life log · 私用 Pi5 E2E 完了 | [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md) |
 
 ### 2 プロファイルの現状
 
@@ -103,7 +107,8 @@ update-frequency: medium
 |-------|------|------|--------------|------|
 | **D4** | browser 隔離 | sandbox · `AGENT_BROWSER_ARGS` · agent-browser symlink | 将来ブラウザ操作の足場 | **完了**（[KB D4 本番](../knowledge-base/KB-private-pi5-hermes-phase-d4-production.md)） |
 | **D5** | Discord ↔ tools 橋（最小） | `/task` + exec ブリッジ · manual 承認維持 | **執事の「指示→実行」第一歩** | **repo 完了**（[ExecPlan D5](./private-pi5-hermes-tools-security-phase-d5-execplan.md)） |
-| **D6-pre** | 普段遣いパイロット | `/daily` · Markdown handoff のみ（Cursor 指示書 · Codex レビュー · CI/Deploy チェックリスト）· **実行なし** | 執事の「進行係」試験運用 | **私用 Pi5 実機完了**（2026-06-06 · [KB daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md) · Ansible 収束残） |
+| **D6-pre** | 普段遣いパイロット | `/daily` · Markdown handoff のみ（Cursor 指示書 · Codex レビュー · CI/Deploy チェックリスト）· **実行なし** | 執事の「進行係」試験運用 | **私用 Pi5 実機完了**（2026-06-06 · [KB daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md)） |
+| **D6-life** | Life Pilot | `/memo` `/digest` `/remind` `/recommend` · private log under `~/.hermes-life` · **実行なし** | 執事 §1 の体感 | **私用 Pi5 E2E 完了**（2026-06-06 · [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md)） |
 | **D6** | memory + リマインド（限定） | `memory` のスコープ設計 · 保持/削除ポリシー · Discord 通知 | 執事 §1 | 中 |
 | **D6+（並行設計）** | Codex/Cursor worker 境界 | 1 task = 1 worktree = 1 branch · 別 HOME/token · `/task-code` 等 · commit/push/deploy 前承認 | Discord → 開発使役（**`/task` から直接解放しない**） | 中（2026-06-05 Handoff） |
 | **D7** | 定時ジョブ基盤 | `cronjob` + 失敗時 Discord 通知 · 1 本の smoke タスク | 執事 §2 の土台 | 中 |
