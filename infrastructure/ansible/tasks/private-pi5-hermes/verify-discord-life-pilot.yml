@@ -23,6 +23,7 @@
         import sys
         plugin_dir = "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
         sys.path.insert(0, plugin_dir)
+        from life_proactive_loop import build_proactive_checkin_message
         ns = runpy.run_path(plugin_dir + "/__init__.py")
         register = ns.get("register")
         assert callable(register), "register() missing"
@@ -62,6 +63,14 @@
         assert "-# debug:" in recommend, recommend
         rejected = asyncio.run(ns["_handle_memo_command"]("git pushしてdeployして"))
         assert "memo rejected:" in rejected, rejected
+        proactive = build_proactive_checkin_message(
+            "morning",
+            __import__("pathlib").Path("{{ private_pi5_hermes_life_data_dir }}"),
+        )
+        assert "おはようございます" in proactive, proactive
+        assert "1. まず1つやる" in proactive, proactive
+        assert "そのまま文章で返してください" in proactive, proactive
+        assert "-# debug:" in proactive, proactive
         print("ok")
   register: private_pi5_hermes_life_pilot_smoke
   changed_when: false
@@ -89,3 +98,24 @@
       - private_pi5_hermes_life_reminder_timer_active.stdout == "active"
     fail_msg: "hermes-life-reminder.timer is not active"
   when: private_pi5_hermes_life_reminder_scheduler_active | bool
+
+- name: Check Life Pilot proactive timer state
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ item }}"
+  register: private_pi5_hermes_life_proactive_timer_active
+  changed_when: false
+  loop:
+    - hermes-life-proactive-morning.timer
+    - hermes-life-proactive-evening.timer
+  when: private_pi5_hermes_life_proactive_loop_active | bool
+
+- name: Assert Life Pilot proactive timers are active
+  ansible.builtin.assert:
+    that:
+      - item.stdout == "active"
+    fail_msg: "Life Pilot proactive timer is not active"
+  loop: "{{ private_pi5_hermes_life_proactive_timer_active.results | default([]) }}"
+  when: private_pi5_hermes_life_proactive_loop_active | bool

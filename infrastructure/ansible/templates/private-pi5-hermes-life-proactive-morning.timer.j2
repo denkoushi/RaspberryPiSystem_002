@@ -1,0 +1,10 @@
+[Unit]
+Description=Morning Hermes Life Pilot proactive check-in
+
+[Timer]
+OnCalendar=*-*-* {{ private_pi5_hermes_life_proactive_morning_time | default('07:30:00') }}
+Persistent=true
+Unit=hermes-life-proactive@morning.service
+
+[Install]
+WantedBy=timers.target

@@ -69,6 +69,7 @@ Discord global slash commands:
 - `life_pilot_policy.py`: policy 読込・hard gate・prompt deny
 - `discord_life_pilot_bridge.py`: memo/reminder 保存、日時解析、digest/recommend
 - `life_reminder_scheduler.py`: due reminder を Discord へ送信し `status=notified` に更新
+- `life_proactive_loop.py`: 朝晩の proactive check-in 送信、番号/自由入力返信の保存
 - `discord_task_bridge_plugin.py`: `life-pilot.policy.yaml` 配備時のみ `/memo` `/digest` `/remind` `/recommend` 登録、Life Pilot 単体でも送信先 context を取得
 - `discord_command_sync.py` / `sync-discord-commands.py`: Discord global slash を `present`/`absent` 管理
 - Ansible: policy/module 配備、`~/.hermes-life` 作成、`hermes-life-reminder.timer` 配備、smoke verify
@@ -82,6 +83,16 @@ Discord global slash commands:
 `/digest` は scheduled reminders と pending without time を分けて表示する。`/recommend` は期限到来、次の予定、日時未指定 reminder、最新memoの順に小さな次アクションを出す。
 
 `hermes-life-reminder.timer` は Life Pilot 有効、Discord token 設定済み、`private_pi5_hermes_life_reminder_scheduler_enabled` 未無効化のときだけ active。既定は 1 分間隔。journal には件数 JSON のみを出し、個人メモ本文や token は出さない。
+
+## D8-life proactive loop（2026-06-06 · repo）
+
+AI執事らしさを出すため、ユーザーの slash 入力待ちだけでなく Hermes 側から朝晩に Discord へ問いかける。
+
+初期実装は Discord native button ではなく、通常メッセージで確実に動く **番号返信 + 自由入力** とする。朝/夜 check-in は `hermes-life-proactive-morning.timer` と `hermes-life-proactive-evening.timer` で送信する。返信は直近の未回答 check-in に紐づけ、`proactive/replies.jsonl` と通常 memo へ保存する。
+
+既定時刻は朝 07:30、夜 21:30。固定 channel は `private_pi5_hermes_life_proactive_channel_id` で指定できる。未指定時は Life Pilot slash command で保存した最新 channel context、または日時つき reminder の `notifyChannelId` を使う。
+
+安全境界は D6/D7 と同じで、返信保存とローカル Life Pilot 記録だけを行う。Codex/Cursor worker、terminal、git、deploy、外部Web、Home Assistant 操作は引き続き保留。
 
 ## 検証（2026-06-06 · local）
 
@@ -98,6 +109,11 @@ Discord global slash commands:
 - `python3 -m py_compile`（Life Pilot / scheduler / plugin / command sync）: OK
 - `validate_boundary_policy.py --validate-life-pilot`: OK
 - `deploy-private-pi5-hermes.sh --syntax-check`: OK
+
+2026-06-06 D8-life proactive loop 追加後:
+
+- `python3 -m unittest`（Life Pilot proactive / bridge / plugin register focused）: OK
+- `python3 -m py_compile`（`life_proactive_loop.py` / plugin）: OK
 
 ## 私用 Pi5 実機検証（2026-06-06 完了）
 
@@ -132,6 +148,8 @@ Discord global slash command を同期するには `private_pi5_hermes_discord_b
 
 - export/delete/retention の運用設計
 - 通知済み reminder の一覧/削除 UX
+- proactive loop の実機Discord E2E（deploy後）
+- Discord native button / select UI の採用可否判断
 
 ## 次の判断
 
@@ -140,6 +158,7 @@ D6-life を Pi5 に入れて数日使い、以下を見る。
 - メモが自然に残せるか
 - digest/recommend が役に立つか
 - 自動通知が想定チャンネルへ届くか
+- 朝晩の問いかけに自然に返信できるか
 - 保存・削除・見返しの運用が明確か
 
 ここで体感を得てから、D6 memory/retention、通知済み reminder UX、D6+ Codex/Cursor worker 境界へ進む。

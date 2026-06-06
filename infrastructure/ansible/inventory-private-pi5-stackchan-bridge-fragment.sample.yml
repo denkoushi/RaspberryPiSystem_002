@@ -113,6 +113,12 @@ all:
       # private_pi5_hermes_life_pilot_enabled: true
       # private_pi5_hermes_life_reminder_scheduler_enabled: true
       # private_pi5_hermes_life_reminder_interval_min: 1
+      # D8-life: proactive morning/evening check-ins (enabled by default with Life Pilot + token)
+      # private_pi5_hermes_life_proactive_loop_enabled: true
+      # private_pi5_hermes_life_proactive_morning_time: "07:30:00"
+      # private_pi5_hermes_life_proactive_evening_time: "21:30:00"
+      # Optional fixed Discord target; otherwise Hermes uses the last Life Pilot channel context.
+      # private_pi5_hermes_life_proactive_channel_id: ""
       # Novel profile: creative writing via /novel (on-demand DGX qwen36_35b_uncensored)
       # private_pi5_hermes_novel_profile_enabled: true
       # private_pi5_hermes_discord_novel_bridge_enabled: true

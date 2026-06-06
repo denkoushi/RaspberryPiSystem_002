@@ -1,0 +1,10 @@
+[Unit]
+Description=Evening Hermes Life Pilot proactive check-in
+
+[Timer]
+OnCalendar=*-*-* {{ private_pi5_hermes_life_proactive_evening_time | default('21:30:00') }}
+Persistent=true
+Unit=hermes-life-proactive@evening.service
+
+[Install]
+WantedBy=timers.target
