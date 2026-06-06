@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Discord command synchronization tests."""
+
+import io
+import sys
+import unittest
+import urllib.error
+from pathlib import Path
+from unittest import mock
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from lib.discord_command_sync import (  # noqa: E402
+    DiscordCommandSyncClient,
+    DiscordCommandSyncError,
+    commands_match,
+    daily_command_payload,
+    sync_daily_command_with_client,
+)
+
+
+class FakeDiscordClient:
+    def __init__(self, commands: list[dict[str, object]]) -> None:
+        self.commands = commands
+        self.upserts: list[tuple[str, dict[str, object]]] = []
+        self.deletes: list[tuple[str, str]] = []
+
+    def get_application_id(self) -> str:
+        return "app-1"
+
+    def list_global_commands(self, app_id: str) -> list[dict[str, object]]:
+        self.list_app_id = app_id
+        return self.commands
+
+    def upsert_global_command(
+        self,
+        app_id: str,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        self.upserts.append((app_id, payload))
+        return {"id": "daily-1", **payload}
+
+    def delete_global_command(self, app_id: str, command_id: str) -> None:
+        self.deletes.append((app_id, command_id))
+
+
+class DiscordCommandSyncTests(unittest.TestCase):
+    def test_daily_payload_matches_expected_contract(self) -> None:
+        payload = daily_command_payload()
+
+        self.assertEqual(payload["name"], "daily")
+        self.assertEqual(
+            payload["description"],
+            "Draft a safe daily-use Markdown handoff without execution",
+        )
+        self.assertEqual(payload["type"], 1)
+        self.assertEqual(payload["dm_permission"], True)
+        self.assertEqual(payload["integration_types"], [0, 1])
+        self.assertEqual(
+            payload["options"],
+            [
+                {
+                    "type": 3,
+                    "name": "args",
+                    "description": "Arguments: <memo or request>",
+                    "required": False,
+                }
+            ],
+        )
+
+    def test_present_matching_command_is_unchanged(self) -> None:
+        existing = {"id": "daily-1", **daily_command_payload(), "version": "99"}
+        client = FakeDiscordClient([existing])
+
+        result = sync_daily_command_with_client(client, "present")
+
+        self.assertEqual(result["changed"], False)
+        self.assertEqual(result["action"], "unchanged")
+        self.assertEqual(client.upserts, [])
+        self.assertEqual(client.deletes, [])
+
+    def test_present_mismatched_command_is_updated(self) -> None:
+        existing = {
+            "id": "daily-1",
+            **daily_command_payload(),
+            "description": "Old description",
+        }
+        client = FakeDiscordClient([existing])
+
+        result = sync_daily_command_with_client(client, "present")
+
+        self.assertEqual(result["changed"], True)
+        self.assertEqual(result["action"], "updated")
+        self.assertEqual(len(client.upserts), 1)
+        self.assertTrue(commands_match(client.upserts[0][1], daily_command_payload()))
+        self.assertEqual(client.deletes, [])
+
+    def test_absent_missing_command_leaves_other_commands_alone(self) -> None:
+        client = FakeDiscordClient(
+            [
+                {"id": "task-1", "name": "task"},
+                {"id": "novel-1", "name": "novel"},
+            ]
+        )
+
+        result = sync_daily_command_with_client(client, "absent")
+
+        self.assertEqual(result["changed"], False)
+        self.assertEqual(result["action"], "absent")
+        self.assertEqual(client.upserts, [])
+        self.assertEqual(client.deletes, [])
+
+    def test_absent_existing_command_is_deleted(self) -> None:
+        existing = {"id": "daily-1", **daily_command_payload()}
+        client = FakeDiscordClient([existing])
+
+        result = sync_daily_command_with_client(client, "absent")
+
+        self.assertEqual(result["changed"], True)
+        self.assertEqual(result["action"], "deleted")
+        self.assertEqual(client.deletes, [("app-1", "daily-1")])
+        self.assertEqual(client.upserts, [])
+
+    def test_http_error_redacts_token(self) -> None:
+        token = "secret-token-value"
+        error = urllib.error.HTTPError(
+            url="https://discord.example.test",
+            code=403,
+            msg="Forbidden",
+            hdrs={},
+            fp=io.BytesIO(f"body includes {token}".encode("utf-8")),
+        )
+        client = DiscordCommandSyncClient(token, "https://discord.example.test")
+
+        with mock.patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(DiscordCommandSyncError) as raised:
+                client._request("GET", "/broken")
+
+        self.assertNotIn(token, str(raised.exception))
+        self.assertIn("[redacted]", str(raised.exception))
+
+
+if __name__ == "__main__":
+    unittest.main()

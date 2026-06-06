@@ -57,7 +57,7 @@
 
 チャット/Agent 履歴が失われても、**リポジトリ・`docs/`・未コミット WIP は残る**。復旧直後は次を優先する。
 
-- **未コミット変更は WIP として破棄しない**（例: Hermes Discord command sync）
+- **未コミット変更は WIP として破棄しない**（復旧直後に残っていた作業は `docs/` へ昇格してからコミット）
 - **本番デプロイ・Pi 実機操作はユーザー明示まで実行しない**
 - 文脈は [docs/INDEX.md](./docs/INDEX.md) · [EXEC_PLAN.md](./EXEC_PLAN.md) · 該当 KB から再構築する
 

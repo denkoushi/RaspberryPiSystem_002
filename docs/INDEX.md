@@ -8,13 +8,17 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-06 · 私用 Pi5 Hermes D6-pre · **Discord `/daily` Ansible sync 合格**）
+
+- **D6-pre 完了**: Discord global `/daily` を **Ansible `present`/`absent` 管理**（`discord_command_sync.py`）· **標準 deploy 収束** · 安全 `/daily 今日の作業メモを作って` · 危険 `/daily git pushしてdeployして` rejected · unittest **149 OK** · `/task` `/novel` 維持。**スコープ**: 私用 Pi5 のみ。**記録**: [KB daily pilot](./knowledge-base/KB-private-pi5-hermes-daily-pilot.md) · [Runbook §D6-pre](./runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了) · [ExecPlan D6-pre](./plans/private-pi5-hermes-daily-pilot-execplan.md) · [`EXEC_PLAN`](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)
+
 ### 最新アップデート（2026-06-06 · Mac Cursor `state.vscdb` 破損復旧 · **ドキュメント記録**）
 
 - **Cursor 状態DB復旧（開発端末）**: `state.vscdb` 約 42GB + backup 35GB · `SQLITE_CORRUPT` 大量 · **退避 76GB 後に新 DB 正常化**（integrity_check ok）· **プロジェクト/Git/WIP は無傷** · チャット/Agent 履歴は初期化。**外部SSD運用は継続**しサイズ監視。**記録**: [KB-388](./knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) · [mac-storage-migration §state.vscdb](./guides/mac-storage-migration.md#cursor-statevscdb-の破損肥大化2026-06-06-追記) · [development §Agent復旧後](./guides/development.md#cursor-状態db復旧後の-agent-作業2026-06-06) · [`EXEC_PLAN` §Cursor復旧](../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06) · [AGENTS.md §復旧後](../AGENTS.md#cursor-状態db復旧後2026-06-06)
 
 ### 最新アップデート（2026-06-06 · 私用 Pi5 Hermes `/daily` D6-pre · **実機検証完了**）
 
-- **D6-pre 私用 Pi5 受け入れ完了**: `/daily 今日の作業メモを作って` → **Daily Pilot Draft** · `/daily git pushしてdeployして` → **daily rejected**。**policy regex 修正**: 日本語 Cursor 文案の誤拒否と `git pushして` 未拒否を解消（17 focused / **143** unittest OK）。**注意**: 初回は手動最小配置（Codex sandbox Ansible 制限）→ **標準 Ansible deploy で収束推奨** · Discord `/daily` command sync 要確認。**記録**: [KB daily pilot](./knowledge-base/KB-private-pi5-hermes-daily-pilot.md) · [Runbook §D6-pre](./runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了) · [`EXEC_PLAN`](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)
+- **D6-pre 私用 Pi5 受け入れ完了**: `/daily 今日の作業メモを作って` → **Daily Pilot Draft** · `/daily git pushしてdeployして` → **daily rejected**。**policy regex 修正** + **Discord `/daily` Ansible command sync**（`discord_command_sync.py`）· **標準 Ansible deploy 収束** · unittest **149 OK**。**記録**: [KB daily pilot](./knowledge-base/KB-private-pi5-hermes-daily-pilot.md) · [Runbook §D6-pre](./runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了) · [`EXEC_PLAN`](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)
 
 ### 最新アップデート（2026-06-05 · 私用 Pi5 Hermes `/daily` 普段遣いパイロット · **repo 実装**）
 
