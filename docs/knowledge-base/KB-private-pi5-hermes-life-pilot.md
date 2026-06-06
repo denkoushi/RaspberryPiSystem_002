@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: active（2026-06-06 · branch `feat/hermes-life-pilot-context-briefing` @ `7575fafd` · D11 私用 Pi5 deploy + Discord E2E 完了 · **PR merge 待ち**）
+- **Status**: active（2026-06-06 · `main` @ `253adcc1` · PR #409 マージ済み · D11 私用 Pi5 deploy + Discord E2E 完了）
 - **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
 - **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
@@ -168,7 +168,7 @@ summary: life_pilot_enabled=True
 
 ## Open Items
 
-1. **`feat/hermes-life-pilot-context-briefing` を `main` へマージ** — D11 branch deploy 済み。merge 後に main HEAD で deploy 再確認
+1. **`main`（`253adcc1`）を私用 Pi5 へ post-merge deploy** — D11 branch deploy 済み。main HEAD 反映後に E2E 再確認
 2. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
 3. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
 4. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
