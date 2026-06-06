@@ -63,6 +63,19 @@ except ImportError:
 
 CHECKIN_MODES = {"morning", "evening", "followup"}
 
+LOW_ENERGY_KEYWORDS = (
+    "疲れ",
+    "つかれ",
+    "しんど",
+    "だる",
+    "眠い",
+    "寝不足",
+    "体調悪",
+    "頭痛",
+    "風邪",
+    "休みたい",
+)
+
 
 @dataclass(frozen=True)
 class ProactiveDispatchResult:
@@ -302,14 +315,103 @@ def _candidate_text(item: dict[str, Any]) -> str:
     return _clip_line(str(item.get("text", "") or ""), 90)
 
 
+def _entry_when(entry: tuple[str, str], now: datetime) -> datetime | None:
+    try:
+        parsed = datetime.strptime(entry[0], "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=now.tzinfo)
+
+
+def _recent_entries(entries: list[tuple[str, str]], now: datetime, *, days: int = 3) -> list[tuple[str, str]]:
+    cutoff = now - timedelta(days=days)
+    recent: list[tuple[str, str]] = []
+    for entry in entries:
+        when = _entry_when(entry, now)
+        if when is not None and when < cutoff:
+            continue
+        recent.append(entry)
+    return recent
+
+
+def _has_low_energy_signal(entries: list[tuple[str, str]], now: datetime) -> bool:
+    for _when, body in _recent_entries(entries, now, days=3):
+        if any(keyword in body for keyword in LOW_ENERGY_KEYWORDS):
+            return True
+    return False
+
+
+def _recent_carried_candidate(root: Path, now: datetime) -> str:
+    rows = _read_jsonl(_checkins_path(root))
+    cutoff = now - timedelta(days=3)
+    today_prefix = f"{_date_key(now)}-"
+    for item in reversed(rows):
+        item_id = str(item.get("id", "") or "")
+        if item_id.startswith(today_prefix):
+            continue
+        if item.get("status") != "answered" or str(item.get("selectedOption", "") or "") != "2":
+            continue
+        try:
+            answered_at = datetime.fromisoformat(str(item.get("answeredAt") or item.get("createdAt")))
+        except ValueError:
+            continue
+        if answered_at.tzinfo is None:
+            answered_at = answered_at.replace(tzinfo=now.tzinfo)
+        if answered_at < cutoff:
+            continue
+        candidate = str(item.get("candidateText", "") or "").strip()
+        if candidate:
+            return _clip_line(candidate, 90)
+    return ""
+
+
+def _morning_context(
+    root: Path,
+    reminders: list[dict[str, Any]],
+    entries: list[tuple[str, str]],
+    now: datetime,
+) -> dict[str, Any]:
+    due_count = len(_scheduled_for_day(reminders, now))
+    unscheduled_count = len(_unscheduled(reminders))
+    pending_count = due_count + unscheduled_count
+    pressure = "high" if pending_count >= 5 else "medium" if pending_count >= 3 else ""
+    carried = _recent_carried_candidate(root, now)
+    low_energy = _has_low_energy_signal(entries, now)
+    return {
+        "lowEnergy": low_energy,
+        "pendingCount": pending_count,
+        "pressure": pressure,
+        "carriedCandidate": carried,
+    }
+
+
+def _morning_briefing_line(context: dict[str, Any]) -> str:
+    low_energy = bool(context.get("lowEnergy"))
+    pressure = str(context.get("pressure", "") or "")
+    carried = str(context.get("carriedCandidate", "") or "").strip()
+    if low_energy and pressure:
+        return "最近の体調メモが少し重めで、残りも多めです。今日は1つだけ見ます。"
+    if low_energy:
+        return "最近の体調メモが少し重めです。今日は軽く1つだけ見ます。"
+    if pressure:
+        return "未処理が少し多めです。責めずに1つだけ見ます。"
+    if carried:
+        return "前に後回しにしたものを、もう一度だけ出します。"
+    return "今日は1つだけ確認します。"
+
+
 def _choose_morning_candidate(
     reminders: list[dict[str, Any]],
     entries: list[tuple[str, str]],
     now: datetime,
+    *,
+    carried_candidate: str = "",
 ) -> dict[str, str]:
     today_items = _scheduled_for_day(reminders, now)
     if today_items:
         return {"source": "due_today", "text": _candidate_text(today_items[0])}
+    if carried_candidate:
+        return {"source": "carried_forward", "text": carried_candidate}
     unscheduled = _unscheduled(reminders)
     if unscheduled:
         return {"source": "unscheduled", "text": _candidate_text(unscheduled[0])}
@@ -408,10 +510,19 @@ def build_proactive_checkin_message(
     if mode == "morning":
         today_items = _scheduled_for_day(reminders, current)
         unscheduled = _unscheduled(reminders)
-        candidate = _choose_morning_candidate(reminders, entries, current)
+        context = _morning_context(storage_root, reminders, entries, current)
+        candidate = _choose_morning_candidate(
+            reminders,
+            entries,
+            current,
+            carried_candidate=str(context.get("carriedCandidate", "") or ""),
+        )
         candidate_text = candidate["text"]
         candidate_display = candidate_text or "今日は急ぎの候補はありません。"
         return f"""おはようございます。今日の確認です。
+
+今日の見方:
+{_morning_briefing_line(context)}
 
 今日まず見るなら:
 {candidate_display}
@@ -461,11 +572,20 @@ def build_proactive_checkin_message(
 
 def _checkin_candidate(mode: str, storage_root: Path, now: datetime) -> dict[str, str]:
     if mode == "morning":
-        return _choose_morning_candidate(
-            _read_pending_reminders(storage_root, limit=20),
-            _read_note_entries(storage_root, limit=8),
+        reminders = _read_pending_reminders(storage_root, limit=20)
+        entries = _read_note_entries(storage_root, limit=8)
+        context = _morning_context(storage_root, reminders, entries, now)
+        candidate = _choose_morning_candidate(
+            reminders,
+            entries,
             now,
+            carried_candidate=str(context.get("carriedCandidate", "") or ""),
         )
+        candidate["briefing"] = _morning_briefing_line(context)
+        candidate["contextLowEnergy"] = str(bool(context.get("lowEnergy"))).lower()
+        candidate["contextPressure"] = str(context.get("pressure", "") or "")
+        candidate["contextPendingCount"] = str(context.get("pendingCount", 0))
+        return candidate
     if mode == "evening":
         text = _latest_daily_candidate(storage_root, now)
         return {"source": "daily_candidate", "text": text} if text else {"source": "empty", "text": ""}
@@ -549,6 +669,13 @@ def dispatch_proactive_checkin(
         if candidate["text"]:
             record["candidateText"] = candidate["text"]
             record["candidateSource"] = candidate["source"]
+        if mode == "morning":
+            record["briefing"] = str(candidate.get("briefing", "") or "")
+            record["contextHints"] = {
+                "lowEnergy": candidate.get("contextLowEnergy") == "true",
+                "pendingCount": int(str(candidate.get("contextPendingCount", "0") or "0")),
+                "pressure": str(candidate.get("contextPressure", "") or ""),
+            }
         if result.ok:
             record["sentAt"] = current.isoformat(timespec="seconds")
             sent = 1

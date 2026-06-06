@@ -82,6 +82,22 @@ def _write_reminder(root: Path, item: dict[str, object]) -> None:
         handle.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def _write_note(root: Path, day: str, when: str, body: str) -> None:
+    path = root / "notes" / f"{day}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(f"# {day}\n\n", encoding="utf-8")
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(f"## {when}\n\n{body}\n\n")
+
+
+def _write_checkin(root: Path, item: dict[str, object]) -> None:
+    path = root / "proactive" / "checkins.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
+
+
 class LifeProactiveLoopTests(unittest.TestCase):
     def test_morning_checkin_message_offers_choice_and_free_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -127,6 +143,105 @@ class LifeProactiveLoopTests(unittest.TestCase):
 
             self.assertIn("今日まず見るなら:\n燃えるごみを出す", message)
             self.assertIn("ほかに残っているもの:\n- ラズパイシステムのデモ準備", message)
+
+    def test_morning_checkin_softens_when_recent_notes_look_tired(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
+            _write_note(root, "2026-06-05", "2026-06-05 21:00", "今日は疲れて眠い。")
+
+            message = build_proactive_checkin_message("morning", root, now=now)
+
+            self.assertIn(
+                "今日の見方:\n最近の体調メモが少し重めです。今日は軽く1つだけ見ます。",
+                message,
+            )
+
+    def test_morning_checkin_remembers_recently_snoozed_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
+            previous = datetime(2026, 6, 5, 7, 30, tzinfo=timezone(timedelta(hours=9)))
+            _write_checkin(
+                root,
+                {
+                    "id": "2026-06-05-morning",
+                    "createdAt": previous.isoformat(timespec="seconds"),
+                    "answeredAt": (previous + timedelta(minutes=5)).isoformat(timespec="seconds"),
+                    "mode": "morning",
+                    "status": "answered",
+                    "selectedOption": "2",
+                    "candidateText": "風呂洗い",
+                },
+            )
+            _write_reminder(
+                root,
+                {
+                    "createdAt": now.isoformat(timespec="seconds"),
+                    "status": "pending",
+                    "text": "買い物リストを見る",
+                },
+            )
+
+            message = build_proactive_checkin_message("morning", root, now=now)
+            dispatch_proactive_checkin(
+                root,
+                "morning",
+                now=now,
+                sender=FakeSender(),
+                channel_id="channel-1",
+                user_id="user-1",
+            )
+
+            self.assertIn("今日の見方:\n前に後回しにしたものを、もう一度だけ出します。", message)
+            self.assertIn("今日まず見るなら:\n風呂洗い", message)
+            checkins = [
+                json.loads(line)
+                for line in (root / "proactive" / "checkins.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            today = [item for item in checkins if item["id"] == "2026-06-06-morning"][0]
+            self.assertEqual(today["candidateSource"], "carried_forward")
+            self.assertEqual(today["briefing"], "前に後回しにしたものを、もう一度だけ出します。")
+
+    def test_dispatch_records_morning_context_hints(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
+            _write_note(root, "2026-06-05", "2026-06-05 21:00", "寝不足でしんどい。")
+            for index in range(3):
+                _write_reminder(
+                    root,
+                    {
+                        "createdAt": now.isoformat(timespec="seconds"),
+                        "status": "pending",
+                        "text": f"未処理 {index + 1}",
+                    },
+                )
+
+            dispatch_proactive_checkin(
+                root,
+                "morning",
+                now=now,
+                sender=FakeSender(),
+                channel_id="channel-1",
+                user_id="user-1",
+            )
+
+            checkin = json.loads(
+                (root / "proactive" / "checkins.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()[0]
+            )
+            self.assertEqual(
+                checkin["briefing"],
+                "最近の体調メモが少し重めで、残りも多めです。今日は1つだけ見ます。",
+            )
+            self.assertEqual(
+                checkin["contextHints"],
+                {"lowEnergy": True, "pendingCount": 3, "pressure": "medium"},
+            )
 
     def test_morning_checkin_components_offer_buttons_and_free_text(self) -> None:
         components = build_proactive_components("2026-06-06-morning", "morning")

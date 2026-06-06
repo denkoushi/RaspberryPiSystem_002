@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: active（2026-06-06 · branch `feat/hermes-life-pilot-followup-loop` @ `57d19193` · D10 私用 Pi5 deploy + Discord E2E 完了 · **PR merge 待ち**）
+- **Status**: active（2026-06-06 · `main` @ `8ae95b7d` · D10 merged/deployed · D11 context briefing repo 実装中）
 - **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
 - **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
@@ -8,7 +8,7 @@
 
 Hermes を **生活メモの執事**として先に体感する最小実装。Codex/Cursor・本番 repo・terminal・git・deploy・秘密読取・外部 Web・HA/カメラは **意図的に未接続**。実行系ではなく **ローカル private log + 限定的 Discord 通知/返信** に閉じる。
 
-## 仕様（現行 · D10 まで）
+## 仕様（現行 · D11 repo 実装中）
 
 ### Discord 入口
 
@@ -28,6 +28,12 @@ Hermes を **生活メモの執事**として先に体感する最小実装。Co
 `夕方にもう一度` は `proactive/followups.jsonl` に `status=pending` を保存。既定 due は当日 17:00（過ぎていれば now+2h）。送信後は `status=sent` とし `checkins.jsonl` に `mode=followup` の pending check-in を追加。返信は `resolve_proactive_reply()` 経由。
 
 follow-up 本文は `今ならこれだけ見ますか:` + 候補1件。夜 check-in は候補があれば `朝に見ていたもの:` を表示。
+
+### D11 文脈ブリーフィング
+
+朝 check-in に `今日の見方:` を追加する。最近の memo に疲れ・眠い・しんどい等の低エネルギー signal があれば軽めに聞き、未処理が多い場合は責めずに1つだけ聞く。直近3日で `selectedOption=2` になった候補は `carried_forward` として翌朝もう一度出す（今日までの日時つき reminder がある場合はそちらを優先）。
+
+送信済み check-in には `briefing` と `contextHints` を保存する。詳細は [ExecPlan](../plans/private-pi5-hermes-life-pilot-execplan.md)。
 
 ### 保存先（正本）
 
@@ -136,7 +142,7 @@ journalctl -u hermes-life-proactive@morning.service -n 10 --no-pager
 
 ## Open Items
 
-1. **`feat/hermes-life-pilot-followup-loop` を `main` へマージ** — D10 branch deploy 済み。merge 後に main HEAD で deploy 再確認
+1. **D11 context briefing deploy / 実機E2E** — repo 実装後に朝 check-in の `今日の見方:` と `carried_forward` を確認
 2. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
 3. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
 4. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
