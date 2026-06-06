@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: active（2026-06-06 · branch `feat/hermes-life-pilot-context-briefing` @ `21760861` · D11 私用 Pi5 deploy + Discord E2E 完了）
+- **Status**: active（2026-06-06 · branch `feat/hermes-life-pilot-context-briefing` @ `7575fafd` · D11 私用 Pi5 deploy + Discord E2E 完了 · **PR merge 待ち**）
 - **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
 - **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
@@ -8,7 +8,7 @@
 
 Hermes を **生活メモの執事**として先に体感する最小実装。Codex/Cursor・本番 repo・terminal・git・deploy・秘密読取・外部 Web・HA/カメラは **意図的に未接続**。実行系ではなく **ローカル private log + 限定的 Discord 通知/返信** に閉じる。
 
-## 仕様（現行 · D11 repo 実装中）
+## 仕様（現行 · D11 まで）
 
 ### Discord 入口
 
@@ -33,7 +33,7 @@ follow-up 本文は `今ならこれだけ見ますか:` + 候補1件。夜 chec
 
 朝 check-in に `今日の見方:` を追加する。最近の memo に疲れ・眠い・しんどい等の低エネルギー signal があれば軽めに聞き、未処理が多い場合は責めずに1つだけ聞く。直近3日で `selectedOption=2` になった候補は `carried_forward` として翌朝もう一度出す（今日までの日時つき reminder がある場合はそちらを優先）。
 
-送信済み check-in には `briefing` と `contextHints` を保存する。詳細は [ExecPlan](../plans/private-pi5-hermes-life-pilot-execplan.md)。
+送信済み check-in には `briefing` と `contextHints`（`lowEnergy` / `pendingCount` / `pressure`）を保存する。briefing 優先順: 低エネルギー+多め未処理 → 低エネルギーのみ → 多め未処理 → carried → 既定。
 
 ### 保存先（正本）
 
@@ -86,7 +86,7 @@ private_pi5_hermes_life_pilot_enabled: true
 
 ## Validation
 
-### Local（D10 · `57d19193`）
+### Local（D11 · `21760861`）
 
 ```bash
 python3 -m unittest discover -s scripts/private-pi5-hermes/tests
@@ -96,7 +96,7 @@ ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp \
   ./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh --syntax-check
 ```
 
-結果: **190 tests OK** · life-pilot policy OK · syntax-check OK
+結果: **193 tests OK** · life-pilot policy OK · syntax-check OK
 
 ### 私用 Pi5 deploy（D10 · `57d19193`）
 
@@ -164,14 +164,16 @@ summary: life_pilot_enabled=True
 | follow-up が Discord に届かない（Python 直呼び） | `.env` 未読込で `DISCORD_BOT_TOKEN` 不足 | `hermes-life-followup.service`（`EnvironmentFile=.env`）経由で起動する |
 | deploy 後も朝メッセージが旧フォーマット | 当日 `checkins.jsonl` の重複ガードで再送スキップ | 当日 `-morning` 行を削除または `pending_reply` に戻して再送 |
 | Life Pilot smoke が `PermissionError` で `checkins.jsonl` を読めない | root 実行E2Eなどで `/home/hermes/.hermes-life` 配下が `root:root` になった | `chown -R hermes:hermes /home/hermes/.hermes-life` 後に再 deploy |
+| 疲れメモがあるのに `lowEnergy=false` | `notes/*.md` が `## YYYY-MM-DD HH:MM` block 形式でない、または limit 内に届かない | memo 保存形式を確認。D11 briefing は `_read_note_entries()` 経由のみ |
 
 ## Open Items
 
-1. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
-2. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
-3. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
-4. **LLM ベース推薦** — 現状は deterministic suggestion のみ
-5. **数日運用の体感評価** — proactive 朝晩・reminder/follow-up 通知の頻度/文言調整
+1. **`feat/hermes-life-pilot-context-briefing` を `main` へマージ** — D11 branch deploy 済み。merge 後に main HEAD で deploy 再確認
+2. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
+3. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
+4. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
+5. **LLM ベース推薦** — 現状は deterministic suggestion のみ
+6. **数日運用の体感評価** — proactive 朝晩・reminder/follow-up 通知の頻度/文言調整
 
 ## References
 
