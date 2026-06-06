@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-06-06 / **ドキュメントのみ · `main` マージ**) **Mac Cursor `state.vscdb` 破損復旧の記録**: 外部SSD運用下で `state.vscdb` 約 42GB + backup 35GB · `SQLITE_CORRUPT` 大量 → **退避 76GB**（`recovery-20260606-090149`）後に新 DB 正常化（integrity_check ok）· **リポジトリ/Git/未コミット WIP 無傷** · チャット/Agent 履歴は初期化。**運用**: 外部SSD継続 + サイズ監視。**docs**: [KB-388](./docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) · [mac-storage-migration §state.vscdb](./docs/guides/mac-storage-migration.md#cursor-statevscdb-の破損肥大化2026-06-06-追記) · [development §Agent復旧後](./docs/guides/development.md#cursor-状態db復旧後の-agent-作業2026-06-06) · [AGENTS.md §復旧後](./AGENTS.md#cursor-状態db復旧後2026-06-06) · 復旧メモ（Codex）: `~/Documents/Codex/2026-06-06/.../cursor_recovery_summary_20260606.md`
+
 - [x] (2026-06-05 / **実装・CI・Pi5 先行デプロイ · `main` マージ**) **キオスク検査図面・流用導線強化**: ブランチ **`feat/kiosk-inspection-drawing-reuse-flow`** · **`6c7da8c7`** — 一覧 **雛形として新規**（`?sourceTemplateId=`）· 新規作成 **図面ピッカー**（既存 visual / upload）· `visualSource` 単一真実源 · **`failIfActiveExists` + lineage advisory lock** · **FIHNCD case-insensitive 統一**（`normalizeFhincd` · `setActiveVersion` 含む）· visual **`q`+`limit` サーバー検索** · **`cleanupToken` orphan 回収** · `visualSearchRequestSeqRef` 競合ガード。**API + Web**（migration なし）。**CI**: **`27008474510`** success。**デプロイ**: Pi5 **`20260605-191525-16964`** · **`failed=0`** · Phase12 **43/0/0** · API/Web スモーク OK。**残**: Pi5 キオスク目視 · Pi4×4 順次。**docs**: [KB-320 §流用導線](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) · [deployment §2026-06-05](./docs/guides/deployment.md#kiosk-inspection-drawing-reuse-flow-2026-06-05) · [runbook §流用導線](./docs/runbooks/kiosk-part-measurement.md#検査図面-流用導線-2026-06-05)。
 
 - [x] (2026-06-05 / **実装・CI・Pi5+stonebase 本番・実機 OK · `main` マージ**) **キオスク検査図面 測定点位置微調整（十字ボタン）**: ブランチ **`feat/inspection-drawing-point-nudge`** · PR [#391](https://github.com/denkoushi/RaspberryPiSystem_002/pull/391) · **`791f1074`** — 右ペイン上部 3×3 十字ボタン · `INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO=0.0025` · 名称/基準値 2 列化 · フロント clamp 必須 · **Web のみ**。**CI**: **`26996602603`** success。**デプロイ**: Pi5 **`20260605-141538-27072`** → stonebase **`20260605-142229-22757`** · 各 **`failed=0`** · Phase12 **43/0/0** · **Pi5+stonebase 実機 OK**。**残**: Pi4×3 順次。**docs**: [KB-320 §十字ボタン](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [ExecPlan](./docs/plans/inspection-drawing-point-nudge-execplan.md) · [deployment §2026-06-05](./docs/guides/deployment.md#kiosk-inspection-drawing-point-nudge-2026-06-05) · [Runbook](./docs/runbooks/kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05)。
@@ -1291,6 +1293,9 @@
 
 ## Surprises & Discoveries
 
+- 観測 2026-06-06 / **Cursor `state.vscdb` 破損・肥大化はプロジェクト無傷で Cursor だけが壊れる**
+  根拠: `state.vscdb` **約 42GB** · backup **35GB** · ログ `SQLITE_CORRUPT` · `cursorDiskKV` の `agentKv:blob` / `bubbleId` 多量 · 退避後の新 DB **1–2MB** · `integrity_check: ok` · リポジトリ再オープンで構成・WIP・開発状況を読取可能。**対処**: DB 系を削除せず退避 → Cursor 再起動。**失うもの**: チャット/Agent 履歴・ログイン状態。**残すもの**: Git・ソース・`docs/`・未コミット WIP。**再発監視**: `du -sh state.vscdb*` · 外部SSD運用は当面継続。**docs**: [KB-388](./docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md)
+
 - 観測 2026-06-04 / **自主検査 reset の preflight を行ロック前に実行すると、完了確認・active テンプレ・restart payload がレースで古くなる**
   根拠: コードレビュー — ロック前 `completedAt` 確認では別リクエストの完了が割り込みうる · ロック前 `activeTemplate` では改版直後に旧テンプレで再作成しうる。**対処**: `lockSessionRow` 後の `lockedSession` のみで確認・snapshot・payload・テンプレ再取得（**`f16cb7ca`**）。
 
@@ -2523,6 +2528,22 @@
 ---
 
 ## Next Steps（優先候補）
+
+### Mac Cursor 状態DB復旧後の監視（2026-06-06 以降） {#cursor-state-db-recovery-2026-06-06}
+
+**状態**: **復旧完了（2026-06-06）** · 退避 **`recovery-20260606-090149`（76GB）保持中** · 外部SSD運用 **継続** · チャット/Agent 履歴 **初期化済み**
+
+| # | 項目 | 優先 | メモ |
+|---|------|------|------|
+| 1 | **数日〜数週間** 起動速度・フリーズ・メモリを通常作業で確認 | 高 | Chrome+Cursor+Codex 同時起動時を重点 |
+| 2 | **`state.vscdb` サイズ**を週次程度で確認（急肥大化の早期検知） | 高 | `du -sh ~/Library/Application\ Support/Cursor/User/globalStorage/state.vscdb*` |
+| 3 | Cursor ログで **`SQLITE_CORRUPT` 再発**を確認 | 高 | [KB-388](./docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) |
+| 4 | 安定確認後、退避 **76GB** を削除または別保管へ移動 | 中 | 削除前にリポジトリ・WIP が問題ないことを再確認 |
+| 5 | 再発時は **状態DBのみ内蔵SSD**・インデックス除外・KB-212 整理を検討 | 低 | [mac-storage-migration](./docs/guides/mac-storage-migration.md) |
+
+**Agent 作業ルール（復旧直後）**: 未コミット WIP **破棄禁止** · 本番デプロイ/Pi 実機は **明示依頼まで** · [development §Cursor復旧後](./docs/guides/development.md#cursor-状態db復旧後の-agent-作業2026-06-06) · [AGENTS.md](./AGENTS.md#cursor-状態db復旧後2026-06-06)
+
+**ローカル WIP（別タスク · 未コミット）**: Hermes **Discord `/daily` command sync**（Ansible + `discord_command_sync.py` 等 7 ファイル）— [KB-388 §WIP](./docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md#本リポジトリ固有の-wip2026-06-06-時点) · [KB daily pilot](./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md)
 
 ### キオスク検査図面・流用導線（2026-06-05 以降） {#kiosk-inspection-drawing-reuse-flow-follow-up-2026-06-05}
 
