@@ -142,7 +142,14 @@ class LifeDiscordUiRelayTests(unittest.TestCase):
             self.assertTrue(row["untrusted"])
 
             duplicate = _capture_shared_message(message, root)
-            self.assertIsNone(duplicate)
+            self.assertIn("受け取り箱に保存しました", duplicate or "")
+            rows = [
+                json.loads(line)
+                for line in (root / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(len(rows), 1)
 
 
 if __name__ == "__main__":

@@ -304,7 +304,7 @@ class PluginRegisterTests(unittest.TestCase):
     def test_pre_gateway_dispatch_sends_ack_with_token_when_gateway_missing(self) -> None:
         class Source:
             user_id = "user-1"
-            platform = "discord"
+            platform = "Discord"
             chat_id = "channel-1"
 
         class Event:

@@ -340,6 +340,12 @@ def _channel_is_allowed(channel_id: str, allowed_channel_ids: set[str] | None) -
     return str(channel_id or "").strip() in allowed_channel_ids
 
 
+def _ack(kind: str) -> str:
+    return f"""受け取り箱に保存しました。
+
+{_debug_line(inbox="discord", kind=kind, boundary="local-only/no-tools")}""".strip()
+
+
 def should_capture_discord_inbox(
     text: str,
     *,
@@ -405,17 +411,14 @@ def capture_discord_inbox_message(
         "untrusted": True,
         "status": "new",
     }
+    kind = "link" if urls else "attachment" if attachments else "text"
     with _inbox_file_lock(storage_root):
         if clean_message_id:
             for row in _read_jsonl(_inbox_path(storage_root)):
                 if str(row.get("messageId", "") or "").strip() == clean_message_id:
-                    return DiscordInboxCaptureResult(False, "duplicate")
+                    return DiscordInboxCaptureResult(True, "duplicate", _ack(kind))
         _append_jsonl(_inbox_path(storage_root), record)
-    kind = "link" if urls else "attachment" if attachments else "text"
-    ack = f"""受け取り箱に保存しました。
-
-{_debug_line(inbox="discord", kind=kind, boundary="local-only/no-tools")}"""
-    return DiscordInboxCaptureResult(True, kind, ack.strip())
+    return DiscordInboxCaptureResult(True, kind, _ack(kind))
 
 
 def _parse_created_at(value: str, fallback_tz: Any) -> datetime | None:

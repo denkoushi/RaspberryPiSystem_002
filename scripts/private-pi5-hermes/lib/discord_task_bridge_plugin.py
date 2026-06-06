@@ -168,16 +168,39 @@ def _remember_life_context(user_id: str, channel_id: str) -> None:
         return
 
 
+def _source_platform_name(source) -> str:
+    platform = getattr(source, "platform", "") if source is not None else ""
+    value = getattr(platform, "value", None)
+    if value is not None:
+        platform = value
+    return str(platform or "").strip()
+
+
+def _is_discord_platform(platform: str) -> bool:
+    clean = str(platform or "").strip().lower()
+    return not clean or "discord" in clean
+
+
 def _send_gateway_reply(gateway, source, message: str) -> bool:
     if source is None:
         return False
-    platform = str(getattr(source, "platform", "") or "").strip()
+    platform = _source_platform_name(source)
     chat_id = str(getattr(source, "chat_id", "") or "").strip()
     if not chat_id:
         chat_id = str(getattr(source, "thread_id", "") or "").strip()
     if gateway is not None:
         adapters = getattr(gateway, "adapters", None) or {}
-        adapter = adapters.get(platform) if isinstance(adapters, dict) else None
+        adapter = None
+        if isinstance(adapters, dict):
+            adapter_keys = [platform, platform.lower()]
+            if _is_discord_platform(platform):
+                adapter_keys.append("discord")
+            for key in adapter_keys:
+                if not key:
+                    continue
+                adapter = adapters.get(key)
+                if adapter is not None:
+                    break
         send = getattr(adapter, "send", None)
         if callable(send) and chat_id:
             try:
@@ -186,7 +209,7 @@ def _send_gateway_reply(gateway, source, message: str) -> bool:
             except Exception:
                 pass
     token = os.environ.get("DISCORD_BOT_TOKEN", "")
-    if platform and platform != "discord":
+    if not _is_discord_platform(platform):
         return False
     if not token or not chat_id:
         return False
