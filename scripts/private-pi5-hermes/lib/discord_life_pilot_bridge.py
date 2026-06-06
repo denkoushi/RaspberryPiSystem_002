@@ -96,6 +96,12 @@ def _clip_line(text: str, limit: int = 120) -> str:
     return one_line[: limit - 1].rstrip() + "..."
 
 
+def _render_debug_line(**items: str) -> str:
+    """Render compact Discord subtext for operator diagnostics."""
+    details = " ".join(f"{key}={value}" for key, value in items.items())
+    return f"-# debug: {details}"
+
+
 def _append_memo(root: Path, memo: str, now: datetime) -> Path:
     _ensure_storage(root)
     notes_path = root / "notes" / f"{_date_key(now)}.md"
@@ -173,17 +179,9 @@ def run_life_memo_bridge(
     path = _append_memo(root, prompt, now)
     return f"""# Memo Saved
 
-- saved: {_timestamp(now)}
-- path: {path.relative_to(root)}
-
-## Note
-
 > {_clip_line(prompt, 180)}
 
-## Safety
-
-- Stored only under the Life Pilot private data directory.
-- Cursor, Codex, terminal, git, deploy, web search, and Home Assistant control were not used.
+{_render_debug_line(saved=_timestamp(now), path=str(path.relative_to(root)), boundary="local-only/no-tools")}
 """.strip()
 
 
@@ -201,15 +199,11 @@ def run_life_remind_bridge(
     path = _append_reminder(root, prompt, now)
     return f"""# Reminder Recorded
 
-- created: {_timestamp(now)}
-- path: {path.relative_to(root)}
-- status: pending
-
-## Reminder
-
 > {_clip_line(prompt, 180)}
 
-Hermes recorded this request. Automatic Discord notification scheduling is intentionally not enabled in this first Life Pilot.
+status: pending. Automatic Discord notification scheduling is not enabled yet.
+
+{_render_debug_line(created=_timestamp(now), path=str(path.relative_to(root)), boundary="local-only/no-tools")}
 """.strip()
 
 
@@ -250,10 +244,7 @@ def run_life_digest_bridge(
 
 {reminder_lines}
 
-## Safe Boundary
-
-- This digest used only local Life Pilot notes and reminders.
-- It did not run Cursor, Codex, terminal, git, deploy, web search, or Home Assistant control.
+{_render_debug_line(notes=str(len(entries)), reminders=str(len(reminders)), boundary="local-only/no-tools")}
 """.strip()
 
 
@@ -292,10 +283,7 @@ def run_life_recommend_bridge(
 
 {action_lines}
 
-## Basis
-
-- Based only on local Life Pilot notes/reminders.
-- No external research, device control, terminal, git, deploy, Cursor, or Codex execution was used.
+{_render_debug_line(notes=str(len(entries)), reminders=str(len(reminders)), boundary="local-only/no-tools")}
 """.strip()
 
 
