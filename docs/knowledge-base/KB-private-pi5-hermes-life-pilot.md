@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: active（2026-06-06 · `main` @ `ac2aa6f9` · PR #406 マージ済み · 私用 Pi5 deploy + Discord E2E 完了）
+- **Status**: active（2026-06-06 · `main` @ `3a6e4399` · PR #406/#407 マージ済み · D10 follow-up loop repo 実装中）
 - **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
 - **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
@@ -17,7 +17,8 @@ Hermes を **生活メモの執事**として先に体感する最小実装。Co
 | slash | `/memo` `/digest` `/remind` `/recommend` |
 | slash（補助） | `/life-reply` — button/modal が使えないときの fallback |
 | 朝晩 check-in | `hermes-life-proactive-{morning,evening}.timer` が Discord へ送信 |
-| button | `まず1つやる` / `あとで見る` / `今日は外す` + `自由入力` modal |
+| follow-up | `夕方にもう一度` で `hermes-life-followup.timer` が1回だけ再確認 |
+| button | 朝 `これをやる` / `夕方にもう一度` / `今日は外す`、follow-up `やる` / `明日に回す` / `外す`、夜 `終わった` / `明日に回す` / `メモだけ残す` + `自由入力` modal |
 | 応答 UX | 成功時は **本文テキスト先頭** · 診断は `-# debug:` 1行 subtext · `#` 見出しと `>` 引用は使わない |
 
 ### 保存先（正本）
@@ -28,6 +29,7 @@ Hermes を **生活メモの執事**として先に体感する最小実装。Co
   reminders/reminders.jsonl
   proactive/checkins.jsonl
   proactive/replies.jsonl
+  proactive/followups.jsonl
 ```
 
 ### systemd / sidecar
@@ -38,6 +40,7 @@ Hermes を **生活メモの執事**として先に体感する最小実装。Co
 | `hermes-life-reminder.timer` | due reminder の Discord 通知（既定 1 分） |
 | `hermes-life-proactive-morning.timer` | 朝 check-in 送信 |
 | `hermes-life-proactive-evening.timer` | 夜 check-in 送信 |
+| `hermes-life-followup.timer` | due follow-up 再確認（既定 5 分） |
 | `hermes-life-discord-ui.service` | button / 自由入力 modal の interaction relay |
 
 Ansible フラグ（fragment）:
@@ -47,6 +50,7 @@ private_pi5_hermes_gateway_enabled: true
 private_pi5_hermes_life_pilot_enabled: true
 # 既定 true: private_pi5_hermes_life_reminder_scheduler_enabled
 # 既定 true: private_pi5_hermes_life_proactive_loop_enabled
+# 既定 true: private_pi5_hermes_life_followup_loop_enabled
 # 既定 true: private_pi5_hermes_life_discord_ui_relay_enabled
 ```
 
@@ -62,7 +66,7 @@ private_pi5_hermes_life_pilot_enabled: true
 | `life_pilot_policy.py` | prompt 検証 |
 | `discord_life_pilot_bridge.py` | slash 4種 + 日時パース + body-first 応答 |
 | `life_reminder_scheduler.py` | due reminder Discord 送信 |
-| `life_proactive_loop.py` | 朝晩 check-in 構築・返信保存 |
+| `life_proactive_loop.py` | 朝晩/follow-up check-in 構築・返信保存 |
 | `life_discord_ui_relay.py` | Discord component relay（discord.py） |
 | `verify-discord-life-pilot.yml` | Pi5 smoke |
 

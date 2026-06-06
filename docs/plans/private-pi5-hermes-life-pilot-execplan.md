@@ -103,6 +103,27 @@ button relay は `hermes-life-discord-ui.service` として Hermes agent の ven
 
 許可する処理は `resolve_proactive_reply()` 経由の Life Pilot 返信保存だけ。通常メッセージの `1` は Hermes 本体の pre-dispatch 条件に依存するため補助扱い、`/life-reply` は button が出ない場合の fallback とする。
 
+## D10-life follow-up loop（2026-06-06 · repo）
+
+D10 は「button を押して終わり」ではなく、Hermes が生活上の候補を1つだけ前面に出し、必要なら後で1回だけ聞き直す最小実装。
+
+朝 check-in は pending reminder と最近の memo から deterministic に1件を選び、`今日まず見るなら:` として表示する。候補の優先順は「今日までの日時つき reminder」「日時なし reminder」「次の日時つき reminder」「最近の memo」。button label は `これをやる` / `夕方にもう一度` / `今日は外す` + `自由入力`。
+
+朝の `夕方にもう一度` は `proactive/followups.jsonl` に `status=pending` の follow-up を保存する。既定 due は当日 17:00、すでに過ぎていれば現在時刻 +2時間。`hermes-life-followup.timer` は既定 5分間隔で `life_proactive_loop.py --mode followup` を起動し、due follow-up だけを Discord に1回送る。送信後は follow-up を `status=sent` にし、通常の pending check-in として `proactive/checkins.jsonl` に `mode=followup` を追加するため、button/modal 返信は従来どおり `resolve_proactive_reply()` で処理される。
+
+follow-up message は `今ならこれだけ見ますか:` と候補1件だけを表示し、button label は `やる` / `明日に回す` / `外す` + `自由入力`。夜 check-in は当日の候補が残っていれば `朝に見ていたもの:` を表示し、button label は `終わった` / `明日に回す` / `メモだけ残す`。
+
+保存先:
+
+```text
+/home/hermes/.hermes-life/
+  proactive/checkins.jsonl
+  proactive/replies.jsonl
+  proactive/followups.jsonl
+```
+
+D10 では reminder 本体の `status` / `dueAt` は変更しない。返信と follow-up の状態だけを Life Pilot private log に残す。Codex/Cursor worker、terminal、git、deploy、外部Web、Home Assistant 操作は引き続き未接続。
+
 ## 検証（2026-06-06 · local）
 
 - `python3 -m unittest ...` focused: **39 OK**
@@ -130,6 +151,14 @@ button relay は `hermes-life-discord-ui.service` として Hermes agent の ven
 - `python3 -m py_compile`（`life_discord_ui_relay.py` / proactive / scheduler）: OK
 - `validate_boundary_policy.py --validate-life-pilot`: OK
 - `deploy-private-pi5-hermes.sh --syntax-check`: OK
+
+2026-06-06 D10-life follow-up loop 追加後:
+
+- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests`: **190 OK**
+- `python3 -m py_compile`（`life_proactive_loop.py` / `life_discord_ui_relay.py` / `life_reminder_scheduler.py`）: OK
+- `validate_boundary_policy.py --validate-life-pilot`: OK
+- `deploy-private-pi5-hermes.sh --syntax-check`: OK
+- `git diff --check`: OK
 
 ## 私用 Pi5 実機検証（2026-06-06 完了）
 

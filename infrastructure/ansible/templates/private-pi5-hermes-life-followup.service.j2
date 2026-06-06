@@ -1,0 +1,26 @@
+[Unit]
+Description=Hermes Life Pilot follow-up dispatcher
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists={{ private_pi5_hermes_data_dir }}/.env
+ConditionPathExists={{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/life_proactive_loop.py
+
+[Service]
+Type=oneshot
+User={{ private_pi5_hermes_user }}
+Group={{ private_pi5_hermes_group }}
+WorkingDirectory={{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge
+Environment=HOME={{ private_pi5_hermes_home }}
+Environment=LIFE_PILOT_STORAGE_ROOT={{ private_pi5_hermes_life_data_dir }}
+{% if (private_pi5_hermes_life_proactive_channel_id | default('') | trim) | length > 0 %}
+Environment=LIFE_PILOT_PROACTIVE_CHANNEL_ID={{ private_pi5_hermes_life_proactive_channel_id | trim }}
+{% endif %}
+{% if (private_pi5_hermes_life_proactive_user_id | default('') | trim) | length > 0 %}
+Environment=LIFE_PILOT_PROACTIVE_USER_ID={{ private_pi5_hermes_life_proactive_user_id | trim }}
+{% endif %}
+EnvironmentFile={{ private_pi5_hermes_data_dir }}/.env
+ExecStart=/usr/bin/python3 {{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/life_proactive_loop.py --mode followup --storage-root {{ private_pi5_hermes_life_data_dir }}
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true

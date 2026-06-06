@@ -568,15 +568,16 @@ private_pi5_hermes_life_pilot_enabled: true
 
 補足: `notification=not-enabled` の既存/別経路 reminder は送信先 channel context がないため通知対象外。日時つき・送信先ありの reminder は `notification=scheduled` となり、timer により通知されることを確認済み。
 
-**D8/D9-life proactive loop + Discord button UI（D8送信E2E済み · D9 button repo実装）**:
+**D8/D9/D10-life proactive loop + Discord button/follow-up UI（D8送信E2E済み · D9 button repo実装 · D10 follow-up repo実装）**:
 
 | 項目 | 内容 |
 |------|------|
 | 朝 | `hermes-life-proactive-morning.timer`（既定 07:30）で今日の確認を送る |
 | 夜 | `hermes-life-proactive-evening.timer`（既定 21:30）で今日の片付けを送る |
-| 返信 | Discord button で `まず1つやる` / `あとで見る` / `今日は外す`、または `自由入力` modal から返す |
+| follow-up | `hermes-life-followup.timer`（既定 5分）で `夕方にもう一度` の再確認を送る |
+| 返信 | Discord button または `自由入力` modal から返す。朝は `これをやる` / `夕方にもう一度` / `今日は外す` |
 | fallback | button が出ない時だけ `/life-reply 1` または `/life-reply <文章>` を使う |
-| 保存 | `proactive/replies.jsonl` と通常 memo に保存 |
+| 保存 | `proactive/replies.jsonl`、`proactive/followups.jsonl`、通常 memo に保存 |
 | channel | 固定 `private_pi5_hermes_life_proactive_channel_id`、未指定時は最新 Life Pilot context / reminder channel |
 | 安全境界 | local Life Pilot 記録のみ。worker、terminal、git、deploy、外部Web、Home Assistant は呼ばない |
 
@@ -597,10 +598,12 @@ private_pi5_hermes_life_pilot_enabled: true
 6. proactive loop（D8）:
    - `systemctl is-active hermes-life-proactive-morning.timer` → `active`
    - `systemctl is-active hermes-life-proactive-evening.timer` → `active`
+   - `systemctl is-active hermes-life-followup.timer` → `active`
    - `systemctl is-active hermes-life-discord-ui.service` → `active`
    - 手動即時確認: `sudo systemctl start hermes-life-proactive@morning.service`
    - Discord に朝の確認と4つの button（3択 + 自由入力）が届く
-   - `まず1つやる` button または `自由入力` modal で返すと「受け取りました」と返る
+   - `これをやる` button または `自由入力` modal で返すと「受け取りました」と返る
+   - `夕方にもう一度` button で follow-up が pending 保存され、due 後に再確認が1回だけ届く
 
 **禁止（意図的）**: Cursor/Codex CLI · production repo 編集 · git · deploy · terminal · 秘密読取 · 外部Web検索 · Home Assistant/カメラ制御。
 

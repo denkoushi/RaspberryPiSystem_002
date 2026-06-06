@@ -61,7 +61,7 @@ except ImportError:
     )
 
 
-CHECKIN_MODES = {"morning", "evening"}
+CHECKIN_MODES = {"morning", "evening", "followup"}
 
 
 @dataclass(frozen=True)
@@ -92,6 +92,10 @@ def _checkins_path(root: Path) -> Path:
 
 def _replies_path(root: Path) -> Path:
     return root / "proactive" / "replies.jsonl"
+
+
+def _followups_path(root: Path) -> Path:
+    return root / "proactive" / "followups.jsonl"
 
 
 @contextmanager
@@ -226,12 +230,18 @@ def _resolve_context(
 def _option_rows(mode: str) -> list[dict[str, str]]:
     if mode == "morning":
         return [
-            {"id": "1", "label": "まず1つやる"},
-            {"id": "2", "label": "あとで見る"},
+            {"id": "1", "label": "これをやる"},
+            {"id": "2", "label": "夕方にもう一度"},
             {"id": "3", "label": "今日は外す"},
         ]
+    if mode == "followup":
+        return [
+            {"id": "1", "label": "やる"},
+            {"id": "2", "label": "明日に回す"},
+            {"id": "3", "label": "外す"},
+        ]
     return [
-        {"id": "1", "label": "完了した"},
+        {"id": "1", "label": "終わった"},
         {"id": "2", "label": "明日に回す"},
         {"id": "3", "label": "メモだけ残す"},
     ]
@@ -288,6 +298,52 @@ def _unscheduled(reminders: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [item for item in reminders if _parse_due_at_item(item) is None]
 
 
+def _candidate_text(item: dict[str, Any]) -> str:
+    return _clip_line(str(item.get("text", "") or ""), 90)
+
+
+def _choose_morning_candidate(
+    reminders: list[dict[str, Any]],
+    entries: list[tuple[str, str]],
+    now: datetime,
+) -> dict[str, str]:
+    today_items = _scheduled_for_day(reminders, now)
+    if today_items:
+        return {"source": "due_today", "text": _candidate_text(today_items[0])}
+    unscheduled = _unscheduled(reminders)
+    if unscheduled:
+        return {"source": "unscheduled", "text": _candidate_text(unscheduled[0])}
+    next_items = _scheduled_next(reminders, now)
+    if next_items:
+        return {"source": "scheduled", "text": _candidate_text(next_items[0])}
+    if entries:
+        return {"source": "recent_note", "text": f"最近のメモを見返す: {_clip_line(entries[0][1], 70)}"}
+    return {"source": "empty", "text": ""}
+
+
+def _remaining_candidate_lines(
+    reminders: list[dict[str, Any]],
+    candidate_text: str,
+    now: datetime,
+    *,
+    limit: int = 4,
+) -> str:
+    ordered = _scheduled_for_day(reminders, now) + _unscheduled(reminders) + _scheduled_next(reminders, now)
+    lines: list[str] = []
+    seen: set[str] = set()
+    for item in ordered:
+        text = _candidate_text(item)
+        if not text or text == candidate_text or text in seen:
+            continue
+        seen.add(text)
+        lines.append(f"- {text}")
+        if len(lines) >= limit:
+            break
+    if not lines:
+        return "- ほかの未処理用事はありません。"
+    return "\n".join(lines)
+
+
 def _reminder_lines(items: list[dict[str, Any]], empty: str, limit: int = 4) -> str:
     if not items:
         return f"- {empty}"
@@ -308,6 +364,38 @@ def _note_lines(entries: list[tuple[str, str]], empty: str, limit: int = 3) -> s
     return "\n".join(f"- {when}: {_clip_line(body, 90)}" for when, body in entries[:limit])
 
 
+def _latest_daily_candidate(root: Path, now: datetime) -> str:
+    today_prefix = f"{_date_key(now)}-"
+    rows = _read_jsonl(_checkins_path(root))
+    for item in reversed(rows):
+        if str(item.get("mode", "") or "") not in {"morning", "followup"}:
+            continue
+        if not str(item.get("id", "") or "").startswith(today_prefix):
+            continue
+        candidate = str(item.get("candidateText", "") or "").strip()
+        if candidate:
+            return candidate
+    return ""
+
+
+def build_followup_checkin_message(
+    candidate_text: str,
+    *,
+    now: datetime | None = None,
+) -> str:
+    candidate = _clip_line(candidate_text, 180) or "さっきの用事"
+    return f"""さっきの確認です。
+
+今ならこれだけ見ますか:
+{candidate}
+
+返信:
+{_format_options("followup")}
+
+{_render_debug_line(checkin="followup", boundary="local-only/no-tools")}
+""".strip()
+
+
 def build_proactive_checkin_message(
     mode: str,
     storage_root: Path,
@@ -320,7 +408,16 @@ def build_proactive_checkin_message(
     if mode == "morning":
         today_items = _scheduled_for_day(reminders, current)
         unscheduled = _unscheduled(reminders)
+        candidate = _choose_morning_candidate(reminders, entries, current)
+        candidate_text = candidate["text"]
+        candidate_display = candidate_text or "今日は急ぎの候補はありません。"
         return f"""おはようございます。今日の確認です。
+
+今日まず見るなら:
+{candidate_display}
+
+ほかに残っているもの:
+{_remaining_candidate_lines(reminders, candidate_text, current, limit=3)}
 
 今日見るもの:
 {_reminder_lines(today_items, "今日までの予定はありません。")}
@@ -340,7 +437,14 @@ def build_proactive_checkin_message(
     today_key = _date_key(current)
     today_entries = [entry for entry in entries if entry[0].startswith(today_key)]
     next_items = _scheduled_next(reminders, current)
+    daily_candidate = _latest_daily_candidate(storage_root, current)
+    candidate_block = (
+        f"\n朝に見ていたもの:\n{_clip_line(daily_candidate, 180)}\n"
+        if daily_candidate
+        else ""
+    )
     return f"""こんばんは。今日の片付けです。
+{candidate_block}
 
 今日のメモ:
 {_note_lines(today_entries, "今日のメモはまだありません。", limit=4)}
@@ -353,6 +457,19 @@ def build_proactive_checkin_message(
 
 {_render_debug_line(checkin=mode, boundary="local-only/no-tools")}
 """.strip()
+
+
+def _checkin_candidate(mode: str, storage_root: Path, now: datetime) -> dict[str, str]:
+    if mode == "morning":
+        return _choose_morning_candidate(
+            _read_pending_reminders(storage_root, limit=20),
+            _read_note_entries(storage_root, limit=8),
+            now,
+        )
+    if mode == "evening":
+        text = _latest_daily_candidate(storage_root, now)
+        return {"source": "daily_candidate", "text": text} if text else {"source": "empty", "text": ""}
+    return {"source": "empty", "text": ""}
 
 
 def _checkin_id(mode: str, now: datetime) -> str:
@@ -384,6 +501,14 @@ def dispatch_proactive_checkin(
 ) -> ProactiveDispatchResult:
     if mode not in CHECKIN_MODES:
         raise ValueError(f"unsupported proactive mode: {mode}")
+    if mode == "followup":
+        return dispatch_due_followups(
+            storage_root,
+            now=now,
+            sender=sender,
+            channel_id=channel_id,
+            user_id=user_id,
+        )
     current = now or _now()
     checkin_id = _checkin_id(mode, current)
     send = sender or _env_sender(checkin_id=checkin_id, mode=mode)
@@ -400,6 +525,7 @@ def dispatch_proactive_checkin(
             checkin_id=checkin_id,
         )
     content = build_proactive_checkin_message(mode, storage_root, now=current)
+    candidate = _checkin_candidate(mode, storage_root, current)
     with _proactive_file_lock(storage_root):
         rows = _read_jsonl(_checkins_path(storage_root))
         for item in rows:
@@ -420,6 +546,9 @@ def dispatch_proactive_checkin(
             "options": _option_rows(mode),
             "status": "pending_reply" if result.ok else "send_failed",
         }
+        if candidate["text"]:
+            record["candidateText"] = candidate["text"]
+            record["candidateSource"] = candidate["source"]
         if result.ok:
             record["sentAt"] = current.isoformat(timespec="seconds")
             sent = 1
@@ -437,6 +566,149 @@ def dispatch_proactive_checkin(
         failed=failed,
         mode=mode,
         checkin_id=checkin_id,
+    )
+
+
+def _parse_iso_datetime(value: str, fallback_tz: Any) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=fallback_tz)
+    return parsed
+
+
+def _followup_due_at(now: datetime) -> datetime:
+    due_at = now.replace(hour=17, minute=0, second=0, microsecond=0)
+    if due_at <= now:
+        due_at = now + timedelta(hours=2)
+    return due_at
+
+
+def _next_followup_id(rows: list[dict[str, Any]], source_checkin_id: str) -> str:
+    prefix = f"{source_checkin_id}-followup-"
+    used: set[int] = set()
+    for item in rows:
+        item_id = str(item.get("id", "") or "")
+        if not item_id.startswith(prefix):
+            continue
+        suffix = item_id.removeprefix(prefix)
+        if suffix.isdigit():
+            used.add(int(suffix))
+    index = 1
+    while index in used:
+        index += 1
+    return f"{prefix}{index}"
+
+
+def _schedule_followup(
+    root: Path,
+    checkin: dict[str, Any],
+    now: datetime,
+    *,
+    reason: str,
+) -> dict[str, Any] | None:
+    candidate = str(checkin.get("candidateText", "") or "").strip()
+    if not candidate:
+        return None
+    rows = _read_jsonl(_followups_path(root))
+    source_checkin_id = str(checkin.get("id", "") or "").strip()
+    followup = {
+        "id": _next_followup_id(rows, source_checkin_id),
+        "sourceCheckinId": source_checkin_id,
+        "createdAt": now.isoformat(timespec="seconds"),
+        "dueAt": _followup_due_at(now).isoformat(timespec="seconds"),
+        "status": "pending",
+        "channelId": str(checkin.get("channelId", "") or "").strip(),
+        "userId": str(checkin.get("userId", "") or "").strip(),
+        "reason": reason,
+        "candidateText": candidate,
+    }
+    rows.append(followup)
+    _write_jsonl(_followups_path(root), rows)
+    return followup
+
+
+def dispatch_due_followups(
+    storage_root: Path,
+    *,
+    now: datetime | None = None,
+    sender: ProactiveSender | None = None,
+    channel_id: str = "",
+    user_id: str = "",
+) -> ProactiveDispatchResult:
+    current = now or _now()
+    sent = 0
+    failed = 0
+    skipped_missing = 0
+    last_checkin_id = ""
+    with _proactive_file_lock(storage_root):
+        followups = _read_jsonl(_followups_path(storage_root))
+        checkins = _read_jsonl(_checkins_path(storage_root))
+        changed = False
+        for followup in followups:
+            if followup.get("status") != "pending":
+                continue
+            due_at = _parse_iso_datetime(str(followup.get("dueAt", "") or ""), current.tzinfo)
+            if due_at is None or due_at > current:
+                continue
+            followup_channel = str(channel_id or followup.get("channelId", "") or "").strip()
+            followup_user = str(user_id or followup.get("userId", "") or "").strip()
+            if not followup_channel:
+                followup["lastSendAttemptAt"] = current.isoformat(timespec="seconds")
+                followup["lastSendError"] = "notify channel is empty"
+                skipped_missing += 1
+                changed = True
+                continue
+            checkin_id = str(followup.get("id", "") or "").strip()
+            if any(
+                item.get("id") == checkin_id and item.get("status") != "send_failed"
+                for item in checkins
+            ):
+                followup["status"] = "sent"
+                followup["sentAt"] = current.isoformat(timespec="seconds")
+                changed = True
+                continue
+            candidate = str(followup.get("candidateText", "") or "").strip()
+            send = sender or _env_sender(checkin_id=checkin_id, mode="followup")
+            result = send(followup_channel, build_followup_checkin_message(candidate, now=current))
+            followup["lastSendAttemptAt"] = current.isoformat(timespec="seconds")
+            if result.ok:
+                followup["status"] = "sent"
+                followup["sentAt"] = current.isoformat(timespec="seconds")
+                checkins.append(
+                    {
+                        "id": checkin_id,
+                        "createdAt": current.isoformat(timespec="seconds"),
+                        "sentAt": current.isoformat(timespec="seconds"),
+                        "mode": "followup",
+                        "sourceCheckinId": followup.get("sourceCheckinId", ""),
+                        "followupReason": followup.get("reason", ""),
+                        "candidateText": candidate,
+                        "candidateSource": "followup",
+                        "channelId": followup_channel,
+                        "userId": followup_user,
+                        "options": _option_rows("followup"),
+                        "status": "pending_reply",
+                    }
+                )
+                sent += 1
+                last_checkin_id = checkin_id
+            else:
+                followup["lastSendError"] = result.error or f"HTTP {result.status_code}"
+                failed += 1
+            changed = True
+        if changed:
+            _write_jsonl(_followups_path(storage_root), followups)
+            _write_jsonl(_checkins_path(storage_root), checkins)
+    return ProactiveDispatchResult(
+        ok=failed == 0,
+        sent=sent,
+        skipped_missing_channel=skipped_missing,
+        failed=failed,
+        mode="followup",
+        checkin_id=last_checkin_id,
     )
 
 
@@ -522,6 +794,9 @@ def resolve_proactive_reply(
         validation = validate_life_prompt(response, loaded_policy)
         if not validation.ok:
             return f"reply rejected: {validation.reason}"
+        scheduled_followup = None
+        if checkin.get("mode") == "morning" and selected == "2":
+            scheduled_followup = _schedule_followup(root, checkin, current, reason="snooze")
         reply = {
             "checkinId": checkin.get("id", ""),
             "mode": checkin.get("mode", ""),
@@ -533,6 +808,9 @@ def resolve_proactive_reply(
             "channelId": str(channel_id or checkin.get("channelId", "") or "").strip(),
             "userId": str(user_id or checkin.get("userId", "") or "").strip(),
         }
+        if scheduled_followup is not None:
+            reply["followupId"] = scheduled_followup.get("id", "")
+            reply["followupDueAt"] = scheduled_followup.get("dueAt", "")
         _append_jsonl(_replies_path(root), reply)
         for item in rows:
             if item.get("id") == checkin.get("id"):
@@ -542,11 +820,25 @@ def resolve_proactive_reply(
                 item["answerText"] = response
                 if selected:
                     item["selectedOption"] = selected
+                if scheduled_followup is not None:
+                    item["followupId"] = scheduled_followup.get("id", "")
+                    item["followupDueAt"] = scheduled_followup.get("dueAt", "")
                 break
         _write_jsonl(_checkins_path(root), rows)
-        mode_label = "朝" if checkin.get("mode") == "morning" else "夜"
-        _append_memo(root, f"Hermes{mode_label}確認への返信: {response}", current)
+        mode = str(checkin.get("mode", "") or "")
+        if mode == "followup":
+            memo_label = "Hermes再確認への返信"
+        else:
+            mode_labels = {"morning": "朝", "evening": "夜"}
+            memo_label = f"Hermes{mode_labels.get(mode, '確認')}確認への返信"
+        _append_memo(root, f"{memo_label}: {response}", current)
+    followup_line = ""
+    if scheduled_followup is not None:
+        due_at = _parse_iso_datetime(str(scheduled_followup.get("dueAt", "") or ""), current.tzinfo)
+        due_label = _timestamp(due_at) if due_at is not None else str(scheduled_followup.get("dueAt", ""))
+        followup_line = f"\n夕方にもう一度聞きます: {due_label}\n"
     return f"""受け取りました: {_clip_line(response, 180)}
+{followup_line}
 
 次も 1/2/3 か、文章でそのまま返せます。
 
