@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,10 +16,60 @@ sys.path.insert(0, str(ROOT))
 from lib.life_reminder_scheduler import (  # noqa: E402
     DiscordSendResult,
     dispatch_due_reminders,
+    send_discord_channel_message,
 )
 
 
 class LifeReminderSchedulerTests(unittest.TestCase):
+    def test_send_discord_channel_message_can_include_components(self) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, _exc_type, _exc, _tb) -> None:
+                return None
+
+            def getcode(self) -> int:
+                return 200
+
+        def fake_urlopen(request, timeout: int):
+            captured["timeout"] = timeout
+            captured["url"] = request.full_url
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            return FakeResponse()
+
+        components = [
+            {
+                "type": 1,
+                "components": [
+                    {
+                        "type": 2,
+                        "style": 1,
+                        "custom_id": "life:reply:2026-06-06-morning:1",
+                        "label": "まず1つやる",
+                    }
+                ],
+            }
+        ]
+
+        with patch("urllib.request.urlopen", fake_urlopen):
+            result = send_discord_channel_message(
+                "token-1",
+                "channel-1",
+                "確認です",
+                base_url="https://discord.example/api/v10",
+                components=components,
+            )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            captured["url"],
+            "https://discord.example/api/v10/channels/channel-1/messages",
+        )
+        self.assertEqual(captured["payload"], {"content": "確認です", "components": components})
+
     def test_dispatch_due_reminder_once(self) -> None:
         now = datetime(2026, 6, 7, 8, 1, tzinfo=timezone(timedelta(hours=9)))
         sent: list[tuple[str, str]] = []

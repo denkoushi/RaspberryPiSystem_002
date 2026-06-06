@@ -1,0 +1,26 @@
+[Unit]
+Description=Hermes Life Pilot Discord button UI relay
+After=network-online.target hermes-gateway.service
+Wants=network-online.target
+ConditionPathExists={{ private_pi5_hermes_data_dir }}/.env
+ConditionPathExists={{ private_pi5_hermes_data_dir }}/hermes-agent/venv/bin/python
+ConditionPathExists={{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/life_discord_ui_relay.py
+
+[Service]
+Type=simple
+User={{ private_pi5_hermes_user }}
+Group={{ private_pi5_hermes_group }}
+WorkingDirectory={{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge
+Environment=HOME={{ private_pi5_hermes_home }}
+Environment=LIFE_PILOT_STORAGE_ROOT={{ private_pi5_hermes_life_data_dir }}
+EnvironmentFile={{ private_pi5_hermes_data_dir }}/.env
+ExecStart={{ private_pi5_hermes_data_dir }}/hermes-agent/venv/bin/python {{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/life_discord_ui_relay.py --storage-root {{ private_pi5_hermes_life_data_dir }}
+Restart=on-failure
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

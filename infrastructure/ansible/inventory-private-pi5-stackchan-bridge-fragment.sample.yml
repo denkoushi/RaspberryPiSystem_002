@@ -115,6 +115,8 @@ all:
       # private_pi5_hermes_life_reminder_interval_min: 1
       # D8-life: proactive morning/evening check-ins (enabled by default with Life Pilot + token)
       # private_pi5_hermes_life_proactive_loop_enabled: true
+      # D9-life: Discord button/free-text UI relay for proactive check-ins
+      # private_pi5_hermes_life_discord_ui_relay_enabled: true
       # private_pi5_hermes_life_proactive_morning_time: "07:30:00"
       # private_pi5_hermes_life_proactive_evening_time: "21:30:00"
       # Optional fixed Discord target; otherwise Hermes uses the last Life Pilot channel context.

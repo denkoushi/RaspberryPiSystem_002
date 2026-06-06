@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-06-06（D8-life proactive loop repo 実装 · D7-life reminder scheduler Discord 通知E2E完了 · D6-life Life Pilot 私用 Pi5 + Discord E2E 完了）
+最終更新: 2026-06-06（D9-life Discord button UI repo 実装 · D8-life proactive loop deploy 完了 · D7-life reminder scheduler Discord 通知E2E完了）
 
 ## 運用状態サマリ（2026-05-24 時点）
 
@@ -528,7 +528,7 @@ private_pi5_hermes_life_pilot_enabled: true
 # 必須: private_pi5_hermes_gateway_enabled: true
 ```
 
-**配備物**: `life-pilot.policy.yaml` · `life_pilot_policy.py` · `discord_life_pilot_bridge.py` · `life_reminder_scheduler.py` · `life_proactive_loop.py` · plugin `register()` に `/memo` `/digest` `/remind` `/recommend` 追加 · `hermes-life-reminder.timer` · `hermes-life-proactive-{morning,evening}.timer` · chat `system_prompt` に Life Pilot 案内
+**配備物**: `life-pilot.policy.yaml` · `life_pilot_policy.py` · `discord_life_pilot_bridge.py` · `life_reminder_scheduler.py` · `life_proactive_loop.py` · `life_discord_ui_relay.py` · plugin `register()` に `/memo` `/digest` `/remind` `/recommend` 追加 · `hermes-life-reminder.timer` · `hermes-life-proactive-{morning,evening}.timer` · `hermes-life-discord-ui.service` · chat `system_prompt` に Life Pilot 案内
 
 **Discord 応答UX**: 日常利用では本文を通常テキストで先頭表示し、保存先・件数・安全境界などの診断情報は `-# debug:` 1行に畳む。
 
@@ -568,13 +568,14 @@ private_pi5_hermes_life_pilot_enabled: true
 
 補足: `notification=not-enabled` の既存/別経路 reminder は送信先 channel context がないため通知対象外。日時つき・送信先ありの reminder は `notification=scheduled` となり、timer により通知されることを確認済み。
 
-**D8-life proactive loop（repo 実装 · 実機E2E未実施）**:
+**D8/D9-life proactive loop + Discord button UI（D8送信E2E済み · D9 button repo実装）**:
 
 | 項目 | 内容 |
 |------|------|
 | 朝 | `hermes-life-proactive-morning.timer`（既定 07:30）で今日の確認を送る |
 | 夜 | `hermes-life-proactive-evening.timer`（既定 21:30）で今日の片付けを送る |
-| 返信 | `/life-reply 1`/`2`/`3` の番号返信、または `/life-reply <文章>` の自由入力を受け付ける |
+| 返信 | Discord button で `まず1つやる` / `あとで見る` / `今日は外す`、または `自由入力` modal から返す |
+| fallback | button が出ない時だけ `/life-reply 1` または `/life-reply <文章>` を使う |
 | 保存 | `proactive/replies.jsonl` と通常 memo に保存 |
 | channel | 固定 `private_pi5_hermes_life_proactive_channel_id`、未指定時は最新 Life Pilot context / reminder channel |
 | 安全境界 | local Life Pilot 記録のみ。worker、terminal、git、deploy、外部Web、Home Assistant は呼ばない |
@@ -596,8 +597,10 @@ private_pi5_hermes_life_pilot_enabled: true
 6. proactive loop（D8）:
    - `systemctl is-active hermes-life-proactive-morning.timer` → `active`
    - `systemctl is-active hermes-life-proactive-evening.timer` → `active`
+   - `systemctl is-active hermes-life-discord-ui.service` → `active`
    - 手動即時確認: `sudo systemctl start hermes-life-proactive@morning.service`
-   - Discord に朝の確認が届き、`/life-reply 1` または `/life-reply <自由文>` で返信すると「受け取りました」と返る
+   - Discord に朝の確認と4つの button（3択 + 自由入力）が届く
+   - `まず1つやる` button または `自由入力` modal で返すと「受け取りました」と返る
 
 **禁止（意図的）**: Cursor/Codex CLI · production repo 編集 · git · deploy · terminal · 秘密読取 · 外部Web検索 · Home Assistant/カメラ制御。
 
@@ -917,7 +920,9 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | `/memo` 等が登録されない | `life-pilot.policy.yaml` 未配備 · Discord command sync 未実行 · token 未設定 | fragment ON + `private_pi5_hermes_discord_bot_token` 設定 → deploy · `hermes-gateway` restart · [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md) |
 | `/remind` で通知が来ない | 日時を読めない · `notifyChannelId` がない · `hermes-life-reminder.timer` inactive | 日時つき slash で登録し `notification=scheduled` を確認 · `systemctl is-active hermes-life-reminder.timer` · [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) |
 | 朝晩の問いかけが来ない | proactive timer inactive · channel context 未保存 · Discord token 未設定 | `systemctl is-active hermes-life-proactive-morning.timer` · `/memo` 等を一度実行して context 保存 · 必要なら `private_pi5_hermes_life_proactive_channel_id` 固定 |
-| `1` だけ送っても「受け取りました」が返らない | Hermes 本体 hotfix は `yes/no` 系短文のみ pre-dispatch する場合がある | `/life-reply 1` を使う。通常メッセージの `1` は補助扱い |
+| proactive button が出ない | 古い deploy · Discord UI relay inactive · Discord API components 送信失敗 | 最新 branch を deploy · `systemctl is-active hermes-life-discord-ui.service` · journal で relay/error を確認 |
+| button を押しても「受け取りました」が返らない | `hermes-life-discord-ui.service` inactive · check-in が回答済み/期限切れ · allowed user 不一致 | relay active 確認 · 次の朝/夜確認で再試行 · 必要なら `/life-reply 1` fallback |
+| `1` だけ送っても「受け取りました」が返らない | Hermes 本体 hotfix は `yes/no` 系短文のみ pre-dispatch する場合がある | button を押す。button が出ない時だけ `/life-reply 1` を使う |
 
 ## ロールバック
 

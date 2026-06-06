@@ -239,8 +239,32 @@ def _option_rows(mode: str) -> list[dict[str, str]]:
 
 def _format_options(mode: str) -> str:
     lines = [f"[{item['id']}] {item['label']}" for item in _option_rows(mode)]
-    lines.append("返信は /life-reply 1 または /life-reply <文章> で送ってください。")
+    lines.append("ボタンで返信できます。うまく出ない時だけ /life-reply 1 を使ってください。")
     return "\n".join(lines)
+
+
+def build_proactive_components(checkin_id: str, mode: str) -> list[dict[str, Any]]:
+    buttons: list[dict[str, Any]] = []
+    styles = {"1": 1, "2": 2, "3": 2}
+    for item in _option_rows(mode):
+        option_id = item["id"]
+        buttons.append(
+            {
+                "type": 2,
+                "style": styles.get(option_id, 2),
+                "custom_id": f"life:reply:{checkin_id}:{option_id}",
+                "label": item["label"][:80],
+            }
+        )
+    buttons.append(
+        {
+            "type": 2,
+            "style": 2,
+            "custom_id": f"life:free:{checkin_id}",
+            "label": "自由入力",
+        }
+    )
+    return [{"type": 1, "components": buttons}]
 
 
 def _scheduled_for_day(reminders: list[dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
@@ -335,11 +359,16 @@ def _checkin_id(mode: str, now: datetime) -> str:
     return f"{_date_key(now)}-{mode}"
 
 
-def _env_sender() -> ProactiveSender:
+def _env_sender(
+    *,
+    checkin_id: str = "",
+    mode: str = "",
+) -> ProactiveSender:
     token = os.environ.get("DISCORD_BOT_TOKEN", "")
 
     def _send(channel_id: str, content: str) -> DiscordSendResult:
-        return send_discord_channel_message(token, channel_id, content)
+        components = build_proactive_components(checkin_id, mode) if checkin_id and mode else None
+        return send_discord_channel_message(token, channel_id, content, components=components)
 
     return _send
 
@@ -356,8 +385,8 @@ def dispatch_proactive_checkin(
     if mode not in CHECKIN_MODES:
         raise ValueError(f"unsupported proactive mode: {mode}")
     current = now or _now()
-    send = sender or _env_sender()
     checkin_id = _checkin_id(mode, current)
+    send = sender or _env_sender(checkin_id=checkin_id, mode=mode)
     context_user, context_channel = _resolve_context(
         storage_root,
         channel_id=channel_id,
@@ -416,6 +445,7 @@ def _match_pending_checkin(
     *,
     user_id: str = "",
     channel_id: str = "",
+    checkin_id: str = "",
     now: datetime,
 ) -> dict[str, Any] | None:
     clean_user = str(user_id or "").strip()
@@ -423,6 +453,8 @@ def _match_pending_checkin(
     cutoff = now - timedelta(hours=36)
     for item in reversed(rows):
         if item.get("status") != "pending_reply":
+            continue
+        if checkin_id and str(item.get("id", "") or "") != checkin_id:
             continue
         item_channel = str(item.get("channelId", "") or "").strip()
         item_user = str(item.get("userId", "") or "").strip()
@@ -466,6 +498,7 @@ def resolve_proactive_reply(
     *,
     user_id: str = "",
     channel_id: str = "",
+    checkin_id: str = "",
     now: datetime | None = None,
 ) -> str | None:
     clean = " ".join((text or "").strip().split())
@@ -480,6 +513,7 @@ def resolve_proactive_reply(
             rows,
             user_id=user_id,
             channel_id=channel_id,
+            checkin_id=checkin_id,
             now=current,
         )
         if checkin is None:

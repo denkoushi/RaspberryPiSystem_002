@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life）
 
-- **Status**: reference（2026-06-06 · repo 実装 · 私用 Pi5 deploy + Discord E2E 完了）
+- **Status**: reference（2026-06-06 · D6/D7 私用 Pi5 E2E 完了 · D9 button UI repo 実装）
 - **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [D6-pre daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [butler vision](../plans/private-pi5-hermes-butler-vision-and-roadmap.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
 ## 要点
@@ -13,12 +13,12 @@ Discord の `/memo` `/digest` `/remind` `/recommend` で、今日あったこと
 
 | 項目 | 内容 |
 |------|------|
-| 入口 | Discord slash `/memo` `/digest` `/remind` `/recommend` |
+| 入口 | Discord slash `/memo` `/digest` `/remind` `/recommend`、朝晩 check-in の Discord button |
 | 登録条件 | plugin 配置先に `life-pilot.policy.yaml` が存在 |
-| 保存 | `notes/YYYY-MM-DD.md` · `reminders/reminders.jsonl` |
+| 保存 | `notes/YYYY-MM-DD.md` · `reminders/reminders.jsonl` · `proactive/checkins.jsonl` · `proactive/replies.jsonl` |
 | policy | hard gate false + deny prompt regex |
 | Discord 応答 | 成功応答は本文を通常テキストで先頭表示し、保存先・安全境界などの診断情報は `-# debug:` 1行の subtext に畳む |
-| Ansible | module/policy 配備、`~/.hermes-life` 作成、Discord command sync、smoke verify |
+| Ansible | module/policy 配備、`~/.hermes-life` 作成、Discord command sync、reminder/proactive timers、button relay、smoke verify |
 | command sync | Life Pilot 有効時 `present`、無効時 `absent` |
 
 ## 追加ファイル
@@ -28,6 +28,9 @@ Discord の `/memo` `/digest` `/remind` `/recommend` で、今日あったこと
 | [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml) | D6-life safety contract |
 | [`life_pilot_policy.py`](../../scripts/private-pi5-hermes/lib/life_pilot_policy.py) | policy/prompt 検証 |
 | [`discord_life_pilot_bridge.py`](../../scripts/private-pi5-hermes/lib/discord_life_pilot_bridge.py) | memo/digest/remind/recommend 処理 |
+| [`life_reminder_scheduler.py`](../../scripts/private-pi5-hermes/lib/life_reminder_scheduler.py) | due reminder Discord 通知 |
+| [`life_proactive_loop.py`](../../scripts/private-pi5-hermes/lib/life_proactive_loop.py) | 朝晩 check-in と返信保存 |
+| [`life_discord_ui_relay.py`](../../scripts/private-pi5-hermes/lib/life_discord_ui_relay.py) | Discord button / 自由入力 modal 返信 |
 | [`verify-discord-life-pilot.yml`](../../infrastructure/ansible/tasks/private-pi5-hermes/verify-discord-life-pilot.yml) | Pi5 smoke |
 
 ## 境界
@@ -104,12 +107,16 @@ private_pi5_hermes_life_pilot_enabled: true
 
 Discord command sync には `private_pi5_hermes_discord_bot_token` が必要。
 
+2026-06-06 追記3: reminder scheduler と proactive loop を追加した。日時つき `/remind` は `hermes-life-reminder.timer` が Discord 通知し、朝晩 check-in は `hermes-life-proactive-{morning,evening}.timer` が送る。
+
+2026-06-06 追記4: `/life-reply` は日常操作には長いため、proactive check-in に Discord native button と自由入力 modal を付けた。button は `hermes-life-discord-ui.service` が処理し、`proactive/replies.jsonl` と通常 memo に保存する。通常メッセージの `1` は補助扱いで、正本は button、fallback は `/life-reply`。
+
 ## 既知の制限
 
-- `/remind` は reminder request を記録するだけ。自動通知スケジューラはまだない。
 - retention/export/delete は未実装。
 - LLM での高度な推薦ではなく、ローカル記録に基づく deterministic suggestion。
 - Discord `/remind` の入力経路によっては `Unknown argument` 系のUXノイズが出る可能性がある。
+- button relay は Discord interaction のみを扱う sidecar。Hermes 本体の自然文会話やスキル拡張ではない。
 
 ## 次
 

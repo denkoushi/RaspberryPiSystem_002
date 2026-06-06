@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 from lib.life_pilot_policy import LifePilotPolicy  # noqa: E402
 from lib.life_proactive_loop import (  # noqa: E402
     build_proactive_checkin_message,
+    build_proactive_components,
     dispatch_proactive_checkin,
     remember_life_discord_context,
     resolve_proactive_reply,
@@ -84,8 +85,28 @@ class LifeProactiveLoopTests(unittest.TestCase):
             self.assertIn("[1] まず1つやる", message)
             self.assertIn("[2] あとで見る", message)
             self.assertIn("[3] 今日は外す", message)
+            self.assertIn("ボタンで返信できます", message)
             self.assertIn("/life-reply 1", message)
             self.assertIn("boundary=local-only/no-tools", message)
+
+    def test_morning_checkin_components_offer_buttons_and_free_text(self) -> None:
+        components = build_proactive_components("2026-06-06-morning", "morning")
+
+        self.assertEqual(len(components), 1)
+        buttons = components[0]["components"]
+        self.assertEqual(
+            [button["custom_id"] for button in buttons],
+            [
+                "life:reply:2026-06-06-morning:1",
+                "life:reply:2026-06-06-morning:2",
+                "life:reply:2026-06-06-morning:3",
+                "life:free:2026-06-06-morning",
+            ],
+        )
+        self.assertEqual(
+            [button["label"] for button in buttons],
+            ["まず1つやる", "あとで見る", "今日は外す", "自由入力"],
+        )
 
     def test_dispatch_records_pending_checkin_and_skips_duplicate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -208,6 +229,50 @@ class LifeProactiveLoopTests(unittest.TestCase):
             ]
             self.assertEqual(replies[0]["response"], "風呂洗いは終わった。明日は買い物。")
             self.assertEqual(replies[0]["method"], "manual")
+
+    def test_reply_can_target_specific_checkin_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            morning = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
+            evening = datetime(2026, 6, 6, 21, 30, tzinfo=timezone(timedelta(hours=9)))
+            sender = FakeSender()
+            dispatch_proactive_checkin(
+                root,
+                "morning",
+                now=morning,
+                sender=sender,
+                channel_id="channel-1",
+                user_id="user-1",
+            )
+            dispatch_proactive_checkin(
+                root,
+                "evening",
+                now=evening,
+                sender=sender,
+                channel_id="channel-1",
+                user_id="user-1",
+            )
+
+            response = resolve_proactive_reply(
+                "2",
+                _policy(),
+                root,
+                user_id="user-1",
+                channel_id="channel-1",
+                checkin_id="2026-06-06-morning",
+                now=evening + timedelta(minutes=2),
+            )
+
+            self.assertIn("あとで見る", response or "")
+            checkins = [
+                json.loads(line)
+                for line in (root / "proactive" / "checkins.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            statuses = {item["id"]: item["status"] for item in checkins}
+            self.assertEqual(statuses["2026-06-06-morning"], "answered")
+            self.assertEqual(statuses["2026-06-06-evening"], "pending_reply")
 
 
 if __name__ == "__main__":

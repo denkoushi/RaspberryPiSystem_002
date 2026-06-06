@@ -14,6 +14,8 @@
       dest: /etc/systemd/system/hermes-life-proactive-morning.timer
     - src: "../templates/private-pi5-hermes-life-proactive-evening.timer.j2"
       dest: /etc/systemd/system/hermes-life-proactive-evening.timer
+    - src: "../templates/private-pi5-hermes-life-discord-ui.service.j2"
+      dest: /etc/systemd/system/hermes-life-discord-ui.service
   notify: Reload systemd daemon
 
 - name: Enable Hermes Life Pilot proactive timers
@@ -46,3 +48,19 @@
   when:
     - private_pi5_hermes_life_pilot_enabled | default(false) | bool
     - not (private_pi5_hermes_life_proactive_loop_active | bool)
+
+- name: Enable Hermes Life Pilot Discord UI relay
+  ansible.builtin.systemd:
+    name: hermes-life-discord-ui.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: private_pi5_hermes_life_discord_ui_relay_active | bool
+
+- name: Disable Hermes Life Pilot Discord UI relay when inactive
+  ansible.builtin.systemd:
+    name: hermes-life-discord-ui.service
+    enabled: false
+    state: stopped
+    daemon_reload: true
+  when: not (private_pi5_hermes_life_discord_ui_relay_active | bool)

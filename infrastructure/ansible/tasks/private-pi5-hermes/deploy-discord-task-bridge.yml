@@ -57,6 +57,7 @@
     - discord_life_pilot_bridge.py
     - life_reminder_scheduler.py
     - life_proactive_loop.py
+    - life_discord_ui_relay.py
 
 - name: Ensure approval relay package directory exists on plugin path
   ansible.builtin.file:
