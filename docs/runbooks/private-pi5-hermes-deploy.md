@@ -530,6 +530,8 @@ private_pi5_hermes_life_pilot_enabled: true
 
 **配備物**: `life-pilot.policy.yaml` · `life_pilot_policy.py` · `discord_life_pilot_bridge.py` · plugin `register()` に `/memo` `/digest` `/remind` `/recommend` 追加 · chat `system_prompt` に Life Pilot 案内
 
+**Discord 応答UX**: 日常利用では本文を主表示にし、保存先・件数・安全境界などの診断情報は `-# debug:` 1行に畳む。
+
 **保存先**:
 
 ```text

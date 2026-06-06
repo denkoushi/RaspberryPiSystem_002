@@ -74,7 +74,9 @@ class DiscordLifePilotBridgeTests(unittest.TestCase):
             result = run_life_memo_bridge("今日は朝散歩した。体調は良い。", _policy(), root)
 
             self.assertIn("# Memo Saved", result)
-            self.assertIn("Cursor, Codex, terminal", result)
+            self.assertIn("-# debug:", result)
+            self.assertIn("boundary=local-only/no-tools", result)
+            self.assertNotIn("## Safety", result)
             note_files = list((root / "notes").glob("*.md"))
             self.assertEqual(len(note_files), 1)
             self.assertIn("今日は朝散歩した", note_files[0].read_text(encoding="utf-8"))
@@ -87,6 +89,8 @@ class DiscordLifePilotBridgeTests(unittest.TestCase):
             digest = run_life_digest_bridge("", _policy(), root)
 
             self.assertIn("# Reminder Recorded", reminder)
+            self.assertIn("status: pending", reminder)
+            self.assertIn("-# debug:", reminder)
             self.assertIn("# Life Digest", digest)
             self.assertIn("燃えるごみ", digest)
             self.assertTrue((root / "reminders" / "reminders.jsonl").is_file())
@@ -99,7 +103,9 @@ class DiscordLifePilotBridgeTests(unittest.TestCase):
             result = run_life_recommend_bridge("今日の優先順位", _policy(), root)
 
             self.assertIn("# Life Recommendation", result)
-            self.assertIn("Based only on local Life Pilot notes", result)
+            self.assertIn("-# debug:", result)
+            self.assertIn("boundary=local-only/no-tools", result)
+            self.assertNotIn("## Basis", result)
             self.assertIn("牛乳", result)
 
     def test_bridge_rejects_execution_prompt(self) -> None:
