@@ -177,9 +177,7 @@ def run_life_memo_bridge(
     now = _now()
     root = _storage_root(loaded_policy, storage_root)
     path = _append_memo(root, prompt, now)
-    return f"""# Memo Saved
-
-> {_clip_line(prompt, 180)}
+    return f"""{_clip_line(prompt, 180)}
 
 {_render_debug_line(saved=_timestamp(now), path=str(path.relative_to(root)), boundary="local-only/no-tools")}
 """.strip()
@@ -197,13 +195,9 @@ def run_life_remind_bridge(
     now = _now()
     root = _storage_root(loaded_policy, storage_root)
     path = _append_reminder(root, prompt, now)
-    return f"""# Reminder Recorded
+    return f"""{_clip_line(prompt, 180)}
 
-> {_clip_line(prompt, 180)}
-
-status: pending. Automatic Discord notification scheduling is not enabled yet.
-
-{_render_debug_line(created=_timestamp(now), path=str(path.relative_to(root)), boundary="local-only/no-tools")}
+{_render_debug_line(status="pending", notification="not-enabled", created=_timestamp(now), path=str(path.relative_to(root)), boundary="local-only/no-tools")}
 """.strip()
 
 
@@ -230,18 +224,12 @@ def run_life_digest_bridge(
         else "- No pending reminders."
     )
     focus = _clip_line(prompt, 100) if prompt.strip() else "recent life notes"
-    return f"""# Life Digest
+    return f"""Focus: {focus}
 
-## Focus
-
-- {focus}
-
-## Recent Notes
-
+Recent notes:
 {note_lines}
 
-## Pending Reminders
-
+Pending reminders:
 {reminder_lines}
 
 {_render_debug_line(notes=str(len(entries)), reminders=str(len(reminders)), boundary="local-only/no-tools")}
@@ -273,14 +261,9 @@ def run_life_recommend_bridge(
         actions.append("Keep the next action small enough to finish today.")
     action_lines = "\n".join(f"- {item}" for item in actions[:4])
     focus = _clip_line(prompt, 100) if prompt.strip() else "next small action"
-    return f"""# Life Recommendation
+    return f"""Focus: {focus}
 
-## Focus
-
-- {focus}
-
-## Suggested Next Steps
-
+Suggested next steps:
 {action_lines}
 
 {_render_debug_line(notes=str(len(entries)), reminders=str(len(reminders)), boundary="local-only/no-tools")}

@@ -73,9 +73,11 @@ class DiscordLifePilotBridgeTests(unittest.TestCase):
 
             result = run_life_memo_bridge("今日は朝散歩した。体調は良い。", _policy(), root)
 
-            self.assertIn("# Memo Saved", result)
+            self.assertTrue(result.startswith("今日は朝散歩した。体調は良い。"))
             self.assertIn("-# debug:", result)
             self.assertIn("boundary=local-only/no-tools", result)
+            self.assertNotIn("# Memo Saved", result)
+            self.assertNotIn("> 今日は朝散歩した", result)
             self.assertNotIn("## Safety", result)
             note_files = list((root / "notes").glob("*.md"))
             self.assertEqual(len(note_files), 1)
@@ -88,10 +90,16 @@ class DiscordLifePilotBridgeTests(unittest.TestCase):
             reminder = run_life_remind_bridge("明日の朝、燃えるごみを出す", _policy(), root)
             digest = run_life_digest_bridge("", _policy(), root)
 
-            self.assertIn("# Reminder Recorded", reminder)
-            self.assertIn("status: pending", reminder)
+            self.assertTrue(reminder.startswith("明日の朝、燃えるごみを出す"))
+            self.assertNotIn("# Reminder Recorded", reminder)
+            self.assertNotIn("> 明日の朝", reminder)
+            self.assertIn("status=pending", reminder)
             self.assertIn("-# debug:", reminder)
-            self.assertIn("# Life Digest", digest)
+            self.assertIn("Focus: recent life notes", digest)
+            self.assertIn("Recent notes:", digest)
+            self.assertIn("Pending reminders:", digest)
+            self.assertNotIn("# Life Digest", digest)
+            self.assertNotIn("## Recent Notes", digest)
             self.assertIn("燃えるごみ", digest)
             self.assertTrue((root / "reminders" / "reminders.jsonl").is_file())
 
@@ -102,7 +110,9 @@ class DiscordLifePilotBridgeTests(unittest.TestCase):
 
             result = run_life_recommend_bridge("今日の優先順位", _policy(), root)
 
-            self.assertIn("# Life Recommendation", result)
+            self.assertIn("Focus: 今日の優先順位", result)
+            self.assertIn("Suggested next steps:", result)
+            self.assertNotIn("# Life Recommendation", result)
             self.assertIn("-# debug:", result)
             self.assertIn("boundary=local-only/no-tools", result)
             self.assertNotIn("## Basis", result)
@@ -119,7 +129,8 @@ class DiscordLifePilotBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             result = asyncio.run(run_life_digest_bridge_async("", _policy(), Path(tmp)))
 
-        self.assertIn("# Life Digest", result)
+        self.assertIn("Focus: recent life notes", result)
+        self.assertNotIn("# Life Digest", result)
 
 
 if __name__ == "__main__":
