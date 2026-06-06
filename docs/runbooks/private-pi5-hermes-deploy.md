@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-06-06（D6-pre `/daily` · 私用 Pi5 実機検証完了 · policy regex 修正 · Runbook 追記）
+最終更新: 2026-06-06（D6-pre `/daily` · 私用 Pi5 実機検証完了 · Discord slash Ansible 同期 · policy regex 修正）
 
 ## 運用状態サマリ（2026-05-24 時点）
 
@@ -478,9 +478,9 @@ private_pi5_hermes_daily_pilot_enabled: true
 # 必須: private_pi5_hermes_gateway_enabled: true
 ```
 
-**配備物**: `daily-pilot.policy.yaml` · `daily_pilot_policy.py` · `discord_daily_pilot_bridge.py` · plugin `register()` に `/daily` 追加 · chat `system_prompt` に `/daily` 案内
+**配備物**: `daily-pilot.policy.yaml` · `daily_pilot_policy.py` · `discord_daily_pilot_bridge.py` · `discord_command_sync.py` · plugin `register()` に `/daily` 追加 · chat `system_prompt` に `/daily` 案内
 
-**検証（ローカル · 2026-06-06）**: unittest **143 OK**（daily focused **17 OK**）· `--validate-daily-pilot` OK · smoke OK
+**検証（ローカル · 2026-06-06）**: unittest **149 OK**（daily/sync focused **23 OK**）· `--validate-daily-pilot` OK · smoke OK
 
 **私用 Pi5 実機（2026-06-06 · 受け入れ完了）**:
 
@@ -488,20 +488,28 @@ private_pi5_hermes_daily_pilot_enabled: true
 |------|------|
 | `hermes-gateway` | active |
 | plugin コマンド | `daily` · `novel` · `task` · `task-approve` · `task-deny` |
-| Discord slash | `/daily` global 登録（既存 bridge コマンド維持） |
+| Discord slash | `/daily` global 登録（Ansible `present` 管理 · 既存 bridge コマンド維持） |
 | 安全試験 | `/daily 今日の作業メモを作って` → **Daily Pilot Draft** |
 | 危険試験 | `/daily git pushしてdeployして` → **daily rejected** |
 
-**デプロイ経路の注意**: 初回実機反映は Codex sandbox 制限のため **最小ファイル手動配置 + gateway restart** で実施。運用上は **標準 Ansible deploy で収束**させること（[KB §Surprises](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md#デプロイ経路の注意surprises)）。
+**デプロイ経路（2026-06-06 確定）**:
 
-**Discord スラッシュ同期**: Hermes plugin 内部登録後、Discord 側で `/daily` が補完に出ない場合は **Developer Portal / bot command sync** を確認。検証時は API 手動登録の記録あり。
+| 段階 | 内容 |
+|------|------|
+| 初回 | Codex sandbox 制限 → **最小ファイル手動配置** + `hermes-gateway` restart（[KB §Surprises](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md#デプロイ経路の注意surprises)） |
+| **収束** | **Cursor から標準 Ansible deploy 完了** — `daily-pilot.policy.yaml` · plugin · Discord `/daily` present · 既存 slash 維持 |
+
+以降の変更は **必ず** `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` 経由。
+
+**Discord スラッシュ同期**: `private_pi5_hermes_discord_bot_token` が設定されている場合、Ansible が controller 側で Discord API を呼び、`private_pi5_hermes_daily_pilot_enabled: true` なら `/daily` を **present**、false なら **absent** にする。token は環境変数で渡し、task は `no_log: true`。
 
 **標準デプロイ手順**:
 
 1. fragment にフラグ追加 → `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh`
 2. Pi5 で plugin コマンド一覧に `daily` があること
-3. Discord 受け入れ試験（上表の安全/危険プロンプト）
-4. `/task` `/novel` 回帰
+3. Discord 側で `/daily` が補完に出ること（Ansible command sync）
+4. Discord 受け入れ試験（上表の安全/危険プロンプト）
+5. `/task` `/novel` 回帰
 
 **policy 修正（2026-06-06）**: 初版 regex は `git pushして` 未拒否・安全な Cursor 文案の誤拒否があり得た。repo 最新 `daily-pilot.policy.yaml` を配備すること。
 
@@ -815,7 +823,7 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | `yes` 後に **`Interrupting current task`** | Hermes 本体が **busy/interrupt を plugin hook より先**に処理 | Pi5 **`gateway/platforms/base.py` hotfix** + plugin channel キー · [KB §yes 最終修正](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) |
 | 承認プロンプトは来るが `yes` 無効（interrupt なし） | `user_id` bind 失敗 | repo **`channel:<channel_id>`** フォールバックをデプロイ · `approval_actor_ids` テスト |
 | `/task` が **`task rejected: … deferred task pattern`** | Codex/Cursor/git/deploy/terminal 等のプロンプト | **意図的** — [KB §安全枠](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) · D6+ worker 設計後に段階解放 |
-| `/daily` が登録されない | policy 未配備 · Discord command sync 未 | fragment ON → deploy · `hermes-gateway` restart · Discord API で slash 確認 · [KB daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md) |
+| `/daily` が登録されない | policy 未配備 · Discord command sync 未実行 · token 未設定 | fragment ON + `private_pi5_hermes_discord_bot_token` 設定 → deploy · `hermes-gateway` restart · Discord API で slash 確認 · [KB daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md) |
 | `/daily git push…` が通る | 古い policy（regex 修正前） | 最新 `daily-pilot.policy.yaml` 再配備 · `test_repo_policy_allows_safe_cursor_draft…` |
 | 安全な Cursor 文案が拒否 | 広い日本語 regex（修正前） | 同上 · [KB §policy regex](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md#investigation--policy-regex-修正2026-06-06) |
 

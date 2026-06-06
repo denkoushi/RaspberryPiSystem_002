@@ -89,13 +89,14 @@ git pushしてDeployして
 ## 検証（2026-06-06 実施済）
 
 ```bash
+python3 -m unittest discover -s scripts/private-pi5-hermes/tests -v
+# 149 OK（daily + command sync focused 23 OK）
+
 python3 -m unittest scripts/private-pi5-hermes/tests/test_discord_daily_pilot_bridge.py \
   scripts/private-pi5-hermes/tests/test_discord_task_bridge_plugin_register.py \
-  scripts/private-pi5-hermes/tests/test_daily_pilot_policy.py -v
-# 17 OK（policy regex regression 含む）
-
-python3 -m unittest discover -s scripts/private-pi5-hermes/tests -v
-# 143 OK
+  scripts/private-pi5-hermes/tests/test_daily_pilot_policy.py \
+  scripts/private-pi5-hermes/tests/test_discord_command_sync.py -v
+# policy regex + command sync regression 含む
 
 python3 scripts/private-pi5-hermes/validate_boundary_policy.py \
   --check-docker-volumes --emit-hermes-security --emit-browser-env \
@@ -110,12 +111,13 @@ ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local ANSIBLE_REMOTE_TEMP=/tmp/ansible-r
 
 記録: [KB daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md)
 
-## 私用 Pi5 実機検証（2026-06-06 完了）
+## 私用 Pi5 実機検証（2026-06-06 完了 · D6-pre 合格）
 
 - fragment: `private_pi5_hermes_daily_pilot_enabled: true`（非コミット）
-- 初回は sandbox 制限のため最小ファイル手動配置 → `hermes-gateway` restart
+- 初回: Codex sandbox 制限 → 最小ファイル手動配置 → `hermes-gateway` restart
+- **収束**: Cursor から標準 Ansible deploy 完了 · Discord `/daily` Ansible `present` · 定義一致
 - Discord 受け入れ: 安全/危険プロンプトとも期待どおり
-- **残タスク**: 標準 Ansible deploy で手動配置状態へ収束 · Discord command sync 手順の運用固定
+- **repo**: `discord_command_sync.py` · `sync-discord-commands.py` · Ansible task · unittest **main マージ予定**
 
 ## 有効化
 
@@ -127,15 +129,15 @@ private_pi5_hermes_daily_pilot_enabled: true
 
 これにより `daily-pilot.policy.yaml` が chat gateway plugin へ配備され、`/daily` が登録される。`/daily` は deterministic Markdown を返すだけで、Spark LocalAI / Cursor / Codex / terminal / git / deploy は呼び出さない。
 
-## 次の段階（D6-pre 維持期間）
+## 次の段階（D6+ 設計）
 
 Markdown-only を維持し、自動 Cursor/Codex 実行は追加しない。
 
-優先:
+D6-pre で完了したもの:
 
-- Ansible フルデプロイの収束確認
-- Discord `/daily` command sync の Runbook 化
-- 観測性・信頼性（plugin 登録・policy 配備の drift 検知）
+- [x] Discord `/daily` Ansible command sync（repo + 実機）
+- [x] 標準 Ansible deploy 収束
+- [x] 安全/危険 Discord E2E
 
 D6 では、いきなり terminal を開けず、以下を設計する。
 

@@ -169,21 +169,16 @@ AGENTS.md と .cursor/rules を読んだうえで、
 リポジトリ構成・現在の開発状況・未コミット WIP の意図を整理してください。
 ```
 
-## 本リポジトリ固有の WIP（2026-06-06 時点）
+## 本リポジトリ固有の WIP（2026-06-06 時点 → 解消）
 
-Cursor 復旧時点で **未コミット** の作業（**破棄禁止 · 別 PR 想定**）:
+Cursor 復旧直後に **未コミット** だった Hermes Discord command sync は **2026-06-06 に `main` マージ**（[KB daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [EXEC_PLAN §Hermes](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)）。
 
-| 種別 | パス | 目的 |
-|------|------|------|
-| 変更 | `docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md` | Discord `/daily` Ansible command sync 仕様追記 |
-| 変更 | `docs/runbooks/private-pi5-hermes-deploy.md` | 同上 Runbook |
-| 変更 | `infrastructure/ansible/playbooks/private-pi5-hermes.yml` | playbook に sync task 追加 |
-| 新規 | `infrastructure/ansible/tasks/private-pi5-hermes/sync-discord-daily-command.yml` | Ansible task |
-| 新規 | `scripts/private-pi5-hermes/lib/discord_command_sync.py` | Discord API 同期ライブラリ |
-| 新規 | `scripts/private-pi5-hermes/sync-discord-commands.py` | CLI |
-| 新規 | `scripts/private-pi5-hermes/tests/test_discord_command_sync.py` | unittest |
+| パス | 内容 |
+|------|------|
+| `discord_command_sync.py` 等 | Discord global `/daily` Ansible 同期 |
+| KB / Runbook / ExecPlan | D6-pre 合格・deploy 収束の記録 |
 
-**状態**: 実装・ドキュメント草案あり · **main 未マージ** · Pi5 実機は D6-pre 検証済みだが **Ansible フル deploy 収束は未完了**（[KB daily pilot](./KB-private-pi5-hermes-daily-pilot.md)）。
+**復旧後の教訓**: チャット履歴がなくても **ローカル WIP + `docs/`** で文脈を再構築できる。重要な進捗は KB/EXEC_PLAN へ昇格する（[01-core-docs-and-knowledge](../../.cursor/rules/01-core-docs-and-knowledge.mdc)）。
 
 ## References
 

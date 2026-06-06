@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-daily-pilot: Discord `/daily` 普段遣いパイロット（D6-pre）
 
-- **Status**: reference（2026-06-06 · **私用 Pi5 実機検証完了** · policy regex 修正済）
+- **Status**: reference（2026-06-06 · **D6-pre 合格** · 私用 Pi5 実機 + **標準 Ansible deploy 収束** · Discord slash Ansible 同期 · policy regex 修正済）
 - **Related**: [ExecPlan D6-pre](../plans/private-pi5-hermes-daily-pilot-execplan.md) · [Runbook §/daily](../runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-05) · [`daily-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/daily-pilot.policy.yaml) · [KB `/task` 安全枠](./KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) · [butler vision](../plans/private-pi5-hermes-butler-vision-and-roadmap.md)
 
 ## Context
@@ -11,18 +11,20 @@
 
 **対象**: 私用 Pi5（`private-pi5-stackchan-bridge`）のみ · 業務 Pi5 / Pi4 群は変更なし
 
-**2026-06-06 到達**: D6-pre は **私用 Pi5 実機で動作確認済み**。Hermes はまだ「実行者」ではなく **安全な進行係**。
+**2026-06-06 到達**: D6-pre は **合格**。私用 Pi5 で **標準 Ansible deploy** · Discord global `/daily` の **Ansible command sync** · 安全/危険 Discord E2E まで完了。Hermes はまだ「実行者」ではなく **安全な進行係**。
+
+**絶対スコープ（触らないもの）**: 業務 Pi5 · Pi4 群 · Pi3/signage · `update-all-clients.sh` · secret/token/.env/fragment の中身
 
 ## 確定仕様（repo）
 
 | 領域 | 仕様 |
 |------|------|
 | **入口** | Discord slash **`/daily <メモ>`**（chat profile · plugin 経由） |
-| **登録条件** | plugin 配置先に **`daily-pilot.policy.yaml` が存在**（Ansible: `private_pi5_hermes_daily_pilot_enabled: true`） |
+| **登録条件** | plugin 配置先に **`daily-pilot.policy.yaml` が存在**（Ansible: `private_pi5_hermes_daily_pilot_enabled: true`）+ Discord global `/daily` は Ansible command sync で `present` |
 | **出力** | **deterministic Markdown**（`# Daily Pilot Draft` テンプレ）· **LLM/worker 未呼び出し** |
 | **chat system_prompt** | daily 有効時のみ `/daily` 案内を追記（`/task` `/novel` と独立フラグ） |
 | **plugin 共存** | 同一 plugin `private-pi5-discord-task-bridge` · `/task` `/novel` は従来フラグで登録 |
-| **Ansible** | `deploy-discord-task-bridge.yml` が policy + Python モジュール配備 · `verify-discord-daily-pilot.yml` |
+| **Ansible** | `deploy-discord-task-bridge.yml` が policy + Python モジュール配備 · `sync-discord-daily-command.yml` が Discord global `/daily` を `present`/`absent` · `verify-discord-daily-pilot.yml` |
 
 ### policy 契約（`daily-pilot.policy.yaml`）
 
@@ -45,9 +47,50 @@
 |------|------|
 | [`daily_pilot_policy.py`](../../scripts/private-pi5-hermes/lib/daily_pilot_policy.py) | policy 読込・prompt 検証 |
 | [`discord_daily_pilot_bridge.py`](../../scripts/private-pi5-hermes/lib/discord_daily_pilot_bridge.py) | Markdown 生成 · `run_daily_pilot_bridge_async` |
+| [`discord_command_sync.py`](../../scripts/private-pi5-hermes/lib/discord_command_sync.py) | Discord global `/daily` を `present` / `absent` 管理（token は環境変数のみ） |
+| [`sync-discord-commands.py`](../../scripts/private-pi5-hermes/sync-discord-commands.py) | Ansible controller から呼ぶ command sync CLI |
 | [`discord_task_bridge_plugin.py`](../../scripts/private-pi5-hermes/lib/discord_task_bridge_plugin.py) | `_daily_pilot_enabled()` · `/daily` 登録 |
 
 **登録判定**: `_plugin_dir() / "daily-pilot.policy.yaml".is_file()` — marker ファイル方式（novel の `novel-bridge.enabled` と同型）
+
+### Discord global slash command 同期（`discord_command_sync.py`）
+
+Hermes plugin 内部の `/daily` 登録とは **別経路**。Discord Developer Portal / Bot の **global slash command** を Ansible が idempotent に同期する。
+
+| ステップ | 動作 |
+|----------|------|
+| 1 | `GET /users/@me` で application id 取得 |
+| 2 | `GET /applications/{app_id}/commands` で既存 global 一覧 |
+| 3 | `present` + 定義一致 → `changed=false` / `action=unchanged` |
+| 4 | `present` + 未定義 or 不一致 → `POST /applications/{app_id}/commands`（create/update） |
+| 5 | `absent` + `/daily` なし → no-op / `absent` |
+| 6 | `absent` + `/daily` あり → `DELETE …/commands/{id}` |
+
+**想定 `/daily` 定義**（`type: 1` · `dm_permission: true` · `integration_types: [0,1]` · optional `args` string）:
+
+```json
+{
+  "name": "daily",
+  "description": "Draft a safe daily-use Markdown handoff without execution",
+  "type": 1,
+  "dm_permission": true,
+  "integration_types": [0, 1],
+  "options": [
+    {
+      "type": 3,
+      "name": "args",
+      "description": "Arguments: <memo or request>",
+      "required": false
+    }
+  ]
+}
+```
+
+**安全**: HTTP エラー文から token を `[redacted]` · Ansible task は `no_log: true` · token は `DISCORD_BOT_TOKEN` のみ（inventory 変数 `private_pi5_hermes_discord_bot_token` 経由）。
+
+**触らないコマンド**: `/task` · `/task-approve` · `/task-deny` · `/novel`
+
+**CLI**: `scripts/private-pi5-hermes/sync-discord-commands.py --daily-state present|absent`
 
 ## 許可 / 禁止（運用メモ）
 
@@ -124,8 +167,8 @@
 
 | コマンド | 結果 |
 |----------|------|
-| `/daily` focused unittest | **17 OK** |
-| `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -v` | **143 OK** |
+| `/daily` + command sync focused unittest | **23 OK** |
+| `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -v` | **149 OK** |
 | `validate_boundary_policy.py … --validate-daily-pilot` | **OK** |
 | `verify-discord-task-bridge-smoke.sh` | **OK**（`/task` `/novel` 回帰含む） |
 | `ansible-playbook … private-pi5-hermes.yml --syntax-check` | **OK** |
@@ -137,40 +180,37 @@
 | `hermes-gateway` | **active** |
 | plugin 登録コマンド | `daily` · `novel` · `task` · `task-approve` · `task-deny` |
 | hook | `pre_gateway_dispatch` |
-| Discord global slash | `/daily` 登録済（`/task` `/task-approve` `/task-deny` `/novel` 維持） |
+| Discord global slash | `/daily` 登録済（Ansible `present` 管理 · `/task` `/task-approve` `/task-deny` `/novel` 維持） |
 | 安全リクエスト | `/daily 今日の作業メモを作って` → **Daily Pilot Draft** |
 | 危険リクエスト | `/daily git pushしてdeployして` → **daily rejected** |
 
 **fragment（非コミット）**: `private_pi5_hermes_daily_pilot_enabled: true` を設定済み。
 
+**標準 Ansible deploy（2026-06-06 · Cursor 実行）**: `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` で **収束確認済み**。Deploy 後の確認:
+
+| 項目 | 結果 |
+|------|------|
+| `daily-pilot.policy.yaml` on Pi5 | present |
+| plugin コマンド | `daily` · `novel` · `task` · `task-approve` · `task-deny` |
+| Discord API `/daily` | **present** · 定義は期待値と一致 |
+| 既存 slash | `/task` `/task-approve` `/task-deny` `/novel` **維持** |
+
 ### デプロイ経路の注意（Surprises）
 
-Codex sandbox から **フル Ansible playbook は未完了**（`~/.ansible/cp` / `/psm_*` 等のローカル runtime 制限）。
+| 経路 | 結果 |
+|------|------|
+| **Codex sandbox** からフル Ansible | **未完了**（`~/.ansible/cp` / `/psm_*` 等 — **環境制限**、コード不具合ではない） |
+| **初回実機** | sandbox 制限のため **最小ファイル手動配置** + `hermes-gateway` restart で D6-pre 受け入れ |
+| **Cursor 標準 deploy** | **完了** — 手動配置とのドリフト解消 · command sync 含む |
 
-実機検証は **D6-pre 最小ファイルの手動配置**で実施:
-
-- `daily_pilot_policy.py`
-- `discord_daily_pilot_bridge.py`
-- plugin `__init__.py`（`discord_task_bridge_plugin.py` 由来）
-- `plugin.yaml`
-- `daily-pilot.policy.yaml`
-
-→ `hermes-gateway` restart。
-
-**次の運用タスク**: 標準 `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` で **Ansible 収束**を確認し、手動配置との差分をなくす。
-
-### Discord スラッシュコマンド同期
-
-Hermes plugin 内部では `daily` が登録されたが、検証中は **Discord API 経由で `/daily` を手動登録**した記録あり。
-
-**予防**: 今後のフルデプロイ後は Discord Developer Portal または bot の command sync で `/daily` の global 登録を確認する。Runbook §D6-pre 参照。
+手動配置は **一時回避のみ**。以降は標準 Ansible deploy を正とする。
 
 ## 実機デプロイ手順（標準・推奨）
 
 1. fragment（非コミット）に `private_pi5_hermes_daily_pilot_enabled: true`（要 `private_pi5_hermes_gateway_enabled: true`）
 2. `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh`（**Ansible 収束を優先**）
 3. Pi5: plugin コマンド一覧に `daily` があること
-4. Discord: `/daily` が補完に出ること（出ない場合は command sync）
+4. Discord: `/daily` が補完に出ること（Ansible command sync）
 5. 受け入れ試験:
    - `/daily 今日の作業メモを作って` → **Daily Pilot Draft**
    - `/daily git pushしてdeployして` → **daily rejected**
@@ -180,7 +220,7 @@ Hermes plugin 内部では `daily` が登録されたが、検証中は **Discor
 
 | 症状 | 原因 | 対処 |
 |------|------|------|
-| `/daily` が Discord に出ない | plugin 未登録 · command sync 未 | policy 配備確認 · `hermes-gateway` restart · Discord API で slash 登録確認 |
+| `/daily` が Discord に出ない | plugin 未登録 · command sync 未実行 · token 未設定 | policy 配備確認 · `private_pi5_hermes_discord_bot_token` 設定 · `hermes-gateway` restart · Discord API で slash 登録確認 |
 | 安全な Cursor 文案が拒否される | 古い広い regex policy | repo 最新 `daily-pilot.policy.yaml` を再配備 · `test_repo_policy_allows_safe_cursor_draft…` |
 | `git pushして` が通る | 同上（古い policy） | regex 修正版を配備 · 実機で拒否メッセージ確認 |
 | `/task` `/novel` が壊れた | plugin 差し替えミス | smoke script · Pi5 plugin コマンド一覧で 5 コマンド確認 |
@@ -190,6 +230,7 @@ Hermes plugin 内部では `daily` が登録されたが、検証中は **Discor
 
 - **Codex/Cursor 使役**は `/daily` でも regex deny — 解放は **D6+ worker profile**（1 worktree = 1 branch）後
 - fragment OFF 時は stale `daily-pilot.policy.yaml` を Ansible が **削除**（誤登録防止）
+- fragment OFF 時は Discord global `/daily` も Ansible が **absent** 管理（token 設定時）
 - 秘密情報を Discord に貼らない（policy に `.env` / `token` / `secret` deny）
 - `/task` `/novel` 回帰: plugin register smoke · `verify-discord-task-bridge-smoke.sh`
 - **手動配置後は Ansible 収束を必ず実施**（ドリフト防止）

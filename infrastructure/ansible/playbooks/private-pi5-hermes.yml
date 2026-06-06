@@ -211,6 +211,10 @@
         private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool or
         private_pi5_hermes_daily_pilot_enabled | default(false) | bool
 
+    - name: Sync Hermes Discord daily slash command
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/sync-discord-daily-command.yml"
+      when: (private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0
+
     - name: Deploy Hermes tools profile skeleton
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-tools-profile.yml"
       when: private_pi5_hermes_tools_profile_enabled | default(false) | bool

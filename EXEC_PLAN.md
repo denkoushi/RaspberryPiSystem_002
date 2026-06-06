@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-06-06 / **実装・私用 Pi5 実機 · `main` マージ**) **Hermes D6-pre Discord `/daily` Ansible command sync**: `discord_command_sync.py` · `sync-discord-commands.py` · `sync-discord-daily-command.yml` · playbook hook · unittest **149 OK**（sync focused **23 OK**）· **私用 Pi5**: 標準 Ansible deploy 収束 · Discord `/daily` **present**（定義一致）· 安全/危険 E2E OK · `/task` `/novel` 維持。**スコープ**: 私用 Pi5 のみ。**docs**: [KB daily pilot](./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md) · [Runbook §D6-pre](./docs/runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了) · [ExecPlan D6-pre](./docs/plans/private-pi5-hermes-daily-pilot-execplan.md)
+
 - [x] (2026-06-06 / **ドキュメントのみ · `main` マージ**) **Mac Cursor `state.vscdb` 破損復旧の記録**: 外部SSD運用下で `state.vscdb` 約 42GB + backup 35GB · `SQLITE_CORRUPT` 大量 → **退避 76GB**（`recovery-20260606-090149`）後に新 DB 正常化（integrity_check ok）· **リポジトリ/Git/未コミット WIP 無傷** · チャット/Agent 履歴は初期化。**運用**: 外部SSD継続 + サイズ監視。**docs**: [KB-388](./docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) · [mac-storage-migration §state.vscdb](./docs/guides/mac-storage-migration.md#cursor-statevscdb-の破損肥大化2026-06-06-追記) · [development §Agent復旧後](./docs/guides/development.md#cursor-状態db復旧後の-agent-作業2026-06-06) · [AGENTS.md §復旧後](./AGENTS.md#cursor-状態db復旧後2026-06-06) · 復旧メモ（Codex）: `~/Documents/Codex/2026-06-06/.../cursor_recovery_summary_20260606.md`
 
 - [x] (2026-06-05 / **実装・CI・Pi5 先行デプロイ · `main` マージ**) **キオスク検査図面・流用導線強化**: ブランチ **`feat/kiosk-inspection-drawing-reuse-flow`** · **`6c7da8c7`** — 一覧 **雛形として新規**（`?sourceTemplateId=`）· 新規作成 **図面ピッカー**（既存 visual / upload）· `visualSource` 単一真実源 · **`failIfActiveExists` + lineage advisory lock** · **FIHNCD case-insensitive 統一**（`normalizeFhincd` · `setActiveVersion` 含む）· visual **`q`+`limit` サーバー検索** · **`cleanupToken` orphan 回収** · `visualSearchRequestSeqRef` 競合ガード。**API + Web**（migration なし）。**CI**: **`27008474510`** success。**デプロイ**: Pi5 **`20260605-191525-16964`** · **`failed=0`** · Phase12 **43/0/0** · API/Web スモーク OK。**残**: Pi5 キオスク目視 · Pi4×4 順次。**docs**: [KB-320 §流用導線](./docs/knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) · [deployment §2026-06-05](./docs/guides/deployment.md#kiosk-inspection-drawing-reuse-flow-2026-06-05) · [runbook §流用導線](./docs/runbooks/kiosk-part-measurement.md#検査図面-流用導線-2026-06-05)。
@@ -1293,6 +1295,9 @@
 
 ## Surprises & Discoveries
 
+- 観測 2026-06-06 / **Codex sandbox では Hermes フル Ansible deploy が止まるが Cursor では通る**
+  根拠: Codex 環境は `~/.ansible/cp` / `/psm_*` 作成制限で playbook 途中停止 · **コード不具合ではない** · 初回は手動最小配置で D6-pre 受け入れ → **Cursor 標準 deploy で収束**。**docs**: [KB daily pilot §Surprises](./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md#デプロイ経路の注意surprises)
+
 - 観測 2026-06-06 / **Cursor `state.vscdb` 破損・肥大化はプロジェクト無傷で Cursor だけが壊れる**
   根拠: `state.vscdb` **約 42GB** · backup **35GB** · ログ `SQLITE_CORRUPT` · `cursorDiskKV` の `agentKv:blob` / `bubbleId` 多量 · 退避後の新 DB **1–2MB** · `integrity_check: ok` · リポジトリ再オープンで構成・WIP・開発状況を読取可能。**対処**: DB 系を削除せず退避 → Cursor 再起動。**失うもの**: チャット/Agent 履歴・ログイン状態。**残すもの**: Git・ソース・`docs/`・未コミット WIP。**再発監視**: `du -sh state.vscdb*` · 外部SSD運用は当面継続。**docs**: [KB-388](./docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md)
 
@@ -2543,8 +2548,6 @@
 
 **Agent 作業ルール（復旧直後）**: 未コミット WIP **破棄禁止** · 本番デプロイ/Pi 実機は **明示依頼まで** · [development §Cursor復旧後](./docs/guides/development.md#cursor-状態db復旧後の-agent-作業2026-06-06) · [AGENTS.md](./AGENTS.md#cursor-状態db復旧後2026-06-06)
 
-**ローカル WIP（別タスク · 未コミット）**: Hermes **Discord `/daily` command sync**（Ansible + `discord_command_sync.py` 等 7 ファイル）— [KB-388 §WIP](./docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md#本リポジトリ固有の-wip2026-06-06-時点) · [KB daily pilot](./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md)
-
 ### キオスク検査図面・流用導線（2026-06-05 以降） {#kiosk-inspection-drawing-reuse-flow-follow-up-2026-06-05}
 
 **状態**: **Pi5 先行デプロイ済** · **`main` マージ済** · Pi5 キオスク目視 **未記録** · Pi4×4 **未デプロイ**。
@@ -2689,7 +2692,7 @@ RECONCILE_RESOURCE=033 RECONCILE_YEAR_MONTH=2026-07 RECONCILE_REMAIN_H=706 RECON
 
 ### ?? Pi5 Hermes Agent ? ???????AI??????2026-05-24?25? {#private-pi5-hermes-discord-2026-05-24}
 
-**現状**: **Phase D4・D5 本番反映済（2026-05-25）** → **D5.1 完了**（write E2E 2026-06-05 夜）→ **`/task` 安全枠** → **D6-pre `/daily` 私用 Pi5 実機検証完了（2026-06-06）**（Markdown-only · policy regex 修正 · 安全/危険 Discord E2E OK）· unittest **143 OK** · **残**: Ansible フル deploy 収束 · Discord command sync 運用固定 · **次**: D6 memory + D6+ Codex/Cursor worker 設計 · [KB daily pilot](./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md)
+**現状**: **Phase D4・D5 本番反映済（2026-05-25）** → **D5.1 完了**（write E2E 2026-06-05 夜）→ **`/task` 安全枠** → **D6-pre `/daily` 合格（2026-06-06）**（Markdown-only · policy regex · Discord command sync · 標準 Ansible deploy 収束 · 安全/危険 E2E OK）· unittest **149 OK** · **次**: D6 memory + D6+ Codex/Cursor worker 設計 · [KB daily pilot](./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md)
 
 **???????????????2026-05-25?**: ????? **Discord ?? AI??**???/????? ? X ?? ? ????? ? HA/??????? ? **?? tools ??**??**????????????**?Phase ????????????????????
 
@@ -2708,14 +2711,14 @@ RECONCILE_RESOURCE=033 RECONCILE_YEAR_MONTH=2026-07 RECONCILE_REMAIN_H=706 RECON
 | ✅ | `/task` 復旧（2026-06-05） | **repo + 実機 hotfix 済** | Discord **`1010`** → `discord_relay` Bot UA · DGX **502** → blue snapshot + `0.65` + `language_model_only` · unittest **127 OK** · [KB §2026-06-05](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--discord-task-二段障害2026-06-05) |
 | ✅ | Discord write E2E（2026-06-05 夜） | **完了** | `yes` interrupt 回避 · channel actor · Hermes `base.py` hotfix · `test-20260605-2.txt` OK · [KB §yes](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) |
 | ✅ | `/task` 安全枠明文化（2026-06-05） | **repo のみ** | task class labels · regex deny · 131 tests OK · Pi5 deploy 待ち · [KB §安全枠](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) |
-| ✅ | D6-pre `/daily` 普段遣いパイロット（2026-06-05–06） | **私用 Pi5 実機完了** | policy regex 修正 · Discord 安全/危険 E2E OK · 143 tests OK · Ansible 収束・command sync 残 · [KB daily pilot](./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md) |
+| ✅ | D6-pre `/daily` 普段遣いパイロット（2026-06-05–06） | **合格 · repo + 実機** | policy regex · Discord command sync · Ansible deploy 収束 · 149 tests OK · [KB daily pilot](./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md) |
 
 #### D5 以降 — バトラー機能ロードマップ
 
 | # | Phase | ??? | ?? | ???? |
 |---|-------|--------|------|----------|
 | **1** | **D5.1** | **Discord write E2E 受け入れ** | **✅** | 2026-06-05 夜: `/task Create test-20260605-2.txt …` → `yes` → workspace 作成確認 |
-| **1b** | **D6-pre** | **`/daily` 普段遣いパイロット** | **✅** | 2026-06-06: 私用 Pi5 実機検証完了 · Ansible 収束は次 · [ExecPlan D6-pre](./docs/plans/private-pi5-hermes-daily-pilot-execplan.md) |
+| **1b** | **D6-pre** | **`/daily` 普段遣いパイロット** | **✅** | 2026-06-06: 合格 · command sync + Ansible deploy 収束 · [ExecPlan D6-pre](./docs/plans/private-pi5-hermes-daily-pilot-execplan.md) |
 | 2 | D5.1 | runner ??? `verify-tool-write-approval-gate-pi5.sh` ??????? | ? | `request.json` ?????? `write_file` ??????????? |
 | 3 | ? | Discord `/task` read-only + ???? | ? | read-only `/task` ? ???????? chat ?? |
 | 3 | **D6** | memory + リマインド（限定） | 未 | ADR · 保持/削除ポリシー |
