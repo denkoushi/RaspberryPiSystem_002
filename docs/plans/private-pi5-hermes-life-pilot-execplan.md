@@ -111,6 +111,12 @@ Discord global slash commands:
 
 個人メモ本文はこの計画書に残さない。
 
+## D7-life reminder scheduler 実機通知E2E（2026-06-06 完了）
+
+PR #405 反映後の標準 deploy は `PLAY RECAP failed=0`。Discord で日時つき `/remind` が `notification=scheduled` になり、指定時刻に `hermes-life-reminder.timer` 経由の通知が届くことを確認済み。
+
+詳細記録は [private-pi5-hermes-deploy.md](../runbooks/private-pi5-hermes-deploy.md) に置く。
+
 ## 有効化
 
 inventory fragment（非コミット）:
@@ -125,7 +131,6 @@ Discord global slash command を同期するには `private_pi5_hermes_discord_b
 ## 未完了
 
 - export/delete/retention の運用設計
-- リマインダー通知の実機Discord E2E（deploy後）
 - 通知済み reminder の一覧/削除 UX
 
 ## 次の判断

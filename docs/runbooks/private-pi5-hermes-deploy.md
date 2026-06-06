@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-06-06（D6-life Life Pilot 私用 Pi5 + Discord E2E 完了 · D6-pre `/daily` 私用 Pi5 実機検証完了）
+最終更新: 2026-06-06（D7-life reminder scheduler Discord 通知E2E完了 · D6-life Life Pilot 私用 Pi5 + Discord E2E 完了 · D6-pre `/daily` 私用 Pi5 実機検証完了）
 
 ## 運用状態サマリ（2026-05-24 時点）
 
@@ -556,6 +556,18 @@ private_pi5_hermes_life_pilot_enabled: true
 
 **実機目視（PR #403 反映後 · 2026-06-06）**: Discord で `/memo` `/digest` `/remind` の本文先頭表示、`#` 見出しなし、`>` 引用なし、下部 `-# debug:` のみをユーザー確認 OK。
 
+**実機通知E2E（PR #405 反映後 · 2026-06-06）**:
+
+| 項目 | 結果 |
+|------|------|
+| deploy | `main` @ `7a51cfb7` · `PLAY RECAP` `ok=167 changed=7 failed=0` |
+| digest | `Scheduled reminders:` と `Pending without time:` が分離表示 |
+| recommend | 次の scheduled reminder と日時未指定 reminder を優先して提案 |
+| `/remind 2026-06-06 HH:MM ...` | `scheduled: 2026-06-06 HH:MM`、`status=pending`、`notification=scheduled` を表示 |
+| due notification | 指定時刻に Discord 通知が届き、debug は `reminder=due` と `boundary=local-only/no-tools` |
+
+補足: `notification=not-enabled` の既存/別経路 reminder は送信先 channel context がないため通知対象外。日時つき・送信先ありの reminder は `notification=scheduled` となり、timer により通知されることを確認済み。
+
 個人メモ本文は Runbook に残さない。
 
 **標準デプロイ手順**:
@@ -887,7 +899,7 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | `/daily git push…` が通る | 古い policy（regex 修正前） | 最新 `daily-pilot.policy.yaml` 再配備 · `test_repo_policy_allows_safe_cursor_draft…` |
 | 安全な Cursor 文案が拒否 | 広い日本語 regex（修正前） | 同上 · [KB §policy regex](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md#investigation--policy-regex-修正2026-06-06) |
 | `/memo` 等が登録されない | `life-pilot.policy.yaml` 未配備 · Discord command sync 未実行 · token 未設定 | fragment ON + `private_pi5_hermes_discord_bot_token` 設定 → deploy · `hermes-gateway` restart · [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md) |
-| `/remind` で通知が来ない | D6-life は request 記録のみ | 仕様。自動通知は D7 以降 |
+| `/remind` で通知が来ない | 日時を読めない · `notifyChannelId` がない · `hermes-life-reminder.timer` inactive | 日時つき slash で登録し `notification=scheduled` を確認 · `systemctl is-active hermes-life-reminder.timer` · [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) |
 
 ## ロールバック
 
