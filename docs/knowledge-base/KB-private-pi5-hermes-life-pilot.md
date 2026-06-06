@@ -1,8 +1,9 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: active（2026-06-06 · D12 Obsidian inbox deploy 完了 · D13 Discord shared inbox repo 実装）
+- **Status**: active（2026-06-06 · D12 Obsidian inbox deploy 完了 · D13 Discord shared inbox **`f782f59d` Pi5 deploy 完了** · 画像-only 実機 E2E **未完了**）
 - **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
-- **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
+- **Branch / HEAD（再開用）**: `feat/hermes-life-pilot-discord-inbox` @ **`f782f59d`** — `fix(hermes): capture Discord media URLs in inbox`
+- **Related**: [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [Plan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
 ## Context
 
@@ -50,19 +51,54 @@ Hermes は保管庫を **読むだけ**。Obsidian 側への書込・削除、Sy
 
 送信済み check-in の `contextHints` には `obsidianItems` / `obsidianAttachments` も保存する。本文やファイル名の詳細は check-in JSON には残さない。
 
-### D13 Discord shared inbox（repo）
+### D13 Discord shared inbox（repo · `f782f59d`）
 
-Obsidian/Syncthing が重い場合の入力経路として、Android 標準の共有メニューから Discord へ送ったリンクやスクリーンショット添付を Life Pilot inbox に保存する。既定保存先:
+Obsidian/Syncthing が重い場合の入力経路として、Android 標準の共有メニューから Discord へ送ったリンク・画像・スクショを Life Pilot inbox に保存する。既定保存先:
 
 ```text
 /home/hermes/.hermes-life/inbox/discord.jsonl
 ```
 
-Hermes は外部 Web を開かない。X/URL は URL と短い本文だけ、画像やファイルは添付ファイル名だけを保存し、ダウンロード・OCR・画像認識は行わない。Discord の添付プレースホルダ（例: `クリックして添付ファイルを表示`）も inbox として扱い、通常チャット解析へ流さない。`token` / `secret` / `.env` などを含む本文は redacted として保存する。
+**capture 対象（Hermes 本体チャットへ渡さない）**:
 
-朝 check-in に `共有メモ新着:` を追加する。候補優先順は、今日までの日時つき reminder → carried_forward → Discord 共有メモ → Obsidian 新着 → 日時なし reminder → 次の日時つき reminder → 最近の memo。Discord 共有メモに疲れ・眠い等の signal があれば D11 briefing の `lowEnergy` に反映する。
+| 入力形 | 処理 |
+|--------|------|
+| X/URL 本文 | `urls` + 短い `text` |
+| Discord embed-only（本文空） | embed の `url` / `title` / `description` から抽出 |
+| 添付プレースホルダ | 例: `クリックして添付ファイルを表示` → `attachments` にファイル名 |
+| **gateway `media_urls`** | Hermes Discord adapter が渡す画像パス（例: `img_*.png`）を **添付として保存**（`f782f59d`） |
+| 本文なし画像-only | `text` を `共有: Discord投稿（本文なし）` に正規化（`GATEWAY_EMPTY_MESSAGE_TEXT` 検出） |
+| nested metadata | `message` / `raw` / `data` 等の入れ子から URL・添付名を抽出（`d5448a2a`） |
 
-既定では、URL・添付・Discord embed・添付プレースホルダ・`共有:` / `メモ:` / `inbox:` / `memo:` prefix の通常メッセージだけを capture する。`hermes-life-discord-ui.service` も添付/画像共有を拾う保険として動く。通常会話をすべて保存したい場合のみ `private_pi5_hermes_life_discord_inbox_capture_all: true` を使う。
+**応答**: 短く `受け取り箱に保存しました。` + `-# debug: ... boundary=local-only/no-tools`。長文チャット・`vision_analyze_tool` には流さない。
+
+**保存レコード（主要フィールド）**: `source=discord` · `untrusted=true` · `messageId` · `attachments` · `urls` · `text` · `channelId` · `userId` · `createdAt` · `status=new`
+
+Hermes は外部 Web を開かない。添付のダウンロード・OCR・画像認識は行わない。`token` / `secret` / `.env` などを含む本文は redacted。
+
+朝 check-in に `共有メモ新着:` / `共有メモを見返す` を追加。候補優先順は、今日までの日時つき reminder → carried_forward → **Discord 共有メモ** → Obsidian 新着 → 日時なし reminder → 次の日時つき reminder → 最近の memo。
+
+**二重経路**:
+
+| 経路 | 役割 |
+|------|------|
+| `hermes-gateway` plugin `pre_gateway_dispatch` | slash 以外の通常 DM。`media_urls` / embed / プレースホルダを捕捉して `skip/life-discord-inbox` |
+| `hermes-life-discord-ui.service` | discord.py sidecar。本文空+添付のみ等の保険。`on_message` で capture して ack |
+
+通常会話をすべて保存したい場合のみ `private_pi5_hermes_life_discord_inbox_capture_all: true`。
+
+### D12 Obsidian Syncthing（私用 Pi5 運用メモ）
+
+Ansible は受け皿作成まで。pairing は手動。
+
+| 項目 | 値 |
+|------|-----|
+| Android folder ID | `d5s97-8v6z5` |
+| Pi5 path | `/home/hermes/.hermes-life/obsidian/HermesLife` |
+| Pi5 type | receiveonly |
+| Pi5 device / user | `syncthing@hermes` |
+| Tailscale direct | `tcp://100.89.190.21:22000` |
+| UFW | `22000/tcp on tailscale0 ALLOW`（未許可だと Android disconnected） |
 
 ### 保存先（正本）
 
@@ -144,17 +180,63 @@ ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp \
 - `git diff --check`: OK
 - Obsidian 新着 Markdown / 画像添付 / sensitive line 非表示を追加検証
 
-### Local（D13 · Discord shared inbox repo）
+### Local（D13 · Discord shared inbox · `f782f59d`）
 
-- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_discord_task_bridge_plugin_register.py'`: **15 OK**
-- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_life_proactive_loop.py'`: **20 OK**
-- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_life_discord_ui_relay.py'`: **4 OK**
-- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests`: **203 OK**
-- `python3 -m py_compile`（Life Pilot / Discord inbox / Obsidian inbox / scheduler / UI relay）: OK
-- `validate_boundary_policy.py --validate-life-pilot`: OK
-- `deploy-private-pi5-hermes.sh --syntax-check`: OK
-- `git diff --check`: OK
-- Discord shared link capture / Android share の embed-only capture / 添付プレースホルダ capture / sidecar 添付 capture / gateway 無し ack fallback / 通常会話 non-capture / 朝 check-in `共有メモ新着:` を追加検証
+- CI [27063786601](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/27063786601): **success**（`headSha=f782f59d`）
+- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests`: **203+ OK**（branch 累積）
+- focused: `test_discord_task_bridge_plugin_register.py`（embed / attachment / `media_urls` / blank share）· `test_life_discord_ui_relay.py`（sidecar 添付）· `test_life_proactive_loop.py`（`共有メモ新着:`）
+- `validate_boundary_policy.py --validate-life-pilot`: OK · `deploy-private-pi5-hermes.sh --syntax-check`: OK
+
+**D13 修正チェーン（再開用 · 古い順）**:
+
+| commit | 内容 |
+|--------|------|
+| `0c7497e1` | D13 初期: Discord shared inbox |
+| `a595546e` | embed-only Android 共有 |
+| `e134558e` | 添付を Life inbox へ（sidecar + プレースホルダ） |
+| `e4719a9a` | 実 Discord 共有への ack 改善 |
+| `2b30fc6b` | 空白 Discord 共有 |
+| `d5448a2a` | nested metadata 共有 |
+| `f782f59d` | **`media_urls` を添付として捕捉**（画像-only が vision に流れる問題の主修正） |
+
+### 私用 Pi5 deploy（D12 · `539f007f`）
+
+初回 `failed=1`（`checkins.jsonl` PermissionError）→ `chown -R hermes:hermes /home/hermes/.hermes-life` 後 **ok=177 failed=0**。Obsidian vault E2E・朝 `Obsidian新着:` 確認済み。
+
+### 私用 Pi5 deploy（D13 · `f782f59d` · 2026-06-06）
+
+```
+PLAY RECAP: ok=177 changed=4 failed=0
+life_discord_inbox_enabled=True
+```
+
+**Deploy 後の必須再起動**（plugin 配置だけでは sidecar が古い Python を保持し得る）:
+
+```bash
+sudo systemctl restart hermes-life-discord-ui.service
+sudo systemctl restart hermes-gateway
+```
+
+**配置確認**:
+
+```bash
+grep -R "media_urls" -n /home/hermes/.hermes/plugins/private-pi5-discord-task-bridge
+grep -R "GATEWAY_EMPTY_MESSAGE_TEXT" -n /home/hermes/.hermes/plugins/private-pi5-discord-task-bridge
+```
+
+**エージェント検証（Pi5 · plugin 直呼び · 再起動後）**: URL / embed-only / 添付プレースホルダ / sidecar 添付 → ack + `discord.jsonl` 追記 + 朝 `共有メモ新着:` 再送は OK。
+
+**未完了の実機 E2E（ユーザー操作）**: Deploy 再起動後、Android から **画像-only / スクショ-only** を Hermes DM へ送り、以下を確認すること。
+
+1. 短い `受け取り箱に保存しました。` のみ（長時間 typing なし）
+2. `discord.jsonl` 新行の `attachments` に `img_*.png` 等（`media_urls` 由来）
+3. `journalctl -u hermes-gateway` に `vision_analyze_tool` が出ないこと
+
+```bash
+tail -n 30 /home/hermes/.hermes-life/inbox/discord.jsonl
+sudo journalctl -u hermes-gateway -n 180 --no-pager
+sudo journalctl -u hermes-life-discord-ui.service -n 180 --no-pager
+```
 
 ### 私用 Pi5 deploy（D10 · `57d19193`）
 
@@ -227,12 +309,15 @@ summary: life_pilot_enabled=True
 | 画像の中身が読まれない | D12 は画像/OCR未接続 | まずはファイル名と存在だけ。OCR/画像認識は別フェーズ |
 | Discord 共有が保存されない | URL/添付/prefix のない通常会話、または inbox disabled | X/URL を共有する、または `共有:` / `メモ:` prefix を付ける。専用チャンネル運用なら channel ID を fragment に入れる |
 | URL を送ると通常チャット応答にならない | D13 は URL を「共有メモ」として capture して Hermes 本体へ渡さない | リンク相談ではなく、後で見る inbox 用の経路。通常相談は URL なしで送る |
-| 画像共有後に「画像解析結果」などの無関係な長文が返る | 添付付き投稿が inbox capture されず Hermes 本体の通常チャット/画像解析経路に流れた | 添付プレースホルダ capture と `hermes-life-discord-ui.service` sidecar capture を含む最新版を deploy。画像は解析せずファイル名だけ保存する |
+| 画像共有後に長時間 typing / `vision_analyze_tool` | gateway が `MessageEvent.media_urls` を inbox 添付として扱わず、通常チャット+画像解析へ流した（`d5448a2a` 以前） | **`f782f59d` deploy + 両サービス再起動**。ログに `vision_tools.py` / `vision_analyze_tool` が出たら旧経路。`media_urls` grep で配置確認 |
+| Deploy 後も画像共有が inbox に入らない | `hermes-life-discord-ui` が再起動されず古いモジュールを保持 | deploy 後に `restart hermes-life-discord-ui` と `restart hermes-gateway` をセットで実施 |
+| Android Syncthing が Pi5 disconnected | UFW が Tailscale 経由 22000 を拒否 | `ufw allow in on tailscale0 to any port 22000 proto tcp`。Android Addresses に `tcp://<Pi5 Tailscale IP>:22000` |
+| X URL 共有は OK だが画像-only が未保存 | `media_urls` 未対応版 | `f782f59d` 以降を確認。`attachments` に `img_*.png` が入るか実機確認 |
 
 ## Open Items
 
-1. **D13 Discord shared inbox deploy + E2E** — Android 共有メニュー → Discord DM/専用チャンネル → `inbox/discord.jsonl` → 朝 check-in `共有メモ新着:` を実機確認
-2. **D12 Obsidian inbox Syncthing 運用は任意化** — 手数が重い場合は Discord shared inbox を主経路にする
+1. **D13 画像-only / スクショ-only 実機 E2E** — `f782f59d` deploy+再起動後。`media_urls` → `discord.jsonl.attachments` · 長時間 typing なし · `vision_analyze_tool` なし
+2. **D12 Obsidian Syncthing 運用は任意化** — 手数が重い場合は Discord shared inbox を主経路にする（D13 が主経路候補）
 3. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
 4. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
 5. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
