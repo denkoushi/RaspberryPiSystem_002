@@ -1,0 +1,61 @@
+# Hermes Life Pilot policy (D6-life)
+# Purpose: try Hermes as a private daily-life butler before allowing any
+# Cursor/Codex worker automation, terminal, git, deploy, or secret access.
+
+phase: life_pilot_v0
+model_route: spark_localai
+output_mode: private_life_log
+storage_root: /home/hermes/.hermes-life
+max_prompt_chars: 2000
+
+# Hard gates for the first life pilot.
+cursor_codex_auto_run: false
+terminal_enabled: false
+git_enabled: false
+deploy_enabled: false
+secret_access_enabled: false
+external_web_enabled: false
+homeassistant_enabled: false
+
+allowed_task_classes:
+  - record_life_memo
+  - summarize_life_notes
+  - record_life_reminder
+  - suggest_life_next_actions
+
+deferred_task_classes:
+  - run_cursor_or_codex_cli
+  - edit_production_repo
+  - git_commit_push_merge
+  - deploy_or_restart_services
+  - read_secrets_or_tokens
+  - terminal_shell_execution
+  - tailnet_or_lan_scan
+  - external_web_research
+  - homeassistant_or_camera_control
+
+deny_prompt_substrings:
+  - "rm -rf"
+  - "ignore previous"
+  - "ignore all previous"
+  - "bypass policy"
+  - "ignore policy"
+  - ".env"
+  - "token"
+  - "secret"
+  - "api key"
+  - "password"
+
+deny_prompt_patterns:
+  - "\\b(codex|cursor|cursor-agent)\\b.*\\b(run|execute|start|invoke|use|launch)\\b"
+  - "\\b(run|execute|start|invoke|use|launch)\\b.*\\b(codex|cursor|cursor-agent)\\b"
+  - "(codex|cursor|cursor-agent)\\s*(を|で|から)?\\s*(実行|起動|使役|操作)\\s*(して|しろ|してください|する|しよう)?"
+  - "(codex|cursor|cursor-agent)\\s*(を|で)?\\s*(使って|使う|使用して|使用する)"
+  - "(実行|起動|使役|操作)\\s*(して|しろ|してください|する|しよう)?\\s*(codex|cursor|cursor-agent)"
+  - "\\bgit\\s+(commit|push|merge|reset|checkout|rebase)(?![A-Za-z0-9_-])"
+  - "\\b(systemctl|sudo|ssh|scp)\\b"
+  - "\\bdocker\\s+(run|exec|compose|restart|stop|rm)\\b"
+  - "\\b(deploy|terminal|shell|bash|zsh)(?![A-Za-z0-9_-])"
+  - "\\b(web|browser|search|crawl|scrape)\\b"
+  - "\\b(homeassistant|camera|lock|unlock|light|sensor)\\b"
+  - "(デプロイ|コミット|プッシュ|ターミナル|シェル|秘密|トークン|\\.env|検索|ブラウザ|カメラ|鍵|照明)"

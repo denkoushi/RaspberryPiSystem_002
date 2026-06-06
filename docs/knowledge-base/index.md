@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - 索引
 tags: [トラブルシューティング, ナレッジベース, 索引]
 audience: [開発者, 運用者]
-last-verified: 2026-05-18
+last-verified: 2026-06-06
 related: [api.md, database.md, ci-cd.md, frontend.md, infrastructure.md]
 category: knowledge-base
 update-frequency: high
@@ -42,6 +42,7 @@ update-frequency: high
 | 私用 Pi5 Hermes（`/task` write E2E · `yes` 承認） | [KB D5 §yes 最終修正](./KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) | 1件 | **2026-06-05 夜**: **channel 承認キー** + Hermes **`base.py` hotfix** · Discord write E2E **PASS**（`test-20260605-2.txt`） |
 | 私用 Pi5 Hermes（`/task` 安全枠 · task class / regex deny） | [KB D5 §安全枠](./KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) | 1件 | **2026-06-05**: allowed/deferred labels · Codex/Cursor/git/deploy/terminal deferred · 131 tests OK · Pi5 deploy 待ち |
 | 私用 Pi5 Hermes（D6-pre `/daily` 普段遣いパイロット） | [KB daily pilot](./KB-private-pi5-hermes-daily-pilot.md) | 1件 | **2026-06-06**: **D6-pre 合格** · Discord `/daily` Ansible command sync · 標準 deploy 収束 · 149 tests OK · [ExecPlan D6-pre](../plans/private-pi5-hermes-daily-pilot-execplan.md) |
+| 私用 Pi5 Hermes（D6-life Life Pilot） | [KB Life Pilot](./KB-private-pi5-hermes-life-pilot.md) | 1件 | **2026-06-06**: 私用 Pi5 + Discord E2E 完了 · `/memo` `/digest` `/remind` `/recommend` · private log under `/home/hermes/.hermes-life` · focused 39 tests OK · [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) |
 | 私用 Pi5 Hermes（Novel profile 本番） | [KB Novel 本番](./KB-private-pi5-hermes-novel-profile-production.md) | 1件 | **2026-05-29**: 第3プロファイル `novel` · Discord `/novel` · DGX `qwen36_35b_uncensored` on-demand · 私用 Pi5 のみ · **`ok=138 failed=0`** · D4 非回帰 OK · Discord E2E（35B cold start）手動未。[ExecPlan Novel](../plans/private-pi5-hermes-novel-profile-execplan.md) |
 | 私用 Pi5 Hermes（AI執事ビジョン・D4以降） | [private-pi5-hermes-butler-vision-and-roadmap.md](../plans/private-pi5-hermes-butler-vision-and-roadmap.md) | 1件 | **2026-05-25**: Discord 執事の北極星・D5 橋・memory/X/HA 段階計画・**当面はセキュア構築優先**（非エンジニア向け要約あり） |
 | 私用 Pi5 Hermes（ツール向けセキュリティ・Phase D0–D1） | [KB-private-pi5-hermes-tools-security-threat-model.md](./KB-private-pi5-hermes-tools-security-threat-model.md) | 1件 | 脅威モデル・D1/D2 チェックリスト。[ADR-20260525](../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md) |
@@ -513,6 +514,7 @@ update-frequency: high
 
 ## 📅 更新履歴
 
+- 2026-06-06: 私用 Pi5 **Hermes D6-life Life Pilot 実機E2E完了**（`/memo` `/digest` `/remind` `/recommend` · private log · Codex/Cursor/terminal/git/deploy/web/HA 無効 · focused 39 tests OK · Discord safe/reject OK）を [KB Life Pilot](./KB-private-pi5-hermes-life-pilot.md)・[ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md)・[Hermes Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-私用-pi5--discord-e2e-完了)・[`EXEC_PLAN.md`](../../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24) に反映。
 - 2026-06-06: 私用 Pi5 **Hermes D6-pre `/daily` 合格**（Discord command sync · 標準 Ansible deploy 収束 · policy regex · 149 tests OK）を [KB daily pilot](./KB-private-pi5-hermes-daily-pilot.md)・[ExecPlan D6-pre](../plans/private-pi5-hermes-daily-pilot-execplan.md)・[Hermes Runbook §D6-pre](../runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了)・[`EXEC_PLAN.md`](../../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24) に反映。
 - 2026-06-05: 私用 Pi5 **Hermes D6-pre `/daily` 普段遣いパイロット**（Markdown-only · deterministic handoff · regex deny）を [KB daily pilot](./KB-private-pi5-hermes-daily-pilot.md)・[ExecPlan D6-pre](../plans/private-pi5-hermes-daily-pilot-execplan.md)・[Hermes Runbook §D6-pre](../runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-05)・[脅威モデル](./KB-private-pi5-hermes-tools-security-threat-model.md)・[執事ロードマップ](../plans/private-pi5-hermes-butler-vision-and-roadmap.md)・[`EXEC_PLAN.md`](../../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24) に反映。
 - 2026-06-05: 私用 Pi5 **Hermes `/task` 安全枠明文化**（`task-bridge.policy.yaml` · allowed/deferred task classes · regex deny）を [KB D5 §安全枠](./KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo)・[脅威モデル](./KB-private-pi5-hermes-tools-security-threat-model.md)・[執事ロードマップ](../plans/private-pi5-hermes-butler-vision-and-roadmap.md)・[`EXEC_PLAN.md`](../../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24) に反映。

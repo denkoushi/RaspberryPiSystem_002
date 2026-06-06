@@ -17,6 +17,7 @@ from lib.discord_command_sync import (  # noqa: E402
     DISCORD_API_BASE,
     DiscordCommandSyncError,
     sync_daily_command,
+    sync_life_commands,
 )
 
 
@@ -25,8 +26,14 @@ def main() -> int:
     parser.add_argument(
         "--daily-state",
         choices=("present", "absent"),
-        required=True,
+        default=None,
         help="Desired state for the global /daily command.",
+    )
+    parser.add_argument(
+        "--life-state",
+        choices=("present", "absent"),
+        default=None,
+        help="Desired state for global /memo, /digest, /remind, and /recommend commands.",
     )
     parser.add_argument(
         "--base-url",
@@ -34,15 +41,35 @@ def main() -> int:
         help=argparse.SUPPRESS,
     )
     args = parser.parse_args()
+    if args.daily_state is None and args.life_state is None:
+        parser.error("at least one of --daily-state or --life-state is required")
 
     token = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
     try:
-        result = sync_daily_command(token, args.daily_state, args.base_url)
+        results: list[dict[str, object]] = []
+        if args.daily_state is not None:
+            results.append(
+                {
+                    "scope": "daily",
+                    **sync_daily_command(token, args.daily_state, args.base_url),
+                }
+            )
+        if args.life_state is not None:
+            results.append(
+                {
+                    "scope": "life",
+                    **sync_life_commands(token, args.life_state, args.base_url),
+                }
+            )
     except DiscordCommandSyncError as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True))
         return 1
 
-    print(json.dumps({"ok": True, **result}, sort_keys=True))
+    changed = any(bool(result.get("changed")) for result in results)
+    payload: dict[str, object] = {"ok": True, "changed": changed, "results": results}
+    if len(results) == 1:
+        payload.update(results[0])
+    print(json.dumps(payload, sort_keys=True))
     return 0
 
 

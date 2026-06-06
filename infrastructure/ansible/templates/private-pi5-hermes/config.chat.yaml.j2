@@ -46,13 +46,16 @@ agent:
 {% if private_pi5_hermes_daily_pilot_enabled | default(false) | bool %}
     日常の作業整理、Cursor/Codexへ渡す文案、CI/Deploy確認リストは `/daily <メモ>` で依頼してください（Markdown作成のみ、自動実行なし）。
 {% endif %}
+{% if private_pi5_hermes_life_pilot_enabled | default(false) | bool %}
+    今日あったこと、備忘録、軽いリマインド、次にやる小さな提案は `/memo` `/digest` `/remind` `/recommend` で扱ってください（Life Pilotのローカル記録のみ、自動実行なし）。
+{% endif %}
 {% if private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool %}
     ファイル・Web・ブラウザ作業は `/task <指示>` で依頼してください（作業用プロファイルへ委譲）。
 {% endif %}
 {% if private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool %}
     小説創作は `/novel <指示>` で依頼してください（創作用プロファイルへ委譲）。
 {% endif %}
-{% if not (private_pi5_hermes_daily_pilot_enabled | default(false) | bool or private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool or private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool) %}
+{% if not (private_pi5_hermes_daily_pilot_enabled | default(false) | bool or private_pi5_hermes_life_pilot_enabled | default(false) | bool or private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool or private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool) %}
     ユーザーが「詳しく」「長く」と明示したときだけ、必要な分だけ長めに書いてください。
 {% endif %}
     不要な前置き・同内容の繰り返し・長い箇条書きは避けてください。
@@ -89,7 +92,7 @@ agent:
 platform_toolsets:
   discord: []
 
-{% if private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool or private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool or private_pi5_hermes_daily_pilot_enabled | default(false) | bool %}
+{% if private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool or private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool or private_pi5_hermes_daily_pilot_enabled | default(false) | bool or private_pi5_hermes_life_pilot_enabled | default(false) | bool %}
 plugins:
   enabled:
     - private-pi5-discord-task-bridge

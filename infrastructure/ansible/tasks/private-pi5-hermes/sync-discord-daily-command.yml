@@ -1,12 +1,14 @@
 ---
-# D6-pre: reconcile only the Discord global /daily slash command.
-- name: Sync Discord daily pilot slash command
+# D6-pre / D6-life: reconcile Discord global pilot slash commands.
+- name: Sync Discord daily and life pilot slash commands
   ansible.builtin.command:
     argv:
       - python3
       - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/sync-discord-commands.py"
       - --daily-state
       - "{{ 'present' if (private_pi5_hermes_daily_pilot_enabled | default(false) | bool) else 'absent' }}"
+      - --life-state
+      - "{{ 'present' if (private_pi5_hermes_life_pilot_enabled | default(false) | bool) else 'absent' }}"
   environment:
     DISCORD_BOT_TOKEN: "{{ private_pi5_hermes_discord_bot_token }}"
   register: private_pi5_hermes_daily_command_sync

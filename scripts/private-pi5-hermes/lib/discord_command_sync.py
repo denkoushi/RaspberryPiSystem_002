@@ -29,6 +29,69 @@ DAILY_COMMAND: dict[str, Any] = {
     ],
 }
 
+LIFE_COMMANDS: tuple[dict[str, Any], ...] = (
+    {
+        "name": "memo",
+        "description": "Record a private Life Pilot memo without execution",
+        "type": 1,
+        "dm_permission": True,
+        "integration_types": [0, 1],
+        "options": [
+            {
+                "type": 3,
+                "name": "args",
+                "description": "Arguments: <life note>",
+                "required": False,
+            }
+        ],
+    },
+    {
+        "name": "digest",
+        "description": "Summarize private Life Pilot notes and reminders",
+        "type": 1,
+        "dm_permission": True,
+        "integration_types": [0, 1],
+        "options": [
+            {
+                "type": 3,
+                "name": "args",
+                "description": "Arguments: [focus]",
+                "required": False,
+            }
+        ],
+    },
+    {
+        "name": "remind",
+        "description": "Record a private Life Pilot reminder request",
+        "type": 1,
+        "dm_permission": True,
+        "integration_types": [0, 1],
+        "options": [
+            {
+                "type": 3,
+                "name": "args",
+                "description": "Arguments: <reminder>",
+                "required": False,
+            }
+        ],
+    },
+    {
+        "name": "recommend",
+        "description": "Suggest small next steps from Life Pilot notes only",
+        "type": 1,
+        "dm_permission": True,
+        "integration_types": [0, 1],
+        "options": [
+            {
+                "type": 3,
+                "name": "args",
+                "description": "Arguments: [focus]",
+                "required": False,
+            }
+        ],
+    },
+)
+
 
 class DiscordCommandSyncError(RuntimeError):
     """Raised when Discord command synchronization fails."""
@@ -36,6 +99,10 @@ class DiscordCommandSyncError(RuntimeError):
 
 def daily_command_payload() -> dict[str, Any]:
     return copy.deepcopy(DAILY_COMMAND)
+
+
+def life_command_payloads() -> list[dict[str, Any]]:
+    return copy.deepcopy(list(LIFE_COMMANDS))
 
 
 def _redact_token(text: str, token: str) -> str:
@@ -188,14 +255,22 @@ class DiscordCommandSyncClient:
         )
 
 
-def sync_daily_command_with_client(client: Any, state: str) -> dict[str, Any]:
+def _validate_state(state: str) -> str:
     desired_state = state.strip().lower()
     if desired_state not in {"present", "absent"}:
         raise DiscordCommandSyncError("state must be present or absent")
+    return desired_state
 
-    app_id = client.get_application_id()
-    commands = client.list_global_commands(app_id)
-    desired = daily_command_payload()
+
+def _sync_command_with_client(
+    client: Any,
+    *,
+    app_id: str,
+    commands: list[dict[str, Any]],
+    desired: dict[str, Any],
+    state: str,
+) -> dict[str, Any]:
+    desired_state = _validate_state(state)
     existing = find_command(commands, desired["name"])
 
     if desired_state == "present":
@@ -223,7 +298,7 @@ def sync_daily_command_with_client(client: Any, state: str) -> dict[str, Any]:
         }
     command_id = str(existing.get("id", "")).strip()
     if not command_id:
-        raise DiscordCommandSyncError("existing /daily command did not include an id")
+        raise DiscordCommandSyncError(f"existing /{desired['name']} command did not include an id")
     client.delete_global_command(app_id, command_id)
     return {
         "changed": True,
@@ -233,6 +308,40 @@ def sync_daily_command_with_client(client: Any, state: str) -> dict[str, Any]:
     }
 
 
+def sync_command_payloads_with_client(
+    client: Any,
+    payloads: list[dict[str, Any]],
+    state: str,
+) -> dict[str, Any]:
+    desired_state = _validate_state(state)
+    app_id = client.get_application_id()
+    commands = client.list_global_commands(app_id)
+    results = [
+        _sync_command_with_client(
+            client,
+            app_id=app_id,
+            commands=commands,
+            desired=payload,
+            state=desired_state,
+        )
+        for payload in payloads
+    ]
+    return {
+        "changed": any(bool(item["changed"]) for item in results),
+        "state": desired_state,
+        "commands": results,
+    }
+
+
+def sync_daily_command_with_client(client: Any, state: str) -> dict[str, Any]:
+    result = sync_command_payloads_with_client(client, [daily_command_payload()], state)
+    return dict(result["commands"][0])
+
+
+def sync_life_commands_with_client(client: Any, state: str) -> dict[str, Any]:
+    return sync_command_payloads_with_client(client, life_command_payloads(), state)
+
+
 def sync_daily_command(
     token: str,
     state: str,
@@ -240,3 +349,12 @@ def sync_daily_command(
 ) -> dict[str, Any]:
     client = DiscordCommandSyncClient(token, base_url)
     return sync_daily_command_with_client(client, state)
+
+
+def sync_life_commands(
+    token: str,
+    state: str,
+    base_url: str = DISCORD_API_BASE,
+) -> dict[str, Any]:
+    client = DiscordCommandSyncClient(token, base_url)
+    return sync_life_commands_with_client(client, state)

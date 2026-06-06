@@ -16,6 +16,19 @@
     group: "{{ private_pi5_hermes_group }}"
     mode: "0700"
 
+- name: Ensure Life Pilot private data directories exist (D6-life)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
+  loop:
+    - "{{ private_pi5_hermes_life_data_dir }}"
+    - "{{ private_pi5_hermes_life_data_dir }}/notes"
+    - "{{ private_pi5_hermes_life_data_dir }}/reminders"
+  when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
+
 - name: Deploy discord-task-bridge shared Python modules
   ansible.builtin.copy:
     src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/lib/{{ item }}"
@@ -38,6 +51,8 @@
     - discord_novel_bridge.py
     - daily_pilot_policy.py
     - discord_daily_pilot_bridge.py
+    - life_pilot_policy.py
+    - discord_life_pilot_bridge.py
 
 - name: Ensure approval relay package directory exists on plugin path
   ansible.builtin.file:
@@ -138,6 +153,21 @@
     state: absent
   when: not (private_pi5_hermes_daily_pilot_enabled | default(false) | bool)
 
+- name: Deploy life-pilot policy reference on host
+  ansible.builtin.copy:
+    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/life-pilot.policy.yaml"
+    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/life-pilot.policy.yaml"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0644"
+  when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
+
+- name: Remove stale life-pilot policy when pilot is disabled
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/life-pilot.policy.yaml"
+    state: absent
+  when: not (private_pi5_hermes_life_pilot_enabled | default(false) | bool)
+
 - name: Verify discord-task-bridge policy from repo smoke
   ansible.builtin.command:
     argv:
@@ -166,12 +196,33 @@
   become: false
   when: private_pi5_hermes_daily_pilot_enabled | default(false) | bool
 
+- name: Verify life-pilot policy from repo smoke
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/validate_boundary_policy.py"
+      - --validate-life-pilot
+      - --life-pilot-policy
+      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/life-pilot.policy.yaml"
+  register: private_pi5_hermes_life_pilot_validate
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
+
 - name: Assert daily-pilot policy validation passed
   ansible.builtin.assert:
     that:
       - private_pi5_hermes_daily_pilot_validate.rc == 0
     fail_msg: "daily-pilot.policy.yaml validation failed on controller"
   when: private_pi5_hermes_daily_pilot_enabled | default(false) | bool
+
+- name: Assert life-pilot policy validation passed
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_life_pilot_validate.rc == 0
+    fail_msg: "life-pilot.policy.yaml validation failed on controller"
+  when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
 
 - name: Assert discord-task-bridge policy validation passed
   ansible.builtin.assert:

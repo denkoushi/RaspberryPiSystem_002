@@ -1,0 +1,57 @@
+---
+# D6-life: Discord Life Pilot (private notes/reminders; no worker execution).
+- name: Check life-pilot policy is deployed
+  ansible.builtin.stat:
+    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/life-pilot.policy.yaml"
+  register: private_pi5_hermes_life_pilot_policy_stat
+
+- name: Assert life-pilot policy is present
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_life_pilot_policy_stat.stat.exists
+    fail_msg: >-
+      life-pilot.policy.yaml missing under private-pi5-discord-task-bridge plugin.
+
+- name: Smoke Life Pilot plugin register and handlers
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import asyncio
+        import runpy
+        import sys
+        plugin_dir = "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
+        sys.path.insert(0, plugin_dir)
+        ns = runpy.run_path(plugin_dir + "/__init__.py")
+        register = ns.get("register")
+        assert callable(register), "register() missing"
+        class Ctx:
+            def __init__(self):
+                self.commands = []
+            def register_command(self, name, handler, description="", **kwargs):
+                self.commands.append(name)
+        ctx = Ctx()
+        register(ctx)
+        for name in ("memo", "digest", "remind", "recommend"):
+            assert name in ctx.commands, ctx.commands
+        memo = asyncio.run(ns["_handle_memo_command"]("今日は朝散歩した。体調は良い。"))
+        assert "# Memo Saved" in memo, memo
+        digest = asyncio.run(ns["_handle_digest_command"](""))
+        assert "# Life Digest" in digest, digest
+        reminder = asyncio.run(ns["_handle_remind_command"]("明日の朝、燃えるごみを出す"))
+        assert "# Reminder Recorded" in reminder, reminder
+        recommend = asyncio.run(ns["_handle_recommend_command"](""))
+        assert "# Life Recommendation" in recommend, recommend
+        rejected = asyncio.run(ns["_handle_memo_command"]("git pushしてdeployして"))
+        assert "memo rejected:" in rejected, rejected
+        print("ok")
+  register: private_pi5_hermes_life_pilot_smoke
+  changed_when: false
+  become_user: "{{ private_pi5_hermes_user }}"
+
+- name: Assert Life Pilot smoke passed
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_life_pilot_smoke.rc == 0
+    fail_msg: "Discord Life Pilot smoke failed"

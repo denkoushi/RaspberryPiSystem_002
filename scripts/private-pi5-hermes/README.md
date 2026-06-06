@@ -21,6 +21,7 @@
 | Phase D4（file+web+browser） | [ExecPlan D4](../../docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md) · `HERMES_TOOLS_PHASE=d4` · `verify-tools-browser-smoke.sh` |
 | Phase D5（Discord `/task` 橋） | [ExecPlan D5](../../docs/plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) · `verify-discord-task-bridge-smoke.sh` · `plugin.yaml` · `hermes-discord-task-bridge` |
 | D6-pre（普段遣いパイロット） | [ExecPlan](../../docs/plans/private-pi5-hermes-daily-pilot-execplan.md) · [KB](../../docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md) · [`config/daily-pilot.policy.yaml`](config/daily-pilot.policy.yaml) · [`lib/discord_command_sync.py`](lib/discord_command_sync.py) · [`sync-discord-commands.py`](sync-discord-commands.py) |
+| D6-life（Life Pilot） | [ExecPlan](../../docs/plans/private-pi5-hermes-life-pilot-execplan.md) · [KB](../../docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md) · [`config/life-pilot.policy.yaml`](config/life-pilot.policy.yaml) · [`lib/discord_life_pilot_bridge.py`](lib/discord_life_pilot_bridge.py) |
 | Novel profile（`/novel` 創作） | [ExecPlan](../../docs/plans/private-pi5-hermes-novel-profile-execplan.md) · [KB 本番](../../docs/knowledge-base/KB-private-pi5-hermes-novel-profile-production.md) · `lib/novel_profile_runner.py` · DGX `qwen36_35b_uncensored` on-demand |
 | 境界ポリシー | [`lib/boundary_policy.py`](lib/boundary_policy.py) · [`config_contract.py`](lib/config_contract.py) · [`hermes_security_adapter.py`](lib/hermes_security_adapter.py) · [`config/boundary-policy.tools.yaml`](config/boundary-policy.tools.yaml) |
 
@@ -31,6 +32,7 @@
 - DGX token: `private_pi5_dgx_llm_shared_token`（StackChan）。chat は `private_pi5_hermes_chat_dgx_llm_token`。tools（D1+）は `private_pi5_hermes_tools_dgx_llm_token`（**chat と別必須**・DGX `LLM_SHARED_ADDITIONAL_TOKENS`）
 - Discord（任意）: `private_pi5_hermes_discord_bot_token` / `private_pi5_hermes_discord_allowed_users` / `private_pi5_hermes_gateway_enabled: true`
 - Daily pilot（任意）: `private_pi5_hermes_daily_pilot_enabled: true`（`/daily`。Markdown 作成のみ）· Discord global slash は deploy 時に `sync-discord-commands.py` で `present`/`absent`（要 `private_pi5_hermes_discord_bot_token`）
+- Life pilot（任意）: `private_pi5_hermes_life_pilot_enabled: true`（`/memo` `/digest` `/remind` `/recommend`。生活メモ保存のみ）· 保存先 `/home/hermes/.hermes-life`
 - Novel（任意）: `private_pi5_hermes_novel_profile_enabled: true` · `private_pi5_hermes_discord_novel_bridge_enabled: true`（要 `private_pi5_dgx_runtime_control_token`）
 
 ## セキュリティ + 雑談プロファイル（2026-05-24）
@@ -95,6 +97,23 @@ python3 -m unittest scripts/private-pi5-hermes/tests/test_daily_pilot_policy.py 
 |------|------|
 | `/daily` が Discord に出ない | command sync · [Runbook §D6-pre](../../docs/runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了) |
 | 安全文案が拒否 / `git pushして` が通る | 古い policy — [KB §regex](../../docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md#investigation--policy-regex-修正2026-06-06) |
+
+## Life Pilot（D6-life）
+
+正本: [`config/life-pilot.policy.yaml`](config/life-pilot.policy.yaml) · [ExecPlan](../../docs/plans/private-pi5-hermes-life-pilot-execplan.md) · [KB](../../docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md)
+
+AI執事の体感を先に作るため、Discord から日常メモ・備忘録・軽いリマインド要求・次アクション提案を扱う。コマンドは `/memo` `/digest` `/remind` `/recommend`。保存は `/home/hermes/.hermes-life` のみ。
+
+**自動実行なし**: Cursor/Codex CLI、terminal、git、deploy、秘密読取、外部Web検索、Home Assistant/カメラ制御は無効。
+
+有効化は fragment に `private_pi5_hermes_life_pilot_enabled: true` を置く。Discord global slash は deploy 時に `present`/`absent` 管理される。
+
+**2026-06-06**: 私用 Pi5 + Discord E2E 完了。`/memo` 保存、`/digest` 表示、`/remind` 記録、危険 `/memo git pushしてdeployして` 拒否を確認済み。個人メモ本文は docs に残さない。
+
+```bash
+python3 scripts/private-pi5-hermes/validate_boundary_policy.py --validate-life-pilot
+python3 -m unittest scripts/private-pi5-hermes/tests/test_life_pilot_policy.py scripts/private-pi5-hermes/tests/test_discord_life_pilot_bridge.py -v
+```
 
 ## トラブルシュート（`/task` · 2026-06-05 追記）
 

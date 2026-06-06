@@ -25,6 +25,11 @@ from lib.daily_pilot_policy import (  # noqa: E402
 from lib.discord_task_bridge import emission_json as task_bridge_emission_json  # noqa: E402
 from lib.hermes_browser_adapter import hermes_browser_emission  # noqa: E402
 from lib.hermes_security_adapter import hermes_security_emission  # noqa: E402
+from lib.life_pilot_policy import (  # noqa: E402
+    LifePilotPolicy,
+    life_pilot_emission_json,
+    validate_life_pilot_document,
+)
 from lib.task_bridge_policy import (  # noqa: E402
     TaskBridgePolicy,
     validate_task_bridge_document,
@@ -88,6 +93,17 @@ def main() -> int:
         type=Path,
         default=Path(__file__).resolve().parent / "config" / "daily-pilot.policy.yaml",
         help="Path to daily pilot policy YAML (D6-pre)",
+    )
+    parser.add_argument(
+        "--validate-life-pilot",
+        action="store_true",
+        help="Validate life-pilot.policy.yaml (D6-life) and emit contract JSON",
+    )
+    parser.add_argument(
+        "--life-pilot-policy",
+        type=Path,
+        default=Path(__file__).resolve().parent / "config" / "life-pilot.policy.yaml",
+        help="Path to life pilot policy YAML (D6-life)",
     )
     args = parser.parse_args()
 
@@ -153,6 +169,21 @@ def main() -> int:
             else:
                 daily_policy = DailyPilotPolicy.from_mapping(daily_data)
                 payload["daily_pilot"] = daily_pilot_emission_json(daily_policy)
+        except Exception as exc:
+            errors.append(str(exc))
+            payload["ok"] = False
+            payload["errors"] = errors
+    if args.validate_life_pilot:
+        try:
+            life_data = load_policy(args.life_pilot_policy)
+            life_errors = validate_life_pilot_document(life_data)
+            if life_errors:
+                errors.extend(life_errors)
+                payload["ok"] = False
+                payload["errors"] = errors
+            else:
+                life_policy = LifePilotPolicy.from_mapping(life_data)
+                payload["life_pilot"] = life_pilot_emission_json(life_policy)
         except Exception as exc:
             errors.append(str(exc))
             payload["ok"] = False

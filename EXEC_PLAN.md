@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-06-06 / **repo 実装・私用 Pi5 + Discord E2E 完了**) **Hermes D6-life Life Pilot**: Discord `/memo` `/digest` `/remind` `/recommend` を追加し、`/home/hermes/.hermes-life` の private log だけを扱う入口を実装。**自動実行なし**: Codex/Cursor、terminal、git、deploy、秘密読取、外部Web、Home Assistant/カメラ制御は policy で false/deferred。実装: `life-pilot.policy.yaml` · `life_pilot_policy.py` · `discord_life_pilot_bridge.py` · plugin register · Discord command sync · Ansible deploy/verify。**検証**: focused unittest **39 OK** · `--validate-life-pilot` OK · compileall OK · `git diff --check` OK · Ansible syntax check OK · Pi5 `hermes-gateway` active · slash 定義一致 · Discord safe/reject E2E OK。**docs**: [KB Life Pilot](./docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md) · [ExecPlan D6-life](./docs/plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](./docs/runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-私用-pi5--discord-e2e-完了)
+
 - [x] (2026-06-06 / **実装・私用 Pi5 実機 · `main` マージ**) **Hermes D6-pre Discord `/daily` Ansible command sync**: `discord_command_sync.py` · `sync-discord-commands.py` · `sync-discord-daily-command.yml` · playbook hook · unittest **149 OK**（sync focused **23 OK**）· **私用 Pi5**: 標準 Ansible deploy 収束 · Discord `/daily` **present**（定義一致）· 安全/危険 E2E OK · `/task` `/novel` 維持。**スコープ**: 私用 Pi5 のみ。**docs**: [KB daily pilot](./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md) · [Runbook §D6-pre](./docs/runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了) · [ExecPlan D6-pre](./docs/plans/private-pi5-hermes-daily-pilot-execplan.md)
 
 - [x] (2026-06-06 / **ドキュメントのみ · `main` マージ**) **Mac Cursor `state.vscdb` 破損復旧の記録**: 外部SSD運用下で `state.vscdb` 約 42GB + backup 35GB · `SQLITE_CORRUPT` 大量 → **退避 76GB**（`recovery-20260606-090149`）後に新 DB 正常化（integrity_check ok）· **リポジトリ/Git/未コミット WIP 無傷** · チャット/Agent 履歴は初期化。**運用**: 外部SSD継続 + サイズ監視。**docs**: [KB-388](./docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) · [mac-storage-migration §state.vscdb](./docs/guides/mac-storage-migration.md#cursor-statevscdb-の破損肥大化2026-06-06-追記) · [development §Agent復旧後](./docs/guides/development.md#cursor-状態db復旧後の-agent-作業2026-06-06) · [AGENTS.md §復旧後](./AGENTS.md#cursor-状態db復旧後2026-06-06) · 復旧メモ（Codex）: `~/Documents/Codex/2026-06-06/.../cursor_recovery_summary_20260606.md`
@@ -2692,7 +2694,7 @@ RECONCILE_RESOURCE=033 RECONCILE_YEAR_MONTH=2026-07 RECONCILE_REMAIN_H=706 RECON
 
 ### ?? Pi5 Hermes Agent ? ???????AI??????2026-05-24?25? {#private-pi5-hermes-discord-2026-05-24}
 
-**現状**: **Phase D4・D5 本番反映済（2026-05-25）** → **D5.1 完了**（write E2E 2026-06-05 夜）→ **`/task` 安全枠** → **D6-pre `/daily` 合格（2026-06-06）**（Markdown-only · policy regex · Discord command sync · 標準 Ansible deploy 収束 · 安全/危険 E2E OK）· unittest **149 OK** · **次**: D6 memory + D6+ Codex/Cursor worker 設計 · [KB daily pilot](./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md)
+**現状**: **Phase D4・D5 本番反映済（2026-05-25）** → **D5.1 完了**（write E2E 2026-06-05 夜）→ **`/task` 安全枠** → **D6-pre `/daily` 合格（2026-06-06）** → **D6-life Life Pilot 私用 Pi5 + Discord E2E 完了（2026-06-06）**（`/memo` `/digest` `/remind` `/recommend` · private log · Codex/Cursor/terminal/git/deploy/web/HA 無効）· focused unittest **39 OK** · **次**: D6 memory/retention + D7 reminder scheduling + D6+ Codex/Cursor worker 設計 · [KB Life Pilot](./docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md)
 
 **???????????????2026-05-25?**: ????? **Discord ?? AI??**???/????? ? X ?? ? ????? ? HA/??????? ? **?? tools ??**??**????????????**?Phase ????????????????????
 
@@ -2712,6 +2714,7 @@ RECONCILE_RESOURCE=033 RECONCILE_YEAR_MONTH=2026-07 RECONCILE_REMAIN_H=706 RECON
 | ✅ | Discord write E2E（2026-06-05 夜） | **完了** | `yes` interrupt 回避 · channel actor · Hermes `base.py` hotfix · `test-20260605-2.txt` OK · [KB §yes](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番復旧--承認-yes-が割り込みに吸われる2026-06-05-夜--discord-write-e2e-完結) |
 | ✅ | `/task` 安全枠明文化（2026-06-05） | **repo のみ** | task class labels · regex deny · 131 tests OK · Pi5 deploy 待ち · [KB §安全枠](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#task-安全枠の明文化2026-06-05--repo) |
 | ✅ | D6-pre `/daily` 普段遣いパイロット（2026-06-05–06） | **合格 · repo + 実機** | policy regex · Discord command sync · Ansible deploy 収束 · 149 tests OK · [KB daily pilot](./docs/knowledge-base/KB-private-pi5-hermes-daily-pilot.md) |
+| ✅ | D6-life Life Pilot（2026-06-06） | **私用 Pi5 E2E 完了** | `/memo` `/digest` `/remind` `/recommend` · private log · 39 tests OK · Discord safe/reject OK · [KB Life Pilot](./docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md) |
 
 #### D5 以降 — バトラー機能ロードマップ
 
@@ -2719,6 +2722,7 @@ RECONCILE_RESOURCE=033 RECONCILE_YEAR_MONTH=2026-07 RECONCILE_REMAIN_H=706 RECON
 |---|-------|--------|------|----------|
 | **1** | **D5.1** | **Discord write E2E 受け入れ** | **✅** | 2026-06-05 夜: `/task Create test-20260605-2.txt …` → `yes` → workspace 作成確認 |
 | **1b** | **D6-pre** | **`/daily` 普段遣いパイロット** | **✅** | 2026-06-06: 合格 · command sync + Ansible deploy 収束 · [ExecPlan D6-pre](./docs/plans/private-pi5-hermes-daily-pilot-execplan.md) |
+| **1c** | **D6-life** | **Life Pilot private log** | **✅** | 2026-06-06: 私用 Pi5 + Discord E2E 完了 · `/memo` `/digest` `/remind` `/recommend` · [ExecPlan D6-life](./docs/plans/private-pi5-hermes-life-pilot-execplan.md) |
 | 2 | D5.1 | runner ??? `verify-tool-write-approval-gate-pi5.sh` ??????? | ? | `request.json` ?????? `write_file` ??????????? |
 | 3 | ? | Discord `/task` read-only + ???? | ? | read-only `/task` ? ???????? chat ?? |
 | 3 | **D6** | memory + リマインド（限定） | 未 | ADR · 保持/削除ポリシー |

@@ -15,6 +15,16 @@ try:
         render_daily_usage,
         run_daily_pilot_bridge_async,
     )
+    from .discord_life_pilot_bridge import (
+        render_digest_usage,
+        render_memo_usage,
+        render_recommend_usage,
+        render_remind_usage,
+        run_life_digest_bridge_async,
+        run_life_memo_bridge_async,
+        run_life_recommend_bridge_async,
+        run_life_remind_bridge_async,
+    )
     from .discord_novel_bridge import run_novel_bridge_async
     from .novel_request import NovelRequest
     from .novel_profile_runner import NovelProfilePaths, render_novel_usage
@@ -28,6 +38,16 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
     from discord_daily_pilot_bridge import (
         render_daily_usage,
         run_daily_pilot_bridge_async,
+    )
+    from discord_life_pilot_bridge import (
+        render_digest_usage,
+        render_memo_usage,
+        render_recommend_usage,
+        render_remind_usage,
+        run_life_digest_bridge_async,
+        run_life_memo_bridge_async,
+        run_life_recommend_bridge_async,
+        run_life_remind_bridge_async,
     )
     from discord_novel_bridge import run_novel_bridge_async
     from novel_request import NovelRequest
@@ -70,6 +90,11 @@ def _daily_pilot_enabled() -> bool:
     return (_plugin_dir() / "daily-pilot.policy.yaml").is_file()
 
 
+def _life_pilot_enabled() -> bool:
+    """True when Ansible deployed life-pilot.policy.yaml (D6-life)."""
+    return (_plugin_dir() / "life-pilot.policy.yaml").is_file()
+
+
 def _coordinator() -> DiscordApprovalRelayCoordinator | None:
     global _COORDINATOR, _COORDINATOR_STORE_DIR
     try:
@@ -110,6 +135,32 @@ async def _handle_daily_command(raw_args: str) -> str:
     if not prompt:
         return render_daily_usage()
     return await run_daily_pilot_bridge_async(prompt)
+
+
+async def _handle_memo_command(raw_args: str) -> str:
+    """Record a private life memo without invoking workers or tools."""
+    prompt = (raw_args or "").strip()
+    if not prompt:
+        return render_memo_usage()
+    return await run_life_memo_bridge_async(prompt)
+
+
+async def _handle_digest_command(raw_args: str) -> str:
+    """Summarize local Life Pilot notes without external access."""
+    return await run_life_digest_bridge_async((raw_args or "").strip())
+
+
+async def _handle_remind_command(raw_args: str) -> str:
+    """Record a private reminder request without scheduling automation."""
+    prompt = (raw_args or "").strip()
+    if not prompt:
+        return render_remind_usage()
+    return await run_life_remind_bridge_async(prompt)
+
+
+async def _handle_recommend_command(raw_args: str) -> str:
+    """Suggest small next steps from local Life Pilot notes only."""
+    return await run_life_recommend_bridge_async((raw_args or "").strip())
 
 
 async def _handle_task_approve(raw_args: str) -> str:
@@ -196,6 +247,31 @@ def register(ctx) -> None:
             handler=_handle_daily_command,
             description="Draft a safe daily-use Markdown handoff without execution",
             args_hint="<memo or request>",
+        )
+    if _life_pilot_enabled():
+        ctx.register_command(
+            "memo",
+            handler=_handle_memo_command,
+            description="Record a private Life Pilot memo without execution",
+            args_hint="<life note>",
+        )
+        ctx.register_command(
+            "digest",
+            handler=_handle_digest_command,
+            description="Summarize private Life Pilot notes and reminders",
+            args_hint="[focus]",
+        )
+        ctx.register_command(
+            "remind",
+            handler=_handle_remind_command,
+            description="Record a private Life Pilot reminder request",
+            args_hint="<reminder>",
+        )
+        ctx.register_command(
+            "recommend",
+            handler=_handle_recommend_command,
+            description="Suggest small next steps from Life Pilot notes only",
+            args_hint="[focus]",
         )
     if _novel_bridge_enabled():
         ctx.register_command(
