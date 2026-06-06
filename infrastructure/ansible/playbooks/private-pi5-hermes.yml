@@ -26,6 +26,17 @@
         and (private_pi5_hermes_life_reminder_scheduler_enabled | default(true) | bool)
         and ((private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0)
       }}
+    private_pi5_hermes_life_proactive_loop_active: >-
+      {{
+        (private_pi5_hermes_life_pilot_enabled | default(false) | bool)
+        and (private_pi5_hermes_life_proactive_loop_enabled | default(true) | bool)
+        and ((private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0)
+      }}
+    private_pi5_hermes_life_discord_ui_relay_active: >-
+      {{
+        private_pi5_hermes_life_proactive_loop_active
+        and (private_pi5_hermes_life_discord_ui_relay_enabled | default(true) | bool)
+      }}
     private_pi5_hermes_bin: "{{ private_pi5_hermes_home }}/.local/bin/hermes"
     hermes_terminal_mount_cwd_to_workspace: false
     hermes_terminal_docker_volumes: >-
@@ -235,6 +246,9 @@
     - name: Configure Hermes Life Pilot reminder scheduler
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/life-reminder-scheduler.yml"
 
+    - name: Configure Hermes Life Pilot proactive loop
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/life-proactive-loop.yml"
+
     - name: Deploy Hermes tools profile skeleton
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-tools-profile.yml"
       when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
@@ -304,6 +318,8 @@
           - "daily_pilot_enabled={{ private_pi5_hermes_daily_pilot_enabled | default(false) }}"
           - "life_pilot_enabled={{ private_pi5_hermes_life_pilot_enabled | default(false) }}"
           - "life_reminder_scheduler_active={{ private_pi5_hermes_life_reminder_scheduler_active }}"
+          - "life_proactive_loop_active={{ private_pi5_hermes_life_proactive_loop_active }}"
+          - "life_discord_ui_relay_active={{ private_pi5_hermes_life_discord_ui_relay_active }}"
           - "dgx_keep_warm_active={{ private_pi5_hermes_dgx_keep_warm_active }}"
           - "discord_configured={{ (private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0 }}"
 

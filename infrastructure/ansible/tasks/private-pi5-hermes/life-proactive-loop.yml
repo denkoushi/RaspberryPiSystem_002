@@ -1,0 +1,66 @@
+---
+# D8-life: proactive Life Pilot morning/evening check-ins.
+- name: Install Hermes Life Pilot proactive systemd units
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: "../templates/private-pi5-hermes-life-proactive@.service.j2"
+      dest: /etc/systemd/system/hermes-life-proactive@.service
+    - src: "../templates/private-pi5-hermes-life-proactive-morning.timer.j2"
+      dest: /etc/systemd/system/hermes-life-proactive-morning.timer
+    - src: "../templates/private-pi5-hermes-life-proactive-evening.timer.j2"
+      dest: /etc/systemd/system/hermes-life-proactive-evening.timer
+    - src: "../templates/private-pi5-hermes-life-discord-ui.service.j2"
+      dest: /etc/systemd/system/hermes-life-discord-ui.service
+  notify: Reload systemd daemon
+
+- name: Enable Hermes Life Pilot proactive timers
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - hermes-life-proactive-morning.timer
+    - hermes-life-proactive-evening.timer
+  when: private_pi5_hermes_life_proactive_loop_active | bool
+
+- name: Disable Hermes Life Pilot proactive timers when inactive
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+    daemon_reload: true
+  loop:
+    - hermes-life-proactive-morning.timer
+    - hermes-life-proactive-evening.timer
+  when: not (private_pi5_hermes_life_proactive_loop_active | bool)
+
+- name: Warn when Life Pilot proactive loop is inactive
+  ansible.builtin.debug:
+    msg: >-
+      hermes-life-proactive is inactive: enable Life Pilot and set
+      private_pi5_hermes_discord_bot_token in the local inventory fragment.
+  when:
+    - private_pi5_hermes_life_pilot_enabled | default(false) | bool
+    - not (private_pi5_hermes_life_proactive_loop_active | bool)
+
+- name: Enable Hermes Life Pilot Discord UI relay
+  ansible.builtin.systemd:
+    name: hermes-life-discord-ui.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: private_pi5_hermes_life_discord_ui_relay_active | bool
+
+- name: Disable Hermes Life Pilot Discord UI relay when inactive
+  ansible.builtin.systemd:
+    name: hermes-life-discord-ui.service
+    enabled: false
+    state: stopped
+    daemon_reload: true
+  when: not (private_pi5_hermes_life_discord_ui_relay_active | bool)

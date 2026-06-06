@@ -112,6 +112,7 @@ def send_discord_channel_message(
     content: str,
     *,
     base_url: str = DISCORD_API_BASE,
+    components: list[dict[str, Any]] | None = None,
 ) -> DiscordSendResult:
     cleaned_token = token.strip()
     cleaned_channel = channel_id.strip()
@@ -122,7 +123,10 @@ def send_discord_channel_message(
     if not content.strip():
         return DiscordSendResult(ok=False, error="message content is empty")
 
-    body = json.dumps({"content": content[:2000]}, ensure_ascii=False).encode("utf-8")
+    payload: dict[str, Any] = {"content": content[:2000]}
+    if components:
+        payload["components"] = components
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
         f"{base_url.rstrip('/')}/channels/{cleaned_channel}/messages",
         data=body,

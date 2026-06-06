@@ -87,13 +87,15 @@ class PluginRegisterTests(unittest.TestCase):
                 plugin.register(ctx)
 
             registered = [c[0][0] for c in ctx.register_command.call_args_list]
-            self.assertEqual(registered, ["memo", "digest", "remind", "recommend"])
+            self.assertEqual(registered, ["memo", "digest", "remind", "recommend", "life-reply"])
             memo_call = ctx.register_command.call_args_list[0]
             self.assertEqual(memo_call[1].get("args_hint"), "<life note>")
             remind_call = ctx.register_command.call_args_list[2]
             self.assertEqual(remind_call[1].get("args_hint"), "<when and reminder>")
             recommend_call = ctx.register_command.call_args_list[3]
             self.assertEqual(recommend_call[1].get("args_hint"), "[focus]")
+            reply_call = ctx.register_command.call_args_list[4]
+            self.assertEqual(reply_call[1].get("args_hint"), "<1|2|3|free text>")
             ctx.register_hook.assert_called_once()
 
     def test_task_approve_returns_expired_message_without_failed_prefix(self) -> None:
@@ -135,6 +137,75 @@ class PluginRegisterTests(unittest.TestCase):
             result = asyncio.run(plugin._handle_task_deny(""))
 
         self.assertEqual(result, "承認期限切れ。もう一度 `/task` を実行してください。")
+
+    def test_pre_gateway_dispatch_handles_life_proactive_reply(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+
+        class Event:
+            text = "1"
+            source = Source()
+            internal = False
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def send(self, chat_id: str, message: str) -> None:
+                self.messages.append((chat_id, message))
+
+        adapter = Adapter()
+
+        class Gateway:
+            adapters = {"discord": adapter}
+
+        with unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value="受け取りました",
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-proactive-reply"})
+        self.assertEqual(adapter.messages, [("channel-1", "受け取りました")])
+
+    def test_life_reply_command_returns_proactive_reply(self) -> None:
+        with unittest.mock.patch.object(
+            plugin,
+            "read_gateway_session_context",
+            return_value=("user-1", "channel-1"),
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value="受け取りました: まず1つやる",
+        ):
+            result = asyncio.run(plugin._handle_life_reply_command("1"))
+
+        self.assertEqual(result, "受け取りました: まず1つやる")
+
+    def test_life_reply_command_reports_no_pending_checkin(self) -> None:
+        with unittest.mock.patch.object(
+            plugin,
+            "read_gateway_session_context",
+            return_value=("user-1", "channel-1"),
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ):
+            result = asyncio.run(plugin._handle_life_reply_command("1"))
+
+        self.assertIn("返信待ちの朝晩確認がありません", result)
 
 
 if __name__ == "__main__":

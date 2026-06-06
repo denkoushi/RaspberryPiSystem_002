@@ -26,6 +26,10 @@ try:
         run_life_recommend_bridge_async,
         run_life_remind_bridge_async,
     )
+    from .life_proactive_loop import (
+        remember_life_discord_context,
+        resolve_proactive_reply,
+    )
     from .discord_novel_bridge import run_novel_bridge_async
     from .novel_request import NovelRequest
     from .novel_profile_runner import NovelProfilePaths, render_novel_usage
@@ -50,6 +54,10 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
         run_life_memo_bridge_async,
         run_life_recommend_bridge_async,
         run_life_remind_bridge_async,
+    )
+    from life_proactive_loop import (
+        remember_life_discord_context,
+        resolve_proactive_reply,
     )
     from discord_novel_bridge import run_novel_bridge_async
     from novel_request import NovelRequest
@@ -114,6 +122,38 @@ def _coordinator() -> DiscordApprovalRelayCoordinator | None:
     return _COORDINATOR
 
 
+def _remember_life_context(user_id: str, channel_id: str) -> None:
+    if not channel_id:
+        return
+    try:
+        remember_life_discord_context(user_id, channel_id)
+    except (OSError, ValueError, RuntimeError):
+        return
+
+
+def _send_gateway_reply(gateway, source, message: str) -> bool:
+    if gateway is None or source is None:
+        return False
+    platform = str(getattr(source, "platform", "") or "").strip()
+    chat_id = str(getattr(source, "chat_id", "") or "").strip()
+    if not chat_id:
+        chat_id = str(getattr(source, "thread_id", "") or "").strip()
+    adapters = getattr(gateway, "adapters", None) or {}
+    adapter = adapters.get(platform) if isinstance(adapters, dict) else None
+    send = getattr(adapter, "send", None)
+    if not callable(send) or not chat_id:
+        return False
+    try:
+        send(chat_id, message)
+    except Exception:
+        return False
+    return True
+
+
+def _render_life_reply_usage() -> str:
+    return "usage: /life-reply <1|2|3|free text>\nexample: /life-reply 1"
+
+
 async def _handle_task_command(raw_args: str) -> str:
     """Run tools profile work off the Discord gateway asyncio loop."""
     request = TaskRequest.from_text(raw_args)
@@ -144,11 +184,15 @@ async def _handle_memo_command(raw_args: str) -> str:
     prompt = normalize_life_command_args(raw_args or "", "memo")
     if not prompt:
         return render_memo_usage()
+    user_id, channel_id = read_gateway_session_context()
+    _remember_life_context(user_id, channel_id)
     return await run_life_memo_bridge_async(prompt)
 
 
 async def _handle_digest_command(raw_args: str) -> str:
     """Summarize local Life Pilot notes without external access."""
+    user_id, channel_id = read_gateway_session_context()
+    _remember_life_context(user_id, channel_id)
     return await run_life_digest_bridge_async(
         normalize_life_command_args(raw_args or "", "digest")
     )
@@ -160,6 +204,7 @@ async def _handle_remind_command(raw_args: str) -> str:
     if not prompt:
         return render_remind_usage()
     user_id, channel_id = read_gateway_session_context()
+    _remember_life_context(user_id, channel_id)
     return await run_life_remind_bridge_async(
         prompt,
         notify_channel_id=channel_id,
@@ -169,9 +214,34 @@ async def _handle_remind_command(raw_args: str) -> str:
 
 async def _handle_recommend_command(raw_args: str) -> str:
     """Suggest small next steps from local Life Pilot notes only."""
+    user_id, channel_id = read_gateway_session_context()
+    _remember_life_context(user_id, channel_id)
     return await run_life_recommend_bridge_async(
         normalize_life_command_args(raw_args or "", "recommend")
     )
+
+
+async def _handle_life_reply_command(raw_args: str) -> str:
+    """Record a reply to the latest proactive Life Pilot check-in."""
+    prompt = normalize_life_command_args(raw_args or "", "life-reply")
+    if not prompt:
+        return _render_life_reply_usage()
+    user_id, channel_id = read_gateway_session_context()
+    _remember_life_context(user_id, channel_id)
+    try:
+        reply = resolve_proactive_reply(
+            prompt,
+            user_id=user_id,
+            channel_id=channel_id,
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        return f"life reply failed: {exc}"
+    if reply is None:
+        return (
+            "返信待ちの朝晩確認がありません。\n"
+            "Hermesからの確認が届いた後に /life-reply 1 または /life-reply <文章> で返してください。"
+        )
+    return reply
 
 
 async def _handle_task_approve(raw_args: str) -> str:
@@ -208,15 +278,12 @@ async def _handle_task_deny(_raw_args: str) -> str:
 
 
 def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
-    """Intercept yes/no text when a /task approval is pending (Phase D5.1)."""
+    """Intercept lightweight text replies for task approval or Life Pilot check-ins."""
     del kwargs
     source = getattr(event, "source", None)
     if not bool(getattr(event, "internal", False)):
         stash_from_message_source(source)
 
-    coord = _coordinator()
-    if coord is None:
-        return None
     user_id = str(getattr(source, "user_id", "") or "").strip()
     channel_id = str(getattr(source, "chat_id", "") or "").strip()
     if not channel_id:
@@ -229,24 +296,28 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
     if not text or text.startswith("/"):
         return None
     resolved = None
-    for actor_id in approval_actor_ids(user_id, channel_id):
-        resolved = coord.try_resolve_text(actor_id, text)
-        if resolved is not None:
-            break
+    coord = _coordinator()
+    if coord is not None:
+        for actor_id in approval_actor_ids(user_id, channel_id):
+            resolved = coord.try_resolve_text(actor_id, text)
+            if resolved is not None:
+                break
     if resolved is None:
+        if _life_pilot_enabled():
+            try:
+                reply = resolve_proactive_reply(
+                    text,
+                    user_id=user_id,
+                    channel_id=channel_id,
+                )
+            except (OSError, ValueError, RuntimeError):
+                reply = None
+            if reply is not None:
+                _send_gateway_reply(gateway, source, reply)
+                return {"action": "skip", "reason": "life-proactive-reply"}
         return None
     ok, message = resolved
-    if gateway is not None and source is not None:
-        platform = str(getattr(source, "platform", "") or "").strip()
-        chat_id = str(getattr(source, "chat_id", "") or "").strip()
-        adapters = getattr(gateway, "adapters", None) or {}
-        adapter = adapters.get(platform) if isinstance(adapters, dict) else None
-        send = getattr(adapter, "send", None)
-        if callable(send) and chat_id:
-            try:
-                send(chat_id, message if ok else f"task approval: {message}")
-            except Exception:
-                pass
+    _send_gateway_reply(gateway, source, message if ok else f"task approval: {message}")
     return {"action": "skip", "reason": "task-approval-text"}
 
 
@@ -285,6 +356,12 @@ def register(ctx) -> None:
             handler=_handle_recommend_command,
             description="Suggest small next steps from Life Pilot notes only",
             args_hint="[focus]",
+        )
+        ctx.register_command(
+            "life-reply",
+            handler=_handle_life_reply_command,
+            description="Reply to the latest Life Pilot check-in",
+            args_hint="<1|2|3|free text>",
         )
     if _novel_bridge_enabled():
         ctx.register_command(

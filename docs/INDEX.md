@@ -8,9 +8,9 @@
 
 ## 🎯 目的別インデックス
 
-### 最新アップデート（2026-06-06 · 私用 Pi5 Hermes D6-life · **Life Pilot 実機E2E完了**）
+### 最新アップデート（2026-06-06 · Hermes Life Pilot）
 
-- **D6-life Life Pilot 実機E2E完了**: Discord `/memo` `/digest` `/remind` `/recommend` を追加。保存は **`/home/hermes/.hermes-life` の private log** のみ。Codex/Cursor、terminal、git、deploy、秘密読取、外部Web、Home Assistant/カメラ制御は **無効**。**検証**: focused unittest **39 OK** · `--validate-life-pilot` OK · Ansible syntax check OK · 私用 Pi5 `hermes-gateway` active · Discord slash 定義一致 · `/memo` 保存、`/digest` 表示、`/remind` 記録、危険 `/memo git push...` 拒否 OK。**記録**: [KB Life Pilot](./knowledge-base/KB-private-pi5-hermes-life-pilot.md) · [ExecPlan D6-life](./plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](./runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-私用-pi5--discord-e2e-完了) · [`life-pilot.policy.yaml`](../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
+- [KB Life Pilot](./knowledge-base/KB-private-pi5-hermes-life-pilot.md) — proactive check-in · button relay · 私用 Pi5 E2E 正本
 
 ### 最新アップデート（2026-06-06 · 私用 Pi5 Hermes D6-pre · **Discord `/daily` Ansible sync 合格**）
 

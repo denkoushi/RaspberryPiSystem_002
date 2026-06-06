@@ -1,116 +1,133 @@
-# KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life）
+# KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: reference（2026-06-06 · repo 実装 · 私用 Pi5 deploy + Discord E2E 完了）
-- **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [D6-pre daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [butler vision](../plans/private-pi5-hermes-butler-vision-and-roadmap.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
+- **Status**: active（2026-06-06 · repo `feat/hermes-life-proactive-loop` @ `30296697` · 私用 Pi5 deploy + Discord E2E 完了）
+- **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
+- **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
-## 要点
+## Context
 
-D6-life は、Hermes を **生活メモの執事**として先に体感するための最小実装。
+Hermes を **生活メモの執事**として先に体感する最小実装。Codex/Cursor・本番 repo・terminal・git・deploy・秘密読取・外部 Web・HA/カメラは **意図的に未接続**。実行系ではなく **ローカル private log + 限定的 Discord 通知/返信** に閉じる。
 
-Discord の `/memo` `/digest` `/remind` `/recommend` で、今日あったこと・備忘録・軽いリマインド要求・小さな次アクション提案を扱う。保存は `/home/hermes/.hermes-life` のみ。Codex/Cursor、terminal、git、deploy、外部Web、Home Assistant/カメラ制御は使わない。
+## 仕様（現行）
 
-## 実装サマリ
+### Discord 入口
 
-| 項目 | 内容 |
+| 種類 | 内容 |
 |------|------|
-| 入口 | Discord slash `/memo` `/digest` `/remind` `/recommend` |
-| 登録条件 | plugin 配置先に `life-pilot.policy.yaml` が存在 |
-| 保存 | `notes/YYYY-MM-DD.md` · `reminders/reminders.jsonl` |
-| policy | hard gate false + deny prompt regex |
-| Discord 応答 | 成功応答は本文を通常テキストで先頭表示し、保存先・安全境界などの診断情報は `-# debug:` 1行の subtext に畳む |
-| Ansible | module/policy 配備、`~/.hermes-life` 作成、Discord command sync、smoke verify |
-| command sync | Life Pilot 有効時 `present`、無効時 `absent` |
+| slash | `/memo` `/digest` `/remind` `/recommend` |
+| slash（補助） | `/life-reply` — button/modal が使えないときの fallback |
+| 朝晩 check-in | `hermes-life-proactive-{morning,evening}.timer` が Discord へ送信 |
+| button | `まず1つやる` / `あとで見る` / `今日は外す` + `自由入力` modal |
+| 応答 UX | 成功時は **本文テキスト先頭** · 診断は `-# debug:` 1行 subtext · `#` 見出しと `>` 引用は使わない |
 
-## 追加ファイル
+### 保存先（正本）
 
-| ファイル | 役割 |
-|----------|------|
-| [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml) | D6-life safety contract |
-| [`life_pilot_policy.py`](../../scripts/private-pi5-hermes/lib/life_pilot_policy.py) | policy/prompt 検証 |
-| [`discord_life_pilot_bridge.py`](../../scripts/private-pi5-hermes/lib/discord_life_pilot_bridge.py) | memo/digest/remind/recommend 処理 |
-| [`verify-discord-life-pilot.yml`](../../infrastructure/ansible/tasks/private-pi5-hermes/verify-discord-life-pilot.yml) | Pi5 smoke |
-
-## 境界
-
-許可すること:
-
-- private life memo の保存
-- ローカル note/reminder の digest
-- reminder request の pending 記録
-- ローカル記録だけを根拠にした小さな提案
-
-拒否・保留すること:
-
-- Codex/Cursor worker 実行
-- production repo 編集
-- git commit/push/merge
-- deploy/systemctl/docker
-- terminal/shell
-- secret/token/.env 読み取り
-- tailnet/LAN scan
-- external web research
-- Home Assistant/camera/device control
-
-## 検証
-
-2026-06-06 local:
-
-```bash
-python3 -m unittest scripts/private-pi5-hermes/tests/test_life_pilot_policy.py \
-  scripts/private-pi5-hermes/tests/test_discord_life_pilot_bridge.py \
-  scripts/private-pi5-hermes/tests/test_discord_command_sync.py \
-  scripts/private-pi5-hermes/tests/test_discord_task_bridge_plugin_register.py \
-  scripts/private-pi5-hermes/tests/test_daily_pilot_policy.py \
-  scripts/private-pi5-hermes/tests/test_discord_daily_pilot_bridge.py
+```text
+/home/hermes/.hermes-life/
+  notes/YYYY-MM-DD.md
+  reminders/reminders.jsonl
+  proactive/checkins.jsonl
+  proactive/replies.jsonl
 ```
 
-結果: **39 tests OK**
+### systemd / sidecar
 
-追加確認:
-
-- `--validate-life-pilot`: OK
-- `--validate-daily-pilot --validate-life-pilot`: OK
-- `python3 -m compileall`: OK
-- `git diff --check`: OK
-- `ansible-playbook --syntax-check`: OK（local tmp を `/private/tmp` に変更）
-
-2026-06-06 私用 Pi5 + Discord E2E:
-
-| 項目 | 結果 |
+|  unit | 役割 |
 |------|------|
-| `hermes-gateway` | active / running |
-| plugin commands | `daily,memo,digest,remind,recommend,novel,task,task-approve,task-deny` |
-| Discord slash definitions | `/daily` `/memo` `/digest` `/remind` `/recommend` all match |
-| `/memo` safe life note | **Memo Saved** |
-| `/digest` | **Life Digest**（local notes/reminders のみ） |
-| `/remind` safe reminder | **Reminder Recorded** |
-| `/memo git pushしてdeployして` | **memo rejected** |
-| gateway error log | 直近確認では error なし |
+| `hermes-gateway` | chat profile · slash plugin 登録 |
+| `hermes-life-reminder.timer` | due reminder の Discord 通知（既定 1 分） |
+| `hermes-life-proactive-morning.timer` | 朝 check-in 送信 |
+| `hermes-life-proactive-evening.timer` | 夜 check-in 送信 |
+| `hermes-life-discord-ui.service` | button / 自由入力 modal の interaction relay |
 
-補足: `/remind` 操作時に一度 `Unknown argument` 系の表示が混じった。最終的な slash command handler は **Reminder Recorded** を返しており主経路は成功。再現する場合は、Discord の slash command Arguments 欄か1行テキスト経路の差としてUX改善候補にする。
-
-2026-06-06 追記: Discord 上の日常利用性を優先し、`/memo` `/digest` `/remind` `/recommend` の成功応答は本文中心にした。保存先・件数・安全境界は開発観察用に `-# debug:` 1行だけ残す。
-
-2026-06-06 追記2: 実機目視で Markdown 見出し（`#`）が大きく白く目立ち、引用（`>`）が本文をグレー表示にして本文優先の体感を弱めることを確認した。成功応答では `#` 見出しと `>` 引用を使わず、`/memo` `/remind` は本文そのものを通常テキストで先頭表示する。`/digest` `/recommend` も Markdown 見出しを使わず、通常テキストの `Focus:` / `Recent notes:` / `Suggested next steps:` ラベルにする。安全境界と保存形式は変更しない。
-
-## 運用メモ
-
-有効化:
+Ansible フラグ（fragment）:
 
 ```yaml
 private_pi5_hermes_gateway_enabled: true
 private_pi5_hermes_life_pilot_enabled: true
+# 既定 true: private_pi5_hermes_life_reminder_scheduler_enabled
+# 既定 true: private_pi5_hermes_life_proactive_loop_enabled
+# 既定 true: private_pi5_hermes_life_discord_ui_relay_enabled
 ```
 
-Discord command sync には `private_pi5_hermes_discord_bot_token` が必要。
+### 安全境界（緩めていない）
 
-## 既知の制限
+`life-pilot.policy.yaml` hard gate はすべて `false`。`deny_prompt_substrings` / `deny_prompt_patterns` で Codex/Cursor・git・deploy・terminal・秘密・web・HA を拒否。chat profile の `disabled_toolsets` は従来どおり。
 
-- `/remind` は reminder request を記録するだけ。自動通知スケジューラはまだない。
-- retention/export/delete は未実装。
-- LLM での高度な推薦ではなく、ローカル記録に基づく deterministic suggestion。
-- Discord `/remind` の入力経路によっては `Unknown argument` 系のUXノイズが出る可能性がある。
+## 実装マップ
 
-## 次
+| ファイル | 役割 |
+|----------|------|
+| `life-pilot.policy.yaml` | safety contract |
+| `life_pilot_policy.py` | prompt 検証 |
+| `discord_life_pilot_bridge.py` | slash 4種 + 日時パース + body-first 応答 |
+| `life_reminder_scheduler.py` | due reminder Discord 送信 |
+| `life_proactive_loop.py` | 朝晩 check-in 構築・返信保存 |
+| `life_discord_ui_relay.py` | Discord component relay（discord.py） |
+| `verify-discord-life-pilot.yml` | Pi5 smoke |
 
-数日使う。体感が良ければ、次に retention/delete/export と限定通知を設計する。Codex/Cursor worker は別フェーズで、1 task = 1 worktree/branch、別 HOME/token、承認境界を作ってから扱う。
+## Validation
+
+### Local（`30296697` 時点）
+
+```bash
+python3 -m unittest discover -s scripts/private-pi5-hermes/tests
+python3 scripts/private-pi5-hermes/validate_boundary_policy.py --validate-life-pilot
+git diff --check
+ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp \
+  ./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh --syntax-check
+```
+
+結果: **184 tests OK** · life-pilot policy OK · syntax-check OK
+
+### 私用 Pi5 deploy（`30296697`）
+
+```
+PLAY RECAP: ok=175 changed=7 failed=0 skipped=17
+summary: life_pilot_enabled=True
+         life_reminder_scheduler_active=True
+         life_proactive_loop_active=True
+         life_discord_ui_relay_active=True
+```
+
+### Discord / 実機 E2E（2026-06-06）
+
+| 確認 | 結果 |
+|------|------|
+| `hermes-gateway` | active |
+| `hermes-life-discord-ui.service` | active · `life_discord_ui_relay ready` |
+| 朝 check-in 再送 | `sent: 1` · `status: pending_reply` |
+| Discord API ボタンラベル | `まず1つやる` `あとで見る` `今日は外す` `自由入力` |
+| button 返信経路（relay 同一） | `受け取りました` を含む |
+| 自由入力返信経路（relay 同一） | `受け取りました` を含む |
+| 危険 `/memo git pushしてdeployして` | `memo rejected` |
+
+手順の正本は [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md)。再検証例:
+
+```bash
+systemctl start hermes-life-proactive@morning.service
+journalctl -u hermes-life-proactive@morning.service -n 10 --no-pager
+```
+
+## Troubleshooting（実績あるもののみ）
+
+| 症状 | 原因 | 対処 |
+|------|------|------|
+| `/remind` で `Unknown argument` が混じる | slash Arguments 欄と1行テキスト経路の差 | 主経路は成功していることが多い。button 正本化後は modal を優先 |
+| 成功応答の `#` が大きく目立つ | Discord Markdown 見出し | body-first 化済み（見出し・引用廃止） |
+| button を押しても応答なし | `hermes-life-discord-ui.service` inactive · check-in が `answered`/期限切れ | relay active 確認 · 朝/夜 check-in を `pending_reply` で再送 |
+| `deploy` を含む memo が拒否される | policy deny（意図的） | 安全境界。文言を変える |
+
+## Open Items
+
+1. **`feat/hermes-life-proactive-loop` を `main` へマージ** — 本 KB 更新と同時に PR 化予定
+2. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
+3. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
+4. **LLM ベース推薦** — 現状は deterministic suggestion のみ
+5. **数日運用の体感評価** — proactive 朝晩・reminder 通知の頻度/文言調整
+
+## References
+
+- コード: `scripts/private-pi5-hermes/lib/` · `infrastructure/ansible/tasks/private-pi5-hermes/`
+- 北極星: [butler vision](../plans/private-pi5-hermes-butler-vision-and-roadmap.md)
+- 索引: [docs/INDEX.md](../INDEX.md) · [knowledge-base/index.md](./index.md)
