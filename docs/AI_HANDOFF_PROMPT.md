@@ -4,16 +4,17 @@
 
 **まず、以下のドキュメントを順番に確認してください：**
 
-1. **[docs/guides/ai-handoff.md](./guides/ai-handoff.md)** - プロジェクト運用の「1本のルート」を理解する
-2. **[AGENTS.md](../AGENTS.md)** - プロジェクトの基本思想（主要ドキュメントへのショートカット導線あり）
-3. **[.agent/PLANS.md](../.agent/PLANS.md)** - 具体的な思想・行動方針（編集不可）
-4. **[EXEC_PLAN.md](../EXEC_PLAN.md)** - 現在のプロジェクト状態を把握
-5. **[docs/INDEX.md](./INDEX.md)** - 全ドキュメントの索引
+1. **[AGENTS.md](../AGENTS.md)** - AIの最上位入口
+2. **[docs/AI_START_HERE.md](./AI_START_HERE.md)** - AI向けの最小入口
+3. **[.cursor/rules/00-core-safety.mdc](../.cursor/rules/00-core-safety.mdc)** - 安全ルール
+4. **[.cursor/rules/01-core-docs-and-knowledge.mdc](../.cursor/rules/01-core-docs-and-knowledge.mdc)** - ドキュメント正本ルール
+5. 今回の作業に該当する `.cursor/rules/*.mdc`
+6. 関連する KB / Runbook / ADR / Plan
 
 **重要な原則：**
-- 階層構造に従う：`AGENTS.md → PLANS.md → EXEC_PLAN.md → INDEX.md → 各種ドキュメント`
-- 「1本のルート」で判断：情報の性質とライフサイクルに基づいて適切な配置場所を決定
-- EXEC_PLAN.mdを維持：進捗・発見・決定・成果を常に最新の状態に保つ
+- `EXEC_PLAN.md` は legacy historical log。詳細正本として使わない。
+- 詳細な事実は KB / Runbook / ADR / Plan の1か所だけに置く。
+- `docs/INDEX.md` と `docs/knowledge-base/index.md` は薄い索引に限定する。
+- 同じ事実を複数文書へ全文コピーしない。
 
 詳細は [docs/guides/ai-handoff.md](./guides/ai-handoff.md) を参照してください。
-
