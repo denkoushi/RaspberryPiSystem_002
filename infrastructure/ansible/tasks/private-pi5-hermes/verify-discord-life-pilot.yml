@@ -72,6 +72,7 @@
             __import__("pathlib").Path("{{ private_pi5_hermes_life_data_dir }}"),
         )
         assert "おはようございます" in proactive, proactive
+        assert "今日の見方:" in proactive, proactive
         assert "今日まず見るなら:" in proactive, proactive
         assert "[1] これをやる" in proactive, proactive
         assert "[2] 夕方にもう一度" in proactive, proactive

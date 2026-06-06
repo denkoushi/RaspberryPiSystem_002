@@ -583,7 +583,7 @@ private_pi5_hermes_life_pilot_enabled: true
 
 個人メモ本文は Runbook に残さない。
 
-**D10-life follow-up 実機E2E**: 2026-06-06 branch deploy 完了。検証結果・トラブルシュートの正本は [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md)。
+**D10-life follow-up 実機E2E / D11-life context briefing 実機E2E**: 2026-06-06 branch deploy 完了。検証結果・トラブルシュートの正本は [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md)。
 
 **標準デプロイ手順**:
 
