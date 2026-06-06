@@ -248,6 +248,14 @@ def _capture_life_discord_inbox(
     return result.ack
 
 
+def _blank_discord_share_text(source, text: str, attachments: tuple[str, ...]) -> str:
+    if text or attachments:
+        return text
+    if not _is_discord_platform(_source_platform_name(source)):
+        return text
+    return "共有: Discord投稿（本文なし）"
+
+
 def _render_life_reply_usage() -> str:
     return "usage: /life-reply <1|2|3|free text>\nexample: /life-reply 1"
 
@@ -395,9 +403,10 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
     if not text:
         text = raw_text
     attachments = extract_attachment_names(event)
-    if not text and not attachments:
-        return None
     if raw_text.startswith("/") or text.startswith("/"):
+        return None
+    text = _blank_discord_share_text(source, text, attachments)
+    if not text and not attachments:
         return None
     resolved = None
     coord = _coordinator()
