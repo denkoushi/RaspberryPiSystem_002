@@ -88,7 +88,7 @@ Discord global slash commands:
 
 AI執事らしさを出すため、ユーザーの slash 入力待ちだけでなく Hermes 側から朝晩に Discord へ問いかける。
 
-初期実装は Discord native button ではなく、通常メッセージで確実に動く **番号返信 + 自由入力** とする。朝/夜 check-in は `hermes-life-proactive-morning.timer` と `hermes-life-proactive-evening.timer` で送信する。返信は直近の未回答 check-in に紐づけ、`proactive/replies.jsonl` と通常 memo へ保存する。
+初期実装は Discord native button ではなく、slash command で確実に動く **`/life-reply 1` などの番号返信 + `/life-reply <文章>` の自由入力** とする。朝/夜 check-in は `hermes-life-proactive-morning.timer` と `hermes-life-proactive-evening.timer` で送信する。返信は直近の未回答 check-in に紐づけ、`proactive/replies.jsonl` と通常 memo へ保存する。通常メッセージの `1` も拾える場合は拾うが、Hermes 本体の pre-dispatch 条件に依存するため、実機運用の正本は `/life-reply` とする。
 
 既定時刻は朝 07:30、夜 21:30。固定 channel は `private_pi5_hermes_life_proactive_channel_id` で指定できる。未指定時は Life Pilot slash command で保存した最新 channel context、または日時つき reminder の `notifyChannelId` を使う。
 

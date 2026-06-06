@@ -34,7 +34,7 @@
                 self.commands.append(name)
         ctx = Ctx()
         register(ctx)
-        for name in ("memo", "digest", "remind", "recommend"):
+        for name in ("memo", "digest", "remind", "recommend", "life-reply"):
             assert name in ctx.commands, ctx.commands
         memo = asyncio.run(ns["_handle_memo_command"]("今日は朝散歩した。体調は良い。"))
         assert memo.startswith("今日は朝散歩した。体調は良い。"), memo
@@ -68,8 +68,8 @@
             __import__("pathlib").Path("{{ private_pi5_hermes_life_data_dir }}"),
         )
         assert "おはようございます" in proactive, proactive
-        assert "1. まず1つやる" in proactive, proactive
-        assert "そのまま文章で返してください" in proactive, proactive
+        assert "[1] まず1つやる" in proactive, proactive
+        assert "/life-reply 1" in proactive, proactive
         assert "-# debug:" in proactive, proactive
         print("ok")
   register: private_pi5_hermes_life_pilot_smoke

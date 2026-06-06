@@ -574,7 +574,7 @@ private_pi5_hermes_life_pilot_enabled: true
 |------|------|
 | 朝 | `hermes-life-proactive-morning.timer`（既定 07:30）で今日の確認を送る |
 | 夜 | `hermes-life-proactive-evening.timer`（既定 21:30）で今日の片付けを送る |
-| 返信 | `1`/`2`/`3` の番号返信、または通常文章の自由入力を受け付ける |
+| 返信 | `/life-reply 1`/`2`/`3` の番号返信、または `/life-reply <文章>` の自由入力を受け付ける |
 | 保存 | `proactive/replies.jsonl` と通常 memo に保存 |
 | channel | 固定 `private_pi5_hermes_life_proactive_channel_id`、未指定時は最新 Life Pilot context / reminder channel |
 | 安全境界 | local Life Pilot 記録のみ。worker、terminal、git、deploy、外部Web、Home Assistant は呼ばない |
@@ -597,7 +597,7 @@ private_pi5_hermes_life_pilot_enabled: true
    - `systemctl is-active hermes-life-proactive-morning.timer` → `active`
    - `systemctl is-active hermes-life-proactive-evening.timer` → `active`
    - 手動即時確認: `sudo systemctl start hermes-life-proactive@morning.service`
-   - Discord に朝の確認が届き、`1` または自由文で返信すると「受け取りました」と返る
+   - Discord に朝の確認が届き、`/life-reply 1` または `/life-reply <自由文>` で返信すると「受け取りました」と返る
 
 **禁止（意図的）**: Cursor/Codex CLI · production repo 編集 · git · deploy · terminal · 秘密読取 · 外部Web検索 · Home Assistant/カメラ制御。
 
@@ -917,6 +917,7 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | `/memo` 等が登録されない | `life-pilot.policy.yaml` 未配備 · Discord command sync 未実行 · token 未設定 | fragment ON + `private_pi5_hermes_discord_bot_token` 設定 → deploy · `hermes-gateway` restart · [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md) |
 | `/remind` で通知が来ない | 日時を読めない · `notifyChannelId` がない · `hermes-life-reminder.timer` inactive | 日時つき slash で登録し `notification=scheduled` を確認 · `systemctl is-active hermes-life-reminder.timer` · [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) |
 | 朝晩の問いかけが来ない | proactive timer inactive · channel context 未保存 · Discord token 未設定 | `systemctl is-active hermes-life-proactive-morning.timer` · `/memo` 等を一度実行して context 保存 · 必要なら `private_pi5_hermes_life_proactive_channel_id` 固定 |
+| `1` だけ送っても「受け取りました」が返らない | Hermes 本体 hotfix は `yes/no` 系短文のみ pre-dispatch する場合がある | `/life-reply 1` を使う。通常メッセージの `1` は補助扱い |
 
 ## ロールバック
 

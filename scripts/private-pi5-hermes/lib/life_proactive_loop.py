@@ -238,8 +238,8 @@ def _option_rows(mode: str) -> list[dict[str, str]]:
 
 
 def _format_options(mode: str) -> str:
-    lines = [f"{item['id']}. {item['label']}" for item in _option_rows(mode)]
-    lines.append("または、そのまま文章で返してください。")
+    lines = [f"[{item['id']}] {item['label']}" for item in _option_rows(mode)]
+    lines.append("返信は /life-reply 1 または /life-reply <文章> で送ってください。")
     return "\n".join(lines)
 
 

@@ -81,10 +81,10 @@ class LifeProactiveLoopTests(unittest.TestCase):
             message = build_proactive_checkin_message("morning", root, now=now)
 
             self.assertIn("おはようございます", message)
-            self.assertIn("1. まず1つやる", message)
-            self.assertIn("2. あとで見る", message)
-            self.assertIn("3. 今日は外す", message)
-            self.assertIn("そのまま文章で返してください", message)
+            self.assertIn("[1] まず1つやる", message)
+            self.assertIn("[2] あとで見る", message)
+            self.assertIn("[3] 今日は外す", message)
+            self.assertIn("/life-reply 1", message)
             self.assertIn("boundary=local-only/no-tools", message)
 
     def test_dispatch_records_pending_checkin_and_skips_duplicate(self) -> None:

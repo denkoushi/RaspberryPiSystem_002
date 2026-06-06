@@ -150,6 +150,10 @@ def _send_gateway_reply(gateway, source, message: str) -> bool:
     return True
 
 
+def _render_life_reply_usage() -> str:
+    return "usage: /life-reply <1|2|3|free text>\nexample: /life-reply 1"
+
+
 async def _handle_task_command(raw_args: str) -> str:
     """Run tools profile work off the Discord gateway asyncio loop."""
     request = TaskRequest.from_text(raw_args)
@@ -215,6 +219,29 @@ async def _handle_recommend_command(raw_args: str) -> str:
     return await run_life_recommend_bridge_async(
         normalize_life_command_args(raw_args or "", "recommend")
     )
+
+
+async def _handle_life_reply_command(raw_args: str) -> str:
+    """Record a reply to the latest proactive Life Pilot check-in."""
+    prompt = normalize_life_command_args(raw_args or "", "life-reply")
+    if not prompt:
+        return _render_life_reply_usage()
+    user_id, channel_id = read_gateway_session_context()
+    _remember_life_context(user_id, channel_id)
+    try:
+        reply = resolve_proactive_reply(
+            prompt,
+            user_id=user_id,
+            channel_id=channel_id,
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        return f"life reply failed: {exc}"
+    if reply is None:
+        return (
+            "返信待ちの朝晩確認がありません。\n"
+            "Hermesからの確認が届いた後に /life-reply 1 または /life-reply <文章> で返してください。"
+        )
+    return reply
 
 
 async def _handle_task_approve(raw_args: str) -> str:
@@ -329,6 +356,12 @@ def register(ctx) -> None:
             handler=_handle_recommend_command,
             description="Suggest small next steps from Life Pilot notes only",
             args_hint="[focus]",
+        )
+        ctx.register_command(
+            "life-reply",
+            handler=_handle_life_reply_command,
+            description="Reply to the latest Life Pilot check-in",
+            args_hint="<1|2|3|free text>",
         )
     if _novel_bridge_enabled():
         ctx.register_command(

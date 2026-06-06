@@ -90,6 +90,21 @@ LIFE_COMMANDS: tuple[dict[str, Any], ...] = (
             }
         ],
     },
+    {
+        "name": "life-reply",
+        "description": "Reply to the latest Life Pilot check-in",
+        "type": 1,
+        "dm_permission": True,
+        "integration_types": [0, 1],
+        "options": [
+            {
+                "type": 3,
+                "name": "args",
+                "description": "Arguments: 1, 2, 3, or free text",
+                "required": True,
+            }
+        ],
+    },
 )
 
 
