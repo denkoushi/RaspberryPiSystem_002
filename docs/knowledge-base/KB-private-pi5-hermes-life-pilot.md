@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: active（2026-06-06 · `main` @ `8ae95b7d` · D10 merged/deployed · D11 context briefing repo 実装中）
+- **Status**: active（2026-06-06 · branch `feat/hermes-life-pilot-context-briefing` @ `21760861` · D11 私用 Pi5 deploy + Discord E2E 完了）
 - **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
 - **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
@@ -129,6 +129,30 @@ systemctl start hermes-life-followup.service
 journalctl -u hermes-life-proactive@morning.service -n 10 --no-pager
 ```
 
+### 私用 Pi5 deploy（D11 · `21760861`）
+
+初回 deploy は Life Pilot smoke で失敗した。原因は、以前の root 実行E2Eで `/home/hermes/.hermes-life` 配下の所有者が `root:root` になり、`hermes` user の smoke が `checkins.jsonl` を読めなかったこと。`chown -R hermes:hermes /home/hermes/.hermes-life` 後の再 deploy は成功。
+
+```
+PLAY RECAP: ok=177 changed=4 failed=0
+summary: life_pilot_enabled=True
+         life_reminder_scheduler_active=True
+         life_proactive_loop_active=True
+         life_followup_loop_active=True
+         life_discord_ui_relay_active=True
+```
+
+### D11 実機 E2E（2026-06-06 · branch deploy）
+
+| 確認 | 結果 |
+|------|------|
+| 朝 check-in `今日の見方:` | Discord に表示 |
+| 低エネルギー文脈 | `lowEnergy=true`、`briefing=最近の体調メモが少し重めで、残りも多めです。今日は1つだけ見ます。` |
+| carried forward | `candidate_source=carried_forward`、`今日まず見るなら: 風呂洗い` |
+| safety | Discord debug line と `--validate-life-pilot` で `boundary=local-only/no-tools`、全 hard gate false |
+
+補足: 疲れメモは `notes/*.md` の `## YYYY-MM-DD HH:MM` block 形式でないと `_read_note_entries()` が読まない。検証時は当日メモに `今日は疲れて眠い。` を追加した。
+
 ## Troubleshooting（実績あるもののみ）
 
 | 症状 | 原因 | 対処 |
@@ -139,15 +163,15 @@ journalctl -u hermes-life-proactive@morning.service -n 10 --no-pager
 | `deploy` を含む memo が拒否される | policy deny（意図的） | 安全境界。文言を変える |
 | follow-up が Discord に届かない（Python 直呼び） | `.env` 未読込で `DISCORD_BOT_TOKEN` 不足 | `hermes-life-followup.service`（`EnvironmentFile=.env`）経由で起動する |
 | deploy 後も朝メッセージが旧フォーマット | 当日 `checkins.jsonl` の重複ガードで再送スキップ | 当日 `-morning` 行を削除または `pending_reply` に戻して再送 |
+| Life Pilot smoke が `PermissionError` で `checkins.jsonl` を読めない | root 実行E2Eなどで `/home/hermes/.hermes-life` 配下が `root:root` になった | `chown -R hermes:hermes /home/hermes/.hermes-life` 後に再 deploy |
 
 ## Open Items
 
-1. **D11 context briefing deploy / 実機E2E** — repo 実装後に朝 check-in の `今日の見方:` と `carried_forward` を確認
-2. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
-3. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
-4. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
-5. **LLM ベース推薦** — 現状は deterministic suggestion のみ
-6. **数日運用の体感評価** — proactive 朝晩・reminder/follow-up 通知の頻度/文言調整
+1. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
+2. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
+3. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
+4. **LLM ベース推薦** — 現状は deterministic suggestion のみ
+5. **数日運用の体感評価** — proactive 朝晩・reminder/follow-up 通知の頻度/文言調整
 
 ## References
 
