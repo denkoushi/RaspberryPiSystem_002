@@ -15,9 +15,21 @@ except ImportError:  # pragma: no cover - validated on Pi5 runtime.
     discord = None  # type: ignore[assignment]
 
 try:
-    from .life_proactive_loop import resolve_proactive_reply
+    from .life_discord_inbox import (
+        capture_discord_inbox_message,
+        extract_attachment_names,
+        extract_discord_message_id,
+        extract_discord_message_text,
+    )
+    from .life_proactive_loop import remember_life_discord_context, resolve_proactive_reply
 except ImportError:
-    from life_proactive_loop import resolve_proactive_reply
+    from life_discord_inbox import (
+        capture_discord_inbox_message,
+        extract_attachment_names,
+        extract_discord_message_id,
+        extract_discord_message_text,
+    )
+    from life_proactive_loop import remember_life_discord_context, resolve_proactive_reply
 
 
 CUSTOM_PREFIX = "life:"
@@ -40,6 +52,13 @@ def _allowed_users_from_env() -> set[str]:
     return {item.strip() for item in raw.replace(",", " ").split() if item.strip()}
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _interaction_user_id(interaction: Any) -> str:
     user = getattr(interaction, "user", None)
     return str(getattr(user, "id", "") or "").strip()
@@ -51,6 +70,67 @@ def _interaction_channel_id(interaction: Any) -> str:
     if channel_id:
         return channel_id
     return str(getattr(channel, "id", "") or "").strip()
+
+
+def _message_user_id(message: Any) -> str:
+    author = getattr(message, "author", None)
+    return str(getattr(author, "id", "") or "").strip()
+
+
+def _message_channel_id(message: Any) -> str:
+    channel = getattr(message, "channel", None)
+    return str(getattr(channel, "id", "") or "").strip()
+
+
+def _message_is_bot(message: Any) -> bool:
+    author = getattr(message, "author", None)
+    return bool(getattr(author, "bot", False))
+
+
+def _message_has_embeds(message: Any) -> bool:
+    try:
+        return bool(list(getattr(message, "embeds", []) or []))
+    except TypeError:
+        return bool(getattr(message, "embeds", None))
+
+
+def _message_has_share_surface(message: Any) -> bool:
+    text = extract_discord_message_text(message)
+    lower = text.lower()
+    return (
+        bool(extract_attachment_names(message))
+        or _message_has_embeds(message)
+        or "添付ファイル" in text
+        or "attachment" in lower
+    )
+
+
+def _capture_shared_message(message: Any, storage_root: Path) -> str | None:
+    if not _env_bool("HERMES_LIFE_DISCORD_INBOX_ENABLED", True):
+        return None
+    if not _message_has_share_surface(message):
+        return None
+    user_id = _message_user_id(message)
+    channel_id = _message_channel_id(message)
+    try:
+        result = capture_discord_inbox_message(
+            storage_root,
+            extract_discord_message_text(message),
+            user_id=user_id,
+            channel_id=channel_id,
+            attachments=extract_attachment_names(message),
+            message_id=extract_discord_message_id(message),
+        )
+    except (OSError, ValueError, RuntimeError):
+        return None
+    if not result.captured:
+        return None
+    if channel_id:
+        try:
+            remember_life_discord_context(user_id, channel_id, storage_root=storage_root)
+        except (OSError, ValueError, RuntimeError):
+            pass
+    return result.ack
 
 
 def _extract_modal_text(interaction: Any) -> str:
@@ -119,7 +199,9 @@ def build_client(storage_root: Path):
     if discord is None:
         raise RuntimeError("discord.py is required for Life Pilot Discord UI relay")
     intents = discord.Intents.default()
-    intents.message_content = False
+    intents.message_content = True
+    intents.messages = True
+    intents.dm_messages = True
     client = discord.Client(intents=intents)
     allowed_users = _allowed_users_from_env()
 
@@ -127,6 +209,21 @@ def build_client(storage_root: Path):
     async def on_ready() -> None:
         user = getattr(client, "user", None)
         print(f"life_discord_ui_relay ready user={user}", flush=True)
+
+    @client.event
+    async def on_message(message: Any) -> None:
+        if _message_is_bot(message):
+            return
+        user_id = _message_user_id(message)
+        if allowed_users and user_id not in allowed_users:
+            return
+        ack = _capture_shared_message(message, storage_root)
+        if not ack:
+            return
+        channel = getattr(message, "channel", None)
+        send = getattr(channel, "send", None)
+        if callable(send):
+            await send(ack[:2000])
 
     @client.event
     async def on_interaction(interaction: Any) -> None:

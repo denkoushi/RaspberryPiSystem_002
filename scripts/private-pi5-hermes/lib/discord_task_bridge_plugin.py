@@ -31,6 +31,7 @@ try:
     from .life_discord_inbox import (
         capture_discord_inbox_message,
         extract_discord_message_text,
+        extract_discord_message_id,
         extract_attachment_names,
     )
     from .life_proactive_loop import (
@@ -67,6 +68,7 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
     from life_discord_inbox import (
         capture_discord_inbox_message,
         extract_discord_message_text,
+        extract_discord_message_id,
         extract_attachment_names,
     )
     from life_proactive_loop import (
@@ -211,6 +213,7 @@ def _capture_life_discord_inbox(
             user_id=user_id,
             channel_id=channel_id,
             attachments=extract_attachment_names(event),
+            message_id=extract_discord_message_id(event),
             allowed_channel_ids=_life_discord_inbox_channel_ids(),
             capture_all=_life_discord_inbox_capture_all(),
         )

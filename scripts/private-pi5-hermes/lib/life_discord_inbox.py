@@ -24,6 +24,9 @@ _SENSITIVE_RE = re.compile(
 )
 _EXPLICIT_PREFIX_RE = re.compile(r"^(?:inbox|share|共有|メモ|memo)\s*[:：]", re.IGNORECASE)
 _X_HOST_RE = re.compile(r"^https?://(?:www\.)?(?:x\.com|twitter\.com)/", re.IGNORECASE)
+_ATTACHMENT_PLACEHOLDER_RE = re.compile(
+    r"(?i)(クリックして添付ファイルを表示|添付ファイル|attachment|attached file)"
+)
 _TEXT_KEYS = (
     "text",
     "content",
@@ -33,6 +36,11 @@ _TEXT_KEYS = (
     "caption",
     "message",
     "url",
+)
+_ID_KEYS = (
+    "id",
+    "message_id",
+    "messageId",
 )
 _EMBED_TEXT_KEYS = (
     "url",
@@ -185,6 +193,15 @@ def extract_discord_message_text(event: Any) -> str:
         for part in _embed_text_parts(embed):
             _append_unique(parts, part)
     return _clip_line(" ".join(parts), 500)
+
+
+def extract_discord_message_id(event: Any) -> str:
+    for item in _event_objects(event):
+        for key in _ID_KEYS:
+            value = _as_string(_field(item, key))
+            if value:
+                return _clip_line(value, 100)
+    return ""
 
 
 def _inbox_path(root: Path) -> Path:
@@ -346,6 +363,8 @@ def should_capture_discord_inbox(
         return True
     if _EXPLICIT_PREFIX_RE.search(clean):
         return True
+    if _ATTACHMENT_PLACEHOLDER_RE.search(clean):
+        return True
     return False
 
 
@@ -356,6 +375,7 @@ def capture_discord_inbox_message(
     user_id: str = "",
     channel_id: str = "",
     attachments: tuple[str, ...] = (),
+    message_id: str = "",
     now: datetime | None = None,
     allowed_channel_ids: set[str] | None = None,
     capture_all: bool = False,
@@ -371,11 +391,13 @@ def capture_discord_inbox_message(
     current = now or _now()
     clean_text, redacted = sanitize_shared_text(text)
     urls = extract_urls(clean_text if not redacted else text)
+    clean_message_id = _clip_line(str(message_id or "").strip(), 100)
     record = {
         "createdAt": current.isoformat(timespec="seconds"),
         "source": "discord",
         "userId": str(user_id or "").strip(),
         "channelId": str(channel_id or "").strip(),
+        "messageId": clean_message_id,
         "text": clean_text,
         "urls": list(urls),
         "attachments": list(attachments),
@@ -384,6 +406,10 @@ def capture_discord_inbox_message(
         "status": "new",
     }
     with _inbox_file_lock(storage_root):
+        if clean_message_id:
+            for row in _read_jsonl(_inbox_path(storage_root)):
+                if str(row.get("messageId", "") or "").strip() == clean_message_id:
+                    return DiscordInboxCaptureResult(False, "duplicate")
         _append_jsonl(_inbox_path(storage_root), record)
     kind = "link" if urls else "attachment" if attachments else "text"
     ack = f"""受け取り箱に保存しました。
