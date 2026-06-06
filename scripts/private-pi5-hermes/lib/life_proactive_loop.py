@@ -39,6 +39,21 @@ try:
         DiscordSendResult,
         send_discord_channel_message,
     )
+    from .life_obsidian_inbox import (
+        ObsidianInboxItem,
+        format_obsidian_inbox_lines,
+        obsidian_attachment_count,
+        obsidian_candidate_text,
+        obsidian_has_low_energy_signal,
+        read_obsidian_inbox,
+    )
+    from .life_discord_inbox import (
+        DiscordInboxItem,
+        discord_inbox_candidate_text,
+        discord_inbox_has_low_energy_signal,
+        format_discord_inbox_lines,
+        read_discord_inbox,
+    )
 except ImportError:
     from discord_life_pilot_bridge import (
         LifePilotPolicy,
@@ -58,6 +73,21 @@ except ImportError:
     from life_reminder_scheduler import (
         DiscordSendResult,
         send_discord_channel_message,
+    )
+    from life_obsidian_inbox import (
+        ObsidianInboxItem,
+        format_obsidian_inbox_lines,
+        obsidian_attachment_count,
+        obsidian_candidate_text,
+        obsidian_has_low_energy_signal,
+        read_obsidian_inbox,
+    )
+    from life_discord_inbox import (
+        DiscordInboxItem,
+        discord_inbox_candidate_text,
+        discord_inbox_has_low_energy_signal,
+        format_discord_inbox_lines,
+        read_discord_inbox,
     )
 
 
@@ -370,18 +400,29 @@ def _morning_context(
     reminders: list[dict[str, Any]],
     entries: list[tuple[str, str]],
     now: datetime,
+    obsidian_items: list[ObsidianInboxItem] | None = None,
+    discord_items: list[DiscordInboxItem] | None = None,
 ) -> dict[str, Any]:
+    obsidian = obsidian_items or []
+    discord = discord_items or []
     due_count = len(_scheduled_for_day(reminders, now))
     unscheduled_count = len(_unscheduled(reminders))
     pending_count = due_count + unscheduled_count
     pressure = "high" if pending_count >= 5 else "medium" if pending_count >= 3 else ""
     carried = _recent_carried_candidate(root, now)
-    low_energy = _has_low_energy_signal(entries, now)
+    low_energy = (
+        _has_low_energy_signal(entries, now)
+        or obsidian_has_low_energy_signal(obsidian)
+        or discord_inbox_has_low_energy_signal(discord)
+    )
     return {
         "lowEnergy": low_energy,
         "pendingCount": pending_count,
         "pressure": pressure,
         "carriedCandidate": carried,
+        "obsidianItemCount": len(obsidian),
+        "obsidianAttachmentCount": obsidian_attachment_count(obsidian),
+        "discordInboxItemCount": len(discord),
     }
 
 
@@ -406,12 +447,20 @@ def _choose_morning_candidate(
     now: datetime,
     *,
     carried_candidate: str = "",
+    obsidian_items: list[ObsidianInboxItem] | None = None,
+    discord_items: list[DiscordInboxItem] | None = None,
 ) -> dict[str, str]:
     today_items = _scheduled_for_day(reminders, now)
     if today_items:
         return {"source": "due_today", "text": _candidate_text(today_items[0])}
     if carried_candidate:
         return {"source": "carried_forward", "text": carried_candidate}
+    discord_candidate = discord_inbox_candidate_text(discord_items or [])
+    if discord_candidate:
+        return {"source": "discord_inbox", "text": discord_candidate}
+    obsidian_candidate = obsidian_candidate_text(obsidian_items or [])
+    if obsidian_candidate:
+        return {"source": "obsidian_inbox", "text": obsidian_candidate}
     unscheduled = _unscheduled(reminders)
     if unscheduled:
         return {"source": "unscheduled", "text": _candidate_text(unscheduled[0])}
@@ -508,14 +557,25 @@ def build_proactive_checkin_message(
     reminders = _read_pending_reminders(storage_root, limit=20)
     entries = _read_note_entries(storage_root, limit=8)
     if mode == "morning":
+        obsidian_items = read_obsidian_inbox(storage_root, now=current, limit=5)
+        discord_items = read_discord_inbox(storage_root, now=current, limit=5)
         today_items = _scheduled_for_day(reminders, current)
         unscheduled = _unscheduled(reminders)
-        context = _morning_context(storage_root, reminders, entries, current)
+        context = _morning_context(
+            storage_root,
+            reminders,
+            entries,
+            current,
+            obsidian_items,
+            discord_items,
+        )
         candidate = _choose_morning_candidate(
             reminders,
             entries,
             current,
             carried_candidate=str(context.get("carriedCandidate", "") or ""),
+            obsidian_items=obsidian_items,
+            discord_items=discord_items,
         )
         candidate_text = candidate["text"]
         candidate_display = candidate_text or "今日は急ぎの候補はありません。"
@@ -538,6 +598,12 @@ def build_proactive_checkin_message(
 
 最近のメモ:
 {_note_lines(entries, "まだメモがありません。", limit=2)}
+
+Obsidian新着:
+{format_obsidian_inbox_lines(obsidian_items, limit=3)}
+
+共有メモ新着:
+{format_discord_inbox_lines(discord_items, limit=3)}
 
 返信:
 {_format_options(mode)}
@@ -574,17 +640,35 @@ def _checkin_candidate(mode: str, storage_root: Path, now: datetime) -> dict[str
     if mode == "morning":
         reminders = _read_pending_reminders(storage_root, limit=20)
         entries = _read_note_entries(storage_root, limit=8)
-        context = _morning_context(storage_root, reminders, entries, now)
+        obsidian_items = read_obsidian_inbox(storage_root, now=now, limit=5)
+        discord_items = read_discord_inbox(storage_root, now=now, limit=5)
+        context = _morning_context(
+            storage_root,
+            reminders,
+            entries,
+            now,
+            obsidian_items,
+            discord_items,
+        )
         candidate = _choose_morning_candidate(
             reminders,
             entries,
             now,
             carried_candidate=str(context.get("carriedCandidate", "") or ""),
+            obsidian_items=obsidian_items,
+            discord_items=discord_items,
         )
         candidate["briefing"] = _morning_briefing_line(context)
         candidate["contextLowEnergy"] = str(bool(context.get("lowEnergy"))).lower()
         candidate["contextPressure"] = str(context.get("pressure", "") or "")
         candidate["contextPendingCount"] = str(context.get("pendingCount", 0))
+        candidate["contextObsidianItemCount"] = str(context.get("obsidianItemCount", 0))
+        candidate["contextObsidianAttachmentCount"] = str(
+            context.get("obsidianAttachmentCount", 0)
+        )
+        candidate["contextDiscordInboxItemCount"] = str(
+            context.get("discordInboxItemCount", 0)
+        )
         return candidate
     if mode == "evening":
         text = _latest_daily_candidate(storage_root, now)
@@ -675,6 +759,15 @@ def dispatch_proactive_checkin(
                 "lowEnergy": candidate.get("contextLowEnergy") == "true",
                 "pendingCount": int(str(candidate.get("contextPendingCount", "0") or "0")),
                 "pressure": str(candidate.get("contextPressure", "") or ""),
+                "obsidianItems": int(
+                    str(candidate.get("contextObsidianItemCount", "0") or "0")
+                ),
+                "obsidianAttachments": int(
+                    str(candidate.get("contextObsidianAttachmentCount", "0") or "0")
+                ),
+                "discordInboxItems": int(
+                    str(candidate.get("contextDiscordInboxItemCount", "0") or "0")
+                ),
             }
         if result.ok:
             record["sentAt"] = current.isoformat(timespec="seconds")

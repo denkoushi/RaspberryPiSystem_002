@@ -19,10 +19,18 @@
       - -c
       - |
         import asyncio
+        import tempfile
         import runpy
         import sys
+        from pathlib import Path
         plugin_dir = "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
         sys.path.insert(0, plugin_dir)
+        from life_discord_inbox import (
+            capture_discord_inbox_message,
+            extract_discord_message_text,
+            read_discord_inbox,
+        )
+        from life_obsidian_inbox import read_obsidian_inbox
         from life_proactive_loop import (
             build_followup_checkin_message,
             build_proactive_checkin_message,
@@ -85,6 +93,42 @@
         followup = build_followup_checkin_message("風呂洗い")
         assert "今ならこれだけ見ますか:" in followup, followup
         assert "[1] やる" in followup, followup
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vault = root / "obsidian" / "HermesLife"
+            vault.mkdir(parents=True)
+            (vault / "today.md").write_text("# 今日のメモ\n\n今日は少し眠い。買い物を見る。\n", encoding="utf-8")
+            obsidian_items = read_obsidian_inbox(root)
+            assert len(obsidian_items) == 1, obsidian_items
+            obsidian_message = build_proactive_checkin_message("morning", root)
+            assert "Obsidian新着:" in obsidian_message, obsidian_message
+            assert "今日のメモ" in obsidian_message, obsidian_message
+            assert "Obsidian新着を見返す" in obsidian_message, obsidian_message
+            capture = capture_discord_inbox_message(
+                root,
+                "あとで読む https://x.com/example/status/123",
+                user_id="user-1",
+                channel_id="channel-1",
+            )
+            assert capture.captured, capture
+            inbox_items = read_discord_inbox(root)
+            assert len(inbox_items) == 1, inbox_items
+            shared_message = build_proactive_checkin_message("morning", root)
+            assert "共有メモ新着:" in shared_message, shared_message
+            assert "共有メモを見返す" in shared_message, shared_message
+            class EmbedOnlyEvent:
+                text = ""
+                embeds = [{"url": "https://x.com/example/status/embed-only", "title": "X post"}]
+            embed_text = extract_discord_message_text(EmbedOnlyEvent())
+            assert "https://x.com/example/status/embed-only" in embed_text, embed_text
+            placeholder = capture_discord_inbox_message(
+                root,
+                "クリックして添付ファイルを表示",
+                user_id="user-1",
+                channel_id="channel-1",
+                message_id="placeholder-1",
+            )
+            assert placeholder.captured, placeholder
         print("ok")
   register: private_pi5_hermes_life_pilot_smoke
   changed_when: false

@@ -13,7 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from lib.life_discord_ui_relay import (  # noqa: E402
+    _capture_shared_message,
     _extract_modal_text,
+    _message_has_share_surface,
     _resolve_reply_text,
     parse_custom_id,
 )
@@ -23,6 +25,42 @@ from lib.life_reminder_scheduler import DiscordSendResult  # noqa: E402
 
 class FakeUser:
     id = "user-1"
+    bot = False
+
+
+class FakeChannel:
+    id = "channel-1"
+
+
+class FakeAttachment:
+    filename = "shared-image.png"
+
+
+class FakeMessage:
+    id = "message-1"
+    content = ""
+    author = FakeUser()
+    channel = FakeChannel()
+    attachments = [FakeAttachment()]
+    embeds = []
+
+
+class FakeBlankEmbedMessage:
+    id = "message-blank-embed-1"
+    content = ""
+    author = FakeUser()
+    channel = FakeChannel()
+    attachments = []
+    embeds = [{}]
+
+
+class FakeRegularMessage:
+    id = "message-regular-1"
+    content = "今日はどうすればいいかな"
+    author = FakeUser()
+    channel = FakeChannel()
+    attachments = []
+    embeds = []
 
 
 class FakeInteraction:
@@ -102,6 +140,59 @@ class LifeDiscordUiRelayTests(unittest.TestCase):
             )
             self.assertEqual(checkin["status"], "answered")
             self.assertEqual(checkin["selectedOption"], "1")
+
+    def test_sidecar_captures_shared_attachment_message(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            message = FakeMessage()
+
+            self.assertTrue(_message_has_share_surface(message))
+            ack = _capture_shared_message(message, root)
+
+            self.assertIn("受け取り箱に保存しました", ack or "")
+            row = json.loads(
+                (root / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()[0]
+            )
+            self.assertEqual(row["messageId"], "message-1")
+            self.assertEqual(row["attachments"], ["shared-image.png"])
+            self.assertTrue(row["untrusted"])
+
+            duplicate = _capture_shared_message(message, root)
+            self.assertIn("受け取り箱に保存しました", duplicate or "")
+            rows = [
+                json.loads(line)
+                for line in (root / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(len(rows), 1)
+
+    def test_sidecar_captures_blank_embed_message(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            message = FakeBlankEmbedMessage()
+
+            ack = _capture_shared_message(message, root)
+
+            self.assertIn("受け取り箱に保存しました", ack or "")
+            row = json.loads(
+                (root / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()[0]
+            )
+            self.assertEqual(row["messageId"], "message-blank-embed-1")
+            self.assertIn("Discord投稿", row["text"])
+
+    def test_sidecar_leaves_regular_message_unhandled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            ack = _capture_shared_message(FakeRegularMessage(), root)
+
+            self.assertIsNone(ack)
+            self.assertFalse((root / "inbox" / "discord.jsonl").exists())
 
 
 if __name__ == "__main__":

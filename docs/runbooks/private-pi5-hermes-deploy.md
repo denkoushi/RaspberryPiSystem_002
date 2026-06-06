@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-06-06（D10-life follow-up loop deploy + Discord E2E 完了 · D9-life Discord button UI repo 実装 · D8-life proactive loop deploy 完了 · D7-life reminder scheduler Discord 通知E2E完了）
+最終更新: 2026-06-06（D13-life Discord shared inbox repo 実装 · D12-life Obsidian inbox deploy 完了 · D10-life follow-up loop deploy + Discord E2E 完了）
 
 ## 運用状態サマリ（2026-05-24 時点）
 
@@ -526,9 +526,12 @@ private_pi5_hermes_daily_pilot_enabled: true
 ```yaml
 private_pi5_hermes_life_pilot_enabled: true
 # 必須: private_pi5_hermes_gateway_enabled: true
+# 既定 true: private_pi5_hermes_life_discord_inbox_enabled
+# 任意: private_pi5_hermes_life_discord_inbox_channel_ids: "<channel-id>"
+# 既定 false: private_pi5_hermes_life_discord_inbox_capture_all
 ```
 
-**配備物**: `life-pilot.policy.yaml` · `life_pilot_policy.py` · `discord_life_pilot_bridge.py` · `life_reminder_scheduler.py` · `life_proactive_loop.py` · `life_discord_ui_relay.py` · plugin `register()` に `/memo` `/digest` `/remind` `/recommend` 追加 · `hermes-life-reminder.timer` · `hermes-life-proactive-{morning,evening}.timer` · `hermes-life-discord-ui.service` · chat `system_prompt` に Life Pilot 案内
+**配備物**: `life-pilot.policy.yaml` · `life_pilot_policy.py` · `discord_life_pilot_bridge.py` · `life_reminder_scheduler.py` · `life_obsidian_inbox.py` · `life_discord_inbox.py` · `life_proactive_loop.py` · `life_discord_ui_relay.py` · plugin `register()` に `/memo` `/digest` `/remind` `/recommend` 追加 · `hermes-life-reminder.timer` · `hermes-life-proactive-{morning,evening}.timer` · `hermes-life-discord-ui.service` · chat `system_prompt` に Life Pilot 案内
 
 **Discord 応答UX**: 日常利用では本文を通常テキストで先頭表示し、保存先・件数・安全境界などの診断情報は `-# debug:` 1行に畳む。
 
@@ -538,6 +541,8 @@ private_pi5_hermes_life_pilot_enabled: true
 /home/hermes/.hermes-life/
   notes/YYYY-MM-DD.md
   reminders/reminders.jsonl
+  obsidian/HermesLife/
+  inbox/discord.jsonl
 ```
 
 **検証（ローカル · 2026-06-06）**: focused unittest **39 OK** · `--validate-life-pilot` OK · compileall OK · Ansible syntax check OK
@@ -585,6 +590,31 @@ private_pi5_hermes_life_pilot_enabled: true
 
 **D10-life follow-up 実機E2E / D11-life context briefing 実機E2E**: 2026-06-06 branch deploy 完了。検証結果・トラブルシュートの正本は [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md)。
 
+**D12-life Obsidian inbox（repo実装）**:
+
+| 項目 | 内容 |
+|------|------|
+| Android | Obsidian vault `Documents/Obsidian/HermesLife` |
+| 同期 | Syncthing-Fork で vault だけを共有。スマホ全体・写真全体・Download は共有しない |
+| Pi5 | `/home/hermes/.hermes-life/obsidian/HermesLife` を receive-only 受け皿にする |
+| Hermes | Pi5 側コピーを read-only 入力として読む |
+| 朝 | `Obsidian新着:` に Markdown snippet / 画像・PDF の存在を表示 |
+| 安全境界 | vault 書込・削除、Syncthing 設定操作、OCR/画像認識、外部Webは行わない |
+
+Syncthing の pairing は端末IDと folder ID の承認が必要なので、Ansible は受け皿ディレクトリ作成まで。Pi5 側 Syncthing は `hermes` user で動かし、folder path を `/home/hermes/.hermes-life/obsidian/HermesLife`、folder type を **Receive Only** にする。
+
+**D13-life Discord shared inbox（repo実装）**:
+
+| 項目 | 内容 |
+|------|------|
+| Android | 標準の共有メニューから X/URL/画像を Discord DM または専用チャンネルへ送る |
+| Hermes | URL・添付・Discord embed・添付プレースホルダ・`共有:` / `メモ:` prefix の通常メッセージを Life Pilot inbox として保存 |
+| Pi5 | `/home/hermes/.hermes-life/inbox/discord.jsonl` |
+| 朝 | `共有メモ新着:` に X/リンク/添付ファイル名を表示 |
+| 安全境界 | 外部Webを開かない。添付をダウンロードしない。OCR/画像認識しない。通常会話は既定では保存しない |
+
+Discord 共有は Syncthing や Tailscale 常時接続を必要としない。リンク相談ではなく、後で見るための「受け取り箱」として扱う。添付/画像共有は `hermes-life-discord-ui.service` 側でも捕捉し、Hermes本体の画像解析ルートへ流れないようにする。
+
 **標準デプロイ手順**:
 
 1. fragment に `private_pi5_hermes_life_pilot_enabled: true` を追加
@@ -606,6 +636,20 @@ private_pi5_hermes_life_pilot_enabled: true
    - Discord に朝の確認と4つの button（3択 + 自由入力）が届く
    - `これをやる` button または `自由入力` modal で返すと「受け取りました」と返る
    - `夕方にもう一度` button で follow-up が pending 保存され、due 後に再確認が1回だけ届く
+7. Obsidian inbox（D12）:
+   - Android Syncthing-Fork の共有元が `Documents/Obsidian/HermesLife` だけであること
+   - Pi5 Syncthing の共有先が `/home/hermes/.hermes-life/obsidian/HermesLife` で、Receive Only であること
+   - Android Obsidian で作った `今日のメモ` が Pi5 側にコピーされること
+   - 手動即時確認: `sudo systemctl start hermes-life-proactive@morning.service`
+   - Discord 朝 check-in に `Obsidian新着:` と `boundary=local-only/no-tools` が出ること
+8. Discord shared inbox（D13）:
+   - Android の共有メニューから X 投稿 URL を Discord DM/専用チャンネルへ送る
+   - Discord に `受け取り箱に保存しました。` と `boundary=local-only/no-tools` が返ること
+   - Pi5 側 `/home/hermes/.hermes-life/inbox/discord.jsonl` に `source=discord` / `untrusted=true` / URL が残ること
+   - X共有の本文が空でも、embed URL から保存されること
+   - 画像添付で `クリックして添付ファイルを表示` 系の本文になっても、通常チャット解析ではなく inbox 保存になること
+   - 手動即時確認: `sudo systemctl start hermes-life-proactive@morning.service`
+   - Discord 朝 check-in に `共有メモ新着:` と `共有メモを見返す` が出ること
 
 **禁止（意図的）**: Cursor/Codex CLI · production repo 編集 · git · deploy · terminal · 秘密読取 · 外部Web検索 · Home Assistant/カメラ制御。
 

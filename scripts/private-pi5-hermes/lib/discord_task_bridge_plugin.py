@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 try:
@@ -21,15 +22,23 @@ try:
         render_memo_usage,
         render_recommend_usage,
         render_remind_usage,
+        load_life_pilot_policy,
         run_life_digest_bridge_async,
         run_life_memo_bridge_async,
         run_life_recommend_bridge_async,
         run_life_remind_bridge_async,
     )
+    from .life_discord_inbox import (
+        capture_discord_inbox_message,
+        extract_discord_message_text,
+        extract_discord_message_id,
+        extract_attachment_names,
+    )
     from .life_proactive_loop import (
         remember_life_discord_context,
         resolve_proactive_reply,
     )
+    from .life_reminder_scheduler import send_discord_channel_message
     from .discord_novel_bridge import run_novel_bridge_async
     from .novel_request import NovelRequest
     from .novel_profile_runner import NovelProfilePaths, render_novel_usage
@@ -50,15 +59,23 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
         render_memo_usage,
         render_recommend_usage,
         render_remind_usage,
+        load_life_pilot_policy,
         run_life_digest_bridge_async,
         run_life_memo_bridge_async,
         run_life_recommend_bridge_async,
         run_life_remind_bridge_async,
     )
+    from life_discord_inbox import (
+        capture_discord_inbox_message,
+        extract_discord_message_text,
+        extract_discord_message_id,
+        extract_attachment_names,
+    )
     from life_proactive_loop import (
         remember_life_discord_context,
         resolve_proactive_reply,
     )
+    from life_reminder_scheduler import send_discord_channel_message
     from discord_novel_bridge import run_novel_bridge_async
     from novel_request import NovelRequest
     from novel_profile_runner import NovelProfilePaths, render_novel_usage
@@ -105,6 +122,26 @@ def _life_pilot_enabled() -> bool:
     return (_plugin_dir() / "life-pilot.policy.yaml").is_file()
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _life_discord_inbox_enabled() -> bool:
+    return _env_bool("HERMES_LIFE_DISCORD_INBOX_ENABLED", True)
+
+
+def _life_discord_inbox_capture_all() -> bool:
+    return _env_bool("HERMES_LIFE_DISCORD_INBOX_CAPTURE_ALL", False)
+
+
+def _life_discord_inbox_channel_ids() -> set[str]:
+    raw = os.environ.get("HERMES_LIFE_DISCORD_INBOX_CHANNEL_IDS", "")
+    return {item.strip() for item in raw.replace(";", ",").split(",") if item.strip()}
+
+
 def _coordinator() -> DiscordApprovalRelayCoordinator | None:
     global _COORDINATOR, _COORDINATOR_STORE_DIR
     try:
@@ -131,23 +168,101 @@ def _remember_life_context(user_id: str, channel_id: str) -> None:
         return
 
 
+def _source_platform_name(source) -> str:
+    platform = getattr(source, "platform", "") if source is not None else ""
+    value = getattr(platform, "value", None)
+    if value is not None:
+        platform = value
+    return str(platform or "").strip()
+
+
+def _is_discord_platform(platform: str) -> bool:
+    clean = str(platform or "").strip().lower()
+    return not clean or "discord" in clean
+
+
 def _send_gateway_reply(gateway, source, message: str) -> bool:
-    if gateway is None or source is None:
+    if source is None:
         return False
-    platform = str(getattr(source, "platform", "") or "").strip()
+    platform = _source_platform_name(source)
     chat_id = str(getattr(source, "chat_id", "") or "").strip()
     if not chat_id:
         chat_id = str(getattr(source, "thread_id", "") or "").strip()
-    adapters = getattr(gateway, "adapters", None) or {}
-    adapter = adapters.get(platform) if isinstance(adapters, dict) else None
-    send = getattr(adapter, "send", None)
-    if not callable(send) or not chat_id:
+    if gateway is not None:
+        adapters = getattr(gateway, "adapters", None) or {}
+        adapter = None
+        if isinstance(adapters, dict):
+            adapter_keys = [platform, platform.lower()]
+            if _is_discord_platform(platform):
+                adapter_keys.append("discord")
+            for key in adapter_keys:
+                if not key:
+                    continue
+                adapter = adapters.get(key)
+                if adapter is not None:
+                    break
+        send = getattr(adapter, "send", None)
+        if callable(send) and chat_id:
+            try:
+                send(chat_id, message)
+                return True
+            except Exception:
+                pass
+    token = os.environ.get("DISCORD_BOT_TOKEN", "")
+    if not _is_discord_platform(platform):
         return False
-    try:
-        send(chat_id, message)
-    except Exception:
+    if not token or not chat_id:
+        return False
+    result = send_discord_channel_message(token, chat_id, message)
+    if not result.ok:
         return False
     return True
+
+
+def _capture_life_discord_inbox(
+    event,
+    *,
+    user_id: str,
+    channel_id: str,
+    text: str,
+) -> str | None:
+    if not _life_discord_inbox_enabled():
+        return None
+    try:
+        policy = load_life_pilot_policy()
+        result = capture_discord_inbox_message(
+            Path(policy.storage_root),
+            text,
+            user_id=user_id,
+            channel_id=channel_id,
+            attachments=extract_attachment_names(event),
+            message_id=extract_discord_message_id(event),
+            allowed_channel_ids=_life_discord_inbox_channel_ids(),
+            capture_all=_life_discord_inbox_capture_all(),
+        )
+    except (OSError, ValueError, RuntimeError):
+        return None
+    if not result.captured:
+        return None
+    _remember_life_context(user_id, channel_id)
+    return result.ack
+
+
+_GATEWAY_EMPTY_MESSAGE_TEXT = "(the user sent a message with no text content)"
+
+
+def _is_gateway_empty_message_text(text: str) -> bool:
+    return " ".join((text or "").strip().lower().split()) == _GATEWAY_EMPTY_MESSAGE_TEXT
+
+
+def _blank_discord_share_text(source, text: str, attachments: tuple[str, ...]) -> str:
+    if not _is_discord_platform(_source_platform_name(source)):
+        return text
+    if attachments and _is_gateway_empty_message_text(text):
+        return "共有: Discord投稿（本文なし）"
+    if text or attachments:
+        return text
+    return "共有: Discord投稿（本文なし）"
 
 
 def _render_life_reply_usage() -> str:
@@ -292,29 +407,47 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
         fallback_user_id, fallback_channel_id = read_gateway_session_context()
         user_id = user_id or fallback_user_id
         channel_id = channel_id or fallback_channel_id
-    text = str(getattr(event, "text", "") or "").strip()
-    if not text or text.startswith("/"):
+    raw_text = str(getattr(event, "text", "") or "").strip()
+    text = extract_discord_message_text(event)
+    if not text:
+        text = raw_text
+    attachments = extract_attachment_names(event)
+    if raw_text.startswith("/") or text.startswith("/"):
+        return None
+    text = _blank_discord_share_text(source, text, attachments)
+    if not text and not attachments:
         return None
     resolved = None
     coord = _coordinator()
-    if coord is not None:
+    if coord is not None and raw_text:
         for actor_id in approval_actor_ids(user_id, channel_id):
-            resolved = coord.try_resolve_text(actor_id, text)
+            resolved = coord.try_resolve_text(actor_id, raw_text)
             if resolved is not None:
                 break
     if resolved is None:
         if _life_pilot_enabled():
-            try:
-                reply = resolve_proactive_reply(
-                    text,
-                    user_id=user_id,
-                    channel_id=channel_id,
-                )
-            except (OSError, ValueError, RuntimeError):
-                reply = None
+            reply = None
+            if raw_text and not _is_gateway_empty_message_text(raw_text):
+                try:
+                    reply = resolve_proactive_reply(
+                        raw_text,
+                        user_id=user_id,
+                        channel_id=channel_id,
+                    )
+                except (OSError, ValueError, RuntimeError):
+                    reply = None
             if reply is not None:
                 _send_gateway_reply(gateway, source, reply)
                 return {"action": "skip", "reason": "life-proactive-reply"}
+            ack = _capture_life_discord_inbox(
+                event,
+                user_id=user_id,
+                channel_id=channel_id,
+                text=text,
+            )
+            if ack is not None:
+                _send_gateway_reply(gateway, source, ack)
+                return {"action": "skip", "reason": "life-discord-inbox"}
         return None
     ok, message = resolved
     _send_gateway_reply(gateway, source, message if ok else f"task approval: {message}")

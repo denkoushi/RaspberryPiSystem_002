@@ -2,10 +2,15 @@
 """Plugin register() gates commands on deployed bridge artifacts."""
 
 import asyncio
+import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from lib import discord_task_bridge_plugin as plugin
 
@@ -178,6 +183,482 @@ class PluginRegisterTests(unittest.TestCase):
 
         self.assertEqual(result, {"action": "skip", "reason": "life-proactive-reply"})
         self.assertEqual(adapter.messages, [("channel-1", "受け取りました")])
+
+    def test_pre_gateway_dispatch_captures_discord_inbox_link(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+
+        class Event:
+            text = "あとで読む https://x.com/example/status/123"
+            source = Source()
+            internal = False
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def send(self, chat_id: str, message: str) -> None:
+                self.messages.append((chat_id, message))
+
+        adapter = Adapter()
+
+        class Gateway:
+            adapters = {"discord": adapter}
+
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "load_life_pilot_policy",
+            return_value=MagicMock(storage_root=tmp),
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
+            rows = [
+                json.loads(line)
+                for line in (Path(tmp) / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-discord-inbox"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["urls"], ["https://x.com/example/status/123"])
+        self.assertTrue(rows[0]["untrusted"])
+        self.assertEqual(adapter.messages[0][0], "channel-1")
+        self.assertIn("受け取り箱に保存しました", adapter.messages[0][1])
+        self.assertIn("boundary=local-only/no-tools", adapter.messages[0][1])
+
+    def test_pre_gateway_dispatch_captures_embed_only_android_share(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+
+        class Event:
+            text = ""
+            source = Source()
+            internal = False
+            embeds = [
+                {
+                    "url": "https://x.com/example/status/456",
+                    "title": "X post",
+                    "description": "あとで読みたい共有",
+                }
+            ]
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def send(self, chat_id: str, message: str) -> None:
+                self.messages.append((chat_id, message))
+
+        adapter = Adapter()
+
+        class Gateway:
+            adapters = {"discord": adapter}
+
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ) as reply_mock, unittest.mock.patch.object(
+            plugin,
+            "load_life_pilot_policy",
+            return_value=MagicMock(storage_root=tmp),
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
+            rows = [
+                json.loads(line)
+                for line in (Path(tmp) / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-discord-inbox"})
+        self.assertEqual(rows[0]["urls"], ["https://x.com/example/status/456"])
+        self.assertIn("X post", rows[0]["text"])
+        self.assertIn("受け取り箱に保存しました", adapter.messages[0][1])
+        reply_mock.assert_not_called()
+
+    def test_pre_gateway_dispatch_sends_ack_with_token_when_gateway_missing(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "Discord"
+            chat_id = "channel-1"
+
+        class Event:
+            text = ""
+            content = "https://x.com/example/status/789"
+            source = Source()
+            internal = False
+
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "load_life_pilot_policy",
+            return_value=MagicMock(storage_root=tmp),
+        ), unittest.mock.patch.object(
+            plugin,
+            "send_discord_channel_message",
+            return_value=MagicMock(ok=True),
+        ) as send_mock, unittest.mock.patch.dict(
+            plugin.os.environ,
+            {"DISCORD_BOT_TOKEN": "token-1"},
+            clear=False,
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event(), None)
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-discord-inbox"})
+        send_mock.assert_called_once()
+        self.assertEqual(send_mock.call_args.args[0], "token-1")
+        self.assertEqual(send_mock.call_args.args[1], "channel-1")
+        self.assertIn("受け取り箱に保存しました", send_mock.call_args.args[2])
+
+    def test_pre_gateway_dispatch_captures_attachment_placeholder_text(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+
+        class Event:
+            id = "message-attachment-1"
+            text = "クリックして添付ファイルを表示"
+            source = Source()
+            internal = False
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def send(self, chat_id: str, message: str) -> None:
+                self.messages.append((chat_id, message))
+
+        adapter = Adapter()
+
+        class Gateway:
+            adapters = {"discord": adapter}
+
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "load_life_pilot_policy",
+            return_value=MagicMock(storage_root=tmp),
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
+            rows = [
+                json.loads(line)
+                for line in (Path(tmp) / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-discord-inbox"})
+        self.assertEqual(rows[0]["messageId"], "message-attachment-1")
+        self.assertIn("添付ファイル", rows[0]["text"])
+        self.assertIn("受け取り箱に保存しました", adapter.messages[0][1])
+
+    def test_pre_gateway_dispatch_captures_blank_discord_share(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+
+        class Event:
+            id = "message-blank-share-1"
+            text = ""
+            source = Source()
+            internal = False
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def send(self, chat_id: str, message: str) -> None:
+                self.messages.append((chat_id, message))
+
+        adapter = Adapter()
+
+        class Gateway:
+            adapters = {"discord": adapter}
+
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ) as reply_mock, unittest.mock.patch.object(
+            plugin,
+            "load_life_pilot_policy",
+            return_value=MagicMock(storage_root=tmp),
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
+            rows = [
+                json.loads(line)
+                for line in (Path(tmp) / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-discord-inbox"})
+        self.assertEqual(rows[0]["messageId"], "message-blank-share-1")
+        self.assertIn("Discord投稿", rows[0]["text"])
+        self.assertIn("受け取り箱に保存しました", adapter.messages[0][1])
+        reply_mock.assert_not_called()
+
+    def test_pre_gateway_dispatch_captures_nested_attachment_metadata(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+            metadata = {
+                "message": {
+                    "id": "nested-attachment-1",
+                    "attachments": [{"filename": "shared-nested-image.png"}],
+                }
+            }
+
+        class Event:
+            text = ""
+            source = Source()
+            internal = False
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def send(self, chat_id: str, message: str) -> None:
+                self.messages.append((chat_id, message))
+
+        adapter = Adapter()
+
+        class Gateway:
+            adapters = {"discord": adapter}
+
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "load_life_pilot_policy",
+            return_value=MagicMock(storage_root=tmp),
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
+            rows = [
+                json.loads(line)
+                for line in (Path(tmp) / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-discord-inbox"})
+        self.assertEqual(rows[0]["messageId"], "nested-attachment-1")
+        self.assertEqual(rows[0]["attachments"], ["shared-nested-image.png"])
+        self.assertIn("受け取り箱に保存しました", adapter.messages[0][1])
+
+    def test_pre_gateway_dispatch_captures_discord_media_urls(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+
+        class Event:
+            text = "(The user sent a message with no text content)"
+            message_type = "photo"
+            media_urls = ["/home/hermes/.hermes/cache/images/img_discord_share.png"]
+            media_types = ["image/png"]
+            source = Source()
+            message_id = "discord-media-url-1"
+            internal = False
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def send(self, chat_id: str, message: str) -> None:
+                self.messages.append((chat_id, message))
+
+        adapter = Adapter()
+
+        class Gateway:
+            adapters = {"discord": adapter}
+
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ) as reply_mock, unittest.mock.patch.object(
+            plugin,
+            "load_life_pilot_policy",
+            return_value=MagicMock(storage_root=tmp),
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
+            rows = [
+                json.loads(line)
+                for line in (Path(tmp) / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-discord-inbox"})
+        self.assertEqual(rows[0]["messageId"], "discord-media-url-1")
+        self.assertEqual(rows[0]["attachments"], ["img_discord_share.png"])
+        self.assertIn("Discord投稿", rows[0]["text"])
+        self.assertIn("受け取り箱に保存しました", adapter.messages[0][1])
+        reply_mock.assert_not_called()
+
+    def test_pre_gateway_dispatch_captures_share_filename_text(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+
+        class Event:
+            id = "filename-only-1"
+            text = "Screenshot_20260606-123456.png"
+            source = Source()
+            internal = False
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def send(self, chat_id: str, message: str) -> None:
+                self.messages.append((chat_id, message))
+
+        adapter = Adapter()
+
+        class Gateway:
+            adapters = {"discord": adapter}
+
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "load_life_pilot_policy",
+            return_value=MagicMock(storage_root=tmp),
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
+            rows = [
+                json.loads(line)
+                for line in (Path(tmp) / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-discord-inbox"})
+        self.assertEqual(rows[0]["messageId"], "filename-only-1")
+        self.assertIn("Screenshot_20260606-123456.png", rows[0]["text"])
+        self.assertIn("受け取り箱に保存しました", adapter.messages[0][1])
+
+    def test_pre_gateway_dispatch_leaves_regular_chat_unhandled(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+
+        class Event:
+            text = "今日はどうすればいいかな"
+            source = Source()
+            internal = False
+
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "load_life_pilot_policy",
+            return_value=MagicMock(storage_root=tmp),
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event())
+
+        self.assertIsNone(result)
+        self.assertFalse((Path(tmp) / "inbox" / "discord.jsonl").exists())
 
     def test_life_reply_command_returns_proactive_reply(self) -> None:
         with unittest.mock.patch.object(
