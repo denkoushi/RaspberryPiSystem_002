@@ -20,6 +20,7 @@
     private_pi5_hermes_novel_config_dir: "{{ private_pi5_hermes_novel_home }}/.hermes"
     private_pi5_hermes_novel_model_profile_id: "qwen36_35b_uncensored"
     private_pi5_hermes_life_data_dir: "{{ private_pi5_hermes_home }}/.hermes-life"
+    private_pi5_hermes_life_obsidian_vault_dir: "{{ private_pi5_hermes_life_data_dir }}/obsidian/HermesLife"
     private_pi5_hermes_life_reminder_scheduler_active: >-
       {{
         (private_pi5_hermes_life_pilot_enabled | default(false) | bool)
@@ -326,6 +327,7 @@
           - "life_proactive_loop_active={{ private_pi5_hermes_life_proactive_loop_active }}"
           - "life_followup_loop_active={{ private_pi5_hermes_life_followup_loop_active }}"
           - "life_discord_ui_relay_active={{ private_pi5_hermes_life_discord_ui_relay_active }}"
+          - "life_obsidian_vault_dir={{ private_pi5_hermes_life_obsidian_vault_dir }}"
           - "dgx_keep_warm_active={{ private_pi5_hermes_dgx_keep_warm_active }}"
           - "discord_configured={{ (private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0 }}"
 

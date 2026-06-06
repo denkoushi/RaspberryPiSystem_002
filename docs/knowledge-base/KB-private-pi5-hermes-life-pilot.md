@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: active（2026-06-06 · `main` @ `253adcc1` · PR #409 マージ済み · D11 私用 Pi5 deploy + Discord E2E 完了）
+- **Status**: active（2026-06-06 · D11 私用 Pi5 deploy + Discord E2E 完了 · D12 Obsidian inbox repo 実装）
 - **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
 - **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
@@ -8,7 +8,7 @@
 
 Hermes を **生活メモの執事**として先に体感する最小実装。Codex/Cursor・本番 repo・terminal・git・deploy・秘密読取・外部 Web・HA/カメラは **意図的に未接続**。実行系ではなく **ローカル private log + 限定的 Discord 通知/返信** に閉じる。
 
-## 仕様（現行 · D11 まで）
+## 仕様（現行 · D12 repo）
 
 ### Discord 入口
 
@@ -23,7 +23,7 @@ Hermes を **生活メモの執事**として先に体感する最小実装。Co
 
 ### D10 朝候補ロジック
 
-朝 check-in は pending reminder と最近 memo から **deterministic に1件** を選び `今日まず見るなら:` として表示する。優先順: 今日までの日時つき reminder → 日時なし reminder → 次の日時つき reminder → 最近の memo。
+朝 check-in は pending reminder と最近 memo から **deterministic に1件** を選び `今日まず見るなら:` として表示する。D10時点の優先順は、今日までの日時つき reminder → 日時なし reminder → 次の日時つき reminder → 最近の memo。
 
 `夕方にもう一度` は `proactive/followups.jsonl` に `status=pending` を保存。既定 due は当日 17:00（過ぎていれば now+2h）。送信後は `status=sent` とし `checkins.jsonl` に `mode=followup` の pending check-in を追加。返信は `resolve_proactive_reply()` 経由。
 
@@ -35,6 +35,20 @@ follow-up 本文は `今ならこれだけ見ますか:` + 候補1件。夜 chec
 
 送信済み check-in には `briefing` と `contextHints`（`lowEnergy` / `pendingCount` / `pressure`）を保存する。briefing 優先順: 低エネルギー+多め未処理 → 低エネルギーのみ → 多め未処理 → carried → 既定。
 
+### D12 Obsidian inbox（repo）
+
+Android Obsidian の `Documents/Obsidian/HermesLife` を Syncthing-Fork で Pi5 へ同期し、Pi5 側のローカルコピーだけを Life Pilot の入力として読む。既定パス:
+
+```text
+/home/hermes/.hermes-life/obsidian/HermesLife
+```
+
+Hermes は保管庫を **読むだけ**。Obsidian 側への書込・削除、Syncthing 設定変更、OCR/画像認識は行わない。Markdown の本文は短い snippet のみ、画像/PDF はファイル名と存在だけを扱う。`.obsidian` / `.stfolder` / `.stversions` / symlink は読まない。`token` / `secret` / `.env` などを含む行は Discord 表示から落とす。
+
+朝 check-in に `Obsidian新着:` を追加する。候補優先順は、今日までの日時つき reminder → carried_forward → Obsidian 新着 → 日時なし reminder → 次の日時つき reminder → 最近の memo。Obsidian の新着メモに疲れ・眠い等の signal があれば D11 briefing の `lowEnergy` に反映する。
+
+送信済み check-in の `contextHints` には `obsidianItems` / `obsidianAttachments` も保存する。本文やファイル名の詳細は check-in JSON には残さない。
+
 ### 保存先（正本）
 
 ```text
@@ -44,6 +58,7 @@ follow-up 本文は `今ならこれだけ見ますか:` + 候補1件。夜 chec
   proactive/checkins.jsonl
   proactive/replies.jsonl
   proactive/followups.jsonl
+  obsidian/HermesLife/        # Syncthing receive-only copy; read-only input for Hermes
 ```
 
 ### systemd / sidecar
@@ -80,6 +95,7 @@ private_pi5_hermes_life_pilot_enabled: true
 | `life_pilot_policy.py` | prompt 検証 |
 | `discord_life_pilot_bridge.py` | slash 4種 + 日時パース + body-first 応答 |
 | `life_reminder_scheduler.py` | due reminder Discord 送信 |
+| `life_obsidian_inbox.py` | Syncthing 済み Obsidian vault の read-only 要約 |
 | `life_proactive_loop.py` | 朝晩/follow-up check-in 構築・返信保存 |
 | `life_discord_ui_relay.py` | Discord component relay（discord.py） |
 | `verify-discord-life-pilot.yml` | Pi5 smoke |
@@ -97,6 +113,16 @@ ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp \
 ```
 
 結果: **193 tests OK** · life-pilot policy OK · syntax-check OK
+
+### Local（D12 · Obsidian inbox repo）
+
+- `python3 -m unittest scripts/private-pi5-hermes/tests/test_life_proactive_loop.py`: **19 OK**
+- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests`: **196 OK**
+- `python3 -m py_compile`（Life Pilot / Obsidian inbox / scheduler / UI relay）: OK
+- `validate_boundary_policy.py --validate-life-pilot`: OK
+- `deploy-private-pi5-hermes.sh --syntax-check`: OK
+- `git diff --check`: OK
+- Obsidian 新着 Markdown / 画像添付 / sensitive line 非表示を追加検証
 
 ### 私用 Pi5 deploy（D10 · `57d19193`）
 
@@ -165,15 +191,18 @@ summary: life_pilot_enabled=True
 | deploy 後も朝メッセージが旧フォーマット | 当日 `checkins.jsonl` の重複ガードで再送スキップ | 当日 `-morning` 行を削除または `pending_reply` に戻して再送 |
 | Life Pilot smoke が `PermissionError` で `checkins.jsonl` を読めない | root 実行E2Eなどで `/home/hermes/.hermes-life` 配下が `root:root` になった | `chown -R hermes:hermes /home/hermes/.hermes-life` 後に再 deploy |
 | 疲れメモがあるのに `lowEnergy=false` | `notes/*.md` が `## YYYY-MM-DD HH:MM` block 形式でない、または limit 内に届かない | memo 保存形式を確認。D11 briefing は `_read_note_entries()` 経由のみ |
+| Obsidian新着が出ない | Pi5 側に `HermesLife` が同期されていない、または mtime が7日より古い | Syncthing の folder path を `/home/hermes/.hermes-life/obsidian/HermesLife` にし、Pi5 側を receive-only にする |
+| 画像の中身が読まれない | D12 は画像/OCR未接続 | まずはファイル名と存在だけ。OCR/画像認識は別フェーズ |
 
 ## Open Items
 
 1. **`main`（`253adcc1`）を私用 Pi5 へ post-merge deploy** — D11 branch deploy 済み。main HEAD 反映後に E2E 再確認
-2. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
-3. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
-4. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
-5. **LLM ベース推薦** — 現状は deterministic suggestion のみ
-6. **数日運用の体感評価** — proactive 朝晩・reminder/follow-up 通知の頻度/文言調整
+2. **D12 Obsidian inbox deploy + Syncthing E2E** — Android `Documents/Obsidian/HermesLife` → Pi5 receive-only → 朝 check-in `Obsidian新着:` を実機確認
+3. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
+4. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
+5. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
+6. **LLM ベース推薦** — 現状は deterministic suggestion のみ
+7. **数日運用の体感評価** — proactive 朝晩・reminder/follow-up 通知の頻度/文言調整
 
 ## References
 

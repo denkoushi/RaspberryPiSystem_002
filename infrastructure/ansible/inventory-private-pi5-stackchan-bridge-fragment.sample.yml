@@ -121,6 +121,9 @@ all:
       # private_pi5_hermes_life_proactive_evening_time: "21:30:00"
       # Optional fixed Discord target; otherwise Hermes uses the last Life Pilot channel context.
       # private_pi5_hermes_life_proactive_channel_id: ""
+      # D12-life: Obsidian inbox input. Sync Android
+      # Documents/Obsidian/HermesLife to this path with Syncthing receive-only on Pi5.
+      # private_pi5_hermes_life_obsidian_vault_dir: "/home/hermes/.hermes-life/obsidian/HermesLife"
       # Novel profile: creative writing via /novel (on-demand DGX qwen36_35b_uncensored)
       # private_pi5_hermes_novel_profile_enabled: true
       # private_pi5_hermes_discord_novel_bridge_enabled: true

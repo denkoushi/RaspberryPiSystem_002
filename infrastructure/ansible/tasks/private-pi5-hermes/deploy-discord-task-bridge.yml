@@ -29,6 +29,8 @@
     - "{{ private_pi5_hermes_life_data_dir }}/reminders"
     - "{{ private_pi5_hermes_life_data_dir }}/context"
     - "{{ private_pi5_hermes_life_data_dir }}/proactive"
+    - "{{ private_pi5_hermes_life_data_dir }}/obsidian"
+    - "{{ private_pi5_hermes_life_obsidian_vault_dir }}"
   when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
 
 - name: Deploy discord-task-bridge shared Python modules
@@ -56,6 +58,7 @@
     - life_pilot_policy.py
     - discord_life_pilot_bridge.py
     - life_reminder_scheduler.py
+    - life_obsidian_inbox.py
     - life_proactive_loop.py
     - life_discord_ui_relay.py
 
