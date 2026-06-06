@@ -10,7 +10,7 @@
 
 ### 最新アップデート（2026-06-06 · Hermes Life Pilot）
 
-- [KB Life Pilot](./knowledge-base/KB-private-pi5-hermes-life-pilot.md) — D12 Obsidian inbox repo · D11 私用 Pi5 E2E 正本
+- [KB Life Pilot](./knowledge-base/KB-private-pi5-hermes-life-pilot.md) — D13 Discord shared inbox repo · D12 Obsidian inbox deploy · D11 context briefing E2E 正本
 
 ### 最新アップデート（2026-06-06 · 私用 Pi5 Hermes D6-pre · **Discord `/daily` Ansible sync 合格**）
 

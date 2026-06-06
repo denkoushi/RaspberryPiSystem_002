@@ -115,6 +115,13 @@ def _write_obsidian_attachment(root: Path, relpath: str, mtime: datetime) -> Pat
     return path
 
 
+def _write_discord_inbox(root: Path, item: dict[str, object]) -> None:
+    path = root / "inbox" / "discord.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
+
+
 class LifeProactiveLoopTests(unittest.TestCase):
     def test_morning_checkin_message_offers_choice_and_free_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -259,6 +266,7 @@ class LifeProactiveLoopTests(unittest.TestCase):
                 checkin["contextHints"],
                 {
                     "lowEnergy": True,
+                    "discordInboxItems": 0,
                     "obsidianAttachments": 0,
                     "obsidianItems": 0,
                     "pendingCount": 3,
@@ -298,6 +306,44 @@ class LifeProactiveLoopTests(unittest.TestCase):
             )
             self.assertEqual(checkin["candidateSource"], "obsidian_inbox")
             self.assertEqual(checkin["contextHints"]["obsidianItems"], 1)
+
+    def test_morning_checkin_uses_recent_discord_shared_link_as_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
+            _write_discord_inbox(
+                root,
+                {
+                    "createdAt": (now - timedelta(minutes=20)).isoformat(timespec="seconds"),
+                    "source": "discord",
+                    "status": "new",
+                    "text": "あとで読みたいX投稿 https://x.com/example/status/123",
+                    "urls": ["https://x.com/example/status/123"],
+                    "attachments": [],
+                    "untrusted": True,
+                },
+            )
+
+            message = build_proactive_checkin_message("morning", root, now=now)
+            dispatch_proactive_checkin(
+                root,
+                "morning",
+                now=now,
+                sender=FakeSender(),
+                channel_id="channel-1",
+                user_id="user-1",
+            )
+
+            self.assertIn("共有メモ新着:", message)
+            self.assertIn("Xリンク: あとで読みたいX投稿", message)
+            self.assertIn("今日まず見るなら:\n共有メモを見返す", message)
+            checkin = json.loads(
+                (root / "proactive" / "checkins.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()[0]
+            )
+            self.assertEqual(checkin["candidateSource"], "discord_inbox")
+            self.assertEqual(checkin["contextHints"]["discordInboxItems"], 1)
 
     def test_morning_checkin_mentions_obsidian_attachment_without_reading_image(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

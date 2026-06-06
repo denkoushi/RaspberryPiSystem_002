@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: active（2026-06-06 · D11 私用 Pi5 deploy + Discord E2E 完了 · D12 Obsidian inbox repo 実装）
+- **Status**: active（2026-06-06 · D12 Obsidian inbox deploy 完了 · D13 Discord shared inbox repo 実装）
 - **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
 - **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
@@ -8,7 +8,7 @@
 
 Hermes を **生活メモの執事**として先に体感する最小実装。Codex/Cursor・本番 repo・terminal・git・deploy・秘密読取・外部 Web・HA/カメラは **意図的に未接続**。実行系ではなく **ローカル private log + 限定的 Discord 通知/返信** に閉じる。
 
-## 仕様（現行 · D12 repo）
+## 仕様（現行 · D13 repo）
 
 ### Discord 入口
 
@@ -19,6 +19,7 @@ Hermes を **生活メモの執事**として先に体感する最小実装。Co
 | 朝晩 check-in | `hermes-life-proactive-{morning,evening}.timer` が Discord へ送信 |
 | follow-up | 朝 `夕方にもう一度` → `followups.jsonl` に pending · `hermes-life-followup.timer`（既定 5 分）が due 時に **1回だけ** 再確認 |
 | button | 朝 `これをやる` / `夕方にもう一度` / `今日は外す`、follow-up `やる` / `明日に回す` / `外す`、夜 `終わった` / `明日に回す` / `メモだけ残す` + `自由入力` modal |
+| Discord 共有 | Android 標準の共有メニューから Discord DM/専用チャンネルへ送ったリンク・添付名・明示メモを Life Pilot inbox に保存 |
 | 応答 UX | 成功時は **本文テキスト先頭** · 診断は `-# debug:` 1行 subtext · `#` 見出しと `>` 引用は使わない |
 
 ### D10 朝候補ロジック
@@ -45,9 +46,23 @@ Android Obsidian の `Documents/Obsidian/HermesLife` を Syncthing-Fork で Pi5 
 
 Hermes は保管庫を **読むだけ**。Obsidian 側への書込・削除、Syncthing 設定変更、OCR/画像認識は行わない。Markdown の本文は短い snippet のみ、画像/PDF はファイル名と存在だけを扱う。`.obsidian` / `.stfolder` / `.stversions` / symlink は読まない。`token` / `secret` / `.env` などを含む行は Discord 表示から落とす。
 
-朝 check-in に `Obsidian新着:` を追加する。候補優先順は、今日までの日時つき reminder → carried_forward → Obsidian 新着 → 日時なし reminder → 次の日時つき reminder → 最近の memo。Obsidian の新着メモに疲れ・眠い等の signal があれば D11 briefing の `lowEnergy` に反映する。
+朝 check-in に `Obsidian新着:` を追加する。Obsidian の新着メモに疲れ・眠い等の signal があれば D11 briefing の `lowEnergy` に反映する。
 
 送信済み check-in の `contextHints` には `obsidianItems` / `obsidianAttachments` も保存する。本文やファイル名の詳細は check-in JSON には残さない。
+
+### D13 Discord shared inbox（repo）
+
+Obsidian/Syncthing が重い場合の入力経路として、Android 標準の共有メニューから Discord へ送ったリンクやスクリーンショット添付を Life Pilot inbox に保存する。既定保存先:
+
+```text
+/home/hermes/.hermes-life/inbox/discord.jsonl
+```
+
+Hermes は外部 Web を開かない。X/URL は URL と短い本文だけ、画像やファイルは添付ファイル名だけを保存し、ダウンロード・OCR・画像認識は行わない。`token` / `secret` / `.env` などを含む本文は redacted として保存する。
+
+朝 check-in に `共有メモ新着:` を追加する。候補優先順は、今日までの日時つき reminder → carried_forward → Discord 共有メモ → Obsidian 新着 → 日時なし reminder → 次の日時つき reminder → 最近の memo。Discord 共有メモに疲れ・眠い等の signal があれば D11 briefing の `lowEnergy` に反映する。
+
+既定では、URL・添付・`共有:` / `メモ:` / `inbox:` / `memo:` prefix の通常メッセージだけを capture する。通常会話をすべて保存したい場合のみ `private_pi5_hermes_life_discord_inbox_capture_all: true` を使う。
 
 ### 保存先（正本）
 
@@ -59,6 +74,7 @@ Hermes は保管庫を **読むだけ**。Obsidian 側への書込・削除、Sy
   proactive/replies.jsonl
   proactive/followups.jsonl
   obsidian/HermesLife/        # Syncthing receive-only copy; read-only input for Hermes
+  inbox/discord.jsonl         # Discord shared inbox; untrusted local input
 ```
 
 ### systemd / sidecar
@@ -81,6 +97,9 @@ private_pi5_hermes_life_pilot_enabled: true
 # 既定 true: private_pi5_hermes_life_proactive_loop_enabled
 # 既定 true: private_pi5_hermes_life_followup_loop_enabled
 # 既定 true: private_pi5_hermes_life_discord_ui_relay_enabled
+# 既定 true: private_pi5_hermes_life_discord_inbox_enabled
+# 任意: private_pi5_hermes_life_discord_inbox_channel_ids
+# 既定 false: private_pi5_hermes_life_discord_inbox_capture_all
 ```
 
 ### 安全境界（緩めていない）
@@ -96,6 +115,7 @@ private_pi5_hermes_life_pilot_enabled: true
 | `discord_life_pilot_bridge.py` | slash 4種 + 日時パース + body-first 応答 |
 | `life_reminder_scheduler.py` | due reminder Discord 送信 |
 | `life_obsidian_inbox.py` | Syncthing 済み Obsidian vault の read-only 要約 |
+| `life_discord_inbox.py` | Discord shared message の local inbox 保存・要約 |
 | `life_proactive_loop.py` | 朝晩/follow-up check-in 構築・返信保存 |
 | `life_discord_ui_relay.py` | Discord component relay（discord.py） |
 | `verify-discord-life-pilot.yml` | Pi5 smoke |
@@ -123,6 +143,17 @@ ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp \
 - `deploy-private-pi5-hermes.sh --syntax-check`: OK
 - `git diff --check`: OK
 - Obsidian 新着 Markdown / 画像添付 / sensitive line 非表示を追加検証
+
+### Local（D13 · Discord shared inbox repo）
+
+- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_discord_task_bridge_plugin_register.py'`: **12 OK**
+- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_life_proactive_loop.py'`: **20 OK**
+- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests`: **199 OK**
+- `python3 -m py_compile`（Life Pilot / Discord inbox / Obsidian inbox / scheduler / UI relay）: OK
+- `validate_boundary_policy.py --validate-life-pilot`: OK
+- `deploy-private-pi5-hermes.sh --syntax-check`: OK
+- `git diff --check`: OK
+- Discord shared link capture / 通常会話 non-capture / 朝 check-in `共有メモ新着:` を追加検証
 
 ### 私用 Pi5 deploy（D10 · `57d19193`）
 
@@ -193,11 +224,13 @@ summary: life_pilot_enabled=True
 | 疲れメモがあるのに `lowEnergy=false` | `notes/*.md` が `## YYYY-MM-DD HH:MM` block 形式でない、または limit 内に届かない | memo 保存形式を確認。D11 briefing は `_read_note_entries()` 経由のみ |
 | Obsidian新着が出ない | Pi5 側に `HermesLife` が同期されていない、または mtime が7日より古い | Syncthing の folder path を `/home/hermes/.hermes-life/obsidian/HermesLife` にし、Pi5 側を receive-only にする |
 | 画像の中身が読まれない | D12 は画像/OCR未接続 | まずはファイル名と存在だけ。OCR/画像認識は別フェーズ |
+| Discord 共有が保存されない | URL/添付/prefix のない通常会話、または inbox disabled | X/URL を共有する、または `共有:` / `メモ:` prefix を付ける。専用チャンネル運用なら channel ID を fragment に入れる |
+| URL を送ると通常チャット応答にならない | D13 は URL を「共有メモ」として capture して Hermes 本体へ渡さない | リンク相談ではなく、後で見る inbox 用の経路。通常相談は URL なしで送る |
 
 ## Open Items
 
-1. **`main`（`253adcc1`）を私用 Pi5 へ post-merge deploy** — D11 branch deploy 済み。main HEAD 反映後に E2E 再確認
-2. **D12 Obsidian inbox deploy + Syncthing E2E** — Android `Documents/Obsidian/HermesLife` → Pi5 receive-only → 朝 check-in `Obsidian新着:` を実機確認
+1. **D13 Discord shared inbox deploy + E2E** — Android 共有メニュー → Discord DM/専用チャンネル → `inbox/discord.jsonl` → 朝 check-in `共有メモ新着:` を実機確認
+2. **D12 Obsidian inbox Syncthing 運用は任意化** — 手数が重い場合は Discord shared inbox を主経路にする
 3. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
 4. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
 5. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）

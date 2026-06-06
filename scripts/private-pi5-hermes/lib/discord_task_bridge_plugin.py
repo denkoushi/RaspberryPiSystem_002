@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 try:
@@ -21,10 +22,15 @@ try:
         render_memo_usage,
         render_recommend_usage,
         render_remind_usage,
+        load_life_pilot_policy,
         run_life_digest_bridge_async,
         run_life_memo_bridge_async,
         run_life_recommend_bridge_async,
         run_life_remind_bridge_async,
+    )
+    from .life_discord_inbox import (
+        capture_discord_inbox_message,
+        extract_attachment_names,
     )
     from .life_proactive_loop import (
         remember_life_discord_context,
@@ -50,10 +56,15 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
         render_memo_usage,
         render_recommend_usage,
         render_remind_usage,
+        load_life_pilot_policy,
         run_life_digest_bridge_async,
         run_life_memo_bridge_async,
         run_life_recommend_bridge_async,
         run_life_remind_bridge_async,
+    )
+    from life_discord_inbox import (
+        capture_discord_inbox_message,
+        extract_attachment_names,
     )
     from life_proactive_loop import (
         remember_life_discord_context,
@@ -105,6 +116,26 @@ def _life_pilot_enabled() -> bool:
     return (_plugin_dir() / "life-pilot.policy.yaml").is_file()
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _life_discord_inbox_enabled() -> bool:
+    return _env_bool("HERMES_LIFE_DISCORD_INBOX_ENABLED", True)
+
+
+def _life_discord_inbox_capture_all() -> bool:
+    return _env_bool("HERMES_LIFE_DISCORD_INBOX_CAPTURE_ALL", False)
+
+
+def _life_discord_inbox_channel_ids() -> set[str]:
+    raw = os.environ.get("HERMES_LIFE_DISCORD_INBOX_CHANNEL_IDS", "")
+    return {item.strip() for item in raw.replace(";", ",").split(",") if item.strip()}
+
+
 def _coordinator() -> DiscordApprovalRelayCoordinator | None:
     global _COORDINATOR, _COORDINATOR_STORE_DIR
     try:
@@ -148,6 +179,34 @@ def _send_gateway_reply(gateway, source, message: str) -> bool:
     except Exception:
         return False
     return True
+
+
+def _capture_life_discord_inbox(
+    event,
+    *,
+    user_id: str,
+    channel_id: str,
+    text: str,
+) -> str | None:
+    if not _life_discord_inbox_enabled():
+        return None
+    try:
+        policy = load_life_pilot_policy()
+        result = capture_discord_inbox_message(
+            Path(policy.storage_root),
+            text,
+            user_id=user_id,
+            channel_id=channel_id,
+            attachments=extract_attachment_names(event),
+            allowed_channel_ids=_life_discord_inbox_channel_ids(),
+            capture_all=_life_discord_inbox_capture_all(),
+        )
+    except (OSError, ValueError, RuntimeError):
+        return None
+    if not result.captured:
+        return None
+    _remember_life_context(user_id, channel_id)
+    return result.ack
 
 
 def _render_life_reply_usage() -> str:
@@ -293,11 +352,14 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
         user_id = user_id or fallback_user_id
         channel_id = channel_id or fallback_channel_id
     text = str(getattr(event, "text", "") or "").strip()
-    if not text or text.startswith("/"):
+    attachments = extract_attachment_names(event)
+    if not text and not attachments:
+        return None
+    if text.startswith("/"):
         return None
     resolved = None
     coord = _coordinator()
-    if coord is not None:
+    if coord is not None and text:
         for actor_id in approval_actor_ids(user_id, channel_id):
             resolved = coord.try_resolve_text(actor_id, text)
             if resolved is not None:
@@ -315,6 +377,15 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
             if reply is not None:
                 _send_gateway_reply(gateway, source, reply)
                 return {"action": "skip", "reason": "life-proactive-reply"}
+            ack = _capture_life_discord_inbox(
+                event,
+                user_id=user_id,
+                channel_id=channel_id,
+                text=text,
+            )
+            if ack is not None:
+                _send_gateway_reply(gateway, source, ack)
+                return {"action": "skip", "reason": "life-discord-inbox"}
         return None
     ok, message = resolved
     _send_gateway_reply(gateway, source, message if ok else f"task approval: {message}")
