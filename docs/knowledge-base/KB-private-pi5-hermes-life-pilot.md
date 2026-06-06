@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: active（2026-06-06 · repo `feat/hermes-life-proactive-loop` @ `30296697` · 私用 Pi5 deploy + Discord E2E 完了）
+- **Status**: active（2026-06-06 · `main` @ `ac2aa6f9` · PR #406 マージ済み · 私用 Pi5 deploy + Discord E2E 完了）
 - **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
 - **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
@@ -120,11 +120,11 @@ journalctl -u hermes-life-proactive@morning.service -n 10 --no-pager
 
 ## Open Items
 
-1. **`feat/hermes-life-proactive-loop` を `main` へマージ** — 本 KB 更新と同時に PR 化予定
-2. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
-3. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
-4. **LLM ベース推薦** — 現状は deterministic suggestion のみ
-5. **数日運用の体感評価** — proactive 朝晩・reminder 通知の頻度/文言調整
+1. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
+2. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
+3. **LLM ベース推薦** — 現状は deterministic suggestion のみ
+4. **数日運用の体感評価** — proactive 朝晩・reminder 通知の頻度/文言調整
+5. **`main` へ post-merge deploy** — `ac2aa6f9` を私用 Pi5 へ反映し E2E を再確認
 
 ## References
 
