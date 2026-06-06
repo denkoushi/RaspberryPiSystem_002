@@ -1116,9 +1116,40 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 
 ---
 
+## KB-388: Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧（2026-06-06）
+
+**発生日**: 2026-06-06
+
+**事象**:
+- Cursor が極端に重い / フリーズ（Chrome + Codex 同時起動時）
+- `User/globalStorage/state.vscdb` が **約 42GB**、`state.vscdb.backup` が **約 35GB**
+- ログに `SQLITE_CORRUPT: database disk image is malformed` が大量
+
+**要因**:
+- Agent / Composer / チャット履歴が `cursorDiskKV`（`agentKv:blob` · `bubbleId` 等）に蓄積し、DB が破損・肥大化
+- 外部SSD上の高頻度 SQLite I/O が再発要因になり得る（今回の直接原因は破損DB）
+
+**解決方法**:
+- Cursor 終了後、`state.vscdb` 系を **削除せず退避**（例: `recovery-20260606-090149` · 76GB）し再起動
+- 新 DB は約 1–2MB · `integrity_check: ok` · リポジトリ文脈は再読取可能
+- **プロジェクト・Git・未コミット WIP は影響なし**
+
+**再発防止**:
+- `state.vscdb` サイズと `SQLITE_CORRUPT` を定期監視
+- 安定後に退避フォルダ削除で容量回収
+- 再発時は状態DBのみ内蔵SSD・インデックス除外・KB-212 整理を検討
+
+**詳細（正本）**: [KB-388-cursor-state-db-corruption-external-ssd-recovery.md](../KB-388-cursor-state-db-corruption-external-ssd-recovery.md)
+
+**関連**: KB-212（チャットログの選択削除）· [mac-storage-migration](../../guides/mac-storage-migration.md)
+
+---
+
 ## KB-212: Cursorチャットログの安全な削除手順（1週間より前のログ削除）
 
 **発生日**: 2026-01-28
+
+**関連（2026-06-06）**: DB 破損・全体復旧は [KB-388](../KB-388-cursor-state-db-corruption-external-ssd-recovery.md)。KB-212 は **履歴の選択削除**、KB-388 は **破損DBの退避と再生成**。
 
 **事象**: 
 - Cursorのチャットログが約27GBと非常に大きくなり、ストレージを圧迫している

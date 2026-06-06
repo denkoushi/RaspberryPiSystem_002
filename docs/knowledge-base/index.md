@@ -206,6 +206,7 @@ update-frequency: high
 | [KB-353](./ci-cd.md#kb-353-github-actions-のジョブ分割と-composite-action-による-ci-高速化2026-04-18) | GitHub Actions のジョブ分割と composite action による CI 高速化（2026-04-18） | ✅ 解決済み |
 | [KB-358](./ci-cd.md#kb-358-api-db-and-infra-の-wait-for-postgresql-が-flake-するborrow_return-等) | `api-db-and-infra` の Wait for PostgreSQL が flake する（`borrow_return` 等） | 🔄 運用回避（再実行） |
 | [KB-359](./ci-cd.md#kb-359-開発端末の-python3-パス不良update-all-clients-の非致命警告) | 開発端末の `python3` パス不良（`update-all-clients` の非致命警告） | 🔄 進行中（環境依存） |
+| [KB-388](./KB-388-cursor-state-db-corruption-external-ssd-recovery.md) | Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧（2026-06-06） | ✅ 復旧済み（監視継続） |
 
 ### フロントエンド関連
 
@@ -450,6 +451,7 @@ update-frequency: high
 | [KB-210](./infrastructure/miscellaneous.md#kb-210-pi3pi4でwi-fi認証ダイアログが時々表示される問題) | Pi3/Pi4でWi-Fi認証ダイアログが時々表示される問題 | ✅ 解決済み |
 | [KB-211](./infrastructure/miscellaneous.md#kb-211-pi4キオスクでchromiumのサポートされていないコマンドラインフラグ警告メッセージが表示される問題) | Pi4キオスクでChromiumの「サポートされていないコマンドラインフラグ」警告メッセージが表示される問題 | ✅ 解決済み |
 | [KB-212](./infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除) | Cursorチャットログの安全な削除手順（1週間より前のログ削除） | ✅ 手順確立済み |
+| [KB-388](./KB-388-cursor-state-db-corruption-external-ssd-recovery.md) | Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧（2026-06-06） | ✅ 復旧済み（監視継続） |
 | [KB-216](./infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) | Pi3デプロイ時のpost_tasksでunreachable=1が発生するがサービスは正常動作している | ✅ 調査完了・対応不要 |
 | [KB-217](./infrastructure/ansible-deployment.md#kb-217-デプロイプロセスのコード変更検知とdocker再ビルド確実化) | デプロイプロセスのコード変更検知とDocker再ビルド確実化 | ✅ 解決済み |
 | [KB-218](./infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因fail2banによるip-ban存在しないユーザーでの認証試行) | SSH接続失敗の原因: fail2banによるIP Ban（存在しないユーザーでの認証試行） | ✅ 解決済み |
@@ -611,6 +613,7 @@ update-frequency: high
 - 2026-01-24: KB-193を追加（デプロイ標準手順のタイムアウト・コンテナ未起動問題の徹底調査結果）→ 2026-01-24に改善実装完了（down後回し、中断時復旧、ログ永続化）
 - 2026-01-25: KB-200を追加（デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能）→ 2026-01-25に実装完了・実機検証完了（Pi5/Pi4/Pi3へのデプロイ成功）
 - 2026-01-26: KB-201、KB-202、KB-203を追加（生産スケジュールCSVダッシュボードの差分ロジック改善とバリデーション追加、生産スケジュールキオスクページの列名変更とFSEIBAN全文表示、本番環境でのprisma db seed失敗と直接SQL更新）→ 2026-01-26に実装完了・実機検証完了
+- 2026-06-06: KB-388を追加（Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧）→ 退避 76GB 後に新 DB 正常化・リポジトリ/WIP 無傷・チャット履歴初期化・監視継続（[KB-388](./KB-388-cursor-state-db-corruption-external-ssd-recovery.md)）
 - 2026-01-27: KB-201を更新（FSEIBANバリデーション修正: `********`（8個のアスタリスク）を明示的に許可）、KB-204を追加（CSVインポートスケジュール実行ボタンの競合防止と409エラーハンドリング）→ 2026-01-27に実装完了・実機検証完了（Gmail経由CSV取り込み成功、`********`も正常に取得）
 - 2026-01-26: KB-205、KB-206を追加（生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側・フロントエンド側））→ 2026-01-26に実装完了・CI成功・Mac実機検証完了（Pi4での実機検証は明日実施予定）
 - 2026-01-27: KB-207を追加（生産スケジュールUI改善（チェック配色/OR検索/ソフトキーボード））→ 2026-01-27に実装完了・CI成功・デプロイ成功・実機検証完了（Mac・Pi4）

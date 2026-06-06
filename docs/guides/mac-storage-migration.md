@@ -1,6 +1,6 @@
 # Macストレージ圧迫対策: Docker/Cursorデータの外付けSSD移行とGoogleドライブバックアップ
 
-最終更新: 2026-02-10
+最終更新: 2026-06-06
 
 ## 概要
 
@@ -318,6 +318,42 @@ rclone config
 rclone sync /Volumes/SSD01/MacOffload/Cursor gdrive:Backups/MacStorage/Cursor --progress
 ```
 
+## Cursor `state.vscdb` の破損・肥大化（2026-06-06 追記）
+
+外部SSDへ Cursor を逃がした運用中でも、**`User/globalStorage/state.vscdb`** が破損・肥大化すると Cursor が極端に重くなる。本リポジトリ開発端末で **2026-06-06 に復旧実績**あり。正本は [KB-388](../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md)。
+
+### 症状の目安
+
+| 観測 | 閾値・ログ |
+|------|------------|
+| `state.vscdb` サイズ | 通常は数 MB 〜 数十 MB。**数 GB〜数十 GB** は異常 |
+| Cursor ログ | `SQLITE_CORRUPT: database disk image is malformed` が大量 |
+| 体感 | 起動遅延・フリーズ（Chrome/Codex 同時起動で顕著になりやすい） |
+
+### サイズ確認
+
+```bash
+du -sh "$HOME/Library/Application Support/Cursor/User/globalStorage/state.vscdb"*
+```
+
+### 復旧の原則（プロジェクトは壊れない）
+
+1. **Cursor を完全終了**してから作業（外部ターミナル推奨）
+2. `state.vscdb` 系を **削除せず退避**（`recovery-YYYYMMDD-HHMMSS` 等）
+3. Cursor 再起動 → 新しい小さな DB が生成される
+4. **ログインし直す**（ログイン状態は旧 DB 側にあった）
+5. リポジトリを開き直し、`git status` と `docs/EXEC_PLAN.md` で文脈を再確認
+
+**失われうるもの**: 過去チャット・Agent/Composer セッション・最近開いた一覧。**残るもの**: 本リポジトリ・未コミット WIP・`settings.json`・拡張機能。
+
+### 再発監視
+
+- 数日〜数週間、`state.vscdb` のサイズと `SQLITE_CORRUPT` を確認
+- 安定後に退避フォルダ（例: 76GB）を削除して容量回収
+- 再発時は [KB-388 §再発時の検討肢](../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md#prevention--再発監視)（状態DBのみ内蔵SSD・インデックス除外・[KB-212](../knowledge-base/infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除)）を検討
+
+**関連**: [KB-212](../knowledge-base/infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除)（チャットログの選択削除）· [development §Cursor復旧後](./development.md#cursor-状態db復旧後の-agent-作業2026-06-06)
+
 ## トラブルシューティング
 
 ### Dockerが起動しない
@@ -337,6 +373,10 @@ rclone sync /Volumes/SSD01/MacOffload/Cursor gdrive:Backups/MacStorage/Cursor --
    # Docker Desktopのログを確認
    tail -f ~/Library/Containers/com.docker.docker/Data/log/host/*.log
    ```
+
+### Cursorが極端に重い / `SQLITE_CORRUPT` が出る
+
+→ 上記 **[Cursor `state.vscdb` の破損・肥大化](#cursor-statevscdb-の破損肥大化2026-06-06-追記)** と [KB-388](../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) を参照。プロジェクト本体ではなく Cursor 内部 DB の問題であることが多い。
 
 ### Cursorが起動しない
 

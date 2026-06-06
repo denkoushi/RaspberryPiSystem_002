@@ -10,11 +10,38 @@ update-frequency: medium
 
 # 開発ガイド
 
-最終更新: 2025-12-28（UI検証手順追加）
+最終更新: 2026-06-06（Cursor 状態DB復旧後の Agent 作業ルール追記）
 
 ## 概要
 
 本ドキュメントでは、Raspberry Pi System 002の開発環境のセットアップと開発手順を説明します。
+
+## Cursor 状態DB復旧後の Agent 作業（2026-06-06） {#cursor-状態db復旧後の-agent-作業2026-06-06}
+
+Cursor の `state.vscdb` 破損・肥大化により **チャット/Agent 履歴が失われた場合**でも、**ローカルリポジトリ・`docs/`・Git・未コミット WIP は残る**。Agent はチャット履歴に依存せず、リポジトリ内ドキュメントから文脈を再構築する。
+
+**正本**: [KB-388](../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) · [mac-storage-migration §state.vscdb](./mac-storage-migration.md#cursor-statevscdb-の破損肥大化2026-06-06-追記) · [`EXEC_PLAN` §Cursor復旧](../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06)
+
+### 復旧直後のルール
+
+| 項目 | 扱い |
+|------|------|
+| 未コミット変更 | **WIP** — 破棄しない（例: Hermes Discord command sync） |
+| 本番デプロイ / Pi 実機 | **明示依頼まで実行しない** |
+| 秘密情報 | 勝手に探索・表示しない |
+| 最初の作業 | `AGENTS.md` · `.cursor/rules/` · `docs/INDEX.md` · `EXEC_PLAN.md` を読む |
+
+### 文脈の再構築手順
+
+1. `git status` / `git log -5` でブランチと未コミット WIP を確認
+2. [docs/INDEX.md](../INDEX.md) の「最新アップデート」で直近トピックを把握
+3. [EXEC_PLAN.md](../../EXEC_PLAN.md) の `Progress` と `Next Steps` を読む
+4. WIP があれば [KB-388 §WIP](../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md#本リポジトリ固有の-wip2026-06-06-時点) と該当 KB（例: [daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md)）を参照
+5. ユーザーが依頼するまで **コード変更・デプロイは保留**
+
+### Mac 開発環境（外部SSD）
+
+Cursor の Application Support / `.cursor` を外部SSD（例: `/Volumes/SSD01/MacOffload/Cursor/`）へ逃がす手順は [mac-storage-migration.md](./mac-storage-migration.md)。**2026-06-06 時点では外部SSD運用を継続**し、`state.vscdb` サイズと `SQLITE_CORRUPT` を監視する（[KB-388](../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md)）。
 
 ## 前提条件
 

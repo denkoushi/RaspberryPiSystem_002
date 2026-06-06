@@ -53,6 +53,16 @@
   - 進捗管理、決定事項の記録、発見事項の記録、振り返り、次のタスクの提示
   - 詳細は上記「ExecPlan（複雑な作業の必須手順）」セクションを参照
 
+## Cursor 状態DB復旧後（2026-06-06）
+
+チャット/Agent 履歴が失われても、**リポジトリ・`docs/`・未コミット WIP は残る**。復旧直後は次を優先する。
+
+- **未コミット変更は WIP として破棄しない**（例: Hermes Discord command sync）
+- **本番デプロイ・Pi 実機操作はユーザー明示まで実行しない**
+- 文脈は [docs/INDEX.md](./docs/INDEX.md) · [EXEC_PLAN.md](./EXEC_PLAN.md) · 該当 KB から再構築する
+
+詳細: [KB-388](./docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) · [development §Cursor復旧後](./docs/guides/development.md#cursor-状態db復旧後の-agent-作業2026-06-06)
+
 ## 共有時の推奨フレーズ（短縮）
 
 「**`AGENTS.md` と `.cursor/rules/` を読んでから開始**」
