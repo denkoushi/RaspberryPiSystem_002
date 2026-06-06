@@ -45,6 +45,24 @@ class FakeMessage:
     embeds = []
 
 
+class FakeBlankEmbedMessage:
+    id = "message-blank-embed-1"
+    content = ""
+    author = FakeUser()
+    channel = FakeChannel()
+    attachments = []
+    embeds = [{}]
+
+
+class FakeRegularMessage:
+    id = "message-regular-1"
+    content = "今日はどうすればいいかな"
+    author = FakeUser()
+    channel = FakeChannel()
+    attachments = []
+    embeds = []
+
+
 class FakeInteraction:
     user = FakeUser()
     channel_id = "channel-1"
@@ -150,6 +168,31 @@ class LifeDiscordUiRelayTests(unittest.TestCase):
                 .splitlines()
             ]
             self.assertEqual(len(rows), 1)
+
+    def test_sidecar_captures_blank_embed_message(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            message = FakeBlankEmbedMessage()
+
+            ack = _capture_shared_message(message, root)
+
+            self.assertIn("受け取り箱に保存しました", ack or "")
+            row = json.loads(
+                (root / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()[0]
+            )
+            self.assertEqual(row["messageId"], "message-blank-embed-1")
+            self.assertIn("Discord投稿", row["text"])
+
+    def test_sidecar_leaves_regular_message_unhandled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            ack = _capture_shared_message(FakeRegularMessage(), root)
+
+            self.assertIsNone(ack)
+            self.assertFalse((root / "inbox" / "discord.jsonl").exists())
 
 
 if __name__ == "__main__":

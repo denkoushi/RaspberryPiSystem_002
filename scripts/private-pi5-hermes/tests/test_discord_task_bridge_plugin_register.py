@@ -455,6 +455,119 @@ class PluginRegisterTests(unittest.TestCase):
         self.assertIn("受け取り箱に保存しました", adapter.messages[0][1])
         reply_mock.assert_not_called()
 
+    def test_pre_gateway_dispatch_captures_nested_attachment_metadata(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+            metadata = {
+                "message": {
+                    "id": "nested-attachment-1",
+                    "attachments": [{"filename": "shared-nested-image.png"}],
+                }
+            }
+
+        class Event:
+            text = ""
+            source = Source()
+            internal = False
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def send(self, chat_id: str, message: str) -> None:
+                self.messages.append((chat_id, message))
+
+        adapter = Adapter()
+
+        class Gateway:
+            adapters = {"discord": adapter}
+
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "load_life_pilot_policy",
+            return_value=MagicMock(storage_root=tmp),
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
+            rows = [
+                json.loads(line)
+                for line in (Path(tmp) / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-discord-inbox"})
+        self.assertEqual(rows[0]["messageId"], "nested-attachment-1")
+        self.assertEqual(rows[0]["attachments"], ["shared-nested-image.png"])
+        self.assertIn("受け取り箱に保存しました", adapter.messages[0][1])
+
+    def test_pre_gateway_dispatch_captures_share_filename_text(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+
+        class Event:
+            id = "filename-only-1"
+            text = "Screenshot_20260606-123456.png"
+            source = Source()
+            internal = False
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def send(self, chat_id: str, message: str) -> None:
+                self.messages.append((chat_id, message))
+
+        adapter = Adapter()
+
+        class Gateway:
+            adapters = {"discord": adapter}
+
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "load_life_pilot_policy",
+            return_value=MagicMock(storage_root=tmp),
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
+            rows = [
+                json.loads(line)
+                for line in (Path(tmp) / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-discord-inbox"})
+        self.assertEqual(rows[0]["messageId"], "filename-only-1")
+        self.assertIn("Screenshot_20260606-123456.png", rows[0]["text"])
+        self.assertIn("受け取り箱に保存しました", adapter.messages[0][1])
+
     def test_pre_gateway_dispatch_leaves_regular_chat_unhandled(self) -> None:
         class Source:
             user_id = "user-1"

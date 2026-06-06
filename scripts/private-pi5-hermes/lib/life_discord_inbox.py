@@ -27,6 +27,11 @@ _X_HOST_RE = re.compile(r"^https?://(?:www\.)?(?:x\.com|twitter\.com)/", re.IGNO
 _ATTACHMENT_PLACEHOLDER_RE = re.compile(
     r"(?i)(クリックして添付ファイルを表示|添付ファイル|attachment|attached file)"
 )
+_SHARE_FILENAME_RE = re.compile(
+    r"(?i)(?:^|\b)(?:img|image|photo|screenshot|screen[-_ ]?shot|pxl|dsc|vid|video|"
+    r"shared[-_ ]?image|スクリーンショット|画像|写真|動画|添付)[\w .()\-]*\."
+    r"(?:png|jpe?g|gif|webp|heic|mp4|mov|webm|pdf)(?:\b|$)"
+)
 _TEXT_KEYS = (
     "text",
     "content",
@@ -54,6 +59,25 @@ _EMBED_NESTED_KEYS = (
     "thumbnail",
     "video",
     "footer",
+)
+_EVENT_NESTED_KEYS = (
+    "source",
+    "message",
+    "payload",
+    "data",
+    "d",
+    "metadata",
+    "meta",
+    "extra",
+    "extras",
+    "context",
+    "raw",
+    "raw_event",
+    "event",
+    "discord",
+    "discord_message",
+    "message_create",
+    "adapter_message",
 )
 
 
@@ -120,33 +144,57 @@ def _as_iterable(value: Any) -> list[Any]:
         return [value]
 
 
+def _is_event_container(value: Any) -> bool:
+    return value is not None and not isinstance(value, (str, bytes, int, float, bool))
+
+
 def _event_objects(event: Any) -> tuple[Any, ...]:
-    source = _field(event, "source")
-    payload = _field(event, "payload")
-    data = _field(event, "data")
-    source_payload = _field(source, "payload")
-    source_data = _field(source, "data")
+    seed_source = _field(event, "source")
+    seed_payload = _field(event, "payload")
+    seed_data = _field(event, "data")
+    seed_source_payload = _field(seed_source, "payload")
+    seed_source_data = _field(seed_source, "data")
+    queue: list[Any] = []
     objects: list[Any] = []
     for item in (
         event,
-        source,
+        seed_source,
         _field(event, "message"),
-        _field(source, "message"),
-        payload,
-        data,
-        source_payload,
-        source_data,
-        _field(payload, "message"),
-        _field(data, "message"),
-        _field(source_payload, "message"),
-        _field(source_data, "message"),
-        _field(payload, "d"),
-        _field(data, "d"),
-        _field(source_payload, "d"),
-        _field(source_data, "d"),
+        _field(seed_source, "message"),
+        seed_payload,
+        seed_data,
+        seed_source_payload,
+        seed_source_data,
+        _field(seed_payload, "message"),
+        _field(seed_data, "message"),
+        _field(seed_source_payload, "message"),
+        _field(seed_source_data, "message"),
+        _field(seed_payload, "d"),
+        _field(seed_data, "d"),
+        _field(seed_source_payload, "d"),
+        _field(seed_source_data, "d"),
     ):
-        if item is not None and not any(item is existing for existing in objects):
-            objects.append(item)
+        if _is_event_container(item):
+            queue.append(item)
+    seen: set[int] = set()
+    while queue and len(objects) < 60:
+        item = queue.pop(0)
+        identity = id(item)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        objects.append(item)
+        if isinstance(item, dict):
+            for value in item.values():
+                for nested in _as_iterable(value):
+                    if _is_event_container(nested):
+                        queue.append(nested)
+            continue
+        for key in _EVENT_NESTED_KEYS:
+            value = _field(item, key)
+            for nested in _as_iterable(value):
+                if _is_event_container(nested):
+                    queue.append(nested)
     return tuple(objects)
 
 
@@ -370,6 +418,8 @@ def should_capture_discord_inbox(
     if _EXPLICIT_PREFIX_RE.search(clean):
         return True
     if _ATTACHMENT_PLACEHOLDER_RE.search(clean):
+        return True
+    if _SHARE_FILENAME_RE.search(clean):
         return True
     return False
 

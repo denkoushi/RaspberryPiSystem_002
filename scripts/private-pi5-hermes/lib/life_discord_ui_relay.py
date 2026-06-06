@@ -59,6 +59,15 @@ def _env_bool(name: str, default: bool) -> bool:
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _life_discord_inbox_capture_all() -> bool:
+    return _env_bool("HERMES_LIFE_DISCORD_INBOX_CAPTURE_ALL", False)
+
+
+def _life_discord_inbox_channel_ids() -> set[str]:
+    raw = os.environ.get("HERMES_LIFE_DISCORD_INBOX_CHANNEL_IDS", "")
+    return {item.strip() for item in raw.replace(";", ",").split(",") if item.strip()}
+
+
 def _interaction_user_id(interaction: Any) -> str:
     user = getattr(interaction, "user", None)
     return str(getattr(user, "id", "") or "").strip()
@@ -105,21 +114,29 @@ def _message_has_share_surface(message: Any) -> bool:
     )
 
 
+def _shared_message_text(message: Any, attachments: tuple[str, ...]) -> str:
+    text = extract_discord_message_text(message)
+    if text or not (attachments or _message_has_embeds(message)):
+        return text
+    return "共有: Discord投稿（本文なし）"
+
+
 def _capture_shared_message(message: Any, storage_root: Path) -> str | None:
     if not _env_bool("HERMES_LIFE_DISCORD_INBOX_ENABLED", True):
         return None
-    if not _message_has_share_surface(message):
-        return None
     user_id = _message_user_id(message)
     channel_id = _message_channel_id(message)
+    attachments = extract_attachment_names(message)
     try:
         result = capture_discord_inbox_message(
             storage_root,
-            extract_discord_message_text(message),
+            _shared_message_text(message, attachments),
             user_id=user_id,
             channel_id=channel_id,
-            attachments=extract_attachment_names(message),
+            attachments=attachments,
             message_id=extract_discord_message_id(message),
+            allowed_channel_ids=_life_discord_inbox_channel_ids(),
+            capture_all=_life_discord_inbox_capture_all(),
         )
     except (OSError, ValueError, RuntimeError):
         return None
