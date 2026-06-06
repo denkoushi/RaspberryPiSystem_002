@@ -213,9 +213,9 @@ Hermes は URL を開かず、添付もダウンロードしない。X/URL は�
 
 2026-06-06 D13-life Discord shared inbox 追加後:
 
-- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_discord_task_bridge_plugin_register.py'`: **12 OK**
+- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_discord_task_bridge_plugin_register.py'`: **14 OK**
 - `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_life_proactive_loop.py'`: **20 OK**
-- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests`: **199 OK**
+- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests`: **201 OK**
 - `python3 -m py_compile`（Life Pilot / Discord inbox / proactive / scheduler / UI relay）: OK
 - `validate_boundary_policy.py --validate-life-pilot`: OK
 - `deploy-private-pi5-hermes.sh --syntax-check`: OK

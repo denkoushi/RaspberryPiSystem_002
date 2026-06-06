@@ -25,7 +25,11 @@
         from pathlib import Path
         plugin_dir = "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
         sys.path.insert(0, plugin_dir)
-        from life_discord_inbox import capture_discord_inbox_message, read_discord_inbox
+        from life_discord_inbox import (
+            capture_discord_inbox_message,
+            extract_discord_message_text,
+            read_discord_inbox,
+        )
         from life_obsidian_inbox import read_obsidian_inbox
         from life_proactive_loop import (
             build_followup_checkin_message,
@@ -112,6 +116,11 @@
             shared_message = build_proactive_checkin_message("morning", root)
             assert "共有メモ新着:" in shared_message, shared_message
             assert "共有メモを見返す" in shared_message, shared_message
+            class EmbedOnlyEvent:
+                text = ""
+                embeds = [{"url": "https://x.com/example/status/embed-only", "title": "X post"}]
+            embed_text = extract_discord_message_text(EmbedOnlyEvent())
+            assert "https://x.com/example/status/embed-only" in embed_text, embed_text
         print("ok")
   register: private_pi5_hermes_life_pilot_smoke
   changed_when: false

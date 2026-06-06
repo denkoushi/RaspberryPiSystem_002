@@ -30,12 +30,14 @@ try:
     )
     from .life_discord_inbox import (
         capture_discord_inbox_message,
+        extract_discord_message_text,
         extract_attachment_names,
     )
     from .life_proactive_loop import (
         remember_life_discord_context,
         resolve_proactive_reply,
     )
+    from .life_reminder_scheduler import send_discord_channel_message
     from .discord_novel_bridge import run_novel_bridge_async
     from .novel_request import NovelRequest
     from .novel_profile_runner import NovelProfilePaths, render_novel_usage
@@ -64,12 +66,14 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
     )
     from life_discord_inbox import (
         capture_discord_inbox_message,
+        extract_discord_message_text,
         extract_attachment_names,
     )
     from life_proactive_loop import (
         remember_life_discord_context,
         resolve_proactive_reply,
     )
+    from life_reminder_scheduler import send_discord_channel_message
     from discord_novel_bridge import run_novel_bridge_async
     from novel_request import NovelRequest
     from novel_profile_runner import NovelProfilePaths, render_novel_usage
@@ -163,20 +167,29 @@ def _remember_life_context(user_id: str, channel_id: str) -> None:
 
 
 def _send_gateway_reply(gateway, source, message: str) -> bool:
-    if gateway is None or source is None:
+    if source is None:
         return False
     platform = str(getattr(source, "platform", "") or "").strip()
     chat_id = str(getattr(source, "chat_id", "") or "").strip()
     if not chat_id:
         chat_id = str(getattr(source, "thread_id", "") or "").strip()
-    adapters = getattr(gateway, "adapters", None) or {}
-    adapter = adapters.get(platform) if isinstance(adapters, dict) else None
-    send = getattr(adapter, "send", None)
-    if not callable(send) or not chat_id:
+    if gateway is not None:
+        adapters = getattr(gateway, "adapters", None) or {}
+        adapter = adapters.get(platform) if isinstance(adapters, dict) else None
+        send = getattr(adapter, "send", None)
+        if callable(send) and chat_id:
+            try:
+                send(chat_id, message)
+                return True
+            except Exception:
+                pass
+    token = os.environ.get("DISCORD_BOT_TOKEN", "")
+    if platform and platform != "discord":
         return False
-    try:
-        send(chat_id, message)
-    except Exception:
+    if not token or not chat_id:
+        return False
+    result = send_discord_channel_message(token, chat_id, message)
+    if not result.ok:
         return False
     return True
 
@@ -351,29 +364,34 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
         fallback_user_id, fallback_channel_id = read_gateway_session_context()
         user_id = user_id or fallback_user_id
         channel_id = channel_id or fallback_channel_id
-    text = str(getattr(event, "text", "") or "").strip()
+    raw_text = str(getattr(event, "text", "") or "").strip()
+    text = extract_discord_message_text(event)
+    if not text:
+        text = raw_text
     attachments = extract_attachment_names(event)
     if not text and not attachments:
         return None
-    if text.startswith("/"):
+    if raw_text.startswith("/") or text.startswith("/"):
         return None
     resolved = None
     coord = _coordinator()
-    if coord is not None and text:
+    if coord is not None and raw_text:
         for actor_id in approval_actor_ids(user_id, channel_id):
-            resolved = coord.try_resolve_text(actor_id, text)
+            resolved = coord.try_resolve_text(actor_id, raw_text)
             if resolved is not None:
                 break
     if resolved is None:
         if _life_pilot_enabled():
-            try:
-                reply = resolve_proactive_reply(
-                    text,
-                    user_id=user_id,
-                    channel_id=channel_id,
-                )
-            except (OSError, ValueError, RuntimeError):
-                reply = None
+            reply = None
+            if raw_text:
+                try:
+                    reply = resolve_proactive_reply(
+                        raw_text,
+                        user_id=user_id,
+                        channel_id=channel_id,
+                    )
+                except (OSError, ValueError, RuntimeError):
+                    reply = None
             if reply is not None:
                 _send_gateway_reply(gateway, source, reply)
                 return {"action": "skip", "reason": "life-proactive-reply"}

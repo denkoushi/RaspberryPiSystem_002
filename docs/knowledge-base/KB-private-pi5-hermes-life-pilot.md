@@ -146,14 +146,14 @@ ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp \
 
 ### Local（D13 · Discord shared inbox repo）
 
-- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_discord_task_bridge_plugin_register.py'`: **12 OK**
+- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_discord_task_bridge_plugin_register.py'`: **14 OK**
 - `python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_life_proactive_loop.py'`: **20 OK**
-- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests`: **199 OK**
+- `python3 -m unittest discover -s scripts/private-pi5-hermes/tests`: **201 OK**
 - `python3 -m py_compile`（Life Pilot / Discord inbox / Obsidian inbox / scheduler / UI relay）: OK
 - `validate_boundary_policy.py --validate-life-pilot`: OK
 - `deploy-private-pi5-hermes.sh --syntax-check`: OK
 - `git diff --check`: OK
-- Discord shared link capture / 通常会話 non-capture / 朝 check-in `共有メモ新着:` を追加検証
+- Discord shared link capture / Android share の embed-only capture / gateway 無し ack fallback / 通常会話 non-capture / 朝 check-in `共有メモ新着:` を追加検証
 
 ### 私用 Pi5 deploy（D10 · `57d19193`）
 

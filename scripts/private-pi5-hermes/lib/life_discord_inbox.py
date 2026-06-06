@@ -24,6 +24,29 @@ _SENSITIVE_RE = re.compile(
 )
 _EXPLICIT_PREFIX_RE = re.compile(r"^(?:inbox|share|共有|メモ|memo)\s*[:：]", re.IGNORECASE)
 _X_HOST_RE = re.compile(r"^https?://(?:www\.)?(?:x\.com|twitter\.com)/", re.IGNORECASE)
+_TEXT_KEYS = (
+    "text",
+    "content",
+    "clean_content",
+    "raw_text",
+    "body",
+    "caption",
+    "message",
+    "url",
+)
+_EMBED_TEXT_KEYS = (
+    "url",
+    "title",
+    "description",
+)
+_EMBED_NESTED_KEYS = (
+    "author",
+    "provider",
+    "image",
+    "thumbnail",
+    "video",
+    "footer",
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +81,110 @@ def _clip_line(text: str, limit: int = 160) -> str:
     if len(one_line) <= limit:
         return one_line
     return one_line[: limit - 1].rstrip() + "..."
+
+
+def _field(item: Any, key: str) -> Any:
+    if item is None:
+        return None
+    if isinstance(item, dict):
+        return item.get(key)
+    return getattr(item, key, None)
+
+
+def _as_string(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float)):
+        return str(value).strip()
+    return ""
+
+
+def _as_iterable(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes, dict)):
+        return [value]
+    try:
+        return list(value)
+    except TypeError:
+        return [value]
+
+
+def _event_objects(event: Any) -> tuple[Any, ...]:
+    source = _field(event, "source")
+    payload = _field(event, "payload")
+    data = _field(event, "data")
+    source_payload = _field(source, "payload")
+    source_data = _field(source, "data")
+    objects: list[Any] = []
+    for item in (
+        event,
+        source,
+        _field(event, "message"),
+        _field(source, "message"),
+        payload,
+        data,
+        source_payload,
+        source_data,
+        _field(payload, "message"),
+        _field(data, "message"),
+        _field(source_payload, "message"),
+        _field(source_data, "message"),
+        _field(payload, "d"),
+        _field(data, "d"),
+        _field(source_payload, "d"),
+        _field(source_data, "d"),
+    ):
+        if item is not None and not any(item is existing for existing in objects):
+            objects.append(item)
+    return tuple(objects)
+
+
+def _embed_objects(event: Any) -> tuple[Any, ...]:
+    embeds: list[Any] = []
+    for item in _event_objects(event):
+        for key in ("embeds", "embed"):
+            for embed in _as_iterable(_field(item, key)):
+                if embed is None:
+                    continue
+                if not any(embed is existing for existing in embeds):
+                    embeds.append(embed)
+    return tuple(embeds)
+
+
+def _append_unique(parts: list[str], value: Any, *, limit: int = 240) -> None:
+    text = _clip_line(_as_string(value), limit)
+    if not text or text in parts:
+        return
+    parts.append(text)
+
+
+def _embed_text_parts(embed: Any) -> list[str]:
+    parts: list[str] = []
+    for key in _EMBED_TEXT_KEYS:
+        _append_unique(parts, _field(embed, key))
+    for nested_key in _EMBED_NESTED_KEYS:
+        nested = _field(embed, nested_key)
+        for key in ("url", "proxy_url", "name", "text"):
+            _append_unique(parts, _field(nested, key))
+    for field in _as_iterable(_field(embed, "fields")):
+        _append_unique(parts, _field(field, "name"), limit=120)
+        _append_unique(parts, _field(field, "value"))
+    return parts
+
+
+def extract_discord_message_text(event: Any) -> str:
+    """Return user-share text even when Discord sends it as embeds instead of content."""
+    parts: list[str] = []
+    for item in _event_objects(event):
+        for key in _TEXT_KEYS:
+            _append_unique(parts, _field(item, key))
+    for embed in _embed_objects(event):
+        for part in _embed_text_parts(embed):
+            _append_unique(parts, part)
+    return _clip_line(" ".join(parts), 500)
 
 
 def _inbox_path(root: Path) -> Path:
@@ -177,31 +304,16 @@ def _attachment_name(item: Any) -> str:
 def extract_attachment_names(event: Any) -> tuple[str, ...]:
     names: list[str] = []
     seen: set[str] = set()
-    containers = (
-        getattr(event, "attachments", None),
-        getattr(event, "files", None),
-        getattr(event, "images", None),
-        getattr(getattr(event, "source", None), "attachments", None),
-        getattr(getattr(event, "source", None), "files", None),
-    )
-    for raw_items in containers:
-        if raw_items is None:
-            continue
-        if isinstance(raw_items, (str, bytes, dict)):
-            iterable = [raw_items]
-        else:
-            try:
-                iterable = list(raw_items)
-            except TypeError:
-                iterable = [raw_items]
-        for item in iterable:
-            name = _attachment_name(item)
-            if name in seen:
-                continue
-            seen.add(name)
-            names.append(name)
-            if len(names) >= 6:
-                return tuple(names)
+    for event_object in _event_objects(event):
+        for key in ("attachments", "files", "images"):
+            for item in _as_iterable(_field(event_object, key)):
+                name = _attachment_name(item)
+                if name in seen:
+                    continue
+                seen.add(name)
+                names.append(name)
+                if len(names) >= 6:
+                    return tuple(names)
     return tuple(names)
 
 
