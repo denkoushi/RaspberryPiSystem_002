@@ -248,10 +248,19 @@ def _capture_life_discord_inbox(
     return result.ack
 
 
+_GATEWAY_EMPTY_MESSAGE_TEXT = "(the user sent a message with no text content)"
+
+
+def _is_gateway_empty_message_text(text: str) -> bool:
+    return " ".join((text or "").strip().lower().split()) == _GATEWAY_EMPTY_MESSAGE_TEXT
+
+
 def _blank_discord_share_text(source, text: str, attachments: tuple[str, ...]) -> str:
-    if text or attachments:
-        return text
     if not _is_discord_platform(_source_platform_name(source)):
+        return text
+    if attachments and _is_gateway_empty_message_text(text):
+        return "共有: Discord投稿（本文なし）"
+    if text or attachments:
         return text
     return "共有: Discord投稿（本文なし）"
 
@@ -418,7 +427,7 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
     if resolved is None:
         if _life_pilot_enabled():
             reply = None
-            if raw_text:
+            if raw_text and not _is_gateway_empty_message_text(raw_text):
                 try:
                     reply = resolve_proactive_reply(
                         raw_text,

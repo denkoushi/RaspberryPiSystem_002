@@ -339,7 +339,9 @@ def sanitize_shared_text(text: str) -> tuple[str, bool]:
 
 
 def _attachment_name(item: Any) -> str:
-    if isinstance(item, dict):
+    if isinstance(item, (str, Path)):
+        candidates = (item,)
+    elif isinstance(item, dict):
         candidates = (
             item.get("filename"),
             item.get("name"),
@@ -370,7 +372,7 @@ def extract_attachment_names(event: Any) -> tuple[str, ...]:
     names: list[str] = []
     seen: set[str] = set()
     for event_object in _event_objects(event):
-        for key in ("attachments", "files", "images"):
+        for key in ("attachments", "files", "images", "media_urls", "media_url"):
             for item in _as_iterable(_field(event_object, key)):
                 name = _attachment_name(item)
                 if name in seen:

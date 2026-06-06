@@ -514,6 +514,65 @@ class PluginRegisterTests(unittest.TestCase):
         self.assertEqual(rows[0]["attachments"], ["shared-nested-image.png"])
         self.assertIn("受け取り箱に保存しました", adapter.messages[0][1])
 
+    def test_pre_gateway_dispatch_captures_discord_media_urls(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+
+        class Event:
+            text = "(The user sent a message with no text content)"
+            message_type = "photo"
+            media_urls = ["/home/hermes/.hermes/cache/images/img_discord_share.png"]
+            media_types = ["image/png"]
+            source = Source()
+            message_id = "discord-media-url-1"
+            internal = False
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def send(self, chat_id: str, message: str) -> None:
+                self.messages.append((chat_id, message))
+
+        adapter = Adapter()
+
+        class Gateway:
+            adapters = {"discord": adapter}
+
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value=None,
+        ) as reply_mock, unittest.mock.patch.object(
+            plugin,
+            "load_life_pilot_policy",
+            return_value=MagicMock(storage_root=tmp),
+        ):
+            result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
+            rows = [
+                json.loads(line)
+                for line in (Path(tmp) / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-discord-inbox"})
+        self.assertEqual(rows[0]["messageId"], "discord-media-url-1")
+        self.assertEqual(rows[0]["attachments"], ["img_discord_share.png"])
+        self.assertIn("Discord投稿", rows[0]["text"])
+        self.assertIn("受け取り箱に保存しました", adapter.messages[0][1])
+        reply_mock.assert_not_called()
+
     def test_pre_gateway_dispatch_captures_share_filename_text(self) -> None:
         class Source:
             user_id = "user-1"
