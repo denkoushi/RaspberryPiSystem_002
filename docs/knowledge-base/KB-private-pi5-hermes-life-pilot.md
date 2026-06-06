@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: active（2026-06-06 · `main` @ `3a6e4399` · PR #406/#407 マージ済み · D10 follow-up loop repo 実装中）
+- **Status**: active（2026-06-06 · `main` @ `3a6e4399` · D10 branch `57d19193` 私用 Pi5 deploy + Discord E2E 完了）
 - **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
 - **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
@@ -94,6 +94,15 @@ summary: life_pilot_enabled=True
          life_discord_ui_relay_active=True
 ```
 
+### 私用 Pi5 deploy（D10 branch `57d19193`）
+
+```
+PLAY RECAP: ok=178 changed=6 failed=0
+summary: life_followup_loop_active=True
+```
+
+実機E2E: `hermes-life-followup.timer` active、朝 check-in 新フォーマット、`夕方にもう一度` → pending follow-up、due 再確認1回だけ送信、follow-up `やる` reply ack、`boundary=local-only/no-tools` を確認済み。詳細は [Runbook](../runbooks/private-pi5-hermes-deploy.md)。
+
 ### Discord / 実機 E2E（2026-06-06）
 
 | 確認 | 結果 |
@@ -128,7 +137,7 @@ journalctl -u hermes-life-proactive@morning.service -n 10 --no-pager
 2. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
 3. **LLM ベース推薦** — 現状は deterministic suggestion のみ
 4. **数日運用の体感評価** — proactive 朝晩・reminder 通知の頻度/文言調整
-5. **`main` へ post-merge deploy** — `ac2aa6f9` を私用 Pi5 へ反映し E2E を再確認
+5. **D10 post-merge deploy** — `57d19193` は branch deploy 済み。PR merge 後に main HEAD を反映し E2E を再確認
 
 ## References
 

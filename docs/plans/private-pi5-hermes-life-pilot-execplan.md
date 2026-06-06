@@ -160,6 +160,14 @@ D10 では reminder 本体の `status` / `dueAt` は変更しない。返信と 
 - `deploy-private-pi5-hermes.sh --syntax-check`: OK
 - `git diff --check`: OK
 
+2026-06-06 D10-life follow-up loop 実機E2E:
+
+- branch `feat/hermes-life-pilot-followup-loop` @ `57d19193` を私用 Pi5 へ deploy: `PLAY RECAP failed=0`
+- `life_followup_loop_active=True`、`hermes-life-followup.timer` active
+- 朝 check-in 新フォーマット、`夕方にもう一度` pending follow-up、due 再確認1回だけ送信、follow-up `やる` reply ack を確認
+- `--validate-life-pilot` と Discord debug line で `boundary=local-only/no-tools` を確認
+- 詳細記録は [private-pi5-hermes-deploy.md](../runbooks/private-pi5-hermes-deploy.md) に置く
+
 ## 私用 Pi5 実機検証（2026-06-06 完了）
 
 - `hermes-gateway`: active / running
@@ -193,8 +201,9 @@ Discord global slash command を同期するには `private_pi5_hermes_discord_b
 
 - export/delete/retention の運用設計
 - 通知済み reminder の一覧/削除 UX
-- proactive loop の実機Discord E2E（deploy後）
-- Discord native button / select UI の採用可否判断
+- D10 PR merge 後の main deploy / E2E 再確認
+- follow-up 自由入力 modal の追加目視E2E（button `やる` は確認済み）
+- select UI の採用可否判断（button は採用済み）
 
 ## 次の判断
 
