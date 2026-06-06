@@ -178,11 +178,54 @@ class PluginRegisterTests(unittest.TestCase):
             plugin,
             "resolve_proactive_reply",
             return_value="受け取りました",
-        ):
+        ) as reply_mock:
             result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
 
         self.assertEqual(result, {"action": "skip", "reason": "life-proactive-reply"})
         self.assertEqual(adapter.messages, [("channel-1", "受け取りました")])
+        reply_mock.assert_called_once_with("1", user_id="user-1", channel_id="channel-1")
+
+    def test_pre_gateway_dispatch_handles_fullwidth_life_proactive_reply(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+
+        class Event:
+            text = "１"
+            source = Source()
+            internal = False
+
+        class Adapter:
+            def __init__(self) -> None:
+                self.messages = []
+
+            def send(self, chat_id: str, message: str) -> None:
+                self.messages.append((chat_id, message))
+
+        adapter = Adapter()
+
+        class Gateway:
+            adapters = {"discord": adapter}
+
+        with unittest.mock.patch.object(
+            plugin,
+            "_coordinator",
+            return_value=None,
+        ), unittest.mock.patch.object(
+            plugin,
+            "_life_pilot_enabled",
+            return_value=True,
+        ), unittest.mock.patch.object(
+            plugin,
+            "resolve_proactive_reply",
+            return_value="受け取りました",
+        ) as reply_mock:
+            result = plugin._handle_pre_gateway_dispatch(Event(), Gateway())
+
+        self.assertEqual(result, {"action": "skip", "reason": "life-proactive-reply"})
+        self.assertEqual(adapter.messages, [("channel-1", "受け取りました")])
+        reply_mock.assert_called_once_with("1", user_id="user-1", channel_id="channel-1")
 
     def test_pre_gateway_dispatch_captures_discord_inbox_link(self) -> None:
         class Source:
@@ -650,7 +693,7 @@ class PluginRegisterTests(unittest.TestCase):
             plugin,
             "resolve_proactive_reply",
             return_value=None,
-        ), unittest.mock.patch.object(
+        ) as reply_mock, unittest.mock.patch.object(
             plugin,
             "load_life_pilot_policy",
             return_value=MagicMock(storage_root=tmp),
@@ -659,6 +702,7 @@ class PluginRegisterTests(unittest.TestCase):
 
         self.assertIsNone(result)
         self.assertFalse((Path(tmp) / "inbox" / "discord.jsonl").exists())
+        reply_mock.assert_not_called()
 
     def test_life_reply_command_returns_proactive_reply(self) -> None:
         with unittest.mock.patch.object(

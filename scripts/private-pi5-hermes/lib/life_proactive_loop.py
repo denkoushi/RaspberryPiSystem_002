@@ -1060,7 +1060,7 @@ def resolve_proactive_reply(
     return f"""受け取りました: {_clip_line(response, 180)}
 {followup_line}
 
-次も 1/2/3 か、文章でそのまま返せます。
+次もボタン、1/2/3、または /life-reply <文章> で返せます。
 
 {_render_debug_line(checkin="answered", mode=str(checkin.get("mode", "")), method=method, boundary="local-only/no-tools")}
 """.strip()

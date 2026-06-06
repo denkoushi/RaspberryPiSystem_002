@@ -249,10 +249,23 @@ def _capture_life_discord_inbox(
 
 
 _GATEWAY_EMPTY_MESSAGE_TEXT = "(the user sent a message with no text content)"
+_LIFE_QUICK_REPLY_CHOICES = {
+    "1": "1",
+    "2": "2",
+    "3": "3",
+    "１": "1",
+    "２": "2",
+    "３": "3",
+}
 
 
 def _is_gateway_empty_message_text(text: str) -> bool:
     return " ".join((text or "").strip().lower().split()) == _GATEWAY_EMPTY_MESSAGE_TEXT
+
+
+def _normalize_life_quick_reply_text(text: str) -> str:
+    clean = " ".join((text or "").strip().split())
+    return _LIFE_QUICK_REPLY_CHOICES.get(clean, "")
 
 
 def _blank_discord_share_text(source, text: str, attachments: tuple[str, ...]) -> str:
@@ -427,10 +440,11 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
     if resolved is None:
         if _life_pilot_enabled():
             reply = None
-            if raw_text and not _is_gateway_empty_message_text(raw_text):
+            life_reply_text = _normalize_life_quick_reply_text(raw_text)
+            if life_reply_text and not _is_gateway_empty_message_text(raw_text):
                 try:
                     reply = resolve_proactive_reply(
-                        raw_text,
+                        life_reply_text,
                         user_id=user_id,
                         channel_id=channel_id,
                     )
