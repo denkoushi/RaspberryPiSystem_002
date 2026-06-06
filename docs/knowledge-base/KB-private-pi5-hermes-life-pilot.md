@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: active（2026-06-06 · `main` @ `3a6e4399` · D10 branch `57d19193` 私用 Pi5 deploy + Discord E2E 完了）
+- **Status**: active（2026-06-06 · branch `feat/hermes-life-pilot-followup-loop` @ `57d19193` · D10 私用 Pi5 deploy + Discord E2E 完了 · **PR merge 待ち**）
 - **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
 - **Related**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
@@ -8,7 +8,7 @@
 
 Hermes を **生活メモの執事**として先に体感する最小実装。Codex/Cursor・本番 repo・terminal・git・deploy・秘密読取・外部 Web・HA/カメラは **意図的に未接続**。実行系ではなく **ローカル private log + 限定的 Discord 通知/返信** に閉じる。
 
-## 仕様（現行）
+## 仕様（現行 · D10 まで）
 
 ### Discord 入口
 
@@ -17,9 +17,17 @@ Hermes を **生活メモの執事**として先に体感する最小実装。Co
 | slash | `/memo` `/digest` `/remind` `/recommend` |
 | slash（補助） | `/life-reply` — button/modal が使えないときの fallback |
 | 朝晩 check-in | `hermes-life-proactive-{morning,evening}.timer` が Discord へ送信 |
-| follow-up | `夕方にもう一度` で `hermes-life-followup.timer` が1回だけ再確認 |
+| follow-up | 朝 `夕方にもう一度` → `followups.jsonl` に pending · `hermes-life-followup.timer`（既定 5 分）が due 時に **1回だけ** 再確認 |
 | button | 朝 `これをやる` / `夕方にもう一度` / `今日は外す`、follow-up `やる` / `明日に回す` / `外す`、夜 `終わった` / `明日に回す` / `メモだけ残す` + `自由入力` modal |
 | 応答 UX | 成功時は **本文テキスト先頭** · 診断は `-# debug:` 1行 subtext · `#` 見出しと `>` 引用は使わない |
+
+### D10 朝候補ロジック
+
+朝 check-in は pending reminder と最近 memo から **deterministic に1件** を選び `今日まず見るなら:` として表示する。優先順: 今日までの日時つき reminder → 日時なし reminder → 次の日時つき reminder → 最近の memo。
+
+`夕方にもう一度` は `proactive/followups.jsonl` に `status=pending` を保存。既定 due は当日 17:00（過ぎていれば now+2h）。送信後は `status=sent` とし `checkins.jsonl` に `mode=followup` の pending check-in を追加。返信は `resolve_proactive_reply()` 経由。
+
+follow-up 本文は `今ならこれだけ見ますか:` + 候補1件。夜 check-in は候補があれば `朝に見ていたもの:` を表示。
 
 ### 保存先（正本）
 
@@ -72,7 +80,7 @@ private_pi5_hermes_life_pilot_enabled: true
 
 ## Validation
 
-### Local（`30296697` 時点）
+### Local（D10 · `57d19193`）
 
 ```bash
 python3 -m unittest discover -s scripts/private-pi5-hermes/tests
@@ -82,43 +90,36 @@ ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp \
   ./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh --syntax-check
 ```
 
-結果: **184 tests OK** · life-pilot policy OK · syntax-check OK
+結果: **190 tests OK** · life-pilot policy OK · syntax-check OK
 
-### 私用 Pi5 deploy（`30296697`）
-
-```
-PLAY RECAP: ok=175 changed=7 failed=0 skipped=17
-summary: life_pilot_enabled=True
-         life_reminder_scheduler_active=True
-         life_proactive_loop_active=True
-         life_discord_ui_relay_active=True
-```
-
-### 私用 Pi5 deploy（D10 branch `57d19193`）
+### 私用 Pi5 deploy（D10 · `57d19193`）
 
 ```
 PLAY RECAP: ok=178 changed=6 failed=0
-summary: life_followup_loop_active=True
+summary: life_pilot_enabled=True
+         life_reminder_scheduler_active=True
+         life_proactive_loop_active=True
+         life_followup_loop_active=True
+         life_discord_ui_relay_active=True
 ```
 
-実機E2E: `hermes-life-followup.timer` active、朝 check-in 新フォーマット、`夕方にもう一度` → pending follow-up、due 再確認1回だけ送信、follow-up `やる` reply ack、`boundary=local-only/no-tools` を確認済み。詳細は [Runbook](../runbooks/private-pi5-hermes-deploy.md)。
-
-### Discord / 実機 E2E（2026-06-06）
+### D10 実機 E2E（2026-06-06 · branch deploy）
 
 | 確認 | 結果 |
 |------|------|
-| `hermes-gateway` | active |
-| `hermes-life-discord-ui.service` | active · `life_discord_ui_relay ready` |
-| 朝 check-in 再送 | `sent: 1` · `status: pending_reply` |
-| Discord API ボタンラベル | `まず1つやる` `あとで見る` `今日は外す` `自由入力` |
-| button 返信経路（relay 同一） | `受け取りました` を含む |
-| 自由入力返信経路（relay 同一） | `受け取りました` を含む |
-| 危険 `/memo git pushしてdeployして` | `memo rejected` |
+| `hermes-life-followup.timer` | active |
+| `hermes-life-discord-ui.service` / `hermes-gateway` | active |
+| 朝 check-in 新フォーマット | 当日重複ガード解除後の再送で Discord に `今日まず見るなら:` + 候補（例: `今日風呂洗い`） |
+| `夕方にもう一度` | `2026-06-06-morning-followup-2` が `followups.jsonl` で `status=pending` |
+| due follow-up | due を近づけて `dispatch_sent=1` · 2回目 `sent=0` · Discord delta +1 · `status=sent` |
+| follow-up `やる` | `受け取りました` + `boundary=local-only/no-tools` |
+| 危険 `/memo git pushしてdeployして` | `memo rejected`（従来どおり） |
 
 手順の正本は [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md)。再検証例:
 
 ```bash
 systemctl start hermes-life-proactive@morning.service
+systemctl start hermes-life-followup.service
 journalctl -u hermes-life-proactive@morning.service -n 10 --no-pager
 ```
 
@@ -126,18 +127,21 @@ journalctl -u hermes-life-proactive@morning.service -n 10 --no-pager
 
 | 症状 | 原因 | 対処 |
 |------|------|------|
-| `/remind` で `Unknown argument` が混じる | slash Arguments 欄と1行テキスト経路の差 | 主経路は成功していることが多い。button 正本化後は modal を優先 |
+| `/remind` で `Unknown argument` が混じる | slash Arguments 欄と1行テキスト経路の差 | 主経路は成功していることが多い。button/modal を優先 |
 | 成功応答の `#` が大きく目立つ | Discord Markdown 見出し | body-first 化済み（見出し・引用廃止） |
-| button を押しても応答なし | `hermes-life-discord-ui.service` inactive · check-in が `answered`/期限切れ | relay active 確認 · 朝/夜 check-in を `pending_reply` で再送 |
+| button を押しても応答なし | `hermes-life-discord-ui.service` inactive · check-in が `answered`/期限切れ | relay active 確認 · check-in を `pending_reply` で再送 |
 | `deploy` を含む memo が拒否される | policy deny（意図的） | 安全境界。文言を変える |
+| follow-up が Discord に届かない（Python 直呼び） | `.env` 未読込で `DISCORD_BOT_TOKEN` 不足 | `hermes-life-followup.service`（`EnvironmentFile=.env`）経由で起動する |
+| deploy 後も朝メッセージが旧フォーマット | 当日 `checkins.jsonl` の重複ガードで再送スキップ | 当日 `-morning` 行を削除または `pending_reply` に戻して再送 |
 
 ## Open Items
 
-1. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
-2. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
-3. **LLM ベース推薦** — 現状は deterministic suggestion のみ
-4. **数日運用の体感評価** — proactive 朝晩・reminder 通知の頻度/文言調整
-5. **D10 post-merge deploy** — `57d19193` は branch deploy 済み。PR merge 後に main HEAD を反映し E2E を再確認
+1. **`feat/hermes-life-pilot-followup-loop` を `main` へマージ** — D10 branch deploy 済み。merge 後に main HEAD で deploy 再確認
+2. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
+3. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
+4. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
+5. **LLM ベース推薦** — 現状は deterministic suggestion のみ
+6. **数日運用の体感評価** — proactive 朝晩・reminder/follow-up 通知の頻度/文言調整
 
 ## References
 

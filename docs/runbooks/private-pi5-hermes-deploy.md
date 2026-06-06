@@ -583,20 +583,7 @@ private_pi5_hermes_life_pilot_enabled: true
 
 個人メモ本文は Runbook に残さない。
 
-**D10-life follow-up 実機E2E（branch `feat/hermes-life-pilot-followup-loop` @ `57d19193` · 2026-06-06 完了）**:
-
-| 項目 | 結果 |
-|------|------|
-| deploy | `PLAY RECAP` `ok=178 changed=6 failed=0` |
-| summary | `life_followup_loop_active=True`、他 Life Pilot flag も True |
-| timer / services | `hermes-life-followup.timer` active、`hermes-life-discord-ui.service` / `hermes-gateway` も active |
-| 朝 check-in | 当日重複ガード解除後の再送で `今日まず見るなら:` を Discord 確認 |
-| snooze | `夕方にもう一度` → `2026-06-06-morning-followup-2` が `status=pending` |
-| due follow-up | due を近づけて `dispatch_sent=1`、2回目 `sent=0`、Discord delta +1、`status=sent` |
-| follow-up reply | `やる` button で `受け取りました`、`boundary=local-only/no-tools` |
-| safety | `--validate-life-pilot` で全 hard gate false、Discord debug line も `boundary=local-only/no-tools` |
-
-補足: Python 直呼びは `.env` 未読込では `DISCORD_BOT_TOKEN` 不足で送信失敗する。systemd `hermes-life-followup.service` は `EnvironmentFile={{ private_pi5_hermes_data_dir }}/.env` 経由のため正常送信される。自由入力は同一 follow-up check-in が `answered` になった後は再試行不可のため、このE2Eでは `やる` button のみ確認した。
+**D10-life follow-up 実機E2E**: 2026-06-06 branch deploy 完了。検証結果・トラブルシュートの正本は [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md)。
 
 **標準デプロイ手順**:
 

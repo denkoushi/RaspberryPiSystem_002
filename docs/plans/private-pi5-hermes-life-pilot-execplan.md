@@ -160,13 +160,7 @@ D10 では reminder 本体の `status` / `dueAt` は変更しない。返信と 
 - `deploy-private-pi5-hermes.sh --syntax-check`: OK
 - `git diff --check`: OK
 
-2026-06-06 D10-life follow-up loop 実機E2E:
-
-- branch `feat/hermes-life-pilot-followup-loop` @ `57d19193` を私用 Pi5 へ deploy: `PLAY RECAP failed=0`
-- `life_followup_loop_active=True`、`hermes-life-followup.timer` active
-- 朝 check-in 新フォーマット、`夕方にもう一度` pending follow-up、due 再確認1回だけ送信、follow-up `やる` reply ack を確認
-- `--validate-life-pilot` と Discord debug line で `boundary=local-only/no-tools` を確認
-- 詳細記録は [private-pi5-hermes-deploy.md](../runbooks/private-pi5-hermes-deploy.md) に置く
+2026-06-06 D10-life follow-up loop 実機E2E: branch deploy + Discord E2E 完了。詳細は [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md)。
 
 ## 私用 Pi5 実機検証（2026-06-06 完了）
 
