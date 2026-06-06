@@ -109,6 +109,10 @@ all:
       # private_pi5_hermes_discord_tools_bridge_enabled: true
       # D6-pre: Discord /daily → Markdown-only daily handoff (requires gateway_enabled)
       # private_pi5_hermes_daily_pilot_enabled: true
+      # D6/D7-life: Discord /memo /digest /remind /recommend + reminder timer
+      # private_pi5_hermes_life_pilot_enabled: true
+      # private_pi5_hermes_life_reminder_scheduler_enabled: true
+      # private_pi5_hermes_life_reminder_interval_min: 1
       # Novel profile: creative writing via /novel (on-demand DGX qwen36_35b_uncensored)
       # private_pi5_hermes_novel_profile_enabled: true
       # private_pi5_hermes_discord_novel_bridge_enabled: true

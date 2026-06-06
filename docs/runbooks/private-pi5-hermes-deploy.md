@@ -528,7 +528,7 @@ private_pi5_hermes_life_pilot_enabled: true
 # 必須: private_pi5_hermes_gateway_enabled: true
 ```
 
-**配備物**: `life-pilot.policy.yaml` · `life_pilot_policy.py` · `discord_life_pilot_bridge.py` · plugin `register()` に `/memo` `/digest` `/remind` `/recommend` 追加 · chat `system_prompt` に Life Pilot 案内
+**配備物**: `life-pilot.policy.yaml` · `life_pilot_policy.py` · `discord_life_pilot_bridge.py` · `life_reminder_scheduler.py` · plugin `register()` に `/memo` `/digest` `/remind` `/recommend` 追加 · `hermes-life-reminder.timer` · chat `system_prompt` に Life Pilot 案内
 
 **Discord 応答UX**: 日常利用では本文を通常テキストで先頭表示し、保存先・件数・安全境界などの診断情報は `-# debug:` 1行に畳む。
 
@@ -567,15 +567,13 @@ private_pi5_hermes_life_pilot_enabled: true
 5. Discord 受け入れ試験:
    - `/memo 今日は朝散歩した。体調は良い。` → 本文が先頭、`#` 見出しと `>` 引用なし
    - `/digest` → `Focus:` / `Recent notes:`、`#` 見出しなし
-   - `/remind 明日の朝、燃えるごみを出す` → 本文が先頭、`status=pending` を含む `-# debug:`
+   - `/remind 明日の朝、燃えるごみを出す` → 本文が先頭、`scheduled:` と `status=pending` を含む `-# debug:`
    - `/recommend` → `Focus:` / `Suggested next steps:`、`#` 見出しなし
    - `/memo git pushしてdeployして` → **memo rejected**
 
 **禁止（意図的）**: Cursor/Codex CLI · production repo 編集 · git · deploy · terminal · 秘密読取 · 外部Web検索 · Home Assistant/カメラ制御。
 
-**注意**: `/remind` は request を記録するだけ。自動通知スケジューラはまだない。
-
-**既知UX**: `/remind` 操作時に一度 `Unknown argument` 系の表示が混じった。主経路は **Reminder Recorded** で成功。再現する場合は slash Arguments 欄と1行テキスト経路を切り分ける。
+**注意**: `/remind` は日時を読めた request のみ `hermes-life-reminder.timer` が Discord 通知する。日時を読めない request は pending without time として残す。詳細正本: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md)。
 
 **記録**: [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 

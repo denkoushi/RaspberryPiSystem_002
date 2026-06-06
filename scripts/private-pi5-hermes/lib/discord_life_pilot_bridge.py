@@ -4,10 +4,18 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
+from dataclasses import dataclass
 import json
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None  # type: ignore[assignment]
 
 try:
     import yaml
@@ -61,7 +69,12 @@ def render_digest_usage() -> str:
 
 
 def render_remind_usage() -> str:
-    return "usage: /remind <reminder>\nexample: /remind 明日の朝、燃えるごみを出す"
+    return (
+        "usage: /remind <when and reminder>\n"
+        "examples:\n"
+        "- /remind 明日の朝、燃えるごみを出す\n"
+        "- /remind 2026-06-07 08:00 薬を飲む"
+    )
 
 
 def render_recommend_usage() -> str:
@@ -102,6 +115,235 @@ def _render_debug_line(**items: str) -> str:
     return f"-# debug: {details}"
 
 
+@dataclass(frozen=True)
+class ParsedReminder:
+    text: str
+    due_at: datetime | None
+    due_source: str = ""
+
+
+@dataclass(frozen=True)
+class ReminderRecordResult:
+    path: Path
+    text: str
+    due_at: datetime | None
+    notification: str
+
+
+_WEEKDAYS: dict[str, int] = {
+    "月": 0,
+    "月曜": 0,
+    "月曜日": 0,
+    "火": 1,
+    "火曜": 1,
+    "火曜日": 1,
+    "水": 2,
+    "水曜": 2,
+    "水曜日": 2,
+    "木": 3,
+    "木曜": 3,
+    "木曜日": 3,
+    "金": 4,
+    "金曜": 4,
+    "金曜日": 4,
+    "土": 5,
+    "土曜": 5,
+    "土曜日": 5,
+    "日": 6,
+    "日曜": 6,
+    "日曜日": 6,
+}
+
+_TIME_KEYWORDS: tuple[tuple[str, tuple[int, int]], ...] = (
+    ("朝", (8, 0)),
+    ("午前", (9, 0)),
+    ("昼", (12, 0)),
+    ("午後", (15, 0)),
+    ("夕方", (18, 0)),
+    ("夜", (20, 0)),
+)
+
+
+def normalize_life_command_args(raw_args: str, command_name: str = "") -> str:
+    """Accept common slash/raw-text prefixes before validation."""
+    text = " ".join((raw_args or "").strip().split())
+    if not text:
+        return ""
+    command = command_name.strip().lstrip("/")
+    if command and text.startswith(f"/{command} "):
+        text = text[len(command) + 2 :].strip()
+    for prefix in ("args:", "args=", "Arguments:", "Arguments="):
+        if text.startswith(prefix):
+            return text[len(prefix) :].strip()
+    return text
+
+
+def _combine_date_time(now: datetime, days: int, hour: int, minute: int) -> datetime:
+    target_date = (now + timedelta(days=days)).date()
+    return datetime(
+        target_date.year,
+        target_date.month,
+        target_date.day,
+        hour,
+        minute,
+        tzinfo=now.tzinfo,
+    )
+
+
+def _default_time(text: str) -> tuple[int, int]:
+    for keyword, value in _TIME_KEYWORDS:
+        if keyword in text:
+            return value
+    return (9, 0)
+
+
+def _extract_time(text: str, default: tuple[int, int]) -> tuple[int, int]:
+    pattern = re.compile(
+        r"(午前|午後)?\s*(\d{1,2})(?::|時)(\d{2})?(?:分)?",
+    )
+    match = pattern.search(text)
+    if not match:
+        return default
+    meridiem = match.group(1) or ""
+    hour = int(match.group(2))
+    minute = int(match.group(3) or "0")
+    if meridiem == "午後" and hour < 12:
+        hour += 12
+    if meridiem == "午前" and hour == 12:
+        hour = 0
+    if hour > 23 or minute > 59:
+        return default
+    return hour, minute
+
+
+def _next_weekday(now: datetime, weekday: int) -> int:
+    days = (weekday - now.weekday()) % 7
+    return days or 7
+
+
+def _clean_reminder_text(raw: str) -> str:
+    text = raw.strip()
+    patterns = (
+        r"^\d{4}-\d{1,2}-\d{1,2}(?:[ T]\d{1,2}:\d{2})?\s*",
+        r"^(?:\d{4}年)?\d{1,2}月\d{1,2}日(?:\s*\d{1,2}(?:時|:)\d{0,2}(?:分)?)?\s*",
+        r"^\d{1,2}/\d{1,2}(?:\s*\d{1,2}(?:時|:)\d{0,2}(?:分)?)?\s*",
+        r"^(?:今日|明日|明後日|あさって)(?:の)?(?:朝|午前|昼|午後|夕方|夜)?\s*",
+        r"^(?:来週|次の)?(?:月曜日|月曜|月|火曜日|火曜|火|水曜日|水曜|水|木曜日|木曜|木|金曜日|金曜|金|土曜日|土曜|土|日曜日|日曜|日)\s*",
+        r"^(?:午前|午後)?\d{1,2}(?:時|:)\d{0,2}(?:分)?\s*",
+    )
+    for pattern in patterns:
+        text = re.sub(pattern, "", text).strip()
+    return text.lstrip("、,。 にまでで-:：").strip() or raw.strip()
+
+
+def parse_reminder_text(prompt: str, now: datetime | None = None) -> ParsedReminder:
+    """Parse common Japanese/ISO reminder times without external services."""
+    current = now or _now()
+    raw = normalize_life_command_args(prompt, "remind")
+    if not raw:
+        return ParsedReminder("", None)
+
+    default_hour, default_minute = _default_time(raw)
+    hour, minute = _extract_time(raw, (default_hour, default_minute))
+
+    iso_match = re.search(
+        r"\b(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?",
+        raw,
+    )
+    if iso_match:
+        parsed_hour = int(iso_match.group(4) or hour)
+        parsed_minute = int(iso_match.group(5) or minute)
+        try:
+            due_at = datetime(
+                int(iso_match.group(1)),
+                int(iso_match.group(2)),
+                int(iso_match.group(3)),
+                parsed_hour,
+                parsed_minute,
+                tzinfo=current.tzinfo,
+            )
+        except ValueError:
+            return ParsedReminder(raw, None)
+        return ParsedReminder(_clean_reminder_text(raw), due_at, "absolute-date")
+
+    jp_date = re.search(r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日", raw)
+    if jp_date:
+        year = int(jp_date.group(1) or current.year)
+        month = int(jp_date.group(2))
+        day = int(jp_date.group(3))
+        try:
+            due_at = datetime(year, month, day, hour, minute, tzinfo=current.tzinfo)
+        except ValueError:
+            return ParsedReminder(raw, None)
+        if jp_date.group(1) is None and due_at < current:
+            due_at = due_at.replace(year=current.year + 1)
+        return ParsedReminder(_clean_reminder_text(raw), due_at, "absolute-date")
+
+    slash_date = re.search(r"(?<!\d)(\d{1,2})/(\d{1,2})(?!\d)", raw)
+    if slash_date:
+        try:
+            due_at = datetime(
+                current.year,
+                int(slash_date.group(1)),
+                int(slash_date.group(2)),
+                hour,
+                minute,
+                tzinfo=current.tzinfo,
+            )
+        except ValueError:
+            return ParsedReminder(raw, None)
+        if due_at < current:
+            due_at = due_at.replace(year=current.year + 1)
+        return ParsedReminder(_clean_reminder_text(raw), due_at, "absolute-date")
+
+    if "明後日" in raw or "あさって" in raw:
+        return ParsedReminder(
+            _clean_reminder_text(raw),
+            _combine_date_time(current, 2, hour, minute),
+            "relative-date",
+        )
+    if "明日" in raw:
+        return ParsedReminder(
+            _clean_reminder_text(raw),
+            _combine_date_time(current, 1, hour, minute),
+            "relative-date",
+        )
+    if "今日" in raw:
+        return ParsedReminder(
+            _clean_reminder_text(raw),
+            _combine_date_time(current, 0, hour, minute),
+            "relative-date",
+        )
+
+    weekday_match = re.search(
+        r"(?:来週|次の)?(月曜日|月曜|月|火曜日|火曜|火|水曜日|水曜|水|木曜日|木曜|木|金曜日|金曜|金|土曜日|土曜|土|日曜日|日曜|日)",
+        raw,
+    )
+    if weekday_match:
+        weekday = _WEEKDAYS[weekday_match.group(1)]
+        return ParsedReminder(
+            _clean_reminder_text(raw),
+            _combine_date_time(current, _next_weekday(current, weekday), hour, minute),
+            "weekday",
+        )
+
+    return ParsedReminder(raw, None)
+
+
+@contextmanager
+def _reminder_file_lock(root: Path) -> Iterator[None]:
+    _ensure_storage(root)
+    lock_path = root / "reminders" / ".reminders.lock"
+    with lock_path.open("a+", encoding="utf-8") as handle:
+        if fcntl is not None:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def _append_memo(root: Path, memo: str, now: datetime) -> Path:
     _ensure_storage(root)
     notes_path = root / "notes" / f"{_date_key(now)}.md"
@@ -112,17 +354,42 @@ def _append_memo(root: Path, memo: str, now: datetime) -> Path:
     return notes_path
 
 
-def _append_reminder(root: Path, reminder: str, now: datetime) -> Path:
-    _ensure_storage(root)
+def _append_reminder(
+    root: Path,
+    reminder: str,
+    now: datetime,
+    *,
+    notify_channel_id: str = "",
+    notify_user_id: str = "",
+) -> ReminderRecordResult:
+    parsed = parse_reminder_text(reminder, now)
     reminders_path = root / "reminders" / "reminders.jsonl"
     item = {
         "createdAt": now.isoformat(timespec="seconds"),
-        "text": reminder.strip(),
+        "text": parsed.text.strip(),
         "status": "pending",
     }
-    with reminders_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
-    return reminders_path
+    if parsed.text.strip() != reminder.strip():
+        item["rawText"] = reminder.strip()
+    notification = "needs-time"
+    if parsed.due_at is not None:
+        item["dueAt"] = parsed.due_at.isoformat(timespec="seconds")
+        item["dueSource"] = parsed.due_source
+        if notify_channel_id:
+            item["notifyChannelId"] = notify_channel_id
+            item["notifyUserId"] = notify_user_id
+            notification = "scheduled"
+        else:
+            notification = "needs-channel"
+    with _reminder_file_lock(root):
+        with reminders_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
+    return ReminderRecordResult(
+        path=reminders_path,
+        text=item["text"],
+        due_at=parsed.due_at,
+        notification=notification,
+    )
 
 
 def _read_note_entries(root: Path, limit: int = 8) -> list[tuple[str, str]]:
@@ -165,11 +432,33 @@ def _read_pending_reminders(root: Path, limit: int = 8) -> list[dict[str, Any]]:
     return pending[-limit:][::-1]
 
 
+def _parse_due_at_item(item: dict[str, Any]) -> datetime | None:
+    due_at = str(item.get("dueAt", "") or "").strip()
+    if not due_at:
+        return None
+    try:
+        parsed = datetime.fromisoformat(due_at)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=_now().tzinfo)
+    return parsed
+
+
+def _format_reminder_line(item: dict[str, Any]) -> str:
+    text = _clip_line(str(item.get("text", "")))
+    due_at = _parse_due_at_item(item)
+    if due_at is None:
+        return f"- {text} (no time)"
+    return f"- {_timestamp(due_at)}: {text}"
+
+
 def run_life_memo_bridge(
     prompt: str,
     policy: LifePilotPolicy | None = None,
     storage_root: Path | None = None,
 ) -> str:
+    prompt = normalize_life_command_args(prompt, "memo")
     loaded_policy = policy or load_life_pilot_policy()
     validation = validate_life_prompt(prompt, loaded_policy)
     if not validation.ok:
@@ -187,17 +476,34 @@ def run_life_remind_bridge(
     prompt: str,
     policy: LifePilotPolicy | None = None,
     storage_root: Path | None = None,
+    *,
+    notify_channel_id: str = "",
+    notify_user_id: str = "",
 ) -> str:
+    prompt = normalize_life_command_args(prompt, "remind")
     loaded_policy = policy or load_life_pilot_policy()
     validation = validate_life_prompt(prompt, loaded_policy)
     if not validation.ok:
         return f"remind rejected: {validation.reason}\n\n{render_remind_usage()}"
     now = _now()
     root = _storage_root(loaded_policy, storage_root)
-    path = _append_reminder(root, prompt, now)
+    record = _append_reminder(
+        root,
+        prompt,
+        now,
+        notify_channel_id=notify_channel_id,
+        notify_user_id=notify_user_id,
+    )
+    if record.due_at is None:
+        schedule_line = "not scheduled: 日時を読み取れませんでした。例: /remind 明日の朝、燃えるごみを出す"
+    elif record.notification == "needs-channel":
+        schedule_line = f"scheduled: {_timestamp(record.due_at)} (notification channel unavailable)"
+    else:
+        schedule_line = f"scheduled: {_timestamp(record.due_at)}"
     return f"""{_clip_line(prompt, 180)}
+{schedule_line}
 
-{_render_debug_line(status="pending", notification="not-enabled", created=_timestamp(now), path=str(path.relative_to(root)), boundary="local-only/no-tools")}
+{_render_debug_line(status="pending", notification=record.notification, created=_timestamp(now), path=str(record.path.relative_to(root)), boundary="local-only/no-tools")}
 """.strip()
 
 
@@ -206,6 +512,7 @@ def run_life_digest_bridge(
     policy: LifePilotPolicy | None = None,
     storage_root: Path | None = None,
 ) -> str:
+    prompt = normalize_life_command_args(prompt, "digest")
     loaded_policy = policy or load_life_pilot_policy()
     validation = validate_life_prompt(prompt, loaded_policy, allow_empty=True)
     if not validation.ok:
@@ -218,10 +525,18 @@ def run_life_digest_bridge(
         if entries
         else "- No life memos yet."
     )
-    reminder_lines = (
-        "\n".join(f"- {_clip_line(str(item.get('text', '')))}" for item in reminders)
-        if reminders
-        else "- No pending reminders."
+    scheduled = [item for item in reminders if _parse_due_at_item(item) is not None]
+    unscheduled = [item for item in reminders if _parse_due_at_item(item) is None]
+    scheduled.sort(key=lambda item: _parse_due_at_item(item) or datetime.max)
+    scheduled_lines = (
+        "\n".join(_format_reminder_line(item) for item in scheduled[:5])
+        if scheduled
+        else "- No scheduled reminders."
+    )
+    unscheduled_lines = (
+        "\n".join(_format_reminder_line(item) for item in unscheduled[:5])
+        if unscheduled
+        else "- No pending reminders without time."
     )
     focus = _clip_line(prompt, 100) if prompt.strip() else "recent life notes"
     return f"""Focus: {focus}
@@ -229,8 +544,11 @@ def run_life_digest_bridge(
 Recent notes:
 {note_lines}
 
-Pending reminders:
-{reminder_lines}
+Scheduled reminders:
+{scheduled_lines}
+
+Pending without time:
+{unscheduled_lines}
 
 {_render_debug_line(notes=str(len(entries)), reminders=str(len(reminders)), boundary="local-only/no-tools")}
 """.strip()
@@ -241,6 +559,7 @@ def run_life_recommend_bridge(
     policy: LifePilotPolicy | None = None,
     storage_root: Path | None = None,
 ) -> str:
+    prompt = normalize_life_command_args(prompt, "recommend")
     loaded_policy = policy or load_life_pilot_policy()
     validation = validate_life_prompt(prompt, loaded_policy, allow_empty=True)
     if not validation.ok:
@@ -249,8 +568,26 @@ def run_life_recommend_bridge(
     entries = _read_note_entries(root, limit=5)
     reminders = _read_pending_reminders(root, limit=5)
     actions: list[str] = []
-    if reminders:
-        actions.append(f"Choose one pending reminder to handle first: {_clip_line(str(reminders[0].get('text', '')))}")
+    now = _now()
+    scheduled = [item for item in reminders if _parse_due_at_item(item) is not None]
+    unscheduled = [item for item in reminders if _parse_due_at_item(item) is None]
+    scheduled.sort(key=lambda item: _parse_due_at_item(item) or datetime.max)
+    due_now = [
+        item
+        for item in scheduled
+        if (_parse_due_at_item(item) or datetime.max.replace(tzinfo=now.tzinfo)) <= now
+    ]
+    if due_now:
+        actions.append(f"Handle the due reminder first: {_clip_line(str(due_now[0].get('text', '')))}")
+    elif scheduled:
+        due_at = _parse_due_at_item(scheduled[0])
+        due_label = _timestamp(due_at) if due_at is not None else "unknown time"
+        actions.append(
+            f"Prepare for the next scheduled reminder ({due_label}): "
+            f"{_clip_line(str(scheduled[0].get('text', '')))}"
+        )
+    if unscheduled:
+        actions.append(f"Add a date/time to this reminder: {_clip_line(str(unscheduled[0].get('text', '')))}")
     if not entries:
         actions.append("Add one short /memo so Hermes has context for future suggestions.")
     else:
@@ -282,8 +619,18 @@ async def run_life_remind_bridge_async(
     prompt: str,
     policy: LifePilotPolicy | None = None,
     storage_root: Path | None = None,
+    *,
+    notify_channel_id: str = "",
+    notify_user_id: str = "",
 ) -> str:
-    return await asyncio.to_thread(run_life_remind_bridge, prompt, policy, storage_root)
+    return await asyncio.to_thread(
+        run_life_remind_bridge,
+        prompt,
+        policy,
+        storage_root,
+        notify_channel_id=notify_channel_id,
+        notify_user_id=notify_user_id,
+    )
 
 
 async def run_life_digest_bridge_async(

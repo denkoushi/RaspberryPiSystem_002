@@ -2,9 +2,11 @@
 """Discord Life Pilot bridge tests."""
 
 import asyncio
+import json
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -12,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from lib.discord_life_pilot_bridge import (  # noqa: E402
+    parse_reminder_text,
     render_memo_usage,
     run_life_digest_bridge,
     run_life_digest_bridge_async,
@@ -87,21 +90,35 @@ class DiscordLifePilotBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
 
-            reminder = run_life_remind_bridge("明日の朝、燃えるごみを出す", _policy(), root)
+            reminder = run_life_remind_bridge(
+                "明日の朝、燃えるごみを出す",
+                _policy(),
+                root,
+                notify_channel_id="channel-1",
+                notify_user_id="user-1",
+            )
             digest = run_life_digest_bridge("", _policy(), root)
 
             self.assertTrue(reminder.startswith("明日の朝、燃えるごみを出す"))
             self.assertNotIn("# Reminder Recorded", reminder)
             self.assertNotIn("> 明日の朝", reminder)
             self.assertIn("status=pending", reminder)
+            self.assertIn("notification=scheduled", reminder)
+            self.assertIn("scheduled:", reminder)
             self.assertIn("-# debug:", reminder)
             self.assertIn("Focus: recent life notes", digest)
             self.assertIn("Recent notes:", digest)
-            self.assertIn("Pending reminders:", digest)
+            self.assertIn("Scheduled reminders:", digest)
+            self.assertIn("Pending without time:", digest)
             self.assertNotIn("# Life Digest", digest)
             self.assertNotIn("## Recent Notes", digest)
             self.assertIn("燃えるごみ", digest)
-            self.assertTrue((root / "reminders" / "reminders.jsonl").is_file())
+            reminders_path = root / "reminders" / "reminders.jsonl"
+            self.assertTrue(reminders_path.is_file())
+            item = json.loads(reminders_path.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(item["text"], "燃えるごみを出す")
+            self.assertEqual(item["notifyChannelId"], "channel-1")
+            self.assertIn("dueAt", item)
 
     def test_recommend_uses_local_notes_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -117,6 +134,37 @@ class DiscordLifePilotBridgeTests(unittest.TestCase):
             self.assertIn("boundary=local-only/no-tools", result)
             self.assertNotIn("## Basis", result)
             self.assertIn("牛乳", result)
+
+    def test_remind_without_parseable_time_stays_pending_without_schedule(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = run_life_remind_bridge("キレイキレイの詰め替えを買う", _policy(), root)
+            item = json.loads(
+                (root / "reminders" / "reminders.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()[0]
+            )
+
+            self.assertIn("not scheduled:", result)
+            self.assertIn("notification=needs-time", result)
+            self.assertNotIn("dueAt", item)
+
+    def test_parse_reminder_japanese_relative_and_weekday(self) -> None:
+        now = datetime(2026, 6, 6, 14, 0, tzinfo=timezone(timedelta(hours=9)))
+
+        tomorrow = parse_reminder_text("明日の朝、燃えるごみを出す", now)
+        monday = parse_reminder_text("来週月曜日にラズパイシステムのデモを現場で実演する", now)
+
+        self.assertEqual(tomorrow.text, "燃えるごみを出す")
+        self.assertEqual(tomorrow.due_at, datetime(2026, 6, 7, 8, 0, tzinfo=now.tzinfo))
+        self.assertEqual(monday.text, "ラズパイシステムのデモを現場で実演する")
+        self.assertEqual(monday.due_at, datetime(2026, 6, 8, 9, 0, tzinfo=now.tzinfo))
+
+    def test_parse_reminder_invalid_date_does_not_crash(self) -> None:
+        parsed = parse_reminder_text("2026-99-99 薬を飲む")
+
+        self.assertEqual(parsed.due_at, None)
 
     def test_bridge_rejects_execution_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

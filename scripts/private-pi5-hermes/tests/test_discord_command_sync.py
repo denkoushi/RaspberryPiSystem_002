@@ -81,6 +81,13 @@ class DiscordCommandSyncTests(unittest.TestCase):
         )
         self.assertTrue(all(payload["dm_permission"] is True for payload in payloads))
         self.assertTrue(all(payload["integration_types"] == [0, 1] for payload in payloads))
+        remind = payloads[2]
+        self.assertEqual(
+            remind["description"],
+            "Schedule a private Life Pilot reminder notification",
+        )
+        self.assertEqual(remind["options"][0]["required"], True)
+        self.assertIn("明日の朝", remind["options"][0]["description"])
 
     def test_present_matching_command_is_unchanged(self) -> None:
         existing = {"id": "daily-1", **daily_command_payload(), "version": "99"}

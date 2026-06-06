@@ -20,6 +20,12 @@
     private_pi5_hermes_novel_config_dir: "{{ private_pi5_hermes_novel_home }}/.hermes"
     private_pi5_hermes_novel_model_profile_id: "qwen36_35b_uncensored"
     private_pi5_hermes_life_data_dir: "{{ private_pi5_hermes_home }}/.hermes-life"
+    private_pi5_hermes_life_reminder_scheduler_active: >-
+      {{
+        (private_pi5_hermes_life_pilot_enabled | default(false) | bool)
+        and (private_pi5_hermes_life_reminder_scheduler_enabled | default(true) | bool)
+        and ((private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0)
+      }}
     private_pi5_hermes_bin: "{{ private_pi5_hermes_home }}/.local/bin/hermes"
     hermes_terminal_mount_cwd_to_workspace: false
     hermes_terminal_docker_volumes: >-
@@ -226,6 +232,9 @@
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/sync-discord-daily-command.yml"
       when: (private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0
 
+    - name: Configure Hermes Life Pilot reminder scheduler
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/life-reminder-scheduler.yml"
+
     - name: Deploy Hermes tools profile skeleton
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-tools-profile.yml"
       when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
@@ -294,6 +303,7 @@
           - "discord_novel_bridge_enabled={{ private_pi5_hermes_discord_novel_bridge_enabled | default(false) }}"
           - "daily_pilot_enabled={{ private_pi5_hermes_daily_pilot_enabled | default(false) }}"
           - "life_pilot_enabled={{ private_pi5_hermes_life_pilot_enabled | default(false) }}"
+          - "life_reminder_scheduler_active={{ private_pi5_hermes_life_reminder_scheduler_active }}"
           - "dgx_keep_warm_active={{ private_pi5_hermes_dgx_keep_warm_active }}"
           - "discord_configured={{ (private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0 }}"
 

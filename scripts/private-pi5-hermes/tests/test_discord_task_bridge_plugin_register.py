@@ -90,9 +90,11 @@ class PluginRegisterTests(unittest.TestCase):
             self.assertEqual(registered, ["memo", "digest", "remind", "recommend"])
             memo_call = ctx.register_command.call_args_list[0]
             self.assertEqual(memo_call[1].get("args_hint"), "<life note>")
+            remind_call = ctx.register_command.call_args_list[2]
+            self.assertEqual(remind_call[1].get("args_hint"), "<when and reminder>")
             recommend_call = ctx.register_command.call_args_list[3]
             self.assertEqual(recommend_call[1].get("args_hint"), "[focus]")
-            ctx.register_hook.assert_not_called()
+            ctx.register_hook.assert_called_once()
 
     def test_task_approve_returns_expired_message_without_failed_prefix(self) -> None:
         with unittest.mock.patch.object(

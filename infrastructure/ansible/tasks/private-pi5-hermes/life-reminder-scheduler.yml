@@ -1,0 +1,40 @@
+---
+# D7-life: Life Pilot reminder notification timer.
+- name: Install Hermes Life Pilot reminder scheduler systemd units
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: "../templates/private-pi5-hermes-life-reminder.service.j2"
+      dest: /etc/systemd/system/hermes-life-reminder.service
+    - src: "../templates/private-pi5-hermes-life-reminder.timer.j2"
+      dest: /etc/systemd/system/hermes-life-reminder.timer
+  notify: Reload systemd daemon
+
+- name: Enable Hermes Life Pilot reminder timer
+  ansible.builtin.systemd:
+    name: hermes-life-reminder.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: private_pi5_hermes_life_reminder_scheduler_active | bool
+
+- name: Disable Hermes Life Pilot reminder timer when inactive
+  ansible.builtin.systemd:
+    name: hermes-life-reminder.timer
+    enabled: false
+    state: stopped
+    daemon_reload: true
+  when: not (private_pi5_hermes_life_reminder_scheduler_active | bool)
+
+- name: Warn when Life Pilot reminder scheduler is inactive
+  ansible.builtin.debug:
+    msg: >-
+      hermes-life-reminder is inactive: enable Life Pilot and set
+      private_pi5_hermes_discord_bot_token in the local inventory fragment.
+  when:
+    - private_pi5_hermes_life_pilot_enabled | default(false) | bool
+    - not (private_pi5_hermes_life_reminder_scheduler_active | bool)

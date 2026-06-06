@@ -102,7 +102,7 @@ python3 -m unittest scripts/private-pi5-hermes/tests/test_daily_pilot_policy.py 
 
 正本: [`config/life-pilot.policy.yaml`](config/life-pilot.policy.yaml) · [ExecPlan](../../docs/plans/private-pi5-hermes-life-pilot-execplan.md) · [KB](../../docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md)
 
-AI執事の体感を先に作るため、Discord から日常メモ・備忘録・軽いリマインド要求・次アクション提案を扱う。コマンドは `/memo` `/digest` `/remind` `/recommend`。保存は `/home/hermes/.hermes-life` のみ。
+AI執事の体感を先に作るため、Discord から日常メモ・備忘録・リマインド通知・次アクション提案を扱う。コマンドは `/memo` `/digest` `/remind` `/recommend`。保存は `/home/hermes/.hermes-life` のみで、日時を読めた `/remind` は `hermes-life-reminder.timer` がDiscordへ通知する。詳細はExecPlanを参照。
 
 **自動実行なし**: Cursor/Codex CLI、terminal、git、deploy、秘密読取、外部Web検索、Home Assistant/カメラ制御は無効。
 
