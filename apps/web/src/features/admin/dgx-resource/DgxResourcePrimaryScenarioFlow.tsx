@@ -44,7 +44,10 @@ function isBusinessReturnScenario(scenarioId: DgxOrchestrationScenarioIdApi | nu
   return scenarioId === 'private_to_business' || scenarioId === 'experiment_to_business';
 }
 
-function businessReturnReady(runtimeSummary?: DgxResourceRuntimeSummaryApi): boolean {
+function businessReturnReady(runtimeSummary?: {
+  businessReady?: boolean;
+  resourceOwner?: DgxResourceRuntimeSummaryApi['resourceOwner'];
+}): boolean {
   return runtimeSummary?.businessReady === true && runtimeSummary.resourceOwner === 'business';
 }
 
