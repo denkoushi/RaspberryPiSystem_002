@@ -44,6 +44,13 @@ export type OrchestrationReadinessCoordinator = {
   readinessPollIntervalMs: number;
 };
 
+const BUSINESS_RETURN_IN_PROGRESS_MESSAGE =
+  '復帰処理を開始しました。DGX 側でモデルをロード中です。\nReady まで数分かかることがあります。画面を閉じても処理は継続します。';
+
+function isBusinessReturnScenario(scenarioId: DgxOrchestrationScenarioId): boolean {
+  return scenarioId === 'private_to_business' || scenarioId === 'experiment_to_business';
+}
+
 function summarizeControlErrorJa(error: unknown): string {
   if (typeof error === 'object' && error != null && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
     return (error as { message: string }).message;
@@ -100,6 +107,12 @@ export async function executeOrchestrationScenarioTransition(input: {
   scenarioId: DgxOrchestrationScenarioId;
   planFingerprint: string;
   modelProfileId?: string;
+  /**
+   * Long vLLM cold starts should not keep the HTTP request open. When true,
+   * the scenario returns after dispatching the business model start request and
+   * leaves readiness to overview polling.
+   */
+  deferReadiness?: boolean;
   capability: WorkloadCapabilityFlags;
   runTargetRuntimeAction: RunTargetRuntimeActionFn;
   policyStore: DgxResourcePolicyStore;
@@ -109,7 +122,16 @@ export async function executeOrchestrationScenarioTransition(input: {
   message: string;
   scenarioExecute: DgxResourceScenarioExecuteResult;
 }> {
-  const { scenarioId, planFingerprint, modelProfileId, capability, runTargetRuntimeAction, policyStore, readinessCoordinator } = input;
+  const {
+    scenarioId,
+    planFingerprint,
+    modelProfileId,
+    deferReadiness = false,
+    capability,
+    runTargetRuntimeAction,
+    policyStore,
+    readinessCoordinator,
+  } = input;
   const intent = resolveScenarioPolicyIntent(scenarioId);
   const policyBefore = policyStore.getPolicyMode();
 
@@ -257,68 +279,76 @@ export async function executeOrchestrationScenarioTransition(input: {
       if (!isReadinessNoop(spec)) {
         policyStore.appendEvent(`Strict Ready: 「${scenarioId}」完了条件の確認を開始します`);
 
-        const wait = await waitScenarioReadiness({
-          spec,
-          collectProbeBundle: readinessCoordinator.collectProbeBundle,
-          readinessDeadlineMs: readinessCoordinator.readinessDeadlineMs,
-          readinessPollIntervalMs: readinessCoordinator.readinessPollIntervalMs,
-          ...(modelProfileId ? { modelProfileId } : {}),
-          runGatewayStartOnceIfNeeded:
-            spec.allowGatewayStartRemediation && spec.requireInferenceBusiness ? runGatewayWithEvent : undefined,
-        });
-
-        if (!wait.ok) {
-          policyStore.recordScenarioFailure({
-            scenarioId,
-            message: wait.failureJa,
-            completedStepOrders,
+        if (deferReadiness && isBusinessReturnScenario(scenarioId)) {
+          outcomeKind = 'in_progress';
+          readinessSummaryJa = BUSINESS_RETURN_IN_PROGRESS_MESSAGE;
+          policyStore.appendEvent('業務復帰: Ready まで overview で自動監視します');
+          msgPieces.push(BUSINESS_RETURN_IN_PROGRESS_MESSAGE);
+          msg = msgPieces.join(' ');
+        } else {
+          const wait = await waitScenarioReadiness({
+            spec,
+            collectProbeBundle: readinessCoordinator.collectProbeBundle,
+            readinessDeadlineMs: readinessCoordinator.readinessDeadlineMs,
+            readinessPollIntervalMs: readinessCoordinator.readinessPollIntervalMs,
+            ...(modelProfileId ? { modelProfileId } : {}),
+            runGatewayStartOnceIfNeeded:
+              spec.allowGatewayStartRemediation && spec.requireInferenceBusiness ? runGatewayWithEvent : undefined,
           });
-          policyStore.appendEvent(`Strict Ready がタイムアウトしました: ${wait.failureJa}`);
-          rollback = await performSafeScenarioRollback({
-            ctx: {
+
+          if (!wait.ok) {
+            policyStore.recordScenarioFailure({
               scenarioId,
-              policyBefore,
-              rollbackPolicyMode: policyBefore,
-              comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
-              experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
-              agentContainerRuntimeConfigured: capability.agentContainerRuntimeConfigured,
-            },
-            policyStore,
-            currentPolicyBeforeRollback: policyStore.getPolicyMode(),
-            runTargetRuntimeAction,
-          });
+              message: wait.failureJa,
+              completedStepOrders,
+            });
+            policyStore.appendEvent(`Strict Ready がタイムアウトしました: ${wait.failureJa}`);
+            rollback = await performSafeScenarioRollback({
+              ctx: {
+                scenarioId,
+                policyBefore,
+                rollbackPolicyMode: policyBefore,
+                comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
+                experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
+                agentContainerRuntimeConfigured: capability.agentContainerRuntimeConfigured,
+              },
+              policyStore,
+              currentPolicyBeforeRollback: policyStore.getPolicyMode(),
+              runTargetRuntimeAction,
+            });
 
-          const scenarioExecute: DgxResourceScenarioExecuteResult = {
-            scenarioId,
-            success: false,
-            completedStepOrders,
-            completedPolicyApplied: false,
-            outcomeKind: 'partial_failure',
-            readinessChecksJa: wait.checksJa,
-            readinessSummaryJa: wait.failureJa,
-            rollback,
-            failureMessageJa: wait.failureJa,
-            recommendedNextJa: [
-              rollback?.policyRestoredJa,
-              ...(rollback?.workloadStepsJa ?? []),
-              'Control Targets・イベントログ・Runbook を確認してください（自動復帰で未解決なら単発 EXECUTE で補修）。',
-            ]
-              .filter((s): s is string => Boolean(s?.trim()))
-              .join(' · '),
-          };
+            const scenarioExecute: DgxResourceScenarioExecuteResult = {
+              scenarioId,
+              success: false,
+              completedStepOrders,
+              completedPolicyApplied: false,
+              outcomeKind: 'partial_failure',
+              readinessChecksJa: wait.checksJa,
+              readinessSummaryJa: wait.failureJa,
+              rollback,
+              failureMessageJa: wait.failureJa,
+              recommendedNextJa: [
+                rollback?.policyRestoredJa,
+                ...(rollback?.workloadStepsJa ?? []),
+                'Control Targets・イベントログ・Runbook を確認してください（自動復帰で未解決なら単発 EXECUTE で補修）。',
+              ]
+                .filter((s): s is string => Boolean(s?.trim()))
+                .join(' · '),
+            };
 
-          return {
-            ok: true,
-            message: wait.failureJa,
-            scenarioExecute,
-          };
+            return {
+              ok: true,
+              message: wait.failureJa,
+              scenarioExecute,
+            };
+          }
+
+          readinessChecksJa = wait.checksJa;
+          readinessSummaryJa = wait.summaryJa;
+          policyStore.appendEvent(wait.summaryJa);
+          msgPieces.push(wait.summaryJa);
+          msg = msgPieces.join(' ');
         }
-
-        readinessChecksJa = wait.checksJa;
-        readinessSummaryJa = wait.summaryJa;
-        policyStore.appendEvent(wait.summaryJa);
-        msgPieces.push(wait.summaryJa);
-        msg = msgPieces.join(' ');
       }
     }
 

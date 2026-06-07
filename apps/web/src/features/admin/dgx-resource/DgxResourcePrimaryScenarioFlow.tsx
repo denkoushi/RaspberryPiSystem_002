@@ -15,12 +15,21 @@ import type {
   DgxResourceActionBody,
   DgxResourceActionResult,
   DgxResourceOperatorConsoleApi,
+  DgxResourceRuntimeSummaryApi,
 } from '../../../api/dgx-resource.types';
 
 const DGX_SCENARIO_PENDING_EVENT = 'dgx-resource:primary-scenario-pending-changed';
 const DGX_SCENARIO_PENDING_STORAGE_KEY = 'dgx-resource:primary-scenario-pending';
 const DGX_SCENARIO_PENDING_TTL_MS = 20 * 60 * 1000;
+const BUSINESS_RETURN_PENDING_MESSAGE =
+  '復帰処理を開始しました。DGX 側でモデルをロード中です。\nReady まで数分かかることがあります。画面を閉じても処理は継続します。';
 let dgxPrimaryScenarioPendingCount = 0;
+
+type DgxPersistedScenarioPendingState = {
+  pending: true;
+  startedAt: number;
+  scenarioId: DgxOrchestrationScenarioIdApi | null;
+};
 
 function emitDgxScenarioPendingChanged(): void {
   if (typeof window === 'undefined') return;
@@ -31,21 +40,35 @@ function emitDgxScenarioPendingChanged(): void {
   );
 }
 
-function readPersistedPendingState(): boolean {
-  if (typeof window === 'undefined') return false;
+function isBusinessReturnScenario(scenarioId: DgxOrchestrationScenarioIdApi | null | undefined): boolean {
+  return scenarioId === 'private_to_business' || scenarioId === 'experiment_to_business';
+}
+
+function businessReturnReady(runtimeSummary?: DgxResourceRuntimeSummaryApi): boolean {
+  return runtimeSummary?.businessReady === true && runtimeSummary.resourceOwner === 'business';
+}
+
+function readPersistedPendingState(): DgxPersistedScenarioPendingState | null {
+  if (typeof window === 'undefined') return null;
   try {
     const raw = window.sessionStorage.getItem(DGX_SCENARIO_PENDING_STORAGE_KEY);
-    if (!raw) return false;
+    if (!raw) return null;
     const parsed = JSON.parse(raw) as { pending?: boolean; startedAt?: number } | null;
-    if (!parsed?.pending) return false;
-    if (typeof parsed.startedAt !== 'number') return false;
+    if (!parsed?.pending) return null;
+    if (typeof parsed.startedAt !== 'number') return null;
     if (Date.now() - parsed.startedAt > DGX_SCENARIO_PENDING_TTL_MS) {
       window.sessionStorage.removeItem(DGX_SCENARIO_PENDING_STORAGE_KEY);
-      return false;
+      return null;
     }
-    return true;
+    return {
+      pending: true,
+      startedAt: parsed.startedAt,
+      scenarioId: isBusinessReturnScenario((parsed as { scenarioId?: unknown }).scenarioId as DgxOrchestrationScenarioIdApi)
+        ? ((parsed as { scenarioId: DgxOrchestrationScenarioIdApi }).scenarioId)
+        : null,
+    };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -72,6 +95,7 @@ function persistPendingState(pending: boolean, scenarioId: DgxOrchestrationScena
 type Props = {
   operator: DgxResourceOperatorConsoleApi;
   modelProfiles?: DgxModelProfilesOverviewApi;
+  runtimeSummary?: DgxResourceRuntimeSummaryApi;
   postDgxAction: (body: DgxResourceActionBody) => Promise<DgxResourceActionResult>;
   actionBusy: boolean;
   externalBusy?: boolean;
@@ -82,6 +106,7 @@ type Props = {
 export function DgxResourcePrimaryScenarioFlow({
   operator,
   modelProfiles,
+  runtimeSummary,
   postDgxAction,
   actionBusy,
   externalBusy = false,
@@ -93,9 +118,13 @@ export function DgxResourcePrimaryScenarioFlow({
   const [selectedScenarioId, setSelectedScenarioId] = useState<DgxOrchestrationScenarioIdApi | null>(null);
   const [selectedModelProfileId, setSelectedModelProfileId] = useState<string | null>(null);
   const [flowBusy, setFlowBusy] = useState(false);
-  const [globalPending, setGlobalPending] = useState(() => dgxPrimaryScenarioPendingCount > 0 || readPersistedPendingState());
+  const [globalPending, setGlobalPending] = useState(() => dgxPrimaryScenarioPendingCount > 0 || readPersistedPendingState() != null);
   const [resultNote, setResultNote] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const busy = actionBusy || flowBusy || globalPending || externalBusy;
+  const persistedPending = readPersistedPendingState();
+  const businessReturnPending =
+    isBusinessReturnScenario(persistedPending?.scenarioId) ||
+    (globalPending && isBusinessReturnScenario(selectedScenarioId));
 
   useEffect(() => {
     const preferred = actions.find((a) => a.primary && !a.disabledReasonJa)?.scenarioId ?? actions.find((a) => !a.disabledReasonJa)?.scenarioId ?? null;
@@ -134,9 +163,9 @@ export function DgxResourcePrimaryScenarioFlow({
         : null;
 
   useEffect(() => {
-    const sync = () => setGlobalPending(dgxPrimaryScenarioPendingCount > 0);
+    const sync = () => setGlobalPending(dgxPrimaryScenarioPendingCount > 0 || readPersistedPendingState() != null);
     sync();
-    if (readPersistedPendingState()) {
+    if (readPersistedPendingState() != null) {
       setGlobalPending(true);
     }
     if (typeof window === 'undefined') return;
@@ -145,6 +174,18 @@ export function DgxResourcePrimaryScenarioFlow({
       window.removeEventListener(DGX_SCENARIO_PENDING_EVENT, sync as EventListener);
     };
   }, []);
+
+  const businessReady = runtimeSummary?.businessReady;
+  const resourceOwner = runtimeSummary?.resourceOwner;
+
+  useEffect(() => {
+    const pending = readPersistedPendingState();
+    if (!isBusinessReturnScenario(pending?.scenarioId) || !businessReturnReady({ businessReady, resourceOwner })) return;
+    persistPendingState(false, null);
+    setGlobalPending(dgxPrimaryScenarioPendingCount > 0);
+    setResultNote((prev) => prev ?? { tone: 'success', message: '業務推論が Ready になりました。' });
+    emitDgxScenarioPendingChanged();
+  }, [businessReady, resourceOwner]);
 
   useEffect(() => {
     if (!needsModelProfile) return;
@@ -180,6 +221,8 @@ export function DgxResourcePrimaryScenarioFlow({
     persistPendingState(true, selectedAction.scenarioId);
     emitDgxScenarioPendingChanged();
     setResultNote(null);
+    let keepLogicalPending = false;
+    let executeDispatched = false;
     try {
       // 実行指紋が必要なため、内部で preview→execute を連続実行する。
       const previewResult = await postDgxAction({
@@ -206,6 +249,7 @@ export function DgxResourcePrimaryScenarioFlow({
       });
       if (!ok) return;
 
+      executeDispatched = true;
       const executeResult = await postDgxAction({
         type: 'EXECUTE_ORCHESTRATION_SCENARIO',
         scenarioId: preview.scenarioId,
@@ -215,6 +259,7 @@ export function DgxResourcePrimaryScenarioFlow({
       });
       onControlUiError(null);
       const se = executeResult.scenarioExecute;
+      keepLogicalPending = se?.outcomeKind === 'in_progress';
       const readinessLines =
         se?.readinessChecksJa && se.readinessChecksJa.length > 0
           ? [
@@ -243,12 +288,19 @@ export function DgxResourcePrimaryScenarioFlow({
       await qc.invalidateQueries({ queryKey: dgxResourceQueryKeys.overview });
     } catch (error) {
       const message = getDgxResourceApiErrorMessage(error);
+      if (executeDispatched && needsModelProfile && /timeout|タイムアウト|ECONNABORTED/i.test(message)) {
+        keepLogicalPending = true;
+        onControlUiError(null);
+        setResultNote({ tone: 'success', message: BUSINESS_RETURN_PENDING_MESSAGE });
+        await qc.invalidateQueries({ queryKey: dgxResourceQueryKeys.overview });
+        return;
+      }
       onControlUiError(message);
       setResultNote({ tone: 'error', message });
     } finally {
       setFlowBusy(false);
       dgxPrimaryScenarioPendingCount = Math.max(0, dgxPrimaryScenarioPendingCount - 1);
-      if (dgxPrimaryScenarioPendingCount === 0) {
+      if (!keepLogicalPending && dgxPrimaryScenarioPendingCount === 0) {
         persistPendingState(false, null);
       }
       emitDgxScenarioPendingChanged();
@@ -355,7 +407,7 @@ export function DgxResourcePrimaryScenarioFlow({
         <p
           role="status"
           className={clsx(
-            'break-words rounded-lg border px-3 py-2 text-sm leading-snug',
+            'whitespace-pre-line break-words rounded-lg border px-3 py-2 text-sm leading-snug',
             resultNote.tone === 'success'
               ? 'border-emerald-500/35 bg-emerald-950/25 text-emerald-100'
               : 'border-red-500/35 bg-red-950/25 text-red-100'
@@ -365,9 +417,16 @@ export function DgxResourcePrimaryScenarioFlow({
         </p>
       ) : null}
       {busy ? (
-        <p role="status" className="break-words rounded-lg border border-cyan-400/35 bg-cyan-950/25 px-3 py-2 text-sm leading-snug text-cyan-100">
-          進行中: 切替処理を実行中です。別タブへ移動しても処理は継続します。
-        </p>
+        <div role="status" className="break-words rounded-lg border border-cyan-400/35 bg-cyan-950/25 px-3 py-2 text-sm leading-snug text-cyan-100">
+          {businessReturnPending ? (
+            <>
+              <p>復帰処理を開始しました。DGX 側でモデルをロード中です。</p>
+              <p>Ready まで数分かかることがあります。画面を閉じても処理は継続します。</p>
+            </>
+          ) : (
+            <p>進行中: 切替処理を実行中です。別タブへ移動しても処理は継続します。</p>
+          )}
+        </div>
       ) : null}
     </div>
   );

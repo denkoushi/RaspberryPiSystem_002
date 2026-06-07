@@ -178,6 +178,7 @@ describe('DgxResourceDashboard', () => {
     fetchDgxResourceOverview.mockReset();
     fetchDgxResourceEvents.mockReset();
     useConfirmMock.mockClear();
+    window.sessionStorage.clear();
   });
 
   it('loaded state hides page heading and renders KPI strip first', async () => {

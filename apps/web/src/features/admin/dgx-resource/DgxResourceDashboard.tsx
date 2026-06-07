@@ -20,7 +20,13 @@ import { DgxResourceStatusBoard } from './DgxResourceStatusBoard';
 import { DgxResourceTargetGrid } from './DgxResourceTargetGrid';
 import { DgxResourceWarmRuntimeNotice } from './DgxResourceWarmRuntimeNotice';
 
-import type { DgxControlTargetIdApi, DgxResourceActionBody, DgxServiceStatusKind } from '../../../api/dgx-resource.types';
+import type {
+  DgxControlTargetIdApi,
+  DgxOrchestrationScenarioIdApi,
+  DgxResourceActionBody,
+  DgxResourceRuntimeSummaryApi,
+  DgxServiceStatusKind,
+} from '../../../api/dgx-resource.types';
 
 function statusChipTone(status: DgxServiceStatusKind): string {
   switch (status) {
@@ -89,16 +95,44 @@ function deriveDgxRunningScenario(events: Array<{ at: string; message: string }>
 
 const DGX_SCENARIO_PENDING_STORAGE_KEY = 'dgx-resource:primary-scenario-pending';
 
-function readPendingScenarioFromStorage(): boolean {
-  if (typeof window === 'undefined') return false;
+type DgxPersistedScenarioPendingState = {
+  pending: true;
+  startedAt: number;
+  scenarioId: DgxOrchestrationScenarioIdApi | null;
+};
+
+function isBusinessReturnScenario(scenarioId: DgxOrchestrationScenarioIdApi | null | undefined): boolean {
+  return scenarioId === 'private_to_business' || scenarioId === 'experiment_to_business';
+}
+
+function isBusinessReturnReady(summary?: DgxResourceRuntimeSummaryApi): boolean {
+  return summary?.businessReady === true && summary.resourceOwner === 'business';
+}
+
+function isBusinessReturnPreparing(summary?: DgxResourceRuntimeSummaryApi): boolean {
+  return summary?.resourceOwner === 'business' && summary.resourceStateStatus === 'preparing' && summary.businessReady === false;
+}
+
+function readPendingScenarioFromStorage(): DgxPersistedScenarioPendingState | null {
+  if (typeof window === 'undefined') return null;
   try {
     const raw = window.sessionStorage.getItem(DGX_SCENARIO_PENDING_STORAGE_KEY);
-    if (!raw) return false;
+    if (!raw) return null;
     const parsed = JSON.parse(raw) as { pending?: boolean; startedAt?: number } | null;
-    if (!parsed?.pending || typeof parsed.startedAt !== 'number') return false;
-    return Date.now() - parsed.startedAt <= 20 * 60 * 1000;
+    if (!parsed?.pending || typeof parsed.startedAt !== 'number') return null;
+    if (Date.now() - parsed.startedAt > 20 * 60 * 1000) {
+      window.sessionStorage.removeItem(DGX_SCENARIO_PENDING_STORAGE_KEY);
+      return null;
+    }
+    return {
+      pending: true,
+      startedAt: parsed.startedAt,
+      scenarioId: isBusinessReturnScenario((parsed as { scenarioId?: unknown }).scenarioId as DgxOrchestrationScenarioIdApi)
+        ? ((parsed as { scenarioId: DgxOrchestrationScenarioIdApi }).scenarioId)
+        : null,
+    };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -108,7 +142,7 @@ export function DgxResourceDashboard() {
   const qc = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
   const [targetActionError, setTargetActionError] = useState<{ targetId: DgxControlTargetIdApi; message: string } | null>(null);
-  const [pendingFromStorage, setPendingFromStorage] = useState<boolean>(() => readPendingScenarioFromStorage());
+  const [pendingFromStorage, setPendingFromStorage] = useState<DgxPersistedScenarioPendingState | null>(() => readPendingScenarioFromStorage());
 
   const overviewQuery = useQuery({
     queryKey: dgxResourceQueryKeys.overview,
@@ -149,8 +183,15 @@ export function DgxResourceDashboard() {
   const overviewError = overviewQuery.error != null ? getDgxResourceApiErrorMessage(overviewQuery.error) : null;
   const overview = overviewQuery.data;
   const events = eventsQuery.data?.events ?? [];
-  const scenarioLikelyRunning = isDgxScenarioLikelyRunning(events.map((e) => e.message));
+  const runtimeSummary = overview?.runtimeSummary;
+  const businessReturnReadyNow = isBusinessReturnReady(runtimeSummary);
+  const businessReturnPreparing = isBusinessReturnPreparing(runtimeSummary);
+  const eventScenarioLikelyRunning = isDgxScenarioLikelyRunning(events.map((e) => e.message));
+  const scenarioLikelyRunning = eventScenarioLikelyRunning && !businessReturnReadyNow;
   const runningScenario = deriveDgxRunningScenario(events);
+  const pendingFromStorageActive = pendingFromStorage != null && !businessReturnReadyNow;
+  const businessReturnStoragePending = isBusinessReturnScenario(pendingFromStorage?.scenarioId) && !businessReturnReadyNow;
+  const scenarioPending = scenarioLikelyRunning || businessReturnPreparing || pendingFromStorageActive;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -158,6 +199,12 @@ export function DgxResourceDashboard() {
     }, 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!businessReturnReadyNow || !isBusinessReturnScenario(pendingFromStorage?.scenarioId) || typeof window === 'undefined') return;
+    window.sessionStorage.removeItem(DGX_SCENARIO_PENDING_STORAGE_KEY);
+    setPendingFromStorage(null);
+  }, [businessReturnReadyNow, pendingFromStorage?.scenarioId]);
 
   if (!overview) {
     return (
@@ -191,12 +238,22 @@ export function DgxResourceDashboard() {
         <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(comfyStatus))}>ComfyUI: {comfyStatus}</div>
         <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(experimentStatus))}>実験: {experimentStatus}</div>
       </section>
-      {runningScenario.running || scenarioLikelyRunning || pendingFromStorage ? (
+      {scenarioPending ? (
         <p className="rounded-lg border border-cyan-400/35 bg-cyan-950/25 px-3 py-2 text-sm text-cyan-100" role="status">
-          進行中:
-          {runningScenario.running
-            ? ` ${runningScenario.scenarioId}（Strict Ready確認中・開始から約${runningScenario.elapsedMinutes}分）`
-            : ' 切替処理を確認中です（イベント反映待ち）'}
+          {businessReturnPreparing || businessReturnStoragePending ? (
+            <>
+              復帰処理を開始しました。DGX 側でモデルをロード中です。
+              <br />
+              Ready まで数分かかることがあります。画面を閉じても処理は継続します。
+            </>
+          ) : (
+            <>
+              進行中:
+              {runningScenario.running
+                ? ` ${runningScenario.scenarioId}（Strict Ready確認中・開始から約${runningScenario.elapsedMinutes}分）`
+                : ' 切替処理を確認中です（イベント反映待ち）'}
+            </>
+          )}
         </p>
       ) : null}
 
@@ -205,9 +262,10 @@ export function DgxResourceDashboard() {
           <DgxResourcePrimaryScenarioFlow
             operator={overview.operator}
             modelProfiles={overview.modelProfiles}
+            runtimeSummary={overview.runtimeSummary}
             postDgxAction={postDgxActionAsync}
             actionBusy={mutateAction.isPending}
-            externalBusy={scenarioLikelyRunning}
+            externalBusy={scenarioPending}
             onControlUiError={(message) => {
               setActionError(message);
               if (message == null) setTargetActionError(null);

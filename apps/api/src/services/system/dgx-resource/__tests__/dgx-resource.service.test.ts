@@ -1080,7 +1080,7 @@ describe('createDgxResourceService', () => {
     });
   });
 
-  it('private_to_business execute does not succeed when active profile stays on a different model', async () => {
+  it('private_to_business execute returns in_progress while selected model is still loading', async () => {
     const prev = {
       runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
       runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
@@ -1190,10 +1190,12 @@ describe('createDgxResourceService', () => {
         confirmed: true,
       });
 
-      expect(execute.scenarioExecute?.success).toBe(false);
-      expect(execute.scenarioExecute?.readinessChecksJa?.some((c) => c.code === 'inference_business' && c.satisfied)).toBe(true);
-      expect(execute.scenarioExecute?.readinessChecksJa?.some((c) => c.code === 'model_profile_active' && !c.satisfied)).toBe(true);
-      expect(execute.scenarioExecute?.rollback?.attempted).toBe(true);
+      expect(execute.scenarioExecute?.success).toBe(true);
+      expect(execute.scenarioExecute?.outcomeKind).toBe('in_progress');
+      expect(execute.scenarioExecute?.readinessSummaryJa).toContain('DGX 側でモデルをロード中');
+      expect(execute.scenarioExecute?.readinessChecksJa).toBeUndefined();
+      expect(execute.scenarioExecute?.rollback).toBeUndefined();
+      expect(store.getPolicyMode()).toBe('business_first');
     } finally {
       env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
       env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
