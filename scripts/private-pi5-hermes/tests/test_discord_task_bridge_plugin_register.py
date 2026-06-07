@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -92,14 +93,22 @@ class PluginRegisterTests(unittest.TestCase):
                 plugin.register(ctx)
 
             registered = [c[0][0] for c in ctx.register_command.call_args_list]
-            self.assertEqual(registered, ["memo", "digest", "remind", "recommend", "life-reply"])
+            self.assertEqual(
+                registered,
+                ["memo", "inbox", "digest", "remind", "recommend", "life-reply"],
+            )
             memo_call = ctx.register_command.call_args_list[0]
             self.assertEqual(memo_call[1].get("args_hint"), "<life note>")
-            remind_call = ctx.register_command.call_args_list[2]
+            inbox_call = ctx.register_command.call_args_list[1]
+            self.assertEqual(
+                inbox_call[1].get("args_hint"),
+                "[list|memo N|remind N|done N|dismiss N|delete N|prune]",
+            )
+            remind_call = ctx.register_command.call_args_list[3]
             self.assertEqual(remind_call[1].get("args_hint"), "<when and reminder>")
-            recommend_call = ctx.register_command.call_args_list[3]
+            recommend_call = ctx.register_command.call_args_list[4]
             self.assertEqual(recommend_call[1].get("args_hint"), "[focus]")
-            reply_call = ctx.register_command.call_args_list[4]
+            reply_call = ctx.register_command.call_args_list[5]
             self.assertEqual(reply_call[1].get("args_hint"), "<1|2|3|free text>")
             ctx.register_hook.assert_called_once()
 
@@ -703,6 +712,140 @@ class PluginRegisterTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertFalse((Path(tmp) / "inbox" / "discord.jsonl").exists())
         reply_mock.assert_not_called()
+
+    def test_pre_gateway_dispatch_attaches_inbox_context_for_explicit_reference(self) -> None:
+        class Source:
+            user_id = "user-1"
+            platform = "discord"
+            chat_id = "channel-1"
+
+        class Event:
+            text = "さっき共有したURLについてどう思う？"
+            source = Source()
+            internal = False
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "inbox").mkdir(parents=True, exist_ok=True)
+            (root / "inbox" / "discord.jsonl").write_text(
+                json.dumps(
+                    {
+                        "createdAt": datetime.now().astimezone().isoformat(timespec="seconds"),
+                        "source": "discord",
+                        "status": "new",
+                        "text": "あとで読む https://x.com/example/status/123",
+                        "urls": ["https://x.com/example/status/123"],
+                        "attachments": [],
+                        "untrusted": True,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            event = Event()
+            with unittest.mock.patch.object(
+                plugin,
+                "_coordinator",
+                return_value=None,
+            ), unittest.mock.patch.object(
+                plugin,
+                "_life_pilot_enabled",
+                return_value=True,
+            ), unittest.mock.patch.object(
+                plugin,
+                "resolve_proactive_reply",
+                return_value=None,
+            ), unittest.mock.patch.object(
+                plugin,
+                "load_life_pilot_policy",
+                return_value=MagicMock(storage_root=tmp),
+            ):
+                result = plugin._handle_pre_gateway_dispatch(event)
+
+        self.assertIsNone(result)
+        self.assertIn("Hermes private context", event.text)
+        self.assertIn("Xリンク", event.text)
+
+    def test_inbox_command_lists_saved_discord_shares(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "inbox").mkdir(parents=True, exist_ok=True)
+            (root / "inbox" / "discord.jsonl").write_text(
+                json.dumps(
+                    {
+                        "createdAt": datetime.now().astimezone().isoformat(timespec="seconds"),
+                        "source": "discord",
+                        "status": "new",
+                        "text": "あとで読む https://x.com/example/status/123",
+                        "urls": ["https://x.com/example/status/123"],
+                        "attachments": [],
+                        "untrusted": True,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with unittest.mock.patch.object(
+                plugin,
+                "read_gateway_session_context",
+                return_value=("user-1", "channel-1"),
+            ), unittest.mock.patch.object(
+                plugin,
+                "load_life_pilot_policy",
+                return_value=MagicMock(storage_root=tmp),
+            ), unittest.mock.patch.object(plugin, "_remember_life_context"):
+                result = asyncio.run(plugin._handle_inbox_command(""))
+
+        self.assertIn("受け取り箱（未処理）", result)
+        self.assertIn("Xリンク", result)
+        self.assertIn("/inbox memo 1", result)
+
+    def test_inbox_command_memo_marks_item_memoed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "inbox").mkdir(parents=True, exist_ok=True)
+            (root / "inbox" / "discord.jsonl").write_text(
+                json.dumps(
+                    {
+                        "createdAt": datetime.now().astimezone().isoformat(timespec="seconds"),
+                        "source": "discord",
+                        "status": "new",
+                        "text": "牛乳の特売 https://example.com/milk",
+                        "urls": ["https://example.com/milk"],
+                        "attachments": [],
+                        "untrusted": True,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            memo_mock = unittest.mock.AsyncMock(return_value="保存しました")
+            with unittest.mock.patch.object(
+                plugin,
+                "read_gateway_session_context",
+                return_value=("user-1", "channel-1"),
+            ), unittest.mock.patch.object(
+                plugin,
+                "load_life_pilot_policy",
+                return_value=MagicMock(storage_root=tmp),
+            ), unittest.mock.patch.object(plugin, "_remember_life_context"), unittest.mock.patch.object(
+                plugin,
+                "run_life_memo_bridge_async",
+                memo_mock,
+            ):
+                result = asyncio.run(plugin._handle_inbox_command("memo 1 買い物候補"))
+            row = json.loads((root / "inbox" / "discord.jsonl").read_text(encoding="utf-8").splitlines()[0])
+
+        self.assertIn("メモにしました", result)
+        self.assertEqual(row["status"], "memoed")
+        self.assertIn("買い物候補", row["memoText"])
+        memo_mock.assert_awaited_once()
 
     def test_life_reply_command_returns_proactive_reply(self) -> None:
         with unittest.mock.patch.object(

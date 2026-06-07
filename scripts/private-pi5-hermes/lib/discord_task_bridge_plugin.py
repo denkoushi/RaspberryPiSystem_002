@@ -29,10 +29,17 @@ try:
         run_life_remind_bridge_async,
     )
     from .life_discord_inbox import (
+        build_discord_inbox_reference_context,
         capture_discord_inbox_message,
+        discord_inbox_item_summary,
         extract_discord_message_text,
         extract_discord_message_id,
         extract_attachment_names,
+        prune_discord_inbox,
+        render_discord_inbox_list,
+        render_discord_inbox_usage,
+        select_discord_inbox_item,
+        update_discord_inbox_item_status,
     )
     from .life_proactive_loop import (
         remember_life_discord_context,
@@ -66,10 +73,17 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
         run_life_remind_bridge_async,
     )
     from life_discord_inbox import (
+        build_discord_inbox_reference_context,
         capture_discord_inbox_message,
+        discord_inbox_item_summary,
         extract_discord_message_text,
         extract_discord_message_id,
         extract_attachment_names,
+        prune_discord_inbox,
+        render_discord_inbox_list,
+        render_discord_inbox_usage,
+        select_discord_inbox_item,
+        update_discord_inbox_item_status,
     )
     from life_proactive_loop import (
         remember_life_discord_context,
@@ -248,6 +262,28 @@ def _capture_life_discord_inbox(
     return result.ack
 
 
+def _attach_life_discord_inbox_context(event, source, text: str) -> bool:
+    if not _life_discord_inbox_enabled():
+        return False
+    if not _is_discord_platform(_source_platform_name(source)):
+        return False
+    try:
+        policy = load_life_pilot_policy()
+        context = build_discord_inbox_reference_context(Path(policy.storage_root), text)
+    except (OSError, ValueError, RuntimeError):
+        return False
+    if not context:
+        return False
+    base = str(getattr(event, "text", "") or "").rstrip()
+    if not base:
+        return False
+    try:
+        setattr(event, "text", f"{base}{context}")
+    except Exception:
+        return False
+    return True
+
+
 _GATEWAY_EMPTY_MESSAGE_TEXT = "(the user sent a message with no text content)"
 _LIFE_QUICK_REPLY_CHOICES = {
     "1": "1",
@@ -280,6 +316,56 @@ def _blank_discord_share_text(source, text: str, attachments: tuple[str, ...]) -
 
 def _render_life_reply_usage() -> str:
     return "usage: /life-reply <1|2|3|free text>\nexample: /life-reply 1"
+
+
+_INBOX_ACTION_ALIASES = {
+    "": "list",
+    "list": "list",
+    "ls": "list",
+    "一覧": "list",
+    "help": "help",
+    "usage": "help",
+    "memo": "memo",
+    "メモ": "memo",
+    "remind": "remind",
+    "リマインド": "remind",
+    "done": "done",
+    "完了": "done",
+    "review": "done",
+    "reviewed": "done",
+    "dismiss": "dismissed",
+    "skip": "dismissed",
+    "外す": "dismissed",
+    "delete": "deleted",
+    "del": "deleted",
+    "削除": "deleted",
+    "prune": "prune",
+    "purge": "prune",
+    "整理": "prune",
+}
+
+
+def _life_debug_line(**items: str) -> str:
+    details = " ".join(f"{key}={value}" for key, value in items.items())
+    return f"-# debug: {details}"
+
+
+def _parse_inbox_command_args(raw_args: str) -> tuple[str, str, str]:
+    text = normalize_life_command_args(raw_args or "", "inbox")
+    if not text:
+        return "list", "", ""
+    parts = text.split(maxsplit=2)
+    first = parts[0].strip().lower()
+    if first.isdigit() and len(parts) >= 2:
+        action = _INBOX_ACTION_ALIASES.get(parts[1].strip().lower(), "")
+        detail = parts[2].strip() if len(parts) >= 3 else ""
+        return action, first, detail
+    action = _INBOX_ACTION_ALIASES.get(first, "")
+    if action in {"list", "help", "prune"}:
+        return action, "", ""
+    selector = parts[1].strip() if len(parts) >= 2 else ""
+    detail = parts[2].strip() if len(parts) >= 3 else ""
+    return action, selector, detail
 
 
 async def _handle_task_command(raw_args: str) -> str:
@@ -338,6 +424,80 @@ async def _handle_remind_command(raw_args: str) -> str:
         notify_channel_id=channel_id,
         notify_user_id=user_id,
     )
+
+
+async def _handle_inbox_command(raw_args: str) -> str:
+    """Triage Discord shares stored as Life Pilot inbox context."""
+    try:
+        policy = load_life_pilot_policy()
+    except (OSError, ValueError, RuntimeError) as exc:
+        return f"inbox failed: {exc}"
+    root = Path(policy.storage_root)
+    user_id, channel_id = read_gateway_session_context()
+    _remember_life_context(user_id, channel_id)
+    action, selector, detail = _parse_inbox_command_args(raw_args)
+    if action == "help":
+        return render_discord_inbox_usage()
+    if action == "list":
+        return render_discord_inbox_list(root)
+    if action == "prune":
+        removed = prune_discord_inbox(root)
+        return f"""受け取り箱を整理しました: {removed}件
+
+{_life_debug_line(inbox="discord", action="prune", boundary="local-only/no-tools")}""".strip()
+    if action not in {"memo", "remind", "done", "dismissed", "deleted"}:
+        return render_discord_inbox_usage()
+    item = select_discord_inbox_item(root, selector)
+    if item is None:
+        return f"""番号が見つかりません: {selector or "(未指定)"}
+
+{render_discord_inbox_list(root)}""".strip()
+    summary = discord_inbox_item_summary(item)
+    if action == "memo":
+        memo_text = f"Discord共有: {summary}"
+        if detail:
+            memo_text = f"{detail}\nDiscord共有: {summary}"
+        result = await run_life_memo_bridge_async(memo_text)
+        if result.startswith("memo rejected:"):
+            return result
+        update_discord_inbox_item_status(
+            root,
+            item,
+            "memoed",
+            note=detail,
+            extra={"memoText": memo_text},
+        )
+        return f"""メモにしました: {summary}
+
+{result}
+{_life_debug_line(inbox="discord", action="memo", boundary="local-only/no-tools")}""".strip()
+    if action == "remind":
+        if not detail:
+            return "日時を指定してください。\n例: /inbox remind 1 明日の朝"
+        reminder_text = f"{detail}、Discord共有を確認: {summary}"
+        result = await run_life_remind_bridge_async(
+            reminder_text,
+            notify_channel_id=channel_id,
+            notify_user_id=user_id,
+        )
+        if result.startswith("remind rejected:"):
+            return result
+        update_discord_inbox_item_status(
+            root,
+            item,
+            "reminded",
+            note=detail,
+            extra={"reminderText": reminder_text},
+        )
+        return f"""リマインドにしました: {summary}
+
+{result}
+{_life_debug_line(inbox="discord", action="remind", boundary="local-only/no-tools")}""".strip()
+    update_discord_inbox_item_status(root, item, action)
+    labels = {"done": "完了にしました", "dismissed": "外しました", "deleted": "削除しました"}
+    return f"""{labels[action]}: {summary}
+
+{_life_debug_line(inbox="discord", action=action, boundary="local-only/no-tools")}""".strip()
 
 
 async def _handle_recommend_command(raw_args: str) -> str:
@@ -462,6 +622,7 @@ def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
             if ack is not None:
                 _send_gateway_reply(gateway, source, ack)
                 return {"action": "skip", "reason": "life-discord-inbox"}
+            _attach_life_discord_inbox_context(event, source, raw_text)
         return None
     ok, message = resolved
     _send_gateway_reply(gateway, source, message if ok else f"task approval: {message}")
@@ -485,6 +646,12 @@ def register(ctx) -> None:
             handler=_handle_memo_command,
             description="Record a private Life Pilot memo without execution",
             args_hint="<life note>",
+        )
+        ctx.register_command(
+            "inbox",
+            handler=_handle_inbox_command,
+            description="Review and triage saved Discord shares",
+            args_hint="[list|memo N|remind N|done N|dismiss N|delete N|prune]",
         )
         ctx.register_command(
             "digest",

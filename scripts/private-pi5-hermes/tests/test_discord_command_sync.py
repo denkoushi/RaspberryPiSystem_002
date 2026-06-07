@@ -77,11 +77,11 @@ class DiscordCommandSyncTests(unittest.TestCase):
 
         self.assertEqual(
             [payload["name"] for payload in payloads],
-            ["memo", "digest", "remind", "recommend", "life-reply"],
+            ["memo", "inbox", "digest", "remind", "recommend", "life-reply"],
         )
         self.assertTrue(all(payload["dm_permission"] is True for payload in payloads))
         self.assertTrue(all(payload["integration_types"] == [0, 1] for payload in payloads))
-        remind = payloads[2]
+        remind = payloads[3]
         self.assertEqual(
             remind["description"],
             "Schedule a private Life Pilot reminder notification",
@@ -151,9 +151,9 @@ class DiscordCommandSyncTests(unittest.TestCase):
         self.assertEqual(result["state"], "present")
         self.assertEqual(
             [item["name"] for item in result["commands"]],
-            ["memo", "digest", "remind", "recommend", "life-reply"],
+            ["memo", "inbox", "digest", "remind", "recommend", "life-reply"],
         )
-        self.assertEqual(len(client.upserts), 5)
+        self.assertEqual(len(client.upserts), 6)
         self.assertEqual(client.deletes, [])
 
     def test_absent_life_commands_deletes_existing_life_commands_only(self) -> None:
@@ -170,6 +170,7 @@ class DiscordCommandSyncTests(unittest.TestCase):
             client.deletes,
             [
                 ("app-1", "memo-1"),
+                ("app-1", "inbox-1"),
                 ("app-1", "digest-1"),
                 ("app-1", "remind-1"),
                 ("app-1", "recommend-1"),

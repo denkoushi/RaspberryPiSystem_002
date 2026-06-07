@@ -49,9 +49,11 @@ try:
     )
     from .life_discord_inbox import (
         DiscordInboxItem,
+        discord_inbox_candidate_item,
         discord_inbox_candidate_text,
         discord_inbox_has_low_energy_signal,
         format_discord_inbox_lines,
+        mark_discord_inbox_suggested,
         read_discord_inbox,
     )
 except ImportError:
@@ -84,9 +86,11 @@ except ImportError:
     )
     from life_discord_inbox import (
         DiscordInboxItem,
+        discord_inbox_candidate_item,
         discord_inbox_candidate_text,
         discord_inbox_has_low_energy_signal,
         format_discord_inbox_lines,
+        mark_discord_inbox_suggested,
         read_discord_inbox,
     )
 
@@ -455,9 +459,14 @@ def _choose_morning_candidate(
         return {"source": "due_today", "text": _candidate_text(today_items[0])}
     if carried_candidate:
         return {"source": "carried_forward", "text": carried_candidate}
-    discord_candidate = discord_inbox_candidate_text(discord_items or [])
+    discord_item = discord_inbox_candidate_item(discord_items or [])
+    discord_candidate = discord_inbox_candidate_text([discord_item] if discord_item else [])
     if discord_candidate:
-        return {"source": "discord_inbox", "text": discord_candidate}
+        return {
+            "source": "discord_inbox",
+            "text": discord_candidate,
+            "inboxItemId": discord_item.item_id if discord_item else "",
+        }
     obsidian_candidate = obsidian_candidate_text(obsidian_items or [])
     if obsidian_candidate:
         return {"source": "obsidian_inbox", "text": obsidian_candidate}
@@ -753,6 +762,8 @@ def dispatch_proactive_checkin(
         if candidate["text"]:
             record["candidateText"] = candidate["text"]
             record["candidateSource"] = candidate["source"]
+            if candidate.get("inboxItemId"):
+                record["candidateInboxItemId"] = candidate["inboxItemId"]
         if mode == "morning":
             record["briefing"] = str(candidate.get("briefing", "") or "")
             record["contextHints"] = {
@@ -780,6 +791,16 @@ def dispatch_proactive_checkin(
         rows = [item for item in rows if item.get("id") != checkin_id]
         rows.append(record)
         _write_jsonl(_checkins_path(storage_root), rows)
+    if sent and candidate.get("source") == "discord_inbox" and candidate.get("inboxItemId"):
+        try:
+            mark_discord_inbox_suggested(
+                storage_root,
+                str(candidate.get("inboxItemId", "") or ""),
+                now=current,
+                checkin_id=checkin_id,
+            )
+        except (OSError, ValueError, RuntimeError):
+            pass
     return ProactiveDispatchResult(
         ok=failed == 0,
         sent=sent,
