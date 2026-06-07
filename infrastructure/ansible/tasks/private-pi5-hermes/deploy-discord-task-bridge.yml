@@ -30,6 +30,7 @@
     - "{{ private_pi5_hermes_life_data_dir }}/context"
     - "{{ private_pi5_hermes_life_data_dir }}/proactive"
     - "{{ private_pi5_hermes_life_data_dir }}/inbox"
+    - "{{ private_pi5_hermes_life_data_dir }}/interest"
     - "{{ private_pi5_hermes_life_data_dir }}/obsidian"
     - "{{ private_pi5_hermes_life_obsidian_vault_dir }}"
   when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
@@ -60,6 +61,7 @@
     - discord_life_pilot_bridge.py
     - life_reminder_scheduler.py
     - life_discord_inbox.py
+    - life_interest_digest.py
     - life_obsidian_inbox.py
     - life_proactive_loop.py
     - life_discord_ui_relay.py
@@ -101,6 +103,15 @@
     owner: "{{ private_pi5_hermes_user }}"
     group: "{{ private_pi5_hermes_group }}"
     mode: "0755"
+
+- name: Deploy hermes-life-interest-digest CLI (D19-life)
+  ansible.builtin.copy:
+    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/hermes-life-interest-digest"
+    dest: "{{ private_pi5_hermes_home }}/.local/bin/hermes-life-interest-digest"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0755"
+  when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
 
 - name: Deploy discord-task-bridge plugin entrypoint
   ansible.builtin.copy:
@@ -177,6 +188,24 @@
     path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/life-pilot.policy.yaml"
     state: absent
   when: not (private_pi5_hermes_life_pilot_enabled | default(false) | bool)
+
+- name: Ensure Daily Interest Digest skill directory exists (D19-life)
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_data_dir }}/skills/research/daily-interest-digest"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0755"
+  when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
+
+- name: Deploy Daily Interest Digest skill (D19-life)
+  ansible.builtin.copy:
+    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/skills/daily-interest-digest/SKILL.md"
+    dest: "{{ private_pi5_hermes_data_dir }}/skills/research/daily-interest-digest/SKILL.md"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0644"
+  when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
 
 - name: Verify discord-task-bridge policy from repo smoke
   ansible.builtin.command:

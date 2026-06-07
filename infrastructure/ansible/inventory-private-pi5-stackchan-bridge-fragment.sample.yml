@@ -129,6 +129,13 @@ all:
       # private_pi5_hermes_life_discord_inbox_enabled: true
       # private_pi5_hermes_life_discord_inbox_channel_ids: ""
       # private_pi5_hermes_life_discord_inbox_capture_all: false
+      # D19-life: Daily Interest Digest. Enables /interest, deploys skill,
+      # and safely unlocks Hermes memory/skills/cronjob while keeping terminal/file/git/deploy disabled.
+      # private_pi5_hermes_life_interest_digest_enabled: true
+      # private_pi5_hermes_life_interest_digest_memory_enabled: true
+      # private_pi5_hermes_life_interest_digest_time: "08:10:00"
+      # Optional fixed Discord target; otherwise Hermes uses the last Life Pilot channel context.
+      # private_pi5_hermes_life_interest_digest_channel_id: ""
       # Novel profile: creative writing via /novel (on-demand DGX qwen36_35b_uncensored)
       # private_pi5_hermes_novel_profile_enabled: true
       # private_pi5_hermes_discord_novel_bridge_enabled: true

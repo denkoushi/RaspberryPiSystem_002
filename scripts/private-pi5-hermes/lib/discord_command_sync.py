@@ -61,6 +61,21 @@ LIFE_COMMANDS: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "name": "interest",
+        "description": "Show a personalized daily digest from safe public sources",
+        "type": 1,
+        "dm_permission": True,
+        "integration_types": [0, 1],
+        "options": [
+            {
+                "type": 3,
+                "name": "args",
+                "description": "Arguments: refresh, profile, like 1, save 1, later 1, dismiss 1, more topic",
+                "required": False,
+            }
+        ],
+    },
+    {
         "name": "digest",
         "description": "Summarize private Life Pilot notes and reminders",
         "type": 1,

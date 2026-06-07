@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -40,6 +41,9 @@ try:
         render_discord_inbox_usage,
         select_discord_inbox_item,
         update_discord_inbox_item_status,
+    )
+    from .life_interest_digest import (
+        handle_interest_command,
     )
     from .life_proactive_loop import (
         remember_life_discord_context,
@@ -84,6 +88,9 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
         render_discord_inbox_usage,
         select_discord_inbox_item,
         update_discord_inbox_item_status,
+    )
+    from life_interest_digest import (
+        handle_interest_command,
     )
     from life_proactive_loop import (
         remember_life_discord_context,
@@ -500,6 +507,22 @@ async def _handle_inbox_command(raw_args: str) -> str:
 {_life_debug_line(inbox="discord", action=action, boundary="local-only/no-tools")}""".strip()
 
 
+async def _handle_interest_command(raw_args: str) -> str:
+    """Collect and personalize a daily digest without executing external content."""
+    try:
+        policy = load_life_pilot_policy()
+    except (OSError, ValueError, RuntimeError) as exc:
+        return f"interest failed: {exc}"
+    try:
+        return await asyncio.to_thread(
+            handle_interest_command,
+            Path(policy.storage_root),
+            raw_args or "",
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        return f"interest failed: {exc}"
+
+
 async def _handle_recommend_command(raw_args: str) -> str:
     """Suggest small next steps from local Life Pilot notes only."""
     user_id, channel_id = read_gateway_session_context()
@@ -652,6 +675,12 @@ def register(ctx) -> None:
             handler=_handle_inbox_command,
             description="Review and triage saved Discord shares",
             args_hint="[list|memo N|remind N|done N|dismiss N|delete N|prune]",
+        )
+        ctx.register_command(
+            "interest",
+            handler=_handle_interest_command,
+            description="Show a personalized daily digest from safe public sources",
+            args_hint="[refresh|profile|like N|save N|later N|dismiss N|more <topic>|less <topic>]",
         )
         ctx.register_command(
             "digest",

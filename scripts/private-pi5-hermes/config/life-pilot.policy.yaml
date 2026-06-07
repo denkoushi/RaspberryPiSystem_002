@@ -22,6 +22,8 @@ allowed_task_classes:
   - summarize_life_notes
   - record_life_reminder
   - suggest_life_next_actions
+  - collect_daily_interest_digest
+  - record_interest_feedback
 
 deferred_task_classes:
   - run_cursor_or_codex_cli

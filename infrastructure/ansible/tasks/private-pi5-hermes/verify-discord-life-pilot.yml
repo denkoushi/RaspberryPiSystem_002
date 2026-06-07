@@ -30,12 +30,14 @@
             extract_discord_message_text,
             read_discord_inbox,
         )
+        from life_interest_digest import build_interest_digest, dispatch_daily_interest_digest
         from life_obsidian_inbox import read_obsidian_inbox
         from life_proactive_loop import (
             build_followup_checkin_message,
             build_proactive_checkin_message,
             build_proactive_components,
         )
+        from life_reminder_scheduler import DiscordSendResult
         ns = runpy.run_path(plugin_dir + "/__init__.py")
         register = ns.get("register")
         assert callable(register), "register() missing"
@@ -46,7 +48,7 @@
                 self.commands.append(name)
         ctx = Ctx()
         register(ctx)
-        for name in ("memo", "digest", "remind", "recommend", "life-reply"):
+        for name in ("memo", "inbox", "interest", "digest", "remind", "recommend", "life-reply"):
             assert name in ctx.commands, ctx.commands
         memo = asyncio.run(ns["_handle_memo_command"]("今日は朝散歩した。体調は良い。"))
         assert memo.startswith("今日は朝散歩した。体調は良い。"), memo
@@ -116,6 +118,24 @@
             shared_message = build_proactive_checkin_message("morning", root)
             assert "共有メモ新着:" in shared_message, shared_message
             assert "共有メモを見返す" in shared_message, shared_message
+            interest = build_interest_digest(root, fetch=False)
+            assert "今日の気になる投稿" in interest.message, interest.message
+            assert "Discord shared X" in interest.message, interest.message
+            assert "boundary=read-summary-only/no-tools" in interest.message, interest.message
+            (root / "context").mkdir(parents=True, exist_ok=True)
+            (root / "context" / "discord.json").write_text(
+                '{"userId":"user-1","channelId":"channel-1"}\n',
+                encoding="utf-8",
+            )
+            sent = []
+            def fake_sender(channel_id, content):
+                sent.append((channel_id, content))
+                return DiscordSendResult(ok=True, status_code=200)
+            dispatched = dispatch_daily_interest_digest(root, fetch=False, sender=fake_sender)
+            assert dispatched.sent == 1, dispatched
+            assert sent and sent[0][0] == "channel-1", sent
+            duplicate = dispatch_daily_interest_digest(root, fetch=False, sender=fake_sender)
+            assert duplicate.skipped_duplicate == 1, duplicate
             class EmbedOnlyEvent:
                 text = ""
                 embeds = [{"url": "https://x.com/example/status/embed-only", "title": "X post"}]
@@ -211,3 +231,20 @@
       - private_pi5_hermes_life_discord_ui_active.stdout == "active"
     fail_msg: "hermes-life-discord-ui.service is not active"
   when: private_pi5_hermes_life_discord_ui_relay_active | bool
+
+- name: Check Daily Interest Digest timer state
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - hermes-life-interest-digest.timer
+  register: private_pi5_hermes_life_interest_digest_timer_active
+  changed_when: false
+  when: private_pi5_hermes_life_interest_digest_active | bool
+
+- name: Assert Daily Interest Digest timer is active
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_life_interest_digest_timer_active.stdout == "active"
+    fail_msg: "hermes-life-interest-digest.timer is not active"
+  when: private_pi5_hermes_life_interest_digest_active | bool
