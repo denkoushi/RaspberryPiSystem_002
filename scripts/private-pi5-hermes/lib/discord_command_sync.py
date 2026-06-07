@@ -46,6 +46,21 @@ LIFE_COMMANDS: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "name": "inbox",
+        "description": "Review and triage saved Discord shares",
+        "type": 1,
+        "dm_permission": True,
+        "integration_types": [0, 1],
+        "options": [
+            {
+                "type": 3,
+                "name": "args",
+                "description": "Arguments: list, memo 1, remind 1 明日の朝, done 1, delete 1",
+                "required": False,
+            }
+        ],
+    },
+    {
         "name": "digest",
         "description": "Summarize private Life Pilot notes and reminders",
         "type": 1,

@@ -32,6 +32,24 @@ _SHARE_FILENAME_RE = re.compile(
     r"shared[-_ ]?image|スクリーンショット|画像|写真|動画|添付)[\w .()\-]*\."
     r"(?:png|jpe?g|gif|webp|heic|mp4|mov|webm|pdf)(?:\b|$)"
 )
+_DIRECT_INBOX_REFERENCE_RE = re.compile(r"(?i)(受け取り箱|inbox)")
+_PAST_SHARE_MARKER_RE = re.compile(
+    r"(?i)(さっき|さっきの|先ほど|前に|送った|共有した|貼った|添付した)"
+)
+_SHARE_OBJECT_RE = re.compile(
+    r"(?i)(共有|添付|画像|写真|スクショ|screenshot|リンク|url)"
+)
+_ACTIVE_INBOX_STATUSES = {"new", "snoozed"}
+_VALID_INBOX_STATUSES = {
+    "new",
+    "snoozed",
+    "done",
+    "dismissed",
+    "deleted",
+    "memoed",
+    "reminded",
+    "reviewed",
+}
 _TEXT_KEYS = (
     "text",
     "content",
@@ -98,6 +116,12 @@ class DiscordInboxItem:
     user_id: str = ""
     source: str = "discord"
     redacted: bool = False
+    item_id: str = ""
+    message_id: str = ""
+    status: str = "new"
+    line_index: int = -1
+    last_suggested_at: datetime | None = None
+    suggested_count: int = 0
 
 
 def _now() -> datetime:
@@ -113,6 +137,23 @@ def _clip_line(text: str, limit: int = 160) -> str:
     if len(one_line) <= limit:
         return one_line
     return one_line[: limit - 1].rstrip() + "..."
+
+
+def _normalize_status(value: Any) -> str:
+    status = str(value or "").strip().lower()
+    if not status:
+        return "new"
+    if status in _VALID_INBOX_STATUSES:
+        return status
+    return "new"
+
+
+def _make_item_id(created_at: datetime, message_id: str) -> str:
+    if message_id:
+        safe = re.sub(r"[^A-Za-z0-9_.:-]+", "-", message_id.strip()).strip("-")
+        if safe:
+            return _clip_line(f"discord-{safe}", 120)
+    return f"discord-{created_at.strftime('%Y%m%d%H%M%S%f')}"
 
 
 def _field(item: Any, key: str) -> Any:
@@ -451,6 +492,7 @@ def capture_discord_inbox_message(
     urls = extract_urls(clean_text if not redacted else text)
     clean_message_id = _clip_line(str(message_id or "").strip(), 100)
     record = {
+        "itemId": _make_item_id(current, clean_message_id),
         "createdAt": current.isoformat(timespec="seconds"),
         "source": "discord",
         "userId": str(user_id or "").strip(),
@@ -483,19 +525,50 @@ def _parse_created_at(value: str, fallback_tz: Any) -> datetime | None:
     return parsed
 
 
+def _parse_optional_datetime(value: Any, fallback_tz: Any) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    return _parse_created_at(raw, fallback_tz)
+
+
+def _row_item_id(row: dict[str, Any], index: int, created_at: datetime) -> str:
+    raw = str(row.get("itemId", "") or "").strip()
+    if raw:
+        return _clip_line(raw, 120)
+    message_id = str(row.get("messageId", "") or "").strip()
+    if message_id:
+        return _make_item_id(created_at, message_id)
+    return f"discord-line-{index + 1}"
+
+
+def _coerce_suggested_count(value: Any) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
 def read_discord_inbox(
     storage_root: Path,
     *,
     now: datetime | None = None,
     days: int = 7,
     limit: int = 5,
+    statuses: tuple[str, ...] | None = None,
 ) -> list[DiscordInboxItem]:
     current = now or _now()
     cutoff = current - timedelta(days=days)
+    allowed_statuses = {
+        _normalize_status(status) for status in (statuses or tuple(_ACTIVE_INBOX_STATUSES))
+    }
     items: list[DiscordInboxItem] = []
-    for row in _read_jsonl(_inbox_path(storage_root)):
+    for index, row in enumerate(_read_jsonl(_inbox_path(storage_root))):
         created_at = _parse_created_at(str(row.get("createdAt", "") or ""), current.tzinfo)
         if created_at is None or created_at < cutoff:
+            continue
+        status = _normalize_status(row.get("status"))
+        if status not in allowed_statuses:
             continue
         urls = tuple(
             _normalize_url(str(url or ""))
@@ -517,6 +590,15 @@ def read_discord_inbox(
                 user_id=str(row.get("userId", "") or "").strip(),
                 source=str(row.get("source", "discord") or "discord"),
                 redacted=bool(row.get("redacted")),
+                item_id=_row_item_id(row, index, created_at),
+                message_id=str(row.get("messageId", "") or "").strip(),
+                status=status,
+                line_index=index,
+                last_suggested_at=_parse_optional_datetime(
+                    row.get("lastSuggestedAt"),
+                    current.tzinfo,
+                ),
+                suggested_count=_coerce_suggested_count(row.get("suggestedCount")),
             )
         )
     items.sort(key=lambda item: item.created_at, reverse=True)
@@ -554,10 +636,23 @@ def format_discord_inbox_lines(
     )
 
 
+def discord_inbox_candidate_item(items: list[DiscordInboxItem]) -> DiscordInboxItem | None:
+    candidates = [item for item in items if item.status in _ACTIVE_INBOX_STATUSES]
+    if not candidates:
+        return None
+
+    def _rank(item: DiscordInboxItem) -> tuple[int, float, float]:
+        last_suggested = item.last_suggested_at.timestamp() if item.last_suggested_at else 0.0
+        return (item.suggested_count, last_suggested, -item.created_at.timestamp())
+
+    return sorted(candidates, key=_rank)[0]
+
+
 def discord_inbox_candidate_text(items: list[DiscordInboxItem]) -> str:
-    if not items:
+    item = discord_inbox_candidate_item(items)
+    if item is None:
         return ""
-    return _clip_line(f"共有メモを見返す: {_item_label(items[0])}", 90)
+    return _clip_line(f"共有メモを見返す: {_item_label(item)}", 90)
 
 
 def discord_inbox_has_low_energy_signal(items: list[DiscordInboxItem]) -> bool:
@@ -578,6 +673,190 @@ def discord_inbox_has_low_energy_signal(items: list[DiscordInboxItem]) -> bool:
         if any(keyword in text for keyword in keywords):
             return True
     return False
+
+
+def discord_inbox_item_summary(item: DiscordInboxItem, *, limit: int = 180) -> str:
+    return _clip_line(_item_label(item), limit)
+
+
+def render_discord_inbox_usage() -> str:
+    return (
+        "usage: /inbox [list|memo N [補足]|remind N <日時>|done N|dismiss N|delete N|prune]\n"
+        "examples:\n"
+        "- /inbox\n"
+        "- /inbox memo 1 買い物候補\n"
+        "- /inbox remind 1 明日の朝\n"
+        "- /inbox done 1"
+    )
+
+
+def render_discord_inbox_list(
+    storage_root: Path,
+    *,
+    now: datetime | None = None,
+    limit: int = 10,
+) -> str:
+    items = read_discord_inbox(storage_root, now=now, days=30, limit=limit)
+    if not items:
+        return f"""受け取り箱に未処理の共有はありません。
+
+{_debug_line(inbox="discord", action="list", items="0", boundary="local-only/no-tools")}""".strip()
+    lines = ["受け取り箱（未処理）:"]
+    for index, item in enumerate(items, start=1):
+        lines.append(f"{index}. {_timestamp(item.created_at)}: {discord_inbox_item_summary(item, limit=120)}")
+    lines.extend(
+        [
+            "",
+            "操作: /inbox memo 1 [補足] | /inbox remind 1 明日の朝 | /inbox done 1 | /inbox delete 1",
+            _debug_line(
+                inbox="discord",
+                action="list",
+                items=str(len(items)),
+                boundary="local-only/no-tools",
+            ),
+        ]
+    )
+    return "\n".join(lines)
+
+
+def select_discord_inbox_item(
+    storage_root: Path,
+    selector: str,
+    *,
+    now: datetime | None = None,
+    limit: int = 20,
+) -> DiscordInboxItem | None:
+    try:
+        position = int(str(selector or "").strip())
+    except ValueError:
+        return None
+    if position < 1:
+        return None
+    items = read_discord_inbox(storage_root, now=now, days=30, limit=limit)
+    if position > len(items):
+        return None
+    return items[position - 1]
+
+
+def _row_matches_item(
+    row: dict[str, Any],
+    index: int,
+    item: DiscordInboxItem,
+    fallback_tz: Any,
+) -> bool:
+    created_at = _parse_created_at(str(row.get("createdAt", "") or ""), fallback_tz)
+    if created_at is None:
+        created_at = item.created_at
+    if item.item_id and _row_item_id(row, index, created_at) == item.item_id:
+        return True
+    row_message_id = str(row.get("messageId", "") or "").strip()
+    if item.message_id and row_message_id and row_message_id == item.message_id:
+        return True
+    if index == item.line_index:
+        row_text = _clip_line(str(row.get("text", "") or ""), 240)
+        return row_text == item.text
+    return False
+
+
+def update_discord_inbox_item_status(
+    storage_root: Path,
+    item: DiscordInboxItem,
+    status: str,
+    *,
+    now: datetime | None = None,
+    note: str = "",
+    extra: dict[str, Any] | None = None,
+) -> bool:
+    clean_status = str(status or "").strip().lower()
+    if clean_status not in _VALID_INBOX_STATUSES:
+        raise ValueError(f"unsupported Discord inbox status: {status}")
+    current = now or _now()
+    path = _inbox_path(storage_root)
+    with _inbox_file_lock(storage_root):
+        rows = _read_jsonl(path)
+        changed = False
+        for index, row in enumerate(rows):
+            if not _row_matches_item(row, index, item, current.tzinfo):
+                continue
+            row["status"] = clean_status
+            row["updatedAt"] = current.isoformat(timespec="seconds")
+            row[f"{clean_status}At"] = current.isoformat(timespec="seconds")
+            if note:
+                row["statusNote"] = _clip_line(note, 240)
+            if extra:
+                for key, value in extra.items():
+                    if isinstance(value, str):
+                        row[key] = _clip_line(value, 240)
+                    elif isinstance(value, (int, float, bool)):
+                        row[key] = value
+            changed = True
+            break
+        if changed:
+            _write_jsonl(path, rows)
+        return changed
+
+
+def mark_discord_inbox_suggested(
+    storage_root: Path,
+    item_id: str,
+    *,
+    now: datetime | None = None,
+    checkin_id: str = "",
+) -> bool:
+    clean_id = str(item_id or "").strip()
+    if not clean_id:
+        return False
+    current = now or _now()
+    path = _inbox_path(storage_root)
+    with _inbox_file_lock(storage_root):
+        rows = _read_jsonl(path)
+        changed = False
+        for index, row in enumerate(rows):
+            created_at = _parse_created_at(str(row.get("createdAt", "") or ""), current.tzinfo)
+            if created_at is None:
+                continue
+            if _row_item_id(row, index, created_at) != clean_id:
+                continue
+            row["lastSuggestedAt"] = current.isoformat(timespec="seconds")
+            row["suggestedCount"] = _coerce_suggested_count(row.get("suggestedCount")) + 1
+            if checkin_id:
+                row["lastSuggestedCheckinId"] = _clip_line(checkin_id, 120)
+            changed = True
+            break
+        if changed:
+            _write_jsonl(path, rows)
+        return changed
+
+
+def should_attach_discord_inbox_reference_context(text: str) -> bool:
+    clean = " ".join((text or "").strip().split())
+    if len(clean) < 4:
+        return False
+    if clean.startswith("/"):
+        return False
+    if extract_urls(clean):
+        return False
+    if _DIRECT_INBOX_REFERENCE_RE.search(clean):
+        return True
+    return bool(_PAST_SHARE_MARKER_RE.search(clean) and _SHARE_OBJECT_RE.search(clean))
+
+
+def build_discord_inbox_reference_context(
+    storage_root: Path,
+    text: str,
+    *,
+    now: datetime | None = None,
+    limit: int = 3,
+) -> str:
+    if not should_attach_discord_inbox_reference_context(text):
+        return ""
+    items = read_discord_inbox(storage_root, now=now, days=7, limit=limit)
+    if not items:
+        return ""
+    return (
+        "\n\n[Hermes private context: ユーザーがDiscord共有・画像・URLに明示的に触れている時だけ参考にする]\n"
+        f"{format_discord_inbox_lines(items, limit=limit)}"
+    )
 
 
 def prune_discord_inbox(

@@ -344,6 +344,14 @@ class LifeProactiveLoopTests(unittest.TestCase):
             )
             self.assertEqual(checkin["candidateSource"], "discord_inbox")
             self.assertEqual(checkin["contextHints"]["discordInboxItems"], 1)
+            self.assertEqual(checkin["candidateInboxItemId"], "discord-line-1")
+            inbox_row = json.loads(
+                (root / "inbox" / "discord.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()[0]
+            )
+            self.assertEqual(inbox_row["suggestedCount"], 1)
+            self.assertEqual(inbox_row["lastSuggestedCheckinId"], "2026-06-06-morning")
 
     def test_morning_checkin_mentions_obsidian_attachment_without_reading_image(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
