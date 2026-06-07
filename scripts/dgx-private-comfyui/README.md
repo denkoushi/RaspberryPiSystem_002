@@ -84,6 +84,14 @@ docker run --rm --gpus=all nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04 nvidia-s
 `Dockerfile.example` は ComfyUI の `comfy/utils.py` にある `copy=True` を `copy=False` に置換するパッチを build 時に適用します。  
 DGX Spark の unified memory で不要コピーを抑え、メモリ圧迫を避ける目的です。
 
+### GB10 unified memory 認識
+
+`Dockerfile.example` は ComfyUI の `comfy/model_management.py` に `NVIDIA GB10` 限定の補正も適用します。
+
+ComfyUI の CUDA 空きメモリ問い合わせが Spark の unified memory を小さく見積もると、Qwen Image Edit 2511 などの大きいモデルが不要に部分ロード・CPU 退避されます。GB10 では `psutil.virtual_memory().available` を空きメモリ見積もりに使い、通常 GPU の挙動は変えません。
+
+2026-06-07 実測: 補正前は Qwen Image Edit 2511 fp8mixed の実行で一部ロードと VAE 周辺の停滞が発生。補正後は `0607_qwen_image_edit_2511_spark_fast_baseline_4step.json` 相当の API 実行が **487.36秒**で完走し、Qwen 本体・text encoder・VAE は `loaded completely` になりました。
+
 遅延要因の切り分けと NVFP4 移行手順は [KB-379](../../docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md) を参照してください。
 
 ### ホスト側（DGX）安定化手順
