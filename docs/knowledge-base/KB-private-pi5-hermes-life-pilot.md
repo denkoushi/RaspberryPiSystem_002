@@ -1,9 +1,9 @@
 # KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）
 
-- **Status**: active（2026-06-07 · D13 Discord shared inbox + reply routing **`c28cc370` Pi5 deploy / 実機 E2E 完了** · D14-D18 inbox triage repo実装）
+- **Status**: active（2026-06-07 · D13 Discord shared inbox + reply routing **`c28cc370` Pi5 deploy / 実機 E2E 完了** · D14-D18 inbox triage **`f6917d16` Pi5 deploy 完了** · client-side E2E 一部未了）
 - **Scope**: 私用 Pi5 Hermes · Discord Life Pilot のみ（業務 Pi5 / Pi4 / `update-all-clients.sh` 対象外）
-- **Branch / HEAD（再開用）**: `feat/hermes-life-pilot-reply-routing` @ **`c28cc370`** + D14-D18 working tree — `fix(hermes): keep regular Discord chat out of Life replies`
-- **Related**: [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-repo-実装) · [Plan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
+- **Branch / HEAD（再開用）**: `feat/hermes-life-pilot-reply-routing` @ **`f6917d16`** — `feat(hermes): add Discord inbox triage workflow`
+- **Related**: [Runbook §D6-life](../runbooks/private-pi5-hermes-deploy.md#phase-d6-life--discord-life-pilot2026-06-06-私用-pi5--discord-e2e-完了) · [Plan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) · [daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [`life-pilot.policy.yaml`](../../scripts/private-pi5-hermes/config/life-pilot.policy.yaml)
 
 ## Context
 
@@ -237,6 +237,32 @@ ANSIBLE_LOCAL_TEMP=/private/tmp/ansible-local TMPDIR=/private/tmp \
 - `git diff --check`: OK
 - focused: `test_life_discord_inbox.py`（itemId / status / suggested hints / 明示参照 context）· `test_discord_task_bridge_plugin_register.py`（`/inbox` handler / 通常会話 context）· `test_life_proactive_loop.py`（Discord inbox candidate suggested tracking）· `test_discord_command_sync.py`（`/inbox` slash payload）
 
+### 私用 Pi5 deploy（D14-D18 · `f6917d16` · 2026-06-07）
+
+```
+PLAY RECAP: ok=177 changed=5 failed=0
+life_pilot_enabled=True
+life_discord_inbox_enabled=True
+life_discord_ui_relay_active=True
+```
+
+CI [27077973515](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/27077973515): **success**（`headSha=f6917d16`）。
+
+**Pi5 検証（Runbook 準拠で実施できた範囲）**:
+
+| 確認 | 結果 |
+|------|------|
+| `hermes-gateway` / `hermes-life-discord-ui.service` | active / running |
+| proactive timers | `hermes-life-proactive-morning.timer` / `hermes-life-followup.timer` active |
+| plugin register | `daily` `memo` `inbox` `digest` `remind` `recommend` `life-reply` `novel` `task` 登録 |
+| Pi5 上 deployed plugin smoke | 通常DM `おはよう` は passthrough、`さっき共有したリンク...` は明示参照 context 添付、`/inbox memo 1` は `status=memoed` |
+| morning proactive service | 当日分は duplicate guard が効き `sent=0 skipped_duplicate=1`。既存 `2026-06-07-morning` は保持 |
+
+**今回の追加知見**:
+
+- `/inbox` 実装後、通常会話への inbox context 添付は **「共有物へ明示的に触れている文」** に絞るのが安全。`画像` 単語だけの一般会話まで拾うと通常 chat を汚すため、repo では direct inbox reference または `さっき/送った/共有した` + `リンク/画像/添付` の組み合わせに限定した。
+- server-side の deploy / plugin / timer / command sync / local inbox triage は Pi5 上で確認できたが、**Discord クライアント操作と Android 共有操作を伴う最終 E2E は今回未実施**。
+
 ### 私用 Pi5 deploy（D12 · `539f007f`）
 
 初回 `failed=1`（`checkins.jsonl` PermissionError）→ `chown -R hermes:hermes /home/hermes/.hermes-life` 後 **ok=177 failed=0**。Obsidian vault E2E・朝 `Obsidian新着:` 確認済み。
@@ -372,12 +398,13 @@ summary: life_pilot_enabled=True
 
 ## Open Items
 
-1. **D12 Obsidian Syncthing 運用は任意化** — 手数が重い場合は Discord shared inbox を主経路にする（D13 が主経路候補）
-2. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
-3. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
-4. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
-5. **LLM ベース推薦** — 現状は deterministic suggestion のみ
-6. **数日運用の体感評価** — proactive 朝晩・reminder/follow-up 通知の頻度/文言調整
+1. **D14-D18 Discord/Android client-side E2E** — `/inbox` / 通常DM `さっき共有したリンク...` / Android 画像共有 / URL共有を実端末で未確認
+2. **D12 Obsidian Syncthing 運用は任意化** — 手数が重い場合は Discord shared inbox を主経路にする（D13 が主経路候補）
+3. **follow-up 自由入力 modal の目視 E2E** — button `やる` は確認済み。同一 check-in が `answered` 後は再試行不可のため別セッションで確認
+4. **retention / export / delete** — `~/.hermes-life` の保持・削除ポリシー未設計
+5. **Codex/Cursor worker** — 1 task = 1 worktree/branch · 別 HOME/token · 承認境界（D6+、Life Pilot から直接解放しない）
+6. **LLM ベース推薦** — 現状は deterministic suggestion のみ
+7. **数日運用の体感評価** — proactive 朝晩・reminder/follow-up 通知の頻度/文言調整
 
 ## References
 
