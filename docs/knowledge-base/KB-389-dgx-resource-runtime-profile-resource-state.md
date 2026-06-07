@@ -3,6 +3,7 @@ title: KB-389 DGX resource runtimeProfile and shared resourceState
 tags: [DGX, DGX_RESOURCE, Spark, runtimeProfile, resourceState, vLLM]
 audience: [開発者, 運用者]
 last-verified: 2026-06-07
+last-updated: 2026-06-07-async-ux-deploy
 category: knowledge-base
 status: active
 scope: DGX Spark system-prod LocalLLM, Pi5 `/admin/tools/dgx-resource`, profile-scoped memory budget
@@ -41,8 +42,12 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 | Admin UI: `DGX 所有`, runtime budget, quick profile under 詳細・保守 | Done |
 | DGX deploy (SHA match with repo) | Done (2026-06-07) |
 | Pi5 deploy (api + web) | Done (2026-06-07) |
+| Async business-return UX (`in_progress` + overview polling) | Done (`b321f82f`, `6f0d5b20`) |
 
-**Git**: branch `feat/dgx-resource-runtime-profile` · commit **`45c0c5ee`** (`feat(dgx): add runtime profiles and shared resource state`).
+**Git**:
+
+- Runtime profile/resource state base: branch `feat/dgx-resource-runtime-profile` · commit **`45c0c5ee`** (`feat(dgx): add runtime profiles and shared resource state`)
+- Business-return async UX: branch `fix/dgx-business-return-async-ux` · commits **`b321f82f`** (`fix(dgx): return in_progress for async business return UX`), **`6f0d5b20`** (`fix(web): satisfy production build type for businessReturnReady`)
 
 ## Specification (summary)
 
@@ -58,6 +63,14 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 - `status`: `preparing` | `released` (see Open Items — `ready` not written yet)
 - Pi5 admin shows **`DGX 所有`** via `overview.runtimeSummary.resourceOwnerLabelJa`
 - Strict Ready / business readiness still uses Pi5 orchestration + `/v1/models`; resourceState is **display and cross-workload lease hint**, not a KPI.
+
+### Async business-return UX (Pi5 only · 2026-06-07)
+
+- Scenarios: **`private_to_business`** / **`experiment_to_business`** only.
+- After workload steps and DGX `POST /start` with `modelProfileId`, API sets **`deferReadiness: true`** and returns **`scenarioExecute.outcomeKind: in_progress`** instead of blocking on Strict Ready.
+- UI pending clears when **`runtimeSummary.businessReady === true`** and **`runtimeSummary.resourceOwner === 'business'`** (overview polling + `sessionStorage` restore on remount).
+- Other scenarios (e.g. `business_to_private`) keep synchronous Strict Ready.
+- DGX code unchanged for this UX fix.
 
 ### Admin UI layout (2026-06-07)
 
@@ -124,15 +137,62 @@ Do not infer "model not loaded" from low memory on **35B green** alone; on **27B
 
 After first real orchestration action, `DGX 所有` moved **不明 → Private → 業務**, matching DGX writes on `/start` / `/stop-force`.
 
-### 3. Business-return UI timeout is orchestration UX, not DGX failure
+### 3. Business-return UI timeout (pre-async UX · resolved)
 
-vLLM cold start (load, compile, warmup, autotune) can exceed the synchronous `EXECUTE_ORCHESTRATION_SCENARIO` HTTP window. DGX kept progressing; backend became ready while the UI showed an error.
+Before **`b321f82f`**, vLLM cold start could exceed the synchronous `EXECUTE_ORCHESTRATION_SCENARIO` HTTP window while DGX kept progressing. **Mitigation shipped**: `in_progress` + overview polling (§4). Residual operator notes:
 
-**Operator guidance** (not a defect record):
+- Do not spam the action button while pending banner is shown.
+- Temporary `502` on `/v1/models` during cold start is expected until Ready.
 
-- If progress banner says transition continuing, **do not spam the action button**.
-- Reload `/admin/tools/dgx-resource` after several minutes; check `BUSINESS READY` and Unified Mem.
-- Temporary `502` on `/v1/models` during cold start is expected.
+### 4. Async business-return UX is deployed
+
+The previous synchronous wait was replaced for long business-return scenarios:
+
+- `private_to_business` / `experiment_to_business` return `scenarioExecute.outcomeKind: in_progress` after the DGX model-load request is accepted.
+- The UI shows:
+
+```text
+復帰処理を開始しました。DGX 側でモデルをロード中です。
+Ready まで数分かかることがあります。画面を閉じても処理は継続します。
+```
+
+- The UI persists pending state in `sessionStorage` and clears it when overview reports `runtimeSummary.businessReady === true` and `runtimeSummary.resourceOwner === business`.
+- If a browser/API timeout still happens after the execute request was dispatched, the UI treats it as a continuing business-return attempt instead of showing a terminal failure.
+
+Deploy summary:
+
+| Target | Result |
+|--------|--------|
+| Pi5 API/Web deploy | Success on detach run **`20260607-143332-28257`** (`PLAY RECAP failed=0`) |
+| First deploy attempt | Failed on web production build type mismatch; fixed by **`6f0d5b20`** |
+| Pi5 production Git ref | **`6f0d5b20`** |
+| DGX deploy/actions | Not performed for this UX-only change |
+| Pi5 containers | `docker-api-1` healthy, `docker-web-1` up |
+| Web bundle | Contains `DGX 側でモデルをロード中` |
+| Phase12 after async UX deploy | **43/0/0** (~57s) |
+
+**Authenticated overview snapshot** (Pi5 read-only GET after deploy; no DGX actions):
+
+| Field | Value |
+|-------|-------|
+| `runtimeSummary.businessReady` | `true` |
+| `runtimeSummary.resourceOwner` | `business` |
+| `runtimeSummary.resourceStateStatus` | `preparing` |
+| `modelProfiles.activeProfileId` | `business_qwen36_27b_nvfp4` |
+| `modelProfiles.activeStateBackend` | `blue` |
+| `modelProfiles.status` | `ok` |
+| `resourceState.owner` / `backend` | `business` / `blue` |
+| `resourceState.status` | `preparing` (see Open Items) |
+
+Validation for this async UX branch:
+
+| Check | Result |
+|-------|--------|
+| API focused tests (`dgx-resource.service`, business profile propagation) | 30 passed |
+| Web focused tests (`DgxResourcePrimaryScenarioFlow`, `DgxResourceDashboard`) | 4 passed |
+| API `tsc -p tsconfig.build.json --noEmit` | passed |
+| Web `tsc -b` | passed |
+| `git diff --check` | passed |
 
 ## Current expected state (after successful business return)
 
@@ -144,10 +204,9 @@ vLLM cold start (load, compile, warmup, autotune) can exceed the synchronous `EX
 
 ## Open Items
 
-1. **Async long transitions** — Replace single synchronous `EXECUTE_ORCHESTRATION_SCENARIO` wait with: quick API ack → UI polls `overview` / `resourceState` until `businessReady` or explicit failure. Suggested copy: `復帰処理を開始しました。DGX 側でモデルをロード中です。` / `Ready まで数分かかることがあります。`
-2. **`resourceState.status`** — Promote from `preparing` to `ready` when Pi5 Strict Ready succeeds (today: `preparing` / `released` only; readiness is Pi5-side).
-3. **Cold-start duration doc** — Record typical `business_qwen36_27b_nvfp4` ready time on Spark (observed: several minutes; UI timeout occurred before ~13:36 JST completion).
-4. **Optional UI** — Show vLLM startup phase if safe probes/logs become available.
+1. **`resourceState.status`** — Promote from `preparing` to `ready` when Pi5 Strict Ready succeeds (today: authenticated overview still shows `business / preparing / post_only` even while `businessReady: true`).
+2. **Cold-start duration doc** — Record typical `business_qwen36_27b_nvfp4` ready time on Spark (observed: several minutes; UI timeout occurred before ~13:36 JST completion; DGX Spark/vLLM forum examples show ~7.5-11 minutes can be plausible before optimization).
+3. **Optional UI** — Show vLLM startup phase if safe probes/logs become available.
 
 ## References
 

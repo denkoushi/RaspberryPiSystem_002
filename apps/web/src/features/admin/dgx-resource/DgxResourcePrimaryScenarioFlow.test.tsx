@@ -9,6 +9,7 @@ import type {
   DgxResourceActionResult,
   DgxModelProfilesOverviewApi,
   DgxResourceOperatorConsoleApi,
+  DgxResourceRuntimeSummaryApi,
 } from '../../../api/dgx-resource.types';
 import type { ReactElement } from 'react';
 
@@ -74,6 +75,25 @@ const modelProfiles: DgxModelProfilesOverviewApi = {
   ],
 };
 
+function runtimeSummary(partial: Partial<DgxResourceRuntimeSummaryApi>): DgxResourceRuntimeSummaryApi {
+  return {
+    activeProfileId: null,
+    activeProfileDisplayNameJa: null,
+    activeBackend: null,
+    businessReady: false,
+    businessReadyDetailJa: 'not ready',
+    policyMode: 'business_first',
+    policyLabel: '業務優先',
+    runtimeSource: 'unknown',
+    inferenceDegraded: true,
+    resourceOwner: 'business',
+    resourceOwnerLabelJa: '業務',
+    resourceStateStatus: 'preparing',
+    resourceStateDetailJa: 'preparing',
+    ...partial,
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (error?: unknown) => void;
@@ -87,6 +107,7 @@ function deferred<T>() {
 describe('DgxResourcePrimaryScenarioFlow', () => {
   beforeEach(() => {
     confirmMock.mockClear();
+    window.sessionStorage.clear();
   });
 
   it('keeps execution busy across unmount/remount while execute request is pending', async () => {
@@ -192,5 +213,78 @@ describe('DgxResourcePrimaryScenarioFlow', () => {
 
     expect(screen.getByRole('option', { name: /Qwen3\.6 27B NVFP4/ })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'qwen36_35b_uncensored' })).not.toBeInTheDocument();
+  });
+
+  it('keeps business return pending after in_progress and clears when overview reports ready', async () => {
+    const operator = makeOperator();
+    const postDgxAction = vi.fn(async (body: DgxResourceActionBody): Promise<DgxResourceActionResult> => {
+      if (body.type === 'PREVIEW_ORCHESTRATION_SCENARIO') {
+        return {
+          ok: true,
+          message: 'preview',
+          scenarioPreview: {
+            scenarioId: 'private_to_business',
+            targetPolicyMode: 'business_first',
+            applyWorkloadChanges: true,
+            planFingerprint: 'f'.repeat(64),
+            steps: [],
+            warnings: [],
+          },
+        };
+      }
+      if (body.type === 'EXECUTE_ORCHESTRATION_SCENARIO') {
+        return {
+          ok: true,
+          message:
+            '復帰処理を開始しました。DGX 側でモデルをロード中です。\nReady まで数分かかることがあります。画面を閉じても処理は継続します。',
+          scenarioExecute: {
+            scenarioId: 'private_to_business',
+            success: true,
+            completedStepOrders: [1, 2],
+            completedPolicyApplied: true,
+            outcomeKind: 'in_progress',
+            readinessSummaryJa:
+              '復帰処理を開始しました。DGX 側でモデルをロード中です。\nReady まで数分かかることがあります。画面を閉じても処理は継続します。',
+          },
+        };
+      }
+      return { ok: true, message: 'ok' };
+    });
+
+    const props = {
+      operator,
+      modelProfiles,
+      postDgxAction,
+      actionBusy: false,
+      onControlUiError: vi.fn(),
+    };
+
+    const first = renderWithClient(
+      <DgxResourcePrimaryScenarioFlow
+        {...props}
+        runtimeSummary={runtimeSummary({ businessReady: false, resourceStateStatus: 'preparing' })}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '実行する →' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '実行する →' })).toBeDisabled();
+    });
+    expect(screen.getAllByText(/DGX 側でモデルをロード中/).length).toBeGreaterThan(0);
+    expect(window.sessionStorage.getItem('dgx-resource:primary-scenario-pending')).toContain('private_to_business');
+
+    first.unmount();
+    renderWithClient(
+      <DgxResourcePrimaryScenarioFlow
+        {...props}
+        runtimeSummary={runtimeSummary({ businessReady: true, resourceStateStatus: 'ready', inferenceDegraded: false })}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '実行する →' })).not.toBeDisabled();
+    });
+    expect(window.sessionStorage.getItem('dgx-resource:primary-scenario-pending')).toBeNull();
   });
 });

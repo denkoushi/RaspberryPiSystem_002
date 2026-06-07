@@ -809,6 +809,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       scenarioId,
       planFingerprint,
       ...(modelProfileId ? { modelProfileId } : {}),
+      deferReadiness: scenarioId === 'private_to_business' || scenarioId === 'experiment_to_business',
       capability: {
         comfyRuntimeConfigured: comfyRuntimeControlConfigured(),
         experimentLabRuntimeConfigured: experimentLabRuntimeControlConfigured(),

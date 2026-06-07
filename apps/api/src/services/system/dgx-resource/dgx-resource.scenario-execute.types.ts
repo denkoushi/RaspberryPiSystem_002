@@ -1,7 +1,7 @@
 import type { DgxOrchestrationScenarioId } from './dgx-resource.scenario-planner.js';
 
 /** シナリオ実行結果の区分（UI・ログ向けの要約） */
-export type DgxResourceScenarioOutcomeKind = 'success' | 'partial_failure' | 'noop';
+export type DgxResourceScenarioOutcomeKind = 'success' | 'partial_failure' | 'noop' | 'in_progress';
 
 /** Strict Ready で検証したゲートの要約（画面表示向け）。 */
 export type DgxScenarioReadinessCheckJa = {

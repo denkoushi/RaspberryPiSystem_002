@@ -132,7 +132,7 @@ export type DgxResourceScenarioExecuteResultApi = {
   completedPolicyApplied: boolean;
   failureMessageJa?: string;
   recommendedNextJa?: string;
-  outcomeKind?: 'success' | 'partial_failure' | 'noop';
+  outcomeKind?: 'success' | 'partial_failure' | 'noop' | 'in_progress';
   readinessChecksJa?: readonly {
     code:
       | 'inference_business'
