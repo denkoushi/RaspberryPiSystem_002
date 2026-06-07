@@ -3,7 +3,7 @@ title: KB-389 DGX resource runtimeProfile and shared resourceState
 tags: [DGX, DGX_RESOURCE, Spark, runtimeProfile, resourceState, vLLM]
 audience: [開発者, 運用者]
 last-verified: 2026-06-07
-last-updated: 2026-06-07-async-ux-deploy
+last-updated: 2026-06-07-modern-ui-deploy
 category: knowledge-base
 status: active
 scope: DGX Spark system-prod LocalLLM, Pi5 `/admin/tools/dgx-resource`, profile-scoped memory budget
@@ -43,11 +43,13 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 | DGX deploy (SHA match with repo) | Done (2026-06-07) |
 | Pi5 deploy (api + web) | Done (2026-06-07) |
 | Async business-return UX (`in_progress` + overview polling) | Done (`b321f82f`, `6f0d5b20`) |
+| Modern dashboard UI (view model + status header + tabbed details) | Done (`95b4b0e4`) · Pi5 production verified |
 
 **Git**:
 
 - Runtime profile/resource state base: branch `feat/dgx-resource-runtime-profile` · commit **`45c0c5ee`** (`feat(dgx): add runtime profiles and shared resource state`)
 - Business-return async UX: branch `fix/dgx-business-return-async-ux` · commits **`b321f82f`** (`fix(dgx): return in_progress for async business return UX`), **`6f0d5b20`** (`fix(web): satisfy production build type for businessReturnReady`)
+- Modern dashboard UI: branch `fix/dgx-resource-modern-ui` · commit **`95b4b0e4`** (`Modernize DGX resource dashboard UI`)
 
 ## Specification (summary)
 
@@ -72,10 +74,20 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 - Other scenarios (e.g. `business_to_private`) keep synchronous Strict Ready.
 - DGX code unchanged for this UX fix.
 
-### Admin UI layout (2026-06-07)
+### Modern dashboard UI (Pi5 Web only · 2026-06-07)
 
-- Main flow: KPI strip + 4 orchestration scenarios (unchanged contract).
-- **モデルプロファイル起動** (quick `START_MODEL_PROFILE`) moved to **詳細・保守（通常は不要）**.
+- **Scope**: Web presentation only. API / DGX contracts unchanged.
+- **View model**: `buildDgxResourceDashboardViewModel()` in `dgxResourceDashboardViewModel.ts` maps `overview` → header pills, 4-tile status row, detail rows. UI components consume the view model; they do not re-derive owner/ready/memory labels inline.
+- **Status header** (`DgxResourceStatusHeader`): title **DGX リソース**; service pills **VLM / ComfyUI / 実験**; 4 tiles — **DGX** (owner), **業務推論** (ready/loading/degraded), **モデル**, **メモリ** (unified mem).
+- **Pending banner**: business-return shows **業務復帰中 / DGX 側でモデルをロードしています**; other scenarios show Strict Ready elapsed hint from events.
+- **Primary flow** (`DgxResourcePrimaryScenarioFlow`): compact scenario cards; business-return profile picker label **ロードモデル**; async UX messages unchanged (§ Async business-return UX).
+- **Detail tabs** (below primary flow): **状態** (backend, policy, resource state, GPU, free memory) · **保守** (quick profile start, policy, targets, warm notice) · **ログ** (events timeline, monitoring when applicable).
+- **Removed from main viewport**: legacy KPI strip / separate runtime summary strip as primary layout; consolidated into header + tabs.
+
+### Admin UI layout (pre-modern · retained contracts)
+
+- Main flow: 4 orchestration scenarios (unchanged API contract).
+- **モデルプロファイル起動** (quick `START_MODEL_PROFILE`) under **保守** tab.
 - Runtime budget shown when selecting business-return profile (e.g. `vLLM memory budget 65%`).
 
 ## Validation
@@ -193,6 +205,34 @@ Validation for this async UX branch:
 | API `tsc -p tsconfig.build.json --noEmit` | passed |
 | Web `tsc -b` | passed |
 | `git diff --check` | passed |
+
+### Modern dashboard UI (Pi5 Web · 2026-06-07)
+
+| Check | Result |
+|-------|--------|
+| Web `lint` | passed |
+| Web `tsc -b` | passed |
+| Web focused tests (`src/features/admin/dgx-resource`) | 24 passed (10 files) |
+| Web production `build` | passed (no type fix required) |
+| `git diff --check` | passed |
+| Pi5 deploy | Success on detach run **`20260607-153453-15574`** (`PLAY RECAP failed=0`) |
+| Pi5 production Git ref | **`95b4b0e4`** |
+| DGX deploy/actions | Not performed |
+| Pi5 containers | `docker-api-1` healthy, `docker-web-1` up |
+| Web bundle | Contains `DGX リソース`, `業務推論`, `ロードモデル`, `DGX 側でモデルをロードしています` |
+| Real-machine UI validation | **OK** (operator confirmed 2026-06-07) |
+
+**Authenticated overview snapshot** (Pi5 read-only GET after modern UI deploy; no DGX actions):
+
+| Field | Value |
+|-------|-------|
+| `runtimeSummary.businessReady` | `true` |
+| `runtimeSummary.resourceOwner` | `business` |
+| `runtimeSummary.resourceStateStatus` | `preparing` |
+| `modelProfiles.activeProfileId` | `business_qwen36_27b_nvfp4` |
+| `modelProfiles.status` | `ok` |
+
+**Deploy note**: Pi5 ansible fetches `origin/<branch>`. First deploy attempt failed because `fix/dgx-resource-modern-ui` was not on `origin` yet; `git push -u origin fix/dgx-resource-modern-ui` then redeploy succeeded. No code change.
 
 ## Current expected state (after successful business return)
 
