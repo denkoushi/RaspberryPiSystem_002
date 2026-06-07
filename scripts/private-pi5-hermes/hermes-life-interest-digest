@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""Run Life Pilot Daily Interest Digest from the command line."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+
+
+ROOT = Path(__file__).resolve().parent
+SOURCE_ROOT = ROOT
+PLUGIN_ROOT = Path.home() / ".hermes" / "plugins" / "private-pi5-discord-task-bridge"
+for candidate in (SOURCE_ROOT, PLUGIN_ROOT):
+    if str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
+
+try:
+    from lib.discord_life_pilot_bridge import load_life_pilot_policy  # noqa: E402
+    from lib.life_interest_digest import (  # noqa: E402
+        build_interest_digest,
+        dispatch_daily_interest_digest,
+        render_interest_profile,
+    )
+except ImportError:
+    from discord_life_pilot_bridge import load_life_pilot_policy  # type: ignore[no-redef]  # noqa: E402
+    from life_interest_digest import (  # type: ignore[no-redef]  # noqa: E402
+        build_interest_digest,
+        dispatch_daily_interest_digest,
+        render_interest_profile,
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--storage-root",
+        default="",
+        help="Life Pilot storage root. Defaults to life-pilot.policy.yaml.",
+    )
+    parser.add_argument(
+        "--no-fetch",
+        action="store_true",
+        help="Use only locally stored items and Discord shared inbox links.",
+    )
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Print the local interest profile instead of the digest.",
+    )
+    parser.add_argument(
+        "--dispatch",
+        action="store_true",
+        help="Send today's digest to Discord once per day.",
+    )
+    parser.add_argument(
+        "--channel-id",
+        default="",
+        help="Discord channel ID for --dispatch. Defaults to remembered Life Pilot context.",
+    )
+    parser.add_argument(
+        "--user-id",
+        default="",
+        help="Optional Discord user ID recorded with --dispatch.",
+    )
+    args = parser.parse_args()
+
+    if args.storage_root:
+        storage_root = Path(args.storage_root)
+    else:
+        storage_root = Path(load_life_pilot_policy().storage_root)
+
+    if args.profile:
+        print(render_interest_profile(storage_root))
+        return 0
+    if args.dispatch:
+        dispatch = dispatch_daily_interest_digest(
+            storage_root,
+            fetch=not args.no_fetch,
+            channel_id=args.channel_id,
+            user_id=args.user_id,
+        )
+        print(
+            json.dumps(
+                {
+                    "ok": dispatch.ok,
+                    "sent": dispatch.sent,
+                    "failed": dispatch.failed,
+                    "skipped_duplicate": dispatch.skipped_duplicate,
+                    "skipped_missing_channel": dispatch.skipped_missing_channel,
+                    "dispatch_id": dispatch.dispatch_id,
+                    "error": dispatch.error,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 0 if dispatch.ok else 1
+    result = build_interest_digest(storage_root, fetch=not args.no_fetch)
+    print(result.message)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

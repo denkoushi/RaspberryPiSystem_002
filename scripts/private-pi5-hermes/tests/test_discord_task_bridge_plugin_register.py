@@ -95,7 +95,7 @@ class PluginRegisterTests(unittest.TestCase):
             registered = [c[0][0] for c in ctx.register_command.call_args_list]
             self.assertEqual(
                 registered,
-                ["memo", "inbox", "digest", "remind", "recommend", "life-reply"],
+                ["memo", "inbox", "interest", "digest", "remind", "recommend", "life-reply"],
             )
             memo_call = ctx.register_command.call_args_list[0]
             self.assertEqual(memo_call[1].get("args_hint"), "<life note>")
@@ -104,11 +104,13 @@ class PluginRegisterTests(unittest.TestCase):
                 inbox_call[1].get("args_hint"),
                 "[list|memo N|remind N|done N|dismiss N|delete N|prune]",
             )
-            remind_call = ctx.register_command.call_args_list[3]
+            interest_call = ctx.register_command.call_args_list[2]
+            self.assertIn("like N", interest_call[1].get("args_hint"))
+            remind_call = ctx.register_command.call_args_list[4]
             self.assertEqual(remind_call[1].get("args_hint"), "<when and reminder>")
-            recommend_call = ctx.register_command.call_args_list[4]
+            recommend_call = ctx.register_command.call_args_list[5]
             self.assertEqual(recommend_call[1].get("args_hint"), "[focus]")
-            reply_call = ctx.register_command.call_args_list[5]
+            reply_call = ctx.register_command.call_args_list[6]
             self.assertEqual(reply_call[1].get("args_hint"), "<1|2|3|free text>")
             ctx.register_hook.assert_called_once()
 
