@@ -20,6 +20,7 @@ function mkBundle(partial: Partial<OverviewProbeBundle>): OverviewProbeBundle {
           backend: 'green',
           servedAlias: 'system-prod-primary',
           recommended: false,
+          businessOrchestrationEligible: true,
           enabled: true,
           status: 'available',
           canonicalNames: [],
@@ -31,6 +32,17 @@ function mkBundle(partial: Partial<OverviewProbeBundle>): OverviewProbeBundle {
       activeRuntimeState: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
+      resourceState: {
+        owner: 'business',
+        status: 'preparing',
+        updatedAt: '2026-06-07T00:00:00Z',
+        action: 'start',
+        reason: 'scenario_guide_model_profile',
+        modelProfileId: 'business_qwen35_35b_gguf',
+        displayNameJa: '35B GGUF',
+        backend: 'green',
+        guaranteeLevel: 'post_only',
+      },
     },
     metricsConfigured: true,
     metricsPayload: { gpuUtilPct: 0, unifiedMemoryUsedGiB: 22, unifiedMemoryTotalGiB: 128, freeMemoryGiB: 100 },
@@ -60,6 +72,8 @@ describe('buildDgxResourceRuntimeSummary', () => {
     expect(summary.activeBackend).toBe('green');
     expect(summary.runtimeSource).toBe('model_profile_state');
     expect(summary.businessReady).toBe(true);
+    expect(summary.resourceOwner).toBe('business');
+    expect(summary.resourceOwnerLabelJa).toBe('業務');
   });
 
   it('marks business not ready when models probe fails', () => {
@@ -89,11 +103,13 @@ describe('buildDgxResourceRuntimeSummary', () => {
       configured: true,
       status: 'ok',
       available: [],
+      businessReturnSelectable: [],
       activeProfileId: null,
       activeStateBackend: null,
       activeRuntimeState: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
+      resourceState: null,
     };
     const summary = buildDgxResourceRuntimeSummary(mkBundle({ modelProfiles: mp }), 'business_first');
     expect(summary.activeProfileId).toBeNull();

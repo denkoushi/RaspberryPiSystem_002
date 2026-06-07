@@ -26,8 +26,24 @@ describe('fetchDgxModelProfilesOverview', () => {
             recommended: true,
             enabled: true,
             status: 'available',
+            runtimeProfile: {
+              engine: 'vllm',
+              memoryPolicy: 'known_good_business_text_tools',
+              vllm: { gpuMemoryUtilization: 0.65, maxModelLen: 8192, languageModelOnly: true },
+            },
           },
         ],
+        resourceState: {
+          owner: 'business',
+          status: 'preparing',
+          updatedAt: '2026-06-07T00:00:00Z',
+          action: 'start',
+          reason: 'scenario_guide_model_profile',
+          modelProfileId: 'business_qwen36_27b_nvfp4',
+          displayNameJa: 'Qwen3.6 27B NVFP4',
+          backend: 'blue',
+          guaranteeLevel: 'post_only',
+        },
       }),
     })) as typeof fetch;
 
@@ -45,6 +61,9 @@ describe('fetchDgxModelProfilesOverview', () => {
     expect(overview.errorMessageJa).toBeUndefined();
     expect(overview.available).toHaveLength(1);
     expect(overview.businessReturnSelectable).toHaveLength(1);
+    expect(overview.available[0]?.runtimeProfile?.vllm?.gpuMemoryUtilization).toBe(0.65);
+    expect(overview.resourceState?.owner).toBe('business');
+    expect(overview.resourceState?.modelProfileId).toBe('business_qwen36_27b_nvfp4');
   });
 
   it('excludes businessOrchestrationEligible=false from businessReturnSelectable', async () => {
@@ -192,6 +211,7 @@ describe('assertModelProfileKnownAndStartable', () => {
         activeRuntimeState: null,
         pendingProfileId: null,
         lastLoadedProfileId: null,
+        resourceState: null,
         available: [
           {
             id: 'business_qwen35_35b_gguf',
@@ -224,6 +244,7 @@ describe('assertModelProfileEligibleForBusinessReturn', () => {
     activeRuntimeState: null,
     pendingProfileId: null,
     lastLoadedProfileId: null,
+    resourceState: null,
     businessReturnSelectable: [],
     available: [
       {

@@ -31,6 +31,7 @@ import {
   assertModelProfileSelectionAllowed,
   fetchDgxModelProfilesOverview,
   type DgxModelProfilesOverview,
+  type DgxResourceSharedState,
 } from './dgx-resource.model-profiles.js';
 import {
   executeOrchestrationScenarioTransition,
@@ -120,6 +121,8 @@ export type DgxResourceOverview = {
   operator: DgxResourceOperatorConsole;
   /** DGX 正本の業務復帰 LocalLLM モデルプロファイル */
   modelProfiles: DgxModelProfilesOverview;
+  /** DGX gateway 共有 owner/state。Private Pi5 直通 route と業務 Pi5 UI の共通状態 */
+  resourceState: DgxResourceSharedState | null;
   /** メトリクス KPI とは分離した実行時状態（モデル・backend・Ready ヒント） */
   runtimeSummary: DgxResourceRuntimeSummary;
 };
@@ -927,6 +930,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         monitoring,
         operator,
         modelProfiles: pb.modelProfiles,
+        resourceState: pb.modelProfiles.resourceState,
         runtimeSummary,
       };
     },

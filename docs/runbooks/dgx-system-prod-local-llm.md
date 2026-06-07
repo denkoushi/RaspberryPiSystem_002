@@ -168,7 +168,9 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 
 - 正本: `/srv/dgx/shared-models/registry/<modelProfileId>/manifest.json`
 - active state: `/srv/dgx/system-prod/state/active-model-profile.json`
+- resource state: `/srv/dgx/system-prod/state/dgx-resource-state.json`
 - gateway API: `GET /system/model-profiles` / `GET /system/model-profile`
+- owner API: `GET /system/resource-state`
 - control API: `POST /start {"modelProfileId":"business_qwen36_27b_nvfp4"}`
 - **activeProfileId 契約（Pi5 overview と DGX の違い）**:
   - **`GET /system/model-profiles`（複数形）**: registry allowlist + **`activeProfileId`**（state ファイルが無ければ **`null`** — **未 start 前は想定内**）。Pi5 `overview.modelProfiles` は **HTTP 200 で profiles が取れれば `status: ok`**（`activeProfileId: null` でも degraded にしない）。
@@ -177,6 +179,14 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
   - **`POST /stop-force`（2026-05-29）**: 停止対象 backend は **`active-model-profile.json` の `backend` を優先**（無いときのみ `ACTIVE_LLM_BACKEND`）。env と実プロセスがずれていても **green `llama-server` が残る**事故を防ぐ。応答の **`backendSource`** で根拠を確認できる。
   - **切り分け（業務復帰 503 `DGX_MODEL_PROFILES_UNAVAILABLE`）**: ① `curl …/system/model-profiles` で profiles 件数・各 `status` ② `activeProfileId` が null でも allowlist 取得 OK なら Pi5 は `ok`（[KB-365 §activeProfileId null](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-active-profile-id-null)）③ state 単体は `curl …/system/model-profile`。
   - **切り分け（業務復帰 success だが KPI/モデルが選択と違う）**: ① `activeProfileId` が選択 ID と一致するか ② `state.backend` が manifest の `backend` と一致するか ③ `/v1/models` だけ OK では Pi5 success にならない（[§Strict Ready profile 一致](#strict-ready-model-profile-match-2026-05-28)）。
+- **resource-state 契約（DGX owner/lease 表示）**:
+  - `control-server.py` は `/start` / `/stop` / `/stop-force` 後に `dgx-resource-state.json` を best-effort 更新する。書込失敗は起動停止自体を失敗にしない。
+  - `owner`: `business` / `private` / `experiment` / `unknown`。業務eligible profile は `business`、`businessOrchestrationEligible:false` の profile は `private`。`stop-force` は GPU を私用へ空ける操作として `private`。
+  - `status`: `preparing` / `released`。Strict Ready の最終成功判定は Pi5 orchestration 側が `/v1/models` / activeProfile / backend / runtime capability で行う。resource-state は「誰に貸しているか」の共有表示であり、KPIではない。
+- **runtimeProfile 契約（profile別運用予算）**:
+  - `business_qwen36_27b_nvfp4`: `runtimeProfile.engine=vllm`、`vllm.gpuMemoryUtilization=0.65`、`maxModelLen=8192`、`maxNumSeqs=4`、`languageModelOnly=true` を known-good default とする。`0.65` はグローバル値ではなく、この profile の vLLM 予算。
+  - GGUF / llama.cpp profile は `gpuMemoryUtilization` ではなく `llamaCpp.ctxSize` / `parallel` / `nGpuLayers` を正本にする。
+  - `launcher_env_for_profile()` は `runtimeProfile` を `VLLM_*` / `LLAMA_SERVER_*` env へ展開できる。secret 側 `BLUE_SERVER_COMMAND` はこの env を参照する形に揃える。
 - 初期 profile: `business_qwen36_27b_nvfp4`（blue / Qwen3.6 27B NVFP4 / 推奨）と `business_qwen35_35b_gguf`（green / Qwen3.5 35B GGUF）
 - 私用テキスト向け（業務キオスク非対象）: `qwen36_35b_uncensored`（green / Qwen3.6 35B Uncensored GGUF / text only）— 下記 [§uncensored profile](#dgx-uncensored-profile-2026-05-29)
 - HF 移行: `sakamakismile/Qwen3.6-27B-NVFP4` は `/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4` へ寄せる。既存 cache は manifest の `currentStorageLocation` に残し、実ファイル移動は実機手動確認で行う
@@ -615,8 +625,14 @@ BLUE_SERVER_PORT=38083
 BLUE_SERVER_CONTAINER_PORT=8000
 # BLUE_SERVER_ENTRYPOINT=bash
 BLUE_MODEL_DIR=/srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4
+VLLM_GPU_MEMORY_UTILIZATION=0.65
+VLLM_MAX_MODEL_LEN=8192
+VLLM_MAX_NUM_SEQS=4
+VLLM_MAX_NUM_BATCHED_TOKENS=16384
+VLLM_KV_CACHE_DTYPE=fp8
+VLLM_LANGUAGE_MODEL_ONLY=true
 # <snapshot-sha> は ${BLUE_MODEL_DIR}/refs/main の内容で置き換える
-BLUE_SERVER_COMMAND='export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 && export TORCH_MATMUL_PRECISION=high && export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && export NVIDIA_FORWARD_COMPAT=1 && export VLLM_TEST_FORCE_FP8_MARLIN=1 && exec vllm serve /srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4/snapshots/<snapshot-sha> --served-model-name system-prod-primary --host 0.0.0.0 --port 8000 --dtype auto --quantization compressed-tensors --max-model-len 8192 --max-num-seqs 4 --max-num-batched-tokens 16384 --gpu-memory-utilization 0.65 --kv-cache-dtype fp8 --enable-chunked-prefill --enable-prefix-caching --load-format safetensors --trust-remote-code --hf-overrides "{\"language_model_only\": true}" --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3'
+BLUE_SERVER_COMMAND='export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 && export TORCH_MATMUL_PRECISION=high && export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && export NVIDIA_FORWARD_COMPAT=1 && export VLLM_TEST_FORCE_FP8_MARLIN=1 && exec vllm serve /srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4/snapshots/<snapshot-sha> --served-model-name system-prod-primary --host 0.0.0.0 --port 8000 --dtype auto --quantization compressed-tensors --max-model-len "${VLLM_MAX_MODEL_LEN:-8192}" --max-num-seqs "${VLLM_MAX_NUM_SEQS:-4}" --max-num-batched-tokens "${VLLM_MAX_NUM_BATCHED_TOKENS:-16384}" --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.65}" --kv-cache-dtype "${VLLM_KV_CACHE_DTYPE:-fp8}" --enable-chunked-prefill --enable-prefix-caching --load-format safetensors --trust-remote-code --hf-overrides "{\"language_model_only\": ${VLLM_LANGUAGE_MODEL_ONLY:-true}}" --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3'
 BLUE_EXTRA_DOCKER_ARGS='--ipc host --ulimit memlock=-1 --ulimit stack=67108864'
 ```
 

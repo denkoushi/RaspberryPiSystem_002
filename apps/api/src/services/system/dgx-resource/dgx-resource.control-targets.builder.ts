@@ -73,6 +73,7 @@ export function buildLegacyServiceCards(bundle: OverviewProbeBundle): DgxResourc
     adminCfg,
     gatewayStatus,
     modelsProbe,
+    modelProfiles,
     comfyConfigured,
     comfyReachable,
     comfyProbeUrl,
@@ -135,6 +136,12 @@ export function buildLegacyServiceCards(bundle: OverviewProbeBundle): DgxResourc
         ...(adminCfg.baseUrl ? [`gateway: ${adminCfg.baseUrl}`] : []),
         ...(gatewayStatus.health.statusCode !== undefined
           ? [`health HTTP ${gatewayStatus.health.statusCode}`]
+          : []),
+        ...(modelProfiles.resourceState
+          ? [
+              `owner: ${modelProfiles.resourceState.owner} / ${modelProfiles.resourceState.status}`,
+              ...(modelProfiles.resourceState.modelProfileId ? [`resource profile: ${modelProfiles.resourceState.modelProfileId}`] : []),
+            ]
           : []),
       ],
     },

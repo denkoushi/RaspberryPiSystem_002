@@ -11,6 +11,20 @@
   "launcherHints": {
     "blueModelDir": "/srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4"
   },
+  "runtimeProfile": {
+    "engine": "vllm",
+    "memoryPolicy": "known_good_business_text_tools",
+    "coexistencePolicy": "single_active_not_comfy",
+    "guaranteeLevel": "strict_ready_when_orchestrated",
+    "vllm": {
+      "gpuMemoryUtilization": 0.65,
+      "maxModelLen": 8192,
+      "maxNumSeqs": 4,
+      "maxNumBatchedTokens": 16384,
+      "kvCacheDtype": "fp8",
+      "languageModelOnly": true
+    }
+  },
   "sourceKind": "huggingface",
   "sourceModelRef": "sakamakismile/Qwen3.6-27B-NVFP4",
   "modelFamily": "Qwen3.6",

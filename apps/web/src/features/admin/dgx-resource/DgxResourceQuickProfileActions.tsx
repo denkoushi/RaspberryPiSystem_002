@@ -35,6 +35,20 @@ export function DgxResourceQuickProfileActions({
   const selectable =
     modelProfiles?.available.filter((profile) => profile.enabled && profile.status === 'available') ?? [];
 
+  const runtimeBudgetLine = (modelProfileId: string): string | null => {
+    const profile = selectable.find((p) => p.id === modelProfileId);
+    const runtime = profile?.runtimeProfile;
+    if (!runtime) return null;
+    if (runtime.vllm?.gpuMemoryUtilization != null) {
+      const pct = Math.round(runtime.vllm.gpuMemoryUtilization * 100);
+      return `vLLM memory budget ${pct}% / ${runtime.guaranteeLevel ?? 'post_only'}`;
+    }
+    if (runtime.llamaCpp?.ctxSize != null) {
+      return `llama.cpp ctx ${runtime.llamaCpp.ctxSize} / ${runtime.guaranteeLevel ?? 'post_only'}`;
+    }
+    return runtime.guaranteeLevel ?? null;
+  };
+
   const startProfile = async (modelProfileId: string, label: string) => {
     const profile = selectable.find((p) => p.id === modelProfileId);
     if (!profile) {
@@ -46,7 +60,7 @@ export function DgxResourceQuickProfileActions({
       title: `${label} を起動`,
       description: [
         `DGX の LocalLLM を model profile「${modelProfileId}」で起動します。`,
-        '業務復帰シナリオは通さず、gateway へ /start のみ送ります。',
+        '保証レベル: POSTのみ。業務復帰シナリオのStrict Ready確認は通しません。',
         '既存の業務モデルと同時常時オンにはなりません（単一アクティブ運用）。',
       ].join('\n'),
       tone: 'primary',
@@ -75,7 +89,7 @@ export function DgxResourceQuickProfileActions({
   if (modelProfiles?.status !== 'ok') {
     return (
       <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-        <h3 className="text-sm font-semibold text-white/90">モデルプロファイル起動</h3>
+        <h3 className="text-sm font-semibold text-white/90">保守: モデルプロファイル起動</h3>
         <p className="mt-1 text-xs text-amber-200">
           {modelProfiles?.errorMessageJa ?? 'DGX model profiles を取得できないため、固定起動ボタンは無効です'}
         </p>
@@ -85,22 +99,25 @@ export function DgxResourceQuickProfileActions({
 
   return (
     <div className="space-y-2 rounded-xl border border-white/10 bg-black/25 p-3">
-      <h3 className="text-sm font-semibold text-white/90">モデルプロファイル起動</h3>
-      <p className="text-xs leading-snug text-white/55">業務復帰を通さず、選択した profile で gateway /start のみ実行します。</p>
+      <h3 className="text-sm font-semibold text-white/90">保守: モデルプロファイル起動</h3>
+      <p className="text-xs leading-snug text-white/55">保証レベル: POSTのみ。Strict Ready確認や業務意図更新は行いません。</p>
       <div className="flex flex-wrap gap-2">
         {DGX_QUICK_START_MODEL_PROFILES.map(({ modelProfileId, label }) => {
           const available = selectable.some((p) => p.id === modelProfileId);
+          const budget = runtimeBudgetLine(modelProfileId);
           return (
-            <Button
-              key={modelProfileId}
-              type="button"
-              variant="secondary"
-              disabled={busy || !available}
-              aria-label={label}
-              onClick={() => void startProfile(modelProfileId, label)}
-            >
-              {label}
-            </Button>
+            <div key={modelProfileId} className="space-y-1">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy || !available}
+                aria-label={label}
+                onClick={() => void startProfile(modelProfileId, label)}
+              >
+                {label}
+              </Button>
+              {budget ? <p className="max-w-56 text-[11px] leading-snug text-white/45">{budget}</p> : null}
+            </div>
           );
         })}
       </div>

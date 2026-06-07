@@ -100,6 +100,23 @@ class GatewayServerTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            resource_state_path = Path(tmp) / "state" / "dgx-resource-state.json"
+            resource_state_path.write_text(
+                json.dumps(
+                    {
+                        "owner": "business",
+                        "status": "preparing",
+                        "updatedAt": "2026-05-28T00:00:00Z",
+                        "action": "start",
+                        "reason": "scenario_guide_model_profile",
+                        "modelProfileId": "business_qwen36_27b_nvfp4",
+                        "displayNameJa": "Qwen3.6 27B NVFP4",
+                        "backend": "blue",
+                        "guaranteeLevel": "post_only",
+                    }
+                ),
+                encoding="utf-8",
+            )
             config = module.GatewayConfig(
                 llm_shared_tokens=frozenset({"shared-token"}),
                 runtime_control_token="runtime-token",
@@ -131,6 +148,7 @@ class GatewayServerTests(unittest.TestCase):
                 private_comfy_cmd_timeout_sec=60,
                 model_registry_root=str(root),
                 active_model_state_path=str(state_path),
+                resource_state_path=str(resource_state_path),
             )
             calls: list[str] = []
 
@@ -151,6 +169,13 @@ class GatewayServerTests(unittest.TestCase):
                 )
                 with urllib.request.urlopen(profiles_req, timeout=5) as response:
                     profiles_payload = json.loads(response.read().decode("utf-8"))
+                resource_req = urllib.request.Request(
+                    f"{base_url}/system/resource-state",
+                    method="GET",
+                    headers={"X-LLM-Token": "shared-token"},
+                )
+                with urllib.request.urlopen(resource_req, timeout=5) as response:
+                    resource_payload = json.loads(response.read().decode("utf-8"))
                 models_req = urllib.request.Request(
                     f"{base_url}/v1/models",
                     method="GET",
@@ -165,6 +190,9 @@ class GatewayServerTests(unittest.TestCase):
 
             self.assertEqual(profiles_payload["activeProfileId"], "business_qwen36_27b_nvfp4")
             self.assertEqual(profiles_payload["profiles"][0]["backend"], "blue")
+            self.assertEqual(profiles_payload["resourceState"]["owner"], "business")
+            self.assertEqual(resource_payload["owner"], "business")
+            self.assertEqual(resource_payload["modelProfileId"], "business_qwen36_27b_nvfp4")
             self.assertIn("http://blue:38083/v1/models", calls)
 
     def test_inject_blue_chat_completions_defaults_adds_enable_thinking_false(self):
@@ -185,6 +213,100 @@ class GatewayServerTests(unittest.TestCase):
             "/v1/chat/completions", body, "green"
         )
         self.assertEqual(out, body)
+
+    def test_runtime_shortcut_success_writes_resource_state(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            resource_state_path = Path(tmp) / "state" / "dgx-resource-state.json"
+            config = module.GatewayConfig(
+                llm_shared_tokens=frozenset({"shared-token"}),
+                runtime_control_token="runtime-token",
+                host="127.0.0.1",
+                port=38081,
+                active_backend="blue",
+                legacy_backend_base_url="http://legacy:38082",
+                green_backend_base_url="http://green:38082",
+                blue_backend_base_url="http://blue:38083",
+                runtime_control_base_url="http://control:39090",
+                embedding_api_key="",
+                embedding_base_url="http://embed:38100",
+                private_comfy_root="/tmp",
+                private_comfy_start_cmd="./start-private-comfyui.sh",
+                private_comfy_stop_cmd="./stop-private-comfyui.sh",
+                private_comfy_health_url="http://127.0.0.1:8188",
+                experiment_lab_root="/tmp",
+                experiment_lab_start_cmd="./start-trtllm-server.sh",
+                experiment_lab_stop_cmd="./stop-trtllm-server.sh",
+                experiment_lab_health_url="http://127.0.0.1:38083/v1/models",
+                experiment_lab_health_mode="http",
+                experiment_lab_container_name="system-prod-trtllm",
+                agent_container_root="/tmp",
+                agent_container_start_cmd="./start-agent-container.sh",
+                agent_container_stop_cmd="./stop-agent-container.sh",
+                agent_container_health_url="http://127.0.0.1:5555/agent-health",
+                agent_container_health_mode="http",
+                agent_container_container_name="dgx-agent-container",
+                private_comfy_cmd_timeout_sec=60,
+                resource_state_path=str(resource_state_path),
+            )
+            commands: list[tuple[str, str]] = []
+
+            def run_local_command(command: str, cwd: str, timeout_sec: int):
+                commands.append((command, cwd))
+                return 0, "ok"
+
+            module.run_local_command = run_local_command
+            handler = module.make_handler(config)
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{httpd.server_port}"
+            try:
+                comfy_req = urllib.request.Request(
+                    f"{base_url}/private-comfyui/start",
+                    data=json.dumps({"reason": "manual private request"}).encode("utf-8"),
+                    method="POST",
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-Runtime-Control-Token": "runtime-token",
+                    },
+                )
+                with urllib.request.urlopen(comfy_req, timeout=5) as response:
+                    comfy_payload = json.loads(response.read().decode("utf-8"))
+
+                exp_req = urllib.request.Request(
+                    f"{base_url}/experiment-lab/stop",
+                    data=json.dumps({"reason": "experiment done"}).encode("utf-8"),
+                    method="POST",
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-Runtime-Control-Token": "runtime-token",
+                    },
+                )
+                with urllib.request.urlopen(exp_req, timeout=5) as response:
+                    exp_payload = json.loads(response.read().decode("utf-8"))
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=5)
+
+            self.assertEqual(comfy_payload["resourceState"]["owner"], "private")
+            self.assertEqual(comfy_payload["resourceState"]["status"], "preparing")
+            self.assertEqual(comfy_payload["resourceState"]["action"], "private-comfyui-start")
+            self.assertEqual(comfy_payload["resourceState"]["reason"], "manual private request")
+            self.assertEqual(exp_payload["resourceState"]["owner"], "experiment")
+            self.assertEqual(exp_payload["resourceState"]["status"], "released")
+            self.assertEqual(exp_payload["resourceState"]["action"], "experiment-lab-stop")
+            persisted = json.loads(resource_state_path.read_text(encoding="utf-8"))
+            self.assertEqual(persisted["owner"], "experiment")
+            self.assertEqual(persisted["status"], "released")
+            self.assertEqual(
+                commands,
+                [
+                    ("./start-private-comfyui.sh", "/tmp"),
+                    ("./stop-trtllm-server.sh", "/tmp"),
+                ],
+            )
 
     def test_http_handler_routes_v1_and_runtime_requests(self):
         module = load_module()

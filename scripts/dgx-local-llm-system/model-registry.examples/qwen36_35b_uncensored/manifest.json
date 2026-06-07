@@ -12,6 +12,17 @@
     "llamaServerModel": "/srv/dgx/shared-models/llm/gguf/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf",
     "llamaServerAlias": "system-prod-primary"
   },
+  "runtimeProfile": {
+    "engine": "llama.cpp",
+    "memoryPolicy": "private_text_only",
+    "coexistencePolicy": "single_active_private",
+    "guaranteeLevel": "post_only_quick_start",
+    "llamaCpp": {
+      "ctxSize": 2048,
+      "parallel": 1,
+      "nGpuLayers": 99
+    }
+  },
   "sourceKind": "local_file",
   "sourceModelRef": "Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf",
   "modelFamily": "Qwen3.6",

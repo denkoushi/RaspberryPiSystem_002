@@ -22,6 +22,7 @@ const defaultModelProfiles: DgxModelProfilesOverview = enrichModelProfilesOvervi
   activeRuntimeState: null,
   pendingProfileId: null,
   lastLoadedProfileId: null,
+  resourceState: null,
 });
 
 function mkModelProfiles(over: Partial<DgxModelProfilesOverview>): DgxModelProfilesOverview {

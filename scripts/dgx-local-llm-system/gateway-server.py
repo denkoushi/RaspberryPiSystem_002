@@ -6,6 +6,7 @@ DGX system-prod 用のローカル gateway。
 - /system/metrics は GPU/メモリ JSON（Pi KPI 用）。LLM 認証は X-LLM-Token または Authorization: Bearer（/v1/* と同様）
 - /system/model-profiles は DGX 正本の業務用モデル allowlist
 - /system/model-profile は現在ロード済みの active profile state
+- /system/resource-state は DGX 共有リソースの owner/state
 - /start /stop /stop-force は runtime control へ転送
 - /v1/* は active profile state の backend を優先して転送
 
@@ -19,6 +20,7 @@ DGX system-prod 用のローカル gateway。
   ACTIVE_LLM_BACKEND          既定: green（green / blue）
   DGX_MODEL_REGISTRY_ROOT     任意: モデルプロファイル manifest の root
   DGX_ACTIVE_MODEL_STATE_PATH 任意: active model profile state JSON の保存先
+  DGX_RESOURCE_STATE_PATH     任意: DGX 共有リソース owner/state JSON の保存先
   LLAMA_SERVER_BASE_URL       互換用 fallback backend URL
   GREEN_LLM_BASE_URL          既定: http://127.0.0.1:38082
   BLUE_LLM_BASE_URL           既定: http://127.0.0.1:38083
@@ -49,6 +51,7 @@ from typing import Callable
 from active_model_state import active_model_state_to_api, read_active_model_state
 from gateway_llm_auth import load_llm_shared_tokens_from_env, llm_shared_token_ok
 from model_profiles import load_model_profiles, model_profile_to_api
+from resource_state import read_resource_state, state_to_api, write_resource_state
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,7 @@ class GatewayConfig:
     private_comfy_cmd_timeout_sec: int
     model_registry_root: str = "/srv/dgx/shared-models/registry"
     active_model_state_path: str = "/srv/dgx/system-prod/state/active-model-profile.json"
+    resource_state_path: str = "/srv/dgx/system-prod/state/dgx-resource-state.json"
 
 
 def load_config_from_env() -> GatewayConfig:
@@ -139,6 +143,10 @@ def load_config_from_env() -> GatewayConfig:
             os.environ.get("DGX_ACTIVE_MODEL_STATE_PATH")
             or "/srv/dgx/system-prod/state/active-model-profile.json"
         ).strip(),
+        resource_state_path=(
+            os.environ.get("DGX_RESOURCE_STATE_PATH")
+            or "/srv/dgx/system-prod/state/dgx-resource-state.json"
+        ).strip(),
     )
 
 
@@ -169,6 +177,42 @@ def resolve_backend_base_url(config: GatewayConfig) -> str:
 def read_body(handler: BaseHTTPRequestHandler) -> bytes:
     length = int(handler.headers.get("Content-Length", "0"))
     return handler.rfile.read(length) if length > 0 else b""
+
+
+def reason_from_json_body(body: bytes) -> str | None:
+    if not body:
+        return None
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    reason = payload.get("reason")
+    return reason.strip() if isinstance(reason, str) and reason.strip() else None
+
+
+def write_gateway_resource_state_best_effort(
+    config: GatewayConfig,
+    *,
+    owner: str,
+    status: str,
+    action: str,
+    reason: str | None,
+    guarantee_level: str = "post_only",
+) -> dict[str, object] | None:
+    try:
+        state = write_resource_state(
+            config.resource_state_path,
+            owner=owner,
+            status=status,
+            action=action,
+            reason=reason,
+            guarantee_level=guarantee_level,
+        )
+    except OSError:
+        return None
+    return state_to_api(state)
 
 
 def inject_blue_chat_completions_defaults(path: str, body: bytes, active_backend: str) -> bytes:
@@ -488,6 +532,7 @@ def make_handler(
                 try:
                     profiles = load_model_profiles(config.model_registry_root)
                     active_state = read_active_model_state(config.active_model_state_path)
+                    resource_state = read_resource_state(config.resource_state_path)
                     self._send_json(
                         200,
                         {
@@ -495,10 +540,28 @@ def make_handler(
                             "profiles": [model_profile_to_api(profile) for profile in profiles],
                             "activeProfileId": active_state.model_profile_id if active_state else None,
                             "state": active_model_state_to_api(active_state) if active_state else None,
+                            "resourceState": state_to_api(resource_state) if resource_state else None,
                         },
                     )
                 except Exception as exc:
                     self._send_json(503, {"ok": False, "code": "MODEL_PROFILES_UNAVAILABLE", "message": str(exc)})
+                return
+            if self.path == "/system/resource-state":
+                if not self._llm_auth_ok():
+                    self._send_text(403, "forbidden")
+                    return
+                resource_state = read_resource_state(config.resource_state_path)
+                if resource_state is None:
+                    self._send_json(
+                        503,
+                        {
+                            "ok": False,
+                            "code": "DGX_RESOURCE_STATE_UNAVAILABLE",
+                            "message": "resource state is unavailable",
+                        },
+                    )
+                    return
+                self._send_json(200, {"ok": True, **state_to_api(resource_state)})
                 return
             if self.path == "/system/model-profile":
                 if not self._llm_auth_ok():
@@ -612,7 +675,18 @@ def make_handler(
                             },
                         )
                         # endregion
-                        payload = json.dumps({"ok": True, "path": self.path}).encode("utf-8")
+                        is_start = self.path.endswith("/start")
+                        resource_state = write_gateway_resource_state_best_effort(
+                            config,
+                            owner="private",
+                            status="preparing" if is_start else "released",
+                            action="private-comfyui-start" if is_start else "private-comfyui-stop",
+                            reason=reason_from_json_body(body),
+                        )
+                        payload_body = {"ok": True, "path": self.path}
+                        if resource_state is not None:
+                            payload_body["resourceState"] = resource_state
+                        payload = json.dumps(payload_body).encode("utf-8")
                         self._send(200, payload, "application/json; charset=utf-8")
                         return
                     # region agent log
@@ -697,7 +771,18 @@ def make_handler(
                             },
                         )
                         # endregion
-                        payload = json.dumps({"ok": True, "path": self.path}).encode("utf-8")
+                        is_start = self.path.endswith("/start")
+                        resource_state = write_gateway_resource_state_best_effort(
+                            config,
+                            owner="experiment",
+                            status="preparing" if is_start else "released",
+                            action="experiment-lab-start" if is_start else "experiment-lab-stop",
+                            reason=reason_from_json_body(body),
+                        )
+                        payload_body = {"ok": True, "path": self.path}
+                        if resource_state is not None:
+                            payload_body["resourceState"] = resource_state
+                        payload = json.dumps(payload_body).encode("utf-8")
                         self._send(200, payload, "application/json; charset=utf-8")
                         return
                     # region agent log
@@ -780,7 +865,18 @@ def make_handler(
                                 "outputSample": output[:200],
                             },
                         )
-                        payload = json.dumps({"ok": True, "path": self.path}).encode("utf-8")
+                        is_start = self.path.endswith("/start")
+                        resource_state = write_gateway_resource_state_best_effort(
+                            config,
+                            owner="experiment",
+                            status="preparing" if is_start else "released",
+                            action="agent-container-start" if is_start else "agent-container-stop",
+                            reason=reason_from_json_body(body),
+                        )
+                        payload_body = {"ok": True, "path": self.path}
+                        if resource_state is not None:
+                            payload_body["resourceState"] = resource_state
+                        payload = json.dumps(payload_body).encode("utf-8")
                         self._send(200, payload, "application/json; charset=utf-8")
                         return
                     emit_agent_debug_log(

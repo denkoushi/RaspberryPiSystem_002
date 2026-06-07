@@ -216,6 +216,40 @@ export type DgxBusinessModelProfileApi = {
   canonicalNames: string[];
   legacyNames: string[];
   unavailableReasonJa?: string;
+  declaredCapabilities?: string[];
+  visionRequiresMmproj?: boolean;
+  launcherHints?: Record<string, string>;
+  runtimeProfile?: {
+    engine?: 'vllm' | 'llama.cpp' | string;
+    memoryPolicy?: string;
+    coexistencePolicy?: string;
+    guaranteeLevel?: string;
+    vllm?: {
+      gpuMemoryUtilization?: number;
+      maxModelLen?: number;
+      maxNumSeqs?: number;
+      maxNumBatchedTokens?: number;
+      kvCacheDtype?: string;
+      languageModelOnly?: boolean;
+    };
+    llamaCpp?: {
+      ctxSize?: number;
+      parallel?: number;
+      nGpuLayers?: number;
+    };
+  };
+};
+
+export type DgxResourceSharedStateApi = {
+  owner: 'business' | 'private' | 'experiment' | 'unknown';
+  status: 'preparing' | 'ready' | 'released' | 'unknown';
+  updatedAt: string;
+  action: string;
+  reason: string | null;
+  modelProfileId: string | null;
+  displayNameJa: string | null;
+  backend: 'green' | 'blue' | null;
+  guaranteeLevel: string | null;
 };
 
 export type DgxResourceRuntimeSummaryApi = {
@@ -231,6 +265,10 @@ export type DgxResourceRuntimeSummaryApi = {
   businessRuntimeIntentProfileId?: string | null;
   businessRuntimeIntentSource?: string | null;
   businessRuntimeIntentAlignedWithActive?: boolean | null;
+  resourceOwner?: 'business' | 'private' | 'experiment' | 'unknown';
+  resourceOwnerLabelJa?: string;
+  resourceStateStatus?: 'preparing' | 'ready' | 'released' | 'unknown';
+  resourceStateDetailJa?: string;
 };
 
 export type DgxModelProfilesOverviewApi = {
@@ -243,6 +281,7 @@ export type DgxModelProfilesOverviewApi = {
   activeStateBackend: 'green' | 'blue' | null;
   pendingProfileId: string | null;
   lastLoadedProfileId: string | null;
+  resourceState?: DgxResourceSharedStateApi | null;
   errorMessageJa?: string;
 };
 
@@ -279,6 +318,7 @@ export type DgxResourceOverview = {
   /** 運用者向け（API が返す新モデル。互換のため一時的に省略可能） */
   operator?: DgxResourceOperatorConsoleApi;
   modelProfiles?: DgxModelProfilesOverviewApi;
+  resourceState?: DgxResourceSharedStateApi | null;
   runtimeSummary?: DgxResourceRuntimeSummaryApi;
 };
 

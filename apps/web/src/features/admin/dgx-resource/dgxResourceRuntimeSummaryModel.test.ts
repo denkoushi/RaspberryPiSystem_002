@@ -15,6 +15,10 @@ function sampleSummary(partial: Partial<DgxResourceRuntimeSummaryApi>): DgxResou
     policyLabel: '業務優先',
     runtimeSource: 'model_profile_state',
     inferenceDegraded: false,
+    resourceOwner: 'business',
+    resourceOwnerLabelJa: '業務',
+    resourceStateStatus: 'preparing',
+    resourceStateDetailJa: '35B GGUF（preparing / post_only）',
     ...partial,
   };
 }
@@ -22,10 +26,11 @@ function sampleSummary(partial: Partial<DgxResourceRuntimeSummaryApi>): DgxResou
 describe('buildDgxResourceRuntimeSummaryItems', () => {
   it('35B green 稼働', () => {
     const items = buildDgxResourceRuntimeSummaryItems(sampleSummary({}));
-    expect(items.map((x) => x.key)).toEqual(['model', 'backend', 'ready', 'policy']);
-    expect(items[0]?.value).toBe('35B GGUF');
-    expect(items[1]?.value).toContain('green');
-    expect(items[2]?.value).toBe('Ready');
+    expect(items.map((x) => x.key)).toEqual(['owner', 'model', 'backend', 'ready', 'policy']);
+    expect(items[0]?.value).toBe('業務');
+    expect(items[1]?.value).toBe('35B GGUF');
+    expect(items[2]?.value).toContain('green');
+    expect(items[3]?.value).toBe('Ready');
   });
 
   it('27B blue Ready', () => {
@@ -37,8 +42,8 @@ describe('buildDgxResourceRuntimeSummaryItems', () => {
         businessReady: true,
       })
     );
-    expect(items[1]?.value).toContain('blue');
-    expect(items[2]?.value).toBe('Ready');
+    expect(items[2]?.value).toContain('blue');
+    expect(items[3]?.value).toBe('Ready');
   });
 
   it('includes Pi5 business intent when present', () => {
@@ -63,7 +68,7 @@ describe('buildDgxResourceRuntimeSummaryItems', () => {
         runtimeSource: 'unknown',
       })
     );
-    expect(items[0]?.value).toBe('未ロード');
-    expect(items[2]?.value).toBe('Not Ready');
+    expect(items[1]?.value).toBe('未ロード');
+    expect(items[3]?.value).toBe('Not Ready');
   });
 });
