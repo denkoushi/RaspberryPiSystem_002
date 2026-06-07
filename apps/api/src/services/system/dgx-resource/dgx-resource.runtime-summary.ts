@@ -22,6 +22,11 @@ export type DgxResourceRuntimeSummary = {
   businessRuntimeIntentProfileId: string | null;
   businessRuntimeIntentSource: string | null;
   businessRuntimeIntentAlignedWithActive: boolean | null;
+  /** DGX gateway 共有 owner/state。Private Pi5 直通 route も同じ状態を更新する。 */
+  resourceOwner: 'business' | 'private' | 'experiment' | 'unknown';
+  resourceOwnerLabelJa: string;
+  resourceStateStatus: 'preparing' | 'ready' | 'released' | 'unknown';
+  resourceStateDetailJa: string;
 };
 
 function resolveActiveProfileDisplay(
@@ -64,6 +69,38 @@ function evaluateBusinessReadySnapshot(bundle: OverviewProbeBundle): { ready: bo
   return { ready: false, detailJa: `業務推論未 Ready: ${tail}` };
 }
 
+function ownerLabelJa(owner: DgxResourceRuntimeSummary['resourceOwner']): string {
+  if (owner === 'business') return '業務';
+  if (owner === 'private') return 'Private';
+  if (owner === 'experiment') return '実験';
+  return '不明';
+}
+
+function resolveResourceStateSnapshot(
+  bundle: OverviewProbeBundle
+): Pick<
+  DgxResourceRuntimeSummary,
+  'resourceOwner' | 'resourceOwnerLabelJa' | 'resourceStateStatus' | 'resourceStateDetailJa'
+> {
+  const state = bundle.modelProfiles.resourceState;
+  if (!state) {
+    return {
+      resourceOwner: 'unknown',
+      resourceOwnerLabelJa: '不明',
+      resourceStateStatus: 'unknown',
+      resourceStateDetailJa: 'DGX resource-state 未作成または未配備',
+    };
+  }
+  const target = state.displayNameJa ?? state.modelProfileId ?? state.backend ?? '対象未記録';
+  const guarantee = state.guaranteeLevel ? ` / ${state.guaranteeLevel}` : '';
+  return {
+    resourceOwner: state.owner,
+    resourceOwnerLabelJa: ownerLabelJa(state.owner),
+    resourceStateStatus: state.status,
+    resourceStateDetailJa: `${target}（${state.status}${guarantee}）`,
+  };
+}
+
 /**
  * overview 用 runtime state をプローブ束から構築（Strict Ready の待機は行わない）。
  */
@@ -94,6 +131,7 @@ export function buildDgxResourceRuntimeSummary(
   const business = evaluateBusinessReadySnapshot(bundle);
   const gatewayRunning = bundle.gatewayStatus.configured && bundle.gatewayStatus.health.ok;
   const inferenceDegraded = Boolean(gatewayRunning && !bundle.modelsProbe.ok && bundle.gatewayStatus.configured);
+  const resourceState = resolveResourceStateSnapshot(bundle);
   const intentSnapshot = intentEnv ? resolveBusinessIntentSnapshot(bundle, intentEnv) : {
     businessRuntimeIntentProfileId: null,
     businessRuntimeIntentSource: null,
@@ -110,6 +148,7 @@ export function buildDgxResourceRuntimeSummary(
     policyLabel: policyLabelJa(policyMode),
     runtimeSource: active.source,
     inferenceDegraded,
+    ...resourceState,
     ...intentSnapshot,
   };
 }

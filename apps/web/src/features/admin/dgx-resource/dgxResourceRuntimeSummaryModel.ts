@@ -22,6 +22,13 @@ function readyTone(ready: boolean, degraded: boolean): string {
   return 'text-white/55';
 }
 
+function ownerTone(owner: DgxResourceRuntimeSummaryApi['resourceOwner']): string {
+  if (owner === 'business') return 'text-emerald-200';
+  if (owner === 'private') return 'text-fuchsia-200';
+  if (owner === 'experiment') return 'text-amber-200';
+  return 'text-white/55';
+}
+
 /**
  * overview.runtimeSummary から運用状態ストリップ用モデルを構築（React 非依存）。
  */
@@ -34,12 +41,19 @@ export function buildDgxResourceRuntimeSummaryItems(
 
   return [
     {
+      key: 'owner',
+      label: 'DGX 所有',
+      value: summary.resourceOwnerLabelJa ?? '不明',
+      hint: summary.resourceStateDetailJa,
+      toneClass: ownerTone(summary.resourceOwner ?? 'unknown'),
+    },
+    {
       key: 'model',
-      label: 'Active Model',
+      label: summary.businessReady ? '現在応答中' : '最後に選択',
       value: activeModel,
       hint:
         summary.runtimeSource === 'model_profile_state'
-          ? 'DGX active profile'
+          ? 'DGX active profile state'
           : summary.runtimeSource === 'env_fallback'
             ? 'env フォールバック'
             : undefined,

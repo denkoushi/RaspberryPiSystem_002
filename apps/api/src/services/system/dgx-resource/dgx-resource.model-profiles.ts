@@ -29,6 +29,39 @@ export type DgxBusinessModelProfile = {
   declaredCapabilities?: string[];
   visionRequiresMmproj?: boolean;
   launcherHints?: Record<string, string>;
+  runtimeProfile?: DgxModelRuntimeProfile;
+};
+
+export type DgxModelRuntimeProfile = {
+  engine?: 'vllm' | 'llama.cpp' | string;
+  memoryPolicy?: string;
+  coexistencePolicy?: string;
+  guaranteeLevel?: string;
+  vllm?: {
+    gpuMemoryUtilization?: number;
+    maxModelLen?: number;
+    maxNumSeqs?: number;
+    maxNumBatchedTokens?: number;
+    kvCacheDtype?: string;
+    languageModelOnly?: boolean;
+  };
+  llamaCpp?: {
+    ctxSize?: number;
+    parallel?: number;
+    nGpuLayers?: number;
+  };
+};
+
+export type DgxResourceSharedState = {
+  owner: 'business' | 'private' | 'experiment' | 'unknown';
+  status: 'preparing' | 'ready' | 'released' | 'unknown';
+  updatedAt: string;
+  action: string;
+  reason: string | null;
+  modelProfileId: string | null;
+  displayNameJa: string | null;
+  backend: 'green' | 'blue' | null;
+  guaranteeLevel: string | null;
 };
 
 /** DGX active_model_state の Pi5 向け最小契約（未報告フィールドは null 扱い） */
@@ -50,6 +83,8 @@ export type DgxModelProfilesOverview = {
   activeRuntimeState: DgxActiveModelRuntimeState | null;
   pendingProfileId: string | null;
   lastLoadedProfileId: string | null;
+  /** DGX gateway 共有 owner/state。未配備または未作成時は null */
+  resourceState: DgxResourceSharedState | null;
   errorMessageJa?: string;
 };
 
@@ -60,6 +95,7 @@ type GatewayModelProfilesResponse = {
   profiles?: unknown;
   activeProfileId?: unknown;
   state?: unknown;
+  resourceState?: unknown;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -73,6 +109,56 @@ const asNumber = (value: unknown): number | undefined =>
 
 const asStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0) : [];
+
+const parseRuntimeProfile = (value: unknown): DgxModelRuntimeProfile | undefined => {
+  if (!isRecord(value)) return undefined;
+  const vllm = isRecord(value.vllm)
+    ? {
+        ...(asNumber(value.vllm.gpuMemoryUtilization) !== undefined ? { gpuMemoryUtilization: asNumber(value.vllm.gpuMemoryUtilization)! } : {}),
+        ...(asNumber(value.vllm.maxModelLen) !== undefined ? { maxModelLen: asNumber(value.vllm.maxModelLen)! } : {}),
+        ...(asNumber(value.vllm.maxNumSeqs) !== undefined ? { maxNumSeqs: asNumber(value.vllm.maxNumSeqs)! } : {}),
+        ...(asNumber(value.vllm.maxNumBatchedTokens) !== undefined
+          ? { maxNumBatchedTokens: asNumber(value.vllm.maxNumBatchedTokens)! }
+          : {}),
+        ...(asString(value.vllm.kvCacheDtype) ? { kvCacheDtype: asString(value.vllm.kvCacheDtype)! } : {}),
+        ...(typeof value.vllm.languageModelOnly === 'boolean' ? { languageModelOnly: value.vllm.languageModelOnly } : {}),
+      }
+    : undefined;
+  const llamaCpp = isRecord(value.llamaCpp)
+    ? {
+        ...(asNumber(value.llamaCpp.ctxSize) !== undefined ? { ctxSize: asNumber(value.llamaCpp.ctxSize)! } : {}),
+        ...(asNumber(value.llamaCpp.parallel) !== undefined ? { parallel: asNumber(value.llamaCpp.parallel)! } : {}),
+        ...(asNumber(value.llamaCpp.nGpuLayers) !== undefined ? { nGpuLayers: asNumber(value.llamaCpp.nGpuLayers)! } : {}),
+      }
+    : undefined;
+  const parsed: DgxModelRuntimeProfile = {
+    ...(asString(value.engine) ? { engine: asString(value.engine)! } : {}),
+    ...(asString(value.memoryPolicy) ? { memoryPolicy: asString(value.memoryPolicy)! } : {}),
+    ...(asString(value.coexistencePolicy) ? { coexistencePolicy: asString(value.coexistencePolicy)! } : {}),
+    ...(asString(value.guaranteeLevel) ? { guaranteeLevel: asString(value.guaranteeLevel)! } : {}),
+    ...(vllm && Object.keys(vllm).length > 0 ? { vllm } : {}),
+    ...(llamaCpp && Object.keys(llamaCpp).length > 0 ? { llamaCpp } : {}),
+  };
+  return Object.keys(parsed).length > 0 ? parsed : undefined;
+};
+
+export function parseDgxResourceSharedState(value: unknown): DgxResourceSharedState | null {
+  if (!isRecord(value)) return null;
+  const owner = asString(value.owner);
+  const status = asString(value.status);
+  const backend = asString(value.backend);
+  return {
+    owner: owner === 'business' || owner === 'private' || owner === 'experiment' ? owner : 'unknown',
+    status: status === 'preparing' || status === 'ready' || status === 'released' ? status : 'unknown',
+    updatedAt: asString(value.updatedAt) ?? '',
+    action: asString(value.action) ?? '',
+    reason: asString(value.reason) ?? null,
+    modelProfileId: asString(value.modelProfileId) ?? null,
+    displayNameJa: asString(value.displayNameJa) ?? null,
+    backend: backend === 'green' || backend === 'blue' ? backend : null,
+    guaranteeLevel: asString(value.guaranteeLevel) ?? null,
+  };
+}
 
 const parseActiveStateBackend = (state: unknown): 'green' | 'blue' | null => {
   if (!isRecord(state)) return null;
@@ -138,6 +224,7 @@ export function normalizeDgxModelProfile(value: unknown): DgxBusinessModelProfil
           ) as Record<string, string>,
         }
       : {}),
+    ...(parseRuntimeProfile(value.runtimeProfile) ? { runtimeProfile: parseRuntimeProfile(value.runtimeProfile)! } : {}),
   };
 }
 
@@ -246,6 +333,7 @@ export async function fetchDgxModelProfilesOverview(input: {
       activeRuntimeState: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
+      resourceState: null,
       errorMessageJa: 'DGX gateway の baseUrl または共有トークンが未設定です',
     });
   }
@@ -268,6 +356,7 @@ export async function fetchDgxModelProfilesOverview(input: {
         activeRuntimeState: null,
         pendingProfileId: null,
         lastLoadedProfileId: null,
+        resourceState: null,
         errorMessageJa: `DGX model profiles API が HTTP ${response.status} を返しました`,
       });
     }
@@ -289,6 +378,7 @@ export async function fetchDgxModelProfilesOverview(input: {
       activeRuntimeState,
       pendingProfileId: null,
       lastLoadedProfileId: activeProfileId,
+      resourceState: parseDgxResourceSharedState(body.resourceState),
     });
   } catch {
     return enrichModelProfilesOverview({
@@ -301,6 +391,7 @@ export async function fetchDgxModelProfilesOverview(input: {
       activeRuntimeState: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
+      resourceState: null,
       errorMessageJa: 'DGX model profiles API に接続できませんでした',
     });
   } finally {

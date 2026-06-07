@@ -37,6 +37,43 @@ class ProfileLauncherTests(unittest.TestCase):
             self.assertEqual(env["LLAMA_SERVER_MODEL"], "/srv/dgx/shared-models/llm/gguf/model.gguf")
             self.assertEqual(env["LLAMA_SERVER_MMPROJ"], "/srv/dgx/shared-models/llm/gguf/mmproj-F16.gguf")
 
+    def test_maps_runtime_profile_budget_to_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = Path(tmp) / "manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "modelProfileId": "business_qwen36_27b_nvfp4",
+                        "displayNameJa": "27B",
+                        "backend": "blue",
+                        "servedAlias": "system-prod-primary",
+                        "runtimeProfile": {
+                            "engine": "vllm",
+                            "memoryPolicy": "known_good_business_text_tools",
+                            "vllm": {
+                                "gpuMemoryUtilization": 0.65,
+                                "maxModelLen": 8192,
+                                "maxNumSeqs": 4,
+                                "maxNumBatchedTokens": 16384,
+                                "kvCacheDtype": "fp8",
+                                "languageModelOnly": True,
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            profile = load_model_profile_manifest(manifest)
+            env = launcher_env_for_profile(profile)
+            self.assertEqual(env["DGX_RUNTIME_ENGINE"], "vllm")
+            self.assertEqual(env["DGX_MEMORY_POLICY"], "known_good_business_text_tools")
+            self.assertEqual(env["VLLM_GPU_MEMORY_UTILIZATION"], "0.65")
+            self.assertEqual(env["VLLM_MAX_MODEL_LEN"], "8192")
+            self.assertEqual(env["VLLM_MAX_NUM_SEQS"], "4")
+            self.assertEqual(env["VLLM_MAX_NUM_BATCHED_TOKENS"], "16384")
+            self.assertEqual(env["VLLM_KV_CACHE_DTYPE"], "fp8")
+            self.assertEqual(env["VLLM_LANGUAGE_MODEL_ONLY"], "true")
+
 
 if __name__ == "__main__":
     unittest.main()

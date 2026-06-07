@@ -15,6 +15,7 @@ DGX system-prod 用: active backend を start/stop する最小 HTTP 制御サ�
                                   green/blue 両方の stop が解決できることを起動時に検証する（単一アクティブ運用）
   DGX_MODEL_REGISTRY_ROOT     任意: モデルプロファイル manifest の root
   DGX_ACTIVE_MODEL_STATE_PATH 任意: active model profile state JSON の保存先
+  DGX_RESOURCE_STATE_PATH     任意: DGX 共有リソース owner/state JSON の保存先
   LLM_RUNTIME_LISTEN_HOST    既定: 127.0.0.1
   LLM_RUNTIME_LISTEN_PORT    既定: 39090
 
@@ -49,6 +50,7 @@ from dgx_llm_single_active_guard import (  # noqa: E402
 from active_model_state import active_model_state_to_api, read_active_model_state, write_active_model_state  # noqa: E402
 from model_profiles import ModelProfileError, validate_startable_profile  # noqa: E402
 from profile_launcher import launcher_env_for_profile  # noqa: E402
+from resource_state import infer_owner_from_profile, state_to_api, write_resource_state  # noqa: E402
 from vision_readiness import assess_runtime_readiness  # noqa: E402
 from runtime_stop_policy import (  # noqa: E402
     BlueStopMode,
@@ -73,6 +75,7 @@ class ControlConfig:
     port: int
     model_registry_root: str = "/srv/dgx/shared-models/registry"
     active_model_state_path: str = "/srv/dgx/system-prod/state/active-model-profile.json"
+    resource_state_path: str = "/srv/dgx/system-prod/state/dgx-resource-state.json"
 
 
 def load_config_from_env() -> ControlConfig:
@@ -90,6 +93,10 @@ def load_config_from_env() -> ControlConfig:
         active_model_state_path=(
             os.environ.get("DGX_ACTIVE_MODEL_STATE_PATH")
             or "/srv/dgx/system-prod/state/active-model-profile.json"
+        ).strip(),
+        resource_state_path=(
+            os.environ.get("DGX_RESOURCE_STATE_PATH")
+            or "/srv/dgx/system-prod/state/dgx-resource-state.json"
         ).strip(),
         host=(os.environ.get("LLM_RUNTIME_LISTEN_HOST") or "127.0.0.1").strip(),
         port=int((os.environ.get("LLM_RUNTIME_LISTEN_PORT") or "39090").strip()),
@@ -188,6 +195,38 @@ def read_json_body(handler: BaseHTTPRequestHandler) -> dict[str, object]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _string_body_value(body: dict[str, object], key: str) -> str | None:
+    value = body.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def write_resource_state_best_effort(
+    config: ControlConfig,
+    *,
+    owner: str,
+    status: str,
+    action: str,
+    reason: str | None,
+    profile,
+    backend: str | None,
+    guarantee_level: str | None,
+) -> dict[str, object] | None:
+    try:
+        state = write_resource_state(
+            config.resource_state_path,
+            owner=owner,
+            status=status,
+            action=action,
+            reason=reason,
+            profile=profile,
+            backend=backend,
+            guarantee_level=guarantee_level,
+        )
+    except OSError:
+        return None
+    return state_to_api(state)
+
+
 def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shell) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "dgx-llm-runtime-control/1.0"
@@ -228,6 +267,7 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                 if self.path == "/start":
                     body = read_json_body(self)
                     model_profile_id = body.get("modelProfileId")
+                    reason = _string_body_value(body, "reason")
                     profile = None
                     start_backend = config.active_backend
                     if isinstance(model_profile_id, str) and model_profile_id.strip():
@@ -247,6 +287,18 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     else:
                         command_runner(resolve_command(config, "start", start_backend))
                     payload: dict[str, object] = {"ok": True, "action": "start", "backend": start_backend}
+                    resource_state = write_resource_state_best_effort(
+                        config,
+                        owner=infer_owner_from_profile(profile, reason),
+                        status="preparing",
+                        action="start",
+                        reason=reason,
+                        profile=profile,
+                        backend=start_backend,
+                        guarantee_level="post_only",
+                    )
+                    if resource_state is not None:
+                        payload["resourceState"] = resource_state
                     if profile is not None:
                         ready_caps, vision_reason = assess_runtime_readiness(profile, start_env=start_env)
                         state = write_active_model_state(
@@ -259,30 +311,54 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     self._send_json(200, payload)
                     return
                 if self.path == "/stop":
+                    body = read_json_body(self)
+                    reason = _string_body_value(body, "reason")
                     stop_backend, stop_source = resolve_effective_backend(config)
                     command_runner(resolve_command(config, "stop", stop_backend))
-                    self._send_json(
-                        200,
-                        {
-                            "ok": True,
-                            "action": "stop",
-                            "backend": stop_backend,
-                            "backendSource": stop_source,
-                        },
+                    resource_state = write_resource_state_best_effort(
+                        config,
+                        owner=infer_owner_from_profile(None, reason),
+                        status="released",
+                        action="stop",
+                        reason=reason,
+                        profile=None,
+                        backend=stop_backend,
+                        guarantee_level="post_only",
                     )
+                    payload: dict[str, object] = {
+                        "ok": True,
+                        "action": "stop",
+                        "backend": stop_backend,
+                        "backendSource": stop_source,
+                    }
+                    if resource_state is not None:
+                        payload["resourceState"] = resource_state
+                    self._send_json(200, payload)
                     return
                 if self.path == "/stop-force":
+                    body = read_json_body(self)
+                    reason = _string_body_value(body, "reason")
                     stop_backend, stop_source = resolve_effective_backend(config)
                     command_runner(resolve_command(config, "stop-force", stop_backend))
-                    self._send_json(
-                        200,
-                        {
-                            "ok": True,
-                            "action": "stop-force",
-                            "backend": stop_backend,
-                            "backendSource": stop_source,
-                        },
+                    resource_state = write_resource_state_best_effort(
+                        config,
+                        owner="private",
+                        status="released",
+                        action="stop-force",
+                        reason=reason,
+                        profile=None,
+                        backend=stop_backend,
+                        guarantee_level="post_only",
                     )
+                    payload = {
+                        "ok": True,
+                        "action": "stop-force",
+                        "backend": stop_backend,
+                        "backendSource": stop_source,
+                    }
+                    if resource_state is not None:
+                        payload["resourceState"] = resource_state
+                    self._send_json(200, payload)
                     return
                 self._send_text(404, "not found")
             except subprocess.CalledProcessError as exc:

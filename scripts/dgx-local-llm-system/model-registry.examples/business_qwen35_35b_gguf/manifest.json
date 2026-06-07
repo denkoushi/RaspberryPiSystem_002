@@ -12,6 +12,17 @@
     "llamaServerModel": "/srv/dgx/shared-models/llm/gguf/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf",
     "llamaServerAlias": "system-prod-primary"
   },
+  "runtimeProfile": {
+    "engine": "llama.cpp",
+    "memoryPolicy": "gguf_business_fallback",
+    "coexistencePolicy": "single_active_not_comfy",
+    "guaranteeLevel": "strict_ready_when_orchestrated",
+    "llamaCpp": {
+      "ctxSize": 2048,
+      "parallel": 1,
+      "nGpuLayers": 99
+    }
+  },
   "sourceKind": "local_file",
   "sourceModelRef": "Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf",
   "modelFamily": "Qwen3.5",

@@ -59,6 +59,7 @@ class ModelProfile:
     declared_capabilities: tuple[str, ...] = ("text",)
     vision_requires_mmproj: bool = False
     launcher_hints: dict[str, str] = field(default_factory=dict)
+    runtime_profile: dict[str, Any] = field(default_factory=dict)
 
 
 def _string(value: Any) -> str | None:
@@ -91,6 +92,10 @@ def _int(value: Any) -> int | None:
     return None
 
 
+def _object(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def load_model_profile_manifest(path: Path) -> ModelProfile:
     body = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(body, dict):
@@ -110,6 +115,7 @@ def load_model_profile_manifest(path: Path) -> ModelProfile:
     vision_requires_mmproj = parse_vision_requires_mmproj(body, backend)
     declared_capabilities = parse_declared_capabilities(body, backend)
     launcher_hints = parse_launcher_hints(body)
+    runtime_profile = _object(body.get("runtimeProfile"))
 
     return ModelProfile(
         id=profile_id,
@@ -136,6 +142,7 @@ def load_model_profile_manifest(path: Path) -> ModelProfile:
         declared_capabilities=declared_capabilities,
         vision_requires_mmproj=vision_requires_mmproj,
         launcher_hints=launcher_hints,
+        runtime_profile=runtime_profile,
     )
 
 
@@ -191,6 +198,8 @@ def model_profile_to_api(profile: ModelProfile) -> dict[str, Any]:
     payload["visionRequiresMmproj"] = profile.vision_requires_mmproj
     if profile.launcher_hints:
         payload["launcherHints"] = dict(profile.launcher_hints)
+    if profile.runtime_profile:
+        payload["runtimeProfile"] = dict(profile.runtime_profile)
 
     optional = {
         "descriptionJa": profile.description_ja,

@@ -125,6 +125,13 @@ export function DgxResourcePrimaryScenarioFlow({
     );
   }, [modelProfiles?.businessReturnSelectable, modelProfiles?.available]);
   const selectedModelProfile = selectableProfiles.find((profile) => profile.id === selectedModelProfileId);
+  const selectedRuntime = selectedModelProfile?.runtimeProfile;
+  const selectedRuntimeBudget =
+    selectedRuntime?.vllm?.gpuMemoryUtilization != null
+      ? `vLLM memory budget ${Math.round(selectedRuntime.vllm.gpuMemoryUtilization * 100)}%`
+      : selectedRuntime?.llamaCpp?.ctxSize != null
+        ? `llama.cpp ctx ${selectedRuntime.llamaCpp.ctxSize}`
+        : null;
 
   useEffect(() => {
     const sync = () => setGlobalPending(dgxPrimaryScenarioPendingCount > 0);
@@ -250,7 +257,12 @@ export function DgxResourcePrimaryScenarioFlow({
 
   return (
     <div className="space-y-3">
-      <h3 className="text-lg font-semibold text-white/95">やりたいこと</h3>
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-lg font-semibold text-white/95">やりたいこと</h3>
+        <span className="rounded-full border border-emerald-400/25 bg-emerald-950/25 px-2 py-0.5 text-xs font-semibold text-emerald-100">
+          保証: Strict Ready
+        </span>
+      </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {actions.map((action) => {
@@ -312,6 +324,12 @@ export function DgxResourcePrimaryScenarioFlow({
                 {selectedModelProfile.modelFamily ?? '不明'} / 形式: {selectedModelProfile.format ?? '不明'} / 量子化:{' '}
                 {selectedModelProfile.quantization ?? '不明'}
               </p>
+              {selectedRuntimeBudget ? (
+                <p>
+                  運用予算: {selectedRuntimeBudget}
+                  {selectedRuntime?.memoryPolicy ? ` / ${selectedRuntime.memoryPolicy}` : ''}
+                </p>
+              ) : null}
             </div>
           ) : (
             <p className="mt-2 text-xs text-amber-200">

@@ -140,7 +140,7 @@ class ModelProfileTests(unittest.TestCase):
             self.assertTrue(profiles["business_qwen36_27b_nvfp4"]["businessOrchestrationEligible"])
             self.assertFalse(profiles["qwen36_35b_uncensored"]["businessOrchestrationEligible"])
 
-    def test_declared_capabilities_and_launcher_hints_in_api(self):
+    def test_declared_capabilities_launcher_hints_and_runtime_profile_in_api(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "registry"
             storage = Path(tmp) / "gguf"
@@ -157,6 +157,11 @@ class ModelProfileTests(unittest.TestCase):
                     "declaredCapabilities": ["text", "vision"],
                     "visionRequiresMmproj": True,
                     "launcherHints": {"llamaServerModel": str(storage / "model.gguf")},
+                    "runtimeProfile": {
+                        "engine": "llama.cpp",
+                        "memoryPolicy": "gguf_business_fallback",
+                        "llamaCpp": {"ctxSize": 2048, "parallel": 1, "nGpuLayers": 99},
+                    },
                     "enabled": True,
                 },
             )
@@ -165,6 +170,8 @@ class ModelProfileTests(unittest.TestCase):
             self.assertEqual(api["declaredCapabilities"], ["text", "vision"])
             self.assertTrue(api["visionRequiresMmproj"])
             self.assertIn("llamaServerModel", api["launcherHints"])
+            self.assertEqual(api["runtimeProfile"]["engine"], "llama.cpp")
+            self.assertEqual(api["runtimeProfile"]["llamaCpp"]["ctxSize"], 2048)
 
     def test_profile_unavailable_when_current_storage_location_missing_hub_segment(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -213,16 +213,6 @@ export function DgxResourceDashboard() {
               if (message == null) setTargetActionError(null);
             }}
           />
-          <DgxResourceQuickProfileActions
-            modelProfiles={overview.modelProfiles}
-            postDgxAction={postDgxActionAsync}
-            actionBusy={mutateAction.isPending}
-            externalBusy={scenarioLikelyRunning}
-            onControlUiError={(message) => {
-              setActionError(message);
-              if (message == null) setTargetActionError(null);
-            }}
-          />
         </section>
       ) : (
         <p className="rounded border border-amber-400/30 bg-amber-950/30 p-3 text-sm text-amber-100/90">
@@ -238,6 +228,17 @@ export function DgxResourceDashboard() {
         <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-white/65">詳細・保守（通常は不要）</summary>
         <div className="space-y-3 border-t border-white/10 px-3 py-3">
           <DgxResourceWarmRuntimeNotice overview={overview} />
+
+          <DgxResourceQuickProfileActions
+            modelProfiles={overview.modelProfiles}
+            postDgxAction={postDgxActionAsync}
+            actionBusy={mutateAction.isPending}
+            externalBusy={scenarioLikelyRunning}
+            onControlUiError={(message) => {
+              setActionError(message);
+              if (message == null) setTargetActionError(null);
+            }}
+          />
 
           <DgxResourcePolicyPanel
             overview={overview}

@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-07 · DGX resource runtimeProfile / resourceState）
+
+- **DGX リソース**: profile 別 `runtimeProfile`（27B NVFP4 **`gpuMemoryUtilization: 0.65`**）と共有 **`resourceState`**（管理 UI **`DGX 所有`**）。**本番検証済**（DGX+Pi5）。**未完了**: 業務復帰の長時間 cold start を非同期ポーリング化。**記録**: [KB-389](./knowledge-base/KB-389-dgx-resource-runtime-profile-resource-state.md)
+
 ### 最新アップデート（2026-06-06 · Hermes Life Pilot）
 
 - [KB Life Pilot](./knowledge-base/KB-private-pi5-hermes-life-pilot.md) — D13 `f782f59d` · D12 Obsidian · 再開正本
