@@ -3,6 +3,7 @@ title: KB-389 DGX resource runtimeProfile and shared resourceState
 tags: [DGX, DGX_RESOURCE, Spark, runtimeProfile, resourceState, vLLM]
 audience: [開発者, 運用者]
 last-verified: 2026-06-07
+last-updated: 2026-06-07-async-ux-deploy
 category: knowledge-base
 status: active
 scope: DGX Spark system-prod LocalLLM, Pi5 `/admin/tools/dgx-resource`, profile-scoped memory budget
@@ -62,6 +63,14 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 - `status`: `preparing` | `released` (see Open Items — `ready` not written yet)
 - Pi5 admin shows **`DGX 所有`** via `overview.runtimeSummary.resourceOwnerLabelJa`
 - Strict Ready / business readiness still uses Pi5 orchestration + `/v1/models`; resourceState is **display and cross-workload lease hint**, not a KPI.
+
+### Async business-return UX (Pi5 only · 2026-06-07)
+
+- Scenarios: **`private_to_business`** / **`experiment_to_business`** only.
+- After workload steps and DGX `POST /start` with `modelProfileId`, API sets **`deferReadiness: true`** and returns **`scenarioExecute.outcomeKind: in_progress`** instead of blocking on Strict Ready.
+- UI pending clears when **`runtimeSummary.businessReady === true`** and **`runtimeSummary.resourceOwner === 'business'`** (overview polling + `sessionStorage` restore on remount).
+- Other scenarios (e.g. `business_to_private`) keep synchronous Strict Ready.
+- DGX code unchanged for this UX fix.
 
 ### Admin UI layout (2026-06-07)
 
@@ -128,15 +137,12 @@ Do not infer "model not loaded" from low memory on **35B green** alone; on **27B
 
 After first real orchestration action, `DGX 所有` moved **不明 → Private → 業務**, matching DGX writes on `/start` / `/stop-force`.
 
-### 3. Business-return UI timeout is orchestration UX, not DGX failure
+### 3. Business-return UI timeout (pre-async UX · resolved)
 
-vLLM cold start (load, compile, warmup, autotune) can exceed the synchronous `EXECUTE_ORCHESTRATION_SCENARIO` HTTP window. DGX kept progressing; backend became ready while the UI showed an error.
+Before **`b321f82f`**, vLLM cold start could exceed the synchronous `EXECUTE_ORCHESTRATION_SCENARIO` HTTP window while DGX kept progressing. **Mitigation shipped**: `in_progress` + overview polling (§4). Residual operator notes:
 
-**Operator guidance** (not a defect record):
-
-- If progress banner says transition continuing, **do not spam the action button**.
-- Reload `/admin/tools/dgx-resource` after several minutes; check `BUSINESS READY` and Unified Mem.
-- Temporary `502` on `/v1/models` during cold start is expected.
+- Do not spam the action button while pending banner is shown.
+- Temporary `502` on `/v1/models` during cold start is expected until Ready.
 
 ### 4. Async business-return UX is deployed
 
@@ -157,12 +163,26 @@ Deploy summary:
 
 | Target | Result |
 |--------|--------|
-| Pi5 API/Web deploy | Success on detach run `20260607-143332-28257` |
-| First deploy attempt | Failed on web production build type mismatch; fixed by `6f0d5b20` |
+| Pi5 API/Web deploy | Success on detach run **`20260607-143332-28257`** (`PLAY RECAP failed=0`) |
+| First deploy attempt | Failed on web production build type mismatch; fixed by **`6f0d5b20`** |
+| Pi5 production Git ref | **`6f0d5b20`** |
 | DGX deploy/actions | Not performed for this UX-only change |
 | Pi5 containers | `docker-api-1` healthy, `docker-web-1` up |
 | Web bundle | Contains `DGX 側でモデルをロード中` |
-| Authenticated overview read-only check | `businessReady: true`, `resourceOwner: business`, `activeProfileId: business_qwen36_27b_nvfp4`, `activeStateBackend: blue` |
+| Phase12 after async UX deploy | **43/0/0** (~57s) |
+
+**Authenticated overview snapshot** (Pi5 read-only GET after deploy; no DGX actions):
+
+| Field | Value |
+|-------|-------|
+| `runtimeSummary.businessReady` | `true` |
+| `runtimeSummary.resourceOwner` | `business` |
+| `runtimeSummary.resourceStateStatus` | `preparing` |
+| `modelProfiles.activeProfileId` | `business_qwen36_27b_nvfp4` |
+| `modelProfiles.activeStateBackend` | `blue` |
+| `modelProfiles.status` | `ok` |
+| `resourceState.owner` / `backend` | `business` / `blue` |
+| `resourceState.status` | `preparing` (see Open Items) |
 
 Validation for this async UX branch:
 
