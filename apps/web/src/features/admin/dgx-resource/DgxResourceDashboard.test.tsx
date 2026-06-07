@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { DgxResourceDashboard } from './DgxResourceDashboard';
@@ -26,21 +26,6 @@ vi.mock('../../../api/dgx-resource', () => ({
 
 vi.mock('../../../contexts/ConfirmContext', () => ({
   useConfirm: () => useConfirmMock,
-}));
-
-vi.mock('./DgxResourceStatusBoard', () => ({
-  DgxResourceStatusBoard: ({
-    kpis,
-    runtimeSummary,
-  }: {
-    kpis: DgxResourceOverview['kpis'];
-    runtimeSummary?: DgxResourceOverview['runtimeSummary'];
-  }) => (
-    <div data-testid="status-board">
-      gpu:{kpis.gpuUtilPct}
-      policy:{runtimeSummary?.policyLabel ?? kpis.policyLabel}
-    </div>
-  ),
 }));
 
 vi.mock('./DgxResourcePrimaryScenarioFlow', () => ({
@@ -169,6 +154,10 @@ function makeOverview(): DgxResourceOverview {
       policyLabel: '業務優先',
       runtimeSource: 'model_profile_state',
       inferenceDegraded: false,
+      resourceOwner: 'business',
+      resourceOwnerLabelJa: '業務',
+      resourceStateStatus: 'ready',
+      resourceStateDetailJa: 'ready',
     },
   };
 }
@@ -181,7 +170,7 @@ describe('DgxResourceDashboard', () => {
     window.sessionStorage.clear();
   });
 
-  it('loaded state hides page heading and renders KPI strip first', async () => {
+  it('renders compact status header and primary scenario flow after load', async () => {
     fetchDgxResourceOverview.mockResolvedValue(makeOverview());
     fetchDgxResourceEvents.mockResolvedValue({ events: [] });
 
@@ -189,10 +178,10 @@ describe('DgxResourceDashboard', () => {
 
     expect(screen.getByRole('heading', { name: 'DGX リソース' })).toBeInTheDocument();
 
-    expect(await screen.findByTestId('status-board')).toHaveTextContent('policy:業務優先');
-    await waitFor(() => {
-      expect(screen.queryByRole('heading', { name: 'DGX リソース' })).toBeNull();
-    });
+    expect(await screen.findByText('業務推論')).toBeInTheDocument();
+    expect(screen.getAllByText('準備完了').length).toBeGreaterThan(0);
+    expect(screen.getByText('業務')).toBeInTheDocument();
+    expect(screen.getByText('96 / 128 GiB')).toBeInTheDocument();
     expect(screen.getByText('primary-scenario-flow')).toBeInTheDocument();
   });
 });

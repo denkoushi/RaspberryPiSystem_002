@@ -187,12 +187,12 @@ describe('DgxResourceOperatorConsole', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'DGX 運用ガイド' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'やりたいこと' })).toBeInTheDocument();
     expect(screen.getAllByText('私用を始める').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: '実行する →' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'DGX 操作' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '業務に戻す（私用を終える）' })).toBeInTheDocument();
   });
 
-  it('does not call API when only selecting a scenario', async () => {
+  it('executes business return from the action button', async () => {
     const postDgxAction = vi.fn(async (body) => {
       if (body.type === 'PREVIEW_ORCHESTRATION_SCENARIO') {
         return {
@@ -222,8 +222,6 @@ describe('DgxResourceOperatorConsole', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /業務に戻す/ }));
-    expect(postDgxAction).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '実行する →' }));
     await waitFor(() =>
       expect(postDgxAction).toHaveBeenCalledWith({
         type: 'PREVIEW_ORCHESTRATION_SCENARIO',
@@ -288,7 +286,7 @@ describe('DgxResourceOperatorConsole', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '実行する →' }));
+    fireEvent.click(screen.getByRole('button', { name: '業務に戻す（私用を終える）' }));
     await waitFor(() =>
       expect(postDgxAction).toHaveBeenCalledWith({
         type: 'PREVIEW_ORCHESTRATION_SCENARIO',

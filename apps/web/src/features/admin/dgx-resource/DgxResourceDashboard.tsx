@@ -12,12 +12,16 @@ import {
 import { useConfirm } from '../../../contexts/ConfirmContext';
 import { POLL_MS } from '../../../lib/admin-polling-intervals';
 
+import { buildDgxResourceDashboardViewModel } from './dgxResourceDashboardViewModel';
+import { DgxResourceEventsTimeline } from './DgxResourceEventsTimeline';
+import { DgxResourceMonitoringPanel } from './DgxResourceMonitoringPanel';
 import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
 import { DgxResourcePrimaryScenarioFlow } from './DgxResourcePrimaryScenarioFlow';
 import { DgxResourceQuickProfileActions } from './DgxResourceQuickProfileActions';
 import { DgxResourceSparkStatusPanel } from './DgxResourceSparkStatusPanel';
-import { DgxResourceStatusBoard } from './DgxResourceStatusBoard';
+import { DgxResourceStatusHeader } from './DgxResourceStatusHeader';
 import { DgxResourceTargetGrid } from './DgxResourceTargetGrid';
+import { shouldShowMonitoringPanel } from './dgxResourceUi';
 import { DgxResourceWarmRuntimeNotice } from './DgxResourceWarmRuntimeNotice';
 
 import type {
@@ -25,22 +29,9 @@ import type {
   DgxOrchestrationScenarioIdApi,
   DgxResourceActionBody,
   DgxResourceRuntimeSummaryApi,
-  DgxServiceStatusKind,
 } from '../../../api/dgx-resource.types';
 
-function statusChipTone(status: DgxServiceStatusKind): string {
-  switch (status) {
-    case 'running':
-      return 'border-emerald-400/45 bg-emerald-950/25 text-emerald-100';
-    case 'degraded':
-      return 'border-amber-400/45 bg-amber-950/25 text-amber-100';
-    case 'stopped':
-      return 'border-white/20 bg-white/5 text-white/55';
-    case 'unknown':
-    default:
-      return 'border-white/15 bg-black/25 text-white/45';
-  }
-}
+type DetailTab = 'state' | 'maintenance' | 'logs';
 
 function isDgxScenarioLikelyRunning(eventMessages: string[]): boolean {
   for (const message of eventMessages) {
@@ -143,6 +134,7 @@ export function DgxResourceDashboard() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [targetActionError, setTargetActionError] = useState<{ targetId: DgxControlTargetIdApi; message: string } | null>(null);
   const [pendingFromStorage, setPendingFromStorage] = useState<DgxPersistedScenarioPendingState | null>(() => readPendingScenarioFromStorage());
+  const [detailTab, setDetailTab] = useState<DetailTab>('state');
 
   const overviewQuery = useQuery({
     queryKey: dgxResourceQueryKeys.overview,
@@ -216,35 +208,35 @@ export function DgxResourceDashboard() {
     );
   }
 
-  const targetById = new Map((overview.targets ?? []).map((t) => [t.id, t]));
-  const businessStatus = targetById.get('system-prod-inference')?.status ?? 'unknown';
-  const comfyStatus = targetById.get('private-comfyui')?.status ?? 'unknown';
-  const experimentStatus = targetById.get('experiment-lab')?.status ?? 'unknown';
+  const viewModel = buildDgxResourceDashboardViewModel(overview, { scenarioPending });
+  const tabButtonClass = (tab: DetailTab) =>
+    clsx(
+      'rounded-md px-3 py-1.5 text-sm font-semibold transition',
+      detailTab === tab
+        ? 'bg-white text-slate-950'
+        : 'border border-white/12 bg-white/[0.03] text-white/70 hover:bg-white/10 hover:text-white'
+    );
+
   return (
     <div className="-mx-4 -my-6 flex min-h-[calc(100dvh-7.75rem)] flex-col gap-3 overflow-y-auto px-4 py-2 text-base sm:-mx-6">
-      <header className="space-y-1">
+      <DgxResourceStatusHeader viewModel={viewModel} />
+
+      <div className="space-y-1">
         {overviewError ? <p className="text-sm text-red-300">{overviewError}</p> : null}
         {actionError ? (
           <p className="text-sm font-medium text-red-300" role="alert">
             {actionError}
           </p>
         ) : null}
-      </header>
+      </div>
 
-      <DgxResourceStatusBoard kpis={overview.kpis} runtimeSummary={overview.runtimeSummary} />
-
-      <section className="flex flex-wrap gap-2">
-        <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(businessStatus))}>VLM 推論: {businessStatus}</div>
-        <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(comfyStatus))}>ComfyUI: {comfyStatus}</div>
-        <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(experimentStatus))}>実験: {experimentStatus}</div>
-      </section>
       {scenarioPending ? (
-        <p className="rounded-lg border border-cyan-400/35 bg-cyan-950/25 px-3 py-2 text-sm text-cyan-100" role="status">
+        <p className="rounded-md border border-sky-400/35 bg-sky-500/10 px-3 py-2 text-sm text-sky-100" role="status">
           {businessReturnPreparing || businessReturnStoragePending ? (
             <>
-              復帰処理を開始しました。DGX 側でモデルをロード中です。
-              <br />
-              Ready まで数分かかることがあります。画面を閉じても処理は継続します。
+              業務復帰中
+              <span className="mx-2 text-white/30">/</span>
+              DGX 側でモデルをロードしています
             </>
           ) : (
             <>
@@ -258,82 +250,133 @@ export function DgxResourceDashboard() {
       ) : null}
 
       {overview.operator ? (
-        <section className="rounded-xl border border-cyan-400/25 bg-slate-950/65 p-3">
-          <DgxResourcePrimaryScenarioFlow
-            operator={overview.operator}
-            modelProfiles={overview.modelProfiles}
-            runtimeSummary={overview.runtimeSummary}
-            postDgxAction={postDgxActionAsync}
-            actionBusy={mutateAction.isPending}
-            externalBusy={scenarioPending}
-            onControlUiError={(message) => {
-              setActionError(message);
-              if (message == null) setTargetActionError(null);
-            }}
-          />
-        </section>
+        <DgxResourcePrimaryScenarioFlow
+          operator={overview.operator}
+          modelProfiles={overview.modelProfiles}
+          runtimeSummary={overview.runtimeSummary}
+          postDgxAction={postDgxActionAsync}
+          actionBusy={mutateAction.isPending}
+          externalBusy={scenarioPending}
+          onControlUiError={(message) => {
+            setActionError(message);
+            if (message == null) setTargetActionError(null);
+          }}
+        />
       ) : (
         <p className="rounded border border-amber-400/30 bg-amber-950/30 p-3 text-sm text-amber-100/90">
           API が運用者向け overview（operator）を返していません。Pi5 API を更新してください。
         </p>
       )}
 
-      <div className="rounded-lg border border-white/12 bg-black/20 p-2">
-        <DgxResourceSparkStatusPanel sparkHost={overview.sparkHost} />
-      </div>
-
-      <details className="rounded-xl border border-white/12 bg-black/20">
-        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-white/65">詳細・保守（通常は不要）</summary>
-        <div className="space-y-3 border-t border-white/10 px-3 py-3">
-          <DgxResourceWarmRuntimeNotice overview={overview} />
-
-          <DgxResourceQuickProfileActions
-            modelProfiles={overview.modelProfiles}
-            postDgxAction={postDgxActionAsync}
-            actionBusy={mutateAction.isPending}
-            externalBusy={scenarioLikelyRunning}
-            onControlUiError={(message) => {
-              setActionError(message);
-              if (message == null) setTargetActionError(null);
-            }}
-          />
-
-          <DgxResourcePolicyPanel
-            overview={overview}
-            onControlUiError={setActionError}
-            postDgxAction={postDgxActionAsync}
-            actionBusy={mutateAction.isPending}
-          />
-
-          <DgxResourceTargetGrid
-            targets={overview.targets ?? []}
-            overview={overview}
-            targetActionError={targetActionError}
-            onControlUiError={(message) => {
-              setTargetActionError(null);
-              setActionError(message);
-            }}
-            confirmStop={(opts) => confirm(opts)}
-            busy={mutateAction.isPending}
-            onExecuteTarget={(targetId, action) => {
-              setActionError(null);
-              setTargetActionError(null);
-              mutateAction.mutate({
-                type: 'EXECUTE_TARGET_ACTION',
-                targetId,
-                action,
-                reason: 'admin_dgx_resource_ui',
-              });
-            }}
-          />
-
-          <footer className="space-y-1 text-xs text-white/45">
-            {overview.notes.map((line) => (
-              <div key={line}>※ {line}</div>
-            ))}
-          </footer>
+      <section className="space-y-3 border-t border-white/10 pt-3">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="DGX 詳細">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={detailTab === 'state'}
+            aria-controls="dgx-resource-state-tab"
+            className={tabButtonClass('state')}
+            onClick={() => setDetailTab('state')}
+          >
+            状態
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={detailTab === 'maintenance'}
+            aria-controls="dgx-resource-maintenance-tab"
+            className={tabButtonClass('maintenance')}
+            onClick={() => setDetailTab('maintenance')}
+          >
+            保守
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={detailTab === 'logs'}
+            aria-controls="dgx-resource-logs-tab"
+            className={tabButtonClass('logs')}
+            onClick={() => setDetailTab('logs')}
+          >
+            ログ
+          </button>
         </div>
-      </details>
+
+        {detailTab === 'state' ? (
+          <div id="dgx-resource-state-tab" role="tabpanel" className="space-y-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              {viewModel.detailRows.map((row) => (
+                <div key={row.key} className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2" title={row.hint}>
+                  <div className="text-xs text-white/45">{row.label}</div>
+                  <div className="mt-1 truncate text-sm font-semibold text-white">{row.value}</div>
+                </div>
+              ))}
+            </div>
+            <DgxResourceSparkStatusPanel sparkHost={overview.sparkHost} />
+            <DgxResourceWarmRuntimeNotice overview={overview} />
+            {shouldShowMonitoringPanel(overview.monitoring) ? (
+              <DgxResourceMonitoringPanel monitoring={overview.monitoring} />
+            ) : null}
+          </div>
+        ) : null}
+
+        {detailTab === 'maintenance' ? (
+          <div id="dgx-resource-maintenance-tab" role="tabpanel" className="space-y-3">
+            <DgxResourceQuickProfileActions
+              modelProfiles={overview.modelProfiles}
+              postDgxAction={postDgxActionAsync}
+              actionBusy={mutateAction.isPending}
+              externalBusy={scenarioPending}
+              onControlUiError={(message) => {
+                setActionError(message);
+                if (message == null) setTargetActionError(null);
+              }}
+            />
+
+            <DgxResourcePolicyPanel
+              overview={overview}
+              onControlUiError={setActionError}
+              postDgxAction={postDgxActionAsync}
+              actionBusy={mutateAction.isPending}
+            />
+
+            <DgxResourceTargetGrid
+              targets={overview.targets ?? []}
+              overview={overview}
+              targetActionError={targetActionError}
+              onControlUiError={(message) => {
+                setTargetActionError(null);
+                setActionError(message);
+              }}
+              confirmStop={(opts) => confirm(opts)}
+              busy={mutateAction.isPending}
+              onExecuteTarget={(targetId, action) => {
+                setActionError(null);
+                setTargetActionError(null);
+                mutateAction.mutate({
+                  type: 'EXECUTE_TARGET_ACTION',
+                  targetId,
+                  action,
+                  reason: 'admin_dgx_resource_ui',
+                });
+              }}
+            />
+          </div>
+        ) : null}
+
+        {detailTab === 'logs' ? (
+          <div id="dgx-resource-logs-tab" role="tabpanel" className="space-y-3">
+            <DgxResourceEventsTimeline events={events} />
+            {overview.notes.length > 0 ? (
+              <div className="space-y-1 text-xs text-white/45">
+                {overview.notes.map((line) => (
+                  <div key={line}>{line}</div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 }

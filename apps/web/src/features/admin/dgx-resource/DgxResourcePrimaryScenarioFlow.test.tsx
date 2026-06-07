@@ -144,7 +144,7 @@ describe('DgxResourcePrimaryScenarioFlow', () => {
 
     const first = renderWithClient(<DgxResourcePrimaryScenarioFlow {...props} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: '実行する →' }));
+    fireEvent.click(await screen.findByRole('button', { name: '業務用に戻す' }));
 
     await waitFor(() => {
       expect(postDgxAction).toHaveBeenCalledWith({
@@ -160,7 +160,7 @@ describe('DgxResourcePrimaryScenarioFlow', () => {
     renderWithClient(<DgxResourcePrimaryScenarioFlow {...props} />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '実行する →' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '業務用に戻す' })).toBeDisabled();
     });
 
     execDeferred.resolve({
@@ -175,7 +175,7 @@ describe('DgxResourcePrimaryScenarioFlow', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '実行する →' })).not.toBeDisabled();
+      expect(screen.getByRole('button', { name: '業務用に戻す' })).not.toBeDisabled();
     });
   });
 
@@ -266,12 +266,12 @@ describe('DgxResourcePrimaryScenarioFlow', () => {
       />
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: '実行する →' }));
+    fireEvent.click(await screen.findByRole('button', { name: '業務用に戻す' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '実行する →' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '業務用に戻す' })).toBeDisabled();
     });
-    expect(screen.getAllByText(/DGX 側でモデルをロード中/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/DGX 側でモデルをロード/).length).toBeGreaterThan(0);
     expect(window.sessionStorage.getItem('dgx-resource:primary-scenario-pending')).toContain('private_to_business');
 
     first.unmount();
@@ -283,7 +283,7 @@ describe('DgxResourcePrimaryScenarioFlow', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '実行する →' })).not.toBeDisabled();
+      expect(screen.getByRole('button', { name: '業務用に戻す' })).not.toBeDisabled();
     });
     expect(window.sessionStorage.getItem('dgx-resource:primary-scenario-pending')).toBeNull();
   });
