@@ -10,7 +10,7 @@
 
 ### 最新アップデート（2026-06-07 · DGX resource runtimeProfile / resourceState）
 
-- **DGX リソース**: `runtimeProfile` + `resourceState` + **業務復帰 async UX**（`in_progress` + overview 監視）本番 Pi5 反映済。**記録**: [KB-389](./knowledge-base/KB-389-dgx-resource-runtime-profile-resource-state.md)
+- **DGX リソース**: `runtimeProfile` + `resourceState` + **業務復帰 async UX** + **モダン UI**（view model・状態/保守/ログタブ）本番 Pi5 反映済（**`95b4b0e4`**）。**記録**: [KB-389](./knowledge-base/KB-389-dgx-resource-runtime-profile-resource-state.md)
 
 ### 最新アップデート（2026-06-06 · Hermes Life Pilot）
 
