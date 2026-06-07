@@ -182,7 +182,7 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - **resource-state 契約（DGX owner/lease 表示）**:
   - `control-server.py` は `/start` / `/stop` / `/stop-force` 後に `dgx-resource-state.json` を best-effort 更新する。書込失敗は起動停止自体を失敗にしない。
   - `owner`: `business` / `private` / `experiment` / `unknown`。業務eligible profile は `business`、`businessOrchestrationEligible:false` の profile は `private`。`stop-force` は GPU を私用へ空ける操作として `private`。
-  - `status`: `preparing` / `released`。Strict Ready の最終成功判定は Pi5 orchestration 側が `/v1/models` / activeProfile / backend / runtime capability で行う。resource-state は「誰に貸しているか」の共有表示であり、KPIではない。
+  - `status`: `preparing` / `released`。Strict Ready の最終成功判定は Pi5 orchestration 側が `/v1/models` / activeProfile / backend / runtime capability で行う。resource-state は「誰に貸しているか」の共有表示であり、KPIではない。**本番検証・実測メモリ・未完了（非同期復帰）**: [KB-389](../knowledge-base/KB-389-dgx-resource-runtime-profile-resource-state.md)。
 - **runtimeProfile 契約（profile別運用予算）**:
   - `business_qwen36_27b_nvfp4`: `runtimeProfile.engine=vllm`、`vllm.gpuMemoryUtilization=0.65`、`maxModelLen=8192`、`maxNumSeqs=4`、`languageModelOnly=true` を known-good default とする。`0.65` はグローバル値ではなく、この profile の vLLM 予算。
   - GGUF / llama.cpp profile は `gpuMemoryUtilization` ではなく `llamaCpp.ctxSize` / `parallel` / `nGpuLayers` を正本にする。
