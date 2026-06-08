@@ -14,10 +14,12 @@ type UseInspectionDrawingVisualLibraryOptions = {
   clientKey?: string;
   /** 親から再読込を促すトークン（登録成功後に increment） */
   refreshToken?: number;
+  /** false のとき一覧 API を呼ばない（開発プレビュー等） */
+  enabled?: boolean;
 };
 
 export function useInspectionDrawingVisualLibrary(options: UseInspectionDrawingVisualLibraryOptions) {
-  const { clientKey, refreshToken = 0 } = options;
+  const { clientKey, refreshToken = 0, enabled = true } = options;
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [visuals, setVisuals] = useState<PartMeasurementVisualTemplateDto[]>([]);
@@ -33,6 +35,7 @@ export function useInspectionDrawingVisualLibrary(options: UseInspectionDrawingV
   }, [searchQuery]);
 
   const reload = useCallback(async () => {
+    if (!enabled) return;
     const requestSeq = ++searchRequestSeqRef.current;
     setLoading(true);
     setError(null);
@@ -57,11 +60,12 @@ export function useInspectionDrawingVisualLibrary(options: UseInspectionDrawingV
         setLoading(false);
       }
     }
-  }, [clientKey, debouncedQuery]);
+  }, [clientKey, debouncedQuery, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     void reload();
-  }, [reload, refreshToken]);
+  }, [enabled, reload, refreshToken]);
 
   return {
     searchQuery,

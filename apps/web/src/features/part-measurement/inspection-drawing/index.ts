@@ -39,6 +39,7 @@ export {
   InspectionDrawingLibraryFilterBar,
   type InspectionDrawingLibraryProcessFilter
 } from './InspectionDrawingLibraryFilterBar';
+export { InspectionDrawingLibraryTemplateGrid } from './InspectionDrawingLibraryTemplateGrid';
 export {
   InspectionDrawingResourceCdSelect,
   type InspectionDrawingResourceCdSelectOption,
