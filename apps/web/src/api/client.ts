@@ -3315,7 +3315,12 @@ export async function clonePartMeasurementTemplateForScheduleKey(
 }
 
 export async function listPartMeasurementVisualTemplates(
-  params?: { includeInactive?: boolean; q?: string; limit?: number },
+  params?: {
+    includeInactive?: boolean;
+    q?: string;
+    limit?: number;
+    sort?: 'name' | 'recentlyUpdated';
+  },
   clientKey?: string
 ): Promise<PartMeasurementVisualTemplateDto[]> {
   const { data } = await api.get<{ visualTemplates: PartMeasurementVisualTemplateDto[] }>(
@@ -3326,6 +3331,25 @@ export async function listPartMeasurementVisualTemplates(
     }
   );
   return data.visualTemplates;
+}
+
+export async function getPartMeasurementVisualTemplate(
+  visualTemplateId: string,
+  clientKey?: string
+): Promise<PartMeasurementVisualTemplateDto | null> {
+  try {
+    const { data } = await api.get<{ visualTemplate: PartMeasurementVisualTemplateDto }>(
+      `/part-measurement/visual-templates/${visualTemplateId}`,
+      {
+        headers: clientKey ? { 'x-client-key': clientKey } : undefined
+      }
+    );
+    return data.visualTemplate;
+  } catch (e: unknown) {
+    const err = e as { response?: { status?: number } };
+    if (err.response?.status === 404) return null;
+    throw e;
+  }
 }
 
 export type PartMeasurementVisualTemplateCreateResult = {

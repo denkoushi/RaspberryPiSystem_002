@@ -54,6 +54,49 @@ describe('PartMeasurementVisualTemplateService.list', () => {
       orderBy: [{ name: 'asc' }, { createdAt: 'desc' }]
     });
   });
+
+  it('sorts by recently updated when sort is recentlyUpdated', async () => {
+    await service.list({ limit: 40, sort: 'recentlyUpdated' });
+
+    expect(prismaMock.partMeasurementVisualTemplate.findMany).toHaveBeenCalledWith({
+      where: { isActive: true },
+      orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+      take: 40
+    });
+  });
+});
+
+describe('PartMeasurementVisualTemplateService.getById', () => {
+  const service = new PartMeasurementVisualTemplateService();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns active visual template by id', async () => {
+    prismaMock.partMeasurementVisualTemplate.findUnique.mockResolvedValue({
+      id: 'vt-1',
+      name: '図面A',
+      isActive: true
+    });
+
+    await expect(service.getById('vt-1')).resolves.toMatchObject({ id: 'vt-1' });
+    expect(prismaMock.partMeasurementVisualTemplate.findUnique).toHaveBeenCalledWith({
+      where: { id: 'vt-1' }
+    });
+  });
+
+  it('returns null for inactive visual unless includeInactive', async () => {
+    prismaMock.partMeasurementVisualTemplate.findUnique.mockResolvedValue({
+      id: 'vt-2',
+      isActive: false
+    });
+
+    await expect(service.getById('vt-2')).resolves.toBeNull();
+    await expect(service.getById('vt-2', { includeInactive: true })).resolves.toMatchObject({
+      id: 'vt-2'
+    });
+  });
 });
 
 describe('PartMeasurementVisualTemplateService.deleteIfUnused', () => {

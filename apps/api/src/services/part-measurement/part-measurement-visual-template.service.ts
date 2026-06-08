@@ -30,13 +30,26 @@ export async function lockActiveVisualTemplateForBindingInTransaction(
 
 const VISUAL_TEMPLATE_LIST_MAX_LIMIT = 200;
 
+export type PartMeasurementVisualTemplateListSort = 'name' | 'recentlyUpdated';
+
 export type PartMeasurementVisualTemplateListParams = {
   includeInactive?: boolean;
   /** 図面名の部分一致（大文字小文字無視） */
   q?: string;
   /** 未指定時は件数制限なし（管理画面の全件一覧互換） */
   limit?: number;
+  /** 未指定時は name asc（既存ピッカー・管理画面互換） */
+  sort?: PartMeasurementVisualTemplateListSort;
 };
+
+function resolveVisualTemplateListOrderBy(
+  sort: PartMeasurementVisualTemplateListSort | undefined
+): Prisma.PartMeasurementVisualTemplateOrderByWithRelationInput[] {
+  if (sort === 'recentlyUpdated') {
+    return [{ updatedAt: 'desc' }, { name: 'asc' }];
+  }
+  return [{ name: 'asc' }, { createdAt: 'desc' }];
+}
 
 /** visual template の一覧・作成（図面は別ストレージに保存し DB には相対 URL のみ） */
 export class PartMeasurementVisualTemplateService {
@@ -57,9 +70,18 @@ export class PartMeasurementVisualTemplateService {
 
     return prisma.partMeasurementVisualTemplate.findMany({
       where,
-      orderBy: [{ name: 'asc' }, { createdAt: 'desc' }],
+      orderBy: resolveVisualTemplateListOrderBy(params.sort),
       ...(take !== undefined ? { take } : {})
     });
+  }
+
+  async getById(id: string, options: { includeInactive?: boolean } = {}) {
+    const visual = await prisma.partMeasurementVisualTemplate.findUnique({
+      where: { id }
+    });
+    if (!visual) return null;
+    if (!options.includeInactive && !visual.isActive) return null;
+    return visual;
   }
 
   async create(params: { name: string; drawingImageRelativePath: string }) {

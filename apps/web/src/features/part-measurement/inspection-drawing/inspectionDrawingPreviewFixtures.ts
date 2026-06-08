@@ -124,3 +124,185 @@ export const INSPECTION_DRAWING_PREVIEW_RESOURCE_NAME_MAP: Record<string, string
   R001: ['FJV50/80'],
   R002: ['研削ライン2']
 };
+
+function previewVisual(id: string, name: string, updatedAt: string) {
+  return {
+    id,
+    name,
+    drawingImageRelativePath: `/preview/${id}.svg`,
+    isActive: true,
+    createdAt: updatedAt,
+    updatedAt
+  };
+}
+
+/** 開発プレビュー — 図面ライブラリ5列グリッド確認用（10件） */
+export const INSPECTION_DRAWING_PREVIEW_VISUAL_LIBRARY: ReturnType<typeof previewVisual>[] = [
+  previewVisual('preview-visual-1', 'サンプル図面 A', previewVisualUpdatedAt),
+  previewVisual('preview-visual-2', 'サンプル図面 B', '2026-05-28T14:00:00.000Z'),
+  previewVisual('preview-visual-3', 'シャフト断面図', '2026-05-27T09:15:00.000Z'),
+  previewVisual('preview-visual-4', 'フランジ面取り', '2026-05-26T11:30:00.000Z'),
+  previewVisual('preview-visual-5', '内径研削図', '2026-05-25T16:45:00.000Z'),
+  previewVisual('preview-visual-6', '外径仕上げ', '2026-05-24T08:00:00.000Z'),
+  previewVisual('preview-visual-7', '穴位置検査', '2026-05-23T13:20:00.000Z'),
+  previewVisual('preview-visual-8', '面粗度確認', '2026-05-22T10:10:00.000Z'),
+  previewVisual('preview-visual-9', 'キー溝加工', '2026-05-21T15:55:00.000Z'),
+  previewVisual('preview-visual-10', 'ねじ切り部', '2026-05-20T07:40:00.000Z')
+];
+
+function previewLibraryTemplate(
+  overrides: Partial<KioskInspectionDrawingTemplateSummaryDto> &
+    Pick<
+      KioskInspectionDrawingTemplateSummaryDto,
+      'id' | 'fhincd' | 'resourceCd' | 'processGroup' | 'name' | 'version' | 'isActive' | 'itemCount'
+    >
+): KioskInspectionDrawingTemplateSummaryDto {
+  return {
+    selfInspectionMode: 'full',
+    selfInspectionFixedCount: null,
+    selfInspectionSampleSize: null,
+    visualTemplateId: overrides.visualTemplate?.id ?? 'preview-visual-1',
+    visualTemplate: overrides.visualTemplate ?? {
+      id: 'preview-visual-1',
+      name: 'サンプル図面 A',
+      drawingImageRelativePath: '/preview/sample-a.svg',
+      isActive: true,
+      createdAt: previewVisualUpdatedAt,
+      updatedAt: previewVisualUpdatedAt
+    },
+    ...overrides
+  };
+}
+
+/** 開発プレビュー — テンプレ3〜4列グリッド確認用（12件） */
+export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATE_GRID: KioskInspectionDrawingTemplateSummaryDto[] =
+  [
+    previewLibraryTemplate({
+      id: 'preview-tpl-01',
+      fhincd: 'DEMO-12345',
+      resourceCd: 'R001',
+      processGroup: 'cutting',
+      name: '検査図面プレビュー（有効）',
+      version: 3,
+      isActive: true,
+      itemCount: 12
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-02',
+      fhincd: 'DEMO-67890',
+      resourceCd: 'R002',
+      processGroup: 'grinding',
+      name: '研削工程サンプル',
+      version: 2,
+      isActive: true,
+      itemCount: 8,
+      visualTemplate: {
+        id: 'preview-visual-2',
+        name: 'サンプル図面 B',
+        drawingImageRelativePath: '/preview/sample-b.svg',
+        isActive: true,
+        createdAt: previewVisualUpdatedAt,
+        updatedAt: '2026-05-28T14:00:00.000Z'
+      }
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-03',
+      fhincd: 'ABC-10001',
+      resourceCd: 'R001',
+      processGroup: 'cutting',
+      name: '切削ライン標準',
+      version: 1,
+      isActive: true,
+      itemCount: 6
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-04',
+      fhincd: 'ABC-10002',
+      resourceCd: 'R001',
+      processGroup: 'cutting',
+      name: '外径測定テンプレ',
+      version: 4,
+      isActive: true,
+      itemCount: 15
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-05',
+      fhincd: 'XYZ-5500',
+      resourceCd: 'R002',
+      processGroup: 'grinding',
+      name: '研削仕上げ検査',
+      version: 1,
+      isActive: true,
+      itemCount: 9
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-06',
+      fhincd: 'XYZ-5501',
+      resourceCd: 'R002',
+      processGroup: 'grinding',
+      name: '面粗度チェック',
+      version: 2,
+      isActive: true,
+      itemCount: 5
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-07',
+      fhincd: 'PART-8800',
+      resourceCd: 'R001',
+      processGroup: 'cutting',
+      name: '穴径一括測定',
+      version: 1,
+      isActive: true,
+      itemCount: 20
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-08',
+      fhincd: 'PART-8801',
+      resourceCd: 'R001',
+      processGroup: 'cutting',
+      name: '位置度検査',
+      version: 3,
+      isActive: true,
+      itemCount: 11
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-09',
+      fhincd: 'LOT-2024-A',
+      resourceCd: 'R002',
+      processGroup: 'grinding',
+      name: 'ロットA研削',
+      version: 1,
+      isActive: true,
+      itemCount: 7
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-10',
+      fhincd: 'LOT-2024-B',
+      resourceCd: 'R002',
+      processGroup: 'grinding',
+      name: 'ロットB研削',
+      version: 2,
+      isActive: true,
+      itemCount: 10
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-11',
+      fhincd: 'DEMO-12345',
+      resourceCd: 'R001',
+      processGroup: 'cutting',
+      name: '検査図面プレビュー（有効）',
+      version: 2,
+      isActive: false,
+      itemCount: 10
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-12',
+      fhincd: 'DEMO-67890',
+      resourceCd: 'R002',
+      processGroup: 'grinding',
+      name: '研削工程サンプル',
+      version: 1,
+      isActive: false,
+      itemCount: 6
+    })
+  ];
