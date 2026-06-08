@@ -1,0 +1,14 @@
+/** 1920x1080 標準表示で 1 ページに収まる部品行数（製番見出し分を除く） */
+export const SUMMARY_PART_ROWS_PER_PAGE = 12;
+export const DEFAULT_SELF_INSPECTION_MACHINE_BOARD_PARTS_PER_PAGE = SUMMARY_PART_ROWS_PER_PAGE;
+export const MAX_SELF_INSPECTION_MACHINE_BOARD_PARTS_PER_PAGE = SUMMARY_PART_ROWS_PER_PAGE;
+export const DEFAULT_SELF_INSPECTION_MACHINE_BOARD_DETAIL_TOP_N = 5;
+export const MAX_SELF_INSPECTION_MACHINE_BOARD_DETAIL_TOP_N = 20;
+/** 自主検査ボードが 1 回の集約で扱う生産日程行の総件数上限 */
+export const MAX_SELF_INSPECTION_MACHINE_BOARD_SCHEDULE_ROWS = 2000;
+/** DB 取得時の内部ページサイズ（総件数上限とは別） */
+export const SELF_INSPECTION_MACHINE_BOARD_SCHEDULE_FETCH_PAGE_SIZE = 500;
+/** 詳細ヒートストリップの横方向セル上限（FULL モード大量 entry 対策） */
+export const MAX_HEATSTRIP_ENTRY_COLUMNS = 32;
+/** 詳細 1 ページに描画する測定点数上限 */
+export const MAX_DETAIL_MEASUREMENT_POINTS = 24;

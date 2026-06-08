@@ -153,7 +153,7 @@ function buildSessionBusinessKey(input: {
   ].join('::');
 }
 
-function pickSessionForScheduleRow<
+export function pickSessionForScheduleRow<
   T extends { scheduleRowId: string | null; completedAt: Date | null; updatedAt: Date }
 >(sessions: T[], scheduleRowId: string): T | null {
   const candidates = sessions.filter((session) => session.scheduleRowId === scheduleRowId);
@@ -173,6 +173,11 @@ export type SelfInspectionSessionForDecoration = {
   expectedEntryCount: number;
   completedAt: Date | null;
   updatedAt: Date;
+  template: {
+    selfInspectionMode: SelfInspectionMode;
+    selfInspectionFixedCount: number | null;
+    selfInspectionSampleSize: number | null;
+  };
   _count: { entries: number };
 };
 
@@ -280,8 +285,15 @@ export async function ensureSelfInspectionSessionsInCache(
   const sessions = await prisma.selfInspectionSession.findMany({
     where: { scheduleRowId: { in: missingIds } },
     include: {
-      _count: { select: { entries: true } }
-    }
+      template: {
+        select: {
+          selfInspectionMode: true,
+          selfInspectionFixedCount: true,
+          selfInspectionSampleSize: true,
+        },
+      },
+      _count: { select: { entries: true } },
+    },
   });
   const foundScheduleRowIds = new Set<string>();
   for (const session of sessions) {
@@ -422,6 +434,8 @@ type LeaderboardSelfInspectionDecoration = {
   selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
   selfInspectionEntryPath: string | null;
   resolvedPlannedQuantity?: number | null;
+  resolvedRequiredEntryCount?: number | null;
+  completedEntryCount?: number | null;
 };
 
 function emptyLeaderboardSelfInspectionDecoration(rowId: string): LeaderboardSelfInspectionDecoration {
@@ -440,6 +454,8 @@ function buildLeaderboardDecorationFromSession(
   session: SelfInspectionSessionForDecoration,
   plannedQuantity: number | null
 ): LeaderboardSelfInspectionDecoration {
+  const planned =
+    plannedQuantity ?? resolveProductionSchedulePlannedQuantity(session.plannedQuantity);
   return {
     id: rowId,
     hasSelfInspectionDrawing: true,
@@ -450,8 +466,13 @@ function buildLeaderboardDecorationFromSession(
       session.completedAt
     ),
     selfInspectionEntryPath: `/kiosk/part-measurement/self-inspection/sessions/${session.id}`,
-    resolvedPlannedQuantity:
-      plannedQuantity ?? resolveProductionSchedulePlannedQuantity(session.plannedQuantity)
+    resolvedPlannedQuantity: planned,
+    resolvedRequiredEntryCount: resolveRequiredEntryCountForCompletion({
+      expectedEntryCount: session.expectedEntryCount,
+      plannedQuantity: session.plannedQuantity,
+      template: templateConfigFromTemplate(session.template),
+    }),
+    completedEntryCount: session._count.entries,
   };
 }
 
@@ -1453,7 +1474,9 @@ export class SelfInspectionService {
           fhinmei,
           machineName: null
         }),
-        resolvedPlannedQuantity: plannedQuantity
+        resolvedPlannedQuantity: plannedQuantity,
+        resolvedRequiredEntryCount: expectedEntryCount,
+        completedEntryCount: 0,
       };
     });
   }

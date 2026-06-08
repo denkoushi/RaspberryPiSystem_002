@@ -3,10 +3,26 @@ import { ApiError } from '../../../lib/errors.js';
 import {
   completeProductionScheduleRow,
   setProductionScheduleRowCompletionIntent,
+  upsertProductionScheduleDueDate,
   upsertProductionScheduleOrder,
   upsertProductionScheduleProcessingType,
 } from '../production-schedule-command.service.js';
 import { prisma } from '../../../lib/prisma.js';
+import { sharedScheduleFieldsRepository } from '../shared-schedule-fields.repository.js';
+
+const resetSelfInspectionMachineBoardScheduleRowCaches = vi.hoisted(() => vi.fn());
+
+vi.mock('../../part-measurement/self-inspection-machine-board.repository.js', () => ({
+  resetSelfInspectionMachineBoardScheduleRowCaches,
+}));
+
+vi.mock('../shared-schedule-fields.repository.js', () => ({
+  sharedScheduleFieldsRepository: {
+    findRowNoteByRowId: vi.fn(),
+    upsertRowNote: vi.fn(),
+    deleteRowNoteByRowId: vi.fn(),
+  },
+}));
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
@@ -185,6 +201,23 @@ describe('production-schedule-command.service', () => {
     expect(result.unchanged).toBe(true);
     expect(result.rowData.progress).toBe('完了');
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('upsertProductionScheduleDueDate invalidates self-inspection machine board schedule row cache', async () => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({
+      id: 'row-1',
+      rowData: {},
+    } as never);
+    vi.mocked(sharedScheduleFieldsRepository.findRowNoteByRowId).mockResolvedValue(null);
+    vi.mocked(sharedScheduleFieldsRepository.upsertRowNote).mockResolvedValue(undefined as never);
+
+    await upsertProductionScheduleDueDate({
+      rowId: 'row-1',
+      dueDateText: '2026-06-15',
+      locationKey: 'kiosk-1',
+    });
+
+    expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
   });
 });
 

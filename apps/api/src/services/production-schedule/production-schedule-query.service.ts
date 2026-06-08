@@ -8,7 +8,6 @@ import { loadActualHoursReadContext } from './actual-hours/actual-hours-read-con
 import {
   COMPLETED_PROGRESS_VALUE,
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
-  PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
 } from './constants.js';
 import {
   buildFkojunstProductionScheduleListRowDataFkojunstSql,
@@ -32,6 +31,8 @@ import {
   buildMaxProductNoWinnerCondition,
   resolveLeaderboardMaterializedBaseWhere
 } from './row-resolver/index.js';
+import { normalizeMachineNameForCompare } from './machine-name-compare.js';
+import { resolveMatchingFseibansByNormalizedMachineName } from './machine-name-fseiban-match.service.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from './production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from './production-schedule-customer-name-enrichment.service.js';
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard/leaderboard-part-footer-processes.service.js';
@@ -68,16 +69,7 @@ const SELF_INSPECTION_SCHEDULE_SCAN_CHUNK_SIZE = 200;
 /** 1 リクエストあたりの生産日程スキャン上限（200 × 50 行） */
 const SELF_INSPECTION_SCHEDULE_MAX_SCAN_PAGES = 50;
 
-/** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
-function normalizeMachineNameForCompare(value: string | null | undefined): string {
-  if (value == null) return '';
-  const s = String(value).trim();
-  const half =
-    s.replace(/[\uFF01-\uFF5E]/g, (char) =>
-      String.fromCharCode(char.charCodeAt(0) - 0xfee0)
-    ).replace(/\u3000/g, ' ');
-  return half.toUpperCase();
-}
+export { normalizeMachineNameForCompare } from './machine-name-compare.js';
 
 export type ProductionScheduleRow = {
   id: string;
@@ -844,46 +836,8 @@ const buildProductNoCondition = (productNos: string[]): Prisma.Sql => {
   )})`;
 };
 
-const listMatchingFseibansByMachineName = async (normalizedMachineName: string): Promise<string[]> => {
-  type MachineRow = { fseiban: string | null; fhinmei: string | null };
-  const machineRows = await prisma.$queryRaw<MachineRow[]>`
-    SELECT
-      "rowData"->>'FSEIBAN' AS "fseiban",
-      "rowData"->>'FHINMEI' AS "fhinmei"
-    FROM "CsvDashboardRow"
-    WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-      AND (
-        UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
-        OR UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'SH%'
-      )
-  `;
-  const supplementRows = await prisma.productionScheduleSeibanMachineNameSupplement.findMany({
-    where: {
-      sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
-    },
-    select: {
-      fseiban: true,
-      machineName: true,
-    },
-  });
-
-  return Array.from(
-    new Set([
-      ...machineRows
-        .filter(
-          (row) =>
-            row.fseiban != null &&
-            row.fhinmei != null &&
-            normalizeMachineNameForCompare(row.fhinmei) === normalizedMachineName
-        )
-        .map((row) => row.fseiban as string),
-      ...supplementRows
-        .filter((row) => normalizeMachineNameForCompare(row.machineName) === normalizedMachineName)
-        .map((row) => row.fseiban),
-    ])
-  );
-};
+const listMatchingFseibansByMachineName = async (normalizedMachineName: string): Promise<string[]> =>
+  resolveMatchingFseibansByNormalizedMachineName(normalizedMachineName);
 
 const buildMachineNameCondition = async (machineName: string | undefined): Promise<Prisma.Sql> => {
   const normalizedMachineName = normalizeMachineNameForCompare(machineName);
@@ -1237,6 +1191,141 @@ function toSelfInspectionEligibleListParams(
   delete rest.selfInspectionEligibleOnly;
   delete rest.responseProfile;
   return rest;
+}
+
+export type SignageMachineBoardScheduleRow = Pick<
+  ProductionScheduleRow,
+  'id' | 'rowData' | 'dueDate' | 'plannedQuantity'
+>;
+
+export type SignageMachineBoardScheduleFetchResult = {
+  rows: SignageMachineBoardScheduleRow[];
+  /** 機種に紐づく生産日程行を最後まで走査した */
+  scheduleExhausted: boolean;
+  /** 安全上限により走査を打ち切った */
+  hitScanCap: boolean;
+  /** ボード表示件数上限（UI メタデータ。取得打ち切りには使わない） */
+  maxRows: number;
+};
+
+/** 1 リクエストあたりの機種別生産日程スキャン上限（pageSize × この値） */
+const SIGNAGE_MACHINE_BOARD_SCHEDULE_MAX_SCAN_PAGES = 50;
+
+export type SignageMachineBoardScheduleScanMeta = {
+  /** 機種に紐づく生産日程行を最後まで走査した */
+  scheduleExhausted: boolean;
+  /** 安全上限により走査を打ち切った */
+  hitScanCap: boolean;
+  /** ボード表示件数上限（UI メタデータ） */
+  maxRows: number;
+};
+
+function mapSignageMachineBoardScheduleRows(
+  rows: ProductionScheduleRow[]
+): SignageMachineBoardScheduleRow[] {
+  return rows.map((row) => ({
+    id: row.id,
+    rowData: row.rowData,
+    dueDate: row.dueDate,
+    plannedQuantity: row.plannedQuantity,
+  }));
+}
+
+/** サイネージ自主検査ボード向け: 生産日程行をページ単位で走査（全件メモリ保持しない） */
+export async function scanProductionScheduleRowsForSignageMachineBoard(
+  params: {
+    machineName: string;
+    locationKey: string;
+    siteKey?: string;
+    maxRows: number;
+    pageSize?: number;
+    /** テスト用。省略時は SIGNAGE_MACHINE_BOARD_SCHEDULE_MAX_SCAN_PAGES */
+    maxScanPages?: number;
+  },
+  onPage: (rows: SignageMachineBoardScheduleRow[]) => Promise<void> | void
+): Promise<SignageMachineBoardScheduleScanMeta> {
+  const displayCap = Math.max(1, Math.min(Math.floor(params.maxRows), 2000));
+  const safePageSize = Math.max(1, Math.min(Math.floor(params.pageSize ?? 500), 2000));
+  const maxScanPages = Math.max(
+    1,
+    Math.floor(params.maxScanPages ?? SIGNAGE_MACHINE_BOARD_SCHEDULE_MAX_SCAN_PAGES)
+  );
+  const filters = await prepareProductionScheduleDashboardFilters({
+    queryText: '',
+    productNos: [],
+    machineName: params.machineName,
+    resourceCds: [],
+    assignedOnlyCds: [],
+    hasNoteOnly: false,
+    hasDueDateOnly: false,
+    allowResourceOnly: true,
+    locationKey: params.locationKey,
+    siteKey: params.siteKey,
+  });
+  if (filters.kind === 'blocked_empty_search') {
+    return {
+      scheduleExhausted: true,
+      hitScanCap: false,
+      maxRows: displayCap,
+    };
+  }
+
+  const { baseWhere, queryWhere, siteScopedGlobalRankLocation } = filters;
+  let offset = 0;
+  let scanIterations = 0;
+  let scheduleExhausted = false;
+  let hitScanCap = false;
+
+  while (scanIterations < maxScanPages) {
+    scanIterations += 1;
+    const pageRows = await fetchProductionScheduleDashboardRowsRawPage({
+      baseWhere,
+      queryWhere,
+      locationKey: params.locationKey,
+      siteScopedGlobalRankLocation,
+      offset,
+      limit: safePageSize,
+    });
+    if (pageRows.length > 0) {
+      await onPage(mapSignageMachineBoardScheduleRows(pageRows));
+    }
+    if (pageRows.length < safePageSize) {
+      scheduleExhausted = true;
+      break;
+    }
+    offset += pageRows.length;
+  }
+
+  if (!scheduleExhausted && scanIterations >= maxScanPages) {
+    hitScanCap = true;
+  }
+
+  return {
+    scheduleExhausted,
+    hitScanCap,
+    maxRows: displayCap,
+  };
+}
+
+/** サイネージ自主検査ボード向け: total count / 実績時間 / 機種名・顧客名補完を省略した軽量一覧 */
+export async function listProductionScheduleRowsForSignageMachineBoard(params: {
+  machineName: string;
+  locationKey: string;
+  siteKey?: string;
+  maxRows: number;
+  pageSize?: number;
+  /** テスト用。省略時は SIGNAGE_MACHINE_BOARD_SCHEDULE_MAX_SCAN_PAGES */
+  maxScanPages?: number;
+}): Promise<SignageMachineBoardScheduleFetchResult> {
+  const rows: SignageMachineBoardScheduleRow[] = [];
+  const meta = await scanProductionScheduleRowsForSignageMachineBoard(params, (pageRows) => {
+    rows.push(...pageRows);
+  });
+
+  return {
+    rows,
+    ...meta,
+  };
 }
 
 export async function listProductionScheduleRows(params: ProductionScheduleListParams): Promise<ProductionScheduleListResult> {

@@ -47,6 +47,16 @@ const mobilePlacementPartsShelfGridSlotConfigSchema = z
   })
   .strict();
 
+const selfInspectionMachineBoardSlotConfigSchema = z
+  .object({
+    machineName: z.string().min(1).max(200),
+    deviceScopeKey: z.string().min(1).max(200).optional(),
+    slideIntervalSeconds: z.number().int().positive().optional(),
+    partsPerPage: z.number().int().min(1).max(12).optional(),
+    detailTopN: z.number().int().min(0).max(20).optional(),
+  })
+  .strict();
+
 /** kind と config を一致させる（`{}` が loans に誤マッチしないよう discriminated union） */
 const slotSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -70,26 +80,56 @@ const slotSchema = z.discriminatedUnion('kind', [
     config: visualizationSlotConfigSchema,
   }),
   z.object({
-    position: z.enum(['FULL', 'LEFT', 'RIGHT']),
+    position: z.literal('FULL'),
     kind: z.literal('kiosk_progress_overview'),
     config: kioskProgressOverviewSlotConfigSchema,
   }),
   z.object({
-    position: z.enum(['FULL', 'LEFT', 'RIGHT']),
+    position: z.literal('FULL'),
     kind: z.literal('kiosk_leader_order_cards'),
     config: kioskLeaderOrderCardsSlotConfigSchema,
   }),
   z.object({
-    position: z.enum(['FULL', 'LEFT', 'RIGHT']),
+    position: z.literal('FULL'),
     kind: z.literal('mobile_placement_parts_shelf_grid'),
     config: mobilePlacementPartsShelfGridSlotConfigSchema,
   }),
+  z.object({
+    position: z.literal('FULL'),
+    kind: z.literal('self_inspection_machine_board'),
+    config: selfInspectionMachineBoardSlotConfigSchema,
+  }),
 ]);
 
-const layoutConfigSchema = z.object({
-  layout: z.enum(['FULL', 'SPLIT']),
-  slots: z.array(slotSchema).min(1),
-}).optional().nullable();
+const layoutConfigSchema = z
+  .object({
+    layout: z.enum(['FULL', 'SPLIT']),
+    slots: z.array(slotSchema).min(1),
+  })
+  .optional()
+  .nullable()
+  .superRefine((value, ctx) => {
+    if (!value) {
+      return;
+    }
+
+    value.slots.forEach((slot, index) => {
+      if (value.layout === 'SPLIT' && slot.position === 'FULL') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'SPLIT layout cannot include FULL-position slots',
+          path: ['slots', index, 'position'],
+        });
+      }
+      if (value.layout === 'FULL' && slot.position !== 'FULL') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'FULL layout requires all slots to use FULL position',
+          path: ['slots', index, 'position'],
+        });
+      }
+    });
+  });
 
 export const scheduleSchema = z.object({
   name: z.string().min(1),

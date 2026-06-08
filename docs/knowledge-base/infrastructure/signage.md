@@ -28,6 +28,26 @@ update-frequency: medium
 
 **配膳 Android 部品棚 9 枠（2026-04-13・ブランチ `feat/pi3-android-parts-signage`）**: FULL スロット **`mobile_placement_parts_shelf_grid`**（`OrderPlacementBranchState` を 3×3 ゾーンに集約・**SVG→JPEG**・任意 **`maxItemsPerZone`**）。**本番**: API/Web 正本は **Pi5**、表示の `/signage` 用 Web 更新と **`signage-lite-update`** 経路を取り込むなら **Pi3 も順次**（[KB-321](#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) と同型の **Pi3 専用プレフライト**）。**デプロイ**: [deployment.md](../../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pi3-android-parts-signage infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow` の **成功後**に `./scripts/update-all-clients.sh … --limit "raspberrypi3" --detach --follow`（**1 台ずつ・同一ホストへ並列起動しない**）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-190750-1020`（`raspberrypi5`）→ `20260413-192539-10430`（`raspberrypi3`）、各 **`PLAY RECAP failed=0` / `unreachable=0`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **54s**・Mac / Tailscale）。**ナレッジ**: [KB-341](#kb-341-mobile-placement-parts-shelf-grid-deploy)・[signage-mobile-placement-parts-shelf-grid.md](../../guides/signage-mobile-placement-parts-shelf-grid.md)。
 
+**自主検査 機種別進捗ボード（2026-06-08・ブランチ `feat/signage-self-inspection-machine-board`）**:
+FULL スロット **`self_inspection_machine_board`**。
+`machineName` をキーに生産日程を正本として仕掛中の全製番・全部品の自主検査進捗一覧（summary）と、
+注目部品の測定点別ヒートストリップ（detail）を **flat page list** でローテーション
+（`getRotatingSlideIndex` 共有）。
+設定: `machineName`（必須）・`deviceScopeKey`（推奨・拠点別 policy）・`slideIntervalSeconds`・
+`partsPerPage`（既定12・最大12）・`detailTopN`（既定5）。
+詳細取得は **detailTopN 件のみ** full session（entries/values）。ヒートストリップ横セル上限 32。
+**SPLIT 未対応**（pane-resolver は空 loans ペイン）。折れ線グラフは初版未実装。
+機種名→FSEIBAN 解決は `machine-name-fseiban-match.service.ts` の短 TTL インデックスキャッシュ
+（`PRODUCTION_SCHEDULE_MACHINE_NAME_FSEIBAN_CACHE_TTL_MS` 既定60秒）。
+生産日程行は page 単位 chunk 走査
+（`scanProductionScheduleRowsForSignageMachineBoard`・pageSize 500・最大 50 ページ）で装飾し
+eligible のみ集約、**表示優先度ソート後**に **2000** 件 cap
+（`MAX_SELF_INSPECTION_MACHINE_BOARD_SCHEDULE_ROWS`）+ `hasMore` 表示。
+同一 `SignageRenderer.renderCurrentContent()` 呼び出し内では ViewModel を端末×設定キーで共有し、
+当該 render バッチ内の重複 DB 走査を抑える（render 間の TTL キャッシュはなし）。
+**代表**: `apps/api/src/services/part-measurement/self-inspection-machine-board.service.ts` ·
+`apps/api/src/services/signage/self-inspection-machine-board/` · 管理 `/admin/signage/schedules`。
+
 ---
 
 <a id="kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路"></a>

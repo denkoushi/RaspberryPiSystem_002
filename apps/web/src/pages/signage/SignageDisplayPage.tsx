@@ -178,7 +178,8 @@ export function SignageDisplayPage() {
     content?.contentType === 'TOOLS' &&
     (fullLayoutSlot?.kind === 'kiosk_progress_overview' ||
       fullLayoutSlot?.kind === 'kiosk_leader_order_cards' ||
-      fullLayoutSlot?.kind === 'mobile_placement_parts_shelf_grid');
+      fullLayoutSlot?.kind === 'mobile_placement_parts_shelf_grid' ||
+      fullLayoutSlot?.kind === 'self_inspection_machine_board');
 
   useEffect(() => {
     if (!isKioskJpegFullSignage) {
@@ -299,6 +300,22 @@ export function SignageDisplayPage() {
             <img
               src={getSignageCurrentImageUrl(kioskProgressImageTick)}
               alt="配膳 Android 部品棚 9枠"
+              className="h-full w-full object-contain"
+            />
+          </div>
+        );
+      }
+
+      if (slot?.kind === 'self_inspection_machine_board') {
+        const boardCfg = slot.config as SignageSlotConfig;
+        if (!boardCfg.machineName?.trim()) {
+          return renderStateScreen('自主検査 機種別進捗ボード', 'machineName がスケジュールに設定されていません');
+        }
+        return (
+          <div className={`${screenClass} flex items-center justify-center bg-slate-950 p-0`}>
+            <img
+              src={getSignageCurrentImageUrl(kioskProgressImageTick)}
+              alt={`自主検査 ${boardCfg.machineName}`}
               className="h-full w-full object-contain"
             />
           </div>

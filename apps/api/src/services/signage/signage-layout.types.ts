@@ -14,7 +14,9 @@ export type SignageSlotKind =
   | 'kiosk_progress_overview'
   | 'kiosk_leader_order_cards'
   /** 配膳 Android 部品棚 9枠（JPEG・OrderPlacementBranchState 集約） */
-  | 'mobile_placement_parts_shelf_grid';
+  | 'mobile_placement_parts_shelf_grid'
+  /** 自主検査 機種別進捗ボード（JPEG・machineName 集約） */
+  | 'self_inspection_machine_board';
 
 /**
  * PDFスロットの設定
@@ -77,6 +79,19 @@ export interface MobilePlacementPartsShelfGridSlotConfig {
 }
 
 /**
+ * 自主検査 機種別進捗ボード（サイネージ JPEG）
+ * machineName は生産日程の機種名（正規化比較）と一致させる。
+ */
+export interface SelfInspectionMachineBoardSlotConfig {
+  machineName: string;
+  /** キオスク端末と同じ deviceScopeKey（拠点別テンプレート/資源 policy 解決） */
+  deviceScopeKey?: string;
+  slideIntervalSeconds?: number;
+  partsPerPage?: number;
+  detailTopN?: number;
+}
+
+/**
  * スロット設定（kindに応じてconfigの型が変わる）
  */
 export interface SignageSlot {
@@ -89,7 +104,8 @@ export interface SignageSlot {
     | VisualizationSlotConfig
     | KioskProgressOverviewSlotConfig
     | KioskLeaderOrderCardsSlotConfig
-    | MobilePlacementPartsShelfGridSlotConfig;
+    | MobilePlacementPartsShelfGridSlotConfig
+    | SelfInspectionMachineBoardSlotConfig;
 }
 
 /**

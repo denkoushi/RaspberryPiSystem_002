@@ -4024,7 +4024,7 @@ export interface SignageSlotConfig {
   visualizationDashboardId?: string;
   displayMode?: 'SLIDESHOW' | 'SINGLE';
   slideInterval?: number | null;
-  /** kiosk_progress_overview / kiosk_leader_order_cards: キオスクと同じ deviceScopeKey */
+  /** kiosk_progress_overview / kiosk_leader_order_cards / self_inspection_machine_board: キオスクと同じ deviceScopeKey */
   deviceScopeKey?: string;
   slideIntervalSeconds?: number;
   seibanPerPage?: number;
@@ -4034,6 +4034,12 @@ export interface SignageSlotConfig {
   cardsPerPage?: number;
   /** mobile_placement_parts_shelf_grid: ゾーンあたりの最大表示行数（省略時はサーバ既定） */
   maxItemsPerZone?: number;
+  /** self_inspection_machine_board: 機種名（生産日程 machineName と正規化比較） */
+  machineName?: string;
+  /** self_inspection_machine_board: 1ページの部品行数 */
+  partsPerPage?: number;
+  /** self_inspection_machine_board: 詳細ヒートストリップ対象部品数 */
+  detailTopN?: number;
 }
 
 export interface SignageSlot {
@@ -4046,6 +4052,7 @@ export interface SignageSlot {
     | 'kiosk_progress_overview'
     | 'kiosk_leader_order_cards'
     | 'mobile_placement_parts_shelf_grid'
+    | 'self_inspection_machine_board'
     | 'message';
   config: SignageSlotConfig | Record<string, never>;
 }

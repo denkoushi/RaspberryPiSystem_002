@@ -7,6 +7,7 @@ import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './co
 import { dueManagementLearningEventRepository } from './due-management-learning-event.repository.js';
 import { releaseOrderAssignmentAtLocation } from './order-assignment/order-assignment-release.repository.js';
 import { getProductionScheduleProcessingTypeOptions } from './production-schedule-settings.service.js';
+import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../part-measurement/self-inspection-machine-board.repository.js';
 import { sharedScheduleFieldsRepository } from './shared-schedule-fields.repository.js';
 import { snapshotEventLoopObservability } from '../system/event-loop-observability.js';
 
@@ -318,6 +319,7 @@ export async function upsertProductionScheduleDueDate(params: {
         processingType: existing?.processingType ?? null
       });
     }
+    resetSelfInspectionMachineBoardScheduleRowCaches();
     return { success: true, dueDate: null };
   }
 
@@ -334,6 +336,7 @@ export async function upsertProductionScheduleDueDate(params: {
     processingType: existing?.processingType ?? null
   });
 
+  resetSelfInspectionMachineBoardScheduleRowCaches();
   return { success: true, dueDate };
 }
 
