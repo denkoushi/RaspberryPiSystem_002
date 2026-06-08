@@ -60,14 +60,16 @@ export function KioskInspectionDrawingVisualLibrarySection({
         <h2 id="inspection-drawing-visual-library-heading" className="shrink-0 text-[1.15rem] font-bold leading-tight">
           図面ライブラリ
         </h2>
-        <Input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="図面名で検索"
-          aria-label="図面名で検索"
-          className="min-h-11 w-1/5 min-w-[10rem] shrink-0 bg-slate-950/60 text-white"
-        />
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="min-w-[10rem] max-w-[20%] shrink-0 basis-[20%]">
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="図面名で検索"
+            aria-label="図面名で検索"
+            className="min-h-11 w-full bg-white text-slate-900 placeholder-slate-500"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="ghostOnDark"
@@ -98,7 +100,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
             {debouncedQuery ? '条件に合う図面はありません。' : '登録済み図面はありません。'}
           </p>
         ) : (
-          <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {visuals.map((visual) => (
               <li
                 key={visual.id}

@@ -159,14 +159,6 @@ export function KioskInspectionDrawingLibraryPage() {
           >
             部品測定へ
           </Button>
-          <Button
-            type="button"
-            variant="ghostOnDark"
-            className="min-h-11 text-[1.02rem]"
-            onClick={() => setVisualUploadOpen(true)}
-          >
-            図面を登録
-          </Button>
           <Link
             to={KIOSK_INSPECTION_DRAWING_CREATE_PATH}
             state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
