@@ -61,8 +61,21 @@ Maintained in accordance with `.agent/PLANS.md`.
   - 単体/統合テスト追加 · CI **`26812045529`** success
 - [x] (2026-06-02) **Pi5 本番** PDF プレビュー — Detach **`20260602-190538-1780`** · Phase12 **41/1/1** · **実機目視 OK**
 - [x] (2026-06-02) **`main` マージ** — PR [#382](https://github.com/denkoushi/RaspberryPiSystem_002/pull/382) squash **`a3ce2284`**
-- [ ] **Pi4×4 本番** — `main` 反映後に各キオスクへ順次（parity + overflow + ズーム + 図面読込 + PDF preview を一括推奨）
-- [ ] **Pi5 実機目視** プレビュー parity UI — デプロイ済・目視記録は運用側（任意 Phase12）
+- [x] (2026-06-08) **図面ライブラリ（visual library）** — ブランチ `feat/kiosk-inspection-drawing-visual-library` · **`127d2d4a`**
+  - 一覧ハブ上部に **図面ライブラリ** セクション（`KioskInspectionDrawingVisualLibrarySection`）
+  - 図面のみ登録（`KioskInspectionDrawingVisualUploadModal`）→ ライブラリから **新規検査図面作成**（`kioskInspectionDrawingCreatePathWithVisual`）
+  - API: `GET /part-measurement/visual-templates`（`q` / `limit` / `sort`）· 検索 debounce **400ms** · 上限 **40** · 並び **`recentlyUpdated`**
+  - 作成画面: `?visualId=` 深リンク・最近アップロードの再解決・戻り先 `returnTo=library`
+  - 単体/統合: `inspectionDrawingVisualLibrary*` · `part-measurement.integration.test.ts`（visual 一覧・deep link）
+- [x] (2026-06-08) **一覧レイアウト密度改善** — 同一ブランチ · **`38b7583f`**
+  - 図面ライブラリ: **5列グリッド** · 検索欄をタイトル行右（`w-1/5` · placeholder **「図面名で検索」**）
+  - テンプレート一覧: **`InspectionDrawingLibraryTemplateGrid`** コンパクト **4列** カード
+  - 説明文 `<p>` 削除（ページヘッダー・図面ライブラリ内）
+  - DEV プレビュー: `inspectionDrawingPreviewFixtures` モック10件 · `/dev/kiosk-inspection-drawing-library`
+  - レビュー: `useInspectionDrawingVisualLibrary` に **`enabled: false`**（`previewVisuals` 時は API 呼び出しなし）
+- [x] (2026-06-08) **Pi5 本番** 図面ライブラリ + 密度改善 — Detach **`20260608-153118-7422`**（`127d2d4a..38b7583f` · Docker rebuild）· Phase12 **43/0/0** · CI **`27119651752`** · **実機目視 OK**
+- [ ] **Pi4×4 本番** — visual library + 密度改善を順次（`raspberrypi4` · `raspi4-robodrill01` · `raspi4-fjv60-80` · `raspi4-kensaku-stonebase01` · Pi3 除外）
+- [ ] **Pi4×4 本番（旧積み残し）** — MVP 以降の parity / overflow / ズーム / 図面読込 / PDF preview が未反映の端末があれば同手順で一括
 
 ## Surprises & Discoveries
 
@@ -122,6 +135,9 @@ Maintained in accordance with `.agent/PLANS.md`.
 
 - Observation: Pi5 上で `curl http://127.0.0.1:3000/api/system/health` が **000** でも、Tailscale **`https://100.106.158.2/api/...`** は正常（Caddy 経由）
   Evidence: 2026-06-02 デプロイ後検証 — SSH localhost 直は本番構成では使わない
+
+- Observation: DEV プレビューで `previewVisuals` を渡しても hook が `enabled` 既定 true だと **不要な visual-templates API** が走る
+  Evidence: コードレビュー 2026-06-08 → `enabled: !isPreview` + `useInspectionDrawingVisualLibrary.test.ts`（`38b7583f`）
 
 ## Decision Log
 
@@ -189,6 +205,14 @@ Maintained in accordance with `.agent/PLANS.md`.
   Rationale: ズーム後パンとタップ配置の競合（レビュー [P1]）
   Date/Author: 2026-05-30 / agent
 
+- Decision: **図面ライブラリ**は既存 **`PartMeasurementVisualTemplate`** + **`GET /part-measurement/visual-templates`** を再利用。業務テンプレ（THREE_KEY）なしで図面だけ登録し、ライブラリから検査図面作成へ遷移
+  Rationale: 図面資産と業務テンプレの境界を分離し、既存 Blob 配信・認可を流用
+  Date/Author: 2026-06-08 / agent
+
+- Decision: 一覧ハブの密度 — 図面ライブラリ **5列** · テンプレート **4列コンパクト** · 検索は各セクション **タイトル行内**（説明文 `<p>` は削除）
+  Rationale: キオスク実機で一覧性不足。余白削減で同一画面に更多表示
+  Date/Author: 2026-06-08 / agent
+
 ## Outcomes & Retrospective
 
 - **評価用作成（互換）**: `/kiosk/part-measurement/inspection/create` は残置。評価用 API は UI 主導線から外した。
@@ -198,7 +222,8 @@ Maintained in accordance with `.agent/PLANS.md`.
 - **デプロイ**: Pi5 で MVP 導線・タブ・一覧ハブ・**プレビュー parity（`ccacef85`）**・**フィルタ overflow（`e19f9b07`）**・**キャンバスズーム（`364aa184`）**・**図面読込/ズーム痙攣（`e12a5a9c`/`f6a9544a`）**・**PDF プレビュー整合（`8307c995`）** まで反映。**Pi4×4 は `main` マージ後の次タスク**。
 - **PDF プレビュー（2026-06-02）**: Pi5 Detach `20260602-190538-1780` · キオスク目視 OK · preview API は副作用なし JPEG 契約で save と座標一致。
 - **DEV プレビュー**: `/dev/kiosk-inspection-drawing-*` で本番コンポーネントを Mac 上で反復可能（fixture）。
-- **未着手**: 複数個数図面UI、TIFF、順位ボード連携、Phase12 への専用 API / preview スモーク追加（任意）。
+- **図面ライブラリ（2026-06-08）**: Pi5 で **standalone visual 登録 → ライブラリ → 新規作成** 導線 + **5列/4列** 密度レイアウトまで反映。**Pi4×4 は未**。
+- **未着手**: 複数個数図面UI、TIFF、順位ボード連携、Phase12 への専用 visual-library スモーク追加（任意）。
 
 ## 代表コミット
 
@@ -215,6 +240,8 @@ Maintained in accordance with `.agent/PLANS.md`.
 | `e42aff35` | `main`（PR #377 squash） | 上記 + docs マージ |
 | `12072afa` | `feat/inspection-drawing-pdf-import` | PDF 取込基盤（pdftoppm・上限・semaphore） |
 | `8307c995` | 同上 | PDF preview API + Web 同一 JPEG 契約 |
+| `127d2d4a` | `feat/kiosk-inspection-drawing-visual-library` | 図面ライブラリ・visual 登録・deep link |
+| `38b7583f` | 同上 | 5列/4列密度レイアウト・preview `enabled: false` |
 
 ## 主要ファイル（後続読者向け）
 
@@ -226,6 +253,10 @@ Maintained in accordance with `.agent/PLANS.md`.
 | API 方針 | `apps/api/src/services/part-measurement/part-measurement-inspection-drawing-policy.ts` |
 | 評価アクセス | `evaluationSheetAccess.ts`（Web） |
 | 一覧 UI | `KioskInspectionDrawingLibraryPage.tsx` |
+| 図面ライブラリ UI | `KioskInspectionDrawingVisualLibrarySection.tsx` · `KioskInspectionDrawingVisualUploadModal.tsx` |
+| 図面ライブラリ hook | `useInspectionDrawingVisualLibrary.ts` · `inspectionDrawingVisualLibraryConstants.ts` |
+| テンプレ4列グリッド | `InspectionDrawingLibraryTemplateGrid.tsx` |
+| visual API | `part-measurement-visual-template.service.ts` · `GET …/visual-templates` |
 | 一覧フィルタ（共有） | `InspectionDrawingLibraryFilterBar.tsx` |
 | 資源 select（共有） | `InspectionDrawingResourceCdSelect.tsx` · `inspectionDrawingKioskUi.ts` |
 | 作成/テンプレ編集 UI | `KioskInspectionDrawingCreatePage.tsx` |
@@ -257,4 +288,6 @@ Maintained in accordance with `.agent/PLANS.md`.
 - 手動（Mac DEV）: `/dev/kiosk-inspection-drawing-library` · `/dev/kiosk-inspection-drawing-create`（本番コンポーネント・fixture）
 - 手動（Pi5・記録）: 本番図面テンプレ + 数量1 → 図面 edit
 - 手動（Pi5・PDF プレビュー）: 作成/編集で PDF 選択 → JPEG 表示 · 変換中保存不可 · 保存→再読込で座標一致（`8307c995` 以降 · **2026-06-02 目視 OK**）
-- 手動（Pi4 未）: `main` 反映後、各キオスクで同確認（強制リロード §6.6.4）
+- 手動（Pi5・図面ライブラリ）: **検査図面** → 図面ライブラリ **5列** · 検索「図面名で検索」· 図面登録 → ライブラリから新規作成 · テンプレ **4列**（`38b7583f` 以降 · **2026-06-08 目視 OK**）
+- 手動（Mac DEV）: `/dev/kiosk-inspection-drawing-library`（fixture 10件・API 無しプレビュー）
+- 手動（Pi4 未）: visual library + 密度改善を `main` 反映後に各キオスクで同確認（強制リロード [verification-checklist §6.6.4](../guides/verification-checklist.md)）
