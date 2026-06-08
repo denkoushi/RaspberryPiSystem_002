@@ -74,6 +74,12 @@ Maintained in accordance with `.agent/PLANS.md`.
   - DEV プレビュー: `inspectionDrawingPreviewFixtures` モック10件 · `/dev/kiosk-inspection-drawing-library`
   - レビュー: `useInspectionDrawingVisualLibrary` に **`enabled: false`**（`previewVisuals` 時は API 呼び出しなし）
 - [x] (2026-06-08) **Pi5 本番** 図面ライブラリ + 密度改善 — Detach **`20260608-153118-7422`**（`127d2d4a..38b7583f` · Docker rebuild）· Phase12 **43/0/0** · CI **`27119651752`** · **実機目視 OK**
+- [x] (2026-06-08) **図面ライブラリ密度調整（第2弾）** — ブランチ `fix/kiosk-inspection-drawing-library-density-tuning`
+  - ヘッダー重複 **「図面を登録」** 削除（登録導線は Section 内に一本化）
+  - 検索欄: **20% wrapper** + 白背景 **`text-slate-900`** · タイトル行で **再読込 / 図面を登録** を検索右隣に配置
+  - 図面ライブラリ: **6列グリッド**（`lg:grid-cols-6`）· fixture コメント更新
+  - API/hook/modal は変更なし · DEV preview は共有 Section 経由
+  - **Mac DEV 目視 OK**（`min-w-[1280px]` chrome 前提）· **Pi5 本番・Pi4×4 は未**
 - [ ] **Pi4×4 本番** — visual library + 密度改善を順次（`raspberrypi4` · `raspi4-robodrill01` · `raspi4-fjv60-80` · `raspi4-kensaku-stonebase01` · Pi3 除外）
 - [ ] **Pi4×4 本番（旧積み残し）** — MVP 以降の parity / overflow / ズーム / 図面読込 / PDF preview が未反映の端末があれば同手順で一括
 
@@ -213,6 +219,10 @@ Maintained in accordance with `.agent/PLANS.md`.
   Rationale: キオスク実機で一覧性不足。余白削減で同一画面に更多表示
   Date/Author: 2026-06-08 / agent
 
+- Decision: 図面ライブラリ密度調整（第2弾）— visual **6列**（`lg+`）· 登録ボタンは Section 内のみ · 検索は **20% wrapper** 内の白背景 Input · 幅は `Input` の `w-full` 競合を避ける
+  Rationale: 実機で検索視認性・重複導線・一覧密度の追加改善。共有 `Input` への `!w-*` 上書きより wrapper で境界を閉じる
+  Date/Author: 2026-06-08 / agent
+
 ## Outcomes & Retrospective
 
 - **評価用作成（互換）**: `/kiosk/part-measurement/inspection/create` は残置。評価用 API は UI 主導線から外した。
@@ -223,6 +233,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 - **PDF プレビュー（2026-06-02）**: Pi5 Detach `20260602-190538-1780` · キオスク目視 OK · preview API は副作用なし JPEG 契約で save と座標一致。
 - **DEV プレビュー**: `/dev/kiosk-inspection-drawing-*` で本番コンポーネントを Mac 上で反復可能（fixture）。
 - **図面ライブラリ（2026-06-08）**: Pi5 で **standalone visual 登録 → ライブラリ → 新規作成** 導線 + **5列/4列** 密度レイアウトまで反映。**Pi4×4 は未**。
+- **図面ライブラリ密度調整（2026-06-08）**: **6列**・検索 wrapper・登録導線一本化を `fix/kiosk-inspection-drawing-library-density-tuning` で実装済み。**Mac DEV 目視 OK**。**Pi5 本番・Pi4×4 は未**。
 - **未着手**: 複数個数図面UI、TIFF、順位ボード連携、Phase12 への専用 visual-library スモーク追加（任意）。
 
 ## 代表コミット
@@ -289,5 +300,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 - 手動（Pi5・記録）: 本番図面テンプレ + 数量1 → 図面 edit
 - 手動（Pi5・PDF プレビュー）: 作成/編集で PDF 選択 → JPEG 表示 · 変換中保存不可 · 保存→再読込で座標一致（`8307c995` 以降 · **2026-06-02 目視 OK**）
 - 手動（Pi5・図面ライブラリ）: **検査図面** → 図面ライブラリ **5列** · 検索「図面名で検索」· 図面登録 → ライブラリから新規作成 · テンプレ **4列**（`38b7583f` 以降 · **2026-06-08 目視 OK**）
+- 手動（Mac DEV・密度調整第2弾）: `/dev/kiosk-inspection-drawing-library` で **1280px 前提**（`KioskInspectionDrawingDevPreviewChrome` の `min-w-[1280px]` により viewport を狭めても中身は 1280px 相当）· 図面ライブラリ **6列**（`lg` 有効）· 検索黒文字・**20% wrapper** · ヘッダーに「図面を登録」なし · Section 内に再読込/登録 · カード/ボタンはみ出しなし · 検索絞り込み動作
+- 手動（Pi5・密度調整第2弾・未）: 本番キオスクで上記と同確認（実機 viewport で `lg` 境界を最終確認）
 - 手動（Mac DEV）: `/dev/kiosk-inspection-drawing-library`（fixture 10件・API 無しプレビュー）
 - 手動（Pi4 未）: visual library + 密度改善を `main` 反映後に各キオスクで同確認（強制リロード [verification-checklist §6.6.4](../guides/verification-checklist.md)）

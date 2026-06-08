@@ -136,7 +136,7 @@ function previewVisual(id: string, name: string, updatedAt: string) {
   };
 }
 
-/** 開発プレビュー — 図面ライブラリ5列グリッド確認用（10件） */
+/** 開発プレビュー — 図面ライブラリ6列グリッド確認用（10件） */
 export const INSPECTION_DRAWING_PREVIEW_VISUAL_LIBRARY: ReturnType<typeof previewVisual>[] = [
   previewVisual('preview-visual-1', 'サンプル図面 A', previewVisualUpdatedAt),
   previewVisual('preview-visual-2', 'サンプル図面 B', '2026-05-28T14:00:00.000Z'),
