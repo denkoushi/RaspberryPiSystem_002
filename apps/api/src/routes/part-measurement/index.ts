@@ -252,6 +252,16 @@ const listTemplatesQuerySchema = z.object({
   includeInactive: z.coerce.boolean().optional()
 });
 
+/** Query string boolean: only the literal "true" (case-insensitive) is true. */
+const optionalQueryTrueOnlyBooleanSchema = z
+  .union([z.boolean(), z.string()])
+  .optional()
+  .transform((value): boolean | undefined => {
+    if (value === undefined) return undefined;
+    if (typeof value === 'boolean') return value;
+    return value.trim().toLowerCase() === 'true';
+  });
+
 const activeTemplateExistsQuerySchema = z.object({
   fhincd: z.string().min(1).max(120),
   processGroup: processGroupSchema,
@@ -676,17 +686,39 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     async (request) => {
       const q = z
         .object({
-          includeInactive: z.coerce.boolean().optional(),
+          includeInactive: optionalQueryTrueOnlyBooleanSchema,
           q: z.string().optional(),
-          limit: z.coerce.number().int().min(1).max(200).optional()
+          limit: z.coerce.number().int().min(1).max(200).optional(),
+          sort: z.enum(['name', 'recentlyUpdated']).optional()
         })
         .parse(request.query);
       const list = await visualTemplateService.list({
         includeInactive: q.includeInactive === true,
         q: q.q,
-        limit: q.limit
+        limit: q.limit,
+        sort: q.sort
       });
       return { visualTemplates: list.map(serializeVisualTemplate) };
+    }
+  );
+
+  app.get(
+    '/part-measurement/visual-templates/:id',
+    { preHandler: allowView, config: { rateLimit: false } },
+    async (request, reply) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const q = z
+        .object({
+          includeInactive: optionalQueryTrueOnlyBooleanSchema
+        })
+        .parse(request.query);
+      const visual = await visualTemplateService.getById(params.id, {
+        includeInactive: q.includeInactive === true
+      });
+      if (!visual) {
+        return reply.status(404).send({ message: '図面テンプレートが見つかりません。' });
+      }
+      return { visualTemplate: serializeVisualTemplate(visual) };
     }
   );
 

@@ -36,10 +36,13 @@ import {
   inspectionDrawingCanvasImageUrl,
   inspectionDrawingHasImageSource,
   parseInspectionDrawingSourceTemplateIdFromSearch,
+  parseInspectionDrawingVisualTemplateIdFromSearch,
   templateToCreateDraft,
   resolveInspectionDrawingCreateKeyCollision,
   inspectionDrawingCreateKeyCollisionMessage
 } from '../../features/part-measurement/inspection-drawing';
+import { INSPECTION_DRAWING_VISUAL_PICKER_LIMIT } from '../../features/part-measurement/inspection-drawing/inspectionDrawingVisualLibraryConstants';
+import { resolveVisualTemplateById } from '../../features/part-measurement/inspection-drawing/inspectionDrawingVisualLibraryHelpers';
 import {
   createInspectionDrawingPoint,
   nextAvailableMarkerNo,
@@ -193,6 +196,7 @@ export function KioskInspectionDrawingCreatePage() {
 
   const drawingReplacePendingRef = useRef(false);
   const prevSourceTemplateIdRef = useRef<string | null>(null);
+  const prevVisualTemplateIdFromSearchRef = useRef<string | null>(null);
   const visualSearchRequestSeqRef = useRef(0);
 
   const applyLoadedTemplate = useCallback(
@@ -271,6 +275,17 @@ export function KioskInspectionDrawingCreatePage() {
     [resetLocalPreview]
   );
 
+  const applyInitialVisualPick = useCallback(
+    (visual: Pick<PartMeasurementVisualTemplateDto, 'id' | 'name' | 'drawingImageRelativePath'>) => {
+      resetLocalPreview();
+      setVisualSource('pickExisting');
+      setSelectedVisualTemplateId(visual.id);
+      setSelectedVisualLabel(visual.name);
+      setServerDrawingPath(visual.drawingImageRelativePath);
+    },
+    [resetLocalPreview]
+  );
+
   const clearPointsIfConfirmed = useCallback((): boolean => {
     if (points.length === 0) return true;
     return confirmVisualChange(
@@ -325,7 +340,7 @@ export function KioskInspectionDrawingCreatePage() {
       setVisualsLoading(true);
       try {
         const list = await listPartMeasurementVisualTemplates(
-          { q: searchQuery?.trim() || undefined, limit: 80 },
+          { q: searchQuery?.trim() || undefined, limit: INSPECTION_DRAWING_VISUAL_PICKER_LIMIT },
           clientKey
         );
         if (visualSearchRequestSeqRef.current === requestSeq) {
@@ -408,6 +423,62 @@ export function KioskInspectionDrawingCreatePage() {
       cancelled = true;
     };
   }, [applyCreateDraft, clientKey, isEditing, location.search, resetBlankCreateForm]);
+
+  useEffect(() => {
+    if (isEditing) return;
+
+    const sourceId = parseInspectionDrawingSourceTemplateIdFromSearch(location.search);
+    if (sourceId) {
+      prevVisualTemplateIdFromSearchRef.current = null;
+      return;
+    }
+
+    const visualIdFromSearch = parseInspectionDrawingVisualTemplateIdFromSearch(location.search);
+    const prevVisualId = prevVisualTemplateIdFromSearchRef.current;
+    prevVisualTemplateIdFromSearchRef.current = visualIdFromSearch;
+
+    if (!visualIdFromSearch) {
+      if (prevVisualId) {
+        resetBlankCreateForm();
+        setMessage(null);
+      }
+      return;
+    }
+
+    if (prevVisualId === visualIdFromSearch) {
+      return;
+    }
+
+    resetBlankCreateForm();
+    setMessage(null);
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const visual = await resolveVisualTemplateById(visualIdFromSearch, clientKey);
+        if (cancelled) return;
+        if (!visual) {
+          setMessage('指定の図面が見つかりませんでした。');
+          return;
+        }
+        applyInitialVisualPick(visual);
+      } catch {
+        if (!cancelled) {
+          setMessage('図面の読み込みに失敗しました。');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyInitialVisualPick,
+    clientKey,
+    isEditing,
+    location.search,
+    resetBlankCreateForm
+  ]);
 
   useEffect(() => {
     if (isEditing) {

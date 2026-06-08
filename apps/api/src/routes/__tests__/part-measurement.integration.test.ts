@@ -205,6 +205,106 @@ describe('part-measurement templates API', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('returns 401 without auth for GET /api/part-measurement/visual-templates/:id', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/visual-templates/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('returns visual template by id for GET /api/part-measurement/visual-templates/:id', async () => {
+    const { body, contentType } = buildMultipartPng('lookup-visual', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    const vid = up.json().visualTemplate.id as string;
+
+    const getRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/visual-templates/${vid}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(getRes.statusCode).toBe(200);
+    expect(getRes.json().visualTemplate.id).toBe(vid);
+    expect(getRes.json().visualTemplate.name).toBe('lookup-visual');
+
+    const missing = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/visual-templates/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+
+  it('treats includeInactive=false as false and only returns inactive visual when true', async () => {
+    const { body, contentType } = buildMultipartPng('inactive-visual', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    const vid = up.json().visualTemplate.id as string;
+
+    await prisma.partMeasurementVisualTemplate.update({
+      where: { id: vid },
+      data: { isActive: false }
+    });
+
+    const falseRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/visual-templates/${vid}?includeInactive=false`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(falseRes.statusCode).toBe(404);
+
+    const trueRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/visual-templates/${vid}?includeInactive=true`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(trueRes.statusCode).toBe(200);
+    expect(trueRes.json().visualTemplate.id).toBe(vid);
+  });
+
+  it('sorts visual templates by recently updated when requested', async () => {
+    const firstUpload = buildMultipartPng('aa-older', MIN_PNG);
+    const secondUpload = buildMultipartPng('zz-newer', MIN_PNG);
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': firstUpload.contentType },
+      payload: firstUpload.body
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': secondUpload.contentType },
+      payload: secondUpload.body
+    });
+    expect(second.statusCode).toBe(200);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/visual-templates?sort=recentlyUpdated&limit=2',
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(listRes.statusCode).toBe(200);
+    expect(listRes.json().visualTemplates.map((row: { name: string }) => row.name)).toEqual([
+      'zz-newer',
+      'aa-older'
+    ]);
+  });
+
   it('creates visual template with PNG (ADMIN) and binds business template', async () => {
     const { body, contentType } = buildMultipartPng('図面A', MIN_PNG);
     const up = await app.inject({
