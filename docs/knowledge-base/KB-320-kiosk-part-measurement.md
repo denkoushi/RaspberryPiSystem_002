@@ -122,8 +122,10 @@
 |----------------|------|
 | `GET /api/part-measurement/templates/active-exists` | 軽量存在確認（`{ exists: boolean }`）· kiosk `x-client-key` 可 |
 | `GET /api/part-measurement/visual-templates?q=&limit=` | 図面名 **部分一致（case-insensitive）** · `limit` 1–200（未指定時は管理画面互換で全件） |
+| `PATCH /api/part-measurement/visual-templates/:id` | **`name` のみ**更新（1–200 文字）· inactive / 不存在は **404** · 共有 visual 名は参照テンプレ表示にも反映 |
 | `POST /api/part-measurement/visual-templates` | 応答に **`cleanupToken`**（作成直後の未参照回収用） |
 | `DELETE /api/part-measurement/visual-templates/:id` | ヘッダ **`X-Visual-Cleanup-Token` 必須**（トークン不一致は 403） |
+| `GET /api/part-measurement/inspection-drawing/templates?visualName=` | テンプレ一覧を **図面名**（`visualTemplate.name`）で部分一致絞り込み（`fhincd` 等と AND） |
 
 **同時作成直列化（本番 THREE_KEY）**:
 
@@ -140,6 +142,8 @@
 | `inspectionDrawingCreateDraft.ts` | `normalizeFhincdForTemplateKey` · `templateBusinessKeysEqual` · `resolveInspectionDrawingCreateKeyCollision` |
 | `InspectionDrawingVisualSourceControl.tsx` | 図面ピッカー · 検索 **400ms debounce** → API `q` + `limit: 80` |
 | `KioskInspectionDrawingCreatePage.tsx` | `visualSearchRequestSeqRef` で **古い検索レスポンスの上書きを防止** |
+| `KioskInspectionDrawingVisualLibrarySection.tsx` | カード下 **新規作成 / 名称変更** · `KioskInspectionDrawingVisualRenameModal` |
+| `InspectionDrawingLibraryFilterBar.tsx` | テンプレ一覧に **図面名** フィルタ（**更新** ボタンで API 反映） |
 | `kioskInspectionDrawingRoutes.ts` | `kioskInspectionDrawingCreatePathWithSource` · `parseInspectionDrawingSourceTemplateIdFromSearch` |
 
 キオスク初回は **先頭 80 件**（`q` なし）。それ以外は検索必須。管理画面は `includeInactive` 時 **limit 未指定で全件**（従来互換）。
@@ -218,14 +222,15 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 
 | 項目 | 内容 |
 |------|------|
-| **ガイド対象** | `selectedEntryIndex` のみ。件またぎ自動進行はしない |
+| **ガイド対象** | `selectedEntryIndex` のみ。測定点の件内ガイドは従来どおり |
 | **初期** | 図面 ready 後、未入力の最小 `markerNo`（なければ先頭）へ。ズームは fit 基準 **+4 step**（内訳: 旧ガイド +2 + 追加 +2 → `SELF_INSPECTION_GUIDED_ZOOM_STEPS=4` → **2.0**、`resolveInspectionDrawingZoomFromDefaultSteps`） |
 | **確定して次へ** | dropdown 即時 / 手入力は **Enter** または単独 **blur**、**公差内 OK のみ** |
 | **留まる** | NG・公差不備・不正値。保存 API 契約は従来どおり |
-| **手動化** | 全体表示・±ズーム・パン・他マーカー・**他入力件タップ**・**入力を保存成功**。`fitToView` は未消化 `focusRequest` を破棄 |
+| **手動化** | 全体表示・±ズーム・パン・他マーカー・**他入力件タップ**（manual 維持）。`fitToView` は未消化 `focusRequest` を破棄 |
 | **再開** | 手動後に **再開** で当該件の未入力最小 `markerNo` からガイド再開（同じ **2.0** 倍率） |
+| **保存後の入力件** | **入力を保存** 成功後、未保存の次 required slot へ **自動切替 + guided 再開**（全件保存済みなら manual のまま完了導線） |
 | **入力対象の見た目** | 値入力パネルが向いている測定点（`selectedPoint`）の丸数字外周を **青系 outline**（状態 ring とは独立） |
-| **全点 OK** | ガイド停止。「入力を保存」導線（件自動切替なし） |
+| **全点 OK** | ガイド停止。「入力を保存」導線（保存成功後に次入力件へ自動切替） |
 | **センタリング** | `focusRequest: { pointId, requestId, zoom }` を **1 回だけ**適用（`selectedPointId` 連動再スクロールなし）。**2.0** でも震えないことは Runbook 手動確認で回帰（[§キャンバスズーム痙攣](#検査図面-キャンバスズーム痙攣修正-2026-05-31) の 1.5 履歴は変更しない） |
 | **ガイド試行（検査図面作成）** | 今回の倍率変更は **対象外**（`GUIDED_TRIAL_ZOOM=1.5` 固定のまま） |
 | **並び** | `markerNo` → 配列 index → `id`（`sortGuidedTrialPointsStable` と同型） |
@@ -237,10 +242,11 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 | 項目 | 内容 |
 |------|------|
 | **倍率** | `SELF_INSPECTION_GUIDED_ZOOM_STEPS = BASE(2) + EXTRA(2) = 4` → **2.0**（`resolveInspectionDrawingZoomFromDefaultSteps`）。旧ガイド 1.5 から UI「＋」2 段相当 |
-| **保存後 manual** | `enterManualAfterPersist()` — 保存 API 成功時のみ（`c90647ac`） |
+| **保存後** | 次未保存 slot あり → 自動切替 + guided。なし → `enterManualAfterPersist()` |
 | **入力対象の見た目** | `inspectionDrawingMarkerStyles.ts` — `selectedPoint` に青 outline（状態 ring と分離） |
 | **保存 blur 抑止** | `SELF_INSPECTION_SESSION_ACTIONS_SELECTOR` · 保存/完了 `onPointerDownCapture` · `InspectionDrawingValuePanel` の `blur_without_guide`（`fb10f0e0`） |
-| **件切替** | 初回 priming はセッション入室時 1 回。他入力件タップ後は **manual**（再開で guided 復帰）— 仕様維持 |
+| **件切替** | 初回 priming は entry 0 のみ自動 guided。他入力件タップ後は **manual**（再開で guided 復帰）。保存後自動切替は guided 再開 |
+| **黒画面回避** | `useSelfInspectionSession` に `placeholderData` + entry 単位 `draftBoundKey`。placeholder 中は baseline 再束縛しない |
 | **ガイド試行** | **対象外**（`GUIDED_TRIAL_ZOOM=1.5` 固定） |
 
 #### セッション操作ボタン活性（2026-06-04） {#自主検査-セッション操作ボタン活性-2026-06-04}

@@ -61,7 +61,7 @@ describe('useSelfInspectionGuidedFocus', () => {
     expect(result.current.focusRequest?.zoom).toBe(SELF_INSPECTION_GUIDED_ZOOM);
 
     act(() => {
-      result.current.handleEntrySwitch();
+      result.current.handleUserEntrySelect(1);
     });
     rerender({ entryIndex: 1 });
 
@@ -176,6 +176,50 @@ describe('useSelfInspectionGuidedFocus', () => {
 
     expect(result.current.focusRequest?.pointId).toBe('p1');
     expect(result.current.guideMode).toBe('guided');
+  });
+
+  it('prepareAutoAdvanceToEntry starts guided for the next entry', () => {
+    const session = makeMultiEntrySession();
+    const draftByEntry: Record<number, Record<string, string>> = {
+      0: { p1: '10', p2: '10' },
+      1: { p1: '', p2: '' }
+    };
+    let selectedPointId: string | null = null;
+
+    const { result, rerender } = renderHook(
+      (props: { entryIndex: number }) =>
+        useSelfInspectionGuidedFocus({
+          session,
+          selectedEntryIndex: props.entryIndex,
+          selectedPointId,
+          draftValuesByEntryIndex: draftByEntry,
+          isSessionReadOnly: false,
+          isDrawingCanvasReady: true,
+          isDraftReadyForGuidedFocus: true,
+          onDraftChange: (entryIndex, draft) => {
+            draftByEntry[entryIndex] = draft;
+          },
+          onSelectPointId: (id) => {
+            selectedPointId = id;
+          },
+          onZoomLevel: () => {},
+          canvasZoom: 1
+        }),
+      { initialProps: { entryIndex: 0 } }
+    );
+
+    act(() => {
+      result.current.enterManualAfterPersist();
+    });
+    expect(result.current.guideMode).toBe('manual');
+
+    act(() => {
+      result.current.prepareAutoAdvanceToEntry(1);
+    });
+    rerender({ entryIndex: 1 });
+
+    expect(result.current.guideMode).toBe('guided');
+    expect(result.current.focusRequest?.pointId).toBe('p1');
   });
 
   it('enterManualAfterPersist forces manual without advancing guide', () => {

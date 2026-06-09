@@ -7,6 +7,7 @@ const { prismaMock, deleteDrawingMock } = vi.hoisted(() => ({
     partMeasurementVisualTemplate: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
       delete: vi.fn()
     },
     partMeasurementTemplate: {
@@ -96,6 +97,53 @@ describe('PartMeasurementVisualTemplateService.getById', () => {
     await expect(service.getById('vt-2', { includeInactive: true })).resolves.toMatchObject({
       id: 'vt-2'
     });
+  });
+});
+
+describe('PartMeasurementVisualTemplateService.updateName', () => {
+  const service = new PartMeasurementVisualTemplateService();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('updates active visual template name', async () => {
+    prismaMock.partMeasurementVisualTemplate.findUnique.mockResolvedValue({
+      id: 'vt-1',
+      name: '旧名',
+      isActive: true
+    });
+    prismaMock.partMeasurementVisualTemplate.update.mockResolvedValue({
+      id: 'vt-1',
+      name: '新名'
+    });
+
+    await expect(service.updateName('vt-1', '  新名  ')).resolves.toMatchObject({ name: '新名' });
+    expect(prismaMock.partMeasurementVisualTemplate.update).toHaveBeenCalledWith({
+      where: { id: 'vt-1' },
+      data: { name: '新名' }
+    });
+  });
+
+  it('rejects empty name', async () => {
+    await expect(service.updateName('vt-1', '   ')).rejects.toMatchObject({ statusCode: 400 });
+    expect(prismaMock.partMeasurementVisualTemplate.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects name longer than 200 characters', async () => {
+    await expect(service.updateName('vt-1', 'a'.repeat(201))).rejects.toMatchObject({ statusCode: 400 });
+    expect(prismaMock.partMeasurementVisualTemplate.update).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for missing or inactive visual', async () => {
+    prismaMock.partMeasurementVisualTemplate.findUnique.mockResolvedValue(null);
+    await expect(service.updateName('missing', '新名')).rejects.toMatchObject({ statusCode: 404 });
+
+    prismaMock.partMeasurementVisualTemplate.findUnique.mockResolvedValue({
+      id: 'vt-inactive',
+      isActive: false
+    });
+    await expect(service.updateName('vt-inactive', '新名')).rejects.toMatchObject({ statusCode: 404 });
   });
 });
 

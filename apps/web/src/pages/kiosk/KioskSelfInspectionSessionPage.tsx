@@ -18,6 +18,8 @@ import {
   templateItemToDrawingPoint,
   useInspectionDrawingZoom
 } from '../../features/part-measurement/inspection-drawing';
+import { applySelfInspectionEntrySaveToSessionCache } from '../../features/part-measurement/mergeSelfInspectionSessionAfterEntrySave';
+import { resolveNextRequiredSelfInspectionEntryIndex } from '../../features/part-measurement/resolveNextRequiredSelfInspectionEntryIndex';
 import {
   buildSelfInspectionEntryDraft,
   selfInspectionEntryPageCountForSession,
@@ -35,6 +37,12 @@ import {
   selfInspectionActionReasonMessage
 } from '../../features/part-measurement/selfInspectionSessionActionState';
 import {
+  buildSelfInspectionDraftBoundKey,
+  canRebindSelfInspectionEntryDraft,
+  createSelfInspectionEntryDraftBinding,
+  resolveSelfInspectionDraftBoundKeySyncWithoutRebind
+} from '../../features/part-measurement/selfInspectionSessionDraftBinding';
+import {
   resolveSelfInspectionDrawingPanelPhase,
   selfInspectionDrawingZoomEnabled
 } from '../../features/part-measurement/selfInspectionSessionDrawingPanelState';
@@ -45,6 +53,7 @@ import { useSelfInspectionGuidedFocus } from '../../features/part-measurement/us
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { SelfInspectionValueCommitPayload } from '../../features/part-measurement/selfInspectionGuidedFocus';
+import type { SelfInspectionLotEntryDto } from '../../features/part-measurement/types';
 
 function readApiErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -110,8 +119,8 @@ export function KioskSelfInspectionSessionPage() {
   const [entryIndexPage, setEntryIndexPage] = useState(0);
   const [draftValuesByEntryIndex, setDraftValuesByEntryIndex] = useState<Record<number, Record<string, string>>>({});
   const [savedDraftByEntryIndex, setSavedDraftByEntryIndex] = useState<Record<number, Record<string, string>>>({});
-  /** 現在 session の baseline draft が載ったあとだけガイド初回開始を許可する */
-  const [draftBoundSessionId, setDraftBoundSessionId] = useState<string | null>(null);
+  /** entry 単位で baseline draft が束ねられたキー */
+  const [draftBoundKey, setDraftBoundKey] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const resolveAttemptedRef = useRef(false);
@@ -135,9 +144,12 @@ export function KioskSelfInspectionSessionPage() {
     entryIndex: selectedEntryIndex
   });
   const session = sessionQuery.data;
+  const isSessionPlaceholderData = sessionQuery.isPlaceholderData;
+  const isEntryFocusFetching = sessionQuery.isFetching && isSessionPlaceholderData;
   const latestSessionRef = useRef(session);
   latestSessionRef.current = session;
   const requiredEntryCount = session ? resolveSelfInspectionRequiredEntryCount(session) : 0;
+  const isSessionIdentityReady = Boolean(session && resolvedSessionId && session.id === resolvedSessionId);
   const isSessionReadOnly = Boolean(session?.completedAt || session?.entryCountBlockedReason);
   const { zoom, zoomIn, zoomOut, fitToView, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
   const drawingPath = session?.template.visualTemplate?.drawingImageRelativePath ?? null;
@@ -162,36 +174,57 @@ export function KioskSelfInspectionSessionPage() {
     setEntryIndexPage(0);
     setSelectedEntryIndex(0);
     setSelectedPointId(null);
-    setDraftBoundSessionId(null);
-    const baseline = buildSelfInspectionEntryDraft(currentSession, 0);
-    setDraftValuesByEntryIndex({ 0: baseline });
-    setSavedDraftByEntryIndex({ 0: baseline });
-    setDraftBoundSessionId(currentSession.id);
+    setDraftBoundKey(null);
+    const binding = createSelfInspectionEntryDraftBinding(currentSession, 0);
+    setDraftValuesByEntryIndex({ 0: binding.draft });
+    setSavedDraftByEntryIndex({ 0: binding.saved });
+    setDraftBoundKey(binding.boundKey);
   }, [session?.id]);
 
   useEffect(() => {
     if (!session?.id) return;
-    if (selectedEntryIndex === 0 && draftBoundSessionId === session.id) return;
-    const baseline = buildSelfInspectionEntryDraft(session, selectedEntryIndex);
-    setDraftValuesByEntryIndex((prev) => {
-      if (prev[selectedEntryIndex]) return prev;
-      return {
+    if (
+      canRebindSelfInspectionEntryDraft({
+        session,
+        entryIndex: selectedEntryIndex,
+        isPlaceholderData: isSessionPlaceholderData,
+        draftValuesByEntryIndex,
+        savedDraftByEntryIndex
+      })
+    ) {
+      const binding = createSelfInspectionEntryDraftBinding(session, selectedEntryIndex);
+      if (draftBoundKey === binding.boundKey) return;
+      setDraftValuesByEntryIndex((prev) => ({
         ...prev,
-        [selectedEntryIndex]: baseline
-      };
-    });
-    setSavedDraftByEntryIndex((prev) => {
-      if (prev[selectedEntryIndex]) return prev;
-      return {
+        [selectedEntryIndex]: binding.draft
+      }));
+      setSavedDraftByEntryIndex((prev) => ({
         ...prev,
-        [selectedEntryIndex]: baseline
-      };
-    });
-  }, [draftBoundSessionId, session, selectedEntryIndex]);
+        [selectedEntryIndex]: binding.saved
+      }));
+      setDraftBoundKey(binding.boundKey);
+      return;
+    }
 
+    const boundKeySync = resolveSelfInspectionDraftBoundKeySyncWithoutRebind({
+      session,
+      entryIndex: selectedEntryIndex,
+      isPlaceholderData: isSessionPlaceholderData,
+      draftBoundKey,
+      draftValuesByEntryIndex,
+      savedDraftByEntryIndex
+    });
+    if (boundKeySync) {
+      setDraftBoundKey(boundKeySync);
+    }
+  }, [draftBoundKey, draftValuesByEntryIndex, isSessionPlaceholderData, savedDraftByEntryIndex, selectedEntryIndex, session]);
+
+  const currentDraftBoundKey = session
+    ? buildSelfInspectionDraftBoundKey(session, selectedEntryIndex)
+    : null;
   const isDraftReadyForGuidedFocus =
     Boolean(session?.id) &&
-    draftBoundSessionId === session?.id &&
+    draftBoundKey === currentDraftBoundKey &&
     draftValuesByEntryIndex[selectedEntryIndex] !== undefined;
 
   const {
@@ -205,7 +238,8 @@ export function KioskSelfInspectionSessionPage() {
     handleManualZoom,
     handleUserScroll,
     handleSelectPointManual,
-    handleEntrySwitch,
+    handleUserEntrySelect,
+    prepareAutoAdvanceToEntry,
     handleCommitValue,
     consumeNextBlurGuideAdvance,
     enterManualAfterPersist
@@ -290,7 +324,8 @@ export function KioskSelfInspectionSessionPage() {
   const isSavingEntry = createEntryMutation.isPending || updateEntryMutation.isPending;
   const isCompletingSession = completeSessionMutation.isPending;
   const isResettingSession = resetSessionMutation.isPending;
-  const resetDisabled = isSavingEntry || isCompletingSession || isResettingSession;
+  const resetDisabled =
+    !isSessionIdentityReady || isSavingEntry || isCompletingSession || isResettingSession;
 
   const sessionActionContext = useMemo(() => {
     if (!session) return null;
@@ -321,26 +356,26 @@ export function KioskSelfInspectionSessionPage() {
 
   const saveActionState = useMemo(
     () =>
-      sessionActionContext
+      sessionActionContext && isSessionIdentityReady
         ? resolveSelfInspectionSaveActionState(sessionActionContext)
         : { enabled: false, reason: 'read_only' as const },
-    [sessionActionContext]
+    [isSessionIdentityReady, sessionActionContext]
   );
 
   const completeActionState = useMemo(
     () =>
-      sessionActionContext
+      sessionActionContext && isSessionIdentityReady
         ? resolveSelfInspectionCompleteActionState(sessionActionContext)
         : { enabled: false, reason: 'read_only' as const },
-    [sessionActionContext]
+    [isSessionIdentityReady, sessionActionContext]
   );
 
   const resumeGuideActionState = useMemo(
     () =>
-      sessionActionContext
+      sessionActionContext && isSessionIdentityReady
         ? resolveSelfInspectionResumeGuideActionState(sessionActionContext)
         : { enabled: false, reason: 'read_only' as const },
-    [sessionActionContext]
+    [isSessionIdentityReady, sessionActionContext]
   );
 
   const hasUnsavedDraftChangesForReset = useMemo(() => {
@@ -348,7 +383,7 @@ export function KioskSelfInspectionSessionPage() {
     return hasDirtySelfInspectionDrafts(session, draftValuesByEntryIndex, savedDraftByEntryIndex);
   }, [draftValuesByEntryIndex, savedDraftByEntryIndex, session]);
 
-  const isSessionInputLocked = isSessionReadOnly || isCompletingSession;
+  const isSessionInputLocked = isSessionReadOnly || isCompletingSession || isEntryFocusFetching;
 
   const resetDestructiveDescriptionText = hasUnsavedDraftChangesForReset
     ? '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。未保存の入力があります。リセットすると破棄されます。'
@@ -373,9 +408,12 @@ export function KioskSelfInspectionSessionPage() {
     }
   };
 
-  const persistEntry = async (entryIndex: number, draft: Record<string, string>) => {
-    if (!session || persistInFlightRef.current) {
-      return false;
+  const persistEntry = async (
+    entryIndex: number,
+    draft: Record<string, string>
+  ): Promise<SelfInspectionLotEntryDto | null> => {
+    if (!session || !isSessionIdentityReady || persistInFlightRef.current) {
+      return null;
     }
     const saveState = resolveSelfInspectionSaveActionState({
       session,
@@ -392,7 +430,7 @@ export function KioskSelfInspectionSessionPage() {
     if (!saveState.enabled) {
       const message = selfInspectionActionReasonMessage(saveState.reason);
       if (message) setActionError(message);
-      return false;
+      return null;
     }
     persistInFlightRef.current = true;
     setActionError(null);
@@ -405,32 +443,30 @@ export function KioskSelfInspectionSessionPage() {
     };
     try {
       const existing = session.entries.find((entry) => entry.entryIndex === entryIndex);
-      if (existing) {
-        await updateEntryMutation.mutateAsync({
-          sessionId: session.id,
-          entryId: existing.id,
-          body: {
-            ...payload,
-            ifUnmodifiedSince: existing.updatedAt
-          }
-        });
-      } else {
-        await createEntryMutation.mutateAsync({
-          sessionId: session.id,
-          body: {
-            entryIndex,
-            ...payload
-          }
-        });
-      }
+      const savedEntry = existing
+        ? await updateEntryMutation.mutateAsync({
+            sessionId: session.id,
+            entryId: existing.id,
+            body: {
+              ...payload,
+              ifUnmodifiedSince: existing.updatedAt
+            }
+          })
+        : await createEntryMutation.mutateAsync({
+            sessionId: session.id,
+            body: {
+              entryIndex,
+              ...payload
+            }
+          });
       setSavedDraftByEntryIndex((prev) => ({
         ...prev,
         [entryIndex]: { ...draft }
       }));
-      return true;
+      return savedEntry;
     } catch (error: unknown) {
       setActionError(readApiErrorMessage(error, '入力の保存に失敗しました。'));
-      return false;
+      return null;
     } finally {
       persistInFlightRef.current = false;
     }
@@ -440,14 +476,35 @@ export function KioskSelfInspectionSessionPage() {
     if (!saveActionState.enabled || !activeDraft) return;
     const draft = draftValuesByEntryIndex[activeDraft.entryIndex];
     if (!draft) return;
-    const saved = await persistEntry(activeDraft.entryIndex, draft);
-    if (saved) {
+    const savedEntry = await persistEntry(activeDraft.entryIndex, draft);
+    if (!savedEntry) return;
+
+    const baseSession = latestSessionRef.current ?? session;
+    const sessionSnapshot = baseSession
+      ? applySelfInspectionEntrySaveToSessionCache(baseSession, savedEntry, activeDraft.entryIndex)
+      : undefined;
+    if (!sessionSnapshot) {
       enterManualAfterPersist();
+      return;
     }
+
+    const nextEntryIndex = resolveNextRequiredSelfInspectionEntryIndex(
+      sessionSnapshot,
+      activeDraft.entryIndex
+    );
+    if (nextEntryIndex == null) {
+      enterManualAfterPersist();
+      return;
+    }
+
+    prepareAutoAdvanceToEntry(nextEntryIndex);
+    setSelectedEntryIndex(nextEntryIndex);
+    setEntryIndexPage(selfInspectionEntryPageForEntryIndex(sessionSnapshot, nextEntryIndex));
+    setActionError(null);
   };
 
   const completeSession = async () => {
-    if (!completeActionState.enabled || !session) {
+    if (!completeActionState.enabled || !session || !isSessionIdentityReady) {
       return;
     }
     setActionError(null);
@@ -496,7 +553,11 @@ export function KioskSelfInspectionSessionPage() {
     );
   }
 
-  if (sessionQuery.isLoading || !session) {
+  if (sessionQuery.isLoading && !session) {
+    return <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-900 text-white">読込中…</div>;
+  }
+
+  if (!session || !isSessionIdentityReady) {
     return <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-900 text-white">読込中…</div>;
   }
 
@@ -640,11 +701,9 @@ export function KioskSelfInspectionSessionPage() {
                     onPointerDownCapture={consumeNextBlurGuideAdvance}
                     onPointerDown={consumeNextBlurGuideAdvance}
                     onClick={() => {
-                      handleEntrySwitch();
+                      handleUserEntrySelect(slot.entryIndex);
                       setSelectedEntryIndex(slot.entryIndex);
-                      if (session) {
-                        setEntryIndexPage(selfInspectionEntryPageForEntryIndex(session, slot.entryIndex));
-                      }
+                      setEntryIndexPage(selfInspectionEntryPageForEntryIndex(session, slot.entryIndex));
                       setActionError(null);
                     }}
                   >

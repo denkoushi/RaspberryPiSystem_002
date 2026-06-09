@@ -10,6 +10,7 @@ import {
   INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE,
   kioskInspectionDrawingCreatePathWithVisual
 } from './kioskInspectionDrawingRoutes';
+import { KioskInspectionDrawingVisualRenameModal } from './KioskInspectionDrawingVisualRenameModal';
 import { useInspectionDrawingVisualLibrary } from './useInspectionDrawingVisualLibrary';
 
 import type { PartMeasurementVisualTemplateDto } from '../types';
@@ -17,6 +18,8 @@ import type { PartMeasurementVisualTemplateDto } from '../types';
 type Props = {
   refreshToken?: number;
   onRegisterClick: () => void;
+  /** 図面名変更成功時 — 同一画面のテンプレ一覧表示を同期する */
+  onVisualRenamed?: (visual: PartMeasurementVisualTemplateDto) => void;
   /** 開発プレビュー用 — 指定時は API を呼ばずモック一覧を表示 */
   previewVisuals?: PartMeasurementVisualTemplateDto[];
 };
@@ -24,11 +27,13 @@ type Props = {
 export function KioskInspectionDrawingVisualLibrarySection({
   refreshToken,
   onRegisterClick,
+  onVisualRenamed,
   previewVisuals
 }: Props) {
   const clientKey = getResolvedClientKey();
   const isPreview = previewVisuals != null;
   const [previewSearchQuery, setPreviewSearchQuery] = useState('');
+  const [renameTarget, setRenameTarget] = useState<PartMeasurementVisualTemplateDto | null>(null);
   const apiState = useInspectionDrawingVisualLibrary({
     clientKey,
     refreshToken,
@@ -112,21 +117,44 @@ export function KioskInspectionDrawingVisualLibrarySection({
                 <p className="text-[0.72rem] text-white/55">
                   更新 {formatVisualLibraryTimestamp(visual.updatedAt)}
                 </p>
-                <Link
-                  to={kioskInspectionDrawingCreatePathWithVisual(visual.id)}
-                  state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
-                  className={buttonClassName(
-                    'primary',
-                    'inline-flex min-h-9 w-full items-center justify-center px-1 text-[0.72rem]'
-                  )}
-                >
-                  新規作成
-                </Link>
+                <div className="flex min-w-0 gap-1">
+                  <Link
+                    to={kioskInspectionDrawingCreatePathWithVisual(visual.id)}
+                    state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
+                    className={buttonClassName(
+                      'primary',
+                      'inline-flex min-h-9 min-w-0 flex-1 items-center justify-center px-0.5 text-[0.68rem]'
+                    )}
+                  >
+                    新規作成
+                  </Link>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="min-h-9 min-w-0 flex-1 px-0.5 text-[0.68rem]"
+                    disabled={isPreview}
+                    onClick={() => setRenameTarget(visual)}
+                  >
+                    名称変更
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      <KioskInspectionDrawingVisualRenameModal
+        isOpen={renameTarget != null}
+        visual={renameTarget}
+        clientKey={clientKey}
+        onClose={() => setRenameTarget(null)}
+        onSuccess={(visual) => {
+          setRenameTarget(null);
+          onVisualRenamed?.(visual);
+          void reload();
+        }}
+      />
     </section>
   );
 }

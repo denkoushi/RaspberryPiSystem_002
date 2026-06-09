@@ -81,6 +81,10 @@ Maintained in accordance with `.agent/PLANS.md`.
   - API/hook/modal は変更なし · DEV preview は共有 Section 経由（`min-w-[1280px]` chrome 前提）
   - **Mac DEV 目視 OK** · **Pi5 本番** Detach **`20260608-164812-2511`** · Phase12 **43/0/0** · CI **`27122345564`** · **Pi5 実機目視 OK**
   - Web バンドル（`docker-web-1`）: `/srv/site/assets/index-i9Bqvljz.js` — `grid-cols-6` · 「図面を登録」**3件**（モーダル+Section、ヘッダー重複なし）
+- [ ] (2026-06-09) **図面ライブラリ名称変更 + テンプレ図面名検索 + 自主検査自動切替** — ブランチ `feat/kiosk-inspection-drawing-trio`（Mac 実装完了・未コミット）
+  - `PATCH /visual-templates/:id`（name のみ）· `KioskInspectionDrawingVisualRenameModal`
+  - `GET …/inspection-drawing/templates?visualName=` · `InspectionDrawingLibraryFilterBar`
+  - 自主検査: `placeholderData` · `draftBoundKey` · 保存後次 slot 自動切替 · entry 単位 guided priming
 - [ ] **Pi4×4 本番** — visual library + 密度改善（第1弾 `38b7583f` + 第2弾 `ddc3ce8b`）を順次（`raspi4-kensaku-stonebase01` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` · Pi3 除外 · 各台強制リロード §6.6.4）
 - [ ] **Pi4×4 本番（旧積み残し）** — MVP 以降の parity / overflow / ズーム / 図面読込 / PDF preview が未反映の端末があれば同手順で一括
 

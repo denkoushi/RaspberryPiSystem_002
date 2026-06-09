@@ -53,8 +53,11 @@ export function useSelfInspectionGuidedFocus({
   const requestIdRef = useRef(1);
   /** 次の blur 1 回だけガイド自動進行を抑止（消費型・タイマー非依存） */
   const consumeNextBlurGuideAdvanceRef = useRef(false);
-  const guidedFocusPrimedSessionIdRef = useRef<string | null>(null);
+  const guidedFocusPrimedKeyRef = useRef<string | null>(null);
+  const pendingAutoAdvanceKeyRef = useRef<string | null>(null);
   const lastSessionIdRef = useRef<string | null>(null);
+
+  const buildPrimedKey = useCallback((sessionId: string, entryIndex: number) => `${sessionId}:${entryIndex}`, []);
 
   const activeDraft = session ? draftValuesByEntryIndex[selectedEntryIndex] : undefined;
   const activePoints = useMemo((): InspectionDrawingPoint[] => {
@@ -128,7 +131,7 @@ export function useSelfInspectionGuidedFocus({
             : null
         );
         if (options?.force && session?.id) {
-          guidedFocusPrimedSessionIdRef.current = session.id;
+          guidedFocusPrimedKeyRef.current = buildPrimedKey(session.id, selectedEntryIndex);
         }
         return false;
       }
@@ -136,7 +139,7 @@ export function useSelfInspectionGuidedFocus({
       setGuideMode('guided');
       applyFocusTarget(createGuidedFocusTarget(pointId, nextRequestId()));
       if (options?.force && session?.id) {
-        guidedFocusPrimedSessionIdRef.current = session.id;
+        guidedFocusPrimedKeyRef.current = buildPrimedKey(session.id, selectedEntryIndex);
       }
       return true;
     },
@@ -146,7 +149,9 @@ export function useSelfInspectionGuidedFocus({
       isDrawingCanvasReady,
       isSessionReadOnly,
       clearConsumeNextBlurGuideAdvance,
+      buildPrimedKey,
       nextRequestId,
+      selectedEntryIndex,
       session
     ]
   );
@@ -235,6 +240,33 @@ export function useSelfInspectionGuidedFocus({
     onSelectPointId(null);
   }, [consumeNextBlurGuideAdvance, enterManual, onSelectPointId]);
 
+  /** ユーザーが入力件チップをタップしたとき（manual 維持・自動ガイドしない） */
+  const handleUserEntrySelect = useCallback(
+    (entryIndex: number) => {
+      handleEntrySwitch();
+      if (session?.id) {
+        guidedFocusPrimedKeyRef.current = buildPrimedKey(session.id, entryIndex);
+      }
+      pendingAutoAdvanceKeyRef.current = null;
+    },
+    [buildPrimedKey, handleEntrySwitch, session?.id]
+  );
+
+  /** 保存成功後の自動遷移（次入力件で guided を再開） */
+  const prepareAutoAdvanceToEntry = useCallback(
+    (entryIndex: number) => {
+      consumeNextBlurGuideAdvance();
+      onSelectPointId(null);
+      if (!session?.id) return;
+      const key = buildPrimedKey(session.id, entryIndex);
+      pendingAutoAdvanceKeyRef.current = key;
+      if (guidedFocusPrimedKeyRef.current === key) {
+        guidedFocusPrimedKeyRef.current = null;
+      }
+    },
+    [buildPrimedKey, consumeNextBlurGuideAdvance, onSelectPointId, session?.id]
+  );
+
   /** 入力件保存成功後: guided を止め、再開ボタンで当該件を再開する */
   const enterManualAfterPersist = useCallback(() => {
     clearConsumeNextBlurGuideAdvance();
@@ -316,7 +348,8 @@ export function useSelfInspectionGuidedFocus({
     if (!session?.id) return;
     if (lastSessionIdRef.current !== session.id) {
       lastSessionIdRef.current = session.id;
-      guidedFocusPrimedSessionIdRef.current = null;
+      guidedFocusPrimedKeyRef.current = null;
+      pendingAutoAdvanceKeyRef.current = null;
       setGuideMode(isSessionReadOnly ? 'manual' : 'guided');
       setFocusRequest(null);
       setGuideHint(null);
@@ -325,25 +358,42 @@ export function useSelfInspectionGuidedFocus({
 
   useEffect(() => {
     if (!isSessionReadOnly) return;
-    guidedFocusPrimedSessionIdRef.current = session?.id ?? 'readonly';
+    guidedFocusPrimedKeyRef.current = session?.id ? `${session.id}:readonly` : 'readonly';
     enterManual();
   }, [enterManual, isSessionReadOnly, session?.id]);
 
   useEffect(() => {
     if (!session?.id || !isDraftReadyForGuidedFocus || !activeDraft) return;
-    if (guidedFocusPrimedSessionIdRef.current === session.id) return;
     if (!isDrawingCanvasReady || isSessionReadOnly) return;
-    const started = startGuidedForCurrentEntry({ force: true });
-    if (started) {
-      guidedFocusPrimedSessionIdRef.current = session.id;
+
+    const primedKey = buildPrimedKey(session.id, selectedEntryIndex);
+    if (guidedFocusPrimedKeyRef.current === primedKey) return;
+
+    const isAutoAdvance = pendingAutoAdvanceKeyRef.current === primedKey;
+    if (isAutoAdvance) {
+      const started = startGuidedForCurrentEntry({ force: true });
+      if (started) {
+        guidedFocusPrimedKeyRef.current = primedKey;
+        pendingAutoAdvanceKeyRef.current = null;
+      }
+      return;
+    }
+
+    const hasPrimedForSession = guidedFocusPrimedKeyRef.current?.startsWith(`${session.id}:`);
+    if (!hasPrimedForSession) {
+      const started = startGuidedForCurrentEntry({ force: true });
+      if (started) {
+        guidedFocusPrimedKeyRef.current = primedKey;
+      }
     }
   }, [
     activeDraft,
+    buildPrimedKey,
     isDraftReadyForGuidedFocus,
     isDrawingCanvasReady,
     isSessionReadOnly,
-    session?.id,
     selectedEntryIndex,
+    session?.id,
     startGuidedForCurrentEntry
   ]);
 
@@ -359,6 +409,8 @@ export function useSelfInspectionGuidedFocus({
     handleUserScroll,
     handleSelectPointManual,
     handleEntrySwitch,
+    handleUserEntrySelect,
+    prepareAutoAdvanceToEntry,
     handleCommitValue,
     consumeNextBlurGuideAdvance,
     enterManualAfterPersist,

@@ -39,6 +39,7 @@ export function KioskInspectionDrawingLibraryPage() {
   const navigate = useNavigate();
   const resourcesQuery = useKioskProductionScheduleResources();
   const [fhincd, setFhincd] = useState('');
+  const [visualName, setVisualName] = useState('');
   const [resourceCd, setResourceCd] = useState('');
   const [processFilter, setProcessFilter] = useState<InspectionDrawingLibraryProcessFilter>('all');
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -84,12 +85,14 @@ export function KioskInspectionDrawingLibraryPage() {
     async (filters: {
       includeInactive: boolean;
       fhincd: string;
+      visualName: string;
       resourceCd: string;
       processFilter: InspectionDrawingLibraryProcessFilter;
     }) =>
       listKioskInspectionDrawingTemplates({
         includeInactive: filters.includeInactive,
         fhincd: filters.fhincd.trim() || undefined,
+        visualName: filters.visualName.trim() || undefined,
         processGroup: filters.processFilter === 'all' ? undefined : filters.processFilter,
         resourceCd: filters.resourceCd || undefined
       }),
@@ -100,7 +103,7 @@ export function KioskInspectionDrawingLibraryPage() {
     setTemplateBusy(true);
     setTemplateMessage(null);
     try {
-      const list = await loadTemplates({ includeInactive, fhincd, resourceCd, processFilter });
+      const list = await loadTemplates({ includeInactive, fhincd, visualName, resourceCd, processFilter });
       setTemplates(list);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
@@ -109,13 +112,17 @@ export function KioskInspectionDrawingLibraryPage() {
     } finally {
       setTemplateBusy(false);
     }
-  }, [fhincd, includeInactive, loadTemplates, processFilter, resourceCd]);
+  }, [fhincd, includeInactive, loadTemplates, processFilter, resourceCd, visualName]);
 
   const handleVisualUploadSuccess = useCallback((visual: PartMeasurementVisualTemplateDto) => {
     setVisualUploadOpen(false);
     setVisualLibraryRefreshToken((token) => token + 1);
     setTemplateMessage(`図面「${visual.name}」を登録しました。`);
   }, []);
+
+  const handleVisualRenamed = useCallback(() => {
+    void refresh();
+  }, [refresh]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,6 +131,7 @@ export function KioskInspectionDrawingLibraryPage() {
     void loadTemplates({
       includeInactive: false,
       fhincd: '',
+      visualName: '',
       resourceCd: '',
       processFilter: 'all'
     })
@@ -172,6 +180,7 @@ export function KioskInspectionDrawingLibraryPage() {
       <KioskInspectionDrawingVisualLibrarySection
         refreshToken={visualLibraryRefreshToken}
         onRegisterClick={() => setVisualUploadOpen(true)}
+        onVisualRenamed={handleVisualRenamed}
       />
 
       <KioskInspectionDrawingVisualUploadModal
@@ -187,6 +196,8 @@ export function KioskInspectionDrawingLibraryPage() {
       <InspectionDrawingLibraryFilterBar
         fhincd={fhincd}
         onFhincdChange={setFhincd}
+        visualName={visualName}
+        onVisualNameChange={setVisualName}
         resourceCd={resourceCd}
         onResourceCdChange={setResourceCd}
         resourceOptions={resourceOptions}

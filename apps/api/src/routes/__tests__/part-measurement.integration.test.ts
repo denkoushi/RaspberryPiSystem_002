@@ -273,6 +273,47 @@ describe('part-measurement templates API', () => {
     expect(trueRes.json().visualTemplate.id).toBe(vid);
   });
 
+  it('updates visual template name via PATCH /api/part-measurement/visual-templates/:id', async () => {
+    const { body, contentType } = buildMultipartPng('rename-before', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    const vid = up.json().visualTemplate.id as string;
+
+    const patchRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/visual-templates/${vid}`,
+      headers: createAuthHeader(adminToken),
+      payload: { name: 'rename-after' }
+    });
+    expect(patchRes.statusCode).toBe(200);
+    expect(patchRes.json().visualTemplate.name).toBe('rename-after');
+
+    await prisma.partMeasurementVisualTemplate.update({
+      where: { id: vid },
+      data: { isActive: false }
+    });
+    const inactivePatch = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/visual-templates/${vid}`,
+      headers: createAuthHeader(adminToken),
+      payload: { name: 'should-fail' }
+    });
+    expect(inactivePatch.statusCode).toBe(404);
+
+    const missingPatch = await app.inject({
+      method: 'PATCH',
+      url: '/api/part-measurement/visual-templates/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      headers: createAuthHeader(adminToken),
+      payload: { name: 'missing' }
+    });
+    expect(missingPatch.statusCode).toBe(404);
+  });
+
   it('sorts visual templates by recently updated when requested', async () => {
     const firstUpload = buildMultipartPng('aa-older', MIN_PNG);
     const secondUpload = buildMultipartPng('zz-newer', MIN_PNG);
@@ -374,6 +415,15 @@ describe('part-measurement templates API', () => {
     expect(listed.some((row) => row.id === tpl.id)).toBe(true);
     expect(listed.find((row) => row.id === tpl.id)?.itemCount).toBe(1);
     expect(listed[0]?.items).toBeUndefined();
+
+    const visualNameList = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/templates?visualName=${encodeURIComponent('図面A')}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(visualNameList.statusCode).toBe(200);
+    const visualFiltered = visualNameList.json().templates as Array<{ id: string }>;
+    expect(visualFiltered.some((row) => row.id === tpl.id)).toBe(true);
 
     const noMarkerRes = await app.inject({
       method: 'POST',

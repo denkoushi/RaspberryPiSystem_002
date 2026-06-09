@@ -3053,6 +3053,7 @@ export async function listKioskInspectionDrawingTemplates(
     processGroup?: PartMeasurementProcessGroup;
     resourceCd?: string;
     includeInactive?: boolean;
+    visualName?: string;
   },
   clientKey?: string
 ): Promise<KioskInspectionDrawingTemplateSummaryDto[]> {
@@ -3357,6 +3358,21 @@ export type PartMeasurementVisualTemplateCreateResult = {
   /** 作成直後の未参照回収に必要（他図面の削除には使えない） */
   cleanupToken: string;
 };
+
+export async function updatePartMeasurementVisualTemplateName(
+  visualTemplateId: string,
+  name: string,
+  clientKey?: string
+): Promise<PartMeasurementVisualTemplateDto> {
+  const { data } = await api.patch<{ visualTemplate: PartMeasurementVisualTemplateDto }>(
+    `/part-measurement/visual-templates/${visualTemplateId}`,
+    { name: name.trim() },
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.visualTemplate;
+}
 
 export async function createPartMeasurementVisualTemplate(
   name: string,
