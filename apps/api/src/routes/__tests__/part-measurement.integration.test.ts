@@ -9,7 +9,7 @@ import { prisma } from '../../lib/prisma.js';
 import { PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD } from '../../services/part-measurement/part-measurement-constants.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
 import { SelfInspectionService } from '../../services/part-measurement/self-inspection.service.js';
-import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
+import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestMeasuringInstrumentWithTag, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -2178,6 +2178,20 @@ describe('part-measurement templates API', () => {
     expect(resolveRes.json().session.expectedEntryCount).toBe(2);
     const sessionId = resolveRes.json().session.id as string;
 
+    const auditEmployee = await createTestEmployee({
+      displayName: 'Self Inspection Operator',
+      nfcTagUid: `EMP-SELF-${Date.now()}`
+    });
+    const { rfidTagUid: instrumentTagUid } = await createTestMeasuringInstrumentWithTag({
+      name: 'Self Inspection Caliper',
+      managementNumber: `MI-SELF-${Date.now()}`,
+      rfidTagUid: `INST-SELF-${Date.now()}`
+    });
+    const entryRegistrationTags = {
+      employeeTagUid: auditEmployee.nfcTagUid,
+      measuringInstrumentTagUid: instrumentTagUid
+    };
+
     await prisma.productionScheduleOrderSupplement.deleteMany({
       where: { csvDashboardRowId: scheduleRowId }
     });
@@ -2224,12 +2238,14 @@ describe('part-measurement templates API', () => {
       headers: createAuthHeader(adminToken),
       payload: {
         entryIndex: 0,
+        ...entryRegistrationTags,
         values: [{ templateItemId, value: '10.01' }]
       }
     });
     expect(createEntryRes.statusCode).toBe(200);
     const firstEntryId = createEntryRes.json().entry.id as string;
-    const auditEmployee = await createTestEmployee();
+    expect(createEntryRes.json().entry.createdByEmployeeId).toBe(auditEmployee.id);
+    expect(createEntryRes.json().entry.measuringInstrumentId).toBeTruthy();
     const auditedUpdateRes = await app.inject({
       method: 'PATCH',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${firstEntryId}`,
@@ -2321,6 +2337,7 @@ describe('part-measurement templates API', () => {
       headers: createAuthHeader(adminToken),
       payload: {
         entryIndex: 1,
+        ...entryRegistrationTags,
         values: [{ templateItemId, value: '-1' }]
       }
     });
@@ -2332,6 +2349,7 @@ describe('part-measurement templates API', () => {
       headers: createAuthHeader(adminToken),
       payload: {
         entryIndex: 1,
+        ...entryRegistrationTags,
         values: [{ templateItemId, value: '10.5' }]
       }
     });
@@ -2343,6 +2361,7 @@ describe('part-measurement templates API', () => {
       headers: createAuthHeader(adminToken),
       payload: {
         entryIndex: 1,
+        ...entryRegistrationTags,
         values: [{ templateItemId, value: 10.001 }]
       }
     });
@@ -2362,6 +2381,7 @@ describe('part-measurement templates API', () => {
       headers: createAuthHeader(adminToken),
       payload: {
         entryIndex: 1,
+        ...entryRegistrationTags,
         values: [{ templateItemId, value: '9.99' }]
       }
     });

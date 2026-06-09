@@ -29,6 +29,7 @@ import {
 } from '../../features/part-measurement/selfInspectionEntryDraft';
 import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionEntrySlots';
 import { SelfInspectionKioskButton } from '../../features/part-measurement/SelfInspectionKioskButton';
+import { SelfInspectionNfcRegistrationPanel } from '../../features/part-measurement/SelfInspectionNfcRegistrationPanel';
 import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
 import {
   hasDirtySelfInspectionDrafts,
@@ -51,6 +52,8 @@ import { resolveSelfInspectionRequiredEntryCount } from '../../features/part-mea
 import { SelfInspectionSessionHeader } from '../../features/part-measurement/SelfInspectionSessionHeader';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useSelfInspectionGuidedFocus } from '../../features/part-measurement/useSelfInspectionGuidedFocus';
+import { useSelfInspectionNfcRegistration } from '../../features/part-measurement/useSelfInspectionNfcRegistration';
+import { useSelfInspectionWorkbenchCameraExperiment } from '../../features/part-measurement/useSelfInspectionWorkbenchCameraExperiment';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { SelfInspectionValueCommitPayload } from '../../features/part-measurement/selfInspectionGuidedFocus';
@@ -126,13 +129,8 @@ export function KioskSelfInspectionSessionPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const resolveAttemptedRef = useRef(false);
   const persistInFlightRef = useRef(false);
-  const employeeTagUidRef = useRef<string | null>(null);
   const isActiveRoute = useMatch('/kiosk/part-measurement/self-inspection/sessions/:sessionId');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
-  useEffect(() => {
-    if (!nfcEvent?.uid) return;
-    employeeTagUidRef.current = nfcEvent.uid;
-  }, [nfcEvent]);
 
   useEffect(() => {
     if (sessionId) {
@@ -152,6 +150,18 @@ export function KioskSelfInspectionSessionPage() {
   const requiredEntryCount = session ? resolveSelfInspectionRequiredEntryCount(session) : 0;
   const isSessionIdentityReady = Boolean(session && resolvedSessionId && session.id === resolvedSessionId);
   const isSessionReadOnly = Boolean(session?.completedAt || session?.entryCountBlockedReason);
+  const { registration, registrationPayload, registrationDirty, hasUnsavedRegistrationDrafts } =
+    useSelfInspectionNfcRegistration({
+    session,
+    selectedEntryIndex,
+    nfcEvent,
+    enabled: Boolean(isActiveRoute && session && !isSessionReadOnly)
+  });
+  const { workbenchCameraEnabled, toggleWorkbenchCamera } = useSelfInspectionWorkbenchCameraExperiment({
+    onLog: (cameraMetrics) => {
+      console.debug('[self-inspection workbench camera experiment]', cameraMetrics);
+    }
+  });
   const { zoom, zoomIn, zoomOut, fitToView, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
   const drawingPath = session?.template.visualTemplate?.drawingImageRelativePath ?? null;
   const { blobUrl: drawingBlobUrl, error: drawingLoadError } = usePartMeasurementDrawingBlobUrl(drawingPath);
@@ -340,7 +350,9 @@ export function KioskSelfInspectionSessionPage() {
       isCompletingSession,
       isDrawingCanvasReady,
       guideMode,
-      guideActionsEnabled
+      guideActionsEnabled,
+      entryRegistrationReady: registration.isReady && registration.status !== 'duplicate',
+      entryRegistrationDirty: registrationDirty
     };
   }, [
     draftValuesByEntryIndex,
@@ -350,6 +362,9 @@ export function KioskSelfInspectionSessionPage() {
     isDrawingCanvasReady,
     isSavingEntry,
     isSessionReadOnly,
+    registration.isReady,
+    registration.status,
+    registrationDirty,
     savedDraftByEntryIndex,
     selectedEntryIndex,
     session
@@ -381,13 +396,16 @@ export function KioskSelfInspectionSessionPage() {
 
   const hasUnsavedDraftChangesForReset = useMemo(() => {
     if (!session) return false;
-    return hasDirtySelfInspectionDrafts(session, draftValuesByEntryIndex, savedDraftByEntryIndex);
-  }, [draftValuesByEntryIndex, savedDraftByEntryIndex, session]);
+    return (
+      hasDirtySelfInspectionDrafts(session, draftValuesByEntryIndex, savedDraftByEntryIndex) ||
+      hasUnsavedRegistrationDrafts
+    );
+  }, [draftValuesByEntryIndex, hasUnsavedRegistrationDrafts, savedDraftByEntryIndex, session]);
 
   const isSessionInputLocked = isSessionReadOnly || isCompletingSession || isEntryFocusFetching;
 
   const resetDestructiveDescriptionText = hasUnsavedDraftChangesForReset
-    ? '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。未保存の入力があります。リセットすると破棄されます。'
+    ? '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。未保存の入力またはNFC登録があります。リセットすると破棄されます。'
     : '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。';
 
   const runSessionReset = async (confirmCompletedSessionReset: boolean) => {
@@ -426,17 +444,23 @@ export function KioskSelfInspectionSessionPage() {
       isCompletingSession,
       isDrawingCanvasReady,
       guideMode,
-      guideActionsEnabled
+      guideActionsEnabled,
+      entryRegistrationReady: registration.isReady && registration.status !== 'duplicate',
+      entryRegistrationDirty: registrationDirty
     });
     if (!saveState.enabled) {
       const message = selfInspectionActionReasonMessage(saveState.reason);
       if (message) setActionError(message);
       return null;
     }
+    if (!registrationPayload) {
+      setActionError(selfInspectionActionReasonMessage('missing_registration'));
+      return null;
+    }
     persistInFlightRef.current = true;
     setActionError(null);
     const payload = {
-      employeeTagUid: employeeTagUidRef.current,
+      ...registrationPayload,
       values: session.template.items.map((item) => ({
         templateItemId: item.id,
         value: draft[item.id] ?? ''
@@ -597,6 +621,8 @@ export function KioskSelfInspectionSessionPage() {
         onBackToList={() => navigate('/kiosk/part-measurement/self-inspection')}
         onReset={() => setResetPhase('destructive')}
         resetDisabled={resetDisabled}
+        workbenchCameraEnabled={workbenchCameraEnabled}
+        onToggleWorkbenchCamera={toggleWorkbenchCamera}
       />
 
       <ConfirmDialog
@@ -660,6 +686,8 @@ export function KioskSelfInspectionSessionPage() {
         </div>
 
         <div className="flex min-h-0 min-w-0 flex-col gap-2 xl:w-[360px] xl:shrink-0">
+          <SelfInspectionNfcRegistrationPanel registration={registration} />
+
           <div className="shrink-0 rounded border border-white/15 bg-slate-800/70 p-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-white/80">

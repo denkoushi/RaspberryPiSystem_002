@@ -1,6 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
 import { signAccessToken } from '../../lib/auth.js';
-import type { ClientDevice, Employee, Item, Loan, User } from '@prisma/client';
+import type { ClientDevice, Employee, Item, Loan, MeasuringInstrument, User } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
@@ -230,5 +230,31 @@ export async function createTestLoan(data: {
       returnedAt: data.returnedAt ?? null,
     },
   });
+}
+
+/** テスト用の計測機器と NFC タグを作成 */
+export async function createTestMeasuringInstrumentWithTag(data?: {
+  name?: string;
+  managementNumber?: string;
+  rfidTagUid?: string;
+}): Promise<{ instrument: MeasuringInstrument; rfidTagUid: string }> {
+  const genre = await prisma.measuringInstrumentGenre.create({
+    data: { name: `Test Genre ${Date.now()}-${Math.random().toString(36).slice(2)}` }
+  });
+  const instrument = await prisma.measuringInstrument.create({
+    data: {
+      name: data?.name ?? 'Test Instrument',
+      managementNumber: data?.managementNumber ?? `MI-${Date.now()}`,
+      genreId: genre.id
+    }
+  });
+  const rfidTagUid = data?.rfidTagUid ?? `TAG_INST_${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  await prisma.measuringInstrumentTag.create({
+    data: {
+      measuringInstrumentId: instrument.id,
+      rfidTagUid
+    }
+  });
+  return { instrument, rfidTagUid };
 }
 

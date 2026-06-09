@@ -3130,11 +3130,44 @@ export async function getSelfInspectionSession(
   return data.session;
 }
 
+export type SelfInspectionNfcTagResolveResult =
+  | {
+      kind: 'employee';
+      employee: { id: string; displayName: string; nfcTagUid: string };
+    }
+  | {
+      kind: 'instrument';
+      instrument: {
+        id: string;
+        name: string;
+        managementNumber: string;
+        tagUid: string;
+      };
+    }
+  | { kind: 'unknown' }
+  | { kind: 'duplicate' }
+  | { kind: 'instrument_unavailable'; reason: 'retired' };
+
+export async function resolveSelfInspectionNfcTagUid(
+  uid: string,
+  clientKey?: string
+): Promise<SelfInspectionNfcTagResolveResult> {
+  const { data } = await api.post<{ result: SelfInspectionNfcTagResolveResult }>(
+    '/part-measurement/self-inspection/nfc-tags/resolve',
+    { uid },
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.result;
+}
+
 export async function createSelfInspectionEntry(
   sessionId: string,
   body: {
     entryIndex: number;
     employeeTagUid?: string | null;
+    measuringInstrumentTagUid?: string | null;
     values: Array<{ templateItemId: string; value: string | number | null }>;
   },
   clientKey?: string
@@ -3155,6 +3188,7 @@ export async function updateSelfInspectionEntry(
   body: {
     ifUnmodifiedSince: string;
     employeeTagUid?: string | null;
+    measuringInstrumentTagUid?: string | null;
     values: Array<{ templateItemId: string; value: string | number | null }>;
   },
   clientKey?: string

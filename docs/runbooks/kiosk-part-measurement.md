@@ -507,6 +507,40 @@ cd apps/web && pnpm exec vitest run \
 
 ---
 
+## 自主検査・NFC 登録と手元カメラ実験（2026-06-09） {#自主検査-nfc-登録-手元カメラ実験-2026-06-09}
+
+正本: [KB-320 §NFC・手元カメラ](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-nfc-登録-手元カメラ実験-2026-06-09) · ブランチ **`feat/self-inspection-nfc-camera-experiment`** · **API migration + Web**
+
+### 概要
+
+- **対象**: 順位ボード **検** → `/kiosk/part-measurement/self-inspection/sessions/:sessionId`
+- **NFC**: 入力件ごとに **測定機器 → 測定者** を登録（逆順スキャンも UID 解決で正しい slot へ）。保存/完了は **API 正本**で未登録を拒否。
+- **手元カメラ**: 上辺ツールバー **`手元カメラ OFF/ON`**（ズーム `−` の左）。既定 OFF · ON 時 **10 秒間隔** · **毎回 getUserMedia → 1 フレーム → stop**（保存 API なし · 第一段階は計測のみ）。
+
+### 手動確認（Pi4 実機）
+
+1. セッション入室後、右ペイン上部に **NFC 登録** パネルが表示されること。
+2. **測定機器タグ → 社員タグ** の順でスキャンし、表示名が埋まること（逆順でも可）。
+3. 両方未登録のまま **入力を保存** が disabled · 理由表示されること。
+4. 登録後に測定値を入力して保存 → entry に測定者/機器 snapshot が付くこと（API `GET …/sessions/:id`）。
+5. 必要件数すべて保存後のみ **自主検査を完了** が有効になること。
+6. **手元カメラ ON** で 10 秒ごとに DevTools/console に `[self-inspection workbench camera experiment]` ログ（`getUserMedia ms` / `capture ms` / `blob size`）が出ること。
+7. OFF / タブ非表示 / 画面離脱で **stream が残留しない**こと（Pi4 負荷 — 常時プレビュー禁止の継続）。
+
+### 単体テスト
+
+```bash
+cd apps/api && pnpm exec vitest run \
+  src/services/part-measurement/__tests__/self-inspection-nfc-tag-resolve.test.ts
+
+cd apps/web && pnpm exec vitest run \
+  src/features/part-measurement/__tests__/selfInspectionEntryRegistration.test.ts \
+  src/features/part-measurement/__tests__/selfInspectionSessionActionState.test.ts \
+  src/features/part-measurement/__tests__/useSelfInspectionWorkbenchCameraExperiment.test.ts
+```
+
+---
+
 ## 自主検査・ガイド polish（倍率 2.0）（2026-06-04） {#自主検査-ガイド-polish-倍率2-0-2026-06-04}
 
 正本: [KB-320 §ガイド polish](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · [deployment §polish](../guides/deployment.md#kiosk-self-inspection-guided-zoom-2-polish-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-polish`** → **`main` マージ** · **`fb10f0e0`** · **Web のみ**
