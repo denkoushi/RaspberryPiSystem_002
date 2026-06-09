@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 
-export type SelfInspectionKioskButtonSize = 'default' | 'compact' | 'icon';
+export type SelfInspectionKioskButtonSize = 'default' | 'compact' | 'icon' | 'actionCompact';
 
 export type SelfInspectionKioskButtonClassOptions = {
   disabled?: boolean;
@@ -14,7 +14,8 @@ export type SelfInspectionKioskButtonClassOptions = {
 const sizeClass: Record<SelfInspectionKioskButtonSize, string> = {
   default: 'min-h-11 px-4 text-[15px]',
   compact: 'min-h-11 px-2 text-sm',
-  icon: 'min-h-11 min-w-11 px-2 text-[1.25rem] font-semibold leading-none'
+  icon: 'min-h-11 min-w-11 px-2 text-[1.25rem] font-semibold leading-none',
+  actionCompact: 'min-h-8 px-4 text-[15px]'
 };
 
 const enabledVisual =

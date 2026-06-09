@@ -436,6 +436,77 @@ cd apps/web && pnpm exec vitest run \
 
 ---
 
+## 自主検査・セッション右ペイン入力改善（2026-06-09） {#自主検査-セッション右ペイン入力改善-2026-06-09}
+
+正本: [KB-320 §右ペイン入力改善](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション右ペイン入力改善-2026-06-09) · ブランチ **`feat/kiosk-self-inspection-right-pane-inputs`** · 代表 **`58062ba7`** · CI **`27199280343`** · **Web のみ**
+
+### デプロイ（標準）
+
+1. 第2引数 **`feat/kiosk-self-inspection-right-pane-inputs`**（`main` マージ後は **`main`**）。
+2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+4. Pi5 で `./scripts/deploy/verify-phase12-real.sh`（推奨）と、必要なら:
+
+```bash
+ssh denkon5sd02@100.106.158.2 'docker exec docker-web-1 sh -c "grep -l data-self-inspection-point-summary-list /srv/site/assets/*.js"'
+```
+
+5. Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
+6. 各 Pi4 はデプロイ時 **`kiosk-browser` 再起動**で Pi5 SPA を再取得（旧 bundle 残存時は **強制リロード** §6.6.4）。
+
+| ホスト | Detach Run ID | Git HEAD | 備考 |
+|--------|---------------|----------|------|
+| `raspberrypi5` | **`20260609-193442-8328`** | **`58062ba7`** | `failed=0` · **web** 再ビルド · バンドル **`index-cpu1LH6r.js`** |
+| `raspberrypi4` | **`20260609-194132-22526`** | **`58062ba7`** | `failed=0` · `kiosk-browser` 再起動 |
+| `raspi4-robodrill01` | **`20260609-194647-22669`** | **`58062ba7`** | `failed=0` · `kiosk-browser` 再起動 |
+| `raspi4-fjv60-80` | **`20260609-195030-8659`** | **`58062ba7`** | `failed=0` · `kiosk-browser` 再起動 |
+| `raspi4-kensaku-stonebase01` | **`20260609-195427-22010`** | **`58062ba7`** | `failed=0` · `kiosk-browser` 再起動 |
+
+**本番反映（2026-06-09）**: 上記 5 台すべて **`failed=0`**。Phase12 全台完了後 **`PASS 43 / WARN 0 / FAIL 0`**（約 **55s**）。
+
+### 検証結果（2026-06-09）
+
+| 区分 | 結果 |
+|------|------|
+| **自動** | Pi5 バンドルに `data-self-inspection-point-summary-list` · `min-h-8`（`actionCompact`）を確認。Phase12 **43/0/0**（Pi5 単独・全台完了後の 2 回）。全 Pi4 `deploy-status` / `status-agent` **PASS**。 |
+| **手動（キオスク）** | 下記 1–7 は **現場目視未記録**。旧 UI 疑い時は Pi5 HEAD **`58062ba7` 以降** と Pi4 **強制リロード**（§6.6.4）を先に確認。 |
+
+### 仕様・知見（再開用）
+
+- **対象画面**: 順位ボード **検** → `/kiosk/part-measurement/self-inspection/sessions/:sessionId` 右ペインのみ。**API/保存/完了/ガイド活性は不変**。
+- **UI**: 候補+手入力 **横一列** · 公差 **`text-2xl`** · 保存/完了 **`size="actionCompact"`** · 測定点一覧 **常時表示**（タップ選択のみ）。
+- **状態正本**: `measurementPointInputStatus.ts` — 一覧・値入力パネル・ガイドが **empty/ok/ng/invalid/公差不備** を共有。
+- **blur 競合**: 一覧 `onPointerDownCapture` + `data-self-inspection-point-summary-list` を chrome focus 判定へ追加。
+- **Pi4**: `git pull` 不要。Pi5 配信 SPA を `kiosk-browser` 再起動または強制リロードで取得。
+
+### 未完了
+
+- 現場での手動確認 1–7（Runbook 下記）の **目視 OK 記録**は未実施。自動検証のみ完了。
+
+### 手動確認（Pi4/Pi5）
+
+1. 順位ボード **検** → セッション入室。
+2. 右ペインで候補 dropdown と手入力が **横一列**、公差表示が **大きい** こと。
+3. **入力を保存** / **自主検査を完了** が従来より **薄型**（フォントは維持）で、青外枠契約が維持されること。
+4. ボタン下に **測定点一覧** が常時表示され、入力値と OK/NG/未入力/不正/公差不備が **即時反映** されること。
+5. 一覧タップで測定点が切り替わり、図面選択と整合すること。
+6. **手入力欄フォーカス中に一覧をタップ**しても、意図しないガイド進行が起きないこと。
+7. §ボタン活性・§ガイド polish の既存フロー（保存 → 件切替 → 再開 → 完了）が維持されること。
+
+### 単体テスト
+
+```bash
+cd apps/web && pnpm exec vitest run \
+  src/features/part-measurement/inspection-drawing/__tests__/measurementPointInputStatus.test.ts \
+  src/features/part-measurement/inspection-drawing/__tests__/InspectionDrawingValuePanel.test.tsx \
+  src/features/part-measurement/inspection-drawing/__tests__/InspectionDrawingPointSummaryList.test.tsx \
+  src/features/part-measurement/inspection-drawing/inspectionDrawingKioskUi.test.ts \
+  src/features/part-measurement/__tests__/selfInspectionKioskTheme.test.ts \
+  src/features/part-measurement/__tests__/SelfInspectionKioskButton.test.tsx
+```
+
+---
+
 ## 自主検査・ガイド polish（倍率 2.0）（2026-06-04） {#自主検査-ガイド-polish-倍率2-0-2026-06-04}
 
 正本: [KB-320 §ガイド polish](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · [deployment §polish](../guides/deployment.md#kiosk-self-inspection-guided-zoom-2-polish-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-polish`** → **`main` マージ** · **`fb10f0e0`** · **Web のみ**

@@ -1,6 +1,9 @@
-import { parseMeasurementNumber, statusForPoint } from './inspection-drawing/evaluateMeasurement';
 import { resolveInspectionDrawingZoomFromDefaultSteps } from './inspection-drawing/inspectionDrawingZoom';
-import { templateItemToDrawingPoint, toleranceBoundsFromPoint } from './inspection-drawing/markerNumbering';
+import { templateItemToDrawingPoint } from './inspection-drawing/markerNumbering';
+import {
+  resolveMeasurementPointInputStatus,
+  type MeasurementPointInputStatus
+} from './inspection-drawing/measurementPointInputStatus';
 
 import type { InspectionDrawingPoint } from './inspection-drawing/types';
 import type { PartMeasurementTemplateItemDto, SelfInspectionSessionDetailDto } from './types';
@@ -22,7 +25,7 @@ export type SelfInspectionValueCommitPayload = {
   source: SelfInspectionValueCommitSource;
 };
 
-export type SelfInspectionPointInputStatus = 'empty' | 'ok' | 'ng' | 'tolerance_error' | 'invalid';
+export type SelfInspectionPointInputStatus = MeasurementPointInputStatus;
 
 export type SelfInspectionGuidedFocusRequest = {
   pointId: string;
@@ -102,13 +105,7 @@ export function buildEntryDrawingPoints(
 }
 
 export function resolvePointInputStatus(point: InspectionDrawingPoint): SelfInspectionPointInputStatus {
-  const bounds = toleranceBoundsFromPoint(point);
-  if ('error' in bounds) return 'tolerance_error';
-  const parsed = parseMeasurementNumber(point.testValue);
-  if (parsed === null) {
-    return point.testValue.trim() === '' ? 'empty' : 'invalid';
-  }
-  return statusForPoint(point.testValue, bounds.lowerLimit, bounds.upperLimit);
+  return resolveMeasurementPointInputStatus(point);
 }
 
 export function isPointCommitEligible(status: SelfInspectionPointInputStatus): boolean {

@@ -3,7 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { selfInspectionKioskButtonClass } from '../selfInspectionKioskTheme';
 
 describe('selfInspectionKioskButtonClass', () => {
-  it.each(['default', 'compact', 'icon'] as const)(
+  it('actionCompact keeps text size while reducing height', () => {
+    const actionCompact = selfInspectionKioskButtonClass({ size: 'actionCompact' });
+    const defaultSize = selfInspectionKioskButtonClass({ size: 'default' });
+    expect(actionCompact).toContain('min-h-8');
+    expect(actionCompact).toContain('text-[15px]');
+    expect(defaultSize).toContain('min-h-11');
+    expect(actionCompact).not.toContain('min-h-11');
+  });
+
+  it.each(['default', 'compact', 'icon', 'actionCompact'] as const)(
     'size %s does not use opacity-60 or grayscale for enabled/disabled',
     (size) => {
       const enabled = selfInspectionKioskButtonClass({ disabled: false, size });

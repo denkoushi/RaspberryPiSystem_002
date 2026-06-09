@@ -71,6 +71,11 @@ export {
   parseMeasurementNumber,
   statusForPoint
 } from './evaluateMeasurement';
+export {
+  MEASUREMENT_POINT_INPUT_STATUS_LABEL,
+  resolveMeasurementPointInputStatus,
+  type MeasurementPointInputStatus
+} from './measurementPointInputStatus';
 export type { InspectionDrawingPoint, InspectionPointStatus } from './types';
 
 export {

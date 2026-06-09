@@ -160,13 +160,17 @@ export const SELF_INSPECTION_ENTRY_SLOTS_SELECTOR = '[data-self-inspection-entry
 /** 自主検査セッション — 保存・完了など（blur 時の relatedTarget 判定用） */
 export const SELF_INSPECTION_SESSION_ACTIONS_SELECTOR = '[data-self-inspection-session-actions]';
 
+/** 自主検査セッション — 測定点一覧（blur 時の relatedTarget 判定用） */
+export const SELF_INSPECTION_POINT_SUMMARY_LIST_SELECTOR = '[data-self-inspection-point-summary-list]';
+
 /** 自主検査セッション上の操作 UI（blur 時にガイド自動進行しないフォーカス先） */
 export function isSelfInspectionSessionChromeFocusTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
     target.closest(SELF_INSPECTION_SESSION_TOOLBAR_SELECTOR) !== null ||
     target.closest(SELF_INSPECTION_ENTRY_SLOTS_SELECTOR) !== null ||
-    target.closest(SELF_INSPECTION_SESSION_ACTIONS_SELECTOR) !== null
+    target.closest(SELF_INSPECTION_SESSION_ACTIONS_SELECTOR) !== null ||
+    target.closest(SELF_INSPECTION_POINT_SUMMARY_LIST_SELECTOR) !== null
   );
 }
 

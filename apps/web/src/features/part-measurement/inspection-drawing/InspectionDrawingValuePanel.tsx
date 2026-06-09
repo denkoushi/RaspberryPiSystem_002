@@ -3,13 +3,16 @@ import { useEffect, useMemo, useRef } from 'react';
 
 import { Input } from '../../../components/ui/Input';
 
-import { evaluateMeasurementValue, parseMeasurementNumber } from './evaluateMeasurement';
 import {
   inspectionDrawingBoundedSelectClassName,
   inspectionDrawingBoundedSelectShellClassName,
   isSelfInspectionSessionChromeFocusTarget
 } from './inspectionDrawingKioskUi';
 import { isLegacyAbsoluteOnlyPoint, toleranceBoundsFromPoint } from './markerNumbering';
+import {
+  MEASUREMENT_POINT_INPUT_STATUS_LABEL,
+  resolveMeasurementPointInputStatus
+} from './measurementPointInputStatus';
 import { buildSelfInspectionMeasurementValueOptions } from './selfInspectionMeasurementValueOptions';
 
 import type { InspectionDrawingPoint } from './types';
@@ -37,16 +40,12 @@ type Props = {
   valueCommitScopeKey?: string;
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  empty: '未入力',
-  ok: 'OK',
-  ng: 'NG'
-};
-
 const STATUS_CLASS: Record<string, string> = {
   empty: 'text-slate-400',
   ok: 'text-emerald-400',
-  ng: 'text-red-400'
+  ng: 'text-red-400',
+  tolerance_error: 'text-amber-300',
+  invalid: 'text-amber-300'
 };
 
 export function InspectionDrawingValuePanel({
@@ -100,11 +99,9 @@ export function InspectionDrawingValuePanel({
     );
   }
 
-  const parsed = parseMeasurementNumber(point.testValue);
   const legacyDisplay = isLegacyAbsoluteOnlyPoint(point);
   const bounds = toleranceBoundsFromPoint(point);
-  const status =
-    'error' in bounds ? 'empty' : evaluateMeasurementValue(parsed, bounds.lowerLimit, bounds.upperLimit);
+  const inputStatus = resolveMeasurementPointInputStatus(point);
 
   const showDropdown =
     optionResult?.mode === 'dropdown_and_free' && optionResult.options.length > 0;
@@ -112,6 +109,38 @@ export function InspectionDrawingValuePanel({
     optionResult?.mode === 'free_only' && optionResult.reason && valueInputMode === 'self_inspection_options'
       ? optionResult.reason
       : null;
+  const isSelfInspectionOptions = valueInputMode === 'self_inspection_options';
+  const toleranceClassName = isSelfInspectionOptions ? 'text-2xl text-white/80' : 'text-sm text-white/70';
+
+  const manualInputField = (
+    <Input
+      value={point.testValue}
+      onChange={(e) => onValueChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' || readOnly) return;
+        e.preventDefault();
+        emitCommit(point.testValue, 'enter');
+      }}
+      onBlur={(e) => {
+        const value = point.testValue;
+        emitCommit(
+          value,
+          isSelfInspectionSessionChromeFocusTarget(e.relatedTarget) ? 'blur_without_guide' : 'blur'
+        );
+      }}
+      disabled={readOnly}
+      inputMode="decimal"
+      className="w-full text-slate-900"
+      autoFocus={!showDropdown}
+      key={
+        onCommitValue
+          ? valueCommitScopeKey
+            ? `${valueCommitScopeKey}:${point.id}`
+            : point.id
+          : undefined
+      }
+    />
+  );
 
   return (
     <div className="flex flex-col gap-3 rounded border border-white/20 bg-slate-900/90 p-4 text-white shadow-lg">
@@ -119,7 +148,7 @@ export function InspectionDrawingValuePanel({
         <p className="text-lg font-bold">
           {point.name || '測定点'}（No.{point.markerNo}）
         </p>
-        <p className="text-sm text-white/70">
+        <p className={toleranceClassName}>
           {'error' in bounds
             ? '基準・公差を設定してください'
             : legacyDisplay && point.legacyAbsoluteBounds
@@ -127,63 +156,73 @@ export function InspectionDrawingValuePanel({
               : `基準 ${bounds.nominal} / ${bounds.lowerLimit} – ${bounds.upperLimit}`}
         </p>
       </div>
-      {showDropdown ? (
-        <label className="grid gap-1 text-sm font-semibold">
-          候補から選択
-          <div className={inspectionDrawingBoundedSelectShellClassName}>
-            <select
-              value=""
-              disabled={readOnly}
-              className={inspectionDrawingBoundedSelectClassName}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!v) return;
-                onValueChange(v);
-                emitCommit(v, 'dropdown');
-              }}
-            >
-              <option value="">候補を選ぶ（刻み {optionResult.stepLabel}）</option>
-              {optionResult.options.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-          </div>
-        </label>
-      ) : null}
-      <label className="grid gap-1 text-sm font-semibold">
-        測定値{showDropdown ? '（直接入力）' : ''}
-        <Input
-          value={point.testValue}
-          onChange={(e) => onValueChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter' || readOnly) return;
-            e.preventDefault();
-            emitCommit(point.testValue, 'enter');
-          }}
-          onBlur={(e) => {
-            const value = point.testValue;
-            emitCommit(
-              value,
-              isSelfInspectionSessionChromeFocusTarget(e.relatedTarget) ? 'blur_without_guide' : 'blur'
-            );
-          }}
-          disabled={readOnly}
-          inputMode="decimal"
-          className="w-full text-slate-900"
-          autoFocus={!showDropdown}
-          key={
-            onCommitValue
-              ? valueCommitScopeKey
-                ? `${valueCommitScopeKey}:${point.id}`
-                : point.id
-              : undefined
-          }
-        />
-      </label>
+      {isSelfInspectionOptions && showDropdown ? (
+        <div className="grid grid-cols-2 gap-2">
+          <label className="grid min-w-0 gap-1 text-sm font-semibold">
+            候補から選択
+            <div className={inspectionDrawingBoundedSelectShellClassName}>
+              <select
+                value=""
+                disabled={readOnly}
+                className={inspectionDrawingBoundedSelectClassName}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  onValueChange(v);
+                  emitCommit(v, 'dropdown');
+                }}
+              >
+                <option value="">候補（刻み {optionResult.stepLabel}）</option>
+                {optionResult.options.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </label>
+          <label className="grid min-w-0 gap-1 text-sm font-semibold">
+            測定値（直接入力）
+            {manualInputField}
+          </label>
+        </div>
+      ) : (
+        <>
+          {showDropdown ? (
+            <label className="grid gap-1 text-sm font-semibold">
+              候補から選択
+              <div className={inspectionDrawingBoundedSelectShellClassName}>
+                <select
+                  value=""
+                  disabled={readOnly}
+                  className={inspectionDrawingBoundedSelectClassName}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    onValueChange(v);
+                    emitCommit(v, 'dropdown');
+                  }}
+                >
+                  <option value="">候補を選ぶ（刻み {optionResult.stepLabel}）</option>
+                  {optionResult.options.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </label>
+          ) : null}
+          <label className="grid gap-1 text-sm font-semibold">
+            測定値{showDropdown ? '（直接入力）' : ''}
+            {manualInputField}
+          </label>
+        </>
+      )}
       {dropdownHint ? <p className="text-xs text-white/55">{dropdownHint}</p> : null}
-      <p className={clsx('text-base font-bold', STATUS_CLASS[status])}>{STATUS_LABEL[status]}</p>
+      <p className={clsx('text-base font-bold', STATUS_CLASS[inputStatus])}>
+        {MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
+      </p>
     </div>
   );
 }

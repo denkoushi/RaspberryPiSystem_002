@@ -6,6 +6,10 @@ import {
   inspectionDrawingPointSummaryListSidebarSectionClassName,
   inspectionDrawingPointSummaryListSidebarTitleClassName
 } from './inspectionDrawingKioskUi';
+import {
+  MEASUREMENT_POINT_INPUT_STATUS_LABEL,
+  resolveMeasurementPointInputStatus
+} from './measurementPointInputStatus';
 
 import type { InspectionDrawingPoint } from './types';
 
@@ -14,6 +18,10 @@ type Props = {
   selectedPointId: string | null;
   disabled?: boolean;
   onSelectPoint: (pointId: string) => void;
+  /** 一覧タップ前に blur ガイド進行を抑止する（自主検査セッション向け） */
+  onSelectPointerDownCapture?: () => void;
+  /** 入力値と OK/NG 等の状態を表示（自主検査セッション向け・opt-in） */
+  showMeasurementStatus?: boolean;
   variant: 'sidebar';
 };
 
@@ -26,12 +34,22 @@ function displayRaw(raw: string): string {
   return t.length > 0 ? t : '—';
 }
 
+const STATUS_CLASS: Record<string, string> = {
+  empty: 'text-slate-400',
+  ok: 'text-emerald-400',
+  ng: 'text-red-400',
+  tolerance_error: 'text-amber-300',
+  invalid: 'text-amber-300'
+};
+
 /** 測定点一覧 — 右ペイン縦スクロール・2行カード */
 export function InspectionDrawingPointSummaryList({
   points,
   selectedPointId,
   disabled = false,
   onSelectPoint,
+  onSelectPointerDownCapture,
+  showMeasurementStatus = false,
   variant
 }: Props) {
   if (variant !== 'sidebar') {
@@ -41,7 +59,10 @@ export function InspectionDrawingPointSummaryList({
   const sorted = sortByMarkerNo(points);
 
   return (
-    <div className={inspectionDrawingPointSummaryListSidebarSectionClassName}>
+    <div
+      className={inspectionDrawingPointSummaryListSidebarSectionClassName}
+      data-self-inspection-point-summary-list
+    >
       <p className={inspectionDrawingPointSummaryListSidebarTitleClassName}>測定点一覧</p>
       {sorted.length === 0 ? (
         <p className="px-1 text-[0.92rem] text-white/50">測定点がありません。図面上で点を置いてください。</p>
@@ -54,6 +75,8 @@ export function InspectionDrawingPointSummaryList({
           {sorted.map((pt) => {
             const selected = pt.id === selectedPointId;
             const displayName = pt.name.trim() || '（名称未選択）';
+            const inputStatus = showMeasurementStatus ? resolveMeasurementPointInputStatus(pt) : null;
+            const testValueDisplay = showMeasurementStatus ? displayRaw(pt.testValue) : null;
             return (
               <div key={pt.id} role="listitem">
                 <button
@@ -65,6 +88,7 @@ export function InspectionDrawingPointSummaryList({
                     inspectionDrawingPointSummaryListSidebarCardClassName,
                     selected && 'border-cyan-400/80 bg-cyan-950/40 ring-1 ring-cyan-400/50'
                   )}
+                  onPointerDownCapture={onSelectPointerDownCapture}
                   onClick={() => onSelectPoint(pt.id)}
                 >
                   <span className="truncate">
@@ -73,13 +97,31 @@ export function InspectionDrawingPointSummaryList({
                     </span>
                     <span className="ml-1 font-semibold">{displayName}</span>
                   </span>
-                  <span className="truncate text-white/75">
-                    <span className="text-white/50">基準</span> {displayRaw(pt.nominalRaw)}
-                    <span className="mx-1 text-white/30">·</span>
-                    <span className="text-white/50">上限</span> {displayRaw(pt.upperToleranceRaw)}
-                    <span className="mx-1 text-white/30">·</span>
-                    <span className="text-white/50">下限</span> {displayRaw(pt.lowerToleranceRaw)}
-                  </span>
+                  {showMeasurementStatus ? (
+                    <span className="flex items-center justify-between gap-2 truncate text-white/75">
+                      <span className="truncate">
+                        <span className="text-white/50">測定値</span> {testValueDisplay}
+                      </span>
+                      {inputStatus ? (
+                        <span
+                          className={clsx(
+                            'shrink-0 text-xs font-bold',
+                            STATUS_CLASS[inputStatus] ?? 'text-white/60'
+                          )}
+                        >
+                          {MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : (
+                    <span className="truncate text-white/75">
+                      <span className="text-white/50">基準</span> {displayRaw(pt.nominalRaw)}
+                      <span className="mx-1 text-white/30">·</span>
+                      <span className="text-white/50">上限</span> {displayRaw(pt.upperToleranceRaw)}
+                      <span className="mx-1 text-white/30">·</span>
+                      <span className="text-white/50">下限</span> {displayRaw(pt.lowerToleranceRaw)}
+                    </span>
+                  )}
                 </button>
               </div>
             );
