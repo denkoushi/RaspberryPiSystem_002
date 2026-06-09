@@ -19,6 +19,8 @@ import type { FkojunstSyncResult } from '../production-schedule/fkojunst-sync.pi
 import type { FkojunstMailSyncResult } from '../production-schedule/fkojunst-status-mail-sync.pipeline.js';
 import type { CustomerScawSyncResult } from '../production-schedule/customer-scaw-sync.pipeline.js';
 import type { SeibanMachineNameSupplementSyncResult } from '../production-schedule/seiban-machine-name-supplement-sync.pipeline.js';
+import { resetMachineNameFseibanMatchCaches } from '../production-schedule/machine-name-fseiban-match.service.js';
+import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../part-measurement/self-inspection-machine-board-cache-invalidation.js';
 import {
   PurchaseOrderLookupSyncService,
   type PurchaseOrderLookupSyncResult,
@@ -76,6 +78,7 @@ export class CsvDashboardPostIngestService {
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: orderSupplementSync },
         '[CsvDashboardPostIngestService] Production schedule order supplement sync completed'
       );
+      resetSelfInspectionMachineBoardScheduleRowCaches();
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID) {
@@ -92,6 +95,7 @@ export class CsvDashboardPostIngestService {
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: fkojunstMailSync },
         '[CsvDashboardPostIngestService] FKOJUNST_Status mail sync completed'
       );
+      resetSelfInspectionMachineBoardScheduleRowCaches();
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
@@ -100,6 +104,8 @@ export class CsvDashboardPostIngestService {
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: externalCompletionSync },
         '[CsvDashboardPostIngestService] external completion sync completed after production schedule ingest'
       );
+      resetMachineNameFseibanMatchCaches();
+      resetSelfInspectionMachineBoardScheduleRowCaches();
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID) {
@@ -118,6 +124,8 @@ export class CsvDashboardPostIngestService {
         },
         '[CsvDashboardPostIngestService] Seiban machine name supplement sync completed'
       );
+      resetMachineNameFseibanMatchCaches();
+      resetSelfInspectionMachineBoardScheduleRowCaches();
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID) {

@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../../lib/prisma.js';
 import { buildServer } from '../../app.js';
+import { buildSelfInspectionMachineBoardViewModel } from '../../services/part-measurement/self-inspection-machine-board.service.js';
+import { normalizeFhincd } from '../../services/part-measurement/template-candidate-rules.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
+import { buildSelfInspectionMachineBoardSvg } from '../../services/signage/self-inspection-machine-board/self-inspection-machine-board-svg.js';
 import {
   createAuthHeader,
   createTestClientDevice,
@@ -12,6 +16,200 @@ process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borr
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 process.env.SIGNAGE_RENDER_DIR ??= `/tmp/raspi-signage-render-test-${process.pid}`;
+
+const PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_SOURCE_DASHBOARD_ID = '8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31';
+const SELF_INSPECTION_MACHINE_BOARD_TEST_MACHINE_NAME = 'integration-test-machine-name';
+
+const MIN_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+);
+
+function buildMultipartPng(name: string, png: Buffer): { body: Buffer; contentType: string } {
+  const boundary = `----testSignageSimb${Date.now()}`;
+  const crlf = '\r\n';
+  const parts: Buffer[] = [];
+  const push = (s: string) => parts.push(Buffer.from(s, 'utf8'));
+  push(`--${boundary}${crlf}`);
+  push(`Content-Disposition: form-data; name="name"${crlf}${crlf}${name}${crlf}`);
+  push(`--${boundary}${crlf}`);
+  push(
+    `Content-Disposition: form-data; name="file"; filename="t.png"${crlf}Content-Type: image/png${crlf}${crlf}`
+  );
+  parts.push(png);
+  push(`${crlf}--${boundary}--${crlf}`);
+  return {
+    body: Buffer.concat(parts),
+    contentType: `multipart/form-data; boundary=${boundary}`,
+  };
+}
+
+async function seedVisibleProductionScheduleFkojunstMailStatus(input: {
+  csvDashboardRowId: string;
+  fkojun: string;
+  fkoteicd: string;
+  fsezono: string;
+}): Promise<void> {
+  await prisma.productionScheduleFkojunstMailStatus.upsert({
+    where: { csvDashboardRowId: input.csvDashboardRowId },
+    create: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      csvDashboardRowId: input.csvDashboardRowId,
+      sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+      fkojun: input.fkojun,
+      fkoteicd: input.fkoteicd,
+      fsezono: input.fsezono,
+      statusCode: 'S',
+      sourceUpdatedAt: new Date(),
+    },
+    update: {
+      statusCode: 'S',
+      sourceUpdatedAt: new Date(),
+    },
+  });
+}
+
+async function seedSelfInspectionMachineBoardFixture(
+  app: Awaited<ReturnType<typeof buildServer>>,
+  adminToken: string,
+  machineName: string
+): Promise<{ fhincd: string; fseiban: string; scheduleRowId: string }> {
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const fhincd = normalizeFhincd(`MHSIMB-${suffix}`);
+  const fseiban = `FS-SIMB-${suffix}`;
+  const productNo = String(Date.now()).slice(-10);
+  const resourceCd = 'RES-SIMB-INT';
+  const fkojun = '10';
+
+  await prisma.csvDashboard.upsert({
+    where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+    update: {},
+    create: {
+      id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      name: 'ProductionSchedule_Test',
+      columnDefinitions: [],
+      templateType: 'CARD_GRID',
+      templateConfig: {},
+      ingestMode: 'DEDUP',
+      dedupKeyColumns: ['ProductNo', 'FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN'],
+      dateColumnName: 'registeredAt',
+      enabled: true,
+    },
+  });
+
+  const row = await prisma.csvDashboardRow.create({
+    data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      occurredAt: new Date(),
+      dataHash: `simb-signage-${suffix}`,
+      rowData: {
+        ProductNo: productNo,
+        FSEIBAN: fseiban,
+        FHINCD: fhincd,
+        FSIGENCD: resourceCd,
+        FHINMEI: machineName,
+        FKOJUN: fkojun,
+      },
+    },
+  });
+
+  await seedVisibleProductionScheduleFkojunstMailStatus({
+    csvDashboardRowId: row.id,
+    fkojun,
+    fkoteicd: resourceCd.trim().toUpperCase(),
+    fsezono: productNo,
+  });
+
+  await prisma.productionScheduleOrderSupplement.upsert({
+    where: { csvDashboardRowId: row.id },
+    update: { plannedQuantity: 2 },
+    create: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      csvDashboardRowId: row.id,
+      sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_SOURCE_DASHBOARD_ID,
+      productNo: productNo.slice(0, 20),
+      resourceCd: resourceCd.slice(0, 20),
+      processOrder: '10',
+      plannedQuantity: 2,
+    },
+  });
+
+  const { body, contentType } = buildMultipartPng('自主検査図面', MIN_PNG);
+  const visualRes = await app.inject({
+    method: 'POST',
+    url: '/api/part-measurement/visual-templates',
+    headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+    payload: body,
+  });
+  expect(visualRes.statusCode).toBe(200);
+  const visualTemplateId = visualRes.json().visualTemplate.id as string;
+
+  const createTemplateRes = await app.inject({
+    method: 'POST',
+    url: '/api/part-measurement/templates',
+    headers: createAuthHeader(adminToken),
+    payload: {
+      fhincd,
+      processGroup: 'cutting',
+      resourceCd,
+      name: 'サイネージ自主検査テンプレ',
+      visualTemplateId,
+      selfInspectionMode: 'sample',
+      selfInspectionSampleSize: 2,
+      items: [
+        {
+          sortOrder: 0,
+          datumSurface: 'A',
+          measurementPoint: 'P1',
+          measurementLabel: '寸法1',
+          displayMarker: '1',
+          markerXRatio: 0.2,
+          markerYRatio: 0.4,
+          nominalValue: 10,
+          lowerLimit: 9.8,
+          upperLimit: 10.2,
+          allowNegative: false,
+          decimalPlaces: 2,
+        },
+      ],
+    },
+  });
+  expect(createTemplateRes.statusCode).toBe(200);
+  const templateId = createTemplateRes.json().template.id as string;
+  const templateItemId = createTemplateRes.json().template.items[0].id as string;
+
+  const resolveRes = await app.inject({
+    method: 'POST',
+    url: '/api/part-measurement/self-inspection/sessions/resolve-or-create',
+    headers: createAuthHeader(adminToken),
+    payload: {
+      templateId,
+      productNo,
+      processGroup: 'cutting',
+      resourceCd,
+      plannedQuantity: 2,
+      scheduleRowId: row.id,
+      fseiban,
+      fhincd,
+      fhinmei: machineName,
+    },
+  });
+  expect(resolveRes.statusCode).toBe(200);
+  const sessionId = resolveRes.json().session.id as string;
+
+  const createEntryRes = await app.inject({
+    method: 'POST',
+    url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
+    headers: createAuthHeader(adminToken),
+    payload: {
+      entryIndex: 0,
+      values: [{ templateItemId, value: '10.01' }],
+    },
+  });
+  expect(createEntryRes.statusCode).toBe(200);
+
+  return { fhincd, fseiban, scheduleRowId: row.id };
+}
 
 describe('GET /api/signage/schedules', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
@@ -612,6 +810,142 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toContain('image/jpeg');
     expect(response.rawPayload).toBeInstanceOf(Buffer);
+  });
+
+  it('should return image for schedule with layoutConfig FULL self_inspection_machine_board', async () => {
+    const listResponse = await app.inject({ method: 'GET', url: '/api/signage/schedules' });
+    for (const schedule of listResponse.json().schedules as Array<{ id: string }>) {
+      await app.inject({
+        method: 'DELETE',
+        url: `/api/signage/schedules/${schedule.id}`,
+        headers: createAuthHeader(adminToken),
+      });
+    }
+
+    const simbClient = await createTestClientDevice(`signage-simb-only-${Date.now()}`);
+    const seeded = await seedSelfInspectionMachineBoardFixture(
+      app,
+      adminToken,
+      SELF_INSPECTION_MACHINE_BOARD_TEST_MACHINE_NAME
+    );
+
+    const viewModel = await buildSelfInspectionMachineBoardViewModel({
+      machineName: SELF_INSPECTION_MACHINE_BOARD_TEST_MACHINE_NAME,
+      detailTopN: 3,
+    });
+    expect(viewModel.totalPages).toBeGreaterThan(0);
+    const summaryPages = viewModel.pages.filter((page) => page.kind === 'summary');
+    const detailPages = viewModel.pages.filter((page) => page.kind === 'detail');
+    expect(summaryPages.length).toBeGreaterThan(0);
+    const summaryParts = [...summaryPages[0].scheduled, ...summaryPages[0].unscheduled].flatMap(
+      (group) => group.parts
+    );
+    const seededPart = summaryParts.find((part) => part.fhincd === seeded.fhincd);
+    expect(seededPart).toBeTruthy();
+    expect(seededPart?.progressLabel).toBe('1/2');
+    expect(detailPages.length).toBeGreaterThan(0);
+    expect(detailPages[0]?.measurementPoints.length).toBeGreaterThan(0);
+    expect(buildSelfInspectionMachineBoardSvg(summaryPages[0], 1920, 1080)).toContain('自主検査');
+    expect(buildSelfInspectionMachineBoardSvg(detailPages[0], 1920, 1080)).toContain('寸法1');
+
+    const scheduleResponse = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'Test Schedule Self Inspection Machine Board',
+        contentType: 'TOOLS',
+        targetClientKeys: [simbClient.apiKey],
+        layoutConfig: {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'self_inspection_machine_board',
+              config: {
+                machineName: SELF_INSPECTION_MACHINE_BOARD_TEST_MACHINE_NAME,
+                slideIntervalSeconds: 30,
+                partsPerPage: 12,
+                detailTopN: 3,
+              },
+            },
+          ],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 100,
+        enabled: true,
+      },
+    });
+
+    expect(scheduleResponse.statusCode).toBe(200);
+
+    const contentResponse = await app.inject({
+      method: 'GET',
+      url: '/api/signage/content',
+      headers: {
+        'x-client-key': simbClient.apiKey,
+      },
+    });
+    expect(contentResponse.statusCode).toBe(200);
+    expect(contentResponse.json().layoutConfig?.slots?.[0]?.kind).toBe('self_inspection_machine_board');
+
+    const renderResponse = await app.inject({
+      method: 'POST',
+      url: '/api/signage/render',
+      headers: createAuthHeader(adminToken),
+    });
+    expect(renderResponse.statusCode).toBe(200);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/signage/current-image',
+      headers: {
+        'x-client-key': simbClient.apiKey,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('image/jpeg');
+    expect(response.rawPayload).toBeInstanceOf(Buffer);
+    expect((response.rawPayload as Buffer).length).toBeGreaterThan(1000);
+  });
+
+  it('should reject self_inspection_machine_board on SPLIT layout', async () => {
+    const scheduleResponse = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'Test Schedule Self Inspection SPLIT Rejected',
+        contentType: 'SPLIT',
+        layoutConfig: {
+          layout: 'SPLIT',
+          slots: [
+            {
+              position: 'LEFT',
+              kind: 'self_inspection_machine_board',
+              config: {
+                machineName: 'integration-test-machine-name',
+              },
+            },
+            {
+              position: 'RIGHT',
+              kind: 'loans',
+              config: {},
+            },
+          ],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 95,
+        enabled: true,
+      },
+    });
+
+    expect(scheduleResponse.statusCode).toBe(400);
   });
 
   it('should return image for schedule with layoutConfig FULL kiosk_leader_order_cards', async () => {

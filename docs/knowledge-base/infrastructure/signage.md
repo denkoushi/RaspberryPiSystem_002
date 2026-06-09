@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-06-04
+last-verified: 2026-06-09
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -27,6 +27,64 @@ update-frequency: medium
 **Pi3 サイネージ非表示・Tailscale Key expiry（2026-06-03〜04）**: 現場で **デスクトップのみ**・Pi5 から SSH 不可。**管理画面** `raspberrypi-2`（`100.105.224.86`・`tag:signage`）が **Expired**。**Pi5 の `current-image` は 200**（サーバ側は正常）。**Extend key** 後も Pi3 側再認証なしでは不通。**オフィス移設後**は tailnet 復旧・`signage-lite` active・**現場戻し後も表示 OK**。**恒久**: 全常時稼働端末で **Disable key expiry**。**Runbook**: [pi3-signage-tailscale-recovery.md](../../runbooks/pi3-signage-tailscale-recovery.md)・**KB**: [KB-386](#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路)・**復旧監視**: `scripts/ops/recover-pi3-signage-remote.sh`（Pi5 上）。
 
 **配膳 Android 部品棚 9 枠（2026-04-13・ブランチ `feat/pi3-android-parts-signage`）**: FULL スロット **`mobile_placement_parts_shelf_grid`**（`OrderPlacementBranchState` を 3×3 ゾーンに集約・**SVG→JPEG**・任意 **`maxItemsPerZone`**）。**本番**: API/Web 正本は **Pi5**、表示の `/signage` 用 Web 更新と **`signage-lite-update`** 経路を取り込むなら **Pi3 も順次**（[KB-321](#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) と同型の **Pi3 専用プレフライト**）。**デプロイ**: [deployment.md](../../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pi3-android-parts-signage infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow` の **成功後**に `./scripts/update-all-clients.sh … --limit "raspberrypi3" --detach --follow`（**1 台ずつ・同一ホストへ並列起動しない**）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-190750-1020`（`raspberrypi5`）→ `20260413-192539-10430`（`raspberrypi3`）、各 **`PLAY RECAP failed=0` / `unreachable=0`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **54s**・Mac / Tailscale）。**ナレッジ**: [KB-341](#kb-341-mobile-placement-parts-shelf-grid-deploy)・[signage-mobile-placement-parts-shelf-grid.md](../../guides/signage-mobile-placement-parts-shelf-grid.md)。
+
+<a id="self-inspection-machine-board"></a>
+
+**自主検査 機種別進捗ボード（2026-06-08・ブランチ `feat/signage-self-inspection-machine-board`）**:
+FULL スロット **`self_inspection_machine_board`**。
+`machineName` をキーに生産日程を正本として仕掛中の全製番・全部品の自主検査進捗一覧（summary）と、
+注目部品の測定点別ヒートストリップ（detail）を **flat page list** でローテーション
+（`getRotatingSlideIndex` 共有）。
+設定: `targetMode`（`manual_machine_name` / `auto_from_leaderboard_status`・未指定は manual）・
+`machineName`（manual 必須）・`resourceCds`（auto 必須・順位ボード相当の資源CD）・
+`deviceScopeKey`（manual 推奨 / auto 必須・拠点別 policy）・`maxAutoMachines`（auto のみ保存可・任意・既定5・最大20）・
+`slideIntervalSeconds`・`partsPerPage`（既定12・最大12）・`detailTopN`（既定5）。
+auto は `deviceScopeKey + resourceCds` 母集団を raw page 走査（500件/chunk・最大 2000 行）し、
+自主検査 rowDecorations のみ解決して黄（`in_progress`）機種を選定する（full 一覧・顧客名・フッタチップは省略。
+走査上限到達は 1 件プローブで後続有無を判定し、続きがある場合のみ warn ログ＋表示注記。
+候補同点時の納期は手動 `dueDate` 優先・無ければ `plannedEndDate`（順位ボードと同じ `displayDue`）。
+auto ローテーション ViewModel は **60 秒 TTL** で render 跨ぎ再利用（`SELF_INSPECTION_MACHINE_BOARD_AUTO_ROTATION_VM_CACHE_TTL_MS`））。
+選定後の各機種ボードは既存どおり機種内 eligible 部品全体（未開始/入力中/完了）を表示する。
+auto 複数機種は pages を連結後に全体通番へ再採番する。
+詳細取得は **detailTopN 件のみ** full session（entries/values）。ヒートストリップ横セル上限 32。
+**SPLIT 未対応**（pane-resolver は空 loans ペイン）。折れ線グラフは初版未実装。
+機種名→FSEIBAN 解決は `machine-name-fseiban-match.service.ts` の短 TTL インデックスキャッシュ
+（`PRODUCTION_SCHEDULE_MACHINE_NAME_FSEIBAN_CACHE_TTL_MS` 既定60秒）。
+生産日程行は page 単位 chunk 走査
+（`scanProductionScheduleRowsForSignageMachineBoard`・pageSize 500・最大 50 ページ）で装飾し
+eligible のみ集約、**表示優先度ソート後**に **2000** 件 cap
+（`MAX_SELF_INSPECTION_MACHINE_BOARD_SCHEDULE_ROWS`）+ `hasMore` 表示。
+同一 `SignageRenderer.renderCurrentContent()` 呼び出し内では ViewModel を端末×設定キーで共有し、
+当該 render バッチ内の重複 DB 走査を抑える（render 間の TTL キャッシュはなし）。
+**代表**: `apps/api/src/services/part-measurement/self-inspection-machine-board.service.ts` ·
+`apps/api/src/services/signage/self-inspection-machine-board/` · 管理 `/admin/signage/schedules`。
+
+**本番デプロイ（2026-06-09 · auto 選定拡張 · ブランチ `feat/signage-self-inspection-machine-board-auto-target`）**:
+
+| 項目 | 内容 |
+|------|------|
+| **代表コミット** | **`78fc233c`**（`feat(signage): add auto self inspection machine board`） |
+| **変更範囲** | **API + Web**（`api`/`web` Docker 再ビルド）· Prisma migration **なし** |
+| **対象ホスト** | **`raspberrypi5` のみ**（Pi4 キオスク×4 · Pi3 サイネージは **デプロイ不要** — JPEG 正本は Pi5 API） |
+| **標準コマンド** | [deployment.md](../../guides/deployment.md) どおり `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/signage-self-inspection-machine-board-auto-target infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` |
+| **Detach Run ID** | **`20260609-140312-5526`** · **`PLAY RECAP ok=134 changed=4 failed=0`** · `Git: changed` |
+| **CI** | GitHub Actions **`27184336224`** **success**（push 後） |
+| **実機（自動）** | `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **33s** · Tailscale） |
+
+**実装知見（auto 選定）**:
+
+- `targetMode=auto_from_leaderboard_status` 時は **`deviceScopeKey` 必須**・**`resourceCds` 空は拒否**（Zod + 管理 UI）。
+- 黄（`in_progress`）機種は `deviceScopeKey + resourceCds` 母集団を **raw page 走査**（500/chunk・最大 2000 行）し、**rowDecorations のみ**解決して選定（full 一覧・顧客名・フッタチップは省略）。
+- 走査上限到達時は **1 件プローブ**で後続有無を判定し、続きがある場合のみ warn ログ＋表示注記。
+- 同点ソートの納期は **`displayDue`**（手動 `dueDate` 優先・無ければ `plannedEndDate`）。
+- auto ローテーション ViewModel は **60 秒 TTL**（`self-inspection-machine-board-auto-rotation.cache.ts`）。無効化は CSV 取込・納期書込・生産日程 CRUD・自主検査 CRUD 経路（`self-inspection-machine-board-cache-invalidation.ts`）。
+- 循環依存回避のため invalidation は中立モジュールへ分離。期限切れ cache entry は参照時に削除。
+
+**未完了・次アクション**:
+
+- [ ] 管理 `/admin/signage/schedules` で **auto モード**を設定し、黄機種のローテーション表示を **現場目視**（スケジュール未設定時は自動検証対象外）。
+- [ ] 初版 `self_inspection_machine_board`（manual のみ）が未本番の場合は、本ブランチに含まれるため **Pi5 デプロイで同時反映済み**。
+- [ ] **折れ線グラフ**・**SPLIT 対応**は初版未実装のまま（将来 Plan）。
 
 ---
 

@@ -23,6 +23,10 @@ vi.mock('../../lib/convert-pdf-first-page-to-jpeg.js', () => ({
 const MIN_PDF = buildMinimalValidPdfBuffer();
 
 async function cleanPartMeasurementTables() {
+  await prisma.selfInspectionMeasurementValue.deleteMany({});
+  await prisma.selfInspectionLotEntry.deleteMany({});
+  await prisma.selfInspectionSessionResetAuditLog.deleteMany({});
+  await prisma.selfInspectionSession.deleteMany({});
   await prisma.partMeasurementResult.deleteMany({});
   await prisma.partMeasurementSheet.deleteMany({});
   await prisma.partMeasurementSession.deleteMany({});

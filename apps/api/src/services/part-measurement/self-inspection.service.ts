@@ -11,6 +11,7 @@ import {
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 import { resolveProductionSchedulePlannedQuantity } from '../production-schedule/self-inspection-schedule-eligibility.js';
 import { verifyProductionScheduleRowOrThrow } from '../production-schedule/verify-production-schedule-row.js';
+import { resetSelfInspectionMachineBoardScheduleRowCaches } from './self-inspection-machine-board-cache-invalidation.js';
 
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import {
@@ -153,7 +154,7 @@ function buildSessionBusinessKey(input: {
   ].join('::');
 }
 
-function pickSessionForScheduleRow<
+export function pickSessionForScheduleRow<
   T extends { scheduleRowId: string | null; completedAt: Date | null; updatedAt: Date }
 >(sessions: T[], scheduleRowId: string): T | null {
   const candidates = sessions.filter((session) => session.scheduleRowId === scheduleRowId);
@@ -173,6 +174,11 @@ export type SelfInspectionSessionForDecoration = {
   expectedEntryCount: number;
   completedAt: Date | null;
   updatedAt: Date;
+  template: {
+    selfInspectionMode: SelfInspectionMode;
+    selfInspectionFixedCount: number | null;
+    selfInspectionSampleSize: number | null;
+  };
   _count: { entries: number };
 };
 
@@ -280,8 +286,15 @@ export async function ensureSelfInspectionSessionsInCache(
   const sessions = await prisma.selfInspectionSession.findMany({
     where: { scheduleRowId: { in: missingIds } },
     include: {
-      _count: { select: { entries: true } }
-    }
+      template: {
+        select: {
+          selfInspectionMode: true,
+          selfInspectionFixedCount: true,
+          selfInspectionSampleSize: true,
+        },
+      },
+      _count: { select: { entries: true } },
+    },
   });
   const foundScheduleRowIds = new Set<string>();
   for (const session of sessions) {
@@ -422,6 +435,8 @@ type LeaderboardSelfInspectionDecoration = {
   selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
   selfInspectionEntryPath: string | null;
   resolvedPlannedQuantity?: number | null;
+  resolvedRequiredEntryCount?: number | null;
+  completedEntryCount?: number | null;
 };
 
 function emptyLeaderboardSelfInspectionDecoration(rowId: string): LeaderboardSelfInspectionDecoration {
@@ -440,6 +455,8 @@ function buildLeaderboardDecorationFromSession(
   session: SelfInspectionSessionForDecoration,
   plannedQuantity: number | null
 ): LeaderboardSelfInspectionDecoration {
+  const planned =
+    plannedQuantity ?? resolveProductionSchedulePlannedQuantity(session.plannedQuantity);
   return {
     id: rowId,
     hasSelfInspectionDrawing: true,
@@ -450,8 +467,13 @@ function buildLeaderboardDecorationFromSession(
       session.completedAt
     ),
     selfInspectionEntryPath: `/kiosk/part-measurement/self-inspection/sessions/${session.id}`,
-    resolvedPlannedQuantity:
-      plannedQuantity ?? resolveProductionSchedulePlannedQuantity(session.plannedQuantity)
+    resolvedPlannedQuantity: planned,
+    resolvedRequiredEntryCount: resolveRequiredEntryCountForCompletion({
+      expectedEntryCount: session.expectedEntryCount,
+      plannedQuantity: session.plannedQuantity,
+      template: templateConfigFromTemplate(session.template),
+    }),
+    completedEntryCount: session._count.entries,
   };
 }
 
@@ -984,7 +1006,7 @@ export class SelfInspectionService {
             createdByEmployeeNameSnapshot: normalizeText(input.createdByEmployeeNameSnapshot) || null
           }
         : await this.resolveEntryActor(input.employeeTagUid);
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       await this.lockSessionRow(tx, sessionId);
       const session = await this.loadSessionForMutation(tx, sessionId);
       this.assertSessionEntryCountWritable(session);
@@ -1070,6 +1092,8 @@ export class SelfInspectionService {
         return this.serializeLotEntry(raced);
       }
     });
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+    return result;
   }
 
   async updateEntry(
@@ -1082,7 +1106,7 @@ export class SelfInspectionService {
     }
   ) {
     const actor = await this.resolveEntryActor(input.employeeTagUid);
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       await this.lockSessionRow(tx, sessionId);
       const session = await this.loadSessionForMutation(tx, sessionId);
       this.assertSessionEntryCountWritable(session);
@@ -1126,6 +1150,8 @@ export class SelfInspectionService {
       });
       return this.serializeLotEntry(updated);
     });
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+    return result;
   }
 
   async completeSession(sessionId: string) {
@@ -1134,7 +1160,7 @@ export class SelfInspectionService {
       _count: { select: { entries: true } }
     } as const;
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       await this.lockSessionRow(tx, sessionId);
       const session = await tx.selfInspectionSession.findUnique({
         where: { id: sessionId },
@@ -1185,6 +1211,8 @@ export class SelfInspectionService {
       }
       return serializeSessionSummary(completed);
     });
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+    return result;
   }
 
   async resetSession(
@@ -1221,7 +1249,7 @@ export class SelfInspectionService {
       clientDeviceName = device?.name ?? null;
     }
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       await this.lockSessionRow(tx, sessionId);
       const lockedSession = await tx.selfInspectionSession.findUnique({
         where: { id: sessionId }
@@ -1375,6 +1403,8 @@ export class SelfInspectionService {
         newSession: serializeResetNewSession(newSession)
       };
     });
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+    return result;
   }
 
   async buildLeaderboardDecorations(
@@ -1453,7 +1483,9 @@ export class SelfInspectionService {
           fhinmei,
           machineName: null
         }),
-        resolvedPlannedQuantity: plannedQuantity
+        resolvedPlannedQuantity: plannedQuantity,
+        resolvedRequiredEntryCount: expectedEntryCount,
+        completedEntryCount: 0,
       };
     });
   }

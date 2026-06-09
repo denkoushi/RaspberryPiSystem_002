@@ -20,6 +20,8 @@ const syncFromSeibanMachineNameSupplementDashboard = vi.fn();
 const syncFromCustomerScawDashboard = vi.fn();
 const syncFromFkobainoDashboard = vi.fn();
 const syncFromRiggingIngestRun = vi.fn();
+const resetMachineNameFseibanMatchCaches = vi.hoisted(() => vi.fn());
+const resetSelfInspectionMachineBoardScheduleRowCaches = vi.hoisted(() => vi.fn());
 
 vi.mock('../../production-schedule/order-supplement-sync.service.js', () => ({
   ProductionScheduleOrderSupplementSyncService: vi.fn().mockImplementation(function () {
@@ -49,6 +51,14 @@ vi.mock('../../production-schedule/seiban-machine-name-supplement-sync.service.j
   ProductionScheduleSeibanMachineNameSupplementSyncService: vi.fn().mockImplementation(function () {
     return { syncFromSupplementDashboard: syncFromSeibanMachineNameSupplementDashboard };
   }),
+}));
+
+vi.mock('../../production-schedule/machine-name-fseiban-match.service.js', () => ({
+  resetMachineNameFseibanMatchCaches,
+}));
+
+vi.mock('../../part-measurement/self-inspection-machine-board-cache-invalidation.js', () => ({
+  resetSelfInspectionMachineBoardScheduleRowCaches,
 }));
 
 vi.mock('../../production-schedule/customer-scaw-sync.service.js', () => ({
@@ -152,6 +162,8 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
     expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
+    expect(resetMachineNameFseibanMatchCaches).not.toHaveBeenCalled();
+    expect(resetSelfInspectionMachineBoardScheduleRowCaches).not.toHaveBeenCalled();
 
     const hit = await svc.runAfterSuccessfulIngest({
       dashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
@@ -177,6 +189,8 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
     expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
+    expect(resetMachineNameFseibanMatchCaches).not.toHaveBeenCalled();
+    expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
   });
 
   it('runs FKOJUNST sync only for the FKOJUNST dashboard id', async () => {
@@ -237,6 +251,8 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromCurrentStatusMailDashboard).not.toHaveBeenCalled();
     expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
     expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
+    expect(resetMachineNameFseibanMatchCaches).toHaveBeenCalledTimes(1);
+    expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
   });
 
   it('runs FKOJUNST_Status mail sync only for the FKOJUNST_Status mail dashboard id', async () => {
@@ -268,6 +284,7 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
     expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
+    expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
   });
 
   it('runs FKOBAINO purchase order lookup sync only for the FKOBAINO dashboard id', async () => {
@@ -349,6 +366,8 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
     expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
+    expect(resetMachineNameFseibanMatchCaches).toHaveBeenCalledTimes(1);
+    expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
   });
 
   it('runs rigging inspection sync only for the rigging slings inspection dashboard id', async () => {

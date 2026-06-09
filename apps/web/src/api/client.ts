@@ -4024,16 +4024,26 @@ export interface SignageSlotConfig {
   visualizationDashboardId?: string;
   displayMode?: 'SLIDESHOW' | 'SINGLE';
   slideInterval?: number | null;
-  /** kiosk_progress_overview / kiosk_leader_order_cards: キオスクと同じ deviceScopeKey */
+  /** kiosk_progress_overview / kiosk_leader_order_cards / self_inspection_machine_board: キオスクと同じ deviceScopeKey */
   deviceScopeKey?: string;
   slideIntervalSeconds?: number;
   seibanPerPage?: number;
-  /** kiosk_leader_order_cards: 表示する資源CD（先頭から順） */
+  /** kiosk_leader_order_cards / self_inspection_machine_board auto: 表示する資源CD（先頭から順） */
   resourceCds?: string[];
   /** kiosk_leader_order_cards: 1ページの資源カード数（1〜10・既定はグリッド満杯＝10） */
   cardsPerPage?: number;
   /** mobile_placement_parts_shelf_grid: ゾーンあたりの最大表示行数（省略時はサーバ既定） */
   maxItemsPerZone?: number;
+  /** self_inspection_machine_board: manual / auto 選定モード */
+  targetMode?: 'manual_machine_name' | 'auto_from_leaderboard_status';
+  /** self_inspection_machine_board manual: 機種名（生産日程 machineName と正規化比較） */
+  machineName?: string;
+  /** self_inspection_machine_board auto: 連結する機種数上限 */
+  maxAutoMachines?: number;
+  /** self_inspection_machine_board: 1ページの部品行数 */
+  partsPerPage?: number;
+  /** self_inspection_machine_board: 詳細ヒートストリップ対象部品数 */
+  detailTopN?: number;
 }
 
 export interface SignageSlot {
@@ -4046,6 +4056,7 @@ export interface SignageSlot {
     | 'kiosk_progress_overview'
     | 'kiosk_leader_order_cards'
     | 'mobile_placement_parts_shelf_grid'
+    | 'self_inspection_machine_board'
     | 'message';
   config: SignageSlotConfig | Record<string, never>;
 }

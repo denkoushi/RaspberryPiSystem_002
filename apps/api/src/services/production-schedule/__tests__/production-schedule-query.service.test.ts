@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getProductionScheduleOrderUsage,
+  listProductionScheduleRowsForSignageMachineBoard,
   listProductionScheduleResources,
   listProductionScheduleRows,
 } from '../production-schedule-query.service.js';
+import { resetMachineNameFseibanMatchCaches } from '../machine-name-fseiban-match.service.js';
 import { resolveActualHoursLocationCandidates } from '../actual-hours-location-scope.service.js';
 import { prisma } from '../../../lib/prisma.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
@@ -73,6 +75,7 @@ describe('production-schedule-query.service', () => {
   beforeEach(() => {
     vi.mocked(prisma.$queryRaw).mockReset();
     vi.clearAllMocks();
+    resetMachineNameFseibanMatchCaches();
     vi.mocked(resolveActualHoursLocationCandidates).mockImplementation((locationKey: string) => [locationKey]);
     vi.mocked(prisma.productionScheduleSeibanMachineNameSupplement.findMany).mockResolvedValue([]);
     vi.mocked(prisma.productionScheduleResourceCategoryConfig.findUnique).mockResolvedValue(null);
@@ -196,6 +199,138 @@ describe('production-schedule-query.service', () => {
     expect(prisma.productionScheduleSeibanMachineNameSupplement.findMany).toHaveBeenCalledTimes(1);
     expect(result.total).toBe(1);
     expect(result.rows[0]?.resolvedMachineName).toBe('機種-A');
+  });
+
+  it('自主検査ボード向け一覧は機種の生産日程行を走査し、打ち切りは表示上限とは別', async () => {
+    const firstChunk = Array.from({ length: 500 }, (_, index) => ({
+      id: `row-${index + 1}`,
+      occurredAt: new Date('2026-03-23T00:00:00.000Z'),
+      rowData: {
+        ProductNo: String(index + 1).padStart(4, '0'),
+        FSEIBAN: 'A',
+        FHINCD: `X-${index + 1}`,
+        FHINMEI: '機種A',
+        FSIGENCD: 'R01',
+        FKOJUN: '10',
+        progress: '',
+      },
+      processingOrder: 2,
+      globalRank: 5,
+      note: null,
+      processingType: null,
+      dueDate: null,
+      plannedQuantity: 1,
+      plannedStartDate: null,
+      plannedEndDate: null,
+    }));
+    const makeChunk = (start: number, count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: `row-${start + index}`,
+        occurredAt: new Date('2026-03-23T00:00:00.000Z'),
+        rowData: {
+          ProductNo: String(start + index).padStart(4, '0'),
+          FSEIBAN: 'A',
+          FHINCD: `X-${start + index}`,
+          FHINMEI: '機種A',
+          FSIGENCD: 'R01',
+          FKOJUN: '10',
+          progress: '',
+        },
+        processingOrder: 2,
+        globalRank: 5,
+        note: null,
+        processingType: null,
+        dueDate: null,
+        plannedQuantity: 1,
+        plannedStartDate: null,
+        plannedEndDate: null,
+      }));
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ fseiban: 'A', fhinmei: '機種A' }] as never)
+      .mockResolvedValueOnce(firstChunk as never)
+      .mockResolvedValueOnce(makeChunk(501, 500) as never)
+      .mockResolvedValueOnce(makeChunk(1001, 500) as never)
+      .mockResolvedValueOnce(makeChunk(1501, 500) as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'row-2001',
+          occurredAt: new Date('2026-03-23T00:00:00.000Z'),
+          rowData: {
+            ProductNo: '2001',
+            FSEIBAN: 'A',
+            FHINCD: 'X-2001',
+            FHINMEI: '機種A',
+            FSIGENCD: 'R01',
+            FKOJUN: '10',
+            progress: '',
+          },
+          processingOrder: 2,
+          globalRank: 5,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: 1,
+          plannedStartDate: null,
+          plannedEndDate: null,
+        },
+      ] as never);
+
+    const result = await listProductionScheduleRowsForSignageMachineBoard({
+      machineName: '機種A',
+      locationKey: 'kiosk-1',
+      maxRows: 2000,
+      pageSize: 500,
+    });
+
+    expect(result.rows).toHaveLength(2001);
+    expect(result.maxRows).toBe(2000);
+    expect(result.scheduleExhausted).toBe(true);
+    expect(result.hitScanCap).toBe(false);
+    expect(result.rows.at(-1)?.id).toBe('row-2001');
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(6);
+  });
+
+  it('自主検査ボード向け一覧は maxScanPages で走査上限を打ち切る', async () => {
+    const makeChunk = (start: number, count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: `row-${start + index}`,
+        occurredAt: new Date('2026-03-23T00:00:00.000Z'),
+        rowData: {
+          ProductNo: String(start + index).padStart(4, '0'),
+          FSEIBAN: 'A',
+          FHINCD: `X-${start + index}`,
+          FHINMEI: '機種A',
+          FSIGENCD: 'R01',
+          FKOJUN: '10',
+          progress: '',
+        },
+        processingOrder: 2,
+        globalRank: 5,
+        note: null,
+        processingType: null,
+        dueDate: null,
+        plannedQuantity: 1,
+        plannedStartDate: null,
+        plannedEndDate: null,
+      }));
+
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ fseiban: 'A', fhinmei: '機種A' }] as never)
+      .mockResolvedValueOnce(makeChunk(1, 500) as never)
+      .mockResolvedValueOnce(makeChunk(501, 500) as never);
+
+    const result = await listProductionScheduleRowsForSignageMachineBoard({
+      machineName: '機種A',
+      locationKey: 'kiosk-1',
+      maxRows: 2000,
+      pageSize: 500,
+      maxScanPages: 2,
+    });
+
+    expect(result.rows).toHaveLength(1000);
+    expect(result.scheduleExhausted).toBe(false);
+    expect(result.hitScanCap).toBe(true);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
   });
 
   it('資源CD一覧をresourceCd配列へ整形して返す', async () => {

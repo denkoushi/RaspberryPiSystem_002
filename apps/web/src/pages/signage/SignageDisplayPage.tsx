@@ -178,7 +178,8 @@ export function SignageDisplayPage() {
     content?.contentType === 'TOOLS' &&
     (fullLayoutSlot?.kind === 'kiosk_progress_overview' ||
       fullLayoutSlot?.kind === 'kiosk_leader_order_cards' ||
-      fullLayoutSlot?.kind === 'mobile_placement_parts_shelf_grid');
+      fullLayoutSlot?.kind === 'mobile_placement_parts_shelf_grid' ||
+      fullLayoutSlot?.kind === 'self_inspection_machine_board');
 
   useEffect(() => {
     if (!isKioskJpegFullSignage) {
@@ -299,6 +300,41 @@ export function SignageDisplayPage() {
             <img
               src={getSignageCurrentImageUrl(kioskProgressImageTick)}
               alt="配膳 Android 部品棚 9枠"
+              className="h-full w-full object-contain"
+            />
+          </div>
+        );
+      }
+
+      if (slot?.kind === 'self_inspection_machine_board') {
+        const boardCfg = slot.config as SignageSlotConfig;
+        const targetMode = boardCfg.targetMode ?? 'manual_machine_name';
+        if (targetMode === 'manual_machine_name' && !boardCfg.machineName?.trim()) {
+          return renderStateScreen('自主検査 機種別進捗ボード', 'machineName がスケジュールに設定されていません');
+        }
+        if (targetMode === 'auto_from_leaderboard_status') {
+          if (!boardCfg.deviceScopeKey?.trim()) {
+            return renderStateScreen(
+              '自主検査 機種別進捗ボード',
+              'deviceScopeKey がスケジュールに設定されていません'
+            );
+          }
+          if (!Array.isArray(boardCfg.resourceCds) || boardCfg.resourceCds.length === 0) {
+            return renderStateScreen(
+              '自主検査 機種別進捗ボード',
+              'resourceCds がスケジュールに設定されていません'
+            );
+          }
+        }
+        const altLabel =
+          targetMode === 'auto_from_leaderboard_status'
+            ? '自主検査 自動選定'
+            : `自主検査 ${boardCfg.machineName}`;
+        return (
+          <div className={`${screenClass} flex items-center justify-center bg-slate-950 p-0`}>
+            <img
+              src={getSignageCurrentImageUrl(kioskProgressImageTick)}
+              alt={altLabel}
               className="h-full w-full object-contain"
             />
           </div>

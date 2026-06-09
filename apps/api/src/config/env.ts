@@ -41,6 +41,13 @@ const envSchema = z.object({
   SYSTEM_METRICS_DB_AGGREGATES_TTL_MS: z.coerce.number().int().min(0).max(300_000).default(15_000),
   /** GET /system/network-mode の連続 DNS チェック結果キャッシュ TTL（ミリ秒）。0 でキャッシュ無効。 */
   NETWORK_MODE_CACHE_TTL_MS: z.coerce.number().int().min(0).max(300_000).default(15_000),
+  /** 機種名→FSEIBAN 解決インデックスの TTL（ミリ秒）。0 でキャッシュ無効。サイネージ定期レンダー向け既定60秒。 */
+  PRODUCTION_SCHEDULE_MACHINE_NAME_FSEIBAN_CACHE_TTL_MS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(600_000)
+    .default(60_000),
   JWT_ACCESS_SECRET: z.string().default('dev-access-secret-change-me'),
   JWT_REFRESH_SECRET: z.string().default('dev-refresh-secret-change-me'),
   TOKEN_EXPIRES_IN: z.string().default('15m'),
