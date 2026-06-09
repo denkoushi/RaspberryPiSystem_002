@@ -509,7 +509,29 @@ cd apps/web && pnpm exec vitest run \
 
 ## 自主検査・NFC 登録と手元カメラ実験（2026-06-09） {#自主検査-nfc-登録-手元カメラ実験-2026-06-09}
 
-正本: [KB-320 §NFC・手元カメラ](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-nfc-登録-手元カメラ実験-2026-06-09) · ブランチ **`feat/self-inspection-nfc-camera-experiment`** · **API migration + Web**
+正本: [KB-320 §NFC・手元カメラ](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-nfc-登録-手元カメラ実験-2026-06-09) · ブランチ **`feat/self-inspection-nfc-camera-experiment`** · **API migration + Web** · コミット **`7f2581ae`**
+
+### デプロイ・検証（2026-06-09）
+
+**デプロイ**（`update-all-clients.sh feat/self-inspection-nfc-camera-experiment … --detach --follow` · 1 台ずつ）:
+
+| ホスト | 結果 | HEAD | 備考 |
+|--------|------|------|------|
+| `raspberrypi5` | OK | `7f2581ae` | Docker rebuild · API/Web 再起動 |
+| `raspberrypi4` | OK | `7f2581ae` | `kiosk-browser` 再起動 |
+| `raspi4-robodrill01` | OK | `7f2581ae` | 同上 |
+| `raspi4-fjv60-80` | OK | `7f2581ae` | 同上 |
+| `raspi4-kensaku-stonebase01` | OK | `7f2581ae` | 同上 |
+
+**自動検証**（Pi5 経由 · 2026-06-09 23:36 JST 頃）:
+
+- `./scripts/deploy/verify-phase12-real.sh` — **PASS 43 / WARN 0 / FAIL 0**
+- DB `SelfInspectionLotEntry` に機器 snapshot 列 4 件（`measuringInstrumentId` 他）— migration 適用済み
+- `POST …/self-inspection/nfc-tags/resolve` + `x-client-key` → `200`（未知 UID は `{"result":{"kind":"unknown"}}`）
+- Web バンドル `/srv/site/assets/index-*.js` に `手元カメラ` 文字列を確認
+- Pi4 全 4 台: `kiosk-browser.service` **active** · HEAD **`7f2581ae`**（Ansible 経由）
+
+**未完了（現場タグ要）**: 下記「手動確認」1–7（実タグ NFC スキャン · 手元カメラ DevTools 計測ログ）は **1 台以上の Pi4** でオペレータ確認推奨。自動検証は API/デプロイ/サービス/バンドルまで。
 
 ### 概要
 
