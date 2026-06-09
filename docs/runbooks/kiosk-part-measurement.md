@@ -436,6 +436,34 @@ cd apps/web && pnpm exec vitest run \
 
 ---
 
+## 自主検査・セッション右ペイン入力改善（2026-06-09） {#自主検査-セッション右ペイン入力改善-2026-06-09}
+
+正本: [KB-320 §右ペイン入力改善](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション右ペイン入力改善-2026-06-09) · ブランチ **`feat/kiosk-self-inspection-right-pane-inputs`** · **Web のみ**
+
+### 手動確認（Pi4/Pi5）
+
+1. 順位ボード **検** → セッション入室。
+2. 右ペインで候補 dropdown と手入力が **横一列**、公差表示が **大きい** こと。
+3. **入力を保存** / **自主検査を完了** が従来より **薄型**（フォントは維持）で、青外枠契約が維持されること。
+4. ボタン下に **測定点一覧** が常時表示され、入力値と OK/NG/未入力/不正/公差不備が **即時反映** されること。
+5. 一覧タップで測定点が切り替わり、図面選択と整合すること。
+6. **手入力欄フォーカス中に一覧をタップ**しても、意図しないガイド進行が起きないこと。
+7. §ボタン活性・§ガイド polish の既存フロー（保存 → 件切替 → 再開 → 完了）が維持されること。
+
+### 単体テスト
+
+```bash
+cd apps/web && pnpm exec vitest run \
+  src/features/part-measurement/inspection-drawing/__tests__/measurementPointInputStatus.test.ts \
+  src/features/part-measurement/inspection-drawing/__tests__/InspectionDrawingValuePanel.test.tsx \
+  src/features/part-measurement/inspection-drawing/__tests__/InspectionDrawingPointSummaryList.test.tsx \
+  src/features/part-measurement/inspection-drawing/inspectionDrawingKioskUi.test.ts \
+  src/features/part-measurement/__tests__/selfInspectionKioskTheme.test.ts \
+  src/features/part-measurement/__tests__/SelfInspectionKioskButton.test.tsx
+```
+
+---
+
 ## 自主検査・ガイド polish（倍率 2.0）（2026-06-04） {#自主検査-ガイド-polish-倍率2-0-2026-06-04}
 
 正本: [KB-320 §ガイド polish](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · [deployment §polish](../guides/deployment.md#kiosk-self-inspection-guided-zoom-2-polish-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-polish`** → **`main` マージ** · **`fb10f0e0`** · **Web のみ**

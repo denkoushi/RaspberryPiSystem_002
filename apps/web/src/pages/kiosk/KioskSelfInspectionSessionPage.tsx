@@ -13,6 +13,7 @@ import {
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import {
   InspectionDrawingCanvas,
+  InspectionDrawingPointSummaryList,
   InspectionDrawingValuePanel,
   inspectionDrawingCanvasColumnClassName,
   templateItemToDrawingPoint,
@@ -659,7 +660,7 @@ export function KioskSelfInspectionSessionPage() {
         </div>
 
         <div className="flex min-h-0 min-w-0 flex-col gap-2 xl:w-[360px] xl:shrink-0">
-          <div className="rounded border border-white/15 bg-slate-800/70 p-2">
+          <div className="shrink-0 rounded border border-white/15 bg-slate-800/70 p-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-white/80">
                 入力件（{selectedSlotLabel} / {requiredEntryCount}）
@@ -714,31 +715,33 @@ export function KioskSelfInspectionSessionPage() {
             </div>
           </div>
 
-          <InspectionDrawingValuePanel
-            point={selectedPoint}
-            valueInputMode="self_inspection_options"
-            valueCommitScopeKey={
-              session ? `${session.id}:${selectedEntryIndex}` : undefined
-            }
-            readOnly={isSessionInputLocked}
-            onValueChange={(value) => {
-              if (!selectedPoint || isSessionInputLocked || !session) return;
-              setDraftValuesByEntryIndex((prev) => {
-                const current =
-                  prev[selectedEntryIndex] ?? buildSelfInspectionEntryDraft(session, selectedEntryIndex);
-                return {
-                  ...prev,
-                  [selectedEntryIndex]: {
-                    ...current,
-                    [selectedPoint.id]: value
-                  }
-                };
-              });
-            }}
-            onCommitValue={isSessionInputLocked ? undefined : onValuePanelCommit}
-          />
+          <div className="shrink-0">
+            <InspectionDrawingValuePanel
+              point={selectedPoint}
+              valueInputMode="self_inspection_options"
+              valueCommitScopeKey={
+                session ? `${session.id}:${selectedEntryIndex}` : undefined
+              }
+              readOnly={isSessionInputLocked}
+              onValueChange={(value) => {
+                if (!selectedPoint || isSessionInputLocked || !session) return;
+                setDraftValuesByEntryIndex((prev) => {
+                  const current =
+                    prev[selectedEntryIndex] ?? buildSelfInspectionEntryDraft(session, selectedEntryIndex);
+                  return {
+                    ...prev,
+                    [selectedEntryIndex]: {
+                      ...current,
+                      [selectedPoint.id]: value
+                    }
+                  };
+                });
+              }}
+              onCommitValue={isSessionInputLocked ? undefined : onValuePanelCommit}
+            />
+          </div>
 
-          <div className="flex flex-col gap-2 rounded border border-white/15 bg-slate-800/70 p-2">
+          <div className="flex shrink-0 flex-col gap-2 rounded border border-white/15 bg-slate-800/70 p-2">
             {actionError ? (
               <p className="rounded border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-100">
                 {actionError}
@@ -750,6 +753,7 @@ export function KioskSelfInspectionSessionPage() {
             >
               <SelfInspectionKioskButton
                 type="button"
+                size="actionCompact"
                 disabled={!saveActionState.enabled}
                 highlighted={saveActionState.enabled}
                 onPointerDownCapture={consumeNextBlurGuideAdvance}
@@ -759,6 +763,7 @@ export function KioskSelfInspectionSessionPage() {
               </SelfInspectionKioskButton>
               <SelfInspectionKioskButton
                 type="button"
+                size="actionCompact"
                 wide
                 disabled={!completeActionState.enabled}
                 highlighted={completeActionState.enabled}
@@ -768,6 +773,21 @@ export function KioskSelfInspectionSessionPage() {
                 自主検査を完了
               </SelfInspectionKioskButton>
             </div>
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-white/15 bg-slate-800/70 p-2">
+            <InspectionDrawingPointSummaryList
+              points={activeDraft?.points ?? []}
+              selectedPointId={selectedPoint?.id ?? null}
+              disabled={isSessionInputLocked}
+              showMeasurementStatus
+              onSelectPointerDownCapture={consumeNextBlurGuideAdvance}
+              onSelectPoint={(pointId) => {
+                handleSelectPointManual(pointId);
+                setActionError(null);
+              }}
+              variant="sidebar"
+            />
           </div>
         </div>
       </div>

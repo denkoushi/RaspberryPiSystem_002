@@ -24,6 +24,18 @@ describe('isSelfInspectionSessionChromeFocusTarget', () => {
     document.body.removeChild(actions);
   });
 
+  it('returns true for point summary list buttons', () => {
+    const list = document.createElement('div');
+    list.setAttribute('data-self-inspection-point-summary-list', '');
+    const button = document.createElement('button');
+    list.appendChild(button);
+    document.body.appendChild(list);
+
+    expect(isSelfInspectionSessionChromeFocusTarget(button)).toBe(true);
+
+    document.body.removeChild(list);
+  });
+
   it('returns false for unrelated elements', () => {
     const input = document.createElement('input');
     document.body.appendChild(input);

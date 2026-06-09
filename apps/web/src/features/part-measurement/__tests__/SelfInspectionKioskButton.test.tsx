@@ -20,6 +20,17 @@ describe('SelfInspectionKioskButton', () => {
     expect(button.className).not.toContain('ring-sky-400');
   });
 
+  it('supports actionCompact size for save and complete buttons', () => {
+    render(
+      <SelfInspectionKioskButton size="actionCompact" highlighted>
+        入力を保存
+      </SelfInspectionKioskButton>
+    );
+    const button = screen.getByRole('button', { name: '入力を保存' });
+    expect(button.className).toContain('min-h-8');
+    expect(button.className).toContain('text-[15px]');
+  });
+
   it('mirrors session page wiring: save and complete highlight only when enabled', () => {
     const saveEnabled = true;
     const completeEnabled = false;

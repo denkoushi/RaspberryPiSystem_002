@@ -63,6 +63,59 @@ describe('InspectionDrawingPointSummaryList', () => {
     expect(onSelect).toHaveBeenCalledWith('p1');
   });
 
+  it('shows measurement value and status when showMeasurementStatus is enabled', () => {
+    const points = [
+      makePoint({ id: 'p1', markerNo: 1, testValue: '10' }),
+      makePoint({ id: 'p2', markerNo: 2, testValue: 'abc' }),
+      makePoint({
+        id: 'p3',
+        markerNo: 3,
+        nominalRaw: '',
+        lowerToleranceRaw: '',
+        upperToleranceRaw: '',
+        testValue: ''
+      })
+    ];
+
+    render(
+      <InspectionDrawingPointSummaryList
+        points={points}
+        selectedPointId="p1"
+        onSelectPoint={() => undefined}
+        showMeasurementStatus
+        variant="sidebar"
+      />
+    );
+
+    expect(screen.getAllByText(/測定値/).length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByRole('button', { name: /測定点 No\.1/ })).toHaveTextContent('10');
+    expect(screen.getByText('OK')).toBeInTheDocument();
+    expect(screen.getByText('不正')).toBeInTheDocument();
+    expect(screen.getByText('公差不備')).toBeInTheDocument();
+  });
+
+  it('calls onSelectPointerDownCapture before selection', () => {
+    const onCapture = vi.fn();
+    const onSelect = vi.fn();
+    const points = [makePoint({ id: 'p1', markerNo: 1 })];
+
+    render(
+      <InspectionDrawingPointSummaryList
+        points={points}
+        selectedPointId={null}
+        onSelectPoint={onSelect}
+        onSelectPointerDownCapture={onCapture}
+        showMeasurementStatus
+        variant="sidebar"
+      />
+    );
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: /測定点 No\.1/ }));
+    fireEvent.click(screen.getByRole('button', { name: /測定点 No\.1/ }));
+    expect(onCapture).toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledWith('p1');
+  });
+
   it('shows empty message when there are no points', () => {
     render(
       <InspectionDrawingPointSummaryList
