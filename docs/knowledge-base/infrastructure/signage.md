@@ -70,6 +70,7 @@ eligible のみ集約、**表示優先度ソート後**に **2000** 件 cap
 | **Detach Run ID** | **`20260609-140312-5526`** · **`PLAY RECAP ok=134 changed=4 failed=0`** · `Git: changed` |
 | **CI** | GitHub Actions **`27184336224`** **success**（push 後） |
 | **実機（自動）** | `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **33s** · Tailscale） |
+| **実機（手動·現場）** | **OK（2026-06-09）** — `/admin/signage/schedules` で **auto モード**設定後、黄機種のローテーション表示を目視確認 |
 
 **実装知見（auto 選定）**:
 
@@ -80,11 +81,18 @@ eligible のみ集約、**表示優先度ソート後**に **2000** 件 cap
 - auto ローテーション ViewModel は **60 秒 TTL**（`self-inspection-machine-board-auto-rotation.cache.ts`）。無効化は CSV 取込・納期書込・生産日程 CRUD・自主検査 CRUD 経路（`self-inspection-machine-board-cache-invalidation.ts`）。
 - 循環依存回避のため invalidation は中立モジュールへ分離。期限切れ cache entry は参照時に削除。
 
+**運用知見（Local Notes JA）**:
+
+- **可視化目的が拠点全体の自主検査進捗**の場合、auto モードでも **`resourceCds` に運用中の資源CDをすべて列挙**すれば現行仕様内で最も広い母集団になる（順位ボードと同じ CD 一覧を 1 行 1 件でコピー）。
+- 現行上限: **`resourceCds` 最大 32 件** · **`maxAutoMachines` 最大 20** · 走査 **2000 行** cap · 表示は **ローテーション**（一覧ダッシュボード型ではない）。
+- **資源CD省略＝全資源自動** は未実装。32 超・20 機種超・一覧型全体把握が必要なら **別 targetMode または Plan** が必要。
+
 **未完了・次アクション**:
 
-- [ ] 管理 `/admin/signage/schedules` で **auto モード**を設定し、黄機種のローテーション表示を **現場目視**（スケジュール未設定時は自動検証対象外）。
-- [ ] 初版 `self_inspection_machine_board`（manual のみ）が未本番の場合は、本ブランチに含まれるため **Pi5 デプロイで同時反映済み**。
-- [ ] **折れ線グラフ**・**SPLIT 対応**は初版未実装のまま（将来 Plan）。
+- [x] 管理 `/admin/signage/schedules` で **auto モード**設定・黄機種ローテーションの **現場目視**（2026-06-09 OK）。
+- [x] 初版 `self_inspection_machine_board`（manual 含む）は **Pi5 デプロイ `20260609-140312-5526` で本番反映済み**。
+- [ ] **拠点全体・全資源自動**（`resourceCds` 不要化 or 32 超対応）— 要件あり・未 Plan。
+- [ ] **折れ線グラフ**・**SPLIT 対応** — 初版未実装（将来 Plan）。
 
 ---
 
