@@ -24,6 +24,8 @@ const PROCESS_FILTER_OPTIONS: ReadonlyArray<readonly [InspectionDrawingLibraryPr
 type Props = {
   fhincd: string;
   onFhincdChange: (value: string) => void;
+  visualName: string;
+  onVisualNameChange: (value: string) => void;
   resourceCd: string;
   onResourceCdChange: (value: string) => void;
   resourceOptions: string[];
@@ -43,6 +45,8 @@ type Props = {
 export function InspectionDrawingLibraryFilterBar({
   fhincd,
   onFhincdChange,
+  visualName,
+  onVisualNameChange,
   resourceCd,
   onResourceCdChange,
   resourceOptions,
@@ -78,6 +82,23 @@ export function InspectionDrawingLibraryFilterBar({
           onChange={(e) => onFhincdChange(e.target.value)}
           className="h-11 text-[1.08rem] text-slate-900"
           placeholder="例: ABC（部分一致）"
+        />
+      </label>
+
+      <label
+        className={clsx(
+          'shrink-0',
+          inspectionDrawingLibraryFilterFieldLabelClassName,
+          inspectionDrawingLibraryFilterFhincdWidthClass
+        )}
+      >
+        図面名
+        <Input
+          value={visualName}
+          onChange={(e) => onVisualNameChange(e.target.value)}
+          className="h-11 text-[1.08rem] text-slate-900"
+          placeholder="図面名で検索"
+          aria-label="図面名で検索"
         />
       </label>
 

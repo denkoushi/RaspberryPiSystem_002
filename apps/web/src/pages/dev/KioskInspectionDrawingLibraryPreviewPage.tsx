@@ -37,6 +37,7 @@ function pickLineageCardRepresentative(
 /** 開発専用 — 密度改善後レイアウトの UI プレビュー（API 不要・モックデータ） */
 export function KioskInspectionDrawingLibraryPreviewPage() {
   const [fhincd, setFhincd] = useState('');
+  const [visualName, setVisualName] = useState('');
   const [resourceCd, setResourceCd] = useState('');
   const [processFilter, setProcessFilter] = useState<InspectionDrawingLibraryProcessFilter>('all');
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -47,14 +48,16 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
 
   const filteredTemplates = useMemo(() => {
     const q = fhincd.trim().toLowerCase();
+    const visualQ = visualName.trim().toLowerCase();
     return sourceTemplates.filter((template) => {
       if (!includeInactive && !template.isActive) return false;
       if (q && !template.fhincd.toLowerCase().includes(q)) return false;
+      if (visualQ && !template.visualTemplate?.name.toLowerCase().includes(visualQ)) return false;
       if (resourceCd && template.resourceCd !== resourceCd) return false;
       if (processFilter !== 'all' && template.processGroup !== processFilter) return false;
       return true;
     });
-  }, [fhincd, includeInactive, processFilter, resourceCd, sourceTemplates]);
+  }, [fhincd, includeInactive, processFilter, resourceCd, sourceTemplates, visualName]);
 
   const resourceOptions = useMemo(() => {
     const unique = new Set(sourceTemplates.map((t) => t.resourceCd));
@@ -122,6 +125,8 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
       <InspectionDrawingLibraryFilterBar
         fhincd={fhincd}
         onFhincdChange={setFhincd}
+        visualName={visualName}
+        onVisualNameChange={setVisualName}
         resourceCd={resourceCd}
         onResourceCdChange={setResourceCd}
         resourceOptions={resourceOptions}

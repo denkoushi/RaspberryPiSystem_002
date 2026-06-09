@@ -252,6 +252,11 @@ const listTemplatesQuerySchema = z.object({
   includeInactive: z.coerce.boolean().optional()
 });
 
+const kioskInspectionDrawingTemplatesQuerySchema = listTemplatesQuerySchema.extend({
+  /** 図面名の部分一致（大文字小文字無視）。空文字は無視 */
+  visualName: z.string().max(200).optional()
+});
+
 /** Query string boolean: only the literal "true" (case-insensitive) is true. */
 const optionalQueryTrueOnlyBooleanSchema = z
   .union([z.boolean(), z.string()])
@@ -781,6 +786,28 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         visualTemplate: serializeVisualTemplate(created),
         cleanupToken: signVisualCleanupToken(created.id)
       };
+    }
+  );
+
+  app.patch(
+    '/part-measurement/visual-templates/:id',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request, reply) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = z
+        .object({
+          name: z.string().trim().min(1).max(200)
+        })
+        .parse(request.body);
+      try {
+        const updated = await visualTemplateService.updateName(params.id, body.name);
+        return { visualTemplate: serializeVisualTemplate(updated) };
+      } catch (error) {
+        if (error instanceof ApiError && error.statusCode === 404) {
+          return reply.status(404).send({ message: error.message });
+        }
+        throw error;
+      }
     }
   );
 
@@ -1341,14 +1368,15 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   });
 
   app.get('/part-measurement/inspection-drawing/templates', { preHandler: allowView }, async (request) => {
-    const q = listTemplatesQuerySchema.parse(request.query);
+    const q = kioskInspectionDrawingTemplatesQuerySchema.parse(request.query);
     const processGroup =
       q.processGroup === 'grinding' ? 'GRINDING' : q.processGroup === 'cutting' ? 'CUTTING' : undefined;
     const rows = await templateService.listKioskInspectionDrawingTemplates({
       fhincd: q.fhincd,
       processGroup,
       resourceCd: q.resourceCd,
-      includeInactive: q.includeInactive === true
+      includeInactive: q.includeInactive === true,
+      visualName: q.visualName
     });
     return {
       templates: rows.map(({ template, itemCount }) => ({

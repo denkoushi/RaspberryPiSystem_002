@@ -29,6 +29,7 @@ export async function lockActiveVisualTemplateForBindingInTransaction(
 }
 
 const VISUAL_TEMPLATE_LIST_MAX_LIMIT = 200;
+const VISUAL_TEMPLATE_NAME_MAX_LENGTH = 200;
 
 export type PartMeasurementVisualTemplateListSort = 'name' | 'recentlyUpdated';
 
@@ -84,11 +85,19 @@ export class PartMeasurementVisualTemplateService {
     return visual;
   }
 
-  async create(params: { name: string; drawingImageRelativePath: string }) {
-    const name = params.name.trim();
-    if (name.length === 0) {
+  private normalizeName(name: string): string {
+    const trimmed = name.trim();
+    if (trimmed.length === 0) {
       throw new ApiError(400, 'visual template 名が空です');
     }
+    if (trimmed.length > VISUAL_TEMPLATE_NAME_MAX_LENGTH) {
+      throw new ApiError(400, `visual template 名は ${VISUAL_TEMPLATE_NAME_MAX_LENGTH} 文字以内です`);
+    }
+    return trimmed;
+  }
+
+  async create(params: { name: string; drawingImageRelativePath: string }) {
+    const name = this.normalizeName(params.name);
     const path = params.drawingImageRelativePath.trim();
     if (!path.startsWith('/api/storage/part-measurement-drawings/')) {
       throw new ApiError(400, '図面の保存パスが不正です');
@@ -99,6 +108,21 @@ export class PartMeasurementVisualTemplateService {
         drawingImageRelativePath: path,
         isActive: true
       }
+    });
+  }
+
+  /** 図面名称のみ更新（drawingImageRelativePath は変更しない） */
+  async updateName(id: string, name: string) {
+    const normalizedName = this.normalizeName(name);
+    const existing = await prisma.partMeasurementVisualTemplate.findUnique({
+      where: { id }
+    });
+    if (!existing || !existing.isActive) {
+      throw new ApiError(404, '図面テンプレートが見つかりません。');
+    }
+    return prisma.partMeasurementVisualTemplate.update({
+      where: { id },
+      data: { name: normalizedName }
     });
   }
 

@@ -10,6 +10,7 @@ import {
   patchScheduleListProcessingOrder
 } from '../features/kiosk/productionSchedule/cache/kioskProductionScheduleOrderCachePatch';
 import { patchSelfInspectionSessionCachesAfterEntrySave } from '../features/part-measurement/mergeSelfInspectionSessionAfterEntrySave';
+import { resolveSelfInspectionSessionPlaceholderData } from '../features/part-measurement/selfInspectionSessionPlaceholder';
 import { POLL_MS } from '../lib/admin-polling-intervals';
 import { buildClientDevicesByApiKey } from '../lib/signageTargetClientDevices';
 
@@ -395,6 +396,7 @@ export function useSelfInspectionSession(
   return useQuery({
     queryKey: selfInspectionSessionQueryKey(sessionId!, entryIndex),
     queryFn: () => getSelfInspectionSession(sessionId!, { entryIndex }),
+    placeholderData: (previousData) => resolveSelfInspectionSessionPlaceholderData(previousData, sessionId),
     enabled: (options?.enabled ?? true) && Boolean(sessionId)
   });
 }

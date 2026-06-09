@@ -122,8 +122,10 @@
 |----------------|------|
 | `GET /api/part-measurement/templates/active-exists` | 軽量存在確認（`{ exists: boolean }`）· kiosk `x-client-key` 可 |
 | `GET /api/part-measurement/visual-templates?q=&limit=` | 図面名 **部分一致（case-insensitive）** · `limit` 1–200（未指定時は管理画面互換で全件） |
+| `PATCH /api/part-measurement/visual-templates/:id` | **`name` のみ**更新（1–200 文字）· inactive / 不存在は **404** · 共有 visual 名は参照テンプレ表示にも反映 |
 | `POST /api/part-measurement/visual-templates` | 応答に **`cleanupToken`**（作成直後の未参照回収用） |
 | `DELETE /api/part-measurement/visual-templates/:id` | ヘッダ **`X-Visual-Cleanup-Token` 必須**（トークン不一致は 403） |
+| `GET /api/part-measurement/inspection-drawing/templates?visualName=` | テンプレ一覧を **図面名**（`visualTemplate.name`）で部分一致絞り込み（`fhincd` 等と AND） |
 
 **同時作成直列化（本番 THREE_KEY）**:
 
@@ -140,6 +142,8 @@
 | `inspectionDrawingCreateDraft.ts` | `normalizeFhincdForTemplateKey` · `templateBusinessKeysEqual` · `resolveInspectionDrawingCreateKeyCollision` |
 | `InspectionDrawingVisualSourceControl.tsx` | 図面ピッカー · 検索 **400ms debounce** → API `q` + `limit: 80` |
 | `KioskInspectionDrawingCreatePage.tsx` | `visualSearchRequestSeqRef` で **古い検索レスポンスの上書きを防止** |
+| `KioskInspectionDrawingVisualLibrarySection.tsx` | カード下 **新規作成 / 名称変更** · `KioskInspectionDrawingVisualRenameModal` |
+| `InspectionDrawingLibraryFilterBar.tsx` | テンプレ一覧に **図面名** フィルタ（**更新** ボタンで API 反映） |
 | `kioskInspectionDrawingRoutes.ts` | `kioskInspectionDrawingCreatePathWithSource` · `parseInspectionDrawingSourceTemplateIdFromSearch` |
 
 キオスク初回は **先頭 80 件**（`q` なし）。それ以外は検索必須。管理画面は `includeInactive` 時 **limit 未指定で全件**（従来互換）。
@@ -172,6 +176,57 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 | **保存失敗後に orphan visual** | `cleanupToken` で `DELETE`（403 → トークン不一致 or 既に参照） |
 | **integration が DB 接続失敗** | テスト中に Postgres コンテナを先に `stop` しない。CI 手順どおり migrate 後に vitest |
 | **デプロイ拒否（ahead）** | `origin/feat/kiosk-inspection-drawing-reuse-flow` へ push 後に再実行 |
+
+### 検査図面 trio（名称変更・図面名検索・自主検査遷移）（2026-06-09） {#kiosk-inspection-drawing-trio-2026-06-09}
+
+| 項目 | 内容 |
+|------|------|
+| **status** | `active`（本番 5 台反映済み） |
+| **branch / HEAD** | **`feat/kiosk-inspection-drawing-trio`** · **`4a7f8493`** |
+| **変更種別** | **API + Web**（Prisma / migration **なし**） |
+| **Plan** | [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)（Progress 参照） |
+| **Runbook 手動確認** | [kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md) §自主検査ボタン活性 · 検査図面一覧 |
+
+#### 仕様（3 件）
+
+1. **図面ライブラリ名称変更** — `PATCH /api/part-measurement/visual-templates/:id`（`name` のみ）· UI **新規作成 / 名称変更** · 共有 visual 名は参照テンプレ表示にも反映。
+2. **テンプレ一覧図面名検索** — `GET …/inspection-drawing/templates?visualName=`（部分一致）· FilterBar **図面名** + **更新** ボタン。名称変更成功時は **現在フィルタで再取得**（ローカル patch のみは不可）。
+3. **自主検査遷移** — 保存後 **次未保存 required slot へ自動切替 + guided 再開** · entry 切替 **黒画面回避**（`placeholderData` は **同一 `sessionId` のみ**）· `draftBoundKey` / dirty 再訪時は **boundKey のみ同期**（上書きしない）· 保存直後の次 slot は **`applySelfInspectionEntrySaveToSessionCache` 後の snapshot** で判定。
+
+#### 本番デプロイ（実績·2026-06-09）
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | **`20260609-174538-15678`** | **`ok=134` `changed=4` `failed=0`** | Docker **`api`/`web`** 再ビルド · HEAD **`4a7f8493`** |
+| `raspi4-kensaku-stonebase01` | **`20260609-180605-16020`** | **`ok=129` `changed=11` `failed=0`** | `kiosk-browser` 再起動 |
+| `raspberrypi4` | **`20260609-181043-13094`** | **`ok=122` `changed=10` `failed=0`** | 同上 |
+| `raspi4-robodrill01` | **`20260609-181550-5432`** | **`ok=122` `changed=10` `failed=0`** | 同上 |
+| `raspi4-fjv60-80` | **`20260609-181935-17768`** | **`ok=122` `changed=10` `failed=0`** | 同上 |
+
+**Phase12**（`./scripts/deploy/verify-phase12-real.sh`）: **PASS 43 / WARN 0 / FAIL 0**（Pi5 後 **約 52s** · 全台後 **約 50s**）。
+
+#### 実機検証（自動）
+
+| 確認 | 結果 |
+|------|------|
+| Pi5 `docker-api-1` / `docker-web-1` | **Up (healthy)** |
+| Web バンドル | `/srv/site/assets/index-CvjjZZRg.js` に **`名称変更`** · **`visualName`** |
+| `GET …/visual-templates?limit=1` | **200** |
+| `GET …/inspection-drawing/templates?visualName=test` | **200**（部分一致応答） |
+| `PATCH …/visual-templates/{missing-id}` | **404**（ルート存在） |
+
+**手動（キオスク）**: Pi4 現場での図面名変更・`visualName` フィルタ・自主検査 **保存後自動切替 / guided 再開** は [Runbook §ボタン活性](../runbooks/kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) 手順 5–8 を運用時に実施。
+
+#### 知見（レビュー反映）
+
+- **`useSelfInspectionSession` の `placeholderData`** は `previousData.id === sessionId` のときだけ返す（別セッション遷移中に旧セッションの保存/完了を防ぐ）。
+- **保存後の次 slot** は React Query 再レンダー前の ref ではなく、**`persistEntry` が返した `savedEntry` を cache merge した snapshot** で解決する。
+- **dirty 再訪 entry** は `canRebind` を拒否しても **`draftBoundKey` だけ同期**すれば guided 自動再開可能（draft 本文は保持）。
+
+#### Open items
+
+- Pi4 **stonebase 先行実機**でのキオスク目視記録（上記 Runbook 5–8 · 名称変更/図面名検索）は **未記録**。
+- `visualName` の `contains insensitive` は件数増加時に **trigram / pagination** 検討（Plan 記載どおり）。
 
 ## 自主検査 MVP（2026-06-01） {#自主検査-mvp-2026-06-01}
 
@@ -218,14 +273,15 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 
 | 項目 | 内容 |
 |------|------|
-| **ガイド対象** | `selectedEntryIndex` のみ。件またぎ自動進行はしない |
+| **ガイド対象** | `selectedEntryIndex` のみ。測定点の件内ガイドは従来どおり |
 | **初期** | 図面 ready 後、未入力の最小 `markerNo`（なければ先頭）へ。ズームは fit 基準 **+4 step**（内訳: 旧ガイド +2 + 追加 +2 → `SELF_INSPECTION_GUIDED_ZOOM_STEPS=4` → **2.0**、`resolveInspectionDrawingZoomFromDefaultSteps`） |
 | **確定して次へ** | dropdown 即時 / 手入力は **Enter** または単独 **blur**、**公差内 OK のみ** |
 | **留まる** | NG・公差不備・不正値。保存 API 契約は従来どおり |
-| **手動化** | 全体表示・±ズーム・パン・他マーカー・**他入力件タップ**・**入力を保存成功**。`fitToView` は未消化 `focusRequest` を破棄 |
+| **手動化** | 全体表示・±ズーム・パン・他マーカー・**他入力件タップ**（manual 維持）。`fitToView` は未消化 `focusRequest` を破棄 |
 | **再開** | 手動後に **再開** で当該件の未入力最小 `markerNo` からガイド再開（同じ **2.0** 倍率） |
+| **保存後の入力件** | **入力を保存** 成功後、未保存の次 required slot へ **自動切替 + guided 再開**（全件保存済みなら manual のまま完了導線） |
 | **入力対象の見た目** | 値入力パネルが向いている測定点（`selectedPoint`）の丸数字外周を **青系 outline**（状態 ring とは独立） |
-| **全点 OK** | ガイド停止。「入力を保存」導線（件自動切替なし） |
+| **全点 OK** | ガイド停止。「入力を保存」導線（保存成功後に次入力件へ自動切替） |
 | **センタリング** | `focusRequest: { pointId, requestId, zoom }` を **1 回だけ**適用（`selectedPointId` 連動再スクロールなし）。**2.0** でも震えないことは Runbook 手動確認で回帰（[§キャンバスズーム痙攣](#検査図面-キャンバスズーム痙攣修正-2026-05-31) の 1.5 履歴は変更しない） |
 | **ガイド試行（検査図面作成）** | 今回の倍率変更は **対象外**（`GUIDED_TRIAL_ZOOM=1.5` 固定のまま） |
 | **並び** | `markerNo` → 配列 index → `id`（`sortGuidedTrialPointsStable` と同型） |
@@ -237,10 +293,11 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 | 項目 | 内容 |
 |------|------|
 | **倍率** | `SELF_INSPECTION_GUIDED_ZOOM_STEPS = BASE(2) + EXTRA(2) = 4` → **2.0**（`resolveInspectionDrawingZoomFromDefaultSteps`）。旧ガイド 1.5 から UI「＋」2 段相当 |
-| **保存後 manual** | `enterManualAfterPersist()` — 保存 API 成功時のみ（`c90647ac`） |
+| **保存後** | 次未保存 slot あり → 自動切替 + guided。なし → `enterManualAfterPersist()` |
 | **入力対象の見た目** | `inspectionDrawingMarkerStyles.ts` — `selectedPoint` に青 outline（状態 ring と分離） |
 | **保存 blur 抑止** | `SELF_INSPECTION_SESSION_ACTIONS_SELECTOR` · 保存/完了 `onPointerDownCapture` · `InspectionDrawingValuePanel` の `blur_without_guide`（`fb10f0e0`） |
-| **件切替** | 初回 priming はセッション入室時 1 回。他入力件タップ後は **manual**（再開で guided 復帰）— 仕様維持 |
+| **件切替** | 初回 priming は entry 0 のみ自動 guided。他入力件タップ後は **manual**（再開で guided 復帰）。保存後自動切替は guided 再開 |
+| **黒画面回避** | `useSelfInspectionSession` に `placeholderData` + entry 単位 `draftBoundKey`。placeholder 中は baseline 再束縛しない |
 | **ガイド試行** | **対象外**（`GUIDED_TRIAL_ZOOM=1.5` 固定） |
 
 #### セッション操作ボタン活性（2026-06-04） {#自主検査-セッション操作ボタン活性-2026-06-04}
