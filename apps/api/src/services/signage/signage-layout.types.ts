@@ -78,17 +78,29 @@ export interface MobilePlacementPartsShelfGridSlotConfig {
   maxItemsPerZone?: number;
 }
 
+export type SelfInspectionMachineBoardTargetMode =
+  | 'manual_machine_name'
+  | 'auto_from_leaderboard_status';
+
 /**
  * 自主検査 機種別進捗ボード（サイネージ JPEG）
- * machineName は生産日程の機種名（正規化比較）と一致させる。
+ * manual: machineName は生産日程の機種名（正規化比較）と一致させる。
+ * auto: deviceScopeKey + resourceCds で順位ボード相当の母集団から黄（in_progress）機種を選定。
  */
 export interface SelfInspectionMachineBoardSlotConfig {
-  machineName: string;
-  /** キオスク端末と同じ deviceScopeKey（拠点別テンプレート/資源 policy 解決） */
+  /** 未指定時は manual_machine_name（既存互換） */
+  targetMode?: SelfInspectionMachineBoardTargetMode;
+  /** manual 時必須。auto 時は保存不可 */
+  machineName?: string;
+  /** manual 推奨 / auto 必須。キオスク端末と同じ deviceScopeKey */
   deviceScopeKey?: string;
+  /** auto 時必須。manual 時は保存不可 */
+  resourceCds?: string[];
   slideIntervalSeconds?: number;
   partsPerPage?: number;
   detailTopN?: number;
+  /** auto 時のみ。連結する機種数上限 */
+  maxAutoMachines?: number;
 }
 
 /**

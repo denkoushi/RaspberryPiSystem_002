@@ -20,7 +20,7 @@ import type { FkojunstMailSyncResult } from '../production-schedule/fkojunst-sta
 import type { CustomerScawSyncResult } from '../production-schedule/customer-scaw-sync.pipeline.js';
 import type { SeibanMachineNameSupplementSyncResult } from '../production-schedule/seiban-machine-name-supplement-sync.pipeline.js';
 import { resetMachineNameFseibanMatchCaches } from '../production-schedule/machine-name-fseiban-match.service.js';
-import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../part-measurement/self-inspection-machine-board.repository.js';
+import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../part-measurement/self-inspection-machine-board-cache-invalidation.js';
 import {
   PurchaseOrderLookupSyncService,
   type PurchaseOrderLookupSyncResult,

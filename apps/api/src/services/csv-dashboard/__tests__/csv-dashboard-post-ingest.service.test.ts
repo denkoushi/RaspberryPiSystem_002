@@ -57,7 +57,7 @@ vi.mock('../../production-schedule/machine-name-fseiban-match.service.js', () =>
   resetMachineNameFseibanMatchCaches,
 }));
 
-vi.mock('../../part-measurement/self-inspection-machine-board.repository.js', () => ({
+vi.mock('../../part-measurement/self-inspection-machine-board-cache-invalidation.js', () => ({
   resetSelfInspectionMachineBoardScheduleRowCaches,
 }));
 

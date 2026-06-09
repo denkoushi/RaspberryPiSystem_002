@@ -12,7 +12,7 @@ import { sharedScheduleFieldsRepository } from '../shared-schedule-fields.reposi
 
 const resetSelfInspectionMachineBoardScheduleRowCaches = vi.hoisted(() => vi.fn());
 
-vi.mock('../../part-measurement/self-inspection-machine-board.repository.js', () => ({
+vi.mock('../../part-measurement/self-inspection-machine-board-cache-invalidation.js', () => ({
   resetSelfInspectionMachineBoardScheduleRowCaches,
 }));
 

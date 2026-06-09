@@ -4,6 +4,7 @@ import type {
 } from '../../part-measurement/self-inspection-machine-board.types.js';
 import {
   buildScheduleRowCapNote,
+  buildSelfInspectionMachineBoardPageCapNotes,
   escapeXml,
   formatUpdatedAt,
   heatstripToneColor,
@@ -163,7 +164,7 @@ export function buildSelfInspectionMachineBoardSummarySvg(
       <rect width="${width}" height="${height}" fill="${SIMB_SIGNAGE_BG}" />
       ${buildHeader({
         title: `自主検査 ${page.machineName}`,
-        subtitle: `更新 ${formatUpdatedAt(page.updatedAt)} · 仕掛中 進捗一覧${buildScheduleRowCapNote(page)}`,
+        subtitle: `更新 ${formatUpdatedAt(page.updatedAt)} · 仕掛中 進捗一覧${buildSelfInspectionMachineBoardPageCapNotes(page)}`,
         pageLabel,
         width,
         scale,
@@ -258,7 +259,7 @@ export function buildSelfInspectionMachineBoardDetailSvg(
       <rect width="${width}" height="${height}" fill="${SIMB_SIGNAGE_BG}" />
       ${buildHeader({
         title: `自主検査 ${page.machineName}`,
-        subtitle: `更新 ${formatUpdatedAt(page.updatedAt)} · 測定点別ヒートストリップ${buildScheduleRowCapNote(page)}`,
+        subtitle: `更新 ${formatUpdatedAt(page.updatedAt)} · 測定点別ヒートストリップ${buildSelfInspectionMachineBoardPageCapNotes(page)}`,
         pageLabel,
         width,
         scale,

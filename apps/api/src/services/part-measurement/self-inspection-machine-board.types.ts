@@ -35,6 +35,14 @@ export type HeatstripMeasurementPoint = {
   cells: HeatstripCell[];
 };
 
+export type SelfInspectionMachineBoardAutoTargetPageMeta = {
+  /** auto 候補機種数の切り詰め */
+  autoTargetTruncated?: boolean;
+  /** auto 候補走査の安全上限到達 */
+  autoTargetHitScanCap?: boolean;
+  autoTargetScanRowCap?: number;
+};
+
 export type SelfInspectionMachineBoardSummaryPage = {
   kind: 'summary';
   machineName: string;
@@ -45,7 +53,7 @@ export type SelfInspectionMachineBoardSummaryPage = {
   pageCount: number;
   scheduleRowCap?: number;
   scheduleRowHasMore?: boolean;
-};
+} & SelfInspectionMachineBoardAutoTargetPageMeta;
 
 export type SelfInspectionMachineBoardDetailPage = {
   kind: 'detail';
@@ -61,7 +69,7 @@ export type SelfInspectionMachineBoardDetailPage = {
   pageCount: number;
   scheduleRowCap?: number;
   scheduleRowHasMore?: boolean;
-};
+} & SelfInspectionMachineBoardAutoTargetPageMeta;
 
 export type SelfInspectionMachineBoardPage =
   | SelfInspectionMachineBoardSummaryPage

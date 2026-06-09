@@ -12,3 +12,13 @@ export const SELF_INSPECTION_MACHINE_BOARD_SCHEDULE_FETCH_PAGE_SIZE = 500;
 export const MAX_HEATSTRIP_ENTRY_COLUMNS = 32;
 /** 詳細 1 ページに描画する測定点数上限 */
 export const MAX_DETAIL_MEASUREMENT_POINTS = 24;
+/** auto モードで連結する機種数の既定 */
+export const DEFAULT_SELF_INSPECTION_MACHINE_BOARD_MAX_AUTO_MACHINES = 5;
+/** auto モードで連結する機種数の上限 */
+export const MAX_SELF_INSPECTION_MACHINE_BOARD_MAX_AUTO_MACHINES = 20;
+/** auto 候補抽出時の生産日程行取得上限（順位ボード相当） */
+export const MAX_SELF_INSPECTION_MACHINE_TARGET_SELECTOR_ROWS = 2000;
+/** auto 候補抽出時の board build 並列度 */
+export const SELF_INSPECTION_MACHINE_BOARD_AUTO_BUILD_CONCURRENCY = 2;
+/** auto ローテーション ViewModel の render 跨ぎ TTL（候補走査 + 機種別ボード構築の再利用） */
+export const SELF_INSPECTION_MACHINE_BOARD_AUTO_ROTATION_VM_CACHE_TTL_MS = 60_000;

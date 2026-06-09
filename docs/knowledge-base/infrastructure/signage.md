@@ -33,8 +33,17 @@ FULL スロット **`self_inspection_machine_board`**。
 `machineName` をキーに生産日程を正本として仕掛中の全製番・全部品の自主検査進捗一覧（summary）と、
 注目部品の測定点別ヒートストリップ（detail）を **flat page list** でローテーション
 （`getRotatingSlideIndex` 共有）。
-設定: `machineName`（必須）・`deviceScopeKey`（推奨・拠点別 policy）・`slideIntervalSeconds`・
-`partsPerPage`（既定12・最大12）・`detailTopN`（既定5）。
+設定: `targetMode`（`manual_machine_name` / `auto_from_leaderboard_status`・未指定は manual）・
+`machineName`（manual 必須）・`resourceCds`（auto 必須・順位ボード相当の資源CD）・
+`deviceScopeKey`（manual 推奨 / auto 必須・拠点別 policy）・`maxAutoMachines`（auto のみ保存可・任意・既定5・最大20）・
+`slideIntervalSeconds`・`partsPerPage`（既定12・最大12）・`detailTopN`（既定5）。
+auto は `deviceScopeKey + resourceCds` 母集団を raw page 走査（500件/chunk・最大 2000 行）し、
+自主検査 rowDecorations のみ解決して黄（`in_progress`）機種を選定する（full 一覧・顧客名・フッタチップは省略。
+走査上限到達は 1 件プローブで後続有無を判定し、続きがある場合のみ warn ログ＋表示注記。
+候補同点時の納期は手動 `dueDate` 優先・無ければ `plannedEndDate`（順位ボードと同じ `displayDue`）。
+auto ローテーション ViewModel は **60 秒 TTL** で render 跨ぎ再利用（`SELF_INSPECTION_MACHINE_BOARD_AUTO_ROTATION_VM_CACHE_TTL_MS`））。
+選定後の各機種ボードは既存どおり機種内 eligible 部品全体（未開始/入力中/完了）を表示する。
+auto 複数機種は pages を連結後に全体通番へ再採番する。
 詳細取得は **detailTopN 件のみ** full session（entries/values）。ヒートストリップ横セル上限 32。
 **SPLIT 未対応**（pane-resolver は空 loans ペイン）。折れ線グラフは初版未実装。
 機種名→FSEIBAN 解決は `machine-name-fseiban-match.service.ts` の短 TTL インデックスキャッシュ

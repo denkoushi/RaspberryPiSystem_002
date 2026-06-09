@@ -4,10 +4,10 @@ import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { resolveSiteKeyFromScopeKey } from '../../lib/location-scope-resolver.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../part-measurement/self-inspection-machine-board-cache-invalidation.js';
 import { dueManagementLearningEventRepository } from './due-management-learning-event.repository.js';
 import { releaseOrderAssignmentAtLocation } from './order-assignment/order-assignment-release.repository.js';
 import { getProductionScheduleProcessingTypeOptions } from './production-schedule-settings.service.js';
-import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../part-measurement/self-inspection-machine-board.repository.js';
 import { sharedScheduleFieldsRepository } from './shared-schedule-fields.repository.js';
 import { snapshotEventLoopObservability } from '../system/event-loop-observability.js';
 

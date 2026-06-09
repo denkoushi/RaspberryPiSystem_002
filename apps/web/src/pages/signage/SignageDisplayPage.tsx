@@ -308,14 +308,33 @@ export function SignageDisplayPage() {
 
       if (slot?.kind === 'self_inspection_machine_board') {
         const boardCfg = slot.config as SignageSlotConfig;
-        if (!boardCfg.machineName?.trim()) {
+        const targetMode = boardCfg.targetMode ?? 'manual_machine_name';
+        if (targetMode === 'manual_machine_name' && !boardCfg.machineName?.trim()) {
           return renderStateScreen('自主検査 機種別進捗ボード', 'machineName がスケジュールに設定されていません');
         }
+        if (targetMode === 'auto_from_leaderboard_status') {
+          if (!boardCfg.deviceScopeKey?.trim()) {
+            return renderStateScreen(
+              '自主検査 機種別進捗ボード',
+              'deviceScopeKey がスケジュールに設定されていません'
+            );
+          }
+          if (!Array.isArray(boardCfg.resourceCds) || boardCfg.resourceCds.length === 0) {
+            return renderStateScreen(
+              '自主検査 機種別進捗ボード',
+              'resourceCds がスケジュールに設定されていません'
+            );
+          }
+        }
+        const altLabel =
+          targetMode === 'auto_from_leaderboard_status'
+            ? '自主検査 自動選定'
+            : `自主検査 ${boardCfg.machineName}`;
         return (
           <div className={`${screenClass} flex items-center justify-center bg-slate-950 p-0`}>
             <img
               src={getSignageCurrentImageUrl(kioskProgressImageTick)}
-              alt={`自主検査 ${boardCfg.machineName}`}
+              alt={altLabel}
               className="h-full w-full object-contain"
             />
           </div>

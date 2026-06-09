@@ -231,8 +231,13 @@ export function SignageSchedulesPage() {
   const [fullLeaderOrderSlideIntervalStr, setFullLeaderOrderSlideIntervalStr] = useState('');
   const [fullLeaderOrderCardsPerPageStr, setFullLeaderOrderCardsPerPageStr] = useState('');
   const [fullPartsShelfMaxItemsStr, setFullPartsShelfMaxItemsStr] = useState('');
+  const [fullSelfInspectionTargetMode, setFullSelfInspectionTargetMode] = useState<
+    'manual_machine_name' | 'auto_from_leaderboard_status'
+  >('manual_machine_name');
   const [fullSelfInspectionMachineName, setFullSelfInspectionMachineName] = useState('');
   const [fullSelfInspectionDeviceScopeKey, setFullSelfInspectionDeviceScopeKey] = useState('');
+  const [fullSelfInspectionResourceCdsText, setFullSelfInspectionResourceCdsText] = useState('');
+  const [fullSelfInspectionMaxAutoMachinesStr, setFullSelfInspectionMaxAutoMachinesStr] = useState('');
   const [fullSelfInspectionSlideIntervalStr, setFullSelfInspectionSlideIntervalStr] = useState('');
   const [fullSelfInspectionPartsPerPageStr, setFullSelfInspectionPartsPerPageStr] = useState('');
   const [fullSelfInspectionDetailTopNStr, setFullSelfInspectionDetailTopNStr] = useState('');
@@ -249,8 +254,11 @@ export function SignageSchedulesPage() {
     setFullLeaderOrderSlideIntervalStr('');
     setFullLeaderOrderCardsPerPageStr('');
     setFullPartsShelfMaxItemsStr('');
+    setFullSelfInspectionTargetMode('manual_machine_name');
     setFullSelfInspectionMachineName('');
     setFullSelfInspectionDeviceScopeKey('');
+    setFullSelfInspectionResourceCdsText('');
+    setFullSelfInspectionMaxAutoMachinesStr('');
     setFullSelfInspectionSlideIntervalStr('');
     setFullSelfInspectionPartsPerPageStr('');
     setFullSelfInspectionDetailTopNStr('');
@@ -345,11 +353,29 @@ export function SignageSchedulesPage() {
             );
           } else if (slot.kind === 'self_inspection_machine_board') {
             setFullSlotKind('self_inspection_machine_board');
+            setFullSelfInspectionTargetMode(
+              'targetMode' in slot.config &&
+                slot.config.targetMode === 'auto_from_leaderboard_status'
+                ? 'auto_from_leaderboard_status'
+                : 'manual_machine_name'
+            );
             setFullSelfInspectionMachineName(
               'machineName' in slot.config ? String(slot.config.machineName ?? '').trim() : ''
             );
             setFullSelfInspectionDeviceScopeKey(
               'deviceScopeKey' in slot.config ? String(slot.config.deviceScopeKey ?? '').trim() : ''
+            );
+            const resourceCds =
+              'resourceCds' in slot.config && Array.isArray(slot.config.resourceCds)
+                ? (slot.config.resourceCds as string[])
+                : [];
+            setFullSelfInspectionResourceCdsText(
+              resourceCds.map((cd) => String(cd).trim()).filter(Boolean).join('\n')
+            );
+            setFullSelfInspectionMaxAutoMachinesStr(
+              'maxAutoMachines' in slot.config && slot.config.maxAutoMachines != null
+                ? String(slot.config.maxAutoMachines)
+                : ''
             );
             setFullSelfInspectionSlideIntervalStr(
               'slideIntervalSeconds' in slot.config && slot.config.slideIntervalSeconds != null
@@ -582,15 +608,37 @@ export function SignageSchedulesPage() {
           ],
         };
       } else if (fullSlotKind === 'self_inspection_machine_board') {
-        const machineName = fullSelfInspectionMachineName.trim();
-        if (!machineName) {
-          return null;
-        }
         const boardConfig: SignageSlotConfig = {
-          machineName,
+          targetMode: fullSelfInspectionTargetMode,
         };
-        if (fullSelfInspectionDeviceScopeKey.trim() !== '') {
+        if (fullSelfInspectionTargetMode === 'manual_machine_name') {
+          const machineName = fullSelfInspectionMachineName.trim();
+          if (!machineName) {
+            return null;
+          }
+          boardConfig.machineName = machineName;
+        } else {
+          const deviceScopeKey = fullSelfInspectionDeviceScopeKey.trim();
+          const resourceCds = parseResourceCdListInput(fullSelfInspectionResourceCdsText);
+          if (!deviceScopeKey || resourceCds.length === 0) {
+            return null;
+          }
+          boardConfig.deviceScopeKey = deviceScopeKey;
+          boardConfig.resourceCds = resourceCds;
+        }
+        if (
+          fullSelfInspectionTargetMode === 'manual_machine_name' &&
+          fullSelfInspectionDeviceScopeKey.trim() !== ''
+        ) {
           boardConfig.deviceScopeKey = fullSelfInspectionDeviceScopeKey.trim();
+        }
+        if (fullSelfInspectionTargetMode === 'auto_from_leaderboard_status') {
+          if (fullSelfInspectionMaxAutoMachinesStr.trim() !== '') {
+            const n = Number(fullSelfInspectionMaxAutoMachinesStr);
+            if (Number.isFinite(n) && n >= 1) {
+              boardConfig.maxAutoMachines = Math.min(20, Math.floor(n));
+            }
+          }
         }
         if (fullSelfInspectionSlideIntervalStr.trim() !== '') {
           const n = Number(fullSelfInspectionSlideIntervalStr);
@@ -716,14 +764,24 @@ export function SignageSchedulesPage() {
   };
 
   const handleSave = async () => {
-    if (
-      useNewLayout &&
-      layoutType === 'FULL' &&
-      fullSlotKind === 'self_inspection_machine_board' &&
-      fullSelfInspectionMachineName.trim() === ''
-    ) {
-      alert('自主検査 機種別進捗ボードには機種名（machineName）が必須です。');
-      return;
+    if (useNewLayout && layoutType === 'FULL' && fullSlotKind === 'self_inspection_machine_board') {
+      if (
+        fullSelfInspectionTargetMode === 'manual_machine_name' &&
+        fullSelfInspectionMachineName.trim() === ''
+      ) {
+        alert('手入力モードでは機種名（machineName）が必須です。');
+        return;
+      }
+      if (fullSelfInspectionTargetMode === 'auto_from_leaderboard_status') {
+        if (fullSelfInspectionDeviceScopeKey.trim() === '') {
+          alert('自動選定モードでは deviceScopeKey が必須です。');
+          return;
+        }
+        if (parseResourceCdListInput(fullSelfInspectionResourceCdsText).length === 0) {
+          alert('自動選定モードでは resourceCds が必須です。');
+          return;
+        }
+      }
     }
 
     try {
@@ -1091,22 +1149,81 @@ export function SignageSchedulesPage() {
                       <div className="space-y-3">
                         <div>
                           <label className="block text-sm font-semibold text-slate-700">
-                            機種名 machineName（必須・生産日程と正規化比較）
+                            対象選定モード targetMode
                           </label>
-                          <input
-                            type="text"
-                            value={fullSelfInspectionMachineName}
-                            onChange={(e) => setFullSelfInspectionMachineName(e.target.value)}
-                            placeholder="例: L300KP"
+                          <select
+                            value={fullSelfInspectionTargetMode}
+                            onChange={(e) =>
+                              setFullSelfInspectionTargetMode(
+                                e.target.value as
+                                  | 'manual_machine_name'
+                                  | 'auto_from_leaderboard_status'
+                              )
+                            }
                             className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                          />
-                          <p className="mt-1 text-xs text-slate-600">
-                            未入力では保存できません（必須）。
-                          </p>
+                          >
+                            <option value="manual_machine_name">機種名を手入力</option>
+                            <option value="auto_from_leaderboard_status">
+                              順位ボードの入力中機種を自動選定
+                            </option>
+                          </select>
                         </div>
+                        {fullSelfInspectionTargetMode === 'manual_machine_name' ? (
+                          <div>
+                            <label className="block text-sm font-semibold text-slate-700">
+                              機種名 machineName（必須・生産日程と正規化比較）
+                            </label>
+                            <input
+                              type="text"
+                              value={fullSelfInspectionMachineName}
+                              onChange={(e) => setFullSelfInspectionMachineName(e.target.value)}
+                              placeholder="例: L300KP"
+                              className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                            />
+                            <p className="mt-1 text-xs text-slate-600">
+                              未入力では保存できません（必須）。
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <div>
+                              <label className="block text-sm font-semibold text-slate-700">
+                                resourceCds（必須・順位ボードと同じ資源CD）
+                              </label>
+                              <textarea
+                                value={fullSelfInspectionResourceCdsText}
+                                onChange={(e) => setFullSelfInspectionResourceCdsText(e.target.value)}
+                                placeholder={'例:\nRD01\nRD02'}
+                                rows={4}
+                                className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 font-mono text-sm font-semibold text-slate-900"
+                              />
+                              <p className="mt-1 text-xs text-slate-600">
+                                現在の入力: {parseResourceCdListInput(fullSelfInspectionResourceCdsText).length}{' '}
+                                件。黄（入力中）を持つ機種だけを自動表示します。
+                              </p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-slate-700">
+                                自動選定機種数上限 maxAutoMachines（任意・既定5・最大20）
+                              </label>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={fullSelfInspectionMaxAutoMachinesStr}
+                                onChange={(e) => setFullSelfInspectionMaxAutoMachinesStr(e.target.value)}
+                                placeholder="5"
+                                className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                              />
+                            </div>
+                          </>
+                        )}
                         <div>
                           <label className="block text-sm font-semibold text-slate-700">
-                            deviceScopeKey（キオスク端末と同じスコープ文字列・推奨）
+                            deviceScopeKey（キオスク端末と同じスコープ文字列・
+                            {fullSelfInspectionTargetMode === 'auto_from_leaderboard_status'
+                              ? '必須'
+                              : '推奨'}
+                            ）
                           </label>
                           <input
                             type="text"
@@ -1116,7 +1233,9 @@ export function SignageSchedulesPage() {
                             className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                           />
                           <p className="mt-1 text-xs text-slate-600">
-                            拠点別の自主検査テンプレート/資源 policy 解決に使用します。未設定時はグローバル fallback です。
+                            {fullSelfInspectionTargetMode === 'auto_from_leaderboard_status'
+                              ? '自動選定の母集団（拠点・資源 policy）解決に必須です。'
+                              : '拠点別の自主検査テンプレート/資源 policy 解決に使用します。未設定時はグローバル fallback です。'}
                           </p>
                         </div>
                         <div>

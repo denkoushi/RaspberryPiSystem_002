@@ -44,21 +44,29 @@ import {
   buildMobilePlacementPartsShelfGridSvg,
   buildMobilePlacementPartsShelfGridViewModel,
 } from './mobile-placement-parts-shelf/index.js';
-import { buildSelfInspectionMachineBoardViewModel } from '../part-measurement/self-inspection-machine-board.service.js';
-import type { SelfInspectionMachineBoardViewModel } from '../part-measurement/self-inspection-machine-board.types.js';
+import { resolveSelfInspectionMachineBoardConfig } from '../part-measurement/self-inspection-machine-board-config.js';
+import {
+  buildAutoSelfInspectionMachineBoardRotationViewModel,
+  buildManualSelfInspectionMachineBoardRotationViewModel,
+  type SelfInspectionMachineBoardRotationViewModel,
+} from '../part-measurement/self-inspection-machine-board-rotation.service.js';
 import { buildSelfInspectionMachineBoardSvg } from './self-inspection-machine-board/self-inspection-machine-board-svg.js';
-import { buildScheduleRowCapNote } from './self-inspection-machine-board/self-inspection-machine-board-format.js';
+import {
+  buildAutoTargetScanCapNote,
+  buildScheduleRowCapNote,
+} from './self-inspection-machine-board/self-inspection-machine-board-format.js';
+import {
+  DEFAULT_SELF_INSPECTION_MACHINE_BOARD_DETAIL_TOP_N,
+  DEFAULT_SELF_INSPECTION_MACHINE_BOARD_MAX_AUTO_MACHINES,
+  DEFAULT_SELF_INSPECTION_MACHINE_BOARD_PARTS_PER_PAGE,
+  MAX_SELF_INSPECTION_MACHINE_BOARD_DETAIL_TOP_N,
+  MAX_SELF_INSPECTION_MACHINE_BOARD_PARTS_PER_PAGE,
+} from './self-inspection-machine-board/layout-contracts.js';
 import {
   resolveMachineBoardPage,
   sanitizeSelfInspectionMachineBoardDetailTopN,
   sanitizeSelfInspectionMachineBoardPartsPerPage,
 } from './self-inspection-machine-board/pagination.js';
-import {
-  DEFAULT_SELF_INSPECTION_MACHINE_BOARD_DETAIL_TOP_N,
-  DEFAULT_SELF_INSPECTION_MACHINE_BOARD_PARTS_PER_PAGE,
-  MAX_SELF_INSPECTION_MACHINE_BOARD_DETAIL_TOP_N,
-  MAX_SELF_INSPECTION_MACHINE_BOARD_PARTS_PER_PAGE,
-} from './self-inspection-machine-board/layout-contracts.js';
 import {
   COMPACT24_MAX_COLUMNS,
   COMPACT24_MAX_ROWS,
@@ -113,7 +121,7 @@ export class SignageRenderer {
   private readonly selfInspectionMachineBoardSlideState = new Map<string, SignageSlideRotationState>();
   private selfInspectionMachineBoardViewModelCache: Map<
     string,
-    Promise<SelfInspectionMachineBoardViewModel>
+    Promise<SelfInspectionMachineBoardRotationViewModel>
   > | null = null;
   private readonly csvDashboardPageState = new Map<string, { lastPageNumber: number; lastRenderedAt: number }>();
   private lastCpuSample: { idle: number; total: number } | null = null;
@@ -330,9 +338,17 @@ export class SignageRenderer {
         return await this.renderMobilePlacementPartsShelfGridFull(maxPer);
       } else if (slot.kind === 'self_inspection_machine_board') {
         const boardCfg = slot.config as SelfInspectionMachineBoardSlotConfig;
-        const machineName = boardCfg.machineName?.trim();
-        if (!machineName) {
+        const resolved = resolveSelfInspectionMachineBoardConfig(boardCfg);
+        if (resolved.targetMode === 'manual_machine_name' && !resolved.machineName) {
           return await this.renderMessage('自主検査ボード: machineName が未設定です');
+        }
+        if (resolved.targetMode === 'auto_from_leaderboard_status') {
+          if (!resolved.deviceScopeKey) {
+            return await this.renderMessage('自主検査ボード: deviceScopeKey が未設定です');
+          }
+          if (!resolved.resourceCds || resolved.resourceCds.length === 0) {
+            return await this.renderMessage('自主検査ボード: resourceCds が未設定です');
+          }
         }
         const slideSec = boardCfg.slideIntervalSeconds ?? 30;
         const partsPerPageRaw = boardCfg.partsPerPage ?? DEFAULT_SELF_INSPECTION_MACHINE_BOARD_PARTS_PER_PAGE;
@@ -341,23 +357,27 @@ export class SignageRenderer {
         const detailTopN = sanitizeSelfInspectionMachineBoardDetailTopN(detailTopNRaw);
         if (partsPerPageRaw > MAX_SELF_INSPECTION_MACHINE_BOARD_PARTS_PER_PAGE) {
           logger.warn(
-            { machineName, requested: partsPerPageRaw, capped: partsPerPage },
+            {
+              targetMode: resolved.targetMode,
+              machineName: resolved.machineName,
+              requested: partsPerPageRaw,
+              capped: partsPerPage,
+            },
             'self_inspection_machine_board partsPerPage was capped'
           );
         }
         if (detailTopNRaw > MAX_SELF_INSPECTION_MACHINE_BOARD_DETAIL_TOP_N) {
           logger.warn(
-            { machineName, requested: detailTopNRaw, capped: detailTopN },
+            {
+              targetMode: resolved.targetMode,
+              machineName: resolved.machineName,
+              requested: detailTopNRaw,
+              capped: detailTopN,
+            },
             'self_inspection_machine_board detailTopN was capped'
           );
         }
-        return await this.renderSelfInspectionMachineBoardFull(
-          machineName,
-          boardCfg.deviceScopeKey?.trim(),
-          slideSec,
-          partsPerPage,
-          detailTopN
-        );
+        return await this.renderSelfInspectionMachineBoardFull(boardCfg, slideSec, partsPerPage, detailTopN);
       }
     } else if (layoutConfig.layout === 'SPLIT') {
       // SignagePaneResolver でペイン解決（loans=0件も有効）
@@ -821,69 +841,121 @@ export class SignageRenderer {
       .toBuffer();
   }
 
-  private buildSelfInspectionMachineBoardViewModelCacheKey(params: {
-    machineName: string;
-    deviceScopeKey?: string;
-    partsPerPage: number;
-    detailTopN: number;
-  }): string {
-    return `${(params.deviceScopeKey ?? '').trim()}|${params.machineName.trim()}|${params.partsPerPage}|${params.detailTopN}`;
+  private buildSelfInspectionMachineBoardViewModelCacheKey(
+    config: SelfInspectionMachineBoardSlotConfig,
+    partsPerPage: number,
+    detailTopN: number
+  ): string {
+    const resolved = resolveSelfInspectionMachineBoardConfig(config);
+    const resourceKey = (resolved.resourceCds ?? []).join(',');
+    const parts = [
+      resolved.targetMode,
+      resolved.deviceScopeKey ?? '',
+      resolved.machineName ?? '',
+      resourceKey,
+    ];
+    if (resolved.targetMode === 'auto_from_leaderboard_status') {
+      parts.push(String(resolved.maxAutoMachines ?? DEFAULT_SELF_INSPECTION_MACHINE_BOARD_MAX_AUTO_MACHINES));
+    }
+    parts.push(String(partsPerPage), String(detailTopN));
+    return parts.join('|');
   }
 
-  private getSelfInspectionMachineBoardViewModel(params: {
-    machineName: string;
-    deviceScopeKey?: string;
-    partsPerPage: number;
-    detailTopN: number;
-  }): Promise<SelfInspectionMachineBoardViewModel> {
+  private getSelfInspectionMachineBoardRotationViewModel(
+    config: SelfInspectionMachineBoardSlotConfig,
+    partsPerPage: number,
+    detailTopN: number
+  ): Promise<SelfInspectionMachineBoardRotationViewModel> {
+    const resolved = resolveSelfInspectionMachineBoardConfig(config);
+    const build = async (): Promise<SelfInspectionMachineBoardRotationViewModel> => {
+      if (resolved.targetMode === 'auto_from_leaderboard_status') {
+        return buildAutoSelfInspectionMachineBoardRotationViewModel({
+          deviceScopeKey: resolved.deviceScopeKey ?? '',
+          resourceCds: resolved.resourceCds ?? [],
+          maxAutoMachines: resolved.maxAutoMachines ?? DEFAULT_SELF_INSPECTION_MACHINE_BOARD_MAX_AUTO_MACHINES,
+          partsPerPage,
+          detailTopN,
+        });
+      }
+      return buildManualSelfInspectionMachineBoardRotationViewModel({
+        machineName: resolved.machineName ?? '',
+        deviceScopeKey: resolved.deviceScopeKey,
+        partsPerPage,
+        detailTopN,
+      });
+    };
+
     const cache = this.selfInspectionMachineBoardViewModelCache;
     if (!cache) {
-      return buildSelfInspectionMachineBoardViewModel(params);
+      return build();
     }
 
-    const cacheKey = this.buildSelfInspectionMachineBoardViewModelCacheKey(params);
+    const cacheKey = this.buildSelfInspectionMachineBoardViewModelCacheKey(config, partsPerPage, detailTopN);
     const cached = cache.get(cacheKey);
     if (cached) {
       return cached;
     }
 
-    const pending = buildSelfInspectionMachineBoardViewModel(params);
+    const pending = build();
     cache.set(cacheKey, pending);
     return pending;
   }
 
   private async renderSelfInspectionMachineBoardFull(
-    machineName: string,
-    deviceScopeKey: string | undefined,
+    config: SelfInspectionMachineBoardSlotConfig,
     slideIntervalSeconds: number,
     partsPerPage: number,
     detailTopN: number
   ): Promise<Buffer> {
-    const vm = await this.getSelfInspectionMachineBoardViewModel({
-      machineName,
-      deviceScopeKey,
-      partsPerPage,
-      detailTopN,
-    });
+    const resolved = resolveSelfInspectionMachineBoardConfig(config);
+    const vm = await this.getSelfInspectionMachineBoardRotationViewModel(config, partsPerPage, detailTopN);
 
     if (vm.totalPages < 1) {
       const capNote = buildScheduleRowCapNote({
         scheduleRowCap: vm.scheduleRowCap,
         scheduleRowHasMore: vm.scheduleRowHasMore,
       });
+      if (resolved.targetMode === 'auto_from_leaderboard_status') {
+        const autoNote = buildAutoTargetScanCapNote({
+          truncated: vm.autoTargetTruncated,
+          hitScanCap: vm.autoTargetHitScanCap,
+          scanRowCap: vm.autoTargetScanRowCap,
+        });
+        return await this.renderMessage(
+          `自主検査ボード: 入力中の自主検査対象機種がありません${autoNote}`
+        );
+      }
       return await this.renderMessage(
-        `自主検査ボード: ${machineName} の対象部品がありません${capNote}`
+        `自主検査ボード: ${resolved.machineName ?? ''} の対象部品がありません${capNote}`
       );
     }
 
-    const scopeKey = (deviceScopeKey ?? '').trim();
-    const stateKey = `self-inspection-machine-board:${scopeKey}:${vm.normalizedMachineName}:${partsPerPage}:${detailTopN}`;
+    const scopeKey = (resolved.deviceScopeKey ?? '').trim();
+    const resourceKey = (resolved.resourceCds ?? []).join(',');
+    const stateKeyParts = [
+      'self-inspection-machine-board',
+      resolved.targetMode,
+      scopeKey,
+      vm.normalizedMachineName,
+      resourceKey,
+    ];
+    if (resolved.targetMode === 'auto_from_leaderboard_status') {
+      stateKeyParts.push(
+        String(resolved.maxAutoMachines ?? DEFAULT_SELF_INSPECTION_MACHINE_BOARD_MAX_AUTO_MACHINES)
+      );
+    }
+    stateKeyParts.push(String(partsPerPage), String(detailTopN));
+    const stateKey = stateKeyParts.join(':');
     const pageIndex = getRotatingSlideIndex(this.selfInspectionMachineBoardSlideState, {
       stateKey,
       totalPages: vm.totalPages,
       displayMode: 'SLIDESHOW',
       slideIntervalSeconds,
-      logContext: { kind: 'self_inspection_machine_board', machineName: vm.machineName },
+      logContext: {
+        kind: 'self_inspection_machine_board',
+        machineName: vm.machineName,
+        targetMode: resolved.targetMode,
+      },
     });
 
     const page = resolveMachineBoardPage(vm.pages, pageIndex);

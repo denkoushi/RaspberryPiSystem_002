@@ -51,11 +51,6 @@ export type SelfInspectionMachineBoardSessionDetail = SelfInspectionMachineBoard
   }>;
 };
 
-/** CSV 取り込み・手動納期更新フック（将来の render 側キャッシュ無効化用。現状 no-op） */
-export function resetSelfInspectionMachineBoardScheduleRowCaches(): void {
-  // ViewModel 共有は SignageRenderer.renderCurrentContent() 1 バッチ内のみ。
-}
-
 export async function fetchSelfInspectionSessionDetailsByScheduleRowIds(
   scheduleRowIds: string[]
 ): Promise<Map<string, SelfInspectionMachineBoardSessionDetail>> {

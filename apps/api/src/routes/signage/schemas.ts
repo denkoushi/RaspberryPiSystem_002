@@ -35,7 +35,7 @@ const kioskProgressOverviewSlotConfigSchema = z
 const kioskLeaderOrderCardsSlotConfigSchema = z
   .object({
     deviceScopeKey: z.string().min(1).max(200),
-    resourceCds: z.array(z.string().min(1).max(100)).min(1).max(32),
+    resourceCds: z.array(z.string().trim().min(1).max(100)).min(1).max(32),
     slideIntervalSeconds: z.number().int().positive().optional(),
     cardsPerPage: z.number().int().min(1).max(10).optional(),
   })
@@ -47,15 +47,73 @@ const mobilePlacementPartsShelfGridSlotConfigSchema = z
   })
   .strict();
 
+const selfInspectionMachineBoardTargetModeSchema = z.enum([
+  'manual_machine_name',
+  'auto_from_leaderboard_status',
+]);
+
 const selfInspectionMachineBoardSlotConfigSchema = z
   .object({
-    machineName: z.string().min(1).max(200),
+    targetMode: selfInspectionMachineBoardTargetModeSchema.optional(),
+    machineName: z.string().min(1).max(200).optional(),
     deviceScopeKey: z.string().min(1).max(200).optional(),
+    resourceCds: z.array(z.string().trim().min(1).max(100)).min(1).max(32).optional(),
     slideIntervalSeconds: z.number().int().positive().optional(),
     partsPerPage: z.number().int().min(1).max(12).optional(),
     detailTopN: z.number().int().min(0).max(20).optional(),
+    maxAutoMachines: z.number().int().min(1).max(20).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    const targetMode = value.targetMode ?? 'manual_machine_name';
+    if (targetMode === 'manual_machine_name') {
+      if (!value.machineName?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'machineName is required when targetMode is manual_machine_name',
+          path: ['machineName'],
+        });
+      }
+      if (value.resourceCds !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'resourceCds must not be set when targetMode is manual_machine_name',
+          path: ['resourceCds'],
+        });
+      }
+      if (value.maxAutoMachines !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'maxAutoMachines must not be set when targetMode is manual_machine_name',
+          path: ['maxAutoMachines'],
+        });
+      }
+      return;
+    }
+
+    if (!value.deviceScopeKey?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'deviceScopeKey is required when targetMode is auto_from_leaderboard_status',
+        path: ['deviceScopeKey'],
+      });
+    }
+    const resourceCds = (value.resourceCds ?? []).map((cd) => cd.trim()).filter(Boolean);
+    if (resourceCds.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'resourceCds is required when targetMode is auto_from_leaderboard_status',
+        path: ['resourceCds'],
+      });
+    }
+    if (value.machineName !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'machineName must not be set when targetMode is auto_from_leaderboard_status',
+        path: ['machineName'],
+      });
+    }
+  });
 
 /** kind と config を一致させる（`{}` が loans に誤マッチしないよう discriminated union） */
 const slotSchema = z.discriminatedUnion('kind', [

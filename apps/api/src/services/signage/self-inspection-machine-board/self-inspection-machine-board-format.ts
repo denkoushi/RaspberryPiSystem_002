@@ -62,6 +62,39 @@ export function buildScheduleRowCapNote(args: {
   return ` · 日程上限 ${args.scheduleRowCap} 件（続きあり）`;
 }
 
+export function buildAutoTargetScanCapNote(args: {
+  truncated?: boolean;
+  hitScanCap?: boolean;
+  scanRowCap?: number;
+}): string {
+  const notes: string[] = [];
+  if (args.truncated) {
+    notes.push('（候補上限超過）');
+  }
+  if (args.hitScanCap && args.scanRowCap != null && args.scanRowCap > 0) {
+    notes.push(` · 自動選定走査上限 ${args.scanRowCap} 件（続きあり）`);
+  }
+  return notes.join('');
+}
+
+export function buildSelfInspectionMachineBoardPageCapNotes(
+  page: {
+    scheduleRowCap?: number;
+    scheduleRowHasMore?: boolean;
+    autoTargetTruncated?: boolean;
+    autoTargetHitScanCap?: boolean;
+    autoTargetScanRowCap?: number;
+  }
+): string {
+  return (
+    buildAutoTargetScanCapNote({
+      truncated: page.autoTargetTruncated,
+      hitScanCap: page.autoTargetHitScanCap,
+      scanRowCap: page.autoTargetScanRowCap,
+    }) + buildScheduleRowCapNote(page)
+  );
+}
+
 export function escapeXml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
