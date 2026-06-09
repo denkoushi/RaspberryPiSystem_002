@@ -31,6 +31,7 @@ import {
   serializeSelfInspectionMode,
   validateSelfInspectionConfig
 } from '../../services/part-measurement/self-inspection-config.js';
+import { resolveSelfInspectionNfcTagUid } from '../../services/part-measurement/self-inspection-nfc-tag-resolve.js';
 import {
   patchInspectionDrawingEvaluationSheetBodySchema,
   toInspectionDrawingEvaluationPatchInput
@@ -318,6 +319,7 @@ const selfInspectionEntryIdParamsSchema = z.object({
 const selfInspectionCreateEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
   employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z
     .array(
       z.object({
@@ -332,6 +334,7 @@ const selfInspectionCreateEntryBodySchema = z.object({
 const selfInspectionUpdateEntryBodySchema = z.object({
   ifUnmodifiedSince: z.string().min(1).max(100),
   employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z
     .array(
       z.object({
@@ -1240,6 +1243,12 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     return { templates: list.map((t) => serializeTemplate({ ...t, items: t.items })) };
   });
 
+  app.post('/part-measurement/self-inspection/nfc-tags/resolve', { preHandler: allowView }, async (request) => {
+    const body = z.object({ uid: z.string().min(1).max(200) }).parse(request.body);
+    const result = await resolveSelfInspectionNfcTagUid(body.uid);
+    return { result };
+  });
+
   app.post('/part-measurement/self-inspection/sessions/resolve-or-create', { preHandler: allowWriteKiosk }, async (request) => {
     const body = selfInspectionSessionResolveBodySchema.parse(request.body);
     const clientDeviceId = await tryGetClientDeviceId(request.headers);
@@ -1294,6 +1303,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const entry = await selfInspectionService.createEntry(params.id, {
       entryIndex: body.entryIndex,
       employeeTagUid: body.employeeTagUid,
+      measuringInstrumentTagUid: body.measuringInstrumentTagUid,
       values: body.values
     });
     return { entry };
@@ -1305,6 +1315,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const entry = await selfInspectionService.updateEntry(params.id, params.entryId, {
       ifUnmodifiedSince: body.ifUnmodifiedSince,
       employeeTagUid: body.employeeTagUid,
+      measuringInstrumentTagUid: body.measuringInstrumentTagUid,
       values: body.values
     });
     return { entry };

@@ -2,7 +2,8 @@ import {
   isSelfInspectionEntryDraftDirty,
   listDirtySelfInspectionEntryIndices
 } from './selfInspectionEntryDraft';
-import { areRequiredSelfInspectionSlotsFilled } from './selfInspectionEntrySlots';
+import { isSelfInspectionSavedEntryRegistrationComplete } from './selfInspectionEntryRegistration';
+import { areRequiredSelfInspectionSlotsFilled, listSelfInspectionEntrySlots } from './selfInspectionEntrySlots';
 import {
   buildEntryDrawingPoints,
   findFirstPendingPointId,
@@ -26,6 +27,8 @@ export type SelfInspectionActionReason =
   | 'already_guided'
   | 'no_pending_points_unsaved'
   | 'no_pending_points_saved'
+  | 'missing_registration'
+  | 'incomplete_registration'
   | 'canvas_not_ready';
 
 export type SelfInspectionActionState = {
@@ -44,6 +47,8 @@ export type SelfInspectionSessionActionContext = {
   isDrawingCanvasReady: boolean;
   guideMode: SelfInspectionGuideMode;
   guideActionsEnabled: boolean;
+  entryRegistrationReady: boolean;
+  entryRegistrationDirty: boolean;
 };
 
 function disabledState(reason: SelfInspectionActionReason): SelfInspectionActionState {
@@ -113,19 +118,23 @@ export function resolveSelfInspectionSaveActionState(
   const draft = context.draftValuesByEntryIndex[context.selectedEntryIndex];
   if (!draft) return disabledState('incomplete_values');
 
-  if (
-    !isSelfInspectionEntryDraftDirty(
-      context.session,
-      context.selectedEntryIndex,
-      draft,
-      context.savedDraftByEntryIndex[context.selectedEntryIndex]
-    )
-  ) {
+  const valuesDirty = isSelfInspectionEntryDraftDirty(
+    context.session,
+    context.selectedEntryIndex,
+    draft,
+    context.savedDraftByEntryIndex[context.selectedEntryIndex]
+  );
+
+  if (!valuesDirty && !context.entryRegistrationDirty) {
     return disabledState('no_changes');
   }
 
   const draftBlockReason = resolveCurrentEntryDraftSaveBlockReason(context.session, draft);
   if (draftBlockReason) return disabledState(draftBlockReason);
+
+  if (!context.entryRegistrationReady) {
+    return disabledState('missing_registration');
+  }
 
   return enabledState();
 }
@@ -149,6 +158,14 @@ export function resolveSelfInspectionCompleteActionState(
 
   if (!areRequiredSelfInspectionSlotsFilled(context.session)) {
     return disabledState('missing_required_entries');
+  }
+
+  const requiredSlots = listSelfInspectionEntrySlots(context.session);
+  for (const slot of requiredSlots) {
+    const saved = context.session.entries.find((entry) => entry.entryIndex === slot.entryIndex);
+    if (!saved || !isSelfInspectionSavedEntryRegistrationComplete(saved)) {
+      return disabledState('incomplete_registration');
+    }
   }
 
   return enabledState();
@@ -212,6 +229,10 @@ export function selfInspectionActionReasonMessage(
       return '基準・公差が未設定の測定点があります。';
     case 'missing_required_entries':
       return '必要な入力件がすべて保存されていません。各入力件を保存してください。';
+    case 'missing_registration':
+      return '測定者と測定機器のNFC登録が必要です。';
+    case 'incomplete_registration':
+      return '未登録の測定者または測定機器がある入力件があります。';
     case 'unsaved_changes':
       return '未保存の入力があります。「入力を保存」してから完了してください。';
     case 'already_guided':

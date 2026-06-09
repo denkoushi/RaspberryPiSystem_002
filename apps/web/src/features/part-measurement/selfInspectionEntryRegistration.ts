@@ -1,0 +1,200 @@
+import type { SelfInspectionLotEntryDto, SelfInspectionSessionDetailDto } from './types';
+
+export type SelfInspectionEntryRegistrationDraft = {
+  employeeTagUid: string | null;
+  employeeDisplayName: string | null;
+  measuringInstrumentTagUid: string | null;
+  measuringInstrumentDisplayName: string | null;
+};
+
+export function formatMeasuringInstrumentDisplayLabel(entry: {
+  measuringInstrumentManagementNumberSnapshot: string | null;
+  measuringInstrumentNameSnapshot: string | null;
+}): string | null {
+  if (entry.measuringInstrumentNameSnapshot && entry.measuringInstrumentManagementNumberSnapshot) {
+    return `${entry.measuringInstrumentManagementNumberSnapshot} ${entry.measuringInstrumentNameSnapshot}`;
+  }
+  return entry.measuringInstrumentNameSnapshot;
+}
+
+export function resolveSelfInspectionEntryRegistrationFromSaved(
+  entry: Pick<
+    SelfInspectionLotEntryDto,
+    | 'createdByEmployeeId'
+    | 'createdByEmployeeNameSnapshot'
+    | 'measuringInstrumentId'
+    | 'measuringInstrumentNameSnapshot'
+    | 'measuringInstrumentManagementNumberSnapshot'
+    | 'measuringInstrumentTagUidSnapshot'
+  > | null | undefined
+): SelfInspectionEntryRegistrationDraft {
+  if (!entry) {
+    return {
+      employeeTagUid: null,
+      employeeDisplayName: null,
+      measuringInstrumentTagUid: null,
+      measuringInstrumentDisplayName: null
+    };
+  }
+  return {
+    employeeTagUid: null,
+    employeeDisplayName: entry.createdByEmployeeNameSnapshot,
+    measuringInstrumentTagUid: entry.measuringInstrumentTagUidSnapshot,
+    measuringInstrumentDisplayName: formatMeasuringInstrumentDisplayLabel(entry)
+  };
+}
+
+/** session refetch 時に、未保存の NFC スキャン結果を saved 側で潰さない */
+export function mergeSelfInspectionEntryRegistrationDraftWithSaved(
+  draft: SelfInspectionEntryRegistrationDraft,
+  saved: SelfInspectionEntryRegistrationDraft,
+  savedEntry: Pick<SelfInspectionLotEntryDto, 'createdByEmployeeId' | 'measuringInstrumentId'> | null | undefined
+): SelfInspectionEntryRegistrationDraft {
+  const employeePersisted = Boolean(savedEntry?.createdByEmployeeId);
+  const instrumentPersisted = Boolean(savedEntry?.measuringInstrumentId);
+
+  return {
+    employeeTagUid: employeePersisted
+      ? saved.employeeTagUid
+      : (draft.employeeTagUid ?? saved.employeeTagUid),
+    employeeDisplayName: employeePersisted
+      ? saved.employeeDisplayName
+      : (draft.employeeDisplayName ?? saved.employeeDisplayName),
+    measuringInstrumentTagUid: instrumentPersisted
+      ? saved.measuringInstrumentTagUid
+      : (draft.measuringInstrumentTagUid ?? saved.measuringInstrumentTagUid),
+    measuringInstrumentDisplayName: instrumentPersisted
+      ? saved.measuringInstrumentDisplayName
+      : (draft.measuringInstrumentDisplayName ?? saved.measuringInstrumentDisplayName)
+  };
+}
+
+export function resolveSelfInspectionEntryRegistrationForDisplay(
+  draftFromState: SelfInspectionEntryRegistrationDraft | undefined,
+  savedEntry: Pick<
+    SelfInspectionLotEntryDto,
+    | 'createdByEmployeeId'
+    | 'createdByEmployeeNameSnapshot'
+    | 'measuringInstrumentId'
+    | 'measuringInstrumentNameSnapshot'
+    | 'measuringInstrumentManagementNumberSnapshot'
+    | 'measuringInstrumentTagUidSnapshot'
+  > | null | undefined
+): SelfInspectionEntryRegistrationDraft {
+  const savedRegistration = resolveSelfInspectionEntryRegistrationFromSaved(savedEntry);
+  if (draftFromState === undefined) {
+    return savedRegistration;
+  }
+  return mergeSelfInspectionEntryRegistrationDraftWithSaved(
+    draftFromState,
+    savedRegistration,
+    savedEntry
+  );
+}
+
+export function isSelfInspectionEntryRegistrationReadyForSave(
+  registration: SelfInspectionEntryRegistrationDraft,
+  savedEntry: Pick<SelfInspectionLotEntryDto, 'createdByEmployeeId' | 'measuringInstrumentId' | 'createdByEmployeeNameSnapshot' | 'measuringInstrumentNameSnapshot' | 'measuringInstrumentManagementNumberSnapshot'> | null | undefined
+): boolean {
+  if (isSelfInspectionSavedEntryRegistrationComplete(savedEntry)) {
+    return true;
+  }
+  const hasEmployee = Boolean(
+    savedEntry?.createdByEmployeeId ||
+      (registration.employeeTagUid && registration.employeeDisplayName)
+  );
+  const hasInstrument = Boolean(
+    savedEntry?.measuringInstrumentId ||
+      (registration.measuringInstrumentTagUid && registration.measuringInstrumentDisplayName)
+  );
+  return hasEmployee && hasInstrument;
+}
+
+export function buildSelfInspectionEntryRegistrationPayload(
+  registration: SelfInspectionEntryRegistrationDraft,
+  savedEntry: Pick<SelfInspectionLotEntryDto, 'createdByEmployeeId' | 'measuringInstrumentId'> | null | undefined
+): { employeeTagUid?: string | null; measuringInstrumentTagUid?: string | null } {
+  const payload: { employeeTagUid?: string | null; measuringInstrumentTagUid?: string | null } = {};
+  if (!savedEntry?.createdByEmployeeId && registration.employeeTagUid) {
+    payload.employeeTagUid = registration.employeeTagUid;
+  }
+  if (!savedEntry?.measuringInstrumentId && registration.measuringInstrumentTagUid) {
+    payload.measuringInstrumentTagUid = registration.measuringInstrumentTagUid;
+  }
+  return payload;
+}
+
+export function isSelfInspectionEntryRegistrationReady(
+  registration: SelfInspectionEntryRegistrationDraft
+): boolean {
+  return Boolean(
+    registration.employeeTagUid &&
+      registration.measuringInstrumentTagUid &&
+      registration.employeeDisplayName &&
+      registration.measuringInstrumentDisplayName
+  );
+}
+
+export function isSelfInspectionSavedEntryRegistrationComplete(
+  entry: Pick<SelfInspectionLotEntryDto, 'createdByEmployeeId' | 'measuringInstrumentId'> | null | undefined
+): boolean {
+  return Boolean(entry?.createdByEmployeeId && entry?.measuringInstrumentId);
+}
+
+/** 測定値は保存済みだが NFC 登録だけ未反映の entry を保存可能にする */
+export function isSelfInspectionEntryRegistrationDirtyForSave(
+  registration: SelfInspectionEntryRegistrationDraft,
+  savedEntry: Pick<
+    SelfInspectionLotEntryDto,
+    | 'createdByEmployeeId'
+    | 'measuringInstrumentId'
+    | 'createdByEmployeeNameSnapshot'
+    | 'measuringInstrumentNameSnapshot'
+    | 'measuringInstrumentManagementNumberSnapshot'
+  > | null | undefined
+): boolean {
+  if (isSelfInspectionSavedEntryRegistrationComplete(savedEntry)) {
+    return false;
+  }
+  return isSelfInspectionEntryRegistrationReadyForSave(registration, savedEntry);
+}
+
+/** 未保存の NFC スキャン（部分スキャン含む）があるか */
+export function hasUnsavedSelfInspectionRegistrationDraftWork(
+  draftFromState: SelfInspectionEntryRegistrationDraft,
+  savedEntry: Pick<
+    SelfInspectionLotEntryDto,
+    | 'createdByEmployeeId'
+    | 'measuringInstrumentId'
+    | 'createdByEmployeeNameSnapshot'
+    | 'measuringInstrumentNameSnapshot'
+    | 'measuringInstrumentManagementNumberSnapshot'
+    | 'measuringInstrumentTagUidSnapshot'
+  > | null | undefined
+): boolean {
+  const displayed = resolveSelfInspectionEntryRegistrationForDisplay(draftFromState, savedEntry);
+  if (isSelfInspectionEntryRegistrationDirtyForSave(displayed, savedEntry)) {
+    return true;
+  }
+  if (!savedEntry?.createdByEmployeeId && draftFromState.employeeTagUid) {
+    return true;
+  }
+  if (!savedEntry?.measuringInstrumentId && draftFromState.measuringInstrumentTagUid) {
+    return true;
+  }
+  return false;
+}
+
+export function hasUnsavedSelfInspectionRegistrationDrafts(
+  session: Pick<SelfInspectionSessionDetailDto, 'entries'>,
+  draftByEntryIndex: Record<number, SelfInspectionEntryRegistrationDraft>
+): boolean {
+  return Object.keys(draftByEntryIndex).some((indexKey) => {
+    const entryIndex = Number(indexKey);
+    const savedEntry = session.entries.find((entry) => entry.entryIndex === entryIndex) ?? null;
+    return hasUnsavedSelfInspectionRegistrationDraftWork(
+      draftByEntryIndex[entryIndex],
+      savedEntry
+    );
+  });
+}

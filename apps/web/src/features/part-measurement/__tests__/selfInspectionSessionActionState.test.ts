@@ -38,6 +38,8 @@ function makeContext(
     isDrawingCanvasReady: true,
     guideMode: 'manual',
     guideActionsEnabled: true,
+    entryRegistrationReady: true,
+    entryRegistrationDirty: false,
     ...overrides
   };
 }
@@ -90,6 +92,30 @@ describe('selfInspectionSessionActionState', () => {
     expect(state.reason).toBe('completing');
   });
 
+  it('save is disabled when NFC registration is missing', () => {
+    const state = resolveSelfInspectionSaveActionState(
+      makeContext({
+        entryRegistrationReady: false,
+        draftValuesByEntryIndex: { 0: { p1: '10.01', p2: '10' } },
+        savedDraftByEntryIndex: { 0: { p1: '10', p2: '10' } }
+      })
+    );
+    expect(state.enabled).toBe(false);
+    expect(state.reason).toBe('missing_registration');
+  });
+
+  it('save is enabled when only NFC registration is pending on a saved entry', () => {
+    const state = resolveSelfInspectionSaveActionState(
+      makeContext({
+        entryRegistrationDirty: true,
+        draftValuesByEntryIndex: { 0: { p1: '10', p2: '10' } },
+        savedDraftByEntryIndex: { 0: { p1: '10', p2: '10' } }
+      })
+    );
+    expect(state.enabled).toBe(true);
+    expect(state.reason).toBeNull();
+  });
+
   it('save is enabled when dirty and all points are ok', () => {
     const state = resolveSelfInspectionSaveActionState(
       makeContext({
@@ -127,8 +153,12 @@ describe('selfInspectionSessionActionState', () => {
         entryIndex: 0,
         entrySlotKind: 'fixed',
         entrySlotLabel: '1',
-        createdByEmployeeId: null,
-        createdByEmployeeNameSnapshot: null,
+        createdByEmployeeId: 'emp-1',
+        createdByEmployeeNameSnapshot: 'Tester',
+        measuringInstrumentId: 'inst-1',
+        measuringInstrumentManagementNumberSnapshot: 'MI-001',
+        measuringInstrumentNameSnapshot: 'Caliper',
+        measuringInstrumentTagUidSnapshot: 'inst-tag',
         createdAt: now,
         updatedAt: now,
         values: []
@@ -138,8 +168,12 @@ describe('selfInspectionSessionActionState', () => {
         entryIndex: 1,
         entrySlotKind: 'fixed',
         entrySlotLabel: '2',
-        createdByEmployeeId: null,
-        createdByEmployeeNameSnapshot: null,
+        createdByEmployeeId: 'emp-1',
+        createdByEmployeeNameSnapshot: 'Tester',
+        measuringInstrumentId: 'inst-1',
+        measuringInstrumentManagementNumberSnapshot: 'MI-001',
+        measuringInstrumentNameSnapshot: 'Caliper',
+        measuringInstrumentTagUidSnapshot: 'inst-tag',
         createdAt: now,
         updatedAt: now,
         values: []
@@ -159,6 +193,58 @@ describe('selfInspectionSessionActionState', () => {
       })
     );
     expect(state.enabled).toBe(true);
+  });
+
+  it('complete is disabled when saved entries lack registration', () => {
+    const session = makeContext().session;
+    const now = '2026-06-04T00:00:00.000Z';
+    session.entries = [
+      {
+        id: 'e0',
+        entryIndex: 0,
+        entrySlotKind: 'fixed',
+        entrySlotLabel: '1',
+        createdByEmployeeId: 'emp-1',
+        createdByEmployeeNameSnapshot: 'Tester',
+        measuringInstrumentId: null,
+        measuringInstrumentManagementNumberSnapshot: null,
+        measuringInstrumentNameSnapshot: null,
+        measuringInstrumentTagUidSnapshot: null,
+        createdAt: now,
+        updatedAt: now,
+        values: []
+      },
+      {
+        id: 'e1',
+        entryIndex: 1,
+        entrySlotKind: 'fixed',
+        entrySlotLabel: '2',
+        createdByEmployeeId: 'emp-1',
+        createdByEmployeeNameSnapshot: 'Tester',
+        measuringInstrumentId: 'inst-1',
+        measuringInstrumentManagementNumberSnapshot: 'MI-001',
+        measuringInstrumentNameSnapshot: 'Caliper',
+        measuringInstrumentTagUidSnapshot: 'inst-tag',
+        createdAt: now,
+        updatedAt: now,
+        values: []
+      }
+    ];
+    const state = resolveSelfInspectionCompleteActionState(
+      makeContext({
+        session,
+        draftValuesByEntryIndex: {
+          0: { p1: '10', p2: '10' },
+          1: { p1: '10', p2: '10' }
+        },
+        savedDraftByEntryIndex: {
+          0: { p1: '10', p2: '10' },
+          1: { p1: '10', p2: '10' }
+        }
+      })
+    );
+    expect(state.enabled).toBe(false);
+    expect(state.reason).toBe('incomplete_registration');
   });
 
   it('resume is disabled when already guided', () => {

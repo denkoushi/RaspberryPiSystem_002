@@ -137,6 +137,10 @@ export type SelfInspectionLotEntryDto = {
   entrySlotLabel: string;
   createdByEmployeeId: string | null;
   createdByEmployeeNameSnapshot: string | null;
+  measuringInstrumentId: string | null;
+  measuringInstrumentManagementNumberSnapshot: string | null;
+  measuringInstrumentNameSnapshot: string | null;
+  measuringInstrumentTagUidSnapshot: string | null;
   createdAt: string;
   updatedAt: string;
   values: SelfInspectionMeasurementValueDto[];

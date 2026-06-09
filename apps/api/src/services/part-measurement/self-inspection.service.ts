@@ -12,6 +12,9 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constan
 import { resolveProductionSchedulePlannedQuantity } from '../production-schedule/self-inspection-schedule-eligibility.js';
 import { verifyProductionScheduleRowOrThrow } from '../production-schedule/verify-production-schedule-row.js';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from './self-inspection-machine-board-cache-invalidation.js';
+import { assertMeasuringInstrumentAvailableForSelfInspection } from './self-inspection-measuring-instrument-eligibility.js';
+import { assertSelfInspectionEntryRegistrationTagUids } from './self-inspection-registration-tag-validation.js';
+import { isSelfInspectionLotEntryRegistrationComplete } from './self-inspection-nfc-tag-resolve.js';
 
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import {
@@ -577,6 +580,223 @@ export class SelfInspectionService {
     };
   }
 
+  private async resolveEntryActorRequired(employeeTagUid?: string | null): Promise<{
+    createdByEmployeeId: string;
+    createdByEmployeeNameSnapshot: string;
+  }> {
+    const tag = (employeeTagUid ?? '').trim();
+    if (!tag) {
+      throw new ApiError(400, '測定者のNFCタグが必要です');
+    }
+    const resolved = await this.resolveEntryActor(tag);
+    return {
+      createdByEmployeeId: resolved.createdByEmployeeId!,
+      createdByEmployeeNameSnapshot: resolved.createdByEmployeeNameSnapshot!
+    };
+  }
+
+  private async resolveMeasuringInstrumentByTag(measuringInstrumentTagUid?: string | null): Promise<{
+    measuringInstrumentId: string;
+    measuringInstrumentManagementNumberSnapshot: string;
+    measuringInstrumentNameSnapshot: string;
+    measuringInstrumentTagUidSnapshot: string;
+  }> {
+    const tag = (measuringInstrumentTagUid ?? '').trim();
+    if (!tag) {
+      throw new ApiError(400, '測定機器のNFCタグが必要です');
+    }
+    const instrumentTag = await prisma.measuringInstrumentTag.findUnique({
+      where: { rfidTagUid: tag },
+      include: { measuringInstrument: true }
+    });
+    if (!instrumentTag?.measuringInstrument) {
+      throw new ApiError(404, '計測機器が登録されていません');
+    }
+    assertMeasuringInstrumentAvailableForSelfInspection(instrumentTag.measuringInstrument);
+    return {
+      measuringInstrumentId: instrumentTag.measuringInstrument.id,
+      measuringInstrumentManagementNumberSnapshot: instrumentTag.measuringInstrument.managementNumber,
+      measuringInstrumentNameSnapshot: instrumentTag.measuringInstrument.name,
+      measuringInstrumentTagUidSnapshot: tag
+    };
+  }
+
+  private entryRegistrationFromRow(entry: {
+    createdByEmployeeId: string | null;
+    createdByEmployeeNameSnapshot: string | null;
+    measuringInstrumentId: string | null;
+    measuringInstrumentManagementNumberSnapshot: string | null;
+    measuringInstrumentNameSnapshot: string | null;
+    measuringInstrumentTagUidSnapshot: string | null;
+  }) {
+    return {
+      createdByEmployeeId: entry.createdByEmployeeId,
+      createdByEmployeeNameSnapshot: entry.createdByEmployeeNameSnapshot,
+      measuringInstrumentId: entry.measuringInstrumentId,
+      measuringInstrumentManagementNumberSnapshot: entry.measuringInstrumentManagementNumberSnapshot,
+      measuringInstrumentNameSnapshot: entry.measuringInstrumentNameSnapshot,
+      measuringInstrumentTagUidSnapshot: entry.measuringInstrumentTagUidSnapshot
+    };
+  }
+
+  private async resolveRegistrationForCreateEntry(
+    existingEntry: {
+      createdByEmployeeId: string | null;
+      createdByEmployeeNameSnapshot: string | null;
+      measuringInstrumentId: string | null;
+      measuringInstrumentManagementNumberSnapshot: string | null;
+      measuringInstrumentNameSnapshot: string | null;
+      measuringInstrumentTagUidSnapshot: string | null;
+    } | null,
+    input: {
+      employeeTagUid?: string | null;
+      measuringInstrumentTagUid?: string | null;
+      createdByEmployeeId?: string | null;
+      createdByEmployeeNameSnapshot?: string | null;
+    }
+  ) {
+    const isNew = !existingEntry;
+    let createdByEmployeeId = existingEntry?.createdByEmployeeId ?? null;
+    let createdByEmployeeNameSnapshot = existingEntry?.createdByEmployeeNameSnapshot ?? null;
+    let measuringInstrumentId = existingEntry?.measuringInstrumentId ?? null;
+    let measuringInstrumentManagementNumberSnapshot =
+      existingEntry?.measuringInstrumentManagementNumberSnapshot ?? null;
+    let measuringInstrumentNameSnapshot = existingEntry?.measuringInstrumentNameSnapshot ?? null;
+    let measuringInstrumentTagUidSnapshot = existingEntry?.measuringInstrumentTagUidSnapshot ?? null;
+
+    const pendingEmployeeTag = !createdByEmployeeId ? (input.employeeTagUid ?? '').trim() : '';
+    const pendingInstrumentTag = !measuringInstrumentId ? (input.measuringInstrumentTagUid ?? '').trim() : '';
+    await assertSelfInspectionEntryRegistrationTagUids({
+      employeeTagUid: pendingEmployeeTag || null,
+      measuringInstrumentTagUid: pendingInstrumentTag || null
+    });
+
+    if (!createdByEmployeeId) {
+      if (input.createdByEmployeeId != null || input.createdByEmployeeNameSnapshot != null) {
+        createdByEmployeeId = input.createdByEmployeeId ?? null;
+        createdByEmployeeNameSnapshot = normalizeText(input.createdByEmployeeNameSnapshot) || null;
+      } else if ((input.employeeTagUid ?? '').trim()) {
+        const actor = await this.resolveEntryActorRequired(input.employeeTagUid);
+        createdByEmployeeId = actor.createdByEmployeeId;
+        createdByEmployeeNameSnapshot = actor.createdByEmployeeNameSnapshot;
+      } else if (isNew) {
+        throw new ApiError(400, '測定者のNFCタグが必要です');
+      }
+    }
+
+    if (!measuringInstrumentId) {
+      if ((input.measuringInstrumentTagUid ?? '').trim()) {
+        const instrument = await this.resolveMeasuringInstrumentByTag(input.measuringInstrumentTagUid);
+        measuringInstrumentId = instrument.measuringInstrumentId;
+        measuringInstrumentManagementNumberSnapshot =
+          instrument.measuringInstrumentManagementNumberSnapshot;
+        measuringInstrumentNameSnapshot = instrument.measuringInstrumentNameSnapshot;
+        measuringInstrumentTagUidSnapshot = instrument.measuringInstrumentTagUidSnapshot;
+      } else if (isNew) {
+        throw new ApiError(400, '測定機器のNFCタグが必要です');
+      }
+    }
+
+    return {
+      createdByEmployeeId,
+      createdByEmployeeNameSnapshot,
+      measuringInstrumentId,
+      measuringInstrumentManagementNumberSnapshot,
+      measuringInstrumentNameSnapshot,
+      measuringInstrumentTagUidSnapshot
+    };
+  }
+
+  private buildRegistrationBackfillData(
+    existingEntry: {
+      createdByEmployeeId: string | null;
+      createdByEmployeeNameSnapshot: string | null;
+      measuringInstrumentId: string | null;
+      measuringInstrumentManagementNumberSnapshot: string | null;
+      measuringInstrumentNameSnapshot: string | null;
+      measuringInstrumentTagUidSnapshot: string | null;
+    },
+    resolved: {
+      createdByEmployeeId: string | null;
+      createdByEmployeeNameSnapshot: string | null;
+      measuringInstrumentId: string | null;
+      measuringInstrumentManagementNumberSnapshot: string | null;
+      measuringInstrumentNameSnapshot: string | null;
+      measuringInstrumentTagUidSnapshot: string | null;
+    }
+  ) {
+    const data: {
+      createdByEmployeeId?: string;
+      createdByEmployeeNameSnapshot?: string;
+      measuringInstrumentId?: string;
+      measuringInstrumentManagementNumberSnapshot?: string;
+      measuringInstrumentNameSnapshot?: string;
+      measuringInstrumentTagUidSnapshot?: string;
+    } = {};
+    if (!existingEntry.createdByEmployeeId && resolved.createdByEmployeeId) {
+      data.createdByEmployeeId = resolved.createdByEmployeeId;
+      data.createdByEmployeeNameSnapshot = resolved.createdByEmployeeNameSnapshot ?? undefined;
+    }
+    if (!existingEntry.measuringInstrumentId && resolved.measuringInstrumentId) {
+      data.measuringInstrumentId = resolved.measuringInstrumentId;
+      data.measuringInstrumentManagementNumberSnapshot =
+        resolved.measuringInstrumentManagementNumberSnapshot ?? undefined;
+      data.measuringInstrumentNameSnapshot = resolved.measuringInstrumentNameSnapshot ?? undefined;
+      data.measuringInstrumentTagUidSnapshot = resolved.measuringInstrumentTagUidSnapshot ?? undefined;
+    }
+    return Object.keys(data).length > 0 ? data : null;
+  }
+
+  private async resolveRegistrationPatchForUpdate(
+    existingEntry: {
+      createdByEmployeeId: string | null;
+      createdByEmployeeNameSnapshot: string | null;
+      measuringInstrumentId: string | null;
+      measuringInstrumentManagementNumberSnapshot: string | null;
+      measuringInstrumentNameSnapshot: string | null;
+      measuringInstrumentTagUidSnapshot: string | null;
+    },
+    input: {
+      employeeTagUid?: string | null;
+      measuringInstrumentTagUid?: string | null;
+    }
+  ) {
+    const patch: {
+      createdByEmployeeId?: string;
+      createdByEmployeeNameSnapshot?: string;
+      measuringInstrumentId?: string;
+      measuringInstrumentManagementNumberSnapshot?: string;
+      measuringInstrumentNameSnapshot?: string;
+      measuringInstrumentTagUidSnapshot?: string;
+    } = {};
+
+    const pendingEmployeeTag = !existingEntry.createdByEmployeeId ? (input.employeeTagUid ?? '').trim() : '';
+    const pendingInstrumentTag = !existingEntry.measuringInstrumentId
+      ? (input.measuringInstrumentTagUid ?? '').trim()
+      : '';
+    await assertSelfInspectionEntryRegistrationTagUids({
+      employeeTagUid: pendingEmployeeTag || null,
+      measuringInstrumentTagUid: pendingInstrumentTag || null
+    });
+
+    if (!existingEntry.createdByEmployeeId) {
+      const actor = await this.resolveEntryActorRequired(input.employeeTagUid);
+      patch.createdByEmployeeId = actor.createdByEmployeeId;
+      patch.createdByEmployeeNameSnapshot = actor.createdByEmployeeNameSnapshot;
+    }
+
+    if (!existingEntry.measuringInstrumentId) {
+      const instrument = await this.resolveMeasuringInstrumentByTag(input.measuringInstrumentTagUid);
+      patch.measuringInstrumentId = instrument.measuringInstrumentId;
+      patch.measuringInstrumentManagementNumberSnapshot =
+        instrument.measuringInstrumentManagementNumberSnapshot;
+      patch.measuringInstrumentNameSnapshot = instrument.measuringInstrumentNameSnapshot;
+      patch.measuringInstrumentTagUidSnapshot = instrument.measuringInstrumentTagUidSnapshot;
+    }
+
+    return patch;
+  }
+
   async resolveOrCreateSession(input: {
     templateId: string;
     productNo: string;
@@ -742,6 +962,10 @@ export class SelfInspectionService {
             entrySlotKind: true,
             createdByEmployeeId: true,
             createdByEmployeeNameSnapshot: true,
+            measuringInstrumentId: true,
+            measuringInstrumentManagementNumberSnapshot: true,
+            measuringInstrumentNameSnapshot: true,
+            measuringInstrumentTagUidSnapshot: true,
             createdAt: true,
             updatedAt: true
           }
@@ -926,6 +1150,25 @@ export class SelfInspectionService {
     }
   }
 
+  private async assertAllEntriesHaveRegistration(db: Prisma.TransactionClient, sessionId: string) {
+    const entries = await db.selfInspectionLotEntry.findMany({
+      where: { sessionId },
+      select: {
+        entryIndex: true,
+        createdByEmployeeId: true,
+        measuringInstrumentId: true
+      }
+    });
+    for (const entry of entries) {
+      if (!isSelfInspectionLotEntryRegistrationComplete(entry)) {
+        throw new ApiError(
+          409,
+          `入力件 ${entry.entryIndex + 1} の測定者または測定機器が未登録のため完了できません`
+        );
+      }
+    }
+  }
+
   private assertLotEntryValuesMatchPayload(
     existing: Prisma.SelfInspectionLotEntryGetPayload<{ include: { values: true } }>,
     normalized: Array<{ templateItemId: string; value: Prisma.Decimal }>
@@ -953,6 +1196,10 @@ export class SelfInspectionService {
     entrySlotKind: import('@prisma/client').SelfInspectionEntrySlotKind;
     createdByEmployeeId: string | null;
     createdByEmployeeNameSnapshot: string | null;
+    measuringInstrumentId: string | null;
+    measuringInstrumentManagementNumberSnapshot: string | null;
+    measuringInstrumentNameSnapshot: string | null;
+    measuringInstrumentTagUidSnapshot: string | null;
     createdAt: Date;
     updatedAt: Date;
   }) {
@@ -964,6 +1211,10 @@ export class SelfInspectionService {
       entrySlotLabel: entrySlotLabelFromKind(slotDto, entry.entryIndex),
       createdByEmployeeId: entry.createdByEmployeeId,
       createdByEmployeeNameSnapshot: entry.createdByEmployeeNameSnapshot,
+      measuringInstrumentId: entry.measuringInstrumentId,
+      measuringInstrumentManagementNumberSnapshot: entry.measuringInstrumentManagementNumberSnapshot,
+      measuringInstrumentNameSnapshot: entry.measuringInstrumentNameSnapshot,
+      measuringInstrumentTagUidSnapshot: entry.measuringInstrumentTagUidSnapshot,
       createdAt: entry.createdAt.toISOString(),
       updatedAt: entry.updatedAt.toISOString(),
       values: [] as Array<{ id: string; templateItemId: string; value: string | null }>
@@ -981,6 +1232,10 @@ export class SelfInspectionService {
       entrySlotLabel: entrySlotLabelFromKind(slotDto, entry.entryIndex),
       createdByEmployeeId: entry.createdByEmployeeId,
       createdByEmployeeNameSnapshot: entry.createdByEmployeeNameSnapshot,
+      measuringInstrumentId: entry.measuringInstrumentId,
+      measuringInstrumentManagementNumberSnapshot: entry.measuringInstrumentManagementNumberSnapshot,
+      measuringInstrumentNameSnapshot: entry.measuringInstrumentNameSnapshot,
+      measuringInstrumentTagUidSnapshot: entry.measuringInstrumentTagUidSnapshot,
       createdAt: entry.createdAt.toISOString(),
       updatedAt: entry.updatedAt.toISOString(),
       values: entry.values.map((value) => ({
@@ -995,17 +1250,11 @@ export class SelfInspectionService {
     entryIndex: number;
     values: Array<{ templateItemId: string; value: string | number | null }>;
     employeeTagUid?: string | null;
+    measuringInstrumentTagUid?: string | null;
     createdByEmployeeId?: string | null;
     createdByEmployeeNameSnapshot?: string | null;
   }) {
     const entryIndex = Math.floor(input.entryIndex);
-    const actor =
-      input.createdByEmployeeId != null || input.createdByEmployeeNameSnapshot != null
-        ? {
-            createdByEmployeeId: input.createdByEmployeeId ?? null,
-            createdByEmployeeNameSnapshot: normalizeText(input.createdByEmployeeNameSnapshot) || null
-          }
-        : await this.resolveEntryActor(input.employeeTagUid);
     const result = await prisma.$transaction(async (tx) => {
       await this.lockSessionRow(tx, sessionId);
       const session = await this.loadSessionForMutation(tx, sessionId);
@@ -1030,19 +1279,26 @@ export class SelfInspectionService {
       });
       if (existingAtIndex) {
         this.assertLotEntryValuesMatchPayload(existingAtIndex, values);
-        if (!existingAtIndex.createdByEmployeeId && actor.createdByEmployeeId) {
+        const registration = await this.resolveRegistrationForCreateEntry(
+          this.entryRegistrationFromRow(existingAtIndex),
+          input
+        );
+        const backfillData = this.buildRegistrationBackfillData(existingAtIndex, registration);
+        if (backfillData) {
           const backfilled = await tx.selfInspectionLotEntry.update({
             where: { id: existingAtIndex.id },
-            data: {
-              createdByEmployeeId: actor.createdByEmployeeId,
-              createdByEmployeeNameSnapshot: actor.createdByEmployeeNameSnapshot
-            },
+            data: backfillData,
             include: { values: true }
           });
           return this.serializeLotEntry(backfilled);
         }
+        if (!isSelfInspectionLotEntryRegistrationComplete(existingAtIndex)) {
+          throw new ApiError(400, '測定者または測定機器のNFCタグが必要です');
+        }
         return this.serializeLotEntry(existingAtIndex);
       }
+
+      const registration = await this.resolveRegistrationForCreateEntry(null, input);
 
       try {
         const entry = await tx.selfInspectionLotEntry.create({
@@ -1050,8 +1306,13 @@ export class SelfInspectionService {
             sessionId,
             entryIndex,
             entrySlotKind: slotKind,
-            createdByEmployeeId: actor.createdByEmployeeId,
-            createdByEmployeeNameSnapshot: actor.createdByEmployeeNameSnapshot,
+            createdByEmployeeId: registration.createdByEmployeeId,
+            createdByEmployeeNameSnapshot: registration.createdByEmployeeNameSnapshot,
+            measuringInstrumentId: registration.measuringInstrumentId,
+            measuringInstrumentManagementNumberSnapshot:
+              registration.measuringInstrumentManagementNumberSnapshot,
+            measuringInstrumentNameSnapshot: registration.measuringInstrumentNameSnapshot,
+            measuringInstrumentTagUidSnapshot: registration.measuringInstrumentTagUidSnapshot,
             values: {
               create: values
             }
@@ -1078,16 +1339,21 @@ export class SelfInspectionService {
           throw error;
         }
         this.assertLotEntryValuesMatchPayload(raced, values);
-        if (!raced.createdByEmployeeId && actor.createdByEmployeeId) {
+        const racedRegistration = await this.resolveRegistrationForCreateEntry(
+          this.entryRegistrationFromRow(raced),
+          input
+        );
+        const backfillData = this.buildRegistrationBackfillData(raced, racedRegistration);
+        if (backfillData) {
           const backfilled = await tx.selfInspectionLotEntry.update({
             where: { id: raced.id },
-            data: {
-              createdByEmployeeId: actor.createdByEmployeeId,
-              createdByEmployeeNameSnapshot: actor.createdByEmployeeNameSnapshot
-            },
+            data: backfillData,
             include: { values: true }
           });
           return this.serializeLotEntry(backfilled);
+        }
+        if (!isSelfInspectionLotEntryRegistrationComplete(raced)) {
+          throw new ApiError(400, '測定者または測定機器のNFCタグが必要です');
         }
         return this.serializeLotEntry(raced);
       }
@@ -1103,9 +1369,9 @@ export class SelfInspectionService {
       ifUnmodifiedSince: string;
       values: Array<{ templateItemId: string; value: string | number | null }>;
       employeeTagUid?: string | null;
+      measuringInstrumentTagUid?: string | null;
     }
   ) {
-    const actor = await this.resolveEntryActor(input.employeeTagUid);
     const result = await prisma.$transaction(async (tx) => {
       await this.lockSessionRow(tx, sessionId);
       const session = await this.loadSessionForMutation(tx, sessionId);
@@ -1118,17 +1384,13 @@ export class SelfInspectionService {
         throw new ApiError(404, '自主検査入力が見つかりません');
       }
       assertEntryUnmodifiedSince(input.ifUnmodifiedSince, existingEntry.updatedAt);
+      const registrationPatch = await this.resolveRegistrationPatchForUpdate(existingEntry, input);
       const values = this.validateMeasurementPayload(session.template, input.values);
       const locked = await tx.selfInspectionLotEntry.updateMany({
         where: { id: entryId, sessionId, updatedAt: existingEntry.updatedAt },
         data: {
           updatedAt: new Date(),
-          ...(existingEntry.createdByEmployeeId == null && actor.createdByEmployeeId
-            ? {
-                createdByEmployeeId: actor.createdByEmployeeId,
-                createdByEmployeeNameSnapshot: actor.createdByEmployeeNameSnapshot
-              }
-            : {})
+          ...registrationPatch
         }
       });
       if (locked.count === 0) {
@@ -1187,6 +1449,7 @@ export class SelfInspectionService {
       ) {
         throw new ApiError(409, '必要件数に達していないため完了できません');
       }
+      await this.assertAllEntriesHaveRegistration(tx, sessionId);
       await this.assertAllEntriesWithinTolerance(tx, sessionId, session.template);
       const finalized = await tx.selfInspectionSession.updateMany({
         where: { id: sessionId, completedAt: null },

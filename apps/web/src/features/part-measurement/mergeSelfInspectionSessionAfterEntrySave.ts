@@ -20,6 +20,13 @@ export function applySelfInspectionEntrySaveToSessionCache(
               ...row,
               id: savedEntry.id,
               updatedAt: savedEntry.updatedAt,
+              createdByEmployeeId: savedEntry.createdByEmployeeId,
+              createdByEmployeeNameSnapshot: savedEntry.createdByEmployeeNameSnapshot,
+              measuringInstrumentId: savedEntry.measuringInstrumentId,
+              measuringInstrumentManagementNumberSnapshot:
+                savedEntry.measuringInstrumentManagementNumberSnapshot,
+              measuringInstrumentNameSnapshot: savedEntry.measuringInstrumentNameSnapshot,
+              measuringInstrumentTagUidSnapshot: savedEntry.measuringInstrumentTagUidSnapshot,
               values: []
             }
           : row
@@ -31,9 +38,14 @@ export function applySelfInspectionEntrySaveToSessionCache(
           entryIndex: savedEntry.entryIndex,
           entrySlotKind: savedEntry.entrySlotKind,
           entrySlotLabel: savedEntry.entrySlotLabel,
-          createdByEmployeeId: savedEntry.createdByEmployeeId,
-          createdByEmployeeNameSnapshot: savedEntry.createdByEmployeeNameSnapshot,
-          createdAt: savedEntry.createdAt,
+              createdByEmployeeId: savedEntry.createdByEmployeeId,
+              createdByEmployeeNameSnapshot: savedEntry.createdByEmployeeNameSnapshot,
+              measuringInstrumentId: savedEntry.measuringInstrumentId,
+              measuringInstrumentManagementNumberSnapshot:
+                savedEntry.measuringInstrumentManagementNumberSnapshot,
+              measuringInstrumentNameSnapshot: savedEntry.measuringInstrumentNameSnapshot,
+              measuringInstrumentTagUidSnapshot: savedEntry.measuringInstrumentTagUidSnapshot,
+              createdAt: savedEntry.createdAt,
           updatedAt: savedEntry.updatedAt,
           values: []
         }

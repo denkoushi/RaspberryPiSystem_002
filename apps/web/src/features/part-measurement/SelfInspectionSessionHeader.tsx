@@ -34,6 +34,8 @@ type Props = {
   onBackToList: () => void;
   onReset?: () => void;
   resetDisabled?: boolean;
+  workbenchCameraEnabled?: boolean;
+  onToggleWorkbenchCamera?: () => void;
 };
 
 export function SelfInspectionSessionHeader({
@@ -56,7 +58,9 @@ export function SelfInspectionSessionHeader({
   onPrepareNextPoint,
   onBackToList,
   onReset,
-  resetDisabled = false
+  resetDisabled = false,
+  workbenchCameraEnabled = false,
+  onToggleWorkbenchCamera
 }: Props) {
   const resumeDisabled = !zoomEnabled || !guideActionsEnabled || !canResumeGuide;
 
@@ -90,6 +94,16 @@ export function SelfInspectionSessionHeader({
         </span>
       </div>
       <div className={selfInspectionSessionToolbarSlotClassName} data-self-inspection-session-toolbar>
+        {onToggleWorkbenchCamera ? (
+          <SelfInspectionKioskButton
+            type="button"
+            size="compact"
+            aria-pressed={workbenchCameraEnabled}
+            onClick={onToggleWorkbenchCamera}
+          >
+            {workbenchCameraEnabled ? '手元カメラ ON' : '手元カメラ OFF'}
+          </SelfInspectionKioskButton>
+        ) : null}
         <InspectionDrawingCanvasZoomControls
           enabled={zoomEnabled}
           getButtonClassName={(disabled) =>
