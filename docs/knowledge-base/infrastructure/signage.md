@@ -63,7 +63,7 @@ eligible のみ集約、**表示優先度ソート後**に **2000** 件 cap
 
 | 項目 | 内容 |
 |------|------|
-| **代表コミット** | **`78fc233c`**（`feat(signage): add auto self inspection machine board`） |
+| **代表コミット** | デプロイ時 **`78fc233c`** · **`main` マージ** [PR #421](https://github.com/denkoushi/RaspberryPiSystem_002/pull/421)（squash **`794dd34b`**） |
 | **変更範囲** | **API + Web**（`api`/`web` Docker 再ビルド）· Prisma migration **なし** |
 | **対象ホスト** | **`raspberrypi5` のみ**（Pi4 キオスク×4 · Pi3 サイネージは **デプロイ不要** — JPEG 正本は Pi5 API） |
 | **標準コマンド** | [deployment.md](../../guides/deployment.md) どおり `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/signage-self-inspection-machine-board-auto-target infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` |
