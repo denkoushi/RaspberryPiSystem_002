@@ -177,6 +177,57 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 | **integration が DB 接続失敗** | テスト中に Postgres コンテナを先に `stop` しない。CI 手順どおり migrate 後に vitest |
 | **デプロイ拒否（ahead）** | `origin/feat/kiosk-inspection-drawing-reuse-flow` へ push 後に再実行 |
 
+### 検査図面 trio（名称変更・図面名検索・自主検査遷移）（2026-06-09） {#kiosk-inspection-drawing-trio-2026-06-09}
+
+| 項目 | 内容 |
+|------|------|
+| **status** | `active`（本番 5 台反映済み） |
+| **branch / HEAD** | **`feat/kiosk-inspection-drawing-trio`** · **`4a7f8493`** |
+| **変更種別** | **API + Web**（Prisma / migration **なし**） |
+| **Plan** | [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)（Progress 参照） |
+| **Runbook 手動確認** | [kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md) §自主検査ボタン活性 · 検査図面一覧 |
+
+#### 仕様（3 件）
+
+1. **図面ライブラリ名称変更** — `PATCH /api/part-measurement/visual-templates/:id`（`name` のみ）· UI **新規作成 / 名称変更** · 共有 visual 名は参照テンプレ表示にも反映。
+2. **テンプレ一覧図面名検索** — `GET …/inspection-drawing/templates?visualName=`（部分一致）· FilterBar **図面名** + **更新** ボタン。名称変更成功時は **現在フィルタで再取得**（ローカル patch のみは不可）。
+3. **自主検査遷移** — 保存後 **次未保存 required slot へ自動切替 + guided 再開** · entry 切替 **黒画面回避**（`placeholderData` は **同一 `sessionId` のみ**）· `draftBoundKey` / dirty 再訪時は **boundKey のみ同期**（上書きしない）· 保存直後の次 slot は **`applySelfInspectionEntrySaveToSessionCache` 後の snapshot** で判定。
+
+#### 本番デプロイ（実績·2026-06-09）
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | **`20260609-174538-15678`** | **`ok=134` `changed=4` `failed=0`** | Docker **`api`/`web`** 再ビルド · HEAD **`4a7f8493`** |
+| `raspi4-kensaku-stonebase01` | **`20260609-180605-16020`** | **`ok=129` `changed=11` `failed=0`** | `kiosk-browser` 再起動 |
+| `raspberrypi4` | **`20260609-181043-13094`** | **`ok=122` `changed=10` `failed=0`** | 同上 |
+| `raspi4-robodrill01` | **`20260609-181550-5432`** | **`ok=122` `changed=10` `failed=0`** | 同上 |
+| `raspi4-fjv60-80` | **`20260609-181935-17768`** | **`ok=122` `changed=10` `failed=0`** | 同上 |
+
+**Phase12**（`./scripts/deploy/verify-phase12-real.sh`）: **PASS 43 / WARN 0 / FAIL 0**（Pi5 後 **約 52s** · 全台後 **約 50s**）。
+
+#### 実機検証（自動）
+
+| 確認 | 結果 |
+|------|------|
+| Pi5 `docker-api-1` / `docker-web-1` | **Up (healthy)** |
+| Web バンドル | `/srv/site/assets/index-CvjjZZRg.js` に **`名称変更`** · **`visualName`** |
+| `GET …/visual-templates?limit=1` | **200** |
+| `GET …/inspection-drawing/templates?visualName=test` | **200**（部分一致応答） |
+| `PATCH …/visual-templates/{missing-id}` | **404**（ルート存在） |
+
+**手動（キオスク）**: Pi4 現場での図面名変更・`visualName` フィルタ・自主検査 **保存後自動切替 / guided 再開** は [Runbook §ボタン活性](../runbooks/kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) 手順 5–8 を運用時に実施。
+
+#### 知見（レビュー反映）
+
+- **`useSelfInspectionSession` の `placeholderData`** は `previousData.id === sessionId` のときだけ返す（別セッション遷移中に旧セッションの保存/完了を防ぐ）。
+- **保存後の次 slot** は React Query 再レンダー前の ref ではなく、**`persistEntry` が返した `savedEntry` を cache merge した snapshot** で解決する。
+- **dirty 再訪 entry** は `canRebind` を拒否しても **`draftBoundKey` だけ同期**すれば guided 自動再開可能（draft 本文は保持）。
+
+#### Open items
+
+- Pi4 **stonebase 先行実機**でのキオスク目視記録（上記 Runbook 5–8 · 名称変更/図面名検索）は **未記録**。
+- `visualName` の `contains insensitive` は件数増加時に **trigram / pagination** 検討（Plan 記載どおり）。
+
 ## 自主検査 MVP（2026-06-01） {#自主検査-mvp-2026-06-01}
 
 ### 仕様サマリ
