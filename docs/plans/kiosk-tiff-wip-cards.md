@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | id | `kiosk-tiff-wip-cards` |
-| status | **in_progress** — implementation merged pending · Pi5 deployed · Pi4 / manual TIFF pending |
+| status | **in_progress** — **`main` マージ済** · Pi5 deployed · Pi4 / manual TIFF pending |
 | branch | `feat/kiosk-tiff-wip-cards` |
 | commits | `26978e5c` (feat) · `027d7eb9` (test fix) |
 | scope | API + Web · **Prisma migration なし** |
@@ -27,7 +27,7 @@
 - [x] Pi5 デプロイ — Detach **`20260610-174920-4518`** · **`failed=0`** · Phase12 **43/0/0**
 - [ ] Pi5 キオスク **手動目視**（TIFF プレビュー/保存 · WIP 氏名表示）
 - [ ] Pi4×4 順次デプロイ（Pi5 目視 OK 後）
-- [ ] `main` マージ
+- [x] `main` マージ — PR [#428](https://github.com/denkoushi/RaspberryPiSystem_002/pull/428) · squash **`b3d923d4`**
 
 ## Specification (implemented)
 
