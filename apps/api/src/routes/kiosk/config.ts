@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../../lib/prisma.js';
+import { getKioskHeaderTabOrderSettings } from '../../services/kiosk/kiosk-header-tab-order.service.js';
 
 type ConfigRouteDeps = {
   normalizeClientKey: (rawKey: unknown) => string | undefined;
@@ -85,12 +86,15 @@ export async function registerKioskConfigRoute(
       },
       'Returning kiosk config'
     );
+    const { tabOrder: navTabOrder } = await getKioskHeaderTabOrderSettings();
+
     return {
       theme: 'factory-dark',
       greeting: 'タグを順番にかざしてください',
       idleTimeoutMs: 30000,
       defaultMode,
-      clientStatus
+      clientStatus,
+      navTabOrder
     };
   });
 }

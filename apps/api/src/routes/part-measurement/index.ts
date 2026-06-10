@@ -1269,13 +1269,12 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
 
   app.get('/part-measurement/self-inspection/sessions', { preHandler: allowView }, async (request) => {
     const query = listSelfInspectionSessionsQuerySchema.parse(request.query);
-    const sessions = await selfInspectionService.listSessions({
+    return selfInspectionService.listSessions({
       productNo: query.productNo,
       resourceCd: query.resourceCd,
       processGroup: query.processGroup ? (query.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING') : undefined,
       status: query.status
     });
-    return { sessions };
   });
 
   app.get('/part-measurement/self-inspection/sessions/:id', { preHandler: allowView }, async (request) => {

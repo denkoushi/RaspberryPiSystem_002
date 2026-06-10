@@ -124,6 +124,12 @@ export type SelfInspectionSessionSummaryDto = {
   updatedAt: string;
 };
 
+export type SelfInspectionSessionsListDto = {
+  sessions: SelfInspectionSessionSummaryDto[];
+  listLimit: number;
+  truncated: boolean;
+};
+
 export type SelfInspectionMeasurementValueDto = {
   id: string;
   templateItemId: string;

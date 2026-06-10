@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
-import { createTestClientDevice } from './helpers.js';
+import { createAuthHeader, createTestClientDevice, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -242,10 +242,11 @@ describe('GET /api/kiosk/config', () => {
   });
 
   beforeEach(async () => {
+    await prisma.kioskHeaderTabOrderConfig.deleteMany();
     await prisma.clientLog.deleteMany();
     await prisma.clientStatus.deleteMany();
     await prisma.clientDevice.deleteMany();
-    
+
     const client = await createTestClientDevice();
     clientKey = client.apiKey;
     statusClientId = `pi-status-${Date.now()}`;
@@ -295,6 +296,9 @@ describe('GET /api/kiosk/config', () => {
     expect(body.clientStatus.temperature).toBeCloseTo(55.5);
     expect(body.clientStatus.cpuUsage).toBeCloseTo(45.5);
     expect(body.clientStatus.lastSeen).toBeDefined();
+    expect(Array.isArray(body.navTabOrder)).toBe(true);
+    expect(body.navTabOrder.length).toBeGreaterThan(0);
+    expect(body.navTabOrder[0]).toBe('borrow');
   });
 
   it('should return kiosk config without clientStatus when statusClientId is not set', async () => {
@@ -341,6 +345,72 @@ describe('GET /api/kiosk/config', () => {
     const body = response.json();
     expect(body.theme).toBe('factory-dark');
     expect(body.clientStatus).toBeNull();
+  });
+});
+
+describe('kiosk-settings nav-tab-order', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let adminToken: string;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+    const admin = await createTestUser('ADMIN');
+    adminToken = admin.token;
+  });
+
+  beforeEach(async () => {
+    await prisma.kioskHeaderTabOrderConfig.deleteMany();
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('returns default tab order when unset', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk-settings/nav-tab-order',
+      headers: createAuthHeader(adminToken)
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().settings.tabOrder[0]).toBe('borrow');
+    expect(response.json().settings.tabOrder).toContain('self_inspection');
+  });
+
+  it('persists normalized tab order and exposes it via kiosk config', async () => {
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk-settings/nav-tab-order',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        tabOrder: ['leader_order_board', 'borrow', 'borrow', 'unknown_tab', 'self_inspection']
+      }
+    });
+    expect(putRes.statusCode).toBe(200);
+    expect(putRes.json().settings.tabOrder.slice(0, 3)).toEqual([
+      'leader_order_board',
+      'borrow',
+      'self_inspection'
+    ]);
+
+    const client = await createTestClientDevice();
+    const configRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/config',
+      headers: { 'x-client-key': client.apiKey }
+    });
+    expect(configRes.statusCode).toBe(200);
+    expect(configRes.json().navTabOrder.slice(0, 3)).toEqual([
+      'leader_order_board',
+      'borrow',
+      'self_inspection'
+    ]);
   });
 });
 

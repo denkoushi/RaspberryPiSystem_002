@@ -18,6 +18,7 @@ import { registerCsvImportSubjectPatternRoutes } from './csv-import-subject-patt
 import { registerCsvImportConfigRoutes } from './csv-import-configs.js';
 import { registerVisualizationRoutes } from './visualizations/index.js';
 import { registerProductionScheduleSettingsRoutes } from './production-schedule-settings.js';
+import { registerKioskSettingsRoutes } from './kiosk-settings.js';
 import { registerKioskDocumentRoutes } from './kiosk-documents.js';
 import { registerPartMeasurementRoutes } from './part-measurement/index.js';
 import { registerMobilePlacementRoutes } from './mobile-placement/index.js';
@@ -67,6 +68,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       registerCsvImportConfigRoutes(subApp);
       // 生産スケジュール設定管理ルート
       registerProductionScheduleSettingsRoutes(subApp);
+      // キオスク UX 設定管理ルート
+      registerKioskSettingsRoutes(subApp);
       // 管理コンソール向けレポート
       registerLoanReportRoutes(subApp);
     },

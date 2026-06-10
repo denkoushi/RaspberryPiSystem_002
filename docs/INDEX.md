@@ -48,6 +48,10 @@
 
 - **カード外寸維持**のまま納期 **20px** · 品名/製番/機種名 **16.5px** · **製番を品名行右** · クラスタ行は品目+個数のみ · **右側要素がある行のみ 50% 幅**。**ブランチ**: **`fix/kiosk-leaderboard-card-layout-2`** · **`05ae1a70`** · **PR [#390](https://github.com/denkoushi/RaspberryPiSystem_002/pull/390)** · **CI** **`26993180248`** success · **本番**: Pi5 **`20260605-123252-7617`** → stonebase **実機 OK** → Pi4×3 順次 · Phase12 **43/0/0** · **サイネージ JPEG 対象外**。**記録**: [deployment §カード行強調](./guides/deployment.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05) · [KB-297 §カード行強調](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05) · [verification-checklist §6.6.30](./guides/verification-checklist.md#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05) · [プレビュー](./design-previews/kiosk-rank-board-card-single-preview.html)
 
+### 最新アップデート（2026-06-10 · キオスク UX 設定 · 仕掛中ハブ + ヘッダータブ順 · **Pi5+Pi4×4 本番**）
+
+- **ブランチ**: **`feat/kiosk-self-inspection-wip-and-tab-order`** · **`c9b265a9`** · Phase12 **43/0/0** · **記録**: [Runbook §キオスク UX 設定](./runbooks/kiosk-part-measurement.md#kiosk-ux-settings-wip-and-tab-order-2026-06-10)
+
 ### 最新アップデート（2026-06-05 · キオスク自主検査・セッション ボタンUI統一 + 操作誘導 · **Pi5 本番・実機 OK**）
 
 - **見た目統一**（押せる/押せない 1 形 · 白枠なし）+ **`入力を保存` / `自主検査を完了` のみ** 押せるとき **青外枠**（`highlighted` = 既存 `enabled` · 文言追加なし）。**ブランチ**: **`feat/kiosk-self-inspection-button-ui`** · **`f2b374f5`** / **`ffdaebda`** · **CI** **`26990244892`** success · **本番**: Pi5 Detach **`20260605-105452-27065`** · Phase12 **43/0/0** · **Pi5 目視 OK** · Pi4×4 **未**。**将来**: 他画面への横展開は別機会。**記録**: [deployment §ボタンUI](./guides/deployment.md#kiosk-self-inspection-session-button-ui-2026-06-05) · [KB-320 §ボタンUI](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [Runbook §ボタンUI](./runbooks/kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [要件](./design-previews/kiosk-self-inspection-session-buttons-requirements.md)
