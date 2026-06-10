@@ -7,14 +7,16 @@ vi.mock('@tanstack/react-virtual', () => ({
     getVirtualItems: () =>
       opts.count > 0 ? [{ index: 0, start: 0, key: 'virtual-0' }] : [],
     getTotalSize: () => opts.count * 100,
-    measureElement: vi.fn()
+    measureElement: vi.fn(),
+    measure: vi.fn()
   })
 }));
 
 import {
-  GANTT_CARD_MAX_HEIGHT_VH,
   GANTT_MIN_ROW_HEIGHT_PX,
-  GANTT_TICK_GUTTER_WIDTH_PX
+  GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX,
+  GANTT_TICK_GUTTER_WIDTH_PX,
+  GANTT_TICK_ORIGIN_LINE_HEIGHT_PX
 } from '../gantt/leaderBoardGanttConstants';
 import { LeaderBoardGanttTickGutter } from '../gantt/LeaderBoardGanttTickGutter';
 import { LeaderBoardGrid } from '../LeaderBoardGrid';
@@ -51,19 +53,28 @@ const rowProps = {
 };
 
 describe('LeaderBoardGanttTickGutter', () => {
-  it('renders pointer-events-none gutter with 1px tick lines', () => {
+  it('renders pointer-events-none gutter with origin and boundary tick lines', () => {
     const { container } = render(
-      <LeaderBoardGanttTickGutter totalHeightPx={200} tickPositions={[0, 96]} />
+      <LeaderBoardGanttTickGutter
+        totalHeightPx={200}
+        tickMarks={[
+          { topPx: 0, kind: 'origin' },
+          { topPx: 96, kind: 'boundary' }
+        ]}
+      />
     );
 
     const gutter = container.firstElementChild as HTMLElement;
     expect(gutter).toHaveClass('pointer-events-none');
     expect(gutter).toHaveAttribute('aria-hidden', 'true');
 
-    const ticks = container.querySelectorAll<HTMLElement>('.bg-cyan-400\\/55');
-    expect(ticks).toHaveLength(2);
-    expect(ticks[0].style.height).toBe('1px');
-    expect(ticks[1].style.top).toBe('96px');
+    const originTick = container.querySelector<HTMLElement>('.bg-cyan-400\\/55');
+    const boundaryTick = container.querySelector<HTMLElement>('.bg-cyan-300\\/80');
+    expect(originTick).not.toBeNull();
+    expect(boundaryTick).not.toBeNull();
+    expect(originTick?.style.height).toBe(`${GANTT_TICK_ORIGIN_LINE_HEIGHT_PX}px`);
+    expect(boundaryTick?.style.height).toBe(`${GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX}px`);
+    expect(boundaryTick?.style.top).toBe('96px');
   });
 });
 
@@ -99,20 +110,20 @@ describe('LeaderOrderResourceCard gantt', () => {
     expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
   });
 
-  it('drops h-full and renders 8H tick gutter when gantt is on', () => {
+  it('keeps h-full and renders 8H tick gutter when gantt is on', () => {
     const { container } = render(<LeaderOrderResourceCard {...cardProps} ganttEnabled />);
 
-    expect(container.firstElementChild).not.toHaveClass('h-full');
+    expect(container.firstElementChild).toHaveClass('h-full');
     const gutter = container.querySelector('[aria-hidden="true"]');
     expect(gutter).toBeInTheDocument();
     expect(gutter).toHaveClass('pointer-events-none');
   });
 
-  it('caps card height and uses flex-1 inner scroll when gantt is on', () => {
+  it('does not cap card height with maxHeight when gantt is on', () => {
     const { container } = render(<LeaderOrderResourceCard {...cardProps} ganttEnabled />);
 
     const card = container.firstElementChild as HTMLElement;
-    expect(card.style.maxHeight).toBe(`${GANTT_CARD_MAX_HEIGHT_VH}vh`);
+    expect(card.style.maxHeight).toBe('');
 
     const body = screen.getByTestId('leader-order-resource-card-body');
     expect(body).toHaveClass('flex-1');
@@ -176,10 +187,10 @@ describe('LeaderBoardGrid gantt', () => {
     expect(container.firstElementChild?.className).not.toContain('auto-rows-auto');
   });
 
-  it('uses auto grid rows when gantt is on', () => {
+  it('uses 1fr grid rows when gantt is on', () => {
     const { container } = render(<LeaderBoardGrid {...gridProps} ganttEnabled />);
-    expect(container.firstElementChild?.className).toContain('auto-rows-auto');
-    expect(container.firstElementChild?.className).toContain('[grid-auto-rows:minmax(14rem,auto)]');
+    expect(container.firstElementChild?.className).toContain('[grid-auto-rows:minmax(14rem,1fr)]');
+    expect(container.firstElementChild?.className).not.toContain('auto-rows-auto');
     expect(screen.getByText('305')).toBeInTheDocument();
   });
 });

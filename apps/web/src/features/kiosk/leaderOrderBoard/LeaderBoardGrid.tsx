@@ -152,9 +152,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
     <div
       className={clsx(
         'grid min-h-0 flex-1 grid-cols-1 gap-2.5 overflow-auto md:grid-cols-4 xl:grid-cols-6',
-        ganttEnabled
-          ? 'auto-rows-auto items-start [grid-auto-rows:minmax(14rem,auto)]'
-          : '[grid-auto-rows:minmax(14rem,1fr)]'
+        '[grid-auto-rows:minmax(14rem,1fr)]'
       )}
     >
       {resourceCdBySlotIndex.map((cdRaw, slotIndex) => {

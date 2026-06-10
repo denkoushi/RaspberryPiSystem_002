@@ -20,7 +20,7 @@ open_items:
 
 ## Goal
 
-Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. When ON, row height scales with `FSIGENSHOYORYO` (required minutes, no quantity multiply) and an 8H tick gutter appears on the left of each resource slot card.
+Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. When ON, each resource slot uses a **variable 8H ruler** scaled to the slot body height, row height scales with `FSIGENSHOYORYO` (required minutes, no quantity multiply), and 8H boundary ticks appear on the left gutter.
 
 ## Constraints
 
@@ -29,15 +29,20 @@ Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. W
 - Pi4-friendly: pure layout math, accurate virtual estimates, no height animations.
 - Signage JPEG path out of scope.
 
-## Layout contract
+## Layout contract (variable 8H ruler)
 
-- `contentHeightPx = clamp(96, requiredMinutes * pxPerMinute, 384)`
-- `estimateHeightPx = contentHeightPx + 4 + (footer chips ? 28 : 0)`
-- Card inner scroll parent is always retained (`flex-1 min-h-0 overflow-y-auto` on the body when gantt ON).
-- When gantt ON: card `max-height` is capped at `70vh` so inner scroll activates before the card grows unbounded; content shorter than the cap still sizes naturally up to the cap.
-- When gantt ON and row count > virtual threshold: virtualized inner scroll (unchanged Pi4 path).
-- Grid uses `minmax(14rem, auto)` when gantt ON.
-- 8H ticks map to cumulative **work-time** height (`rowMinHeightPx` only). Footer chips and row padding are excluded from the time axis.
+- Scale is **per resource slot**: `pxPerMinute = availableWorkHeightPx / max(totalRequiredMinutes, 480)`.
+- `workHeightPx = requiredMinutes * pxPerMinute` (time axis for ruler mapping).
+- `visualMinHeightPx = max(workHeightPx, 96)` (readability; DOM min-height).
+- `estimateHeightPx = visualMinHeightPx + 4 + (footer chips ? 28 : 0)`.
+- `containerMinHeightPx = max(totalEstimateHeightPx, availableWorkHeightPx)`.
+- When total required minutes are under 8H and rows fit without exceeding available height, the **8H boundary** is drawn near the slot bottom to show unused capacity.
+- When many short rows force `totalEstimateHeightPx > availableWorkHeightPx`, **readability wins**; unused-gap visualization is skipped and content scrolls inside the slot body.
+- Slot card uses `h-full` (fills grid row). `max-height: 70vh` cap removed for gantt ON.
+- Grid uses `minmax(14rem, 1fr)` for both gantt ON and OFF.
+- 8H ticks: `origin` at 0H (thin), `boundary` at 8H/16H… (thicker). Footer chips and row padding are excluded from the time axis.
+- Tick bottom placement clamps to `availableHeight - boundaryLineHeight` to avoid clipping when unused-gap is shown.
+- When readability overflow expands `containerMinHeightPx` beyond the viewport body, tick boundaries clamp to `containerMinHeightPx` so ruler lines track scrollable content.
 
 ## Local Notes JA
 

@@ -1,21 +1,18 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
-import { memo, useCallback, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manualOrderOverviewTypography';
 
 import { buildLeaderBoardPartResourceProcessKey } from './buildLeaderBoardPartResourceProcessKey';
 import {
-  GANTT_CARD_MAX_HEIGHT_VH,
+  GANTT_FALLBACK_AVAILABLE_WORK_HEIGHT_PX,
   GANTT_TICK_GUTTER_WIDTH_PX,
   GANTT_VIRTUAL_OVERSCAN
 } from './gantt/leaderBoardGanttConstants';
-import {
-  computeGanttEightHourTickVisualPositions,
-  computeGanttRowLayout,
-  computeGanttTotalEstimateHeightPx
-} from './gantt/leaderBoardGanttLayout';
+import { computeGanttSlotLayout } from './gantt/leaderBoardGanttLayout';
 import { LeaderBoardGanttTickGutter } from './gantt/LeaderBoardGanttTickGutter';
+import { useLeaderBoardGanttBodyHeight } from './gantt/useLeaderBoardGanttBodyHeight';
 import { LeaderOrderResourceRow } from './LeaderOrderResourceRow';
 import { LEADER_BOARD_ROW_ESTIMATE_PX, LEADER_BOARD_VIRTUAL_ROW_THRESHOLD } from './performance/leaderBoardRefetchPolicy';
 import { resolveSeibanAccentRowClass } from './seibanAccentPalette';
@@ -85,6 +82,7 @@ function LeaderOrderResourceCardInner({
   const jp = resourceJapaneseNames?.trim() ?? '';
   const isSignage = variant === 'signage';
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
+  const bodyHeightPx = useLeaderBoardGanttBodyHeight(scrollParentRef, ganttEnabled);
 
   const rowsWithFooter = useMemo(
     () =>
@@ -102,26 +100,29 @@ function LeaderOrderResourceCardInner({
     [rows, footerResourceChipsByPartKey]
   );
 
-  const rowLayouts = useMemo(() => {
+  const slotLayout = useMemo(() => {
     if (!ganttEnabled) return null;
-    return rowsWithFooter.map(({ row, footerChips }) =>
-      computeGanttRowLayout({
+    const availableWorkHeightPx =
+      bodyHeightPx > 0 ? bodyHeightPx : GANTT_FALLBACK_AVAILABLE_WORK_HEIGHT_PX;
+    return computeGanttSlotLayout({
+      rows: rowsWithFooter.map(({ row, footerChips }) => ({
         requiredMinutes: row.requiredMinutes,
         hasFooterChips: footerChips.length > 0
-      })
-    );
-  }, [ganttEnabled, rowsWithFooter]);
+      })),
+      availableWorkHeightPx
+    });
+  }, [ganttEnabled, rowsWithFooter, bodyHeightPx]);
 
   const useVirtual = rowsWithFooter.length > LEADER_BOARD_VIRTUAL_ROW_THRESHOLD;
 
   const estimateSize = useCallback(
     (index: number) => {
-      if (ganttEnabled && rowLayouts) {
-        return rowLayouts[index]?.estimateHeightPx ?? LEADER_BOARD_ROW_ESTIMATE_PX;
+      if (ganttEnabled && slotLayout) {
+        return slotLayout.rowLayouts[index]?.estimateHeightPx ?? LEADER_BOARD_ROW_ESTIMATE_PX;
       }
       return LEADER_BOARD_ROW_ESTIMATE_PX;
     },
-    [ganttEnabled, rowLayouts]
+    [ganttEnabled, slotLayout]
   );
 
   const rowVirtualizer = useVirtualizer({
@@ -133,17 +134,15 @@ function LeaderOrderResourceCardInner({
     measureElement: (el) => el.getBoundingClientRect().height
   });
 
-  const staticTotalHeightPx = useMemo(() => {
-    if (!ganttEnabled || !rowLayouts || useVirtual) return 0;
-    return computeGanttTotalEstimateHeightPx(rowLayouts);
-  }, [ganttEnabled, rowLayouts, useVirtual]);
+  useEffect(() => {
+    if (!ganttEnabled || !slotLayout || !useVirtual) return;
+    rowVirtualizer.measure();
+  }, [ganttEnabled, slotLayout, useVirtual, rowVirtualizer]);
 
-  const bodyTotalHeightPx = useVirtual ? rowVirtualizer.getTotalSize() : staticTotalHeightPx;
-
-  const tickPositions = useMemo(() => {
-    if (!ganttEnabled || !rowLayouts) return [];
-    return computeGanttEightHourTickVisualPositions(rowLayouts);
-  }, [ganttEnabled, rowLayouts]);
+  const containerMinHeightPx = ganttEnabled && slotLayout ? slotLayout.containerMinHeightPx : 0;
+  const bodyTotalHeightPx = useVirtual
+    ? Math.max(rowVirtualizer.getTotalSize(), containerMinHeightPx)
+    : containerMinHeightPx;
 
   const bodyPaddingLeft = ganttEnabled ? GANTT_TICK_GUTTER_WIDTH_PX + 4 : 0;
 
@@ -156,7 +155,9 @@ function LeaderOrderResourceCardInner({
       variant={variant}
       resourceCd={resourceCd}
       row={row}
-      rowMinHeightPx={ganttEnabled && rowLayouts ? rowLayouts[index]?.rowMinHeightPx : undefined}
+      rowMinHeightPx={
+        ganttEnabled && slotLayout ? slotLayout.rowLayouts[index]?.visualMinHeightPx : undefined
+      }
       seibanAccentRowClass={resolveSeibanAccentRowClass(row.fseiban, activeSeibanFilters ?? [])}
       orderUsageNumbers={orderUsageNumbers}
       onOrderChange={onOrderChange}
@@ -187,15 +188,13 @@ function LeaderOrderResourceCardInner({
             }
       }
       className={clsx(
-        'flex min-h-[12rem] flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-[border-color,box-shadow,opacity] outline-none',
-        !ganttEnabled && 'h-full',
+        'flex min-h-[12rem] h-full flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-[border-color,box-shadow,opacity] outline-none',
         !isSignage && 'cursor-pointer focus-visible:ring-2 focus-visible:ring-cyan-400/60',
         isSignage && 'cursor-default',
         KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS,
         selected ? 'border-cyan-300/70 shadow-[0_0_0_1px_rgba(34,211,238,0.3)]' : 'border-white/10',
         dimmed ? 'opacity-[0.52]' : 'opacity-100'
       )}
-      style={ganttEnabled ? { maxHeight: `${GANTT_CARD_MAX_HEIGHT_VH}vh` } : undefined}
       aria-label={
         isSignage
           ? `資源 ${resourceCd}${jp ? ` ${jp}` : ''}（閲覧）`
@@ -246,10 +245,13 @@ function LeaderOrderResourceCardInner({
         ) : useVirtual ? (
           <div
             className="relative w-full"
-            style={{ height: `${bodyTotalHeightPx}px` }}
+            style={{ minHeight: ganttEnabled ? `${bodyTotalHeightPx}px` : undefined, height: `${bodyTotalHeightPx}px` }}
           >
-            {ganttEnabled ? (
-              <LeaderBoardGanttTickGutter totalHeightPx={bodyTotalHeightPx} tickPositions={tickPositions} />
+            {ganttEnabled && slotLayout ? (
+              <LeaderBoardGanttTickGutter
+                totalHeightPx={bodyTotalHeightPx}
+                tickMarks={slotLayout.tickMarks}
+              />
             ) : null}
             {rowVirtualizer.getVirtualItems().map((vi) => {
               const { row, footerChips } = rowsWithFooter[vi.index];
@@ -271,15 +273,18 @@ function LeaderOrderResourceCardInner({
               );
             })}
           </div>
-        ) : ganttEnabled ? (
+        ) : ganttEnabled && slotLayout ? (
           <div
             className="relative w-full"
             style={{
-              minHeight: `${staticTotalHeightPx}px`,
+              minHeight: `${bodyTotalHeightPx}px`,
               paddingLeft: bodyPaddingLeft
             }}
           >
-            <LeaderBoardGanttTickGutter totalHeightPx={bodyTotalHeightPx} tickPositions={tickPositions} />
+            <LeaderBoardGanttTickGutter
+              totalHeightPx={bodyTotalHeightPx}
+              tickMarks={slotLayout.tickMarks}
+            />
             {rowsWithFooter.map(({ row, footerChips }, index) => (
               <div key={row.id} className="pb-1">
                 {renderRow(row, footerChips, index)}
