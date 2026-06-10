@@ -427,7 +427,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ### 補足（2026-06-02 · **キオスク検査図面 · PDF プレビュー整合**·**API + Web**·**Pi5 本番・実機 OK・Pi4×4 未**） {#kiosk-inspection-drawing-pdf-preview-parity-2026-06-02}
 
-- **変更概要（正本）**: [KB-320 §PDF 取込](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02) · [Runbook §PDF 取込](../runbooks/kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [verification-checklist §6.6](./verification-checklist.md)。
+- **変更概要（正本）**: [KB-320 §PDF/TIFF 取込](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02) · [Runbook §PDF/TIFF 取込](../runbooks/kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · [verification-checklist §6.6](./verification-checklist.md)。
   - **症状（旧）**: PDF を `<img src={blob:…}>` に直接渡すとブラウザで描画できず **プレビュー空白**。保存経路（`pdftoppm` → JPEG）と表示ラスタが不一致で **測定点座標がずれる**。
   - **Fix**: `POST /api/part-measurement/drawings/preview`（**DB/storage 書き込みなし**）で 1 ページ目 JPEG 化。Web は `usePartMeasurementDrawingLocalPreview` が preview JPEG を `blob:` 化し、**保存時に同一 File を再利用**。Canvas は常に画像 URL のみ。
   - **レビュー追補（`8307c995`）**: PDF 変換失敗時に `hasPendingLocalSelection` を解除（保存ブロック解消）· 成功パスでも `AbortController.signal.aborted` を確認（レース防止）· unmount 時 `previewUrlRef` で setState 回避 · `dgx-resource.aux-http-runtime.executor.ts` のデバッグ fetch 撤去。

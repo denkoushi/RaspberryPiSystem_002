@@ -7,7 +7,12 @@ vi.mock('../convert-pdf-first-page-to-jpeg.js', () => ({
   convertPdfFirstPageToJpeg: vi.fn()
 }));
 
+vi.mock('../convert-tiff-to-jpeg.js', () => ({
+  convertTiffBufferToJpeg: vi.fn()
+}));
+
 import { convertPdfFirstPageToJpeg } from '../convert-pdf-first-page-to-jpeg.js';
+import { convertTiffBufferToJpeg } from '../convert-tiff-to-jpeg.js';
 import { buildMinimalValidPdfBuffer } from './fixtures/minimal-pdf.js';
 import { PartMeasurementDrawingStorage } from '../part-measurement-drawing-storage.js';
 
@@ -21,6 +26,7 @@ const MIN_PDF = buildMinimalValidPdfBuffer();
 describe('convertDrawingUploadToPreviewBuffer', () => {
   beforeEach(() => {
     vi.mocked(convertPdfFirstPageToJpeg).mockReset();
+    vi.mocked(convertTiffBufferToJpeg).mockReset();
   });
 
   it('returns png buffer without storage write', async () => {
@@ -50,6 +56,25 @@ describe('convertDrawingUploadToPreviewBuffer', () => {
     });
 
     expect(convertPdfFirstPageToJpeg).toHaveBeenCalled();
+    expect(result.contentType).toBe('image/jpeg');
+    expect(result.buffer).toBe(jpeg);
+    expect(saveSpy).not.toHaveBeenCalled();
+    saveSpy.mockRestore();
+  });
+
+  it('converts tiff to jpeg without storage write', async () => {
+    const tiff = Buffer.from([0x49, 0x49, 0x2a, 0x00, 0x08, 0x00]);
+    const jpeg = Buffer.from('jpeg-from-tiff');
+    vi.mocked(convertTiffBufferToJpeg).mockResolvedValue(jpeg);
+    const saveSpy = vi.spyOn(PartMeasurementDrawingStorage, 'saveDrawing');
+
+    const result = await convertDrawingUploadToPreviewBuffer({
+      buffer: tiff,
+      mimetype: 'image/tiff',
+      filename: 'drawing.tiff'
+    });
+
+    expect(convertTiffBufferToJpeg).toHaveBeenCalledWith(tiff);
     expect(result.contentType).toBe('image/jpeg');
     expect(result.buffer).toBe(jpeg);
     expect(saveSpy).not.toHaveBeenCalled();

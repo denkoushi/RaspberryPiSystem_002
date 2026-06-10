@@ -14,6 +14,8 @@ import { verifyProductionScheduleRowOrThrow } from '../production-schedule/verif
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from './self-inspection-machine-board-cache-invalidation.js';
 import { assertMeasuringInstrumentAvailableForSelfInspection } from './self-inspection-measuring-instrument-eligibility.js';
 import { assertSelfInspectionEntryRegistrationTagUids } from './self-inspection-registration-tag-validation.js';
+import { collectParticipantEmployeeNames } from './self-inspection-participant-names.js';
+import { loadParticipantEmployeeNamesBySessionIds } from './self-inspection-participant-names.query.js';
 import { isSelfInspectionLotEntryRegistrationComplete } from './self-inspection-nfc-tag-resolve.js';
 
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
@@ -542,7 +544,10 @@ function serializeResetNewSession(session: {
   };
 }
 
-function serializeSessionSummary(session: SessionSummarySource | SessionWithCounts) {
+function serializeSessionSummary(
+  session: SessionSummarySource | SessionWithCounts,
+  participantEmployeeNames: string[] = []
+) {
   const policy = sessionForEntryCountPolicy(session);
   const completedEntryCount = session._count.entries;
   const requiredEntryCount = resolveRequiredEntryCountForCompletion(policy);
@@ -565,6 +570,7 @@ function serializeSessionSummary(session: SessionSummarySource | SessionWithCoun
     expectedEntryCount: session.expectedEntryCount,
     ...enrichSessionEntryCountFields({ ...policy, completedEntryCount }),
     completedEntryCount,
+    participantEmployeeNames,
     selfInspectionMode: serializeSelfInspectionMode(session.template.selfInspectionMode),
     selfInspectionFixedCount: resolveTemplateFixedCount(templateConfig),
     selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
@@ -573,6 +579,13 @@ function serializeSessionSummary(session: SessionSummarySource | SessionWithCoun
     completedAt: session.completedAt?.toISOString() ?? null,
     updatedAt: session.updatedAt.toISOString()
   };
+}
+
+async function serializeSessionSummaryWithAggregatedParticipantNames(
+  session: SessionSummarySource | SessionWithCounts
+) {
+  const participantNamesBySessionId = await loadParticipantEmployeeNamesBySessionIds([session.id]);
+  return serializeSessionSummary(session, participantNamesBySessionId.get(session.id) ?? []);
 }
 
 export class SelfInspectionService {
@@ -918,7 +931,7 @@ export class SelfInspectionService {
       include: sessionInclude
     });
 
-    return serializeSessionSummary(session);
+    return serializeSessionSummaryWithAggregatedParticipantNames(session);
   }
 
   async listSessions(query: {
@@ -949,7 +962,12 @@ export class SelfInspectionService {
     });
     const truncated = rows.length > LIST_SESSIONS_MAX;
     const boundedRows = truncated ? rows.slice(0, LIST_SESSIONS_MAX) : rows;
-    const summaries = boundedRows.map(serializeSessionSummary);
+    const participantNamesBySessionId = await loadParticipantEmployeeNamesBySessionIds(
+      boundedRows.map((row) => row.id)
+    );
+    const summaries = boundedRows.map((row) =>
+      serializeSessionSummary(row, participantNamesBySessionId.get(row.id) ?? [])
+    );
     const sessions =
       query.status === 'in_progress'
         ? summaries.filter((row) => row.status === 'in_progress')
@@ -1034,6 +1052,7 @@ export class SelfInspectionService {
       expectedEntryCount: session.expectedEntryCount,
       ...enrichSessionEntryCountFields({ ...policy, completedEntryCount }),
       completedEntryCount,
+      participantEmployeeNames: collectParticipantEmployeeNames(session.entries),
       selfInspectionMode: serializeSelfInspectionMode(session.template.selfInspectionMode),
       selfInspectionFixedCount: resolveTemplateFixedCount(templateConfig),
       selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
@@ -1441,20 +1460,20 @@ export class SelfInspectionService {
       _count: { select: { entries: true } }
     } as const;
 
-    const result = await prisma.$transaction(async (tx) => {
+    const session = await prisma.$transaction(async (tx) => {
       await this.lockSessionRow(tx, sessionId);
-      const session = await tx.selfInspectionSession.findUnique({
+      const existing = await tx.selfInspectionSession.findUnique({
         where: { id: sessionId },
         include: sessionInclude
       });
-      if (!session) {
+      if (!existing) {
         throw new ApiError(404, '自主検査セッションが見つかりません');
       }
-      if (session.completedAt) {
-        return serializeSessionSummary(session);
+      if (existing.completedAt) {
+        return existing;
       }
-      this.assertSessionEntryCountWritable(session);
-      const templateConfig = templateConfigFromTemplate(session.template);
+      this.assertSessionEntryCountWritable(existing);
+      const templateConfig = templateConfigFromTemplate(existing.template);
       const entryRows = await tx.selfInspectionLotEntry.findMany({
         where: { sessionId },
         select: { entryIndex: true }
@@ -1462,14 +1481,14 @@ export class SelfInspectionService {
       if (
         !isSessionCompletionReady(
           templateConfig,
-          session.plannedQuantity,
+          existing.plannedQuantity,
           entryRows.map((row) => row.entryIndex)
         )
       ) {
         throw new ApiError(409, '必要件数に達していないため完了できません');
       }
       await this.assertAllEntriesHaveRegistration(tx, sessionId);
-      await this.assertAllEntriesWithinTolerance(tx, sessionId, session.template);
+      await this.assertAllEntriesWithinTolerance(tx, sessionId, existing.template);
       const finalized = await tx.selfInspectionSession.updateMany({
         where: { id: sessionId, completedAt: null },
         data: { completedAt: new Date() }
@@ -1480,7 +1499,7 @@ export class SelfInspectionService {
           include: sessionInclude
         });
         if (current?.completedAt) {
-          return serializeSessionSummary(current);
+          return current;
         }
         throw new ApiError(409, '自主検査セッションを完了できません');
       }
@@ -1491,10 +1510,11 @@ export class SelfInspectionService {
       if (!completed) {
         throw new ApiError(404, '自主検査セッションが見つかりません');
       }
-      return serializeSessionSummary(completed);
+      return completed;
     });
     resetSelfInspectionMachineBoardScheduleRowCaches();
-    return result;
+    const participantNamesBySessionId = await loadParticipantEmployeeNamesBySessionIds([session.id]);
+    return serializeSessionSummary(session, participantNamesBySessionId.get(session.id) ?? []);
   }
 
   async resetSession(

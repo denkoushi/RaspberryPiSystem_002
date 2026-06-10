@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 
 import { convertPdfFirstPageToJpeg } from './convert-pdf-first-page-to-jpeg.js';
+import { convertTiffBufferToJpeg } from './convert-tiff-to-jpeg.js';
 import { ApiError } from './errors.js';
 import {
   assertPdfMagic,
@@ -54,9 +55,13 @@ async function convertPdfToPreviewBuffer(buffer: Buffer): Promise<Buffer> {
   }
 }
 
+async function convertTiffToPreviewBuffer(buffer: Buffer): Promise<Buffer> {
+  return convertTiffBufferToJpeg(buffer);
+}
+
 /**
  * 図面ファイルをプレビュー用バイナリへ変換する（storage / DB 書き込みなし）。
- * PDF は 1 ページ目のみ JPEG 化。画像はそのまま返す。
+ * PDF/TIFF は JPEG 化。画像はそのまま返す。
  */
 export async function convertDrawingUploadToPreviewBuffer(
   input: DrawingPreviewInput
@@ -83,6 +88,11 @@ export async function convertDrawingUploadToPreviewBuffer(
 
   if (kind === 'pdf') {
     const jpegBuffer = await convertPdfToPreviewBuffer(buffer);
+    return { buffer: jpegBuffer, contentType: 'image/jpeg' };
+  }
+
+  if (kind === 'tiff') {
+    const jpegBuffer = await convertTiffToPreviewBuffer(buffer);
     return { buffer: jpegBuffer, contentType: 'image/jpeg' };
   }
 

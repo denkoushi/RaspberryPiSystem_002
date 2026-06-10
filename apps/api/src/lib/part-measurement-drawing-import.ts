@@ -46,6 +46,19 @@ async function importPdfDrawing(buffer: Buffer): Promise<DrawingImportResult> {
   }
 }
 
+async function importTiffDrawing(buffer: Buffer): Promise<DrawingImportResult> {
+  const { buffer: jpegBuffer } = await convertDrawingUploadToPreviewBuffer({
+    buffer,
+    mimetype: 'image/tiff',
+    filename: 'drawing.tiff'
+  });
+  try {
+    return await PartMeasurementDrawingStorage.saveDrawing(jpegBuffer, 'image/jpeg');
+  } catch (error) {
+    wrapStorageError(error);
+  }
+}
+
 async function importImageDrawing(buffer: Buffer, mime: string): Promise<DrawingImportResult> {
   try {
     return await PartMeasurementDrawingStorage.saveDrawing(buffer, mime);
@@ -55,8 +68,8 @@ async function importImageDrawing(buffer: Buffer, mime: string): Promise<Drawing
 }
 
 /**
- * 図面ファイル（画像または PDF）を取り込み、保存済み storage URL を返す。
- * PDF は 1 ページ目のみ JPEG 化してから保存する。
+ * 図面ファイル（画像、PDF、TIFF）を取り込み、保存済み storage URL を返す。
+ * PDF/TIFF は JPEG 化してから保存する。
  */
 export async function importDrawingAndSave(input: DrawingImportInput): Promise<DrawingImportResult> {
   const { buffer, mimetype, filename } = input;
@@ -81,6 +94,10 @@ export async function importDrawingAndSave(input: DrawingImportInput): Promise<D
 
   if (kind === 'pdf') {
     return importPdfDrawing(buffer);
+  }
+
+  if (kind === 'tiff') {
+    return importTiffDrawing(buffer);
   }
 
   return importImageDrawing(buffer, resolvedMime);

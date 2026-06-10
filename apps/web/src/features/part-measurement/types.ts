@@ -114,6 +114,8 @@ export type SelfInspectionSessionSummaryDto = {
   /** 旧形式で操作不能なときの案内（再作成導線） */
   entryCountBlockedReason?: string | null;
   completedEntryCount: number;
+  /** entry 登録済み測定者氏名（entryIndex 昇順・重複除去） */
+  participantEmployeeNames: string[];
   selfInspectionMode: SelfInspectionMode;
   selfInspectionFixedCount: number | null;
   /** API 互換（fixed_count 時は fixedCount と同値） */

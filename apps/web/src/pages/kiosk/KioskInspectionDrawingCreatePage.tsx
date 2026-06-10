@@ -48,6 +48,7 @@ import {
   nextAvailableMarkerNo,
   toleranceBoundsFromPoint
 } from '../../features/part-measurement/inspection-drawing/markerNumbering';
+import { partMeasurementDrawingPreviewConvertingLabel } from '../../features/part-measurement/partMeasurementDrawingLocalPreview';
 import {
   mapTemplateFixedCountToFormString,
   buildSelfInspectionTemplateApiBody
@@ -115,6 +116,7 @@ export function KioskInspectionDrawingCreatePage() {
     saveFile,
     previewResolving,
     previewError,
+    pendingPreviewFile,
     hasLocalRenderablePreview,
     hasPendingLocalSelection,
     selectFile,
@@ -635,7 +637,7 @@ export function KioskInspectionDrawingCreatePage() {
         return;
       }
       if (visualSource === 'upload' && !saveFile) {
-        setMessage('新規アップロードの図面ファイルを選んでください（PDFは1ページ目のみ）。');
+        setMessage('新規アップロードの図面ファイルを選んでください（PDFは1ページ目のみ・TIFF/TIFも可）。');
         return;
       }
       if (visualSource === 'pickExisting' && !selectedVisualTemplateId?.trim()) {
@@ -867,7 +869,9 @@ export function KioskInspectionDrawingCreatePage() {
             />
           ) : hasDrawingImage && !drawingLoadError && !previewError ? (
             <div className="flex flex-1 items-center justify-center rounded border border-dashed border-white/30 text-[1rem] text-white/60">
-              {previewResolving ? 'PDF を変換中…' : '図面を読み込み中…'}
+              {previewResolving
+                ? partMeasurementDrawingPreviewConvertingLabel(pendingPreviewFile)
+                : '図面を読み込み中…'}
             </div>
           ) : (
             <div className="flex flex-1 items-center justify-center rounded border border-dashed border-white/30 text-[1rem] text-white/60">

@@ -9,6 +9,7 @@ vi.mock('../self-inspection-machine-board-cache-invalidation.js', () => ({
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     $transaction: vi.fn(),
+    $queryRaw: vi.fn(),
     selfInspectionSession: {
       findUnique: vi.fn(),
     },
@@ -56,12 +57,37 @@ describe('self-inspection.service cache reset hooks', () => {
 
   it('completeSession invalidates machine board caches after success', async () => {
     const service = new SelfInspectionService();
-    const result = { id: 'session-1' };
+    const result = {
+      id: 'session-1',
+      sessionBusinessKey: 'session-key',
+      templateId: 'template-1',
+      productNo: 'PN-1',
+      fseiban: 'FS-1',
+      fhincd: 'FH-1',
+      fhinmei: '品名',
+      processGroup: 'cutting',
+      resourceCd: 'RES-1',
+      scheduleRowId: 'schedule-1',
+      machineName: null,
+      plannedQuantity: 10,
+      expectedEntryCount: 2,
+      completedAt: new Date('2026-06-10T00:00:00.000Z'),
+      startedAt: new Date('2026-06-10T00:00:00.000Z'),
+      updatedAt: new Date('2026-06-10T00:00:00.000Z'),
+      _count: { entries: 2 },
+      template: {
+        name: 'template',
+        selfInspectionMode: 'sample',
+        selfInspectionFixedCount: null,
+        selfInspectionSampleSize: 2
+      }
+    };
     vi.mocked(prisma.$transaction).mockResolvedValue(result as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
 
     const response = await service.completeSession('session-1');
 
-    expect(response).toBe(result);
+    expect(response).toMatchObject({ id: 'session-1' });
     expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
   });
 
