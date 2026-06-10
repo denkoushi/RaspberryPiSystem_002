@@ -8,6 +8,8 @@ import { buildSelfInspectionMachineBoardSvg } from '../../services/signage/self-
 import {
   createAuthHeader,
   createTestClientDevice,
+  createTestEmployee,
+  createTestMeasuringInstrumentWithTag,
   createTestUser,
   getOrCreateTestClientDevice,
 } from './helpers.js';
@@ -197,12 +199,24 @@ async function seedSelfInspectionMachineBoardFixture(
   expect(resolveRes.statusCode).toBe(200);
   const sessionId = resolveRes.json().session.id as string;
 
+  const employee = await createTestEmployee({
+    displayName: `SIMB Employee ${suffix}`,
+    nfcTagUid: `SIMB-EMP-${suffix}`,
+  });
+  const { rfidTagUid: measuringInstrumentTagUid } = await createTestMeasuringInstrumentWithTag({
+    name: `SIMB Instrument ${suffix}`,
+    managementNumber: `SIMB-${suffix}`,
+    rfidTagUid: `SIMB-INST-${suffix}`,
+  });
+
   const createEntryRes = await app.inject({
     method: 'POST',
     url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
     headers: createAuthHeader(adminToken),
     payload: {
       entryIndex: 0,
+      employeeTagUid: employee.nfcTagUid,
+      measuringInstrumentTagUid,
       values: [{ templateItemId, value: '10.01' }],
     },
   });

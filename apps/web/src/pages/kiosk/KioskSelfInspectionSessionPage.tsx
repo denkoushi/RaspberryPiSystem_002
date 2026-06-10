@@ -776,7 +776,7 @@ export function KioskSelfInspectionSessionPage() {
               </p>
             ) : null}
             <div
-              className="flex flex-wrap gap-2"
+              className="grid grid-cols-2 gap-1 rounded-md bg-slate-900/50 p-1"
               data-self-inspection-session-actions
             >
               <SelfInspectionKioskButton
@@ -792,7 +792,6 @@ export function KioskSelfInspectionSessionPage() {
               <SelfInspectionKioskButton
                 type="button"
                 size="actionCompact"
-                wide
                 disabled={!completeActionState.enabled}
                 highlighted={completeActionState.enabled}
                 onPointerDownCapture={consumeNextBlurGuideAdvance}
@@ -809,6 +808,7 @@ export function KioskSelfInspectionSessionPage() {
               selectedPointId={selectedPoint?.id ?? null}
               disabled={isSessionInputLocked}
               showMeasurementStatus
+              layout="twoColumn"
               onSelectPointerDownCapture={consumeNextBlurGuideAdvance}
               onSelectPoint={(pointId) => {
                 handleSelectPointManual(pointId);

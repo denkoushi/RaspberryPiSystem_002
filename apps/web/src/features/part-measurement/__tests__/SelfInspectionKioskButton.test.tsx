@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { SelfInspectionKioskButton } from '../SelfInspectionKioskButton';
 
@@ -27,8 +27,23 @@ describe('SelfInspectionKioskButton', () => {
       </SelfInspectionKioskButton>
     );
     const button = screen.getByRole('button', { name: '入力を保存' });
-    expect(button.className).toContain('min-h-8');
+    expect(button.className).toContain('min-h-6');
     expect(button.className).toContain('text-[15px]');
+  });
+
+  it('applies inactive tone without disabling the button', () => {
+    const onClick = vi.fn();
+    render(
+      <SelfInspectionKioskButton tone="inactive" onClick={onClick}>
+        手元カメラ OFF
+      </SelfInspectionKioskButton>
+    );
+    const button = screen.getByRole('button', { name: '手元カメラ OFF' });
+    expect(button).not.toBeDisabled();
+    expect(button.className).toContain('bg-slate-800/50');
+    expect(button.className).toContain('text-white/40');
+    fireEvent.click(button);
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   it('mirrors session page wiring: save and complete highlight only when enabled', () => {

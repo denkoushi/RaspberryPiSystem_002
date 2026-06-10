@@ -507,6 +507,64 @@ cd apps/web && pnpm exec vitest run \
 
 ---
 
+## 自主検査・セッション右ペインレイアウト改善（2026-06-10） {#自主検査-セッション右ペインレイアウト改善-2026-06-10}
+
+正本: [KB-320 §右ペインレイアウト改善](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション右ペインレイアウト改善-2026-06-10) · ブランチ **`feat/self-inspection-right-pane-polish`** · **Web のみ**
+
+### 仕様・知見
+
+- **対象画面**: 順位ボード **検** → `/kiosk/part-measurement/self-inspection/sessions/:sessionId` 右ペイン + 上辺ヘッダー（手元カメラ）。**API/保存/完了/ガイド活性/NFC解決は不変**。
+- **NFC**: 測定機器/測定者 **1行2列** · `nextActionLabel` 非表示 · エラー/ロック文言は維持。
+- **測定点一覧**: 自主検査のみ `layout="twoColumn"` · 作成/改版は1列維持 · 選択中は高彩度 cyan + `ring-2`。
+- **保存/完了**: `actionCompact` = **`min-h-6 py-0 text-[15px] leading-none`** · 青外枠契約維持 · 親 `p-1 gap-1` で境目。
+- **手元カメラ**: OFF = `tone="inactive"`（押せる inactive）· ON = 通常見た目。
+
+### 手動確認（Pi4/Pi5）
+
+1. 順位ボード **検** → セッション入室。
+2. NFC 登録が **1行2列**、スキャン案内（`測定機器タグをスキャン` 等）が **出ない** こと。未登録タグエラーは amber で表示されること。
+3. 測定点一覧が **2列**、選択中カードの **青枠が太く視認しやすい** こと。
+4. **入力を保存** / **自主検査を完了** が **より薄型**（フォント 15px 維持）で、境目と青外枠が崩れないこと。
+5. **手元カメラ OFF** がグレーアウトかつ **クリックで ON** に切り替わること（`disabled` ではない）。
+6. §右ペイン入力改善 1–7 の既存フロー（保存 → 件切替 → 再開 → 完了）が維持されること。
+7. **`xl` 未満**（図面下に右ペイン縦積み）でも NFC 2列・一覧2列・保存/完了が崩れないこと。
+8. **検査図面 作成/改版** の測定点一覧が **1列のまま** であること。
+
+### 単体テスト
+
+```bash
+cd apps/web && pnpm exec vitest run \
+  src/features/part-measurement/inspection-drawing/__tests__/inspectionDrawingPointSummaryList.test.tsx \
+  src/features/part-measurement/__tests__/selfInspectionKioskTheme.test.ts \
+  src/features/part-measurement/__tests__/SelfInspectionKioskButton.test.tsx \
+  src/features/part-measurement/__tests__/SelfInspectionSessionHeader.test.tsx \
+  src/features/part-measurement/__tests__/SelfInspectionNfcRegistrationPanel.test.tsx
+```
+
+### デプロイ・検証（2026-06-10）
+
+**デプロイ**（`update-all-clients.sh feat/self-inspection-right-pane-polish … --detach --follow` · 1 台ずつ）:
+
+| ホスト | Detach Run ID | Git HEAD | 備考 |
+|--------|---------------|----------|------|
+| `raspberrypi5` | **`20260610-093704-25991`** | **`146c2438`** | `failed=0` · **web** 再ビルド · バンドル **`index-nLIbNtAD.js`** |
+| `raspberrypi4` | **`20260610-100053-25389`** | **`146c2438`** | `failed=0` · `kiosk-browser` 再起動 |
+| `raspi4-robodrill01` | **`20260610-100533-13402`** | **`146c2438`** | `failed=0` · `kiosk-browser` 再起動 |
+| `raspi4-fjv60-80` | **`20260610-100857-19721`** | **`146c2438`** | `failed=0` · `kiosk-browser` 再起動 |
+| `raspi4-kensaku-stonebase01` | **`20260610-101227-17851`** | **`146c2438`** | `failed=0` · `kiosk-browser` 再起動 |
+
+**自動検証**（Pi5 経由 · 2026-06-10 10:16 JST 頃）:
+
+- `./scripts/deploy/verify-phase12-real.sh` — **PASS 43 / WARN 0 / FAIL 0**（全台デプロイ後）
+- Web バンドル `/srv/site/assets/index-nLIbNtAD.js` に `min-h-6 px-4 py-0 text-[15px] leading-none` · `ring-cyan-300` を確認
+- Pi4 全 4 台: `kiosk-browser.service` **active** · HEAD **`146c2438`**
+- deploy-status / status-agent 全 Pi4 **PASS**
+- CI **`27244381856`** **success**（`146c2438` push 後）
+
+**未完了（現場目視推奨）**: 上記「手動確認」1–8（NFC 2列 · 一覧2列選択強調 · 保存/完了薄型 · カメラ OFF inactive · 作成/改版1列維持）は **1 台以上の Pi4** でオペレータ確認推奨。自動検証は API/デプロイ/サービス/バンドル契約まで。
+
+---
+
 ## 自主検査・NFC 登録と手元カメラ実験（2026-06-09） {#自主検査-nfc-登録-手元カメラ実験-2026-06-09}
 
 正本: [KB-320 §NFC・手元カメラ](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-nfc-登録-手元カメラ実験-2026-06-09) · ブランチ **`feat/self-inspection-nfc-camera-experiment`** · **API migration + Web** · コミット **`7f2581ae`**
