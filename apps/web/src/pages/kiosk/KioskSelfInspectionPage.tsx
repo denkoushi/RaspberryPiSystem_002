@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useKioskProductionSchedule, useSelfInspectionSessions } from '../../api/hooks';
 import { buttonClassName, Button } from '../../components/ui/Button';
 import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
+import { presentSelfInspectionWipCard } from '../../features/part-measurement/selfInspectionWipCardPresentation';
 
 import type { ProductionScheduleRow } from '../../api/client';
 import type { SelfInspectionSessionSummaryDto } from '../../features/part-measurement/types';
@@ -40,30 +41,53 @@ function statusLabel(status: 'not_started' | 'in_progress' | 'completed' | null)
   return '未開始';
 }
 
-function formatSessionProgress(session: SelfInspectionSessionSummaryDto): string {
-  const completed = session.completedEntryCount;
-  const required = session.requiredEntryCount;
-  return `${completed} / ${required} 件`;
-}
-
 function SessionWipCard({ session }: { session: SelfInspectionSessionSummaryDto }) {
+  const card = presentSelfInspectionWipCard({
+    productNo: session.productNo,
+    fhincd: session.fhincd,
+    fhinmei: session.fhinmei,
+    resourceCd: session.resourceCd,
+    plannedQuantity: session.plannedQuantity,
+    fseiban: session.fseiban,
+    completedEntryCount: session.completedEntryCount,
+    requiredEntryCount: session.requiredEntryCount,
+    participantEmployeeNames: session.participantEmployeeNames ?? []
+  });
+
   return (
-    <section className="grid gap-2 rounded border border-white/15 bg-slate-900/80 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="text-lg font-bold">{session.productNo}</p>
-          <p className="text-sm text-white/70">
-            {session.fhincd} / {session.fhinmei} / {session.resourceCd} / 指示数 {session.plannedQuantity}
+    <section className="flex min-w-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-900/80 p-2">
+      <div className="flex min-w-0 items-start justify-between gap-1">
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-1 text-base font-bold" title={card.productNo}>
+            {card.productNo}
           </p>
-          {session.fseiban ? <p className="text-xs text-white/55">製番 {session.fseiban}</p> : null}
+          <p className="line-clamp-2 text-[0.78rem] leading-snug text-white/70" title={card.metaLine}>
+            {card.metaLine}
+          </p>
+          {card.fseibanLine ? (
+            <p className="line-clamp-1 text-[0.72rem] text-white/55" title={card.fseibanLine}>
+              {card.fseibanLine}
+            </p>
+          ) : null}
+          <p
+            className="line-clamp-2 text-[0.72rem] leading-snug text-white/60"
+            title={card.participantNamesTitle ?? undefined}
+          >
+            氏名 {card.participantNamesLine}
+          </p>
         </div>
-        <span className="rounded bg-yellow-400/20 px-2 py-1 text-xs font-semibold text-yellow-200">入力中</span>
+        <span className="shrink-0 rounded bg-yellow-400/20 px-1.5 py-0.5 text-[0.68rem] font-semibold text-yellow-200">
+          入力中
+        </span>
       </div>
-      <p className="text-xs text-white/55">進捗 {formatSessionProgress(session)}</p>
-      <div className="flex flex-wrap gap-2">
+      <p className="text-[0.72rem] text-white/55">進捗 {card.progressLine}</p>
+      <div className="flex flex-wrap gap-1">
         <Link
           to={kioskSelfInspectionSessionPath(session.id)}
-          className={buttonClassName('primary', 'inline-flex min-h-11 items-center text-[1rem]')}
+          className={buttonClassName(
+            'primary',
+            'inline-flex min-h-9 w-full items-center justify-center text-[0.82rem]'
+          )}
         >
           再開
         </Link>
@@ -273,7 +297,7 @@ export function KioskSelfInspectionPage() {
                 仕掛中は最新 {wipListLimit} 件まで表示しています。それより古いセッションは検索で絞り込んでください。
               </p>
             ) : null}
-            <div className="grid gap-2">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-4 xl:grid-cols-6">
               {wipSessions.map((session) => (
                 <SessionWipCard key={session.id} session={session} />
               ))}

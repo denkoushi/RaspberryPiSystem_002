@@ -32,7 +32,7 @@
   - 資源は **表示名付きドロップダウン**。品番・資源・工程は編集時 **変更不可**（表示のみ）。
 - **本番導線（編集・閲覧）**: 図面付き本番テンプレかつ **記録表の `quantity` がちょうど 1** のとき、部品測定ハブ（下書き一覧）・生産スケジュール・テンプレ候補・確定一覧・`find-or-open` から **`/kiosk/part-measurement/inspection/edit/:sheetId`** へ自動遷移する。保存・確定は **通常の記録表 API**（`PATCH /api/part-measurement/sheets/:id`・`POST …/finalize`）。**数量が 2 以上**、または図面なし・座標未設定テンプレは **従来どおり表形式** `/edit/:sheetId`。表形式 URL を開いても、対象 sheet なら図面UIへ **リダイレクト**する。
 - **評価用編集 API**: 既存互換のため `inspection-drawing/evaluation-sheets/*` は当面残すが、新しいキオスク UI 導線からは使用しない。本番 sheet は引き続き **409**、評価用 sheet も通常 PATCH/finalize から **409**。
-- **制約（現時点）**: 複数個数の図面UI・TIFF・順位ボードは未対応。図面中心の本番編集は引き続き **quantity===1** のみ。詳細は [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
+- **制約（現時点）**: 複数個数の図面UI・順位ボードは未対応。図面中心の本番編集は引き続き **quantity===1** のみ。詳細は [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
 
 ### 検査図面 · 流用導線（2026-06-05） {#検査図面-流用導線-2026-06-05}
 
@@ -97,14 +97,14 @@ curl -sk -H "x-client-key: ${KEY}" \
 | 保存 409 | 同一キー active あり → 改版導線か別キーへ |
 | orphan 削除 403 | `cleanupToken` 不一致 · 既にテンプレ参照あり（409） |
 
-### 検査図面 · PDF 取込（2026-06-02）
+### 検査図面 · PDF / TIFF 取込（2026-06-02 · TIFF 2026-06-10） {#検査図面--pdf-取込2026-06-02}
 
-- **UI**: 図面ファイル選択は **「図面画像またはPDF（PDFは1ページ目のみ）」**。`accept` に `application/pdf` を含む（検査図面作成・管理/キオスクテンプレ作成）。
+- **UI**: 図面ファイル選択は **「図面画像・PDF（1ページ目）・TIFF/TIF」**。`accept` に `application/pdf` / `image/tiff` / `.tif` / `.tiff` を含む（検査図面作成・図面を登録・管理/キオスクテンプレ作成）。
 - **保存前プレビュー（2026-06-02 追記）**:
-  - Canvas には **常に画像 Blob URL のみ**を渡す（PDF Blob を `<img>` に直接渡さない）。
-  - PDF 選択時は `POST /api/part-measurement/drawings/preview` で **副作用なし**に JPEG 化し、表示と保存で **同一 JPEG** を再利用する。
-  - 変換中（`previewResolving`）および preview JPEG 未確定の PDF は **保存不可**。
-  - 編集画面で新 PDF の preview が失敗した場合は **既存図面表示を維持**し、利用者向けエラーを表示する。
+  - Canvas には **常に画像 Blob URL のみ**を渡す（PDF/TIFF Blob を `<img>` に直接渡さない）。
+  - PDF/TIFF 選択時は `POST /api/part-measurement/drawings/preview` で **副作用なし**に JPEG 化し、表示と保存で **同一 JPEG** を再利用する。
+  - 変換中（`previewResolving`）および preview JPEG 未確定の PDF/TIFF は **保存不可**。
+  - 編集画面で新 PDF/TIFF の preview が失敗した場合は **既存図面表示を維持**し、利用者向けエラーを表示する。
   - 代表実装: `usePartMeasurementDrawingLocalPreview.ts` · `part-measurement-drawing-preview.ts`
 - **API 入口（multipart）**: いずれも `importDrawingAndSave` 経由。
   - `POST /api/part-measurement/visual-templates`
@@ -112,13 +112,15 @@ curl -sk -H "x-client-key: ${KEY}" \
 - **preview 入口（保存なし）**: `POST /api/part-measurement/drawings/preview`（multipart `file` · `allowWriteKiosk` · **rate limit 有効** · DB/storage 書き込みなし）
   - レスポンス: 元画像 MIME または `image/jpeg` · `Cache-Control: no-store` · `X-Content-Type-Options: nosniff`
 - **契約**:
-  - 画像入力上限 **12MB**、PDF 入力上限 **30MB**、保存画像（変換後 JPEG 含む）上限 **12MB**
-  - PDF は **1 ページ目のみ** `pdftoppm -f 1 -l 1 -singlefile -jpeg -r 144 -jpegopt quality=85` で JPEG 化し、以後は通常の画像図面として表示
-  - 元 PDF は保存しない（`drawingImageRelativePath` は `.jpg` 等の画像 URL のみ）
-- **代表実装**: `apps/api/src/lib/part-measurement-drawing-import.ts` · `part-measurement-drawing-preview.ts` · `convert-pdf-first-page-to-jpeg.ts`
-- **エラー（400 例）**: 未対応形式 / PDF 形式不正 / PDF 大きすぎ / 変換失敗 / 暗号化 PDF / 変換後画像大きすぎ
+  - 画像入力上限 **12MB**、PDF/TIFF 入力上限 **30MB**、保存画像（変換後 JPEG 含む）上限 **12MB**
+  - PDF は **1 ページ目のみ** `pdftoppm -f 1 -l 1 -singlefile -jpeg -r 144 -jpegopt quality=85` で JPEG 化
+  - TIFF/TIF は **sharp** で JPEG 化（先頭フレーム/ページ）。`limitInputPixels`・最大幅/高さ **16384px**・magic bytes 検証あり
+  - PDF/TIFF 変換は **drawing-raster-convert-semaphore** で同時実行 1 + 待機キュー上限（超過 **503**）
+  - 元 PDF/TIFF は保存しない（`drawingImageRelativePath` は `.jpg` 等の画像 URL のみ）
+- **代表実装**: `part-measurement-drawing-import.ts` · `part-measurement-drawing-preview.ts` · `convert-pdf-first-page-to-jpeg.ts` · `convert-tiff-to-jpeg.ts`
+- **エラー（400 例）**: 未対応形式 / PDF・TIFF 形式不正 / 入力大きすぎ / 解像度大きすぎ / 変換失敗 / 暗号化 PDF / 変換後画像大きすぎ
 - **運用**: API コンテナに `poppler-utils`（`pdftoppm`）必須。Arial 依存 PDF は文字欠けの可能性（`fonts-noto-cjk` のみ）。
-- **実機確認（Pi）**: preview / save / storage GET が kiosk `client-key` で通ること · `pdftoppm` 有無 · フォント欠け · preview の semaphore / queue 上限（同時 PDF 連打で 503 にならない運用）
+- **実機確認（Pi）**: preview / save / storage GET が kiosk `client-key` で通ること · `pdftoppm` 有無 · フォント欠け · preview の semaphore / queue 上限（同時 PDF/TIFF 連打で 503 にならない運用）
 
 #### 本番反映実績（2026-06-02 · Pi5 先行）
 
@@ -442,8 +444,8 @@ cd apps/web && pnpm exec vitest run \
 
 ### 仕様（再開用）
 
-- **自主検査タブ**: 検索なしで全端末共通の **仕掛中**（`status=in_progress`・`updatedAt desc`・最大 200 件）を常時表示。検索入力あり時は従来の `selfInspectionEligibleOnly` 候補検索。再開は `/kiosk/part-measurement/self-inspection/sessions/:id`。
-- **API**: `GET /api/part-measurement/self-inspection/sessions?status=in_progress` は **`x-client-key` のみ**でも可（`productNo`/`resourceCd` 不要）。レスポンスは `{ sessions, listLimit, truncated }`（`take+1` で省略判定）。
+- **自主検査タブ**: 検索なしで全端末共通の **仕掛中**（`status=in_progress`・`updatedAt desc`・最大 200 件）を **6列グリッド**（`md:grid-cols-4` / `xl:grid-cols-6`）で表示。カードに **測定者氏名（複数・entryIndex 昇順・重複除去）** を含む。検索入力あり時は従来の `selfInspectionEligibleOnly` 候補検索。再開は `/kiosk/part-measurement/self-inspection/sessions/:id`。
+- **API**: `GET /api/part-measurement/self-inspection/sessions?status=in_progress` は **`x-client-key` のみ**でも可（`productNo`/`resourceCd` 不要）。レスポンスは `{ sessions, listLimit, truncated }`（`take+1` で省略判定）。各 session に **`participantEmployeeNames: string[]`**（entry 登録済み氏名の集約。一覧は **entries 全件 include せず** DB 集約クエリで取得）を含む。`resolve-or-create` は **新規作成時は空配列**、**既存セッション解決時は登録済み氏名**を返す。`complete` 応答も登録済み氏名を返す。
 - **タブ順**: 全端末共通 `KioskHeaderTabOrderConfig`（`scopeKey=shared`）。管理 **`/admin/kiosk-settings`**。キオスクは `GET /api/kiosk/config` の `navTabOrder`。サイネージ・管理・問い合わせ・電源は固定。
 - **共有型**: `packages/shared-types/src/kiosk/kiosk-header-tab-order.ts`（`normalizeKioskHeaderTabOrder`）。
 

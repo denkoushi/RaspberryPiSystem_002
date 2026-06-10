@@ -8,6 +8,7 @@ import {
   PART_MEASUREMENT_DRAWING_FILE_ACCEPT,
   PART_MEASUREMENT_DRAWING_FILE_LABEL
 } from '../partMeasurementDrawingFileInput';
+import { partMeasurementDrawingPreviewConvertingLabel } from '../partMeasurementDrawingLocalPreview';
 import { usePartMeasurementDrawingLocalPreview } from '../usePartMeasurementDrawingLocalPreview';
 
 import { defaultVisualNameFromFileName } from './inspectionDrawingVisualLibraryHelpers';
@@ -47,6 +48,7 @@ export function KioskInspectionDrawingVisualUploadModal({
     saveFile,
     previewResolving,
     previewError,
+    pendingPreviewFile,
     hasLocalRenderablePreview,
     hasPendingLocalSelection,
     selectFile,
@@ -148,7 +150,9 @@ export function KioskInspectionDrawingVisualUploadModal({
         </label>
 
         {previewResolving ? (
-          <p className="text-sm text-slate-600">PDF を変換中…</p>
+          <p className="text-sm text-slate-600">
+            {partMeasurementDrawingPreviewConvertingLabel(pendingPreviewFile)}
+          </p>
         ) : null}
         {previewError ? <p className="text-sm font-semibold text-red-600">{previewError}</p> : null}
         {localPreviewUrl ? (

@@ -92,6 +92,25 @@ describe('usePartMeasurementDrawingLocalPreview', () => {
     expect(result.current.saveFile?.name).toBe('b.jpg');
   });
 
+  it('calls preview API for tiff and exposes jpeg save file', async () => {
+    const jpegBlob = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' });
+    previewPartMeasurementDrawingMock.mockResolvedValue(jpegBlob);
+
+    const { result } = renderHook(() => usePartMeasurementDrawingLocalPreview('key'));
+    const tiff = new File([new Uint8Array([1])], 'drawing.tif', { type: 'image/tiff' });
+
+    act(() => {
+      result.current.selectFile(tiff);
+    });
+
+    await waitFor(() => {
+      expect(result.current.previewResolving).toBe(false);
+    });
+
+    expect(previewPartMeasurementDrawingMock).toHaveBeenCalledWith(tiff, 'key', expect.any(AbortSignal));
+    expect(result.current.saveFile?.name).toBe('drawing.jpg');
+  });
+
   it('sets preview error on pdf conversion failure', async () => {
     previewPartMeasurementDrawingMock.mockRejectedValue({
       response: { data: { message: 'PDF の変換に失敗しました' } }

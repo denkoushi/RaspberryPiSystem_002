@@ -77,7 +77,7 @@
 | **本番記録編集** | 図面付き本番テンプレ + 記録表 **`quantity === 1`** → **`/kiosk/part-measurement/inspection/edit/:sheetId`**。保存・確定は **通常** `PATCH/POST …/sheets/*`。`quantity > 1`・図面なし・座標/上下限未設定 → **表形式** `/edit/:sheetId`。 |
 | **評価用** | `evaluation-templates` / `evaluation-sheets/*` は **互換残置**。キオスク UI 主導線からは未使用。本番 sheet ↔ 評価 API は **409** 相互ブロック。 |
 | **図面対象判定** | `part-measurement-inspection-drawing-policy.ts` — `templateSupportsInspectionDrawing`: visual に `drawingImageRelativePath`、全 item で `markerXRatio`/`markerYRatio`/`lowerLimit`/`upperLimit` が非 null。 |
-| **画像** | PNG/JPEG/WebP に加え **PDF（1ページ目のみ→JPEG化して保存）**。TIFF は後続。PDF 入力上限 **30MB**、保存画像上限 **12MB**、変換 **DPI 144 / quality 85 / timeout 30s**。 |
+| **画像** | PNG/JPEG/WebP に加え **PDF（1ページ目のみ→JPEG）** と **TIFF/TIF（→JPEG）**。PDF/TIFF 入力上限 **30MB**、保存画像上限 **12MB**。PDF: DPI 144 / quality 85。TIFF: sharp 変換・magic bytes 検証・最大 16384px・変換キュー制御。 |
 | **ヘッダー・ルート** | `kioskInspectionDrawingRoutes.ts` — 既定 `inspection`、作成 `inspection/create`、テンプレ編集 `inspection/templates/:id/edit`、記録図面 `inspection/edit/:sheetId`。`isKioskInspectionDrawingPath` で部品測定タブを非アクティブ。 |
 | **流用導線（2026-06-05）** | 詳細は [§流用導線強化](#検査図面-流用導線-2026-06-05)。一覧 **雛形として新規** · 図面 **既存 visual 選択** · `failIfActiveExists` + lineage lock · FIHNCD **case-insensitive** 統一 · visual 一覧 **サーバー検索** |
 
@@ -978,22 +978,22 @@ data-testid=inspection-drawing-create-header-band
 - **有効化後の readOnly 残留**: クライアント state だけ更新すると編集不可のまま残る → **専用 GET で `applyLoadedTemplate`** してから編集モードへ。
 - **Phase12**: `verify-phase12-real.sh` は **検査図面専用 API を個別 grep しない**（`resolve-ticket` / `templates/candidates` の部品測定スモークのみ）。専用 API は **統合テスト** + 手動／下記 curl で担保。
 
-### 検査図面 · PDF 取込（2026-06-02）
+### 検査図面 · PDF / TIFF 取込（2026-06-02 更新 · TIFF 2026-06-10） {#検査図面--pdf-取込2026-06-02}
 
 | 区分 | 内容 |
 |------|------|
 | **保存入口** | `POST …/visual-templates` · `POST …/inspection-drawing/evaluation-templates`（multipart `file`） |
 | **preview 入口** | `POST …/drawings/preview`（multipart `file` · **DB/storage なし** · rate limit 有効） |
-| **変換** | `importDrawingAndSave` / `convertDrawingUploadToPreviewBuffer` → 1 ページ目 JPEG（同一 `pdftoppm` 契約） |
-| **Web プレビュー** | 画像はローカル `blob:` · PDF は preview API → JPEG `blob:` + 保存時 **同一 JPEG File** |
-| **上限** | 画像 12MB / PDF 30MB / 保存 12MB |
-| **負荷** | PDF 変換はプロセス内 **同時 1 件**・待ち **最大 4**（超過時 **503**）— preview / save 共通 |
+| **変換** | `importDrawingAndSave` / `convertDrawingUploadToPreviewBuffer` → JPEG 保存契約。PDF: 1 ページ目（`pdftoppm`）。TIFF/TIF: `sharp`（magic bytes 検証・最大 16384px） |
+| **Web プレビュー** | 画像はローカル `blob:` · PDF/TIFF は preview API → JPEG `blob:` + 保存時 **同一 JPEG File** |
+| **上限** | 画像 12MB / PDF・TIFF 30MB / 保存 12MB |
+| **負荷** | PDF/TIFF ラスタ変換はプロセス内 **同時 1 件**・待ち **最大 4**（超過時 **503**）— preview / save 共通 |
 | **検証順** | evaluation multipart は **items/body 検証後**に `importDrawingAndSave`（孤立ファイル防止） |
-| **表示** | Canvas は **画像 URL のみ**（PDF Blob 直 `<img>` なし） |
-| **保存制御** | PDF 変換中・preview JPEG 未確定は保存不可 |
-| **編集時失敗** | 新 PDF preview 失敗時は **既存図面維持** + エラー表示 |
+| **表示** | Canvas は **画像 URL のみ**（PDF/TIFF Blob 直 `<img>` なし） |
+| **保存制御** | PDF/TIFF 変換中・preview JPEG 未確定は保存不可 |
+| **編集時失敗** | 新 PDF/TIFF preview 失敗時は **既存図面維持** + エラー表示 |
 
-**代表ファイル（`8307c995`）**:
+**代表ファイル（PDF プレビュー整合 `8307c995` / TIFF 取込追加を含む現行実装）**:
 
 | 領域 | パス |
 |------|------|

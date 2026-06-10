@@ -2259,6 +2259,26 @@ describe('part-measurement templates API', () => {
     expect(auditedUpdateRes.statusCode).toBe(200);
     expect(auditedUpdateRes.json().entry.createdByEmployeeId).toBe(auditEmployee.id);
 
+    const resolveExistingRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/self-inspection/sessions/resolve-or-create',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        templateId,
+        productNo,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SELF',
+        plannedQuantity: 5,
+        scheduleRowId,
+        fseiban,
+        fhincd,
+        fhinmei: '自主検査品'
+      }
+    });
+    expect(resolveExistingRes.statusCode).toBe(200);
+    expect(resolveExistingRes.json().session.id).toBe(sessionId);
+    expect(resolveExistingRes.json().session.participantEmployeeNames).toEqual(['Self Inspection Operator']);
+
     const detailWithValuesRes = await app.inject({
       method: 'GET',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}?entryIndex=0`,
@@ -2382,9 +2402,11 @@ describe('part-measurement templates API', () => {
       headers: { ...createAuthHeader(viewerToken), 'x-client-key': kioskClient.apiKey }
     });
     expect(listInProgressGlobalRes.statusCode).toBe(200);
-    expect(
-      (listInProgressGlobalRes.json().sessions as Array<Record<string, unknown>>).some((row) => row.id === sessionId)
-    ).toBe(true);
+    const listedSession = (listInProgressGlobalRes.json().sessions as Array<Record<string, unknown>>).find(
+      (row) => row.id === sessionId
+    );
+    expect(listedSession).toBeTruthy();
+    expect(listedSession?.participantEmployeeNames).toEqual(['Self Inspection Operator']);
 
     const listInProgressKioskKeyOnlyRes = await app.inject({
       method: 'GET',
@@ -2458,6 +2480,7 @@ describe('part-measurement templates API', () => {
     expect(completeRes.statusCode).toBe(200);
     expect(completeRes.json().session.status).toBe('completed');
     expect(completeRes.json().session.completedAt).toBeTruthy();
+    expect(completeRes.json().session.participantEmployeeNames).toEqual(['Self Inspection Operator']);
     const completedAtAfterFirst = completeRes.json().session.completedAt as string;
 
     const completeAgainRes = await app.inject({
