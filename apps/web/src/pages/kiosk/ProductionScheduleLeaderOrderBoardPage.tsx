@@ -36,6 +36,7 @@ import { useLeaderBoardResourceSlotsWithServerSync } from '../../features/kiosk/
 import { useLeaderBoardSlotAutoRank } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardSlotAutoRank';
 import { useLeaderOrderBoardDeviceContext } from '../../features/kiosk/leaderOrderBoard/useLeaderOrderBoardDeviceContext';
 import { usePersistedLeaderBoardDeviceScope } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardDeviceScope';
+import { usePersistedLeaderBoardGanttMode } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardGanttMode';
 import { usePersistedLeaderBoardSeibanEval } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardSeibanEval';
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
@@ -285,6 +286,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     moveRegisteredSeibanToRank
   } = usePersistedLeaderBoardSeibanEval(siteKey, activeDeviceScopeKey, dueAssist.sharedHistory);
 
+  const { ganttEnabled, toggleGanttMode } = usePersistedLeaderBoardGanttMode(siteKey, activeDeviceScopeKey);
+
   const seibanEvalRankMap = useMemo(
     () => buildSeibanRankMapFromMergedOrder(mergedRegisteredSeibanOrder),
     [mergedRegisteredSeibanOrder]
@@ -499,6 +502,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           onToggleSeibanEval={toggleSeibanEvalMode}
           registeredSeibansForDisplay={registeredSeibansForLeftPane}
           onMoveRegisteredSeibanToRank={moveRegisteredSeibanToRank}
+          ganttEnabled={ganttEnabled}
+          onToggleGanttMode={toggleGanttMode}
         />
       </div>
 
@@ -552,6 +557,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               interactionLocked={isInteractionLocked}
               footerResourceChipsByPartKey={footerResourceChipsByPartKey}
               seibanEvalEnabled={seibanEvalEnabled}
+              ganttEnabled={ganttEnabled}
               listIncomplete={listIncomplete}
               autoRankDisabled={autoRankDisabled}
               autoRankPending={autoRankPending}

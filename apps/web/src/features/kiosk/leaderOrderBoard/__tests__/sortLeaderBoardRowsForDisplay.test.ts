@@ -2,27 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { sortLeaderBoardRowsForDisplay } from '../sortLeaderBoardRowsForDisplay';
 
+import { mkLeaderBoardRow } from './leaderBoardRowTestFixtures';
+
 import type { LeaderBoardRow } from '../types';
 
-const row = (partial: Partial<LeaderBoardRow> & Pick<LeaderBoardRow, 'id'>): LeaderBoardRow => ({
-  resourceCd: '305',
-  dueDate: null,
-  plannedEndDate: null,
-  displayDue: null,
-  fseiban: '',
-  productNo: '',
-  fkojun: '',
-  fhincd: '',
-  fhinmei: '',
-  customerName: '',
-  machineName: '',
-  machineTypeCode: '',
-  plannedQuantity: null,
-  processingOrder: null,
-  isCompleted: false,
-  note: null,
-  ...partial
-});
+const row = (partial: Partial<LeaderBoardRow> & Pick<LeaderBoardRow, 'id'>): LeaderBoardRow =>
+  mkLeaderBoardRow(partial);
 
 describe('sortLeaderBoardRowsForDisplay', () => {
   it('places assigned processingOrder rows before unassigned, by order number', () => {

@@ -2,27 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { filterLeaderBoardRowsByCompletion } from '../filterLeaderBoardRowsByCompletion';
 
+import { mkLeaderBoardRow } from './leaderBoardRowTestFixtures';
+
 import type { LeaderBoardRow } from '../types';
 
-const r = (id: string, isCompleted: boolean): LeaderBoardRow => ({
-  id,
-  resourceCd: '305',
-  dueDate: null,
-  plannedEndDate: null,
-  displayDue: null,
-  fseiban: '',
-  productNo: '',
-  fkojun: '',
-  fhincd: '',
-  fhinmei: '',
-  customerName: '',
-  machineName: '',
-  machineTypeCode: '',
-  plannedQuantity: null,
-  processingOrder: null,
-  isCompleted,
-  note: null
-});
+const r = (id: string, isCompleted: boolean): LeaderBoardRow => mkLeaderBoardRow({ id, isCompleted });
 
 describe('filterLeaderBoardRowsByCompletion', () => {
   it('filters complete and incomplete', () => {

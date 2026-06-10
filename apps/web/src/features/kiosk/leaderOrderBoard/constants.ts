@@ -71,6 +71,22 @@ export function persistedLeaderBoardSeibanEvalStorageKey(siteKey: string, device
   return core.length > 0 ? `${LEADER_BOARD_SEIBAN_EVAL_PREFIX}:${core}` : LEADER_BOARD_SEIBAN_EVAL_PREFIX;
 }
 
+/** ガント表示 — 端末ローカルのみ */
+export const LEADER_BOARD_GANTT_MODE_SCHEMA_VERSION = 1;
+const LEADER_BOARD_GANTT_MODE_PREFIX = 'kiosk-leader-order-board-gantt-mode';
+
+export type PersistedLeaderBoardGanttMode = {
+  schemaVersion: typeof LEADER_BOARD_GANTT_MODE_SCHEMA_VERSION;
+  enabled: boolean;
+};
+
+export function persistedLeaderBoardGanttModeStorageKey(siteKey: string, deviceScopeKey: string): string {
+  const s = siteKey.trim();
+  const d = deviceScopeKey.trim();
+  const core = s.length > 0 && d.length > 0 ? `${s}\0${d}` : s.length > 0 ? s : d.length > 0 ? d : '';
+  return core.length > 0 ? `${LEADER_BOARD_GANTT_MODE_PREFIX}:${core}` : LEADER_BOARD_GANTT_MODE_PREFIX;
+}
+
 /** スロット数に応じて 1 ページ完全性をとりやすくする（単一クエリ方針） */
 export function leaderOrderBoardQueryPageSize(uniqueResourceSlotCount: number): number {
   const n = Math.max(1, uniqueResourceSlotCount);

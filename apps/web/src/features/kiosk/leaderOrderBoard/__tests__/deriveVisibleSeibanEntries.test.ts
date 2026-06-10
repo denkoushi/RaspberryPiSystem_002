@@ -2,27 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { deriveVisibleSeibanEntries } from '../deriveVisibleSeibanEntries';
 
+import { mkLeaderBoardRow } from './leaderBoardRowTestFixtures';
+
 import type { LeaderBoardRow } from '../types';
 
-const row = (id: string, fseiban: string, machineName: string, resourceCd = '305'): LeaderBoardRow => ({
-  id,
-  resourceCd,
-  dueDate: null,
-  plannedEndDate: null,
-  displayDue: null,
-  fseiban,
-  productNo: '',
-  fkojun: '',
-  fhincd: '',
-  fhinmei: '',
-  customerName: '',
-  machineName,
-  machineTypeCode: '',
-  plannedQuantity: null,
-  processingOrder: null,
-  isCompleted: false,
-  note: null
-});
+const row = (id: string, fseiban: string, machineName: string, resourceCd = '305'): LeaderBoardRow =>
+  mkLeaderBoardRow({ id, fseiban, machineName, resourceCd });
 
 describe('deriveVisibleSeibanEntries', () => {
   it('製番ごとに一意化し、最初の機種名を採用する', () => {

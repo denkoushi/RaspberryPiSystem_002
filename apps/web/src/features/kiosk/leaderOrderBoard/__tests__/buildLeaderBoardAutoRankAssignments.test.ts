@@ -5,28 +5,12 @@ import {
   pickAvailableOrderNumbers
 } from '../buildLeaderBoardAutoRankAssignments';
 
+import { mkLeaderBoardRow } from './leaderBoardRowTestFixtures';
+
 import type { LeaderBoardRow } from '../types';
 
-const base = (id: string, po: number | null, resourceCd = '305'): LeaderBoardRow => ({
-  id,
-  seibanJoinKey: '',
-  resourceCd,
-  dueDate: null,
-  plannedEndDate: null,
-  displayDue: null,
-  fseiban: '',
-  productNo: '',
-  fkojun: '',
-  fhincd: '',
-  fhinmei: '',
-  customerName: '',
-  machineName: '',
-  machineTypeCode: '',
-  plannedQuantity: null,
-  processingOrder: po,
-  isCompleted: false,
-  note: null
-});
+const base = (id: string, po: number | null, resourceCd = '305'): LeaderBoardRow =>
+  mkLeaderBoardRow({ id, resourceCd, processingOrder: po });
 
 describe('pickAvailableOrderNumbers', () => {
   it('returns ascending unused numbers up to limit', () => {

@@ -1,10 +1,21 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
-import { memo, useMemo, useRef } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 
 import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manualOrderOverviewTypography';
 
 import { buildLeaderBoardPartResourceProcessKey } from './buildLeaderBoardPartResourceProcessKey';
+import {
+  GANTT_CARD_MAX_HEIGHT_VH,
+  GANTT_TICK_GUTTER_WIDTH_PX,
+  GANTT_VIRTUAL_OVERSCAN
+} from './gantt/leaderBoardGanttConstants';
+import {
+  computeGanttEightHourTickVisualPositions,
+  computeGanttRowLayout,
+  computeGanttTotalEstimateHeightPx
+} from './gantt/leaderBoardGanttLayout';
+import { LeaderBoardGanttTickGutter } from './gantt/LeaderBoardGanttTickGutter';
 import { LeaderOrderResourceRow } from './LeaderOrderResourceRow';
 import { LEADER_BOARD_ROW_ESTIMATE_PX, LEADER_BOARD_VIRTUAL_ROW_THRESHOLD } from './performance/leaderBoardRefetchPolicy';
 import { resolveSeibanAccentRowClass } from './seibanAccentPalette';
@@ -16,6 +27,8 @@ import type { KioskResourceProgressProcessChip } from '../../../components/kiosk
 type Props = {
   /** interactive: キオスク順位ボード（既定）。signage: 操作系UIなしの閲覧専用 */
   variant?: 'interactive' | 'signage';
+  /** ガント表示（所要量比例の行高・左 8H 目盛） */
+  ganttEnabled?: boolean;
   resourceCd: string;
   /** resourceNameMap の names 部分のみ（横並び表示）。空なら非表示 */
   resourceJapaneseNames?: string;
@@ -46,6 +59,7 @@ type Props = {
 
 function LeaderOrderResourceCardInner({
   variant = 'interactive',
+  ganttEnabled = false,
   resourceCd,
   resourceJapaneseNames,
   rows,
@@ -88,16 +102,74 @@ function LeaderOrderResourceCardInner({
     [rows, footerResourceChipsByPartKey]
   );
 
+  const rowLayouts = useMemo(() => {
+    if (!ganttEnabled) return null;
+    return rowsWithFooter.map(({ row, footerChips }) =>
+      computeGanttRowLayout({
+        requiredMinutes: row.requiredMinutes,
+        hasFooterChips: footerChips.length > 0
+      })
+    );
+  }, [ganttEnabled, rowsWithFooter]);
+
   const useVirtual = rowsWithFooter.length > LEADER_BOARD_VIRTUAL_ROW_THRESHOLD;
+
+  const estimateSize = useCallback(
+    (index: number) => {
+      if (ganttEnabled && rowLayouts) {
+        return rowLayouts[index]?.estimateHeightPx ?? LEADER_BOARD_ROW_ESTIMATE_PX;
+      }
+      return LEADER_BOARD_ROW_ESTIMATE_PX;
+    },
+    [ganttEnabled, rowLayouts]
+  );
 
   const rowVirtualizer = useVirtualizer({
     count: useVirtual ? rowsWithFooter.length : 0,
     getScrollElement: () => scrollParentRef.current,
     getItemKey: (index) => rowsWithFooter[index]?.row.id ?? index,
-    estimateSize: () => LEADER_BOARD_ROW_ESTIMATE_PX,
-    overscan: 3,
+    estimateSize,
+    overscan: ganttEnabled ? GANTT_VIRTUAL_OVERSCAN : 3,
     measureElement: (el) => el.getBoundingClientRect().height
   });
+
+  const staticTotalHeightPx = useMemo(() => {
+    if (!ganttEnabled || !rowLayouts || useVirtual) return 0;
+    return computeGanttTotalEstimateHeightPx(rowLayouts);
+  }, [ganttEnabled, rowLayouts, useVirtual]);
+
+  const bodyTotalHeightPx = useVirtual ? rowVirtualizer.getTotalSize() : staticTotalHeightPx;
+
+  const tickPositions = useMemo(() => {
+    if (!ganttEnabled || !rowLayouts) return [];
+    return computeGanttEightHourTickVisualPositions(rowLayouts);
+  }, [ganttEnabled, rowLayouts]);
+
+  const bodyPaddingLeft = ganttEnabled ? GANTT_TICK_GUTTER_WIDTH_PX + 4 : 0;
+
+  const renderRow = (
+    row: LeaderBoardRow,
+    footerChips: readonly KioskResourceProgressProcessChip[],
+    index: number
+  ) => (
+    <LeaderOrderResourceRow
+      variant={variant}
+      resourceCd={resourceCd}
+      row={row}
+      rowMinHeightPx={ganttEnabled && rowLayouts ? rowLayouts[index]?.rowMinHeightPx : undefined}
+      seibanAccentRowClass={resolveSeibanAccentRowClass(row.fseiban, activeSeibanFilters ?? [])}
+      orderUsageNumbers={orderUsageNumbers}
+      onOrderChange={onOrderChange}
+      onCompleteRow={onCompleteRow}
+      completePending={completePending}
+      orderPending={orderPending}
+      onOpenDueDatePicker={onOpenDueDatePicker}
+      dueDatePending={dueDatePending}
+      onOpenNote={onOpenNote}
+      notePending={notePending}
+      footerResourceChips={footerChips}
+    />
+  );
 
   return (
     <div
@@ -115,13 +187,15 @@ function LeaderOrderResourceCardInner({
             }
       }
       className={clsx(
-        'flex h-full min-h-[12rem] flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-[border-color,box-shadow,opacity] outline-none',
+        'flex min-h-[12rem] flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-[border-color,box-shadow,opacity] outline-none',
+        !ganttEnabled && 'h-full',
         !isSignage && 'cursor-pointer focus-visible:ring-2 focus-visible:ring-cyan-400/60',
         isSignage && 'cursor-default',
         KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS,
         selected ? 'border-cyan-300/70 shadow-[0_0_0_1px_rgba(34,211,238,0.3)]' : 'border-white/10',
         dimmed ? 'opacity-[0.52]' : 'opacity-100'
       )}
+      style={ganttEnabled ? { maxHeight: `${GANTT_CARD_MAX_HEIGHT_VH}vh` } : undefined}
       aria-label={
         isSignage
           ? `資源 ${resourceCd}${jp ? ` ${jp}` : ''}（閲覧）`
@@ -160,7 +234,11 @@ function LeaderOrderResourceCardInner({
       </div>
       <div
         ref={scrollParentRef}
-        className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden pr-0.5"
+        data-testid="leader-order-resource-card-body"
+        className={clsx(
+          'relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-0.5',
+          ganttEnabled ? 'space-y-0' : 'space-y-1'
+        )}
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {rowsWithFooter.length === 0 ? (
@@ -168,57 +246,50 @@ function LeaderOrderResourceCardInner({
         ) : useVirtual ? (
           <div
             className="relative w-full"
-            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+            style={{ height: `${bodyTotalHeightPx}px` }}
           >
+            {ganttEnabled ? (
+              <LeaderBoardGanttTickGutter totalHeightPx={bodyTotalHeightPx} tickPositions={tickPositions} />
+            ) : null}
             {rowVirtualizer.getVirtualItems().map((vi) => {
               const { row, footerChips } = rowsWithFooter[vi.index];
               return (
                 <div
                   key={row.id}
                   data-index={vi.index}
+                  data-testid={ganttEnabled ? 'leader-order-resource-card-virtual-row' : undefined}
                   ref={rowVirtualizer.measureElement}
-                  className="absolute left-0 top-0 w-full pb-1"
-                  style={{ transform: `translateY(${vi.start}px)` }}
+                  className="absolute top-0 pb-1"
+                  style={{
+                    transform: `translateY(${vi.start}px)`,
+                    left: ganttEnabled ? bodyPaddingLeft : 0,
+                    width: ganttEnabled ? `calc(100% - ${bodyPaddingLeft}px)` : '100%'
+                  }}
                 >
-                  <LeaderOrderResourceRow
-                    variant={variant}
-                    resourceCd={resourceCd}
-                    row={row}
-                    seibanAccentRowClass={resolveSeibanAccentRowClass(row.fseiban, activeSeibanFilters ?? [])}
-                    orderUsageNumbers={orderUsageNumbers}
-                    onOrderChange={onOrderChange}
-                    onCompleteRow={onCompleteRow}
-                    completePending={completePending}
-                    orderPending={orderPending}
-                    onOpenDueDatePicker={onOpenDueDatePicker}
-                    dueDatePending={dueDatePending}
-                    onOpenNote={onOpenNote}
-                    notePending={notePending}
-                    footerResourceChips={footerChips}
-                  />
+                  {renderRow(row, footerChips, vi.index)}
                 </div>
               );
             })}
           </div>
+        ) : ganttEnabled ? (
+          <div
+            className="relative w-full"
+            style={{
+              minHeight: `${staticTotalHeightPx}px`,
+              paddingLeft: bodyPaddingLeft
+            }}
+          >
+            <LeaderBoardGanttTickGutter totalHeightPx={bodyTotalHeightPx} tickPositions={tickPositions} />
+            {rowsWithFooter.map(({ row, footerChips }, index) => (
+              <div key={row.id} className="pb-1">
+                {renderRow(row, footerChips, index)}
+              </div>
+            ))}
+          </div>
         ) : (
-          rowsWithFooter.map(({ row, footerChips }) => (
+          rowsWithFooter.map(({ row, footerChips }, index) => (
             <div key={row.id} className="pb-1">
-              <LeaderOrderResourceRow
-                variant={variant}
-                resourceCd={resourceCd}
-                row={row}
-                seibanAccentRowClass={resolveSeibanAccentRowClass(row.fseiban, activeSeibanFilters ?? [])}
-                orderUsageNumbers={orderUsageNumbers}
-                onOrderChange={onOrderChange}
-                onCompleteRow={onCompleteRow}
-                completePending={completePending}
-                orderPending={orderPending}
-                onOpenDueDatePicker={onOpenDueDatePicker}
-                dueDatePending={dueDatePending}
-                onOpenNote={onOpenNote}
-                notePending={notePending}
-                footerResourceChips={footerChips}
-              />
+              {renderRow(row, footerChips, index)}
             </div>
           ))
         )}

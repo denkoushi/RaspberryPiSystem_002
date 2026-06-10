@@ -55,6 +55,9 @@ export type LeaderBoardLeftToolStackProps = {
   onMoveRegisteredSeibanToRank: (fseiban: string, targetRank1Based: number) => void;
   /** 背景同期中など、製番検索・登録を明示的に無効化 */
   interactionLocked?: boolean;
+  /** ガント表示（所要量比例の行高） */
+  ganttEnabled: boolean;
+  onToggleGanttMode: () => void;
 };
 
 /**
@@ -89,7 +92,9 @@ export function LeaderBoardLeftToolStack({
   onToggleSeibanEval,
   registeredSeibansForDisplay,
   onMoveRegisteredSeibanToRank,
-  interactionLocked = false
+  interactionLocked = false,
+  ganttEnabled,
+  onToggleGanttMode
 }: LeaderBoardLeftToolStackProps) {
   const seibanControlsLocked = interactionLocked;
   const rankPickerPanelDomId = useId();
@@ -385,7 +390,7 @@ export function LeaderBoardLeftToolStack({
             切削
           </button>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2 text-[10px] text-white/70">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 text-[10px] text-white/70">
           <span className="w-full text-[9px] uppercase tracking-wide text-white/45">表示</span>
           {(
             [
@@ -408,6 +413,20 @@ export function LeaderBoardLeftToolStack({
               {label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={onToggleGanttMode}
+            aria-pressed={ganttEnabled}
+            aria-label={ganttEnabled ? 'ガント表示をオフにする' : 'ガント表示をオンにする'}
+            className={clsx(
+              'rounded border px-2 py-1 font-semibold',
+              ganttEnabled
+                ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-100'
+                : 'border-white/20 text-white/70 hover:bg-white/5'
+            )}
+          >
+            {ganttEnabled ? 'ガントON' : 'ガントOFF'}
+          </button>
         </div>
         {selectedResourceCategory ? (
           <p className="shrink-0 text-[10px] text-white/45">検索: {selectedResourceCategory}</p>
