@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { memo, useCallback } from 'react';
 
 import { LeaderOrderResourceCard } from './LeaderOrderResourceCard';
@@ -27,6 +28,7 @@ export type LeaderBoardGridProps = {
   interactionLocked?: boolean;
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
   seibanEvalEnabled?: boolean;
+  ganttEnabled?: boolean;
   listIncomplete?: boolean;
   autoRankDisabled?: boolean;
   autoRankPending?: boolean;
@@ -51,6 +53,7 @@ type SlotCardProps = {
   notePending: boolean;
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
   seibanEvalEnabled?: boolean;
+  ganttEnabled?: boolean;
   listIncomplete?: boolean;
   autoRankDisabled?: boolean;
   autoRankPending?: boolean;
@@ -75,6 +78,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   notePending,
   footerResourceChipsByPartKey,
   seibanEvalEnabled = false,
+  ganttEnabled = false,
   autoRankDisabled = false,
   autoRankPending = false,
   onAutoRank
@@ -106,6 +110,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
       notePending={notePending}
       footerResourceChipsByPartKey={footerResourceChipsByPartKey}
       seibanEvalEnabled={seibanEvalEnabled}
+      ganttEnabled={ganttEnabled}
       autoRankDisabled={autoRankDisabled}
       autoRankPending={autoRankPending}
       onAutoRank={onAutoRank}
@@ -135,6 +140,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   interactionLocked = false,
   footerResourceChipsByPartKey,
   seibanEvalEnabled = false,
+  ganttEnabled = false,
   listIncomplete = false,
   autoRankDisabled = false,
   autoRankPending = false,
@@ -143,7 +149,12 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   const rowControlsLocked = interactionLocked;
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 overflow-auto [grid-auto-rows:minmax(14rem,1fr)] md:grid-cols-4 xl:grid-cols-6">
+    <div
+      className={clsx(
+        'grid min-h-0 flex-1 grid-cols-1 gap-2.5 overflow-auto md:grid-cols-4 xl:grid-cols-6',
+        '[grid-auto-rows:minmax(14rem,1fr)]'
+      )}
+    >
       {resourceCdBySlotIndex.map((cdRaw, slotIndex) => {
         const cd = cdRaw?.trim() ?? '';
         if (cd.length === 0) {
@@ -180,6 +191,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             notePending={notePending || rowControlsLocked}
             footerResourceChipsByPartKey={footerResourceChipsByPartKey}
             seibanEvalEnabled={seibanEvalEnabled}
+            ganttEnabled={ganttEnabled}
             autoRankDisabled={autoRankDisabled || rowControlsLocked || listIncomplete}
             autoRankPending={autoRankPending}
             onAutoRank={onAutoRank}

@@ -2,27 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { buildReorderPlan } from '../buildReorderPlan';
 
+import { mkLeaderBoardRow } from './leaderBoardRowTestFixtures';
+
 import type { LeaderBoardRow } from '../types';
 
-const base = (id: string, po: number | null): LeaderBoardRow => ({
-  id,
-  resourceCd: '305',
-  dueDate: null,
-  plannedEndDate: null,
-  displayDue: null,
-  fseiban: '',
-  productNo: '',
-  fkojun: '',
-  fhincd: '',
-  fhinmei: '',
-  customerName: '',
-  machineName: '',
-  machineTypeCode: '',
-  plannedQuantity: null,
-  processingOrder: po,
-  isCompleted: false,
-  note: null
-});
+const base = (id: string, po: number | null): LeaderBoardRow => mkLeaderBoardRow({ id, processingOrder: po });
 
 describe('buildReorderPlan', () => {
   it('processingOrder がある行を先に clear し、その後 assign 1..n', () => {

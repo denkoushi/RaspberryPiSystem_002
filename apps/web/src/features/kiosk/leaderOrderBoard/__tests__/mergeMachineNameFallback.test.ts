@@ -5,27 +5,12 @@ import {
   mergeMachineNameFallback
 } from '../mergeMachineNameFallback';
 
+import { mkLeaderBoardRow } from './leaderBoardRowTestFixtures';
+
 import type { LeaderBoardRow } from '../types';
 
-const row = (fseiban: string, machineName: string): LeaderBoardRow => ({
-  id: fseiban,
-  resourceCd: '305',
-  dueDate: null,
-  plannedEndDate: null,
-  displayDue: null,
-  fseiban,
-  productNo: '',
-  fkojun: '',
-  fhincd: '',
-  fhinmei: '',
-  customerName: '',
-  machineName,
-  machineTypeCode: '',
-  plannedQuantity: null,
-  processingOrder: null,
-  isCompleted: false,
-  note: null
-});
+const row = (fseiban: string, machineName: string): LeaderBoardRow =>
+  mkLeaderBoardRow({ id: fseiban, fseiban, machineName });
 
 describe('mergeMachineNameFallback', () => {
   it('fills empty machineName from map only', () => {

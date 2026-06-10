@@ -2,28 +2,23 @@ import { describe, expect, it } from 'vitest';
 
 import { compareLeaderBoardRowsForSeibanEvalDisplay } from '../sortLeaderBoardRowsForSeibanEvalDisplay';
 
+import { mkLeaderBoardRow } from './leaderBoardRowTestFixtures';
+
 import type { LeaderBoardRow } from '../types';
 
-const row = (id: string, fseiban: string, processingOrder: number | null, displayDue: string | null): LeaderBoardRow => ({
-  id,
-  seibanJoinKey: fseiban,
-  resourceCd: 'R1',
-  dueDate: null,
-  plannedEndDate: null,
-  displayDue,
-  fseiban,
-  productNo: '1',
-  fkojun: '1',
-  fhincd: 'K',
-  fhinmei: '',
-  customerName: '',
-  machineName: 'M',
-  machineTypeCode: '',
-  plannedQuantity: null,
-  processingOrder,
-  isCompleted: false,
-  note: null
-});
+const row = (id: string, fseiban: string, processingOrder: number | null, displayDue: string | null): LeaderBoardRow =>
+  mkLeaderBoardRow({
+    id,
+    seibanJoinKey: fseiban,
+    resourceCd: 'R1',
+    displayDue,
+    fseiban,
+    productNo: '1',
+    fkojun: '1',
+    fhincd: 'K',
+    machineName: 'M',
+    processingOrder
+  });
 
 describe('compareLeaderBoardRowsForSeibanEvalDisplay', () => {
   it('orders by seiban rank before processingOrder', () => {

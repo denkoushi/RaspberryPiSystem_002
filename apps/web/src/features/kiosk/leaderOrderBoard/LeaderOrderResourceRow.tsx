@@ -21,6 +21,8 @@ export type LeaderOrderResourceRowProps = {
   variant?: 'interactive' | 'signage';
   resourceCd: string;
   row: LeaderBoardRow;
+  /** ガント ON 時の行 min-height（px） */
+  rowMinHeightPx?: number;
   /** 製番 OR フィルタ時の左縁アクセント（Tailwind リテラル） */
   seibanAccentRowClass?: string;
   orderUsageNumbers: readonly number[] | undefined;
@@ -42,6 +44,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   variant = 'interactive',
   resourceCd,
   row,
+  rowMinHeightPx,
   seibanAccentRowClass,
   orderUsageNumbers,
   onOrderChange,
@@ -85,6 +88,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
         seibanAccentRowClass ? clsx('pl-2 pr-2', seibanAccentRowClass) : 'px-2',
         row.isCompleted && 'opacity-50 grayscale'
       )}
+      style={rowMinHeightPx != null ? { minHeight: rowMinHeightPx } : undefined}
     >
       <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
         {isSignage ? null : (

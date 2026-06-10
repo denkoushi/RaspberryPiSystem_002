@@ -2,27 +2,22 @@ import { describe, expect, it } from 'vitest';
 
 import { presentLeaderOrderRow } from '../leaderOrderRowPresentation';
 
+import { mkLeaderBoardRow } from './leaderBoardRowTestFixtures';
+
 import type { LeaderBoardRow } from '../types';
 
-const base = (): LeaderBoardRow => ({
-  id: '1',
-  resourceCd: '305',
-  dueDate: null,
-  plannedEndDate: null,
-  displayDue: null,
-  fseiban: 'S1',
-  productNo: 'P99',
-  fkojun: '10',
-  fhincd: 'MH001',
-  fhinmei: '部品A',
-  customerName: '',
-  machineName: '立マシンA',
-  machineTypeCode: '',
-  plannedQuantity: 3,
-  processingOrder: 1,
-  isCompleted: false,
-  note: null
-});
+const base = (): LeaderBoardRow =>
+  mkLeaderBoardRow({
+    id: '1',
+    fseiban: 'S1',
+    productNo: 'P99',
+    fkojun: '10',
+    fhincd: 'MH001',
+    fhinmei: '部品A',
+    machineName: '立マシンA',
+    plannedQuantity: 3,
+    processingOrder: 1
+  });
 
 describe('presentLeaderOrderRow', () => {
   it('joins machine type code, machine name, fseiban, fhincd with middle dots (no productNo)', () => {

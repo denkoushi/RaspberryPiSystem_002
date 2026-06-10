@@ -22,6 +22,8 @@ export type LeaderBoardRow = {
   processingOrder: number | null;
   /** `rowData.progress === '完了'` と API 完了フラグの同期表示 */
   isCompleted: boolean;
+  /** `rowData.FSIGENSHOYORYO` の行総分（分）。工数込み・個数倍なし。 */
+  requiredMinutes: number;
   /** 行単位の備考（生産スケジュール API の note と同一） */
   note: string | null;
   hasSelfInspectionDrawing: boolean;

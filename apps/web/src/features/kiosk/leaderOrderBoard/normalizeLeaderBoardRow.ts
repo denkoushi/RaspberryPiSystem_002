@@ -1,5 +1,6 @@
 import { resolveDisplayDueDate } from '../productionSchedule/plannedDueDisplay';
 
+import { parseLeaderBoardRequiredMinutes } from './parseLeaderBoardRequiredMinutes';
 import { resolveMachineTypeCodeFromRowData } from './resolveMachineTypeCodeFromRowData';
 import { buildFseibanToMachineDisplayName } from './seibanMachineNameIndex';
 
@@ -71,6 +72,7 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     machineTypeCode: resolveMachineTypeCodeFromRowData(data),
     plannedQuantity,
     processingOrder: parseProcessingOrder(row.processingOrder),
+    requiredMinutes: parseLeaderBoardRequiredMinutes(data.FSIGENSHOYORYO),
     isCompleted: isRowCompleted(data),
     note,
     hasSelfInspectionDrawing: Boolean((row as ProductionScheduleRow & { hasSelfInspectionDrawing?: boolean }).hasSelfInspectionDrawing),
