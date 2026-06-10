@@ -541,6 +541,28 @@ cd apps/web && pnpm exec vitest run \
   src/features/part-measurement/__tests__/SelfInspectionNfcRegistrationPanel.test.tsx
 ```
 
+### デプロイ・検証（2026-06-10）
+
+**デプロイ**（`update-all-clients.sh feat/self-inspection-right-pane-polish … --detach --follow` · 1 台ずつ）:
+
+| ホスト | Detach Run ID | Git HEAD | 備考 |
+|--------|---------------|----------|------|
+| `raspberrypi5` | **`20260610-093704-25991`** | **`146c2438`** | `failed=0` · **web** 再ビルド · バンドル **`index-nLIbNtAD.js`** |
+| `raspberrypi4` | **`20260610-100053-25389`** | **`146c2438`** | `failed=0` · `kiosk-browser` 再起動 |
+| `raspi4-robodrill01` | **`20260610-100533-13402`** | **`146c2438`** | `failed=0` · `kiosk-browser` 再起動 |
+| `raspi4-fjv60-80` | **`20260610-100857-19721`** | **`146c2438`** | `failed=0` · `kiosk-browser` 再起動 |
+| `raspi4-kensaku-stonebase01` | **`20260610-101227-17851`** | **`146c2438`** | `failed=0` · `kiosk-browser` 再起動 |
+
+**自動検証**（Pi5 経由 · 2026-06-10 10:16 JST 頃）:
+
+- `./scripts/deploy/verify-phase12-real.sh` — **PASS 43 / WARN 0 / FAIL 0**（全台デプロイ後）
+- Web バンドル `/srv/site/assets/index-nLIbNtAD.js` に `min-h-6 px-4 py-0 text-[15px] leading-none` · `ring-cyan-300` を確認
+- Pi4 全 4 台: `kiosk-browser.service` **active** · HEAD **`146c2438`**
+- deploy-status / status-agent 全 Pi4 **PASS**
+- CI **`27244381856`** **success**（`146c2438` push 後）
+
+**未完了（現場目視推奨）**: 上記「手動確認」1–8（NFC 2列 · 一覧2列選択強調 · 保存/完了薄型 · カメラ OFF inactive · 作成/改版1列維持）は **1 台以上の Pi4** でオペレータ確認推奨。自動検証は API/デプロイ/サービス/バンドル契約まで。
+
 ---
 
 ## 自主検査・NFC 登録と手元カメラ実験（2026-06-09） {#自主検査-nfc-登録-手元カメラ実験-2026-06-09}
