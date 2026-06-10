@@ -440,7 +440,7 @@ cd apps/web && pnpm exec vitest run \
 
 ## キオスク UX 設定（仕掛中ハブ + ヘッダータブ順 · 2026-06-10） {#kiosk-ux-settings-wip-and-tab-order-2026-06-10}
 
-正本: 本節 · ブランチ **`feat/kiosk-self-inspection-wip-and-tab-order`** · 代表 **`c9b265a9`** · **API + Web + Prisma migration**
+正本: 本節 · ブランチ **`feat/kiosk-self-inspection-wip-and-tab-order`** · 代表 **`c9b265a9`** · **API + Web + Prisma migration** · TIFF/氏名集約追補は [Plan kiosk-tiff-wip-cards](../plans/kiosk-tiff-wip-cards.md)。
 
 ### 仕様（再開用）
 
