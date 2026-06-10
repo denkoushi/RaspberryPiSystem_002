@@ -2375,6 +2375,48 @@ describe('part-measurement templates API', () => {
     expect(listRes1.statusCode).toBe(200);
     expect((listRes1.json().sessions as Array<Record<string, unknown>>).some((row) => row.id === sessionId)).toBe(true);
 
+    const kioskClient = await createTestClientDevice();
+    const listInProgressGlobalRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/sessions?status=in_progress',
+      headers: { ...createAuthHeader(viewerToken), 'x-client-key': kioskClient.apiKey }
+    });
+    expect(listInProgressGlobalRes.statusCode).toBe(200);
+    expect(
+      (listInProgressGlobalRes.json().sessions as Array<Record<string, unknown>>).some((row) => row.id === sessionId)
+    ).toBe(true);
+
+    const listInProgressKioskKeyOnlyRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/sessions?status=in_progress',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(listInProgressKioskKeyOnlyRes.statusCode).toBe(200);
+    expect(
+      (listInProgressKioskKeyOnlyRes.json().sessions as Array<Record<string, unknown>>).some((row) => row.id === sessionId)
+    ).toBe(true);
+
+    const listCompletedNoFilterRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/sessions?status=completed',
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(listCompletedNoFilterRes.statusCode).toBe(400);
+
+    const listNoFilterRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/sessions',
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(listNoFilterRes.statusCode).toBe(400);
+
+    const listProcessGroupOnlyRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/sessions?processGroup=cutting',
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(listProcessGroupOnlyRes.statusCode).toBe(400);
+
     const secondEntryRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,

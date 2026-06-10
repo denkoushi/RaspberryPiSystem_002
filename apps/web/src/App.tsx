@@ -16,6 +16,7 @@ import { DashboardPage } from './pages/admin/DashboardPage';
 import { DgxResourceAdminPage } from './pages/admin/DgxResourceAdminPage';
 import { GmailConfigPage } from './pages/admin/GmailConfigPage';
 import { KioskDocumentsAdminPage } from './pages/admin/KioskDocumentsAdminPage';
+import { KioskSettingsPage } from './pages/admin/KioskSettingsPage';
 import { LoanReportPage } from './pages/admin/LoanReportPage';
 import { LocalLlmAdminPage } from './pages/admin/LocalLlmAdminPage';
 import { PalletMachineIllustrationsPage } from './pages/admin/PalletMachineIllustrationsPage';
@@ -184,6 +185,7 @@ function App() {
           <Route path="history" element={<HistoryPage />} />
         </Route>
         <Route path="clients" element={<ClientsPage />} />
+        <Route path="kiosk-settings" element={<KioskSettingsPage />} />
         <Route path="security" element={<SecurityPage />} />
         <Route path="import" element={<CsvImportPage />} />
         <Route path="backup">

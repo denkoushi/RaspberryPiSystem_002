@@ -1,3 +1,4 @@
+import { DEFAULT_KIOSK_HEADER_TAB_ORDER, normalizeKioskHeaderTabOrder } from '@raspi-system/shared-types';
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
@@ -32,6 +33,9 @@ export function KioskLayout() {
   const [showSupportModal, setShowSupportModal] = useState(false);
   const immersiveKioskLayout = usesKioskImmersiveLayout(location.pathname);
   const headerReveal = useKioskBottomCenterHeaderReveal(immersiveKioskLayout);
+  const navTabOrder = normalizeKioskHeaderTabOrder(
+    kioskConfig?.navTabOrder ?? DEFAULT_KIOSK_HEADER_TAB_ORDER
+  );
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
@@ -89,6 +93,7 @@ export function KioskLayout() {
           onOpenSupport={() => setShowSupportModal(true)}
           clientStatus={kioskConfig?.clientStatus ?? null}
           pathname={location.pathname}
+          navTabOrder={navTabOrder}
         />
       </header>
       <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-4 py-4">

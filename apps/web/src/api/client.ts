@@ -51,6 +51,7 @@ import type {
   PartMeasurementSheetWithSession,
   SelfInspectionLotEntryDto,
   SelfInspectionSessionDetailDto,
+  SelfInspectionSessionsListDto,
   SelfInspectionSessionSummaryDto,
   PartMeasurementTemplateCandidateDto,
   PartMeasurementTemplateDto,
@@ -3101,15 +3102,15 @@ export async function listSelfInspectionSessions(
     status?: 'not_started' | 'in_progress' | 'completed';
   },
   clientKey?: string
-): Promise<SelfInspectionSessionSummaryDto[]> {
-  const { data } = await api.get<{ sessions: SelfInspectionSessionSummaryDto[] }>(
+): Promise<SelfInspectionSessionsListDto> {
+  const { data } = await api.get<SelfInspectionSessionsListDto>(
     '/part-measurement/self-inspection/sessions',
     {
       params,
       headers: clientKey ? { 'x-client-key': clientKey } : undefined
     }
   );
-  return data.sessions;
+  return data;
 }
 
 export async function getSelfInspectionSession(
@@ -3623,11 +3624,30 @@ export interface KioskConfig {
   greeting: string;
   idleTimeoutMs: number;
   defaultMode?: 'PHOTO' | 'TAG';
+  navTabOrder?: string[];
   clientStatus?: {
     temperature: number | null;
     cpuUsage: number;
     lastSeen: string; // ISO date string
   } | null;
+}
+
+export type KioskNavTabOrderSettings = {
+  scopeKey: string;
+  tabOrder: string[];
+};
+
+export async function getKioskNavTabOrderSettings() {
+  const { data } = await api.get<{ settings: KioskNavTabOrderSettings }>('/kiosk-settings/nav-tab-order');
+  return data;
+}
+
+export async function updateKioskNavTabOrderSettings(payload: { tabOrder: string[] }) {
+  const { data } = await api.put<{ settings: KioskNavTabOrderSettings }>(
+    '/kiosk-settings/nav-tab-order',
+    payload
+  );
+  return data;
 }
 
 export async function getKioskConfig(): Promise<KioskConfig> {

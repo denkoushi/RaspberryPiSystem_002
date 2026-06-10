@@ -2063,6 +2063,7 @@ model SelfInspectionSession {
   @@index([scheduleRowId], map: "SelfInspectionSession_idx_schedule_row")
   @@index([templateId], map: "SelfInspectionSession_idx_template")
   @@index([completedAt], map: "SelfInspectionSession_idx_completed_at")
+  @@index([completedAt, updatedAt], map: "SelfInspectionSession_idx_completed_at_updated_at")
 }
 
 model SelfInspectionLotEntry {
@@ -2100,6 +2101,14 @@ model SelfInspectionMeasurementValue {
 
   @@unique([entryId, templateItemId], map: "SelfInspectionMeasurementValue_unique_entry_item")
   @@index([entryId], map: "SelfInspectionMeasurementValue_idx_entry")
+}
+
+model KioskHeaderTabOrderConfig {
+  id        String   @id @default(uuid())
+  scopeKey  String   @unique
+  tabOrder  String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SelfInspectionSessionResetAuditLog {

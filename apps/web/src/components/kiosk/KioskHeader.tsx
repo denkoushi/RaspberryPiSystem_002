@@ -1,15 +1,9 @@
-import clsx from 'clsx';
-import { useState } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { useCallback, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { postKioskPower } from '../../api/client';
 import { useVerifyKioskDueManagementAccessPassword } from '../../api/hooks';
-import {
-  isKioskInspectionDrawingPath,
-  isKioskPartMeasurementHubPath,
-  KIOSK_INSPECTION_DRAWING_LIBRARY_PATH
-} from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
-import { isKioskSelfInspectionPath } from '../../features/part-measurement/selfInspectionRoutes';
+import { renderKioskReorderableHeaderTab } from '../../features/kiosk/kioskHeaderTabs/kioskHeaderReorderableTabRenderer';
 import { resolveClientKeyForPower } from '../../lib/client-key';
 import { Row } from '../layout/Row';
 
@@ -17,6 +11,8 @@ import { KioskPowerConfirmModal } from './KioskPowerConfirmModal';
 import { KioskPowerMenuModal } from './KioskPowerMenuModal';
 import { KioskSignagePreviewModal } from './KioskSignagePreviewModal';
 import { PowerDebounceOverlay } from './PowerDebounceOverlay';
+
+import type { KioskReorderableHeaderTabId } from '@raspi-system/shared-types';
 
 type ClientStatus = {
   temperature: number | null;
@@ -31,14 +27,10 @@ type KioskHeaderProps = {
   onOpenSupport: () => void;
   clientStatus?: ClientStatus | null;
   pathname: string;
+  navTabOrder: readonly KioskReorderableHeaderTabId[];
 };
 
-const navBase = 'rounded-md px-3 py-2 text-sm font-semibold transition-colors';
-const navInactive = 'text-white hover:bg-white/10';
 const DUE_MANAGEMENT_AUTH_SESSION_KEY = 'kiosk-due-management-authenticated';
-
-const navClass = (isActive: boolean, activeClassName: string) =>
-  clsx(navBase, isActive ? activeClassName : navInactive);
 
 const GearIcon = () => (
   <svg
@@ -77,7 +69,8 @@ export function KioskHeader({
   clientId,
   onOpenSupport,
   clientStatus,
-  pathname
+  pathname,
+  navTabOrder
 }: KioskHeaderProps) {
   const navigate = useNavigate();
   const verifyDueManagementAccessPasswordMutation = useVerifyKioskDueManagementAccessPassword();
@@ -86,20 +79,7 @@ export function KioskHeader({
   const [isPowerProcessing, setIsPowerProcessing] = useState(false);
   const [showPowerMenu, setShowPowerMenu] = useState(false);
   const [showSignagePreview, setShowSignagePreview] = useState(false);
-  const isBorrowActive = pathname === '/kiosk' || pathname === '/kiosk/tag' || pathname === '/kiosk/photo';
-  const isManualOrderActive = pathname.startsWith('/kiosk/production-schedule/manual-order');
-  const isLeaderOrderBoardActive = pathname.startsWith('/kiosk/production-schedule/leader-order-board');
-  const isProgressOverviewActive = pathname.startsWith('/kiosk/production-schedule/progress-overview');
-  const isLoadBalancingActive = pathname.startsWith('/kiosk/production-schedule/load-balancing');
-  const isPurchaseOrderLookupActive = pathname.startsWith('/kiosk/purchase-order-lookup');
-  const isPalletVisualizationActive = pathname.startsWith('/kiosk/pallet-visualization');
-  const isShelfMasterActive = pathname.startsWith('/kiosk/mobile-placement/shelf-master');
-  const isDueManagementActive = pathname.startsWith('/kiosk/production-schedule/due-management');
-  const isDocumentsActive = pathname.startsWith('/kiosk/documents');
-  const isPartMeasurementActive = isKioskPartMeasurementHubPath(pathname);
-  const isInspectionDrawingActive = isKioskInspectionDrawingPath(pathname);
-  const isSelfInspectionActive = isKioskSelfInspectionPath(pathname);
-  const isRiggingAnalyticsActive = pathname.startsWith('/kiosk/rigging-analytics');
+
   const formatKey = (value: string) => {
     if (!value) return '未設定';
     if (value.length <= 8) return value;
@@ -135,12 +115,13 @@ export function KioskHeader({
     }
   };
 
-  const handleDueManagementNavigate = async () => {
-    if (isDueManagementActive) {
+  const handleDueManagementNavigate = useCallback(async () => {
+    if (pathname.startsWith('/kiosk/production-schedule/due-management')) {
       navigate('/kiosk/production-schedule/due-management');
       return;
     }
-    const isAuthenticated = typeof window !== 'undefined' && window.sessionStorage.getItem(DUE_MANAGEMENT_AUTH_SESSION_KEY) === '1';
+    const isAuthenticated =
+      typeof window !== 'undefined' && window.sessionStorage.getItem(DUE_MANAGEMENT_AUTH_SESSION_KEY) === '1';
     if (isAuthenticated) {
       navigate('/kiosk/production-schedule/due-management');
       return;
@@ -158,7 +139,16 @@ export function KioskHeader({
     } catch {
       window.alert('認証に失敗しました。ネットワーク接続を確認してください。');
     }
-  };
+  }, [navigate, pathname, verifyDueManagementAccessPasswordMutation]);
+
+  const reorderableTabContext = useMemo(
+    () => ({
+      pathname,
+      onDueManagementNavigate: handleDueManagementNavigate,
+      dueManagementPending: verifyDueManagementAccessPasswordMutation.isPending
+    }),
+    [handleDueManagementNavigate, pathname, verifyDueManagementAccessPasswordMutation.isPending]
+  );
 
   return (
     <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3">
@@ -178,14 +168,13 @@ export function KioskHeader({
               <Row className="gap-1">
                 <span className="text-white/70">CPU温度:</span>
                 <span
-                  className={clsx(
-                    'font-semibold',
+                  className={
                     clientStatus.temperature >= 70
-                      ? 'text-red-400'
+                      ? 'font-semibold text-red-400'
                       : clientStatus.temperature >= 60
-                      ? 'text-yellow-400'
-                      : 'text-emerald-400'
-                  )}
+                        ? 'font-semibold text-yellow-400'
+                        : 'font-semibold text-emerald-400'
+                  }
                 >
                   {clientStatus.temperature.toFixed(1)}°C
                 </span>
@@ -194,14 +183,13 @@ export function KioskHeader({
             <Row className="gap-1">
               <span className="text-white/70">CPU負荷:</span>
               <span
-                className={clsx(
-                  'font-semibold',
+                className={
                   clientStatus.cpuUsage >= 80
-                    ? 'text-red-400'
+                    ? 'font-semibold text-red-400'
                     : clientStatus.cpuUsage >= 60
-                    ? 'text-yellow-400'
-                    : 'text-emerald-400'
-                )}
+                      ? 'font-semibold text-yellow-400'
+                      : 'font-semibold text-emerald-400'
+                }
               >
                 {clientStatus.cpuUsage.toFixed(1)}%
               </span>
@@ -220,129 +208,22 @@ export function KioskHeader({
           </span>
         </Row>
         <nav className="flex items-center gap-1 min-w-0 flex-nowrap overflow-x-auto whitespace-nowrap">
-          <NavLink to="/kiosk" className={() => navClass(isBorrowActive, 'bg-emerald-500 text-white')}>
-            持出
-          </NavLink>
-          <NavLink
-            to="/kiosk/part-measurement/self-inspection"
-            className={() => navClass(isSelfInspectionActive, 'bg-amber-500 text-slate-950')}
-          >
-            自主検査
-          </NavLink>
-          <NavLink
-            to="/kiosk/instruments/borrow"
-            className={({ isActive }) => navClass(isActive, 'bg-emerald-500 text-white')}
-          >
-            計測機器 持出
-          </NavLink>
-          <NavLink
-            to="/kiosk/rigging/borrow"
-            className={({ isActive }) => navClass(isActive, 'bg-amber-400 text-slate-900')}
-          >
-            吊具 持出
-          </NavLink>
-          <NavLink
-            to="/kiosk/production-schedule"
-            end
-            className={({ isActive }) => navClass(isActive, 'bg-blue-500 text-white')}
-          >
-            生産スケジュール
-          </NavLink>
-          <NavLink
-            to="/kiosk/production-schedule/manual-order"
-            className={() => navClass(isManualOrderActive, 'bg-indigo-500 text-white')}
-          >
-            手動順番
-          </NavLink>
-          <NavLink
-            to="/kiosk/production-schedule/leader-order-board"
-            className={() => navClass(isLeaderOrderBoardActive, 'bg-violet-600 text-white')}
-          >
-            順位ボード
-          </NavLink>
-          <NavLink
-            to="/kiosk/production-schedule/progress-overview"
-            className={() => navClass(isProgressOverviewActive, 'bg-cyan-600 text-white')}
-          >
-            進捗一覧
-          </NavLink>
-          <NavLink
-            to="/kiosk/production-schedule/load-balancing"
-            className={() => navClass(isLoadBalancingActive, 'bg-fuchsia-700 text-white')}
-          >
-            負荷調整
-          </NavLink>
-          <NavLink
-            to="/kiosk/purchase-order-lookup"
-            className={() => navClass(isPurchaseOrderLookupActive, 'bg-lime-600 text-white')}
-          >
-            購買照会
-          </NavLink>
-          <NavLink
-            to="/kiosk/pallet-visualization"
-            className={() => navClass(isPalletVisualizationActive, 'bg-orange-600 text-white')}
-          >
-            パレット
-          </NavLink>
-          <NavLink
-            to="/kiosk/mobile-placement/shelf-master"
-            className={() => navClass(isShelfMasterActive, 'bg-stone-600 text-white')}
-          >
-            棚マスタ
-          </NavLink>
-          <NavLink
-            to="/kiosk/documents"
-            className={() => navClass(isDocumentsActive, 'bg-teal-600 text-white')}
-          >
-            要領書
-          </NavLink>
-          <NavLink
-            to="/kiosk/part-measurement"
-            className={() => navClass(isPartMeasurementActive, 'bg-rose-600 text-white')}
-          >
-            部品測定
-          </NavLink>
-          <NavLink
-            to={KIOSK_INSPECTION_DRAWING_LIBRARY_PATH}
-            className={() => navClass(isInspectionDrawingActive, 'bg-amber-700 text-white')}
-          >
-            検査図面
-          </NavLink>
-          <NavLink
-            to="/kiosk/rigging-analytics"
-            className={() =>
-              navClass(isRiggingAnalyticsActive, 'text-white')
-            }
-            style={
-              isRiggingAnalyticsActive
-                ? { backgroundColor: 'var(--color-primitive-blue-900)' }
-                : undefined
-            }
-          >
-            集計
-          </NavLink>
-          <button
-            type="button"
-            onClick={() => void handleDueManagementNavigate()}
-            disabled={verifyDueManagementAccessPasswordMutation.isPending}
-            className={navClass(isDueManagementActive, 'bg-sky-600 text-white')}
-          >
-            納期管理
-          </button>
-          <NavLink to="/kiosk/call" className={({ isActive }) => navClass(isActive, 'bg-purple-600 text-white')}>
-            📞 通話
-          </NavLink>
+          {navTabOrder.map((tabId) => (
+            <span key={tabId} className="shrink-0">
+              {renderKioskReorderableHeaderTab(tabId, reorderableTabContext)}
+            </span>
+          ))}
           <button
             type="button"
             onClick={() => setShowSignagePreview(true)}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-md px-3 py-2 text-sm font-semibold transition-colors"
+            className="shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md px-3 py-2 text-sm font-semibold transition-colors"
           >
             サイネージ
           </button>
           <Link
             to="/login"
             state={{ from: { pathname: '/admin' }, forceLogin: true }}
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded-md p-2 text-sm font-semibold transition-colors"
+            className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white rounded-md p-2 text-sm font-semibold transition-colors"
             aria-label="管理コンソール"
             title="管理コンソール"
           >
@@ -350,7 +231,7 @@ export function KioskHeader({
           </Link>
           <button
             onClick={onOpenSupport}
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded-md px-3 py-2 text-sm font-semibold transition-colors"
+            className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white rounded-md px-3 py-2 text-sm font-semibold transition-colors"
             aria-label="お問い合わせ"
           >
             お問い合わせ

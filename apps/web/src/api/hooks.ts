@@ -89,6 +89,8 @@ import {
   type CreateMachineInput,
   type UpdateMachineInput,
   getKioskConfig,
+  getKioskNavTabOrderSettings,
+  updateKioskNavTabOrderSettings,
   getKioskEmployees,
   getKioskProductionSchedule,
   getKioskProductionScheduleLeaderboardShell,
@@ -1937,6 +1939,25 @@ export function useReturnMeasuringInstrument(clientKey?: string) {
   return useMutation({
     mutationFn: (payload: MeasuringInstrumentReturnPayload) => returnMeasuringInstrument(payload, clientKey),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['loans'] })
+  });
+}
+
+export function useKioskNavTabOrderSettings() {
+  return useQuery({
+    queryKey: ['kiosk-nav-tab-order-settings'],
+    queryFn: getKioskNavTabOrderSettings
+  });
+}
+
+export function useUpdateKioskNavTabOrderSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { tabOrder: string[] }) => updateKioskNavTabOrderSettings(payload),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['kiosk-nav-tab-order-settings'], data);
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-nav-tab-order-settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-config'] });
+    }
   });
 }
 

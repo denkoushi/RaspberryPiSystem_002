@@ -84,6 +84,9 @@ export function AdminLayout() {
             <NavLink to="/admin/clients" className={linkClass}>
               クライアント端末
             </NavLink>
+            <NavLink to="/admin/kiosk-settings" className={linkClass}>
+              キオスク表示設定
+            </NavLink>
             <NavLink to="/admin/kiosk-documents" className={linkClass}>
               要領書（キオスク）
             </NavLink>

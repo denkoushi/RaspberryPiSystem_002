@@ -41,7 +41,23 @@ import {
   templateConfigFromTemplateForReset
 } from './self-inspection-reset-preflight.js';
 
-const LIST_SESSIONS_MAX = 200;
+export const LIST_SESSIONS_MAX = 200;
+
+const listSessionsSummaryInclude = {
+  template: {
+    select: {
+      name: true,
+      selfInspectionMode: true,
+      selfInspectionFixedCount: true,
+      selfInspectionSampleSize: true
+    }
+  },
+  _count: { select: { entries: true } }
+} as const;
+
+type SessionSummarySource = Prisma.SelfInspectionSessionGetPayload<{
+  include: typeof listSessionsSummaryInclude;
+}>;
 
 export {
   isFullSelfInspectionPlannedQuantityWithinLimit,
@@ -526,7 +542,7 @@ function serializeResetNewSession(session: {
   };
 }
 
-function serializeSessionSummary(session: SessionWithCounts) {
+function serializeSessionSummary(session: SessionSummarySource | SessionWithCounts) {
   const policy = sessionForEntryCountPolicy(session);
   const completedEntryCount = session._count.entries;
   const requiredEntryCount = resolveRequiredEntryCountForCompletion(policy);
@@ -913,7 +929,7 @@ export class SelfInspectionService {
   }) {
     const productNo = normalizeText(query.productNo);
     const resourceCd = normalizeText(query.resourceCd);
-    if (!productNo && !resourceCd) {
+    if (!productNo && !resourceCd && query.status !== 'in_progress') {
       throw new ApiError(400, '製造order または資源CDのいずれかで絞り込んでください');
     }
     const rows = await prisma.selfInspectionSession.findMany({
@@ -927,21 +943,24 @@ export class SelfInspectionService {
           : {}),
         ...(query.status === 'completed' ? { completedAt: { not: null } } : {})
       },
-      include: {
-        template: { include: partMeasurementTemplateFullInclude },
-        _count: { select: { entries: true } }
-      },
+      include: listSessionsSummaryInclude,
       orderBy: [{ updatedAt: 'desc' }],
-      take: LIST_SESSIONS_MAX
+      take: LIST_SESSIONS_MAX + 1
     });
-    const summaries = rows.map(serializeSessionSummary);
-    if (query.status === 'in_progress') {
-      return summaries.filter((row) => row.status === 'in_progress');
-    }
-    if (query.status === 'completed') {
-      return summaries.filter((row) => row.status === 'completed');
-    }
-    return summaries;
+    const truncated = rows.length > LIST_SESSIONS_MAX;
+    const boundedRows = truncated ? rows.slice(0, LIST_SESSIONS_MAX) : rows;
+    const summaries = boundedRows.map(serializeSessionSummary);
+    const sessions =
+      query.status === 'in_progress'
+        ? summaries.filter((row) => row.status === 'in_progress')
+        : query.status === 'completed'
+          ? summaries.filter((row) => row.status === 'completed')
+          : summaries;
+    return {
+      sessions,
+      listLimit: LIST_SESSIONS_MAX,
+      truncated
+    };
   }
 
   async getSessionDetail(sessionId: string, options?: { entryIndex?: number }) {
