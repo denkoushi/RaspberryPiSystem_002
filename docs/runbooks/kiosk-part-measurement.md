@@ -436,6 +436,57 @@ cd apps/web && pnpm exec vitest run \
 
 ---
 
+## キオスク UX 設定（仕掛中ハブ + ヘッダータブ順 · 2026-06-10） {#kiosk-ux-settings-wip-and-tab-order-2026-06-10}
+
+正本: 本節 · ブランチ **`feat/kiosk-self-inspection-wip-and-tab-order`** · 代表 **`c9b265a9`** · **API + Web + Prisma migration**
+
+### 仕様（再開用）
+
+- **自主検査タブ**: 検索なしで全端末共通の **仕掛中**（`status=in_progress`・`updatedAt desc`・最大 200 件）を常時表示。検索入力あり時は従来の `selfInspectionEligibleOnly` 候補検索。再開は `/kiosk/part-measurement/self-inspection/sessions/:id`。
+- **API**: `GET /api/part-measurement/self-inspection/sessions?status=in_progress` は **`x-client-key` のみ**でも可（`productNo`/`resourceCd` 不要）。レスポンスは `{ sessions, listLimit, truncated }`（`take+1` で省略判定）。
+- **タブ順**: 全端末共通 `KioskHeaderTabOrderConfig`（`scopeKey=shared`）。管理 **`/admin/kiosk-settings`**。キオスクは `GET /api/kiosk/config` の `navTabOrder`。サイネージ・管理・問い合わせ・電源は固定。
+- **共有型**: `packages/shared-types/src/kiosk/kiosk-header-tab-order.ts`（`normalizeKioskHeaderTabOrder`）。
+
+### デプロイ（標準）
+
+1. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+2. 第2引数 **`feat/kiosk-self-inspection-wip-and-tab-order`**（`main` マージ後は **`main`**）。
+3. **Pi5 先行** → Phase12 `./scripts/deploy/verify-phase12-real.sh` → **Pi4×4 を 1 台ずつ** `--limit`（`raspi4-kensaku-stonebase01` 先行推奨）。
+4. Pi3 / Zero2W: **対象外**（`skipping: no hosts matched`）。
+
+| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 備考 |
+|--------|---------------|----------|------------|------|
+| `raspberrypi5` | **`20260610-123720-3368`** | **`c9b265a9`** | `ok=134` `failed=0` | `api`/`web` 再ビルド · migration 2 件 |
+| `raspi4-kensaku-stonebase01` | **`20260610-130117-16010`** | **`c9b265a9`** | `ok=129` `failed=0` | `kiosk-browser` 再起動 |
+| `raspberrypi4` | **`20260610-130513-7469`** | **`c9b265a9`** | `ok=122` `failed=0` | 同上 |
+| `raspi4-robodrill01` | **`20260610-130935-4602`** | **`c9b265a9`** | `ok=122` `failed=0` | 同上 |
+| `raspi4-fjv60-80` | **`20260610-131258-29570`** | **`c9b265a9`** | `ok=122` `failed=0` | 同上 |
+
+### 検証結果（2026-06-10）
+
+| 区分 | 結果 |
+|------|------|
+| **自動（Pi5）** | Phase12 **`PASS 43 / WARN 0 / FAIL 0`**（Pi5 デプロイ後）。`GET /api/system/health` **200**。`GET /api/kiosk/config` + `x-client-key` → `navTabOrder[0]=borrow`（18 件）。`GET …/sessions?status=in_progress` + `x-client-key` のみ → **200**、`listLimit=200`。Web バンドル **`index-DX2G38-K.js`** に `nav-tab-order` を確認。 |
+| **手動（キオスク）** | 下記 1–4 は **現場目視未記録**（API/デプロイは完了）。 |
+
+### 手動確認（Pi4/Pi5）
+
+1. **自主検査** タブ初期表示で仕掛中一覧（検索欄はタイトルバー内）。1 文字検索で「2 文字以上」警告。
+2. 仕掛中 **再開** から既存セッションへ入室できること。
+3. 管理 **`/admin/kiosk-settings`** でタブ順変更 → 保存 → キオスクヘッダーに反映（`navTabOrder`）。
+4. 納期管理・通話・サイネージ固定部が維持されること。
+
+### 未完了
+
+- 全 Pi4 での **手動目視 OK 記録**（上記 1–4）。
+- 仕掛中 **200 件超** 時の運用（`truncated` 警告表示・検索誘導）の現場確認。
+
+### Local Notes JA
+
+- 管理画面のタブ順編集は **`hasUserEdited`** で refetch 上書きを抑止。保存成功時は mutation **`setQueryData`** で `kiosk-nav-tab-order-settings` を即時同期。
+
+---
+
 ## 自主検査・セッション右ペイン入力改善（2026-06-09） {#自主検査-セッション右ペイン入力改善-2026-06-09}
 
 正本: [KB-320 §右ペイン入力改善](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション右ペイン入力改善-2026-06-09) · ブランチ **`feat/kiosk-self-inspection-right-pane-inputs`** · 代表 **`58062ba7`** · CI **`27199280343`** · **Web のみ**
