@@ -2,9 +2,11 @@ import clsx from 'clsx';
 
 import {
   inspectionDrawingPointSummaryListSidebarCardClassName,
+  inspectionDrawingPointSummaryListSidebarCardSelectedClassName,
   inspectionDrawingPointSummaryListSidebarClassName,
   inspectionDrawingPointSummaryListSidebarSectionClassName,
-  inspectionDrawingPointSummaryListSidebarTitleClassName
+  inspectionDrawingPointSummaryListSidebarTitleClassName,
+  inspectionDrawingPointSummaryListSidebarTwoColumnClassName
 } from './inspectionDrawingKioskUi';
 import {
   MEASUREMENT_POINT_INPUT_STATUS_LABEL,
@@ -12,6 +14,8 @@ import {
 } from './measurementPointInputStatus';
 
 import type { InspectionDrawingPoint } from './types';
+
+export type InspectionDrawingPointSummaryListLayout = 'oneColumn' | 'twoColumn';
 
 type Props = {
   points: InspectionDrawingPoint[];
@@ -23,6 +27,8 @@ type Props = {
   /** 入力値と OK/NG 等の状態を表示（自主検査セッション向け・opt-in） */
   showMeasurementStatus?: boolean;
   variant: 'sidebar';
+  /** 列数。自主検査セッション右ペインのみ twoColumn、作成/改版は oneColumn（既定） */
+  layout?: InspectionDrawingPointSummaryListLayout;
 };
 
 function sortByMarkerNo(points: InspectionDrawingPoint[]): InspectionDrawingPoint[] {
@@ -50,13 +56,18 @@ export function InspectionDrawingPointSummaryList({
   onSelectPoint,
   onSelectPointerDownCapture,
   showMeasurementStatus = false,
-  variant
+  variant,
+  layout = 'oneColumn'
 }: Props) {
   if (variant !== 'sidebar') {
     return null;
   }
 
   const sorted = sortByMarkerNo(points);
+  const listClassName =
+    layout === 'twoColumn'
+      ? inspectionDrawingPointSummaryListSidebarTwoColumnClassName
+      : inspectionDrawingPointSummaryListSidebarClassName;
 
   return (
     <div
@@ -67,18 +78,14 @@ export function InspectionDrawingPointSummaryList({
       {sorted.length === 0 ? (
         <p className="px-1 text-[0.92rem] text-white/50">測定点がありません。図面上で点を置いてください。</p>
       ) : (
-        <div
-          className={inspectionDrawingPointSummaryListSidebarClassName}
-          role="list"
-          aria-label="測定点一覧"
-        >
+        <div className={listClassName} role="list" aria-label="測定点一覧">
           {sorted.map((pt) => {
             const selected = pt.id === selectedPointId;
             const displayName = pt.name.trim() || '（名称未選択）';
             const inputStatus = showMeasurementStatus ? resolveMeasurementPointInputStatus(pt) : null;
             const testValueDisplay = showMeasurementStatus ? displayRaw(pt.testValue) : null;
             return (
-              <div key={pt.id} role="listitem">
+              <div key={pt.id} role="listitem" className="min-w-0">
                 <button
                   type="button"
                   disabled={disabled}
@@ -86,20 +93,23 @@ export function InspectionDrawingPointSummaryList({
                   aria-label={`測定点 No.${pt.markerNo} ${displayName} を選択`}
                   className={clsx(
                     inspectionDrawingPointSummaryListSidebarCardClassName,
-                    selected && 'border-cyan-400/80 bg-cyan-950/40 ring-1 ring-cyan-400/50'
+                    selected &&
+                      (layout === 'twoColumn'
+                        ? inspectionDrawingPointSummaryListSidebarCardSelectedClassName
+                        : 'border-cyan-400/80 bg-cyan-950/40 ring-1 ring-cyan-400/50')
                   )}
                   onPointerDownCapture={onSelectPointerDownCapture}
                   onClick={() => onSelectPoint(pt.id)}
                 >
                   <span className="truncate">
-                    <span className={clsx('font-bold', selected ? 'text-cyan-200' : 'text-white/80')}>
+                    <span className={clsx('font-bold', selected ? (layout === 'twoColumn' ? 'text-cyan-100' : 'text-cyan-200') : 'text-white/80')}>
                       No.{pt.markerNo}
                     </span>
                     <span className="ml-1 font-semibold">{displayName}</span>
                   </span>
                   {showMeasurementStatus ? (
-                    <span className="flex items-center justify-between gap-2 truncate text-white/75">
-                      <span className="truncate">
+                    <span className="flex min-w-0 items-center justify-between gap-2 text-white/75">
+                      <span className="min-w-0 flex-1 truncate">
                         <span className="text-white/50">測定値</span> {testValueDisplay}
                       </span>
                       {inputStatus ? (

@@ -46,6 +46,80 @@ describe('InspectionDrawingPointSummaryList', () => {
     expect(items[1]).toHaveTextContent('No.2');
   });
 
+  it('uses one-column layout by default for create/edit sidebar', () => {
+    const points = [makePoint({ id: 'p1', markerNo: 1 })];
+
+    const { container } = render(
+      <InspectionDrawingPointSummaryList
+        points={points}
+        selectedPointId="p1"
+        onSelectPoint={() => undefined}
+        variant="sidebar"
+      />
+    );
+
+    expect(container.querySelector('.grid-cols-2')).toBeNull();
+    expect(container.querySelector('.flex.flex-col')).toBeTruthy();
+    const button = screen.getByRole('button', { name: /測定点 No\.1/ });
+    expect(button.className).toContain('ring-cyan-400/50');
+    expect(button.className).not.toContain('ring-cyan-300');
+  });
+
+  it('uses two-column layout when layout is twoColumn', () => {
+    const points = [makePoint({ id: 'p1', markerNo: 1 })];
+
+    const { container } = render(
+      <InspectionDrawingPointSummaryList
+        points={points}
+        selectedPointId="p1"
+        onSelectPoint={() => undefined}
+        variant="sidebar"
+        layout="twoColumn"
+      />
+    );
+
+    expect(container.querySelector('.grid.grid-cols-2')).toBeTruthy();
+  });
+
+  it('applies high-contrast selected styling in twoColumn layout', () => {
+    const points = [makePoint({ id: 'p1', markerNo: 1 })];
+
+    render(
+      <InspectionDrawingPointSummaryList
+        points={points}
+        selectedPointId="p1"
+        onSelectPoint={() => undefined}
+        showMeasurementStatus
+        variant="sidebar"
+        layout="twoColumn"
+      />
+    );
+
+    const button = screen.getByRole('button', { name: /測定点 No\.1/ });
+    expect(button.className).toContain('ring-2');
+    expect(button.className).toContain('ring-cyan-300');
+  });
+
+  it('shrinks measurement value row in twoColumn layout so status label stays visible', () => {
+    const points = [makePoint({ id: 'p1', markerNo: 1, testValue: '12345678901234567890' })];
+
+    const { container } = render(
+      <InspectionDrawingPointSummaryList
+        points={points}
+        selectedPointId="p1"
+        onSelectPoint={() => undefined}
+        showMeasurementStatus
+        variant="sidebar"
+        layout="twoColumn"
+      />
+    );
+
+    const valueRow = container.querySelector('.min-w-0.flex-1.truncate');
+    expect(valueRow).toBeTruthy();
+    expect(valueRow?.textContent).toContain('12345678901234567890');
+    expect(screen.getByText('NG')).toBeInTheDocument();
+  });
+
   it('calls onSelectPoint when a card is clicked', () => {
     const onSelect = vi.fn();
     const points = [makePoint({ id: 'p1', markerNo: 1 })];

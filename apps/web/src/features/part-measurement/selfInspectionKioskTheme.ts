@@ -2,6 +2,8 @@ import clsx from 'clsx';
 
 export type SelfInspectionKioskButtonSize = 'default' | 'compact' | 'icon' | 'actionCompact';
 
+export type SelfInspectionKioskButtonTone = 'default' | 'inactive';
+
 export type SelfInspectionKioskButtonClassOptions = {
   disabled?: boolean;
   size?: SelfInspectionKioskButtonSize;
@@ -9,17 +11,23 @@ export type SelfInspectionKioskButtonClassOptions = {
   pressed?: boolean;
   /** 押せる状態の強調（青外枠）。業務フローとは無関係な見た目フラグ */
   highlighted?: boolean;
+  /** 操作可能だが OFF / 非選択の見た目（disabled とは別） */
+  tone?: SelfInspectionKioskButtonTone;
 };
 
 const sizeClass: Record<SelfInspectionKioskButtonSize, string> = {
   default: 'min-h-11 px-4 text-[15px]',
   compact: 'min-h-11 px-2 text-sm',
   icon: 'min-h-11 min-w-11 px-2 text-[1.25rem] font-semibold leading-none',
-  actionCompact: 'min-h-8 px-4 text-[15px]'
+  actionCompact: 'min-h-6 px-4 py-0 text-[15px] leading-none'
 };
 
 const enabledVisual =
   'rounded-md border-0 bg-slate-700 font-semibold text-white transition-colors hover:bg-slate-600';
+
+/** 操作可能だが inactive（例: 手元カメラ OFF）。disabled 属性は付けない */
+const inactiveVisual =
+  'rounded-md border-0 bg-slate-800/50 font-semibold text-white/40 transition-colors hover:bg-slate-800/65 hover:text-white/55';
 
 /** ring / shadow のみ。border 幅は変えずレイアウトを維持する */
 const highlightedAccent =
@@ -36,11 +44,17 @@ export function selfInspectionKioskButtonClass(
   options: SelfInspectionKioskButtonClassOptions = {}
 ): string {
   const size = options.size ?? 'default';
+  const tone = options.tone ?? 'default';
   const showHighlight = Boolean(options.highlighted && !options.disabled);
+  const baseVisual = options.disabled
+    ? disabledVisual
+    : tone === 'inactive'
+      ? inactiveVisual
+      : enabledVisual;
   return clsx(
     'inline-flex items-center justify-center',
     sizeClass[size],
-    options.disabled ? disabledVisual : enabledVisual,
+    baseVisual,
     showHighlight && highlightedAccent,
     options.wide && 'min-w-[11rem] px-5'
   );

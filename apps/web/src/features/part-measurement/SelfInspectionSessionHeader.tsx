@@ -98,6 +98,7 @@ export function SelfInspectionSessionHeader({
           <SelfInspectionKioskButton
             type="button"
             size="compact"
+            tone={workbenchCameraEnabled ? 'default' : 'inactive'}
             aria-pressed={workbenchCameraEnabled}
             onClick={onToggleWorkbenchCamera}
           >

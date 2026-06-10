@@ -96,12 +96,20 @@ export const inspectionDrawingCreatePageRootClassName =
 export const inspectionDrawingCreateWorkspaceClassName =
   'flex min-h-0 flex-1 flex-col gap-1.5 lg:flex-row';
 
-/** 測定点一覧（右ペイン縦リスト） */
+/** 測定点一覧（右ペイン縦リスト · 1列） */
 export const inspectionDrawingPointSummaryListSidebarClassName =
   'flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto [scrollbar-gutter:stable]';
 
+/** 測定点一覧（自主検査セッション右ペイン · 2列） */
+export const inspectionDrawingPointSummaryListSidebarTwoColumnClassName =
+  'grid min-h-0 flex-1 grid-cols-2 gap-1 overflow-y-auto [scrollbar-gutter:stable]';
+
 export const inspectionDrawingPointSummaryListSidebarCardClassName =
   'flex w-full flex-col gap-0.5 rounded border border-white/20 bg-slate-800/90 px-2 py-1 text-left text-[0.82rem] leading-snug text-white transition hover:border-white/35 disabled:opacity-50';
+
+/** 測定点一覧 — 自主検査セッション選択中カード（高彩度 cyan · ring 主強調） */
+export const inspectionDrawingPointSummaryListSidebarCardSelectedClassName =
+  'border-cyan-300 bg-cyan-900/55 ring-2 ring-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.45)]';
 
 export const inspectionDrawingPointSummaryListSidebarSectionClassName =
   'mt-1.5 flex min-h-0 flex-1 flex-col gap-1 border-t border-white/10 pt-1.5';

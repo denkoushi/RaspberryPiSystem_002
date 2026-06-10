@@ -1,6 +1,7 @@
 import {
   selfInspectionKioskButtonClass,
-  type SelfInspectionKioskButtonSize
+  type SelfInspectionKioskButtonSize,
+  type SelfInspectionKioskButtonTone
 } from './selfInspectionKioskTheme';
 
 import type { ButtonHTMLAttributes } from 'react';
@@ -11,6 +12,7 @@ type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className' | 'disabl
   wide?: boolean;
   pressed?: boolean;
   highlighted?: boolean;
+  tone?: SelfInspectionKioskButtonTone;
 };
 
 /**
@@ -22,6 +24,7 @@ export function SelfInspectionKioskButton({
   wide = false,
   pressed,
   highlighted = false,
+  tone = 'default',
   type = 'button',
   ...rest
 }: Props) {
@@ -30,7 +33,7 @@ export function SelfInspectionKioskButton({
       type={type}
       disabled={disabled}
       aria-pressed={pressed}
-      className={selfInspectionKioskButtonClass({ disabled, size, wide, pressed, highlighted })}
+      className={selfInspectionKioskButtonClass({ disabled, size, wide, pressed, highlighted, tone })}
       {...rest}
     />
   );

@@ -3,13 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { selfInspectionKioskButtonClass } from '../selfInspectionKioskTheme';
 
 describe('selfInspectionKioskButtonClass', () => {
-  it('actionCompact keeps text size while reducing height', () => {
+  it('actionCompact keeps text size while reducing height below default', () => {
     const actionCompact = selfInspectionKioskButtonClass({ size: 'actionCompact' });
     const defaultSize = selfInspectionKioskButtonClass({ size: 'default' });
-    expect(actionCompact).toContain('min-h-8');
+    expect(actionCompact).toContain('min-h-6');
     expect(actionCompact).toContain('text-[15px]');
+    expect(actionCompact).toContain('leading-none');
     expect(defaultSize).toContain('min-h-11');
     expect(actionCompact).not.toContain('min-h-11');
+    expect(actionCompact).not.toContain('min-h-8');
   });
 
   it.each(['default', 'compact', 'icon', 'actionCompact'] as const)(
@@ -32,6 +34,20 @@ describe('selfInspectionKioskButtonClass', () => {
     expect(enabled).toContain('bg-slate-700');
     expect(disabled).toContain('border-0');
     expect(disabled).toContain('text-white/40');
+  });
+
+  it('inactive tone uses muted visual without disabled opacity tricks', () => {
+    const inactive = selfInspectionKioskButtonClass({ tone: 'inactive' });
+    expect(inactive).toContain('bg-slate-800/50');
+    expect(inactive).toContain('text-white/40');
+    expect(inactive).not.toMatch(/opacity-60/);
+    expect(inactive).not.toMatch(/grayscale/);
+  });
+
+  it('disabled takes precedence over inactive tone', () => {
+    const disabledInactive = selfInspectionKioskButtonClass({ tone: 'inactive', disabled: true });
+    expect(disabledInactive).toContain('cursor-not-allowed');
+    expect(disabledInactive).not.toContain('hover:bg-slate-800/65');
   });
 
   it('highlighted uses ring and shadow without changing border width', () => {
