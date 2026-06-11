@@ -14,9 +14,8 @@ vi.mock('@tanstack/react-virtual', () => ({
 
 import {
   GANTT_MIN_ROW_HEIGHT_PX,
-  GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX,
-  GANTT_TICK_GUTTER_WIDTH_PX,
-  GANTT_TICK_ORIGIN_LINE_HEIGHT_PX
+  GANTT_RULER_BAR_WIDTH_PX,
+  GANTT_RULER_GUTTER_WIDTH_PX
 } from '../gantt/leaderBoardGanttConstants';
 import { LeaderBoardGanttTickGutter } from '../gantt/LeaderBoardGanttTickGutter';
 import { LeaderBoardGrid } from '../LeaderBoardGrid';
@@ -53,28 +52,36 @@ const rowProps = {
 };
 
 describe('LeaderBoardGanttTickGutter', () => {
-  it('renders pointer-events-none gutter with origin and boundary tick lines', () => {
-    const { container } = render(
+  it('renders pointer-events-none gutter with alternating vertical ruler bands', () => {
+    render(
       <LeaderBoardGanttTickGutter
         totalHeightPx={200}
-        tickMarks={[
-          { topPx: 0, kind: 'origin' },
-          { topPx: 96, kind: 'boundary' }
+        rulerSegments={[
+          { topPx: 0, heightPx: 96, bandIndex: 0 },
+          { topPx: 96, heightPx: 104, bandIndex: 1 }
         ]}
       />
     );
 
-    const gutter = container.firstElementChild as HTMLElement;
+    const gutter = screen.getByTestId('leader-board-gantt-ruler-gutter');
     expect(gutter).toHaveClass('pointer-events-none');
     expect(gutter).toHaveAttribute('aria-hidden', 'true');
+    expect(gutter).toHaveStyle({ width: `${GANTT_RULER_GUTTER_WIDTH_PX}px`, height: '200px' });
 
-    const originTick = container.querySelector<HTMLElement>('.bg-cyan-400\\/55');
-    const boundaryTick = container.querySelector<HTMLElement>('.bg-cyan-300\\/80');
-    expect(originTick).not.toBeNull();
-    expect(boundaryTick).not.toBeNull();
-    expect(originTick?.style.height).toBe(`${GANTT_TICK_ORIGIN_LINE_HEIGHT_PX}px`);
-    expect(boundaryTick?.style.height).toBe(`${GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX}px`);
-    expect(boundaryTick?.style.top).toBe('96px');
+    const bands = screen.getAllByTestId('leader-board-gantt-ruler-band');
+    expect(bands).toHaveLength(2);
+    expect(bands[0]).toHaveAttribute('data-band-index', '0');
+    expect(bands[1]).toHaveAttribute('data-band-index', '1');
+    expect(bands[0]).toHaveStyle({
+      top: '0px',
+      height: '96px',
+      width: `${GANTT_RULER_BAR_WIDTH_PX}px`
+    });
+    expect(bands[1]).toHaveStyle({
+      top: '96px',
+      height: '104px',
+      width: `${GANTT_RULER_BAR_WIDTH_PX}px`
+    });
   });
 });
 
@@ -107,16 +114,24 @@ describe('LeaderOrderResourceCard gantt', () => {
     const { container } = render(<LeaderOrderResourceCard {...cardProps} ganttEnabled={false} />);
 
     expect(container.firstElementChild).toHaveClass('h-full');
-    expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
+    expect(screen.queryByTestId('leader-board-gantt-ruler-gutter')).toBeNull();
   });
 
-  it('keeps h-full and renders 8H tick gutter when gantt is on', () => {
+  it('keeps h-full and renders 8H ruler gutter when gantt is on', () => {
     const { container } = render(<LeaderOrderResourceCard {...cardProps} ganttEnabled />);
 
     expect(container.firstElementChild).toHaveClass('h-full');
-    const gutter = container.querySelector('[aria-hidden="true"]');
+    const gutter = screen.getByTestId('leader-board-gantt-ruler-gutter');
     expect(gutter).toBeInTheDocument();
     expect(gutter).toHaveClass('pointer-events-none');
+    expect(screen.getAllByTestId('leader-board-gantt-ruler-band').length).toBeGreaterThan(0);
+  });
+
+  it('does not render ruler gutter when slot has zero rows', () => {
+    render(<LeaderOrderResourceCard {...cardProps} ganttEnabled rows={[]} />);
+
+    expect(screen.queryByTestId('leader-board-gantt-ruler-gutter')).toBeNull();
+    expect(screen.getByText('行なし')).toBeInTheDocument();
   });
 
   it('does not cap card height with maxHeight when gantt is on', () => {
@@ -139,10 +154,10 @@ describe('LeaderOrderResourceCard gantt', () => {
 
     const virtualRows = screen.getAllByTestId('leader-order-resource-card-virtual-row');
     expect(virtualRows.length).toBeGreaterThan(0);
-    const expectedLeft = `${GANTT_TICK_GUTTER_WIDTH_PX + 4}px`;
+    const expectedLeft = `${GANTT_RULER_GUTTER_WIDTH_PX + 4}px`;
     for (const virtualRow of virtualRows) {
       expect(virtualRow.style.left).toBe(expectedLeft);
-      expect(virtualRow.style.width).toBe(`calc(100% - ${GANTT_TICK_GUTTER_WIDTH_PX + 4}px)`);
+      expect(virtualRow.style.width).toBe(`calc(100% - ${GANTT_RULER_GUTTER_WIDTH_PX + 4}px)`);
     }
   });
 

@@ -11,14 +11,17 @@ export const GANTT_FALLBACK_PX_PER_MINUTE = GANTT_MIN_ROW_HEIGHT_PX / GANTT_EIGH
 /** ResizeObserver 未確定時の本文高さ見積 */
 export const GANTT_FALLBACK_AVAILABLE_WORK_HEIGHT_PX = 480;
 
-/** 左端 8H 目盛ガター幅 */
-export const GANTT_TICK_GUTTER_WIDTH_PX = 8;
+/** 左端 8H ルーラーガター幅（現仕様では棒幅と同値） */
+export const GANTT_RULER_GUTTER_WIDTH_PX = 4;
 
-/** 0H 上端線の高さ（px） */
-export const GANTT_TICK_ORIGIN_LINE_HEIGHT_PX = 1;
+/** 8H 縦バー幅（ガター内の塗り幅。現仕様ではガター幅と同値） */
+export const GANTT_RULER_BAR_WIDTH_PX = 4;
 
-/** 8H/16H 境界線の高さ（px） */
-export const GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX = 3;
+/**
+ * 8H 境界探索と DOM セグメント数の固定上限（Pi/kiosk 向け）。
+ * rulerHeightPx が大きくても反復回数と描画数はこの値で頭打ちになる。
+ */
+export const GANTT_RULER_MAX_BAND_COUNT = 64;
 
 /** ガント ON 時の仮想リスト overscan（OFF 時は leaderBoardRefetchPolicy の 3） */
 export const GANTT_VIRTUAL_OVERSCAN = 2;

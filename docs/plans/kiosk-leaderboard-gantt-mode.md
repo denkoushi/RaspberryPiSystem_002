@@ -24,7 +24,7 @@ open_items:
 
 ## Goal
 
-Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. When ON, each resource slot uses a **variable 8H ruler** scaled to the slot body height, row height scales with `FSIGENSHOYORYO` (required minutes, no quantity multiply), and 8H boundary ticks appear on the left gutter.
+Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. When ON, each resource slot uses a **variable 8H ruler** scaled to the slot body height, row height scales with `FSIGENSHOYORYO` (required minutes, no quantity multiply), and alternating 8H vertical bars appear in the left gutter.
 
 ## Constraints
 
@@ -41,13 +41,15 @@ Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. W
 - `visualMinHeightPx = max(workHeightPx, 96)` (readability; DOM min-height).
 - `estimateHeightPx = visualMinHeightPx + 4 + (footer chips ? 28 : 0)`.
 - `containerMinHeightPx = max(totalEstimateHeightPx, availableWorkHeightPx)`.
-- When total required minutes are under 8H and rows fit without exceeding available height, the **8H boundary** is drawn near the slot bottom to show unused capacity.
+- When total required minutes are under 8H and rows fit without exceeding available height, the **first 8H band** extends to the slot bottom to show unused capacity.
 - When many short rows force `totalEstimateHeightPx > availableWorkHeightPx`, **readability wins**; unused-gap visualization is skipped and content scrolls inside the slot body.
 - Slot card uses `h-full` (fills grid row). `max-height: 70vh` cap removed for gantt ON.
 - Grid uses `minmax(14rem, 1fr)` for both gantt ON and OFF.
-- 8H ticks: `origin` at 0H (1px), `boundary` at 8H/16H… (3px). Footer chips and row padding are excluded from the time axis.
-- Unused-gap mode: tick clamp to `availableWorkHeightPx`.
-- Overflow mode: tick clamp to `containerMinHeightPx` (`rulerHeightPx`) so boundaries track scrollable content.
+- 8H ruler segments: `rulerSegments` with `{ topPx, heightPx, bandIndex }`; alternating two colors per 8H band. No horizontal tick lines. Gutter width `4px`, bar width `4px`. Footer chips and row padding are excluded from the time axis.
+- Empty resource slot (`rows.length === 0`): no gutter rendered (unchanged).
+- Unused-gap mode: first band extends to `availableWorkHeightPx` without line-height offset.
+- Overflow mode: segments clamp to `containerMinHeightPx` (`rulerHeightPx`); render layer extends the last band to `max(bodyTotalHeightPx, rulerHeightPx)` for virtual scroll alignment.
+- Ruler band count is capped at `GANTT_RULER_MAX_BAND_COUNT` (64) regardless of `rulerHeightPx`; sub-pixel boundaries are skipped during generation.
 
 ## Implementation summary
 
@@ -56,7 +58,7 @@ Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. W
 | Layout core | `computeGanttSlotLayout` — separates `workHeightPx` vs `visualMinHeightPx` |
 | Body height | `useLeaderBoardGanttBodyHeight` — ResizeObserver + `clientHeight` fallback |
 | Card | `LeaderOrderResourceCard` — slot layout, virtual `measure()` on layout change |
-| Gutter | `LeaderBoardGanttTickGutter` — `origin` / `boundary` tick kinds |
+| Gutter | `LeaderBoardGanttTickGutter` — alternating `rulerSegments` vertical bands |
 | Grid | `LeaderBoardGrid` — gantt ON/OFF both use `minmax(14rem, 1fr)` |
 | Persistence | `usePersistedLeaderBoardGanttMode` — `localStorage` (factory + device scope) |
 
@@ -98,8 +100,8 @@ Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh` ·
 
 1. Open leader order board on kiosk.
 2. Toggle **ガントOFF** / **ガントON** in left pane beside 表示 filter.
-3. Gantt ON: left gutter shows 0H + 8H boundary lines; cards fill grid height; inner scroll works.
-4. Short-row overflow: 8H line stays aligned with scroll content (not stuck at viewport bottom).
+3. Gantt ON: left gutter shows alternating 8H vertical bands; cards fill grid height; inner scroll works.
+4. Short-row overflow: 8H bands stay aligned with scroll content (not stuck at viewport bottom).
 5. Pi4 stale UI: force reload per [verification-checklist §6.6.4](../guides/verification-checklist.md) if toggle missing.
 
 ## Knowledge (for next AI)
@@ -107,7 +109,8 @@ Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh` ·
 - **Pi4 does not rebuild web** — SPA is served from Pi5; Pi4 needs `kiosk-browser` restart or force reload.
 - **ResizeObserver test** must restore `globalThis.ResizeObserver` in `afterEach` to avoid polluting later tests.
 - **Virtual rows**: call `rowVirtualizer.measure()` when `slotLayout` changes under gantt + virtual threshold.
-- **Review fix (pre-deploy)**: overflow ticks were clamped to viewport height; fixed to `containerMinHeightPx`.
+- **Review fix (pre-deploy)**: overflow ruler bands were clamped to viewport height; fixed to `containerMinHeightPx`.
+- **Ruler visual (2026-06-11)**: horizontal tick lines replaced by alternating 4px vertical 8H bands in gutter.
 - **Default OFF** preserves prior Pi4 performance path (fixed row estimate, no gutter).
 
 ## Open items

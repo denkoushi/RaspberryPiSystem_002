@@ -4,13 +4,35 @@ import {
   GANTT_EIGHT_HOURS_MINUTES,
   GANTT_FOOTER_CHIPS_EXTRA_PX,
   GANTT_MIN_ROW_HEIGHT_PX,
-  GANTT_ROW_VERTICAL_PADDING_PX,
-  GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX
+  GANTT_RULER_MAX_BAND_COUNT,
+  GANTT_ROW_VERTICAL_PADDING_PX
 } from '../gantt/leaderBoardGanttConstants';
-import { computeGanttRowLayout, computeGanttSlotLayout } from '../gantt/leaderBoardGanttLayout';
+import {
+  computeGanttRowLayout,
+  computeGanttSlotLayout,
+  mapGanttTimeYToVisualY,
+  normalizeRulerSegmentsForRenderHeight
+} from '../gantt/leaderBoardGanttLayout';
 import { parseLeaderBoardRequiredMinutes } from '../parseLeaderBoardRequiredMinutes';
 
 const AVAILABLE_HEIGHT = 480;
+
+function assertContiguousSegments(
+  segments: readonly { topPx: number; heightPx: number }[],
+  expectedEndPx: number
+): void {
+  expect(segments.length).toBeGreaterThan(0);
+  for (const segment of segments) {
+    expect(segment.heightPx).toBeGreaterThan(0);
+  }
+  for (let index = 1; index < segments.length; index += 1) {
+    const previous = segments[index - 1];
+    const current = segments[index];
+    expect(previous.topPx + previous.heightPx).toBeCloseTo(current.topPx, 5);
+  }
+  const last = segments[segments.length - 1];
+  expect(last.topPx + last.heightPx).toBeCloseTo(expectedEndPx, 5);
+}
 
 describe('leaderBoardGanttLayout', () => {
   it('parseLeaderBoardRequiredMinutes normalizes invalid values to 0', () => {
@@ -27,12 +49,11 @@ describe('leaderBoardGanttLayout', () => {
     expect(slot.rowLayouts).toEqual([]);
     expect(slot.totalEstimateHeightPx).toBe(0);
     expect(slot.containerMinHeightPx).toBe(AVAILABLE_HEIGHT);
-    expect(slot.eightHourBoundaryY).toBe(AVAILABLE_HEIGHT - GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX);
-    expect(slot.tickMarks.some((t) => t.kind === 'origin')).toBe(true);
-    expect(slot.tickMarks.some((t) => t.kind === 'boundary')).toBe(true);
+    expect(slot.eightHourBoundaryEndY).toBe(AVAILABLE_HEIGHT);
+    expect(slot.rulerSegments).toEqual([{ topPx: 0, heightPx: AVAILABLE_HEIGHT, bandIndex: 0 }]);
   });
 
-  it('places 8H boundary near bottom when total required minutes are under 8H', () => {
+  it('places first 8H segment to bottom when total required minutes are under 8H', () => {
     const slot = computeGanttSlotLayout({
       rows: [{ requiredMinutes: 30 }, { requiredMinutes: 60 }],
       availableWorkHeightPx: AVAILABLE_HEIGHT
@@ -40,7 +61,8 @@ describe('leaderBoardGanttLayout', () => {
 
     expect(slot.totalRequiredMinutes).toBe(90);
     expect(slot.containerMinHeightPx).toBe(AVAILABLE_HEIGHT);
-    expect(slot.eightHourBoundaryY).toBe(AVAILABLE_HEIGHT - GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX);
+    expect(slot.eightHourBoundaryEndY).toBe(AVAILABLE_HEIGHT);
+    expect(slot.rulerSegments).toEqual([{ topPx: 0, heightPx: AVAILABLE_HEIGHT, bandIndex: 0 }]);
     expect(slot.rowLayouts[0]?.workHeightPx).toBeCloseTo(30 * (AVAILABLE_HEIGHT / GANTT_EIGHT_HOURS_MINUTES), 5);
     expect(slot.rowLayouts[0]?.visualMinHeightPx).toBe(GANTT_MIN_ROW_HEIGHT_PX);
     expect(slot.rowLayouts[1]?.visualMinHeightPx).toBe(GANTT_MIN_ROW_HEIGHT_PX);
@@ -56,6 +78,8 @@ describe('leaderBoardGanttLayout', () => {
     expect(slot.rowLayouts[0]?.workHeightPx).toBeCloseTo(240, 5);
     expect(slot.rowLayouts[1]?.workHeightPx).toBeCloseTo(240, 5);
     expect(slot.containerMinHeightPx).toBeGreaterThanOrEqual(slot.totalEstimateHeightPx);
+    expect(slot.rulerSegments).toHaveLength(1);
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
   });
 
   it('maps 8H boundary by work-time ratio when total exceeds 8H', () => {
@@ -66,8 +90,29 @@ describe('leaderBoardGanttLayout', () => {
 
     expect(slot.totalRequiredMinutes).toBe(960);
     expect(slot.pxPerMinute).toBeCloseTo(AVAILABLE_HEIGHT / 960, 5);
-    expect(slot.eightHourBoundaryY).toBeLessThan(AVAILABLE_HEIGHT);
-    expect(slot.eightHourBoundaryY).toBeGreaterThan(0);
+    expect(slot.eightHourBoundaryEndY).toBeLessThan(AVAILABLE_HEIGHT);
+    expect(slot.eightHourBoundaryEndY).toBeGreaterThan(0);
+    expect(slot.rulerSegments).toHaveLength(2);
+    expect(slot.rulerSegments[0]).toMatchObject({ topPx: 0, bandIndex: 0 });
+    expect(slot.rulerSegments[1]).toMatchObject({ bandIndex: 1 });
+    expect(slot.rulerSegments[0]?.heightPx).toBeCloseTo(slot.eightHourBoundaryEndY, 5);
+    expect(slot.rulerSegments[0]?.topPx + (slot.rulerSegments[0]?.heightPx ?? 0)).toBeCloseTo(
+      slot.rulerSegments[1]?.topPx ?? 0,
+      5
+    );
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
+  });
+
+  it('creates alternating bands for 16H total work', () => {
+    const slot = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 480 }, { requiredMinutes: 480 }, { requiredMinutes: 480 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT
+    });
+
+    expect(slot.totalRequiredMinutes).toBe(1440);
+    expect(slot.rulerSegments).toHaveLength(3);
+    expect(slot.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1, 2]);
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
   });
 
   it('prioritizes readability when many short rows exceed available height', () => {
@@ -79,18 +124,17 @@ describe('leaderBoardGanttLayout', () => {
     for (const layout of slot.rowLayouts) {
       expect(layout.visualMinHeightPx).toBe(GANTT_MIN_ROW_HEIGHT_PX);
     }
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
   });
 
-  it('maps overflow tick boundaries across full scroll content height', () => {
+  it('maps overflow ruler segments across full scroll content height', () => {
     const rows = Array.from({ length: 10 }, () => ({ requiredMinutes: 30 }));
     const slot = computeGanttSlotLayout({ rows, availableWorkHeightPx: AVAILABLE_HEIGHT });
 
-    const boundaryTick = slot.tickMarks.find((t) => t.kind === 'boundary');
-    expect(boundaryTick).toBeDefined();
-    expect(boundaryTick?.topPx).toBeGreaterThan(AVAILABLE_HEIGHT - GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX);
-    expect(boundaryTick?.topPx).toBeLessThanOrEqual(
-      slot.containerMinHeightPx - GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX
-    );
+    assertContiguousSegments(slot.rulerSegments, slot.containerMinHeightPx);
+    expect(slot.rulerSegments[0]?.topPx).toBe(0);
+    expect(slot.eightHourBoundaryEndY).toBeGreaterThan(0);
+    expect(slot.eightHourBoundaryEndY).toBeLessThanOrEqual(slot.containerMinHeightPx);
   });
 
   it('adds footer chip extra to estimate only', () => {
@@ -108,6 +152,62 @@ describe('leaderBoardGanttLayout', () => {
     expect(withChips.rowLayouts[0]?.estimateHeightPx - (base.rowLayouts[0]?.estimateHeightPx ?? 0)).toBe(
       GANTT_FOOTER_CHIPS_EXTRA_PX
     );
+    assertContiguousSegments(withChips.rulerSegments, withChips.rulerHeightPx);
+  });
+
+  it('extends the last segment when render height exceeds logical ruler height', () => {
+    const slot = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 30 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT
+    });
+    const normalized = normalizeRulerSegmentsForRenderHeight(slot.rulerSegments, 620);
+
+    assertContiguousSegments(normalized, 620);
+    expect(normalized[normalized.length - 1]?.heightPx).toBeGreaterThan(
+      slot.rulerSegments[slot.rulerSegments.length - 1]?.heightPx ?? 0
+    );
+  });
+
+  it('caps segment count for pathological required minutes', () => {
+    const slot = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 1_000_000 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT
+    });
+
+    expect(slot.rulerSegments.length).toBeLessThanOrEqual(GANTT_RULER_MAX_BAND_COUNT);
+    expect(slot.rulerSegments.length).toBeLessThan(Math.ceil(slot.rulerHeightPx));
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
+  });
+
+  it('does not scale ruler segment count with rulerHeightPx', () => {
+    const pathological = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 1_000_000 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT
+    });
+    const longBacklog = computeGanttSlotLayout({
+      rows: Array.from({ length: 200 }, () => ({ requiredMinutes: 480 })),
+      availableWorkHeightPx: AVAILABLE_HEIGHT
+    });
+
+    expect(longBacklog.rulerHeightPx).toBeGreaterThan(GANTT_RULER_MAX_BAND_COUNT * 10);
+    expect(pathological.rulerSegments.length).toBeLessThanOrEqual(GANTT_RULER_MAX_BAND_COUNT);
+    expect(longBacklog.rulerSegments.length).toBeLessThanOrEqual(GANTT_RULER_MAX_BAND_COUNT);
+    expect(longBacklog.rulerSegments.length).toBeLessThan(Math.ceil(longBacklog.rulerHeightPx / 10));
+    assertContiguousSegments(pathological.rulerSegments, pathological.rulerHeightPx);
+    assertContiguousSegments(longBacklog.rulerSegments, longBacklog.rulerHeightPx);
+  });
+
+  it('maps 8H boundary through a single row that spans beyond 8H', () => {
+    const slot = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 600 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT
+    });
+    const boundaryY = mapGanttTimeYToVisualY(slot.rowLayouts, GANTT_EIGHT_HOURS_MINUTES * slot.pxPerMinute);
+
+    expect(boundaryY).toBeGreaterThan(0);
+    expect(boundaryY).toBeLessThan(slot.rulerHeightPx);
+    expect(slot.eightHourBoundaryEndY).toBeCloseTo(boundaryY, 5);
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
   });
 
   it('legacy computeGanttRowLayout keeps min visual height for small required minutes', () => {

@@ -7,10 +7,10 @@ import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manu
 import { buildLeaderBoardPartResourceProcessKey } from './buildLeaderBoardPartResourceProcessKey';
 import {
   GANTT_FALLBACK_AVAILABLE_WORK_HEIGHT_PX,
-  GANTT_TICK_GUTTER_WIDTH_PX,
+  GANTT_RULER_GUTTER_WIDTH_PX,
   GANTT_VIRTUAL_OVERSCAN
 } from './gantt/leaderBoardGanttConstants';
-import { computeGanttSlotLayout } from './gantt/leaderBoardGanttLayout';
+import { computeGanttSlotLayout, normalizeRulerSegmentsForRenderHeight } from './gantt/leaderBoardGanttLayout';
 import { LeaderBoardGanttTickGutter } from './gantt/LeaderBoardGanttTickGutter';
 import { useLeaderBoardGanttBodyHeight } from './gantt/useLeaderBoardGanttBodyHeight';
 import { LeaderOrderResourceRow } from './LeaderOrderResourceRow';
@@ -144,7 +144,13 @@ function LeaderOrderResourceCardInner({
     ? Math.max(rowVirtualizer.getTotalSize(), containerMinHeightPx)
     : containerMinHeightPx;
 
-  const bodyPaddingLeft = ganttEnabled ? GANTT_TICK_GUTTER_WIDTH_PX + 4 : 0;
+  const bodyPaddingLeft = ganttEnabled ? GANTT_RULER_GUTTER_WIDTH_PX + 4 : 0;
+
+  const rulerSegments = useMemo(() => {
+    if (!ganttEnabled || !slotLayout) return [];
+    const renderHeightPx = Math.max(bodyTotalHeightPx, slotLayout.rulerHeightPx);
+    return normalizeRulerSegmentsForRenderHeight(slotLayout.rulerSegments, renderHeightPx);
+  }, [ganttEnabled, slotLayout, bodyTotalHeightPx]);
 
   const renderRow = (
     row: LeaderBoardRow,
@@ -249,8 +255,8 @@ function LeaderOrderResourceCardInner({
           >
             {ganttEnabled && slotLayout ? (
               <LeaderBoardGanttTickGutter
-                totalHeightPx={bodyTotalHeightPx}
-                tickMarks={slotLayout.tickMarks}
+                totalHeightPx={Math.max(bodyTotalHeightPx, slotLayout.rulerHeightPx)}
+                rulerSegments={rulerSegments}
               />
             ) : null}
             {rowVirtualizer.getVirtualItems().map((vi) => {
@@ -282,8 +288,8 @@ function LeaderOrderResourceCardInner({
             }}
           >
             <LeaderBoardGanttTickGutter
-              totalHeightPx={bodyTotalHeightPx}
-              tickMarks={slotLayout.tickMarks}
+              totalHeightPx={Math.max(bodyTotalHeightPx, slotLayout.rulerHeightPx)}
+              rulerSegments={rulerSegments}
             />
             {rowsWithFooter.map(({ row, footerChips }, index) => (
               <div key={row.id} className="pb-1">
