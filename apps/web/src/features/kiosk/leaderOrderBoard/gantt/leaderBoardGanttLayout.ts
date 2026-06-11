@@ -6,8 +6,8 @@ import {
   GANTT_FALLBACK_PX_PER_MINUTE,
   GANTT_FOOTER_CHIPS_EXTRA_PX,
   GANTT_MIN_ROW_HEIGHT_PX,
-  GANTT_ROW_VERTICAL_PADDING_PX,
-  GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX
+  GANTT_RULER_MAX_BAND_COUNT,
+  GANTT_ROW_VERTICAL_PADDING_PX
 } from './leaderBoardGanttConstants';
 
 export type GanttSlotRowInput = {
@@ -24,18 +24,19 @@ export type LeaderBoardGanttRowLayout = {
   estimateHeightPx: number;
 };
 
-export type GanttTickMark = {
+export type GanttRulerSegment = {
   topPx: number;
-  kind: 'origin' | 'boundary';
+  heightPx: number;
+  bandIndex: number;
 };
 
 export type LeaderBoardGanttSlotLayout = {
   pxPerMinute: number;
   rowLayouts: LeaderBoardGanttRowLayout[];
-  tickMarks: GanttTickMark[];
+  rulerSegments: GanttRulerSegment[];
   containerMinHeightPx: number;
   totalEstimateHeightPx: number;
-  eightHourBoundaryY: number;
+  eightHourBoundaryEndY: number;
   rulerHeightPx: number;
   totalRequiredMinutes: number;
 };
@@ -85,7 +86,7 @@ function sumEstimateHeightPx(rowLayouts: readonly LeaderBoardGanttRowLayout[]): 
   return sum;
 }
 
-function mapGanttTimeYToVisualY(
+export function mapGanttTimeYToVisualY(
   rowLayouts: readonly LeaderBoardGanttRowLayout[],
   timeY: number
 ): number {
@@ -107,12 +108,7 @@ function mapGanttTimeYToVisualY(
   return visualCursor;
 }
 
-function clampTickTopPx(topPx: number, rulerHeightPx: number, lineHeightPx: number): number {
-  const maxTop = Math.max(0, rulerHeightPx - lineHeightPx);
-  return clamp(topPx, 0, maxTop);
-}
-
-function computeEightHourBoundaryY(params: {
+function computeEightHourBoundaryEndY(params: {
   rowLayouts: readonly LeaderBoardGanttRowLayout[];
   availableWorkHeightPx: number;
   rulerHeightPx: number;
@@ -131,49 +127,146 @@ function computeEightHourBoundaryY(params: {
 
   const canShowUnusedGap = totalEstimateHeightPx <= availableWorkHeightPx;
   if (totalRequiredMinutes <= GANTT_EIGHT_HOURS_MINUTES && canShowUnusedGap) {
-    return clampTickTopPx(
-      availableWorkHeightPx - GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX,
-      availableWorkHeightPx,
-      GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX
-    );
+    return availableWorkHeightPx;
   }
 
-  return clampTickTopPx(
+  return clamp(
     mapGanttTimeYToVisualY(rowLayouts, GANTT_EIGHT_HOURS_MINUTES * pxPerMinute),
-    rulerHeightPx,
-    GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX
+    0,
+    rulerHeightPx
   );
 }
 
-function computeGanttTickMarks(params: {
+function computeEightHourBoundaryEndYs(params: {
   rowLayouts: readonly LeaderBoardGanttRowLayout[];
+  availableWorkHeightPx: number;
   rulerHeightPx: number;
   pxPerMinute: number;
-  eightHourBoundaryY: number;
-}): GanttTickMark[] {
-  const marks: GanttTickMark[] = [{ topPx: 0, kind: 'origin' }];
+  totalRequiredMinutes: number;
+  totalEstimateHeightPx: number;
+}): number[] {
+  const tickSpanTimePx = GANTT_EIGHT_HOURS_MINUTES * params.pxPerMinute;
+  if (tickSpanTimePx <= 0) {
+    return [params.rulerHeightPx];
+  }
 
-  const boundaryYs = new Set<number>();
-  boundaryYs.add(params.eightHourBoundaryY);
+  const canShowUnusedGap = params.totalEstimateHeightPx <= params.availableWorkHeightPx;
+  if (params.totalRequiredMinutes <= GANTT_EIGHT_HOURS_MINUTES && canShowUnusedGap) {
+    return [params.availableWorkHeightPx];
+  }
 
   const totalWorkPx = sumWorkHeightPx(params.rowLayouts);
-  const tickSpanTimePx = GANTT_EIGHT_HOURS_MINUTES * params.pxPerMinute;
-  if (totalWorkPx > tickSpanTimePx && tickSpanTimePx > 0) {
-    for (let timeY = tickSpanTimePx * 2; timeY < totalWorkPx; timeY += tickSpanTimePx) {
-      const visualY = mapGanttTimeYToVisualY(params.rowLayouts, timeY);
-      boundaryYs.add(
-        clampTickTopPx(visualY, params.rulerHeightPx, GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX)
-      );
+  const boundaryEndYs: number[] = [];
+
+  for (let bandIndex = 1; bandIndex <= GANTT_RULER_MAX_BAND_COUNT; bandIndex += 1) {
+    const timeY = tickSpanTimePx * bandIndex;
+    if (timeY > totalWorkPx) break;
+
+    const visualY = clamp(
+      mapGanttTimeYToVisualY(params.rowLayouts, timeY),
+      0,
+      params.rulerHeightPx
+    );
+
+    const lastEndY = boundaryEndYs[boundaryEndYs.length - 1];
+    if (lastEndY !== undefined) {
+      if (visualY <= lastEndY) break;
+      if (visualY - lastEndY < 1) continue;
+    }
+
+    boundaryEndYs.push(visualY);
+    if (visualY >= params.rulerHeightPx) break;
+  }
+
+  return boundaryEndYs;
+}
+
+function extendLastSegmentToHeight(
+  segments: GanttRulerSegment[],
+  targetHeightPx: number
+): GanttRulerSegment[] {
+  if (segments.length === 0) {
+    if (targetHeightPx <= 0) return [];
+    return [{ topPx: 0, heightPx: targetHeightPx, bandIndex: 0 }];
+  }
+
+  const normalized = segments.map((segment) => ({ ...segment }));
+  const last = normalized[normalized.length - 1];
+  const logicalEnd = last.topPx + last.heightPx;
+  if (targetHeightPx > logicalEnd) {
+    last.heightPx += targetHeightPx - logicalEnd;
+  }
+  return normalized;
+}
+
+function mergeSubPixelSegments(segments: readonly GanttRulerSegment[]): GanttRulerSegment[] {
+  if (segments.length <= 1) return [...segments];
+
+  const merged: GanttRulerSegment[] = [];
+  for (const segment of segments) {
+    if (segment.heightPx < 1 && merged.length > 0) {
+      const previous = merged[merged.length - 1];
+      previous.heightPx += segment.heightPx;
+      continue;
+    }
+    if (segment.heightPx > 0) {
+      merged.push({ ...segment });
+    }
+  }
+  return merged;
+}
+
+function capRulerSegmentCount(segments: readonly GanttRulerSegment[], maxSegments: number): GanttRulerSegment[] {
+  if (segments.length <= maxSegments || maxSegments <= 0) return [...segments];
+
+  const capped = segments.map((segment) => ({ ...segment }));
+  while (capped.length > maxSegments) {
+    const mergeIndex = capped.length - 2;
+    if (mergeIndex < 0) break;
+    const previous = capped[mergeIndex];
+    const last = capped[mergeIndex + 1];
+    previous.heightPx += last.heightPx;
+    capped.pop();
+  }
+  return capped;
+}
+
+function computeGanttRulerSegments(params: {
+  rowLayouts: readonly LeaderBoardGanttRowLayout[];
+  availableWorkHeightPx: number;
+  rulerHeightPx: number;
+  pxPerMinute: number;
+  totalRequiredMinutes: number;
+  totalEstimateHeightPx: number;
+}): GanttRulerSegment[] {
+  const boundaryEndYs = computeEightHourBoundaryEndYs(params);
+  const segments: GanttRulerSegment[] = [];
+  let topPx = 0;
+
+  for (let bandIndex = 0; bandIndex < boundaryEndYs.length; bandIndex += 1) {
+    const endY = boundaryEndYs[bandIndex];
+    const heightPx = endY - topPx;
+    if (heightPx > 0) {
+      segments.push({ topPx, heightPx, bandIndex });
+      topPx = endY;
     }
   }
 
-  for (const topPx of boundaryYs) {
-    if (topPx > 0) {
-      marks.push({ topPx, kind: 'boundary' });
-    }
-  }
+  const withLogicalTail = extendLastSegmentToHeight(segments, params.rulerHeightPx);
+  const merged = mergeSubPixelSegments(withLogicalTail);
+  return capRulerSegmentCount(merged, GANTT_RULER_MAX_BAND_COUNT);
+}
 
-  return marks.sort((a, b) => a.topPx - b.topPx);
+/**
+ * 仮想化後の実描画高さに合わせ、最終セグメントを延長してガター末尾まで連続させる。
+ */
+export function normalizeRulerSegmentsForRenderHeight(
+  segments: readonly GanttRulerSegment[],
+  renderHeightPx: number
+): GanttRulerSegment[] {
+  if (renderHeightPx <= 0) return [];
+  const normalized = extendLastSegmentToHeight([...segments], renderHeightPx);
+  return capRulerSegmentCount(normalized, GANTT_RULER_MAX_BAND_COUNT);
 }
 
 /**
@@ -201,7 +294,7 @@ export function computeGanttSlotLayout(params: {
 
   const rulerHeightPx = containerMinHeightPx;
 
-  const eightHourBoundaryY = computeEightHourBoundaryY({
+  const eightHourBoundaryEndY = computeEightHourBoundaryEndY({
     rowLayouts,
     availableWorkHeightPx,
     rulerHeightPx,
@@ -210,20 +303,22 @@ export function computeGanttSlotLayout(params: {
     totalEstimateHeightPx
   });
 
-  const tickMarks = computeGanttTickMarks({
+  const rulerSegments = computeGanttRulerSegments({
     rowLayouts,
+    availableWorkHeightPx,
     rulerHeightPx,
     pxPerMinute,
-    eightHourBoundaryY
+    totalRequiredMinutes,
+    totalEstimateHeightPx
   });
 
   return {
     pxPerMinute,
     rowLayouts,
-    tickMarks,
+    rulerSegments,
     containerMinHeightPx,
     totalEstimateHeightPx,
-    eightHourBoundaryY,
+    eightHourBoundaryEndY,
     rulerHeightPx,
     totalRequiredMinutes
   };

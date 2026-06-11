@@ -10,7 +10,7 @@
 
 ### 最新アップデート（2026-06-11 · キオスク順位ボード ガント表示）
 
-- **ガントON/OFF + 可変8Hルーラー** · Web only · Pi5+Pi4×4 本番。**記録**: [Plan](./plans/kiosk-leaderboard-gantt-mode.md)
+- **ガントON/OFF + 可変8H縦バールーラー** · Web only · Pi5 デプロイ済（`ee3aebfc`）· Pi4 未。**記録**: [Plan](./plans/kiosk-leaderboard-gantt-mode.md)
 
 ### 最新アップデート（2026-06-07 · DGX resource runtimeProfile / resourceState）
 
