@@ -1,6 +1,6 @@
 ---
 id: kiosk-leaderboard-gantt-mode
-status: pi5_deployed_pending_signoff
+status: merged_main_pi5_pending_signoff
 scope: kiosk leader order board gantt display
 date: 2026-06-11
 source_of_truth: true
@@ -28,9 +28,10 @@ Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. W
 
 ## Current branch and HEAD
 
-- **Branch**: `feat/kiosk-gantt-ruler-vertical-bars`
-- **HEAD**: `ee3aebfc` — `feat: improve kiosk gantt ruler readability`
-- **Base on main**: `2480fc87` (merged PR #429 — initial gantt mode)
+- **Branch**: `main` (merged **PR [#430](https://github.com/denkoushi/RaspberryPiSystem_002/pull/430)**)
+- **Merge commit**: `c9baa657`
+- **Feature commits**: `ee3aebfc` (ruler bands) · `46078416` (Plan handoff)
+- **Prior on main**: PR #429 (`2480fc87`) — initial gantt mode
 
 ## Constraints
 
@@ -145,9 +146,8 @@ Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh`
 ## Open items
 
 1. **Pi5 manual sign-off** for vertical ruler bands (`20260611-095259-28452`).
-2. **Pi4×4 deploy** after Pi5 OK — same branch/ref, one `--limit` per host.
+2. **Pi4×4 deploy** after Pi5 OK — `main` @ `c9baa657` or later, one `--limit` per host.
 3. **Optional** — `verification-checklist` § for gantt toggle/ruler bands.
-4. **PR merge to main** — in progress this session.
 
 ## Local Notes JA
 
