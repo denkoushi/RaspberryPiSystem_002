@@ -41,7 +41,7 @@ function fingerprintLeaderboardBoardResourcePagingScope(
   board: ProductionScheduleLeaderboardBoardResponse
 ): string {
   return board.resources
-    .map((r) => `${r.resourceCd}:${r.total}:${r.pageSize}`)
+    .map((r) => `${r.resourceCd}:${r.total}`)
     .join('\u0002');
 }
 

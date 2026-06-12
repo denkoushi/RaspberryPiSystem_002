@@ -73,6 +73,22 @@ describe('shouldBeginLeaderboardAppendSession', () => {
     ).toBe(false);
   });
 
+  it('fresh shell 指紋に変わったら override が shell より行数多くても再追補する', () => {
+    expect(
+      shouldBeginLeaderboardAppendSession({
+        paramsKey,
+        appendCompleteForParamsKey: paramsKey,
+        appendCompleteShellFingerprint: 'old-fp',
+        shellFingerprint: 'fresh-fp',
+        lastStartedShellFingerprint: 'old-fp',
+        shell: board([row('a'), row('b')], true),
+        appendOverride: board([row('a'), row('b'), row('c')], false),
+        retryNonce: 0,
+        lastRetryNonceStarted: 0
+      })
+    ).toBe(true);
+  });
+
   it('同一指紋で override 無し・retry 増分時は再試行する', () => {
     expect(
       shouldBeginLeaderboardAppendSession({

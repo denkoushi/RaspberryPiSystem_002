@@ -241,4 +241,24 @@ describe('resolveNetworkLeaderboardBoardPagingComplete', () => {
       })
     ).toBe(false);
   });
+
+  it('pageSize だけが違う追補 override は同一スコープとして表示・完走判定に使う', () => {
+    const shell = {
+      ...boardWithTotal([row('a'), row('b')], 3, true),
+      resources: [{ resourceCd: 'R1', hasMore: true, total: 3, pageSize: 80 }]
+    };
+    const override = {
+      ...boardWithTotal([row('a'), row('b'), row('c')], 3, false),
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 3, pageSize: 160 }]
+    };
+
+    expect(pickLeaderboardBoardForDisplay(shell, override)).toBe(override);
+    expect(
+      resolveNetworkLeaderboardBoardPagingComplete({
+        networkDisplayBoard: override,
+        scopedAppendOverride: override,
+        resolvedShell: shell
+      })
+    ).toBe(true);
+  });
 });
