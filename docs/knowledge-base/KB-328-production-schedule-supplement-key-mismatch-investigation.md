@@ -2,7 +2,7 @@
 title: "KB-328: 生産日程本体CSVと部品納期個数（補助）の照合ずれ・上流データ・表示設計の整理"
 tags: [production-schedule, ProductionScheduleOrderSupplement, csv-dashboard, winner-dedup, unmatched, upstream-erp]
 audience: [開発者, 運用者, 生産管理システム連携担当]
-last-verified: 2026-05-06
+last-verified: 2026-06-12
 related:
   - ./KB-297-kiosk-due-management-workflow.md
   - ./KB-326-manual-upload-order-supplement-sync.md
@@ -18,6 +18,60 @@ category: knowledge-base
 2026-04-03 前後、キオスク生産日程で **Gmail 経由の部品納期個数CSV（補助）** を取り込んでも、一部行で **納期・指示数（`plannedQuantity` / `plannedStartDate` / `plannedEndDate`）が空**のままになる事象の調査を実施した。あわせて、**本体生産日程CSV**（件名例: `生産日程_三島_研削工程`）の取込成否・列不一致・手動アップロードUIの落とし穴も切り分けた。
 
 本KBは **コード改修の記録ではなく**、調査で確定した仕様・事象・上流とのギャップ・将来判断用の背景を **再現可能な形**で残す。
+
+## 2026-06-12 update: production-system column acceptance and 2027 due-date verification
+
+### Scope
+
+- この更新は、`ProductionSchedule_OrderSupplement` の **受け口改善**と、その本番検証結果を残す。
+- Power BI / 生産システム側の CSV 作成範囲変更は **本更新のスコープ外**。
+
+### RaspberryPiSystem-side changes
+
+- `ProductionSchedule_OrderSupplement` が次の **生産システム系列名**も受けられるようになった。
+  - `FSEZONO`
+  - `FKOTEICD`
+  - `FKOJUNSIJISU`
+  - `FKOJUNSTTYOTEIYMD`
+  - `FKOJUNENDYOTEIYMD`
+- 補助納期ダッシュボード定義を固定定義化し、**CSV 取り込み前に ensure** するようにした。
+- `AA1S2M02 / 0003602728` 相当の **2027 年予定日**を取り込める回帰テストを追加した。
+
+### Confirmed results
+
+- CI: **success**
+- Pi5 deploy: **success**
+- 手動 upload（既存 `POST /api/csv-dashboards/:id/upload` 経路）で `0003602728` の補助納期が **2027/03** に更新されることを確認した。
+  - `035 / 210` -> `plannedEndDate=2027-03-05`
+  - `581 / 220` -> `plannedEndDate=2027-03-10`
+- `/api/kiosk/production-schedule/leaderboard-shell?productNo=0003602728` で、対象行の `plannedEndDate` が **2027-03-05 / 2027-03-10** になっていることを確認した。
+- 実運用順位ボード条件でも、**古い 2025/12 納期表示は残っていない**ことを確認した。
+  - `client-key-raspberrypi4-kiosk1`（`第2工場 - kensakuMain`）:
+    `boardResourceCds=581,305,589,584,585,586,587,588`
+  - `client-key-raspi4-fjv60-80-kiosk1`（`第2工場 - FJV60/80`）:
+    `boardResourceCds=035,060,501,502,021,033`
+
+### Confirmed upstream data gap
+
+- 現時点の今朝の **`部品納期個数` CSV** には `0003602728` が含まれていない。
+- 理由は、Power BI / 生産システム側の **CSV 作成ワークフローの取得範囲が「今日から3ヶ月先まで」**で、**2027 年予定アイテムが出力対象外**になるため。
+- したがって、今回の PR は **RaspberryPiSystem 側の受け口改善としてマージ可能**であり、**上流 CSV 出力範囲の改修は別対応**とする。
+
+### Operational requirement for upstream CSV
+
+- RaspberryPiSystem 側で最新予定日を反映するには、件名 **`部品納期個数`** の CSV に対象行が含まれている必要がある。
+- 必須列は次のとおり。
+  - `FKOJUN`
+  - `FKOTEICD` または `FSIGENCD`
+  - `FSEZONO` または `ProductNo`
+  - `FKOJUNSIJISU`
+  - `FKOJUNSTTYOTEIYMD`
+  - `FKOJUNENDYOTEIYMD`
+- 対象行は **`FKOJUN + resourceCd + ProductNo`** の 3 キーで winner 行へ照合されるため、`0003602728 / 035 / 210` と `0003602728 / 581 / 220` のような **最新予定日行を CSV に含める**必要がある。
+
+### Open item
+
+- **未完了**: Power BI / 生産システム側の `部品納期個数` CSV 作成ワークフローを改修し、**3ヶ月先制限で落ちる将来予定行**も必要に応じて出力できるようにする。これは **週明け営業日の別対応**とする。
 
 <a id="order-supplement-sync-p2002-csv-dashboard-row-id"></a>
 
