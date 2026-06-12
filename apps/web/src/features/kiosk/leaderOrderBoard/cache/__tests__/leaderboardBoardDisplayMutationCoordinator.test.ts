@@ -5,12 +5,13 @@ import { resolveDisplayBoardMutationUpdate } from '../leaderboardBoardDisplayMut
 import type { ProductionScheduleLeaderboardBoardResponse } from '../../../../../api/client';
 
 function board(
-  rowSpecs: Array<{ id: string; processingOrder?: number | null; note?: string | null }>
+  rowSpecs: Array<{ id: string; processingOrder?: number | null; note?: string | null }>,
+  total = rowSpecs.length
 ): ProductionScheduleLeaderboardBoardResponse {
   return {
     page: 1,
     pageSize: 80,
-    total: rowSpecs.length,
+    total,
     rows: rowSpecs.map((r) => ({
       id: r.id,
       processingOrder: r.processingOrder ?? null,
@@ -18,7 +19,7 @@ function board(
       dueDate: null,
       rowData: {}
     })),
-    resources: [{ resourceCd: '1', hasMore: false, total: rowSpecs.length, pageSize: 80 }]
+    resources: [{ resourceCd: '1', hasMore: false, total, pageSize: 80 }]
   } as ProductionScheduleLeaderboardBoardResponse;
 }
 
@@ -36,11 +37,11 @@ describe('resolveDisplayBoardMutationUpdate', () => {
   });
 
   it('appendOverride が表示正本のとき append を patch する', () => {
-    const shell = board([{ id: 'r1' }]);
+    const shell = board([{ id: 'r1' }], 2);
     const append = board([
       { id: 'r1', processingOrder: 1 },
       { id: 'r2', processingOrder: 2 }
-    ]);
+    ], 2);
     const result = resolveDisplayBoardMutationUpdate({
       shell,
       appendOverride: append,

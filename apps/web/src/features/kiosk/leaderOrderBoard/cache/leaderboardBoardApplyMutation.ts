@@ -1,5 +1,3 @@
-import { patchScheduleListProcessingOrder } from '../../productionSchedule/cache/kioskProductionScheduleOrderCachePatch';
-
 import type { ProductionScheduleLeaderboardBoardResponse } from '../../../../api/client';
 
 export type LeaderboardBoardCacheMutation =
@@ -14,10 +12,13 @@ export function applyMutationToLeaderboardBoard(
   mutation: LeaderboardBoardCacheMutation
 ): ProductionScheduleLeaderboardBoardResponse {
   switch (mutation.kind) {
-    case 'order': {
-      const patched = patchScheduleListProcessingOrder(board, mutation.rowId, mutation.processingOrder);
-      return patched as ProductionScheduleLeaderboardBoardResponse;
-    }
+    case 'order':
+      return {
+        ...board,
+        rows: board.rows.map((row) =>
+          row.id === mutation.rowId ? { ...row, processingOrder: mutation.processingOrder } : row
+        )
+      };
     case 'note':
       return {
         ...board,
