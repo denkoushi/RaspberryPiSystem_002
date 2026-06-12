@@ -10,7 +10,7 @@
 
 ### 最新アップデート（2026-06-12 · キオスク順位ボード 追補完了後の更新中残留）
 
-- **追補完了後も「一覧を更新中」·501/033 空スロット** — API+Web · process-change residual + **pageSize scope 修正**。**`main`**: **`f3359a4d`** · [PR #431](https://github.com/denkoushi/RaspberryPiSystem_002/pull/431) · Pi5 本番 OK · 実機 OK · Pi4 未。**記録**: [KB-384](./knowledge-base/KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md)
+- **追補完了後も「一覧を更新中」·501/033 空スロット** — API+Web · process-change residual + **pageSize scope 修正**。**`main` `f3359a4d`** · [PR #431](https://github.com/denkoushi/RaspberryPiSystem_002/pull/431) · **Pi5+Pi4×4 本番・実機 OK** · Phase12 **43/0/0**。**記録**: [KB-384](./knowledge-base/KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md)
 
 ### 最新アップデート（2026-06-11 · キオスク順位ボード ガント表示）
 
