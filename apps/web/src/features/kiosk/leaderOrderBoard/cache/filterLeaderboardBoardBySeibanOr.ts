@@ -30,6 +30,35 @@ function rowMatchesSeibanOr(row: ProductionScheduleRow, tokenSet: ReadonlySet<st
   return fseiban.length > 0 && tokenSet.has(fseiban);
 }
 
+function filterProcessChangeResidualForSeibanOr(
+  board: ProductionScheduleLeaderboardBoardResponse,
+  tokenSet: ReadonlySet<string>
+): Pick<
+  ProductionScheduleLeaderboardBoardResponse,
+  'processChangeResidualRows' | 'processChangeResidualTotal' | 'processChangeResidualRepresentativeLimit'
+> {
+  if (board.processChangeResidualRows == null) return {};
+
+  const hasCompleteRepresentativeSet =
+    (board.processChangeResidualTotal ?? 0) <= board.processChangeResidualRows.length;
+  if (!hasCompleteRepresentativeSet) {
+    return {
+      processChangeResidualRows: undefined,
+      processChangeResidualTotal: undefined,
+      processChangeResidualRepresentativeLimit: undefined
+    };
+  }
+
+  const rows = board.processChangeResidualRows.filter((r) => rowMatchesSeibanOr(r, tokenSet));
+  return {
+    processChangeResidualRows: rows,
+    processChangeResidualTotal: rows.length,
+    ...(board.processChangeResidualRepresentativeLimit != null
+      ? { processChangeResidualRepresentativeLimit: board.processChangeResidualRepresentativeLimit }
+      : {})
+  };
+}
+
 /**
  * 完走済み無 `q` board を登録製番 OR（完全一致）で絞る。
  * `seibanTokens` が空のときは `board` をそのまま返す。
@@ -49,6 +78,7 @@ export function filterLeaderboardBoardBySeibanOr(
 
   const filteredSlices = slices.map((slice) => slice.filter((r) => rowMatchesSeibanOr(r, tokenSet)));
   const filteredRows = filteredSlices.flat();
+  const filteredProcessChangeResidual = filterProcessChangeResidualForSeibanOr(board, tokenSet);
 
   const resources = board.resources.map((resource, index) => {
     const count = filteredSlices[index]?.length ?? 0;
@@ -66,6 +96,7 @@ export function filterLeaderboardBoardBySeibanOr(
     pageSize: board.pageSize,
     total: filteredRows.length,
     rows: filteredRows,
-    resources
+    resources,
+    ...filteredProcessChangeResidual
   };
 }

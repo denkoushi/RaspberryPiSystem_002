@@ -1,10 +1,14 @@
 import { Prisma } from '@prisma/client';
 import type { NormalizedRowData } from '../csv-dashboard.types.js';
 import { resolveUpdatedAt } from './csv-dashboard-updated-at.js';
+import { parseFkojunstStatusMailFupdteDt } from '../fkojunst-status-mail-fupdtedt-parse.js';
 
 type IncomingRow = {
   data: NormalizedRowData;
   occurredAt: Date;
+  sourceIngestRunId?: string | null;
+  sourceRowOrdinal?: number | null;
+  sourceIngestRunStartedAt?: Date | null;
   hash?: string;
 };
 
@@ -13,6 +17,12 @@ type ExistingRow = {
   dataHash: string | null;
   occurredAt: Date;
   rowData: Prisma.JsonValue;
+  createdAt?: Date | null;
+  sourceIngestRunId?: string | null;
+  sourceIngestRun?: {
+    status?: string | null;
+    completedAt?: Date | null;
+  } | null;
 };
 
 type CreateRow = {
@@ -20,12 +30,18 @@ type CreateRow = {
   occurredAt: Date;
   dataHash: string;
   rowData: Prisma.InputJsonValue;
+  sourceIngestRunId?: string | null;
+  sourceRowOrdinal?: number | null;
+  sourceIngestRunStartedAt?: Date | null;
 };
 
 type UpdateRow = {
   id: string;
   occurredAt: Date;
   rowData: Prisma.InputJsonValue;
+  sourceIngestRunId?: string | null;
+  sourceRowOrdinal?: number | null;
+  sourceIngestRunStartedAt?: Date | null;
 };
 
 type DiffResult = {
@@ -38,6 +54,9 @@ type DiffResult = {
 type MaxProductNoDiffOptions = {
   maxProductNoWins?: boolean;
   productNoColumn?: string;
+  firstIncomingHashWins?: boolean;
+  refreshSourceMetadataOnDuplicate?: boolean;
+  preferLaterUnparseableDuplicate?: boolean;
 };
 
 const resolveProductNo = (rowData: Prisma.JsonValue, productNoColumn: string): bigint | null => {
@@ -69,26 +88,95 @@ export function computeCsvDashboardDedupDiff(params: {
   const { dashboardId, incomingRows, existingRows, options } = params;
   const productNoColumn = options?.productNoColumn ?? 'ProductNo';
   const maxProductNoWins = options?.maxProductNoWins === true;
-  const incomingByHash = new Map<string, { occurredAt: Date; data: NormalizedRowData }>();
+  const firstIncomingHashWins = options?.firstIncomingHashWins === true;
+  const refreshSourceMetadataOnDuplicate = options?.refreshSourceMetadataOnDuplicate === true;
+  const preferLaterUnparseableDuplicate = options?.preferLaterUnparseableDuplicate === true;
+  const incomingByHash = new Map<
+    string,
+    {
+      occurredAt: Date;
+      data: NormalizedRowData;
+      sourceIngestRunId?: string | null;
+      sourceRowOrdinal?: number | null;
+      sourceIngestRunStartedAt?: Date | null;
+    }
+  >();
   let rowsAdded = 0;
   let rowsSkipped = 0;
+
+  const hasUnparseableFupdtedt = (row: NormalizedRowData): boolean =>
+    Object.prototype.hasOwnProperty.call(row, 'FUPDTEDT') &&
+    parseFkojunstStatusMailFupdteDt((row as Record<string, unknown>).FUPDTEDT) === null;
+
+  const shouldReplaceIncomingDuplicate = (
+    current: { data: NormalizedRowData; sourceRowOrdinal?: number | null },
+    next: IncomingRow
+  ): boolean => {
+    if (!preferLaterUnparseableDuplicate) {
+      return false;
+    }
+    if (!hasUnparseableFupdtedt(current.data) && !hasUnparseableFupdtedt(next.data)) {
+      return false;
+    }
+    if (current.sourceRowOrdinal == null || next.sourceRowOrdinal == null) {
+      return false;
+    }
+    return next.sourceRowOrdinal > current.sourceRowOrdinal;
+  };
 
   for (const row of incomingRows) {
     if (!row.hash) {
       rowsSkipped++;
       continue;
     }
-    incomingByHash.set(row.hash, { occurredAt: row.occurredAt, data: row.data });
+    const current = incomingByHash.get(row.hash);
+    if (firstIncomingHashWins && current != null) {
+      if (shouldReplaceIncomingDuplicate(current, row)) {
+        incomingByHash.set(row.hash, {
+          occurredAt: row.occurredAt,
+          data: row.data,
+          sourceIngestRunId: row.sourceIngestRunId,
+          sourceRowOrdinal: row.sourceRowOrdinal,
+          sourceIngestRunStartedAt: row.sourceIngestRunStartedAt
+        });
+      }
+      rowsSkipped++;
+      continue;
+    }
+    incomingByHash.set(row.hash, {
+      occurredAt: row.occurredAt,
+      data: row.data,
+      sourceIngestRunId: row.sourceIngestRunId,
+      sourceRowOrdinal: row.sourceRowOrdinal,
+      sourceIngestRunStartedAt: row.sourceIngestRunStartedAt
+    });
   }
 
-  const existingByHash = new Map<string, { id: string; occurredAt: Date; rowData: Prisma.JsonValue }>();
+  const isReaderVisibleExistingRow = (row: ExistingRow): boolean =>
+    row.sourceIngestRunId == null ||
+    (row.sourceIngestRun?.status === 'COMPLETED' && row.sourceIngestRun.completedAt != null);
+
+  const shouldReplaceExistingCandidate = (current: ExistingRow, next: ExistingRow): boolean => {
+    const currentVisible = isReaderVisibleExistingRow(current);
+    const nextVisible = isReaderVisibleExistingRow(next);
+    if (currentVisible !== nextVisible) {
+      return nextVisible;
+    }
+    const currentCreatedAt = current.createdAt?.getTime() ?? 0;
+    const nextCreatedAt = next.createdAt?.getTime() ?? 0;
+    if (currentCreatedAt !== nextCreatedAt) {
+      return nextCreatedAt > currentCreatedAt;
+    }
+    return next.id > current.id;
+  };
+
+  const existingByHash = new Map<string, ExistingRow>();
   for (const existing of existingRows) {
     if (existing.dataHash) {
-      existingByHash.set(existing.dataHash, {
-        id: existing.id,
-        occurredAt: existing.occurredAt,
-        rowData: existing.rowData
-      });
+      const current = existingByHash.get(existing.dataHash);
+      if (current == null || shouldReplaceExistingCandidate(current, existing)) {
+        existingByHash.set(existing.dataHash, existing);
+      }
     }
   }
 
@@ -102,7 +190,10 @@ export function computeCsvDashboardDedupDiff(params: {
         csvDashboardId: dashboardId,
         occurredAt: incoming.occurredAt,
         dataHash: hash,
-        rowData: incoming.data as Prisma.InputJsonValue
+        rowData: incoming.data as Prisma.InputJsonValue,
+        sourceIngestRunId: incoming.sourceIngestRunId,
+        sourceRowOrdinal: incoming.sourceRowOrdinal,
+        sourceIngestRunStartedAt: incoming.sourceIngestRunStartedAt
       });
       rowsAdded++;
       continue;
@@ -120,7 +211,10 @@ export function computeCsvDashboardDedupDiff(params: {
           updates.push({
             id: existing.id,
             occurredAt: incoming.occurredAt,
-            rowData: incoming.data as Prisma.InputJsonValue
+            rowData: incoming.data as Prisma.InputJsonValue,
+            sourceIngestRunId: incoming.sourceIngestRunId,
+            sourceRowOrdinal: incoming.sourceRowOrdinal,
+            sourceIngestRunStartedAt: incoming.sourceIngestRunStartedAt
           });
           rowsAdded++;
           continue;
@@ -131,6 +225,16 @@ export function computeCsvDashboardDedupDiff(params: {
     const incomingUpdatedAt = resolveUpdatedAt(incoming.data as Prisma.JsonValue, incoming.occurredAt);
     const existingUpdatedAt = resolveUpdatedAt(existing.rowData, existing.occurredAt);
     if (incomingUpdatedAt.getTime() <= existingUpdatedAt.getTime()) {
+      if (refreshSourceMetadataOnDuplicate) {
+        updates.push({
+          id: existing.id,
+          occurredAt: incoming.occurredAt,
+          rowData: incoming.data as Prisma.InputJsonValue,
+          sourceIngestRunId: incoming.sourceIngestRunId,
+          sourceRowOrdinal: incoming.sourceRowOrdinal,
+          sourceIngestRunStartedAt: incoming.sourceIngestRunStartedAt
+        });
+      }
       rowsSkipped++;
       continue;
     }
@@ -138,7 +242,10 @@ export function computeCsvDashboardDedupDiff(params: {
     updates.push({
       id: existing.id,
       occurredAt: incoming.occurredAt,
-      rowData: incoming.data as Prisma.InputJsonValue
+      rowData: incoming.data as Prisma.InputJsonValue,
+      sourceIngestRunId: incoming.sourceIngestRunId,
+      sourceRowOrdinal: incoming.sourceRowOrdinal,
+      sourceIngestRunStartedAt: incoming.sourceIngestRunStartedAt
     });
     rowsAdded++;
   }

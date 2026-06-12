@@ -86,6 +86,9 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.csvDashboardRow.deleteMany({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID }
+    });
     await prisma.csvDashboard.deleteMany({ where: { id: DASHBOARD_ID } });
     await prisma.productionScheduleResourceMaster.deleteMany({
       where: { resourceCd: { in: ['1', '2', 'MSZ'] } }
@@ -119,6 +122,9 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.csvDashboardRow.deleteMany({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID }
+    });
     await prisma.csvDashboard.deleteMany({ where: { id: DASHBOARD_ID } });
     await prisma.productionScheduleResourceMaster.deleteMany({
       where: { resourceCd: { in: ['1', '2', 'MSZ'] } }
@@ -226,6 +232,9 @@ describe('Kiosk Production Schedule API', () => {
     }
 
     await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
+    await prisma.csvDashboardRow.deleteMany({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID }
+    });
   });
 
   it('rejects request without x-client-key', async () => {
@@ -1767,6 +1776,132 @@ describe('Kiosk Production Schedule API', () => {
         csvDashboardId: DASHBOARD_ID,
         csvDashboardRowId: shellBody.rows[0]!.id,
         note: 'snapshot invalidation',
+      }
+    });
+
+    const cont = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/production-schedule/leaderboard-shell/continue',
+      headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+      payload: {
+        excludeRowIds: shellBody.rows.map((r) => r.id),
+        pageSize: 160,
+        snapshotId: shellBody.snapshotId
+      }
+    });
+    expect(cont.statusCode).toBe(200);
+    const contBody = cont.json() as { rows: unknown[]; snapshotExpired?: boolean };
+    expect(contBody.snapshotExpired).toBe(true);
+    expect(contBody.rows).toEqual([]);
+  });
+
+  it('leaderboard shell continue expires when raw FKOJUNST_Status mail rows change without fkmail sync', async () => {
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID },
+      create: {
+        id: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+        name: 'FKOJUNST_Status_Test',
+        columnDefinitions: [],
+        templateType: 'TABLE',
+        templateConfig: {},
+        ingestMode: 'APPEND',
+        enabled: true
+      },
+      update: {}
+    });
+
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-shell?pageSize=160',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(shell.statusCode).toBe(200);
+    const shellBody = shell.json() as { rows: Array<{ id: string }>; snapshotId?: string };
+    expect(shellBody.snapshotId).toBeTruthy();
+    expect(shellBody.rows.length).toBeGreaterThan(0);
+
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+        occurredAt: new Date(),
+        dataHash: `pcr-mail-gen-${randomUUID()}`,
+        rowData: {
+          FSEZONO: 'GEN0001',
+          FKOJUN: '210',
+          FKOTEICD: '1',
+          FKOJUNST: 'R',
+          FUPDTEDT: '04/13/2026 13:02:46'
+        }
+      }
+    });
+
+    const cont = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/production-schedule/leaderboard-shell/continue',
+      headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+      payload: {
+        excludeRowIds: shellBody.rows.map((r) => r.id),
+        pageSize: 160,
+        snapshotId: shellBody.snapshotId
+      }
+    });
+    expect(cont.statusCode).toBe(200);
+    const contBody = cont.json() as { rows: unknown[]; snapshotExpired?: boolean };
+    expect(contBody.snapshotExpired).toBe(true);
+    expect(contBody.rows).toEqual([]);
+  });
+
+  it('leaderboard shell continue expires when existing raw FKOJUNST_Status rowData is updated in place', async () => {
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID },
+      create: {
+        id: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+        name: 'FKOJUNST_Status_Test',
+        columnDefinitions: [],
+        templateType: 'TABLE',
+        templateConfig: {},
+        ingestMode: 'DEDUP',
+        dedupKeyColumns: ['FKOJUN', 'FKOTEICD', 'FSEZONO', 'FUPDTEDT'],
+        enabled: true
+      },
+      update: {}
+    });
+
+    const mailRow = await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+        occurredAt: new Date('2026-04-13T13:02:46.000Z'),
+        dataHash: `pcr-mail-update-${randomUUID()}`,
+        rowData: {
+          FSEZONO: 'GEN0002',
+          FKOJUN: '210',
+          FKOTEICD: '1',
+          FKOJUNST: 'R',
+          FUPDTEDT: '04/13/2026 13:02:46'
+        }
+      }
+    });
+
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-shell?pageSize=160',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(shell.statusCode).toBe(200);
+    const shellBody = shell.json() as { rows: Array<{ id: string }>; snapshotId?: string };
+    expect(shellBody.snapshotId).toBeTruthy();
+    expect(shellBody.rows.length).toBeGreaterThan(0);
+
+    await prisma.csvDashboardRow.update({
+      where: { id: mailRow.id },
+      data: {
+        rowData: {
+          FSEZONO: 'GEN0002',
+          FKOJUN: '210',
+          FKOTEICD: '1',
+          FKOJUNST: 'C',
+          FUPDTEDT: '04/13/2026 13:02:46'
+        }
       }
     });
 
@@ -3727,6 +3862,368 @@ describe('Kiosk Production Schedule API', () => {
     const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }>; total: number };
     expect(body.rows).toHaveLength(0);
     expect(body.total).toBe(0);
+  });
+
+  describe('process change residual filter', () => {
+    async function ensureFkojunstStatusMailDashboard(): Promise<void> {
+      await prisma.csvDashboard.upsert({
+        where: { id: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID },
+        create: {
+          id: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+          name: 'FKOJUNST_Status_Test',
+          columnDefinitions: [],
+          templateType: 'TABLE',
+          templateConfig: {},
+          ingestMode: 'APPEND',
+          enabled: true
+        },
+        update: {}
+      });
+    }
+
+    async function seedRawFkojunstStatusMailRows(
+      rows: Array<{
+        fsezono: string;
+        fkojun: string;
+        fkoteicd: string;
+        status: string;
+        fupdtedt: string;
+        hashSuffix: string;
+      }>
+    ): Promise<void> {
+      await ensureFkojunstStatusMailDashboard();
+      await prisma.csvDashboardRow.createMany({
+        data: rows.map((row, index) => ({
+          csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: `pcr-mail-${row.hashSuffix}`,
+          sourceRowOrdinal: index + 1,
+          rowData: {
+            FSEZONO: row.fsezono,
+            FKOJUN: row.fkojun,
+            FKOTEICD: row.fkoteicd,
+            FKOJUNST: row.status,
+            FUPDTEDT: row.fupdtedt
+          }
+        }))
+      });
+    }
+
+    it('separates strong process change residual from normal leaderboard-board rows', async () => {
+      const residualRow = await prisma.csvDashboardRow.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'pcr-main-residual',
+          rowData: {
+            ProductNo: 'PCR0001',
+            FSEIBAN: 'PCR-S1',
+            FHINCD: 'PCR-P1',
+            FHINMEI: 'PCR Part',
+            FSIGENCD: '1',
+            FKOJUN: '210',
+            progress: ''
+          }
+        }
+      });
+      await prisma.productionScheduleFkojunstMailStatus.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          csvDashboardRowId: residualRow.id,
+          sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+          fkojun: '210',
+          fkoteicd: '1',
+          fsezono: 'PCR0001',
+          statusCode: 'R',
+          sourceUpdatedAt: new Date('2026-04-13T13:02:46.000Z')
+        }
+      });
+      await seedRawFkojunstStatusMailRows([
+        {
+          fsezono: 'PCR0001',
+          fkojun: '210',
+          fkoteicd: '1',
+          status: 'R',
+          fupdtedt: '04/13/2026 13:02:46',
+          hashSuffix: 'old-r'
+        },
+        {
+          fsezono: 'PCR0001',
+          fkojun: '210',
+          fkoteicd: '2',
+          status: 'C',
+          fupdtedt: '05/12/2026 06:46:56',
+          hashSuffix: 'new-c'
+        }
+      ]);
+
+      const board = await app.inject({
+        method: 'GET',
+        url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true&includeDecorations=false',
+        headers: { 'x-client-key': CLIENT_KEY }
+      });
+      expect(board.statusCode).toBe(200);
+      const body = board.json() as {
+        rows: Array<{ id: string; rowData: { ProductNo?: string } }>;
+        processChangeResidualTotal?: number;
+        processChangeResidualRows?: Array<{
+          id: string;
+          processChangeResidualSuspected?: boolean;
+          processChangeResidualEvidence?: { completedOtherResource: { resourceCd: string; status: string } };
+        }>;
+      };
+      expect(body.rows.some((row) => row.id === residualRow.id)).toBe(false);
+      expect(body.processChangeResidualTotal).toBe(1);
+      expect(body.processChangeResidualRows?.some((row) => row.id === residualRow.id)).toBe(true);
+      expect(body.processChangeResidualRows?.[0]?.processChangeResidualSuspected).toBe(true);
+      expect(body.processChangeResidualRows?.[0]?.processChangeResidualEvidence?.completedOtherResource).toEqual(
+        expect.objectContaining({ resourceCd: '2', status: 'C' })
+      );
+    });
+
+    it('does not separate when other resource completed but FUPDTEDT comparison is impossible', async () => {
+      const row = await prisma.csvDashboardRow.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'pcr-main-weak',
+          rowData: {
+            ProductNo: 'PCR0002',
+            FSEIBAN: 'PCR-S2',
+            FHINCD: 'PCR-P2',
+            FHINMEI: 'PCR Part 2',
+            FSIGENCD: '1',
+            FKOJUN: '210',
+            progress: ''
+          }
+        }
+      });
+      await prisma.productionScheduleFkojunstMailStatus.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          csvDashboardRowId: row.id,
+          sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+          fkojun: '210',
+          fkoteicd: '1',
+          fsezono: 'PCR0002',
+          statusCode: 'R',
+          sourceUpdatedAt: new Date('2026-04-13T13:02:46.000Z')
+        }
+      });
+      await seedRawFkojunstStatusMailRows([
+        {
+          fsezono: 'PCR0002',
+          fkojun: '210',
+          fkoteicd: '1',
+          status: 'R',
+          fupdtedt: 'not-a-date',
+          hashSuffix: 'bad-r'
+        },
+        {
+          fsezono: 'PCR0002',
+          fkojun: '210',
+          fkoteicd: '2',
+          status: 'C',
+          fupdtedt: '05/12/2026 06:46:56',
+          hashSuffix: 'good-c'
+        }
+      ]);
+
+      const board = await app.inject({
+        method: 'GET',
+        url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true&includeDecorations=false',
+        headers: { 'x-client-key': CLIENT_KEY }
+      });
+      expect(board.statusCode).toBe(200);
+      const body = board.json() as {
+        rows: Array<{ id: string }>;
+        processChangeResidualTotal?: number;
+      };
+      expect(body.rows.some((r) => r.id === row.id)).toBe(true);
+      expect(body.processChangeResidualTotal ?? 0).toBe(0);
+    });
+
+    it('does not separate when completed other resource has different FKOJUN', async () => {
+      const row = await prisma.csvDashboardRow.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'pcr-main-diff-fkojun',
+          rowData: {
+            ProductNo: 'PCR0003',
+            FSEIBAN: 'PCR-S3',
+            FHINCD: 'PCR-P3',
+            FHINMEI: 'PCR Part 3',
+            FSIGENCD: '1',
+            FKOJUN: '210',
+            progress: ''
+          }
+        }
+      });
+      await prisma.productionScheduleFkojunstMailStatus.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          csvDashboardRowId: row.id,
+          sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+          fkojun: '210',
+          fkoteicd: '1',
+          fsezono: 'PCR0003',
+          statusCode: 'R',
+          sourceUpdatedAt: new Date('2026-04-13T13:02:46.000Z')
+        }
+      });
+      await seedRawFkojunstStatusMailRows([
+        {
+          fsezono: 'PCR0003',
+          fkojun: '210',
+          fkoteicd: '1',
+          status: 'R',
+          fupdtedt: '04/13/2026 13:02:46',
+          hashSuffix: 'r210'
+        },
+        {
+          fsezono: 'PCR0003',
+          fkojun: '220',
+          fkoteicd: '2',
+          status: 'C',
+          fupdtedt: '05/12/2026 06:46:56',
+          hashSuffix: 'c220'
+        }
+      ]);
+
+      const board = await app.inject({
+        method: 'GET',
+        url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true&includeDecorations=false',
+        headers: { 'x-client-key': CLIENT_KEY }
+      });
+      expect(board.statusCode).toBe(200);
+      const body = board.json() as {
+        rows: Array<{ id: string }>;
+        processChangeResidualTotal?: number;
+      };
+      expect(body.rows.some((r) => r.id === row.id)).toBe(true);
+      expect(body.processChangeResidualTotal ?? 0).toBe(0);
+    });
+
+    it('does not separate when latest raw row has unparseable FUPDTEDT even if older parseable S/R exists', async () => {
+      const row = await prisma.csvDashboardRow.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'pcr-main-unparseable-latest',
+          rowData: {
+            ProductNo: 'PCR0004',
+            FSEIBAN: 'PCR-S4',
+            FHINCD: 'PCR-P4',
+            FHINMEI: 'PCR Part 4',
+            FSIGENCD: '1',
+            FKOJUN: '210',
+            progress: ''
+          }
+        }
+      });
+      await prisma.productionScheduleFkojunstMailStatus.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          csvDashboardRowId: row.id,
+          sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+          fkojun: '210',
+          fkoteicd: '1',
+          fsezono: 'PCR0004',
+          statusCode: 'R',
+          sourceUpdatedAt: new Date('2026-04-13T13:02:46.000Z')
+        }
+      });
+      await seedRawFkojunstStatusMailRows([
+        {
+          fsezono: 'PCR0004',
+          fkojun: '210',
+          fkoteicd: '1',
+          status: 'R',
+          fupdtedt: '04/13/2026 13:02:46',
+          hashSuffix: 'parseable-old-r'
+        },
+        {
+          fsezono: 'PCR0004',
+          fkojun: '210',
+          fkoteicd: '1',
+          status: 'S',
+          fupdtedt: 'not-a-date',
+          hashSuffix: 'unparseable-new-s'
+        },
+        {
+          fsezono: 'PCR0004',
+          fkojun: '210',
+          fkoteicd: '2',
+          status: 'C',
+          fupdtedt: '05/12/2026 06:46:56',
+          hashSuffix: 'other-c'
+        }
+      ]);
+
+      const board = await app.inject({
+        method: 'GET',
+        url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true&includeDecorations=false',
+        headers: { 'x-client-key': CLIENT_KEY }
+      });
+      expect(board.statusCode).toBe(200);
+      const body = board.json() as {
+        rows: Array<{ id: string }>;
+        processChangeResidualTotal?: number;
+      };
+      expect(body.rows.some((r) => r.id === row.id)).toBe(true);
+      expect(body.processChangeResidualTotal ?? 0).toBe(0);
+    });
+
+    it('materializes residual strong evidence when raw mail row has invalid ISO FUPDTEDT suffix', async () => {
+      await ensureFkojunstStatusMailDashboard();
+      await prisma.csvDashboardRow.create({
+        data: {
+          csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: `pcr-mail-garbage-iso-${randomUUID()}`,
+          rowData: {
+            FSEZONO: 'PCRISO1',
+            FKOJUN: '210',
+            FKOTEICD: '1',
+            FKOJUNST: 'R',
+            FUPDTEDT: '2026-04-23T15:50:35 garbage'
+          }
+        }
+      });
+
+      const board = await app.inject({
+        method: 'GET',
+        url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true&includeDecorations=false',
+        headers: { 'x-client-key': CLIENT_KEY }
+      });
+      expect(board.statusCode).toBe(200);
+    });
+
+    it('does not fail leaderboard-board when raw mail row has invalid calendar ISO FUPDTEDT', async () => {
+      await ensureFkojunstStatusMailDashboard();
+      await prisma.csvDashboardRow.create({
+        data: {
+          csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: `pcr-mail-invalid-iso-${randomUUID()}`,
+          rowData: {
+            FSEZONO: 'PCRISO2',
+            FKOJUN: '210',
+            FKOTEICD: '1',
+            FKOJUNST: 'R',
+            FUPDTEDT: '2026-13-01T00:00:00'
+          }
+        }
+      });
+
+      const board = await app.inject({
+        method: 'GET',
+        url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true&includeDecorations=false',
+        headers: { 'x-client-key': CLIENT_KEY }
+      });
+      expect(board.statusCode).toBe(200);
+    });
   });
 });
 

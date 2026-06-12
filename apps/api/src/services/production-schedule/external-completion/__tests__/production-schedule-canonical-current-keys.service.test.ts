@@ -11,8 +11,10 @@ const { readFile } = await import('node:fs/promises');
 
 describe('ProductionScheduleCanonicalCurrentKeysService', () => {
   it('returns apply outcome with 2CSV intersection keys', async () => {
+    const latestStartedAt = new Date('2026-05-17T11:49:00.000Z');
     const latestCompletedAt = new Date('2026-05-17T11:50:00.000Z');
     const findFirst = vi.fn().mockResolvedValue({
+      startedAt: latestStartedAt,
       completedAt: latestCompletedAt,
       csvFilePath: '/tmp/status-latest.csv',
     });
@@ -49,6 +51,7 @@ describe('ProductionScheduleCanonicalCurrentKeysService', () => {
 
   it('excludes schedule rows not present in paired status snapshot', async () => {
     const findFirst = vi.fn().mockResolvedValue({
+      startedAt: new Date('2026-05-16T23:59:00.000Z'),
       completedAt: new Date('2026-05-17T00:00:00.000Z'),
       csvFilePath: '/tmp/status-nonmatch.csv',
     });
@@ -112,8 +115,10 @@ describe('ProductionScheduleCanonicalCurrentKeysService', () => {
   });
 
   it('skip_disappearance_sync when paired ingest run exists but no rows are available by paired snapshot time', async () => {
+    const latestStartedAt = new Date('2026-05-16T23:59:00.000Z');
     const latestCompletedAt = new Date('2026-05-17T00:00:00.000Z');
     const findFirst = vi.fn().mockResolvedValue({
+      startedAt: latestStartedAt,
       completedAt: latestCompletedAt,
       csvFilePath: '/tmp/status-empty.csv',
     });
@@ -138,6 +143,7 @@ describe('ProductionScheduleCanonicalCurrentKeysService', () => {
 
   it('dedupes identical external completion keys in intersection', async () => {
     const findFirst = vi.fn().mockResolvedValue({
+      startedAt: new Date('2026-05-16T23:59:00.000Z'),
       completedAt: new Date('2026-05-17T00:00:00.000Z'),
       csvFilePath: '/tmp/status-dedupe.csv',
     });
@@ -159,6 +165,34 @@ describe('ProductionScheduleCanonicalCurrentKeysService', () => {
     expect(result.outcome).toBe('apply');
     if (result.outcome === 'apply') {
       expect(result.keys).toEqual(['100\t021\t1111111111']);
+    }
+  });
+
+  it('uses CSV source row order when an unparseable duplicate is followed by a parseable row', async () => {
+    const findFirst = vi.fn().mockResolvedValue({
+      startedAt: new Date('2026-05-16T23:59:00.000Z'),
+      completedAt: new Date('2026-05-17T00:00:00.000Z'),
+      csvFilePath: '/tmp/status-duplicate-unparseable-then-parseable.csv',
+    });
+    vi.mocked(readFile).mockResolvedValue(`FKOJUN,FKOJUNST,FKOTEICD,FSEZONO,FUPDTEDT
+100,S,021,2222222222,not-a-date
+100,S,021,2222222222,04/28/2026 00:00:00
+`);
+    const mockClient = {
+      csvDashboardIngestRun: { findFirst },
+    } as unknown as PrismaClient;
+    const svc = new ProductionScheduleCanonicalCurrentKeysService({ prismaClient: mockClient });
+    const result = await svc.resolveScheduleCsvDisappearanceCanonicalCurrentKeys({
+      scheduleDedupRows: [
+        { data: { FKOJUN: '100', FSIGENCD: '021', ProductNo: '2222222222' } as NormalizedRowData },
+      ],
+      scheduleIngestCompletedAt: new Date('2026-05-17T00:30:00.000Z'),
+    });
+
+    expect(result.outcome).toBe('apply');
+    if (result.outcome === 'apply') {
+      expect(result.keys).toEqual(['100\t021\t2222222222']);
+      expect(result.diagnostics.statusMailDedupedCount).toBe(1);
     }
   });
 });

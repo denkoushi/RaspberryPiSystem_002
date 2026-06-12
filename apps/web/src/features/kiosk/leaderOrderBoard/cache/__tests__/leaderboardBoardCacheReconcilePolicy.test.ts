@@ -48,4 +48,21 @@ describe('reconcileLeaderboardBoardCacheWithServer', () => {
     });
     expect(reconcileLeaderboardBoardCacheWithServer(aligned, server).kind).toBe('serverWins');
   });
+
+  it('通常行が一致しても工程変更残骸メタが違えば serverWins', () => {
+    const cached = board({
+      ...aligned,
+      processChangeResidualTotal: 1,
+      processChangeResidualRows: [{ id: 'res-old' }] as ProductionScheduleLeaderboardBoardResponse['rows']
+    });
+    const server = board({
+      ...aligned,
+      processChangeResidualTotal: 0,
+      processChangeResidualRows: []
+    });
+    expect(reconcileLeaderboardBoardCacheWithServer(cached, server)).toEqual({
+      kind: 'serverWins',
+      reason: 'board content mismatch'
+    });
+  });
 });

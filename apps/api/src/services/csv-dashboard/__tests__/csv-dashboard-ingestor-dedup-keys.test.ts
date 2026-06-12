@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CsvDashboardIngestor } from '../csv-dashboard-ingestor.js';
+import { PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../../production-schedule/constants.js';
 
 describe('CsvDashboardIngestor.extractDedupKeysFromRows', () => {
   it('dedup key を重複排除して返す', () => {
@@ -27,6 +28,21 @@ describe('CsvDashboardIngestor.extractDedupKeysFromRows', () => {
     });
 
     expect(result).toEqual([]);
+  });
+});
+
+describe('CsvDashboardIngestor.buildDedupWinnerOrder', () => {
+  it('FKOJUNST_Status cleanup prioritizes reader-visible completed run rows', () => {
+    const order = CsvDashboardIngestor.buildDedupWinnerOrder({
+      isProductionScheduleDashboard: false,
+      dashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID
+    });
+
+    expect(order).toHaveLength(3);
+    expect(order[0]?.direction).toBe('DESC');
+    expect(String(order[0]?.expression.sql)).toContain('sourceIngestRunId');
+    expect(String(order[0]?.expression.sql)).toContain('COMPLETED');
+    expect(String(order[0]?.expression.sql)).toContain('completedAt');
   });
 });
 

@@ -1,41 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  parseCsvDashboardDateColumnToUtc,
-  parseFkojunstStatusMailFupdteDt,
-} from '../csv-dashboard-datetime-parse.js';
+import { parseCsvDashboardDateColumnToUtc } from '../csv-dashboard-datetime-parse.js';
+import { parseFkojunstStatusMailFupdteDt } from '../fkojunst-status-mail-fupdtedt-parse.js';
 
 describe('csv-dashboard-datetime-parse', () => {
-  describe('parseFkojunstStatusMailFupdteDt', () => {
-    it('parses US-style MM/DD/YYYY HH:mm:ss (local components)', () => {
+  describe('parseFkojunstStatusMailFupdteDt re-export', () => {
+    it('delegates to JST wall-clock parser', () => {
       const d = parseFkojunstStatusMailFupdteDt('04/28/2026 13:05:09');
-      expect(d).not.toBeNull();
-      expect(d!.getFullYear()).toBe(2026);
-      expect(d!.getMonth()).toBe(3);
-      expect(d!.getDate()).toBe(28);
-      expect(d!.getHours()).toBe(13);
-      expect(d!.getMinutes()).toBe(5);
-    });
-
-    it('parses ISO8601 with Z', () => {
-      const d = parseFkojunstStatusMailFupdteDt('2026-04-23T15:50:35Z');
-      expect(d).not.toBeNull();
-      expect(d!.toISOString()).toBe('2026-04-23T15:50:35.000Z');
-    });
-
-    it('parses ISO8601 without Z (local interpretation per Date.parse)', () => {
-      const d = parseFkojunstStatusMailFupdteDt('2026-04-23T15:50:35');
-      expect(d).not.toBeNull();
-      expect(Number.isNaN(d!.getTime())).toBe(false);
-    });
-
-    it('rejects date-only ISO (ambiguous for FUPDTEDT)', () => {
-      expect(parseFkojunstStatusMailFupdteDt('2026-04-28')).toBeNull();
-    });
-
-    it('returns null for empty and garbage', () => {
-      expect(parseFkojunstStatusMailFupdteDt('')).toBeNull();
-      expect(parseFkojunstStatusMailFupdteDt('not-a-date')).toBeNull();
+      expect(d!.toISOString()).toBe('2026-04-28T04:05:09.000Z');
     });
   });
 

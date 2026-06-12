@@ -14,10 +14,19 @@ import { parseFkojunstStatusMailFupdteDt } from '../csv-dashboard/csv-dashboard-
 import { findFkojunstMailWinnerIdsByMailTriples } from './fkojunst-mail-winner-by-triple.reader.js';
 import { buildFkojunstMailStatusKey } from './fkojunst-mail-status-key.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
+import {
+  fetchFkojunstStatusMailSourceRowsWithGenerationSignals
+} from './fkojunst-status-mail-generation-signals.js';
 
 export { buildFkojunstMailStatusKey };
 
 export { parseFkojunstStatusMailFupdteDt };
+
+export {
+  fetchFkojunstStatusMailSourceRowsOrdered,
+  FKOJUNST_STATUS_MAIL_SOURCE_ROW_ORDER_BY,
+  type FkojunstStatusMailSourceRow
+} from './fkojunst-status-mail-source-rows.reader.js';
 
 const CREATE_MANY_CHUNK_SIZE = 200;
 const REPLACEMENT_TX_TIMEOUT_MS = 60_000;
@@ -28,8 +37,17 @@ const INVALID_STATUS_SENTINEL = '?';
 const EMPTY_STATUS_SENTINEL = '';
 const UNPARSEABLE_DATE_FALLBACK = new Date('1970-01-01T00:00:00.000Z');
 
+async function lockFkojunstStatusMailCriticalSection(tx: Pick<PrismaClient, '$queryRaw'>): Promise<void> {
+  await tx.$queryRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(hashtext('fkojunst-status-mail-critical'), hashtext(${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}))
+  `);
+}
+
 export type FkojunstMailNormalizedRow = {
   sourceRowId: string;
+  sourceRowOrdinal?: number | null;
+  sourceIngestRunCompletedAt?: Date | null;
+  sourceIngestRunStartedAt?: Date | null;
   fkojun: string;
   fkoteicd: string;
   fsezono: string;
@@ -59,7 +77,10 @@ function normalizeStatusCode(value: unknown): string | null {
 
 export function toFkojunstMailNormalizedRow(
   sourceRowId: string,
-  rowData: Record<string, unknown>
+  rowData: Record<string, unknown>,
+  sourceRowOrdinal?: number | null,
+  sourceIngestRunStartedAt?: Date | null,
+  sourceIngestRunCompletedAt?: Date | null
 ): { row: FkojunstMailNormalizedRow | null; skippedInvalidStatus: boolean; skippedUnparseableDate: boolean } {
   const fkojun = normalizeToken(rowData.FKOJUN);
   const fkoteicd = normalizeProductionScheduleResourceCd(normalizeToken(rowData.FKOTEICD));
@@ -83,6 +104,9 @@ export function toFkojunstMailNormalizedRow(
   return {
     row: {
       sourceRowId,
+      sourceRowOrdinal,
+      sourceIngestRunCompletedAt,
+      sourceIngestRunStartedAt,
       fkojun,
       fkoteicd,
       fsezono,
@@ -95,8 +119,35 @@ export function toFkojunstMailNormalizedRow(
   };
 }
 
-/** 同一キーは FUPDTEDT 最大の行のみ残す */
+/**
+ * 同一キーは FUPDTEDT 最大の行のみ残す。同一 FUPDTEDT は入力順の先勝ち。
+ * 不正日付行が関わる場合は FUPDTEDT 比較不能なので、完了済み取り込み世代（completedAt 優先）と sourceRowOrdinal で後続行を現在状態として扱う。
+ * 片側だけ世代情報を持つ場合は post-migration の観測行を優先する。両方不明なら安全側で unparseable を優先する。
+ */
 export function dedupeFkojunstMailRowsByLatest(rows: FkojunstMailNormalizedRow[]): FkojunstMailNormalizedRow[] {
+  const rowOrderKey = (row: FkojunstMailNormalizedRow): { generationTime: number; ordinal: number } | null => {
+    const generation = row.sourceIngestRunCompletedAt ?? row.sourceIngestRunStartedAt;
+    if (generation == null || row.sourceRowOrdinal == null) {
+      return null;
+    }
+    return { generationTime: generation.getTime(), ordinal: row.sourceRowOrdinal };
+  };
+
+  const isLaterBySourceOrder = (row: FkojunstMailNormalizedRow, prev: FkojunstMailNormalizedRow): boolean | null => {
+    const currentKey = rowOrderKey(row);
+    const prevKey = rowOrderKey(prev);
+    if (currentKey == null || prevKey == null) {
+      if (currentKey != null || prevKey != null) {
+        return currentKey != null;
+      }
+      return null;
+    }
+    if (currentKey.generationTime !== prevKey.generationTime) {
+      return currentKey.generationTime > prevKey.generationTime;
+    }
+    return currentKey.ordinal > prevKey.ordinal;
+  };
+
   const byKey = new Map<string, FkojunstMailNormalizedRow>();
   for (const row of rows) {
     const key = buildFkojunstMailStatusKey({
@@ -105,12 +156,24 @@ export function dedupeFkojunstMailRowsByLatest(rows: FkojunstMailNormalizedRow[]
       fsezono: row.fsezono,
     });
     const prev = byKey.get(key);
-    if (
-      !prev ||
-      (row.hasUnparseableDate && !prev.hasUnparseableDate) ||
-      (row.hasUnparseableDate === prev.hasUnparseableDate &&
-        row.sourceUpdatedAt.getTime() > prev.sourceUpdatedAt.getTime())
-    ) {
+    if (!prev) {
+      byKey.set(key, row);
+      continue;
+    }
+    if (row.hasUnparseableDate || prev.hasUnparseableDate) {
+      const laterBySourceOrder = isLaterBySourceOrder(row, prev);
+      if (laterBySourceOrder == null) {
+        if (row.hasUnparseableDate && !prev.hasUnparseableDate) {
+          byKey.set(key, row);
+        }
+        continue;
+      }
+      if (laterBySourceOrder) {
+        byKey.set(key, row);
+      }
+      continue;
+    }
+    if (!row.hasUnparseableDate && row.sourceUpdatedAt.getTime() > prev.sourceUpdatedAt.getTime()) {
       byKey.set(key, row);
     }
   }
@@ -121,7 +184,13 @@ export function dedupeFkojunstMailRowsByLatest(rows: FkojunstMailNormalizedRow[]
  * DBから既に読み出した `FKOJUNST_Status` 行を、メール同期と同じ正規化に通す。
  */
 export function collectFkojunstMailNormalizedRowsFromSourceRows(
-  sourceRows: ReadonlyArray<{ id: string; rowData: unknown }>
+  sourceRows: ReadonlyArray<{
+    id: string;
+    rowData: unknown;
+    sourceRowOrdinal?: number | null;
+    sourceIngestRunStartedAt?: Date | null;
+    sourceIngestRunCompletedAt?: Date | null;
+  }>
 ): {
   normalizedRows: FkojunstMailNormalizedRow[];
   skippedInvalidStatus: number;
@@ -132,7 +201,13 @@ export function collectFkojunstMailNormalizedRowsFromSourceRows(
   const normalizedRows: FkojunstMailNormalizedRow[] = [];
   for (const row of sourceRows) {
     const rd = row.rowData as Record<string, unknown>;
-    const parsed = toFkojunstMailNormalizedRow(row.id, rd);
+    const parsed = toFkojunstMailNormalizedRow(
+      row.id,
+      rd,
+      row.sourceRowOrdinal,
+      row.sourceIngestRunStartedAt,
+      row.sourceIngestRunCompletedAt
+    );
     if (parsed.skippedInvalidStatus) skippedInvalidStatus += 1;
     if (parsed.skippedUnparseableDate) skippedUnparseableDate += 1;
     if (parsed.row) {
@@ -146,7 +221,8 @@ export function collectFkojunstMailNormalizedRowsFromSourceRows(
  * 原本CSV 1件の行集合を、メール同期と同じ正規化へ通す。
  */
 export function collectFkojunstMailNormalizedRowsFromCsvRecords(
-  records: ReadonlyArray<Record<string, unknown>>
+  records: ReadonlyArray<Record<string, unknown>>,
+  options?: { sourceIngestRunStartedAt?: Date | null; sourceIngestRunCompletedAt?: Date | null }
 ): {
   normalizedRows: FkojunstMailNormalizedRow[];
   skippedInvalidStatus: number;
@@ -156,6 +232,9 @@ export function collectFkojunstMailNormalizedRowsFromCsvRecords(
     records.map((rowData, index) => ({
       id: `csv-record-${index}`,
       rowData,
+      sourceRowOrdinal: index,
+      sourceIngestRunStartedAt: options?.sourceIngestRunStartedAt ?? null,
+      sourceIngestRunCompletedAt: options?.sourceIngestRunCompletedAt ?? null
     }))
   );
 }
@@ -165,11 +244,9 @@ export async function loadFkojunstMailSourceRows(client: PrismaClient): Promise<
   normalizedRows: FkojunstMailNormalizedRow[];
   skippedInvalidStatus: number;
   skippedUnparseableDate: number;
+  rowsRevision: string;
 }> {
-  const sourceRows = await client.csvDashboardRow.findMany({
-    where: { csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID },
-    select: { id: true, rowData: true },
-  });
+  const { sourceRows, signals } = await fetchFkojunstStatusMailSourceRowsWithGenerationSignals(client);
 
   const collected = collectFkojunstMailNormalizedRowsFromSourceRows(sourceRows);
 
@@ -178,6 +255,7 @@ export async function loadFkojunstMailSourceRows(client: PrismaClient): Promise<
     normalizedRows: collected.normalizedRows,
     skippedInvalidStatus: collected.skippedInvalidStatus,
     skippedUnparseableDate: collected.skippedUnparseableDate,
+    rowsRevision: signals.rowsRevision
   };
 }
 
@@ -186,6 +264,8 @@ export async function loadFkojunstMailSourceRows(client: PrismaClient): Promise<
  */
 export async function loadFkojunstMailNormalizedRowsFromCsvFile(params: {
   csvFilePath: string;
+  sourceIngestRunStartedAt?: Date | null;
+  sourceIngestRunCompletedAt?: Date | null;
 }): Promise<{
   scanned: number;
   normalizedRows: FkojunstMailNormalizedRow[];
@@ -201,7 +281,10 @@ export async function loadFkojunstMailNormalizedRowsFromCsvFile(params: {
     trim: false,
   }) as Array<Record<string, unknown>>;
 
-  const collected = collectFkojunstMailNormalizedRowsFromCsvRecords(records);
+  const collected = collectFkojunstMailNormalizedRowsFromCsvRecords(records, {
+    sourceIngestRunStartedAt: params.sourceIngestRunStartedAt ?? null,
+    sourceIngestRunCompletedAt: params.sourceIngestRunCompletedAt ?? null
+  });
 
   return {
     scanned: records.length,
@@ -278,10 +361,21 @@ export async function runFkojunstMailReplacementTransaction(
     skippedInvalidStatus: number;
     skippedUnparseableDate: number;
     createInputs: Prisma.ProductionScheduleFkojunstMailStatusCreateManyInput[];
+    sourceRowsRevision?: string;
   }
 ): Promise<FkojunstMailSyncResult> {
   return client.$transaction(
     async (tx) => {
+      await lockFkojunstStatusMailCriticalSection(tx);
+      if (params.sourceRowsRevision != null) {
+        const { signals } = await fetchFkojunstStatusMailSourceRowsWithGenerationSignals(tx);
+        if (signals.rowsRevision !== params.sourceRowsRevision) {
+          throw new Error(
+            `[FkojunstMailSync] raw source revision changed during sync: expected ${params.sourceRowsRevision}, got ${signals.rowsRevision}`
+          );
+        }
+      }
+
       const pruneResult = await tx.productionScheduleFkojunstMailStatus.deleteMany({
         where: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -325,10 +419,21 @@ export async function runFkojunstMailClearTransaction(
   client: PrismaClient,
   scanned: number,
   skippedInvalidStatus: number,
-  skippedUnparseableDate: number
+  skippedUnparseableDate: number,
+  sourceRowsRevision?: string
 ): Promise<FkojunstMailSyncResult> {
   return client.$transaction(
     async (tx) => {
+      await lockFkojunstStatusMailCriticalSection(tx);
+      if (sourceRowsRevision != null) {
+        const { signals } = await fetchFkojunstStatusMailSourceRowsWithGenerationSignals(tx);
+        if (signals.rowsRevision !== sourceRowsRevision) {
+          throw new Error(
+            `[FkojunstMailSync] raw source revision changed during clear: expected ${sourceRowsRevision}, got ${signals.rowsRevision}`
+          );
+        }
+      }
+
       const pruneResult = await tx.productionScheduleFkojunstMailStatus.deleteMany({
         where: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,

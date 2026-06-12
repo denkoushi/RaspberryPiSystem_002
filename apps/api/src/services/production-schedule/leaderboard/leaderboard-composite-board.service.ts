@@ -26,6 +26,36 @@ import { seedLeaderboardBoardPrefixRowCache } from './leaderboard-composite-boar
 import { resolveLeaderboardBoardResourceTotalsForContinue } from './resolve-leaderboard-board-resource-totals-for-continue.js';
 import { resolveLeaderboardBoardShellResourceTotalFromShell } from './resolve-leaderboard-board-shell-resource-total.js';
 import type { LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
+import { fetchLeaderboardProcessChangeResidualSummary } from './leaderboard-process-change-residual.service.js';
+import {
+  materializeProcessChangeResidualStrongEvidence,
+  type ProcessChangeResidualStrongEvidenceMaterialization
+} from './leaderboard-process-change-residual.materialization.js';
+import { readLeaderboardShellSnapshotGenerationTokenDetails } from './leaderboard-shell-snapshot-generation.js';
+import type { ProcessChangeResidualEvidence } from './leaderboard-process-change-residual.types.js';
+
+/** キオスク順位ボード通常表示: 強い工程変更残骸疑いを通常候補から除外する。 */
+const KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE = 'normal' as const;
+
+async function resolveLeaderboardBoardProcessChangeResidualContext(): Promise<{
+  generationToken: string;
+  processChangeResidualMaterialization: ProcessChangeResidualStrongEvidenceMaterialization;
+}> {
+  const initialTokenDetails = await readLeaderboardShellSnapshotGenerationTokenDetails();
+  const processChangeResidualMaterialization = await materializeProcessChangeResidualStrongEvidence(prisma, {
+    fkojunstStatusMailRowsRevision: initialTokenDetails.fkojunstStatusMailRowsRevision
+  });
+  const tokenDetails =
+    processChangeResidualMaterialization.rawMailRowsRevision === initialTokenDetails.fkojunstStatusMailRowsRevision
+      ? initialTokenDetails
+      : await readLeaderboardShellSnapshotGenerationTokenDetails({
+          fkojunstStatusMailRowsRevision: processChangeResidualMaterialization.rawMailRowsRevision
+        });
+  return {
+    generationToken: tokenDetails.generationToken,
+    processChangeResidualMaterialization
+  };
+}
 
 type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
 
@@ -51,13 +81,22 @@ export type LeaderboardBoardReadResult = {
   resources: LeaderboardBoardResourceState[];
   snapshotExpired?: boolean;
   leaderboardFooterChipsByPartKey?: Record<string, unknown>;
+  processChangeResidualTotal?: number;
+  processChangeResidualRows?: Array<
+    LightShellRow & {
+      processChangeResidualSuspected: true;
+      processChangeResidualEvidence: ProcessChangeResidualEvidence;
+    }
+  >;
+  processChangeResidualRepresentativeLimit?: number;
 };
 
 type ListParamsBase = Omit<ProductionScheduleListParams, 'page' | 'pageSize' | 'responseProfile' | 'resourceCds'>;
 
 function countLeaderboardBoardShellResourceTotal(
   listParamsBase: ListParamsBase,
-  resourceCd: string
+  resourceCd: string,
+  processChangeResidualStrongEvidenceKeys: ReadonlySet<string>
 ): Promise<number> {
   return countProductionScheduleDashboardVisibleRowsFromListFilters({
     queryText: listParamsBase.queryText,
@@ -70,7 +109,9 @@ function countLeaderboardBoardShellResourceTotal(
     hasDueDateOnly: listParamsBase.hasDueDateOnly,
     allowResourceOnly: listParamsBase.allowResourceOnly,
     locationKey: listParamsBase.locationKey,
-    siteKey: listParamsBase.siteKey
+    siteKey: listParamsBase.siteKey,
+    processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+    processChangeResidualStrongEvidenceKeys
   });
 }
 
@@ -94,28 +135,45 @@ export async function fetchLeaderboardCompositeBoardShell(
   const includeDecorations = params.includeDecorations !== false;
   const cappedPageSize = Math.min(Math.max(1, Math.floor(params.pageSize)), 160);
 
-  /** continue と同型: 同一 board shell リクエスト内で winner materialization を 1 回だけ */
+  /** continue と同型: 同一 board shell リクエスト内で winner / residual / generation token を 1 回だけ */
+  const { generationToken, processChangeResidualMaterialization } =
+    await resolveLeaderboardBoardProcessChangeResidualContext();
+  const processChangeResidualStrongEvidenceKeys = processChangeResidualMaterialization.keys;
   const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
 
   const countPromises = params.boardResourceCds.map((resourceCd) => {
-    const promise = countLeaderboardBoardShellResourceTotal(params.listParamsBase, resourceCd);
+    const promise = countLeaderboardBoardShellResourceTotal(
+      params.listParamsBase,
+      resourceCd,
+      processChangeResidualStrongEvidenceKeys
+    );
     settleUnusedLeaderboardBoardShellCount(promise);
     return promise;
   });
 
-  const shells = await Promise.all(
-    params.boardResourceCds.map((resourceCd) =>
-      listLeaderboardShellProductionScheduleRows(
-        {
-          ...params.listParamsBase,
-          page: params.page,
-          pageSize: cappedPageSize,
-          resourceCds: [resourceCd]
-        },
-        { snapshotStore: deps.snapshotStore, leaderboardMaterializedBaseWhere }
+  const [shells, processChangeResidualSummary] = await Promise.all([
+    Promise.all(
+      params.boardResourceCds.map((resourceCd) =>
+        listLeaderboardShellProductionScheduleRows(
+          {
+            ...params.listParamsBase,
+            page: params.page,
+            pageSize: cappedPageSize,
+            resourceCds: [resourceCd],
+            processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+            processChangeResidualStrongEvidenceKeys
+          },
+          { snapshotStore: deps.snapshotStore, leaderboardMaterializedBaseWhere, generationToken }
+        )
       )
-    )
-  );
+    ),
+    fetchLeaderboardProcessChangeResidualSummary({
+      ...params.listParamsBase,
+      resourceCds: [...params.boardResourceCds],
+      leaderboardMaterializedBaseWhere,
+      processChangeResidualMaterialization
+    })
+  ]);
 
   const totals = await Promise.all(
     shells.map((shell, i) => {
@@ -151,13 +209,29 @@ export async function fetchLeaderboardCompositeBoardShell(
 
   const maxPageSize = shells.length > 0 ? Math.max(...shells.map((s) => s.pageSize)) : cappedPageSize;
 
+  const processChangeResidualPayload =
+    processChangeResidualSummary.processChangeResidualTotal > 0
+      ? {
+          processChangeResidualTotal: processChangeResidualSummary.processChangeResidualTotal,
+          processChangeResidualRows: processChangeResidualSummary.processChangeResidualRows,
+          processChangeResidualRepresentativeLimit:
+            processChangeResidualSummary.processChangeResidualRepresentativeLimit
+        }
+      : {
+          processChangeResidualTotal: 0,
+          processChangeResidualRows: [] as LeaderboardBoardReadResult['processChangeResidualRows'],
+          processChangeResidualRepresentativeLimit:
+            processChangeResidualSummary.processChangeResidualRepresentativeLimit
+        };
+
   if (!includeDecorations) {
     return {
       page: params.page,
       pageSize: maxPageSize,
       total: totalSum,
       rows: mergedRows,
-      resources
+      resources,
+      ...processChangeResidualPayload
     };
   }
 
@@ -173,7 +247,8 @@ export async function fetchLeaderboardCompositeBoardShell(
     total: totalSum,
     rows: rowsWithDeco,
     resources,
-    leaderboardFooterChipsByPartKey
+    leaderboardFooterChipsByPartKey,
+    ...processChangeResidualPayload
   };
 }
 
@@ -196,8 +271,16 @@ export async function continueLeaderboardCompositeBoard(
   const includeDecorations = params.includeDecorations !== false;
   const chunkSize = Math.min(160, Math.max(1, Math.floor(params.chunkSize)));
 
+  const { generationToken, processChangeResidualMaterialization } =
+    await resolveLeaderboardBoardProcessChangeResidualContext();
+  const processChangeResidualStrongEvidenceKeys = processChangeResidualMaterialization.keys;
+
   const [totals, contOutputs] = await Promise.all([
-    resolveLeaderboardBoardResourceTotalsForContinue(params.listParamsBase, params.resourceSlices),
+    resolveLeaderboardBoardResourceTotalsForContinue(
+      params.listParamsBase,
+      params.resourceSlices,
+      processChangeResidualStrongEvidenceKeys
+    ),
     Promise.all(
       params.boardResourceCds.map(async (_resourceCd, i) => {
         const slice = params.resourceSlices[i]!;
@@ -217,13 +300,15 @@ export async function continueLeaderboardCompositeBoard(
             allowResourceOnly: params.listParamsBase.allowResourceOnly,
             locationKey: params.listParamsBase.locationKey,
             siteKey: params.listParamsBase.siteKey,
+            processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+            processChangeResidualStrongEvidenceKeys,
             excludeRowIds: slice.excludeRowIds ?? [],
             cursor: slice.cursor,
             chunkSize,
             snapshotId: slice.snapshotId,
             page: 1
           },
-          deps
+          { snapshotStore: deps.snapshotStore, generationToken }
         );
       })
     )

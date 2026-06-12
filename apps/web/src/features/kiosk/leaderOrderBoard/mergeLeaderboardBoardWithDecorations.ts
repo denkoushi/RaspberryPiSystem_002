@@ -54,7 +54,15 @@ export function mergeLeaderboardDecorationsIntoAccumulator(
 export function mergeLeaderboardBoardWithDecorations(
   board: ProductionScheduleLeaderboardBoardResponse,
   decorations: AccumulatedLeaderboardDecorations
-): ProductionScheduleListResponse {
+): ProductionScheduleListResponse & Pick<
+  ProductionScheduleLeaderboardBoardResponse,
+  | 'processChangeResidualTotal'
+  | 'processChangeResidualRows'
+  | 'processChangeResidualRepresentativeLimit'
+  | 'resources'
+  | 'deltaRows'
+  | 'snapshotExpired'
+> {
   const rows = board.rows.map((row): ProductionScheduleRow => {
     const deco = decorations.rowDecorationsById.get(row.id);
     return deco ? { ...row, ...deco } : row;
@@ -65,6 +73,18 @@ export function mergeLeaderboardBoardWithDecorations(
     pageSize: board.pageSize,
     total: board.total,
     rows,
+    resources: board.resources,
+    ...(board.deltaRows != null ? { deltaRows: board.deltaRows } : {}),
+    ...(board.snapshotExpired != null ? { snapshotExpired: board.snapshotExpired } : {}),
+    ...(board.processChangeResidualTotal != null
+      ? { processChangeResidualTotal: board.processChangeResidualTotal }
+      : {}),
+    ...(board.processChangeResidualRows != null
+      ? { processChangeResidualRows: board.processChangeResidualRows }
+      : {}),
+    ...(board.processChangeResidualRepresentativeLimit != null
+      ? { processChangeResidualRepresentativeLimit: board.processChangeResidualRepresentativeLimit }
+      : {}),
     ...(footerKeys.length > 0
       ? { leaderboardFooterChipsByPartKey: decorations.leaderboardFooterChipsByPartKey }
       : {})

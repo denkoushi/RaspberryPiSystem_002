@@ -10,7 +10,33 @@ export function pickLeaderboardBoardForDisplay(
 ): ProductionScheduleLeaderboardBoardResponse | undefined {
   if (!appendOverride) return shell;
   if (!shell) return appendOverride;
+  if (fingerprintLeaderboardBoardShellScope(appendOverride) !== fingerprintLeaderboardBoardShellScope(shell)) {
+    return shell;
+  }
   return appendOverride.rows.length >= shell.rows.length ? appendOverride : shell;
+}
+
+function fingerprintLeaderboardBoardShellScope(board: ProductionScheduleLeaderboardBoardResponse): string {
+  const resources = board.resources
+    .map((r) => `${r.resourceCd}:${r.total}:${r.pageSize}`)
+    .join('\u0002');
+  const residualRows = (board.processChangeResidualRows ?? [])
+    .map((row) => {
+      const evidence = row.processChangeResidualEvidence;
+      if (!evidence) {
+        return row.id;
+      }
+      return `${row.id}:${evidence.current.productNo}:${evidence.current.fkojun}:${evidence.current.resourceCd}:${evidence.current.status}:${evidence.current.fupdtedt ?? ''}:${evidence.completedOtherResource.productNo}:${evidence.completedOtherResource.fkojun}:${evidence.completedOtherResource.resourceCd}:${evidence.completedOtherResource.status}:${evidence.completedOtherResource.fupdtedt ?? ''}`;
+    })
+    .sort()
+    .join('\u0001');
+  const residual = [
+    board.total,
+    board.processChangeResidualTotal ?? 0,
+    board.processChangeResidualRepresentativeLimit ?? '',
+    residualRows
+  ].join('\u0002');
+  return `${resources}\u0003${residual}`;
 }
 
 /**
@@ -21,10 +47,10 @@ export function fingerprintLeaderboardBoardShell(
 ): string {
   if (!board) return '';
   const rowIds = board.rows.map((r) => r.id).join('\u0001');
-  const resources = board.resources
-    .map((r) => `${r.resourceCd}:${r.hasMore}:${r.nextCursor ?? ''}:${r.snapshotId ?? ''}`)
+  const volatileSnapshotState = board.resources
+    .map((r) => `${r.resourceCd}:${r.snapshotId ?? ''}:${r.hasMore ? 1 : 0}:${r.nextCursor ?? ''}`)
     .join('\u0002');
-  return `${rowIds}\u0003${resources}`;
+  return `${rowIds}\u0003${fingerprintLeaderboardBoardShellScope(board)}\u0003${volatileSnapshotState}`;
 }
 
 /** scheduleQuery 用: 行データがある限り初回ローディング扱いにしない */

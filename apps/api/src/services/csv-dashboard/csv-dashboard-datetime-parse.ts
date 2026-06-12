@@ -3,49 +3,18 @@
  * PowerAutomate 変更で ISO8601 が混在するケースを吸収しつつ、既存フォーマットは維持する。
  */
 
-const normalizeToken = (value: unknown): string => String(value ?? '').trim();
-
-/** MM/DD/YYYY HH:mm:ss（FKOJUNST_Status CSV 従来） */
-const US_DATETIME_SEC = /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/;
-
-/**
- * `YYYY-MM-DDTHH:mm:ss` 系（オプションで小数秒・Z/オフセット）。日付のみは受け付けない。
- */
-const ISO_DATETIME_WITH_T = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
+export {
+  FKOJUNST_STATUS_MAIL_FUPDTEDT_ISO_DATETIME_WITH_T,
+  FKOJUNST_STATUS_MAIL_FUPDTEDT_US_DATETIME_SEC,
+  FKOJUNST_STATUS_MAIL_FUPDTEDT_WALL_CLOCK_TIMEZONE,
+  parseFkojunstStatusMailFupdteDt,
+  wallClockJstToUtcDate
+} from './fkojunst-status-mail-fupdtedt-parse.js';
 
 /** `CsvDashboardIngestor` の日付列: `YYYY/M/D` または `YYYY/M/D H:M`（JST として解釈→UTC） */
 const JST_SLASH_DATE = /^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?$/;
 
-/**
- * Gmail `FKOJUNST_Status` の `FUPDTEDT`。
- * - 従来: `MM/DD/YYYY HH:mm:ss`（ローカル暦の成分として解釈）
- * - 拡張: `YYYY-MM-DDTHH:mm:ss[.fff][Z|±offset]`（`Date.parse`）
- */
-export function parseFkojunstStatusMailFupdteDt(value: unknown): Date | null {
-  const s = normalizeToken(value);
-  if (s.length === 0) return null;
-
-  const us = s.match(US_DATETIME_SEC);
-  if (us) {
-    const [, mm, dd, yyyy, HH, MM, ss] = us;
-    const d = new Date(
-      Number(yyyy),
-      Number(mm) - 1,
-      Number(dd),
-      Number(HH),
-      Number(MM),
-      Number(ss)
-    );
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  if (ISO_DATETIME_WITH_T.test(s)) {
-    const t = Date.parse(s);
-    return Number.isNaN(t) ? null : new Date(t);
-  }
-
-  return null;
-}
+const ISO_DATETIME_WITH_T = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
 
 /**
  * `dateColumnName` 指定ダッシュボード（計測機器持出など）の日時列。

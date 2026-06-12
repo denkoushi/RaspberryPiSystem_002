@@ -10,7 +10,10 @@ import {
   PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
   resolveToMaxProductNoPerLogicalKey,
 } from '../production-schedule/row-resolver/index.js';
-import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
+import {
+  PRODUCTION_SCHEDULE_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID
+} from '../production-schedule/constants.js';
 import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
 import { ProgressSyncFromCsvService } from '../production-schedule/progress-sync-from-csv.service.js';
 import { ProgressSyncEligibilityPolicy } from '../production-schedule/progress-sync-eligibility.policy.js';
@@ -26,6 +29,9 @@ import { findCsvDashboardRowsByDataHashes } from './csv-dashboard-existing-rows-
 export class CsvDashboardIngestor {
   private static readonly COMPLETED_PROGRESS_VALUE = '完了';
   private static readonly SAFE_SQL_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  private static readonly COMPLETION_TX_TIMEOUT_MS = 60_000;
+  private static readonly COMPLETION_TX_MAX_WAIT_MS = 15_000;
+  private static readonly FKOJUNST_STATUS_MAIL_COMPLETION_UPDATE_CHUNK_SIZE = 500;
   private dedupCleanupService = new CsvDashboardDedupCleanupService();
   private progressSyncFromCsvService = new ProgressSyncFromCsvService();
   private progressSyncEligibilityPolicy = new ProgressSyncEligibilityPolicy();
@@ -86,7 +92,14 @@ export class CsvDashboardIngestor {
         : -1;
 
       // 行データを正規化
-      const normalizedRows: Array<{ data: NormalizedRowData; occurredAt: Date; hash?: string }> = [];
+      const normalizedRows: Array<{
+        data: NormalizedRowData;
+        occurredAt: Date;
+        sourceIngestRunId: string;
+        sourceRowOrdinal: number;
+        sourceIngestRunStartedAt: Date;
+        hash?: string;
+      }> = [];
 
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
@@ -99,7 +112,13 @@ export class CsvDashboardIngestor {
           this.validateProductionScheduleRow(normalized, i);
         }
 
-        normalizedRows.push({ data: normalized, occurredAt });
+        normalizedRows.push({
+          data: normalized,
+          occurredAt,
+          sourceIngestRunId: ingestRun.id,
+          sourceRowOrdinal: i,
+          sourceIngestRunStartedAt: ingestRun.startedAt
+        });
       }
 
       const rowsProcessed = normalizedRows.length;
@@ -118,16 +137,35 @@ export class CsvDashboardIngestor {
       const productionScheduleDedupRows =
         isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
           ? resolveToMaxProductNoPerLogicalKey(
-              oneYearFilteredRows.map((row) => ({ data: row.data, occurredAt: row.occurredAt }))
+              oneYearFilteredRows.map((row) => ({
+                data: row.data,
+                occurredAt: row.occurredAt,
+                sourceIngestRunId: row.sourceIngestRunId,
+                sourceRowOrdinal: row.sourceRowOrdinal,
+                sourceIngestRunStartedAt: row.sourceIngestRunStartedAt
+              }))
             )
-          : oneYearFilteredRows.map((row) => ({ data: row.data, occurredAt: row.occurredAt }));
+          : oneYearFilteredRows.map((row) => ({
+              data: row.data,
+              occurredAt: row.occurredAt,
+              sourceIngestRunId: row.sourceIngestRunId,
+              sourceRowOrdinal: row.sourceRowOrdinal,
+              sourceIngestRunStartedAt: row.sourceIngestRunStartedAt
+            }));
       const productNoDedupSkippedRows = oneYearFilteredRows.length - productionScheduleDedupRows.length;
       const preDedupSkippedRows = oneYearDroppedCount + productNoDedupSkippedRows;
       const dedupKeyColumns =
         isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
           ? [...PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS]
           : dashboard.dedupKeyColumns;
-      const ingestRows: Array<{ data: NormalizedRowData; occurredAt: Date; hash?: string }> =
+      const ingestRows: Array<{
+        data: NormalizedRowData;
+        occurredAt: Date;
+        sourceIngestRunId: string;
+        sourceRowOrdinal: number;
+        sourceIngestRunStartedAt: Date;
+        hash?: string;
+      }> =
         dashboard.ingestMode === 'DEDUP'
           ? productionScheduleDedupRows.map((row) => ({
               ...row,
@@ -138,6 +176,14 @@ export class CsvDashboardIngestor {
       // 取り込み方式に応じて処理
       let rowsAdded = 0;
       let rowsSkipped = 0;
+      const deferredExistingRowUpdates: Array<{
+        id: string;
+        occurredAt: Date;
+        rowData: Prisma.InputJsonValue;
+        sourceIngestRunId?: string | null;
+        sourceRowOrdinal?: number | null;
+        sourceIngestRunStartedAt?: Date | null;
+      }> = [];
 
       if (dashboard.ingestMode === 'APPEND') {
         // 追加モード：すべて追加
@@ -147,6 +193,9 @@ export class CsvDashboardIngestor {
             occurredAt: row.occurredAt,
             dataHash: null,
             rowData: row.data as Prisma.InputJsonValue,
+            sourceIngestRunId: row.sourceIngestRunId,
+            sourceRowOrdinal: row.sourceRowOrdinal,
+            sourceIngestRunStartedAt: row.sourceIngestRunStartedAt,
           })),
         });
         rowsAdded = ingestRows.length;
@@ -174,7 +223,13 @@ export class CsvDashboardIngestor {
                 maxProductNoWins: true,
                 productNoColumn: PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN,
               }
-            : undefined
+            : dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID
+              ? {
+                  firstIncomingHashWins: true,
+                  refreshSourceMetadataOnDuplicate: true,
+                  preferLaterUnparseableDuplicate: true
+                }
+              : undefined
         });
         const { rowsToCreate, updates } = diff;
         rowsAdded = diff.rowsAdded;
@@ -204,18 +259,28 @@ export class CsvDashboardIngestor {
         }
 
         if (updates.length > 0) {
-          // 大量更新に備えて分割（トランザクションでまとめて実行）
-          const chunkSize = 100;
-          for (let i = 0; i < updates.length; i += chunkSize) {
-            const chunk = updates.slice(i, i + chunkSize);
-            await prisma.$transaction(
-              chunk.map((u) =>
-                prisma.csvDashboardRow.update({
-                  where: { id: u.id },
-                  data: { occurredAt: u.occurredAt, rowData: u.rowData },
-                })
-              )
-            );
+          if (dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID) {
+            deferredExistingRowUpdates.push(...updates);
+          } else {
+            // 大量更新に備えて分割（トランザクションでまとめて実行）
+            const chunkSize = 100;
+            for (let i = 0; i < updates.length; i += chunkSize) {
+              const chunk = updates.slice(i, i + chunkSize);
+              await prisma.$transaction(
+                chunk.map((u) =>
+                  prisma.csvDashboardRow.update({
+                    where: { id: u.id },
+                    data: {
+                      occurredAt: u.occurredAt,
+                      rowData: u.rowData,
+                      sourceIngestRunId: u.sourceIngestRunId,
+                      sourceRowOrdinal: u.sourceRowOrdinal,
+                      sourceIngestRunStartedAt: u.sourceIngestRunStartedAt
+                    },
+                  })
+                )
+              );
+            }
           }
           if (isProductionScheduleDashboard) {
             progressSyncCandidates.push(
@@ -247,25 +312,63 @@ export class CsvDashboardIngestor {
         }
       }
 
-      // 取り込み実行ログを完了として更新
-      await prisma.csvDashboardIngestRun.update({
-        where: { id: ingestRun.id },
-        data: {
-          status: 'COMPLETED',
-          rowsProcessed,
-          rowsAdded,
-          rowsSkipped,
-          completedAt: new Date(),
-        },
-      });
+      const completedAt = new Date();
+      await prisma.$transaction(
+        async (tx) => {
+          if (dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID) {
+            await tx.$queryRaw(Prisma.sql`
+              SELECT pg_advisory_xact_lock(hashtext('fkojunst-status-mail-critical'), hashtext(${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}))
+            `);
+          }
 
-      // CSVファイルパスを更新（最新のCSVファイルパスを記録）
-      if (csvFilePath) {
-        await prisma.csvDashboard.update({
-          where: { id: dashboardId },
-          data: { csvFilePath },
-        });
-      }
+          for (
+            let i = 0;
+            i < deferredExistingRowUpdates.length;
+            i += CsvDashboardIngestor.FKOJUNST_STATUS_MAIL_COMPLETION_UPDATE_CHUNK_SIZE
+          ) {
+            const chunk = deferredExistingRowUpdates.slice(
+              i,
+              i + CsvDashboardIngestor.FKOJUNST_STATUS_MAIL_COMPLETION_UPDATE_CHUNK_SIZE
+            );
+            await Promise.all(
+              chunk.map((u) =>
+                tx.csvDashboardRow.update({
+                  where: { id: u.id },
+                  data: {
+                    occurredAt: u.occurredAt,
+                    rowData: u.rowData,
+                    sourceIngestRunId: u.sourceIngestRunId,
+                    sourceRowOrdinal: u.sourceRowOrdinal,
+                    sourceIngestRunStartedAt: u.sourceIngestRunStartedAt
+                  },
+                })
+              )
+            );
+          }
+
+          await tx.csvDashboardIngestRun.update({
+            where: { id: ingestRun.id },
+            data: {
+              status: 'COMPLETED',
+              rowsProcessed,
+              rowsAdded,
+              rowsSkipped,
+              completedAt,
+            },
+          });
+
+          if (csvFilePath) {
+            await tx.csvDashboard.update({
+              where: { id: dashboardId },
+              data: { csvFilePath },
+            });
+          }
+        },
+        {
+          timeout: CsvDashboardIngestor.COMPLETION_TX_TIMEOUT_MS,
+          maxWait: CsvDashboardIngestor.COMPLETION_TX_MAX_WAIT_MS
+        }
+      );
 
       // DEDUP全体: 今回観測したキー範囲に限定して重複 loser を即時削除（ベストエフォート）
       if (dashboard.ingestMode === 'DEDUP') {
@@ -282,21 +385,10 @@ export class CsvDashboardIngestor {
             csvDashboardId: dashboardId,
             keyColumns,
             keys: dedupKeys,
-            winnerOrder: isProductionScheduleDashboard
-              ? [
-                  {
-                    expression: CsvDashboardIngestor.buildProductNoOrderExpression(
-                      PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN
-                    ),
-                    direction: 'DESC',
-                  },
-                  { expression: Prisma.sql`r."createdAt"`, direction: 'DESC' },
-                  { expression: Prisma.sql`r."id"`, direction: 'DESC' },
-                ]
-              : [
-                  { expression: Prisma.sql`r."createdAt"`, direction: 'DESC' },
-                  { expression: Prisma.sql`r."id"`, direction: 'DESC' },
-                ],
+            winnerOrder: CsvDashboardIngestor.buildDedupWinnerOrder({
+              isProductionScheduleDashboard,
+              dashboardId
+            }),
           });
           logger.info(
             { dashboardId, deletedCount, keys: dedupKeys.length, keyColumns },
@@ -594,6 +686,50 @@ export class CsvDashboardIngestor {
       }
     }
     return result;
+  }
+
+  static buildDedupWinnerOrder(params: {
+    isProductionScheduleDashboard: boolean;
+    dashboardId: string;
+  }): Array<{ expression: Prisma.Sql; direction: 'ASC' | 'DESC' }> {
+    if (params.isProductionScheduleDashboard) {
+      return [
+        {
+          expression: CsvDashboardIngestor.buildProductNoOrderExpression(PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN),
+          direction: 'DESC',
+        },
+        { expression: Prisma.sql`r."createdAt"`, direction: 'DESC' },
+        { expression: Prisma.sql`r."id"`, direction: 'DESC' },
+      ];
+    }
+
+    if (params.dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID) {
+      return [
+        {
+          expression: Prisma.sql`
+            CASE
+              WHEN r."sourceIngestRunId" IS NULL THEN 1
+              WHEN EXISTS (
+                SELECT 1
+                FROM "CsvDashboardIngestRun" ir
+                WHERE ir."id" = r."sourceIngestRunId"
+                  AND ir."status" = 'COMPLETED'::"ImportStatus"
+                  AND ir."completedAt" IS NOT NULL
+              ) THEN 1
+              ELSE 0
+            END
+          `,
+          direction: 'DESC'
+        },
+        { expression: Prisma.sql`r."createdAt"`, direction: 'DESC' },
+        { expression: Prisma.sql`r."id"`, direction: 'DESC' },
+      ];
+    }
+
+    return [
+      { expression: Prisma.sql`r."createdAt"`, direction: 'DESC' },
+      { expression: Prisma.sql`r."id"`, direction: 'DESC' },
+    ];
   }
 
   private static buildProductNoOrderExpression(productNoColumn: string): Prisma.Sql {

@@ -6,6 +6,7 @@ import { ImportHistoryService } from './import-history.service.js';
 import { ImportAlertService } from './import-alert.service.js';
 import { CsvDashboardRetentionService } from '../csv-dashboard/csv-dashboard-retention.service.js';
 import { CsvDashboardDedupCleanupService } from '../csv-dashboard/csv-dashboard-dedup-cleanup.service.js';
+import { CsvDashboardIngestor } from '../csv-dashboard/csv-dashboard-ingestor.js';
 import { CsvImportAutoBackupService } from './csv-import-auto-backup.service.js';
 import { CsvImportExecutionService } from './csv-import-execution.service.js';
 import { ApiError } from '../../lib/errors.js';
@@ -17,7 +18,7 @@ import { GmailReauthRequiredError, isInvalidGrantMessage } from '../backup/gmail
 import { GmailRateLimitedDeferredError } from '../backup/gmail-request-gate.service.js';
 import { GmailImportOrchestrator } from '../backup/gmail-import-orchestrator.js';
 import { prisma } from '../../lib/prisma.js';
-import { AlertSeverity, AlertChannel, AlertDeliveryStatus, Prisma } from '@prisma/client';
+import { AlertSeverity, AlertChannel, AlertDeliveryStatus } from '@prisma/client';
 import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
 import crypto from 'crypto';
 
@@ -725,10 +726,10 @@ export class CsvImportScheduler {
             const result = await cleanupService.deleteDuplicateLosersGlobally({
               csvDashboardId: dashboard.id,
               keyColumns,
-              winnerOrder: [
-                { expression: Prisma.sql`r."createdAt"`, direction: 'DESC' },
-                { expression: Prisma.sql`r."id"`, direction: 'DESC' },
-              ],
+              winnerOrder: CsvDashboardIngestor.buildDedupWinnerOrder({
+                isProductionScheduleDashboard: false,
+                dashboardId: dashboard.id
+              }),
             });
             logger?.info(
               {

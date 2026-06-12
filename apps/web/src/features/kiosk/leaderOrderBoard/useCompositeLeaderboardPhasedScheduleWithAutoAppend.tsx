@@ -395,7 +395,11 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
           }
           const next =
             orderedResourceCds.length > 0
-              ? mergeLeaderboardBoardContinueResponseWithOptionalDelta(cur.rows, nextRaw, orderedResourceCds)
+              ? mergeLeaderboardBoardContinueResponseWithOptionalDelta(cur.rows, nextRaw, orderedResourceCds, {
+                  processChangeResidualTotal: cur.processChangeResidualTotal,
+                  processChangeResidualRows: cur.processChangeResidualRows,
+                  processChangeResidualRepresentativeLimit: cur.processChangeResidualRepresentativeLimit
+                })
               : nextRaw;
           if (latestParamsKeyRef.current !== runParamsKey) {
             return;

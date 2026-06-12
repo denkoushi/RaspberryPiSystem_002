@@ -46,11 +46,14 @@ export type ScheduleDisappearanceCanonicalCurrentKeysResolution =
  *   ADR-20260509 系の **3キー（FKOJUN + FKOTEICD/FSIGENCD + FSEZONO/ProductNo）** が一致する行のみを正本に含める。
  * - **`tA`**: **`scheduleIngestCompletedAt`**（Status 幕の `occurredAt` は取込時刻基準のため、本体CSV日付列と混同しない）。
  * - **`tA` 以前に Status CSV が1行も無い**ときは、**差分消失同期のみスキップ**する（手動・メール完了は維持）。
+ * - 差分消滅の正本キーは、蓄積raw履歴ではなく `tA` に対応する **最新CSVスナップショット** から作る。
+ *   通常の Status 同期 / 残骸materialization は、別途蓄積raw全体を読む。
  */
 export class ProductionScheduleCanonicalCurrentKeysService {
   constructor(private readonly deps: { prismaClient: PrismaClient } = { prismaClient: prisma }) {}
 
   private async resolveLatestStatusIngestRunAtOrBefore(referenceAt: Date): Promise<{
+    startedAt: Date;
     completedAt: Date;
     csvFilePath: string;
   } | null> {
@@ -62,12 +65,13 @@ export class ProductionScheduleCanonicalCurrentKeysService {
         csvFilePath: { not: null },
       },
       orderBy: [{ completedAt: 'desc' }, { startedAt: 'desc' }],
-      select: { completedAt: true, csvFilePath: true },
+      select: { startedAt: true, completedAt: true, csvFilePath: true },
     });
-    if (!latestRun?.completedAt || !latestRun.csvFilePath) {
+    if (!latestRun?.startedAt || !latestRun.completedAt || !latestRun.csvFilePath) {
       return null;
     }
     return {
+      startedAt: latestRun.startedAt,
       completedAt: latestRun.completedAt,
       csvFilePath: latestRun.csvFilePath,
     };
@@ -105,6 +109,8 @@ export class ProductionScheduleCanonicalCurrentKeysService {
     }
     const load = await loadFkojunstMailNormalizedRowsFromCsvFile({
       csvFilePath: latestStatusIngestRun.csvFilePath,
+      sourceIngestRunStartedAt: latestStatusIngestRun.startedAt,
+      sourceIngestRunCompletedAt: latestStatusIngestRun.completedAt,
     });
 
     if (load.normalizedRows.length === 0) {
