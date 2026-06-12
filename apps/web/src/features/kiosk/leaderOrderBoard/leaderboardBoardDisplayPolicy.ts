@@ -17,9 +17,7 @@ export function pickLeaderboardBoardForDisplay(
 }
 
 function fingerprintLeaderboardBoardShellScope(board: ProductionScheduleLeaderboardBoardResponse): string {
-  const resources = board.resources
-    .map((r) => `${r.resourceCd}:${r.total}:${r.pageSize}`)
-    .join('\u0002');
+  const resources = fingerprintLeaderboardBoardResourcePagingScope(board);
   const residualRows = (board.processChangeResidualRows ?? [])
     .map((row) => {
       const evidence = row.processChangeResidualEvidence;
@@ -37,6 +35,14 @@ function fingerprintLeaderboardBoardShellScope(board: ProductionScheduleLeaderbo
     residualRows
   ].join('\u0002');
   return `${resources}\u0003${residual}`;
+}
+
+function fingerprintLeaderboardBoardResourcePagingScope(
+  board: ProductionScheduleLeaderboardBoardResponse
+): string {
+  return board.resources
+    .map((r) => `${r.resourceCd}:${r.total}:${r.pageSize}`)
+    .join('\u0002');
 }
 
 /**
@@ -59,4 +65,45 @@ export function isLeaderboardScheduleInitialLoading(
   displayRowCount: number
 ): boolean {
   return boardQueryLoading && displayRowCount === 0;
+}
+
+/** 資源スライスに未到達ページが残っているか */
+export function isLeaderboardBoardResourcePagingIncomplete(
+  board: ProductionScheduleLeaderboardBoardResponse
+): boolean {
+  return board.resources.some(
+    (r) => r.hasMore || (typeof r.nextCursor === 'number' && r.nextCursor < r.total)
+  );
+}
+
+export function isLeaderboardBoardPagingComplete(
+  board: ProductionScheduleLeaderboardBoardResponse | undefined
+): boolean {
+  if (!board) return false;
+  return !isLeaderboardBoardResourcePagingIncomplete(board);
+}
+
+/**
+ * ネットワーク採用 board のページング完走判定。
+ * 表示採用が fresh shell に戻って未完に見えても、同一 params の追補 override が完走済みなら true。
+ */
+export function resolveNetworkLeaderboardBoardPagingComplete(input: {
+  networkDisplayBoard: ProductionScheduleLeaderboardBoardResponse | undefined;
+  scopedAppendOverride: ProductionScheduleLeaderboardBoardResponse | null;
+  resolvedShell: ProductionScheduleLeaderboardBoardResponse | undefined;
+}): boolean {
+  if (isLeaderboardBoardPagingComplete(input.networkDisplayBoard)) return true;
+  const override = input.scopedAppendOverride;
+  const shell = input.resolvedShell;
+  if (
+    override != null &&
+    shell != null &&
+    fingerprintLeaderboardBoardResourcePagingScope(override) ===
+      fingerprintLeaderboardBoardResourcePagingScope(shell) &&
+    override.rows.length >= shell.rows.length &&
+    isLeaderboardBoardPagingComplete(override)
+  ) {
+    return true;
+  }
+  return false;
 }

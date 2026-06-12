@@ -6,6 +6,13 @@ import type {
   ProductionScheduleLeaderboardBoardResponse
 } from '../../../api/client';
 
+function coerceLeaderboardContinueBoolean(value: boolean | string | undefined): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (value === true || value === 'true') return true;
+  if (value === false || value === 'false') return false;
+  return undefined;
+}
+
 /**
  * `POST …/leaderboard-board/continue` の本文を組み立てる。
  *
@@ -18,11 +25,16 @@ export function buildLeaderboardBoardContinuePayload(
   base: KioskProductionScheduleLeaderboardBoardQueryParams,
   board: ProductionScheduleLeaderboardBoardResponse
 ): KioskProductionScheduleLeaderboardBoardContinuePayload {
-  const { page: _p, pageSize: _ps, ...rest } = base;
+  const { page: _p, pageSize: _ps, allowResourceOnly, includeDecorations: _id, ...rest } = base;
   void _p;
   void _ps;
+  void _id;
+  const normalizedAllowResourceOnly = coerceLeaderboardContinueBoolean(allowResourceOnly);
   return {
     ...rest,
+    ...(normalizedAllowResourceOnly !== undefined
+      ? { allowResourceOnly: normalizedAllowResourceOnly }
+      : {}),
     includeDecorations: false,
     resourceSlices: board.resources.map((r) => {
       const hasSnap = Boolean(r.snapshotId?.trim());

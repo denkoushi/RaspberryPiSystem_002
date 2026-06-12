@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   fingerprintLeaderboardBoardShell,
   isLeaderboardScheduleInitialLoading,
-  pickLeaderboardBoardForDisplay
+  pickLeaderboardBoardForDisplay,
+  resolveNetworkLeaderboardBoardPagingComplete
 } from '../leaderboardBoardDisplayPolicy';
 
 import type { ProductionScheduleLeaderboardBoardResponse, ProductionScheduleRow } from '../../../../api/client';
@@ -195,5 +196,49 @@ describe('isLeaderboardScheduleInitialLoading', () => {
   it('行がある限り初回ローディングにしない', () => {
     expect(isLeaderboardScheduleInitialLoading(true, 3)).toBe(false);
     expect(isLeaderboardScheduleInitialLoading(true, 0)).toBe(true);
+  });
+});
+
+describe('resolveNetworkLeaderboardBoardPagingComplete', () => {
+  it('表示採用 board が完走済みなら true', () => {
+    const complete = boardWithTotal([row('a'), row('b'), row('c')], 3, false);
+    expect(
+      resolveNetworkLeaderboardBoardPagingComplete({
+        networkDisplayBoard: complete,
+        scopedAppendOverride: null,
+        resolvedShell: complete
+      })
+    ).toBe(true);
+  });
+
+  it('fresh shell が未完でも追補 override が完走済みなら true', () => {
+    const shell = {
+      ...boardWithTotal([row('a'), row('b')], 3, true),
+      processChangeResidualTotal: 1,
+      processChangeResidualRows: [row('x')]
+    };
+    const override = boardWithTotal([row('a'), row('b'), row('c')], 3, false);
+
+    expect(pickLeaderboardBoardForDisplay(shell, override)).toBe(shell);
+    expect(
+      resolveNetworkLeaderboardBoardPagingComplete({
+        networkDisplayBoard: shell,
+        scopedAppendOverride: override,
+        resolvedShell: shell
+      })
+    ).toBe(true);
+  });
+
+  it('資源ページングスコープが違う追補 override は完走判定に使わない', () => {
+    const shell = boardWithTotal([row('a'), row('b')], 4, true);
+    const override = boardWithTotal([row('a'), row('b'), row('c')], 3, false);
+
+    expect(
+      resolveNetworkLeaderboardBoardPagingComplete({
+        networkDisplayBoard: shell,
+        scopedAppendOverride: override,
+        resolvedShell: shell
+      })
+    ).toBe(false);
   });
 });
