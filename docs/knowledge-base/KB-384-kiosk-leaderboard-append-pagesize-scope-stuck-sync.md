@@ -141,4 +141,4 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 - [KB-374](./KB-374-leaderboard-board-continue-cursor-contract.md) — continue contract, pageSize 80/160 history
 - [verification-checklist.md §6.6.18](../guides/verification-checklist.md) — leader order board regression checklist
-- PR: _(to be filled after merge)_
+- PR [#431](https://github.com/denkoushi/RaspberryPiSystem_002/pull/431) — squash merge `f3359a4d` on `main`
