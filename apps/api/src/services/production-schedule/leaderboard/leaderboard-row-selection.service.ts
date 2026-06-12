@@ -6,6 +6,8 @@ import {
 import {
   buildFkojunstProductionScheduleListVisibilityWhereSql,
 } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
+import { buildLeaderboardProcessChangeResidualFilterWhereSql } from './leaderboard-process-change-residual.sql.js';
+import type { ProcessChangeResidualMode } from './leaderboard-process-change-residual.types.js';
 import {
   computeLeaderboardShellFillerBudget
 } from './leaderboard-shell-filler-budget.js';
@@ -42,6 +44,8 @@ async function buildLeaderboardShellPriorityContext(params: {
   expansionWhere: Prisma.Sql;
   locationKey: string;
   siteScopedGlobalRankLocation: string;
+  /** キオスク順位ボード通常表示のみ `normal`。省略時は `include`（除外なし）。 */
+  processChangeResidualMode?: ProcessChangeResidualMode;
   /**
    * `true`（既定）: 手動割当の製番に一致する行を `expansionWhere` 集合から追加（従来の「同一製番展開」）。
    * `false`: 展開しない（`resourceCd` 1件カードなど、カード単位で候補を独立させる）。
@@ -49,6 +53,7 @@ async function buildLeaderboardShellPriorityContext(params: {
   seibanExpansion?: boolean;
   /** shell 初回 prefix のみ。manual LIMIT + expansion スキップに使用 */
   prefixLimit?: number;
+  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
 }): Promise<LeaderboardShellPriorityContext> {
   const {
     leaderboardMaterializedBaseWhere,
@@ -57,11 +62,16 @@ async function buildLeaderboardShellPriorityContext(params: {
     locationKey,
     siteScopedGlobalRankLocation,
     seibanExpansion = true,
-    prefixLimit
+    prefixLimit,
+    processChangeResidualMode
   } = params;
 
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
-  const commonWhere = Prisma.sql`${leaderboardMaterializedBaseWhere} ${queryWhere} ${visibilitySql}`;
+  const residualFilterSql = buildLeaderboardProcessChangeResidualFilterWhereSql(
+    processChangeResidualMode,
+    params.processChangeResidualStrongEvidenceKeys
+  );
+  const commonWhere = Prisma.sql`${leaderboardMaterializedBaseWhere} ${queryWhere} ${visibilitySql} ${residualFilterSql}`;
   const rankJoins = buildLeaderboardShellRankJoinContext({ locationKey, siteScopedGlobalRankLocation });
   const fetchPlan = computeLeaderboardShellPriorityFetchPlan({ prefixLimit });
 
@@ -116,7 +126,7 @@ async function buildLeaderboardShellPriorityContext(params: {
       seibanList.map((s) => Prisma.sql`${s}`)
     )})`;
 
-    const expansionWhereSql = Prisma.sql`${leaderboardMaterializedBaseWhere} ${expansionWhere} ${visibilitySql}
+    const expansionWhereSql = Prisma.sql`${leaderboardMaterializedBaseWhere} ${expansionWhere} ${visibilitySql} ${residualFilterSql}
         AND ${seibanCondition}`;
 
     const expansionRows = await queryLeaderboardShellScheduleRows({
@@ -272,6 +282,8 @@ export async function fetchLeaderboardShellMergedPrefixRows(params: {
   siteScopedGlobalRankLocation: string;
   seibanExpansion?: boolean;
   prefixLimit: number;
+  processChangeResidualMode?: ProcessChangeResidualMode;
+  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
 }): Promise<{ mergedPrefix: LeaderboardScheduleRowSql[]; mergeFullyCompleted: boolean }> {
   const limit = Math.max(1, Math.floor(params.prefixLimit));
   const ctx = await buildLeaderboardShellPriorityContext({
@@ -317,6 +329,8 @@ export async function fetchFullLeaderboardShellMergedOrderedRows(params: {
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
   expansionWhere: Prisma.Sql;
+  processChangeResidualMode?: ProcessChangeResidualMode;
+  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
   locationKey: string;
   siteScopedGlobalRankLocation: string;
   seibanExpansion?: boolean;
@@ -498,6 +512,8 @@ export async function fetchLeaderboardShellRowsContinuationChunk(params: {
   excludeRowIds: readonly string[];
   chunkSize: number;
   seibanExpansion?: boolean;
+  processChangeResidualMode?: ProcessChangeResidualMode;
+  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
 }): Promise<{ rows: LeaderboardScheduleRowSql[]; mergeFullyCompleted: boolean }> {
   const ctx = await buildLeaderboardShellPriorityContext(params);
   const exclude = new Set(params.excludeRowIds.map((id) => id.trim()).filter((id) => id.length > 0));
@@ -525,6 +541,8 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
   siteScopedGlobalRankLocation: string;
   pageSize: number;
   seibanExpansion?: boolean;
+  processChangeResidualMode?: ProcessChangeResidualMode;
+  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
 }): Promise<LeaderboardScheduleRowSql[]> {
   const pageSize = Math.max(1, params.pageSize);
 

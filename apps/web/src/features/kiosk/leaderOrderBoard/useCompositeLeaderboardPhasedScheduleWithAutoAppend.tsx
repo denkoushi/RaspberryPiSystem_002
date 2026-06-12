@@ -24,7 +24,8 @@ import {
 import {
   fingerprintLeaderboardBoardShell,
   isLeaderboardScheduleInitialLoading,
-  pickLeaderboardBoardForDisplay
+  pickLeaderboardBoardForDisplay,
+  resolveNetworkLeaderboardBoardPagingComplete
 } from './leaderboardBoardDisplayPolicy';
 import {
   isLeaderboardShellReadyForAppend,
@@ -244,12 +245,15 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     pauseRefetch
   });
 
-  const networkBoardComplete = useMemo(() => {
-    if (!networkDisplayBoard) return false;
-    return !networkDisplayBoard.resources.some(
-      (r) => r.hasMore || (typeof r.nextCursor === 'number' && r.nextCursor < r.total)
-    );
-  }, [networkDisplayBoard]);
+  const networkBoardComplete = useMemo(
+    () =>
+      resolveNetworkLeaderboardBoardPagingComplete({
+        networkDisplayBoard,
+        scopedAppendOverride,
+        resolvedShell
+      }),
+    [networkDisplayBoard, resolvedShell, scopedAppendOverride]
+  );
 
   const isBackgroundRevalidating = useMemo(
     () =>
@@ -395,7 +399,11 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
           }
           const next =
             orderedResourceCds.length > 0
-              ? mergeLeaderboardBoardContinueResponseWithOptionalDelta(cur.rows, nextRaw, orderedResourceCds)
+              ? mergeLeaderboardBoardContinueResponseWithOptionalDelta(cur.rows, nextRaw, orderedResourceCds, {
+                  processChangeResidualTotal: cur.processChangeResidualTotal,
+                  processChangeResidualRows: cur.processChangeResidualRows,
+                  processChangeResidualRepresentativeLimit: cur.processChangeResidualRepresentativeLimit
+                })
               : nextRaw;
           if (latestParamsKeyRef.current !== runParamsKey) {
             return;

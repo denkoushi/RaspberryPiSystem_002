@@ -349,7 +349,23 @@ export interface ProductionScheduleRow {
   hasSelfInspectionDrawing?: boolean;
   selfInspectionStatus?: 'not_started' | 'in_progress' | 'completed' | null;
   selfInspectionEntryPath?: string | null;
+  /** キオスク順位ボード: 工程変更残骸疑い（通常グリッドには含めない） */
+  processChangeResidualSuspected?: boolean;
+  processChangeResidualEvidence?: ProcessChangeResidualEvidence;
 }
+
+export type ProcessChangeResidualEvidenceSide = {
+  productNo: string;
+  fkojun: string;
+  resourceCd: string;
+  status: string;
+  fupdtedt: string | null;
+};
+
+export type ProcessChangeResidualEvidence = {
+  current: ProcessChangeResidualEvidenceSide;
+  completedOtherResource: ProcessChangeResidualEvidenceSide;
+};
 
 export interface ProductionScheduleListResponse {
   page: number;
@@ -371,6 +387,10 @@ export interface ProductionScheduleListResponse {
       isCompleted: boolean;
     }>
   >;
+  /** キオスク順位ボード: 工程変更残骸疑い（通常 rows には含めない） */
+  processChangeResidualTotal?: number;
+  processChangeResidualRows?: ProductionScheduleRow[];
+  processChangeResidualRepresentativeLimit?: number;
 }
 
 export type ProductionScheduleLeaderboardShellResponse = Pick<ProductionScheduleListResponse, 'page' | 'pageSize' | 'rows'> & {
@@ -1083,6 +1103,10 @@ export type ProductionScheduleLeaderboardBoardResponse = ProductionScheduleListR
   /** 続きチャンクのみ（スロット順連結）。古いサーバまたは安全フォールバック時は未定義 */
   deltaRows?: ProductionScheduleRow[];
   resources: LeaderboardBoardResourceSliceResponse[];
+  /** 工程変更残骸疑いの総件数（通常 rows には含めない） */
+  processChangeResidualTotal?: number;
+  processChangeResidualRows?: ProductionScheduleRow[];
+  processChangeResidualRepresentativeLimit?: number;
 };
 
 export async function getKioskProductionScheduleLeaderboardBoard(

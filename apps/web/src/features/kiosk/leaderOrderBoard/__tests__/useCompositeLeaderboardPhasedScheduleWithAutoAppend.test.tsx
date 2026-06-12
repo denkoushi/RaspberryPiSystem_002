@@ -88,6 +88,26 @@ function row(id: string, resourceCd: string, fseiban?: string): ProductionSchedu
   } as unknown as ProductionScheduleRow;
 }
 
+function rowWithProgress(
+  id: string,
+  resourceCd: string,
+  progress: string,
+  fseiban?: string
+): ProductionScheduleRow {
+  const fs = fseiban ?? `S-${id}`;
+  return {
+    id,
+    fseiban: fs,
+    rowData: {
+      FSIGENCD: resourceCd,
+      ProductNo: id,
+      FSEIBAN: fs,
+      FHINCD: `P-${id}`,
+      progress
+    }
+  } as unknown as ProductionScheduleRow;
+}
+
 function boardPayload(partial: Partial<ProductionScheduleLeaderboardBoardResponse>): ProductionScheduleLeaderboardBoardResponse {
   return {
     page: 1,
@@ -245,7 +265,210 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(data?.rows[2]).toBe(r1c);
       expect(data?.rows[3]).toBe(r2a);
       expect(latest?.listIncomplete).toBe(false);
+      expect(latest?.isBackgroundRevalidating).toBe(false);
       expect(latest?.appendError).toBeNull();
+    });
+  });
+
+  it('初回 shell hasMore=true から continue 完走後は isBackgroundRevalidating が false になる', async () => {
+    const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 3,
+      rows: [row('a1', 'R1'), row('a2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 80 }]
+    });
+    const afterContinue: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 3,
+      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 80 }]
+    });
+
+    postContinue.mockResolvedValue(afterContinue);
+    installBoardHookMock(() => ({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: Date.now()
+    }));
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3']);
+      expect(latest?.listIncomplete).toBe(false);
+      expect(latest?.isBackgroundRevalidating).toBe(false);
+    });
+  });
+
+  it('continue 完走後に fresh shell の scope ドリフトで表示が shell に戻っても isBackgroundRevalidating は false', async () => {
+    const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 3,
+      rows: [row('a1', 'R1'), row('a2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 80 }]
+    });
+    const afterContinue: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 3,
+      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 80 }]
+    });
+
+    postContinue.mockResolvedValue(afterContinue);
+
+    let boardDataUpdatedAt = 1000;
+    installBoardHookMock(() => ({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: boardDataUpdatedAt
+    }));
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    const utils = render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3']);
+      expect(latest?.isBackgroundRevalidating).toBe(false);
+    });
+
+    const freshShell: ProductionScheduleLeaderboardBoardResponse = {
+      ...shell,
+      processChangeResidualTotal: 1,
+      processChangeResidualRows: [row('residual', 'R1')]
+    };
+    boardDataUpdatedAt = 2000;
+    installBoardHookMock(() => ({
+      data: freshShell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: boardDataUpdatedAt
+    }));
+    utils.rerender(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      // residual drift が無い pageSize 差だけなら追補完走済み表示を維持する
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3']);
+      expect(latest?.isBackgroundRevalidating).toBe(false);
+      expect(postContinue.mock.calls.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('初回 shell は未完0件でも pageSize=160 の追補完走後は fresh shell pageSize=80 に戻らず未完行を維持する', async () => {
+    const shellRows = [
+      rowWithProgress('done-1', 'R1', '完了'),
+      rowWithProgress('done-2', 'R1', '完了')
+    ];
+    const appendedRow = rowWithProgress('open-1', 'R1', '');
+    const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 3,
+      rows: shellRows,
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 80, snapshotId: 'snap-a' }]
+    });
+    const afterContinue: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 3,
+      rows: [...shellRows, appendedRow],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 160, snapshotId: 'snap-a' }]
+    });
+
+    postContinue.mockResolvedValue(afterContinue);
+
+    let boardDataUpdatedAt = 1000;
+    installBoardHookMock(() => ({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: boardDataUpdatedAt
+    }));
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    const utils = render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['done-1', 'done-2', 'open-1']);
+      expect(latest?.isBackgroundRevalidating).toBe(false);
+    });
+
+    const freshShell: ProductionScheduleLeaderboardBoardResponse = {
+      ...shell,
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 80, snapshotId: 'snap-b' }]
+    };
+    boardDataUpdatedAt = 2000;
+    installBoardHookMock(() => ({
+      data: freshShell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: boardDataUpdatedAt
+    }));
+    utils.rerender(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['done-1', 'done-2', 'open-1']);
+      expect(latest?.scheduleQuery.data?.rows.filter((r) => (r.rowData as Record<string, unknown>).progress !== '完了')).toHaveLength(1);
+      expect(latest?.isBackgroundRevalidating).toBe(false);
+      expect(postContinue.mock.calls.length).toBeGreaterThanOrEqual(1);
     });
   });
 

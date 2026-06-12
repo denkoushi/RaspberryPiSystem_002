@@ -12,6 +12,14 @@ const EXISTING_ROW_SELECT = {
   dataHash: true,
   occurredAt: true,
   rowData: true,
+  createdAt: true,
+  sourceIngestRunId: true,
+  sourceIngestRun: {
+    select: {
+      status: true,
+      completedAt: true,
+    },
+  },
 } as const;
 
 export type CsvDashboardExistingRowByHash = Prisma.CsvDashboardRowGetPayload<{
@@ -22,6 +30,7 @@ export type CsvDashboardRowFindManyByHashClient = {
   findMany(args: {
     where: { csvDashboardId: string; dataHash: { in: string[] } };
     select: typeof EXISTING_ROW_SELECT;
+    orderBy?: Prisma.CsvDashboardRowOrderByWithRelationInput[];
   }): Promise<CsvDashboardExistingRowByHash[]>;
 };
 
@@ -62,6 +71,7 @@ export async function findCsvDashboardRowsByDataHashes(params: {
         dataHash: { in: slice },
       },
       select: EXISTING_ROW_SELECT,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
     merged.push(...rows);
   }

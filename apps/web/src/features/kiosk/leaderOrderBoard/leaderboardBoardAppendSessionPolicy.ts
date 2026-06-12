@@ -32,12 +32,10 @@ export function shouldBeginLeaderboardAppendSession(input: LeaderboardAppendSess
     return false;
   }
 
-  const overrideAhead =
-    input.appendOverride != null && input.appendOverride.rows.length > input.shell.rows.length;
-
-  if (overrideAhead) return false;
-
   if (input.lastStartedShellFingerprint === input.shellFingerprint) {
+    const overrideAhead =
+      input.appendOverride != null && input.appendOverride.rows.length > input.shell.rows.length;
+    if (overrideAhead) return false;
     if (input.appendOverride != null) return false;
     return input.retryNonce !== input.lastRetryNonceStarted;
   }

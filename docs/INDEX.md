@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-12 · キオスク順位ボード 追補完了後の更新中残留）
+
+- **追補完了後も「一覧を更新中」·501/033 空スロット** — Web only · **pageSize を scope 指紋から除外** + 背景同期解除。**ブランチ**: `fix/kiosk-leaderboard-process-residual-filter` · **`0eed9b8f`** · Pi5 本番 OK · 実機 OK · Pi4 未。**記録**: [KB-384](./knowledge-base/KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md)
+
 ### 最新アップデート（2026-06-11 · キオスク順位ボード ガント表示）
 
 - **ガントON/OFF + 可変8H縦バールーラー** · Web only · Pi5 デプロイ済（`ee3aebfc`）· Pi4 未。**記録**: [Plan](./plans/kiosk-leaderboard-gantt-mode.md)

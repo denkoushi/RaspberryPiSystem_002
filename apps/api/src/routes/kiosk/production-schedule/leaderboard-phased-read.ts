@@ -11,6 +11,12 @@ import {
   fetchLeaderboardCompositeBoardShell
 } from '../../../services/production-schedule/leaderboard/leaderboard-composite-board.service.js';
 import {
+  materializeProcessChangeResidualStrongEvidence,
+  type ProcessChangeResidualStrongEvidenceMaterialization
+} from '../../../services/production-schedule/leaderboard/leaderboard-process-change-residual.materialization.js';
+import { readLeaderboardShellSnapshotGenerationTokenDetails } from '../../../services/production-schedule/leaderboard/leaderboard-shell-snapshot-generation.js';
+import { prisma } from '../../../lib/prisma.js';
+import {
   parseCsvList,
   productionScheduleLeaderboardBoardContinueBodySchema,
   productionScheduleLeaderboardBoardQuerySchema,
@@ -23,6 +29,28 @@ import {
 import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
 
 const LEADERBOARD_SHELL_PAGE_SIZE_CAP = 160;
+
+const KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE = 'normal' as const;
+
+async function resolveKioskLeaderboardProcessChangeResidualContext(): Promise<{
+  generationToken: string;
+  processChangeResidualMaterialization: ProcessChangeResidualStrongEvidenceMaterialization;
+}> {
+  const initialTokenDetails = await readLeaderboardShellSnapshotGenerationTokenDetails();
+  const processChangeResidualMaterialization = await materializeProcessChangeResidualStrongEvidence(prisma, {
+    fkojunstStatusMailRowsRevision: initialTokenDetails.fkojunstStatusMailRowsRevision
+  });
+  const tokenDetails =
+    processChangeResidualMaterialization.rawMailRowsRevision === initialTokenDetails.fkojunstStatusMailRowsRevision
+      ? initialTokenDetails
+      : await readLeaderboardShellSnapshotGenerationTokenDetails({
+          fkojunstStatusMailRowsRevision: processChangeResidualMaterialization.rawMailRowsRevision
+        });
+  return {
+    generationToken: tokenDetails.generationToken,
+    processChangeResidualMaterialization
+  };
+}
 
 export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
   app: FastifyInstance,
@@ -48,6 +76,8 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
       targetDeviceScopeKey: query.targetDeviceScopeKey
     });
+    const { generationToken, processChangeResidualMaterialization } =
+      await resolveKioskLeaderboardProcessChangeResidualContext();
 
     return listLeaderboardShellProductionScheduleRows(
       {
@@ -63,9 +93,11 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         hasDueDateOnly: query.hasDueDateOnly === true,
         allowResourceOnly: query.allowResourceOnly === true,
         locationKey: assignmentLocationKey,
-        siteKey: locationScopeContext.siteKey
+        siteKey: locationScopeContext.siteKey,
+        processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+        processChangeResidualStrongEvidenceKeys: processChangeResidualMaterialization.keys
       },
-      { snapshotStore: deps.leaderboardShellSnapshotStore }
+      { snapshotStore: deps.leaderboardShellSnapshotStore, generationToken }
     );
   });
 
@@ -87,6 +119,8 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
       targetDeviceScopeKey: body.targetDeviceScopeKey
     });
+    const { generationToken, processChangeResidualMaterialization } =
+      await resolveKioskLeaderboardProcessChangeResidualContext();
 
     return listLeaderboardShellContinuationProductionScheduleRows(
       {
@@ -104,9 +138,11 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         excludeRowIds: body.excludeRowIds ?? [],
         cursor: body.cursor,
         chunkSize,
-        snapshotId: body.snapshotId
+        snapshotId: body.snapshotId,
+        processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+        processChangeResidualStrongEvidenceKeys: processChangeResidualMaterialization.keys
       },
-      { snapshotStore: deps.leaderboardShellSnapshotStore }
+      { snapshotStore: deps.leaderboardShellSnapshotStore, generationToken }
     );
   });
 
@@ -127,6 +163,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
       actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
       targetDeviceScopeKey: query.targetDeviceScopeKey
     });
+    const { processChangeResidualMaterialization } = await resolveKioskLeaderboardProcessChangeResidualContext();
 
     const total = await countProductionScheduleDashboardVisibleRowsFromListFilters({
       queryText: rawQueryText,
@@ -139,7 +176,9 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
       hasDueDateOnly: query.hasDueDateOnly === true,
       allowResourceOnly: query.allowResourceOnly === true,
       locationKey: assignmentLocationKey,
-      siteKey: locationScopeContext.siteKey
+      siteKey: locationScopeContext.siteKey,
+      processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+      processChangeResidualStrongEvidenceKeys: processChangeResidualMaterialization.keys
     });
 
     return { total };

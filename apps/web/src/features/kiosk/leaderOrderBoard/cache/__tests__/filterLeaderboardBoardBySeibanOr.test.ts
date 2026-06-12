@@ -63,6 +63,44 @@ describe('filterLeaderboardBoardBySeibanOr', () => {
     expect(filtered?.rows.map((r) => r.id)).toEqual(['a', 'c']);
   });
 
+  it('工程変更残骸疑い rows も同じ製番 OR で絞る', () => {
+    const b = {
+      ...board(
+        [row('a', 'R1', 'AA111111'), row('b', 'R1', 'BB222222')],
+        [{ resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 }]
+      ),
+      processChangeResidualTotal: 2,
+      processChangeResidualRows: [
+        row('res-a', 'R1', 'AA111111'),
+        row('res-b', 'R1', 'BB222222')
+      ]
+    };
+    const filtered = filterLeaderboardBoardBySeibanOr(b, ['AA111111'], ordered);
+
+    expect(filtered?.processChangeResidualTotal).toBe(1);
+    expect(filtered?.processChangeResidualRows?.map((r) => r.id)).toEqual(['res-a']);
+  });
+
+  it('工程変更残骸疑いの代表 rows が全件でないときは過少集計せずサマリーを落とす', () => {
+    const b = {
+      ...board(
+        [row('a', 'R1', 'AA111111'), row('b', 'R1', 'BB222222')],
+        [{ resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 }]
+      ),
+      processChangeResidualTotal: 3,
+      processChangeResidualRepresentativeLimit: 2,
+      processChangeResidualRows: [
+        row('res-a', 'R1', 'AA111111'),
+        row('res-b', 'R1', 'BB222222')
+      ]
+    };
+    const filtered = filterLeaderboardBoardBySeibanOr(b, ['AA111111'], ordered);
+
+    expect(filtered?.processChangeResidualTotal).toBeUndefined();
+    expect(filtered?.processChangeResidualRows).toBeUndefined();
+    expect(filtered?.processChangeResidualRepresentativeLimit).toBeUndefined();
+  });
+
   it('スロット順が壊れていれば null', () => {
     const b = board([row('a', 'R2', 'AA111111'), row('b', 'R1', 'AA111111')], [
       { resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 },

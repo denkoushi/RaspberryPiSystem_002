@@ -16,7 +16,8 @@ export type LeaderboardBoardContinueResourceSlice = {
  */
 export async function resolveLeaderboardBoardResourceTotalsForContinue(
   listParamsBase: ListParamsBase,
-  resourceSlices: ReadonlyArray<LeaderboardBoardContinueResourceSlice>
+  resourceSlices: ReadonlyArray<LeaderboardBoardContinueResourceSlice>,
+  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>
 ): Promise<number[]> {
   return Promise.all(
     resourceSlices.map(async (slice) => {
@@ -35,7 +36,9 @@ export async function resolveLeaderboardBoardResourceTotalsForContinue(
         hasDueDateOnly: listParamsBase.hasDueDateOnly,
         allowResourceOnly: listParamsBase.allowResourceOnly,
         locationKey: listParamsBase.locationKey,
-        siteKey: listParamsBase.siteKey
+        siteKey: listParamsBase.siteKey,
+        processChangeResidualMode: 'normal',
+        processChangeResidualStrongEvidenceKeys
       });
     })
   );

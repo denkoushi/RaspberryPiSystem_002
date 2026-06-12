@@ -57,6 +57,45 @@ describe('buildLeaderboardBoardContinuePayload', () => {
     expect('cursor' in payload.resourceSlices[0]!).toBe(false);
   });
 
+  it('query 由来の文字列 allowResourceOnly でも POST body は boolean になる', () => {
+    const board: ProductionScheduleLeaderboardBoardResponse = {
+      page: 1,
+      pageSize: 80,
+      total: 1,
+      rows: [],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+    };
+    const payload = buildLeaderboardBoardContinuePayload(
+      {
+        ...base,
+        allowResourceOnly: 'true' as unknown as boolean
+      },
+      board
+    );
+    expect(payload.allowResourceOnly).toBe(true);
+    expect(typeof payload.allowResourceOnly).toBe('boolean');
+    expect(payload.includeDecorations).toBe(false);
+    expect(typeof payload.includeDecorations).toBe('boolean');
+  });
+
+  it('不明な文字列 allowResourceOnly は POST body に載せない', () => {
+    const board: ProductionScheduleLeaderboardBoardResponse = {
+      page: 1,
+      pageSize: 80,
+      total: 1,
+      rows: [],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+    };
+    const payload = buildLeaderboardBoardContinuePayload(
+      {
+        ...base,
+        allowResourceOnly: 'yes' as unknown as boolean
+      },
+      board
+    );
+    expect('allowResourceOnly' in payload).toBe(false);
+  });
+
   it('有限の nextCursor は切り捨てて正の cursor にする', () => {
     const board: ProductionScheduleLeaderboardBoardResponse = {
       page: 1,

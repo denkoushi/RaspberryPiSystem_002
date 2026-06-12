@@ -47,4 +47,43 @@ describe('leaderboardBoardInteractionLockPolicy', () => {
       })
     ).toBe(false);
   });
+
+  it('board 再取得中は背景再検証', () => {
+    expect(
+      isLeaderboardBoardBackgroundRevalidating({
+        scheduleEnabled: true,
+        networkBoardComplete: true,
+        networkInitialLoading: false,
+        networkIsFetching: true,
+        isAppending: false,
+        isDecorationsFetching: false
+      })
+    ).toBe(true);
+  });
+
+  it('装飾取得中は背景再検証', () => {
+    expect(
+      isLeaderboardBoardBackgroundRevalidating({
+        scheduleEnabled: true,
+        networkBoardComplete: true,
+        networkInitialLoading: false,
+        networkIsFetching: false,
+        isAppending: false,
+        isDecorationsFetching: true
+      })
+    ).toBe(true);
+  });
+
+  it('ページング未完なら背景再検証', () => {
+    expect(
+      isLeaderboardBoardBackgroundRevalidating({
+        scheduleEnabled: true,
+        networkBoardComplete: false,
+        networkInitialLoading: false,
+        networkIsFetching: false,
+        isAppending: false,
+        isDecorationsFetching: false
+      })
+    ).toBe(true);
+  });
 });

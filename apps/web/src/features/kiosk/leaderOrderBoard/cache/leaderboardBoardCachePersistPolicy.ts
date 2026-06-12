@@ -7,6 +7,21 @@ function progressToken(rowData: unknown): string {
   return typeof p === 'string' ? p.trim() : '';
 }
 
+function fingerprintProcessChangeResidual(board: ProductionScheduleLeaderboardBoardResponse): string {
+  const rows = board.processChangeResidualRows ?? [];
+  const rowTokens = rows
+    .map((row) => {
+      const evidence = row.processChangeResidualEvidence;
+      if (!evidence) {
+        return row.id;
+      }
+      return `${row.id}:${evidence.current.productNo}:${evidence.current.fkojun}:${evidence.current.resourceCd}:${evidence.current.status}:${evidence.current.fupdtedt ?? ''}:${evidence.completedOtherResource.productNo}:${evidence.completedOtherResource.fkojun}:${evidence.completedOtherResource.resourceCd}:${evidence.completedOtherResource.status}:${evidence.completedOtherResource.fupdtedt ?? ''}`;
+    })
+    .sort()
+    .join(',');
+  return `${board.processChangeResidualTotal ?? 0}:${board.processChangeResidualRepresentativeLimit ?? ''}:${rowTokens}`;
+}
+
 /**
  * 行 ID 列に加え、ユーザー入力が反映されるフィールドを含む指紋。
  * 同一 id 列でも順位・備考・納期・完了が変われば put する。
@@ -14,7 +29,7 @@ function progressToken(rowData: unknown): string {
 export function fingerprintLeaderboardBoardContent(
   board: ProductionScheduleLeaderboardBoardResponse
 ): string {
-  return board.rows
+  const rowPart = board.rows
     .map((row) => {
       const due = row.dueDate != null ? String(row.dueDate).trim() : '';
       const order = row.processingOrder != null ? String(row.processingOrder) : '';
@@ -22,6 +37,7 @@ export function fingerprintLeaderboardBoardContent(
       return `${row.id}:${order}:${note}:${due}:${progressToken(row.rowData)}`;
     })
     .join('\u0002');
+  return `${rowPart}\u0003${fingerprintProcessChangeResidual(board)}`;
 }
 
 function fingerprintProcessChip(chip: {

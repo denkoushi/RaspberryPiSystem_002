@@ -1,3 +1,4 @@
+import { fingerprintLeaderboardBoardContent } from './leaderboardBoardCachePersistPolicy';
 import { fingerprintLeaderboardBoardRowIds } from './leaderboardBoardCacheRecord';
 
 import type { ProductionScheduleLeaderboardBoardResponse } from '../../../../api/client';
@@ -22,6 +23,9 @@ export function reconcileLeaderboardBoardCacheWithServer(
   }
   if (fingerprintLeaderboardBoardRowIds(cached) !== fingerprintLeaderboardBoardRowIds(server)) {
     return { kind: 'serverWins', reason: 'row id sequence mismatch' };
+  }
+  if (fingerprintLeaderboardBoardContent(cached) !== fingerprintLeaderboardBoardContent(server)) {
+    return { kind: 'serverWins', reason: 'board content mismatch' };
   }
   if (cached.resources.length !== server.resources.length) {
     return { kind: 'serverWins', reason: 'resources length mismatch' };

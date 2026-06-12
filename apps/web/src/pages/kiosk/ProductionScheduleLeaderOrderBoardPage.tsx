@@ -19,6 +19,7 @@ import { LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE } from '../../features/kiosk
 import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
 import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
 import { LeaderBoardLeftToolStack } from '../../features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack';
+import { LeaderBoardProcessChangeResidualSummary } from '../../features/kiosk/leaderOrderBoard/LeaderBoardProcessChangeResidualSummary';
 import { LeaderBoardResourceSlotPickerModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardResourceSlotPickerModal';
 import { LeaderBoardSeibanListPanel } from '../../features/kiosk/leaderOrderBoard/LeaderBoardSeibanListPanel';
 import {
@@ -537,6 +538,15 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               <p className="mb-2 shrink-0 text-sm text-cyan-100/90" role="status">
                 {LEADERBOARD_BACKGROUND_SYNC_STATUS_MESSAGE}
               </p>
+            ) : null}
+            {(scheduleQuery.data?.processChangeResidualTotal ?? 0) > 0 ? (
+              <LeaderBoardProcessChangeResidualSummary
+                total={scheduleQuery.data?.processChangeResidualTotal ?? 0}
+                rows={scheduleQuery.data?.processChangeResidualRows ?? []}
+                representativeLimit={
+                  scheduleQuery.data?.processChangeResidualRepresentativeLimit ?? 20
+                }
+              />
             ) : null}
             <LeaderBoardGrid
               resourceCdBySlotIndex={resourceCdBySlotIndex}

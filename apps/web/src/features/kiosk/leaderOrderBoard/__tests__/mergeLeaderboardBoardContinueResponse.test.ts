@@ -95,6 +95,26 @@ describe('mergeLeaderboardBoardContinueResponseWithOptionalDelta', () => {
     const out = mergeLeaderboardBoardContinueResponseWithOptionalDelta([prev], next, ['1']);
     expect(out.rows[0]).toBe(auth);
   });
+
+  it('preserves processChangeResidual meta from previous board on continue merge', () => {
+    const prev = mkRow('p1', '1');
+    const next: ProductionScheduleLeaderboardBoardResponse = {
+      page: 1,
+      pageSize: 80,
+      total: 2,
+      rows: [prev, mkRow('n1', '1')],
+      deltaRows: [mkRow('n1', '1')],
+      resources: [{ resourceCd: '1', hasMore: false, total: 2, pageSize: 80 }]
+    };
+    const out = mergeLeaderboardBoardContinueResponseWithOptionalDelta([prev], next, ['1'], {
+      processChangeResidualTotal: 3,
+      processChangeResidualRows: [mkRow('x', '1')],
+      processChangeResidualRepresentativeLimit: 20
+    });
+    expect(out.processChangeResidualTotal).toBe(3);
+    expect(out.processChangeResidualRows).toHaveLength(1);
+    expect(out.processChangeResidualRepresentativeLimit).toBe(20);
+  });
 });
 
 describe('partitionLeaderboardCompositeRowsBySlotOrder', () => {

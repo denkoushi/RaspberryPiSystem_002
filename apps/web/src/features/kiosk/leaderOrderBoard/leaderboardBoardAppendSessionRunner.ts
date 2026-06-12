@@ -70,7 +70,11 @@ export async function runLeaderboardBoardAppendSession(
       }
       const next =
         orderedResourceCds.length > 0
-          ? mergeLeaderboardBoardContinueResponseWithOptionalDelta(cur.rows, nextRaw, orderedResourceCds)
+          ? mergeLeaderboardBoardContinueResponseWithOptionalDelta(cur.rows, nextRaw, orderedResourceCds, {
+              processChangeResidualTotal: cur.processChangeResidualTotal,
+              processChangeResidualRows: cur.processChangeResidualRows,
+              processChangeResidualRepresentativeLimit: cur.processChangeResidualRepresentativeLimit
+            })
           : nextRaw;
       if (refs.latestParamsKeyRef.current !== runParamsKey) {
         return;

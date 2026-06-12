@@ -5,6 +5,7 @@ import { ApiError } from '../../lib/errors.js';
 import { CsvDashboardService } from '../../services/csv-dashboard/index.js';
 import { CsvDashboardIngestor } from '../../services/csv-dashboard/csv-dashboard-ingestor.js';
 import { CsvDashboardPostIngestService } from '../../services/csv-dashboard/csv-dashboard-post-ingest.service.js';
+import { withCsvDashboardIngestLock } from '../../services/csv-dashboard/csv-dashboard-ingest-lock.js';
 import { CsvDashboardStorage } from '../../lib/csv-dashboard-storage.js';
 import {
   csvDashboardCreateSchema,
@@ -77,15 +78,25 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
     // CSVファイルを保存
     const csvFilePath = await CsvDashboardStorage.saveRawCsv(params.id, csvContent);
 
-    // CSVデータを取り込む
     const ingestor = new CsvDashboardIngestor();
-    const result = await ingestor.ingestFromGmail(
-      params.id,
-      csvText,
-      undefined, // messageId (手動アップロードの場合は未指定)
-      data.filename || 'manual-upload.csv',
-      csvFilePath
-    );
+    const { result, postIngest } = await withCsvDashboardIngestLock(params.id, async () => {
+      // CSVデータ取り込みと post-ingest 投影を同一 dashboard 内で直列化する
+      const ingestResult = await ingestor.ingestFromGmail(
+        params.id,
+        csvText,
+        undefined, // messageId (手動アップロードの場合は未指定)
+        data.filename || 'manual-upload.csv',
+        csvFilePath
+      );
+
+      const postIngestResult = await postIngestService.runAfterSuccessfulIngest({
+        dashboardId: params.id,
+        ingestSource: 'manual',
+        ingestRunId: ingestResult.ingestRunId,
+      });
+
+      return { result: ingestResult, postIngest: postIngestResult };
+    });
 
     const {
       orderSupplementSync,
@@ -95,11 +106,7 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
       customerScawSync,
       purchaseOrderLookupSync,
       riggingInspectionSync,
-    } = await postIngestService.runAfterSuccessfulIngest({
-      dashboardId: params.id,
-      ingestSource: 'manual',
-      ingestRunId: result.ingestRunId,
-    });
+    } = postIngest;
 
     return {
       success: true,

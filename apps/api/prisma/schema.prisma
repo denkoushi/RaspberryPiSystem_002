@@ -931,10 +931,12 @@ model CsvDashboardIngestRun {
   errorMessage   String? // エラーメッセージ
   startedAt      DateTime     @default(now())
   completedAt    DateTime?
+  sourceRows     CsvDashboardRow[] @relation("CsvDashboardRowSourceIngestRun")
 
   @@index([csvDashboardId])
   @@index([status])
   @@index([startedAt])
+  @@index([completedAt])
 }
 
 model CsvDashboardRow {
@@ -944,7 +946,12 @@ model CsvDashboardRow {
   occurredAt                 DateTime // 日付列から抽出した日時（表示期間フィルタ用、Asia/Tokyo）
   dataHash                   String? // データのハッシュ（重複除去用、dedup時のみ使用）
   rowData                    Json // 正規化された行データ（列マッピング適用後）
+  sourceIngestRunId          String?
+  sourceIngestRun            CsvDashboardIngestRun?              @relation("CsvDashboardRowSourceIngestRun", fields: [sourceIngestRunId], references: [id], onDelete: SetNull)
+  sourceRowOrdinal           Int?
+  sourceIngestRunStartedAt   DateTime?
   createdAt                  DateTime                            @default(now())
+  updatedAt                  DateTime?                           @updatedAt
   orderAssignments           ProductionScheduleOrderAssignment[]
   rowNotes                   ProductionScheduleRowNote[]
   productionScheduleProgress ProductionScheduleProgress?
@@ -957,6 +964,9 @@ model CsvDashboardRow {
   @@index([csvDashboardId])
   @@index([csvDashboardId, occurredAt]) // 表示期間フィルタ用の複合インデックス
   @@index([csvDashboardId, dataHash]) // 重複除去用の複合インデックス（dedup時のみ使用）
+  @@index([csvDashboardId, updatedAt]) // 世代トークン用
+  @@index([csvDashboardId, sourceIngestRunId, sourceRowOrdinal], map: "CsvDashRow_srcRun_rowOrd_idx") // FKOJUNST_Status DEDUP更新後のCSV run+行順固定用
+  @@index([csvDashboardId, sourceIngestRunStartedAt, sourceRowOrdinal], map: "CsvDashRow_srcRunStart_rowOrd_idx") // sourceIngestRunId 欠損旧行の fallback 用
 }
 
 model ProductionScheduleOrderSupplement {

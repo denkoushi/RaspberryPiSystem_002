@@ -5,6 +5,8 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import {
   buildFkojunstProductionScheduleListVisibilityWhereSql,
 } from './policies/fkojunst-production-schedule-list-visibility.policy.js';
+import { buildLeaderboardProcessChangeResidualFilterWhereSql } from './leaderboard/leaderboard-process-change-residual.sql.js';
+import type { ProcessChangeResidualMode } from './leaderboard/leaderboard-process-change-residual.types.js';
 
 /**
  * `listProductionScheduleRows` の `COUNT(*)` と同一の可視行条件（Fkojunst 可視 WHERE 含む）。
@@ -13,8 +15,14 @@ import {
 export async function countProductionScheduleDashboardVisibleRows(params: {
   baseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
+  processChangeResidualMode?: ProcessChangeResidualMode;
+  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
 }): Promise<bigint> {
-  const { baseWhere, queryWhere } = params;
+  const { baseWhere, queryWhere, processChangeResidualMode, processChangeResidualStrongEvidenceKeys } = params;
+  const residualFilterSql = buildLeaderboardProcessChangeResidualFilterWhereSql(
+    processChangeResidualMode,
+    processChangeResidualStrongEvidenceKeys
+  );
   const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
     SELECT COUNT(*)::bigint AS total
     FROM "CsvDashboardRow"
@@ -24,7 +32,7 @@ export async function countProductionScheduleDashboardVisibleRows(params: {
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()}
+    WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()} ${residualFilterSql}
   `;
 
   return rows[0]?.total ?? 0n;

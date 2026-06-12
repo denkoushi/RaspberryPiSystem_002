@@ -113,10 +113,14 @@ export function canMergeLeaderboardContinueDelta(
 export function mergeLeaderboardBoardContinueResponseWithOptionalDelta(
   prevBoardRows: ProductionScheduleRow[],
   nextBoardResponse: ProductionScheduleLeaderboardBoardResponse,
-  orderedSlotResourceCds: readonly string[]
+  orderedSlotResourceCds: readonly string[],
+  prevBoardMeta?: Pick<
+    ProductionScheduleLeaderboardBoardResponse,
+    'processChangeResidualTotal' | 'processChangeResidualRows' | 'processChangeResidualRepresentativeLimit'
+  >
 ): ProductionScheduleLeaderboardBoardResponse {
   if (!canMergeLeaderboardContinueDelta(prevBoardRows, nextBoardResponse, orderedSlotResourceCds)) {
-    return nextBoardResponse;
+    return preserveProcessChangeResidualMeta(nextBoardResponse, prevBoardMeta);
   }
 
   const { rows: authorityRows, deltaRows } = nextBoardResponse;
@@ -126,5 +130,27 @@ export function mergeLeaderboardBoardContinueResponseWithOptionalDelta(
     deltaRows!
   );
 
-  return { ...nextBoardResponse, rows: reconciledRows };
+  return preserveProcessChangeResidualMeta(
+    { ...nextBoardResponse, rows: reconciledRows },
+    prevBoardMeta
+  );
+}
+
+function preserveProcessChangeResidualMeta(
+  board: ProductionScheduleLeaderboardBoardResponse,
+  prevBoardMeta?: Pick<
+    ProductionScheduleLeaderboardBoardResponse,
+    'processChangeResidualTotal' | 'processChangeResidualRows' | 'processChangeResidualRepresentativeLimit'
+  >
+): ProductionScheduleLeaderboardBoardResponse {
+  if (prevBoardMeta == null) {
+    return board;
+  }
+  return {
+    ...board,
+    processChangeResidualTotal: prevBoardMeta.processChangeResidualTotal ?? board.processChangeResidualTotal,
+    processChangeResidualRows: prevBoardMeta.processChangeResidualRows ?? board.processChangeResidualRows,
+    processChangeResidualRepresentativeLimit:
+      prevBoardMeta.processChangeResidualRepresentativeLimit ?? board.processChangeResidualRepresentativeLimit
+  };
 }

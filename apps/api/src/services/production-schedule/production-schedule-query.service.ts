@@ -49,10 +49,11 @@ import {
   fetchLeaderboardShellMergedPrefixRows,
   fetchLeaderboardShellRowsContinuationChunk
 } from './leaderboard/leaderboard-row-selection.service.js';
+import type { ProcessChangeResidualMode } from './leaderboard/leaderboard-process-change-residual.types.js';
 import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard/leaderboard-display-row-scope.js';
 import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard/leaderboard-shell-hydrate.service.js';
 import { buildLeaderboardShellFilterFingerprint } from './leaderboard/leaderboard-shell-snapshot-fingerprint.js';
-import { readLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
+import { resolveLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
 import type { LeaderboardShellSnapshotStore } from './leaderboard/leaderboard-shell-snapshot.store.js';
 import {
   isLeaderboardShellSnapshotStaleForContinue,
@@ -118,6 +119,10 @@ export type ProductionScheduleListParams = {
   responseProfile?: 'full' | 'leaderboard';
   /** true のとき自主検査開始可能行だけを返す（生産日程をチャンク走査） */
   selfInspectionEligibleOnly?: boolean;
+  /** キオスク順位ボード専用。公開 API ではなくサービス内部で設定する。 */
+  processChangeResidualMode?: ProcessChangeResidualMode;
+  /** {@link materializeProcessChangeResidualStrongEvidence} を同一リクエスト内 1 回だけ実行した結果。 */
+  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
 };
 
 /** 順位ボード phased read（shell / continue）の共通レスポンス形（snapshotId は shell・正常 continue で付与） */
@@ -141,7 +146,7 @@ export type PreparedProductionScheduleDashboardFilters =
       siteScopedGlobalRankLocation: string;
     };
 
-async function prepareProductionScheduleDashboardFilters(
+export async function prepareProductionScheduleDashboardFilters(
   params: Omit<ProductionScheduleListParams, 'page' | 'pageSize' | 'responseProfile'>
 ): Promise<PreparedProductionScheduleDashboardFilters> {
   const {
@@ -240,6 +245,8 @@ export async function listLeaderboardShellProductionScheduleRows(
     snapshotStore: LeaderboardShellSnapshotStore;
     /** 集約 shell 等で同一 HTTP リクエスト内 1 回 resolve した値を渡す */
     leaderboardMaterializedBaseWhere?: Prisma.Sql;
+    /** 集約 board shell/continue 等で同一 HTTP リクエスト内 1 回読んだ世代トークンを渡す */
+    generationToken?: string;
   }
 ): Promise<LeaderboardShellPhasedReadResult> {
   const { page, pageSize, locationKey } = params;
@@ -278,11 +285,13 @@ export async function listLeaderboardShellProductionScheduleRows(
     locationKey,
     siteScopedGlobalRankLocation,
     seibanExpansion,
-    prefixLimit: pageSize
+    prefixLimit: pageSize,
+    processChangeResidualMode: params.processChangeResidualMode,
+    processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
 
   const orderedRowIds = mergedPrefix.map((r) => r.id);
-  const generationToken = await readLeaderboardShellSnapshotGenerationToken();
+  const generationToken = await resolveLeaderboardShellSnapshotGenerationToken(options.generationToken);
 
   const filterFingerprint = buildLeaderboardShellFilterFingerprint({
     locationKey,
@@ -330,7 +339,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
     chunkSize: number;
     snapshotId?: string;
   },
-  options: { snapshotStore: LeaderboardShellSnapshotStore }
+  options: { snapshotStore: LeaderboardShellSnapshotStore; generationToken?: string }
 ): Promise<LeaderboardShellPhasedReadResult> {
   const page = params.page ?? 1;
   const { locationKey } = params;
@@ -383,7 +392,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
         filterFingerprint,
         locationKey,
         siteKey: params.siteKey,
-        currentGenerationToken: await readLeaderboardShellSnapshotGenerationToken()
+        currentGenerationToken: await resolveLeaderboardShellSnapshotGenerationToken(options.generationToken)
       });
       if (stale === 'generation') {
         options.snapshotStore.delete(snapshotId);
@@ -407,7 +416,9 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
           siteScopedGlobalRankLocation,
           excludeRowIds: [...live.orderedRowIds],
           chunkSize: appliedChunk,
-          seibanExpansion
+          seibanExpansion,
+          processChangeResidualMode: params.processChangeResidualMode,
+          processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
         });
         options.snapshotStore.appendSnapshotOrderingChunk(
           snapshotId,
@@ -525,7 +536,9 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
     siteScopedGlobalRankLocation,
     excludeRowIds,
     chunkSize: appliedChunk,
-    seibanExpansion
+    seibanExpansion,
+    processChangeResidualMode: params.processChangeResidualMode,
+    processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
 
   const rows: ProductionScheduleRow[] = leaderboardResult.rows.map((r) => ({
@@ -549,7 +562,9 @@ export async function countProductionScheduleDashboardVisibleRowsFromListFilters
   const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
   const totalBig = await countProductionScheduleDashboardVisibleRows({
     baseWhere: leaderboardMaterializedBaseWhere,
-    queryWhere
+    queryWhere,
+    processChangeResidualMode: params.processChangeResidualMode,
+    processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
   return Number(totalBig);
 }

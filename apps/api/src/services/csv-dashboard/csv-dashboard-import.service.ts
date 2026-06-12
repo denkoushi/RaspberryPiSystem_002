@@ -10,6 +10,7 @@ import { PrismaCsvImportSubjectPatternProvider } from '../imports/csv-import-sub
 import { GmailUnifiedMailboxFetcher } from '../backup/gmail-unified-mailbox-fetcher.js';
 import { CsvErrorDispositionPolicy } from './csv-error-disposition-policy.js';
 import { CsvDashboardPostIngestService } from './csv-dashboard-post-ingest.service.js';
+import { withCsvDashboardIngestLock } from './csv-dashboard-ingest-lock.js';
 import {
   ensureProductionScheduleSeibanMachineNameSupplementDashboard,
 } from '../production-schedule/seiban-machine-name-supplement-dashboard.definition.js';
@@ -299,19 +300,23 @@ export class CsvDashboardImportService {
           // CSVファイルを原本として保存
           const csvFilePath = await CsvDashboardStorage.saveRawCsv(dashboardId, buffer, messageId);
 
-          // 取り込み処理を実行
-          const result = await this.ingestor.ingestFromGmail(
-            dashboardId,
-            csvContent,
-            messageId,
-            messageSubject,
-            csvFilePath
-          );
+          const result = await withCsvDashboardIngestLock(dashboardId, async () => {
+            // 取り込み処理と post-ingest 投影は同一 dashboard 内で直列化する
+            const ingestResult = await this.ingestor.ingestFromGmail(
+              dashboardId,
+              csvContent,
+              messageId,
+              messageSubject,
+              csvFilePath
+            );
 
-          await this.postIngestService.runAfterSuccessfulIngest({
-            dashboardId,
-            ingestSource: 'gmail',
-            ingestRunId: result.ingestRunId,
+            await this.postIngestService.runAfterSuccessfulIngest({
+              dashboardId,
+              ingestSource: 'gmail',
+              ingestRunId: ingestResult.ingestRunId,
+            });
+
+            return ingestResult;
           });
 
           totalProcessed += result.rowsProcessed;

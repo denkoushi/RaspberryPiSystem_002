@@ -24,7 +24,7 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
   ) {}
 
   async syncFromStatusMailDashboard(): Promise<ProductionScheduleFkojunstMailStatusSyncResult> {
-    const { scanned, normalizedRows, skippedInvalidStatus, skippedUnparseableDate } =
+    const { scanned, normalizedRows, skippedInvalidStatus, skippedUnparseableDate, rowsRevision } =
       await loadFkojunstMailSourceRows(prisma);
 
     if (normalizedRows.length === 0) {
@@ -32,7 +32,8 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
         prisma,
         scanned,
         skippedInvalidStatus,
-        skippedUnparseableDate
+        skippedUnparseableDate,
+        rowsRevision
       );
       logger.info(result, '[ProductionScheduleFkojunstMailStatusSyncService] FKOJUNST_Status mail sync cleared (no normalized rows)');
       logger.warn(
@@ -55,6 +56,7 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
       skippedInvalidStatus,
       skippedUnparseableDate,
       createInputs,
+      sourceRowsRevision: rowsRevision,
     });
 
     if (result.skippedInvalidStatus > 0 || result.skippedUnparseableDate > 0 || result.unmatched > 0) {
