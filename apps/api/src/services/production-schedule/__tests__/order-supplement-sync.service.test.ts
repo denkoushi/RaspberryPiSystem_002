@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID } from '../constants.js';
 import { ProductionScheduleOrderSupplementSyncService } from '../order-supplement-sync.service.js';
+import { toSupplementNormalizedRow } from '../order-supplement-sync.pipeline.js';
 
 type PrismaMock = {
   csvDashboardRow: { findMany: ReturnType<typeof vi.fn> };
@@ -48,6 +49,83 @@ describe('order-supplement-sync.service', () => {
     prismaMock.productionScheduleOrderSupplement.deleteMany.mockResolvedValue({ count: 0 } as never);
     prismaMock.productionScheduleOrderSupplement.createMany.mockResolvedValue({ count: 0 } as never);
     prismaMock.productionScheduleOrderSupplement.update.mockResolvedValue({ id: 'updated-1' } as never);
+  });
+
+  it('生産システム列名の予定日も補助行として正規化する', () => {
+    const normalized = toSupplementNormalizedRow('src-prod', {
+      FSEZONO: '0003602728',
+      FKOTEICD: '035',
+      FKOJUN: '210',
+      FKOJUNSIJISU: '2',
+      FKOJUNSTTYOTEIYMD: '2027/03/04 0:00:00',
+      FKOJUNENDYOTEIYMD: '2027/03/05 0:00:00',
+    });
+
+    expect(normalized).toEqual(
+      expect.objectContaining({
+        sourceRowId: 'src-prod',
+        productNo: '0003602728',
+        resourceCd: '035',
+        processOrder: '210',
+        plannedQuantity: 2,
+      })
+    );
+    expect(normalized?.plannedStartDate?.toISOString()).toBe('2027-03-04T00:00:00.000Z');
+    expect(normalized?.plannedEndDate?.toISOString()).toBe('2027-03-05T00:00:00.000Z');
+  });
+
+  it('AA1S2M02 / 0003602728 の生産システム列名予定日を winner 行へ 2027 年予定日として反映する', async () => {
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'src-aa1s2m02',
+        rowData: {
+          FSEIBAN: 'AA1S2M02',
+          FSEZONO: '0003602728',
+          FKOTEICD: '035',
+          FKOJUN: '210',
+          FKOJUNSIJISU: '2',
+          FKOJUNSTTYOTEIYMD: '2027/03/04 0:00:00',
+          FKOJUNENDYOTEIYMD: '2027/03/05 0:00:00',
+        },
+      },
+    ] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      {
+        id: 'winner-aa1s2m02',
+        productNo: '0003602728',
+        resourceCd: '035',
+        processOrder: '210',
+      },
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.deleteMany).mockResolvedValue({ count: 0 } as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.createMany).mockResolvedValue({ count: 1 } as never);
+
+    const service = new ProductionScheduleOrderSupplementSyncService();
+    const result = await service.syncFromSupplementDashboard();
+
+    expect(result).toEqual({
+      scanned: 1,
+      normalized: 1,
+      matched: 1,
+      unmatched: 0,
+      upserted: 1,
+      pruned: 0,
+    });
+    expect(prisma.productionScheduleOrderSupplement.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          csvDashboardRowId: 'winner-aa1s2m02',
+          sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
+          productNo: '0003602728',
+          resourceCd: '035',
+          processOrder: '210',
+          plannedQuantity: 2,
+          plannedStartDate: new Date('2027-03-04T00:00:00.000Z'),
+          plannedEndDate: new Date('2027-03-05T00:00:00.000Z'),
+        }),
+      ],
+    });
   });
 
   it('supplement行をwinner行へ照合し、既存が無ければcreateManyで追加する', async () => {

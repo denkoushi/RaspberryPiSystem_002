@@ -46,6 +46,16 @@ export type OrderSupplementSyncResult = {
 
 const normalizeToken = (value: unknown): string => String(value ?? '').trim();
 
+const firstNonBlankToken = (...values: unknown[]): string => {
+  for (const value of values) {
+    const normalized = normalizeToken(value);
+    if (normalized.length > 0) {
+      return normalized;
+    }
+  }
+  return '';
+};
+
 export const buildOrderSupplementKey = (params: {
   productNo: string;
   resourceCd: string;
@@ -117,9 +127,9 @@ export function toSupplementNormalizedRow(
   sourceRowId: string,
   rowData: Record<string, unknown>
 ): SupplementNormalizedRow | null {
-  const productNo = normalizeToken(rowData.ProductNo);
-  const processOrder = normalizeToken(rowData.FKOJUN);
-  const resourceCd = normalizeProductionScheduleResourceCd(normalizeToken(rowData.FSIGENCD));
+  const productNo = firstNonBlankToken(rowData.ProductNo, rowData.FSEZONO);
+  const processOrder = firstNonBlankToken(rowData.FKOJUN);
+  const resourceCd = normalizeProductionScheduleResourceCd(firstNonBlankToken(rowData.FSIGENCD, rowData.FKOTEICD));
   if (productNo.length === 0 || processOrder.length === 0 || resourceCd.length === 0) {
     return null;
   }
@@ -128,9 +138,9 @@ export function toSupplementNormalizedRow(
     productNo,
     resourceCd,
     processOrder,
-    plannedQuantity: parseQuantity(rowData.plannedQuantity),
-    plannedStartDate: parsePlannedDate(rowData.plannedStartDate),
-    plannedEndDate: parsePlannedDate(rowData.plannedEndDate),
+    plannedQuantity: parseQuantity(firstNonBlankToken(rowData.plannedQuantity, rowData.FKOJUNSIJISU)),
+    plannedStartDate: parsePlannedDate(firstNonBlankToken(rowData.plannedStartDate, rowData.FKOJUNSTTYOTEIYMD)),
+    plannedEndDate: parsePlannedDate(firstNonBlankToken(rowData.plannedEndDate, rowData.FKOJUNENDYOTEIYMD)),
   };
 }
 
