@@ -14,6 +14,7 @@ import { withCsvDashboardIngestLock } from './csv-dashboard-ingest-lock.js';
 import {
   ensureProductionScheduleSeibanMachineNameSupplementDashboard,
 } from '../production-schedule/seiban-machine-name-supplement-dashboard.definition.js';
+import { ensureProductionScheduleOrderSupplementDashboard } from '../production-schedule/order-supplement-dashboard.definition.js';
 import { ensureProductionScheduleCustomerScawDashboard } from '../production-schedule/customer-scaw-dashboard.definition.js';
 import { ensureProductionScheduleFkobainoDashboard } from '../production-schedule/fkobaino-dashboard.definition.js';
 import { ensureProductionScheduleFkojunstStatusMailDashboard } from '../production-schedule/fkojunst-status-mail-dashboard.definition.js';
@@ -21,6 +22,7 @@ import {
   PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
 } from '../production-schedule/constants.js';
 import { RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID } from '../rigging/constants.js';
@@ -118,6 +120,11 @@ export class CsvDashboardImportService {
   }
 
   private async ensureFixedDashboardIfNeeded(dashboardId: string): Promise<void> {
+    if (dashboardId === PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID) {
+      await ensureProductionScheduleOrderSupplementDashboard(prisma);
+      return;
+    }
+
     if (dashboardId === PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID) {
       await ensureProductionScheduleSeibanMachineNameSupplementDashboard(prisma);
       return;
@@ -485,4 +492,3 @@ export class CsvDashboardImportService {
     return results;
   }
 }
-
