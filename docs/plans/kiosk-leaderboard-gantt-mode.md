@@ -24,7 +24,7 @@ open_items:
 
 ## Goal
 
-Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. When ON, each resource slot uses a **variable 8H ruler** scaled to the slot body height, row height scales with `FSIGENSHOYORYO` (required minutes, no quantity multiply), and **alternating 4px vertical 8H bands** appear in the left gutter.
+Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. When ON, each resource slot uses a **variable 8H ruler** scaled to the slot body height, row height scales with `FSIGENSHOYORYO` (required minutes, no quantity multiply), and **4px visible/transparent vertical 8H bands** appear in the left gutter.
 
 ## Current branch and HEAD
 
@@ -57,7 +57,7 @@ Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. W
 
 - **Replaced** horizontal `tickMarks` (`origin` 1px / `boundary` 3px) with **`rulerSegments`**.
 - Segment shape: `{ topPx, heightPx, bandIndex }` — no `startMinute` / `endMinute` in DOM contract.
-- **8H bands**: consecutive vertical bars in gutter only; `bandIndex % 2` alternates two cyan shades in render layer.
+- **8H bands**: consecutive vertical bars in gutter only; `bandIndex % 2` alternates one stronger cyan band and a transparent band in render layer.
 - **No horizontal tick lines**.
 - Gutter `GANTT_RULER_GUTTER_WIDTH_PX = 4`; bar `GANTT_RULER_BAR_WIDTH_PX = 4` (same value, separate responsibility).
 - Empty resource slot (`rows.length === 0`): no gutter rendered.
@@ -72,7 +72,7 @@ Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. W
 |------|--------|------|
 | Layout | `leaderBoardGanttLayout.ts` | `computeGanttSlotLayout`, `computeGanttRulerSegments`, `normalizeRulerSegmentsForRenderHeight` |
 | Constants | `leaderBoardGanttConstants.ts` | `GANTT_RULER_*`, `GANTT_RULER_MAX_BAND_COUNT` |
-| Render | `LeaderBoardGanttTickGutter.tsx` | alternating vertical bands; `data-testid` / `data-band-index` |
+| Render | `LeaderBoardGanttTickGutter.tsx` | visible/transparent vertical bands; `data-testid` / `data-band-index` |
 | Card | `LeaderOrderResourceCard.tsx` | `rulerSegments` memo + virtual `measure()` |
 | Body height | `useLeaderBoardGanttBodyHeight.ts` | ResizeObserver (unchanged) |
 | Persistence | `usePersistedLeaderBoardGanttMode.ts` | `localStorage` (unchanged) |
@@ -127,9 +127,9 @@ Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh`
 **Pi5 (pending sign-off)** — vertical ruler bands on `ee3aebfc`:
 
 1. Open leader order board; toggle **ガントON** (left pane beside 表示).
-2. Left gutter: **4px alternating vertical bands** per 8H; **no horizontal lines**.
+2. Left gutter: **4px alternating visible/transparent vertical bands** per 8H; **no horizontal lines**.
 3. Cards fill grid height; inner scroll works on heavy slots.
-4. 8H+ workload: second/third band colors visible at band boundaries.
+4. 8H+ workload: visible/transparent band rhythm visible at band boundaries.
 5. Force reload if stale bundle: [verification-checklist §6.6.4](../guides/verification-checklist.md).
 
 **Pi4 (after Pi5 OK)**: deploy 1 host at a time (`raspi4-kensaku-stonebase01` first recommended) + force reload.
@@ -154,4 +154,4 @@ Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh`
 - トグル表示名: **ガントOFF** / **ガントON**
 - 左ペイン「表示」行の横に配置
 - 永続化: `localStorage`（工場+端末スコープ）
-- 縦バー色: `cyan-400/75` と `cyan-200/45` 交互（`bandIndex % 2`）
+- 縦バー色: `cyan-400/90` と透明 交互（`bandIndex % 2`）

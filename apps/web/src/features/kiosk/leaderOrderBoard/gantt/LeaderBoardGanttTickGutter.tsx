@@ -10,18 +10,16 @@ type Props = {
   rulerSegments: readonly GanttRulerSegment[];
 };
 
-const RULER_BAND_CLASS_BY_INDEX: Record<number, string> = {
-  0: 'bg-cyan-400/75',
-  1: 'bg-cyan-200/45'
-};
+const RULER_VISIBLE_BAND_CLASS = 'bg-cyan-400/90';
+const RULER_TRANSPARENT_BAND_CLASS = 'bg-transparent';
 
 function resolveRulerBandClass(bandIndex: number): string {
-  return RULER_BAND_CLASS_BY_INDEX[bandIndex % 2] ?? RULER_BAND_CLASS_BY_INDEX[0];
+  return bandIndex % 2 === 0 ? RULER_VISIBLE_BAND_CLASS : RULER_TRANSPARENT_BAND_CLASS;
 }
 
 /**
  * カード内スクロール領域左端の 8H ルーラー（操作を妨げない装飾のみ）。
- * 8H ごとの縦バーを交互色で描画する。
+ * 8H ごとの縦バーを単色/透明の交互で描画する。
  */
 export function LeaderBoardGanttTickGutter({ totalHeightPx, rulerSegments }: Props) {
   if (totalHeightPx <= 0) return null;
