@@ -30,7 +30,10 @@ import {
   inspectionDrawingCreatePageRootClassName,
   inspectionDrawingCreateSideAsideClassName,
   inspectionDrawingCreateWorkspaceClassName,
+  inspectionDrawingCreateKeyCollisionMessage,
+  INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED,
   kioskInspectionDrawingTemplateEditPath,
+  kioskInspectionDrawingTemplatePrintPath,
   templateItemToDrawingPoint,
   inspectionDrawingBlobFetchPath,
   inspectionDrawingCanvasImageUrl,
@@ -38,8 +41,7 @@ import {
   parseInspectionDrawingSourceTemplateIdFromSearch,
   parseInspectionDrawingVisualTemplateIdFromSearch,
   templateToCreateDraft,
-  resolveInspectionDrawingCreateKeyCollision,
-  inspectionDrawingCreateKeyCollisionMessage
+  resolveInspectionDrawingCreateKeyCollision
 } from '../../features/part-measurement/inspection-drawing';
 import { INSPECTION_DRAWING_VISUAL_PICKER_LIMIT } from '../../features/part-measurement/inspection-drawing/inspectionDrawingVisualLibraryConstants';
 import { resolveVisualTemplateById } from '../../features/part-measurement/inspection-drawing/inspectionDrawingVisualLibraryHelpers';
@@ -812,6 +814,11 @@ export function KioskInspectionDrawingCreatePage() {
             onSave={contentReadOnly ? undefined : () => void handleSave()}
             saveDisabled={saveDisabled}
             saveBusy={busy}
+            savedPrintPath={
+              INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED && isEditing && templateId
+                ? kioskInspectionDrawingTemplatePrintPath(templateId)
+                : undefined
+            }
             returnTo={inspectionReturn.inspectionDrawingReturnTo}
             returnLabel={inspectionReturn.inspectionDrawingReturnLabel}
           />

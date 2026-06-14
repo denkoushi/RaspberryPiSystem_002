@@ -1,7 +1,7 @@
-import { absoluteBoundsToToleranceRaw } from './toleranceFields';
+import { absoluteBoundsToToleranceRaw, parseToleranceRawFields } from './toleranceFields';
 
 import type { InspectionDrawingPoint } from './types';
-import type { KioskInspectionDrawingTemplateSummaryDto } from '../types';
+import type { KioskInspectionDrawingTemplateSummaryDto, PartMeasurementTemplateDto } from '../types';
 
 const previewSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
   <rect width="800" height="600" fill="#f8fafc"/>
@@ -45,6 +45,57 @@ export const INSPECTION_DRAWING_PREVIEW_POINTS: InspectionDrawingPoint[] = [
   previewPoint('preview-pt-2', '穴径 B', 2, 0.62, 0.38, 8.0, 7.9, 8.1, '8.25'),
   previewPoint('preview-pt-3', '面取り C', 3, 0.5, 0.68, 0.5, 0.3, 0.7, '')
 ];
+
+/** 開発プレビュー — 帳票 ViewModel 生成用テンプレート DTO */
+export const INSPECTION_DRAWING_PREVIEW_PRINT_TEMPLATE: PartMeasurementTemplateDto = {
+  id: 'preview-print-template',
+  fhincd: 'DEMO-12345',
+  resourceCd: 'R001',
+  processGroup: 'cutting',
+  templateScope: 'three_key',
+  candidateFhinmei: null,
+  name: '検査図面プレビュー（紙出力）',
+  version: 3,
+  isActive: true,
+  selfInspectionMode: 'full',
+  selfInspectionFixedCount: null,
+  selfInspectionSampleSize: null,
+  visualTemplateId: 'preview-visual-1',
+  visualTemplate: {
+    id: 'preview-visual-1',
+    name: 'サンプル図面 A',
+    drawingImageRelativePath: '/preview/sample-a.svg',
+    isActive: true,
+    createdAt: '2026-06-14T08:00:00.000Z',
+    updatedAt: '2026-06-14T08:00:00.000Z'
+  },
+  items: INSPECTION_DRAWING_PREVIEW_POINTS.map((point, index) => {
+    const bounds = parseToleranceRawFields({
+      nominalRaw: point.nominalRaw,
+      lowerToleranceRaw: point.lowerToleranceRaw,
+      upperToleranceRaw: point.upperToleranceRaw
+    });
+    if ('error' in bounds) {
+      throw new Error(bounds.error);
+    }
+    return {
+      id: point.id,
+      sortOrder: index,
+      datumSurface: 'A',
+      measurementPoint: 'P',
+      measurementLabel: point.name,
+      displayMarker: String(point.markerNo),
+      unit: 'mm',
+      allowNegative: false,
+      decimalPlaces: 3,
+      markerXRatio: String(point.xRatio),
+      markerYRatio: String(point.yRatio),
+      nominalValue: String(bounds.nominal),
+      lowerLimit: String(bounds.lowerLimit),
+      upperLimit: String(bounds.upperLimit)
+    };
+  })
+};
 
 const previewVisualUpdatedAt = '2026-05-30T08:30:00.000Z';
 

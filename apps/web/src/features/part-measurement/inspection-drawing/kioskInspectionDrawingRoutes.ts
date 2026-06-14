@@ -43,6 +43,10 @@ export function kioskInspectionDrawingTemplateEditPath(templateId: string): stri
   return `${KIOSK_INSPECTION_DRAWING_TEMPLATE_EDIT_PATH_PREFIX}/${templateId}/edit`;
 }
 
+export function kioskInspectionDrawingTemplatePrintPath(templateId: string): string {
+  return `${KIOSK_INSPECTION_DRAWING_TEMPLATE_EDIT_PATH_PREFIX}/${templateId}/print`;
+}
+
 const KIOSK_INSPECTION_DRAWING_SOURCE_TEMPLATE_ID_QUERY = 'sourceTemplateId';
 const KIOSK_INSPECTION_DRAWING_VISUAL_TEMPLATE_ID_QUERY = 'visualTemplateId';
 

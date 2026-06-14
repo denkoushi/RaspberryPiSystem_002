@@ -37,6 +37,7 @@ export type InspectionDrawingLibraryTemplateGridProps = {
   onHistoryClick: (lineageGroupKey: string) => void;
   lineageGroupKey: (template: KioskInspectionDrawingTemplateSummaryDto) => string;
   editPath?: (templateId: string) => string;
+  printPath?: (templateId: string) => string;
   createFromSourcePath?: (templateId: string) => string;
   linkState?: object;
 };
@@ -50,6 +51,7 @@ export function InspectionDrawingLibraryTemplateGrid({
   onHistoryClick,
   lineageGroupKey,
   editPath = kioskInspectionDrawingTemplateEditPath,
+  printPath,
   createFromSourcePath = kioskInspectionDrawingCreatePathWithSource,
   linkState = INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE
 }: InspectionDrawingLibraryTemplateGridProps) {
@@ -98,6 +100,20 @@ export function InspectionDrawingLibraryTemplateGrid({
             >
               編集
             </Link>
+            {printPath ? (
+              <Link
+                to={printPath(template.id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="保存済みテンプレートの帳票プレビュー（未保存の変更は反映されません）"
+                className={buttonClassName(
+                  'ghostOnDark',
+                  'inline-flex min-h-9 flex-1 items-center justify-center px-1.5 text-[0.72rem]'
+                )}
+              >
+                帳票
+              </Link>
+            ) : null}
             {template.isActive ? (
               <Link
                 to={createFromSourcePath(template.id)}

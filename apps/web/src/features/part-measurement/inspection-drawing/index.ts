@@ -76,7 +76,28 @@ export {
   resolveMeasurementPointInputStatus,
   type MeasurementPointInputStatus
 } from './measurementPointInputStatus';
-export type { InspectionDrawingPoint, InspectionPointStatus } from './types';
+export {
+  INSPECTION_DRAWING_PRINT_DRAWING_AREA_WIDTH_MM,
+  INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED,
+  INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER,
+  INSPECTION_DRAWING_PRINT_RECORD_COLUMNS,
+  INSPECTION_DRAWING_PRINT_RECORD_POINTS_PER_PAGE,
+  INSPECTION_DRAWING_PRINT_SHEET_HEIGHT_MM,
+  INSPECTION_DRAWING_PRINT_SHEET_PADDING_MM,
+  INSPECTION_DRAWING_PRINT_SHEET_WIDTH_MM
+} from './inspectionDrawingPrintConstants';
+export { InspectionDrawingPrintPreview } from './InspectionDrawingPrintPreview';
+export {
+  buildInspectionDrawingPrintViewModel,
+  buildInspectionDrawingPrintPreviewIdentifier,
+  formatInspectionDrawingPrintIssuedAtDisplay,
+  formatInspectionDrawingPrintTolerance,
+  InspectionDrawingPrintBuildError,
+  type InspectionDrawingPrintMetadata,
+  type InspectionDrawingPrintViewModel
+} from './inspectionDrawingPrintViewModel';
+export { computePrintMarkerPosition, markerPositionInObjectContainContainer } from './printMarkerLayout';
+export { computeObjectContainLayout } from './computeObjectContainLayout';
 
 export {
   drawingPointToTemplateItemInput,
@@ -90,6 +111,7 @@ export {
   kioskInspectionDrawingCreatePathWithSource,
   kioskInspectionDrawingCreatePathWithVisual,
   kioskInspectionDrawingTemplateEditPath,
+  kioskInspectionDrawingTemplatePrintPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
   INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE,

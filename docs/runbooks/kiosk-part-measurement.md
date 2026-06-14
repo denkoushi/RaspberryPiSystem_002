@@ -34,6 +34,28 @@
 - **評価用編集 API**: 既存互換のため `inspection-drawing/evaluation-sheets/*` は当面残すが、新しいキオスク UI 導線からは使用しない。本番 sheet は引き続き **409**、評価用 sheet も通常 PATCH/finalize から **409**。
 - **制約（現時点）**: 複数個数の図面UI・順位ボードは未対応。図面中心の本番編集は引き続き **quantity===1** のみ。詳細は [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
 
+### HTML 帳票プレビュー（DEV のみ · 2026-06-14）
+
+正本: 実装 Plan `inspection-print-html`（Cursor Plan）。**本番キオスク導線は未公開**（`INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED === import.meta.env.DEV`）。QR 読取・正式帳票 ID・OCR 運用は未実装。
+
+| 項目 | 内容 |
+|------|------|
+| DEV fixture | `http://<vite-host>:4173/dev/kiosk-inspection-drawing-print` |
+| DEV 本番風 URL | `http://<vite-host>:4173/kiosk/part-measurement/inspection/templates/<templateId>/print`（DEV ビルドのみ） |
+| 用紙 | A4 **横**（`@page { size: A4 landscape; margin: 0; }`） |
+| ページ構成 | 1枚目=図面+丸数字、2枚目以降=測定値記録欄（6点/ページ） |
+| 注意 | 各ページに **「HTMLプレビュー（正式帳票ではありません）」** 帯を表示。現場記録用紙として使わない |
+
+#### 印刷帳票 · 手動確認チェックリスト
+
+1. **導線（DEV）**: `/dev/kiosk-inspection-drawing-library` の **帳票** → fixture プレビュー。編集画面 **保存済み帳票** も DEV のみ。
+2. **図面ロード前**: 印刷ボタンが disabled（「図面読込中…」）。空ページが印刷されないこと。
+3. **レイアウト**: 1点 / 6点 / 7点以上テンプレでページ分割（2/N, 3/N…）。長い品番・資源名・テンプレ名がヘッダで欠けないこと。
+4. **図面**: 横長・縦長画像で丸数字が `object-contain` 後の実描画矩形に一致すること。
+5. **印刷/PDF**: ブラウザ印刷で図面ページと記録欄が欠けず改ページされること。Kiosk ヘッダー/padding が混入しないこと（Layout 外ルート）。
+6. **実機（任意）**: Pi5 / Pi4 キオスク Chrome、現場プリンタまたは PDF 保存で A4 横を確認。
+7. **未実装**: QR スキャン照合、正式 DB 帳票 ID、OCR 読取 — **リリース前に別 Plan で実装**。
+
 ### 検査図面 · 流用導線（2026-06-05） {#検査図面-流用導線-2026-06-05}
 
 正本: [KB-320 §流用導線強化](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) · [deployment §2026-06-05](../guides/deployment.md#kiosk-inspection-drawing-reuse-flow-2026-06-05) · ブランチ **`feat/kiosk-inspection-drawing-reuse-flow`** · 代表 **`6c7da8c7`**
