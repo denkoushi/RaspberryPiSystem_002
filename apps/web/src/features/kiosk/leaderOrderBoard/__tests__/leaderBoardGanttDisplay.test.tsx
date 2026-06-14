@@ -52,7 +52,7 @@ const rowProps = {
 };
 
 describe('LeaderBoardGanttTickGutter', () => {
-  it('renders pointer-events-none gutter with alternating vertical ruler bands', () => {
+  it('renders pointer-events-none gutter with visible and transparent alternating ruler bands', () => {
     render(
       <LeaderBoardGanttTickGutter
         totalHeightPx={200}
@@ -72,6 +72,8 @@ describe('LeaderBoardGanttTickGutter', () => {
     expect(bands).toHaveLength(2);
     expect(bands[0]).toHaveAttribute('data-band-index', '0');
     expect(bands[1]).toHaveAttribute('data-band-index', '1');
+    expect(bands[0]).toHaveClass('bg-cyan-400/90');
+    expect(bands[1]).toHaveClass('bg-transparent');
     expect(bands[0]).toHaveStyle({
       top: '0px',
       height: '96px',
