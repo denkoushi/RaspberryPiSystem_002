@@ -34,78 +34,81 @@
 - **評価用編集 API**: 既存互換のため `inspection-drawing/evaluation-sheets/*` は当面残すが、新しいキオスク UI 導線からは使用しない。本番 sheet は引き続き **409**、評価用 sheet も通常 PATCH/finalize から **409**。
 - **制約（現時点）**: 複数個数の図面UI・順位ボードは未対応。図面中心の本番編集は引き続き **quantity===1** のみ。詳細は [kiosk-inspection-drawing-mvp-execplan.md](../plans/kiosk-inspection-drawing-mvp-execplan.md)。
 
-### HTML 帳票プレビュー（DEV のみ · 2026-06-14）
+### HTML 帳票プレビュー（2026-06-14）
 
-正本: 実装 Plan `inspection-print-html`（Cursor Plan）。**本番キオスク導線は未公開**（`INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED === import.meta.env.DEV`）。QR 読取・正式帳票 ID・OCR 運用は未実装。
+正本: 実装 Plan `inspection-print-html`（Cursor Plan）。**Pi5 本番キオスクで帳票導線を限定公開済み**（`INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED = true` · `App.tsx` ルートは DEV ブロック外）。**Pi4×4 は未展開**。QR 読取・正式 DB 帳票 ID・OCR 運用は未実装。
 
 | 項目 | 内容 |
 |------|------|
+| 本番導線（Pi5） | 検査図面一覧 **帳票** · 編集画面 **保存済み帳票** · `/kiosk/part-measurement/inspection/templates/<templateId>/print` |
 | DEV fixture | `http://<vite-host>:4173/dev/kiosk-inspection-drawing-print` |
-| DEV 本番風 URL | `http://<vite-host>:4173/kiosk/part-measurement/inspection/templates/<templateId>/print`（DEV ビルドのみ） |
 | 用紙 | A4 **横**（`@page { size: A4 landscape; margin: 0; }`） |
 | ページ構成 | 1枚目=図面+丸数字、2枚目以降=測定値記録欄（6点/ページ） |
-| 注意 | 各ページに **「HTMLプレビュー（正式帳票ではありません）」** 帯を表示。現場記録用紙として使わない |
+| 注意 | 各ページに **「HTMLプレビュー（正式帳票ではありません）」** 帯。現場記録用紙として使わない |
 
 #### 印刷帳票 · 手動確認チェックリスト
 
-1. **導線（DEV）**: `/dev/kiosk-inspection-drawing-library` の **帳票** → fixture プレビュー。編集画面 **保存済み帳票** も DEV のみ。
-2. **図面ロード前**: 印刷ボタンが disabled（「図面読込中…」）。空ページが印刷されないこと。
-3. **レイアウト**: 1点 / 6点 / 7点以上テンプレでページ分割（2/N, 3/N…）。長い品番・資源名・テンプレ名がヘッダで欠けないこと。
-4. **図面**: 横長・縦長画像で丸数字が `object-contain` 後の実描画矩形に一致すること。
-5. **印刷/PDF**: ブラウザ印刷で図面ページと記録欄が欠けず改ページされること。Kiosk ヘッダー/padding が混入しないこと（Layout 外ルート）。
-6. **実機（任意）**: Pi5 / Pi4 キオスク Chrome、現場プリンタまたは PDF 保存で A4 横を確認。
-7. **未実装**: QR スキャン照合、正式 DB 帳票 ID、OCR 読取 — **リリース前に別 Plan で実装**。
+1. **導線**: 一覧 **帳票** または編集 **保存済み帳票** → 別タブでプレビュー（未保存変更は反映されない）。
+2. **図面ロード前**: 印刷ボタン disabled（「図面読込中…」）。
+3. **レイアウト**: 1点 / 6点 / 7点以上で改ページ（2/N…）。長い品番・資源名・テンプレ名がヘッダで欠けない。
+4. **図面**: 横長・縦長で丸数字が `object-contain` 後の実描画矩形に一致。
+5. **印刷/PDF**: ブラウザ印刷で図面+記録欄が欠けず改ページ。Kiosk ヘッダー/padding なし（Layout 外ルート）。
+6. **実機**: Pi5 キオスク Chrome でプレビュー表示 **OK（2026-06-14）**。印刷ダイアログ/PDF/実プリンタは **未確認**。
+7. **未実装**: QR スキャン照合、正式 DB 帳票 ID、OCR 読取。
 
-#### 本番反映実績（2026-06-14 · Pi5 + Pi4×4）
+#### 本番反映実績（2026-06-14 · 帳票 HTML 初回 + Pi5 限定公開）
 
-| 項目 | 内容 |
-|------|------|
-| ブランチ | **`feat/inspection-drawing-print-html`** |
-| Git HEAD | **`062552ef`** |
-| 変更範囲 | **Web のみ**（Prisma / API / migration **なし**） |
-| Pi5 web バンドル | **`index-n3V3qAev.js`** |
-| Phase12 | **43 / 0 / 0**（Pi5 デプロイ後・全台完了後の 2 回とも PASS） |
+| 段階 | ブランチ | Git HEAD | 備考 |
+|------|----------|----------|------|
+| 初回（Pi5+Pi4×4 · 導線 DEV ゲート） | `feat/inspection-drawing-print-html` → **`main`** (#437) | **`062552ef`** / docs **`1d7bcd10`** | 帳票 UI 同梱、本番導線は非表示 |
+| Pi5 限定公開 | **`feat/inspection-drawing-print-pi5-validation`** | **`eaa06f11`** | 本番 ON · 一覧 **帳票** 配線 · Pi5 のみデプロイ |
 
 | ホスト | Detach Run ID | PLAY RECAP | 備考 |
 |--------|---------------|------------|------|
-| `raspberrypi5` | **`20260614-203743-25068`** | `ok=134` `changed=5` **`failed=0`** | `Git: changed` · Docker **`web`** 再ビルド |
-| `raspberrypi4` | **`20260614-204534-216`** | `ok=122` `changed=10` **`failed=0`** | `kiosk-browser` 再起動 · `_appRef=062552ef` |
-| `raspi4-robodrill01` | **`20260614-205025-24695`** | `ok=122` `changed=9` **`failed=0`** | 同上 |
-| `raspi4-fjv60-80` | **`20260614-205416-32452`** | `ok=122` `changed=9` **`failed=0`** | 同上 |
-| `raspi4-kensaku-stonebase01` | **`20260614-205802-8652`** | `ok=129` `changed=10` **`failed=0`** | 同上 |
+| `raspberrypi5`（初回） | **`20260614-203743-25068`** | `failed=0` | web **`index-n3V3qAev.js`** |
+| Pi4×4（初回） | 各 Run ID 同上節 | `failed=0` | 帳票導線なし（DEV ゲート） |
+| `raspberrypi5`（限定公開） | **`20260614-211555-683`** | `failed=0` | web **`index-rLFSPUXR.js`** · 本番 **帳票** 表示 |
 
-**実機検証（2026-06-14）**
+**実機検証（2026-06-14 · Pi5 · ユーザー確認 OK）**
 
 | 確認項目 | 結果 |
 |----------|------|
-| Pi5 `git rev-parse --short HEAD` | **`062552ef`** |
-| Pi4×4 `_appRef`（Firefox URL） | 全台 **`062552ef`**（Pi5 HEAD と一致） |
-| `./scripts/deploy/verify-phase12-real.sh` | **PASS 43 / WARN 0 / FAIL 0** |
-| 本番キオスクの **帳票** 導線 | **非表示**（`INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED === import.meta.env.DEV` のため **想定どおり**） |
-| バンドルに印刷 UI 文字列 | **`保存済み帳票`** を確認（本番ビルドでもコードは同梱、導線のみ DEV ゲート） |
-| 検査図面既存導線の回帰 | Phase12 の部品測定 / 検査図面 API スモーク **PASS** |
+| 一覧 **帳票** 導線 | **表示・遷移 OK** |
+| 実テンプレ | **`310b30ae-…`** · `検査図面 md004291472` · 14点 · **4ページ（1/4〜4/4）** |
+| API | `GET …/templates/:id` **200** · 図面 Blob **200** |
+| プレビュー画面 | 図面+丸数字 · 記録欄 · 規格表示 · **印刷プレビュー** ボタン有効 |
+| Phase12（Pi5 限定公開後） | 未再実行（初回デプロイ時 **43/0/0**） |
 
 **仕様メモ（次回 AI 再開用）**
 
-- ViewModel: `buildInspectionDrawingPrintViewModel`（`inspectionDrawingPrintViewModel.ts`）· マーカー配置: `printMarkerLayout.ts`（図面内寸 **`287mm`** = `297 - 5×2`）
-- 印刷ルート: `KioskLayout` **外** · `clientKey` はページ側で明示初期化
-- legacy 公差（`nominalValue=null` + 絶対上下限）: 規格欄 **「合格範囲 lower - upper」**
-- 図面ロード完了まで印刷ボタン **disabled**
+- ViewModel: `buildInspectionDrawingPrintViewModel` · マーカー内寸 **`287mm`**
+- 印刷ルート: `KioskLayout` **外** · `clientKey` ページ側初期化
+- legacy 公差: **「合格範囲 lower - upper」**
+- 帳票 ID（暫定）: `PRINT-<templateId短>-v<版>-<日時>`（DB 未保存）
+- 定数: `inspectionDrawingPrintConstants.ts` · ルート: `App.tsx` · 一覧: `KioskInspectionDrawingLibraryPage.tsx`
 
-**未完了（本番公開前）**
+**未完了（帳票ブラッシュアップ前後）**
 
-1. `INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED` を本番で有効化 + `App.tsx` の DEV ブロック外ルート登録
-2. QR ペイロード / 正式 DB 帳票 ID / OCR 読取（別 Plan）
-3. 本番導線有効化後の **実プリンタ / A4 横 PDF** 実機確認（Pi5 / Pi4）
+1. **帳票レイアウト/UI ブラッシュアップ**（次タスク）
+2. 印刷ダイアログ / PDF 保存 / 実プリンタ A4 横（Pi5 → Pi4）
+3. QR ペイロード / 正式 DB 帳票 ID / OCR（別 Plan）
+4. Pi4×4 への限定公開デプロイ（Pi5 ブラッシュアップ OK 後）
 
-**標準デプロイコマンド**（`main` マージ後は第2引数 **`main`**）:
+**Pi5 限定公開デプロイ**
 
 ```bash
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
-./scripts/update-all-clients.sh feat/inspection-drawing-print-html \
+./scripts/update-all-clients.sh feat/inspection-drawing-print-pi5-validation \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
-# Pi5 OK 後、Pi4 を 1 台ずつ --limit 変更 + 各台強制リロード（verification-checklist §6.6.4）
+# マージ後は第2引数 main。Pi4 は Pi5 OK 後に 1 台ずつ --limit 変更
 ```
+
+**トラブルシュート（検証時のみ）**
+
+| 事象 | 対処 |
+|------|------|
+| Mac から Pi5 HTTPS が `chrome-error` | Pi5 は自己署名証明書。SSH トンネル `-L 18443:127.0.0.1:443` + `curl -sk`、または現場キオスクで確認 |
+| `127.0.0.1:8080` で API 不通 | web は **80/443**（Caddy）。API は `/api/...` プロキシ経由 |
 
 ### 検査図面 · 流用導線（2026-06-05） {#検査図面-流用導線-2026-06-05}
 
