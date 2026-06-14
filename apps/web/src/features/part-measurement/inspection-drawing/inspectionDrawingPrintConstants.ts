@@ -9,15 +9,36 @@ export const INSPECTION_DRAWING_PRINT_SHEET_PADDING_MM = 5;
 export const INSPECTION_DRAWING_PRINT_DRAWING_AREA_WIDTH_MM =
   INSPECTION_DRAWING_PRINT_SHEET_WIDTH_MM - INSPECTION_DRAWING_PRINT_SHEET_PADDING_MM * 2;
 
-/** Record sheet grid: columns per row and max points per record page. */
-export const INSPECTION_DRAWING_PRINT_RECORD_COLUMNS = 3;
-export const INSPECTION_DRAWING_PRINT_RECORD_POINTS_PER_PAGE = 6;
+/** Record sheet page capacity. */
+export const INSPECTION_DRAWING_PRINT_RECORD_POINTS_PER_PAGE = 14;
+export const INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE = 6;
+
+/** Record table widths (mm): keep the handwritten value box compact. */
+export const INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM = {
+  no: 8,
+  measurementPoint: 32,
+  specification: 42,
+  measurementValue: 34
+} as const;
+
+export const INSPECTION_DRAWING_PRINT_RECORD_TABLE_FIXED_WIDTH_MM =
+  INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM.no +
+  INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM.measurementPoint +
+  INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM.specification;
+
+export function getInspectionDrawingPrintRecordTableWidthMm(entryColumnCount: number): number {
+  return (
+    INSPECTION_DRAWING_PRINT_RECORD_TABLE_FIXED_WIDTH_MM +
+    Math.max(1, entryColumnCount) *
+      INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM.measurementValue
+  );
+}
 
 /** When true, partial record pages keep a fixed grid with empty placeholder slots. */
 export const INSPECTION_DRAWING_PRINT_FILL_EMPTY_RECORD_SLOTS = true;
 
 /** Drawing page main area height budget (mm) after compact header. */
-export const INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM = 172;
+export const INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM = 184;
 
 export const INSPECTION_DRAWING_PRINT_TIME_ZONE = 'Asia/Tokyo';
 

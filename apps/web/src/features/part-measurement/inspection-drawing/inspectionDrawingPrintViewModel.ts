@@ -1,5 +1,6 @@
 import {
   INSPECTION_DRAWING_PRINT_FILL_EMPTY_RECORD_SLOTS,
+  INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE,
   INSPECTION_DRAWING_PRINT_RECORD_POINTS_PER_PAGE,
   INSPECTION_DRAWING_PRINT_TIME_ZONE
 } from './inspectionDrawingPrintConstants';
@@ -13,10 +14,16 @@ export type InspectionDrawingPrintRecordSlot =
   | { kind: 'point'; point: InspectionDrawingPoint }
   | { kind: 'empty' };
 
+export type InspectionDrawingPrintRecordEntrySlot = {
+  entryIndex: number;
+  entryLabel: string;
+};
+
 export type InspectionDrawingPrintRecordPage = {
   pageNumber: number;
   pageLabel: string;
   slots: InspectionDrawingPrintRecordSlot[];
+  entrySlots: InspectionDrawingPrintRecordEntrySlot[];
 };
 
 export type InspectionDrawingPrintMetadata = {
@@ -30,6 +37,7 @@ export type InspectionDrawingPrintMetadata = {
   processLabel: string;
   templateId: string;
   templateVersion: number;
+  reportUnitKey: string;
 };
 
 export type InspectionDrawingPrintViewModel = {
@@ -155,10 +163,11 @@ export function buildInspectionDrawingPrintViewModel(
     templateName: template.name,
     processLabel: processGroupLabel(template.processGroup),
     templateId: template.id,
-    templateVersion: template.version
+    templateVersion: template.version,
+    reportUnitKey: buildInspectionDrawingPrintReportUnitKey(template)
   };
 
-  const recordPages = buildRecordPages(points);
+  const recordPages = buildRecordPages(points, buildInspectionDrawingPrintRecordEntrySlots(template));
   const totalPages = 1 + recordPages.length;
 
   return {
@@ -178,29 +187,79 @@ export function buildInspectionDrawingPrintViewModel(
   };
 }
 
-export function buildRecordPages(points: InspectionDrawingPoint[]): InspectionDrawingPrintRecordPage[] {
+export function buildInspectionDrawingPrintReportUnitKey(
+  template: Pick<PartMeasurementTemplateDto, 'fhincd' | 'resourceCd'>
+): string {
+  return `${template.fhincd.trim()} / ${template.resourceCd.trim()}`;
+}
+
+export function buildInspectionDrawingPrintRecordEntrySlots(
+  template: Pick<
+    PartMeasurementTemplateDto,
+    'selfInspectionMode' | 'selfInspectionFixedCount' | 'selfInspectionSampleSize'
+  >
+): InspectionDrawingPrintRecordEntrySlot[] {
+  if (template.selfInspectionMode === 'single') {
+    return [{ entryIndex: 0, entryLabel: '1件目' }];
+  }
+
+  if (template.selfInspectionMode === 'first_last') {
+    return [
+      { entryIndex: 0, entryLabel: '最初' },
+      { entryIndex: 1, entryLabel: '最終' }
+    ];
+  }
+
+  const rawCount =
+    template.selfInspectionMode === 'fixed_count'
+      ? template.selfInspectionFixedCount ?? template.selfInspectionSampleSize
+      : INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE;
+  const count = Math.max(1, Math.floor(rawCount ?? 1));
+
+  return Array.from({ length: count }, (_, index) => ({
+    entryIndex: index,
+    entryLabel: `${index + 1}件目`
+  }));
+}
+
+export function buildRecordPages(
+  points: InspectionDrawingPoint[],
+  entrySlots: InspectionDrawingPrintRecordEntrySlot[] = [{ entryIndex: 0, entryLabel: '1件目' }]
+): InspectionDrawingPrintRecordPage[] {
   const perPage = INSPECTION_DRAWING_PRINT_RECORD_POINTS_PER_PAGE;
-  const pageCount = Math.ceil(points.length / perPage);
+  const entriesPerPage = INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE;
+  const normalizedEntrySlots =
+    entrySlots.length > 0 ? entrySlots : [{ entryIndex: 0, entryLabel: '1件目' }];
+  const pointPageCount = Math.ceil(points.length / perPage);
+  const entryPageCount = Math.ceil(normalizedEntrySlots.length / entriesPerPage);
   const pages: InspectionDrawingPrintRecordPage[] = [];
 
-  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
-    const slice = points.slice(pageIndex * perPage, pageIndex * perPage + perPage);
-    const slots: InspectionDrawingPrintRecordSlot[] = slice.map((point) => ({
-      kind: 'point',
-      point
-    }));
+  for (let entryPageIndex = 0; entryPageIndex < entryPageCount; entryPageIndex += 1) {
+    const entrySlice = normalizedEntrySlots.slice(
+      entryPageIndex * entriesPerPage,
+      entryPageIndex * entriesPerPage + entriesPerPage
+    );
 
-    if (INSPECTION_DRAWING_PRINT_FILL_EMPTY_RECORD_SLOTS) {
-      while (slots.length < perPage) {
-        slots.push({ kind: 'empty' });
+    for (let pointPageIndex = 0; pointPageIndex < pointPageCount; pointPageIndex += 1) {
+      const pointSlice = points.slice(pointPageIndex * perPage, pointPageIndex * perPage + perPage);
+      const slots: InspectionDrawingPrintRecordSlot[] = pointSlice.map((point) => ({
+        kind: 'point',
+        point
+      }));
+
+      if (INSPECTION_DRAWING_PRINT_FILL_EMPTY_RECORD_SLOTS) {
+        while (slots.length < perPage) {
+          slots.push({ kind: 'empty' });
+        }
       }
-    }
 
-    pages.push({
-      pageNumber: pageIndex + 2,
-      pageLabel: '',
-      slots
-    });
+      pages.push({
+        pageNumber: pages.length + 2,
+        pageLabel: '',
+        slots,
+        entrySlots: entrySlice
+      });
+    }
   }
 
   return pages;

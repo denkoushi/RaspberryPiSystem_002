@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildInspectionDrawingPrintPreviewIdentifier,
+  buildInspectionDrawingPrintRecordEntrySlots,
   buildInspectionDrawingPrintViewModel,
   buildRecordPages,
   formatInspectionDrawingPrintIssuedAtDisplay,
@@ -70,6 +71,15 @@ describe('inspectionDrawingPrintViewModel', () => {
     expect(viewModel.totalPages).toBe(2);
     expect(viewModel.recordPages).toHaveLength(1);
     expect(viewModel.recordPages[0]?.pageLabel).toBe('2/2');
+    expect(viewModel.recordPages[0]?.entrySlots.map((slot) => slot.entryLabel)).toEqual([
+      '1件目',
+      '2件目',
+      '3件目',
+      '4件目',
+      '5件目',
+      '6件目'
+    ]);
+    expect(viewModel.metadata.reportUnitKey).toBe('DEMO-12345 / R001');
     expect(viewModel.metadata.previewIdentifier).toBe(
       buildInspectionDrawingPrintPreviewIdentifier(
         'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
@@ -84,7 +94,7 @@ describe('inspectionDrawingPrintViewModel', () => {
   });
 
   it('splits record pages when points exceed one page', () => {
-    const pages = buildRecordPages(sampleTemplate(7).items.map((item, index) => ({
+    const pages = buildRecordPages(sampleTemplate(15).items.map((item, index) => ({
       id: item.id,
       name: item.measurementLabel,
       markerNo: index + 1,
@@ -97,9 +107,76 @@ describe('inspectionDrawingPrintViewModel', () => {
     })));
 
     expect(pages).toHaveLength(2);
-    expect(pages[0]?.slots.filter((slot) => slot.kind === 'point')).toHaveLength(6);
+    expect(pages[0]?.slots.filter((slot) => slot.kind === 'point')).toHaveLength(14);
     expect(pages[1]?.slots.filter((slot) => slot.kind === 'point')).toHaveLength(1);
-    expect(pages[1]?.slots.filter((slot) => slot.kind === 'empty')).toHaveLength(5);
+    expect(pages[1]?.slots.filter((slot) => slot.kind === 'empty')).toHaveLength(13);
+    expect(pages[0]?.entrySlots).toEqual([{ entryIndex: 0, entryLabel: '1件目' }]);
+  });
+
+  it('keeps six fixed inspection entries on the first record page', () => {
+    const template = {
+      ...sampleTemplate(3),
+      selfInspectionMode: 'fixed_count' as const,
+      selfInspectionFixedCount: 6,
+      selfInspectionSampleSize: 6
+    };
+    const viewModel = buildInspectionDrawingPrintViewModel({
+      template,
+      resourceName: 'R001',
+      issuedAt
+    });
+
+    expect(viewModel.recordPages).toHaveLength(1);
+    expect(viewModel.totalPages).toBe(2);
+    expect(viewModel.recordPages[0]?.entrySlots.map((slot) => slot.entryLabel)).toEqual([
+      '1件目',
+      '2件目',
+      '3件目',
+      '4件目',
+      '5件目',
+      '6件目'
+    ]);
+  });
+
+  it('continues fixed inspection entries after six on an additional record page', () => {
+    const template = {
+      ...sampleTemplate(3),
+      selfInspectionMode: 'fixed_count' as const,
+      selfInspectionFixedCount: 7,
+      selfInspectionSampleSize: 7
+    };
+    const viewModel = buildInspectionDrawingPrintViewModel({
+      template,
+      resourceName: 'R001',
+      issuedAt
+    });
+
+    expect(viewModel.recordPages).toHaveLength(2);
+    expect(viewModel.totalPages).toBe(3);
+    expect(viewModel.recordPages[0]?.pageLabel).toBe('2/3');
+    expect(viewModel.recordPages[0]?.entrySlots.map((slot) => slot.entryLabel)).toEqual([
+      '1件目',
+      '2件目',
+      '3件目',
+      '4件目',
+      '5件目',
+      '6件目'
+    ]);
+    expect(viewModel.recordPages[1]?.pageLabel).toBe('3/3');
+    expect(viewModel.recordPages[1]?.entrySlots.map((slot) => slot.entryLabel)).toEqual(['7件目']);
+  });
+
+  it('labels first and last inspection entry columns', () => {
+    expect(
+      buildInspectionDrawingPrintRecordEntrySlots({
+        selfInspectionMode: 'first_last',
+        selfInspectionFixedCount: null,
+        selfInspectionSampleSize: null
+      })
+    ).toEqual([
+      { entryIndex: 0, entryLabel: '最初' },
+      { entryIndex: 1, entryLabel: '最終' }
+    ]);
   });
 
   it('throws for unsupported templates', () => {
