@@ -56,6 +56,57 @@
 6. **実機（任意）**: Pi5 / Pi4 キオスク Chrome、現場プリンタまたは PDF 保存で A4 横を確認。
 7. **未実装**: QR スキャン照合、正式 DB 帳票 ID、OCR 読取 — **リリース前に別 Plan で実装**。
 
+#### 本番反映実績（2026-06-14 · Pi5 + Pi4×4）
+
+| 項目 | 内容 |
+|------|------|
+| ブランチ | **`feat/inspection-drawing-print-html`** |
+| Git HEAD | **`062552ef`** |
+| 変更範囲 | **Web のみ**（Prisma / API / migration **なし**） |
+| Pi5 web バンドル | **`index-n3V3qAev.js`** |
+| Phase12 | **43 / 0 / 0**（Pi5 デプロイ後・全台完了後の 2 回とも PASS） |
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | **`20260614-203743-25068`** | `ok=134` `changed=5` **`failed=0`** | `Git: changed` · Docker **`web`** 再ビルド |
+| `raspberrypi4` | **`20260614-204534-216`** | `ok=122` `changed=10` **`failed=0`** | `kiosk-browser` 再起動 · `_appRef=062552ef` |
+| `raspi4-robodrill01` | **`20260614-205025-24695`** | `ok=122` `changed=9` **`failed=0`** | 同上 |
+| `raspi4-fjv60-80` | **`20260614-205416-32452`** | `ok=122` `changed=9` **`failed=0`** | 同上 |
+| `raspi4-kensaku-stonebase01` | **`20260614-205802-8652`** | `ok=129` `changed=10` **`failed=0`** | 同上 |
+
+**実機検証（2026-06-14）**
+
+| 確認項目 | 結果 |
+|----------|------|
+| Pi5 `git rev-parse --short HEAD` | **`062552ef`** |
+| Pi4×4 `_appRef`（Firefox URL） | 全台 **`062552ef`**（Pi5 HEAD と一致） |
+| `./scripts/deploy/verify-phase12-real.sh` | **PASS 43 / WARN 0 / FAIL 0** |
+| 本番キオスクの **帳票** 導線 | **非表示**（`INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED === import.meta.env.DEV` のため **想定どおり**） |
+| バンドルに印刷 UI 文字列 | **`保存済み帳票`** を確認（本番ビルドでもコードは同梱、導線のみ DEV ゲート） |
+| 検査図面既存導線の回帰 | Phase12 の部品測定 / 検査図面 API スモーク **PASS** |
+
+**仕様メモ（次回 AI 再開用）**
+
+- ViewModel: `buildInspectionDrawingPrintViewModel`（`inspectionDrawingPrintViewModel.ts`）· マーカー配置: `printMarkerLayout.ts`（図面内寸 **`287mm`** = `297 - 5×2`）
+- 印刷ルート: `KioskLayout` **外** · `clientKey` はページ側で明示初期化
+- legacy 公差（`nominalValue=null` + 絶対上下限）: 規格欄 **「合格範囲 lower - upper」**
+- 図面ロード完了まで印刷ボタン **disabled**
+
+**未完了（本番公開前）**
+
+1. `INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED` を本番で有効化 + `App.tsx` の DEV ブロック外ルート登録
+2. QR ペイロード / 正式 DB 帳票 ID / OCR 読取（別 Plan）
+3. 本番導線有効化後の **実プリンタ / A4 横 PDF** 実機確認（Pi5 / Pi4）
+
+**標準デプロイコマンド**（`main` マージ後は第2引数 **`main`**）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/inspection-drawing-print-html \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+# Pi5 OK 後、Pi4 を 1 台ずつ --limit 変更 + 各台強制リロード（verification-checklist §6.6.4）
+```
+
 ### 検査図面 · 流用導線（2026-06-05） {#検査図面-流用導線-2026-06-05}
 
 正本: [KB-320 §流用導線強化](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) · [deployment §2026-06-05](../guides/deployment.md#kiosk-inspection-drawing-reuse-flow-2026-06-05) · ブランチ **`feat/kiosk-inspection-drawing-reuse-flow`** · 代表 **`6c7da8c7`**
