@@ -28,6 +28,8 @@ type Props = {
   returnTo?: string;
   /** `returnTo` とセットで表示文言を渡す（例: 順位ボード / 一覧へ戻る） */
   returnLabel?: string;
+  /** 保存済みテンプレートの帳票プレビュー（新しいタブ）。未保存変更は反映されない */
+  savedPrintPath?: string;
 };
 
 export function InspectionDrawingCreateToolbar({
@@ -42,7 +44,8 @@ export function InspectionDrawingCreateToolbar({
   saveBusy = false,
   showProcessGroup = true,
   returnTo,
-  returnLabel
+  returnLabel,
+  savedPrintPath
 }: Props) {
   const toggleClass = (isActive: boolean) =>
     clsx(inspectionDrawingKioskToggleInactiveClass(isActive), inspectionDrawingKioskDisabledButtonClass);
@@ -119,6 +122,18 @@ export function InspectionDrawingCreateToolbar({
       >
         {saveBusy ? '保存中…' : '保存'}
       </Button>
+
+      {savedPrintPath ? (
+        <Link
+          to={savedPrintPath}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="未保存の変更は反映されません"
+          className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}
+        >
+          保存済み帳票
+        </Link>
+      ) : null}
 
       {returnTo && returnLabel ? (
         <Link to={returnTo} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}>

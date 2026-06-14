@@ -153,6 +153,7 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
           onHistoryClick={setHistoryGroupKey}
           lineageGroupKey={lineageGroupKey}
           editPath={() => '/dev/kiosk-inspection-drawing-create'}
+          printPath={() => '/dev/kiosk-inspection-drawing-print'}
           createFromSourcePath={() => '/dev/kiosk-inspection-drawing-create'}
           linkState={INSPECTION_DRAWING_DEV_RETURN_TO_LIBRARY_STATE}
         />

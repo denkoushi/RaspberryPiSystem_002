@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { KioskRedirect } from './components/KioskRedirect';
 import { RequireAuth } from './components/RequireAuth';
+import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 import { KioskLayout } from './layouts/KioskLayout';
@@ -32,6 +33,7 @@ import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
 import { VisualizationDashboardsPage } from './pages/admin/VisualizationDashboardsPage';
 import { KioskInspectionDrawingCreatePreviewPage } from './pages/dev/KioskInspectionDrawingCreatePreviewPage';
 import { KioskInspectionDrawingLibraryPreviewPage } from './pages/dev/KioskInspectionDrawingLibraryPreviewPage';
+import { KioskInspectionDrawingPrintPreviewPage } from './pages/dev/KioskInspectionDrawingPrintPreviewPage';
 import { LoadBalancingOverviewChartPreviewPage } from './pages/dev/LoadBalancingOverviewChartPreviewPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
@@ -39,6 +41,7 @@ import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
 import { KioskInspectionDrawingCreatePage } from './pages/kiosk/KioskInspectionDrawingCreatePage';
 import { KioskInspectionDrawingEditPage } from './pages/kiosk/KioskInspectionDrawingEditPage';
 import { KioskInspectionDrawingLibraryPage } from './pages/kiosk/KioskInspectionDrawingLibraryPage';
+import { KioskInspectionDrawingPrintPage } from './pages/kiosk/KioskInspectionDrawingPrintPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskMobilePalletVisualizationPage } from './pages/kiosk/KioskMobilePalletVisualizationPage';
 import { KioskMobileShelfMasterPage } from './pages/kiosk/KioskMobileShelfMasterPage';
@@ -151,7 +154,16 @@ function App() {
         </Route>
       </Route>
       {import.meta.env.DEV ? (
-        <Route path="/dev/load-balancing-overview-chart" element={<LoadBalancingOverviewChartPreviewPage />} />
+        <>
+          <Route path="/dev/load-balancing-overview-chart" element={<LoadBalancingOverviewChartPreviewPage />} />
+          <Route path="/dev/kiosk-inspection-drawing-print" element={<KioskInspectionDrawingPrintPreviewPage />} />
+          {INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED ? (
+            <Route
+              path="/kiosk/part-measurement/inspection/templates/:templateId/print"
+              element={<KioskInspectionDrawingPrintPage />}
+            />
+          ) : null}
+        </>
       ) : null}
       <Route
         path="/preview"

@@ -5,6 +5,7 @@ import {
   isKioskPartMeasurementHubPath,
   kioskInspectionDrawingCreatePathWithSource,
   kioskInspectionDrawingTemplateEditPath,
+  kioskInspectionDrawingTemplatePrintPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
   parseInspectionDrawingSourceTemplateIdFromSearch
@@ -22,6 +23,12 @@ describe('kioskInspectionDrawingRoutes', () => {
   it('template edit path helper', () => {
     expect(kioskInspectionDrawingTemplateEditPath('abc')).toBe(
       '/kiosk/part-measurement/inspection/templates/abc/edit'
+    );
+  });
+
+  it('template print path helper', () => {
+    expect(kioskInspectionDrawingTemplatePrintPath('abc')).toBe(
+      '/kiosk/part-measurement/inspection/templates/abc/print'
     );
   });
 
