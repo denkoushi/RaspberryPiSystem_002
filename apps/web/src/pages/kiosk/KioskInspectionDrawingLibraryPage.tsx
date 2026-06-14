@@ -8,9 +8,11 @@ import {
   InspectionDrawingLibraryFilterBar,
   InspectionDrawingLibraryTemplateGrid,
   InspectionDrawingTemplateHistoryDialog,
+  INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED,
   KioskInspectionDrawingVisualLibrarySection,
   KioskInspectionDrawingVisualUploadModal,
   kioskInspectionDrawingTemplateEditPath,
+  kioskInspectionDrawingTemplatePrintPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
   type InspectionDrawingLibraryProcessFilter
 } from '../../features/part-measurement/inspection-drawing';
@@ -232,6 +234,11 @@ export function KioskInspectionDrawingLibraryPage() {
           busy={templateBusy}
           onHistoryClick={setHistoryGroupKey}
           lineageGroupKey={lineageGroupKey}
+          printPath={
+            INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED
+              ? kioskInspectionDrawingTemplatePrintPath
+              : undefined
+          }
         />
       </div>
     </div>

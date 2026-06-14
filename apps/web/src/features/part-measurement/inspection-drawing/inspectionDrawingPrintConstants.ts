@@ -22,10 +22,10 @@ export const INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM = 172;
 export const INSPECTION_DRAWING_PRINT_TIME_ZONE = 'Asia/Tokyo';
 
 /**
- * HTML print preview is DEV-only until QR payload and record layout are finalized.
- * Enabling production also requires registering the print route outside the DEV block in App.tsx.
+ * Production route is enabled for staged Pi5 validation before broader rollout.
+ * Keep the preview disclaimer until QR payload / formal report ID are finalized.
  */
-export const INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED = import.meta.env.DEV;
+export const INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED = true;
 
 /** Screen-only notice; not shown on printed sheets. */
 export const INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER =

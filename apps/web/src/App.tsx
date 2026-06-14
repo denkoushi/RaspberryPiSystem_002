@@ -157,13 +157,13 @@ function App() {
         <>
           <Route path="/dev/load-balancing-overview-chart" element={<LoadBalancingOverviewChartPreviewPage />} />
           <Route path="/dev/kiosk-inspection-drawing-print" element={<KioskInspectionDrawingPrintPreviewPage />} />
-          {INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED ? (
-            <Route
-              path="/kiosk/part-measurement/inspection/templates/:templateId/print"
-              element={<KioskInspectionDrawingPrintPage />}
-            />
-          ) : null}
         </>
+      ) : null}
+      {INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED ? (
+        <Route
+          path="/kiosk/part-measurement/inspection/templates/:templateId/print"
+          element={<KioskInspectionDrawingPrintPage />}
+        />
       ) : null}
       <Route
         path="/preview"
