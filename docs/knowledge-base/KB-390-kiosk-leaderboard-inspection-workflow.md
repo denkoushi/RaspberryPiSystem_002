@@ -1,0 +1,114 @@
+# KB-390: Kiosk leader order board inspection workflow (chooser + plannedQuantity print)
+
+## Metadata
+
+| Field | Value |
+|-------|-------|
+| **id** | KB-390 |
+| **status** | active |
+| **scope** | Kiosk leader order board · self-inspection entry · inspection drawing print preview |
+| **date** | 2026-06-15 |
+| **source_of_truth** | This file |
+| **branch** | `feat/leaderboard-inspection-workflow` |
+| **commits** | `8dfc9b13` (workflow modal) · `5116f75f` (plannedQuantity print) |
+| **ci** | GitHub Actions **`27519202406`** success (after `5116f75f`) |
+
+## Context
+
+Operators start self-inspection from the leader order board row action **検** (previously direct navigation). The new flow opens a modal to choose **デジタル入力** or **帳票紙印刷**. Paper print must carry schedule **plannedQuantity** into record-sheet column count (full self-inspection mode).
+
+**Prisma / API**: no change. **Web only** · Pi5 Docker **`web`** rebuild.
+
+## Specification (handoff)
+
+| Item | Behavior |
+|------|----------|
+| **Entry** | Leader board row **検** → modal title **検査方法を選択** |
+| **デジタル入力** | Enabled when `selfInspectionEntryPath` is non-empty. Navigates to existing self-inspection start/session URL. |
+| **帳票紙印刷** | Enabled when `selfInspectionTemplateId` is non-empty. `window.open` to `kioskInspectionDrawingTemplatePrintPath(templateId, { plannedQuantity: row.plannedQuantity })`. |
+| **Print URL** | `…/inspection/templates/:id/print?plannedQuantity=N` when N is a positive integer; omitted when null/invalid. |
+| **Print cap** | `INSPECTION_DRAWING_PRINT_MAX_ENTRY_COUNT = 2000` in URL parse + view model (abuse guard). |
+| **Record layout** | `INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE = 5` (was 6). Full mode uses `plannedQuantity` for entry columns when set. |
+| **Row decoration** | `selfInspectionTemplateId` / `selfInspectionEntryPath` come from **`POST …/leaderboard-decorations`** with body **`{ targetDeviceScopeKey, rowIds }`** (not `rows`). |
+
+### Related code
+
+- [`LeaderBoardInspectionWorkflowModal.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardInspectionWorkflowModal.tsx)
+- [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)
+- [`kioskInspectionDrawingRoutes.ts`](../../apps/web/src/features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes.ts)
+- [`inspectionDrawingPrintViewModel.ts`](../../apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingPrintViewModel.ts)
+- [`inspectionDrawingPrintConstants.ts`](../../apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants.ts)
+
+## Deployment
+
+| Host | Required | Notes |
+|------|----------|-------|
+| **`raspberrypi5`** | Yes | SPA + `web` image rebuild |
+| **Pi4×4** | No | Leader board **検** workflow is Pi5-only; Pi4 rollout not needed for this feature |
+| **Pi3** | No | `skipping: no hosts matched` |
+
+**Standard command** (pre-merge branch name; post-merge use `main`):
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/leaderboard-inspection-workflow \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.md](../guides/quick-start-deployment.md)
+
+### Production deploy (2026-06-15 · Pi5 only)
+
+| Field | Value |
+|-------|-------|
+| **Detach Run ID** | `20260615-110704-22124` |
+| **Git HEAD (Pi5)** | `5116f75f` |
+| **PLAY RECAP** | `ok=134` `changed=4` **`failed=0`** |
+| **Web bundle** | `/srv/site/assets/index-B-ixv-BH.js` (contains `plannedQuantity`) |
+
+## Validation
+
+### Automated (2026-06-15 · after Pi5 deploy)
+
+```bash
+./scripts/deploy/verify-phase12-real.sh
+```
+
+**Result**: PASS **43** / WARN **0** / FAIL **0** (~61s)
+
+### Local (pre-push)
+
+- Web unit tests: `LeaderBoardInspectionWorkflow`, `inspectionDrawingPrintViewModel`, `kioskInspectionDrawingRoutes`, `KioskInspectionDrawingPrintPage`, print preview (~34 targeted + full web suite 1026 pass)
+- ESLint: import group spacing fix in `kioskInspectionDrawingRoutes.ts`
+- No API/Prisma migration in this branch
+
+### Manual kiosk (2026-06-15 · Pi5 · Mac browser via SSH tunnel)
+
+**Access**: `https://127.0.0.1:18443/...` (not local Python proxy on `:19080` for POST APIs). Mac default client key: `client-key-mac-kiosk1` · scope example: **第2工場 · kensakuMain**.
+
+| Step | Expected | Observed |
+|------|----------|----------|
+| Leader board **検** | Modal **検査方法を選択** with **デジタル入力** / **帳票紙印刷** | OK |
+| **帳票紙印刷** | New tab URL includes `plannedQuantity=5`; preview shows **1件目…5件目** | OK (`dd7d5c5f-…/print?plannedQuantity=5`) |
+| **デジタル入力** | Self-inspection session opens; **入力件（1 / 5）** matches planned quantity | OK (session `0fd8e983-…`) |
+
+## Local Notes JA
+
+- UI labels (do not rename in docs): **検査方法を選択** · **デジタル入力** · **帳票紙印刷** · row button **検**
+- 順位ボード装飾 API の POST ボディは **`rowIds`**。`rows` オブジェクト配列は無視され装飾が空になる（検証スクリプト注意）
+
+## Open Items
+
+| Item | Status |
+|------|--------|
+| Merge `feat/leaderboard-inspection-workflow` → `main` | Pending (this handoff) |
+| Pi4 kiosk deploy for this branch | **Not required** (feature entry is Pi5 leader board only) |
+| `verification-checklist.md` dedicated § | Not added; reuse leader board + part-measurement manual steps |
+| Full Pi4 rollout for shared print layout (5 entries/page) | Optional only if Pi4 opens inspection print from non–leader-board routes |
+
+## References
+
+- [KB-320](./KB-320-kiosk-part-measurement.md) (self-inspection · inspection drawing)
+- [KB-297](./KB-297-kiosk-due-management-workflow.md) (leader order board)
+- [kiosk-part-measurement Runbook](../runbooks/kiosk-part-measurement.md)
+- [deployment.md](../guides/deployment.md)
