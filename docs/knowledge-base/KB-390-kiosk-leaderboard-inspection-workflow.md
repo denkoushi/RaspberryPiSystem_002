@@ -9,9 +9,9 @@
 | **scope** | Kiosk leader order board · self-inspection entry · inspection drawing print preview |
 | **date** | 2026-06-15 |
 | **source_of_truth** | This file |
-| **branch** | `main` |
-| **commits** | `8dfc9b13` (workflow modal) · `5116f75f` (plannedQuantity print) · `e0b3703d` (OCR-friendly record value boxes) · `3b83b577` (print disclaimer toolbar-only) |
-| **ci** | GitHub Actions **`27532188574`** success (after `3b83b577` · PR **#443**) |
+| **branch** | `fix/inspection-print-record-qr` → merge to `main` |
+| **commits** | `8dfc9b13` (workflow modal) · `5116f75f` (plannedQuantity print) · `e0b3703d` (OCR record value boxes) · `3b83b577` (print disclaimer toolbar-only) · **`a2158875`** (record page QR + P1 fiducial removal) |
+| **ci** | **`27535726878`** success (`a2158875`) · **`27532188574`** success (`3b83b577` · PR **#443**) |
 
 ## Context
 
@@ -31,7 +31,10 @@ Operators start self-inspection from the leader order board row action **検** (
 | **Record layout** | `INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE = 5` (was 6). Full mode uses `plannedQuantity` for entry columns when set. |
 | **OCR record cells** | Each measurement column renders **`MeasurementValueWriteBoxes`**: sign box · 4 integer digit boxes · decimal point · 3 decimal digit boxes (`data-testid="inspection-print-measurement-value-boxes"`). Column widths (mm): no **8** · point **24** · spec **30** · value **45**. |
 | **Record text wrap** | Long point labels split across up to 2 lines (`splitRecordPointLabel`). Spec/tolerance split (`formatRecordSpecificationLines`; e.g. `合格範囲` on line 1). |
-| **Print alignment** | Corner **SheetFiducials** (L-shaped markers) on drawing and record pages. |
+| **Print alignment** | Corner **SheetFiducials** (L-shaped markers) on **record pages only**. **P1 drawing page has no fiducials** (avoids OCR false positives on the drawing). |
+| **Drawing page layout** | Padding **`INSPECTION_DRAWING_PRINT_DRAWING_PAGE_PADDING_MM = 3`** (was 5mm). Drawing area height **193mm**. |
+| **Record page QR** | Each record page renders a **page-specific QR** (`data-testid="inspection-print-record-qr-code"`). Payload JSON type **`inspection-drawing-record-page`**, **`schemaVersion: 1`**, fields: `reportId` (preview identifier), `templateId`, `fhincd`, `resourceCd`, `templateVersion`, `pageNumber`, `totalPages`, `entryIndexFrom`, `entryIndexTo`, **`markerNoFrom`**, **`markerNoTo`**. Encoded with `@zxing/library` `QRCodeWriter` → SVG (print-safe). Label: **`QR P{pageNumber}`**. |
+| **Record header band** | Compact manual fields (**検査日 / 作業者 / ロット / 数量**) in **`w-[72mm]`** grid (`inspection-print-record-controls`); QR sits in right column (**27mm**). |
 | **Record header** | Column guide **測定値（符号 / 整数4桁 / 小数3桁）**. No 判定 / 確認 / 備考 columns. |
 | **Row decoration** | `selfInspectionTemplateId` / `selfInspectionEntryPath` come from **`POST …/leaderboard-decorations`** with body **`{ targetDeviceScopeKey, rowIds }`** (not `rows`). |
 | **Print disclaimer** | `INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER` is **screen-only** in `.inspection-print-toolbar`. It is **not** rendered on `.inspection-print-sheet` pages (print CSS hides toolbar). |
@@ -92,7 +95,38 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 | **Docker** | `web` rebuild (`Git: changed`) |
 | **Web bundle** | `index-C1vJd6pe.js` (`HTMLプレビュー` ×1 · `inspection-print-toolbar` present) |
 
+### Production deploy (2026-06-15 · record page QR + P1 fiducial removal · Pi5 only)
+
+| Field | Value |
+|-------|-------|
+| **Branch** | `fix/inspection-print-record-qr` |
+| **Detach Run ID** | **`20260615-183021-14261`** |
+| **Git HEAD (Pi5)** | **`a2158875`** |
+| **PLAY RECAP** | **`ok=134` `changed=5` `failed=0`** |
+| **Docker** | `web` rebuild (`Git: changed`) |
+| **Web bundle** | **`index-CQrgpR0u.js`** (contains `inspection-print-record-qr-code` · `inspection-drawing-record-page` · `markerNoFrom` · `markerNoTo` · `inspection-print-sheet-fiducial`) |
+
 ## Validation
+
+### Automated (2026-06-15 · after record page QR deploy `a2158875`)
+
+```bash
+./scripts/deploy/verify-phase12-real.sh
+```
+
+**Result**: PASS **43** / WARN **0** / FAIL **0** (~74s)
+
+### Manual kiosk (2026-06-15 · record page QR · after `a2158875` deploy)
+
+**Access**: SSH tunnel `-L 18443:127.0.0.1:443` · bundle served as **`index-CQrgpR0u.js`**
+
+| Step | Expected | Observed |
+|------|----------|----------|
+| Pi5 Git HEAD | **`a2158875`** | OK |
+| Print preview URL | HTTP **200** for `…/templates/310b30ae-…/print?plannedQuantity=5` | OK |
+| Web bundle markers | QR testids + payload field names present in **`index-CQrgpR0u.js`** | OK (grep counts ≥1 each) |
+| P1 fiducials | Fiducial testid on **record pages only** (not drawing page) | OK (unit test contract) |
+| Record QR payload | `type=inspection-drawing-record-page` · page/entry/marker ranges | OK (unit + component tests) |
 
 ### Automated (2026-06-15 · after print disclaimer deploy `3b83b577`)
 
@@ -155,8 +189,12 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 | Pi4 kiosk deploy for inspection print / leader board | **Not required** (entry is Pi5 leader board only) |
 | `verification-checklist.md` dedicated § | Not added; reuse leader board + part-measurement manual steps |
 | Full Pi4 rollout for shared print layout | Optional only if Pi4 opens inspection print from non–leader-board routes |
-| Formal QR / report ID on print sheets | Out of scope |
+| Record page QR identity (page/entry/marker ranges) | **Done** — `a2158875` · Pi5 deploy **`20260615-183021-14261`** |
+| P1 OCR fiducial removal | **Done** — fiducials on record pages only (`a2158875`) |
+| QR scan backend / OCR ingest of printed values | **Not implemented** (payload is for future reader) |
+| Formal DB-backed report ID (replace preview identifier) | **Not implemented** |
 | Print disclaimer placement | **Done** — toolbar-only on screen (`3b83b577`); not on printed sheets |
+| Pi5 print dialog / PDF / physical printer A4 landscape | **Not verified** on kiosk hardware |
 
 ## References
 

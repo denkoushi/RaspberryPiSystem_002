@@ -114,6 +114,40 @@ export function buildInspectionDrawingPrintQrPayloadSummary(input: {
   return `${input.previewIdentifier}\n${input.templateId}\n${input.fhincd}\n${input.resourceCd}`;
 }
 
+export function buildInspectionDrawingPrintRecordPageQrPayload(input: {
+  metadata: InspectionDrawingPrintMetadata;
+  page: InspectionDrawingPrintRecordPage;
+  totalPages: number;
+}): string {
+  const entryNumbers = input.page.entrySlots.map((slot) => slot.entryIndex + 1);
+  const entryIndexFrom = entryNumbers.length > 0 ? Math.min(...entryNumbers) : null;
+  const entryIndexTo = entryNumbers.length > 0 ? Math.max(...entryNumbers) : null;
+  const markerNumbers = input.page.slots
+    .filter(
+      (slot): slot is Extract<InspectionDrawingPrintRecordSlot, { kind: 'point' }> =>
+        slot.kind === 'point'
+    )
+    .map((slot) => slot.point.markerNo);
+  const markerNoFrom = markerNumbers.length > 0 ? Math.min(...markerNumbers) : null;
+  const markerNoTo = markerNumbers.length > 0 ? Math.max(...markerNumbers) : null;
+
+  return JSON.stringify({
+    type: 'inspection-drawing-record-page',
+    schemaVersion: 1,
+    reportId: input.metadata.previewIdentifier,
+    templateId: input.metadata.templateId,
+    fhincd: input.metadata.fhincd,
+    resourceCd: input.metadata.resourceCd,
+    templateVersion: input.metadata.templateVersion,
+    pageNumber: input.page.pageNumber,
+    totalPages: input.totalPages,
+    entryIndexFrom,
+    entryIndexTo,
+    markerNoFrom,
+    markerNoTo
+  });
+}
+
 export function formatInspectionDrawingPrintTolerance(point: InspectionDrawingPoint): string {
   if (isLegacyAbsoluteOnlyPoint(point) && point.legacyAbsoluteBounds) {
     const { lowerLimit, upperLimit } = point.legacyAbsoluteBounds;

@@ -5,9 +5,12 @@ export const INSPECTION_DRAWING_PRINT_SHEET_HEIGHT_MM = 210;
 /** Padding applied to each print sheet (`p-[5mm]`). */
 export const INSPECTION_DRAWING_PRINT_SHEET_PADDING_MM = 5;
 
+/** Drawing page padding after removing P1 OCR fiducials. */
+export const INSPECTION_DRAWING_PRINT_DRAWING_PAGE_PADDING_MM = 3;
+
 /** Drawing `<main>` inner width after sheet padding (must match marker layout math). */
 export const INSPECTION_DRAWING_PRINT_DRAWING_AREA_WIDTH_MM =
-  INSPECTION_DRAWING_PRINT_SHEET_WIDTH_MM - INSPECTION_DRAWING_PRINT_SHEET_PADDING_MM * 2;
+  INSPECTION_DRAWING_PRINT_SHEET_WIDTH_MM - INSPECTION_DRAWING_PRINT_DRAWING_PAGE_PADDING_MM * 2;
 
 /** Record sheet page capacity. */
 export const INSPECTION_DRAWING_PRINT_RECORD_POINTS_PER_PAGE = 14;
@@ -39,7 +42,7 @@ export function getInspectionDrawingPrintRecordTableWidthMm(entryColumnCount: nu
 export const INSPECTION_DRAWING_PRINT_FILL_EMPTY_RECORD_SLOTS = true;
 
 /** Drawing page main area height budget (mm) after compact header. */
-export const INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM = 184;
+export const INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM = 193;
 
 export const INSPECTION_DRAWING_PRINT_TIME_ZONE = 'Asia/Tokyo';
 
