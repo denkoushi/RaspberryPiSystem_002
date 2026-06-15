@@ -55,6 +55,7 @@ describe('leaderboardBoardCachePersistPolicy', () => {
             resolvedMachineName: null,
             customerName: null,
             hasSelfInspectionDrawing: false,
+            selfInspectionTemplateId: null,
             selfInspectionStatus: null,
             selfInspectionEntryPath: null
           }
@@ -70,6 +71,7 @@ describe('leaderboardBoardCachePersistPolicy', () => {
             resolvedMachineName: null,
             customerName: null,
             hasSelfInspectionDrawing: true,
+            selfInspectionTemplateId: 'tpl-1',
             selfInspectionStatus: 'in_progress' as const,
             selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/start?x=1'
           }

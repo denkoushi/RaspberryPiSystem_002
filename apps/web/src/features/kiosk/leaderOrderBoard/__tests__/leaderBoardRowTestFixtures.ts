@@ -22,6 +22,7 @@ export function mkLeaderBoardRow(partial: Partial<LeaderBoardRow> & Pick<LeaderB
     isCompleted: false,
     note: null,
     hasSelfInspectionDrawing: false,
+    selfInspectionTemplateId: null,
     selfInspectionStatus: null,
     selfInspectionEntryPath: null,
     ...partial

@@ -1,3 +1,5 @@
+import { INSPECTION_DRAWING_PRINT_MAX_ENTRY_COUNT } from './inspectionDrawingPrintConstants';
+
 import type { InspectionDrawingLocationReturn } from './inspectionDrawingReturnNavigation';
 
 /** キオスクヘッダー「検査図面」タブのルート接頭辞 */
@@ -43,8 +45,33 @@ export function kioskInspectionDrawingTemplateEditPath(templateId: string): stri
   return `${KIOSK_INSPECTION_DRAWING_TEMPLATE_EDIT_PATH_PREFIX}/${templateId}/edit`;
 }
 
-export function kioskInspectionDrawingTemplatePrintPath(templateId: string): string {
-  return `${KIOSK_INSPECTION_DRAWING_TEMPLATE_EDIT_PATH_PREFIX}/${templateId}/print`;
+const KIOSK_INSPECTION_DRAWING_PRINT_PLANNED_QUANTITY_QUERY = 'plannedQuantity';
+
+export function kioskInspectionDrawingTemplatePrintPath(
+  templateId: string,
+  options: { plannedQuantity?: number | null } = {}
+): string {
+  const path = `${KIOSK_INSPECTION_DRAWING_TEMPLATE_EDIT_PATH_PREFIX}/${templateId}/print`;
+  const plannedQuantity = normalizeInspectionDrawingPrintPlannedQuantity(options.plannedQuantity);
+  if (plannedQuantity == null) return path;
+  const params = new URLSearchParams({
+    [KIOSK_INSPECTION_DRAWING_PRINT_PLANNED_QUANTITY_QUERY]: String(plannedQuantity)
+  });
+  return `${path}?${params.toString()}`;
+}
+
+export function parseInspectionDrawingPrintPlannedQuantityFromSearch(search: string): number | null {
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  return normalizeInspectionDrawingPrintPlannedQuantity(
+    Number(params.get(KIOSK_INSPECTION_DRAWING_PRINT_PLANNED_QUANTITY_QUERY))
+  );
+}
+
+function normalizeInspectionDrawingPrintPlannedQuantity(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const count = Math.floor(value);
+  if (count <= 0) return null;
+  return Math.min(count, INSPECTION_DRAWING_PRINT_MAX_ENTRY_COUNT);
 }
 
 const KIOSK_INSPECTION_DRAWING_SOURCE_TEMPLATE_ID_QUERY = 'sourceTemplateId';

@@ -9,6 +9,7 @@ export type LeaderboardRowDecoration = {
   resolvedMachineName: string | null;
   customerName: string | null;
   hasSelfInspectionDrawing: boolean;
+  selfInspectionTemplateId: string | null;
   selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
   selfInspectionEntryPath: string | null;
 };
@@ -40,6 +41,7 @@ export function mergeLeaderboardDecorationsIntoAccumulator(
       resolvedMachineName: d.resolvedMachineName ?? null,
       customerName: d.customerName ?? null,
       hasSelfInspectionDrawing: d.hasSelfInspectionDrawing,
+      selfInspectionTemplateId: d.selfInspectionTemplateId ?? null,
       selfInspectionStatus: d.selfInspectionStatus ?? null,
       selfInspectionEntryPath: d.selfInspectionEntryPath ?? null
     });

@@ -10,6 +10,7 @@ const DEFAULT_LEADERBOARD_ROW_DECORATION: LeaderboardRowDecoration = {
   resolvedMachineName: null,
   customerName: null,
   hasSelfInspectionDrawing: false,
+  selfInspectionTemplateId: null,
   selfInspectionStatus: null,
   selfInspectionEntryPath: null
 };
@@ -24,6 +25,7 @@ function normalizeLeaderboardRowDecoration(
     resolvedMachineName: raw.resolvedMachineName ?? null,
     customerName: raw.customerName ?? null,
     hasSelfInspectionDrawing: raw.hasSelfInspectionDrawing === true,
+    selfInspectionTemplateId: raw.selfInspectionTemplateId ?? null,
     selfInspectionStatus: raw.selfInspectionStatus ?? null,
     selfInspectionEntryPath: raw.selfInspectionEntryPath ?? null
   };
@@ -44,6 +46,7 @@ export type PersistedLeaderboardBoardCacheRecord = {
         resolvedMachineName: string | null;
         customerName: string | null;
         hasSelfInspectionDrawing: boolean;
+        selfInspectionTemplateId: string | null;
         selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
         selfInspectionEntryPath: string | null;
       }

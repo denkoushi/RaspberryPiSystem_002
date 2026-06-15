@@ -64,7 +64,7 @@ export function fingerprintLeaderboardBoardDecorations(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(
       ([id, d]) =>
-        `${id}:${d.resolvedMachineName ?? ''}:${d.customerName ?? ''}:${d.hasSelfInspectionDrawing ? 1 : 0}:${d.selfInspectionStatus ?? ''}:${d.selfInspectionEntryPath ?? ''}`
+        `${id}:${d.resolvedMachineName ?? ''}:${d.customerName ?? ''}:${d.hasSelfInspectionDrawing ? 1 : 0}:${d.selfInspectionTemplateId ?? ''}:${d.selfInspectionStatus ?? ''}:${d.selfInspectionEntryPath ?? ''}`
     )
     .join('\u0003');
 

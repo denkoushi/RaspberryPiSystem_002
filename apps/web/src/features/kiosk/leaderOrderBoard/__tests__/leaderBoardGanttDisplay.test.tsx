@@ -38,6 +38,7 @@ const cardProps = {
   onCompleteRow: noop,
   completePending: false,
   orderPending: false,
+  onOpenInspectionWorkflow: noop,
   footerResourceChipsByPartKey: new Map()
 };
 
@@ -195,6 +196,7 @@ describe('LeaderBoardGrid gantt', () => {
     orderPending: false,
     onOpenNote: noop,
     notePending: false,
+    onOpenInspectionWorkflow: noop,
     footerResourceChipsByPartKey: new Map()
   };
 
