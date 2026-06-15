@@ -10,8 +10,8 @@
 | **date** | 2026-06-15 |
 | **source_of_truth** | This file |
 | **branch** | `main` |
-| **commits** | `8dfc9b13` (workflow modal) · `5116f75f` (plannedQuantity print) · `e0b3703d` (OCR-friendly record value boxes) |
-| **ci** | GitHub Actions **`27529631077`** success (after `e0b3703d`) |
+| **commits** | `8dfc9b13` (workflow modal) · `5116f75f` (plannedQuantity print) · `e0b3703d` (OCR-friendly record value boxes) · `3b83b577` (print disclaimer toolbar-only) |
+| **ci** | GitHub Actions **`27532188574`** success (after `3b83b577` · PR **#443**) |
 
 ## Context
 
@@ -34,6 +34,7 @@ Operators start self-inspection from the leader order board row action **検** (
 | **Print alignment** | Corner **SheetFiducials** (L-shaped markers) on drawing and record pages. |
 | **Record header** | Column guide **測定値（符号 / 整数4桁 / 小数3桁）**. No 判定 / 確認 / 備考 columns. |
 | **Row decoration** | `selfInspectionTemplateId` / `selfInspectionEntryPath` come from **`POST …/leaderboard-decorations`** with body **`{ targetDeviceScopeKey, rowIds }`** (not `rows`). |
+| **Print disclaimer** | `INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER` is **screen-only** in `.inspection-print-toolbar`. It is **not** rendered on `.inspection-print-sheet` pages (print CSS hides toolbar). |
 
 ### Related code
 
@@ -80,7 +81,26 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 | **PLAY RECAP** | `ok=134` `changed=4` **`failed=0`** |
 | **Docker** | `web` rebuild (`Git: changed`) |
 
+### Production deploy (2026-06-15 · print disclaimer toolbar-only · Pi5 only)
+
+| Field | Value |
+|-------|-------|
+| **Branch / PR** | `review/inspection-print-preview-polish` · **#443** |
+| **Detach Run ID** | `20260615-171427-5539` |
+| **Git HEAD (Pi5)** | `3b83b577` |
+| **PLAY RECAP** | `ok=134` `changed=4` **`failed=0`** |
+| **Docker** | `web` rebuild (`Git: changed`) |
+| **Web bundle** | `index-C1vJd6pe.js` (`HTMLプレビュー` ×1 · `inspection-print-toolbar` present) |
+
 ## Validation
+
+### Automated (2026-06-15 · after print disclaimer deploy `3b83b577`)
+
+```bash
+./scripts/deploy/verify-phase12-real.sh
+```
+
+**Result**: PASS **43** / WARN **0** / FAIL **0** (~65s)
 
 ### Automated (2026-06-15 · after OCR deploy `e0b3703d`)
 
@@ -114,6 +134,15 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 | Leader board **検** → **帳票紙印刷** | Same print URL opens with OCR boxes | OK |
 | Record table guide | **測定値（符号 / 整数4桁 / 小数3桁）** visible; no 判定/確認/備考 | OK (unit test + DOM) |
 
+### Manual kiosk (2026-06-15 · print disclaimer · after `3b83b577` deploy)
+
+**Access**: `https://127.0.0.1:18443/...` via SSH tunnel `-L 18443:127.0.0.1:443`
+
+| Step | Expected | Observed |
+|------|----------|----------|
+| Print preview direct URL | `…/templates/dd7d5c5f-…/print?plannedQuantity=5`; disclaimer in **toolbar only** | OK (`disclaimerInToolbar=true` · `disclaimerInSheets=false` · sheets **2** · value boxes **60**) |
+| Sheet content | No `HTMLプレビュー` text on `.inspection-print-sheet` | OK |
+
 ## Local Notes JA
 
 - UI labels (do not rename in docs): **検査方法を選択** · **デジタル入力** · **帳票紙印刷** · row button **検**
@@ -126,7 +155,8 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 | Pi4 kiosk deploy for inspection print / leader board | **Not required** (entry is Pi5 leader board only) |
 | `verification-checklist.md` dedicated § | Not added; reuse leader board + part-measurement manual steps |
 | Full Pi4 rollout for shared print layout | Optional only if Pi4 opens inspection print from non–leader-board routes |
-| Formal QR / report ID on print sheets | Out of scope (`INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER` remains) |
+| Formal QR / report ID on print sheets | Out of scope |
+| Print disclaimer placement | **Done** — toolbar-only on screen (`3b83b577`); not on printed sheets |
 
 ## References
 
