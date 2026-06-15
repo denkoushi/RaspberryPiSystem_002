@@ -74,7 +74,7 @@ describe('InspectionDrawingPrintPreview', () => {
     printSpy.mockRestore();
   });
 
-  it('shows preview disclaimer and omits draft placeholder labels', async () => {
+  it('omits sheet preview disclaimer and draft placeholder labels', async () => {
     render(
       <InspectionDrawingPrintPreview
         viewModel={viewModel}
@@ -85,15 +85,26 @@ describe('InspectionDrawingPrintPreview', () => {
 
     loadPreviewDrawingProbe();
 
-    await waitFor(() => {
-      expect(screen.getAllByText(INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER).length).toBeGreaterThan(0);
-    });
+    await screen.findAllByTestId('inspection-print-sheet-header');
 
+    expect(screen.queryByText(INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER)).toBeNull();
     expect(screen.queryByText(/QR予定/)).toBeNull();
     expect(screen.queryByText(/将来読取用/)).toBeNull();
     expect(screen.queryByText(/数値欄は仮配置/)).toBeNull();
     expect(screen.getByText('10')).toBeInTheDocument();
     expect(screen.getByText('-0.05 - 0.05')).toBeInTheDocument();
+  });
+
+  it('keeps the preview disclaimer in the toolbar only', () => {
+    render(
+      <InspectionDrawingPrintPreview
+        viewModel={viewModel}
+        imageUrl={INSPECTION_DRAWING_PREVIEW_IMAGE_URL}
+        showToolbar
+      />
+    );
+
+    expect(screen.getByText(INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER)).toBeInTheDocument();
   });
 
   it('uses a compact single header row on drawing and record pages', async () => {
