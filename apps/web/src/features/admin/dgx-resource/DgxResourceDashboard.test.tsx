@@ -186,20 +186,18 @@ describe('DgxResourceDashboard', () => {
 
     expect(screen.getByRole('heading', { name: 'DGX リソース' })).toBeInTheDocument();
 
-    expect(await screen.findByText('業務推論')).toBeInTheDocument();
-    expect(screen.getAllByText('準備完了').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('業務').length).toBeGreaterThan(0);
+    expect(await screen.findByText('業務 Ready')).toBeInTheDocument();
+    expect(screen.getByText('Current State')).toBeInTheDocument();
+    expect(screen.getByText('Model')).toBeInTheDocument();
+    expect(screen.getByText('Memory')).toBeInTheDocument();
+    expect(screen.getAllByText('GPU').length).toBeGreaterThan(0);
+    expect(screen.getByText('Alerts')).toBeInTheDocument();
+    expect(screen.getAllByText('27B').length).toBeGreaterThan(0);
     expect(screen.getAllByText('96 / 128 GiB').length).toBeGreaterThan(0);
-    expect(screen.getByText('GPU Temp')).toBeInTheDocument();
-    expect(screen.getAllByText('46℃').length).toBeGreaterThan(0);
-    expect(screen.getByText('運用前チェック')).toBeInTheDocument();
-    expect(screen.getByText('電力')).toBeInTheDocument();
-    expect(screen.getByText('クロック')).toBeInTheDocument();
-    expect(screen.getByText('1280 MHz')).toBeInTheDocument();
-    expect(screen.getAllByText('11 / 120 W').length).toBeGreaterThan(0);
-    expect(screen.getByText('vLLM疎通')).toBeInTheDocument();
-    expect(screen.getByText('疎通OK')).toBeInTheDocument();
-    expect(screen.getByText('NVIDIA GB10 / Driver 580.159.03')).toBeInTheDocument();
+    expect(screen.getAllByText('44%').length).toBeGreaterThan(0);
+    expect(screen.getByText('46℃ / 11W')).toBeInTheDocument();
+    expect(screen.getByText('なし')).toBeInTheDocument();
+    expect(screen.getByText('詳細・保守・ログ')).toBeInTheDocument();
     expect(screen.getByText('primary-scenario-flow')).toBeInTheDocument();
   });
 });
