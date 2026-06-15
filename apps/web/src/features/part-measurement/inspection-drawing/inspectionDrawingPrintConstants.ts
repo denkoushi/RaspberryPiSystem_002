@@ -42,7 +42,7 @@ export function getInspectionDrawingPrintRecordTableWidthMm(entryColumnCount: nu
 export const INSPECTION_DRAWING_PRINT_FILL_EMPTY_RECORD_SLOTS = true;
 
 /** Drawing page main area height budget (mm) after compact header. */
-export const INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM = 193;
+export const INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM = 195;
 
 export const INSPECTION_DRAWING_PRINT_TIME_ZONE = 'Asia/Tokyo';
 
