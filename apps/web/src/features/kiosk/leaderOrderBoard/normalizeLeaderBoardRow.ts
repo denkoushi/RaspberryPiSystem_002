@@ -76,6 +76,10 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     isCompleted: isRowCompleted(data),
     note,
     hasSelfInspectionDrawing: Boolean((row as ProductionScheduleRow & { hasSelfInspectionDrawing?: boolean }).hasSelfInspectionDrawing),
+    selfInspectionTemplateId:
+      (row as ProductionScheduleRow & {
+        selfInspectionTemplateId?: string | null;
+      }).selfInspectionTemplateId ?? null,
     selfInspectionStatus:
       (row as ProductionScheduleRow & {
         selfInspectionStatus?: 'not_started' | 'in_progress' | 'completed' | null;

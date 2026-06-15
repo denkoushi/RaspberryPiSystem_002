@@ -1,6 +1,5 @@
 import clsx from 'clsx';
 import { memo } from 'react';
-import { Link } from 'react-router-dom';
 
 import { KioskPencilGlyph } from '../../../components/kiosk/KioskPencilGlyph';
 import {
@@ -34,6 +33,7 @@ export type LeaderOrderResourceRowProps = {
   dueDatePending?: boolean;
   onOpenNote?: (row: LeaderBoardRow) => void;
   notePending?: boolean;
+  onOpenInspectionWorkflow?: (row: LeaderBoardRow) => void;
   footerResourceChips?: readonly KioskResourceProgressProcessChip[];
 };
 
@@ -55,6 +55,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   dueDatePending,
   onOpenNote,
   notePending,
+  onOpenInspectionWorkflow,
   footerResourceChips = []
 }: LeaderOrderResourceRowProps) {
   const isSignage = variant === 'signage';
@@ -70,6 +71,9 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   const pairLeftColumnClass = (hasRight: boolean) =>
     hasRight ? 'min-w-0 max-w-[50%] flex-[0_0_50%]' : 'min-w-0 flex-1';
   const hasNote = Boolean(row.note && row.note.trim().length > 0);
+  const canOpenSelfInspectionWorkflow =
+    row.hasSelfInspectionDrawing &&
+    (Boolean(row.selfInspectionEntryPath?.trim()) || Boolean(row.selfInspectionTemplateId?.trim()));
   const selfInspectionStatusClass =
     row.selfInspectionStatus === 'completed'
       ? 'border-sky-300 bg-sky-500 text-slate-950'
@@ -164,19 +168,22 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
             <KioskPencilGlyph />
           </button>
         )}
-        {isSignage || !row.hasSelfInspectionDrawing || !row.selfInspectionEntryPath ? null : (
-          <Link
-            to={row.selfInspectionEntryPath}
-            onClick={(e) => e.stopPropagation()}
+        {isSignage || !canOpenSelfInspectionWorkflow ? null : (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenInspectionWorkflow?.(row);
+            }}
             className={clsx(
               'flex h-7 min-w-7 shrink-0 items-center justify-center rounded border px-2 text-[10px] font-bold transition-colors',
               selfInspectionStatusClass
             )}
-            aria-label="自主検査を開く"
-            title="自主検査を開く"
+            aria-label="検査方法を選択"
+            title="検査方法を選択"
           >
             検
-          </Link>
+          </button>
         )}
       </div>
       {hasClusterCustomerRow ? (

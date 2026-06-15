@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import {
   useKioskProductionScheduleHistoryProgress,
@@ -18,6 +19,7 @@ import {
 import { LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE } from '../../features/kiosk/leaderOrderBoard/constants';
 import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
 import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
+import { LeaderBoardInspectionWorkflowModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardInspectionWorkflowModal';
 import { LeaderBoardLeftToolStack } from '../../features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack';
 import { LeaderBoardProcessChangeResidualSummary } from '../../features/kiosk/leaderOrderBoard/LeaderBoardProcessChangeResidualSummary';
 import { LeaderBoardResourceSlotPickerModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardResourceSlotPickerModal';
@@ -42,6 +44,7 @@ import { usePersistedLeaderBoardSeibanEval } from '../../features/kiosk/leaderOr
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditionsWithStorageKey } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
+import { kioskInspectionDrawingTemplatePrintPath } from '../../features/part-measurement/inspection-drawing';
 import { KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK } from '../../hooks/kioskRevealUi';
 import { useKioskLeftEdgeDrawerReveal } from '../../hooks/useKioskLeftEdgeDrawerReveal';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
@@ -57,6 +60,7 @@ const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
 
 export function ProductionScheduleLeaderOrderBoardPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const isMac = typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
   const macManualOrderV2 = isMac && MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED;
 
@@ -384,6 +388,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const [selectedResourceCd, setSelectedResourceCd] = useState<string | null>(null);
   const [slotModalOpen, setSlotModalOpen] = useState(false);
   const [isSeibanListPanelOpen, setIsSeibanListPanelOpen] = useState(false);
+  const [inspectionWorkflowRow, setInspectionWorkflowRow] = useState<LeaderBoardRow | null>(null);
   /** 備考モーダル対象行の製番（製番登録ボタン用） */
   const [noteModalTargetFseiban, setNoteModalTargetFseiban] = useState<string | null>(null);
 
@@ -435,6 +440,27 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     },
     [startNoteEdit]
   );
+
+  const handleOpenInspectionWorkflow = useCallback((row: LeaderBoardRow) => {
+    setInspectionWorkflowRow(row);
+  }, []);
+
+  const handleOpenInspectionDigitalInput = useCallback(
+    (row: LeaderBoardRow) => {
+      const path = row.selfInspectionEntryPath?.trim();
+      if (!path) return;
+      setInspectionWorkflowRow(null);
+      navigate(path);
+    },
+    [navigate]
+  );
+
+  const handleOpenInspectionPaperPrint = useCallback((row: LeaderBoardRow) => {
+    const templateId = row.selfInspectionTemplateId?.trim();
+    if (!templateId) return;
+    setInspectionWorkflowRow(null);
+    window.open(kioskInspectionDrawingTemplatePrintPath(templateId), '_blank', 'noopener,noreferrer');
+  }, []);
 
   const handleRegisterSeibanFromNoteModal = useCallback(async () => {
     const f = noteModalTargetFseiban?.trim();
@@ -564,6 +590,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               orderPending={orderPending}
               onOpenNote={handleOpenRowNote}
               notePending={notePending}
+              onOpenInspectionWorkflow={handleOpenInspectionWorkflow}
               interactionLocked={isInteractionLocked}
               footerResourceChipsByPartKey={footerResourceChipsByPartKey}
               seibanEvalEnabled={seibanEvalEnabled}
@@ -593,6 +620,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         onSlotCountChange={setSlotCount}
         resourceCdBySlotIndex={resourceCdBySlotIndex}
         assignSlotCd={assignSlotCd}
+      />
+      <LeaderBoardInspectionWorkflowModal
+        row={inspectionWorkflowRow}
+        onClose={() => setInspectionWorkflowRow(null)}
+        onOpenDigitalInput={handleOpenInspectionDigitalInput}
+        onOpenPaperPrint={handleOpenInspectionPaperPrint}
       />
       <KioskNoteModal
         isOpen={isNoteModalOpen}

@@ -240,7 +240,7 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 | **管理 UI** | 管理テンプレ・キオスク検査図面作成/改版に `selfInspectionMode`（`full` / `single` / `first_last` / `fixed_count`）と `selfInspectionFixedCount`（`fixed_count` 時のみ必須）。API は `sample` を `fixed_count` のエイリアスとして受理。 |
 | **保存モデル** | `SelfInspectionSession -> SelfInspectionLotEntry -> SelfInspectionMeasurementValue` の3層。`SelfInspectionLotEntry.entrySlotKind` で「最初/最終」等の意味を保持。 |
 | **完了条件** | 必須 **slot 集合**がすべて測定値保存済みかで判定（件数だけにしない）。`full` は `plannedQuantity`（**2,000 件超は開始不可**）。`single` は 1 件。`first_last` は `plannedQuantity >= 2` のみ、index `0` と `plannedQuantity-1` の 2 slot。`fixed_count` は `1 <= selfInspectionFixedCount <= plannedQuantity`。 |
-| **順位ボード連携** | decoration に `hasSelfInspectionDrawing` / `selfInspectionStatus` / `selfInspectionEntryPath` を追加。図面あり行だけ **検** ボタンを表示。 |
+| **順位ボード連携** | decoration に `hasSelfInspectionDrawing` / `selfInspectionTemplateId` / `selfInspectionStatus` / `selfInspectionEntryPath` を追加。図面あり行は **検** ボタンから **デジタル入力** / **帳票紙印刷** を選択。 |
 
 ### API 契約
 
@@ -263,7 +263,7 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 - **一覧装飾**: 抜取数 > 指示数のテンプレ、または **全数で指示数 > 2,000** の行は `hasSelfInspectionDrawing: false`（一覧全体は落とさない）。**既存セッション**はテンプレ退役後も `scheduleRowId` で再開導線を出す。
 - **詳細 API**: `GET …/sessions/:id?entryIndex=N` で `focusedEntry` のみ測定値を返す。一覧 `entries` はメタデータのみ。保存後は React Query を該当 entry だけ `setQueryData` 更新。
 - **キオスク一覧**: `GET /kiosk/production-schedule?selfInspectionEligibleOnly=true` で開始可能行のみをサーバー側抽出（生産日程をチャンク走査、`page` / `pageSize` / `hasMore`）。
-- 順位ボードの `selfInspectionEntryPath` は `/start?...` を返し、UI 側で resolve-or-create して **既存セッションへ再入場**できる。
+- 順位ボードの `selfInspectionEntryPath` は `/start?...` を返し、UI 側で resolve-or-create して **既存セッションへ再入場**できる。`selfInspectionTemplateId` があれば、同じ **検** 導線から保存済み検査図面の帳票プレビューを開く。
 - 検査図面一覧 API `GET /inspection-drawing/templates` も `selfInspectionMode` / `selfInspectionFixedCount`（互換で `selfInspectionSampleSize`）を返す。キオスク改版 `POST …/inspection-drawing/templates/:id/revise` も自主検査設定を受け付ける。
 - **検査図面編集（丸数字・公差）**: 測定点は `markerNo` 独立採番（削除で他番号は変えない・追加は最小欠番）。UI は **基準値＋下限/上限公差（基準値への符号付きオフセット）** → 保存時に絶対 `lowerLimit`/`upperLimit`（`lowerLimit = nominal + lowerOffset`, `upperLimit = nominal + upperOffset` · `apps/web/.../toleranceFields.ts`）。`nominalValue=null` で下限/上限だけある既存行は **`legacyAbsoluteBounds`**（名称のみ変更・基準値のみ入力は絶対値維持。片側公差入力で符号付きモードへ移行し両側 offset を seed · `markerNumbering.ts` / `mergeInspectionDrawingPointPatch`）。名称は固定候補 select（`inspectionDrawingMeasurementLabelOptions.ts`、候補外既存値は一時 option）。作成/改版は上辺 `pointListSlot` に測定点一覧（`InspectionDrawingPointSummaryStrip`）。自主検査セッションのみ測定値 **候補 dropdown + 手入力**（`selfInspectionMeasurementValueOptions.ts`、最大 200 件・超過は手入力のみ）。本番記録画面の測定値入力は **自由入力のまま**。
 

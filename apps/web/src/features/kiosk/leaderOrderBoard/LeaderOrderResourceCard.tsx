@@ -44,6 +44,7 @@ type Props = {
   /** 備考の追加・編集。空行はグレー鉛筆、内容ありは色付き鉛筆（親がモーダルを開く） */
   onOpenNote?: (row: LeaderBoardRow) => void;
   notePending?: boolean;
+  onOpenInspectionWorkflow?: (row: LeaderBoardRow) => void;
   /** 製番 OR フィルタ選択時のみ行左縁に識別色（全件表示時は無色） */
   activeSeibanFilters?: readonly string[];
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
@@ -72,6 +73,7 @@ function LeaderOrderResourceCardInner({
   orderPending,
   onOpenNote,
   notePending,
+  onOpenInspectionWorkflow,
   activeSeibanFilters,
   footerResourceChipsByPartKey,
   seibanEvalEnabled = false,
@@ -174,6 +176,7 @@ function LeaderOrderResourceCardInner({
       dueDatePending={dueDatePending}
       onOpenNote={onOpenNote}
       notePending={notePending}
+      onOpenInspectionWorkflow={onOpenInspectionWorkflow}
       footerResourceChips={footerChips}
     />
   );

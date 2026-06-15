@@ -410,6 +410,7 @@ export type ProductionScheduleLeaderboardDecorationsResponse = {
     resolvedMachineName: string | null;
     customerName: string | null;
     hasSelfInspectionDrawing: boolean;
+    selfInspectionTemplateId: string | null;
     selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
     selfInspectionEntryPath: string | null;
   }>;

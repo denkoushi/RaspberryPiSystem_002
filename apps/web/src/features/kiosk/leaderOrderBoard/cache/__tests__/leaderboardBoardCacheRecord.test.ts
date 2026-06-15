@@ -67,6 +67,7 @@ describe('leaderboardBoardCacheRecord', () => {
       resolvedMachineName: 'M',
       customerName: 'C',
       hasSelfInspectionDrawing: true,
+      selfInspectionTemplateId: 'tpl-1',
       selfInspectionStatus: 'in_progress',
       selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/sessions/s1'
     });
@@ -76,6 +77,7 @@ describe('leaderboardBoardCacheRecord', () => {
       resolvedMachineName: 'M',
       customerName: 'C',
       hasSelfInspectionDrawing: true,
+      selfInspectionTemplateId: 'tpl-1',
       selfInspectionStatus: 'in_progress',
       selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/sessions/s1'
     });
@@ -92,6 +94,7 @@ describe('leaderboardBoardCacheRecord', () => {
       resolvedMachineName: 'M',
       customerName: null,
       hasSelfInspectionDrawing: false,
+      selfInspectionTemplateId: null,
       selfInspectionStatus: null,
       selfInspectionEntryPath: null
     });

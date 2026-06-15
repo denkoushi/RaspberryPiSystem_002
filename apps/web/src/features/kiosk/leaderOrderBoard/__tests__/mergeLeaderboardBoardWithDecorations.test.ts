@@ -34,12 +34,23 @@ describe('mergeLeaderboardBoardWithDecorations', () => {
 
   it('行に装飾をマージしフッタチップを付与する', () => {
     const acc = mergeLeaderboardDecorationsIntoAccumulator(createEmptyAccumulatedLeaderboardDecorations(), {
-      rowDecorations: [{ id: 'row-1', resolvedMachineName: 'M1', customerName: 'C1' }],
+      rowDecorations: [
+        {
+          id: 'row-1',
+          resolvedMachineName: 'M1',
+          customerName: 'C1',
+          hasSelfInspectionDrawing: true,
+          selfInspectionTemplateId: 'tpl-1',
+          selfInspectionStatus: 'not_started',
+          selfInspectionEntryPath: '/kiosk/part-measurement/self-inspection/start?templateId=tpl-1'
+        }
+      ],
       leaderboardFooterChipsByPartKey: { 'k\0a': [] }
     });
     const merged = mergeLeaderboardBoardWithDecorations(lightBoard, acc);
     expect(merged.rows[0]?.resolvedMachineName).toBe('M1');
     expect(merged.rows[0]?.customerName).toBe('C1');
+    expect(merged.rows[0]?.selfInspectionTemplateId).toBe('tpl-1');
     expect(merged.leaderboardFooterChipsByPartKey).toEqual({ 'k\0a': [] });
   });
 

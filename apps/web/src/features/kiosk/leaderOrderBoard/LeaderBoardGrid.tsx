@@ -24,6 +24,7 @@ export type LeaderBoardGridProps = {
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;
   notePending: boolean;
+  onOpenInspectionWorkflow: (row: LeaderBoardRow) => void;
   /** 背景同期中など、行操作を明示的に無効化 */
   interactionLocked?: boolean;
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
@@ -51,6 +52,7 @@ type SlotCardProps = {
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;
   notePending: boolean;
+  onOpenInspectionWorkflow: (row: LeaderBoardRow) => void;
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
   seibanEvalEnabled?: boolean;
   ganttEnabled?: boolean;
@@ -76,6 +78,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   orderPending,
   onOpenNote,
   notePending,
+  onOpenInspectionWorkflow,
   footerResourceChipsByPartKey,
   seibanEvalEnabled = false,
   ganttEnabled = false,
@@ -108,6 +111,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
       orderPending={orderPending}
       onOpenNote={onOpenNote}
       notePending={notePending}
+      onOpenInspectionWorkflow={onOpenInspectionWorkflow}
       footerResourceChipsByPartKey={footerResourceChipsByPartKey}
       seibanEvalEnabled={seibanEvalEnabled}
       ganttEnabled={ganttEnabled}
@@ -137,6 +141,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   orderPending,
   onOpenNote,
   notePending,
+  onOpenInspectionWorkflow,
   interactionLocked = false,
   footerResourceChipsByPartKey,
   seibanEvalEnabled = false,
@@ -189,6 +194,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             orderPending={orderPending || rowControlsLocked}
             onOpenNote={onOpenNote}
             notePending={notePending || rowControlsLocked}
+            onOpenInspectionWorkflow={onOpenInspectionWorkflow}
             footerResourceChipsByPartKey={footerResourceChipsByPartKey}
             seibanEvalEnabled={seibanEvalEnabled}
             ganttEnabled={ganttEnabled}
