@@ -9,9 +9,9 @@
 | **scope** | Kiosk leader order board · self-inspection entry · inspection drawing print preview |
 | **date** | 2026-06-15 |
 | **source_of_truth** | This file |
-| **branch** | `feat/leaderboard-inspection-workflow` |
-| **commits** | `8dfc9b13` (workflow modal) · `5116f75f` (plannedQuantity print) |
-| **ci** | GitHub Actions **`27519202406`** success (after `5116f75f`) |
+| **branch** | `main` |
+| **commits** | `8dfc9b13` (workflow modal) · `5116f75f` (plannedQuantity print) · `e0b3703d` (OCR-friendly record value boxes) |
+| **ci** | GitHub Actions **`27529631077`** success (after `e0b3703d`) |
 
 ## Context
 
@@ -29,6 +29,10 @@ Operators start self-inspection from the leader order board row action **検** (
 | **Print URL** | `…/inspection/templates/:id/print?plannedQuantity=N` when N is a positive integer; omitted when null/invalid. |
 | **Print cap** | `INSPECTION_DRAWING_PRINT_MAX_ENTRY_COUNT = 2000` in URL parse + view model (abuse guard). |
 | **Record layout** | `INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE = 5` (was 6). Full mode uses `plannedQuantity` for entry columns when set. |
+| **OCR record cells** | Each measurement column renders **`MeasurementValueWriteBoxes`**: sign box · 4 integer digit boxes · decimal point · 3 decimal digit boxes (`data-testid="inspection-print-measurement-value-boxes"`). Column widths (mm): no **8** · point **24** · spec **30** · value **45**. |
+| **Record text wrap** | Long point labels split across up to 2 lines (`splitRecordPointLabel`). Spec/tolerance split (`formatRecordSpecificationLines`; e.g. `合格範囲` on line 1). |
+| **Print alignment** | Corner **SheetFiducials** (L-shaped markers) on drawing and record pages. |
+| **Record header** | Column guide **測定値（符号 / 整数4桁 / 小数3桁）**. No 判定 / 確認 / 備考 columns. |
 | **Row decoration** | `selfInspectionTemplateId` / `selfInspectionEntryPath` come from **`POST …/leaderboard-decorations`** with body **`{ targetDeviceScopeKey, rowIds }`** (not `rows`). |
 
 ### Related code
@@ -38,6 +42,7 @@ Operators start self-inspection from the leader order board row action **検** (
 - [`kioskInspectionDrawingRoutes.ts`](../../apps/web/src/features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes.ts)
 - [`inspectionDrawingPrintViewModel.ts`](../../apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingPrintViewModel.ts)
 - [`inspectionDrawingPrintConstants.ts`](../../apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants.ts)
+- [`InspectionDrawingPrintPreview.tsx`](../../apps/web/src/features/part-measurement/inspection-drawing/InspectionDrawingPrintPreview.tsx)
 
 ## Deployment
 
@@ -47,17 +52,17 @@ Operators start self-inspection from the leader order board row action **検** (
 | **Pi4×4** | No | Leader board **検** workflow is Pi5-only; Pi4 rollout not needed for this feature |
 | **Pi3** | No | `skipping: no hosts matched` |
 
-**Standard command** (pre-merge branch name; post-merge use `main`):
+**Standard command**:
 
 ```bash
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
-./scripts/update-all-clients.sh feat/leaderboard-inspection-workflow \
+./scripts/update-all-clients.sh main \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
 Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.md](../guides/quick-start-deployment.md)
 
-### Production deploy (2026-06-15 · Pi5 only)
+### Production deploy (2026-06-15 · workflow + plannedQuantity · Pi5 only)
 
 | Field | Value |
 |-------|-------|
@@ -66,15 +71,24 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 | **PLAY RECAP** | `ok=134` `changed=4` **`failed=0`** |
 | **Web bundle** | `/srv/site/assets/index-B-ixv-BH.js` (contains `plannedQuantity`) |
 
+### Production deploy (2026-06-15 · OCR record value boxes · Pi5 only)
+
+| Field | Value |
+|-------|-------|
+| **Detach Run ID** | `20260615-161806-4705` |
+| **Git HEAD (Pi5)** | `e0b3703d` |
+| **PLAY RECAP** | `ok=134` `changed=4` **`failed=0`** |
+| **Docker** | `web` rebuild (`Git: changed`) |
+
 ## Validation
 
-### Automated (2026-06-15 · after Pi5 deploy)
+### Automated (2026-06-15 · after OCR deploy `e0b3703d`)
 
 ```bash
 ./scripts/deploy/verify-phase12-real.sh
 ```
 
-**Result**: PASS **43** / WARN **0** / FAIL **0** (~61s)
+**Result**: PASS **43** / WARN **0** / FAIL **0** (~54s)
 
 ### Local (pre-push)
 
@@ -82,7 +96,7 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 - ESLint: import group spacing fix in `kioskInspectionDrawingRoutes.ts`
 - No API/Prisma migration in this branch
 
-### Manual kiosk (2026-06-15 · Pi5 · Mac browser via SSH tunnel)
+### Manual kiosk (2026-06-15 · workflow · Pi5 · Mac browser via SSH tunnel)
 
 **Access**: `https://127.0.0.1:18443/...` (not local Python proxy on `:19080` for POST APIs). Mac default client key: `client-key-mac-kiosk1` · scope example: **第2工場 · kensakuMain**.
 
@@ -91,6 +105,14 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 | Leader board **検** | Modal **検査方法を選択** with **デジタル入力** / **帳票紙印刷** | OK |
 | **帳票紙印刷** | New tab URL includes `plannedQuantity=5`; preview shows **1件目…5件目** | OK (`dd7d5c5f-…/print?plannedQuantity=5`) |
 | **デジタル入力** | Self-inspection session opens; **入力件（1 / 5）** matches planned quantity | OK (session `0fd8e983-…`) |
+
+### Manual kiosk (2026-06-15 · OCR layout · after `e0b3703d` deploy)
+
+| Step | Expected | Observed |
+|------|----------|----------|
+| Print preview direct URL | `plannedQuantity=5`; **1件目…5件目**; **60** `inspection-print-measurement-value-boxes` (12 points × 5 entries) | OK |
+| Leader board **検** → **帳票紙印刷** | Same print URL opens with OCR boxes | OK |
+| Record table guide | **測定値（符号 / 整数4桁 / 小数3桁）** visible; no 判定/確認/備考 | OK (unit test + DOM) |
 
 ## Local Notes JA
 
@@ -101,10 +123,10 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 
 | Item | Status |
 |------|--------|
-| Merge `feat/leaderboard-inspection-workflow` → `main` | Pending (this handoff) |
-| Pi4 kiosk deploy for this branch | **Not required** (feature entry is Pi5 leader board only) |
+| Pi4 kiosk deploy for inspection print / leader board | **Not required** (entry is Pi5 leader board only) |
 | `verification-checklist.md` dedicated § | Not added; reuse leader board + part-measurement manual steps |
-| Full Pi4 rollout for shared print layout (5 entries/page) | Optional only if Pi4 opens inspection print from non–leader-board routes |
+| Full Pi4 rollout for shared print layout | Optional only if Pi4 opens inspection print from non–leader-board routes |
+| Formal QR / report ID on print sheets | Out of scope (`INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER` remains) |
 
 ## References
 
