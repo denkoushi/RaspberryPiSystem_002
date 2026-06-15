@@ -6,6 +6,7 @@ import {
   INSPECTION_DRAWING_PREVIEW_PRINT_TEMPLATE
 } from '../inspectionDrawingPreviewFixtures';
 import {
+  INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM,
   INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER,
   INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM,
   INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE,
@@ -141,12 +142,23 @@ describe('InspectionDrawingPrintPreview', () => {
 
     await screen.findAllByTestId('inspection-print-sheet-header');
 
+    const drawingArea = screen.getByTestId('inspection-print-drawing-area');
+    expect(drawingArea.className).not.toContain('border-slate-900');
+    expect(drawingArea).toHaveStyle({
+      height: `${INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM}mm`
+    });
     expect(screen.getAllByTestId('inspection-print-sheet-fiducial')).toHaveLength(
       viewModel.recordPages.length * 4
     );
 
+    expect(screen.getByTestId('inspection-print-record-qr')).toHaveClass(
+      'absolute',
+      'right-[10mm]',
+      'top-[2.8mm]'
+    );
     const qrCodes = screen.getAllByTestId('inspection-print-record-qr-code');
     expect(qrCodes).toHaveLength(viewModel.recordPages.length);
+    expect(qrCodes[0]).toHaveClass('h-[18mm]', 'w-[18mm]');
 
     const payload = JSON.parse(qrCodes[0]?.getAttribute('data-qr-payload') ?? '{}') as Record<
       string,
@@ -201,6 +213,9 @@ describe('InspectionDrawingPrintPreview', () => {
     });
     expect(screen.getAllByTestId('inspection-print-measurement-value-boxes')).toHaveLength(
       viewModel.points.length * INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE
+    );
+    expect(screen.getAllByTestId('inspection-print-measurement-value-boxes')[0]).toHaveClass(
+      'h-[8.9mm]'
     );
     expect(screen.getByText('測定値（符号 / 整数4桁 / 小数3桁）')).toBeInTheDocument();
     expect(screen.getByText('1件目')).toBeInTheDocument();

@@ -53,7 +53,15 @@ function buildQrCodeSvgPath(payload: string): { width: number; height: number; p
   return { width, height, path: commands.join('') };
 }
 
-function QrCodeSvg({ payload, label }: { payload: string; label: string }) {
+function QrCodeSvg({
+  payload,
+  label,
+  className = 'h-[24mm] w-[24mm]'
+}: {
+  payload: string;
+  label: string;
+  className?: string;
+}) {
   const qr = useMemo(() => buildQrCodeSvgPath(payload), [payload]);
 
   return (
@@ -62,7 +70,7 @@ function QrCodeSvg({ payload, label }: { payload: string; label: string }) {
       data-qr-payload={payload}
       role="img"
       aria-label={label}
-      className="h-[24mm] w-[24mm] bg-white"
+      className={`${className} bg-white`}
       viewBox={`0 0 ${qr.width} ${qr.height}`}
       shapeRendering="crispEdges"
     >
@@ -138,7 +146,7 @@ function MeasurementValueWriteBoxes() {
   return (
     <span
       data-testid="inspection-print-measurement-value-boxes"
-      className="grid h-[8.1mm] items-stretch gap-[0.35mm]"
+      className="grid h-[8.9mm] items-stretch gap-[0.35mm]"
       style={{ gridTemplateColumns: '4.5mm 21.2mm 1.5mm repeat(3, 5mm)' }}
       aria-hidden="true"
     >
@@ -197,7 +205,7 @@ function RecordSlot({
 }) {
   if (slot.kind === 'empty') {
     return (
-      <tr className="h-[10.5mm] border-t border-dashed border-slate-300 text-slate-300" aria-hidden>
+      <tr className="h-[11.5mm] border-t border-dashed border-slate-300 text-slate-300" aria-hidden>
         <td className="border-r border-dashed border-slate-300 bg-slate-50" />
         <td className="border-r border-dashed border-slate-300 bg-slate-50" />
         <td className="border-r border-dashed border-slate-300 bg-slate-50" />
@@ -220,7 +228,7 @@ function RecordSlot({
   const specificationLines = formatRecordSpecificationLines(point);
 
   return (
-    <tr className="h-[10.5mm] border-t border-slate-900">
+    <tr className="h-[11.5mm] border-t border-slate-900">
       <td className="border-r border-slate-900 bg-slate-100 text-center text-[8pt] font-black">
         {point.markerNo}
       </td>
@@ -305,7 +313,8 @@ function DrawingPage({
         metadata={viewModel.metadata}
       />
       <main
-        className="relative overflow-hidden border-2 border-slate-900 bg-slate-50"
+        data-testid="inspection-print-drawing-area"
+        className="relative overflow-hidden bg-white"
         style={{ height: `${INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM}mm` }}
       >
         <img src={imageUrl} alt="" className="h-full w-full object-contain" />
@@ -341,10 +350,13 @@ function RecordPageQr({
   return (
     <aside
       data-testid="inspection-print-record-qr"
-      className="grid justify-items-center gap-[0.5mm] text-[5pt] font-black leading-none"
+      className="absolute right-[10mm] top-[2.8mm] z-20 grid justify-items-center leading-none"
     >
-      <QrCodeSvg payload={payload} label={`検査値記録欄 QR ${page.pageLabel}`} />
-      <span className="whitespace-nowrap font-mono">QR P{page.pageNumber}</span>
+      <QrCodeSvg
+        payload={payload}
+        label={`検査値記録欄 QR ${page.pageLabel}`}
+        className="h-[18mm] w-[18mm]"
+      />
     </aside>
   );
 }
@@ -363,7 +375,8 @@ function RecordPage({
   return (
     <article className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_1fr] gap-[1.6mm] overflow-hidden bg-white p-[5mm] shadow-2xl">
       <SheetFiducials />
-      <section className="grid grid-cols-[1fr_27mm] items-start gap-[2mm]">
+      <RecordPageQr page={page} metadata={metadata} totalPages={totalPages} />
+      <section className="pr-[30mm]">
         <div className="min-w-0">
           <SheetHeader title="検査値 記録欄" pageLabel={page.pageLabel} metadata={metadata} />
           <section
@@ -378,7 +391,6 @@ function RecordPage({
             ))}
           </section>
         </div>
-        <RecordPageQr page={page} metadata={metadata} totalPages={totalPages} />
       </section>
       <section className="min-h-0">
         <table
