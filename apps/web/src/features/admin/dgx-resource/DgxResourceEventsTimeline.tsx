@@ -17,20 +17,20 @@ export function DgxResourceEventsTimeline({ events }: Props) {
   const list = events.slice(0, 5);
   return (
     <div className="min-h-0 flex-1 overflow-hidden">
-      <h2 className="mb-2 text-lg font-semibold text-emerald-200/90">操作履歴</h2>
+      <h2 className="mb-2 text-base font-bold text-slate-950">操作履歴</h2>
       <ul className="space-y-1">
         {list.length === 0 ? (
-          <li className="rounded border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-white/55">
+          <li className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
             （まだイベントなし）
           </li>
         ) : (
           list.map((ev) => (
             <li
               key={ev.id}
-              className="truncate rounded border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-white/80"
+              className="truncate rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
               title={ev.message}
             >
-              <span className="mr-2 font-mono text-white/45">{fmtTime(ev.at)}</span>
+              <span className="mr-2 font-mono text-slate-500">{fmtTime(ev.at)}</span>
               {ev.message}
             </li>
           ))
