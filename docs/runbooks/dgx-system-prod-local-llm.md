@@ -279,6 +279,25 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - **知見**: API が profiles 2 件返却でも UI が 1 件だけ → **各 profile の `status`** と manifest の **`currentStorageLocation` を `ls` で突合**（[KB-365 §storage availability](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)）。
 - **KB**: [KB-365 §本番 storage path](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-model-profile-storage-path)·[deployment.md §storage path](../guides/deployment.md#dgx-model-profile-storage-path-2026-05-28)·[KB-366 §storage path](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-model-profile-storage-path)。
 
+**本番反映（2026-06-15・運用者コンソールレイアウト統合・Web のみ）** {#本番反映2026-06-15-dgx-resource-operator-console-layout}
+
+- **status**: deployed · **scope**: `/admin/tools/dgx-resource` · **date**: 2026-06-15
+- **branch / HEAD**: **`fix/dgx-resource-operator-console`** · **`cd12be28`**
+- **変更（Web のみ・API/Prisma/migration なし）**:
+  - 先頭を **`DgxResourceOperatorConsole`** に統合（`DgxResourceStatusHeader` 撤去）
+  - 見出し **`DGX リソース`** + バッジ **`運用ガイド`**（旧 `DGX 運用ガイド` h2 を置換）
+  - **`externalBusy`**（シナリオ進行中）を OperatorConsole → PrimaryScenarioFlow へ伝播し操作ボタンを二重実行防止
+  - **`DgxResourcePreflightPanel`** を **「状態」タブ**へ移動（日常導線を簡素化）
+  - **`DgxResourceStatusBoard`** は運用ガイド直下に維持
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 **対象外**
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/dgx-resource-operator-console infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: Detach **`20260615-201216-8870`** · `PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`** · リモート HEAD **`cd12be28`** · **`web` 再ビルド** · バンドル **`index-BJeGPCuR.js`**
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **58s**）
+- **実機（手動·管理 UI）**: `/admin/tools/dgx-resource` を開き、先頭に **運用ガイド付きコンソール**・4 操作ボタン・進行中バナーが表示されること。旧レイアウトのままなら [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**
+- **CI（push 時）**: GitHub Actions **`27541517478`** **success**
+- **未完了**: なし（本番反映・自動回帰・バンドル文字列確認まで完了）
+- **関連コード**: `apps/web/src/features/admin/dgx-resource/DgxResourceDashboard.tsx` · `DgxResourceOperatorConsole.tsx`
+
 **本番反映（2026-05-03・Phase5・運用者コンソール `overview.operator`・ワークロード遷移分離・API+Web）**: ブランチ **`feat/dgx-resource-operator-console`**（代表 **`e88d9206`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-operator-console infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-115446-2532`**・`PLAY RECAP`: **`ok=130` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**（ローカル `--follow` 完了まで **約 826s**）。Pi4／Pi3 は **no hosts matched**（**Pi3 個体へは本変更の Ansible を当てない**）。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **97s**）。**仕様**: `/admin/tools/dgx-resource` は **運用者コンソールを主軸**、技術 ID の Control Targets は折りたたみ詳細。`overview.operator` は **`targets[]` と整合する運用者向け要約**（起停可否の契約は引き続き `targets[]`）。**`scenarioExecute.outcomeKind`** で成功／部分失敗／noop を区別可能。**ADR**: [ADR-20260503](../decisions/ADR-20260503-dgx-resource-operator-console.md)。**KB**: [KB-365 §Phase5](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-5-本番反映記録)。**トラブルシュート**: コンソールが旧のまま → **`api`/`web` の同一ブランチ**・[verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**。
 
 **本番反映（2026-05-03・Phase8・KPI 先頭・説明削減・全文可読・Web のみ）**: ブランチ **`feat/dgx-resource-dashboard-ui-phase8`**（代表 **`89f65a7c`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-dashboard-ui-phase8 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-181600-946`**・`PLAY RECAP`: **`ok=130` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**（ローカル `--follow` 完了まで **約 666s**）。Pi4／Pi3 は **no hosts matched**。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **118s**）。**仕様**: 先頭に **KPI ストリップ**、説明文と絵文字を削除、`Spark` / シナリオ文言は **折り返し表示**。**知見**: Pi5 の標準デプロイ preflight は **Pi5→Pi5 self-SSH** を使うため、**`~/.ssh/id_ed25519.pub` が `authorized_keys` に無いと `Permission denied (publickey)`** で止まる。失敗時に **`runner=bootstrap` / `runPid=null`** の lock だけ残ることがあり、その場合は **実行中プロセスと deploy artifact が無いことを確認してから** lock を退避削除して再試行する。**KB**: [KB-365 §Phase8](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-8kpi-先頭説明削減全文可読web-のみ本番反映)·[Ansible/デプロイ KB](../knowledge-base/infrastructure/ansible-deployment.md)。
