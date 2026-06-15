@@ -2,8 +2,8 @@
 title: KB-389 DGX resource runtimeProfile and shared resourceState
 tags: [DGX, DGX_RESOURCE, Spark, runtimeProfile, resourceState, vLLM]
 audience: [開発者, 運用者]
-last-verified: 2026-06-07
-last-updated: 2026-06-07-modern-ui-deploy
+last-verified: 2026-06-15
+last-updated: 2026-06-15-preflight-metrics-deploy
 category: knowledge-base
 status: active
 scope: DGX Spark system-prod LocalLLM, Pi5 `/admin/tools/dgx-resource`, profile-scoped memory budget
@@ -44,13 +44,14 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 | Pi5 deploy (api + web) | Done (2026-06-07) |
 | Async business-return UX (`in_progress` + overview polling) | Done (`b321f82f`, `6f0d5b20`) |
 | Modern dashboard UI (view model + status header + tabbed details) | Done (`95b4b0e4`) · Pi5 production verified |
-| Admin preflight metrics (temperature / power / clocks / model / vLLM) | Done locally · pending CI/deploy |
+| Admin preflight metrics (temperature / power / clocks / model / vLLM) | Done · Pi5 + DGX production verified (2026-06-15) |
 
 **Git**:
 
 - Runtime profile/resource state base: branch `feat/dgx-resource-runtime-profile` · commit **`45c0c5ee`** (`feat(dgx): add runtime profiles and shared resource state`)
 - Business-return async UX: branch `fix/dgx-business-return-async-ux` · commits **`b321f82f`** (`fix(dgx): return in_progress for async business return UX`), **`6f0d5b20`** (`fix(web): satisfy production build type for businessReturnReady`)
 - Modern dashboard UI: branch `fix/dgx-resource-modern-ui` · commit **`95b4b0e4`** (`Modernize DGX resource dashboard UI`)
+- Admin preflight metrics: branch `feat/dgx-resource-preflight-metrics` · commit **`efcca1e2`** (`feat: add DGX resource preflight metrics`)
 
 ## Specification (summary)
 
@@ -93,9 +94,10 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 
 ### Admin preflight metrics (2026-06-15)
 
-- DGX gateway `/system/metrics` now returns optional detail fields from `nvidia-smi`: `gpuTemperatureC`, `gpuPowerDrawW`, `gpuPowerLimitW`, `gpuClockSmMhz`, `gpuClockGraphicsMhz`, `gpuClockMemoryMhz`, `gpuPstate`, `gpuClocksThrottleReason`, `gpuName`, `driverVersion`.
-- Pi5 API passes these fields through `overview.kpis`; Web shows a compact preflight panel for temperature, power, clocks, unified memory, active model, and vLLM readiness.
-- Compatibility: if the extended `nvidia-smi --query-gpu` fails, DGX gateway falls back to the legacy `utilization.gpu,memory.used,memory.total` query so existing GPU/memory KPI still works.
+- DGX gateway `/system/metrics` returns optional detail fields from `nvidia-smi`: `gpuTemperatureC`, `gpuPowerDrawW`, `gpuPowerLimitW`, `gpuClockSmMhz`, `gpuClockGraphicsMhz`, `gpuClockMemoryMhz`, `gpuPstate`, `gpuClocksThrottleReason`, `gpuName`, `driverVersion`.
+- Pi5 API passes these through `overview.kpis` (`dgx-resource.probes.ts` accepts camelCase and legacy snake_case keys).
+- Web main viewport (below status header): **`DgxResourceStatusBoard`** (KPI strip + runtime summary) and **`DgxResourcePreflightPanel`** (6 tiles: 温度 / 電力 / クロック / 統合メモリ / active model / vLLM疎通). Low-load low-clock is treated as OK; high-load low-clock warns.
+- Compatibility: extended `nvidia-smi --query-gpu` failure falls back to legacy `utilization.gpu,memory.used,memory.total` so GPU/memory KPI still works.
 
 ## Validation
 
@@ -137,6 +139,17 @@ Note: full API `tsc --noEmit` still fails on pre-existing `rootDir` scope (`pris
 | Business return | UI showed **timeout** while DGX continued; `resourceState` → `business / preparing`; `/v1/models` → 200 ~13:36 JST; final: `resourceOwner: business`, `businessReady: true`, ComfyUI stopped, Unified Mem **74.3 / 121.6 GiB** |
 
 Phase12 `verify-phase12-real.sh` was not re-run in this session; prior Pi5 deploy pattern expects **43/0/0** when run after ansible update.
+
+### Admin preflight metrics (Pi5 + DGX · 2026-06-15)
+
+| Target | Deploy | Validation |
+|--------|--------|------------|
+| Pi5 (`raspberrypi5`) | `./scripts/update-all-clients.sh feat/dgx-resource-preflight-metrics … --limit raspberrypi5 --detach --follow` · Detach **`20260615-121701-25267`** · `PLAY RECAP` **`ok=134` `changed=4` `failed=0`** | Git **`efcca1e2`** · `docker-api-1` healthy · `docker-web-1` up · API dist contains `gpuTemperatureC` · `./scripts/deploy/verify-phase12-real.sh` → **43/0/0** (~55s) |
+| DGX Spark | `scp gateway-server.py` → `/srv/dgx/system-prod/bin/` · PID-guard restart (`gateway-server.pid` kill → `start-gateway-server.sh`) · **`pid=236743`** | SHA-256 **`f2e5b09e…`** matches repo · `healthz` **200** · `GET /system/metrics` sample: `gpuTemperatureC=42`, `gpuPowerDrawW=10.3`, `gpuName=NVIDIA GB10`, `driverVersion=580.159.03` |
+
+**Deploy note (DGX)**: `start-gateway-server.sh` alone does not reload code when an old PID is alive; always **kill PID from `gateway-server.pid` → remove file → start script** (same pattern as [Runbook](../runbooks/dgx-system-prod-local-llm.md)).
+
+**CI (pre-merge)**: GitHub Actions run **`27521487515`** — `lint-build-unit`, `e2e-smoke`, `api-db-and-infra` success (full workflow green before merge).
 
 ## Findings
 
