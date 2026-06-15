@@ -279,6 +279,25 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - **知見**: API が profiles 2 件返却でも UI が 1 件だけ → **各 profile の `status`** と manifest の **`currentStorageLocation` を `ls` で突合**（[KB-365 §storage availability](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)）。
 - **KB**: [KB-365 §本番 storage path](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-model-profile-storage-path)·[deployment.md §storage path](../guides/deployment.md#dgx-model-profile-storage-path-2026-05-28)·[KB-366 §storage path](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-model-profile-storage-path)。
 
+**本番反映（2026-06-15・運用者コンソールコンパクト化・Web のみ）** {#本番反映2026-06-15-dgx-resource-console-layout-review}
+
+- **status**: deployed · **scope**: `/admin/tools/dgx-resource` · **date**: 2026-06-15
+- **branch / HEAD**: **`fix/dgx-resource-console-layout-review`** · **`6bdcc539`**
+- **変更（Web のみ・API/Prisma/migration なし）**:
+  - **`DgxResourceOperatorConsole`**: 白カード内に **Current State / Model / Memory / GPU / Alerts** のコンパクト KPI 帯を統合。右ペインにワークロード補助状態を表示
+  - **`DgxResourceDashboard`**: 重複 **`DgxResourceStatusBoard`** を撤去。詳細タブ群を **`DgxResourceAdvancedControls`（「詳細・保守・ログ」）** に折りたたみ
+  - **`DgxResourcePrimaryScenarioFlow`**: ライトテーマの 2×2 グリッド操作ボタン。表示は短縮ラベル（例: **業務→私用**）、**`aria-label` は完全操作名を維持**
+  - **`AdminLayout`**: 管理ヘッダーを 1 行コンパクト化（ナビ・ログアウトを同一行）
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3／DGX **対象外**
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/dgx-resource-console-layout-review infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: Detach **`20260615-211822-4369`** · `PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`** · リモート HEAD **`6bdcc539`** · **`web` 再ビルド** · バンドル **`index-D_aJZdPV.js`**
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **54s**）
+- **実機（バンドル確認）**: `index-D_aJZdPV.js` に **`Current State`** · **`詳細・保守・ログ`** · **`業務→私用`** を確認
+- **実機（手動·管理 UI）**: `/admin/tools/dgx-resource` でコンパクト KPI 帯・4 操作ボタン・「詳細・保守・ログ」折りたたみを目視。旧レイアウトのままなら [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**
+- **CI（push 時）**: GitHub Actions **`27544935827`** **success**
+- **未完了**: 管理 UI の手動目視（運用者による最終確認）は任意
+- **関連コード**: `DgxResourceOperatorConsole.tsx` · `DgxResourceDashboard.tsx` · `DgxResourcePrimaryScenarioFlow.tsx` · `AdminLayout.tsx`
+
 **本番反映（2026-06-15・運用者コンソールレイアウト統合・Web のみ）** {#本番反映2026-06-15-dgx-resource-operator-console-layout}
 
 - **status**: deployed · **scope**: `/admin/tools/dgx-resource` · **date**: 2026-06-15

@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { ConfirmProvider } from '../contexts/ConfirmContext';
 
 const linkClass =
-  'rounded-md px-3 py-2 text-sm font-semibold text-white/80 hover:bg-white/10 transition-colors [&.active]:bg-emerald-500 [&.active]:text-white';
+  'flex h-9 items-center rounded-md px-3 text-sm font-semibold text-white/75 hover:bg-white/10 transition-colors [&.active]:bg-white [&.active]:text-slate-950';
 
 export function AdminLayout() {
   const { user, logout } = useAuth();
@@ -15,27 +15,12 @@ export function AdminLayout() {
   return (
     <ConfirmProvider>
       <div className={`${VIEWPORT_MIN_HEIGHT_FULL} bg-slate-800 text-white`}>
-        <header className="border-b border-white/10 bg-slate-900/80 px-6 py-4 backdrop-blur">
-          <div className="mx-auto flex max-w-screen-2xl items-center justify-between px-4">
-            <div>
-              <p className="text-sm uppercase tracking-wide text-emerald-300">Factory Borrow System</p>
-              <h1 className="text-xl font-semibold">管理コンソール</h1>
-            </div>
-            <div className="flex items-center gap-4">
-              <Link
-                to="/kiosk"
-                className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition-colors"
-              >
-                キオスクへ
-              </Link>
-              <p className="text-sm text-white/70">{user?.username}</p>
-              <Button variant="ghost" onClick={logout}>
-                ログアウト
-              </Button>
-            </div>
-          </div>
-          <div className="mx-auto mt-4 flex max-w-screen-2xl flex-col gap-3 px-4">
-            <nav className="flex gap-2 overflow-x-auto whitespace-nowrap pb-1">
+        <header className="border-b border-white/10 bg-slate-900/90 px-3 py-2 backdrop-blur">
+          <div className="mx-auto flex max-w-screen-2xl items-center gap-3">
+            <Link to="/admin" className="shrink-0 text-sm font-bold text-white">
+              Factory Borrow System
+            </Link>
+            <nav className="flex min-w-0 flex-1 gap-1 overflow-x-auto whitespace-nowrap" aria-label="管理ナビゲーション">
             <NavLink to="/admin" end className={linkClass}>
               ダッシュボード
             </NavLink>
@@ -133,10 +118,24 @@ export function AdminLayout() {
               セキュリティ
             </NavLink>
             </nav>
-            <NetworkModeBadge />
+            <div className="flex shrink-0 items-center gap-2">
+              <div className="hidden xl:block">
+                <NetworkModeBadge />
+              </div>
+              <Link
+                to="/kiosk"
+                className="hidden h-9 items-center rounded-md bg-blue-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-blue-500 sm:flex"
+              >
+                キオスクへ
+              </Link>
+              <p className="hidden max-w-32 truncate text-sm text-white/65 lg:block">{user?.username}</p>
+              <Button variant="ghost" onClick={logout}>
+                ログアウト
+              </Button>
+            </div>
           </div>
         </header>
-        <main className="mx-auto flex max-w-screen-2xl flex-col gap-6 px-6 py-8">
+        <main className="mx-auto flex max-w-screen-2xl flex-col gap-4 px-4 py-4 sm:px-6">
           <Outlet />
         </main>
       </div>

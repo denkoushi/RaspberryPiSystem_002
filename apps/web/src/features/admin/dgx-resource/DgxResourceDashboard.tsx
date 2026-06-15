@@ -12,6 +12,7 @@ import {
 import { useConfirm } from '../../../contexts/ConfirmContext';
 import { POLL_MS } from '../../../lib/admin-polling-intervals';
 
+import { DgxResourceAdvancedControls } from './DgxResourceAdvancedControls';
 import { buildDgxResourceDashboardViewModel } from './dgxResourceDashboardViewModel';
 import { DgxResourceEventsTimeline } from './DgxResourceEventsTimeline';
 import { DgxResourceMonitoringPanel } from './DgxResourceMonitoringPanel';
@@ -20,7 +21,6 @@ import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
 import { DgxResourcePreflightPanel } from './DgxResourcePreflightPanel';
 import { DgxResourceQuickProfileActions } from './DgxResourceQuickProfileActions';
 import { DgxResourceSparkStatusPanel } from './DgxResourceSparkStatusPanel';
-import { DgxResourceStatusBoard } from './DgxResourceStatusBoard';
 import { DgxResourceTargetGrid } from './DgxResourceTargetGrid';
 import { shouldShowMonitoringPanel } from './dgxResourceUi';
 import { DgxResourceWarmRuntimeNotice } from './DgxResourceWarmRuntimeNotice';
@@ -269,9 +269,7 @@ export function DgxResourceDashboard() {
         </p>
       ) : null}
 
-      <DgxResourceStatusBoard kpis={overview.kpis} runtimeSummary={overview.runtimeSummary} />
-
-      <section className="space-y-3 border-t border-white/10 pt-3">
+      <DgxResourceAdvancedControls summary="詳細・保守・ログ">
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="DGX 詳細">
           <button
             type="button"
@@ -380,7 +378,7 @@ export function DgxResourceDashboard() {
             ) : null}
           </div>
         ) : null}
-      </section>
+      </DgxResourceAdvancedControls>
     </div>
   );
 }

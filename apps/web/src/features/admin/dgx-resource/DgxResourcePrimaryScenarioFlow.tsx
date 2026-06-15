@@ -50,6 +50,23 @@ function businessReturnReady(runtimeSummary?: {
   return runtimeSummary?.businessReady === true && runtimeSummary.resourceOwner === 'business';
 }
 
+function compactScenarioLabel(scenarioId: DgxOrchestrationScenarioIdApi): string {
+  switch (scenarioId) {
+    case 'business_to_private':
+      return '業務→私用';
+    case 'private_to_business':
+      return '私用→業務';
+    case 'business_to_experiment':
+      return '業務→実験';
+    case 'experiment_to_business':
+      return '実験→業務';
+    default: {
+      const _x: never = scenarioId;
+      return _x;
+    }
+  }
+}
+
 function readPersistedPendingState(): DgxPersistedScenarioPendingState | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -305,7 +322,7 @@ export function DgxResourcePrimaryScenarioFlow({
 
   return (
     <section className="space-y-3" aria-label="DGX 操作">
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
         {actions.map((action) => {
           const selected = selectedScenarioId === action.scenarioId;
           const disabled = Boolean(action.disabledReasonJa) || busy;
@@ -313,6 +330,7 @@ export function DgxResourcePrimaryScenarioFlow({
             <button
               key={action.id}
               type="button"
+              aria-label={action.labelJa}
               disabled={disabled}
               onClick={() => {
                 setSelectedScenarioId(action.scenarioId);
@@ -320,25 +338,28 @@ export function DgxResourcePrimaryScenarioFlow({
                 void executeScenario(action);
               }}
               className={clsx(
-                'rounded-md border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed sm:text-base',
+                'grid min-h-[4.25rem] content-center gap-1 rounded-lg border px-3 text-left transition disabled:cursor-not-allowed',
                 selected
-                  ? 'border-white bg-white text-slate-950'
+                  ? 'border-slate-900 bg-slate-950 text-white'
                   : action.primary
-                    ? 'border-emerald-400/35 bg-emerald-500/15 text-emerald-50 hover:bg-emerald-500/25'
-                    : 'border-white/12 bg-white/[0.03] text-white/80 hover:bg-white/10 hover:text-white',
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                    : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50',
                 disabled && 'opacity-45'
               )}
               title={action.disabledReasonJa}
             >
-              {action.labelJa}
+              <strong className="text-sm font-bold leading-tight sm:text-[15px]">{compactScenarioLabel(action.scenarioId)}</strong>
+              <span className={clsx('line-clamp-2 text-xs font-semibold leading-snug', selected ? 'text-white/65' : 'text-slate-500')}>
+                {action.subtitleJa}
+              </span>
             </button>
           );
         })}
       </div>
 
       {needsModelProfile ? (
-        <div className="flex flex-col gap-2 rounded-md border border-white/10 bg-white/[0.03] p-3 sm:flex-row sm:items-center">
-          <label className="shrink-0 text-sm font-semibold text-white/70" htmlFor="dgx-business-model-profile">
+        <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center">
+          <label className="shrink-0 text-sm font-bold text-slate-600" htmlFor="dgx-business-model-profile">
             ロードモデル
           </label>
           <select
@@ -346,7 +367,7 @@ export function DgxResourcePrimaryScenarioFlow({
             value={selectedModelProfileId ?? ''}
             disabled={busy || selectableProfiles.length === 0}
             onChange={(event) => setSelectedModelProfileId(event.target.value || null)}
-            className="min-w-0 flex-1 rounded-md border border-white/15 bg-slate-950 px-3 py-2 text-sm text-white disabled:opacity-50"
+            className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 disabled:opacity-50"
           >
             {selectableProfiles.length === 0 ? <option value="">選択できるモデルがありません</option> : null}
             {selectableProfiles.map((profile) => (
@@ -356,7 +377,7 @@ export function DgxResourcePrimaryScenarioFlow({
             ))}
           </select>
           {!selectedModelProfile ? (
-            <p className="text-xs text-amber-200">
+            <p className="text-xs font-semibold text-amber-700">
               {modelProfiles?.errorMessageJa ?? 'DGX からモデルプロファイルを取得できませんでした'}
             </p>
           ) : null}
@@ -367,17 +388,17 @@ export function DgxResourcePrimaryScenarioFlow({
         <p
           role="status"
           className={clsx(
-            'whitespace-pre-line break-words rounded-lg border px-3 py-2 text-sm leading-snug',
+            'whitespace-pre-line break-words rounded-lg border px-3 py-2 text-sm font-semibold leading-snug',
             resultNote.tone === 'success'
-              ? 'border-emerald-500/35 bg-emerald-950/25 text-emerald-100'
-              : 'border-red-500/35 bg-red-950/25 text-red-100'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-red-200 bg-red-50 text-red-800'
           )}
         >
           {resultNote.message}
         </p>
       ) : null}
       {busy ? (
-        <div role="status" className="break-words rounded-md border border-sky-400/35 bg-sky-500/10 px-3 py-2 text-sm leading-snug text-sky-100">
+        <div role="status" className="break-words rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold leading-snug text-sky-800">
           {businessReturnPending ? (
             <>
               <p>業務復帰中</p>

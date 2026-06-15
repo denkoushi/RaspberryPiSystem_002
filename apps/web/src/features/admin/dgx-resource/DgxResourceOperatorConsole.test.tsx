@@ -187,8 +187,9 @@ describe('DgxResourceOperatorConsole', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'DGX リソース' })).toBeInTheDocument();
-    expect(screen.getByText('運用ガイド')).toBeInTheDocument();
-    expect(screen.getAllByText('私用を始める').length).toBeGreaterThan(0);
+    expect(screen.getByText('Current State')).toBeInTheDocument();
+    expect(screen.getByText('業務優先')).toBeInTheDocument();
+    expect(screen.getByText('業務→私用')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'DGX 操作' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '業務に戻す（私用を終える）' })).toBeInTheDocument();
   });
