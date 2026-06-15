@@ -88,9 +88,9 @@ export function DgxResourceQuickProfileActions({
 
   if (modelProfiles?.status !== 'ok') {
     return (
-      <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-        <h3 className="text-sm font-semibold text-white/90">保守: モデルプロファイル起動</h3>
-        <p className="mt-1 text-xs text-amber-200">
+      <div className="rounded-lg border border-slate-200 bg-white p-3">
+        <h3 className="text-sm font-bold text-slate-950">保守: モデルプロファイル起動</h3>
+        <p className="mt-1 text-xs text-amber-700">
           {modelProfiles?.errorMessageJa ?? 'DGX model profiles を取得できないため、固定起動ボタンは無効です'}
         </p>
       </div>
@@ -98,9 +98,9 @@ export function DgxResourceQuickProfileActions({
   }
 
   return (
-    <div className="space-y-2 rounded-xl border border-white/10 bg-black/25 p-3">
-      <h3 className="text-sm font-semibold text-white/90">保守: モデルプロファイル起動</h3>
-      <p className="text-xs leading-snug text-white/55">保証レベル: POSTのみ。Strict Ready確認や業務意図更新は行いません。</p>
+    <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+      <h3 className="text-sm font-bold text-slate-950">保守: モデルプロファイル起動</h3>
+      <p className="text-xs leading-snug text-slate-500">保証レベル: POSTのみ。Strict Ready確認や業務意図更新は行いません。</p>
       <div className="flex flex-wrap gap-2">
         {DGX_QUICK_START_MODEL_PROFILES.map(({ modelProfileId, label }) => {
           const available = selectable.some((p) => p.id === modelProfileId);
@@ -116,7 +116,7 @@ export function DgxResourceQuickProfileActions({
               >
                 {label}
               </Button>
-              {budget ? <p className="max-w-56 text-[11px] leading-snug text-white/45">{budget}</p> : null}
+              {budget ? <p className="max-w-56 text-[11px] leading-snug text-slate-500">{budget}</p> : null}
             </div>
           );
         })}
@@ -126,8 +126,8 @@ export function DgxResourceQuickProfileActions({
           role="status"
           className={
             resultNote.tone === 'success'
-              ? 'text-xs text-emerald-200'
-              : 'text-xs text-red-300'
+              ? 'text-xs text-emerald-700'
+              : 'text-xs text-red-700'
           }
         >
           {resultNote.message}

@@ -27,13 +27,13 @@ export function workloadRiskCardTokens(risk: DgxOperatorRiskLevelApi): string {
 export function statusBadgeTokens(status: DgxServiceStatusKind): string {
   switch (status) {
     case 'running':
-      return 'border border-emerald-400/50 bg-emerald-500/25 text-emerald-50';
+      return 'border border-emerald-200 bg-emerald-50 text-emerald-700';
     case 'degraded':
-      return 'border border-amber-400/50 bg-amber-500/25 text-amber-50';
+      return 'border border-amber-200 bg-amber-50 text-amber-700';
     case 'stopped':
-      return 'border border-red-400/45 bg-red-500/20 text-red-50';
+      return 'border border-slate-200 bg-slate-50 text-slate-600';
     default:
-      return 'border border-white/25 bg-white/10 text-white/80';
+      return 'border border-slate-300 bg-white text-slate-500';
   }
 }
 
@@ -55,11 +55,11 @@ export function serviceStatusDotTokens(status: DgxServiceStatusKind): string {
 export function policyModeBadgeTokens(mode: DgxPolicyModeApi): string {
   switch (mode) {
     case 'business_first':
-      return 'border border-amber-400/55 bg-amber-950/50 text-amber-50';
+      return 'border border-amber-200 bg-amber-50 text-amber-700';
     case 'private_ok':
-      return 'border border-emerald-400/50 bg-emerald-950/45 text-emerald-50';
+      return 'border border-emerald-200 bg-emerald-50 text-emerald-700';
     case 'experiment_first':
-      return 'border border-violet-400/50 bg-violet-950/45 text-violet-50';
+      return 'border border-violet-200 bg-violet-50 text-violet-700';
     default: {
       const _x: never = mode;
       return _x;
@@ -71,11 +71,11 @@ export function policyModeBadgeTokens(mode: DgxPolicyModeApi): string {
 export function monitoringAlertContainerTokens(level: DgxResourceMonitoringAlertApi['level']): string {
   switch (level) {
     case 'danger':
-      return 'border-red-500/45 bg-red-950/50';
+      return 'border-red-200 bg-red-50 text-red-800';
     case 'warning':
-      return 'border-amber-500/40 bg-amber-950/45';
+      return 'border-amber-200 bg-amber-50 text-amber-800';
     default:
-      return 'border-white/20 bg-slate-900/45';
+      return 'border-slate-200 bg-slate-50 text-slate-700';
   }
 }
 

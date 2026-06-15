@@ -110,6 +110,19 @@ function compactWorkloadLabel(workload: DgxOperatorWorkloadApi): string {
   }
 }
 
+function formatGeneratedAt(iso: string): string {
+  return new Date(iso)
+    .toLocaleString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+    .replace(/\//g, '-');
+}
+
 export function DgxResourceOperatorConsole({
   overview,
   operator,
@@ -132,26 +145,24 @@ export function DgxResourceOperatorConsole({
       : null;
   const modelText = runtime?.activeProfileDisplayNameJa ?? runtime?.activeProfileId ?? '未ロード';
   const modelMeta = [runtime?.activeBackend, activeProfile?.runtimeProfile?.engine ?? activeProfile?.backend].filter(Boolean).join(' / ') || 'runtime 未取得';
-  const generatedAt = new Date(overview.generatedAt).toLocaleString('ja-JP', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const generatedAt = formatGeneratedAt(overview.generatedAt);
   const workloads = [...operator.workloads].sort((a, b) => workloadSortKey(a) - workloadSortKey(b));
 
   return (
     <section className="flex min-h-0 flex-col gap-2">
       <header className="flex min-h-0 flex-wrap items-center justify-between gap-2 leading-none">
-        <h1 className="text-xl font-semibold leading-none text-white">DGX リソース</h1>
-        <time className="font-mono text-xs font-semibold leading-none text-white/45" dateTime={overview.generatedAt}>
+        <h1 className="text-xl font-bold leading-none text-slate-950">DGX リソース</h1>
+        <time className="font-mono text-xs font-semibold leading-none text-slate-500" dateTime={overview.generatedAt}>
           {generatedAt}
         </time>
       </header>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-950 shadow-lg shadow-black/20" aria-label="DGX 状態と操作">
+      <div
+        className="overflow-hidden rounded-lg border border-slate-300 bg-white text-slate-950 shadow-[0_16px_48px_rgba(16,24,40,0.08)]"
+        aria-label="DGX 状態と操作"
+      >
         <div className="grid grid-cols-1 divide-y divide-slate-200 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-[1.25fr_repeat(4,minmax(0,1fr))]">
-          <div className="grid min-h-[5.25rem] content-center gap-1 px-4 py-3">
+          <div className="grid min-h-[5.375rem] content-center gap-1.5 px-4 py-3">
             <div className="text-xs font-bold uppercase text-slate-500">Current State</div>
             <div className={clsx('text-2xl font-bold leading-tight', runtime?.businessReady ? 'text-emerald-700' : 'text-slate-900')}>
               {currentStateLabel(overview, operator)}
@@ -161,7 +172,7 @@ export function DgxResourceOperatorConsole({
             </div>
           </div>
 
-          <div className="grid min-h-[5.25rem] content-center gap-1 px-4 py-3">
+          <div className="grid min-h-[5.375rem] content-center gap-1.5 px-4 py-3">
             <div className="text-xs font-bold uppercase text-slate-500">Model</div>
             <div className="truncate text-lg font-bold leading-tight text-slate-900" title={modelText}>
               {modelText}
@@ -169,7 +180,7 @@ export function DgxResourceOperatorConsole({
             <div className="truncate text-xs font-semibold text-slate-500">{modelMeta}</div>
           </div>
 
-          <div className="grid min-h-[5.25rem] content-center gap-1 px-4 py-3">
+          <div className="grid min-h-[5.375rem] content-center gap-1.5 px-4 py-3">
             <div className="text-xs font-bold uppercase text-slate-500">Memory</div>
             <div className="text-lg font-bold leading-tight text-slate-900">{memoryText}</div>
             <div className="h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden>
@@ -177,7 +188,7 @@ export function DgxResourceOperatorConsole({
             </div>
           </div>
 
-          <div className="grid min-h-[5.25rem] content-center gap-1 px-4 py-3">
+          <div className="grid min-h-[5.375rem] content-center gap-1.5 px-4 py-3">
             <div className="text-xs font-bold uppercase text-slate-500">GPU</div>
             <div className="text-lg font-bold leading-tight text-slate-900">{formatPct(kpis.gpuUtilPct)}</div>
             <div className="truncate text-xs font-semibold text-slate-500">
@@ -185,7 +196,7 @@ export function DgxResourceOperatorConsole({
             </div>
           </div>
 
-          <div className="grid min-h-[5.25rem] content-center gap-1 px-4 py-3 md:col-span-2 xl:col-span-1">
+          <div className="grid min-h-[5.375rem] content-center gap-1.5 px-4 py-3 md:col-span-2 xl:col-span-1">
             <div className="text-xs font-bold uppercase text-slate-500">Alerts</div>
             <div className={clsx('text-lg font-bold leading-tight', alerts.length > 0 ? 'text-amber-700' : 'text-slate-900')}>
               {alerts.length > 0 ? `${alerts.length}件` : 'なし'}

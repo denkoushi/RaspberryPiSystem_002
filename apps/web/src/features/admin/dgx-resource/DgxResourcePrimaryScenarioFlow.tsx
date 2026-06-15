@@ -324,7 +324,6 @@ export function DgxResourcePrimaryScenarioFlow({
     <section className="space-y-3" aria-label="DGX 操作">
       <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
         {actions.map((action) => {
-          const selected = selectedScenarioId === action.scenarioId;
           const disabled = Boolean(action.disabledReasonJa) || busy;
           return (
             <button
@@ -338,18 +337,16 @@ export function DgxResourcePrimaryScenarioFlow({
                 void executeScenario(action);
               }}
               className={clsx(
-                'grid min-h-[4.25rem] content-center gap-1 rounded-lg border px-3 text-left transition disabled:cursor-not-allowed',
-                selected
-                  ? 'border-slate-900 bg-slate-950 text-white'
-                  : action.primary
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
-                    : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50',
+                'grid h-[4.25rem] content-center gap-1 rounded-lg border px-3 text-left transition disabled:cursor-not-allowed',
+                action.primary
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                  : 'border-slate-300 bg-white text-slate-950 hover:bg-slate-50',
                 disabled && 'opacity-45'
               )}
               title={action.disabledReasonJa}
             >
               <strong className="text-sm font-bold leading-tight sm:text-[15px]">{compactScenarioLabel(action.scenarioId)}</strong>
-              <span className={clsx('line-clamp-2 text-xs font-semibold leading-snug', selected ? 'text-white/65' : 'text-slate-500')}>
+              <span className={clsx('line-clamp-2 text-xs font-semibold leading-snug', action.primary ? 'text-emerald-700' : 'text-slate-500')}>
                 {action.subtitleJa}
               </span>
             </button>
