@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildInspectionDrawingPrintPreviewIdentifier,
+  buildInspectionDrawingPrintRecordPageQrPayload,
   buildInspectionDrawingPrintRecordEntrySlots,
   buildInspectionDrawingPrintViewModel,
   buildRecordPages,
@@ -90,6 +91,38 @@ describe('inspectionDrawingPrintViewModel', () => {
       formatInspectionDrawingPrintIssuedAtDisplay(issuedAt)
     );
     expect(viewModel.qrPayloadSummary).toContain('DEMO-12345');
+  });
+
+  it('builds record page QR payloads with page and entry range identity', () => {
+    const viewModel = buildInspectionDrawingPrintViewModel({
+      template: sampleTemplate(3),
+      resourceName: 'R001（FJV50/80）',
+      issuedAt
+    });
+
+    const payload = JSON.parse(
+      buildInspectionDrawingPrintRecordPageQrPayload({
+        metadata: viewModel.metadata,
+        page: viewModel.recordPages[0]!,
+        totalPages: viewModel.totalPages
+      })
+    ) as Record<string, unknown>;
+
+    expect(payload).toMatchObject({
+      type: 'inspection-drawing-record-page',
+      schemaVersion: 1,
+      reportId: viewModel.metadata.previewIdentifier,
+      templateId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      fhincd: 'DEMO-12345',
+      resourceCd: 'R001',
+      templateVersion: 3,
+      pageNumber: 2,
+      totalPages: 2,
+      entryIndexFrom: 1,
+      entryIndexTo: 5,
+      markerNoFrom: 1,
+      markerNoTo: 3
+    });
   });
 
   it('splits record pages when points exceed one page', () => {

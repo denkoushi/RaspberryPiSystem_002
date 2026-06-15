@@ -128,6 +128,48 @@ describe('InspectionDrawingPrintPreview', () => {
     expect(screen.queryByText('帳票単位:')).toBeNull();
   });
 
+  it('keeps P1 free of OCR fiducials and prints page-specific QR on record pages', async () => {
+    render(
+      <InspectionDrawingPrintPreview
+        viewModel={viewModel}
+        imageUrl={INSPECTION_DRAWING_PREVIEW_IMAGE_URL}
+        showToolbar={false}
+      />
+    );
+
+    loadPreviewDrawingProbe();
+
+    await screen.findAllByTestId('inspection-print-sheet-header');
+
+    expect(screen.getAllByTestId('inspection-print-sheet-fiducial')).toHaveLength(
+      viewModel.recordPages.length * 4
+    );
+
+    const qrCodes = screen.getAllByTestId('inspection-print-record-qr-code');
+    expect(qrCodes).toHaveLength(viewModel.recordPages.length);
+
+    const payload = JSON.parse(qrCodes[0]?.getAttribute('data-qr-payload') ?? '{}') as Record<
+      string,
+      unknown
+    >;
+    expect(payload).toMatchObject({
+      type: 'inspection-drawing-record-page',
+      schemaVersion: 1,
+      reportId: viewModel.metadata.previewIdentifier,
+      templateId: viewModel.metadata.templateId,
+      fhincd: 'DEMO-12345',
+      resourceCd: 'R001',
+      templateVersion: 3,
+      pageNumber: 2,
+      totalPages: 2,
+      entryIndexFrom: 1,
+      entryIndexTo: 5,
+      markerNoFrom: 1,
+      markerNoTo: 3
+    });
+    expect(screen.getByTestId('inspection-print-record-controls').className).toContain('w-[72mm]');
+  });
+
   it('renders OCR-friendly split measurement boxes at form scale', async () => {
     render(
       <InspectionDrawingPrintPreview

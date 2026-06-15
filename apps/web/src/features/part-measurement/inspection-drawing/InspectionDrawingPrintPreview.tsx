@@ -1,13 +1,16 @@
+import { BarcodeFormat, QRCodeWriter } from '@zxing/library';
 import { useMemo, useState } from 'react';
 
 import {
   INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM,
   INSPECTION_DRAWING_PRINT_DRAWING_AREA_WIDTH_MM,
+  INSPECTION_DRAWING_PRINT_DRAWING_PAGE_PADDING_MM,
   INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER,
   INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM,
   getInspectionDrawingPrintRecordTableWidthMm
 } from './inspectionDrawingPrintConstants';
 import {
+  buildInspectionDrawingPrintRecordPageQrPayload,
   formatInspectionDrawingPrintTolerance,
   type InspectionDrawingPrintMetadata,
   type InspectionDrawingPrintRecordPage,
@@ -31,6 +34,45 @@ function markerStyle(leftPercent: number, topPercent: number): CSSProperties {
   };
 }
 
+const inspectionDrawingPrintQrWriter = new QRCodeWriter();
+
+function buildQrCodeSvgPath(payload: string): { width: number; height: number; path: string } {
+  const matrix = inspectionDrawingPrintQrWriter.encode(payload, BarcodeFormat.QR_CODE, 96, 96, new Map());
+  const width = matrix.getWidth();
+  const height = matrix.getHeight();
+  const commands: string[] = [];
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (matrix.get(x, y)) {
+        commands.push(`M${x} ${y}h1v1h-1z`);
+      }
+    }
+  }
+
+  return { width, height, path: commands.join('') };
+}
+
+function QrCodeSvg({ payload, label }: { payload: string; label: string }) {
+  const qr = useMemo(() => buildQrCodeSvgPath(payload), [payload]);
+
+  return (
+    <svg
+      data-testid="inspection-print-record-qr-code"
+      data-qr-payload={payload}
+      role="img"
+      aria-label={label}
+      className="h-[24mm] w-[24mm] bg-white"
+      viewBox={`0 0 ${qr.width} ${qr.height}`}
+      shapeRendering="crispEdges"
+    >
+      <title>{label}</title>
+      <rect width={qr.width} height={qr.height} fill="#ffffff" />
+      <path d={qr.path} fill="#020617" />
+    </svg>
+  );
+}
+
 function SheetFiducials() {
   const markers: CSSProperties[] = [
     { top: '2.4mm', left: '2.4mm', borderTopWidth: '0.8mm', borderLeftWidth: '0.8mm' },
@@ -44,6 +86,7 @@ function SheetFiducials() {
       {markers.map((style, index) => (
         <span
           key={index}
+          data-testid="inspection-print-sheet-fiducial"
           aria-hidden="true"
           className="pointer-events-none absolute z-10"
           style={{
@@ -252,8 +295,10 @@ function DrawingPage({
   }, [containerHeight, containerWidth, imageNaturalHeight, imageNaturalWidth, viewModel.points]);
 
   return (
-    <article className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_1fr] gap-[2.5mm] overflow-hidden bg-white p-[5mm] shadow-2xl">
-      <SheetFiducials />
+    <article
+      className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_1fr] gap-[2.5mm] overflow-hidden bg-white shadow-2xl"
+      style={{ padding: `${INSPECTION_DRAWING_PRINT_DRAWING_PAGE_PADDING_MM}mm` }}
+    >
       <SheetHeader
         title="検査図面 位置確認"
         pageLabel={`1/${viewModel.totalPages}`}
@@ -282,30 +327,58 @@ function DrawingPage({
   );
 }
 
-function RecordPage({
+function RecordPageQr({
   page,
-  metadata
+  metadata,
+  totalPages
 }: {
   page: InspectionDrawingPrintRecordPage;
   metadata: InspectionDrawingPrintMetadata;
+  totalPages: number;
+}) {
+  const payload = buildInspectionDrawingPrintRecordPageQrPayload({ metadata, page, totalPages });
+
+  return (
+    <aside
+      data-testid="inspection-print-record-qr"
+      className="grid justify-items-center gap-[0.5mm] text-[5pt] font-black leading-none"
+    >
+      <QrCodeSvg payload={payload} label={`検査値記録欄 QR ${page.pageLabel}`} />
+      <span className="whitespace-nowrap font-mono">QR P{page.pageNumber}</span>
+    </aside>
+  );
+}
+
+function RecordPage({
+  page,
+  metadata,
+  totalPages
+}: {
+  page: InspectionDrawingPrintRecordPage;
+  metadata: InspectionDrawingPrintMetadata;
+  totalPages: number;
 }) {
   const tableWidthMm = getInspectionDrawingPrintRecordTableWidthMm(page.entrySlots.length);
 
   return (
-    <article className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_auto_1fr] gap-[2.5mm] overflow-hidden bg-white p-[5mm] shadow-2xl">
+    <article className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_1fr] gap-[1.6mm] overflow-hidden bg-white p-[5mm] shadow-2xl">
       <SheetFiducials />
-      <SheetHeader
-        title="検査値 記録欄"
-        pageLabel={page.pageLabel}
-        metadata={metadata}
-      />
-      <section className="grid shrink-0 grid-cols-[repeat(4,1fr)] gap-[2mm] text-[8pt] font-bold">
-        {['検査日', '作業者', 'ロット', '数量'].map((label) => (
-          <label key={label} className="grid grid-cols-[auto_1fr] items-center gap-[1.5mm]">
-            <span>{label}</span>
-            <span className="block h-[8mm] border border-slate-500 bg-white" />
-          </label>
-        ))}
+      <section className="grid grid-cols-[1fr_27mm] items-start gap-[2mm]">
+        <div className="min-w-0">
+          <SheetHeader title="検査値 記録欄" pageLabel={page.pageLabel} metadata={metadata} />
+          <section
+            data-testid="inspection-print-record-controls"
+            className="mt-[1.2mm] grid w-[72mm] grid-cols-4 gap-[1mm] text-[6.2pt] font-bold leading-none"
+          >
+            {['検査日', '作業者', 'ロット', '数量'].map((label) => (
+              <label key={label} className="grid gap-[0.45mm]">
+                <span className="whitespace-nowrap">{label}</span>
+                <span className="block h-[5.4mm] border border-slate-500 bg-white" />
+              </label>
+            ))}
+          </section>
+        </div>
+        <RecordPageQr page={page} metadata={metadata} totalPages={totalPages} />
       </section>
       <section className="min-h-0">
         <table
@@ -443,7 +516,12 @@ export function InspectionDrawingPrintPreview({
               imageNaturalHeight={naturalSize.h}
             />
             {viewModel.recordPages.map((page) => (
-              <RecordPage key={page.pageNumber} page={page} metadata={viewModel.metadata} />
+              <RecordPage
+                key={page.pageNumber}
+                page={page}
+                metadata={viewModel.metadata}
+                totalPages={viewModel.totalPages}
+              />
             ))}
           </>
         ) : (
