@@ -291,17 +291,90 @@ def is_container_running(container_name: str) -> bool:
     return container_name in names
 
 
-def collect_gpu_metrics() -> tuple[bool, dict[str, float] | None]:
-    proc = subprocess.run(
+def parse_nvidia_smi_number(raw: str) -> float | None:
+    value = raw.strip().replace(" MiB", "").replace(" W", "").replace(" MHz", "")
+    if not value or value.upper() in {"N/A", "[N/A]"}:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def first_present(values: list[str]) -> str | None:
+    for raw in values:
+        value = raw.strip()
+        if value and value.upper() not in {"N/A", "[N/A]"}:
+            return value
+    return None
+
+
+def avg_or_none(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def add_gpu_detail_metrics(
+    payload: dict[str, float | str],
+    gpu_temperatures: list[float],
+    gpu_power_draws: list[float],
+    gpu_power_limits: list[float],
+    gpu_clock_sms: list[float],
+    gpu_clock_graphics: list[float],
+    gpu_clock_memory: list[float],
+    gpu_pstates: list[str],
+    gpu_throttle_reasons: list[str],
+    gpu_names: list[str],
+    driver_versions: list[str],
+) -> None:
+    numeric_fields = [
+        ("gpuTemperatureC", avg_or_none(gpu_temperatures)),
+        ("gpuPowerDrawW", avg_or_none(gpu_power_draws)),
+        ("gpuPowerLimitW", avg_or_none(gpu_power_limits)),
+        ("gpuClockSmMhz", avg_or_none(gpu_clock_sms)),
+        ("gpuClockGraphicsMhz", avg_or_none(gpu_clock_graphics)),
+        ("gpuClockMemoryMhz", avg_or_none(gpu_clock_memory)),
+    ]
+    for key, value in numeric_fields:
+        if value is not None:
+            payload[key] = round(value, 1)
+
+    pstate = first_present(gpu_pstates)
+    if pstate is not None:
+        payload["gpuPstate"] = pstate
+    throttle_reason = first_present(gpu_throttle_reasons)
+    if throttle_reason is not None:
+        payload["gpuClocksThrottleReason"] = throttle_reason
+    gpu_name = first_present(gpu_names)
+    if gpu_name is not None:
+        payload["gpuName"] = gpu_name
+    driver_version = first_present(driver_versions)
+    if driver_version is not None:
+        payload["driverVersion"] = driver_version
+
+
+def run_nvidia_smi_gpu_query(query: str):
+    return subprocess.run(
         [
             "bash",
             "-lc",
-            "nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits",
+            f"nvidia-smi --query-gpu={query} --format=csv,noheader,nounits",
         ],
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+def collect_gpu_metrics() -> tuple[bool, dict[str, float | str] | None]:
+    proc = run_nvidia_smi_gpu_query(
+        "utilization.gpu,memory.used,memory.total,temperature.gpu,"
+        "power.draw,power.limit,clocks.sm,clocks.gr,clocks.mem,pstate,"
+        "clocks_throttle_reasons.active,name,driver_version"
+    )
+    if proc.returncode != 0:
+        legacy_proc = run_nvidia_smi_gpu_query("utilization.gpu,memory.used,memory.total")
+        if legacy_proc.returncode == 0:
+            proc = legacy_proc
     if proc.returncode != 0:
         # region agent log
         emit_agent_debug_log(
@@ -324,23 +397,55 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, float] | None]:
         # endregion
         return False, None
     gpu_utils: list[float] = []
+    gpu_temperatures: list[float] = []
+    gpu_power_draws: list[float] = []
+    gpu_power_limits: list[float] = []
+    gpu_clock_sms: list[float] = []
+    gpu_clock_graphics: list[float] = []
+    gpu_clock_memory: list[float] = []
+    gpu_pstates: list[str] = []
+    gpu_throttle_reasons: list[str] = []
+    gpu_names: list[str] = []
+    driver_versions: list[str] = []
     mem_pairs: list[tuple[float, float]] = []
     for row in rows:
         parts = [p.strip() for p in row.split(",")]
-        if len(parts) != 3:
+        if len(parts) < 3:
             continue
-        try:
-            util = float(parts[0])
+        util = parse_nvidia_smi_number(parts[0])
+        if util is not None:
             gpu_utils.append(util)
-        except ValueError:
-            continue
-        try:
-            mem_used_mib = float(parts[1])
-            mem_total_mib = float(parts[2])
+        mem_used_mib = parse_nvidia_smi_number(parts[1])
+        mem_total_mib = parse_nvidia_smi_number(parts[2])
+        if mem_used_mib is not None and mem_total_mib is not None:
             mem_pairs.append((mem_used_mib, mem_total_mib))
-        except ValueError:
+        else:
             # DGX Spark unified memory では memory.* が [N/A] になることがある。
             pass
+        if len(parts) >= 13:
+            for bucket, idx in [
+                (gpu_temperatures, 3),
+                (gpu_power_draws, 4),
+                (gpu_power_limits, 5),
+                (gpu_clock_sms, 6),
+                (gpu_clock_graphics, 7),
+                (gpu_clock_memory, 8),
+            ]:
+                value = parse_nvidia_smi_number(parts[idx])
+                if value is not None:
+                    bucket.append(value)
+            pstate = first_present([parts[9]])
+            if pstate is not None:
+                gpu_pstates.append(pstate)
+            throttle_reason = first_present([parts[10]])
+            if throttle_reason is not None:
+                gpu_throttle_reasons.append(throttle_reason)
+            gpu_name = first_present([parts[11]])
+            if gpu_name is not None:
+                gpu_names.append(gpu_name)
+            driver_version = first_present([parts[12]])
+            if driver_version is not None:
+                driver_versions.append(driver_version)
     if not gpu_utils:
         # region agent log
         emit_agent_debug_log(
@@ -418,7 +523,20 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, float] | None]:
             )
             # endregion
         else:
-            payload = {"gpuUtilPct": round(util_avg, 1)}
+            payload: dict[str, float | str] = {"gpuUtilPct": round(util_avg, 1)}
+            add_gpu_detail_metrics(
+                payload,
+                gpu_temperatures,
+                gpu_power_draws,
+                gpu_power_limits,
+                gpu_clock_sms,
+                gpu_clock_graphics,
+                gpu_clock_memory,
+                gpu_pstates,
+                gpu_throttle_reasons,
+                gpu_names,
+                driver_versions,
+            )
             # region agent log
             emit_agent_debug_log(
                 "H6",
@@ -439,12 +557,25 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, float] | None]:
     if used_gib is None or total_gib is None or total_gib <= 0:
         return False, None
 
-    payload = {
+    payload: dict[str, float | str] = {
         "gpuUtilPct": round(util_avg, 1),
         "unifiedMemoryUsedGiB": round(used_gib, 1),
         "unifiedMemoryTotalGiB": round(total_gib, 1),
         "freeMemoryGiB": round(max(0.0, total_gib - used_gib), 1),
     }
+    add_gpu_detail_metrics(
+        payload,
+        gpu_temperatures,
+        gpu_power_draws,
+        gpu_power_limits,
+        gpu_clock_sms,
+        gpu_clock_graphics,
+        gpu_clock_memory,
+        gpu_pstates,
+        gpu_throttle_reasons,
+        gpu_names,
+        driver_versions,
+    )
     # region agent log
     emit_agent_debug_log(
         "H6",

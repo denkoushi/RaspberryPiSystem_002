@@ -10,6 +10,7 @@ export type DgxResourceKpiStripItemModel = {
   key: string;
   label: string;
   value: string;
+  hint?: string;
   bar: DgxResourceKpiStripBarModel;
 };
 
@@ -37,12 +38,21 @@ export function buildDgxResourceKpiStripItems(kpis: DgxResourceKpis): readonly D
 
   const freePct =
     kpis.freeMemoryGiB != null && t != null && t > 0 ? Math.min(100, (kpis.freeMemoryGiB / t) * 100) : null;
+  const powerPct =
+    kpis.gpuPowerDrawW != null && kpis.gpuPowerLimitW != null && kpis.gpuPowerLimitW > 0
+      ? Math.min(100, (kpis.gpuPowerDrawW / kpis.gpuPowerLimitW) * 100)
+      : null;
 
-  return [
+  const gpuHint = [kpis.gpuName, kpis.driverVersion ? `Driver ${kpis.driverVersion}` : null]
+    .filter((x): x is string => typeof x === 'string' && x.length > 0)
+    .join(' / ');
+
+  const items: DgxResourceKpiStripItemModel[] = [
     {
       key: 'gpu',
       label: 'GPU Util',
       value: kpis.gpuUtilPct == null ? '—' : `${Math.round(kpis.gpuUtilPct)}%`,
+      ...(gpuHint ? { hint: gpuHint } : {}),
       bar: {
         pct: kpis.gpuUtilPct == null ? null : Math.min(100, Math.max(0, kpis.gpuUtilPct)),
         barClass: pctBarClass(kpis.gpuUtilPct, (n) => n < 85, (n) => n < 95),
@@ -74,4 +84,33 @@ export function buildDgxResourceKpiStripItems(kpis: DgxResourceKpis): readonly D
       },
     },
   ];
+
+  if (kpis.gpuTemperatureC != null) {
+    items.push({
+      key: 'gpu-temp',
+      label: 'GPU Temp',
+      value: `${Math.round(kpis.gpuTemperatureC)}℃`,
+      bar: {
+        pct: Math.min(100, Math.max(0, (kpis.gpuTemperatureC / 90) * 100)),
+        barClass: pctBarClass(kpis.gpuTemperatureC, (n) => n < 72, (n) => n < 82),
+      },
+    });
+  }
+
+  if (kpis.gpuPowerDrawW != null) {
+    items.push({
+      key: 'gpu-power',
+      label: 'GPU Power',
+      value:
+        kpis.gpuPowerLimitW != null && kpis.gpuPowerLimitW > 0
+          ? `${Math.round(kpis.gpuPowerDrawW)} / ${Math.round(kpis.gpuPowerLimitW)} W`
+          : `${Math.round(kpis.gpuPowerDrawW)} W`,
+      bar: {
+        pct: powerPct,
+        barClass: pctBarClass(powerPct, (n) => n < 80, (n) => n < 92),
+      },
+    });
+  }
+
+  return items;
 }

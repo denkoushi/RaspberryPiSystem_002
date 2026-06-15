@@ -16,9 +16,11 @@ import { buildDgxResourceDashboardViewModel } from './dgxResourceDashboardViewMo
 import { DgxResourceEventsTimeline } from './DgxResourceEventsTimeline';
 import { DgxResourceMonitoringPanel } from './DgxResourceMonitoringPanel';
 import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
+import { DgxResourcePreflightPanel } from './DgxResourcePreflightPanel';
 import { DgxResourcePrimaryScenarioFlow } from './DgxResourcePrimaryScenarioFlow';
 import { DgxResourceQuickProfileActions } from './DgxResourceQuickProfileActions';
 import { DgxResourceSparkStatusPanel } from './DgxResourceSparkStatusPanel';
+import { DgxResourceStatusBoard } from './DgxResourceStatusBoard';
 import { DgxResourceStatusHeader } from './DgxResourceStatusHeader';
 import { DgxResourceTargetGrid } from './DgxResourceTargetGrid';
 import { shouldShowMonitoringPanel } from './dgxResourceUi';
@@ -220,6 +222,8 @@ export function DgxResourceDashboard() {
   return (
     <div className="-mx-4 -my-6 flex min-h-[calc(100dvh-7.75rem)] flex-col gap-3 overflow-y-auto px-4 py-2 text-base sm:-mx-6">
       <DgxResourceStatusHeader viewModel={viewModel} />
+      <DgxResourceStatusBoard kpis={overview.kpis} runtimeSummary={overview.runtimeSummary} />
+      <DgxResourcePreflightPanel overview={overview} />
 
       <div className="space-y-1">
         {overviewError ? <p className="text-sm text-red-300">{overviewError}</p> : null}

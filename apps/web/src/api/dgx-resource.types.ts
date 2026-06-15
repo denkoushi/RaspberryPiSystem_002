@@ -29,6 +29,16 @@ export type DgxControlTargetSnapshotApi = {
 
 export type DgxResourceKpis = {
   gpuUtilPct: number | null;
+  gpuTemperatureC?: number | null;
+  gpuPowerDrawW?: number | null;
+  gpuPowerLimitW?: number | null;
+  gpuClockSmMhz?: number | null;
+  gpuClockGraphicsMhz?: number | null;
+  gpuClockMemoryMhz?: number | null;
+  gpuPstate?: string | null;
+  gpuClocksThrottleReason?: string | null;
+  gpuName?: string | null;
+  driverVersion?: string | null;
   unifiedMemoryUsedGiB: number | null;
   unifiedMemoryTotalGiB: number | null;
   freeMemoryGiB: number | null;
