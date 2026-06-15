@@ -298,6 +298,25 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - **未完了**: 管理 UI の手動目視（運用者による最終確認）は任意
 - **関連コード**: `DgxResourceOperatorConsole.tsx` · `DgxResourceDashboard.tsx` · `DgxResourcePrimaryScenarioFlow.tsx` · `AdminLayout.tsx`
 
+**本番反映（2026-06-15・DGX ライトコンソール UI 仕上げ・Web のみ）** {#本番反映2026-06-15-dgx-resource-light-console-ui-review}
+
+- **status**: deployed · **scope**: `/admin/tools/dgx-resource` · **date**: 2026-06-15
+- **branch / HEAD**: **`chore/dgx-resource-ui-review`** · **`b5e08265`**
+- **変更（Web のみ・API/Prisma/migration なし）**:
+  - **ライトテーマ統一**: DGX 管理 UI 各パネルを白背景・slate 系トークンへ。ダークグラデ依存の `ghostOnDark` をライト面では `ghost` へ
+  - **`DgxResourceDashboard`**: 通常表示に **モデルプロファイル** / **詳細（Gateway・Spark Host・Logs）** サマリー 2 列を追加。`profileStatus` は active 実在時のみ `active`、未取得時 `not loaded`
+  - **`AdminLayout`**: DGX ルート（`/admin/dgx-resource` および `/admin/tools/dgx-resource` 配下）のみヘッダー・背景をライトテーマへ。サブルートも `startsWith` で判定
+  - **レビュー追補**: 詳細タブ `tabIndex`、プロファイル行 subtitle の重複計算除去
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3／DGX **対象外**
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh chore/dgx-resource-ui-review infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: Detach **`20260615-221641-31564`** · `PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`** · リモート HEAD **`b5e08265`** · **`web` 再ビルド** · バンドル **`index-B6GGePVd.js`**
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **57s**）
+- **実機（バンドル確認）**: `docker-web-1:/srv/site/assets/index-B6GGePVd.js` に **`モデルプロファイル`** · **`閉じた状態を既定`** · **`通常表示は「状態」と「主要操作」に限定`** · **`Current State`** · **`詳細・保守・ログ`** を確認
+- **実機（手動·管理 UI）**: `/admin/tools/dgx-resource` でライト背景・2 列サマリー・コンパクト KPI 帯を目視。旧ダーク UI のままなら [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**
+- **CI（push 時）**: GitHub Actions **`27547887659`** **success**
+- **未完了**: 管理 UI の手動目視（運用者による最終確認）は任意
+- **関連コード**: `DgxResourceDashboard.tsx` · `DgxResourceOperatorConsole.tsx` · `AdminLayout.tsx` · `dgxResourceUi.ts` ほか DGX resource コンポーネント群
+
 **本番反映（2026-06-15・運用者コンソールレイアウト統合・Web のみ）** {#本番反映2026-06-15-dgx-resource-operator-console-layout}
 
 - **status**: deployed · **scope**: `/admin/tools/dgx-resource` · **date**: 2026-06-15
