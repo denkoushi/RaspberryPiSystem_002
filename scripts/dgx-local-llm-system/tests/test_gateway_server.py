@@ -27,6 +27,87 @@ def load_module():
 
 
 class GatewayServerTests(unittest.TestCase):
+    def test_collect_gpu_metrics_includes_detail_fields(self):
+        module = load_module()
+
+        class Proc:
+            def __init__(self, returncode: int, stdout: str):
+                self.returncode = returncode
+                self.stdout = stdout
+
+        calls: list[str] = []
+
+        def run_impl(args, capture_output: bool, text: bool, check: bool):
+            command = args[-1]
+            calls.append(command)
+            if "--query-gpu=" in command:
+                return Proc(
+                    0,
+                    (
+                        "44, 32768, 131072, 46, 11.3, 120, 1280, 1280, 850, "
+                        "P2, None, NVIDIA GB10, 580.159.03\n"
+                    ),
+                )
+            raise AssertionError(f"unexpected command: {command}")
+
+        original_run = module.subprocess.run
+        module.subprocess.run = run_impl
+        try:
+            ok, payload = module.collect_gpu_metrics()
+        finally:
+            module.subprocess.run = original_run
+
+        self.assertTrue(ok)
+        self.assertEqual(payload["gpuUtilPct"], 44)
+        self.assertEqual(payload["unifiedMemoryUsedGiB"], 32)
+        self.assertEqual(payload["unifiedMemoryTotalGiB"], 128)
+        self.assertEqual(payload["freeMemoryGiB"], 96)
+        self.assertEqual(payload["gpuTemperatureC"], 46)
+        self.assertEqual(payload["gpuPowerDrawW"], 11.3)
+        self.assertEqual(payload["gpuPowerLimitW"], 120)
+        self.assertEqual(payload["gpuClockSmMhz"], 1280)
+        self.assertEqual(payload["gpuClockGraphicsMhz"], 1280)
+        self.assertEqual(payload["gpuClockMemoryMhz"], 850)
+        self.assertEqual(payload["gpuPstate"], "P2")
+        self.assertEqual(payload["gpuClocksThrottleReason"], "None")
+        self.assertEqual(payload["gpuName"], "NVIDIA GB10")
+        self.assertEqual(payload["driverVersion"], "580.159.03")
+        self.assertEqual(len(calls), 1)
+
+    def test_collect_gpu_metrics_falls_back_to_legacy_query(self):
+        module = load_module()
+
+        class Proc:
+            def __init__(self, returncode: int, stdout: str):
+                self.returncode = returncode
+                self.stdout = stdout
+
+        calls: list[str] = []
+
+        def run_impl(args, capture_output: bool, text: bool, check: bool):
+            command = args[-1]
+            calls.append(command)
+            if "temperature.gpu" in command:
+                return Proc(1, "")
+            if "--query-gpu=utilization.gpu,memory.used,memory.total " in command:
+                return Proc(0, "44, 32768, 131072\n")
+            raise AssertionError(f"unexpected command: {command}")
+
+        original_run = module.subprocess.run
+        module.subprocess.run = run_impl
+        try:
+            ok, payload = module.collect_gpu_metrics()
+        finally:
+            module.subprocess.run = original_run
+
+        self.assertTrue(ok)
+        self.assertEqual(payload["gpuUtilPct"], 44)
+        self.assertEqual(payload["unifiedMemoryUsedGiB"], 32)
+        self.assertEqual(payload["unifiedMemoryTotalGiB"], 128)
+        self.assertEqual(payload["freeMemoryGiB"], 96)
+        self.assertNotIn("gpuTemperatureC", payload)
+        self.assertEqual(len(calls), 2)
+
     def test_resolve_backend_base_url_uses_active_backend(self):
         module = load_module()
         config = module.GatewayConfig(

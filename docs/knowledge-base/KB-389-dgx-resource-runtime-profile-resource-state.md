@@ -44,6 +44,7 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 | Pi5 deploy (api + web) | Done (2026-06-07) |
 | Async business-return UX (`in_progress` + overview polling) | Done (`b321f82f`, `6f0d5b20`) |
 | Modern dashboard UI (view model + status header + tabbed details) | Done (`95b4b0e4`) · Pi5 production verified |
+| Admin preflight metrics (temperature / power / clocks / model / vLLM) | Done locally · pending CI/deploy |
 
 **Git**:
 
@@ -89,6 +90,12 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 - Main flow: 4 orchestration scenarios (unchanged API contract).
 - **モデルプロファイル起動** (quick `START_MODEL_PROFILE`) under **保守** tab.
 - Runtime budget shown when selecting business-return profile (e.g. `vLLM memory budget 65%`).
+
+### Admin preflight metrics (2026-06-15)
+
+- DGX gateway `/system/metrics` now returns optional detail fields from `nvidia-smi`: `gpuTemperatureC`, `gpuPowerDrawW`, `gpuPowerLimitW`, `gpuClockSmMhz`, `gpuClockGraphicsMhz`, `gpuClockMemoryMhz`, `gpuPstate`, `gpuClocksThrottleReason`, `gpuName`, `driverVersion`.
+- Pi5 API passes these fields through `overview.kpis`; Web shows a compact preflight panel for temperature, power, clocks, unified memory, active model, and vLLM readiness.
+- Compatibility: if the extended `nvidia-smi --query-gpu` fails, DGX gateway falls back to the legacy `utilization.gpu,memory.used,memory.total` query so existing GPU/memory KPI still works.
 
 ## Validation
 

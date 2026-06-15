@@ -395,6 +395,16 @@ describe('createDgxResourceService', () => {
           text: async () => '',
           json: async () => ({
             gpuUtilPct: 63,
+            gpuTemperatureC: 46,
+            gpuPowerDrawW: 11,
+            gpuPowerLimitW: 120,
+            gpuClockSmMhz: 1280,
+            gpuClockGraphicsMhz: 1280,
+            gpuClockMemoryMhz: 850,
+            gpuPstate: 'P2',
+            gpuClocksThrottleReason: 'none',
+            gpuName: 'NVIDIA GB10',
+            driverVersion: '580.159.03',
             unifiedMemoryUsedGiB: 82,
             unifiedMemoryTotalGiB: 128,
             freeMemoryGiB: 46,
@@ -411,6 +421,16 @@ describe('createDgxResourceService', () => {
     const ov = await svc.getOverview();
 
     expect(ov.kpis.gpuUtilPct).toBe(63);
+    expect(ov.kpis.gpuTemperatureC).toBe(46);
+    expect(ov.kpis.gpuPowerDrawW).toBe(11);
+    expect(ov.kpis.gpuPowerLimitW).toBe(120);
+    expect(ov.kpis.gpuClockSmMhz).toBe(1280);
+    expect(ov.kpis.gpuClockGraphicsMhz).toBe(1280);
+    expect(ov.kpis.gpuClockMemoryMhz).toBe(850);
+    expect(ov.kpis.gpuPstate).toBe('P2');
+    expect(ov.kpis.gpuClocksThrottleReason).toBe('none');
+    expect(ov.kpis.gpuName).toBe('NVIDIA GB10');
+    expect(ov.kpis.driverVersion).toBe('580.159.03');
     expect(ov.kpis.unifiedMemoryUsedGiB).toBe(82);
     expect(ov.kpis.unifiedMemoryTotalGiB).toBe(128);
     expect(ov.kpis.freeMemoryGiB).toBe(46);

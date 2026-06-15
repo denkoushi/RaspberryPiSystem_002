@@ -18,10 +18,11 @@ export function DgxResourceKpiStrip({ kpis }: Props) {
       {items.map((it) => (
         <div
           key={it.key}
-          className="min-w-[13.5rem] shrink-0 rounded-xl border border-white/10 bg-slate-900/50 px-4 py-4 lg:min-w-0 lg:flex-1 lg:basis-0"
+          className="min-w-[13.5rem] shrink-0 rounded-md border border-white/10 bg-slate-900/50 px-4 py-4 lg:min-w-0 lg:flex-1 lg:basis-0"
         >
-          <div className="break-words text-sm font-medium uppercase tracking-wide text-white/60">{it.label}</div>
+          <div className="break-words text-sm font-medium uppercase text-white/60">{it.label}</div>
           <div className="break-words text-3xl font-bold leading-snug text-white xl:text-4xl">{it.value}</div>
+          {it.hint ? <div className="mt-1 break-words text-xs text-white/45">{it.hint}</div> : null}
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-950/80">
             {it.bar.pct == null ? (
               <div className="h-full w-1/6 bg-slate-600" />

@@ -1,5 +1,15 @@
 export type MetricsPayload = {
   gpuUtilPct?: number;
+  gpuTemperatureC?: number;
+  gpuPowerDrawW?: number;
+  gpuPowerLimitW?: number;
+  gpuClockSmMhz?: number;
+  gpuClockGraphicsMhz?: number;
+  gpuClockMemoryMhz?: number;
+  gpuPstate?: string;
+  gpuClocksThrottleReason?: string;
+  gpuName?: string;
+  driverVersion?: string;
   unifiedMemoryUsedGiB?: number;
   unifiedMemoryTotalGiB?: number;
   freeMemoryGiB?: number;
@@ -29,8 +39,74 @@ export async function fetchJsonMetrics(
     const o = body as Record<string, unknown>;
     const toNum = (v: unknown): number | undefined =>
       typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+    const toStr = (v: unknown): string | undefined =>
+      typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
     const payload: MetricsPayload = {
       gpuUtilPct: toNum(o.gpuUtilPct ?? o.gpu_util_pct),
+      gpuTemperatureC: toNum(
+        o.gpuTemperatureC ??
+          o.gpu_temperature_c ??
+          o.gpuTempC ??
+          o.gpu_temp_c ??
+          o.temperatureGpuC ??
+          o.temperature_gpu_c ??
+          o['temperature.gpu']
+      ),
+      gpuPowerDrawW: toNum(
+        o.gpuPowerDrawW ??
+          o.gpu_power_draw_w ??
+          o.powerDrawW ??
+          o.power_draw_w ??
+          o.powerDrawWatts ??
+          o.power_draw_watts ??
+          o['power.draw']
+      ),
+      gpuPowerLimitW: toNum(
+        o.gpuPowerLimitW ??
+          o.gpu_power_limit_w ??
+          o.powerLimitW ??
+          o.power_limit_w ??
+          o.powerLimitWatts ??
+          o.power_limit_watts ??
+          o['power.limit']
+      ),
+      gpuClockSmMhz: toNum(
+        o.gpuClockSmMhz ??
+          o.gpu_clock_sm_mhz ??
+          o.smClockMhz ??
+          o.sm_clock_mhz ??
+          o.clockSmMhz ??
+          o.clock_sm_mhz ??
+          o['clocks.sm']
+      ),
+      gpuClockGraphicsMhz: toNum(
+        o.gpuClockGraphicsMhz ??
+          o.gpu_clock_graphics_mhz ??
+          o.graphicsClockMhz ??
+          o.graphics_clock_mhz ??
+          o.clockGraphicsMhz ??
+          o.clock_graphics_mhz ??
+          o['clocks.gr']
+      ),
+      gpuClockMemoryMhz: toNum(
+        o.gpuClockMemoryMhz ??
+          o.gpu_clock_memory_mhz ??
+          o.memoryClockMhz ??
+          o.memory_clock_mhz ??
+          o.clockMemoryMhz ??
+          o.clock_memory_mhz ??
+          o['clocks.mem']
+      ),
+      gpuPstate: toStr(o.gpuPstate ?? o.gpu_pstate ?? o.pstate),
+      gpuClocksThrottleReason: toStr(
+        o.gpuClocksThrottleReason ??
+          o.gpu_clocks_throttle_reason ??
+          o.clocksThrottleReason ??
+          o.clocks_throttle_reason ??
+          o['clocks_throttle_reasons.active']
+      ),
+      gpuName: toStr(o.gpuName ?? o.gpu_name ?? o.gpuModel ?? o.gpu_model ?? o.name),
+      driverVersion: toStr(o.driverVersion ?? o.driver_version ?? o.nvidiaDriverVersion ?? o.nvidia_driver_version),
       unifiedMemoryUsedGiB: toNum(o.unifiedMemoryUsedGiB ?? o.unified_memory_used_gib),
       unifiedMemoryTotalGiB: toNum(o.unifiedMemoryTotalGiB ?? o.unified_memory_total_gib),
       freeMemoryGiB: toNum(o.freeMemoryGiB ?? o.free_memory_gib),

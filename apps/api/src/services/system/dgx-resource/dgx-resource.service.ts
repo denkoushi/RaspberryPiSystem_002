@@ -50,6 +50,16 @@ export type DgxServiceStatusKind = import('./dgx-resource.control-target.types.j
 
 export type DgxResourceKpis = {
   gpuUtilPct: number | null;
+  gpuTemperatureC: number | null;
+  gpuPowerDrawW: number | null;
+  gpuPowerLimitW: number | null;
+  gpuClockSmMhz: number | null;
+  gpuClockGraphicsMhz: number | null;
+  gpuClockMemoryMhz: number | null;
+  gpuPstate: string | null;
+  gpuClocksThrottleReason: string | null;
+  gpuName: string | null;
+  driverVersion: string | null;
   unifiedMemoryUsedGiB: number | null;
   unifiedMemoryTotalGiB: number | null;
   freeMemoryGiB: number | null;
@@ -897,6 +907,16 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         generatedAt: pb.generatedAt,
         kpis: {
           gpuUtilPct: bundle.metricsPayload?.gpuUtilPct ?? null,
+          gpuTemperatureC: bundle.metricsPayload?.gpuTemperatureC ?? null,
+          gpuPowerDrawW: bundle.metricsPayload?.gpuPowerDrawW ?? null,
+          gpuPowerLimitW: bundle.metricsPayload?.gpuPowerLimitW ?? null,
+          gpuClockSmMhz: bundle.metricsPayload?.gpuClockSmMhz ?? null,
+          gpuClockGraphicsMhz: bundle.metricsPayload?.gpuClockGraphicsMhz ?? null,
+          gpuClockMemoryMhz: bundle.metricsPayload?.gpuClockMemoryMhz ?? null,
+          gpuPstate: bundle.metricsPayload?.gpuPstate ?? null,
+          gpuClocksThrottleReason: bundle.metricsPayload?.gpuClocksThrottleReason ?? null,
+          gpuName: bundle.metricsPayload?.gpuName ?? null,
+          driverVersion: bundle.metricsPayload?.driverVersion ?? null,
           unifiedMemoryUsedGiB: bundle.metricsPayload?.unifiedMemoryUsedGiB ?? null,
           unifiedMemoryTotalGiB: bundle.metricsPayload?.unifiedMemoryTotalGiB ?? null,
           freeMemoryGiB: bundle.metricsPayload?.freeMemoryGiB ?? null,
