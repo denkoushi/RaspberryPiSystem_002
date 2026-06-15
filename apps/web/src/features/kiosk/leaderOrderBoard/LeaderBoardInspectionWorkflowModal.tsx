@@ -29,27 +29,27 @@ export function LeaderBoardInspectionWorkflowModal({
       onClose={onClose}
       title="検査方法を選択"
       size="sm"
-      className="border-white/15 bg-slate-900 text-white"
-      titleClassName="text-base font-semibold text-cyan-100"
+      className="border-2 border-slate-950 bg-white text-slate-950 shadow-2xl"
+      titleClassName="text-base font-bold text-slate-950"
       overlayZIndex={90}
     >
       {row && pres ? (
         <div className="mt-3 space-y-4">
-          <div className="space-y-1 border-y border-white/10 py-3 text-xs text-white/70">
+          <div className="space-y-1 border-y border-slate-300 py-3 text-xs text-slate-800">
             <div className="flex min-w-0 gap-2">
-              <span className="shrink-0 text-white/45">資源</span>
-              <span className="font-mono text-white/90">{row.resourceCd}</span>
+              <span className="shrink-0 font-semibold text-slate-600">資源</span>
+              <span className="font-mono font-bold text-slate-950">{row.resourceCd}</span>
             </div>
             <div className="flex min-w-0 gap-2">
-              <span className="shrink-0 text-white/45">部品</span>
-              <span className="min-w-0 truncate text-white/90">
+              <span className="shrink-0 font-semibold text-slate-600">部品</span>
+              <span className="min-w-0 truncate font-semibold text-slate-950">
                 {row.fhincd.trim() || '—'}
                 {pres.partNameLine ? ` / ${pres.partNameLine}` : ''}
               </span>
             </div>
             <div className="flex min-w-0 gap-2">
-              <span className="shrink-0 text-white/45">製番</span>
-              <span className="min-w-0 truncate font-mono text-white/90">{row.fseiban.trim() || '—'}</span>
+              <span className="shrink-0 font-semibold text-slate-600">製番</span>
+              <span className="min-w-0 truncate font-mono font-bold text-slate-950">{row.fseiban.trim() || '—'}</span>
             </div>
           </div>
 
@@ -61,8 +61,8 @@ export function LeaderBoardInspectionWorkflowModal({
               className={clsx(
                 'rounded border px-4 py-3 text-left text-sm font-semibold transition-colors',
                 canOpenDigitalInput
-                  ? 'border-cyan-300/50 bg-cyan-500/20 text-cyan-50 hover:bg-cyan-500/30'
-                  : 'cursor-not-allowed border-white/10 bg-white/5 text-white/35'
+                  ? 'border-sky-900 bg-sky-700 text-white shadow hover:bg-sky-800'
+                  : 'cursor-not-allowed border-slate-300 bg-slate-100 text-slate-400'
               )}
             >
               デジタル入力
@@ -74,19 +74,19 @@ export function LeaderBoardInspectionWorkflowModal({
               className={clsx(
                 'rounded border px-4 py-3 text-left text-sm font-semibold transition-colors',
                 canOpenPaperPrint
-                  ? 'border-emerald-300/50 bg-emerald-500/20 text-emerald-50 hover:bg-emerald-500/30'
-                  : 'cursor-not-allowed border-white/10 bg-white/5 text-white/35'
+                  ? 'border-emerald-900 bg-emerald-700 text-white shadow hover:bg-emerald-800'
+                  : 'cursor-not-allowed border-slate-300 bg-slate-100 text-slate-400'
               )}
             >
               帳票紙印刷
             </button>
           </div>
 
-          <div className="flex justify-end border-t border-white/10 pt-3">
+          <div className="flex justify-end border-t border-slate-300 pt-3">
             <button
               type="button"
               onClick={onClose}
-              className="rounded border border-white/20 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10"
+              className="rounded border border-slate-400 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-slate-100"
             >
               閉じる
             </button>

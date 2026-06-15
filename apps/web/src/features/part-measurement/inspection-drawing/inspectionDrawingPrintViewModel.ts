@@ -1,5 +1,6 @@
 import {
   INSPECTION_DRAWING_PRINT_FILL_EMPTY_RECORD_SLOTS,
+  INSPECTION_DRAWING_PRINT_MAX_ENTRY_COUNT,
   INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE,
   INSPECTION_DRAWING_PRINT_RECORD_POINTS_PER_PAGE,
   INSPECTION_DRAWING_PRINT_TIME_ZONE
@@ -52,6 +53,8 @@ export type BuildInspectionDrawingPrintViewModelInput = {
   template: PartMeasurementTemplateDto;
   resourceName: string;
   issuedAt: Date;
+  /** 順位ボード行の予定数。全数検査の記録欄数に使う。 */
+  plannedQuantity?: number | null;
 };
 
 export class InspectionDrawingPrintBuildError extends Error {
@@ -127,7 +130,7 @@ export function formatInspectionDrawingPrintTolerance(point: InspectionDrawingPo
 export function buildInspectionDrawingPrintViewModel(
   input: BuildInspectionDrawingPrintViewModelInput
 ): InspectionDrawingPrintViewModel {
-  const { template, resourceName, issuedAt } = input;
+  const { template, resourceName, issuedAt, plannedQuantity } = input;
   const drawingPath = template.visualTemplate?.drawingImageRelativePath ?? null;
 
   if (!templateSupportsInspectionDrawing(template.items, drawingPath)) {
@@ -167,7 +170,10 @@ export function buildInspectionDrawingPrintViewModel(
     reportUnitKey: buildInspectionDrawingPrintReportUnitKey(template)
   };
 
-  const recordPages = buildRecordPages(points, buildInspectionDrawingPrintRecordEntrySlots(template));
+  const recordPages = buildRecordPages(
+    points,
+    buildInspectionDrawingPrintRecordEntrySlots(template, plannedQuantity)
+  );
   const totalPages = 1 + recordPages.length;
 
   return {
@@ -197,13 +203,16 @@ export function buildInspectionDrawingPrintRecordEntrySlots(
   template: Pick<
     PartMeasurementTemplateDto,
     'selfInspectionMode' | 'selfInspectionFixedCount' | 'selfInspectionSampleSize'
-  >
+  >,
+  plannedQuantity?: number | null
 ): InspectionDrawingPrintRecordEntrySlot[] {
-  if (template.selfInspectionMode === 'single') {
+  const mode = normalizeInspectionDrawingPrintSelfInspectionMode(template.selfInspectionMode);
+
+  if (mode === 'single') {
     return [{ entryIndex: 0, entryLabel: '1件目' }];
   }
 
-  if (template.selfInspectionMode === 'first_last') {
+  if (mode === 'first_last') {
     return [
       { entryIndex: 0, entryLabel: '最初' },
       { entryIndex: 1, entryLabel: '最終' }
@@ -211,15 +220,33 @@ export function buildInspectionDrawingPrintRecordEntrySlots(
   }
 
   const rawCount =
-    template.selfInspectionMode === 'fixed_count'
+    mode === 'fixed_count'
       ? template.selfInspectionFixedCount ?? template.selfInspectionSampleSize
-      : INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE;
+      : normalizeInspectionDrawingPrintEntryCount(plannedQuantity) ??
+        INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE;
   const count = Math.max(1, Math.floor(rawCount ?? 1));
 
   return Array.from({ length: count }, (_, index) => ({
     entryIndex: index,
     entryLabel: `${index + 1}件目`
   }));
+}
+
+function normalizeInspectionDrawingPrintSelfInspectionMode(
+  mode: PartMeasurementTemplateDto['selfInspectionMode'] | string | null | undefined
+): PartMeasurementTemplateDto['selfInspectionMode'] {
+  const normalized = String(mode ?? 'full').trim().toLowerCase();
+  if (normalized === 'single') return 'single';
+  if (normalized === 'first_last') return 'first_last';
+  if (normalized === 'fixed_count' || normalized === 'sample') return 'fixed_count';
+  return 'full';
+}
+
+function normalizeInspectionDrawingPrintEntryCount(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const count = Math.floor(value);
+  if (count <= 0) return null;
+  return Math.min(count, INSPECTION_DRAWING_PRINT_MAX_ENTRY_COUNT);
 }
 
 export function buildRecordPages(

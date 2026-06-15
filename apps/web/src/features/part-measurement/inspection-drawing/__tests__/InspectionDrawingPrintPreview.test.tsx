@@ -140,7 +140,7 @@ describe('InspectionDrawingPrintPreview', () => {
       }
     });
     expect(screen.getByText('1件目')).toBeInTheDocument();
-    expect(screen.getByText('6件目')).toBeInTheDocument();
+    expect(screen.getByText('5件目')).toBeInTheDocument();
     expect(screen.queryByText('判定')).toBeNull();
     expect(screen.queryByText('確認')).toBeNull();
     expect(screen.queryByText('備考')).toBeNull();

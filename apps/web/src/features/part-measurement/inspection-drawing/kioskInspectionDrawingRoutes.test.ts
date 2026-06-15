@@ -8,6 +8,7 @@ import {
   kioskInspectionDrawingTemplatePrintPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
+  parseInspectionDrawingPrintPlannedQuantityFromSearch,
   parseInspectionDrawingSourceTemplateIdFromSearch
 } from './kioskInspectionDrawingRoutes';
 
@@ -30,6 +31,15 @@ describe('kioskInspectionDrawingRoutes', () => {
     expect(kioskInspectionDrawingTemplatePrintPath('abc')).toBe(
       '/kiosk/part-measurement/inspection/templates/abc/print'
     );
+  });
+
+  it('template print path helper adds planned quantity when provided', () => {
+    expect(kioskInspectionDrawingTemplatePrintPath('abc', { plannedQuantity: 3 })).toBe(
+      '/kiosk/part-measurement/inspection/templates/abc/print?plannedQuantity=3'
+    );
+    expect(parseInspectionDrawingPrintPlannedQuantityFromSearch('?plannedQuantity=3')).toBe(3);
+    expect(parseInspectionDrawingPrintPlannedQuantityFromSearch('?plannedQuantity=0')).toBeNull();
+    expect(parseInspectionDrawingPrintPlannedQuantityFromSearch('?plannedQuantity=2001')).toBe(2000);
   });
 
   it('parses sourceTemplateId from query', () => {

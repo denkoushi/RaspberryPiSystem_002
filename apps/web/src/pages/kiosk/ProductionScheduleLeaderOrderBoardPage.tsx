@@ -459,7 +459,11 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     const templateId = row.selfInspectionTemplateId?.trim();
     if (!templateId) return;
     setInspectionWorkflowRow(null);
-    window.open(kioskInspectionDrawingTemplatePrintPath(templateId), '_blank', 'noopener,noreferrer');
+    window.open(
+      kioskInspectionDrawingTemplatePrintPath(templateId, { plannedQuantity: row.plannedQuantity }),
+      '_blank',
+      'noopener,noreferrer'
+    );
   }, []);
 
   const handleRegisterSeibanFromNoteModal = useCallback(async () => {

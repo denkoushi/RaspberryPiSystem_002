@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 
 import { getKioskInspectionDrawingTemplate, getResolvedClientKey, setClientKeyHeader } from '../../api/client';
 import { useKioskProductionScheduleResources } from '../../api/hooks';
@@ -9,7 +9,10 @@ import {
   InspectionDrawingPrintBuildError,
   InspectionDrawingPrintPreview
 } from '../../features/part-measurement/inspection-drawing';
-import { KIOSK_INSPECTION_DRAWING_LIBRARY_PATH } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
+import {
+  KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
+  parseInspectionDrawingPrintPlannedQuantityFromSearch
+} from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 
 import type { PartMeasurementTemplateDto } from '../../features/part-measurement/types';
@@ -77,6 +80,7 @@ function PrintErrorScreen({
 /** 保存済み検査図面テンプレートの A4 横 HTML 帳票プレビュー（KioskLayout 外） */
 export function KioskInspectionDrawingPrintPage() {
   const { templateId } = useParams<{ templateId: string }>();
+  const location = useLocation();
   const [issuedAt] = useState(() => new Date());
   const [loadState, setLoadState] = useState<TemplateLoadState>(() =>
     templateId?.trim() ? { kind: 'loading' } : { kind: 'missing_template_id' }
@@ -127,12 +131,14 @@ export function KioskInspectionDrawingPrintPage() {
 
   const viewModelResult = useMemo(() => {
     if (!template) return null;
+    const plannedQuantity = parseInspectionDrawingPrintPlannedQuantityFromSearch(location.search);
     try {
       return {
         viewModel: buildInspectionDrawingPrintViewModel({
           template,
           resourceName: formatResourceCdWithJapaneseNames(template.resourceCd, resourceNameMap),
-          issuedAt
+          issuedAt,
+          plannedQuantity
         }),
         error: null as InspectionDrawingPrintBuildError | null
       };
@@ -142,7 +148,7 @@ export function KioskInspectionDrawingPrintPage() {
       }
       throw error;
     }
-  }, [issuedAt, resourceNameMap, template]);
+  }, [issuedAt, location.search, resourceNameMap, template]);
 
   if (loadState.kind === 'loading') {
     return (
