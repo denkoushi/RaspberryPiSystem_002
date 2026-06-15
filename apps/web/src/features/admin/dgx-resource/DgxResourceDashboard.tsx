@@ -15,13 +15,12 @@ import { POLL_MS } from '../../../lib/admin-polling-intervals';
 import { buildDgxResourceDashboardViewModel } from './dgxResourceDashboardViewModel';
 import { DgxResourceEventsTimeline } from './DgxResourceEventsTimeline';
 import { DgxResourceMonitoringPanel } from './DgxResourceMonitoringPanel';
+import { DgxResourceOperatorConsole } from './DgxResourceOperatorConsole';
 import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
 import { DgxResourcePreflightPanel } from './DgxResourcePreflightPanel';
-import { DgxResourcePrimaryScenarioFlow } from './DgxResourcePrimaryScenarioFlow';
 import { DgxResourceQuickProfileActions } from './DgxResourceQuickProfileActions';
 import { DgxResourceSparkStatusPanel } from './DgxResourceSparkStatusPanel';
 import { DgxResourceStatusBoard } from './DgxResourceStatusBoard';
-import { DgxResourceStatusHeader } from './DgxResourceStatusHeader';
 import { DgxResourceTargetGrid } from './DgxResourceTargetGrid';
 import { shouldShowMonitoringPanel } from './dgxResourceUi';
 import { DgxResourceWarmRuntimeNotice } from './DgxResourceWarmRuntimeNotice';
@@ -221,9 +220,26 @@ export function DgxResourceDashboard() {
 
   return (
     <div className="-mx-4 -my-6 flex min-h-[calc(100dvh-7.75rem)] flex-col gap-3 overflow-y-auto px-4 py-2 text-base sm:-mx-6">
-      <DgxResourceStatusHeader viewModel={viewModel} />
-      <DgxResourceStatusBoard kpis={overview.kpis} runtimeSummary={overview.runtimeSummary} />
-      <DgxResourcePreflightPanel overview={overview} />
+      {overview.operator ? (
+        <DgxResourceOperatorConsole
+          overview={overview}
+          operator={overview.operator}
+          postDgxAction={postDgxActionAsync}
+          actionBusy={mutateAction.isPending}
+          externalBusy={scenarioPending}
+          onControlUiError={(message) => {
+            setActionError(message);
+            if (message == null) setTargetActionError(null);
+          }}
+        />
+      ) : (
+        <section className="rounded-lg border border-amber-400/30 bg-amber-950/30 p-3">
+          <h1 className="text-xl font-semibold text-white">DGX リソース</h1>
+          <p className="mt-2 text-sm text-amber-100/90">
+            API が運用者向け overview（operator）を返していません。Pi5 API を更新してください。
+          </p>
+        </section>
+      )}
 
       <div className="space-y-1">
         {overviewError ? <p className="text-sm text-red-300">{overviewError}</p> : null}
@@ -253,24 +269,7 @@ export function DgxResourceDashboard() {
         </p>
       ) : null}
 
-      {overview.operator ? (
-        <DgxResourcePrimaryScenarioFlow
-          operator={overview.operator}
-          modelProfiles={overview.modelProfiles}
-          runtimeSummary={overview.runtimeSummary}
-          postDgxAction={postDgxActionAsync}
-          actionBusy={mutateAction.isPending}
-          externalBusy={scenarioPending}
-          onControlUiError={(message) => {
-            setActionError(message);
-            if (message == null) setTargetActionError(null);
-          }}
-        />
-      ) : (
-        <p className="rounded border border-amber-400/30 bg-amber-950/30 p-3 text-sm text-amber-100/90">
-          API が運用者向け overview（operator）を返していません。Pi5 API を更新してください。
-        </p>
-      )}
+      <DgxResourceStatusBoard kpis={overview.kpis} runtimeSummary={overview.runtimeSummary} />
 
       <section className="space-y-3 border-t border-white/10 pt-3">
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="DGX 詳細">
@@ -308,6 +307,7 @@ export function DgxResourceDashboard() {
 
         {detailTab === 'state' ? (
           <div id="dgx-resource-state-tab" role="tabpanel" className="space-y-3">
+            <DgxResourcePreflightPanel overview={overview} />
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
               {viewModel.detailRows.map((row) => (
                 <div key={row.key} className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2" title={row.hint}>

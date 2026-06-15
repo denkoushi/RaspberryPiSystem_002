@@ -186,10 +186,29 @@ describe('DgxResourceOperatorConsole', () => {
       />
     );
 
-    expect(screen.getByRole('heading', { name: 'DGX 運用ガイド' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'DGX リソース' })).toBeInTheDocument();
+    expect(screen.getByText('運用ガイド')).toBeInTheDocument();
     expect(screen.getAllByText('私用を始める').length).toBeGreaterThan(0);
     expect(screen.getByRole('region', { name: 'DGX 操作' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '業務に戻す（私用を終える）' })).toBeInTheDocument();
+  });
+
+  it('disables guide actions while an external scenario is pending', () => {
+    const op = makeOperator();
+    renderWithProviders(
+      <DgxResourceOperatorConsole
+        overview={makeOverview(op)}
+        operator={op}
+        postDgxAction={vi.fn(async () => ({ ok: true, message: 'ok' }))}
+        actionBusy={false}
+        externalBusy
+        onControlUiError={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: '私用を始める' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '業務に戻す（私用を終える）' })).toBeDisabled();
+    expect(screen.getByText('進行中: 切替処理を実行中です。別タブへ移動しても処理は継続します。')).toBeInTheDocument();
   });
 
   it('executes business return from the action button', async () => {
