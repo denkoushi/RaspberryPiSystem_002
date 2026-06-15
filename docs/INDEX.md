@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-06-15 · キオスク検査帳票 OCR 向け測定値ボックス）
+
+- **検査帳票 記録欄 OCR レイアウト** · Web only · **Pi5 のみ本番 OK** · **`e0b3703d`** · Detach **`20260615-161806-4705`** · Phase12 **43/0/0**。**記録**: [KB-390](./knowledge-base/KB-390-kiosk-leaderboard-inspection-workflow.md)
+
 ### 最新アップデート（2026-06-15 · キオスク順位ボード 検査方法選択 + plannedQuantity 印刷）
 
 - **順位ボード「検」→ デジタル入力 / 帳票紙印刷** · Web only · **Pi5 のみ本番 OK** · **`5116f75f`** · Phase12 **43/0/0**。**記録**: [KB-390](./knowledge-base/KB-390-kiosk-leaderboard-inspection-workflow.md)
