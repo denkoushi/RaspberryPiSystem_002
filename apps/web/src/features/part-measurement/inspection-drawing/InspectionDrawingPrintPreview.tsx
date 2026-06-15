@@ -39,6 +39,90 @@ function PreviewDisclaimerBanner() {
   );
 }
 
+function SheetFiducials() {
+  const markers: CSSProperties[] = [
+    { top: '2.4mm', left: '2.4mm', borderTopWidth: '0.8mm', borderLeftWidth: '0.8mm' },
+    { top: '2.4mm', right: '2.4mm', borderTopWidth: '0.8mm', borderRightWidth: '0.8mm' },
+    { bottom: '2.4mm', left: '2.4mm', borderBottomWidth: '0.8mm', borderLeftWidth: '0.8mm' },
+    { right: '2.4mm', bottom: '2.4mm', borderRightWidth: '0.8mm', borderBottomWidth: '0.8mm' }
+  ];
+
+  return (
+    <>
+      {markers.map((style, index) => (
+        <span
+          key={index}
+          aria-hidden="true"
+          className="pointer-events-none absolute z-10"
+          style={{
+            width: '7mm',
+            height: '7mm',
+            borderStyle: 'solid',
+            borderColor: '#020617',
+            ...style
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+function splitRecordPointLabel(label: string): string[] {
+  const normalized = label.trim();
+  if (!normalized) return ['-'];
+
+  const whitespaceParts = normalized.split(/\s+/).filter(Boolean);
+  if (whitespaceParts.length > 1) {
+    return [whitespaceParts[0], whitespaceParts.slice(1).join(' ')];
+  }
+
+  const characters = Array.from(normalized);
+  if (characters.length > 6) {
+    const splitAt = Math.ceil(characters.length / 2);
+    return [characters.slice(0, splitAt).join(''), characters.slice(splitAt).join('')];
+  }
+
+  return [normalized];
+}
+
+function formatRecordSpecificationLines(point: InspectionDrawingPoint): string[] {
+  const formatted = formatInspectionDrawingPrintTolerance(point);
+  if (formatted.startsWith('合格範囲 ')) {
+    return ['合格範囲', formatted.replace(/^合格範囲\s+/, '')];
+  }
+
+  const [base, tolerance] = formatted.split(' / ');
+  return tolerance ? [base, tolerance] : [formatted];
+}
+
+function MeasurementValueWriteBoxes() {
+  const digitIndexes = [0, 1, 2, 3];
+  const decimalIndexes = [0, 1, 2];
+  const digitBoxClass = 'block h-full min-w-0 border border-slate-500 bg-white';
+
+  return (
+    <span
+      data-testid="inspection-print-measurement-value-boxes"
+      className="grid h-[8.1mm] items-stretch gap-[0.35mm]"
+      style={{ gridTemplateColumns: '4.5mm 21.2mm 1.5mm repeat(3, 5mm)' }}
+      aria-hidden="true"
+    >
+      <span className={digitBoxClass} />
+      <span className="grid h-full min-w-0 grid-cols-4 gap-[0.35mm]">
+        {digitIndexes.map((index) => (
+          <span key={index} className={digitBoxClass} />
+        ))}
+      </span>
+      <span className="flex h-full items-end justify-center pb-[0.5mm] text-[10pt] font-black leading-none text-slate-950">
+        .
+      </span>
+      {decimalIndexes.map((index) => (
+        <span key={index} className={digitBoxClass} />
+      ))}
+    </span>
+  );
+}
+
 function SheetHeader({
   title,
   pageLabel,
@@ -97,27 +181,49 @@ function RecordSlot({
   }
 
   const { point } = slot;
+  const pointLabelLines = splitRecordPointLabel(point.name || `測定点 ${point.markerNo}`);
+  const specificationLines = formatRecordSpecificationLines(point);
+
   return (
     <tr className="h-[10.5mm] border-t border-slate-900">
       <td className="border-r border-slate-900 bg-slate-100 text-center text-[8pt] font-black">
         {point.markerNo}
       </td>
-      <td className="border-r border-slate-900 px-[1mm] py-[0.6mm] text-[7pt] font-bold leading-tight break-words">
-        {point.name || `測定点 ${point.markerNo}`}
+      <td className="border-r border-slate-900 px-[0.75mm] py-[0.55mm] text-[9.8pt] font-black leading-[1.12] break-words">
+        <span className="grid h-full min-w-0 content-center gap-[0.25mm]">
+          {pointLabelLines.map((line, index) => (
+            <span key={`${line}-${index}`} className="min-w-0 overflow-hidden text-clip whitespace-nowrap">
+              {line}
+            </span>
+          ))}
+        </span>
       </td>
-      <td className="border-r border-slate-900 px-[1mm] py-[0.6mm] text-[6.5pt] leading-tight break-words">
-        {formatInspectionDrawingPrintTolerance(point)}
+      <td className="border-r border-slate-900 px-[0.45mm] py-0 text-[11.2pt] font-semibold leading-[0.95] break-words">
+        <span className="grid h-full min-w-0 content-center gap-0">
+          {specificationLines.map((line, index) => (
+            <span
+              key={`${line}-${index}`}
+              className={
+                index === 0
+                  ? 'min-w-0 whitespace-nowrap text-clip'
+                  : 'min-w-0 whitespace-nowrap text-clip text-[10.3pt]'
+              }
+            >
+              {line}
+            </span>
+          ))}
+        </span>
       </td>
       {entrySlots.map((entrySlot, index) => (
         <td
           key={entrySlot.entryIndex}
           className={
             index < entrySlots.length - 1
-              ? 'border-r border-slate-900 px-[0.8mm] py-[0.6mm]'
-              : 'px-[0.8mm] py-[0.6mm]'
+              ? 'border-r border-slate-900 px-[0.35mm] py-[0.75mm]'
+              : 'px-[0.35mm] py-[0.75mm]'
           }
         >
-          <span className="block h-[7mm] border border-slate-500 bg-white" />
+          <MeasurementValueWriteBoxes />
         </td>
       ))}
     </tr>
@@ -154,7 +260,8 @@ function DrawingPage({
   }, [containerHeight, containerWidth, imageNaturalHeight, imageNaturalWidth, viewModel.points]);
 
   return (
-    <article className="inspection-print-sheet mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_auto_1fr] gap-[2.5mm] bg-white p-[5mm] shadow-2xl">
+    <article className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_auto_1fr] gap-[2.5mm] overflow-hidden bg-white p-[5mm] shadow-2xl">
+      <SheetFiducials />
       <PreviewDisclaimerBanner />
       <SheetHeader
         title="検査図面 位置確認"
@@ -194,7 +301,8 @@ function RecordPage({
   const tableWidthMm = getInspectionDrawingPrintRecordTableWidthMm(page.entrySlots.length);
 
   return (
-    <article className="inspection-print-sheet mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_auto_auto_1fr] gap-[2.5mm] bg-white p-[5mm] shadow-2xl">
+    <article className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_auto_auto_1fr] gap-[2.5mm] overflow-hidden bg-white p-[5mm] shadow-2xl">
+      <SheetFiducials />
       <PreviewDisclaimerBanner />
       <SheetHeader
         title="検査値 記録欄"
@@ -241,7 +349,7 @@ function RecordPage({
               <th rowSpan={2} className="border-r border-slate-900">No</th>
               <th rowSpan={2} className="border-r border-slate-900">測定点</th>
               <th rowSpan={2} className="border-r border-slate-900">規格</th>
-              <th colSpan={page.entrySlots.length}>測定値</th>
+              <th colSpan={page.entrySlots.length}>測定値（符号 / 整数4桁 / 小数3桁）</th>
             </tr>
             <tr className="h-[5mm] bg-slate-100 text-center text-[6.5pt] font-bold">
               {page.entrySlots.map((entrySlot, index) => (

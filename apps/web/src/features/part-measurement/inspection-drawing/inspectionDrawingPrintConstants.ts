@@ -14,12 +14,12 @@ export const INSPECTION_DRAWING_PRINT_RECORD_POINTS_PER_PAGE = 14;
 export const INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE = 5;
 export const INSPECTION_DRAWING_PRINT_MAX_ENTRY_COUNT = 2000;
 
-/** Record table widths (mm): keep the handwritten value box compact. */
+/** Record table widths (mm): fit 5 OCR-friendly value columns in the A4 landscape body. */
 export const INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM = {
   no: 8,
-  measurementPoint: 32,
-  specification: 42,
-  measurementValue: 38
+  measurementPoint: 24,
+  specification: 30,
+  measurementValue: 45
 } as const;
 
 export const INSPECTION_DRAWING_PRINT_RECORD_TABLE_FIXED_WIDTH_MM =

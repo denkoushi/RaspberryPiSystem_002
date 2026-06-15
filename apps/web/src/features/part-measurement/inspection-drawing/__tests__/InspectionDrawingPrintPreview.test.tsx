@@ -92,7 +92,8 @@ describe('InspectionDrawingPrintPreview', () => {
     expect(screen.queryByText(/QR予定/)).toBeNull();
     expect(screen.queryByText(/将来読取用/)).toBeNull();
     expect(screen.queryByText(/数値欄は仮配置/)).toBeNull();
-    expect(screen.getByText(/10 \/ -0\.05 - 0\.05/)).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
+    expect(screen.getByText('-0.05 - 0.05')).toBeInTheDocument();
   });
 
   it('uses a compact single header row on drawing and record pages', async () => {
@@ -116,7 +117,7 @@ describe('InspectionDrawingPrintPreview', () => {
     expect(screen.queryByText('帳票単位:')).toBeNull();
   });
 
-  it('keeps the handwritten measurement column at form scale', async () => {
+  it('renders OCR-friendly split measurement boxes at form scale', async () => {
     render(
       <InspectionDrawingPrintPreview
         viewModel={viewModel}
@@ -132,6 +133,12 @@ describe('InspectionDrawingPrintPreview', () => {
       width: `${getInspectionDrawingPrintRecordTableWidthMm(INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE)}mm`
     });
     expect(table.querySelectorAll('col')).toHaveLength(3 + INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE);
+    expect(table.querySelectorAll('col')[1]).toHaveStyle({
+      width: `${INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM.measurementPoint}mm`
+    });
+    expect(table.querySelectorAll('col')[2]).toHaveStyle({
+      width: `${INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM.specification}mm`
+    });
     table.querySelectorAll('col').forEach((col, index) => {
       if (index >= 3) {
         expect(col).toHaveStyle({
@@ -139,6 +146,10 @@ describe('InspectionDrawingPrintPreview', () => {
         });
       }
     });
+    expect(screen.getAllByTestId('inspection-print-measurement-value-boxes')).toHaveLength(
+      viewModel.points.length * INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE
+    );
+    expect(screen.getByText('測定値（符号 / 整数4桁 / 小数3桁）')).toBeInTheDocument();
     expect(screen.getByText('1件目')).toBeInTheDocument();
     expect(screen.getByText('5件目')).toBeInTheDocument();
     expect(screen.queryByText('判定')).toBeNull();
