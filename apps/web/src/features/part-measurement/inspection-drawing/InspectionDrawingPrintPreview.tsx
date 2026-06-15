@@ -31,14 +31,6 @@ function markerStyle(leftPercent: number, topPercent: number): CSSProperties {
   };
 }
 
-function PreviewDisclaimerBanner() {
-  return (
-    <p className="rounded border border-amber-700 bg-amber-50 px-[2mm] py-[1mm] text-[7pt] font-bold leading-snug text-amber-950">
-      {INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER}
-    </p>
-  );
-}
-
 function SheetFiducials() {
   const markers: CSSProperties[] = [
     { top: '2.4mm', left: '2.4mm', borderTopWidth: '0.8mm', borderLeftWidth: '0.8mm' },
@@ -260,9 +252,8 @@ function DrawingPage({
   }, [containerHeight, containerWidth, imageNaturalHeight, imageNaturalWidth, viewModel.points]);
 
   return (
-    <article className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_auto_1fr] gap-[2.5mm] overflow-hidden bg-white p-[5mm] shadow-2xl">
+    <article className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_1fr] gap-[2.5mm] overflow-hidden bg-white p-[5mm] shadow-2xl">
       <SheetFiducials />
-      <PreviewDisclaimerBanner />
       <SheetHeader
         title="検査図面 位置確認"
         pageLabel={`1/${viewModel.totalPages}`}
@@ -301,9 +292,8 @@ function RecordPage({
   const tableWidthMm = getInspectionDrawingPrintRecordTableWidthMm(page.entrySlots.length);
 
   return (
-    <article className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_auto_auto_1fr] gap-[2.5mm] overflow-hidden bg-white p-[5mm] shadow-2xl">
+    <article className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_auto_1fr] gap-[2.5mm] overflow-hidden bg-white p-[5mm] shadow-2xl">
       <SheetFiducials />
-      <PreviewDisclaimerBanner />
       <SheetHeader
         title="検査値 記録欄"
         pageLabel={page.pageLabel}
