@@ -4,7 +4,8 @@ import {
   INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM,
   INSPECTION_DRAWING_PRINT_DRAWING_AREA_WIDTH_MM,
   INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER,
-  INSPECTION_DRAWING_PRINT_RECORD_COLUMNS
+  INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM,
+  getInspectionDrawingPrintRecordTableWidthMm
 } from './inspectionDrawingPrintConstants';
 import {
   formatInspectionDrawingPrintTolerance,
@@ -48,92 +49,78 @@ function SheetHeader({
   metadata: InspectionDrawingPrintMetadata;
 }) {
   return (
-    <header className="grid gap-[1.5mm] border-b-2 border-slate-900 pb-[1.5mm] text-[7pt] leading-snug">
-      <div className="grid grid-cols-[1fr_auto] items-start gap-[3mm]">
-        <span className="text-[13pt] font-black leading-none">{title}</span>
-        <div className="text-right font-bold whitespace-nowrap">
-          <div>{pageLabel}</div>
-          <div>発行: {metadata.issuedAtDisplay}</div>
-        </div>
+    <header
+      data-testid="inspection-print-sheet-header"
+      className="grid grid-cols-[auto_1fr_auto] items-baseline gap-[3mm] overflow-hidden border-b-2 border-slate-900 pb-[1mm] text-[6.2pt] leading-none"
+    >
+      <span className="whitespace-nowrap text-[11pt] font-black">{title}</span>
+      <div className="flex min-w-0 flex-nowrap items-baseline gap-[2.4mm] overflow-hidden font-bold whitespace-nowrap">
+        <span className="shrink-0">部品: {metadata.fhincd}</span>
+        <span className="shrink-0">資源: {metadata.resourceName}</span>
+        <span className="shrink-0">工程: {metadata.processLabel}</span>
+        <span className="shrink-0">版: v{metadata.templateVersion}</span>
+        <span className="min-w-[28mm] truncate">テンプレート: {metadata.templateName}</span>
+        <span className="min-w-[42mm] truncate font-mono">帳票ID: {metadata.previewIdentifier}</span>
       </div>
-      <div className="grid grid-cols-4 gap-x-[2mm] gap-y-[0.8mm] font-bold">
-        <div className="min-w-0 break-all">
-          <span className="mr-[1mm]">部品:</span>
-          {metadata.fhincd}
-        </div>
-        <div className="min-w-0 break-all">
-          <span className="mr-[1mm]">資源:</span>
-          {metadata.resourceName}
-        </div>
-        <div className="min-w-0 break-all">
-          <span className="mr-[1mm]">工程:</span>
-          {metadata.processLabel}
-        </div>
-        <div className="min-w-0 break-all">
-          <span className="mr-[1mm]">版:</span>v{metadata.templateVersion}
-        </div>
-      </div>
-      <div className="min-w-0 break-all font-bold">
-        <span className="mr-[1mm]">テンプレート:</span>
-        {metadata.templateName}
-      </div>
-      <div className="grid grid-cols-[auto_1fr] gap-[2mm]">
-        <span className="font-bold whitespace-nowrap">帳票ID:</span>
-        <span className="break-all font-mono">{metadata.previewIdentifier}</span>
-      </div>
+      <span className="whitespace-nowrap text-right font-bold">
+        {pageLabel} / 発行: {metadata.issuedAtDisplay}
+      </span>
     </header>
   );
 }
 
-function RecordSlot({ slot }: { slot: InspectionDrawingPrintRecordPage['slots'][number] }) {
+function RecordSlot({
+  slot,
+  entrySlots
+}: {
+  slot: InspectionDrawingPrintRecordPage['slots'][number];
+  entrySlots: InspectionDrawingPrintRecordPage['entrySlots'];
+}) {
   if (slot.kind === 'empty') {
     return (
-      <div
-        className="grid grid-cols-[10mm_1fr_42mm] border-2 border-dashed border-slate-300 opacity-40"
-        aria-hidden
-      >
-        <div className="border-r-2 border-dashed border-slate-300 bg-slate-50" />
-        <div className="p-[1.8mm]" />
-        <div className="border-l-2 border-dashed border-slate-300" />
-      </div>
+      <tr className="h-[10.5mm] border-t border-dashed border-slate-300 text-slate-300" aria-hidden>
+        <td className="border-r border-dashed border-slate-300 bg-slate-50" />
+        <td className="border-r border-dashed border-slate-300 bg-slate-50" />
+        <td className="border-r border-dashed border-slate-300 bg-slate-50" />
+        {entrySlots.map((entrySlot, index) => (
+          <td
+            key={entrySlot.entryIndex}
+            className={
+              index < entrySlots.length - 1
+                ? 'border-r border-dashed border-slate-300 bg-slate-50'
+                : 'bg-slate-50'
+            }
+          />
+        ))}
+      </tr>
     );
   }
 
   const { point } = slot;
   return (
-    <div className="grid grid-cols-[10mm_1fr_42mm] border-2 border-slate-900">
-      <div className="grid place-items-center border-r-2 border-slate-900 bg-slate-100 text-[13pt] font-black">
+    <tr className="h-[10.5mm] border-t border-slate-900">
+      <td className="border-r border-slate-900 bg-slate-100 text-center text-[8pt] font-black">
         {point.markerNo}
-      </div>
-      <div className="grid grid-rows-[auto_1fr] p-[1.8mm]">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[9pt] font-black">{point.name || `測定点 ${point.markerNo}`}</span>
-          <span className="break-all font-mono text-[6pt] text-slate-500">{point.id}</span>
-        </div>
-        <label className="mt-[1.4mm] grid grid-rows-[auto_1fr] gap-[0.8mm]">
-          <span className="text-[7pt] font-bold">測定値（手書き）</span>
-          <span className="block min-h-[18mm] border border-slate-500 bg-white" />
-        </label>
-      </div>
-      <div className="grid grid-rows-[auto_auto_auto_auto_1fr] border-l-2 border-slate-900 text-[6.5pt]">
-        <div className="border-b border-slate-900 p-[1mm] text-center font-bold leading-tight">
-          規格
-          <div className="mt-[0.5mm] font-normal">{formatInspectionDrawingPrintTolerance(point)}</div>
-        </div>
-        <div className="grid grid-rows-[auto_1fr] border-b border-slate-400 p-[1mm]">
-          <span className="font-bold">判定</span>
-          <span className="mt-[0.8mm] block min-h-[6mm] border border-slate-400 bg-white" />
-        </div>
-        <div className="grid grid-rows-[auto_1fr] border-b border-slate-400 p-[1mm]">
-          <span className="font-bold">確認</span>
-          <span className="mt-[0.8mm] block min-h-[6mm] border border-slate-400 bg-white" />
-        </div>
-        <div className="grid grid-rows-[auto_1fr] p-[1mm]">
-          <span className="font-bold">備考</span>
-          <span className="mt-[0.8mm] block min-h-[6mm] border border-slate-400 bg-white" />
-        </div>
-      </div>
-    </div>
+      </td>
+      <td className="border-r border-slate-900 px-[1mm] py-[0.6mm] text-[7pt] font-bold leading-tight break-words">
+        {point.name || `測定点 ${point.markerNo}`}
+      </td>
+      <td className="border-r border-slate-900 px-[1mm] py-[0.6mm] text-[6.5pt] leading-tight break-words">
+        {formatInspectionDrawingPrintTolerance(point)}
+      </td>
+      {entrySlots.map((entrySlot, index) => (
+        <td
+          key={entrySlot.entryIndex}
+          className={
+            index < entrySlots.length - 1
+              ? 'border-r border-slate-900 px-[0.8mm] py-[0.6mm]'
+              : 'px-[0.8mm] py-[0.6mm]'
+          }
+        >
+          <span className="block h-[7mm] border border-slate-500 bg-white" />
+        </td>
+      ))}
+    </tr>
   );
 }
 
@@ -185,7 +172,7 @@ function DrawingPage({
           return (
             <span
               key={point.id}
-              className="absolute flex h-[9mm] min-w-[9mm] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-slate-950 bg-white px-[1mm] text-[11pt] font-black leading-none shadow"
+              className="absolute flex h-[4.5mm] min-w-[4.5mm] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-950 bg-white px-[0.6mm] text-[6pt] font-black leading-none shadow"
               style={markerStyle(position.leftPercent, position.topPercent)}
             >
               {point.markerNo}
@@ -204,6 +191,8 @@ function RecordPage({
   page: InspectionDrawingPrintRecordPage;
   metadata: InspectionDrawingPrintMetadata;
 }) {
+  const tableWidthMm = getInspectionDrawingPrintRecordTableWidthMm(page.entrySlots.length);
+
   return (
     <article className="inspection-print-sheet mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_auto_auto_1fr] gap-[2.5mm] bg-white p-[5mm] shadow-2xl">
       <PreviewDisclaimerBanner />
@@ -220,13 +209,65 @@ function RecordPage({
           </label>
         ))}
       </section>
-      <section
-        className="grid min-h-0 auto-rows-fr gap-[2.2mm]"
-        style={{ gridTemplateColumns: `repeat(${INSPECTION_DRAWING_PRINT_RECORD_COLUMNS}, minmax(0, 1fr))` }}
-      >
-        {page.slots.map((slot, index) => (
-          <RecordSlot key={slot.kind === 'point' ? slot.point.id : `empty-${index}`} slot={slot} />
-        ))}
+      <section className="min-h-0">
+        <table
+          data-testid="inspection-print-record-table"
+          className="table-fixed border-collapse border-2 border-slate-900 text-[7pt] leading-snug"
+          style={{ width: `${tableWidthMm}mm` }}
+        >
+          <colgroup>
+            <col style={{ width: `${INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM.no}mm` }} />
+            <col
+              style={{
+                width: `${INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM.measurementPoint}mm`
+              }}
+            />
+            <col
+              style={{
+                width: `${INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM.specification}mm`
+              }}
+            />
+            {page.entrySlots.map((entrySlot) => (
+              <col
+                key={entrySlot.entryIndex}
+                style={{
+                  width: `${INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM.measurementValue}mm`
+                }}
+              />
+            ))}
+          </colgroup>
+          <thead>
+            <tr className="h-[5mm] bg-slate-100 text-center text-[7pt] font-black">
+              <th rowSpan={2} className="border-r border-slate-900">No</th>
+              <th rowSpan={2} className="border-r border-slate-900">測定点</th>
+              <th rowSpan={2} className="border-r border-slate-900">規格</th>
+              <th colSpan={page.entrySlots.length}>測定値</th>
+            </tr>
+            <tr className="h-[5mm] bg-slate-100 text-center text-[6.5pt] font-bold">
+              {page.entrySlots.map((entrySlot, index) => (
+                <th
+                  key={entrySlot.entryIndex}
+                  className={
+                    index < page.entrySlots.length - 1
+                      ? 'border-r border-t border-slate-900'
+                      : 'border-t border-slate-900'
+                  }
+                >
+                  {entrySlot.entryLabel}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {page.slots.map((slot, index) => (
+              <RecordSlot
+                key={slot.kind === 'point' ? slot.point.id : `empty-${index}`}
+                slot={slot}
+                entrySlots={page.entrySlots}
+              />
+            ))}
+          </tbody>
+        </table>
       </section>
     </article>
   );

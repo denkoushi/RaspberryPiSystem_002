@@ -43,14 +43,14 @@
 | 本番導線（Pi5） | 検査図面一覧 **帳票** · 編集画面 **保存済み帳票** · `/kiosk/part-measurement/inspection/templates/<templateId>/print` |
 | DEV fixture | `http://<vite-host>:4173/dev/kiosk-inspection-drawing-print` |
 | 用紙 | A4 **横**（`@page { size: A4 landscape; margin: 0; }`） |
-| ページ構成 | 1枚目=図面+丸数字、2枚目以降=測定値記録欄（6点/ページ） |
+| ページ構成 | 1枚目=図面+丸数字、2枚目以降=測定値記録欄（**14点/ページ** · 測定値列は検査モードに応じて最大6列/ページ） |
 | 注意 | 各ページに **「HTMLプレビュー（正式帳票ではありません）」** 帯。現場記録用紙として使わない |
 
 #### 印刷帳票 · 手動確認チェックリスト
 
 1. **導線**: 一覧 **帳票** または編集 **保存済み帳票** → 別タブでプレビュー（未保存変更は反映されない）。
 2. **図面ロード前**: 印刷ボタン disabled（「図面読込中…」）。
-3. **レイアウト**: 1点 / 6点 / 7点以上で改ページ（2/N…）。長い品番・資源名・テンプレ名がヘッダで欠けない。
+3. **レイアウト**: ヘッダ1行化 · P1 丸数字縮小 · P2 表形式（`No/測定点/規格/測定値`）。14点テンプレは記録欄1ページ。7点超は改ページ（2/N…）。長い品番・資源名・テンプレ名は `truncate`。
 4. **図面**: 横長・縦長で丸数字が `object-contain` 後の実描画矩形に一致。
 5. **印刷/PDF**: ブラウザ印刷で図面+記録欄が欠けず改ページ。Kiosk ヘッダー/padding なし（Layout 外ルート）。
 6. **実機**: Pi5 キオスク Chrome でプレビュー表示 **OK（2026-06-14）**。印刷ダイアログ/PDF/実プリンタは **未確認**。
@@ -68,37 +68,40 @@
 | `raspberrypi5`（初回） | **`20260614-203743-25068`** | `failed=0` | web **`index-n3V3qAev.js`** |
 | Pi4×4（初回） | 各 Run ID 同上節 | `failed=0` | 帳票導線なし（DEV ゲート） |
 | `raspberrypi5`（限定公開） | **`20260614-211555-683`** | `failed=0` | web **`index-rLFSPUXR.js`** · 本番 **帳票** 表示 |
+| `raspberrypi5`（レイアウト改善） | **`20260615-085134-18726`** | `failed=0` | web **`index-o9Q5wgI_.js`** · Git **`7c628dcd`** |
 
-**実機検証（2026-06-14 · Pi5 · ユーザー確認 OK）**
+**実機検証（2026-06-15 · Pi5 · レイアウト改善デプロイ後）**
 
 | 確認項目 | 結果 |
 |----------|------|
-| 一覧 **帳票** 導線 | **表示・遷移 OK** |
-| 実テンプレ | **`310b30ae-…`** · `検査図面 md004291472` · 14点 · **4ページ（1/4〜4/4）** |
-| API | `GET …/templates/:id` **200** · 図面 Blob **200** |
-| プレビュー画面 | 図面+丸数字 · 記録欄 · 規格表示 · **印刷プレビュー** ボタン有効 |
-| Phase12（Pi5 限定公開後） | 未再実行（初回デプロイ時 **43/0/0**） |
+| 帳票ルート HTTP | **`200`**（`…/templates/310b30ae-…/print`） |
+| バンドル | **`index-o9Q5wgI_.js`**（`inspection-print-sheet-header` · `inspection-print-record-table` · `4.5mm` マーカー） |
+| 実テンプレ | **`310b30ae-…`** · 14点 · **2ページ（図面1 + 記録欄1）**（改善前は4ページ） |
+| P1 | ヘッダ1行化 · 丸数字縮小 · 図面表示 · **印刷プレビュー** 有効 |
+| P2 | 表形式（`No/測定点/規格/測定値`）· 14行1ページ · `first_last` 時は **最初/最終** 列 |
+| Phase12 | **PASS 43 / WARN 0 / FAIL 0**（デプロイ直後） |
 
 **仕様メモ（次回 AI 再開用）**
 
-- ViewModel: `buildInspectionDrawingPrintViewModel` · マーカー内寸 **`287mm`**
+- ブランチ/HEAD: **`feat/inspection-drawing-report-layout`** · **`7c628dcd`**
+- ViewModel: `buildInspectionDrawingPrintViewModel` · `buildInspectionDrawingPrintRecordEntrySlots`（`single` / `first_last` / `fixed_count` / `full`）
+- 記録欄: **14点/ページ** · 測定値列 **最大6列/ページ** · 表幅は `getInspectionDrawingPrintRecordTableWidthMm`
+- P1: マーカー **4.5mm** · 図面エリア高さ **184mm**
 - 印刷ルート: `KioskLayout` **外** · `clientKey` ページ側初期化
 - legacy 公差: **「合格範囲 lower - upper」**
 - 帳票 ID（暫定）: `PRINT-<templateId短>-v<版>-<日時>`（DB 未保存）
-- 定数: `inspectionDrawingPrintConstants.ts` · ルート: `App.tsx` · 一覧: `KioskInspectionDrawingLibraryPage.tsx`
 
-**未完了（帳票ブラッシュアップ前後）**
+**未完了**
 
-1. **帳票レイアウト/UI ブラッシュアップ**（次タスク）
-2. 印刷ダイアログ / PDF 保存 / 実プリンタ A4 横（Pi5 → Pi4）
-3. QR ペイロード / 正式 DB 帳票 ID / OCR（別 Plan）
-4. Pi4×4 への限定公開デプロイ（Pi5 ブラッシュアップ OK 後）
+1. 印刷ダイアログ / PDF 保存 / 実プリンタ A4 横（Pi5 → Pi4）
+2. QR ペイロード / 正式 DB 帳票 ID / OCR（別 Plan）
+3. Pi4×4 への限定公開デプロイ（Pi5 実機 OK 後）
 
-**Pi5 限定公開デプロイ**
+**Pi5 デプロイ（標準）**
 
 ```bash
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
-./scripts/update-all-clients.sh feat/inspection-drawing-print-pi5-validation \
+./scripts/update-all-clients.sh feat/inspection-drawing-report-layout \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 # マージ後は第2引数 main。Pi4 は Pi5 OK 後に 1 台ずつ --limit 変更
 ```

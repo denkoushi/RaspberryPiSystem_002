@@ -80,20 +80,26 @@ export {
   INSPECTION_DRAWING_PRINT_DRAWING_AREA_WIDTH_MM,
   INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED,
   INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER,
-  INSPECTION_DRAWING_PRINT_RECORD_COLUMNS,
+  INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE,
+  INSPECTION_DRAWING_PRINT_RECORD_TABLE_FIXED_WIDTH_MM,
+  INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM,
   INSPECTION_DRAWING_PRINT_RECORD_POINTS_PER_PAGE,
   INSPECTION_DRAWING_PRINT_SHEET_HEIGHT_MM,
   INSPECTION_DRAWING_PRINT_SHEET_PADDING_MM,
-  INSPECTION_DRAWING_PRINT_SHEET_WIDTH_MM
+  INSPECTION_DRAWING_PRINT_SHEET_WIDTH_MM,
+  getInspectionDrawingPrintRecordTableWidthMm
 } from './inspectionDrawingPrintConstants';
 export { InspectionDrawingPrintPreview } from './InspectionDrawingPrintPreview';
 export {
   buildInspectionDrawingPrintViewModel,
   buildInspectionDrawingPrintPreviewIdentifier,
+  buildInspectionDrawingPrintRecordEntrySlots,
+  buildInspectionDrawingPrintReportUnitKey,
   formatInspectionDrawingPrintIssuedAtDisplay,
   formatInspectionDrawingPrintTolerance,
   InspectionDrawingPrintBuildError,
   type InspectionDrawingPrintMetadata,
+  type InspectionDrawingPrintRecordEntrySlot,
   type InspectionDrawingPrintViewModel
 } from './inspectionDrawingPrintViewModel';
 export { computePrintMarkerPosition, markerPositionInObjectContainContainer } from './printMarkerLayout';
