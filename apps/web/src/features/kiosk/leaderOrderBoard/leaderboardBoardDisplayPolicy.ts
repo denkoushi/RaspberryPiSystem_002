@@ -10,14 +10,28 @@ export function pickLeaderboardBoardForDisplay(
 ): ProductionScheduleLeaderboardBoardResponse | undefined {
   if (!appendOverride) return shell;
   if (!shell) return appendOverride;
-  if (fingerprintLeaderboardBoardShellScope(appendOverride) !== fingerprintLeaderboardBoardShellScope(shell)) {
+  if (!isSameLeaderboardBoardShellScope(appendOverride, shell)) {
     return shell;
   }
   return appendOverride.rows.length >= shell.rows.length ? appendOverride : shell;
 }
 
-function fingerprintLeaderboardBoardShellScope(board: ProductionScheduleLeaderboardBoardResponse): string {
-  const resources = fingerprintLeaderboardBoardResourcePagingScope(board);
+function isSameLeaderboardBoardShellScope(
+  a: ProductionScheduleLeaderboardBoardResponse,
+  b: ProductionScheduleLeaderboardBoardResponse
+): boolean {
+  const ignoreResourceTotals = a.totalsDeferred === true || b.totalsDeferred === true;
+  return (
+    fingerprintLeaderboardBoardShellScope(a, { ignoreResourceTotals }) ===
+    fingerprintLeaderboardBoardShellScope(b, { ignoreResourceTotals })
+  );
+}
+
+function fingerprintLeaderboardBoardShellScope(
+  board: ProductionScheduleLeaderboardBoardResponse,
+  options?: { ignoreResourceTotals?: boolean }
+): string {
+  const resources = fingerprintLeaderboardBoardResourcePagingScope(board, options);
   const residualRows = (board.processChangeResidualRows ?? [])
     .map((row) => {
       const evidence = row.processChangeResidualEvidence;
@@ -29,7 +43,7 @@ function fingerprintLeaderboardBoardShellScope(board: ProductionScheduleLeaderbo
     .sort()
     .join('\u0001');
   const residual = [
-    board.total,
+    options?.ignoreResourceTotals === true ? '*' : board.total,
     board.processChangeResidualTotal ?? 0,
     board.processChangeResidualRepresentativeLimit ?? '',
     residualRows
@@ -38,10 +52,11 @@ function fingerprintLeaderboardBoardShellScope(board: ProductionScheduleLeaderbo
 }
 
 function fingerprintLeaderboardBoardResourcePagingScope(
-  board: ProductionScheduleLeaderboardBoardResponse
+  board: ProductionScheduleLeaderboardBoardResponse,
+  options?: { ignoreResourceTotals?: boolean }
 ): string {
   return board.resources
-    .map((r) => `${r.resourceCd}:${r.total}`)
+    .map((r) => `${r.resourceCd}:${options?.ignoreResourceTotals === true ? '*' : r.total}`)
     .join('\u0002');
 }
 
@@ -98,8 +113,12 @@ export function resolveNetworkLeaderboardBoardPagingComplete(input: {
   if (
     override != null &&
     shell != null &&
-    fingerprintLeaderboardBoardResourcePagingScope(override) ===
-      fingerprintLeaderboardBoardResourcePagingScope(shell) &&
+    fingerprintLeaderboardBoardResourcePagingScope(override, {
+      ignoreResourceTotals: override.totalsDeferred === true || shell.totalsDeferred === true
+    }) ===
+      fingerprintLeaderboardBoardResourcePagingScope(shell, {
+        ignoreResourceTotals: override.totalsDeferred === true || shell.totalsDeferred === true
+      }) &&
     override.rows.length >= shell.rows.length &&
     isLeaderboardBoardPagingComplete(override)
   ) {

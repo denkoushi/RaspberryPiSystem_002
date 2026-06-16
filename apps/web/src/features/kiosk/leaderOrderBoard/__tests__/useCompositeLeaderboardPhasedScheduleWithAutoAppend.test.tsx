@@ -182,8 +182,10 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(boardHookMock).toHaveBeenCalled();
       const params = boardHookMock.mock.calls.find((c) => (c[1] as { enabled?: boolean } | undefined)?.enabled !== false)?.[0] as {
         includeDecorations?: boolean;
+        deferTotals?: boolean;
       };
       expect(params.includeDecorations).toBe(false);
+      expect(params.deferTotals).toBe(true);
       expect(postDecorations).toHaveBeenCalled();
     });
   });

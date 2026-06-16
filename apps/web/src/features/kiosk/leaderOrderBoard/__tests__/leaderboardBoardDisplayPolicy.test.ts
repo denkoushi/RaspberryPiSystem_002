@@ -261,4 +261,25 @@ describe('resolveNetworkLeaderboardBoardPagingComplete', () => {
       })
     ).toBe(true);
   });
+
+  it('deferTotals shell の暫定 total 差は同一スコープとして追補 override を維持する', () => {
+    const shell = {
+      ...boardWithTotal([row('a'), row('b')], 2, true),
+      totalsDeferred: true,
+      resources: [{ resourceCd: 'R1', hasMore: true, total: 2, pageSize: 80 }]
+    };
+    const override = {
+      ...boardWithTotal([row('a'), row('b'), row('c')], 3, false),
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 3, pageSize: 160 }]
+    };
+
+    expect(pickLeaderboardBoardForDisplay(shell, override)).toBe(override);
+    expect(
+      resolveNetworkLeaderboardBoardPagingComplete({
+        networkDisplayBoard: override,
+        scopedAppendOverride: override,
+        resolvedShell: shell
+      })
+    ).toBe(true);
+  });
 });
