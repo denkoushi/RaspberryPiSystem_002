@@ -517,6 +517,7 @@ update-frequency: high
 
 ## 📅 更新履歴
 
+- 2026-06-16（キオスク順位ボード·装飾後取り POST バッチ分割·Web·Pi5→Pi4×4 本番）: [KB-374 §装飾バッチ](./KB-374-leaderboard-board-continue-cursor-contract.md#装飾後取り-post-バッチ分割2026-06-16--featleaderboard-decoration-batches) — **`0d627bc8`**·CI **`27586608774`**·Detach **`20260616-115101-15796`** 他 4 台·Phase12 **43/0/0**·**Pi3/Zero2W 除外**。
 - 2026-06-15: [KB-390](./KB-390-kiosk-leaderboard-inspection-workflow.md) 記録ページQR + P1 fiducial 除去（**`a2158875`** · Detach **`20260615-183021-14261`** · Phase12 **43/0/0**）
 - 2026-06-06: [KB Life Pilot](./KB-private-pi5-hermes-life-pilot.md) を proactive + button relay までの再開用正本に更新。
 - 2026-06-06: 私用 Pi5 **Hermes D6-pre `/daily` 合格**（Discord command sync · 標準 Ansible deploy 収束 · policy regex · 149 tests OK）を [KB daily pilot](./KB-private-pi5-hermes-daily-pilot.md)・[ExecPlan D6-pre](../plans/private-pi5-hermes-daily-pilot-execplan.md)・[Hermes Runbook §D6-pre](../runbooks/private-pi5-hermes-deploy.md#phase-d6-pre--discord-daily-普段遣いパイロット2026-06-06-実機検証完了)・[`EXEC_PLAN.md`](../../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24) に反映。

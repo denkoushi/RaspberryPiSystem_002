@@ -2,7 +2,7 @@
 title: KB-374 leaderboard-board/continue の cursor 契約と HTTP 400（Zod）
 tags: [kiosk, production-schedule, leader-order-board, leaderboard-board, api, web]
 audience: [開発者, 運用者]
-last-verified: 2026-05-22
+last-verified: 2026-06-16
 category: knowledge-base
 ---
 
@@ -1455,3 +1455,60 @@ pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.te
 - **ベンチ**: [`scripts/test/benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs)
 
 **正本**: [EXEC_PLAN §Next Steps（保留）](../../EXEC_PLAN.md)·[deployment §shell 第2弾](../guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)
+
+## 装飾後取り POST バッチ分割（2026-06-16 · `feat/leaderboard-decoration-batches`）
+
+**目的**: [§装飾後取り](#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial) の **`leaderboard-decorations` POST** を、未装飾 rowId が多いとき **1 リクエストに詰め込まず**、**スロット先頭行を優先**しつつ **背景は 80 件ずつ・80ms 間隔**で取得する。**API 契約・装飾内容・マージ結果は不変**（Web のみ）。
+
+**ブランチ**: **`feat/leaderboard-decoration-batches`**。**代表コミット**: **`0d627bc8`**（バッチ分割）· **`0663eaed`**（Trivy 依存 override）。**新規マイグレーションなし**。
+
+### 仕様（実装の正本）
+
+| 項目 | 値 | モジュール |
+| --- | --- | --- |
+| 優先取得 | 各資源スロット **先頭 8 行**（`resources[].resourceCd` 順・`rows` 内の出現順） | [`buildLeaderboardDecorationFetchBatches`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardDeferredBoardDecorations.ts) |
+| 背景バッチ | **80 件/リクエスト** | 同上 |
+| 背景間隔 | **80ms**（`LEADER_BOARD_DECORATION_BACKGROUND_DELAY_MS`） | [`useLeaderboardDeferredBoardDecorations.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardDeferredBoardDecorations.ts) |
+| rowId 正規化 | **`trim()`**（`pendingRowIds` と `rowsById` で統一） | `getLeaderboardRowId()` |
+| フォールバック | 優先 0 件なら **先頭 80 件を 1 バッチ** | `buildLeaderboardDecorationFetchBatches` |
+
+**データフロー**: continue 完了後の未装飾 rowId 列 → **priority POST（即時）** → **background POST（80 件×N・80ms 間隔）** → 既存 [`mergeLeaderboardBoardWithDecorations`](../../apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardWithDecorations.ts) で累積。
+
+### ローカル回帰
+
+- **Web Vitest**: `useLeaderboardDeferredBoardDecorations.test.ts` — 優先/背景分割·空白 rowId/resourceCd·優先 0 件フォールバック（**3 tests PASS**）
+- **Web 全体**: **225 files / 1036 tests PASS**（実装時）
+- **CI**: **`27586608774` success**（`0663eaed` 時点）
+
+### 本番デプロイ（2026-06-16 · Pi5→Pi4×4 · 完了）
+
+**標準**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/leaderboard-decoration-batches infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ順次**）。**Pi3 / Zero2W は対象外**（リソース僅少のため専用手順未実施で正）。
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+| --- | --- | --- | --- |
+| `raspberrypi5` | **`20260616-115101-15796`** | `ok=134` `changed=4` `failed=0` | api/web 再ビルド·Git **`0663eaed`** |
+| `raspi4-kensaku-stonebase01` | **`20260616-122618-29770`** | `ok=129` `changed=10` `failed=0` | `kiosk-browser` 再起動 |
+| `raspberrypi4` | **`20260616-123238-7241`** | `ok=122` `changed=10` `failed=0` | 同上 |
+| `raspi4-robodrill01` | **`20260616-123714-25972`** | `ok=122` `changed=9` `failed=0` | 同上 |
+| `raspi4-fjv60-80` | **`20260616-124034-31024`** | `ok=122` `changed=9` `failed=0` | 同上 |
+
+**Pi5 bundle 確認**: `/srv/site/assets/index-L8t9akrS.js` に **`priorityRowIds` / `backgroundRowIdBatches`** ロジック含有（minify 後 grep）。
+
+### 実機検証
+
+| 種別 | 結果 |
+| --- | --- |
+| 自動（Pi5 デプロイ後） | `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s**） |
+| **`deploy-status`（Pi4×4）** | すべて **PASS** |
+| **DevTools（Network）** | **未実施** — `leaderboard-decorations` が priority/background に分割されていることの目視は次回任意 |
+
+### 知見
+
+- **pending rowId と `rowsById` の trim 不一致**で装飾がスキップされ得たため、**`getLeaderboardRowId()` で統一**（レビュー指摘反映）。
+- 優先 8 行は **各スロットの「見えている先頭」**を先に装飾する意図。全 pending が 1 スロットに偏る edge では **フォールバック 80 件**が効く。
+- Phase12 は **到達性・ヘルス**中心。**装飾 POST の分割パターン**は DevTools 目視または E2E 追加が別途必要。
+
+### 未完了
+
+- **DevTools 目視**: 多行 board で **`leaderboard-decorations` POST が 2 本以上**（priority + background）になることの現場確認（任意）。
+- **第3弾以降（API shell 最適化）**: [§shell 選定 SQL 第3弾以降](#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22) は **本件スコープ外・保留のまま**。
