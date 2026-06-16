@@ -45,22 +45,27 @@ RUN apt-get update \
 COPY --from=base /app/package.json ./package.json
 COPY --from=base /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=base /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+WORKDIR /app
+RUN corepack enable \
+  && pnpm install --prod --recursive --frozen-lockfile
+
+# Chromium for SIGNAGE_LOAN_GRID_ENGINE=playwright_html (bundled browser; keep path stable).
+# Keep this before app source copies so ordinary API/Web changes reuse the browser layer.
+ARG INSTALL_PLAYWRIGHT_CHROMIUM=true
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN case "${INSTALL_PLAYWRIGHT_CHROMIUM}" in \
+    true|1|yes) pnpm exec playwright install chromium ;; \
+    *) echo "Skipping Playwright Chromium install (INSTALL_PLAYWRIGHT_CHROMIUM=${INSTALL_PLAYWRIGHT_CHROMIUM})" ;; \
+  esac
+
 COPY --from=base /app/apps/api ./apps/api
 COPY --from=base /app/packages/shared-types ./packages/shared-types
 COPY --from=base /app/packages/part-search-core ./packages/part-search-core
 COPY --from=base /app/packages/shelf-layout-core ./packages/shelf-layout-core
 COPY --from=base /app/scripts ./scripts
 
-WORKDIR /app
-RUN corepack enable \
-  && pnpm install --prod --recursive --frozen-lockfile
-
 WORKDIR /app/apps/api
 RUN pnpm prisma generate
-
-# Chromium for SIGNAGE_LOAN_GRID_ENGINE=playwright_html (bundled browser; keep path stable)
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN pnpm exec playwright install chromium
 
 # ボリュームマウント先が存在しないと起動時に失敗するため事前に作成
 # npm/corepackキャッシュを削除（セキュリティスキャン対策: pnpmのみ使用するため）
