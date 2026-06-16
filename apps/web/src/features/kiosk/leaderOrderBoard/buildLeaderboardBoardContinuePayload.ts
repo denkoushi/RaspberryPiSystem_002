@@ -25,10 +25,11 @@ export function buildLeaderboardBoardContinuePayload(
   base: KioskProductionScheduleLeaderboardBoardQueryParams,
   board: ProductionScheduleLeaderboardBoardResponse
 ): KioskProductionScheduleLeaderboardBoardContinuePayload {
-  const { page: _p, pageSize: _ps, allowResourceOnly, includeDecorations: _id, ...rest } = base;
+  const { page: _p, pageSize: _ps, allowResourceOnly, includeDecorations: _id, deferTotals: _dt, ...rest } = base;
   void _p;
   void _ps;
   void _id;
+  void _dt;
   const normalizedAllowResourceOnly = coerceLeaderboardContinueBoolean(allowResourceOnly);
   return {
     ...rest,

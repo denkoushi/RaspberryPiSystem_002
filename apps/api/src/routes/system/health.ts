@@ -1,9 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../lib/prisma.js';
+import { probePlaywrightChromiumAvailability } from '../../services/signage/loan-grid/playwright/playwright-chromium-availability.js';
 import {
   evaluateEventLoopHealth,
   snapshotEventLoopObservability,
 } from '../../services/system/event-loop-observability.js';
+
+type HealthCheckStatus = 'ok' | 'error' | 'warning';
 
 /**
  * システムヘルスチェックエンドポイント
@@ -11,7 +14,7 @@ import {
  */
 export function registerSystemHealthRoute(app: FastifyInstance): void {
   app.get('/system/health', async (request, reply) => {
-    const checks: Record<string, { status: 'ok' | 'error'; message?: string }> = {};
+    const checks: Record<string, { status: HealthCheckStatus; message?: string }> = {};
 
     // データベース接続チェック
     try {
@@ -54,12 +57,17 @@ export function registerSystemHealthRoute(app: FastifyInstance): void {
     const eventLoopHealth = evaluateEventLoopHealth(eventLoop);
     checks.eventLoop = eventLoopHealth;
 
-    // 全体的なステータスを決定
-    const allOk = Object.values(checks).every((check) => check.status === 'ok');
-    const statusCode = allOk ? 200 : 503;
+    const playwrightAvailability = probePlaywrightChromiumAvailability();
+    checks.playwright = playwrightAvailability.available
+      ? { status: 'ok' }
+      : { status: 'warning', message: playwrightAvailability.message };
+
+    // 全体的なステータスを決定（warning のみでは degraded にしない）
+    const hasError = Object.values(checks).some((check) => check.status === 'error');
+    const statusCode = hasError ? 503 : 200;
 
     return reply.status(statusCode).send({
-      status: allOk ? 'ok' : 'degraded',
+      status: hasError ? 'degraded' : 'ok',
       timestamp: new Date().toISOString(),
       checks,
       memory: memUsageMB,

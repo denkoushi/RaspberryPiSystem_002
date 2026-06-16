@@ -30,5 +30,7 @@ describe('GET /api/system/health', () => {
     expect(body).toHaveProperty('uptime');
     expect(body.checks).toHaveProperty('database');
     expect(body.checks.database.status).toBe('ok');
+    expect(body.checks).toHaveProperty('playwright');
+    expect(['ok', 'warning']).toContain(body.checks.playwright.status);
   });
 });

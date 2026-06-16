@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   parseCsvList,
+  productionScheduleLeaderboardBoardQuerySchema,
   productionScheduleSeibanMachineNamesBodySchema,
   toLegacyLocationKeyFromDeviceScope
 } from '../shared.js';
@@ -29,5 +30,33 @@ describe('production-schedule route shared helpers', () => {
       fseibans: inputs
     });
     expect(parsed.fseibans).toEqual(inputs);
+  });
+
+  it('productionScheduleLeaderboardBoardQuerySchema は deferTotals を string/boolean 両方で解釈する', () => {
+    const base = {
+      boardResourceCds: 'R1',
+      pageSize: '80',
+      allowResourceOnly: 'true'
+    };
+
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...base,
+        deferTotals: 'true'
+      }).deferTotals
+    ).toBe(true);
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...base,
+        deferTotals: true
+      }).deferTotals
+    ).toBe(true);
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...base,
+        deferTotals: 'false'
+      }).deferTotals
+    ).toBe(false);
+    expect(productionScheduleLeaderboardBoardQuerySchema.parse(base).deferTotals).toBe(false);
   });
 });

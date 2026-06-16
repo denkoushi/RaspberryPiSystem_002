@@ -249,7 +249,8 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         boardResourceCds,
         page,
         pageSize,
-        includeDecorations: query.includeDecorations
+        includeDecorations: query.includeDecorations,
+        deferTotals: query.deferTotals
       },
       { snapshotStore: deps.leaderboardShellSnapshotStore }
     );

@@ -2,6 +2,7 @@ import { countProductionScheduleDashboardVisibleRowsFromListFilters } from '../p
 import { resolveLeaderboardBoardSnapshotResourceTotal } from './leaderboard-composite-board-snapshot-totals.js';
 
 import type { ProductionScheduleListParams } from '../production-schedule-query.service.js';
+import type { Prisma } from '@prisma/client';
 
 type ListParamsBase = Omit<ProductionScheduleListParams, 'page' | 'pageSize' | 'responseProfile' | 'resourceCds'>;
 
@@ -17,7 +18,8 @@ export type LeaderboardBoardContinueResourceSlice = {
 export async function resolveLeaderboardBoardResourceTotalsForContinue(
   listParamsBase: ListParamsBase,
   resourceSlices: ReadonlyArray<LeaderboardBoardContinueResourceSlice>,
-  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>
+  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>,
+  leaderboardMaterializedBaseWhere?: Prisma.Sql | Promise<Prisma.Sql>
 ): Promise<number[]> {
   return Promise.all(
     resourceSlices.map(async (slice) => {
@@ -25,21 +27,26 @@ export async function resolveLeaderboardBoardResourceTotalsForContinue(
       if (cached !== undefined) {
         return cached;
       }
-      return countProductionScheduleDashboardVisibleRowsFromListFilters({
-        queryText: listParamsBase.queryText,
-        productNos: listParamsBase.productNos,
-        machineName: listParamsBase.machineName,
-        resourceCds: [slice.resourceCd],
-        assignedOnlyCds: listParamsBase.assignedOnlyCds,
-        resourceCategory: listParamsBase.resourceCategory,
-        hasNoteOnly: listParamsBase.hasNoteOnly,
-        hasDueDateOnly: listParamsBase.hasDueDateOnly,
-        allowResourceOnly: listParamsBase.allowResourceOnly,
-        locationKey: listParamsBase.locationKey,
-        siteKey: listParamsBase.siteKey,
-        processChangeResidualMode: 'normal',
-        processChangeResidualStrongEvidenceKeys
-      });
+      return countProductionScheduleDashboardVisibleRowsFromListFilters(
+        {
+          queryText: listParamsBase.queryText,
+          productNos: listParamsBase.productNos,
+          machineName: listParamsBase.machineName,
+          resourceCds: [slice.resourceCd],
+          assignedOnlyCds: listParamsBase.assignedOnlyCds,
+          resourceCategory: listParamsBase.resourceCategory,
+          hasNoteOnly: listParamsBase.hasNoteOnly,
+          hasDueDateOnly: listParamsBase.hasDueDateOnly,
+          allowResourceOnly: listParamsBase.allowResourceOnly,
+          locationKey: listParamsBase.locationKey,
+          siteKey: listParamsBase.siteKey,
+          processChangeResidualMode: 'normal',
+          processChangeResidualStrongEvidenceKeys
+        },
+        {
+          leaderboardMaterializedBaseWhere: await leaderboardMaterializedBaseWhere
+        }
+      );
     })
   );
 }

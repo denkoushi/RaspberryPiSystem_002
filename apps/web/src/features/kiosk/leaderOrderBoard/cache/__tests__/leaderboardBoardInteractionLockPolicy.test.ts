@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isLeaderboardBoardBackgroundRevalidating,
-  isLeaderboardBoardInteractionLocked
+  isLeaderboardBoardDataSyncing,
+  isLeaderboardBoardInteractionLocked,
+  isLeaderboardDecorationSyncing
 } from '../leaderboardBoardInteractionLockPolicy';
 
 describe('leaderboardBoardInteractionLockPolicy', () => {
@@ -61,7 +63,22 @@ describe('leaderboardBoardInteractionLockPolicy', () => {
     ).toBe(true);
   });
 
-  it('装飾取得中は背景再検証', () => {
+  it('装飾取得中は背景再検証だが board data syncing ではない', () => {
+    expect(
+      isLeaderboardBoardDataSyncing({
+        scheduleEnabled: true,
+        networkBoardComplete: true,
+        networkInitialLoading: false,
+        networkIsFetching: false,
+        isAppending: false
+      })
+    ).toBe(false);
+    expect(
+      isLeaderboardDecorationSyncing({
+        scheduleEnabled: true,
+        isDecorationsFetching: true
+      })
+    ).toBe(true);
     expect(
       isLeaderboardBoardBackgroundRevalidating({
         scheduleEnabled: true,

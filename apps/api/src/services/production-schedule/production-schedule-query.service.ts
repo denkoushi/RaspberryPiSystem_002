@@ -339,7 +339,12 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
     chunkSize: number;
     snapshotId?: string;
   },
-  options: { snapshotStore: LeaderboardShellSnapshotStore; generationToken?: string }
+  options: {
+    snapshotStore: LeaderboardShellSnapshotStore;
+    generationToken?: string;
+    /** 集約 board continue 等で同一 HTTP リクエスト内 1 回 resolve した値を渡す */
+    leaderboardMaterializedBaseWhere?: Prisma.Sql;
+  }
 ): Promise<LeaderboardShellPhasedReadResult> {
   const page = params.page ?? 1;
   const { locationKey } = params;
@@ -402,7 +407,8 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
       }
 
       const { siteScopedGlobalRankLocation, queryWhere, leaderboardExpansionWhere } = filters;
-      const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+      const leaderboardMaterializedBaseWhere =
+        options.leaderboardMaterializedBaseWhere ?? (await resolveLeaderboardMaterializedBaseWhere(prisma));
       const seibanExpansion = shouldExpandLeaderboardSeibanAcrossResources(params.resourceCds);
 
       const materializeNextSnapshotChunk = async () => {
@@ -524,7 +530,8 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
   }
 
   const { queryWhere, leaderboardExpansionWhere, siteScopedGlobalRankLocation } = filters;
-  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+  const leaderboardMaterializedBaseWhere =
+    options.leaderboardMaterializedBaseWhere ?? (await resolveLeaderboardMaterializedBaseWhere(prisma));
 
   const seibanExpansion = shouldExpandLeaderboardSeibanAcrossResources(params.resourceCds);
 
@@ -552,14 +559,21 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
 
 /** leaderboard 一覧と同一フィルタ条件での可視行件数のみ */
 export async function countProductionScheduleDashboardVisibleRowsFromListFilters(
-  params: Omit<ProductionScheduleListParams, 'page' | 'pageSize' | 'responseProfile'>
+  params: Omit<ProductionScheduleListParams, 'page' | 'pageSize' | 'responseProfile'>,
+  options?: {
+    /** 集約 board shell/continue 等で同一 HTTP リクエスト内 1 回 resolve した値を渡す */
+    leaderboardMaterializedBaseWhere?: Prisma.Sql;
+  }
 ): Promise<number> {
   const filters = await prepareProductionScheduleDashboardFilters(params);
   if (filters.kind === 'blocked_empty_search') {
     return 0;
   }
   const { queryWhere } = filters;
-  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(
+    prisma,
+    options?.leaderboardMaterializedBaseWhere
+  );
   const totalBig = await countProductionScheduleDashboardVisibleRows({
     baseWhere: leaderboardMaterializedBaseWhere,
     queryWhere,

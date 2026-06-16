@@ -29,6 +29,8 @@ services:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.api
+      args:
+        INSTALL_PLAYWRIGHT_CHROMIUM: ${INSTALL_PLAYWRIGHT_CHROMIUM:-true}
     restart: always
     depends_on:
       db:

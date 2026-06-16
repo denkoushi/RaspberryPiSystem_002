@@ -478,7 +478,7 @@
       ansible.builtin.shell: |
         set -euo pipefail
         cd {{ repo_path }}
-        docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build api web
+        docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build api web
       args:
         executable: /bin/bash
       register: docker_restart_result
@@ -520,7 +520,7 @@
   ansible.builtin.shell: |
     set -euo pipefail
     cd {{ repo_path }}
-    docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate api
+    docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate api
   args:
     executable: /bin/bash
   when:
@@ -530,7 +530,7 @@
   ansible.builtin.shell: |
     set -euo pipefail
     cd {{ repo_path }}
-    docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build --force-recreate web
+    docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d --build --force-recreate web
   args:
     executable: /bin/bash
   when:
@@ -540,7 +540,7 @@
   ansible.builtin.shell: |
     set -euo pipefail
     cd {{ repo_path }}
-    docker compose -f infrastructure/docker/docker-compose.server.yml up -d api web
+    docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d api web
   args:
     executable: /bin/bash
 

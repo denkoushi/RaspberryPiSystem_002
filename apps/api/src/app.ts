@@ -22,6 +22,7 @@ import { CsvDashboardStorage } from './lib/csv-dashboard-storage.js';
 import { SignageRenderScheduler } from './services/signage/signage-render-scheduler.js';
 import { SignageRenderer } from './services/signage/signage.renderer.js';
 import { SignageService } from './services/signage/index.js';
+import { probePlaywrightChromiumAvailability } from './services/signage/loan-grid/playwright/playwright-chromium-availability.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
@@ -74,6 +75,16 @@ export async function buildServer(): Promise<FastifyInstance> {
     } else {
       app.log.warn({ err: r.reason }, `${task.label}: init failed (may not be critical)`);
     }
+  }
+
+  const playwrightAvailability = probePlaywrightChromiumAvailability();
+  if (playwrightAvailability.available) {
+    app.log.info(
+      { executablePath: playwrightAvailability.executablePath },
+      'Playwright Chromium is available'
+    );
+  } else {
+    app.log.warn(playwrightAvailability.message);
   }
   
   // サイネージレンダリングスケジューラーを作成（ルートからアクセス可能にするため）

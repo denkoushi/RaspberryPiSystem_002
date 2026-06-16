@@ -1087,6 +1087,8 @@ export type KioskProductionScheduleLeaderboardBoardQueryParams = KioskProduction
   boardResourceCds: string;
   /** 省略時 true。キオスク順位ボードは false で装飾を `leaderboard-decorations` 後取り */
   includeDecorations?: boolean;
+  /** true のとき初回 shell は exact total を待たず、continue で正確な total に戻す */
+  deferTotals?: boolean;
 };
 
 export type LeaderboardBoardResourceSliceResponse = {
@@ -1100,6 +1102,7 @@ export type LeaderboardBoardResourceSliceResponse = {
 
 export type ProductionScheduleLeaderboardBoardResponse = ProductionScheduleListResponse & {
   total: number;
+  totalsDeferred?: boolean;
   snapshotExpired?: boolean;
   /** 続きチャンクのみ（スロット順連結）。古いサーバまたは安全フォールバック時は未定義 */
   deltaRows?: ProductionScheduleRow[];
@@ -1122,7 +1125,7 @@ export async function getKioskProductionScheduleLeaderboardBoard(
 
 export type KioskProductionScheduleLeaderboardBoardContinuePayload = Omit<
   KioskProductionScheduleLeaderboardBoardQueryParams,
-  'page' | 'pageSize'
+  'page' | 'pageSize' | 'deferTotals'
 > & {
   boardResourceCds: string;
   resourceSlices: Array<{

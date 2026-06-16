@@ -1,3 +1,4 @@
+import { Suspense, lazy, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { KioskRedirect } from './components/KioskRedirect';
@@ -31,17 +32,10 @@ import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
 import { SignagePreviewPage } from './pages/admin/SignagePreviewPage';
 import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
 import { VisualizationDashboardsPage } from './pages/admin/VisualizationDashboardsPage';
-import { KioskInspectionDrawingCreatePreviewPage } from './pages/dev/KioskInspectionDrawingCreatePreviewPage';
-import { KioskInspectionDrawingLibraryPreviewPage } from './pages/dev/KioskInspectionDrawingLibraryPreviewPage';
-import { KioskInspectionDrawingPrintPreviewPage } from './pages/dev/KioskInspectionDrawingPrintPreviewPage';
 import { LoadBalancingOverviewChartPreviewPage } from './pages/dev/LoadBalancingOverviewChartPreviewPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
-import { KioskInspectionDrawingCreatePage } from './pages/kiosk/KioskInspectionDrawingCreatePage';
-import { KioskInspectionDrawingEditPage } from './pages/kiosk/KioskInspectionDrawingEditPage';
-import { KioskInspectionDrawingLibraryPage } from './pages/kiosk/KioskInspectionDrawingLibraryPage';
-import { KioskInspectionDrawingPrintPage } from './pages/kiosk/KioskInspectionDrawingPrintPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskMobilePalletVisualizationPage } from './pages/kiosk/KioskMobilePalletVisualizationPage';
 import { KioskMobileShelfMasterPage } from './pages/kiosk/KioskMobileShelfMasterPage';
@@ -56,7 +50,6 @@ import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskRiggingAnalyticsPage } from './pages/kiosk/KioskRiggingAnalyticsPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { KioskSelfInspectionPage } from './pages/kiosk/KioskSelfInspectionPage';
-import { KioskSelfInspectionSessionPage } from './pages/kiosk/KioskSelfInspectionSessionPage';
 import { MobilePlacementPage } from './pages/kiosk/MobilePlacementPage';
 import { MobilePlacementPartSearchPage } from './pages/kiosk/MobilePlacementPartSearchPage';
 import { ProductionScheduleDueManagementPage } from './pages/kiosk/ProductionScheduleDueManagementPage';
@@ -81,6 +74,51 @@ import { MeasuringInstrumentGenresPage } from './pages/tools/MeasuringInstrument
 import { MeasuringInstrumentsPage } from './pages/tools/MeasuringInstrumentsPage';
 import { RiggingGearsPage } from './pages/tools/RiggingGearsPage';
 import { UnifiedItemsPage } from './pages/tools/UnifiedItemsPage';
+
+const KioskInspectionDrawingCreatePreviewPage = lazy(() =>
+  import('./pages/dev/KioskInspectionDrawingCreatePreviewPage').then((module) => ({
+    default: module.KioskInspectionDrawingCreatePreviewPage
+  }))
+);
+const KioskInspectionDrawingLibraryPreviewPage = lazy(() =>
+  import('./pages/dev/KioskInspectionDrawingLibraryPreviewPage').then((module) => ({
+    default: module.KioskInspectionDrawingLibraryPreviewPage
+  }))
+);
+const KioskInspectionDrawingPrintPreviewPage = lazy(() =>
+  import('./pages/dev/KioskInspectionDrawingPrintPreviewPage').then((module) => ({
+    default: module.KioskInspectionDrawingPrintPreviewPage
+  }))
+);
+const KioskInspectionDrawingCreatePage = lazy(() =>
+  import('./pages/kiosk/KioskInspectionDrawingCreatePage').then((module) => ({
+    default: module.KioskInspectionDrawingCreatePage
+  }))
+);
+const KioskInspectionDrawingEditPage = lazy(() =>
+  import('./pages/kiosk/KioskInspectionDrawingEditPage').then((module) => ({
+    default: module.KioskInspectionDrawingEditPage
+  }))
+);
+const KioskInspectionDrawingLibraryPage = lazy(() =>
+  import('./pages/kiosk/KioskInspectionDrawingLibraryPage').then((module) => ({
+    default: module.KioskInspectionDrawingLibraryPage
+  }))
+);
+const KioskInspectionDrawingPrintPage = lazy(() =>
+  import('./pages/kiosk/KioskInspectionDrawingPrintPage').then((module) => ({
+    default: module.KioskInspectionDrawingPrintPage
+  }))
+);
+const KioskSelfInspectionSessionPage = lazy(() =>
+  import('./pages/kiosk/KioskSelfInspectionSessionPage').then((module) => ({
+    default: module.KioskSelfInspectionSessionPage
+  }))
+);
+
+function lazyRouteElement(element: ReactNode) {
+  return <Suspense fallback={null}>{element}</Suspense>;
+}
 
 function App() {
   return (
@@ -122,32 +160,44 @@ function App() {
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
           <Route path="/kiosk/part-measurement" element={<KioskPartMeasurementPage />} />
           <Route path="/kiosk/part-measurement/self-inspection" element={<KioskSelfInspectionPage />} />
-          <Route path="/kiosk/part-measurement/self-inspection/start" element={<KioskSelfInspectionSessionPage />} />
+          <Route
+            path="/kiosk/part-measurement/self-inspection/start"
+            element={lazyRouteElement(<KioskSelfInspectionSessionPage />)}
+          />
           <Route
             path="/kiosk/part-measurement/self-inspection/sessions/:sessionId"
-            element={<KioskSelfInspectionSessionPage />}
+            element={lazyRouteElement(<KioskSelfInspectionSessionPage />)}
           />
           <Route path="/kiosk/part-measurement/edit/:sheetId" element={<KioskPartMeasurementEditPage />} />
           <Route path="/kiosk/part-measurement/template/pick" element={<KioskPartMeasurementTemplatePickPage />} />
           <Route path="/kiosk/part-measurement/template/new" element={<KioskPartMeasurementTemplatePage />} />
           <Route path="/kiosk/part-measurement/finalized" element={<KioskPartMeasurementFinalizedPage />} />
-          <Route path="/kiosk/part-measurement/inspection" element={<KioskInspectionDrawingLibraryPage />} />
-          <Route path="/kiosk/part-measurement/inspection/create" element={<KioskInspectionDrawingCreatePage />} />
+          <Route
+            path="/kiosk/part-measurement/inspection"
+            element={lazyRouteElement(<KioskInspectionDrawingLibraryPage />)}
+          />
+          <Route
+            path="/kiosk/part-measurement/inspection/create"
+            element={lazyRouteElement(<KioskInspectionDrawingCreatePage />)}
+          />
           <Route
             path="/kiosk/part-measurement/inspection/templates/:templateId/edit"
-            element={<KioskInspectionDrawingCreatePage />}
+            element={lazyRouteElement(<KioskInspectionDrawingCreatePage />)}
           />
-          <Route path="/kiosk/part-measurement/inspection/edit/:sheetId" element={<KioskInspectionDrawingEditPage />} />
+          <Route
+            path="/kiosk/part-measurement/inspection/edit/:sheetId"
+            element={lazyRouteElement(<KioskInspectionDrawingEditPage />)}
+          />
           <Route path="/kiosk/rigging-analytics" element={<KioskRiggingAnalyticsPage />} />
           {import.meta.env.DEV ? (
             <>
               <Route
                 path="/dev/kiosk-inspection-drawing-library"
-                element={<KioskInspectionDrawingLibraryPreviewPage />}
+                element={lazyRouteElement(<KioskInspectionDrawingLibraryPreviewPage />)}
               />
               <Route
                 path="/dev/kiosk-inspection-drawing-create"
-                element={<KioskInspectionDrawingCreatePreviewPage />}
+                element={lazyRouteElement(<KioskInspectionDrawingCreatePreviewPage />)}
               />
             </>
           ) : null}
@@ -156,13 +206,16 @@ function App() {
       {import.meta.env.DEV ? (
         <>
           <Route path="/dev/load-balancing-overview-chart" element={<LoadBalancingOverviewChartPreviewPage />} />
-          <Route path="/dev/kiosk-inspection-drawing-print" element={<KioskInspectionDrawingPrintPreviewPage />} />
+          <Route
+            path="/dev/kiosk-inspection-drawing-print"
+            element={lazyRouteElement(<KioskInspectionDrawingPrintPreviewPage />)}
+          />
         </>
       ) : null}
       {INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED ? (
         <Route
           path="/kiosk/part-measurement/inspection/templates/:templateId/print"
-          element={<KioskInspectionDrawingPrintPage />}
+          element={lazyRouteElement(<KioskInspectionDrawingPrintPage />)}
         />
       ) : null}
       <Route

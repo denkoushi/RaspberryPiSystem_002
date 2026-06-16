@@ -9,6 +9,7 @@ import {
   type LeaderboardShellPhasedReadResult,
   type ProductionScheduleListParams
 } from '../production-schedule-query.service.js';
+import type { Prisma } from '@prisma/client';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
 import { prisma } from '../../../lib/prisma.js';
 import {
@@ -72,6 +73,8 @@ export type LeaderboardBoardReadResult = {
   page: number;
   pageSize: number;
   total: number;
+  /** 初回 shell で一部スロットの exact total を後続 continue に回した場合のみ true。 */
+  totalsDeferred?: boolean;
   rows: LightShellRow[];
   /**
    * 集約 `leaderboard-board/continue` のみ。軽量差分チャンク（スロット順に連結）。
@@ -95,24 +98,32 @@ type ListParamsBase = Omit<ProductionScheduleListParams, 'page' | 'pageSize' | '
 
 function countLeaderboardBoardShellResourceTotal(
   listParamsBase: ListParamsBase,
-  resourceCd: string,
-  processChangeResidualStrongEvidenceKeys: ReadonlySet<string>
+  params: {
+    resourceCd: string;
+    processChangeResidualStrongEvidenceKeys: ReadonlySet<string>;
+    leaderboardMaterializedBaseWhere: Prisma.Sql;
+  }
 ): Promise<number> {
-  return countProductionScheduleDashboardVisibleRowsFromListFilters({
-    queryText: listParamsBase.queryText,
-    productNos: listParamsBase.productNos,
-    machineName: listParamsBase.machineName,
-    resourceCds: [resourceCd],
-    assignedOnlyCds: listParamsBase.assignedOnlyCds,
-    resourceCategory: listParamsBase.resourceCategory,
-    hasNoteOnly: listParamsBase.hasNoteOnly,
-    hasDueDateOnly: listParamsBase.hasDueDateOnly,
-    allowResourceOnly: listParamsBase.allowResourceOnly,
-    locationKey: listParamsBase.locationKey,
-    siteKey: listParamsBase.siteKey,
-    processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
-    processChangeResidualStrongEvidenceKeys
-  });
+  return countProductionScheduleDashboardVisibleRowsFromListFilters(
+    {
+      queryText: listParamsBase.queryText,
+      productNos: listParamsBase.productNos,
+      machineName: listParamsBase.machineName,
+      resourceCds: [params.resourceCd],
+      assignedOnlyCds: listParamsBase.assignedOnlyCds,
+      resourceCategory: listParamsBase.resourceCategory,
+      hasNoteOnly: listParamsBase.hasNoteOnly,
+      hasDueDateOnly: listParamsBase.hasDueDateOnly,
+      allowResourceOnly: listParamsBase.allowResourceOnly,
+      locationKey: listParamsBase.locationKey,
+      siteKey: listParamsBase.siteKey,
+      processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+      processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
+    },
+    {
+      leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere
+    }
+  );
 }
 
 function settleUnusedLeaderboardBoardShellCount(promise: Promise<number>): void {
@@ -129,10 +140,12 @@ export async function fetchLeaderboardCompositeBoardShell(
     page: number;
     pageSize: number;
     includeDecorations?: boolean;
+    deferTotals?: boolean;
   },
   deps: { snapshotStore: LeaderboardShellSnapshotStore }
 ): Promise<LeaderboardBoardReadResult> {
   const includeDecorations = params.includeDecorations !== false;
+  const deferTotals = params.deferTotals === true;
   const cappedPageSize = Math.min(Math.max(1, Math.floor(params.pageSize)), 160);
 
   /** continue と同型: 同一 board shell リクエスト内で winner / residual / generation token を 1 回だけ */
@@ -141,15 +154,20 @@ export async function fetchLeaderboardCompositeBoardShell(
   const processChangeResidualStrongEvidenceKeys = processChangeResidualMaterialization.keys;
   const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
 
-  const countPromises = params.boardResourceCds.map((resourceCd) => {
-    const promise = countLeaderboardBoardShellResourceTotal(
-      params.listParamsBase,
-      resourceCd,
-      processChangeResidualStrongEvidenceKeys
-    );
-    settleUnusedLeaderboardBoardShellCount(promise);
-    return promise;
-  });
+  const countPromises = deferTotals
+    ? []
+    : params.boardResourceCds.map((resourceCd) => {
+        const promise = countLeaderboardBoardShellResourceTotal(
+          params.listParamsBase,
+          {
+            resourceCd,
+            processChangeResidualStrongEvidenceKeys,
+            leaderboardMaterializedBaseWhere
+          }
+        );
+        settleUnusedLeaderboardBoardShellCount(promise);
+        return promise;
+      });
 
   const [shells, processChangeResidualSummary] = await Promise.all([
     Promise.all(
@@ -175,15 +193,20 @@ export async function fetchLeaderboardCompositeBoardShell(
     })
   ]);
 
-  const totals = await Promise.all(
+  const resourceTotals = await Promise.all(
     shells.map((shell, i) => {
       const totalFromShell = resolveLeaderboardBoardShellResourceTotalFromShell(shell);
       if (totalFromShell !== undefined) {
-        return Promise.resolve(totalFromShell);
+        return Promise.resolve({ total: totalFromShell, exact: true });
       }
-      return countPromises[i]!;
+      if (deferTotals) {
+        return Promise.resolve({ total: shell.rows.length, exact: false });
+      }
+      return countPromises[i]!.then((total) => ({ total, exact: true }));
     })
   );
+  const totals = resourceTotals.map((entry) => entry.total);
+  const totalsDeferred = resourceTotals.some((entry) => !entry.exact);
 
   const mergedRows = shells.flatMap((s) => s.rows);
   const totalSum = totals.reduce((acc, n) => acc + n, 0);
@@ -202,7 +225,7 @@ export async function fetchLeaderboardCompositeBoardShell(
     if (snapshotId && shells[i]!.rows.length > 0) {
       seedLeaderboardBoardPrefixRowCache(snapshotId, shells[i]!.rows);
     }
-    if (snapshotId) {
+    if (snapshotId && resourceTotals[i]?.exact === true) {
       seedLeaderboardBoardSnapshotResourceTotal(snapshotId, totals[i] ?? 0);
     }
   }
@@ -231,6 +254,7 @@ export async function fetchLeaderboardCompositeBoardShell(
       total: totalSum,
       rows: mergedRows,
       resources,
+      ...(totalsDeferred ? { totalsDeferred: true } : {}),
       ...processChangeResidualPayload
     };
   }
@@ -247,6 +271,7 @@ export async function fetchLeaderboardCompositeBoardShell(
     total: totalSum,
     rows: rowsWithDeco,
     resources,
+    ...(totalsDeferred ? { totalsDeferred: true } : {}),
     leaderboardFooterChipsByPartKey,
     ...processChangeResidualPayload
   };
@@ -274,12 +299,14 @@ export async function continueLeaderboardCompositeBoard(
   const { generationToken, processChangeResidualMaterialization } =
     await resolveLeaderboardBoardProcessChangeResidualContext();
   const processChangeResidualStrongEvidenceKeys = processChangeResidualMaterialization.keys;
+  const leaderboardMaterializedBaseWherePromise = resolveLeaderboardMaterializedBaseWhere(prisma);
 
   const [totals, contOutputs] = await Promise.all([
     resolveLeaderboardBoardResourceTotalsForContinue(
       params.listParamsBase,
       params.resourceSlices,
-      processChangeResidualStrongEvidenceKeys
+      processChangeResidualStrongEvidenceKeys,
+      leaderboardMaterializedBaseWherePromise
     ),
     Promise.all(
       params.boardResourceCds.map(async (_resourceCd, i) => {
@@ -308,7 +335,11 @@ export async function continueLeaderboardCompositeBoard(
             snapshotId: slice.snapshotId,
             page: 1
           },
-          { snapshotStore: deps.snapshotStore, generationToken }
+          {
+            snapshotStore: deps.snapshotStore,
+            generationToken,
+            leaderboardMaterializedBaseWhere: await leaderboardMaterializedBaseWherePromise
+          }
         );
       })
     )
@@ -325,8 +356,8 @@ export async function continueLeaderboardCompositeBoard(
     };
   }
 
-  /** 資源ごとの assemble が同一値を参照（リクエストあたり 1 回の winner materialization） */
-  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+  /** 資源ごとの continue / assemble が同一値を参照（リクエストあたり 1 回の winner materialization） */
+  const leaderboardMaterializedBaseWhere = await leaderboardMaterializedBaseWherePromise;
 
   const perResourceAssembled: ContinueAssembledResourceSlice[] = [];
   for (let i = 0; i < params.boardResourceCds.length; i += 1) {

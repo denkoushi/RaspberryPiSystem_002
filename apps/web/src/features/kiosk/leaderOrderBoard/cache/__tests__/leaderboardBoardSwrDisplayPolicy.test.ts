@@ -63,6 +63,17 @@ describe('leaderboardBoardSwrDisplayPolicy', () => {
     expect(result.displayBoard?.rows[0]?.id).toBe('n1');
   });
 
+  it('装飾同期のみでも cache を優先する', () => {
+    expect(
+      shouldPreferCacheForSwrDisplay({
+        cacheDisplayable: true,
+        isBackgroundRevalidating: true,
+        suppressPlaceholderShell: false,
+        networkDisplayBoard: completeBoard('n1')
+      })
+    ).toBe(true);
+  });
+
   it('revalidate 中は cache 表示', () => {
     const result = resolveLeaderboardBoardDisplaySource({
       terminalCacheEnabled: true,
