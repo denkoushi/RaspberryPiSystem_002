@@ -8,7 +8,7 @@ import * as client from '../../../../api/client';
 import { LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE } from '../constants';
 import { useCompositeLeaderboardPhasedScheduleWithAutoAppend } from '../useCompositeLeaderboardPhasedScheduleWithAutoAppend';
 
-import type { ProductionScheduleLeaderboardBoardResponse, ProductionScheduleRow } from '../../../../api/client';
+import type { ProductionScheduleLeaderboardBoardResponse, ProductionScheduleLeaderboardDecorationsResponse, ProductionScheduleRow } from '../../../../api/client';
 
 const getLeaderboardBoardMock = vi.fn();
 
@@ -187,6 +187,103 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(params.includeDecorations).toBe(false);
       expect(params.deferTotals).toBe(true);
       expect(postDecorations).toHaveBeenCalled();
+    });
+  });
+
+  it('legacy 経路でも deferTotals=true を送る', async () => {
+    vi.stubEnv('VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER', 'false');
+    installBoardHookMock(() => ({
+      data: boardPayload({
+        total: 1,
+        rows: [row('a1', 'R1')],
+        resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+      }),
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: Date.now()
+    }));
+
+    function Harness() {
+      useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      const params = boardHookMock.mock.calls.find((c) => (c[1] as { enabled?: boolean } | undefined)?.enabled !== false)?.[0] as {
+        deferTotals?: boolean;
+      };
+      expect(params.deferTotals).toBe(true);
+    });
+  });
+
+  it('装飾取得中は isDecorationSyncing のみ立ち scheduleQuery.isFetching は false', async () => {
+    let resolveDecorations: ((value: ProductionScheduleLeaderboardDecorationsResponse) => void) | undefined;
+    postDecorations.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDecorations = resolve;
+        })
+    );
+
+    installBoardHookMock(() => ({
+      data: boardPayload({
+        total: 1,
+        rows: [row('a1', 'R1')],
+        resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+      }),
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: Date.now()
+    }));
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(postDecorations).toHaveBeenCalled();
+      expect(latest?.isBoardDataSyncing).toBe(false);
+      expect(latest?.isDecorationSyncing).toBe(true);
+      expect(latest?.isBackgroundRevalidating).toBe(true);
+      expect(latest?.scheduleQuery.isFetching).toBe(false);
+    });
+
+    resolveDecorations?.({
+      rowDecorations: [],
+      leaderboardFooterChipsByPartKey: {}
     });
   });
 

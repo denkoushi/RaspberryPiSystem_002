@@ -14,7 +14,8 @@ import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../../features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel';
 import {
   isLeaderboardBoardInteractionLocked,
-  LEADERBOARD_BACKGROUND_SYNC_STATUS_MESSAGE
+  LEADERBOARD_BACKGROUND_SYNC_STATUS_MESSAGE,
+  LEADERBOARD_DECORATION_SYNC_STATUS_MESSAGE
 } from '../../features/kiosk/leaderOrderBoard/cache/leaderboardBoardInteractionLockPolicy';
 import { LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE } from '../../features/kiosk/leaderOrderBoard/constants';
 import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
@@ -238,7 +239,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     listIncomplete,
     cacheSyncWarning,
     applyDisplayMutation,
-    isBackgroundRevalidating
+    isBoardDataSyncing,
+    isDecorationSyncing
   } = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
     leaderboardPhasedBaseParams: leaderboardPhasedBase,
     seibanOrFilters: dueAssist.selectedFseibanFilters,
@@ -564,9 +566,13 @@ export function ProductionScheduleLeaderOrderBoardPage() {
                 {cacheSyncWarning}
               </p>
             ) : null}
-            {isBackgroundRevalidating ? (
+            {isBoardDataSyncing ? (
               <p className="mb-2 shrink-0 text-sm text-cyan-100/90" role="status">
                 {LEADERBOARD_BACKGROUND_SYNC_STATUS_MESSAGE}
+              </p>
+            ) : isDecorationSyncing ? (
+              <p className="mb-2 shrink-0 text-sm text-cyan-100/70" role="status">
+                {LEADERBOARD_DECORATION_SYNC_STATUS_MESSAGE}
               </p>
             ) : null}
             {(scheduleQuery.data?.processChangeResidualTotal ?? 0) > 0 ? (

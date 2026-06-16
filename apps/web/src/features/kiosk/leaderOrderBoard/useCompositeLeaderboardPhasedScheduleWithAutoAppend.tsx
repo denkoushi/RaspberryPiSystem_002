@@ -14,8 +14,11 @@ import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardCon
 import { normalizeLeaderboardSeibanOrTokens } from './cache/filterLeaderboardBoardBySeibanOr';
 import { isLeaderboardSeibanOrClientFilterEnabled } from './cache/leaderboardBoardCacheConstants';
 import { resolveDisplayBoardMutationUpdate } from './cache/leaderboardBoardDisplayMutationCoordinator';
-import { buildLeaderboardBoardLegacyFetchParams } from './cache/leaderboardBoardFetchParams';
-import { isLeaderboardBoardBackgroundRevalidating } from './cache/leaderboardBoardInteractionLockPolicy';
+import { buildLeaderboardBoardLegacyFetchParams, buildLeaderboardBoardBaseFetchParams } from './cache/leaderboardBoardFetchParams';
+import {
+  isLeaderboardBoardDataSyncing,
+  isLeaderboardDecorationSyncing
+} from './cache/leaderboardBoardInteractionLockPolicy';
 import { resolveScopedLeaderboardAppendOverride } from './leaderboardBoardAppendOverrideScopePolicy';
 import {
   resolveLeaderboardAppendLoopStartBoard,
@@ -95,8 +98,12 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   /** 通信失敗等で前回保存分を表示中 */
   cacheSyncWarning: string | null;
   applyDisplayMutation: (mutation: LeaderboardBoardCacheMutation) => void;
-  /** shell/continue/decorations の背景再検証中 */
+  /** shell/continue/decorations の背景再検証中（SWR キャッシュ維持用） */
   isBackgroundRevalidating: boolean;
+  /** 初回 board / refetch / continue / ページング未完走の同期中 */
+  isBoardDataSyncing: boolean;
+  /** `leaderboard-decorations` POST の同期中 */
+  isDecorationSyncing: boolean;
 } {
   const {
     leaderboardPhasedBaseParams,
@@ -132,14 +139,11 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const boardQueryParams = useMemo((): KioskProductionScheduleLeaderboardBoardQueryParams | undefined => {
     if (!scheduleEnabled || resourceCdsOrderedKey.length === 0) return undefined;
     const baseParams = JSON.parse(leaderboardPhasedBaseParamsKey) as KioskProductionScheduleLeaderboardPhasedQueryParams;
-    const primaryParams: KioskProductionScheduleLeaderboardBoardQueryParams = {
-      ...baseParams,
-      boardResourceCds: orderedResourceCds.join(','),
-      includeDecorations: false,
-      deferTotals: true
-    };
     if (clientFilterEnabled) {
-      return primaryParams;
+      return buildLeaderboardBoardBaseFetchParams({
+        phasedBase: baseParams,
+        boardResourceCds: orderedResourceCds
+      });
     }
     return buildLeaderboardBoardLegacyFetchParams({
       phasedBase: baseParams,
@@ -256,24 +260,36 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     [networkDisplayBoard, resolvedShell, scopedAppendOverride]
   );
 
-  const isBackgroundRevalidating = useMemo(
+  const isBoardDataSyncing = useMemo(
     () =>
-      isLeaderboardBoardBackgroundRevalidating({
+      isLeaderboardBoardDataSyncing({
         scheduleEnabled,
         networkBoardComplete,
         networkInitialLoading: boardQuery.isLoading,
         networkIsFetching: boardQuery.isFetching,
-        isAppending,
-        isDecorationsFetching
+        isAppending
       }),
     [
       boardQuery.isFetching,
       boardQuery.isLoading,
       isAppending,
-      isDecorationsFetching,
       networkBoardComplete,
       scheduleEnabled
     ]
+  );
+
+  const isDecorationSyncing = useMemo(
+    () =>
+      isLeaderboardDecorationSyncing({
+        scheduleEnabled,
+        isDecorationsFetching
+      }),
+    [isDecorationsFetching, scheduleEnabled]
+  );
+
+  const isBackgroundRevalidating = useMemo(
+    () => isBoardDataSyncing || isDecorationSyncing,
+    [isBoardDataSyncing, isDecorationSyncing]
   );
 
   const {
@@ -500,7 +516,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
         (isLeaderboardScheduleInitialLoading(boardQuery.isLoading, boardForSchedule.rows.length) ||
           awaitingFreshShellAfterParamsChange),
       isError: (boardQuery.isError && !isShowingCachedData) || decorationFailed,
-      isFetching: boardQuery.isFetching || isAppending || isDecorationsFetching
+      isFetching: boardQuery.isFetching || isAppending
     };
   }, [
     boardQuery.isError,
@@ -510,7 +526,6 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     displayBoardForUi,
     displayDecorations,
     isAppending,
-    isDecorationsFetching,
     isShowingCachedData,
     resourceCdsOrdered.length,
     scheduleEnabled,
@@ -530,6 +545,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     isShowingCachedData,
     cacheSyncWarning,
     applyDisplayMutation,
-    isBackgroundRevalidating
+    isBackgroundRevalidating,
+    isBoardDataSyncing,
+    isDecorationSyncing
   };
 }

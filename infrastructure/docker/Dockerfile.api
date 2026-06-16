@@ -50,23 +50,24 @@ COPY --from=base /app/packages/shared-types/package.json ./packages/shared-types
 COPY --from=base /app/packages/part-search-core/package.json ./packages/part-search-core/package.json
 COPY --from=base /app/packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
 WORKDIR /app
+# base stage の dev node_modules を持ち込まないよう、build 成果物コピー後に prod install する。
+COPY --from=base --exclude=node_modules /app/apps/api ./apps/api
+COPY --from=base --exclude=node_modules /app/packages/shared-types ./packages/shared-types
+COPY --from=base --exclude=node_modules /app/packages/part-search-core ./packages/part-search-core
+COPY --from=base --exclude=node_modules /app/packages/shelf-layout-core ./packages/shelf-layout-core
+COPY --from=base /app/scripts ./scripts
 RUN corepack enable \
   && pnpm install --prod --recursive --frozen-lockfile
 
-# Chromium for SIGNAGE_LOAN_GRID_ENGINE=playwright_html (bundled browser; keep path stable).
-# Keep this before app source copies so ordinary API/Web changes reuse the browser layer.
+# Chromium for Playwright (signage playwright_html, kiosk document HTML→PDF; bundled browser).
+# prod install 後に実行（playwright パッケージが node_modules に入った後）。
+# false にするとビルド時間短縮になるが、上記 Playwright 依存機能は実行時に失敗する（起動ログ / GET /api/system/health checks.playwright で検知）。
 ARG INSTALL_PLAYWRIGHT_CHROMIUM=true
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN case "${INSTALL_PLAYWRIGHT_CHROMIUM}" in \
     true|1|yes) pnpm exec playwright install chromium ;; \
     *) echo "Skipping Playwright Chromium install (INSTALL_PLAYWRIGHT_CHROMIUM=${INSTALL_PLAYWRIGHT_CHROMIUM})" ;; \
   esac
-
-COPY --from=base /app/apps/api ./apps/api
-COPY --from=base /app/packages/shared-types ./packages/shared-types
-COPY --from=base /app/packages/part-search-core ./packages/part-search-core
-COPY --from=base /app/packages/shelf-layout-core ./packages/shelf-layout-core
-COPY --from=base /app/scripts ./scripts
 
 WORKDIR /app/apps/api
 RUN pnpm prisma generate

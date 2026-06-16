@@ -122,9 +122,14 @@ export const productionScheduleLeaderboardBoardQuerySchema = productionScheduleL
   boardResourceCds: z.string().min(1).max(4000),
   /** true のとき初回 shell は exact total COUNT を待たず、continue で正確な total に戻す。 */
   deferTotals: z
-    .string()
+    .union([z.boolean(), z.string()])
     .optional()
-    .transform((v) => v === 'true' || v === '1'),
+    .transform((v): boolean => {
+      if (v === undefined) return false;
+      if (typeof v === 'boolean') return v;
+      const s = String(v).trim().toLowerCase();
+      return s === 'true' || s === '1';
+    }),
   ...productionScheduleLeaderboardIncludeDecorationsField
 });
 

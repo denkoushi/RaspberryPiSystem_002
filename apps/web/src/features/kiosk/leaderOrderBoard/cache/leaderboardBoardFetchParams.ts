@@ -16,6 +16,17 @@ export function buildLeaderboardSeibanOrQueryText(seibanTokens: readonly string[
   return tokens.join(',');
 }
 
+/** board light shell GET: 行骨格のみ取得し、装飾と exact total は後段へ defer する */
+export function applyLeaderboardBoardLightShellFetchPolicy(
+  params: KioskProductionScheduleLeaderboardBoardQueryParams
+): KioskProductionScheduleLeaderboardBoardQueryParams {
+  return {
+    ...params,
+    includeDecorations: false,
+    deferTotals: true
+  };
+}
+
 /** 順位ボード正本 GET 用: `q` を載せない base params */
 export function buildLeaderboardBoardBaseFetchParams(input: {
   phasedBase: KioskProductionScheduleLeaderboardPhasedQueryParams;
@@ -23,11 +34,10 @@ export function buildLeaderboardBoardBaseFetchParams(input: {
 }): KioskProductionScheduleLeaderboardBoardQueryParams {
   const { q: _omitQ, ...rest } = input.phasedBase;
   void _omitQ;
-  return {
+  return applyLeaderboardBoardLightShellFetchPolicy({
     ...rest,
-    boardResourceCds: input.boardResourceCds.join(','),
-    includeDecorations: false
-  };
+    boardResourceCds: input.boardResourceCds.join(',')
+  });
 }
 
 /** 製番 OR 照合用: base + `q` */
@@ -40,12 +50,11 @@ export function buildLeaderboardBoardReconcileFetchParams(input: {
   if (q == null) return undefined;
   const { q: _omitQ, ...rest } = input.phasedBase;
   void _omitQ;
-  return {
+  return applyLeaderboardBoardLightShellFetchPolicy({
     ...rest,
     q,
-    boardResourceCds: input.boardResourceCds.join(','),
-    includeDecorations: false
-  };
+    boardResourceCds: input.boardResourceCds.join(',')
+  });
 }
 
 /** クライアントフィルタ無効時の従来経路: `q` を params に含める */
@@ -55,10 +64,9 @@ export function buildLeaderboardBoardLegacyFetchParams(input: {
   seibanOrFilters: readonly string[];
 }): KioskProductionScheduleLeaderboardBoardQueryParams {
   const q = buildLeaderboardSeibanOrQueryText(input.seibanOrFilters);
-  return {
+  return applyLeaderboardBoardLightShellFetchPolicy({
     ...input.phasedBase,
     ...(q != null ? { q } : {}),
-    boardResourceCds: input.boardResourceCds.join(','),
-    includeDecorations: false
-  };
+    boardResourceCds: input.boardResourceCds.join(',')
+  });
 }

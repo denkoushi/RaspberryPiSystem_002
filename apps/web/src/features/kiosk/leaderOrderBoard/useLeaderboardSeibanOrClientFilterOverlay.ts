@@ -64,8 +64,8 @@ export function useLeaderboardSeibanOrClientFilterOverlay(input: {
 
   useEffect(() => {
     if (!overlayActive) return;
-    setServerVerifiedBoard(null);
     if (prevSeibanOrFiltersKeyRef.current === seibanOrFiltersKey) return;
+    setServerVerifiedBoard(null);
     prevSeibanOrFiltersKeyRef.current = seibanOrFiltersKey;
     appendRunIdRef.current += 1;
     setIsAppending(false);
