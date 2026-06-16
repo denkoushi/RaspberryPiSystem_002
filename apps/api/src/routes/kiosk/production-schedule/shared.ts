@@ -120,6 +120,11 @@ export const productionScheduleLeaderboardIncludeDecorationsField = {
 /** 順位ボード集約 API: スロット順の資源 CD（カンマ区切り・重複除去はサーバ側 parseCsvList） */
 export const productionScheduleLeaderboardBoardQuerySchema = productionScheduleLeaderboardPhasedQuerySchema.extend({
   boardResourceCds: z.string().min(1).max(4000),
+  /** true のとき初回 shell は exact total COUNT を待たず、continue で正確な total に戻す。 */
+  deferTotals: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
   ...productionScheduleLeaderboardIncludeDecorationsField
 });
 

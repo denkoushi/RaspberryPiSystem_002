@@ -96,6 +96,24 @@ describe('buildLeaderboardBoardContinuePayload', () => {
     expect('allowResourceOnly' in payload).toBe(false);
   });
 
+  it('初回 shell 専用の deferTotals は POST body に載せない', () => {
+    const board: ProductionScheduleLeaderboardBoardResponse = {
+      page: 1,
+      pageSize: 80,
+      total: 1,
+      rows: [],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+    };
+    const payload = buildLeaderboardBoardContinuePayload(
+      {
+        ...base,
+        deferTotals: true
+      },
+      board
+    );
+    expect('deferTotals' in payload).toBe(false);
+  });
+
   it('有限の nextCursor は切り捨てて正の cursor にする', () => {
     const board: ProductionScheduleLeaderboardBoardResponse = {
       page: 1,

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 
 import * as queryService from '../../production-schedule-query.service.js';
 import {
@@ -54,5 +55,25 @@ describe('resolveLeaderboardBoardResourceTotalsForContinue', () => {
 
     expect(totals).toEqual([55, 66]);
     expect(countSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('passes precomputed leaderboard materialized base where to fallback COUNT', async () => {
+    const leaderboardMaterializedBaseWhere = Prisma.sql`TRUE`;
+    const countSpy = vi
+      .spyOn(queryService, 'countProductionScheduleDashboardVisibleRowsFromListFilters')
+      .mockResolvedValueOnce(55);
+
+    const totals = await resolveLeaderboardBoardResourceTotalsForContinue(
+      listParamsBase,
+      [{ resourceCd: '1' }],
+      undefined,
+      Promise.resolve(leaderboardMaterializedBaseWhere)
+    );
+
+    expect(totals).toEqual([55]);
+    expect(countSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ resourceCds: ['1'] }),
+      { leaderboardMaterializedBaseWhere }
+    );
   });
 });

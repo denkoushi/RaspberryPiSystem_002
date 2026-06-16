@@ -135,7 +135,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     const primaryParams: KioskProductionScheduleLeaderboardBoardQueryParams = {
       ...baseParams,
       boardResourceCds: orderedResourceCds.join(','),
-      includeDecorations: false
+      includeDecorations: false,
+      deferTotals: true
     };
     if (clientFilterEnabled) {
       return primaryParams;
