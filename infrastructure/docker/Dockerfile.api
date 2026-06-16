@@ -34,7 +34,7 @@ ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 RUN apt-get update \
   && apt-get upgrade -y \
   && apt-get install -y openssl poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible python3 python3-pip git \
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
+    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 \
   && python3 -m pip install --no-cache-dir --break-system-packages \
   "git+https://github.com/ndl-lab/ndlocr-lite.git@${NDLOCR_LITE_COMMIT}" \
   && python3 -m pip install --no-cache-dir --break-system-packages "protobuf>=6.33.5,<7" "pillow>=12.2.0,<13" "lxml>=6.1.0,<7" \
@@ -65,7 +65,7 @@ RUN corepack enable \
 ARG INSTALL_PLAYWRIGHT_CHROMIUM=true
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN case "${INSTALL_PLAYWRIGHT_CHROMIUM}" in \
-    true|1|yes) pnpm exec playwright install chromium ;; \
+    true|1|yes) pnpm --filter @raspi-system/api exec playwright install chromium ;; \
     *) echo "Skipping Playwright Chromium install (INSTALL_PLAYWRIGHT_CHROMIUM=${INSTALL_PLAYWRIGHT_CHROMIUM})" ;; \
   esac
 
