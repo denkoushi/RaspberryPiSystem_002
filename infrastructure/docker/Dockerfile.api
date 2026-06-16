@@ -45,6 +45,10 @@ RUN apt-get update \
 COPY --from=base /app/package.json ./package.json
 COPY --from=base /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=base /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=base /app/apps/api/package.json ./apps/api/package.json
+COPY --from=base /app/packages/shared-types/package.json ./packages/shared-types/package.json
+COPY --from=base /app/packages/part-search-core/package.json ./packages/part-search-core/package.json
+COPY --from=base /app/packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
 WORKDIR /app
 RUN corepack enable \
   && pnpm install --prod --recursive --frozen-lockfile
