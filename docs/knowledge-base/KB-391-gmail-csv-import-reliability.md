@@ -42,7 +42,7 @@ Some Gmail csvDashboards CSV imports were skipped or failed silently in producti
 | Admin API/UI | `listSchedules()` returns `{ schedules, warnings }`; CSV取込 tab shows warnings on list/create/update |
 | Non-prod defaults | `FHINMEI_MH_SH` default cron `15 6 * * 0` → `18 6 * * 0` in builtin rows / `defaultBackupConfig` only (**production `backup.json` not auto-mutated**) |
 
-**Branch**: `fix/gmail-csv-import-reliability` · **commit**: `206241c4` · **CI**: run `27659565498` success (Trivy image api once failed on runner disk; `--failed` rerun succeeded).
+**Branch**: `fix/gmail-csv-import-reliability` · **squash on `main`**: **`5ec5cee1`** · **CI**: run `27659565498` success (Trivy image api once failed on runner disk; `--failed` rerun succeeded).
 
 ## Prevention
 
@@ -86,4 +86,4 @@ Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../gui
 ## References
 
 - Plan (implementation): `.cursor/plans/gmail_csv_reliability_605d8671.plan.md` (Cursor workspace)
-- PR: _(fill after merge)_
+- PR: [#452](https://github.com/denkoushi/RaspberryPiSystem_002/pull/452) (squash merge **`5ec5cee1`**)
