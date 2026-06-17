@@ -35,7 +35,7 @@ module caddybuilder
 
 go 1.26
 
-require github.com/caddyserver/caddy/v2 v2.11.3
+require github.com/caddyserver/caddy/v2 v2.11.4
 
 replace google.golang.org/grpc => google.golang.org/grpc v1.79.3
 
