@@ -43,14 +43,42 @@ category: knowledge-base
 ### 追補（2026-05-06）: ProductNo winner の materialization（相関除去・仕様同一）
 
 - **課題**: `baseWhere` に含まれる `buildMaxProductNoWinnerCondition`（同一論理キー内で最大 ProductNo の行）は **WHERE ごとに相関評価**され、順位ボードの **複数クエリ × ページ行** でコストが積み上がることがある。
-- **方針（同値変換のみ）**: 正本の PARTITION / ORDER は [`max-product-no-winner-spec.ts`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-spec.ts) に集約し、**`fetchMaxProductNoWinnerRowIdsForDashboard`**（`ROW_NUMBER … rn=1`）で winner id を **1 クエリ確定**。`responseProfile=leaderboard`・`listLeaderboardShellProductionScheduleRows`・装飾 **hydrate**・**段階取得の `leaderboard-total`（総件数）**では、`buildProductionScheduleLeaderboardMaterializedBaseWhere` / `resolveLeaderboardMaterializedBaseWhere` 由来の **`csvDashboardId` + `id IN (...)`** を **`COUNT`**・**`fetchLeaderboardScheduleRowsWithSeibanAwarePriority`**・**hydrate** が **共有**（hydrate は呼び出し側から任意で `leaderboardMaterializedBaseWhere` を注入可能）。`prepareProductionScheduleDashboardFilters` の correlated `baseWhere` は **`full` 一覧**など従来どおり維持。
+- **方針（同値変換のみ）**: 正本の PARTITION / ORDER は [`max-product-no-winner-spec.ts`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-spec.ts) に集約し、**`fetchMaxProductNoWinnerRowIdsForDashboard`**（`ROW_NUMBER … rn=1`）で winner id を **1 クエリ確定**。`responseProfile=leaderboard`・`listLeaderboardShellProductionScheduleRows`・装飾 **hydrate**・**段階取得の `leaderboard-total`（総件数）**では、`buildProductionScheduleLeaderboardMaterializedBaseWhere` / `resolveLeaderboardMaterializedBaseWhere` 由来の **`csvDashboardId` + `id::text = ANY($array::text[])`** を **`COUNT`**・**`fetchLeaderboardScheduleRowsWithSeibanAwarePriority`**・**hydrate** が **共有**（hydrate は呼び出し側から任意で `leaderboardMaterializedBaseWhere` を注入可能）。`prepareProductionScheduleDashboardFilters` の correlated `baseWhere` は **`full` 一覧**など従来どおり維持。
 - **索引（2026-05-06 追補）**: `ProductionScheduleGlobalRowRank` に `csvDashboardRowId` 単独 INDEX を追加し、globalRank 相関サブクエリの探索を補助（定義・返却内容は不変）。
 - **関連モジュール**: [`max-product-no-winner-materialization.ts`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-materialization.ts)·[`leaderboard-row-selection.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts)（`leaderboardMaterializedBaseWhere` 引数へ変更）·[`leaderboard-shell-hydrate.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-hydrate.service.ts)
 
 ## Prevention
 
-- [`production-schedule-query.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/production-schedule-query.service.test.ts)（leaderboard を含むケース）。**追補**: [`max-product-no-winner-materialization.test.ts`](../../apps/api/src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts)（モック）。
+- [`production-schedule-query.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/production-schedule-query.service.test.ts)（leaderboard を含むケース）。**追補**: [`max-product-no-winner-materialization.test.ts`](../../apps/api/src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts)（`buildMaterializedMaxProductNoWinnerInCondition` の array bind 形状・空集合 `FALSE`・alias 安全性）。
 - [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の **winner materialization と相関 winner の集合一致**（シード済みダッシュボード）。
+- **materialized winner membership は `Prisma.join` による巨大 `IN (...)` を使わない**。winner 件数が PostgreSQL bind 上限（32767）を超えうるため、**単一 `text[]` bind の `= ANY(...::text[])`** に統一する（先例: [`leaderboard-process-change-residual.sql.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.sql.ts)）。
+
+### 追補（2026-06-18）: materialized winner `IN (...)` が bind 上限超過 → 順位ボード全端末取得 Error
+
+- **症状**: JST 翌朝以降、全キオスク端末で順位ボードが **取得 Error**・行ゼロ。`GET …/leaderboard-board` が **P2035** `too many bind variables … expected maximum of 32767, received 49944`。
+- **根因**: [`buildMaterializedMaxProductNoWinnerInCondition`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-materialization.ts) が winner id **約 49,912 件**を **`IN ($1, $2, …)`** に展開。CSV 増加で前日まで上限内だった materialization が翌日に超過。
+- **Fix（API のみ・意味不変）**: membership を **`"alias"."id"::text = ANY($array::text[])`**（bind 1 個）へ変更。**Web / migration なし**。
+- **検証**: `max-product-no-winner-materialization.test.ts`（5000 件 synthetic で array bind 1 個）·本番 `leaderboard-board` が **200** かつ P2035 消失（**2026-06-18 Pi5 デプロイ後に確認済**）。
+- **残リスク**: 5 万件規模の `text[]` を各 SQL に渡す構造は残る。将来 planner / メモリが問題化したら CTE・一時表・永続 snapshot は別課題。
+
+## Production deploy & verification（2026-06-18 · winner bind limit fix）
+
+- **Status**: deployed · verified on Pi5
+- **Scope**: API only（`buildMaterializedMaxProductNoWinnerInCondition` · **Prisma migration なし** · **Web 変更なし**）
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4 キオスク 4 台・Pi3 は **デプロイ不要**（Pi5 API 経由で順位ボード取得が復旧する）。
+- **リポジトリ**: ブランチ **`fix/leaderboard-winner-bind-limit`** · 代表 **`f4a93010`**
+- **標準手順**: [`deployment.md` §4161](../guides/deployment.md#macから全クライアントを一括更新) · `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/leaderboard-winner-bind-limit infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **Detach Run ID**: **`20260618-081723-19946`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`** · リモート **`exit 0`** · **`Git: changed`** · **`--follow` 約 393s**）
+- **Pi5 HEAD 確認**: `f4a93010 fix: avoid leaderboard winner bind limit`
+- **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 0 / FAIL 1**（約 **79s**）。**FAIL** は `PUT global-rank/auto-generate` **HTTP 400**（本修正の materialized winner 経路とは無関係・**未調査**）。
+- **本番 API 再確認**（Tailscale · 読み取りのみ）:
+  - `GET …/leaderboard-board?boardResourceCds=021&page=1&pageSize=80&allowResourceOnly=true&includeDecorations=false&deferTotals=true` → **HTTP 200**（デプロイ前は **P2035** / `received 49944`）
+  - 応答 **`rows: 80`** · **`total: 80`** · **`totalsDeferred: true`** · 本文に **P2035 なし**
+  - `GET /api/system/health` → **`status: degraded`**（**`memory: error`** のみ。database / eventLoop / playwright は ok。deployment.md の health wait 猶予内の一時状態として記録）
+- **Open Items**:
+  - 全キオスク端末での順位ボード **目視確認**（Pi4 は Pi5 API 反映のみで足りる想定だが、現場端末での取得 Error 解消は未記録）
+  - `verify-phase12-real.sh` の **`PUT global-rank/auto-generate` HTTP 400**（本件スコープ外・別途調査可）
+  - 5 万件規模 `text[]` bind の planner / メモリコスト（別課題）
 
 ## Production deploy & verification（2026-05-06 · leaderboard-shell winner materialization）
 
