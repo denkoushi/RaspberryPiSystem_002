@@ -14,6 +14,7 @@ import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID
 } from '../production-schedule/constants.js';
+import { acquireFkojunstStatusMailCriticalTransactionLock } from '../production-schedule/fkojunst-status-mail-critical-lock.js';
 import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
 import { ProgressSyncFromCsvService } from '../production-schedule/progress-sync-from-csv.service.js';
 import { ProgressSyncEligibilityPolicy } from '../production-schedule/progress-sync-eligibility.policy.js';
@@ -316,9 +317,7 @@ export class CsvDashboardIngestor {
       await prisma.$transaction(
         async (tx) => {
           if (dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID) {
-            await tx.$queryRaw(Prisma.sql`
-              SELECT pg_advisory_xact_lock(hashtext('fkojunst-status-mail-critical'), hashtext(${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}))
-            `);
+            await acquireFkojunstStatusMailCriticalTransactionLock(tx);
           }
 
           for (

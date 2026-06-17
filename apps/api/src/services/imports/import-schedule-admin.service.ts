@@ -73,12 +73,15 @@ export class ImportScheduleAdminService {
     return ensured;
   }
 
-  async listSchedules(): Promise<CsvImportSchedule[]> {
+  async listSchedules(): Promise<{ schedules: CsvImportSchedule[]; warnings: string[] }> {
     const { config, repaired } = await this.loadConfigEnsured();
     if (repaired) {
       await this.getScheduler().reload();
     }
-    return config.csvImports ?? [];
+    return {
+      schedules: config.csvImports ?? [],
+      warnings: detectGmailScheduleMinuteCollisions(config),
+    };
   }
 
   async createSchedule(input: CsvImportScheduleCreateInput): Promise<{ schedule: CsvImportSchedule; warnings: string[] }> {
