@@ -130,6 +130,42 @@ describe('LeaderOrderResourceCard gantt', () => {
     expect(screen.getAllByTestId('leader-board-gantt-ruler-band').length).toBeGreaterThan(0);
   });
 
+  it('renders remainder band when capacityMinutes is injected for 10H workload', () => {
+    render(
+      <LeaderOrderResourceCard
+        {...cardProps}
+        ganttEnabled
+        capacityMinutes={480}
+        rows={[mkLeaderBoardRow({ id: 'r10h', fkojun: '10', requiredMinutes: 600 })]}
+      />
+    );
+
+    const bands = screen.getAllByTestId('leader-board-gantt-ruler-band');
+    expect(bands).toHaveLength(2);
+    expect(bands[0]).toHaveAttribute('data-band-index', '0');
+    expect(bands[1]).toHaveAttribute('data-band-index', '1');
+    expect(bands[0]).toHaveClass('bg-cyan-400/90');
+    expect(bands[1]).toHaveClass('bg-transparent');
+  });
+
+  it('uses injected capacityMinutes to change band count for the same workload', () => {
+    const rows = [mkLeaderBoardRow({ id: 'r18h', fkojun: '10', requiredMinutes: 1080 })];
+    const { unmount: unmount8h } = render(
+      <LeaderOrderResourceCard {...cardProps} ganttEnabled capacityMinutes={480} rows={rows} />
+    );
+    const bands8h = screen.getAllByTestId('leader-board-gantt-ruler-band');
+    expect(bands8h).toHaveLength(3);
+    expect(bands8h.map((band) => band.getAttribute('data-band-index'))).toEqual(['0', '1', '2']);
+    unmount8h();
+
+    render(
+      <LeaderOrderResourceCard {...cardProps} ganttEnabled capacityMinutes={720} rows={rows} />
+    );
+    const bands12h = screen.getAllByTestId('leader-board-gantt-ruler-band');
+    expect(bands12h).toHaveLength(2);
+    expect(bands12h.map((band) => band.getAttribute('data-band-index'))).toEqual(['0', '1']);
+  });
+
   it('does not render ruler gutter when slot has zero rows', () => {
     render(<LeaderOrderResourceCard {...cardProps} ganttEnabled rows={[]} />);
 

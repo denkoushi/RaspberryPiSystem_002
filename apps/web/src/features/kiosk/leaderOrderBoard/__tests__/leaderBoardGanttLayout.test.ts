@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  GANTT_DEFAULT_CAPACITY_MINUTES,
   GANTT_EIGHT_HOURS_MINUTES,
   GANTT_FOOTER_CHIPS_EXTRA_PX,
   GANTT_MIN_ROW_HEIGHT_PX,
@@ -206,8 +207,107 @@ describe('leaderBoardGanttLayout', () => {
 
     expect(boundaryY).toBeGreaterThan(0);
     expect(boundaryY).toBeLessThan(slot.rulerHeightPx);
+    expect(slot.capacityBoundaryEndY).toBeCloseTo(boundaryY, 5);
     expect(slot.eightHourBoundaryEndY).toBeCloseTo(boundaryY, 5);
+    expect(slot.rulerSegments).toHaveLength(2);
+    expect(slot.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1]);
     assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
+  });
+
+  it('creates remainder band for 10H total at 8H capacity', () => {
+    const slot = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 600 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: 480
+    });
+
+    expect(slot.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1]);
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
+  });
+
+  it('creates three bands for 18H total at 8H capacity', () => {
+    const slot = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 1080 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: 480
+    });
+
+    expect(slot.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1, 2]);
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
+  });
+
+  it('does not add extra remainder band when total matches capacity multiples exactly', () => {
+    const slot960 = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 960 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: 480
+    });
+    expect(slot960.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1]);
+
+    const slot1440 = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 1440 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: 480
+    });
+    expect(slot1440.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1, 2]);
+  });
+
+  it('supports 12H capacity with remainder band', () => {
+    const slot = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 900 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: 720
+    });
+
+    expect(slot.capacityMinutes).toBe(720);
+    expect(slot.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1]);
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
+  });
+
+  it('supports 24H capacity with remainder band', () => {
+    const slot = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 1500 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: 1440
+    });
+
+    expect(slot.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1]);
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
+  });
+
+  it('supports arbitrary capacity minutes such as 600', () => {
+    const slot = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 750 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: 600
+    });
+
+    expect(slot.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1]);
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
+  });
+
+  it('keeps last band color when footer chips extend non-time tail', () => {
+    const slot = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 600, hasFooterChips: true }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: 480
+    });
+
+    expect(slot.rulerSegments.length).toBeGreaterThanOrEqual(2);
+    const lastBand = slot.rulerSegments[slot.rulerSegments.length - 1];
+    expect(lastBand?.bandIndex).toBe(1);
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
+  });
+
+  it('uses default capacity when capacityMinutes is invalid', () => {
+    const slot = computeGanttSlotLayout({
+      rows: [{ requiredMinutes: 600 }],
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: -1
+    });
+
+    expect(slot.capacityMinutes).toBe(GANTT_DEFAULT_CAPACITY_MINUTES);
+    expect(slot.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1]);
   });
 
   it('legacy computeGanttRowLayout keeps min visual height for small required minutes', () => {

@@ -718,6 +718,7 @@ update-frequency: high
 - Trivy **`usr/bin/caddy`** 指摘で **`github.com/smallstep/certificates`** や **`go.opentelemetry.io/otel/sdk`** が更新対象になる場合は、同様に **`replace` で解消版へピン留め**し、`security-docker` の **`trivy image web`** を再実行して **HIGH/CRITICAL 0** を確認する。
 - **追記（2026-05-28）**: `usr/bin/caddy`（`stdlib`）で **CVE-2026-39823**・**CVE-2026-39825**・**CVE-2026-39826** が検出され、`security-docker` が **run `26569170631`** で failure。Go / Caddy の修正版へ即追従できないため、既存運用どおり **`.trivyignore`** に暫定追記し、ローカル `docker build` + `trivy image --severity HIGH,CRITICAL --ignore-unfixed raspisys-web:ci` で 0 件を確認してから再 push する。
 - **追記（2026-06-06）**: `usr/bin/caddy`（`stdlib`）で **CVE-2026-42504** が検出され、PR #403 の `security-docker` が failure。Trivy ログ上の修正版は Go **1.25.11 / 1.26.4** 以上だったため、抑止追加ではなく `infrastructure/docker/Dockerfile.web` の Caddy build stage を **`golang:1.26.4-alpine`** へ更新して対処する。
+- **追記（2026-06-17）**: `security-docker` の `Security scan (Trivy image web)` が `usr/bin/caddy`（`github.com/caddyserver/caddy/v2`）で **CVE-2026-52844 / CVE-2026-52845**（HIGH、fixed **2.11.4**）を検出し、run **`27661913361`** が failure。`infrastructure/docker/Dockerfile.web` の Caddy build stage 依存を **`v2.11.3` → `v2.11.4`** に更新して対処する。
 
 **統合ブランチ（2026-03-19）**:
 - `feat/production-schedule-ui-unify-caddy-secfix` で本 Caddy 自前ビルドと生産スケジュールUI統一（[frontend.md KB-307](./frontend.md#kb-307-生産スケジュールui統一登録製番資源cdドロップダウン併設)）を統合。

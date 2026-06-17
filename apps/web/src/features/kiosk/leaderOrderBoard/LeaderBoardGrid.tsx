@@ -1,6 +1,7 @@
 import clsx from 'clsx';
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 
+import { resolveLeaderBoardGanttCapacityMinutes } from './gantt/leaderBoardGanttCapacity';
 import { LeaderOrderResourceCard } from './LeaderOrderResourceCard';
 
 import type { LeaderBoardRow } from './types';
@@ -30,6 +31,9 @@ export type LeaderBoardGridProps = {
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
   seibanEvalEnabled?: boolean;
   ganttEnabled?: boolean;
+  /** 基準時間帯解決用（スロット文脈） */
+  siteKey?: string;
+  deviceScopeKey?: string;
   listIncomplete?: boolean;
   autoRankDisabled?: boolean;
   autoRankPending?: boolean;
@@ -38,6 +42,7 @@ export type LeaderBoardGridProps = {
 
 type SlotCardProps = {
   resourceCd: string;
+  capacityMinutes: number;
   rows: LeaderBoardRow[];
   activeSeibanFilters: readonly string[] | undefined;
   selectedResourceCd: string | null;
@@ -64,6 +69,7 @@ type SlotCardProps = {
 
 const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   resourceCd,
+  capacityMinutes,
   rows,
   activeSeibanFilters,
   selectedResourceCd,
@@ -96,6 +102,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   return (
     <LeaderOrderResourceCard
       resourceCd={resourceCd}
+      capacityMinutes={capacityMinutes}
       resourceJapaneseNames={resourceJapaneseNames}
       rows={rows}
       selected={selected}
@@ -146,12 +153,29 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   footerResourceChipsByPartKey,
   seibanEvalEnabled = false,
   ganttEnabled = false,
+  siteKey = '',
+  deviceScopeKey = '',
   listIncomplete = false,
   autoRankDisabled = false,
   autoRankPending = false,
   onAutoRank
 }: LeaderBoardGridProps) {
   const rowControlsLocked = interactionLocked;
+
+  const capacityMinutesBySlotIndex = useMemo(
+    () =>
+      resourceCdBySlotIndex.map((cdRaw, slotIndex) => {
+        const resourceCd = cdRaw?.trim() ?? '';
+        if (resourceCd.length === 0) return 0;
+        return resolveLeaderBoardGanttCapacityMinutes({
+          siteKey,
+          deviceScopeKey,
+          slotIndex,
+          resourceCd
+        });
+      }),
+    [resourceCdBySlotIndex, siteKey, deviceScopeKey]
+  );
 
   return (
     <div
@@ -176,10 +200,12 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
         const rows = sortedGrouped.get(cd) ?? [];
         const jpNames = (resourceNameMap[cd] ?? []).join(' / ');
         const orderUsageNumbers = orderUsageByResourceCd?.[cd];
+        const capacityMinutes = capacityMinutesBySlotIndex[slotIndex] ?? 0;
         return (
           <LeaderBoardSlotCard
             key={`slot-${slotIndex}-${cd}`}
             resourceCd={cd}
+            capacityMinutes={capacityMinutes}
             rows={rows}
             activeSeibanFilters={activeSeibanFilters}
             selectedResourceCd={selectedResourceCd}

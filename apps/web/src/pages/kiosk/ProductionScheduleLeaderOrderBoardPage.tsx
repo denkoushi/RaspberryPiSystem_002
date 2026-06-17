@@ -589,6 +589,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               sortedGrouped={sortedGrouped}
               resourceNameMap={resourceNameMap}
               orderUsageByResourceCd={orderUsageQuery.data}
+              siteKey={siteKey}
+              deviceScopeKey={activeDeviceScopeKey}
               activeSeibanFilters={searchConditions.activeQueries}
               selectedResourceCd={selectedResourceCd}
               setSelectedResourceCd={setSelectedResourceCd}
