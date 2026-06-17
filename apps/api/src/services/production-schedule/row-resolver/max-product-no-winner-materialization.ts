@@ -41,7 +41,8 @@ export async function fetchMaxProductNoWinnerRowIdsForDashboard(params: {
 }
 
 /**
- * 「外側別名の id が materialized winner 集合に含まれる」WHERE 断片。
+ * 「外側別名の id が materialized winner 集合に含まれる」membership WHERE 断片。
+ * PostgreSQL prepared statement の bind 上限を避けるため、ID 一覧は単一 `text[]` bind で渡す。
  * `winnerRowIds` が空のときは常に偽（相関 winner が存在しないダッシュボードと同義）。
  */
 export function buildMaterializedMaxProductNoWinnerInCondition(
@@ -52,15 +53,12 @@ export function buildMaterializedMaxProductNoWinnerInCondition(
     return Prisma.sql`FALSE`;
   }
   const q = quoteSqlIdentifierOrThrow(rowAlias);
-  return Prisma.sql`${Prisma.raw(`${q}."id"`)} IN (${Prisma.join(
-    winnerRowIds.map((id) => Prisma.sql`${id}`),
-    ', '
-  )})`;
+  return Prisma.sql`${Prisma.raw(`${q}."id"`)}::text = ANY(${[...winnerRowIds]}::text[])`;
 }
 
 /**
  * leaderboard-shell / leaderboard responseProfile で共通利用するベース WHERE。
- * （`CsvDashboardRow` に限定した dashboard + winner IN）
+ * （`CsvDashboardRow` に限定した dashboard + winner membership）
  */
 export function buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
   csvDashboardId: string,
