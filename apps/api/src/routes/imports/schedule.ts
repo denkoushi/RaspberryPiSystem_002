@@ -168,9 +168,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
   // === CSVインポートスケジュール管理API ===
   // スケジュール一覧取得
   app.get('/imports/schedule', { preHandler: mustBeAdmin }, async () => {
-    return {
-      schedules: await scheduleAdminService.listSchedules(),
-    };
+    return await scheduleAdminService.listSchedules();
   });
 
   // スケジュール追加

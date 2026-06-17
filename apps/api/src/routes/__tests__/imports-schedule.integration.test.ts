@@ -64,6 +64,7 @@ describe('CSV Import Schedule API', () => {
 
     // テスト用の設定をリセット
     const config = await BackupConfigLoader.load();
+    config.storage.provider = 'local';
     config.csvImports = [];
     await BackupConfigLoader.save(config);
 
@@ -107,7 +108,7 @@ describe('CSV Import Schedule API', () => {
       expect(fkStatusMail?.schedule).toBe('5 1 * * *');
       expect(fkStatusMail?.provider).toBe('gmail');
       expect(seiban).toBeDefined();
-      expect(seiban?.schedule).toBe('15 6 * * 0');
+      expect(seiban?.schedule).toBe('18 6 * * 0');
       expect(seiban?.provider).toBe('gmail');
       expect(customerScaw).toBeDefined();
       expect(customerScaw?.schedule).toBe('31 5 * * 0');
@@ -115,6 +116,43 @@ describe('CSV Import Schedule API', () => {
       expect(fkobaino).toBeDefined();
       expect(fkobaino?.schedule).toBe('25 6 * * 0');
       expect(fkobaino?.provider).toBe('gmail');
+    });
+
+    it('should return collision warnings for overlapping enabled Gmail csvDashboard schedules', async () => {
+      const config = await BackupConfigLoader.load();
+      config.csvImports = [
+        {
+          id: 'csv-import-measuring-instrument-loans',
+          provider: 'gmail',
+          targets: [{ type: 'csvDashboards', source: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' }],
+          schedule: '15,30,45 * * * *',
+          enabled: true,
+          replaceExisting: false,
+        },
+        {
+          id: 'csv-import-seiban-machine-name-supplement',
+          provider: 'gmail',
+          targets: [{ type: 'csvDashboards', source: 'e2f3a4b5-c6d7-4e8f-9a0b-1c2d3e4f5a6b' }],
+          schedule: '15 6 * * 0',
+          enabled: true,
+          replaceExisting: false,
+        },
+      ];
+      await BackupConfigLoader.save(config);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/imports/schedule',
+        headers: {
+          authorization: `Bearer ${adminToken}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const json = response.json() as { warnings: string[] };
+      expect(json.warnings.length).toBeGreaterThan(0);
+      expect(json.warnings.some((warning) => warning.includes('csv-import-measuring-instrument-loans'))).toBe(true);
+      expect(json.warnings.some((warning) => warning.includes('csv-import-seiban-machine-name-supplement'))).toBe(true);
     });
 
     it('should return 401 without authentication', async () => {

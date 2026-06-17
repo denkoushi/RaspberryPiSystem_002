@@ -117,6 +117,12 @@ export interface CsvImportSchedule {
 
 export interface CsvImportScheduleListResponse {
   schedules: CsvImportSchedule[];
+  warnings?: string[];
+}
+
+export interface CsvImportScheduleMutationResponse {
+  schedule: CsvImportSchedule;
+  warnings: string[];
 }
 
 // バックアップ履歴API
@@ -192,13 +198,13 @@ export async function getCsvImportSchedules(): Promise<CsvImportScheduleListResp
   return data;
 }
 
-export async function createCsvImportSchedule(schedule: Omit<CsvImportSchedule, 'id'> & { id: string }): Promise<{ schedule: CsvImportSchedule }> {
-  const { data } = await api.post<{ schedule: CsvImportSchedule }>('/imports/schedule', schedule);
+export async function createCsvImportSchedule(schedule: Omit<CsvImportSchedule, 'id'> & { id: string }): Promise<CsvImportScheduleMutationResponse> {
+  const { data } = await api.post<CsvImportScheduleMutationResponse>('/imports/schedule', schedule);
   return data;
 }
 
-export async function updateCsvImportSchedule(id: string, schedule: Partial<CsvImportSchedule>): Promise<{ schedule: CsvImportSchedule }> {
-  const { data } = await api.put<{ schedule: CsvImportSchedule }>(`/imports/schedule/${id}`, schedule);
+export async function updateCsvImportSchedule(id: string, schedule: Partial<CsvImportSchedule>): Promise<CsvImportScheduleMutationResponse> {
+  const { data } = await api.put<CsvImportScheduleMutationResponse>(`/imports/schedule/${id}`, schedule);
   return data;
 }
 

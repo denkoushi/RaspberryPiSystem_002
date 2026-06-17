@@ -10,6 +10,7 @@ import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
 } from './constants.js';
+import { acquireFkojunstStatusMailCriticalTransactionLock } from './fkojunst-status-mail-critical-lock.js';
 import { parseFkojunstStatusMailFupdteDt } from '../csv-dashboard/csv-dashboard-datetime-parse.js';
 import { findFkojunstMailWinnerIdsByMailTriples } from './fkojunst-mail-winner-by-triple.reader.js';
 import { buildFkojunstMailStatusKey } from './fkojunst-mail-status-key.js';
@@ -36,12 +37,6 @@ const ALLOWED_STATUS = new Set(['C', 'P', 'S', 'R', 'X', 'O']);
 const INVALID_STATUS_SENTINEL = '?';
 const EMPTY_STATUS_SENTINEL = '';
 const UNPARSEABLE_DATE_FALLBACK = new Date('1970-01-01T00:00:00.000Z');
-
-async function lockFkojunstStatusMailCriticalSection(tx: Pick<PrismaClient, '$queryRaw'>): Promise<void> {
-  await tx.$queryRaw(Prisma.sql`
-    SELECT pg_advisory_xact_lock(hashtext('fkojunst-status-mail-critical'), hashtext(${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}))
-  `);
-}
 
 export type FkojunstMailNormalizedRow = {
   sourceRowId: string;
@@ -366,7 +361,7 @@ export async function runFkojunstMailReplacementTransaction(
 ): Promise<FkojunstMailSyncResult> {
   return client.$transaction(
     async (tx) => {
-      await lockFkojunstStatusMailCriticalSection(tx);
+      await acquireFkojunstStatusMailCriticalTransactionLock(tx);
       if (params.sourceRowsRevision != null) {
         const { signals } = await fetchFkojunstStatusMailSourceRowsWithGenerationSignals(tx);
         if (signals.rowsRevision !== params.sourceRowsRevision) {
@@ -424,7 +419,7 @@ export async function runFkojunstMailClearTransaction(
 ): Promise<FkojunstMailSyncResult> {
   return client.$transaction(
     async (tx) => {
-      await lockFkojunstStatusMailCriticalSection(tx);
+      await acquireFkojunstStatusMailCriticalTransactionLock(tx);
       if (sourceRowsRevision != null) {
         const { signals } = await fetchFkojunstStatusMailSourceRowsWithGenerationSignals(tx);
         if (signals.rowsRevision !== sourceRowsRevision) {

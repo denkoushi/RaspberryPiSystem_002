@@ -44,10 +44,11 @@ describe('ImportScheduleAdminService', () => {
     const scheduler = { reload: vi.fn(async () => {}), runImport: vi.fn(async () => ({})) };
     const service = new ImportScheduleAdminService(store, () => scheduler);
 
-    const schedules = await service.listSchedules();
+    const { schedules, warnings } = await service.listSchedules();
 
     expect(schedules.some((row) => row.id === SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID)).toBe(true);
     expect(schedules.some((row) => row.id === CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID)).toBe(true);
+    expect(Array.isArray(warnings)).toBe(true);
     expect(store.save).toHaveBeenCalledOnce();
     expect(scheduler.reload).toHaveBeenCalledOnce();
   });

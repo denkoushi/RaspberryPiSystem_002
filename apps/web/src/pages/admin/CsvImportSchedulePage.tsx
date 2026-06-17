@@ -52,6 +52,7 @@ export function CsvImportSchedulePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [saveWarnings, setSaveWarnings] = useState<string[]>([]);
 
   const [patternDrafts, setPatternDrafts] = useState<CsvImportSubjectPattern[]>([]);
   const [subjectPatternDashboardId, setSubjectPatternDashboardId] = useState<string>('');
@@ -69,6 +70,12 @@ export function CsvImportSchedulePage() {
   });
 
   const schedules = data?.schedules ?? [];
+  const listWarnings = data?.warnings ?? [];
+  const displayedScheduleWarnings = saveWarnings.length > 0 ? saveWarnings : listWarnings;
+
+  const clearScheduleWarnings = () => {
+    setSaveWarnings([]);
+  };
 
   const subjectPatterns = useMemo(
     () => subjectPatternData?.patterns ?? [],
@@ -143,6 +150,7 @@ export function CsvImportSchedulePage() {
 
   const handleCreate = async () => {
     setValidationError(null);
+    clearScheduleWarnings();
 
     if (!formData.id?.trim()) {
       setValidationError('IDは必須です');
@@ -196,7 +204,8 @@ export function CsvImportSchedulePage() {
     }
 
     try {
-      await create.mutateAsync(scheduleToSave);
+      const result = await create.mutateAsync(scheduleToSave);
+      setSaveWarnings(result.warnings ?? []);
       setShowCreateForm(false);
       setFormData({
         id: '',
@@ -231,6 +240,7 @@ export function CsvImportSchedulePage() {
 
   const handleUpdate = async (id: string) => {
     setValidationError(null);
+    clearScheduleWarnings();
 
     // 新形式または旧形式のいずれかが必須
     const hasTargets = formData.targets && formData.targets.length > 0;
@@ -279,7 +289,8 @@ export function CsvImportSchedulePage() {
     }
 
     try {
-      await update.mutateAsync({ id, schedule: scheduleToSave });
+      const result = await update.mutateAsync({ id, schedule: scheduleToSave });
+      setSaveWarnings(result.warnings ?? []);
       setEditingId(null);
       refetch();
     } catch (error) {
@@ -415,6 +426,7 @@ export function CsvImportSchedulePage() {
   };
 
   const startEdit = (schedule: CsvImportSchedule) => {
+    clearScheduleWarnings();
     setEditingId(schedule.id);
     // 旧形式から新形式への変換（表示用）
     const formDataToSet: Partial<CsvImportSchedule> = { ...schedule };
@@ -440,6 +452,7 @@ export function CsvImportSchedulePage() {
   };
 
   const cancelEdit = () => {
+    clearScheduleWarnings();
     setEditingId(null);
     setValidationError(null);
     setFormData({
@@ -468,6 +481,7 @@ export function CsvImportSchedulePage() {
   };
 
   const handleCancelCreate = () => {
+    clearScheduleWarnings();
     setShowCreateForm(false);
     setValidationError(null);
     setFormData({
@@ -497,6 +511,7 @@ export function CsvImportSchedulePage() {
   // 新規作成フォームを開いた時にスケジュールの初期値を設定
   useEffect(() => {
     if (showCreateForm) {
+      clearScheduleWarnings();
       // フォームデータを初期化（編集データや削除後に残った古いデータをクリア）
       setFormData({
         id: '',
@@ -546,6 +561,7 @@ export function CsvImportSchedulePage() {
               if (editingId !== null) {
                 cancelEdit();
               }
+              clearScheduleWarnings();
               setShowCreateForm(true);
             }}
             disabled={showCreateForm || editingId !== null}
@@ -555,6 +571,19 @@ export function CsvImportSchedulePage() {
         </div>
       }
     >
+      {displayedScheduleWarnings.length > 0 && (
+        <div className="mb-4 rounded-md border-2 border-amber-600 bg-amber-50 p-3 text-sm text-amber-950 shadow">
+          <p className="font-semibold">Gmail CSV スケジュール警告</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {displayedScheduleWarnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs">
+            同時刻に複数の Gmail csvDashboards 取込が走ると、後続は履歴なしでスキップされる場合があります。衝突する場合は cron をずらしてください（例: `18 6 * * 0`）。
+          </p>
+        </div>
+      )}
       {showCreateForm && (
         <div className="mb-4 rounded-md border-2 border-slate-500 bg-slate-100 p-4 shadow-lg">
           <h3 className="mb-3 text-lg font-bold text-slate-900">新規スケジュール作成</h3>

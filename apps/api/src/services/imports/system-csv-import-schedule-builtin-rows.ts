@@ -42,8 +42,8 @@ export const FKOBAINO_CSV_IMPORT_SCHEDULE_CRON = '25 6 * * 0';
 export const SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID =
   'csv-import-seiban-machine-name-supplement';
 
-/** 日曜 6:15（Asia/Tokyo 想定の calendar 起動は CsvImportScheduler 側） */
-export const SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_CRON = '15 6 * * 0';
+/** 日曜 6:18 JST（MeasuringInstrumentLoans の 15/30/45 分と衝突しないよう空き分を取る） */
+export const SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_CRON = '18 6 * * 0';
 
 /** Gmail 経由で CustomerSCAW CsvDashboard を定期取り込みする固定スケジュールID */
 export const CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID = 'csv-import-productionschedule-customer-scaw';
