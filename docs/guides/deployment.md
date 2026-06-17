@@ -2,13 +2,25 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-06-05
+last-verified: 2026-06-17
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-06-17 · **API Docker build cache + health wait 恒久対応** · **未本番デプロイ**） {#deploy-api-build-cache-health-wait-2026-06-17}
+
+- **変更概要（正本）**: [KB-389 §API Docker build cache and health wait](../knowledge-base/infrastructure/ansible-deployment-performance.md#kb-389-api-docker-build-cache-and-health-wait) · ブランチ **`fix/deploy-api-build-cache-health-wait`**
+  - **`Dockerfile.api`**: `base` / `api` 両 stage で manifest 先行 → install → Chromium（api）→ 成果物コピー。通常の API/Web 変更で `pnpm install` / `playwright install chromium` レイヤーを再利用しやすくする
+  - **Ansible**: `Wait for API health endpoint to recover` と `health-check.yml` を **24×5秒（最大約120秒）** に延長（api/web rebuild 直後の一時 memory `degraded` 猶予）
+  - **Prisma / migration**: **変更なし**
+- **運用（health wait のみ `failed=1`）**:
+  1. PLAY RECAP で失敗タスクが **`Wait for API health endpoint to recover`** のみか確認
+  2. `curl -sk https://<Pi5>/api/system/health | jq '{status, checks}'` — 約1分後に `status: ok` なら **反映済み**（ロールバックなし）
+  3. `./scripts/deploy/verify-phase12-real.sh` が PASS なら機能回帰は問題なし
+- **背景**: [Plan: leaderboard deferTotals](../plans/leaderboard-defer-totals-performance-recovery.md) の Pi5 デプロイ（`20260616-221700-6889`）で api/web rebuild + Chromium 取得に約1時間50分、`failed=1`（memory 96.1% 一時 503）を記録
 
 ### 補足（2026-06-05 · **キオスク検査図面・流用導線強化**·**API + Web**·**Pi5 先行**） {#kiosk-inspection-drawing-reuse-flow-2026-06-05}
 

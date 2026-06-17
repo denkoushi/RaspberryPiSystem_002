@@ -4,6 +4,7 @@
   gather_facts: false
   become: true
   tasks:
+    # server role の health wait と同条件（api/web rebuild 直後の一時 memory degraded 猶予）。
     - name: Check API health (server)
       ansible.builtin.uri:
         url: "https://localhost/api/system/health"
@@ -12,7 +13,7 @@
         return_content: true
         validate_certs: false
       register: api_health_result
-      retries: 8
+      retries: 24
       delay: 5
       until:
         - api_health_result.status == 200

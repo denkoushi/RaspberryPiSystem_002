@@ -338,6 +338,34 @@ update-frequency: high
 
 ---
 
+<a id="kb-389-api-docker-build-cache-and-health-wait"></a>
+
+### [KB-389] API Docker build cache and health wait (2026-06-17)
+
+**Status**: implemented (branch `fix/deploy-api-build-cache-health-wait`; not yet deployed to Pi5)
+
+**Context**:
+- After Playwright Chromium bundling in `Dockerfile.api`, Pi5 api/web rebuild deploys took ~1h50m and Ansible `PLAY RECAP` showed `failed=1` on `Wait for API health endpoint to recover` despite successful code rollout (see [leaderboard deferTotals plan](../../plans/leaderboard-defer-totals-performance-recovery.md)).
+
+**Root cause**:
+1. **Docker layer order**: prod `pnpm install` and `playwright install chromium` ran after full API source copies, so ordinary code changes invalidated heavy layers every deploy.
+2. **Health wait too short**: server role waited ~40s (8×5s) while post-restart memory could exceed 95% heap for ~60s → HTTP 503 `degraded` with DB/playwright OK.
+
+**Fix**:
+- `infrastructure/docker/Dockerfile.api`: manifest-first install in both `base` and `api` stages; prod install + Chromium before `--exclude=node_modules` artifact copies; explicit `apps/web/package.json` for workspace resolution.
+- `infrastructure/ansible/roles/server/tasks/main.yml` and `playbooks/health-check.yml`: health wait **24×5s** (~120s max), same success criteria (HTTP 200 + JSON `status: ok`).
+
+**Validation (local, pre-deploy)**:
+- `docker build --progress=plain` twice with `INSTALL_PLAYWRIGHT_CHROMIUM=true`; second run should cache prod install + Chromium layers when manifests unchanged.
+- `ansible-playbook --syntax-check` on `update-clients.yml` and `health-check.yml`.
+- API unit: `health.test.ts`, `playwright-chromium-availability.test.ts`.
+
+**Operator note**: If PLAY RECAP `failed=1` on health wait only after api/web rebuild, re-check `curl -sk https://<Pi5>/api/system/health` and Phase12 before treating deploy as failed.
+
+**References**: [deployment.md §deploy-api-build-cache-health-wait](../../guides/deployment.md#deploy-api-build-cache-health-wait-2026-06-17)
+
+---
+
 #### References
 - Playbook/Inventory
   - `infrastructure/ansible/playbooks/deploy-staged.yml`
