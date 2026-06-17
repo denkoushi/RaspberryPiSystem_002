@@ -24,6 +24,10 @@
 
 - **追補完了後も「一覧を更新中」·501/033 空スロット** — API+Web · process-change residual + **pageSize scope 修正**。**`main` `f3359a4d`** · [PR #431](https://github.com/denkoushi/RaspberryPiSystem_002/pull/431) · **Pi5+Pi4×4 本番・実機 OK** · Phase12 **43/0/0**。**記録**: [KB-384](./knowledge-base/KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md)
 
+### 最新アップデート（2026-06-17 · キオスク順位ボード 基準時間余り帯）
+
+- **ガント 基準時間余り帯 + スロット capacity 解決器** · Web only · Pi5→Pi4×4 本番 **`66fd10c6`** · Phase12 **43/0/0** · Pi5 実機 OK。**記録**: [Plan](./plans/kiosk-leaderboard-gantt-mode.md)
+
 ### 最新アップデート（2026-06-11 · キオスク順位ボード ガント表示）
 
 - **ガントON/OFF + 可変8H縦バー（単色/透明交互）** · Web only · Pi5→Pi4×4 デプロイ済（`6a7b5218`）。**記録**: [Plan](./plans/kiosk-leaderboard-gantt-mode.md)

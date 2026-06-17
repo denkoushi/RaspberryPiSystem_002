@@ -1,6 +1,6 @@
 ---
 id: kiosk-leaderboard-gantt-mode
-status: deployed_all_kiosks_auto_verified
+status: deployed_all_kiosks_operator_pi5_ok
 scope: kiosk leader order board gantt display
 date: 2026-06-17
 source_of_truth: true
@@ -10,182 +10,158 @@ related_code:
   - apps/web/src/features/kiosk/leaderOrderBoard/usePersistedLeaderBoardGanttMode.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx
   - apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardGrid.tsx
+  - infrastructure/docker/Dockerfile.web
 related_docs:
   - docs/guides/deployment.md
   - docs/guides/verification-checklist.md
   - docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md
-validation: web vitest leaderBoardGantt 42 passed + lint + tsc --noEmit + build + git diff --check pass (2026-06-17 local, uncommitted)
+  - docs/knowledge-base/ci-cd.md
+validation: web vitest leaderBoardGantt 42 passed + lint + tsc + build + CI 27662630259 success + Pi5/Pi4 deploy + verify-phase12-real 43/0/0 (2026-06-17)
 open_items:
-  - operator visual sign-off for remainder-band display (10H slot: 8H + 2H) on shop floor
-  - optional verification-checklist section for gantt toggle and ruler
+  - operator visual sign-off for remainder-band display on all Pi4 kiosks (Pi5 OK 2026-06-17)
   - slot-specific capacityMinutes production map (currently all slots default 480)
+  - optional verification-checklist section for gantt toggle and ruler
 ---
 
 # Plan: Kiosk Leader Order Board Gantt Display
 
+## Resume here (next AI)
+
+**What shipped (2026-06-17)**: branch `fix/kiosk-leaderboard-capacity-bands` · commits `336d7baa` (remainder bands + capacity resolver) · `66fd10c6` (Caddy `v2.11.4` CI fix). **Production HEAD `66fd10c6`** on Pi5 + Pi4×4. Pi5 operator sign-off **OK**; Pi4 remainder-band visual check still open.
+
+**Read next if touching this area**: Layout contract § below · `leaderBoardGanttCapacity.ts` (slot capacity, default 480) · `leaderBoardGanttLayout.ts` (remainder band boundaries).
+
 ## Goal
 
-Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. When ON, each resource slot uses a **variable 8H ruler** scaled to the slot body height, row height scales with `FSIGENSHOYORYO` (required minutes, no quantity multiply), and **4px visible/transparent vertical 8H bands** appear in the left gutter.
+Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. When ON, each resource slot uses a **variable capacity ruler** (default 8H = 480min, slot-specific later) scaled to the slot body height, row height scales with `FSIGENSHOYORYO` (`requiredMinutes`), and **4px visible/transparent vertical bands** appear in the left gutter.
 
-## Current branch and HEAD
+## Branch, commits, CI
 
-- **Branch (2026-06-17 WIP)**: `fix/kiosk-leaderboard-capacity-bands` — capacity-band remainder fix + slot-capacity resolver (uncommitted)
-- **Prior deployed**: `6a7b5218` — visible/transparent ruler contrast (`bg-cyan-400/90`)
+| Item | Value |
+|------|-------|
+| Branch | `fix/kiosk-leaderboard-capacity-bands` |
+| Feature commit | `336d7baa` — `fix(kiosk): show capacity remainder bands` |
+| CI fix commit | `66fd10c6` — `fix(docker): update web Caddy dependency` (`v2.11.3` → `v2.11.4`) |
+| CI run | **`27662630259`** — all jobs success (after Caddy bump) |
+| Prior on `main` | `6a7b5218` — visible/transparent ruler contrast |
 
-### Capacity remainder bands (2026-06-17)
+CI blocker (resolved): `security-docker` failed on Caddy **CVE-2026-52844 / CVE-2026-52845** — see [ci-cd.md §KB-307](../knowledge-base/ci-cd.md) (2026-06-17追記). Do not duplicate that troubleshooting here.
 
-- **Problem**: workloads exceeding a capacity multiple (e.g. 600min at 8H) extended the last visible band to the slot bottom; remainder work (e.g. 2H) did not appear as a separate transparent band.
-- **Fix**: `computeCapacityBoundaryEndYs` adds logical work-end boundary after complete capacity multiples; non-time tail (padding/footer/virtual diff) still extends the last band only.
-- **Capacity resolver**: `leaderBoardGanttCapacity.ts` — `resolveLeaderBoardGanttCapacityMinutes({ siteKey, deviceScopeKey, slotIndex, resourceCd })`. **Production default: all slots 480min.** Example map values (305/584/585) are not enabled yet.
-- **Wiring**: `LeaderBoardGrid` resolves per slot; `LeaderOrderResourceCard` receives `capacityMinutes` (does not resolve by `resourceCd` alone).
-- **Row height**: unchanged — `visualMinHeightPx = max(workHeightPx, 96)` maintained.
-- **Naming**: `capacityBoundaryEndY` added; `eightHourBoundaryEndY` kept as deprecated alias.
+## Capacity remainder bands (2026-06-17) — current feature
 
-### Contrast fix (2026-06-14)
+### Problem
 
-- **Problem**: two-shade alternating bands (`cyan-400/75` + `cyan-200/45`) — lighter shade hard to see on kiosk displays.
-- **Fix**: render-only change — even `bandIndex` → `bg-cyan-400/90`; odd → `bg-transparent`. Layout/`rulerSegments` contract unchanged.
+Workloads exceeding a capacity multiple (e.g. 600min at 8H) extended the last visible band to the slot bottom; remainder work (e.g. 2H) did not appear as a separate transparent band.
 
-## Constraints
+### Fix (layout)
 
-- Default OFF; OFF path preserves existing layout and virtualization settings.
-- No API changes (`rowData.FSIGENSHOYORYO` already projected).
-- Pi4-friendly: pure layout math, accurate virtual estimates, no height animations.
-- Signage JPEG path (`kiosk_leader_order_cards`) out of scope.
+- `computeCapacityBoundaryEndYs` adds a logical work-end boundary after complete capacity multiples.
+- Non-time tail (padding/footer/virtual diff) still extends the last band only.
+- Examples @ 480min capacity: 600min → `bandIndex [0,1]`; 960min → `[0,1]` only; 1080min → `[0,1,2]`.
 
-## Layout contract (variable 8H ruler + vertical bands)
+### Capacity resolver (SOLID boundary)
 
-- Scale is **per resource slot**: `pxPerMinute = availableWorkHeightPx / max(totalRequiredMinutes, capacityMinutes)`.
-- `capacityMinutes` from `resolveLeaderBoardGanttCapacityMinutes` (default **480**; validated min/max in `leaderBoardGanttConstants.ts`).
-- `availableWorkHeightPx` from `useLeaderBoardGanttBodyHeight` (ResizeObserver on card body); fallback `480px`.
-- `workHeightPx = requiredMinutes * pxPerMinute` (time axis for ruler mapping).
-- `visualMinHeightPx = max(workHeightPx, 96)` (readability; DOM min-height).
-- `estimateHeightPx = visualMinHeightPx + 4 + (footer chips ? 28 : 0)`.
-- `containerMinHeightPx = max(totalEstimateHeightPx, availableWorkHeightPx)`.
-- When total required minutes are under 8H and rows fit without exceeding available height, the **first 8H band** extends to the slot bottom to show unused capacity.
-- When many short rows force `totalEstimateHeightPx > availableWorkHeightPx`, **readability wins**; unused-gap visualization is skipped and content scrolls inside the slot body.
-- Slot card uses `h-full` (fills grid row). `max-height: 70vh` cap removed for gantt ON.
-- Grid uses `minmax(14rem, 1fr)` for both gantt ON and OFF.
+- Module: `leaderBoardGanttCapacity.ts`
+- `resolveLeaderBoardGanttCapacityMinutes({ siteKey, deviceScopeKey, slotIndex, resourceCd })`
+- **Production default: all slots 480min.** Example map values (305→480, 584→720, 585→1440) documented in code comments only — **not enabled**.
+- `normalizeLeaderBoardGanttCapacityMinutes` clamps invalid input to 480.
+- Wiring: `LeaderBoardGrid` resolves per slot → `LeaderOrderResourceCard` receives `capacityMinutes` (card does not resolve by `resourceCd` alone).
+- Naming: `capacityBoundaryEndY` added; `eightHourBoundaryEndY` kept as deprecated alias.
 
-### Ruler visual contract (2026-06-11)
+### Unchanged
 
-- **Replaced** horizontal `tickMarks` (`origin` 1px / `boundary` 3px) with **`rulerSegments`**.
-- Segment shape: `{ topPx, heightPx, bandIndex }` — no `startMinute` / `endMinute` in DOM contract.
-- **8H bands**: consecutive vertical bars in gutter only; `bandIndex % 2` alternates one stronger cyan band and a transparent band in render layer.
-- **No horizontal tick lines**.
-- Gutter `GANTT_RULER_GUTTER_WIDTH_PX = 4`; bar `GANTT_RULER_BAR_WIDTH_PX = 4` (same value, separate responsibility).
-- Empty resource slot (`rows.length === 0`): no gutter rendered.
-- `capacityBoundaryEndY` (alias `eightHourBoundaryEndY`): full bottom for unused-gap mode.
-- Remainder work beyond the last complete capacity multiple gets its own band (e.g. 600min @ 480 → bandIndex `[0,1]`; 1080min → `[0,1,2]`; exact multiples e.g. 960min → `[0,1]` only).
-- Overflow: segments follow `rulerHeightPx`; render layer extends last band to `max(bodyTotalHeightPx, rulerHeightPx)` via `normalizeRulerSegmentsForRenderHeight()`.
-- **Performance cap**: `GANTT_RULER_MAX_BAND_COUNT = 64` — boundary loop and DOM segments capped regardless of `rulerHeightPx`; sub-pixel boundaries (`< 1px` gap) skipped during generation.
-- Footer chips and row padding excluded from time axis; non-time tail absorbed into last band for visual continuity.
+- Row height: `visualMinHeightPx = max(workHeightPx, 96)`.
+- API: none (`rowData.FSIGENSHOYORYO` → `requiredMinutes` already projected).
+- Contrast bands (2026-06-14): even `bandIndex` → `bg-cyan-400/90`; odd → `bg-transparent`.
+
+## Layout contract (variable capacity ruler + vertical bands)
+
+- Scale per slot: `pxPerMinute = availableWorkHeightPx / max(totalRequiredMinutes, capacityMinutes)`.
+- `capacityMinutes` from resolver (default **480**; min/max in `leaderBoardGanttConstants.ts`).
+- `availableWorkHeightPx` from `useLeaderBoardGanttBodyHeight` (ResizeObserver); fallback `480px`.
+- `workHeightPx = requiredMinutes * pxPerMinute`; `visualMinHeightPx = max(workHeightPx, 96)`.
+- Remainder band when `totalRequiredMinutes` exceeds last complete capacity multiple.
+- **Performance cap**: `GANTT_RULER_MAX_BAND_COUNT = 64`.
+- Footer chips / row padding excluded from time axis; non-time tail absorbed into last band.
 
 ## Implementation summary
 
 | Area | Module | Role |
 |------|--------|------|
-| Capacity | `leaderBoardGanttCapacity.ts` | slot-context `capacityMinutes` resolve + normalize |
-| Layout | `leaderBoardGanttLayout.ts` | `computeGanttSlotLayout`, capacity boundaries, remainder bands |
-| Constants | `leaderBoardGanttConstants.ts` | `GANTT_RULER_*`, `GANTT_DEFAULT_CAPACITY_MINUTES`, min/max |
-| Render | `LeaderBoardGanttTickGutter.tsx` | visible/transparent vertical bands; `data-testid` / `data-band-index` |
-| Grid | `LeaderBoardGrid.tsx` | per-slot `capacityMinutes` injection |
-| Card | `LeaderOrderResourceCard.tsx` | `rulerSegments` memo + virtual `measure()` |
-| Body height | `useLeaderBoardGanttBodyHeight.ts` | ResizeObserver (unchanged) |
-| Persistence | `usePersistedLeaderBoardGanttMode.ts` | `localStorage` (unchanged) |
-
-**Prior commits on main** (PR #429):
-
-- `f97fdd96` — initial gantt mode (toggle, fixed-scale gutter)
-- `874fdb00` — variable 8H ruler, overflow fix, body-height hook
-
-**This branch**:
-
-- `6a7b5218` — ruler contrast: single stronger cyan / transparent alternating bands
-
-**Prior on main** (PR #430):
-
-- `ee3aebfc` — vertical ruler bands, segment model, 4px gutter, band cap, test hardening
-
-## Review fixes applied (this branch)
-
-1. **Multi-band absorption (P1)**: 8H+ workloads now emit separate segments per 8H boundary (e.g. 960min → 2 bands, 1440min → 3 bands). Fixed boundary loop to include `timeY <= totalWorkPx` at 8H multiples.
-2. **Performance cap (P2)**: `GANTT_RULER_MAX_BAND_COUNT = 64` applied at generation and cap stages; not proportional to `rulerHeightPx`.
-3. **Test stability (P3)**: removed wall-clock `performance.now()` assertions; structural caps only.
+| Capacity | `leaderBoardGanttCapacity.ts` | slot-context resolve + normalize |
+| Layout | `leaderBoardGanttLayout.ts` | boundaries, remainder bands, `computeGanttSlotLayout` |
+| Constants | `leaderBoardGanttConstants.ts` | `GANTT_DEFAULT_CAPACITY_MINUTES`, min/max, ruler caps |
+| Render | `LeaderBoardGanttTickGutter.tsx` | visible/transparent vertical bands |
+| Grid | `LeaderBoardGrid.tsx` | per-slot `capacityMinutes` + `siteKey` / `deviceScopeKey` |
+| Card | `LeaderOrderResourceCard.tsx` | passes `capacityMinutes` into layout |
+| Persistence | `usePersistedLeaderBoardGanttMode.ts` | `localStorage` (default OFF) |
 
 ## Validation
 
-### Local
+### Local (pre-push)
 
 | Check | Result |
 |-------|--------|
-| `pnpm --filter @raspi-system/web test -- leaderBoardGantt` | **42 passed** (2026-06-17, capacity remainder + resolver) |
-| `pnpm --filter @raspi-system/web lint` | **pass** (2026-06-17) |
-| `pnpm --filter @raspi-system/web exec tsc -p tsconfig.json --noEmit --incremental false` | **pass** (2026-06-17) |
-| `pnpm --filter @raspi-system/web build` | **pass** (2026-06-17) |
-| `git diff --check` | **pass** (2026-06-17) |
+| `pnpm --filter @raspi-system/web test -- leaderBoardGantt` | **42 passed** |
+| lint / tsc / build | **pass** |
+| Docker web build + Trivy (post Caddy bump) | **pass** locally |
 
 ### CI
 
 | Run ID | Commit | Result |
 |--------|--------|--------|
-| `27481779984` | `6a7b5218` | all jobs success (lint-build-unit, security-docker, api-db-and-infra, e2e-smoke, e2e-tests) |
-| `27315868021` | `ee3aebfc` | all jobs success (prior vertical bands PR) |
+| `27662630259` | `66fd10c6` | all jobs success |
+| `27661913361` | `336d7baa` | `security-docker` failed (Caddy CVE; fixed in next commit) |
 
 ### Production deploy (Web only)
 
-Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh`
+Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh` · branch `fix/kiosk-leaderboard-capacity-bands`
 
 | Phase | Host | Detach Run ID | HEAD | PLAY RECAP | Notes |
 |-------|------|---------------|------|------------|-------|
-| **Prior (main)** | `raspberrypi5` | `20260610-221820-17260` | `874fdb00` | `ok=134` `failed=0` | initial gantt + horizontal ticks |
-| **Prior (main)** | Pi4×4 | `20260611-073516` … `074648` | — | all `failed=0` | horizontal-tick era |
-| **Prior (main)** | `raspberrypi5` | `20260611-095259-28452` | `ee3aebfc` | `ok=134` `changed=4` `failed=0` | vertical bands (two-shade) |
-| **Contrast fix** | `raspberrypi5` | **`20260614-085456-296`** | **`6a7b5218`** | **`ok=134` `changed=4` `failed=0`** | `web` rebuild · bundle `index-CeJFgkye.js` |
-| **Contrast fix** | `raspi4-kensaku-stonebase01` | **`20260614-091844-29193`** | **`6a7b5218`** | **`ok=129` `changed=10` `failed=0`** | `kiosk-browser` restart |
-| **Contrast fix** | `raspberrypi4` | **`20260614-092320-13872`** | **`6a7b5218`** | **`ok=122` `changed=10` `failed=0`** | `kiosk-browser` restart |
-| **Contrast fix** | `raspi4-robodrill01` | **`20260614-092821-28995`** | **`6a7b5218`** | **`ok=122` `changed=9` `failed=0`** | `kiosk-browser` restart |
-| **Contrast fix** | `raspi4-fjv60-80` | **`20260614-093224-18058`** | **`6a7b5218`** | **`ok=122` `changed=9` `failed=0`** | `kiosk-browser` restart |
+| **Capacity bands** | `raspberrypi5` | **`20260617-121124-20540`** | **`66fd10c6`** | **`ok=134` `changed=4` `failed=0`** | `web` rebuild · bundle `index-uk3x2mcu.js` |
+| **Capacity bands** | `raspberrypi4` | **`20260617-131010-10029`** | **`66fd10c6`** | **`ok=122` `changed=10` `failed=0`** | `kiosk-browser` restart |
+| **Capacity bands** | `raspi4-robodrill01` | **`20260617-131443-27802`** | **`66fd10c6`** | **`ok=122` `changed=9` `failed=0`** | `kiosk-browser` restart |
+| **Capacity bands** | `raspi4-fjv60-80` | **`20260617-131804-13754`** | **`66fd10c6`** | **`ok=122` `changed=9` `failed=0`** | `kiosk-browser` restart |
+| **Capacity bands** | `raspi4-kensaku-stonebase01` | **`20260617-132125-5230`** | **`66fd10c6`** | **`ok=129` `changed=10` `failed=0`** | `kiosk-browser` restart |
 
-**Pi3**: out of scope (SPA not served from Pi4 path).
+**Pi3**: out of scope.
 
-### Automated verification (2026-06-14)
+### Automated verification (2026-06-17)
 
 | Check | Result |
 |-------|--------|
-| `verify-phase12-real.sh` (post Pi5 deploy) | **PASS 43 / WARN 0 / FAIL 0** (~68s) |
-| `verify-phase12-real.sh` (post Pi4×4 deploy) | **PASS 43 / WARN 0 / FAIL 0** (~73s) |
-| Pi5 bundle class probe | `bg-cyan-400/90` + `bg-transparent` in `index-CeJFgkye.js` |
+| `verify-phase12-real.sh` (post Pi5) | **PASS 43 / WARN 0 / FAIL 0** |
+| `verify-phase12-real.sh` (post Pi4×4) | **PASS 43 / WARN 0 / FAIL 0** |
 | deploy-status (all Pi4) | pass |
 
 ### Manual verification (operator)
 
-**All kiosks (post `6a7b5218`)** — visible/transparent ruler contrast:
+**Pi5 (2026-06-17)**: operator **OK** after deploy.
 
-1. Open leader order board; toggle **ガントON** (left pane beside 表示).
-2. Left gutter: **4px visible/transparent alternating bands** per 8H; **no horizontal lines**; visible bands use stronger cyan.
-3. Cards fill grid height; inner scroll works on heavy slots.
-4. 8H+ workload: visible/transparent rhythm at band boundaries (960min → 2 visible bands).
-5. Force reload if stale bundle: [verification-checklist §6.6.4](../guides/verification-checklist.md).
+**All kiosks — remainder bands (open on Pi4×4)**:
+
+1. Open leader order board; toggle **ガントON**.
+2. Slot with workload **> 8H** (e.g. 10H): gutter shows **8H band + remainder band** (not one band stretched to bottom).
+3. Exact multiples (e.g. 16H @ 8H capacity): **no extra remainder band**.
+4. Stale bundle: [verification-checklist §6.6.4](../guides/verification-checklist.md).
 
 ## Knowledge (for next AI)
 
-- **Contrast fix is render-only** — no layout/API changes; safe to deploy web-only Pi5→Pi4 path.
 - **Pi4 does not rebuild web** — SPA from Pi5; Pi4 needs `kiosk-browser` restart or force reload.
-- **Do not reuse horizontal `computeEightHourBoundaryY` line-height offset** for vertical segment ends — use `eightHourBoundaryEndY` without `GANTT_TICK_BOUNDARY_LINE_HEIGHT_PX` subtraction.
-- **8H-spanning single row** is OK: bands live in gutter lane only; `mapGanttTimeYToVisualY` may place boundary mid-row.
-- **Virtual rows**: `rowVirtualizer.measure()` when `slotLayout` changes under gantt + virtual threshold.
-- **ResizeObserver tests**: restore `globalThis.ResizeObserver` in `afterEach`.
+- **Capacity is injectable per slot** — enable production map in `resolveLeaderBoardGanttCapacityMinutes` only; keep normalize bounds.
+- **Test pitfall (Codex review)**: when asserting injected `capacityMinutes`, pick workload where **band counts differ** (e.g. 1080min → 3 bands @480 vs 2 @720), not workloads with equal band counts.
 - **Default OFF** preserves prior Pi4 performance path.
+- **Do not reuse** horizontal tick offset math for vertical segment ends.
 
 ## Open items
 
-1. **Operator visual sign-off** on shop floor for visible/transparent contrast (`6a7b5218` deployed all 5 kiosks).
-2. **Optional** — `verification-checklist` § for gantt toggle/ruler bands.
+1. **Operator visual sign-off** for remainder-band display on **Pi4×4** (Pi5 done).
+2. **Slot-specific `capacityMinutes` production map** — resolver stub returns 480 for all slots.
+3. **Optional** — `verification-checklist` § for gantt toggle / remainder bands.
 
 ## Local Notes JA
 
-- トグル表示名: **ガントOFF** / **ガントON**
-- 左ペイン「表示」行の横に配置
-- 永続化: `localStorage`（工場+端末スコープ）
-- 縦バー色: `cyan-400/90` と透明 交互（`bandIndex % 2`）
+- トグル: **ガントOFF** / **ガントON**（左ペイン「表示」横 · `localStorage` 工場+端末スコープ）
+- 縦バー: `cyan-400/90` と透明 交互（`bandIndex % 2`）
+- 基準時間超過例: 600分 → 8H帯 + 2H帯（480分基準時）
