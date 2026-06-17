@@ -409,7 +409,7 @@ update-frequency: high
 | [KB-269](./infrastructure/signage.md#kb-269-サイネージ自動レンダリングをworker化してapiイベントループ詰まりを隔離) | サイネージ自動レンダリングをworker化してAPIイベントループ詰まりを隔離 | 🔄 継続観察 |
 | [KB-233](./infrastructure/ansible-deployment.md#kb-233-デプロイ時のsudoパスワード問題ansible_connection-localでもmac側から実行される場合) | デプロイ時のsudoパスワード問題（ansible_connection: localでもMac側から実行される場合） | ✅ 解決済み |
 | [KB-234](./infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) | Ansibleデプロイが遅い（段階展開/重複タスク/計測欠如の整理と暫定対策） | 🔄 進行中 |
-| [KB-389](./infrastructure/ansible-deployment-performance.md#kb-389-api-docker-build-cache-and-health-wait) | API Docker build cache and health wait（2026-06-17） | ✅ 実装済（未本番デプロイ） |
+| [KB-389](./infrastructure/ansible-deployment-performance.md#kb-389-api-docker-build-cache-and-health-wait) | API Docker build cache and health wait（2026-06-17） | ✅ Pi5 反映済（`990c369a`·`failed=0`·Phase12 43/0/0） |
 | [KB-235](./infrastructure/ansible-deployment.md#kb-235-docker-build最適化変更ファイルに基づくbuild判定) | Docker build最適化（変更ファイルに基づくbuild判定） | ✅ 解決済み |
 | [KB-237](./infrastructure/ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題) | Pi4キオスクの再起動/シャットダウンボタンが機能しない問題 | ✅ 解決済み |
 | [KB-285](./infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる) | 電源操作（再起動/シャットダウン）のボタン押下から発動まで約20秒かかる | ✅ 原因特定済み（2026-03-01） |

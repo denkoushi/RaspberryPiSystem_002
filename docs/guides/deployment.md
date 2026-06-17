@@ -10,9 +10,9 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-### 補足（2026-06-17 · **API Docker build cache + health wait 恒久対応** · **未本番デプロイ**） {#deploy-api-build-cache-health-wait-2026-06-17}
+### 補足（2026-06-17 · **API Docker build cache + health wait 恒久対応** · **Pi5 反映済**） {#deploy-api-build-cache-health-wait-2026-06-17}
 
-- **変更概要（正本）**: [KB-389 §API Docker build cache and health wait](../knowledge-base/infrastructure/ansible-deployment-performance.md#kb-389-api-docker-build-cache-and-health-wait) · ブランチ **`fix/deploy-api-build-cache-health-wait`**
+- **変更概要（正本）**: [KB-389 §API Docker build cache and health wait](../knowledge-base/infrastructure/ansible-deployment-performance.md#kb-389-api-docker-build-cache-and-health-wait) · **`990c369a`** · Pi5 run **`20260617-091914-29057`** · PLAY RECAP **`failed=0`** · Phase12 **43/0/0**
   - **`Dockerfile.api`**: `base` / `api` 両 stage で manifest 先行 → install → Chromium（api）→ 成果物コピー。通常の API/Web 変更で `pnpm install` / `playwright install chromium` レイヤーを再利用しやすくする
   - **Ansible**: `Wait for API health endpoint to recover` と `health-check.yml` を **24×5秒（最大約120秒）** に延長（api/web rebuild 直後の一時 memory `degraded` 猶予）
   - **Prisma / migration**: **変更なし**

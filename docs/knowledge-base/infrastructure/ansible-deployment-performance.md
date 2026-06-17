@@ -342,7 +342,7 @@ update-frequency: high
 
 ### [KB-389] API Docker build cache and health wait (2026-06-17)
 
-**Status**: implemented (branch `fix/deploy-api-build-cache-health-wait`; not yet deployed to Pi5)
+**Status**: deployed to Pi5 (2026-06-17); branch `fix/deploy-api-build-cache-health-wait` · commit `990c369a`
 
 **Context**:
 - After Playwright Chromium bundling in `Dockerfile.api`, Pi5 api/web rebuild deploys took ~1h50m and Ansible `PLAY RECAP` showed `failed=1` on `Wait for API health endpoint to recover` despite successful code rollout (see [leaderboard deferTotals plan](../../plans/leaderboard-defer-totals-performance-recovery.md)).
@@ -361,6 +361,15 @@ update-frequency: high
 - API unit: `health.test.ts`, `playwright-chromium-availability.test.ts`.
 
 **Operator note**: If PLAY RECAP `failed=1` on health wait only after api/web rebuild, re-check `curl -sk https://<Pi5>/api/system/health` and Phase12 before treating deploy as failed.
+
+**Validation (Pi5 production, 2026-06-17)**:
+- **Command**: `./scripts/update-all-clients.sh fix/deploy-api-build-cache-health-wait infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **Detach Run ID**: `20260617-091914-29057` · **Git HEAD**: `990c369a` · **elapsed**: ~17.5 min (vs ~1h50m on 2026-06-16 pre-fix deploy)
+- **PLAY RECAP**: `ok=134` `changed=4` `failed=0` `skipped=43`
+- **`Wait for API health endpoint to recover`**: **ok** (no false failure; prior deploy had `failed=1` here)
+- **Docker**: `Rebuild/Restart docker compose services` **changed** (api/web rebuild applied)
+- **Phase12** (`./scripts/deploy/verify-phase12-real.sh`): **PASS 43 / WARN 0 / FAIL 0**
+- **Open items**: Confirm **2nd deploy** with unchanged manifests reuses prod install + Chromium layers (cache benefit is primary for routine deploys). Optional: profile_tasks on next Pi5-only deploy to quantify rebuild vs Ansible overhead.
 
 **References**: [deployment.md §deploy-api-build-cache-health-wait](../../guides/deployment.md#deploy-api-build-cache-health-wait-2026-06-17)
 
