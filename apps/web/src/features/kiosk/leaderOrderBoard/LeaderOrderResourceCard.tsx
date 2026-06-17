@@ -24,8 +24,10 @@ import type { KioskResourceProgressProcessChip } from '../../../components/kiosk
 type Props = {
   /** interactive: キオスク順位ボード（既定）。signage: 操作系UIなしの閲覧専用 */
   variant?: 'interactive' | 'signage';
-  /** ガント表示（所要量比例の行高・左 8H 目盛） */
+  /** ガント表示（所要量比例の行高・左 基準時間帯目盛） */
   ganttEnabled?: boolean;
+  /** スロット基準時間（分）。Grid 側で解決済みの値を渡す */
+  capacityMinutes?: number;
   resourceCd: string;
   /** resourceNameMap の names 部分のみ（横並び表示）。空なら非表示 */
   resourceJapaneseNames?: string;
@@ -58,6 +60,7 @@ type Props = {
 function LeaderOrderResourceCardInner({
   variant = 'interactive',
   ganttEnabled = false,
+  capacityMinutes,
   resourceCd,
   resourceJapaneseNames,
   rows,
@@ -111,9 +114,10 @@ function LeaderOrderResourceCardInner({
         requiredMinutes: row.requiredMinutes,
         hasFooterChips: footerChips.length > 0
       })),
-      availableWorkHeightPx
+      availableWorkHeightPx,
+      capacityMinutes
     });
-  }, [ganttEnabled, rowsWithFooter, bodyHeightPx]);
+  }, [ganttEnabled, rowsWithFooter, bodyHeightPx, capacityMinutes]);
 
   const useVirtual = rowsWithFooter.length > LEADER_BOARD_VIRTUAL_ROW_THRESHOLD;
 

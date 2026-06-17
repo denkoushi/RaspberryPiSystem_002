@@ -1,7 +1,8 @@
 import { parseLeaderBoardRequiredMinutes } from '../parseLeaderBoardRequiredMinutes';
 
+import { normalizeLeaderBoardGanttCapacityMinutes } from './leaderBoardGanttCapacity';
 import {
-  GANTT_EIGHT_HOURS_MINUTES,
+  GANTT_DEFAULT_CAPACITY_MINUTES,
   GANTT_FALLBACK_AVAILABLE_WORK_HEIGHT_PX,
   GANTT_FALLBACK_PX_PER_MINUTE,
   GANTT_FOOTER_CHIPS_EXTRA_PX,
@@ -16,7 +17,7 @@ export type GanttSlotRowInput = {
 };
 
 export type LeaderBoardGanttRowLayout = {
-  /** 時間軸上の行高（8H ルーラー写像用） */
+  /** 時間軸上の行高（基準時間ルーラー写像用） */
   workHeightPx: number;
   /** DOM min-height（可読性確保） */
   visualMinHeightPx: number;
@@ -32,10 +33,14 @@ export type GanttRulerSegment = {
 
 export type LeaderBoardGanttSlotLayout = {
   pxPerMinute: number;
+  capacityMinutes: number;
   rowLayouts: LeaderBoardGanttRowLayout[];
   rulerSegments: GanttRulerSegment[];
   containerMinHeightPx: number;
   totalEstimateHeightPx: number;
+  /** 第1基準時間帯の終端 Y（px） */
+  capacityBoundaryEndY: number;
+  /** @deprecated capacityBoundaryEndY を参照 */
   eightHourBoundaryEndY: number;
   rulerHeightPx: number;
   totalRequiredMinutes: number;
@@ -108,50 +113,50 @@ export function mapGanttTimeYToVisualY(
   return visualCursor;
 }
 
-function computeEightHourBoundaryEndY(params: {
+type CapacityBoundaryParams = {
   rowLayouts: readonly LeaderBoardGanttRowLayout[];
   availableWorkHeightPx: number;
   rulerHeightPx: number;
   pxPerMinute: number;
   totalRequiredMinutes: number;
   totalEstimateHeightPx: number;
-}): number {
+  capacityMinutes: number;
+};
+
+function computeCapacityBoundaryEndY(params: CapacityBoundaryParams): number {
   const {
     rowLayouts,
     availableWorkHeightPx,
     rulerHeightPx,
     pxPerMinute,
     totalRequiredMinutes,
-    totalEstimateHeightPx
+    totalEstimateHeightPx,
+    capacityMinutes
   } = params;
 
   const canShowUnusedGap = totalEstimateHeightPx <= availableWorkHeightPx;
-  if (totalRequiredMinutes <= GANTT_EIGHT_HOURS_MINUTES && canShowUnusedGap) {
+  if (totalRequiredMinutes <= capacityMinutes && canShowUnusedGap) {
     return availableWorkHeightPx;
   }
 
   return clamp(
-    mapGanttTimeYToVisualY(rowLayouts, GANTT_EIGHT_HOURS_MINUTES * pxPerMinute),
+    mapGanttTimeYToVisualY(rowLayouts, capacityMinutes * pxPerMinute),
     0,
     rulerHeightPx
   );
 }
 
-function computeEightHourBoundaryEndYs(params: {
-  rowLayouts: readonly LeaderBoardGanttRowLayout[];
-  availableWorkHeightPx: number;
-  rulerHeightPx: number;
-  pxPerMinute: number;
-  totalRequiredMinutes: number;
-  totalEstimateHeightPx: number;
-}): number[] {
-  const tickSpanTimePx = GANTT_EIGHT_HOURS_MINUTES * params.pxPerMinute;
+/**
+ * 基準時間ごとの完全境界 Y と、端数がある場合の論理作業終端 Y を返す。
+ */
+function computeCapacityBoundaryEndYs(params: CapacityBoundaryParams): number[] {
+  const tickSpanTimePx = params.capacityMinutes * params.pxPerMinute;
   if (tickSpanTimePx <= 0) {
     return [params.rulerHeightPx];
   }
 
   const canShowUnusedGap = params.totalEstimateHeightPx <= params.availableWorkHeightPx;
-  if (params.totalRequiredMinutes <= GANTT_EIGHT_HOURS_MINUTES && canShowUnusedGap) {
+  if (params.totalRequiredMinutes <= params.capacityMinutes && canShowUnusedGap) {
     return [params.availableWorkHeightPx];
   }
 
@@ -176,6 +181,18 @@ function computeEightHourBoundaryEndYs(params: {
 
     boundaryEndYs.push(visualY);
     if (visualY >= params.rulerHeightPx) break;
+  }
+
+  const logicalWorkEndY = clamp(
+    mapGanttTimeYToVisualY(params.rowLayouts, totalWorkPx),
+    0,
+    params.rulerHeightPx
+  );
+  const lastBoundaryY = boundaryEndYs[boundaryEndYs.length - 1];
+  const hasRemainderWork =
+    lastBoundaryY === undefined || logicalWorkEndY - lastBoundaryY >= 1;
+  if (hasRemainderWork && logicalWorkEndY > (lastBoundaryY ?? 0)) {
+    boundaryEndYs.push(logicalWorkEndY);
   }
 
   return boundaryEndYs;
@@ -231,15 +248,9 @@ function capRulerSegmentCount(segments: readonly GanttRulerSegment[], maxSegment
   return capped;
 }
 
-function computeGanttRulerSegments(params: {
-  rowLayouts: readonly LeaderBoardGanttRowLayout[];
-  availableWorkHeightPx: number;
-  rulerHeightPx: number;
-  pxPerMinute: number;
-  totalRequiredMinutes: number;
-  totalEstimateHeightPx: number;
-}): GanttRulerSegment[] {
-  const boundaryEndYs = computeEightHourBoundaryEndYs(params);
+function buildSegmentsFromBoundaryEndYs(
+  boundaryEndYs: readonly number[]
+): GanttRulerSegment[] {
   const segments: GanttRulerSegment[] = [];
   let topPx = 0;
 
@@ -252,13 +263,20 @@ function computeGanttRulerSegments(params: {
     }
   }
 
-  const withLogicalTail = extendLastSegmentToHeight(segments, params.rulerHeightPx);
-  const merged = mergeSubPixelSegments(withLogicalTail);
+  return segments;
+}
+
+function computeGanttRulerSegments(params: CapacityBoundaryParams): GanttRulerSegment[] {
+  const boundaryEndYs = computeCapacityBoundaryEndYs(params);
+  const timeSegments = buildSegmentsFromBoundaryEndYs(boundaryEndYs);
+  const withNonTimeTail = extendLastSegmentToHeight(timeSegments, params.rulerHeightPx);
+  const merged = mergeSubPixelSegments(withNonTimeTail);
   return capRulerSegmentCount(merged, GANTT_RULER_MAX_BAND_COUNT);
 }
 
 /**
  * 仮想化後の実描画高さに合わせ、最終セグメントを延長してガター末尾まで連続させる。
+ * 作業時間帯は変更せず、非時間 tail（padding / footer 差分）のみ延長する。
  */
 export function normalizeRulerSegmentsForRenderHeight(
   segments: readonly GanttRulerSegment[],
@@ -270,21 +288,25 @@ export function normalizeRulerSegmentsForRenderHeight(
 }
 
 /**
- * 資源スロット単位の可変 8H ルーラーレイアウト。
+ * 資源スロット単位の可変基準時間ルーラーレイアウト。
  * 時間軸（workHeightPx）と表示最小高さ（visualMinHeightPx）を分離する。
  */
 export function computeGanttSlotLayout(params: {
   rows: readonly GanttSlotRowInput[];
   availableWorkHeightPx: number;
+  capacityMinutes?: number;
 }): LeaderBoardGanttSlotLayout {
   const availableWorkHeightPx = resolveAvailableWorkHeightPx(params.availableWorkHeightPx);
+  const capacityMinutes = normalizeLeaderBoardGanttCapacityMinutes(
+    params.capacityMinutes ?? GANTT_DEFAULT_CAPACITY_MINUTES
+  );
 
   let totalRequiredMinutes = 0;
   for (const row of params.rows) {
     totalRequiredMinutes += parseLeaderBoardRequiredMinutes(row.requiredMinutes);
   }
 
-  const scaleMinutes = Math.max(totalRequiredMinutes, GANTT_EIGHT_HOURS_MINUTES);
+  const scaleMinutes = Math.max(totalRequiredMinutes, capacityMinutes);
   const pxPerMinute =
     availableWorkHeightPx > 0 ? availableWorkHeightPx / scaleMinutes : GANTT_FALLBACK_PX_PER_MINUTE;
 
@@ -294,31 +316,29 @@ export function computeGanttSlotLayout(params: {
 
   const rulerHeightPx = containerMinHeightPx;
 
-  const eightHourBoundaryEndY = computeEightHourBoundaryEndY({
+  const boundaryParams: CapacityBoundaryParams = {
     rowLayouts,
     availableWorkHeightPx,
     rulerHeightPx,
     pxPerMinute,
     totalRequiredMinutes,
-    totalEstimateHeightPx
-  });
+    totalEstimateHeightPx,
+    capacityMinutes
+  };
 
-  const rulerSegments = computeGanttRulerSegments({
-    rowLayouts,
-    availableWorkHeightPx,
-    rulerHeightPx,
-    pxPerMinute,
-    totalRequiredMinutes,
-    totalEstimateHeightPx
-  });
+  const capacityBoundaryEndY = computeCapacityBoundaryEndY(boundaryParams);
+
+  const rulerSegments = computeGanttRulerSegments(boundaryParams);
 
   return {
     pxPerMinute,
+    capacityMinutes,
     rowLayouts,
     rulerSegments,
     containerMinHeightPx,
     totalEstimateHeightPx,
-    eightHourBoundaryEndY,
+    capacityBoundaryEndY,
+    eightHourBoundaryEndY: capacityBoundaryEndY,
     rulerHeightPx,
     totalRequiredMinutes
   };

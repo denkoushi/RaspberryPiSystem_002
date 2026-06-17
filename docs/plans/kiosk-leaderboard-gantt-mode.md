@@ -2,10 +2,11 @@
 id: kiosk-leaderboard-gantt-mode
 status: deployed_all_kiosks_auto_verified
 scope: kiosk leader order board gantt display
-date: 2026-06-11
+date: 2026-06-17
 source_of_truth: true
 related_code:
   - apps/web/src/features/kiosk/leaderOrderBoard/gantt/
+  - apps/web/src/features/kiosk/leaderOrderBoard/gantt/leaderBoardGanttCapacity.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/usePersistedLeaderBoardGanttMode.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx
   - apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardGrid.tsx
@@ -13,10 +14,11 @@ related_docs:
   - docs/guides/deployment.md
   - docs/guides/verification-checklist.md
   - docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md
-validation: web vitest 29 + lint + CI 27481779984 + Pi5→Pi4×4 deploy 20260614 + verify-phase12-real PASS 43/0/0
+validation: web vitest leaderBoardGantt 42 passed + lint + tsc --noEmit + build + git diff --check pass (2026-06-17 local, uncommitted)
 open_items:
-  - operator visual sign-off for visible/transparent ruler contrast on shop floor
+  - operator visual sign-off for remainder-band display (10H slot: 8H + 2H) on shop floor
   - optional verification-checklist section for gantt toggle and ruler
+  - slot-specific capacityMinutes production map (currently all slots default 480)
 ---
 
 # Plan: Kiosk Leader Order Board Gantt Display
@@ -27,9 +29,17 @@ Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. W
 
 ## Current branch and HEAD
 
-- **Branch**: `fix/gantt-ruler-contrast` (contrast fix; pending merge to `main`)
-- **Feature commit**: `6a7b5218` — visible/transparent ruler contrast (`bg-cyan-400/90`)
-- **Prior on main**: PR [#430](https://github.com/denkoushi/RaspberryPiSystem_002/pull/430) (`c9baa657`) — vertical ruler bands · PR #429 — initial gantt mode
+- **Branch (2026-06-17 WIP)**: `fix/kiosk-leaderboard-capacity-bands` — capacity-band remainder fix + slot-capacity resolver (uncommitted)
+- **Prior deployed**: `6a7b5218` — visible/transparent ruler contrast (`bg-cyan-400/90`)
+
+### Capacity remainder bands (2026-06-17)
+
+- **Problem**: workloads exceeding a capacity multiple (e.g. 600min at 8H) extended the last visible band to the slot bottom; remainder work (e.g. 2H) did not appear as a separate transparent band.
+- **Fix**: `computeCapacityBoundaryEndYs` adds logical work-end boundary after complete capacity multiples; non-time tail (padding/footer/virtual diff) still extends the last band only.
+- **Capacity resolver**: `leaderBoardGanttCapacity.ts` — `resolveLeaderBoardGanttCapacityMinutes({ siteKey, deviceScopeKey, slotIndex, resourceCd })`. **Production default: all slots 480min.** Example map values (305/584/585) are not enabled yet.
+- **Wiring**: `LeaderBoardGrid` resolves per slot; `LeaderOrderResourceCard` receives `capacityMinutes` (does not resolve by `resourceCd` alone).
+- **Row height**: unchanged — `visualMinHeightPx = max(workHeightPx, 96)` maintained.
+- **Naming**: `capacityBoundaryEndY` added; `eightHourBoundaryEndY` kept as deprecated alias.
 
 ### Contrast fix (2026-06-14)
 
@@ -45,7 +55,8 @@ Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. W
 
 ## Layout contract (variable 8H ruler + vertical bands)
 
-- Scale is **per resource slot**: `pxPerMinute = availableWorkHeightPx / max(totalRequiredMinutes, 480)`.
+- Scale is **per resource slot**: `pxPerMinute = availableWorkHeightPx / max(totalRequiredMinutes, capacityMinutes)`.
+- `capacityMinutes` from `resolveLeaderBoardGanttCapacityMinutes` (default **480**; validated min/max in `leaderBoardGanttConstants.ts`).
 - `availableWorkHeightPx` from `useLeaderBoardGanttBodyHeight` (ResizeObserver on card body); fallback `480px`.
 - `workHeightPx = requiredMinutes * pxPerMinute` (time axis for ruler mapping).
 - `visualMinHeightPx = max(workHeightPx, 96)` (readability; DOM min-height).
@@ -64,7 +75,8 @@ Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. W
 - **No horizontal tick lines**.
 - Gutter `GANTT_RULER_GUTTER_WIDTH_PX = 4`; bar `GANTT_RULER_BAR_WIDTH_PX = 4` (same value, separate responsibility).
 - Empty resource slot (`rows.length === 0`): no gutter rendered.
-- `eightHourBoundaryEndY` (not line-height-offset boundary): full bottom for unused-gap mode.
+- `capacityBoundaryEndY` (alias `eightHourBoundaryEndY`): full bottom for unused-gap mode.
+- Remainder work beyond the last complete capacity multiple gets its own band (e.g. 600min @ 480 → bandIndex `[0,1]`; 1080min → `[0,1,2]`; exact multiples e.g. 960min → `[0,1]` only).
 - Overflow: segments follow `rulerHeightPx`; render layer extends last band to `max(bodyTotalHeightPx, rulerHeightPx)` via `normalizeRulerSegmentsForRenderHeight()`.
 - **Performance cap**: `GANTT_RULER_MAX_BAND_COUNT = 64` — boundary loop and DOM segments capped regardless of `rulerHeightPx`; sub-pixel boundaries (`< 1px` gap) skipped during generation.
 - Footer chips and row padding excluded from time axis; non-time tail absorbed into last band for visual continuity.
@@ -73,9 +85,11 @@ Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. W
 
 | Area | Module | Role |
 |------|--------|------|
-| Layout | `leaderBoardGanttLayout.ts` | `computeGanttSlotLayout`, `computeGanttRulerSegments`, `normalizeRulerSegmentsForRenderHeight` |
-| Constants | `leaderBoardGanttConstants.ts` | `GANTT_RULER_*`, `GANTT_RULER_MAX_BAND_COUNT` |
+| Capacity | `leaderBoardGanttCapacity.ts` | slot-context `capacityMinutes` resolve + normalize |
+| Layout | `leaderBoardGanttLayout.ts` | `computeGanttSlotLayout`, capacity boundaries, remainder bands |
+| Constants | `leaderBoardGanttConstants.ts` | `GANTT_RULER_*`, `GANTT_DEFAULT_CAPACITY_MINUTES`, min/max |
 | Render | `LeaderBoardGanttTickGutter.tsx` | visible/transparent vertical bands; `data-testid` / `data-band-index` |
+| Grid | `LeaderBoardGrid.tsx` | per-slot `capacityMinutes` injection |
 | Card | `LeaderOrderResourceCard.tsx` | `rulerSegments` memo + virtual `measure()` |
 | Body height | `useLeaderBoardGanttBodyHeight.ts` | ResizeObserver (unchanged) |
 | Persistence | `usePersistedLeaderBoardGanttMode.ts` | `localStorage` (unchanged) |
@@ -105,10 +119,11 @@ Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. W
 
 | Check | Result |
 |-------|--------|
-| `pnpm --filter @raspi-system/web test -- leaderBoardGantt` | **29 passed** |
-| `pnpm --filter @raspi-system/web lint` | pass |
-| `pnpm --filter @raspi-system/web build` | pass |
-| `git diff --check` | pass |
+| `pnpm --filter @raspi-system/web test -- leaderBoardGantt` | **42 passed** (2026-06-17, capacity remainder + resolver) |
+| `pnpm --filter @raspi-system/web lint` | **pass** (2026-06-17) |
+| `pnpm --filter @raspi-system/web exec tsc -p tsconfig.json --noEmit --incremental false` | **pass** (2026-06-17) |
+| `pnpm --filter @raspi-system/web build` | **pass** (2026-06-17) |
+| `git diff --check` | **pass** (2026-06-17) |
 
 ### CI
 
