@@ -11,6 +11,7 @@ import {
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
+import { applyLeaderBoardDisplayRequiredMinutesToGrouped } from '../../features/kiosk/leaderOrderBoard/applyLeaderBoardDisplayRequiredMinutes';
 import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../../features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel';
 import {
   isLeaderboardBoardInteractionLocked,
@@ -19,6 +20,7 @@ import {
 } from '../../features/kiosk/leaderOrderBoard/cache/leaderboardBoardInteractionLockPolicy';
 import { LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE } from '../../features/kiosk/leaderOrderBoard/constants';
 import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
+import { filterLeaderBoardSlotResourceCds } from '../../features/kiosk/leaderOrderBoard/isLeaderBoardExcludedResourceSlotCd';
 import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
 import { LeaderBoardInspectionWorkflowModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardInspectionWorkflowModal';
 import { LeaderBoardLeftToolStack } from '../../features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack';
@@ -41,6 +43,7 @@ import { useLeaderBoardSlotAutoRank } from '../../features/kiosk/leaderOrderBoar
 import { useLeaderOrderBoardDeviceContext } from '../../features/kiosk/leaderOrderBoard/useLeaderOrderBoardDeviceContext';
 import { usePersistedLeaderBoardDeviceScope } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardDeviceScope';
 import { usePersistedLeaderBoardGanttMode } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardGanttMode';
+import { usePersistedLeaderBoardLaborMode } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardLaborMode';
 import { usePersistedLeaderBoardSeibanEval } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardSeibanEval';
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
@@ -286,6 +289,11 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     [resourcesQuery.data]
   );
 
+  const slotCandidateResourceCds = useMemo(
+    () => filterLeaderBoardSlotResourceCds(resourcesQuery.data?.resources ?? []),
+    [resourcesQuery.data?.resources]
+  );
+
   const {
     seibanEvalEnabled,
     setSeibanEvalEnabled,
@@ -294,6 +302,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   } = usePersistedLeaderBoardSeibanEval(siteKey, activeDeviceScopeKey, dueAssist.sharedHistory);
 
   const { ganttEnabled, toggleGanttMode } = usePersistedLeaderBoardGanttMode(siteKey, activeDeviceScopeKey);
+
+  const { laborEnabledBySlotIndex, toggleLaborForSlot } = usePersistedLeaderBoardLaborMode(
+    siteKey,
+    activeDeviceScopeKey,
+    slotCount
+  );
 
   const seibanEvalRankMap = useMemo(
     () => buildSeibanRankMapFromMergedOrder(mergedRegisteredSeibanOrder),
@@ -377,6 +391,17 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       ),
     [grouped, completionFilter, seibanEvalEnabled, seibanEvalRankMap]
   );
+
+  const displayGrouped = useMemo(
+    () =>
+      applyLeaderBoardDisplayRequiredMinutesToGrouped(
+        sortedGrouped,
+        resourceCdBySlotIndex,
+        laborEnabledBySlotIndex
+      ),
+    [sortedGrouped, resourceCdBySlotIndex, laborEnabledBySlotIndex]
+  );
+
   const footerResourceChipsByPartKey = useMemo(() => {
     const raw = scheduleQuery.data?.leaderboardFooterChipsByPartKey;
     if (!raw) return new Map<string, readonly KioskResourceProgressProcessChip[]>();
@@ -586,7 +611,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             ) : null}
             <LeaderBoardGrid
               resourceCdBySlotIndex={resourceCdBySlotIndex}
-              sortedGrouped={sortedGrouped}
+              sortedGrouped={displayGrouped}
               resourceNameMap={resourceNameMap}
               orderUsageByResourceCd={orderUsageQuery.data}
               siteKey={siteKey}
@@ -611,6 +636,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               autoRankDisabled={autoRankDisabled}
               autoRankPending={autoRankPending}
               onAutoRank={handleAutoRankSlot}
+              laborEnabledBySlotIndex={laborEnabledBySlotIndex}
+              onToggleLaborForSlot={toggleLaborForSlot}
             />
           </>
         )}
@@ -626,7 +653,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       <LeaderBoardResourceSlotPickerModal
         isOpen={slotModalOpen}
         onClose={() => setSlotModalOpen(false)}
-        candidateResourceCds={resourcesQuery.data?.resources ?? []}
+        candidateResourceCds={slotCandidateResourceCds}
         resourceNameMap={resourceNameMap}
         slotCount={slotCount}
         onSlotCountChange={setSlotCount}

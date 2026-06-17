@@ -55,6 +55,9 @@ type Props = {
   autoRankDisabled?: boolean;
   autoRankPending?: boolean;
   onAutoRank?: (resourceCd: string) => void;
+  /** スロット `+人` 人工数表示 ON */
+  laborEnabled?: boolean;
+  onToggleLabor?: () => void;
 };
 
 function LeaderOrderResourceCardInner({
@@ -82,7 +85,9 @@ function LeaderOrderResourceCardInner({
   seibanEvalEnabled = false,
   autoRankDisabled = false,
   autoRankPending = false,
-  onAutoRank
+  onAutoRank,
+  laborEnabled = false,
+  onToggleLabor
 }: Props) {
   const jp = resourceJapaneseNames?.trim() ?? '';
   const isSignage = variant === 'signage';
@@ -223,6 +228,26 @@ function LeaderOrderResourceCardInner({
             <span className="min-w-0 break-words text-[12px] leading-snug text-white/78">{jp}</span>
           ) : null}
         </div>
+        {!isSignage && onToggleLabor ? (
+          <button
+            type="button"
+            aria-pressed={laborEnabled}
+            aria-label={laborEnabled ? '人工数を含む表示をオフにする' : '人工数を含む表示をオンにする'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleLabor();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className={clsx(
+              'shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold tabular-nums transition-colors',
+              laborEnabled
+                ? 'border-2 border-yellow-400 bg-gradient-to-br from-yellow-500/55 via-amber-600/45 to-amber-800/40 text-amber-50 shadow-[0_0_0_1px_rgba(253,224,71,0.5),0_0_14px_rgba(250,204,21,0.35),inset_0_1px_0_rgba(255,255,255,0.15)] hover:from-yellow-500/65 hover:to-amber-800/50'
+                : 'border-white/20 bg-white/[0.07] text-white/40 hover:bg-white/15 hover:text-white/55'
+            )}
+          >
+            +人
+          </button>
+        ) : null}
         {!isSignage && seibanEvalEnabled && onAutoRank ? (
           <button
             type="button"

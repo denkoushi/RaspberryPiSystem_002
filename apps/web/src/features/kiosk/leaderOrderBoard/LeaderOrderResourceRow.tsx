@@ -9,6 +9,7 @@ import {
 import { formatDueDate } from '../productionSchedule/formatDueDate';
 import { isManualDueDateSet } from '../productionSchedule/plannedDueDisplay';
 
+import { formatLeaderBoardRequiredMinutesLabel } from './formatLeaderBoardRequiredMinutesLabel';
 import { LeaderOrderRowClusterLine } from './LeaderOrderRowClusterLine';
 import { LeaderOrderRowOrderSelect } from './LeaderOrderRowOrderSelect';
 import { presentLeaderOrderRow } from './leaderOrderRowPresentation';
@@ -126,6 +127,12 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="min-w-0 truncate font-mono text-[11px] text-white/88" title={row.fkojun.trim() || undefined}>
             {row.fkojun.trim() || '—'}
+          </span>
+          <span
+            className="shrink-0 font-mono text-[10px] tabular-nums text-white/55"
+            title="表示所要時間（分）"
+          >
+            {formatLeaderBoardRequiredMinutesLabel(row.requiredMinutes)}
           </span>
         </div>
         {isSignage ? (

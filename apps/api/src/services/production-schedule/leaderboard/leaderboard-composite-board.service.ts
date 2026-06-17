@@ -7,7 +7,8 @@ import {
   listLeaderboardShellContinuationProductionScheduleRows,
   listLeaderboardShellProductionScheduleRows,
   type LeaderboardShellPhasedReadResult,
-  type ProductionScheduleListParams
+  type ProductionScheduleListParams,
+  type ProductionScheduleRow
 } from '../production-schedule-query.service.js';
 import type { Prisma } from '@prisma/client';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
@@ -34,6 +35,7 @@ import {
 } from './leaderboard-process-change-residual.materialization.js';
 import { readLeaderboardShellSnapshotGenerationTokenDetails } from './leaderboard-shell-snapshot-generation.js';
 import type { ProcessChangeResidualEvidence } from './leaderboard-process-change-residual.types.js';
+import { attachLeaderboardLaborMinutes, type LeaderboardLaborMinutesLookupContext } from './leaderboard-labor-minutes.service.js';
 
 /** キオスク順位ボード通常表示: 強い工程変更残骸疑いを通常候補から除外する。 */
 const KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE = 'normal' as const;
@@ -59,6 +61,30 @@ async function resolveLeaderboardBoardProcessChangeResidualContext(): Promise<{
 }
 
 type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
+
+async function attachLaborToBoardPayload(params: {
+  rows: LightShellRow[];
+  deltaRows?: LightShellRow[];
+  laborLookupContext: LeaderboardLaborMinutesLookupContext;
+}): Promise<{ rows: LightShellRow[]; deltaRows?: LightShellRow[] }> {
+  const { laborLookupContext } = params;
+  const deltaRows = params.deltaRows ?? [];
+  const combined: ProductionScheduleRow[] = [];
+  const seenIds = new Set<string>();
+  for (const row of [...params.rows, ...deltaRows]) {
+    if (seenIds.has(row.id)) continue;
+    seenIds.add(row.id);
+    combined.push(row);
+  }
+  const attachedCombined = await attachLeaderboardLaborMinutes(combined, laborLookupContext);
+  const byId = new Map(attachedCombined.map((row) => [row.id, row]));
+  return {
+    rows: params.rows.map((row) => byId.get(row.id) ?? row),
+    ...(params.deltaRows !== undefined
+      ? { deltaRows: deltaRows.map((row) => byId.get(row.id) ?? row) }
+      : {})
+  };
+}
 
 export type LeaderboardBoardResourceState = {
   resourceCd: string;
@@ -208,7 +234,15 @@ export async function fetchLeaderboardCompositeBoardShell(
   const totals = resourceTotals.map((entry) => entry.total);
   const totalsDeferred = resourceTotals.some((entry) => !entry.exact);
 
-  const mergedRows = shells.flatMap((s) => s.rows);
+  const mergedRowsRaw = shells.flatMap((s) => s.rows);
+  const { rows: mergedRows } = await attachLaborToBoardPayload({
+    rows: mergedRowsRaw,
+    laborLookupContext: {
+      leaderboardMaterializedBaseWhere,
+      processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+      processChangeResidualStrongEvidenceKeys
+    }
+  });
   const totalSum = totals.reduce((acc, n) => acc + n, 0);
 
   const resources: LeaderboardBoardResourceState[] = params.boardResourceCds.map((resourceCd, i) => ({
@@ -374,12 +408,21 @@ export async function continueLeaderboardCompositeBoard(
     perResourceAssembled.push(assembled);
   }
 
-  const mergedRows = perResourceAssembled.flatMap((a) => a.merged);
+  const mergedRowsRaw = perResourceAssembled.flatMap((a) => a.merged);
   const canAttachDelta = perResourceAssembled.every((a) => a.incrementalRows !== undefined);
   const incrementalLightRows = canAttachDelta
     ? perResourceAssembled.flatMap((a) => a.incrementalRows!)
     : [];
   const deltaShellRowsFlattened = incrementalLightRows;
+  const { rows: mergedRows, deltaRows: mergedDeltaRows } = await attachLaborToBoardPayload({
+    rows: mergedRowsRaw,
+    ...(canAttachDelta ? { deltaRows: deltaShellRowsFlattened } : {}),
+    laborLookupContext: {
+      leaderboardMaterializedBaseWhere,
+      processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+      processChangeResidualStrongEvidenceKeys
+    }
+  });
 
   const resources: LeaderboardBoardResourceState[] = params.boardResourceCds.map((resourceCd, i) => {
     const slice = params.resourceSlices[i]!;
@@ -422,7 +465,7 @@ export async function continueLeaderboardCompositeBoard(
       pageSize: chunkSize,
       total: totalSum,
       rows: mergedRows,
-      ...(canAttachDelta ? { deltaRows: deltaShellRowsFlattened } : {}),
+      ...(canAttachDelta && mergedDeltaRows ? { deltaRows: mergedDeltaRows } : {}),
       resources
     };
   }
@@ -430,9 +473,9 @@ export async function continueLeaderboardCompositeBoard(
   const { rowsWithDeco, deltaRowsWithDeco, leaderboardFooterChipsByPartKey } =
     await decorateLeaderboardCompositeBoardContinue({
       mergedLightRows: mergedRows,
-      incrementalLightRows,
+      incrementalLightRows: mergedDeltaRows ?? incrementalLightRows,
       canAttachDelta,
-      deltaShellRowsFlattened,
+      deltaShellRowsFlattened: mergedDeltaRows ?? deltaShellRowsFlattened,
       locationKey: params.listParamsBase.locationKey,
       siteKey: params.listParamsBase.siteKey
     });

@@ -38,6 +38,9 @@ export type LeaderBoardGridProps = {
   autoRankDisabled?: boolean;
   autoRankPending?: boolean;
   onAutoRank?: (resourceCd: string) => void;
+  /** スロットごとの `+人` ON/OFF（slotIndex 順） */
+  laborEnabledBySlotIndex?: readonly boolean[];
+  onToggleLaborForSlot?: (slotIndex: number) => void;
 };
 
 type SlotCardProps = {
@@ -65,6 +68,8 @@ type SlotCardProps = {
   autoRankDisabled?: boolean;
   autoRankPending?: boolean;
   onAutoRank?: (resourceCd: string) => void;
+  laborEnabled?: boolean;
+  onToggleLabor?: () => void;
 };
 
 const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
@@ -90,7 +95,9 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   ganttEnabled = false,
   autoRankDisabled = false,
   autoRankPending = false,
-  onAutoRank
+  onAutoRank,
+  laborEnabled = false,
+  onToggleLabor
 }: SlotCardProps) {
   const onSelect = useCallback(() => {
     setSelectedResourceCd(resourceCd);
@@ -125,6 +132,8 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
       autoRankDisabled={autoRankDisabled}
       autoRankPending={autoRankPending}
       onAutoRank={onAutoRank}
+      laborEnabled={laborEnabled}
+      onToggleLabor={onToggleLabor}
     />
   );
 });
@@ -158,7 +167,9 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   listIncomplete = false,
   autoRankDisabled = false,
   autoRankPending = false,
-  onAutoRank
+  onAutoRank,
+  laborEnabledBySlotIndex = [],
+  onToggleLaborForSlot
 }: LeaderBoardGridProps) {
   const rowControlsLocked = interactionLocked;
 
@@ -227,6 +238,10 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             autoRankDisabled={autoRankDisabled || rowControlsLocked || listIncomplete}
             autoRankPending={autoRankPending}
             onAutoRank={onAutoRank}
+            laborEnabled={Boolean(laborEnabledBySlotIndex[slotIndex])}
+            onToggleLabor={
+              onToggleLaborForSlot ? () => onToggleLaborForSlot(slotIndex) : undefined
+            }
           />
         );
       })}

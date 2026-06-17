@@ -17,7 +17,9 @@ function completeBoard(): ProductionScheduleLeaderboardBoardResponse {
         processingOrder: 1,
         note: null,
         dueDate: null,
-        rowData: { progress: '未', FSIGENCD: '1' }
+        rowData: { progress: '未', FSIGENCD: '1' },
+        machineRequiredMinutes: 0,
+        laborRequiredMinutes: 0
       }
     ],
     resources: [{ resourceCd: '1', hasMore: false, total: 1, pageSize: 80 }]

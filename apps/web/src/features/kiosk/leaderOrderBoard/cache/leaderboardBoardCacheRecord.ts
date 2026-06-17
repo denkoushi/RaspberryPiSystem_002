@@ -61,6 +61,24 @@ export function fingerprintLeaderboardBoardRowIds(
   return board.rows.map((r) => r.id).join('\u0001');
 }
 
+/** v3: 表示対象機械行に人工数メタデータが付いているか */
+export function leaderboardBoardRowsHaveLaborMinutesMetadata(
+  board: ProductionScheduleLeaderboardBoardResponse
+): boolean {
+  for (const row of board.rows) {
+    const data = (row.rowData ?? {}) as Record<string, unknown>;
+    const resourceCd = typeof data.FSIGENCD === 'string' ? data.FSIGENCD.trim() : '';
+    if (resourceCd === '10') continue;
+    if (typeof row.machineRequiredMinutes !== 'number' || !Number.isFinite(row.machineRequiredMinutes)) {
+      return false;
+    }
+    if (typeof row.laborRequiredMinutes !== 'number' || !Number.isFinite(row.laborRequiredMinutes)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** continue 完走済みか（保存・hydrate 対象） */
 export function isCompleteLeaderboardBoardSnapshot(
   board: ProductionScheduleLeaderboardBoardResponse
@@ -107,6 +125,7 @@ export function buildLeaderboardBoardCacheRecord(input: {
   savedAt?: number;
 }): PersistedLeaderboardBoardCacheRecord | null {
   if (!isCompleteLeaderboardBoardSnapshot(input.board)) return null;
+  if (!leaderboardBoardRowsHaveLaborMinutesMetadata(input.board)) return null;
   return {
     schemaVersion: LEADERBOARD_BOARD_CACHE_SCHEMA_VERSION,
     cacheKey: input.cacheKey,
@@ -132,6 +151,7 @@ export function parseLeaderboardBoardCacheRecord(
   if (!rec.decorations || typeof rec.decorations !== 'object') return null;
   const board = rec.board as ProductionScheduleLeaderboardBoardResponse;
   if (!isCompleteLeaderboardBoardSnapshot(board)) return null;
+  if (!leaderboardBoardRowsHaveLaborMinutesMetadata(board)) return null;
   if (rec.rowIdsFingerprint !== fingerprintLeaderboardBoardRowIds(board)) return null;
   return rec as PersistedLeaderboardBoardCacheRecord;
 }

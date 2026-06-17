@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { useUpdateKioskProductionScheduleManualOrderResourceAssignments } from '../../../api/hooks';
 
-import { applyOrderedResourceCdsToSlots, normalizeDistinctOrderedResourceCds } from './applyOrderedResourceCdsToSlots';
+import {
+  applyOrderedResourceCdsToSlots,
+  filterLeaderBoardSlotResourceCds,
+  normalizeDistinctOrderedResourceCds
+} from './applyOrderedResourceCdsToSlots';
 import { type UseLeaderBoardResourceSlotsOptions, useLeaderBoardResourceSlots } from './useLeaderBoardResourceSlots';
 
 const PUSH_DEBOUNCE_MS = 450;
@@ -65,7 +69,9 @@ export function useLeaderBoardResourceSlotsWithServerSync({
 
   const serverNormalized = useMemo(
     () =>
-      serverOrderedResourceCds == null ? undefined : normalizeDistinctOrderedResourceCds(serverOrderedResourceCds),
+      serverOrderedResourceCds == null
+        ? undefined
+        : filterLeaderBoardSlotResourceCds(normalizeDistinctOrderedResourceCds(serverOrderedResourceCds)),
     [serverOrderedResourceCds]
   );
 

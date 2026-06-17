@@ -22,8 +22,12 @@ export type LeaderBoardRow = {
   processingOrder: number | null;
   /** `rowData.progress === '完了'` と API 完了フラグの同期表示 */
   isCompleted: boolean;
-  /** `rowData.FSIGENSHOYORYO` の行総分（分）。工数込み・個数倍なし。 */
+  /** slot `+人` 適用後の表示用分数（分）。ガント行高・所要時間表示。 */
   requiredMinutes: number;
+  /** 機械行 FSIGENSHOYORYO（分）。不変。 */
+  machineRequiredMinutes: number;
+  /** 同一 ProductNo + FKOJUN の FSIGENCD=10 人工数（分）。不変。 */
+  laborRequiredMinutes: number;
   /** 行単位の備考（生産スケジュール API の note と同一） */
   note: string | null;
   hasSelfInspectionDrawing: boolean;

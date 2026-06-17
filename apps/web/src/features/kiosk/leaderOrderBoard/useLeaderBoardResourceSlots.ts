@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { filterLeaderBoardSlotResourceCds } from './applyOrderedResourceCdsToSlots';
 import {
   LEADER_BOARD_DEFAULT_SLOT_COUNT,
   LEADER_BOARD_MAX_RESOURCE_SLOTS,
@@ -7,6 +8,7 @@ import {
   LEADER_BOARD_SLOT_SCHEMA_VERSION,
   leaderBoardSlotStorageKey
 } from './constants';
+import { isLeaderBoardExcludedResourceSlotCd } from './isLeaderBoardExcludedResourceSlotCd';
 
 type Persisted = {
   schemaVersion: number;
@@ -19,12 +21,25 @@ const normalizeCd = (v: string | null | undefined): string | null => {
   return t.length > 0 ? t : null;
 };
 
+/** slot 表示対象外の FSIGENCD（例: 10）を null に正規化する。 */
+export function sanitizeLeaderBoardSlotResourceCd(cd: string | null | undefined): string | null {
+  const normalized = normalizeCd(cd);
+  if (normalized != null && isLeaderBoardExcludedResourceSlotCd(normalized)) {
+    return null;
+  }
+  return normalized;
+}
+
+function sanitizeResourceCdBySlotIndex(slots: readonly (string | null)[]): Array<string | null> {
+  return slots.map((cd) => sanitizeLeaderBoardSlotResourceCd(cd));
+}
+
 /** スロット順を保ち、null を除く。同一 CD は先勝ち。 */
 export const uniqueOrderedResourceCds = (slots: Array<string | null>): string[] => {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of slots) {
-    const cd = normalizeCd(raw);
+    const cd = sanitizeLeaderBoardSlotResourceCd(raw);
     if (!cd || seen.has(cd)) continue;
     seen.add(cd);
     out.push(cd);
@@ -53,7 +68,7 @@ function loadPersisted(storageKey: string): Persisted | null {
     const arr = Array.isArray(parsed.resourceCdBySlotIndex) ? parsed.resourceCdBySlotIndex : [];
     const resourceCdBySlotIndex: Array<string | null> = [];
     for (let i = 0; i < slotCount; i += 1) {
-      resourceCdBySlotIndex.push(normalizeCd(arr[i] as string | null | undefined));
+      resourceCdBySlotIndex.push(sanitizeLeaderBoardSlotResourceCd(arr[i] as string | null | undefined));
     }
     return { schemaVersion: LEADER_BOARD_SLOT_SCHEMA_VERSION, slotCount, resourceCdBySlotIndex };
   } catch {
@@ -67,7 +82,9 @@ function defaultStateFromFallback(fallback: string[]): Persisted {
     Math.max(LEADER_BOARD_MIN_RESOURCE_SLOTS, LEADER_BOARD_DEFAULT_SLOT_COUNT)
   );
   const resourceCdBySlotIndex: Array<string | null> = Array.from({ length: slotCount }, () => null);
-  const orderedFallback = uniqueOrderedResourceCds(fallback.map((s) => s));
+  const orderedFallback = filterLeaderBoardSlotResourceCds(
+    uniqueOrderedResourceCds(fallback.map((s) => s))
+  );
   orderedFallback.slice(0, slotCount).forEach((cd, i) => {
     resourceCdBySlotIndex[i] = cd;
   });
@@ -90,6 +107,10 @@ export function useLeaderBoardResourceSlots({
     () => uniqueOrderedResourceCds(fallbackAssignedResourceCds.map((s) => s)).join('\0'),
     [fallbackAssignedResourceCds]
   );
+  const fallbackResourceCds = useMemo(
+    () => (fallbackSeed.length > 0 ? fallbackSeed.split('\0') : []),
+    [fallbackSeed]
+  );
 
   const [slotCount, setSlotCountState] = useState(LEADER_BOARD_DEFAULT_SLOT_COUNT);
   const [resourceCdBySlotIndex, setResourceCdBySlotIndex] = useState<Array<string | null>>(() =>
@@ -103,12 +124,12 @@ export function useLeaderBoardResourceSlots({
       setSlotCountState(persisted.slotCount);
       setResourceCdBySlotIndex(persisted.resourceCdBySlotIndex);
     } else {
-      const init = defaultStateFromFallback(fallbackAssignedResourceCds);
+      const init = defaultStateFromFallback(fallbackResourceCds);
       setSlotCountState(init.slotCount);
       setResourceCdBySlotIndex(init.resourceCdBySlotIndex);
     }
     setHydratedStorageKey(storageKey);
-  }, [storageKey, fallbackSeed, fallbackAssignedResourceCds]);
+  }, [storageKey, fallbackResourceCds]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || hydratedStorageKey !== storageKey) {
@@ -123,7 +144,7 @@ export function useLeaderBoardResourceSlots({
   }, [hydratedStorageKey, resourceCdBySlotIndex, slotCount, storageKey]);
 
   const activeResourceCds = useMemo(
-    () => uniqueOrderedResourceCds(resourceCdBySlotIndex),
+    () => filterLeaderBoardSlotResourceCds(uniqueOrderedResourceCds(resourceCdBySlotIndex)),
     [resourceCdBySlotIndex]
   );
 
@@ -150,7 +171,7 @@ export function useLeaderBoardResourceSlots({
         return prev;
       }
       const next = [...prev];
-      const normalized = normalizeCd(cd);
+      const normalized = sanitizeLeaderBoardSlotResourceCd(cd);
       if (normalized) {
         for (let i = 0; i < next.length; i += 1) {
           if (i !== slotIndex && normalizeCd(next[i]) === normalized) {
@@ -168,7 +189,7 @@ export function useLeaderBoardResourceSlots({
       const count = prev.length;
       const clipped = next.slice(0, count);
       const padded = [...clipped, ...Array.from({ length: Math.max(0, count - clipped.length) }, () => null)];
-      return padded.slice(0, count);
+      return sanitizeResourceCdBySlotIndex(padded.slice(0, count));
     });
   }, []);
 
