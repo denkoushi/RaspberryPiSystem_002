@@ -15,7 +15,14 @@ function completeBoard(rowId = 'c1'): ProductionScheduleLeaderboardBoardResponse
     page: 1,
     pageSize: 80,
     total: 1,
-    rows: [{ id: rowId }],
+    rows: [
+      {
+        id: rowId,
+        rowData: { FSIGENCD: '1' },
+        machineRequiredMinutes: 0,
+        laborRequiredMinutes: 0
+      }
+    ],
     resources: [{ resourceCd: '1', hasMore: false, total: 1, pageSize: 80 }]
   } as ProductionScheduleLeaderboardBoardResponse;
 }

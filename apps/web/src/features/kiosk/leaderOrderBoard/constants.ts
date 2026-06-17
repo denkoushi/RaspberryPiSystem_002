@@ -87,6 +87,23 @@ export function persistedLeaderBoardGanttModeStorageKey(siteKey: string, deviceS
   return core.length > 0 ? `${LEADER_BOARD_GANTT_MODE_PREFIX}:${core}` : LEADER_BOARD_GANTT_MODE_PREFIX;
 }
 
+/** スロットごとの `+人` 人工数表示 — 端末ローカルのみ */
+export const LEADER_BOARD_LABOR_MODE_SCHEMA_VERSION = 1;
+const LEADER_BOARD_LABOR_MODE_PREFIX = 'kiosk-leader-order-board-labor-mode';
+
+export type PersistedLeaderBoardLaborMode = {
+  schemaVersion: typeof LEADER_BOARD_LABOR_MODE_SCHEMA_VERSION;
+  /** slotIndex 順。未設定 slot は false */
+  enabledBySlotIndex: boolean[];
+};
+
+export function persistedLeaderBoardLaborModeStorageKey(siteKey: string, deviceScopeKey: string): string {
+  const s = siteKey.trim();
+  const d = deviceScopeKey.trim();
+  const core = s.length > 0 && d.length > 0 ? `${s}\0${d}` : s.length > 0 ? s : d.length > 0 ? d : '';
+  return core.length > 0 ? `${LEADER_BOARD_LABOR_MODE_PREFIX}:${core}` : LEADER_BOARD_LABOR_MODE_PREFIX;
+}
+
 /** スロット数に応じて 1 ページ完全性をとりやすくする（単一クエリ方針） */
 export function leaderOrderBoardQueryPageSize(uniqueResourceSlotCount: number): number {
   const n = Math.max(1, uniqueResourceSlotCount);

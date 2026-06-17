@@ -1,6 +1,7 @@
 import { resolveDisplayDueDate } from '../productionSchedule/plannedDueDisplay';
 
-import { parseLeaderBoardRequiredMinutes } from './parseLeaderBoardRequiredMinutes';
+import { isLeaderBoardExcludedResourceSlotCd } from './isLeaderBoardExcludedResourceSlotCd';
+import { resolveLeaderBoardRowLaborFields } from './resolveLeaderBoardRowLaborMinutes';
 import { resolveMachineTypeCodeFromRowData } from './resolveMachineTypeCodeFromRowData';
 import { buildFseibanToMachineDisplayName } from './seibanMachineNameIndex';
 
@@ -30,7 +31,7 @@ const isRowCompleted = (data: Record<string, unknown>): boolean => {
 export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoardRow | null {
   const data = (row.rowData ?? {}) as Record<string, unknown>;
   const resourceCd = strField(data, 'FSIGENCD');
-  if (!resourceCd) return null;
+  if (!resourceCd || isLeaderBoardExcludedResourceSlotCd(resourceCd)) return null;
 
   const dueDate = row.dueDate != null && String(row.dueDate).trim().length > 0 ? String(row.dueDate).trim() : null;
   const plannedEnd =
@@ -51,6 +52,7 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     typeof row.resolvedMachineName === 'string' ? row.resolvedMachineName.trim() : '';
   const customerName =
     typeof row.customerName === 'string' ? row.customerName.trim() : '';
+  const { machineRequiredMinutes, laborRequiredMinutes } = resolveLeaderBoardRowLaborFields(row);
 
   return {
     id: row.id,
@@ -72,7 +74,10 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     machineTypeCode: resolveMachineTypeCodeFromRowData(data),
     plannedQuantity,
     processingOrder: parseProcessingOrder(row.processingOrder),
-    requiredMinutes: parseLeaderBoardRequiredMinutes(data.FSIGENSHOYORYO),
+    machineRequiredMinutes,
+    laborRequiredMinutes,
+    /** 既定は機械所要量のみ（slot の `+人` で上書き） */
+    requiredMinutes: machineRequiredMinutes,
     isCompleted: isRowCompleted(data),
     note,
     hasSelfInspectionDrawing: Boolean((row as ProductionScheduleRow & { hasSelfInspectionDrawing?: boolean }).hasSelfInspectionDrawing),

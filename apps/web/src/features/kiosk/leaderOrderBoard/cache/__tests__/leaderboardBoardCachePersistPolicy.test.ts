@@ -10,7 +10,15 @@ import {
 
 import type { ProductionScheduleLeaderboardBoardResponse } from '../../../../../api/client';
 
-function board(rows: Array<{ id: string; order?: number | null; note?: string | null }>) {
+function board(
+  rows: Array<{
+    id: string;
+    order?: number | null;
+    note?: string | null;
+    machineRequiredMinutes?: number;
+    laborRequiredMinutes?: number;
+  }>
+) {
   return {
     page: 1,
     pageSize: 80,
@@ -19,6 +27,8 @@ function board(rows: Array<{ id: string; order?: number | null; note?: string | 
       id: r.id,
       processingOrder: r.order ?? null,
       note: r.note ?? null,
+      machineRequiredMinutes: r.machineRequiredMinutes,
+      laborRequiredMinutes: r.laborRequiredMinutes,
       rowData: { progress: '未' }
     })),
     resources: [{ resourceCd: '1', hasMore: false, total: rows.length, pageSize: 80 }]
@@ -30,6 +40,16 @@ describe('leaderboardBoardCachePersistPolicy', () => {
     const a = fingerprintLeaderboardBoardContent(board([{ id: 'r1', order: 1 }]));
     const b = fingerprintLeaderboardBoardContent(board([{ id: 'r1', order: 2 }]));
     expect(a).not.toBe(b);
+  });
+
+  it('fingerprintLeaderboardBoardContent は人工数メタデータの変化で変わる', () => {
+    const base = fingerprintLeaderboardBoardContent(
+      board([{ id: 'r1', machineRequiredMinutes: 400, laborRequiredMinutes: 0 }])
+    );
+    const withLabor = fingerprintLeaderboardBoardContent(
+      board([{ id: 'r1', machineRequiredMinutes: 400, laborRequiredMinutes: 175 }])
+    );
+    expect(base).not.toBe(withLabor);
   });
 
   it('shouldSkipCachePut は内容同一なら true', () => {

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -213,6 +213,60 @@ describe('LeaderOrderResourceCard gantt', () => {
     expect(body).toHaveClass('space-y-1');
     expect(body.children).toHaveLength(2);
     expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+});
+
+describe('LeaderOrderResourceCard labor toggle', () => {
+  it('shows required minutes label and toggles aria-pressed', () => {
+    const onToggleLabor = vi.fn();
+    render(
+      <LeaderOrderResourceCard
+        {...cardProps}
+        rows={[
+          mkLeaderBoardRow({
+            id: 'r-labor',
+            fkojun: '10',
+            machineRequiredMinutes: 400,
+            laborRequiredMinutes: 175,
+            requiredMinutes: 400
+          })
+        ]}
+        laborEnabled={false}
+        onToggleLabor={onToggleLabor}
+      />
+    );
+
+    expect(screen.getByText('400分')).toBeInTheDocument();
+
+    const toggle = screen.getByRole('button', { name: '人工数を含む表示をオンにする' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggle);
+    expect(onToggleLabor).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows combined minutes when laborEnabled', () => {
+    render(
+      <LeaderOrderResourceCard
+        {...cardProps}
+        rows={[
+          mkLeaderBoardRow({
+            id: 'r-labor-on',
+            fkojun: '10',
+            machineRequiredMinutes: 400,
+            laborRequiredMinutes: 175,
+            requiredMinutes: 575
+          })
+        ]}
+        laborEnabled
+        onToggleLabor={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('575分')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '人工数を含む表示をオフにする' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
   });
 });
 

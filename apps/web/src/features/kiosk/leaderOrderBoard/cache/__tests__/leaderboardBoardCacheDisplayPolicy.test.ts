@@ -14,7 +14,12 @@ function board(rows: string[]): ProductionScheduleLeaderboardBoardResponse {
     page: 1,
     pageSize: 80,
     total: rows.length,
-    rows: rows.map((id) => ({ id })) as ProductionScheduleLeaderboardBoardResponse['rows'],
+    rows: rows.map((id) => ({
+      id,
+      rowData: { FSIGENCD: '1' },
+      machineRequiredMinutes: 0,
+      laborRequiredMinutes: 0
+    })) as ProductionScheduleLeaderboardBoardResponse['rows'],
     resources: [{ resourceCd: '1', hasMore: false, total: rows.length, pageSize: 80 }]
   };
 }

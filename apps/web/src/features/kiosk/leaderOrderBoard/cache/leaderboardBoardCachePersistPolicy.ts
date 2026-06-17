@@ -34,7 +34,15 @@ export function fingerprintLeaderboardBoardContent(
       const due = row.dueDate != null ? String(row.dueDate).trim() : '';
       const order = row.processingOrder != null ? String(row.processingOrder) : '';
       const note = row.note != null ? String(row.note).trim() : '';
-      return `${row.id}:${order}:${note}:${due}:${progressToken(row.rowData)}`;
+      const machine =
+        row.machineRequiredMinutes != null && Number.isFinite(row.machineRequiredMinutes)
+          ? String(row.machineRequiredMinutes)
+          : '';
+      const labor =
+        row.laborRequiredMinutes != null && Number.isFinite(row.laborRequiredMinutes)
+          ? String(row.laborRequiredMinutes)
+          : '';
+      return `${row.id}:${order}:${note}:${due}:${progressToken(row.rowData)}:${machine}:${labor}`;
     })
     .join('\u0002');
   return `${rowPart}\u0003${fingerprintProcessChangeResidual(board)}`;

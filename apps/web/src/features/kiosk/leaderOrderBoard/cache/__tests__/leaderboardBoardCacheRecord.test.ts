@@ -24,11 +24,21 @@ function board(partial: Partial<ProductionScheduleLeaderboardBoardResponse>): Pr
   };
 }
 
+function mkCacheRow(id: string, resourceCd = '305'): ProductionScheduleLeaderboardBoardResponse['rows'][number] {
+  return {
+    id,
+    occurredAt: '2026-01-01T00:00:00.000Z',
+    rowData: { FSIGENCD: resourceCd },
+    machineRequiredMinutes: 100,
+    laborRequiredMinutes: 0
+  } as ProductionScheduleLeaderboardBoardResponse['rows'][number];
+}
+
 describe('leaderboardBoardCacheRecord', () => {
   it('完走版のみ build 可能', () => {
     const b = board({
       total: 2,
-      rows: [{ id: 'a' }, { id: 'b' }] as ProductionScheduleLeaderboardBoardResponse['rows'],
+      rows: [mkCacheRow('a'), mkCacheRow('b')],
       resources: [{ resourceCd: '1', hasMore: false, total: 2, pageSize: 80 }]
     });
     expect(isCompleteLeaderboardBoardSnapshot(b)).toBe(true);
@@ -46,7 +56,7 @@ describe('leaderboardBoardCacheRecord', () => {
   it('hasMore ありは build 不可', () => {
     const b = board({
       total: 10,
-      rows: [{ id: 'a' }] as ProductionScheduleLeaderboardBoardResponse['rows'],
+      rows: [{ id: 'x' }] as ProductionScheduleLeaderboardBoardResponse['rows'],
       resources: [{ resourceCd: '1', hasMore: true, total: 10, pageSize: 80 }]
     });
     expect(isCompleteLeaderboardBoardSnapshot(b)).toBe(false);
@@ -103,7 +113,7 @@ describe('leaderboardBoardCacheRecord', () => {
   it('parse は旧 schemaVersion を拒否する', () => {
     const b = board({
       total: 1,
-      rows: [{ id: 'x' }] as ProductionScheduleLeaderboardBoardResponse['rows'],
+      rows: [mkCacheRow('x')],
       resources: [{ resourceCd: '1', hasMore: false, total: 1, pageSize: 80 }]
     });
     const rec = buildLeaderboardBoardCacheRecord({
@@ -113,14 +123,32 @@ describe('leaderboardBoardCacheRecord', () => {
       board: b,
       decorations: createEmptyAccumulatedLeaderboardDecorations()
     })!;
-    expect(parseLeaderboardBoardCacheRecord({ ...rec, schemaVersion: 1 })).toBeNull();
-    expect(rec.schemaVersion).toBe(LEADERBOARD_BOARD_CACHE_SCHEMA_VERSION);
+    expect(rec).not.toBeNull();
+    expect(parseLeaderboardBoardCacheRecord({ ...rec!, schemaVersion: 2 })).toBeNull();
+    expect(rec!.schemaVersion).toBe(LEADERBOARD_BOARD_CACHE_SCHEMA_VERSION);
+  });
+
+  it('build/parse は人工数メタデータ欠落を拒否する', () => {
+    const b = board({
+      total: 1,
+      rows: [{ id: 'x', occurredAt: '2026-01-01', rowData: { FSIGENCD: '305' } }] as ProductionScheduleLeaderboardBoardResponse['rows'],
+      resources: [{ resourceCd: '1', hasMore: false, total: 1, pageSize: 80 }]
+    });
+    expect(
+      buildLeaderboardBoardCacheRecord({
+        cacheKey: 'k',
+        siteKey: 's',
+        paramsKey: 'p',
+        board: b,
+        decorations: createEmptyAccumulatedLeaderboardDecorations()
+      })
+    ).toBeNull();
   });
 
   it('parse は fingerprint 不一致を拒否', () => {
     const b = board({
       total: 1,
-      rows: [{ id: 'x' }] as ProductionScheduleLeaderboardBoardResponse['rows'],
+      rows: [mkCacheRow('x')],
       resources: [{ resourceCd: '1', hasMore: false, total: 1, pageSize: 80 }]
     });
     const rec = buildLeaderboardBoardCacheRecord({
@@ -130,7 +158,8 @@ describe('leaderboardBoardCacheRecord', () => {
       board: b,
       decorations: createEmptyAccumulatedLeaderboardDecorations()
     })!;
-    const tampered = { ...rec, rowIdsFingerprint: 'wrong' };
+    expect(rec).not.toBeNull();
+    const tampered = { ...rec!, rowIdsFingerprint: 'wrong' };
     expect(parseLeaderboardBoardCacheRecord(tampered)).toBeNull();
     expect(parseLeaderboardBoardCacheRecord(rec)).not.toBeNull();
   });

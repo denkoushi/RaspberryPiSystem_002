@@ -18,6 +18,8 @@ export function mkLeaderBoardRow(partial: Partial<LeaderBoardRow> & Pick<LeaderB
     machineTypeCode: '',
     plannedQuantity: null,
     processingOrder: null,
+    machineRequiredMinutes: 0,
+    laborRequiredMinutes: 0,
     requiredMinutes: 0,
     isCompleted: false,
     note: null,

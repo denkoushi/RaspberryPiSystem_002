@@ -349,6 +349,10 @@ export interface ProductionScheduleRow {
   hasSelfInspectionDrawing?: boolean;
   selfInspectionStatus?: 'not_started' | 'in_progress' | 'completed' | null;
   selfInspectionEntryPath?: string | null;
+  /** 順位ボード: 機械行の FSIGENSHOYORYO（分）。`+人` OFF 時の表示基準。 */
+  machineRequiredMinutes?: number;
+  /** 順位ボード: 同一 ProductNo + FKOJUN の FSIGENCD=10 人工数（分）。 */
+  laborRequiredMinutes?: number;
   /** キオスク順位ボード: 工程変更残骸疑い（通常グリッドには含めない） */
   processChangeResidualSuspected?: boolean;
   processChangeResidualEvidence?: ProcessChangeResidualEvidence;
