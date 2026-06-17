@@ -7,12 +7,19 @@ RUN apt-get update \
   && apt-get install -y openssl poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible \
   && rm -rf /var/lib/apt/lists/*
 
+# Workspace manifests only: source copies after install so ordinary app changes reuse install cache.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
-COPY apps ./apps
+COPY apps/api/package.json ./apps/api/package.json
+COPY apps/web/package.json ./apps/web/package.json
+COPY packages/shared-types/package.json ./packages/shared-types/package.json
+COPY packages/part-search-core/package.json ./packages/part-search-core/package.json
+COPY packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
+
+RUN corepack enable && pnpm install --frozen-lockfile
+
+COPY apps/api ./apps/api
 COPY packages ./packages
 COPY scripts ./scripts
-
-RUN corepack enable && pnpm install
 
 WORKDIR /app/packages/shared-types
 RUN pnpm build
@@ -42,20 +49,16 @@ RUN apt-get update \
   && ndlocr-lite --help >/dev/null \
   && rm -rf /var/lib/apt/lists/*
 
+# Manifests + prod install + Chromium before build artifacts: avoids invalidating heavy layers on API source changes.
 COPY --from=base /app/package.json ./package.json
 COPY --from=base /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=base /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=base /app/apps/api/package.json ./apps/api/package.json
+COPY --from=base /app/apps/web/package.json ./apps/web/package.json
 COPY --from=base /app/packages/shared-types/package.json ./packages/shared-types/package.json
 COPY --from=base /app/packages/part-search-core/package.json ./packages/part-search-core/package.json
 COPY --from=base /app/packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
 WORKDIR /app
-# base stage の dev node_modules を持ち込まないよう、build 成果物コピー後に prod install する。
-COPY --from=base --exclude=node_modules /app/apps/api ./apps/api
-COPY --from=base --exclude=node_modules /app/packages/shared-types ./packages/shared-types
-COPY --from=base --exclude=node_modules /app/packages/part-search-core ./packages/part-search-core
-COPY --from=base --exclude=node_modules /app/packages/shelf-layout-core ./packages/shelf-layout-core
-COPY --from=base /app/scripts ./scripts
 RUN corepack enable \
   && pnpm install --prod --recursive --frozen-lockfile
 
@@ -68,6 +71,13 @@ RUN case "${INSTALL_PLAYWRIGHT_CHROMIUM}" in \
     true|1|yes) pnpm --filter @raspi-system/api exec playwright install chromium ;; \
     *) echo "Skipping Playwright Chromium install (INSTALL_PLAYWRIGHT_CHROMIUM=${INSTALL_PLAYWRIGHT_CHROMIUM})" ;; \
   esac
+
+# base の dev node_modules は持ち込まない（--exclude=node_modules）。
+COPY --from=base --exclude=node_modules /app/apps/api ./apps/api
+COPY --from=base --exclude=node_modules /app/packages/shared-types ./packages/shared-types
+COPY --from=base --exclude=node_modules /app/packages/part-search-core ./packages/part-search-core
+COPY --from=base --exclude=node_modules /app/packages/shelf-layout-core ./packages/shelf-layout-core
+COPY --from=base /app/scripts ./scripts
 
 WORKDIR /app/apps/api
 RUN pnpm prisma generate

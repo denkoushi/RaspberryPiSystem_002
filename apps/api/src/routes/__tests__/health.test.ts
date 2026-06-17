@@ -1,4 +1,29 @@
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../services/system/event-loop-observability.js', () => ({
+  evaluateEventLoopHealth: () => ({ status: 'ok' }),
+  snapshotEventLoopObservability: () => ({
+    elu: {
+      utilization: 0.1,
+      activeMs: 100,
+      idleMs: 900,
+    },
+    eventLoopDelayMs: {
+      mean: 10,
+      max: 20,
+      p50: 8,
+      p90: 12,
+      p99: 16,
+    },
+  }),
+}));
+
+vi.mock('../../lib/prisma.js', () => ({
+  prisma: {
+    $queryRaw: async () => [{ ok: 1 }],
+  },
+}));
+
 import { buildServer } from '../../app.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -8,6 +33,10 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 describe('GET /api/system/health', () => {
   let closeServer: (() => Promise<void>) | null = null;
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   afterAll(async () => {
     if (closeServer) {
       await closeServer();
@@ -15,13 +44,21 @@ describe('GET /api/system/health', () => {
   });
 
   it('should return ok', async () => {
+    vi.spyOn(process, 'memoryUsage').mockReturnValue({
+      rss: 128 * 1024 * 1024,
+      heapTotal: 128 * 1024 * 1024,
+      heapUsed: 64 * 1024 * 1024,
+      external: 8 * 1024 * 1024,
+      arrayBuffers: 1 * 1024 * 1024,
+    });
+
     const app = await buildServer();
     closeServer = async () => {
       await app.close();
     };
     const response = await app.inject({ method: 'GET', url: '/api/system/health' });
-    expect(response.statusCode).toBe(200);
     const body = response.json();
+    expect(response.statusCode, JSON.stringify(body)).toBe(200);
     expect(body).toHaveProperty('status');
     expect(body.status).toBe('ok');
     expect(body).toHaveProperty('timestamp');

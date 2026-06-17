@@ -585,6 +585,7 @@
           Prisma migration failed on {{ inventory_hostname }}.
           See captured logs above for details.
 
+# api/web rebuild 直後は起動直後 memory spike で一時 503 degraded になり得るため、最大約120秒待つ。
 - name: Wait for API health endpoint to recover
   ansible.builtin.uri:
     url: "{{ api_healthcheck_url }}"
@@ -593,7 +594,7 @@
     return_content: true
     validate_certs: false  # 自己署名証明書対応
   register: api_health_result
-  retries: 8
+  retries: 24
   delay: 5
   until:
     - api_health_result.status == 200
