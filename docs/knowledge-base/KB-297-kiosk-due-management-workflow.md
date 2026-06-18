@@ -2949,6 +2949,7 @@ category: knowledge-base
   | 資源CDヘッダ | 15px / 12px | **変更なし** | `LeaderOrderResourceCard` |
   | カード外寸 | — | **変更なし** | 現場合意 |
   - **2 列幅（`pairLeftColumnClass`）**: 右側要素（顧客名 / 製番）が **あるときのみ** 左 **`max-w-[50%] flex-[0_0_50%]`** · **単独時は `flex-1` 全幅**。常時 50% 固定は **品目コード半幅・品名 truncate** の回帰源だったため却下。
+  - **品名ホバー全文（2026-06-18）**: **`partNameLine`（`presentLeaderOrderRow` の trim 済み `fhinmei`）** は、製番と 2 列で **`truncate` されても** ネイティブ **`title` 属性**で **マウスホバー時に全文**を確認できる（工順・備考と同型。追加ライブラリ不要）。**Web のみ** · **サイネージ JPEG 対象外** · タッチ/キーボードの全文確認手段は追加しない。
 - **Presentation 契約（[`leaderOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）**:
   - **`fseibanLine`**: 品名行右に出す製番（trim 済み・空なら非表示）。
   - **`clusterTailSegments`**: クラスタ行用（**`fhincd` のみ** · 製番は含めない）。
@@ -2987,7 +2988,7 @@ category: knowledge-base
 - **トラブルシュート**:
   - **フォントが旧サイズ** → Pi5 `docker-web-1` の `/srv/site/assets/index-*.js` が **`05ae1a70` ビルドか** · Pi4 **強制リロード**（§6.6.4）。
   - **製番がクラスタ左に残る** → `fseibanLine` 未デプロイ（旧 `clusterSegments` 表示）。
-  - **品名だけ半幅で切れる** → 製番が空なのに左 50% 固定 — **`pairLeftColumnClass(false)`** 版へ。
+  - **品名だけ半幅で切れる** → 製番が空なのに左 50% 固定 — **`pairLeftColumnClass(false)`** 版へ。**長い品名はホバーで `title` 全文**（[§品名ホバー全文（2026-06-18）](#leader-order-board-card-row-emphasis-layout-2026-06-05)）。
   - **プレビュー HTML と本番が不一致** → 正本は **`kiosk-rank-board-card-single-preview.html` のみ**（proposal ファイルは削除済み）。
   - **PR #390 作成時 `No commits between main and branch`** → リモート ref 不整合 — **`fix/kiosk-leaderboard-card-layout-2`** で再 push/PR（デプロイ HEAD **`05ae1a70`**）。
 - **参照**: [deployment §2026-06-05](../guides/deployment.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05) · [verification-checklist §6.6.30](../guides/verification-checklist.md#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05) · [§preview alignment（2026-04-17）](#leader-order-resource-card-preview-alignment-2026-04-17)（前身レイアウト） · [`EXEC_PLAN.md`](../../EXEC_PLAN.md) Progress 先頭項。
