@@ -217,6 +217,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
                 hasFseiban ? 'truncate' : 'break-words',
                 'text-[16.5px] leading-tight text-white/60'
               )}
+              title={pres.partNameLine}
             >
               {pres.partNameLine}
             </div>
