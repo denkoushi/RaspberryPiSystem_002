@@ -31,6 +31,31 @@ describe('import-schedule-policy', () => {
   });
 
   describe('detectGmailScheduleMinuteCollisions', () => {
+    it('does not warn when FHINMEI default cron avoids MeasuringInstrument minute collisions', () => {
+      const warnings = detectGmailScheduleMinuteCollisions(
+        createConfig([
+          {
+            id: 'csv-import-measuring-instrument-loans',
+            provider: 'gmail',
+            targets: [{ type: 'csvDashboards', source: 'a' }],
+            schedule: '15,30,45 * * * *',
+            enabled: true,
+            replaceExisting: false,
+          },
+          {
+            id: 'csv-import-seiban-machine-name-supplement',
+            provider: 'gmail',
+            targets: [{ type: 'csvDashboards', source: 'b' }],
+            schedule: '18 6 * * 0',
+            enabled: true,
+            replaceExisting: false,
+          },
+        ])
+      );
+
+      expect(warnings).toEqual([]);
+    });
+
     it('detects overlap between hourly multi-minute and weekly schedule', () => {
       const warnings = detectGmailScheduleMinuteCollisions(
         createConfig([
