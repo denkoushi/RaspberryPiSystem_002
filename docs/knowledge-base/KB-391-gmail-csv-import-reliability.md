@@ -66,13 +66,14 @@ After KB-391 advisory lock fix, the completion transaction still ran **all defer
 | Reader invariant | Failed completion rolls back row changes; reader-visible rows keep prior COMPLETED content and source metadata |
 | Retry | Same Gmail message / CSV can be reprocessed after failure |
 
-**Branch (implementation)**: `fix/fkojunst-status-gmail-timeout`.
+**Branch (implementation)**: `fix/fkojunst-status-gmail-timeout` · **commit** **`959c3dd8`** · **CI** run **`27733856447`** success.
 
 ### Validation
 
 - `fkojunst-status-mail-ingest-publication.test.ts`
 - `csv-dashboard-ingestor-fkojunst-completion.test.ts`
 - `import-schedule-policy.test.ts` (`18 6 * * 0` does not collide with `15,30,45 * * * *`)
+- Temp Postgres: 5,000-row batch update ~320ms; EXPLAIN uses `CsvDashboardRow_pkey` (no `text = uuid` cast)
 
 ## Prevention
 
@@ -80,17 +81,45 @@ After KB-391 advisory lock fix, the completion transaction still ran **all defer
 - Integration: `imports-schedule.integration.test.ts` (collision warnings + `config.storage.provider` reset in `beforeEach`)
 - DB proof: temp Postgres — `$executeRaw` lock OK; `$queryRaw` on same SQL reproduces P2010
 
-## Production Deploy And Verification (2026-06-17)
+## Production Deploy And Verification
+
+### KB-391 advisory lock + collision warnings (2026-06-17)
 
 | Item | Value |
 |------|-------|
 | Target host | **`raspberrypi5` only** (Pi4×4 / Pi3 / Zero2W **not required**) |
+| Branch | `fix/gmail-csv-import-reliability` · squash on **`main`**: **`5ec5cee1`** ([PR #452](https://github.com/denkoushi/RaspberryPiSystem_002/pull/452)) |
 | Command | `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` then `./scripts/update-all-clients.sh fix/gmail-csv-import-reliability infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` |
 | Detach Run ID | **`20260617-105312-14779`** |
 | PLAY RECAP | `ok=134` `changed=4` `failed=0` / `unreachable=0` |
 | Docker | `Git: changed` · **api + web rebuild** |
 | Migration | **none** |
 | Phase12 | `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0** (~45s, tailscale) |
+
+### FKOJUNST completion timeout fix (2026-06-18)
+
+| Item | Value |
+|------|-------|
+| Target host | **`raspberrypi5` only** |
+| Branch | **`fix/fkojunst-status-gmail-timeout`** · **`959c3dd8`** |
+| Command | `./scripts/update-all-clients.sh fix/fkojunst-status-gmail-timeout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` |
+| Detach Run ID | **`20260618-122644-13251`** |
+| PLAY RECAP | `ok=134` `changed=4` `failed=0` / `unreachable=0` · Pi4/Pi3 **no hosts matched** |
+| Docker | `Git: changed` · **api rebuild** (publication module present on Pi5) |
+| Migration | **none** |
+| Phase12 | `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0** (~65s) |
+| Manual FKOJUNST import | Admin `POST /api/imports/schedule/csv-import-productionschedule-fkojunst-status-mail/run` with `{}` body |
+
+**Production ingest verification (2026-06-18)**:
+
+| Check | Result |
+|-------|--------|
+| Prior failure pattern | `CsvDashboardIngestRun` **FAILED** with `csvDashboardRow.update()` P2028 / 60s tx (2026-06-17) |
+| Publication helper | API log `[FkojunstStatusMailIngestPublication] deferred row updates completed` — **79,550 rows**, 319 batches × 250, **~105s** (1st message) and **79,555 rows**, **~72s** (2nd message) |
+| Ingest run status | Latest runs **`COMPLETED`** with **79,555** `rowsProcessed` / **no** `csvDashboardRow.update` timeout |
+| Post-ingest sync | 1st message after deploy: `productionScheduleFkojunstMailStatus.createMany()` still hit **60s tx timeout** (separate pipeline; ingest row data already committed). 2nd message ingest **COMPLETED** cleanly at dashboard level |
+
+**Resume context for next AI**: This branch fixes **ingest completion** (deferred row publication). **Post-ingest** `fkojunst-status-mail-sync.pipeline` may still need timeout/batching work at ~80k rows — track separately if scheduled runs show `postProcessState=failed` while ingest runs are `COMPLETED`.
 
 ## Post-Deploy Operator Actions (if symptoms persist)
 
@@ -104,10 +133,11 @@ Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../gui
 
 ## Open Items
 
-- [ ] Deploy `fix/fkojunst-status-gmail-timeout` to Pi5 and manually run `csv-import-productionschedule-fkojunst-status-mail`.
+- [x] Deploy `fix/fkojunst-status-gmail-timeout` to Pi5 (Detach **`20260618-122644-13251`**) and manually run `csv-import-productionschedule-fkojunst-status-mail` (ingest completion verified; see table above).
 - [ ] Confirm production admin shows collision warnings for current enabled Gmail schedules (operator visual check).
 - [ ] If collision warnings present for `FHINMEI_MH_SH`, adjust production cron to `18 6 * * 0` (or later) and run manual `csv-import-seiban-machine-name-supplement`.
-- [ ] Monitor next scheduled Gmail cycle for previously failing dashboards (FKOJUNST_Status, FHINMEI_MH_SH).
+- [ ] Monitor next **scheduled** FKOJUNST_Status cycle (`43 4 * * *`) end-to-end including post-ingest mail-status sync.
+- [ ] If post-ingest `createMany` timeout recurs at ~80k rows, extend or batch `fkojunst-status-mail-sync.pipeline` (out of scope for `959c3dd8`).
 
 ## Local Notes JA
 
@@ -116,5 +146,7 @@ Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../gui
 
 ## References
 
-- Plan (implementation): `.cursor/plans/gmail_csv_reliability_605d8671.plan.md` (Cursor workspace)
+- Plan (KB-391): `.cursor/plans/gmail_csv_reliability_605d8671.plan.md` (Cursor workspace)
+- Plan (completion timeout): `.cursor/plans/gmail_csv_recovery_f8ebbce7.plan.md` (Cursor workspace)
 - PR: [#452](https://github.com/denkoushi/RaspberryPiSystem_002/pull/452) (squash merge **`5ec5cee1`**)
+- Branch PR (pending): `fix/fkojunst-status-gmail-timeout` · **`959c3dd8`**
