@@ -149,4 +149,4 @@ Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../gui
 - Plan (KB-391): `.cursor/plans/gmail_csv_reliability_605d8671.plan.md` (Cursor workspace)
 - Plan (completion timeout): `.cursor/plans/gmail_csv_recovery_f8ebbce7.plan.md` (Cursor workspace)
 - PR: [#452](https://github.com/denkoushi/RaspberryPiSystem_002/pull/452) (squash merge **`5ec5cee1`**)
-- Branch PR (pending): `fix/fkojunst-status-gmail-timeout` · **`959c3dd8`**
+- PR: [#457](https://github.com/denkoushi/RaspberryPiSystem_002/pull/457) (squash merge **`e111dda3`**)
