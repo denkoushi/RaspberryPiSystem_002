@@ -8,7 +8,8 @@ import {
 } from '../../../services/production-schedule/production-schedule-query.service.js';
 import {
   continueLeaderboardCompositeBoard,
-  fetchLeaderboardCompositeBoardShell
+  fetchLeaderboardCompositeBoardShell,
+  type LeaderboardBoardPerformanceSink
 } from '../../../services/production-schedule/leaderboard/leaderboard-composite-board.service.js';
 import {
   materializeProcessChangeResidualStrongEvidence,
@@ -31,6 +32,28 @@ import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assign
 const LEADERBOARD_SHELL_PAGE_SIZE_CAP = 160;
 
 const KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE = 'normal' as const;
+
+function isLeaderboardBoardPerformanceLogEnabled(): boolean {
+  const value = process.env.LEADERBOARD_BOARD_PERF_LOG?.trim().toLowerCase();
+  return value === 'true' || value === '1';
+}
+
+function createLeaderboardBoardPerformanceSink(request: {
+  id?: unknown;
+  log: { info: (obj: Record<string, unknown>, message: string) => void };
+}): LeaderboardBoardPerformanceSink | undefined {
+  if (!isLeaderboardBoardPerformanceLogEnabled()) return undefined;
+  return (event) => {
+    request.log.info(
+      {
+        component: 'leaderboardBoardPerformance',
+        requestId: request.id,
+        ...event
+      },
+      '[leaderboard-board-performance]'
+    );
+  };
+}
 
 async function resolveKioskLeaderboardProcessChangeResidualContext(): Promise<{
   generationToken: string;
@@ -252,7 +275,10 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         includeDecorations: query.includeDecorations,
         deferTotals: query.deferTotals
       },
-      { snapshotStore: deps.leaderboardShellSnapshotStore }
+      {
+        snapshotStore: deps.leaderboardShellSnapshotStore,
+        performanceSink: createLeaderboardBoardPerformanceSink(request)
+      }
     );
   });
 
@@ -302,7 +328,10 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         chunkSize,
         includeDecorations: body.includeDecorations
       },
-      { snapshotStore: deps.leaderboardShellSnapshotStore }
+      {
+        snapshotStore: deps.leaderboardShellSnapshotStore,
+        performanceSink: createLeaderboardBoardPerformanceSink(request)
+      }
     );
   });
 }

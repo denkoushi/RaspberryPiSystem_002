@@ -138,6 +138,45 @@ Each Pi4: `update-all-clients.sh` with `--limit <host>` + force reload per [veri
 
 API-side shell selection / winner materialization / COUNT path profiling and minimal query changes. Phase 1 improves client-side deferTotals consistency and UX only; root 10s-class latency may remain until phase 2.
 
+## Phase 2 investigation update (2026-06-19)
+
+Read-only Pi5 measurements from Mac confirmed the current bottleneck is still API-side, not only Pi4 browser rendering.
+
+Observed against `https://100.106.158.2`:
+
+| Probe | Result |
+|-------|--------|
+| `/api/system/health` | `200 ok`; DB, memory, Playwright OK |
+| `leaderboard-board` shell with `includeDecorations=false&deferTotals=true` | `robodrill` ~10.8s, `fjv` ~10.0s, `stonebase` ~12.4s |
+| `stonebase` `leaderboard-board/continue` | `pageSize=80` hit `snapshotExpired`; `pageSize=160` completed in ~222.5s total, ~207.8s continue, 7 rounds |
+| `stonebase` deferred decorations | priority 64 rows ~1.25s; first background 80 rows ~1.11s |
+| Pi5 system info after probes | CPU temp ~55.1C, load ~44%, maintenance false |
+
+Interpretation:
+
+- `deferTotals=true` avoids exact shell COUNT, but shell is still 10s-class.
+- Continue can exceed snapshot TTL / practical UX budget on large boards.
+- Deferred decorations are visible cost but not the primary bottleneck in this sample.
+- Recent `+人` labor metadata is a high-priority hypothesis because shell and continue both call `attachLeaderboardLaborMinutes`, but this is not yet confirmed.
+
+### Temporary performance instrumentation
+
+API-only opt-in instrumentation was added for the next investigation pass. Default is OFF and response contracts are unchanged.
+
+Enable on Pi5 only when collecting logs:
+
+```bash
+LEADERBOARD_BOARD_PERF_LOG=true
+```
+
+When enabled, `GET /api/kiosk/production-schedule/leaderboard-board` and `POST /api/kiosk/production-schedule/leaderboard-board/continue` emit `[leaderboard-board-performance]` log records with:
+
+- `endpoint`: `shell` or `continue`
+- `phase`: `processChangeResidualContext`, `materializedBaseWhere`, `resourceShell`, `processChangeResidualSummary`, `resourceTotals`, `resourceContinue`, `assembleResource`, `attachLabor`, `decorate`, `requestTotal`
+- counts and flags: `resourceCd`, `resourceCount`, `rowCount`, `deltaRowCount`, `hasMore`, `hasMoreCount`, `total`, `snapshotExpired`, `includeDecorations`, `chunkSize`, `deferredTotals`
+
+Use these logs to decide whether the next minimal fix should target row selection, process-change residual materialization, labor lookup, continue assembly, or snapshot TTL/process locality.
+
 ## Local Notes JA
 
 - 初回 COUNT を `deferTotals=true` で避け、continue で exact total に戻す設計は [KB-374](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md) の continue 契約と両立。

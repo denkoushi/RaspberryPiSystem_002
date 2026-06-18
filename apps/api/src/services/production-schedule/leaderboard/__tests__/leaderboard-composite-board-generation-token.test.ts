@@ -183,4 +183,78 @@ describe('leaderboard-composite-board generation token prefetch', () => {
       { resourceCd: '2', total: 1, hasMore: false }
     ]);
   });
+
+  it('emits opt-in performance events for board shell phases', async () => {
+    vi.spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere').mockResolvedValue(Prisma.empty);
+    vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
+      keys: new Set<string>(),
+      keyArrays: { productNos: [], fkojuns: [], resourceCds: [] },
+      evidenceByKey: new Map(),
+      rawMailRowsRevision: 'revision-1'
+    });
+    vi.spyOn(residualService, 'fetchLeaderboardProcessChangeResidualSummary').mockResolvedValue({
+      processChangeResidualTotal: 0,
+      processChangeResidualRows: [],
+      processChangeResidualRepresentativeLimit: 20
+    });
+    vi.spyOn(generation, 'readLeaderboardShellSnapshotGenerationTokenDetails').mockResolvedValue({
+      generationToken: '{"generation":"1"}',
+      fkojunstStatusMailRowsRevision: 'revision-1'
+    });
+    vi.spyOn(queryService, 'listLeaderboardShellProductionScheduleRows').mockImplementation(async (params) => ({
+      page: 1,
+      pageSize: 80,
+      rows: [{ id: `row-${params.resourceCds[0]}`, rowData: { FSIGENCD: params.resourceCds[0] } }] as any,
+      snapshotId: `snap-${params.resourceCds[0]}`,
+      nextCursor: 1,
+      hasMore: false
+    }));
+    const performanceSink = vi.fn();
+
+    await fetchLeaderboardCompositeBoardShell(
+      {
+        listParamsBase: {
+          queryText: '',
+          productNos: [],
+          locationKey: 'loc-1'
+        },
+        boardResourceCds: ['1', '2'],
+        page: 1,
+        pageSize: 80,
+        includeDecorations: false,
+        deferTotals: true
+      },
+      {
+        snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 10_000 }),
+        performanceSink
+      }
+    );
+
+    const events = performanceSink.mock.calls.map(([event]) => event);
+    expect(events.map((event) => event.phase)).toEqual(
+      expect.arrayContaining([
+        'processChangeResidualContext',
+        'materializedBaseWhere',
+        'resourceShell',
+        'processChangeResidualSummary',
+        'resourceTotals',
+        'attachLabor',
+        'requestTotal'
+      ])
+    );
+    expect(events.filter((event) => event.phase === 'resourceShell')).toHaveLength(2);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        endpoint: 'shell',
+        phase: 'requestTotal',
+        resourceCount: 2,
+        rowCount: 2,
+        includeDecorations: false
+      })
+    );
+    for (const event of events) {
+      expect(Number.isInteger(event.durationMs)).toBe(true);
+      expect(event.durationMs).toBeGreaterThanOrEqual(0);
+    }
+  });
 });
