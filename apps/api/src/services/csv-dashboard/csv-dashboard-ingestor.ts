@@ -23,6 +23,11 @@ import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.
 import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 import { CsvDashboardDedupCleanupService } from './csv-dashboard-dedup-cleanup.service.js';
 import { findCsvDashboardRowsByDataHashes } from './csv-dashboard-existing-rows-by-hash.reader.js';
+import {
+  applyFkojunstDeferredRowUpdatesInTransaction,
+  FKOJUNST_STATUS_MAIL_COMPLETION_TX_TIMEOUT_MS,
+  type FkojunstDeferredRowUpdate,
+} from './fkojunst-status-mail-ingest-publication.js';
 
 /**
  * CSVダッシュボード取り込みサービス
@@ -32,7 +37,6 @@ export class CsvDashboardIngestor {
   private static readonly SAFE_SQL_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
   private static readonly COMPLETION_TX_TIMEOUT_MS = 60_000;
   private static readonly COMPLETION_TX_MAX_WAIT_MS = 15_000;
-  private static readonly FKOJUNST_STATUS_MAIL_COMPLETION_UPDATE_CHUNK_SIZE = 500;
   private dedupCleanupService = new CsvDashboardDedupCleanupService();
   private progressSyncFromCsvService = new ProgressSyncFromCsvService();
   private progressSyncEligibilityPolicy = new ProgressSyncEligibilityPolicy();
@@ -177,14 +181,7 @@ export class CsvDashboardIngestor {
       // 取り込み方式に応じて処理
       let rowsAdded = 0;
       let rowsSkipped = 0;
-      const deferredExistingRowUpdates: Array<{
-        id: string;
-        occurredAt: Date;
-        rowData: Prisma.InputJsonValue;
-        sourceIngestRunId?: string | null;
-        sourceRowOrdinal?: number | null;
-        sourceIngestRunStartedAt?: Date | null;
-      }> = [];
+      const deferredExistingRowUpdates: FkojunstDeferredRowUpdate[] = [];
 
       if (dashboard.ingestMode === 'APPEND') {
         // 追加モード：すべて追加
@@ -261,7 +258,23 @@ export class CsvDashboardIngestor {
 
         if (updates.length > 0) {
           if (dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID) {
-            deferredExistingRowUpdates.push(...updates);
+            for (const update of updates) {
+              if (
+                update.sourceIngestRunId == null ||
+                update.sourceRowOrdinal == null ||
+                update.sourceIngestRunStartedAt == null
+              ) {
+                continue;
+              }
+              deferredExistingRowUpdates.push({
+                id: update.id,
+                occurredAt: update.occurredAt,
+                rowData: update.rowData,
+                sourceIngestRunId: update.sourceIngestRunId,
+                sourceRowOrdinal: update.sourceRowOrdinal,
+                sourceIngestRunStartedAt: update.sourceIngestRunStartedAt,
+              });
+            }
           } else {
             // 大量更新に備えて分割（トランザクションでまとめて実行）
             const chunkSize = 100;
@@ -314,35 +327,19 @@ export class CsvDashboardIngestor {
       }
 
       const completedAt = new Date();
+      const isFkojunstStatusMailDashboard =
+        dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID;
+
+      const completionTxTimeoutMs =
+        isFkojunstStatusMailDashboard && deferredExistingRowUpdates.length > 0
+          ? FKOJUNST_STATUS_MAIL_COMPLETION_TX_TIMEOUT_MS
+          : CsvDashboardIngestor.COMPLETION_TX_TIMEOUT_MS;
+
       await prisma.$transaction(
         async (tx) => {
-          if (dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID) {
+          if (isFkojunstStatusMailDashboard) {
             await acquireFkojunstStatusMailCriticalTransactionLock(tx);
-          }
-
-          for (
-            let i = 0;
-            i < deferredExistingRowUpdates.length;
-            i += CsvDashboardIngestor.FKOJUNST_STATUS_MAIL_COMPLETION_UPDATE_CHUNK_SIZE
-          ) {
-            const chunk = deferredExistingRowUpdates.slice(
-              i,
-              i + CsvDashboardIngestor.FKOJUNST_STATUS_MAIL_COMPLETION_UPDATE_CHUNK_SIZE
-            );
-            await Promise.all(
-              chunk.map((u) =>
-                tx.csvDashboardRow.update({
-                  where: { id: u.id },
-                  data: {
-                    occurredAt: u.occurredAt,
-                    rowData: u.rowData,
-                    sourceIngestRunId: u.sourceIngestRunId,
-                    sourceRowOrdinal: u.sourceRowOrdinal,
-                    sourceIngestRunStartedAt: u.sourceIngestRunStartedAt
-                  },
-                })
-              )
-            );
+            await applyFkojunstDeferredRowUpdatesInTransaction(tx, deferredExistingRowUpdates);
           }
 
           await tx.csvDashboardIngestRun.update({
@@ -364,8 +361,8 @@ export class CsvDashboardIngestor {
           }
         },
         {
-          timeout: CsvDashboardIngestor.COMPLETION_TX_TIMEOUT_MS,
-          maxWait: CsvDashboardIngestor.COMPLETION_TX_MAX_WAIT_MS
+          timeout: completionTxTimeoutMs,
+          maxWait: CsvDashboardIngestor.COMPLETION_TX_MAX_WAIT_MS,
         }
       );
 
