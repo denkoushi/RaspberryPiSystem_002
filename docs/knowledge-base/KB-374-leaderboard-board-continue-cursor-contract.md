@@ -128,6 +128,28 @@ docker compose -f infrastructure/docker/docker-compose.server.yml \
 | `leaderboard-board` / `continue` | **200**（以前失敗していた条件で） |
 | API ログ | **`could not resize shared memory segment` なし** |
 
+### Production deploy（2026-06-18 · Pi5 本番反映済み）
+
+| 項目 | 値 |
+| --- | --- |
+| ブランチ | **`fix/db-shm-leaderboard-400`** |
+| 代表コミット | **`49dc9473`** |
+| 対象ホスト | **`raspberrypi5` のみ**（Pi4×4 / Pi3 **不要** — Compose `db` のみ変更） |
+| 標準デプロイ | `./scripts/update-all-clients.sh fix/db-shm-leaderboard-400 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` |
+| Detach Run ID | **`20260618-141405-17366`**（**`PLAY RECAP` `ok=134` `changed=5` `failed=0` / `unreachable=0`** · **`Git: changed`** · Docker **`ok`**) |
+| **`db` 再作成** | 標準 Ansible は **`api`/`web` のみ**再作成のため、Pi5 で **`docker compose … up -d --force-recreate db`** → healthy 後 **`api` 再作成**（**`db-data` 維持** · **`down -v` なし**） |
+| 実機（自動） | `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0** |
+| `/dev/shm` | `ShmSize=536870912` · コンテナ内 **`512M`**（再作成後） |
+| API 回帰 | `GET …/leaderboard-board?boardResourceCds=1,2&pageSize=80…` → **HTTP 200**（`x-client-key: client-key-raspberrypi4-kiosk1`） |
+| ログ | 直近 API ログに **`could not resize shared memory segment` なし** |
+
+**知見**: 標準デプロイだけでは **`shm_size` は `db` 再作成まで反映されない**。本件は Pi5 で **Ansible 後に `db` → `api` 再作成**が必須。Pi5 上で **`ShmSize=536870912` がデプロイ前から見えた**場合でも、再作成で **`/dev/shm=512M`** を確認してから完了とする。
+
+**未完了（別ブランチ / 別タスク）**:
+
+- [`error-handler.ts`](../../apps/api/src/plugins/error-handler.ts) の **`P2010` + shared-memory exhaustion → 5xx 分類**（Out of scope 参照）
+- [`scripts/test/start-postgres.sh`](../../scripts/test/start-postgres.sh) の **`--shm-size`**（CI / テスト DB 再現性）
+
 ### Rollback
 
 - Compose から **`shm_size` 行を revert** し、**`db` を `--force-recreate`**（**`-v` なし**）。
