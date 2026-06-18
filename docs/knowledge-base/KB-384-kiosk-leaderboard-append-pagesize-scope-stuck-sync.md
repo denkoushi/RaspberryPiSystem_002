@@ -91,6 +91,8 @@ Post-fix:
 
 **Residual drift (separate scope)**: `processChangeResidualTotal` / `processChangeResidualRows` / evidence changes still invalidate `appendOverride` — intentional; not part of this `pageSize` bug.
 
+**UI banner hidden (2026-06-18 · `fix/hide-leaderboard-process-change-residual-banner`)**: The kiosk leader-order board no longer renders the amber **「工程変更残骸疑い」** summary banner. **API exclusion and residual meta are unchanged** — `processChangeResidualMode: 'normal'` still removes suspected rows from normal `rows`, and the API still returns `processChangeResidualTotal` / `processChangeResidualRows` for cache / append-override fingerprinting. This is **not** a performance optimization. **Local Notes JA**: オペレータの Status 操作忘れにより、本来は非表示 Status 相当の可能性が高い行を通常順位に戻さないため、警告バナーのみ非表示にする。`LeaderBoardProcessChangeResidualSummary.tsx` remains in the repo but is **not connected** from `ProductionScheduleLeaderOrderBoardPage.tsx`.
+
 ## Fix
 
 | Commit | Change |
