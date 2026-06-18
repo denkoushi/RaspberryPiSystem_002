@@ -7,7 +7,7 @@
 | id | KB-391 |
 | status | active |
 | scope | Gmail csvDashboards scheduled import, FKOJUNST_Status mail ingest, admin CSV import schedule UI |
-| date | 2026-06-17 |
+| date | 2026-06-18 |
 | source_of_truth | this file |
 | related_code | `fkojunst-status-mail-critical-lock.ts`, `fkojunst-status-mail-ingest-publication.ts`, `import-schedule-policy.ts`, `CsvImportSchedulePage.tsx`, `csv-dashboard-ingestor.ts` |
 | related_docs | [csv-import-export.md](../guides/csv-import-export.md), [deployment.md](../guides/deployment.md) |
@@ -110,16 +110,34 @@ After KB-391 advisory lock fix, the completion transaction still ran **all defer
 | Phase12 | `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0** (~65s) |
 | Manual FKOJUNST import | Admin `POST /api/imports/schedule/csv-import-productionschedule-fkojunst-status-mail/run` with `{}` body |
 
-**Production ingest verification (2026-06-18)**:
+**Agent/API curl verification (2026-06-18, pre-admin UI)**:
 
 | Check | Result |
 |-------|--------|
 | Prior failure pattern | `CsvDashboardIngestRun` **FAILED** with `csvDashboardRow.update()` P2028 / 60s tx (2026-06-17) |
-| Publication helper | API log `[FkojunstStatusMailIngestPublication] deferred row updates completed` — **79,550 rows**, 319 batches × 250, **~105s** (1st message) and **79,555 rows**, **~72s** (2nd message) |
-| Ingest run status | Latest runs **`COMPLETED`** with **79,555** `rowsProcessed` / **no** `csvDashboardRow.update` timeout |
-| Post-ingest sync | 1st message after deploy: `productionScheduleFkojunstMailStatus.createMany()` still hit **60s tx timeout** (separate pipeline; ingest row data already committed). 2nd message ingest **COMPLETED** cleanly at dashboard level |
+| Publication helper | API log `[FkojunstStatusMailIngestPublication] deferred row updates completed` — **79,550 rows** (~105s) and **79,555 rows** (~72s) |
+| Post-ingest (early) | 1st curl-triggered message: `createMany()` **60s tx timeout** once; later messages recovered |
 
-**Resume context for next AI**: This branch fixes **ingest completion** (deferred row publication). **Post-ingest** `fkojunst-status-mail-sync.pipeline` may still need timeout/batching work at ~80k rows — track separately if scheduled runs show `postProcessState=failed` while ingest runs are `COMPLETED`.
+### Admin console manual verification (2026-06-18)
+
+Operator ran manual imports from admin **CSV取込** UI (Pi5 production).
+
+| Schedule ID | `CsvImportHistory` | Status | Window (UTC) | Rows / outcome |
+|-------------|-------------------|--------|----------------|----------------|
+| `csv-import-seiban-machine-name-supplement` | `b219362f-f45c-4275-9dd1-06b083297561` | **COMPLETED** | 04:06:33 → 04:06:42 | **2,793** rows · `postProcessState=completed` |
+| `csv-import-productionschedule-fkojunst-status-mail` | `fe2d463a-7be5-4078-913a-b8d6ae4c6698` | **COMPLETED** | 04:07:32 → 04:12:31 (~5 min) | **159,105** rows total (**2** Gmail messages: **79,550** + **79,555**) |
+
+**FKOJUNST_Status detail**:
+
+| Check | Result |
+|-------|--------|
+| Ingest runs | `8421cc7a` / `3fb4f91e` — both **`COMPLETED`**, no `csvDashboardRow.update` P2028 |
+| Post-ingest | Both messages **`postProcessState=completed`** (mail-status sync OK) |
+| API log | `[CsvImportScheduler] Manual CSV import completed` · `[CSV Import Schedule] Manual import completed` |
+| Gmail debug | `postProcessedMessageIdSuffixes`: `961ca1`, `d9138f` — both **completed**, **0** failed |
+| Operator cron edit | Before run, admin **PUT** changed FKOJUNST cron **`43 4 * * *` → `43 6 * * *`** (stored in production `backup.json`) |
+
+**Resume context for next AI**: Ingest completion fix (**`e111dda3`**) and end-to-end admin manual run are **verified on Pi5**. Monitor the **scheduled** job at the new cron **`43 6 * * *`** for parity with manual success.
 
 ## Post-Deploy Operator Actions (if symptoms persist)
 
@@ -133,11 +151,12 @@ Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../gui
 
 ## Open Items
 
-- [x] Deploy `fix/fkojunst-status-gmail-timeout` to Pi5 (Detach **`20260618-122644-13251`**) and manually run `csv-import-productionschedule-fkojunst-status-mail` (ingest completion verified; see table above).
+- [x] Deploy `fix/fkojunst-status-gmail-timeout` to Pi5 (Detach **`20260618-122644-13251`**).
+- [x] Admin manual `csv-import-productionschedule-fkojunst-status-mail` — **COMPLETED** · 159,105 rows · post-ingest **completed** (history `fe2d463a`).
+- [x] Admin manual `csv-import-seiban-machine-name-supplement` — **COMPLETED** · 2,793 rows (history `b219362f`).
 - [ ] Confirm production admin shows collision warnings for current enabled Gmail schedules (operator visual check).
-- [ ] If collision warnings present for `FHINMEI_MH_SH`, adjust production cron to `18 6 * * 0` (or later) and run manual `csv-import-seiban-machine-name-supplement`.
-- [ ] Monitor next **scheduled** FKOJUNST_Status cycle (`43 4 * * *`) end-to-end including post-ingest mail-status sync.
-- [ ] If post-ingest `createMany` timeout recurs at ~80k rows, extend or batch `fkojunst-status-mail-sync.pipeline` (out of scope for `959c3dd8`).
+- [ ] Monitor next **scheduled** FKOJUNST_Status cycle at production cron **`43 6 * * *`** (operator-set; was `43 4 * * *`).
+- [ ] If post-ingest `createMany` timeout recurs at ~80k rows, extend or batch `fkojunst-status-mail-sync.pipeline` (not observed on 2026-06-18 admin manual run).
 
 ## Local Notes JA
 
