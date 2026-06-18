@@ -177,6 +177,42 @@ When enabled, `GET /api/kiosk/production-schedule/leaderboard-board` and `POST /
 
 Use these logs to decide whether the next minimal fix should target row selection, process-change residual materialization, labor lookup, continue assembly, or snapshot TTL/process locality.
 
+### Pi5 instrumentation deploy and first logs
+
+Instrumentation branch:
+
+- Branch: `chore/leaderboard-board-perf-logging`
+- Commit: `4882bda1` (`chore: instrument leaderboard board performance`)
+- Pi5 deploy: `20260619-083502-12095`
+- PLAY RECAP: `ok=134 changed=4 failed=0`
+- Phase12: `PASS 43 / WARN 0 / FAIL 0`
+
+Temporary runtime flag:
+
+- `LEADERBOARD_BOARD_PERF_LOG=true` was added to Pi5 `infrastructure/docker/.env`.
+- Backup before edit: `infrastructure/docker/.env.leaderboard-perf.bak-20260619-084003`.
+- API health after recreate: `200 ok`.
+
+First instrumented `stonebase` request after API recreate:
+
+| Endpoint | Total | Dominant phases |
+|----------|-------|-----------------|
+| shell | ~78.5s | `processChangeResidualContext` ~62.0s, `materializedBaseWhere` ~6.1s, `attachLabor` ~5.2s, per-resource shell ~3.8-5.3s |
+| continue round 1 (`pageSize=160`) | ~39.8s | `processChangeResidualContext` ~21.3s, `attachLabor` ~13.0s, `resourceTotals` ~3.0s, per-resource continue ~5.3-5.5s |
+
+Warm follow-up `stonebase` shell:
+
+| Total | Dominant phases |
+|-------|-----------------|
+| ~14.3s | `processChangeResidualContext` ~4.7s, `attachLabor` ~5.1s, per-resource shell max ~4.2s, `processChangeResidualSummary` ~3.2s |
+
+Interpretation update:
+
+- Cold-start/process-change residual materialization can dominate the first request after API recreate.
+- Warm shell still has no single tiny culprit: `attachLabor`, process-change residual context/summary, and per-resource shell selection are all multi-second.
+- Continue round 1 confirms `attachLabor` becomes larger as accumulated rows grow (`1547` rows / `978` delta rows -> ~13.0s).
+- Next minimal fix should target measurement-informed reduction of `attachLabor` repeated work and process-change residual materialization cost before changing client constants.
+
 ## Local Notes JA
 
 - 初回 COUNT を `deferTotals=true` で避け、continue で exact total に戻す設計は [KB-374](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md) の continue 契約と両立。
