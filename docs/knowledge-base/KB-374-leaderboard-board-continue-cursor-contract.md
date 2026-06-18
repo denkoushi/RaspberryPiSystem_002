@@ -2,7 +2,7 @@
 title: KB-374 leaderboard-board/continue の cursor 契約と HTTP 400（Zod）
 tags: [kiosk, production-schedule, leader-order-board, leaderboard-board, api, web]
 audience: [開発者, 運用者]
-last-verified: 2026-06-16
+last-verified: 2026-06-18
 category: knowledge-base
 ---
 
@@ -37,6 +37,108 @@ category: knowledge-base
 
 - **continue 系の契約変更**は **`shared.ts` の Zod** と **Web ペイロードビルダー**を **対で**見る（片側だけ直すと再発）。
 - **`undefined` omit** に依存しない。**「続き」を意味するフラグがあるなら必須フィールドを明示的に送る**。
+
+## Non-Zod HTTP 400: PostgreSQL shared memory exhaustion（2026-06-18 · `fix/db-shm-leaderboard-400`） {#non-zod-http-400-postgresql-shared-memory-exhaustion}
+
+**注意**: キオスク順位ボードの **「順位一覧の追補取得に失敗しました（Request failed with status code 400）」** は、**Zod / `cursor` 契約**（上節）と **同一の HTTP 400 表示**だが **別根因** がありうる。Network タブで 400 でも **必ず API ログの Prisma / PostgreSQL メッセージを確認**する。
+
+### Symptoms
+
+- キオスク順位ボードで **`GET/POST …/leaderboard-board`**（shell / continue）が **HTTP 400**。
+- ブラウザ表示: **「順位一覧の追補取得に失敗しました（Request failed with status code 400）。表示は一部のみの可能性があります。」**
+- API ログ: **`PrismaClientKnownRequestError` code `P2010`**、PostgreSQL **`ERROR: could not resize shared memory segment … No space left on device`**。
+- [`error-handler.ts`](../../apps/api/src/plugins/error-handler.ts) が **`PrismaClientKnownRequestError` を一律 HTTP 400** に変換するため、**インフラ／DB リソース不足**が **クライアント上はバリデーション失敗と同じ 400** に見える。
+
+### Investigation（Pi5 実機 · CONFIRMED）
+
+| 項目 | 観測 |
+| --- | --- |
+| DB コンテナ `ShmSize` | `docker inspect docker-db-1 --format '{{.HostConfig.ShmSize}}'` → **`67108864`（64MB · Docker 既定）** |
+| コンテナ内 `/dev/shm` | `docker exec docker-db-1 df -h /dev/shm` → **64M** |
+| ホスト `/dev/shm` | 十分な空き（例: **4G 利用可能**）— **ホスト不足ではない** |
+| Compose | [`docker-compose.server.yml`](../../infrastructure/docker/docker-compose.server.yml) に **`shm_size` 未設定**（本修正前） |
+| 発生経路 | 順位ボード **shell / continue の重い PostgreSQL クエリ**（並列・共有メモリセグメント拡張） |
+
+### Root cause
+
+Docker **`db` サービスの `/dev/shm` 上限が 64MB（既定）** のまま。PostgreSQL が **共有メモリセグメントを拡張できず**クエリ失敗 → Prisma **`P2010`** → API **HTTP 400**。
+
+### Fix（最小変更 · 本ブランチ）
+
+1. **Compose**: `db` サービスに **`shm_size: "512mb"`** を追加。
+   - [`docker-compose.server.yml`](../../infrastructure/docker/docker-compose.server.yml)
+   - [`docker-compose.mac-local.override.yml`](../../infrastructure/docker/docker-compose.mac-local.override.yml)
+2. **既存 `db` コンテナは再作成しないと反映されない**（下記 Production follow-up）。
+3. **`db-data` ボリュームは維持** — データ内容は変わらない。
+
+### Production follow-up（明示承認後のみ · 本タスクでは実行しない）
+
+標準 Ansible デプロイは **`api web` のみ `--force-recreate`**（[`server/tasks/main.yml`](../../infrastructure/ansible/roles/server/tasks/main.yml)）— **`db` は自動再作成されない**。
+
+承認後の Pi5 手順（例）:
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose --env-file infrastructure/docker/.env \
+  -f infrastructure/docker/docker-compose.server.yml \
+  up -d --force-recreate db
+# db healthy 後、必要なら api を再起動
+docker compose --env-file infrastructure/docker/.env \
+  -f infrastructure/docker/docker-compose.server.yml \
+  up -d --force-recreate api
+```
+
+- **`docker compose down -v` は禁止**（`db-data` 削除）。
+- **短時間の API/DB 中断**を想定（healthcheck 復帰まで）。
+
+### Validation
+
+**ローカル（Mac · compose config のみ）**:
+
+```bash
+# server compose のみ（infrastructure/docker/.env があればそのまま通る）
+docker compose -f infrastructure/docker/docker-compose.server.yml config \
+  | rg 'shm_size'
+
+# server + Mac local override（api サービスが apps/api/.env を参照するため要準備）
+# 例: ln -sf .env.example apps/api/.env  （検証後に不要なら削除）
+docker compose -f infrastructure/docker/docker-compose.server.yml \
+  -f infrastructure/docker/docker-compose.mac-local.override.yml config \
+  | rg 'shm_size'
+```
+
+期待（**compose 出力は bytes に正規化される**）:
+
+| 経路 | Compose ソース | `docker compose config` 出力 | 意味 |
+| --- | --- | --- | --- |
+| server のみ | `shm_size: "512mb"` | **`shm_size: "536870912"`** | 512 × 1024² バイト |
+| server + Mac override | 同上 | **`shm_size: "536870912"`** | 同上 |
+
+- **`512mb` と `536870912` は等価** — 文字列 `512mb` を期待値にしない。
+- Mac local 合成で **`env file ... apps/api/.env not found`** になる場合は、上記のとおり **`apps/api/.env` を用意**する（`.env.example` からの symlink / コピーで可）。**実装不具合ではない**。
+
+**追加検証（任意 · Codex 2026-06-18）**: 一時 `pgvector/pgvector:pg15` を **`--shm-size=512m`** で起動 → `HostConfig.ShmSize=536870912`・コンテナ内 **`/dev/shm` ≈ 512M** を確認。migration 適用後、leaderboard-board / continue 関連の統合テスト（`kiosk-production-schedule.integration.test.ts` 対象 2 件）が PASS。**検証用コンテナ・volume・network は削除してから完了**とする。
+
+**本番（`db` 再作成後）**:
+
+| 確認 | 期待 |
+| --- | --- |
+| `docker inspect docker-db-1 --format '{{.HostConfig.ShmSize}}'` | **`536870912`** |
+| `docker exec docker-db-1 df -h /dev/shm` | **~512M** |
+| `leaderboard-board` / `continue` | **200**（以前失敗していた条件で） |
+| API ログ | **`could not resize shared memory segment` なし** |
+
+### Rollback
+
+- Compose から **`shm_size` 行を revert** し、**`db` を `--force-recreate`**（**`-v` なし**）。
+- **`db-data` は再利用** — ロールバックで DB 内容は失わない。
+
+### Out of scope（別ブランチ）
+
+| 項目 | 理由 |
+| --- | --- |
+| [`error-handler.ts`](../../apps/api/src/plugins/error-handler.ts) の **`P2010` + shared-memory exhaustion を 5xx へ分類** | 表示改善だが本件の **直接原因（64MB `/dev/shm`）ではない**。`P2002`/`P2003` 等の既存 400 挙動を壊さない **狭い helper + テスト** が必要。 |
+| [`scripts/test/start-postgres.sh`](../../scripts/test/start-postgres.sh) の **`docker run --shm-size`** | Mac compose パリティ経路ではない。CI / テスト DB の再現性は **別タスク**。 |
 
 ## Dual payload: deltaRows (2026-05-18)
 

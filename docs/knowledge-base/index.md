@@ -520,6 +520,7 @@ update-frequency: high
 
 ## 📅 更新履歴
 
+- 2026-06-18（キオスク順位ボード·DB `/dev/shm` 64MB→512MB·Compose のみ）: [KB-374 §shared memory](./KB-374-leaderboard-board-continue-cursor-contract.md#non-zod-http-400-postgresql-shared-memory-exhaustion) — ブランチ **`fix/db-shm-leaderboard-400`**·**Pi5 `db` 再作成は別承認**。
 - 2026-06-16（キオスク順位ボード·装飾後取り POST バッチ分割·Web·Pi5→Pi4×4 本番）: [KB-374 §装飾バッチ](./KB-374-leaderboard-board-continue-cursor-contract.md#装飾後取り-post-バッチ分割2026-06-16--featleaderboard-decoration-batches) — **`0d627bc8`**·CI **`27586608774`**·Detach **`20260616-115101-15796`** 他 4 台·Phase12 **43/0/0**·**Pi3/Zero2W 除外**。
 - 2026-06-17: [KB-391](./KB-391-gmail-csv-import-reliability.md) Gmail CSV 取込信頼性（**`206241c4`** · Pi5 only · Detach **`20260617-105312-14779`** · Phase12 **43/0/0**）
 - 2026-06-15: [KB-390](./KB-390-kiosk-leaderboard-inspection-workflow.md) 記録ページQR + P1 fiducial 除去（**`a2158875`** · Detach **`20260615-183021-14261`** · Phase12 **43/0/0**）
