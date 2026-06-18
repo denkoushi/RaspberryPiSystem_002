@@ -25,12 +25,13 @@ Each resource slot has a **`+人`** toggle (default OFF). When ON, display minut
 | Field | Meaning |
 |-------|---------|
 | `machineRequiredMinutes` | Machine row `FSIGENSHOYORYO` (minutes); API-attached, stable per row |
-| `laborRequiredMinutes` | Sum of visible `FSIGENCD=10` rows for same `ProductNo + FKOJUN` |
+| `laborRequiredMinutes` | Sum of `FSIGENCD=10` rows for same `ProductNo + FKOJUN`, keyed only from **visible machine rows** already on the board (10 rows do **not** require their own `fkmail`) |
 | `requiredMinutes` | Web display value after slot `+人` toggle |
 
 Rules:
 
 - `FSIGENCD=10` rows are **not shown** as resource slots (sanitized on restore, fallback, server sync, picker).
+- Labor lookup follows **display-row visibility**: keys come from visible machine rows; `FSIGENCD=10` rows are summed without shell `fkmail` on the 10 row itself.
 - Toggle state: per slot index, per terminal (`localStorage` via `usePersistedLeaderBoardLaborMode`); survives resource CD reassignment on the slot.
 - IndexedDB cache schema **v3**; records without labor metadata are rejected. Fingerprint includes labor fields.
 
@@ -39,7 +40,7 @@ Rules:
 ### API
 
 - `attachLeaderboardLaborMinutes()` decorates shell/continue board payloads (max 1 DB lookup per call).
-- `buildLeaderboardLaborMinutesLookupWhereSql()` aligns labor lookup with shell `fkmail` visibility and process-change residual filter.
+- `buildLeaderboardLaborMinutesLookupWhereSql()` applies winner materialization and process-change residual filter only; labor keys are collected from visible machine rows, not from `fkmail` on `FSIGENCD=10` rows.
 - Positive-only SUM for `FSIGENSHOYORYO` (negative → 0).
 - Rows already carrying metadata skip re-lookup.
 

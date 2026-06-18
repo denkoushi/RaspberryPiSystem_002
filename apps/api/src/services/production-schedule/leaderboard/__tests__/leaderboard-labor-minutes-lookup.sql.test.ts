@@ -12,7 +12,7 @@ function prismaSqlToLiteralString(sql: { strings: readonly string[]; values: rea
 }
 
 describe('leaderboard-labor-minutes-lookup.sql', () => {
-  it('includes fkmail visibility and residual filters in lookup WHERE', () => {
+  it('does not include fkmail visibility in lookup WHERE', () => {
     const keys = new Set(['PCR0001\u0000210\u000010']);
     const where = buildLeaderboardLaborMinutesLookupWhereSql({
       leaderboardMaterializedBaseWhere: Prisma.sql`TRUE`,
@@ -20,15 +20,18 @@ describe('leaderboard-labor-minutes-lookup.sql', () => {
       processChangeResidualStrongEvidenceKeys: keys
     });
     const sql = prismaSqlToLiteralString(where as { strings: readonly string[]; values: readonly unknown[] });
-    expect(sql).toContain('"fkmail"');
-    expect(sql).toContain('AND NOT');
+    expect(sql).not.toContain('"fkmail"');
+    expect(sql).not.toContain('ProductionScheduleFkojunstMailStatus');
+    expect(sql).not.toContain('ProductionScheduleFkojunstStatus');
     expect(sql).toContain('TRUE');
+    expect(sql).toContain('AND NOT');
   });
 
-  it('joins fkst and fkmail for visibility evaluation', () => {
+  it('returns empty join fragment (no fkmail/fkst tables)', () => {
     const join = buildLeaderboardLaborMinutesLookupJoinSql();
     const sql = prismaSqlToLiteralString(join as { strings: readonly string[]; values: readonly unknown[] });
-    expect(sql).toContain('"ProductionScheduleFkojunstStatus"');
-    expect(sql).toContain('"ProductionScheduleFkojunstMailStatus"');
+    expect(sql.trim()).toBe('');
+    expect(sql).not.toContain('ProductionScheduleFkojunstMailStatus');
+    expect(sql).not.toContain('ProductionScheduleFkojunstStatus');
   });
 });

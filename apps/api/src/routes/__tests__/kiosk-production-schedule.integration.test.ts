@@ -1149,6 +1149,77 @@ describe('Kiosk Production Schedule API', () => {
     expect(b.resources).toHaveLength(2);
   });
 
+  it('leaderboard-board returns laborRequiredMinutes when FSIGENCD=10 rows lack fkmail', async () => {
+    const productNo = 'LAB-010';
+    const fkojun = '200';
+
+    await prisma.csvDashboardRow.createMany({
+      data: [
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'lab-machine',
+          rowData: {
+            ProductNo: productNo,
+            FSEIBAN: 'L',
+            FHINCD: 'H',
+            FSIGENCD: '1',
+            FKOJUN: fkojun,
+            FSIGENSHOYORYO: '400',
+            progress: ''
+          }
+        },
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'lab-labor',
+          rowData: {
+            ProductNo: productNo,
+            FSEIBAN: 'L',
+            FHINCD: 'H',
+            FSIGENCD: '10',
+            FKOJUN: fkojun,
+            FSIGENSHOYORYO: '175',
+            progress: ''
+          }
+        }
+      ]
+    });
+
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
+
+    const laborRows = await prisma.csvDashboardRow.findMany({
+      where: {
+        csvDashboardId: DASHBOARD_ID,
+        rowData: { path: ['ProductNo'], equals: productNo },
+        AND: [{ rowData: { path: ['FSIGENCD'], equals: '10' } }]
+      },
+      select: { id: true }
+    });
+    await prisma.productionScheduleFkojunstMailStatus.deleteMany({
+      where: { csvDashboardRowId: { in: laborRows.map((row) => row.id) } }
+    });
+
+    const board = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+
+    expect(board.statusCode).toBe(200);
+    const body = board.json() as {
+      rows: Array<{
+        rowData: Record<string, unknown>;
+        machineRequiredMinutes?: number;
+        laborRequiredMinutes?: number;
+      }>;
+    };
+    const target = body.rows.find((row) => (row.rowData as { ProductNo?: string }).ProductNo === productNo);
+    expect(target).toBeDefined();
+    expect(target?.machineRequiredMinutes).toBe(400);
+    expect(target?.laborRequiredMinutes).toBe(175);
+  });
+
   it('leaderboard-board continue profile logs: multi-resource append reaches hasMore=false', async () => {
     await prisma.csvDashboardRow.createMany({
       data: Array.from({ length: 140 }, (_, index) => ({

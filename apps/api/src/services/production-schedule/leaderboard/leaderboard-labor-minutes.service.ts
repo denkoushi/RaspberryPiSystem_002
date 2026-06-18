@@ -44,6 +44,10 @@ function laborMinutesFromRow(row: ProductionScheduleRow): number {
   return 0;
 }
 
+/**
+ * 表示済み通常行（FSIGENCD≠10）だけから人工数 lookup キーを集める。
+ * 通常行が shell 可視性を通過していないキーはここに入らないため、10 行側 fkmail は不要。
+ */
 function collectDistinctLaborLookupKeys(rows: readonly ProductionScheduleRow[]): Array<{ productNo: string; fkojun: string }> {
   const seen = new Set<string>();
   const out: Array<{ productNo: string; fkojun: string }> = [];
