@@ -837,8 +837,8 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **トラブルシュート**: 旧フォント → Pi5 ref / Pi4 未リロード。製番がクラスタ左 → 旧 bundle。品名だけ半幅 → `pairLeftColumnClass` 未適用版。長い品名でホバー全文が出ない → 未デプロイ bundle / 強制リロード（§6.6.4）。
 
-**検証日時**: 2026-06-05（自動 **43/0/0**·**Pi5+Pi4×4**·stonebase **実機 OK**）
-**検証結果**: ☑ 成功（自動+stonebase 目視） ☐ 失敗（エラー内容: _______________）
+**検証日時**: 2026-06-18（自動 **43/0/0**·**Pi5+Pi4×4**·Pi5 バンドル `title:N.partNameLine` 確認）
+**検証結果**: ☑ 成功（自動） ☐ 成功（現場目視·ホバー全文） ☐ 失敗（エラー内容: _______________）
 
 **6.6.29 キオスク リーダー順位ボード（完了後フッタ工程チップ装飾の再同期）** {#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01}
 
