@@ -12,12 +12,13 @@ related_docs:
   - docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md
   - docs/guides/verification-checklist.md
 validation:
-  local_tests: "37 passed (display policy / append session / hook)"
-  ci_run: "27401455961 — all jobs success (branch head 0eed9b8f)"
+  local_tests: "37 passed (display policy / append session / hook); banner hide: eslint + Vitest 40 passed"
+  ci_run: "27401455961 (pageSize fix); 27742291658 (banner hide branch 3eee6c57) — all success"
   phase12_pi5: "verify-phase12-real.sh PASS 43/0/0 (~30s, post Pi5 deploy)"
-  phase12_all: "verify-phase12-real.sh PASS 43/0/0 (~57s, post Pi4×4 deploy)"
+  phase12_all: "verify-phase12-real.sh PASS 43/0/0 (~34s, post banner-hide Pi5+Pi4×4 deploy 2026-06-18)"
   production_pi5: "Detach 20260612-164319-19772 — ok=134 changed=4 failed=0"
   production_pi4: "4 hosts sequential main deploy 2026-06-12 — all failed=0"
+  banner_hide_production: "Pi5+Pi4×4 sequential 2026-06-18 — all failed=0 (see §UI banner hidden)"
   field_verification: "Pi4 kiosk — user confirmed item display normalized after deploy"
 open_items:
   - "Initial shell 80 rows + incomplete-only filter empty-slot UX (first-paint; separate issue)"
@@ -26,7 +27,7 @@ superseded_by: null
 title: KB-384: Kiosk leaderboard append completion stuck on background sync and pageSize scope drift
 tags: [kiosk, leaderboard, append, pageSize, background-sync, process-residual]
 audience: [developers, operators]
-last-verified: 2026-06-12
+last-verified: 2026-06-18
 category: knowledge-base
 ---
 
@@ -91,7 +92,32 @@ Post-fix:
 
 **Residual drift (separate scope)**: `processChangeResidualTotal` / `processChangeResidualRows` / evidence changes still invalidate `appendOverride` — intentional; not part of this `pageSize` bug.
 
-**UI banner hidden (2026-06-18 · `fix/hide-leaderboard-process-change-residual-banner`)**: The kiosk leader-order board no longer renders the amber **「工程変更残骸疑い」** summary banner. **API exclusion and residual meta are unchanged** — `processChangeResidualMode: 'normal'` still removes suspected rows from normal `rows`, and the API still returns `processChangeResidualTotal` / `processChangeResidualRows` for cache / append-override fingerprinting. This is **not** a performance optimization. **Local Notes JA**: オペレータの Status 操作忘れにより、本来は非表示 Status 相当の可能性が高い行を通常順位に戻さないため、警告バナーのみ非表示にする。`LeaderBoardProcessChangeResidualSummary.tsx` remains in the repo but is **not connected** from `ProductionScheduleLeaderOrderBoardPage.tsx`.
+**UI banner hidden (2026-06-18 · `fix/hide-leaderboard-process-change-residual-banner` · commit `3eee6c57`)**: The kiosk leader-order board no longer renders the amber **「工程変更残骸疑い」** summary banner. **API exclusion and residual meta are unchanged** — suspected rows stay out of normal `rows`, and the API still returns `processChangeResidualTotal` / `processChangeResidualRows` / `processChangeResidualRepresentativeLimit` for cache / append-override fingerprinting. This is **not** a performance optimization. **Local Notes JA**: オペレータの Status 操作忘れにより、本来は非表示 Status 相当の可能性が高い行を通常順位に戻さないため、警告バナーのみ非表示にする。`LeaderBoardProcessChangeResidualSummary.tsx` remains in the repo but is **not connected** from `ProductionScheduleLeaderOrderBoardPage.tsx`.
+
+**Production deploy (banner hide · Pi5 + Pi4×4 sequential)**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+for host in raspberrypi5 raspberrypi4 raspi4-robodrill01 raspi4-fjv60-80 raspi4-kensaku-stonebase01; do
+  ./scripts/update-all-clients.sh fix/hide-leaderboard-process-change-residual-banner \
+    infrastructure/ansible/inventory.yml --limit "$host" --detach --follow
+done
+```
+
+| Host | Detach Run ID | PLAY RECAP |
+|------|---------------|------------|
+| `raspberrypi5` | `20260618-164352-25369` | ok=134 / changed=4 / **failed=0** (web rebuild) |
+| `raspberrypi4` | `20260618-164859-22245` | ok=122 / **failed=0** |
+| `raspi4-robodrill01` | `20260618-165341-128` | ok=122 / **failed=0** |
+| `raspi4-fjv60-80` | `20260618-165715-24655` | ok=122 / changed=9 / **failed=0** |
+| `raspi4-kensaku-stonebase01` | `20260618-170057-1813` | ok=129 / changed=11 / **failed=0** |
+
+**Post-deploy verification (2026-06-18)**:
+
+- `verify-phase12-real.sh`: **PASS 43 / WARN 0 / FAIL 0** (~34s)
+- Pi5 web dist: string **「工程変更残骸疑い」** absent from bundled JS (tree-shake OK)
+- `GET /api/kiosk/production-schedule/leaderboard-board` (FJV profile): **HTTP 200**; `processChangeResidualTotal=20`, `processChangeResidualRows` populated, `processChangeResidualRepresentativeLimit=20`
+- CI run `27742291658` (branch head `3eee6c57`): all jobs success
 
 ## Fix
 
