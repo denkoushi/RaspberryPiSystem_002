@@ -32,7 +32,8 @@ import type { LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot
 import { fetchLeaderboardProcessChangeResidualSummary } from './leaderboard-process-change-residual.service.js';
 import {
   materializeProcessChangeResidualStrongEvidence,
-  type ProcessChangeResidualStrongEvidenceMaterialization
+  type ProcessChangeResidualStrongEvidenceMaterialization,
+  type ProcessChangeResidualStrongEvidenceMaterializationTelemetryEvent
 } from './leaderboard-process-change-residual.materialization.js';
 import { readLeaderboardShellSnapshotGenerationTokenDetails } from './leaderboard-shell-snapshot-generation.js';
 import type { ProcessChangeResidualEvidence } from './leaderboard-process-change-residual.types.js';
@@ -41,20 +42,74 @@ import { attachLeaderboardLaborMinutes, type LeaderboardLaborMinutesLookupContex
 /** キオスク順位ボード通常表示: 強い工程変更残骸疑いを通常候補から除外する。 */
 const KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE = 'normal' as const;
 
-async function resolveLeaderboardBoardProcessChangeResidualContext(): Promise<{
+async function resolveLeaderboardBoardProcessChangeResidualContext(
+  sink: LeaderboardBoardPerformanceSink | undefined,
+  endpoint: 'shell' | 'continue',
+  eventBase: Pick<LeaderboardBoardPerformanceEvent, 'resourceCount' | 'chunkSize'>
+): Promise<{
   generationToken: string;
   processChangeResidualMaterialization: ProcessChangeResidualStrongEvidenceMaterialization;
 }> {
-  const initialTokenDetails = await readLeaderboardShellSnapshotGenerationTokenDetails();
-  const processChangeResidualMaterialization = await materializeProcessChangeResidualStrongEvidence(prisma, {
-    fkojunstStatusMailRowsRevision: initialTokenDetails.fkojunstStatusMailRowsRevision
-  });
+  const initialTokenDetails = await measureLeaderboardBoardPhase(
+    sink,
+    {
+      endpoint,
+      phase: 'processChangeResidualContext',
+      subphase: 'generationTokenInitial',
+      ...eventBase
+    },
+    () => readLeaderboardShellSnapshotGenerationTokenDetails()
+  );
+
+  let materializationTelemetry: ProcessChangeResidualStrongEvidenceMaterializationTelemetryEvent | undefined;
+  const processChangeResidualMaterialization = await measureLeaderboardBoardPhase(
+    sink,
+    {
+      endpoint,
+      phase: 'processChangeResidualContext',
+      subphase: 'residualMaterialization',
+      ...eventBase
+    },
+    () =>
+      materializeProcessChangeResidualStrongEvidence(prisma, {
+        fkojunstStatusMailRowsRevision: initialTokenDetails.fkojunstStatusMailRowsRevision,
+        telemetry: (event) => {
+          materializationTelemetry = event;
+        }
+      }),
+    (materialization) => ({
+      cacheHit: materializationTelemetry?.cacheHit,
+      rawRowCount: materializationTelemetry?.rawRowCount,
+      normalizedRowCount: materializationTelemetry?.normalizedRowCount,
+      dedupedRowCount: materializationTelemetry?.dedupedRowCount,
+      strongEvidenceKeyCount:
+        materializationTelemetry?.strongEvidenceKeyCount ?? materialization.keys.size,
+      revisionChanged:
+        materialization.rawMailRowsRevision !== initialTokenDetails.fkojunstStatusMailRowsRevision,
+      sourceRowFetchDurationMs: materializationTelemetry?.sourceRowFetchDurationMs,
+      normalizeDurationMs: materializationTelemetry?.normalizeDurationMs,
+      dedupeDurationMs: materializationTelemetry?.dedupeDurationMs,
+      buildEvidenceDurationMs: materializationTelemetry?.buildEvidenceDurationMs
+    })
+  );
+
   const tokenDetails =
     processChangeResidualMaterialization.rawMailRowsRevision === initialTokenDetails.fkojunstStatusMailRowsRevision
       ? initialTokenDetails
-      : await readLeaderboardShellSnapshotGenerationTokenDetails({
-          fkojunstStatusMailRowsRevision: processChangeResidualMaterialization.rawMailRowsRevision
-        });
+      : await measureLeaderboardBoardPhase(
+          sink,
+          {
+            endpoint,
+            phase: 'processChangeResidualContext',
+            subphase: 'generationTokenRefresh',
+            revisionChanged: true,
+            ...eventBase
+          },
+          () =>
+            readLeaderboardShellSnapshotGenerationTokenDetails({
+              fkojunstStatusMailRowsRevision: processChangeResidualMaterialization.rawMailRowsRevision
+            })
+        );
   return {
     generationToken: tokenDetails.generationToken,
     processChangeResidualMaterialization
@@ -70,6 +125,17 @@ export type LeaderboardBoardPerformanceEvent = {
   ok?: boolean;
   errorName?: string;
   errorCode?: string;
+  subphase?: string;
+  cacheHit?: boolean;
+  rawRowCount?: number;
+  normalizedRowCount?: number;
+  dedupedRowCount?: number;
+  strongEvidenceKeyCount?: number;
+  revisionChanged?: boolean;
+  sourceRowFetchDurationMs?: number;
+  normalizeDurationMs?: number;
+  dedupeDurationMs?: number;
+  buildEvidenceDurationMs?: number;
   resourceCd?: string;
   resourceCount?: number;
   rowCount?: number;
@@ -90,6 +156,10 @@ type LeaderboardBoardServiceDeps = {
   performanceSink?: LeaderboardBoardPerformanceSink;
 };
 
+function roundOptionalDurationMs(value: number | undefined): number | undefined {
+  return value == null ? undefined : Math.round(value);
+}
+
 function emitLeaderboardBoardPerformance(
   sink: LeaderboardBoardPerformanceSink | undefined,
   event: LeaderboardBoardPerformanceEvent
@@ -98,7 +168,11 @@ function emitLeaderboardBoardPerformance(
   try {
     sink({
       ...event,
-      durationMs: Math.round(event.durationMs)
+      durationMs: Math.round(event.durationMs),
+      sourceRowFetchDurationMs: roundOptionalDurationMs(event.sourceRowFetchDurationMs),
+      normalizeDurationMs: roundOptionalDurationMs(event.normalizeDurationMs),
+      dedupeDurationMs: roundOptionalDurationMs(event.dedupeDurationMs),
+      buildEvidenceDurationMs: roundOptionalDurationMs(event.buildEvidenceDurationMs)
     });
   } catch {
     // 計測ログは診断専用。sink 側の失敗で表示 API を壊さない。
@@ -282,7 +356,10 @@ export async function fetchLeaderboardCompositeBoardShell(
         phase: 'processChangeResidualContext',
         resourceCount: params.boardResourceCds.length
       },
-      resolveLeaderboardBoardProcessChangeResidualContext
+      () =>
+        resolveLeaderboardBoardProcessChangeResidualContext(sink, 'shell', {
+          resourceCount: params.boardResourceCds.length
+        })
     );
   const processChangeResidualStrongEvidenceKeys = processChangeResidualMaterialization.keys;
   const leaderboardMaterializedBaseWhere = await measureLeaderboardBoardPhase(
@@ -552,7 +629,11 @@ export async function continueLeaderboardCompositeBoard(
         resourceCount: params.boardResourceCds.length,
         chunkSize
       },
-      resolveLeaderboardBoardProcessChangeResidualContext
+      () =>
+        resolveLeaderboardBoardProcessChangeResidualContext(sink, 'continue', {
+          resourceCount: params.boardResourceCds.length,
+          chunkSize
+        })
     );
   const processChangeResidualStrongEvidenceKeys = processChangeResidualMaterialization.keys;
   const leaderboardMaterializedBaseWhere = await measureLeaderboardBoardPhase(

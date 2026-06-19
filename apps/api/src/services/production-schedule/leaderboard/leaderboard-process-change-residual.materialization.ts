@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks';
 import type { prisma as prismaSingleton } from '../../../lib/prisma.js';
 import {
   collectFkojunstMailNormalizedRowsFromSourceRows,
@@ -25,6 +26,23 @@ export type ProcessChangeResidualStrongEvidenceMaterialization = {
   keyArrays: ProcessChangeResidualStrongEvidenceKeyArrays;
   evidenceByKey: ReadonlyMap<string, Omit<ProcessChangeResidualEvidence, never>>;
   rawMailRowsRevision?: string;
+};
+
+export type ProcessChangeResidualStrongEvidenceMaterializationTelemetryEvent = {
+  cacheHit: boolean;
+  rawRowCount?: number;
+  normalizedRowCount?: number;
+  dedupedRowCount?: number;
+  strongEvidenceKeyCount?: number;
+  sourceRowFetchDurationMs?: number;
+  normalizeDurationMs?: number;
+  dedupeDurationMs?: number;
+  buildEvidenceDurationMs?: number;
+};
+
+export type ProcessChangeResidualStrongEvidenceMaterializationOptions = {
+  fkojunstStatusMailRowsRevision?: string;
+  telemetry?: (event: ProcessChangeResidualStrongEvidenceMaterializationTelemetryEvent) => void;
 };
 
 type PrismaClientLike = Pick<typeof prismaSingleton, 'csvDashboardRow' | '$queryRaw'>;
@@ -137,13 +155,25 @@ export function resetProcessChangeResidualStrongEvidenceMaterializationCacheForT
   materializationCache = undefined;
 }
 
+function emitProcessChangeResidualStrongEvidenceMaterializationTelemetry(
+  telemetry: ProcessChangeResidualStrongEvidenceMaterializationOptions['telemetry'],
+  event: ProcessChangeResidualStrongEvidenceMaterializationTelemetryEvent
+): void {
+  if (!telemetry) return;
+  try {
+    telemetry(event);
+  } catch {
+    // 計測 callback は診断専用。失敗しても residual 判定結果を壊さない。
+  }
+}
+
 /**
  * raw `FKOJUNST_Status` を読み、{@link dedupeFkojunstMailRowsByLatest} と同型で最新化して強い疑いキー集合を返す。
  * SQL 相関 / cast は使わず、メール同期 pipeline と同一の JS 正本で residual 判定する。
  */
 export async function materializeProcessChangeResidualStrongEvidence(
   prisma: PrismaClientLike,
-  options?: { fkojunstStatusMailRowsRevision?: string }
+  options?: ProcessChangeResidualStrongEvidenceMaterializationOptions
 ): Promise<ProcessChangeResidualStrongEvidenceMaterialization> {
   const requestedRawMailRevision = options?.fkojunstStatusMailRowsRevision?.trim();
   if (
@@ -151,15 +181,42 @@ export async function materializeProcessChangeResidualStrongEvidence(
     requestedRawMailRevision.length > 0 &&
     materializationCache?.rawMailRowsRevision === requestedRawMailRevision
   ) {
+    emitProcessChangeResidualStrongEvidenceMaterializationTelemetry(options?.telemetry, {
+      cacheHit: true,
+      strongEvidenceKeyCount: materializationCache.materialization.keys.size
+    });
     return materializationCache.materialization;
   }
 
+  const sourceRowFetchStarted = performance.now();
   const { sourceRows, signals } = await fetchFkojunstStatusMailSourceRowsWithGenerationSignals(prisma);
+  const sourceRowFetchDurationMs = performance.now() - sourceRowFetchStarted;
   const rowsRevision = signals.rowsRevision;
 
+  const normalizeStarted = performance.now();
   const { normalizedRows } = collectFkojunstMailNormalizedRowsFromSourceRows(sourceRows);
+  const normalizeDurationMs = performance.now() - normalizeStarted;
+
+  const dedupeStarted = performance.now();
   const dedupedRows = dedupeFkojunstMailRowsByLatest(normalizedRows);
+  const dedupeDurationMs = performance.now() - dedupeStarted;
+
+  const buildEvidenceStarted = performance.now();
   const materialization = buildProcessChangeResidualStrongEvidenceFromDedupedRows(dedupedRows);
+  const buildEvidenceDurationMs = performance.now() - buildEvidenceStarted;
+
+  emitProcessChangeResidualStrongEvidenceMaterializationTelemetry(options?.telemetry, {
+    cacheHit: false,
+    rawRowCount: sourceRows.length,
+    normalizedRowCount: normalizedRows.length,
+    dedupedRowCount: dedupedRows.length,
+    strongEvidenceKeyCount: materialization.keys.size,
+    sourceRowFetchDurationMs,
+    normalizeDurationMs,
+    dedupeDurationMs,
+    buildEvidenceDurationMs
+  });
+
   const materializationWithRevision = {
     ...materialization,
     rawMailRowsRevision: rowsRevision

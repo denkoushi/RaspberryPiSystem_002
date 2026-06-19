@@ -68,7 +68,8 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     expect(readSpy).toHaveBeenCalledTimes(1);
     expect(readSpy).toHaveBeenCalledWith();
     expect(materializeSpy).toHaveBeenCalledWith(expect.anything(), {
-      fkojunstStatusMailRowsRevision: 'revision-1'
+      fkojunstStatusMailRowsRevision: 'revision-1',
+      telemetry: expect.any(Function)
     });
     expect(shellSpy).toHaveBeenCalledTimes(3);
     for (const call of shellSpy.mock.calls) {
@@ -248,6 +249,26 @@ describe('leaderboard-composite-board generation token prefetch', () => {
         'requestTotal'
       ])
     );
+    const contextEvents = events.filter((event) => event.phase === 'processChangeResidualContext');
+    expect(contextEvents.filter((event) => event.subphase == null)).toHaveLength(1);
+    expect(contextEvents).toContainEqual(
+      expect.objectContaining({
+        endpoint: 'shell',
+        phase: 'processChangeResidualContext',
+        subphase: 'generationTokenInitial',
+        ok: true
+      })
+    );
+    expect(contextEvents).toContainEqual(
+      expect.objectContaining({
+        endpoint: 'shell',
+        phase: 'processChangeResidualContext',
+        subphase: 'residualMaterialization',
+        revisionChanged: false,
+        ok: true
+      })
+    );
+    expect(contextEvents.some((event) => event.subphase === 'generationTokenRefresh')).toBe(false);
     expect(events.filter((event) => event.phase === 'resourceShell')).toHaveLength(2);
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -327,6 +348,106 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     for (const event of events) {
       expect(event.ok).toBe(true);
     }
+  });
+
+  it('emits processChangeResidualContext subphase events including revision refresh when materialization observes newer revision', async () => {
+    vi.spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere').mockResolvedValue(Prisma.empty);
+    vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockImplementation(
+      async (_prisma, options) => {
+        options?.telemetry?.({
+          cacheHit: false,
+          rawRowCount: 10,
+          normalizedRowCount: 9,
+          dedupedRowCount: 8,
+          strongEvidenceKeyCount: 2,
+          sourceRowFetchDurationMs: 12.5,
+          normalizeDurationMs: 3.2,
+          dedupeDurationMs: 1.1,
+          buildEvidenceDurationMs: 0.8
+        });
+        return {
+          keys: new Set(['k1', 'k2']),
+          keyArrays: { productNos: [], fkojuns: [], resourceCds: [] },
+          evidenceByKey: new Map(),
+          rawMailRowsRevision: 'revision-2'
+        };
+      }
+    );
+    vi.spyOn(residualService, 'fetchLeaderboardProcessChangeResidualSummary').mockResolvedValue({
+      processChangeResidualTotal: 0,
+      processChangeResidualRows: [],
+      processChangeResidualRepresentativeLimit: 20
+    });
+    const readSpy = vi
+      .spyOn(generation, 'readLeaderboardShellSnapshotGenerationTokenDetails')
+      .mockResolvedValueOnce({
+        generationToken: '{"generation":"1"}',
+        fkojunstStatusMailRowsRevision: 'revision-1'
+      })
+      .mockResolvedValueOnce({
+        generationToken: '{"generation":"2"}',
+        fkojunstStatusMailRowsRevision: 'revision-2'
+      });
+    vi.spyOn(queryService, 'listLeaderboardShellProductionScheduleRows').mockResolvedValue({
+      page: 1,
+      pageSize: 80,
+      rows: [],
+      snapshotId: 'snap-1',
+      nextCursor: 0,
+      hasMore: false
+    });
+    const performanceSink = vi.fn();
+
+    await fetchLeaderboardCompositeBoardShell(
+      {
+        listParamsBase: {
+          queryText: '',
+          productNos: [],
+          locationKey: 'loc-1'
+        },
+        boardResourceCds: ['1'],
+        page: 1,
+        pageSize: 80,
+        includeDecorations: false,
+        deferTotals: true
+      },
+      {
+        snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 10_000 }),
+        performanceSink
+      }
+    );
+
+    const contextEvents = performanceSink.mock.calls
+      .map(([event]) => event)
+      .filter((event) => event.phase === 'processChangeResidualContext');
+    expect(contextEvents.filter((event) => event.subphase == null)).toHaveLength(1);
+    expect(contextEvents).toContainEqual(
+      expect.objectContaining({
+        endpoint: 'shell',
+        subphase: 'residualMaterialization',
+        cacheHit: false,
+        rawRowCount: 10,
+        normalizedRowCount: 9,
+        dedupedRowCount: 8,
+        strongEvidenceKeyCount: 2,
+        revisionChanged: true,
+        sourceRowFetchDurationMs: 13,
+        normalizeDurationMs: 3,
+        dedupeDurationMs: 1,
+        buildEvidenceDurationMs: 1
+      })
+    );
+    expect(contextEvents).toContainEqual(
+      expect.objectContaining({
+        endpoint: 'shell',
+        subphase: 'generationTokenRefresh',
+        revisionChanged: true
+      })
+    );
+    expect(readSpy).toHaveBeenCalledTimes(2);
+    expect(readSpy).toHaveBeenNthCalledWith(2, {
+      fkojunstStatusMailRowsRevision: 'revision-2'
+    });
   });
 
   it('emits failed phase performance events before rethrowing', async () => {
