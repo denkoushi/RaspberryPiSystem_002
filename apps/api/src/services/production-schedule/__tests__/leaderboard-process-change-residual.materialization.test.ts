@@ -129,22 +129,23 @@ describe('dedupeFkojunstMailRowsByLatest alignment', () => {
 describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
   it('reuses materialization by raw mail revision', async () => {
     const rowsRevision = '1:2026-04-23T00:00:00.000Z:2026-04-23T00:00:00.000Z';
-    const findMany = vi.fn().mockResolvedValue([
+    const queryRaw = vi.fn().mockResolvedValue([
       {
         id: 'raw-1',
+        FKOJUN: '210',
+        FKOTEICD: '1',
+        FSEZONO: 'PCR-CACHE',
+        FKOJUNST: 'S',
+        FUPDTEDT: '2026-04-23T15:50:35.987',
         createdAt: new Date('2026-04-23T00:00:00.000Z'),
-        rowData: {
-          FKOJUN: '210',
-          FKOTEICD: '1',
-          FSEZONO: 'PCR-CACHE',
-          FKOJUNST: 'S',
-          FUPDTEDT: '2026-04-23T15:50:35.987'
-        }
+        updatedAt: null,
+        sourceRowOrdinal: 1,
+        sourceIngestRunStartedAt: null,
+        sourceIngestRunCompletedAt: null
       }
     ]);
     const prisma = {
-      csvDashboardRow: { findMany },
-      $queryRaw: vi.fn()
+      $queryRaw: queryRaw
     };
 
     const first = await materializeProcessChangeResidualStrongEvidence(prisma as never, {
@@ -156,27 +157,28 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
 
     expect(second).toBe(first);
     expect(first.rawMailRowsRevision).toBe(rowsRevision);
-    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it('emits cache-hit telemetry without refetching source rows', async () => {
     const rowsRevision = '1:2026-04-23T00:00:00.000Z:2026-04-23T00:00:00.000Z';
-    const findMany = vi.fn().mockResolvedValue([
+    const queryRaw = vi.fn().mockResolvedValue([
       {
         id: 'raw-1',
+        FKOJUN: '210',
+        FKOTEICD: '1',
+        FSEZONO: 'PCR-CACHE',
+        FKOJUNST: 'S',
+        FUPDTEDT: '2026-04-23T15:50:35.987',
         createdAt: new Date('2026-04-23T00:00:00.000Z'),
-        rowData: {
-          FKOJUN: '210',
-          FKOTEICD: '1',
-          FSEZONO: 'PCR-CACHE',
-          FKOJUNST: 'S',
-          FUPDTEDT: '2026-04-23T15:50:35.987'
-        }
+        updatedAt: null,
+        sourceRowOrdinal: 1,
+        sourceIngestRunStartedAt: null,
+        sourceIngestRunCompletedAt: null
       }
     ]);
     const prisma = {
-      csvDashboardRow: { findMany },
-      $queryRaw: vi.fn()
+      $queryRaw: queryRaw
     };
     const telemetry = vi.fn();
 
@@ -188,7 +190,7 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
       telemetry
     });
 
-    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
     expect(telemetry).toHaveBeenCalledWith({
       cacheHit: true,
       strongEvidenceKeyCount: 0
@@ -196,23 +198,23 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
   });
 
   it('emits source row counts and stage durations on cache miss', async () => {
-    const findMany = vi.fn().mockResolvedValue([
+    const queryRaw = vi.fn().mockResolvedValue([
       {
         id: 'raw-1',
+        FKOJUN: '210',
+        FKOTEICD: '1',
+        FSEZONO: 'PCR-CACHE',
+        FKOJUNST: 'S',
+        FUPDTEDT: '2026-04-23T15:50:35.987',
         createdAt: new Date('2026-04-23T00:00:00.000Z'),
         updatedAt: new Date('2026-04-24T00:00:00.000Z'),
-        rowData: {
-          FKOJUN: '210',
-          FKOTEICD: '1',
-          FSEZONO: 'PCR-CACHE',
-          FKOJUNST: 'S',
-          FUPDTEDT: '2026-04-23T15:50:35.987'
-        }
+        sourceRowOrdinal: 1,
+        sourceIngestRunStartedAt: null,
+        sourceIngestRunCompletedAt: null
       }
     ]);
     const prisma = {
-      csvDashboardRow: { findMany },
-      $queryRaw: vi.fn()
+      $queryRaw: queryRaw
     };
     const telemetry = vi.fn();
 
@@ -240,23 +242,23 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
   });
 
   it('does not fail materialization when telemetry callback throws', async () => {
-    const findMany = vi.fn().mockResolvedValue([
+    const queryRaw = vi.fn().mockResolvedValue([
       {
         id: 'raw-1',
+        FKOJUN: '210',
+        FKOTEICD: '1',
+        FSEZONO: 'PCR-CACHE',
+        FKOJUNST: 'S',
+        FUPDTEDT: '2026-04-23T15:50:35.987',
         createdAt: new Date('2026-04-23T00:00:00.000Z'),
         updatedAt: new Date('2026-04-24T00:00:00.000Z'),
-        rowData: {
-          FKOJUN: '210',
-          FKOTEICD: '1',
-          FSEZONO: 'PCR-CACHE',
-          FKOJUNST: 'S',
-          FUPDTEDT: '2026-04-23T15:50:35.987'
-        }
+        sourceRowOrdinal: 1,
+        sourceIngestRunStartedAt: null,
+        sourceIngestRunCompletedAt: null
       }
     ]);
     const prisma = {
-      csvDashboardRow: { findMany },
-      $queryRaw: vi.fn()
+      $queryRaw: queryRaw
     };
 
     await expect(
@@ -273,23 +275,23 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
   });
 
   it('stamps materialization with the revision observed from fetched raw rows', async () => {
-    const findMany = vi.fn().mockResolvedValue([
+    const queryRaw = vi.fn().mockResolvedValue([
       {
         id: 'raw-1',
+        FKOJUN: '210',
+        FKOTEICD: '1',
+        FSEZONO: 'PCR-CACHE',
+        FKOJUNST: 'S',
+        FUPDTEDT: '2026-04-23T15:50:35.987',
         createdAt: new Date('2026-04-23T00:00:00.000Z'),
         updatedAt: new Date('2026-04-24T00:00:00.000Z'),
-        rowData: {
-          FKOJUN: '210',
-          FKOTEICD: '1',
-          FSEZONO: 'PCR-CACHE',
-          FKOJUNST: 'S',
-          FUPDTEDT: '2026-04-23T15:50:35.987'
-        }
+        sourceRowOrdinal: 1,
+        sourceIngestRunStartedAt: null,
+        sourceIngestRunCompletedAt: null
       }
     ]);
     const prisma = {
-      csvDashboardRow: { findMany },
-      $queryRaw: vi.fn()
+      $queryRaw: queryRaw
     };
 
     const materialization = await materializeProcessChangeResidualStrongEvidence(prisma as never, {
@@ -299,6 +301,6 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
     expect(materialization.rawMailRowsRevision).toBe(
       '1:2026-04-23T00:00:00.000Z:2026-04-24T00:00:00.000Z'
     );
-    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
   });
 });
