@@ -1,11 +1,12 @@
 ---
 id: leaderboard-defer-totals-performance-recovery
-status: pi5_api_perf_optimization_deployed
-scope: kiosk leader order board API performance (attachLabor prefix cache + perf logging)
+status: pi5_residual_context_measurement_deployed
+scope: kiosk leader order board API performance (residual context subphase telemetry)
 date: 2026-06-19
 source_of_truth: true
 related_code:
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts
+  - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.materialization.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-prefix-row-cache.ts
   - apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardFetchParams.ts
@@ -14,10 +15,10 @@ related_docs:
   - docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md
   - docs/knowledge-base/KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md
   - docs/guides/deployment.md
-validation: focused api tests 11 PASS · full api tests 1981 PASS · CI 27797455743 success · Pi5 deploy 20260619-093623-144 · verify-phase12-real PASS 43/0/0 · stonebase continue bench row ids match
+validation: focused api tests 20 PASS · CI 27800293596 success · Pi5 deploy 20260619-113535-25865 · verify-phase12-real PASS 43/0/0 · stonebase shell/continue contract preserved · subphase perf log verified (temporary flag)
 open_items:
-  - Reduce `processChangeResidualContext` cost (still multi-second on warm shell)
-  - Re-enable `LEADERBOARD_BOARD_PERF_LOG=true` on Pi5 only when collecting phase timings (manual `.env`; lost on standard deploy)
+  - Reduce `processChangeResidualContext` cost using subphase timings (DB fetch dominates cold shell on stonebase)
+  - Re-enable `LEADERBOARD_BOARD_PERF_LOG=true` on Pi5 only when collecting another timed stonebase session (manual `.env`; lost on standard deploy)
   - Pi4 Web rollout for deferTotals UX (phase 1 Web) remains separate; API-only fix needs no Pi4 deploy
   - Evaluate client continue chunk default (160) after sustained Pi5 observation
 ---
@@ -172,7 +173,10 @@ When enabled, `GET /api/kiosk/production-schedule/leaderboard-board` and `POST /
 
 - `endpoint`: `shell` or `continue`
 - `phase`: `processChangeResidualContext`, `materializedBaseWhere`, `resourceShell`, `processChangeResidualSummary`, `resourceTotals`, `resourceContinue`, `assembleResource`, `attachLabor`, `decorate`, `requestTotal`
-- counts and flags: `resourceCd`, `resourceCount`, `rowCount`, `deltaRowCount`, `hasMore`, `hasMoreCount`, `total`, `snapshotExpired`, `includeDecorations`, `chunkSize`, `deferredTotals`
+- `subphase` (under `processChangeResidualContext` only): `generationTokenInitial`, `residualMaterialization`, `generationTokenRefresh`
+- counts and flags: `resourceCd`, `resourceCount`, `rowCount`, `deltaRowCount`, `hasMore`, `hasMoreCount`, `total`, `snapshotExpired`, `includeDecorations`, `chunkSize`, `deferredTotals`, `cacheHit`, `revisionChanged`, `rawRowCount`, `normalizedRowCount`, `dedupedRowCount`, `strongEvidenceKeyCount`
+- materialization stage durations (under `subphase=residualMaterialization`): `sourceRowFetchDurationMs`, `normalizeDurationMs`, `dedupeDurationMs`, `buildEvidenceDurationMs`
+- Parent `processChangeResidualContext` events omit `subphase`; treat `subphase == null` as the parent total when aggregating.
 
 Use these logs to decide whether the next minimal fix should target row selection, process-change residual materialization, labor lookup, continue assembly, or snapshot TTL/process locality.
 
@@ -273,7 +277,60 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - Warm continue total (~75s for stonebase full board at chunk 160) improved vs pre-fix cold sample (~222s); treat as directional — mixed cold/warm and residual context still apply.
 - `LEADERBOARD_BOARD_PERF_LOG` was **not** in Pi5 `.env` after standard deploy (prior manual flag removed). Re-add temporarily for phase-level `attachLabor` proof if needed.
 
-**Next minimal work**: profile and reduce `processChangeResidualContext` (still dominates cold shell); optional re-enable perf log flag for one timed stonebase session.
+**Next minimal work**: reduce `processChangeResidualContext` using subphase timings (cold stonebase: DB fetch dominates); optional re-enable perf log flag for another timed session.
+
+### Pi5 residual context measurement deploy (2026-06-19)
+
+**Branch**: `chore/leaderboard-residual-context-measurement` · **HEAD**: `42c2c483` (`chore: instrument leaderboard residual context`)
+
+**Scope (API only, no Prisma / Web change)**:
+
+- Split `processChangeResidualContext` into opt-in subphase perf events: `generationTokenInitial`, `residualMaterialization`, `generationTokenRefresh`.
+- Forward materialization counts + stage durations (`sourceRowFetchDurationMs`, `normalizeDurationMs`, `dedupeDurationMs`, `buildEvidenceDurationMs`) into board perf logs.
+- Optional materialization `telemetry` callback; failures in telemetry do not break residual materialization.
+- Response contract unchanged; perf log default OFF.
+
+**Deploy target**: **`raspberrypi5` only** (Pi4/Pi3 not required for API-only change).
+
+**Command** (standard):
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh chore/leaderboard-residual-context-measurement \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+| Field | Value |
+|-------|-------|
+| Detach Run ID | `20260619-113535-25865` |
+| Git on Pi5 | `42c2c483` |
+| Ansible PLAY RECAP | `ok=134` `changed=4` **`failed=0`** |
+| Phase12 | **PASS 43 / WARN 0 / FAIL 0** (~57s) |
+| Post-deploy health | `status: ok` after brief post-recreate memory spike (same pattern as prior api rebuild) |
+
+**Post-deploy verification (Mac → Pi5, read-only unless noted)**:
+
+| Check | Result |
+|-------|--------|
+| `benchmark-leaderboard-board-shell.mjs --profile stonebase --runs 2` | run1 ~21.2s · run2 ~22.0s · rows=569 total=3619 |
+| `benchmark-leaderboard-continue-chunk.mjs --profile stonebase` | pageSize **160**: total ~94.0s · **7** continue rounds · **3619** rows · row ids **match** · gate **PASS** |
+| Temporary `LEADERBOARD_BOARD_PERF_LOG=true` + 1 stonebase shell | subphase logs emitted; cold sample below |
+
+**Subphase log sample (stonebase shell, cold after API recreate, flag temporarily enabled then restored)**:
+
+| Event | durationMs | Notes |
+|-------|------------|-------|
+| `subphase=generationTokenInitial` | 2339 | generation token SQL |
+| `subphase=residualMaterialization` | 39198 | `sourceRowFetchDurationMs=36622` · `normalizeDurationMs=1867` · `dedupeDurationMs=472` · `buildEvidenceDurationMs=237` · `rawRowCount=390372` · `dedupedRowCount=315854` · `strongEvidenceKeyCount=114` |
+| parent `processChangeResidualContext` (no subphase) | 41539 | sum of subphases |
+
+**Interpretation**:
+
+- Instrumentation works on Pi5; DB source-row fetch is the dominant cost inside cold `residualMaterialization` (~93% of that subphase in this sample).
+- Warm shell (~21–22s) and continue contract (`3619` rows, matching ids) preserved after deploy.
+- `LEADERBOARD_BOARD_PERF_LOG` restored to OFF after verification (standard deploy does not persist manual flag).
+
+**Next minimal work**: optimize raw mail source fetch / materialization cache path for cold shell; use subphase logs to validate any fix before broader rollout.
 
 ## Local Notes JA
 
