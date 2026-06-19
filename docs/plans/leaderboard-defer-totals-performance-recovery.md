@@ -1,13 +1,14 @@
 ---
 id: leaderboard-defer-totals-performance-recovery
-status: pi5_residual_context_measurement_deployed
-scope: kiosk leader order board API performance (residual context subphase telemetry)
+status: pi5_source_row_projection_deployed
+scope: kiosk leader order board API performance (residual context subphase telemetry + source row projection)
 date: 2026-06-19
 source_of_truth: true
 related_code:
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.materialization.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-prefix-row-cache.ts
+  - apps/api/src/services/production-schedule/fkojunst-status-mail-source-rows.reader.ts
   - apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardFetchParams.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx
@@ -15,26 +16,60 @@ related_docs:
   - docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md
   - docs/knowledge-base/KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md
   - docs/guides/deployment.md
-validation: focused api tests 20 PASS · CI 27800293596 success · Pi5 deploy 20260619-113535-25865 · verify-phase12-real PASS 43/0/0 · stonebase shell/continue contract preserved · subphase perf log verified (temporary flag)
+validation: focused api tests 26 PASS · CI 27806781358 success · Pi5 deploy 20260619-143326-20869 · verify-phase12-real PASS 43/0/0 · stonebase shell contract preserved after deploy · continue benchmark needs quieter retry (temporary post-load memory degraded recovered)
 open_items:
-  - Reduce `processChangeResidualContext` cost using subphase timings (DB fetch dominates cold shell on stonebase)
-  - Re-enable `LEADERBOARD_BOARD_PERF_LOG=true` on Pi5 only when collecting another timed stonebase session (manual `.env`; lost on standard deploy)
-  - Pi4 Web rollout for deferTotals UX (phase 1 Web) remains separate; API-only fix needs no Pi4 deploy
+  - Re-measure cold `sourceRowFetchDurationMs` on Pi5 with `LEADERBOARD_BOARD_PERF_LOG=true` (temporary `.env`; lost on standard deploy) to confirm projection fix vs pre-fix ~36.6s sample
+  - Re-run `benchmark-leaderboard-continue-chunk.mjs --profile stonebase` in a quieter Pi5 window (initial post-deploy probe hit transient `memory:error` then recovered)
+  - Investigate warm `generationTokenInitial` (~7s when residual cache hits) after fetch path is validated
+  - Pi4 Web rollout for deferTotals UX (phase 1 Web) remains separate; latest API-only fixes need no Pi4 deploy
   - Evaluate client continue chunk default (160) after sustained Pi5 observation
 ---
 
 # Plan: Leaderboard deferTotals Performance Recovery
 
+## Handoff summary (2026-06-19)
+
+**Done this session**
+
+- Implemented `fetchFkojunstStatusMailSourceRowsOrdered()` as reader-boundary `$queryRaw` with JSONB key projection (`FKOJUN`, `FKOTEICD`, `FSEZONO`, `FKOJUNST`, `FUPDTEDT`) instead of full `rowData`.
+- Reconstructed minimal `rowData` for downstream pipeline compatibility; visibility filter and dedupe tie-break order unchanged.
+- Unified Prisma `ORDER BY` and raw SQL `ORDER BY` via `FKOJUNST_STATUS_MAIL_SOURCE_ROW_ORDER_SPEC` (Codex P3 drift fix).
+- Local: focused tests 26 PASS · typecheck/lint OK · temp Postgres migration/SQL/EXPLAIN OK.
+- CI: run **27806781358** success on branch `fix/fkojunst-source-row-order-sync` · commit **`ba7340a1`**.
+- Pi5 deploy: Detach **`20260619-143326-20869`** · PLAY RECAP **`failed=0`** · Phase12 **43/0/0**.
+
+**Spec (this change)**
+
+- File: `apps/api/src/services/production-schedule/fkojunst-status-mail-source-rows.reader.ts`
+- No Prisma migration / index / response contract change.
+- Raw SQL LEFT JOIN + `ImportStatus` visibility filter preserved.
+- Tests: reader visibility/order, materialization mocks switched to `$queryRaw` projected rows.
+
+**Key learnings**
+
+- Prior Pi5 EXPLAIN: full `rowData` ~15.5s vs required keys only ~1.5s on ~390k rows — fetch projection was the right minimal cold-path lever.
+- Subphase telemetry (prior deploy) showed `sourceRowFetchDurationMs` dominated cold `residualMaterialization` (~93%).
+- Post-deploy single stonebase shell: `shellMs=54880`, `rows=569`, `total=3619` (contract intact; perf log not re-run yet for subphase delta).
+- Heavy leaderboard probing during live Pi5 load can briefly push health to `memory:error` (~95%); service recovered to `status: ok` without rollback.
+
+**Next action**
+
+1. Temporarily enable `LEADERBOARD_BOARD_PERF_LOG=true` on Pi5 `.env`, run one cold stonebase shell, compare `sourceRowFetchDurationMs`.
+2. Re-run continue benchmark when Pi5 is quieter.
+3. If cold fetch is confirmed improved, next bottleneck is likely `generationTokenInitial` on warm path or continue assembly — pick one minimal PR.
+
 ## Goal
 
 Reduce kiosk leader order board **perceived latency** and **over-broad “updating” UI** without breaking existing board/continue/decorations contracts.
 
-**Phase 1 (this branch)**: Web low-risk fixes + minimal API/deploy hardening. **Does not** directly optimize 10s-class API shell work (phase 2).
+**Phase 1 (Web)**: deferTotals UX + sync separation — Pi5 deployed earlier; Pi4 Web rollout still separate.
+
+**Phase 2 (API)**: instrumentation → prefix labor cache → raw mail source projection (this session).
 
 ## Current branch and HEAD
 
-- **Branch**: `feat/leaderboard-defer-totals`
-- **Tip**: `14bb6e96` — fix(deploy): run playwright install from api workspace
+- **Branch (this work)**: `fix/fkojunst-source-row-order-sync`
+- **Tip**: `ba7340a1` — fix: reduce FKOJUNST source row fetch payload (+ Plan handoff update in same PR)
 - **Prisma / migration**: none
 
 ## Phase 1 specification (implemented)
@@ -331,6 +366,52 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - `LEADERBOARD_BOARD_PERF_LOG` restored to OFF after verification (standard deploy does not persist manual flag).
 
 **Next minimal work**: optimize raw mail source fetch / materialization cache path for cold shell; use subphase logs to validate any fix before broader rollout.
+
+### Pi5 source-row projection deploy (2026-06-19)
+
+**Branch**: `fix/fkojunst-source-row-order-sync` · **HEAD**: `ba7340a1` (`fix: reduce FKOJUNST source row fetch payload`)
+
+**Scope (API only, no Prisma / Web change)**:
+
+- Replace Prisma `findMany` full-`rowData` fetch in `fetchFkojunstStatusMailSourceRowsOrdered()` with raw SQL that projects only required `FKOJUNST_Status` keys.
+- Keep downstream contract by reconstructing the minimal `rowData` object inside the reader boundary.
+- Derive Prisma `orderBy` and raw SQL `ORDER BY` from one shared spec to prevent dedupe tie-break drift.
+
+**Deploy target**: **`raspberrypi5` only** (Pi4/Pi3 not required for API-only change).
+
+**Command** (standard):
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh fix/fkojunst-source-row-order-sync \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+| Field | Value |
+|-------|-------|
+| Detach Run ID | `20260619-143326-20869` |
+| Git on Pi5 | `ba7340a1` |
+| Ansible PLAY RECAP | `ok=134` `changed=4` **`failed=0`** |
+| Phase12 | **PASS 43 / WARN 0 / FAIL 0** |
+| Post-deploy health | immediate check `status: ok`; later heavy board/continue probing temporarily hit `memory:error` before recovering to `status: ok` |
+
+**Post-deploy verification (Mac → Pi5, read-only unless noted)**:
+
+| Check | Result |
+|-------|--------|
+| `curl -sk https://100.106.158.2/api/system/health` | initial `status: ok` (`database` / `memory` / `playwright` all `ok`) |
+| `node ./scripts/test/benchmark-leaderboard-board-shell.mjs --profile stonebase --runs 1` | `shellMs=54880` · `rows=569` · `total=3619` |
+| `NODE_TLS_REJECT_UNAUTHORIZED=0 node ./scripts/test/benchmark-leaderboard-continue-chunk.mjs --profile stonebase` | initial probe hit `HTTP 503` while Pi5 health was `memory:error` (`95.5%`) |
+| `curl -sk https://100.106.158.2/api/system/health` after cooldown | recovered to `status: ok` with `memory` warning level (~89.9%) |
+
+**Interpretation**:
+
+- The API-only deploy itself completed cleanly and standard regression checks stayed green.
+- The shell contract for `stonebase` remained intact after deploy (`569` rows, `3619` total).
+- Subphase perf improvement is **not yet quantified** on Pi5 after this deploy; re-enable perf flag for one cold shell before claiming fetch-time reduction.
+- A full continue benchmark should be re-run during a quieter Pi5 window because a live-load probe temporarily pushed health into `memory:error`; the service recovered without manual intervention.
+
+**Next minimal work**: quantify `sourceRowFetchDurationMs` delta on Pi5; then choose next single bottleneck (`generationTokenInitial` vs continue assembly).
 
 ## Local Notes JA
 
