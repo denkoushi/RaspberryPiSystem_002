@@ -213,6 +213,24 @@ Interpretation update:
 - Continue round 1 confirms `attachLabor` becomes larger as accumulated rows grow (`1547` rows / `978` delta rows -> ~13.0s).
 - Next minimal fix should target measurement-informed reduction of `attachLabor` repeated work and process-change residual materialization cost before changing client constants.
 
+### Local implementation draft (not deployed)
+
+Implemented locally on `chore/leaderboard-board-perf-logging` after the Pi5 timing pass:
+
+- Seed `leaderboard-board` prefix row cache with labor-attached rows after shell `attachLabor`.
+- Re-seed each continue snapshot prefix with labor-attached accumulated rows after continue `attachLabor`.
+- Preserve response shape and snapshot/continue cursor behavior.
+
+Expected effect: later continue rounds should skip labor lookup for already accumulated prefix rows and only attach labor metadata for newly added rows, reducing repeated `attachLabor` cost as the board grows.
+
+Validation:
+
+- `pnpm --filter @raspi-system/api exec vitest run src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-prefix-row-cache.test.ts`
+- `pnpm --filter @raspi-system/api build`
+- `pnpm --filter @raspi-system/api lint`
+
+Deployment status: **not deployed**. Next step is to run the same `stonebase` shell + continue timing after deploy and confirm `attachLabor` drops on continue round 2+.
+
 ## Local Notes JA
 
 - 初回 COUNT を `deferTotals=true` で避け、continue で exact total に戻す設計は [KB-374](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md) の continue 契約と両立。
