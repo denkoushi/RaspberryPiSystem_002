@@ -1,26 +1,25 @@
 ---
 id: leaderboard-defer-totals-performance-recovery
-status: pi5_deployed_pi4_pending
-scope: kiosk leader order board first-paint latency and sync UX (Web + API deploy)
-date: 2026-06-17
+status: pi5_api_perf_optimization_deployed
+scope: kiosk leader order board API performance (attachLabor prefix cache + perf logging)
+date: 2026-06-19
 source_of_truth: true
 related_code:
+  - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts
+  - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-prefix-row-cache.ts
+  - apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardFetchParams.ts
-  - apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardInteractionLockPolicy.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx
-  - apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardSeibanOrClientFilterOverlay.ts
-  - apps/api/src/routes/kiosk/production-schedule/shared.ts
-  - apps/api/src/services/signage/loan-grid/playwright/playwright-chromium-availability.ts
-  - infrastructure/docker/Dockerfile.api
 related_docs:
   - docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md
   - docs/knowledge-base/KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md
   - docs/guides/deployment.md
-validation: web/api unit tests PASS · CI 27618320442 success · Pi5 deploy 20260616-221700-6889 · verify-phase12-real PASS 43/0/0
+validation: focused api tests 11 PASS · full api tests 1981 PASS · CI 27797455743 success · Pi5 deploy 20260619-093623-144 · verify-phase12-real PASS 43/0/0 · stonebase continue bench row ids match
 open_items:
-  - Pi5 manual kiosk verification (leaderboard first paint, seiban reconcile, sync messages)
-  - Pi4×4 deploy after Pi5 sign-off
-  - Phase 2 API shell/COUNT bottleneck optimization (out of phase-1 scope)
+  - Reduce `processChangeResidualContext` cost (still multi-second on warm shell)
+  - Re-enable `LEADERBOARD_BOARD_PERF_LOG=true` on Pi5 only when collecting phase timings (manual `.env`; lost on standard deploy)
+  - Pi4 Web rollout for deferTotals UX (phase 1 Web) remains separate; API-only fix needs no Pi4 deploy
+  - Evaluate client continue chunk default (160) after sustained Pi5 observation
 ---
 
 # Plan: Leaderboard deferTotals Performance Recovery
@@ -137,6 +136,144 @@ Each Pi4: `update-all-clients.sh` with `--limit <host>` + force reload per [veri
 ## Phase 2 (open — not in this branch)
 
 API-side shell selection / winner materialization / COUNT path profiling and minimal query changes. Phase 1 improves client-side deferTotals consistency and UX only; root 10s-class latency may remain until phase 2.
+
+## Phase 2 investigation update (2026-06-19)
+
+Read-only Pi5 measurements from Mac confirmed the current bottleneck is still API-side, not only Pi4 browser rendering.
+
+Observed against `https://100.106.158.2`:
+
+| Probe | Result |
+|-------|--------|
+| `/api/system/health` | `200 ok`; DB, memory, Playwright OK |
+| `leaderboard-board` shell with `includeDecorations=false&deferTotals=true` | `robodrill` ~10.8s, `fjv` ~10.0s, `stonebase` ~12.4s |
+| `stonebase` `leaderboard-board/continue` | `pageSize=80` hit `snapshotExpired`; `pageSize=160` completed in ~222.5s total, ~207.8s continue, 7 rounds |
+| `stonebase` deferred decorations | priority 64 rows ~1.25s; first background 80 rows ~1.11s |
+| Pi5 system info after probes | CPU temp ~55.1C, load ~44%, maintenance false |
+
+Interpretation:
+
+- `deferTotals=true` avoids exact shell COUNT, but shell is still 10s-class.
+- Continue can exceed snapshot TTL / practical UX budget on large boards.
+- Deferred decorations are visible cost but not the primary bottleneck in this sample.
+- Recent `+人` labor metadata is a high-priority hypothesis because shell and continue both call `attachLeaderboardLaborMinutes`, but this is not yet confirmed.
+
+### Temporary performance instrumentation
+
+API-only opt-in instrumentation was added for the next investigation pass. Default is OFF and response contracts are unchanged.
+
+Enable on Pi5 only when collecting logs:
+
+```bash
+LEADERBOARD_BOARD_PERF_LOG=true
+```
+
+When enabled, `GET /api/kiosk/production-schedule/leaderboard-board` and `POST /api/kiosk/production-schedule/leaderboard-board/continue` emit `[leaderboard-board-performance]` log records with:
+
+- `endpoint`: `shell` or `continue`
+- `phase`: `processChangeResidualContext`, `materializedBaseWhere`, `resourceShell`, `processChangeResidualSummary`, `resourceTotals`, `resourceContinue`, `assembleResource`, `attachLabor`, `decorate`, `requestTotal`
+- counts and flags: `resourceCd`, `resourceCount`, `rowCount`, `deltaRowCount`, `hasMore`, `hasMoreCount`, `total`, `snapshotExpired`, `includeDecorations`, `chunkSize`, `deferredTotals`
+
+Use these logs to decide whether the next minimal fix should target row selection, process-change residual materialization, labor lookup, continue assembly, or snapshot TTL/process locality.
+
+### Pi5 instrumentation deploy and first logs
+
+Instrumentation branch:
+
+- Branch: `chore/leaderboard-board-perf-logging`
+- Commit: `4882bda1` (`chore: instrument leaderboard board performance`)
+- Pi5 deploy: `20260619-083502-12095`
+- PLAY RECAP: `ok=134 changed=4 failed=0`
+- Phase12: `PASS 43 / WARN 0 / FAIL 0`
+
+Temporary runtime flag:
+
+- `LEADERBOARD_BOARD_PERF_LOG=true` was added to Pi5 `infrastructure/docker/.env`.
+- Backup before edit: `infrastructure/docker/.env.leaderboard-perf.bak-20260619-084003`.
+- API health after recreate: `200 ok`.
+
+First instrumented `stonebase` request after API recreate:
+
+| Endpoint | Total | Dominant phases |
+|----------|-------|-----------------|
+| shell | ~78.5s | `processChangeResidualContext` ~62.0s, `materializedBaseWhere` ~6.1s, `attachLabor` ~5.2s, per-resource shell ~3.8-5.3s |
+| continue round 1 (`pageSize=160`) | ~39.8s | `processChangeResidualContext` ~21.3s, `attachLabor` ~13.0s, `resourceTotals` ~3.0s, per-resource continue ~5.3-5.5s |
+
+Warm follow-up `stonebase` shell:
+
+| Total | Dominant phases |
+|-------|-----------------|
+| ~14.3s | `processChangeResidualContext` ~4.7s, `attachLabor` ~5.1s, per-resource shell max ~4.2s, `processChangeResidualSummary` ~3.2s |
+
+Interpretation update:
+
+- Cold-start/process-change residual materialization can dominate the first request after API recreate.
+- Warm shell still has no single tiny culprit: `attachLabor`, process-change residual context/summary, and per-resource shell selection are all multi-second.
+- Continue round 1 confirms `attachLabor` becomes larger as accumulated rows grow (`1547` rows / `978` delta rows -> ~13.0s).
+- Next minimal fix should target measurement-informed reduction of `attachLabor` repeated work and process-change residual materialization cost before changing client constants.
+
+### Local implementation draft (not deployed)
+
+Implemented locally on `chore/leaderboard-board-perf-logging` after the Pi5 timing pass:
+
+- Seed `leaderboard-board` prefix row cache with labor-attached rows after shell `attachLabor`.
+- Re-seed each continue snapshot prefix with labor-attached accumulated rows after continue `attachLabor`.
+- Preserve response shape and snapshot/continue cursor behavior.
+
+Expected effect: later continue rounds should skip labor lookup for already accumulated prefix rows and only attach labor metadata for newly added rows, reducing repeated `attachLabor` cost as the board grows.
+
+Validation:
+
+- `pnpm --filter @raspi-system/api exec vitest run src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-prefix-row-cache.test.ts`
+- `pnpm --filter @raspi-system/api build`
+- `pnpm --filter @raspi-system/api lint`
+
+Deployment status: **not deployed**. Next step is to run the same `stonebase` shell + continue timing after deploy and confirm `attachLabor` drops on continue round 2+.
+
+### Pi5 API optimization deploy (2026-06-19)
+
+**Branch**: `chore/leaderboard-board-perf-logging` · **HEAD**: `986248e5` (`fix: reduce leaderboard continue repeated labor work`)
+
+**Scope (API only, no Prisma / Web change)**:
+
+- Seed prefix row cache with **labor-attached** rows after shell/continue `attachLabor` (`seedAttachedRowsForSnapshot`).
+- Continue perf logging: resolve `materializedBaseWhere` once (no double-count in logs).
+- Failed phase emits `ok:false` + `errorName`/`errorCode` before rethrow.
+- `requestTotal` perf events include `ok:true`.
+
+**Deploy target**: **`raspberrypi5` only** (Pi4/Pi3 not required for API-only change).
+
+**Command** (standard):
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh chore/leaderboard-board-perf-logging \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+| Field | Value |
+|-------|-------|
+| Detach Run ID | `20260619-093623-144` |
+| Git on Pi5 | `986248e5` |
+| Ansible PLAY RECAP | `ok=138` `changed=7` **`failed=0`** |
+| Phase12 | **PASS 43 / WARN 0 / FAIL 0** (~39s) |
+| Post-deploy health | Phase12 API health PASS; brief post-recreate memory `degraded` possible (same pattern as prior api rebuild) |
+
+**Post-deploy verification (Mac → Pi5, read-only)**:
+
+| Check | Result |
+|-------|--------|
+| `benchmark-leaderboard-board-shell.mjs --profile stonebase --runs 2` | run1 ~77.2s (cold) · run2 ~25.2s (warm) · rows=569 total=3619 |
+| `benchmark-leaderboard-continue-chunk.mjs --profile stonebase` | pageSize **160**: total ~74.8s · **7** continue rounds · **3619** rows · row ids **match** pageSize 80 baseline |
+| Continue A/B gate | output同値 **PASS** · 160 vs 80 total **1.35x** faster (~26% saved) |
+
+**Interpretation**:
+
+- Response contract preserved (`3619` rows, identical row-id fingerprint vs pageSize=80).
+- Warm continue total (~75s for stonebase full board at chunk 160) improved vs pre-fix cold sample (~222s); treat as directional — mixed cold/warm and residual context still apply.
+- `LEADERBOARD_BOARD_PERF_LOG` was **not** in Pi5 `.env` after standard deploy (prior manual flag removed). Re-add temporarily for phase-level `attachLabor` proof if needed.
+
+**Next minimal work**: profile and reduce `processChangeResidualContext` (still dominates cold shell); optional re-enable perf log flag for one timed stonebase session.
 
 ## Local Notes JA
 

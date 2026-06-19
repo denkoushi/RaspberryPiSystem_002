@@ -2,6 +2,7 @@
  * 順位ボード（複数資源スロット）向け集約取得。
  * 単一資源の shell / continue / COUNT / 装飾を既存サービスに委譲し、HTTP 層とクエリ実装の間に置くオーケストレーションのみを担当する。
  */
+import { performance } from 'node:perf_hooks';
 import {
   countProductionScheduleDashboardVisibleRowsFromListFilters,
   listLeaderboardShellContinuationProductionScheduleRows,
@@ -62,6 +63,91 @@ async function resolveLeaderboardBoardProcessChangeResidualContext(): Promise<{
 
 type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
 
+export type LeaderboardBoardPerformanceEvent = {
+  endpoint: 'shell' | 'continue';
+  phase: string;
+  durationMs: number;
+  ok?: boolean;
+  errorName?: string;
+  errorCode?: string;
+  resourceCd?: string;
+  resourceCount?: number;
+  rowCount?: number;
+  deltaRowCount?: number;
+  hasMore?: boolean;
+  hasMoreCount?: number;
+  total?: number;
+  snapshotExpired?: boolean;
+  includeDecorations?: boolean;
+  chunkSize?: number;
+  deferredTotals?: boolean;
+};
+
+export type LeaderboardBoardPerformanceSink = (event: LeaderboardBoardPerformanceEvent) => void;
+
+type LeaderboardBoardServiceDeps = {
+  snapshotStore: LeaderboardShellSnapshotStore;
+  performanceSink?: LeaderboardBoardPerformanceSink;
+};
+
+function emitLeaderboardBoardPerformance(
+  sink: LeaderboardBoardPerformanceSink | undefined,
+  event: LeaderboardBoardPerformanceEvent
+): void {
+  if (!sink) return;
+  try {
+    sink({
+      ...event,
+      durationMs: Math.round(event.durationMs)
+    });
+  } catch {
+    // 計測ログは診断専用。sink 側の失敗で表示 API を壊さない。
+  }
+}
+
+function extractLeaderboardBoardPerformanceErrorMeta(error: unknown): {
+  errorName: string;
+  errorCode?: string;
+} {
+  if (error instanceof Error) {
+    const code = (error as { code?: unknown }).code;
+    return {
+      errorName: error.name,
+      ...(typeof code === 'string' && code.length > 0 ? { errorCode: code } : {})
+    };
+  }
+  return { errorName: 'UnknownError' };
+}
+
+async function measureLeaderboardBoardPhase<T>(
+  sink: LeaderboardBoardPerformanceSink | undefined,
+  eventBase: Omit<LeaderboardBoardPerformanceEvent, 'durationMs'>,
+  work: () => Promise<T>,
+  buildExtra?: (value: T) => Partial<LeaderboardBoardPerformanceEvent>
+): Promise<T> {
+  const started = performance.now();
+  try {
+    const value = await work();
+    emitLeaderboardBoardPerformance(sink, {
+      ...eventBase,
+      ...buildExtra?.(value),
+      ok: true,
+      durationMs: performance.now() - started
+    });
+    return value;
+  } catch (error) {
+    const { errorName, errorCode } = extractLeaderboardBoardPerformanceErrorMeta(error);
+    emitLeaderboardBoardPerformance(sink, {
+      ...eventBase,
+      ok: false,
+      errorName,
+      ...(errorCode ? { errorCode } : {}),
+      durationMs: performance.now() - started
+    });
+    throw error;
+  }
+}
+
 async function attachLaborToBoardPayload(params: {
   rows: LightShellRow[];
   deltaRows?: LightShellRow[];
@@ -84,6 +170,17 @@ async function attachLaborToBoardPayload(params: {
       ? { deltaRows: deltaRows.map((row) => byId.get(row.id) ?? row) }
       : {})
   };
+}
+
+function seedAttachedRowsForSnapshot(params: {
+  snapshotId: string | undefined;
+  sourceRows: readonly LightShellRow[];
+  attachedRowsById: ReadonlyMap<string, LightShellRow>;
+}): void {
+  const snapshotId = params.snapshotId?.trim();
+  if (!snapshotId || params.sourceRows.length === 0) return;
+  const attachedRows = params.sourceRows.map((row) => params.attachedRowsById.get(row.id) ?? row);
+  seedLeaderboardBoardPrefixRowCache(snapshotId, attachedRows);
 }
 
 export type LeaderboardBoardResourceState = {
@@ -168,17 +265,35 @@ export async function fetchLeaderboardCompositeBoardShell(
     includeDecorations?: boolean;
     deferTotals?: boolean;
   },
-  deps: { snapshotStore: LeaderboardShellSnapshotStore }
+  deps: LeaderboardBoardServiceDeps
 ): Promise<LeaderboardBoardReadResult> {
+  const requestStarted = performance.now();
+  const sink = deps.performanceSink;
   const includeDecorations = params.includeDecorations !== false;
   const deferTotals = params.deferTotals === true;
   const cappedPageSize = Math.min(Math.max(1, Math.floor(params.pageSize)), 160);
 
   /** continue と同型: 同一 board shell リクエスト内で winner / residual / generation token を 1 回だけ */
   const { generationToken, processChangeResidualMaterialization } =
-    await resolveLeaderboardBoardProcessChangeResidualContext();
+    await measureLeaderboardBoardPhase(
+      sink,
+      {
+        endpoint: 'shell',
+        phase: 'processChangeResidualContext',
+        resourceCount: params.boardResourceCds.length
+      },
+      resolveLeaderboardBoardProcessChangeResidualContext
+    );
   const processChangeResidualStrongEvidenceKeys = processChangeResidualMaterialization.keys;
-  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+  const leaderboardMaterializedBaseWhere = await measureLeaderboardBoardPhase(
+    sink,
+    {
+      endpoint: 'shell',
+      phase: 'materializedBaseWhere',
+      resourceCount: params.boardResourceCds.length
+    },
+    () => resolveLeaderboardMaterializedBaseWhere(prisma)
+  );
 
   const countPromises = deferTotals
     ? []
@@ -198,51 +313,104 @@ export async function fetchLeaderboardCompositeBoardShell(
   const [shells, processChangeResidualSummary] = await Promise.all([
     Promise.all(
       params.boardResourceCds.map((resourceCd) =>
-        listLeaderboardShellProductionScheduleRows(
+        measureLeaderboardBoardPhase(
+          sink,
           {
-            ...params.listParamsBase,
-            page: params.page,
-            pageSize: cappedPageSize,
-            resourceCds: [resourceCd],
-            processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
-            processChangeResidualStrongEvidenceKeys
+            endpoint: 'shell',
+            phase: 'resourceShell',
+            resourceCd,
+            resourceCount: params.boardResourceCds.length
           },
-          { snapshotStore: deps.snapshotStore, leaderboardMaterializedBaseWhere, generationToken }
+          () =>
+            listLeaderboardShellProductionScheduleRows(
+              {
+                ...params.listParamsBase,
+                page: params.page,
+                pageSize: cappedPageSize,
+                resourceCds: [resourceCd],
+                processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+                processChangeResidualStrongEvidenceKeys
+              },
+              { snapshotStore: deps.snapshotStore, leaderboardMaterializedBaseWhere, generationToken }
+            ),
+          (shell) => ({
+            rowCount: shell.rows.length,
+            hasMore: shell.hasMore
+          })
         )
       )
     ),
-    fetchLeaderboardProcessChangeResidualSummary({
-      ...params.listParamsBase,
-      resourceCds: [...params.boardResourceCds],
-      leaderboardMaterializedBaseWhere,
-      processChangeResidualMaterialization
-    })
+    measureLeaderboardBoardPhase(
+      sink,
+      {
+        endpoint: 'shell',
+        phase: 'processChangeResidualSummary',
+        resourceCount: params.boardResourceCds.length
+      },
+      () =>
+        fetchLeaderboardProcessChangeResidualSummary({
+          ...params.listParamsBase,
+          resourceCds: [...params.boardResourceCds],
+          leaderboardMaterializedBaseWhere,
+          processChangeResidualMaterialization
+        }),
+      (summary) => ({
+        total: summary.processChangeResidualTotal,
+        rowCount: summary.processChangeResidualRows.length
+      })
+    )
   ]);
 
-  const resourceTotals = await Promise.all(
-    shells.map((shell, i) => {
-      const totalFromShell = resolveLeaderboardBoardShellResourceTotalFromShell(shell);
-      if (totalFromShell !== undefined) {
-        return Promise.resolve({ total: totalFromShell, exact: true });
-      }
-      if (deferTotals) {
-        return Promise.resolve({ total: shell.rows.length, exact: false });
-      }
-      return countPromises[i]!.then((total) => ({ total, exact: true }));
+  const resourceTotals = await measureLeaderboardBoardPhase(
+    sink,
+    {
+      endpoint: 'shell',
+      phase: 'resourceTotals',
+      resourceCount: params.boardResourceCds.length,
+      deferredTotals: deferTotals
+    },
+    () =>
+      Promise.all(
+        shells.map((shell, i) => {
+          const totalFromShell = resolveLeaderboardBoardShellResourceTotalFromShell(shell);
+          if (totalFromShell !== undefined) {
+            return Promise.resolve({ total: totalFromShell, exact: true });
+          }
+          if (deferTotals) {
+            return Promise.resolve({ total: shell.rows.length, exact: false });
+          }
+          return countPromises[i]!.then((total) => ({ total, exact: true }));
+        })
+      ),
+    (entries) => ({
+      total: entries.reduce((acc, entry) => acc + entry.total, 0)
     })
   );
   const totals = resourceTotals.map((entry) => entry.total);
   const totalsDeferred = resourceTotals.some((entry) => !entry.exact);
 
   const mergedRowsRaw = shells.flatMap((s) => s.rows);
-  const { rows: mergedRows } = await attachLaborToBoardPayload({
-    rows: mergedRowsRaw,
-    laborLookupContext: {
-      leaderboardMaterializedBaseWhere,
-      processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
-      processChangeResidualStrongEvidenceKeys
-    }
-  });
+  const { rows: mergedRows } = await measureLeaderboardBoardPhase(
+    sink,
+    {
+      endpoint: 'shell',
+      phase: 'attachLabor',
+      resourceCount: params.boardResourceCds.length,
+      rowCount: mergedRowsRaw.length
+    },
+    () =>
+      attachLaborToBoardPayload({
+        rows: mergedRowsRaw,
+        laborLookupContext: {
+          leaderboardMaterializedBaseWhere,
+          processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+          processChangeResidualStrongEvidenceKeys
+        }
+      }),
+    (attached) => ({
+      rowCount: attached.rows.length
+    })
+  );
   const totalSum = totals.reduce((acc, n) => acc + n, 0);
 
   const resources: LeaderboardBoardResourceState[] = params.boardResourceCds.map((resourceCd, i) => ({
@@ -254,10 +422,15 @@ export async function fetchLeaderboardCompositeBoardShell(
     pageSize: shells[i]?.pageSize ?? cappedPageSize
   }));
 
+  const mergedRowsById = new Map(mergedRows.map((row) => [row.id, row] as const));
   for (let i = 0; i < shells.length; i += 1) {
     const snapshotId = shells[i]?.snapshotId?.trim();
     if (snapshotId && shells[i]!.rows.length > 0) {
-      seedLeaderboardBoardPrefixRowCache(snapshotId, shells[i]!.rows);
+      seedAttachedRowsForSnapshot({
+        snapshotId,
+        sourceRows: shells[i]!.rows,
+        attachedRowsById: mergedRowsById
+      });
     }
     if (snapshotId && resourceTotals[i]?.exact === true) {
       seedLeaderboardBoardSnapshotResourceTotal(snapshotId, totals[i] ?? 0);
@@ -282,6 +455,18 @@ export async function fetchLeaderboardCompositeBoardShell(
         };
 
   if (!includeDecorations) {
+    emitLeaderboardBoardPerformance(sink, {
+      endpoint: 'shell',
+      phase: 'requestTotal',
+      durationMs: performance.now() - requestStarted,
+      ok: true,
+      resourceCount: params.boardResourceCds.length,
+      rowCount: mergedRows.length,
+      hasMoreCount: resources.filter((r) => r.hasMore).length,
+      total: totalSum,
+      includeDecorations,
+      deferredTotals: totalsDeferred
+    });
     return {
       page: params.page,
       pageSize: maxPageSize,
@@ -293,10 +478,36 @@ export async function fetchLeaderboardCompositeBoardShell(
     };
   }
 
-  const { rowsWithDeco, leaderboardFooterChipsByPartKey } = await decorateLeaderboardCompositeBoardShell({
-    mergedLightRows: mergedRows,
-    locationKey: params.listParamsBase.locationKey,
-    siteKey: params.listParamsBase.siteKey
+  const { rowsWithDeco, leaderboardFooterChipsByPartKey } = await measureLeaderboardBoardPhase(
+    sink,
+    {
+      endpoint: 'shell',
+      phase: 'decorate',
+      resourceCount: params.boardResourceCds.length,
+      rowCount: mergedRows.length
+    },
+    () =>
+      decorateLeaderboardCompositeBoardShell({
+        mergedLightRows: mergedRows,
+        locationKey: params.listParamsBase.locationKey,
+        siteKey: params.listParamsBase.siteKey
+      }),
+    (decorated) => ({
+      rowCount: decorated.rowsWithDeco.length
+    })
+  );
+
+  emitLeaderboardBoardPerformance(sink, {
+    endpoint: 'shell',
+    phase: 'requestTotal',
+    durationMs: performance.now() - requestStarted,
+    ok: true,
+    resourceCount: params.boardResourceCds.length,
+    rowCount: rowsWithDeco.length,
+    hasMoreCount: resources.filter((r) => r.hasMore).length,
+    total: totalSum,
+    includeDecorations,
+    deferredTotals: totalsDeferred
   });
 
   return {
@@ -325,22 +536,55 @@ export async function continueLeaderboardCompositeBoard(
     chunkSize: number;
     includeDecorations?: boolean;
   },
-  deps: { snapshotStore: LeaderboardShellSnapshotStore }
+  deps: LeaderboardBoardServiceDeps
 ): Promise<LeaderboardBoardReadResult> {
+  const requestStarted = performance.now();
+  const sink = deps.performanceSink;
   const includeDecorations = params.includeDecorations !== false;
   const chunkSize = Math.min(160, Math.max(1, Math.floor(params.chunkSize)));
 
   const { generationToken, processChangeResidualMaterialization } =
-    await resolveLeaderboardBoardProcessChangeResidualContext();
+    await measureLeaderboardBoardPhase(
+      sink,
+      {
+        endpoint: 'continue',
+        phase: 'processChangeResidualContext',
+        resourceCount: params.boardResourceCds.length,
+        chunkSize
+      },
+      resolveLeaderboardBoardProcessChangeResidualContext
+    );
   const processChangeResidualStrongEvidenceKeys = processChangeResidualMaterialization.keys;
-  const leaderboardMaterializedBaseWherePromise = resolveLeaderboardMaterializedBaseWhere(prisma);
+  const leaderboardMaterializedBaseWhere = await measureLeaderboardBoardPhase(
+    sink,
+    {
+      endpoint: 'continue',
+      phase: 'materializedBaseWhere',
+      resourceCount: params.boardResourceCds.length,
+      chunkSize
+    },
+    () => resolveLeaderboardMaterializedBaseWhere(prisma)
+  );
 
   const [totals, contOutputs] = await Promise.all([
-    resolveLeaderboardBoardResourceTotalsForContinue(
-      params.listParamsBase,
-      params.resourceSlices,
-      processChangeResidualStrongEvidenceKeys,
-      leaderboardMaterializedBaseWherePromise
+    measureLeaderboardBoardPhase(
+      sink,
+      {
+        endpoint: 'continue',
+        phase: 'resourceTotals',
+        resourceCount: params.resourceSlices.length,
+        chunkSize
+      },
+      () =>
+        resolveLeaderboardBoardResourceTotalsForContinue(
+          params.listParamsBase,
+          params.resourceSlices,
+          processChangeResidualStrongEvidenceKeys,
+          leaderboardMaterializedBaseWhere
+        ),
+      (resolvedTotals) => ({
+        total: resolvedTotals.reduce((acc, n) => acc + n, 0)
+      })
     ),
     Promise.all(
       params.boardResourceCds.map(async (_resourceCd, i) => {
@@ -348,38 +592,65 @@ export async function continueLeaderboardCompositeBoard(
         if (!slice.hasMore) {
           return null;
         }
-        return listLeaderboardShellContinuationProductionScheduleRows(
+        return measureLeaderboardBoardPhase(
+          sink,
           {
-            queryText: params.listParamsBase.queryText,
-            productNos: params.listParamsBase.productNos,
-            machineName: params.listParamsBase.machineName,
-            resourceCds: [slice.resourceCd],
-            assignedOnlyCds: params.listParamsBase.assignedOnlyCds,
-            resourceCategory: params.listParamsBase.resourceCategory,
-            hasNoteOnly: params.listParamsBase.hasNoteOnly,
-            hasDueDateOnly: params.listParamsBase.hasDueDateOnly,
-            allowResourceOnly: params.listParamsBase.allowResourceOnly,
-            locationKey: params.listParamsBase.locationKey,
-            siteKey: params.listParamsBase.siteKey,
-            processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
-            processChangeResidualStrongEvidenceKeys,
-            excludeRowIds: slice.excludeRowIds ?? [],
-            cursor: slice.cursor,
-            chunkSize,
-            snapshotId: slice.snapshotId,
-            page: 1
+            endpoint: 'continue',
+            phase: 'resourceContinue',
+            resourceCd: slice.resourceCd,
+            resourceCount: params.boardResourceCds.length,
+            chunkSize
           },
-          {
-            snapshotStore: deps.snapshotStore,
-            generationToken,
-            leaderboardMaterializedBaseWhere: await leaderboardMaterializedBaseWherePromise
-          }
+          async () =>
+            listLeaderboardShellContinuationProductionScheduleRows(
+              {
+                queryText: params.listParamsBase.queryText,
+                productNos: params.listParamsBase.productNos,
+                machineName: params.listParamsBase.machineName,
+                resourceCds: [slice.resourceCd],
+                assignedOnlyCds: params.listParamsBase.assignedOnlyCds,
+                resourceCategory: params.listParamsBase.resourceCategory,
+                hasNoteOnly: params.listParamsBase.hasNoteOnly,
+                hasDueDateOnly: params.listParamsBase.hasDueDateOnly,
+                allowResourceOnly: params.listParamsBase.allowResourceOnly,
+                locationKey: params.listParamsBase.locationKey,
+                siteKey: params.listParamsBase.siteKey,
+                processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+                processChangeResidualStrongEvidenceKeys,
+                excludeRowIds: slice.excludeRowIds ?? [],
+                cursor: slice.cursor,
+                chunkSize,
+                snapshotId: slice.snapshotId,
+                page: 1
+              },
+              {
+                snapshotStore: deps.snapshotStore,
+                generationToken,
+                leaderboardMaterializedBaseWhere
+              }
+            ),
+          (cont) => ({
+            rowCount: cont.rows.length,
+            hasMore: cont.hasMore,
+            snapshotExpired: cont.snapshotExpired
+          })
         );
       })
     )
   ]);
 
   if (contOutputs.some((o) => o?.snapshotExpired === true)) {
+    emitLeaderboardBoardPerformance(sink, {
+      endpoint: 'continue',
+      phase: 'requestTotal',
+      durationMs: performance.now() - requestStarted,
+      ok: true,
+      resourceCount: params.boardResourceCds.length,
+      total: totals.reduce((a, b) => a + b, 0),
+      snapshotExpired: true,
+      includeDecorations,
+      chunkSize
+    });
     return {
       page: 1,
       pageSize: chunkSize,
@@ -390,21 +661,33 @@ export async function continueLeaderboardCompositeBoard(
     };
   }
 
-  /** 資源ごとの continue / assemble が同一値を参照（リクエストあたり 1 回の winner materialization） */
-  const leaderboardMaterializedBaseWhere = await leaderboardMaterializedBaseWherePromise;
-
   const perResourceAssembled: ContinueAssembledResourceSlice[] = [];
   for (let i = 0; i < params.boardResourceCds.length; i += 1) {
     const slice = params.resourceSlices[i]!;
     const cont = contOutputs[i];
-    const assembled = await assembleContinueMergedRowsForResource({
-      slice,
-      cont,
-      deps,
-      locationKey: params.listParamsBase.locationKey,
-      siteKey: params.listParamsBase.siteKey,
-      leaderboardMaterializedBaseWhere
-    });
+    const assembled = await measureLeaderboardBoardPhase(
+      sink,
+      {
+        endpoint: 'continue',
+        phase: 'assembleResource',
+        resourceCd: slice.resourceCd,
+        resourceCount: params.boardResourceCds.length,
+        chunkSize
+      },
+      () =>
+        assembleContinueMergedRowsForResource({
+          slice,
+          cont,
+          deps,
+          locationKey: params.listParamsBase.locationKey,
+          siteKey: params.listParamsBase.siteKey,
+          leaderboardMaterializedBaseWhere
+        }),
+      (value) => ({
+        rowCount: value.merged.length,
+        deltaRowCount: value.incrementalRows?.length
+      })
+    );
     perResourceAssembled.push(assembled);
   }
 
@@ -414,15 +697,39 @@ export async function continueLeaderboardCompositeBoard(
     ? perResourceAssembled.flatMap((a) => a.incrementalRows!)
     : [];
   const deltaShellRowsFlattened = incrementalLightRows;
-  const { rows: mergedRows, deltaRows: mergedDeltaRows } = await attachLaborToBoardPayload({
-    rows: mergedRowsRaw,
-    ...(canAttachDelta ? { deltaRows: deltaShellRowsFlattened } : {}),
-    laborLookupContext: {
-      leaderboardMaterializedBaseWhere,
-      processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
-      processChangeResidualStrongEvidenceKeys
-    }
-  });
+  const { rows: mergedRows, deltaRows: mergedDeltaRows } = await measureLeaderboardBoardPhase(
+    sink,
+    {
+      endpoint: 'continue',
+      phase: 'attachLabor',
+      resourceCount: params.boardResourceCds.length,
+      rowCount: mergedRowsRaw.length,
+      deltaRowCount: deltaShellRowsFlattened.length,
+      chunkSize
+    },
+    () =>
+      attachLaborToBoardPayload({
+        rows: mergedRowsRaw,
+        ...(canAttachDelta ? { deltaRows: deltaShellRowsFlattened } : {}),
+        laborLookupContext: {
+          leaderboardMaterializedBaseWhere,
+          processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
+          processChangeResidualStrongEvidenceKeys
+        }
+      }),
+    (attached) => ({
+      rowCount: attached.rows.length,
+      deltaRowCount: attached.deltaRows?.length
+    })
+  );
+  const mergedRowsById = new Map(mergedRows.map((row) => [row.id, row] as const));
+  for (let i = 0; i < params.boardResourceCds.length; i += 1) {
+    seedAttachedRowsForSnapshot({
+      snapshotId: params.resourceSlices[i]?.snapshotId,
+      sourceRows: perResourceAssembled[i]?.merged ?? [],
+      attachedRowsById: mergedRowsById
+    });
+  }
 
   const resources: LeaderboardBoardResourceState[] = params.boardResourceCds.map((resourceCd, i) => {
     const slice = params.resourceSlices[i]!;
@@ -460,6 +767,19 @@ export async function continueLeaderboardCompositeBoard(
   const totalSum = totals.reduce((a, b) => a + b, 0);
 
   if (!includeDecorations) {
+    emitLeaderboardBoardPerformance(sink, {
+      endpoint: 'continue',
+      phase: 'requestTotal',
+      durationMs: performance.now() - requestStarted,
+      ok: true,
+      resourceCount: params.boardResourceCds.length,
+      rowCount: mergedRows.length,
+      deltaRowCount: mergedDeltaRows?.length,
+      hasMoreCount: resources.filter((r) => r.hasMore).length,
+      total: totalSum,
+      includeDecorations,
+      chunkSize
+    });
     return {
       page: 1,
       pageSize: chunkSize,
@@ -471,14 +791,44 @@ export async function continueLeaderboardCompositeBoard(
   }
 
   const { rowsWithDeco, deltaRowsWithDeco, leaderboardFooterChipsByPartKey } =
-    await decorateLeaderboardCompositeBoardContinue({
-      mergedLightRows: mergedRows,
-      incrementalLightRows: mergedDeltaRows ?? incrementalLightRows,
-      canAttachDelta,
-      deltaShellRowsFlattened: mergedDeltaRows ?? deltaShellRowsFlattened,
-      locationKey: params.listParamsBase.locationKey,
-      siteKey: params.listParamsBase.siteKey
-    });
+    await measureLeaderboardBoardPhase(
+      sink,
+      {
+        endpoint: 'continue',
+        phase: 'decorate',
+        resourceCount: params.boardResourceCds.length,
+        rowCount: mergedRows.length,
+        deltaRowCount: (mergedDeltaRows ?? incrementalLightRows).length,
+        chunkSize
+      },
+      () =>
+        decorateLeaderboardCompositeBoardContinue({
+          mergedLightRows: mergedRows,
+          incrementalLightRows: mergedDeltaRows ?? incrementalLightRows,
+          canAttachDelta,
+          deltaShellRowsFlattened: mergedDeltaRows ?? deltaShellRowsFlattened,
+          locationKey: params.listParamsBase.locationKey,
+          siteKey: params.listParamsBase.siteKey
+        }),
+      (decorated) => ({
+        rowCount: decorated.rowsWithDeco.length,
+        deltaRowCount: decorated.deltaRowsWithDeco?.length
+      })
+    );
+
+  emitLeaderboardBoardPerformance(sink, {
+    endpoint: 'continue',
+    phase: 'requestTotal',
+    durationMs: performance.now() - requestStarted,
+    ok: true,
+    resourceCount: params.boardResourceCds.length,
+    rowCount: rowsWithDeco.length,
+    deltaRowCount: deltaRowsWithDeco?.length,
+    hasMoreCount: resources.filter((r) => r.hasMore).length,
+    total: totalSum,
+    includeDecorations,
+    chunkSize
+  });
 
   return {
     page: 1,
