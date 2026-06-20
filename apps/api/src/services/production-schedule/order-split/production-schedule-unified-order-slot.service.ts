@@ -17,6 +17,8 @@ export type UnifiedOrderSlotKey = {
   orderNumber: number;
 };
 
+type UnifiedOrderSlotLockExecutor = Pick<Prisma.TransactionClient, '$executeRaw'>;
+
 export function compareUnifiedOrderSlotKeys(a: UnifiedOrderSlotKey, b: UnifiedOrderSlotKey): number {
   const locationCompare = a.locationKey.localeCompare(b.locationKey);
   if (locationCompare !== 0) return locationCompare;
@@ -194,7 +196,7 @@ export async function assertUnifiedOrderSlotAvailableInTransaction(
 }
 
 async function acquireUnifiedOrderSlotLockRawInTransaction(
-  tx: Prisma.TransactionClient,
+  tx: UnifiedOrderSlotLockExecutor,
   params: {
     locationKey: string;
     resourceCd: string;
@@ -205,7 +207,7 @@ async function acquireUnifiedOrderSlotLockRawInTransaction(
 }
 
 export async function acquireUnifiedOrderSlotLockInTransaction(
-  tx: Prisma.TransactionClient,
+  tx: UnifiedOrderSlotLockExecutor,
   params: {
     locationKey: string;
     resourceCd: string;
@@ -217,7 +219,7 @@ export async function acquireUnifiedOrderSlotLockInTransaction(
 
 /** scope 内の全 lock key（site canonical / device fallback）を固定順で取得する。 */
 export async function acquireUnifiedOrderSlotLocksForScopeInTransaction(
-  tx: Prisma.TransactionClient,
+  tx: UnifiedOrderSlotLockExecutor,
   params: {
     locationKey: string;
     resourceCd: string;
@@ -235,7 +237,7 @@ export async function acquireUnifiedOrderSlotLocksForScopeInTransaction(
 }
 
 export async function acquireUnifiedOrderSlotLocksInTransaction(
-  tx: Prisma.TransactionClient,
+  tx: UnifiedOrderSlotLockExecutor,
   slots: readonly UnifiedOrderSlotKey[]
 ): Promise<void> {
   const expanded: UnifiedOrderSlotKey[] = [];

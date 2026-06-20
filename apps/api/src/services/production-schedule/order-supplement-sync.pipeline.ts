@@ -10,6 +10,7 @@ import {
 } from './constants.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+import { acquireProductionScheduleParentRowLockInTransaction } from './order-split/production-schedule-parent-row-lock.service.js';
 
 const CREATE_MANY_CHUNK_SIZE = 200;
 const UPDATE_CHUNK_SIZE = 100;
@@ -75,6 +76,15 @@ type ExistingSupplementRow = {
 };
 
 type ExistingSupplementMap = Map<string, ExistingSupplementRow>;
+
+type ReplacementUpdateInput = {
+  id: string;
+  csvDashboardRowId: string;
+  previousCsvDashboardRowId: string;
+  previousPlannedQuantity: number | null;
+  nextPlannedQuantity: number | null;
+  data: Prisma.ProductionScheduleOrderSupplementUncheckedUpdateInput;
+};
 
 /**
  * 更新時: CSV からパースした計画納期が無い（空・不正で null）場合は既存値を保持する。
@@ -219,12 +229,12 @@ export function buildReplacementCreateInputs(
   matched: number;
   unmatched: number;
   createInputs: Prisma.ProductionScheduleOrderSupplementCreateManyInput[];
-  updateInputs: Array<{ id: string; data: Prisma.ProductionScheduleOrderSupplementUncheckedUpdateInput }>;
+  updateInputs: ReplacementUpdateInput[];
 } {
   let matched = 0;
   let unmatched = 0;
   const createInputs: Prisma.ProductionScheduleOrderSupplementCreateManyInput[] = [];
-  const updateInputs: Array<{ id: string; data: Prisma.ProductionScheduleOrderSupplementUncheckedUpdateInput }> = [];
+  const updateInputs: ReplacementUpdateInput[] = [];
   const existingByWinnerRowId = new Map(
     [...existingByKey.values()].map((existing) => [existing.csvDashboardRowId, existing] as const)
   );
@@ -251,6 +261,10 @@ export function buildReplacementCreateInputs(
       const nextPlannedEndDate = mergePlannedEndDateForUpdate(row.plannedEndDate, existingTarget.plannedEndDate);
       updateInputs.push({
         id: existingTarget.id,
+        csvDashboardRowId: winnerRowId,
+        previousCsvDashboardRowId: existingTarget.csvDashboardRowId,
+        previousPlannedQuantity: existingTarget.plannedQuantity,
+        nextPlannedQuantity: row.plannedQuantity,
         data: {
           csvDashboardRowId: winnerRowId,
           productNo: row.productNo,
@@ -286,6 +300,115 @@ export function buildReplacementCreateInputs(
   return { matched, unmatched, createInputs, updateInputs };
 }
 
+function allocateSplitQuantities(params: {
+  currentQuantities: number[];
+  nextTotal: number;
+}): number[] {
+  const keptCount = Math.min(params.currentQuantities.length, params.nextTotal);
+  if (keptCount <= 0) return [];
+
+  const keptQuantities = params.currentQuantities
+    .slice(0, keptCount)
+    .map((quantity) => (Number.isInteger(quantity) && quantity > 0 ? quantity : 1));
+  const weightsTotal = keptQuantities.reduce((sum, quantity) => sum + quantity, 0);
+  const allocated = new Array<number>(keptCount).fill(1);
+  let remaining = params.nextTotal - keptCount;
+  if (remaining <= 0) return allocated;
+
+  const remainders: Array<{ index: number; remainder: number }> = [];
+  let floorTotal = 0;
+  keptQuantities.forEach((quantity, index) => {
+    const exact = (remaining * quantity) / weightsTotal;
+    const floor = Math.floor(exact);
+    allocated[index] += floor;
+    floorTotal += floor;
+    remainders.push({ index, remainder: exact - floor });
+  });
+
+  remaining -= floorTotal;
+  remainders.sort((left, right) => {
+    if (right.remainder !== left.remainder) return right.remainder - left.remainder;
+    return left.index - right.index;
+  });
+  for (let i = 0; i < remaining; i += 1) {
+    allocated[remainders[i % remainders.length]!.index] += 1;
+  }
+  return allocated;
+}
+
+async function reconcileOrderSplitQuantitiesForSupplementUpdate(
+  tx: Prisma.TransactionClient,
+  entry: ReplacementUpdateInput
+): Promise<void> {
+  if (entry.previousPlannedQuantity === entry.nextPlannedQuantity) return;
+
+  const splits = await tx.productionScheduleOrderSplit.findMany({
+    where: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      parentCsvDashboardRowId: entry.csvDashboardRowId,
+    },
+    orderBy: { splitNo: 'asc' },
+    select: { id: true, splitQuantity: true },
+  });
+  if (splits.length === 0) return;
+
+  const nextQuantity = entry.nextPlannedQuantity;
+  if (nextQuantity == null || !Number.isInteger(nextQuantity) || nextQuantity <= 0) {
+    await tx.productionScheduleOrderSplitAssignment.deleteMany({
+      where: {
+        split: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          parentCsvDashboardRowId: entry.csvDashboardRowId,
+        },
+      },
+    });
+    await tx.productionScheduleOrderSplit.deleteMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        parentCsvDashboardRowId: entry.csvDashboardRowId,
+      },
+    });
+    return;
+  }
+
+  const nextQuantities = allocateSplitQuantities({
+    currentQuantities: splits.map((split) => split.splitQuantity),
+    nextTotal: nextQuantity,
+  });
+  const keptSplitIds = new Set(splits.slice(0, nextQuantities.length).map((split) => split.id));
+
+  if (keptSplitIds.size < splits.length) {
+    await tx.productionScheduleOrderSplit.deleteMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        parentCsvDashboardRowId: entry.csvDashboardRowId,
+        id: { notIn: [...keptSplitIds] },
+      },
+    });
+  }
+
+  for (let index = 0; index < nextQuantities.length; index += 1) {
+    const split = splits[index]!;
+    await tx.productionScheduleOrderSplit.update({
+      where: { id: split.id },
+      data: { splitQuantity: nextQuantities[index]! },
+    });
+  }
+}
+
+async function acquireParentRowLocksForSupplementUpdates(
+  tx: Prisma.TransactionClient,
+  updateInputs: readonly ReplacementUpdateInput[]
+): Promise<void> {
+  const parentRowIds = [
+    ...new Set(updateInputs.flatMap((entry) => [entry.previousCsvDashboardRowId, entry.csvDashboardRowId])),
+  ].sort((left, right) => left.localeCompare(right));
+
+  for (const parentRowId of parentRowIds) {
+    await acquireProductionScheduleParentRowLockInTransaction(tx, parentRowId);
+  }
+}
+
 export async function runOrderSupplementReplacementTransaction(
   client: PrismaClient,
   params: {
@@ -294,7 +417,7 @@ export async function runOrderSupplementReplacementTransaction(
     matched: number;
     unmatched: number;
     createInputs: Prisma.ProductionScheduleOrderSupplementCreateManyInput[];
-    updateInputs: Array<{ id: string; data: Prisma.ProductionScheduleOrderSupplementUncheckedUpdateInput }>;
+    updateInputs: ReplacementUpdateInput[];
   }
 ): Promise<OrderSupplementSyncResult> {
   const retentionCutoff = new Date();
@@ -310,16 +433,17 @@ export async function runOrderSupplementReplacementTransaction(
         inserted += batch.count;
       }
 
+      await acquireParentRowLocksForSupplementUpdates(tx, params.updateInputs);
+
       for (let i = 0; i < params.updateInputs.length; i += UPDATE_CHUNK_SIZE) {
         const chunk = params.updateInputs.slice(i, i + UPDATE_CHUNK_SIZE);
-        await Promise.all(
-          chunk.map((entry) =>
-            tx.productionScheduleOrderSupplement.update({
-              where: { id: entry.id },
-              data: entry.data,
-            })
-          )
-        );
+        for (const entry of chunk) {
+          await tx.productionScheduleOrderSupplement.update({
+            where: { id: entry.id },
+            data: entry.data,
+          });
+          await reconcileOrderSplitQuantitiesForSupplementUpdate(tx, entry);
+        }
       }
 
       const pruneResult = await tx.productionScheduleOrderSupplement.deleteMany({

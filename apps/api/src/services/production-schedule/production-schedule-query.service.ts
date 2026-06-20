@@ -1983,8 +1983,7 @@ export async function getProductionScheduleOrderUsage(
           ','
         )})`
       : Prisma.empty;
-  const splitAssignmentUnion = isProductionScheduleOrderSplitEnabled()
-    ? Prisma.sql`
+  const splitAssignmentUnion = Prisma.sql`
       UNION ALL
       SELECT
         "resourceCd",
@@ -1996,8 +1995,7 @@ export async function getProductionScheduleOrderUsage(
           OR "siteKey" = ${locationKey}
         )
         ${resourceCdFilter}
-    `
-    : Prisma.empty;
+    `;
 
   const usageRows = await prisma.$queryRaw<Array<{ resourceCd: string; orderNumbers: number[] }>>`
     WITH scoped AS (

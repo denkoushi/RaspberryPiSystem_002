@@ -2,6 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { prisma } from '../../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
+import { upsertProductionScheduleSplitOrder } from '../../order-split/production-schedule-order-split.service.js';
+import { releaseOrderAssignmentAtLocation, type PrismaOrderAssignmentExecutor } from '../order-assignment-release.repository.js';
 import { reconcileStaleProductionScheduleOrderAssignments } from '../order-assignment-reconciliation.service.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -380,5 +382,135 @@ describe('order-assignment reconciliation (integration)', () => {
         process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = previousFlag;
       }
     }
+  });
+
+  it('flag OFF でも parent assignment release は split assignments を同一順位空間で詰める', async () => {
+    const previousFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+    process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = 'false';
+
+    try {
+      await prisma.productionScheduleOrderAssignment.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          csvDashboardRowId: rowInvisibleId,
+          location: LOCATION,
+          siteKey: LOCATION,
+          resourceCd: '080',
+          orderNumber: 1,
+        },
+      });
+      const split = await prisma.productionScheduleOrderSplit.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          parentCsvDashboardRowId: rowVisibleId,
+          splitNo: 1,
+          splitQuantity: 1,
+        },
+      });
+      await prisma.productionScheduleOrderSplitAssignment.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          splitId: split.id,
+          location: LOCATION,
+          siteKey: LOCATION,
+          resourceCd: '080',
+          orderNumber: 2,
+        },
+      });
+
+      await reconcileStaleProductionScheduleOrderAssignments();
+
+      const shiftedSplitAssignment = await prisma.productionScheduleOrderSplitAssignment.findUnique({
+        where: {
+          splitId_location: {
+            splitId: split.id,
+            location: LOCATION,
+          },
+        },
+      });
+      expect(shiftedSplitAssignment?.orderNumber).toBe(1);
+    } finally {
+      if (previousFlag == null) {
+        delete process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+      } else {
+        process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = previousFlag;
+      }
+    }
+  });
+
+  it('release 中の順位詰めは通常 split 書き込みと同じ slot lock で直列化される', async () => {
+    await prisma.productionScheduleOrderAssignment.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: rowInvisibleId,
+        location: LOCATION,
+        siteKey: LOCATION,
+        resourceCd: '080',
+        orderNumber: 1,
+      },
+    });
+    await prisma.productionScheduleOrderAssignment.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: rowCurrentWinnerId,
+        location: LOCATION,
+        siteKey: LOCATION,
+        resourceCd: '080',
+        orderNumber: 3,
+      },
+    });
+    const split = await prisma.productionScheduleOrderSplit.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        parentCsvDashboardRowId: rowVisibleId,
+        splitNo: 1,
+        splitQuantity: 1,
+      },
+    });
+
+    let splitOrderResultPromise: Promise<{ error: unknown } | { value: unknown }> | null = null;
+    await prisma.$transaction(async (tx) => {
+      await releaseOrderAssignmentAtLocation(tx as PrismaOrderAssignmentExecutor, {
+        csvDashboardRowId: rowInvisibleId,
+        location: LOCATION,
+      });
+      splitOrderResultPromise = upsertProductionScheduleSplitOrder({
+        splitId: split.id,
+        resourceCd: '080',
+        orderNumber: 2,
+        locationKey: LOCATION,
+      }).then(
+        (value) => ({ value }),
+        (error) => ({ error })
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+
+    const splitOrderResult = await splitOrderResultPromise;
+    expect(splitOrderResult).toHaveProperty('error');
+    expect((splitOrderResult as { error: { statusCode?: number; code?: string } }).error).toMatchObject({
+      statusCode: 409,
+      code: 'ORDER_NUMBER_CONFLICT',
+    });
+
+    const parentAssignment = await prisma.productionScheduleOrderAssignment.findUnique({
+      where: {
+        csvDashboardRowId_location: {
+          csvDashboardRowId: rowCurrentWinnerId,
+          location: LOCATION,
+        },
+      },
+      select: { orderNumber: true },
+    });
+    const splitAssignment = await prisma.productionScheduleOrderSplitAssignment.findUnique({
+      where: {
+        splitId_location: {
+          splitId: split.id,
+          location: LOCATION,
+        },
+      },
+    });
+    expect(parentAssignment?.orderNumber).toBe(2);
+    expect(splitAssignment).toBeNull();
   });
 });

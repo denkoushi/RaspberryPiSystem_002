@@ -4,7 +4,10 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule-effective-completion.sql.js';
 import { buildFkojunstProductionScheduleListVisibleScalarSql } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
 import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
-import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
+import { acquireUnifiedOrderSlotLocksInTransaction } from '../order-split/production-schedule-unified-order-slot.service.js';
+
+const MANUAL_ORDER_SLOT_MIN = 1;
+const MANUAL_ORDER_SLOT_MAX = 10;
 
 export type StaleOrderAssignmentCandidate = {
   csvDashboardRowId: string;
@@ -25,7 +28,7 @@ export type OrderAssignmentReleaseTarget = {
   location: string;
 };
 
-export type PrismaOrderAssignmentExecutor = Pick<PrismaClient, '$queryRaw'> & {
+export type PrismaOrderAssignmentExecutor = Pick<PrismaClient, '$executeRaw' | '$queryRaw'> & {
   productionScheduleOrderAssignment: Pick<
     PrismaClient['productionScheduleOrderAssignment'],
     'findUnique' | 'delete' | 'updateMany'
@@ -74,10 +77,6 @@ export async function findStaleOrderAssignmentCandidates(
 export async function findStaleSplitOrderAssignmentCandidates(
   executor: Pick<PrismaClient, '$queryRaw'>
 ): Promise<StaleSplitOrderAssignmentCandidate[]> {
-  if (!isProductionScheduleOrderSplitEnabled()) {
-    return [];
-  }
-
   return executor.$queryRaw<StaleSplitOrderAssignmentCandidate[]>`
     SELECT
       "sa"."splitId" AS "splitId",
@@ -112,6 +111,26 @@ export async function findStaleSplitOrderAssignmentCandidates(
   `;
 }
 
+async function acquireReleaseShiftSlotLocks(
+  executor: PrismaOrderAssignmentExecutor,
+  params: {
+    location: string;
+    resourceCd: string;
+  }
+): Promise<void> {
+  await acquireUnifiedOrderSlotLocksInTransaction(
+    executor,
+    Array.from(
+      { length: MANUAL_ORDER_SLOT_MAX - MANUAL_ORDER_SLOT_MIN + 1 },
+      (_, index) => MANUAL_ORDER_SLOT_MIN + index
+    ).map((orderNumber) => ({
+      locationKey: params.location,
+      resourceCd: params.resourceCd,
+      orderNumber
+    }))
+  );
+}
+
 async function shiftHigherOrderSlotsAfterRelease(
   executor: PrismaOrderAssignmentExecutor,
   params: {
@@ -133,10 +152,7 @@ async function shiftHigherOrderSlotsAfterRelease(
   });
 
   let splitShiftCount = 0;
-  if (
-    isProductionScheduleOrderSplitEnabled() &&
-    executor.productionScheduleOrderSplitAssignment?.updateMany
-  ) {
+  if (executor.productionScheduleOrderSplitAssignment?.updateMany) {
     const splitShiftResult = await executor.productionScheduleOrderSplitAssignment.updateMany({
       where: shiftWhere,
       data: { orderNumber: { decrement: 1 } }
@@ -179,6 +195,11 @@ export async function releaseOrderAssignmentAtLocation(
     return { released: false, resourceCd: null, orderNumber: null, shiftCount: 0 };
   }
 
+  await acquireReleaseShiftSlotLocks(executor, {
+    location: target.location,
+    resourceCd: currentAssignment.resourceCd
+  });
+
   await executor.productionScheduleOrderAssignment.delete({
     where: {
       csvDashboardRowId_location: {
@@ -211,7 +232,7 @@ export async function releaseSplitOrderAssignmentAtLocation(
   orderNumber: number | null;
   shiftCount: number;
 }> {
-  if (!isProductionScheduleOrderSplitEnabled() || !executor.productionScheduleOrderSplitAssignment) {
+  if (!executor.productionScheduleOrderSplitAssignment) {
     return { released: false, resourceCd: null, orderNumber: null, shiftCount: 0 };
   }
 
@@ -237,6 +258,11 @@ export async function releaseSplitOrderAssignmentAtLocation(
   if (!currentAssignment) {
     return { released: false, resourceCd: null, orderNumber: null, shiftCount: 0 };
   }
+
+  await acquireReleaseShiftSlotLocks(executor, {
+    location: target.location,
+    resourceCd: currentAssignment.resourceCd
+  });
 
   await executor.productionScheduleOrderSplitAssignment.delete({
     where: {

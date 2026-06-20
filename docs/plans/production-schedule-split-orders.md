@@ -3,7 +3,7 @@
 ```yaml
 id: production-schedule-split-orders
 status: implemented
-review_status: codex-reviewed-2026-06-20-final-pass9
+review_status: codex-reviewed-2026-06-20-final-pass10
 scope: kiosk-leaderboard-order-split
 date: 2026-06-19
 last_updated: 2026-06-20
@@ -25,10 +25,12 @@ validation:
   - pnpm --filter web exec vitest run src/features/kiosk/productionSchedule/useProductionScheduleMutations.test.ts
   - pnpm --filter web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__/LeaderOrderSplitModal.test.ts
   - pnpm --filter web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__/LeaderOrderSplitModal.component.test.tsx
-  - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/production-schedule-command.service.test.ts
+  - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts
+  - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.integration.test.ts
 deploy_status: not_deployed
 open_items:
-  - CSV re-import / winner change logical-key relink for existing splits
+  - CSV re-import / winner change logical-key relink for existing splits (P2)
+  - Split structure contract: global vs site-scoped semantics (needs API/data-model decision)
   - Split-item completion, self-inspection, load-balancing integration
   - Rename excludeRowIds API field to excludeDisplayItemIds (breaking-change phase)
 ```
@@ -177,6 +179,20 @@ Tests: split service/route integration, command unit, Web split modal unit/compo
 
 **Review (pass 9)**: no production blockers. Winner-change logical-key relink remains out of scope; this pass focused on replace revalidation, modal race prevention, and due-date filter alignment. Temporary pgvector DB: migrate deploy/status + `EXPLAIN (ANALYZE, BUFFERS)` for split parent lookup / site slot indexes.
 
+## Codex Flag-OFF Split Consistency (2026-06-20)
+
+| Area | Fix |
+|------|-----|
+| Stale release | Flag OFF でも split assignment を stale 検出・順位詰め対象に含める |
+| Release locking | release 時に同一 site/resource の手動順位 slot 1–10 を lock してから delete/shift |
+| Parent manual order | Flag ON: 分割済み親順位は拒否（従来どおり）。Flag OFF: 同一親・同一 scope の split 順位を畳んで親順位保存を許可 |
+| Order usage | Flag OFF でも split assignment を usage 集計に含め、空き番号表示と 409 のずれを抑制 |
+| Supplement sync | 外部数量同期で親 row advisory lock を取得し、`plannedQuantity` 変更時に既存 split 数量を比例再配分 |
+
+Tests: order-supplement sync unit/integration, command unit (flag OFF parent restore), reconciliation integration (flag OFF shift + concurrent release/write).
+
+**Review (pass 10)**: no P1 production blockers. Agent follow-up fixed the release repository unit-test mock to include `$executeRaw`, matching the new slot-lock protocol. P2 winner row ID relink and global vs site-scoped split contract remain explicitly out of scope (data-model/API contract change). Temporary pgvector DB: migrate deploy/status + EXPLAIN for split indexes.
+
 ## Out of Scope (explicit)
 
 - Completion toggle per split item (parent row completion contract unchanged).
@@ -186,25 +202,110 @@ Tests: split service/route integration, command unit, Web split modal unit/compo
 
 ## Validation (latest)
 
-Verified locally (Agent, 2026-06-20 — pass 9 pre-commit / pre-push):
+Verified locally (Agent, 2026-06-20 — pass 10 follow-up; **not committed**):
 
-- API / Web TypeScript compile (build tsconfig).
-- API Vitest — split service integration, split route integration, command unit: **3 files / 21 tests** passed.
-- API Vitest — query focused: **1 file / 23 tests** passed.
-- Web Vitest — split modal unit/component tests: **2 files / 3 tests** passed.
-- API / Web ESLint focused checks passed.
-- Temporary Postgres `pgvector/pgvector:pg16`: `prisma migrate deploy` / `migrate status` (**111** migrations); temporary container and volume removed after verify.
-- `EXPLAIN (ANALYZE, BUFFERS)`: `PSOrderSplit_idx_dashboard_parent_split_no`, `PSOrderSplitAssign_idx_site_resource_order`.
+- `pnpm --filter api build`: passed.
+- `pnpm --filter web build`: passed.
+- `pnpm --filter web test`: **232 files / 1080 tests** passed (jsdom emitted localhost connection logs, but Vitest passed).
+- API Vitest — focused unit: order supplement sync + command, **2 files / 20 tests** passed.
+- API Vitest — DB integration: split service, reconciliation, order supplement sync, **3 files / 14 tests** passed.
+- API Vitest — route/query/command focused: **3 files / 38 tests** passed.
+- API Vitest full suite: **402 files / 2027 tests** passed, **2 files / 9 tests skipped**.
+- Temporary Postgres `pgvector/pgvector:pg16`: `prisma migrate deploy` / `migrate status` (**111** migrations); temporary container / volume / network removed after verify.
+- `EXPLAIN`: `PSOrderSplit_idx_dashboard_parent_split_no`, `PSOrderSplitAssign_idx_site_resource_order`, `PSOrderSplitAssign_unique_order_slot`.
 - `git diff --check` passed.
 
 Note: standard `postgres:16-alpine` fails on existing `vector` extension migrations; use pgvector image for local DB verification.
 
-**Not done**: production Pi deploy; feature flag remains off in `.env.example`.
+**Not done**: git commit/push; production Pi deploy; feature flag remains off in `.env.example`.
 
 ## Deploy Notes
 
 - Snapshot generation token includes split tables `MAX(updatedAt)` — **apply the 3 split migrations before enabling the app/flag**, or leaderboard cache invalidation may miss split changes.
 - Safe rollout: (1) migrate on Pi, (2) deploy API+Web with flag OFF, (3) manual smoke with flag ON, (4) enable flag in production env.
+- Rollback after split creation is **new binary + feature flag OFF**. Do not rely on old-binary rollback after the split migrations have been applied and split rows may exist.
+
+### Pi Deploy Readiness (prepared, not executed)
+
+Target environment for the first real-device pass:
+
+- Host group: `raspberrypi5` only.
+- App scope: API + Web + Prisma migrations.
+- Feature flag: `KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false` for deploy and initial smoke.
+- Branch/ref: use the reviewed branch/ref only after it is committed and intentionally pushed; do not deploy an uncommitted local tree.
+
+Execution outline to present before running:
+
+1. Take a PostgreSQL backup and record the backup path.
+2. Apply Prisma migrations before app rollout:
+   - `20260619120000_add_production_schedule_order_split`
+   - `20260620103000_add_production_schedule_order_split_parent_lookup_index`
+   - `20260620120000_add_production_schedule_order_split_assignment_site_slot_index`
+3. Deploy API/Web to Pi5 with split flag OFF.
+4. Run API health and standard phase smoke; confirm normal ranking operations still work with flag OFF.
+5. Enable the split flag only for the limited Pi5/site smoke.
+6. Verify create/update/delete splits, parent/split order writes, completion/reconciliation, supplement sync, and OFF -> ON behavior.
+7. Run SQL checks for parent/split slot duplicates and split quantity totals before wider rollout.
+
+Suggested duplicate slot check:
+
+```sql
+WITH slots AS (
+  SELECT
+    'parent' AS kind,
+    "csvDashboardRowId" AS item_id,
+    "location",
+    "siteKey",
+    "resourceCd",
+    "orderNumber"
+  FROM "ProductionScheduleOrderAssignment"
+  WHERE "csvDashboardId" = 'production-schedule-mishima-grinding'
+  UNION ALL
+  SELECT
+    'split' AS kind,
+    "splitId" AS item_id,
+    "location",
+    "siteKey",
+    "resourceCd",
+    "orderNumber"
+  FROM "ProductionScheduleOrderSplitAssignment"
+  WHERE "csvDashboardId" = 'production-schedule-mishima-grinding'
+)
+SELECT
+  "location",
+  "resourceCd",
+  "orderNumber",
+  COUNT(*) AS duplicated_count,
+  json_agg(json_build_object('kind', kind, 'itemId', item_id) ORDER BY kind, item_id) AS items
+FROM slots
+GROUP BY "location", "resourceCd", "orderNumber"
+HAVING COUNT(*) > 1;
+```
+
+Suggested split quantity total check:
+
+```sql
+SELECT
+  s."parentCsvDashboardRowId",
+  SUM(s."splitQuantity") AS split_total,
+  os."plannedQuantity"
+FROM "ProductionScheduleOrderSplit" AS s
+LEFT JOIN "ProductionScheduleOrderSupplement" AS os
+  ON os."csvDashboardId" = s."csvDashboardId"
+  AND os."csvDashboardRowId" = s."parentCsvDashboardRowId"
+WHERE s."csvDashboardId" = 'production-schedule-mishima-grinding'
+GROUP BY s."parentCsvDashboardRowId", os."plannedQuantity"
+HAVING os."plannedQuantity" IS NOT NULL
+  AND SUM(s."splitQuantity") <> os."plannedQuantity";
+```
+
+Stop conditions:
+
+- Any migration failure, health check failure, or API/Web build mismatch.
+- Any parent/split duplicate slot rows from the SQL check.
+- Any split total mismatch after supplement sync.
+- Any winner-row relink scenario caused by CSV re-import; P2 relink is not implemented.
+- Any behavior that depends on deciding whether split structure is global or site-scoped; that contract is still open.
 
 ## Local Notes JA
 
@@ -213,8 +314,10 @@ Note: standard `postgres:16-alpine` fails on existing `vector` extension migrati
 - 親行に分割がある場合、snapshot / continue の ID 列は display item 基準。
 - Web UI: 分割片追加は API 上限 **50 件**で停止（追加ボタン disabled）。分割解除は確認ダイアログ必須。手動順番の重複は保存前にクライアント側で拒否。行切替時は draft 即時リセット、loading 中は保存/解除不可。
 - replace PUT: 既存 split は optional `id` で安定更新。親ロック後に資源CD・指示数を再検証。
-- flag OFF でも: 親/split 横断 slot 競合検知、分割済み親行への親 manual order 拒否は常時有効。
 - `hasDueDateOnly`: split 固有納期は display item 単位で filter / count。
+- flag OFF でも: stale release / order usage / slot 競合は split assignment を含めて整合。親 manual order は同一 scope の split 順位を畳んで保存可能（flag ON では拒否）。
+- 外部数量同期: `plannedQuantity` 変更時、親 row lock 下で split 数量を比例再配分。
+- 2026-06-20 Codex レビュー pass 10: flag OFF 整合（release lock、usage、supplement sync 比例再配分）。P2 winner relink / global vs site-scoped 契約は out of scope。
 - 2026-06-20 Codex レビュー pass 9: replace 安定化、modal race 防止、due-date filter 補正。winner relink は引き続き out of scope。
 - 2026-06-20 Codex レビュー pass 7: split service / route integration の cleanup を fixture 行に限定し、DB 付きテスト並列実行時の相互削除を防止。
 - 2026-06-20 Codex レビュー pass 8: Web 分割モーダルで手動順番の重複を保存前に検出。focused test / migration / EXPLAIN / DB integration 済み。
