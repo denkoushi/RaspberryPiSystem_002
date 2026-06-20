@@ -456,11 +456,12 @@ describe('order-supplement-sync.service', () => {
         plannedStartDateManuallySet: false,
       },
     ] as never);
-    vi.mocked(prisma.productionScheduleOrderSplit.findMany).mockResolvedValue([
-      { id: 'split-1', splitQuantity: 2 },
-      { id: 'split-2', splitQuantity: 3 },
-    ] as never);
-    vi.mocked(prisma.productionScheduleOrderSplit.findFirst).mockResolvedValue({ id: 'split-1' } as never);
+    vi.mocked(prisma.productionScheduleOrderSplit.findMany)
+      .mockResolvedValueOnce([{ parentCsvDashboardRowId: 'winner-1' }] as never)
+      .mockResolvedValueOnce([
+        { id: 'split-1', splitQuantity: 2 },
+        { id: 'split-2', splitQuantity: 3 },
+      ] as never);
 
     const service = new ProductionScheduleOrderSupplementSyncService();
     await service.syncFromSupplementDashboard();
@@ -508,11 +509,12 @@ describe('order-supplement-sync.service', () => {
         plannedStartDateManuallySet: false,
       },
     ] as never);
-    vi.mocked(prisma.productionScheduleOrderSplit.findFirst).mockResolvedValue({ id: 'split-1' } as never);
-    vi.mocked(prisma.productionScheduleOrderSplit.findMany).mockResolvedValue([
-      { id: 'split-1', splitQuantity: 2 },
-      { id: 'split-2', splitQuantity: 3 },
-    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSplit.findMany)
+      .mockResolvedValueOnce([{ parentCsvDashboardRowId: 'winner-old' }] as never)
+      .mockResolvedValueOnce([
+        { id: 'split-1', splitQuantity: 2 },
+        { id: 'split-2', splitQuantity: 3 },
+      ] as never);
 
     const service = new ProductionScheduleOrderSupplementSyncService();
     await service.syncFromSupplementDashboard();
