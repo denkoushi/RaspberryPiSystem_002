@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   deleteKioskProductionScheduleOrderSplits,
@@ -20,6 +20,7 @@ export type LeaderOrderSplitModalProps = {
 };
 
 export type DraftSplitItem = {
+  id: string | null;
   splitNo: number;
   splitQuantity: string;
   dueDate: string;
@@ -29,6 +30,7 @@ export type DraftSplitItem = {
 };
 
 const emptyDraft = (splitNo: number): DraftSplitItem => ({
+  id: null,
   splitNo,
   splitQuantity: '',
   dueDate: '',
@@ -92,37 +94,48 @@ export function LeaderOrderSplitModal({
   const [error, setError] = useState<string | null>(null);
   const [plannedQuantity, setPlannedQuantity] = useState<number | null>(null);
   const [drafts, setDrafts] = useState<DraftSplitItem[]>([emptyDraft(1), emptyDraft(2)]);
+  const [loadedSourceRowId, setLoadedSourceRowId] = useState<string | null>(null);
   const [dueDatePickerIndex, setDueDatePickerIndex] = useState<number | null>(null);
+  const loadRequestSeqRef = useRef(0);
 
   const sourceRowId = row?.sourceRowId ?? row?.id ?? '';
 
   const loadSplits = useCallback(async () => {
-    if (!open || !sourceRowId) return;
+    const requestSeq = loadRequestSeqRef.current + 1;
+    loadRequestSeqRef.current = requestSeq;
+    setDueDatePickerIndex(null);
+    setPlannedQuantity(null);
+    setDrafts([emptyDraft(1), emptyDraft(2)]);
+    setLoadedSourceRowId(null);
+
+    if (!open || !sourceRowId) {
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    const requestedSourceRowId = sourceRowId;
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchKioskProductionScheduleOrderSplits(sourceRowId, {
+      const data = await fetchKioskProductionScheduleOrderSplits(requestedSourceRowId, {
         ...(targetDeviceScopeKey ? { targetDeviceScopeKey } : {})
       });
+      if (loadRequestSeqRef.current !== requestSeq) return;
       setPlannedQuantity(data.plannedQuantity);
       if (data.splits.length > 0) {
-        setDrafts(
-          data.splits.map((split) => ({
-            splitNo: split.splitNo,
-            splitQuantity: String(split.splitQuantity),
-            dueDate: split.dueDate ?? '',
-            plannedStartDate: split.plannedStartDate ?? '',
-            plannedEndDate: split.plannedEndDate ?? '',
-            orderNumber: split.orderNumber != null ? String(split.orderNumber) : ''
-          }))
-        );
+        setDrafts(mapSplitItemsToDrafts(data.splits));
       } else {
         setDrafts([emptyDraft(1), emptyDraft(2)]);
       }
+      setLoadedSourceRowId(requestedSourceRowId);
     } catch (e) {
+      if (loadRequestSeqRef.current !== requestSeq) return;
       setError(e instanceof Error ? e.message : '分割情報の取得に失敗しました');
     } finally {
-      setLoading(false);
+      if (loadRequestSeqRef.current === requestSeq) {
+        setLoading(false);
+      }
     }
   }, [open, sourceRowId, targetDeviceScopeKey]);
 
@@ -154,6 +167,11 @@ export function LeaderOrderSplitModal({
   };
 
   const handleSave = async () => {
+    if (saving) return;
+    if (loading || loadedSourceRowId !== sourceRowId) {
+      setError('分割情報の読み込み完了後に保存してください');
+      return;
+    }
     if (!row || validationMessage) {
       setError(validationMessage);
       return;
@@ -162,6 +180,7 @@ export function LeaderOrderSplitModal({
     setError(null);
     try {
       const items = drafts.map((item) => ({
+        id: item.id,
         splitNo: item.splitNo,
         splitQuantity: Number(item.splitQuantity),
         dueDate: item.dueDate.trim().length > 0 ? item.dueDate.trim() : null,
@@ -184,6 +203,11 @@ export function LeaderOrderSplitModal({
   };
 
   const handleClearSplits = async () => {
+    if (saving) return;
+    if (loading || loadedSourceRowId !== sourceRowId) {
+      setError('分割情報の読み込み完了後に解除してください');
+      return;
+    }
     if (!sourceRowId) return;
     if (!window.confirm('この行の分割をすべて解除します。よろしいですか？')) {
       return;
@@ -226,6 +250,7 @@ export function LeaderOrderSplitModal({
                     type="button"
                     className="text-xs text-rose-300 hover:text-rose-200"
                     onClick={() => removeDraft(index)}
+                    disabled={loading || saving}
                   >
                     削除
                   </button>
@@ -239,6 +264,7 @@ export function LeaderOrderSplitModal({
                     inputMode="numeric"
                     value={item.splitQuantity}
                     onChange={(e) => updateDraft(index, { splitQuantity: e.target.value })}
+                    disabled={loading || saving}
                   />
                 </label>
                 <label className="text-xs">
@@ -247,6 +273,7 @@ export function LeaderOrderSplitModal({
                     type="button"
                     className="mt-1 block w-full rounded border border-slate-600 bg-slate-800 px-2 py-1 text-left"
                     onClick={() => setDueDatePickerIndex(index)}
+                    disabled={loading || saving}
                   >
                     {item.dueDate.trim().length > 0 ? item.dueDate : '未設定'}
                   </button>
@@ -258,6 +285,7 @@ export function LeaderOrderSplitModal({
                     inputMode="numeric"
                     value={item.orderNumber}
                     onChange={(e) => updateDraft(index, { orderNumber: e.target.value })}
+                    disabled={loading || saving}
                   />
                 </label>
               </div>
@@ -267,7 +295,7 @@ export function LeaderOrderSplitModal({
             type="button"
             className="rounded border border-dashed border-slate-600 px-3 py-2 text-sm text-cyan-200 disabled:opacity-50"
             onClick={addDraft}
-            disabled={drafts.length >= MAX_SPLIT_DRAFTS}
+            disabled={loading || saving || drafts.length >= MAX_SPLIT_DRAFTS}
           >
             + 分割片を追加
           </button>
@@ -280,18 +308,23 @@ export function LeaderOrderSplitModal({
             type="button"
             className="rounded border border-slate-600 px-3 py-2 text-sm"
             onClick={() => void handleClearSplits()}
-            disabled={saving}
+            disabled={loading || saving || loadedSourceRowId !== sourceRowId}
           >
             分割を解除
           </button>
           <div className="flex gap-2">
-            <button type="button" className="rounded border border-slate-600 px-3 py-2 text-sm" onClick={onClose}>
+            <button
+              type="button"
+              className="rounded border border-slate-600 px-3 py-2 text-sm"
+              onClick={onClose}
+              disabled={saving}
+            >
               キャンセル
             </button>
             <button
               type="button"
               className="rounded bg-cyan-600 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-50"
-              disabled={saving || Boolean(validationMessage)}
+              disabled={loading || saving || loadedSourceRowId !== sourceRowId || Boolean(validationMessage)}
               onClick={() => void handleSave()}
             >
               {saving ? '保存中…' : '保存'}
@@ -318,6 +351,7 @@ export function LeaderOrderSplitModal({
 
 export function mapSplitItemsToDrafts(splits: ProductionScheduleOrderSplitItem[]): DraftSplitItem[] {
   return splits.map((split) => ({
+    id: split.id,
     splitNo: split.splitNo,
     splitQuantity: String(split.splitQuantity),
     dueDate: split.dueDate ?? '',

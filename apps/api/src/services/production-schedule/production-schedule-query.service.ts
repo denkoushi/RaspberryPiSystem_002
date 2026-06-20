@@ -71,7 +71,10 @@ import {
   resolveParentRowIdsExcludedFromLeaderboardContinuation
 } from './leaderboard/leaderboard-split-expansion.service.js';
 import { isProductionScheduleOrderSplitEnabled } from './order-split/production-schedule-order-split-feature.js';
-import { sortExpandedProductionScheduleRowsByManualOrder } from './order-split/production-schedule-order-split.service.js';
+import {
+  filterProductionScheduleDisplayRowsByDueDate,
+  sortExpandedProductionScheduleRowsByManualOrder
+} from './order-split/production-schedule-order-split.service.js';
 import {
   countProductionScheduleDashboardVisibleLeaderboardUnits,
   countProductionScheduleDashboardVisibleRows
@@ -323,7 +326,7 @@ export async function listLeaderboardShellProductionScheduleRows(
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
 
-  const { expandedDisplayItems } = await resolveLeaderboardShellDisplayItemPrefix({
+  const { expandedDisplayItems: expandedDisplayItemsRaw } = await resolveLeaderboardShellDisplayItemPrefix({
     mergedPrefixInitial,
     mergeFullyCompletedInitial: mergeFullyCompleted,
     pageSize,
@@ -332,6 +335,10 @@ export async function listLeaderboardShellProductionScheduleRows(
     leaderboardMaterializedBaseWhere,
     leaderboardShellListWhere
   });
+  const expandedDisplayItems = filterProductionScheduleDisplayRowsByDueDate(
+    expandedDisplayItemsRaw,
+    params.hasDueDateOnly
+  );
 
   const orderedRowIds = expandedDisplayItems.map((row) => row.id);
   const generationToken = await resolveLeaderboardShellSnapshotGenerationToken(options.generationToken);
@@ -466,8 +473,13 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
           processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
         });
         const appendedDisplayIds = await expandLeaderboardParentRowIdsForSnapshot({
-          parentRows: chunkRows.map((r) => ({ id: r.id, processingOrder: r.processingOrder })),
-          locationKey
+          parentRows: chunkRows.map((r): ProductionScheduleRow => ({
+            ...r,
+            actualPerPieceMinutes: null,
+            customerName: null
+          })),
+          locationKey,
+          hasDueDateOnly: params.hasDueDateOnly
         });
         options.snapshotStore.appendSnapshotOrderingChunk(snapshotId, appendedDisplayIds, mergeFullyCompleted);
       };
@@ -584,12 +596,13 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
     locationKey
   });
 
-  const partialRows = await fetchPartiallyReturnedDisplayItemsForLegacyContinue({
+  const partialRowsRaw = await fetchPartiallyReturnedDisplayItemsForLegacyContinue({
     excludeDisplayItemIds,
     locationKey,
     siteScopedGlobalRankLocation,
     leaderboardMaterializedBaseWhere
   });
+  const partialRows = filterProductionScheduleDisplayRowsByDueDate(partialRowsRaw, params.hasDueDateOnly);
 
   const partiallyExcludedParentRowIds = await resolvePartiallyReturnedParentRowIdsForLegacyContinue({
     excludeDisplayItemIds,
@@ -615,7 +628,8 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
       actualPerPieceMinutes: null,
       customerName: null
     })),
-    locationKey
+    locationKey,
+    hasDueDateOnly: params.hasDueDateOnly
   });
 
   const filteredNewRows = newExpandedRows.filter((row) => !excludeDisplayItemIdSet.has(row.id));
@@ -671,6 +685,7 @@ export async function countProductionScheduleDashboardVisibleRowsFromListFilters
   const totalBig = await countProductionScheduleDashboardVisibleLeaderboardUnits({
     baseWhere: leaderboardMaterializedBaseWhere,
     queryWhere,
+    hasDueDateOnly: params.hasDueDateOnly,
     processChangeResidualMode: params.processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
@@ -953,11 +968,19 @@ const buildQueryWhere = (params: {
     )`;
   }
   if (hasDueDateOnly) {
-    queryWhere = Prisma.sql`${queryWhere} AND "CsvDashboardRow"."id" IN (
+    const parentDueDateExists = Prisma.sql`"CsvDashboardRow"."id" IN (
       SELECT "csvDashboardRowId" FROM "ProductionScheduleRowNote"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND "dueDate" IS NOT NULL
     )`;
+    const splitDueDateExists = isProductionScheduleOrderSplitEnabled()
+      ? Prisma.sql` OR "CsvDashboardRow"."id" IN (
+          SELECT "parentCsvDashboardRowId" FROM "ProductionScheduleOrderSplit"
+          WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+            AND "dueDate" IS NOT NULL
+        )`
+      : Prisma.empty;
+    queryWhere = Prisma.sql`${queryWhere} AND (${parentDueDateExists}${splitDueDateExists})`;
   }
   return queryWhere;
 };
@@ -1721,6 +1744,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   const leaderboardCountParams = {
     baseWhere: leaderboardMaterializedBaseWhere ?? baseWhere,
     queryWhere,
+    hasDueDateOnly,
     processChangeResidualMode: params.processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   };
@@ -1754,7 +1778,8 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
             customerName: null
           })
         ),
-        locationKey
+        locationKey,
+        hasDueDateOnly
       })
     );
 

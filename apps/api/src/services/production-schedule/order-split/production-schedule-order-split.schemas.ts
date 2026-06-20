@@ -16,6 +16,7 @@ export const productionScheduleOrderSplitReplaceBodySchema = z.object({
   items: z
     .array(
       z.object({
+        id: z.string().uuid().optional().nullable(),
         splitNo: z.number().int().min(1).max(100),
         splitQuantity: z.number().int().min(1).max(1_000_000),
         dueDate: z.string().max(20).optional().nullable(),

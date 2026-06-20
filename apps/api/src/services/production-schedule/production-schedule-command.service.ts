@@ -13,7 +13,6 @@ import {
   acquireUnifiedOrderSlotLockInTransaction,
   assertUnifiedOrderSlotAvailableInTransaction
 } from './order-split/production-schedule-unified-order-slot.service.js';
-import { isProductionScheduleOrderSplitEnabled } from './order-split/production-schedule-order-split-feature.js';
 import { acquireProductionScheduleParentRowLockInTransaction } from './order-split/production-schedule-parent-row-lock.service.js';
 import { snapshotEventLoopObservability } from '../system/event-loop-observability.js';
 
@@ -483,22 +482,20 @@ export async function upsertProductionScheduleOrder(params: {
   }
 
   await prisma.$transaction(async (tx) => {
-    if (isProductionScheduleOrderSplitEnabled()) {
-      await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
-      const splitCount = await tx.productionScheduleOrderSplit.count({
-        where: {
-          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          parentCsvDashboardRowId: row.id
-        }
-      });
-      if (splitCount > 0) {
-        throw new ApiError(
-          400,
-          '分割済みの行は親行の手動順番を設定できません',
-          undefined,
-          'PARENT_ORDER_NOT_ALLOWED_FOR_SPLIT_ROW'
-        );
+    await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
+    const splitCount = await tx.productionScheduleOrderSplit.count({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        parentCsvDashboardRowId: row.id
       }
+    });
+    if (splitCount > 0) {
+      throw new ApiError(
+        400,
+        '分割済みの行は親行の手動順番を設定できません',
+        undefined,
+        'PARENT_ORDER_NOT_ALLOWED_FOR_SPLIT_ROW'
+      );
     }
 
     await acquireUnifiedOrderSlotLockInTransaction(tx, {

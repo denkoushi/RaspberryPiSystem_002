@@ -313,4 +313,70 @@ describe('production-schedule-order-split.service (integration)', () => {
     });
     expect(parentAssignments).toBe(0);
   });
+
+  it('replace 入力の split id で既存分割片を安定更新し、splitNo 振り直しで別拠点割当を移動しない', async () => {
+    const parent = await seedSplittableParentRow(6);
+
+    const first = await replaceProductionScheduleOrderSplits({
+      parentCsvDashboardRowId: parent.id,
+      locationKey: LOCATION_KEY,
+      resourceCd: RESOURCE_CD,
+      items: [
+        { splitNo: 1, splitQuantity: 2 },
+        { splitNo: 2, splitQuantity: 4 }
+      ]
+    });
+    const split1 = first.splits[0]!;
+    const split2 = first.splits[1]!;
+
+    await prisma.productionScheduleOrderSplitAssignment.createMany({
+      data: [
+        {
+          csvDashboardId: DASHBOARD_ID,
+          splitId: split1.id,
+          location: 'SplitServiceOtherA',
+          siteKey: 'SplitServiceOtherA',
+          resourceCd: RESOURCE_CD,
+          orderNumber: 1
+        },
+        {
+          csvDashboardId: DASHBOARD_ID,
+          splitId: split2.id,
+          location: 'SplitServiceOtherB',
+          siteKey: 'SplitServiceOtherB',
+          resourceCd: RESOURCE_CD,
+          orderNumber: 2
+        }
+      ]
+    });
+
+    const replaced = await replaceProductionScheduleOrderSplits({
+      parentCsvDashboardRowId: parent.id,
+      locationKey: LOCATION_KEY,
+      resourceCd: RESOURCE_CD,
+      items: [{ id: split2.id, splitNo: 1, splitQuantity: 6 }]
+    });
+
+    expect(replaced.splits).toHaveLength(1);
+    expect(replaced.splits[0]).toMatchObject({
+      id: split2.id,
+      splitNo: 1,
+      splitQuantity: 6
+    });
+
+    const deletedSplit = await prisma.productionScheduleOrderSplit.findUnique({
+      where: { id: split1.id }
+    });
+    expect(deletedSplit).toBeNull();
+
+    const split1Assignments = await prisma.productionScheduleOrderSplitAssignment.count({
+      where: { splitId: split1.id }
+    });
+    expect(split1Assignments).toBe(0);
+
+    const split2OtherAssignments = await prisma.productionScheduleOrderSplitAssignment.findMany({
+      where: { splitId: split2.id, location: 'SplitServiceOtherB' }
+    });
+    expect(split2OtherAssignments).toHaveLength(1);
+  });
 });

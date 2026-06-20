@@ -2240,6 +2240,7 @@ export async function replaceKioskProductionScheduleOrderSplits(
   payload: {
     resourceCd: string;
     items: Array<{
+      id?: string | null;
       splitNo: number;
       splitQuantity: number;
       dueDate?: string | null;

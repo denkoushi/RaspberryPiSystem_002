@@ -5,7 +5,6 @@ import type { Prisma } from '@prisma/client';
 import { ApiError } from '../../../lib/errors.js';
 import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { isProductionScheduleOrderSplitEnabled } from './production-schedule-order-split-feature.js';
 
 export type UnifiedOrderSlotExclusions = {
   excludeParentRowId?: string;
@@ -180,10 +179,6 @@ export async function assertUnifiedOrderSlotAvailableInTransaction(
     })
   ) {
     throw new ApiError(409, 'この番号は既に使用されています', undefined, 'ORDER_NUMBER_CONFLICT');
-  }
-
-  if (!isProductionScheduleOrderSplitEnabled()) {
-    return;
   }
 
   if (

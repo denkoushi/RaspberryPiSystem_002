@@ -25,6 +25,7 @@ import {
 import { applySplitQuantityToProductionScheduleRowDisplayFields } from './split-display-required-minutes.js';
 
 export type OrderSplitItemInput = {
+  id?: SplitId | null;
   splitNo: number;
   splitQuantity: number;
   dueDate?: string | null;
@@ -229,32 +230,9 @@ export async function replaceProductionScheduleOrderSplits(params: {
     throw new ApiError(400, '分割片は1件以上必要です');
   }
 
-  const row = await prisma.csvDashboardRow.findFirst({
-    where: { id: parentCsvDashboardRowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
-    select: {
-      id: true,
-      rowData: true,
-      orderSupplements: {
-        where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
-        select: { plannedQuantity: true },
-        take: 1
-      }
-    }
-  });
-  if (!row) {
-    throw new ApiError(404, '対象の行が見つかりません');
-  }
-
-  const rowData = row.rowData as Record<string, unknown>;
-  const rowResourceCd = typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD.trim() : '';
-  if (rowResourceCd && rowResourceCd !== resourceCd.trim()) {
-    throw new ApiError(400, '資源CDが一致しません');
-  }
-
-  const plannedQuantity = assertSplittablePlannedQuantity(row.orderSupplements[0]?.plannedQuantity ?? null);
-
   const normalizedItems = [...items]
     .map((item) => ({
+      id: typeof item.id === 'string' && item.id.trim().length > 0 ? item.id.trim() : null,
       splitNo: item.splitNo,
       splitQuantity: item.splitQuantity,
       dueDate: parseOptionalDateField(item.dueDate, '納期日'),
@@ -265,8 +243,15 @@ export async function replaceProductionScheduleOrderSplits(params: {
     .sort((a, b) => a.splitNo - b.splitNo);
 
   const splitNos = new Set<number>();
+  const splitIds = new Set<string>();
   let quantitySum = 0;
   for (const item of normalizedItems) {
+    if (item.id != null) {
+      if (splitIds.has(item.id)) {
+        throw new ApiError(400, '分割片IDが重複しています');
+      }
+      splitIds.add(item.id);
+    }
     if (!Number.isInteger(item.splitNo) || item.splitNo < 1) {
       throw new ApiError(400, 'splitNo は正の整数である必要があります');
     }
@@ -285,17 +270,40 @@ export async function replaceProductionScheduleOrderSplits(params: {
     }
   }
 
-  if (quantitySum !== plannedQuantity) {
-    throw new ApiError(
-      400,
-      `分割数量の合計(${quantitySum})が指示数(${plannedQuantity})と一致しません`,
-      undefined,
-      'SPLIT_QUANTITY_SUM_MISMATCH'
-    );
-  }
-
   const created = await prisma.$transaction(async (tx) => {
-    await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
+    await acquireProductionScheduleParentRowLockInTransaction(tx, parentCsvDashboardRowId);
+
+    const row = await tx.csvDashboardRow.findFirst({
+      where: { id: parentCsvDashboardRowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: {
+        id: true,
+        rowData: true,
+        orderSupplements: {
+          where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+          select: { plannedQuantity: true },
+          take: 1
+        }
+      }
+    });
+    if (!row) {
+      throw new ApiError(404, '対象の行が見つかりません');
+    }
+
+    const rowData = row.rowData as Record<string, unknown>;
+    const rowResourceCd = typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD.trim() : '';
+    if (rowResourceCd && rowResourceCd !== resourceCd.trim()) {
+      throw new ApiError(400, '資源CDが一致しません');
+    }
+
+    const plannedQuantity = assertSplittablePlannedQuantity(row.orderSupplements[0]?.plannedQuantity ?? null);
+    if (quantitySum !== plannedQuantity) {
+      throw new ApiError(
+        400,
+        `分割数量の合計(${quantitySum})が指示数(${plannedQuantity})と一致しません`,
+        undefined,
+        'SPLIT_QUANTITY_SUM_MISMATCH'
+      );
+    }
 
     const existingSplits = await tx.productionScheduleOrderSplit.findMany({
       where: {
@@ -306,14 +314,29 @@ export async function replaceProductionScheduleOrderSplits(params: {
       orderBy: { splitNo: 'asc' }
     });
     const before = existingSplits;
+    const existingById = new Map(existingSplits.map((split) => [split.id, split]));
     const existingBySplitNo = new Map(existingSplits.map((split) => [split.splitNo, split]));
-    const requestedSplitNos = normalizedItems.map((item) => item.splitNo);
+    const matchedExistingByItem = new Map<(typeof normalizedItems)[number], (typeof existingSplits)[number]>();
+    const matchedExistingIds = new Set<string>();
+
+    for (const item of normalizedItems) {
+      const existing = item.id != null ? existingById.get(item.id) : existingBySplitNo.get(item.splitNo);
+      if (item.id != null && !existing) {
+        throw new ApiError(400, '分割片IDが対象行に属していません');
+      }
+      if (!existing) continue;
+      if (matchedExistingIds.has(existing.id)) {
+        throw new ApiError(400, '同じ分割片IDが複数の入力に対応しています');
+      }
+      matchedExistingIds.add(existing.id);
+      matchedExistingByItem.set(item, existing);
+    }
 
     await tx.productionScheduleOrderSplit.deleteMany({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
         parentCsvDashboardRowId: row.id,
-        splitNo: { notIn: requestedSplitNos }
+        id: { notIn: [...matchedExistingIds] }
       }
     });
 
@@ -330,11 +353,21 @@ export async function replaceProductionScheduleOrderSplits(params: {
     }> = [];
 
     for (const item of normalizedItems) {
-      const existing = existingBySplitNo.get(item.splitNo);
+      const existing = matchedExistingByItem.get(item);
+      if (!existing) continue;
+      await tx.productionScheduleOrderSplit.update({
+        where: { id: existing.id },
+        data: { splitNo: -item.splitNo }
+      });
+    }
+
+    for (const item of normalizedItems) {
+      const existing = matchedExistingByItem.get(item);
       const split = existing
         ? await tx.productionScheduleOrderSplit.update({
             where: { id: existing.id },
             data: {
+              splitNo: item.splitNo,
               splitQuantity: item.splitQuantity,
               dueDate: item.dueDate,
               plannedStartDate: item.plannedStartDate,
@@ -747,6 +780,14 @@ export function sortExpandedProductionScheduleRowsByManualOrder(
       }
     )
   );
+}
+
+export function filterProductionScheduleDisplayRowsByDueDate(
+  rows: ProductionScheduleRow[],
+  enabled: boolean
+): ProductionScheduleRow[] {
+  if (!enabled) return rows;
+  return rows.filter((row) => row.dueDate != null);
 }
 
 function resolveSplitProcessingOrder(

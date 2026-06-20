@@ -200,6 +200,29 @@ describe('production-schedule-command.service', () => {
     );
   });
 
+  it('分割済み行では親行の手動順番設定を常に拒否する', async () => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({
+      id: 'row-split-parent',
+      rowData: { FSIGENCD: 'R01' }
+    } as never);
+    vi.mocked(prisma.productionScheduleOrderAssignment.findUnique).mockResolvedValue(null as never);
+    vi.mocked(prisma.productionScheduleOrderSplit.count).mockResolvedValue(1 as never);
+
+    await expect(
+      upsertProductionScheduleOrder({
+        rowId: 'row-split-parent',
+        locationKey: 'kiosk-1',
+        resourceCd: 'R01',
+        orderNumber: 2
+      })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'PARENT_ORDER_NOT_ALLOWED_FOR_SPLIT_ROW'
+    } satisfies Partial<ApiError>);
+
+    expect(prisma.productionScheduleOrderAssignment.upsert).not.toHaveBeenCalled();
+  });
+
   it('intent=complete が既に完了なら unchanged で tx を叩かない', async () => {
     vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({
       id: 'row-done',
@@ -238,4 +261,3 @@ describe('production-schedule-command.service', () => {
     expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
   });
 });
-

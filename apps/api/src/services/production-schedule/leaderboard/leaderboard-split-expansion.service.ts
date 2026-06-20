@@ -8,6 +8,7 @@ import {
   buildDisplayItemIdsByParentRowId,
   expandOrderedDisplayItemIdsFromParentRowIds,
   expandProductionScheduleRowsForOrderSplits,
+  filterProductionScheduleDisplayRowsByDueDate,
   hydrateDisplayItemsFromParentRows,
   resolveHydrateSourceRowIdsFromDisplayItemIds
 } from '../order-split/production-schedule-order-split.service.js';
@@ -42,18 +43,30 @@ function mapHydratedSqlRowToProductionScheduleRow(row: LeaderboardScheduleRowSql
 export async function expandLeaderboardParentRowsForResponse(params: {
   rows: ProductionScheduleRow[];
   locationKey: string;
+  hasDueDateOnly?: boolean;
 }): Promise<ProductionScheduleRow[]> {
-  return expandProductionScheduleRowsForOrderSplits({
+  const expanded = await expandProductionScheduleRowsForOrderSplits({
     rows: params.rows,
     locationKey: params.locationKey,
     enabled: isProductionScheduleOrderSplitEnabled()
   });
+  return filterProductionScheduleDisplayRowsByDueDate(expanded, params.hasDueDateOnly === true);
 }
 
 export async function expandLeaderboardParentRowIdsForSnapshot(params: {
-  parentRows: ReadonlyArray<{ id: string; processingOrder?: number | null }>;
+  parentRows: ProductionScheduleRow[];
   locationKey: string;
+  hasDueDateOnly?: boolean;
 }): Promise<DisplayItemId[]> {
+  if (params.hasDueDateOnly) {
+    const expanded = await expandLeaderboardParentRowsForResponse({
+      rows: params.parentRows,
+      locationKey: params.locationKey,
+      hasDueDateOnly: true
+    });
+    return expanded.map((row) => row.id);
+  }
+
   const parentProcessingOrderByRowId = new Map(
     params.parentRows.map((row) => [row.id, row.processingOrder ?? null] as const)
   );

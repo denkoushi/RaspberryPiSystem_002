@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { validateSplitDrafts, type DraftSplitItem } from '../LeaderOrderSplitModal';
 
 const draft = (patch: Partial<DraftSplitItem>): DraftSplitItem => ({
+  id: null,
   splitNo: 1,
   splitQuantity: '1',
   dueDate: '',

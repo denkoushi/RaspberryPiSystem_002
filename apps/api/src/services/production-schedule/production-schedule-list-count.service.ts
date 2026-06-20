@@ -12,6 +12,7 @@ import { isProductionScheduleOrderSplitEnabled } from './order-split/production-
 type CountVisibleRowsParams = {
   baseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
+  hasDueDateOnly?: boolean;
   processChangeResidualMode?: ProcessChangeResidualMode;
   processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
 };
@@ -55,13 +56,21 @@ export async function countProductionScheduleDashboardVisibleDisplayItems(
     processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys
   );
-  const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
-    SELECT COALESCE(SUM(
-      CASE
+  const displayItemCountSql = params.hasDueDateOnly
+    ? Prisma.sql`CASE
+        WHEN COALESCE("split_counts"."split_count", 0) > 0 THEN
+          CASE
+            WHEN "n_due"."dueDate" IS NOT NULL THEN "split_counts"."split_count"
+            ELSE COALESCE("split_counts"."split_due_count", 0)
+          END
+        ELSE 1
+      END`
+    : Prisma.sql`CASE
         WHEN COALESCE("split_counts"."split_count", 0) > 0 THEN "split_counts"."split_count"
         ELSE 1
-      END
-    ), 0)::bigint AS total
+      END`;
+  const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
+    SELECT COALESCE(SUM(${displayItemCountSql}), 0)::bigint AS total
     FROM "CsvDashboardRow"
     LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
       ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
@@ -69,8 +78,14 @@ export async function countProductionScheduleDashboardVisibleDisplayItems(
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleRowNote" AS "n_due"
+      ON "n_due"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "n_due"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN (
-      SELECT "parentCsvDashboardRowId", COUNT(*)::int AS "split_count"
+      SELECT
+        "parentCsvDashboardRowId",
+        COUNT(*)::int AS "split_count",
+        COUNT(*) FILTER (WHERE "dueDate" IS NOT NULL)::int AS "split_due_count"
       FROM "ProductionScheduleOrderSplit"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       GROUP BY "parentCsvDashboardRowId"

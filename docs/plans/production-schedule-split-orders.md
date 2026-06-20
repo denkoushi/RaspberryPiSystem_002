@@ -3,7 +3,7 @@
 ```yaml
 id: production-schedule-split-orders
 status: implemented
-review_status: codex-reviewed-2026-06-20-final-pass8
+review_status: codex-reviewed-2026-06-20-final-pass9
 scope: kiosk-leaderboard-order-split
 date: 2026-06-19
 last_updated: 2026-06-20
@@ -24,6 +24,8 @@ validation:
   - pnpm --filter api exec vitest run src/services/production-schedule/order-assignment/__tests__/order-assignment-reconciliation.integration.test.ts
   - pnpm --filter web exec vitest run src/features/kiosk/productionSchedule/useProductionScheduleMutations.test.ts
   - pnpm --filter web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__/LeaderOrderSplitModal.test.ts
+  - pnpm --filter web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__/LeaderOrderSplitModal.component.test.tsx
+  - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/production-schedule-command.service.test.ts
 deploy_status: not_deployed
 open_items:
   - CSV re-import / winner change logical-key relink for existing splits
@@ -161,6 +163,20 @@ Reproduced the cleanup race by running split route/service and reconciliation in
 
 **Review (pass 8)**: no production blockers. Temporary pgvector DB verification covered migrations, focused DB integration tests, and `EXPLAIN` for split lookup / assignment slot indexes. Temporary container and volume removed after validation.
 
+## Codex Split Replace Stability & Safety (2026-06-20)
+
+| Area | Fix |
+|------|-----|
+| Split replace | Optional item `id` for stable update; parent lock 後に資源CD・指示数を再読込して再検証 |
+| Slot integrity | Flag OFF でも親/split 横断の unified slot 競合検知を常時有効化 |
+| Parent manual order | Flag OFF でも分割済み親行への親 assignment 更新を拒否 |
+| Web modal | 行切替時 draft 即時リセット、古い GET 応答破棄、loading 中 save/clear 禁止、PUT payload に split `id` |
+| Due-date filter | `hasDueDateOnly` が split 固有納期を display item 単位で扱うよう query / count / expansion を補正 |
+
+Tests: split service/route integration, command unit, Web split modal unit/component.
+
+**Review (pass 9)**: no production blockers. Winner-change logical-key relink remains out of scope; this pass focused on replace revalidation, modal race prevention, and due-date filter alignment. Temporary pgvector DB: migrate deploy/status + `EXPLAIN (ANALYZE, BUFFERS)` for split parent lookup / site slot indexes.
+
 ## Out of Scope (explicit)
 
 - Completion toggle per split item (parent row completion contract unchanged).
@@ -170,13 +186,15 @@ Reproduced the cleanup race by running split route/service and reconciliation in
 
 ## Validation (latest)
 
-Verified locally (Agent, 2026-06-20 — pre-commit / pre-push):
+Verified locally (Agent, 2026-06-20 — pass 9 pre-commit / pre-push):
 
 - API / Web TypeScript compile (build tsconfig).
-- API Vitest — focused split/order-assignment/query/command/leaderboard suites: **15 files / 73 tests** passed.
-- Web Vitest — focused split modal + mutation suites: **2 files / 8 tests** passed.
-- Temporary Postgres `pgvector/pgvector:pg16`: `prisma migrate deploy` (**111** migrations).
-- `EXPLAIN`: `PSOrderSplit_idx_dashboard_parent_split_no`, `PSOrderSplitAssign_idx_site_resource_order`, `PSOrderSplitAssign_unique_order_slot`, `PSOrderSplitAssign_unique_split_location`.
+- API Vitest — split service integration, split route integration, command unit: **3 files / 21 tests** passed.
+- API Vitest — query focused: **1 file / 23 tests** passed.
+- Web Vitest — split modal unit/component tests: **2 files / 3 tests** passed.
+- API / Web ESLint focused checks passed.
+- Temporary Postgres `pgvector/pgvector:pg16`: `prisma migrate deploy` / `migrate status` (**111** migrations); temporary container and volume removed after verify.
+- `EXPLAIN (ANALYZE, BUFFERS)`: `PSOrderSplit_idx_dashboard_parent_split_no`, `PSOrderSplitAssign_idx_site_resource_order`.
 - `git diff --check` passed.
 
 Note: standard `postgres:16-alpine` fails on existing `vector` extension migrations; use pgvector image for local DB verification.
@@ -193,7 +211,11 @@ Note: standard `postgres:16-alpine` fails on existing `vector` extension migrati
 - 現場要件: 5個中2個先行・3個遅延など、順位ボード上で数量・納期・手動順番を分けたい。
 - 初回は `plannedQuantity` が正の整数の行のみ分割可能。null/0/不正は API 400。
 - 親行に分割がある場合、snapshot / continue の ID 列は display item 基準。
-- Web UI: 分割片追加は API 上限 **50 件**で停止（追加ボタン disabled）。分割解除は確認ダイアログ必須。手動順番の重複は保存前にクライアント側で拒否。
+- Web UI: 分割片追加は API 上限 **50 件**で停止（追加ボタン disabled）。分割解除は確認ダイアログ必須。手動順番の重複は保存前にクライアント側で拒否。行切替時は draft 即時リセット、loading 中は保存/解除不可。
+- replace PUT: 既存 split は optional `id` で安定更新。親ロック後に資源CD・指示数を再検証。
+- flag OFF でも: 親/split 横断 slot 競合検知、分割済み親行への親 manual order 拒否は常時有効。
+- `hasDueDateOnly`: split 固有納期は display item 単位で filter / count。
+- 2026-06-20 Codex レビュー pass 9: replace 安定化、modal race 防止、due-date filter 補正。winner relink は引き続き out of scope。
 - 2026-06-20 Codex レビュー pass 7: split service / route integration の cleanup を fixture 行に限定し、DB 付きテスト並列実行時の相互削除を防止。
 - 2026-06-20 Codex レビュー pass 8: Web 分割モーダルで手動順番の重複を保存前に検出。focused test / migration / EXPLAIN / DB integration 済み。
 - 2026-06-20 Codex レビュー pass 6: stale manual order 解放を transaction 化（親 + split assignment の順位詰めを atomic に）。reconciliation 回帰テスト追加。

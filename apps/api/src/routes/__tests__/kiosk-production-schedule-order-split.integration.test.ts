@@ -10,7 +10,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
-import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
+import {
+  PRODUCTION_SCHEDULE_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID
+} from '../../services/production-schedule/constants.js';
 
 const DASHBOARD_ID = PRODUCTION_SCHEDULE_DASHBOARD_ID;
 const ORDER_SUPPLEMENT_SOURCE_DASHBOARD_ID = '8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31';
@@ -43,6 +46,9 @@ async function cleanupSplitRouteFixtures(): Promise<void> {
     });
     await prisma.productionScheduleOrderSplit.deleteMany({
       where: { csvDashboardId: DASHBOARD_ID, parentCsvDashboardRowId: { in: rowIds } }
+    });
+    await prisma.productionScheduleFkojunstMailStatus.deleteMany({
+      where: { csvDashboardId: DASHBOARD_ID, csvDashboardRowId: { in: rowIds } }
     });
     await prisma.productionScheduleOrderAssignment.deleteMany({
       where: { csvDashboardId: DASHBOARD_ID, csvDashboardRowId: { in: rowIds } }
@@ -136,6 +142,18 @@ describe('Kiosk Production Schedule Order Split API (integration)', () => {
         plannedQuantity: 6
       }
     });
+    await prisma.productionScheduleFkojunstMailStatus.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+        fkojun: '10',
+        fkoteicd: RESOURCE_CD,
+        fsezono: '9000200001',
+        statusCode: 'S',
+        sourceUpdatedAt: new Date('2026-06-20T00:00:00.000Z')
+      }
+    });
   });
 
   it('PUT/GET splits で置換と一覧ができる', async () => {
@@ -227,6 +245,47 @@ describe('Kiosk Production Schedule Order Split API (integration)', () => {
       where: { parentCsvDashboardRowId: parentRowId }
     });
     expect(remaining).toBe(0);
+  });
+
+  it('hasDueDateOnly leaderboard は split 固有納期を display item 単位で返す', async () => {
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${parentRowId}/splits`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: {
+        resourceCd: RESOURCE_CD,
+        items: [
+          { splitNo: 1, splitQuantity: 2, dueDate: '2026-09-01' },
+          { splitNo: 2, splitQuantity: 4 }
+        ]
+      }
+    });
+    expect(putRes.statusCode).toBe(200);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?responseProfile=leaderboard&hasDueDateOnly=true&q=SPLIT-RT',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(listRes.statusCode).toBe(200);
+    const listBody = listRes.json() as {
+      rows: Array<{ id: string; sourceRowId: string; splitNo: number | null; dueDate: string | null }>;
+    };
+    expect(listBody.rows).toHaveLength(1);
+    expect(listBody.rows[0]).toMatchObject({
+      sourceRowId: parentRowId,
+      splitNo: 1
+    });
+    expect(listBody.rows[0]?.id).toMatch(/^split:/);
+    expect(listBody.rows[0]?.dueDate).toContain('2026-09-01');
+
+    const totalRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-total?hasDueDateOnly=true&q=SPLIT-RT',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(totalRes.statusCode).toBe(200);
+    expect((totalRes.json() as { total: number }).total).toBe(1);
   });
 
   it('split replace / due-date ルートは不正な日付を 400 にする', async () => {
