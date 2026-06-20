@@ -3,7 +3,7 @@
 ```yaml
 id: production-schedule-split-orders
 status: implemented
-review_status: codex-reviewed-2026-06-20-final-pass10
+review_status: codex-reviewed-2026-06-20-final-pass10-pi5-flag-off-smoke
 scope: kiosk-leaderboard-order-split
 date: 2026-06-19
 last_updated: 2026-06-20
@@ -27,7 +27,7 @@ validation:
   - pnpm --filter web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__/LeaderOrderSplitModal.component.test.tsx
   - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts
   - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.integration.test.ts
-deploy_status: not_deployed
+deploy_status: pi5-flag-off-smoke-passed
 open_items:
   - CSV re-import / winner change logical-key relink for existing splits (P2)
   - Split structure contract: global vs site-scoped semantics (needs API/data-model decision)
@@ -193,6 +193,29 @@ Tests: order-supplement sync unit/integration, command unit (flag OFF parent res
 
 **Review (pass 10)**: no P1 production blockers. Agent follow-up fixed the release repository unit-test mock to include `$executeRaw`, matching the new slot-lock protocol. P2 winner row ID relink and global vs site-scoped split contract remain explicitly out of scope (data-model/API contract change). Temporary pgvector DB: migrate deploy/status + EXPLAIN for split indexes.
 
+## Pi5 Flag-OFF Smoke Hardening (2026-06-20)
+
+| Area | Fix |
+|------|-----|
+| Supplement split locks | Split parent locks are acquired only for parents that actually have splits; split parent lookup is batched per update chunk instead of per row |
+| Winner row change guard | If an existing supplement would move to another winner row but the old parent has splits, keep the supplement on the old parent and reconcile that parent instead of orphaning split state |
+| Supplement transaction size | `create` / `update` / `prune` writes run in short chunk transactions, avoiding Pi5 interactive transaction timeout on large supplement datasets |
+
+Pi5 flag-OFF smoke evidence:
+
+- Branch commit deployed to `raspberrypi5`: `75ea7b86`.
+- `KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false`.
+- `prisma migrate status`: **Database schema is up to date** (`111` migrations).
+- API health: `status=ok`.
+- Order supplement sync smoke completed on real Pi5 data: `scanned=67964`, `normalized=67964`, `matched=24435`, `unmatched=43529`, `upserted=24435`, `pruned=0`.
+- Parent/split duplicate slot SQL: `0` rows.
+- Split quantity mismatch SQL: `0` rows.
+
+Observed and fixed during Pi5 smoke:
+
+- First attempt with parent-row locks for every changed supplement hit PostgreSQL `out of shared memory`; fixed by locking only split-bearing parents.
+- Second attempt with per-row split existence checks avoided the lock error but hit Prisma interactive transaction timeout (`P2028`) on real data; fixed by batching split parent lookup and chunking transactions.
+
 ## Out of Scope (explicit)
 
 - Completion toggle per split item (parent row completion contract unchanged).
@@ -202,7 +225,7 @@ Tests: order-supplement sync unit/integration, command unit (flag OFF parent res
 
 ## Validation (latest)
 
-Verified locally (Agent, 2026-06-20 — pass 10 follow-up; **not committed**):
+Verified locally + CI + Pi5 (Agent, 2026-06-20 — pass 10 follow-up):
 
 - `pnpm --filter api build`: passed.
 - `pnpm --filter web build`: passed.
@@ -214,10 +237,13 @@ Verified locally (Agent, 2026-06-20 — pass 10 follow-up; **not committed**):
 - Temporary Postgres `pgvector/pgvector:pg16`: `prisma migrate deploy` / `migrate status` (**111** migrations); temporary container / volume / network removed after verify.
 - `EXPLAIN`: `PSOrderSplit_idx_dashboard_parent_split_no`, `PSOrderSplitAssign_idx_site_resource_order`, `PSOrderSplitAssign_unique_order_slot`.
 - `git diff --check` passed.
+- GitHub Actions `27869672609`, `27870341509`, `27871004452`: passed.
+- Pi5 deploys to `raspberrypi5` only: `cc5d6f82`, `54d026dd`, `75ea7b86` all completed with Ansible `failed=0`; latest verified ref is `75ea7b86`.
+- Pi5 latest verification: flag OFF, migration up to date, API health ok, supplement sync smoke passed, duplicate slot SQL `0`, split quantity mismatch SQL `0`.
 
 Note: standard `postgres:16-alpine` fails on existing `vector` extension migrations; use pgvector image for local DB verification.
 
-**Not done**: git commit/push; production Pi deploy; feature flag remains off in `.env.example`.
+**Not done**: wider Pi4 rollout; permanent/all-terminal flag ON; old-binary rollback validation. Feature flag remains off in `.env.example`.
 
 ## Deploy Notes
 
@@ -317,6 +343,7 @@ Stop conditions:
 - `hasDueDateOnly`: split 固有納期は display item 単位で filter / count。
 - flag OFF でも: stale release / order usage / slot 競合は split assignment を含めて整合。親 manual order は同一 scope の split 順位を畳んで保存可能（flag ON では拒否）。
 - 外部数量同期: `plannedQuantity` 変更時、親 row lock 下で split 数量を比例再配分。
+- Pi5 flag OFF smoke: `75ea7b86` で migration up to date、API health ok、order supplement sync 実データ完走、順位重複SQL 0、split数量不一致SQL 0。
 - 2026-06-20 Codex レビュー pass 10: flag OFF 整合（release lock、usage、supplement sync 比例再配分）。P2 winner relink / global vs site-scoped 契約は out of scope。
 - 2026-06-20 Codex レビュー pass 9: replace 安定化、modal race 防止、due-date filter 補正。winner relink は引き続き out of scope。
 - 2026-06-20 Codex レビュー pass 7: split service / route integration の cleanup を fixture 行に限定し、DB 付きテスト並列実行時の相互削除を防止。
