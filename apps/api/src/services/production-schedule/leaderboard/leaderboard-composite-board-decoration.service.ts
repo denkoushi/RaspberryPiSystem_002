@@ -12,7 +12,7 @@ import { enrichProductionScheduleRowsWithCustomerName } from '../production-sche
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
 import { prisma } from '../../../lib/prisma.js';
 import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard-display-row-scope.js';
-import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard-shell-hydrate.service.js';
+import { fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds } from './leaderboard-split-expansion.service.js';
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard-part-footer-processes.service.js';
 
 type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
@@ -117,8 +117,8 @@ export async function decorateLeaderboardCompositeBoardContinue(params: {
     const siteScoped =
       params.siteKey?.trim().length ? params.siteKey.trim() : params.locationKey;
 
-    const prefixHydrated = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
-      orderedRowIds: prefixIds,
+    const prefixHydrated = await fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds({
+      orderedDisplayItemIds: prefixIds,
       locationKey: params.locationKey,
       siteScopedGlobalRankLocation: siteScoped,
       leaderboardMaterializedBaseWhere

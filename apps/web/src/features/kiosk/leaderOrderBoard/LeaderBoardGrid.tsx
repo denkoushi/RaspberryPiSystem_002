@@ -25,7 +25,9 @@ export type LeaderBoardGridProps = {
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;
   notePending: boolean;
-  onOpenInspectionWorkflow: (row: LeaderBoardRow) => void;
+  onOpenInspectionWorkflow?: (row: LeaderBoardRow) => void;
+  onOpenSplitModal?: (row: LeaderBoardRow) => void;
+  splitFeatureEnabled?: boolean;
   /** 背景同期中など、行操作を明示的に無効化 */
   interactionLocked?: boolean;
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
@@ -60,7 +62,9 @@ type SlotCardProps = {
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;
   notePending: boolean;
-  onOpenInspectionWorkflow: (row: LeaderBoardRow) => void;
+  onOpenInspectionWorkflow?: (row: LeaderBoardRow) => void;
+  onOpenSplitModal?: (row: LeaderBoardRow) => void;
+  splitFeatureEnabled?: boolean;
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
   seibanEvalEnabled?: boolean;
   ganttEnabled?: boolean;
@@ -90,6 +94,8 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   onOpenNote,
   notePending,
   onOpenInspectionWorkflow,
+  onOpenSplitModal,
+  splitFeatureEnabled = false,
   footerResourceChipsByPartKey,
   seibanEvalEnabled = false,
   ganttEnabled = false,
@@ -126,6 +132,8 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
       onOpenNote={onOpenNote}
       notePending={notePending}
       onOpenInspectionWorkflow={onOpenInspectionWorkflow}
+      onOpenSplitModal={onOpenSplitModal}
+      splitFeatureEnabled={splitFeatureEnabled}
       footerResourceChipsByPartKey={footerResourceChipsByPartKey}
       seibanEvalEnabled={seibanEvalEnabled}
       ganttEnabled={ganttEnabled}
@@ -158,6 +166,8 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   onOpenNote,
   notePending,
   onOpenInspectionWorkflow,
+  onOpenSplitModal,
+  splitFeatureEnabled = false,
   interactionLocked = false,
   footerResourceChipsByPartKey,
   seibanEvalEnabled = false,
@@ -232,6 +242,8 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             onOpenNote={onOpenNote}
             notePending={notePending || rowControlsLocked}
             onOpenInspectionWorkflow={onOpenInspectionWorkflow}
+            onOpenSplitModal={onOpenSplitModal}
+            splitFeatureEnabled={splitFeatureEnabled}
             footerResourceChipsByPartKey={footerResourceChipsByPartKey}
             seibanEvalEnabled={seibanEvalEnabled}
             ganttEnabled={ganttEnabled}

@@ -31,20 +31,40 @@ describe('collectLeaderboardFooterPartKeysFromRows', () => {
 });
 
 describe('resolveLeaderboardFooterPreferredRowIds', () => {
+  const parentA = '11111111-1111-4111-8111-111111111111';
+  const parentB = '22222222-2222-4222-8222-222222222222';
+
   it('uses preferredDisplayRowIds when provided (normalized)', () => {
     expect(
       resolveLeaderboardFooterPreferredRowIds({
-        rows: [{ id: 'x' }],
-        preferredDisplayRowIds: ['  a ', ' b ', ' a']
+        rows: [{ id: parentA }],
+        preferredDisplayRowIds: [`  ${parentA} `, ` ${parentB} `, ` ${parentA}`]
       })
-    ).toEqual(['a', 'b']);
+    ).toEqual([parentA, parentB]);
   });
 
-  it('falls back to row ids when preferred omitted', () => {
+  it('maps split display item ids to parent row ids for SQL winner preference', () => {
+    const parentId = '11111111-1111-4111-8111-111111111111';
+    const splitId = '22222222-2222-4222-8222-222222222222';
     expect(
       resolveLeaderboardFooterPreferredRowIds({
-        rows: [{ id: '  z ' }, { id: '' }, { id: 'z' }]
+        rows: [{ id: `split:${splitId}`, sourceRowId: parentId }],
+        preferredDisplayRowIds: [`split:${splitId}`]
       })
-    ).toEqual(['z']);
+    ).toEqual([parentId]);
+  });
+
+  it('falls back to parent row ids derived from rows when preferred omitted', () => {
+    const parentId = '11111111-1111-4111-8111-111111111111';
+    expect(
+      resolveLeaderboardFooterPreferredRowIds({
+        rows: [{ id: `split:22222222-2222-4222-8222-222222222222`, sourceRowId: parentId }]
+      })
+    ).toEqual([parentId]);
+    expect(
+      resolveLeaderboardFooterPreferredRowIds({
+        rows: [{ id: `  ${parentId} ` }, { id: '' }, { id: parentId }]
+      })
+    ).toEqual([parentId]);
   });
 });

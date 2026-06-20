@@ -24,15 +24,24 @@ async function fetchLeaderboardScheduleHydratedRowsSingleBatch(params: {
   locationKey: string;
   siteScopedGlobalRankLocation: string;
   leaderboardMaterializedBaseWhere: Prisma.Sql;
+  /** 指定時は `leaderboardMaterializedBaseWhere` + 可視条件の代わりに shell 一覧と同一の行スコープを使う */
+  leaderboardShellListWhere?: Prisma.Sql;
 }): Promise<LeaderboardScheduleRowSql[]> {
-  const { orderedRowIdsChunk, locationKey, siteScopedGlobalRankLocation, leaderboardMaterializedBaseWhere } =
-    params;
+  const {
+    orderedRowIdsChunk,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    leaderboardMaterializedBaseWhere,
+    leaderboardShellListWhere
+  } = params;
 
   if (orderedRowIdsChunk.length === 0) {
     return [];
   }
 
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
+  const rowScopeWhere =
+    leaderboardShellListWhere ?? Prisma.sql`${leaderboardMaterializedBaseWhere} ${visibilitySql}`;
 
   const processingOrderScalar = Prisma.sql`(
     SELECT "orderNumber"
@@ -97,8 +106,7 @@ async function fetchLeaderboardScheduleHydratedRowsSingleBatch(params: {
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    WHERE ${leaderboardMaterializedBaseWhere}
-      ${visibilitySql}
+    WHERE ${rowScopeWhere}
       AND "CsvDashboardRow"."id"::text IN (${Prisma.join(orderedIdParts)})
     ORDER BY array_position(${orderedIdArraySql}, "CsvDashboardRow"."id"::text)
   `;
@@ -114,8 +122,10 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByIds(params: {
   siteScopedGlobalRankLocation: string;
   /** 呼び出し元が既に確定している場合、winner materialization クエリを省略 */
   leaderboardMaterializedBaseWhere?: Prisma.Sql;
+  /** shell 一覧と同一の行スコープ（query / 残骸除外を含む） */
+  leaderboardShellListWhere?: Prisma.Sql;
 }): Promise<LeaderboardScheduleRowSql[]> {
-  const { locationKey, siteScopedGlobalRankLocation } = params;
+  const { locationKey, siteScopedGlobalRankLocation, leaderboardShellListWhere } = params;
 
   const uniqueOrdered = normalizeLeaderboardDisplayRowIdScope(params.orderedRowIds);
   if (uniqueOrdered.length === 0) {
@@ -135,7 +145,8 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByIds(params: {
       orderedRowIdsChunk: chunk,
       locationKey,
       siteScopedGlobalRankLocation,
-      leaderboardMaterializedBaseWhere
+      leaderboardMaterializedBaseWhere,
+      leaderboardShellListWhere
     });
     for (const row of batch) {
       if (!byId.has(row.id)) {

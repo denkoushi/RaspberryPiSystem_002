@@ -10,6 +10,9 @@ import { resolveActualHoursLocationCandidates } from '../actual-hours-location-s
 import { prisma } from '../../../lib/prisma.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from '../production-schedule-customer-name-enrichment.service.js';
+import * as leaderboardSplitExpansion from '../leaderboard/leaderboard-split-expansion.service.js';
+import * as listCountService from '../production-schedule-list-count.service.js';
+import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
@@ -34,6 +37,9 @@ vi.mock('../../../lib/prisma.js', () => ({
     },
     selfInspectionSession: {
       findMany: vi.fn(),
+    },
+    productionScheduleOrderSplit: {
+      findMany: vi.fn().mockResolvedValue([]),
     },
   },
 }));
@@ -73,7 +79,10 @@ vi.mock('../production-schedule-customer-name-enrichment.service.js', () => ({
 
 describe('production-schedule-query.service', () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
     vi.mocked(prisma.$queryRaw).mockReset();
+    vi.mocked(prisma.productionScheduleOrderSplit.findMany).mockReset();
+    vi.mocked(prisma.productionScheduleOrderSplit.findMany).mockResolvedValue([]);
     vi.clearAllMocks();
     resetMachineNameFseibanMatchCaches();
     vi.mocked(resolveActualHoursLocationCandidates).mockImplementation((locationKey: string) => [locationKey]);
@@ -1156,5 +1165,129 @@ describe('production-schedule-query.service', () => {
       ['seed-r2', 'R02', '2026-05-01T00:00:00.000Z']
     ]);
   });
-});
 
+  it('responseProfile=leaderboard は display item 件数と split 展開を使う', async () => {
+    const countSpy = vi
+      .spyOn(listCountService, 'countProductionScheduleDashboardVisibleLeaderboardUnits')
+      .mockResolvedValue(3n);
+    const expandSpy = vi
+      .spyOn(leaderboardSplitExpansion, 'expandLeaderboardParentRowsForResponse')
+      .mockImplementation(async ({ rows, locationKey }) => {
+        expect(locationKey).toBe('kiosk-1');
+        return rows.flatMap((row) => [
+          {
+            ...row,
+            id: `split:a-${row.id}`,
+            sourceRowId: row.id,
+            isSplit: true,
+            splitId: 'split-a',
+            splitNo: 1,
+            splitQuantity: 2,
+            plannedQuantity: 2,
+            processingOrder: 1
+          },
+          {
+            ...row,
+            id: `split:b-${row.id}`,
+            sourceRowId: row.id,
+            isSplit: true,
+            splitId: 'split-b',
+            splitNo: 2,
+            splitQuantity: 3,
+            plannedQuantity: 3,
+            processingOrder: 2
+          }
+        ]);
+      });
+
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'parent-1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'S1',
+          rowData: { ProductNo: '0001', FSEIBAN: 'S1', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '1', progress: '' },
+          processingOrder: 1,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: 5,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 20,
+      queryText: 'A',
+      productNos: [],
+      resourceCds: [],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      locationKey: 'kiosk-1',
+      responseProfile: 'leaderboard'
+    });
+
+    expect(countSpy).toHaveBeenCalledTimes(1);
+    expect(expandSpy).toHaveBeenCalledTimes(1);
+    expect(result.total).toBe(3);
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0]?.id).toBe('split:a-parent-1');
+    expect(result.rows[1]?.processingOrder).toBe(2);
+
+    countSpy.mockRestore();
+    expandSpy.mockRestore();
+  });
+
+  it('responseProfile=leaderboard は split flag ON でも query unit test が通る', async () => {
+    process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = 'true';
+    expect(isProductionScheduleOrderSplitEnabled()).toBe(true);
+
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
+      .mockResolvedValueOnce([{ total: 1n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'parent-1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'S1',
+          rowData: { ProductNo: '0001', FSEIBAN: 'S1', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '1', progress: '' },
+          processingOrder: 1,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: 5,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 20,
+      queryText: 'A',
+      productNos: [],
+      resourceCds: [],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      locationKey: 'kiosk-1',
+      responseProfile: 'leaderboard'
+    });
+
+    expect(prisma.productionScheduleOrderSplit.findMany).toHaveBeenCalled();
+    expect(result.rows).toHaveLength(1);
+    expect(result.total).toBe(1);
+  });
+});

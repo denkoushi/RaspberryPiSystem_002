@@ -35,6 +35,8 @@ export type LeaderOrderResourceRowProps = {
   onOpenNote?: (row: LeaderBoardRow) => void;
   notePending?: boolean;
   onOpenInspectionWorkflow?: (row: LeaderBoardRow) => void;
+  onOpenSplitModal?: (row: LeaderBoardRow) => void;
+  splitFeatureEnabled?: boolean;
   footerResourceChips?: readonly KioskResourceProgressProcessChip[];
 };
 
@@ -57,6 +59,8 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   onOpenNote,
   notePending,
   onOpenInspectionWorkflow,
+  onOpenSplitModal,
+  splitFeatureEnabled = false,
   footerResourceChips = []
 }: LeaderOrderResourceRowProps) {
   const isSignage = variant === 'signage';
@@ -73,6 +77,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
     hasRight ? 'min-w-0 max-w-[50%] flex-[0_0_50%]' : 'min-w-0 flex-1';
   const hasNote = Boolean(row.note && row.note.trim().length > 0);
   const canOpenSelfInspectionWorkflow =
+    !row.isSplit &&
     row.hasSelfInspectionDrawing &&
     (Boolean(row.selfInspectionEntryPath?.trim()) || Boolean(row.selfInspectionTemplateId?.trim()));
   const selfInspectionStatusClass =
@@ -96,7 +101,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
       style={rowMinHeightPx != null ? { minHeight: rowMinHeightPx } : undefined}
     >
       <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
-        {isSignage ? null : (
+        {isSignage || row.isSplit ? null : (
           <button
             type="button"
             className={clsx(
@@ -109,7 +114,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
             disabled={completePending}
             onClick={(e) => {
               e.stopPropagation();
-              onCompleteRow(row.id, row.isCompleted ? 'incomplete' : 'complete');
+              onCompleteRow(row.sourceRowId, row.isCompleted ? 'incomplete' : 'complete');
             }}
           >
             ✓
@@ -155,7 +160,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
             {dueLabel}
           </button>
         )}
-        {isSignage || !onOpenNote ? null : (
+        {isSignage || !onOpenNote || row.isSplit ? null : (
           <button
             type="button"
             disabled={notePending}
@@ -190,6 +195,21 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
             title="検査方法を選択"
           >
             検
+          </button>
+        )}
+        {isSignage || !splitFeatureEnabled || !onOpenSplitModal ? null : (
+          <button
+            type="button"
+            disabled={row.isCompleted}
+            title={row.isSplit ? '分割編集' : '指示数を分割'}
+            aria-label={row.isSplit ? '分割編集' : '指示数を分割'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenSplitModal(row);
+            }}
+            className="shrink-0 rounded border border-violet-300/50 px-1.5 py-0.5 text-[10px] text-violet-100 hover:bg-violet-500/20 disabled:opacity-50"
+          >
+            分割
           </button>
         )}
       </div>

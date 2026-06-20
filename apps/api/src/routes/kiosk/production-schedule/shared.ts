@@ -1,6 +1,7 @@
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { z } from 'zod';
 import { DUE_MANAGEMENT_TUNING_REASON_CODES } from '../../../services/production-schedule/auto-tuning/tuning-reason-code.js';
+import { displayItemIdSchema } from '../../../services/production-schedule/order-split/leaderboard-display-item-id.js';
 import type { LeaderboardShellSnapshotStore } from '../../../services/production-schedule/leaderboard/leaderboard-shell-snapshot.store.js';
 import type { ClientDeviceForScopeResolution, LocationScopeContext } from '../shared.js';
 
@@ -61,8 +62,8 @@ export const productionScheduleLeaderboardShellContinuationFieldsSchema = z.obje
    * shell の `nextCursor` をそのまま送る。`snapshotId` がある場合はこれを優先する。
    */
   cursor: z.number().int().min(0).max(5_000_000).optional(),
-  /** 移行期間のみ: snapshot が無い、または snapshot+cursor より古いクライアント向け */
-  excludeRowIds: z.array(z.string().uuid()).max(900).optional(),
+  /** 移行期間のみ: snapshot が無い、または snapshot+cursor より古いクライアント向け（中身は DisplayItemId） */
+  excludeRowIds: z.array(displayItemIdSchema).max(900).optional(),
   pageSize: z.coerce.number().int().min(1).max(160).optional(),
   productNo: z.string().min(1).max(100).optional(),
   q: z.string().min(1).max(200).optional(),
@@ -149,7 +150,7 @@ export const productionScheduleLeaderboardBoardContinueBodySchema = productionSc
           resourceCd: z.string().min(1).max(100),
           snapshotId: z.string().uuid().optional(),
           cursor: z.number().int().min(0).max(5_000_000).optional(),
-          excludeRowIds: z.array(z.string().uuid()).max(900).optional(),
+          excludeRowIds: z.array(displayItemIdSchema).max(900).optional(),
           hasMore: z.boolean()
         })
       )
@@ -204,8 +205,8 @@ export type ProductionScheduleLeaderboardShellContinuationBody = z.infer<
 >;
 
 export const productionScheduleLeaderboardDecorationsBodySchema = z.object({
-  /** shell 応答の `rows[].id` を **表示順のまま** 渡す（順位ボード全件表示に合わせ上限を緩和） */
-  rowIds: z.array(z.string().uuid()).max(20_000).optional().default([]),
+  /** shell 応答の `rows[].id` を **表示順のまま** 渡す（DisplayItemId・順位ボード全件表示に合わせ上限を緩和） */
+  rowIds: z.array(displayItemIdSchema).max(20_000).optional().default([]),
   /** v2: Mac が参照する端末の deviceScopeKey（一覧 shell/total と一致させる） */
   targetDeviceScopeKey: z.string().min(1).max(200).optional()
 });

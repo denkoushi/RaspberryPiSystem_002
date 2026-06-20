@@ -24,6 +24,16 @@ vi.mock('../shared-schedule-fields.repository.js', () => ({
   },
 }));
 
+vi.mock('../order-split/production-schedule-unified-order-slot.service.js', () => ({
+  acquireUnifiedOrderSlotLockInTransaction: vi.fn(),
+  acquireUnifiedOrderSlotLocksInTransaction: vi.fn(),
+  assertUnifiedOrderSlotAvailableInTransaction: vi.fn(),
+}));
+
+vi.mock('../order-split/production-schedule-parent-row-lock.service.js', () => ({
+  acquireProductionScheduleParentRowLockInTransaction: vi.fn(),
+}));
+
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     csvDashboardRow: {
@@ -39,6 +49,9 @@ vi.mock('../../../lib/prisma.js', () => ({
       findFirst: vi.fn(),
       upsert: vi.fn(),
     },
+    productionScheduleOrderSplit: {
+      count: vi.fn(),
+    },
     productionScheduleRowNote: {
       findUnique: vi.fn(),
       deleteMany: vi.fn(),
@@ -51,6 +64,7 @@ vi.mock('../../../lib/prisma.js', () => ({
     dueManagementOutcomeEvent: {
       create: vi.fn()
     },
+    $executeRaw: vi.fn(),
     $transaction: vi.fn(),
   },
 }));
@@ -58,6 +72,10 @@ vi.mock('../../../lib/prisma.js', () => ({
 describe('production-schedule-command.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.$transaction).mockImplementation(async (callback: (tx: typeof prisma) => Promise<unknown>) =>
+      callback(prisma)
+    );
+    vi.mocked(prisma.productionScheduleOrderSplit.count).mockResolvedValue(0 as never);
     vi.mocked(prisma.productionScheduleProcessingTypeOption.findMany).mockResolvedValue([
       {
         code: '塗装',

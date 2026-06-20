@@ -11,6 +11,7 @@
 ### 最新アップデート（2026-06-17 · キオスク順位ボード deferTotals 性能回復 · Pi5 先行）
 
 - **順位ボード `+人` 人工数表示切替** · API+Web · **Pi5+Pi4 本番デプロイ済** · **`496c4e58`** · [Plan](./plans/kiosk-leaderboard-labor-minutes-toggle.md)
+- **生産指示分割（順位ボード初回）** · API+Web · **ローカル検証完了・未デプロイ（2026-06-20）** · [Plan](./plans/production-schedule-split-orders.md)
 
 - **deferTotals 一貫化 + board/装飾同期分離** · API+Web · **Pi5 デプロイ済** · **`14bb6e96`** · Pi4 **未** · Phase12 **43/0/0**。**記録**: [Plan](./plans/leaderboard-defer-totals-performance-recovery.md)
 

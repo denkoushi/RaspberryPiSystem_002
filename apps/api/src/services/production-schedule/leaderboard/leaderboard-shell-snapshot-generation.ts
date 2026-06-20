@@ -13,6 +13,10 @@ type SnapshotGenerationRow = {
   fkojunstStatusMailRowsLatestCreatedAt: Date | null;
   fkojunstStatusMailRowsLatestUpdatedAt: Date | null;
   orderAssignmentUpdatedAt: Date | null;
+  orderSplitCount: bigint;
+  orderSplitUpdatedAt: Date | null;
+  orderSplitAssignmentCount: bigint;
+  orderSplitAssignmentUpdatedAt: Date | null;
   globalRowRankUpdatedAt: Date | null;
   rowNoteUpdatedAt: Date | null;
   progressUpdatedAt: Date | null;
@@ -66,6 +70,10 @@ function buildLeaderboardShellSnapshotGenerationToken(params: {
     rowsLatestCreatedAt: normalizeDate(row?.rowsLatestCreatedAt),
     fkojunstStatusMailRowsRevision,
     orderAssignmentUpdatedAt: normalizeDate(row?.orderAssignmentUpdatedAt),
+    orderSplitCount: String(row?.orderSplitCount ?? 0n),
+    orderSplitUpdatedAt: normalizeDate(row?.orderSplitUpdatedAt),
+    orderSplitAssignmentCount: String(row?.orderSplitAssignmentCount ?? 0n),
+    orderSplitAssignmentUpdatedAt: normalizeDate(row?.orderSplitAssignmentUpdatedAt),
     globalRowRankUpdatedAt: normalizeDate(row?.globalRowRankUpdatedAt),
     rowNoteUpdatedAt: normalizeDate(row?.rowNoteUpdatedAt),
     progressUpdatedAt: normalizeDate(row?.progressUpdatedAt),
@@ -156,6 +164,18 @@ export async function readLeaderboardShellSnapshotGenerationTokenDetails(
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleOrderAssignment"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderAssignmentUpdatedAt",
+      (SELECT COUNT(*)::bigint
+       FROM "ProductionScheduleOrderSplit"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderSplitCount",
+      (SELECT MAX("updatedAt")
+       FROM "ProductionScheduleOrderSplit"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderSplitUpdatedAt",
+      (SELECT COUNT(*)::bigint
+       FROM "ProductionScheduleOrderSplitAssignment"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderSplitAssignmentCount",
+      (SELECT MAX("updatedAt")
+       FROM "ProductionScheduleOrderSplitAssignment"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderSplitAssignmentUpdatedAt",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleGlobalRowRank"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "globalRowRankUpdatedAt",

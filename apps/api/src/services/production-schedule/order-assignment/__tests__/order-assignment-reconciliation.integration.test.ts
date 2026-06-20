@@ -119,6 +119,22 @@ describe('order-assignment reconciliation (integration)', () => {
   });
 
   beforeEach(async () => {
+    await prisma.productionScheduleOrderSplitAssignment.deleteMany({
+      where: {
+        split: {
+          parentCsvDashboardRowId: {
+            in: [rowVisibleId, rowInvisibleId, rowFormerWinnerId, rowCurrentWinnerId],
+          },
+        },
+      },
+    });
+    await prisma.productionScheduleOrderSplit.deleteMany({
+      where: {
+        parentCsvDashboardRowId: {
+          in: [rowVisibleId, rowInvisibleId, rowFormerWinnerId, rowCurrentWinnerId],
+        },
+      },
+    });
     await prisma.productionScheduleOrderAssignment.deleteMany({
       where: {
         csvDashboardRowId: {
@@ -165,6 +181,22 @@ describe('order-assignment reconciliation (integration)', () => {
   });
 
   afterAll(async () => {
+    await prisma.productionScheduleOrderSplitAssignment.deleteMany({
+      where: {
+        split: {
+          parentCsvDashboardRowId: {
+            in: [rowVisibleId, rowInvisibleId, rowFormerWinnerId, rowCurrentWinnerId],
+          },
+        },
+      },
+    });
+    await prisma.productionScheduleOrderSplit.deleteMany({
+      where: {
+        parentCsvDashboardRowId: {
+          in: [rowVisibleId, rowInvisibleId, rowFormerWinnerId, rowCurrentWinnerId],
+        },
+      },
+    });
     await prisma.productionScheduleOrderAssignment.deleteMany({
       where: {
         csvDashboardRowId: {
@@ -283,5 +315,70 @@ describe('order-assignment reconciliation (integration)', () => {
     expect(formerRemaining).toBe(0);
     expect(currentRemaining).toHaveLength(1);
     expect(currentRemaining[0]?.orderNumber).toBe(1);
+  });
+
+  it('parent assignment release shifts split assignments in the same order space', async () => {
+    const previousFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+    process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = 'true';
+
+    try {
+      await prisma.productionScheduleOrderAssignment.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          csvDashboardRowId: rowInvisibleId,
+          location: LOCATION,
+          siteKey: LOCATION,
+          resourceCd: '080',
+          orderNumber: 1,
+        },
+      });
+      const split = await prisma.productionScheduleOrderSplit.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          parentCsvDashboardRowId: rowVisibleId,
+          splitNo: 1,
+          splitQuantity: 1,
+        },
+      });
+      await prisma.productionScheduleOrderSplitAssignment.create({
+        data: {
+          csvDashboardId: DASHBOARD_ID,
+          splitId: split.id,
+          location: LOCATION,
+          siteKey: LOCATION,
+          resourceCd: '080',
+          orderNumber: 2,
+        },
+      });
+
+      const result = await reconcileStaleProductionScheduleOrderAssignments();
+      expect(result.released).toBeGreaterThanOrEqual(1);
+
+      const remainingParentAssignment = await prisma.productionScheduleOrderAssignment.findUnique({
+        where: {
+          csvDashboardRowId_location: {
+            csvDashboardRowId: rowInvisibleId,
+            location: LOCATION,
+          },
+        },
+      });
+      expect(remainingParentAssignment).toBeNull();
+
+      const shiftedSplitAssignment = await prisma.productionScheduleOrderSplitAssignment.findUnique({
+        where: {
+          splitId_location: {
+            splitId: split.id,
+            location: LOCATION,
+          },
+        },
+      });
+      expect(shiftedSplitAssignment?.orderNumber).toBe(1);
+    } finally {
+      if (previousFlag == null) {
+        delete process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+      } else {
+        process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = previousFlag;
+      }
+    }
   });
 });

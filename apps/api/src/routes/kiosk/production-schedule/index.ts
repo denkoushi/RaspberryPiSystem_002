@@ -31,6 +31,7 @@ import { registerProductionScheduleManualOrderResourceAssignmentsRoute } from '.
 import { registerProductionScheduleProcessingTypeOptionsRoute } from './processing-type-options.js';
 import { registerProductionScheduleProgressOverviewRoute } from './progress-overview.js';
 import { registerProductionScheduleLoadBalancingRoutes } from './load-balancing.js';
+import { registerProductionScheduleOrderSplitRoutes } from './order-split.js';
 import type { KioskRouteDeps } from './shared.js';
 
 export async function registerProductionScheduleRoutes(
@@ -47,6 +48,7 @@ export async function registerProductionScheduleRoutes(
   await registerProductionScheduleDueDateRoute(app, deps);
   await registerProductionScheduleProcessingRoute(app, deps);
   await registerProductionScheduleOrderRoute(app, deps);
+  await registerProductionScheduleOrderSplitRoutes(app, deps);
   await registerProductionScheduleSearchStateRoute(app, deps);
   await registerProductionScheduleHistoryProgressRoute(app, deps);
   await registerProductionScheduleSeibanMachineNamesRoute(app, deps);

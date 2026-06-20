@@ -45,13 +45,13 @@ import {
 } from '../part-measurement/self-inspection.service.js';
 import type { LeaderboardPartFooterProcessItem } from './leaderboard/leaderboard-part-footer-processes.service.js';
 import {
+  buildLeaderboardShellListWhereSql,
   fetchLeaderboardScheduleRowsWithSeibanAwarePriority,
   fetchLeaderboardShellMergedPrefixRows,
   fetchLeaderboardShellRowsContinuationChunk
 } from './leaderboard/leaderboard-row-selection.service.js';
 import type { ProcessChangeResidualMode } from './leaderboard/leaderboard-process-change-residual.types.js';
 import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard/leaderboard-display-row-scope.js';
-import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard/leaderboard-shell-hydrate.service.js';
 import { buildLeaderboardShellFilterFingerprint } from './leaderboard/leaderboard-shell-snapshot-fingerprint.js';
 import { resolveLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
 import type { LeaderboardShellSnapshotStore } from './leaderboard/leaderboard-shell-snapshot.store.js';
@@ -60,7 +60,22 @@ import {
   sliceLeaderboardSnapshotIdsByCursor,
   sliceLeaderboardSnapshotIdsByExcludePrefix
 } from './leaderboard/leaderboard-shell-continue.slice.js';
-import { countProductionScheduleDashboardVisibleRows } from './production-schedule-list-count.service.js';
+import { resolveLeaderboardShellDisplayItemPrefix } from './leaderboard/leaderboard-shell-display-item-prefix.service.js';
+import {
+  expandLeaderboardParentRowIdsForSnapshot,
+  expandLeaderboardParentRowsForResponse,
+  fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds,
+  fetchPartiallyReturnedDisplayItemsForLegacyContinue,
+  resolveFullyExcludedParentRowIdsForLegacyContinue,
+  resolvePartiallyReturnedParentRowIdsForLegacyContinue,
+  resolveParentRowIdsExcludedFromLeaderboardContinuation
+} from './leaderboard/leaderboard-split-expansion.service.js';
+import { isProductionScheduleOrderSplitEnabled } from './order-split/production-schedule-order-split-feature.js';
+import { sortExpandedProductionScheduleRowsByManualOrder } from './order-split/production-schedule-order-split.service.js';
+import {
+  countProductionScheduleDashboardVisibleLeaderboardUnits,
+  countProductionScheduleDashboardVisibleRows
+} from './production-schedule-list-count.service.js';
 import {
   filterSelfInspectionEligibleProductionScheduleRows,
   hasSelfInspectionCandidateListFilters
@@ -100,6 +115,13 @@ export type ProductionScheduleRow = {
   machineRequiredMinutes?: number;
   /** 順位ボード: 同一 ProductNo + FKOJUN の FSIGENCD=10 人工数（分）。 */
   laborRequiredMinutes?: number;
+  /** display item 契約: 親 CsvDashboardRow.id（未分割・分割共通） */
+  sourceRowId?: string;
+  /** 分割片 ID。未分割時は null */
+  splitId?: string | null;
+  splitNo?: number | null;
+  splitQuantity?: number | null;
+  isSplit?: boolean;
 };
 
 export type ProductionScheduleListParams = {
@@ -282,7 +304,14 @@ export async function listLeaderboardShellProductionScheduleRows(
 
   const seibanExpansion = shouldExpandLeaderboardSeibanAcrossResources(params.resourceCds);
 
-  const { mergedPrefix, mergeFullyCompleted } = await fetchLeaderboardShellMergedPrefixRows({
+  const leaderboardShellListWhere = buildLeaderboardShellListWhereSql({
+    leaderboardMaterializedBaseWhere,
+    queryWhere,
+    processChangeResidualMode: params.processChangeResidualMode,
+    processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
+  });
+
+  const { mergedPrefix: mergedPrefixInitial, mergeFullyCompleted } = await fetchLeaderboardShellMergedPrefixRows({
     leaderboardMaterializedBaseWhere,
     queryWhere,
     expansionWhere: leaderboardExpansionWhere,
@@ -294,7 +323,17 @@ export async function listLeaderboardShellProductionScheduleRows(
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
 
-  const orderedRowIds = mergedPrefix.map((r) => r.id);
+  const { expandedDisplayItems } = await resolveLeaderboardShellDisplayItemPrefix({
+    mergedPrefixInitial,
+    mergeFullyCompletedInitial: mergeFullyCompleted,
+    pageSize,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    leaderboardMaterializedBaseWhere,
+    leaderboardShellListWhere
+  });
+
+  const orderedRowIds = expandedDisplayItems.map((row) => row.id);
   const generationToken = await resolveLeaderboardShellSnapshotGenerationToken(options.generationToken);
 
   const filterFingerprint = buildLeaderboardShellFilterFingerprint({
@@ -320,16 +359,9 @@ export async function listLeaderboardShellProductionScheduleRows(
     siteKey: params.siteKey
   });
 
-  const firstRows = mergedPrefix;
-
-  const rows: ProductionScheduleRow[] = firstRows.map((r) => ({
-    ...r,
-    actualPerPieceMinutes: null,
-    customerName: null
-  }));
-
+  const rows = expandedDisplayItems.slice(0, pageSize);
   const nextCursor = rows.length;
-  const hasMore = !mergeFullyCompleted;
+  const hasMore = nextCursor < expandedDisplayItems.length || !mergeFullyCompleted;
 
   return { page, pageSize, rows, snapshotId, nextCursor, hasMore };
 }
@@ -418,23 +450,26 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
       const materializeNextSnapshotChunk = async () => {
         const live = options.snapshotStore.get(snapshotId);
         if (!live?.partialOrdering) return;
+        const excludeParentRowIds = await resolveParentRowIdsExcludedFromLeaderboardContinuation(
+          live.orderedRowIds
+        );
         const { rows: chunkRows, mergeFullyCompleted } = await fetchLeaderboardShellRowsContinuationChunk({
           leaderboardMaterializedBaseWhere,
           queryWhere,
           expansionWhere: leaderboardExpansionWhere,
           locationKey,
           siteScopedGlobalRankLocation,
-          excludeRowIds: [...live.orderedRowIds],
+          excludeRowIds: excludeParentRowIds,
           chunkSize: appliedChunk,
           seibanExpansion,
           processChangeResidualMode: params.processChangeResidualMode,
           processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
         });
-        options.snapshotStore.appendSnapshotOrderingChunk(
-          snapshotId,
-          chunkRows.map((r) => r.id),
-          mergeFullyCompleted
-        );
+        const appendedDisplayIds = await expandLeaderboardParentRowIdsForSnapshot({
+          parentRows: chunkRows.map((r) => ({ id: r.id, processingOrder: r.processingOrder })),
+          locationKey
+        });
+        options.snapshotStore.appendSnapshotOrderingChunk(snapshotId, appendedDisplayIds, mergeFullyCompleted);
       };
 
       const useCursor = params.cursor !== undefined;
@@ -512,8 +547,8 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
         return { page, pageSize: appliedChunk, rows: [], snapshotId, nextCursor, hasMore };
       }
 
-      const leaderboardRows = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
-        orderedRowIds: sliceIds,
+      const leaderboardRows = await fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds({
+        orderedDisplayItemIds: sliceIds,
         locationKey,
         siteScopedGlobalRankLocation,
         leaderboardMaterializedBaseWhere
@@ -539,24 +574,79 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
 
   const seibanExpansion = shouldExpandLeaderboardSeibanAcrossResources(params.resourceCds);
 
+  const excludeDisplayItemIds = excludeRowIds;
+  const excludeDisplayItemIdSet = new Set(
+    excludeDisplayItemIds.map((id) => id.trim()).filter((id) => id.length > 0)
+  );
+
+  const fullyExcludedParentRowIds = await resolveFullyExcludedParentRowIdsForLegacyContinue({
+    excludeDisplayItemIds,
+    locationKey
+  });
+
+  const partialRows = await fetchPartiallyReturnedDisplayItemsForLegacyContinue({
+    excludeDisplayItemIds,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    leaderboardMaterializedBaseWhere
+  });
+
+  const partiallyExcludedParentRowIds = await resolvePartiallyReturnedParentRowIdsForLegacyContinue({
+    excludeDisplayItemIds,
+    locationKey
+  });
+
   const leaderboardResult = await fetchLeaderboardShellRowsContinuationChunk({
     leaderboardMaterializedBaseWhere,
     queryWhere,
     expansionWhere: leaderboardExpansionWhere,
     locationKey,
     siteScopedGlobalRankLocation,
-    excludeRowIds,
+    excludeRowIds: [...fullyExcludedParentRowIds, ...partiallyExcludedParentRowIds],
     chunkSize: appliedChunk,
     seibanExpansion,
     processChangeResidualMode: params.processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
 
-  const rows: ProductionScheduleRow[] = leaderboardResult.rows.map((r) => ({
-    ...r,
-    actualPerPieceMinutes: null,
-    customerName: null
-  }));
+  const newExpandedRows: ProductionScheduleRow[] = await expandLeaderboardParentRowsForResponse({
+    rows: leaderboardResult.rows.map((r) => ({
+      ...r,
+      actualPerPieceMinutes: null,
+      customerName: null
+    })),
+    locationKey
+  });
+
+  const filteredNewRows = newExpandedRows.filter((row) => !excludeDisplayItemIdSet.has(row.id));
+
+  const candidateRows: ProductionScheduleRow[] = [];
+  const combinedSeen = new Set<string>(excludeDisplayItemIdSet);
+  for (const row of partialRows) {
+    if (combinedSeen.has(row.id)) continue;
+    combinedSeen.add(row.id);
+    candidateRows.push(row);
+  }
+  for (const row of filteredNewRows) {
+    if (combinedSeen.has(row.id)) continue;
+    combinedSeen.add(row.id);
+    candidateRows.push(row);
+  }
+
+  const parentSequenceBySourceRowId = new Map<string, number>();
+  let parentSequence = 0;
+  for (const row of candidateRows) {
+    const sourceRowId = row.sourceRowId ?? row.id;
+    if (!parentSequenceBySourceRowId.has(sourceRowId)) {
+      parentSequenceBySourceRowId.set(sourceRowId, parentSequence);
+      parentSequence += 1;
+    }
+  }
+
+  const combinedRows = isProductionScheduleOrderSplitEnabled()
+    ? sortExpandedProductionScheduleRowsByManualOrder(candidateRows, parentSequenceBySourceRowId)
+    : candidateRows;
+  const rows = combinedRows.slice(0, appliedChunk);
 
   return { page, pageSize: appliedChunk, rows };
 }
@@ -578,7 +668,7 @@ export async function countProductionScheduleDashboardVisibleRowsFromListFilters
     prisma,
     options?.leaderboardMaterializedBaseWhere
   );
-  const totalBig = await countProductionScheduleDashboardVisibleRows({
+  const totalBig = await countProductionScheduleDashboardVisibleLeaderboardUnits({
     baseWhere: leaderboardMaterializedBaseWhere,
     queryWhere,
     processChangeResidualMode: params.processChangeResidualMode,
@@ -666,8 +756,8 @@ export async function decorateLeaderboardShellRowsForKiosk(params: {
 
   const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
 
-  const rawRows = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
-    orderedRowIds: preferredDisplayRowIds,
+  const rawRows = await fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds({
+    orderedDisplayItemIds: preferredDisplayRowIds,
     locationKey,
     siteScopedGlobalRankLocation: siteKey?.trim().length ? siteKey.trim() : locationKey,
     leaderboardMaterializedBaseWhere
@@ -758,20 +848,40 @@ const buildResourceConditions = (params: {
   }
 
   if (normalizedAssignedOnlyCds.length > 0) {
-    resourceConditions.push(
-      Prisma.sql`"CsvDashboardRow"."id" IN (
-        SELECT "csvDashboardRowId"
-        FROM "ProductionScheduleOrderAssignment"
-        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    const resourceCdFilter = Prisma.join(
+      normalizedAssignedOnlyCds.map((cd) => Prisma.sql`${cd}`),
+      ','
+    );
+    const parentAssignmentSubquery = Prisma.sql`
+      SELECT "csvDashboardRowId"
+      FROM "ProductionScheduleOrderAssignment"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND (
+          "location" = ${locationKey}
+          OR "siteKey" = ${locationKey}
+        )
+        AND "resourceCd" IN (${resourceCdFilter})
+    `;
+    const assignedOnlyParentRowSubquery = isProductionScheduleOrderSplitEnabled()
+      ? Prisma.sql`
+        ${parentAssignmentSubquery}
+        UNION
+        SELECT "s"."parentCsvDashboardRowId"
+        FROM "ProductionScheduleOrderSplitAssignment" AS "sa"
+        INNER JOIN "ProductionScheduleOrderSplit" AS "s"
+          ON "s"."id" = "sa"."splitId"
+          AND "s"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        WHERE "sa"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
           AND (
-            "location" = ${locationKey}
-            OR "siteKey" = ${locationKey}
+            "sa"."location" = ${locationKey}
+            OR "sa"."siteKey" = ${locationKey}
           )
-          AND "resourceCd" IN (${Prisma.join(
-            normalizedAssignedOnlyCds.map((cd) => Prisma.sql`${cd}`),
-            ','
-          )})
-      )`
+          AND "sa"."resourceCd" IN (${resourceCdFilter})
+      `
+      : parentAssignmentSubquery;
+
+    resourceConditions.push(
+      Prisma.sql`"CsvDashboardRow"."id" IN (${assignedOnlyParentRowSubquery})`
     );
   }
 
@@ -1608,10 +1718,21 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     ? await resolveLeaderboardMaterializedBaseWhere(prisma)
     : null;
 
-  const totalPromise = countProductionScheduleDashboardVisibleRows({
-    baseWhere: isLeaderboardProfile && leaderboardMaterializedBaseWhere ? leaderboardMaterializedBaseWhere : baseWhere,
-    queryWhere
-  });
+  const leaderboardCountParams = {
+    baseWhere: leaderboardMaterializedBaseWhere ?? baseWhere,
+    queryWhere,
+    processChangeResidualMode: params.processChangeResidualMode,
+    processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
+  };
+
+  const totalPromise = isLeaderboardProfile
+    ? countProductionScheduleDashboardVisibleLeaderboardUnits(leaderboardCountParams)
+    : countProductionScheduleDashboardVisibleRows({
+        baseWhere,
+        queryWhere,
+        processChangeResidualMode: params.processChangeResidualMode,
+        processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
+      });
 
   if (isLeaderboardProfile) {
     const leaderboardRowsPromise = fetchLeaderboardScheduleRowsWithSeibanAwarePriority({
@@ -1621,15 +1742,20 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       locationKey,
       siteScopedGlobalRankLocation,
       pageSize,
-      seibanExpansion: shouldExpandLeaderboardSeibanAcrossResources(resourceCds)
-    }).then((rawRows) =>
-      rawRows.map(
-        (r): ProductionScheduleRow => ({
-          ...r,
-          actualPerPieceMinutes: null,
-          customerName: null
-        })
-      )
+      seibanExpansion: shouldExpandLeaderboardSeibanAcrossResources(resourceCds),
+      processChangeResidualMode: params.processChangeResidualMode,
+      processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
+    }).then(async (rawRows) =>
+      expandLeaderboardParentRowsForResponse({
+        rows: rawRows.map(
+          (r): ProductionScheduleRow => ({
+            ...r,
+            actualPerPieceMinutes: null,
+            customerName: null
+          })
+        ),
+        locationKey
+      })
     );
 
     const [totalBig, leaderboardRows] = await Promise.all([totalPromise, leaderboardRowsPromise]);
@@ -1825,6 +1951,29 @@ export async function getProductionScheduleOrderUsage(
   params: ProductionScheduleOrderUsageParams
 ): Promise<Record<string, number[]>> {
   const { locationKey, resourceCds } = params;
+  const resourceCdFilter =
+    resourceCds.length > 0
+      ? Prisma.sql`AND "resourceCd" IN (${Prisma.join(
+          resourceCds.map((cd) => Prisma.sql`${cd}`),
+          ','
+        )})`
+      : Prisma.empty;
+  const splitAssignmentUnion = isProductionScheduleOrderSplitEnabled()
+    ? Prisma.sql`
+      UNION ALL
+      SELECT
+        "resourceCd",
+        "orderNumber"
+      FROM "ProductionScheduleOrderSplitAssignment"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND (
+          "location" = ${locationKey}
+          OR "siteKey" = ${locationKey}
+        )
+        ${resourceCdFilter}
+    `
+    : Prisma.empty;
+
   const usageRows = await prisma.$queryRaw<Array<{ resourceCd: string; orderNumbers: number[] }>>`
     WITH scoped AS (
       SELECT
@@ -1836,14 +1985,8 @@ export async function getProductionScheduleOrderUsage(
           "location" = ${locationKey}
           OR "siteKey" = ${locationKey}
         )
-        ${
-          resourceCds.length > 0
-            ? Prisma.sql`AND "resourceCd" IN (${Prisma.join(
-                resourceCds.map((cd) => Prisma.sql`${cd}`),
-                ','
-              )})`
-            : Prisma.empty
-        }
+        ${resourceCdFilter}
+      ${splitAssignmentUnion}
     )
     SELECT
       "resourceCd" AS "resourceCd",

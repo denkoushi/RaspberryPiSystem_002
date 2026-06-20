@@ -9,6 +9,7 @@ import {
   isProductionScheduleGrindingResourceCd
 } from '../production-schedule/policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
+import { SPLIT_DISPLAY_ITEM_ID_PREFIX } from '../production-schedule/order-split/leaderboard-display-item-id.js';
 import { resolveProductionSchedulePlannedQuantity } from '../production-schedule/self-inspection-schedule-eligibility.js';
 import { verifyProductionScheduleRowOrThrow } from '../production-schedule/verify-production-schedule-row.js';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from './self-inspection-machine-board-cache-invalidation.js';
@@ -1727,11 +1728,16 @@ export class SelfInspectionService {
       await ensureSelfInspectionTemplatesForRows(activeCache, rows);
       await ensureSelfInspectionSessionsInCache(
         activeCache,
-        rows.map((row) => row.id)
+        rows
+          .map((row) => row.id)
+          .filter((id) => !id.startsWith(SPLIT_DISPLAY_ITEM_ID_PREFIX))
       );
     }
 
     return rows.map((row) => {
+      if (row.id.startsWith(SPLIT_DISPLAY_ITEM_ID_PREFIX)) {
+        return emptyLeaderboardSelfInspectionDecoration(row.id);
+      }
       const session =
         row.id && activeCache.sessionsByScheduleRowId.has(row.id)
           ? activeCache.sessionsByScheduleRowId.get(row.id) ?? null

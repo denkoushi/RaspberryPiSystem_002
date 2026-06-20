@@ -953,6 +953,7 @@ model CsvDashboardRow {
   createdAt                  DateTime                            @default(now())
   updatedAt                  DateTime?                           @updatedAt
   orderAssignments           ProductionScheduleOrderAssignment[]
+  orderSplits                ProductionScheduleOrderSplit[]
   rowNotes                   ProductionScheduleRowNote[]
   productionScheduleProgress ProductionScheduleProgress?
   productionScheduleExternalCompletion ProductionScheduleExternalCompletion?
@@ -1102,6 +1103,70 @@ model ProductionScheduleRowNote {
 
   @@unique([csvDashboardRowId])
   @@index([csvDashboardId])
+}
+
+/// 順位ボード向け: 親生産日程行の数量分割片（初回は表示・納期・手動順番のみ）。
+model ProductionScheduleOrderSplit {
+  id                      String    @id @default(uuid())
+  csvDashboardId          String
+  parentCsvDashboardRowId String
+  splitNo                 Int
+  splitQuantity           Int
+  dueDate                 DateTime? @db.Date
+  plannedStartDate        DateTime? @db.Date
+  plannedEndDate          DateTime? @db.Date
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  parentRow   CsvDashboardRow                          @relation(fields: [parentCsvDashboardRowId], references: [id], onDelete: Cascade)
+  assignments ProductionScheduleOrderSplitAssignment[]
+
+  @@unique([parentCsvDashboardRowId, splitNo], map: "PSOrderSplit_unique_parent_split_no")
+  @@index([csvDashboardId], map: "PSOrderSplit_idx_dashboard")
+  @@index([parentCsvDashboardRowId], map: "PSOrderSplit_idx_parent_row")
+  @@index([csvDashboardId, parentCsvDashboardRowId, splitNo], map: "PSOrderSplit_idx_dashboard_parent_split_no")
+}
+
+/// 分割片の手動順番（親 `ProductionScheduleOrderAssignment` と同一順位空間で衝突チェック）。
+model ProductionScheduleOrderSplitAssignment {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  splitId        String
+  location       String
+  siteKey        String
+  resourceCd     String
+  orderNumber    Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  split ProductionScheduleOrderSplit @relation(fields: [splitId], references: [id], onDelete: Cascade)
+
+  @@unique([csvDashboardId, location, resourceCd, orderNumber], map: "PSOrderSplitAssign_unique_order_slot")
+  @@unique([splitId, location], map: "PSOrderSplitAssign_unique_split_location")
+  @@index([csvDashboardId, location, resourceCd], map: "PSOrderSplitAssign_idx_loc_resource")
+  @@index([csvDashboardId, siteKey], map: "PSOrderSplitAssign_idx_site")
+  @@index([csvDashboardId, siteKey, resourceCd, orderNumber], map: "PSOrderSplitAssign_idx_site_resource_order")
+}
+
+/// 分割片 CRUD の監査ログ（世代トークンには含めない）。
+model ProductionScheduleOrderSplitAuditLog {
+  id                      String   @id @default(uuid())
+  csvDashboardId          String
+  actorClientKey          String?
+  actorLocation           String?
+  targetLocation          String?
+  siteKey                 String?
+  actionType              String
+  requestId               String?
+  parentCsvDashboardRowId String
+  splitId                 String?
+  beforeJson              Json?
+  afterJson               Json?
+  createdAt               DateTime @default(now())
+
+  @@index([parentCsvDashboardRowId], map: "PSOrderSplitAudit_idx_parent")
+  @@index([splitId], map: "PSOrderSplitAudit_idx_split")
+  @@index([createdAt], map: "PSOrderSplitAudit_idx_created")
 }
 
 model ProductionScheduleOrderAssignment {

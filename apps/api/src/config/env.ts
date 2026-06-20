@@ -172,6 +172,11 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
     z.enum(['true', 'false']).default('true')
   ).transform((v) => v === 'true'),
+  /** 順位ボードの生産指示分割（初回: 表示・数量・納期・手動順番）。無効時は親行のみ・分割 API は 403。 */
+  KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+    z.enum(['true', 'false']).default('false')
+  ).transform((v) => v === 'true'),
   LOCAL_LLM_BASE_URL: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().url().optional()

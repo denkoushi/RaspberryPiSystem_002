@@ -356,6 +356,12 @@ export interface ProductionScheduleRow {
   /** キオスク順位ボード: 工程変更残骸疑い（通常グリッドには含めない） */
   processChangeResidualSuspected?: boolean;
   processChangeResidualEvidence?: ProcessChangeResidualEvidence;
+  /** display item 契約: 親 CsvDashboardRow.id */
+  sourceRowId?: string;
+  splitId?: string | null;
+  splitNo?: number | null;
+  splitQuantity?: number | null;
+  isSplit?: boolean;
 }
 
 export type ProcessChangeResidualEvidenceSide = {
@@ -2194,6 +2200,94 @@ export async function updateKioskProductionScheduleNote(rowId: string, payload: 
 export async function updateKioskProductionScheduleDueDate(rowId: string, payload: { dueDate: string }) {
   const { data } = await api.put<{ success: boolean; dueDate: string | null }>(
     `/kiosk/production-schedule/${rowId}/due-date`,
+    payload
+  );
+  return data;
+}
+
+export type ProductionScheduleOrderSplitItem = {
+  id: string;
+  displayItemId: string;
+  parentCsvDashboardRowId: string;
+  splitNo: number;
+  splitQuantity: number;
+  dueDate: string | null;
+  plannedStartDate: string | null;
+  plannedEndDate: string | null;
+  orderNumber: number | null;
+};
+
+export type ProductionScheduleOrderSplitListResponse = {
+  parentCsvDashboardRowId: string;
+  plannedQuantity: number;
+  splits: ProductionScheduleOrderSplitItem[];
+  actorLocation?: string;
+};
+
+export async function fetchKioskProductionScheduleOrderSplits(
+  sourceRowId: string,
+  params?: { targetDeviceScopeKey?: string }
+) {
+  const { data } = await api.get<ProductionScheduleOrderSplitListResponse>(
+    `/kiosk/production-schedule/${sourceRowId}/splits`,
+    { params }
+  );
+  return data;
+}
+
+export async function replaceKioskProductionScheduleOrderSplits(
+  sourceRowId: string,
+  payload: {
+    resourceCd: string;
+    items: Array<{
+      splitNo: number;
+      splitQuantity: number;
+      dueDate?: string | null;
+      plannedStartDate?: string | null;
+      plannedEndDate?: string | null;
+      orderNumber?: number | null;
+    }>;
+    targetLocation?: string;
+    targetDeviceScopeKey?: string;
+  }
+) {
+  const { data } = await api.put<{ success: boolean; splits: ProductionScheduleOrderSplitItem[] }>(
+    `/kiosk/production-schedule/${sourceRowId}/splits`,
+    payload
+  );
+  return data;
+}
+
+export async function deleteKioskProductionScheduleOrderSplits(
+  sourceRowId: string,
+  params?: { targetDeviceScopeKey?: string }
+) {
+  const { data } = await api.delete<{ success: boolean }>(
+    `/kiosk/production-schedule/${sourceRowId}/splits`,
+    { params }
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleSplitOrder(
+  splitId: string,
+  payload: {
+    resourceCd: string;
+    orderNumber: number | null;
+    targetLocation?: string;
+    targetDeviceScopeKey?: string;
+  }
+) {
+  const { data } = await api.put<{ success: boolean; orderNumber: number | null }>(
+    `/kiosk/production-schedule/splits/${splitId}/order`,
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleSplitDueDate(splitId: string, payload: { dueDate: string }) {
+  const { data } = await api.put<{ success: boolean; dueDate: string | null }>(
+    `/kiosk/production-schedule/splits/${splitId}/due-date`,
     payload
   );
   return data;
