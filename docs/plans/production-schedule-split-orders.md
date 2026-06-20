@@ -207,9 +207,16 @@ Pi5 flag-OFF smoke evidence:
 - `KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false`.
 - `prisma migrate status`: **Database schema is up to date** (`111` migrations).
 - API health: `status=ok`.
-- Order supplement sync smoke completed on real Pi5 data: `scanned=67964`, `normalized=67964`, `matched=24435`, `unmatched=43529`, `upserted=24435`, `pruned=0`.
+- Backup before latest supplement smoke: `/opt/backups/db_backup_split_order_smoke_20260620_215414.sql.gz` (`264M`).
+- Order supplement sync smoke completed on real Pi5 data:
+  - earlier pass: `scanned=67964`, `normalized=67964`, `matched=24435`, `unmatched=43529`, `upserted=24435`, `pruned=0`.
+  - recheck after Codex handoff: `scanned=67963`, `normalized=67963`, `matched=24434`, `unmatched=43529`, `upserted=24434`, `pruned=0`.
 - Parent/split duplicate slot SQL: `0` rows.
 - Split quantity mismatch SQL: `0` rows.
+- Post-smoke API health recovered to `status=ok` after a short memory-pressure interval (`degraded` at 95.2% immediately after sync).
+- Docker state: only standard Pi5 compose services (`docker-web-1`, `docker-api-1`, `docker-db-1`); no temporary container / volume / network created for this Pi5 recheck.
+- CI: implementation runs `27869672609`, `27870341509`, `27871004452` passed; docs-only run `27871646967` also passed.
+- Not executed in this recheck: flag ON -> split creation -> supplement sync -> SQL 0 -> flag OFF scenario. In production, the flag is startup-configured and split creation would write to real rows; run only with an explicit limited site/row target.
 
 Observed and fixed during Pi5 smoke:
 
@@ -237,9 +244,9 @@ Verified locally + CI + Pi5 (Agent, 2026-06-20 — pass 10 follow-up):
 - Temporary Postgres `pgvector/pgvector:pg16`: `prisma migrate deploy` / `migrate status` (**111** migrations); temporary container / volume / network removed after verify.
 - `EXPLAIN`: `PSOrderSplit_idx_dashboard_parent_split_no`, `PSOrderSplitAssign_idx_site_resource_order`, `PSOrderSplitAssign_unique_order_slot`.
 - `git diff --check` passed.
-- GitHub Actions `27869672609`, `27870341509`, `27871004452`: passed.
+- GitHub Actions `27869672609`, `27870341509`, `27871004452`, `27871646967`: passed.
 - Pi5 deploys to `raspberrypi5` only: `cc5d6f82`, `54d026dd`, `75ea7b86` all completed with Ansible `failed=0`; latest verified ref is `75ea7b86`.
-- Pi5 latest verification: flag OFF, migration up to date, API health ok, supplement sync smoke passed, duplicate slot SQL `0`, split quantity mismatch SQL `0`.
+- Pi5 latest verification: flag OFF, migration up to date, API health ok, supplement sync smoke passed (`scanned=67963`, `upserted=24434`), duplicate slot SQL `0`, split quantity mismatch SQL `0`, backup `/opt/backups/db_backup_split_order_smoke_20260620_215414.sql.gz`.
 
 Note: standard `postgres:16-alpine` fails on existing `vector` extension migrations; use pgvector image for local DB verification.
 
