@@ -396,25 +396,49 @@ async function reconcileOrderSplitQuantitiesForSupplementUpdate(
   }
 }
 
-async function acquireParentRowLockIfSplitQuantitiesNeedReconcile(
+async function hasOrderSplitsForParentInTransaction(
   tx: Prisma.TransactionClient,
-  entry: ReplacementUpdateInput
+  parentCsvDashboardRowId: string
 ): Promise<boolean> {
-  if (entry.previousPlannedQuantity === entry.nextPlannedQuantity) {
-    return false;
-  }
-
   const split = await tx.productionScheduleOrderSplit.findFirst({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      parentCsvDashboardRowId: entry.csvDashboardRowId,
+      parentCsvDashboardRowId,
     },
     select: { id: true },
   });
-  if (!split) return false;
+  return split != null;
+}
+
+async function prepareSplitQuantityReconcileForSupplementUpdate(
+  tx: Prisma.TransactionClient,
+  entry: ReplacementUpdateInput
+): Promise<{ parentCsvDashboardRowId: string; keepPreviousParent: boolean } | null> {
+  if (entry.previousPlannedQuantity === entry.nextPlannedQuantity) {
+    return null;
+  }
+
+  const winnerChanged = entry.previousCsvDashboardRowId !== entry.csvDashboardRowId;
+  if (
+    winnerChanged &&
+    (await hasOrderSplitsForParentInTransaction(tx, entry.previousCsvDashboardRowId))
+  ) {
+    await acquireProductionScheduleParentRowLockInTransaction(tx, entry.previousCsvDashboardRowId);
+    return {
+      parentCsvDashboardRowId: entry.previousCsvDashboardRowId,
+      keepPreviousParent: true,
+    };
+  }
+
+  if (!(await hasOrderSplitsForParentInTransaction(tx, entry.csvDashboardRowId))) {
+    return null;
+  }
 
   await acquireProductionScheduleParentRowLockInTransaction(tx, entry.csvDashboardRowId);
-  return true;
+  return {
+    parentCsvDashboardRowId: entry.csvDashboardRowId,
+    keepPreviousParent: false,
+  };
 }
 
 export async function runOrderSupplementReplacementTransaction(
@@ -444,13 +468,22 @@ export async function runOrderSupplementReplacementTransaction(
       for (let i = 0; i < params.updateInputs.length; i += UPDATE_CHUNK_SIZE) {
         const chunk = params.updateInputs.slice(i, i + UPDATE_CHUNK_SIZE);
         for (const entry of chunk) {
-          const shouldReconcileSplits = await acquireParentRowLockIfSplitQuantitiesNeedReconcile(tx, entry);
+          const splitReconcile = await prepareSplitQuantityReconcileForSupplementUpdate(tx, entry);
+          const updateData = splitReconcile?.keepPreviousParent
+            ? {
+                ...entry.data,
+                csvDashboardRowId: entry.previousCsvDashboardRowId,
+              }
+            : entry.data;
           await tx.productionScheduleOrderSupplement.update({
             where: { id: entry.id },
-            data: entry.data,
+            data: updateData,
           });
-          if (shouldReconcileSplits) {
-            await reconcileOrderSplitQuantitiesForSupplementUpdate(tx, entry);
+          if (splitReconcile) {
+            await reconcileOrderSplitQuantitiesForSupplementUpdate(tx, {
+              ...entry,
+              csvDashboardRowId: splitReconcile.parentCsvDashboardRowId,
+            });
           }
         }
       }
