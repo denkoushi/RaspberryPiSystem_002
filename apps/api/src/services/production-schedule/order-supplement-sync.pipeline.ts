@@ -36,6 +36,12 @@ type WinnerKeyRow = {
   processOrder: string | null;
 };
 
+type SupplementWinnerLookupKey = {
+  productNo: string;
+  resourceCd: string;
+  processOrder: string;
+};
+
 export type OrderSupplementSyncResult = {
   scanned: number;
   normalized: number;
@@ -191,22 +197,39 @@ export async function resolveWinnerIdByKey(
     return new Map();
   }
 
-  const productNos = [...new Set(dedupedRows.map((row) => row.productNo))];
-  const resourceCds = [...new Set(dedupedRows.map((row) => row.resourceCd))];
-  const processOrders = [...new Set(dedupedRows.map((row) => row.processOrder))];
+  const lookupKeys = dedupedRows.map(
+    (row): SupplementWinnerLookupKey => ({
+      productNo: row.productNo,
+      resourceCd: row.resourceCd,
+      processOrder: row.processOrder,
+    })
+  );
+  const lookupKeysJson = JSON.stringify(lookupKeys);
 
   const winnerRows = await client.$queryRaw<WinnerKeyRow[]>`
+    WITH input_keys AS (
+      SELECT DISTINCT
+        "productNo",
+        "resourceCd",
+        "processOrder"
+      FROM jsonb_to_recordset(CAST(${lookupKeysJson} AS jsonb)) AS key(
+        "productNo" text,
+        "resourceCd" text,
+        "processOrder" text
+      )
+    )
     SELECT
       "CsvDashboardRow"."id" AS "id",
       "CsvDashboardRow"."rowData"->>'ProductNo' AS "productNo",
       UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "resourceCd",
       BTRIM("CsvDashboardRow"."rowData"->>'FKOJUN') AS "processOrder"
     FROM "CsvDashboardRow"
+    INNER JOIN input_keys
+      ON input_keys."productNo" = "CsvDashboardRow"."rowData"->>'ProductNo'
+      AND input_keys."resourceCd" = UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'))
+      AND input_keys."processOrder" = BTRIM("CsvDashboardRow"."rowData"->>'FKOJUN')
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-      AND ("CsvDashboardRow"."rowData"->>'ProductNo') IN (${Prisma.join(productNos.map((value) => Prisma.sql`${value}`), ',')})
-      AND UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) IN (${Prisma.join(resourceCds.map((value) => Prisma.sql`${value}`), ',')})
-      AND BTRIM("CsvDashboardRow"."rowData"->>'FKOJUN') IN (${Prisma.join(processOrders.map((value) => Prisma.sql`${value}`), ',')})
   `;
 
   const winnerIdByKey = new Map<string, string>();

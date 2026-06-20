@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID } from '../constants.js';
 import { ProductionScheduleOrderSupplementSyncService } from '../order-supplement-sync.service.js';
-import { toSupplementNormalizedRow } from '../order-supplement-sync.pipeline.js';
+import { resolveWinnerIdByKey, toSupplementNormalizedRow } from '../order-supplement-sync.pipeline.js';
 
 type PrismaMock = {
   csvDashboardRow: { findMany: ReturnType<typeof vi.fn> };
@@ -98,6 +98,27 @@ describe('order-supplement-sync.service', () => {
     );
     expect(normalized?.plannedStartDate?.toISOString()).toBe('2027-03-04T00:00:00.000Z');
     expect(normalized?.plannedEndDate?.toISOString()).toBe('2027-03-05T00:00:00.000Z');
+  });
+
+  it('winner lookup は大量キーでも bind 変数数を増やさず JSON 1 引数で渡す', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
+    const rows = Array.from({ length: 40_000 }, (_, index) => ({
+      sourceRowId: `src-${index}`,
+      productNo: `P${String(index).padStart(6, '0')}`,
+      resourceCd: `R${index % 1000}`,
+      processOrder: String(index),
+      plannedQuantity: 1,
+      plannedStartDate: null,
+      plannedEndDate: null,
+    }));
+
+    await resolveWinnerIdByKey(prisma as never, rows);
+
+    const queryArgs = vi.mocked(prisma.$queryRaw).mock.calls[0] ?? [];
+    const lookupKeysJson = queryArgs.find((arg): arg is string => typeof arg === 'string' && arg.startsWith('[{'));
+    expect(lookupKeysJson).toBeDefined();
+    expect(JSON.parse(lookupKeysJson ?? '[]')).toHaveLength(40_000);
+    expect(queryArgs.length).toBeLessThan(10);
   });
 
   it('AA1S2M02 / 0003602728 の生産システム列名予定日を winner 行へ 2027 年予定日として反映する', async () => {
