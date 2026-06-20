@@ -15,6 +15,7 @@ type PrismaMock = {
   };
   productionScheduleOrderSplit: {
     findMany: ReturnType<typeof vi.fn>;
+    findFirst: ReturnType<typeof vi.fn>;
     deleteMany: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
   };
@@ -39,6 +40,7 @@ const { prismaMock } = vi.hoisted(() => {
     },
     productionScheduleOrderSplit: {
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       deleteMany: vi.fn(),
       update: vi.fn(),
     },
@@ -68,6 +70,7 @@ describe('order-supplement-sync.service', () => {
     prismaMock.productionScheduleOrderSupplement.createMany.mockResolvedValue({ count: 0 } as never);
     prismaMock.productionScheduleOrderSupplement.update.mockResolvedValue({ id: 'updated-1' } as never);
     prismaMock.productionScheduleOrderSplit.findMany.mockResolvedValue([] as never);
+    prismaMock.productionScheduleOrderSplit.findFirst.mockResolvedValue(null as never);
     prismaMock.productionScheduleOrderSplit.deleteMany.mockResolvedValue({ count: 0 } as never);
     prismaMock.productionScheduleOrderSplit.update.mockResolvedValue({ id: 'split-updated' } as never);
     prismaMock.productionScheduleOrderSplitAssignment.deleteMany.mockResolvedValue({ count: 0 } as never);
@@ -457,6 +460,7 @@ describe('order-supplement-sync.service', () => {
       { id: 'split-1', splitQuantity: 2 },
       { id: 'split-2', splitQuantity: 3 },
     ] as never);
+    vi.mocked(prisma.productionScheduleOrderSplit.findFirst).mockResolvedValue({ id: 'split-1' } as never);
 
     const service = new ProductionScheduleOrderSupplementSyncService();
     await service.syncFromSupplementDashboard();

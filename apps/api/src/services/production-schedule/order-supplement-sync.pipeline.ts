@@ -396,17 +396,25 @@ async function reconcileOrderSplitQuantitiesForSupplementUpdate(
   }
 }
 
-async function acquireParentRowLocksForSupplementUpdates(
+async function acquireParentRowLockIfSplitQuantitiesNeedReconcile(
   tx: Prisma.TransactionClient,
-  updateInputs: readonly ReplacementUpdateInput[]
-): Promise<void> {
-  const parentRowIds = [
-    ...new Set(updateInputs.flatMap((entry) => [entry.previousCsvDashboardRowId, entry.csvDashboardRowId])),
-  ].sort((left, right) => left.localeCompare(right));
-
-  for (const parentRowId of parentRowIds) {
-    await acquireProductionScheduleParentRowLockInTransaction(tx, parentRowId);
+  entry: ReplacementUpdateInput
+): Promise<boolean> {
+  if (entry.previousPlannedQuantity === entry.nextPlannedQuantity) {
+    return false;
   }
+
+  const split = await tx.productionScheduleOrderSplit.findFirst({
+    where: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      parentCsvDashboardRowId: entry.csvDashboardRowId,
+    },
+    select: { id: true },
+  });
+  if (!split) return false;
+
+  await acquireProductionScheduleParentRowLockInTransaction(tx, entry.csvDashboardRowId);
+  return true;
 }
 
 export async function runOrderSupplementReplacementTransaction(
@@ -433,16 +441,17 @@ export async function runOrderSupplementReplacementTransaction(
         inserted += batch.count;
       }
 
-      await acquireParentRowLocksForSupplementUpdates(tx, params.updateInputs);
-
       for (let i = 0; i < params.updateInputs.length; i += UPDATE_CHUNK_SIZE) {
         const chunk = params.updateInputs.slice(i, i + UPDATE_CHUNK_SIZE);
         for (const entry of chunk) {
+          const shouldReconcileSplits = await acquireParentRowLockIfSplitQuantitiesNeedReconcile(tx, entry);
           await tx.productionScheduleOrderSupplement.update({
             where: { id: entry.id },
             data: entry.data,
           });
-          await reconcileOrderSplitQuantitiesForSupplementUpdate(tx, entry);
+          if (shouldReconcileSplits) {
+            await reconcileOrderSplitQuantitiesForSupplementUpdate(tx, entry);
+          }
         }
       }
 
