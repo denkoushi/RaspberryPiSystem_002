@@ -468,18 +468,27 @@ export async function runOrderSupplementReplacementTransaction(
   const retentionCutoff = new Date();
   retentionCutoff.setUTCFullYear(retentionCutoff.getUTCFullYear() - RETENTION_YEARS);
 
-  return client.$transaction(
-    async (tx) => {
-      let inserted = 0;
-      for (let i = 0; i < params.createInputs.length; i += CREATE_MANY_CHUNK_SIZE) {
-        const chunk = params.createInputs.slice(i, i + CREATE_MANY_CHUNK_SIZE);
-        if (chunk.length === 0) continue;
+  let inserted = 0;
+  for (let i = 0; i < params.createInputs.length; i += CREATE_MANY_CHUNK_SIZE) {
+    const chunk = params.createInputs.slice(i, i + CREATE_MANY_CHUNK_SIZE);
+    if (chunk.length === 0) continue;
+    const batchCount = await client.$transaction(
+      async (tx) => {
         const batch = await tx.productionScheduleOrderSupplement.createMany({ data: chunk });
-        inserted += batch.count;
+        return batch.count;
+      },
+      {
+        maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
+        timeout: REPLACEMENT_TX_TIMEOUT_MS,
       }
+    );
+    inserted += batchCount;
+  }
 
-      for (let i = 0; i < params.updateInputs.length; i += UPDATE_CHUNK_SIZE) {
-        const chunk = params.updateInputs.slice(i, i + UPDATE_CHUNK_SIZE);
+  for (let i = 0; i < params.updateInputs.length; i += UPDATE_CHUNK_SIZE) {
+    const chunk = params.updateInputs.slice(i, i + UPDATE_CHUNK_SIZE);
+    await client.$transaction(
+      async (tx) => {
         const splitParentIds = await collectSplitParentIdsForSupplementUpdates(tx, chunk);
         for (const entry of chunk) {
           const splitReconcile = await prepareSplitQuantityReconcileForSupplementUpdate(tx, entry, splitParentIds);
@@ -500,8 +509,16 @@ export async function runOrderSupplementReplacementTransaction(
             });
           }
         }
+      },
+      {
+        maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
+        timeout: REPLACEMENT_TX_TIMEOUT_MS,
       }
+    );
+  }
 
+  const pruned = await client.$transaction(
+    async (tx) => {
       const pruneResult = await tx.productionScheduleOrderSupplement.deleteMany({
         where: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -510,21 +527,22 @@ export async function runOrderSupplementReplacementTransaction(
           plannedStartDateManuallySet: false,
         },
       });
-
-      return {
-        scanned: params.scanned,
-        normalized: params.normalized,
-        matched: params.matched,
-        unmatched: params.unmatched,
-        upserted: inserted + params.updateInputs.length,
-        pruned: pruneResult.count,
-      };
+      return pruneResult.count;
     },
     {
       maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
       timeout: REPLACEMENT_TX_TIMEOUT_MS,
     }
   );
+
+  return {
+    scanned: params.scanned,
+    normalized: params.normalized,
+    matched: params.matched,
+    unmatched: params.unmatched,
+    upserted: inserted + params.updateInputs.length,
+    pruned,
+  };
 }
 
 export async function loadExistingSupplementsByKey(client: PrismaClient): Promise<ExistingSupplementMap> {
