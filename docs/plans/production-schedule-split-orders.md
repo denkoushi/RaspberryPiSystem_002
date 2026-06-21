@@ -222,6 +222,14 @@ Observed and fixed during Pi5 smoke:
 
 - First attempt with parent-row locks for every changed supplement hit PostgreSQL `out of shared memory`; fixed by locking only split-bearing parents.
 - Second attempt with per-row split existence checks avoided the lock error but hit Prisma interactive transaction timeout (`P2028`) on real data; fixed by batching split parent lookup and chunking transactions.
+- 2026-06-21 pre-pilot evidence pass found supplement sync `P2035` (`too many bind variables`, 36,798 bind values) in the winner lookup query; fixed by passing supplement lookup keys as one JSON payload and expanding with `jsonb_to_recordset`.
+- P2035 fix commit: `38e33014`; CI `27887448895` passed; Pi5 redeploy `20260621-085713-13579` completed with Ansible `failed=0`.
+- Re-deployed Pi5 app SHA: `38e33014` (supersedes earlier deployed app SHA `75ea7b86` for the pilot candidate).
+- Re-deploy backup: `/opt/backups/db_backup_split_order_p2035_fix_smoke_20260621_090823.sql.gz`, gzip test passed, SHA-256 `e0a373d69dc7ac8fe537e0604819a058805d850f9b57a5ce5fd5a9105768aa5d`, size `281297840` bytes (`269M`).
+- Re-deploy flag values: API `KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false`; served Web bundle contains `splitFeatureEnabled:y=!1`.
+- Re-deploy supplement sync smoke completed on real Pi5 data: `scanned=81600`, `normalized=81600`, `matched=24434`, `unmatched=57166`, `upserted=24434`, `pruned=0`.
+- Memory/health during re-deploy sync smoke: before `health=ok`; immediate `degraded` at 95.2%; 30s `ok`; 60s `ok`; 180s `ok`; API/DB/Web restart count `0`, OOMKilled `false`, no `P2028` / `P2035` / `out of shared memory` log matches.
+- Re-deploy SQL checks: scope-aware parent/split duplicate assignment SQL `0`; split quantity anomaly SQL `0`; final health `ok`.
 
 ## Out of Scope (explicit)
 
@@ -232,21 +240,22 @@ Observed and fixed during Pi5 smoke:
 
 ## Validation (latest)
 
-Verified locally + CI + Pi5 (Agent, 2026-06-20 — pass 10 follow-up):
+Verified locally + CI + Pi5 (Agent, 2026-06-21 — P2035 follow-up):
 
 - `pnpm --filter api build`: passed.
+- `pnpm --filter api exec tsc -p tsconfig.build.json --noEmit`: passed after P2035 fix.
 - `pnpm --filter web build`: passed.
 - `pnpm --filter web test`: **232 files / 1080 tests** passed (jsdom emitted localhost connection logs, but Vitest passed).
-- API Vitest — focused unit: order supplement sync + command, **2 files / 20 tests** passed.
-- API Vitest — DB integration: split service, reconciliation, order supplement sync, **3 files / 14 tests** passed.
+- API Vitest — focused unit: order supplement sync + command, **2 files / 20 tests** passed; order supplement sync unit re-run after P2035 fix: **13 tests** passed.
+- API Vitest — DB integration: split service, reconciliation, order supplement sync, **3 files / 14 tests** passed; order supplement sync integration re-run after P2035 fix on temporary pgvector DB: **1 test** passed.
 - API Vitest — route/query/command focused: **3 files / 38 tests** passed.
 - API Vitest full suite: **402 files / 2027 tests** passed, **2 files / 9 tests skipped**.
-- Temporary Postgres `pgvector/pgvector:pg16`: `prisma migrate deploy` / `migrate status` (**111** migrations); temporary container / volume / network removed after verify.
+- Temporary Postgres `pgvector/pgvector:pg16`: `prisma migrate deploy` / `migrate status` (**111** migrations); P2035 fix temp container / volume removed after verify.
 - `EXPLAIN`: `PSOrderSplit_idx_dashboard_parent_split_no`, `PSOrderSplitAssign_idx_site_resource_order`, `PSOrderSplitAssign_unique_order_slot`.
 - `git diff --check` passed.
-- GitHub Actions `27869672609`, `27870341509`, `27871004452`, `27871646967`: passed.
-- Pi5 deploys to `raspberrypi5` only: `cc5d6f82`, `54d026dd`, `75ea7b86` all completed with Ansible `failed=0`; latest verified ref is `75ea7b86`.
-- Pi5 latest verification: flag OFF, migration up to date, API health ok, supplement sync smoke passed (`scanned=67963`, `upserted=24434`), duplicate slot SQL `0`, split quantity mismatch SQL `0`, backup `/opt/backups/db_backup_split_order_smoke_20260620_215414.sql.gz`.
+- GitHub Actions `27869672609`, `27870341509`, `27871004452`, `27871646967`, `27887448895`: passed.
+- Pi5 deploys to `raspberrypi5` only: `cc5d6f82`, `54d026dd`, `75ea7b86`, `38e33014` all completed with Ansible `failed=0`; latest verified ref is `38e33014`.
+- Pi5 latest verification: flag OFF, migration up to date, API health ok after recovery, supplement sync smoke passed (`scanned=81600`, `upserted=24434`), scope-aware duplicate SQL `0`, split quantity anomaly SQL `0`, backup `/opt/backups/db_backup_split_order_p2035_fix_smoke_20260621_090823.sql.gz`.
 
 Note: standard `postgres:16-alpine` fails on existing `vector` extension migrations; use pgvector image for local DB verification.
 
@@ -257,6 +266,8 @@ Note: standard `postgres:16-alpine` fails on existing `vector` extension migrati
 - Snapshot generation token includes split tables `MAX(updatedAt)` — **apply the 3 split migrations before enabling the app/flag**, or leaderboard cache invalidation may miss split changes.
 - Safe rollout: (1) migrate on Pi, (2) deploy API+Web with flag OFF, (3) manual smoke with flag ON, (4) enable flag in production env.
 - Rollback after split creation is **new binary + feature flag OFF**. Do not rely on old-binary rollback after the split migrations have been applied and split rows may exist.
+- API split flag is Pi5 shared API scope, not per terminal. Web split flag is build-time and served from the shared Pi5 web bundle. Therefore "limited terminal ON" is not a hard isolation boundary unless a separate per-device gate is added.
+- Step 1 temporary scope contract: split structure is global to the parent production schedule row across sites; manual order assignment remains site/location scoped. Do not edit split structure from another site during the pilot.
 
 ### Pi Deploy Readiness (prepared, not executed)
 
