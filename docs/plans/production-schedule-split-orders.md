@@ -6,7 +6,7 @@ status: implemented
 review_status: codex-reviewed-2026-06-20-final-pass10-pi5-flag-off-smoke
 scope: kiosk-leaderboard-order-split
 date: 2026-06-19
-last_updated: 2026-06-20
+last_updated: 2026-06-21
 source_of_truth: docs/plans/production-schedule-split-orders.md
 related_code:
   - apps/api/src/services/production-schedule/order-split/
@@ -27,7 +27,7 @@ validation:
   - pnpm --filter web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__/LeaderOrderSplitModal.component.test.tsx
   - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts
   - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.integration.test.ts
-deploy_status: pi5-flag-off-smoke-passed
+deploy_status: pi5-step2a-shared-bundle-on-observation-completed-flag-off
 open_items:
   - CSV re-import / winner change logical-key relink for existing splits (P2)
   - Split structure contract: global vs site-scoped semantics (needs API/data-model decision)
@@ -385,6 +385,158 @@ After-state:
 - Final split quantity mismatch SQL: `0`.
 - API/DB containers healthy; root page returned `200 text/html`.
 - Health had one immediate post-redeploy memory-pressure `degraded` sample (`95.8%`) but recovered to `ok`; final check at `2026-06-21T13:10:14+09:00` returned `200` / `status=ok`.
+
+### Post-Step 1 Next-Phase Decision (2026-06-21)
+
+Recommendation:
+
+- Do **not** jump directly to Pi4 / all-terminal rollout or permanent flag ON.
+- Next phase should be a **short Pi5-only shared-bundle ON observation window** with explicit entry / stop conditions.
+- Treat the current flag as **Pi5 shared API/Web scope**, not true terminal isolation. If the operation requires "only one physical kiosk can see/use split while others cannot", implement a separate gate first.
+
+Rationale:
+
+- Step 1 validated real split create/update/leaderboard/supplement-sync/OFF rollback on Pi5 with the same new binary (`12b6a46a`) and clean SQL/log checks.
+- The remaining risk is not a known P1 implementation blocker; it is rollout blast radius: API and Web flags are shared, while split structure is currently global to the parent row and manual order assignment is site/location scoped.
+- A simple Web-only hide/show switch is insufficient for terminal isolation. Split read expansion, split mutation routes, and parent manual-order behavior must be gated consistently by API, or a non-enabled terminal could still interact with a parent row whose split state exists.
+
+#### Step 2A: Short Pi5 Shared-Bundle ON Observation
+
+Entry conditions:
+
+- Pi5 is on the reviewed new binary (`12b6a46a` or later descendant) with flag OFF before start.
+- `6e5bbd02` docs-only commit is present locally before editing/deploying runbooks.
+- Fresh PostgreSQL backup is taken immediately before ON and recorded with path, gzip test, SHA-256, and size.
+- API health is `ok`; API/DB/Web restart counts are stable; no recent `P2028`, `P2035`, or `out of shared memory` log matches.
+- Scope is one named site/resource/order row set. Operators agree that the Pi5-served shared Web bundle may expose split UI during the observation window.
+- No CSV re-import / winner change job is planned during the window. Winner-row logical-key relink for existing splits remains P2 and is not implemented.
+- No other site edits the same parent split structure during the window; current Step 1 contract keeps split structure global to the parent row.
+
+Allowed observation:
+
+- Keep Pi5 flag ON only for a fixed short window, preferably during low-activity operation.
+- Create or retain only explicitly approved split rows.
+- Exercise split quantity/due-date/manual-order changes on the agreed rows.
+- Run order supplement sync once inside the window if the goal is to validate continued production behavior.
+
+Monitor / record:
+
+- Before/after flag values for API container and served Web bundle.
+- Health at immediate / 30s / 60s / 180s after flag ON and after flag OFF if OFF is performed.
+- API/DB/Web restart counts and OOMKilled state.
+- API logs for `P2028`, `P2035`, `out of shared memory`.
+- Scope-aware parent/split duplicate assignment SQL result.
+- Split quantity mismatch SQL result.
+- Remaining split row count and the exact parent rows that intentionally keep splits.
+
+Stop conditions:
+
+- Any SQL check returns rows.
+- Any `P2028`, `P2035`, `out of shared memory`, restart, OOMKilled, or persistent health degradation appears.
+- Memory pressure does not recover to `ok` by the agreed observation checkpoint.
+- Operator workflow depends on terminal isolation that the current shared flag cannot provide.
+- A CSV re-import / winner-row relink scenario appears for a split-bearing parent.
+- The global-vs-site split structure contract becomes ambiguous in actual operation.
+
+Rollback:
+
+- Use **same new binary + feature flag OFF** only.
+- Do not use an old-binary rollback after split migrations have been applied and split rows may exist.
+
+#### Pi4 / All-Terminal Rollout Pre-Checklist
+
+Do this before any wider ON:
+
+- Step 2A completes with no stop-condition hit.
+- Decide whether wider rollout accepts the current contract: split structure is global to the parent row; manual order is site/location scoped.
+- Confirm all operators understand that enabling the shared Web/API flag exposes the feature to clients using that Pi5-served bundle.
+- Confirm no planned CSV re-import / winner change affects split-bearing parents, or implement the P2 relink before rollout.
+- Re-run focused CI or use the latest passed CI for the exact deploy SHA; record the run ID.
+- Take a fresh backup immediately before wider ON.
+- Confirm `.env.example` / Ansible defaults remain OFF unless the rollout intentionally changes production env.
+- Prepare the same SQL checks and log/health checkpoints used in Step 1 / Step 2A.
+- Define who can create/modify/delete splits and which rows may remain split after the window.
+
+#### Terminal-Unit Gate Design Decision
+
+Do **not** add a terminal-unit gate as a small UI-only patch. If required, design it as an API-enforced rollout scope:
+
+- Gate split route access by request device scope / site scope, not only by Web build flag.
+- Gate leaderboard split expansion by the same scope so enabled and non-enabled clients do not see incompatible item identities for the same board.
+- Define what non-enabled clients may do when a parent row already has splits: block parent manual-order writes, show read-only parent aggregation, or require site-wide enablement.
+- Decide whether split structure remains global or becomes site-scoped before introducing mixed enabled/non-enabled clients.
+- Prefer a site-level gate over a physical-terminal gate unless there is a strong operational need; manual order storage already resolves to siteKey under device-scope v2.
+
+Decision update (2026-06-21):
+
+- Wider rollout may proceed with the current **shared API/Web flag** model.
+- Do not add terminal-unit or site-unit gate before the next rollout phase.
+- Operational control is by rule: when the shared flag is ON, operators limit who uses split and which rows may be split.
+- Keep `.env.example` / Ansible defaults OFF until an explicit rollout window.
+
+### Step 2A Pi5 Shared-Bundle ON Observation (completed 2026-06-21)
+
+Scope:
+
+- Target: `raspberrypi5` only; no Pi4 or all-terminal rollout.
+- App ref after deploy: `6e5bbd02` (`docs: record split order flag-on pilot`), app code equivalent to `12b6a46a`.
+- Observation type: shared API/Web bundle flag ON, no new split creation/update/delete during this Step 2A window.
+- Rollback path used: same new binary + feature flag OFF; no old-binary rollback.
+
+Backup:
+
+- Fresh backup before ON: `/opt/backups/db_backup_split_order_step2a_on_observation_20260621_133152.sql.gz`.
+- gzip test: passed.
+- SHA-256: `abdc586960022a67041773538e94e2cf8fc17f0efbfa2fd76de1f0a3abca191a`.
+- Size: `281600765` bytes (`269M`).
+
+Pre-ON state:
+
+- Pi5 ref: `12b6a46a`; API/Web split flags OFF.
+- API health: `ok`.
+- Split route returned `403 FEATURE_DISABLED`.
+- API/DB/Web restart count `0`; OOMKilled `false`.
+- API logs had no `P2028`, `P2035`, or `out of shared memory`.
+- Scope-aware duplicate assignment SQL: `0`.
+- Split quantity mismatch SQL: `0`.
+- Remaining split rows for `production-schedule-mishima-grinding`: `0`.
+
+ON deploy and observation:
+
+- Enabled API/Web split flags on Pi5 only via Ansible extra vars; deploy completed with `failed=0` (`ok=140 changed=7`).
+- API flag: `true`; Compose/Web env flags: `true`.
+- Split route returned `200` for the Step 1 parent row and returned `splits: []`.
+- Served JS bundle contained split UI/route strings (`splitFeatureEnabled`, `/splits`, `split:`).
+- Immediate health after ON: `degraded` due to memory (`96.8%`), matching known post-redeploy memory pressure.
+- +30s health: `ok` with memory warning (`94.9%`).
+- +60s health: `ok`.
+- +180s health: `ok`.
+- API/DB/Web restart count remained `0`; OOMKilled remained `false`.
+- API logs had no `P2028`, `P2035`, or `out of shared memory`.
+- ON-window scope-aware duplicate assignment SQL: `0`.
+- ON-window split quantity mismatch SQL: `0`.
+- ON-window remaining split rows: `0`.
+
+OFF return and final state:
+
+- Returned Pi5 to API/Web split flags OFF via Ansible extra vars; deploy completed with `failed=0` (`ok=140 changed=7`).
+- API flag: `false`; Compose/Web env flags: `false`.
+- Split route returned `403 FEATURE_DISABLED`.
+- Immediate health after OFF: `degraded` due to memory (`96.5%`).
+- +30s health after OFF: still `degraded` (`95.4%`), with no matching API error logs.
+- +60s health after OFF: `ok`.
+- +180s health after OFF: `ok`.
+- Final API/DB/Web restart count `0`; OOMKilled `false`.
+- Final API logs had no `P2028`, `P2035`, or `out of shared memory`.
+- Final scope-aware duplicate assignment SQL: `0`.
+- Final split quantity mismatch SQL: `0`.
+- Final remaining split rows: `0`.
+
+Step 2A conclusion:
+
+- Short Pi5 shared-bundle ON observation passed without split data mutation.
+- This does **not** approve Pi4/all-terminal rollout by itself; the pre-checklist above still applies.
+- Since the feature is still shared API/Web scope, terminal-unit isolation remains a design decision rather than an operational fact.
 
 ### Step 1 Limited Flag-ON Gate (historical checklist)
 
