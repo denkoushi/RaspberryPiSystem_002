@@ -351,6 +351,29 @@ Stop conditions:
 - Any winner-row relink scenario caused by CSV re-import; P2 relink is not implemented.
 - Any behavior that depends on deciding whether split structure is global or site-scoped; that contract is still open.
 
+### Step 1 Limited Flag-ON Gate (not executed)
+
+Before enabling the split flag for the first Pi5 pilot, present and confirm:
+
+- Target: `raspberrypi5` only; no Pi4 or all-terminal rollout.
+- Candidate app SHA: `38e33014`; docs-only HEAD may be newer.
+- Current precondition: Pi5 is already redeployed with flag OFF, health recovered to `ok`, and supplement sync smoke passed on real data.
+- Backup: take a fresh PostgreSQL backup immediately before the flag-ON pilot and record path, size, gzip test, and SHA-256.
+- Scope: one explicitly named site/resource/order row set. Do not edit split structure from another site while the pilot runs.
+- Rollback: disable `KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED` and redeploy/restart the same new binary; do not use an old-binary rollback after split rows exist.
+
+Minimum pilot sequence:
+
+1. Record before-state: app SHA, API flag value, Web bundle flag value, health, container restart counts, and backup evidence.
+2. Enable flag on Pi5 only.
+3. Create a split for the agreed parent row; verify display item IDs, split quantities, and parent row behavior.
+4. Update split quantity / due date / manual order; verify parent/split slot duplicate SQL remains `0`.
+5. Run supplement sync once; verify no `P2028`, `P2035`, or `out of shared memory` log matches and split total SQL remains `0`.
+6. Disable flag again unless the user explicitly approves keeping it on.
+7. Record after-state: health at immediate / 30s / 60s / 180s, restart counts, SQL results, and whether any split rows remain.
+
+Stop immediately and keep the flag OFF if any check fails, any SQL returns rows, memory does not recover to `ok`, or the pilot scope is ambiguous.
+
 ## Local Notes JA
 
 - 現場要件: 5個中2個先行・3個遅延など、順位ボード上で数量・納期・手動順番を分けたい。
@@ -361,7 +384,7 @@ Stop conditions:
 - `hasDueDateOnly`: split 固有納期は display item 単位で filter / count。
 - flag OFF でも: stale release / order usage / slot 競合は split assignment を含めて整合。親 manual order は同一 scope の split 順位を畳んで保存可能（flag ON では拒否）。
 - 外部数量同期: `plannedQuantity` 変更時、親 row lock 下で split 数量を比例再配分。
-- Pi5 flag OFF smoke: `75ea7b86` で migration up to date、API health ok、order supplement sync 実データ完走、順位重複SQL 0、split数量不一致SQL 0。
+- Pi5 flag OFF smoke: `38e33014` で P2035 修正後に再deploy、API/Web flag OFF、order supplement sync 実データ完走、順位重複SQL 0、split数量不一致SQL 0。
 - 2026-06-20 Codex レビュー pass 10: flag OFF 整合（release lock、usage、supplement sync 比例再配分）。P2 winner relink / global vs site-scoped 契約は out of scope。
 - 2026-06-20 Codex レビュー pass 9: replace 安定化、modal race 防止、due-date filter 補正。winner relink は引き続き out of scope。
 - 2026-06-20 Codex レビュー pass 7: split service / route integration の cleanup を fixture 行に限定し、DB 付きテスト並列実行時の相互削除を防止。
