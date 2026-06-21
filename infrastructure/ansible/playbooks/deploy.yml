@@ -32,6 +32,7 @@
       ansible.builtin.set_fact:
         has_signage_clients: "{{ groups.clients | default([]) | map('extract', hostvars) | selectattr('manage_signage_lite', 'defined') | selectattr('manage_signage_lite', 'equalto', true) | list | length > 0 }}"
       delegate_to: localhost
+      become: false
       run_once: true
 
     - name: Verify signage role templates directory exists
@@ -39,6 +40,7 @@
         path: "{{ playbook_dir }}/../roles/signage/templates"
       register: signage_templates_dir
       delegate_to: localhost
+      become: false
       run_once: true
       when: has_signage_clients | default(false)
 
@@ -52,6 +54,7 @@
         - has_signage_clients | default(false)
         - not signage_templates_dir.stat.exists | default(false)
       delegate_to: localhost
+      become: false
       run_once: true
 
     - name: Verify required signage role template files exist
@@ -59,6 +62,7 @@
         path: "{{ playbook_dir }}/../roles/signage/templates/{{ item }}"
       register: signage_template_files
       delegate_to: localhost
+      become: false
       run_once: true
       loop:
         - signage-lite.tmpfiles.conf.j2
@@ -89,6 +93,7 @@
         - not item.stat.exists | default(false)
       loop: "{{ signage_template_files.results | default([]) }}"
       delegate_to: localhost
+      become: false
       run_once: true
 
   tasks:
