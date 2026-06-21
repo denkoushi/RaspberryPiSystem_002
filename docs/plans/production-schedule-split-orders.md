@@ -27,7 +27,7 @@ validation:
   - pnpm --filter web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__/LeaderOrderSplitModal.component.test.tsx
   - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts
   - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.integration.test.ts
-deploy_status: pi5-step2a-shared-bundle-on-observation-completed-flag-off
+deploy_status: pi5-step2b-real-mutation-verified-flag-off
 open_items:
   - CSV re-import / winner change logical-key relink for existing splits (P2)
   - Split structure contract: global vs site-scoped semantics (needs API/data-model decision)
@@ -537,6 +537,86 @@ Step 2A conclusion:
 - Short Pi5 shared-bundle ON observation passed without split data mutation.
 - This does **not** approve Pi4/all-terminal rollout by itself; the pre-checklist above still applies.
 - Since the feature is still shared API/Web scope, terminal-unit isolation remains a design decision rather than an operational fact.
+
+### Step 2B Pi5 Real Split Mutation Recheck (completed 2026-06-21)
+
+Scope:
+
+- Target: `raspberrypi5` only; no Pi4 or all-terminal rollout.
+- App ref after deploy: `158e014f` (`docs: record split order step2a observation`), app code equivalent to `12b6a46a`.
+- Contract decision: continue with current shared API/Web flag model; no terminal-unit or site-unit gate added before this recheck.
+- Rollback path used: same new binary + feature flag OFF; no old-binary rollback.
+
+Backup:
+
+- Fresh backup before ON: `/opt/backups/db_backup_split_order_step2b_mutation_20260621_153044.sql.gz`.
+- gzip test: passed.
+- SHA-256: `e4f529f75d96738a20cb5102c65be32fe50be81ac3405ce406e288eadca1dce5`.
+- Size: `281746148` bytes (`269M`).
+
+Pre-ON state:
+
+- API/Web split flags OFF.
+- API health: `ok`.
+- Split route returned `403 FEATURE_DISABLED`.
+- API/DB/Web restart count `0`; OOMKilled `false`.
+- API logs had no `P2028`, `P2035`, or `out of shared memory`.
+- Target parent row: `aad944aa-031e-4094-ae9d-f5fa4168545f`, `FSEIBAN=BN1S8301`, `ProductNo=0003905520`, `FKOJUN=210`, `resourceCd=584`, planned quantity `2`.
+- Target parent split rows: `0`.
+- Site/resource `第2工場` / `584` manual-order slots `1` through `10` were free.
+
+ON deploy and mutation:
+
+- Enabled API/Web split flags on Pi5 only via Ansible extra vars; deploy completed with `failed=0` (`ok=140 changed=7`).
+- API flag: `true`; Compose/Web env flags: `true`.
+- Split route returned `200` for the target parent and initially returned `splits: []`.
+- Served JS bundle contained split UI/route strings (`splitFeatureEnabled`, `/splits`, `split:`).
+- Created two split rows from the parent:
+  - split 1: `8508aee5-5cef-4dc3-b14d-cb071abf585e`, quantity `1`.
+  - split 2: `d01aff79-2956-43d8-a3d3-fcacc32386e3`, quantity `1`, initial due date `2026-06-30`.
+- Updated split 2 due date to `2026-07-01`.
+- Updated manual order assignments at site `第2工場`, resource `584`: split 1 `orderNumber=1`, split 2 `orderNumber=2`.
+- Verified split list returned both splits with quantities `1/1`, due date `2026-07-01` for split 2, and order numbers `1/2`.
+- Verified leaderboard board (`boardResourceCds=584`) returned both `split:` display item IDs with parent source row linkage and planned quantities `1/1`.
+- DB split assignments showed both split rows at `location=第2工場`, `siteKey=第2工場`, `resourceCd=584`, order numbers `1/2`.
+- Scope-aware duplicate assignment SQL: `0`.
+- Split quantity mismatch SQL: `0`.
+- Target split rows during ON window: `2`.
+- Health after mutation: `ok` (memory warning only).
+- API logs had no `P2028`, `P2035`, or `out of shared memory`.
+
+Cleanup before OFF:
+
+- Deleted the validation split rows via `DELETE /kiosk/production-schedule/:sourceRowId/splits`; route returned `200`.
+- Target parent split rows after delete: `0`.
+- Split assignment rows for the validation splits after delete: `0`.
+- Leaderboard board no longer returned either validation `split:` display item ID.
+- Scope-aware duplicate assignment SQL after delete: `0`.
+- Split quantity mismatch SQL after delete: `0`.
+- Health after delete: `ok`.
+- API logs had no `P2028`, `P2035`, or `out of shared memory`.
+
+OFF return and final state:
+
+- Returned Pi5 to API/Web split flags OFF via Ansible extra vars; deploy completed with `failed=0` (`ok=140 changed=7`).
+- API flag: `false`; Compose/Web env flags: `false`.
+- Split route returned `403 FEATURE_DISABLED`.
+- Final target parent split rows: `0`.
+- Final remaining split rows for `production-schedule-mishima-grinding`: `0`.
+- Final scope-aware duplicate assignment SQL: `0`.
+- Final split quantity mismatch SQL: `0`.
+- Final API/DB/Web restart count `0`; OOMKilled `false`.
+- Final API logs had no `P2028`, `P2035`, or `out of shared memory`.
+- Immediate health after OFF: `ok`.
+- +30s health after OFF: `degraded` due to transient memory pressure (`95.6%`), with no matching API error logs.
+- +60s health after OFF: `ok`.
+- +180s health after OFF: `ok`.
+
+Step 2B conclusion:
+
+- Pi5 shared-bundle real split mutation recheck passed.
+- Validation split data was removed; Pi5 is back to flag OFF.
+- This still does not approve Pi4/all-terminal rollout by itself; use the wider-rollout pre-checklist above.
 
 ### Step 1 Limited Flag-ON Gate (historical checklist)
 
