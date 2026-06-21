@@ -27,7 +27,7 @@ validation:
   - pnpm --filter web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__/LeaderOrderSplitModal.component.test.tsx
   - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts
   - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.integration.test.ts
-deploy_status: pi5-step2b-real-mutation-verified-flag-off
+deploy_status: pi5-step3a-all-client-readonly-verified-flag-off
 open_items:
   - CSV re-import / winner change logical-key relink for existing splits (P2)
   - Split structure contract: global vs site-scoped semantics (needs API/data-model decision)
@@ -617,6 +617,74 @@ Step 2B conclusion:
 - Pi5 shared-bundle real split mutation recheck passed.
 - Validation split data was removed; Pi5 is back to flag OFF.
 - This still does not approve Pi4/all-terminal rollout by itself; use the wider-rollout pre-checklist above.
+
+### Step 3A Shared All-Client Read-Only ON Observation (completed 2026-06-21)
+
+Scope:
+
+- Target: `raspberrypi5` shared API/Web bundle only; no persistent Pi4/all-terminal rollout.
+- App ref after deploy: `f688403c` (`docs: record split order step2b recheck`), app code equivalent to `12b6a46a`.
+- Contract decision used: proceed with the current shared API/Web flag model; no terminal-unit or site-unit gate added for this check.
+- Observation type: split flag ON with read-only route checks from all current 第2工場 client candidates; no split create/update/delete.
+- Rollback path used: same new binary + feature flag OFF; no old-binary rollback.
+
+Backup:
+
+- Fresh backup before ON: `/opt/backups/db_backup_split_order_step3a_all_client_readonly_20260621_171523.sql.gz`.
+- gzip test: passed.
+- SHA-256: `a55fd2216ab13f6a89fc7ee47de47940d057f199623504de62640ad871f9c5a0`.
+- Size: `281850337` bytes (`269M`).
+
+Pre-ON checks:
+
+- Local branch was up to date with `origin/feat/production-schedule-split-orders`.
+- Latest CI for `f688403c`: run `27896731489`, passed.
+- Ansible / Docker default split flags remained OFF.
+- Pi5 pre-check: API/Web split flags OFF, API health `ok` (memory warning only), API/DB/Web restart count `0`, OOMKilled `false`.
+- Target parent row for route checks: `aad944aa-031e-4094-ae9d-f5fa4168545f`.
+- Target parent split rows: `0`; remaining split rows: `0`.
+- Scope-aware duplicate assignment SQL: `0`; split quantity mismatch SQL: `0`.
+- API logs had no `P2028`, `P2035`, or `out of shared memory`.
+
+ON deploy and read-only observation:
+
+- Enabled API/Web split flags on Pi5 only via Ansible extra vars; deploy completed with `failed=0` (`ok=140 changed=7`).
+- API flag: `true`; Compose/Web env flags: `true`.
+- Served JS bundle contained split UI/route strings (`splitFeatureEnabled`, `/splits`, `split:`).
+- Immediate health after ON: `ok` (memory warning `89.8%`).
+- API/DB/Web restart count `0`; OOMKilled `false`.
+- Split list route returned `HTTP 200` with `splits=0` for all current 第2工場 client candidates:
+  - `Android signage 161` / `第2工場 - Android signage 161`
+  - `raspi4-fjv60-80` / `第2工場 - FJV60/80`
+  - `raspi4_kensakuMain` / `第2工場 - kensakuMain`
+  - `raspi4-robodrill01` / `第2工場 - RoboDrill01`
+  - `raspi3_signageMakoRoom` / `第2工場 - signageMakoRoom`
+  - `raspi4-kensaku-stonebase01` / `第2工場 - StoneBase01`
+- ON-window target parent split rows: `0`; remaining split rows: `0`.
+- ON-window split assignment rows: `0`.
+- ON-window scope-aware duplicate assignment SQL: `0`; split quantity mismatch SQL: `0`.
+- API logs had no `P2028`, `P2035`, or `out of shared memory`.
+
+OFF return and final state:
+
+- Returned Pi5 to API/Web split flags OFF via Ansible extra vars; deploy completed with `failed=0` (`ok=140 changed=7`).
+- API flag: `false`; Compose/Web env flags: `false`.
+- Split route returned `403` with `生産指示分割は無効です`.
+- Final target parent split rows: `0`; final remaining split rows: `0`.
+- Final target split assignment rows: `0`; final remaining split assignment rows: `0`.
+- Final scope-aware duplicate assignment SQL: `0`; final split quantity mismatch SQL: `0`.
+- Final API/DB/Web restart count `0`; OOMKilled `false`.
+- Final API logs had no `P2028`, `P2035`, or `out of shared memory`.
+- Immediate health after OFF: `degraded` due to transient memory pressure (`95.1%`).
+- +30s health after OFF: `degraded` (`95.7%`), with no matching API error logs.
+- +60s health after OFF: `ok` (memory warning `86.8%`).
+- +180s health after OFF: `ok`.
+
+Step 3A conclusion:
+
+- Shared-flag all-client read-only route check passed with no split data mutation.
+- Pi5 is back to flag OFF on the same new binary.
+- Persistent all-terminal ON was not performed; before doing that, define the rollout window and operator rule for who may create/modify/delete splits.
 
 ### Step 1 Limited Flag-ON Gate (historical checklist)
 
