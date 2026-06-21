@@ -254,8 +254,8 @@ Verified locally + CI + Pi5 (Agent, 2026-06-21 — P2035 follow-up):
 - `EXPLAIN`: `PSOrderSplit_idx_dashboard_parent_split_no`, `PSOrderSplitAssign_idx_site_resource_order`, `PSOrderSplitAssign_unique_order_slot`.
 - `git diff --check` passed.
 - GitHub Actions `27869672609`, `27870341509`, `27871004452`, `27871646967`, `27887448895`: passed.
-- Pi5 deploys to `raspberrypi5` only: `cc5d6f82`, `54d026dd`, `75ea7b86`, `38e33014` all completed with Ansible `failed=0`; latest verified ref is `38e33014`.
-- Pi5 latest verification: flag OFF, migration up to date, API health ok after recovery, supplement sync smoke passed (`scanned=81600`, `upserted=24434`), scope-aware duplicate SQL `0`, split quantity anomaly SQL `0`, backup `/opt/backups/db_backup_split_order_p2035_fix_smoke_20260621_090823.sql.gz`.
+- Pi5 deploys to `raspberrypi5` only: `cc5d6f82`, `54d026dd`, `75ea7b86`, `38e33014`, `12b6a46a` all completed with Ansible `failed=0`; latest verified ref is `12b6a46a`.
+- Pi5 latest verification: Step 1 limited flag-ON pilot completed, flag returned OFF, migration up to date, API health ok after recovery, supplement sync smoke passed (`scanned=81600`, `upserted=24434`), scope-aware duplicate SQL `0`, split quantity anomaly SQL `0`, pilot backup `/opt/backups/db_backup_split_order_flag_on_pilot_20260621_121205.sql.gz`.
 
 Note: standard `postgres:16-alpine` fails on existing `vector` extension migrations; use pgvector image for local DB verification.
 
@@ -351,7 +351,42 @@ Stop conditions:
 - Any winner-row relink scenario caused by CSV re-import; P2 relink is not implemented.
 - Any behavior that depends on deciding whether split structure is global or site-scoped; that contract is still open.
 
-### Step 1 Limited Flag-ON Gate (not executed)
+### Step 1 Limited Flag-ON Pilot (completed 2026-06-21)
+
+Pilot scope and safety:
+
+- Target: `raspberrypi5` only; no Pi4 or all-terminal rollout.
+- App SHA: `12b6a46a` (`feat/production-schedule-split-orders`).
+- CI before pilot: GitHub Actions `27890350970` passed.
+- Fresh backup immediately before flag ON: `/opt/backups/db_backup_split_order_flag_on_pilot_20260621_121205.sql.gz`, gzip test passed, SHA-256 `bb9f91406fafae4fa5e0b68317cfe7f606e1d262ef278316a8ea5354cb758636`, size `281502293` bytes.
+- Pilot row: site/device `第2工場 - kensakuMain` (`raspi4_kensakuMain`), resource `584`, parent row `aad944aa-031e-4094-ae9d-f5fa4168545f`, `FSEIBAN=BN1S8301`, `ProductNo=0003905520`, `FKOJUN=210`, planned quantity `2`.
+- Before-state: API/Web split flag OFF, API health `ok`, target parent had `0` split rows.
+
+Pilot actions and results:
+
+1. Enabled split flag on Pi5 only; Ansible deploy completed with `failed=0`.
+2. Created two split rows from the parent: quantities `1` and `1`; display IDs `split:7c6d6942-483f-4be1-89bd-c4b1e5dc711c` and `split:7aedfcb3-d420-4038-adee-79626e42d9c8`.
+3. Updated split 2 due date from `2026-06-30` to `2026-07-01`.
+4. Updated manual order: split 1 `resourceCd=584/orderNumber=1`, split 2 `resourceCd=584/orderNumber=2`.
+5. Verified leaderboard board (`boardResourceCds=584`) returned the two `split:` display item IDs with parent source row linkage and quantities `1/1`.
+6. Scope-aware parent/split duplicate assignment SQL returned `0`; split quantity mismatch SQL returned `0`.
+7. Ran order supplement sync on real Pi5 data: `scanned=81600`, `normalized=81600`, `matched=24434`, `unmatched=57166`, `upserted=24434`, `pruned=0`.
+8. API logs since pilot start had no `P2028`, `P2035`, or `out of shared memory` matches.
+9. Deleted the pilot split rows after verification; target parent split count returned to `0`, and the board no longer returned `split:` IDs for the target.
+10. Returned Pi5 to split flag OFF with the same new binary; Ansible deploy completed with `failed=0`.
+
+After-state:
+
+- API container flag: `KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false`.
+- Web/Compose flags: `VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false`, `KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false`.
+- Split route after OFF returned `403 FEATURE_DISABLED`.
+- Final target split rows: `0`.
+- Final scope-aware duplicate assignment SQL: `0`.
+- Final split quantity mismatch SQL: `0`.
+- API/DB containers healthy; root page returned `200 text/html`.
+- Health had one immediate post-redeploy memory-pressure `degraded` sample (`95.8%`) but recovered to `ok`; final check at `2026-06-21T13:10:14+09:00` returned `200` / `status=ok`.
+
+### Step 1 Limited Flag-ON Gate (historical checklist)
 
 Before enabling the split flag for the first Pi5 pilot, present and confirm:
 
