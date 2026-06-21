@@ -115,6 +115,7 @@ import {
   getKioskProductionScheduleDueManagementSeibanDetail,
   getKioskProductionScheduleProgressOverview,
   getKioskProductionScheduleProcessingTypeOptions,
+  getKioskProductionScheduleOrderSplitStatus,
   getKioskProductionScheduleSearchState,
   getKioskProductionScheduleSearchHistory,
   getKioskProductionScheduleHistoryProgress,
@@ -123,6 +124,7 @@ import {
   getProductionScheduleResourceCodeMappings,
   importProductionScheduleResourceCodeMappingsFromCsv,
   getProductionScheduleDueManagementAccessPasswordSettings,
+  getProductionScheduleOrderSplitPilotSettings,
   getProductionScheduleProcessingTypeOptions,
   getKioskCallTargets,
   getSystemInfo,
@@ -136,6 +138,7 @@ import {
   updateProductionScheduleResourceCategorySettings,
   updateProductionScheduleResourceCodeMappings,
   updateProductionScheduleDueManagementAccessPassword,
+  updateProductionScheduleOrderSplitPilotSettings,
   updateProductionScheduleProcessingTypeOptions,
   updateClient,
   updateEmployee,
@@ -986,6 +989,13 @@ export function useProductionScheduleDueManagementAccessPasswordSettings(locatio
   });
 }
 
+export function useProductionScheduleOrderSplitPilotSettings() {
+  return useQuery({
+    queryKey: ['production-schedule-order-split-pilot-settings'],
+    queryFn: getProductionScheduleOrderSplitPilotSettings
+  });
+}
+
 export function useProductionScheduleProcessingTypeOptions(location: string) {
   return useQuery({
     queryKey: ['production-schedule-processing-type-options', location],
@@ -1026,6 +1036,28 @@ export function useUpdateProductionScheduleDueManagementAccessPassword() {
         queryKey: ['production-schedule-due-management-access-password-settings', settings.location]
       });
     }
+  });
+}
+
+export function useUpdateProductionScheduleOrderSplitPilotSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { enabled: boolean }) => updateProductionScheduleOrderSplitPilotSettings(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['production-schedule-order-split-pilot-settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-split-status'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-leaderboard-shell'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-leaderboard-board'] });
+    }
+  });
+}
+
+export function useKioskProductionScheduleOrderSplitStatus() {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-order-split-status'],
+    queryFn: getKioskProductionScheduleOrderSplitStatus,
+    refetchInterval: 15000
   });
 }
 

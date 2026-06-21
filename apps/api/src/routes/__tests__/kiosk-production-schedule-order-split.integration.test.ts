@@ -14,6 +14,10 @@ import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID
 } from '../../services/production-schedule/constants.js';
+import {
+  resetProductionScheduleOrderSplitPilotRuntimeEnabledForTest,
+  setProductionScheduleOrderSplitPilotRuntimeEnabledForTest
+} from '../../services/production-schedule/order-split/production-schedule-order-split-feature.js';
 
 const DASHBOARD_ID = PRODUCTION_SCHEDULE_DASHBOARD_ID;
 const ORDER_SUPPLEMENT_SOURCE_DASHBOARD_ID = '8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31';
@@ -77,6 +81,7 @@ describe('Kiosk Production Schedule Order Split API (integration)', () => {
 
   beforeEach(async () => {
     await cleanupSplitRouteFixtures();
+    resetProductionScheduleOrderSplitPilotRuntimeEnabledForTest();
 
     await prisma.clientDevice.upsert({
       where: { apiKey: CLIENT_KEY },
@@ -154,6 +159,20 @@ describe('Kiosk Production Schedule Order Split API (integration)', () => {
         sourceUpdatedAt: new Date('2026-06-20T00:00:00.000Z')
       }
     });
+  });
+
+  it('runtime pilot gate OFF では分割APIを 403 にする', async () => {
+    setProductionScheduleOrderSplitPilotRuntimeEnabledForTest(false);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/kiosk/production-schedule/${parentRowId}/splits`,
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+
+    expect(res.statusCode).toBe(403);
+    const body = res.json() as { errorCode?: string };
+    expect(body.errorCode).toBe('FEATURE_DISABLED');
   });
 
   it('PUT/GET splits で置換と一覧ができる', async () => {

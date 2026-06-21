@@ -6,13 +6,16 @@ status: implemented
 review_status: codex-reviewed-2026-06-20-final-pass10-pi5-flag-off-smoke
 scope: kiosk-leaderboard-order-split
 date: 2026-06-19
-last_updated: 2026-06-21
+last_updated: 2026-06-22
 source_of_truth: docs/plans/production-schedule-split-orders.md
 related_code:
   - apps/api/src/services/production-schedule/order-split/
   - apps/api/src/routes/kiosk/production-schedule/order-split.ts
+  - apps/api/src/routes/production-schedule-settings.ts
   - apps/api/src/services/production-schedule/order-assignment/order-assignment-release.repository.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderSplitModal.tsx
+  - apps/web/src/pages/admin/ProductionScheduleSettingsPage.tsx
+  - apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx
 related_docs:
   - docs/decisions/ADR-20260507-leaderboard-shell-snapshot.md
   - docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md
@@ -28,6 +31,7 @@ validation:
   - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts
   - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.integration.test.ts
 deploy_status: pi5-step3b-short-live-mutation-verified-flag-off
+local_status: runtime-pilot-gate-ui-implemented-not-deployed
 open_items:
   - CSV re-import / winner change logical-key relink for existing splits (P2)
   - Split structure contract: global vs site-scoped semantics (needs API/data-model decision)
@@ -61,6 +65,26 @@ Allow kiosk leaderboard operators to split a parent production instruction quant
 When disabled: split routes return 403; leaderboard reads parent rows only (existing behavior).
 
 API tests read `process.env` at call time in `NODE_ENV=test` so integration tests can enable the flag without global CI env.
+
+## Runtime Pilot Gate UI (2026-06-22)
+
+Decision after Step 3B: shared deployment flags alone are not enough for operator-facing real-device validation. Before Pi4 / all-terminal rollout, the app now has a second runtime gate:
+
+- Parent kill switch remains deployment/env based: API `KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED` and Web `VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED`.
+- Child pilot switch is stored in `ProductionScheduleOrderSplitPilotConfig` and defaults to `false`.
+- Effective split enablement is `API deployment flag ON` AND `runtime pilot switch ON`; Web also requires its build flag ON.
+- API initializes the runtime gate cache on startup, refreshes it from the settings/status APIs, and uses the same synchronous `isProductionScheduleOrderSplitEnabled()` path already used by leaderboard expansion and split routes.
+- Admin UI: `/admin/production-schedule-settings` shows `生産指示分割 検証スイッチ` at the top. It can turn runtime pilot ON/OFF only when the API deployment flag is ON.
+- Kiosk UI: `/kiosk/production-schedule/leader-order-board` shows a compact status badge (`分割 Web OFF`, `分割 API OFF`, `分割 検証OFF`, `分割 検証ON`, etc.) and only enables split UI when both Web/API/runtime gates are effective.
+- Kiosk status API: `GET /api/kiosk/production-schedule/order-split/status` is readable with `x-client-key`; admin settings API remains authenticated.
+
+Local verification:
+
+- `pnpm --filter @raspi-system/api prisma:generate`
+- `pnpm --filter @raspi-system/api test -- src/services/production-schedule/order-split/__tests__/production-schedule-order-split-feature.test.ts`
+- `pnpm --filter @raspi-system/api build`
+- `pnpm --filter @raspi-system/web build`
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/borrow_return pnpm --filter @raspi-system/api test -- src/routes/__tests__/kiosk-production-schedule-order-split.integration.test.ts`
 
 ## Review & Hardening (2026-06-19 — 2026-06-20)
 

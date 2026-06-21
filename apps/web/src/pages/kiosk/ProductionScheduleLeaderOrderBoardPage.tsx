@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 
 import {
   useKioskProductionScheduleHistoryProgress,
+  useKioskProductionScheduleOrderSplitStatus,
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources
 } from '../../api/hooks';
@@ -287,6 +288,21 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     pauseRefetch: writePause,
     refetchIntervalMs: LEADER_BOARD_HISTORY_PROGRESS_REFETCH_MS
   });
+  const orderSplitStatusQuery = useKioskProductionScheduleOrderSplitStatus();
+  const orderSplitStatus = orderSplitStatusQuery.data;
+  const splitFeatureEffectiveEnabled =
+    KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED && orderSplitStatus?.effectiveEnabled === true;
+  const splitFeatureStatus = !KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED
+    ? { label: '分割 Web OFF', className: 'border-slate-500 bg-slate-800 text-slate-200' }
+    : orderSplitStatusQuery.isLoading
+      ? { label: '分割 確認中', className: 'border-cyan-500/40 bg-cyan-950/70 text-cyan-100' }
+      : orderSplitStatusQuery.isError
+        ? { label: '分割 状態不明', className: 'border-rose-400/60 bg-rose-950/70 text-rose-100' }
+        : !orderSplitStatus?.deploymentEnabled
+          ? { label: '分割 API OFF', className: 'border-slate-500 bg-slate-800 text-slate-200' }
+          : splitFeatureEffectiveEnabled
+            ? { label: '分割 検証ON', className: 'border-emerald-400/60 bg-emerald-950/70 text-emerald-100' }
+            : { label: '分割 検証OFF', className: 'border-amber-400/60 bg-amber-950/70 text-amber-100' };
 
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
@@ -590,6 +606,11 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           gridReady ? 'overflow-hidden' : 'overflow-auto'
         )}
       >
+        <div className="mb-2 flex shrink-0 items-center justify-end">
+          <span className={`min-w-[112px] rounded-md border px-3 py-1 text-center text-xs font-bold ${splitFeatureStatus.className}`}>
+            {splitFeatureStatus.label}
+          </span>
+        </div>
         {!scheduleEnabled ? (
           <p className="text-sm text-white/60">
             端末を選び、操作パネルで資源スロットに1件以上割り当て、研削/切削の条件を満たすと一覧が表示されます。
@@ -639,7 +660,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               notePending={notePending}
               onOpenInspectionWorkflow={handleOpenInspectionWorkflow}
               onOpenSplitModal={handleOpenSplitModal}
-              splitFeatureEnabled={KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED}
+              splitFeatureEnabled={splitFeatureEffectiveEnabled}
               interactionLocked={isInteractionLocked}
               footerResourceChipsByPartKey={footerResourceChipsByPartKey}
               seibanEvalEnabled={seibanEvalEnabled}

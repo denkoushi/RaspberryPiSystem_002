@@ -1458,6 +1458,14 @@ model ProductionScheduleAccessPasswordConfig {
   @@unique([location], map: "ProductionScheduleAccessPasswordConfig_unique_location")
 }
 
+model ProductionScheduleOrderSplitPilotConfig {
+  key       String   @id @db.VarChar(80)
+  enabled   Boolean  @default(false)
+  updatedBy String?  @db.VarChar(120)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model ProductionScheduleTriageSelection {
   id             String   @id @default(uuid())
   csvDashboardId String

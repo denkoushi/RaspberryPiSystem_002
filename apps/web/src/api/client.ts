@@ -454,6 +454,14 @@ export interface ProductionScheduleDueManagementAccessPasswordSettings {
   defaultPasswordActive: boolean;
 }
 
+export interface ProductionScheduleOrderSplitPilotSettings {
+  deploymentEnabled: boolean;
+  runtimeEnabled: boolean;
+  effectiveEnabled: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
 export interface ProductionScheduleProcessingTypeOption {
   code: string;
   label: string;
@@ -1916,6 +1924,29 @@ export async function updateProductionScheduleDueManagementAccessPassword(payloa
   const { data } = await api.put<{
     settings: ProductionScheduleDueManagementAccessPasswordSettings;
   }>('/production-schedule-settings/due-management-access-password', payload);
+  return data.settings;
+}
+
+export async function getProductionScheduleOrderSplitPilotSettings() {
+  const { data } = await api.get<{
+    settings: ProductionScheduleOrderSplitPilotSettings;
+  }>('/production-schedule-settings/order-split-pilot');
+  return data.settings;
+}
+
+export async function updateProductionScheduleOrderSplitPilotSettings(payload: {
+  enabled: boolean;
+}) {
+  const { data } = await api.put<{
+    settings: ProductionScheduleOrderSplitPilotSettings;
+  }>('/production-schedule-settings/order-split-pilot', payload);
+  return data.settings;
+}
+
+export async function getKioskProductionScheduleOrderSplitStatus() {
+  const { data } = await api.get<{
+    settings: ProductionScheduleOrderSplitPilotSettings;
+  }>('/kiosk/production-schedule/order-split/status');
   return data.settings;
 }
 

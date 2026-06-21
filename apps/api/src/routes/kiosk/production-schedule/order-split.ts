@@ -11,7 +11,10 @@ import {
   upsertProductionScheduleSplitDueDate,
   upsertProductionScheduleSplitOrder
 } from '../../../services/production-schedule/order-split/production-schedule-order-split.service.js';
-import { isProductionScheduleOrderSplitEnabled } from '../../../services/production-schedule/order-split/production-schedule-order-split-feature.js';
+import {
+  getProductionScheduleOrderSplitPilotStatus,
+  isProductionScheduleOrderSplitEnabled
+} from '../../../services/production-schedule/order-split/production-schedule-order-split-feature.js';
 import {
   productionScheduleOrderSplitListParamsSchema,
   productionScheduleOrderSplitListQuerySchema,
@@ -107,6 +110,12 @@ export async function registerProductionScheduleOrderSplitRoutes(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
+  app.get('/kiosk/production-schedule/order-split/status', { config: { rateLimit: false } }, async (request) => {
+    await deps.requireClientDevice(request.headers['x-client-key']);
+    const settings = await getProductionScheduleOrderSplitPilotStatus();
+    return { settings };
+  });
+
   app.get('/kiosk/production-schedule/:sourceRowId/splits', { config: { rateLimit: false } }, async (request) => {
     assertSplitFeatureEnabled();
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
