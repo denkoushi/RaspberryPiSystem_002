@@ -30,9 +30,10 @@ validation:
   - pnpm --filter web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__/LeaderOrderSplitModal.component.test.tsx
   - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts
   - pnpm --filter api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.integration.test.ts
-deploy_status: pi5-step3b-short-live-mutation-verified-flag-off
-local_status: runtime-pilot-gate-ui-implemented-not-deployed
+deploy_status: pi5-runtime-pilot-gate-deployed-flag-off
+local_status: deployed-on-pi5-d6483420
 open_items:
+  - Runtime pilot ON smoke on Pi5: enable deployment flags + admin runtime switch, then run limited row validation
   - CSV re-import / winner change logical-key relink for existing splits (P2)
   - Split structure contract: global vs site-scoped semantics (needs API/data-model decision)
   - Split-item completion, self-inspection, load-balancing integration
@@ -46,8 +47,8 @@ Allow kiosk leaderboard operators to split a parent production instruction quant
 ## Phase 1 Scope (implemented)
 
 - Display item ID contract: unsplit rows use parent UUID; split items use `split:{splitId}`.
-- Prisma models: `ProductionScheduleOrderSplit`, `ProductionScheduleOrderSplitAssignment`, `ProductionScheduleOrderSplitAuditLog`.
-- Migrations (3): base tables, parent lookup index, site-slot assignment index.
+- Prisma models: `ProductionScheduleOrderSplit`, `ProductionScheduleOrderSplitAssignment`, `ProductionScheduleOrderSplitAuditLog`, `ProductionScheduleOrderSplitPilotConfig`.
+- Migrations (4): base tables, parent lookup index, site-slot assignment index, runtime pilot config.
 - Split CRUD: `GET/PUT/DELETE /kiosk/production-schedule/:sourceRowId/splits`.
 - Split mutations: `PUT /kiosk/production-schedule/splits/:splitId/order`, `.../due-date`.
 - Leaderboard shell/continue/decorations expand parent rows to display items when feature flag is on.
@@ -791,6 +792,29 @@ Step 3B conclusion:
 - Validation split data was removed; Pi5 is back to flag OFF.
 - This confirms Codex-operated API mutation safety for the selected row, but it still does not confirm human operator workflow comfort or approve persistent all-terminal ON by itself.
 
+### Pi5 Runtime Pilot Gate Deploy (2026-06-22)
+
+Target: `raspberrypi5` only. App SHA `d6483420` (`feat: add split order pilot gate`). Verified CI `27920073711`.
+
+Deploy evidence:
+
+- Successful detach run: `20260622-082338-13283` (`ok=134` `changed=4` `failed=0`, Docker rebuild executed).
+- First attempt `20260622-081618-20567` failed at `git pull` because `apps/api/src/.../production-schedule-order-split-feature.ts` was `root:root` owned. Fixed with standard workspace chown: `sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/apps/api/src`, then `git reset --hard origin/feat/production-schedule-split-orders`.
+- Second attempt on already-synced HEAD skipped Docker rebuild (`prev_head == new_head`). Resolved by resetting Pi5 to `ec4bd7bf` and redeploying so `update-all-clients.sh` detected docker-related diff and set `Docker rebuild: true`.
+
+Post-deploy flag OFF verification:
+
+- API `KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false`; Web `VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false`.
+- `prisma migrate status`: **112** migrations, schema up to date; `ProductionScheduleOrderSplitPilotConfig` table present (0 rows).
+- `GET /api/kiosk/production-schedule/order-split/status`: `deploymentEnabled=false`, `runtimeEnabled=false`, `effectiveEnabled=false`.
+- Split mutation route returns `403` / `FEATURE_DISABLED` while deployment flag OFF.
+- Scope-aware duplicate assignment SQL: `0`; split quantity anomaly SQL: `0`.
+- Served Web bundle: `/assets/index-BXqTkAoz.js` contains `生産指示分割 検証スイッチ` and kiosk badge `分割 Web OFF`.
+- `./scripts/deploy/verify-phase12-real.sh`: **PASS 43 / WARN 0 / FAIL 0**.
+- Health after api/web rebuild: immediate `degraded` (~96% memory) → `ok` by +30s; +60s/+180s `ok`.
+
+Rollback contract unchanged: same new binary + deployment/runtime flags OFF. No Pi4 deploy. Next gate is runtime pilot ON smoke (deployment flags ON + admin runtime switch), not all-terminal ON.
+
 ### Step 1 Limited Flag-ON Gate (historical checklist)
 
 Before enabling the split flag for the first Pi5 pilot, present and confirm:
@@ -836,3 +860,4 @@ Stop immediately and keep the flag OFF if any check fails, any SQL returns rows,
 - Mac proxy: `DELETE /splits` も `targetDeviceScopeKey` 必須。Web 分割解除も同パラメータ送信。監査 target は解決済み scope に揃える。
 - 日付硬化: `2026-02-31` 等の存在しない日付は 400。監査 `beforeJson` は親行ロック取得後の transaction 内で読む。
 - 本番反映: **migration 先行**（snapshot token が split テーブルを参照）→ デプロイ（flag OFF）→ Pi 上で flag ON 手動確認 → 本番 flag 有効化。
+- 2026-06-22 runtime pilot gate: Pi5 `d6483420` 反映済。deployment flag OFF のまま status API / admin スイッチ UI / kiosk バッジのみ配信。次は deployment flag ON + runtime pilot ON の限定 smoke。
