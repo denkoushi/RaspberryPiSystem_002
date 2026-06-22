@@ -7,7 +7,6 @@ import {
   type ProductionScheduleOrderSplitItem
 } from '../../../api/client';
 import { KioskDatePickerModal } from '../../../components/kiosk/KioskDatePickerModal';
-import { KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK } from '../../../hooks/kioskRevealUi';
 
 import type { LeaderBoardRow } from './types';
 
@@ -40,6 +39,8 @@ const emptyDraft = (splitNo: number): DraftSplitItem => ({
 });
 
 export const MAX_SPLIT_DRAFTS = 50;
+const SPLIT_DATE_PICKER_OVERLAY_Z = 1300;
+const ORDER_NUMBER_OPTIONS = Array.from({ length: 10 }, (_, index) => index + 1);
 
 export function sumSplitDraftQuantities(drafts: ReadonlyArray<Pick<DraftSplitItem, 'splitQuantity'>>): number {
   return drafts.reduce((sum, item) => {
@@ -146,10 +147,17 @@ export function LeaderOrderSplitModal({
   const validationMessage = useMemo(() => {
     return validateSplitDrafts({ drafts, plannedQuantity });
   }, [drafts, plannedQuantity]);
+  const splitQuantityOptions = useMemo(() => {
+    if (plannedQuantity == null || plannedQuantity <= 0) return [];
+    return Array.from({ length: plannedQuantity }, (_, index) => index + 1);
+  }, [plannedQuantity]);
 
   const updateDraft = (index: number, patch: Partial<DraftSplitItem>) => {
     setDrafts((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   };
+
+  const isOrderNumberUsedByOtherDraft = (orderNumber: number, currentIndex: number): boolean =>
+    drafts.some((draft, index) => index !== currentIndex && Number(draft.orderNumber) === orderNumber);
 
   const addDraft = () => {
     setDrafts((prev) => {
@@ -259,13 +267,19 @@ export function LeaderOrderSplitModal({
               <div className="grid grid-cols-3 gap-2">
                 <label className="text-xs">
                   数量
-                  <input
+                  <select
                     className="mt-1 w-full rounded border border-slate-600 bg-slate-800 px-2 py-1"
-                    inputMode="numeric"
                     value={item.splitQuantity}
                     onChange={(e) => updateDraft(index, { splitQuantity: e.target.value })}
-                    disabled={loading || saving}
-                  />
+                    disabled={loading || saving || splitQuantityOptions.length === 0}
+                  >
+                    <option value="">選択</option>
+                    {splitQuantityOptions.map((quantity) => (
+                      <option key={quantity} value={String(quantity)}>
+                        {quantity}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="text-xs">
                   納期
@@ -280,13 +294,23 @@ export function LeaderOrderSplitModal({
                 </label>
                 <label className="text-xs">
                   手動順番
-                  <input
+                  <select
                     className="mt-1 w-full rounded border border-slate-600 bg-slate-800 px-2 py-1"
-                    inputMode="numeric"
                     value={item.orderNumber}
                     onChange={(e) => updateDraft(index, { orderNumber: e.target.value })}
                     disabled={loading || saving}
-                  />
+                  >
+                    <option value="">未設定</option>
+                    {ORDER_NUMBER_OPTIONS.map((orderNumber) => (
+                      <option
+                        key={orderNumber}
+                        value={String(orderNumber)}
+                        disabled={isOrderNumberUsedByOtherDraft(orderNumber, index)}
+                      >
+                        {orderNumber}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
             </div>
@@ -342,7 +366,7 @@ export function LeaderOrderSplitModal({
             updateDraft(dueDatePickerIndex, { dueDate: value });
             setDueDatePickerIndex(null);
           }}
-          overlayZIndex={KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK}
+          overlayZIndex={SPLIT_DATE_PICKER_OVERLAY_Z}
         />
       ) : null}
     </div>
