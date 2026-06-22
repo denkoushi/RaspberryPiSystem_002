@@ -163,4 +163,78 @@ describe('order-supplement-sync.service (integration)', () => {
     expect(splits.map((split) => split.splitQuantity)).toEqual([4, 6]);
     expect(splits.reduce((sum, split) => sum + split.splitQuantity, 0)).toBe(10);
   });
+
+  it('既存行ありで補助CSVの plannedQuantity が空なら既存数量と split を維持する', async () => {
+    const parent = await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: MAIN_DASHBOARD_ID,
+        occurredAt: new Date('2026-06-20T00:00:00.000Z'),
+        dataHash: `${DATA_HASH_PREFIX}-blank-quantity-main`,
+        rowData: {
+          ProductNo: '9999999901',
+          FSEIBAN: 'SYNC-SPLIT-BLANK',
+          FHINCD: 'PART-BLANK',
+          FSIGENCD: '503',
+          FKOJUN: '200',
+        },
+      },
+      select: { id: true },
+    });
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: SUPPLEMENT_DASHBOARD_ID,
+        occurredAt: new Date('2026-06-20T00:00:00.000Z'),
+        dataHash: `${DATA_HASH_PREFIX}-blank-quantity-source`,
+        rowData: {
+          ProductNo: '9999999901',
+          FSIGENCD: '503',
+          FKOJUN: '200',
+          plannedQuantity: '',
+        },
+      },
+    });
+    await prisma.productionScheduleOrderSupplement.create({
+      data: {
+        csvDashboardId: MAIN_DASHBOARD_ID,
+        csvDashboardRowId: parent.id,
+        sourceCsvDashboardId: SUPPLEMENT_DASHBOARD_ID,
+        productNo: '9999999901',
+        resourceCd: '503',
+        processOrder: '200',
+        plannedQuantity: 5,
+      },
+    });
+    await prisma.productionScheduleOrderSplit.createMany({
+      data: [
+        {
+          csvDashboardId: MAIN_DASHBOARD_ID,
+          parentCsvDashboardRowId: parent.id,
+          splitNo: 1,
+          splitQuantity: 2,
+        },
+        {
+          csvDashboardId: MAIN_DASHBOARD_ID,
+          parentCsvDashboardRowId: parent.id,
+          splitNo: 2,
+          splitQuantity: 3,
+        },
+      ],
+    });
+
+    const result = await new ProductionScheduleOrderSupplementSyncService().syncFromSupplementDashboard();
+
+    expect(result.upserted).toBeGreaterThanOrEqual(1);
+    const supplement = await prisma.productionScheduleOrderSupplement.findUnique({
+      where: { csvDashboardRowId: parent.id },
+      select: { plannedQuantity: true },
+    });
+    const splits = await prisma.productionScheduleOrderSplit.findMany({
+      where: { parentCsvDashboardRowId: parent.id },
+      orderBy: { splitNo: 'asc' },
+      select: { splitQuantity: true },
+    });
+    expect(supplement?.plannedQuantity).toBe(5);
+    expect(splits.map((split) => split.splitQuantity)).toEqual([2, 3]);
+    expect(splits.reduce((sum, split) => sum + split.splitQuantity, 0)).toBe(5);
+  });
 });

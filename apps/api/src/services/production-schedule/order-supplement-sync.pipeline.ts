@@ -103,8 +103,12 @@ const parseQuantity = (value: unknown): number | null => {
   const normalized = normalizeToken(value);
   if (normalized.length === 0) return null;
   if (!/^-?\d+$/.test(normalized)) return null;
-  return Number.parseInt(normalized, 10);
+  const parsed = Number.parseInt(normalized, 10);
+  return parsed > 0 ? parsed : null;
 };
+
+const mergePlannedQuantityForUpdate = (fromCsv: number | null, existing: number | null): number | null =>
+  fromCsv ?? existing;
 
 const parsePlannedDate = (value: unknown): Date | null => {
   const normalized = normalizeToken(value);
@@ -278,6 +282,7 @@ export function buildReplacementCreateInputs(
     const existingByWinner = existingByWinnerRowId.get(winnerRowId);
     const existingTarget = existing ?? existingByWinner;
     if (existingTarget) {
+      const nextPlannedQuantity = mergePlannedQuantityForUpdate(row.plannedQuantity, existingTarget.plannedQuantity);
       const nextPlannedStartDate = existingTarget.plannedStartDateManuallySet
         ? existingTarget.plannedStartDate
         : row.plannedStartDate ?? existingTarget.plannedStartDate;
@@ -287,13 +292,13 @@ export function buildReplacementCreateInputs(
         csvDashboardRowId: winnerRowId,
         previousCsvDashboardRowId: existingTarget.csvDashboardRowId,
         previousPlannedQuantity: existingTarget.plannedQuantity,
-        nextPlannedQuantity: row.plannedQuantity,
+        nextPlannedQuantity,
         data: {
           csvDashboardRowId: winnerRowId,
           productNo: row.productNo,
           resourceCd: row.resourceCd,
           processOrder: row.processOrder,
-          plannedQuantity: row.plannedQuantity,
+          plannedQuantity: nextPlannedQuantity,
           plannedStartDate: nextPlannedStartDate,
           plannedEndDate: nextPlannedEndDate,
           lastSeenAt: now,
@@ -377,20 +382,6 @@ async function reconcileOrderSplitQuantitiesForSupplementUpdate(
 
   const nextQuantity = entry.nextPlannedQuantity;
   if (nextQuantity == null || !Number.isInteger(nextQuantity) || nextQuantity <= 0) {
-    await tx.productionScheduleOrderSplitAssignment.deleteMany({
-      where: {
-        split: {
-          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          parentCsvDashboardRowId: entry.csvDashboardRowId,
-        },
-      },
-    });
-    await tx.productionScheduleOrderSplit.deleteMany({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        parentCsvDashboardRowId: entry.csvDashboardRowId,
-      },
-    });
     return;
   }
 

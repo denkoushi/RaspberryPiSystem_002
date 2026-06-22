@@ -256,6 +256,21 @@ Observed and fixed during Pi5 smoke:
 - Memory/health during re-deploy sync smoke: before `health=ok`; immediate `degraded` at 95.2%; 30s `ok`; 60s `ok`; 180s `ok`; API/DB/Web restart count `0`, OOMKilled `false`, no `P2028` / `P2035` / `out of shared memory` log matches.
 - Re-deploy SQL checks: scope-aware parent/split duplicate assignment SQL `0`; split quantity anomaly SQL `0`; final health `ok`.
 
+## Codex Local P1 + Continue Total Cache Follow-up (2026-06-22)
+
+| Area | Fix |
+|------|-----|
+| Supplement sync safety | 補助CSVの `plannedQuantity` が空・不正・0以下のとき、既存 supplement の数量と既存 split を維持する |
+| Continue performance | `leaderboard-board/continue` の fallback COUNT 結果を snapshot total cache へ保存し、同一 snapshot の後続 continue で再COUNTしない |
+
+Local verification:
+
+- `pnpm --filter @raspi-system/api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts`
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/borrow_return pnpm --filter @raspi-system/api exec vitest run src/services/production-schedule/__tests__/order-supplement-sync.integration.test.ts`
+- `pnpm --filter @raspi-system/api exec vitest run src/services/production-schedule/leaderboard/__tests__/resolve-leaderboard-board-resource-totals-for-continue.test.ts`
+- `pnpm --filter @raspi-system/api exec vitest run src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-snapshot-totals.test.ts`
+- `pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit`
+
 ## Out of Scope (explicit)
 
 - Completion toggle per split item (parent row completion contract unchanged).
