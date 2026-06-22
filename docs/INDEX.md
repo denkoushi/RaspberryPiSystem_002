@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### AIエージェント運用
+
+- **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
+
 ### 最新アップデート（2026-06-17 · キオスク順位ボード deferTotals 性能回復 · Pi5 先行）
 
 - **順位ボード `+人` 人工数表示切替** · API+Web · **Pi5+Pi4 本番デプロイ済** · **`496c4e58`** · [Plan](./plans/kiosk-leaderboard-labor-minutes-toggle.md)

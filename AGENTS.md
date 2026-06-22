@@ -11,7 +11,8 @@
 3. `.cursor/rules/00-core-safety.mdc`
 4. `.cursor/rules/01-core-docs-and-knowledge.mdc`
 5. 今回の作業に該当する `.cursor/rules/*.mdc`
-6. 関連する KB / Runbook / ADR / Plan
+6. Codex/Cursor agmsg連携を使う場合は `docs/guides/agmsg-codex-cursor-collaboration.md`
+7. 関連する KB / Runbook / ADR / Plan
 
 ## ExecPlan（複雑な作業の必須手順）
 
@@ -55,6 +56,7 @@
 - **デプロイ標準手順**: `docs/guides/deployment.md`
 - **ナレッジベース索引**: `docs/knowledge-base/index.md`
 - **CIトラブルシュート**: `docs/guides/ci-troubleshooting.md`
+- **Codex/Cursor agmsg連携**: `docs/guides/agmsg-codex-cursor-collaboration.md`
 - **PR 自動レビュー Bot（CodeRabbit / Bugbot）**: `docs/security/pr-review-bots.md`
 - **過去ログ**: `EXEC_PLAN.md`（legacy historical log。詳細正本として使わない）
 
