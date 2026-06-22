@@ -197,6 +197,62 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
     });
   });
 
+  it('shares an in-flight materialization across concurrent calls', async () => {
+    const rowsRevision = '1:2026-04-23T00:00:00.000Z:2026-04-23T00:00:00.000Z';
+    let resolveRows: (rows: unknown[]) => void = () => {};
+    const rowsPromise = new Promise<unknown[]>((resolve) => {
+      resolveRows = resolve;
+    });
+    const queryRaw = vi.fn().mockReturnValue(rowsPromise);
+    const prisma = {
+      $queryRaw: queryRaw
+    };
+    const firstTelemetry = vi.fn();
+    const secondTelemetry = vi.fn();
+
+    const first = materializeProcessChangeResidualStrongEvidence(prisma as never, {
+      fkojunstStatusMailRowsRevision: rowsRevision,
+      telemetry: firstTelemetry
+    });
+    const second = materializeProcessChangeResidualStrongEvidence(prisma as never, {
+      fkojunstStatusMailRowsRevision: rowsRevision,
+      telemetry: secondTelemetry
+    });
+
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    resolveRows([
+      {
+        id: 'raw-1',
+        FKOJUN: '210',
+        FKOTEICD: '1',
+        FSEZONO: 'PCR-CACHE',
+        FKOJUNST: 'S',
+        FUPDTEDT: '2026-04-23T15:50:35.987',
+        createdAt: new Date('2026-04-23T00:00:00.000Z'),
+        updatedAt: null,
+        sourceRowOrdinal: 1,
+        sourceIngestRunStartedAt: null,
+        sourceIngestRunCompletedAt: null
+      }
+    ]);
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(secondResult).toBe(firstResult);
+    expect(firstResult.rawMailRowsRevision).toBe(rowsRevision);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(firstTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cacheHit: false,
+        rawRowCount: 1
+      })
+    );
+    expect(secondTelemetry).toHaveBeenCalledWith({
+      cacheHit: true,
+      strongEvidenceKeyCount: 0
+    });
+  });
+
   it('emits source row counts and stage durations on cache miss', async () => {
     const queryRaw = vi.fn().mockResolvedValue([
       {

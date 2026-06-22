@@ -57,6 +57,7 @@ let materializationCache:
       materialization: ProcessChangeResidualStrongEvidenceMaterialization;
     }
   | undefined;
+let materializationInFlight: Promise<ProcessChangeResidualStrongEvidenceMaterialization> | undefined;
 
 function toIsoOrNull(value: Date | null): string | null {
   return value == null ? null : value.toISOString();
@@ -153,6 +154,7 @@ export function buildProcessChangeResidualStrongEvidenceFromDedupedRows(
 /** テスト用: generation token キャッシュをクリアする。 */
 export function resetProcessChangeResidualStrongEvidenceMaterializationCacheForTests(): void {
   materializationCache = undefined;
+  materializationInFlight = undefined;
 }
 
 function emitProcessChangeResidualStrongEvidenceMaterializationTelemetry(
@@ -188,6 +190,30 @@ export async function materializeProcessChangeResidualStrongEvidence(
     return materializationCache.materialization;
   }
 
+  if (materializationInFlight) {
+    const materialization = await materializationInFlight;
+    emitProcessChangeResidualStrongEvidenceMaterializationTelemetry(options?.telemetry, {
+      cacheHit: true,
+      strongEvidenceKeyCount: materialization.keys.size
+    });
+    return materialization;
+  }
+
+  const inFlight = materializeProcessChangeResidualStrongEvidenceUncached(prisma, options);
+  materializationInFlight = inFlight;
+  try {
+    return await inFlight;
+  } finally {
+    if (materializationInFlight === inFlight) {
+      materializationInFlight = undefined;
+    }
+  }
+}
+
+async function materializeProcessChangeResidualStrongEvidenceUncached(
+  prisma: PrismaClientLike,
+  options?: ProcessChangeResidualStrongEvidenceMaterializationOptions
+): Promise<ProcessChangeResidualStrongEvidenceMaterialization> {
   const sourceRowFetchStarted = performance.now();
   const { sourceRows, signals } = await fetchFkojunstStatusMailSourceRowsWithGenerationSignals(prisma);
   const sourceRowFetchDurationMs = performance.now() - sourceRowFetchStarted;
