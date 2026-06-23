@@ -18,6 +18,7 @@ import { normalizeProductionScheduleResourceCd } from './policies/resource-categ
 import {
   fetchFkojunstStatusMailSourceRowsWithGenerationSignals
 } from './fkojunst-status-mail-generation-signals.js';
+import { PROCESS_CHANGE_RESIDUAL_EVIDENCE_ALGORITHM_VERSION } from './leaderboard/leaderboard-process-change-residual.version.js';
 
 export { buildFkojunstMailStatusKey };
 
@@ -30,6 +31,7 @@ export {
 } from './fkojunst-status-mail-source-rows.reader.js';
 
 const CREATE_MANY_CHUNK_SIZE = 200;
+const PROCESS_CHANGE_RESIDUAL_EVIDENCE_CREATE_MANY_CHUNK_SIZE = 200;
 const REPLACEMENT_TX_TIMEOUT_MS = 60_000;
 const REPLACEMENT_TX_MAX_WAIT_MS = 15_000;
 
@@ -346,6 +348,43 @@ export function buildFkojunstMailReplacementCreateInputs(
   return { matched, unmatched, createInputs };
 }
 
+async function replaceProcessChangeResidualEvidenceSnapshot(
+  tx: Prisma.TransactionClient,
+  params: {
+    sourceRowsRevision: string;
+    evidenceInputs: Prisma.ProductionScheduleProcessChangeResidualEvidenceCreateManyInput[];
+  }
+): Promise<void> {
+  await tx.productionScheduleProcessChangeResidualEvidence.deleteMany({
+    where: {
+      sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+    },
+  });
+
+  await tx.productionScheduleProcessChangeResidualSnapshot.upsert({
+    where: {
+      sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+    },
+    update: {
+      rawMailRowsRevision: params.sourceRowsRevision,
+      algorithmVersion: PROCESS_CHANGE_RESIDUAL_EVIDENCE_ALGORITHM_VERSION,
+      evidenceCount: params.evidenceInputs.length,
+    },
+    create: {
+      sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+      rawMailRowsRevision: params.sourceRowsRevision,
+      algorithmVersion: PROCESS_CHANGE_RESIDUAL_EVIDENCE_ALGORITHM_VERSION,
+      evidenceCount: params.evidenceInputs.length,
+    },
+  });
+
+  for (let i = 0; i < params.evidenceInputs.length; i += PROCESS_CHANGE_RESIDUAL_EVIDENCE_CREATE_MANY_CHUNK_SIZE) {
+    const chunk = params.evidenceInputs.slice(i, i + PROCESS_CHANGE_RESIDUAL_EVIDENCE_CREATE_MANY_CHUNK_SIZE);
+    if (chunk.length === 0) continue;
+    await tx.productionScheduleProcessChangeResidualEvidence.createMany({ data: chunk });
+  }
+}
+
 export async function runFkojunstMailReplacementTransaction(
   client: PrismaClient,
   params: {
@@ -356,6 +395,7 @@ export async function runFkojunstMailReplacementTransaction(
     skippedInvalidStatus: number;
     skippedUnparseableDate: number;
     createInputs: Prisma.ProductionScheduleFkojunstMailStatusCreateManyInput[];
+    processChangeResidualEvidenceInputs?: Prisma.ProductionScheduleProcessChangeResidualEvidenceCreateManyInput[];
     sourceRowsRevision?: string;
   }
 ): Promise<FkojunstMailSyncResult> {
@@ -369,6 +409,13 @@ export async function runFkojunstMailReplacementTransaction(
             `[FkojunstMailSync] raw source revision changed during sync: expected ${params.sourceRowsRevision}, got ${signals.rowsRevision}`
           );
         }
+      }
+
+      if (params.sourceRowsRevision != null) {
+        await replaceProcessChangeResidualEvidenceSnapshot(tx, {
+          sourceRowsRevision: params.sourceRowsRevision,
+          evidenceInputs: params.processChangeResidualEvidenceInputs ?? [],
+        });
       }
 
       const pruneResult = await tx.productionScheduleFkojunstMailStatus.deleteMany({
@@ -427,6 +474,13 @@ export async function runFkojunstMailClearTransaction(
             `[FkojunstMailSync] raw source revision changed during clear: expected ${sourceRowsRevision}, got ${signals.rowsRevision}`
           );
         }
+      }
+
+      if (sourceRowsRevision != null) {
+        await replaceProcessChangeResidualEvidenceSnapshot(tx, {
+          sourceRowsRevision,
+          evidenceInputs: [],
+        });
       }
 
       const pruneResult = await tx.productionScheduleFkojunstMailStatus.deleteMany({

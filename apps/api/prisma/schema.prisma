@@ -1042,6 +1042,41 @@ model ProductionScheduleFkojunstMailStatus {
   @@index([sourceCsvDashboardId], map: "PSFkojunstMailStatus_idx_source_dashboard")
 }
 
+/// 順位ボード用: FKOJUNST_Status raw 全体から抽出した「強い工程変更残骸」疑い snapshot。
+model ProductionScheduleProcessChangeResidualSnapshot {
+  sourceCsvDashboardId String   @id
+  rawMailRowsRevision  String
+  algorithmVersion     Int      @default(1)
+  evidenceCount        Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  evidenceRows ProductionScheduleProcessChangeResidualEvidence[]
+
+  @@index([rawMailRowsRevision], map: "PSProcChangeResidualSnapshot_idx_revision")
+}
+
+/// 順位ボード用: 表示時に raw FKOJUNST_Status 全件を読まないための residual evidence。
+model ProductionScheduleProcessChangeResidualEvidence {
+  id                            String   @id @default(uuid())
+  sourceCsvDashboardId          String
+  productNo                     String   @db.VarChar(32)
+  fkojun                        String   @db.VarChar(20)
+  resourceCd                    String   @db.VarChar(40)
+  currentStatusCode             String   @db.VarChar(1)
+  currentSourceUpdatedAt        DateTime
+  completedOtherResourceCd      String   @db.VarChar(40)
+  completedOtherStatusCode      String   @db.VarChar(1)
+  completedOtherSourceUpdatedAt DateTime
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  snapshot ProductionScheduleProcessChangeResidualSnapshot @relation(fields: [sourceCsvDashboardId], references: [sourceCsvDashboardId], onDelete: Cascade)
+
+  @@unique([sourceCsvDashboardId, productNo, fkojun, resourceCd], map: "PSProcChangeResidualEvidence_unique_key")
+  @@index([sourceCsvDashboardId], map: "PSProcChangeResidualEvidence_idx_source")
+}
+
 /// Gmail 件名 `FHINMEI_MH_SH` の補完CSV由来。同一取り込み実行内の重複 FSEIBAN は末尾行が正（同期処理で解決）。
 model ProductionScheduleSeibanMachineNameSupplement {
   id                   String   @id @default(uuid())

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { dedupeFkojunstMailRowsByLatest, type FkojunstMailNormalizedRow } from '../fkojunst-status-mail-sync.pipeline.js';
 import {
+  buildProcessChangeResidualEvidenceCreateInputs,
   buildProcessChangeResidualStrongEvidenceFromDedupedRows,
   buildProcessChangeResidualStrongEvidenceKey,
   materializeProcessChangeResidualStrongEvidence,
@@ -127,6 +128,101 @@ describe('dedupeFkojunstMailRowsByLatest alignment', () => {
 });
 
 describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
+  it('uses persisted evidence when the raw mail revision matches', async () => {
+    const rowsRevision = '3:2026-04-23T00:00:00.000Z:2026-04-24T00:00:00.000Z';
+    const queryRaw = vi.fn();
+    const findUnique = vi.fn().mockResolvedValue({
+      rawMailRowsRevision: rowsRevision,
+      algorithmVersion: 1,
+      evidenceCount: 1
+    });
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        productNo: 'PCR-PERSISTED',
+        fkojun: '210',
+        resourceCd: '1',
+        currentStatusCode: 'R',
+        currentSourceUpdatedAt: new Date('2026-04-23T15:50:35.000Z'),
+        completedOtherResourceCd: '2',
+        completedOtherStatusCode: 'C',
+        completedOtherSourceUpdatedAt: new Date('2026-04-24T15:50:35.000Z')
+      }
+    ]);
+    const telemetry = vi.fn();
+    const prisma = {
+      $queryRaw: queryRaw,
+      productionScheduleProcessChangeResidualSnapshot: { findUnique },
+      productionScheduleProcessChangeResidualEvidence: { findMany }
+    };
+
+    const materialization = await materializeProcessChangeResidualStrongEvidence(prisma as never, {
+      fkojunstStatusMailRowsRevision: rowsRevision,
+      telemetry
+    });
+
+    expect(queryRaw).not.toHaveBeenCalled();
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(materialization.rawMailRowsRevision).toBe(rowsRevision);
+    expect(
+      materialization.keys.has(
+        buildProcessChangeResidualStrongEvidenceKey({
+          productNo: 'PCR-PERSISTED',
+          fkojun: '210',
+          resourceCd: '1'
+        })
+      )
+    ).toBe(true);
+    expect(telemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cacheHit: false,
+        persistedHit: true,
+        persistedEvidenceRowCount: 1,
+        strongEvidenceKeyCount: 1
+      })
+    );
+  });
+
+  it('falls back to raw rows when persisted evidence revision is stale', async () => {
+    const requestedRevision = 'requested-revision';
+    const observedRevision = '1:2026-04-23T00:00:00.000Z:2026-04-24T00:00:00.000Z';
+    const queryRaw = vi.fn().mockResolvedValue([
+      {
+        id: 'raw-1',
+        FKOJUN: '210',
+        FKOTEICD: '1',
+        FSEZONO: 'PCR-CACHE',
+        FKOJUNST: 'S',
+        FUPDTEDT: '2026-04-23T15:50:35.987',
+        createdAt: new Date('2026-04-23T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-24T00:00:00.000Z'),
+        sourceRowOrdinal: 1,
+        sourceIngestRunStartedAt: null,
+        sourceIngestRunCompletedAt: null
+      }
+    ]);
+    const findUnique = vi.fn().mockResolvedValue({
+      rawMailRowsRevision: 'stale-revision',
+      algorithmVersion: 1,
+      evidenceCount: 1
+    });
+    const findMany = vi.fn();
+    const prisma = {
+      $queryRaw: queryRaw,
+      productionScheduleProcessChangeResidualSnapshot: { findUnique },
+      productionScheduleProcessChangeResidualEvidence: { findMany }
+    };
+
+    const materialization = await materializeProcessChangeResidualStrongEvidence(prisma as never, {
+      fkojunstStatusMailRowsRevision: requestedRevision
+    });
+
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(findMany).not.toHaveBeenCalled();
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    expect(materialization.rawMailRowsRevision).toBe(observedRevision);
+  });
+
   it('reuses materialization by raw mail revision', async () => {
     const rowsRevision = '1:2026-04-23T00:00:00.000Z:2026-04-23T00:00:00.000Z';
     const queryRaw = vi.fn().mockResolvedValue([
@@ -218,6 +314,8 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
       fkojunstStatusMailRowsRevision: rowsRevision,
       telemetry: secondTelemetry
     });
+
+    await Promise.resolve();
 
     expect(queryRaw).toHaveBeenCalledTimes(1);
     resolveRows([
@@ -358,5 +456,46 @@ describe('materializeProcessChangeResidualStrongEvidence cache key', () => {
       '1:2026-04-23T00:00:00.000Z:2026-04-24T00:00:00.000Z'
     );
     expect(queryRaw).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('buildProcessChangeResidualEvidenceCreateInputs', () => {
+  it('serializes strong evidence rows for sync-time persistence', () => {
+    const dedupedRows: FkojunstMailNormalizedRow[] = [
+      {
+        sourceRowId: 'current',
+        fkojun: '210',
+        fkoteicd: '1',
+        fsezono: 'PCR-PERSIST',
+        statusCode: 'R',
+        sourceUpdatedAt: new Date('2026-04-23T15:50:35.000Z'),
+        hasUnparseableDate: false
+      },
+      {
+        sourceRowId: 'other',
+        fkojun: '210',
+        fkoteicd: '2',
+        fsezono: 'PCR-PERSIST',
+        statusCode: 'C',
+        sourceUpdatedAt: new Date('2026-04-24T15:50:35.000Z'),
+        hasUnparseableDate: false
+      }
+    ];
+
+    const materialization = buildProcessChangeResidualStrongEvidenceFromDedupedRows(dedupedRows);
+    const inputs = buildProcessChangeResidualEvidenceCreateInputs(materialization);
+
+    expect(inputs).toEqual([
+      expect.objectContaining({
+        productNo: 'PCR-PERSIST',
+        fkojun: '210',
+        resourceCd: '1',
+        currentStatusCode: 'R',
+        currentSourceUpdatedAt: new Date('2026-04-23T15:50:35.000Z'),
+        completedOtherResourceCd: '2',
+        completedOtherStatusCode: 'C',
+        completedOtherSourceUpdatedAt: new Date('2026-04-24T15:50:35.000Z')
+      })
+    ]);
   });
 });

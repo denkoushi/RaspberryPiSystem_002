@@ -79,6 +79,8 @@ async function resolveLeaderboardBoardProcessChangeResidualContext(
       }),
     (materialization) => ({
       cacheHit: materializationTelemetry?.cacheHit,
+      persistedHit: materializationTelemetry?.persistedHit,
+      persistedEvidenceRowCount: materializationTelemetry?.persistedEvidenceRowCount,
       rawRowCount: materializationTelemetry?.rawRowCount,
       normalizedRowCount: materializationTelemetry?.normalizedRowCount,
       dedupedRowCount: materializationTelemetry?.dedupedRowCount,
@@ -127,6 +129,8 @@ export type LeaderboardBoardPerformanceEvent = {
   errorCode?: string;
   subphase?: string;
   cacheHit?: boolean;
+  persistedHit?: boolean;
+  persistedEvidenceRowCount?: number;
   rawRowCount?: number;
   normalizedRowCount?: number;
   dedupedRowCount?: number;
