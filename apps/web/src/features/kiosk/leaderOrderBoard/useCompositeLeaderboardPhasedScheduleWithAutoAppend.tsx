@@ -113,6 +113,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   isBackgroundRevalidating: boolean;
   /** 初回 board / refetch / continue / ページング未完走の同期中 */
   isBoardDataSyncing: boolean;
+  /** UI に「一覧を更新中です。」を出す同期中状態 */
+  isBoardDataSyncStatusVisible: boolean;
   /** `leaderboard-decorations` POST の同期中 */
   isDecorationSyncing: boolean;
   /** 明示有効化時のみ API ログへ送る一時計測 */
@@ -202,6 +204,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const appendOverrideParamsKeyRef = useRef<string | null>(null);
   const displayAppendOverrideRef = useRef<ProductionScheduleLeaderboardBoardResponse | null>(null);
   const displayAppendOverrideFreshnessParamsKeyRef = useRef<string | null>(null);
+  const silentBoardDataSyncStatusParamsKeyRef = useRef<string | null>(null);
   const latestParamsKeyRef = useRef<string>(paramsKey);
   const lastCommittedParamsKeyRef = useRef<string | null>(null);
   const lastCommittedDisplayFreshnessParamsKeyRef = useRef<string | null>(null);
@@ -285,6 +288,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     isPlaceholderData: boardQuery.isPlaceholderData,
     lastCommittedParamsKey: lastCommittedDisplayFreshnessParamsKeyRef.current
   });
+  const isDisplayOnlyParamsPlaceholder =
+    suppressPlaceholderShell && !suppressDisplayPlaceholderShell;
 
   const resolvedShell = resolveLeaderboardShellForDisplay(boardQuery.data, suppressPlaceholderShell);
   const resolvedDisplayShell = resolveLeaderboardShellForDisplay(
@@ -380,6 +385,16 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     () => isBoardDataSyncing || isDecorationSyncing,
     [isBoardDataSyncing, isDecorationSyncing]
   );
+
+  useEffect(() => {
+    if (isDisplayOnlyParamsPlaceholder) {
+      silentBoardDataSyncStatusParamsKeyRef.current = paramsKey;
+      return;
+    }
+    if (!isBoardDataSyncing && silentBoardDataSyncStatusParamsKeyRef.current === paramsKey) {
+      silentBoardDataSyncStatusParamsKeyRef.current = null;
+    }
+  }, [isBoardDataSyncing, isDisplayOnlyParamsPlaceholder, paramsKey]);
 
   const {
     displayBoard: cacheOrNetworkDisplayBoard,
@@ -589,6 +604,12 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     appendRunIdRef,
     setIsAppending
   });
+  const hasDisplayRowsForUi = (displayBoardForUi?.rows.length ?? 0) > 0;
+  const isSilentBoardDataSyncStatus =
+    hasDisplayRowsForUi &&
+    (isDisplayOnlyParamsPlaceholder ||
+      silentBoardDataSyncStatusParamsKeyRef.current === paramsKey);
+  const isBoardDataSyncStatusVisible = isBoardDataSyncing && !isSilentBoardDataSyncStatus;
 
   useEffect(() => {
     const rowCount = displayBoardForUi?.rows.length ?? 0;
@@ -717,6 +738,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     applyDisplayMutation,
     isBackgroundRevalidating,
     isBoardDataSyncing,
+    isBoardDataSyncStatusVisible,
     isDecorationSyncing,
     logClientPerfEvent
   };

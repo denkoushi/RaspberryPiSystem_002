@@ -683,6 +683,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
 
     expect(latest?.scheduleQuery.isLoading).toBe(true);
+    expect(latest?.isBoardDataSyncStatusVisible).toBe(true);
     expect(latest?.feedMounts).toBeNull();
   });
 
@@ -733,6 +734,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     await waitFor(() => {
       expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2']);
       expect(latest?.scheduleQuery.isLoading).toBe(false);
+      expect(latest?.isBoardDataSyncStatusVisible).toBe(false);
     });
 
     boardResult = {
@@ -932,6 +934,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     await waitFor(() => {
       expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
       expect(latest?.scheduleQuery.isLoading).toBe(false);
+      expect(latest?.isBoardDataSyncStatusVisible).toBe(false);
     });
 
     boardResult = {
@@ -948,6 +951,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     await waitFor(() => {
       expect(postContinue).toHaveBeenCalledTimes(3);
       expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
+      expect(latest?.isBoardDataSyncStatusVisible).toBe(false);
     });
 
     await act(async () => {

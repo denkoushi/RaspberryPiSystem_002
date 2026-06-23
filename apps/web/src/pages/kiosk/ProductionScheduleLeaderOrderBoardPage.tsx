@@ -259,7 +259,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     listIncomplete,
     cacheSyncWarning,
     applyDisplayMutation,
-    isBoardDataSyncing,
+    isBoardDataSyncStatusVisible,
     isDecorationSyncing,
     logClientPerfEvent
   } = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
@@ -637,7 +637,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
                 {cacheSyncWarning}
               </p>
             ) : null}
-            {isBoardDataSyncing ? (
+            {isBoardDataSyncStatusVisible ? (
               <p className="mb-2 shrink-0 text-sm text-cyan-100/90" role="status">
                 {LEADERBOARD_BACKGROUND_SYNC_STATUS_MESSAGE}
               </p>
