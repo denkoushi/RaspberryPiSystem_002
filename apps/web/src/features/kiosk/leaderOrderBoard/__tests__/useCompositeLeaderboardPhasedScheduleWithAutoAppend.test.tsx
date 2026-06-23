@@ -687,6 +687,69 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     expect(latest?.feedMounts).toBeNull();
   });
 
+  it('shell 行が表示済みなら background append 中の一覧更新バナーは出さない', async () => {
+    const shell = boardPayload({
+      total: 3,
+      rows: [row('a1', 'R1'), row('a2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, total: 3, pageSize: 80, nextCursor: 2 }]
+    });
+    const complete = boardPayload({
+      total: 3,
+      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 3, pageSize: 80, nextCursor: 3 }]
+    });
+    installBoardHookMock(() => ({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000
+    }));
+
+    let resolveContinue: ((value: ProductionScheduleLeaderboardBoardResponse) => void) | undefined;
+    postContinue.mockReturnValue(
+      new Promise<ProductionScheduleLeaderboardBoardResponse>((resolve) => {
+        resolveContinue = resolve;
+      })
+    );
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80
+        },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+      expect(latest?.isBoardDataSyncing).toBe(true);
+      expect(latest?.isBoardDataSyncStatusVisible).toBe(false);
+    });
+
+    await act(async () => {
+      resolveContinue?.(complete);
+    });
+  });
+
   it('includeLabor だけ変わる placeholder は行を残して loading に戻さない', async () => {
     const shell = boardPayload({
       total: 2,

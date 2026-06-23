@@ -28,6 +28,7 @@ import {
   type ProductionScheduleResourceNameMap
 } from './resource-master.service.js';
 import {
+  buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner,
   buildMaxProductNoWinnerCondition,
   resolveLeaderboardMaterializedBaseWhere
 } from './row-resolver/index.js';
@@ -274,6 +275,8 @@ export async function listLeaderboardShellProductionScheduleRows(
     snapshotStore: LeaderboardShellSnapshotStore;
     /** 集約 shell 等で同一 HTTP リクエスト内 1 回 resolve した値を渡す */
     leaderboardMaterializedBaseWhere?: Prisma.Sql;
+    /** 単一資源 shell で資源 filter を先に効かせる winner 判定。 */
+    leaderboardWinnerBaseStrategy?: 'materialized' | 'correlated';
     /** 集約 board shell/continue 等で同一 HTTP リクエスト内 1 回読んだ世代トークンを渡す */
     generationToken?: string;
   }
@@ -300,10 +303,11 @@ export async function listLeaderboardShellProductionScheduleRows(
 
   const { queryWhere, leaderboardExpansionWhere, siteScopedGlobalRankLocation } = filters;
 
-  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(
-    prisma,
-    options.leaderboardMaterializedBaseWhere
-  );
+  const useCorrelatedWinnerBase =
+    options.leaderboardWinnerBaseStrategy === 'correlated' && params.resourceCds.length === 1;
+  const leaderboardMaterializedBaseWhere = useCorrelatedWinnerBase
+    ? buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner(PRODUCTION_SCHEDULE_DASHBOARD_ID)
+    : await resolveLeaderboardMaterializedBaseWhere(prisma, options.leaderboardMaterializedBaseWhere);
 
   const seibanExpansion = shouldExpandLeaderboardSeibanAcrossResources(params.resourceCds);
 

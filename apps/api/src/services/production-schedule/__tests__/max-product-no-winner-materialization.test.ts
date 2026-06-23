@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner,
   buildMaterializedMaxProductNoWinnerInCondition,
   fetchMaxProductNoWinnerRowIdsForDashboard
 } from '../row-resolver/max-product-no-winner-materialization.js';
@@ -70,5 +71,18 @@ describe('buildMaterializedMaxProductNoWinnerInCondition (unit)', () => {
     expect(() =>
       buildMaterializedMaxProductNoWinnerInCondition('"; DROP TABLE', ['row-a'])
     ).toThrow('Invalid SQL identifier');
+  });
+});
+
+describe('buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner (unit)', () => {
+  it('keeps dashboard scope and correlated winner predicate in the base WHERE', () => {
+    const frag = buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner('dashboard-test');
+    const sql = prismaSqlToLiteralString(frag as { strings: readonly string[]; values: readonly unknown[] });
+
+    expect(sql).toContain('"CsvDashboardRow"."csvDashboardId"');
+    expect(sql).toContain('dashboard-test');
+    expect(sql).toContain('"CsvDashboardRow"."id" = (');
+    expect(sql).toContain('FROM "CsvDashboardRow" AS "r2"');
+    expect(sql).toContain('LIMIT 1');
   });
 });

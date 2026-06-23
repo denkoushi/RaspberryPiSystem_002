@@ -6,6 +6,7 @@ export {
 export { resolveToMaxProductNoPerLogicalKey } from './max-product-no-resolver.js';
 export {
   buildMaterializedMaxProductNoWinnerInCondition,
+  buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner,
   buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners,
   buildProductionScheduleLeaderboardMaterializedBaseWhere,
   fetchMaxProductNoWinnerRowIdsForDashboard,

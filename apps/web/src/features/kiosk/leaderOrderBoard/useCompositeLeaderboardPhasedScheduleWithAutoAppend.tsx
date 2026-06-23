@@ -605,9 +605,15 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     setIsAppending
   });
   const hasDisplayRowsForUi = (displayBoardForUi?.rows.length ?? 0) > 0;
+  const isContinuationOnlyBoardDataSyncStatus =
+    hasDisplayRowsForUi &&
+    !boardQuery.isLoading &&
+    !boardQuery.isFetching &&
+    networkBoardComplete === false;
   const isSilentBoardDataSyncStatus =
     hasDisplayRowsForUi &&
-    (isDisplayOnlyParamsPlaceholder ||
+    (isContinuationOnlyBoardDataSyncStatus ||
+      isDisplayOnlyParamsPlaceholder ||
       silentBoardDataSyncStatusParamsKeyRef.current === paramsKey);
   const isBoardDataSyncStatusVisible = isBoardDataSyncing && !isSilentBoardDataSyncStatus;
 

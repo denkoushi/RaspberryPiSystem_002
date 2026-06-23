@@ -156,6 +156,7 @@ export type LeaderboardBoardPerformanceEvent = {
   includeLabor?: boolean;
   chunkSize?: number;
   deferredTotals?: boolean;
+  winnerBaseStrategy?: 'materialized' | 'correlated';
 };
 
 export type LeaderboardBoardPerformanceSink = (event: LeaderboardBoardPerformanceEvent) => void;
@@ -407,7 +408,8 @@ export async function fetchLeaderboardCompositeBoardShell(
             endpoint: 'shell',
             phase: 'resourceShell',
             resourceCd,
-            resourceCount: params.boardResourceCds.length
+            resourceCount: params.boardResourceCds.length,
+            winnerBaseStrategy: 'correlated'
           },
           () =>
             listLeaderboardShellProductionScheduleRows(
@@ -419,7 +421,11 @@ export async function fetchLeaderboardCompositeBoardShell(
                 processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
                 processChangeResidualStrongEvidenceKeys
               },
-              { snapshotStore: deps.snapshotStore, leaderboardMaterializedBaseWhere, generationToken }
+              {
+                snapshotStore: deps.snapshotStore,
+                leaderboardWinnerBaseStrategy: 'correlated',
+                generationToken
+              }
             ),
           (shell) => ({
             rowCount: shell.rows.length,

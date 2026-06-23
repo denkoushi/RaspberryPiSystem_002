@@ -690,10 +690,22 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 **Current intended behavior**:
 
 - Initial page load can show 「読み込み中…」, then fresh shell rows become usable at shell arrival.
-- Full append continues in the background; it should not block row operations.
-- Regular board refresh is now **5 minutes**. During real board refresh/append, 「一覧を更新中です。」 may still appear.
+- Full append continues in the background; it should not block row operations or keep the global 「一覧を更新中です。」 banner visible once shell rows are displayed.
+- Regular board refresh is now **5 minutes**. During real shell refetch with no safe displayed rows, 「一覧を更新中です。」 may still appear; append-only continuation after rows are displayed stays silent.
 - Pressing `+人` triggers labor metadata fetch but should **not** show 「一覧を更新中です。」 if existing display rows are present and the only effective display freshness change is `includeLabor`.
 - Decorations still use the separate 「詳細情報を更新中です。」 message.
+
+**Follow-up fix after local Playwright pass（2026-06-23 · local branch, pending deploy）**:
+
+- Local Playwright against Pi5 production API with the target 6-slot set `581,305,589,584,588,586` recorded `board-get-settled=5.813s`, `first-display-board-rows=5.814s`, and `schedule-usable=5.814s`. The remaining misleading signal was UI-only: `boardDataSyncing=true` during background append kept 「一覧を更新中です。」 visible even though rows were already displayed and row operations were not locked.
+- Fix: `isBoardDataSyncStatusVisible` now treats continuation-only sync after display rows exist as silent, while keeping true initial GET loading visible and leaving `isBoardDataSyncing` intact for cache/SWR internals.
+
+**API follow-up: resource-first winner shell（2026-06-23 · local branch, pending deploy）**:
+
+- Pre-change investigation on Pi5 showed the real board shell is dominated by per-resource row selection rather than labor/decorations. The target resources have modest candidate sizes (`584` max ~3,495 raw rows), while the materialized winner array contains ~54k ids.
+- EXPLAIN comparison on resource `584` indicated the resource-first correlated winner shape can be faster than scanning the full materialized winner membership before resource filtering (approx. 0.66s vs 1.23s in the sampled plan).
+- Fix: `leaderboard-board` shell now calls each single-resource `resourceShell` with `leaderboardWinnerBaseStrategy: 'correlated'`. The shared materialized winner path remains in place for summary, continue, totals, decorations, and non-opt-in callers. Perf logs include `winnerBaseStrategy: 'correlated'` on `phase=resourceShell`.
+- Local validation: `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts` PASS; `pnpm --filter @raspi-system/api lint` PASS; `pnpm --filter @raspi-system/api build` PASS. The broader route integration test filtered by `leaderboard shell` could not run locally because PostgreSQL was not reachable at `localhost:5432`.
 
 **Relevant files for Cursor**:
 
@@ -701,6 +713,7 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
   - `displayFreshnessParamsKey` ignores `includeLabor`
   - `displayAppendOverrideRef` keeps previous long append display
   - `isBoardDataSyncStatusVisible` separates UI banner visibility from internal `isBoardDataSyncing`
+  - continuation-only background sync after shell rows are displayed is silent in the global banner
 - `apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendOverrideScopePolicy.ts`
   - `pickLeaderboardAppendOverrideForDisplay()` chooses the longer previous/fresh append during labor refresh
 - `apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardShellFreshnessPolicy.ts`
@@ -709,11 +722,20 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
   - regular board refresh and staleTime are `300_000`
 - `apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx`
   - displays the board sync banner from `isBoardDataSyncStatusVisible`, not raw `isBoardDataSyncing`
+- `apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts`
+  - board shell resource slots use `leaderboardWinnerBaseStrategy: 'correlated'` for resource-first winner filtering
+- `apps/api/src/services/production-schedule/production-schedule-query.service.ts`
+  - `listLeaderboardShellProductionScheduleRows` can opt into correlated winner base for exactly one `resourceCd`
+- `apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-materialization.ts`
+  - keeps both materialized and correlated winner base builders
 
 **Validation already run**:
 
 - `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx` PASS
 - `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardAppendOverrideScopePolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx` PASS for the append-display fix
+- `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts` PASS for the resource-first winner shell fix
+- `pnpm --filter @raspi-system/api lint` PASS
+- `pnpm --filter @raspi-system/api build` PASS
 - `pnpm --filter @raspi-system/web lint` PASS
 - `pnpm --filter @raspi-system/web build` PASS
 - commit hook workspace lint PASS

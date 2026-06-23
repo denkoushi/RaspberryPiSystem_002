@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import type { prisma as prismaSingleton } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import { buildMaxProductNoWinnerCondition } from './max-product-no-sql.js';
 import {
   buildMaxProductNoLogicalKeyPartitionExprs,
   buildMaxProductNoWinnerSelectionOrderBySql,
@@ -67,6 +68,19 @@ export function buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProd
   return Prisma.sql`
     "CsvDashboardRow"."csvDashboardId" = ${csvDashboardId}
     AND ${buildMaterializedMaxProductNoWinnerInCondition('CsvDashboardRow', winnerRowIds)}
+  `;
+}
+
+/**
+ * 資源などの絞り込みを先に効かせたい hot path 用の winner WHERE。
+ * 対象行ごとに winner index を引くため、候補資源が小さい単一 slot shell で使う。
+ */
+export function buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner(
+  csvDashboardId: string
+): Prisma.Sql {
+  return Prisma.sql`
+    "CsvDashboardRow"."csvDashboardId" = ${csvDashboardId}
+    AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
   `;
 }
 

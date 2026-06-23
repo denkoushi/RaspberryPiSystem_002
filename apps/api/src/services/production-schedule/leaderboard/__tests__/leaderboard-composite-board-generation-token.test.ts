@@ -74,6 +74,8 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     expect(shellSpy).toHaveBeenCalledTimes(3);
     for (const call of shellSpy.mock.calls) {
       expect(call[1]?.generationToken).toBe('{"generation":"1"}');
+      expect(call[1]?.leaderboardWinnerBaseStrategy).toBe('correlated');
+      expect(call[1]?.leaderboardMaterializedBaseWhere).toBeUndefined();
     }
   });
 
