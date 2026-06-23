@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveScopedLeaderboardAppendOverride } from '../leaderboardBoardAppendOverrideScopePolicy';
+import {
+  pickLeaderboardAppendOverrideForDisplay,
+  resolveScopedLeaderboardAppendOverride
+} from '../leaderboardBoardAppendOverrideScopePolicy';
 
 import type { ProductionScheduleLeaderboardBoardResponse } from '../../../../api/client';
 
@@ -54,5 +57,31 @@ describe('resolveScopedLeaderboardAppendOverride', () => {
         override: null
       })
     ).toBeNull();
+  });
+});
+
+describe('pickLeaderboardAppendOverrideForDisplay', () => {
+  it('新しい scoped override が旧表示より短い間は旧表示を維持する', () => {
+    const previousComplete = board(2200);
+    const freshPartial = board(1183);
+
+    expect(
+      pickLeaderboardAppendOverrideForDisplay({
+        scopedAppendOverride: freshPartial,
+        displayAppendOverride: previousComplete
+      })
+    ).toBe(previousComplete);
+  });
+
+  it('新しい scoped override が追いついたら新しい override を採用する', () => {
+    const previousComplete = board(2200);
+    const freshComplete = board(2200);
+
+    expect(
+      pickLeaderboardAppendOverrideForDisplay({
+        scopedAppendOverride: freshComplete,
+        displayAppendOverride: previousComplete
+      })
+    ).toBe(freshComplete);
   });
 });

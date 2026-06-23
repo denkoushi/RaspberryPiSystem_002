@@ -22,7 +22,10 @@ import {
   isLeaderboardBoardDataSyncing,
   isLeaderboardDecorationSyncing
 } from './cache/leaderboardBoardInteractionLockPolicy';
-import { resolveScopedLeaderboardAppendOverride } from './leaderboardBoardAppendOverrideScopePolicy';
+import {
+  pickLeaderboardAppendOverrideForDisplay,
+  resolveScopedLeaderboardAppendOverride
+} from './leaderboardBoardAppendOverrideScopePolicy';
 import {
   resolveLeaderboardAppendLoopStartBoard,
   shouldBeginLeaderboardAppendSession
@@ -207,7 +210,11 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
 
   useEffect(() => {
     appendOverrideRef.current = appendOverride;
-    if (appendOverride != null) {
+    if (
+      appendOverride != null &&
+      (displayAppendOverrideFreshnessParamsKeyRef.current !== displayFreshnessParamsKey ||
+        (displayAppendOverrideRef.current?.rows.length ?? 0) <= appendOverride.rows.length)
+    ) {
       displayAppendOverrideRef.current = appendOverride;
       displayAppendOverrideFreshnessParamsKeyRef.current = displayFreshnessParamsKey;
     }
@@ -295,11 +302,14 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     overrideParamsKey: appendOverrideParamsKeyRef.current,
     override: appendOverrideRef.current
   });
-  const displayScopedAppendOverride =
-    scopedAppendOverride ??
-    (displayAppendOverrideFreshnessParamsKeyRef.current === displayFreshnessParamsKey
+  const displayAppendOverride =
+    displayAppendOverrideFreshnessParamsKeyRef.current === displayFreshnessParamsKey
       ? displayAppendOverrideRef.current
-      : null);
+      : null;
+  const displayScopedAppendOverride = pickLeaderboardAppendOverrideForDisplay({
+    scopedAppendOverride,
+    displayAppendOverride
+  });
   const networkDisplayBoard = pickLeaderboardBoardForDisplay(resolvedShell, scopedAppendOverride);
   const placeholderDisplayBoard = pickLeaderboardBoardForDisplay(
     resolvedDisplayShell,
@@ -392,7 +402,9 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     networkBoardComplete,
     isBackgroundRevalidating
   });
-  const displayBoard = cacheOrNetworkDisplayBoard ?? placeholderDisplayBoard;
+  const displayBoard =
+    pickLeaderboardBoardForDisplay(cacheOrNetworkDisplayBoard, displayScopedAppendOverride) ??
+    placeholderDisplayBoard;
 
   const resolvedShellRef = useRef(resolvedShell);
   resolvedShellRef.current = resolvedShell;

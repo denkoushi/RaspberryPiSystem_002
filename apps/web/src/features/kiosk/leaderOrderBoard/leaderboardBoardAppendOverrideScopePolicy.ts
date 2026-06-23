@@ -19,3 +19,15 @@ export function resolveScopedLeaderboardAppendOverride(
   }
   return input.override;
 }
+
+export function pickLeaderboardAppendOverrideForDisplay(input: {
+  scopedAppendOverride: ProductionScheduleLeaderboardBoardResponse | null;
+  displayAppendOverride: ProductionScheduleLeaderboardBoardResponse | null;
+}): ProductionScheduleLeaderboardBoardResponse | null {
+  const { scopedAppendOverride, displayAppendOverride } = input;
+  if (scopedAppendOverride == null) return displayAppendOverride;
+  if (displayAppendOverride == null) return scopedAppendOverride;
+  return scopedAppendOverride.rows.length >= displayAppendOverride.rows.length
+    ? scopedAppendOverride
+    : displayAppendOverride;
+}

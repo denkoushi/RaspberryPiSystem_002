@@ -838,6 +838,128 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
   });
 
+  it('includeLabor だけ変わる fresh partial append が短い間は直前の完走済み行を維持する', async () => {
+    const shell = boardPayload({
+      total: 5,
+      rows: [row('a1', 'R1'), row('a2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 5, pageSize: 80 }]
+    });
+    const previousComplete = boardPayload({
+      total: 5,
+      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1'), row('a4', 'R1'), row('a5', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 5, total: 5, pageSize: 80 }]
+    });
+    const freshPartial = boardPayload({
+      total: 5,
+      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 3, total: 5, pageSize: 80 }]
+    });
+    const freshComplete = boardPayload({
+      total: 5,
+      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1'), row('a4', 'R1'), row('a5', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 5, total: 5, pageSize: 80 }]
+    });
+
+    let continueCall = 0;
+    let resolveFreshComplete: ((value: ProductionScheduleLeaderboardBoardResponse) => void) | undefined;
+    postContinue.mockImplementation(async () => {
+      continueCall += 1;
+      if (continueCall === 1) return previousComplete;
+      if (continueCall === 2) return freshPartial;
+      return new Promise<ProductionScheduleLeaderboardBoardResponse>((resolve) => {
+        resolveFreshComplete = resolve;
+      });
+    });
+
+    let includeLabor = false;
+    let boardResult: BoardHookQueryResult = {
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000
+    };
+    installBoardHookMock(() => boardResult);
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          includeLabor
+        },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
+    });
+
+    boardResult = {
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: true,
+      isSuccess: true,
+      isPlaceholderData: true,
+      dataUpdatedAt: 1000
+    };
+
+    act(() => {
+      includeLabor = true;
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+    });
+
+    boardResult = {
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 2000
+    };
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(3);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
+    });
+
+    await act(async () => {
+      resolveFreshComplete?.(freshComplete);
+    });
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
+      expect(latest?.listIncomplete).toBe(false);
+    });
+  });
+
   it('hasMore が続く間は continue を複数回呼び切ってから listIncomplete を下ろす', async () => {
     const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 5,
