@@ -23,6 +23,14 @@ function board(ids: string[]): ProductionScheduleLeaderboardBoardResponse {
   };
 }
 
+function partialBoard(ids: string[]): ProductionScheduleLeaderboardBoardResponse {
+  return {
+    ...board(ids),
+    total: ids.length + 1,
+    resources: [{ resourceCd: '1', hasMore: true, nextCursor: ids.length, total: ids.length + 1, pageSize: 80 }]
+  };
+}
+
 describe('useLeaderboardBoardTerminalCache', () => {
   it('hydrate 後 loading 中はキャッシュ board を表示する', async () => {
     const cached = buildLeaderboardBoardCacheRecord({
@@ -107,6 +115,45 @@ describe('useLeaderboardBoardTerminalCache', () => {
     await waitFor(() => {
       expect(store.put).toHaveBeenCalled();
       expect(store.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  it('background append 中でも fresh network shell の表示行が届いたら network を表示する', async () => {
+    const cached = buildLeaderboardBoardCacheRecord({
+      cacheKey: 'site\u0001params',
+      siteKey: 'site',
+      paramsKey: 'params',
+      board: board(['old']),
+      decorations: createEmptyAccumulatedLeaderboardDecorations()
+    })!;
+
+    const store: LeaderboardBoardCacheStore = {
+      get: vi.fn().mockResolvedValue(cached),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined)
+    };
+
+    const { result } = renderHook(() =>
+      useLeaderboardBoardTerminalCache({
+        siteKey: 'site',
+        paramsKey: 'params',
+        scheduleEnabled: true,
+        networkDisplayBoard: partialBoard(['fresh-shell']),
+        networkSyncToken: 'sync-shell',
+        networkInitialLoading: false,
+        networkIsFetching: false,
+        networkIsError: false,
+        suppressPlaceholderShell: false,
+        accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
+        networkBoardComplete: false,
+        isBackgroundRevalidating: true,
+        store
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.displayBoard?.rows[0]?.id).toBe('fresh-shell');
+      expect(result.current.isShowingCachedData).toBe(false);
     });
   });
 

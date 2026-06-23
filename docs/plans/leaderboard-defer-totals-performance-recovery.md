@@ -586,6 +586,18 @@ The measurement ran from inside the Pi5 API container against `127.0.0.1:8080`, 
 - The cache only helps after the first request for a generation. A cold shell still spends ~**5.6s** in `attachLabor`; subsequent continue requests spend single-digit milliseconds there.
 - The remaining API cost is now mostly `resourceContinue` for the large resources plus repeated per-request fixed work (`generationTokenInitial` / materialized base WHERE). If the real browser still feels slow, verify Web append/render next before adding more DB indexes.
 
+### First usable state target（2026-06-23 follow-up）
+
+User clarified the immediate target as **「最初に使える状態」を10秒以内** rather than complete append visibility. The 6-slot direct API data already supports that target when the browser can switch to the fresh shell promptly:
+
+- warm shell: **3.36s**
+- first cold shell after API restart: **8.62s** (`attachLabor=5.58s`)
+- cold `includeDecorations=true`: **10.99s**, but production Web uses `includeDecorations=false` for shell and fetches decorations separately
+
+Web follow-up changed Phase 2 SWR display policy: terminal cache still fills initial blank loading, but once a fresh network shell has display rows, the board switches to network rows even while append/decorations continue in the background. This prevents a complete cached board from hiding the new partial shell until the ~20-30s append chain finishes.
+
+Expected user-visible result: first fresh rows and row-level operations become available at shell arrival time. Full list completion still depends on the background continue chain.
+
 **Next minimal work**:
 
 1. Check the actual Pi5 browser after deploy with the 6-slot view; record whether item visibility is now API-bound or render-bound.
