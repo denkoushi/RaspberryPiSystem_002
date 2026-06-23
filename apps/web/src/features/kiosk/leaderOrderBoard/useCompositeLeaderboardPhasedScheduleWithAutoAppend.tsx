@@ -197,6 +197,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const [appendRetryGeneration, setAppendRetryGeneration] = useState(0);
   const appendOverrideRef = useRef<ProductionScheduleLeaderboardBoardResponse | null>(null);
   const appendOverrideParamsKeyRef = useRef<string | null>(null);
+  const displayAppendOverrideRef = useRef<ProductionScheduleLeaderboardBoardResponse | null>(null);
+  const displayAppendOverrideFreshnessParamsKeyRef = useRef<string | null>(null);
   const latestParamsKeyRef = useRef<string>(paramsKey);
   const lastCommittedParamsKeyRef = useRef<string | null>(null);
   const lastCommittedDisplayFreshnessParamsKeyRef = useRef<string | null>(null);
@@ -205,7 +207,11 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
 
   useEffect(() => {
     appendOverrideRef.current = appendOverride;
-  }, [appendOverride]);
+    if (appendOverride != null) {
+      displayAppendOverrideRef.current = appendOverride;
+      displayAppendOverrideFreshnessParamsKeyRef.current = displayFreshnessParamsKey;
+    }
+  }, [appendOverride, displayFreshnessParamsKey]);
 
   useEffect(() => {
     appendCompleteForParamsKeyRef.current = null;
@@ -289,10 +295,15 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     overrideParamsKey: appendOverrideParamsKeyRef.current,
     override: appendOverrideRef.current
   });
+  const displayScopedAppendOverride =
+    scopedAppendOverride ??
+    (displayAppendOverrideFreshnessParamsKeyRef.current === displayFreshnessParamsKey
+      ? displayAppendOverrideRef.current
+      : null);
   const networkDisplayBoard = pickLeaderboardBoardForDisplay(resolvedShell, scopedAppendOverride);
   const placeholderDisplayBoard = pickLeaderboardBoardForDisplay(
     resolvedDisplayShell,
-    scopedAppendOverride
+    displayScopedAppendOverride
   );
 
   const boardNetworkSyncToken = useMemo(() => {
