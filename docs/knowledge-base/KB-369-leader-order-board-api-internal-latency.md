@@ -258,6 +258,32 @@ category: knowledge-base
 
 **再開時**: [`benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs) で **スロット別 manual/expansion 計測** → [EXEC_PLAN §shell 保留](../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照)。
 
+## 6-slot resource board split after residual fixes（2026-06-23 · PR #464） {#six-slot-resource-board-split-after-residual-fixes-2026-06-23--pr-464}
+
+**対象**: `feat/production-schedule-split-orders` / `91347780`（Pi5 deploy `20260623-120401-21398`）。6 slot は `581,305,589,584,588,586`、`allowResourceOnly=true`、shell `pageSize=80`、continue `pageSize=160`、`deferTotals=true`。
+
+**変更**:
+
+- `leaderboard-board` shell/continue の `attachLabor` に、snapshot generation token scoped の `ProductNo + FKOJUN` lookup cache を追加。
+- `CsvDashboardRow` に normalized resource expression index `csv_dashboard_row_prod_schedule_resource_norm_idx` を追加。既存 raw `FSIGENCD` index は `UPPER(BTRIM(...))` predicate に合わず Pi5 で使われていなかった。
+
+**Pi5 direct API measurement**:
+
+| Stage | Before | After |
+| --- | ---: | ---: |
+| Shell light | 32.87s | 3.36s measured (`requestTotal=3.28s`, warm labor cache) |
+| Deferred decorations | 8.43s | 8.02s |
+| Continue chain | 55.15s | 20.97s |
+| Cold `includeDecorations=true` shell | 31.80s | 10.99s |
+
+**Server phase notes**:
+
+- First cold shell after API restart still had `attachLabor=5583ms`, but resourceShell max was already down to `584=1728ms`.
+- Measured shell after cache warm had `attachLabor=5ms`; continue rounds had `attachLabor=18ms/10ms/7ms/5ms/5ms`.
+- Remaining continue cost is mainly `resourceContinue` on large slots (`584`, `586`, `589`) plus repeated fixed work (`generationTokenInitial`, materialized base WHERE).
+
+**Operational note**: `LEADERBOARD_BOARD_PERF_LOG` was enabled only during measurement and restored to `off`; post-measure API health returned `status: ok`. If the physical browser still takes materially longer than the direct API chain, next evidence should come from browser Network/render timing rather than more server-only DB changes.
+
 ## Troubleshooting
 
 - **まだ遅い／反映されない**: Pi5 の **`api` コンテナ**が当該コミット以降か（detach ログの **`Git: changed`**・リモート `git log -1`）。**Mac 側 `--follow` が途中で途切れても**、**`PLAY RECAP` / `summary.json` / `*.exit`** を正本とする（[deployment.md](../guides/deployment.md) の detach 運用どおり）。

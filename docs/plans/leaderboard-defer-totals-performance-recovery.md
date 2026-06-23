@@ -517,6 +517,81 @@ After deploy, a one-off Pi5 `syncFromStatusMailDashboard()` backfill completed a
 2. Decide whether the next safe lever is a sort/lookup index, a materialized shell ordering key, or a narrower row-selection query for `allowResourceOnly=true`.
 3. Keep `LEADERBOARD_BOARD_PERF_LOG` opt-in only; standard deploys remove manual `.env` edits, and measurement sessions must restore the flag to OFF.
 
+### Pi5 6-slot resource board follow-up (2026-06-23)
+
+**Branch / PR**: `feat/production-schedule-split-orders` / PR #464
+**HEAD**: `91347780` (`perf: speed up leaderboard labor lookup`)
+**Pi5 deploy**: `20260623-120401-21398` success (`failed=0`, `Git: changed`)
+
+**Scope (API + DB, no response contract change)**:
+
+- Add generation-scoped `ProductNo + FKOJUN` labor lookup cache for leaderboard shell/continue.
+  - Scope key is the leaderboard snapshot generation token.
+  - Positive rows and zero misses are cached for 5 minutes; tests clear the cache explicitly.
+  - This targets repeated `attachLabor` work across the shell/continue chain.
+- Add normalized resource expression index for resource-slot row selection.
+  - Migration: `20260623115000_add_leaderboard_normalized_resource_index`.
+  - Index: `csv_dashboard_row_prod_schedule_resource_norm_idx` on `csvDashboardId`, `UPPER(BTRIM(FSIGENCD))`, `id`.
+  - Reason: Pi5 showed the older raw `rowData->>'FSIGENCD'` index at `idx_scan=0` because runtime predicates normalize with `UPPER(BTRIM(...))`.
+
+**Validation / deploy state**:
+
+| Check | Result |
+| --- | --- |
+| Focused API tests | `leaderboard-labor-minutes.service.test.ts` + `leaderboard-composite-board-generation-token.test.ts` PASS |
+| API lint / build | PASS |
+| Commit hook | workspace lint PASS |
+| Pi5 migration | `20260623115000_add_leaderboard_normalized_resource_index` applied |
+| Pi5 index | `csv_dashboard_row_prod_schedule_resource_norm_idx` present |
+| Perf flag | temporarily enabled for measurement, restored to `off`; API restarted healthy |
+| Post-measure health | `status: ok` (`database` / `memory` / `playwright` ok) |
+
+**Pi5 direct API measurement (6 slots: `581,305,589,584,588,586`)**:
+
+The measurement ran from inside the Pi5 API container against `127.0.0.1:8080`, with `allowResourceOnly=true`, shell `pageSize=80`, continue `pageSize=160`, `deferTotals=true`.
+
+| Stage | Before this round | After `91347780` |
+| --- | ---: | ---: |
+| Shell light (`includeDecorations=false`) | **32.87s** | **3.36s** measured request (`requestTotal=3.28s`, warm labor cache) |
+| Deferred decorations, 480 rows | **8.43s** | **8.02s** |
+| Continue chain, 5 rounds | **55.15s** | **20.97s** |
+| Rows after continue | `2579 / 2579` | `2579 / 2579` |
+| `includeDecorations=true` shell | **31.80s** | **10.99s** cold request (`requestTotal=10.94s`) |
+
+**Measured continue rounds after `91347780`**:
+
+| Round | durationMs | rows | deltaRows | hasMoreCount |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 4594 | 1303 | 823 | 4 |
+| 2 | 6896 | 1823 | 520 | 3 |
+| 3 | 3409 | 2267 | 444 | 2 |
+| 4 | 2975 | 2429 | 162 | 1 |
+| 5 | 3099 | 2579 | 150 | 0 |
+
+**Server phase samples**:
+
+| Request | Key phase data |
+| --- | --- |
+| First live cold shell after restart | `requestTotal=8615ms`; resourceShell max `584=1728ms`; `attachLabor=5583ms` |
+| Measured shell (`req-55`) | `requestTotal=3283ms`; resourceShell max `584=1592ms`; `attachLabor=5ms` because the live cold request had already warmed the generation cache |
+| Measured continue round 1 (`req-65`) | `requestTotal=4523ms`; resourceContinue max `589=3229ms`; `attachLabor=18ms` |
+| Measured continue round 2 (`req-69`) | `requestTotal=6829ms`; resourceContinue max `586=5475ms`; `attachLabor=10ms` |
+| Measured continue rounds 3-5 | `3339ms`, `2905ms`, `3019ms`; `attachLabor=7ms/5ms/5ms` |
+| Cold `includeDecorations=true` shell (`req-4`) | `requestTotal=10936ms`; resourceShell max `584=1929ms`; `attachLabor=5653ms`; `decorate=1749ms` |
+
+**Interpretation**:
+
+- The 6-slot one-minute class API path was primarily server-side, not Web rendering. After the normalized resource index and generation-scoped labor lookup cache, the same API chain is no longer ~1 minute.
+- `resourceShell` dropped from the earlier 6-slot max **24.3s** (`584`) to ~**1.6-1.9s** per resource in the new samples.
+- The cache only helps after the first request for a generation. A cold shell still spends ~**5.6s** in `attachLabor`; subsequent continue requests spend single-digit milliseconds there.
+- The remaining API cost is now mostly `resourceContinue` for the large resources plus repeated per-request fixed work (`generationTokenInitial` / materialized base WHERE). If the real browser still feels slow, verify Web append/render next before adding more DB indexes.
+
+**Next minimal work**:
+
+1. Check the actual Pi5 browser after deploy with the 6-slot view; record whether item visibility is now API-bound or render-bound.
+2. If still slow, profile `resourceContinue` SQL for `584`, `586`, and `589`.
+3. Consider reducing repeated continue fixed work before adding broader indexes.
+
 ## Local Notes JA
 
 - 初回 COUNT を `deferTotals=true` で避け、continue で exact total に戻す設計は [KB-374](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md) の continue 契約と両立。
