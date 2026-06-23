@@ -1,9 +1,10 @@
 import clsx from 'clsx';
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { resolveLeaderBoardGanttCapacityMinutes } from './gantt/leaderBoardGanttCapacity';
 import { LeaderOrderResourceCard } from './LeaderOrderResourceCard';
 
+import type { LeaderboardBoardClientPerfLogger } from './leaderboardBoardClientPerf';
 import type { LeaderBoardRow } from './types';
 import type { KioskProductionScheduleCompletionIntent } from '../../../api/client';
 import type { KioskResourceProgressProcessChip } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
@@ -42,6 +43,7 @@ export type LeaderBoardGridProps = {
   /** スロットごとの `+人` ON/OFF（slotIndex 順） */
   laborEnabledBySlotIndex?: readonly boolean[];
   onToggleLaborForSlot?: (slotIndex: number) => void;
+  logClientPerfEvent?: LeaderboardBoardClientPerfLogger;
 };
 
 type SlotCardProps = {
@@ -176,9 +178,24 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   autoRankPending = false,
   onAutoRank,
   laborEnabledBySlotIndex = [],
-  onToggleLaborForSlot
+  onToggleLaborForSlot,
+  logClientPerfEvent
 }: LeaderBoardGridProps) {
   const rowControlsLocked = interactionLocked;
+  const gridMountedLoggedRef = useRef(false);
+  const totalRows = useMemo(
+    () => Array.from(sortedGrouped.values()).reduce((sum, rows) => sum + rows.length, 0),
+    [sortedGrouped]
+  );
+
+  useEffect(() => {
+    if (gridMountedLoggedRef.current) return;
+    gridMountedLoggedRef.current = true;
+    logClientPerfEvent?.('grid-mounted', {
+      rowCount: totalRows,
+      slotCount: resourceCdBySlotIndex.filter((cd) => Boolean(cd?.trim())).length
+    });
+  }, [logClientPerfEvent, resourceCdBySlotIndex, totalRows]);
 
   const capacityMinutesBySlotIndex = useMemo(
     () =>

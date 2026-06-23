@@ -28,6 +28,10 @@ import {
   shouldBeginLeaderboardAppendSession
 } from './leaderboardBoardAppendSessionPolicy';
 import {
+  useLeaderboardBoardClientPerfLogger,
+  type LeaderboardBoardClientPerfLogger
+} from './leaderboardBoardClientPerf';
+import {
   fingerprintLeaderboardBoardShell,
   isLeaderboardScheduleInitialLoading,
   pickLeaderboardBoardForDisplay,
@@ -107,6 +111,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   isBoardDataSyncing: boolean;
   /** `leaderboard-decorations` POST の同期中 */
   isDecorationSyncing: boolean;
+  /** 明示有効化時のみ API ログへ送る一時計測 */
+  logClientPerfEvent: LeaderboardBoardClientPerfLogger;
 } {
   const {
     leaderboardPhasedBaseParams,
@@ -166,6 +172,14 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     () => (boardQueryParams != null ? JSON.stringify(boardQueryParams) : ''),
     [boardQueryParams]
   );
+  const logClientPerfEvent = useLeaderboardBoardClientPerfLogger({
+    paramsKey,
+    resourceCds: orderedResourceCds
+  });
+  const firstDisplayRowsLoggedParamsKeyRef = useRef<string | null>(null);
+  const scheduleUsableLoggedParamsKeyRef = useRef<string | null>(null);
+  const boardFetchActiveRef = useRef(false);
+  const decorationsFetchActiveRef = useRef(false);
 
   const [appendOverride, setAppendOverride] = useState<ProductionScheduleLeaderboardBoardResponse | null>(null);
   const [appendError, setAppendError] = useState<Error | null>(null);
@@ -203,6 +217,37 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     pauseRefetch,
     refetchIntervalMs
   });
+
+  useEffect(() => {
+    if (!scheduleEnabled || !boardQueryParams) return;
+    if (boardQuery.isFetching && !boardFetchActiveRef.current) {
+      boardFetchActiveRef.current = true;
+      logClientPerfEvent('board-get-start', {
+        isLoading: boardQuery.isLoading,
+        hasData: Boolean(boardQuery.data),
+        rowCount: boardQuery.data?.rows.length ?? 0
+      });
+    } else if (!boardQuery.isFetching && boardFetchActiveRef.current) {
+      boardFetchActiveRef.current = false;
+      logClientPerfEvent('board-get-settled', {
+        isSuccess: boardQuery.isSuccess,
+        isError: boardQuery.isError,
+        rowCount: boardQuery.data?.rows.length ?? 0,
+        hasMoreCount: boardQuery.data?.resources.filter((r) => r.hasMore).length ?? 0,
+        dataUpdatedAt: boardQuery.dataUpdatedAt
+      });
+    }
+  }, [
+    boardQuery.data,
+    boardQuery.dataUpdatedAt,
+    boardQuery.isError,
+    boardQuery.isFetching,
+    boardQuery.isLoading,
+    boardQuery.isSuccess,
+    boardQueryParams,
+    logClientPerfEvent,
+    scheduleEnabled
+  ]);
 
   useEffect(() => {
     if (boardQuery.isSuccess && !boardQuery.isPlaceholderData) {
@@ -387,6 +432,10 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     let cancelled = false;
 
     void (async () => {
+      logClientPerfEvent('append-start', {
+        shellRows: shell.rows.length,
+        hasMoreCount: shell.resources.filter((r) => r.hasMore).length
+      });
       try {
         const runParamsKey = paramsKey;
         let cur = resolveLeaderboardAppendLoopStartBoard(
@@ -431,15 +480,27 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
           setAppendOverride(next);
           appendOverrideParamsKeyRef.current = runParamsKey;
           appendOverrideRef.current = next;
+          logClientPerfEvent('append-chunk', {
+            rowCount: next.rows.length,
+            deltaRows: nextRaw.deltaRows?.length ?? nextRaw.rows.length,
+            hasMoreCount: next.resources.filter((r) => r.hasMore).length
+          });
           cur = next;
         }
         if (!cancelled && runId === appendRunIdRef.current && !cur.resources.some((r) => r.hasMore)) {
           appendCompleteForParamsKeyRef.current = paramsKey;
           appendCompleteShellFingerprintRef.current = shellFingerprint;
+          logClientPerfEvent('append-complete', {
+            rowCount: cur.rows.length,
+            hasMoreCount: 0
+          });
         }
       } catch (e) {
         if (!cancelled && runId === appendRunIdRef.current) {
           const normalized = normalizeLeaderboardContinueFailure(e);
+          logClientPerfEvent('append-error', {
+            message: normalized.message
+          });
           if (classifyLeaderboardContinueFailure(normalized) === 'terminal') {
             setAppendError(normalized);
           } else {
@@ -469,7 +530,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     shellFingerprint,
     suppressPlaceholderShell,
     orderedResourceCds,
-    purgeCache
+    purgeCache,
+    logClientPerfEvent
   ]);
 
   const { displayBoardForUi, listIncompleteForUi } = useLeaderboardSeibanOrClientFilterOverlay({
@@ -483,6 +545,28 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     appendRunIdRef,
     setIsAppending
   });
+
+  useEffect(() => {
+    const rowCount = displayBoardForUi?.rows.length ?? 0;
+    if (!scheduleEnabled || paramsKey.length === 0 || rowCount === 0) return;
+    if (firstDisplayRowsLoggedParamsKeyRef.current === paramsKey) return;
+    firstDisplayRowsLoggedParamsKeyRef.current = paramsKey;
+    logClientPerfEvent('first-display-board-rows', {
+      rowCount,
+      source: isShowingCachedData ? 'cache' : 'network',
+      hasMoreCount: displayBoardForUi?.resources.filter((r) => r.hasMore).length ?? 0,
+      boardQueryLoading: boardQuery.isLoading,
+      boardQueryFetching: boardQuery.isFetching
+    });
+  }, [
+    boardQuery.isFetching,
+    boardQuery.isLoading,
+    displayBoardForUi,
+    isShowingCachedData,
+    logClientPerfEvent,
+    paramsKey,
+    scheduleEnabled
+  ]);
 
   const scheduleQuery = useMemo(() => {
     if (!scheduleEnabled || resourceCdsOrdered.length === 0) {
@@ -537,6 +621,45 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     suppressPlaceholderShell
   ]);
 
+  useEffect(() => {
+    if (!scheduleEnabled || paramsKey.length === 0) return;
+    if (scheduleQuery.isLoading || scheduleQuery.isError) return;
+    const rowCount = scheduleQuery.data?.rows.length ?? 0;
+    if (rowCount === 0) return;
+    if (scheduleUsableLoggedParamsKeyRef.current === paramsKey) return;
+    scheduleUsableLoggedParamsKeyRef.current = paramsKey;
+    logClientPerfEvent('schedule-usable', {
+      rowCount,
+      isFetching: scheduleQuery.isFetching,
+      boardDataSyncing: isBoardDataSyncing,
+      decorationSyncing: isDecorationSyncing
+    });
+  }, [
+    isBoardDataSyncing,
+    isDecorationSyncing,
+    logClientPerfEvent,
+    paramsKey,
+    scheduleEnabled,
+    scheduleQuery.data?.rows.length,
+    scheduleQuery.isError,
+    scheduleQuery.isFetching,
+    scheduleQuery.isLoading
+  ]);
+
+  useEffect(() => {
+    if (isDecorationsFetching && !decorationsFetchActiveRef.current) {
+      decorationsFetchActiveRef.current = true;
+      logClientPerfEvent('decorations-start', {
+        displayRowCount: networkDisplayBoard?.rows.length ?? 0
+      });
+    } else if (!isDecorationsFetching && decorationsFetchActiveRef.current) {
+      decorationsFetchActiveRef.current = false;
+      logClientPerfEvent('decorations-end', {
+        displayRowCount: networkDisplayBoard?.rows.length ?? 0
+      });
+    }
+  }, [isDecorationsFetching, logClientPerfEvent, networkDisplayBoard?.rows.length]);
+
   void macManualOrderV2;
   void activeDeviceScopeKey;
 
@@ -550,6 +673,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     applyDisplayMutation,
     isBackgroundRevalidating,
     isBoardDataSyncing,
-    isDecorationSyncing
+    isDecorationSyncing,
+    logClientPerfEvent
   };
 }

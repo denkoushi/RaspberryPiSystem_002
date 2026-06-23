@@ -1105,7 +1105,7 @@ export type KioskProductionScheduleLeaderboardBoardQueryParams = KioskProduction
   boardResourceCds: string;
   /** 省略時 true。キオスク順位ボードは false で装飾を `leaderboard-decorations` 後取り */
   includeDecorations?: boolean;
-  /** 省略時 true。`+人` OFF の初期表示は false で人工数 lookup を後回しにする */
+  /** 省略時 false。`+人` OFF の初期表示は false で人工数 lookup を後回しにする */
   includeLabor?: boolean;
   /** true のとき初回 shell は exact total を待たず、continue で正確な total に戻す */
   deferTotals?: boolean;
@@ -1166,6 +1166,23 @@ export async function postKioskProductionScheduleLeaderboardBoardContinue(
     payload
   );
   return data;
+}
+
+export type KioskProductionScheduleLeaderboardClientPerfPayload = {
+  sessionId: string;
+  event: string;
+  pagePath?: string;
+  paramsKeyHash?: string;
+  resourceCds?: string;
+  markMs?: number;
+  elapsedMs?: number;
+  detail?: Record<string, string | number | boolean | null>;
+};
+
+export async function postKioskProductionScheduleLeaderboardClientPerf(
+  payload: KioskProductionScheduleLeaderboardClientPerfPayload
+) {
+  await api.post('/kiosk/production-schedule/leaderboard-board/client-perf', payload);
 }
 
 /** 配膳スマホ: 生産スケジュール一覧（`/api/mobile-placement/schedule`、x-client-key 必須） */

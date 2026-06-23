@@ -617,6 +617,27 @@ Expected user-visible result: first fresh rows and row-level operations become a
 2. If first usable still exceeds 10s, capture browser Network timings for `leaderboard-board`, `leaderboard-board/continue`, `leaderboard-decorations`, and first row paint.
 3. If API shell regresses rather than browser/render, profile `resourceShell` for the 6 slot resources before adding more indexes.
 
+### Physical-screen request sequence check（2026-06-23 follow-up）
+
+Pi5 API logs after `bf9dea17` still showed the physical 6-slot board doing a fast shell but continuing background work for much longer. Representative same-window sequence (JST):
+
+| Relative | Request | Duration |
+| ---: | --- | ---: |
+| +0.0s | `GET leaderboard-board?pageSize=80&boardResourceCds=581,305,589,584,588,586&includeDecorations=false&deferTotals=true` | **3.06s** |
+| +3.5s | `POST leaderboard-decorations` | **1.05s** |
+| +3.5s | `POST leaderboard-board/continue` | **4.94s** |
+| +9.1s | second non-`q` `GET leaderboard-board` from another/renewed browser session | **5.72s** |
+| +40.1s | `GET leaderboard-board ... &q=BA1S5308` | **4.43s** |
+
+Code inspection confirmed the intended display gate remains in place: `scheduleQuery.isLoading` is false once display rows exist, `displayBoardForUi` can use the fresh shell before continue/decorations finish, and row controls are not locked by `isFetching`/append/decorations. The `q=BA1S5308` GET is consistent with the seiban overlay reconcile after `networkBoardComplete`, so it is not expected to block the first shell display.
+
+Local follow-up implementation (pending deploy): an opt-in Web client perf beacon was added for the next physical pass.
+
+- Enable on the target browser with `?leaderboardPerf=1` on `/kiosk/production-schedule/leader-order-board` (persists in localStorage). Disable with `?leaderboardPerf=0`.
+- API log marker: `[leaderboard-board-client-perf]`.
+- Events: `board-get-start`, `board-get-settled`, `first-display-board-rows`, `schedule-usable`, `grid-mounted`, `append-start`, `append-chunk`, `append-complete`, `append-error`, `decorations-start`, `decorations-end`.
+- Use this to measure `leaderboard-board` response settled → first display rows → `schedule-usable` → `LeaderBoardGrid` mount on the actual kiosk browser, before doing more DB/API work.
+
 ## Local Notes JA
 
 - 初回 COUNT を `deferTotals=true` で避け、continue で exact total に戻す設計は [KB-374](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md) の continue 契約と両立。

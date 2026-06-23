@@ -226,6 +226,19 @@ export const productionScheduleLeaderboardDecorationsBodySchema = z.object({
   targetDeviceScopeKey: z.string().min(1).max(200).optional()
 });
 
+export const productionScheduleLeaderboardClientPerfBodySchema = z.object({
+  sessionId: z.string().min(1).max(80),
+  event: z.string().min(1).max(80),
+  pagePath: z.string().min(1).max(300).optional(),
+  paramsKeyHash: z.string().min(1).max(80).optional(),
+  resourceCds: z.string().min(1).max(4000).optional(),
+  markMs: z.number().finite().nonnegative().max(86_400_000).optional(),
+  elapsedMs: z.number().finite().nonnegative().max(86_400_000).optional(),
+  detail: z
+    .record(z.union([z.string().max(400), z.number().finite(), z.boolean(), z.null()]))
+    .optional()
+});
+
 export const productionScheduleOrderSearchQuerySchema = z.object({
   resourceCds: z.string().min(1).max(400),
   resourceCategory: z.enum(['grinding', 'cutting']).optional(),

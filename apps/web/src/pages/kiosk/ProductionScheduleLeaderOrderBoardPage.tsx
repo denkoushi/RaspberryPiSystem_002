@@ -260,7 +260,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     cacheSyncWarning,
     applyDisplayMutation,
     isBoardDataSyncing,
-    isDecorationSyncing
+    isDecorationSyncing,
+    logClientPerfEvent
   } = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
     leaderboardPhasedBaseParams: leaderboardPhasedBase,
     seibanOrFilters: dueAssist.selectedFseibanFilters,
@@ -675,6 +676,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               onAutoRank={handleAutoRankSlot}
               laborEnabledBySlotIndex={laborEnabledBySlotIndex}
               onToggleLaborForSlot={toggleLaborForSlot}
+              logClientPerfEvent={logClientPerfEvent}
             />
           </>
         )}
