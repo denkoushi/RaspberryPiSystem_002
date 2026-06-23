@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   parseCsvList,
+  productionScheduleLeaderboardBoardContinueBodySchema,
   productionScheduleLeaderboardBoardQuerySchema,
   productionScheduleSeibanMachineNamesBodySchema,
   toLegacyLocationKeyFromDeviceScope
@@ -60,14 +61,14 @@ describe('production-schedule route shared helpers', () => {
     expect(productionScheduleLeaderboardBoardQuerySchema.parse(base).deferTotals).toBe(false);
   });
 
-  it('productionScheduleLeaderboardBoardQuerySchema は includeLabor を既定 true / 明示 false で解釈する', () => {
+  it('productionScheduleLeaderboardBoardQuerySchema は includeLabor を既定 false / 明示 true で解釈する', () => {
     const base = {
       boardResourceCds: 'R1',
       pageSize: '80',
       allowResourceOnly: 'true'
     };
 
-    expect(productionScheduleLeaderboardBoardQuerySchema.parse(base).includeLabor).toBe(true);
+    expect(productionScheduleLeaderboardBoardQuerySchema.parse(base).includeLabor).toBe(false);
     expect(
       productionScheduleLeaderboardBoardQuerySchema.parse({
         ...base,
@@ -80,5 +81,34 @@ describe('production-schedule route shared helpers', () => {
         includeLabor: false
       }).includeLabor
     ).toBe(false);
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...base,
+        includeLabor: 'true'
+      }).includeLabor
+    ).toBe(true);
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...base,
+        includeLabor: true
+      }).includeLabor
+    ).toBe(true);
+  });
+
+  it('productionScheduleLeaderboardBoardContinueBodySchema は includeLabor 欠落を false にする', () => {
+    const base = {
+      boardResourceCds: 'R1',
+      pageSize: 160,
+      allowResourceOnly: true,
+      resourceSlices: [{ resourceCd: 'R1', hasMore: false }]
+    };
+
+    expect(productionScheduleLeaderboardBoardContinueBodySchema.parse(base).includeLabor).toBe(false);
+    expect(
+      productionScheduleLeaderboardBoardContinueBodySchema.parse({
+        ...base,
+        includeLabor: true
+      }).includeLabor
+    ).toBe(true);
   });
 });
