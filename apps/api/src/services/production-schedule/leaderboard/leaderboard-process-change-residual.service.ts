@@ -15,6 +15,7 @@ import {
   type ProcessChangeResidualStrongEvidenceMaterialization,
 } from './leaderboard-process-change-residual.materialization.js';
 import type { ProcessChangeResidualStrongEvidenceKey } from './leaderboard-process-change-residual.keys.js';
+import { buildLeaderboardProcessChangeResidualKeyPresentSql } from './leaderboard-process-change-residual.sql.js';
 import {
   LEADERBOARD_PROCESS_CHANGE_RESIDUAL_REPRESENTATIVE_LIMIT,
   type ProcessChangeResidualEvidence,
@@ -95,6 +96,7 @@ async function countResidualRowsByKeys(params: {
   }
 
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
+  const keyPresentSql = buildLeaderboardProcessChangeResidualKeyPresentSql();
   const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
     WITH "residual_keys"("productNo", "fkojun", "resourceCd") AS (
       VALUES ${buildResidualKeyValuesSql(params.keyRows)}
@@ -109,6 +111,8 @@ async function countResidualRowsByKeys(params: {
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE ${params.baseWhere} ${params.queryWhere} ${visibilitySql}
+      AND "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND ${keyPresentSql}
   `;
 
   return rows[0]?.total ?? 0n;
@@ -131,7 +135,12 @@ async function queryResidualRepresentativeRows(params: {
     siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
   });
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
-  const whereSql = Prisma.sql`${params.baseWhere} ${params.queryWhere} ${visibilitySql}`;
+  const keyPresentSql = buildLeaderboardProcessChangeResidualKeyPresentSql();
+  const whereSql = Prisma.sql`
+    ${params.baseWhere} ${params.queryWhere} ${visibilitySql}
+    AND "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    AND ${keyPresentSql}
+  `;
   const limitSql = Prisma.sql`LIMIT ${Math.max(1, Math.floor(params.limit))}`;
 
   return prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
