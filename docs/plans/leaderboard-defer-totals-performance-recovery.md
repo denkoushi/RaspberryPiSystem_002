@@ -26,9 +26,9 @@ related_docs:
   - docs/decisions/ADR-20260211-production-schedule-expression-indexes.md
   - docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md
   - docs/guides/deployment.md
-validation: focused api/web tests PASS · API/Web build/lint PASS · PR #464 HEAD 06ad4a4c CI/Secret scan/CodeQL success · Pi5 deploy 20260623-140812-7148 + manual api/web rebuild success · post-deploy health success · perf flag OFF · 6-slot includeLabor=false shell 5.25s/6.22s/5.36s
+validation: focused api/web tests PASS · API/Web build/lint PASS · PR #464 HEAD bf9dea17 deploy success · Pi5 deploy 20260623-144810-12264 success · API container healthy · perf flag OFF · 6-slot missing-includeLabor shell 2.81s · first continue 3.85s
 open_items:
-  - If a physical browser still shows ~30s after hard reload, capture browser Network/render timing. The 6-slot no-labor shell is now API-side 5-6s; remaining delay would be stale bundle, append/render, or client-side gating.
+  - If a physical browser still shows ~30s after `bf9dea17`, capture browser Network/render timing. The old-bundle-shaped 6-slot shell is now API-side 2.81s; remaining delay would be render/gating or a different request path.
   - `resourceShell` remains the largest 503/504 shell phase (single 503 ~5.9s; 4 parallel ~8.9-9.4s). Next DB-side work should target shell row selection/order path before broad UX changes.
   - `generationTokenInitial` is ~1.2-1.4s in warm 503/504 samples; avoid reintroducing wide source reads into the display request path.
   - Kiosk browsers must hard reload to pick up the new `index-CtusrliU.js` bundle; already-open SPA tabs can keep sending older `pageSize` / labor params until reload.
@@ -604,15 +604,17 @@ Expected user-visible result: first fresh rows and row-level operations become a
 **Follow-up after physical browser still reported ~30s (2026-06-23)**:
 
 - Root cause confirmed: cold/wide 6-slot shells were still paying `attachLabor` even when every slot had `+人` OFF. Perf samples before the fix showed `attachLabor=4090-5535ms` on cold shell; direct `includeLabor=true` after the final deploy still measured **18.20s** for the same 6-slot / 300-row shell.
-- Fix: add `includeLabor` to `leaderboard-board` GET and continue POST. Default is **true** for backward compatibility. The Web board sends `includeLabor=false` while all slot `+人` toggles are OFF; toggling any slot ON changes the query key and refetches with labor metadata.
+- Fix: add `includeLabor` to `leaderboard-board` GET and continue POST. The Web board sends `includeLabor=false` while all slot `+人` toggles are OFF; toggling any slot ON changes the query key and refetches with labor metadata. After Pi5 logs showed the physical 6-slot browser still sending old-bundle requests with `includeLabor` missing, `bf9dea17` changed the API default for missing `includeLabor` to **false** while preserving explicit `includeLabor=true`.
 - No-labor shell still returns numeric metadata for cache/display compatibility: `machineRequiredMinutes` from row `FSIGENSHOYORYO`, `laborRequiredMinutes: 0` for normal machine rows.
 - Deploy: `06ad4a4c` (`perf: defer leaderboard labor lookup`) pushed and deployed to Pi5. Wrapper run `20260623-140812-7148` completed `failed=0`; because an earlier failed direct Ansible run had already moved the repo HEAD, Docker rebuild was manually forced for `api` and `web`. Runtime verified: HEAD `06ad4a4c`, web bundle `index-CtusrliU.js`, `/api/system/health` `status: ok`, `LEADERBOARD_BOARD_PERF_LOG` OFF.
 - Pi5 direct HTTPS measurements, 6 slots `581,305,589,584,588,586`, `pageSize=50`, `allowResourceOnly=true`, `includeDecorations=false`, `deferTotals=true`, `includeLabor=false`: **5.25s**, **6.22s**, **5.36s** for 300 shell rows. Sample rows carried `laborRequiredMinutes=0`.
+- Deploy: `bf9dea17` (`perf: default leaderboard labor off`) pushed and deployed to Pi5. Wrapper run `20260623-144810-12264` completed `failed=0`, Docker restart summary `ok`, runtime HEAD `bf9dea17`, API container healthy, perf log OFF.
+- Pi5 direct HTTPS measurement matching the old bundle request shape, 6 slots `581,305,589,584,588,586`, `pageSize=80`, `allowResourceOnly=true`, `includeDecorations=false`, `deferTotals=true`, **`includeLabor` omitted**: shell **2.81s** for 480 rows; first continue with `includeLabor` omitted **3.85s** for 1303 rows. Sample rows carried `laborRequiredMinutes=0`.
 
 **Next minimal work**:
 
-1. Hard reload the physical kiosk browser so it loads `index-CtusrliU.js`; already-open tabs can keep the previous bundle and continue sending old request params.
-2. If first usable still exceeds 10s after reload, capture browser Network timings for `leaderboard-board`, `leaderboard-board/continue`, `leaderboard-decorations`, and first row paint.
+1. Retest the physical kiosk browser after `bf9dea17`; old tabs no longer need `includeLabor=false` in the URL for speed, but `+人` ON correctness still needs the new bundle.
+2. If first usable still exceeds 10s, capture browser Network timings for `leaderboard-board`, `leaderboard-board/continue`, `leaderboard-decorations`, and first row paint.
 3. If API shell regresses rather than browser/render, profile `resourceShell` for the 6 slot resources before adding more indexes.
 
 ## Local Notes JA

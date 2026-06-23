@@ -12,12 +12,13 @@ update-frequency: medium
 
 ### 補足（2026-06-23 · **キオスク順位ボード first usable 10秒化** · **API + Web** · **Pi5 反映済**） {#kiosk-leaderboard-first-usable-shell-swr-2026-06-23}
 
-- **変更概要（正本）**: [性能回復plan §First usable state target](../plans/leaderboard-defer-totals-performance-recovery.md#first-usable-state-target2026-06-23-follow-up) · [KB-369 §6-slot resource board split](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md#six-slot-resource-board-split-after-residual-fixes-2026-06-23--pr-464) · PR **#464** · HEAD **`06ad4a4c`** · Pi5 run **`20260623-140812-7148`** + manual `api`/`web` rebuild · post-deploy health **OK**
+- **変更概要（正本）**: [性能回復plan §First usable state target](../plans/leaderboard-defer-totals-performance-recovery.md#first-usable-state-target2026-06-23-follow-up) · [KB-369 §6-slot resource board split](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md#six-slot-resource-board-split-after-residual-fixes-2026-06-23--pr-464) · PR **#464** · HEAD **`bf9dea17`** · Pi5 run **`20260623-144810-12264`** · API container health **healthy**
   - 端末キャッシュ Phase 2 SWR は初期空白のみ cache で埋め、fresh `leaderboard-board` shell の行が届いたら append/decorations 完走前でも network rows を表示する。
-  - `+人` が全 slot OFF の初期 board は `includeLabor=false` を送信し、cold `attachLabor` lookup を待たない。`includeLabor` は後方互換で省略時 true。
+  - `+人` が全 slot OFF の初期 board は `includeLabor=false` を送信し、cold `attachLabor` lookup を待たない。`includeLabor` 未指定時も **false** に倒し、旧 SPA bundle からの欠落リクエストも first usable 優先で救済する。明示 `includeLabor=true` は維持。
   - **狙いは「最初に使える状態」10秒以内**。全件 append 完走は引き続き background continue に依存する。
 - **代表実測（Pi5 6 slot `581,305,589,584,588,586`, HTTPS local, `pageSize=50`, `includeDecorations=false`, `deferTotals=true`, `includeLabor=false`）**: shell **5.25s / 6.22s / 5.36s**（300 rows / 6 hasMore slots）。比較 `includeLabor=true` は **18.20s**。Web bundle **`index-CtusrliU.js`** · health **`status: ok`** · `LEADERBOARD_BOARD_PERF_LOG` OFF。
-- **運用メモ**: 既に開いているキオスク SPA は旧 JS のまま `includeLabor=false` を送らないことがある。体感が変わらない場合は browser 強制リロード後に Network timing を取る。
+- **追加実測（`bf9dea17`, 旧 SPA 相当で `includeLabor` 欠落, `pageSize=80`）**: shell **2.81s**（480 rows）· first continue **3.85s**（1303 rows）。いずれも `laborRequiredMinutes=0`。
+- **運用メモ**: 既に開いているキオスク SPA は旧 JS のまま `includeLabor=false` を送らないことがあるが、API default false で速度は救済される。`+人` ON の正確な人工数表示には新 bundle への強制リロードが必要。
 
 ### 補足（2026-06-23 · **キオスク順位ボード residual evidence / summary index** · **API + DB** · **Pi5 反映済**） {#kiosk-leaderboard-residual-evidence-index-2026-06-23}
 
