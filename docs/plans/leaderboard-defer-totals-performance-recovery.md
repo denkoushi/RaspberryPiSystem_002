@@ -6,6 +6,7 @@ date: 2026-06-23
 source_of_truth: true
 related_code:
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts
+  - apps/api/src/services/production-schedule/leaderboard/leaderboard-labor-minutes.service.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.materialization.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.service.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.sql.ts
@@ -25,12 +26,12 @@ related_docs:
   - docs/decisions/ADR-20260211-production-schedule-expression-indexes.md
   - docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md
   - docs/guides/deployment.md
-validation: focused api tests PASS · API build/lint PASS · PR #464 HEAD 259a8336 CI/Secret scan/CodeQL success · Pi5 deploy 20260623-102404 success · post-deploy health success · perf flag restored OFF · 503/504 shell single 9.24s · 4 parallel 12.48-13.07s · continue 4.71s
+validation: focused api/web tests PASS · API/Web build/lint PASS · PR #464 HEAD 06ad4a4c CI/Secret scan/CodeQL success · Pi5 deploy 20260623-140812-7148 + manual api/web rebuild success · post-deploy health success · perf flag OFF · 6-slot includeLabor=false shell 5.25s/6.22s/5.36s
 open_items:
-  - `resourceShell` remains the largest 503/504 shell phase (single 503 ~5.9s; 4 parallel ~8.9-9.4s). Next minimal work should target shell row selection/order path before broad UX changes.
-  - `attachLabor` is now secondary for 503/504 (~1.4-2.2s) but can still grow on large multi-resource boards; keep prefix labor cache and lookup index assumptions in benchmarks.
+  - If a physical browser still shows ~30s after hard reload, capture browser Network/render timing. The 6-slot no-labor shell is now API-side 5-6s; remaining delay would be stale bundle, append/render, or client-side gating.
+  - `resourceShell` remains the largest 503/504 shell phase (single 503 ~5.9s; 4 parallel ~8.9-9.4s). Next DB-side work should target shell row selection/order path before broad UX changes.
   - `generationTokenInitial` is ~1.2-1.4s in warm 503/504 samples; avoid reintroducing wide source reads into the display request path.
-  - Pi4 Web rollout for deferTotals UX remains separate; the 2026-06-23 fixes are API/DB only and were deployed to Pi5.
+  - Kiosk browsers must hard reload to pick up the new `index-CtusrliU.js` bundle; already-open SPA tabs can keep sending older `pageSize` / labor params until reload.
 ---
 
 # Plan: Leaderboard deferTotals Performance Recovery
@@ -600,11 +601,19 @@ Deployment: `429049ea` (`perf: show fresh leaderboard shell during append`) was 
 
 Expected user-visible result: first fresh rows and row-level operations become available at shell arrival time. Full list completion still depends on the background continue chain.
 
+**Follow-up after physical browser still reported ~30s (2026-06-23)**:
+
+- Root cause confirmed: cold/wide 6-slot shells were still paying `attachLabor` even when every slot had `+人` OFF. Perf samples before the fix showed `attachLabor=4090-5535ms` on cold shell; direct `includeLabor=true` after the final deploy still measured **18.20s** for the same 6-slot / 300-row shell.
+- Fix: add `includeLabor` to `leaderboard-board` GET and continue POST. Default is **true** for backward compatibility. The Web board sends `includeLabor=false` while all slot `+人` toggles are OFF; toggling any slot ON changes the query key and refetches with labor metadata.
+- No-labor shell still returns numeric metadata for cache/display compatibility: `machineRequiredMinutes` from row `FSIGENSHOYORYO`, `laborRequiredMinutes: 0` for normal machine rows.
+- Deploy: `06ad4a4c` (`perf: defer leaderboard labor lookup`) pushed and deployed to Pi5. Wrapper run `20260623-140812-7148` completed `failed=0`; because an earlier failed direct Ansible run had already moved the repo HEAD, Docker rebuild was manually forced for `api` and `web`. Runtime verified: HEAD `06ad4a4c`, web bundle `index-CtusrliU.js`, `/api/system/health` `status: ok`, `LEADERBOARD_BOARD_PERF_LOG` OFF.
+- Pi5 direct HTTPS measurements, 6 slots `581,305,589,584,588,586`, `pageSize=50`, `allowResourceOnly=true`, `includeDecorations=false`, `deferTotals=true`, `includeLabor=false`: **5.25s**, **6.22s**, **5.36s** for 300 shell rows. Sample rows carried `laborRequiredMinutes=0`.
+
 **Next minimal work**:
 
-1. Check the actual Pi5 browser after deploy with the 6-slot view; record whether item visibility is now API-bound or render-bound.
-2. If still slow, profile `resourceContinue` SQL for `584`, `586`, and `589`.
-3. Consider reducing repeated continue fixed work before adding broader indexes.
+1. Hard reload the physical kiosk browser so it loads `index-CtusrliU.js`; already-open tabs can keep the previous bundle and continue sending old request params.
+2. If first usable still exceeds 10s after reload, capture browser Network timings for `leaderboard-board`, `leaderboard-board/continue`, `leaderboard-decorations`, and first row paint.
+3. If API shell regresses rather than browser/render, profile `resourceShell` for the 6 slot resources before adding more indexes.
 
 ## Local Notes JA
 

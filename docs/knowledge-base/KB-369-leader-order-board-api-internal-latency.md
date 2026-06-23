@@ -284,13 +284,13 @@ category: knowledge-base
 
 **Operational note**: `LEADERBOARD_BOARD_PERF_LOG` was enabled only during measurement and restored to `off`; post-measure API health returned `status: ok`. If the physical browser still takes materially longer than the direct API chain, next evidence should come from browser Network/render timing rather than more server-only DB changes.
 
-**First usable target follow-up**: User target is **「最初に使える状態」10秒以内**, not full append completion. Web Phase 2 SWR now uses terminal cache only to cover initial blank loading; once fresh `leaderboard-board` shell rows arrive, it switches to network rows even while append/decorations continue. With the measured 6-slot shell (**3.36s warm**, **8.62s first cold after restart**, **8.49s post-deploy restored-normal-env cold shell on `429049ea`**) this makes first fresh row operations API-bound to the shell rather than blocked on the ~20-30s continue chain.
+**First usable target follow-up**: User target is **「最初に使える状態」10秒以内**, not full append completion. Web Phase 2 SWR now uses terminal cache only to cover initial blank loading; once fresh `leaderboard-board` shell rows arrive, it switches to network rows even while append/decorations continue. When the physical browser still reported ~30s, the remaining cold-shell culprit was `attachLabor`: the board had `+人` OFF, but shell/continue still waited for labor lookup. `06ad4a4c` adds `includeLabor` (default true) and sends `includeLabor=false` from the Web while all slot `+人` toggles are OFF. Pi5 direct HTTPS after deploy: 6-slot shell `581,305,589,584,588,586`, `pageSize=50`, `includeDecorations=false`, `deferTotals=true`, `includeLabor=false` measured **5.25s / 6.22s / 5.36s** for 300 shell rows; `includeLabor=true` comparison was **18.20s**. Runtime verified at HEAD `06ad4a4c`, web bundle `index-CtusrliU.js`, health `status: ok`, perf log OFF.
 
 ## Troubleshooting
 
 - **まだ遅い／反映されない**: Pi5 の **`api` コンテナ**が当該コミット以降か（detach ログの **`Git: changed`**・リモート `git log -1`）。**Mac 側 `--follow` が途中で途切れても**、**`PLAY RECAP` / `summary.json` / `*.exit`** を正本とする（[deployment.md](../guides/deployment.md) の detach 運用どおり）。
 - **キオスク側の挙動（COUNT 並列化のみ）**: 当該リリースは **API のみ**。ブラウザは **強制リロード**（[verification-checklist.md](../guides/verification-checklist.md) §6.6.4）。
-- **段階取得（API+Web）**: 初回のみ **複数 GET/POST**。挙動が古いときは Pi5 **`api` と `web` の両方**を確認し、同上 **強制リロード**。**装飾欠落の切り分け**は上記 **hydrate raw SQL** 知見と Network 順序を参照。
+- **段階取得（API+Web）**: 初回のみ **複数 GET/POST**。挙動が古いときは Pi5 **`api` と `web` の両方**を確認し、同上 **強制リロード**。2026-06-23 の first usable fix では bundle **`index-CtusrliU.js`** 以降が必要。旧 bundle のままでは `includeLabor=false` を送らず、`+人` OFF でも labor lookup を待つ。**装飾欠落の切り分け**は上記 **hydrate raw SQL** 知見と Network 順序を参照。
 
 ## 段階取得（leaderboard-shell / leaderboard-total / leaderboard-decorations）
 
