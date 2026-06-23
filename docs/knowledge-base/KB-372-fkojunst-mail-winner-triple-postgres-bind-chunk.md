@@ -2,8 +2,8 @@
 title: KB-372 FKOJUNST メール同期 winner 解決の bind 上限と長時間化
 tags: [FKOJUNST_Status, fkmail, Prisma, PostgreSQL, 生産スケジュール]
 audience: [開発者, 運用者]
-last-verified: 2026-05-09
-related: [deployment.md, KB-371, ADR-20260508-fkojunst-status-sole-source]
+last-verified: 2026-06-23
+related: [deployment.md, KB-371, KB-369, ADR-20260508-fkojunst-status-sole-source]
 category: knowledge-base
 ---
 
@@ -61,9 +61,30 @@ category: knowledge-base
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 141s**・Tailscale）
 - **main 再検証（2026-05-09）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**。WARN は **`auto-tuning schedulerログ確認（件数=0）`** で、同一実行中の **`PUT global-rank/auto-generate` が 200** のため代替正常判定（スクリプト仕様）。
 
+## 追補（2026-06-23）: residual evidence 永続化と sync transaction raw reread 回避
+
+順位ボードの process-change residual 判定は `FKOJUNST_Status` raw mail rows に由来するが、表示リクエストごとに raw dashboard を広く読む必要はない。PR #464 では以下を追加した。
+
+- `syncFromStatusMailDashboard()` の同期結果から residual evidence を `ProductionScheduleProcessChangeResidualSnapshot` / `ProductionScheduleProcessChangeResidualEvidence` へ永続化。
+- `materializeProcessChangeResidualStrongEvidence()` は raw mail revision が一致する persisted evidence を優先し、表示時の 45万行級 raw source fetch を避ける。
+- `runFkojunstMailReplacementTransaction()` の revision check は `fetchFkojunstStatusMailGenerationSignals()` で `COUNT` / 日時範囲だけを見る。transaction 内で raw rows を再読込しないため、451,087行環境で確認した `P2028` transaction timeout を回避する。
+
+Pi5 backfill 実績:
+
+| Field | Value |
+| --- | --- |
+| Raw rows scanned | `451,087` |
+| Normalized rows | `372,383` |
+| Matched rows | `19,923` |
+| Persisted residual evidence | `129` |
+| Raw mail revision | `451087:2026-06-22T21:48:45.989Z:2026-06-22T22:37:02.085Z` |
+
+順位ボード側の体感・SQL index・実測は [KB-369 §Process-change residual evidence persistence](./KB-369-leader-order-board-api-internal-latency.md#process-change-residual-evidence-persistence2026-06-23--pr-464) と [性能回復plan](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) を正本とする。
+
 ## References
 
 - [deployment.md](../guides/deployment.md#fkojunst-mail-winner-triple-tuple-in-chunk-2026-05-08)
 - [KB-371](./KB-371-csv-dashboard-dedup-postgres-bind-limit.md)
+- [KB-369](./KB-369-leader-order-board-api-internal-latency.md#process-change-residual-evidence-persistence2026-06-23--pr-464)
 - [ADR-20260508-fkojunst-status-sole-source](../decisions/ADR-20260508-fkojunst-status-sole-source.md)
 - **Git**: [PR #274](https://github.com/denkoushi/RaspberryPiSystem_002/pull/274)（squash merge **`411a635c`**）

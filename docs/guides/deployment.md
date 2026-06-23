@@ -2,13 +2,22 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-06-17
+last-verified: 2026-06-23
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-06-23 · **キオスク順位ボード residual evidence / summary index** · **API + DB** · **Pi5 反映済**） {#kiosk-leaderboard-residual-evidence-index-2026-06-23}
+
+- **変更概要（正本）**: [性能回復plan §Pi5 residual evidence persistence](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) · [KB-369 §Process-change residual evidence persistence](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md#process-change-residual-evidence-persistence2026-06-23--pr-464) · PR **#464** · HEAD **`259a8336`** · Pi5 run **`20260623-102404`** · post-deploy health **OK**
+  - `FKOJUNST_Status` raw evidence は sync/backfill 時に `ProductionScheduleProcessChangeResidualSnapshot` / `ProductionScheduleProcessChangeResidualEvidence` へ永続化し、表示リクエストの 45万行級 raw source scan を避ける。
+  - residual summary は `csv_dashboard_row_prod_schedule_residual_key_idx`（migration `20260623101000_add_leaderboard_residual_key_index`）と SQL predicate 一致で解決する。
+  - **HTTP/Web 契約変更なし**。Pi4 Web rollout は別件。今回の反映対象は Pi5 API/DB。
+- **代表実測（Pi5 503/504, `includeDecorations=false`, `deferTotals=true`）**: shell single **9.24s** · shell 4 parallel **12.48-13.07s** · continue `pageSize=160` **4.71s**。詳細フェーズは plan を参照。
+- **運用メモ**: `LEADERBOARD_BOARD_PERF_LOG` は一時測定用。今回の測定後は `.env` / API env から削除し、API healthy を確認済み。
 
 ### 補足（2026-06-17 · **API Docker build cache + health wait 恒久対応** · **Pi5 反映済**） {#deploy-api-build-cache-health-wait-2026-06-17}
 
@@ -5120,4 +5129,3 @@ ansible-playbook playbooks/deploy.yml -i inventory.yml --limit raspberrypi-zero2
 - [本番環境セットアップガイド](./production-setup.md): 本番環境の初期セットアップ（環境変数の管理、新しいPi5での環境構築手順を含む）
 - [バックアップ・リストアガイド](./backup-and-restore.md): バックアップとリストアの手順（デバイスごとのバックアップ対象を含む）
 - [監視・アラートガイド](./monitoring.md): システム監視とアラート設定
-

@@ -2,7 +2,7 @@
 title: KB-369 キオスク順位ボード API の内部レイテンシ（COUNT + 行取得）
 tags: [kiosk, production-schedule, leader-order-board, api, performance]
 audience: [開発者]
-last-verified: 2026-05-18
+last-verified: 2026-06-23
 category: knowledge-base
 ---
 
@@ -10,7 +10,7 @@ category: knowledge-base
 
 ## Context
 
-本 KB は **「順位ボード遅延」に関する技術ナレッジの収束先**として機能する。単一エンドポイント内の SQL 最適化（COUNT 並列・winner materialization）に加え、**段階取得**・**資源カード単位 phased**・**snapshot + cursor** など、**プロトコルとクライアント構造**の変更も同一ファイルに時系列で記録する。2026-05-08 追補の **board 集約 API（`leaderboard-board` / `leaderboard-board/continue`）** は、**多資源スロット画面でブラウザが資源カードごとに `leaderboard-shell` 等を fan-out していた負荷**を、**サーバ側でスロット順にオーケストレーションして応答を束ねる**アプローチであり、意思決定の正本は [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。**`leaderboard-board/continue` の `cursor` 契約と HTTP 400** は [KB-374](./KB-374-leaderboard-board-continue-cursor-contract.md) に分離記録する。**2026-05-18 追補**: **`continue` 応答の任意 `deltaRows`（dual payload）** と Web 側の **ID 整合検証つきマージ**の要点も [KB-374 · Dual payload](./KB-374-leaderboard-board-continue-cursor-contract.md#dual-payload-deltarows-2026-05-18) に収束させる。
+本 KB は **「順位ボード遅延」に関する技術ナレッジの収束先**として機能する。単一エンドポイント内の SQL 最適化（COUNT 並列・winner materialization）に加え、**段階取得**・**資源カード単位 phased**・**snapshot + cursor** など、**プロトコルとクライアント構造**の変更も同一ファイルに時系列で記録する。2026-05-08 追補の **board 集約 API（`leaderboard-board` / `leaderboard-board/continue`）** は、**多資源スロット画面でブラウザが資源カードごとに `leaderboard-shell` 等を fan-out していた負荷**を、**サーバ側でスロット順にオーケストレーションして応答を束ねる**アプローチであり、意思決定の正本は [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。**`leaderboard-board/continue` の `cursor` 契約と HTTP 400** は [KB-374](./KB-374-leaderboard-board-continue-cursor-contract.md) に分離記録する。**2026-05-18 追補**: **`continue` 応答の任意 `deltaRows`（dual payload）** と Web 側の **ID 整合検証つきマージ**の要点も [KB-374 · Dual payload](./KB-374-leaderboard-board-continue-cursor-contract.md#dual-payload-deltarows-2026-05-18) に収束させる。**2026-06-23 追補**: process-change residual の広い `FKOJUNST_Status` raw mail 読みを sync/backfill 時の永続 evidence へ移し、表示時は residual key index で summary を解決する。詳細ログと実測は [leaderboard-defer-totals-performance-recovery](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) を正本とする。
 
 - **運用・合意上の制約（イニシアチブ共通）**: **表示内容を削って速く見せる**ことは禁止。**データ意味・並びの定義・装飾の契約**は従来と同値。改善は **HTTP 形状・クエリ評価・クライアントの取得パターン**に限定する。
 - **対象（一覧 monolithic）**: `GET /api/kiosk/production-schedule`（`responseProfile=leaderboard`）
@@ -79,6 +79,40 @@ category: knowledge-base
   - 全キオスク端末での順位ボード **目視確認**（Pi4 は Pi5 API 反映のみで足りる想定だが、現場端末での取得 Error 解消は未記録）
   - `verify-phase12-real.sh` の **`PUT global-rank/auto-generate` HTTP 400**（本件スコープ外・別途調査可）
   - 5 万件規模 `text[]` bind の planner / メモリコスト（別課題）
+
+## Process-change residual evidence persistence（2026-06-23 · PR #464）
+
+**症状**: `leaderboard-board` shell / continue が `processChangeResidualContext` または `processChangeResidualSummary` で秒単位に遅くなる。特に API recreate 後の cold request では `FKOJUNST_Status` raw mail dashboard を広く読み、45万行級のソース読みが表示リクエストに乗っていた。
+
+**根因**:
+
+- process-change residual evidence は `ProductNo + FKOJUN + resource` の小さな集合に落とせるが、旧経路では表示時に raw mail source rows を materialize していた。
+- summary/count も generic visible-row COUNT + residual filter に乗り、候補が少数でも `CsvDashboardRow` 側を広く評価しやすかった。
+- CTE 化だけでは不十分で、正規化キー式と partial index predicate がSQLに合っていないと PostgreSQL がインデックスを選び切れなかった。
+
+**Fix（意味・HTTP契約不変）**:
+
+1. `syncFromStatusMailDashboard()` 時に `ProductionScheduleProcessChangeResidualSnapshot` / `ProductionScheduleProcessChangeResidualEvidence` へ residual evidence を永続化。
+2. `materializeProcessChangeResidualStrongEvidence()` は raw mail revision が一致する persisted evidence を優先し、stale/missing のときだけ raw source fallback。
+3. sync replacement transaction の revision check は `COUNT` / `MIN` / `MAX` 系の generation signals で確認し、raw rows full reread を避ける。
+4. `fetchLeaderboardProcessChangeResidualSummary()` は `WITH residual_keys(...)` + normalized key join で count/representative rows を取得。
+5. `csv_dashboard_row_prod_schedule_residual_key_idx` を追加し、SQL側にも `csvDashboardId` + key-present predicate を明示して partial expression index と一致させる。
+
+**Pi5 実測（503/504, `includeDecorations=false`, `deferTotals=true`）**:
+
+| 条件 | 結果 |
+| --- | --- |
+| persisted evidence 適用前 | shell ~62-65s |
+| persisted evidence 後 | shell ~16-18s |
+| residual key index + predicate 後 | shell single **9.24s**, 4 parallel **12.48-13.07s**, continue **4.71s** |
+| `processChangeResidualSummary` | single **761ms**（以前は約3s級） |
+
+**Prevention**:
+
+- 表示リクエストで 10万行級以上の raw dashboard を読まない。raw source scan は sync/backfill 境界に寄せる。
+- 少数 evidence key で十分な処理は `VALUES` / CTE + expression index へ寄せる。partial index は predicate をクエリ側にも明示する。
+- `LEADERBOARD_BOARD_PERF_LOG` は一時測定のみ。測定後は `.env` から削除し API を再起動する。
+- 詳細な時系列・デプロイ・計測ログは [leaderboard-defer-totals-performance-recovery](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) を参照。
 
 ## Production deploy & verification（2026-05-06 · leaderboard-shell winner materialization）
 

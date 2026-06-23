@@ -2,7 +2,7 @@
 title: KB-374 leaderboard-board/continue の cursor 契約と HTTP 400（Zod）
 tags: [kiosk, production-schedule, leader-order-board, leaderboard-board, api, web]
 audience: [開発者, 運用者]
-last-verified: 2026-06-18
+last-verified: 2026-06-23
 category: knowledge-base
 ---
 
@@ -169,6 +169,20 @@ docker compose -f infrastructure/docker/docker-compose.server.yml \
 - **並び**: `deltaRows` は **`boardResourceCds` のスロット順**で、スロット内のcontinuationで増えた行を **順に連結**した配列（スロットに追加チャンクが無いときは **`[]`** のスライス）。
 - **Web**: [`mergeLeaderboardBoardContinueResponse.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardContinueResponse.ts) が **`FSIGENCD`（大文字小文字無視）**で `rows` / `deltaRows` をスロット分割し、`prevRows`＋`deltaRows` の合成が **応答の累積 `rows` と同じ ID 列**になることを検証。失敗時は **サーバの `rows` オブジェクト**をそのまま採る（出力不変・安全側）。
 - **段階導入（完了・2026-05-19）**: **Pi5 API 先行**（`deltaRows`）→ **Pi5 再デプロイ**（表示安定化 + pageSize 80）→ **Pi4×4 順次**（3 機能まとめて Web+API 同梱）。手順・Detach 実績: [deployment.md §deltaRows](../guides/deployment.md#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18)·[§表示安定化](../guides/deployment.md#kiosk-leaderboard-display-stability-refetch-2026-05-19)·[§pageSize 80](../guides/deployment.md#kiosk-leaderboard-pagesize-80-phase1-2026-05-19)。
+
+### Performance note（2026-06-23 · residual evidence / index）
+
+`leaderboard-board/continue` の HTTP 契約（`resourceSlices[].snapshotId` + `cursor` + `hasMore`、`rows` 正本、任意 `deltaRows`）は変更せず、API/DB内部だけを最適化した。PR #464 では process-change residual evidence を永続化し、continue の residual materialization / summary 経路で raw `FKOJUNST_Status` 45万行級読みを避ける。
+
+Pi5 503/504 sample:
+
+| Probe | Result |
+| --- | --- |
+| shell single | **9.24s** |
+| shell 4 parallel | **12.48-13.07s** |
+| continue `pageSize=160` | **4.71s** (`rows=267`, `deltaRows=160`, `total=489`) |
+
+詳細なデプロイ・計測ログは [性能回復plan](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) と [KB-369](./KB-369-leader-order-board-api-internal-latency.md#process-change-residual-evidence-persistence2026-06-23--pr-464) を参照。
 
 ## Web 表示安定化: refetch 時の追補巻き戻し防止（2026-05-19）
 

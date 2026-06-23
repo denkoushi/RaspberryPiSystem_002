@@ -1,28 +1,36 @@
 ---
 id: leaderboard-defer-totals-performance-recovery
-status: pi5_source_row_projection_deployed
-scope: kiosk leader order board API performance (residual context subphase telemetry + source row projection)
-date: 2026-06-19
+status: pi5_residual_evidence_deployed
+scope: kiosk leader order board API performance (residual context materialization, residual summary, shell/continue)
+date: 2026-06-23
 source_of_truth: true
 related_code:
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.materialization.ts
+  - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.service.ts
+  - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.sql.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-prefix-row-cache.ts
   - apps/api/src/services/production-schedule/fkojunst-status-mail-source-rows.reader.ts
+  - apps/api/src/services/production-schedule/fkojunst-status-mail-generation-signals.ts
   - apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardFetchParams.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx
+  - apps/api/prisma/migrations/20260623093000_add_process_change_residual_evidence/migration.sql
+  - apps/api/prisma/migrations/20260623101000_add_leaderboard_residual_key_index/migration.sql
 related_docs:
   - docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md
   - docs/knowledge-base/KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md
+  - docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md
+  - docs/knowledge-base/KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md
+  - docs/decisions/ADR-20260211-production-schedule-expression-indexes.md
+  - docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md
   - docs/guides/deployment.md
-validation: focused api tests 26 PASS · CI 27806781358 success · Pi5 deploy 20260619-143326-20869 · verify-phase12-real PASS 43/0/0 · stonebase shell contract preserved after deploy · continue benchmark needs quieter retry (temporary post-load memory degraded recovered)
+validation: focused api tests PASS · API build/lint PASS · PR #464 HEAD 259a8336 CI/Secret scan/CodeQL success · Pi5 deploy 20260623-102404 success · post-deploy health success · perf flag restored OFF · 503/504 shell single 9.24s · 4 parallel 12.48-13.07s · continue 4.71s
 open_items:
-  - Re-measure cold `sourceRowFetchDurationMs` on Pi5 with `LEADERBOARD_BOARD_PERF_LOG=true` (temporary `.env`; lost on standard deploy) to confirm projection fix vs pre-fix ~36.6s sample
-  - Re-run `benchmark-leaderboard-continue-chunk.mjs --profile stonebase` in a quieter Pi5 window (initial post-deploy probe hit transient `memory:error` then recovered)
-  - Investigate warm `generationTokenInitial` (~7s when residual cache hits) after fetch path is validated
-  - Pi4 Web rollout for deferTotals UX (phase 1 Web) remains separate; latest API-only fixes need no Pi4 deploy
-  - Evaluate client continue chunk default (160) after sustained Pi5 observation
+  - `resourceShell` remains the largest 503/504 shell phase (single 503 ~5.9s; 4 parallel ~8.9-9.4s). Next minimal work should target shell row selection/order path before broad UX changes.
+  - `attachLabor` is now secondary for 503/504 (~1.4-2.2s) but can still grow on large multi-resource boards; keep prefix labor cache and lookup index assumptions in benchmarks.
+  - `generationTokenInitial` is ~1.2-1.4s in warm 503/504 samples; avoid reintroducing wide source reads into the display request path.
+  - Pi4 Web rollout for deferTotals UX remains separate; the 2026-06-23 fixes are API/DB only and were deployed to Pi5.
 ---
 
 # Plan: Leaderboard deferTotals Performance Recovery
@@ -412,6 +420,102 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - A full continue benchmark should be re-run during a quieter Pi5 window because a live-load probe temporarily pushed health into `memory:error`; the service recovered without manual intervention.
 
 **Next minimal work**: quantify `sourceRowFetchDurationMs` delta on Pi5; then choose next single bottleneck (`generationTokenInitial` vs continue assembly).
+
+### Pi5 residual evidence persistence + residual-key index deploy (2026-06-23)
+
+**Branch / PR**: `feat/production-schedule-split-orders` / PR #464
+**Final HEAD**: `259a8336` (`perf: match residual summary index predicate`)
+
+**Scope (API + DB, no Web contract change)**:
+
+- Persist process-change residual evidence during `ProductionScheduleFkojunstMailStatusSyncService.syncFromStatusMailDashboard()`.
+  - New tables: `ProductionScheduleProcessChangeResidualSnapshot`, `ProductionScheduleProcessChangeResidualEvidence`.
+  - Migration: `20260623093000_add_process_change_residual_evidence`.
+  - Materialization now reads persisted evidence first when the requested raw mail revision matches; fallback still supports raw source rows.
+- Avoid rereading all `FKOJUNST_Status` raw rows inside the sync replacement transaction.
+  - `fetchFkojunstStatusMailGenerationSignals()` uses `COUNT` / `MIN(createdAt)` / `MAX(createdAt)`-style revision signals instead of full row fetch.
+  - This removed the `P2028` timeout observed when 451,087 raw mail rows were reread inside a 60s transaction.
+- Count residual summary from the small evidence key set rather than the generic visible-row `COUNT` path.
+  - `fetchLeaderboardProcessChangeResidualSummary()` now uses `WITH residual_keys(...) AS (VALUES ...)` and joins by normalized `ProductNo + FKOJUN + resource`.
+  - `leaderboard-shell-row-projection.sql.ts` exposes auxiliary joins so the representative residual-row SELECT can share the normal shell projection while changing the join root.
+- Add normalized residual-key expression index.
+  - Migration: `20260623101000_add_leaderboard_residual_key_index`.
+  - Index: `csv_dashboard_row_prod_schedule_residual_key_idx` on `csvDashboardId`, `NULLIF(BTRIM(ProductNo),'')`, `NULLIF(BTRIM(FKOJUN),'')`, `UPPER(BTRIM(FSIGENCD))`.
+  - SQL explicitly includes the partial-index predicate (`csvDashboardId` + key-present checks); without this, Pi5 samples still showed multi-second residual summary scans.
+
+**Representative commits**:
+
+| Commit | Purpose |
+| --- | --- |
+| `c3fd5ea7` | Persist residual evidence for leaderboard |
+| `d6f2d7f8` | Avoid raw mail reread during sync revision check |
+| `6da6634a` | Count residual summary from evidence keys |
+| `42d840ab` | Add residual leaderboard key index |
+| `259a8336` | Match residual summary SQL to partial-index predicate |
+
+**Backfill / data point**:
+
+After deploy, a one-off Pi5 `syncFromStatusMailDashboard()` backfill completed and persisted evidence for the current raw mail revision:
+
+| Field | Value |
+| --- | --- |
+| Raw rows scanned | `451,087` |
+| Normalized rows | `372,383` |
+| Matched current rows | `19,923` |
+| Evidence rows | `129` |
+| Raw mail revision | `451087:2026-06-22T21:48:45.989Z:2026-06-22T22:37:02.085Z` |
+| Algorithm version | `1` |
+
+**Deploy / validation**:
+
+| Check | Result |
+| --- | --- |
+| Focused API tests | `leaderboard-process-change-residual.materialization`, `fkojunst-status-mail-sync.pipeline`, `leaderboard-shell-snapshot-generation.sql`, `leaderboard-composite-board-generation-token` PASS |
+| API build / lint | PASS |
+| Commit hooks | workspace lint PASS |
+| GitHub Actions on `259a8336` | CI / Secret scan / CodeQL success |
+| Pi5 deploy | `20260623-102404` success (`failed=0`) |
+| Post-deploy health | success |
+| Perf flag | temporarily enabled for measurement, then removed from `.env` and API restarted healthy |
+
+**Pi5 measurement summary (503/504 board, `includeDecorations=false`, `deferTotals=true`)**:
+
+| Stage | Before this 2026-06-23 round | After persisted evidence + residual index |
+| --- | --- | --- |
+| Pre-residual persistence shell | ~62-65s | n/a |
+| After persisted evidence shell | ~16-18s | n/a |
+| Final shell single request | n/a | **9.24s** (`rows=107`) |
+| Final shell 4 parallel | n/a | **12.48-13.07s** |
+| Final continue `pageSize=160` | previously observed ~21-22s under live-load contention | **4.71s** (`rows=267`, `deltaRows=160`, `total=489`) |
+| `processChangeResidualSummary` | ~3s class, sometimes worse under contention | **761ms** single; **2.35-2.90s** under 4 parallel |
+
+**Final single-request phase sample**:
+
+| Phase | durationMs | Notes |
+| --- | ---: | --- |
+| `generationTokenInitial` | 1357 | no raw residual source scan |
+| `residualMaterialization` | 11 | `persistedHit=true`, `persistedEvidenceRowCount=129`, `strongEvidenceKeyCount=129` |
+| `materializedBaseWhere` | 441 | winner base set |
+| `processChangeResidualSummary` | 761 | residual CTE + normalized key index |
+| `resourceShell` 504 | 1459 | 27 rows, no more |
+| `resourceShell` 503 | 5855 | 80 rows, has more |
+| `attachLabor` | 1517 | 107 rows |
+| `requestTotal` | 9189 | HTTP observed 9.24s |
+
+**Interpretation**:
+
+- The main speedup came from moving wide data reads out of display requests:
+  - raw `FKOJUNST_Status` evidence is materialized at sync/backfill time;
+  - display requests read 129 persisted evidence rows instead of the 45万-row raw mail dashboard;
+  - residual summary uses an indexed normalized-key lookup instead of broad visible-row counting.
+- The next bottleneck is no longer residual materialization. For 503/504, `resourceShell` is now the dominant phase. `attachLabor` and `generationTokenInitial` are still visible but secondary in the final samples.
+- 6-resource live board requests can still be much heavier, especially when real kiosks and manual probes overlap. Treat final numbers above as 503/504 scoped proof, not a P95 guarantee for all resource sets.
+
+**Next minimal work**:
+
+1. Profile `resourceShell` SQL for 503 and a 6-resource board under a quiet Pi5 window.
+2. Decide whether the next safe lever is a sort/lookup index, a materialized shell ordering key, or a narrower row-selection query for `allowResourceOnly=true`.
+3. Keep `LEADERBOARD_BOARD_PERF_LOG` opt-in only; standard deploys remove manual `.env` edits, and measurement sessions must restore the flag to OFF.
 
 ## Local Notes JA
 
