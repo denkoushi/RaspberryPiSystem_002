@@ -38,6 +38,7 @@ import {
   resolveNetworkLeaderboardBoardPagingComplete
 } from './leaderboardBoardDisplayPolicy';
 import {
+  buildLeaderboardShellDisplayFreshnessKey,
   isLeaderboardShellReadyForAppend,
   resolveLeaderboardShellForDisplay,
   shouldSuppressLeaderboardShellPlaceholder
@@ -172,6 +173,10 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     () => (boardQueryParams != null ? JSON.stringify(boardQueryParams) : ''),
     [boardQueryParams]
   );
+  const displayFreshnessParamsKey = useMemo(
+    () => buildLeaderboardShellDisplayFreshnessKey(boardQueryParams),
+    [boardQueryParams]
+  );
   const logClientPerfEvent = useLeaderboardBoardClientPerfLogger({
     paramsKey,
     resourceCds: orderedResourceCds
@@ -194,6 +199,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const appendOverrideParamsKeyRef = useRef<string | null>(null);
   const latestParamsKeyRef = useRef<string>(paramsKey);
   const lastCommittedParamsKeyRef = useRef<string | null>(null);
+  const lastCommittedDisplayFreshnessParamsKeyRef = useRef<string | null>(null);
 
   latestParamsKeyRef.current = paramsKey;
 
@@ -252,16 +258,26 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   useEffect(() => {
     if (boardQuery.isSuccess && !boardQuery.isPlaceholderData) {
       lastCommittedParamsKeyRef.current = paramsKey;
+      lastCommittedDisplayFreshnessParamsKeyRef.current = displayFreshnessParamsKey;
     }
-  }, [boardQuery.isPlaceholderData, boardQuery.isSuccess, paramsKey]);
+  }, [boardQuery.isPlaceholderData, boardQuery.isSuccess, displayFreshnessParamsKey, paramsKey]);
 
   const suppressPlaceholderShell = shouldSuppressLeaderboardShellPlaceholder({
     paramsKey,
     isPlaceholderData: boardQuery.isPlaceholderData,
     lastCommittedParamsKey: lastCommittedParamsKeyRef.current
   });
+  const suppressDisplayPlaceholderShell = shouldSuppressLeaderboardShellPlaceholder({
+    paramsKey: displayFreshnessParamsKey,
+    isPlaceholderData: boardQuery.isPlaceholderData,
+    lastCommittedParamsKey: lastCommittedDisplayFreshnessParamsKeyRef.current
+  });
 
   const resolvedShell = resolveLeaderboardShellForDisplay(boardQuery.data, suppressPlaceholderShell);
+  const resolvedDisplayShell = resolveLeaderboardShellForDisplay(
+    boardQuery.data,
+    suppressDisplayPlaceholderShell
+  );
 
   const shellFingerprint = useMemo(
     () => fingerprintLeaderboardBoardShell(resolvedShell),
@@ -274,6 +290,10 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     override: appendOverrideRef.current
   });
   const networkDisplayBoard = pickLeaderboardBoardForDisplay(resolvedShell, scopedAppendOverride);
+  const placeholderDisplayBoard = pickLeaderboardBoardForDisplay(
+    resolvedDisplayShell,
+    scopedAppendOverride
+  );
 
   const boardNetworkSyncToken = useMemo(() => {
     if (!boardQuery.isSuccess || boardQuery.isPlaceholderData) {
@@ -341,7 +361,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   );
 
   const {
-    displayBoard,
+    displayBoard: cacheOrNetworkDisplayBoard,
     displayDecorations,
     isShowingCachedData,
     cacheSyncWarning,
@@ -361,6 +381,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     networkBoardComplete,
     isBackgroundRevalidating
   });
+  const displayBoard = cacheOrNetworkDisplayBoard ?? placeholderDisplayBoard;
 
   const resolvedShellRef = useRef(resolvedShell);
   resolvedShellRef.current = resolvedShell;

@@ -1,4 +1,7 @@
-import type { ProductionScheduleLeaderboardBoardResponse } from '../../../api/client';
+import type {
+  KioskProductionScheduleLeaderboardBoardQueryParams,
+  ProductionScheduleLeaderboardBoardResponse
+} from '../../../api/client';
 
 export type LeaderboardShellPlaceholderSuppressInput = {
   paramsKey: string;
@@ -17,6 +20,19 @@ export function shouldSuppressLeaderboardShellPlaceholder(
   if (!input.isPlaceholderData) return false;
   if (input.lastCommittedParamsKey == null) return false;
   return input.lastCommittedParamsKey !== input.paramsKey;
+}
+
+/**
+ * 表示継続の鮮度判定用 key。`includeLabor` は行の集合・並びを変えないため、
+ * 旧 shell を表示したまま労務付き shell の再取得を待てる。
+ */
+export function buildLeaderboardShellDisplayFreshnessKey(
+  params: KioskProductionScheduleLeaderboardBoardQueryParams | undefined
+): string {
+  if (params == null) return '';
+  const { includeLabor: _includeLabor, ...displayFreshnessParams } = params;
+  void _includeLabor;
+  return JSON.stringify(displayFreshnessParams);
 }
 
 export function resolveLeaderboardShellForDisplay(

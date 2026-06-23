@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildLeaderboardShellDisplayFreshnessKey,
   isLeaderboardShellReadyForAppend,
   resolveLeaderboardShellForDisplay,
   shouldSuppressLeaderboardShellPlaceholder
@@ -57,6 +58,48 @@ describe('shouldSuppressLeaderboardShellPlaceholder', () => {
         lastCommittedParamsKey: 'k1'
       })
     ).toBe(false);
+  });
+});
+
+describe('buildLeaderboardShellDisplayFreshnessKey', () => {
+  it('includeLabor だけの差分は同一 key にする', () => {
+    const base = {
+      allowResourceOnly: true,
+      pageSize: 80,
+      boardResourceCds: '581,305',
+      includeDecorations: false,
+      deferTotals: true
+    };
+
+    expect(
+      buildLeaderboardShellDisplayFreshnessKey({
+        ...base,
+        includeLabor: false
+      })
+    ).toBe(
+      buildLeaderboardShellDisplayFreshnessKey({
+        ...base,
+        includeLabor: true
+      })
+    );
+  });
+
+  it('検索条件の差分は別 key にする', () => {
+    const base = {
+      allowResourceOnly: true,
+      pageSize: 80,
+      boardResourceCds: '581,305',
+      includeLabor: false,
+      includeDecorations: false,
+      deferTotals: true
+    };
+
+    expect(buildLeaderboardShellDisplayFreshnessKey(base)).not.toBe(
+      buildLeaderboardShellDisplayFreshnessKey({
+        ...base,
+        q: 'BA1S5308'
+      })
+    );
   });
 });
 

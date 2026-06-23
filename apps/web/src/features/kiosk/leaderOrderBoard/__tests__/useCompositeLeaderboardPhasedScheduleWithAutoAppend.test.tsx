@@ -686,6 +686,80 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     expect(latest?.feedMounts).toBeNull();
   });
 
+  it('includeLabor だけ変わる placeholder は行を残して loading に戻さない', async () => {
+    const shell = boardPayload({
+      total: 2,
+      rows: [row('a1', 'R1'), row('a2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 }]
+    });
+    let includeLabor = false;
+    let boardResult: BoardHookQueryResult = {
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000
+    };
+    installBoardHookMock(() => boardResult);
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          includeLabor
+        },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+    });
+
+    boardResult = {
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: true,
+      isSuccess: true,
+      isPlaceholderData: true,
+      dataUpdatedAt: 1000
+    };
+
+    act(() => {
+      includeLabor = true;
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+    });
+
+    const params = boardHookMock.mock.calls.at(-1)?.[0] as { includeLabor?: boolean };
+    expect(params.includeLabor).toBe(true);
+    expect(postContinue).not.toHaveBeenCalled();
+  });
+
   it('hasMore が続く間は continue を複数回呼び切ってから listIncomplete を下ろす', async () => {
     const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 5,
