@@ -7,6 +7,12 @@ export type LeaderboardLaborMinutesLookupContext = {
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   processChangeResidualMode?: ProcessChangeResidualMode;
   processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
+  /**
+   * Optional generation-scoped cache key for ProductNo+FKOJUN labor lookups.
+   * Leaderboard shell/continue passes the snapshot generation token so cached
+   * labor rows expire logically when source schedule data changes.
+   */
+  cacheScopeKey?: string;
 };
 
 /**

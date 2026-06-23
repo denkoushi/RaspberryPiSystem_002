@@ -8,7 +8,10 @@ vi.mock('../../../../lib/prisma.js', () => ({
 }));
 
 import { prisma } from '../../../../lib/prisma.js';
-import { attachLeaderboardLaborMinutes } from '../leaderboard-labor-minutes.service.js';
+import {
+  attachLeaderboardLaborMinutes,
+  clearLeaderboardLaborMinutesLookupCacheForTests
+} from '../leaderboard-labor-minutes.service.js';
 
 import type { ProductionScheduleRow } from '../../production-schedule-query.service.js';
 
@@ -37,6 +40,7 @@ function mkRow(
 describe('attachLeaderboardLaborMinutes', () => {
   beforeEach(() => {
     vi.mocked(prisma.$queryRaw).mockReset();
+    clearLeaderboardLaborMinutesLookupCacheForTests();
   });
 
   it('returns empty array without querying when input is empty', async () => {
@@ -160,5 +164,51 @@ describe('attachLeaderboardLaborMinutes', () => {
     const out = await attachLeaderboardLaborMinutes(rows, lookupContext);
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
     expect(out.map((r) => r.laborRequiredMinutes)).toEqual([30, 30]);
+  });
+
+  it('reuses cached labor minutes within the same generation scope', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([
+      { productNo: 'P1', fkojun: '10', laborMinutes: 30 }
+    ] as never);
+
+    const scopedContext = {
+      ...lookupContext,
+      cacheScopeKey: 'generation-1'
+    };
+    const row = mkRow({
+      id: 'a',
+      rowData: { FSIGENCD: '021', ProductNo: 'P1', FKOJUN: '10', FSIGENSHOYORYO: '100' }
+    });
+
+    const first = await attachLeaderboardLaborMinutes([row], scopedContext);
+    const second = await attachLeaderboardLaborMinutes([{ ...row, id: 'b' }], scopedContext);
+
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(first[0]?.laborRequiredMinutes).toBe(30);
+    expect(second[0]?.laborRequiredMinutes).toBe(30);
+  });
+
+  it('does not reuse cached labor minutes across generation scopes', async () => {
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ productNo: 'P1', fkojun: '10', laborMinutes: 30 }] as never)
+      .mockResolvedValueOnce([{ productNo: 'P1', fkojun: '10', laborMinutes: 40 }] as never);
+
+    const row = mkRow({
+      id: 'a',
+      rowData: { FSIGENCD: '021', ProductNo: 'P1', FKOJUN: '10', FSIGENSHOYORYO: '100' }
+    });
+
+    const first = await attachLeaderboardLaborMinutes([row], {
+      ...lookupContext,
+      cacheScopeKey: 'generation-1'
+    });
+    const second = await attachLeaderboardLaborMinutes([{ ...row, id: 'b' }], {
+      ...lookupContext,
+      cacheScopeKey: 'generation-2'
+    });
+
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(first[0]?.laborRequiredMinutes).toBe(30);
+    expect(second[0]?.laborRequiredMinutes).toBe(40);
   });
 });

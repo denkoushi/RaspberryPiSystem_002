@@ -16,12 +16,88 @@ import {
 import { parseLeaderboardLaborMinutesValue } from './leaderboard-labor-minutes-parse.js';
 
 const LABOR_RESOURCE_CD = '10';
+const LABOR_LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000;
+const LABOR_LOOKUP_CACHE_MAX_ENTRIES = 20_000;
 
 type LaborLookupRow = {
   productNo: string;
   fkojun: string;
   laborMinutes: number;
 };
+
+type LaborLookupCacheEntry = {
+  expiresAtMs: number;
+  laborMinutes: number;
+};
+
+const laborLookupCache = new Map<string, LaborLookupCacheEntry>();
+
+function buildScopedLaborLookupCacheKey(params: {
+  scopeKey: string;
+  productNo: string;
+  fkojun: string;
+}): string {
+  return `${params.scopeKey}\0${buildLeaderboardLaborLookupKey(params.productNo, params.fkojun)}`;
+}
+
+function pruneExpiredLaborLookupCache(now = Date.now()): void {
+  for (const [key, entry] of laborLookupCache) {
+    if (entry.expiresAtMs < now) {
+      laborLookupCache.delete(key);
+    }
+  }
+  if (laborLookupCache.size <= LABOR_LOOKUP_CACHE_MAX_ENTRIES) return;
+  const overflow = laborLookupCache.size - LABOR_LOOKUP_CACHE_MAX_ENTRIES;
+  let removed = 0;
+  for (const key of laborLookupCache.keys()) {
+    laborLookupCache.delete(key);
+    removed += 1;
+    if (removed >= overflow) break;
+  }
+}
+
+function readCachedLaborMinutes(params: {
+  scopeKey: string | undefined;
+  productNo: string;
+  fkojun: string;
+  now: number;
+}): number | undefined {
+  const scopeKey = params.scopeKey?.trim();
+  if (!scopeKey) return undefined;
+  const cacheKey = buildScopedLaborLookupCacheKey({
+    scopeKey,
+    productNo: params.productNo,
+    fkojun: params.fkojun
+  });
+  const hit = laborLookupCache.get(cacheKey);
+  if (!hit || hit.expiresAtMs < params.now) {
+    laborLookupCache.delete(cacheKey);
+    return undefined;
+  }
+  return hit.laborMinutes;
+}
+
+function writeCachedLaborMinutes(params: {
+  scopeKey: string | undefined;
+  productNo: string;
+  fkojun: string;
+  laborMinutes: number;
+  now: number;
+}): void {
+  const scopeKey = params.scopeKey;
+  if (!scopeKey) return;
+  laborLookupCache.set(
+    buildScopedLaborLookupCacheKey({
+      scopeKey,
+      productNo: params.productNo,
+      fkojun: params.fkojun
+    }),
+    {
+      expiresAtMs: params.now + LABOR_LOOKUP_CACHE_TTL_MS,
+      laborMinutes: params.laborMinutes
+    }
+  );
+}
 
 function rowDataRecord(row: ProductionScheduleRow): Record<string, unknown> {
   const data = row.rowData;
@@ -79,7 +155,28 @@ async function fetchLaborMinutesByProductNoFkojun(params: {
   const out = new Map<string, number>();
   if (keys.length === 0) return out;
 
-  const valueTuples = keys.map(
+  const now = Date.now();
+  const cacheScopeKey = lookupContext.cacheScopeKey?.trim() || undefined;
+  if (cacheScopeKey) {
+    pruneExpiredLaborLookupCache(now);
+  }
+  const missingKeys: Array<{ productNo: string; fkojun: string }> = [];
+  for (const key of keys) {
+    const cached = readCachedLaborMinutes({
+      scopeKey: cacheScopeKey,
+      productNo: key.productNo,
+      fkojun: key.fkojun,
+      now
+    });
+    if (cached === undefined) {
+      missingKeys.push(key);
+      continue;
+    }
+    out.set(buildLeaderboardLaborLookupKey(key.productNo, key.fkojun), cached);
+  }
+  if (missingKeys.length === 0) return out;
+
+  const valueTuples = missingKeys.map(
     (k) => Prisma.sql`(${k.productNo}, ${k.fkojun})`
   );
   const requiredMinutesSql = buildPositiveCsvDashboardRowRequiredMinutesSql();
@@ -109,10 +206,35 @@ async function fetchLaborMinutesByProductNoFkojun(params: {
     const fkojun = String(row.fkojun ?? '').trim();
     if (!productNo.length || !fkojun.length) continue;
     const minutes = Number(row.laborMinutes);
+    const normalizedMinutes = Number.isFinite(minutes) && minutes > 0 ? minutes : 0;
     out.set(
       buildLeaderboardLaborLookupKey(productNo, fkojun),
-      Number.isFinite(minutes) && minutes > 0 ? minutes : 0
+      normalizedMinutes
     );
+    writeCachedLaborMinutes({
+      scopeKey: cacheScopeKey,
+      productNo,
+      fkojun,
+      laborMinutes: normalizedMinutes,
+      now
+    });
+  }
+
+  for (const key of missingKeys) {
+    const lookupKey = buildLeaderboardLaborLookupKey(key.productNo, key.fkojun);
+    if (out.has(lookupKey)) continue;
+    out.set(lookupKey, 0);
+    writeCachedLaborMinutes({
+      scopeKey: cacheScopeKey,
+      productNo: key.productNo,
+      fkojun: key.fkojun,
+      laborMinutes: 0,
+      now
+    });
+  }
+
+  if (cacheScopeKey && laborLookupCache.size > LABOR_LOOKUP_CACHE_MAX_ENTRIES) {
+    pruneExpiredLaborLookupCache(now);
   }
 
   return out;
@@ -171,4 +293,9 @@ export async function attachLeaderboardLaborMinutes(
   return rows.map((row) =>
     rowHasLaborMetadata(row) ? { ...row } : applyLaborMinutesToRow(row, laborMap)
   );
+}
+
+/** テスト用 */
+export function clearLeaderboardLaborMinutesLookupCacheForTests(): void {
+  laborLookupCache.clear();
 }

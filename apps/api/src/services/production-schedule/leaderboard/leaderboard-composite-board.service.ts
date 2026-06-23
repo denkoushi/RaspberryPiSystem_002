@@ -485,7 +485,8 @@ export async function fetchLeaderboardCompositeBoardShell(
         laborLookupContext: {
           leaderboardMaterializedBaseWhere,
           processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
-          processChangeResidualStrongEvidenceKeys
+          processChangeResidualStrongEvidenceKeys,
+          cacheScopeKey: generationToken
         }
       }),
     (attached) => ({
@@ -799,7 +800,8 @@ export async function continueLeaderboardCompositeBoard(
         laborLookupContext: {
           leaderboardMaterializedBaseWhere,
           processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
-          processChangeResidualStrongEvidenceKeys
+          processChangeResidualStrongEvidenceKeys,
+          cacheScopeKey: generationToken
         }
       }),
     (attached) => ({
