@@ -459,7 +459,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const { handleAutoRank, autoRankDisabled, autoRankPending } = useLeaderBoardSlotAutoRank({
     seibanEvalEnabled,
-    listIncomplete,
     interactionLocked: isInteractionLocked,
     orderPending,
     sortedGrouped,
@@ -665,7 +664,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               footerResourceChipsByPartKey={footerResourceChipsByPartKey}
               seibanEvalEnabled={seibanEvalEnabled}
               ganttEnabled={ganttEnabled}
-              listIncomplete={listIncomplete}
               autoRankDisabled={autoRankDisabled}
               autoRankPending={autoRankPending}
               onAutoRank={handleAutoRankSlot}

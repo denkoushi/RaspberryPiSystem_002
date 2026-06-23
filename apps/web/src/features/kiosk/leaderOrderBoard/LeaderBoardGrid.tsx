@@ -36,7 +36,6 @@ export type LeaderBoardGridProps = {
   /** 基準時間帯解決用（スロット文脈） */
   siteKey?: string;
   deviceScopeKey?: string;
-  listIncomplete?: boolean;
   autoRankDisabled?: boolean;
   autoRankPending?: boolean;
   onAutoRank?: (resourceCd: string) => void;
@@ -68,7 +67,6 @@ type SlotCardProps = {
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
   seibanEvalEnabled?: boolean;
   ganttEnabled?: boolean;
-  listIncomplete?: boolean;
   autoRankDisabled?: boolean;
   autoRankPending?: boolean;
   onAutoRank?: (resourceCd: string) => void;
@@ -174,7 +172,6 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   ganttEnabled = false,
   siteKey = '',
   deviceScopeKey = '',
-  listIncomplete = false,
   autoRankDisabled = false,
   autoRankPending = false,
   onAutoRank,
@@ -247,7 +244,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             footerResourceChipsByPartKey={footerResourceChipsByPartKey}
             seibanEvalEnabled={seibanEvalEnabled}
             ganttEnabled={ganttEnabled}
-            autoRankDisabled={autoRankDisabled || rowControlsLocked || listIncomplete}
+            autoRankDisabled={autoRankDisabled || rowControlsLocked}
             autoRankPending={autoRankPending}
             onAutoRank={onAutoRank}
             laborEnabled={Boolean(laborEnabledBySlotIndex[slotIndex])}
