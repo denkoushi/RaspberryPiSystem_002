@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef } from 'react';
 import { postKioskProductionScheduleLeaderboardClientPerf } from '../../../api/client';
 
 const STORAGE_KEY = 'leaderboardBoardPerfLog';
+let fallbackSessionCounter = 0;
 
 export type LeaderboardBoardClientPerfDetailValue = string | number | boolean | null;
 
@@ -38,10 +39,17 @@ function fnv1a(input: string): string {
 }
 
 function createSessionId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
+  const webCrypto = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+  if (typeof webCrypto?.randomUUID === 'function') {
+    return webCrypto.randomUUID();
   }
-  return `lb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  if (typeof webCrypto?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    webCrypto.getRandomValues(bytes);
+    return `lb-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  }
+  fallbackSessionCounter += 1;
+  return `lb-${Date.now().toString(36)}-${fallbackSessionCounter.toString(36)}`;
 }
 
 export function isLeaderboardBoardClientPerfEnabled(): boolean {
