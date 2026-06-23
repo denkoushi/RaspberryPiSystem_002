@@ -284,7 +284,7 @@ category: knowledge-base
 
 **Operational note**: `LEADERBOARD_BOARD_PERF_LOG` was enabled only during measurement and restored to `off`; post-measure API health returned `status: ok`. If the physical browser still takes materially longer than the direct API chain, next evidence should come from browser Network/render timing rather than more server-only DB changes.
 
-**First usable target follow-up**: User target is **「最初に使える状態」10秒以内**, not full append completion. Web Phase 2 SWR should use terminal cache only to cover initial blank loading; once fresh `leaderboard-board` shell rows arrive, it should switch to network rows even while append/decorations continue. With the measured 6-slot shell (**3.36s warm**, **8.62s first cold after restart**) this makes first fresh row operations API-bound to the shell rather than blocked on the ~20-30s continue chain.
+**First usable target follow-up**: User target is **「最初に使える状態」10秒以内**, not full append completion. Web Phase 2 SWR now uses terminal cache only to cover initial blank loading; once fresh `leaderboard-board` shell rows arrive, it switches to network rows even while append/decorations continue. With the measured 6-slot shell (**3.36s warm**, **8.62s first cold after restart**, **8.49s post-deploy restored-normal-env cold shell on `429049ea`**) this makes first fresh row operations API-bound to the shell rather than blocked on the ~20-30s continue chain.
 
 ## Troubleshooting
 

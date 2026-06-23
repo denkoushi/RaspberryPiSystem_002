@@ -10,6 +10,13 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-06-23 · **キオスク順位ボード first usable 10秒化** · **Web** · **Pi5 反映済**） {#kiosk-leaderboard-first-usable-shell-swr-2026-06-23}
+
+- **変更概要（正本）**: [性能回復plan §First usable state target](../plans/leaderboard-defer-totals-performance-recovery.md#first-usable-state-target2026-06-23-follow-up) · [KB-369 §6-slot resource board split](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md#six-slot-resource-board-split-after-residual-fixes-2026-06-23--pr-464) · PR **#464** · HEAD **`429049ea`** · Pi5 run **`20260623-125453-28293`** · post-deploy health **OK**
+  - 端末キャッシュ Phase 2 SWR は初期空白のみ cache で埋め、fresh `leaderboard-board` shell の行が届いたら append/decorations 完走前でも network rows を表示する。
+  - **狙いは「最初に使える状態」10秒以内**。全件 append 完走は引き続き background continue に依存する。
+- **代表実測（Pi5 6 slot `581,305,589,584,588,586`, API container local, `includeDecorations=false`, `deferTotals=true`）**: deploy 後 cold shell **8.49s**（480 rows / 6 hasMore slots）· health **`status: ok`** · `LEADERBOARD_BOARD_PERF_LOG` は測定後 OFF。
+
 ### 補足（2026-06-23 · **キオスク順位ボード residual evidence / summary index** · **API + DB** · **Pi5 反映済**） {#kiosk-leaderboard-residual-evidence-index-2026-06-23}
 
 - **変更概要（正本）**: [性能回復plan §Pi5 residual evidence persistence](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) · [KB-369 §Process-change residual evidence persistence](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md#process-change-residual-evidence-persistence2026-06-23--pr-464) · PR **#464** · HEAD **`259a8336`** · Pi5 run **`20260623-102404`** · post-deploy health **OK**
