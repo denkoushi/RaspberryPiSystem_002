@@ -193,6 +193,153 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     ]);
   });
 
+  it('skips global winner materialization on machine-only deferred shell with no residual evidence', async () => {
+    const resolveMaterializedSpy = vi
+      .spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere')
+      .mockResolvedValue(Prisma.sql`TRUE`);
+    const residualSummarySpy = vi.spyOn(residualService, 'fetchLeaderboardProcessChangeResidualSummary');
+    vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
+      keys: new Set<string>(),
+      keyArrays: { productNos: [], fkojuns: [], resourceCds: [] },
+      evidenceByKey: new Map(),
+      rawMailRowsRevision: 'revision-1'
+    });
+    vi.spyOn(generation, 'readLeaderboardShellSnapshotGenerationTokenDetails').mockResolvedValue({
+      generationToken: '{"generation":"1"}',
+      fkojunstStatusMailRowsRevision: 'revision-1'
+    });
+    const shellSpy = vi.spyOn(queryService, 'listLeaderboardShellProductionScheduleRows').mockImplementation(async (params) => ({
+      page: 1,
+      pageSize: params.pageSize,
+      rows: [{ id: `row-${params.resourceCds[0]}`, rowData: { FSIGENCD: params.resourceCds[0], FSIGENSHOYORYO: '5' } }] as any,
+      snapshotId: `snap-${params.resourceCds[0]}`,
+      nextCursor: 1,
+      hasMore: true
+    }));
+    const countSpy = vi.spyOn(queryService, 'countProductionScheduleDashboardVisibleRowsFromListFilters');
+    const performanceSink = vi.fn();
+
+    const result = await fetchLeaderboardCompositeBoardShell(
+      {
+        listParamsBase: {
+          queryText: '',
+          productNos: [],
+          locationKey: 'loc-1'
+        },
+        boardResourceCds: ['1', '2'],
+        page: 1,
+        pageSize: 50,
+        includeDecorations: false,
+        includeLabor: false,
+        deferTotals: true
+      },
+      {
+        snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 10_000 }),
+        performanceSink
+      }
+    );
+
+    expect(resolveMaterializedSpy).not.toHaveBeenCalled();
+    expect(residualSummarySpy).not.toHaveBeenCalled();
+    expect(countSpy).not.toHaveBeenCalled();
+    expect(shellSpy).toHaveBeenCalledTimes(2);
+    for (const call of shellSpy.mock.calls) {
+      expect(call[1]?.leaderboardWinnerBaseStrategy).toBe('correlated');
+      expect(call[1]?.leaderboardMaterializedBaseWhere).toBeUndefined();
+    }
+    expect(result.totalsDeferred).toBe(true);
+    expect(result.processChangeResidualTotal).toBe(0);
+    expect(result.processChangeResidualRows).toEqual([]);
+    expect(result.rows).toEqual([
+      expect.objectContaining({ id: 'row-1', laborRequiredMinutes: 0, machineRequiredMinutes: 5 }),
+      expect.objectContaining({ id: 'row-2', laborRequiredMinutes: 0, machineRequiredMinutes: 5 })
+    ]);
+    expect(performanceSink.mock.calls.map(([event]) => event.phase)).not.toContain('materializedBaseWhere');
+    expect(performanceSink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint: 'shell',
+        phase: 'requestTotal',
+        includeLabor: false,
+        deferredTotals: true
+      })
+    );
+  });
+
+  it('uses correlated winner base for deferred shell residual summary without global materialization', async () => {
+    const correlatedBaseWhere = Prisma.sql`TRUE /* correlated */`;
+    const buildCorrelatedSpy = vi
+      .spyOn(rowResolver, 'buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner')
+      .mockReturnValue(correlatedBaseWhere);
+    const resolveMaterializedSpy = vi
+      .spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere')
+      .mockResolvedValue(Prisma.sql`TRUE /* materialized */`);
+    vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
+      keys: new Set<string>(['P1\u0000K1\u0000R1']),
+      keyArrays: { productNos: ['P1'], fkojuns: ['K1'], resourceCds: ['R1'] },
+      evidenceByKey: new Map(),
+      rawMailRowsRevision: 'revision-1'
+    });
+    vi.spyOn(generation, 'readLeaderboardShellSnapshotGenerationTokenDetails').mockResolvedValue({
+      generationToken: '{"generation":"1"}',
+      fkojunstStatusMailRowsRevision: 'revision-1'
+    });
+    const residualSummarySpy = vi
+      .spyOn(residualService, 'fetchLeaderboardProcessChangeResidualSummary')
+      .mockResolvedValue({
+        processChangeResidualTotal: 1,
+        processChangeResidualRows: [{ id: 'residual-1' } as any],
+        processChangeResidualRepresentativeLimit: 20
+      });
+    vi.spyOn(queryService, 'listLeaderboardShellProductionScheduleRows').mockResolvedValue({
+      page: 1,
+      pageSize: 50,
+      rows: [{ id: 'row-1', rowData: { FSIGENCD: '1', FSIGENSHOYORYO: '5' } }] as any,
+      snapshotId: 'snap-1',
+      nextCursor: 1,
+      hasMore: true
+    });
+    const performanceSink = vi.fn();
+
+    const result = await fetchLeaderboardCompositeBoardShell(
+      {
+        listParamsBase: {
+          queryText: '',
+          productNos: [],
+          locationKey: 'loc-1'
+        },
+        boardResourceCds: ['1'],
+        page: 1,
+        pageSize: 50,
+        includeDecorations: false,
+        includeLabor: false,
+        deferTotals: true
+      },
+      {
+        snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 10_000 }),
+        performanceSink
+      }
+    );
+
+    expect(resolveMaterializedSpy).not.toHaveBeenCalled();
+    expect(buildCorrelatedSpy).toHaveBeenCalledTimes(1);
+    expect(residualSummarySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resourceCds: ['1'],
+        leaderboardMaterializedBaseWhere: correlatedBaseWhere
+      })
+    );
+    expect(result.processChangeResidualTotal).toBe(1);
+    expect(result.processChangeResidualRows).toEqual([{ id: 'residual-1' }]);
+    expect(performanceSink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint: 'shell',
+        phase: 'processChangeResidualSummary',
+        winnerBaseStrategy: 'correlated'
+      })
+    );
+    expect(performanceSink.mock.calls.map(([event]) => event.phase)).not.toContain('materializedBaseWhere');
+  });
+
   it('emits opt-in performance events for board shell phases', async () => {
     vi.spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere').mockResolvedValue(Prisma.empty);
     vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({

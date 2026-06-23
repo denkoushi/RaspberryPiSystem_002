@@ -12,7 +12,11 @@ import {
   type ProductionScheduleRow
 } from '../production-schedule-query.service.js';
 import type { Prisma } from '@prisma/client';
-import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
+import {
+  buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner,
+  resolveLeaderboardMaterializedBaseWhere
+} from '../row-resolver/index.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { prisma } from '../../../lib/prisma.js';
 import {
   decorateLeaderboardCompositeBoardContinue,
@@ -36,7 +40,10 @@ import {
   type ProcessChangeResidualStrongEvidenceMaterializationTelemetryEvent
 } from './leaderboard-process-change-residual.materialization.js';
 import { readLeaderboardShellSnapshotGenerationTokenDetails } from './leaderboard-shell-snapshot-generation.js';
-import type { ProcessChangeResidualEvidence } from './leaderboard-process-change-residual.types.js';
+import {
+  LEADERBOARD_PROCESS_CHANGE_RESIDUAL_REPRESENTATIVE_LIMIT,
+  type ProcessChangeResidualEvidence
+} from './leaderboard-process-change-residual.types.js';
 import {
   attachLeaderboardLaborMinutes,
   attachLeaderboardMachineOnlyMinutes,
@@ -374,26 +381,32 @@ export async function fetchLeaderboardCompositeBoardShell(
         })
     );
   const processChangeResidualStrongEvidenceKeys = processChangeResidualMaterialization.keys;
-  const leaderboardMaterializedBaseWhere = await measureLeaderboardBoardPhase(
-    sink,
-    {
-      endpoint: 'shell',
-      phase: 'materializedBaseWhere',
-      resourceCount: params.boardResourceCds.length
-    },
-    () => resolveLeaderboardMaterializedBaseWhere(prisma)
-  );
+  let leaderboardMaterializedBaseWherePromise: Promise<Prisma.Sql> | undefined;
+  const getLeaderboardMaterializedBaseWhere = () => {
+    leaderboardMaterializedBaseWherePromise ??= measureLeaderboardBoardPhase(
+      sink,
+      {
+        endpoint: 'shell',
+        phase: 'materializedBaseWhere',
+        resourceCount: params.boardResourceCds.length
+      },
+      () => resolveLeaderboardMaterializedBaseWhere(prisma)
+    );
+    return leaderboardMaterializedBaseWherePromise;
+  };
 
   const countPromises = deferTotals
     ? []
     : params.boardResourceCds.map((resourceCd) => {
-        const promise = countLeaderboardBoardShellResourceTotal(
-          params.listParamsBase,
-          {
-            resourceCd,
-            processChangeResidualStrongEvidenceKeys,
-            leaderboardMaterializedBaseWhere
-          }
+        const promise = getLeaderboardMaterializedBaseWhere().then((leaderboardMaterializedBaseWhere) =>
+          countLeaderboardBoardShellResourceTotal(
+            params.listParamsBase,
+            {
+              resourceCd,
+              processChangeResidualStrongEvidenceKeys,
+              leaderboardMaterializedBaseWhere
+            }
+          )
         );
         settleUnusedLeaderboardBoardShellCount(promise);
         return promise;
@@ -439,15 +452,30 @@ export async function fetchLeaderboardCompositeBoardShell(
       {
         endpoint: 'shell',
         phase: 'processChangeResidualSummary',
-        resourceCount: params.boardResourceCds.length
+        resourceCount: params.boardResourceCds.length,
+        winnerBaseStrategy: deferTotals ? 'correlated' : 'materialized'
       },
-      () =>
-        fetchLeaderboardProcessChangeResidualSummary({
+      async () => {
+        if (processChangeResidualStrongEvidenceKeys.size === 0) {
+          return {
+            processChangeResidualTotal: 0,
+            processChangeResidualRows: [] as NonNullable<LeaderboardBoardReadResult['processChangeResidualRows']>,
+            processChangeResidualRepresentativeLimit:
+              LEADERBOARD_PROCESS_CHANGE_RESIDUAL_REPRESENTATIVE_LIMIT
+          };
+        }
+        const leaderboardMaterializedBaseWhere = deferTotals
+          ? buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner(
+              PRODUCTION_SCHEDULE_DASHBOARD_ID
+            )
+          : await getLeaderboardMaterializedBaseWhere();
+        return fetchLeaderboardProcessChangeResidualSummary({
           ...params.listParamsBase,
           resourceCds: [...params.boardResourceCds],
           leaderboardMaterializedBaseWhere,
           processChangeResidualMaterialization
-        }),
+        });
+      },
       (summary) => ({
         total: summary.processChangeResidualTotal,
         rowCount: summary.processChangeResidualRows.length
@@ -493,10 +521,11 @@ export async function fetchLeaderboardCompositeBoardShell(
       rowCount: mergedRowsRaw.length,
       includeLabor
     },
-    () => {
+    async () => {
       if (!includeLabor) {
-        return Promise.resolve({ rows: attachLeaderboardMachineOnlyMinutes(mergedRowsRaw) });
+        return { rows: attachLeaderboardMachineOnlyMinutes(mergedRowsRaw) };
       }
+      const leaderboardMaterializedBaseWhere = await getLeaderboardMaterializedBaseWhere();
       return attachLaborToBoardPayload({
         rows: mergedRowsRaw,
         laborLookupContext: {
