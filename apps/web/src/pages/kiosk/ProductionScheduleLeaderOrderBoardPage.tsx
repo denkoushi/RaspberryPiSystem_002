@@ -144,6 +144,17 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       history: []
     });
 
+  const { laborEnabledBySlotIndex, toggleLaborForSlot } = usePersistedLeaderBoardLaborMode(
+    siteKey,
+    activeDeviceScopeKey,
+    slotCount
+  );
+
+  const includeLaborInLeaderboardRequest = useMemo(
+    () => laborEnabledBySlotIndex.some(Boolean),
+    [laborEnabledBySlotIndex]
+  );
+
   const leaderboardPhasedBase = useMemo(() => {
     const { resourceCds: _omitResourceCds, q: _omitQ, ...rest } = baseQueryParams;
     void _omitResourceCds;
@@ -152,11 +163,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       ...rest,
       pageSize: LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE,
       allowResourceOnly: true,
+      includeLabor: includeLaborInLeaderboardRequest,
       ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
         : {})
     };
-  }, [activeDeviceScopeKey, baseQueryParams, macManualOrderV2]);
+  }, [activeDeviceScopeKey, baseQueryParams, includeLaborInLeaderboardRequest, macManualOrderV2]);
 
   const targetDeviceScopeKey =
     macManualOrderV2 && activeDeviceScopeKey.trim().length > 0 ? activeDeviceScopeKey.trim() : undefined;
@@ -322,12 +334,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   } = usePersistedLeaderBoardSeibanEval(siteKey, activeDeviceScopeKey, dueAssist.sharedHistory);
 
   const { ganttEnabled, toggleGanttMode } = usePersistedLeaderBoardGanttMode(siteKey, activeDeviceScopeKey);
-
-  const { laborEnabledBySlotIndex, toggleLaborForSlot } = usePersistedLeaderBoardLaborMode(
-    siteKey,
-    activeDeviceScopeKey,
-    slotCount
-  );
 
   const seibanEvalRankMap = useMemo(
     () => buildSeibanRankMapFromMergedOrder(mergedRegisteredSeibanOrder),

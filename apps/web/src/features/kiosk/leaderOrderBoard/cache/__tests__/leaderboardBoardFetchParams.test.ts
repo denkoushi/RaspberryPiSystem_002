@@ -15,12 +15,13 @@ describe('leaderboardBoardFetchParams', () => {
 
   it('base は q を除き light shell policy を付与', () => {
     const base = buildLeaderboardBoardBaseFetchParams({
-      phasedBase: { allowResourceOnly: true, pageSize: 80, q: 'OLD' },
+      phasedBase: { allowResourceOnly: true, pageSize: 80, q: 'OLD', includeLabor: false },
       boardResourceCds: ['R1', 'R2']
     });
     expect(base.q).toBeUndefined();
     expect(base.boardResourceCds).toBe('R1,R2');
     expect(base.includeDecorations).toBe(false);
+    expect(base.includeLabor).toBe(false);
     expect(base.deferTotals).toBe(true);
   });
 

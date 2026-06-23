@@ -118,6 +118,19 @@ export const productionScheduleLeaderboardIncludeDecorationsField = {
     })
 };
 
+/** board 集約: 人工数 lookup を同梱するか。省略時 true（後方互換）。 */
+export const productionScheduleLeaderboardIncludeLaborField = {
+  includeLabor: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((v): boolean => {
+      if (v === undefined) return true;
+      if (typeof v === 'boolean') return v;
+      const s = String(v).trim().toLowerCase();
+      return s !== 'false' && s !== '0';
+    })
+};
+
 /** 順位ボード集約 API: スロット順の資源 CD（カンマ区切り・重複除去はサーバ側 parseCsvList） */
 export const productionScheduleLeaderboardBoardQuerySchema = productionScheduleLeaderboardPhasedQuerySchema.extend({
   boardResourceCds: z.string().min(1).max(4000),
@@ -131,7 +144,8 @@ export const productionScheduleLeaderboardBoardQuerySchema = productionScheduleL
       const s = String(v).trim().toLowerCase();
       return s === 'true' || s === '1';
     }),
-  ...productionScheduleLeaderboardIncludeDecorationsField
+  ...productionScheduleLeaderboardIncludeDecorationsField,
+  ...productionScheduleLeaderboardIncludeLaborField
 });
 
 /** 集約 continue: 各スロットごとの snapshot / cursor（単一 continue と同じ制約をスライス単位で適用） */
@@ -144,6 +158,7 @@ export const productionScheduleLeaderboardBoardContinueBodySchema = productionSc
   .extend({
     boardResourceCds: z.string().min(1).max(4000),
     includeDecorations: z.boolean().optional().default(true),
+    includeLabor: z.boolean().optional().default(true),
     resourceSlices: z
       .array(
         z.object({

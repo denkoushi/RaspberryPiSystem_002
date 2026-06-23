@@ -10,6 +10,7 @@ vi.mock('../../../../lib/prisma.js', () => ({
 import { prisma } from '../../../../lib/prisma.js';
 import {
   attachLeaderboardLaborMinutes,
+  attachLeaderboardMachineOnlyMinutes,
   clearLeaderboardLaborMinutesLookupCacheForTests
 } from '../leaderboard-labor-minutes.service.js';
 
@@ -210,5 +211,30 @@ describe('attachLeaderboardLaborMinutes', () => {
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
     expect(first[0]?.laborRequiredMinutes).toBe(30);
     expect(second[0]?.laborRequiredMinutes).toBe(40);
+  });
+});
+
+describe('attachLeaderboardMachineOnlyMinutes', () => {
+  beforeEach(() => {
+    vi.mocked(prisma.$queryRaw).mockReset();
+  });
+
+  it('attaches machine minutes and zero labor without DB lookup', () => {
+    const rows = [
+      mkRow({
+        id: 'machine-1',
+        rowData: {
+          FSIGENCD: '021',
+          ProductNo: 'P1',
+          FKOJUN: '10',
+          FSIGENSHOYORYO: '400'
+        }
+      })
+    ];
+
+    const out = attachLeaderboardMachineOnlyMinutes(rows);
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(out[0]?.machineRequiredMinutes).toBe(400);
+    expect(out[0]?.laborRequiredMinutes).toBe(0);
   });
 });

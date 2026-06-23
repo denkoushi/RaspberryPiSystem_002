@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   postKioskProductionScheduleLeaderboardBoardContinue,
   type KioskProductionScheduleLeaderboardBoardQueryParams,
-  type KioskProductionScheduleLeaderboardPhasedQueryParams,
   type ProductionScheduleLeaderboardBoardResponse,
   type ProductionScheduleListResponse
 } from '../../../api/client';
@@ -14,7 +13,11 @@ import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardCon
 import { normalizeLeaderboardSeibanOrTokens } from './cache/filterLeaderboardBoardBySeibanOr';
 import { isLeaderboardSeibanOrClientFilterEnabled } from './cache/leaderboardBoardCacheConstants';
 import { resolveDisplayBoardMutationUpdate } from './cache/leaderboardBoardDisplayMutationCoordinator';
-import { buildLeaderboardBoardLegacyFetchParams, buildLeaderboardBoardBaseFetchParams } from './cache/leaderboardBoardFetchParams';
+import {
+  buildLeaderboardBoardLegacyFetchParams,
+  buildLeaderboardBoardBaseFetchParams,
+  type LeaderboardBoardPhasedBaseFetchParams
+} from './cache/leaderboardBoardFetchParams';
 import {
   isLeaderboardBoardDataSyncing,
   isLeaderboardDecorationSyncing
@@ -70,7 +73,7 @@ function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof 
  */
 export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   /** `resourceCds` / `boardResourceCds` を含めない（集約 params で上書きする） */
-  leaderboardPhasedBaseParams: KioskProductionScheduleLeaderboardPhasedQueryParams;
+  leaderboardPhasedBaseParams: LeaderboardBoardPhasedBaseFetchParams;
   /** スロット順など、画面上のカード並び */
   resourceCdsOrdered: string[];
   seibanOrFilters?: string[];
@@ -138,7 +141,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
 
   const boardQueryParams = useMemo((): KioskProductionScheduleLeaderboardBoardQueryParams | undefined => {
     if (!scheduleEnabled || resourceCdsOrderedKey.length === 0) return undefined;
-    const baseParams = JSON.parse(leaderboardPhasedBaseParamsKey) as KioskProductionScheduleLeaderboardPhasedQueryParams;
+    const baseParams = JSON.parse(leaderboardPhasedBaseParamsKey) as LeaderboardBoardPhasedBaseFetchParams;
     if (clientFilterEnabled) {
       return buildLeaderboardBoardBaseFetchParams({
         phasedBase: baseParams,

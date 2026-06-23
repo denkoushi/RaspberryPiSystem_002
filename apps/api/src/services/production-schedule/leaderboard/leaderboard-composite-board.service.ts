@@ -37,7 +37,11 @@ import {
 } from './leaderboard-process-change-residual.materialization.js';
 import { readLeaderboardShellSnapshotGenerationTokenDetails } from './leaderboard-shell-snapshot-generation.js';
 import type { ProcessChangeResidualEvidence } from './leaderboard-process-change-residual.types.js';
-import { attachLeaderboardLaborMinutes, type LeaderboardLaborMinutesLookupContext } from './leaderboard-labor-minutes.service.js';
+import {
+  attachLeaderboardLaborMinutes,
+  attachLeaderboardMachineOnlyMinutes,
+  type LeaderboardLaborMinutesLookupContext
+} from './leaderboard-labor-minutes.service.js';
 
 /** キオスク順位ボード通常表示: 強い工程変更残骸疑いを通常候補から除外する。 */
 const KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE = 'normal' as const;
@@ -149,6 +153,7 @@ export type LeaderboardBoardPerformanceEvent = {
   total?: number;
   snapshotExpired?: boolean;
   includeDecorations?: boolean;
+  includeLabor?: boolean;
   chunkSize?: number;
   deferredTotals?: boolean;
 };
@@ -341,6 +346,7 @@ export async function fetchLeaderboardCompositeBoardShell(
     page: number;
     pageSize: number;
     includeDecorations?: boolean;
+    includeLabor?: boolean;
     deferTotals?: boolean;
   },
   deps: LeaderboardBoardServiceDeps
@@ -348,6 +354,7 @@ export async function fetchLeaderboardCompositeBoardShell(
   const requestStarted = performance.now();
   const sink = deps.performanceSink;
   const includeDecorations = params.includeDecorations !== false;
+  const includeLabor = params.includeLabor !== false;
   const deferTotals = params.deferTotals === true;
   const cappedPageSize = Math.min(Math.max(1, Math.floor(params.pageSize)), 160);
 
@@ -477,10 +484,14 @@ export async function fetchLeaderboardCompositeBoardShell(
       endpoint: 'shell',
       phase: 'attachLabor',
       resourceCount: params.boardResourceCds.length,
-      rowCount: mergedRowsRaw.length
+      rowCount: mergedRowsRaw.length,
+      includeLabor
     },
-    () =>
-      attachLaborToBoardPayload({
+    () => {
+      if (!includeLabor) {
+        return Promise.resolve({ rows: attachLeaderboardMachineOnlyMinutes(mergedRowsRaw) });
+      }
+      return attachLaborToBoardPayload({
         rows: mergedRowsRaw,
         laborLookupContext: {
           leaderboardMaterializedBaseWhere,
@@ -488,7 +499,8 @@ export async function fetchLeaderboardCompositeBoardShell(
           processChangeResidualStrongEvidenceKeys,
           cacheScopeKey: generationToken
         }
-      }),
+      });
+    },
     (attached) => ({
       rowCount: attached.rows.length
     })
@@ -547,6 +559,7 @@ export async function fetchLeaderboardCompositeBoardShell(
       hasMoreCount: resources.filter((r) => r.hasMore).length,
       total: totalSum,
       includeDecorations,
+      includeLabor,
       deferredTotals: totalsDeferred
     });
     return {
@@ -589,6 +602,7 @@ export async function fetchLeaderboardCompositeBoardShell(
     hasMoreCount: resources.filter((r) => r.hasMore).length,
     total: totalSum,
     includeDecorations,
+    includeLabor,
     deferredTotals: totalsDeferred
   });
 
@@ -617,12 +631,14 @@ export async function continueLeaderboardCompositeBoard(
     }>;
     chunkSize: number;
     includeDecorations?: boolean;
+    includeLabor?: boolean;
   },
   deps: LeaderboardBoardServiceDeps
 ): Promise<LeaderboardBoardReadResult> {
   const requestStarted = performance.now();
   const sink = deps.performanceSink;
   const includeDecorations = params.includeDecorations !== false;
+  const includeLabor = params.includeLabor !== false;
   const chunkSize = Math.min(160, Math.max(1, Math.floor(params.chunkSize)));
 
   const { generationToken, processChangeResidualMaterialization } =
@@ -735,6 +751,7 @@ export async function continueLeaderboardCompositeBoard(
       total: totals.reduce((a, b) => a + b, 0),
       snapshotExpired: true,
       includeDecorations,
+      includeLabor,
       chunkSize
     });
     return {
@@ -791,10 +808,19 @@ export async function continueLeaderboardCompositeBoard(
       resourceCount: params.boardResourceCds.length,
       rowCount: mergedRowsRaw.length,
       deltaRowCount: deltaShellRowsFlattened.length,
+      includeLabor,
       chunkSize
     },
-    () =>
-      attachLaborToBoardPayload({
+    () => {
+      if (!includeLabor) {
+        return Promise.resolve({
+          rows: attachLeaderboardMachineOnlyMinutes(mergedRowsRaw),
+          ...(canAttachDelta
+            ? { deltaRows: attachLeaderboardMachineOnlyMinutes(deltaShellRowsFlattened) }
+            : {})
+        });
+      }
+      return attachLaborToBoardPayload({
         rows: mergedRowsRaw,
         ...(canAttachDelta ? { deltaRows: deltaShellRowsFlattened } : {}),
         laborLookupContext: {
@@ -803,7 +829,8 @@ export async function continueLeaderboardCompositeBoard(
           processChangeResidualStrongEvidenceKeys,
           cacheScopeKey: generationToken
         }
-      }),
+      });
+    },
     (attached) => ({
       rowCount: attached.rows.length,
       deltaRowCount: attached.deltaRows?.length
@@ -865,6 +892,7 @@ export async function continueLeaderboardCompositeBoard(
       hasMoreCount: resources.filter((r) => r.hasMore).length,
       total: totalSum,
       includeDecorations,
+      includeLabor,
       chunkSize
     });
     return {
@@ -914,6 +942,7 @@ export async function continueLeaderboardCompositeBoard(
     hasMoreCount: resources.filter((r) => r.hasMore).length,
     total: totalSum,
     includeDecorations,
+    includeLabor,
     chunkSize
   });
 

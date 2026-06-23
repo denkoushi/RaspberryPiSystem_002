@@ -273,6 +273,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         page,
         pageSize,
         includeDecorations: query.includeDecorations,
+        includeLabor: query.includeLabor,
         deferTotals: query.deferTotals
       },
       {
@@ -326,7 +327,8 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         boardResourceCds,
         resourceSlices: body.resourceSlices,
         chunkSize,
-        includeDecorations: body.includeDecorations
+        includeDecorations: body.includeDecorations,
+        includeLabor: body.includeLabor
       },
       {
         snapshotStore: deps.leaderboardShellSnapshotStore,

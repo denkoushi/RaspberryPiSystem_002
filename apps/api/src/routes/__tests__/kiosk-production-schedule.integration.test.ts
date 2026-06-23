@@ -1200,6 +1200,27 @@ describe('Kiosk Production Schedule API', () => {
       where: { csvDashboardRowId: { in: laborRows.map((row) => row.id) } }
     });
 
+    const boardWithoutLabor = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true&includeLabor=false',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+
+    expect(boardWithoutLabor.statusCode).toBe(200);
+    const noLaborBody = boardWithoutLabor.json() as {
+      rows: Array<{
+        rowData: Record<string, unknown>;
+        machineRequiredMinutes?: number;
+        laborRequiredMinutes?: number;
+      }>;
+    };
+    const noLaborTarget = noLaborBody.rows.find(
+      (row) => (row.rowData as { ProductNo?: string }).ProductNo === productNo
+    );
+    expect(noLaborTarget).toBeDefined();
+    expect(noLaborTarget?.machineRequiredMinutes).toBe(400);
+    expect(noLaborTarget?.laborRequiredMinutes).toBe(0);
+
     const board = await app.inject({
       method: 'GET',
       url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true',
@@ -4297,4 +4318,3 @@ describe('Kiosk Production Schedule API', () => {
     });
   });
 });
-

@@ -164,7 +164,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     function Harness() {
       useCompositeLeaderboardPhasedScheduleWithAutoAppend({
         seibanOrFilters: [],
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80, includeLabor: false },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -182,9 +182,11 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(boardHookMock).toHaveBeenCalled();
       const params = boardHookMock.mock.calls.find((c) => (c[1] as { enabled?: boolean } | undefined)?.enabled !== false)?.[0] as {
         includeDecorations?: boolean;
+        includeLabor?: boolean;
         deferTotals?: boolean;
       };
       expect(params.includeDecorations).toBe(false);
+      expect(params.includeLabor).toBe(false);
       expect(params.deferTotals).toBe(true);
       expect(postDecorations).toHaveBeenCalled();
     });

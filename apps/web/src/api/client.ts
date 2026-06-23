@@ -1105,6 +1105,8 @@ export type KioskProductionScheduleLeaderboardBoardQueryParams = KioskProduction
   boardResourceCds: string;
   /** 省略時 true。キオスク順位ボードは false で装飾を `leaderboard-decorations` 後取り */
   includeDecorations?: boolean;
+  /** 省略時 true。`+人` OFF の初期表示は false で人工数 lookup を後回しにする */
+  includeLabor?: boolean;
   /** true のとき初回 shell は exact total を待たず、continue で正確な total に戻す */
   deferTotals?: boolean;
 };

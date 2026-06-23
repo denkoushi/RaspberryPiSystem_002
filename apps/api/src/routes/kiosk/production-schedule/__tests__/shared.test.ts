@@ -59,4 +59,26 @@ describe('production-schedule route shared helpers', () => {
     ).toBe(false);
     expect(productionScheduleLeaderboardBoardQuerySchema.parse(base).deferTotals).toBe(false);
   });
+
+  it('productionScheduleLeaderboardBoardQuerySchema は includeLabor を既定 true / 明示 false で解釈する', () => {
+    const base = {
+      boardResourceCds: 'R1',
+      pageSize: '80',
+      allowResourceOnly: 'true'
+    };
+
+    expect(productionScheduleLeaderboardBoardQuerySchema.parse(base).includeLabor).toBe(true);
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...base,
+        includeLabor: 'false'
+      }).includeLabor
+    ).toBe(false);
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...base,
+        includeLabor: false
+      }).includeLabor
+    ).toBe(false);
+  });
 });

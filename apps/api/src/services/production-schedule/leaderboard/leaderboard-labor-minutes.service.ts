@@ -267,6 +267,33 @@ function applyLaborMinutesToRow(
   };
 }
 
+/**
+ * `+人` OFF の順位ボード初期表示用。DB lookup を行わず、表示に必要な機械所要量だけを付与する。
+ */
+export function attachLeaderboardMachineOnlyMinutes(
+  rows: readonly ProductionScheduleRow[]
+): ProductionScheduleRow[] {
+  return rows.map((row) => {
+    const data = rowDataRecord(row);
+    const resourceCd = extractResourceCdFromRowData(data);
+    const machine = machineMinutesFromRow(row);
+
+    if (resourceCd === LABOR_RESOURCE_CD) {
+      return {
+        ...row,
+        machineRequiredMinutes: 0,
+        laborRequiredMinutes: machine
+      };
+    }
+
+    return {
+      ...row,
+      machineRequiredMinutes: machine,
+      laborRequiredMinutes: 0
+    };
+  });
+}
+
 export type { LeaderboardLaborMinutesLookupContext } from './leaderboard-labor-minutes-lookup.sql.js';
 
 /**

@@ -3,6 +3,10 @@ import type {
   KioskProductionScheduleLeaderboardPhasedQueryParams
 } from '../../../../api/client';
 
+export type LeaderboardBoardPhasedBaseFetchParams =
+  KioskProductionScheduleLeaderboardPhasedQueryParams &
+    Pick<KioskProductionScheduleLeaderboardBoardQueryParams, 'includeLabor'>;
+
 /** 登録製番 OR（`activeQueries`）を API `q` へ（カンマ区切り・空除去） */
 export function buildLeaderboardSeibanOrQueryText(seibanTokens: readonly string[]): string | undefined {
   const tokens = Array.from(
@@ -29,7 +33,7 @@ export function applyLeaderboardBoardLightShellFetchPolicy(
 
 /** 順位ボード正本 GET 用: `q` を載せない base params */
 export function buildLeaderboardBoardBaseFetchParams(input: {
-  phasedBase: KioskProductionScheduleLeaderboardPhasedQueryParams;
+  phasedBase: LeaderboardBoardPhasedBaseFetchParams;
   boardResourceCds: readonly string[];
 }): KioskProductionScheduleLeaderboardBoardQueryParams {
   const { q: _omitQ, ...rest } = input.phasedBase;
@@ -42,7 +46,7 @@ export function buildLeaderboardBoardBaseFetchParams(input: {
 
 /** 製番 OR 照合用: base + `q` */
 export function buildLeaderboardBoardReconcileFetchParams(input: {
-  phasedBase: KioskProductionScheduleLeaderboardPhasedQueryParams;
+  phasedBase: LeaderboardBoardPhasedBaseFetchParams;
   boardResourceCds: readonly string[];
   seibanOrFilters: readonly string[];
 }): KioskProductionScheduleLeaderboardBoardQueryParams | undefined {
@@ -59,7 +63,7 @@ export function buildLeaderboardBoardReconcileFetchParams(input: {
 
 /** クライアントフィルタ無効時の従来経路: `q` を params に含める */
 export function buildLeaderboardBoardLegacyFetchParams(input: {
-  phasedBase: KioskProductionScheduleLeaderboardPhasedQueryParams;
+  phasedBase: LeaderboardBoardPhasedBaseFetchParams;
   boardResourceCds: readonly string[];
   seibanOrFilters: readonly string[];
 }): KioskProductionScheduleLeaderboardBoardQueryParams {
