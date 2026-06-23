@@ -1,3 +1,6 @@
+import { Prisma } from '@prisma/client';
+
+import { PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from './constants.js';
 import {
   fetchFkojunstStatusMailSourceRowsOrdered,
   type FkojunstStatusMailSourceRow
@@ -7,6 +10,17 @@ export type FkojunstStatusMailGenerationSignals = {
   rowsCount: number;
   rowsLatestCreatedAt: string;
   rowsRevision: string;
+};
+
+type FkojunstStatusMailGenerationSignalsClient = Pick<
+  Parameters<typeof fetchFkojunstStatusMailSourceRowsOrdered>[0],
+  '$queryRaw'
+>;
+
+type FkojunstStatusMailGenerationSignalsRow = {
+  rowsCount: bigint;
+  rowsLatestCreatedAt: Date | null;
+  rowsLatestUpdatedAt: Date | null;
 };
 
 function normalizeDate(value: Date | null | undefined): string {
@@ -69,4 +83,38 @@ export async function fetchFkojunstStatusMailSourceRowsWithGenerationSignals(
   const sourceRows = await fetchFkojunstStatusMailSourceRowsOrdered(client);
   const signals = buildFkojunstStatusMailGenerationSignals({ sourceRows });
   return { sourceRows, signals };
+}
+
+export async function fetchFkojunstStatusMailGenerationSignals(
+  client: FkojunstStatusMailGenerationSignalsClient
+): Promise<FkojunstStatusMailGenerationSignals> {
+  const rows = await client.$queryRaw<FkojunstStatusMailGenerationSignalsRow[]>(Prisma.sql`
+    SELECT
+      COUNT(*)::bigint AS "rowsCount",
+      MAX(r."createdAt") AS "rowsLatestCreatedAt",
+      MAX(COALESCE(r."updatedAt", r."createdAt")) AS "rowsLatestUpdatedAt"
+    FROM "CsvDashboardRow" r
+    WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}
+      AND (
+        r."sourceIngestRunId" IS NULL
+        OR EXISTS (
+          SELECT 1
+          FROM "CsvDashboardIngestRun" ir
+          WHERE ir."id" = r."sourceIngestRunId"
+            AND ir."status" = 'COMPLETED'::"ImportStatus"
+            AND ir."completedAt" IS NOT NULL
+        )
+      )
+  `);
+  const row = rows[0];
+  const summary = {
+    rowsCount: Number(row?.rowsCount ?? 0n),
+    rowsLatestCreatedAt: normalizeDate(row?.rowsLatestCreatedAt),
+    rowsLatestUpdatedAt: normalizeDate(row?.rowsLatestUpdatedAt)
+  };
+  return {
+    rowsCount: summary.rowsCount,
+    rowsLatestCreatedAt: summary.rowsLatestCreatedAt,
+    rowsRevision: buildRevisionToken(summary)
+  };
 }

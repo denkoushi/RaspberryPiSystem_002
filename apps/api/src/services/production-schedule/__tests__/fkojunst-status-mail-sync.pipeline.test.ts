@@ -334,17 +334,9 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
       $executeRaw: vi.fn().mockResolvedValue(0),
       $queryRaw: vi.fn().mockResolvedValue([
         {
-          id: 'raw-1',
-          FKOJUN: '210',
-          FKOTEICD: '1',
-          FSEZONO: 'PCR-TX',
-          FKOJUNST: 'S',
-          FUPDTEDT: '2026-01-01T00:00:00.000Z',
-          createdAt: new Date('2026-01-01T00:00:00.000Z'),
-          updatedAt: new Date('2026-01-02T00:00:00.000Z'),
-          sourceRowOrdinal: 1,
-          sourceIngestRunStartedAt: null,
-          sourceIngestRunCompletedAt: null
+          rowsCount: 1n,
+          rowsLatestCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
+          rowsLatestUpdatedAt: new Date('2026-01-02T00:00:00.000Z')
         }
       ]),
       productionScheduleProcessChangeResidualEvidence: {

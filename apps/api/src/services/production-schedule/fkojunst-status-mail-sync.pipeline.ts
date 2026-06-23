@@ -16,6 +16,7 @@ import { findFkojunstMailWinnerIdsByMailTriples } from './fkojunst-mail-winner-b
 import { buildFkojunstMailStatusKey } from './fkojunst-mail-status-key.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
 import {
+  fetchFkojunstStatusMailGenerationSignals,
   fetchFkojunstStatusMailSourceRowsWithGenerationSignals
 } from './fkojunst-status-mail-generation-signals.js';
 import { PROCESS_CHANGE_RESIDUAL_EVIDENCE_ALGORITHM_VERSION } from './leaderboard/leaderboard-process-change-residual.version.js';
@@ -403,7 +404,7 @@ export async function runFkojunstMailReplacementTransaction(
     async (tx) => {
       await acquireFkojunstStatusMailCriticalTransactionLock(tx);
       if (params.sourceRowsRevision != null) {
-        const { signals } = await fetchFkojunstStatusMailSourceRowsWithGenerationSignals(tx);
+        const signals = await fetchFkojunstStatusMailGenerationSignals(tx);
         if (signals.rowsRevision !== params.sourceRowsRevision) {
           throw new Error(
             `[FkojunstMailSync] raw source revision changed during sync: expected ${params.sourceRowsRevision}, got ${signals.rowsRevision}`
@@ -468,7 +469,7 @@ export async function runFkojunstMailClearTransaction(
     async (tx) => {
       await acquireFkojunstStatusMailCriticalTransactionLock(tx);
       if (sourceRowsRevision != null) {
-        const { signals } = await fetchFkojunstStatusMailSourceRowsWithGenerationSignals(tx);
+        const signals = await fetchFkojunstStatusMailGenerationSignals(tx);
         if (signals.rowsRevision !== sourceRowsRevision) {
           throw new Error(
             `[FkojunstMailSync] raw source revision changed during clear: expected ${sourceRowsRevision}, got ${signals.rowsRevision}`
