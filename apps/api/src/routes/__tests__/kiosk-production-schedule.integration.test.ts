@@ -1149,7 +1149,7 @@ describe('Kiosk Production Schedule API', () => {
     expect(b.resources).toHaveLength(2);
   });
 
-  it('leaderboard-board returns laborRequiredMinutes when FSIGENCD=10 rows lack fkmail', async () => {
+  it('leaderboard-board returns laborRequiredMinutes with includeLabor=true when FSIGENCD=10 rows lack fkmail', async () => {
     const productNo = 'LAB-010';
     const fkojun = '200';
 
@@ -1223,7 +1223,7 @@ describe('Kiosk Production Schedule API', () => {
 
     const board = await app.inject({
       method: 'GET',
-      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true',
+      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true&includeLabor=true',
       headers: { 'x-client-key': CLIENT_KEY }
     });
 
