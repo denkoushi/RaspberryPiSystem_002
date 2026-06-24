@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 134179,
-    "totalBytes": 10281223,
+    "totalLines": 134190,
+    "totalBytes": 10277586,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5219,
+    "localLinkCount": 5216,
     "brokenLocalLinkCount": 117,
     "documentsOver1000Lines": 26,
     "documentsOver3000Lines": 6,
@@ -4559,7 +4559,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 41,
+      "inboundCount": 39,
       "hasQuestionMarkCorruption": true,
       "replacementCharacterCount": 3,
       "longLines": [
@@ -6049,7 +6049,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1829,
-      "byteSize": 645609,
+      "byteSize": 641425,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -8876,11 +8876,6 @@
           "exists": true
         },
         {
-          "href": "./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-tailwind-opacity-82-pitfall-2026-05-22",
-          "targetPath": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
-          "exists": true
-        },
-        {
           "href": "./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-resource-card-preview-alignment-2026-04-17",
           "targetPath": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
           "exists": true
@@ -10661,16 +10656,6 @@
           "exists": true
         },
         {
-          "href": "../EXEC_PLAN.md#kiosk-leaderboard-manual-order-row-highlight-field-verify-2026-05-22",
-          "targetPath": "EXEC_PLAN.md",
-          "exists": true
-        },
-        {
-          "href": "../EXEC_PLAN.md#kiosk-leaderboard-slot-auto-rank-field-verify-2026-05-22",
-          "targetPath": "EXEC_PLAN.md",
-          "exists": true
-        },
-        {
           "href": "../EXEC_PLAN.md#shelf-master-follow-up-2026-05-24",
           "targetPath": "EXEC_PLAN.md",
           "exists": true
@@ -10735,14 +10720,6 @@
         {
           "line": 148,
           "length": 1057
-        },
-        {
-          "line": 164,
-          "length": 1156
-        },
-        {
-          "line": 168,
-          "length": 1007
         },
         {
           "line": 192,
@@ -11127,7 +11104,7 @@
     {
       "path": "docs/_meta/document-migration-ledger.md",
       "lineCount": 83,
-      "byteSize": 8291,
+      "byteSize": 8384,
       "hasFrontmatter": true,
       "title": "Document Migration Ledger",
       "status": "active",
@@ -20417,7 +20394,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 366,
+      "inboundCount": 365,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -29859,8 +29836,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 187,
-      "byteSize": 7371,
+      "lineCount": 198,
+      "byteSize": 7825,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
