@@ -12,6 +12,8 @@ category: knowledge-base
 
 複合順位ボード（[`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx)）が **`POST /api/kiosk/production-schedule/leaderboard-board/continue`** を呼ぶ経路で、**`hasMore: true` かつ `snapshotId` があるのに `cursor` が欠ける**と **HTTP 400** になる事象があった。board 集約の背景は [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)・収束 KB は [KB-369](./KB-369-leader-order-board-api-internal-latency.md)。
 
+> **Current spec note (2026-06-24)**: This KB contains historical `pageSize 80` and `120秒` sections. Current kiosk leaderboard values are shell **50**, continue **160**, and freshness **300秒**; see [KB-392](./KB-392-kiosk-leaderboard-spec-source-of-truth.md).
+
 ## Symptoms
 
 - ブラウザ Network で **`leaderboard-board/continue`** が **400**。

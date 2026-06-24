@@ -4,6 +4,8 @@
 - **日付**: 2026-05-20
 - **関連**: [ADR-20260519](./ADR-20260519-leaderboard-terminal-cache-phase1.md)（Phase 1 を拡張・置換しない）
 
+> **2026-06-24 note**: This ADR records the Phase 2 / SWR decision at the time. Its `120秒` cadence and other-terminal wait wording are historical; current leaderboard refetch/cache freshness is **300秒**. See [KB-392](../knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md) before using these values for new work.
+
 ## Context
 
 Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替やポーリング中はネットワーク待ちが残った。加えて IDB 更新が行 ID 指紋のみのため、順位・備考等のユーザー入力がリロード後に失われうる。

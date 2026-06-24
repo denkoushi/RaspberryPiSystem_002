@@ -83,6 +83,8 @@ update-frequency: medium
 
 ## Production（2026-06-01 · **完了後フッタ工程チップ装飾の再同期**） {#production-2026-06-01-completion-decoration-resync}
 
+> **Current spec note (2026-06-24)**: This section records the 2026-06-01 / Phase 2 context. Current regular leaderboard refetch/cache freshness is **300秒**; see [KB-392](./KB-392-kiosk-leaderboard-spec-source-of-truth.md).
+
 - **ブランチ**: **`fix/kiosk-leaderboard-completion-decoration-resync`**（代表 **`fe31aa99`**）
 - **スコープ**: **Web のみ**（`leaderboardDecorationStalePolicy.ts` · `useLeaderboardDeferredBoardDecorations` · `useCompositeLeaderboardPhasedScheduleWithAutoAppend` · `leaderboardBoardDisplayMutationCoordinator`）。**API / DB 不変**。
 - **完了意味の正本**: [§2026-05-26](#production-2026-05-26-completion-status-only) の **手動 + `C`/`X`** を維持。本 Fix は **表示層**で **実効完了（`row.isCompleted`）と footer チップ**の **見え方を再同期**する（完了判定ロジックそのものは変更しない）。
