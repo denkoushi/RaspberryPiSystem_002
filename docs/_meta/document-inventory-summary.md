@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 447 |
-| Total lines | 134190 |
-| Total bytes | 10277586 |
+| Total lines | 134204 |
+| Total bytes | 10275632 |
 | With frontmatter | 162 |
 | With status | 23 |
 | source_of_truth declared | 7 |
@@ -21,7 +21,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
 | Long-line documents | 16 |
-| Local links | 5216 |
+| Local links | 5214 |
 | Broken local links | 117 |
 | Documents over 1,000 lines | 26 |
 | Documents over 3,000 lines | 6 |
@@ -39,7 +39,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/architecture/deployment-modules.md` | 2523 | 128110 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188223 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2103 | 127221 |
-| `docs/INDEX.md` | 1829 | 641425 |
+| `docs/INDEX.md` | 1829 | 638725 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153339 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1474 | 153433 |
 | `docs/knowledge-base/infrastructure/miscellaneous.md` | 1322 | 74222 |
