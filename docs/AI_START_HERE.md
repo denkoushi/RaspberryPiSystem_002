@@ -38,6 +38,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Operations, recovery, deployment, and validation procedures: `docs/runbooks/`
 - Design decisions and tradeoffs: `docs/decisions/`
 - Planned or unfinished implementation work: `docs/plans/`
+- Documentation canonicalization roadmap: `docs/plans/docs-canonicalization-roadmap.md`
 - AI agent collaboration through agmsg: `docs/guides/agmsg-codex-cursor-collaboration.md`
 - Global document navigation: `docs/INDEX.md`
 - Knowledge-base navigation: `docs/knowledge-base/index.md`
