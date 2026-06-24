@@ -216,7 +216,19 @@ Status: implemented in PR12.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR13 And Later: Thin Indexes And Split Large Documents
+### PR13: Thin Phase12 Zero2W NOPASSWD Index History Block
+
+Status: implemented in PR13.
+
+- Thin only the 2026-05-06 Phase12 recheck and Zero2W
+  `sudo_nopasswd_commands` latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace validation, sample fragment, and
+  deployment narrative detail with short links to KB-367, KB-368, the Zero2W
+  setup runbook, and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR14 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
