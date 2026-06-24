@@ -197,7 +197,7 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 ## Open Items
 
 - [ ] **Performance monitor**: Labor lookup `EXPLAIN ANALYZE` on production-scale data; add an index only if latency regresses.
-- [ ] **Optional all-kiosk visual sign-off**: Pi5 operator check is OK and all-host automated checks passed. If requested, confirm on each Pi4 that `+人`, 8H/10H bands, card minute labels, sync overlay, and left-pane split status match the accepted contract.
+- [ ] **Optional all-kiosk visual sign-off**: Pi5 operator check is OK and all-host automated checks passed. 2026-06-24 follow-up automated check also passed `verify-phase12-real.sh` with **43 PASS / 0 WARN / 0 FAIL**, including Pi4×4 `kiosk/status-agent`; however no Codex-accessible VNC/screenshot evidence was available, so actual visual sign-off remains pending. Confirm on each Pi4 that `+人`, 8H/10H bands, card minute labels, sync overlay, and left-pane split status match the accepted contract.
 
 ## Next Actions (for resuming AI)
 
