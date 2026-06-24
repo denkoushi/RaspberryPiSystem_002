@@ -95,11 +95,11 @@ log "依存関係をインストール中..."
 fix_node_modules_permissions
 pnpm install
 
-# 共有型パッケージをビルド
-log "共有型パッケージをビルド中..."
-cd packages/shared-types
-pnpm build
-cd "${PROJECT_DIR}"
+# 共有ワークスペースパッケージをビルド
+log "共有ワークスペースパッケージをビルド中..."
+pnpm --filter @raspi-system/shared-types build
+pnpm --filter @raspi-system/part-search-core build
+pnpm --filter @raspi-system/shelf-layout-core build
 
 # Prisma Clientを生成（共有型ビルド後、APIビルド前）
 log "Prisma Clientを生成中..."
