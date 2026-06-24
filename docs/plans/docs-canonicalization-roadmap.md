@@ -241,7 +241,19 @@ Status: implemented in PR14.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR15 And Later: Thin Indexes And Split Large Documents
+### PR15: Thin Order Supplement P2002 Index History Block
+
+Status: implemented in PR15.
+
+- Thin only the 2026-05-06 order supplement `P2002` /
+  `csvDashboardRowId` latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace winner-row mismatch, implementation,
+  deployment, and validation narrative detail with short links to KB-328,
+  KB-297, the CSV import/export guide, PR #256, and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR16 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
