@@ -44,7 +44,7 @@ export function CsvImportSchedulePage() {
   const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
   const runningScheduleIdRef = useRef<string | null>(null); // 即座に反映される参照（競合防止用）
   const [runError, setRunError] = useState<Record<string, Error | null>>({});
-  const [runSuccess, setRunSuccess] = useState<Record<string, boolean>>({});
+  const [runMessage, setRunMessage] = useState<Record<string, string>>({});
   const { data: subjectPatternData, isLoading: isLoadingPatterns } = useCsvImportSubjectPatterns();
   const { create: createPattern, update: updatePattern, remove: removePattern } =
     useCsvImportSubjectPatternMutations();
@@ -352,15 +352,20 @@ export function CsvImportSchedulePage() {
     runningScheduleIdRef.current = id;
     setRunningScheduleId(id);
     setRunError(prev => ({ ...prev, [id]: null }));
-    setRunSuccess(prev => ({ ...prev, [id]: false }));
+    setRunMessage(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
 
     try {
       const response = await run.mutateAsync(id);
+      const acceptedInBackground = response.accepted === true && response.mode === 'background';
 
       // 取り込みは200でも「部分失敗」があり得る（例: 列不一致で後段処理が失敗）
       // 安全仕様として、失敗が含まれる場合はGmail後処理（既読化/ゴミ箱移動）が行われず、受信箱に残る。
       const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object';
-      const summary = (response as { summary?: unknown })?.summary;
+      const summary = acceptedInBackground ? undefined : response.summary;
       const dashboardSummaryRaw = isRecord(summary) ? summary.csvDashboards : undefined;
       const dashboardSummary = isRecord(dashboardSummaryRaw) ? dashboardSummaryRaw : undefined;
       const failureMessages: string[] = [];
@@ -400,16 +405,17 @@ export function CsvImportSchedulePage() {
           `一部の取り込みに失敗しました。\n\n${failureMessages.join('\n')}\n\n安全のため、該当メールは未読のまま残しています（受信箱が空になりません）。CSV列定義（例: day列）を確認して再実行してください。`
         );
       }
-      // 成功状態を設定
-      setRunSuccess(prev => ({ ...prev, [id]: true }));
-      // 3秒後に成功メッセージを消す
+      setRunMessage(prev => ({
+        ...prev,
+        [id]: acceptedInBackground ? '実行を開始しました。完了はインポート履歴で確認してください。' : '実行しました'
+      }));
       setTimeout(() => {
-        setRunSuccess(prev => {
+        setRunMessage(prev => {
           const next = { ...prev };
           delete next[id];
           return next;
         });
-      }, 3000);
+      }, acceptedInBackground ? 8000 : 3000);
 
       refetch();
     } catch (error) {
@@ -1320,9 +1326,9 @@ export function CsvImportSchedulePage() {
                               実行エラー: {formatError(runError[schedule.id])}
                             </div>
                           )}
-                          {runSuccess[schedule.id] && (
+                          {runMessage[schedule.id] && (
                             <div className="rounded-md border border-emerald-600 bg-emerald-50 p-1 text-xs text-emerald-700">
-                              実行しました
+                              {runMessage[schedule.id]}
                             </div>
                           )}
                           {remove.isError && (

@@ -813,6 +813,10 @@ export class CsvImportScheduler {
   /**
    * 手動でインポートを実行
    */
+  isImportRunning(importId: string): boolean {
+    return this.runningImports.has(importId);
+  }
+
   async runImport(importId: string): Promise<Awaited<ReturnType<CsvImportScheduler['executeSingleRun']>>> {
     const { config } = await loadBackupConfigWithFkojunstImportScheduleEnsured();
     const importSchedule = config.csvImports?.find(imp => imp.id === importId);

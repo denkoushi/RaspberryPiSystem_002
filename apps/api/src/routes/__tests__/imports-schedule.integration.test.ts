@@ -664,9 +664,12 @@ describe('CSV Import Schedule API', () => {
         }
       });
 
-      // 実際の実行はDropbox接続が必要なため、エラーになる可能性がある
-      // ただし、エンドポイントが存在し、認証が機能していることを確認
-      expect([200, 500]).toContain(response.statusCode);
+      expect(response.statusCode).toBe(202);
+      expect(response.json()).toMatchObject({
+        accepted: true,
+        mode: 'background',
+        scheduleId: 'test-run',
+      });
     });
 
     it('should return 404 for non-existent schedule', async () => {

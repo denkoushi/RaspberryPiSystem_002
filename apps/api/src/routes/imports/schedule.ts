@@ -200,16 +200,23 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
   });
 
   // 手動実行
-  app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (request) => {
+  app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
-      const summary = await scheduleAdminService.runSchedule(id, {
+      const { response, completion } = await scheduleAdminService.runScheduleInBackground(id, {
         requestId: request.id ?? null,
       });
-      request.log.info({ scheduleId: id }, '[CSV Import Schedule] Manual import completed');
-      return { message: 'インポートを実行しました', summary };
+      void completion
+        .then(() => {
+          request.log.info({ scheduleId: id }, '[CSV Import Schedule] Manual import completed');
+        })
+        .catch((error) => {
+          request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
+        });
+      request.log.info({ scheduleId: id }, '[CSV Import Schedule] Manual import accepted');
+      return reply.code(202).send(response);
     } catch (error) {
-      request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import failed');
+      request.log.error({ err: error, scheduleId: id }, '[CSV Import Schedule] Manual import was not accepted');
       throw error;
     }
   });
