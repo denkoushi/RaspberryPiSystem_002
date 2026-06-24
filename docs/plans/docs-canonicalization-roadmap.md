@@ -15,8 +15,9 @@ validation:
   - git diff --check
   - changed Markdown local link check
   - corruption and long-line checks
+  - node scripts/docs/audit-docs.mjs --check
 open_items:
-  - Add read-only document inventory tooling.
+  - Review the document inventory output before creating the migration ledger.
   - Add the initial high-risk document migration ledger.
   - Resolve old AI entrypoint guidance without deleting legacy URLs.
 supersedes: []
@@ -73,6 +74,8 @@ Status: this document.
 - Do not edit `docs/INDEX.md`, `EXEC_PLAN.md`, deployment guide, or checklist.
 
 ### PR2: Read-Only Inventory
+
+Status: implemented in PR2.
 
 - Add `scripts/docs/audit-docs.mjs`.
 - Read only from `git ls-files`; do not rewrite Markdown.
