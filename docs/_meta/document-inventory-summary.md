@@ -11,13 +11,13 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 446 |
-| Total lines | 134066 |
-| Total bytes | 10274188 |
-| With frontmatter | 161 |
-| With status | 21 |
-| source_of_truth declared | 5 |
-| References to EXEC_PLAN.md | 60 |
+| Documents | 447 |
+| Total lines | 134132 |
+| Total bytes | 10278929 |
+| With frontmatter | 162 |
+| With status | 22 |
+| source_of_truth declared | 6 |
+| References to EXEC_PLAN.md | 61 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
 | Long-line documents | 16 |
@@ -59,6 +59,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/AI_START_HERE.md`
 - `docs/INDEX.md`
 - `docs/REFACTORING_PLAN.md`
+- `docs/_meta/document-migration-ledger.md`
 - `docs/architecture/deployment-modules.md`
 - `docs/architecture/overview.md`
 - `docs/decisions/ADR-20260306-lowlevel-observability.md`
@@ -67,7 +68,6 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/guides/ai-handoff.md`
 - `docs/guides/ci-troubleshooting.md`
 - `docs/guides/deployment.md`
-- `docs/guides/development.md`
 
 ## Long-Line Documents
 

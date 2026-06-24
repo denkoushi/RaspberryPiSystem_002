@@ -18,7 +18,6 @@ validation:
   - node scripts/docs/audit-docs.mjs --check
 open_items:
   - Review the document inventory output before creating the migration ledger.
-  - Add the initial high-risk document migration ledger.
   - Resolve old AI entrypoint guidance without deleting legacy URLs.
 supersedes: []
 superseded_by: null
@@ -88,6 +87,8 @@ Status: implemented in PR2.
 - Add `node scripts/docs/audit-docs.mjs --check` for reproducible validation.
 
 ### PR3: High-Risk Migration Ledger
+
+Status: implemented in PR3.
 
 - Add `docs/_meta/document-migration-ledger.md`.
 - Start only with high-risk entrypoints:
