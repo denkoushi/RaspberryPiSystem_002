@@ -14,10 +14,8 @@
 
 ### 最新アップデート（2026-06-17 · キオスク順位ボード deferTotals 性能回復 · Pi5 先行）
 
-- **順位ボード `+人` 人工数表示切替** · API+Web · **Pi5+Pi4 本番デプロイ済** · **`496c4e58`** · [Plan](./plans/kiosk-leaderboard-labor-minutes-toggle.md)
-- **生産指示分割（順位ボード初回）** · API+Web · **Pi5 flag OFF smoke済・限定flag ON前（P2035再確認済: app `38e33014` / docs `149f7710`）** · [Plan](./plans/production-schedule-split-orders.md)
-
-- **deferTotals 一貫化 + board/装飾同期分離** · API+Web · **Pi5 デプロイ済** · **`14bb6e96`** · Pi4 **未** · Phase12 **43/0/0**。**記録**: [Plan](./plans/leaderboard-defer-totals-performance-recovery.md)
+- **現仕様正本**: [KB-392](./knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md)
+- **関連Plan**: [`+人` 人工数表示切替](./plans/kiosk-leaderboard-labor-minutes-toggle.md) · [生産指示分割](./plans/production-schedule-split-orders.md) · [deferTotals 性能回復](./plans/leaderboard-defer-totals-performance-recovery.md)
 
 ### 最新アップデート（2026-06-15 · キオスク検査帳票 OCR 向け測定値ボックス）
 
@@ -25,19 +23,19 @@
 
 ### 最新アップデート（2026-06-15 · キオスク順位ボード 検査方法選択 + plannedQuantity 印刷）
 
-- **順位ボード「検」→ デジタル入力 / 帳票紙印刷** · Web only · **Pi5 のみ本番 OK** · **`5116f75f`** · Phase12 **43/0/0**。**記録**: [KB-390](./knowledge-base/KB-390-kiosk-leaderboard-inspection-workflow.md)
+- **検査導線正本**: [KB-390](./knowledge-base/KB-390-kiosk-leaderboard-inspection-workflow.md)。順位ボード現仕様の読み分けは [KB-392](./knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md)。
 
 ### 最新アップデート（2026-06-12 · キオスク順位ボード 追補完了後の更新中残留）
 
-- **追補完了後も「一覧を更新中」·501/033 空スロット** — API+Web · process-change residual + **pageSize scope 修正**。**`main` `f3359a4d`** · [PR #431](https://github.com/denkoushi/RaspberryPiSystem_002/pull/431) · **Pi5+Pi4×4 本番・実機 OK** · Phase12 **43/0/0**。**記録**: [KB-384](./knowledge-base/KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md)
+- **調査・修正正本**: [KB-384](./knowledge-base/KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md)。現行 pageSize / 鮮度値の読み分けは [KB-392](./knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md)。
 
 ### 最新アップデート（2026-06-17 · キオスク順位ボード 基準時間余り帯）
 
-- **ガント 基準時間余り帯 + スロット capacity 解決器** · Web only · Pi5→Pi4×4 本番 **`66fd10c6`** · Phase12 **43/0/0** · Pi5 実機 OK。**記録**: [Plan](./plans/kiosk-leaderboard-gantt-mode.md)
+- **Gantt 正本**: [kiosk-leaderboard-gantt-mode](./plans/kiosk-leaderboard-gantt-mode.md)。現仕様の読み分けは [KB-392](./knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md)。
 
 ### 最新アップデート（2026-06-11 · キオスク順位ボード ガント表示）
 
-- **ガントON/OFF + 可変8H縦バー（単色/透明交互）** · Web only · Pi5→Pi4×4 デプロイ済（`6a7b5218`）。**記録**: [Plan](./plans/kiosk-leaderboard-gantt-mode.md)
+- **Gantt 正本**: [kiosk-leaderboard-gantt-mode](./plans/kiosk-leaderboard-gantt-mode.md)。8H/10H・累積境界の現仕様は [KB-392](./knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md)。
 
 ### 最新アップデート（2026-06-07 · DGX resource runtimeProfile / resourceState）
 
@@ -77,7 +75,7 @@
 
 ### 最新アップデート（2026-06-05 · キオスク順位ボード・資源カード行 強調レイアウト · **Pi5→Pi4×4 本番・実機 OK**）
 
-- **カード外寸維持**のまま納期 **20px** · 品名/製番/機種名 **16.5px** · **製番を品名行右** · クラスタ行は品目+個数のみ · **右側要素がある行のみ 50% 幅**。**ブランチ**: **`fix/kiosk-leaderboard-card-layout-2`** · **`05ae1a70`** · **PR [#390](https://github.com/denkoushi/RaspberryPiSystem_002/pull/390)** · **CI** **`26993180248`** success · **本番**: Pi5 **`20260605-123252-7617`** → stonebase **実機 OK** → Pi4×3 順次 · Phase12 **43/0/0** · **サイネージ JPEG 対象外**。**記録**: [deployment §カード行強調](./guides/deployment.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05) · [KB-297 §カード行強調](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05) · [verification-checklist §6.6.30](./guides/verification-checklist.md#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05) · [プレビュー](./design-previews/kiosk-rank-board-card-single-preview.html)
+- **UI履歴正本**: [KB-297 §カード行強調](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05)。関連: [deployment](./guides/deployment.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05) · [verification](./guides/verification-checklist.md#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05)。
 
 ### 最新アップデート（2026-06-10 · キオスク UX 設定 · 仕掛中ハブ + ヘッダータブ順 · **Pi5+Pi4×4 本番**）
 
@@ -97,11 +95,11 @@
 
 ### 最新アップデート（2026-06-02 · キオスク順位ボード・過去納期滞留調査 · **調査中断・ドキュメントのみ**）
 
-- **資源 `035` など数か月前の納期が順位ボードに残る件**: **アプリ側原因調査は打ち切り**（コード変更・本番デプロイ **なし**）。技術結論は **表示仕様どおり + 上流 `FKOJUNST_Status` 最新が `S/R`（11 件）**。CSV 差分消失・取込遅延主因説は **弱い**。**次**: [KB-383 §上流確認リスト](./knowledge-base/KB-383-kiosk-leaderboard-stale-past-due-investigation.md#上流確認リスト11-件2026-06-01-時点) を現場・上流へ。**アプリ案**: 完了化ではなく **長期滞留・要確認** 分離表示のみ検討。**記録**: [KB-383](./knowledge-base/KB-383-kiosk-leaderboard-stale-past-due-investigation.md) · [KB-297 §調査](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-stale-past-due-investigation-2026-06-01) · [EXEC_PLAN Next Steps](../EXEC_PLAN.md#kiosk-leaderboard-stale-past-due-upstream-verify-2026-06-02)
+- **調査正本**: [KB-383](./knowledge-base/KB-383-kiosk-leaderboard-stale-past-due-investigation.md)。関連: [KB-297 §調査](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-stale-past-due-investigation-2026-06-01)。
 
 ### 最新アップデート（2026-06-01 · キオスク順位ボード・完了後フッタ工程チップ装飾の再同期 · **Pi5 本番・実機 OK（自動）**）
 
-- **完了とフッタ工程チップの表示ずれを解消**: 装飾後取り経路で **`leaderboard-decorations` POST** を **手動完了直後**・**`rowData.progress` 変化**・**board ネットワーク同期（shell/ポーリング）**で再実行。**partKey 代表 row 1 件**のみ footer 再検証（全行 POST しない）。**ブランチ**: **`fix/kiosk-leaderboard-completion-decoration-resync`** · **`fe31aa99`** · **本番**: **`raspberrypi5` のみ** · Detach **`20260601-210522-21919`**（**`failed=0`**）· Phase12 **43/0/0**（約 **63s**）· Pi4/Pi3 **除外**。**記録**: [deployment §2026-06-01](./guides/deployment.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01) · [KB-375 §2026-06-01](./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync) · [KB-374 §装飾 stale](./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync) · [verification-checklist §6.6.29](./guides/verification-checklist.md#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01)
+- **完了整合正本**: [KB-375 §2026-06-01](./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync)。関連: [KB-374](./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md) · [verification](./guides/verification-checklist.md#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01)。
 
 ### 最新アップデート（2026-05-29 · 私用 Pi5 Hermes `/novel` slash `args_hint` · **本番反映済**）
 
