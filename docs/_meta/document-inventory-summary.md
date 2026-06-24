@@ -12,17 +12,17 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 447 |
-| Total lines | 134132 |
-| Total bytes | 10278929 |
+| Total lines | 134140 |
+| Total bytes | 10279460 |
 | With frontmatter | 162 |
-| With status | 22 |
-| source_of_truth declared | 6 |
+| With status | 23 |
+| source_of_truth declared | 7 |
 | References to EXEC_PLAN.md | 61 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
 | Long-line documents | 16 |
-| Local links | 5223 |
-| Broken local links | 119 |
+| Local links | 5222 |
+| Broken local links | 117 |
 | Documents over 1,000 lines | 26 |
 | Documents over 3,000 lines | 6 |
 
@@ -92,7 +92,6 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 - `EXEC_PLAN.md` -> `../docs/guides/ssd-migration.md` (../docs/guides/ssd-migration.md)
 - `EXEC_PLAN.md` -> `../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-?15[question-mark-corruption]pi5[question-mark-corruption]` (../docs/knowledge-base/infrastructure/security.md)
-- `README.md` -> `./docs/guides/troubleshooting.md` (docs/guides/troubleshooting.md)
 - `docs/INDEX.md` -> `../guides/deployment.md#fkojunst-status-sole-source-2026-05-08` (guides/deployment.md)
 - `docs/INDEX.md` -> `../plans/alerts-platform-phase2.md` (plans/alerts-platform-phase2.md)
 - `docs/INDEX.md` -> `../plans/deploy-stability-execplan.md` (plans/deploy-stability-execplan.md)
@@ -130,7 +129,6 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/guides/deployment.md` -> `./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial` (docs/guides/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md)
 - `docs/guides/deployment.md` -> `./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-05-10--本番反映実機検証` (docs/guides/knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md)
 - `docs/guides/deployment.md` -> `./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync` (docs/guides/knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md)
-- `docs/guides/development.md` -> `../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06` (docs/EXEC_PLAN.md)
 - `docs/guides/external-integration-ledger.md` -> `./api/backup.md` (docs/guides/api/backup.md)
 - `docs/guides/external-integration-ledger.md` -> `./knowledge-base/infrastructure/ansible-deployment.md#kb-142-ansibleでenv再生成時にslack-webhook-urlが消失する問題と恒久対策` (docs/guides/knowledge-base/infrastructure/ansible-deployment.md)
 - `docs/guides/external-integration-ledger.md` -> `./knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策` (docs/guides/knowledge-base/infrastructure/ansible-deployment.md)
@@ -140,3 +138,5 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/guides/external-integration-ledger.md` -> `./knowledge-base/infrastructure/backup-restore.md#kb-148-バックアップ設定の衝突ドリフト検出の自動化p1実装` (docs/guides/knowledge-base/infrastructure/backup-restore.md)
 - `docs/guides/git-clean-safety.md` -> `../plans/ansible-hardening-stabilization-plan.md` (docs/plans/ansible-hardening-stabilization-plan.md)
 - `docs/guides/gmail-auto-protocol-phase1-verification.md` -> `../../.cursor/plans/gmail-auto-protocol-plan_e8cbbcb6.plan.md` (.cursor/plans/gmail-auto-protocol-plan_e8cbbcb6.plan.md)
+- `docs/guides/measuring-instrument-loan-events-verification.md` -> `../../.cursor/plans/measuring-instrument-events-retention_02349d3d.plan.md` (.cursor/plans/measuring-instrument-events-retention_02349d3d.plan.md)
+- `docs/guides/production-setup.md` -> `../architecture/client-device-integration.md` (docs/architecture/client-device-integration.md)

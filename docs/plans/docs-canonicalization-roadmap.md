@@ -17,8 +17,8 @@ validation:
   - corruption and long-line checks
   - node scripts/docs/audit-docs.mjs --check
 open_items:
-  - Review the document inventory output before creating the migration ledger.
-  - Resolve old AI entrypoint guidance without deleting legacy URLs.
+  - Expand the migration ledger before thinning indexes and large documents.
+  - Thin indexes and split large documents one area per PR after ledger expansion.
 supersedes: []
 superseded_by: null
 ---
@@ -102,6 +102,8 @@ Status: implemented in PR3.
 - Restrict `action` to `keep`, `redirect`, `split`, `archive`, or `unverified`.
 
 ### PR4: Align AI Entrypoints
+
+Status: implemented in PR4.
 
 - Update `AI_HANDOFF_PROMPT.txt` to point to `AGENTS.md`,
   `docs/AI_START_HERE.md`, and the relevant KB / Runbook / ADR / Plan.

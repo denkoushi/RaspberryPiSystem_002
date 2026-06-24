@@ -20,7 +20,9 @@ update-frequency: medium
 
 Cursor の `state.vscdb` 破損・肥大化により **チャット/Agent 履歴が失われた場合**でも、**ローカルリポジトリ・`docs/`・Git・未コミット WIP は残る**。Agent はチャット履歴に依存せず、リポジトリ内ドキュメントから文脈を再構築する。
 
-**正本**: [KB-388](../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) · [mac-storage-migration §state.vscdb](./mac-storage-migration.md#cursor-statevscdb-の破損肥大化2026-06-06-追記) · [`EXEC_PLAN` §Cursor復旧](../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06)
+**正本**: [KB-388](../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) · [mac-storage-migration §state.vscdb](./mac-storage-migration.md#cursor-statevscdb-の破損肥大化2026-06-06-追記)
+
+**履歴参照**: [`EXEC_PLAN` §Cursor復旧](../../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06) は legacy historical log としてのみ参照する。
 
 ### 復旧直後のルール
 
@@ -29,13 +31,13 @@ Cursor の `state.vscdb` 破損・肥大化により **チャット/Agent 履歴
 | 未コミット変更 | **WIP** — 破棄しない（例: Hermes Discord command sync） |
 | 本番デプロイ / Pi 実機 | **明示依頼まで実行しない** |
 | 秘密情報 | 勝手に探索・表示しない |
-| 最初の作業 | `AGENTS.md` · `.cursor/rules/` · `docs/INDEX.md` · `EXEC_PLAN.md` を読む |
+| 最初の作業 | `AGENTS.md` · `docs/AI_START_HERE.md` · `.cursor/rules/` · 関連する KB / Runbook / ADR / Plan を読む |
 
 ### 文脈の再構築手順
 
 1. `git status` / `git log -5` でブランチと未コミット WIP を確認
-2. [docs/INDEX.md](../INDEX.md) の「最新アップデート」で直近トピックを把握
-3. [EXEC_PLAN.md](../../EXEC_PLAN.md) の `Progress` と `Next Steps` を読む
+2. [docs/AI_START_HERE.md](../AI_START_HERE.md) の開始順で、該当する `.cursor/rules/` を確認
+3. 作業内容に対応する KB / Runbook / ADR / Plan を参照し、現在正本を確認
 4. WIP があれば [KB-388 §WIP](../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md#本リポジトリ固有の-wip2026-06-06-時点) と該当 KB（例: [daily pilot](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md)）を参照
 5. ユーザーが依頼するまで **コード変更・デプロイは保留**
 
@@ -556,4 +558,4 @@ pnpm prisma migrate reset
 - [API概要](../api/overview.md)
 - [アーキテクチャ概要](../architecture/overview.md)
 - [デプロイメントガイド](./deployment.md)
-- [EXEC_PLAN.md](../../EXEC_PLAN.md)
+- [AI Start Here](../AI_START_HERE.md)
