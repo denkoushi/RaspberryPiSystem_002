@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 134219,
-    "totalBytes": 10272546,
+    "totalLines": 134229,
+    "totalBytes": 10267855,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5206,
+    "localLinkCount": 5199,
     "brokenLocalLinkCount": 117,
     "documentsOver1000Lines": 26,
     "documentsOver3000Lines": 6,
@@ -6048,8 +6048,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 1829,
-      "byteSize": 634807,
+      "lineCount": 1824,
+      "byteSize": 629294,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6836,11 +6836,6 @@
           "exists": true
         },
         {
-          "href": "./guides/deployment.md#kiosk-leaderboard-display-stability-refetch-2026-05-19",
-          "targetPath": "docs/guides/deployment.md",
-          "exists": true
-        },
-        {
           "href": "./guides/deployment.md#kiosk-leaderboard-fkojunst-cx-visible-2026-05-09",
           "targetPath": "docs/guides/deployment.md",
           "exists": true
@@ -6867,11 +6862,6 @@
         },
         {
           "href": "./guides/deployment.md#kiosk-leaderboard-order-assignment-auto-release-a-alpha-2026-05-20",
-          "targetPath": "docs/guides/deployment.md",
-          "exists": true
-        },
-        {
-          "href": "./guides/deployment.md#kiosk-leaderboard-pagesize-80-phase1-2026-05-19",
           "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
@@ -9541,11 +9531,6 @@
           "exists": true
         },
         {
-          "href": "./knowledge-base/KB-369-leader-order-board-api-internal-latency.md#production-deploy--verification2026-05-19--continue-時-count-再利用--第1弾",
-          "targetPath": "docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md",
-          "exists": true
-        },
-        {
           "href": "./knowledge-base/KB-370-production-schedule-external-completion-triple-source.md",
           "targetPath": "docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md",
           "exists": true
@@ -9607,26 +9592,6 @@
         },
         {
           "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#continue-時-count-再利用第1弾--api-のみ--出力不変",
-          "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification-2026-05-19--featleaderboard-continue-delta-safe",
-          "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#第1段階-pagesize-初回10--追補40--continue-装飾分離2026-05-19--featleaderboard-board-initial-10-continue-40",
-          "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial",
           "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
           "exists": true
         },
@@ -10716,267 +10681,263 @@
           "length": 1109
         },
         {
-          "line": 276,
-          "length": 1057
-        },
-        {
-          "line": 292,
+          "line": 287,
           "length": 1094
         },
         {
-          "line": 299,
+          "line": 294,
           "length": 1378
         },
         {
-          "line": 316,
+          "line": 311,
           "length": 1124
         },
         {
-          "line": 358,
+          "line": 353,
           "length": 1355
         },
         {
-          "line": 366,
+          "line": 361,
           "length": 1392
         },
         {
-          "line": 370,
+          "line": 365,
           "length": 1324
         },
         {
-          "line": 372,
+          "line": 367,
           "length": 1182
         },
         {
-          "line": 385,
+          "line": 380,
           "length": 1217
         },
         {
-          "line": 387,
+          "line": 382,
           "length": 1061
         },
         {
-          "line": 389,
+          "line": 384,
           "length": 1149
         },
         {
-          "line": 391,
+          "line": 386,
           "length": 1203
         },
         {
-          "line": 393,
+          "line": 388,
           "length": 1009
         },
         {
-          "line": 411,
+          "line": 406,
           "length": 1042
         },
         {
-          "line": 412,
+          "line": 407,
           "length": 1165
         },
         {
-          "line": 413,
+          "line": 408,
           "length": 1011
         },
         {
-          "line": 414,
+          "line": 409,
           "length": 1053
         },
         {
-          "line": 421,
+          "line": 416,
           "length": 1380
         },
         {
-          "line": 425,
+          "line": 420,
           "length": 1060
         },
         {
-          "line": 427,
+          "line": 422,
           "length": 1087
         },
         {
-          "line": 429,
+          "line": 424,
           "length": 1086
         },
         {
-          "line": 433,
+          "line": 428,
           "length": 1102
         },
         {
-          "line": 443,
+          "line": 438,
           "length": 1083
         },
         {
-          "line": 455,
+          "line": 450,
           "length": 1046
         },
         {
-          "line": 457,
+          "line": 452,
           "length": 1002
         },
         {
-          "line": 461,
+          "line": 456,
           "length": 1049
         },
         {
-          "line": 465,
+          "line": 460,
           "length": 1141
         },
         {
-          "line": 469,
+          "line": 464,
           "length": 1205
         },
         {
-          "line": 471,
+          "line": 466,
           "length": 1295
         },
         {
-          "line": 473,
+          "line": 468,
           "length": 1139
         },
         {
-          "line": 475,
+          "line": 470,
           "length": 1040
         },
         {
-          "line": 477,
+          "line": 472,
           "length": 1177
         },
         {
-          "line": 479,
+          "line": 474,
           "length": 1259
         },
         {
-          "line": 481,
+          "line": 476,
           "length": 1196
         },
         {
-          "line": 559,
+          "line": 554,
           "length": 1998
         },
         {
-          "line": 575,
+          "line": 570,
           "length": 1472
         },
         {
-          "line": 581,
+          "line": 576,
           "length": 1177
         },
         {
-          "line": 685,
+          "line": 680,
           "length": 1323
         },
         {
-          "line": 739,
+          "line": 734,
           "length": 1131
         },
         {
-          "line": 740,
+          "line": 735,
           "length": 1100
         },
         {
-          "line": 741,
+          "line": 736,
           "length": 1135
         },
         {
-          "line": 797,
+          "line": 792,
           "length": 1034
         },
         {
-          "line": 799,
+          "line": 794,
           "length": 1066
         },
         {
-          "line": 841,
+          "line": 836,
           "length": 1160
         },
         {
-          "line": 848,
+          "line": 843,
           "length": 1312
         },
         {
-          "line": 912,
+          "line": 907,
           "length": 1043
         },
         {
-          "line": 915,
+          "line": 910,
           "length": 1032
         },
         {
-          "line": 919,
+          "line": 914,
           "length": 1134
         },
         {
-          "line": 923,
+          "line": 918,
           "length": 1449
         },
         {
-          "line": 935,
+          "line": 930,
           "length": 1543
         },
         {
-          "line": 939,
+          "line": 934,
           "length": 1465
         },
         {
-          "line": 945,
+          "line": 940,
           "length": 1008
         },
         {
-          "line": 947,
+          "line": 942,
           "length": 1371
         },
         {
-          "line": 957,
+          "line": 952,
           "length": 1062
         },
         {
-          "line": 959,
+          "line": 954,
           "length": 1136
         },
         {
-          "line": 961,
+          "line": 956,
           "length": 1201
         },
         {
-          "line": 975,
+          "line": 970,
           "length": 1129
         },
         {
-          "line": 977,
+          "line": 972,
           "length": 1692
         },
         {
-          "line": 979,
+          "line": 974,
           "length": 1059
         },
         {
-          "line": 985,
+          "line": 980,
           "length": 1235
         },
         {
-          "line": 997,
+          "line": 992,
           "length": 1004
         },
         {
-          "line": 1051,
+          "line": 1046,
           "length": 1297
         },
         {
-          "line": 1118,
+          "line": 1113,
           "length": 1003
         },
         {
-          "line": 1126,
+          "line": 1121,
           "length": 1093
         },
         {
-          "line": 1168,
+          "line": 1163,
           "length": 1132
         },
         {
-          "line": 1172,
+          "line": 1167,
           "length": 1097
         }
       ],
@@ -11046,7 +11007,7 @@
     {
       "path": "docs/_meta/document-migration-ledger.md",
       "lineCount": 83,
-      "byteSize": 8643,
+      "byteSize": 8777,
       "hasFrontmatter": true,
       "title": "Document Migration Ledger",
       "status": "active",
@@ -16852,7 +16813,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 447,
+      "inboundCount": 445,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -22431,7 +22392,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 21,
+      "inboundCount": 20,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -22818,7 +22779,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 81,
+      "inboundCount": 77,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29778,8 +29739,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 227,
-      "byteSize": 9144,
+      "lineCount": 242,
+      "byteSize": 9832,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
