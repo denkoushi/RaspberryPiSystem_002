@@ -8,7 +8,8 @@ export type ScheduledCachePersistDecision =
   | { action: 'put'; board: ProductionScheduleLeaderboardBoardResponse };
 
 /**
- * 120秒ポーリング完走時のみ IDB へ保存する（mutation 経路は別ポリシーで抑止）。
+ * 300秒の定期 refetch 完走時のみ IDB へ保存する（mutation 経路は別ポリシーで抑止）。
+ * 間隔は LEADER_BOARD_SCHEDULE_REFETCH_MS を正本にする。
  * serverWins でも purge せずサーバ正本で置換 put する。
  */
 export function resolveScheduledCachePersist(input: {

@@ -63,10 +63,11 @@ Before changing leaderboard behavior or refactoring the board:
 
 This KB was created from a read-only comparison of current implementation, tests, and documentation on `main` at `e0b8175d` / PR #464 merge state. No application code behavior was changed.
 
+2026-06-24 follow-up: the stale `120秒ポーリング` code comment was corrected to the current 300-second refetch wording. `./scripts/deploy/verify-phase12-real.sh` passed with **43 PASS / 0 WARN / 0 FAIL**; this proves automated device/API/service health, not visual sign-off.
+
 ## Open Items
 
-- Optional code-comment cleanup: update the stale "120秒ポーリング" comment in `leaderboardBoardCacheSyncPolicy.ts` in a separate code-comment-only change if desired.
-- Optional visual sign-off: confirm on each Pi4 kiosk that `+人`, 8H/10H bands, sync overlay, split status badge, and `検` workflow match the accepted contract.
+- Optional visual sign-off remains manual/VNC work: confirm on each Pi4 kiosk that `+人`, 8H/10H bands, sync overlay, split status badge, and `検` workflow match the accepted contract. Use the labor toggle plan for the validation checklist.
 
 ## References
 
