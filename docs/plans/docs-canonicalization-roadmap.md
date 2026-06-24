@@ -204,7 +204,19 @@ Status: implemented in PR11.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR12 And Later: Thin Indexes And Split Large Documents
+### PR12: Thin Mobile Placement Zero2W Index History Block
+
+Status: implemented in PR12.
+
+- Thin only the 2026-05-07 Mobile Placement Zero2W hardening latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace migration, API, route, and deployment
+  narrative detail with short links to KB-368, the mobile placement runbook,
+  the mobile placement API doc, the Zero2W setup runbook, and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR13 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
