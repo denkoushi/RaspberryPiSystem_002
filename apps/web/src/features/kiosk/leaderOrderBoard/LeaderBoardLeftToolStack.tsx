@@ -58,6 +58,11 @@ export type LeaderBoardLeftToolStackProps = {
   /** ガント表示（所要量比例の行高） */
   ganttEnabled: boolean;
   onToggleGanttMode: () => void;
+  /** 分割機能の状態表示（メインの資源スロット領域を消費しない） */
+  splitFeatureStatus: {
+    label: string;
+    className: string;
+  };
 };
 
 /**
@@ -94,7 +99,8 @@ export function LeaderBoardLeftToolStack({
   onMoveRegisteredSeibanToRank,
   interactionLocked = false,
   ganttEnabled,
-  onToggleGanttMode
+  onToggleGanttMode,
+  splitFeatureStatus
 }: LeaderBoardLeftToolStackProps) {
   const seibanControlsLocked = interactionLocked;
   const rankPickerPanelDomId = useId();
@@ -178,6 +184,17 @@ export function LeaderBoardLeftToolStack({
             )}
           </select>
         </label>
+        <div className="flex shrink-0 items-center justify-between gap-2 rounded border border-white/10 bg-slate-900/70 px-2 py-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-white/55">分割</span>
+          <span
+            className={clsx(
+              'shrink-0 rounded border px-2 py-0.5 text-[10px] font-bold leading-tight',
+              splitFeatureStatus.className
+            )}
+          >
+            {splitFeatureStatus.label}
+          </span>
+        </div>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded border border-white/15 bg-slate-900 p-2">
           <div className="mb-2 flex min-w-0 shrink-0 items-center justify-between gap-1">
             <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white/70">

@@ -323,6 +323,15 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             ? { label: '分割 検証ON', className: 'border-emerald-400/60 bg-emerald-950/70 text-emerald-100' }
             : { label: '分割 検証OFF', className: 'border-amber-400/60 bg-amber-950/70 text-amber-100' };
 
+  const boardSyncStatusMessage = isBoardDataSyncStatusVisible
+    ? LEADERBOARD_BACKGROUND_SYNC_STATUS_MESSAGE
+    : isDecorationSyncing
+      ? LEADERBOARD_DECORATION_SYNC_STATUS_MESSAGE
+      : null;
+  const boardSyncStatusClassName = isBoardDataSyncStatusVisible
+    ? 'border-cyan-300/35 bg-cyan-950/80 text-cyan-50'
+    : 'border-cyan-300/25 bg-slate-950/90 text-cyan-100/90';
+
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
     [resourcesQuery.data]
@@ -609,6 +618,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           onMoveRegisteredSeibanToRank={moveRegisteredSeibanToRank}
           ganttEnabled={ganttEnabled}
           onToggleGanttMode={toggleGanttMode}
+          splitFeatureStatus={splitFeatureStatus}
         />
       </div>
 
@@ -618,11 +628,19 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           gridReady ? 'overflow-hidden' : 'overflow-auto'
         )}
       >
-        <div className="mb-2 flex shrink-0 items-center justify-end">
-          <span className={`min-w-[112px] rounded-md border px-3 py-1 text-center text-xs font-bold ${splitFeatureStatus.className}`}>
-            {splitFeatureStatus.label}
-          </span>
-        </div>
+        {boardSyncStatusMessage ? (
+          <div className="pointer-events-none absolute right-3 top-3 z-30 flex justify-end">
+            <p
+              className={clsx(
+                'rounded border px-3 py-1 text-xs font-semibold shadow-lg backdrop-blur-sm',
+                boardSyncStatusClassName
+              )}
+              role="status"
+            >
+              {boardSyncStatusMessage}
+            </p>
+          </div>
+        ) : null}
         {!scheduleEnabled ? (
           <p className="text-sm text-white/60">
             端末を選び、操作パネルで資源スロットに1件以上割り当て、研削/切削の条件を満たすと一覧が表示されます。
@@ -641,15 +659,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             {cacheSyncWarning != null ? (
               <p className="mb-2 shrink-0 text-sm text-amber-200" role="status">
                 {cacheSyncWarning}
-              </p>
-            ) : null}
-            {isBoardDataSyncStatusVisible ? (
-              <p className="mb-2 shrink-0 text-sm text-cyan-100/90" role="status">
-                {LEADERBOARD_BACKGROUND_SYNC_STATUS_MESSAGE}
-              </p>
-            ) : isDecorationSyncing ? (
-              <p className="mb-2 shrink-0 text-sm text-cyan-100/70" role="status">
-                {LEADERBOARD_DECORATION_SYNC_STATUS_MESSAGE}
               </p>
             ) : null}
             <LeaderBoardGrid
