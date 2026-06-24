@@ -1,17 +1,14 @@
 このプロジェクトを引き継ぐAIアシスタントへ：
 
-まず、[docs/guides/ai-handoff.md](docs/guides/ai-handoff.md) を確認してください。
-このドキュメントに、プロジェクト運用の「1本のルート」が記載されています。
+このファイルは legacy handoff entrypoint です。現行の開始順は以下を正とします。
 
-重要な原則：
-- 階層構造に従う：AGENTS.md → PLANS.md → EXEC_PLAN.md → INDEX.md → 各種ドキュメント
-- 「1本のルート」で判断：情報の性質とライフサイクルに基づいて適切な配置場所を決定
-- EXEC_PLAN.mdを維持：進捗・発見・決定・成果を常に最新の状態に保つ
+1. AGENTS.md
+2. docs/AI_START_HERE.md
+3. .cursor/rules/00-core-safety.mdc
+4. .cursor/rules/01-core-docs-and-knowledge.mdc
+5. 今回の作業に該当する .cursor/rules/*.mdc
+6. 関連する KB / Runbook / ADR / Plan
 
-確認すべきドキュメント（順番）：
-1. docs/guides/ai-handoff.md - プロジェクト運用の「1本のルート」
-2. AGENTS.md - プロジェクトの基本思想（編集不可）
-3. .agent/PLANS.md - 具体的な思想・行動方針（編集不可）
-4. EXEC_PLAN.md - 現在のプロジェクト状態
-5. docs/INDEX.md - 全ドキュメントの索引
+EXEC_PLAN.md は legacy historical log です。現在仕様・進捗・未完了事項の詳細正本として扱わず、新規の詳細追記もしないでください。
 
+docs/INDEX.md は薄い索引です。現在状態の本文級説明は、該当する KB / Runbook / ADR / Plan を参照してください。

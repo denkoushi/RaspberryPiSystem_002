@@ -5,7 +5,8 @@
 ## ドキュメント
 
 - **[docs/INDEX.md](./docs/INDEX.md)**: 📋 **全ドキュメントの索引**（目的別・対象者別・カテゴリ別）
-- **[EXEC_PLAN.md](./EXEC_PLAN.md)**: 全体の進捗管理・マイルストーン追跡
+- **[docs/AI_START_HERE.md](./docs/AI_START_HERE.md)**: AI向けの最小開始入口
+- **[EXEC_PLAN.md](./EXEC_PLAN.md)**: legacy historical log（現在の詳細正本として使わない）
 - **[アーキテクチャ概要](./docs/architecture/overview.md)**: システム全体のアーキテクチャ
 - **[開発ガイド](./docs/guides/development.md)**: 開発環境セットアップ・開発ワークフロー
 - **[Codex/Cursor agmsg連携ガイド](./docs/guides/agmsg-codex-cursor-collaboration.md)**: Codex主導・Cursor実行役のAI協調運用
@@ -25,7 +26,7 @@
 - **[ブランチ保護ルール設定手順](./.github/BRANCH_PROTECTION_SETUP.md)**: GitHubでの設定手順（必須）
 - **[CI必須化とブランチ保護設定ガイド](./docs/guides/ci-branch-protection.md)**: 詳細な説明とトラブルシューティング
 
-詳細な実装手順は `EXEC_PLAN.md` を参照してください。.agent/PLANS.md の運用ルールに従って ExecPlan を更新しつつ実装を進めます。
+複雑な実装作業は `.agent/PLANS.md` の運用ルールに従い、個別Planを `docs/plans/` に置いて進めます。現在仕様・障害・手順・設計判断は、該当する KB / Runbook / ADR / Plan を正本として参照してください。
 
 ## ディレクトリ概要
 
@@ -69,7 +70,7 @@ Codexを指示役、Cursorを実行役としてAI協調する場合は、[Codex/
 - **AIアシスタントは直接ラズパイを操作できない**: すべてのコマンドや手順は、RealVNC経由でラズパイにコピペできる形式で提示される
 - **コマンドはラズパイ上で実行する前提**: ファイルパスや環境変数はラズパイ上のパスを明記（例: `/opt/RaspberryPiSystem_002`）
 - **環境の違いを考慮**: Mac（開発）とラズパイ（実行）の環境差（ARM64、Docker、`pyscard`など）を考慮した手順を提示
-- **ExecPlanの更新**: 進捗に応じて、またはユーザーの指示に応じて `EXEC_PLAN.md` を更新（`AGENTS.md` と `.agent/PLANS.md` は原理原則を示すため編集不可）
+- **ドキュメント更新**: 詳細な進捗・仕様・障害・手順・設計判断は、該当する KB / Runbook / ADR / Plan に記録する。`EXEC_PLAN.md` は legacy historical log として扱い、新規の詳細追記先にしない。
 
 ## 開発準備
 
@@ -179,7 +180,7 @@ pnpm test:e2e:headed
 
 ## トラブルシューティング
 
-詳細なトラブルシューティングガイドは [トラブルシューティングガイド](./docs/guides/troubleshooting.md) を参照してください。
+詳細なトラブルシューティングガイドは [トラブルシューティングナレッジベース](./docs/knowledge-base/troubleshooting-knowledge.md) を参照してください。
 
 主な問題と解決方法：
 

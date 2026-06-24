@@ -16,17 +16,17 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 134132,
-    "totalBytes": 10278929,
+    "totalLines": 134140,
+    "totalBytes": 10279460,
     "withFrontmatter": 162,
-    "withStatus": 22,
-    "sourceOfTruthDeclared": 6,
+    "withStatus": 23,
+    "sourceOfTruthDeclared": 7,
     "execPlanReferences": 61,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5223,
-    "brokenLocalLinkCount": 119,
+    "localLinkCount": 5222,
+    "brokenLocalLinkCount": 117,
     "documentsOver1000Lines": 26,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
@@ -39,11 +39,6 @@
         "sourcePath": "EXEC_PLAN.md",
         "href": "../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-?15[question-mark-corruption]pi5[question-mark-corruption]",
         "targetPath": "../docs/knowledge-base/infrastructure/security.md"
-      },
-      {
-        "sourcePath": "README.md",
-        "href": "./docs/guides/troubleshooting.md",
-        "targetPath": "docs/guides/troubleshooting.md"
       },
       {
         "sourcePath": "docs/INDEX.md",
@@ -229,11 +224,6 @@
         "sourcePath": "docs/guides/deployment.md",
         "href": "./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync",
         "targetPath": "docs/guides/knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md"
-      },
-      {
-        "sourcePath": "docs/guides/development.md",
-        "href": "../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06",
-        "targetPath": "docs/EXEC_PLAN.md"
       },
       {
         "sourcePath": "docs/guides/external-integration-ledger.md",
@@ -801,19 +791,13 @@
     },
     {
       "path": "AI_HANDOFF_PROMPT.txt",
-      "lineCount": 17,
-      "byteSize": 988,
+      "lineCount": 14,
+      "byteSize": 713,
       "hasFrontmatter": false,
       "title": null,
       "status": null,
       "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "docs/guides/ai-handoff.md",
-          "targetPath": "docs/guides/ai-handoff.md",
-          "exists": true
-        }
-      ],
+      "localLinks": [],
       "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
@@ -5892,8 +5876,8 @@
     },
     {
       "path": "README.md",
-      "lineCount": 319,
-      "byteSize": 16097,
+      "lineCount": 320,
+      "byteSize": 16381,
       "hasFrontmatter": false,
       "title": "Raspberry Pi NFC 工場持出返却システム",
       "status": null,
@@ -5902,6 +5886,11 @@
         {
           "href": "./.github/BRANCH_PROTECTION_SETUP.md",
           "targetPath": ".github/BRANCH_PROTECTION_SETUP.md",
+          "exists": true
+        },
+        {
+          "href": "./docs/AI_START_HERE.md",
+          "targetPath": "docs/AI_START_HERE.md",
           "exists": true
         },
         {
@@ -5943,11 +5932,6 @@
           "href": "./docs/guides/error-handling.md",
           "targetPath": "docs/guides/error-handling.md",
           "exists": true
-        },
-        {
-          "href": "./docs/guides/troubleshooting.md",
-          "targetPath": "docs/guides/troubleshooting.md",
-          "exists": false
         },
         {
           "href": "./docs/guides/validation-7-usb-import.md",
@@ -6056,7 +6040,7 @@
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 3,
+      "inboundCount": 5,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -10747,7 +10731,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 14,
+      "inboundCount": 13,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -11096,12 +11080,12 @@
     },
     {
       "path": "docs/REFACTORING_PLAN.md",
-      "lineCount": 124,
-      "byteSize": 4139,
+      "lineCount": 131,
+      "byteSize": 4512,
       "hasFrontmatter": true,
       "title": "ドキュメントリファクタリング計画",
-      "status": null,
-      "source_of_truth": null,
+      "status": "superseded",
+      "source_of_truth": "false",
       "localLinks": [
         {
           "href": "./INDEX.md",
@@ -11139,6 +11123,11 @@
           "exists": true
         },
         {
+          "href": "./plans/docs-canonicalization-roadmap.md",
+          "targetPath": "docs/plans/docs-canonicalization-roadmap.md",
+          "exists": true
+        },
+        {
           "href": "../EXEC_PLAN.md",
           "targetPath": "EXEC_PLAN.md",
           "exists": true
@@ -11152,8 +11141,8 @@
     },
     {
       "path": "docs/_meta/document-migration-ledger.md",
-      "lineCount": 65,
-      "byteSize": 4769,
+      "lineCount": 64,
+      "byteSize": 4743,
       "hasFrontmatter": true,
       "title": "Document Migration Ledger",
       "status": "active",
@@ -13843,7 +13832,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 3,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -17000,13 +16989,18 @@
     },
     {
       "path": "docs/guides/development.md",
-      "lineCount": 559,
-      "byteSize": 16070,
+      "lineCount": 561,
+      "byteSize": 16204,
       "hasFrontmatter": true,
       "title": "開発ガイド",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "../AI_START_HERE.md",
+          "targetPath": "docs/AI_START_HERE.md",
+          "exists": true
+        },
         {
           "href": "../api/overview.md",
           "targetPath": "docs/api/overview.md",
@@ -17016,11 +17010,6 @@
           "href": "../architecture/overview.md",
           "targetPath": "docs/architecture/overview.md",
           "exists": true
-        },
-        {
-          "href": "../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06",
-          "targetPath": "docs/EXEC_PLAN.md",
-          "exists": false
         },
         {
           "href": "./deployment.md",
@@ -17053,11 +17042,6 @@
           "exists": true
         },
         {
-          "href": "../INDEX.md",
-          "targetPath": "docs/INDEX.md",
-          "exists": true
-        },
-        {
           "href": "../knowledge-base/ci-cd.md#kb-025-e2eスモークkioskがナビゲーション不可視で失敗する",
           "targetPath": "docs/knowledge-base/ci-cd.md",
           "exists": true
@@ -17083,7 +17067,7 @@
           "exists": true
         },
         {
-          "href": "../../EXEC_PLAN.md",
+          "href": "../../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06",
           "targetPath": "EXEC_PLAN.md",
           "exists": true
         }
@@ -29890,14 +29874,14 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 163,
-      "byteSize": 6485,
+      "lineCount": 165,
+      "byteSize": 6526,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
       "source_of_truth": "true",
       "localLinks": [],
-      "inboundCount": 0,
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],

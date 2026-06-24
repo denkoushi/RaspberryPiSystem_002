@@ -1,14 +1,21 @@
 ---
 title: ドキュメントリファクタリング計画
+status: superseded
 tags: [ドキュメント, リファクタリング, 計画]
 audience: [開発者, アーキテクト]
 last-verified: 2025-11-27
-related: [INDEX.md, ../EXEC_PLAN.md]
+related: [INDEX.md, ../EXEC_PLAN.md, plans/docs-canonicalization-roadmap.md]
 category: planning
 update-frequency: low
+source_of_truth: false
+superseded_by: plans/docs-canonicalization-roadmap.md
 ---
 
 # ドキュメントリファクタリング計画
+
+> **現行ステータス**: superseded（active plan ではない）。この文書は 2025-11-27 時点の履歴として保持する。
+>
+> **後継Plan**: [docs-canonicalization-roadmap.md](./plans/docs-canonicalization-roadmap.md)
 
 > **ステータス**: ✅ **完了**（2025-11-27）
 >
