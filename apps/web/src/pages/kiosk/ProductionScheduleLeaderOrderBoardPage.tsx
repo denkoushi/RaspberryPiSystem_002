@@ -46,6 +46,7 @@ import { useLeaderBoardDueAssist } from '../../features/kiosk/leaderOrderBoard/u
 import { useLeaderBoardResourceSlotsWithServerSync } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardResourceSlotsWithServerSync';
 import { useLeaderBoardSlotAutoRank } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardSlotAutoRank';
 import { useLeaderOrderBoardDeviceContext } from '../../features/kiosk/leaderOrderBoard/useLeaderOrderBoardDeviceContext';
+import { usePersistedLeaderBoardCapacityMode } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardCapacityMode';
 import { usePersistedLeaderBoardDeviceScope } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardDeviceScope';
 import { usePersistedLeaderBoardGanttMode } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardGanttMode';
 import { usePersistedLeaderBoardLaborMode } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardLaborMode';
@@ -145,6 +146,11 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     });
 
   const { laborEnabledBySlotIndex, toggleLaborForSlot } = usePersistedLeaderBoardLaborMode(
+    siteKey,
+    activeDeviceScopeKey,
+    slotCount
+  );
+  const { capacityMinutesBySlotIndex, toggleCapacityForSlot } = usePersistedLeaderBoardCapacityMode(
     siteKey,
     activeDeviceScopeKey,
     slotCount
@@ -676,6 +682,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               onAutoRank={handleAutoRankSlot}
               laborEnabledBySlotIndex={laborEnabledBySlotIndex}
               onToggleLaborForSlot={toggleLaborForSlot}
+              capacityMinutesBySlotIndex={capacityMinutesBySlotIndex}
+              onToggleCapacityMinutesForSlot={toggleCapacityForSlot}
               logClientPerfEvent={logClientPerfEvent}
             />
           </>

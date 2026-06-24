@@ -1,6 +1,6 @@
 ---
 id: leaderboard-defer-totals-performance-recovery
-status: pi5_labor_toggle_banner_deployed
+status: pi5_labor_toggle_banner_deployed_plus_labor_display_recovery_verified
 scope: kiosk leader order board first usable performance and Web display stability
 date: 2026-06-23
 source_of_truth: true
@@ -17,6 +17,7 @@ related_code:
   - apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardFetchParams.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendOverrideScopePolicy.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardShellFreshnessPolicy.ts
+  - apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardLaborMetadata.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx
   - apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx
@@ -30,12 +31,12 @@ related_docs:
   - docs/decisions/ADR-20260211-production-schedule-expression-indexes.md
   - docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md
   - docs/guides/deployment.md
-validation: focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed
+validation: focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK
 open_items:
   - Latest PR checks after `e98de7ce`: CodeQL, gitleaks, lint-build-unit, and e2e-smoke passed; `api-db-and-infra` and `security-docker` were still pending at handoff time.
   - If the physical browser still appears busy, distinguish three states: initial shell load, 5-minute board refresh, and `+人` labor metadata refresh. Only the first two should show 「一覧を更新中です。」.
   - `resourceShell` can still be multi-second on large resources; do not add API/index work until browser/client-perf logs show API shell is again the bottleneck.
-  - Kiosk browsers must hard reload to pick up the deployed Web bundle; already-open SPA tabs can keep old banner/refetch behavior until reload.
+  - Kiosk browsers must hard reload to pick up the deployed Web bundle; already-open SPA tabs can keep old banner/refetch/labor-overlay behavior until reload.
 ---
 
 # Plan: Leaderboard deferTotals Performance Recovery
@@ -687,6 +688,13 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
   - Pi5 API logs confirmed an `includeLabor=true` `leaderboard-board` GET occurred.
   - Interpretation: `+人` still refetches labor metadata, but rows no longer collapse to shell height.
 
+**2026-06-24 regression recovery after real-device check**:
+
+- The 2026-06-23 headless check proved the board height no longer collapsed, but it did not prove that the minute label/Gantt bar used the fresh labor values. Real-device verification found that pressing `+人` could still leave `laborRequiredMinutes=0` on displayed rows, so the 8H bar did not stretch.
+- Root cause: display freshness intentionally ignored `includeLabor`, and the longer previous append-complete board won display selection during labor refresh. That preserved row count and speed, but it also preserved old machine-only labor metadata.
+- Fix: after choosing the display board, overlay fresh finite `machineRequiredMinutes` / `laborRequiredMinutes` from `networkDisplayBoard` by `row.id`. This keeps the long appended board visible while allowing rows already returned by the `includeLabor=true` refresh to update their label and Gantt height.
+- Validation: focused Web tests covering partial/complete labor refresh PASS, Web lint PASS, Web build PASS, and real-device visual check (2026-06-24) OK.
+
 **Current intended behavior**:
 
 - Initial page load can show 「読み込み中…」, then fresh shell rows become usable at shell arrival.
@@ -719,8 +727,11 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - `apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`
   - `displayFreshnessParamsKey` ignores `includeLabor`
   - `displayAppendOverrideRef` keeps previous long append display
+  - after display selection, fresh labor metadata is overlaid from the network board by `row.id`
   - `isBoardDataSyncStatusVisible` separates UI banner visibility from internal `isBoardDataSyncing`
   - continuation-only background sync after shell rows are displayed is silent in the global banner
+- `apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardLaborMetadata.ts`
+  - preserves the selected display board shape/row count while refreshing `machineRequiredMinutes` and `laborRequiredMinutes`
 - `apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendOverrideScopePolicy.ts`
   - `pickLeaderboardAppendOverrideForDisplay()` chooses the longer previous/fresh append during labor refresh
 - `apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardShellFreshnessPolicy.ts`
@@ -740,6 +751,7 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 
 - `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx` PASS
 - `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardAppendOverrideScopePolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx` PASS for the append-display fix
+- `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardAppendOverrideScopePolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardShellFreshnessPolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/applyLeaderBoardDisplayRequiredMinutes.test.ts` PASS for the 2026-06-24 labor metadata overlay
 - `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts` PASS for the resource-first winner shell fix
 - `pnpm --filter @raspi-system/api lint` PASS
 - `pnpm --filter @raspi-system/api build` PASS
@@ -753,6 +765,7 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - Do not remove the `includeLabor=true` refetch on `+人`; it is required for real labor minutes.
 - Do not use raw `paramsKey` for display fallback freshness when only `includeLabor` changes.
 - Do not let a shorter fresh append override a longer previous display append unless it has caught up.
+- Do not keep an old `includeLabor=false` display board without overlaying fresh labor metadata from the current network board.
 - Do not show 「一覧を更新中です。」 for `+人` display-only refresh with existing rows; use `isBoardDataSyncStatusVisible`.
 
 ## Local Notes JA

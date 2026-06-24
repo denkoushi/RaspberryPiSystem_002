@@ -88,6 +88,20 @@ function row(id: string, resourceCd: string, fseiban?: string): ProductionSchedu
   } as unknown as ProductionScheduleRow;
 }
 
+function rowWithLabor(
+  id: string,
+  resourceCd: string,
+  machineRequiredMinutes: number,
+  laborRequiredMinutes: number,
+  fseiban?: string
+): ProductionScheduleRow {
+  return {
+    ...row(id, resourceCd, fseiban),
+    machineRequiredMinutes,
+    laborRequiredMinutes
+  };
+}
+
 function rowWithProgress(
   id: string,
   resourceCd: string,
@@ -906,22 +920,49 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
   it('includeLabor だけ変わる fresh partial append が短い間は直前の完走済み行を維持する', async () => {
     const shell = boardPayload({
       total: 5,
-      rows: [row('a1', 'R1'), row('a2', 'R1')],
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 0),
+        rowWithLabor('a2', 'R1', 200, 0)
+      ],
       resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 5, pageSize: 80 }]
     });
     const previousComplete = boardPayload({
       total: 5,
-      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1'), row('a4', 'R1'), row('a5', 'R1')],
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 0),
+        rowWithLabor('a2', 'R1', 200, 0),
+        rowWithLabor('a3', 'R1', 300, 0),
+        rowWithLabor('a4', 'R1', 400, 0),
+        rowWithLabor('a5', 'R1', 500, 0)
+      ],
       resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 5, total: 5, pageSize: 80 }]
+    });
+    const freshShell = boardPayload({
+      total: 5,
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 11),
+        rowWithLabor('a2', 'R1', 200, 22)
+      ],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 5, pageSize: 80 }]
     });
     const freshPartial = boardPayload({
       total: 5,
-      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1')],
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 11),
+        rowWithLabor('a2', 'R1', 200, 22),
+        rowWithLabor('a3', 'R1', 300, 33)
+      ],
       resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 3, total: 5, pageSize: 80 }]
     });
     const freshComplete = boardPayload({
       total: 5,
-      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1'), row('a4', 'R1'), row('a5', 'R1')],
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 11),
+        rowWithLabor('a2', 'R1', 200, 22),
+        rowWithLabor('a3', 'R1', 300, 33),
+        rowWithLabor('a4', 'R1', 400, 44),
+        rowWithLabor('a5', 'R1', 500, 55)
+      ],
       resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 5, total: 5, pageSize: 80 }]
     });
 
@@ -1001,7 +1042,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
 
     boardResult = {
-      data: shell,
+      data: freshShell,
       isLoading: false,
       isError: false,
       isFetching: false,
@@ -1015,6 +1056,12 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(postContinue).toHaveBeenCalledTimes(3);
       expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
       expect(latest?.isBoardDataSyncStatusVisible).toBe(false);
+      const rowsById = new Map(latest?.scheduleQuery.data?.rows.map((r) => [r.id, r]));
+      expect(rowsById.get('a1')?.laborRequiredMinutes).toBe(11);
+      expect(rowsById.get('a2')?.laborRequiredMinutes).toBe(22);
+      expect(rowsById.get('a3')?.laborRequiredMinutes).toBe(33);
+      expect(rowsById.get('a4')?.laborRequiredMinutes).toBe(0);
+      expect(rowsById.get('a5')?.laborRequiredMinutes).toBe(0);
     });
 
     await act(async () => {
@@ -1024,6 +1071,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     await waitFor(() => {
       expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
       expect(latest?.listIncomplete).toBe(false);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([11, 22, 33, 44, 55]);
     });
   });
 

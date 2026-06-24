@@ -5,12 +5,14 @@
 | Field | Value |
 |-------|-------|
 | id | `plan-kiosk-leaderboard-labor-minutes-toggle` |
-| status | **production_deployed** — Pi5 + Pi4×4 · visibility fix **`10cc06b0`** (2026-06-18) |
+| status | **production_deployed / field_verified** — Pi5 + Pi4×4 · visibility fix **`10cc06b0`** (2026-06-18) · display recovery verified on real device (2026-06-24) · 8H/10H toggle implemented locally |
 | scope | Kiosk leader order board (`ProductionScheduleLeaderOrderBoardPage`) |
-| date | 2026-06-17 (feature) · 2026-06-18 (visibility fix deploy) |
+| date | 2026-06-17 (feature) · 2026-06-18 (visibility fix deploy) · 2026-06-24 (display recovery) |
 | source_of_truth | this document |
 | branch | `fix/leaderboard-labor-visibility-from-machine-status` → merge to `main` |
 | commit | **`10cc06b0`** — `fix: derive leaderboard labor minutes from visible machine rows` |
+| latest_recovery | 2026-06-24 working tree — keep appended display rows while overlaying fresh labor metadata by row id |
+| latest_capacity_toggle | 2026-06-24 working tree — per-slot 8H/10H button immediately left of `+人`, persisted locally |
 | related_code | `apps/api/src/services/production-schedule/leaderboard/leaderboard-labor-minutes*.ts`, `apps/web/src/features/kiosk/leaderOrderBoard/*` |
 | related_docs | [kiosk-leaderboard-gantt-mode.md](./kiosk-leaderboard-gantt-mode.md), [deployment.md](../guides/deployment.md), [verification-checklist.md](../guides/verification-checklist.md) |
 
@@ -19,6 +21,8 @@ Rank calculation, auto-rank, and load-balancing are **out of scope**. Signage JP
 ## Goal
 
 Each resource slot has a **`+人`** toggle (default OFF). When ON, display minutes = `machineRequiredMinutes + laborRequiredMinutes`. Gantt bar height and row minute label follow `requiredMinutes`.
+
+2026-06-24 addition: each resource slot has an **8H/10H** toggle immediately left of `+人`. It is persisted per terminal and slot, and passes **480** or **600** minutes to the Gantt `capacityMinutes`.
 
 ## Contract
 
@@ -48,6 +52,7 @@ Rules:
 
 - `normalizeLeaderBoardRow` / `applyLeaderBoardDisplayRequiredMinutesToGrouped` / `usePersistedLeaderBoardLaborMode`.
 - `LeaderOrderResourceCard`: header `+人` button; `LeaderOrderResourceRow`: minute label.
+- `LeaderOrderResourceCard`: header `8H/10H` button immediately left of `+人`; `usePersistedLeaderBoardCapacityMode` stores slot capacity locally.
 - `sanitizeLeaderBoardSlotResourceCd` + server-sync filter exclude `10` from slots.
 - `useLeaderBoardResourceSlots`: stable fallback seed to avoid re-hydrate loops.
 
@@ -102,6 +107,33 @@ Phase12 after Pi5 and after all Pi4: **PASS 43 / WARN 0 / FAIL 0**. CI run **`27
 
 Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verification-checklist §6.6.4](../guides/verification-checklist.md) if UI stale.
 
+### Display recovery after performance fixes (2026-06-24)
+
+**Symptom**: after the leaderboard speed/display-stability fixes, pressing `+人` could keep showing the previous append-complete board that had been fetched with `includeLabor=false`. The row count stayed stable, but `laborRequiredMinutes=0` also stayed visible, so the minute label and Gantt 8H bar did not stretch.
+
+**Root cause**: the Web display freshness key intentionally ignores `includeLabor` to prevent a `+人` refresh from collapsing a long appended board back to a short shell. That part is required for perceived speed/stability. The missing piece was metadata refresh: when the previous longer board won display selection, its old labor metadata also won.
+
+**Fix**: keep the longer appended display board, but merge fresh finite `machineRequiredMinutes` / `laborRequiredMinutes` from the current network board by `row.id` into the displayed rows. This preserves the speed fix and restores the `+人` display behavior.
+
+**Validation**:
+
+- Web focused tests: `useCompositeLeaderboardPhasedScheduleWithAutoAppend`, append override scope, shell freshness, required-minutes display — PASS.
+- Web lint/build — PASS.
+- Real-device verification (2026-06-24, user visual check): `+人` ON reflects labor minutes and the 8H bar stretches again.
+
+### 8H/10H capacity toggle next to `+人` (2026-06-24)
+
+**Change**: Web-only. Add a per-slot button immediately left of `+人`; pressing it toggles `8H` ↔ `10H`.
+
+**State**: terminal-local `localStorage`, same site + device scope style as `+人`, slotIndex order. Default is `8H` for all slots.
+
+**Effect**: `8H` passes `480` minutes and `10H` passes `600` minutes as `capacityMinutes` into the existing Gantt layout. `+人` still controls `requiredMinutes`; 8H/10H controls the ruler/capacity scale.
+
+**Validation**:
+
+- Focused Web tests for persisted capacity mode, card button placement, and Grid → Gantt capacity propagation — PASS.
+- Web lint/build — PASS.
+
 ## Operational Notes (not KB)
 
 - Pi5 api/web rebuild may hit transient health-wait retries after memory spike; see [deployment.md §deploy-api-build-cache-health-wait](../guides/deployment.md#deploy-api-build-cache-health-wait-2026-06-17).
@@ -109,17 +141,19 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 
 ## Open Items
 
-- [ ] **Field sign-off (Pi4×4)**: On each kiosk, confirm `+人` toggle changes minute label and Gantt height (e.g. `021` row with `laborRequiredMinutes > 0`). API verified on Pi5; UI not remotely observed in this deploy session.
+- [x] **Field sign-off (real device, 2026-06-24)**: `+人` toggle changes minute label and Gantt height after the display recovery. API verified on Pi5; UI behavior verified by user visual check.
 - [ ] **Performance monitor**: Labor lookup `EXPLAIN ANALYZE` on production-scale data; add index only if latency regresses.
 
 ## Next Actions (for resuming AI)
 
-1. After PR merge: confirm `main` HEAD includes `10cc06b0`; close field sign-off above.
+1. When the 2026-06-24 recovery and 8H/10H toggle are committed/deployed, replace `latest_recovery` / `latest_capacity_toggle` with the final commit hash.
 2. If UI stale on Pi4: force reload per verification-checklist §6.6.4 (Pi4 does not `git pull` SPA).
-3. Mark plan `done` after field sign-off; open KB only if a defect is found.
+3. Keep monitoring first usable speed; do not remove the labor metadata overlay to solve display staleness.
 
 ## Local Notes JA
 
 - 要件正本: `leaderboard_labor_minutes_requirements.md`（リポジトリ外）
 - **2026-06-18 修正**: 実データで `FSIGENCD=10` 行に `fkmail` が無いため lookup が全落ちしていた。表示済み通常行キーに従属する合算へ変更（`10cc06b0`）。
+- **2026-06-24 修正**: 速度改善で append 済み行維持は効いていたが、旧 `includeLabor=false` 行の `laborRequiredMinutes=0` も維持されていた。表示行数は維持し、fresh network board の人工数メタデータだけを `row.id` で重ねる方式に変更。実機目視 OK。
+- **2026-06-24 追加**: `+人` の左に 8H/10H ボタンを追加。slotIndex 順に端末ローカル保存し、Gantt `capacityMinutes` へ 480/600 分を渡す。
 - Codex レビュー反映: TS re-export fix, lookup 可視性合わせ→**表示行由来キーへ修正**, FSIGENCD=10 除外, cache v3/fingerprint, service tests, import/order, fallback 安定化

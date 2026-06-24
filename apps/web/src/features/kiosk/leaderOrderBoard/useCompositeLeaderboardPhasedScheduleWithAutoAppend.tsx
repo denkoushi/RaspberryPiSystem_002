@@ -51,6 +51,7 @@ import {
   normalizeLeaderboardContinueFailure
 } from './leaderboardContinueErrorPolicy';
 import { mergeLeaderboardBoardContinueResponseWithOptionalDelta } from './mergeLeaderboardBoardContinueResponse';
+import { mergeLeaderboardBoardLaborMetadataForDisplay } from './mergeLeaderboardBoardLaborMetadata';
 import { mergeLeaderboardBoardWithDecorations } from './mergeLeaderboardBoardWithDecorations';
 import {
   useLeaderboardBoardTerminalCache,
@@ -417,9 +418,13 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     networkBoardComplete,
     isBackgroundRevalidating
   });
-  const displayBoard =
+  const selectedDisplayBoard =
     pickLeaderboardBoardForDisplay(cacheOrNetworkDisplayBoard, displayScopedAppendOverride) ??
     placeholderDisplayBoard;
+  const displayBoard = mergeLeaderboardBoardLaborMetadataForDisplay(
+    selectedDisplayBoard,
+    networkDisplayBoard
+  );
 
   const resolvedShellRef = useRef(resolvedShell);
   resolvedShellRef.current = resolvedShell;

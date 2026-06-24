@@ -1,7 +1,10 @@
 import clsx from 'clsx';
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 
-import { resolveLeaderBoardGanttCapacityMinutes } from './gantt/leaderBoardGanttCapacity';
+import {
+  normalizeLeaderBoardGanttCapacityMinutes,
+  resolveLeaderBoardGanttCapacityMinutes
+} from './gantt/leaderBoardGanttCapacity';
 import { LeaderOrderResourceCard } from './LeaderOrderResourceCard';
 
 import type { LeaderboardBoardClientPerfLogger } from './leaderboardBoardClientPerf';
@@ -43,6 +46,9 @@ export type LeaderBoardGridProps = {
   /** スロットごとの `+人` ON/OFF（slotIndex 順） */
   laborEnabledBySlotIndex?: readonly boolean[];
   onToggleLaborForSlot?: (slotIndex: number) => void;
+  /** スロットごとのガント基準時間（slotIndex 順） */
+  capacityMinutesBySlotIndex?: readonly number[];
+  onToggleCapacityMinutesForSlot?: (slotIndex: number) => void;
   logClientPerfEvent?: LeaderboardBoardClientPerfLogger;
 };
 
@@ -74,6 +80,7 @@ type SlotCardProps = {
   onAutoRank?: (resourceCd: string) => void;
   laborEnabled?: boolean;
   onToggleLabor?: () => void;
+  onToggleCapacityMinutes?: () => void;
 };
 
 const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
@@ -103,7 +110,8 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   autoRankPending = false,
   onAutoRank,
   laborEnabled = false,
-  onToggleLabor
+  onToggleLabor,
+  onToggleCapacityMinutes
 }: SlotCardProps) {
   const onSelect = useCallback(() => {
     setSelectedResourceCd(resourceCd);
@@ -142,6 +150,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
       onAutoRank={onAutoRank}
       laborEnabled={laborEnabled}
       onToggleLabor={onToggleLabor}
+      onToggleCapacityMinutes={onToggleCapacityMinutes}
     />
   );
 });
@@ -179,6 +188,8 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   onAutoRank,
   laborEnabledBySlotIndex = [],
   onToggleLaborForSlot,
+  capacityMinutesBySlotIndex = [],
+  onToggleCapacityMinutesForSlot,
   logClientPerfEvent
 }: LeaderBoardGridProps) {
   const rowControlsLocked = interactionLocked;
@@ -197,19 +208,23 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
     });
   }, [logClientPerfEvent, resourceCdBySlotIndex, totalRows]);
 
-  const capacityMinutesBySlotIndex = useMemo(
+  const resolvedCapacityMinutesBySlotIndex = useMemo(
     () =>
       resourceCdBySlotIndex.map((cdRaw, slotIndex) => {
         const resourceCd = cdRaw?.trim() ?? '';
         if (resourceCd.length === 0) return 0;
-        return resolveLeaderBoardGanttCapacityMinutes({
-          siteKey,
-          deviceScopeKey,
-          slotIndex,
-          resourceCd
-        });
+        const persistedCapacityMinutes = capacityMinutesBySlotIndex[slotIndex];
+        return normalizeLeaderBoardGanttCapacityMinutes(
+          persistedCapacityMinutes ??
+            resolveLeaderBoardGanttCapacityMinutes({
+              siteKey,
+              deviceScopeKey,
+              slotIndex,
+              resourceCd
+            })
+        );
       }),
-    [resourceCdBySlotIndex, siteKey, deviceScopeKey]
+    [capacityMinutesBySlotIndex, resourceCdBySlotIndex, siteKey, deviceScopeKey]
   );
 
   return (
@@ -235,7 +250,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
         const rows = sortedGrouped.get(cd) ?? [];
         const jpNames = (resourceNameMap[cd] ?? []).join(' / ');
         const orderUsageNumbers = orderUsageByResourceCd?.[cd];
-        const capacityMinutes = capacityMinutesBySlotIndex[slotIndex] ?? 0;
+        const capacityMinutes = resolvedCapacityMinutesBySlotIndex[slotIndex] ?? 0;
         return (
           <LeaderBoardSlotCard
             key={`slot-${slotIndex}-${cd}`}
@@ -267,6 +282,11 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             laborEnabled={Boolean(laborEnabledBySlotIndex[slotIndex])}
             onToggleLabor={
               onToggleLaborForSlot ? () => onToggleLaborForSlot(slotIndex) : undefined
+            }
+            onToggleCapacityMinutes={
+              onToggleCapacityMinutesForSlot
+                ? () => onToggleCapacityMinutesForSlot(slotIndex)
+                : undefined
             }
           />
         );

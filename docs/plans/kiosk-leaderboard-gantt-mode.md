@@ -1,6 +1,6 @@
 ---
 id: kiosk-leaderboard-gantt-mode
-status: deployed_all_kiosks_operator_pi5_ok
+status: deployed_all_kiosks_operator_pi5_ok_plus_8h_10h_toggle_local
 scope: kiosk leader order board gantt display
 date: 2026-06-17
 source_of_truth: true
@@ -8,6 +8,7 @@ related_code:
   - apps/web/src/features/kiosk/leaderOrderBoard/gantt/
   - apps/web/src/features/kiosk/leaderOrderBoard/gantt/leaderBoardGanttCapacity.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/usePersistedLeaderBoardGanttMode.ts
+  - apps/web/src/features/kiosk/leaderOrderBoard/usePersistedLeaderBoardCapacityMode.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx
   - apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardGrid.tsx
   - infrastructure/docker/Dockerfile.web
@@ -16,11 +17,10 @@ related_docs:
   - docs/guides/verification-checklist.md
   - docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md
   - docs/knowledge-base/ci-cd.md
-validation: web vitest leaderBoardGantt 42 passed + lint + tsc + build + CI 27662630259 success + Pi5/Pi4 deploy + verify-phase12-real 43/0/0 (2026-06-17)
+validation: web vitest leaderBoardGantt 42 passed + lint + tsc + build + CI 27662630259 success + Pi5/Pi4 deploy + verify-phase12-real 43/0/0 (2026-06-17) + 2026-06-24 focused 8H/10H toggle tests/lint/build PASS
 open_items:
   - operator visual sign-off for remainder-band display on all Pi4 kiosks (Pi5 OK 2026-06-17)
-  - slot-specific capacityMinutes production map (currently all slots default 480)
-  - optional verification-checklist section for gantt toggle and ruler
+  - 8H/10H toggle production deploy and real-device visual sign-off
 ---
 
 # Plan: Kiosk Leader Order Board Gantt Display
@@ -33,7 +33,9 @@ open_items:
 
 ## Goal
 
-Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. When ON, each resource slot uses a **variable capacity ruler** (default 8H = 480min, slot-specific later) scaled to the slot body height, row height scales with `FSIGENSHOYORYO` (`requiredMinutes`), and **4px visible/transparent vertical bands** appear in the left gutter.
+Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. When ON, each resource slot uses a **variable capacity ruler** (default 8H = 480min; operator can switch each slot to 10H = 600min) scaled to the slot body height, row height scales with `FSIGENSHOYORYO` (`requiredMinutes`), and **4px visible/transparent vertical bands** appear in the left gutter.
+
+2026-06-24 update: each resource slot also has a device-local **8H/10H** toggle next to `+人`. It switches the slot capacity between **480min** and **600min** and passes that value as `capacityMinutes` into the existing Gantt layout.
 
 ## Branch, commits, CI
 
@@ -64,9 +66,18 @@ Workloads exceeding a capacity multiple (e.g. 600min at 8H) extended the last vi
 - Module: `leaderBoardGanttCapacity.ts`
 - `resolveLeaderBoardGanttCapacityMinutes({ siteKey, deviceScopeKey, slotIndex, resourceCd })`
 - **Production default: all slots 480min.** Example map values (305→480, 584→720, 585→1440) documented in code comments only — **not enabled**.
+- 2026-06-24: Web applies the persisted per-slot 8H/10H toggle before falling back to the resolver. Values are limited to **480** or **600** minutes.
 - `normalizeLeaderBoardGanttCapacityMinutes` clamps invalid input to 480.
 - Wiring: `LeaderBoardGrid` resolves per slot → `LeaderOrderResourceCard` receives `capacityMinutes` (card does not resolve by `resourceCd` alone).
 - Naming: `capacityBoundaryEndY` added; `eightHourBoundaryEndY` kept as deprecated alias.
+
+## 8H/10H per-slot toggle (2026-06-24)
+
+- UI: `LeaderOrderResourceCard` header button, displayed immediately to the left of `+人`.
+- State: `usePersistedLeaderBoardCapacityMode`, `localStorage` scoped by site + device, slotIndex order. Default is **8H** for every slot.
+- Behavior: pressing the button toggles `8H` ↔ `10H`; `LeaderBoardGrid` passes the selected minutes to the card as `capacityMinutes`.
+- API: none. Existing row `requiredMinutes` and Gantt layout do the scaling.
+- Coexists with `+人`: `+人` changes `requiredMinutes`; `8H/10H` changes the ruler/capacity scale.
 
 ### Unchanged
 
@@ -95,6 +106,7 @@ Workloads exceeding a capacity multiple (e.g. 600min at 8H) extended the last vi
 | Grid | `LeaderBoardGrid.tsx` | per-slot `capacityMinutes` + `siteKey` / `deviceScopeKey` |
 | Card | `LeaderOrderResourceCard.tsx` | passes `capacityMinutes` into layout |
 | Persistence | `usePersistedLeaderBoardGanttMode.ts` | `localStorage` (default OFF) |
+| Capacity persistence | `usePersistedLeaderBoardCapacityMode.ts` | per-slot 8H/10H `localStorage` |
 
 ## Validation
 
@@ -105,6 +117,13 @@ Workloads exceeding a capacity multiple (e.g. 600min at 8H) extended the last vi
 | `pnpm --filter @raspi-system/web test -- leaderBoardGantt` | **42 passed** |
 | lint / tsc / build | **pass** |
 | Docker web build + Trivy (post Caddy bump) | **pass** locally |
+
+2026-06-24 local focused validation:
+
+| Check | Result |
+|-------|--------|
+| `usePersistedLeaderBoardCapacityMode`, `leaderBoardGanttDisplay`, `leaderBoardGanttCapacity`, related `+人` tests | **69 passed** |
+| Web lint / build | **pass** |
 
 ### CI
 
@@ -157,11 +176,11 @@ Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh` ·
 ## Open items
 
 1. **Operator visual sign-off** for remainder-band display on **Pi4×4** (Pi5 done).
-2. **Slot-specific `capacityMinutes` production map** — resolver stub returns 480 for all slots.
-3. **Optional** — `verification-checklist` § for gantt toggle / remainder bands.
+2. **8H/10H toggle deploy + real-device sign-off** — verify button placement, persistence, and ruler/bar change on kiosk.
 
 ## Local Notes JA
 
 - トグル: **ガントOFF** / **ガントON**（左ペイン「表示」横 · `localStorage` 工場+端末スコープ）
+- スロット別基準時間: **8H** / **10H**（資源カードヘッダー · `+人` の左 · `localStorage` 工場+端末スコープ）
 - 縦バー: `cyan-400/90` と透明 交互（`bandIndex % 2`）
 - 基準時間超過例: 600分 → 8H帯 + 2H帯（480分基準時）
