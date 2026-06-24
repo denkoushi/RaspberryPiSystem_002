@@ -17,7 +17,7 @@ validation:
   - corruption and long-line checks
   - node scripts/docs/audit-docs.mjs --check
 open_items:
-  - Continue thinning remaining `docs/INDEX.md` leaderboard 2026-05-07 snapshot and card-scope history blocks.
+  - Continue thinning remaining `docs/INDEX.md` latest-update blocks by domain.
   - Create or identify standard deployment and validation runbooks before shortening guides.
 supersedes: []
 superseded_by: null
@@ -190,7 +190,21 @@ Status: implemented in PR10.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR11 And Later: Thin Indexes And Split Large Documents
+### PR11: Thin 2026-05-07 Leaderboard Snapshot And Card-Scope Blocks
+
+Status: implemented in PR11.
+
+- Thin only the 2026-05-07 card-scope phased, server snapshot, and
+  snapshot+cursor latest-update blocks in `docs/INDEX.md`.
+- Preserve the 2026-05-07 heading and adjacent non-leaderboard entries, but
+  replace detach/run narrative detail with short links to KB, ADR, deployment,
+  and PR records.
+- Treat card-scope phased as historical; point current leaderboard specification
+  expectations to KB-392.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR12 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
