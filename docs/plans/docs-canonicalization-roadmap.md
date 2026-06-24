@@ -17,7 +17,7 @@ validation:
   - corruption and long-line checks
   - node scripts/docs/audit-docs.mjs --check
 open_items:
-  - Continue thinning remaining `docs/INDEX.md` kiosk leaderboard history blocks.
+  - Continue thinning older `docs/INDEX.md` leaderboard performance / ordering blocks.
   - Create or identify standard deployment and validation runbooks before shortening guides.
 supersedes: []
 superseded_by: null
@@ -135,7 +135,18 @@ Status: implemented in PR6.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR7 And Later: Thin Indexes And Split Large Documents
+### PR7: Thin 2026-05-22 Kiosk Leaderboard History Blocks
+
+Status: implemented in PR7.
+
+- Thin only the 2026-05-22 kiosk leaderboard UI and history latest-update
+  blocks in `docs/INDEX.md`.
+- Preserve the headings and old reachability, but replace narrative deployment
+  detail with short links to existing KB, deployment, and verification records.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR8 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
