@@ -228,7 +228,20 @@ Status: implemented in PR13.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR14 And Later: Thin Indexes And Split Large Documents
+### PR14: Thin Mishima Grinding CSV Gmail NON_RETRIABLE Index History Block
+
+Status: implemented in PR14.
+
+- Thin only the 2026-05-06 Mishima Grinding CSV Gmail
+  `NON_RETRIABLE` / `CSV_HEADER_MISMATCH` latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace PowerAutomate empty attachment,
+  disposal, and debug-sink narrative detail with short links to KB-297, the
+  CSV import/export guide, and PR #259.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR15 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
