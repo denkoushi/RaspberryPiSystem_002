@@ -5,15 +5,15 @@
 | Field | Value |
 |-------|-------|
 | id | `plan-kiosk-leaderboard-labor-minutes-toggle` |
-| status | **production_deployed / labor_metadata_retention_required + gantt_ruler_regression_documented** — Pi5 + Pi4×4 · visibility fix **`10cc06b0`** (2026-06-18) · `4e3d3926` overlay was partial · 8H/10H toggle deployed · **`f978c15e` ruler-stretch behavior is not the intended Gantt contract** |
+| status | **production_deployed_all_kiosks / recovered + layout_stabilized** — PR **#464** · latest code **`5171e44e`** · Pi5 operator OK · all hosts deploy **`20260624-175322-20365`** · Phase12 **43/0/0** |
 | scope | Kiosk leader order board (`ProductionScheduleLeaderOrderBoardPage`) |
 | date | 2026-06-17 (feature) · 2026-06-18 (visibility fix deploy) · 2026-06-24 (display recovery) |
 | source_of_truth | this document |
-| branch | `fix/leaderboard-labor-visibility-from-machine-status` → merge to `main` |
-| commit | **`10cc06b0`** — `fix: derive leaderboard labor minutes from visible machine rows` |
-| latest_recovery | **pending** — retain `includeLabor=true` labor metadata by row id across the same display scope; `4e3d3926` only overlaid the current network board and was insufficient for appended rows |
+| branch | `feat/production-schedule-split-orders` → PR **#464** |
+| commit | **`5171e44e`** — `fix: stabilize leaderboard sync status layout` |
+| latest_recovery | **`cca420ac`** — retain `includeLabor=true` labor metadata by row id for the same display scope and overlay it onto appended rows |
 | latest_capacity_toggle | **`4e3d3926`** — per-slot 8H/10H button immediately left of `+人`, persisted locally |
-| latest_gantt_ruler | **restore required** — 8H/10H ruler must map cumulative row work to the slot body; `f978c15e` incorrectly stretched the whole ruler from total minutes |
+| latest_gantt_ruler | **`a882ac81`** — restore cumulative 8H/10H capacity-boundary mapping; reject the `f978c15e` total-work ruler-height contract |
 | related_code | `apps/api/src/services/production-schedule/leaderboard/leaderboard-labor-minutes*.ts`, `apps/web/src/features/kiosk/leaderOrderBoard/*` |
 | related_docs | [kiosk-leaderboard-gantt-mode.md](./kiosk-leaderboard-gantt-mode.md), [deployment.md](../guides/deployment.md), [verification-checklist.md](../guides/verification-checklist.md) |
 
@@ -55,6 +55,8 @@ Rules:
 - `useCompositeLeaderboardPhasedScheduleWithAutoAppend` retains labor metadata returned by `includeLabor=true` shell/continue/deltaRows for the same display scope and overlays it onto the current display board. `includeLabor=false` machine-only rows must not overwrite retained labor metadata with `0`.
 - `LeaderOrderResourceCard`: header `+人` button; `LeaderOrderResourceRow`: minute label.
 - `LeaderOrderResourceCard`: header `8H/10H` button immediately left of `+人`; `usePersistedLeaderBoardCapacityMode` stores slot capacity locally.
+- `ProductionScheduleLeaderOrderBoardPage`: transient sync labels (`一覧を更新中です。`, `詳細情報を更新中です。`) are rendered as a top-right overlay, not normal-flow content, so the resource slot grid does not shift vertically.
+- `LeaderBoardLeftToolStack`: split feature status (`分割 Web OFF` etc.) is shown inside the left operation pane under the target device selector, not in the main grid header.
 - `sanitizeLeaderBoardSlotResourceCd` + server-sync filter exclude `10` from slots.
 - `useLeaderBoardResourceSlots`: stable fallback seed to avoid re-hydrate loops.
 
@@ -154,6 +156,39 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 - Web build / CI / deploy / Phase12 all passed for `f978c15e`, but those checks did not validate the intended cumulative-boundary ruler contract.
 - Production page check on FJV60/80 `021` showed huge ruler heights (`6220px` / `8307px` / `5116px`), which is now recorded as evidence of the rejected total-work-height behavior, not as a success condition.
 
+### Final recovery and layout stabilization (2026-06-24, PR #464)
+
+**Accepted operator contract**:
+
+- `+人` OFF: row label and Gantt cumulative work use `machineRequiredMinutes`.
+- `+人` ON: row label and Gantt cumulative work use `machineRequiredMinutes + laborRequiredMinutes`.
+- 8H/10H sets only the capacity window: **480** or **600** minutes per band.
+- The Gantt vertical bar is not a total-work-height bar. It maps the cumulative row work to the card body and shows alternating visible/transparent capacity bands. Even bands are visible; odd bands are transparent.
+- Row/card heights stay compressed for performance. Do not make scroll height proportional to total minutes.
+- `+人 ON` may take time while `includeLabor=true` shell/continue metadata arrives; existing appended rows remain visible and are updated as metadata is retained and overlaid.
+- Sync status text remains visible but must not move the grid. It is an overlay. Split feature status belongs in the left pane.
+
+**Fix sequence**:
+
+| Commit | Role |
+|--------|------|
+| `a882ac81` | Restored cumulative 8H/10H capacity boundaries and removed total-work scroll/ruler growth. |
+| `cca420ac` | Retained labor metadata by `row.id` across the same display scope, so appended rows update when `+人` is ON. |
+| `5171e44e` | Moved transient sync status to an overlay and moved split status into the left pane to avoid resource-grid layout shift. |
+
+**Validation and deploy**:
+
+| Check | Result |
+|-------|--------|
+| Focused Web tests | `leaderBoardGantt`, `useCompositeLeaderboardPhasedScheduleWithAutoAppend`, `applyLeaderBoardDisplayRequiredMinutes` — PASS |
+| Web lint / build | PASS |
+| PR #464 CI at `5171e44e` | Secret scan `28083921237`, CodeQL `28083921239`, push CI `28083918759`, PR CI `28083921253` — PASS. The initial PR `security-docker` failure was GitHub runner `/tmp` exhaustion during Trivy image scan; rerun passed. |
+| Pi5 deploy | `20260624-174357-19660` — `failed=0` / `unreachable=0`, commit `5171e44e`, operator real-device check OK. |
+| All-host deploy | `20260624-175322-20365` — Pi5 + Pi4×4 + Pi3, `failed=0` / `unreachable=0`, summary success true. |
+| Phase12 after all-host deploy | PASS **43**, WARN **0**, FAIL **0**. |
+
+**Operational observation**: `raspi4-kensaku-stonebase01` rebuilt `barcode-agent` during the all-host deploy and spent several minutes in `docker compose --profile barcode up -d --build barcode-agent`. Existing `barcode-agent` / `nfc-agent` containers stayed running, the rebuild eventually completed, and readiness passed. Treat this as a slow-but-successful deploy path unless the final ready check fails.
+
 ## Operational Notes (not KB)
 
 - Pi5 api/web rebuild may hit transient health-wait retries after memory spike; see [deployment.md §deploy-api-build-cache-health-wait](../guides/deployment.md#deploy-api-build-cache-health-wait-2026-06-17).
@@ -161,15 +196,15 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 
 ## Open Items
 
-- [ ] **Field sign-off (real device, 2026-06-24 follow-up)**: `+人` toggle changes minute label and Gantt capacity bands for appended rows after retained metadata overlay. API verified on Pi5; UI must be rechecked after this follow-up.
-- [ ] **Performance monitor**: Labor lookup `EXPLAIN ANALYZE` on production-scale data; add index only if latency regresses.
-- [ ] **Restore Gantt cumulative-boundary ruler**: revert the `f978c15e` total-minute ruler-height contract while preserving `+人`, 8H/10H toggle, metadata overlay, and row/card performance constraints.
+- [ ] **Performance monitor**: Labor lookup `EXPLAIN ANALYZE` on production-scale data; add an index only if latency regresses.
+- [ ] **Optional all-kiosk visual sign-off**: Pi5 operator check is OK and all-host automated checks passed. If requested, confirm on each Pi4 that `+人`, 8H/10H bands, card minute labels, sync overlay, and left-pane split status match the accepted contract.
 
 ## Next Actions (for resuming AI)
 
 1. If UI stale on Pi4: force reload per verification-checklist §6.6.4 (Pi4 does not `git pull` SPA).
 2. Keep monitoring first usable speed; do not remove the labor metadata overlay to solve display staleness.
-3. For Mac/VNC verification of another terminal scope, use `client-key-mac-kiosk1`; Pi4 client-key correctly rejects cross-scope `targetDeviceScopeKey`.
+3. Do not reintroduce `rulerHeightPx = totalRequiredMinutes / capacityMinutes * availableWorkHeightPx`; that was the rejected `f978c15e` behavior.
+4. For Mac/VNC verification of another terminal scope, use the Mac kiosk client key from the operator secret store; Pi4 client-key correctly rejects cross-scope `targetDeviceScopeKey`.
 
 ## Local Notes JA
 
@@ -178,4 +213,5 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 - **2026-06-24 修正（不十分）**: 速度改善で append 済み行維持は効いていたが、旧 `includeLabor=false` 行の `laborRequiredMinutes=0` も維持されていた。`4e3d3926` は fresh network board の人工数メタデータだけを `row.id` で重ねたが、metadata を保持しないため appended rows 全体への復旧としては不十分だった。
 - **2026-06-24 追加**: `+人` の左に 8H/10H ボタンを追加。slotIndex 順に端末ローカル保存し、Gantt `capacityMinutes` へ 480/600 分を渡す。
 - **2026-06-24 回帰メモ**: `f978c15e` は 8H/10H 縦バーを総工数比例の長い棒にしてしまい、正常仕様である「行順の累積工数が 480/600 分へ到達する位置を表示する」挙動から外れた。修正では累積境界写像へ戻す。
+- **2026-06-24 最終復旧**: `a882ac81` で累積境界写像へ復旧、`cca420ac` で append 済み行へ人工数 metadata を保持 overlay、`5171e44e` で同期表示を overlay 化して画面のガタつきを止めた。Pi5 実機 OK、全台 deploy と Phase12 43/0/0 済み。
 - Codex レビュー反映: TS re-export fix, lookup 可視性合わせ→**表示行由来キーへ修正**, FSIGENCD=10 除外, cache v3/fingerprint, service tests, import/order, fallback 安定化
