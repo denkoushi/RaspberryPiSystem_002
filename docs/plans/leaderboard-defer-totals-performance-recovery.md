@@ -1,6 +1,6 @@
 ---
 id: leaderboard-defer-totals-performance-recovery
-status: pi5_labor_toggle_banner_deployed_plus_labor_display_recovery_verified
+status: pi5_labor_toggle_banner_deployed_plus_labor_display_and_gantt_ruler_verified
 scope: kiosk leader order board first usable performance and Web display stability
 date: 2026-06-23
 source_of_truth: true
@@ -31,9 +31,8 @@ related_docs:
   - docs/decisions/ADR-20260211-production-schedule-expression-indexes.md
   - docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md
   - docs/guides/deployment.md
-validation: focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK · 2026-06-24 Gantt ruler stretch focused Web tests/build PASS
+validation: focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK · 2026-06-24 Gantt ruler stretch focused Web tests/build PASS · f978c15e CI 28073394781/28073393362 success · deploy 20260624-125213-16642 · Phase12 43/0/0 · production page FJV60/80 021 +人/8H/10H verified
 open_items:
-  - Latest PR checks after `e98de7ce`: CodeQL, gitleaks, lint-build-unit, and e2e-smoke passed; `api-db-and-infra` and `security-docker` were still pending at handoff time.
   - If the physical browser still appears busy, distinguish three states: initial shell load, 5-minute board refresh, and `+人` labor metadata refresh. Only the first two should show 「一覧を更新中です。」.
   - `resourceShell` can still be multi-second on large resources; do not add API/index work until browser/client-perf logs show API shell is again the bottleneck.
   - Kiosk browsers must hard reload to pick up the deployed Web bundle; already-open SPA tabs can keep old banner/refetch/labor-overlay behavior until reload.
@@ -695,11 +694,11 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - Fix: after choosing the display board, overlay fresh finite `machineRequiredMinutes` / `laborRequiredMinutes` from `networkDisplayBoard` by `row.id`. This keeps the long appended board visible while allowing rows already returned by the `includeLabor=true` refresh to update their label and Gantt height.
 - Validation: focused Web tests covering partial/complete labor refresh PASS, Web lint PASS, Web build PASS, and real-device visual check (2026-06-24) OK.
 
-**2026-06-24 Gantt ruler stretch follow-up**:
+**2026-06-24 Gantt ruler stretch follow-up（deployed / verified）**:
 
 - After the 8H/10H toggle, real-device use found another visual-only gap: `+人` could update logical `requiredMinutes`, but the Gantt vertical ruler still appeared unchanged on large slots because row height and ruler height shared the same compressed scale.
 - Fix: keep the row/card scale compressed for first-usable performance and compute `rulerHeightPx` from logical capacity bands (`totalRequiredMinutes / capacityMinutes * availableWorkHeightPx`). The card scroll area uses the max of row-list height and `rulerHeightPx`, so the 8H/10H vertical bar can stretch without increasing every row card.
-- Validation: focused Web tests prove `400→575` minutes changes the label and stretches the ruler `480px→575px` while row minimum heights stay fixed; Web build PASS. Deploy/field sign-off pending at time of this note.
+- Validation: focused Web tests prove `400→575` minutes changes the label and stretches the ruler `480px→575px` while row minimum heights stay fixed; Web build PASS. Production commit **`f978c15e`** passed CI (`28073394781` / `28073393362`), deployed in run **`20260624-125213-16642`**, and Phase12 returned **PASS 43 / WARN 0 / FAIL 0**. Production page check on FJV60/80 `021`: `+人` OFF labels `700分, 700分, 252分, 720分, 648分, 225分` / ruler **6220px**; `+人` ON labels `900分, 1000分, 342分, 840分, 848分, 285分` / ruler **8307px**; 10H changed the same slot ruler to **5116px**.
 
 **Current intended behavior**:
 
@@ -709,19 +708,19 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - Pressing `+人` triggers labor metadata fetch but should **not** show 「一覧を更新中です。」 if existing display rows are present and the only effective display freshness change is `includeLabor`.
 - Decorations still use the separate 「詳細情報を更新中です。」 message.
 
-**Follow-up fix after local Playwright pass（2026-06-23 · local branch, pending deploy）**:
+**Follow-up fix after local Playwright pass（2026-06-23 · PR #464 deployed）**:
 
 - Local Playwright against Pi5 production API with the target 6-slot set `581,305,589,584,588,586` recorded `board-get-settled=5.813s`, `first-display-board-rows=5.814s`, and `schedule-usable=5.814s`. The remaining misleading signal was UI-only: `boardDataSyncing=true` during background append kept 「一覧を更新中です。」 visible even though rows were already displayed and row operations were not locked.
 - Fix: `isBoardDataSyncStatusVisible` now treats continuation-only sync after display rows exist as silent, while keeping true initial GET loading visible and leaving `isBoardDataSyncing` intact for cache/SWR internals.
 
-**API follow-up: resource-first winner shell（2026-06-23 · local branch, pending deploy）**:
+**API follow-up: resource-first winner shell（2026-06-23 · PR #464 deployed）**:
 
 - Pre-change investigation on Pi5 showed the real board shell is dominated by per-resource row selection rather than labor/decorations. The target resources have modest candidate sizes (`584` max ~3,495 raw rows), while the materialized winner array contains ~54k ids.
 - EXPLAIN comparison on resource `584` indicated the resource-first correlated winner shape can be faster than scanning the full materialized winner membership before resource filtering (approx. 0.66s vs 1.23s in the sampled plan).
 - Fix: `leaderboard-board` shell now calls each single-resource `resourceShell` with `leaderboardWinnerBaseStrategy: 'correlated'`. The shared materialized winner path remains in place for summary, continue, totals, decorations, and non-opt-in callers. Perf logs include `winnerBaseStrategy: 'correlated'` on `phase=resourceShell`.
 - Local validation: `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts` PASS; `pnpm --filter @raspi-system/api lint` PASS; `pnpm --filter @raspi-system/api build` PASS. The broader route integration test filtered by `leaderboard shell` could not run locally because PostgreSQL was not reachable at `localhost:5432`.
 
-**API follow-up: lazy materialized winner for first usable shell（2026-06-23 · local branch, pending deploy）**:
+**API follow-up: lazy materialized winner for first usable shell（2026-06-23 · PR #464 deployed）**:
 
 - Post-deploy direct API showed resource-first winner helped but did not remove the real shell floor: target 6-slot `pageSize=50&includeLabor=false&includeDecorations=false&deferTotals=true` averaged around `5.5s` curl total / `2.6s` API responseTime, and Pi5 still had `129` persisted process-change residual evidence rows. Because residual evidence was non-empty, shell still resolved the global materialized winner base for `processChangeResidualSummary`, even though resource shell rows themselves were already using correlated winner filtering.
 - Fix: `fetchLeaderboardCompositeBoardShell` now lazily resolves `resolveLeaderboardMaterializedBaseWhere()` only when exact totals or labor lookup need it. For `deferTotals=true` shell residual summary, it passes `buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner(PRODUCTION_SCHEDULE_DASHBOARD_ID)` instead of building the global materialized winner set. If residual evidence keys are empty, it returns the standard zero residual summary without calling the residual summary service. This keeps output semantics while removing global winner materialization from the normal first-usable request shape (`includeLabor=false`, `deferTotals=true`).

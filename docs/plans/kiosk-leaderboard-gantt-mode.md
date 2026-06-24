@@ -1,6 +1,6 @@
 ---
 id: kiosk-leaderboard-gantt-mode
-status: deployed_all_kiosks_operator_pi5_ok_plus_8h_10h_toggle_local_plus_ruler_stretch_pending_deploy
+status: deployed_all_kiosks_operator_pi5_ok_plus_8h_10h_toggle_and_ruler_stretch_verified
 scope: kiosk leader order board gantt display
 date: 2026-06-17
 source_of_truth: true
@@ -17,10 +17,9 @@ related_docs:
   - docs/guides/verification-checklist.md
   - docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md
   - docs/knowledge-base/ci-cd.md
-validation: web vitest leaderBoardGantt 42 passed + lint + tsc + build + CI 27662630259 success + Pi5/Pi4 deploy + verify-phase12-real 43/0/0 (2026-06-17) + 2026-06-24 focused 8H/10H toggle/ruler-stretch tests + web build PASS
+validation: web vitest leaderBoardGantt 42 passed + lint + tsc + build + CI 27662630259 success + Pi5/Pi4 deploy + verify-phase12-real 43/0/0 (2026-06-17) + 2026-06-24 focused 8H/10H toggle/ruler-stretch tests + web build PASS + f978c15e CI 28073394781/28073393362 success + deploy 20260624-125213-16642 + Phase12 43/0/0 + production page FJV60/80 021 verified
 open_items:
   - operator visual sign-off for remainder-band display on all Pi4 kiosks (Pi5 OK 2026-06-17)
-  - 8H/10H toggle + Gantt ruler stretch production deploy and real-device visual sign-off
 ---
 
 # Plan: Kiosk Leader Order Board Gantt Display
@@ -144,6 +143,7 @@ Workloads exceeding a capacity multiple (e.g. 600min at 8H) extended the last vi
 
 | Run ID | Commit | Result |
 |--------|--------|--------|
+| `28073394781` / `28073393362` | `f978c15e` | all jobs success |
 | `27662630259` | `66fd10c6` | all jobs success |
 | `27661913361` | `336d7baa` | `security-docker` failed (Caddy CVE; fixed in next commit) |
 
@@ -158,6 +158,22 @@ Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh` ·
 | **Capacity bands** | `raspi4-robodrill01` | **`20260617-131443-27802`** | **`66fd10c6`** | **`ok=122` `changed=9` `failed=0`** | `kiosk-browser` restart |
 | **Capacity bands** | `raspi4-fjv60-80` | **`20260617-131804-13754`** | **`66fd10c6`** | **`ok=122` `changed=9` `failed=0`** | `kiosk-browser` restart |
 | **Capacity bands** | `raspi4-kensaku-stonebase01` | **`20260617-132125-5230`** | **`66fd10c6`** | **`ok=129` `changed=10` `failed=0`** | `kiosk-browser` restart |
+
+### Production deploy (8H/10H + ruler stretch, 2026-06-24)
+
+Standard: [deployment.md §2026-06-24](../guides/deployment.md#kiosk-leaderboard-labor-gantt-ruler-stretch-2026-06-24) · branch `feat/production-schedule-split-orders`
+
+| Phase | Host group | Detach Run ID | HEAD | Result | Notes |
+|-------|------------|---------------|------|--------|-------|
+| **8H/10H + ruler stretch** | Pi5 + Pi4×4 + Pi3 | **`20260624-125213-16642`** | **`f978c15e`** | **`failed=0` `unreachable=0`** | Pi5 Docker rebuild/restart + Prisma OK; Pi4×4 `kiosk-browser`/`status-agent` restarted; Pi3 `signage-lite` active after lightdm restored |
+
+| Check | Result |
+|-------|--------|
+| CI PR event / push event | **`28073394781` / `28073393362` success** |
+| `verify-phase12-real.sh` | **PASS 43 / WARN 0 / FAIL 0** |
+| Production page, FJV60/80 `021`, `+人` OFF | labels `700分, 700分, 252分, 720分, 648分, 225分`; ruler **6220px** |
+| Production page, FJV60/80 `021`, `+人` ON | labels `900分, 1000分, 342分, 840分, 848分, 285分`; ruler **8307px** |
+| Production page, FJV60/80 `021`, 10H | label **`10H`**; same slot ruler **5116px** |
 
 **Pi3**: out of scope.
 
@@ -191,7 +207,6 @@ Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh` ·
 ## Open items
 
 1. **Operator visual sign-off** for remainder-band display on **Pi4×4** (Pi5 done).
-2. **8H/10H toggle + Gantt ruler stretch deploy + real-device sign-off** — verify button placement, persistence, and `+人` ON/OFF ruler/bar stretch on kiosk.
 
 ## Local Notes JA
 

@@ -5,15 +5,15 @@
 | Field | Value |
 |-------|-------|
 | id | `plan-kiosk-leaderboard-labor-minutes-toggle` |
-| status | **production_deployed / field_verified** — Pi5 + Pi4×4 · visibility fix **`10cc06b0`** (2026-06-18) · display recovery verified on real device (2026-06-24) · 8H/10H toggle implemented locally · Gantt ruler stretch fix pending deploy |
+| status | **production_deployed / field_verified** — Pi5 + Pi4×4 · visibility fix **`10cc06b0`** (2026-06-18) · display recovery verified on real device (2026-06-24) · 8H/10H toggle + Gantt ruler stretch **`f978c15e`** deployed/verified |
 | scope | Kiosk leader order board (`ProductionScheduleLeaderOrderBoardPage`) |
 | date | 2026-06-17 (feature) · 2026-06-18 (visibility fix deploy) · 2026-06-24 (display recovery) |
 | source_of_truth | this document |
 | branch | `fix/leaderboard-labor-visibility-from-machine-status` → merge to `main` |
 | commit | **`10cc06b0`** — `fix: derive leaderboard labor minutes from visible machine rows` |
-| latest_recovery | 2026-06-24 working tree — keep appended display rows while overlaying fresh labor metadata by row id |
-| latest_capacity_toggle | 2026-06-24 working tree — per-slot 8H/10H button immediately left of `+人`, persisted locally |
-| latest_gantt_ruler | 2026-06-24 working tree — keep row/card heights compressed, stretch only the 8H/10H ruler by logical `requiredMinutes` |
+| latest_recovery | **`4e3d3926`** / **`f978c15e`** — keep appended display rows while overlaying fresh labor metadata by row id |
+| latest_capacity_toggle | **`4e3d3926`** — per-slot 8H/10H button immediately left of `+人`, persisted locally |
+| latest_gantt_ruler | **`f978c15e`** — keep row/card heights compressed, stretch only the 8H/10H ruler by logical `requiredMinutes` |
 | related_code | `apps/api/src/services/production-schedule/leaderboard/leaderboard-labor-minutes*.ts`, `apps/web/src/features/kiosk/leaderOrderBoard/*` |
 | related_docs | [kiosk-leaderboard-gantt-mode.md](./kiosk-leaderboard-gantt-mode.md), [deployment.md](../guides/deployment.md), [verification-checklist.md](../guides/verification-checklist.md) |
 
@@ -147,6 +147,9 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 
 - Focused Web tests: `leaderBoardGanttLayout` and `leaderBoardGanttDisplay` prove `400 → 575` minutes changes the label and stretches the ruler `480px → 575px` while row minimum heights stay fixed — PASS.
 - Web build — PASS.
+- CI: PR event `28073394781` and push event `28073393362` — success.
+- Production deploy: run `20260624-125213-16642` — Pi5 + Pi4×4 + Pi3 `failed=0` / `unreachable=0`; Phase12 **PASS 43 / WARN 0 / FAIL 0**.
+- Production page check: FJV60/80 `021`, Gantt ON. `+人` OFF labels `700分, 700分, 252分, 720分, 648分, 225分` with ruler **6220px**; `+人` ON labels `900分, 1000分, 342分, 840分, 848分, 285分` with ruler **8307px**; 10H toggle changed the same slot ruler to **5116px**.
 
 ## Operational Notes (not KB)
 
@@ -157,13 +160,13 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 
 - [x] **Field sign-off (real device, 2026-06-24)**: `+人` toggle changes minute label and Gantt height after the display recovery. API verified on Pi5; UI behavior verified by user visual check.
 - [ ] **Performance monitor**: Labor lookup `EXPLAIN ANALYZE` on production-scale data; add index only if latency regresses.
-- [ ] **Deploy + field sign-off for Gantt ruler stretch**: push/deploy the 2026-06-24 ruler stretch fix and verify `+人` ON/OFF plus 8H/10H changes on the real kiosk.
+- [x] **Deploy + field sign-off for Gantt ruler stretch**: `f978c15e` pushed/deployed; production page verified `+人` ON/OFF plus 8H/10H ruler changes on FJV60/80 `021`.
 
 ## Next Actions (for resuming AI)
 
-1. When the 2026-06-24 recovery, 8H/10H toggle, and ruler stretch fix are committed/deployed, replace `latest_recovery` / `latest_capacity_toggle` / `latest_gantt_ruler` with the final commit hash.
-2. If UI stale on Pi4: force reload per verification-checklist §6.6.4 (Pi4 does not `git pull` SPA).
-3. Keep monitoring first usable speed; do not remove the labor metadata overlay to solve display staleness.
+1. If UI stale on Pi4: force reload per verification-checklist §6.6.4 (Pi4 does not `git pull` SPA).
+2. Keep monitoring first usable speed; do not remove the labor metadata overlay to solve display staleness.
+3. For Mac/VNC verification of another terminal scope, use `client-key-mac-kiosk1`; Pi4 client-key correctly rejects cross-scope `targetDeviceScopeKey`.
 
 ## Local Notes JA
 

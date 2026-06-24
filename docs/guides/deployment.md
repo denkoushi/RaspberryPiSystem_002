@@ -2,13 +2,32 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-06-23
+last-verified: 2026-06-24
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-06-24 · **キオスク順位ボード +人 / 8H・10H Gantt 縦バー回復** · **Web** · **Pi5 + Pi4×4 反映済**） {#kiosk-leaderboard-labor-gantt-ruler-stretch-2026-06-24}
+
+- **変更概要（正本）**: [Plan: `+人`](../plans/kiosk-leaderboard-labor-minutes-toggle.md#gantt-ruler-stretch-recovery-after-8h10h-toggle-2026-06-24) · [Gantt plan](../plans/kiosk-leaderboard-gantt-mode.md#ruler-stretch-with-人-labor-minutes-2026-06-24) · [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md) · PR **#464** · commit **`f978c15e`** (`fix: stretch leaderboard gantt ruler for labor minutes`)
+  - `+人` ON 時の表示分数は `machineRequiredMinutes + laborRequiredMinutes`。既存の append 済み行は維持し、fresh network board の人工数メタデータだけを `row.id` で重ねる。
+  - 8H/10H ボタンは各資源カードヘッダーで `+人` の左。slotIndex 順・端末ローカル保存で、Gantt `capacityMinutes` に **480 / 600** 分を渡す。
+  - Gantt の行カード高さは従来の圧縮/最小高で維持し、8H/10H 縦バーだけ `totalRequiredMinutes / capacityMinutes` に追従して伸ばす。
+- **CI（`f978c15e`）**: PR event **Secret scan `28073394758`**, **CodeQL `28073394761`**, **CI `28073394781`** all success。push event **CI `28073393362`** success。`pnpm audit` high severity は warning のみで job success。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/production-schedule-split-orders infrastructure/ansible/inventory.yml --detach --follow`
+  - **Detach Run ID**: **`20260624-125213-16642`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260624-125213-16642.log`
+  - **結果**: Pi5 fast-forward **`4e3d3926` → `f978c15e`** · Docker rebuild/restart success · Prisma migrate/status OK · API health recovered · summary success true
+  - **PLAY RECAP**: `raspberrypi5` `failed=0` / `unreachable=0`; Pi4×4 (`raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`, `raspi4-kensaku-stonebase01`) `failed=0` / `unreachable=0`; `raspberrypi3` `failed=0` / `unreachable=0`
+  - **Pi4/Pi3 services**: Pi4×4 `kiosk-browser.service` / `status-agent.service` / `status-agent.timer` restart OK。Pi3 は lightdm 復旧後 `signage-lite.service is active`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。API health、Pi4 deploy-status、Pi4 kiosk/status-agent、Pi3 signage-lite/timer、`verify-services-real.sh` すべて PASS。
+- **実機（本番画面・Mac Playwright + Pi5 API）**: `/kiosk/production-schedule/leader-order-board` · site **第2工場** · device **FJV60/80** · resource **021** · Gantt ON。
+  - `+人` OFF: minute labels **`700分, 700分, 252分, 720分, 648分, 225分`** · Gantt ruler **6220px**
+  - `+人` ON: minute labels **`900分, 1000分, 342分, 840分, 848分, 285分`** · Gantt ruler **8307px**
+  - 8H → 10H click: capacity label **`10H`** · ruler **5116px**（同じ所要量で capacity 600 分基準に変化）
+- **運用メモ**: Mac 検証では `targetDeviceScopeKey` を送るため **`client-key-mac-kiosk1`** を使う。Pi4 client-key で別端末 scope を指定すると API は `TARGET_DEVICE_SCOPE_KEY_FORBIDDEN` を返す。現場 Pi4 は自端末 scope のため通常操作で問題ない。
 
 ### 補足（2026-06-23 · **キオスク順位ボード first usable 10秒化** · **API + Web** · **Pi5 反映済**） {#kiosk-leaderboard-first-usable-shell-swr-2026-06-23}
 
