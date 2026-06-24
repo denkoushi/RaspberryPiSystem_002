@@ -21,6 +21,7 @@ import {
   parseCsvList,
   productionScheduleLeaderboardBoardContinueBodySchema,
   productionScheduleLeaderboardBoardQuerySchema,
+  productionScheduleLeaderboardClientPerfBodySchema,
   productionScheduleLeaderboardDecorationsBodySchema,
   productionScheduleLeaderboardPhasedQuerySchema,
   productionScheduleLeaderboardShellContinuationBodySchema,
@@ -226,6 +227,26 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     });
   });
 
+  app.post('/kiosk/production-schedule/leaderboard-board/client-perf', { config: { rateLimit: false } }, async (request, reply) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const body = productionScheduleLeaderboardClientPerfBodySchema.parse(request.body ?? {});
+
+    request.log.info(
+      {
+        component: 'leaderboardBoardClientPerf',
+        requestId: request.id,
+        clientDeviceId: clientDevice.id,
+        forwardedFor: request.headers['x-forwarded-for'],
+        userAgent: request.headers['user-agent'],
+        referer: request.headers.referer,
+        ...body
+      },
+      '[leaderboard-board-client-perf]'
+    );
+
+    return reply.status(204).send();
+  });
+
   app.get('/kiosk/production-schedule/leaderboard-board', { config: { rateLimit: false } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
@@ -273,6 +294,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         page,
         pageSize,
         includeDecorations: query.includeDecorations,
+        includeLabor: query.includeLabor,
         deferTotals: query.deferTotals
       },
       {
@@ -326,7 +348,8 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         boardResourceCds,
         resourceSlices: body.resourceSlices,
         chunkSize,
-        includeDecorations: body.includeDecorations
+        includeDecorations: body.includeDecorations,
+        includeLabor: body.includeLabor
       },
       {
         snapshotStore: deps.leaderboardShellSnapshotStore,

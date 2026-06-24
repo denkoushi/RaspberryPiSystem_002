@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID } from '../constants.js';
 import { ProductionScheduleOrderSupplementSyncService } from '../order-supplement-sync.service.js';
-import { toSupplementNormalizedRow } from '../order-supplement-sync.pipeline.js';
+import { resolveWinnerIdByKey, toSupplementNormalizedRow } from '../order-supplement-sync.pipeline.js';
 
 type PrismaMock = {
   csvDashboardRow: { findMany: ReturnType<typeof vi.fn> };
@@ -13,7 +13,17 @@ type PrismaMock = {
     createMany: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
   };
+  productionScheduleOrderSplit: {
+    findMany: ReturnType<typeof vi.fn>;
+    findFirst: ReturnType<typeof vi.fn>;
+    deleteMany: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+  };
+  productionScheduleOrderSplitAssignment: {
+    deleteMany: ReturnType<typeof vi.fn>;
+  };
   $queryRaw: ReturnType<typeof vi.fn>;
+  $executeRaw: ReturnType<typeof vi.fn>;
   $transaction: ReturnType<typeof vi.fn>;
 };
 
@@ -28,7 +38,17 @@ const { prismaMock } = vi.hoisted(() => {
       createMany: vi.fn(),
       update: vi.fn(),
     },
+    productionScheduleOrderSplit: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      deleteMany: vi.fn(),
+      update: vi.fn(),
+    },
+    productionScheduleOrderSplitAssignment: {
+      deleteMany: vi.fn(),
+    },
     $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
     $transaction: vi.fn(),
   };
   mock.$transaction.mockImplementation(async (fn: (tx: PrismaMock) => Promise<unknown>) => fn(mock));
@@ -49,6 +69,12 @@ describe('order-supplement-sync.service', () => {
     prismaMock.productionScheduleOrderSupplement.deleteMany.mockResolvedValue({ count: 0 } as never);
     prismaMock.productionScheduleOrderSupplement.createMany.mockResolvedValue({ count: 0 } as never);
     prismaMock.productionScheduleOrderSupplement.update.mockResolvedValue({ id: 'updated-1' } as never);
+    prismaMock.productionScheduleOrderSplit.findMany.mockResolvedValue([] as never);
+    prismaMock.productionScheduleOrderSplit.findFirst.mockResolvedValue(null as never);
+    prismaMock.productionScheduleOrderSplit.deleteMany.mockResolvedValue({ count: 0 } as never);
+    prismaMock.productionScheduleOrderSplit.update.mockResolvedValue({ id: 'split-updated' } as never);
+    prismaMock.productionScheduleOrderSplitAssignment.deleteMany.mockResolvedValue({ count: 0 } as never);
+    prismaMock.$executeRaw.mockResolvedValue(0 as never);
   });
 
   it('生産システム列名の予定日も補助行として正規化する', () => {
@@ -72,6 +98,27 @@ describe('order-supplement-sync.service', () => {
     );
     expect(normalized?.plannedStartDate?.toISOString()).toBe('2027-03-04T00:00:00.000Z');
     expect(normalized?.plannedEndDate?.toISOString()).toBe('2027-03-05T00:00:00.000Z');
+  });
+
+  it('winner lookup は大量キーでも bind 変数数を増やさず JSON 1 引数で渡す', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
+    const rows = Array.from({ length: 40_000 }, (_, index) => ({
+      sourceRowId: `src-${index}`,
+      productNo: `P${String(index).padStart(6, '0')}`,
+      resourceCd: `R${index % 1000}`,
+      processOrder: String(index),
+      plannedQuantity: 1,
+      plannedStartDate: null,
+      plannedEndDate: null,
+    }));
+
+    await resolveWinnerIdByKey(prisma as never, rows);
+
+    const queryArgs = vi.mocked(prisma.$queryRaw).mock.calls[0] ?? [];
+    const lookupKeysJson = queryArgs.find((arg): arg is string => typeof arg === 'string' && arg.startsWith('[{'));
+    expect(lookupKeysJson).toBeDefined();
+    expect(JSON.parse(lookupKeysJson ?? '[]')).toHaveLength(40_000);
+    expect(queryArgs.length).toBeLessThan(10);
   });
 
   it('AA1S2M02 / 0003602728 の生産システム列名予定日を winner 行へ 2027 年予定日として反映する', async () => {
@@ -394,6 +441,222 @@ describe('order-supplement-sync.service', () => {
         plannedEndDate: keptEnd,
         plannedQuantity: 10,
       }),
+    });
+  });
+
+  it('既存行ありで CSV の plannedQuantity が空のとき既存数量を維持し split を削除しない', async () => {
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'src-blank-quantity',
+        rowData: {
+          ProductNo: '0003712732',
+          FSIGENCD: '503',
+          FKOJUN: '200',
+          plannedQuantity: '',
+        },
+      },
+    ] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      {
+        id: 'winner-1',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+      },
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.findMany).mockResolvedValue([
+      {
+        id: 'existing-1',
+        csvDashboardRowId: 'winner-1',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+        plannedQuantity: 5,
+        plannedStartDate: null,
+        plannedEndDate: null,
+        plannedStartDateManuallySet: false,
+      },
+    ] as never);
+
+    const service = new ProductionScheduleOrderSupplementSyncService();
+    await service.syncFromSupplementDashboard();
+
+    expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledWith({
+      where: { id: 'existing-1' },
+      data: expect.objectContaining({
+        plannedQuantity: 5,
+      }),
+    });
+    expect(prisma.productionScheduleOrderSplitAssignment.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSplit.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSplit.update).not.toHaveBeenCalled();
+  });
+
+  it('既存行ありで CSV の plannedQuantity が0以下のとき既存数量を維持し split を削除しない', async () => {
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'src-invalid-quantity',
+        rowData: {
+          ProductNo: '0003712732',
+          FSIGENCD: '503',
+          FKOJUN: '200',
+          plannedQuantity: '0',
+        },
+      },
+    ] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      {
+        id: 'winner-1',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+      },
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.findMany).mockResolvedValue([
+      {
+        id: 'existing-1',
+        csvDashboardRowId: 'winner-1',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+        plannedQuantity: 5,
+        plannedStartDate: null,
+        plannedEndDate: null,
+        plannedStartDateManuallySet: false,
+      },
+    ] as never);
+
+    const service = new ProductionScheduleOrderSupplementSyncService();
+    await service.syncFromSupplementDashboard();
+
+    expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledWith({
+      where: { id: 'existing-1' },
+      data: expect.objectContaining({
+        plannedQuantity: 5,
+      }),
+    });
+    expect(prisma.productionScheduleOrderSplitAssignment.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSplit.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSplit.update).not.toHaveBeenCalled();
+  });
+
+  it('plannedQuantity 変更時は既存 split 数量を新しい合計へ再配分する', async () => {
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'src-1',
+        rowData: {
+          ProductNo: '0003712732',
+          FSIGENCD: '503',
+          FKOJUN: '200',
+          plannedQuantity: '10',
+        },
+      },
+    ] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      {
+        id: 'winner-1',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+      },
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.findMany).mockResolvedValue([
+      {
+        id: 'existing-1',
+        csvDashboardRowId: 'winner-1',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+        plannedQuantity: 5,
+        plannedStartDate: null,
+        plannedEndDate: null,
+        plannedStartDateManuallySet: false,
+      },
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSplit.findMany)
+      .mockResolvedValueOnce([{ parentCsvDashboardRowId: 'winner-1' }] as never)
+      .mockResolvedValueOnce([
+        { id: 'split-1', splitQuantity: 2 },
+        { id: 'split-2', splitQuantity: 3 },
+      ] as never);
+
+    const service = new ProductionScheduleOrderSupplementSyncService();
+    await service.syncFromSupplementDashboard();
+
+    expect(prisma.productionScheduleOrderSplit.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'split-1' },
+      data: { splitQuantity: 4 },
+    });
+    expect(prisma.productionScheduleOrderSplit.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'split-2' },
+      data: { splitQuantity: 6 },
+    });
+  });
+
+  it('winner行が変わっても旧親にsplitがある場合は旧親の補助行を保持して再配分する', async () => {
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'src-1',
+        rowData: {
+          ProductNo: '0003712732',
+          FSIGENCD: '503',
+          FKOJUN: '200',
+          plannedQuantity: '10',
+        },
+      },
+    ] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      {
+        id: 'winner-new',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+      },
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.findMany).mockResolvedValue([
+      {
+        id: 'existing-1',
+        csvDashboardRowId: 'winner-old',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+        plannedQuantity: 5,
+        plannedStartDate: null,
+        plannedEndDate: null,
+        plannedStartDateManuallySet: false,
+      },
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSplit.findMany)
+      .mockResolvedValueOnce([{ parentCsvDashboardRowId: 'winner-old' }] as never)
+      .mockResolvedValueOnce([
+        { id: 'split-1', splitQuantity: 2 },
+        { id: 'split-2', splitQuantity: 3 },
+      ] as never);
+
+    const service = new ProductionScheduleOrderSupplementSyncService();
+    await service.syncFromSupplementDashboard();
+
+    expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledWith({
+      where: { id: 'existing-1' },
+      data: expect.objectContaining({
+        csvDashboardRowId: 'winner-old',
+        plannedQuantity: 10,
+      }),
+    });
+    expect(prisma.productionScheduleOrderSplit.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          parentCsvDashboardRowId: 'winner-old',
+        }),
+      })
+    );
+    expect(prisma.productionScheduleOrderSplit.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'split-1' },
+      data: { splitQuantity: 4 },
+    });
+    expect(prisma.productionScheduleOrderSplit.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'split-2' },
+      data: { splitQuantity: 6 },
     });
   });
 

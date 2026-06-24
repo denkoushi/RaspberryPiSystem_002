@@ -10,6 +10,10 @@ import {
 } from './fkojunst-status-mail-sync.pipeline.js';
 import { FkojunstExternalCompletionSyncService } from './external-completion/fkojunst-external-completion-sync.service.js';
 import { ProductionScheduleOrderAssignmentReconciliationService } from './order-assignment/order-assignment-reconciliation.service.js';
+import {
+  buildProcessChangeResidualEvidenceCreateInputs,
+  buildProcessChangeResidualStrongEvidenceFromDedupedRows,
+} from './leaderboard/leaderboard-process-change-residual.materialization.js';
 
 export type ProductionScheduleFkojunstMailStatusSyncResult = import('./fkojunst-status-mail-sync.pipeline.js').FkojunstMailSyncResult;
 
@@ -47,6 +51,11 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
     const dedupedRows = dedupeFkojunstMailRowsByLatest(normalizedRows);
     const winnerIdByKey = await resolveFkojunstMailWinnerIdByKey(prisma, dedupedRows);
     const { matched, unmatched, createInputs } = buildFkojunstMailReplacementCreateInputs(dedupedRows, winnerIdByKey);
+    const processChangeResidualMaterialization =
+      buildProcessChangeResidualStrongEvidenceFromDedupedRows(dedupedRows);
+    const processChangeResidualEvidenceInputs = buildProcessChangeResidualEvidenceCreateInputs(
+      processChangeResidualMaterialization
+    );
 
     const result = await runFkojunstMailReplacementTransaction(prisma, {
       scanned,
@@ -56,6 +65,7 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
       skippedInvalidStatus,
       skippedUnparseableDate,
       createInputs,
+      processChangeResidualEvidenceInputs,
       sourceRowsRevision: rowsRevision,
     });
 

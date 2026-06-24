@@ -7,7 +7,6 @@ import type { LeaderBoardRow } from './types';
 
 export type UseLeaderBoardSlotAutoRankParams = {
   seibanEvalEnabled: boolean;
-  listIncomplete: boolean;
   interactionLocked: boolean;
   orderPending: boolean;
   sortedGrouped: Map<string, LeaderBoardRow[]>;
@@ -21,7 +20,6 @@ export type UseLeaderBoardSlotAutoRankParams = {
 
 export function useLeaderBoardSlotAutoRank({
   seibanEvalEnabled,
-  listIncomplete,
   interactionLocked,
   orderPending,
   sortedGrouped,
@@ -31,13 +29,13 @@ export function useLeaderBoardSlotAutoRank({
   const [autoRankApplying, setAutoRankApplying] = useState(false);
 
   const autoRankDisabled =
-    !seibanEvalEnabled || listIncomplete || interactionLocked || orderPending || autoRankApplying;
+    !seibanEvalEnabled || interactionLocked || orderPending || autoRankApplying;
 
   const handleAutoRank = useCallback(
     async (resourceCd: string) => {
       const cd = resourceCd.trim();
       if (cd.length === 0) return;
-      if (!seibanEvalEnabled || listIncomplete || interactionLocked || orderPending || autoRankApplying) {
+      if (!seibanEvalEnabled || interactionLocked || orderPending || autoRankApplying) {
         return;
       }
 
@@ -59,7 +57,6 @@ export function useLeaderBoardSlotAutoRank({
     [
       autoRankApplying,
       interactionLocked,
-      listIncomplete,
       orderPending,
       orderUsageByResourceCd,
       seibanEvalEnabled,

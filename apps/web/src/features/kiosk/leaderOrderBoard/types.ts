@@ -34,4 +34,10 @@ export type LeaderBoardRow = {
   selfInspectionTemplateId: string | null;
   selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
   selfInspectionEntryPath: string | null;
+  /** display item 契約 */
+  sourceRowId: string;
+  splitId: string | null;
+  splitNo: number | null;
+  splitQuantity: number | null;
+  isSplit: boolean;
 };

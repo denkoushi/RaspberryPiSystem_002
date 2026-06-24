@@ -2,12 +2,12 @@
  * Pi4 順位ボード向けポーリング間隔（性能優先）。
  * 他端末からの更新反映は遅れうる（手動操作は mutation / invalidate で整合）。
  */
-export const LEADER_BOARD_SCHEDULE_REFETCH_MS = 120_000;
+export const LEADER_BOARD_SCHEDULE_REFETCH_MS = 300_000;
 /**
  * 段階取得（shell / total / decorations）の staleTime。
  * フォーカス復帰時の即再取得を抑えつつ、ポーリングのリズムは維持する。
  */
-export const LEADER_BOARD_LEADER_PHASED_STALE_MS = 60_000;
+export const LEADER_BOARD_LEADER_PHASED_STALE_MS = 300_000;
 /**
  * 順位候補の占有状況は他端末更新と競合しやすいため、一覧より短く保つ。
  */

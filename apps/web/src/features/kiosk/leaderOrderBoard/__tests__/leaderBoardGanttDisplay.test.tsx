@@ -13,9 +13,11 @@ vi.mock('@tanstack/react-virtual', () => ({
 }));
 
 import {
+  GANTT_EIGHT_HOURS_MINUTES,
   GANTT_MIN_ROW_HEIGHT_PX,
   GANTT_RULER_BAR_WIDTH_PX,
-  GANTT_RULER_GUTTER_WIDTH_PX
+  GANTT_RULER_GUTTER_WIDTH_PX,
+  GANTT_TEN_HOURS_MINUTES
 } from '../gantt/leaderBoardGanttConstants';
 import { LeaderBoardGanttTickGutter } from '../gantt/LeaderBoardGanttTickGutter';
 import { LeaderBoardGrid } from '../LeaderBoardGrid';
@@ -217,6 +219,44 @@ describe('LeaderOrderResourceCard gantt', () => {
 });
 
 describe('LeaderOrderResourceCard labor toggle', () => {
+  it('renders capacity toggle immediately to the left of +人', () => {
+    const onToggleCapacityMinutes = vi.fn();
+    const onToggleLabor = vi.fn();
+    render(
+      <LeaderOrderResourceCard
+        {...cardProps}
+        capacityMinutes={GANTT_EIGHT_HOURS_MINUTES}
+        onToggleCapacityMinutes={onToggleCapacityMinutes}
+        laborEnabled={false}
+        onToggleLabor={onToggleLabor}
+      />
+    );
+
+    const capacityToggle = screen.getByRole('button', { name: '基準時間を10Hにする' });
+    const laborToggle = screen.getByRole('button', { name: '人工数を含む表示をオンにする' });
+    expect(capacityToggle).toHaveTextContent('8H');
+    expect(capacityToggle).toHaveAttribute('aria-pressed', 'false');
+    expect(capacityToggle.nextElementSibling).toBe(laborToggle);
+
+    fireEvent.click(capacityToggle);
+    expect(onToggleCapacityMinutes).toHaveBeenCalledTimes(1);
+    expect(onToggleLabor).not.toHaveBeenCalled();
+  });
+
+  it('shows 10H state when capacityMinutes is 600', () => {
+    render(
+      <LeaderOrderResourceCard
+        {...cardProps}
+        capacityMinutes={GANTT_TEN_HOURS_MINUTES}
+        onToggleCapacityMinutes={vi.fn()}
+      />
+    );
+
+    const capacityToggle = screen.getByRole('button', { name: '基準時間を8Hにする' });
+    expect(capacityToggle).toHaveTextContent('10H');
+    expect(capacityToggle).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('shows required minutes label and toggles aria-pressed', () => {
     const onToggleLabor = vi.fn();
     render(
@@ -268,6 +308,52 @@ describe('LeaderOrderResourceCard labor toggle', () => {
       'true'
     );
   });
+
+  it('updates cumulative gantt capacity bands when combined labor minutes increase required minutes', () => {
+    const laborRow = {
+      id: 'r-labor-gantt',
+      fkojun: '10',
+      machineRequiredMinutes: 400,
+      laborRequiredMinutes: 175
+    };
+    const { rerender } = render(
+      <LeaderOrderResourceCard
+        {...cardProps}
+        ganttEnabled
+        capacityMinutes={GANTT_EIGHT_HOURS_MINUTES}
+        rows={[mkLeaderBoardRow({ ...laborRow, requiredMinutes: 400 })]}
+        laborEnabled={false}
+        onToggleLabor={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('400分')).toBeInTheDocument();
+    expect(screen.getByTestId('leader-board-gantt-ruler-gutter')).toHaveStyle({ height: '480px' });
+    expect(
+      screen
+        .getAllByTestId('leader-board-gantt-ruler-band')
+        .map((band) => band.getAttribute('data-band-index'))
+    ).toEqual(['0']);
+
+    rerender(
+      <LeaderOrderResourceCard
+        {...cardProps}
+        ganttEnabled
+        capacityMinutes={GANTT_EIGHT_HOURS_MINUTES}
+        rows={[mkLeaderBoardRow({ ...laborRow, requiredMinutes: 575 })]}
+        laborEnabled
+        onToggleLabor={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('575分')).toBeInTheDocument();
+    expect(screen.getByTestId('leader-board-gantt-ruler-gutter')).not.toHaveStyle({ height: '575px' });
+    expect(
+      screen
+        .getAllByTestId('leader-board-gantt-ruler-band')
+        .map((band) => band.getAttribute('data-band-index'))
+    ).toEqual(['0', '1']);
+  });
 });
 
 describe('LeaderBoardGrid gantt', () => {
@@ -301,5 +387,21 @@ describe('LeaderBoardGrid gantt', () => {
     expect(container.firstElementChild?.className).toContain('[grid-auto-rows:minmax(14rem,1fr)]');
     expect(container.firstElementChild?.className).not.toContain('auto-rows-auto');
     expect(screen.getByText('305')).toBeInTheDocument();
+  });
+
+  it('passes per-slot capacity minutes to the gantt ruler', () => {
+    const rows = [mkLeaderBoardRow({ id: 'r18h-grid', fkojun: '10', requiredMinutes: 1080 })];
+    render(
+      <LeaderBoardGrid
+        {...gridProps}
+        sortedGrouped={new Map([['305', rows]])}
+        ganttEnabled
+        capacityMinutesBySlotIndex={[GANTT_TEN_HOURS_MINUTES]}
+      />
+    );
+
+    const bands = screen.getAllByTestId('leader-board-gantt-ruler-band');
+    expect(bands).toHaveLength(2);
+    expect(bands.map((band) => band.getAttribute('data-band-index'))).toEqual(['0', '1']);
   });
 });

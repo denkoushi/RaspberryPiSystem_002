@@ -7,17 +7,23 @@ import {
 } from './policies/fkojunst-production-schedule-list-visibility.policy.js';
 import { buildLeaderboardProcessChangeResidualFilterWhereSql } from './leaderboard/leaderboard-process-change-residual.sql.js';
 import type { ProcessChangeResidualMode } from './leaderboard/leaderboard-process-change-residual.types.js';
+import { isProductionScheduleOrderSplitEnabled } from './order-split/production-schedule-order-split-feature.js';
+
+type CountVisibleRowsParams = {
+  baseWhere: Prisma.Sql;
+  queryWhere: Prisma.Sql;
+  hasDueDateOnly?: boolean;
+  processChangeResidualMode?: ProcessChangeResidualMode;
+  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
+};
 
 /**
  * `listProductionScheduleRows` の `COUNT(*)` と同一の可視行条件（Fkojunst 可視 WHERE 含む）。
  * `responseProfile` に依存せず full / leaderboard 共用。
  */
-export async function countProductionScheduleDashboardVisibleRows(params: {
-  baseWhere: Prisma.Sql;
-  queryWhere: Prisma.Sql;
-  processChangeResidualMode?: ProcessChangeResidualMode;
-  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
-}): Promise<bigint> {
+export async function countProductionScheduleDashboardVisibleRows(
+  params: CountVisibleRowsParams
+): Promise<bigint> {
   const { baseWhere, queryWhere, processChangeResidualMode, processChangeResidualStrongEvidenceKeys } = params;
   const residualFilterSql = buildLeaderboardProcessChangeResidualFilterWhereSql(
     processChangeResidualMode,
@@ -36,4 +42,67 @@ export async function countProductionScheduleDashboardVisibleRows(params: {
   `;
 
   return rows[0]?.total ?? 0n;
+}
+
+/**
+ * split 有効時の leaderboard display item 件数。
+ * 分割済み親行は split 数、未分割親行は 1 件として数える。
+ */
+export async function countProductionScheduleDashboardVisibleDisplayItems(
+  params: CountVisibleRowsParams
+): Promise<bigint> {
+  const { baseWhere, queryWhere, processChangeResidualMode, processChangeResidualStrongEvidenceKeys } = params;
+  const residualFilterSql = buildLeaderboardProcessChangeResidualFilterWhereSql(
+    processChangeResidualMode,
+    processChangeResidualStrongEvidenceKeys
+  );
+  const displayItemCountSql = params.hasDueDateOnly
+    ? Prisma.sql`CASE
+        WHEN COALESCE("split_counts"."split_count", 0) > 0 THEN
+          CASE
+            WHEN "n_due"."dueDate" IS NOT NULL THEN "split_counts"."split_count"
+            ELSE COALESCE("split_counts"."split_due_count", 0)
+          END
+        ELSE 1
+      END`
+    : Prisma.sql`CASE
+        WHEN COALESCE("split_counts"."split_count", 0) > 0 THEN "split_counts"."split_count"
+        ELSE 1
+      END`;
+  const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
+    SELECT COALESCE(SUM(${displayItemCountSql}), 0)::bigint AS total
+    FROM "CsvDashboardRow"
+    LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
+      ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
+      ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleRowNote" AS "n_due"
+      ON "n_due"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "n_due"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN (
+      SELECT
+        "parentCsvDashboardRowId",
+        COUNT(*)::int AS "split_count",
+        COUNT(*) FILTER (WHERE "dueDate" IS NOT NULL)::int AS "split_due_count"
+      FROM "ProductionScheduleOrderSplit"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      GROUP BY "parentCsvDashboardRowId"
+    ) AS "split_counts"
+      ON "split_counts"."parentCsvDashboardRowId" = "CsvDashboardRow"."id"
+    WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()} ${residualFilterSql}
+  `;
+
+  return rows[0]?.total ?? 0n;
+}
+
+/** leaderboard 向け可視件数（split 有効時は display item 単位）。 */
+export async function countProductionScheduleDashboardVisibleLeaderboardUnits(
+  params: CountVisibleRowsParams
+): Promise<bigint> {
+  if (isProductionScheduleOrderSplitEnabled()) {
+    return countProductionScheduleDashboardVisibleDisplayItems(params);
+  }
+  return countProductionScheduleDashboardVisibleRows(params);
 }

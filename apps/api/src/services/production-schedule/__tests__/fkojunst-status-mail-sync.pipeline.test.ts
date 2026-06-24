@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildFkojunstMailReplacementCreateInputs,
@@ -6,6 +6,7 @@ import {
   dedupeFkojunstMailRowsByLatest,
   FKOJUNST_STATUS_MAIL_SOURCE_ROW_ORDER_BY,
   parseFkojunstStatusMailFupdteDt,
+  runFkojunstMailReplacementTransaction,
   toFkojunstMailNormalizedRow,
   type FkojunstMailNormalizedRow,
 } from '../fkojunst-status-mail-sync.pipeline.js';
@@ -325,5 +326,75 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
     expect(empty.matched).toBe(0);
     expect(empty.unmatched).toBe(1);
     expect(empty.createInputs).toHaveLength(0);
+  });
+
+  it('replaces process-change residual evidence inside mail replacement transaction', async () => {
+    const sourceRowsRevision = '1:2026-01-01T00:00:00.000Z:2026-01-02T00:00:00.000Z';
+    const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(0),
+      $queryRaw: vi.fn().mockResolvedValue([
+        {
+          rowsCount: 1n,
+          rowsLatestCreatedAt: new Date('2026-01-01T00:00:00.000Z'),
+          rowsLatestUpdatedAt: new Date('2026-01-02T00:00:00.000Z')
+        }
+      ]),
+      productionScheduleProcessChangeResidualEvidence: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+        createMany: vi.fn().mockResolvedValue({ count: 1 })
+      },
+      productionScheduleProcessChangeResidualSnapshot: {
+        upsert: vi.fn().mockResolvedValue({})
+      },
+      productionScheduleFkojunstMailStatus: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        createMany: vi.fn()
+      }
+    };
+    const client = {
+      $transaction: vi.fn(async (work: (txArg: typeof tx) => Promise<unknown>) => work(tx))
+    };
+    const evidenceInput = {
+      sourceCsvDashboardId: 'b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e',
+      productNo: 'PCR-TX',
+      fkojun: '210',
+      resourceCd: '1',
+      currentStatusCode: 'R',
+      currentSourceUpdatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      completedOtherResourceCd: '2',
+      completedOtherStatusCode: 'C',
+      completedOtherSourceUpdatedAt: new Date('2026-01-02T00:00:00.000Z')
+    };
+
+    await runFkojunstMailReplacementTransaction(client as never, {
+      scanned: 1,
+      normalized: 1,
+      matched: 0,
+      unmatched: 0,
+      skippedInvalidStatus: 0,
+      skippedUnparseableDate: 0,
+      createInputs: [],
+      processChangeResidualEvidenceInputs: [evidenceInput],
+      sourceRowsRevision
+    });
+
+    expect(tx.productionScheduleProcessChangeResidualEvidence.deleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          sourceCsvDashboardId: evidenceInput.sourceCsvDashboardId
+        }
+      })
+    );
+    expect(tx.productionScheduleProcessChangeResidualSnapshot.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          rawMailRowsRevision: sourceRowsRevision,
+          evidenceCount: 1
+        })
+      })
+    );
+    expect(tx.productionScheduleProcessChangeResidualEvidence.createMany).toHaveBeenCalledWith({
+      data: [evidenceInput]
+    });
   });
 });

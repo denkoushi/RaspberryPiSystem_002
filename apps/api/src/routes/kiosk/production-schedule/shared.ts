@@ -1,6 +1,7 @@
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { z } from 'zod';
 import { DUE_MANAGEMENT_TUNING_REASON_CODES } from '../../../services/production-schedule/auto-tuning/tuning-reason-code.js';
+import { displayItemIdSchema } from '../../../services/production-schedule/order-split/leaderboard-display-item-id.js';
 import type { LeaderboardShellSnapshotStore } from '../../../services/production-schedule/leaderboard/leaderboard-shell-snapshot.store.js';
 import type { ClientDeviceForScopeResolution, LocationScopeContext } from '../shared.js';
 
@@ -61,8 +62,8 @@ export const productionScheduleLeaderboardShellContinuationFieldsSchema = z.obje
    * shell の `nextCursor` をそのまま送る。`snapshotId` がある場合はこれを優先する。
    */
   cursor: z.number().int().min(0).max(5_000_000).optional(),
-  /** 移行期間のみ: snapshot が無い、または snapshot+cursor より古いクライアント向け */
-  excludeRowIds: z.array(z.string().uuid()).max(900).optional(),
+  /** 移行期間のみ: snapshot が無い、または snapshot+cursor より古いクライアント向け（中身は DisplayItemId） */
+  excludeRowIds: z.array(displayItemIdSchema).max(900).optional(),
   pageSize: z.coerce.number().int().min(1).max(160).optional(),
   productNo: z.string().min(1).max(100).optional(),
   q: z.string().min(1).max(200).optional(),
@@ -117,6 +118,19 @@ export const productionScheduleLeaderboardIncludeDecorationsField = {
     })
 };
 
+/** board 集約: 人工数 lookup を同梱するか。省略時 false（旧 SPA の first usable を優先）。 */
+export const productionScheduleLeaderboardIncludeLaborField = {
+  includeLabor: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((v): boolean => {
+      if (v === undefined) return false;
+      if (typeof v === 'boolean') return v;
+      const s = String(v).trim().toLowerCase();
+      return s !== 'false' && s !== '0';
+    })
+};
+
 /** 順位ボード集約 API: スロット順の資源 CD（カンマ区切り・重複除去はサーバ側 parseCsvList） */
 export const productionScheduleLeaderboardBoardQuerySchema = productionScheduleLeaderboardPhasedQuerySchema.extend({
   boardResourceCds: z.string().min(1).max(4000),
@@ -130,7 +144,8 @@ export const productionScheduleLeaderboardBoardQuerySchema = productionScheduleL
       const s = String(v).trim().toLowerCase();
       return s === 'true' || s === '1';
     }),
-  ...productionScheduleLeaderboardIncludeDecorationsField
+  ...productionScheduleLeaderboardIncludeDecorationsField,
+  ...productionScheduleLeaderboardIncludeLaborField
 });
 
 /** 集約 continue: 各スロットごとの snapshot / cursor（単一 continue と同じ制約をスライス単位で適用） */
@@ -143,13 +158,14 @@ export const productionScheduleLeaderboardBoardContinueBodySchema = productionSc
   .extend({
     boardResourceCds: z.string().min(1).max(4000),
     includeDecorations: z.boolean().optional().default(true),
+    includeLabor: z.boolean().optional().default(false),
     resourceSlices: z
       .array(
         z.object({
           resourceCd: z.string().min(1).max(100),
           snapshotId: z.string().uuid().optional(),
           cursor: z.number().int().min(0).max(5_000_000).optional(),
-          excludeRowIds: z.array(z.string().uuid()).max(900).optional(),
+          excludeRowIds: z.array(displayItemIdSchema).max(900).optional(),
           hasMore: z.boolean()
         })
       )
@@ -204,10 +220,23 @@ export type ProductionScheduleLeaderboardShellContinuationBody = z.infer<
 >;
 
 export const productionScheduleLeaderboardDecorationsBodySchema = z.object({
-  /** shell 応答の `rows[].id` を **表示順のまま** 渡す（順位ボード全件表示に合わせ上限を緩和） */
-  rowIds: z.array(z.string().uuid()).max(20_000).optional().default([]),
+  /** shell 応答の `rows[].id` を **表示順のまま** 渡す（DisplayItemId・順位ボード全件表示に合わせ上限を緩和） */
+  rowIds: z.array(displayItemIdSchema).max(20_000).optional().default([]),
   /** v2: Mac が参照する端末の deviceScopeKey（一覧 shell/total と一致させる） */
   targetDeviceScopeKey: z.string().min(1).max(200).optional()
+});
+
+export const productionScheduleLeaderboardClientPerfBodySchema = z.object({
+  sessionId: z.string().min(1).max(80),
+  event: z.string().min(1).max(80),
+  pagePath: z.string().min(1).max(300).optional(),
+  paramsKeyHash: z.string().min(1).max(80).optional(),
+  resourceCds: z.string().min(1).max(4000).optional(),
+  markMs: z.number().finite().nonnegative().max(86_400_000).optional(),
+  elapsedMs: z.number().finite().nonnegative().max(86_400_000).optional(),
+  detail: z
+    .record(z.union([z.string().max(400), z.number().finite(), z.boolean(), z.null()]))
+    .optional()
 });
 
 export const productionScheduleOrderSearchQuerySchema = z.object({

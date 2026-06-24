@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-06-05（順位ボード·資源カード行強調レイアウト §6.6.30 追記）。**2026-06-01 追記**: 完了後フッタ工程チップ装飾再同期 §6.6.29。**2026-05-22 追記**: 製番左縁全件無色 §6.6.28·行内順位ピッカー §6.6.27。
+最終更新: 2026-06-24（順位ボード `+人` 人工数表示回復・8H/10H 切替・Gantt 縦バー累積境界仕様 §6.6.31 反映）。**2026-06-05 追記**: 資源カード行強調レイアウト §6.6.30。**2026-06-01 追記**: 完了後フッタ工程チップ装飾再同期 §6.6.29。
 
 ## 概要
 
@@ -821,6 +821,24 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-05-20（自動 **43/0/0**·Pi5→Pi4×4 **`--limit` 順次**·Detach **`20260520-141147-19965`** ほか 4 本·**Pi3 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
+**6.6.31 キオスク リーダー順位ボード（`+人` 人工数表示回復・8H/10H 切替・表示速度維持）** {#kiosk-leaderboard-labor-toggle-display-recovery-2026-06-24}
+
+**確認ポイント**（[Plan: `+人`](../plans/kiosk-leaderboard-labor-minutes-toggle.md#display-recovery-after-performance-fixes-2026-06-24)·[Performance recovery](../plans/leaderboard-defer-totals-performance-recovery.md#cursor-handoff-web-display-stability-and-refresh-cadence2026-06-23-current)·[KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)）:
+
+- [ ] **強制リロード**: 反映直後はキオスクを強制リロード（§6.6.4）。旧 SPA は `+人` 押下時に行数は維持しても人工数メタデータが古いまま残る可能性がある。
+- [ ] **初回表示速度**: fresh shell 到着後に行操作できること。背景 append / decorations / labor refresh だけで 「一覧を更新中です。」 が出続けないこと。
+- [ ] **`+人` OFF**: 通常表示は `machineRequiredMinutes` 基準。速度改善のため、machine-only shell は `includeLabor=false` / `laborRequiredMinutes=0` でよい。
+- [ ] **`8H/10H` ボタン位置**: 各資源カードヘッダーで `8H` または `10H` ボタンが `+人` の左隣に表示されること。
+- [ ] **`8H/10H` 切替**: 押すたびに表示が `8H` ↔ `10H` へ切り替わり、端末ローカル保存されること（別スロットには波及しない）。
+- [ ] **Gantt capacity**: ガント ON で `8H` は `capacityMinutes=480`、`10H` は `capacityMinutes=600` として、行順の累積工数が容量に達する位置を左の縦バーで示すこと。
+- [ ] **縦バー表示**: 容量帯ごとに色付き/透明を交互表示し、8H/10H を超えるスロットでは容量帯と端数帯がカード内の累積位置に出ること。総工数でルーラー全体やスクロール高さを伸ばさないこと。
+- [ ] **`+人` ON**: 人工数がある行で minute label が `machineRequiredMinutes + laborRequiredMinutes` に変わり、Gantt の 8H/10H 到達位置・端数帯が labor-inclusive 分数に従って変わること。表示速度維持のため、行カード高さ・仮想リスト見積は現行の圧縮/最小高を維持する。
+- [ ] **行維持**: `+人` 押下直後、append 済みの長い表示が短い shell/partial append へ collapse しないこと。
+- [ ] **metadata overlay/retention**: fresh labor 取得が部分完了の間、返ってきた行から順に人工数が反映され、未取得行は旧表示を維持すること。`includeLabor=true` で一度返った人工数 metadata は同一表示スコープ内で保持され、`includeLabor=false` の machine-only `0` で消えないこと。continue 完了後は全対象行が fresh な人工数になること。
+
+**検証日時**: 2026-06-24（commit **`f978c15e`** · CI **`28073394781` / `28073393362`** success · deploy run **`20260624-125213-16642`** · Phase12 **PASS 43 / WARN 0 / FAIL 0**）
+**検証結果**: `f978c15e` の deploy/CI/Phase12 は成功したが、`+人` ON で縦バー全体を `480px→575px` のように伸ばす期待は誤った検証だった。再検証では「累積工数が 480/600 分へ到達する位置」と「色付き/透明の容量帯・端数帯」がカード内に正しく出ることを確認する。
+
 **6.6.30 キオスク リーダー順位ボード（資源カード行 — 強調レイアウト）** {#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05}
 
 **確認ポイント**（[KB-297 §カード行強調](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05)·[deployment §2026-06-05](./deployment.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05)）:
@@ -1125,4 +1143,3 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 - Gitリポジトリの状態を確認: `git status`
 - ビルドエラーを確認: `cd apps/api && pnpm build`
 - Dockerログを確認: `docker compose logs api`
-

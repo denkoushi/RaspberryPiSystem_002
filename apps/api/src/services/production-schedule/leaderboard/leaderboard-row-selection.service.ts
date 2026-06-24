@@ -17,6 +17,7 @@ import {
   trimLeaderboardShellManualProbeRows,
 } from './leaderboard-shell-priority-fetch-policy.js';
 import { buildLeaderboardShellRankJoinContext } from './leaderboard-shell-rank-join.sql.js';
+import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
 import {
   buildLeaderboardShellFillerOrderBy,
   buildLeaderboardShellManualOrderBy,
@@ -37,6 +38,21 @@ export type LeaderboardShellPriorityContext = {
   rankJoins: ReturnType<typeof buildLeaderboardShellRankJoinContext>;
   pSorted: LeaderboardScheduleRowSql[];
 };
+
+/** shell 一覧・prefix 補完・hydrate で共有する行スコープ WHERE（winner + query + 可視 + 残骸除外）。 */
+export function buildLeaderboardShellListWhereSql(params: {
+  leaderboardMaterializedBaseWhere: Prisma.Sql;
+  queryWhere: Prisma.Sql;
+  processChangeResidualMode?: ProcessChangeResidualMode;
+  processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
+}): Prisma.Sql {
+  const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
+  const residualFilterSql = buildLeaderboardProcessChangeResidualFilterWhereSql(
+    params.processChangeResidualMode,
+    params.processChangeResidualStrongEvidenceKeys
+  );
+  return Prisma.sql`${params.leaderboardMaterializedBaseWhere} ${params.queryWhere} ${visibilitySql} ${residualFilterSql}`;
+}
 
 async function buildLeaderboardShellPriorityContext(params: {
   leaderboardMaterializedBaseWhere: Prisma.Sql;
@@ -66,12 +82,12 @@ async function buildLeaderboardShellPriorityContext(params: {
     processChangeResidualMode
   } = params;
 
-  const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
-  const residualFilterSql = buildLeaderboardProcessChangeResidualFilterWhereSql(
+  const commonWhere = buildLeaderboardShellListWhereSql({
+    leaderboardMaterializedBaseWhere,
+    queryWhere,
     processChangeResidualMode,
-    params.processChangeResidualStrongEvidenceKeys
-  );
-  const commonWhere = Prisma.sql`${leaderboardMaterializedBaseWhere} ${queryWhere} ${visibilitySql} ${residualFilterSql}`;
+    processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
+  });
   const rankJoins = buildLeaderboardShellRankJoinContext({ locationKey, siteScopedGlobalRankLocation });
   const fetchPlan = computeLeaderboardShellPriorityFetchPlan({ prefixLimit });
 
@@ -81,15 +97,35 @@ async function buildLeaderboardShellPriorityContext(params: {
       : Prisma.empty;
 
   const manualWhere = Prisma.sql`${commonWhere}
-      AND EXISTS (
-        SELECT 1
-        FROM "ProductionScheduleOrderAssignment" AS "ord_m"
-        WHERE "ord_m"."csvDashboardRowId" = "CsvDashboardRow"."id"
-          AND "ord_m"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-          AND (
-            "ord_m"."location" = ${locationKey}
-            OR "ord_m"."siteKey" = ${locationKey}
-          )
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM "ProductionScheduleOrderAssignment" AS "ord_m"
+          WHERE "ord_m"."csvDashboardRowId" = "CsvDashboardRow"."id"
+            AND "ord_m"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+            AND (
+              "ord_m"."location" = ${locationKey}
+              OR "ord_m"."siteKey" = ${locationKey}
+            )
+        )
+        ${
+          isProductionScheduleOrderSplitEnabled()
+            ? Prisma.sql`
+        OR EXISTS (
+          SELECT 1
+          FROM "ProductionScheduleOrderSplitAssignment" AS "sa_m"
+          INNER JOIN "ProductionScheduleOrderSplit" AS "s_m"
+            ON "s_m"."id" = "sa_m"."splitId"
+            AND "s_m"."parentCsvDashboardRowId" = "CsvDashboardRow"."id"
+            AND "s_m"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+          WHERE "sa_m"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+            AND (
+              "sa_m"."location" = ${locationKey}
+              OR "sa_m"."siteKey" = ${locationKey}
+            )
+        )`
+            : Prisma.empty
+        }
       )`;
 
   const manualRowsRaw = await queryLeaderboardShellScheduleRows({
@@ -126,7 +162,12 @@ async function buildLeaderboardShellPriorityContext(params: {
       seibanList.map((s) => Prisma.sql`${s}`)
     )})`;
 
-    const expansionWhereSql = Prisma.sql`${leaderboardMaterializedBaseWhere} ${expansionWhere} ${visibilitySql} ${residualFilterSql}
+    const expansionWhereSql = Prisma.sql`${buildLeaderboardShellListWhereSql({
+      leaderboardMaterializedBaseWhere,
+      queryWhere: expansionWhere,
+      processChangeResidualMode,
+      processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
+    })}
         AND ${seibanCondition}`;
 
     const expansionRows = await queryLeaderboardShellScheduleRows({

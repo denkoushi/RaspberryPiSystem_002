@@ -953,6 +953,7 @@ model CsvDashboardRow {
   createdAt                  DateTime                            @default(now())
   updatedAt                  DateTime?                           @updatedAt
   orderAssignments           ProductionScheduleOrderAssignment[]
+  orderSplits                ProductionScheduleOrderSplit[]
   rowNotes                   ProductionScheduleRowNote[]
   productionScheduleProgress ProductionScheduleProgress?
   productionScheduleExternalCompletion ProductionScheduleExternalCompletion?
@@ -1041,6 +1042,41 @@ model ProductionScheduleFkojunstMailStatus {
   @@index([sourceCsvDashboardId], map: "PSFkojunstMailStatus_idx_source_dashboard")
 }
 
+/// 順位ボード用: FKOJUNST_Status raw 全体から抽出した「強い工程変更残骸」疑い snapshot。
+model ProductionScheduleProcessChangeResidualSnapshot {
+  sourceCsvDashboardId String   @id
+  rawMailRowsRevision  String
+  algorithmVersion     Int      @default(1)
+  evidenceCount        Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  evidenceRows ProductionScheduleProcessChangeResidualEvidence[]
+
+  @@index([rawMailRowsRevision], map: "PSProcChangeResidualSnapshot_idx_revision")
+}
+
+/// 順位ボード用: 表示時に raw FKOJUNST_Status 全件を読まないための residual evidence。
+model ProductionScheduleProcessChangeResidualEvidence {
+  id                            String   @id @default(uuid())
+  sourceCsvDashboardId          String
+  productNo                     String   @db.VarChar(32)
+  fkojun                        String   @db.VarChar(20)
+  resourceCd                    String   @db.VarChar(40)
+  currentStatusCode             String   @db.VarChar(1)
+  currentSourceUpdatedAt        DateTime
+  completedOtherResourceCd      String   @db.VarChar(40)
+  completedOtherStatusCode      String   @db.VarChar(1)
+  completedOtherSourceUpdatedAt DateTime
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  snapshot ProductionScheduleProcessChangeResidualSnapshot @relation(fields: [sourceCsvDashboardId], references: [sourceCsvDashboardId], onDelete: Cascade)
+
+  @@unique([sourceCsvDashboardId, productNo, fkojun, resourceCd], map: "PSProcChangeResidualEvidence_unique_key")
+  @@index([sourceCsvDashboardId], map: "PSProcChangeResidualEvidence_idx_source")
+}
+
 /// Gmail 件名 `FHINMEI_MH_SH` の補完CSV由来。同一取り込み実行内の重複 FSEIBAN は末尾行が正（同期処理で解決）。
 model ProductionScheduleSeibanMachineNameSupplement {
   id                   String   @id @default(uuid())
@@ -1102,6 +1138,70 @@ model ProductionScheduleRowNote {
 
   @@unique([csvDashboardRowId])
   @@index([csvDashboardId])
+}
+
+/// 順位ボード向け: 親生産日程行の数量分割片（初回は表示・納期・手動順番のみ）。
+model ProductionScheduleOrderSplit {
+  id                      String    @id @default(uuid())
+  csvDashboardId          String
+  parentCsvDashboardRowId String
+  splitNo                 Int
+  splitQuantity           Int
+  dueDate                 DateTime? @db.Date
+  plannedStartDate        DateTime? @db.Date
+  plannedEndDate          DateTime? @db.Date
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  parentRow   CsvDashboardRow                          @relation(fields: [parentCsvDashboardRowId], references: [id], onDelete: Cascade)
+  assignments ProductionScheduleOrderSplitAssignment[]
+
+  @@unique([parentCsvDashboardRowId, splitNo], map: "PSOrderSplit_unique_parent_split_no")
+  @@index([csvDashboardId], map: "PSOrderSplit_idx_dashboard")
+  @@index([parentCsvDashboardRowId], map: "PSOrderSplit_idx_parent_row")
+  @@index([csvDashboardId, parentCsvDashboardRowId, splitNo], map: "PSOrderSplit_idx_dashboard_parent_split_no")
+}
+
+/// 分割片の手動順番（親 `ProductionScheduleOrderAssignment` と同一順位空間で衝突チェック）。
+model ProductionScheduleOrderSplitAssignment {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  splitId        String
+  location       String
+  siteKey        String
+  resourceCd     String
+  orderNumber    Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  split ProductionScheduleOrderSplit @relation(fields: [splitId], references: [id], onDelete: Cascade)
+
+  @@unique([csvDashboardId, location, resourceCd, orderNumber], map: "PSOrderSplitAssign_unique_order_slot")
+  @@unique([splitId, location], map: "PSOrderSplitAssign_unique_split_location")
+  @@index([csvDashboardId, location, resourceCd], map: "PSOrderSplitAssign_idx_loc_resource")
+  @@index([csvDashboardId, siteKey], map: "PSOrderSplitAssign_idx_site")
+  @@index([csvDashboardId, siteKey, resourceCd, orderNumber], map: "PSOrderSplitAssign_idx_site_resource_order")
+}
+
+/// 分割片 CRUD の監査ログ（世代トークンには含めない）。
+model ProductionScheduleOrderSplitAuditLog {
+  id                      String   @id @default(uuid())
+  csvDashboardId          String
+  actorClientKey          String?
+  actorLocation           String?
+  targetLocation          String?
+  siteKey                 String?
+  actionType              String
+  requestId               String?
+  parentCsvDashboardRowId String
+  splitId                 String?
+  beforeJson              Json?
+  afterJson               Json?
+  createdAt               DateTime @default(now())
+
+  @@index([parentCsvDashboardRowId], map: "PSOrderSplitAudit_idx_parent")
+  @@index([splitId], map: "PSOrderSplitAudit_idx_split")
+  @@index([createdAt], map: "PSOrderSplitAudit_idx_created")
 }
 
 model ProductionScheduleOrderAssignment {
@@ -1391,6 +1491,14 @@ model ProductionScheduleAccessPasswordConfig {
   updatedAt                 DateTime @updatedAt
 
   @@unique([location], map: "ProductionScheduleAccessPasswordConfig_unique_location")
+}
+
+model ProductionScheduleOrderSplitPilotConfig {
+  key       String   @id @db.VarChar(80)
+  enabled   Boolean  @default(false)
+  updatedBy String?  @db.VarChar(120)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ProductionScheduleTriageSelection {

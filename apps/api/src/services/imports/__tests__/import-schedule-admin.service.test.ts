@@ -238,6 +238,77 @@ describe('ImportScheduleAdminService', () => {
     await expect(service.runSchedule('run-id', { requestId: 'req-4' })).rejects.toBe(original);
   });
 
+  it('runScheduleInBackground: 手動実行をバックグラウンドで受け付ける', async () => {
+    const config = createBaseConfig();
+    config.csvImports = [
+      {
+        id: 'run-id',
+        schedule: '0 4 * * *',
+        enabled: true,
+        replaceExisting: false,
+        autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+      },
+    ];
+    const store = {
+      load: vi.fn(async () => config),
+      save: vi.fn(async () => {}),
+    };
+    const scheduler = {
+      reload: vi.fn(async () => {}),
+      isImportRunning: vi.fn(() => false),
+      runImport: vi.fn(async () => ({ employees: { processed: 1, created: 1, updated: 0 } })),
+    };
+    const service = new ImportScheduleAdminService(store, () => scheduler);
+
+    const { response, completion } = await service.runScheduleInBackground('run-id', { requestId: 'req-bg-1' });
+
+    expect(response).toMatchObject({
+      accepted: true,
+      mode: 'background',
+      scheduleId: 'run-id',
+    });
+    await expect(completion).resolves.toEqual({ employees: { processed: 1, created: 1, updated: 0 } });
+    expect(scheduler.runImport).toHaveBeenCalledWith('run-id');
+  });
+
+  it('runScheduleInBackground: 既に実行中の手動実行は409へ変換する', async () => {
+    const config = createBaseConfig();
+    config.csvImports = [
+      {
+        id: 'run-id',
+        schedule: '0 4 * * *',
+        enabled: true,
+        replaceExisting: false,
+        autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+      },
+    ];
+    const store = {
+      load: vi.fn(async () => config),
+      save: vi.fn(async () => {}),
+    };
+    let resolveRun!: () => void;
+    const runPromise = new Promise<void>((resolve) => {
+      resolveRun = resolve;
+    });
+    const scheduler = {
+      reload: vi.fn(async () => {}),
+      isImportRunning: vi.fn(() => false),
+      runImport: vi.fn(async () => {
+        await runPromise;
+        return {};
+      }),
+    };
+    const service = new ImportScheduleAdminService(store, () => scheduler);
+
+    const firstRun = await service.runScheduleInBackground('run-id', { requestId: 'req-bg-2' });
+    await expect(
+      service.runScheduleInBackground('run-id', { requestId: 'req-bg-3' })
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    resolveRun();
+    await firstRun.completion;
+  });
+
   it('deleteSchedule: 固定の製番→機種名補完スケジュールは400を返す', async () => {
     const store = {
       load: vi.fn(async () => createBaseConfig()),

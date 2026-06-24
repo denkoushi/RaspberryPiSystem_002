@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   parseCsvList,
+  productionScheduleLeaderboardBoardContinueBodySchema,
+  productionScheduleLeaderboardClientPerfBodySchema,
   productionScheduleLeaderboardBoardQuerySchema,
   productionScheduleSeibanMachineNamesBodySchema,
   toLegacyLocationKeyFromDeviceScope
@@ -58,5 +60,83 @@ describe('production-schedule route shared helpers', () => {
       }).deferTotals
     ).toBe(false);
     expect(productionScheduleLeaderboardBoardQuerySchema.parse(base).deferTotals).toBe(false);
+  });
+
+  it('productionScheduleLeaderboardBoardQuerySchema は includeLabor を既定 false / 明示 true で解釈する', () => {
+    const base = {
+      boardResourceCds: 'R1',
+      pageSize: '80',
+      allowResourceOnly: 'true'
+    };
+
+    expect(productionScheduleLeaderboardBoardQuerySchema.parse(base).includeLabor).toBe(false);
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...base,
+        includeLabor: 'false'
+      }).includeLabor
+    ).toBe(false);
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...base,
+        includeLabor: false
+      }).includeLabor
+    ).toBe(false);
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...base,
+        includeLabor: 'true'
+      }).includeLabor
+    ).toBe(true);
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...base,
+        includeLabor: true
+      }).includeLabor
+    ).toBe(true);
+  });
+
+  it('productionScheduleLeaderboardBoardContinueBodySchema は includeLabor 欠落を false にする', () => {
+    const base = {
+      boardResourceCds: 'R1',
+      pageSize: 160,
+      allowResourceOnly: true,
+      resourceSlices: [{ resourceCd: 'R1', hasMore: false }]
+    };
+
+    expect(productionScheduleLeaderboardBoardContinueBodySchema.parse(base).includeLabor).toBe(false);
+    expect(
+      productionScheduleLeaderboardBoardContinueBodySchema.parse({
+        ...base,
+        includeLabor: true
+      }).includeLabor
+    ).toBe(true);
+  });
+
+  it('productionScheduleLeaderboardClientPerfBodySchema は計測イベントを制限付きで受け付ける', () => {
+    const parsed = productionScheduleLeaderboardClientPerfBodySchema.parse({
+      sessionId: 'session-1',
+      event: 'schedule-usable',
+      pagePath: '/kiosk/production-schedule/leader-order-board?leaderboardPerf=1',
+      paramsKeyHash: 'deadbeef',
+      resourceCds: '581,305',
+      markMs: 1234.5,
+      elapsedMs: 999,
+      detail: {
+        rowCount: 480,
+        isFetching: false,
+        source: 'network',
+        empty: null
+      }
+    });
+
+    expect(parsed.detail?.rowCount).toBe(480);
+    expect(() =>
+      productionScheduleLeaderboardClientPerfBodySchema.parse({
+        sessionId: 'session-1',
+        event: 'x',
+        detail: { nested: { nope: true } }
+      })
+    ).toThrow();
   });
 });

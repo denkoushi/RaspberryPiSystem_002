@@ -70,7 +70,7 @@ describe('leaderboardBoardSwrDisplayPolicy', () => {
     expect(result.displayBoard?.rows[0]?.id).toBe('n1');
   });
 
-  it('装飾同期のみでも cache を優先する', () => {
+  it('fresh network rows がある背景同期中は network を優先する', () => {
     expect(
       shouldPreferCacheForSwrDisplay({
         cacheDisplayable: true,
@@ -78,10 +78,10 @@ describe('leaderboardBoardSwrDisplayPolicy', () => {
         suppressPlaceholderShell: false,
         networkDisplayBoard: completeBoard('n1')
       })
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it('revalidate 中は cache 表示', () => {
+  it('revalidate 中でも fresh network rows があれば network 表示', () => {
     const result = resolveLeaderboardBoardDisplaySource({
       terminalCacheEnabled: true,
       phase2SwrEnabled: true,
@@ -98,8 +98,9 @@ describe('leaderboardBoardSwrDisplayPolicy', () => {
       nowMs: now,
       maxAgeMs: 120_000
     });
-    expect(result.displaySource).toBe('cache');
-    expect(result.isShowingCachedData).toBe(true);
+    expect(result.displaySource).toBe('network');
+    expect(result.displayBoard?.rows[0]?.id).toBe('n1');
+    expect(result.isShowingCachedData).toBe(false);
   });
 
   it('isHydratedCacheDisplayable は maxAge 超過で false', () => {

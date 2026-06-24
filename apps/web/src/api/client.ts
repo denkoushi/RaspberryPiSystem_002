@@ -356,6 +356,12 @@ export interface ProductionScheduleRow {
   /** キオスク順位ボード: 工程変更残骸疑い（通常グリッドには含めない） */
   processChangeResidualSuspected?: boolean;
   processChangeResidualEvidence?: ProcessChangeResidualEvidence;
+  /** display item 契約: 親 CsvDashboardRow.id */
+  sourceRowId?: string;
+  splitId?: string | null;
+  splitNo?: number | null;
+  splitQuantity?: number | null;
+  isSplit?: boolean;
 }
 
 export type ProcessChangeResidualEvidenceSide = {
@@ -446,6 +452,14 @@ export interface ProductionScheduleDueManagementAccessPasswordSettings {
   location: string;
   configured: boolean;
   defaultPasswordActive: boolean;
+}
+
+export interface ProductionScheduleOrderSplitPilotSettings {
+  deploymentEnabled: boolean;
+  runtimeEnabled: boolean;
+  effectiveEnabled: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
 }
 
 export interface ProductionScheduleProcessingTypeOption {
@@ -1091,6 +1105,8 @@ export type KioskProductionScheduleLeaderboardBoardQueryParams = KioskProduction
   boardResourceCds: string;
   /** 省略時 true。キオスク順位ボードは false で装飾を `leaderboard-decorations` 後取り */
   includeDecorations?: boolean;
+  /** 省略時 false。`+人` OFF の初期表示は false で人工数 lookup を後回しにする */
+  includeLabor?: boolean;
   /** true のとき初回 shell は exact total を待たず、continue で正確な total に戻す */
   deferTotals?: boolean;
 };
@@ -1150,6 +1166,23 @@ export async function postKioskProductionScheduleLeaderboardBoardContinue(
     payload
   );
   return data;
+}
+
+export type KioskProductionScheduleLeaderboardClientPerfPayload = {
+  sessionId: string;
+  event: string;
+  pagePath?: string;
+  paramsKeyHash?: string;
+  resourceCds?: string;
+  markMs?: number;
+  elapsedMs?: number;
+  detail?: Record<string, string | number | boolean | null>;
+};
+
+export async function postKioskProductionScheduleLeaderboardClientPerf(
+  payload: KioskProductionScheduleLeaderboardClientPerfPayload
+) {
+  await api.post('/kiosk/production-schedule/leaderboard-board/client-perf', payload);
 }
 
 /** 配膳スマホ: 生産スケジュール一覧（`/api/mobile-placement/schedule`、x-client-key 必須） */
@@ -1913,6 +1946,29 @@ export async function updateProductionScheduleDueManagementAccessPassword(payloa
   return data.settings;
 }
 
+export async function getProductionScheduleOrderSplitPilotSettings() {
+  const { data } = await api.get<{
+    settings: ProductionScheduleOrderSplitPilotSettings;
+  }>('/production-schedule-settings/order-split-pilot');
+  return data.settings;
+}
+
+export async function updateProductionScheduleOrderSplitPilotSettings(payload: {
+  enabled: boolean;
+}) {
+  const { data } = await api.put<{
+    settings: ProductionScheduleOrderSplitPilotSettings;
+  }>('/production-schedule-settings/order-split-pilot', payload);
+  return data.settings;
+}
+
+export async function getKioskProductionScheduleOrderSplitStatus() {
+  const { data } = await api.get<{
+    settings: ProductionScheduleOrderSplitPilotSettings;
+  }>('/kiosk/production-schedule/order-split/status');
+  return data.settings;
+}
+
 export async function getProductionScheduleLoadBalancingCapacityBase(location: string) {
   const { data } = await api.get<{
     settings: { siteKey: string; items: ProductionScheduleLoadBalancingCapacityBaseItem[] };
@@ -2194,6 +2250,95 @@ export async function updateKioskProductionScheduleNote(rowId: string, payload: 
 export async function updateKioskProductionScheduleDueDate(rowId: string, payload: { dueDate: string }) {
   const { data } = await api.put<{ success: boolean; dueDate: string | null }>(
     `/kiosk/production-schedule/${rowId}/due-date`,
+    payload
+  );
+  return data;
+}
+
+export type ProductionScheduleOrderSplitItem = {
+  id: string;
+  displayItemId: string;
+  parentCsvDashboardRowId: string;
+  splitNo: number;
+  splitQuantity: number;
+  dueDate: string | null;
+  plannedStartDate: string | null;
+  plannedEndDate: string | null;
+  orderNumber: number | null;
+};
+
+export type ProductionScheduleOrderSplitListResponse = {
+  parentCsvDashboardRowId: string;
+  plannedQuantity: number;
+  splits: ProductionScheduleOrderSplitItem[];
+  actorLocation?: string;
+};
+
+export async function fetchKioskProductionScheduleOrderSplits(
+  sourceRowId: string,
+  params?: { targetDeviceScopeKey?: string }
+) {
+  const { data } = await api.get<ProductionScheduleOrderSplitListResponse>(
+    `/kiosk/production-schedule/${sourceRowId}/splits`,
+    { params }
+  );
+  return data;
+}
+
+export async function replaceKioskProductionScheduleOrderSplits(
+  sourceRowId: string,
+  payload: {
+    resourceCd: string;
+    items: Array<{
+      id?: string | null;
+      splitNo: number;
+      splitQuantity: number;
+      dueDate?: string | null;
+      plannedStartDate?: string | null;
+      plannedEndDate?: string | null;
+      orderNumber?: number | null;
+    }>;
+    targetLocation?: string;
+    targetDeviceScopeKey?: string;
+  }
+) {
+  const { data } = await api.put<{ success: boolean; splits: ProductionScheduleOrderSplitItem[] }>(
+    `/kiosk/production-schedule/${sourceRowId}/splits`,
+    payload
+  );
+  return data;
+}
+
+export async function deleteKioskProductionScheduleOrderSplits(
+  sourceRowId: string,
+  params?: { targetDeviceScopeKey?: string }
+) {
+  const { data } = await api.delete<{ success: boolean }>(
+    `/kiosk/production-schedule/${sourceRowId}/splits`,
+    { params }
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleSplitOrder(
+  splitId: string,
+  payload: {
+    resourceCd: string;
+    orderNumber: number | null;
+    targetLocation?: string;
+    targetDeviceScopeKey?: string;
+  }
+) {
+  const { data } = await api.put<{ success: boolean; orderNumber: number | null }>(
+    `/kiosk/production-schedule/splits/${splitId}/order`,
+    payload
+  );
+  return data;
+}
+
+export async function updateKioskProductionScheduleSplitDueDate(splitId: string, payload: { dueDate: string }) {
+  const { data } = await api.put<{ success: boolean; dueDate: string | null }>(
+    `/kiosk/production-schedule/splits/${splitId}/due-date`,
     payload
   );
   return data;

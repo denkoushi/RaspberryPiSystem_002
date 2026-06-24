@@ -23,6 +23,7 @@ import { SignageRenderScheduler } from './services/signage/signage-render-schedu
 import { SignageRenderer } from './services/signage/signage.renderer.js';
 import { SignageService } from './services/signage/index.js';
 import { probePlaywrightChromiumAvailability } from './services/signage/loan-grid/playwright/playwright-chromium-availability.js';
+import { refreshProductionScheduleOrderSplitPilotGateCache } from './services/production-schedule/order-split/production-schedule-order-split-feature.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
@@ -100,6 +101,18 @@ export async function buildServer(): Promise<FastifyInstance> {
   initializeCsvImporters();
   initializeVisualizationModules();
   app.log.info('CSV importers initialized');
+
+  if (env.NODE_ENV !== 'test') {
+    try {
+      const splitPilotStatus = await refreshProductionScheduleOrderSplitPilotGateCache();
+      app.log.info(splitPilotStatus, 'Production schedule order split pilot gate initialized');
+    } catch (err) {
+      app.log.warn(
+        { err },
+        'Production schedule order split pilot gate could not be loaded; keeping runtime gate OFF'
+      );
+    }
+  }
   
   // ルートを登録
   await registerRoutes(app);

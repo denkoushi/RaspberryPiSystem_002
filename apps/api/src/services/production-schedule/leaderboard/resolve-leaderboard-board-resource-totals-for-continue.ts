@@ -1,5 +1,8 @@
 import { countProductionScheduleDashboardVisibleRowsFromListFilters } from '../production-schedule-query.service.js';
-import { resolveLeaderboardBoardSnapshotResourceTotal } from './leaderboard-composite-board-snapshot-totals.js';
+import {
+  resolveLeaderboardBoardSnapshotResourceTotal,
+  seedLeaderboardBoardSnapshotResourceTotal
+} from './leaderboard-composite-board-snapshot-totals.js';
 
 import type { ProductionScheduleListParams } from '../production-schedule-query.service.js';
 import type { Prisma } from '@prisma/client';
@@ -27,7 +30,7 @@ export async function resolveLeaderboardBoardResourceTotalsForContinue(
       if (cached !== undefined) {
         return cached;
       }
-      return countProductionScheduleDashboardVisibleRowsFromListFilters(
+      const total = await countProductionScheduleDashboardVisibleRowsFromListFilters(
         {
           queryText: listParamsBase.queryText,
           productNos: listParamsBase.productNos,
@@ -47,6 +50,10 @@ export async function resolveLeaderboardBoardResourceTotalsForContinue(
           leaderboardMaterializedBaseWhere: await leaderboardMaterializedBaseWhere
         }
       );
+      if (slice.snapshotId) {
+        seedLeaderboardBoardSnapshotResourceTotal(slice.snapshotId, total);
+      }
+      return total;
     })
   );
 }

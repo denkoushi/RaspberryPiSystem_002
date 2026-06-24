@@ -9,6 +9,12 @@ import { dueManagementLearningEventRepository } from './due-management-learning-
 import { releaseOrderAssignmentAtLocation } from './order-assignment/order-assignment-release.repository.js';
 import { getProductionScheduleProcessingTypeOptions } from './production-schedule-settings.service.js';
 import { sharedScheduleFieldsRepository } from './shared-schedule-fields.repository.js';
+import {
+  acquireUnifiedOrderSlotLockInTransaction,
+  assertUnifiedOrderSlotAvailableInTransaction
+} from './order-split/production-schedule-unified-order-slot.service.js';
+import { acquireProductionScheduleParentRowLockInTransaction } from './order-split/production-schedule-parent-row-lock.service.js';
+import { isProductionScheduleOrderSplitEnabled } from './order-split/production-schedule-order-split-feature.js';
 import { snapshotEventLoopObservability } from '../system/event-loop-observability.js';
 
 const isValidProcessingType = async (locationKey: string, processingType: string): Promise<boolean> => {
@@ -476,49 +482,90 @@ export async function upsertProductionScheduleOrder(params: {
     return { success: true, orderNumber: null };
   }
 
-  const conflicting = await prisma.productionScheduleOrderAssignment.findFirst({
-    where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: locationKey,
-      resourceCd,
-      orderNumber,
-      csvDashboardRowId: { not: row.id }
-    }
-  });
-  if (conflicting) {
-    throw new ApiError(409, 'この番号は既に使用されています', undefined, 'ORDER_NUMBER_CONFLICT');
-  }
-
-  await prisma.productionScheduleOrderAssignment.upsert({
-    where: {
-      csvDashboardRowId_location: {
-        csvDashboardRowId: row.id,
-        location: locationKey
-      }
-    },
-    update: {
-      resourceCd,
-      orderNumber,
-      siteKey
-    },
-    create: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      csvDashboardRowId: row.id,
-      location: locationKey,
-      siteKey,
-      resourceCd,
-      orderNumber
-    }
-  });
-  if (isSiteCanonicalLocation) {
-    await prisma.productionScheduleOrderAssignment.deleteMany({
+  await prisma.$transaction(async (tx) => {
+    await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
+    const splitCount = await tx.productionScheduleOrderSplit.count({
       where: {
-        csvDashboardRowId: row.id,
-        siteKey,
-        location: { not: locationKey }
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        parentCsvDashboardRowId: row.id
       }
     });
-  }
+    if (splitCount > 0) {
+      if (isProductionScheduleOrderSplitEnabled()) {
+        throw new ApiError(
+          400,
+          '分割済みの行は親行の手動順番を設定できません',
+          undefined,
+          'PARENT_ORDER_NOT_ALLOWED_FOR_SPLIT_ROW'
+        );
+      }
+
+      if (isSiteCanonicalLocation) {
+        await tx.productionScheduleOrderSplitAssignment.deleteMany({
+          where: {
+            split: {
+              csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+              parentCsvDashboardRowId: row.id
+            },
+            siteKey,
+            location: { not: locationKey }
+          }
+        });
+      }
+      await tx.productionScheduleOrderSplitAssignment.deleteMany({
+        where: {
+          split: {
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            parentCsvDashboardRowId: row.id
+          },
+          location: locationKey
+        }
+      });
+    }
+
+    await acquireUnifiedOrderSlotLockInTransaction(tx, {
+      locationKey,
+      resourceCd,
+      orderNumber
+    });
+    await assertUnifiedOrderSlotAvailableInTransaction(tx, {
+      locationKey,
+      resourceCd,
+      orderNumber,
+      excludeParentRowId: row.id
+    });
+
+    await tx.productionScheduleOrderAssignment.upsert({
+      where: {
+        csvDashboardRowId_location: {
+          csvDashboardRowId: row.id,
+          location: locationKey
+        }
+      },
+      update: {
+        resourceCd,
+        orderNumber,
+        siteKey
+      },
+      create: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        location: locationKey,
+        siteKey,
+        resourceCd,
+        orderNumber
+      }
+    });
+    if (isSiteCanonicalLocation) {
+      await tx.productionScheduleOrderAssignment.deleteMany({
+        where: {
+          csvDashboardRowId: row.id,
+          siteKey,
+          location: { not: locationKey }
+        }
+      });
+    }
+  });
 
   const fseibanRaw = rowData.FSEIBAN;
   const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';

@@ -24,6 +24,16 @@ vi.mock('../shared-schedule-fields.repository.js', () => ({
   },
 }));
 
+vi.mock('../order-split/production-schedule-unified-order-slot.service.js', () => ({
+  acquireUnifiedOrderSlotLockInTransaction: vi.fn(),
+  acquireUnifiedOrderSlotLocksInTransaction: vi.fn(),
+  assertUnifiedOrderSlotAvailableInTransaction: vi.fn(),
+}));
+
+vi.mock('../order-split/production-schedule-parent-row-lock.service.js', () => ({
+  acquireProductionScheduleParentRowLockInTransaction: vi.fn(),
+}));
+
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     csvDashboardRow: {
@@ -39,6 +49,12 @@ vi.mock('../../../lib/prisma.js', () => ({
       findFirst: vi.fn(),
       upsert: vi.fn(),
     },
+    productionScheduleOrderSplit: {
+      count: vi.fn(),
+    },
+    productionScheduleOrderSplitAssignment: {
+      deleteMany: vi.fn(),
+    },
     productionScheduleRowNote: {
       findUnique: vi.fn(),
       deleteMany: vi.fn(),
@@ -51,6 +67,7 @@ vi.mock('../../../lib/prisma.js', () => ({
     dueManagementOutcomeEvent: {
       create: vi.fn()
     },
+    $executeRaw: vi.fn(),
     $transaction: vi.fn(),
   },
 }));
@@ -58,6 +75,11 @@ vi.mock('../../../lib/prisma.js', () => ({
 describe('production-schedule-command.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.$transaction).mockImplementation(async (callback: (tx: typeof prisma) => Promise<unknown>) =>
+      callback(prisma)
+    );
+    vi.mocked(prisma.productionScheduleOrderSplit.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.productionScheduleOrderSplitAssignment.deleteMany).mockResolvedValue({ count: 0 } as never);
     vi.mocked(prisma.productionScheduleProcessingTypeOption.findMany).mockResolvedValue([
       {
         code: '塗装',
@@ -182,6 +204,79 @@ describe('production-schedule-command.service', () => {
     );
   });
 
+  it('split feature enabled では分割済み行の親行手動順番設定を拒否する', async () => {
+    const previousFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+    process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = 'true';
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({
+      id: 'row-split-parent',
+      rowData: { FSIGENCD: 'R01' }
+    } as never);
+    vi.mocked(prisma.productionScheduleOrderAssignment.findUnique).mockResolvedValue(null as never);
+    vi.mocked(prisma.productionScheduleOrderSplit.count).mockResolvedValue(1 as never);
+
+    try {
+      await expect(
+        upsertProductionScheduleOrder({
+          rowId: 'row-split-parent',
+          locationKey: 'kiosk-1',
+          resourceCd: 'R01',
+          orderNumber: 2
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        code: 'PARENT_ORDER_NOT_ALLOWED_FOR_SPLIT_ROW'
+      } satisfies Partial<ApiError>);
+    } finally {
+      if (previousFlag == null) {
+        delete process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+      } else {
+        process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = previousFlag;
+      }
+    }
+
+    expect(prisma.productionScheduleOrderAssignment.upsert).not.toHaveBeenCalled();
+  });
+
+  it('split feature disabled では同一親scopeのsplit順番を畳んで親行手動順番を保存する', async () => {
+    const previousFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+    process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = 'false';
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({
+      id: 'row-split-parent-off',
+      rowData: { FSIGENCD: 'R01' }
+    } as never);
+    vi.mocked(prisma.productionScheduleOrderAssignment.findUnique).mockResolvedValue(null as never);
+    vi.mocked(prisma.productionScheduleOrderSplit.count).mockResolvedValue(1 as never);
+    vi.mocked(prisma.productionScheduleOrderAssignment.upsert).mockResolvedValue({} as never);
+
+    try {
+      const result = await upsertProductionScheduleOrder({
+        rowId: 'row-split-parent-off',
+        locationKey: 'kiosk-1',
+        resourceCd: 'R01',
+        orderNumber: 2
+      });
+
+      expect(result).toEqual({ success: true, orderNumber: 2 });
+    } finally {
+      if (previousFlag == null) {
+        delete process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
+      } else {
+        process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = previousFlag;
+      }
+    }
+
+    expect(prisma.productionScheduleOrderSplitAssignment.deleteMany).toHaveBeenCalledWith({
+      where: {
+        split: {
+          csvDashboardId: expect.any(String),
+          parentCsvDashboardRowId: 'row-split-parent-off'
+        },
+        location: 'kiosk-1'
+      }
+    });
+    expect(prisma.productionScheduleOrderAssignment.upsert).toHaveBeenCalled();
+  });
+
   it('intent=complete が既に完了なら unchanged で tx を叩かない', async () => {
     vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({
       id: 'row-done',
@@ -220,4 +315,3 @@ describe('production-schedule-command.service', () => {
     expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
   });
 });
-

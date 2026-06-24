@@ -8,6 +8,7 @@
 - **[EXEC_PLAN.md](./EXEC_PLAN.md)**: 全体の進捗管理・マイルストーン追跡
 - **[アーキテクチャ概要](./docs/architecture/overview.md)**: システム全体のアーキテクチャ
 - **[開発ガイド](./docs/guides/development.md)**: 開発環境セットアップ・開発ワークフロー
+- **[Codex/Cursor agmsg連携ガイド](./docs/guides/agmsg-codex-cursor-collaboration.md)**: Codex主導・Cursor実行役のAI協調運用
 - **[トラブルシューティングナレッジベース](./docs/knowledge-base/troubleshooting-knowledge.md)**: 問題の解決方法とナレッジベース
 - **[システム要件定義](./docs/requirements/system-requirements.md)**: 機能要件・非機能要件・検証項目・次のタスク
 - **[Validation 7検証ガイド](./docs/guides/validation-7-usb-import.md)**: USB一括登録の実機検証手順
@@ -60,6 +61,8 @@
    - AI が提示したコマンドをラズパイのターミナルにコピペして実行
    - 設定ファイル（`.env` など）の編集
    - Docker Compose の再起動やマイグレーション実行
+
+Codexを指示役、Cursorを実行役としてAI協調する場合は、[Codex/Cursor agmsg連携ガイド](./docs/guides/agmsg-codex-cursor-collaboration.md) に従います。
 
 ### 重要な前提条件
 

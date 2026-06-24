@@ -56,6 +56,11 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
 
   return {
     id: row.id,
+    sourceRowId: row.sourceRowId ?? row.id,
+    splitId: row.splitId ?? null,
+    splitNo: row.splitNo ?? null,
+    splitQuantity: row.splitQuantity ?? null,
+    isSplit: row.isSplit === true,
     seibanJoinKey:
       typeof row.seibanJoinKey === 'string' && row.seibanJoinKey.trim().length > 0
         ? row.seibanJoinKey.trim()

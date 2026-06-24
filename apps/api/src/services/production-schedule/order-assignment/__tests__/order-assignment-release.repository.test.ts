@@ -47,6 +47,7 @@ describe('groupStaleCandidatesForRelease', () => {
         updateMany: async () => ({ count: 1 }),
       },
       $queryRaw: async () => [],
+      $executeRaw: async () => 0,
     };
 
     const result = await reconcileStaleProductionScheduleOrderAssignments(

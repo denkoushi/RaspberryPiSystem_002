@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 
 import {
   useKioskProductionScheduleHistoryProgress,
+  useKioskProductionScheduleOrderSplitStatus,
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources
 } from '../../api/hooks';
@@ -20,12 +21,17 @@ import {
 } from '../../features/kiosk/leaderOrderBoard/cache/leaderboardBoardInteractionLockPolicy';
 import { LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE } from '../../features/kiosk/leaderOrderBoard/constants';
 import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
+import {
+  KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED,
+  resolveSourceRowIdFromLeaderBoardRow
+} from '../../features/kiosk/leaderOrderBoard/displayItemId';
 import { filterLeaderBoardSlotResourceCds } from '../../features/kiosk/leaderOrderBoard/isLeaderBoardExcludedResourceSlotCd';
 import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
 import { LeaderBoardInspectionWorkflowModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardInspectionWorkflowModal';
 import { LeaderBoardLeftToolStack } from '../../features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack';
 import { LeaderBoardResourceSlotPickerModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardResourceSlotPickerModal';
 import { LeaderBoardSeibanListPanel } from '../../features/kiosk/leaderOrderBoard/LeaderBoardSeibanListPanel';
+import { LeaderOrderSplitModal } from '../../features/kiosk/leaderOrderBoard/LeaderOrderSplitModal';
 import {
   LEADER_BOARD_HISTORY_PROGRESS_REFETCH_MS,
   LEADER_BOARD_ORDER_USAGE_REFETCH_MS,
@@ -40,6 +46,7 @@ import { useLeaderBoardDueAssist } from '../../features/kiosk/leaderOrderBoard/u
 import { useLeaderBoardResourceSlotsWithServerSync } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardResourceSlotsWithServerSync';
 import { useLeaderBoardSlotAutoRank } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardSlotAutoRank';
 import { useLeaderOrderBoardDeviceContext } from '../../features/kiosk/leaderOrderBoard/useLeaderOrderBoardDeviceContext';
+import { usePersistedLeaderBoardCapacityMode } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardCapacityMode';
 import { usePersistedLeaderBoardDeviceScope } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardDeviceScope';
 import { usePersistedLeaderBoardGanttMode } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardGanttMode';
 import { usePersistedLeaderBoardLaborMode } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardLaborMode';
@@ -138,6 +145,22 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       history: []
     });
 
+  const { laborEnabledBySlotIndex, toggleLaborForSlot } = usePersistedLeaderBoardLaborMode(
+    siteKey,
+    activeDeviceScopeKey,
+    slotCount
+  );
+  const { capacityMinutesBySlotIndex, toggleCapacityForSlot } = usePersistedLeaderBoardCapacityMode(
+    siteKey,
+    activeDeviceScopeKey,
+    slotCount
+  );
+
+  const includeLaborInLeaderboardRequest = useMemo(
+    () => laborEnabledBySlotIndex.some(Boolean),
+    [laborEnabledBySlotIndex]
+  );
+
   const leaderboardPhasedBase = useMemo(() => {
     const { resourceCds: _omitResourceCds, q: _omitQ, ...rest } = baseQueryParams;
     void _omitResourceCds;
@@ -146,11 +169,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       ...rest,
       pageSize: LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE,
       allowResourceOnly: true,
+      includeLabor: includeLaborInLeaderboardRequest,
       ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
         : {})
     };
-  }, [activeDeviceScopeKey, baseQueryParams, macManualOrderV2]);
+  }, [activeDeviceScopeKey, baseQueryParams, includeLaborInLeaderboardRequest, macManualOrderV2]);
 
   const targetDeviceScopeKey =
     macManualOrderV2 && activeDeviceScopeKey.trim().length > 0 ? activeDeviceScopeKey.trim() : undefined;
@@ -188,14 +212,14 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const writePause =
     mutationPauseRefetch || orderPending || dueDatePending || completePending || notePending;
 
-  const invalidateScheduleQueries = () =>
+  const invalidateScheduleQueries = useCallback(() =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
       queryClient.invalidateQueries({
         queryKey: ['kiosk-production-schedule-due-management-manual-order-overview']
       }),
       queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-manual-order-resource-assignments'] })
-    ]);
+    ]), [queryClient]);
 
   const {
     editingNoteValue,
@@ -241,8 +265,9 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     listIncomplete,
     cacheSyncWarning,
     applyDisplayMutation,
-    isBoardDataSyncing,
-    isDecorationSyncing
+    isBoardDataSyncStatusVisible,
+    isDecorationSyncing,
+    logClientPerfEvent
   } = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
     leaderboardPhasedBaseParams: leaderboardPhasedBase,
     seibanOrFilters: dueAssist.selectedFseibanFilters,
@@ -282,6 +307,30 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     pauseRefetch: writePause,
     refetchIntervalMs: LEADER_BOARD_HISTORY_PROGRESS_REFETCH_MS
   });
+  const orderSplitStatusQuery = useKioskProductionScheduleOrderSplitStatus();
+  const orderSplitStatus = orderSplitStatusQuery.data;
+  const splitFeatureEffectiveEnabled =
+    KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED && orderSplitStatus?.effectiveEnabled === true;
+  const splitFeatureStatus = !KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED
+    ? { label: '分割 Web OFF', className: 'border-slate-500 bg-slate-800 text-slate-200' }
+    : orderSplitStatusQuery.isLoading
+      ? { label: '分割 確認中', className: 'border-cyan-500/40 bg-cyan-950/70 text-cyan-100' }
+      : orderSplitStatusQuery.isError
+        ? { label: '分割 状態不明', className: 'border-rose-400/60 bg-rose-950/70 text-rose-100' }
+        : !orderSplitStatus?.deploymentEnabled
+          ? { label: '分割 API OFF', className: 'border-slate-500 bg-slate-800 text-slate-200' }
+          : splitFeatureEffectiveEnabled
+            ? { label: '分割 検証ON', className: 'border-emerald-400/60 bg-emerald-950/70 text-emerald-100' }
+            : { label: '分割 検証OFF', className: 'border-amber-400/60 bg-amber-950/70 text-amber-100' };
+
+  const boardSyncStatusMessage = isBoardDataSyncStatusVisible
+    ? LEADERBOARD_BACKGROUND_SYNC_STATUS_MESSAGE
+    : isDecorationSyncing
+      ? LEADERBOARD_DECORATION_SYNC_STATUS_MESSAGE
+      : null;
+  const boardSyncStatusClassName = isBoardDataSyncStatusVisible
+    ? 'border-cyan-300/35 bg-cyan-950/80 text-cyan-50'
+    : 'border-cyan-300/25 bg-slate-950/90 text-cyan-100/90';
 
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
@@ -301,12 +350,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   } = usePersistedLeaderBoardSeibanEval(siteKey, activeDeviceScopeKey, dueAssist.sharedHistory);
 
   const { ganttEnabled, toggleGanttMode } = usePersistedLeaderBoardGanttMode(siteKey, activeDeviceScopeKey);
-
-  const { laborEnabledBySlotIndex, toggleLaborForSlot } = usePersistedLeaderBoardLaborMode(
-    siteKey,
-    activeDeviceScopeKey,
-    slotCount
-  );
 
   const seibanEvalRankMap = useMemo(
     () => buildSeibanRankMapFromMergedOrder(mergedRegisteredSeibanOrder),
@@ -415,6 +458,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const [slotModalOpen, setSlotModalOpen] = useState(false);
   const [isSeibanListPanelOpen, setIsSeibanListPanelOpen] = useState(false);
   const [inspectionWorkflowRow, setInspectionWorkflowRow] = useState<LeaderBoardRow | null>(null);
+  const [splitModalRow, setSplitModalRow] = useState<LeaderBoardRow | null>(null);
   /** 備考モーダル対象行の製番（製番登録ボタン用） */
   const [noteModalTargetFseiban, setNoteModalTargetFseiban] = useState<string | null>(null);
 
@@ -437,7 +481,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const { handleAutoRank, autoRankDisabled, autoRankPending } = useLeaderBoardSlotAutoRank({
     seibanEvalEnabled,
-    listIncomplete,
     interactionLocked: isInteractionLocked,
     orderPending,
     sortedGrouped,
@@ -470,6 +513,20 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const handleOpenInspectionWorkflow = useCallback((row: LeaderBoardRow) => {
     setInspectionWorkflowRow(row);
   }, []);
+
+  const handleOpenSplitModal = useCallback((row: LeaderBoardRow) => {
+    setSplitModalRow({
+      ...row,
+      id: resolveSourceRowIdFromLeaderBoardRow(row),
+      sourceRowId: resolveSourceRowIdFromLeaderBoardRow(row),
+      isSplit: false
+    });
+  }, []);
+
+  const handleSplitSaved = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-board'] });
+    void invalidateScheduleQueries();
+  }, [invalidateScheduleQueries, queryClient]);
 
   const handleOpenInspectionDigitalInput = useCallback(
     (row: LeaderBoardRow) => {
@@ -561,6 +618,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           onMoveRegisteredSeibanToRank={moveRegisteredSeibanToRank}
           ganttEnabled={ganttEnabled}
           onToggleGanttMode={toggleGanttMode}
+          splitFeatureStatus={splitFeatureStatus}
         />
       </div>
 
@@ -570,6 +628,19 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           gridReady ? 'overflow-hidden' : 'overflow-auto'
         )}
       >
+        {boardSyncStatusMessage ? (
+          <div className="pointer-events-none absolute right-3 top-3 z-30 flex justify-end">
+            <p
+              className={clsx(
+                'rounded border px-3 py-1 text-xs font-semibold shadow-lg backdrop-blur-sm',
+                boardSyncStatusClassName
+              )}
+              role="status"
+            >
+              {boardSyncStatusMessage}
+            </p>
+          </div>
+        ) : null}
         {!scheduleEnabled ? (
           <p className="text-sm text-white/60">
             端末を選び、操作パネルで資源スロットに1件以上割り当て、研削/切削の条件を満たすと一覧が表示されます。
@@ -588,15 +659,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             {cacheSyncWarning != null ? (
               <p className="mb-2 shrink-0 text-sm text-amber-200" role="status">
                 {cacheSyncWarning}
-              </p>
-            ) : null}
-            {isBoardDataSyncing ? (
-              <p className="mb-2 shrink-0 text-sm text-cyan-100/90" role="status">
-                {LEADERBOARD_BACKGROUND_SYNC_STATUS_MESSAGE}
-              </p>
-            ) : isDecorationSyncing ? (
-              <p className="mb-2 shrink-0 text-sm text-cyan-100/70" role="status">
-                {LEADERBOARD_DECORATION_SYNC_STATUS_MESSAGE}
               </p>
             ) : null}
             <LeaderBoardGrid
@@ -618,16 +680,20 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               onOpenNote={handleOpenRowNote}
               notePending={notePending}
               onOpenInspectionWorkflow={handleOpenInspectionWorkflow}
+              onOpenSplitModal={handleOpenSplitModal}
+              splitFeatureEnabled={splitFeatureEffectiveEnabled}
               interactionLocked={isInteractionLocked}
               footerResourceChipsByPartKey={footerResourceChipsByPartKey}
               seibanEvalEnabled={seibanEvalEnabled}
               ganttEnabled={ganttEnabled}
-              listIncomplete={listIncomplete}
               autoRankDisabled={autoRankDisabled}
               autoRankPending={autoRankPending}
               onAutoRank={handleAutoRankSlot}
               laborEnabledBySlotIndex={laborEnabledBySlotIndex}
               onToggleLaborForSlot={toggleLaborForSlot}
+              capacityMinutesBySlotIndex={capacityMinutesBySlotIndex}
+              onToggleCapacityMinutesForSlot={toggleCapacityForSlot}
+              logClientPerfEvent={logClientPerfEvent}
             />
           </>
         )}
@@ -655,6 +721,13 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         onClose={() => setInspectionWorkflowRow(null)}
         onOpenDigitalInput={handleOpenInspectionDigitalInput}
         onOpenPaperPrint={handleOpenInspectionPaperPrint}
+      />
+      <LeaderOrderSplitModal
+        open={splitModalRow != null}
+        row={splitModalRow}
+        targetDeviceScopeKey={targetDeviceScopeKey}
+        onClose={() => setSplitModalRow(null)}
+        onSaved={handleSplitSaved}
       />
       <KioskNoteModal
         isOpen={isNoteModalOpen}

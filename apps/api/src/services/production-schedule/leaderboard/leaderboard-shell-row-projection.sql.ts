@@ -14,11 +14,10 @@ import type { LeaderboardShellRankJoinContext } from './leaderboard-shell-rank-j
 export const LEADERBOARD_SHELL_DUE_SORT_EXPR = Prisma.sql`COALESCE("n"."dueDate", "supplement"."plannedEndDate")`;
 
 /**
- * CsvDashboardRow + 可視性・装飾 JOIN + rank LATERAL（manual / expansion / filler 共通）。
+ * 可視性・装飾 JOIN + rank LATERAL（manual / expansion / filler 共通）。
  */
-export function buildLeaderboardShellRowFromJoins(rankJoins: LeaderboardShellRankJoinContext): Prisma.Sql {
+export function buildLeaderboardShellRowAuxiliaryJoins(rankJoins: LeaderboardShellRankJoinContext): Prisma.Sql {
   return Prisma.sql`
-    FROM "CsvDashboardRow"
     LEFT JOIN "ProductionScheduleProgress" AS "p"
       ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
@@ -42,6 +41,16 @@ export function buildLeaderboardShellRowFromJoins(rankJoins: LeaderboardShellRan
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     ${rankJoins.orderAssignmentJoin}
     ${rankJoins.globalRankJoin}
+  `;
+}
+
+/**
+ * CsvDashboardRow + 可視性・装飾 JOIN + rank LATERAL（manual / expansion / filler 共通）。
+ */
+export function buildLeaderboardShellRowFromJoins(rankJoins: LeaderboardShellRankJoinContext): Prisma.Sql {
+  return Prisma.sql`
+    FROM "CsvDashboardRow"
+    ${buildLeaderboardShellRowAuxiliaryJoins(rankJoins)}
   `;
 }
 

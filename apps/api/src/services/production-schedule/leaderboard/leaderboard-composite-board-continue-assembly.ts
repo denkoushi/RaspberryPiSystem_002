@@ -9,7 +9,7 @@ import {
   putLeaderboardBoardPrefixRowsInCache,
   resolveLeaderboardBoardPrefixRowsFromCache
 } from './leaderboard-composite-board-prefix-row-cache.js';
-import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard-shell-hydrate.service.js';
+import { fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds } from './leaderboard-split-expansion.service.js';
 import type { LeaderboardShellSnapshotRecord, LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
 
 export type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
@@ -55,8 +55,8 @@ async function hydrateLightShellRowsFromOrderedIds(params: {
 
   const siteScopedGlobalRankLocation = params.siteKey?.trim().length ? params.siteKey!.trim() : params.locationKey;
 
-  const raw = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
-    orderedRowIds: params.orderedRowIds,
+  const raw = await fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds({
+    orderedDisplayItemIds: params.orderedRowIds,
     locationKey: params.locationKey,
     siteScopedGlobalRankLocation,
     leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere

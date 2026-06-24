@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { authorizeRoles } from '../lib/auth.js';
+import { ApiError } from '../lib/errors.js';
 import {
   getDueManagementAccessPasswordSettings,
   importProductionScheduleResourceCodeMappingsFromCsv,
@@ -15,6 +16,11 @@ import {
   upsertProductionScheduleProcessingTypeOptions,
   upsertProductionScheduleResourceCategorySettings
 } from '../services/production-schedule/production-schedule-settings.service.js';
+import {
+  getProductionScheduleOrderSplitPilotStatus,
+  isProductionScheduleOrderSplitDeploymentEnabled,
+  updateProductionScheduleOrderSplitPilotStatus
+} from '../services/production-schedule/order-split/production-schedule-order-split-feature.js';
 import {
   listLoadBalancingCapacityBase,
   listLoadBalancingClasses,
@@ -87,6 +93,10 @@ const dueManagementAccessPasswordQuerySchema = z.object({
 const dueManagementAccessPasswordBodySchema = z.object({
   location: z.string().min(1).max(100).default(SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION),
   password: z.string().min(1).max(128)
+});
+
+const orderSplitPilotBodySchema = z.object({
+  enabled: z.boolean()
 });
 
 const loadBalancingLocationQuerySchema = z.object({
@@ -248,6 +258,28 @@ export function registerProductionScheduleSettingsRoutes(app: FastifyInstance): 
     const settings = await upsertDueManagementAccessPassword({
       location: body.location,
       password: body.password
+    });
+    return { settings };
+  });
+
+  app.get('/production-schedule-settings/order-split-pilot', { preHandler: canManage }, async () => {
+    const settings = await getProductionScheduleOrderSplitPilotStatus();
+    return { settings };
+  });
+
+  app.put('/production-schedule-settings/order-split-pilot', { preHandler: canManage }, async (request) => {
+    const body = orderSplitPilotBodySchema.parse(request.body);
+    if (body.enabled && !isProductionScheduleOrderSplitDeploymentEnabled()) {
+      throw new ApiError(
+        409,
+        'デプロイ側の分割flagがOFFのため、画面スイッチをONにできません',
+        undefined,
+        'ORDER_SPLIT_DEPLOYMENT_FLAG_DISABLED'
+      );
+    }
+    const settings = await updateProductionScheduleOrderSplitPilotStatus({
+      enabled: body.enabled,
+      updatedBy: request.user?.username ?? request.user?.id ?? null
     });
     return { settings };
   });

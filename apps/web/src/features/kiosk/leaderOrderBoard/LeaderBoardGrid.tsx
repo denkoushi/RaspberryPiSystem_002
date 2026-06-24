@@ -1,9 +1,13 @@
 import clsx from 'clsx';
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 
-import { resolveLeaderBoardGanttCapacityMinutes } from './gantt/leaderBoardGanttCapacity';
+import {
+  normalizeLeaderBoardGanttCapacityMinutes,
+  resolveLeaderBoardGanttCapacityMinutes
+} from './gantt/leaderBoardGanttCapacity';
 import { LeaderOrderResourceCard } from './LeaderOrderResourceCard';
 
+import type { LeaderboardBoardClientPerfLogger } from './leaderboardBoardClientPerf';
 import type { LeaderBoardRow } from './types';
 import type { KioskProductionScheduleCompletionIntent } from '../../../api/client';
 import type { KioskResourceProgressProcessChip } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
@@ -25,7 +29,9 @@ export type LeaderBoardGridProps = {
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;
   notePending: boolean;
-  onOpenInspectionWorkflow: (row: LeaderBoardRow) => void;
+  onOpenInspectionWorkflow?: (row: LeaderBoardRow) => void;
+  onOpenSplitModal?: (row: LeaderBoardRow) => void;
+  splitFeatureEnabled?: boolean;
   /** 背景同期中など、行操作を明示的に無効化 */
   interactionLocked?: boolean;
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
@@ -34,13 +40,16 @@ export type LeaderBoardGridProps = {
   /** 基準時間帯解決用（スロット文脈） */
   siteKey?: string;
   deviceScopeKey?: string;
-  listIncomplete?: boolean;
   autoRankDisabled?: boolean;
   autoRankPending?: boolean;
   onAutoRank?: (resourceCd: string) => void;
   /** スロットごとの `+人` ON/OFF（slotIndex 順） */
   laborEnabledBySlotIndex?: readonly boolean[];
   onToggleLaborForSlot?: (slotIndex: number) => void;
+  /** スロットごとのガント基準時間（slotIndex 順） */
+  capacityMinutesBySlotIndex?: readonly number[];
+  onToggleCapacityMinutesForSlot?: (slotIndex: number) => void;
+  logClientPerfEvent?: LeaderboardBoardClientPerfLogger;
 };
 
 type SlotCardProps = {
@@ -60,16 +69,18 @@ type SlotCardProps = {
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;
   notePending: boolean;
-  onOpenInspectionWorkflow: (row: LeaderBoardRow) => void;
+  onOpenInspectionWorkflow?: (row: LeaderBoardRow) => void;
+  onOpenSplitModal?: (row: LeaderBoardRow) => void;
+  splitFeatureEnabled?: boolean;
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
   seibanEvalEnabled?: boolean;
   ganttEnabled?: boolean;
-  listIncomplete?: boolean;
   autoRankDisabled?: boolean;
   autoRankPending?: boolean;
   onAutoRank?: (resourceCd: string) => void;
   laborEnabled?: boolean;
   onToggleLabor?: () => void;
+  onToggleCapacityMinutes?: () => void;
 };
 
 const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
@@ -90,6 +101,8 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   onOpenNote,
   notePending,
   onOpenInspectionWorkflow,
+  onOpenSplitModal,
+  splitFeatureEnabled = false,
   footerResourceChipsByPartKey,
   seibanEvalEnabled = false,
   ganttEnabled = false,
@@ -97,7 +110,8 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   autoRankPending = false,
   onAutoRank,
   laborEnabled = false,
-  onToggleLabor
+  onToggleLabor,
+  onToggleCapacityMinutes
 }: SlotCardProps) {
   const onSelect = useCallback(() => {
     setSelectedResourceCd(resourceCd);
@@ -126,6 +140,8 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
       onOpenNote={onOpenNote}
       notePending={notePending}
       onOpenInspectionWorkflow={onOpenInspectionWorkflow}
+      onOpenSplitModal={onOpenSplitModal}
+      splitFeatureEnabled={splitFeatureEnabled}
       footerResourceChipsByPartKey={footerResourceChipsByPartKey}
       seibanEvalEnabled={seibanEvalEnabled}
       ganttEnabled={ganttEnabled}
@@ -134,6 +150,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
       onAutoRank={onAutoRank}
       laborEnabled={laborEnabled}
       onToggleLabor={onToggleLabor}
+      onToggleCapacityMinutes={onToggleCapacityMinutes}
     />
   );
 });
@@ -158,34 +175,56 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   onOpenNote,
   notePending,
   onOpenInspectionWorkflow,
+  onOpenSplitModal,
+  splitFeatureEnabled = false,
   interactionLocked = false,
   footerResourceChipsByPartKey,
   seibanEvalEnabled = false,
   ganttEnabled = false,
   siteKey = '',
   deviceScopeKey = '',
-  listIncomplete = false,
   autoRankDisabled = false,
   autoRankPending = false,
   onAutoRank,
   laborEnabledBySlotIndex = [],
-  onToggleLaborForSlot
+  onToggleLaborForSlot,
+  capacityMinutesBySlotIndex = [],
+  onToggleCapacityMinutesForSlot,
+  logClientPerfEvent
 }: LeaderBoardGridProps) {
   const rowControlsLocked = interactionLocked;
+  const gridMountedLoggedRef = useRef(false);
+  const totalRows = useMemo(
+    () => Array.from(sortedGrouped.values()).reduce((sum, rows) => sum + rows.length, 0),
+    [sortedGrouped]
+  );
 
-  const capacityMinutesBySlotIndex = useMemo(
+  useEffect(() => {
+    if (gridMountedLoggedRef.current) return;
+    gridMountedLoggedRef.current = true;
+    logClientPerfEvent?.('grid-mounted', {
+      rowCount: totalRows,
+      slotCount: resourceCdBySlotIndex.filter((cd) => Boolean(cd?.trim())).length
+    });
+  }, [logClientPerfEvent, resourceCdBySlotIndex, totalRows]);
+
+  const resolvedCapacityMinutesBySlotIndex = useMemo(
     () =>
       resourceCdBySlotIndex.map((cdRaw, slotIndex) => {
         const resourceCd = cdRaw?.trim() ?? '';
         if (resourceCd.length === 0) return 0;
-        return resolveLeaderBoardGanttCapacityMinutes({
-          siteKey,
-          deviceScopeKey,
-          slotIndex,
-          resourceCd
-        });
+        const persistedCapacityMinutes = capacityMinutesBySlotIndex[slotIndex];
+        return normalizeLeaderBoardGanttCapacityMinutes(
+          persistedCapacityMinutes ??
+            resolveLeaderBoardGanttCapacityMinutes({
+              siteKey,
+              deviceScopeKey,
+              slotIndex,
+              resourceCd
+            })
+        );
       }),
-    [resourceCdBySlotIndex, siteKey, deviceScopeKey]
+    [capacityMinutesBySlotIndex, resourceCdBySlotIndex, siteKey, deviceScopeKey]
   );
 
   return (
@@ -211,7 +250,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
         const rows = sortedGrouped.get(cd) ?? [];
         const jpNames = (resourceNameMap[cd] ?? []).join(' / ');
         const orderUsageNumbers = orderUsageByResourceCd?.[cd];
-        const capacityMinutes = capacityMinutesBySlotIndex[slotIndex] ?? 0;
+        const capacityMinutes = resolvedCapacityMinutesBySlotIndex[slotIndex] ?? 0;
         return (
           <LeaderBoardSlotCard
             key={`slot-${slotIndex}-${cd}`}
@@ -232,15 +271,22 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             onOpenNote={onOpenNote}
             notePending={notePending || rowControlsLocked}
             onOpenInspectionWorkflow={onOpenInspectionWorkflow}
+            onOpenSplitModal={onOpenSplitModal}
+            splitFeatureEnabled={splitFeatureEnabled}
             footerResourceChipsByPartKey={footerResourceChipsByPartKey}
             seibanEvalEnabled={seibanEvalEnabled}
             ganttEnabled={ganttEnabled}
-            autoRankDisabled={autoRankDisabled || rowControlsLocked || listIncomplete}
+            autoRankDisabled={autoRankDisabled || rowControlsLocked}
             autoRankPending={autoRankPending}
             onAutoRank={onAutoRank}
             laborEnabled={Boolean(laborEnabledBySlotIndex[slotIndex])}
             onToggleLabor={
               onToggleLaborForSlot ? () => onToggleLaborForSlot(slotIndex) : undefined
+            }
+            onToggleCapacityMinutes={
+              onToggleCapacityMinutesForSlot
+                ? () => onToggleCapacityMinutesForSlot(slotIndex)
+                : undefined
             }
           />
         );

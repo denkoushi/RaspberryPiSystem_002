@@ -83,7 +83,7 @@ describe('leaderBoardGanttLayout', () => {
     assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
   });
 
-  it('maps 8H boundary by work-time ratio when total exceeds 8H', () => {
+  it('maps 8H boundary by cumulative work-time ratio when total exceeds 8H', () => {
     const slot = computeGanttSlotLayout({
       rows: [{ requiredMinutes: 480 }, { requiredMinutes: 480 }],
       availableWorkHeightPx: AVAILABLE_HEIGHT
@@ -131,11 +131,13 @@ describe('leaderBoardGanttLayout', () => {
   it('maps overflow ruler segments across full scroll content height', () => {
     const rows = Array.from({ length: 10 }, () => ({ requiredMinutes: 30 }));
     const slot = computeGanttSlotLayout({ rows, availableWorkHeightPx: AVAILABLE_HEIGHT });
+    const normalized = normalizeRulerSegmentsForRenderHeight(slot.rulerSegments, slot.containerMinHeightPx);
 
-    assertContiguousSegments(slot.rulerSegments, slot.containerMinHeightPx);
+    assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
+    assertContiguousSegments(normalized, slot.containerMinHeightPx);
     expect(slot.rulerSegments[0]?.topPx).toBe(0);
     expect(slot.eightHourBoundaryEndY).toBeGreaterThan(0);
-    expect(slot.eightHourBoundaryEndY).toBeLessThanOrEqual(slot.containerMinHeightPx);
+    expect(slot.eightHourBoundaryEndY).toBeLessThanOrEqual(slot.rulerHeightPx);
   });
 
   it('adds footer chip extra to estimate only', () => {
@@ -214,6 +216,27 @@ describe('leaderBoardGanttLayout', () => {
     assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
   });
 
+  it('moves the cumulative capacity boundary when required minutes increase while row minimum heights stay fixed', () => {
+    const base = computeGanttSlotLayout({
+      rows: Array.from({ length: 10 }, () => ({ requiredMinutes: 30 })),
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: 480
+    });
+    const withLabor = computeGanttSlotLayout({
+      rows: Array.from({ length: 10 }, () => ({ requiredMinutes: 60 })),
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: 480
+    });
+
+    expect(withLabor.totalRequiredMinutes).toBeGreaterThan(base.totalRequiredMinutes);
+    expect(withLabor.containerMinHeightPx).toBe(base.containerMinHeightPx);
+    expect(withLabor.rulerHeightPx).toBe(base.rulerHeightPx);
+    expect(withLabor.capacityBoundaryEndY).toBeLessThan(base.capacityBoundaryEndY);
+    expect(withLabor.rowLayouts.map((layout) => layout.visualMinHeightPx)).toEqual(
+      base.rowLayouts.map((layout) => layout.visualMinHeightPx)
+    );
+  });
+
   it('creates remainder band for 10H total at 8H capacity', () => {
     const slot = computeGanttSlotLayout({
       rows: [{ requiredMinutes: 600 }],
@@ -284,6 +307,25 @@ describe('leaderBoardGanttLayout', () => {
 
     expect(slot.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1]);
     assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
+  });
+
+  it('changes capacity boundary and band count at 8H vs 10H for the same required minutes', () => {
+    const rows = [{ requiredMinutes: 1080 }];
+    const slot8h = computeGanttSlotLayout({
+      rows,
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: 480
+    });
+    const slot10h = computeGanttSlotLayout({
+      rows,
+      availableWorkHeightPx: AVAILABLE_HEIGHT,
+      capacityMinutes: 600
+    });
+
+    expect(slot8h.rulerHeightPx).toBe(slot10h.rulerHeightPx);
+    expect(slot8h.capacityBoundaryEndY).toBeLessThan(slot10h.capacityBoundaryEndY);
+    expect(slot8h.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1, 2]);
+    expect(slot10h.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1]);
   });
 
   it('keeps last band color when footer chips extend non-time tail', () => {

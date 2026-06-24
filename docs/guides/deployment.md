@@ -2,13 +2,51 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-06-17
+last-verified: 2026-06-24
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-06-24 · **キオスク順位ボード +人 / 8H・10H Gantt 縦バー回帰記録** · **Web** · **Pi5 + Pi4×4 反映済**） {#kiosk-leaderboard-labor-gantt-ruler-stretch-2026-06-24}
+
+- **変更概要（正本）**: [Plan: `+人`](../plans/kiosk-leaderboard-labor-minutes-toggle.md#gantt-ruler-regression-after-8h10h-toggle-2026-06-24) · [Gantt plan](../plans/kiosk-leaderboard-gantt-mode.md#ruler-behavior-with-人-labor-minutes-2026-06-24-correction) · [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md) · PR **#464** · commit **`f978c15e`** (`fix: stretch leaderboard gantt ruler for labor minutes`)
+  - `+人` ON 時の表示分数は `machineRequiredMinutes + laborRequiredMinutes`。既存の append 済み行は維持し、`includeLabor=true` shell/continue/deltaRows の人工数メタデータを同一表示スコープ内で `row.id` 保持して重ねる。`includeLabor=false` の `0` で保持済み人工数を消さない。
+  - 8H/10H ボタンは各資源カードヘッダーで `+人` の左。slotIndex 順・端末ローカル保存で、Gantt `capacityMinutes` に **480 / 600** 分を渡す。
+  - **訂正**: `f978c15e` は 8H/10H 縦バーを `totalRequiredMinutes / capacityMinutes` に追従して伸ばしたが、これは本来の「行順の累積工数が 480/600 分へ到達する位置をカード内に表示する」契約と違う。修正では累積境界写像へ戻す。
+- **CI（`f978c15e`）**: PR event **Secret scan `28073394758`**, **CodeQL `28073394761`**, **CI `28073394781`** all success。push event **CI `28073393362`** success。`pnpm audit` high severity は warning のみで job success。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/production-schedule-split-orders infrastructure/ansible/inventory.yml --detach --follow`
+  - **Detach Run ID**: **`20260624-125213-16642`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260624-125213-16642.log`
+  - **結果**: Pi5 fast-forward **`4e3d3926` → `f978c15e`** · Docker rebuild/restart success · Prisma migrate/status OK · API health recovered · summary success true
+  - **PLAY RECAP**: `raspberrypi5` `failed=0` / `unreachable=0`; Pi4×4 (`raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`, `raspi4-kensaku-stonebase01`) `failed=0` / `unreachable=0`; `raspberrypi3` `failed=0` / `unreachable=0`
+  - **Pi4/Pi3 services**: Pi4×4 `kiosk-browser.service` / `status-agent.service` / `status-agent.timer` restart OK。Pi3 は lightdm 復旧後 `signage-lite.service is active`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。API health、Pi4 deploy-status、Pi4 kiosk/status-agent、Pi3 signage-lite/timer、`verify-services-real.sh` すべて PASS。
+- **実機（本番画面・Mac Playwright + Pi5 API）**: `/kiosk/production-schedule/leader-order-board` · site **第2工場** · device **FJV60/80** · resource **021** · Gantt ON。以下は `f978c15e` の全体ルーラー高さ変化を確認した値であり、現在は正しい成功条件ではない。
+  - `+人` OFF: minute labels **`700分, 700分, 252分, 720分, 648分, 225分`** · Gantt ruler **6220px**
+  - `+人` ON: minute labels **`900分, 1000分, 342分, 840分, 848分, 285分`** · Gantt ruler **8307px**
+  - 8H → 10H click: capacity label **`10H`** · ruler **5116px**（同じ所要量で capacity 600 分基準に変化）
+- **運用メモ**: Mac 検証では `targetDeviceScopeKey` を送るため **`client-key-mac-kiosk1`** を使う。Pi4 client-key で別端末 scope を指定すると API は `TARGET_DEVICE_SCOPE_KEY_FORBIDDEN` を返す。現場 Pi4 は自端末 scope のため通常操作で問題ない。
+
+### 補足（2026-06-23 · **キオスク順位ボード first usable 10秒化** · **API + Web** · **Pi5 反映済**） {#kiosk-leaderboard-first-usable-shell-swr-2026-06-23}
+
+- **変更概要（正本）**: [性能回復plan §First usable state target](../plans/leaderboard-defer-totals-performance-recovery.md#first-usable-state-target2026-06-23-follow-up) · [KB-369 §6-slot resource board split](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md#six-slot-resource-board-split-after-residual-fixes-2026-06-23--pr-464) · PR **#464** · HEAD **`bf9dea17`** · Pi5 run **`20260623-144810-12264`** · API container health **healthy**
+  - 端末キャッシュ Phase 2 SWR は初期空白のみ cache で埋め、fresh `leaderboard-board` shell の行が届いたら append/decorations 完走前でも network rows を表示する。
+  - `+人` が全 slot OFF の初期 board は `includeLabor=false` を送信し、cold `attachLabor` lookup を待たない。`includeLabor` 未指定時も **false** に倒し、旧 SPA bundle からの欠落リクエストも first usable 優先で救済する。明示 `includeLabor=true` は維持。
+  - **狙いは「最初に使える状態」10秒以内**。全件 append 完走は引き続き background continue に依存する。
+- **代表実測（Pi5 6 slot `581,305,589,584,588,586`, HTTPS local, `pageSize=50`, `includeDecorations=false`, `deferTotals=true`, `includeLabor=false`）**: shell **5.25s / 6.22s / 5.36s**（300 rows / 6 hasMore slots）。比較 `includeLabor=true` は **18.20s**。Web bundle **`index-CtusrliU.js`** · health **`status: ok`** · `LEADERBOARD_BOARD_PERF_LOG` OFF。
+- **追加実測（`bf9dea17`, 旧 SPA 相当で `includeLabor` 欠落, `pageSize=80`）**: shell **2.81s**（480 rows）· first continue **3.85s**（1303 rows）。いずれも `laborRequiredMinutes=0`。
+- **運用メモ**: 既に開いているキオスク SPA は旧 JS のまま `includeLabor=false` を送らないことがあるが、API default false で速度は救済される。`+人` ON の正確な人工数表示には新 bundle への強制リロードが必要。
+
+### 補足（2026-06-23 · **キオスク順位ボード residual evidence / summary index** · **API + DB** · **Pi5 反映済**） {#kiosk-leaderboard-residual-evidence-index-2026-06-23}
+
+- **変更概要（正本）**: [性能回復plan §Pi5 residual evidence persistence](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) · [KB-369 §Process-change residual evidence persistence](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md#process-change-residual-evidence-persistence2026-06-23--pr-464) · PR **#464** · HEAD **`259a8336`** · Pi5 run **`20260623-102404`** · post-deploy health **OK**
+  - `FKOJUNST_Status` raw evidence は sync/backfill 時に `ProductionScheduleProcessChangeResidualSnapshot` / `ProductionScheduleProcessChangeResidualEvidence` へ永続化し、表示リクエストの 45万行級 raw source scan を避ける。
+  - residual summary は `csv_dashboard_row_prod_schedule_residual_key_idx`（migration `20260623101000_add_leaderboard_residual_key_index`）と SQL predicate 一致で解決する。
+  - **HTTP/Web 契約変更なし**。Pi4 Web rollout は別件。今回の反映対象は Pi5 API/DB。
+- **代表実測（Pi5 503/504, `includeDecorations=false`, `deferTotals=true`）**: shell single **9.24s** · shell 4 parallel **12.48-13.07s** · continue `pageSize=160` **4.71s**。詳細フェーズは plan を参照。
+- **運用メモ**: `LEADERBOARD_BOARD_PERF_LOG` は一時測定用。今回の測定後は `.env` / API env から削除し、API healthy を確認済み。
 
 ### 補足（2026-06-17 · **API Docker build cache + health wait 恒久対応** · **Pi5 反映済**） {#deploy-api-build-cache-health-wait-2026-06-17}
 
@@ -5120,4 +5158,3 @@ ansible-playbook playbooks/deploy.yml -i inventory.yml --limit raspberrypi-zero2
 - [本番環境セットアップガイド](./production-setup.md): 本番環境の初期セットアップ（環境変数の管理、新しいPi5での環境構築手順を含む）
 - [バックアップ・リストアガイド](./backup-and-restore.md): バックアップとリストアの手順（デバイスごとのバックアップ対象を含む）
 - [監視・アラートガイド](./monitoring.md): システム監視とアラート設定
-

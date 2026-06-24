@@ -2,8 +2,8 @@
 title: AI引き継ぎガイド - 現行AI入口と正本ルール
 tags: [AI, 引き継ぎ, 運用, ドキュメント体系]
 audience: [AIアシスタント, 開発者]
-last-verified: 2026-06-06
-related: [../AI_START_HERE.md, ../../AGENTS.md, ../../README.md]
+last-verified: 2026-06-22
+related: [../AI_START_HERE.md, ../../AGENTS.md, ../../README.md, ./agmsg-codex-cursor-collaboration.md]
 category: guides
 update-frequency: low
 ---
@@ -19,9 +19,16 @@ update-frequency: low
 3. `.cursor/rules/00-core-safety.mdc`
 4. `.cursor/rules/01-core-docs-and-knowledge.mdc`
 5. 今回の作業に該当する `.cursor/rules/*.mdc`
-6. 関連する KB / Runbook / ADR / Plan
+6. Codex/Cursor agmsg連携を使う場合は [agmsg連携ガイド](./agmsg-codex-cursor-collaboration.md)
+7. 関連する KB / Runbook / ADR / Plan
 
 最初から巨大文書を全文読みしない。必要な正本文書へ絞って読む。
+
+## Codex/Cursor agmsg連携
+
+Codexを指示役、Cursorを実行役として使う場合は、[agmsg連携ガイド](./agmsg-codex-cursor-collaboration.md) に従う。
+
+agmsgはAI間の連絡用であり、Git、テスト、Plan、Runbook、KBの代わりにしない。
 
 ## EXEC_PLAN.md の扱い
 

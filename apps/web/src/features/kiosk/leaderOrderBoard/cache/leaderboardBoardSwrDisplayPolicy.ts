@@ -54,8 +54,9 @@ export function isHydratedCacheDisplayable(input: {
 }
 
 /**
- * Phase 2: stale-while-revalidate。背景再検証中はキャッシュを維持し、
- * 完走後にのみネットワーク表示へ切り替える。
+ * Phase 2: stale-while-revalidate。
+ * 初期空白は cache で埋めるが、fresh shell の表示行が届いたら append 完走前でも
+ * network を優先し、「最初に使える状態」を shell 到着時点まで前倒しする。
  */
 export function shouldPreferCacheForSwrDisplay(input: {
   cacheDisplayable: boolean;
@@ -64,6 +65,7 @@ export function shouldPreferCacheForSwrDisplay(input: {
   networkDisplayBoard: ProductionScheduleLeaderboardBoardResponse | undefined;
 }): boolean {
   if (!input.cacheDisplayable) return false;
+  if ((input.networkDisplayBoard?.rows.length ?? 0) > 0) return false;
   if (input.isBackgroundRevalidating) return true;
   if (input.suppressPlaceholderShell && input.networkDisplayBoard == null) return true;
   return false;

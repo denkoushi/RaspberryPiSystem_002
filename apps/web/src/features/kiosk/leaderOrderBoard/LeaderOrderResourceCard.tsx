@@ -8,6 +8,7 @@ import { buildLeaderBoardPartResourceProcessKey } from './buildLeaderBoardPartRe
 import {
   GANTT_FALLBACK_AVAILABLE_WORK_HEIGHT_PX,
   GANTT_RULER_GUTTER_WIDTH_PX,
+  GANTT_TEN_HOURS_MINUTES,
   GANTT_VIRTUAL_OVERSCAN
 } from './gantt/leaderBoardGanttConstants';
 import { computeGanttSlotLayout, normalizeRulerSegmentsForRenderHeight } from './gantt/leaderBoardGanttLayout';
@@ -47,6 +48,8 @@ type Props = {
   onOpenNote?: (row: LeaderBoardRow) => void;
   notePending?: boolean;
   onOpenInspectionWorkflow?: (row: LeaderBoardRow) => void;
+  onOpenSplitModal?: (row: LeaderBoardRow) => void;
+  splitFeatureEnabled?: boolean;
   /** 製番 OR フィルタ選択時のみ行左縁に識別色（全件表示時は無色） */
   activeSeibanFilters?: readonly string[];
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
@@ -58,6 +61,8 @@ type Props = {
   /** スロット `+人` 人工数表示 ON */
   laborEnabled?: boolean;
   onToggleLabor?: () => void;
+  /** スロットのガント基準時間（8H/10H）切替 */
+  onToggleCapacityMinutes?: () => void;
 };
 
 function LeaderOrderResourceCardInner({
@@ -80,6 +85,8 @@ function LeaderOrderResourceCardInner({
   onOpenNote,
   notePending,
   onOpenInspectionWorkflow,
+  onOpenSplitModal,
+  splitFeatureEnabled = false,
   activeSeibanFilters,
   footerResourceChipsByPartKey,
   seibanEvalEnabled = false,
@@ -87,7 +94,8 @@ function LeaderOrderResourceCardInner({
   autoRankPending = false,
   onAutoRank,
   laborEnabled = false,
-  onToggleLabor
+  onToggleLabor,
+  onToggleCapacityMinutes
 }: Props) {
   const jp = resourceJapaneseNames?.trim() ?? '';
   const isSignage = variant === 'signage';
@@ -156,6 +164,8 @@ function LeaderOrderResourceCardInner({
     : containerMinHeightPx;
 
   const bodyPaddingLeft = ganttEnabled ? GANTT_RULER_GUTTER_WIDTH_PX + 4 : 0;
+  const capacityIsTenHours = capacityMinutes === GANTT_TEN_HOURS_MINUTES;
+  const capacityButtonLabel = capacityIsTenHours ? '10H' : '8H';
 
   const rulerSegments = useMemo(() => {
     if (!ganttEnabled || !slotLayout) return [];
@@ -186,6 +196,8 @@ function LeaderOrderResourceCardInner({
       onOpenNote={onOpenNote}
       notePending={notePending}
       onOpenInspectionWorkflow={onOpenInspectionWorkflow}
+      onOpenSplitModal={onOpenSplitModal}
+      splitFeatureEnabled={splitFeatureEnabled}
       footerResourceChips={footerChips}
     />
   );
@@ -228,45 +240,70 @@ function LeaderOrderResourceCardInner({
             <span className="min-w-0 break-words text-[12px] leading-snug text-white/78">{jp}</span>
           ) : null}
         </div>
-        {!isSignage && onToggleLabor ? (
-          <button
-            type="button"
-            aria-pressed={laborEnabled}
-            aria-label={laborEnabled ? '人工数を含む表示をオフにする' : '人工数を含む表示をオンにする'}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleLabor();
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-            className={clsx(
-              'shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold tabular-nums transition-colors',
-              laborEnabled
-                ? 'border-2 border-yellow-400 bg-gradient-to-br from-yellow-500/55 via-amber-600/45 to-amber-800/40 text-amber-50 shadow-[0_0_0_1px_rgba(253,224,71,0.5),0_0_14px_rgba(250,204,21,0.35),inset_0_1px_0_rgba(255,255,255,0.15)] hover:from-yellow-500/65 hover:to-amber-800/50'
-                : 'border-white/20 bg-white/[0.07] text-white/40 hover:bg-white/15 hover:text-white/55'
-            )}
-          >
-            +人
-          </button>
-        ) : null}
-        {!isSignage && seibanEvalEnabled && onAutoRank ? (
-          <button
-            type="button"
-            disabled={autoRankDisabled || autoRankPending}
-            aria-label="順位を自動付与"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAutoRank(resourceCd);
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-            className={clsx(
-              'shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold tabular-nums',
-              autoRankDisabled || autoRankPending
-                ? 'cursor-not-allowed border-white/15 bg-slate-900/50 text-white/40'
-                : 'border-violet-300/50 bg-violet-500/25 text-violet-50 hover:bg-violet-500/40'
-            )}
-          >
-            順位
-          </button>
+        {!isSignage && (onToggleCapacityMinutes || onToggleLabor || (seibanEvalEnabled && onAutoRank)) ? (
+          <div className="flex shrink-0 items-center gap-1">
+            {onToggleCapacityMinutes ? (
+              <button
+                type="button"
+                aria-pressed={capacityIsTenHours}
+                aria-label={capacityIsTenHours ? '基準時間を8Hにする' : '基準時間を10Hにする'}
+                title={capacityIsTenHours ? '基準時間: 10H' : '基準時間: 8H'}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleCapacityMinutes();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className={clsx(
+                  'shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold tabular-nums transition-colors',
+                  capacityIsTenHours
+                    ? 'border-cyan-300/70 bg-cyan-500/25 text-cyan-50 shadow-[0_0_10px_rgba(34,211,238,0.22)] hover:bg-cyan-500/35'
+                    : 'border-white/25 bg-white/[0.08] text-white/75 hover:bg-white/15 hover:text-white/90'
+                )}
+              >
+                {capacityButtonLabel}
+              </button>
+            ) : null}
+            {onToggleLabor ? (
+              <button
+                type="button"
+                aria-pressed={laborEnabled}
+                aria-label={laborEnabled ? '人工数を含む表示をオフにする' : '人工数を含む表示をオンにする'}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleLabor();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className={clsx(
+                  'shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold tabular-nums transition-colors',
+                  laborEnabled
+                    ? 'border-2 border-yellow-400 bg-gradient-to-br from-yellow-500/55 via-amber-600/45 to-amber-800/40 text-amber-50 shadow-[0_0_0_1px_rgba(253,224,71,0.5),0_0_14px_rgba(250,204,21,0.35),inset_0_1px_0_rgba(255,255,255,0.15)] hover:from-yellow-500/65 hover:to-amber-800/50'
+                    : 'border-white/20 bg-white/[0.07] text-white/40 hover:bg-white/15 hover:text-white/55'
+                )}
+              >
+                +人
+              </button>
+            ) : null}
+            {seibanEvalEnabled && onAutoRank ? (
+              <button
+                type="button"
+                disabled={autoRankDisabled || autoRankPending}
+                aria-label="順位を自動付与"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAutoRank(resourceCd);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className={clsx(
+                  'shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold tabular-nums',
+                  autoRankDisabled || autoRankPending
+                    ? 'cursor-not-allowed border-white/15 bg-slate-900/50 text-white/40'
+                    : 'border-violet-300/50 bg-violet-500/25 text-violet-50 hover:bg-violet-500/40'
+                )}
+              >
+                順位
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
       <div

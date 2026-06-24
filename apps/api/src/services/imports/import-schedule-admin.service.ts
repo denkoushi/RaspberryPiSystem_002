@@ -19,6 +19,7 @@ type CsvImportSchedule = NonNullable<BackupConfig['csvImports']>[number];
 type CsvImportSchedulerPort = {
   reload: () => Promise<void>;
   runImport: (scheduleId: string) => Promise<unknown>;
+  isImportRunning?: (scheduleId: string) => boolean;
 };
 
 type BackupConfigStore = {
@@ -58,7 +59,16 @@ export type RunScheduleContext = {
   requestId: string | null;
 };
 
+export type RunScheduleAcceptedResponse = {
+  accepted: true;
+  mode: 'background';
+  scheduleId: string;
+  message: string;
+};
+
 export class ImportScheduleAdminService {
+  private readonly backgroundRuns = new Set<string>();
+
   constructor(
     private readonly store: BackupConfigStore = BackupConfigLoader,
     private readonly getScheduler: () => CsvImportSchedulerPort = () => getCsvImportScheduler()
@@ -255,5 +265,57 @@ export class ImportScheduleAdminService {
       });
       throw mapManualImportRunError(error, scheduleId);
     }
+  }
+
+  async runScheduleInBackground(
+    scheduleId: string,
+    context: RunScheduleContext
+  ): Promise<{ response: RunScheduleAcceptedResponse; completion: Promise<unknown> }> {
+    const { config, repaired } = await this.loadConfigEnsured();
+    if (repaired) {
+      await this.getScheduler().reload();
+    }
+    const schedule = config.csvImports?.find((item) => item.id === scheduleId);
+    if (!schedule) {
+      throw new ApiError(404, `スケジュールが見つかりません: ${scheduleId}`);
+    }
+    if (!schedule.enabled) {
+      throw new ApiError(400, `スケジュールは無効です: ${scheduleId}`);
+    }
+
+    const scheduler = this.getScheduler();
+    if (this.backgroundRuns.has(scheduleId) || scheduler.isImportRunning?.(scheduleId)) {
+      throw new ApiError(409, `インポートは既に実行中です: ${scheduleId}`);
+    }
+
+    await writeDebugLog({
+      sessionId: 'debug-session',
+      runId: 'run2',
+      hypothesisId: 'H1',
+      location: 'imports.ts:background',
+      message: 'manual run accepted for background execution (file log)',
+      data: { scheduleId, reqId: context.requestId },
+      timestamp: Date.now(),
+    });
+
+    this.backgroundRuns.add(scheduleId);
+    const completion = Promise.resolve()
+      .then(() => scheduler.runImport(scheduleId))
+      .catch((error) => {
+        throw mapManualImportRunError(error, scheduleId);
+      })
+      .finally(() => {
+        this.backgroundRuns.delete(scheduleId);
+      });
+
+    return {
+      response: {
+        accepted: true,
+        mode: 'background',
+        scheduleId,
+        message: 'インポートを開始しました。完了状況はインポート履歴で確認してください。',
+      },
+      completion,
+    };
   }
 }

@@ -2,8 +2,8 @@
 title: AI Start Here
 tags: [ai, documentation, source-of-truth, handoff]
 audience: [ai-agent]
-last-verified: 2026-06-06
-related: [../AGENTS.md, ../.cursor/rules/01-core-docs-and-knowledge.mdc, ./guides/ai-handoff.md]
+last-verified: 2026-06-22
+related: [../AGENTS.md, ../.cursor/rules/01-core-docs-and-knowledge.mdc, ./guides/ai-handoff.md, ./guides/agmsg-codex-cursor-collaboration.md]
 category: guides
 update-frequency: high
 ---
@@ -19,7 +19,8 @@ This file is the minimal entry point for AI agents. It is not a human-facing man
 3. `.cursor/rules/00-core-safety.mdc`
 4. `.cursor/rules/01-core-docs-and-knowledge.mdc`
 5. Any `.cursor/rules/*.mdc` relevant to the current task
-6. The related KB, Runbook, ADR, or Plan
+6. `docs/guides/agmsg-codex-cursor-collaboration.md` if the task uses Codex/Cursor agmsg collaboration
+7. The related KB, Runbook, ADR, or Plan
 
 Do not start by reading every large document.
 
@@ -37,6 +38,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Operations, recovery, deployment, and validation procedures: `docs/runbooks/`
 - Design decisions and tradeoffs: `docs/decisions/`
 - Planned or unfinished implementation work: `docs/plans/`
+- AI agent collaboration through agmsg: `docs/guides/agmsg-codex-cursor-collaboration.md`
 - Global document navigation: `docs/INDEX.md`
 - Knowledge-base navigation: `docs/knowledge-base/index.md`
 

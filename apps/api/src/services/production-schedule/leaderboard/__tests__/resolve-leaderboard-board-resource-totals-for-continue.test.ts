@@ -57,6 +57,24 @@ describe('resolveLeaderboardBoardResourceTotalsForContinue', () => {
     expect(countSpy).toHaveBeenCalledTimes(2);
   });
 
+  it('seeds fallback COUNT result so the next continue reuses the snapshot total', async () => {
+    const snapshotId = 'aaaaaaaa-bbbb-cccc-dddd-dddddddddddd';
+    const countSpy = vi
+      .spyOn(queryService, 'countProductionScheduleDashboardVisibleRowsFromListFilters')
+      .mockResolvedValueOnce(55);
+
+    const firstTotals = await resolveLeaderboardBoardResourceTotalsForContinue(listParamsBase, [
+      { resourceCd: '1', snapshotId }
+    ]);
+    const secondTotals = await resolveLeaderboardBoardResourceTotalsForContinue(listParamsBase, [
+      { resourceCd: '1', snapshotId }
+    ]);
+
+    expect(firstTotals).toEqual([55]);
+    expect(secondTotals).toEqual([55]);
+    expect(countSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('passes precomputed leaderboard materialized base where to fallback COUNT', async () => {
     const leaderboardMaterializedBaseWhere = Prisma.sql`TRUE`;
     const countSpy = vi

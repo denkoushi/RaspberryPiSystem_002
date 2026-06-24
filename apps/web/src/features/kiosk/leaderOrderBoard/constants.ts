@@ -7,12 +7,12 @@ export const LEADER_BOARD_AUTO_RANK_MAX_ASSIGNMENTS = 5;
 /** 一覧の単一クエリ時代のページサイズ（順位ボードは shell 側で増分しない）。 */
 export const LEADER_ORDER_BOARD_PAGE_SIZE = 320;
 
-/** 順位ボード board 初回 GET の `pageSize`（スロットあたり）。API 上限 160。continue は {@link LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE}（80/160）。 */
-export const LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE = 80;
+/** 順位ボード board 初回 GET の `pageSize`（スロットあたり）。API 上限 160。continue は {@link LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE}（50/160）。 */
+export const LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE = 50;
 
 /**
  * 順位ボード `leaderboard-board/continue` の 1 回あたり chunk（`body.pageSize`）。
- * 初回 shell は {@link LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE}（80）のまま（80/160）。
+ * 初回 shell は {@link LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE}（50）のまま（50/160）。
  * Pi5 実データベンチで stonebase 2769 行・出力同値・完走 ~1.51x 短縮（2026-05-21 調査）。
  * ロールバックは 80 に戻して Pi4 Web を再デプロイ。
  */
@@ -85,6 +85,23 @@ export function persistedLeaderBoardGanttModeStorageKey(siteKey: string, deviceS
   const d = deviceScopeKey.trim();
   const core = s.length > 0 && d.length > 0 ? `${s}\0${d}` : s.length > 0 ? s : d.length > 0 ? d : '';
   return core.length > 0 ? `${LEADER_BOARD_GANTT_MODE_PREFIX}:${core}` : LEADER_BOARD_GANTT_MODE_PREFIX;
+}
+
+/** スロットごとのガント基準時間（8H/10H）— 端末ローカルのみ */
+export const LEADER_BOARD_CAPACITY_MODE_SCHEMA_VERSION = 1;
+const LEADER_BOARD_CAPACITY_MODE_PREFIX = 'kiosk-leader-order-board-capacity-mode';
+
+export type PersistedLeaderBoardCapacityMode = {
+  schemaVersion: typeof LEADER_BOARD_CAPACITY_MODE_SCHEMA_VERSION;
+  /** slotIndex 順。未設定 slot は 8H */
+  capacityMinutesBySlotIndex: number[];
+};
+
+export function persistedLeaderBoardCapacityModeStorageKey(siteKey: string, deviceScopeKey: string): string {
+  const s = siteKey.trim();
+  const d = deviceScopeKey.trim();
+  const core = s.length > 0 && d.length > 0 ? `${s}\0${d}` : s.length > 0 ? s : d.length > 0 ? d : '';
+  return core.length > 0 ? `${LEADER_BOARD_CAPACITY_MODE_PREFIX}:${core}` : LEADER_BOARD_CAPACITY_MODE_PREFIX;
 }
 
 /** スロットごとの `+人` 人工数表示 — 端末ローカルのみ */

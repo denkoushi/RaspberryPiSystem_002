@@ -27,6 +27,11 @@ export function mkLeaderBoardRow(partial: Partial<LeaderBoardRow> & Pick<LeaderB
     selfInspectionTemplateId: null,
     selfInspectionStatus: null,
     selfInspectionEntryPath: null,
+    sourceRowId: partial.sourceRowId ?? partial.id,
+    splitId: null,
+    splitNo: null,
+    splitQuantity: null,
+    isSplit: false,
     ...partial
   };
 }

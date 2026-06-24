@@ -49,6 +49,34 @@ related: [KB-248]
    - 用途: 相関サブクエリ用（プランナーが確実に拾うため）
    - 条件: 上記と同じ構造だが、`WHERE` 句なし（全行対象）
 
+### Follow-up（2026-06-23）: 順位ボード residual summary 用の正規化キー式インデックス
+
+順位ボードの process-change residual summary は、永続化済み evidence の `ProductNo + FKOJUN + resourceCd` 少数キーから現行の生産日程行を引く処理になった。CTE `VALUES` による key join だけでは、`CsvDashboardRow` 側の正規化式と partial index predicate が一致せず、Pi5 実データで秒単位の broad scan が残った。
+
+追加インデックス:
+
+5. **`csv_dashboard_row_prod_schedule_residual_key_idx`** (部分インデックス)
+   - 用途: process-change residual summary / representative rows の `residual_keys` JOIN
+   - 条件: `csvDashboardId` + `NULLIF(BTRIM(ProductNo),'')` + `NULLIF(BTRIM(FKOJUN),'')` + `UPPER(BTRIM(FSIGENCD))`
+   - マイグレーション: `apps/api/prisma/migrations/20260623101000_add_leaderboard_residual_key_index/migration.sql`
+   - 注意: SQL 側にも `csvDashboardId` と key-present 条件を明示し、partial index の predicate と一致させる。predicate が見えないと PostgreSQL がこの式インデックスを選び切れないことがある。
+
+Pi5 503/504 実測では、`processChangeResidualSummary` が約3秒級から single **761ms** まで低下し、shell single は **9.24s** まで改善した。詳細は [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md#process-change-residual-evidence-persistence2026-06-23--pr-464) と [性能回復plan](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) を参照。
+
+### Follow-up（2026-06-23）: 順位ボード resource-slot 選定用の正規化資源CD式インデックス
+
+6-slot 順位ボード（`581,305,589,584,588,586`）では、raw `FKOJUNST_Status` 読みの除去後も `resourceShell` が秒単位で積み上がった。Pi5 の `pg_stat_user_indexes` では既存 `csv_dashboard_row_prod_schedule_resource_cd_idx` が `idx_scan=0` で、原因は実行時 WHERE が `UPPER(BTRIM(rowData->>'FSIGENCD'))` を使う一方、既存 index が raw `rowData->>'FSIGENCD'` 式だったこと。
+
+追加インデックス:
+
+6. **`csv_dashboard_row_prod_schedule_resource_norm_idx`** (部分インデックス)
+   - 用途: 順位ボード `boardResourceCds` の resource-slot row selection / ordering 前の資源CD絞り込み
+   - 条件: `csvDashboardId` + `UPPER(BTRIM(FSIGENCD))` + `id`
+   - マイグレーション: `apps/api/prisma/migrations/20260623115000_add_leaderboard_normalized_resource_index/migration.sql`
+   - 注意: `id` を含め、winner-id membership を資源CDで絞った後に適用しやすくする。
+
+Pi5 6-slot 実測では、resourceShell の最大値が以前の **24.3s**（`584`）から **1.6-1.9s** 級へ低下した。詳細は [性能回復plan](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-6-slot-resource-board-follow-up-2026-06-23) を参照。
+
 ## Alternatives Considered
 
 ### 1. SQL書き換え（相関サブクエリの除去）
@@ -99,6 +127,9 @@ related: [KB-248]
 ## Implementation Notes
 
 - **マイグレーションファイル**: `apps/api/prisma/migrations/20260211123000_add_prod_schedule_expr_indexes/migration.sql`
+- **追補マイグレーション（2026-06-23）**:
+  - `apps/api/prisma/migrations/20260623101000_add_leaderboard_residual_key_index/migration.sql`
+  - `apps/api/prisma/migrations/20260623115000_add_leaderboard_normalized_resource_index/migration.sql`
 - **安全な適用**: `IF NOT EXISTS` 句により、既に適用済みの環境でも安全に実行可能
 - **本番DB適用**: マイグレーションファイル作成前に本番DBに直接DDL適用済み（緊急対応）
 - **CI検証**: CIでマイグレーションが正常に適用されることを確認済み

@@ -88,6 +88,20 @@ function row(id: string, resourceCd: string, fseiban?: string): ProductionSchedu
   } as unknown as ProductionScheduleRow;
 }
 
+function rowWithLabor(
+  id: string,
+  resourceCd: string,
+  machineRequiredMinutes: number,
+  laborRequiredMinutes: number,
+  fseiban?: string
+): ProductionScheduleRow {
+  return {
+    ...row(id, resourceCd, fseiban),
+    machineRequiredMinutes,
+    laborRequiredMinutes
+  };
+}
+
 function rowWithProgress(
   id: string,
   resourceCd: string,
@@ -164,7 +178,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     function Harness() {
       useCompositeLeaderboardPhasedScheduleWithAutoAppend({
         seibanOrFilters: [],
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80, includeLabor: false },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -182,9 +196,11 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(boardHookMock).toHaveBeenCalled();
       const params = boardHookMock.mock.calls.find((c) => (c[1] as { enabled?: boolean } | undefined)?.enabled !== false)?.[0] as {
         includeDecorations?: boolean;
+        includeLabor?: boolean;
         deferTotals?: boolean;
       };
       expect(params.includeDecorations).toBe(false);
+      expect(params.includeLabor).toBe(false);
       expect(params.deferTotals).toBe(true);
       expect(postDecorations).toHaveBeenCalled();
     });
@@ -681,7 +697,573 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
 
     expect(latest?.scheduleQuery.isLoading).toBe(true);
+    expect(latest?.isBoardDataSyncStatusVisible).toBe(true);
     expect(latest?.feedMounts).toBeNull();
+  });
+
+  it('shell 行が表示済みなら background append 中の一覧更新バナーは出さない', async () => {
+    const shell = boardPayload({
+      total: 3,
+      rows: [row('a1', 'R1'), row('a2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, total: 3, pageSize: 80, nextCursor: 2 }]
+    });
+    const complete = boardPayload({
+      total: 3,
+      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 3, pageSize: 80, nextCursor: 3 }]
+    });
+    installBoardHookMock(() => ({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000
+    }));
+
+    let resolveContinue: ((value: ProductionScheduleLeaderboardBoardResponse) => void) | undefined;
+    postContinue.mockReturnValue(
+      new Promise<ProductionScheduleLeaderboardBoardResponse>((resolve) => {
+        resolveContinue = resolve;
+      })
+    );
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80
+        },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+      expect(latest?.isBoardDataSyncing).toBe(true);
+      expect(latest?.isBoardDataSyncStatusVisible).toBe(false);
+    });
+
+    await act(async () => {
+      resolveContinue?.(complete);
+    });
+  });
+
+  it('includeLabor だけ変わる placeholder は行を残して loading に戻さない', async () => {
+    const shell = boardPayload({
+      total: 2,
+      rows: [row('a1', 'R1'), row('a2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 }]
+    });
+    let includeLabor = false;
+    let boardResult: BoardHookQueryResult = {
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000
+    };
+    installBoardHookMock(() => boardResult);
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          includeLabor
+        },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+      expect(latest?.isBoardDataSyncStatusVisible).toBe(false);
+    });
+
+    boardResult = {
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: true,
+      isSuccess: true,
+      isPlaceholderData: true,
+      dataUpdatedAt: 1000
+    };
+
+    act(() => {
+      includeLabor = true;
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+    });
+
+    const params = boardHookMock.mock.calls.at(-1)?.[0] as { includeLabor?: boolean };
+    expect(params.includeLabor).toBe(true);
+    expect(postContinue).not.toHaveBeenCalled();
+  });
+
+  it('includeLabor だけ変わる placeholder は continue 完走済み行も残す', async () => {
+    const shell = boardPayload({
+      total: 3,
+      rows: [row('a1', 'R1'), row('a2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 80 }]
+    });
+    const afterContinue = boardPayload({
+      total: 3,
+      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 80 }]
+    });
+    postContinue.mockResolvedValue(afterContinue);
+
+    let includeLabor = false;
+    let boardResult: BoardHookQueryResult = {
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000
+    };
+    installBoardHookMock(() => boardResult);
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          includeLabor
+        },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3']);
+      expect(latest?.listIncomplete).toBe(false);
+    });
+
+    boardResult = {
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: true,
+      isSuccess: true,
+      isPlaceholderData: true,
+      dataUpdatedAt: 1000
+    };
+
+    act(() => {
+      includeLabor = true;
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+    });
+  });
+
+  it('includeLabor だけ変わる fresh partial append が短い間は直前の完走済み行を維持する', async () => {
+    const shell = boardPayload({
+      total: 5,
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 0),
+        rowWithLabor('a2', 'R1', 200, 0)
+      ],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 5, pageSize: 80 }]
+    });
+    const previousComplete = boardPayload({
+      total: 5,
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 0),
+        rowWithLabor('a2', 'R1', 200, 0),
+        rowWithLabor('a3', 'R1', 300, 0),
+        rowWithLabor('a4', 'R1', 400, 0),
+        rowWithLabor('a5', 'R1', 500, 0)
+      ],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 5, total: 5, pageSize: 80 }]
+    });
+    const freshShell = boardPayload({
+      total: 5,
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 11),
+        rowWithLabor('a2', 'R1', 200, 22)
+      ],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 5, pageSize: 80 }]
+    });
+    const freshPartial = boardPayload({
+      total: 5,
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 11),
+        rowWithLabor('a2', 'R1', 200, 22),
+        rowWithLabor('a3', 'R1', 300, 33)
+      ],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 3, total: 5, pageSize: 80 }]
+    });
+    const freshComplete = boardPayload({
+      total: 5,
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 11),
+        rowWithLabor('a2', 'R1', 200, 22),
+        rowWithLabor('a3', 'R1', 300, 33),
+        rowWithLabor('a4', 'R1', 400, 44),
+        rowWithLabor('a5', 'R1', 500, 55)
+      ],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 5, total: 5, pageSize: 80 }]
+    });
+
+    let continueCall = 0;
+    let resolveFreshComplete: ((value: ProductionScheduleLeaderboardBoardResponse) => void) | undefined;
+    postContinue.mockImplementation(async () => {
+      continueCall += 1;
+      if (continueCall === 1) return previousComplete;
+      if (continueCall === 2) return freshPartial;
+      return new Promise<ProductionScheduleLeaderboardBoardResponse>((resolve) => {
+        resolveFreshComplete = resolve;
+      });
+    });
+
+    let includeLabor = false;
+    let boardResult: BoardHookQueryResult = {
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000
+    };
+    installBoardHookMock(() => boardResult);
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          includeLabor
+        },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
+    });
+
+    boardResult = {
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: true,
+      isSuccess: true,
+      isPlaceholderData: true,
+      dataUpdatedAt: 1000
+    };
+
+    act(() => {
+      includeLabor = true;
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+      expect(latest?.isBoardDataSyncStatusVisible).toBe(false);
+    });
+
+    boardResult = {
+      data: freshShell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 2000
+    };
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(3);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
+      expect(latest?.isBoardDataSyncStatusVisible).toBe(false);
+      const rowsById = new Map(latest?.scheduleQuery.data?.rows.map((r) => [r.id, r]));
+      expect(rowsById.get('a1')?.laborRequiredMinutes).toBe(11);
+      expect(rowsById.get('a2')?.laborRequiredMinutes).toBe(22);
+      expect(rowsById.get('a3')?.laborRequiredMinutes).toBe(33);
+      expect(rowsById.get('a4')?.laborRequiredMinutes).toBe(0);
+      expect(rowsById.get('a5')?.laborRequiredMinutes).toBe(0);
+    });
+
+    await act(async () => {
+      resolveFreshComplete?.(freshComplete);
+    });
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
+      expect(latest?.listIncomplete).toBe(false);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([11, 22, 33, 44, 55]);
+    });
+  });
+
+  it('includeLabor=true で得た人工数 metadata は OFF の machine-only 応答で消さない', async () => {
+    const machineOnly = boardPayload({
+      total: 2,
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 0),
+        rowWithLabor('a2', 'R1', 200, 0)
+      ],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 }]
+    });
+    const withLabor = boardPayload({
+      total: 2,
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 11),
+        rowWithLabor('a2', 'R1', 200, 22)
+      ],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 }]
+    });
+
+    let includeLabor = false;
+    let boardResult: BoardHookQueryResult = {
+      data: machineOnly,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000
+    };
+    installBoardHookMock(() => boardResult);
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          includeLabor
+        },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([0, 0]);
+    });
+
+    act(() => {
+      includeLabor = true;
+      boardResult = {
+        data: withLabor,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        dataUpdatedAt: 2000
+      };
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([11, 22]);
+    });
+
+    act(() => {
+      includeLabor = false;
+      boardResult = {
+        data: machineOnly,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        dataUpdatedAt: 3000
+      };
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([11, 22]);
+    });
+
+    act(() => {
+      includeLabor = true;
+      boardResult = {
+        data: machineOnly,
+        isLoading: false,
+        isError: false,
+        isFetching: true,
+        isSuccess: true,
+        isPlaceholderData: true,
+        dataUpdatedAt: 3000
+      };
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([11, 22]);
+    });
+  });
+
+  it('表示スコープが変わったら保持済み人工数 metadata を破棄する', async () => {
+    const withLabor = boardPayload({
+      total: 1,
+      rows: [rowWithLabor('same-row-id', 'R1', 100, 11)],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+    });
+    const nextScopeMachineOnly = boardPayload({
+      total: 1,
+      rows: [rowWithLabor('same-row-id', 'R2', 500, 0)],
+      resources: [{ resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }]
+    });
+
+    let includeLabor = true;
+    let resourceCdsOrdered = ['R1'];
+    let boardResult: BoardHookQueryResult = {
+      data: withLabor,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000
+    };
+    installBoardHookMock(() => boardResult);
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          includeLabor
+        },
+        resourceCdsOrdered,
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([11]);
+    });
+
+    act(() => {
+      includeLabor = false;
+      resourceCdsOrdered = ['R2'];
+      boardResult = {
+        data: nextScopeMachineOnly,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        dataUpdatedAt: 2000
+      };
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([0]);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => (r.rowData as { FSIGENCD?: string }).FSIGENCD)).toEqual(['R2']);
+    });
   });
 
   it('hasMore が続く間は continue を複数回呼び切ってから listIncomplete を下ろす', async () => {

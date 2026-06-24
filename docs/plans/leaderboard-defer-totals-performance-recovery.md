@@ -1,28 +1,41 @@
 ---
 id: leaderboard-defer-totals-performance-recovery
-status: pi5_source_row_projection_deployed
-scope: kiosk leader order board API performance (residual context subphase telemetry + source row projection)
-date: 2026-06-19
+status: pi5_labor_toggle_banner_deployed_plus_labor_display_and_gantt_ruler_verified
+scope: kiosk leader order board first usable performance and Web display stability
+date: 2026-06-23
 source_of_truth: true
 related_code:
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts
+  - apps/api/src/services/production-schedule/leaderboard/leaderboard-labor-minutes.service.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.materialization.ts
+  - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.service.ts
+  - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.sql.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-prefix-row-cache.ts
   - apps/api/src/services/production-schedule/fkojunst-status-mail-source-rows.reader.ts
+  - apps/api/src/services/production-schedule/fkojunst-status-mail-generation-signals.ts
   - apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardFetchParams.ts
+  - apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendOverrideScopePolicy.ts
+  - apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardShellFreshnessPolicy.ts
+  - apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardLaborMetadata.ts
+  - apps/web/src/features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx
+  - apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx
+  - apps/api/prisma/migrations/20260623093000_add_process_change_residual_evidence/migration.sql
+  - apps/api/prisma/migrations/20260623101000_add_leaderboard_residual_key_index/migration.sql
 related_docs:
   - docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md
   - docs/knowledge-base/KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md
+  - docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md
+  - docs/knowledge-base/KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md
+  - docs/decisions/ADR-20260211-production-schedule-expression-indexes.md
+  - docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md
   - docs/guides/deployment.md
-validation: focused api tests 26 PASS · CI 27806781358 success · Pi5 deploy 20260619-143326-20869 · verify-phase12-real PASS 43/0/0 · stonebase shell contract preserved after deploy · continue benchmark needs quieter retry (temporary post-load memory degraded recovered)
+validation: focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK · f978c15e CI/deploy/Phase12 succeeded but its Gantt ruler-height behavior was later classified as a visual-contract regression
 open_items:
-  - Re-measure cold `sourceRowFetchDurationMs` on Pi5 with `LEADERBOARD_BOARD_PERF_LOG=true` (temporary `.env`; lost on standard deploy) to confirm projection fix vs pre-fix ~36.6s sample
-  - Re-run `benchmark-leaderboard-continue-chunk.mjs --profile stonebase` in a quieter Pi5 window (initial post-deploy probe hit transient `memory:error` then recovered)
-  - Investigate warm `generationTokenInitial` (~7s when residual cache hits) after fetch path is validated
-  - Pi4 Web rollout for deferTotals UX (phase 1 Web) remains separate; latest API-only fixes need no Pi4 deploy
-  - Evaluate client continue chunk default (160) after sustained Pi5 observation
+  - If the physical browser still appears busy, distinguish three states: initial shell load, 5-minute board refresh, and `+人` labor metadata refresh. Only the first two should show 「一覧を更新中です。」.
+  - `resourceShell` can still be multi-second on large resources; do not add API/index work until browser/client-perf logs show API shell is again the bottleneck.
+  - Kiosk browsers must hard reload to pick up the deployed Web bundle; already-open SPA tabs can keep old banner/refetch/labor-overlay behavior until reload.
 ---
 
 # Plan: Leaderboard deferTotals Performance Recovery
@@ -412,6 +425,356 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - A full continue benchmark should be re-run during a quieter Pi5 window because a live-load probe temporarily pushed health into `memory:error`; the service recovered without manual intervention.
 
 **Next minimal work**: quantify `sourceRowFetchDurationMs` delta on Pi5; then choose next single bottleneck (`generationTokenInitial` vs continue assembly).
+
+### Pi5 residual evidence persistence + residual-key index deploy (2026-06-23)
+
+**Branch / PR**: `feat/production-schedule-split-orders` / PR #464
+**Final HEAD**: `259a8336` (`perf: match residual summary index predicate`)
+
+**Scope (API + DB, no Web contract change)**:
+
+- Persist process-change residual evidence during `ProductionScheduleFkojunstMailStatusSyncService.syncFromStatusMailDashboard()`.
+  - New tables: `ProductionScheduleProcessChangeResidualSnapshot`, `ProductionScheduleProcessChangeResidualEvidence`.
+  - Migration: `20260623093000_add_process_change_residual_evidence`.
+  - Materialization now reads persisted evidence first when the requested raw mail revision matches; fallback still supports raw source rows.
+- Avoid rereading all `FKOJUNST_Status` raw rows inside the sync replacement transaction.
+  - `fetchFkojunstStatusMailGenerationSignals()` uses `COUNT` / `MIN(createdAt)` / `MAX(createdAt)`-style revision signals instead of full row fetch.
+  - This removed the `P2028` timeout observed when 451,087 raw mail rows were reread inside a 60s transaction.
+- Count residual summary from the small evidence key set rather than the generic visible-row `COUNT` path.
+  - `fetchLeaderboardProcessChangeResidualSummary()` now uses `WITH residual_keys(...) AS (VALUES ...)` and joins by normalized `ProductNo + FKOJUN + resource`.
+  - `leaderboard-shell-row-projection.sql.ts` exposes auxiliary joins so the representative residual-row SELECT can share the normal shell projection while changing the join root.
+- Add normalized residual-key expression index.
+  - Migration: `20260623101000_add_leaderboard_residual_key_index`.
+  - Index: `csv_dashboard_row_prod_schedule_residual_key_idx` on `csvDashboardId`, `NULLIF(BTRIM(ProductNo),'')`, `NULLIF(BTRIM(FKOJUN),'')`, `UPPER(BTRIM(FSIGENCD))`.
+  - SQL explicitly includes the partial-index predicate (`csvDashboardId` + key-present checks); without this, Pi5 samples still showed multi-second residual summary scans.
+
+**Representative commits**:
+
+| Commit | Purpose |
+| --- | --- |
+| `c3fd5ea7` | Persist residual evidence for leaderboard |
+| `d6f2d7f8` | Avoid raw mail reread during sync revision check |
+| `6da6634a` | Count residual summary from evidence keys |
+| `42d840ab` | Add residual leaderboard key index |
+| `259a8336` | Match residual summary SQL to partial-index predicate |
+
+**Backfill / data point**:
+
+After deploy, a one-off Pi5 `syncFromStatusMailDashboard()` backfill completed and persisted evidence for the current raw mail revision:
+
+| Field | Value |
+| --- | --- |
+| Raw rows scanned | `451,087` |
+| Normalized rows | `372,383` |
+| Matched current rows | `19,923` |
+| Evidence rows | `129` |
+| Raw mail revision | `451087:2026-06-22T21:48:45.989Z:2026-06-22T22:37:02.085Z` |
+| Algorithm version | `1` |
+
+**Deploy / validation**:
+
+| Check | Result |
+| --- | --- |
+| Focused API tests | `leaderboard-process-change-residual.materialization`, `fkojunst-status-mail-sync.pipeline`, `leaderboard-shell-snapshot-generation.sql`, `leaderboard-composite-board-generation-token` PASS |
+| API build / lint | PASS |
+| Commit hooks | workspace lint PASS |
+| GitHub Actions on `259a8336` | CI / Secret scan / CodeQL success |
+| Pi5 deploy | `20260623-102404` success (`failed=0`) |
+| Post-deploy health | success |
+| Perf flag | temporarily enabled for measurement, then removed from `.env` and API restarted healthy |
+
+**Pi5 measurement summary (503/504 board, `includeDecorations=false`, `deferTotals=true`)**:
+
+| Stage | Before this 2026-06-23 round | After persisted evidence + residual index |
+| --- | --- | --- |
+| Pre-residual persistence shell | ~62-65s | n/a |
+| After persisted evidence shell | ~16-18s | n/a |
+| Final shell single request | n/a | **9.24s** (`rows=107`) |
+| Final shell 4 parallel | n/a | **12.48-13.07s** |
+| Final continue `pageSize=160` | previously observed ~21-22s under live-load contention | **4.71s** (`rows=267`, `deltaRows=160`, `total=489`) |
+| `processChangeResidualSummary` | ~3s class, sometimes worse under contention | **761ms** single; **2.35-2.90s** under 4 parallel |
+
+**Final single-request phase sample**:
+
+| Phase | durationMs | Notes |
+| --- | ---: | --- |
+| `generationTokenInitial` | 1357 | no raw residual source scan |
+| `residualMaterialization` | 11 | `persistedHit=true`, `persistedEvidenceRowCount=129`, `strongEvidenceKeyCount=129` |
+| `materializedBaseWhere` | 441 | winner base set |
+| `processChangeResidualSummary` | 761 | residual CTE + normalized key index |
+| `resourceShell` 504 | 1459 | 27 rows, no more |
+| `resourceShell` 503 | 5855 | 80 rows, has more |
+| `attachLabor` | 1517 | 107 rows |
+| `requestTotal` | 9189 | HTTP observed 9.24s |
+
+**Interpretation**:
+
+- The main speedup came from moving wide data reads out of display requests:
+  - raw `FKOJUNST_Status` evidence is materialized at sync/backfill time;
+  - display requests read 129 persisted evidence rows instead of the 45万-row raw mail dashboard;
+  - residual summary uses an indexed normalized-key lookup instead of broad visible-row counting.
+- The next bottleneck is no longer residual materialization. For 503/504, `resourceShell` is now the dominant phase. `attachLabor` and `generationTokenInitial` are still visible but secondary in the final samples.
+- 6-resource live board requests can still be much heavier, especially when real kiosks and manual probes overlap. Treat final numbers above as 503/504 scoped proof, not a P95 guarantee for all resource sets.
+
+**Next minimal work**:
+
+1. Profile `resourceShell` SQL for 503 and a 6-resource board under a quiet Pi5 window.
+2. Decide whether the next safe lever is a sort/lookup index, a materialized shell ordering key, or a narrower row-selection query for `allowResourceOnly=true`.
+3. Keep `LEADERBOARD_BOARD_PERF_LOG` opt-in only; standard deploys remove manual `.env` edits, and measurement sessions must restore the flag to OFF.
+
+### Pi5 6-slot resource board follow-up (2026-06-23)
+
+**Branch / PR**: `feat/production-schedule-split-orders` / PR #464
+**HEAD**: `91347780` (`perf: speed up leaderboard labor lookup`)
+**Pi5 deploy**: `20260623-120401-21398` success (`failed=0`, `Git: changed`)
+
+**Scope (API + DB, no response contract change)**:
+
+- Add generation-scoped `ProductNo + FKOJUN` labor lookup cache for leaderboard shell/continue.
+  - Scope key is the leaderboard snapshot generation token.
+  - Positive rows and zero misses are cached for 5 minutes; tests clear the cache explicitly.
+  - This targets repeated `attachLabor` work across the shell/continue chain.
+- Add normalized resource expression index for resource-slot row selection.
+  - Migration: `20260623115000_add_leaderboard_normalized_resource_index`.
+  - Index: `csv_dashboard_row_prod_schedule_resource_norm_idx` on `csvDashboardId`, `UPPER(BTRIM(FSIGENCD))`, `id`.
+  - Reason: Pi5 showed the older raw `rowData->>'FSIGENCD'` index at `idx_scan=0` because runtime predicates normalize with `UPPER(BTRIM(...))`.
+
+**Validation / deploy state**:
+
+| Check | Result |
+| --- | --- |
+| Focused API tests | `leaderboard-labor-minutes.service.test.ts` + `leaderboard-composite-board-generation-token.test.ts` PASS |
+| API lint / build | PASS |
+| Commit hook | workspace lint PASS |
+| Pi5 migration | `20260623115000_add_leaderboard_normalized_resource_index` applied |
+| Pi5 index | `csv_dashboard_row_prod_schedule_resource_norm_idx` present |
+| Perf flag | temporarily enabled for measurement, restored to `off`; API restarted healthy |
+| Post-measure health | `status: ok` (`database` / `memory` / `playwright` ok) |
+
+**Pi5 direct API measurement (6 slots: `581,305,589,584,588,586`)**:
+
+The measurement ran from inside the Pi5 API container against `127.0.0.1:8080`, with `allowResourceOnly=true`, shell `pageSize=80`, continue `pageSize=160`, `deferTotals=true`.
+
+| Stage | Before this round | After `91347780` |
+| --- | ---: | ---: |
+| Shell light (`includeDecorations=false`) | **32.87s** | **3.36s** measured request (`requestTotal=3.28s`, warm labor cache) |
+| Deferred decorations, 480 rows | **8.43s** | **8.02s** |
+| Continue chain, 5 rounds | **55.15s** | **20.97s** |
+| Rows after continue | `2579 / 2579` | `2579 / 2579` |
+| `includeDecorations=true` shell | **31.80s** | **10.99s** cold request (`requestTotal=10.94s`) |
+
+**Measured continue rounds after `91347780`**:
+
+| Round | durationMs | rows | deltaRows | hasMoreCount |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 4594 | 1303 | 823 | 4 |
+| 2 | 6896 | 1823 | 520 | 3 |
+| 3 | 3409 | 2267 | 444 | 2 |
+| 4 | 2975 | 2429 | 162 | 1 |
+| 5 | 3099 | 2579 | 150 | 0 |
+
+**Server phase samples**:
+
+| Request | Key phase data |
+| --- | --- |
+| First live cold shell after restart | `requestTotal=8615ms`; resourceShell max `584=1728ms`; `attachLabor=5583ms` |
+| Measured shell (`req-55`) | `requestTotal=3283ms`; resourceShell max `584=1592ms`; `attachLabor=5ms` because the live cold request had already warmed the generation cache |
+| Measured continue round 1 (`req-65`) | `requestTotal=4523ms`; resourceContinue max `589=3229ms`; `attachLabor=18ms` |
+| Measured continue round 2 (`req-69`) | `requestTotal=6829ms`; resourceContinue max `586=5475ms`; `attachLabor=10ms` |
+| Measured continue rounds 3-5 | `3339ms`, `2905ms`, `3019ms`; `attachLabor=7ms/5ms/5ms` |
+| Cold `includeDecorations=true` shell (`req-4`) | `requestTotal=10936ms`; resourceShell max `584=1929ms`; `attachLabor=5653ms`; `decorate=1749ms` |
+
+**Interpretation**:
+
+- The 6-slot one-minute class API path was primarily server-side, not Web rendering. After the normalized resource index and generation-scoped labor lookup cache, the same API chain is no longer ~1 minute.
+- `resourceShell` dropped from the earlier 6-slot max **24.3s** (`584`) to ~**1.6-1.9s** per resource in the new samples.
+- The cache only helps after the first request for a generation. A cold shell still spends ~**5.6s** in `attachLabor`; subsequent continue requests spend single-digit milliseconds there.
+- The remaining API cost is now mostly `resourceContinue` for the large resources plus repeated per-request fixed work (`generationTokenInitial` / materialized base WHERE). If the real browser still feels slow, verify Web append/render next before adding more DB indexes.
+
+### First usable state target（2026-06-23 follow-up）
+
+User clarified the immediate target as **「最初に使える状態」を10秒以内** rather than complete append visibility. The 6-slot direct API data already supports that target when the browser can switch to the fresh shell promptly:
+
+- warm shell: **3.36s**
+- first cold shell after API restart: **8.62s** (`attachLabor=5.58s`)
+- cold `includeDecorations=true`: **10.99s**, but production Web uses `includeDecorations=false` for shell and fetches decorations separately
+
+Web follow-up changed Phase 2 SWR display policy: terminal cache still fills initial blank loading, but once a fresh network shell has display rows, the board switches to network rows even while append/decorations continue in the background. This prevents a complete cached board from hiding the new partial shell until the ~20-30s append chain finishes.
+
+Deployment: `429049ea` (`perf: show fresh leaderboard shell during append`) was deployed to Pi5 in run `20260623-125453-28293` (`failed=0`). Post-deploy health returned `status: ok`. Final restored-normal-env Pi5 API-container-local cold shell for the 6-slot board was **8.49s** (`480` rows / `6` hasMore slots, `includeDecorations=false`, `deferTotals=true`).
+
+Expected user-visible result: first fresh rows and row-level operations become available at shell arrival time. Full list completion still depends on the background continue chain.
+
+**Follow-up after physical browser still reported ~30s (2026-06-23)**:
+
+- Root cause confirmed: cold/wide 6-slot shells were still paying `attachLabor` even when every slot had `+人` OFF. Perf samples before the fix showed `attachLabor=4090-5535ms` on cold shell; direct `includeLabor=true` after the final deploy still measured **18.20s** for the same 6-slot / 300-row shell.
+- Fix: add `includeLabor` to `leaderboard-board` GET and continue POST. The Web board sends `includeLabor=false` while all slot `+人` toggles are OFF; toggling any slot ON changes the query key and refetches with labor metadata. After Pi5 logs showed the physical 6-slot browser still sending old-bundle requests with `includeLabor` missing, `bf9dea17` changed the API default for missing `includeLabor` to **false** while preserving explicit `includeLabor=true`.
+- No-labor shell still returns numeric metadata for cache/display compatibility: `machineRequiredMinutes` from row `FSIGENSHOYORYO`, `laborRequiredMinutes: 0` for normal machine rows.
+- Deploy: `06ad4a4c` (`perf: defer leaderboard labor lookup`) pushed and deployed to Pi5. Wrapper run `20260623-140812-7148` completed `failed=0`; because an earlier failed direct Ansible run had already moved the repo HEAD, Docker rebuild was manually forced for `api` and `web`. Runtime verified: HEAD `06ad4a4c`, web bundle `index-CtusrliU.js`, `/api/system/health` `status: ok`, `LEADERBOARD_BOARD_PERF_LOG` OFF.
+- Pi5 direct HTTPS measurements, 6 slots `581,305,589,584,588,586`, `pageSize=50`, `allowResourceOnly=true`, `includeDecorations=false`, `deferTotals=true`, `includeLabor=false`: **5.25s**, **6.22s**, **5.36s** for 300 shell rows. Sample rows carried `laborRequiredMinutes=0`.
+- Deploy: `bf9dea17` (`perf: default leaderboard labor off`) pushed and deployed to Pi5. Wrapper run `20260623-144810-12264` completed `failed=0`, Docker restart summary `ok`, runtime HEAD `bf9dea17`, API container healthy, perf log OFF.
+- Pi5 direct HTTPS measurement matching the old bundle request shape, 6 slots `581,305,589,584,588,586`, `pageSize=80`, `allowResourceOnly=true`, `includeDecorations=false`, `deferTotals=true`, **`includeLabor` omitted**: shell **2.81s** for 480 rows; first continue with `includeLabor` omitted **3.85s** for 1303 rows. Sample rows carried `laborRequiredMinutes=0`.
+
+**Next minimal work**:
+
+1. Retest the physical kiosk browser after `bf9dea17`; old tabs no longer need `includeLabor=false` in the URL for speed, but `+人` ON correctness still needs the new bundle.
+2. If first usable still exceeds 10s, capture browser Network timings for `leaderboard-board`, `leaderboard-board/continue`, `leaderboard-decorations`, and first row paint.
+3. If API shell regresses rather than browser/render, profile `resourceShell` for the 6 slot resources before adding more indexes.
+
+### Physical-screen request sequence check（2026-06-23 follow-up）
+
+Pi5 API logs after `bf9dea17` still showed the physical 6-slot board doing a fast shell but continuing background work for much longer. Representative same-window sequence (JST):
+
+| Relative | Request | Duration |
+| ---: | --- | ---: |
+| +0.0s | `GET leaderboard-board?pageSize=80&boardResourceCds=581,305,589,584,588,586&includeDecorations=false&deferTotals=true` | **3.06s** |
+| +3.5s | `POST leaderboard-decorations` | **1.05s** |
+| +3.5s | `POST leaderboard-board/continue` | **4.94s** |
+| +9.1s | second non-`q` `GET leaderboard-board` from another/renewed browser session | **5.72s** |
+| +40.1s | `GET leaderboard-board ... &q=BA1S5308` | **4.43s** |
+
+Code inspection confirmed the intended display gate remains in place: `scheduleQuery.isLoading` is false once display rows exist, `displayBoardForUi` can use the fresh shell before continue/decorations finish, and row controls are not locked by `isFetching`/append/decorations. The `q=BA1S5308` GET is consistent with the seiban overlay reconcile after `networkBoardComplete`, so it is not expected to block the first shell display.
+
+Follow-up instrumentation: an opt-in Web client perf beacon was added for physical passes.
+
+- Enable on the target browser with `?leaderboardPerf=1` on `/kiosk/production-schedule/leader-order-board` (persists in localStorage). Disable with `?leaderboardPerf=0`.
+- API log marker: `[leaderboard-board-client-perf]`.
+- Events: `board-get-start`, `board-get-settled`, `first-display-board-rows`, `schedule-usable`, `grid-mounted`, `append-start`, `append-chunk`, `append-complete`, `append-error`, `decorations-start`, `decorations-end`.
+- Use this to measure `leaderboard-board` response settled → first display rows → `schedule-usable` → `LeaderBoardGrid` mount on the actual kiosk browser, before doing more DB/API work.
+
+<a id="cursor-handoff-web-display-stability-and-refresh-cadence2026-06-23-current"></a>
+
+### Cursor handoff: Web display stability and refresh cadence（2026-06-23 current）
+
+This is the latest context for PR #464 on branch `feat/production-schedule-split-orders`. The current Pi5 runtime HEAD is **`e98de7ce`**.
+
+**Problem sequence after `bf9dea17`**:
+
+- The API shell itself was already below the 10s target, but the physical screen still felt busy because Web could display stale/partial states during append/labor transitions.
+- Pressing a slot `+人` is intentionally not a pure client toggle. It changes `includeLabor=false -> true`, which changes the React Query key and fetches labor metadata. This request must remain so `laborRequiredMinutes` can be populated.
+- The unexpected visual regression was different: after a full append had completed, `+人` could temporarily swap the display back from the long appended board to a shorter fresh shell/partial append. To the operator this looked like rows disappearing and reappearing.
+- Another UX issue: `+人` labor metadata refresh was counted as `isBoardDataSyncing`, so the page showed 「一覧を更新中です。」 immediately after pressing `+人`. That message is misleading for a display-only labor metadata refresh.
+
+**Fix chain**:
+
+| Commit | Purpose |
+| --- | --- |
+| `64ece479` | Keep shell rows visible while only `includeLabor` changes. Added display freshness key that ignores `includeLabor`. |
+| `2bc28966` | Preserve previous append override through `includeLabor` reload, so completed rows are not lost during the placeholder phase. |
+| `1e24fd38` | When the fresh labor append is shorter than the previous completed display append, keep the longer previous append until the new append catches up. |
+| `2c33c6c4` | Reduce regular board background refresh from 2 minutes to 5 minutes (`LEADER_BOARD_SCHEDULE_REFETCH_MS=300_000`, staleTime also `300_000`). |
+| `e98de7ce` | Hide 「一覧を更新中です。」 for display-only labor refreshes caused by `+人`, while keeping real initial/periodic board sync messages. |
+
+**Deployed state**:
+
+| Commit | Pi5 deploy run | Notes |
+| --- | --- | --- |
+| `1e24fd38` | `20260623-184617-15143` | Fixed disappearing appended rows during labor refresh. |
+| `2c33c6c4` | `20260623-191430-21189` | Slowed regular background board refresh to 5 minutes. |
+| `e98de7ce` | `20260623-200308-94` | Suppressed labor-toggle sync banner. Runtime health checked `ok`; API container healthy. |
+
+**Measurements after fixes**:
+
+- Pi5 Web client perf beacon on the real 6-slot resource set `581,305,589,584,588,586` recorded:
+  - `board-get-settled elapsedMs=8342`, `rowCount=300`, `hasMoreCount=6`
+  - `first-display-board-rows elapsedMs=8344`
+  - `schedule-usable elapsedMs=8344`
+  - Interpretation: first usable fresh rows are **8.344s**, inside the 10s target.
+- Headless Chrome verification after `1e24fd38`:
+  - waited until resource `584` had a full/long scrollHeight around `15212`
+  - clicked `+人`
+  - 12s sample: min target scrollHeight **14400**, `below10000Count=0`
+  - Pi5 API logs confirmed an `includeLabor=true` `leaderboard-board` GET occurred.
+  - Interpretation: `+人` still refetches labor metadata, but rows no longer collapse to shell height.
+
+**2026-06-24 regression recovery after real-device check**:
+
+- The 2026-06-23 headless check proved the board height no longer collapsed, but it did not prove that the minute label/Gantt bar used the fresh labor values. Real-device verification found that pressing `+人` could still leave `laborRequiredMinutes=0` on displayed rows, so the 8H bar did not stretch.
+- Root cause: display freshness intentionally ignored `includeLabor`, and the longer previous append-complete board won display selection during labor refresh. That preserved row count and speed, but it also preserved old machine-only labor metadata.
+- Partial fix (`4e3d3926`): after choosing the display board, overlay fresh finite `machineRequiredMinutes` / `laborRequiredMinutes` from `networkDisplayBoard` by `row.id`. This kept the long appended board visible and updated rows already returned by the `includeLabor=true` refresh.
+- Remaining gap: the overlay was only based on the current network board. It did not retain labor metadata for the same display scope, so appended rows outside the current shell/partial continue could still show `laborRequiredMinutes=0` and make `+人` appear broken.
+- Required fix: retain `includeLabor=true` shell/continue/deltaRows labor metadata by `row.id`, overlay retained metadata onto the selected display board, and prevent `includeLabor=false` machine-only rows from clearing retained labor values.
+
+**2026-06-24 Gantt ruler stretch follow-up（deployed, later rejected）**:
+
+- After the 8H/10H toggle, real-device use found another visual-only gap: `+人` could update logical `requiredMinutes`, but the Gantt vertical ruler still appeared unchanged on large slots because row height and ruler height shared the same compressed scale.
+- Incorrect fix: **`f978c15e`** computed `rulerHeightPx` from logical capacity bands (`totalRequiredMinutes / capacityMinutes * availableWorkHeightPx`) and used it in the card scroll height. This proved the label and total-work bar could change, but it broke the intended Gantt contract.
+- Required behavior: keep the row/card scale compressed for first-usable performance; use `requiredMinutes` changes from `+人` to move the cumulative 480/600-minute boundary and remainder bands inside the slot body. Do not derive the whole ruler/scroll height from total slot minutes.
+
+**Current intended behavior**:
+
+- Initial page load can show 「読み込み中…」, then fresh shell rows become usable at shell arrival.
+- Full append continues in the background; it should not block row operations or keep the global 「一覧を更新中です。」 banner visible once shell rows are displayed.
+- Regular board refresh is now **5 minutes**. During real shell refetch with no safe displayed rows, 「一覧を更新中です。」 may still appear; append-only continuation after rows are displayed stays silent.
+- Pressing `+人` triggers labor metadata fetch but should **not** show 「一覧を更新中です。」 if existing display rows are present and the only effective display freshness change is `includeLabor`.
+- Decorations still use the separate 「詳細情報を更新中です。」 message.
+
+**Follow-up fix after local Playwright pass（2026-06-23 · PR #464 deployed）**:
+
+- Local Playwright against Pi5 production API with the target 6-slot set `581,305,589,584,588,586` recorded `board-get-settled=5.813s`, `first-display-board-rows=5.814s`, and `schedule-usable=5.814s`. The remaining misleading signal was UI-only: `boardDataSyncing=true` during background append kept 「一覧を更新中です。」 visible even though rows were already displayed and row operations were not locked.
+- Fix: `isBoardDataSyncStatusVisible` now treats continuation-only sync after display rows exist as silent, while keeping true initial GET loading visible and leaving `isBoardDataSyncing` intact for cache/SWR internals.
+
+**API follow-up: resource-first winner shell（2026-06-23 · PR #464 deployed）**:
+
+- Pre-change investigation on Pi5 showed the real board shell is dominated by per-resource row selection rather than labor/decorations. The target resources have modest candidate sizes (`584` max ~3,495 raw rows), while the materialized winner array contains ~54k ids.
+- EXPLAIN comparison on resource `584` indicated the resource-first correlated winner shape can be faster than scanning the full materialized winner membership before resource filtering (approx. 0.66s vs 1.23s in the sampled plan).
+- Fix: `leaderboard-board` shell now calls each single-resource `resourceShell` with `leaderboardWinnerBaseStrategy: 'correlated'`. The shared materialized winner path remains in place for summary, continue, totals, decorations, and non-opt-in callers. Perf logs include `winnerBaseStrategy: 'correlated'` on `phase=resourceShell`.
+- Local validation: `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts` PASS; `pnpm --filter @raspi-system/api lint` PASS; `pnpm --filter @raspi-system/api build` PASS. The broader route integration test filtered by `leaderboard shell` could not run locally because PostgreSQL was not reachable at `localhost:5432`.
+
+**API follow-up: lazy materialized winner for first usable shell（2026-06-23 · PR #464 deployed）**:
+
+- Post-deploy direct API showed resource-first winner helped but did not remove the real shell floor: target 6-slot `pageSize=50&includeLabor=false&includeDecorations=false&deferTotals=true` averaged around `5.5s` curl total / `2.6s` API responseTime, and Pi5 still had `129` persisted process-change residual evidence rows. Because residual evidence was non-empty, shell still resolved the global materialized winner base for `processChangeResidualSummary`, even though resource shell rows themselves were already using correlated winner filtering.
+- Fix: `fetchLeaderboardCompositeBoardShell` now lazily resolves `resolveLeaderboardMaterializedBaseWhere()` only when exact totals or labor lookup need it. For `deferTotals=true` shell residual summary, it passes `buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner(PRODUCTION_SCHEDULE_DASHBOARD_ID)` instead of building the global materialized winner set. If residual evidence keys are empty, it returns the standard zero residual summary without calling the residual summary service. This keeps output semantics while removing global winner materialization from the normal first-usable request shape (`includeLabor=false`, `deferTotals=true`).
+- Perf logging: `phase=processChangeResidualSummary` now includes `winnerBaseStrategy: 'correlated'` for deferred shell and `materialized` for exact shell. In the expected first-usable path, no `phase=materializedBaseWhere` event should appear unless `includeLabor=true` or exact totals are requested.
+- Local validation: `pnpm --filter @raspi-system/api test -- src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts` PASS; `pnpm --filter @raspi-system/api lint` PASS; `pnpm --filter @raspi-system/api build` PASS.
+
+**Relevant files for Cursor**:
+
+- `apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`
+  - `displayFreshnessParamsKey` ignores `includeLabor`
+  - `displayAppendOverrideRef` keeps previous long append display
+  - after display selection, retained/fresh labor metadata is overlaid by `row.id`
+  - `isBoardDataSyncStatusVisible` separates UI banner visibility from internal `isBoardDataSyncing`
+  - continuation-only background sync after shell rows are displayed is silent in the global banner
+- `apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardLaborMetadata.ts`
+  - preserves the selected display board shape/row count while refreshing `machineRequiredMinutes` and `laborRequiredMinutes`; retained metadata is preferred over machine-only `includeLabor=false` zeros
+- `apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendOverrideScopePolicy.ts`
+  - `pickLeaderboardAppendOverrideForDisplay()` chooses the longer previous/fresh append during labor refresh
+- `apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardShellFreshnessPolicy.ts`
+  - `buildLeaderboardShellDisplayFreshnessKey()` omits `includeLabor`
+- `apps/web/src/features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy.ts`
+  - regular board refresh and staleTime are `300_000`
+- `apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx`
+  - displays the board sync banner from `isBoardDataSyncStatusVisible`, not raw `isBoardDataSyncing`
+- `apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts`
+  - board shell resource slots use `leaderboardWinnerBaseStrategy: 'correlated'` for resource-first winner filtering
+- `apps/api/src/services/production-schedule/production-schedule-query.service.ts`
+  - `listLeaderboardShellProductionScheduleRows` can opt into correlated winner base for exactly one `resourceCd`
+- `apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-materialization.ts`
+  - keeps both materialized and correlated winner base builders
+
+**Validation already run**:
+
+- `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx` PASS
+- `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardAppendOverrideScopePolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx` PASS for the append-display fix
+- `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardAppendOverrideScopePolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardShellFreshnessPolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/applyLeaderBoardDisplayRequiredMinutes.test.ts` PASS for the 2026-06-24 labor metadata overlay
+- `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/applyLeaderBoardDisplayRequiredMinutes.test.ts src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx src/features/kiosk/leaderOrderBoard/__tests__/leaderBoardGanttDisplay.test.tsx src/features/kiosk/leaderOrderBoard/__tests__/leaderBoardGanttLayout.test.ts` PASS for the 2026-06-24 `f978c15e` ruler stretch, later superseded because it asserted the rejected total-work ruler-height behavior
+- `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts` PASS for the resource-first winner shell fix
+- `pnpm --filter @raspi-system/api lint` PASS
+- `pnpm --filter @raspi-system/api build` PASS
+- `pnpm --filter @raspi-system/web lint` PASS
+- `pnpm --filter @raspi-system/web build` PASS
+- commit hook workspace lint PASS
+- Pi5 deploys above completed with Ansible `failed=0`
+
+**Do not regress**:
+
+- Do not remove the `includeLabor=true` refetch on `+人`; it is required for real labor minutes.
+- Do not use raw `paramsKey` for display fallback freshness when only `includeLabor` changes.
+- Do not let a shorter fresh append override a longer previous display append unless it has caught up.
+- Do not keep an old `includeLabor=false` display board without overlaying retained/fresh labor metadata from the current display scope.
+- Do not show 「一覧を更新中です。」 for `+人` display-only refresh with existing rows; use `isBoardDataSyncStatusVisible`.
+- Do not make every row card taller just to show `+人` labor additions. Keep row/card height compressed, and move the cumulative 8H/10H capacity boundary/remainder bands inside the existing slot body. Do not stretch the whole ruler/scroll height from total slot minutes.
 
 ## Local Notes JA
 

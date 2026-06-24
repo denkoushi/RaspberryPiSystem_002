@@ -2,7 +2,7 @@
 title: KB-369 キオスク順位ボード API の内部レイテンシ（COUNT + 行取得）
 tags: [kiosk, production-schedule, leader-order-board, api, performance]
 audience: [開発者]
-last-verified: 2026-05-18
+last-verified: 2026-06-24
 category: knowledge-base
 ---
 
@@ -10,7 +10,15 @@ category: knowledge-base
 
 ## Context
 
-本 KB は **「順位ボード遅延」に関する技術ナレッジの収束先**として機能する。単一エンドポイント内の SQL 最適化（COUNT 並列・winner materialization）に加え、**段階取得**・**資源カード単位 phased**・**snapshot + cursor** など、**プロトコルとクライアント構造**の変更も同一ファイルに時系列で記録する。2026-05-08 追補の **board 集約 API（`leaderboard-board` / `leaderboard-board/continue`）** は、**多資源スロット画面でブラウザが資源カードごとに `leaderboard-shell` 等を fan-out していた負荷**を、**サーバ側でスロット順にオーケストレーションして応答を束ねる**アプローチであり、意思決定の正本は [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。**`leaderboard-board/continue` の `cursor` 契約と HTTP 400** は [KB-374](./KB-374-leaderboard-board-continue-cursor-contract.md) に分離記録する。**2026-05-18 追補**: **`continue` 応答の任意 `deltaRows`（dual payload）** と Web 側の **ID 整合検証つきマージ**の要点も [KB-374 · Dual payload](./KB-374-leaderboard-board-continue-cursor-contract.md#dual-payload-deltarows-2026-05-18) に収束させる。
+本 KB は **「順位ボード遅延」に関する技術ナレッジの収束先**として機能する。単一エンドポイント内の SQL 最適化（COUNT 並列・winner materialization）に加え、**段階取得**・**資源カード単位 phased**・**snapshot + cursor** など、**プロトコルとクライアント構造**の変更も同一ファイルに時系列で記録する。2026-05-08 追補の **board 集約 API（`leaderboard-board` / `leaderboard-board/continue`）** は、**多資源スロット画面でブラウザが資源カードごとに `leaderboard-shell` 等を fan-out していた負荷**を、**サーバ側でスロット順にオーケストレーションして応答を束ねる**アプローチであり、意思決定の正本は [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。**`leaderboard-board/continue` の `cursor` 契約と HTTP 400** は [KB-374](./KB-374-leaderboard-board-continue-cursor-contract.md) に分離記録する。**2026-05-18 追補**: **`continue` 応答の任意 `deltaRows`（dual payload）** と Web 側の **ID 整合検証つきマージ**の要点も [KB-374 · Dual payload](./KB-374-leaderboard-board-continue-cursor-contract.md#dual-payload-deltarows-2026-05-18) に収束させる。**2026-06-23 追補**: process-change residual の広い `FKOJUNST_Status` raw mail 読みを sync/backfill 時の永続 evidence へ移し、表示時は residual key index で summary を解決する。詳細ログと実測は [leaderboard-defer-totals-performance-recovery](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) を正本とする。
+
+**2026-06-23 追補（Web first usable / `+人` labor refresh）**: PR #464 の最新 Pi5 runtime HEAD は `e98de7ce`。6-slot 実画面対象 `581,305,589,584,588,586` は Web client perf beacon で `schedule-usable=8.344s` まで短縮済み。`+人` は `includeLabor=true` の内部 fetch を行うが、既存の append 済み表示を維持し、表示専用の labor refresh では 「一覧を更新中です。」 を出さない。通常の board refresh は 5 分間隔。Cursor への最新引き継ぎは [leaderboard-defer-totals-performance-recovery · Cursor handoff](../plans/leaderboard-defer-totals-performance-recovery.md#cursor-handoff-web-display-stability-and-refresh-cadence2026-06-23-current) を正本とする。
+
+**2026-06-24 追補（`+人` labor display recovery）**: 2026-06-23 の修正で `+人` 押下時の行高 collapse は止まったが、実機では旧 `includeLabor=false` append 完走ボードが表示選択に勝ち、`laborRequiredMinutes=0` のまま残るケースがあった。`4e3d3926` は current network board の finite な `machineRequiredMinutes` / `laborRequiredMinutes` を `row.id` で overlay したが、metadata を同一表示スコープ内で保持しないため appended rows 全体の復旧としては不十分だった。正しい対策は、表示行数を維持したまま `includeLabor=true` shell/continue/deltaRows の人工数 metadata を `row.id` で保持し、`includeLabor=false` の `0` で上書きしないこと。正本は [kiosk-leaderboard-labor-minutes-toggle](../plans/kiosk-leaderboard-labor-minutes-toggle.md#display-recovery-after-performance-fixes-2026-06-24) と [leaderboard-defer-totals-performance-recovery](../plans/leaderboard-defer-totals-performance-recovery.md#cursor-handoff-web-display-stability-and-refresh-cadence2026-06-23-current)。
+
+**2026-06-24 追補（Gantt ruler stretch regression）**: 8H/10H toggle 追加後、`+人` で `requiredMinutes` が増えても大きい slot の 8H/10H 縦バーが変わらないケースがあった。commit **`f978c15e`** は、`rulerHeightPx` を `totalRequiredMinutes / capacityMinutes` に追従させて全体スクロール高さも伸ばす方向で修正し、CI/deploy/Phase12 は成功した。しかしこれは本来の「上から行工数を累積し、480/600 分へ到達する位置をカード内に表示する」Gantt 契約と違い、総工数ぶんの長い棒を作る回帰だった。正しい修正は、行/card 高さの圧縮を保ちつつ、累積工数を visual Y へ写像して容量境界・端数帯を表示すること。
+
+**2026-06-23 追補（continuation-only banner suppression · deployed）**: Local Playwright で Pi5 production API の同 6-slot を開いたところ、`board-get-settled=5.813s` / `first-display-board-rows=5.814s` / `schedule-usable=5.814s` で、shell 到着後に Web gate は append/decorations を待っていないことを再確認した。残っていた体感上の誤誘導は、background append 中に `boardDataSyncing=true` のため 「一覧を更新中です。」 が表示される点。修正は `isBoardDataSyncing` を内部状態として維持しつつ、shell 行が表示済みで `boardQuery` が loading/fetching ではなく continuation-only の場合は `isBoardDataSyncStatusVisible=false` にする。PR #464 系として本番反映済み。
 
 - **運用・合意上の制約（イニシアチブ共通）**: **表示内容を削って速く見せる**ことは禁止。**データ意味・並びの定義・装飾の契約**は従来と同値。改善は **HTTP 形状・クエリ評価・クライアントの取得パターン**に限定する。
 - **対象（一覧 monolithic）**: `GET /api/kiosk/production-schedule`（`responseProfile=leaderboard`）
@@ -79,6 +87,40 @@ category: knowledge-base
   - 全キオスク端末での順位ボード **目視確認**（Pi4 は Pi5 API 反映のみで足りる想定だが、現場端末での取得 Error 解消は未記録）
   - `verify-phase12-real.sh` の **`PUT global-rank/auto-generate` HTTP 400**（本件スコープ外・別途調査可）
   - 5 万件規模 `text[]` bind の planner / メモリコスト（別課題）
+
+## Process-change residual evidence persistence（2026-06-23 · PR #464）
+
+**症状**: `leaderboard-board` shell / continue が `processChangeResidualContext` または `processChangeResidualSummary` で秒単位に遅くなる。特に API recreate 後の cold request では `FKOJUNST_Status` raw mail dashboard を広く読み、45万行級のソース読みが表示リクエストに乗っていた。
+
+**根因**:
+
+- process-change residual evidence は `ProductNo + FKOJUN + resource` の小さな集合に落とせるが、旧経路では表示時に raw mail source rows を materialize していた。
+- summary/count も generic visible-row COUNT + residual filter に乗り、候補が少数でも `CsvDashboardRow` 側を広く評価しやすかった。
+- CTE 化だけでは不十分で、正規化キー式と partial index predicate がSQLに合っていないと PostgreSQL がインデックスを選び切れなかった。
+
+**Fix（意味・HTTP契約不変）**:
+
+1. `syncFromStatusMailDashboard()` 時に `ProductionScheduleProcessChangeResidualSnapshot` / `ProductionScheduleProcessChangeResidualEvidence` へ residual evidence を永続化。
+2. `materializeProcessChangeResidualStrongEvidence()` は raw mail revision が一致する persisted evidence を優先し、stale/missing のときだけ raw source fallback。
+3. sync replacement transaction の revision check は `COUNT` / `MIN` / `MAX` 系の generation signals で確認し、raw rows full reread を避ける。
+4. `fetchLeaderboardProcessChangeResidualSummary()` は `WITH residual_keys(...)` + normalized key join で count/representative rows を取得。
+5. `csv_dashboard_row_prod_schedule_residual_key_idx` を追加し、SQL側にも `csvDashboardId` + key-present predicate を明示して partial expression index と一致させる。
+
+**Pi5 実測（503/504, `includeDecorations=false`, `deferTotals=true`）**:
+
+| 条件 | 結果 |
+| --- | --- |
+| persisted evidence 適用前 | shell ~62-65s |
+| persisted evidence 後 | shell ~16-18s |
+| residual key index + predicate 後 | shell single **9.24s**, 4 parallel **12.48-13.07s**, continue **4.71s** |
+| `processChangeResidualSummary` | single **761ms**（以前は約3s級） |
+
+**Prevention**:
+
+- 表示リクエストで 10万行級以上の raw dashboard を読まない。raw source scan は sync/backfill 境界に寄せる。
+- 少数 evidence key で十分な処理は `VALUES` / CTE + expression index へ寄せる。partial index は predicate をクエリ側にも明示する。
+- `LEADERBOARD_BOARD_PERF_LOG` は一時測定のみ。測定後は `.env` から削除し API を再起動する。
+- 詳細な時系列・デプロイ・計測ログは [leaderboard-defer-totals-performance-recovery](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) を参照。
 
 ## Production deploy & verification（2026-05-06 · leaderboard-shell winner materialization）
 
@@ -224,11 +266,43 @@ category: knowledge-base
 
 **再開時**: [`benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs) で **スロット別 manual/expansion 計測** → [EXEC_PLAN §shell 保留](../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照)。
 
+## 6-slot resource board split after residual fixes（2026-06-23 · PR #464） {#six-slot-resource-board-split-after-residual-fixes-2026-06-23--pr-464}
+
+**対象**: `feat/production-schedule-split-orders` / `91347780`（Pi5 deploy `20260623-120401-21398`）。6 slot は `581,305,589,584,588,586`、`allowResourceOnly=true`、shell `pageSize=80`、continue `pageSize=160`、`deferTotals=true`。
+
+**変更**:
+
+- `leaderboard-board` shell/continue の `attachLabor` に、snapshot generation token scoped の `ProductNo + FKOJUN` lookup cache を追加。
+- `CsvDashboardRow` に normalized resource expression index `csv_dashboard_row_prod_schedule_resource_norm_idx` を追加。既存 raw `FSIGENCD` index は `UPPER(BTRIM(...))` predicate に合わず Pi5 で使われていなかった。
+
+**Pi5 direct API measurement**:
+
+| Stage | Before | After |
+| --- | ---: | ---: |
+| Shell light | 32.87s | 3.36s measured (`requestTotal=3.28s`, warm labor cache) |
+| Deferred decorations | 8.43s | 8.02s |
+| Continue chain | 55.15s | 20.97s |
+| Cold `includeDecorations=true` shell | 31.80s | 10.99s |
+
+**Server phase notes**:
+
+- First cold shell after API restart still had `attachLabor=5583ms`, but resourceShell max was already down to `584=1728ms`.
+- Measured shell after cache warm had `attachLabor=5ms`; continue rounds had `attachLabor=18ms/10ms/7ms/5ms/5ms`.
+- Remaining continue cost is mainly `resourceContinue` on large slots (`584`, `586`, `589`) plus repeated fixed work (`generationTokenInitial`, materialized base WHERE).
+
+**Operational note**: `LEADERBOARD_BOARD_PERF_LOG` was enabled only during measurement and restored to `off`; post-measure API health returned `status: ok`. If the physical browser still takes materially longer than the direct API chain, next evidence should come from browser Network/render timing rather than more server-only DB changes.
+
+**First usable target follow-up**: User target is **「最初に使える状態」10秒以内**, not full append completion. Web Phase 2 SWR now uses terminal cache only to cover initial blank loading; once fresh `leaderboard-board` shell rows arrive, it switches to network rows even while append/decorations continue. When the physical browser still reported ~30s, the remaining cold-shell culprit was `attachLabor`: the board had `+人` OFF, but shell/continue still waited for labor lookup. `06ad4a4c` added `includeLabor` and sends `includeLabor=false` from the Web while all slot `+人` toggles are OFF. Logs then showed the physical 6-slot board still sending old-bundle requests with `includeLabor` missing, so `bf9dea17` changes the API default for missing `includeLabor` to **false** on `leaderboard-board` GET and continue POST; explicit `includeLabor=true` still requests labor metadata. Pi5 direct HTTPS after deploy: 6-slot shell `581,305,589,584,588,586`, `pageSize=80`, `includeDecorations=false`, `deferTotals=true`, **missing `includeLabor`** measured **2.81s** for 480 shell rows; first continue with missing `includeLabor` measured **3.85s** for 1303 rows. Runtime verified at HEAD `bf9dea17`, API container healthy, perf log OFF.
+
+**Web display stability follow-up**: After `bf9dea17`, the remaining user-visible issues were Web-side: pressing `+人` intentionally refetched labor metadata, but the screen could temporarily fall back from a long appended board to a shorter shell/partial append, and the global 「一覧を更新中です。」 banner appeared too often. The deployed fix chain is `64ece479` → `2bc28966` → `1e24fd38` → `2c33c6c4` → `e98de7ce`: keep shell/display freshness independent from `includeLabor`, preserve the longer previous append during labor refresh, slow regular refresh to 5 minutes, and hide the global sync banner for display-only labor refresh. Pi5 deploy run `20260623-200308-94` verified runtime HEAD `e98de7ce`; the real 6-slot page reported `schedule-usable=8.344s`, and `+人` no longer collapsed the board height in headless Chrome sampling. 2026-06-24 follow-up found that row height could remain stable while labor values stayed stale; the Web now overlays fresh labor metadata from the current network board onto the selected display board by `row.id`. Detailed code map and non-regression rules are in [leaderboard-defer-totals-performance-recovery · Cursor handoff](../plans/leaderboard-defer-totals-performance-recovery.md#cursor-handoff-web-display-stability-and-refresh-cadence2026-06-23-current).
+
+**Resource-first winner shell follow-up（PR #464 deployed）**: Pi5 pre-investigation for the real 6-slot board (`581,305,589,584,588,586`) showed the next bottleneck is per-resource shell row selection. The target resource candidate sets are small (`584` max ~3,495 raw rows) compared with the materialized winner id array (~54k ids). A sampled `584` EXPLAIN favored filtering the resource first and then applying the correlated winner predicate (~0.66s) over applying full winner membership first (~1.23s). The PR #464 follow-up makes `leaderboard-board` shell `resourceShell` calls opt into `leaderboardWinnerBaseStrategy: 'correlated'` and lazily resolves the global materialized winner base: the first-usable request shape (`deferTotals=true`, `includeLabor=false`) uses correlated winner for `processChangeResidualSummary` and skips residual summary entirely when evidence keys are empty, so `phase=materializedBaseWhere` should not appear unless exact totals or labor lookup require it. For future measurement, validate with `[leaderboard-board-performance] phase=resourceShell winnerBaseStrategy=correlated`, `phase=processChangeResidualSummary winnerBaseStrategy=correlated`, absence of `phase=materializedBaseWhere` on the machine-only deferred shell, and exact 6-slot client perf. If logs still show `pageSize=80` or missing `includeLabor`, force-reload the kiosk tab because that indicates an old bundle/request path.
+
 ## Troubleshooting
 
 - **まだ遅い／反映されない**: Pi5 の **`api` コンテナ**が当該コミット以降か（detach ログの **`Git: changed`**・リモート `git log -1`）。**Mac 側 `--follow` が途中で途切れても**、**`PLAY RECAP` / `summary.json` / `*.exit`** を正本とする（[deployment.md](../guides/deployment.md) の detach 運用どおり）。
 - **キオスク側の挙動（COUNT 並列化のみ）**: 当該リリースは **API のみ**。ブラウザは **強制リロード**（[verification-checklist.md](../guides/verification-checklist.md) §6.6.4）。
-- **段階取得（API+Web）**: 初回のみ **複数 GET/POST**。挙動が古いときは Pi5 **`api` と `web` の両方**を確認し、同上 **強制リロード**。**装飾欠落の切り分け**は上記 **hydrate raw SQL** 知見と Network 順序を参照。
+- **段階取得（API+Web）**: 初回のみ **複数 GET/POST**。挙動が古いときは Pi5 **`api` と `web` の両方**を確認し、同上 **強制リロード**。`bf9dea17` 以降は旧 bundle が `includeLabor=false` を送らなくても API default false で first usable 速度は救済する。`+人` ON の正確な人工数表示は bundle **`index-CtusrliU.js`** 以降が必要。`e98de7ce` 以降、通常の board refresh は 5 分間隔で、`+人` の labor refresh は内部 fetch だけ行い既存行を保ったまま global sync banner を出さない。2026-06-24 recovery bundle 以降は、既存行を保ったまま fresh labor metadata を overlay するため、minute label と 8H バーも更新される。Gantt ruler stretch bundle 以降は、行カード高さは重くせず 8H/10H 縦バーだけ logical required minutes で伸びる。**装飾欠落の切り分け**は上記 **hydrate raw SQL** 知見と Network 順序を参照。
 
 ## 段階取得（leaderboard-shell / leaderboard-total / leaderboard-decorations）
 

@@ -62,6 +62,20 @@
 - **空データ・検索ヒット0件**など **異常に軽い／偏った条件**での **curl タイム**だけでは **「改善実証」に十分でない**（後述の KB に記録）。
 - **snapshot のプロセスローカル性**（既存 ADR-20260507 の議論）と組み合わせたとき、**複数 API プロセス**では引き続き **失効・フォールバック頻度**に注意（board 集約は **集約先サービス内**の一貫性に寄与するが、**スケールアウトの境界**は別問題）。
 
+### 運用追補（2026-06-23）
+
+board 集約 API は HTTP fan-out を抑えるが、サーバ内の residual context / summary / per-resource shell / labor lookup が重い場合は単一リクエスト内の待ちとして残る。2026-06-23 の PR #464 では、process-change residual evidence を sync/backfill 時に永続化し、表示時の raw `FKOJUNST_Status` 45万行級読みを避けるようにした。さらに residual summary は正規化キー式インデックスで解決する。
+
+Pi5 503/504 scoped sample:
+
+| Probe | Result |
+| --- | --- |
+| shell single | **9.24s** (`includeDecorations=false`, `deferTotals=true`) |
+| shell 4 parallel | **12.48-13.07s** |
+| continue `pageSize=160` | **4.71s** |
+
+この結果は 503/504 の代表条件に対する改善証跡であり、全資源セットのP95保証ではない。次のサーバ側論点は `resourceShell` の row selection / ordering SQL。
+
 ## Rollout（本番）
 
 - **2026-05-08 時点の実施済みホスト**: `raspberrypi5`（API）・`raspberrypi4`（キオスク Web を含む通常対象）。**Detach Run ID**（接頭辞 `ansible-update-`）: `20260508-175314-10578`（Pi5）/ `20260508-181440-11189`（`raspberrypi4`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**。
@@ -73,10 +87,12 @@
 - **本番負荷相当**（複数資源・多行・実際の検索語）で、**board 1 往復**と旧 **fan-out N 往復**の **P95/P99** を比較する（キオスク Network タブとサーバログの双方）。
 - **初回 shell が全件順序を確定するコスト**は、continue の cursor 化とは独立に残る。**別イニシアチブ**で「初回のみの縮退」や **選定アルゴリズム**の境界を切るかは、計測後に判断。
 - board 集約下での **API レプリカ数・LB の振り分け**と **snapshot ストア**の関係を、運用で **失効率**が上がらないか継続観察。
+- **2026-06-23 時点の次論点**: residual evidence / summary は大きく改善済み。次に見るべきは `resourceShell` の行選定・ソート経路と、大規模 multi-resource board での `attachLabor` 増加。
 
 ## References
 
 - ナレッジ（計測・デプロイ・トラブルシュート統合）: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)
+- 性能回復plan（2026-06-23 residual evidence / index 実測）: [leaderboard-defer-totals-performance-recovery](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23)
 - ルート・集約実装:  
   [`leaderboard-phased-read.ts`](../../apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts)  
   [`leaderboard-composite-board.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts)

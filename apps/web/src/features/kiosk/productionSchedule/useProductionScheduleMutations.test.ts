@@ -9,6 +9,9 @@ const completeMutation = {
 };
 const orderMutation = {
   isPending: false,
+  isError: false,
+  error: null as Error | null,
+  reset: vi.fn(),
   mutate: vi.fn(),
   mutateAsync: vi.fn(async () => ({ orderNumber: 1 }))
 };
@@ -25,12 +28,27 @@ const dueDateMutation = {
   mutate: vi.fn()
 };
 
+const splitOrderMutation = {
+  isPending: false,
+  isError: false,
+  error: null as Error | null,
+  reset: vi.fn(),
+  mutate: vi.fn(),
+  mutateAsync: vi.fn(async () => ({ orderNumber: 1 }))
+};
+const splitDueDateMutation = {
+  isPending: false,
+  mutate: vi.fn()
+};
+
 vi.mock('../../../api/hooks', () => ({
   useSetKioskProductionScheduleRowCompletion: () => completeMutation,
   useUpdateKioskProductionScheduleOrder: () => orderMutation,
+  useUpdateKioskProductionScheduleSplitOrder: () => splitOrderMutation,
   useUpdateKioskProductionScheduleProcessing: () => processingMutation,
   useUpdateKioskProductionScheduleNote: () => noteMutation,
-  useUpdateKioskProductionScheduleDueDate: () => dueDateMutation
+  useUpdateKioskProductionScheduleDueDate: () => dueDateMutation,
+  useUpdateKioskProductionScheduleSplitDueDate: () => splitDueDateMutation
 }));
 
 describe('useProductionScheduleMutations', () => {
@@ -38,12 +56,20 @@ describe('useProductionScheduleMutations', () => {
     vi.useFakeTimers();
     completeMutation.isPending = false;
     orderMutation.isPending = false;
+    orderMutation.isError = false;
+    orderMutation.error = null;
+    splitOrderMutation.isPending = false;
+    splitOrderMutation.isError = false;
+    splitOrderMutation.error = null;
     processingMutation.isPending = false;
     noteMutation.isPending = false;
     dueDateMutation.isPending = false;
+    splitDueDateMutation.isPending = false;
     completeMutation.mutateAsync.mockClear();
     orderMutation.mutate.mockClear();
     orderMutation.mutateAsync.mockClear();
+    orderMutation.reset.mockClear();
+    splitOrderMutation.reset.mockClear();
     processingMutation.mutate.mockClear();
     noteMutation.mutate.mockClear();
     dueDateMutation.mutate.mockClear();
@@ -158,6 +184,29 @@ describe('useProductionScheduleMutations', () => {
       },
       cachePolicy: 'leaderBoardFastPath'
     });
+    unmount();
+  });
+
+  it('splitOrderMutation のエラーを orderError として返す', () => {
+    const splitError = new Error('ORDER_NUMBER_CONFLICT');
+    splitOrderMutation.isError = true;
+    splitOrderMutation.error = splitError;
+
+    const { result, unmount } = renderHook(() =>
+      useProductionScheduleMutations({
+        isSearchStateWriting: false,
+        noteMaxLength: 100
+      })
+    );
+
+    expect(result.current.orderError).toBe(splitError);
+
+    act(() => {
+      result.current.resetOrderError();
+    });
+
+    expect(orderMutation.reset).toHaveBeenCalledTimes(1);
+    expect(splitOrderMutation.reset).toHaveBeenCalledTimes(1);
     unmount();
   });
 

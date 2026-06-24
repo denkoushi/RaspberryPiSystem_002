@@ -75,18 +75,18 @@ function computeRowLayouts(params: {
   });
 }
 
-function sumWorkHeightPx(rowLayouts: readonly LeaderBoardGanttRowLayout[]): number {
-  let sum = 0;
-  for (const layout of rowLayouts) {
-    sum += layout.workHeightPx;
-  }
-  return sum;
-}
-
 function sumEstimateHeightPx(rowLayouts: readonly LeaderBoardGanttRowLayout[]): number {
   let sum = 0;
   for (const layout of rowLayouts) {
     sum += layout.estimateHeightPx;
+  }
+  return sum;
+}
+
+function sumWorkHeightPx(rowLayouts: readonly LeaderBoardGanttRowLayout[]): number {
+  let sum = 0;
+  for (const layout of rowLayouts) {
+    sum += layout.workHeightPx;
   }
   return sum;
 }

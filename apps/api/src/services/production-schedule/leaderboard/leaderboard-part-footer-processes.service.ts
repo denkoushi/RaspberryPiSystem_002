@@ -50,6 +50,7 @@ const parseProcessOrder = (value: string): number | null => {
 export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params: {
   rows: ReadonlyArray<{
     id: string;
+    sourceRowId?: string;
     seibanJoinKey: string | null | undefined;
     rowData: unknown;
   }>;
