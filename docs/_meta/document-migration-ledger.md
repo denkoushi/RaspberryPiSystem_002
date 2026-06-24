@@ -12,7 +12,7 @@ validation:
   - node scripts/docs/audit-docs.mjs --check
   - git diff --check
 open_items:
-  - Continue thinning remaining `docs/INDEX.md` leaderboard performance and board aggregation history blocks.
+  - Continue thinning remaining `docs/INDEX.md` leaderboard 2026-05-07 snapshot and card-scope history blocks.
   - Create or identify standard deployment and validation runbooks before shortening guides.
 ---
 
@@ -51,7 +51,7 @@ the topic.
 
 | source_area | current_payload | target_canonical | action | preservation | next_status |
 |-------------|-----------------|------------------|--------|--------------|-------------|
-| `docs/INDEX.md` latest-update blocks | Date-stamped narrative updates and deployment summaries, especially recent kiosk leaderboard entries. | Existing linked KB / Plan / ADR documents. For kiosk leaderboard current specification, use `docs/knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md`. | split | PR6 thinned the top recent kiosk leaderboard blocks. PR7 thinned the 2026-05-22 kiosk leaderboard UI / history blocks. PR8 thinned the 2026-05-21 shell / continue and 2026-05-20 A+alpha ordering blocks. PR9 thinned terminal cache, SWR, instant mutation display, footer chip cache, and seiban OR client cache blocks. Continue with older performance and board aggregation history blocks separately. | partial_pr9 |
+| `docs/INDEX.md` latest-update blocks | Date-stamped narrative updates and deployment summaries, especially recent kiosk leaderboard entries. | Existing linked KB / Plan / ADR documents. For kiosk leaderboard current specification, use `docs/knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md`. | split | PR6 thinned the top recent kiosk leaderboard blocks. PR7 thinned the 2026-05-22 kiosk leaderboard UI / history blocks. PR8 thinned the 2026-05-21 shell / continue and 2026-05-20 A+alpha ordering blocks. PR9 thinned terminal cache, SWR, instant mutation display, footer chip cache, and seiban OR client cache blocks. PR10 thinned board/continue cursor, deferred decorations, COUNT reuse, initial10, deltaRows/pageSize80, and board aggregate API blocks. Continue with 2026-05-07 snapshot and card-scope history blocks separately. | partial_pr10 |
 | `docs/INDEX.md` purpose/category navigation | Navigation tables and audience-oriented entry links. | `docs/INDEX.md` as thin global navigation. | keep | Keep this file as a lightweight index; avoid adding narrative update logs. | keep_thin |
 | `docs/knowledge-base/index.md` category and issue tables | KB navigation mixed with status notes and some deployment facts. | `docs/knowledge-base/index.md` as thin KB navigation; individual KB files for details. | split | Shorten after `docs/INDEX.md` first-pass thinning; do not duplicate KB detail text. | pending_after_global_index |
 | `docs/knowledge-base/index.md` update history | Chronological deployment and validation notes that duplicate KB / deployment / EXEC_PLAN history. | Existing KB files, Plans, Runbooks, or Evidence paths referenced by each entry. | split | Map by domain before deleting text; preserve links that external docs use. | map_before_edit |
@@ -78,6 +78,6 @@ From `docs/_meta/document-inventory.json` before adding this ledger:
 
 ## Next Step
 
-PR10 should continue `docs/INDEX.md` thinning for remaining leaderboard
-performance and board aggregation history blocks, or create the standard
+PR11 should continue `docs/INDEX.md` thinning for remaining leaderboard
+2026-05-07 snapshot and card-scope history blocks, or create the standard
 deployment / validation runbook targets before shortening those guides.
