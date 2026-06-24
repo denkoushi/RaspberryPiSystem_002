@@ -834,7 +834,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 - [ ] **縦バー表示**: 容量帯ごとに色付き/透明を交互表示し、8H/10H を超えるスロットでは容量帯と端数帯がカード内の累積位置に出ること。総工数でルーラー全体やスクロール高さを伸ばさないこと。
 - [ ] **`+人` ON**: 人工数がある行で minute label が `machineRequiredMinutes + laborRequiredMinutes` に変わり、Gantt の 8H/10H 到達位置・端数帯が labor-inclusive 分数に従って変わること。表示速度維持のため、行カード高さ・仮想リスト見積は現行の圧縮/最小高を維持する。
 - [ ] **行維持**: `+人` 押下直後、append 済みの長い表示が短い shell/partial append へ collapse しないこと。
-- [ ] **metadata overlay**: fresh labor 取得が部分完了の間、返ってきた行から順に人工数が反映され、未取得行は旧表示を維持すること。continue 完了後は全対象行が fresh な人工数になること。
+- [ ] **metadata overlay/retention**: fresh labor 取得が部分完了の間、返ってきた行から順に人工数が反映され、未取得行は旧表示を維持すること。`includeLabor=true` で一度返った人工数 metadata は同一表示スコープ内で保持され、`includeLabor=false` の machine-only `0` で消えないこと。continue 完了後は全対象行が fresh な人工数になること。
 
 **検証日時**: 2026-06-24（commit **`f978c15e`** · CI **`28073394781` / `28073393362`** success · deploy run **`20260624-125213-16642`** · Phase12 **PASS 43 / WARN 0 / FAIL 0**）
 **検証結果**: `f978c15e` の deploy/CI/Phase12 は成功したが、`+人` ON で縦バー全体を `480px→575px` のように伸ばす期待は誤った検証だった。再検証では「累積工数が 480/600 分へ到達する位置」と「色付き/透明の容量帯・端数帯」がカード内に正しく出ることを確認する。

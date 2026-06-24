@@ -76,7 +76,7 @@ Workloads exceeding a capacity multiple (e.g. 600min at 8H) extended the last vi
 - State: `usePersistedLeaderBoardCapacityMode`, `localStorage` scoped by site + device, slotIndex order. Default is **8H** for every slot.
 - Behavior: pressing the button toggles `8H` ↔ `10H`; `LeaderBoardGrid` passes the selected minutes to the card as `capacityMinutes`.
 - API: none. Existing row `requiredMinutes` and Gantt layout do the scaling.
-- Coexists with `+人`: `+人` changes `requiredMinutes`; `8H/10H` changes the ruler/capacity scale.
+- Coexists with `+人`: OFF sets `requiredMinutes = machineRequiredMinutes`; ON sets `requiredMinutes = machineRequiredMinutes + laborRequiredMinutes`. The row minute label and the Gantt cumulative ruler must use that same `requiredMinutes`; `8H/10H` only changes the capacity scale.
 
 ## Ruler behavior with `+人` labor minutes (2026-06-24 correction)
 

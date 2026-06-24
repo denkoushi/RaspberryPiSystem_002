@@ -51,7 +51,11 @@ import {
   normalizeLeaderboardContinueFailure
 } from './leaderboardContinueErrorPolicy';
 import { mergeLeaderboardBoardContinueResponseWithOptionalDelta } from './mergeLeaderboardBoardContinueResponse';
-import { mergeLeaderboardBoardLaborMetadataForDisplay } from './mergeLeaderboardBoardLaborMetadata';
+import {
+  collectLeaderboardBoardLaborMetadata,
+  mergeLeaderboardBoardLaborMetadataForDisplay,
+  type LeaderboardLaborMetadata
+} from './mergeLeaderboardBoardLaborMetadata';
 import { mergeLeaderboardBoardWithDecorations } from './mergeLeaderboardBoardWithDecorations';
 import {
   useLeaderboardBoardTerminalCache,
@@ -67,6 +71,10 @@ const SCHEDULE_QUERY_DISABLED = {
   isError: false,
   isFetching: false
 };
+
+function isLeaderboardLaborRequestEnabled(includeLabor: unknown): boolean {
+  return includeLabor === true || includeLabor === 'true';
+}
 
 function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof useQueryClient>) {
   return queryClient.invalidateQueries({
@@ -179,6 +187,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     () => (boardQueryParams != null ? JSON.stringify(boardQueryParams) : ''),
     [boardQueryParams]
   );
+  const currentBoardRequestsLabor = isLeaderboardLaborRequestEnabled(boardQueryParams?.includeLabor);
   const displayFreshnessParamsKey = useMemo(
     () => buildLeaderboardShellDisplayFreshnessKey(boardQueryParams),
     [boardQueryParams]
@@ -209,8 +218,15 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const latestParamsKeyRef = useRef<string>(paramsKey);
   const lastCommittedParamsKeyRef = useRef<string | null>(null);
   const lastCommittedDisplayFreshnessParamsKeyRef = useRef<string | null>(null);
+  const retainedLaborMetadataByIdRef = useRef<Map<string, LeaderboardLaborMetadata>>(new Map());
+  const retainedLaborMetadataScopeKeyRef = useRef(displayFreshnessParamsKey);
+  const [retainedLaborMetadataVersion, setRetainedLaborMetadataVersion] = useState(0);
 
   latestParamsKeyRef.current = paramsKey;
+  if (retainedLaborMetadataScopeKeyRef.current !== displayFreshnessParamsKey) {
+    retainedLaborMetadataByIdRef.current.clear();
+    retainedLaborMetadataScopeKeyRef.current = displayFreshnessParamsKey;
+  }
 
   useEffect(() => {
     appendOverrideRef.current = appendOverride;
@@ -321,6 +337,22 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     resolvedDisplayShell,
     displayScopedAppendOverride
   );
+  const retainedLaborMetadataById = useMemo(() => {
+    void displayFreshnessParamsKey;
+    void retainedLaborMetadataVersion;
+    return new Map(retainedLaborMetadataByIdRef.current);
+  }, [displayFreshnessParamsKey, retainedLaborMetadataVersion]);
+
+  useEffect(() => {
+    if (!currentBoardRequestsLabor) return;
+    const changed = collectLeaderboardBoardLaborMetadata(
+      networkDisplayBoard,
+      retainedLaborMetadataByIdRef.current
+    );
+    if (changed) {
+      setRetainedLaborMetadataVersion((version) => version + 1);
+    }
+  }, [currentBoardRequestsLabor, networkDisplayBoard]);
 
   const boardNetworkSyncToken = useMemo(() => {
     if (!boardQuery.isSuccess || boardQuery.isPlaceholderData) {
@@ -421,9 +453,19 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const selectedDisplayBoard =
     pickLeaderboardBoardForDisplay(cacheOrNetworkDisplayBoard, displayScopedAppendOverride) ??
     placeholderDisplayBoard;
-  const displayBoard = mergeLeaderboardBoardLaborMetadataForDisplay(
-    selectedDisplayBoard,
-    networkDisplayBoard
+  const displayBoard = useMemo(
+    () =>
+      mergeLeaderboardBoardLaborMetadataForDisplay(
+        selectedDisplayBoard,
+        currentBoardRequestsLabor ? networkDisplayBoard : undefined,
+        retainedLaborMetadataById
+      ),
+    [
+      currentBoardRequestsLabor,
+      networkDisplayBoard,
+      retainedLaborMetadataById,
+      selectedDisplayBoard
+    ]
   );
 
   const resolvedShellRef = useRef(resolvedShell);

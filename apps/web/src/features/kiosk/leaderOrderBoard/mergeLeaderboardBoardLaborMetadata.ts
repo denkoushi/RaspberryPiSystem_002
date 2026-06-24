@@ -3,12 +3,12 @@ import type {
   ProductionScheduleRow
 } from '../../../api/client';
 
-type LeaderboardLaborMetadata = {
+export type LeaderboardLaborMetadata = {
   machineRequiredMinutes: number;
   laborRequiredMinutes: number;
 };
 
-function readLaborMetadata(row: ProductionScheduleRow): LeaderboardLaborMetadata | null {
+export function readLeaderboardLaborMetadata(row: ProductionScheduleRow): LeaderboardLaborMetadata | null {
   const { machineRequiredMinutes, laborRequiredMinutes } = row;
   if (
     typeof machineRequiredMinutes !== 'number' ||
@@ -22,6 +22,34 @@ function readLaborMetadata(row: ProductionScheduleRow): LeaderboardLaborMetadata
     machineRequiredMinutes: Math.max(0, machineRequiredMinutes),
     laborRequiredMinutes: Math.max(0, laborRequiredMinutes)
   };
+}
+
+export function collectLeaderboardBoardLaborMetadata(
+  board: ProductionScheduleLeaderboardBoardResponse | undefined,
+  metadataById: Map<string, LeaderboardLaborMetadata>
+): boolean {
+  if (!board) return false;
+
+  let changed = false;
+  const rows = board.deltaRows != null ? [...board.rows, ...board.deltaRows] : board.rows;
+  for (const row of rows) {
+    const metadata = readLeaderboardLaborMetadata(row);
+    if (!metadata) continue;
+
+    const previous = metadataById.get(row.id);
+    if (
+      previous != null &&
+      previous.machineRequiredMinutes === metadata.machineRequiredMinutes &&
+      previous.laborRequiredMinutes === metadata.laborRequiredMinutes
+    ) {
+      continue;
+    }
+
+    metadataById.set(row.id, metadata);
+    changed = true;
+  }
+
+  return changed;
 }
 
 function patchRowsWithLaborMetadata(
@@ -50,14 +78,14 @@ function patchRowsWithLaborMetadata(
 
 export function mergeLeaderboardBoardLaborMetadataForDisplay(
   displayBoard: ProductionScheduleLeaderboardBoardResponse | undefined,
-  freshBoard: ProductionScheduleLeaderboardBoardResponse | undefined
+  freshBoard: ProductionScheduleLeaderboardBoardResponse | undefined,
+  retainedMetadataById?: ReadonlyMap<string, LeaderboardLaborMetadata>
 ): ProductionScheduleLeaderboardBoardResponse | undefined {
-  if (!displayBoard || !freshBoard || displayBoard === freshBoard) return displayBoard;
+  if (!displayBoard) return displayBoard;
 
-  const metadataById = new Map<string, LeaderboardLaborMetadata>();
-  for (const row of freshBoard.rows) {
-    const metadata = readLaborMetadata(row);
-    if (metadata) metadataById.set(row.id, metadata);
+  const metadataById = new Map<string, LeaderboardLaborMetadata>(retainedMetadataById);
+  if (freshBoard) {
+    collectLeaderboardBoardLaborMetadata(freshBoard, metadataById);
   }
   if (metadataById.size === 0) return displayBoard;
 

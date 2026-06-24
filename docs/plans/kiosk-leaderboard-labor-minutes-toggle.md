@@ -5,13 +5,13 @@
 | Field | Value |
 |-------|-------|
 | id | `plan-kiosk-leaderboard-labor-minutes-toggle` |
-| status | **production_deployed / field_verified + gantt_ruler_regression_documented** — Pi5 + Pi4×4 · visibility fix **`10cc06b0`** (2026-06-18) · display recovery verified on real device (2026-06-24) · 8H/10H toggle deployed · **`f978c15e` ruler-stretch behavior is not the intended Gantt contract** |
+| status | **production_deployed / labor_metadata_retention_required + gantt_ruler_regression_documented** — Pi5 + Pi4×4 · visibility fix **`10cc06b0`** (2026-06-18) · `4e3d3926` overlay was partial · 8H/10H toggle deployed · **`f978c15e` ruler-stretch behavior is not the intended Gantt contract** |
 | scope | Kiosk leader order board (`ProductionScheduleLeaderOrderBoardPage`) |
 | date | 2026-06-17 (feature) · 2026-06-18 (visibility fix deploy) · 2026-06-24 (display recovery) |
 | source_of_truth | this document |
 | branch | `fix/leaderboard-labor-visibility-from-machine-status` → merge to `main` |
 | commit | **`10cc06b0`** — `fix: derive leaderboard labor minutes from visible machine rows` |
-| latest_recovery | **`4e3d3926`** — keep appended display rows while overlaying fresh labor metadata by row id |
+| latest_recovery | **pending** — retain `includeLabor=true` labor metadata by row id across the same display scope; `4e3d3926` only overlaid the current network board and was insufficient for appended rows |
 | latest_capacity_toggle | **`4e3d3926`** — per-slot 8H/10H button immediately left of `+人`, persisted locally |
 | latest_gantt_ruler | **restore required** — 8H/10H ruler must map cumulative row work to the slot body; `f978c15e` incorrectly stretched the whole ruler from total minutes |
 | related_code | `apps/api/src/services/production-schedule/leaderboard/leaderboard-labor-minutes*.ts`, `apps/web/src/features/kiosk/leaderOrderBoard/*` |
@@ -21,7 +21,7 @@ Rank calculation, auto-rank, and load-balancing are **out of scope**. Signage JP
 
 ## Goal
 
-Each resource slot has a **`+人`** toggle (default OFF). When ON, display minutes = `machineRequiredMinutes + laborRequiredMinutes`. The row minute label follows `requiredMinutes`; the Gantt **8H/10H vertical ruler** maps the cumulative row work to the slot body so operators can see which item range fits within one 8H/10H capacity window. Row/card heights stay on the compressed performance scale.
+Each resource slot has a **`+人`** toggle (default OFF). OFF means display minutes = `machineRequiredMinutes`; ON means display minutes = `machineRequiredMinutes + laborRequiredMinutes`. The row minute label and the Gantt **8H/10H vertical ruler** both follow the same `requiredMinutes`; the ruler maps cumulative row work to the slot body so operators can see which item range fits within one 8H/10H capacity window. Row/card heights stay on the compressed performance scale.
 
 2026-06-24 addition: each resource slot has an **8H/10H** toggle immediately left of `+人`. It is persisted per terminal and slot, and passes **480** or **600** minutes to the Gantt `capacityMinutes`.
 
@@ -52,6 +52,7 @@ Rules:
 ### Web
 
 - `normalizeLeaderBoardRow` / `applyLeaderBoardDisplayRequiredMinutesToGrouped` / `usePersistedLeaderBoardLaborMode`.
+- `useCompositeLeaderboardPhasedScheduleWithAutoAppend` retains labor metadata returned by `includeLabor=true` shell/continue/deltaRows for the same display scope and overlays it onto the current display board. `includeLabor=false` machine-only rows must not overwrite retained labor metadata with `0`.
 - `LeaderOrderResourceCard`: header `+人` button; `LeaderOrderResourceRow`: minute label.
 - `LeaderOrderResourceCard`: header `8H/10H` button immediately left of `+人`; `usePersistedLeaderBoardCapacityMode` stores slot capacity locally.
 - `sanitizeLeaderBoardSlotResourceCd` + server-sync filter exclude `10` from slots.
@@ -114,13 +115,15 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 
 **Root cause**: the Web display freshness key intentionally ignores `includeLabor` to prevent a `+人` refresh from collapsing a long appended board back to a short shell. That part is required for perceived speed/stability. The missing piece was metadata refresh: when the previous longer board won display selection, its old labor metadata also won.
 
-**Fix**: keep the longer appended display board, but merge fresh finite `machineRequiredMinutes` / `laborRequiredMinutes` from the current network board by `row.id` into the displayed rows. This preserves the speed fix and restores the `+人` display behavior.
+**Partial fix (`4e3d3926`)**: keep the longer appended display board, but merge fresh finite `machineRequiredMinutes` / `laborRequiredMinutes` from the current network board by `row.id` into the displayed rows. This preserved the speed fix, but it only used the current network board and did not retain labor metadata across the same display scope. Rows outside the current shell/partial continue could still stay machine-only until the labor-inclusive append caught up.
+
+**Required fix**: retain `includeLabor=true` metadata by `row.id` for the same search/device/resource display scope, overlay it onto the selected display board, and never let `includeLabor=false` machine-only rows overwrite retained labor metadata with `0`. `+人 OFF` still displays machine minutes only; retained labor metadata is used when `+人` is ON and for the Gantt cumulative capacity calculation.
 
 **Validation**:
 
 - Web focused tests: `useCompositeLeaderboardPhasedScheduleWithAutoAppend`, append override scope, shell freshness, required-minutes display — PASS.
 - Web lint/build — PASS.
-- Real-device verification (2026-06-24, user visual check): `+人` ON reflects labor minutes. Follow-up found the later `f978c15e` ruler-height stretch was the wrong visual contract and must be restored to cumulative-boundary mapping.
+- Real-device follow-up (2026-06-24): `4e3d3926` could still make `+人` appear non-functional while labor metadata had not reached the displayed appended rows. The follow-up fix must validate label and Gantt movement, not only row-count stability.
 
 ### 8H/10H capacity toggle next to `+人` (2026-06-24)
 
@@ -158,7 +161,7 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 
 ## Open Items
 
-- [x] **Field sign-off (real device, 2026-06-24)**: `+人` toggle changes minute label and Gantt height after the display recovery. API verified on Pi5; UI behavior verified by user visual check.
+- [ ] **Field sign-off (real device, 2026-06-24 follow-up)**: `+人` toggle changes minute label and Gantt capacity bands for appended rows after retained metadata overlay. API verified on Pi5; UI must be rechecked after this follow-up.
 - [ ] **Performance monitor**: Labor lookup `EXPLAIN ANALYZE` on production-scale data; add index only if latency regresses.
 - [ ] **Restore Gantt cumulative-boundary ruler**: revert the `f978c15e` total-minute ruler-height contract while preserving `+人`, 8H/10H toggle, metadata overlay, and row/card performance constraints.
 
@@ -172,7 +175,7 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 
 - 要件正本: `leaderboard_labor_minutes_requirements.md`（リポジトリ外）
 - **2026-06-18 修正**: 実データで `FSIGENCD=10` 行に `fkmail` が無いため lookup が全落ちしていた。表示済み通常行キーに従属する合算へ変更（`10cc06b0`）。
-- **2026-06-24 修正**: 速度改善で append 済み行維持は効いていたが、旧 `includeLabor=false` 行の `laborRequiredMinutes=0` も維持されていた。表示行数は維持し、fresh network board の人工数メタデータだけを `row.id` で重ねる方式に変更。実機目視 OK。
+- **2026-06-24 修正（不十分）**: 速度改善で append 済み行維持は効いていたが、旧 `includeLabor=false` 行の `laborRequiredMinutes=0` も維持されていた。`4e3d3926` は fresh network board の人工数メタデータだけを `row.id` で重ねたが、metadata を保持しないため appended rows 全体への復旧としては不十分だった。
 - **2026-06-24 追加**: `+人` の左に 8H/10H ボタンを追加。slotIndex 順に端末ローカル保存し、Gantt `capacityMinutes` へ 480/600 分を渡す。
 - **2026-06-24 回帰メモ**: `f978c15e` は 8H/10H 縦バーを総工数比例の長い棒にしてしまい、正常仕様である「行順の累積工数が 480/600 分へ到達する位置を表示する」挙動から外れた。修正では累積境界写像へ戻す。
 - Codex レビュー反映: TS re-export fix, lookup 可視性合わせ→**表示行由来キーへ修正**, FSIGENCD=10 除外, cache v3/fingerprint, service tests, import/order, fallback 安定化

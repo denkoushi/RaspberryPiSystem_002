@@ -1075,6 +1075,197 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
   });
 
+  it('includeLabor=true で得た人工数 metadata は OFF の machine-only 応答で消さない', async () => {
+    const machineOnly = boardPayload({
+      total: 2,
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 0),
+        rowWithLabor('a2', 'R1', 200, 0)
+      ],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 }]
+    });
+    const withLabor = boardPayload({
+      total: 2,
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 11),
+        rowWithLabor('a2', 'R1', 200, 22)
+      ],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 }]
+    });
+
+    let includeLabor = false;
+    let boardResult: BoardHookQueryResult = {
+      data: machineOnly,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000
+    };
+    installBoardHookMock(() => boardResult);
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          includeLabor
+        },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([0, 0]);
+    });
+
+    act(() => {
+      includeLabor = true;
+      boardResult = {
+        data: withLabor,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        dataUpdatedAt: 2000
+      };
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([11, 22]);
+    });
+
+    act(() => {
+      includeLabor = false;
+      boardResult = {
+        data: machineOnly,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        dataUpdatedAt: 3000
+      };
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([11, 22]);
+    });
+
+    act(() => {
+      includeLabor = true;
+      boardResult = {
+        data: machineOnly,
+        isLoading: false,
+        isError: false,
+        isFetching: true,
+        isSuccess: true,
+        isPlaceholderData: true,
+        dataUpdatedAt: 3000
+      };
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([11, 22]);
+    });
+  });
+
+  it('表示スコープが変わったら保持済み人工数 metadata を破棄する', async () => {
+    const withLabor = boardPayload({
+      total: 1,
+      rows: [rowWithLabor('same-row-id', 'R1', 100, 11)],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+    });
+    const nextScopeMachineOnly = boardPayload({
+      total: 1,
+      rows: [rowWithLabor('same-row-id', 'R2', 500, 0)],
+      resources: [{ resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }]
+    });
+
+    let includeLabor = true;
+    let resourceCdsOrdered = ['R1'];
+    let boardResult: BoardHookQueryResult = {
+      data: withLabor,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000
+    };
+    installBoardHookMock(() => boardResult);
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          includeLabor
+        },
+        resourceCdsOrdered,
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([11]);
+    });
+
+    act(() => {
+      includeLabor = false;
+      resourceCdsOrdered = ['R2'];
+      boardResult = {
+        data: nextScopeMachineOnly,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        dataUpdatedAt: 2000
+      };
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([0]);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => (r.rowData as { FSIGENCD?: string }).FSIGENCD)).toEqual(['R2']);
+    });
+  });
+
   it('hasMore が続く間は continue を複数回呼び切ってから listIncomplete を下ろす', async () => {
     const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 5,

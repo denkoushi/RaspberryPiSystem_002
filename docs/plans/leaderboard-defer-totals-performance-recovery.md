@@ -691,8 +691,9 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 
 - The 2026-06-23 headless check proved the board height no longer collapsed, but it did not prove that the minute label/Gantt bar used the fresh labor values. Real-device verification found that pressing `+人` could still leave `laborRequiredMinutes=0` on displayed rows, so the 8H bar did not stretch.
 - Root cause: display freshness intentionally ignored `includeLabor`, and the longer previous append-complete board won display selection during labor refresh. That preserved row count and speed, but it also preserved old machine-only labor metadata.
-- Fix: after choosing the display board, overlay fresh finite `machineRequiredMinutes` / `laborRequiredMinutes` from `networkDisplayBoard` by `row.id`. This keeps the long appended board visible while allowing rows already returned by the `includeLabor=true` refresh to update their label and Gantt height.
-- Validation: focused Web tests covering partial/complete labor refresh PASS, Web lint PASS, Web build PASS, and real-device visual check (2026-06-24) OK.
+- Partial fix (`4e3d3926`): after choosing the display board, overlay fresh finite `machineRequiredMinutes` / `laborRequiredMinutes` from `networkDisplayBoard` by `row.id`. This kept the long appended board visible and updated rows already returned by the `includeLabor=true` refresh.
+- Remaining gap: the overlay was only based on the current network board. It did not retain labor metadata for the same display scope, so appended rows outside the current shell/partial continue could still show `laborRequiredMinutes=0` and make `+人` appear broken.
+- Required fix: retain `includeLabor=true` shell/continue/deltaRows labor metadata by `row.id`, overlay retained metadata onto the selected display board, and prevent `includeLabor=false` machine-only rows from clearing retained labor values.
 
 **2026-06-24 Gantt ruler stretch follow-up（deployed, later rejected）**:
 
@@ -732,11 +733,11 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - `apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`
   - `displayFreshnessParamsKey` ignores `includeLabor`
   - `displayAppendOverrideRef` keeps previous long append display
-  - after display selection, fresh labor metadata is overlaid from the network board by `row.id`
+  - after display selection, retained/fresh labor metadata is overlaid by `row.id`
   - `isBoardDataSyncStatusVisible` separates UI banner visibility from internal `isBoardDataSyncing`
   - continuation-only background sync after shell rows are displayed is silent in the global banner
 - `apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardLaborMetadata.ts`
-  - preserves the selected display board shape/row count while refreshing `machineRequiredMinutes` and `laborRequiredMinutes`
+  - preserves the selected display board shape/row count while refreshing `machineRequiredMinutes` and `laborRequiredMinutes`; retained metadata is preferred over machine-only `includeLabor=false` zeros
 - `apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendOverrideScopePolicy.ts`
   - `pickLeaderboardAppendOverrideForDisplay()` chooses the longer previous/fresh append during labor refresh
 - `apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardShellFreshnessPolicy.ts`
@@ -771,7 +772,7 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - Do not remove the `includeLabor=true` refetch on `+人`; it is required for real labor minutes.
 - Do not use raw `paramsKey` for display fallback freshness when only `includeLabor` changes.
 - Do not let a shorter fresh append override a longer previous display append unless it has caught up.
-- Do not keep an old `includeLabor=false` display board without overlaying fresh labor metadata from the current network board.
+- Do not keep an old `includeLabor=false` display board without overlaying retained/fresh labor metadata from the current display scope.
 - Do not show 「一覧を更新中です。」 for `+人` display-only refresh with existing rows; use `isBoardDataSyncStatusVisible`.
 - Do not make every row card taller just to show `+人` labor additions. Keep row/card height compressed, and move the cumulative 8H/10H capacity boundary/remainder bands inside the existing slot body. Do not stretch the whole ruler/scroll height from total slot minutes.
 
