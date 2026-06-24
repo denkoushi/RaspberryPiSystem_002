@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 134204,
-    "totalBytes": 10275632,
+    "totalLines": 134219,
+    "totalBytes": 10272546,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5214,
+    "localLinkCount": 5206,
     "brokenLocalLinkCount": 117,
     "documentsOver1000Lines": 26,
     "documentsOver3000Lines": 6,
@@ -6049,7 +6049,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1829,
-      "byteSize": 638725,
+      "byteSize": 634807,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6362,16 +6362,6 @@
         },
         {
           "href": "./decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md",
-          "targetPath": "docs/decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md",
-          "exists": true
-        },
-        {
-          "href": "./decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md#phase-2-改訂120s-同期-cadence-安定化2026-05-20",
-          "targetPath": "docs/decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md",
-          "exists": true
-        },
-        {
-          "href": "./decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md#操作即表示との両立2026-05-20--featkiosk-leaderboard-mutation-instant-display",
           "targetPath": "docs/decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md",
           "exists": true
         },
@@ -9631,42 +9621,12 @@
           "exists": true
         },
         {
-          "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#操作即表示--120秒キャッシュ両立2026-05-20--featkiosk-leaderboard-mutation-instant-display",
-          "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-1-indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1",
-          "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20",
-          "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock",
-          "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "exists": true
-        },
-        {
           "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#第1段階-pagesize-初回10--追補40--continue-装飾分離2026-05-19--featleaderboard-board-initial-10-continue-40",
           "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
           "exists": true
         },
         {
           "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial",
-          "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#製番-or-クライアントキャッシュフィルタ2026-05-20",
-          "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#資源cdフッタチップ端末キャッシュ永続化2026-05-20--fixkiosk-leaderboard-footer-chips-terminal-cache",
           "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
           "exists": true
         },
@@ -10756,10 +10716,6 @@
           "length": 1109
         },
         {
-          "line": 267,
-          "length": 1012
-        },
-        {
           "line": 276,
           "length": 1057
         },
@@ -11090,7 +11046,7 @@
     {
       "path": "docs/_meta/document-migration-ledger.md",
       "lineCount": 83,
-      "byteSize": 8479,
+      "byteSize": 8643,
       "hasFrontmatter": true,
       "title": "Document Migration Ledger",
       "status": "active",
@@ -13060,7 +13016,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 10,
+      "inboundCount": 8,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -22862,7 +22818,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 87,
+      "inboundCount": 81,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29822,8 +29778,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 212,
-      "byteSize": 8476,
+      "lineCount": 227,
+      "byteSize": 9144,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
