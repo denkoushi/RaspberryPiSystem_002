@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 134190,
-    "totalBytes": 10277586,
+    "totalLines": 134204,
+    "totalBytes": 10275632,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5216,
+    "localLinkCount": 5214,
     "brokenLocalLinkCount": 117,
     "documentsOver1000Lines": 26,
     "documentsOver3000Lines": 6,
@@ -6049,7 +6049,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1829,
-      "byteSize": 641425,
+      "byteSize": 638725,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -9621,22 +9621,12 @@
           "exists": true
         },
         {
-          "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み",
-          "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "exists": true
-        },
-        {
           "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#continue-時-count-再利用第1弾--api-のみ--出力不変",
           "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
           "exists": true
         },
         {
           "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification-2026-05-19--featleaderboard-continue-delta-safe",
-          "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み",
           "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
           "exists": true
         },
@@ -10722,10 +10712,6 @@
           "length": 1057
         },
         {
-          "line": 192,
-          "length": 1080
-        },
-        {
           "line": 196,
           "length": 1157
         },
@@ -11104,7 +11090,7 @@
     {
       "path": "docs/_meta/document-migration-ledger.md",
       "lineCount": 83,
-      "byteSize": 8384,
+      "byteSize": 8479,
       "hasFrontmatter": true,
       "title": "Document Migration Ledger",
       "status": "active",
@@ -22876,7 +22862,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 89,
+      "inboundCount": 87,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29836,8 +29822,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 198,
-      "byteSize": 7825,
+      "lineCount": 212,
+      "byteSize": 8476,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
