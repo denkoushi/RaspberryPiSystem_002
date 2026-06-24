@@ -308,6 +308,42 @@ describe('LeaderOrderResourceCard labor toggle', () => {
       'true'
     );
   });
+
+  it('stretches the gantt ruler when combined labor minutes increase required minutes', () => {
+    const laborRow = {
+      id: 'r-labor-gantt',
+      fkojun: '10',
+      machineRequiredMinutes: 400,
+      laborRequiredMinutes: 175
+    };
+    const { rerender } = render(
+      <LeaderOrderResourceCard
+        {...cardProps}
+        ganttEnabled
+        capacityMinutes={GANTT_EIGHT_HOURS_MINUTES}
+        rows={[mkLeaderBoardRow({ ...laborRow, requiredMinutes: 400 })]}
+        laborEnabled={false}
+        onToggleLabor={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('400分')).toBeInTheDocument();
+    expect(screen.getByTestId('leader-board-gantt-ruler-gutter')).toHaveStyle({ height: '480px' });
+
+    rerender(
+      <LeaderOrderResourceCard
+        {...cardProps}
+        ganttEnabled
+        capacityMinutes={GANTT_EIGHT_HOURS_MINUTES}
+        rows={[mkLeaderBoardRow({ ...laborRow, requiredMinutes: 575 })]}
+        laborEnabled
+        onToggleLabor={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('575分')).toBeInTheDocument();
+    expect(screen.getByTestId('leader-board-gantt-ruler-gutter')).toHaveStyle({ height: '575px' });
+  });
 });
 
 describe('LeaderBoardGrid gantt', () => {

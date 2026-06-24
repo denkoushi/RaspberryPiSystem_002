@@ -31,7 +31,7 @@ related_docs:
   - docs/decisions/ADR-20260211-production-schedule-expression-indexes.md
   - docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md
   - docs/guides/deployment.md
-validation: focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK
+validation: focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK · 2026-06-24 Gantt ruler stretch focused Web tests/build PASS
 open_items:
   - Latest PR checks after `e98de7ce`: CodeQL, gitleaks, lint-build-unit, and e2e-smoke passed; `api-db-and-infra` and `security-docker` were still pending at handoff time.
   - If the physical browser still appears busy, distinguish three states: initial shell load, 5-minute board refresh, and `+人` labor metadata refresh. Only the first two should show 「一覧を更新中です。」.
@@ -695,6 +695,12 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - Fix: after choosing the display board, overlay fresh finite `machineRequiredMinutes` / `laborRequiredMinutes` from `networkDisplayBoard` by `row.id`. This keeps the long appended board visible while allowing rows already returned by the `includeLabor=true` refresh to update their label and Gantt height.
 - Validation: focused Web tests covering partial/complete labor refresh PASS, Web lint PASS, Web build PASS, and real-device visual check (2026-06-24) OK.
 
+**2026-06-24 Gantt ruler stretch follow-up**:
+
+- After the 8H/10H toggle, real-device use found another visual-only gap: `+人` could update logical `requiredMinutes`, but the Gantt vertical ruler still appeared unchanged on large slots because row height and ruler height shared the same compressed scale.
+- Fix: keep the row/card scale compressed for first-usable performance and compute `rulerHeightPx` from logical capacity bands (`totalRequiredMinutes / capacityMinutes * availableWorkHeightPx`). The card scroll area uses the max of row-list height and `rulerHeightPx`, so the 8H/10H vertical bar can stretch without increasing every row card.
+- Validation: focused Web tests prove `400→575` minutes changes the label and stretches the ruler `480px→575px` while row minimum heights stay fixed; Web build PASS. Deploy/field sign-off pending at time of this note.
+
 **Current intended behavior**:
 
 - Initial page load can show 「読み込み中…」, then fresh shell rows become usable at shell arrival.
@@ -752,6 +758,7 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx` PASS
 - `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardAppendOverrideScopePolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx` PASS for the append-display fix
 - `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardAppendOverrideScopePolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardShellFreshnessPolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/applyLeaderBoardDisplayRequiredMinutes.test.ts` PASS for the 2026-06-24 labor metadata overlay
+- `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/applyLeaderBoardDisplayRequiredMinutes.test.ts src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx src/features/kiosk/leaderOrderBoard/__tests__/leaderBoardGanttDisplay.test.tsx src/features/kiosk/leaderOrderBoard/__tests__/leaderBoardGanttLayout.test.ts` PASS for the 2026-06-24 Gantt ruler stretch fix
 - `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts` PASS for the resource-first winner shell fix
 - `pnpm --filter @raspi-system/api lint` PASS
 - `pnpm --filter @raspi-system/api build` PASS
@@ -767,6 +774,7 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - Do not let a shorter fresh append override a longer previous display append unless it has caught up.
 - Do not keep an old `includeLabor=false` display board without overlaying fresh labor metadata from the current network board.
 - Do not show 「一覧を更新中です。」 for `+人` display-only refresh with existing rows; use `isBoardDataSyncStatusVisible`.
+- Do not make every row card taller just to show `+人` labor additions. Keep row/card height compressed and stretch the 8H/10H ruler height separately.
 
 ## Local Notes JA
 

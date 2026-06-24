@@ -16,6 +16,8 @@ category: knowledge-base
 
 **2026-06-24 追補（`+人` labor display recovery）**: 2026-06-23 の修正で `+人` 押下時の行高 collapse は止まったが、実機では旧 `includeLabor=false` append 完走ボードが表示選択に勝ち、`laborRequiredMinutes=0` のまま残るケースがあった。対策は、表示行数を維持したまま current network board の finite な `machineRequiredMinutes` / `laborRequiredMinutes` を `row.id` で overlay すること。これにより速度改善・長い append 表示維持を保ったまま、minute label と 8H バー伸長が回復した。2026-06-24 実機目視 OK。正本は [kiosk-leaderboard-labor-minutes-toggle](../plans/kiosk-leaderboard-labor-minutes-toggle.md#display-recovery-after-performance-fixes-2026-06-24) と [leaderboard-defer-totals-performance-recovery](../plans/leaderboard-defer-totals-performance-recovery.md#cursor-handoff-web-display-stability-and-refresh-cadence2026-06-23-current)。
 
+**2026-06-24 追補（Gantt ruler stretch）**: 8H/10H toggle 追加後、`+人` で `requiredMinutes` が増えても大きい slot の 8H/10H 縦バーが変わらないケースがあった。原因は行カード高さとルーラー高さが同じ圧縮スケールを共有していたこと。修正は Web Gantt layout で row/card scale と ruler scale を分離し、行カードは現行の圧縮/最小高で速度を保ち、`rulerHeightPx` だけを `totalRequiredMinutes / capacityMinutes` に追従させる。local focused tests / Web build PASS、deploy・現場目視は追記待ち。
+
 **2026-06-23 追補（continuation-only banner suppression · local branch, pending deploy）**: Local Playwright で Pi5 production API の同 6-slot を開いたところ、`board-get-settled=5.813s` / `first-display-board-rows=5.814s` / `schedule-usable=5.814s` で、shell 到着後に Web gate は append/decorations を待っていないことを再確認した。残っていた体感上の誤誘導は、background append 中に `boardDataSyncing=true` のため 「一覧を更新中です。」 が表示される点。修正は `isBoardDataSyncing` を内部状態として維持しつつ、shell 行が表示済みで `boardQuery` が loading/fetching ではなく continuation-only の場合は `isBoardDataSyncStatusVisible=false` にする。
 
 - **運用・合意上の制約（イニシアチブ共通）**: **表示内容を削って速く見せる**ことは禁止。**データ意味・並びの定義・装飾の契約**は従来と同値。改善は **HTTP 形状・クエリ評価・クライアントの取得パターン**に限定する。
@@ -300,7 +302,7 @@ category: knowledge-base
 
 - **まだ遅い／反映されない**: Pi5 の **`api` コンテナ**が当該コミット以降か（detach ログの **`Git: changed`**・リモート `git log -1`）。**Mac 側 `--follow` が途中で途切れても**、**`PLAY RECAP` / `summary.json` / `*.exit`** を正本とする（[deployment.md](../guides/deployment.md) の detach 運用どおり）。
 - **キオスク側の挙動（COUNT 並列化のみ）**: 当該リリースは **API のみ**。ブラウザは **強制リロード**（[verification-checklist.md](../guides/verification-checklist.md) §6.6.4）。
-- **段階取得（API+Web）**: 初回のみ **複数 GET/POST**。挙動が古いときは Pi5 **`api` と `web` の両方**を確認し、同上 **強制リロード**。`bf9dea17` 以降は旧 bundle が `includeLabor=false` を送らなくても API default false で first usable 速度は救済する。`+人` ON の正確な人工数表示は bundle **`index-CtusrliU.js`** 以降が必要。`e98de7ce` 以降、通常の board refresh は 5 分間隔で、`+人` の labor refresh は内部 fetch だけ行い既存行を保ったまま global sync banner を出さない。2026-06-24 recovery bundle 以降は、既存行を保ったまま fresh labor metadata を overlay するため、minute label と 8H バーも更新される。**装飾欠落の切り分け**は上記 **hydrate raw SQL** 知見と Network 順序を参照。
+- **段階取得（API+Web）**: 初回のみ **複数 GET/POST**。挙動が古いときは Pi5 **`api` と `web` の両方**を確認し、同上 **強制リロード**。`bf9dea17` 以降は旧 bundle が `includeLabor=false` を送らなくても API default false で first usable 速度は救済する。`+人` ON の正確な人工数表示は bundle **`index-CtusrliU.js`** 以降が必要。`e98de7ce` 以降、通常の board refresh は 5 分間隔で、`+人` の labor refresh は内部 fetch だけ行い既存行を保ったまま global sync banner を出さない。2026-06-24 recovery bundle 以降は、既存行を保ったまま fresh labor metadata を overlay するため、minute label と 8H バーも更新される。Gantt ruler stretch bundle 以降は、行カード高さは重くせず 8H/10H 縦バーだけ logical required minutes で伸びる。**装飾欠落の切り分け**は上記 **hydrate raw SQL** 知見と Network 順序を参照。
 
 ## 段階取得（leaderboard-shell / leaderboard-total / leaderboard-decorations）
 

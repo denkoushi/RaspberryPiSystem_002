@@ -1,6 +1,6 @@
 ---
 id: kiosk-leaderboard-gantt-mode
-status: deployed_all_kiosks_operator_pi5_ok_plus_8h_10h_toggle_local
+status: deployed_all_kiosks_operator_pi5_ok_plus_8h_10h_toggle_local_plus_ruler_stretch_pending_deploy
 scope: kiosk leader order board gantt display
 date: 2026-06-17
 source_of_truth: true
@@ -17,10 +17,10 @@ related_docs:
   - docs/guides/verification-checklist.md
   - docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md
   - docs/knowledge-base/ci-cd.md
-validation: web vitest leaderBoardGantt 42 passed + lint + tsc + build + CI 27662630259 success + Pi5/Pi4 deploy + verify-phase12-real 43/0/0 (2026-06-17) + 2026-06-24 focused 8H/10H toggle tests/lint/build PASS
+validation: web vitest leaderBoardGantt 42 passed + lint + tsc + build + CI 27662630259 success + Pi5/Pi4 deploy + verify-phase12-real 43/0/0 (2026-06-17) + 2026-06-24 focused 8H/10H toggle/ruler-stretch tests + web build PASS
 open_items:
   - operator visual sign-off for remainder-band display on all Pi4 kiosks (Pi5 OK 2026-06-17)
-  - 8H/10H toggle production deploy and real-device visual sign-off
+  - 8H/10H toggle + Gantt ruler stretch production deploy and real-device visual sign-off
 ---
 
 # Plan: Kiosk Leader Order Board Gantt Display
@@ -29,13 +29,13 @@ open_items:
 
 **What shipped (2026-06-17)**: branch `fix/kiosk-leaderboard-capacity-bands` · commits `336d7baa` (remainder bands + capacity resolver) · `66fd10c6` (Caddy `v2.11.4` CI fix). **Production HEAD `66fd10c6`** on Pi5 + Pi4×4. Pi5 operator sign-off **OK**; Pi4 remainder-band visual check still open.
 
-**Read next if touching this area**: Layout contract § below · `leaderBoardGanttCapacity.ts` (slot capacity, default 480) · `leaderBoardGanttLayout.ts` (remainder band boundaries).
+**Read next if touching this area**: Layout contract § below · `leaderBoardGanttCapacity.ts` (slot capacity, default 480) · `leaderBoardGanttLayout.ts` (row scale vs ruler scale, remainder band boundaries).
 
 ## Goal
 
-Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. When ON, each resource slot uses a **variable capacity ruler** (default 8H = 480min; operator can switch each slot to 10H = 600min) scaled to the slot body height, row height scales with `FSIGENSHOYORYO` (`requiredMinutes`), and **4px visible/transparent vertical bands** appear in the left gutter.
+Add a device-local **ガントON/OFF** toggle to the kiosk leader order board. When ON, each resource slot uses a **variable capacity ruler** (default 8H = 480min; operator can switch each slot to 10H = 600min), row/card height stays on the compressed performance scale, and **4px visible/transparent vertical bands** appear in the left gutter.
 
-2026-06-24 update: each resource slot also has a device-local **8H/10H** toggle next to `+人`. It switches the slot capacity between **480min** and **600min** and passes that value as `capacityMinutes` into the existing Gantt layout.
+2026-06-24 update: each resource slot also has a device-local **8H/10H** toggle next to `+人`. It switches the slot capacity between **480min** and **600min** and passes that value as `capacityMinutes` into the existing Gantt layout. A same-day ruler-stretch fix separates row height from ruler height so `+人` labor additions stretch the vertical ruler without making every card row heavier.
 
 ## Branch, commits, CI
 
@@ -79,6 +79,13 @@ Workloads exceeding a capacity multiple (e.g. 600min at 8H) extended the last vi
 - API: none. Existing row `requiredMinutes` and Gantt layout do the scaling.
 - Coexists with `+人`: `+人` changes `requiredMinutes`; `8H/10H` changes the ruler/capacity scale.
 
+## Ruler stretch with `+人` labor minutes (2026-06-24)
+
+- Row/card scale remains compressed for performance: `pxPerMinute = availableWorkHeightPx / max(totalRequiredMinutes, capacityMinutes)`.
+- Ruler scale is capacity-anchored: `rulerHeightPx = max(availableWorkHeightPx, totalRequiredMinutes / capacityMinutes * availableWorkHeightPx)`.
+- `LeaderOrderResourceCard` scroll height is the max of virtual row-list height, `containerMinHeightPx`, and `rulerHeightPx`.
+- Result: `+人` can increase the 8H/10H vertical bar while row cards stay at the existing compressed/minimum height. Pathological totals still cap DOM segments with `GANTT_RULER_MAX_BAND_COUNT`.
+
 ### Unchanged
 
 - Row height: `visualMinHeightPx = max(workHeightPx, 96)`.
@@ -87,11 +94,12 @@ Workloads exceeding a capacity multiple (e.g. 600min at 8H) extended the last vi
 
 ## Layout contract (variable capacity ruler + vertical bands)
 
-- Scale per slot: `pxPerMinute = availableWorkHeightPx / max(totalRequiredMinutes, capacityMinutes)`.
+- Row scale per slot: `pxPerMinute = availableWorkHeightPx / max(totalRequiredMinutes, capacityMinutes)`.
+- Ruler height per slot: `rulerHeightPx = max(availableWorkHeightPx, totalRequiredMinutes / capacityMinutes * availableWorkHeightPx)`.
 - `capacityMinutes` from resolver (default **480**; min/max in `leaderBoardGanttConstants.ts`).
 - `availableWorkHeightPx` from `useLeaderBoardGanttBodyHeight` (ResizeObserver); fallback `480px`.
 - `workHeightPx = requiredMinutes * pxPerMinute`; `visualMinHeightPx = max(workHeightPx, 96)`.
-- Remainder band when `totalRequiredMinutes` exceeds last complete capacity multiple.
+- Remainder band when `rulerHeightPx` exceeds the last complete capacity band.
 - **Performance cap**: `GANTT_RULER_MAX_BAND_COUNT = 64`.
 - Footer chips / row padding excluded from time axis; non-time tail absorbed into last band.
 
@@ -124,6 +132,13 @@ Workloads exceeding a capacity multiple (e.g. 600min at 8H) extended the last vi
 |-------|--------|
 | `usePersistedLeaderBoardCapacityMode`, `leaderBoardGanttDisplay`, `leaderBoardGanttCapacity`, related `+人` tests | **69 passed** |
 | Web lint / build | **pass** |
+
+2026-06-24 ruler stretch validation:
+
+| Check | Result |
+|-------|--------|
+| `leaderBoardGanttLayout` / `leaderBoardGanttDisplay`: label `400→575`, ruler `480px→575px`, row min heights fixed | **PASS** |
+| Web build | **pass** |
 
 ### CI
 
@@ -176,7 +191,7 @@ Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh` ·
 ## Open items
 
 1. **Operator visual sign-off** for remainder-band display on **Pi4×4** (Pi5 done).
-2. **8H/10H toggle deploy + real-device sign-off** — verify button placement, persistence, and ruler/bar change on kiosk.
+2. **8H/10H toggle + Gantt ruler stretch deploy + real-device sign-off** — verify button placement, persistence, and `+人` ON/OFF ruler/bar stretch on kiosk.
 
 ## Local Notes JA
 
@@ -184,3 +199,4 @@ Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh` ·
 - スロット別基準時間: **8H** / **10H**（資源カードヘッダー · `+人` の左 · `localStorage` 工場+端末スコープ）
 - 縦バー: `cyan-400/90` と透明 交互（`bandIndex % 2`）
 - 基準時間超過例: 600分 → 8H帯 + 2H帯（480分基準時）
+- `+人` ON: 行カード高さは重くしない。縦バーだけ `requiredMinutes / capacityMinutes` で伸ばす。

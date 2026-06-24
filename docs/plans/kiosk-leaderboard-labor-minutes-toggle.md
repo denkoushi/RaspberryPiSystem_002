@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | id | `plan-kiosk-leaderboard-labor-minutes-toggle` |
-| status | **production_deployed / field_verified** — Pi5 + Pi4×4 · visibility fix **`10cc06b0`** (2026-06-18) · display recovery verified on real device (2026-06-24) · 8H/10H toggle implemented locally |
+| status | **production_deployed / field_verified** — Pi5 + Pi4×4 · visibility fix **`10cc06b0`** (2026-06-18) · display recovery verified on real device (2026-06-24) · 8H/10H toggle implemented locally · Gantt ruler stretch fix pending deploy |
 | scope | Kiosk leader order board (`ProductionScheduleLeaderOrderBoardPage`) |
 | date | 2026-06-17 (feature) · 2026-06-18 (visibility fix deploy) · 2026-06-24 (display recovery) |
 | source_of_truth | this document |
@@ -13,6 +13,7 @@
 | commit | **`10cc06b0`** — `fix: derive leaderboard labor minutes from visible machine rows` |
 | latest_recovery | 2026-06-24 working tree — keep appended display rows while overlaying fresh labor metadata by row id |
 | latest_capacity_toggle | 2026-06-24 working tree — per-slot 8H/10H button immediately left of `+人`, persisted locally |
+| latest_gantt_ruler | 2026-06-24 working tree — keep row/card heights compressed, stretch only the 8H/10H ruler by logical `requiredMinutes` |
 | related_code | `apps/api/src/services/production-schedule/leaderboard/leaderboard-labor-minutes*.ts`, `apps/web/src/features/kiosk/leaderOrderBoard/*` |
 | related_docs | [kiosk-leaderboard-gantt-mode.md](./kiosk-leaderboard-gantt-mode.md), [deployment.md](../guides/deployment.md), [verification-checklist.md](../guides/verification-checklist.md) |
 
@@ -20,7 +21,7 @@ Rank calculation, auto-rank, and load-balancing are **out of scope**. Signage JP
 
 ## Goal
 
-Each resource slot has a **`+人`** toggle (default OFF). When ON, display minutes = `machineRequiredMinutes + laborRequiredMinutes`. Gantt bar height and row minute label follow `requiredMinutes`.
+Each resource slot has a **`+人`** toggle (default OFF). When ON, display minutes = `machineRequiredMinutes + laborRequiredMinutes`. The row minute label follows `requiredMinutes`; the Gantt **8H/10H ruler height** follows logical `requiredMinutes` while row/card heights stay on the compressed performance scale.
 
 2026-06-24 addition: each resource slot has an **8H/10H** toggle immediately left of `+人`. It is persisted per terminal and slot, and passes **480** or **600** minutes to the Gantt `capacityMinutes`.
 
@@ -134,6 +135,19 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 - Focused Web tests for persisted capacity mode, card button placement, and Grid → Gantt capacity propagation — PASS.
 - Web lint/build — PASS.
 
+### Gantt ruler stretch recovery after 8H/10H toggle (2026-06-24)
+
+**Symptom**: after 8H/10H capacity toggle landed, pressing `+人` updated the slot's logical total, but large slots could keep the same visible 8H/10H vertical bar height. The row list stayed stable, which was good for performance, but the operator could not see the labor-added stretch.
+
+**Root cause**: `computeGanttSlotLayout` used the same compressed scale for row heights and ruler height. When `totalRequiredMinutes` exceeded capacity, `pxPerMinute` decreased so the larger total still fit the existing scroll/card height. With many rows pinned to the 96px minimum, `containerMinHeightPx` could stay unchanged.
+
+**Fix**: split the layout contract. Row/card heights keep the compressed scale (`pxPerMinute = availableWorkHeightPx / max(totalRequiredMinutes, capacityMinutes)`), but `rulerHeightPx` is computed from logical capacity bands: `totalRequiredMinutes / capacityMinutes * availableWorkHeightPx`. `LeaderOrderResourceCard` uses the max of row-list height and `rulerHeightPx` for the scroll area. Segment count remains capped by `GANTT_RULER_MAX_BAND_COUNT`.
+
+**Validation**:
+
+- Focused Web tests: `leaderBoardGanttLayout` and `leaderBoardGanttDisplay` prove `400 → 575` minutes changes the label and stretches the ruler `480px → 575px` while row minimum heights stay fixed — PASS.
+- Web build — PASS.
+
 ## Operational Notes (not KB)
 
 - Pi5 api/web rebuild may hit transient health-wait retries after memory spike; see [deployment.md §deploy-api-build-cache-health-wait](../guides/deployment.md#deploy-api-build-cache-health-wait-2026-06-17).
@@ -143,10 +157,11 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 
 - [x] **Field sign-off (real device, 2026-06-24)**: `+人` toggle changes minute label and Gantt height after the display recovery. API verified on Pi5; UI behavior verified by user visual check.
 - [ ] **Performance monitor**: Labor lookup `EXPLAIN ANALYZE` on production-scale data; add index only if latency regresses.
+- [ ] **Deploy + field sign-off for Gantt ruler stretch**: push/deploy the 2026-06-24 ruler stretch fix and verify `+人` ON/OFF plus 8H/10H changes on the real kiosk.
 
 ## Next Actions (for resuming AI)
 
-1. When the 2026-06-24 recovery and 8H/10H toggle are committed/deployed, replace `latest_recovery` / `latest_capacity_toggle` with the final commit hash.
+1. When the 2026-06-24 recovery, 8H/10H toggle, and ruler stretch fix are committed/deployed, replace `latest_recovery` / `latest_capacity_toggle` / `latest_gantt_ruler` with the final commit hash.
 2. If UI stale on Pi4: force reload per verification-checklist §6.6.4 (Pi4 does not `git pull` SPA).
 3. Keep monitoring first usable speed; do not remove the labor metadata overlay to solve display staleness.
 
@@ -156,4 +171,5 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 - **2026-06-18 修正**: 実データで `FSIGENCD=10` 行に `fkmail` が無いため lookup が全落ちしていた。表示済み通常行キーに従属する合算へ変更（`10cc06b0`）。
 - **2026-06-24 修正**: 速度改善で append 済み行維持は効いていたが、旧 `includeLabor=false` 行の `laborRequiredMinutes=0` も維持されていた。表示行数は維持し、fresh network board の人工数メタデータだけを `row.id` で重ねる方式に変更。実機目視 OK。
 - **2026-06-24 追加**: `+人` の左に 8H/10H ボタンを追加。slotIndex 順に端末ローカル保存し、Gantt `capacityMinutes` へ 480/600 分を渡す。
+- **2026-06-24 追加修正**: Gantt の行カード高さと 8H/10H 縦バー高さを分離。行カードは現行の圧縮/最小高で速度を維持し、縦バーだけ `requiredMinutes / capacityMinutes` に追従して伸ばす。
 - Codex レビュー反映: TS re-export fix, lookup 可視性合わせ→**表示行由来キーへ修正**, FSIGENCD=10 除外, cache v3/fingerprint, service tests, import/order, fallback 安定化

@@ -32,16 +32,19 @@ export type GanttRulerSegment = {
 };
 
 export type LeaderBoardGanttSlotLayout = {
+  /** 行カード高さ用の可変スケール。ルーラー高さ用スケールとは分離する。 */
   pxPerMinute: number;
   capacityMinutes: number;
   rowLayouts: LeaderBoardGanttRowLayout[];
   rulerSegments: GanttRulerSegment[];
+  /** 行カード描画・仮想リスト見積用の最小高さ */
   containerMinHeightPx: number;
   totalEstimateHeightPx: number;
-  /** 第1基準時間帯の終端 Y（px） */
+  /** ルーラー上の第1基準時間帯の終端 Y（px） */
   capacityBoundaryEndY: number;
   /** @deprecated capacityBoundaryEndY を参照 */
   eightHourBoundaryEndY: number;
+  /** 基準時間ルーラーの論理高さ。行カード高さとは一致しないことがある。 */
   rulerHeightPx: number;
   totalRequiredMinutes: number;
 };
@@ -75,14 +78,6 @@ function computeRowLayouts(params: {
   });
 }
 
-function sumWorkHeightPx(rowLayouts: readonly LeaderBoardGanttRowLayout[]): number {
-  let sum = 0;
-  for (const layout of rowLayouts) {
-    sum += layout.workHeightPx;
-  }
-  return sum;
-}
-
 function sumEstimateHeightPx(rowLayouts: readonly LeaderBoardGanttRowLayout[]): number {
   let sum = 0;
   for (const layout of rowLayouts) {
@@ -114,64 +109,28 @@ export function mapGanttTimeYToVisualY(
 }
 
 type CapacityBoundaryParams = {
-  rowLayouts: readonly LeaderBoardGanttRowLayout[];
   availableWorkHeightPx: number;
   rulerHeightPx: number;
-  pxPerMinute: number;
-  totalRequiredMinutes: number;
-  totalEstimateHeightPx: number;
-  capacityMinutes: number;
 };
 
 function computeCapacityBoundaryEndY(params: CapacityBoundaryParams): number {
-  const {
-    rowLayouts,
-    availableWorkHeightPx,
-    rulerHeightPx,
-    pxPerMinute,
-    totalRequiredMinutes,
-    totalEstimateHeightPx,
-    capacityMinutes
-  } = params;
-
-  const canShowUnusedGap = totalEstimateHeightPx <= availableWorkHeightPx;
-  if (totalRequiredMinutes <= capacityMinutes && canShowUnusedGap) {
-    return availableWorkHeightPx;
-  }
-
-  return clamp(
-    mapGanttTimeYToVisualY(rowLayouts, capacityMinutes * pxPerMinute),
-    0,
-    rulerHeightPx
-  );
+  return clamp(params.availableWorkHeightPx, 0, params.rulerHeightPx);
 }
 
 /**
  * 基準時間ごとの完全境界 Y と、端数がある場合の論理作業終端 Y を返す。
  */
 function computeCapacityBoundaryEndYs(params: CapacityBoundaryParams): number[] {
-  const tickSpanTimePx = params.capacityMinutes * params.pxPerMinute;
-  if (tickSpanTimePx <= 0) {
+  const tickSpanPx = params.availableWorkHeightPx;
+  if (tickSpanPx <= 0) {
     return [params.rulerHeightPx];
   }
 
-  const canShowUnusedGap = params.totalEstimateHeightPx <= params.availableWorkHeightPx;
-  if (params.totalRequiredMinutes <= params.capacityMinutes && canShowUnusedGap) {
-    return [params.availableWorkHeightPx];
-  }
-
-  const totalWorkPx = sumWorkHeightPx(params.rowLayouts);
   const boundaryEndYs: number[] = [];
 
   for (let bandIndex = 1; bandIndex <= GANTT_RULER_MAX_BAND_COUNT; bandIndex += 1) {
-    const timeY = tickSpanTimePx * bandIndex;
-    if (timeY > totalWorkPx) break;
-
-    const visualY = clamp(
-      mapGanttTimeYToVisualY(params.rowLayouts, timeY),
-      0,
-      params.rulerHeightPx
-    );
+    const visualY = tickSpanPx * bandIndex;
+    if (visualY > params.rulerHeightPx) break;
 
     const lastEndY = boundaryEndYs[boundaryEndYs.length - 1];
     if (lastEndY !== undefined) {
@@ -183,16 +142,11 @@ function computeCapacityBoundaryEndYs(params: CapacityBoundaryParams): number[] 
     if (visualY >= params.rulerHeightPx) break;
   }
 
-  const logicalWorkEndY = clamp(
-    mapGanttTimeYToVisualY(params.rowLayouts, totalWorkPx),
-    0,
-    params.rulerHeightPx
-  );
   const lastBoundaryY = boundaryEndYs[boundaryEndYs.length - 1];
   const hasRemainderWork =
-    lastBoundaryY === undefined || logicalWorkEndY - lastBoundaryY >= 1;
-  if (hasRemainderWork && logicalWorkEndY > (lastBoundaryY ?? 0)) {
-    boundaryEndYs.push(logicalWorkEndY);
+    lastBoundaryY === undefined || params.rulerHeightPx - lastBoundaryY >= 1;
+  if (hasRemainderWork && params.rulerHeightPx > (lastBoundaryY ?? 0)) {
+    boundaryEndYs.push(params.rulerHeightPx);
   }
 
   return boundaryEndYs;
@@ -274,6 +228,20 @@ function computeGanttRulerSegments(params: CapacityBoundaryParams): GanttRulerSe
   return capRulerSegmentCount(merged, GANTT_RULER_MAX_BAND_COUNT);
 }
 
+function computeRulerHeightPx(params: {
+  availableWorkHeightPx: number;
+  totalRequiredMinutes: number;
+  capacityMinutes: number;
+}): number {
+  if (params.totalRequiredMinutes <= 0) return params.availableWorkHeightPx;
+  const logicalRulerHeightPx =
+    (params.totalRequiredMinutes / params.capacityMinutes) * params.availableWorkHeightPx;
+  if (!Number.isFinite(logicalRulerHeightPx) || logicalRulerHeightPx <= 0) {
+    return params.availableWorkHeightPx;
+  }
+  return Math.max(params.availableWorkHeightPx, logicalRulerHeightPx);
+}
+
 /**
  * 仮想化後の実描画高さに合わせ、最終セグメントを延長してガター末尾まで連続させる。
  * 作業時間帯は変更せず、非時間 tail（padding / footer 差分）のみ延長する。
@@ -289,7 +257,7 @@ export function normalizeRulerSegmentsForRenderHeight(
 
 /**
  * 資源スロット単位の可変基準時間ルーラーレイアウト。
- * 時間軸（workHeightPx）と表示最小高さ（visualMinHeightPx）を分離する。
+ * 行カード高さ用の圧縮スケールと、基準時間ルーラー用の論理スケールを分離する。
  */
 export function computeGanttSlotLayout(params: {
   rows: readonly GanttSlotRowInput[];
@@ -314,16 +282,15 @@ export function computeGanttSlotLayout(params: {
   const totalEstimateHeightPx = sumEstimateHeightPx(rowLayouts);
   const containerMinHeightPx = Math.max(totalEstimateHeightPx, availableWorkHeightPx);
 
-  const rulerHeightPx = containerMinHeightPx;
+  const rulerHeightPx = computeRulerHeightPx({
+    availableWorkHeightPx,
+    totalRequiredMinutes,
+    capacityMinutes
+  });
 
   const boundaryParams: CapacityBoundaryParams = {
-    rowLayouts,
     availableWorkHeightPx,
-    rulerHeightPx,
-    pxPerMinute,
-    totalRequiredMinutes,
-    totalEstimateHeightPx,
-    capacityMinutes
+    rulerHeightPx
   };
 
   const capacityBoundaryEndY = computeCapacityBoundaryEndY(boundaryParams);
