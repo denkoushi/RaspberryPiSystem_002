@@ -3,6 +3,8 @@
 - **Status**: accepted
 - **日付**: 2026-05-19
 
+> **2026-06-24 note**: This ADR records the Phase 1 decision at the time. Its `120秒` freshness wording is historical; the current kiosk leaderboard regular refetch/cache freshness is **300秒**. See [KB-392](../knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md) before using these values for new work.
+
 ## Context
 
 キオスク順位ボードは `GET/POST leaderboard-board` + continue 完走まで待つ構造のため、Pi4 再起動・リロード時に「読み込み中…」が長い。API 側最適化（pageSize 80、装飾後取り、COUNT 再利用等）後も **端末側の cold start** が残る。

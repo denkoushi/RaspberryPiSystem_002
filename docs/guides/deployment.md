@@ -12,7 +12,8 @@ update-frequency: medium
 
 ### 補足（2026-06-24 · **キオスク順位ボード +人 / 8H・10H Gantt 縦バー回帰記録** · **Web** · **Pi5 + Pi4×4 反映済**） {#kiosk-leaderboard-labor-gantt-ruler-stretch-2026-06-24}
 
-- **変更概要（正本）**: [Plan: `+人`](../plans/kiosk-leaderboard-labor-minutes-toggle.md#gantt-ruler-regression-after-8h10h-toggle-2026-06-24) · [Gantt plan](../plans/kiosk-leaderboard-gantt-mode.md#ruler-behavior-with-人-labor-minutes-2026-06-24-correction) · [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md) · PR **#464** · commit **`f978c15e`** (`fix: stretch leaderboard gantt ruler for labor minutes`)
+- **現仕様の読み方**: 本節は **`f978c15e` の却下済み回帰記録**。現在の順位ボード仕様値・参照順は [KB-392](../knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md) を正本とする。
+- **変更概要（履歴）**: [Plan: `+人`](../plans/kiosk-leaderboard-labor-minutes-toggle.md#gantt-ruler-regression-after-8h10h-toggle-2026-06-24) · [Gantt plan](../plans/kiosk-leaderboard-gantt-mode.md#ruler-behavior-with-人-labor-minutes-2026-06-24-correction) · [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md) · PR **#464** · commit **`f978c15e`** (`fix: stretch leaderboard gantt ruler for labor minutes`)
   - `+人` ON 時の表示分数は `machineRequiredMinutes + laborRequiredMinutes`。既存の append 済み行は維持し、`includeLabor=true` shell/continue/deltaRows の人工数メタデータを同一表示スコープ内で `row.id` 保持して重ねる。`includeLabor=false` の `0` で保持済み人工数を消さない。
   - 8H/10H ボタンは各資源カードヘッダーで `+人` の左。slotIndex 順・端末ローカル保存で、Gantt `capacityMinutes` に **480 / 600** 分を渡す。
   - **訂正**: `f978c15e` は 8H/10H 縦バーを `totalRequiredMinutes / capacityMinutes` に追従して伸ばしたが、これは本来の「行順の累積工数が 480/600 分へ到達する位置をカード内に表示する」契約と違う。修正では累積境界写像へ戻す。

@@ -823,6 +823,8 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **6.6.31 キオスク リーダー順位ボード（`+人` 人工数表示回復・8H/10H 切替・表示速度維持）** {#kiosk-leaderboard-labor-toggle-display-recovery-2026-06-24}
 
+**現仕様の読み方**: 最終受理状態は `5171e44e` 系の復旧後。`f978c15e` は却下済み Gantt 回帰の履歴であり、現在値と履歴語の整理は [KB-392](../knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md) を参照。
+
 **確認ポイント**（[Plan: `+人`](../plans/kiosk-leaderboard-labor-minutes-toggle.md#display-recovery-after-performance-fixes-2026-06-24)·[Performance recovery](../plans/leaderboard-defer-totals-performance-recovery.md#cursor-handoff-web-display-stability-and-refresh-cadence2026-06-23-current)·[KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)）:
 
 - [ ] **強制リロード**: 反映直後はキオスクを強制リロード（§6.6.4）。旧 SPA は `+人` 押下時に行数は維持しても人工数メタデータが古いまま残る可能性がある。
@@ -836,8 +838,8 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 - [ ] **行維持**: `+人` 押下直後、append 済みの長い表示が短い shell/partial append へ collapse しないこと。
 - [ ] **metadata overlay/retention**: fresh labor 取得が部分完了の間、返ってきた行から順に人工数が反映され、未取得行は旧表示を維持すること。`includeLabor=true` で一度返った人工数 metadata は同一表示スコープ内で保持され、`includeLabor=false` の machine-only `0` で消えないこと。continue 完了後は全対象行が fresh な人工数になること。
 
-**検証日時**: 2026-06-24（commit **`f978c15e`** · CI **`28073394781` / `28073393362`** success · deploy run **`20260624-125213-16642`** · Phase12 **PASS 43 / WARN 0 / FAIL 0**）
-**検証結果**: `f978c15e` の deploy/CI/Phase12 は成功したが、`+人` ON で縦バー全体を `480px→575px` のように伸ばす期待は誤った検証だった。再検証では「累積工数が 480/600 分へ到達する位置」と「色付き/透明の容量帯・端数帯」がカード内に正しく出ることを確認する。
+**検証日時**: 2026-06-24（最終受理 commit **`5171e44e`** · all-host deploy **`20260624-175322-20365`** · Phase12 **PASS 43 / WARN 0 / FAIL 0**）
+**検証結果**: `a882ac81` で累積境界 Gantt へ復旧、`cca420ac` で人工数 metadata overlay を保持、`5171e44e` で同期表示 layout を安定化。`f978c15e` の deploy/CI/Phase12 成功は却下済み履歴として扱う。
 
 **6.6.30 キオスク リーダー順位ボード（資源カード行 — 強調レイアウト）** {#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05}
 
@@ -865,7 +867,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-06-01 本番反映後 **約 63s**）。
 - [ ] **手動 ✓ 直後**: 順位ボードで行 **完了** → **行本体のグレーアウト**と **行下フッタの資源CD工程チップ**が **同時に完了表示**（チップだけ未完が残らない）。
 - [ ] **Network（任意）**: 完了操作後 **`leaderboard-decorations` POST** が走ること。同一 **partKey**（製番×品番×部品）の複数表示行がある場合、**代表 row 1 件/partKey** 程度に抑えられていること（全行一括 POST しない）。
-- [ ] **他工程完了の追従**: 同一 part の **別工程**を別端末等で完了 → **120s 以内**（ポーリング / shell 再取得後）にフッタチップが整合（[KB-374 Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock) SLA と併用）。
+- [ ] **他工程完了の追従**: 同一 part の **別工程**を別端末等で完了 → 通常 board refetch / shell 再取得後にフッタチップが整合すること。現行 freshness は **300秒**（[KB-392](../knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md)）；[KB-374 Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock) の **120s** は当時の履歴値。
 - [ ] **強制リロード**: 反映直後は **キオスク強制リロード**（§6.6.4）。Pi5 **`web`** が **`fe31aa99` 以降**（または `main` マージ後 HEAD）であること。
 
 **トラブルシュート**: チップだけ未完 → Pi5 ref / 強制リロード / 旧 bundle（装飾後取りのみ）。POST が行数分 → 代表行/partKey 未適用。

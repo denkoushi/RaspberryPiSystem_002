@@ -2925,6 +2925,8 @@ category: knowledge-base
 
 ### Leader order board: 資源CDカード単位・段階取得（製番展開の条件付きオフ・2026-05-07） {#leader-order-board-resource-card-phased-scope-2026-05-07}
 
+> **Current spec note (2026-06-24)**: This is historical. After [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md), the multi-slot kiosk board's main path is aggregate `leaderboard-board`; see [KB-392](./KB-392-kiosk-leaderboard-spec-source-of-truth.md).
+
 - **目的**: **複数資源カード**を並べる順位ボードで、**各資源列**が **他資源の手動行に引きずられない**よう、段階取得の **選定プールを資源 CD 単位**に閉じる（**API+Web**）。
 - **仕様（要約）**:
   - **API**: `resourceCds` が **1 要素**のときのみ **同一製番展開（`expansionWhere`）を無効化**。**複数資源を 1 リクエストに載せる**従来の一括経路では **展開あり**（[KB-297 §取得整合](#leader-order-board-leaderboard-fetch-manual-priority-2026-05-05) の精神を **複数リソース時に維持**）。
