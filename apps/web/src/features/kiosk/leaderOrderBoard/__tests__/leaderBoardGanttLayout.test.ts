@@ -83,7 +83,7 @@ describe('leaderBoardGanttLayout', () => {
     assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
   });
 
-  it('keeps row scale compressed while the ruler stays capacity anchored', () => {
+  it('maps 8H boundary by cumulative work-time ratio when total exceeds 8H', () => {
     const slot = computeGanttSlotLayout({
       rows: [{ requiredMinutes: 480 }, { requiredMinutes: 480 }],
       availableWorkHeightPx: AVAILABLE_HEIGHT
@@ -91,8 +91,8 @@ describe('leaderBoardGanttLayout', () => {
 
     expect(slot.totalRequiredMinutes).toBe(960);
     expect(slot.pxPerMinute).toBeCloseTo(AVAILABLE_HEIGHT / 960, 5);
-    expect(slot.eightHourBoundaryEndY).toBe(AVAILABLE_HEIGHT);
-    expect(slot.rulerHeightPx).toBe(960);
+    expect(slot.eightHourBoundaryEndY).toBeLessThan(AVAILABLE_HEIGHT);
+    expect(slot.eightHourBoundaryEndY).toBeGreaterThan(0);
     expect(slot.rulerSegments).toHaveLength(2);
     expect(slot.rulerSegments[0]).toMatchObject({ topPx: 0, bandIndex: 0 });
     expect(slot.rulerSegments[1]).toMatchObject({ bandIndex: 1 });
@@ -200,7 +200,7 @@ describe('leaderBoardGanttLayout', () => {
     assertContiguousSegments(longBacklog.rulerSegments, longBacklog.rulerHeightPx);
   });
 
-  it('keeps ruler boundary independent from compressed row layout', () => {
+  it('maps 8H boundary through a single row that spans beyond 8H', () => {
     const slot = computeGanttSlotLayout({
       rows: [{ requiredMinutes: 600 }],
       availableWorkHeightPx: AVAILABLE_HEIGHT
@@ -209,16 +209,14 @@ describe('leaderBoardGanttLayout', () => {
 
     expect(boundaryY).toBeGreaterThan(0);
     expect(boundaryY).toBeLessThan(slot.rulerHeightPx);
-    expect(slot.capacityBoundaryEndY).toBe(AVAILABLE_HEIGHT);
-    expect(slot.eightHourBoundaryEndY).toBe(AVAILABLE_HEIGHT);
-    expect(slot.capacityBoundaryEndY).toBeGreaterThan(boundaryY);
-    expect(slot.rulerHeightPx).toBe(600);
+    expect(slot.capacityBoundaryEndY).toBeCloseTo(boundaryY, 5);
+    expect(slot.eightHourBoundaryEndY).toBeCloseTo(boundaryY, 5);
     expect(slot.rulerSegments).toHaveLength(2);
     expect(slot.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1]);
     assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
   });
 
-  it('stretches only the ruler when required minutes increase but row minimum heights stay fixed', () => {
+  it('moves the cumulative capacity boundary when required minutes increase while row minimum heights stay fixed', () => {
     const base = computeGanttSlotLayout({
       rows: Array.from({ length: 10 }, () => ({ requiredMinutes: 30 })),
       availableWorkHeightPx: AVAILABLE_HEIGHT,
@@ -232,7 +230,8 @@ describe('leaderBoardGanttLayout', () => {
 
     expect(withLabor.totalRequiredMinutes).toBeGreaterThan(base.totalRequiredMinutes);
     expect(withLabor.containerMinHeightPx).toBe(base.containerMinHeightPx);
-    expect(withLabor.rulerHeightPx).toBeGreaterThan(base.rulerHeightPx);
+    expect(withLabor.rulerHeightPx).toBe(base.rulerHeightPx);
+    expect(withLabor.capacityBoundaryEndY).toBeLessThan(base.capacityBoundaryEndY);
     expect(withLabor.rowLayouts.map((layout) => layout.visualMinHeightPx)).toEqual(
       base.rowLayouts.map((layout) => layout.visualMinHeightPx)
     );
@@ -310,7 +309,7 @@ describe('leaderBoardGanttLayout', () => {
     assertContiguousSegments(slot.rulerSegments, slot.rulerHeightPx);
   });
 
-  it('uses a taller ruler at 8H than 10H for the same required minutes', () => {
+  it('changes capacity boundary and band count at 8H vs 10H for the same required minutes', () => {
     const rows = [{ requiredMinutes: 1080 }];
     const slot8h = computeGanttSlotLayout({
       rows,
@@ -323,9 +322,10 @@ describe('leaderBoardGanttLayout', () => {
       capacityMinutes: 600
     });
 
-    expect(slot8h.rulerHeightPx).toBeGreaterThan(slot10h.rulerHeightPx);
-    expect(slot8h.capacityBoundaryEndY).toBe(AVAILABLE_HEIGHT);
-    expect(slot10h.capacityBoundaryEndY).toBe(AVAILABLE_HEIGHT);
+    expect(slot8h.rulerHeightPx).toBe(slot10h.rulerHeightPx);
+    expect(slot8h.capacityBoundaryEndY).toBeLessThan(slot10h.capacityBoundaryEndY);
+    expect(slot8h.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1, 2]);
+    expect(slot10h.rulerSegments.map((segment) => segment.bandIndex)).toEqual([0, 1]);
   });
 
   it('keeps last band color when footer chips extend non-time tail', () => {

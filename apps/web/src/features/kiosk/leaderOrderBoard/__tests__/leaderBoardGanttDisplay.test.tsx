@@ -309,7 +309,7 @@ describe('LeaderOrderResourceCard labor toggle', () => {
     );
   });
 
-  it('stretches the gantt ruler when combined labor minutes increase required minutes', () => {
+  it('updates cumulative gantt capacity bands when combined labor minutes increase required minutes', () => {
     const laborRow = {
       id: 'r-labor-gantt',
       fkojun: '10',
@@ -329,6 +329,11 @@ describe('LeaderOrderResourceCard labor toggle', () => {
 
     expect(screen.getByText('400分')).toBeInTheDocument();
     expect(screen.getByTestId('leader-board-gantt-ruler-gutter')).toHaveStyle({ height: '480px' });
+    expect(
+      screen
+        .getAllByTestId('leader-board-gantt-ruler-band')
+        .map((band) => band.getAttribute('data-band-index'))
+    ).toEqual(['0']);
 
     rerender(
       <LeaderOrderResourceCard
@@ -342,7 +347,12 @@ describe('LeaderOrderResourceCard labor toggle', () => {
     );
 
     expect(screen.getByText('575分')).toBeInTheDocument();
-    expect(screen.getByTestId('leader-board-gantt-ruler-gutter')).toHaveStyle({ height: '575px' });
+    expect(screen.getByTestId('leader-board-gantt-ruler-gutter')).not.toHaveStyle({ height: '575px' });
+    expect(
+      screen
+        .getAllByTestId('leader-board-gantt-ruler-band')
+        .map((band) => band.getAttribute('data-band-index'))
+    ).toEqual(['0', '1']);
   });
 });
 

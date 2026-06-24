@@ -5,15 +5,15 @@
 | Field | Value |
 |-------|-------|
 | id | `plan-kiosk-leaderboard-labor-minutes-toggle` |
-| status | **production_deployed / field_verified** — Pi5 + Pi4×4 · visibility fix **`10cc06b0`** (2026-06-18) · display recovery verified on real device (2026-06-24) · 8H/10H toggle + Gantt ruler stretch **`f978c15e`** deployed/verified |
+| status | **production_deployed / field_verified + gantt_ruler_regression_documented** — Pi5 + Pi4×4 · visibility fix **`10cc06b0`** (2026-06-18) · display recovery verified on real device (2026-06-24) · 8H/10H toggle deployed · **`f978c15e` ruler-stretch behavior is not the intended Gantt contract** |
 | scope | Kiosk leader order board (`ProductionScheduleLeaderOrderBoardPage`) |
 | date | 2026-06-17 (feature) · 2026-06-18 (visibility fix deploy) · 2026-06-24 (display recovery) |
 | source_of_truth | this document |
 | branch | `fix/leaderboard-labor-visibility-from-machine-status` → merge to `main` |
 | commit | **`10cc06b0`** — `fix: derive leaderboard labor minutes from visible machine rows` |
-| latest_recovery | **`4e3d3926`** / **`f978c15e`** — keep appended display rows while overlaying fresh labor metadata by row id |
+| latest_recovery | **`4e3d3926`** — keep appended display rows while overlaying fresh labor metadata by row id |
 | latest_capacity_toggle | **`4e3d3926`** — per-slot 8H/10H button immediately left of `+人`, persisted locally |
-| latest_gantt_ruler | **`f978c15e`** — keep row/card heights compressed, stretch only the 8H/10H ruler by logical `requiredMinutes` |
+| latest_gantt_ruler | **restore required** — 8H/10H ruler must map cumulative row work to the slot body; `f978c15e` incorrectly stretched the whole ruler from total minutes |
 | related_code | `apps/api/src/services/production-schedule/leaderboard/leaderboard-labor-minutes*.ts`, `apps/web/src/features/kiosk/leaderOrderBoard/*` |
 | related_docs | [kiosk-leaderboard-gantt-mode.md](./kiosk-leaderboard-gantt-mode.md), [deployment.md](../guides/deployment.md), [verification-checklist.md](../guides/verification-checklist.md) |
 
@@ -21,7 +21,7 @@ Rank calculation, auto-rank, and load-balancing are **out of scope**. Signage JP
 
 ## Goal
 
-Each resource slot has a **`+人`** toggle (default OFF). When ON, display minutes = `machineRequiredMinutes + laborRequiredMinutes`. The row minute label follows `requiredMinutes`; the Gantt **8H/10H ruler height** follows logical `requiredMinutes` while row/card heights stay on the compressed performance scale.
+Each resource slot has a **`+人`** toggle (default OFF). When ON, display minutes = `machineRequiredMinutes + laborRequiredMinutes`. The row minute label follows `requiredMinutes`; the Gantt **8H/10H vertical ruler** maps the cumulative row work to the slot body so operators can see which item range fits within one 8H/10H capacity window. Row/card heights stay on the compressed performance scale.
 
 2026-06-24 addition: each resource slot has an **8H/10H** toggle immediately left of `+人`. It is persisted per terminal and slot, and passes **480** or **600** minutes to the Gantt `capacityMinutes`.
 
@@ -110,7 +110,7 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 
 ### Display recovery after performance fixes (2026-06-24)
 
-**Symptom**: after the leaderboard speed/display-stability fixes, pressing `+人` could keep showing the previous append-complete board that had been fetched with `includeLabor=false`. The row count stayed stable, but `laborRequiredMinutes=0` also stayed visible, so the minute label and Gantt 8H bar did not stretch.
+**Symptom**: after the leaderboard speed/display-stability fixes, pressing `+人` could keep showing the previous append-complete board that had been fetched with `includeLabor=false`. The row count stayed stable, but `laborRequiredMinutes=0` also stayed visible, so the minute label and Gantt 8H/10H capacity boundary did not move to the labor-inclusive position.
 
 **Root cause**: the Web display freshness key intentionally ignores `includeLabor` to prevent a `+人` refresh from collapsing a long appended board back to a short shell. That part is required for perceived speed/stability. The missing piece was metadata refresh: when the previous longer board won display selection, its old labor metadata also won.
 
@@ -120,7 +120,7 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 
 - Web focused tests: `useCompositeLeaderboardPhasedScheduleWithAutoAppend`, append override scope, shell freshness, required-minutes display — PASS.
 - Web lint/build — PASS.
-- Real-device verification (2026-06-24, user visual check): `+人` ON reflects labor minutes and the 8H bar stretches again.
+- Real-device verification (2026-06-24, user visual check): `+人` ON reflects labor minutes. Follow-up found the later `f978c15e` ruler-height stretch was the wrong visual contract and must be restored to cumulative-boundary mapping.
 
 ### 8H/10H capacity toggle next to `+人` (2026-06-24)
 
@@ -135,21 +135,21 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 - Focused Web tests for persisted capacity mode, card button placement, and Grid → Gantt capacity propagation — PASS.
 - Web lint/build — PASS.
 
-### Gantt ruler stretch recovery after 8H/10H toggle (2026-06-24)
+### Gantt ruler regression after 8H/10H toggle (2026-06-24)
 
 **Symptom**: after 8H/10H capacity toggle landed, pressing `+人` updated the slot's logical total, but large slots could keep the same visible 8H/10H vertical bar height. The row list stayed stable, which was good for performance, but the operator could not see the labor-added stretch.
 
 **Root cause**: `computeGanttSlotLayout` used the same compressed scale for row heights and ruler height. When `totalRequiredMinutes` exceeded capacity, `pxPerMinute` decreased so the larger total still fit the existing scroll/card height. With many rows pinned to the 96px minimum, `containerMinHeightPx` could stay unchanged.
 
-**Fix**: split the layout contract. Row/card heights keep the compressed scale (`pxPerMinute = availableWorkHeightPx / max(totalRequiredMinutes, capacityMinutes)`), but `rulerHeightPx` is computed from logical capacity bands: `totalRequiredMinutes / capacityMinutes * availableWorkHeightPx`. `LeaderOrderResourceCard` uses the max of row-list height and `rulerHeightPx` for the scroll area. Segment count remains capped by `GANTT_RULER_MAX_BAND_COUNT`.
+**Incorrect fix (`f978c15e`)**: split the layout contract by computing `rulerHeightPx` from `totalRequiredMinutes / capacityMinutes * availableWorkHeightPx` and using that value in the card scroll height. This made the ruler a long total-work bar instead of showing the cumulative 8H/10H boundary within the card body.
+
+**Required fix**: keep row/card heights compressed, but restore the original Gantt contract: `pxPerMinute = availableWorkHeightPx / max(totalRequiredMinutes, capacityMinutes)` only defines the time-to-Y scale; the ruler height remains tied to the row-list/container height, and 8H/10H boundaries are mapped through cumulative row work. `+人` changes the row `requiredMinutes`, so the cumulative capacity boundary and remainder bands move without expanding the whole scroll area from total minutes.
 
 **Validation**:
 
-- Focused Web tests: `leaderBoardGanttLayout` and `leaderBoardGanttDisplay` prove `400 → 575` minutes changes the label and stretches the ruler `480px → 575px` while row minimum heights stay fixed — PASS.
-- Web build — PASS.
-- CI: PR event `28073394781` and push event `28073393362` — success.
-- Production deploy: run `20260624-125213-16642` — Pi5 + Pi4×4 + Pi3 `failed=0` / `unreachable=0`; Phase12 **PASS 43 / WARN 0 / FAIL 0**.
-- Production page check: FJV60/80 `021`, Gantt ON. `+人` OFF labels `700分, 700分, 252分, 720分, 648分, 225分` with ruler **6220px**; `+人` ON labels `900分, 1000分, 342分, 840分, 848分, 285分` with ruler **8307px**; 10H toggle changed the same slot ruler to **5116px**.
+- Focused Web tests that treated `400 → 575` as `480px → 575px` ruler-height stretch are no longer accepted as the intended behavior; they must be replaced by tests that assert cumulative 8H/10H boundary movement.
+- Web build / CI / deploy / Phase12 all passed for `f978c15e`, but those checks did not validate the intended cumulative-boundary ruler contract.
+- Production page check on FJV60/80 `021` showed huge ruler heights (`6220px` / `8307px` / `5116px`), which is now recorded as evidence of the rejected total-work-height behavior, not as a success condition.
 
 ## Operational Notes (not KB)
 
@@ -160,7 +160,7 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 
 - [x] **Field sign-off (real device, 2026-06-24)**: `+人` toggle changes minute label and Gantt height after the display recovery. API verified on Pi5; UI behavior verified by user visual check.
 - [ ] **Performance monitor**: Labor lookup `EXPLAIN ANALYZE` on production-scale data; add index only if latency regresses.
-- [x] **Deploy + field sign-off for Gantt ruler stretch**: `f978c15e` pushed/deployed; production page verified `+人` ON/OFF plus 8H/10H ruler changes on FJV60/80 `021`.
+- [ ] **Restore Gantt cumulative-boundary ruler**: revert the `f978c15e` total-minute ruler-height contract while preserving `+人`, 8H/10H toggle, metadata overlay, and row/card performance constraints.
 
 ## Next Actions (for resuming AI)
 
@@ -174,5 +174,5 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 - **2026-06-18 修正**: 実データで `FSIGENCD=10` 行に `fkmail` が無いため lookup が全落ちしていた。表示済み通常行キーに従属する合算へ変更（`10cc06b0`）。
 - **2026-06-24 修正**: 速度改善で append 済み行維持は効いていたが、旧 `includeLabor=false` 行の `laborRequiredMinutes=0` も維持されていた。表示行数は維持し、fresh network board の人工数メタデータだけを `row.id` で重ねる方式に変更。実機目視 OK。
 - **2026-06-24 追加**: `+人` の左に 8H/10H ボタンを追加。slotIndex 順に端末ローカル保存し、Gantt `capacityMinutes` へ 480/600 分を渡す。
-- **2026-06-24 追加修正**: Gantt の行カード高さと 8H/10H 縦バー高さを分離。行カードは現行の圧縮/最小高で速度を維持し、縦バーだけ `requiredMinutes / capacityMinutes` に追従して伸ばす。
+- **2026-06-24 回帰メモ**: `f978c15e` は 8H/10H 縦バーを総工数比例の長い棒にしてしまい、正常仕様である「行順の累積工数が 480/600 分へ到達する位置を表示する」挙動から外れた。修正では累積境界写像へ戻す。
 - Codex レビュー反映: TS re-export fix, lookup 可視性合わせ→**表示行由来キーへ修正**, FSIGENCD=10 除外, cache v3/fingerprint, service tests, import/order, fallback 安定化

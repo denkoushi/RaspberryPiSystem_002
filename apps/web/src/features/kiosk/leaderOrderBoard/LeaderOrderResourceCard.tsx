@@ -159,10 +159,9 @@ function LeaderOrderResourceCardInner({
   }, [ganttEnabled, slotLayout, useVirtual, rowVirtualizer]);
 
   const containerMinHeightPx = ganttEnabled && slotLayout ? slotLayout.containerMinHeightPx : 0;
-  const rulerHeightPx = ganttEnabled && slotLayout ? slotLayout.rulerHeightPx : 0;
   const bodyTotalHeightPx = useVirtual
-    ? Math.max(rowVirtualizer.getTotalSize(), containerMinHeightPx, rulerHeightPx)
-    : Math.max(containerMinHeightPx, rulerHeightPx);
+    ? Math.max(rowVirtualizer.getTotalSize(), containerMinHeightPx)
+    : containerMinHeightPx;
 
   const bodyPaddingLeft = ganttEnabled ? GANTT_RULER_GUTTER_WIDTH_PX + 4 : 0;
   const capacityIsTenHours = capacityMinutes === GANTT_TEN_HOURS_MINUTES;

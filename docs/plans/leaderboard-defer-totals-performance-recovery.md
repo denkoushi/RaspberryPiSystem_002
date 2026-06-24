@@ -31,7 +31,7 @@ related_docs:
   - docs/decisions/ADR-20260211-production-schedule-expression-indexes.md
   - docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md
   - docs/guides/deployment.md
-validation: focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK · 2026-06-24 Gantt ruler stretch focused Web tests/build PASS · f978c15e CI 28073394781/28073393362 success · deploy 20260624-125213-16642 · Phase12 43/0/0 · production page FJV60/80 021 +人/8H/10H verified
+validation: focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK · f978c15e CI/deploy/Phase12 succeeded but its Gantt ruler-height behavior was later classified as a visual-contract regression
 open_items:
   - If the physical browser still appears busy, distinguish three states: initial shell load, 5-minute board refresh, and `+人` labor metadata refresh. Only the first two should show 「一覧を更新中です。」.
   - `resourceShell` can still be multi-second on large resources; do not add API/index work until browser/client-perf logs show API shell is again the bottleneck.
@@ -694,11 +694,11 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - Fix: after choosing the display board, overlay fresh finite `machineRequiredMinutes` / `laborRequiredMinutes` from `networkDisplayBoard` by `row.id`. This keeps the long appended board visible while allowing rows already returned by the `includeLabor=true` refresh to update their label and Gantt height.
 - Validation: focused Web tests covering partial/complete labor refresh PASS, Web lint PASS, Web build PASS, and real-device visual check (2026-06-24) OK.
 
-**2026-06-24 Gantt ruler stretch follow-up（deployed / verified）**:
+**2026-06-24 Gantt ruler stretch follow-up（deployed, later rejected）**:
 
 - After the 8H/10H toggle, real-device use found another visual-only gap: `+人` could update logical `requiredMinutes`, but the Gantt vertical ruler still appeared unchanged on large slots because row height and ruler height shared the same compressed scale.
-- Fix: keep the row/card scale compressed for first-usable performance and compute `rulerHeightPx` from logical capacity bands (`totalRequiredMinutes / capacityMinutes * availableWorkHeightPx`). The card scroll area uses the max of row-list height and `rulerHeightPx`, so the 8H/10H vertical bar can stretch without increasing every row card.
-- Validation: focused Web tests prove `400→575` minutes changes the label and stretches the ruler `480px→575px` while row minimum heights stay fixed; Web build PASS. Production commit **`f978c15e`** passed CI (`28073394781` / `28073393362`), deployed in run **`20260624-125213-16642`**, and Phase12 returned **PASS 43 / WARN 0 / FAIL 0**. Production page check on FJV60/80 `021`: `+人` OFF labels `700分, 700分, 252分, 720分, 648分, 225分` / ruler **6220px**; `+人` ON labels `900分, 1000分, 342分, 840分, 848分, 285分` / ruler **8307px**; 10H changed the same slot ruler to **5116px**.
+- Incorrect fix: **`f978c15e`** computed `rulerHeightPx` from logical capacity bands (`totalRequiredMinutes / capacityMinutes * availableWorkHeightPx`) and used it in the card scroll height. This proved the label and total-work bar could change, but it broke the intended Gantt contract.
+- Required behavior: keep the row/card scale compressed for first-usable performance; use `requiredMinutes` changes from `+人` to move the cumulative 480/600-minute boundary and remainder bands inside the slot body. Do not derive the whole ruler/scroll height from total slot minutes.
 
 **Current intended behavior**:
 
@@ -757,7 +757,7 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx` PASS
 - `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardAppendOverrideScopePolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx` PASS for the append-display fix
 - `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardAppendOverrideScopePolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/leaderboardBoardShellFreshnessPolicy.test.ts src/features/kiosk/leaderOrderBoard/__tests__/applyLeaderBoardDisplayRequiredMinutes.test.ts` PASS for the 2026-06-24 labor metadata overlay
-- `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/applyLeaderBoardDisplayRequiredMinutes.test.ts src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx src/features/kiosk/leaderOrderBoard/__tests__/leaderBoardGanttDisplay.test.tsx src/features/kiosk/leaderOrderBoard/__tests__/leaderBoardGanttLayout.test.ts` PASS for the 2026-06-24 Gantt ruler stretch fix
+- `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard/__tests__/applyLeaderBoardDisplayRequiredMinutes.test.ts src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx src/features/kiosk/leaderOrderBoard/__tests__/leaderBoardGanttDisplay.test.tsx src/features/kiosk/leaderOrderBoard/__tests__/leaderBoardGanttLayout.test.ts` PASS for the 2026-06-24 `f978c15e` ruler stretch, later superseded because it asserted the rejected total-work ruler-height behavior
 - `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts` PASS for the resource-first winner shell fix
 - `pnpm --filter @raspi-system/api lint` PASS
 - `pnpm --filter @raspi-system/api build` PASS
@@ -773,7 +773,7 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - Do not let a shorter fresh append override a longer previous display append unless it has caught up.
 - Do not keep an old `includeLabor=false` display board without overlaying fresh labor metadata from the current network board.
 - Do not show 「一覧を更新中です。」 for `+人` display-only refresh with existing rows; use `isBoardDataSyncStatusVisible`.
-- Do not make every row card taller just to show `+人` labor additions. Keep row/card height compressed and stretch the 8H/10H ruler height separately.
+- Do not make every row card taller just to show `+人` labor additions. Keep row/card height compressed, and move the cumulative 8H/10H capacity boundary/remainder bands inside the existing slot body. Do not stretch the whole ruler/scroll height from total slot minutes.
 
 ## Local Notes JA
 
