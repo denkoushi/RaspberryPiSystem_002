@@ -17,8 +17,8 @@ validation:
   - corruption and long-line checks
   - node scripts/docs/audit-docs.mjs --check
 open_items:
-  - Expand the migration ledger before thinning indexes and large documents.
-  - Thin indexes and split large documents one area per PR after ledger expansion.
+  - Thin `docs/INDEX.md` one confirmed domain at a time, starting with kiosk leaderboard.
+  - Create or identify standard deployment and validation runbooks before shortening guides.
 supersedes: []
 superseded_by: null
 ---
@@ -113,7 +113,18 @@ Status: implemented in PR4.
 - Mark `docs/REFACTORING_PLAN.md` as `superseded` and link to this Plan.
 - Do not delete these legacy files in this PR.
 
-### PR5 And Later: Thin Indexes And Split Large Documents
+### PR5: Expanded Ledger Before Thinning
+
+Status: implemented in PR5.
+
+- Expand `docs/_meta/document-migration-ledger.md` with safe thinning units for
+  `docs/INDEX.md`, `docs/knowledge-base/index.md`,
+  `docs/guides/deployment.md`, `docs/guides/verification-checklist.md`, and
+  `EXEC_PLAN.md`.
+- Do not edit giant document bodies in this PR.
+- Use the expanded ledger to choose the next one-domain PR.
+
+### PR6 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
