@@ -1294,7 +1294,19 @@ Status: implemented in PR101.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR102 And Later: Thin Indexes And Split Large Documents
+### PR102: Thin Mobile Placement V14 Index Block
+
+Status: implemented in PR102.
+
+- Thin only the 2026-04-13 mobile placement V14 latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, deployment scope,
+  Phase12, DB migration note, detach-run pointer, and `EXEC_PLAN.md` detail
+  with short links to the mobile placement runbook, KB-339, and API document.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR103 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
