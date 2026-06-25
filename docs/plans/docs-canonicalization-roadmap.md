@@ -882,7 +882,19 @@ Status: implemented in PR67.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR68 And Later: Thin Indexes And Split Large Documents
+### PR68: Thin Pallet Viz Card UI Index Block
+
+Status: implemented in PR68.
+
+- Thin only the 2026-04-25 pallet visualization item card UI latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, deployment command,
+  detach run, Phase12, Pi3 note, PR, and `EXEC_PLAN.md` detail with short
+  links to KB-339, KB-355, deployment, and the static preview.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR69 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
