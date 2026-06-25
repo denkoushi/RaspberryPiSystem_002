@@ -515,7 +515,7 @@
 - **配膳スマホ V8 正本**: [mobile-placement runbook](./runbooks/mobile-placement-smartphone.md) · [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md) · [API](./api/mobile-placement.md)。
 - **配膳スマホ V7 正本**: [mobile-placement runbook](./runbooks/mobile-placement-smartphone.md) · [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md) · [API](./api/mobile-placement.md)。
 - **配膳スマホ V6 正本**: [mobile-placement runbook](./runbooks/mobile-placement-smartphone.md) · [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md) · [API](./api/mobile-placement.md)。
-- **API OCR/VLM 境界整理リファクタ（挙動互換・コードのみ）本番反映: Pi5→Pi4×4→Pi3 順次・Phase12 43/0/0**: ブランチ `feat/ocr-vlm-boundary-refactor`・コミット **`b0f4a180`**。`services/ocr`・`VisionCompletionPort` 中立化・`photo_label` の `useCase` 注入。デプロイは [deployment.md](./guides/deployment.md) 標準（`--limit` 1 台ずつ・`--detach --follow`・Pi3 は最後に単独）。実機: `./scripts/deploy/verify-phase12-real.sh`。**ナレッジ**: [KB-340](./knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)・[ADR-20260402](./decisions/ADR-20260402-inference-foundation-phase1.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **API OCR/VLM 境界整理 正本**: [KB-340](./knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md) · [ADR-20260402](./decisions/ADR-20260402-inference-foundation-phase1.md) · [deployment](./guides/deployment.md)。
 
 ### デザインプレビュー（静的 HTML）
 

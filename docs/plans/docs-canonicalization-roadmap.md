@@ -1391,7 +1391,19 @@ Status: implemented in PR109.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR110 And Later: Thin Indexes And Split Large Documents
+### PR110: Thin API OCR/VLM Boundary Index Block
+
+Status: implemented in PR110.
+
+- Thin only the 2026-04-13 API OCR/VLM boundary latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, rollout order, Phase12,
+  implementation-summary, and `EXEC_PLAN.md` detail with short links to
+  KB-340, ADR-20260402, and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR111 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
