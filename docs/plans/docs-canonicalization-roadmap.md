@@ -1665,7 +1665,19 @@ Status: implemented in PR132.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR133 And Later: Thin Indexes And Split Large Documents
+### PR133: Thin Part Measurement Multi Sheet Index Block
+
+Status: implemented in PR133.
+
+- Thin only the 2026-04-05 kiosk part-measurement multi-sheet latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, rollout, Phase12, detach-run,
+  timeout troubleshooting, and `EXEC_PLAN.md` detail with short links to
+  KB-320 and the part-measurement runbook.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR134 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
