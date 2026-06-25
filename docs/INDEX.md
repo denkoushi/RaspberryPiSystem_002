@@ -409,7 +409,7 @@
 - **パレット可視化 サイネJPEG v3 正本**: [api.md KB-355](./knowledge-base/api.md) · [deployment](./guides/deployment.md) 2026-04-28 v3 項 · [preview](./design-previews/pallet-board-teal-dual-vertical-preview.html)。
 - **パレット可視化サイネJPEG v3 追随修正 正本**: [api.md KB-355](./knowledge-base/api.md) · [deployment](./guides/deployment.md) 2026-04-28 `287c959e` 追随fix項。
 
-- **VLM 画像 400 追加堅牢化（PR #204 / PR #205）· 真因分類（コンテキスト超過 / デコード失敗）· Pi5 保存画像 531 件プローブ全件 200**: 実装は `main` 取り込み済み（`isRetryableVlmImageHttp400`・再エンコード `maxEdge`/`quality` 等）。保存画像一括では **400 再現なし**（巨大・破損テストで意図的再現）。DGX 入口は **Mac 直が timeout になり得る** → **Pi5 経由 SSH トンネル**（例 `127.0.0.1:38081`）で切り分え。**記録**: [deployment.md](./guides/deployment.md) 補足（2026-04-28）・[dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)・[EXEC_PLAN.md](../EXEC_PLAN.md) Progress / Surprises。
+- **VLM 画像 400 追加堅牢化 正本**: [deployment](./guides/deployment.md) 2026-04-28 VLM 画像 400 追加対策項 · [DGX local LLM runbook](./runbooks/dgx-system-prod-local-llm.md) upstream 400 切り分け項。
 
 ### 🆕 最新アップデート（2026-04-27）
 

@@ -834,7 +834,19 @@ Status: implemented in PR63.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR64 And Later: Thin Indexes And Split Large Documents
+### PR64: Thin VLM Image 400 Index Block
+
+Status: implemented in PR64.
+
+- Thin only the 2026-04-28 VLM image 400 additional hardening latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace implementation, probe, timeout, tunnel,
+  and `EXEC_PLAN.md` detail with short links to deployment and the DGX local
+  LLM runbook.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR65 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
