@@ -1642,7 +1642,18 @@ Status: implemented in PR130.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR131 And Later: Thin Indexes And Split Large Documents
+### PR131: Thin Kiosk Loan Card Surface Index Block
+
+Status: implemented in PR131.
+
+- Thin only the 2026-04-06 kiosk active-loan card modern surface latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, rollout, Pi5-hop verification, and
+  `EXEC_PLAN.md` detail with short links to KB-332 and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR132 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
