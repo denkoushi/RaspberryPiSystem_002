@@ -557,7 +557,19 @@ Status: implemented in PR40.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR41 And Later: Thin Indexes And Split Large Documents
+### PR41: Thin PowerAutomate Datetime Index Block
+
+Status: implemented in PR41.
+
+- Thin only the 2026-05-01 Gmail CSV PowerAutomate datetime compatibility
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit/PR, code file, Pi5 deploy,
+  Phase12, command, detach run, and `EXEC_PLAN.md` narrative detail with short
+  links to KB-297, the CSV guide, and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR42 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
