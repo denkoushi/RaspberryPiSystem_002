@@ -485,7 +485,19 @@ Status: implemented in PR34.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR35 And Later: Thin Indexes And Split Large Documents
+### PR35: Thin DGX sparkHost Fallback Index Block
+
+Status: implemented in PR35.
+
+- Thin only the 2026-05-02 DGX `sparkHost` fallback latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, Pi5 deploy, Phase12,
+  command, detach run, PR, and validation narrative detail with short links to
+  KB-363, the DGX runbook, and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR36 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
