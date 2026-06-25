@@ -116,6 +116,7 @@ export {
 export {
   kioskInspectionDrawingCreatePathWithSource,
   kioskInspectionDrawingCreatePathWithVisual,
+  kioskInspectionDrawingPaperReportPrintPath,
   kioskInspectionDrawingTemplateEditPath,
   kioskInspectionDrawingTemplatePrintPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,

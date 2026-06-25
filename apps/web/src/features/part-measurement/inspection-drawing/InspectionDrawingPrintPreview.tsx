@@ -345,17 +345,17 @@ function RecordPageQr({
   metadata: InspectionDrawingPrintMetadata;
   totalPages: number;
 }) {
-  const payload = buildInspectionDrawingPrintRecordPageQrPayload({ metadata, page, totalPages });
+  const payload = page.qrPayload ?? buildInspectionDrawingPrintRecordPageQrPayload({ metadata, page, totalPages });
 
   return (
     <aside
       data-testid="inspection-print-record-qr"
-      className="absolute right-[10mm] top-[2.8mm] z-20 grid justify-items-center leading-none"
+      className="absolute right-[8mm] top-[2.4mm] z-20 grid justify-items-center leading-none"
     >
       <QrCodeSvg
         payload={payload}
         label={`検査値記録欄 QR ${page.pageLabel}`}
-        className="h-[18mm] w-[18mm]"
+        className="h-[22mm] w-[22mm]"
       />
     </aside>
   );
@@ -376,7 +376,7 @@ function RecordPage({
     <article className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_1fr] gap-[1.6mm] overflow-hidden bg-white p-[5mm] shadow-2xl">
       <SheetFiducials />
       <RecordPageQr page={page} metadata={metadata} totalPages={totalPages} />
-      <section className="pr-[30mm]">
+      <section className="pr-[34mm]">
         <div className="min-w-0">
           <SheetHeader title="検査値 記録欄" pageLabel={page.pageLabel} metadata={metadata} />
           <section

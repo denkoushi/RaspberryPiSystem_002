@@ -325,6 +325,7 @@ model ClientDevice {
   partMeasurementSheets   PartMeasurementSheet[] @relation("PartMeasurementSheetOwningDevice")
   partMeasurementEditLocks PartMeasurementSheet[] @relation("PartMeasurementSheetEditLock")
   selfInspectionSessions  SelfInspectionSession[]
+  selfInspectionPaperReports SelfInspectionPaperReport[]
   mobilePlacementEvents   MobilePlacementEvent[]
   orderPlacementEvents    OrderPlacementEvent[]
   mobilePlacementShelvesCreated MobilePlacementShelf[]
@@ -1995,6 +1996,20 @@ enum SelfInspectionEntrySlotKind {
   FIXED
 }
 
+enum SelfInspectionPaperReportStatus {
+  ISSUED
+  OCR_REVIEW
+  IMPORTED
+  SUPERSEDED
+  CANCELLED
+}
+
+enum SelfInspectionPaperOcrReviewStatus {
+  OCR_REVIEW
+  CONFIRMED
+  CANCELLED
+}
+
 /// 同一測定対象（製造order・工程・資源CD）に複数の記録表をぶら下げる親集約。
 model PartMeasurementSession {
   id           String                      @id @default(uuid())
@@ -2049,6 +2064,7 @@ model PartMeasurementTemplate {
   items              PartMeasurementTemplateItem[]
   sheets             PartMeasurementSheet[]
   selfInspectionSessions SelfInspectionSession[]
+  selfInspectionPaperReports SelfInspectionPaperReport[]
   visualTemplate     PartMeasurementVisualTemplate? @relation(fields: [visualTemplateId], references: [id], onDelete: SetNull)
 
   @@unique([fhincd, processGroup, resourceCd, version], map: "PartMeasurementTemplate_unique_fhincd_group_resource_version")
@@ -2176,6 +2192,7 @@ model SelfInspectionSession {
   template           PartMeasurementTemplate     @relation(fields: [templateId], references: [id], onDelete: Restrict)
   clientDevice       ClientDevice?               @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
   entries            SelfInspectionLotEntry[]
+  paperReports       SelfInspectionPaperReport[]
 
   @@index([productNo, processGroup, resourceCd], map: "SelfInspectionSession_idx_business_lookup")
   @@index([scheduleRowId], map: "SelfInspectionSession_idx_schedule_row")
@@ -2219,6 +2236,75 @@ model SelfInspectionMeasurementValue {
 
   @@unique([entryId, templateItemId], map: "SelfInspectionMeasurementValue_unique_entry_item")
   @@index([entryId], map: "SelfInspectionMeasurementValue_idx_entry")
+}
+
+model SelfInspectionPaperReport {
+  id              String                           @id @default(uuid())
+  sessionId       String
+  scheduleRowId   String
+  templateId      String
+  status          SelfInspectionPaperReportStatus  @default(ISSUED)
+  issuedAt        DateTime                         @default(now())
+  supersededAt    DateTime?
+  importedAt      DateTime?
+  cancelledAt     DateTime?
+  clientDeviceId  String?
+  plannedQuantity Int
+  templateVersion Int
+  createdAt       DateTime                         @default(now())
+  updatedAt       DateTime                         @updatedAt
+  session         SelfInspectionSession            @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  template        PartMeasurementTemplate          @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  clientDevice    ClientDevice?                    @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  pages           SelfInspectionPaperReportPage[]
+  ocrReviews      SelfInspectionPaperOcrReview[]
+
+  @@index([sessionId, status], map: "SelfInspectionPaperReport_idx_session_status")
+  @@index([scheduleRowId, status], map: "SelfInspectionPaperReport_idx_schedule_status")
+  @@index([issuedAt], map: "SelfInspectionPaperReport_idx_issued_at")
+  @@index([templateId], map: "SelfInspectionPaperReport_idx_template")
+  @@index([clientDeviceId], map: "SelfInspectionPaperReport_idx_client_device")
+}
+
+model SelfInspectionPaperReportPage {
+  id             String                         @id @default(uuid())
+  reportId       String
+  pageCode       String                         @unique
+  pageNumber     Int
+  qrPayload      String
+  entryIndexFrom Int?
+  entryIndexTo   Int?
+  markerNoFrom   Int?
+  markerNoTo     Int?
+  createdAt      DateTime                       @default(now())
+  report         SelfInspectionPaperReport      @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  ocrReviews     SelfInspectionPaperOcrReview[]
+
+  @@unique([reportId, pageNumber], map: "SelfInspectionPaperReportPage_unique_report_page")
+  @@index([reportId], map: "SelfInspectionPaperReportPage_idx_report")
+}
+
+model SelfInspectionPaperOcrReview {
+  id                   String                             @id @default(uuid())
+  reportId             String
+  pageId               String?
+  status               SelfInspectionPaperOcrReviewStatus @default(OCR_REVIEW)
+  qrPayload            String?
+  imageStoragePath     String?
+  ocrCandidateValues   Json
+  confirmedValues      Json?
+  confirmedByActorId   String?
+  confirmedByActorName String?
+  confirmedAt          DateTime?
+  failureReason        String?
+  createdAt            DateTime                           @default(now())
+  updatedAt            DateTime                           @updatedAt
+  report               SelfInspectionPaperReport          @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  page                 SelfInspectionPaperReportPage?     @relation(fields: [pageId], references: [id], onDelete: SetNull)
+
+  @@index([reportId, status], map: "SelfInspectionPaperOcrReview_idx_report_status")
+  @@index([pageId], map: "SelfInspectionPaperOcrReview_idx_page")
+  @@index([confirmedAt], map: "SelfInspectionPaperOcrReview_idx_confirmed_at")
 }
 
 model KioskHeaderTabOrderConfig {

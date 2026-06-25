@@ -1,4 +1,4 @@
-# KB-390: Kiosk leader order board inspection workflow (chooser + plannedQuantity print)
+# KB-390: Kiosk leader order board inspection workflow and paper report OCR handoff
 
 ## Metadata
 
@@ -6,26 +6,103 @@
 |-------|-------|
 | **id** | KB-390 |
 | **status** | active |
-| **scope** | Kiosk leader order board · self-inspection entry · inspection drawing print preview |
-| **date** | 2026-06-15 |
+| **scope** | Kiosk leader order board · self-inspection entry · DB-backed paper report print · OCR handoff |
+| **date** | 2026-06-15 · updated 2026-06-25 |
 | **source_of_truth** | This file |
-| **branch** | `fix/inspection-print-preview-layout` → merge to `main` |
-| **commits** | `8dfc9b13` (workflow modal) · `5116f75f` (plannedQuantity print) · `e0b3703d` (OCR record value boxes) · `3b83b577` (print disclaimer toolbar-only) · `a2158875` (record page QR + P1 fiducial removal) · **`247ab019`** (print preview layout polish) |
-| **ci** | **`27539024858`** success (`247ab019`) · **`27535726878`** success (`a2158875`) |
+| **branch** | `codex/self-inspection-paper-report-ocr-qr` → PR #527 → merge to `main` |
+| **commits** | `8dfc9b13` (workflow modal) · `5116f75f` (plannedQuantity print) · `e0b3703d` (OCR record value boxes) · `3b83b577` (print disclaimer toolbar-only) · `a2158875` (record page QR + P1 fiducial removal) · `247ab019` (print preview layout polish) · **`5ef8c2ac`** (DB-backed paper report workflow) |
+| **ci** | **PR #527** all success: Secret scan · CodeQL · CI (`lint-build-unit`, `e2e-smoke`, `security-docker`, `api-db-and-infra`, `e2e-tests`) |
 
 ## Context
 
 Operators start self-inspection from the leader order board row action **検** (previously direct navigation). The new flow opens a modal to choose **デジタル入力** or **帳票紙印刷**. Paper print must carry schedule **plannedQuantity** into record-sheet column count (full self-inspection mode).
 
-**Prisma / API**: no change. **Web only** · Pi5 Docker **`web`** rebuild.
+2026-06-25 update: paper print is no longer a throwaway HTML preview. It is an issued paper report path into the same `SelfInspectionSession`. The QR code is intentionally short and only resolves a DB page record; it does not carry part, process, template, or measurement-point JSON.
+
+## Current State (2026-06-25 · DB-backed paper report)
+
+| Item | Current behavior |
+|------|------------------|
+| **Entry** | Leader board row **検** → **帳票紙印刷** calls `POST /api/part-measurement/self-inspection/paper-reports/issue` before opening print. |
+| **Session** | Issue service creates or reuses the existing `SelfInspectionSession` for the row. Paper is an input route into that same session, not a separate inspection object. |
+| **Latest print wins** | For the same `scheduleRowId`, unfinalized paper reports in `ISSUED` / `OCR_REVIEW` become `SUPERSEDED` when reprinted. Only the newest issue is OCR-importable. |
+| **Print route** | The print page uses `/kiosk/part-measurement/inspection/paper-reports/:reportId/print` and fetches DB-issued report/page data. The legacy template preview route remains for preview/dev compatibility. |
+| **QR payload** | Page QR is `SIP1:<pageCode>:<check>`, for example `SIP1:A7K4M2Q9:5F`. The QR resolves to `SelfInspectionPaperReportPage`. |
+| **QR size** | Record-page QR is enlarged to about **22mm** and uses the previous surrounding blank space. Header reserve is widened to keep record fields usable. |
+| **OCR boundary** | Backend accepts OCR candidate values and stores them as a review record. It does not write measurement values until human confirmation. |
+| **Import boundary** | Confirmed values are written into existing `SelfInspectionLotEntry` and `SelfInspectionMeasurementValue` rows. Existing digital values require explicit overwrite approval. |
+| **Report status** | `ISSUED`, `OCR_REVIEW`, `IMPORTED`, `SUPERSEDED`, `CANCELLED`. |
+| **Pi4 rollout** | No Pi4 code deploy required. Pi4 kiosks load the Pi5-hosted web bundle; reload/restart only if an existing tab still holds the old JS. |
+
+### Data Model
+
+Added Prisma models:
+
+- `SelfInspectionPaperReport`: issue unit; links `sessionId`, `scheduleRowId`, `templateId`, status, issue/import timestamps, client device, planned quantity, and template version.
+- `SelfInspectionPaperReportPage`: QR target; stores `pageCode`, page number, entry range, and marker range.
+- `SelfInspectionPaperOcrReview`: OCR/review history; stores source image references, OCR candidates, confirmed values, reviewer/import metadata, and failure reason.
+
+### Services And Ports
+
+| Service / Port | Responsibility |
+|----------------|----------------|
+| `SelfInspectionPaperReportIssueService` | Session lookup/create, old report supersede, new report/page issue. |
+| `SelfInspectionPaperQrCodec` | Versioned short QR generation and check validation. |
+| `SelfInspectionPaperReportResolver` | QR-to-page/report resolution and status rejection. |
+| `SelfInspectionPaperOcrPort` | OCR engine abstraction; current implementation is a replaceable no-op/adapter boundary. |
+| `SelfInspectionPaperOcrReviewService` | Convert OCR candidates into review records; does not persist measurement values. |
+| `SelfInspectionPaperImportService` | Confirmed-value validation and import into existing self-inspection DB tables. |
+| `self-inspection-paper-measurement-values.ts` | Numeric validation, duplicates, decimal places, tolerance, and overwrite policy. |
+
+### API Endpoints
+
+- `POST /api/part-measurement/self-inspection/paper-reports/issue`
+- `GET /api/part-measurement/self-inspection/paper-reports/:id/print`
+- `POST /api/part-measurement/self-inspection/paper-reports/resolve-page`
+- `POST /api/part-measurement/self-inspection/paper-reports/ocr-reviews`
+- `POST /api/part-measurement/self-inspection/paper-reports/ocr-reviews/:id/confirm`
+
+### Validation Rules
+
+- Reprinting the same `scheduleRowId` supersedes earlier unimported paper reports.
+- `SUPERSEDED`, `IMPORTED`, `CANCELLED`, invalid-check, and unknown QR payloads are rejected before OCR/import.
+- Already confirmed page OCR review is rejected to prevent double import.
+- Confirmed import does not silently overwrite existing digital measurement values.
+- Completed sessions are not valid paper reprint targets in normal operation.
+- QR unreadable recovery remains manual/admin-only for v1.
+
+### Related code
+
+- [`self-inspection-paper-report-issue.service.ts`](../../apps/api/src/services/part-measurement/self-inspection-paper-report-issue.service.ts)
+- [`self-inspection-paper-qr-codec.ts`](../../apps/api/src/services/part-measurement/self-inspection-paper-qr-codec.ts)
+- [`self-inspection-paper-report-resolver.service.ts`](../../apps/api/src/services/part-measurement/self-inspection-paper-report-resolver.service.ts)
+- [`self-inspection-paper-ocr-review.service.ts`](../../apps/api/src/services/part-measurement/self-inspection-paper-ocr-review.service.ts)
+- [`self-inspection-paper-import.service.ts`](../../apps/api/src/services/part-measurement/self-inspection-paper-import.service.ts)
+- [`schema.prisma`](../../apps/api/prisma/schema.prisma)
+- [`KioskInspectionDrawingPrintPage.tsx`](../../apps/web/src/pages/kiosk/KioskInspectionDrawingPrintPage.tsx)
+- [`InspectionDrawingPrintPreview.tsx`](../../apps/web/src/features/part-measurement/inspection-drawing/InspectionDrawingPrintPreview.tsx)
+- [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)
+
+### Open Items For Next AI
+
+| Item | Status / next action |
+|------|----------------------|
+| OCR image ingestion UI | Not implemented. Add upload/scan UI that first resolves QR, then calls the OCR review API. |
+| Real OCR adapter | Not implemented. Connect `SelfInspectionPaperOcrPort` to the selected engine and keep import service unchanged. |
+| Human review screen | Not implemented. Build a review/correction UI over `SelfInspectionPaperOcrReview` and existing digital values. |
+| QR unreadable recovery | Manual/admin-only in v1. Design a controlled lookup flow before enabling operators to bypass QR. |
+| Overwrite UX | Backend requires explicit overwrite for existing digital values; UI must expose difference and confirmation. |
+| Printer acceptance | Brother HL-L2460DW physical print and field validation reported OK by operator on 2026-06-25. Keep QR around 22mm unless a new scanner requires adjustment. |
 
 ## Specification (handoff)
+
+This section preserves the original 2026-06-15 workflow and print layout contract. For 2026-06-25 and later, the DB-backed paper report rules above supersede the old JSON QR identity and formal report ID open item.
 
 | Item | Behavior |
 |------|----------|
 | **Entry** | Leader board row **検** → modal title **検査方法を選択** |
 | **デジタル入力** | Enabled when `selfInspectionEntryPath` is non-empty. Navigates to existing self-inspection start/session URL. |
-| **帳票紙印刷** | Enabled when `selfInspectionTemplateId` is non-empty. `window.open` to `kioskInspectionDrawingTemplatePrintPath(templateId, { plannedQuantity: row.plannedQuantity })`. |
+| **帳票紙印刷** | Enabled when `selfInspectionTemplateId` is non-empty. Current path issues a DB-backed paper report, then opens the issued report print route. |
 | **Print URL** | `…/inspection/templates/:id/print?plannedQuantity=N` when N is a positive integer; omitted when null/invalid. |
 | **Print cap** | `INSPECTION_DRAWING_PRINT_MAX_ENTRY_COUNT = 2000` in URL parse + view model (abuse guard). |
 | **Record layout** | `INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE = 5` (was 6). Full mode uses `plannedQuantity` for entry columns when set. |
@@ -33,8 +110,8 @@ Operators start self-inspection from the leader order board row action **検** (
 | **Record text wrap** | Long point labels split across up to 2 lines (`splitRecordPointLabel`). Spec/tolerance split (`formatRecordSpecificationLines`; e.g. `合格範囲` on line 1). |
 | **Print alignment** | Corner **SheetFiducials** (L-shaped markers) on **record pages only**. **P1 drawing page has no fiducials** (avoids OCR false positives on the drawing). |
 | **Drawing page layout** | Padding **`INSPECTION_DRAWING_PRINT_DRAWING_PAGE_PADDING_MM = 3`**. Drawing `<main>` (`data-testid="inspection-print-drawing-area"`) is **borderless white** (no P1 frame). Drawing area height **`INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM = 195`** (was 193mm). |
-| **Record page QR** | Each record page renders a **page-specific QR** (`data-testid="inspection-print-record-qr-code"`) at **`absolute right-[10mm] top-[2.8mm]`**, size **`h-[18mm] w-[18mm]`**. No **`QR P{n}`** mono label under the code. Payload JSON type **`inspection-drawing-record-page`**, **`schemaVersion: 1`**, fields: `reportId`, `templateId`, `fhincd`, `resourceCd`, `templateVersion`, `pageNumber`, `totalPages`, `entryIndexFrom`, `entryIndexTo`, **`markerNoFrom`**, **`markerNoTo`**. SVG via `@zxing/library` `QRCodeWriter`. |
-| **Record header band** | Compact manual fields (**検査日 / 作業者 / ロット / 数量**) in **`w-[72mm]`** grid (`inspection-print-record-controls`); header block **`pr-[30mm]`** reserves space for the absolute QR overlay. |
+| **Record page QR** | Each record page renders a **page-specific QR** (`data-testid="inspection-print-record-qr-code"`) near the top right, size about **22mm**. No **`QR P{n}`** mono label. Current payload is short `SIP1:<pageCode>:<check>`; the 2026-06-15 JSON payload is superseded. SVG via `@zxing/library` `QRCodeWriter`. |
+| **Record header band** | Compact manual fields (**検査日 / 作業者 / ロット / 数量**) in **`w-[72mm]`** grid (`inspection-print-record-controls`); header block reserves space for the absolute QR overlay. |
 | **Record header** | Column guide **測定値（符号 / 整数4桁 / 小数3桁）**. No 判定 / 確認 / 備考 columns. |
 | **Row decoration** | `selfInspectionTemplateId` / `selfInspectionEntryPath` come from **`POST …/leaderboard-decorations`** with body **`{ targetDeviceScopeKey, rowIds }`** (not `rows`). |
 | **Print disclaimer** | `INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER` is **screen-only** in `.inspection-print-toolbar`. It is **not** rendered on `.inspection-print-sheet` pages (print CSS hides toolbar). |
@@ -65,6 +142,19 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ```
 
 Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.md](../guides/quick-start-deployment.md)
+
+### Production deploy (2026-06-25 · DB-backed paper report + short QR · Pi5 only)
+
+| Field | Value |
+|-------|-------|
+| **Branch / PR** | `codex/self-inspection-paper-report-ocr-qr` · **#527** |
+| **Detach Run ID** | **`20260625-142435-14087`** |
+| **Git HEAD (Pi5)** | **`5ef8c2ac`** |
+| **PLAY RECAP** | **`ok=134` `changed=4` `failed=0`** |
+| **Docker** | `api` + `web` rebuild/recreate (`Git: changed`) |
+| **Prisma** | `migrate deploy` and `migrate status` OK; migration `20260625120000_add_self_inspection_paper_reports` applied |
+| **Health** | `https://100.106.158.2/api/system/health` returned `status: ok` |
+| **Operator real-machine validation** | 2026-06-25: user reported実機検証OK after Pi5 deploy |
 
 ### Production deploy (2026-06-15 · workflow + plannedQuantity · Pi5 only)
 
@@ -118,6 +208,35 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 | **Web bundle** | **`index-DIXoz0NY.js`** (`inspection-print-drawing-area` · `right-[10mm]` · `h-[18mm]` · `h-[8.9mm]`; no `QR P` label; no P1 drawing border) |
 
 ## Validation
+
+### Automated and production (2026-06-25 · after DB-backed paper report deploy `5ef8c2ac`)
+
+Local pre-push:
+
+```bash
+pnpm --filter @raspi-system/api prisma:generate
+pnpm --filter @raspi-system/api build
+pnpm --filter @raspi-system/web build
+pnpm --filter @raspi-system/api lint
+pnpm --filter @raspi-system/web lint
+pnpm --filter @raspi-system/api test -- --run src/services/part-measurement/__tests__/self-inspection-paper-report.test.ts
+pnpm --filter @raspi-system/web test -- --run src/features/part-measurement/inspection-drawing/__tests__/InspectionDrawingPrintPreview.test.tsx src/features/part-measurement/inspection-drawing/__tests__/inspectionDrawingPrintViewModel.test.ts src/features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes.test.ts src/features/kiosk/leaderOrderBoard/__tests__/LeaderBoardInspectionWorkflow.test.tsx src/pages/kiosk/KioskInspectionDrawingPrintPage.test.tsx
+```
+
+GitHub Actions on PR #527: Secret scan, CodeQL, and CI all success.
+
+Pi5 production checks:
+
+```bash
+./scripts/deploy/verify-phase12-real.sh
+```
+
+**Result**: PASS **43** / WARN **0** / FAIL **0**
+
+DB verification after deploy:
+
+- `_prisma_migrations` includes `20260625120000_add_self_inspection_paper_reports`.
+- `SelfInspectionPaperReport`, `SelfInspectionPaperReportPage`, and `SelfInspectionPaperOcrReview` exist.
 
 ### Automated (2026-06-15 · after layout polish deploy `247ab019`)
 
@@ -223,10 +342,11 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 | Record page QR identity (page/entry/marker ranges) | **Done** — `a2158875` · Pi5 deploy **`20260615-183021-14261`** |
 | Print preview layout polish (P1 borderless · QR overlay · taller OCR cells) | **Done** — `247ab019` · Pi5 deploy **`20260615-191941-17013`** |
 | P1 OCR fiducial removal | **Done** — fiducials on record pages only (`a2158875`) |
-| QR scan backend / OCR ingest of printed values | **Not implemented** (payload is for future reader) |
-| Formal DB-backed report ID (replace preview identifier) | **Not implemented** |
+| Short QR and DB-backed report ID | **Done** — `5ef8c2ac` · Pi5 deploy **`20260625-142435-14087`** |
+| QR scan backend resolver | **Done** for API (`resolve-page`); OCR scan UI not implemented |
+| OCR ingest of printed values | Backend review/import APIs present; real OCR adapter and review UI not implemented |
 | Print disclaimer placement | **Done** — toolbar-only on screen (`3b83b577`); not on printed sheets |
-| Pi5 print dialog / PDF / physical printer A4 landscape | **Not verified** on kiosk hardware |
+| Pi5 print dialog / PDF / physical printer A4 landscape | **Verified by operator** on 2026-06-25 after HL-L2460DW setup; QR/文字 were field-accepted after QR enlargement |
 
 ## References
 

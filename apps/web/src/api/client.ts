@@ -50,6 +50,11 @@ import type {
   PartMeasurementSheetDto,
   PartMeasurementSheetWithSession,
   SelfInspectionLotEntryDto,
+  SelfInspectionPaperOcrReviewDto,
+  SelfInspectionPaperOcrValueDto,
+  SelfInspectionPaperReportDto,
+  SelfInspectionPaperReportPageDto,
+  SelfInspectionPaperReportPrintDto,
   SelfInspectionSessionDetailDto,
   SelfInspectionSessionsListDto,
   SelfInspectionSessionSummaryDto,
@@ -3434,6 +3439,113 @@ export async function resetSelfInspectionSession(
       headers: clientKey ? { 'x-client-key': clientKey } : undefined
     }
   );
+  return data;
+}
+
+export async function issueSelfInspectionPaperReport(
+  body: {
+    templateId: string;
+    productNo: string;
+    scheduleRowId: string;
+    fseiban: string;
+    fhincd: string;
+    fhinmei: string;
+    resourceCd: string;
+    machineName?: string | null;
+  },
+  clientKey?: string
+): Promise<SelfInspectionPaperReportPrintDto> {
+  const { data } = await api.post<SelfInspectionPaperReportPrintDto>(
+    '/part-measurement/self-inspection/paper-reports/issue',
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data;
+}
+
+export async function getSelfInspectionPaperReportPrint(
+  reportId: string,
+  clientKey?: string
+): Promise<SelfInspectionPaperReportPrintDto> {
+  const { data } = await api.get<SelfInspectionPaperReportPrintDto>(
+    `/part-measurement/self-inspection/paper-reports/${reportId}/print`,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data;
+}
+
+export type SelfInspectionPaperReportResolvePageResult =
+  | {
+      valid: true;
+      page: SelfInspectionPaperReportPageDto;
+      report: Omit<SelfInspectionPaperReportDto, 'pages'>;
+    }
+  | {
+      valid: false;
+      reason: 'invalid_qr' | 'not_found' | 'superseded' | 'imported' | 'cancelled';
+      message: string;
+    };
+
+export async function resolveSelfInspectionPaperReportPage(
+  qrPayload: string,
+  clientKey?: string
+): Promise<SelfInspectionPaperReportResolvePageResult> {
+  const { data } = await api.post<SelfInspectionPaperReportResolvePageResult>(
+    '/part-measurement/self-inspection/paper-reports/resolve-page',
+    { qrPayload },
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data;
+}
+
+export async function createSelfInspectionPaperOcrReview(
+  body: {
+    qrPayload: string;
+    candidateValues?: SelfInspectionPaperOcrValueDto[];
+    imageStoragePath?: string | null;
+  },
+  clientKey?: string
+): Promise<{
+  review: SelfInspectionPaperOcrReviewDto;
+  page: SelfInspectionPaperReportPageDto;
+  report: Omit<SelfInspectionPaperReportDto, 'pages'>;
+}> {
+  const { data } = await api.post<{
+    review: SelfInspectionPaperOcrReviewDto;
+    page: SelfInspectionPaperReportPageDto;
+    report: Omit<SelfInspectionPaperReportDto, 'pages'>;
+  }>('/part-measurement/self-inspection/paper-reports/ocr-reviews', body, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data;
+}
+
+export async function confirmSelfInspectionPaperOcrReview(
+  reviewId: string,
+  body: {
+    values: Array<SelfInspectionPaperOcrValueDto & { overwriteExisting?: boolean }>;
+    employeeTagUid?: string | null;
+    measuringInstrumentTagUid?: string | null;
+    confirmedByActorId?: string | null;
+    confirmedByActorName?: string | null;
+  },
+  clientKey?: string
+): Promise<{
+  review: SelfInspectionPaperOcrReviewDto;
+  report: Omit<SelfInspectionPaperReportDto, 'pages'>;
+}> {
+  const { data } = await api.post<{
+    review: SelfInspectionPaperOcrReviewDto;
+    report: Omit<SelfInspectionPaperReportDto, 'pages'>;
+  }>(`/part-measurement/self-inspection/paper-reports/ocr-reviews/${reviewId}/confirm`, body, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
   return data;
 }
 

@@ -20,6 +20,10 @@ import {
   PartMeasurementVisualTemplateService,
   SelfInspectionService
 } from '../../services/part-measurement/index.js';
+import { SelfInspectionPaperReportIssueService } from '../../services/part-measurement/self-inspection-paper-report-issue.service.js';
+import { SelfInspectionPaperReportResolver } from '../../services/part-measurement/self-inspection-paper-report-resolver.service.js';
+import { SelfInspectionPaperOcrReviewService } from '../../services/part-measurement/self-inspection-paper-ocr-review.service.js';
+import { SelfInspectionPaperImportService } from '../../services/part-measurement/self-inspection-paper-import.service.js';
 import {
   assertVisualCleanupToken,
   signVisualCleanupToken
@@ -353,6 +357,56 @@ const selfInspectionResetSessionBodySchema = z.object({
   reason: z.string().max(500).optional().nullable()
 });
 
+const issueSelfInspectionPaperReportBodySchema = z.object({
+  templateId: z.string().uuid(),
+  productNo: z.string().min(1).max(120),
+  scheduleRowId: z.string().uuid(),
+  fseiban: z.string().min(1).max(120),
+  fhincd: z.string().min(1).max(120),
+  fhinmei: z.string().min(1).max(500),
+  resourceCd: z.string().min(1).max(120),
+  machineName: z.string().max(500).optional().nullable()
+});
+
+const selfInspectionPaperReportIdParamsSchema = z.object({
+  id: z.string().uuid()
+});
+
+const selfInspectionPaperOcrReviewIdParamsSchema = z.object({
+  id: z.string().uuid()
+});
+
+const selfInspectionPaperQrPayloadBodySchema = z.object({
+  qrPayload: z.string().min(1).max(120)
+});
+
+const selfInspectionPaperOcrValueSchema = z.object({
+  entryIndex: z.number().int().min(0).max(1999),
+  templateItemId: z.string().uuid(),
+  value: z.union([z.string(), z.number(), z.null()]),
+  confidence: z.number().min(0).max(1).optional().nullable()
+});
+
+const createSelfInspectionPaperOcrReviewBodySchema = selfInspectionPaperQrPayloadBodySchema.extend({
+  candidateValues: z.array(selfInspectionPaperOcrValueSchema).max(1000).default([]),
+  imageStoragePath: z.string().max(1000).optional().nullable()
+});
+
+const confirmSelfInspectionPaperOcrReviewBodySchema = z.object({
+  values: z
+    .array(
+      selfInspectionPaperOcrValueSchema.extend({
+        overwriteExisting: z.boolean().optional()
+      })
+    )
+    .min(1)
+    .max(1000),
+  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
+  confirmedByActorId: z.string().max(120).optional().nullable(),
+  confirmedByActorName: z.string().max(200).optional().nullable()
+});
+
 function decimalToString(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value === 'object' && value !== null && 'toFixed' in value) {
@@ -472,6 +526,132 @@ function serializeTemplate(
     visualTemplateId: t.visualTemplateId ?? null,
     visualTemplate: t.visualTemplate ? serializeVisualTemplate(t.visualTemplate) : null,
     items: (t.items ?? []).map(serializeTemplateItem)
+  };
+}
+
+function serializeSelfInspectionPaperReportPage(page: {
+  id: string;
+  reportId: string;
+  pageCode: string;
+  pageNumber: number;
+  qrPayload: string;
+  entryIndexFrom: number | null;
+  entryIndexTo: number | null;
+  markerNoFrom: number | null;
+  markerNoTo: number | null;
+  createdAt: Date;
+}) {
+  return {
+    id: page.id,
+    reportId: page.reportId,
+    pageCode: page.pageCode,
+    pageNumber: page.pageNumber,
+    qrPayload: page.qrPayload,
+    entryIndexFrom: page.entryIndexFrom,
+    entryIndexTo: page.entryIndexTo,
+    markerNoFrom: page.markerNoFrom,
+    markerNoTo: page.markerNoTo,
+    createdAt: page.createdAt.toISOString()
+  };
+}
+
+function serializeSelfInspectionPaperReport(report: {
+  id: string;
+  sessionId: string;
+  scheduleRowId: string;
+  templateId: string;
+  status: string;
+  issuedAt: Date;
+  supersededAt: Date | null;
+  importedAt: Date | null;
+  cancelledAt: Date | null;
+  clientDeviceId: string | null;
+  plannedQuantity: number;
+  templateVersion: number;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: report.id,
+    sessionId: report.sessionId,
+    scheduleRowId: report.scheduleRowId,
+    templateId: report.templateId,
+    status: report.status,
+    issuedAt: report.issuedAt.toISOString(),
+    supersededAt: report.supersededAt?.toISOString() ?? null,
+    importedAt: report.importedAt?.toISOString() ?? null,
+    cancelledAt: report.cancelledAt?.toISOString() ?? null,
+    clientDeviceId: report.clientDeviceId,
+    plannedQuantity: report.plannedQuantity,
+    templateVersion: report.templateVersion,
+    createdAt: report.createdAt.toISOString(),
+    updatedAt: report.updatedAt.toISOString()
+  };
+}
+
+function serializeSelfInspectionPaperReportForPrint(report: {
+  id: string;
+  sessionId: string;
+  scheduleRowId: string;
+  templateId: string;
+  status: string;
+  issuedAt: Date;
+  supersededAt: Date | null;
+  importedAt: Date | null;
+  cancelledAt: Date | null;
+  clientDeviceId: string | null;
+  plannedQuantity: number;
+  templateVersion: number;
+  createdAt: Date;
+  updatedAt: Date;
+  template: Parameters<typeof serializeTemplate>[0];
+  pages: Array<Parameters<typeof serializeSelfInspectionPaperReportPage>[0]>;
+}) {
+  return {
+    report: {
+      ...serializeSelfInspectionPaperReport(report),
+      pages: report.pages.map(serializeSelfInspectionPaperReportPage)
+    },
+    template: serializeTemplate({
+      ...report.template,
+      visualTemplateId: report.template.visualTemplateId,
+      visualTemplate: report.template.visualTemplate,
+      items: report.template.items
+    })
+  };
+}
+
+function serializeSelfInspectionPaperOcrReview(review: {
+  id: string;
+  reportId: string;
+  pageId: string | null;
+  status: string;
+  qrPayload: string | null;
+  imageStoragePath: string | null;
+  ocrCandidateValues: unknown;
+  confirmedValues: unknown;
+  confirmedByActorId: string | null;
+  confirmedByActorName: string | null;
+  confirmedAt: Date | null;
+  failureReason: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: review.id,
+    reportId: review.reportId,
+    pageId: review.pageId,
+    status: review.status,
+    qrPayload: review.qrPayload,
+    imageStoragePath: review.imageStoragePath,
+    ocrCandidateValues: review.ocrCandidateValues,
+    confirmedValues: review.confirmedValues,
+    confirmedByActorId: review.confirmedByActorId,
+    confirmedByActorName: review.confirmedByActorName,
+    confirmedAt: review.confirmedAt?.toISOString() ?? null,
+    failureReason: review.failureReason,
+    createdAt: review.createdAt.toISOString(),
+    updatedAt: review.updatedAt.toISOString()
   };
 }
 
@@ -668,6 +848,10 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   const sheetService = new PartMeasurementSheetService();
   const templateService = new PartMeasurementTemplateService();
   const selfInspectionService = new SelfInspectionService();
+  const paperReportIssueService = new SelfInspectionPaperReportIssueService();
+  const paperReportResolver = new SelfInspectionPaperReportResolver();
+  const paperOcrReviewService = new SelfInspectionPaperOcrReviewService(paperReportResolver);
+  const paperImportService = new SelfInspectionPaperImportService();
   const templateCandidateService = new PartMeasurementTemplateCandidateService();
   const visualTemplateService = new PartMeasurementVisualTemplateService();
 
@@ -1343,6 +1527,85 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     });
     return result;
   });
+
+  app.post(
+    '/part-measurement/self-inspection/paper-reports/issue',
+    { preHandler: allowWriteKiosk },
+    async (request) => {
+      const body = issueSelfInspectionPaperReportBodySchema.parse(request.body);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const report = await paperReportIssueService.issue({
+        ...body,
+        clientDeviceId
+      });
+      return serializeSelfInspectionPaperReportForPrint(report);
+    }
+  );
+
+  app.get(
+    '/part-measurement/self-inspection/paper-reports/:id/print',
+    { preHandler: allowView },
+    async (request) => {
+      const params = selfInspectionPaperReportIdParamsSchema.parse(request.params);
+      const report = await paperReportIssueService.getPrintReport(params.id);
+      return serializeSelfInspectionPaperReportForPrint(report);
+    }
+  );
+
+  app.post(
+    '/part-measurement/self-inspection/paper-reports/resolve-page',
+    { preHandler: allowView },
+    async (request) => {
+      const body = selfInspectionPaperQrPayloadBodySchema.parse(request.body);
+      const resolved = await paperReportResolver.resolvePageQr(body.qrPayload);
+      if (!resolved.valid) {
+        return resolved;
+      }
+      return {
+        valid: true,
+        page: serializeSelfInspectionPaperReportPage(resolved.page),
+        report: serializeSelfInspectionPaperReport(resolved.page.report)
+      };
+    }
+  );
+
+  app.post(
+    '/part-measurement/self-inspection/paper-reports/ocr-reviews',
+    { preHandler: allowWriteKiosk },
+    async (request) => {
+      const body = createSelfInspectionPaperOcrReviewBodySchema.parse(request.body);
+      const result = await paperOcrReviewService.createReview({
+        qrPayload: body.qrPayload,
+        candidateValues: body.candidateValues,
+        imageStoragePath: body.imageStoragePath
+      });
+      return {
+        review: serializeSelfInspectionPaperOcrReview(result.review),
+        page: serializeSelfInspectionPaperReportPage(result.page),
+        report: serializeSelfInspectionPaperReport(result.page.report)
+      };
+    }
+  );
+
+  app.post(
+    '/part-measurement/self-inspection/paper-reports/ocr-reviews/:id/confirm',
+    { preHandler: allowWriteKiosk },
+    async (request) => {
+      const params = selfInspectionPaperOcrReviewIdParamsSchema.parse(request.params);
+      const body = confirmSelfInspectionPaperOcrReviewBodySchema.parse(request.body);
+      const result = await paperImportService.confirmReview(params.id, {
+        values: body.values,
+        employeeTagUid: body.employeeTagUid,
+        measuringInstrumentTagUid: body.measuringInstrumentTagUid,
+        confirmedByActorId: body.confirmedByActorId ?? request.user?.id ?? null,
+        confirmedByActorName: body.confirmedByActorName ?? request.user?.username ?? null
+      });
+      return {
+        review: serializeSelfInspectionPaperOcrReview(result.review),
+        report: serializeSelfInspectionPaperReport(result.report)
+      };
+    }
+  );
 
   app.post('/part-measurement/templates', { preHandler: allowWriteKiosk }, async (request) => {
     const body = createTemplateBodySchema.parse(request.body);

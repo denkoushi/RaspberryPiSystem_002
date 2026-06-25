@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 
-import { getKioskInspectionDrawingTemplate, getResolvedClientKey, setClientKeyHeader } from '../../api/client';
+import {
+  getKioskInspectionDrawingTemplate,
+  getResolvedClientKey,
+  getSelfInspectionPaperReportPrint,
+  setClientKeyHeader
+} from '../../api/client';
 import { useKioskProductionScheduleResources } from '../../api/hooks';
 import { formatResourceCdWithJapaneseNames } from '../../features/kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
 import {
@@ -15,7 +20,10 @@ import {
 } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 
-import type { PartMeasurementTemplateDto } from '../../features/part-measurement/types';
+import type {
+  PartMeasurementTemplateDto,
+  SelfInspectionPaperReportDto
+} from '../../features/part-measurement/types';
 
 type TemplateLoadState =
   | { kind: 'loading' }
@@ -23,7 +31,11 @@ type TemplateLoadState =
   | { kind: 'not_found'; message: string }
   | { kind: 'unsupported'; message: string }
   | { kind: 'error'; message: string }
-  | { kind: 'loaded'; template: PartMeasurementTemplateDto };
+  | {
+      kind: 'loaded';
+      template: PartMeasurementTemplateDto;
+      paperReport: SelfInspectionPaperReportDto | null;
+    };
 
 type TemplateLoadErrorState = Exclude<TemplateLoadState, { kind: 'loading' } | { kind: 'loaded' }>;
 
@@ -79,11 +91,11 @@ function PrintErrorScreen({
 
 /** 保存済み検査図面テンプレートの A4 横 HTML 帳票プレビュー（KioskLayout 外） */
 export function KioskInspectionDrawingPrintPage() {
-  const { templateId } = useParams<{ templateId: string }>();
+  const { templateId, reportId } = useParams<{ templateId?: string; reportId?: string }>();
   const location = useLocation();
   const [issuedAt] = useState(() => new Date());
   const [loadState, setLoadState] = useState<TemplateLoadState>(() =>
-    templateId?.trim() ? { kind: 'loading' } : { kind: 'missing_template_id' }
+    templateId?.trim() || reportId?.trim() ? { kind: 'loading' } : { kind: 'missing_template_id' }
   );
 
   useEffect(() => {
@@ -99,7 +111,8 @@ export function KioskInspectionDrawingPrintPage() {
 
   useEffect(() => {
     const id = templateId?.trim();
-    if (!id) {
+    const paperId = reportId?.trim();
+    if (!id && !paperId) {
       setLoadState({ kind: 'missing_template_id' });
       return;
     }
@@ -109,9 +122,21 @@ export function KioskInspectionDrawingPrintPage() {
 
     void (async () => {
       try {
-        const template = await getKioskInspectionDrawingTemplate(id, clientKey);
+        if (paperId) {
+          const paper = await getSelfInspectionPaperReportPrint(paperId, clientKey);
+          if (!cancelled) {
+            setLoadState({
+              kind: 'loaded',
+              template: paper.template,
+              paperReport: paper.report
+            });
+          }
+          return;
+        }
+
+        const template = await getKioskInspectionDrawingTemplate(id!, clientKey);
         if (!cancelled) {
-          setLoadState({ kind: 'loaded', template });
+          setLoadState({ kind: 'loaded', template, paperReport: null });
         }
       } catch (error) {
         if (!cancelled) {
@@ -123,22 +148,34 @@ export function KioskInspectionDrawingPrintPage() {
     return () => {
       cancelled = true;
     };
-  }, [clientKey, templateId]);
+  }, [clientKey, reportId, templateId]);
 
   const template = loadState.kind === 'loaded' ? loadState.template : null;
+  const paperReport = loadState.kind === 'loaded' ? loadState.paperReport : null;
   const drawingPath = template?.visualTemplate?.drawingImageRelativePath ?? null;
   const { blobUrl, error: blobError } = usePartMeasurementDrawingBlobUrl(drawingPath);
 
   const viewModelResult = useMemo(() => {
     if (!template) return null;
-    const plannedQuantity = parseInspectionDrawingPrintPlannedQuantityFromSearch(location.search);
+    const plannedQuantity =
+      paperReport?.plannedQuantity ?? parseInspectionDrawingPrintPlannedQuantityFromSearch(location.search);
+    const issuedAtForViewModel = paperReport ? new Date(paperReport.issuedAt) : issuedAt;
     try {
       return {
         viewModel: buildInspectionDrawingPrintViewModel({
           template,
           resourceName: formatResourceCdWithJapaneseNames(template.resourceCd, resourceNameMap),
-          issuedAt,
-          plannedQuantity
+          issuedAt: issuedAtForViewModel,
+          plannedQuantity,
+          paperReport: paperReport
+            ? {
+                reportId: paperReport.id,
+                pages: paperReport.pages.map((page) => ({
+                  pageNumber: page.pageNumber,
+                  qrPayload: page.qrPayload
+                }))
+              }
+            : null
         }),
         error: null as InspectionDrawingPrintBuildError | null
       };
@@ -148,7 +185,7 @@ export function KioskInspectionDrawingPrintPage() {
       }
       throw error;
     }
-  }, [issuedAt, location.search, resourceNameMap, template]);
+  }, [issuedAt, location.search, paperReport, resourceNameMap, template]);
 
   if (loadState.kind === 'loading') {
     return (

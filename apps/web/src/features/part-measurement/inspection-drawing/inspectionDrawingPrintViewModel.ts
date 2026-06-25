@@ -23,13 +23,14 @@ export type InspectionDrawingPrintRecordEntrySlot = {
 export type InspectionDrawingPrintRecordPage = {
   pageNumber: number;
   pageLabel: string;
+  qrPayload?: string;
   slots: InspectionDrawingPrintRecordSlot[];
   entrySlots: InspectionDrawingPrintRecordEntrySlot[];
 };
 
 export type InspectionDrawingPrintMetadata = {
-  /** Not a formal DB form ID — preview-only identifier for print/OCR planning. */
   previewIdentifier: string;
+  paperReportId: string | null;
   issuedAtDisplay: string;
   fhincd: string;
   resourceCd: string;
@@ -55,6 +56,13 @@ export type BuildInspectionDrawingPrintViewModelInput = {
   issuedAt: Date;
   /** 順位ボード行の予定数。全数検査の記録欄数に使う。 */
   plannedQuantity?: number | null;
+  paperReport?: {
+    reportId: string;
+    pages: Array<{
+      pageNumber: number;
+      qrPayload: string;
+    }>;
+  } | null;
 };
 
 export class InspectionDrawingPrintBuildError extends Error {
@@ -185,14 +193,13 @@ export function buildInspectionDrawingPrintViewModel(
     );
   }
 
-  const previewIdentifier = buildInspectionDrawingPrintPreviewIdentifier(
-    template.id,
-    template.version,
-    issuedAt
-  );
+  const previewIdentifier =
+    input.paperReport?.reportId ??
+    buildInspectionDrawingPrintPreviewIdentifier(template.id, template.version, issuedAt);
 
   const metadata: InspectionDrawingPrintMetadata = {
     previewIdentifier,
+    paperReportId: input.paperReport?.reportId ?? null,
     issuedAtDisplay: formatInspectionDrawingPrintIssuedAtDisplay(issuedAt),
     fhincd: template.fhincd,
     resourceCd: template.resourceCd,
@@ -204,6 +211,9 @@ export function buildInspectionDrawingPrintViewModel(
     reportUnitKey: buildInspectionDrawingPrintReportUnitKey(template)
   };
 
+  const pageQrPayloadByNumber = new Map(
+    (input.paperReport?.pages ?? []).map((page) => [page.pageNumber, page.qrPayload])
+  );
   const recordPages = buildRecordPages(
     points,
     buildInspectionDrawingPrintRecordEntrySlots(template, plannedQuantity)
@@ -215,7 +225,8 @@ export function buildInspectionDrawingPrintViewModel(
     points,
     recordPages: recordPages.map((page, index) => ({
       ...page,
-      pageLabel: `${index + 2}/${totalPages}`
+      pageLabel: `${index + 2}/${totalPages}`,
+      qrPayload: pageQrPayloadByNumber.get(page.pageNumber)
     })),
     totalPages,
     qrPayloadSummary: buildInspectionDrawingPrintQrPayloadSummary({

@@ -153,12 +153,12 @@ describe('InspectionDrawingPrintPreview', () => {
 
     expect(screen.getByTestId('inspection-print-record-qr')).toHaveClass(
       'absolute',
-      'right-[10mm]',
-      'top-[2.8mm]'
+      'right-[8mm]',
+      'top-[2.4mm]'
     );
     const qrCodes = screen.getAllByTestId('inspection-print-record-qr-code');
     expect(qrCodes).toHaveLength(viewModel.recordPages.length);
-    expect(qrCodes[0]).toHaveClass('h-[18mm]', 'w-[18mm]');
+    expect(qrCodes[0]).toHaveClass('h-[22mm]', 'w-[22mm]');
 
     const payload = JSON.parse(qrCodes[0]?.getAttribute('data-qr-payload') ?? '{}') as Record<
       string,
