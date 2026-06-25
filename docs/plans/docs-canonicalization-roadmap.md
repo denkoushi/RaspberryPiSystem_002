@@ -364,7 +364,19 @@ Status: implemented in PR24.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR25 And Later: Thin Indexes And Split Large Documents
+### PR25: Thin DGX Phase7 Index History Block
+
+Status: implemented in PR25.
+
+- Thin only the 2026-05-03 DGX Resource Phase7 latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace main commit, Pi5 deploy, post-policy,
+  gateway, Ansible, and `EXEC_PLAN.md` narrative detail with short links to
+  KB-365, the DGX runbook, and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR26 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
