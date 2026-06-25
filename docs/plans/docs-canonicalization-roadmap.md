@@ -1762,7 +1762,20 @@ Status: implemented in PR140.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR141 And Later: Thin Indexes And Split Large Documents
+### PR141: Thin Leaderboard Child Row Index Block
+
+Status: implemented in PR141.
+
+- Thin only the 2026-04-03 kiosk leader-order child row layout
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, implementation file list, API
+  contract note, deployment sequence, detach runs, Phase12, and `EXEC_PLAN.md`
+  detail with short links to KB-297, the verification checklist, and the
+  deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR142 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
