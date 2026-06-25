@@ -1463,7 +1463,19 @@ Status: implemented in PR115.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR116 And Later: Thin Indexes And Split Large Documents
+### PR116: Thin Photo VLM Active Assist Index Block
+
+Status: implemented in PR116.
+
+- Thin only the 2026-04-09 photo-loan VLM active-assist latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace env, vault, force-recreate, diagnosis,
+  threshold, backup, Ansible follow-up, and `EXEC_PLAN.md` detail with short
+  links to KB-319 and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR117 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
