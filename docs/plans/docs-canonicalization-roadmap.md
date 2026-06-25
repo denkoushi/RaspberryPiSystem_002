@@ -1750,7 +1750,19 @@ Status: implemented in PR139.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR140 And Later: Thin Indexes And Split Large Documents
+### PR140: Thin Part Measurement Drawing Persistence Index Block
+
+Status: implemented in PR140.
+
+- Thin only the 2026-04-03 kiosk part-measurement drawing persistence and Pi5
+  rerun recovery latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, bind-mount details, rerun
+  recovery detail, CI note, and `EXEC_PLAN.md` detail with short links to
+  KB-320, KB-329, and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR141 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
