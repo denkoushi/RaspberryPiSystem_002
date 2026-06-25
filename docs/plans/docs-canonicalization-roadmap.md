@@ -569,7 +569,19 @@ Status: implemented in PR41.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR42 And Later: Thin Indexes And Split Large Documents
+### PR42: Thin Mishima Grinding No-Date Index Block
+
+Status: implemented in PR42.
+
+- Thin only the 2026-05-01 `ProductionSchedule_Mishima_Grinding` no-date
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace fixed dashboard ID, date column behavior,
+  manual import run, numeric-column confirmation, and index self-link detail
+  with short links to KB-297 and the CSV guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR43 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
