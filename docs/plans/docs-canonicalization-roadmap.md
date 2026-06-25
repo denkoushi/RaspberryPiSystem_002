@@ -471,7 +471,21 @@ Status: implemented in PR33.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR34 And Later: Thin Indexes And Split Large Documents
+### PR34: Thin FKOJUNST External Completion Index Block
+
+Status: implemented in PR34.
+
+- Thin only the 2026-05-02 FKOJUNST_Status external-completion
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, implementation file, migration,
+  and outdated `S`/`R` narrative detail with short links to KB-297,
+  ADR-20260508, and deployment.
+- Keep the index wording explicit that the 2026-05-02 row is historical and
+  current behavior follows the 2026-05-08 revision.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR35 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
