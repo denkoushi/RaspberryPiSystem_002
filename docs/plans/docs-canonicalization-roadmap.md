@@ -605,7 +605,19 @@ Status: implemented in PR44.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR45 And Later: Thin Indexes And Split Large Documents
+### PR45: Thin Leaderboard Completion Filter Index Block
+
+Status: implemented in PR45.
+
+- Thin only the 2026-04-30 leaderboard default completion filter latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, Pi5 deploy, Phase12,
+  command, detach run, implementation, and `EXEC_PLAN.md` detail with short
+  links to KB-297 and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR46 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
