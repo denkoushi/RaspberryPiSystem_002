@@ -352,7 +352,7 @@
 
 - **順位ボード資源チップ結合粒度（`productNo`+`fhincd` / progress-overview整合）正本**: [KB-297 §結合粒度](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-resource-chips-part-key-overview-join-2026-05-02) · [deployment](./guides/deployment.md) 2026-05-02 結合粒度項。
 
-- **キオスク順位ボード 各行下辺・製番単位の資源進捗チップ帯（`fix/leaderboard-row-footer-resource-chips`·`16911165`）Pi5→Pi4×4·Phase12 43/0/0·Web のみ**: [deployment.md](./guides/deployment.md) 補足（行下辺チップ）·Detach **`20260502-105130-11663`** … **`20260502-111424-3838`**。**ナレッジ**: [KB-297 §行下辺](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-footer-resource-chips-2026-05-02)。
+- **キオスク順位ボード 行下辺・製番単位の資源進捗チップ帯 正本**: [KB-297 §行下辺](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-footer-resource-chips-2026-05-02) · [deployment](./guides/deployment.md) 2026-05-02 行下辺チップ項。
 
 ### 🆕 最新アップデート（2026-05-01）
 
