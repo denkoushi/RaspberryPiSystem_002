@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 135156,
-    "totalBytes": 10260465,
+    "totalLines": 135168,
+    "totalBytes": 10259851,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5196,
+    "localLinkCount": 5197,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 6,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 579721,
+      "byteSize": 578612,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -9371,6 +9371,11 @@
           "exists": true
         },
         {
+          "href": "./knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md#b-gmail-送信レイアウト2026-04-18",
+          "targetPath": "docs/knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md",
+          "exists": true
+        },
+        {
           "href": "./knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md#c-実メトリクスプレビュー幅2026-04-18",
           "targetPath": "docs/knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md",
           "exists": true
@@ -10659,10 +10664,6 @@
         {
           "line": 258,
           "length": 1109
-        },
-        {
-          "line": 450,
-          "length": 1046
         },
         {
           "line": 452,
@@ -21378,7 +21379,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 7,
+      "inboundCount": 8,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29631,8 +29632,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 1031,
-      "byteSize": 41704,
+      "lineCount": 1043,
+      "byteSize": 42199,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
