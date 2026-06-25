@@ -265,7 +265,20 @@ Status: implemented in PR16.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR17 And Later: Thin Indexes And Split Large Documents
+### PR17: Thin FKOJUNST_Status Disappearance Completion Index History Block
+
+Status: implemented in PR17.
+
+- Thin only the 2026-05-05 FKOJUNST_Status dedupe-key disappearance
+  completion latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, detach run, and Phase12
+  narrative detail with short links to KB-297, deployment, PR #250,
+  ADR-20260508, and ADR-20260526.
+- Keep the adjacent current-spec FKOJUNST_Status pointer intact.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR18 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

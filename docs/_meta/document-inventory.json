@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 134303,
-    "totalBytes": 10265998,
+    "totalLines": 134316,
+    "totalBytes": 10266454,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 624494,
+      "byteSize": 624303,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10994,7 +10994,7 @@
     {
       "path": "docs/_meta/document-migration-ledger.md",
       "lineCount": 82,
-      "byteSize": 8584,
+      "byteSize": 8660,
       "hasFrontmatter": true,
       "title": "Document Migration Ledger",
       "status": "active",
@@ -29726,8 +29726,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 317,
-      "byteSize": 12968,
+      "lineCount": 330,
+      "byteSize": 13539,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
