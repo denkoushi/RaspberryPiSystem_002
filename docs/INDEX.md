@@ -297,7 +297,7 @@
 
 - **Phase12 / Zero2W NOPASSWD 履歴正本**: [KB-367](./knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md) · [KB-368](./knowledge-base/KB-368-zero2w-haizen-placement-tracking.md) · [Zero2W setup](./runbooks/zero2w-tanaban-edge-setup.md)。関連: [deployment](./guides/deployment.md) 2026-05-06項。
 
-- **正本統一の本番・実機（2026-05-08）**: [deployment.md §FKOJUNST 唯一正本](../guides/deployment.md#fkojunst-status-sole-source-2026-05-08)·[KB-370 §Production 2026-05-08](./knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-08-fkojunst-sole-source)·**Detach `20260508-192843-15997`**·**Phase12** **43/0/0**（**約 188s**）。**`main` マージ後**は再デプロイ引数 **`main`**（[ADR-20260508-fkojunst-status-sole-source](./decisions/ADR-20260508-fkojunst-status-sole-source.md)）。
+- **FKOJUNST_Status 唯一正本（2026-05-08）履歴正本**: [ADR-20260508](./decisions/ADR-20260508-fkojunst-status-sole-source.md) · [KB-370 §Production 2026-05-08](./knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-08-fkojunst-sole-source) · [deployment](./guides/deployment.md#fkojunst-status-sole-source-2026-05-08)。関連: [ADR-20260526](./decisions/ADR-20260526-production-schedule-completion-status-only.md)。
 
 ### 🆕 最新アップデート（2026-05-05）
 

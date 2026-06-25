@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 447 |
-| Total lines | 134291 |
-| Total bytes | 10265525 |
+| Total lines | 134303 |
+| Total bytes | 10265998 |
 | With frontmatter | 162 |
 | With status | 23 |
 | source_of_truth declared | 7 |
@@ -22,7 +22,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Replacement-character documents | 1 |
 | Long-line documents | 16 |
 | Local links | 5199 |
-| Broken local links | 117 |
+| Broken local links | 116 |
 | Documents over 1,000 lines | 26 |
 | Documents over 3,000 lines | 6 |
 
@@ -39,7 +39,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/architecture/deployment-modules.md` | 2523 | 128110 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188223 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2103 | 127221 |
-| `docs/INDEX.md` | 1824 | 624582 |
+| `docs/INDEX.md` | 1824 | 624494 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153339 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1474 | 153433 |
 | `docs/knowledge-base/infrastructure/miscellaneous.md` | 1322 | 74222 |
@@ -92,7 +92,6 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 - `EXEC_PLAN.md` -> `../docs/guides/ssd-migration.md` (../docs/guides/ssd-migration.md)
 - `EXEC_PLAN.md` -> `../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-?15[question-mark-corruption]pi5[question-mark-corruption]` (../docs/knowledge-base/infrastructure/security.md)
-- `docs/INDEX.md` -> `../guides/deployment.md#fkojunst-status-sole-source-2026-05-08` (guides/deployment.md)
 - `docs/INDEX.md` -> `../plans/alerts-platform-phase2.md` (plans/alerts-platform-phase2.md)
 - `docs/INDEX.md` -> `../plans/deploy-stability-execplan.md` (plans/deploy-stability-execplan.md)
 - `docs/api/overview.md` -> `./kiosk.md` (docs/api/kiosk.md)
@@ -140,3 +139,4 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/guides/gmail-auto-protocol-phase1-verification.md` -> `../../.cursor/plans/gmail-auto-protocol-plan_e8cbbcb6.plan.md` (.cursor/plans/gmail-auto-protocol-plan_e8cbbcb6.plan.md)
 - `docs/guides/measuring-instrument-loan-events-verification.md` -> `../../.cursor/plans/measuring-instrument-events-retention_02349d3d.plan.md` (.cursor/plans/measuring-instrument-events-retention_02349d3d.plan.md)
 - `docs/guides/production-setup.md` -> `../architecture/client-device-integration.md` (docs/architecture/client-device-integration.md)
+- `docs/guides/verification-checklist.md` -> `./knowledge-base/api.md#kb-118-計測機器uid編集時の複数タグ問題の修正` (docs/guides/knowledge-base/api.md)
