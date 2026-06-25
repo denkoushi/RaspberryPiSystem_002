@@ -483,7 +483,7 @@
 
 ### 🆕 最新アップデート（2026-04-16）
 
-- **計測機器持出: 2枚目の氏名NFC直後に自動送信されない race condition を修正し、本番5台へ順次デプロイ**: ブランチ **`fix/kiosk-instrument-borrow-nfc-employee-uid`**。`KioskInstrumentBorrowPage` の 2枚目NFC経路で、state 更新待ちではなく **読み取った `nfcEvent.uid` をそのまま送信**するよう修正し、`KioskInstrumentBorrowPage.nfc.test.tsx` で回帰確認。**CI**: GitHub Actions Run **`24491079191`** 成功。**本番**: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` を **1台ずつ**。Pi5 初回 detached run `20260416-133007-2231` は `Rebuild/Restart docker compose services` で停止したように見えたため、[deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) に従って復旧し `--foreground` で再実行。**実機相当確認**: Pi5 `health=ok`、4台の `deploy-status=false`、`kiosk-browser.service` / `status-agent.timer` active、`nfc-agent` `readerConnected=true`。参照: [frontend.md の KB-345](./knowledge-base/frontend.md#kb-345-計測機器持出で氏名nfcスキャン後に自動送信されない) / [modules/measuring-instruments/ui.md](./modules/measuring-instruments/ui.md) / [deployment.md](./guides/deployment.md)。
+- **計測機器持出 氏名NFC自動送信 race 修正 正本**: [KB-345](./knowledge-base/frontend.md#kb-345-計測機器持出で氏名nfcスキャン後に自動送信されない) · [measuring-instruments UI](./modules/measuring-instruments/ui.md) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-04-15）
 
