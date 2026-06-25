@@ -581,7 +581,19 @@ Status: implemented in PR42.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR43 And Later: Thin Indexes And Split Large Documents
+### PR43: Thin Planned End Date Index Block
+
+Status: implemented in PR43.
+
+- Thin only the 2026-05-01 order supplement `plannedEndDate` latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace commit, Pi5 deploy, Phase12, command,
+  detach run, implementation, and `EXEC_PLAN.md` narrative detail with short
+  links to KB-297, the CSV guide, and KB-328.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR44 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
