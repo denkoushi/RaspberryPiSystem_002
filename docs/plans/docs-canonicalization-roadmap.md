@@ -1583,7 +1583,19 @@ Status: implemented in PR125.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR126 And Later: Thin Indexes And Split Large Documents
+### PR126: Thin Signage Leader Initial JPEG Index Block
+
+Status: implemented in PR126.
+
+- Thin only the 2026-04-07 signage `kiosk_leader_order_cards` initial JPEG
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace feature summary, branch, Pi5 rollout,
+  detach-run, Phase12, main-merge note, and `EXEC_PLAN.md` detail with short
+  links to KB-335 and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR127 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
