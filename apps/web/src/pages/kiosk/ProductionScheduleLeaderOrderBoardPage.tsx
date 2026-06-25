@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { issueSelfInspectionPaperReport } from '../../api/client';
 import {
@@ -72,6 +72,7 @@ const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
 export function ProductionScheduleLeaderOrderBoardPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const isMac = typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
   const macManualOrderV2 = isMac && MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED;
 
@@ -539,38 +540,43 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     [navigate]
   );
 
-  const handleOpenInspectionPaperPrint = useCallback(async (row: LeaderBoardRow) => {
-    const templateId = row.selfInspectionTemplateId?.trim();
-    if (!templateId) return;
-    setInspectionWorkflowRow(null);
-    const printWindow = window.open('about:blank', '_blank');
-    try {
-      const paper = await issueSelfInspectionPaperReport({
-        templateId,
-        productNo: row.productNo,
-        scheduleRowId: resolveSourceRowIdFromLeaderBoardRow(row),
-        fseiban: row.fseiban,
-        fhincd: row.fhincd,
-        fhinmei: row.fhinmei,
-        resourceCd: row.resourceCd,
-        machineName: row.machineName
-      });
-      const path = kioskInspectionDrawingPaperReportPrintPath(paper.report.id);
-      if (printWindow) {
-        printWindow.location.href = path;
-      } else {
-        window.open(path, '_blank', 'noopener,noreferrer');
+  const inspectionPaperPrintReturnTo = useMemo(
+    () => `${location.pathname}${location.search}${location.hash}`,
+    [location.hash, location.pathname, location.search]
+  );
+
+  const handleOpenInspectionPaperPrint = useCallback(
+    async (row: LeaderBoardRow) => {
+      const templateId = row.selfInspectionTemplateId?.trim();
+      if (!templateId) return;
+      setInspectionWorkflowRow(null);
+      try {
+        const paper = await issueSelfInspectionPaperReport({
+          templateId,
+          productNo: row.productNo,
+          scheduleRowId: resolveSourceRowIdFromLeaderBoardRow(row),
+          fseiban: row.fseiban,
+          fhincd: row.fhincd,
+          fhinmei: row.fhinmei,
+          resourceCd: row.resourceCd,
+          machineName: row.machineName
+        });
+        navigate(
+          kioskInspectionDrawingPaperReportPrintPath(paper.report.id, {
+            returnTo: inspectionPaperPrintReturnTo
+          })
+        );
+      } catch (error) {
+        const message =
+          error && typeof error === 'object' && 'response' in error
+            ? ((error.response as { data?: { message?: string } } | undefined)?.data?.message ??
+              '紙帳票の発行に失敗しました。')
+            : '紙帳票の発行に失敗しました。';
+        window.alert(message);
       }
-    } catch (error) {
-      printWindow?.close();
-      const message =
-        error && typeof error === 'object' && 'response' in error
-          ? ((error.response as { data?: { message?: string } } | undefined)?.data?.message ??
-            '紙帳票の発行に失敗しました。')
-          : '紙帳票の発行に失敗しました。';
-      window.alert(message);
-    }
-  }, []);
+    },
+    [inspectionPaperPrintReturnTo, navigate]
+  );
 
   const handleRegisterSeibanFromNoteModal = useCallback(async () => {
     const f = noteModalTargetFseiban?.trim();

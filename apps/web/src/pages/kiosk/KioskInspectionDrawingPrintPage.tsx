@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
   getKioskInspectionDrawingTemplate,
@@ -16,6 +16,8 @@ import {
 } from '../../features/part-measurement/inspection-drawing';
 import {
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
+  KIOSK_INSPECTION_DRAWING_PRINT_RETURN_LABEL,
+  parseKioskInspectionDrawingPrintReturnToFromSearch,
   parseInspectionDrawingPrintPlannedQuantityFromSearch
 } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
@@ -66,12 +68,16 @@ function resolveTemplateLoadError(error: unknown): TemplateLoadErrorState {
 function PrintErrorScreen({
   title,
   message,
-  detail
+  detail,
+  returnLink
 }: {
   title: string;
   message: string;
   detail?: string;
+  returnLink?: { to: string; label: string };
 }) {
+  const link = returnLink ?? { to: KIOSK_INSPECTION_DRAWING_LIBRARY_PATH, label: '検査図面一覧へ' };
+
   return (
     <div className="grid min-h-screen place-items-center bg-slate-100 p-6 text-slate-900">
       <div className="max-w-lg rounded border border-slate-300 bg-white p-6 shadow">
@@ -79,10 +85,11 @@ function PrintErrorScreen({
         <p className="mt-2 text-sm text-slate-700">{message}</p>
         {detail ? <p className="mt-2 text-xs text-slate-500">{detail}</p> : null}
         <Link
-          to={KIOSK_INSPECTION_DRAWING_LIBRARY_PATH}
+          to={link.to}
+          replace={Boolean(returnLink)}
           className="mt-4 inline-flex rounded bg-slate-900 px-4 py-2 text-sm font-bold text-white"
         >
-          検査図面一覧へ
+          {link.label}
         </Link>
       </div>
     </div>
@@ -93,6 +100,7 @@ function PrintErrorScreen({
 export function KioskInspectionDrawingPrintPage() {
   const { templateId, reportId } = useParams<{ templateId?: string; reportId?: string }>();
   const location = useLocation();
+  const navigate = useNavigate();
   const [issuedAt] = useState(() => new Date());
   const [loadState, setLoadState] = useState<TemplateLoadState>(() =>
     templateId?.trim() || reportId?.trim() ? { kind: 'loading' } : { kind: 'missing_template_id' }
@@ -103,6 +111,23 @@ export function KioskInspectionDrawingPrintPage() {
   }, []);
 
   const clientKey = getResolvedClientKey();
+  const isPaperReportPrint = Boolean(reportId?.trim());
+  const paperReportReturnTo = useMemo(
+    () =>
+      isPaperReportPrint
+        ? parseKioskInspectionDrawingPrintReturnToFromSearch(location.search)
+        : null,
+    [isPaperReportPrint, location.search]
+  );
+  const paperReportReturnLink = paperReportReturnTo
+    ? { to: paperReportReturnTo, label: KIOSK_INSPECTION_DRAWING_PRINT_RETURN_LABEL }
+    : undefined;
+  const paperReportReturnAction = paperReportReturnTo
+    ? {
+        label: KIOSK_INSPECTION_DRAWING_PRINT_RETURN_LABEL,
+        onClick: () => navigate(paperReportReturnTo, { replace: true })
+      }
+    : undefined;
   const resourcesQuery = useKioskProductionScheduleResources();
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
@@ -189,7 +214,11 @@ export function KioskInspectionDrawingPrintPage() {
 
   if (loadState.kind === 'loading') {
     return (
-      <PrintErrorScreen title="帳票を準備中" message="保存済みテンプレートを読み込んでいます…" />
+      <PrintErrorScreen
+        title="帳票を準備中"
+        message="保存済みテンプレートを読み込んでいます…"
+        returnLink={paperReportReturnLink}
+      />
     );
   }
 
@@ -198,22 +227,40 @@ export function KioskInspectionDrawingPrintPage() {
       <PrintErrorScreen
         title="帳票を表示できません"
         message="テンプレート ID が指定されていません。"
+        returnLink={paperReportReturnLink}
       />
     );
   }
 
   if (loadState.kind === 'not_found') {
-    return <PrintErrorScreen title="テンプレートが見つかりません" message={loadState.message} />;
+    return (
+      <PrintErrorScreen
+        title={isPaperReportPrint ? '帳票が見つかりません' : 'テンプレートが見つかりません'}
+        message={loadState.message}
+        returnLink={paperReportReturnLink}
+      />
+    );
   }
 
   if (loadState.kind === 'unsupported') {
     return (
-      <PrintErrorScreen title="帳票の対象外" message={loadState.message} detail="409" />
+      <PrintErrorScreen
+        title="帳票の対象外"
+        message={loadState.message}
+        detail="409"
+        returnLink={paperReportReturnLink}
+      />
     );
   }
 
   if (loadState.kind === 'error') {
-    return <PrintErrorScreen title="読み込みエラー" message={loadState.message} />;
+    return (
+      <PrintErrorScreen
+        title="読み込みエラー"
+        message={loadState.message}
+        returnLink={paperReportReturnLink}
+      />
+    );
   }
 
   if (!drawingPath?.trim()) {
@@ -221,6 +268,7 @@ export function KioskInspectionDrawingPrintPage() {
       <PrintErrorScreen
         title="図面がありません"
         message="このテンプレートには印刷用の図面が設定されていません。"
+        returnLink={paperReportReturnLink}
       />
     );
   }
@@ -231,6 +279,7 @@ export function KioskInspectionDrawingPrintPage() {
         title="帳票を生成できません"
         message={viewModelResult.error.message}
         detail={viewModelResult.error.code}
+        returnLink={paperReportReturnLink}
       />
     );
   }
@@ -241,17 +290,27 @@ export function KioskInspectionDrawingPrintPage() {
         title="図面の読み込みに失敗しました"
         message={blobError}
         detail="Blob 取得失敗"
+        returnLink={paperReportReturnLink}
       />
     );
   }
 
   if (!blobUrl || !viewModelResult?.viewModel) {
     return (
-      <PrintErrorScreen title="帳票を準備中" message="図面データを読み込んでいます…" />
+      <PrintErrorScreen
+        title="帳票を準備中"
+        message="図面データを読み込んでいます…"
+        returnLink={paperReportReturnLink}
+      />
     );
   }
 
   return (
-    <InspectionDrawingPrintPreview viewModel={viewModelResult.viewModel} imageUrl={blobUrl} showToolbar />
+    <InspectionDrawingPrintPreview
+      viewModel={viewModelResult.viewModel}
+      imageUrl={blobUrl}
+      showToolbar
+      returnAction={paperReportReturnAction}
+    />
   );
 }

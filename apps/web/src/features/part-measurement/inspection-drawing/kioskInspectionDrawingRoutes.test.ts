@@ -9,6 +9,8 @@ import {
   kioskInspectionDrawingTemplatePrintPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
+  normalizeKioskInspectionDrawingPrintReturnTo,
+  parseKioskInspectionDrawingPrintReturnToFromSearch,
   parseInspectionDrawingPrintPlannedQuantityFromSearch,
   parseInspectionDrawingSourceTemplateIdFromSearch
 } from './kioskInspectionDrawingRoutes';
@@ -46,6 +48,41 @@ describe('kioskInspectionDrawingRoutes', () => {
   it('paper report print path helper', () => {
     expect(kioskInspectionDrawingPaperReportPrintPath('report-1')).toBe(
       '/kiosk/part-measurement/inspection/paper-reports/report-1/print'
+    );
+  });
+
+  it('paper report print path helper adds safe returnTo when provided', () => {
+    expect(
+      kioskInspectionDrawingPaperReportPrintPath('report-1', {
+        returnTo: '/kiosk/production-schedule/leader-order-board?q=abc#slot-1'
+      })
+    ).toBe(
+      '/kiosk/part-measurement/inspection/paper-reports/report-1/print?returnTo=%2Fkiosk%2Fproduction-schedule%2Fleader-order-board%3Fq%3Dabc%23slot-1'
+    );
+  });
+
+  it('normalizes and parses kiosk print returnTo safely', () => {
+    expect(
+      normalizeKioskInspectionDrawingPrintReturnTo('/kiosk/production-schedule/leader-order-board/')
+    ).toBe('/kiosk/production-schedule/leader-order-board');
+    expect(
+      parseKioskInspectionDrawingPrintReturnToFromSearch(
+        '?returnTo=%2Fkiosk%2Fproduction-schedule%2Fleader-order-board%3Fq%3Dabc%23slot-1'
+      )
+    ).toBe('/kiosk/production-schedule/leader-order-board?q=abc#slot-1');
+  });
+
+  it('rejects unsafe kiosk print returnTo values', () => {
+    expect(normalizeKioskInspectionDrawingPrintReturnTo('https://evil.example')).toBeNull();
+    expect(normalizeKioskInspectionDrawingPrintReturnTo('//evil.example/path')).toBeNull();
+    expect(normalizeKioskInspectionDrawingPrintReturnTo('/kiosk/production-schedule')).toBeNull();
+    expect(
+      normalizeKioskInspectionDrawingPrintReturnTo(
+        '/kiosk/production-schedule/leader-order-board/../../admin'
+      )
+    ).toBeNull();
+    expect(parseKioskInspectionDrawingPrintReturnToFromSearch('?returnTo=https%3A%2F%2Fevil.example')).toBe(
+      '/kiosk/production-schedule/leader-order-board'
     );
   });
 

@@ -119,9 +119,12 @@ export {
   kioskInspectionDrawingPaperReportPrintPath,
   kioskInspectionDrawingTemplateEditPath,
   kioskInspectionDrawingTemplatePrintPath,
+  KIOSK_INSPECTION_DRAWING_PRINT_RETURN_LABEL,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
   INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE,
+  normalizeKioskInspectionDrawingPrintReturnTo,
+  parseKioskInspectionDrawingPrintReturnToFromSearch,
   parseInspectionDrawingSourceTemplateIdFromSearch,
   parseInspectionDrawingVisualTemplateIdFromSearch
 } from './kioskInspectionDrawingRoutes';

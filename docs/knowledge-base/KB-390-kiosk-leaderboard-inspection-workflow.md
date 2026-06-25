@@ -27,6 +27,7 @@ Operators start self-inspection from the leader order board row action **検** (
 | **Session** | Issue service creates or reuses the existing `SelfInspectionSession` for the row. Paper is an input route into that same session, not a separate inspection object. |
 | **Latest print wins** | For the same `scheduleRowId`, unfinalized paper reports in `ISSUED` / `OCR_REVIEW` become `SUPERSEDED` when reprinted. Only the newest issue is OCR-importable. |
 | **Print route** | The print page uses `/kiosk/part-measurement/inspection/paper-reports/:reportId/print` and fetches DB-issued report/page data. The legacy template preview route remains for preview/dev compatibility. |
+| **Kiosk print navigation** | Leader board paper print uses same-tab navigation, not `_blank`. The issued print URL may include internal `returnTo`, and the print toolbar/error screen exposes **順位ボードに戻る** for kiosk recovery without tab operations. |
 | **QR payload** | Page QR is `SIP1:<pageCode>:<check>`, for example `SIP1:A7K4M2Q9:5F`. The QR resolves to `SelfInspectionPaperReportPage`. |
 | **QR size** | Record-page QR is enlarged to about **22mm** and uses the previous surrounding blank space. Header reserve is widened to keep record fields usable. |
 | **OCR boundary** | Backend accepts OCR candidate values and stores them as a review record. It does not write measurement values until human confirmation. |
@@ -102,7 +103,7 @@ This section preserves the original 2026-06-15 workflow and print layout contrac
 |------|----------|
 | **Entry** | Leader board row **検** → modal title **検査方法を選択** |
 | **デジタル入力** | Enabled when `selfInspectionEntryPath` is non-empty. Navigates to existing self-inspection start/session URL. |
-| **帳票紙印刷** | Enabled when `selfInspectionTemplateId` is non-empty. Current path issues a DB-backed paper report, then opens the issued report print route. |
+| **帳票紙印刷** | Enabled when `selfInspectionTemplateId` is non-empty. Current path issues a DB-backed paper report, then navigates the same kiosk tab to the issued report print route. |
 | **Print URL** | `…/inspection/templates/:id/print?plannedQuantity=N` when N is a positive integer; omitted when null/invalid. |
 | **Print cap** | `INSPECTION_DRAWING_PRINT_MAX_ENTRY_COUNT = 2000` in URL parse + view model (abuse guard). |
 | **Record layout** | `INSPECTION_DRAWING_PRINT_RECORD_ENTRIES_PER_PAGE = 5` (was 6). Full mode uses `plannedQuantity` for entry columns when set. |
@@ -208,6 +209,16 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 | **Web bundle** | **`index-DIXoz0NY.js`** (`inspection-print-drawing-area` · `right-[10mm]` · `h-[18mm]` · `h-[8.9mm]`; no `QR P` label; no P1 drawing border) |
 
 ## Validation
+
+### Automated (2026-06-25 · same-tab paper print navigation)
+
+```bash
+pnpm --filter @raspi-system/web test -- src/features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes.test.ts src/features/part-measurement/inspection-drawing/__tests__/InspectionDrawingPrintPreview.test.tsx src/pages/kiosk/KioskInspectionDrawingPrintPage.test.tsx
+pnpm --filter @raspi-system/web lint
+pnpm --filter @raspi-system/web build
+```
+
+**Result**: all passed locally. Build produced only existing chunk-size/browser-data freshness warnings.
 
 ### Automated and production (2026-06-25 · after DB-backed paper report deploy `5ef8c2ac`)
 
