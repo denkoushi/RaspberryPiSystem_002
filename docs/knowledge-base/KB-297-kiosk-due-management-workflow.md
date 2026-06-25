@@ -2385,6 +2385,7 @@ category: knowledge-base
   - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-register-modal-close infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
   - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-184211-20335`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 405s**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 90s**・Tailscale）。
+  - **未完了検証**: 認証済み順位ボードで **鉛筆** → **製番登録** → **左パネル履歴反映** を現場目視する。
 
 - **トラブルシュート**:
   - **製番登録を押しても何も起きない**: Network で **`PUT …/search-state`** が **`428`（If-Match 欠如）**や **`409`（競合）**になっていないか確認。競合時は既存フックが **リベースしてリトライ**するが、連続失敗時は **`historyWriting`** が続きボタンが **`disabled`** のままになり得る → **ページ再読込**。
