@@ -894,7 +894,19 @@ Status: implemented in PR68.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR69 And Later: Thin Indexes And Split Large Documents
+### PR69: Thin Leaderboard Pi4 Performance Index Block
+
+Status: implemented in PR69.
+
+- Thin only the 2026-04-24 kiosk leaderboard Pi4 lightweight fetch and
+  virtualization latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, per-host deployment,
+  detach runs, Phase12, barcode-agent retry, PR, and `EXEC_PLAN.md` detail
+  with short links to KB-297 and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR70 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
