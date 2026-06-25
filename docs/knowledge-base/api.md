@@ -744,6 +744,12 @@
 - **根因**: `/kiosk/pallet-visualization` が **`usesKioskImmersiveLayout` allowlist** に無く、非沉浸式 `KioskLayout` のまま **左ペインの独立 `overflow-y` が効かず**、ウィンドウ全体が縦スクロールしていた。
 - **対策**: `kioskImmersiveLayoutPolicy.ts` に **`/kiosk/pallet-visualization` プレフィックス**を追加（**`kioskImmersiveLayoutPolicy.test.ts` 必須**）。**関連**: [KB-311](./KB-311-kiosk-immersive-header-allowlist.md)。
 
+**追補（2026-04-22・キオスク パレット可視化 UI コンポーネント分割）**:
+- ブランチ **`feat/kiosk-pallet-visualization-ui`**・代表 **`029ecc16`**（`KioskPalletVisualizationPage` を `pallet-visualization/*` feature module へ分割し、a11y 周辺を整理）。
+- **本番**: **Pi5 → Pi4 x4 → Pi3** の順次反映（各 `--limit` 単体・Pi3 は最後に `raspberrypi3` のみ）。**Detach Run ID**（接頭辞 `ansible-update-`）: `20260422-172813-2568` → `20260422-173734-20394` → `20260422-174658-25070` → `20260422-175728-9680` → `20260422-180809-22370` → `20260422-181644-9337`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（最終一巡 約 **148s**）。
+- **関連**: `/kiosk/pallet-visualization` の沉浸式 allowlist は [KB-311](./KB-311-kiosk-immersive-header-allowlist.md) も参照。
+
 **追補（2026-04-22・`pallet-machine-illustrations` ストレージ永続化 / Pi5 `api`）**:
 - ブランチ **`fix/pallet-machine-illustrations-volume`**・代表 **`937684fd`**（compose bind + Ansible ホスト `0755` ディレクトリ + Mac override）。
 - **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/pallet-machine-illustrations-volume infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260422-185725-32599`**（**`failed=0` / `unreachable=0` / exit `0`**）。
