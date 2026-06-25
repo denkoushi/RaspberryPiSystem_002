@@ -1147,7 +1147,20 @@ Status: implemented in PR89.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR90 And Later: Thin Indexes And Split Large Documents
+### PR90: Thin Instrument Borrow NFC Race Index Block
+
+Status: implemented in PR90.
+
+- Thin only the 2026-04-16 measuring-instrument borrow second-NFC race
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, CI run, deployment sequence,
+  recovery run detail, onsite checks, and implementation explanation with
+  short links to KB-345, the measuring-instruments UI module document, and
+  deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR91 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
