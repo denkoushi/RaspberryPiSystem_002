@@ -1111,7 +1111,19 @@ Status: implemented in PR86.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR87 And Later: Thin Indexes And Split Large Documents
+### PR87: Thin Admin Signage Preview Target Index Block
+
+Status: implemented in PR87.
+
+- Thin only the 2026-04-17 admin signage preview client-select latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, deployment sequence,
+  detach run, Phase12, Pi host scope, merge details, and `EXEC_PLAN.md`
+  detail with short links to KB-348, KB-192, and the signage module document.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR88 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
