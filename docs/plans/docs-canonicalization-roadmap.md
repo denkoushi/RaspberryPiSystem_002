@@ -303,7 +303,20 @@ Status: implemented in PR19.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR20 And Later: Thin Indexes And Split Large Documents
+### PR20: Thin Zero2W Assignment API Index History Block
+
+Status: implemented in PR20.
+
+- Thin only the 2026-05-04 Zero2W assignment kiosk and
+  `haizen-target-devices` API latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace Pi5 deploy, detach run, Pi4/Pi3
+  no-hosts-matched, and Phase12 narrative detail with short links to KB-368,
+  the mobile-placement smartphone runbook, the mobile-placement API doc, and
+  deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR21 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
