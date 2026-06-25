@@ -1475,7 +1475,19 @@ Status: implemented in PR116.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR117 And Later: Thin Indexes And Split Large Documents
+### PR117: Thin Pi4 Firefox Browser Chrome Index Block
+
+Status: implemented in PR117.
+
+- Thin only the 2026-04-08 Pi4 Firefox kiosk browser chrome minimization
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace implementation, Ansible distribution,
+  rollout, OS-panel, and browser-reveal detail with short links to KB-336 and
+  the kiosk Wi-Fi/panel runbook.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR118 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
