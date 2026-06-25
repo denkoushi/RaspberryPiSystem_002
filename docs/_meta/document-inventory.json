@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 135132,
-    "totalBytes": 10261396,
+    "totalLines": 135144,
+    "totalBytes": 10260920,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5194,
+    "localLinkCount": 5195,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 6,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 581572,
+      "byteSize": 580658,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -9367,6 +9367,11 @@
         },
         {
           "href": "./knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md",
+          "targetPath": "docs/knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md",
+          "exists": true
+        },
+        {
+          "href": "./knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md#d-テレメトリ除去回帰テスト2026-04-19",
           "targetPath": "docs/knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md",
           "exists": true
         },
@@ -21368,7 +21373,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 5,
+      "inboundCount": 6,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29621,8 +29626,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 1007,
-      "byteSize": 40784,
+      "lineCount": 1019,
+      "byteSize": 41222,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
