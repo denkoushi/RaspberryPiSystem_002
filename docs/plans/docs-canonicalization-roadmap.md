@@ -1499,7 +1499,19 @@ Status: implemented in PR118.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR119 And Later: Thin Indexes And Split Large Documents
+### PR119: Thin Signage Leader Header Index Block
+
+Status: implemented in PR119.
+
+- Thin only the 2026-05-21 signage `kiosk_leader_order_cards` header full
+  machine-name latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace commit, API-only scope, Pi5 rollout,
+  detach-run, Phase12, onsite visual check, and `EXEC_PLAN.md` detail with
+  short links to KB-335 and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR120 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
