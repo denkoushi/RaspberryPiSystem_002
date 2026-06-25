@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 447 |
-| Total lines | 135458 |
-| Total bytes | 10252253 |
+| Total lines | 135471 |
+| Total bytes | 10252333 |
 | With frontmatter | 162 |
 | With status | 23 |
 | source_of_truth declared | 7 |
@@ -39,10 +39,10 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/architecture/deployment-modules.md` | 2523 | 128110 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188223 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2103 | 127221 |
-| `docs/INDEX.md` | 1824 | 559102 |
+| `docs/INDEX.md` | 1824 | 558681 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153339 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1474 | 153433 |
-| `docs/plans/docs-canonicalization-roadmap.md` | 1333 | 54108 |
+| `docs/plans/docs-canonicalization-roadmap.md` | 1346 | 54609 |
 | `docs/knowledge-base/infrastructure/miscellaneous.md` | 1322 | 74222 |
 | `docs/knowledge-base/infrastructure/security.md` | 1312 | 81480 |
 
