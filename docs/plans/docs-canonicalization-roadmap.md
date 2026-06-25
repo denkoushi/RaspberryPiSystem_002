@@ -1689,7 +1689,19 @@ Status: implemented in PR134.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR135 And Later: Thin Indexes And Split Large Documents
+### PR135: Thin Part Measurement FHINMEI Partial Match Index Block
+
+Status: implemented in PR135.
+
+- Thin only the 2026-04-05 kiosk part-measurement `FHINMEI_ONLY` partial-match
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, rollout, Phase12, Pi3 warning
+  note, and `EXEC_PLAN.md` detail with short links to ADR-20260404, KB-320,
+  and the verification checklist.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR136 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
