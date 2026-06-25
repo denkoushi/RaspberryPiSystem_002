@@ -1123,7 +1123,19 @@ Status: implemented in PR87.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR88 And Later: Thin Indexes And Split Large Documents
+### PR88: Thin Measuring Instrument Inspection Key Index Block
+
+Status: implemented in PR88.
+
+- Thin only the 2026-04-17 measuring-instrument inspection-record API
+  client-key latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, merge, root-cause,
+  production follow-up, and `EXEC_PLAN.md` detail with short links to KB-346,
+  the measuring-instruments UI module document, and deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR89 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
