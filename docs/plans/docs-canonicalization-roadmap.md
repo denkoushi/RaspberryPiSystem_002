@@ -447,7 +447,19 @@ Status: implemented in PR31.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR32 And Later: Thin Indexes And Split Large Documents
+### PR32: Thin DGX Control Targets Index History Block
+
+Status: implemented in PR32.
+
+- Thin only the 2026-05-03 DGX Control Targets production-reflection
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, Pi5 deploy, detach run,
+  Phase12, command, and gateway action narrative detail with short links to
+  ADR-20260502, the DGX runbook, and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR33 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

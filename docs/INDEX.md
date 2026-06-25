@@ -336,7 +336,7 @@
 
 - **DGX Resource Phase3（experiment-lab・私用 Comfy補助起停・`SET_POLICY.applyWorkloadChanges`）履歴正本**: [KB-365 Phase3](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-03 Phase3項。
 
-- **DGX Control Targets 本番反映（`overview.targets` · `EXECUTE_TARGET_ACTION`）·`feat/dgx-resource-standard-control-targets`·`1e24d169`·Pi5 のみ·Phase12 43/0/0**: 管理 API/UI で **標準 Control Target グリッド**と **gateway の `start`/`stop` 正規アクション**。**デプロイ**: [deployment.md](./guides/deployment.md) 補足（2026-05-03）·`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**記録当時は先行** `feat/dgx-resource-standard-control-targets`）。**Detach Run ID**: **`20260503-082132-17926`**。**実機**: `./scripts/deploy/verify-phase12-real.sh`。**ADR**: [ADR-20260502-dgx-resource-control-targets.md](./decisions/ADR-20260502-dgx-resource-control-targets.md)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)。
+- **DGX Control Targets 本番反映（`overview.targets`・`EXECUTE_TARGET_ACTION`）履歴正本**: [ADR-20260502](./decisions/ADR-20260502-dgx-resource-control-targets.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-03 Control Targets項。
 
 ### 🆕 最新アップデート（2026-05-02）
 
