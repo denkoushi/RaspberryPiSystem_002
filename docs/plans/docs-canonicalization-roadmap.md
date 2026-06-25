@@ -1511,7 +1511,19 @@ Status: implemented in PR119.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR120 And Later: Thin Indexes And Split Large Documents
+### PR120: Thin Signage Leader 5x2 Grid Index Block
+
+Status: implemented in PR120.
+
+- Thin only the 2026-05-21 signage `kiosk_leader_order_cards` 5x2 grid
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, API/admin-Web scope, Pi5 rollout,
+  detach-run, CI, Phase12, PR, and `EXEC_PLAN.md` detail with short links to
+  KB-335 and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR121 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
