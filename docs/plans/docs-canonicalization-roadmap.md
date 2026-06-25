@@ -822,7 +822,19 @@ Status: implemented in PR62.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR63 And Later: Thin Indexes And Split Large Documents
+### PR63: Thin Pallet Signage JPEG V3 Follow-Up Index Block
+
+Status: implemented in PR63.
+
+- Thin only the 2026-04-28 pallet signage JPEG v3 follow-up fix
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace commit, Pi5 rollout, command, detach run,
+  Phase12, and `EXEC_PLAN.md` detail with short links to KB-355 and
+  deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR64 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

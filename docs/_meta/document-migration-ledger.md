@@ -51,7 +51,7 @@ the topic.
 
 | source_area | current_payload | target_canonical | action | preservation | next_status |
 |-------------|-----------------|------------------|--------|--------------|-------------|
-| `docs/INDEX.md` latest-update blocks | Date-stamped narrative updates and deployment summaries. | Existing linked KB / Plan / ADR / Runbook / API documents. For kiosk leaderboard current specification, use `docs/knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md`. | split | PR6-PR62 thinned selected recent blocks. PR50-PR51 moved remaining onsite smoke validation for seiban list and note-modal registration from `docs/INDEX.md` into KB-297. Continue by domain. | partial_pr62 |
+| `docs/INDEX.md` latest-update blocks | Date-stamped narrative updates and deployment summaries. | Existing linked KB / Plan / ADR / Runbook / API documents. For kiosk leaderboard current specification, use `docs/knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md`. | split | PR6-PR63 thinned selected recent blocks. PR50-PR51 moved remaining onsite smoke validation for seiban list and note-modal registration from `docs/INDEX.md` into KB-297. Continue by domain. | partial_pr63 |
 | `docs/INDEX.md` purpose/category navigation | Navigation tables and audience-oriented entry links. | `docs/INDEX.md` as thin global navigation. | keep | Keep this file as a lightweight index; avoid adding narrative update logs. | keep_thin |
 | `docs/knowledge-base/index.md` category and issue tables | KB navigation mixed with status notes and some deployment facts. | `docs/knowledge-base/index.md` as thin KB navigation; individual KB files for details. | split | Shorten after `docs/INDEX.md` first-pass thinning; do not duplicate KB detail text. | pending_after_global_index |
 | `docs/knowledge-base/index.md` update history | Chronological deployment and validation notes that duplicate KB / deployment / EXEC_PLAN history. | Existing KB files, Plans, Runbooks, or Evidence paths referenced by each entry. | split | Map by domain before deleting text; preserve links that external docs use. | map_before_edit |
@@ -78,5 +78,5 @@ From `docs/_meta/document-inventory.json` before adding this ledger:
 
 ## Next Step
 
-PR63 should continue `docs/INDEX.md` thinning for another domain, or create the
+PR64 should continue `docs/INDEX.md` thinning for another domain, or create the
 standard deployment / validation runbook targets before shortening those guides.
