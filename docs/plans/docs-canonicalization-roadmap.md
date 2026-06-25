@@ -1713,7 +1713,20 @@ Status: implemented in PR136.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR137 And Later: Thin Indexes And Split Large Documents
+### PR137: Thin Part Measurement Template Picker Index Block
+
+Status: implemented in PR137.
+
+- Thin only the 2026-04-04 kiosk part-measurement template picker
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, API endpoint list, rollout,
+  Phase12, deploy-status note, ICMP note, and `EXEC_PLAN.md` detail with short
+  links to ADR-20260404, KB-320, the runbook, static preview, and the
+  verification checklist.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR138 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
