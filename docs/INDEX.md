@@ -340,7 +340,7 @@
 
 ### 🆕 最新アップデート（2026-05-02）
 
-- **DGX Control Targets（`overview.targets` · `EXECUTE_TARGET_ACTION`）·ブランチ `feat/dgx-resource-standard-control-targets`**:**標準監視ターゲット**を API で一覧化し、書き込みは **`system-prod-gateway` のみ**（`/start` `/stop`）。互換で `services[]` と `LOCAL_LLM_START|STOP` を維持。**ADR**: [ADR-20260502-dgx-resource-control-targets.md](./decisions/ADR-20260502-dgx-resource-control-targets.md)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）。**本番反映（2026-05-03）**は上記 **2026-05-03** 項を参照。
+- **DGX Control Targets（`overview.targets`・`EXECUTE_TARGET_ACTION`）設計正本**: [ADR-20260502](./decisions/ADR-20260502-dgx-resource-control-targets.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-03 Control Targets項。
 
 - **FKOJUNST_Status CSV 不在を別テーブルで外部完了（`S`/`R` のみ・CSV 0件ガード・一覧=進捗=順位ボードで OR 判定）·ブランチ `feature/fkojunst-external-completion-b`·API+DB**: **`ProductionScheduleExternalCompletion`**・[`fkojunst-external-completion-sync.repository.ts`](../apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.repository.ts)·[`production-schedule-effective-completion.sql.ts`](../apps/api/src/services/production-schedule/production-schedule-effective-completion.sql.ts)·マイグレーション **`20260502103000_add_production_schedule_external_completion`**。**ナレッジ**: [KB-297 §外部完了](./knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)。
 
