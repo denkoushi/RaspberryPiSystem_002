@@ -625,7 +625,7 @@
 ### 🆕 最新アップデート（2026-04-06）
 
 - **キオスク持出一覧カード 面トークン 正本**: [KB-332](./knowledge-base/KB-332-kiosk-active-loan-card-modern-surface.md) · [deployment](./guides/deployment.md)。
-- **キオスク持出一覧: 計測・吊具を compact 表記に揃える（工具カード据え置き・`compactKioskLines`）・`feat/signage-compact-kiosk-instrument-rigging`・本番 Pi5→Pi4×4→Pi3（単独）順次・スモーク実機検証・`main` マージ**: Detach Run ID は [KB-330](./knowledge-base/infrastructure/signage.md#kb-330-compact-kiosk-instrument-rigging-deploy)。**運用**: [deployment.md](./guides/deployment.md)（`update-all-clients.sh`・**`--status` でも `RASPI_SERVER_HOST` 必須**）。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **キオスク持出一覧 compact 表記 正本**: [KB-330](./knowledge-base/infrastructure/signage.md#kb-330-compact-kiosk-instrument-rigging-deploy) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-04-05）
 
