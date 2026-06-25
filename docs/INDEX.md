@@ -647,7 +647,7 @@
 - **サイネージ `splitCompact24` 貸出カード 正本**: [KB-325](./knowledge-base/infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git) · [preview](../apps/api/scripts/html-previews/signage-split-compact24-preview.html) · [deployment](./guides/deployment.md)。
 - **サイネージ貸出グリッド描画エンジン 正本**: [KB-327](./knowledge-base/infrastructure/signage.md#kb-327-貸出グリッド-playwright--signage_loan_grid_engine-とデプロイ環境のずれ) · [ADR-20260405](./decisions/ADR-20260405-signage-loan-grid-render-engine.md) · [deployment](./guides/deployment.md)。
 - **サイネージ Playwright 貸出グリッド HTML 組み立て 正本**: [KB-327](./knowledge-base/infrastructure/signage.md#kb-327-貸出グリッド-playwright--signage_loan_grid_engine-とデプロイ環境のずれ) · [verification](./guides/verification-checklist.md) · [deployment](./guides/deployment.md)。
-- **サイネージ: 貸出グリッド HTML モダン外皮（グラデ・影・期限超過パルス等・契約不変）・StoneBase01（`raspi4-kensaku-stonebase01`）のみ先行デプロイ・実機 systemd スモーク**: ブランチ `feat/signage-loan-grid-html-modern-chrome`。[deployment.md](./guides/deployment.md) の `update-all-clients.sh`・**Detach `20260406-194743-26315`**。**参照**: [KB-331](./knowledge-base/infrastructure/signage.md#kb-331-signage-loan-grid-html-modern-chrome-stonebase-only) / [EXEC_PLAN.md](../EXEC_PLAN.md)（`main` マージ後 CI 確認）。
+- **サイネージ貸出グリッド HTML モダン外皮 正本**: [KB-331](./knowledge-base/infrastructure/signage.md#kb-331-signage-loan-grid-html-modern-chrome-stonebase-only) · [KB-327](./knowledge-base/infrastructure/signage.md#kb-327-貸出グリッド-playwright--signage_loan_grid_engine-とデプロイ環境のずれ) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-04-03）
 
