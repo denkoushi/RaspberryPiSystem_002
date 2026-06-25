@@ -1487,7 +1487,19 @@ Status: implemented in PR117.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR118 And Later: Thin Indexes And Split Large Documents
+### PR118: Thin Mobile Placement Parts Shelf Signage Index Block
+
+Status: implemented in PR118.
+
+- Thin only the 2026-04-08 / 2026-04-13
+  `mobile_placement_parts_shelf_grid` latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace feature summary, rollout order, follow-up
+  PRs, detach-run, Phase12, and preview detail with short links to the signage
+  guide, KB-341, and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR119 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
