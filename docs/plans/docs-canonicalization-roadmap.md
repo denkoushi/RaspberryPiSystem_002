@@ -412,7 +412,18 @@ Status: implemented in PR28.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR29 And Later: Thin Indexes And Split Large Documents
+### PR29: Thin DGX GPU Contention Index History Block
+
+Status: implemented in PR29.
+
+- Thin only the DGX blue vLLM and private ComfyUI GPU contention latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace symptom and `EXEC_PLAN.md` narrative detail
+  with short links to KB-364, the DGX runbook, and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR30 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
