@@ -324,7 +324,7 @@
 
 - **DGX リソース Phase7（運用 UI 最小化・実験シナリオ post-policy・gateway ヘルス）履歴正本**: [KB-365 Phase7](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-03 Phase7項。
 
-- **DGX リソース 目的別ガイド（タスク優先 UI）／私用開始に post-policy Comfy 起動·`feat/dgx-resource-ui-task-first`·代表 `5ac0f17d`·API+Web·Pi5 のみ本番**: 4 操作中心・詳細 `<details>` 退避。**`business_to_private`** で Pi5 に Comfy POST 両方あるとき **policy 後に `private-comfyui start`** を同一ガイドに含める。**Detach **`20260503-140320-20910`**（`PLAY RECAP` **`ok=130` `changed=4` `failed=0`**・`--follow` 約 **651s**）。**実機** `./scripts/deploy/verify-phase12-real.sh` **43/0/0**（約 **113s**。**Pi3 はデプロイ対象外・検証のみ**）。**KB**: [KB-365 §Phase6](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-6目的別ガイド--post-policy-comfy-apiweb本番反映)。**デプロイ**: [deployment.md](./guides/deployment.md)（2026-05-03 · 目的別ガイド項）。
+- **DGX リソース Phase6（目的別ガイド / post-policy Comfy）履歴正本**: [KB-365 Phase6](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-03 目的別ガイド項。
 
 - **DGX リソース管理 UI 再設計（運用コンソール／`dgxResourceUi`・シナリオ選択とプレビュー分離）·`feat/dgx-resource-ui-redesign`·**Web のみ**·代表 **`d449b655`**·Pi5 のみ本番**: **`Button`** に **`danger` / `ghostOnDark`**。**正常時は運用監視ヒントパネル非表示**（`shouldShowMonitoringPanel`）。**Detach **`20260503-131606-21654`**（`PLAY RECAP` **`ok=130` `changed=4` `failed=0`**）。**実機** `./scripts/deploy/verify-phase12-real.sh` **43/0/0**（約 **125s**。**Pi3 はデプロイ対象外**）。**KB**: [KB-365](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。**デプロイ**: [deployment.md](./guides/deployment.md)（2026-05-03 · UI 再設計項）。
 
