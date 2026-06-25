@@ -1800,7 +1800,19 @@ Status: implemented in PR143.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR144 And Later: Thin Indexes And Split Large Documents
+### PR144: Thin Signage Loan Grid HTML Structure Index Block
+
+Status: implemented in PR144.
+
+- Thin only the 2026-04-03 signage Playwright loan-grid HTML structure
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace commit, implementation-token list,
+  rollout, Phase12, and detailed verification text with short links to
+  KB-327, the verification checklist, and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR145 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
