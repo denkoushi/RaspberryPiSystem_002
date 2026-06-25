@@ -328,7 +328,19 @@ Status: implemented in PR21.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR22 And Later: Thin Indexes And Split Large Documents
+### PR22: Thin Leaderboard Rank Picker Index History Block
+
+Status: implemented in PR22.
+
+- Thin only the 2026-05-04 kiosk leaderboard seiban priority evaluation and
+  registered-seiban rank picker latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, Pi5-to-Pi4 deploy,
+  detach run, and Phase12 narrative detail with short links to KB-297 and
+  deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR23 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

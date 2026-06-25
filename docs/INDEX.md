@@ -314,7 +314,7 @@
 
 - **DGX リソース Phase11（進行中表示の持続化）履歴正本**: [KB-365 Phase 11](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-04項。関連: [PR #246](https://github.com/denkoushi/RaspberryPiSystem_002/pull/246)。
 
-- **キオスク順位ボード・製番順評価 ON 時の登録製番ランクピッカー（`feat/leader-board-seiban-rank-picker`·`d4d6160c`）Pi5→Pi4×4 順次·Pi3 除外**: [KB-297 §ランクピッカー](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-rank-picker-2026-05-04)·[deployment.md](./guides/deployment.md)（2026-05-04 late 項）。**Detach** **`20260504-211859-16303` … `20260504-213745-19344`**（各 **`failed=0`**）。**実機** `./scripts/deploy/verify-phase12-real.sh` **43/0/0**（約 **60s**）。
+- **キオスク順位ボード・製番順評価 / 登録製番ランクピッカー履歴正本**: [KB-297 §製番順評価](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-priority-eval-mode-2026-05-04) · [KB-297 §ランクピッカー](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-rank-picker-2026-05-04) · [deployment](./guides/deployment.md) 2026-05-04 late項。
 
 ### 🆕 最新アップデート（2026-05-03）
 
