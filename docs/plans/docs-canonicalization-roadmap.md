@@ -979,7 +979,19 @@ Status: implemented in PR75.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR76 And Later: Thin Indexes And Split Large Documents
+### PR76: Thin Loan Report Gmail Send Index Block
+
+Status: implemented in PR76.
+
+- Thin only the 2026-04-18 admin loan report Gmail send and two-pane layout
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, deployment command, detach
+  run, Phase12, onsite verification, smoke, health, CI, PR, and `EXEC_PLAN.md`
+  detail with a short link to KB-354.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR77 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
