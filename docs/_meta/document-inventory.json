@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 135724,
-    "totalBytes": 10255379,
+    "totalLines": 135736,
+    "totalBytes": 10255341,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5197,
+    "localLinkCount": 5196,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 6,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 551580,
+      "byteSize": 551054,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6528,11 +6528,6 @@
         {
           "href": "./design-previews/README.md",
           "targetPath": "docs/design-previews/README.md",
-          "exists": true
-        },
-        {
-          "href": "./design-previews/signage-leader-order-cards-kiosk-aligned-preview.html",
-          "targetPath": "docs/design-previews/signage-leader-order-cards-kiosk-aligned-preview.html",
           "exists": true
         },
         {
@@ -29592,8 +29587,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 1599,
-      "byteSize": 64756,
+      "lineCount": 1611,
+      "byteSize": 65244,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
