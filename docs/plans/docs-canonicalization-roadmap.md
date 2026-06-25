@@ -1439,7 +1439,19 @@ Status: implemented in PR113.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR114 And Later: Thin Indexes And Split Large Documents
+### PR114: Thin Kiosk Analytics Photo Tab Index Block
+
+Status: implemented in PR114.
+
+- Thin only the 2026-04-09 kiosk analytics photo-tab display-name aggregation
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace commit, Pi5 deployment, detach-run,
+  Phase12, smoke-test, and `EXEC_PLAN.md` detail with short links to KB-334
+  and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR115 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
