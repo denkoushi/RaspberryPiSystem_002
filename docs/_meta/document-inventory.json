@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 134328,
-    "totalBytes": 10266437,
+    "totalLines": 134341,
+    "totalBytes": 10266209,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5199,
+    "localLinkCount": 5200,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 26,
     "documentsOver3000Lines": 6,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 623753,
+      "byteSize": 622905,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6058,6 +6058,11 @@
         {
           "href": "../AGENTS.md#cursor-状態db復旧後2026-06-06",
           "targetPath": "AGENTS.md",
+          "exists": true
+        },
+        {
+          "href": "../clients/haizen-agent/README.md",
+          "targetPath": "clients/haizen-agent/README.md",
           "exists": true
         },
         {
@@ -10676,10 +10681,6 @@
           "length": 1109
         },
         {
-          "line": 311,
-          "length": 1124
-        },
-        {
           "line": 353,
           "length": 1355
         },
@@ -10994,7 +10995,7 @@
     {
       "path": "docs/_meta/document-migration-ledger.md",
       "lineCount": 82,
-      "byteSize": 8706,
+      "byteSize": 8756,
       "hasFrontmatter": true,
       "title": "Document Migration Ledger",
       "status": "active",
@@ -29726,8 +29727,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 342,
-      "byteSize": 14026,
+      "lineCount": 355,
+      "byteSize": 14596,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",

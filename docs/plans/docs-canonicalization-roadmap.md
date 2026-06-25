@@ -290,7 +290,20 @@ Status: implemented in PR18.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR19 And Later: Thin Indexes And Split Large Documents
+### PR19: Thin Zero2W Tanaban Edge Setup Index History Block
+
+Status: implemented in PR19.
+
+- Thin only the 2026-05-04 Zero2W tanaban edge setup latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace Ansible, inventory fragment,
+  `haizen-agent`, SSH/TLS finding, Android/API, and E2E narrative detail with
+  short links to the Zero2W setup runbook, KB-367, KB-368, Tailscale policy,
+  client setup, mobile-placement API, and haizen-agent README.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR20 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
