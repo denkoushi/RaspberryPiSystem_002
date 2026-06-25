@@ -631,7 +631,7 @@
 
 - **キオスク部品測定 複数記録表 正本**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md) · [Runbook](./runbooks/kiosk-part-measurement.md)。
 - **キオスク部品測定 測定値入力中一覧 正本**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md) · [Runbook](./runbooks/kiosk-part-measurement.md)。
-- **キオスク部品測定: `FHINMEI_ONLY` 候補の部分一致（NFKC+lower+空白正規化・日程 `fhinmei` が候補キーを `includes`・最短2文字・並びタイブレーク）・`feat/part-measurement-fhinmei-partial-match`・Pi5→Pi4×4 順次デプロイ（Pi3 除外）・Phase12 PASS 42/1/0（Pi3 WARN は運用上スキップ可）**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md) / [ADR-20260404](./decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)（Decision・Verification 追補）/ [verification-checklist.md](./guides/verification-checklist.md) §6.6.9 / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **キオスク部品測定 `FHINMEI_ONLY` 部分一致 正本**: [ADR-20260404](./decisions/ADR-20260404-part-measurement-template-pick-kiosk.md) · [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md) · [verification](./guides/verification-checklist.md)。
 
 ### 🆕 最新アップデート（2026-04-04）
 
