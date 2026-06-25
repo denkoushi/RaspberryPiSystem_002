@@ -1427,7 +1427,19 @@ Status: implemented in PR112.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR113 And Later: Thin Indexes And Split Large Documents
+### PR113: Thin Kiosk Analytics Month Filter Index Block
+
+Status: implemented in PR113.
+
+- Thin only the 2026-04-14 kiosk analytics month-picker and per-tab asset
+  filter latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, rollout order, detach-run,
+  Phase12, and `EXEC_PLAN.md` detail with short links to KB-334 and the
+  deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR114 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
