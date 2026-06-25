@@ -1087,7 +1087,19 @@ Status: implemented in PR84.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR85 And Later: Thin Indexes And Split Large Documents
+### PR85: Thin Seiban Machine Name Supplement Index Block
+
+Status: implemented in PR85.
+
+- Thin only the 2026-04-17 seiban machine-name Gmail `FHINMEI_MH_SH`
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, deployment sequence,
+  detach runs, Phase12, Pi host scope, merge details, and `EXEC_PLAN.md`
+  detail with short links to KB-350 and the CSV guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR86 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
