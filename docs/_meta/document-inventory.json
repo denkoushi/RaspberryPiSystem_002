@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 134703,
-    "totalBytes": 10261057,
+    "totalLines": 134717,
+    "totalBytes": 10260093,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 603334,
+      "byteSize": 602083,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10661,10 +10661,6 @@
           "length": 1109
         },
         {
-          "line": 386,
-          "length": 1203
-        },
-        {
           "line": 388,
           "length": 1009
         },
@@ -10947,7 +10943,7 @@
     {
       "path": "docs/_meta/document-migration-ledger.md",
       "lineCount": 82,
-      "byteSize": 8741,
+      "byteSize": 8294,
       "hasFrontmatter": true,
       "title": "Document Migration Ledger",
       "status": "active",
@@ -19904,8 +19900,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
-      "lineCount": 3173,
-      "byteSize": 430502,
+      "lineCount": 3174,
+      "byteSize": 430669,
       "hasFrontmatter": true,
       "title": "KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装",
       "status": null,
@@ -29679,8 +29675,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 717,
-      "byteSize": 29030,
+      "lineCount": 730,
+      "byteSize": 29597,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",

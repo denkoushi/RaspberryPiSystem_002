@@ -2410,6 +2410,7 @@ category: knowledge-base
   - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-list-panel infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
   - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-193317-26767`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 436s**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 88s**・Tailscale）。
+  - **未完了検証**: 認証済み順位ボードで **製番一覧の開閉**・**トグル登録/解除**・**左パネル履歴整合** を現場目視する。
 
 - **本番デプロイ・実機検証（2026-04-29・追補・接頭辞UI改修／末尾削除／全解除／3列／9桁表示）**:
   - **ブランチ**: `feat/leaderboard-seiban-panel-layout-and-prefix-controls`（代表コミット **`74d360b6`**）。
