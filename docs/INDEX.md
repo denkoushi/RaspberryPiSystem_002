@@ -330,7 +330,7 @@
 
 - **DGX Resource Phase5（`overview.operator`・ワークロード遷移分離）履歴正本**: [KB-365 Phase5](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) · [ADR-20260503](./decisions/ADR-20260503-dgx-resource-operator-console.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-03 Phase5項。
 
-- **DGX blue vLLM × 私用 ComfyUI（GPU 競合）·`inference-backend` WARN·gateway `/v1/models` 502**: 同一 GPU で **ComfyUI 占有**があると blue（`system-prod-trtllm`）が **`ValueError: Free memory on device`** で起動失敗し、**502（`Connection refused`）**と **UI の WARN 空振り**につながりうる。**KB**: [KB-364](./knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（2026-05-03 節）。**デプロイ補足**: [deployment.md](./guides/deployment.md)（2026-05-03 項）。**EXEC_PLAN**: Surprises / Next Steps。
+- **DGX blue vLLM × 私用 ComfyUI GPU競合（`inference-backend` WARN / `/v1/models` 502）正本**: [KB-364](./knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-03 Control Targets項。
 
 - **DGXリソース Phase4（ガイド付き複合運用：`overview.monitoring`・複合シナリオ Preview/Execute）·ブランチ `feat/dgx-resource-guided-orchestration-monitoring`**: **Pi5 のみ本番デプロイ**（Detach **`20260503-102936-930`**·`PLAY RECAP` **`ok=130` `changed=4` `failed=0`**・exit **`0`**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` **43/0/0**。**詳細**: [deployment.md](./guides/deployment.md) Phase4 節·**KB**: [KB-365](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) §Phase4·**EXEC_PLAN** Progress・Next Steps（Phase4 場内スモーク）。
 
