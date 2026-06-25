@@ -1403,7 +1403,19 @@ Status: implemented in PR110.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR111 And Later: Thin Indexes And Split Large Documents
+### PR111: Thin Dropbox Backup Production Index Block
+
+Status: implemented in PR111.
+
+- Thin only the 2026-04-10 Dropbox backup production latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace branch, Pi5 deployment, Phase12,
+  detach-run, and smoke-check detail with short links to KB-338 and the
+  deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR112 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
