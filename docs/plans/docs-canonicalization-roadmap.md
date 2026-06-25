@@ -316,7 +316,19 @@ Status: implemented in PR20.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR21 And Later: Thin Indexes And Split Large Documents
+### PR21: Thin DGX Phase11 Index History Block
+
+Status: implemented in PR21.
+
+- Thin only the 2026-05-04 DGX Resource Phase11 latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace Pi5 deploy, detach run, DGX gateway
+  restart, Phase12, and broad `pkill` narrative detail with short links to
+  KB-365, the DGX runbook, deployment, and PR #246.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR22 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
