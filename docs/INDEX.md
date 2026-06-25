@@ -387,7 +387,7 @@
 
 - **キオスク順位ボード 備考モーダルから製番登録（共有履歴）正本**: [KB-297 §備考モーダル製番登録](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-note-modal-seiban-register-2026-04-29) · [deployment](./guides/deployment.md) 2026-04-29 備考モーダル製番登録項。
 
-- **加工機点検状況 KPI とカード配色基準の統一（`fix/uninspected-kpi-card-alignment`·`48cfb6c2`）本番 Pi5 のみ·Phase12 43/0/0**: **`raspberrypi5`**・Detach **`20260429-174518-6203`**・`verify-phase12-real.sh`。**ナレッジ**: [KB-360](./knowledge-base/api.md#kb-360-加工機点検状況のkpiをカード配色基準と統一正常異常件数)·[deployment.md](./guides/deployment.md) 冒頭·[EXEC_PLAN.md](../EXEC_PLAN.md) Progress。
+- **加工機点検状況 KPI とカード配色基準の統一 正本**: [KB-360](./knowledge-base/api.md) §加工機点検状況KPI · [deployment](./guides/deployment.md) 2026-04-29 加工機日次点検 KPI項。
 
 - **キオスク持出一覧 本文末尾揃え・サムネ108px・カード外寸固定（`feat/kiosk-active-loan-card-right-align-thumb-15x-fixed-size`·`d1c6abe7`）本番 Pi5 のみ·Phase12 43/0/0·Web のみ**: [`kioskActiveLoanCardLayout.ts`](../apps/web/src/components/kiosk/kioskActiveLoanCardLayout.ts)·[`KioskActiveLoanCard.tsx`](../apps/web/src/components/kiosk/KioskActiveLoanCard.tsx)。**デプロイ**: [deployment.md](./guides/deployment.md) 補足（末尾揃え・108pxサムネ）·`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-active-loan-card-right-align-thumb-15x-fixed-size infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main`**）。**Detach Run ID**（`ansible-update-`）: **`20260429-163457-5210`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**Pi4/Pi3 不要**。**ナレッジ**: [KB-323 追補](./knowledge-base/KB-323-kiosk-return-card-button-layout.md)·[EXEC_PLAN.md](../EXEC_PLAN.md) Progress。
 

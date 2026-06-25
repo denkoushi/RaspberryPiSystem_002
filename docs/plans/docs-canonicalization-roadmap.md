@@ -691,7 +691,18 @@ Status: implemented in PR51.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR52 And Later: Thin Indexes And Split Large Documents
+### PR52: Thin Inspection KPI Index Block
+
+Status: implemented in PR52.
+
+- Thin only the 2026-04-29 machine inspection KPI/latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, Pi5 rollout, detach run,
+  Phase12, and `EXEC_PLAN.md` detail with short links to KB-360 and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR53 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
