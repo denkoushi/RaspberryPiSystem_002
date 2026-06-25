@@ -653,7 +653,19 @@ Status: implemented in PR48.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR49 And Later: Thin Indexes And Split Large Documents
+### PR49: Thin Leaderboard Opaque Panel Index Block
+
+Status: implemented in PR49.
+
+- Thin only the 2026-04-29 leaderboard opaque left panel latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, Pi5 rollout, command,
+  detach run, Phase12, and `EXEC_PLAN.md` detail with short links to KB-297 and
+  deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR50 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
