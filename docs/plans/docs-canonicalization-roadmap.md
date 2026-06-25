@@ -906,7 +906,19 @@ Status: implemented in PR69.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR70 And Later: Thin Indexes And Split Large Documents
+### PR70: Thin Pallet Illustrations Volume Index Block
+
+Status: implemented in PR70.
+
+- Thin only the 2026-04-22 pallet machine illustrations Docker persistence
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, deployment command,
+  detach run, Phase12, PR, and `EXEC_PLAN.md` detail with short links to
+  KB-355 and the related KB-343 storage persistence pattern.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR71 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
