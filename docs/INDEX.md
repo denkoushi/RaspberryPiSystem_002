@@ -475,7 +475,7 @@
 
 - **管理コンソール サイネージプレビュー 端末別取得 正本**: [KB-348](./knowledge-base/frontend.md#kb-348-管理コンソールサイネージプレビューが端末別レンダ結果とずれるjwtのみでレガシーglobalキャッシュを参照) · [KB-192](./knowledge-base/frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題) · [modules/signage](./modules/signage/README.md)。
 
-- **計測機器 OK 持出: 点検記録一括作成 `POST /api/measuring-instruments/:id/inspection-records` をキオスク `x-client-key` で許可（`allowWrite` へ統一）**: ブランチ **`fix/measuring-instrument-inspection-client-key`**・実装コミット **`9e2011ff`**・**`main` マージコミット `2484d069`**（[PR #147](https://github.com/denkoushi/RaspberryPiSystem_002/pull/147)）。借用 API は元から `allowWrite` だったが、点検記録作成のみ **`canWrite`（JWT 必須）**のままだったため **`401` / `AUTH_TOKEN_REQUIRED`** でフローが止まり得た。**ドキュメント**: [KB-346](./knowledge-base/frontend.md#kb-346-計測機器点検記録作成apiがキオスクのx-client-keyのみで401)・[ui.md](./modules/measuring-instruments/ui.md)・[deployment.md](./guides/deployment.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。**本番追随**: 各ホストで `main` 取り込み後に **`api` 再ビルド**（ホットパッチのみの台は SHA 整合を確認）。
+- **計測機器 OK 持出 点検記録API認可 正本**: [KB-346](./knowledge-base/frontend.md#kb-346-計測機器点検記録作成apiがキオスクのx-client-keyのみで401) · [measuring-instruments UI](./modules/measuring-instruments/ui.md) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-04-17）
 
