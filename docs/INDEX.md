@@ -457,7 +457,7 @@
 
 - **FKOJUNST Gmail インポートスケジュール保証 正本**: [KB-297 §FKOJUNST](./knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-from-gmail-csv-2026-04-16)。
 
-- **サイネージ可視化の業務日切替 JST 9:00（加工機点検・計測機器持出 `today_jst`）本番・Pi5→Pi4×4 順次（Pi3 除外）・Phase12・ドキュメント・`main` マージ**: ブランチ **`feat/signage-business-day-cutover-9am`**・コミット **`08d32806`**（`resolveJstSignageBusinessDate` / `findDailyInspectionSummaries` / `measuring-instrument-loan-inspection-data-source`）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/signage-business-day-cutover-9am infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260416-184654-21455` → `20260416-185919-27958` → `20260416-190415-11118` → `20260416-190813-13486` → `20260416-191625-26120`、各 **`failed=0` / `unreachable=0`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **59s**）。**Pi3**: 対象外。**トラブルシュート**: 前ジョブの Mac ロック解放前に次を起動すると **exit 3**（[deployment.md](./guides/deployment.md) 冒頭）。**ナレッジ**: [KB-347](./knowledge-base/api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ)・[modules/signage/README.md](./modules/signage/README.md)。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **サイネージ可視化 業務日切替 JST 9:00 正本**: [KB-347](./knowledge-base/api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ) · [modules/signage](./modules/signage/README.md)。
 
 ### 🆕 最新アップデート（2026-04-17）
 

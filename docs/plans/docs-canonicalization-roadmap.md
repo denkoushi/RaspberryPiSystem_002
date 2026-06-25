@@ -1027,7 +1027,19 @@ Status: implemented in PR79.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR80 And Later: Thin Indexes And Split Large Documents
+### PR80: Thin Signage Business Day Index Block
+
+Status: implemented in PR80.
+
+- Thin only the 2026-04-16 signage visualization JST 9:00 business-day
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, deployment sequence,
+  detach runs, Phase12, Pi host scope, troubleshooting, and `EXEC_PLAN.md`
+  detail with short links to KB-347 and the signage module document.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR81 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
