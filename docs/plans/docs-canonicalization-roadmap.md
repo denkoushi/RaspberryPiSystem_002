@@ -798,7 +798,19 @@ Status: implemented in PR60.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR61 And Later: Thin Indexes And Split Large Documents
+### PR61: Thin Pallet Preview Parity Index Block
+
+Status: implemented in PR61.
+
+- Thin only the 2026-04-28 pallet signage JPEG static preview parity
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, Pi5 rollout, command,
+  detach run, Phase12, PR, and `EXEC_PLAN.md` detail with short links to
+  KB-355, deployment, and the preview HTML.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR62 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 134838,
-    "totalBytes": 10256676,
+    "totalLines": 134981,
+    "totalBytes": 10265732,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 593691,
+      "byteSize": 592725,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10654,10 +10654,6 @@
         {
           "line": 258,
           "length": 1109
-        },
-        {
-          "line": 408,
-          "length": 1011
         },
         {
           "line": 409,
@@ -23353,10 +23349,10 @@
     },
     {
       "path": "docs/knowledge-base/KB-390-kiosk-leaderboard-inspection-workflow.md",
-      "lineCount": 236,
-      "byteSize": 14139,
+      "lineCount": 367,
+      "byteSize": 23679,
       "hasFrontmatter": false,
-      "title": "KB-390: Kiosk leader order board inspection workflow (chooser + plannedQuantity print)",
+      "title": "KB-390: Kiosk leader order board inspection workflow and paper report OCR handoff",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
@@ -29658,8 +29654,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 850,
-      "byteSize": 34399,
+      "lineCount": 862,
+      "byteSize": 34881,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
