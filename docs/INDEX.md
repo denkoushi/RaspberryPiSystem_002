@@ -487,7 +487,7 @@
 
 ### 🆕 最新アップデート（2026-04-15）
 
-- **キオスク「集計」4パネルダッシュボード・当日の持出返却・loan-analytics `periodEvents`・Web イメージ Alpine 更新**: ブランチ **`feat/kiosk-analytics-four-panel-today-events`**・コミット **`323dd9f0`**。本番 Pi5→Pi4×4 順次（Pi3 除外）・Phase12 **43/0/0**・Detach Run ID は [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-15」・[deployment.md](./guides/deployment.md)。デプロイ前 **汚いツリー**は **`git stash push -u`**。進捗は [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **キオスク「集計」4パネル・当日イベント 正本**: [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-04-14）
 
