@@ -278,7 +278,19 @@ Status: implemented in PR17.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR18 And Later: Thin Indexes And Split Large Documents
+### PR18: Thin Zero2W Edge Hardening Index History Block
+
+Status: implemented in PR18.
+
+- Thin only the 2026-05-05 Zero2W tanaban edge hardening latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace detach run, CI, Phase12, Zero2W playbook,
+  service state, and E2E narrative detail with short links to KB-368, the
+  Zero2W setup runbook, deployment, and KB-367.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR19 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
