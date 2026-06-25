@@ -1775,7 +1775,20 @@ Status: implemented in PR141.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR142 And Later: Thin Indexes And Split Large Documents
+### PR142: Thin Signage Split Compact24 Loan Card Index Block
+
+Status: implemented in PR142.
+
+- Thin only the 2026-04-03 signage `splitCompact24` loan-card
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, preview instructions, Pi5 API
+  source-of-truth note, deployment lock, worktree permission note, and
+  `EXEC_PLAN.md` detail with short links to KB-325, the static preview, and
+  the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR143 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
