@@ -1788,7 +1788,19 @@ Status: implemented in PR142.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR143 And Later: Thin Indexes And Split Large Documents
+### PR143: Thin Signage Loan Grid Engine Index Block
+
+Status: implemented in PR143.
+
+- Thin only the 2026-04-03 signage loan-grid `SIGNAGE_LOAN_GRID_ENGINE`
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, env default, Ansible `docker.env`,
+  API recreation, KB-318 comparison, and `EXEC_PLAN.md` detail with short
+  links to KB-327, ADR-20260405, and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR144 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
