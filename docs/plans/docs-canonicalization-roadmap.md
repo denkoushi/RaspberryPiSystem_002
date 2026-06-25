@@ -762,7 +762,19 @@ Status: implemented in PR57.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR58 And Later: Thin Indexes And Split Large Documents
+### PR58: Thin Leaderboard Machine Name Index Block
+
+Status: implemented in PR58.
+
+- Thin only the 2026-04-28 kiosk leaderboard `resolvedMachineName`
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, Pi5 rollout, command,
+  detach run, Phase12, PR, and `EXEC_PLAN.md` detail with short links to
+  KB-350 and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR59 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
