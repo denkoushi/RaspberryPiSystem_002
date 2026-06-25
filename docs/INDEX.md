@@ -318,7 +318,7 @@
 
 ### 🆕 最新アップデート（2026-05-03）
 
-- **DGX KPI メトリクス（overview 数値・`GET /system/metrics`・Pi5→DGX 順次）·ブランチ `feat/dgx-kpi-metrics-fallback`·代表 `47a17096`（先行 `a3b67495`）·本番**: **`raspberrypi5` のみ Ansible** のち **DGX** `gateway-server.py`。Pi5 Detach **`20260503-211051-8713`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0`**）。**実機** `./scripts/deploy/verify-phase12-real.sh` **43/0/0**（約 **157s**。**Pi3 はデプロイ対象外**）。**KB**: [KB-365](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) Phase 10。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)。**デプロイ**: [deployment.md](./guides/deployment.md)（2026-05-03 KPI メトリクス項）。
+- **DGX KPI メトリクス（overview 数値・`GET /system/metrics`）履歴正本**: [KB-365 Phase 10](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-03 KPIメトリクス項。
 
 - **DGX リソース Phase9（Orchestration Strict Ready・安全ロールバック）·ブランチ `feat/dgx-resource-ready-guarantee`・代表 `8cbc6f38`・Pi5 のみ本番**: ガイド `EXECUTE_ORCHESTRATION_SCENARIO` の成功まで **運用状態の準備確認**（`/v1/models`／Comfy ヘルス／experiment ヘルス）と **タイムアウト時ロールバック**。**Detach **`20260503-194121-32704`**（`PLAY RECAP` **`ok=134` `changed=4` `failed=0`**・`--follow` 約 **684s**）。**実機** `./scripts/deploy/verify-phase12-real.sh` **43/0/0**（約 **89s**。**Pi3 はデプロイ対象外・検証のみ**）。**KB**: [KB-365 §Phase9](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-9orchestration-strict-readyapi--web)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)。**デプロイ**: [deployment.md](./guides/deployment.md) Phase9 項。
 
