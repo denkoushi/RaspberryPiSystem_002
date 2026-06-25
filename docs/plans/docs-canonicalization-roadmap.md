@@ -521,7 +521,19 @@ Status: implemented in PR37.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR38 And Later: Thin Indexes And Split Large Documents
+### PR38: Thin Leaderboard Resource Chips Index Block
+
+Status: implemented in PR38.
+
+- Thin only the 2026-05-02 leaderboard resource chips join-grain
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit/PR, code file, Pi deploy,
+  CI, Phase12, command, detach run, and `EXEC_PLAN.md` narrative detail with
+  short links to KB-297 and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR39 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
