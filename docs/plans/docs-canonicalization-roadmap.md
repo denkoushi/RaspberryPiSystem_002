@@ -858,7 +858,19 @@ Status: implemented in PR65.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR66 And Later: Thin Indexes And Split Large Documents
+### PR66: Thin Pallet Slot Geometry Index Block
+
+Status: implemented in PR66.
+
+- Thin only the 2026-04-25 pallet visualization board slot geometry and
+  full-width lower details latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, deployment command,
+  detach run, Phase12, manual visual-check, PR, and `EXEC_PLAN.md` detail with
+  short links to KB-355 and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR67 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
