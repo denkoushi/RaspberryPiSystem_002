@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 447 |
-| Total lines | 134703 |
-| Total bytes | 10261057 |
+| Total lines | 134717 |
+| Total bytes | 10260093 |
 | With frontmatter | 162 |
 | With status | 23 |
 | source_of_truth declared | 7 |
@@ -35,11 +35,11 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `EXEC_PLAN.md` | 4658 | 975476 |
 | `docs/knowledge-base/frontend.md` | 4643 | 277726 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4368 | 281572 |
-| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3173 | 430502 |
+| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3174 | 430669 |
 | `docs/architecture/deployment-modules.md` | 2523 | 128110 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188223 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2103 | 127221 |
-| `docs/INDEX.md` | 1824 | 603334 |
+| `docs/INDEX.md` | 1824 | 602083 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153339 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1474 | 153433 |
 | `docs/knowledge-base/infrastructure/miscellaneous.md` | 1322 | 74222 |

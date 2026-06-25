@@ -665,7 +665,20 @@ Status: implemented in PR49.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR50 And Later: Thin Indexes And Split Large Documents
+### PR50: Thin Leaderboard Seiban List Panel Index Block
+
+Status: implemented in PR50.
+
+- Move the remaining onsite smoke validation note for the 2026-04-29
+  leaderboard seiban list panel from `docs/INDEX.md` into KB-297.
+- Thin the matching latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, Pi5 rollout, command,
+  detach run, implementation, Phase12, and `EXEC_PLAN.md` detail with short
+  links to KB-297 and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR51 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
