@@ -435,7 +435,19 @@ Status: implemented in PR30.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR31 And Later: Thin Indexes And Split Large Documents
+### PR31: Thin DGX Phase3 Index History Block
+
+Status: implemented in PR31.
+
+- Thin only the 2026-05-03 DGX Resource Phase3 auxiliary runtime and
+  `SET_POLICY.applyWorkloadChanges` latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, representative commit, Pi5 deploy,
+  detach run, Phase12, and Ansible env narrative detail with short links to
+  KB-365, the DGX runbook, and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR32 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
