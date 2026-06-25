@@ -619,7 +619,7 @@
 - **型落ち Android タブレット向け軽量サイネージ `/signage-lite`・JPEG ポーリング・`current-image` の `key` クエリと端末キー整合**: セットアップと URL 例は [signage-client-setup.md](./guides/signage-client-setup.md#android-signage-lite)（`clientKey` 登録・`targetClientKeys`）。
 - **サイネージ対象端末 管理UI 正本**: [ADR-20260407](./decisions/ADR-20260407-signage-target-client-keys.md) · [KB](./knowledge-base/infrastructure/signage.md) · [deployment](./guides/deployment.md) · [PR #89](https://github.com/denkoushi/RaspberryPiSystem_002/pull/89)。
 - **サイネージ端末別スケジュール 正本**: [ADR-20260407](./decisions/ADR-20260407-signage-target-client-keys.md) · [KB](./knowledge-base/infrastructure/signage.md) · [deployment](./guides/deployment.md)。
-- **サイネージ `splitCompact24` フッタ欠落修正（高さ164・HTML pad10 等）とキオスク取消ボタン視認性（`ghostOnDark`）・`fix/signage-compact24-footer-kiosk-readability`・本番 Pi5→Pi4×4→Pi3 順次・Phase12 PASS 43/0/0・`main` マージ**: 実績・Detach Run ID・deploy 前 `git stash push -u` は [KB-333](./knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **サイネージ `splitCompact24` フッタ・取消視認性 正本**: [KB-333](./knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md) · [deployment](./guides/deployment.md)。
 - **キオスク「集計」**: 吊具 + 写真持出（**VLM/人レビュー名**・`/api/tools/items/loan-analytics`）・DADS。**詳細**: [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-04-06）
