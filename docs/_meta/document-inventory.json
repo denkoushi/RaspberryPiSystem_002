@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 135592,
-    "totalBytes": 10254043,
+    "totalLines": 135604,
+    "totalBytes": 10254180,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5199,
+    "localLinkCount": 5198,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 6,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 555666,
+      "byteSize": 555321,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -8322,11 +8322,6 @@
         },
         {
           "href": "./knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行",
-          "targetPath": "docs/knowledge-base/infrastructure/backup-restore.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/infrastructure/backup-restore.md#kb-338-backup-recommended-catalog-coverage-gap",
           "targetPath": "docs/knowledge-base/infrastructure/backup-restore.md",
           "exists": true
         },
@@ -28155,7 +28150,7 @@
           "exists": false
         }
       ],
-      "inboundCount": 79,
+      "inboundCount": 78,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29602,8 +29597,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 1467,
-      "byteSize": 59334,
+      "lineCount": 1479,
+      "byteSize": 59816,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",

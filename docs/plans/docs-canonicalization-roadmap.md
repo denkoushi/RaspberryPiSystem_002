@@ -1415,7 +1415,19 @@ Status: implemented in PR111.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR112 And Later: Thin Indexes And Split Large Documents
+### PR112: Thin Dropbox Backup API Index Block
+
+Status: implemented in PR112.
+
+- Thin only the 2026-04-10 Dropbox backup API / `coverage_gap`
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace `backup.json` compatibility,
+  derived-cache, disabled-target, management UI, and `EXEC_PLAN.md` detail with
+  short links to KB-338 and the backup API document.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR113 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
