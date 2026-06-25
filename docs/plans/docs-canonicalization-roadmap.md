@@ -1135,7 +1135,19 @@ Status: implemented in PR88.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR89 And Later: Thin Indexes And Split Large Documents
+### PR89: Thin Kiosk Analytics UI Balance Index Block
+
+Status: implemented in PR89.
+
+- Thin only the 2026-04-17 kiosk analytics UI balance latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, deployment sequence,
+  detach runs, Phase12, CI run, merge details, and `EXEC_PLAN.md` detail with
+  short links to KB-334 and deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR90 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
