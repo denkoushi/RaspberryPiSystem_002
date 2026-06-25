@@ -918,7 +918,20 @@ Status: implemented in PR70.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR71 And Later: Thin Indexes And Split Large Documents
+### PR71: Thin Pallet Visualization UI Index Block
+
+Status: implemented in PR71.
+
+- Move the 2026-04-22 kiosk pallet visualization UI component split deployment
+  facts from `docs/INDEX.md` into KB-355.
+- Thin the matching latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, per-host deployment,
+  detach runs, Phase12, and `EXEC_PLAN.md` detail with short links to KB-355
+  and KB-311.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR72 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

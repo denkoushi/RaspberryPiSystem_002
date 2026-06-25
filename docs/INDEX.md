@@ -431,7 +431,7 @@
 
 - **加工機イラスト `pallet-machine-illustrations` Docker 永続化 正本**: [api.md KB-355](./knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22) · [KB-343 同系ストレージ永続化](./knowledge-base/infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)。
 
-- **キオスク パレット可視化 UI コンポーネント分割（feature モジュール・a11y 整理）本番・Pi5→Pi4×4→Pi3 順次・Phase12 43/0/0**: ブランチ **`feat/kiosk-pallet-visualization-ui`**・コミット **`029ecc16`**（`KioskPalletVisualizationPage` を `pallet-visualization/*` へ分割）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`--limit` を **1 台ずつ**（**Pi3 最後に `raspberrypi3` のみ**）・`--detach --follow`。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260422-172813-2568` → `20260422-173734-20394` → `20260422-174658-25070` → `20260422-175728-9680` → `20260422-180809-22370` → `20260422-181644-9337`。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（最終一巡 約 **148s**）。**ナレッジ**: [KB-311](./knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)（`/kiosk/pallet-visualization` 沉浸式）・[KB-355（api.md）](./knowledge-base/api.md)。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **キオスク パレット可視化 UI コンポーネント分割 正本**: [api.md KB-355](./knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22) · [KB-311](./knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)。
 
 ### 🆕 最新アップデート（2026-04-21）
 

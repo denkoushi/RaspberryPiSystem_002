@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 135089,
-    "totalBytes": 10261680,
+    "totalLines": 135108,
+    "totalBytes": 10262274,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 584252,
+      "byteSize": 583405,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -24291,8 +24291,8 @@
     },
     {
       "path": "docs/knowledge-base/api.md",
-      "lineCount": 4875,
-      "byteSize": 353583,
+      "lineCount": 4881,
+      "byteSize": 354497,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - API関連",
       "status": null,
@@ -29620,8 +29620,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 970,
-      "byteSize": 39302,
+      "lineCount": 983,
+      "byteSize": 39829,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
