@@ -593,7 +593,19 @@ Status: implemented in PR43.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR44 And Later: Thin Indexes And Split Large Documents
+### PR44: Thin Order Supplement Incremental Sync Index Block
+
+Status: implemented in PR44.
+
+- Thin only the 2026-05-01 order supplement incremental sync latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, PR, Pi5 deploy, Phase12, command,
+  detach run, API/DB narrative, and `EXEC_PLAN.md` detail with short links to
+  KB-297, KB-328, and the implementation Plan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR45 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
