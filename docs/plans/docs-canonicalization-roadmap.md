@@ -1451,7 +1451,19 @@ Status: implemented in PR114.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR115 And Later: Thin Indexes And Split Large Documents
+### PR115: Thin Kiosk Documents Scroll Stability Index Block
+
+Status: implemented in PR115.
+
+- Thin only the 2026-04-09 kiosk documents viewer vertical-scroll stability
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, Pi5 deployment, detach-run,
+  Phase12, Trivy exception, manual-check, KB index, and `EXEC_PLAN.md` detail
+  with short links to KB-313 and the kiosk documents runbook.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR116 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
