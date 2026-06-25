@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { issueSelfInspectionPaperReport } from '../../api/client';
 import {
   useKioskProductionScheduleHistoryProgress,
   useKioskProductionScheduleOrderSplitStatus,
@@ -54,7 +55,7 @@ import { usePersistedLeaderBoardSeibanEval } from '../../features/kiosk/leaderOr
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditionsWithStorageKey } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
-import { kioskInspectionDrawingTemplatePrintPath } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
+import { kioskInspectionDrawingPaperReportPrintPath } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 import { KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK } from '../../hooks/kioskRevealUi';
 import { useKioskLeftEdgeDrawerReveal } from '../../hooks/useKioskLeftEdgeDrawerReveal';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
@@ -538,15 +539,37 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     [navigate]
   );
 
-  const handleOpenInspectionPaperPrint = useCallback((row: LeaderBoardRow) => {
+  const handleOpenInspectionPaperPrint = useCallback(async (row: LeaderBoardRow) => {
     const templateId = row.selfInspectionTemplateId?.trim();
     if (!templateId) return;
     setInspectionWorkflowRow(null);
-    window.open(
-      kioskInspectionDrawingTemplatePrintPath(templateId, { plannedQuantity: row.plannedQuantity }),
-      '_blank',
-      'noopener,noreferrer'
-    );
+    const printWindow = window.open('about:blank', '_blank');
+    try {
+      const paper = await issueSelfInspectionPaperReport({
+        templateId,
+        productNo: row.productNo,
+        scheduleRowId: resolveSourceRowIdFromLeaderBoardRow(row),
+        fseiban: row.fseiban,
+        fhincd: row.fhincd,
+        fhinmei: row.fhinmei,
+        resourceCd: row.resourceCd,
+        machineName: row.machineName
+      });
+      const path = kioskInspectionDrawingPaperReportPrintPath(paper.report.id);
+      if (printWindow) {
+        printWindow.location.href = path;
+      } else {
+        window.open(path, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error) {
+      printWindow?.close();
+      const message =
+        error && typeof error === 'object' && 'response' in error
+          ? ((error.response as { data?: { message?: string } } | undefined)?.data?.message ??
+            '紙帳票の発行に失敗しました。')
+          : '紙帳票の発行に失敗しました。';
+      window.alert(message);
+    }
   }, []);
 
   const handleRegisterSeibanFromNoteModal = useCallback(async () => {

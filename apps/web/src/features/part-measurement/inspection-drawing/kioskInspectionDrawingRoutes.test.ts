@@ -4,6 +4,7 @@ import {
   isKioskInspectionDrawingPath,
   isKioskPartMeasurementHubPath,
   kioskInspectionDrawingCreatePathWithSource,
+  kioskInspectionDrawingPaperReportPrintPath,
   kioskInspectionDrawingTemplateEditPath,
   kioskInspectionDrawingTemplatePrintPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
@@ -40,6 +41,12 @@ describe('kioskInspectionDrawingRoutes', () => {
     expect(parseInspectionDrawingPrintPlannedQuantityFromSearch('?plannedQuantity=3')).toBe(3);
     expect(parseInspectionDrawingPrintPlannedQuantityFromSearch('?plannedQuantity=0')).toBeNull();
     expect(parseInspectionDrawingPrintPlannedQuantityFromSearch('?plannedQuantity=2001')).toBe(2000);
+  });
+
+  it('paper report print path helper', () => {
+    expect(kioskInspectionDrawingPaperReportPrintPath('report-1')).toBe(
+      '/kiosk/part-measurement/inspection/paper-reports/report-1/print'
+    );
   });
 
   it('parses sourceTemplateId from query', () => {

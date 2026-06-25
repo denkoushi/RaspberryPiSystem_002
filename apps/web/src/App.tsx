@@ -213,10 +213,16 @@ function App() {
         </>
       ) : null}
       {INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED ? (
-        <Route
-          path="/kiosk/part-measurement/inspection/templates/:templateId/print"
-          element={lazyRouteElement(<KioskInspectionDrawingPrintPage />)}
-        />
+        <>
+          <Route
+            path="/kiosk/part-measurement/inspection/templates/:templateId/print"
+            element={lazyRouteElement(<KioskInspectionDrawingPrintPage />)}
+          />
+          <Route
+            path="/kiosk/part-measurement/inspection/paper-reports/:reportId/print"
+            element={lazyRouteElement(<KioskInspectionDrawingPrintPage />)}
+          />
+        </>
       ) : null}
       <Route
         path="/preview"

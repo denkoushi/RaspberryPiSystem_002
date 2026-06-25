@@ -60,6 +60,10 @@ export function kioskInspectionDrawingTemplatePrintPath(
   return `${path}?${params.toString()}`;
 }
 
+export function kioskInspectionDrawingPaperReportPrintPath(reportId: string): string {
+  return `${KIOSK_INSPECTION_DRAWING_PATH_PREFIX}/paper-reports/${reportId}/print`;
+}
+
 export function parseInspectionDrawingPrintPlannedQuantityFromSearch(search: string): number | null {
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
   return normalizeInspectionDrawingPrintPlannedQuantity(

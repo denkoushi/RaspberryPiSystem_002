@@ -94,6 +94,75 @@ export type PartMeasurementTemplateDto = {
 
 export type SelfInspectionStatus = 'not_started' | 'in_progress' | 'completed';
 
+export type SelfInspectionPaperReportStatus =
+  | 'ISSUED'
+  | 'OCR_REVIEW'
+  | 'IMPORTED'
+  | 'SUPERSEDED'
+  | 'CANCELLED';
+
+export type SelfInspectionPaperOcrReviewStatus = 'OCR_REVIEW' | 'CONFIRMED' | 'CANCELLED';
+
+export type SelfInspectionPaperReportPageDto = {
+  id: string;
+  reportId: string;
+  pageCode: string;
+  pageNumber: number;
+  qrPayload: string;
+  entryIndexFrom: number | null;
+  entryIndexTo: number | null;
+  markerNoFrom: number | null;
+  markerNoTo: number | null;
+  createdAt: string;
+};
+
+export type SelfInspectionPaperReportDto = {
+  id: string;
+  sessionId: string;
+  scheduleRowId: string;
+  templateId: string;
+  status: SelfInspectionPaperReportStatus;
+  issuedAt: string;
+  supersededAt: string | null;
+  importedAt: string | null;
+  cancelledAt: string | null;
+  clientDeviceId: string | null;
+  plannedQuantity: number;
+  templateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  pages: SelfInspectionPaperReportPageDto[];
+};
+
+export type SelfInspectionPaperReportPrintDto = {
+  report: SelfInspectionPaperReportDto;
+  template: PartMeasurementTemplateDto;
+};
+
+export type SelfInspectionPaperOcrValueDto = {
+  entryIndex: number;
+  templateItemId: string;
+  value: string | number | null;
+  confidence?: number | null;
+};
+
+export type SelfInspectionPaperOcrReviewDto = {
+  id: string;
+  reportId: string;
+  pageId: string | null;
+  status: SelfInspectionPaperOcrReviewStatus;
+  qrPayload: string | null;
+  imageStoragePath: string | null;
+  ocrCandidateValues: unknown;
+  confirmedValues: unknown;
+  confirmedByActorId: string | null;
+  confirmedByActorName: string | null;
+  confirmedAt: string | null;
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type SelfInspectionSessionSummaryDto = {
   id: string;
   sessionBusinessKey: string;

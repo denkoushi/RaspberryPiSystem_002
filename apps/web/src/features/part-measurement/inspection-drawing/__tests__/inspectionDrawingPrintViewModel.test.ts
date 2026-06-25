@@ -125,6 +125,22 @@ describe('inspectionDrawingPrintViewModel', () => {
     });
   });
 
+  it('uses issued paper report id and page QR payloads when provided', () => {
+    const viewModel = buildInspectionDrawingPrintViewModel({
+      template: sampleTemplate(3),
+      resourceName: 'R001',
+      issuedAt,
+      paperReport: {
+        reportId: 'report-uuid',
+        pages: [{ pageNumber: 2, qrPayload: 'SIP1:A7K4M2Q9:5F' }]
+      }
+    });
+
+    expect(viewModel.metadata.previewIdentifier).toBe('report-uuid');
+    expect(viewModel.metadata.paperReportId).toBe('report-uuid');
+    expect(viewModel.recordPages[0]?.qrPayload).toBe('SIP1:A7K4M2Q9:5F');
+  });
+
   it('splits record pages when points exceed one page', () => {
     const pages = buildRecordPages(sampleTemplate(15).items.map((item, index) => ({
       id: item.id,
