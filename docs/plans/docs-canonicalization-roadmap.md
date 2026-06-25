@@ -617,7 +617,19 @@ Status: implemented in PR45.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR46 And Later: Thin Indexes And Split Large Documents
+### PR46: Thin Leaderboard Pi4 Rerender Index Block
+
+Status: implemented in PR46.
+
+- Thin only the 2026-04-29 leaderboard Pi4 rerender suppression latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, Pi5/Pi4 rollout,
+  command, detach run, implementation, Phase12, and `EXEC_PLAN.md` detail with
+  short links to KB-297 and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR47 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
