@@ -253,7 +253,19 @@ Status: implemented in PR15.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR16 And Later: Thin Indexes And Split Large Documents
+### PR16: Thin FKOJUNST_Status Sole Source Index History Block
+
+Status: implemented in PR16.
+
+- Thin only the 2026-05-08 FKOJUNST_Status sole-source latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace detach run, Phase12, and redeploy argument
+  narrative detail with short links to ADR-20260508, KB-370, deployment, and
+  ADR-20260526 for the later completion-status-only decision.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR17 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
