@@ -332,7 +332,7 @@
 
 - **DGX blue vLLM × 私用 ComfyUI GPU競合（`inference-backend` WARN / `/v1/models` 502）正本**: [KB-364](./knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-03 Control Targets項。
 
-- **DGXリソース Phase4（ガイド付き複合運用：`overview.monitoring`・複合シナリオ Preview/Execute）·ブランチ `feat/dgx-resource-guided-orchestration-monitoring`**: **Pi5 のみ本番デプロイ**（Detach **`20260503-102936-930`**·`PLAY RECAP` **`ok=130` `changed=4` `failed=0`**・exit **`0`**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` **43/0/0**。**詳細**: [deployment.md](./guides/deployment.md) Phase4 節·**KB**: [KB-365](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) §Phase4·**EXEC_PLAN** Progress・Next Steps（Phase4 場内スモーク）。
+- **DGX Resource Phase4（`overview.monitoring`・複合シナリオ Preview/Execute）履歴正本**: [KB-365 Phase4](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-03 Phase4項。
 
 - **DGXリソース Phase3（experiment-lab ターゲット・私用 Comfy 補助起停・`SET_POLICY.applyWorkloadChanges`）·ブランチ `feat/dgx-resource-policy-orchestration-phase3`**·代表 **`a44b9f78`**: **Pi5 のみ本番デプロイ**（Detach **`20260503-094340-23537`**·`PLAY RECAP` **`ok=135` `changed=8` `failed=0`**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` **43/0/0**。Ansible で `DGX_RESOURCE_*_RUNTIME_*` 等を空既定出力。**詳細**: [deployment.md](./guides/deployment.md)（2026-05-03 Phase3 項）·**KB**: [KB-365](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)·**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（Phase3 本番節）。
 
