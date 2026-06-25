@@ -774,7 +774,19 @@ Status: implemented in PR58.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR59 And Later: Thin Indexes And Split Large Documents
+### PR59: Thin FKOJUNST S/R List Visibility Index Block
+
+Status: implemented in PR59.
+
+- Thin only the 2026-04-28 production schedule FKOJUNST S/R list visibility
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, commit, Pi5 rollout, command,
+  detach run, Phase12, PR, and `EXEC_PLAN.md` detail with short links to
+  KB-297 and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR60 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
