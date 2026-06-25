@@ -846,7 +846,19 @@ Status: implemented in PR64.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR65 And Later: Thin Indexes And Split Large Documents
+### PR65: Thin DGX PR203 Index Block
+
+Status: implemented in PR65.
+
+- Thin only the 2026-04-27 PR #203 DGX/CI/operations documentation convergence
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace merge commit, Pi5 deploy command, detach
+  run, CI rerun, pyenv warning, progress, and `EXEC_PLAN.md` detail with short
+  links to ADR, DGX runbook, deployment, KB-357, KB-358, and KB-359.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR66 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
