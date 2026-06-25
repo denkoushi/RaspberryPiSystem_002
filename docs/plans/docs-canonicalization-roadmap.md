@@ -1184,7 +1184,19 @@ Status: implemented in PR92.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR93 And Later: Thin Indexes And Split Large Documents
+### PR93: Thin Measuring Instrument Genre Image Persistence Index Block
+
+Status: implemented in PR93.
+
+- Thin only the 2026-04-14 measuring-instrument genre image persistence
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, PR, detach run, bind mount,
+  best-effort rescue, Phase12, and `EXEC_PLAN.md` detail with short links to
+  KB-343, the measuring-instruments UI module document, and deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR94 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

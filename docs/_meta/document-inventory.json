@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 135361,
-    "totalBytes": 10251962,
+    "totalLines": 135373,
+    "totalBytes": 10251866,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5197,
+    "localLinkCount": 5198,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 6,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 562744,
+      "byteSize": 562104,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -7973,6 +7973,11 @@
         {
           "href": "./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策",
           "targetPath": "docs/knowledge-base/infrastructure/ansible-deployment-performance.md",
+          "exists": true
+        },
+        {
+          "href": "./knowledge-base/infrastructure/ansible-deployment.md",
+          "targetPath": "docs/knowledge-base/infrastructure/ansible-deployment.md",
           "exists": true
         },
         {
@@ -28044,7 +28049,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 204,
+      "inboundCount": 205,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29592,8 +29597,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 1236,
-      "byteSize": 50178,
+      "lineCount": 1248,
+      "byteSize": 50722,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
