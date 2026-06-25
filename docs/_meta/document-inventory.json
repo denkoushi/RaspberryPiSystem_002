@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 135168,
-    "totalBytes": 10259851,
+    "totalLines": 135180,
+    "totalBytes": 10259320,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 578612,
+      "byteSize": 577587,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -9366,7 +9366,7 @@
           "exists": true
         },
         {
-          "href": "./knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md",
+          "href": "./knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md#a-下書き初版2026-04-18",
           "targetPath": "docs/knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md",
           "exists": true
         },
@@ -10664,10 +10664,6 @@
         {
           "line": 258,
           "length": 1109
-        },
-        {
-          "line": 452,
-          "length": 1002
         },
         {
           "line": 456,
@@ -29632,8 +29628,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 1043,
-      "byteSize": 42199,
+      "lineCount": 1055,
+      "byteSize": 42693,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",

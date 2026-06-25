@@ -449,7 +449,7 @@
 
 - **管理コンソール 貸出レポート Gmail 送信・レイアウト 正本**: [KB-354 §B](./knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md#b-gmail-送信レイアウト2026-04-18)。
 
-- **管理コンソール 貸出レポート（HTML プレビュー・Gmail 下書き）本番・Pi5 のみ・Phase12・ドキュメント・`main` マージ**: ブランチ **`feat/admin-loan-report-gmail-draft`**・コミット **`6bc00a00`**（`LoanReportPage`・`GET /api/reports/loan-report/preview`・`POST /api/reports/loan-report/gmail-draft`・`gmail.compose`）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/admin-loan-report-gmail-draft infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260418-152952-9706`**（**`failed=0` / `unreachable=0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 **59s**）。**デプロイ前**: 未追跡ファイルは **`git stash push -u`**。**Pi4/Pi3**: 未反映（Pi3 は専用手順）。**CI**: Run **`24598528235`** success。**ナレッジ**: [KB-354](./knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md) §A。**PR**: [#166](https://github.com/denkoushi/RaspberryPiSystem_002/pull/166)。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **管理コンソール 貸出レポート HTML プレビュー・Gmail 下書き 正本**: [KB-354 §A](./knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md#a-下書き初版2026-04-18)。
 
 ### 🆕 最新アップデート（2026-04-16）
 
