@@ -25,6 +25,10 @@ type InspectionDrawingPrintPreviewProps = {
   viewModel: InspectionDrawingPrintViewModel;
   imageUrl: string;
   showToolbar?: boolean;
+  returnAction?: {
+    label: string;
+    onClick: () => void;
+  };
 };
 
 function markerStyle(leftPercent: number, topPercent: number): CSSProperties {
@@ -459,7 +463,8 @@ function RecordPage({
 export function InspectionDrawingPrintPreview({
   viewModel,
   imageUrl,
-  showToolbar = true
+  showToolbar = true,
+  returnAction
 }: InspectionDrawingPrintPreviewProps) {
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
   const hasNaturalSize = naturalSize.w > 0 && naturalSize.h > 0;
@@ -497,14 +502,25 @@ export function InspectionDrawingPrintPreview({
               1枚目は丸数字付き図面、2枚目以降は測定値記録欄です。保存済みテンプレートを対象とします。
             </p>
           </div>
-          <button
-            type="button"
-            disabled={!printReady}
-            onClick={() => window.print()}
-            className="rounded bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            {printReady ? '印刷プレビュー' : '図面読込中…'}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {returnAction ? (
+              <button
+                type="button"
+                onClick={returnAction.onClick}
+                className="rounded border border-slate-400 bg-white px-4 py-2 text-sm font-bold text-slate-900 shadow"
+              >
+                {returnAction.label}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              disabled={!printReady}
+              onClick={() => window.print()}
+              className="rounded bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {printReady ? '印刷プレビュー' : '図面読込中…'}
+            </button>
+          </div>
         </div>
       ) : null}
 

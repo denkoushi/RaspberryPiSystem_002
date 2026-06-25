@@ -108,6 +108,34 @@ describe('InspectionDrawingPrintPreview', () => {
     expect(screen.getByText(INSPECTION_DRAWING_PRINT_PREVIEW_DISCLAIMER)).toBeInTheDocument();
   });
 
+  it('renders optional return action in the toolbar', () => {
+    const onReturn = vi.fn();
+
+    render(
+      <InspectionDrawingPrintPreview
+        viewModel={viewModel}
+        imageUrl={INSPECTION_DRAWING_PREVIEW_IMAGE_URL}
+        showToolbar
+        returnAction={{ label: '順位ボードに戻る', onClick: onReturn }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '順位ボードに戻る' }));
+    expect(onReturn).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits optional return action when not provided', () => {
+    render(
+      <InspectionDrawingPrintPreview
+        viewModel={viewModel}
+        imageUrl={INSPECTION_DRAWING_PREVIEW_IMAGE_URL}
+        showToolbar
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: '順位ボードに戻る' })).toBeNull();
+  });
+
   it('uses a compact single header row on drawing and record pages', async () => {
     render(
       <InspectionDrawingPrintPreview

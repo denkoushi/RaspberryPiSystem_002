@@ -1,4 +1,7 @@
+import { KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX } from '../../kiosk/leaderOrderBoard/kioskLeaderOrderBoardRoutes';
+
 import { INSPECTION_DRAWING_PRINT_MAX_ENTRY_COUNT } from './inspectionDrawingPrintConstants';
+import { normalizeInternalInspectionDrawingReturnPath } from './inspectionDrawingReturnNavigation';
 
 import type { InspectionDrawingLocationReturn } from './inspectionDrawingReturnNavigation';
 
@@ -46,6 +49,8 @@ export function kioskInspectionDrawingTemplateEditPath(templateId: string): stri
 }
 
 const KIOSK_INSPECTION_DRAWING_PRINT_PLANNED_QUANTITY_QUERY = 'plannedQuantity';
+const KIOSK_INSPECTION_DRAWING_PRINT_RETURN_TO_QUERY = 'returnTo';
+export const KIOSK_INSPECTION_DRAWING_PRINT_RETURN_LABEL = '順位ボードに戻る';
 
 export function kioskInspectionDrawingTemplatePrintPath(
   templateId: string,
@@ -60,8 +65,46 @@ export function kioskInspectionDrawingTemplatePrintPath(
   return `${path}?${params.toString()}`;
 }
 
-export function kioskInspectionDrawingPaperReportPrintPath(reportId: string): string {
-  return `${KIOSK_INSPECTION_DRAWING_PATH_PREFIX}/paper-reports/${reportId}/print`;
+export function kioskInspectionDrawingPaperReportPrintPath(
+  reportId: string,
+  options: { returnTo?: string | null } = {}
+): string {
+  const path = `${KIOSK_INSPECTION_DRAWING_PATH_PREFIX}/paper-reports/${reportId}/print`;
+  const returnTo = normalizeKioskInspectionDrawingPrintReturnTo(options.returnTo);
+  if (!returnTo) return path;
+  const params = new URLSearchParams({
+    [KIOSK_INSPECTION_DRAWING_PRINT_RETURN_TO_QUERY]: returnTo
+  });
+  return `${path}?${params.toString()}`;
+}
+
+export function parseKioskInspectionDrawingPrintReturnToFromSearch(search: string): string {
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  return (
+    normalizeKioskInspectionDrawingPrintReturnTo(
+      params.get(KIOSK_INSPECTION_DRAWING_PRINT_RETURN_TO_QUERY)
+    ) ?? KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX
+  );
+}
+
+export function normalizeKioskInspectionDrawingPrintReturnTo(value: string | null | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+
+  const normalizedPathname = normalizeInternalInspectionDrawingReturnPath(raw);
+  if (normalizedPathname !== KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(raw, 'https://kiosk.local');
+    if (parsed.origin !== 'https://kiosk.local') {
+      return null;
+    }
+    return `${normalizedPathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
 }
 
 export function parseInspectionDrawingPrintPlannedQuantityFromSearch(search: string): number | null {
