@@ -1701,7 +1701,19 @@ Status: implemented in PR135.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR136 And Later: Thin Indexes And Split Large Documents
+### PR136: Thin Web Caddy Go-Jose Index Block
+
+Status: implemented in PR136.
+
+- Thin only the 2026-04-04 Web/Caddy `go-jose` CVE-2026-34986
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace commit, deploy scope, Phase12 timing,
+  and `EXEC_PLAN.md` detail with short links to KB-307, the deployment guide,
+  and the verification checklist.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR137 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
