@@ -1559,7 +1559,19 @@ Status: implemented in PR123.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR124 And Later: Thin Indexes And Split Large Documents
+### PR124: Thin Signage Leader Readability Index Block
+
+Status: implemented in PR124.
+
+- Thin only the 2026-04-08 signage `kiosk_leader_order_cards` factory
+  readability and SOLID split latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, Pi5 rollout, detach-run, Phase12,
+  PR, static preview path, and `EXEC_PLAN.md` detail with short links to
+  KB-335, the deployment guide, and design preview index.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR125 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
