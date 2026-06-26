@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 137571,
-    "totalBytes": 10268487,
+    "totalLines": 137582,
+    "totalBytes": 10268761,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5209,
+    "localLinkCount": 5210,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 471344,
+      "byteSize": 471192,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10222,6 +10222,11 @@
         },
         {
           "href": "./runbooks/deploy-status-recovery.md",
+          "targetPath": "docs/runbooks/deploy-status-recovery.md",
+          "exists": true
+        },
+        {
+          "href": "./runbooks/deploy-status-recovery.md#5-pi4デプロイハング時の復旧手順2026-03-09-追加",
           "targetPath": "docs/runbooks/deploy-status-recovery.md",
           "exists": true
         },
@@ -29619,8 +29624,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 3149,
-      "byteSize": 128238,
+      "lineCount": 3160,
+      "byteSize": 128664,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
@@ -32077,7 +32082,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 22,
+      "inboundCount": 23,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
