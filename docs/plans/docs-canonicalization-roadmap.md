@@ -3884,7 +3884,20 @@ Status: implemented in PR314.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR315 And Later: Thin Indexes And Split Large Documents
+### PR315: Thin Parallel Deploy Maintenance Flag Index Block
+
+Status: implemented in PR315.
+
+- Thin only the 2026-02-07 all-device parallel deployment, kiosk maintenance
+  flag early-clear implementation, and onsite verification latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the Pi5/Pi4/Pi3 deployment result,
+  elapsed time, prior Pi4 maintenance-screen delay, and early-clear validation
+  detail with a short link to KB-234.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR316 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
