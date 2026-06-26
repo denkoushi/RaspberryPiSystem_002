@@ -2345,7 +2345,19 @@ Status: implemented in PR188.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR189 And Later: Thin Indexes And Split Large Documents
+### PR189: Thin Progress Overview Five Columns Index Block
+
+Status: implemented in PR189.
+
+- Thin only the 2026-03-22 progress overview five-column layout and ICMP retry
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace implementation-file, production run IDs,
+  Phase12, ping retry knowledge, and `EXEC_PLAN.md` detail with short links to
+  KB-297 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR190 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

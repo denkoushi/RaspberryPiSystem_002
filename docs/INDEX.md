@@ -739,7 +739,7 @@
 
 ### 🆕 最新アップデート（2026-03-22）
 
-- **✅ 進捗一覧 5列・ラベル削除・presentation 分割・本番3台デプロイ・Phase12 合格・ICMP 再試行（検証スクリプト）**: [`progressOverviewPresentation.ts`](../apps/web/src/features/kiosk/productionSchedule/progressOverviewPresentation.ts) ほか。**本番 `main` デプロイ Run ID**: `20260322-212809-1338`（Pi5）/ `20260322-213031-27169`（raspberrypi4）/ `20260322-213507-5127`（raspi4-robodrill01）。**Phase12**: `verify-phase12-real.sh` **PASS 27 / WARN 1 / FAIL 0**。**知見**: Phase12 冒頭の `ping -W 2` が Tailscale 高遅延で偶発失敗 → `verify-phase12-real.sh` / `verify-services-real.sh` を再試行＋`-W 5` に変更。**参照**: [KB-297 進捗一覧5列節](./knowledge-base/KB-297-kiosk-due-management-workflow.md#progress-overview-five-cols-layout-2026-03-22) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **進捗一覧 5列・ラベル削除・presentation 分割 正本**: [KB-297 §進捗一覧5列](./knowledge-base/KB-297-kiosk-due-management-workflow.md#progress-overview-five-cols-layout-2026-03-22) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 
 ### 🆕 最新アップデート（2026-03-21）
 
