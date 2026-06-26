@@ -3002,7 +3002,19 @@ Status: implemented in PR243.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR244 And Later: Thin Indexes And Split Large Documents
+### PR244: Thin Actual Hours Column Alignment Index Block
+
+Status: implemented in PR244.
+
+- Thin only the 2026-03-11 actual-hours column alignment latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace deprecated estimated-minutes column,
+  actual-hours resolver, resource-code mapping API/UI, deployment, and
+  real-device verification detail with short links to KB-297 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR245 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
