@@ -3696,7 +3696,20 @@ Status: implemented in PR300.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR301 And Later: Thin Indexes And Split Large Documents
+### PR301: Thin API Quality Phase4 Imports Index Block
+
+Status: implemented in PR301.
+
+- Thin only the 2026-02-12 code quality phase4 fourth batch latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the import boundary rules, imports service
+  tests, Tailscale health-check fallback, migration command note, local
+  validation, CI run ID, deploy run ID, and onsite validation detail with a
+  short link to KB-258.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR302 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
