@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { createFromConfigMock, executeBackupAcrossProvidersMock } = vi.hoisted(() => ({
+const { createFromConfigMock, executeBackupAcrossProvidersMock, findBackupTargetConfigMock } = vi.hoisted(() => ({
   createFromConfigMock: vi.fn(),
   executeBackupAcrossProvidersMock: vi.fn(),
+  findBackupTargetConfigMock: vi.fn(),
 }));
 
 vi.mock('../backup-target-factory.js', () => ({
@@ -13,6 +14,7 @@ vi.mock('../backup-target-factory.js', () => ({
 
 vi.mock('../backup-execution.service.js', () => ({
   executeBackupAcrossProviders: executeBackupAcrossProvidersMock,
+  findBackupTargetConfig: findBackupTargetConfigMock,
 }));
 
 import { ApiError } from '../../../lib/errors.js';
@@ -36,6 +38,7 @@ describe('runPreRestoreBackup', () => {
       storage: { provider: 'local', options: {} },
       targets: [{ kind: 'database', source: 'postgres://localhost/borrow_return' }],
     } as any;
+    findBackupTargetConfigMock.mockReturnValue(config.targets[0]);
 
     await runPreRestoreBackup({
       config,
@@ -59,6 +62,7 @@ describe('runPreRestoreBackup', () => {
         targetSource: 'postgres://localhost/borrow_return',
         protocol: 'https:',
         host: 'example.local',
+        targetConfig: config.targets[0],
         label: expect.stringMatching(/^pre-restore-/),
       })
     );
