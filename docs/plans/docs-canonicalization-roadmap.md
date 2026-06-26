@@ -4317,7 +4317,21 @@ Status: implemented in PR346.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR347 And Later: Thin Indexes And Split Large Documents
+### PR347: Thin Production Schedule Feature Improvement Index Block
+
+Status: implemented in PR347.
+
+- Thin only the 2026-01-26 production schedule feature-improvement
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the column rename, FSEIBAN full display,
+  admin column ordering/visibility, diff logic, CSV import refetch, validation,
+  TABLE template, validation/deploy status, and KB-201/KB-202/KB-203 additions
+  with short links to those KB entries, the production-schedule plan, and the
+  CSV guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR348 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
