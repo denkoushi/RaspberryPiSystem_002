@@ -2093,7 +2093,19 @@ Status: implemented in PR167.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR168 And Later: Thin Indexes And Split Large Documents
+### PR168: Thin Local LLM Observability Index Block
+
+Status: implemented in PR168.
+
+- Thin only the 2026-03-28 Pi5 LocalLLM observability, operations ADR, and
+  real-device smoke latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace observability implementation, rollout,
+  status smoke, health example, and `EXEC_PLAN.md` detail with short links to
+  ADR-20260329 and the LocalLLM runbook.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR169 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
