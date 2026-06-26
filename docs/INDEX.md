@@ -919,7 +919,7 @@
 
 ### 🆕 最新アップデート（2026-02-24）
 
-- **✅ CSVダッシュボード重複削除共通化 + エラーメール廃棄ポリシー統一（実装中間報告）**: DEDUP時の重複 loser 削除をProduction Schedule専用から共通サービスへ拡張し、観測キー範囲の即時削除を全ダッシュボードで適用。あわせて非再試行可能なCSVエラーのみを即時ゴミ箱移動（既存ラベル運用を維持）するポリシー分離を実装。`IngestRun`/構造化ログへ後処理状態（`completed` / `disposed_non_retriable` / `failed`）と理由を記録する監査情報を追加。詳細は [knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md](./knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md) を参照。
+- **CSVダッシュボード重複削除共通化・エラーメール廃棄ポリシー 正本**: [KB-273](./knowledge-base/KB-273-csv-dashboard-dedup-and-error-disposition-commonization.md)。
 
 - **✅ Gmail自動運用プロトコル フェーズ2テスト追加・CI成功・Pi5デプロイ・実機検証完了**: フェーズ2のテスト（GmailUnifiedMailboxFetcher、downloadAllBySubjectPatterns）を追加し、CI成功・Pi5限定デプロイ（Run ID `20260224-084216-12664`）・実機検証を実施。デプロイ時は未commit変更でfail-fastしたためstashで退避して実行。実機はAPI疎通・認証・主要API応答を確認。**解決策1〜4の進捗**は [plans/gmail-auto-protocol-progress.md](./plans/gmail-auto-protocol-progress.md) を参照。詳細は [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
 
