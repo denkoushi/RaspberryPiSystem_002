@@ -1,18 +1,26 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
+import { issueSelfInspectionPaperReport } from '../../api/client';
 import {
   useKioskProductionSchedule,
   useSelfInspectionSessions,
   useVerifyKioskSelfInspectionRecordApprovalAccessPassword
 } from '../../api/hooks';
 import { buttonClassName, Button } from '../../components/ui/Button';
+import { useKeyboardWedgeScan } from '../../features/barcode-scan';
+import { kioskInspectionDrawingPaperReportPrintPath } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
+import { normalizeManufacturingOrderScanText } from '../../features/part-measurement/manufacturingOrderScan';
 import {
   KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
   kioskSelfInspectionSessionPath
 } from '../../features/part-measurement/selfInspectionRoutes';
 import { presentSelfInspectionWipCard } from '../../features/part-measurement/selfInspectionWipCardPresentation';
+import {
+  SelfInspectionWorkflowModal,
+  type SelfInspectionWorkflowTarget
+} from '../../features/part-measurement/SelfInspectionWorkflowModal';
 
 import type { ProductionScheduleRow } from '../../api/client';
 import type { SelfInspectionSessionSummaryDto, SelfInspectionStatus } from '../../features/part-measurement/types';
@@ -24,24 +32,46 @@ const WIP_REFETCH_INTERVAL_MS = 60_000;
 const CANDIDATE_MIN_TEXT_SEARCH_LENGTH = 2;
 const RECORD_APPROVAL_AUTH_SESSION_KEY = 'kiosk-self-inspection-record-approval-authenticated';
 
-function mapEligibleRow(row: ProductionScheduleRow) {
+type ScanStatus = {
+  kind: 'waiting' | 'success' | 'error';
+  message: string;
+};
+
+type SelfInspectionCandidateRow = SelfInspectionWorkflowTarget & {
+  id: string;
+  plannedQuantity: number | null;
+  status: SelfInspectionStatus | null;
+};
+
+function mapEligibleRow(row: ProductionScheduleRow): SelfInspectionCandidateRow {
   const rowData = (row.rowData ?? {}) as Record<string, unknown>;
   const entryPath = row.selfInspectionEntryPath?.trim() ?? '';
+  const templateId = row.selfInspectionTemplateId?.trim() ?? '';
   const plannedQuantity =
     typeof row.plannedQuantity === 'number' && Number.isFinite(row.plannedQuantity) && row.plannedQuantity >= 1
       ? Math.floor(row.plannedQuantity)
       : null;
   return {
     id: row.id,
+    scheduleRowId: row.id,
     productNo: String(rowData.ProductNo ?? '').trim(),
     fseiban: String(rowData.FSEIBAN ?? '').trim(),
     resourceCd: String(rowData.FSIGENCD ?? '').trim(),
     fhincd: String(rowData.FHINCD ?? '').trim(),
     fhinmei: String(rowData.FHINMEI ?? '').trim(),
+    machineName: typeof row.resolvedMachineName === 'string' ? row.resolvedMachineName.trim() : null,
     plannedQuantity,
-    entryPath,
+    selfInspectionTemplateId: templateId.length > 0 ? templateId : null,
+    selfInspectionEntryPath: entryPath.length > 0 ? entryPath : null,
     status: row.selfInspectionStatus ?? null
   };
+}
+
+function getPaperReportIssueErrorMessage(error: unknown): string {
+  return error && typeof error === 'object' && 'response' in error
+    ? ((error.response as { data?: { message?: string } } | undefined)?.data?.message ??
+      '紙帳票の発行に失敗しました。')
+    : '紙帳票の発行に失敗しました。';
 }
 
 function statusLabel(status: SelfInspectionStatus | null) {
@@ -115,11 +145,18 @@ function SessionWipCard({ session }: { session: SelfInspectionSessionSummaryDto 
 
 export function KioskSelfInspectionPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [productNo, setProductNo] = useState('');
   const [resourceCd, setResourceCd] = useState('');
   const [debouncedProductNo, setDebouncedProductNo] = useState('');
   const [debouncedResourceCd, setDebouncedResourceCd] = useState('');
+  const [scannedProductNo, setScannedProductNo] = useState('');
+  const [scanArmed, setScanArmed] = useState(false);
+  const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
+  const [inspectionWorkflowTarget, setInspectionWorkflowTarget] = useState<SelfInspectionCandidateRow | null>(null);
   const [page, setPage] = useState(1);
+  const scanFocusRef = useRef<HTMLDivElement | null>(null);
+  const autoOpenedScanKeyRef = useRef<string | null>(null);
   const verifyRecordApprovalAccessPasswordMutation =
     useVerifyKioskSelfInspectionRecordApprovalAccessPassword();
 
@@ -133,15 +170,18 @@ export function KioskSelfInspectionPage() {
 
   const trimmedSearch = debouncedProductNo;
   const trimmedResourceCd = debouncedResourceCd;
+  const exactScannedProductNo = scannedProductNo.trim();
   const immediateSearch = productNo.trim();
   const immediateResourceCd = resourceCd.trim();
   const hasSearchInput = immediateSearch.length > 0 || immediateResourceCd.length > 0;
   const hasResourceFilter = trimmedResourceCd.length > 0;
+  const hasScannedProductFilter = exactScannedProductNo.length > 0;
   const hasTextFilter =
     trimmedSearch.length >= CANDIDATE_MIN_TEXT_SEARCH_LENGTH ||
     (trimmedSearch.length > 0 && hasResourceFilter);
-  const hasListFilters = hasTextFilter || hasResourceFilter;
+  const hasListFilters = hasScannedProductFilter || hasTextFilter || hasResourceFilter;
   const isTextSearchTooShort =
+    !hasScannedProductFilter &&
     immediateSearch.length > 0 &&
     immediateSearch.length < CANDIDATE_MIN_TEXT_SEARCH_LENGTH &&
     immediateResourceCd.length === 0;
@@ -157,7 +197,8 @@ export function KioskSelfInspectionPage() {
 
   const scheduleQuery = useKioskProductionSchedule(
     {
-      q: trimmedSearch || undefined,
+      q: hasScannedProductFilter ? undefined : trimmedSearch || undefined,
+      productNos: hasScannedProductFilter ? exactScannedProductNo : undefined,
       resourceCds: trimmedResourceCd || undefined,
       page,
       pageSize: CANDIDATE_PAGE_SIZE,
@@ -171,7 +212,10 @@ export function KioskSelfInspectionPage() {
   );
 
   const rows = useMemo(
-    () => (scheduleQuery.data?.rows ?? []).map(mapEligibleRow).filter((row) => row.entryPath.length > 0),
+    () =>
+      (scheduleQuery.data?.rows ?? [])
+        .map(mapEligibleRow)
+        .filter((row) => Boolean(row.selfInspectionEntryPath?.trim()) || Boolean(row.selfInspectionTemplateId?.trim())),
     [scheduleQuery.data?.rows]
   );
 
@@ -189,6 +233,114 @@ export function KioskSelfInspectionPage() {
     reviewPendingSessionsQuery.data?.listLimit ?? 200
   );
   const hasMore = scheduleQuery.data?.hasMore === true;
+
+  const focusScanReceiver = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.setTimeout(() => scanFocusRef.current?.focus(), 0);
+  }, []);
+
+  const handleStartScan = useCallback(() => {
+    setScanArmed(true);
+    setScanStatus({
+      kind: 'waiting',
+      message: 'スキャン待ちです。移動票の製造order番号を読み取ってください。'
+    });
+    if (typeof document !== 'undefined') {
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement) {
+        activeElement.blur();
+      }
+    }
+    focusScanReceiver();
+  }, [focusScanReceiver]);
+
+  const handleCancelScan = useCallback(() => {
+    setScanArmed(false);
+    setScanStatus(null);
+  }, []);
+
+  const handleScan = useCallback((rawText: string) => {
+    const normalized = normalizeManufacturingOrderScanText(rawText);
+    setScanArmed(false);
+    autoOpenedScanKeyRef.current = null;
+
+    if (!normalized) {
+      setScanStatus({
+        kind: 'error',
+        message: 'スキャン値が空です。移動票の製造order番号を読み取り直してください。'
+      });
+      return;
+    }
+
+    setProductNo(normalized);
+    setDebouncedProductNo(normalized);
+    setScannedProductNo(normalized);
+    setScanStatus({
+      kind: 'success',
+      message: `読み取りました: ${normalized}`
+    });
+    setPage(1);
+  }, []);
+
+  useKeyboardWedgeScan({
+    active: scanArmed,
+    onScan: handleScan,
+    minChars: 4
+  });
+
+  useEffect(() => {
+    if (!hasScannedProductFilter || !trimmedResourceCd || scheduleQuery.isFetching) return;
+    if (rows.length !== 1) return;
+
+    const row = rows[0];
+    const autoOpenKey = `${exactScannedProductNo}\0${trimmedResourceCd}\0${row.id}`;
+    if (autoOpenedScanKeyRef.current === autoOpenKey) return;
+    autoOpenedScanKeyRef.current = autoOpenKey;
+    setInspectionWorkflowTarget(row);
+  }, [exactScannedProductNo, hasScannedProductFilter, rows, scheduleQuery.isFetching, trimmedResourceCd]);
+
+  const handleOpenInspectionDigitalInput = useCallback(
+    (target: SelfInspectionWorkflowTarget) => {
+      const path = target.selfInspectionEntryPath?.trim();
+      if (!path) return;
+      setInspectionWorkflowTarget(null);
+      navigate(path);
+    },
+    [navigate]
+  );
+
+  const inspectionPaperPrintReturnTo = useMemo(
+    () => `${location.pathname}${location.search}${location.hash}`,
+    [location.hash, location.pathname, location.search]
+  );
+
+  const handleOpenInspectionPaperPrint = useCallback(
+    async (target: SelfInspectionWorkflowTarget) => {
+      const templateId = target.selfInspectionTemplateId?.trim();
+      if (!templateId) return;
+      setInspectionWorkflowTarget(null);
+      try {
+        const paper = await issueSelfInspectionPaperReport({
+          templateId,
+          productNo: target.productNo,
+          scheduleRowId: target.scheduleRowId,
+          fseiban: target.fseiban,
+          fhincd: target.fhincd,
+          fhinmei: target.fhinmei,
+          resourceCd: target.resourceCd,
+          machineName: target.machineName
+        });
+        navigate(
+          kioskInspectionDrawingPaperReportPrintPath(paper.report.id, {
+            returnTo: inspectionPaperPrintReturnTo
+          })
+        );
+      } catch (error) {
+        window.alert(getPaperReportIssueErrorMessage(error));
+      }
+    },
+    [inspectionPaperPrintReturnTo, navigate]
+  );
 
   const handleRecordApprovalNavigate = async () => {
     const isAuthenticated =
@@ -213,6 +365,13 @@ export function KioskSelfInspectionPage() {
     }
   };
 
+  const scanStatusClassName =
+    scanStatus?.kind === 'error'
+      ? 'border-rose-400/40 bg-rose-400/10 text-rose-100'
+      : scanStatus?.kind === 'success'
+        ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-100'
+        : 'border-cyan-400/40 bg-cyan-400/10 text-cyan-100';
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 bg-slate-800 p-3 text-white">
       <div className="rounded border border-white/15 bg-slate-900/70 p-3">
@@ -224,6 +383,13 @@ export function KioskSelfInspectionPage() {
             </p>
           </div>
           <div className="flex min-w-0 flex-wrap items-end gap-2">
+            <Button
+              type="button"
+              variant={scanArmed ? 'primary' : 'secondary'}
+              onClick={scanArmed ? handleCancelScan : handleStartScan}
+            >
+              {scanArmed ? 'スキャン中止' : '移動票スキャン'}
+            </Button>
             <Button
               type="button"
               variant="secondary"
@@ -239,6 +405,9 @@ export function KioskSelfInspectionPage() {
                 value={productNo}
                 onChange={(e) => {
                   setProductNo(e.target.value);
+                  setScannedProductNo('');
+                  setScanStatus(null);
+                  autoOpenedScanKeyRef.current = null;
                   setPage(1);
                 }}
                 placeholder="製造order・製番・品番"
@@ -251,6 +420,7 @@ export function KioskSelfInspectionPage() {
                 value={resourceCd}
                 onChange={(e) => {
                   setResourceCd(e.target.value);
+                  autoOpenedScanKeyRef.current = null;
                   setPage(1);
                 }}
                 placeholder="581"
@@ -262,6 +432,10 @@ export function KioskSelfInspectionPage() {
               onClick={() => {
                 setProductNo('');
                 setResourceCd('');
+                setScannedProductNo('');
+                setScanArmed(false);
+                setScanStatus(null);
+                autoOpenedScanKeyRef.current = null;
                 setPage(1);
               }}
             >
@@ -269,6 +443,19 @@ export function KioskSelfInspectionPage() {
             </Button>
           </div>
         </div>
+        {scanStatus ? (
+          <div
+            ref={scanFocusRef}
+            tabIndex={-1}
+            role="status"
+            aria-live="polite"
+            className={clsx('mt-3 rounded border px-3 py-2 text-sm font-semibold outline-none', scanStatusClassName)}
+          >
+            {scanStatus.message}
+          </div>
+        ) : (
+          <div ref={scanFocusRef} tabIndex={-1} className="sr-only" aria-hidden />
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto rounded border border-white/15 bg-slate-950/45 p-3">
@@ -285,7 +472,9 @@ export function KioskSelfInspectionPage() {
             <div className="py-12 text-center text-white/60">
               {hasMore
                 ? 'さらに検索しています。条件を絞るか、しばらくしてから再度お試しください。'
-                : '自主検査対象の候補がありません。'}
+                : hasScannedProductFilter
+                  ? `スキャンした製造order「${exactScannedProductNo}」の自主検査対象候補がありません。`
+                  : '自主検査対象の候補がありません。'}
             </div>
           ) : (
             <>
@@ -313,15 +502,14 @@ export function KioskSelfInspectionPage() {
                       ) : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Link
-                        to={row.entryPath}
-                        className={buttonClassName(
-                          row.status === 'in_progress' || row.status === 'completed' ? 'primary' : 'ghostOnDark',
-                          'inline-flex min-h-11 items-center text-[1rem]'
-                        )}
+                      <Button
+                        type="button"
+                        variant={row.status === 'in_progress' || row.status === 'completed' ? 'primary' : 'ghostOnDark'}
+                        className="inline-flex min-h-11 items-center text-[1rem]"
+                        onClick={() => setInspectionWorkflowTarget(row)}
                       >
-                        {row.status === 'in_progress' || row.status === 'completed' ? '再開' : '開始'}
-                      </Link>
+                        検査方法を選択
+                      </Button>
                     </div>
                   </section>
                 ))}
@@ -370,6 +558,12 @@ export function KioskSelfInspectionPage() {
           </>
         )}
       </div>
+      <SelfInspectionWorkflowModal
+        target={inspectionWorkflowTarget}
+        onClose={() => setInspectionWorkflowTarget(null)}
+        onOpenDigitalInput={handleOpenInspectionDigitalInput}
+        onOpenPaperPrint={(target) => void handleOpenInspectionPaperPrint(target)}
+      />
     </div>
   );
 }
