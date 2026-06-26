@@ -288,6 +288,8 @@ Pi5本番で環境再構築に必要な永続・一次ファイルは、`directo
 
 クライアント端末（Pi4、Pi3など）のファイルをAnsible経由でバックアップする場合：
 
+**現行推奨カタログ（2026-06-26）**: 第2工場の増設 Pi4（`raspi4-robodrill01`、`raspi4-fjv60-80`、`raspi4-kensaku-stonebase01`、`raspi4-sessaku-01`）について、`clients/nfc-agent/.env`、運用ユーザーの `~/.ssh`、`/var/lib/tailscale`、`/etc/raspi-status-agent.conf` を `coverage_gap` 候補として提示します。`raspi4-sessaku-01` は Tailscale `100.115.109.18` / inventory 反映済みのため、必要なら管理コンソールから `backup.json` へ追加してください。
+
 ```json
 {
   "kind": "client-file",

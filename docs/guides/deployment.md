@@ -2,13 +2,46 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-06-24
+last-verified: 2026-06-26
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-06-26 · Pi4 5台目 `raspi4-sessaku-01` 追加 · Tailscale / Ansible / backup catalog · main 反映済） {#raspi4-sessaku-01-kiosk-addition-2026-06-26}
+
+- **追加端末**: host/user **`raspi4-sessaku-01`**、自宅セットアップ時 LAN **`192.168.128.187`**、Tailscale **`100.115.109.18`**、`tag:kiosk`、Expiry disabled、Tailscale SSH disabled。
+- **client / NFC**: `status_agent_client_id` / `nfc_agent_client_id` は **`raspi4-sessaku-01-kiosk1`**、固定 key / secret は **`client-key-raspi4-sessaku-01-kiosk1`**、location は **`第2工場 - Sessaku-01`**。
+- **反映内容**: `infrastructure/ansible/inventory.yml`、`group_vars/all.yml`、client role の sudoers、`scripts/deploy/verify-phase12-real.sh`、backup 推奨カタログ（`client-file` / `client-directory`）へ追加。
+- **main 反映**: ブランチ **`codex/add-raspi4-sessaku-01`** を **`origin/main`** へ fast-forward。反映コミット **`20e70bfa`**。Pi5 `/opt/RaspberryPiSystem_002` と Pi4 `/opt/RaspberryPiSystem_002` は **`main@20e70bfa`**。
+- **初回デプロイ実績**: Pi5 から `ANSIBLE_REPO_VERSION=main ansible-playbook -i infrastructure/ansible/inventory.yml infrastructure/ansible/playbooks/deploy-staged.yml --limit raspi4-sessaku-01` を実行し、**`failed=0` / `unreachable=0`** で完了。
+- **実機確認**: `kiosk-browser.service active`、`status-agent.timer active`、Docker active、`docker-nfc-agent-1 Up`、kiosk HTTP **200**、NFC agent status HTTP **200**、`deploy-status` は **`{"isMaintenance":false}`**。
+- **sudoers 注意**: 初回 Ansible bootstrap 用の広い権限は **`/etc/sudoers.d/900-<host>-ansible`** に置く。client role が管理するサービス再起動用 sudoers は **`/etc/sudoers.d/<user>-client-services`**。`/etc/sudoers.d/<user>` に bootstrap 権限を置くと role に上書きされ、`Missing sudo password` になり得る。
+
+### 補足（2026-06-26 · **キオスク自主検査 HID 移動票スキャン導線** · **Web** · **Pi5 + Pi4×4 + Pi3 health 反映済**） {#kiosk-self-inspection-hid-scan-entry-2026-06-26}
+
+- **変更概要（正本）**: [KB-320 §HID 移動票スキャン導線](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-hid-移動票スキャン-2026-06-26) · [KB-390 §Shared Workflow Modal](../knowledge-base/KB-390-kiosk-leaderboard-inspection-workflow.md#shared-workflow-modal-2026-06-26--hid-scan-entry) · [Runbook §HID スキャン](../runbooks/kiosk-part-measurement.md#自主検査-hid-移動票スキャン導線-2026-06-26) · PR **#626** · merge **`4fd96bcf`**
+  - 自主検査一覧タイトルバーに **移動票スキャン** を追加。Pi4 有線 HID スキャナを Web keyboard wedge として受ける。Zero2W 常駐 agent / `POST` 方式は使わない。
+  - スキャン値は `trim()` + 全角スペース置換のみ。数値変換しないため先頭ゼロを保持する。
+  - スキャン検索は `GET /api/kiosk/production-schedule?productNos=<scan>&selfInspectionEligibleOnly=true` の完全一致。手入力検索は従来どおり `q` 部分検索。
+  - `resourceCd` 入力済み + 候補 1 件なら **検査方法を選択** モーダルを自動表示。資源未指定または複数候補では候補一覧から選択する。
+  - 順位ボード **検** と自主検査スキャン導線は共通 `SelfInspectionWorkflowModal` を使い、**デジタル入力** / **帳票紙印刷** の挙動を揃える。
+- **CI**: PR #626 で Secret scan / CodeQL / `lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` すべて success。`api-db-and-infra` は backup test mock の不足を同 PR 内で修正後に再実行 success。
+- **本番デプロイ（実績）**: clean worktree から `origin/main` **`4fd96bcf`** を使用。
+
+```bash
+export RASPI_SERVER_HOST="100.106.158.2"
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --foreground
+```
+
+  - **結果**: Deployment Summary `totalHosts=6`, `failedHosts=[]`, `unreachableHosts=[]`, `success=true`。Health Check Summary も `totalHosts=6`, `failedHosts=[]`, `unreachableHosts=[]`, `success=true`。
+  - **Pi5**: repo sync changed · Docker Compose rebuild/restart · API health OK · Prisma migrate deploy/status OK · remote HEAD **`4fd96bcf`**。
+  - **Pi4×4**: `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` の repo sync と `kiosk-browser` restart OK。IME diagnostic PASS。`raspi4-kensaku-stonebase01` は `barcode-agent` ready retry 後 OK。
+  - **Pi3**: deployment 中に lightdm を一時停止してメモリを確保。復旧後 `signage-lite.service is active`、post-deploy health で active running を確認。
+  - **ロック**: 終了後 `/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock` は `lock-clear`。
+- **運用メモ**: 初回の `--job --follow` はジョブ開始前に exit し、remote bootstrap lock / maintenance flag が残った。systemd/ansible job が動いていないことを確認してから lock と deploy-status を手動清掃し、`--foreground` で再実行して成功。次回同様の事象では、二重実行前に remote lock と実ジョブ有無を確認する。
 
 ### 補足（2026-06-24 · **キオスク順位ボード +人 / 8H・10H Gantt 縦バー回帰記録** · **Web** · **Pi5 + Pi4×4 反映済**） {#kiosk-leaderboard-labor-gantt-ruler-stretch-2026-06-24}
 
@@ -4261,11 +4294,11 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - ロールバックは `api_signage_loan_grid_engine: "svg_legacy"` に戻して **Pi5 のみ再デプロイ**します。
 - 「デプロイは成功したが JPEG が旧レイアウトのまま」は **API コンテナへ env が入っていない**典型です。切り分けは [KB-327](../knowledge-base/infrastructure/signage.md#kb-327-貸出グリッド-playwright--signage_loan_grid_engine-とデプロイ環境のずれ)。
 
-**知見（2026-03-06）**: 事前に「今回の実装が影響する端末」（例: Pi5 + Pi4×4）を挙げても、標準手順は inventory 全デバイス（Pi5 + Pi4×4 + Pi3）を対象とする。効率化したい場合は「対象デバイスだけデプロイせよ」と指示し、`--limit "server:kiosk"` で実行する運用が有効。
+**知見（2026-03-06 / 2026-06-26更新）**: 事前に「今回の実装が影響する端末」（例: Pi5 + Pi4×5）を挙げても、標準手順は inventory 全デバイス（Pi5 + Pi4×5 + Pi3）を対象とする。効率化したい場合は「対象デバイスだけデプロイせよ」と指示し、`--limit "server:kiosk"` で実行する運用が有効。
 
 **知見（2026-03-09）**: `--limit "server:kiosk"` で Pi5 + Pi4 を並列デプロイ中、Pi5 フェーズ完了後に Pi4 キオスクフェーズでハングする事象が発生した（[KB-300](../knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時)）。**再発防止（2026-03-09 適用済み）**: Pi4 は常時 1 台ずつ直列実行（`deploy_serial.kiosk: 1`）に変更済み。ハング発生時は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の「Pi4デプロイハング時の復旧手順」に従い、ハングプロセスを停止・ロック解除後、Pi4 を単体で `--limit "raspberrypi4"` / `--limit "raspi4-robodrill01"` により再デプロイする。
 
-**1台ずつ順番デプロイ（推奨運用）**: Pi5 + Pi4×4 を確実に更新したい場合は、`--limit` で 1 台ずつ順番に実行する運用を推奨。Pi5 → raspberrypi4 → raspi4-robodrill01 → raspi4-fjv60-80 → raspi4-kensaku-stonebase01 の順で、前のデプロイが成功してから次を実行する。
+**1台ずつ順番デプロイ（推奨運用）**: Pi5 + Pi4×5 を確実に更新したい場合は、`--limit` で 1 台ずつ順番に実行する運用を推奨。Pi5 → raspberrypi4 → raspi4-robodrill01 → raspi4-fjv60-80 → raspi4-kensaku-stonebase01 → raspi4-sessaku-01 の順で、前のデプロイが成功してから次を実行する。
 
 **重要（2026-04-03 追記）**:
 - **成功判定は `PLAY RECAP` を正本**とし、`failed=0` かつ `unreachable=0` を確認する。Pi5 の `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-*.summary.json` も **`totalHosts > 0` / `failedHosts=[]` / `unreachableHosts=[]`** で一致していること。
@@ -4287,6 +4320,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspi4-fjv60-80" --detach --follow
 # 5台目: Pi4 Kensaku StoneBase01（4台目成功後）
 ./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspi4-kensaku-stonebase01" --detach --follow
+# 6台目: Pi4 Sessaku-01（5台目成功後）
+./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspi4-sessaku-01" --detach --follow
 ```
 
 詳細は [KB-226](../knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) を参照。

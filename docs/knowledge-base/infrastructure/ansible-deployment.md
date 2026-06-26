@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - Ansible/デプロイ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-05-04
+last-verified: 2026-06-26
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -13,12 +13,60 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 51件  
+**件数**: 52件
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
+
+---
+
+<a id="kb-393-pi4-sessaku-fifth-kiosk"></a>
+
+### [KB-393] Pi4 5台目（Sessaku-01・`raspi4-sessaku-01`）追加と sudoers bootstrap 分離
+
+**記録日**: 2026-06-26
+**Status**: ✅ 追加・本番反映済み（`main@20e70bfa`）
+
+**Context / 追加仕様**:
+- 第2工場キオスク Pi4 5台目として **`raspi4-sessaku-01`** を追加した。
+- host/user は **`raspi4-sessaku-01`**。自宅セットアップ時 LAN は **`192.168.128.187`**、本番 Tailscale は **`100.115.109.18`**。
+- Tailscale は **`tag:kiosk`**、Expiry disabled、Tailscale SSH disabled。SSH / Ansible は Pi5 `tag:server` からの標準 SSH を正とする。
+- `status_agent_client_id` / `nfc_agent_client_id`: **`raspi4-sessaku-01-kiosk1`**。固定 key / secret: **`client-key-raspi4-sessaku-01-kiosk1`**。location: **`第2工場 - Sessaku-01`**。
+
+**Symptoms / つまずき**:
+1. Tailscale パッケージ取得時に apt が IPv6 / CDN 経路で timeout し、`tailscale: command not found` の状態になった。
+2. 初回 Ansible で **`Missing sudo password`** が発生した。
+3. 初回 NFC agent は Docker image build を伴うため、通常のサービス再起動より長時間になった。
+4. OS locale 未生成により warning が出た。
+
+**Root cause**:
+- 初回 bootstrap 用に `/etc/sudoers.d/<user>` へ `NOPASSWD:ALL` を置くと、client role のサービス再起動用 sudoers が同じファイルをテンプレート管理して上書きする。結果として Ansible の broad sudo 権限が消え、次の become で `Missing sudo password` になる。
+
+**Fix（恒久）**:
+- bootstrap 用 sudoers は **`/etc/sudoers.d/900-<host>-ansible`** に分離する。
+- client role のサービス再起動用 sudoers は **`/etc/sudoers.d/<user>-client-services`** に分離する。
+- 過去の Ansible 管理済み `/etc/sudoers.d/<user>` は marker を確認して削除する。
+- Ansible conditional の runtime 互換性に合わせ、quoted `in` 条件へ修正した。
+- locale は `ja_JP.UTF-8` を生成し、`LANG=en_GB.UTF-8` / `LC_ALL=ja_JP.UTF-8` で warning を解消した。
+
+**Verification**:
+- `origin/main` は **`20e70bfa`**。Pi5 `/opt/RaspberryPiSystem_002` と Pi4 `/opt/RaspberryPiSystem_002` は **`main@20e70bfa`**。
+- Pi5 から `ANSIBLE_REPO_VERSION=main ansible-playbook -i infrastructure/ansible/inventory.yml infrastructure/ansible/playbooks/deploy-staged.yml --limit raspi4-sessaku-01` を実行し、**`failed=0` / `unreachable=0`**。
+- `kiosk-browser.service active`、`status-agent.timer active`、Docker active、`docker-nfc-agent-1 Up`。
+- kiosk HTTP **200**、NFC agent status HTTP **200**、`deploy-status` は **`{"isMaintenance":false}`**。
+- API client は `raspi4-sessaku-01` / `第2工場 - Sessaku-01` / `statusClientId=raspi4-sessaku-01-kiosk1` で登録済み。
+
+**References**:
+- `infrastructure/ansible/inventory.yml`
+- `infrastructure/ansible/group_vars/all.yml`
+- `infrastructure/ansible/roles/client/defaults/main.yml`
+- `infrastructure/ansible/roles/client/tasks/main.yml`
+- `apps/api/src/services/backup/backup-recommended-targets.catalog.ts`
+- `scripts/deploy/verify-phase12-real.sh`
+- [client-initial-setup.md](../../guides/client-initial-setup.md)
+- [deployment.md](../../guides/deployment.md#raspi4-sessaku-01-kiosk-addition-2026-06-26)
 
 ---
 

@@ -2,7 +2,7 @@
 title: クライアント端末のstatus-agent設定手順（実機テスト用）
 tags: [status-agent, 実機テスト, 設定手順]
 audience: [運用者, 開発者]
-last-verified: 2025-12-01
+last-verified: 2026-06-26
 related: [client-initial-setup.md, status-agent.md]
 category: guides
 update-frequency: medium
@@ -10,11 +10,23 @@ update-frequency: medium
 
 # クライアント端末のstatus-agent設定手順（実機テスト用）
 
-最終更新: 2025-12-01
+最終更新: 2026-06-26（Pi4 5台目 `raspi4-sessaku-01` を含む現行キオスク端末と、Caddy/Tailscale 経由の status-agent 設定に更新）
 
 ## 概要
 
 このドキュメントでは、既存のRaspberry Pi 3/4にstatus-agentを設定して、管理コンソールに表示されるようにする手順を説明します。
+
+## 現行の固定 client key 端末（第2工場キオスク）
+
+| inventory host | `CLIENT_ID` | `CLIENT_KEY` | location |
+| --- | --- | --- | --- |
+| `raspberrypi4` | `raspberrypi4-kiosk1` | `client-key-raspberrypi4-kiosk1` | `第2工場 - kensakuMain` |
+| `raspi4-robodrill01` | `raspi4-robodrill01-kiosk1` | `client-key-raspi4-robodrill01-kiosk1` | `第2工場 - RoboDrill01` |
+| `raspi4-fjv60-80` | `raspi4-fjv60-80-kiosk1` | `client-key-raspi4-fjv60-80-kiosk1` | `第2工場 - FJV60/80` |
+| `raspi4-kensaku-stonebase01` | `raspi4-kensaku-stonebase01-kiosk1` | `client-key-raspi4-kensaku-stonebase01-kiosk1` | `第2工場 - StoneBase01` |
+| `raspi4-sessaku-01` | `raspi4-sessaku-01-kiosk1` | `client-key-raspi4-sessaku-01-kiosk1` | `第2工場 - Sessaku-01` |
+
+`register-clients.sh` は inventory の固定キー端末を読み、管理者ログイン後に `POST /api/clients` で upsert する。`status-agent` 側は未知キーを自動登録しないため、初回デプロイ前または直後に登録を確認する。
 
 ## 前提条件
 
@@ -45,13 +57,13 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 [INFO] Access token obtained
 [INFO] Registering client: raspberrypi4 (raspberrypi4-kiosk1)
 [SUCCESS] Client raspberrypi4 registered successfully
-[INFO] Registering client: raspberrypi3 (raspberrypi3-signage1)
-[SUCCESS] Client raspberrypi3 registered successfully
+[INFO] Registering client: raspi4-sessaku-01 (raspi4-sessaku-01-kiosk1)
+[SUCCESS] Client raspi4-sessaku-01 registered successfully
 [INFO] Client registration completed
 ```
 
 **エラーが出た場合:**
-- APIサーバーが起動しているか確認: `curl http://192.168.128.131:8080/api/system/health`
+- APIサーバーが起動しているか確認: `curl -k https://100.106.158.2/api/system/health`
 - ログイン情報が正しいか確認（デフォルト: `admin` / `admin1234`）
 
 ---
@@ -65,7 +77,7 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 cd /Users/tsudatakashi/RaspberryPiSystem_002
 
 # 環境変数を設定（Raspberry Pi 5へのSSH接続情報）
-export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 # 一括更新スクリプトを実行（status-agentの設定も含まれる）
 # inventory指定が必須（誤デプロイ防止）
@@ -79,8 +91,8 @@ export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
 - 各クライアントへの接続成功
 
 **エラーが出た場合:**
-- SSH接続ができるか確認: `ssh denkon5sd02@192.168.128.131`
-- Ansibleがインストールされているか確認: `ssh denkon5sd02@192.168.128.131 "ansible --version"`
+- SSH接続ができるか確認: `ssh denkon5sd02@100.106.158.2`
+- Ansibleがインストールされているか確認: `ssh denkon5sd02@100.106.158.2 "ansible --version"`
 - インベントリファイルの設定を確認: `cat infrastructure/ansible/inventory.yml`
 
 ---
@@ -92,8 +104,8 @@ export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
 ### Raspberry Pi 4で確認
 
 ```bash
-# SSH接続（Macから）
-ssh tools03@192.168.128.102
+# SSH接続（Pi5から。Mac直通はACLにより不可の場合あり）
+ssh denkon5sd02@100.106.158.2 "ssh tools03@100.74.144.79"
 
 # status-agentの設定ファイルを確認
 cat /etc/raspi-status-agent.conf
@@ -111,8 +123,8 @@ journalctl -u status-agent.service -n 20
 ### Raspberry Pi 3で確認
 
 ```bash
-# SSH接続（Macから）
-ssh signageras3@192.168.128.152
+# SSH接続（Pi5から。Mac直通はACLにより不可の場合あり）
+ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86"
 
 # status-agentの設定ファイルを確認
 cat /etc/raspi-status-agent.conf
@@ -139,7 +151,7 @@ journalctl -u status-agent.service -n 20
 **ブラウザでアクセス:**
 
 ```
-https://192.168.128.131/admin/clients
+https://100.106.158.2/admin/clients
 ```
 
 **確認事項:**
@@ -149,7 +161,7 @@ https://192.168.128.131/admin/clients
 
 **表示されない場合:**
 - status-agentが正常に動作しているか確認（Step 3を参照）
-- APIログを確認: `ssh denkon5sd02@192.168.128.131 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api | grep 'clients/status'"`
+- APIログを確認: `ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api | grep 'clients/status'"`
 
 ---
 
@@ -160,12 +172,12 @@ https://192.168.128.131/admin/clients
 **確認事項:**
 1. APIサーバーが起動しているか
    ```bash
-   curl http://192.168.128.131:8080/api/system/health
+   curl -k https://100.106.158.2/api/system/health
    ```
 
 2. ログイン情報が正しいか
    ```bash
-   curl -X POST http://192.168.128.131:8080/api/auth/login \
+   curl -k -X POST https://100.106.158.2/api/auth/login \
      -H "Content-Type: application/json" \
      -d '{"username":"admin","password":"admin1234"}'
    ```
@@ -175,12 +187,12 @@ https://192.168.128.131/admin/clients
 **確認事項:**
 1. SSH接続ができるか
    ```bash
-   ssh denkon5sd02@192.168.128.131
+   ssh denkon5sd02@100.106.158.2
    ```
 
 2. Ansibleがインストールされているか
    ```bash
-   ssh denkon5sd02@192.168.128.131 "ansible --version"
+   ssh denkon5sd02@100.106.158.2 "ansible --version"
    ```
 
 3. インベントリファイルの設定を確認
@@ -212,17 +224,18 @@ https://192.168.128.131/admin/clients
 1. status-agentが正常に動作しているか（Step 3を参照）
 2. APIログを確認
    ```bash
-   ssh denkon5sd02@192.168.128.131 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api | grep 'clients/status'"
+   ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api | grep 'clients/status'"
    ```
 
 3. クライアントデバイスが登録されているか
    ```bash
    # Macから実行
-   TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
+   API_BASE_URL=https://100.106.158.2/api
+   TOKEN=$(curl -ksS -X POST "$API_BASE_URL/auth/login" \
      -H "Content-Type: application/json" \
      -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
    
-   curl -X GET http://192.168.128.131:8080/api/clients/status \
+   curl -ksS -X GET "$API_BASE_URL/clients/status" \
      -H "Authorization: Bearer $TOKEN" | jq '.'
    ```
 
@@ -233,4 +246,3 @@ https://192.168.128.131/admin/clients
 - [新規クライアント端末の初期設定手順](./client-initial-setup.md): 新規クライアント追加時の詳細手順
 - [status-agentガイド](./status-agent.md): status-agentの詳細な設定方法
 - [MacからRaspberry Pi 5へのSSH接続ガイド](./mac-ssh-access.md): SSH接続の詳細手順
-

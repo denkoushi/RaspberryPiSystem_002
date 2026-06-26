@@ -34,6 +34,31 @@ sudo nano /etc/raspi-status-agent.conf
 
 任意設定: `LOG_FILE`, `REQUEST_TIMEOUT`, `TLS_SKIP_VERIFY`, `TEMPERATURE_FILE`, `LOCATION` など。
 
+### 第2工場キオスクの現行値（2026-06-26）
+
+| inventory host | `CLIENT_ID` | `CLIENT_KEY` |
+| --- | --- | --- |
+| `raspberrypi4` | `raspberrypi4-kiosk1` | `client-key-raspberrypi4-kiosk1` |
+| `raspi4-robodrill01` | `raspi4-robodrill01-kiosk1` | `client-key-raspi4-robodrill01-kiosk1` |
+| `raspi4-fjv60-80` | `raspi4-fjv60-80-kiosk1` | `client-key-raspi4-fjv60-80-kiosk1` |
+| `raspi4-kensaku-stonebase01` | `raspi4-kensaku-stonebase01-kiosk1` | `client-key-raspi4-kensaku-stonebase01-kiosk1` |
+| `raspi4-sessaku-01` | `raspi4-sessaku-01-kiosk1` | `client-key-raspi4-sessaku-01-kiosk1` |
+
+例（`raspi4-sessaku-01`）:
+
+```bash
+sudo tee /etc/raspi-status-agent.conf >/dev/null <<'EOF'
+API_BASE_URL=https://100.106.158.2/api
+CLIENT_ID=raspi4-sessaku-01-kiosk1
+CLIENT_KEY=client-key-raspi4-sessaku-01-kiosk1
+TLS_SKIP_VERIFY=1
+LOCATION=第2工場 - Sessaku-01
+REQUEST_TIMEOUT=10
+EOF
+```
+
+`CLIENT_KEY` は先に `POST /api/clients` で `ClientDevice.apiKey` として登録されている必要があります。未登録のまま送信すると `CLIENT_DEVICE_NOT_FOUND` 系のエラーになり、端末は自動作成されません。
+
 ---
 
 ## 3. 手動テスト
@@ -180,4 +205,3 @@ rm ~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist
 - 詳細なファイル構成・コメント付き手順: `clients/status-agent/README.md`
 - API 側の受け皿: `apps/api/src/routes/clients.ts`
 - 管理画面の実装タスク: `docs/plans/production-deployment-phase2-execplan.md`
-

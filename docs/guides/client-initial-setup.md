@@ -2,7 +2,7 @@
 title: 新規クライアント端末の初期設定手順
 tags: [初期設定, クライアント, status-agent, SSH]
 audience: [運用者, 開発者]
-last-verified: 2026-05-04
+last-verified: 2026-06-26
 related: [status-agent.md, ssh-setup.md, operation-manual.md]
 category: guides
 update-frequency: medium
@@ -10,13 +10,23 @@ update-frequency: medium
 
 # 新規クライアント端末の初期設定手順
 
-最終更新: 2026-05-04（Zero 2 W 棚番エッジの導線・トラブルシュートは [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)・[KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)。従来の Pi5→Pi4 LAN 知見: 2026-03-28 追記・[KB-315](../knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk)）
+最終更新: 2026-06-26（Pi4 5台目 `raspi4-sessaku-01` の Tailscale / sudoers / Docker / Ansible 初回デプロイ実績を反映。Zero 2 W 棚番エッジの導線・トラブルシュートは [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)・[KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)。従来の Pi5→Pi4 LAN 知見: 2026-03-28 追記・[KB-315](../knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk)）
 
 ## 概要
 
 本ドキュメントでは、新規のRaspberry Piクライアント端末（Raspberry Pi 3/4/Zero2W）をシステムに追加する際の初期設定手順を説明します。
 
 **Zero 2 W をヘッドレスの棚番エッジ（キオスク UI なし・status-agent 中心）として載せる場合**は、[Zero 2 W 棚番エッジ Runbook](../runbooks/zero2w-tanaban-edge-setup.md) を先に参照してください（`inventory.yml` に自宅端末を載せず、インベントリ断片 + 専用 playbook で Pi 5 から適用する流れ）。
+
+## 現行の第2工場キオスク端末（2026-06-26）
+
+| inventory host | OS user | Tailscale IP | client key | location |
+| --- | --- | --- | --- | --- |
+| `raspberrypi4` | `tools03` | `100.74.144.79` | `client-key-raspberrypi4-kiosk1` | `第2工場 - kensakuMain` |
+| `raspi4-robodrill01` | `tools04` | `100.123.1.113` | `client-key-raspi4-robodrill01-kiosk1` | `第2工場 - RoboDrill01` |
+| `raspi4-fjv60-80` | `raspi4-fjv60-80` | `100.100.229.95` | `client-key-raspi4-fjv60-80-kiosk1` | `第2工場 - FJV60/80` |
+| `raspi4-kensaku-stonebase01` | `raspi4-kensaku-stonebase01` | `100.101.113.95` | `client-key-raspi4-kensaku-stonebase01-kiosk1` | `第2工場 - StoneBase01` |
+| `raspi4-sessaku-01` | `raspi4-sessaku-01` | `100.115.109.18` | `client-key-raspi4-sessaku-01-kiosk1` | `第2工場 - Sessaku-01` |
 
 ## 前提条件
 
@@ -147,6 +157,7 @@ chmod 600 ~/.ssh/authorized_keys
 2. **Tailscale管理画面でタグを設定**:
    - Tailscale管理画面（https://login.tailscale.com/admin/machines）にアクセス
    - Pi4の端末を選択し、`tag:kiosk`を付与
+   - Expiry は他キオスクと同じく disabled にする
    - 保存後、約30秒待つ
 
 3. **Tailscale SSHの無効化**（重要）:
@@ -180,6 +191,7 @@ ssh <ユーザー名>@<Pi4のTailscale IP>
 - `tailnet policy does not permit you to SSH to this node`: Tailscale SSHが有効になっている。Pi4で`sudo tailscale set --ssh=false`を実行
 - `Permission denied (publickey,password)`: Pi5の公開鍵がPi4の`authorized_keys`に追加されていない。手動で追加する（下記参照）
 - `No route to host`（Pi5 から新 Pi4 の **LAN IP** へ `ssh` / `ssh-copy-id` 時）: **Tailscale 未参加ではなく、Pi5 と新 Pi4 の間に L3 経路が無い**典型例。同一セグメントにいないと LAN 直は失敗する。**対処**: 届く経路（現場の別端末の VNC/コンソール等）で Pi5 の `~/.ssh/id_ed25519.pub` を Pi4 の `~/.ssh/authorized_keys` に追記し、新 Pi4 を Tailscale 参加・`tag:kiosk`・`sudo tailscale set --ssh=false` まで進めたうえで、**Pi5 からは Tailscale IP（`100.x`）**で接続する。**詳細**: [KB-315](../knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk)
+- Mac から新 Pi4 の Tailscale IP へ直接 SSH できない場合がある。ACL は通常 **Pi5 (`tag:server`) → Pi4 (`tag:kiosk`) の SSH** を正とするため、Mac 直通を前提にしない。
 
 ### 2.4 SSH接続のテスト
 
@@ -213,6 +225,26 @@ ssh <ユーザー名>@<IPアドレス>
   chmod 600 ~/.ssh/authorized_keys
   ```
 - **接続確認**: Pi5から`ansible <ホスト名> -i infrastructure/ansible/inventory.yml -m ping`で接続確認
+
+### 2.5 初回 Ansible 用 sudo 権限の一時付与
+
+新規 Pi4 では `sudo -n true` が `sudo: a password is required` になると、Docker 導入や Ansible `become` が途中で止まります。初回デプロイ前に、Pi4 の画面または既にログイン済みのシェルで次を実行します。
+
+```bash
+echo '<ユーザー名> ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/900-<ホスト名>-ansible >/dev/null
+sudo chmod 0440 /etc/sudoers.d/900-<ホスト名>-ansible
+sudo visudo -cf /etc/sudoers.d/900-<ホスト名>-ansible
+```
+
+例:
+
+```bash
+echo 'raspi4-sessaku-01 ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/900-raspi4-sessaku-01-ansible >/dev/null
+sudo chmod 0440 /etc/sudoers.d/900-raspi4-sessaku-01-ansible
+sudo visudo -cf /etc/sudoers.d/900-raspi4-sessaku-01-ansible
+```
+
+**注意**: Ansible の client role はサービス操作用の限定 sudoers を `/etc/sudoers.d/<ユーザー名>-client-services` に配置します。初回 bootstrap 用の `NOPASSWD:ALL` は **`900-...-ansible` のように別名**にし、`/etc/sudoers.d/<ユーザー名>` には置かないでください。過去に同名ファイルを使うと、role が限定 sudoers で上書きし、実行途中で `Missing sudo password` になる事例がありました（`raspi4-sessaku-01` 初回導入で確認）。
 
 ---
 
@@ -293,7 +325,7 @@ ansible all -i infrastructure/ansible/inventory.yml -m ping
 
 **管理画面で実行:**
 
-1. ブラウザで管理画面にアクセス: `https://192.168.128.131/admin`
+1. ブラウザで管理画面にアクセス: `https://100.106.158.2/admin`
 2. 「クライアント端末管理」ページに移動
 3. 「新規追加」ボタンをクリック
 4. 以下の情報を入力:
@@ -304,25 +336,27 @@ ansible all -i infrastructure/ansible/inventory.yml -m ping
 
 5. 「保存」ボタンをクリック
 
-**または、APIで直接登録:**
+**または、APIで直接登録（Pi5上またはPi5へSSHして実行）:**
 
 ```bash
 # ログインしてトークンを取得
-TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
+API_BASE_URL=https://127.0.0.1/api
+TOKEN=$(curl -ksS -X POST "$API_BASE_URL/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
 
 # クライアントデバイスを登録
-curl -X POST http://192.168.128.131:8080/api/clients/devices \
+curl -ksS -X POST "$API_BASE_URL/clients" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Raspberry Pi 4 - キオスク1",
-    "clientId": "raspberrypi4-kiosk1",
-    "apiKey": "client-key-raspberrypi4-kiosk1",
-    "location": "1F 受付"
-  }'
+    "apiKey": "client-key-raspi4-sessaku-01-kiosk1",
+    "name": "raspi4-sessaku-01",
+    "location": "第2工場 - Sessaku-01"
+  }' | jq '{name:.client.name,location:.client.location,lastSeenAt:.client.lastSeenAt}'
 ```
+
+`POST /api/clients` は `apiKey` で upsert します。既存キーの場合、管理画面で手動変更された表示名は上書きせず、`location` と `lastSeenAt` を更新します。
 
 ### 4.1.1 `register-clients.sh` を使う場合の注意（重複登録防止）
 
@@ -378,13 +412,13 @@ sudo nano /etc/raspi-status-agent.conf
 
 ```ini
 # APIサーバーのURL
-API_BASE_URL=http://192.168.128.131:8080/api
+API_BASE_URL=https://100.106.158.2/api
 
 # クライアントID（サーバー側で登録したID）
-CLIENT_ID=raspberrypi4-kiosk1
+CLIENT_ID=raspi4-sessaku-01-kiosk1
 
 # APIキー（サーバー側で登録したキー）
-CLIENT_KEY=client-key-raspberrypi4-kiosk1
+CLIENT_KEY=client-key-raspi4-sessaku-01-kiosk1
 
 # ログファイルのパス（オプション）
 LOG_FILE=/var/log/raspi-status-agent.log
@@ -539,7 +573,11 @@ journalctl -u kiosk-browser.service -n 20 --no-pager
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 # ログアウト・再ログイン後、docker コマンドが使えることを確認
+docker --version
+sudo systemctl is-active docker
 ```
+
+`raspi4-sessaku-01` 初回導入では Tailscale の apt 取得が IPv6 側でタイムアウトし、`tailscale: command not found` の状態になった。`sudo apt update` 後に **パッケージ名を `tailscale` と正確に指定**して再実行し、`sudo systemctl enable --now tailscaled` まで確認する。
 
 ### 5.5.2 手動セットアップ（デプロイ前のみ）
 
@@ -573,11 +611,12 @@ curl http://localhost:7071/api/agent/status
 **ブラウザでアクセス:**
 
 ```
-https://192.168.128.131/admin/clients
+https://100.106.158.2/admin/clients
 ```
 
 **確認事項:**
 - 新規クライアントが一覧に表示される
+- `statusClientId` が inventory の `status_agent_client_id` と一致する（例: `raspi4-sessaku-01-kiosk1`）
 - CPU、メモリ、ディスク、温度が表示される
 - 最終確認時刻が1分以内であること
 
@@ -586,18 +625,21 @@ https://192.168.128.131/admin/clients
 **Macのターミナルで実行:**
 
 ```bash
+API_BASE_URL=https://100.106.158.2/api
+
 # ログインしてトークンを取得
-TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
+TOKEN=$(curl -ksS -X POST "$API_BASE_URL/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
 
 # クライアント状態を取得
-curl -X GET http://192.168.128.131:8080/api/clients/status \
-  -H "Authorization: Bearer $TOKEN" | jq '.[] | select(.clientId == "raspberrypi4-kiosk1")'
+curl -ksS -X GET "$API_BASE_URL/clients/status" \
+  -H "Authorization: Bearer $TOKEN" | jq '.[] | select(.clientId == "raspi4-sessaku-01-kiosk1")'
 ```
 
 **期待される結果:**
 - クライアントの状態が表示される
+- `clientId` / `statusClientId` 相当が `raspi4-sessaku-01-kiosk1` として登録済み
 - `lastSeen`が1分以内であること
 
 ---
@@ -667,4 +709,3 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api | gre
 - [SSH鍵ベース運用ガイド](./ssh-setup.md): SSH鍵認証の詳細な設定方法
 - [運用マニュアル](./operation-manual.md): 日常的な運用手順
 - [クイックスタートガイド](./quick-start-deployment.md): 一括更新と監視のクイックスタート
-

@@ -76,7 +76,7 @@ update-frequency: medium
 
 | 情報の種類 | 場所 | バックアップ | 管理方法 |
 |-----------|------|------------|---------|
-| **環境変数ファイル** | `clients/nfc-agent/.env` | ⚠️ **推奨** | `.env.example`をコピーして作成、Ansibleでデプロイ可能。**現在はAnsible経由のバックアップ機能を実装予定** |
+| **環境変数ファイル** | `clients/nfc-agent/.env` | ⚠️ **推奨** | `.env.example`をコピーして作成、Ansibleでデプロイ可能。`client-file` 推奨カタログでバックアップ候補化済み |
 | **NFCリーダー設定** | システム設定 | ❌ 不要 | ハードウェア設定、再設定可能 |
 
 **注意**: クライアント端末のファイルは物理的に別マシン上に存在するため、Pi5（サーバー）のAPIから直接アクセスできません。Ansibleを使用してクライアント端末のファイルをPi5に取得してバックアップする機能を実装済みです。
@@ -111,6 +111,8 @@ update-frequency: medium
 | `directory` | `/path/to/directory` | ディレクトリ全体（tar.gz形式、Pi5上のローカルディレクトリ） |
 | `client-file` | `raspberrypi4:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env` | クライアント端末のファイル（Ansible経由で取得、Pi3/Pi4など） |
 | `client-directory` | `raspberrypi3:/var/lib/tailscale` | クライアント端末のディレクトリ（Ansible経由でtar.gz形式で取得、Pi3/Pi4など） |
+
+**現行推奨カタログ（2026-06-26）**: 第2工場の増設 Pi4（`raspi4-robodrill01`、`raspi4-fjv60-80`、`raspi4-kensaku-stonebase01`、`raspi4-sessaku-01`）について、`clients/nfc-agent/.env`、運用ユーザーの `~/.ssh`、`/var/lib/tailscale`、`/etc/raspi-status-agent.conf` を `coverage_gap` 候補として提示します。実バックアップに含める場合は管理コンソールから `backup.json` へ追加してください。
 
 ### バックアップ設定ファイル（`backup.json`）
 

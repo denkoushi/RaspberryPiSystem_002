@@ -1020,7 +1020,8 @@ const textX = x + textAreaX;
 
 **対策**:
 - `inventory.yml` にホストごとの `sudo_nopasswd_commands` を定義（Pi3: signage-lite + status-agent、Pi4: kiosk-browser + status-agent）
-- `roles/client` に sudoers テンプレート（`/etc/sudoers.d/<user>`）を追加し、上記コマンドに `NOPASSWD` を付与
+- `roles/client` に sudoers テンプレート（`/etc/sudoers.d/<user>-client-services`）を追加し、上記コマンドに `NOPASSWD` を付与
+- 2026-06-26 追記: 初回 Ansible bootstrap 用の広い権限は `/etc/sudoers.d/900-<host>-ansible` に分離する。`/etc/sudoers.d/<user>` は role 管理ファイルと衝突し得るため使わない（[KB-393](./ansible-deployment.md#kb-393-pi4-sessaku-fifth-kiosk)）。
 - `visudo -cf` 検証を組み込み、設定ミスを防止
 
 **結果**:

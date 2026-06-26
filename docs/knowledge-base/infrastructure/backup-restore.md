@@ -1076,6 +1076,8 @@ update-frequency: medium
 - **スモーク（本機能）**: Pi5 上で `curl -sk https://localhost/api/backup/config/health/internal` → JSON に **`issues[].type":"coverage_gap"`** と **`details.suggestedTarget`** が含まれる（未登録候補がある限り **`status":"warning"`**。候補を `backup.json` に足すと当該 `kind`+`source` は **`coverage_gap` から消える**）。
 - **トラブルシュート**: `coverage_gap` は **障害ではなく警告**（`collision` / `drift` 等と分離して管理 UI 表示）。派生キャッシュはカタログ対象外のため **意図的に警告にならない**。
 
+**追補（2026-06-26）**: Pi4 5台目 **`raspi4-sessaku-01`** は Tailscale **`100.115.109.18`** で到達可能になり、本番 inventory に反映済み。推奨カタログには同端末の `client-file` / `client-directory` 対象（`clients/nfc-agent/.env`、`/home/raspi4-sessaku-01/.ssh`、`/var/lib/tailscale`、`/etc/raspi-status-agent.conf`）を追加した。実 `backup.json` に未登録なら、管理コンソールの `coverage_gap` から追加する。
+
 **References**:
 - [api/backup.md](../../api/backup.md#get-apibackupconfighealth)
 - `apps/api/src/services/backup/backup-recommended-targets.catalog.ts`
@@ -2166,7 +2168,7 @@ ssh denkon5sd02@100.106.158.2 'jq '\''def redact_source: if type == "string" the
   - `pallet-machine-illustrations`: `2717979` bytes
   - `pdfs`: `78949162` bytes
 - `GET /api/backup/config/health/internal` は `healthy`、Dropbox使用量は `374630400 / 2147483648 bytes`、残り `1772853248 bytes` を確認。
-- `raspi4-sessaku-01` は本番PiからTailscale上で未到達、かつ本番inventory未反映のため、バックアップ対象には未追加。到達可能化とinventory反映後に client-file/client-directory ターゲットを追加する。
+- 2026-06-26 追記: `raspi4-sessaku-01` は Tailscale `100.115.109.18` で到達可能、本番 inventory 反映済み。推奨カタログに `client-file` / `client-directory` 対象を追加済み（`clients/nfc-agent/.env`、`/home/raspi4-sessaku-01/.ssh`、`/var/lib/tailscale`、`/etc/raspi-status-agent.conf`）。実 `backup.json` への追加は管理コンソールの `coverage_gap` から登録、または `backup.json` 更新で行う。
 
 **解決状況**: ✅ **解決済み**（2026-06-26）。Gmail upload誤選択、Dropbox 409詳細化、DB gzip化、internal cleanup、写真除外、復旧必須ファイル群のDropbox退避、2GB DropboxでのDB gzip + 必須ファイル保持を実機確認済み。
 
