@@ -845,7 +845,7 @@
 ### 🆕 最新アップデート（2026-03-08）
 
 - **納期遅れ最小化モデル改善（オフライン学習評価 + イベントログ）正本**: [KB-297 §B第5段階](./knowledge-base/KB-297-kiosk-due-management-workflow.md#b第5段階オフライン学習評価--イベントログ2026-03-08) · [ADR-20260308](./decisions/ADR-20260308-due-management-offline-learning-events.md)。
-- **✅ 納期管理 B第4段階補正・デプロイ完了・実機検証完了**: 納期設定済み限定候補 + 既存rank即時除外を実機へ反映。**デプロイ**: Run ID `20260308-080355-17100`、`state: success`、約12分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・summary）、サイネージAPI、backup.json、マイグレーション（41件）、Pi4サービス稼働を確認。`global-rank/proposal` は納期未設定時 `candidateCount: 0` を返す（想定どおり）。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#b第4段階補正デプロイ実機検証2026-03-08) を参照。
+- **納期管理 B第4段階補正 デプロイ・実機検証 正本**: [KB-297 §B第4段階補正](./knowledge-base/KB-297-kiosk-due-management-workflow.md#b第4段階補正デプロイ実機検証2026-03-08)。
 
 ### 🆕 最新アップデート（2026-03-07）
 
