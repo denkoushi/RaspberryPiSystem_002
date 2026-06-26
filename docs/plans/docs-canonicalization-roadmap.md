@@ -3989,7 +3989,21 @@ Status: implemented in PR322.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR323 And Later: Thin Indexes And Split Large Documents
+### PR323: Thin Gmail Reauth Alert Index Block
+
+Status: implemented in PR323.
+
+- Thin only the 2026-02-06 Gmail reauthorization alerting, Slack routing, and
+  onsite recovery latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the scheduler-only detection,
+  `GmailReauthRequiredError`/`invalid_grant` trigger, `gmail-oauth-expired`
+  alert type, `#rps-ops` route, dedupe behavior, Pi3 signage investigation,
+  admin reauthorization, and 189-row manual run result with short links to
+  KB-229, KB-230, and the Slack guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR324 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

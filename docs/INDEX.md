@@ -1031,7 +1031,7 @@
 
 - **生産スケジュール登録製番上限8→20・サイネージ高さ最適化 正本**: [KB-231 API](./knowledge-base/api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化) · [KB-231 signage](./knowledge-base/infrastructure/signage.md#kb-231-生産スケジュールサイネージアイテム高さの最適化20件表示対応)。
 
-- **✅ Gmail認証切れ時のSlack通知機能追加・実機調査と回復**: CSVインポート定期実行時にGmail認証切れが発生しても、管理者に通知されずCSV取り込みが失敗し続けていた問題を解決。**実装内容**: CSVインポートスケジューラーにGmail認証切れ検知機能を追加し、定期実行時（手動実行時は通知しない）に`GmailReauthRequiredError`または`invalid_grant`エラーを検知してAlerts Platform経由でSlack通知を送信。アラートタイプ`gmail-oauth-expired`を`ops`チャンネル（`#rps-ops`）にルーティングし、fingerprintベースのdedupeで連続通知を抑制（1回のみ通知）。**実機調査**: Pi3のサイネージ右ペイン（計測機器持出返却）が更新されていない問題を調査し、Gmail OAuth認証トークンが期限切れであることを確認。管理コンソールでOAuth再認証を実行して回復し、手動実行で189行が正常に追加されることを確認。詳細は [knowledge-base/api.md#kb-229](./knowledge-base/api.md#kb-229-gmail認証切れ時のslack通知機能追加) / [knowledge-base/api.md#kb-230](./knowledge-base/api.md#kb-230-gmail認証切れの実機調査と回復) / [guides/slack-webhook-setup.md](./guides/slack-webhook-setup.md#gmail認証切れ通知機能2026-02-06実装) を参照。
+- **Gmail認証切れSlack通知・実機回復 正本**: [KB-229](./knowledge-base/api.md#kb-229-gmail認証切れ時のslack通知機能追加) · [KB-230](./knowledge-base/api.md#kb-230-gmail認証切れの実機調査と回復) · [Slack guide](./guides/slack-webhook-setup.md#gmail認証切れ通知機能2026-02-06実装)。
 
 ### 🆕 最新アップデート（2026-02-03）
 
