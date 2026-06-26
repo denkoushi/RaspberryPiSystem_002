@@ -2942,7 +2942,19 @@ Status: implemented in PR238.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR239 And Later: Thin Indexes And Split Large Documents
+### PR239: Thin P2-2 Auth Route Index Block
+
+Status: implemented in PR239.
+
+- Thin only the 2026-03-13 P2-2 auth Route Thin latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace service extraction, notification side
+  effects, route responsibilities, deployment, and real-device verification
+  detail with short links to the Phase2 backlog and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR240 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
