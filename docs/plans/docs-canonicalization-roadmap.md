@@ -2978,7 +2978,19 @@ Status: implemented in PR241.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR242 And Later: Thin Indexes And Split Large Documents
+### PR242: Thin Phase2 Refactor Backlog Index Block
+
+Status: implemented in PR242.
+
+- Thin only the 2026-03-11 non-destructive refactor Phase2 backlog
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace implementation order, safety gate,
+  route/web split, boundary-guard, and validation detail with a short link to
+  the Phase2 backlog plan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR243 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
