@@ -2811,7 +2811,19 @@ Status: implemented in PR227.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR228 And Later: Thin Indexes And Split Large Documents
+### PR228: Thin Due Management Section Accent Index Block
+
+Status: implemented in PR228.
+
+- Thin only the 2026-03-14 due-management left-pane section accent
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace accent prop, section color, deployment,
+  and real-device UI verification detail with short links to KB-297 and
+  deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR229 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
