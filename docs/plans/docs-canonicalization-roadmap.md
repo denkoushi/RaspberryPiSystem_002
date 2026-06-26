@@ -2405,7 +2405,19 @@ Status: implemented in PR193.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR194 And Later: Thin Indexes And Split Large Documents
+### PR194: Thin Manual Order Resource Assignment Index Block
+
+Status: implemented in PR194.
+
+- Thin only the 2026-03-21 manual-order upper-pane resource assignment
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace table, route, overview, Web card, Phase12,
+  branch, staged deployment, and `EXEC_PLAN.md` detail with short links to
+  KB-297 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR195 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
