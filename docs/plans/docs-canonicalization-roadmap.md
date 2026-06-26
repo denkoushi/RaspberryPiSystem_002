@@ -3922,7 +3922,20 @@ Status: implemented in PR317.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR318 And Later: Thin Indexes And Split Large Documents
+### PR318: Thin Docker Build Optimization Index Block
+
+Status: implemented in PR318.
+
+- Thin only the 2026-02-07 Docker build optimization and changed-file build
+  decision latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the 181s bottleneck, changed-file match
+  patterns, common-role and `update-all-clients.sh` double-safety
+  implementation, 6m34s to 3m11s canary result, and safe-build fallback with
+  short links to KB-235 and KB-234.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR319 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
