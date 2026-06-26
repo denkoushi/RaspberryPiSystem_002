@@ -3050,7 +3050,19 @@ Status: implemented in PR247.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR248 And Later: Thin Indexes And Split Large Documents
+### PR248: Thin Global Rank Sort Correction Index Block
+
+Status: implemented in PR248.
+
+- Thin only the 2026-03-11 global-rank sort correction latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace display-order correction, deploy,
+  verification, and historical implementation note detail with a short link to
+  KB-297.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR249 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
