@@ -2596,7 +2596,19 @@ Status: implemented in PR209.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR210 And Later: Thin Indexes And Split Large Documents
+### PR210: Thin Excluded Resource Location Index Block
+
+Status: implemented in PR210.
+
+- Thin only the 2026-03-16 excluded-resource-CD Location alignment
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace policy lookup, dual save, staged deploy,
+  raspberrypi4 retry, onsite verification, and `EXEC_PLAN.md` detail with short
+  links to KB-297 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR211 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
