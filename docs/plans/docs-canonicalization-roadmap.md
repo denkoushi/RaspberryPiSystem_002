@@ -2226,7 +2226,19 @@ Status: implemented in PR178.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR179 And Later: Thin Indexes And Split Large Documents
+### PR179: Thin Rigging IdNum Index Block
+
+Status: implemented in PR179.
+
+- Thin only the 2026-03-24 rigging master `idNum` and active-loan card layout
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace behavior, partial deployment,
+  RoboDrill01 follow-up, local worktree, verification checklist, and
+  `EXEC_PLAN.md` detail with short links to KB-312 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR180 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
