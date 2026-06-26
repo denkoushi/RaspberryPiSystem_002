@@ -9,3 +9,4 @@ haizen_agent_install_evdev: true
 haizen_agent_tls_verify_mode: "insecure"
 client_sudo_user: "{{ ansible_user | default('') }}"
 client_sudo_nopasswd_commands: "{{ sudo_nopasswd_commands | default([]) }}"
+client_sudoers_services_file: "{{ client_sudo_user }}-client-services"

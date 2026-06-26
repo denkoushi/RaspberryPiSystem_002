@@ -85,10 +85,37 @@
   ansible.builtin.include_tasks: haizen-agent.yml
   when: haizen_agent_enabled | default(false) | bool
 
+- name: Check legacy client sudoers file
+  ansible.builtin.stat:
+    path: "/etc/sudoers.d/{{ client_sudo_user }}"
+  register: client_legacy_sudoers_stat
+  when:
+    - client_sudo_user | length > 0
+    - client_sudoers_services_file != client_sudo_user
+
+- name: Read legacy client sudoers file
+  ansible.builtin.slurp:
+    src: "/etc/sudoers.d/{{ client_sudo_user }}"
+  register: client_legacy_sudoers_content
+  when:
+    - client_sudo_user | length > 0
+    - client_sudoers_services_file != client_sudo_user
+    - client_legacy_sudoers_stat.stat.exists | default(false)
+
+- name: Remove legacy Ansible-managed client sudoers file
+  ansible.builtin.file:
+    path: "/etc/sudoers.d/{{ client_sudo_user }}"
+    state: absent
+  when:
+    - client_sudo_user | length > 0
+    - client_sudoers_services_file != client_sudo_user
+    - client_legacy_sudoers_stat.stat.exists | default(false)
+    - (client_legacy_sudoers_content.content | b64decode) is match('^# Ansible managed: allow required systemctl commands')
+
 - name: Ensure sudoers overrides for client services
   ansible.builtin.template:
     src: "{{ role_path }}/templates/sudoers-client.j2"
-    dest: "/etc/sudoers.d/{{ client_sudo_user }}"
+    dest: "/etc/sudoers.d/{{ client_sudoers_services_file }}"
     owner: root
     group: root
     mode: '0440'
