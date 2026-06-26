@@ -86,6 +86,8 @@ export function makeSelfInspectionSessionDetailForTest(
     status: 'in_progress',
     startedAt: now,
     completedAt: null,
+    recordApprovalRequiredAt: null,
+    recordApproval: null,
     updatedAt: now,
     template: {
       id: templateId,

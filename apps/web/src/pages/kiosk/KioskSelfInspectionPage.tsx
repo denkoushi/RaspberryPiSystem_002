@@ -1,10 +1,17 @@
 import clsx from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
-import { useKioskProductionSchedule, useSelfInspectionSessions } from '../../api/hooks';
+import {
+  useKioskProductionSchedule,
+  useSelfInspectionSessions,
+  useVerifyKioskSelfInspectionRecordApprovalAccessPassword
+} from '../../api/hooks';
 import { buttonClassName, Button } from '../../components/ui/Button';
-import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
+import {
+  KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
+  kioskSelfInspectionSessionPath
+} from '../../features/part-measurement/selfInspectionRoutes';
 import { presentSelfInspectionWipCard } from '../../features/part-measurement/selfInspectionWipCardPresentation';
 
 import type { ProductionScheduleRow } from '../../api/client';
@@ -15,6 +22,7 @@ const CANDIDATE_SEARCH_DEBOUNCE_MS = 400;
 const WIP_REFETCH_INTERVAL_MS = 60_000;
 /** 製番・品番テキストのみのときは API 走査を避けるための最小文字数（資源CD 併用時は不要） */
 const CANDIDATE_MIN_TEXT_SEARCH_LENGTH = 2;
+const RECORD_APPROVAL_AUTH_SESSION_KEY = 'kiosk-self-inspection-record-approval-authenticated';
 
 function mapEligibleRow(row: ProductionScheduleRow) {
   const rowData = (row.rowData ?? {}) as Record<string, unknown>;
@@ -106,11 +114,14 @@ function SessionWipCard({ session }: { session: SelfInspectionSessionSummaryDto 
 }
 
 export function KioskSelfInspectionPage() {
+  const navigate = useNavigate();
   const [productNo, setProductNo] = useState('');
   const [resourceCd, setResourceCd] = useState('');
   const [debouncedProductNo, setDebouncedProductNo] = useState('');
   const [debouncedResourceCd, setDebouncedResourceCd] = useState('');
   const [page, setPage] = useState(1);
+  const verifyRecordApprovalAccessPasswordMutation =
+    useVerifyKioskSelfInspectionRecordApprovalAccessPassword();
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -179,6 +190,29 @@ export function KioskSelfInspectionPage() {
   );
   const hasMore = scheduleQuery.data?.hasMore === true;
 
+  const handleRecordApprovalNavigate = async () => {
+    const isAuthenticated =
+      typeof window !== 'undefined' &&
+      window.sessionStorage.getItem(RECORD_APPROVAL_AUTH_SESSION_KEY) === '1';
+    if (isAuthenticated) {
+      navigate(KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH);
+      return;
+    }
+    const password = typeof window !== 'undefined' ? window.prompt('検査記録確認パスワードを入力してください') : null;
+    if (!password) return;
+    try {
+      const result = await verifyRecordApprovalAccessPasswordMutation.mutateAsync({ password });
+      if (!result.success) {
+        window.alert('パスワードが違います');
+        return;
+      }
+      window.sessionStorage.setItem(RECORD_APPROVAL_AUTH_SESSION_KEY, '1');
+      navigate(KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH);
+    } catch {
+      window.alert('認証に失敗しました。ネットワーク接続を確認してください。');
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 bg-slate-800 p-3 text-white">
       <div className="rounded border border-white/15 bg-slate-900/70 p-3">
@@ -190,6 +224,14 @@ export function KioskSelfInspectionPage() {
             </p>
           </div>
           <div className="flex min-w-0 flex-wrap items-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={verifyRecordApprovalAccessPasswordMutation.isPending}
+              onClick={() => void handleRecordApprovalNavigate()}
+            >
+              検査記録確認
+            </Button>
             <label className="grid min-w-[12rem] max-w-xs flex-1 gap-1 text-sm">
               <span className="text-white/70">製造order / 製番 / 品番</span>
               <input

@@ -24,6 +24,7 @@ export type SelfInspectionActionReason =
   | 'tolerance_error'
   | 'missing_required_entries'
   | 'pending_review'
+  | 'record_approval_required'
   | 'unsaved_changes'
   | 'already_guided'
   | 'no_pending_points_unsaved'
@@ -178,6 +179,10 @@ export function resolveSelfInspectionCompleteActionState(
     }
   }
 
+  if (context.session.recordApprovalRequiredAt && !context.session.recordApproval) {
+    return disabledState('record_approval_required');
+  }
+
   if (context.session.pendingReviewCount > 0) {
     return disabledState('pending_review');
   }
@@ -248,7 +253,9 @@ export function selfInspectionActionReasonMessage(
     case 'missing_required_entries':
       return '必要な入力件がすべて保存されていません。各入力件を保存してください。';
     case 'pending_review':
-      return '公差外の測定値が現場リーダー承認待ちです。管理画面で承認してください。';
+      return '公差外の測定値が現場リーダー承認待ちです。';
+    case 'record_approval_required':
+      return '検査記録確認画面で承認すると自主検査が完了します。';
     case 'missing_registration':
       return '測定者と測定機器のNFC登録が必要です。';
     case 'incomplete_registration':

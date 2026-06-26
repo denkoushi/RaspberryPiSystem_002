@@ -30,6 +30,7 @@ import {
   inferEntrySlotKindForIndex,
   isFullSelfInspectionPlannedQuantityWithinLimit,
   isSessionCompletionReady,
+  listRequiredEntrySlots,
   resolveTemplateFixedCount,
   serializeEntrySlotKind,
   serializeSelfInspectionMode,
@@ -67,8 +68,45 @@ const listSessionsSummaryInclude = {
   _count: { select: { entries: true } }
 } as const;
 
+const recordApprovalSessionInclude = {
+  template: { include: partMeasurementTemplateFullInclude },
+  entries: {
+    orderBy: { entryIndex: 'asc' },
+    select: {
+      id: true,
+      entryIndex: true,
+      entrySlotKind: true,
+      createdByEmployeeId: true,
+      createdByEmployeeNameSnapshot: true,
+      measuringInstrumentId: true,
+      measuringInstrumentManagementNumberSnapshot: true,
+      measuringInstrumentNameSnapshot: true,
+      measuringInstrumentTagUidSnapshot: true,
+      createdAt: true,
+      updatedAt: true,
+      values: {
+        select: {
+          id: true,
+          templateItemId: true,
+          value: true,
+          reviewStatus: true,
+          outOfToleranceAcknowledgedAt: true,
+          approvedAt: true,
+          updatedAt: true
+        }
+      }
+    }
+  },
+  recordApproval: true,
+  _count: { select: { entries: true } }
+} as const;
+
 type SessionSummarySource = Prisma.SelfInspectionSessionGetPayload<{
   include: typeof listSessionsSummaryInclude;
+}>;
+
+type RecordApprovalSessionSource = Prisma.SelfInspectionSessionGetPayload<{
+  include: typeof recordApprovalSessionInclude;
 }>;
 
 export {
@@ -695,6 +733,7 @@ function serializeSessionSummary(
     status,
     startedAt: session.startedAt?.toISOString() ?? null,
     completedAt: session.completedAt?.toISOString() ?? null,
+    recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
     updatedAt: session.updatedAt.toISOString()
   };
 }
@@ -711,6 +750,185 @@ async function serializeSessionSummaryWithAggregatedParticipantNames(
     participantNamesBySessionId.get(session.id) ?? [],
     pendingReviewCounts.get(session.id) ?? 0
   );
+}
+
+export type SelfInspectionRecordApprovalState =
+  | 'input_incomplete'
+  | 'registration_incomplete'
+  | 'approvable'
+  | 'approved';
+
+export type SelfInspectionApproverResolveResult =
+  | {
+      kind: 'employee';
+      employee: {
+        id: string;
+        employeeCode: string;
+        displayName: string;
+        nfcTagUid: string;
+      };
+    }
+  | { kind: 'unknown' }
+  | { kind: 'inactive'; status: string }
+  | { kind: 'instrument' }
+  | { kind: 'duplicate' };
+
+function serializeRecordApproval(approval: RecordApprovalSessionSource['recordApproval']) {
+  if (!approval) return null;
+  return {
+    id: approval.id,
+    approvedAt: approval.approvedAt.toISOString(),
+    approverEmployeeId: approval.approverEmployeeId,
+    approverEmployeeCodeSnapshot: approval.approverEmployeeCodeSnapshot,
+    approverEmployeeNameSnapshot: approval.approverEmployeeNameSnapshot,
+    approverEmployeeNfcTagUidSnapshot: approval.approverEmployeeNfcTagUidSnapshot,
+    comment: approval.comment,
+    clientDeviceId: approval.clientDeviceId,
+    clientDeviceNameSnapshot: approval.clientDeviceNameSnapshot
+  };
+}
+
+function pendingReviewCountFromRecordApprovalSession(session: RecordApprovalSessionSource): number {
+  let count = 0;
+  for (const entry of session.entries) {
+    count += entry.values.filter((value) => value.reviewStatus === 'PENDING').length;
+  }
+  return count;
+}
+
+function buildRecordApprovalReadiness(session: RecordApprovalSessionSource): {
+  state: SelfInspectionRecordApprovalState;
+  requiredEntryCount: number;
+  completedRequiredEntryCount: number;
+  missingRequiredEntryCount: number;
+  incompleteValueEntryCount: number;
+  incompleteRegistrationEntryCount: number;
+  pendingReviewCount: number;
+} {
+  const requiredSlots = listRequiredEntrySlots(
+    templateConfigFromTemplate(session.template),
+    session.plannedQuantity
+  );
+  const entriesByIndex = new Map(session.entries.map((entry) => [entry.entryIndex, entry]));
+  let completedRequiredEntryCount = 0;
+  let missingRequiredEntryCount = 0;
+  let incompleteValueEntryCount = 0;
+  let incompleteRegistrationEntryCount = 0;
+
+  for (const slot of requiredSlots) {
+    const entry = entriesByIndex.get(slot.entryIndex);
+    if (!entry) {
+      missingRequiredEntryCount += 1;
+      continue;
+    }
+    completedRequiredEntryCount += 1;
+    const valuesByItemId = new Map(entry.values.map((value) => [value.templateItemId, value]));
+    const hasMissingValue = session.template.items.some((item) => {
+      const stored = valuesByItemId.get(item.id);
+      return stored?.value == null;
+    });
+    if (hasMissingValue) {
+      incompleteValueEntryCount += 1;
+    }
+    if (!isSelfInspectionLotEntryRegistrationComplete(entry)) {
+      incompleteRegistrationEntryCount += 1;
+    }
+  }
+
+  const pendingReviewCount = pendingReviewCountFromRecordApprovalSession(session);
+  const state: SelfInspectionRecordApprovalState = session.recordApproval
+    ? 'approved'
+    : missingRequiredEntryCount > 0 || incompleteValueEntryCount > 0 || requiredSlots.length === 0
+      ? 'input_incomplete'
+      : incompleteRegistrationEntryCount > 0
+        ? 'registration_incomplete'
+        : 'approvable';
+
+  return {
+    state,
+    requiredEntryCount: requiredSlots.length,
+    completedRequiredEntryCount,
+    missingRequiredEntryCount,
+    incompleteValueEntryCount,
+    incompleteRegistrationEntryCount,
+    pendingReviewCount
+  };
+}
+
+function serializeRecordApprovalSessionListItem(session: RecordApprovalSessionSource) {
+  const readiness = buildRecordApprovalReadiness(session);
+  const summary = serializeSessionSummary(
+    session,
+    collectParticipantEmployeeNames(session.entries),
+    readiness.pendingReviewCount
+  );
+  return {
+    ...summary,
+    recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
+    recordApprovalState: readiness.state,
+    recordApproval: serializeRecordApproval(session.recordApproval),
+    requiredEntryCount: readiness.requiredEntryCount,
+    completedRequiredEntryCount: readiness.completedRequiredEntryCount,
+    missingRequiredEntryCount: readiness.missingRequiredEntryCount,
+    incompleteValueEntryCount: readiness.incompleteValueEntryCount,
+    incompleteRegistrationEntryCount: readiness.incompleteRegistrationEntryCount
+  };
+}
+
+function serializeRecordApprovalEntryDetail(
+  session: RecordApprovalSessionSource,
+  slot: ReturnType<typeof listRequiredEntrySlots>[number]
+) {
+  const entry = session.entries.find((row) => row.entryIndex === slot.entryIndex) ?? null;
+  const valuesByItemId = new Map((entry?.values ?? []).map((value) => [value.templateItemId, value]));
+  const values = session.template.items.map((item) => {
+    const stored = valuesByItemId.get(item.id) ?? null;
+    const numericValue = stored?.value ?? null;
+    return {
+      id: stored?.id ?? null,
+      templateItemId: item.id,
+      displayMarker: item.displayMarker,
+      datumSurface: item.datumSurface,
+      measurementPoint: item.measurementPoint,
+      measurementLabel: item.measurementLabel,
+      unit: item.unit,
+      value: numericValue != null ? String(numericValue) : null,
+      lowerLimit: item.lowerLimit != null ? String(item.lowerLimit) : null,
+      upperLimit: item.upperLimit != null ? String(item.upperLimit) : null,
+      isWithinTolerance: numericValue != null ? isValueWithinTolerance(item, numericValue) : null,
+      reviewStatus: stored?.reviewStatus ?? null,
+      outOfToleranceAcknowledgedAt: stored?.outOfToleranceAcknowledgedAt?.toISOString() ?? null,
+      approvedAt: stored?.approvedAt?.toISOString() ?? null,
+      updatedAt: stored?.updatedAt.toISOString() ?? null
+    };
+  });
+  const hasMissingValue = values.some((value) => value.value == null);
+  const registrationComplete = entry ? isSelfInspectionLotEntryRegistrationComplete(entry) : false;
+  const state = !entry || hasMissingValue
+    ? 'input_incomplete'
+    : !registrationComplete
+      ? 'registration_incomplete'
+      : 'ready';
+  return {
+    entryIndex: slot.entryIndex,
+    entrySlotKind: slot.entrySlotKind,
+    entrySlotLabel: slot.entrySlotLabel,
+    state,
+    entry: entry
+      ? {
+          id: entry.id,
+          createdByEmployeeId: entry.createdByEmployeeId,
+          createdByEmployeeNameSnapshot: entry.createdByEmployeeNameSnapshot,
+          measuringInstrumentId: entry.measuringInstrumentId,
+          measuringInstrumentManagementNumberSnapshot: entry.measuringInstrumentManagementNumberSnapshot,
+          measuringInstrumentNameSnapshot: entry.measuringInstrumentNameSnapshot,
+          measuringInstrumentTagUidSnapshot: entry.measuringInstrumentTagUidSnapshot,
+          createdAt: entry.createdAt.toISOString(),
+          updatedAt: entry.updatedAt.toISOString()
+        }
+      : null,
+    values
+  };
 }
 
 export class SelfInspectionService {
@@ -1032,6 +1250,7 @@ export class SelfInspectionService {
     const sessionInclude = {
       template: { include: partMeasurementTemplateFullInclude },
       entries: { select: { entryIndex: true } },
+      recordApproval: { select: { id: true } },
       _count: { select: { entries: true } }
     } as const;
 
@@ -1051,7 +1270,8 @@ export class SelfInspectionService {
         plannedQuantity,
         expectedEntryCount,
         clientDeviceId: input.clientDeviceId ?? null,
-        startedAt: new Date()
+        startedAt: new Date(),
+        recordApprovalRequiredAt: new Date()
       },
       update: {},
       include: sessionInclude
@@ -1121,6 +1341,225 @@ export class SelfInspectionService {
     };
   }
 
+  async listRecordApprovalSessions(query: {
+    productNo?: string;
+    resourceCd?: string;
+    processGroup?: PartMeasurementProcessGroup;
+    state?: 'active' | SelfInspectionRecordApprovalState;
+  }) {
+    const productNo = normalizeText(query.productNo);
+    const resourceCd = normalizeText(query.resourceCd);
+    const state = query.state ?? 'active';
+    const rows = await prisma.selfInspectionSession.findMany({
+      where: {
+        recordApprovalRequiredAt: { not: null },
+        ...(productNo ? { productNo: { contains: productNo, mode: 'insensitive' } } : {}),
+        ...(resourceCd ? { resourceCd: { equals: resourceCd, mode: 'insensitive' } } : {}),
+        ...(query.processGroup ? { processGroup: query.processGroup } : {}),
+        ...(state === 'approved'
+          ? { recordApproval: { isNot: null } }
+          : { completedAt: null, recordApproval: { is: null } })
+      },
+      include: recordApprovalSessionInclude,
+      orderBy: [{ updatedAt: 'desc' }],
+      take: LIST_SESSIONS_MAX + 1
+    });
+    const truncated = rows.length > LIST_SESSIONS_MAX;
+    const boundedRows = truncated ? rows.slice(0, LIST_SESSIONS_MAX) : rows;
+    const sessions = boundedRows
+      .map((row) => serializeRecordApprovalSessionListItem(row))
+      .filter((row) => state === 'active' || row.recordApprovalState === state);
+    return {
+      sessions,
+      listLimit: LIST_SESSIONS_MAX,
+      truncated
+    };
+  }
+
+  async getRecordApprovalSessionDetail(sessionId: string) {
+    const session = await prisma.selfInspectionSession.findUnique({
+      where: { id: sessionId },
+      include: recordApprovalSessionInclude
+    });
+    if (!session || !session.recordApprovalRequiredAt) {
+      throw new ApiError(404, '検査記録承認対象の自主検査セッションが見つかりません');
+    }
+    const summary = serializeRecordApprovalSessionListItem(session);
+    const requiredSlots = listRequiredEntrySlots(
+      templateConfigFromTemplate(session.template),
+      session.plannedQuantity
+    );
+    return {
+      ...summary,
+      requiredEntries: requiredSlots.map((slot) => serializeRecordApprovalEntryDetail(session, slot))
+    };
+  }
+
+  async resolveRecordApprovalApprover(rawUid: string): Promise<SelfInspectionApproverResolveResult> {
+    const uid = rawUid.trim();
+    if (!uid) {
+      return { kind: 'unknown' };
+    }
+    const [employee, instrumentTag] = await Promise.all([
+      prisma.employee.findFirst({
+        where: { nfcTagUid: uid },
+        select: {
+          id: true,
+          employeeCode: true,
+          displayName: true,
+          nfcTagUid: true,
+          status: true
+        }
+      }),
+      prisma.measuringInstrumentTag.findUnique({
+        where: { rfidTagUid: uid },
+        select: { id: true }
+      })
+    ]);
+    const hasEmployee = Boolean(employee?.nfcTagUid);
+    const hasInstrument = Boolean(instrumentTag);
+    if (hasEmployee && hasInstrument) {
+      return { kind: 'duplicate' };
+    }
+    if (hasInstrument) {
+      return { kind: 'instrument' };
+    }
+    if (!employee?.nfcTagUid) {
+      return { kind: 'unknown' };
+    }
+    if (employee.status !== 'ACTIVE') {
+      return { kind: 'inactive', status: employee.status };
+    }
+    return {
+      kind: 'employee',
+      employee: {
+        id: employee.id,
+        employeeCode: employee.employeeCode,
+        displayName: employee.displayName,
+        nfcTagUid: employee.nfcTagUid
+      }
+    };
+  }
+
+  async approveRecordApproval(sessionId: string, input: {
+    approverEmployeeTagUid: string;
+    comment?: string | null;
+    clientDeviceId?: string | null;
+  }) {
+    const comment = input.comment?.trim() || null;
+    const session = await prisma.$transaction(async (tx) => {
+      await this.lockSessionRow(tx, sessionId);
+      const existing = await tx.selfInspectionSession.findUnique({
+        where: { id: sessionId },
+        include: recordApprovalSessionInclude
+      });
+      if (!existing || !existing.recordApprovalRequiredAt) {
+        throw new ApiError(404, '検査記録承認対象の自主検査セッションが見つかりません');
+      }
+      if (existing.recordApproval) {
+        throw new ApiError(409, 'この検査記録は既に承認済みです');
+      }
+      this.assertSessionEntryCountWritable(existing);
+      const readiness = buildRecordApprovalReadiness(existing);
+      if (readiness.state === 'input_incomplete') {
+        throw new ApiError(409, '測定値が未登録のため承認できません');
+      }
+      if (readiness.state === 'registration_incomplete') {
+        throw new ApiError(409, '測定者または測定機器が未登録のため承認できません');
+      }
+      const approver = await tx.employee.findFirst({
+        where: { nfcTagUid: input.approverEmployeeTagUid.trim() },
+        select: {
+          id: true,
+          employeeCode: true,
+          displayName: true,
+          nfcTagUid: true,
+          status: true
+        }
+      });
+      if (!approver?.nfcTagUid) {
+        throw new ApiError(404, '承認者の社員NFCタグが登録されていません');
+      }
+      if (approver.status !== 'ACTIVE') {
+        throw new ApiError(403, '有効な社員のみ承認できます');
+      }
+      const duplicateInstrumentTag = await tx.measuringInstrumentTag.findUnique({
+        where: { rfidTagUid: approver.nfcTagUid },
+        select: { id: true }
+      });
+      if (duplicateInstrumentTag) {
+        throw new ApiError(409, '同一タグが社員と計測機器の両方に登録されています');
+      }
+
+      const approvedAt = new Date();
+      const clientDevice = input.clientDeviceId
+        ? await tx.clientDevice.findUnique({
+            where: { id: input.clientDeviceId },
+            select: { id: true, name: true }
+          })
+        : null;
+
+      await tx.selfInspectionMeasurementValue.updateMany({
+        where: {
+          reviewStatus: 'PENDING',
+          entry: { sessionId }
+        },
+        data: {
+          reviewStatus: 'APPROVED',
+          approvedAt,
+          approvedByUserId: approver.id,
+          approvedByUsername: approver.displayName,
+          approvalComment: comment
+        }
+      });
+      await this.assertAllEntriesReviewReady(tx, sessionId, existing.template);
+      await tx.selfInspectionRecordApproval.create({
+        data: {
+          sessionId,
+          approvedAt,
+          approverEmployeeId: approver.id,
+          approverEmployeeCodeSnapshot: approver.employeeCode,
+          approverEmployeeNameSnapshot: approver.displayName,
+          approverEmployeeNfcTagUidSnapshot: approver.nfcTagUid,
+          comment,
+          clientDeviceId: clientDevice?.id ?? null,
+          clientDeviceNameSnapshot: clientDevice?.name ?? null
+        }
+      });
+      if (!existing.completedAt) {
+        const finalized = await tx.selfInspectionSession.updateMany({
+          where: { id: sessionId, completedAt: null },
+          data: { completedAt: approvedAt }
+        });
+        if (finalized.count === 0) {
+          throw new ApiError(409, '自主検査セッションを完了できません');
+        }
+      }
+      const updated = await tx.selfInspectionSession.findUnique({
+        where: { id: sessionId },
+        include: {
+          template: { include: partMeasurementTemplateFullInclude },
+          entries: { select: { entryIndex: true } },
+          _count: { select: { entries: true } }
+        }
+      });
+      if (!updated) {
+        throw new ApiError(404, '自主検査セッションが見つかりません');
+      }
+      return updated;
+    });
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+    const [participantNamesBySessionId, pendingReviewCounts] = await Promise.all([
+      loadParticipantEmployeeNamesBySessionIds([session.id]),
+      loadPendingReviewCountsBySessionIds(prisma, [session.id])
+    ]);
+    return serializeSessionSummary(
+      session,
+      participantNamesBySessionId.get(session.id) ?? [],
+      pendingReviewCounts.get(session.id) ?? 0
+    );
+  }
+
   async getSessionDetail(sessionId: string, options?: { entryIndex?: number }) {
     const entryIndex =
       options?.entryIndex != null && Number.isFinite(options.entryIndex)
@@ -1147,6 +1586,7 @@ export class SelfInspectionService {
             updatedAt: true
           }
         },
+        recordApproval: true,
         _count: { select: { entries: true } }
       }
     });
@@ -1207,6 +1647,8 @@ export class SelfInspectionService {
       }),
       startedAt: session.startedAt?.toISOString() ?? null,
       completedAt: session.completedAt?.toISOString() ?? null,
+      recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
+      recordApproval: serializeRecordApproval(session.recordApproval),
       updatedAt: session.updatedAt.toISOString(),
       template: session.template,
       entries: session.entries.map((entry) => this.serializeLotEntryMeta(entry)),
@@ -1668,6 +2110,7 @@ export class SelfInspectionService {
     const sessionInclude = {
       template: { include: partMeasurementTemplateFullInclude },
       entries: { select: { entryIndex: true } },
+      recordApproval: { select: { id: true } },
       _count: { select: { entries: true } }
     } as const;
 
@@ -1682,6 +2125,9 @@ export class SelfInspectionService {
       }
       if (existing.completedAt) {
         return existing;
+      }
+      if (existing.recordApprovalRequiredAt && !existing.recordApproval) {
+        throw new ApiError(409, '検査記録承認が未完了のため完了できません');
       }
       this.assertSessionEntryCountWritable(existing);
       const templateConfig = templateConfigFromTemplate(existing.template);
@@ -1737,7 +2183,14 @@ export class SelfInspectionService {
 
   async listPendingOutOfToleranceReviews() {
     const rows = await prisma.selfInspectionMeasurementValue.findMany({
-      where: { reviewStatus: 'PENDING' },
+      where: {
+        reviewStatus: 'PENDING',
+        entry: {
+          session: {
+            recordApprovalRequiredAt: null
+          }
+        }
+      },
       include: {
         templateItem: {
           select: {
@@ -1919,6 +2372,9 @@ export class SelfInspectionService {
       });
       if (!existing) {
         throw new ApiError(404, '自主検査セッションが見つかりません');
+      }
+      if (existing.recordApprovalRequiredAt) {
+        throw new ApiError(409, 'この自主検査はキオスクの検査記録承認で承認してください');
       }
       const pendingCount = await tx.selfInspectionMeasurementValue.count({
         where: {
@@ -2118,7 +2574,8 @@ export class SelfInspectionService {
           plannedQuantity: restartPayload.plannedQuantity,
           expectedEntryCount: restartPayload.expectedEntryCount,
           clientDeviceId: input.clientDeviceId ?? null,
-          startedAt: new Date()
+          startedAt: new Date(),
+          recordApprovalRequiredAt: new Date()
         }
       });
 

@@ -351,6 +351,30 @@ const approveSelfInspectionOutOfToleranceReviewBodySchema = z.object({
   comment: z.string().max(500).optional().nullable()
 });
 
+const selfInspectionRecordApprovalStateSchema = z.enum([
+  'active',
+  'input_incomplete',
+  'registration_incomplete',
+  'approvable',
+  'approved'
+]);
+
+const listSelfInspectionRecordApprovalsQuerySchema = z.object({
+  productNo: z.string().max(120).optional(),
+  resourceCd: z.string().max(120).optional(),
+  processGroup: processGroupSchema.optional(),
+  state: selfInspectionRecordApprovalStateSchema.optional()
+});
+
+const resolveSelfInspectionRecordApprovalApproverBodySchema = z.object({
+  uid: z.string().min(1).max(200)
+});
+
+const approveSelfInspectionRecordApprovalBodySchema = z.object({
+  approverEmployeeTagUid: z.string().min(1).max(200),
+  comment: z.string().max(500).optional().nullable()
+});
+
 const issueSelfInspectionPaperReportBodySchema = z.object({
   templateId: z.string().uuid(),
   productNo: z.string().min(1).max(120),
@@ -1455,6 +1479,26 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     });
   });
 
+  app.get('/part-measurement/self-inspection/record-approvals', { preHandler: allowView }, async (request) => {
+    const query = listSelfInspectionRecordApprovalsQuerySchema.parse(request.query);
+    return selfInspectionService.listRecordApprovalSessions({
+      productNo: query.productNo,
+      resourceCd: query.resourceCd,
+      processGroup: query.processGroup ? (query.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING') : undefined,
+      state: query.state
+    });
+  });
+
+  app.get('/part-measurement/self-inspection/record-approvals/sessions/:id', { preHandler: allowView }, async (request) => {
+    const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+    return { session: await selfInspectionService.getRecordApprovalSessionDetail(params.id) };
+  });
+
+  app.post('/part-measurement/self-inspection/record-approvals/approver/resolve', { preHandler: allowView }, async (request) => {
+    const body = resolveSelfInspectionRecordApprovalApproverBodySchema.parse(request.body);
+    return { result: await selfInspectionService.resolveRecordApprovalApprover(body.uid) };
+  });
+
   app.get(
     '/part-measurement/self-inspection/out-of-tolerance-reviews',
     { preHandler: canWrite },
@@ -1520,6 +1564,22 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         comment: body.comment,
         actorUserId: request.user!.id,
         actorUsername: request.user!.username
+      });
+      return { session };
+    }
+  );
+
+  app.post(
+    '/part-measurement/self-inspection/sessions/:id/record-approval/approve',
+    { preHandler: allowWriteKiosk },
+    async (request) => {
+      const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+      const body = approveSelfInspectionRecordApprovalBodySchema.parse(request.body ?? {});
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const session = await selfInspectionService.approveRecordApproval(params.id, {
+        approverEmployeeTagUid: body.approverEmployeeTagUid,
+        comment: body.comment,
+        clientDeviceId
       });
       return { session };
     }

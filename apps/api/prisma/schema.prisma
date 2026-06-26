@@ -125,6 +125,7 @@ model Employee {
   partMeasurementSheetsCreated  PartMeasurementSheet[] @relation("PartMeasurementSheetCreatedBy")
   partMeasurementSheetsFinalized PartMeasurementSheet[] @relation("PartMeasurementSheetFinalizedBy")
   selfInspectionLotEntries SelfInspectionLotEntry[]
+  selfInspectionRecordApprovals SelfInspectionRecordApproval[] @relation("SelfInspectionRecordApprover")
 }
 
 model Item {
@@ -326,6 +327,7 @@ model ClientDevice {
   partMeasurementEditLocks PartMeasurementSheet[] @relation("PartMeasurementSheetEditLock")
   selfInspectionSessions  SelfInspectionSession[]
   selfInspectionPaperReports SelfInspectionPaperReport[]
+  selfInspectionRecordApprovals SelfInspectionRecordApproval[]
   mobilePlacementEvents   MobilePlacementEvent[]
   orderPlacementEvents    OrderPlacementEvent[]
   mobilePlacementShelvesCreated MobilePlacementShelf[]
@@ -2193,18 +2195,21 @@ model SelfInspectionSession {
   clientDeviceId     String?
   startedAt          DateTime?
   completedAt        DateTime?
+  recordApprovalRequiredAt DateTime?
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
   template           PartMeasurementTemplate     @relation(fields: [templateId], references: [id], onDelete: Restrict)
   clientDevice       ClientDevice?               @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
   entries            SelfInspectionLotEntry[]
   paperReports       SelfInspectionPaperReport[]
+  recordApproval     SelfInspectionRecordApproval?
 
   @@index([productNo, processGroup, resourceCd], map: "SelfInspectionSession_idx_business_lookup")
   @@index([scheduleRowId], map: "SelfInspectionSession_idx_schedule_row")
   @@index([templateId], map: "SelfInspectionSession_idx_template")
   @@index([completedAt], map: "SelfInspectionSession_idx_completed_at")
   @@index([completedAt, updatedAt], map: "SelfInspectionSession_idx_completed_at_updated_at")
+  @@index([recordApprovalRequiredAt], map: "SelfInspectionSession_idx_record_approval_required_at")
 }
 
 model SelfInspectionLotEntry {
@@ -2250,6 +2255,28 @@ model SelfInspectionMeasurementValue {
   @@index([entryId], map: "SelfInspectionMeasurementValue_idx_entry")
   @@index([reviewStatus], map: "SelfInspectionMeasurementValue_idx_review_status")
   @@index([approvedAt], map: "SelfInspectionMeasurementValue_idx_approved_at")
+}
+
+model SelfInspectionRecordApproval {
+  id                            String                 @id @default(uuid())
+  sessionId                     String                 @unique
+  approvedAt                    DateTime               @default(now())
+  approverEmployeeId            String?
+  approverEmployeeCodeSnapshot  String
+  approverEmployeeNameSnapshot  String
+  approverEmployeeNfcTagUidSnapshot String
+  comment                       String?
+  clientDeviceId                String?
+  clientDeviceNameSnapshot      String?
+  createdAt                     DateTime               @default(now())
+  updatedAt                     DateTime               @updatedAt
+  session                       SelfInspectionSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  approverEmployee              Employee?              @relation("SelfInspectionRecordApprover", fields: [approverEmployeeId], references: [id], onDelete: SetNull)
+  clientDevice                  ClientDevice?          @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([approvedAt], map: "SelfInspectionRecordApproval_idx_approved_at")
+  @@index([approverEmployeeId], map: "SelfInspectionRecordApproval_idx_approver_employee")
+  @@index([clientDeviceId], map: "SelfInspectionRecordApproval_idx_client_device")
 }
 
 model SelfInspectionPaperReport {

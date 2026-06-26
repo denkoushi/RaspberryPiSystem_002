@@ -57,6 +57,9 @@ import type {
   SelfInspectionPaperReportDto,
   SelfInspectionPaperReportPageDto,
   SelfInspectionPaperReportPrintDto,
+  SelfInspectionRecordApprovalSessionDetailDto,
+  SelfInspectionRecordApprovalsListDto,
+  SelfInspectionRecordApprovalState,
   SelfInspectionSessionDetailDto,
   SelfInspectionSessionsListDto,
   SelfInspectionSessionSummaryDto,
@@ -3305,6 +3308,48 @@ export async function listSelfInspectionOutOfToleranceReviews(): Promise<SelfIns
   return data;
 }
 
+export async function listSelfInspectionRecordApprovals(params?: {
+  state?: 'active' | SelfInspectionRecordApprovalState;
+  productNo?: string;
+  resourceCd?: string;
+  processGroup?: PartMeasurementProcessGroup;
+}): Promise<SelfInspectionRecordApprovalsListDto> {
+  const { data } = await api.get<SelfInspectionRecordApprovalsListDto>(
+    '/part-measurement/self-inspection/record-approvals',
+    { params }
+  );
+  return data;
+}
+
+export async function getSelfInspectionRecordApprovalSession(
+  sessionId: string
+): Promise<SelfInspectionRecordApprovalSessionDetailDto> {
+  const { data } = await api.get<{ session: SelfInspectionRecordApprovalSessionDetailDto }>(
+    `/part-measurement/self-inspection/record-approvals/sessions/${sessionId}`
+  );
+  return data.session;
+}
+
+export type SelfInspectionRecordApprovalApproverResolveResult =
+  | {
+      kind: 'employee';
+      employee: { id: string; employeeCode: string; displayName: string; nfcTagUid: string };
+    }
+  | { kind: 'unknown' }
+  | { kind: 'inactive'; status: string }
+  | { kind: 'instrument' }
+  | { kind: 'duplicate' };
+
+export async function resolveSelfInspectionRecordApprovalApprover(
+  uid: string
+): Promise<SelfInspectionRecordApprovalApproverResolveResult> {
+  const { data } = await api.post<{ result: SelfInspectionRecordApprovalApproverResolveResult }>(
+    '/part-measurement/self-inspection/record-approvals/approver/resolve',
+    { uid }
+  );
+  return data.result;
+}
+
 export async function getSelfInspectionSession(
   sessionId: string,
   options?: { entryIndex?: number; clientKey?: string }
@@ -3419,6 +3464,25 @@ export async function approveSelfInspectionOutOfToleranceReview(
     body
   );
   return data.session;
+}
+
+export async function approveSelfInspectionRecordApproval(
+  sessionId: string,
+  body: { approverEmployeeTagUid: string; comment?: string | null }
+): Promise<SelfInspectionSessionSummaryDto> {
+  const { data } = await api.post<{ session: SelfInspectionSessionSummaryDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
+    body
+  );
+  return data.session;
+}
+
+export async function verifyKioskSelfInspectionRecordApprovalAccessPassword(payload: { password: string }) {
+  const { data } = await api.post<{ success: boolean }>(
+    '/kiosk/part-measurement/self-inspection/record-approvals/verify-access-password',
+    payload
+  );
+  return data;
 }
 
 export type SelfInspectionResetNewSessionDto = {
