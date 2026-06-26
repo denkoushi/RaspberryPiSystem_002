@@ -3949,7 +3949,20 @@ Status: implemented in PR319.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR320 And Later: Thin Indexes And Split Large Documents
+### PR320: Thin Incomplete Parts Signage Index Block
+
+Status: implemented in PR320.
+
+- Thin only the 2026-02-06 signage incomplete-parts display control,
+  normalization, and dynamic layout latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the overflow, 10-plus item, sort-order,
+  `metadata` structure, `maxIncompletePartsPerCard`, text-fit utility, and
+  backward-compatibility narrative with short links to KB-232 and the
+  production schedule signage guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR321 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
