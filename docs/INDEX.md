@@ -896,7 +896,7 @@
 
 - **キオスク備考欄 IME 診断基盤 正本**: [kiosk-ime ExecPlan](./plans/kiosk-ime-remark-field-execplan.md) · [KB-287](./knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) · [kiosk-ime-diagnosis](./runbooks/kiosk-ime-diagnosis.md)。
 
-- **✅ 電源機能SOLIDリファクタ・CI成功・デプロイ完了・実機検証完了・電源操作遅延の原因特定・連打防止オーバーレイ実装完了・KB-288（power-actions バインドマウント不具合）復旧検証完了**: 複数Pi4キオスク環境で電源ボタンが正しい端末をターゲットにするよう、clientKey解決ロジックを責務分離。**電源操作遅延**: 多段構成に起因。KB-285 に記録。**連打防止オーバーレイ**: React Portal で解決。KB-286 に記録。**KB-288（2026-03-01）**: raspi4-robodrill01 を Firefox に切り替え後、電源操作・連打防止が不具合。原因は API コンテナの power-actions バインドマウントが削除済み inode を参照。即時対処（API 再起動）で復旧し、電源操作が正常に機能することを実機確認。Runbook [kiosk-power-operation-recovery.md](./runbooks/kiosk-power-operation-recovery.md) を新設。詳細は [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) / [plans/power-function-solid-refactor-execplan.md](./plans/power-function-solid-refactor-execplan.md) / [knowledge-base/frontend.md#kb-286](./knowledge-base/frontend.md#kb-286-電源操作の連打防止オーバーレイ実装react-portal-による表示失敗の解決) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+- **電源機能SOLIDリファクタ・遅延/連打防止/KB-288復旧 正本**: [power-function ExecPlan](./plans/power-function-solid-refactor-execplan.md) · [KB-285](./knowledge-base/infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる) · [KB-286](./knowledge-base/frontend.md#kb-286-電源操作の連打防止オーバーレイ実装react-portal-による表示失敗の解決) · [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) · [kiosk-power-operation-recovery](./runbooks/kiosk-power-operation-recovery.md)。
 
 ### 🆕 最新アップデート（2026-02-28）
 
