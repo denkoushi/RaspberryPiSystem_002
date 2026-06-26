@@ -1114,7 +1114,7 @@
 
 ### 🆕 最新アップデート（2026-01-19）
 
-- **✅ Pi4デプロイ時のキオスクメンテナンス画面表示機能実装完了**: Pi4デプロイ時にキオスク画面にメンテナンス画面を表示する機能を実装。デプロイスクリプト（`scripts/update-all-clients.sh`）で`--limit raspberrypi4`使用時に自動的にメンテナンスフラグを設定・クリアし、Web UIでメンテナンス画面を表示。APIエンドポイント（`/api/system/deploy-status`）経由でフラグを管理し、`KioskLayout.tsx`で5秒間隔でポーリングして即座に反映。デプロイ完了後、メンテナンス画面は自動的に消える（最大5秒以内）。実機検証でメンテナンス画面の表示・非表示を確認。Webコンテナの再ビルドが必要であること、ブラウザキャッシュのクリアが必要な場合があることを確認。ナレッジベースにKB-183を追加。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-183](./knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) / [guides/deployment.md](./guides/deployment.md) を参照。
+- **Pi4デプロイ時キオスクメンテナンス画面 正本**: [KB-183](./knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) · [deployment](./guides/deployment.md)。
 
 - **✅ Pi4デプロイ検証完了（デプロイ安定化機能の動作確認）**: KB-172で実装したデプロイ安定化機能（プリフライト・ロック・リソースガード）がPi4に対して正常に動作することを検証。デプロイ前チェック（ネットワークモード確認、プリフライトチェック、リモートロック）が正常に動作し、デプロイ成功（ok=78, changed=8, failed=0）。デプロイ後の確認（systemdサービス、API接続）で問題なし。Pi5と同様に、Pi4でもデプロイが安定して実行できることを確認。ナレッジベースにKB-182を追加。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-182](./knowledge-base/infrastructure/ansible-deployment.md#kb-182-pi4デプロイ検証結果デプロイ安定化機能の動作確認) / [guides/deployment.md](./guides/deployment.md) を参照。
 
