@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 136013,
-    "totalBytes": 10256949,
+    "totalLines": 136025,
+    "totalBytes": 10256758,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5197,
+    "localLinkCount": 5198,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 6,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 541216,
+      "byteSize": 540505,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -9172,6 +9172,11 @@
         },
         {
           "href": "./knowledge-base/KB-297-kiosk-due-management-workflow.md#順位ボード-共有登録製番子行備考機種名一括解決2026-04-02",
+          "targetPath": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
+          "exists": true
+        },
+        {
+          "href": "./knowledge-base/KB-297-kiosk-due-management-workflow.md#順位ボード-納期アシスト-ui左2段スタックモーダル-z-index2026-04-02-追補",
           "targetPath": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
           "exists": true
         },
@@ -20150,7 +20155,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 367,
+      "inboundCount": 368,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -29592,8 +29597,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 1888,
-      "byteSize": 76690,
+      "lineCount": 1900,
+      "byteSize": 77210,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
