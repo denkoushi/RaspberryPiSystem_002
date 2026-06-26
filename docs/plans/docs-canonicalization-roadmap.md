@@ -3962,7 +3962,20 @@ Status: implemented in PR320.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR321 And Later: Thin Indexes And Split Large Documents
+### PR321: Thin Sudo Prompt Deployment Index Block
+
+Status: implemented in PR321.
+
+- Thin only the 2026-02-06 Pi5 deployment sudo prompt and
+  `ansible_connection: local` latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Mac-side `ansible-playbook` cause,
+  `RASPI_SERVER_HOST` remote-execution fix, Pi5 `become_ask_pass = False`
+  behavior, and `update-all-clients.sh` `REMOTE_HOST` lesson with short links
+  to KB-233 and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR322 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
