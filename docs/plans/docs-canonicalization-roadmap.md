@@ -3288,7 +3288,19 @@ Status: implemented in PR267.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR268 And Later: Thin Indexes And Split Large Documents
+### PR268: Thin Deploy-Status V2 Index Block
+
+Status: implemented in PR268.
+
+- Thin only the 2026-03-06 per-client deploy-status v2 deployment and onsite
+  validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the endpoint state model, maintenance
+  toggle, rollout, and onsite validation detail with short links to
+  ADR-20260306, deployment, and deploy-status recovery.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR269 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
