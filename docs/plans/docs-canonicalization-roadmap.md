@@ -3583,7 +3583,20 @@ Status: implemented in PR291.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR292 And Later: Thin Indexes And Split Large Documents
+### PR292: Thin Production Schedule Retention Index Block
+
+Status: implemented in PR292.
+
+- Thin only the 2026-02-19 production-schedule deletion rule, deployment, and
+  onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the duplicate-loser deletion,
+  one-year-retention filter, daily cleanup, CI fixes, deploy run, fail-fast
+  stash note, and onsite validation detail with short links to KB-271 and
+  csv-import-export.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR293 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
