@@ -3621,7 +3621,20 @@ Status: implemented in PR294.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR295 And Later: Thin Indexes And Split Large Documents
+### PR295: Thin NFC Stream Policy Index Block
+
+Status: implemented in PR295.
+
+- Thin only the 2026-02-18 NFC stream terminal separation, CI, deploy, and
+  onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the policy modes, `localOnly`/`disabled`
+  behavior, Pi5 `/stream` proxy removal, CI, deploy run, and onsite validation
+  detail with short links to KB-266, the Tailscale policy ledger, and the NFC
+  troubleshooting guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR296 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

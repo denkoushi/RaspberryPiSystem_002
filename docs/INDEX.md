@@ -939,7 +939,7 @@
 
 - **吊具持出画面の吊具情報表示 正本**: [KB-267](./knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加)。
 
-- **✅ NFCストリーム端末分離の実装完了・CI成功・デプロイ完了・実機検証完了**: Tailscale ACLポリシー導入後、Pi4でNFCタグをスキャンするとMacで開いたキオスク画面でも動作が発動する問題を解決。**実装内容**: NFCストリームポリシー（`disabled`/`localOnly`/`legacy`）を実装し、Mac環境ではNFCを無効化（`disabled`）、Pi4では`ws://localhost:7071/stream`のみに接続（`localOnly`）。Pi5経由の`/stream`プロキシをCaddyfileから削除し、共有購読面を撤去。**実装ファイル**: `apps/web/src/features/nfc/nfcPolicy.ts`（新規）、`apps/web/src/features/nfc/nfcEventSource.ts`（新規）、`apps/web/src/hooks/useNfcStream.ts`（修正）、`apps/web/src/hooks/useNfcStream.test.ts`（新規）、`infrastructure/docker/Caddyfile.local.template`（修正）、`.github/workflows/ci.yml`（修正、`chore/**`パターン追加）。**CI実行**: GitHub Actions Run ID `22124446236` 成功（全ジョブ成功）。**デプロイ結果**: Pi5とPi4でデプロイ成功（runId `20260218-120030-20305`, `ok=211`, `changed=13`, `failed=0`）。**実機検証結果**: Pi4キオスク画面でNFCスキャンがローカル端末のみで動作することを確認、Macキオスク画面でNFCスキャンが発動しないことを確認、Caddyfileから`/stream`プロキシ設定が削除されていることを確認、ビルド済みWebアプリに`wss://.../stream`への参照が存在しないことを確認。**ドキュメント更新**: KB-266を追加、`docs/security/tailscale-policy.md`のPhase 2-2完了記録を更新、`docs/troubleshooting/nfc-reader-issues.md`にNFC WebSocket接続ポリシーの説明を追加。詳細は [knowledge-base/infrastructure/security.md#kb-266](./knowledge-base/infrastructure/security.md#kb-266-nfcストリーム端末分離の実装完了acl維持横漏れ防止) / [security/tailscale-policy.md](./security/tailscale-policy.md) / [troubleshooting/nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+- **NFCストリーム端末分離 正本**: [KB-266](./knowledge-base/infrastructure/security.md#kb-266-nfcストリーム端末分離の実装完了acl維持横漏れ防止) · [tailscale-policy](./security/tailscale-policy.md) · [nfc-reader-issues](./troubleshooting/nfc-reader-issues.md)。
 
 ### 🆕 最新アップデート（2026-02-16）
 
