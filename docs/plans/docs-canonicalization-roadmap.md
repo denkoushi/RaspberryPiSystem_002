@@ -2105,7 +2105,19 @@ Status: implemented in PR168.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR169 And Later: Thin Indexes And Split Large Documents
+### PR169: Thin Local LLM Ansible Env Index Block
+
+Status: implemented in PR169.
+
+- Thin only the 2026-03-28 Pi5 API `LOCAL_LLM_*` Ansible wiring latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace compose env-path detail, server-role
+  deploy validation, and `EXEC_PLAN.md` detail with short links to KB-318 and
+  the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR170 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
