@@ -3909,7 +3909,20 @@ Status: implemented in PR316.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR317 And Later: Thin Indexes And Split Large Documents
+### PR317: Thin Apt Cache Optimization Index Block
+
+Status: implemented in PR317.
+
+- Thin only the 2026-02-07 apt cache optimization latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the `apt_cache_valid_time_seconds: 3600`
+  setting, `cache_valid_time` task application, safety behavior, affected
+  security packages, timing example, and follow-up lesson with a short link to
+  KB-234.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR318 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
