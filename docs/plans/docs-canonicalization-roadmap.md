@@ -4331,7 +4331,20 @@ Status: implemented in PR347.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR348 And Later: Thin Indexes And Split Large Documents
+### PR348: Thin CSV Import Unified Config Index Block
+
+Status: implemented in PR348.
+
+- Thin only the 2026-01-26 CSV import unified configuration latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the ColumnDefinition management,
+  manual/automatic import permissions, import strategy, USB bulk registration
+  and schedule page consolidation, and csvDashboards subject-pattern support
+  with a short link to the CSV import/export guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR349 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
