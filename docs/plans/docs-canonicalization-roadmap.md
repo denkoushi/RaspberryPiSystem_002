@@ -4085,7 +4085,20 @@ Status: implemented in PR329.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR330 And Later: Thin Indexes And Split Large Documents
+### PR330: Thin Gmail OAuth Expiry Index Block
+
+Status: implemented in PR330.
+
+- Thin only the 2026-01-29 Gmail OAuth 7-day expiry latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the unverified Google app diagnosis,
+  GitHub Pages home/privacy pages, Google Cloud branding and verification
+  request, and post-review operating expectation with short links to KB-215
+  and the Gmail setup guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR331 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
