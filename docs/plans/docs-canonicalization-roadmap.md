@@ -3108,7 +3108,19 @@ Status: implemented in PR252.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR253 And Later: Thin Indexes And Split Large Documents
+### PR253: Thin Global Row Rank Phase1 Index Block
+
+Status: implemented in PR253.
+
+- Thin only the 2026-03-09 due-management B6 global-row-rank Phase 1
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace row-rank projection, deploy recovery,
+  serial redeploy, validation, and operator explanation detail with short
+  links to KB-297, KB-300, deployment, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR254 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
