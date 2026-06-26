@@ -1992,7 +1992,19 @@ Status: implemented in PR159.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR160 And Later: Thin Indexes And Split Large Documents
+### PR160: Thin Local LLM On Demand Index Block
+
+Status: implemented in PR160.
+
+- Thin only the 2026-03-30 LocalLLM on-demand runtime latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace runtime-control wiring, production smoke,
+  troubleshooting, admin Chat follow-up, Phase12, and `EXEC_PLAN.md` detail with
+  short links to ADR-20260403, the LocalLLM runbook, KB-318, and KB-313.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR161 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
