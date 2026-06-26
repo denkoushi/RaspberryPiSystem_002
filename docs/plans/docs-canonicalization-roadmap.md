@@ -2883,7 +2883,19 @@ Status: implemented in PR233.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR234 And Later: Thin Indexes And Split Large Documents
+### PR234: Thin Actual Hours Fallback Index Block
+
+Status: implemented in PR234.
+
+- Thin only the 2026-03-13 actual-hours location/shared fallback latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace fallback policy, actor/shared lookup,
+  RoboDrill01 symptom, inventory switch, and shared-global-rank backfill detail
+  with short links to KB-297 and the backfill runbook.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR235 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

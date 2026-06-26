@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 137357,
-    "totalBytes": 10271715,
+    "totalLines": 137369,
+    "totalBytes": 10271640,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 483171,
+      "byteSize": 482598,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -9011,11 +9011,6 @@
           "exists": true
         },
         {
-          "href": "./knowledge-base/KB-297-kiosk-due-management-workflow.md#robodrill01-pi4-で実績基準時間が非表示だった事象2026-03",
-          "targetPath": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
-          "exists": true
-        },
-        {
           "href": "./knowledge-base/KB-297-kiosk-due-management-workflow.md#ux-polish-leader-order-board-2026-04-02",
           "targetPath": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
           "exists": true
@@ -9062,6 +9057,11 @@
         },
         {
           "href": "./knowledge-base/KB-297-kiosk-due-management-workflow.md#実績基準時間-推定式見直し2026-03-23",
+          "targetPath": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
+          "exists": true
+        },
+        {
+          "href": "./knowledge-base/KB-297-kiosk-due-management-workflow.md#実績基準時間のlocation優先sharedフォールバック導入2026-03-13",
           "targetPath": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
           "exists": true
         },
@@ -29608,8 +29608,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 2935,
-      "byteSize": 119639,
+      "lineCount": 2947,
+      "byteSize": 120137,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
