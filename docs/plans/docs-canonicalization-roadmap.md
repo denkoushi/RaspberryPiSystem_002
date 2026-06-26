@@ -2417,7 +2417,19 @@ Status: implemented in PR194.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR195 And Later: Thin Indexes And Split Large Documents
+### PR195: Thin Manual Order Overview UI Index Block
+
+Status: implemented in PR195.
+
+- Thin only the 2026-03-21 manual-order overview UI latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace header reveal, card density, grid,
+  branch, staged deployment, Phase12, deployment knowledge, merged PR, and
+  `EXEC_PLAN.md` detail with short links to KB-297 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR196 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
