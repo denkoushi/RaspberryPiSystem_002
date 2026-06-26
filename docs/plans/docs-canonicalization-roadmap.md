@@ -3748,7 +3748,21 @@ Status: implemented in PR304.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR305 And Later: Thin Indexes And Split Large Documents
+### PR305: Thin Machine Inspection Aggregation Index Block
+
+Status: implemented in PR305.
+
+- Thin only the 2026-02-12 machine inspection signage aggregation, two-column
+  layout, font-size, deploy, and onsite validation latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the visualization slot alignment, JST
+  aggregation, data-source sort, two-column layout, font changes,
+  troubleshooting, CI runs, deploy runs, and onsite validation detail with a
+  short link to KB-256.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR306 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
