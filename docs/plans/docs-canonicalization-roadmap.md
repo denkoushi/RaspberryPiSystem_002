@@ -3510,7 +3510,19 @@ Status: implemented in PR285.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR286 And Later: Thin Indexes And Split Large Documents
+### PR286: Thin Pi4 Kiosk-Browser Ansible Index Block
+
+Status: implemented in PR286.
+
+- Thin only the 2026-02-28 Pi4 kiosk-browser Ansible hardening, deployment, and
+  onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Ansible task hardening, syntax check,
+  CI, deploy run, offline-host triage, and onsite validation detail with a
+  short link to KB-281.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR287 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

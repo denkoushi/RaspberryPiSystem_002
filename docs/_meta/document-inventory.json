@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 137984,
-    "totalBytes": 10259450,
+    "totalLines": 137996,
+    "totalBytes": 10258432,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 445027,
+      "byteSize": 443506,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10761,10 +10761,6 @@
         {
           "line": 576,
           "length": 1177
-        },
-        {
-          "line": 910,
-          "length": 1032
         },
         {
           "line": 914,
@@ -29641,8 +29637,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 3562,
-      "byteSize": 145518,
+      "lineCount": 3574,
+      "byteSize": 146021,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
