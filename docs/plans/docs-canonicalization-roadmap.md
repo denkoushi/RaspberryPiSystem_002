@@ -2572,7 +2572,19 @@ Status: implemented in PR207.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR208 And Later: Thin Indexes And Split Large Documents
+### PR208: Thin Production Machine Part Search Index Block
+
+Status: implemented in PR208.
+
+- Thin only the 2026-03-17 production-schedule machine-name and part-name
+  search latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace A-condition behavior, full/half width
+  normalization, empty-dropdown mitigation, Phase12, and empty-data caveat with
+  short links to KB-297, frontend KB-304, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR209 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
