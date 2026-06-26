@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 136406,
-    "totalBytes": 10285951,
+    "totalLines": 136418,
+    "totalBytes": 10285649,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5202,
+    "localLinkCount": 5201,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 6,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 536324,
+      "byteSize": 535530,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6662,11 +6662,6 @@
         },
         {
           "href": "./guides/csv-import-export.md#fkojunst-2csv-disappearance-schedule-notes",
-          "targetPath": "docs/guides/csv-import-export.md",
-          "exists": true
-        },
-        {
-          "href": "./guides/csv-import-export.md#production-runbook-gmail-csv-dashboard-import-via-ssh-and-api",
           "targetPath": "docs/guides/csv-import-export.md",
           "exists": true
         },
@@ -14759,7 +14754,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 39,
+      "inboundCount": 38,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29612,8 +29607,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 1984,
-      "byteSize": 80722,
+      "lineCount": 1996,
+      "byteSize": 81214,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
