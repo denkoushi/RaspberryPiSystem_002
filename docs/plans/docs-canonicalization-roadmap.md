@@ -2620,7 +2620,19 @@ Status: implemented in PR211.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR212 And Later: Thin Indexes And Split Large Documents
+### PR212: Thin Cutting Exclusion Plan Index Block
+
+Status: implemented in PR212.
+
+- Thin only the 2026-03-16 cutting exclusion list investigation and convergence
+  plan latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace root-cause summary, convergence steps, and
+  `EXEC_PLAN.md` detail with short links to KB-297 and the production schedule
+  kiosk execution plan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR213 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
