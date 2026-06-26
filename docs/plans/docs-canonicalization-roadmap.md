@@ -3312,7 +3312,19 @@ Status: implemented in PR269.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR270 And Later: Thin Indexes And Split Large Documents
+### PR270: Thin Pi4 Power Validation Index Block
+
+Status: implemented in PR270.
+
+- Thin only the 2026-03-05 Pi4 power-operation and double-click prevention
+  onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the offline-terminal follow-up,
+  reboot/shutdown validation, and overlay validation detail with short links to
+  KB-288 and kiosk-power-operation-recovery.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR271 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
