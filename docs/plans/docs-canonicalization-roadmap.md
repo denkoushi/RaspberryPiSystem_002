@@ -3722,7 +3722,20 @@ Status: implemented in PR302.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR303 And Later: Thin Indexes And Split Large Documents
+### PR303: Thin API Quality Phase4 Tools Index Block
+
+Status: implemented in PR303.
+
+- Thin only the 2026-02-12 code quality phase4 second batch latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the service-layer test expansion,
+  employees/items performance gate, JWT auth header fix, local validation, CI
+  run ID, deploy run ID, and onsite validation detail with a short link to
+  KB-258.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR304 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
