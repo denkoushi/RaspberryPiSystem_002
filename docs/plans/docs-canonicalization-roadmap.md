@@ -4098,7 +4098,20 @@ Status: implemented in PR330.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR331 And Later: Thin Indexes And Split Large Documents
+### PR331: Thin Deploy Hardening Index Block
+
+Status: implemented in PR331.
+
+- Thin only the 2026-01-29 deploy hardening, all-device validation, and branch
+  requirement latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the fail-fast clean-tree and push checks,
+  detached execution, log follow/attach modes, Pi3 preflight, remote locking,
+  `git reset --hard origin/<branch>` fix, mandatory branch selection, and
+  Pi5/Pi4/Pi3 validation with short links to KB-200 and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR332 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
