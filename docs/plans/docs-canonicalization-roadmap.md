@@ -2895,7 +2895,18 @@ Status: implemented in PR234.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR235 And Later: Thin Indexes And Split Large Documents
+### PR235: Thin GroupCD CSV Import Index Block
+
+Status: implemented in PR235.
+
+- Thin only the 2026-03-13 GroupCD master and resource-code mapping CSV import
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace `groupCd`, seed import, admin CSV API, and
+  actual-hours resolver fallback detail with a short link to KB-297.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR236 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
