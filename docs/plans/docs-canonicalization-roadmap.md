@@ -4180,7 +4180,21 @@ Status: implemented in PR336.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR337 And Later: Thin Indexes And Split Large Documents
+### PR337: Thin Backup Schedule History Index Block
+
+Status: implemented in PR337.
+
+- Thin only the 2026-01-23 scheduled backup history latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the backup tab history mismatch, missing
+  `BackupScheduler.executeBackup` history creation/update path, manual
+  `/api/backup` comparison, `createHistory()` / `completeHistory()` /
+  `failHistory()` fix, CI/deploy note, and KB-194 addition with short links to
+  KB-194 and the backup/restore guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR338 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
