@@ -3372,7 +3372,20 @@ Status: implemented in PR274.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR275 And Later: Thin Indexes And Split Large Documents
+### PR275: Thin Firefox Panel Shortcut Index Block
+
+Status: implemented in PR275.
+
+- Thin only the 2026-03-02 kensakuMain Firefox migration and Super+Shift+P
+  panel shortcut deployment and onsite validation latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace browser-engine settings, labwc keybind,
+  reload handling, deployment, and onsite validation detail with short links to
+  KB-289 and kiosk-wifi-panel-shortcut.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR276 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
