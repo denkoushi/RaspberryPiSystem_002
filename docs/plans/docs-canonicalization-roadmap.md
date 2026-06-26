@@ -2966,7 +2966,19 @@ Status: implemented in PR240.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR241 And Later: Thin Indexes And Split Large Documents
+### PR241: Thin DebugSink Boundary Index Block
+
+Status: implemented in PR241.
+
+- Thin only the 2026-03-13 DebugSink boundary latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace direct debug-call isolation,
+  `emitDebugEvent()` boundary, deployment, real-device verification, and local
+  E2E seed note detail with short links to the Phase2 backlog and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR242 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
