@@ -3191,7 +3191,19 @@ Status: implemented in PR259.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR260 And Later: Thin Indexes And Split Large Documents
+### PR260: Thin Daily Plan B2 Index Block
+
+Status: implemented in PR260.
+
+- Thin only the 2026-03-07 due-management triage B2 daily-plan latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace daily-plan tables/API, UI, bug fix,
+  deploy, validation, and operation detail with short links to KB-297 and the
+  production-schedule-kiosk ExecPlan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR261 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
