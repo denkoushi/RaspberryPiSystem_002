@@ -977,7 +977,7 @@
 
 - **`/api/kiosk`・`/api/clients` ルート分割 正本**: [KB-255](./knowledge-base/api.md#kb-255-apikiosk-と-apiclients-のルート分割サービス層抽出互換維持での実機検証)。
 
-- **✅ 生産スケジュール資源CDボタン表示の遅延問題（式インデックス追加による高速化）・実機検証完了**: 生産スケジュール検索画面で、資源CDの検索ボタン（資源CDピルボタン群）が表示されるまでに時間がかかる問題を調査・解決。**原因**: `GET /kiosk/production-schedule/resources` エンドポイントの実行時間が約29秒と非常に遅かった。コミット `fb95b9c`（2026-02-10）で `buildMaxProductNoWinnerCondition`（相関サブクエリ）が `resources` エンドポイントに追加され、DB負荷が増加。相関サブクエリ内で `Seq Scan` が発生し、7,211行のループで各2行をスキャン（合計約14,422行スキャン）。**解決策**: PostgreSQLの式インデックス（Expression Indexes）を4つ追加（資源CD抽出用・論理キー一致用・winner探索用・相関サブクエリ用）。**効果**: 実行時間が約29秒→0.08秒に改善（約357倍高速化）。`history-progress` 相当SQLも改善（314ms→2.3ms）。**実装内容**: `apps/api/prisma/migrations/20260211123000_add_prod_schedule_expr_indexes/migration.sql`を作成し、`IF NOT EXISTS`で安全に適用可能に。本番DBには直接DDL適用済み（緊急対応）、リポジトリにはマイグレーションファイルとして記録。CI全ジョブ成功、マイグレーションが正常に適用されることを確認。**実機検証結果**: キオスク端末で資源CDボタンが即座に表示されるようになり、体感速度が大幅に向上し、問題なく使用可能であることを確認。**学んだこと**: 相関サブクエリ内では部分インデックスが十分に活用されない場合があるため、非部分インデックスも追加することでプランナーが確実にインデックスを使用できる。JSONBカラムからの抽出値に対する式インデックスは、`DISTINCT/ORDER BY`のパフォーマンスを大幅に改善できる。詳細は [knowledge-base/api.md#kb-248](./knowledge-base/api.md#kb-248-生産スケジュール資源cdボタン表示の遅延問題式インデックス追加による高速化) / [decisions/ADR-20260211-production-schedule-expression-indexes.md](./decisions/ADR-20260211-production-schedule-expression-indexes.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+- **生産スケジュール資源CDボタン遅延・式インデックス 正本**: [KB-248](./knowledge-base/api.md#kb-248-生産スケジュール資源cdボタン表示の遅延問題式インデックス追加による高速化) · [ADR-20260211](./decisions/ADR-20260211-production-schedule-expression-indexes.md)。
 
 ### 🆕 最新アップデート（2026-02-10）
 
