@@ -1105,7 +1105,7 @@
 
 ### 🆕 最新アップデート（2026-01-26）
 
-- **✅ 生産スケジュール機能改良完了**: 列名変更（ProductNo→製造order番号、FSEIBAN→製番）、FSEIBAN全文表示、管理コンソールの列並び順・表示非表示機能、差分ロジック改善（updatedAt優先・完了でも更新）、CSVインポートスケジュールUI改善（409エラー時のrefetch）、バリデーション追加（ProductNo: 10桁数字、FSEIBAN: 8文字英数字）、TABLEテンプレート化を実装。実機検証でCSVダッシュボード画面とキオスク画面の動作を確認。CI成功、デプロイ成功。ナレッジベースにKB-201、KB-202、KB-203を追加。詳細は [knowledge-base/api.md#kb-201](./knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) / [knowledge-base/frontend.md#kb-202](./knowledge-base/frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示) / [knowledge-base/infrastructure/ansible-deployment.md#kb-203](./knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) / [plans/production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+- **生産スケジュール機能改良 正本**: [KB-201](./knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) · [KB-202](./knowledge-base/frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示) · [KB-203](./knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) · [production-schedule plan](./plans/production-schedule-kiosk-execplan.md) · [csv-import-export](./guides/csv-import-export.md)。
 - **✅ CSV取り込み統合設定の追加**: マスターデータの列定義（ColumnDefinition）と手動/自動の許可、取り込み戦略を管理コンソールで統一管理できるようにし、USB一括登録とCSVインポートスケジュールを統合ページに集約。Gmail件名パターンはcsvDashboards対応を追加。詳細は [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
 
 ### 🆕 最新アップデート（2026-01-XX）
