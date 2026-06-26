@@ -3167,7 +3167,19 @@ Status: implemented in PR257.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR258 And Later: Thin Indexes And Split Large Documents
+### PR258: Thin B3 Visualization Index Block
+
+Status: implemented in PR258.
+
+- Thin only the 2026-03-07 due-management B3 visualization/read-only
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace global-rank visualization, inherited
+  daily-plan wording, deploy, and validation detail with a short link to
+  KB-297.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR259 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
