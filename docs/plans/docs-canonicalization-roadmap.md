@@ -4385,7 +4385,21 @@ Status: implemented in PR351.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR352 And Later: Thin Indexes And Split Large Documents
+### PR352: Thin Dropbox Pinning Backup Targets Index Block
+
+Status: implemented in PR352.
+
+- Thin only the 2026-01-19 Dropbox certificate pinning, backup-target addition,
+  and UI display latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Dropbox pinning update, scheduled
+  cleanup check, Pi5/Pi4/Pi3 configuration backup targets, 25-target schedule
+  note, admin backup target display fix, CI/deploy/onsite validation, and
+  KB-179/KB-180/KB-181 additions with short links to those KB entries and the
+  backup/restore guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR353 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
