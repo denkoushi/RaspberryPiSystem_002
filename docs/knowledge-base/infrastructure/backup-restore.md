@@ -1061,7 +1061,7 @@ update-frequency: medium
 - **`backup.json` スキーマは変更しない**。健全性とUIのみで「推奨だが未登録」を可視化する。
 - **推奨カタログ**は `apps/api/src/services/backup/backup-recommended-targets.catalog.ts` に集約（live 設定との比較・health 組み立ては loader 側で分離）。
 - **対象は永続・一次資産のみ**。再生成可能な派生物（`pdf-pages`, `signage-rendered` 等）はカタログに含めない。
-- **既存の意図的 disabled**（例: `photo-storage`, `/app/storage/pdfs`）は **enabled をカタログで切り替えない**。同一 `kind` + `source` のターゲットがあれば `coverage_gap` にしない。
+- **既存の意図的 disabled**（例: `photo-storage`）は **enabled をカタログで切り替えない**。同一 `kind` + `source` のターゲットがあれば `coverage_gap` にしない。
 - **`GET /api/backup/config/health`**: `issues[]` に `type: "coverage_gap"`, `severity: "warning"` を追加。`details.recommendationId` と `details.suggestedTarget` で管理UIから追加可能。
 
 **Symptoms**: 管理コンソールのバックアップ設定で「推奨だが未登録」ブロックや `status: warning` と `coverage_gap` 件が表示される。
@@ -2130,6 +2130,8 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
 - `/api/backup/internal` でもbackup後cleanupを呼び、`backup.sh` 経由でもtarget retentionを適用する。
 - Dropbox upload 失敗時は `error_summary` / tag を Error message に含め、`path/insufficient_space` を容量不足リカバリへ渡す。
 - 2026-06-26確認分の Dropbox 証明書 fingerprint を追加する。
+- 復旧必須の永続・一次ファイル（部品測定図面、計測機器ジャンル画像、パレット加工機イラスト、PDF本体）をDropboxバックアップ対象に追加する。
+- バックアップ履歴の`backupPath`に実体パスを保存し、過去履歴も`summary.path`から補正する。
 
 **確認コマンド例（秘密値は出さない）**:
 ```bash
@@ -2150,16 +2152,30 @@ ssh denkon5sd02@100.106.158.2 'jq '\''def redact_source: if type == "string" the
   - `summaryPath=database/2026-06-26T06-16-57-694Z-backup-20260626_151657/borrow_return.sql.gz`
   - `sizeBytes=285175935`
   - 未圧縮時の約2.08GBから約285MBへ圧縮された。
-- `backup.json` はDB retentionを `maxBackups: 5` に変更し、`image:photo-storage` と `/app/storage/pdfs` は disabled を維持。
+- `backup.json` はDB retentionを `maxBackups: 5` に変更し、`image:photo-storage` は disabled を維持。
 - 誤って作成された検証用/写真用Dropboxバックアップは削除し、履歴は`fileStatus=DELETED`へ更新。
 - 最終Dropbox使用量は `287303454 / 2147483648 bytes`、残りは `1860180194 bytes`。DB gzip 1世代あたり約285MBのため、2GB DropboxでもDB 5世代 + 復旧必須ファイルを保持可能。
+- 追加調査で、実装後に増えた永続・一次ファイル群が一部未登録であることを確認し、以下を`directory`ターゲットとして追加。
+  - `/app/storage/part-measurement-drawings`（`maxBackups: 4`）
+  - `/app/storage/measuring-instrument-genres`（`maxBackups: 4`）
+  - `/app/storage/pallet-machine-illustrations`（`maxBackups: 4`）
+  - `/app/storage/pdfs`（`maxBackups: 2`）
+- 追加4対象の手動Dropboxバックアップを実機確認。
+  - `part-measurement-drawings`: `3107983` bytes
+  - `measuring-instrument-genres`: `1275911` bytes
+  - `pallet-machine-illustrations`: `2717979` bytes
+  - `pdfs`: `78949162` bytes
+- `GET /api/backup/config/health/internal` は `healthy`、Dropbox使用量は `374630400 / 2147483648 bytes`、残り `1772853248 bytes` を確認。
+- `raspi4-sessaku-01` は本番PiからTailscale上で未到達、かつ本番inventory未反映のため、バックアップ対象には未追加。到達可能化とinventory反映後に client-file/client-directory ターゲットを追加する。
 
-**解決状況**: ✅ **解決済み**（2026-06-26）。Gmail upload誤選択、Dropbox 409詳細化、DB gzip化、internal cleanup、写真/PDF除外、2GB DropboxでのDB gzip uploadを実機確認済み。
+**解決状況**: ✅ **解決済み**（2026-06-26）。Gmail upload誤選択、Dropbox 409詳細化、DB gzip化、internal cleanup、写真除外、復旧必須ファイル群のDropbox退避、2GB DropboxでのDB gzip + 必須ファイル保持を実機確認済み。
 
 **関連ファイル**:
 - `scripts/server/backup.sh`
 - `apps/api/src/routes/backup/execution.ts`
 - `apps/api/src/services/backup/backup-execution.service.ts`
+- `apps/api/src/services/backup/backup-history.service.ts`
+- `apps/api/src/services/backup/backup-recommended-targets.catalog.ts`
 - `apps/api/src/services/backup/targets/database-backup.target.ts`
 - `apps/api/src/services/backup/backup-verifier.ts`
 - `apps/api/src/services/backup/storage/dropbox-storage.provider.ts`

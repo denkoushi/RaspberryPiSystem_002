@@ -2,7 +2,7 @@
 title: バックアップ・リストア手順
 tags: [運用, バックアップ, PostgreSQL, ラズパイ5]
 audience: [運用者, 開発者]
-last-verified: 2026-02-08
+last-verified: 2026-06-26
 related: [monitoring.md, deployment.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # バックアップ・リストア手順
 
-最終更新: 2026-02-08（リストア安全策: 事前バックアップ/ドライランを追記）
+最終更新: 2026-06-26（Dropbox容量対策と復旧必須ファイル群を反映）
 
 ## 概要
 
@@ -39,11 +39,17 @@ update-frequency: medium
    - **保存先**: Dropbox（推奨）またはローカルストレージ
    - **追加方法**: [バックアップ設定ガイド](./backup-configuration.md#証明書ディレクトリのバックアップ推奨) を参照
 
-4. **写真・PDFファイル**
-   - **場所**: `/opt/RaspberryPiSystem_002/storage/photos`, `/opt/RaspberryPiSystem_002/storage/pdfs`
-   - **バックアップ方法**: `scripts/server/backup.sh`で自動バックアップ
+4. **復旧必須の永続ファイル**
+   - **場所**: `/opt/RaspberryPiSystem_002/storage/part-measurement-drawings`, `/opt/RaspberryPiSystem_002/storage/measuring-instrument-genres`, `/opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations`, `/opt/RaspberryPiSystem_002/storage/pdfs`
+   - **バックアップ方法**: `scripts/server/backup.sh`でAPI経由バックアップ（`backup.json`の`directory`ターゲット）
    - **頻度**: 日次（推奨）
-   - **保存先**: `/opt/backups/`
+   - **保存先**: Dropbox（推奨）
+   - **容量方針**: PDFは`maxBackups: 2`、その他の小容量一次ファイルは`maxBackups: 4`
+
+5. **写真ファイル**
+   - **場所**: `/opt/RaspberryPiSystem_002/storage/photos`, `/opt/RaspberryPiSystem_002/storage/thumbnails`
+   - **バックアップ方法**: Dropbox容量保護のため、Pi5本番では`image:photo-storage`を無効化し、必要時はローカルtarまたは別媒体で退避
+   - **注意**: 貸出写真履歴まで完全復旧する場合は別途バックアップ対象に戻す必要があります
 
 ### 推奨バックアップ（失っても再設定可能だが時間がかかる）
 
@@ -63,7 +69,8 @@ update-frequency: medium
 | **証明書ファイル** | `/opt/RaspberryPiSystem_002/certs/` | ✅ **必須** | `backup.json`で自動バックアップ設定可能（`kind=directory`, `source=/app/host/certs`） |
 | **IPアドレス設定** | `infrastructure/ansible/group_vars/all.yml` | ⚠️ **推奨** | Ansible変数で管理、リポジトリに含まれる（デバイスごとに異なる値） |
 | **データベース** | Dockerボリューム `db-data` | ✅ **必須** | バックアップスクリプトで自動バックアップ |
-| **写真・PDFファイル** | `/opt/RaspberryPiSystem_002/storage/` | ✅ **必須** | バックアップスクリプトで自動バックアップ |
+| **復旧必須の永続ファイル** | `/opt/RaspberryPiSystem_002/storage/part-measurement-drawings`, `measuring-instrument-genres`, `pallet-machine-illustrations`, `pdfs` | ✅ **必須** | `backup.json`の`directory`ターゲット + バックアップスクリプトで自動バックアップ |
+| **写真ファイル** | `/opt/RaspberryPiSystem_002/storage/photos`, `thumbnails` | ⚠️ **容量次第** | 2GB Dropbox運用では本番無効化。必要時は別媒体または保持数を絞って有効化 |
 
 #### Pi4（キオスク）にのみ存在する情報
 
@@ -461,8 +468,9 @@ docker run --rm \
 **バックアップ対象**:
 - PostgreSQLデータベース
 - 環境変数ファイル（`.env`）
-- 写真ディレクトリ
+- 写真ディレクトリ（本番ではDropbox容量保護のためAPI/Dropboxは無効化、ローカルtarのみ）
 - CSVデータ（従業員・アイテム、API経由の場合）
+- 復旧必須の永続ディレクトリ（部品測定図面、計測機器ジャンル画像、パレット加工機イラスト、PDF）
 
 **バックアップ先**:
 - **ローカルディレクトリ**: `/opt/backups/`（常に実行）
@@ -756,4 +764,3 @@ gunzip -c /opt/backups/db_backup_*.sql.gz | head -20
 - [バックアップスクリプトとの整合性確認結果](./backup-script-integration-verification.md): バックアップスクリプトとの整合性確認結果
 - [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md): エラーハンドリング改善の詳細
 - [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md): 管理コンソールからのバックアップ対象管理機能の実装計画
-
