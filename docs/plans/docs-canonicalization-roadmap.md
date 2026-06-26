@@ -4263,7 +4263,20 @@ Status: implemented in PR342.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR343 And Later: Thin Indexes And Split Large Documents
+### PR343: Thin Production Schedule UI Search Index Block
+
+Status: implemented in PR343.
+
+- Thin only the 2026-01-27 production schedule UI search latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the check-button color change,
+  search-history toggle selection, multi-query OR search, software keyboard
+  modal, `q` parsing/max-length behavior, integration test, CI/deploy/onsite
+  validation, and KB-207 addition with short links to KB-207 and the CSV guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR344 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
