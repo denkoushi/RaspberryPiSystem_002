@@ -1011,7 +1011,7 @@
 
 ### 🆕 最新アップデート（2026-02-07）
 
-- **✅ Pi3 signage-lite.serviceのxsetエラーによる起動失敗と再起動ループの修正**: Pi3の`signage-lite.service`が起動時に`xset: unable to open display ":0"`エラーで失敗し、自動再起動を繰り返す問題を修正。**原因**: `signage-display.sh`の`xset`コマンドが`set -euo pipefail`により失敗時にスクリプト全体が即座に終了。**修正内容**: `xset`コマンドに`|| true`を追加してエラーで終了しないように変更。エラーが発生した場合は警告ログを出力するが、処理は続行するように変更。**学んだこと**: `set -euo pipefail`を使用する場合、必須でないコマンドには`|| true`を追加してエラーで終了しないようにする。デプロイ時のサービス再起動失敗は、修正前のスクリプトが実行された可能性があるため、次回の再起動時に修正の効果を確認する必要がある。詳細は [knowledge-base/infrastructure/signage.md#kb-236](./knowledge-base/infrastructure/signage.md#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ) を参照。
+- **Pi3 signage-lite xset起動失敗・再起動ループ修正 正本**: [KB-236](./knowledge-base/infrastructure/signage.md#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ)。
 
 - **✅ 全並行デプロイ実機検証完了（メンテナンスフラグ早期解除の実装/検証）**: 全台対象（Pi5 + Pi4 kiosk + Pi3 signage）での並行デプロイを実機検証。**結果**: 成功（exit=0）、所要時間13分03秒。**改善**: Pi5完了後、Pi4プレイ内でメンテナンスフラグが解除され、Pi3完了を待たずにPi4のメンテナンス表示が終了することを確認。**従来問題**: Pi4完了後もPi3完了までメンテナンス画面が表示され続けていた。詳細は [knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照。
 

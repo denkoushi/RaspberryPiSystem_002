@@ -3872,7 +3872,19 @@ Status: implemented in PR313.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR314 And Later: Thin Indexes And Split Large Documents
+### PR314: Thin Pi3 Xset Failure Fix Index Block
+
+Status: implemented in PR314.
+
+- Thin only the 2026-02-07 Pi3 signage-lite xset startup failure and restart
+  loop latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the `xset: unable to open display ":0"`
+  symptom, `set -euo pipefail` root cause, `|| true`/warning-log fix, and
+  deployment-restart follow-up lesson with a short link to KB-236.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR315 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
