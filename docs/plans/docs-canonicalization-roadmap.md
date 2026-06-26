@@ -3336,7 +3336,19 @@ Status: implemented in PR271.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR272 And Later: Thin Indexes And Split Large Documents
+### PR272: Thin Dropbox Space Recovery Index Block
+
+Status: implemented in PR272.
+
+- Thin only the 2026-03-05 Dropbox space recovery deployment and onsite
+  validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the upload session, recovery retry,
+  temporary path, rescue policy, deployment, and manual backup validation detail
+  with short links to KB-290 and backup-verification.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR273 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
