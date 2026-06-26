@@ -679,7 +679,7 @@
 - **生産スケジュール 登録製番共有履歴 上限20→50 正本**: [KB-231](./knowledge-base/api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化) · [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md) · [deployment](./guides/deployment.md)。
 - **LocalLLM オンデマンド起動・管理Chat制御 正本**: [ADR-20260403](./decisions/ADR-20260403-on-demand-local-llm-runtime-control.md) · [Runbook](./runbooks/local-llm-tailscale-sidecar.md) · [KB-318](./knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env) · [KB-313](./knowledge-base/KB-313-kiosk-documents.md)。
 - **キオスク部品測定 visual template・図面再利用 正本**: [ADR-20260330](./decisions/ADR-20260330-part-measurement-visual-template.md) · [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md) · [Runbook](./runbooks/kiosk-part-measurement.md) · [verification](./guides/verification-checklist.md)。
-- **写真持出: 人レビュー・GOOD ギャラリー・類似候補 vs シャドー閾値の運用知見をドキュメント化**（コード変更なし）: レビューは **VLM をファインチューニングしない**こと、`GOOD` 時の **canonicalLabel（人 > VLM）**、**誤 VLM を上書きなし `GOOD` で載せない**推奨、**類似候補 API** と **シャドー補助** の **別 env 閾値**による挙動差。**参照**: [KB-319](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md)（運用知見節）/ [photo-loan.md](./modules/tools/photo-loan.md) / [photo-tool-similarity-gallery.md](./runbooks/photo-tool-similarity-gallery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **写真持出 人レビュー・GOODギャラリー運用知見 正本**: [KB-319 §運用知見](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md#運用知見人レビューとギャラリー2026-03-30) · [photo-loan](./modules/tools/photo-loan.md) · [Runbook](./runbooks/photo-tool-similarity-gallery.md)。
 
 ### 🆕 最新アップデート（2026-03-29）
 
