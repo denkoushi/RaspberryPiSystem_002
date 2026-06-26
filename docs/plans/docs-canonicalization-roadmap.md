@@ -3422,7 +3422,21 @@ Status: implemented in PR278.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR279 And Later: Thin Indexes And Split Large Documents
+### PR279: Thin Power Solid Refactor Index Block
+
+Status: implemented in PR279.
+
+- Thin only the 2026-03-01 power-function SOLID refactor, CI/deploy, onsite
+  validation, delay, debounce overlay, and KB-288 recovery latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace client-key resolution, power-operation
+  delay, React Portal overlay, bind-mount recovery, and runbook creation detail
+  with short links to the power-function ExecPlan, KB-285, KB-286, KB-288, and
+  kiosk-power-operation-recovery.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR280 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
