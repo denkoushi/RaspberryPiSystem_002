@@ -4276,7 +4276,21 @@ Status: implemented in PR343.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR344 And Later: Thin Indexes And Split Large Documents
+### PR344: Thin Production Schedule Resource Filter Index Block
+
+Status: implemented in PR344.
+
+- Thin only the 2026-01-27 production schedule resource-filter/order/search-sync
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the resource-CD filter, assigned-only
+  search, AND condition split, per-resource processing order assignment,
+  completion-time compaction, location-scoped search-state sync, dropdown
+  visibility, new tables/endpoints, CI/deploy/onsite validation, and KB-208
+  addition with short links to KB-208 API/frontend entries and the CSV guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR345 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
