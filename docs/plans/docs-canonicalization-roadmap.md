@@ -4031,7 +4031,20 @@ Status: implemented in PR325.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR326 And Later: Thin Indexes And Split Large Documents
+### PR326: Thin Pi4 Maintenance And Access Incident Index Block
+
+Status: implemented in PR326.
+
+- Thin only the 2026-01-31 Pi4 kiosk maintenance, Pi5 SSH auth failure, and
+  Pi5 Git ownership latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the `--limit raspberrypi4` maintenance
+  scope fix, `should_enable_kiosk_maintenance()` detail, fail2ban recovery,
+  `.git` ownership repair, and pre-deploy checklist note with short links to
+  KB-183, KB-218, KB-219, the deployment guide, and the Mac SSH guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR327 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
