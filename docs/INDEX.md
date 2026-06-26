@@ -874,7 +874,7 @@
 
 ### 🆕 最新アップデート（2026-03-05）
 
-- **✅ Pi4電源・連打防止実機検証完了**: 2026-03-01 デプロイ時オフラインだった Pi4（研削メイン・raspi4-robodrill01）の復帰後、電源操作（再起動/シャットダウン）・連打防止オーバーレイの実機検証を実施。両端末とも正常動作を確認。詳細は [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) / [Runbook](./runbooks/kiosk-power-operation-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+- **Pi4電源・連打防止実機検証 正本**: [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) · [kiosk-power-operation-recovery](./runbooks/kiosk-power-operation-recovery.md)。
 
 - **✅ RoboDrill01 NFC恒久対策・デプロイ完了・実機検証OK**: raspi4-robodrill01 で NFC スキャンが反応しない問題を恒久対策で解決。**根因**: pcscd 未導入/非稼働、Docker 未導入（環境依存）、.env 未配布、nfc-agent 起動タスク不在。**実装**: docker-compose.client.yml を .env 参照に変更、client role に nfc-agent 設定配布・起動保証（pcscd 導入含む）を追加。**実機検証**: 吊具・計測機器の NFC タグで画面遷移を確認。詳細は [KB-291](./knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) / [nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) を参照。
 
