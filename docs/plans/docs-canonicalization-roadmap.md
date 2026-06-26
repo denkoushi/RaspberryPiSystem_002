@@ -3486,7 +3486,19 @@ Status: implemented in PR283.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR284 And Later: Thin Indexes And Split Large Documents
+### PR284: Thin Client Duplicate Registration Index Block
+
+Status: implemented in PR284.
+
+- Thin only the 2026-02-28 client-device duplicate registration fix and
+  recurrence-prevention latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the register-clients guard, dry-run,
+  cleanup, and count verification detail with short links to KB-278 and
+  client-initial-setup.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR285 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
