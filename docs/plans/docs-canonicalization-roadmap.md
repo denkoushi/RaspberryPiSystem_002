@@ -3014,7 +3014,19 @@ Status: implemented in PR244.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR245 And Later: Thin Indexes And Split Large Documents
+### PR245: Thin Location Sync Shared Index Block
+
+Status: implemented in PR245.
+
+- Thin only the 2026-03-11 location sync shared latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace note, due-date, processing-type shared
+  repository, deploy, and real-device verification detail with short links to
+  KB-297 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR246 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
