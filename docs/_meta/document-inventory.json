@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 136504,
-    "totalBytes": 10283973,
+    "totalLines": 136517,
+    "totalBytes": 10284031,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5203,
+    "localLinkCount": 5204,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 6,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 530252,
+      "byteSize": 529775,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -9227,6 +9227,11 @@
         },
         {
           "href": "./knowledge-base/KB-319-photo-loan-vlm-tool-label.md#運用知見人レビューとギャラリー2026-03-30",
+          "targetPath": "docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md",
+          "exists": true
+        },
+        {
+          "href": "./knowledge-base/KB-319-photo-loan-vlm-tool-label.md#類似候補ギャラリーpgvector",
           "targetPath": "docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md",
           "exists": true
         },
@@ -20542,7 +20547,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 20,
+      "inboundCount": 21,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29613,8 +29618,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 2082,
-      "byteSize": 84816,
+      "lineCount": 2095,
+      "byteSize": 85351,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
