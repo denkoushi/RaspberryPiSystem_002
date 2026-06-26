@@ -1106,7 +1106,7 @@
 ### 🆕 最新アップデート（2026-01-26）
 
 - **生産スケジュール機能改良 正本**: [KB-201](./knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) · [KB-202](./knowledge-base/frontend.md#kb-202-生産スケジュールキオスクページの列名変更とfseiban全文表示) · [KB-203](./knowledge-base/infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) · [production-schedule plan](./plans/production-schedule-kiosk-execplan.md) · [csv-import-export](./guides/csv-import-export.md)。
-- **✅ CSV取り込み統合設定の追加**: マスターデータの列定義（ColumnDefinition）と手動/自動の許可、取り込み戦略を管理コンソールで統一管理できるようにし、USB一括登録とCSVインポートスケジュールを統合ページに集約。Gmail件名パターンはcsvDashboards対応を追加。詳細は [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+- **CSV取り込み統合設定 正本**: [csv-import-export](./guides/csv-import-export.md)。
 
 ### 🆕 最新アップデート（2026-01-XX）
 
