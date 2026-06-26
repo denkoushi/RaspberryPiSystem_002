@@ -3120,7 +3120,19 @@ Status: implemented in PR253.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR254 And Later: Thin Indexes And Split Large Documents
+### PR254: Thin Offline Learning Events Index Block
+
+Status: implemented in PR254.
+
+- Thin only the 2026-03-08 due-management offline learning evaluation and
+  event-log latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace event model, learning-report, deploy,
+  validation, operation-policy, and CI-fix detail with short links to KB-297
+  and ADR-20260308.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR255 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
