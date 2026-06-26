@@ -4072,7 +4072,20 @@ Status: implemented in PR328.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR329 And Later: Thin Indexes And Split Large Documents
+### PR329: Thin Tailscale Primary Operations Index Block
+
+Status: implemented in PR329.
+
+- Thin only the 2026-01-30 Tailscale primary operations and Pi3
+  `post_tasks` temporary unreachable latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Tailscale primary/local emergency
+  policy, all-device deployment validation, Pi3 `unreachable=1` observation,
+  service-state confirmation, and deployment-guide note with short links to
+  ADR-20260130, KB-216, and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR330 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
