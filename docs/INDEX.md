@@ -1067,7 +1067,7 @@
 
 ### 🆕 最新アップデート（2026-01-28）
 
-- **✅ 生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正完了**: KB-209で実装された検索状態共有機能が、その後`search-history`エンドポイントに変更されたことで端末間共有ができなくなっていた問題を修正。git履歴とドキュメントを確認して原因を特定し、フロントエンドを`search-state`エンドポイント使用に戻し、`activeQueries`（登録製番）を含む検索状態を端末間で共有できるように修正。資源フィルタ（`activeResourceCds`, `activeResourceAssignedOnlyCds`）も共有。デバッグログコードを削除。既存の`search-state`エンドポイント（共有キー`'shared'`）をそのまま使用し、フロントエンドのみを修正することで最小変更で対応。CI成功（全ジョブ成功）、デプロイ成功、実機検証完了（端末間共有が正常に動作）。ナレッジベースにKB-210を追加。詳細は [knowledge-base/api.md#kb-210](./knowledge-base/api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正) / [plans/production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) を参照。
+- **生産スケジュール検索登録製番 共有状態回帰修正 正本**: [KB-210](./knowledge-base/api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正) · [production schedule plan](./plans/production-schedule-kiosk-execplan.md)。
 
 ### 🆕 最新アップデート（2026-01-22）
 
