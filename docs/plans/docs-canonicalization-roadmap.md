@@ -3789,7 +3789,21 @@ Status: implemented in PR307.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR308 And Later: Thin Indexes And Split Large Documents
+### PR308: Thin WebRTC Video Stability Index Block
+
+Status: implemented in PR308.
+
+- Thin only the 2026-02-10 WebRTC video instability, error-dialog
+  improvement, deploy, and onsite validation latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the local/remote stream state,
+  `ontrack` aggregation, video track toggle behavior, ICE restart recovery,
+  dialog conversion, deploy run, and onsite call validation detail with short
+  links to KB-243 and the WebRTC verification guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR309 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

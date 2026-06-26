@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 138263,
-    "totalBytes": 10237434,
+    "totalLines": 138277,
+    "totalBytes": 10236777,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5215,
+    "localLinkCount": 5216,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 411021,
+      "byteSize": 409754,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -7397,6 +7397,11 @@
         },
         {
           "href": "./guides/webrtc-verification.md",
+          "targetPath": "docs/guides/webrtc-verification.md",
+          "exists": true
+        },
+        {
+          "href": "./guides/webrtc-verification.md#9-映像不安定問題の修正とエラーダイアログ改善2026-02-10実装",
           "targetPath": "docs/guides/webrtc-verification.md",
           "exists": true
         },
@@ -19681,7 +19686,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 3,
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29597,8 +29602,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 3841,
-      "byteSize": 157508,
+      "lineCount": 3855,
+      "byteSize": 158118,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
