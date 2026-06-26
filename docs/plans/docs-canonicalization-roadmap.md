@@ -4248,7 +4248,22 @@ Status: implemented in PR341.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR342 And Later: Thin Indexes And Split Large Documents
+### PR342: Thin Production Schedule Performance Index Block
+
+Status: implemented in PR342.
+
+- Thin only the 2026-01-26 production schedule performance/search latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Pi4 3000-row latency note, `q`
+  parameter and ProductNo/FSEIBAN search behavior, DB filtering/paging,
+  reduced response fields/page size, query-gated frontend fetch, search history
+  and clear-button UI notes, sampled column-width calculation, validation
+  status, and KB-205/KB-206 additions with short links to KB-205, KB-206, and
+  the CSV guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR343 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

@@ -1091,7 +1091,7 @@
 
 ### 🆕 最新アップデート（2026-01-26）
 
-- **✅ 生産スケジュール画面のパフォーマンス最適化と検索機能改善完了**: 生産スケジュール画面で3000件のデータを表示する際、Pi4で初期表示に8秒、アイテム完了操作に23秒かかる問題を解決。**API側**: `q`パラメータを追加し、`ProductNo`と`FSEIBAN`の統合検索を実装。検索ロジックを改善（数値→ProductNo部分一致、8文字英数字→FSEIBAN完全一致、その他→OR検索）。SQLクエリを最適化し、DB側でフィルタリング・ソート・ページングを実行。`rowData`から必要なフィールドのみを選択し、レスポンスサイズを削減。デフォルト`pageSize`を400に変更。**フロントエンド側**: 検索時のみデータ取得（`enabled: hasQuery`）を実装し、初期表示を即座に「検索してください。」と表示。検索履歴の削除機能（黄色×ボタン）を追加。クリアボタンの視認性向上（`variant="secondary"`）。カラム幅計算をサンプリング（80件のみ）し、CPU負荷を削減。Macで実機検証完了、Pi4での実機検証は明日実施予定。CI成功。ナレッジベースにKB-205、KB-206を追加。詳細は [knowledge-base/api.md#kb-205](./knowledge-base/api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側) / [knowledge-base/frontend.md#kb-206](./knowledge-base/frontend.md#kb-206-生産スケジュール画面のパフォーマンス最適化と検索機能改善フロントエンド側) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+- **生産スケジュール性能・検索改善 正本**: [KB-205 API](./knowledge-base/api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側) · [KB-206 frontend](./knowledge-base/frontend.md#kb-206-生産スケジュール画面のパフォーマンス最適化と検索機能改善フロントエンド側) · [csv-import-export](./guides/csv-import-export.md)。
 
 ### 🆕 最新アップデート（2026-01-27）
 
