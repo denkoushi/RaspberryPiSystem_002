@@ -804,7 +804,7 @@
 - **全体ランキング自動調整（安全ガード付き）正本**: [KB-297 §全体ランキング自動調整](./knowledge-base/KB-297-kiosk-due-management-workflow.md#全体ランキング自動調整安全ガード付き2026-03-14) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 - **納期管理UI Phase3（左ペイン導線再構成）正本**: [KB-297 §Phase3](./knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-phase3左ペイン導線再構成-入力全体ランキング当日反映2026-03-14) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 - **納期管理UI 左ペイン3セクション色分け 正本**: [KB-297 §色分け](./knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-左ペイン3セクション色分け2026-03-14) · [deploy-status](./runbooks/deploy-status-recovery.md)。
-- **✅ 納期管理UI 左ペイン中規模改善（選択/対象化導線の統合）デプロイ・実機検証完了**: 左ペインで分散していた選択操作を `useDueManagementSelectionActions` へ統合し、選択トグルUIを `DueManagementSelectionToggleButton` へ部品化。`DueManagementGlobalRankCardActions` / `DueManagementDailyTriageCandidateList` を追加して表示責務を分離し、文言と状態表示を `対象化/対象中` に統一。API契約は変更なし。**デプロイ**: ブランチ `feat/due-mgmt-leftrail-selection-unify`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約12分。**実機検証**: リモート自動チェック全項目合格、実機UI確認（3セクション・対象化/対象中トグル・フィルタ・サマリ・バッジ・開閉永続化）OK。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-左ペイン中規模改善選択対象化導線の統合2026-03-14) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
+- **納期管理UI 左ペイン中規模改善（選択/対象化導線の統合）正本**: [KB-297 §選択/対象化導線](./knowledge-base/KB-297-kiosk-due-management-workflow.md#納期管理ui-左ペイン中規模改善選択対象化導線の統合2026-03-14) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 
 ### 🆕 最新アップデート（2026-03-13）
 
