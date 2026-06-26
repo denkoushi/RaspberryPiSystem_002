@@ -3858,7 +3858,21 @@ Status: implemented in PR312.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR313 And Later: Thin Indexes And Split Large Documents
+### PR313: Thin Pi3 Xset Restart Verification Index Block
+
+Status: implemented in PR313.
+
+- Thin only the 2026-02-08 Pi3 signage-lite xset error handling, deploy
+  service-restart verification, and preflight latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the run ID, `--limit "server:signage"`
+  standard procedure, preflight/lightdm checks, service restart status,
+  xset warning behavior, and deployment lesson with short links to KB-236 and
+  KB-234.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR314 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
