@@ -1120,7 +1120,7 @@
 
 - **Dropboxピニング・バックアップ対象・UI表示 正本**: [KB-179](./knowledge-base/infrastructure/backup-restore.md#kb-179-dropbox証明書ピニング問題api-dropboxapi-comの新しい証明書フィンガープリント追加) · [KB-180](./knowledge-base/infrastructure/backup-restore.md#kb-180-バックアップ対象の追加pi5pi4pi3の環境設定ファイル) · [KB-181](./knowledge-base/infrastructure/backup-restore.md#kb-181-ui表示問題の修正dropbox設定の新構造対応) · [backup-and-restore](./guides/backup-and-restore.md)。
 
-- **✅ セキュリティ評価実施・ログの機密情報保護実装完了**: OWASP Top 10 2021、IPA「安全なウェブサイトの作り方」、CISベンチマーク、NIST Cybersecurity Framework等の標準的なセキュリティ評価指標に基づいてセキュリティ評価を実施。総合評価は良好（2.2/3.0、実施率73%）。緊急に実装すべき項目として「ログの機密情報保護」を特定し、`x-client-key`がログに平文で出力されていた問題を修正。6ファイルを修正し、認証キーを`[REDACTED]`に置換するように実装。CI成功、デプロイ成功、ログ確認完了。ナレッジベースにKB-178を追加、プレゼン用ドキュメントに第6層（ログの機密情報保護）を追加。詳細は [security/evaluation-report.md](./security/evaluation-report.md) / [security/log-redaction-implementation.md](./security/log-redaction-implementation.md) / [security/urgent-security-measures.md](./security/urgent-security-measures.md) / [knowledge-base/infrastructure/security.md#kb-178](./knowledge-base/infrastructure/security.md#kb-178-ログの機密情報保護実装x-client-keyのredacted置換) / [presentations/security-measures-presentation.md](./presentations/security-measures-presentation.md) を参照。
+- **セキュリティ評価・ログ秘匿 正本**: [evaluation report](./security/evaluation-report.md) · [log redaction](./security/log-redaction-implementation.md) · [urgent measures](./security/urgent-security-measures.md) · [KB-178](./knowledge-base/infrastructure/security.md#kb-178-ログの機密情報保護実装x-client-keyのredacted置換) · [presentation](./presentations/security-measures-presentation.md)。
 
 ### 🆕 最新アップデート（2026-01-18）
 

@@ -4399,7 +4399,20 @@ Status: implemented in PR352.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR353 And Later: Thin Indexes And Split Large Documents
+### PR353: Thin Security Log Redaction Index Block
+
+Status: implemented in PR353.
+
+- Thin only the 2026-01-19 security evaluation and log-redaction latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the OWASP/IPA/CIS/NIST evaluation summary,
+  score, log redaction priority, redaction implementation/deploy/log check,
+  KB-178 addition, and presentation update with short links to the security
+  evidence documents, KB-178, and the presentation.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR354 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
