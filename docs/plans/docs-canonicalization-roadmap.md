@@ -3558,7 +3558,19 @@ Status: implemented in PR289.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR290 And Later: Thin Indexes And Split Large Documents
+### PR290: Thin Gmail Phase 1 Verification Index Block
+
+Status: implemented in PR290.
+
+- Thin only the 2026-02-24 Gmail auto protocol phase 1 real-device validation
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the health check, schedule check,
+  PROCESSING cleanup, 429 cooldown, rate-limit state, and unchecked SSH detail
+  with short links to KB-216 and the phase 1 verification checklist.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR291 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
