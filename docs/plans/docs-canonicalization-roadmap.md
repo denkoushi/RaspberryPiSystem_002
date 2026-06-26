@@ -2081,7 +2081,19 @@ Status: implemented in PR166.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR167 And Later: Thin Indexes And Split Large Documents
+### PR167: Thin Admin Local LLM Index Block
+
+Status: implemented in PR167.
+
+- Thin only the 2026-03-28 admin LocalLLM UI, credential rotation, sequential
+  rollout, and real-device verification latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, PR, rollout, smoke results,
+  localhost debug note, and `EXEC_PLAN.md` detail with short links to the
+  LocalLLM runbook and KB-318.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR168 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
