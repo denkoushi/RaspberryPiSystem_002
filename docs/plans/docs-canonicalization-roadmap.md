@@ -3816,7 +3816,21 @@ Status: implemented in PR309.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR310 And Later: Thin Indexes And Split Large Documents
+### PR310: Thin Production Schedule History Progress UI Index Block
+
+Status: implemented in PR310.
+
+- Thin only the 2026-02-10 production schedule registered-seiban delete
+  button progress-linked UI, deploy, and kiosk validation latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the delete-button color behavior,
+  `history-progress` endpoint/service detail, deploy run, and kiosk validation
+  detail with short links to KB-242 frontend, KB-242 API, and the production
+  schedule kiosk ExecPlan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR311 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
