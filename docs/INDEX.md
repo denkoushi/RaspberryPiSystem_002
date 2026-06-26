@@ -1079,7 +1079,7 @@
 
 ### 🆕 最新アップデート（2026-01-23）
 
-- **✅ スケジュール自動実行時のバックアップ履歴記録問題修正完了**: 管理コンソールのバックアップタブの履歴ボタンから履歴を見ると、スケジュールの数と履歴の数が一致しない問題を解決。原因は`BackupScheduler.executeBackup`メソッドに履歴作成・更新処理が実装されていなかったこと。手動実行（`/api/backup`）では履歴が記録されていたが、スケジュール自動実行では記録されていなかった。`BackupScheduler.executeBackup`に`BackupHistoryService.createHistory()`、`completeHistory()`、`failHistory()`を追加し、手動実行と同じロジックを適用。CI成功、デプロイ完了。次回のスケジュール実行（毎日4時、5時、6時、毎週日曜2時）で履歴が記録されることを確認予定。ナレッジベースにKB-194を追加。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-194](./knowledge-base/infrastructure/backup-restore.md#kb-194-スケジュール自動実行時にバックアップ履歴が記録されない問題) / [guides/backup-and-restore.md](./guides/backup-and-restore.md) を参照。
+- **スケジュール自動実行バックアップ履歴 正本**: [KB-194](./knowledge-base/infrastructure/backup-restore.md#kb-194-スケジュール自動実行時にバックアップ履歴が記録されない問題) · [backup-and-restore](./guides/backup-and-restore.md)。
 
 - **✅ Dropbox 409 Conflictエラー修正完了（labelサニタイズ未実施によるパス不正）**: 手動バックアップ実行時に、Dropbox APIから`409 Conflict`エラーが発生する問題を解決。原因は`BackupService.buildPath()`メソッドで、`options.label`がパスに直接埋め込まれていたこと。labelに`/`や`\`などのパス区切り文字が含まれると、Dropboxのパス構造が不正になり、APIが`409 Conflict`として拒否する。`sanitizePathSegment()`メソッドを追加し、制御文字除去、パス区切り文字の`_`への置換、空白の正規化、長さ制限（64文字）を実装。`buildPath()`でlabelをサニタイズしてから使用するように修正。テストケースを追加して境界値テストを実施。CI成功、デプロイ完了、実機検証完了。ナレッジベースにKB-195を追加。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-195](./knowledge-base/infrastructure/backup-restore.md#kb-195-dropbox-409-conflictエラーlabelサニタイズ未実施によるパス不正) / [guides/backup-dropbox-status-investigation.md](./guides/backup-dropbox-status-investigation.md) / [guides/backup-dropbox-status-investigation-results.md](./guides/backup-dropbox-status-investigation-results.md) を参照。
 
