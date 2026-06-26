@@ -862,7 +862,7 @@
 
 - **低レイヤー観測強化（SOLID・非破壊）正本**: [ADR-20260306](./decisions/ADR-20260306-lowlevel-observability.md) · [operation-manual §低レイヤー観測](./guides/operation-manual.md#低レイヤー観測pi5カナリア) · [KB-296](./knowledge-base/api.md#kb-296-eventloop-health-評価で起動直後テスト時に-503degraded-になる) · [KB-268](./knowledge-base/frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察) · [KB-274](./knowledge-base/infrastructure/signage.md#kb-274-signage-render-workerの高メモリ化断続と安定化対応)。
 
-- **✅ 登録製番ボタン並び替えUI・デプロイ完了・実機検証完了**: 生産スケジュールで登録製番ボタンをユーザー指定順に並び替えるUIを実装。**実装**: 案3（カード下辺左右に矢印ボタン）、`moveHistoryItemLeft` / `moveHistoryItemRight` 純粋関数、`SeibanHistoryButton` に矢印UI追加、`ProductionSchedulePage` で `type: 'reorder'` で search-state 同期。**デプロイ**: Run ID `20260306-200303-31051`、`state: success`、約10分（Pi5+Pi4×2、`--limit "server:kiosk"`）。**実機検証**: 左右矢印による並び替え動作、disabled状態の切り替え、カードサイズ・×ボタン位置の維持を確認。詳細は [KB-295](./knowledge-base/frontend.md#kb-295-生産スケジュール登録製番ボタン並び替えui) / [production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) を参照。
+- **登録製番ボタン並び替えUI 正本**: [KB-295](./knowledge-base/frontend.md#kb-295-生産スケジュール登録製番ボタン並び替えui) · [production-schedule-kiosk ExecPlan](./plans/production-schedule-kiosk-execplan.md)。
 
 - **✅ 資源CDボタン優先並び・デプロイ完了・実機検証完了**: 生産スケジュールで登録製番検索時、検索結果に含まれる資源CDを左側に優先表示する機能を実装。**実装**: `prioritizeResourceCdsByPresence` 純粋関数（`resourcePriority.ts`）、`ProductionSchedulePage` で `prioritizedVisibleResourceCds` を導出。**デプロイ**: Run ID `20260306-184128-18022`、`state: success`、約19分（Pi5+Pi4×2+Pi3）。**実機検証**: APIヘルス、resources/list API、ブラウザで資源CDボタンの優先並びを確認。詳細は [KB-294](./knowledge-base/frontend.md#kb-294-生産スケジュール資源cdボタン優先並び) / [production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) を参照。
 

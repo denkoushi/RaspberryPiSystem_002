@@ -3252,7 +3252,19 @@ Status: implemented in PR264.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR265 And Later: Thin Indexes And Split Large Documents
+### PR265: Thin Seiban Reorder Index Block
+
+Status: implemented in PR265.
+
+- Thin only the 2026-03-06 registered-seiban button reorder deployment and
+  onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the reorder UI, pure helper, search-state
+  sync, deployment, and onsite validation detail with short links to KB-295 and
+  the production-schedule-kiosk ExecPlan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR266 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
