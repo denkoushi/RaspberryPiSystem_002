@@ -4194,7 +4194,21 @@ Status: implemented in PR337.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR338 And Later: Thin Indexes And Split Large Documents
+### PR338: Thin Dropbox 409 Index Block
+
+Status: implemented in PR338.
+
+- Thin only the 2026-01-23 Dropbox 409 path-invalid latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the manual backup 409 incident, direct
+  `options.label` path embedding, path separator/whitespace sanitization,
+  `sanitizePathSegment()` and `buildPath()` fix, boundary test, CI/deploy/onsite
+  validation, and KB-195 addition with short links to KB-195 and the
+  investigation/result guides.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR339 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
