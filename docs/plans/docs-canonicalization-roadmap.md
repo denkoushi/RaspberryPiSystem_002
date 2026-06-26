@@ -3461,7 +3461,20 @@ Status: implemented in PR281.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR282 And Later: Thin Indexes And Split Large Documents
+### PR282: Thin RoboDrill Pi4 Addition Index Block
+
+Status: implemented in PR282.
+
+- Thin only the 2026-02-28 RoboDrill01 Pi4 addition and onsite validation
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Tailscale setup, SSH key setup,
+  repository clone, status-agent setup, client registration,
+  kiosk-browser startup, chromium-browser symlink, and onsite validation detail
+  with short links to KB-280 and client-initial-setup.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR283 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
