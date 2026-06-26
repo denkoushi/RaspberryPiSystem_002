@@ -2309,7 +2309,19 @@ Status: implemented in PR185.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR186 And Later: Thin Indexes And Split Large Documents
+### PR186: Thin Manual Order SiteKey Priority Index Block
+
+Status: implemented in PR186.
+
+- Thin only the 2026-03-23 manual-order overview assigned-resource siteKey
+  priority latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace implementation-file, test, branch,
+  deploy logs, Phase12, and `EXEC_PLAN.md` detail with short links to KB-297
+  and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR187 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
