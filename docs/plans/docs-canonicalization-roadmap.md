@@ -3975,7 +3975,21 @@ Status: implemented in PR321.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR322 And Later: Thin Indexes And Split Large Documents
+### PR322: Thin Schedule Limit Signage Height Index Block
+
+Status: implemented in PR322.
+
+- Thin only the 2026-02-06 production schedule registered-seiban limit 8-to-20
+  expansion and signage item-height optimization latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the API/frontend/signage validation,
+  normalization, card-height and scale changes, 20-item test, deployment
+  validation, and distributed-limit lesson with short links to KB-231 API and
+  KB-231 signage.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR323 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
