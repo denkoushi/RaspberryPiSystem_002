@@ -1872,7 +1872,19 @@ Status: implemented in PR149.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR150 And Later: Thin Indexes And Split Large Documents
+### PR150: Thin Photo Loan VLM Active Assist Ansible Index Block
+
+Status: implemented in PR150.
+
+- Thin only the photo-loan VLM active-assist Ansible vault-to-inventory wiring
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, default-off behavior, Pi5-only
+  Phase12, and `EXEC_PLAN.md` detail with short links to KB-319 and the
+  deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR151 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

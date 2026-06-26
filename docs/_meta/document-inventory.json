@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 136049,
-    "totalBytes": 10256581,
+    "totalLines": 136061,
+    "totalBytes": 10256811,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5200,
+    "localLinkCount": 5201,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 6,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 539274,
+      "byteSize": 539019,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -9212,6 +9212,11 @@
         },
         {
           "href": "./knowledge-base/KB-319-photo-loan-vlm-tool-label.md",
+          "targetPath": "docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md",
+          "exists": true
+        },
+        {
+          "href": "./knowledge-base/KB-319-photo-loan-vlm-tool-label.md#ansible-配線photo_tool_label_assist_active_vaultinventorydocker-env2026-04-07",
           "targetPath": "docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md",
           "exists": true
         },
@@ -20536,7 +20541,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 17,
+      "inboundCount": 18,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29607,8 +29612,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 1924,
-      "byteSize": 78264,
+      "lineCount": 1936,
+      "byteSize": 78749,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
