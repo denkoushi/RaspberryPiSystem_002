@@ -2069,7 +2069,19 @@ Status: implemented in PR165.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR166 And Later: Thin Indexes And Split Large Documents
+### PR166: Thin Docs Placement Policy Index Block
+
+Status: implemented in PR166.
+
+- Thin only the 2026-03-28 host-role `docs/` placement policy latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace Ansible condition, Pi5/Pi4/Pi3
+  verification detail, and `EXEC_PLAN.md` detail with short links to the
+  infrastructure KB, deployment guide, and deploy-status runbook.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR167 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
