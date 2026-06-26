@@ -1956,7 +1956,19 @@ Status: implemented in PR156.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR157 And Later: Thin Indexes And Split Large Documents
+### PR157: Thin Signage Schedule Admin Index Block
+
+Status: implemented in PR157.
+
+- Thin only the 2026-04-01 signage schedule management latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace public/management API explanation, branch,
+  rollout, detach run, Phase12, and `EXEC_PLAN.md` detail with short links to
+  KB-322, the verification checklist, and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR158 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
