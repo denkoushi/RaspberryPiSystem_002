@@ -2906,7 +2906,19 @@ Status: implemented in PR235.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR236 And Later: Thin Indexes And Split Large Documents
+### PR236: Thin P2-5 Boundary Guard Index Block
+
+Status: implemented in PR236.
+
+- Thin only the 2026-03-13 P2-5 Boundary Guard latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace restricted-paths rollout, deployment, and
+  real-device verification detail with short links to the Phase2 backlog,
+  KB-297, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR237 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
