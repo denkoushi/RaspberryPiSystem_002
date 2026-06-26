@@ -600,9 +600,53 @@ curl http://localhost:7071/api/agent/status
 
 期待: `readerConnected: true` が含まれる JSON が返ること。
 
+**`raspi4-sessaku-01` 実機確認（2026-06-26）**:
+
+```bash
+lsusb | grep -E 'Sony|FeliCa|PaSoRi'
+timeout 8s pcsc_scan
+docker exec docker-nfc-agent-1 python -c 'from smartcard.System import readers; print(readers())'
+curl -sS http://localhost:7071/api/agent/status
+```
+
+確認結果:
+
+- `lsusb`: `Sony Corp. FeliCa Port/PaSoRi 4.0`
+- `pcsc_scan`: `SONY FeliCa RC-S300/P (0461583) 00 00`
+- コンテナ内 `pyscard`: `['SONY FeliCa RC-S300/P (0461583) 00 00']`
+- nfc-agent: `{"readerConnected":true,"readerName":"SONY FeliCa RC-S300/P (0461583) 00 00",...}`
+
+USB 接続直後に `pcsc_scan` では見えているのに nfc-agent が `readerConnected:false` / `lastError:"no-readers"` のままなら、PC/SC ソケットの接続状態を取り直すために次を実行する。
+
+```bash
+docker restart docker-nfc-agent-1
+sleep 5
+curl -sS http://localhost:7071/api/agent/status
+```
+
 **関連**: [NFCリーダーのトラブルシューティング](../troubleshooting/nfc-reader-issues.md)、[KB-291](../knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md)
 
 ---
+
+## Step 5.6: バーコードリーダーの接続確認（HID キーボード型）
+
+移動票の製造 order 番号スキャンに使うバーコードリーダーは、USB シリアルではなく **HID キーボード**として認識させる。`raspi4-sessaku-01` では `barcode-agent` ではなく、Firefox キオスク画面へキーボード入力として流す。
+
+```bash
+lsusb | grep -E 'TMC|HID|Barcode|Keyboard'
+ls -l /dev/input/by-id | grep -E 'TMC|HID|Barcode|Keyboard'
+awk '/Name=|Handlers=|EV=/{print}' /proc/bus/input/devices
+```
+
+`raspi4-sessaku-01` 実機確認（2026-06-26）:
+
+- `lsusb`: `TMC HIDKeyBoard`
+- input device: `/dev/input/by-id/usb-TMC_HIDKeyBoard_1234567890abcd-event-kbd -> ../event8`
+- `/proc/bus/input/devices`: `Name="TMC HIDKeyBoard"` / `Handlers=sysrq kbd leds event8`
+- キオスク Firefox は `https://100.106.158.2/kiosk?clientKey=client-key-raspi4-sessaku-01-kiosk1` を表示中
+- 現場確認: 移動票の **製造 order 番号バーコードを正常スキャン**できた
+
+HID 型は入力フォーカスがある画面へ直接文字列を送るため、最終確認はキオスク画面の該当入力/スキャン導線で実バーコードを 1 回読む。
 
 ## Step 6: 管理コンソールでの確認
 

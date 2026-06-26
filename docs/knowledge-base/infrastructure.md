@@ -58,5 +58,5 @@ update-frequency: medium
 ---
 
 **更新履歴**:
-- 2026-06-26: KB-393（Pi4 5台目 `raspi4-sessaku-01` 追加と sudoers bootstrap 分離）を Ansible/デプロイ関連へ追加
+- 2026-06-26: KB-393（Pi4 5台目 `raspi4-sessaku-01` 追加、sudoers bootstrap 分離、バーコード/NFC 実機確認）を Ansible/デプロイ関連へ追加
 - 2025-12-29: 機能別にサブカテゴリファイルに分割（ドキュメント肥大化対策）

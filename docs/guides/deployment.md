@@ -18,6 +18,7 @@ update-frequency: medium
 - **main 反映**: ブランチ **`codex/add-raspi4-sessaku-01`** を **`origin/main`** へ fast-forward。反映コミット **`20e70bfa`**。Pi5 `/opt/RaspberryPiSystem_002` と Pi4 `/opt/RaspberryPiSystem_002` は **`main@20e70bfa`**。
 - **初回デプロイ実績**: Pi5 から `ANSIBLE_REPO_VERSION=main ansible-playbook -i infrastructure/ansible/inventory.yml infrastructure/ansible/playbooks/deploy-staged.yml --limit raspi4-sessaku-01` を実行し、**`failed=0` / `unreachable=0`** で完了。
 - **実機確認**: `kiosk-browser.service active`、`status-agent.timer active`、Docker active、`docker-nfc-agent-1 Up`、kiosk HTTP **200**、NFC agent status HTTP **200**、`deploy-status` は **`{"isMaintenance":false}`**。
+- **周辺機器確認**: USB 接続後に `lsusb` で **`TMC HIDKeyBoard`**（HID キーボード型バーコードリーダー）と **`Sony Corp. FeliCa Port/PaSoRi 4.0`** を確認。バーコードリーダーは `/dev/input/by-id/usb-TMC_HIDKeyBoard_1234567890abcd-event-kbd -> ../event8`、実運用の移動票 **製造order番号バーコード**も正常スキャン済み。NFC は `pcsc_scan` / コンテナ内 `pyscard` の両方で **`SONY FeliCa RC-S300/P (0461583) 00 00`** を確認。USB 接続直後に nfc-agent が `readerConnected:false` / `lastError:"no-readers"` のままだったため、`docker restart docker-nfc-agent-1` 後に **`readerConnected:true`** へ復旧確認済み。
 - **sudoers 注意**: 初回 Ansible bootstrap 用の広い権限は **`/etc/sudoers.d/900-<host>-ansible`** に置く。client role が管理するサービス再起動用 sudoers は **`/etc/sudoers.d/<user>-client-services`**。`/etc/sudoers.d/<user>` に bootstrap 権限を置くと role に上書きされ、`Missing sudo password` になり得る。
 
 ### 補足（2026-06-26 · **キオスク自主検査 HID 移動票スキャン導線** · **Web** · **Pi5 + Pi4×4 + Pi3 health 反映済**） {#kiosk-self-inspection-hid-scan-entry-2026-06-26}
