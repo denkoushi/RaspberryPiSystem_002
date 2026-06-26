@@ -3062,7 +3062,19 @@ Status: implemented in PR248.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR249 And Later: Thin Indexes And Split Large Documents
+### PR249: Thin Mac Target Location Priority Index Block
+
+Status: implemented in PR249.
+
+- Thin only the 2026-03-10 all-terminal shared-priority / Mac target-location
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace API scope, temporary override,
+  feature-flag deploy, migration, and real-device verification detail with
+  short links to KB-297, the Mac target-location runbook, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR250 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
