@@ -4221,7 +4221,20 @@ Status: implemented in PR339.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR340 And Later: Thin Indexes And Split Large Documents
+### PR340: Thin CSV Import Interval Index Block
+
+Status: implemented in PR340.
+
+- Thin only the 2026-01-23 CSV import schedule interval latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the once-daily schedule limitation,
+  interval mode, 5/10/15/30/60 minute presets, minimum interval policy across
+  UI/API/scheduler, cron parsing/display utilities, tests, CI/deploy/onsite
+  validation, and KB-191 addition with short links to KB-191 and the CSV guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR341 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
