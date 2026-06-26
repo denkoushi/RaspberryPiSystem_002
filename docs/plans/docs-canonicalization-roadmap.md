@@ -4412,7 +4412,20 @@ Status: implemented in PR353.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR354 And Later: Thin Indexes And Split Large Documents
+### PR354: Thin Deploy Stability Permanent Fix Index Block
+
+Status: implemented in PR354.
+
+- Thin only the 2026-01-18 deploy-stability permanent-fix latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the environment reflection and vault
+  permission drift findings, API container recreation, post-deploy environment
+  fail-fast check, permission auto-repair, handler restart unification, Pi5
+  onsite validation, and manual pre-fix note with a short link to KB-176.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR355 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
