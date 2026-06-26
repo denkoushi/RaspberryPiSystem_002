@@ -4152,7 +4152,21 @@ Status: implemented in PR334.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR335 And Later: Thin Indexes And Split Large Documents
+### PR335: Thin Deploy DB Gate Index Block
+
+Status: implemented in PR335.
+
+- Thin only the 2026-01-22 deploy verification DB gate and fail-fast
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the stale-schema incident, Pi5 deploy
+  migration fail-fast behavior, `verification-map.yml` DB checks,
+  `verifier.sh` SSH/TLS/command expansion details, health-check DB checks,
+  HTTPS backup script note, migration, DB/HTTP/smoke validation, timeout note,
+  and KB-191 update with short links to KB-191 and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR336 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

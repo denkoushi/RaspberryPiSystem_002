@@ -1071,7 +1071,7 @@
 
 ### 🆕 最新アップデート（2026-01-22）
 
-- **✅ デプロイ検証強化（DBゲート追加・fail-fast化）実装・実機検証完了**: デプロイが成功したように見えてもDBマイグレーション未適用でテーブル不存在エラーが発生する問題を根本解決。Pi5単体デプロイ（`deploy.sh`）にDB整合性ゲートを追加し、migrate失敗時にfail-fast。`verification-map.yml`にDBゲート（migrate status、`_prisma_migrations`存在、必須テーブル存在）を追加し、`verifier.sh`でSSH経由でPi5上のDBチェックを実行。`verifier.sh`にTLS自己署名対応（`insecure_tls`）とcommand変数展開を実装。`health-check.yml`にサーバー側DBチェックを追加。`backup.sh`をHTTPS対応に変更。`MeasuringInstrumentLoanEvent`マイグレーションを追加。実機検証で全DBゲート/HTTPゲート/スモークテストがpassすることを確認。デプロイタイムアウト問題（240秒不足）を発見し、`CI=1`で再実行して解決。ナレッジベースにKB-191を更新。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-191](./knowledge-base/infrastructure/ansible-deployment.md#kb-191-デプロイは成功したのにdbが古いテーブル不存在) / [guides/deployment.md](./guides/deployment.md) を参照。
+- **デプロイDB整合性ゲート 正本**: [KB-191](./knowledge-base/infrastructure/ansible-deployment.md#kb-191-デプロイは成功したのにdbが古いテーブル不存在) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-01-24）
 
