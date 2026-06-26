@@ -3522,7 +3522,19 @@ Status: implemented in PR286.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR287 And Later: Thin Indexes And Split Large Documents
+### PR287: Thin Signage Worker Memory Index Block
+
+Status: implemented in PR287.
+
+- Thin only the 2026-02-25 signage-render-worker high-memory stabilization,
+  deployment, and onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the reentrancy guard, timeout logging,
+  CI, deploy run, memory reduction, scheduler, and structured log validation
+  detail with a short link to KB-274.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR288 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
