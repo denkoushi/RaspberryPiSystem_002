@@ -888,7 +888,7 @@
 
 - **Pi4 kensakuMain Firefox移行・Super+Shift+P 正本**: [KB-289](./knowledge-base/infrastructure/miscellaneous.md#kb-289-pi4-kensakumain-の-firefox-移行と-supershiftp-キーボードショートカット上辺メニューバー表示) · [kiosk-wifi-panel-shortcut](./runbooks/kiosk-wifi-panel-shortcut.md)。
 
-- **✅ 生産スケジュールアイテム一覧からSHアイテムも除外し機種名表示にSH追加・デプロイ完了・実機検証OK**: FHINCDが"SH"で始まるアイテムも一覧から除外し、検索用製番ボタンの機種名表示にSHを追加する機能を実装。**実装内容**: `ProductionSchedulePage.tsx`の`normalizedRows` useMemo内でフィルタリング条件を拡張（MHまたはSH）。`seiban-progress.service.ts`のSQL集約で`FHINCD LIKE 'MH%' OR FHINCD LIKE 'SH%'`の条件で機種名を取得。**CI実行**: GitHub Actions成功（Run ID: `22561525885`、全ジョブ成功）。**デプロイ結果**: Pi5＋Pi4（raspberrypi4研削メイン）でデプロイ成功（Run ID: `20260302-140800-7286`, `state: success`, `exitCode: 0`）。**実機検証結果**: FHINCDが"MH"または"SH"で始まるアイテムが一覧から除外され、検索用製番ボタンに機種名が表示されることを確認。詳細は [knowledge-base/frontend.md#kb-285](./knowledge-base/frontend.md#kb-285-生産スケジュールアイテム一覧からshアイテムも除外し機種名表示にsh追加) / [knowledge-base/api.md#kb-285](./knowledge-base/api.md#kb-285-生産スケジュールhistory-progressエンドポイントのmachinename取得にsh追加) / [plans/production-schedule-kiosk-execplan.md](./plans/production-schedule-kiosk-execplan.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+- **生産スケジュール SHアイテム除外・機種名表示追加 正本**: [KB-285 frontend](./knowledge-base/frontend.md#kb-285-生産スケジュールアイテム一覧からshアイテムも除外し機種名表示にsh追加) · [KB-285 API](./knowledge-base/api.md#kb-285-生産スケジュールhistory-progressエンドポイントのmachinename取得にsh追加) · [production-schedule-kiosk ExecPlan](./plans/production-schedule-kiosk-execplan.md)。
 
 ### 🆕 最新アップデート（2026-03-01）
 
