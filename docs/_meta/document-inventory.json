@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 136688,
-    "totalBytes": 10283041,
+    "totalLines": 136700,
+    "totalBytes": 10282887,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 521586,
+      "byteSize": 520950,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -9726,7 +9726,7 @@
           "exists": true
         },
         {
-          "href": "./knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md",
+          "href": "./knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md#2026-03-25-追記-旧-active-loan-の-location-補正手段",
           "targetPath": "docs/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md",
           "exists": true
         },
@@ -29618,8 +29618,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 2266,
-      "byteSize": 92550,
+      "lineCount": 2278,
+      "byteSize": 93032,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",

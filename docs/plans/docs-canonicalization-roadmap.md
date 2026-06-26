@@ -2214,7 +2214,19 @@ Status: implemented in PR177.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR178 And Later: Thin Indexes And Split Large Documents
+### PR178: Thin Tool Loan Client Correction Index Block
+
+Status: implemented in PR178.
+
+- Thin only the 2026-03-25 tool-loan active loan `clientId` correction API
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace endpoint behavior, staged deployment,
+  Phase12, and `EXEC_PLAN.md` detail with short links to the tool-loan KB and
+  deploy-status runbook.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR179 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
