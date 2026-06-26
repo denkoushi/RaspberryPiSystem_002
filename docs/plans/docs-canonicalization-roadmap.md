@@ -3085,7 +3085,19 @@ Status: implemented in PR250.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR251 And Later: Thin Indexes And Split Large Documents
+### PR251: Thin Actual Hours B7 Index Block
+
+Status: implemented in PR251.
+
+- Thin only the 2026-03-10 due-management B7 actual-hours CSV and
+  global-ranking latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace canonical-diff, deploy, CSV import,
+  large-payload workaround, and backfill-result detail with short links to
+  KB-297, the actual-hours backfill runbook, KB-301, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR252 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

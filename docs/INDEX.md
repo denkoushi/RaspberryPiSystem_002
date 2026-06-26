@@ -835,7 +835,7 @@
 
 - **全端末共有優先順位（Mac対象ロケーション指定）正本**: [KB-297 §全端末共有優先順位](./knowledge-base/KB-297-kiosk-due-management-workflow.md#全端末共有優先順位mac対象ロケーション指定デプロイ実機検証2026-03-10) · [Mac対象ロケーション移行](./runbooks/mac-target-location-migration.md) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 - **生産スケジュール「全体順位」表示運用整合化 正本**: [KB-297 §全体順位 Phase 1](./knowledge-base/KB-297-kiosk-due-management-workflow.md#現場リーダー向け機能説明全体順位-phase-1)。
-- **✅ 納期管理 B第7段階（実績工数CSV連携 + 全体ランキング連携）実装・デプロイ・実機検証・CSV取り込み完了**: Canonical差分化（Raw append-only + Canonical winner選定 + Feature再集約）を導入。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行。**手動CSV取り込み**: `data_20210101_20221231.csv`（6.4MB）、`data_20230101_20241231.csv`（5.5MB）を分割投入（48チャンク）で実施。**結果**: `totalRawRows: 205766`, `totalCanonicalRows: 146644`, `totalFeatureKeys: 10436`。**知見**: 約 6MB 超の一括送信で `413 Payload Too Large` になるため、約 25 万文字ごとに分割投入で回避（[KB-301](./knowledge-base/api.md#kb-301-実績工数csv手動投入で-413-payload-too-large-になる)）。CP932 の CSV は `iconv -f CP932 -t UTF-8` で変換。Pi3 offline 時は signage 検証をスキップ可能。バックフィル・大容量CSV手順は [actual-hours-canonical-backfill.md](./runbooks/actual-hours-canonical-backfill.md) を参照。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#b第7段階実績工数csv連携--全体ランキング連携2026-03-10) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
+- **納期管理 B第7段階（実績工数CSV連携 + 全体ランキング連携）正本**: [KB-297 §B第7段階](./knowledge-base/KB-297-kiosk-due-management-workflow.md#b第7段階実績工数csv連携--全体ランキング連携2026-03-10) · [actual-hours backfill](./runbooks/actual-hours-canonical-backfill.md) · [KB-301](./knowledge-base/api.md#kb-301-実績工数csv手動投入で-413-payload-too-large-になる) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 
 ### 🆕 最新アップデート（2026-03-09）
 
