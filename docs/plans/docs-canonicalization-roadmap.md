@@ -3348,7 +3348,19 @@ Status: implemented in PR272.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR273 And Later: Thin Indexes And Split Large Documents
+### PR273: Thin Backup Target-Scoped Delete Index Block
+
+Status: implemented in PR273.
+
+- Thin only the 2026-03-05 target-scoped Dropbox deletion follow-up deployment
+  and onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the target-scoped deletion, prefix
+  filtering, deployment run, manual backup validation, and local API note with
+  short links to backup-verification and KB-290.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR274 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
