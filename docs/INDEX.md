@@ -819,7 +819,7 @@
 - **P2-3 Web Split（ProductionSchedulePage Part 1）正本**: [phase2 backlog §P2-3](./plans/phase2-safe-refactor-backlog.md#p2-3-web-split-productionschedulepage-part-1) · [KB-297 §P2-3](./knowledge-base/KB-297-kiosk-due-management-workflow.md#p2-3-web-split-デプロイ実機検証2026-03-13) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 - **P2-2 auth Route Thin化 正本**: [phase2 backlog](./plans/phase2-safe-refactor-backlog.md) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 - **P2-1 imports/schedule Route Thin化 正本**: [phase2 backlog](./plans/phase2-safe-refactor-backlog.md) · [deploy-status](./runbooks/deploy-status-recovery.md)。
-- **✅ Phase1 DebugSink境界導入・デプロイ完了・実機検証完了**: 直書き `127.0.0.1:7242` 呼び出しを `emitDebugEvent()` 境界に置換（9ファイル）。既定 no-op で挙動不変。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Pi3除外）。**実機検証**: 全チェックリスト項目合格。**知見**: ローカル E2E smoke 実行時は `prisma db seed` を事前実行すること（ClientDevice が必要）。詳細は [phase2-safe-refactor-backlog.md](./plans/phase2-safe-refactor-backlog.md) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+- **Phase1 DebugSink境界導入 正本**: [phase2 backlog](./plans/phase2-safe-refactor-backlog.md) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 
 ### 🆕 最新アップデート（2026-03-11）
 
