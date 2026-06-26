@@ -884,7 +884,7 @@
 
 ### 🆕 最新アップデート（2026-03-02）
 
-- **✅ KB-287解決・研削メイン日本語入力スムーズ化・デプロイ完了・実機検証OK**: 研削メイン（raspberrypi4）で備考欄の日本語入力がスムーズにできない事象を解決。**原因**: `ibus_owner_mode: legacy` のため `ibus-owner.desktop` が配置されず、`im-launch.desktop` の競合 autostart が抑止されていなかった。**対策**: `inventory.yml` の raspberrypi4 に `ibus_owner_mode: "single-owner"` と `ibus_disable_competing_autostart: true` を追加。**デプロイ**: Run ID `20260302-192312-6532`。**実機検証**: 研削メインの備考欄で日本語入力がスムーズにできることを確認。詳細は [KB-287](./knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) / [KB-investigation](./knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md) を参照。
+- **研削メイン日本語入力スムーズ化 正本**: [KB-287](./knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) · [KB-investigation](./knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md)。
 
 - **✅ Pi4 kensakuMain Firefox移行・Super+Shift+Pキーボードショートカット・デプロイ完了・実機検証OK（研削メイン・RoboDrill01両方）**: 研削メイン（raspberrypi4）を Chromium から Firefox に切り替え、キオスクモードで上辺メニューバー（wf-panel-pi）を一時表示する **Super+Shift+P** ショートカットを追加。**実装内容**: `inventory.yml` に `kiosk_browser_engine: "firefox"` と `kiosk_browser_mode: "app-like"` を追加。`show-kiosk-panel.sh.j2` と labwc rc.xml の keybind（`W-S-p`）を Ansible で配置。**知見**: labwc はユーザー設定がシステム設定を上書きするため、初回はシステム設定をコピーしてから keybind を追加。**labwc rc.xml 再読み込み**: labwc は rc.xml の変更をホットリロードしない。デプロイで rc.xml を更新したが labwc が先に起動していた場合、`sudo kill -s HUP $(pgrep -x labwc)` で SIGHUP を送り設定を再読み込み。RoboDrill01 で SIGHUP による復旧と Super+Shift+P の動作を実機確認済み。詳細は [KB-289](./knowledge-base/infrastructure/miscellaneous.md#kb-289-pi4-kensakumain-の-firefox-移行と-supershiftp-キーボードショートカット上辺メニューバー表示) / [Runbook](./runbooks/kiosk-wifi-panel-shortcut.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
 
