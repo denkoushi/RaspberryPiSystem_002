@@ -3762,7 +3762,20 @@ Status: implemented in PR305.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR306 And Later: Thin Indexes And Split Large Documents
+### PR306: Thin API Route Split Index Block
+
+Status: implemented in PR306.
+
+- Thin only the 2026-02-11 `/api/kiosk` and `/api/clients` route split,
+  service extraction, deploy, and onsite API validation latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the route/service ownership split,
+  compatibility validation, CI run ID, deploy run ID, onsite API smoke, and
+  `search-state` payload contract note with a short link to KB-255.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR307 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
