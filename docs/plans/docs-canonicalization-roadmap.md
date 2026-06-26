@@ -3360,7 +3360,19 @@ Status: implemented in PR273.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR274 And Later: Thin Indexes And Split Large Documents
+### PR274: Thin IME Smooth Input Index Block
+
+Status: implemented in PR274.
+
+- Thin only the 2026-03-02 kensakuMain Japanese IME smooth-input deployment
+  and onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the IBus owner-mode cause, competing
+  autostart mitigation, deployment run, diagnosis, and onsite note with short
+  links to KB-287 and the kiosk schedule regression investigation KB.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR275 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
