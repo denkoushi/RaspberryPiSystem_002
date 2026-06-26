@@ -2823,7 +2823,19 @@ Status: implemented in PR228.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR229 And Later: Thin Indexes And Split Large Documents
+### PR229: Thin Due Management Selection Unify Index Block
+
+Status: implemented in PR229.
+
+- Thin only the 2026-03-14 due-management left-pane selection/unify
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace selection action consolidation, toggle UI,
+  API compatibility, deployment, and real-device UI verification detail with
+  short links to KB-297 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR230 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
