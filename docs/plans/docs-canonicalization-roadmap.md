@@ -3385,7 +3385,19 @@ Status: implemented in PR275.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR276 And Later: Thin Indexes And Split Large Documents
+### PR276: Thin SH Machine Name Index Block
+
+Status: implemented in PR276.
+
+- Thin only the 2026-03-02 SH item exclusion and machine-name display
+  deployment and onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace frontend filter, API machine-name query,
+  CI, deployment, and onsite validation detail with short links to KB-285
+  frontend, KB-285 API, and the production-schedule-kiosk ExecPlan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR277 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
