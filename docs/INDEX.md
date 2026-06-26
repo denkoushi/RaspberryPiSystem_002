@@ -829,7 +829,7 @@
 - **ロケーション間同期共有化（納期・備考・表面処理）正本**: [KB-297 §ロケーション間同期共有化](./knowledge-base/KB-297-kiosk-due-management-workflow.md#ロケーション間同期共有化納期備考表面処理2026-03-11) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 - **生産日程 `progress_sync` スコープ分離（進捗管理用CSV限定）正本**: [KB-297 §進捗同期スコープ分離](./knowledge-base/KB-297-kiosk-due-management-workflow.md#進捗同期スコープ分離2026-03-11) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 - **全体順位表示拡張と実績工数列追加 正本**: [KB-297 §全体順位表示拡張と実績工数列追加](./knowledge-base/KB-297-kiosk-due-management-workflow.md#全体順位表示拡張と実績工数列追加デプロイ実機検証2026-03-11) · [deploy-status](./runbooks/deploy-status-recovery.md)。
-- **✅ 全体順位 ソート補正・デプロイ・実機検証完了**: 資源CDフィルタ時に表示順位は1..Nに再採番されていたが**行の並び順がその順位に従っていなかった**問題を修正。`displayRows` を表示順位（1..N）で昇順ソートするよう変更。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260311-082311` / `20260311-082345` / `20260311-083018`）。**実機検証**: 資源CD押下後、1から順位付けされ、ソートもその順位基準になっていることを確認。**知見**: 表示順位の再採番と行ソートは別実装であり、両方を揃える必要がある。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#全体順位-ソート補正2026-03-11) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+- **全体順位 ソート補正 正本**: [KB-297 §全体順位 ソート補正](./knowledge-base/KB-297-kiosk-due-management-workflow.md#全体順位-ソート補正2026-03-11)。
 
 ### 🆕 最新アップデート（2026-03-10）
 
