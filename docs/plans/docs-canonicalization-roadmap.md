@@ -2847,7 +2847,19 @@ Status: implemented in PR230.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR231 And Later: Thin Indexes And Split Large Documents
+### PR231: Thin Due Management UI Phase2 Index Block
+
+Status: implemented in PR231.
+
+- Thin only the 2026-03-13 due-management UI Phase2 latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace left-pane toggle/default/collapse state,
+  duplicate card removal, deployment, and real-device UI verification detail
+  with short links to KB-297 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR232 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
