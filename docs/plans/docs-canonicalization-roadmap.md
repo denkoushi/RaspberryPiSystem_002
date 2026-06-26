@@ -3830,7 +3830,21 @@ Status: implemented in PR310.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR311 And Later: Thin Indexes And Split Large Documents
+### PR311: Thin Modal Standardization Index Block
+
+Status: implemented in PR311.
+
+- Thin only the 2026-02-08 modal standardization, accessibility,
+  E2E-stabilization, CI/deploy, and health-check latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the shared Dialog/ConfirmDialog
+  implementation, kiosk/admin modal conversion, accessibility notes, E2E
+  helper and CI fix details, deploy result, and health-check detail with a
+  short link to KB-240.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR312 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
