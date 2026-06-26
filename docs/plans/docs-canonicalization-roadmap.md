@@ -3397,7 +3397,20 @@ Status: implemented in PR276.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR277 And Later: Thin Indexes And Split Large Documents
+### PR277: Thin Power Hardening Index Block
+
+Status: implemented in PR277.
+
+- Thin only the 2026-03-01 KB-288 permanent fix, power overlay, deployment
+  note, Pi5 deploy, and Pi4 onsite validation latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the power-actions handler, overlay,
+  deployment guide update, Pi5-only deploy, and Pi4 validation detail with short
+  links to KB-288, kiosk-power-operation-recovery, and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR278 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
