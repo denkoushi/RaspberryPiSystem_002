@@ -1051,7 +1051,7 @@
 
 ### 🆕 最新アップデート（2026-01-30）
 
-- **✅ Tailscale主運用への移行計画の実機検証完了**: Tailscaleを主（通常運用）とし、local（LAN）を緊急時のみに限定する方針で実装した計画の実機検証を完了。Pi5/Pi4/Pi3の全デバイスでデプロイが成功し、Tailscale経由での接続が正常に動作することを確認。Pi3デプロイ時に`post_tasks`で`unreachable=1`が発生したが、実際にはサービス（`signage-lite-watchdog.timer`、`signage-daily-reboot.timer`）は正常動作しており、デプロイ全体は成功（`failed=0`、`state: success`）。これは一時的なSSH接続問題であり、サービス起動には影響していない。ナレッジベースにKB-216を追加、デプロイガイドに注意事項を追記。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-216](./knowledge-base/infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) / [guides/deployment.md](./guides/deployment.md) / [decisions/ADR-20260130-tailscale-primary-operations.md](./decisions/ADR-20260130-tailscale-primary-operations.md) を参照。
+- **Tailscale主運用・Pi3 post_tasks 一時到達不能 正本**: [ADR-20260130](./decisions/ADR-20260130-tailscale-primary-operations.md) · [KB-216](./knowledge-base/infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-01-29）
 
