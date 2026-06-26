@@ -3264,7 +3264,19 @@ Status: implemented in PR265.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR266 And Later: Thin Indexes And Split Large Documents
+### PR266: Thin Resource Priority Index Block
+
+Status: implemented in PR266.
+
+- Thin only the 2026-03-06 resource-CD button priority deployment and onsite
+  validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the priority helper, derived visible
+  resources, deployment, and onsite validation detail with short links to
+  KB-294 and the production-schedule-kiosk ExecPlan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR267 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
