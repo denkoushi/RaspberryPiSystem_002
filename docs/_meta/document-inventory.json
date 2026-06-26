@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 136097,
-    "totalBytes": 10256475,
+    "totalLines": 136406,
+    "totalBytes": 10285951,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5201,
+    "localLinkCount": 5202,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 6,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 537207,
+      "byteSize": 536324,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -11068,8 +11068,8 @@
     },
     {
       "path": "docs/api/backup.md",
-      "lineCount": 1159,
-      "byteSize": 35667,
+      "lineCount": 1161,
+      "byteSize": 36077,
       "hasFrontmatter": false,
       "title": "バックアップAPI",
       "status": null,
@@ -13851,8 +13851,8 @@
     },
     {
       "path": "docs/guides/backup-and-restore.md",
-      "lineCount": 759,
-      "byteSize": 33810,
+      "lineCount": 766,
+      "byteSize": 35158,
       "hasFrontmatter": true,
       "title": "バックアップ・リストア手順",
       "status": null,
@@ -13932,8 +13932,8 @@
     },
     {
       "path": "docs/guides/backup-configuration.md",
-      "lineCount": 747,
-      "byteSize": 28423,
+      "lineCount": 798,
+      "byteSize": 30607,
       "hasFrontmatter": true,
       "title": "バックアップ設定ガイド",
       "status": null,
@@ -20549,8 +20549,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-320-kiosk-part-measurement.md",
-      "lineCount": 1474,
-      "byteSize": 153433,
+      "lineCount": 1567,
+      "byteSize": 165051,
       "hasFrontmatter": false,
       "title": "KB-320: キオスク部品測定（テンプレ不一致・候補・スキャン）",
       "status": null,
@@ -20817,16 +20817,16 @@
           "exists": true
         }
       ],
-      "inboundCount": 100,
+      "inboundCount": 101,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 1458,
+          "line": 1551,
           "length": 1045
         },
         {
-          "line": 1465,
+          "line": 1558,
           "length": 1213
         }
       ],
@@ -28072,8 +28072,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/backup-restore.md",
-      "lineCount": 2103,
-      "byteSize": 127221,
+      "lineCount": 2190,
+      "byteSize": 135175,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - バックアップ・リストア関連",
       "status": null,
@@ -29612,8 +29612,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 1972,
-      "byteSize": 80225,
+      "lineCount": 1984,
+      "byteSize": 80722,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
@@ -32707,8 +32707,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-part-measurement.md",
-      "lineCount": 1083,
-      "byteSize": 85616,
+      "lineCount": 1140,
+      "byteSize": 91964,
       "hasFrontmatter": false,
       "title": "キオスク: 部品測定記録（part-measurement）",
       "status": null,
@@ -32961,6 +32961,11 @@
         },
         {
           "href": "../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04",
+          "targetPath": "docs/knowledge-base/KB-320-kiosk-part-measurement.md",
+          "exists": true
+        },
+        {
+          "href": "../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-寸法百分台入力-公差外レビュー-2026-06-26",
           "targetPath": "docs/knowledge-base/KB-320-kiosk-part-measurement.md",
           "exists": true
         },
