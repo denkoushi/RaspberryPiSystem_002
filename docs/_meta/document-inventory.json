@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 137594,
-    "totalBytes": 10267572,
+    "totalLines": 137606,
+    "totalBytes": 10266872,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5210,
+    "localLinkCount": 5209,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 469503,
+      "byteSize": 468322,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -7667,11 +7667,6 @@
         },
         {
           "href": "./knowledge-base/ci-cd.md#kb-298-ユニットテストでprismaモデル未モックtyperror-cannot-read-properties-of-undefined-reading-findmany",
-          "targetPath": "docs/knowledge-base/ci-cd.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗",
           "targetPath": "docs/knowledge-base/ci-cd.md",
           "exists": true
         },
@@ -24690,7 +24685,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 65,
+      "inboundCount": 64,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29620,8 +29615,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 3172,
-      "byteSize": 129164,
+      "lineCount": 3184,
+      "byteSize": 129645,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
