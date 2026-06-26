@@ -4344,7 +4344,22 @@ Status: implemented in PR348.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR349 And Later: Thin Indexes And Split Large Documents
+### PR349: Thin Production Schedule Kiosk Initial Index Block
+
+Status: implemented in PR349.
+
+- Thin only the 2026-01-XX production schedule kiosk initial implementation
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the PowerApps-inspired kiosk page,
+  completion toggle/gray-out behavior, checkmark/FSEIBAN display notes,
+  CsvDashboard Gmail subject-pattern UI, `CsvImportSubjectPattern` DB
+  migration, onsite validation, CI/deploy status, and KB-184/KB-185/KB-186
+  additions with short links to those KB entries, the production-schedule plan,
+  and the CSV guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR350 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
