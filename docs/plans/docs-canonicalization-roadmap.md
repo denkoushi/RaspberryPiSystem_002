@@ -2584,7 +2584,19 @@ Status: implemented in PR208.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR209 And Later: Thin Indexes And Split Large Documents
+### PR209: Thin Production Order Popup Search Index Block
+
+Status: implemented in PR209.
+
+- Thin only the 2026-03-17 production-schedule manufacturing-order popup
+  search latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace A-condition activation, 5-digit part
+  candidate flow, order checklist, order-search route, staged deployment, and
+  Phase12/API detail with short links to frontend KB-305 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR210 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

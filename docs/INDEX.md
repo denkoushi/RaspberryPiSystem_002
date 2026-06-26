@@ -778,7 +778,7 @@
 ### 🆕 最新アップデート（2026-03-17）
 
 - **生産スケジュール 機種名・部品名検索 正本**: [KB-297 §機種名・部品名検索](./knowledge-base/KB-297-kiosk-due-management-workflow.md#生産スケジュール-機種名部品名検索2026-03-17) · [KB-304](./knowledge-base/frontend.md#kb-304-生産スケジュール-機種名部品名検索a条件全角半角正規化ドロップダウン空対策) · [deploy-status](./runbooks/deploy-status-recovery.md)。
-- **✅ 生産スケジュール 製造order番号ポップアップ検索 実装・デプロイ・実機検証完了**: A条件（工程ON + 資源CD選択）でのみ起動するポップアップ検索を追加。5桁入力で部品候補、部品選択後に製造order番号チェックリストを表示し、確定時に一覧へ追加絞り込みを適用。APIは `/api/kiosk/production-schedule/order-search` を新設して候補取得責務を分離。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（2026-03-17）。**実機検証**: Phase12 全24項目PASS、order-search API（200/partNameOptions・orders、5桁未満で400）確認済み。詳細は [frontend.md KB-305](./knowledge-base/frontend.md#kb-305-生産スケジュール-製造order番号ポップアップ検索5桁候補部品選択チェック確定) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
+- **生産スケジュール 製造order番号ポップアップ検索 正本**: [KB-305](./knowledge-base/frontend.md#kb-305-生産スケジュール-製造order番号ポップアップ検索5桁候補部品選択チェック確定) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 
 ### 🆕 最新アップデート（2026-03-16）
 
