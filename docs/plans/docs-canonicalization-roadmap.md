@@ -2489,7 +2489,19 @@ Status: implemented in PR200.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR201 And Later: Thin Indexes And Split Large Documents
+### PR201: Thin Manual Order Page Index Block
+
+Status: implemented in PR201.
+
+- Thin only the 2026-03-20 manual-order dedicated kiosk page, registered-seiban
+  history sharing, and CI stabilization latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace route, state, shared history, deployment,
+  Phase12, CI stabilization, and manual UI detail with short links to KB-297,
+  KB-310, deploy-status, and deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR202 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
