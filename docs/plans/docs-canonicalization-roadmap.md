@@ -3026,7 +3026,19 @@ Status: implemented in PR245.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR246 And Later: Thin Indexes And Split Large Documents
+### PR246: Thin Progress Sync Scope Index Block
+
+Status: implemented in PR246.
+
+- Thin only the 2026-03-11 production-schedule `progress_sync` scope
+  separation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace CSV progress-column eligibility,
+  policy/service guard, deploy, and real-device verification detail with short
+  links to KB-297 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR247 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
