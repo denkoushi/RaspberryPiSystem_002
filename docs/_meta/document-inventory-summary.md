@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 447 |
-| Total lines | 137665 |
-| Total bytes | 10265480 |
+| Total lines | 137677 |
+| Total bytes | 10265199 |
 | With frontmatter | 162 |
 | With status | 23 |
 | source_of_truth declared | 7 |
@@ -21,7 +21,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
 | Long-line documents | 16 |
-| Local links | 5209 |
+| Local links | 5210 |
 | Broken local links | 116 |
 | Documents over 1,000 lines | 27 |
 | Documents over 3,000 lines | 7 |
@@ -35,12 +35,12 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `EXEC_PLAN.md` | 4658 | 975476 |
 | `docs/knowledge-base/frontend.md` | 4643 | 277726 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4368 | 281572 |
-| `docs/plans/docs-canonicalization-roadmap.md` | 3243 | 131946 |
+| `docs/plans/docs-canonicalization-roadmap.md` | 3255 | 132413 |
 | `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3175 | 430815 |
 | `docs/architecture/deployment-modules.md` | 2523 | 128110 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188223 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2190 | 135175 |
-| `docs/INDEX.md` | 1824 | 464629 |
+| `docs/INDEX.md` | 1824 | 463881 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153339 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1567 | 165051 |
 | `docs/knowledge-base/infrastructure/miscellaneous.md` | 1322 | 74222 |
