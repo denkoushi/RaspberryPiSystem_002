@@ -3684,7 +3684,19 @@ Status: implemented in PR299.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR300 And Later: Thin Indexes And Split Large Documents
+### PR300: Thin Inspection Cell Color Index Block
+
+Status: implemented in PR300.
+
+- Thin only the 2026-02-13 machine inspection signage result-cell background
+  color, deploy, and onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the result-cell style function, status
+  color mapping, CI run ID, deploy run ID, and onsite validation detail with a
+  short link to KB-256.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR301 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
