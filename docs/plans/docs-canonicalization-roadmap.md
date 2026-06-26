@@ -2835,7 +2835,19 @@ Status: implemented in PR229.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR230 And Later: Thin Indexes And Split Large Documents
+### PR230: Thin Processing Type Due Date Index Block
+
+Status: implemented in PR230.
+
+- Thin only the 2026-03-13 processing-type due-date latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace right-pane button, precedence/fallback,
+  left-pane summary/triage, deployment, and real-device UI verification detail
+  with short links to KB-297 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR231 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
