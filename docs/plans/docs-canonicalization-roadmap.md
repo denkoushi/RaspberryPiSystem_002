@@ -3534,7 +3534,19 @@ Status: implemented in PR287.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR288 And Later: Thin Indexes And Split Large Documents
+### PR288: Thin Uninspected Machines Signage Layout Index Block
+
+Status: implemented in PR288.
+
+- Thin only the 2026-02-25 uninspected-machines signage layout adjustment,
+  deployment, and onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the title cleanup, machine-name width,
+  KPI font-size, design-preview, CI, deployment, and onsite validation detail
+  with a short link to KB-275.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR289 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
