@@ -2393,7 +2393,19 @@ Status: implemented in PR192.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR193 And Later: Thin Indexes And Split Large Documents
+### PR193: Thin Manual Order Pane Polish Index Block
+
+Status: implemented in PR193.
+
+- Thin only the 2026-03-21 manual-order pane polish latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace API/Web behavior, branch, staged
+  deployment, Phase12, and merged PR detail with short links to KB-297 and
+  deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR194 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
