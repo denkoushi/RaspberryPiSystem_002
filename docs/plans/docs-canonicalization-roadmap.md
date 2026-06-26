@@ -2501,7 +2501,19 @@ Status: implemented in PR201.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR202 And Later: Thin Indexes And Split Large Documents
+### PR202: Thin Manual Order Device-Scope V2 Index Block
+
+Status: implemented in PR202.
+
+- Thin only the 2026-03-19 manual-order device-scope v2 latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace siteKey/deviceScopeKey behavior,
+  Mac proxy policy, overview shape, rollback flags, and Phase12 detail with
+  short links to KB-297, ADR-20260319, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR203 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
