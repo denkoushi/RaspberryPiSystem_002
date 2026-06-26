@@ -1099,7 +1099,7 @@
 
 - **生産スケジュール資源CD・加工順序・検索同期 正本**: [KB-208 frontend](./knowledge-base/frontend.md#kb-208-生産スケジュールui改良資源cdfilter加工順序割当検索状態同期and検索) · [KB-208 API](./knowledge-base/api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索) · [csv-import-export](./guides/csv-import-export.md)。
 
-- **✅ 生産スケジュール行ごとの備考欄追加機能完了**: 生産スケジュールの各行に現場リーダーが備考を記入できる機能を実装。備考はlocation単位で管理し、同一locationの端末間で共有される。100文字以内・改行不可の制限を実装。インライン編集機能を実装し、Enterキーで保存、Escapeキーでキャンセルが可能。新規テーブル`ProductionScheduleRowNote`を追加。APIエンドポイント追加（`PUT /kiosk/production-schedule/:rowId/note`）。CI成功、デプロイ成功、実機検証完了（Pi5/Pi4/Pi3）。ナレッジベースにKB-212を追加。詳細は [knowledge-base/frontend.md#kb-212](./knowledge-base/frontend.md#kb-212-生産スケジュール行ごとの備考欄追加機能) / [knowledge-base/api.md#kb-212](./knowledge-base/api.md#kb-212-生産スケジュール行ごとの備考欄追加機能) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+- **生産スケジュール行別備考 正本**: [KB-212 frontend](./knowledge-base/frontend.md#kb-212-生産スケジュール行ごとの備考欄追加機能) · [KB-212 API](./knowledge-base/api.md#kb-212-生産スケジュール行ごとの備考欄追加機能) · [csv-import-export](./guides/csv-import-export.md)。
 
 - **✅ CSVインポートスケジュール実行ボタンの競合防止とFSEIBANバリデーション修正完了**: CSVインポートスケジュールページで、1つのスケジュールの「実行」ボタンを押すと他のスケジュールのボタンも「実行中...」と表示される問題を解決。`useRef`（`runningScheduleIdRef`）を追加し、実行中のスケジュールIDを即座に反映される参照で追跡することで競合を防止。既に実行中のスケジュールを再度実行しようとした場合、500エラーではなく409エラー（Conflict）を返すように修正。FSEIBANバリデーションを修正し、割当がない場合の`********`（8個のアスタリスク）を明示的に許可。実機検証でGmail経由のCSV取り込みが正常に動作し、`********`も正常に取得できることを確認。CI成功、デプロイ成功。ナレッジベースにKB-201（更新）、KB-204を追加。詳細は [knowledge-base/api.md#kb-201](./knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) / [knowledge-base/frontend.md#kb-204](./knowledge-base/frontend.md#kb-204-csvインポートスケジュール実行ボタンの競合防止と409エラーハンドリング) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
 

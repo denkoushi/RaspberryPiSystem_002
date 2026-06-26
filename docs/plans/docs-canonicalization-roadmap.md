@@ -4290,7 +4290,21 @@ Status: implemented in PR344.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR345 And Later: Thin Indexes And Split Large Documents
+### PR345: Thin Production Schedule Row Note Index Block
+
+Status: implemented in PR345.
+
+- Thin only the 2026-01-27 production schedule row-note latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the per-row note feature, location-scoped
+  storage, 100-character/no-newline validation, inline edit shortcuts,
+  `ProductionScheduleRowNote`, note endpoint, CI/deploy/onsite validation, and
+  KB-212 addition with short links to KB-212 API/frontend entries and the CSV
+  guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR346 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
