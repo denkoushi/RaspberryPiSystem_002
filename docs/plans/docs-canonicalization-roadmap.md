@@ -4304,7 +4304,20 @@ Status: implemented in PR345.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR346 And Later: Thin Indexes And Split Large Documents
+### PR346: Thin CSV Import Conflict Validation Index Block
+
+Status: implemented in PR346.
+
+- Thin only the 2026-01-27 CSV import schedule run-conflict and FSEIBAN
+  validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the run-button cross-schedule pending state,
+  `useRef` tracking, 409 conflict response, FSEIBAN no-assignment allowance,
+  Gmail import validation, CI/deploy note, and KB-201/KB-204 additions with
+  short links to KB-201, KB-204, and the CSV guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR347 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

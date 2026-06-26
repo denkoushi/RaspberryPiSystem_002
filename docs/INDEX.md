@@ -1101,7 +1101,7 @@
 
 - **生産スケジュール行別備考 正本**: [KB-212 frontend](./knowledge-base/frontend.md#kb-212-生産スケジュール行ごとの備考欄追加機能) · [KB-212 API](./knowledge-base/api.md#kb-212-生産スケジュール行ごとの備考欄追加機能) · [csv-import-export](./guides/csv-import-export.md)。
 
-- **✅ CSVインポートスケジュール実行ボタンの競合防止とFSEIBANバリデーション修正完了**: CSVインポートスケジュールページで、1つのスケジュールの「実行」ボタンを押すと他のスケジュールのボタンも「実行中...」と表示される問題を解決。`useRef`（`runningScheduleIdRef`）を追加し、実行中のスケジュールIDを即座に反映される参照で追跡することで競合を防止。既に実行中のスケジュールを再度実行しようとした場合、500エラーではなく409エラー（Conflict）を返すように修正。FSEIBANバリデーションを修正し、割当がない場合の`********`（8個のアスタリスク）を明示的に許可。実機検証でGmail経由のCSV取り込みが正常に動作し、`********`も正常に取得できることを確認。CI成功、デプロイ成功。ナレッジベースにKB-201（更新）、KB-204を追加。詳細は [knowledge-base/api.md#kb-201](./knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) / [knowledge-base/frontend.md#kb-204](./knowledge-base/frontend.md#kb-204-csvインポートスケジュール実行ボタンの競合防止と409エラーハンドリング) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+- **CSVインポート実行競合・FSEIBAN検証 正本**: [KB-201](./knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加) · [KB-204](./knowledge-base/frontend.md#kb-204-csvインポートスケジュール実行ボタンの競合防止と409エラーハンドリング) · [csv-import-export](./guides/csv-import-export.md)。
 
 ### 🆕 最新アップデート（2026-01-26）
 
