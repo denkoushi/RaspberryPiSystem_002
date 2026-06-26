@@ -1944,7 +1944,19 @@ Status: implemented in PR155.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR156 And Later: Thin Indexes And Split Large Documents
+### PR156: Thin Photo Gallery Seed Index Block
+
+Status: implemented in PR156.
+
+- Thin only the 2026-04-01 photo loan gallery seed latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace branch, rollout, Phase12, manual
+  production confirmation, and `EXEC_PLAN.md` detail with short links to KB-319,
+  the photo-loan module doc, and the verification checklist.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR157 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
