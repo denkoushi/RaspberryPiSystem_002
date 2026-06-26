@@ -3410,7 +3410,19 @@ Status: implemented in PR277.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR278 And Later: Thin Indexes And Split Large Documents
+### PR278: Thin IME Diagnosis Index Block
+
+Status: implemented in PR278.
+
+- Thin only the 2026-03-01 kiosk remark-field IME diagnosis foundation
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the diagnostic script, Ansible diagnosis
+  task, deploy-time logging, and pending analysis detail with short links to the
+  kiosk-ime ExecPlan, KB-287, and kiosk-ime-diagnosis.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR279 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
