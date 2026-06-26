@@ -1035,7 +1035,7 @@
 
 ### 🆕 最新アップデート（2026-02-03）
 
-- **✅ Fastify v5移行完了・CIゲート復帰**: Fastify v4の監査high脆弱性を解消するため、Fastify v5への移行を完了。**実施内容**: Fastify本体・`@fastify/*`・`fastify-plugin`をv5互換へ更新、既知の破壊点（`reply.getResponseTime()` → `reply.elapsedTime`、error handlerの`unknown`対応）を最小差分で解消。段階デプロイ（Pi5→Pi4→Pi3）を実施し、全デバイスで正常動作を確認。CIの`pnpm audit --audit-level=high`をブロッキングに復帰し、GitHub Actions CIで全ステップ成功を確認（Run ID: 21614498898）。**デプロイ安定化の追加知見**: Ansible preflightの`ping`は`ansible_become=false`を強制、`systemctl`参照系チェックは`become: false`を明示することでPi3系の制限sudo環境で詰まりにくい。詳細は [knowledge-base/ci-cd.md#kb-227](./knowledge-base/ci-cd.md#kb-227-pnpm-audit-のhighでciが失敗するfastify脆弱性--fastify-v5移行の影響範囲調査) / [knowledge-base/infrastructure/signage.md#kb-087](./knowledge-base/infrastructure/signage.md#kb-087-pi3-status-agenttimer-再起動時のsudoタイムアウト) / [knowledge-base/infrastructure/ansible-deployment.md#kb-216](./knowledge-base/infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) を参照。
+- **Fastify v5移行・CIゲート復帰 正本**: [KB-227](./knowledge-base/ci-cd.md#kb-227-pnpm-audit-のhighでciが失敗するfastify脆弱性--fastify-v5移行の影響範囲調査) · [KB-087](./knowledge-base/infrastructure/signage.md#kb-087-pi3-status-agenttimer-再起動時のsudoタイムアウト) · [KB-216](./knowledge-base/infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している)。
 
 ### 🆕 最新アップデート（2026-02-02）
 
