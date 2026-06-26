@@ -2321,7 +2321,19 @@ Status: implemented in PR186.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR187 And Later: Thin Indexes And Split Large Documents
+### PR187: Thin SiteKey Sync Index Block
+
+Status: implemented in PR187.
+
+- Thin only the 2026-03-23 manual-order and global-rank siteKey canonical
+  synchronization latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace API boundary, fallback, branch, run IDs,
+  Phase12, onsite API checks, and `EXEC_PLAN.md` detail with short links to
+  ADR-20260323, KB-297, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR188 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
