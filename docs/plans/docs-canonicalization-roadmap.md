@@ -4208,7 +4208,20 @@ Status: implemented in PR338.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR339 And Later: Thin Indexes And Split Large Documents
+### PR339: Thin Admin Signage Preview Index Block
+
+Status: implemented in PR339.
+
+- Thin only the 2026-01-23 admin signage preview latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the admin preview tab, automatic/manual
+  refresh, fetch/JWT 401 diagnosis, `axios(api)` switch, Blob display,
+  `URL.revokeObjectURL` cleanup, CI/deploy/onsite validation, and KB-192
+  addition with short links to KB-192 and the signage module document.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR340 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
