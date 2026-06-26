@@ -3203,7 +3203,19 @@ Status: implemented in PR260.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR261 And Later: Thin Indexes And Split Large Documents
+### PR261: Thin Triage B1 Index Block
+
+Status: implemented in PR261.
+
+- Thin only the 2026-03-07 due-management triage B1 latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace triage UI, selection persistence,
+  triage APIs, reason fields, and validation detail with short links to KB-297
+  and the production-schedule-kiosk ExecPlan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR262 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
