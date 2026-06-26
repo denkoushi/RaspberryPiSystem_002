@@ -3156,7 +3156,18 @@ Status: implemented in PR256.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR257 And Later: Thin Indexes And Split Large Documents
+### PR257: Thin B4 Auto Rank Index Block
+
+Status: implemented in PR257.
+
+- Thin only the 2026-03-07 due-management B4 auto-ranking and explanation
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace proposal/explanation API, safety guard,
+  UI, deploy, and verification detail with a short link to KB-297.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR258 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
