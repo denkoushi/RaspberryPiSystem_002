@@ -933,7 +933,7 @@
 
 - **生産スケジュールデータ削除ルール 正本**: [KB-271](./knowledge-base/api.md#kb-271-生産スケジュールデータ削除ルール重複loser即時削除1年超過は保存しない) · [csv-import-export](./guides/csv-import-export.md)。
 
-- **✅ 生産スケジュールprogress別テーブル化・CI成功・デプロイ完了・実機検証完了**: CSV取り込み時の`rowData`上書きで完了状態が失われる問題を解決。`ProductionScheduleProgress`テーブルを新設し、完了状態を`rowData`から分離。**実装内容**: `csvDashboardRowId`を主キーとする1対1の関係、`isCompleted`（Boolean）で完了状態を管理、`onDelete: Cascade`で自動削除、`(csvDashboardId, isCompleted)`の複合インデックス追加。既存データの移行（マイグレーションSQLで`rowData.progress='完了'`を新テーブルへ移行）。APIサービスの更新（完了トグル・一覧取得・進捗集計を新テーブル参照に変更、レスポンスで`rowData.progress`を合成して互換維持）。**CI実行**: GitHub Actions Run ID `22178638075`成功（全ジョブ成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260219-200946-13664`, `state: success`, `exitCode: 0`）。**実機検証結果**: マイグレーション状態（33 migrations found）、テーブル存在確認（223件の完了状態レコード）、完了トグル動作（DB `isCompleted`とAPI返却`rowData.progress`が正しく連動）、一覧取得・履歴進捗が正常応答することを確認。詳細は [knowledge-base/api.md#kb-269](./knowledge-base/api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避) / [decisions/ADR-20260219-production-schedule-progress-separation.md](./decisions/ADR-20260219-production-schedule-progress-separation.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+- **生産スケジュールprogress別テーブル化 正本**: [KB-269](./knowledge-base/api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避) · [ADR-20260219](./decisions/ADR-20260219-production-schedule-progress-separation.md)。
 
 ### 🆕 最新アップデート（2026-02-18）
 

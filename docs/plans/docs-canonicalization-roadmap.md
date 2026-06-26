@@ -3596,7 +3596,20 @@ Status: implemented in PR292.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR293 And Later: Thin Indexes And Split Large Documents
+### PR293: Thin Production Schedule Progress Index Block
+
+Status: implemented in PR293.
+
+- Thin only the 2026-02-19 production-schedule progress table separation,
+  deployment, and onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the rowData overwrite risk,
+  `ProductionScheduleProgress` schema, migration, API compatibility, CI,
+  deploy run, and onsite validation detail with short links to KB-269 and
+  ADR-20260219.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR294 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
