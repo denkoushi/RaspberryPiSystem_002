@@ -3324,7 +3324,19 @@ Status: implemented in PR270.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR271 And Later: Thin Indexes And Split Large Documents
+### PR271: Thin RoboDrill NFC Index Block
+
+Status: implemented in PR271.
+
+- Thin only the 2026-03-05 RoboDrill01 NFC permanent-fix deployment and onsite
+  validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the pcscd, Docker, env distribution,
+  nfc-agent startup, and onsite tag-scan validation detail with short links to
+  KB-291 and nfc-reader-issues.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR272 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

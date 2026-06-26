@@ -876,7 +876,7 @@
 
 - **Pi4電源・連打防止実機検証 正本**: [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) · [kiosk-power-operation-recovery](./runbooks/kiosk-power-operation-recovery.md)。
 
-- **✅ RoboDrill01 NFC恒久対策・デプロイ完了・実機検証OK**: raspi4-robodrill01 で NFC スキャンが反応しない問題を恒久対策で解決。**根因**: pcscd 未導入/非稼働、Docker 未導入（環境依存）、.env 未配布、nfc-agent 起動タスク不在。**実装**: docker-compose.client.yml を .env 参照に変更、client role に nfc-agent 設定配布・起動保証（pcscd 導入含む）を追加。**実機検証**: 吊具・計測機器の NFC タグで画面遷移を確認。詳細は [KB-291](./knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) / [nfc-reader-issues.md](./troubleshooting/nfc-reader-issues.md) を参照。
+- **RoboDrill01 NFC恒久対策 正本**: [KB-291](./knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) · [nfc-reader-issues](./troubleshooting/nfc-reader-issues.md)。
 
 - **✅ Dropbox容量不足恒久対策・デプロイ完了・実機検証OK**: Dropboxバックアップが容量不足で失敗する問題を恒久対策で解決。**実装内容**: Upload Session（チャンクアップロード）、`insufficient_space`検知時の最古優先削除＋再試行、DatabaseBackupTargetの一時ファイル経路改善、手動・スケジュールの救済ポリシー統一。**デプロイ**: Pi5のみ（`--limit server`）、Run ID `20260305-085419-3769`、`state: success`。**実機検証**: 手動CSVバックアップ（employees）成功、Dropboxアップロード成功、履歴に`dropbox`・`COMPLETED`で記録。詳細は [KB-290](./knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) / [backup-verification.md](./guides/backup-verification.md) を参照。
 
