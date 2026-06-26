@@ -1017,7 +1017,7 @@
 
 - **Trivy cronスキップ・パッケージインストールスキップ最適化 正本**: [KB-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策)。
 
-- **✅ apt cache最適化（cache_valid_time適用）**: 同一デプロイ内で`apt update`が複数回実行される無駄を削減する最適化を実装。**実装内容**: `group_vars/all.yml`に`apt_cache_valid_time_seconds: 3600`を追加し、`ansible.builtin.apt`タスクに`cache_valid_time`を追加。`update_cache: true`は維持し、判定不能時は安全側で更新。対象はkiosk/serverのセキュリティ系パッケージ（ClamAV/rkhunter/ufw/fail2ban）。**効果**: カナリアでapt関連タスクが若干短縮（例: `server : Install security packages` 4.51s → 3.46s）。同一デプロイ内で最初の`apt update`以降はキャッシュが有効（1時間以内）。**学んだこと**: `cache_valid_time`により重複`apt update`を抑制できるが、インストール自体の時間は残るため、次の短縮は「インストール頻度」「対象パッケージの見直し」が焦点。詳細は [knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照。
+- **apt cache最適化（cache_valid_time適用）正本**: [KB-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策)。
 
 - **✅ Docker build最適化（変更ファイルに基づくbuild判定）**: カナリア計測で最大ボトルネック（Docker build 181秒）を特定し、変更ファイルの内容に基づいてbuildの必要性を判定する最適化を実装。**実装内容**: `git diff --name-only`で変更ファイルを取得し、Docker buildが必要なパターン（`apps/api/**`, `apps/web/**`, `infrastructure/docker/**`等）にマッチするか判定。common roleと`update-all-clients.sh`の両方で実装（二重安全）。**効果**: カナリアで **6分34秒 → 3分11秒（約3分23秒短縮）**を確認。判定できない場合は安全側でbuild実行。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-235](./knowledge-base/infrastructure/ansible-deployment.md#kb-235-docker-build最適化変更ファイルに基づくbuild判定) / [knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照。
 
