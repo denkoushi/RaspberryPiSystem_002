@@ -1059,7 +1059,7 @@
 
 - **デプロイ整備・全デバイス検証 正本**: [KB-200](./knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) · [deployment](./guides/deployment.md)。
 
-- **✅ キオスク持出タブの持出中アイテムが端末間で共有されない問題の修正完了**: キオスクの持出タブ（NFCタブ・写真タブ）で表示する「持出中」一覧が端末ごとに分かれており、Pi4で持ち出したアイテムがMacブラウザで開いたキオスクに表示されない問題を修正。原因は`KioskPhotoBorrowPage.tsx`が`useActiveLoans(resolvedClientId, ...)`でローカル端末の`clientId`を渡しており、APIがその端末の貸出のみ返していたこと。`useActiveLoans(undefined, resolvedClientKey)`に変更し、持出タブ・返却一覧は全端末の持出中を表示するように統一。CI成功、デプロイ（Pi5・Pi4対象）、実機検証完了。ナレッジベースにKB-211を追加。詳細は [knowledge-base/frontend.md#kb-211](./knowledge-base/frontend.md#kb-211-キオスク持出タブの持出中アイテムが端末間で共有されない問題) / [guides/api-key-policy.md](./guides/api-key-policy.md) / [modules/tools/api.md](./modules/tools/api.md) を参照。
+- **キオスク持出タブ 持出中一覧共有 正本**: [KB-211](./knowledge-base/frontend.md#kb-211-キオスク持出タブの持出中アイテムが端末間で共有されない問題) · [tools API](./modules/tools/api.md)。
 
 ### 🆕 最新アップデート（2026-01-28）
 
