@@ -3897,7 +3897,19 @@ Status: implemented in PR315.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR316 And Later: Thin Indexes And Split Large Documents
+### PR316: Thin Trivy Package Skip Index Block
+
+Status: implemented in PR316.
+
+- Thin only the 2026-02-07 Trivy cron skip and ClamAV/rkhunter package
+  install skip latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the cron `register`/change-gated
+  scheduling, `dpkg-query` package presence check, skipping confirmation, and
+  2m54s canary timing comparison with a short link to KB-234.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR317 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
