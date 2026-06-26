@@ -1860,7 +1860,19 @@ Status: implemented in PR148.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR149 And Later: Thin Indexes And Split Large Documents
+### PR149: Thin Photo Loan VLM Active Assist Index Block
+
+Status: implemented in PR149.
+
+- Thin only the 2026-04-02 photo-loan VLM active-assist gallery-row gate
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, default-off compatibility,
+  Pi5-only rollout, Phase12, and `EXEC_PLAN.md` detail with short links to
+  KB-319, ADR-20260404, the verification checklist, and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR150 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
