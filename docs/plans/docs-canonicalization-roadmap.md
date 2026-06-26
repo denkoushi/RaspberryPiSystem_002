@@ -2513,7 +2513,19 @@ Status: implemented in PR202.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR203 And Later: Thin Indexes And Split Large Documents
+### PR203: Thin Production Order Mode Index Block
+
+Status: implemented in PR203.
+
+- Thin only the 2026-03-19 production order mode extension latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace automatic/manual mode, targetLocation,
+  proxy update policy, audit/learning event, and overview panel detail with
+  short links to KB-297 and ADR-20260319.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR204 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
