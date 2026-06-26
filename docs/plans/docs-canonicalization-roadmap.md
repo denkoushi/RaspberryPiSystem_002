@@ -2273,7 +2273,19 @@ Status: implemented in PR182.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR183 And Later: Thin Indexes And Split Large Documents
+### PR183: Thin Manual Order FKOJUN Index Block
+
+Status: implemented in PR183.
+
+- Thin only the 2026-03-23 manual-order overview FKOJUN-only process label
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace API/Web behavior, branch, staged
+  deployment, Phase12, and `EXEC_PLAN.md` detail with short links to KB-297
+  and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR184 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
