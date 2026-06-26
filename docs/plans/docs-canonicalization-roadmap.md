@@ -3775,7 +3775,21 @@ Status: implemented in PR306.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR307 And Later: Thin Indexes And Split Large Documents
+### PR307: Thin Resource CD Expression Index Index Block
+
+Status: implemented in PR307.
+
+- Thin only the 2026-02-11 production schedule resource-CD button delay,
+  expression-index fix, and onsite validation latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the slow resources query, correlated
+  subquery/Seq Scan cause, expression-index decision, performance improvement,
+  migration note, and onsite validation detail with short links to KB-248 and
+  ADR-20260211.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR308 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
