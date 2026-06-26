@@ -425,6 +425,7 @@ export function KioskSelfInspectionSessionPage() {
         : { enabled: false, reason: 'read_only' as const },
     [isSessionIdentityReady, sessionActionContext]
   );
+  const completeActionHint = selfInspectionActionReasonMessage(completeActionState.reason);
 
   const resumeGuideActionState = useMemo(
     () =>
@@ -913,12 +914,18 @@ export function KioskSelfInspectionSessionPage() {
                 size="actionCompact"
                 disabled={!completeActionState.enabled}
                 highlighted={completeActionState.enabled}
+                title={completeActionHint ?? undefined}
                 onPointerDownCapture={consumeNextBlurGuideAdvance}
                 onClick={() => void completeSession()}
               >
                 自主検査を完了
               </SelfInspectionKioskButton>
             </div>
+            {!actionError && completeActionState.reason === 'record_approval_required' && completeActionHint ? (
+              <p className="rounded border border-sky-400/30 bg-sky-500/15 px-3 py-2 text-sm text-sky-100">
+                {completeActionHint}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-white/15 bg-slate-800/70 p-2">

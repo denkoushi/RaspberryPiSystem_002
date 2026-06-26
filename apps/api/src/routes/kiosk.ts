@@ -9,6 +9,9 @@ import { registerKioskSignagePreviewRoutes } from './kiosk/signage-preview.js';
 import { registerPurchaseOrderLookupRoute } from './kiosk/purchase-order-lookup.js';
 import { registerKioskPalletVisualizationRoutes } from './kiosk/pallet-visualization.js';
 import {
+  registerKioskPartMeasurementSelfInspectionRecordApprovalAuthRoute
+} from './kiosk/part-measurement-self-inspection-record-approval-auth.js';
+import {
   checkPowerRateLimit,
   checkRateLimit,
   getWebRTCCallExcludeClientIds,
@@ -77,5 +80,12 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
 
   await registerKioskPalletVisualizationRoutes(app, {
     requireClientDevice
+  });
+
+  await registerKioskPartMeasurementSelfInspectionRecordApprovalAuthRoute(app, {
+    requireClientDevice,
+    resolveLocationScopeContext,
+    resolveTargetLocation,
+    leaderboardShellSnapshotStore
   });
 }

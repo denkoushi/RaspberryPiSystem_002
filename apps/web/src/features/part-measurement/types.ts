@@ -96,6 +96,24 @@ export type SelfInspectionStatus = 'not_started' | 'in_progress' | 'review_pendi
 
 export type SelfInspectionMeasurementReviewStatus = 'NOT_REQUIRED' | 'PENDING' | 'APPROVED';
 
+export type SelfInspectionRecordApprovalState =
+  | 'input_incomplete'
+  | 'registration_incomplete'
+  | 'approvable'
+  | 'approved';
+
+export type SelfInspectionRecordApprovalDto = {
+  id: string;
+  approvedAt: string;
+  approverEmployeeId: string | null;
+  approverEmployeeCodeSnapshot: string;
+  approverEmployeeNameSnapshot: string;
+  approverEmployeeNfcTagUidSnapshot: string;
+  comment: string | null;
+  clientDeviceId: string | null;
+  clientDeviceNameSnapshot: string | null;
+};
+
 export type SelfInspectionPaperReportStatus =
   | 'ISSUED'
   | 'OCR_REVIEW'
@@ -196,6 +214,7 @@ export type SelfInspectionSessionSummaryDto = {
   status: SelfInspectionStatus;
   startedAt: string | null;
   completedAt: string | null;
+  recordApprovalRequiredAt: string | null;
   updatedAt: string;
 };
 
@@ -250,6 +269,21 @@ export type SelfInspectionOutOfToleranceReviewsListDto = {
   sessions: SelfInspectionOutOfToleranceReviewSessionDto[];
 };
 
+export type SelfInspectionRecordApprovalSessionListItemDto = SelfInspectionSessionSummaryDto & {
+  recordApprovalState: SelfInspectionRecordApprovalState;
+  recordApproval: SelfInspectionRecordApprovalDto | null;
+  completedRequiredEntryCount: number;
+  missingRequiredEntryCount: number;
+  incompleteValueEntryCount: number;
+  incompleteRegistrationEntryCount: number;
+};
+
+export type SelfInspectionRecordApprovalsListDto = {
+  sessions: SelfInspectionRecordApprovalSessionListItemDto[];
+  listLimit: number;
+  truncated: boolean;
+};
+
 export type SelfInspectionLotEntryDto = {
   id: string;
   entryIndex: number;
@@ -266,7 +300,40 @@ export type SelfInspectionLotEntryDto = {
   values: SelfInspectionMeasurementValueDto[];
 };
 
+export type SelfInspectionRecordApprovalEntryValueDto = {
+  id: string | null;
+  templateItemId: string;
+  displayMarker: string | null;
+  datumSurface: string;
+  measurementPoint: string;
+  measurementLabel: string;
+  unit: string | null;
+  value: string | null;
+  lowerLimit: string | null;
+  upperLimit: string | null;
+  isWithinTolerance: boolean | null;
+  reviewStatus: SelfInspectionMeasurementReviewStatus | null;
+  outOfToleranceAcknowledgedAt: string | null;
+  approvedAt: string | null;
+  updatedAt: string | null;
+};
+
+export type SelfInspectionRecordApprovalRequiredEntryDto = {
+  entryIndex: number;
+  entrySlotKind: 'single' | 'first' | 'last' | 'fixed';
+  entrySlotLabel: string;
+  state: 'input_incomplete' | 'registration_incomplete' | 'ready';
+  entry: Omit<SelfInspectionLotEntryDto, 'values' | 'entrySlotKind' | 'entrySlotLabel'> | null;
+  values: SelfInspectionRecordApprovalEntryValueDto[];
+};
+
+export type SelfInspectionRecordApprovalSessionDetailDto =
+  SelfInspectionRecordApprovalSessionListItemDto & {
+    requiredEntries: SelfInspectionRecordApprovalRequiredEntryDto[];
+  };
+
 export type SelfInspectionSessionDetailDto = SelfInspectionSessionSummaryDto & {
+  recordApproval: SelfInspectionRecordApprovalDto | null;
   template: PartMeasurementTemplateDto;
   /** 測定値は含まない（大量件数対策）。値は focusedEntry を参照 */
   entries: SelfInspectionLotEntryDto[];

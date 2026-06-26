@@ -236,11 +236,16 @@ import {
   resolveOrCreateSelfInspectionSession,
   listSelfInspectionSessions,
   listSelfInspectionOutOfToleranceReviews,
+  listSelfInspectionRecordApprovals,
+  getSelfInspectionRecordApprovalSession,
   getSelfInspectionSession,
   createSelfInspectionEntry,
   updateSelfInspectionEntry,
   completeSelfInspectionSession,
   approveSelfInspectionOutOfToleranceReview,
+  approveSelfInspectionRecordApproval,
+  resolveSelfInspectionRecordApprovalApprover,
+  verifyKioskSelfInspectionRecordApprovalAccessPassword,
   resetSelfInspectionSession,
   getInstrumentTags,
   createInstrumentTag,
@@ -403,6 +408,30 @@ export function useSelfInspectionOutOfToleranceReviews(options?: { enabled?: boo
   });
 }
 
+export function useSelfInspectionRecordApprovals(
+  params?: Parameters<typeof listSelfInspectionRecordApprovals>[0],
+  options?: { enabled?: boolean; refetchIntervalMs?: number | false }
+) {
+  return useQuery({
+    queryKey: ['self-inspection-record-approvals', params],
+    queryFn: () => listSelfInspectionRecordApprovals(params),
+    refetchInterval: options?.refetchIntervalMs ?? 30000,
+    enabled: options?.enabled ?? true
+  });
+}
+
+export function useSelfInspectionRecordApprovalSession(
+  sessionId: string | null | undefined,
+  options?: { enabled?: boolean; refetchIntervalMs?: number | false }
+) {
+  return useQuery({
+    queryKey: ['self-inspection-record-approval-session', sessionId],
+    queryFn: () => getSelfInspectionRecordApprovalSession(sessionId!),
+    refetchInterval: options?.refetchIntervalMs ?? false,
+    enabled: Boolean(sessionId) && (options?.enabled ?? true)
+  });
+}
+
 function selfInspectionSessionQueryKey(sessionId: string, entryIndex?: number) {
   return ['self-inspection-session', sessionId, entryIndex ?? null] as const;
 }
@@ -485,6 +514,42 @@ export function useApproveSelfInspectionOutOfToleranceReview() {
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
     }
+  });
+}
+
+export function useResolveSelfInspectionRecordApprovalApprover() {
+  return useMutation({
+    mutationFn: ({ uid }: { uid: string }) => resolveSelfInspectionRecordApprovalApprover(uid)
+  });
+}
+
+export function useApproveSelfInspectionRecordApproval() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      approverEmployeeTagUid,
+      comment
+    }: {
+      sessionId: string;
+      approverEmployeeTagUid: string;
+      comment?: string | null;
+    }) => approveSelfInspectionRecordApproval(sessionId, { approverEmployeeTagUid, comment }),
+    onSuccess: (session) => {
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approvals'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session', session.id] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
+  });
+}
+
+export function useVerifyKioskSelfInspectionRecordApprovalAccessPassword() {
+  return useMutation({
+    mutationFn: (payload: { password: string }) =>
+      verifyKioskSelfInspectionRecordApprovalAccessPassword(payload)
   });
 }
 

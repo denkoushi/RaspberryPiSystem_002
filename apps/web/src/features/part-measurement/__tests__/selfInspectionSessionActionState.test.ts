@@ -207,6 +207,61 @@ describe('selfInspectionSessionActionState', () => {
     expect(state.enabled).toBe(true);
   });
 
+  it('complete is disabled for new sessions waiting for record approval', () => {
+    const session = makeContext().session;
+    const now = '2026-06-04T00:00:00.000Z';
+    session.recordApprovalRequiredAt = now;
+    session.recordApproval = null;
+    session.entries = [
+      {
+        id: 'e0',
+        entryIndex: 0,
+        entrySlotKind: 'fixed',
+        entrySlotLabel: '1',
+        createdByEmployeeId: 'emp-1',
+        createdByEmployeeNameSnapshot: 'Tester',
+        measuringInstrumentId: 'inst-1',
+        measuringInstrumentManagementNumberSnapshot: 'MI-001',
+        measuringInstrumentNameSnapshot: 'Caliper',
+        measuringInstrumentTagUidSnapshot: 'inst-tag',
+        createdAt: now,
+        updatedAt: now,
+        values: []
+      },
+      {
+        id: 'e1',
+        entryIndex: 1,
+        entrySlotKind: 'fixed',
+        entrySlotLabel: '2',
+        createdByEmployeeId: 'emp-1',
+        createdByEmployeeNameSnapshot: 'Tester',
+        measuringInstrumentId: 'inst-1',
+        measuringInstrumentManagementNumberSnapshot: 'MI-001',
+        measuringInstrumentNameSnapshot: 'Caliper',
+        measuringInstrumentTagUidSnapshot: 'inst-tag',
+        createdAt: now,
+        updatedAt: now,
+        values: []
+      }
+    ];
+    const state = resolveSelfInspectionCompleteActionState(
+      makeContext({
+        session,
+        draftValuesByEntryIndex: {
+          0: { p1: '10', p2: '10' },
+          1: { p1: '10', p2: '10' }
+        },
+        savedDraftByEntryIndex: {
+          0: { p1: '10', p2: '10' },
+          1: { p1: '10', p2: '10' }
+        }
+      })
+    );
+    expect(state.enabled).toBe(false);
+    expect(state.reason).toBe('record_approval_required');
+    expect(selfInspectionActionReasonMessage(state.reason)).toContain('検査記録確認画面');
+  });
+
   it('complete is disabled when saved entries lack registration', () => {
     const session = makeContext().session;
     const now = '2026-06-04T00:00:00.000Z';

@@ -16,6 +16,7 @@ process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
 async function cleanPartMeasurementTables() {
+  await prisma.selfInspectionRecordApproval.deleteMany({});
   await prisma.selfInspectionMeasurementValue.deleteMany({});
   await prisma.selfInspectionLotEntry.deleteMany({});
   await prisma.selfInspectionSessionResetAuditLog.deleteMany({});
@@ -2180,6 +2181,25 @@ describe('part-measurement templates API', () => {
     expect(resolveRes.json().session.selfInspectionMode).toBe('fixed_count');
     expect(resolveRes.json().session.expectedEntryCount).toBe(2);
     const sessionId = resolveRes.json().session.id as string;
+    expect(resolveRes.json().session.recordApprovalRequiredAt).toBeTruthy();
+
+    const kioskClient = await createTestClientDevice();
+    const recordApprovalWithoutClientKeyRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals'
+    });
+    expect(recordApprovalWithoutClientKeyRes.statusCode).toBe(401);
+
+    const recordApprovalInputIncompleteRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=input_incomplete',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(recordApprovalInputIncompleteRes.statusCode).toBe(200);
+    const inputIncompleteSession = (
+      recordApprovalInputIncompleteRes.json().sessions as Array<Record<string, unknown>>
+    ).find((row) => row.id === sessionId);
+    expect(inputIncompleteSession?.recordApprovalState).toBe('input_incomplete');
 
     const auditEmployee = await createTestEmployee({
       displayName: 'Self Inspection Operator',
@@ -2399,7 +2419,6 @@ describe('part-measurement templates API', () => {
     expect(listRes1.statusCode).toBe(200);
     expect((listRes1.json().sessions as Array<Record<string, unknown>>).some((row) => row.id === sessionId)).toBe(true);
 
-    const kioskClient = await createTestClientDevice();
     const listInProgressGlobalRes = await app.inject({
       method: 'GET',
       url: '/api/part-measurement/self-inspection/sessions?status=in_progress',
@@ -2454,8 +2473,48 @@ describe('part-measurement templates API', () => {
       }
     });
     expect(secondEntryRes.statusCode).toBe(200);
+    expect(secondEntryRes.json().entry.createdByEmployeeId).toBe(auditEmployee.id);
+    expect(secondEntryRes.json().entry.measuringInstrumentId).toBeTruthy();
     expect(secondEntryRes.json().entry.values[0]?.reviewStatus).toBe('PENDING');
     expect(secondEntryRes.json().entry.values[0]?.outOfToleranceAcknowledgedAt).toBeTruthy();
+    const secondEntryId = secondEntryRes.json().entry.id as string;
+    const secondEntryWithoutRegistration = await prisma.selfInspectionLotEntry.update({
+      where: { id: secondEntryId },
+      data: {
+        createdByEmployeeId: null,
+        createdByEmployeeNameSnapshot: null,
+        measuringInstrumentId: null,
+        measuringInstrumentManagementNumberSnapshot: null,
+        measuringInstrumentNameSnapshot: null,
+        measuringInstrumentTagUidSnapshot: null
+      }
+    });
+
+    const recordApprovalRegistrationIncompleteRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=registration_incomplete',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(recordApprovalRegistrationIncompleteRes.statusCode).toBe(200);
+    const registrationIncompleteSession = (
+      recordApprovalRegistrationIncompleteRes.json().sessions as Array<Record<string, unknown>>
+    ).find((row) => row.id === sessionId);
+    expect(registrationIncompleteSession?.recordApprovalState).toBe('registration_incomplete');
+
+    const fillSecondRegistrationRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${secondEntryId}`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        ifUnmodifiedSince: secondEntryWithoutRegistration.updatedAt.toISOString(),
+        ...entryRegistrationTags,
+        values: [{ templateItemId, value: '10.5', outOfToleranceAcknowledged: true }]
+      }
+    });
+    expect(fillSecondRegistrationRes.statusCode).toBe(200);
+    expect(fillSecondRegistrationRes.json().entry.createdByEmployeeId).toBe(auditEmployee.id);
+    expect(fillSecondRegistrationRes.json().entry.measuringInstrumentId).toBeTruthy();
+    expect(fillSecondRegistrationRes.json().entry.values[0]?.reviewStatus).toBe('PENDING');
 
     const listReviewPendingRes = await app.inject({
       method: 'GET',
@@ -2495,7 +2554,7 @@ describe('part-measurement templates API', () => {
       payload: {}
     });
     expect(completeBeforeApprovalRes.statusCode).toBe(409);
-    expect(completeBeforeApprovalRes.json().message).toContain('未承認');
+    expect(completeBeforeApprovalRes.json().message).toContain('検査記録承認');
 
     const reviewListRes = await app.inject({
       method: 'GET',
@@ -2506,8 +2565,7 @@ describe('part-measurement templates API', () => {
     const reviewSession = (reviewListRes.json().sessions as Array<Record<string, unknown>>).find(
       (row) => row.id === sessionId
     ) as { values?: Array<Record<string, unknown>> } | undefined;
-    expect(reviewSession).toBeTruthy();
-    expect(reviewSession?.values?.[0]?.value).toBe('10.5');
+    expect(reviewSession).toBeUndefined();
 
     const viewerApproveRes = await app.inject({
       method: 'POST',
@@ -2525,11 +2583,153 @@ describe('part-measurement templates API', () => {
     });
     expect([401, 403]).toContain(clientKeyApproveRes.statusCode);
 
-    const approveRes = await app.inject({
+    const legacyApproveNewSessionRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/out-of-tolerance-review/approve`,
       headers: createAuthHeader(managerToken),
       payload: { comment: '現場リーダー確認済み' }
+    });
+    expect(legacyApproveNewSessionRes.statusCode).toBe(409);
+    expect(legacyApproveNewSessionRes.json().message).toContain('キオスク');
+
+    const missingClientKeyPasswordRes = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/part-measurement/self-inspection/record-approvals/verify-access-password',
+      payload: { password: '2520' }
+    });
+    expect(missingClientKeyPasswordRes.statusCode).toBe(401);
+
+    const passwordRes = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/part-measurement/self-inspection/record-approvals/verify-access-password',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { password: '2520' }
+    });
+    expect(passwordRes.statusCode).toBe(200);
+    expect(passwordRes.json().success).toBe(true);
+
+    const badPasswordRes = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/part-measurement/self-inspection/record-approvals/verify-access-password',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { password: '9999' }
+    });
+    expect(badPasswordRes.statusCode).toBe(200);
+    expect(badPasswordRes.json().success).toBe(false);
+
+    const recordApprovalApprovableRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=approvable',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(recordApprovalApprovableRes.statusCode).toBe(200);
+    const approvableSession = (
+      recordApprovalApprovableRes.json().sessions as Array<Record<string, unknown>>
+    ).find((row) => row.id === sessionId);
+    expect(approvableSession?.recordApprovalState).toBe('approvable');
+    expect(approvableSession?.pendingReviewCount).toBe(1);
+
+    const recordApprovalDetailRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/self-inspection/record-approvals/sessions/${sessionId}`,
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(recordApprovalDetailRes.statusCode).toBe(200);
+    expect(recordApprovalDetailRes.json().session.recordApprovalState).toBe('approvable');
+    expect(recordApprovalDetailRes.json().session.requiredEntries).toHaveLength(2);
+    expect(recordApprovalDetailRes.json().session.pendingReviewCount).toBe(1);
+
+    const unknownApproverRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/self-inspection/record-approvals/approver/resolve',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { uid: `UNKNOWN-APPROVER-${Date.now()}` }
+    });
+    expect(unknownApproverRes.statusCode).toBe(200);
+    expect(unknownApproverRes.json().result.kind).toBe('unknown');
+
+    const instrumentApproverRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/self-inspection/record-approvals/approver/resolve',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { uid: instrumentTagUid }
+    });
+    expect(instrumentApproverRes.statusCode).toBe(200);
+    expect(instrumentApproverRes.json().result.kind).toBe('instrument');
+
+    const inactiveApprover = await createTestEmployee({
+      displayName: 'Inactive Record Approver',
+      nfcTagUid: `EMP-APPROVER-INACTIVE-${Date.now()}`
+    });
+    await prisma.employee.update({
+      where: { id: inactiveApprover.id },
+      data: { status: 'INACTIVE' }
+    });
+    const inactiveApproverRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/self-inspection/record-approvals/approver/resolve',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { uid: inactiveApprover.nfcTagUid }
+    });
+    expect(inactiveApproverRes.statusCode).toBe(200);
+    expect(inactiveApproverRes.json().result.kind).toBe('inactive');
+
+    const duplicateTagApprover = await createTestEmployee({
+      displayName: 'Duplicate Tag Approver',
+      nfcTagUid: instrumentTagUid
+    });
+    expect(duplicateTagApprover.nfcTagUid).toBe(instrumentTagUid);
+    const duplicateApproverRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/self-inspection/record-approvals/approver/resolve',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { uid: instrumentTagUid }
+    });
+    expect(duplicateApproverRes.statusCode).toBe(200);
+    expect(duplicateApproverRes.json().result.kind).toBe('duplicate');
+
+    const recordApprovalWithoutClientKeyApproveRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
+      payload: { approverEmployeeTagUid: `EMP-APPROVER-ACTIVE-${Date.now()}` }
+    });
+    expect(recordApprovalWithoutClientKeyApproveRes.statusCode).toBe(401);
+
+    const inactiveRecordApproveRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { approverEmployeeTagUid: inactiveApprover.nfcTagUid }
+    });
+    expect(inactiveRecordApproveRes.statusCode).toBe(403);
+
+    const duplicateRecordApproveRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { approverEmployeeTagUid: instrumentTagUid }
+    });
+    expect(duplicateRecordApproveRes.statusCode).toBe(409);
+
+    const activeApprover = await createTestEmployee({
+      displayName: 'Record Approver',
+      nfcTagUid: `EMP-APPROVER-ACTIVE-${Date.now()}`
+    });
+    const activeApproverRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/self-inspection/record-approvals/approver/resolve',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { uid: activeApprover.nfcTagUid }
+    });
+    expect(activeApproverRes.statusCode).toBe(200);
+    expect(activeApproverRes.json().result.kind).toBe('employee');
+    expect(activeApproverRes.json().result.employee.displayName).toBe('Record Approver');
+
+    const approveRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { approverEmployeeTagUid: activeApprover.nfcTagUid }
     });
     expect(approveRes.statusCode).toBe(200);
     expect(approveRes.json().session.status).toBe('completed');
@@ -2537,6 +2737,51 @@ describe('part-measurement templates API', () => {
     expect(approveRes.json().session.completedAt).toBeTruthy();
     expect(approveRes.json().session.participantEmployeeNames).toEqual(['Self Inspection Operator']);
     const completedAtAfterFirst = approveRes.json().session.completedAt as string;
+
+    const approvalRow = await prisma.selfInspectionRecordApproval.findUnique({
+      where: { sessionId }
+    });
+    expect(approvalRow?.approverEmployeeId).toBe(activeApprover.id);
+    expect(approvalRow?.approverEmployeeCodeSnapshot).toBe(activeApprover.employeeCode);
+    expect(approvalRow?.approverEmployeeNameSnapshot).toBe('Record Approver');
+    expect(approvalRow?.approverEmployeeNfcTagUidSnapshot).toBe(activeApprover.nfcTagUid);
+    expect(approvalRow?.clientDeviceId).toBe(kioskClient.id);
+    expect(approvalRow?.clientDeviceNameSnapshot).toBe(kioskClient.name);
+
+    const approvedMeasurementValue = await prisma.selfInspectionMeasurementValue.findFirst({
+      where: {
+        entry: { sessionId },
+        reviewStatus: 'APPROVED'
+      }
+    });
+    expect(String(approvedMeasurementValue?.value)).toBe('10.5');
+    expect(approvedMeasurementValue?.reviewStatus).toBe('APPROVED');
+    expect(approvedMeasurementValue?.approvedByUserId).toBe(activeApprover.id);
+    expect(approvedMeasurementValue?.approvedByUsername).toBe('Record Approver');
+
+    const activeRecordApprovalAfterApprovalRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=active',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(activeRecordApprovalAfterApprovalRes.statusCode).toBe(200);
+    expect(
+      (activeRecordApprovalAfterApprovalRes.json().sessions as Array<Record<string, unknown>>).some(
+        (row) => row.id === sessionId
+      )
+    ).toBe(false);
+
+    const approvedRecordApprovalListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=approved',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(approvedRecordApprovalListRes.statusCode).toBe(200);
+    expect(
+      (approvedRecordApprovalListRes.json().sessions as Array<Record<string, unknown>>).some(
+        (row) => row.id === sessionId
+      )
+    ).toBe(true);
 
     const completeAgainRes = await app.inject({
       method: 'POST',
@@ -2623,6 +2868,144 @@ describe('part-measurement templates API', () => {
     expect(auditRows[0]?.entryCount).toBe(2);
     expect(auditRows[0]?.valueCount).toBe(2);
     expect(auditRows[0]?.completedAtWasSet).toBe(true);
+  });
+
+  it('keeps legacy out-of-tolerance approval for sessions without record approval requirement', async () => {
+    const { body, contentType } = buildMultipartPng('旧方式自主検査図面', MIN_PNG);
+    const visualRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(visualRes.statusCode).toBe(200);
+    const visualTemplateId = visualRes.json().visualTemplate.id as string;
+
+    const fhincd = `SELF-LEGACY-${Date.now()}`;
+    const resourceCd = 'RES-SELF-LEGACY';
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd,
+        name: '旧方式自主検査テンプレ',
+        visualTemplateId,
+        selfInspectionMode: 'sample',
+        selfInspectionSampleSize: 1,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'P1',
+            measurementLabel: '寸法1',
+            displayMarker: '1',
+            markerXRatio: 0.2,
+            markerYRatio: 0.4,
+            nominalValue: 10,
+            lowerLimit: 9.8,
+            upperLimit: 10.2,
+            allowNegative: false,
+            decimalPlaces: 2
+          }
+        ]
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+    const templateId = createRes.json().template.id as string;
+    const templateItemId = createRes.json().template.items[0].id as string;
+
+    const legacySuffix = `${Date.now().toString(36).slice(-6)}-${Math.random().toString(36).slice(2, 8)}`;
+    const productNo = `PN-LGC-${legacySuffix}`;
+    const fseiban = `FS-LGC-${legacySuffix}`;
+    const scheduleRowId = await seedProductionScheduleRow({
+      productNo,
+      fseiban,
+      fhincd,
+      resourceCd,
+      plannedQuantity: 1
+    });
+
+    const resolveRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/self-inspection/sessions/resolve-or-create',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        templateId,
+        productNo,
+        processGroup: 'cutting',
+        resourceCd,
+        plannedQuantity: 1,
+        scheduleRowId,
+        fseiban,
+        fhincd,
+        fhinmei: '旧方式自主検査品'
+      }
+    });
+    expect(resolveRes.statusCode).toBe(200);
+    const sessionId = resolveRes.json().session.id as string;
+    await prisma.selfInspectionSession.update({
+      where: { id: sessionId },
+      data: { recordApprovalRequiredAt: null }
+    });
+
+    const employee = await createTestEmployee({
+      displayName: 'Legacy Self Inspection Operator',
+      nfcTagUid: `EMP-SELF-LEGACY-${Date.now()}`
+    });
+    const { rfidTagUid: instrumentTagUid } = await createTestMeasuringInstrumentWithTag({
+      name: 'Legacy Self Inspection Caliper',
+      managementNumber: `MI-SELF-LEGACY-${Date.now()}`,
+      rfidTagUid: `INST-SELF-LEGACY-${Date.now()}`
+    });
+
+    const createEntryRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        entryIndex: 0,
+        employeeTagUid: employee.nfcTagUid,
+        measuringInstrumentTagUid: instrumentTagUid,
+        values: [{ templateItemId, value: '10.5', outOfToleranceAcknowledged: true }]
+      }
+    });
+    expect(createEntryRes.statusCode).toBe(200);
+    expect(createEntryRes.json().entry.values[0]?.reviewStatus).toBe('PENDING');
+
+    const kioskClient = await createTestClientDevice();
+    const recordApprovalListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=active',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(recordApprovalListRes.statusCode).toBe(200);
+    expect(
+      (recordApprovalListRes.json().sessions as Array<Record<string, unknown>>).some((row) => row.id === sessionId)
+    ).toBe(false);
+
+    const legacyReviewListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/out-of-tolerance-reviews',
+      headers: createAuthHeader(managerToken)
+    });
+    expect(legacyReviewListRes.statusCode).toBe(200);
+    expect(
+      (legacyReviewListRes.json().sessions as Array<Record<string, unknown>>).some((row) => row.id === sessionId)
+    ).toBe(true);
+
+    const approveRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/out-of-tolerance-review/approve`,
+      headers: createAuthHeader(managerToken),
+      payload: { comment: 'legacy approval' }
+    });
+    expect(approveRes.statusCode).toBe(200);
+    expect(approveRes.json().session.status).toBe('completed');
+    expect(approveRes.json().session.pendingReviewCount).toBe(0);
+    expect(approveRes.json().session.completedAt).toBeTruthy();
   });
 
   it('rejects self-inspection resolve when sample size exceeds planned quantity', async () => {

@@ -646,7 +646,7 @@ cd apps/web && pnpm exec vitest run \
 ### デプロイ注意
 
 1. API + Web + Prisma migration を同時に反映する。
-2. `prisma migrate deploy` 後に API を再起動し、`SelfInspectionMeasurementValue.reviewStatus` が存在することを確認する。
+2. `prisma migrate deploy` 後に API を再起動し、`SelfInspectionMeasurementValue.reviewStatus`、`SelfInspectionSession.recordApprovalRequiredAt`、`SelfInspectionRecordApproval` が存在することを確認する。
 3. Web 反映後、Pi4 は `kiosk-browser` 再起動または強制リロードで Pi5 配信 SPA を取り直す。
 
 ### 手動確認（Pi4/Pi5）
@@ -659,10 +659,14 @@ cd apps/web && pnpm exec vitest run \
 6. 公差外値を入力したら **公差外の測定値です** ダイアログが出ること。**再入力**では値が確定せず同じ測定点に留まること。
 7. 同じ公差外値で **公差外のまま進む** を選ぶと、ドラフトに入り次の丸数字へ進むこと。
 8. 確認済み公差外を含む入力件は **入力を保存** でき、保存後のセッションが **承認待ち**（`review_pending`）として表示されること。
-9. 未承認公差外がある間は **自主検査を完了** が無効、または API が 409 を返すこと。
-10. 管理 `/admin/part-measurement/self-inspection-reviews` を VIEWER で開くと承認できず、ADMIN/MANAGER で対象セッションと値が表示されること。
-11. ADMIN/MANAGER がコメント付きで **承認して完了** を押すと、承認者・日時・コメントが保存され、必要 slot と NFC 登録が揃っていればセッションが完了扱いになること。
-12. 順位ボード・自主検査一覧・機種別ボードで、承認前は **承認待ち**、承認後は **完了** 表示になること。
+9. 新方式セッションでは **自主検査を完了** が「検査記録承認待ち」の案内になり、API `complete` も 409 を返すこと。
+10. 自主検査トップ **検査記録確認** → パスワード `2520` で入場でき、ブラウザ session 中は再入力不要であること。
+11. 承認一覧で、未入力は **入力途中**、測定者/測定機器 NFC 不足は **登録不足**、全 required slot 入力・登録済みは **承認可能** と表示されること。
+12. 詳細で required slot 単位の入力漏れ/登録漏れ、保存済みの公差内/公差外値、公差外強調、pending 公差外数が確認できること。
+13. ACTIVE 社員 NFC を承認者としてタッチすると社員名が表示され、**承認して完了** で `SelfInspectionRecordApproval` と pending 値の `APPROVED` が保存され、セッションが完了扱いになること。
+14. INACTIVE/SUSPENDED 社員、未登録 UID、計測器タグ、社員/計測器重複タグでは承認不可であること。
+15. 順位ボード・自主検査一覧・機種別ボードで、承認前は **承認待ち**、承認後は **完了** 表示になること。
+16. legacy 確認として、`recordApprovalRequiredAt=null` の既存セッションだけは管理 `/admin/part-measurement/self-inspection-reviews` の ADMIN/MANAGER 承認で従来どおり完了できること。
 
 ### 単体・結合テスト
 
@@ -685,8 +689,10 @@ cd apps/api && pnpm exec vitest run \
 | 寸法 dropdown が 0.01 刻みで多すぎる | 測定点名称が寸法ラベルに一致しているか · Web bundle が新しいか | Pi5 web 再デプロイ · Pi4 強制リロード |
 | `100.1※` のまま保存できる | 百分台ボタン押下前の未確定値をドラフトへ入れていないか | `InspectionDrawingValuePanel` / `selfInspectionDimensionValueInput.ts` を確認 |
 | 公差外を確認しても保存できない | `outOfToleranceAcknowledged` が payload に入っているか · NFC 登録が揃っているか | Network と action reason を確認 |
-| 承認できない | JWT の role が ADMIN/MANAGER か · `x-client-key` 単独ではないか | 管理ログインし直す |
-| 承認後も完了しない | required slot が全部保存済みか · NFC 登録欠落がないか | 未保存/未登録 entry を再保存してから再承認 |
+| 検査記録確認に入れない | `x-client-key` が有効か · パスワードが `2520` または設定値か | ClientDevice と納期管理パスワード設定を確認 |
+| 承認ボタンが押せない | 一覧状態が `承認可能` か · 承認者 NFC が ACTIVE 社員として解決済みか | 入力漏れ/登録漏れを詳細で確認し、社員タグを再スキャン |
+| 承認後も完了しない | required slot が全部保存済みか · NFC 登録欠落がないか · pending 公差外が承認更新されたか | 未保存/未登録 entry を再保存し、API ログと `SelfInspectionRecordApproval` を確認 |
+| 管理画面で新方式セッションを承認できない | `recordApprovalRequiredAt != null` か | 正常。キオスク「検査記録確認」で ACTIVE 社員 NFC 承認する |
 
 ---
 
