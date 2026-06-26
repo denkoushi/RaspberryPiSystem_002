@@ -3300,7 +3300,19 @@ Status: implemented in PR268.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR269 And Later: Thin Indexes And Split Large Documents
+### PR269: Thin Split Visualization Index Block
+
+Status: implemented in PR269.
+
+- Thin only the 2026-03-06 split-layout loans=0 visualization fix deployment
+  and onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the renderer condition, pane resolver,
+  visualization endpoint, deployment, and onsite validation detail with a short
+  link to KB-292.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR270 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
