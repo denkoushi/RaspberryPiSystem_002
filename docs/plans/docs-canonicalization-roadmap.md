@@ -4003,7 +4003,21 @@ Status: implemented in PR323.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR324 And Later: Thin Indexes And Split Large Documents
+### PR324: Thin Fastify V5 Ci Gate Index Block
+
+Status: implemented in PR324.
+
+- Thin only the 2026-02-03 Fastify v5 migration, high audit gate restoration,
+  staged Pi5/Pi4/Pi3 deployment, and deploy-stability latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the Fastify/plugin updates,
+  `reply.elapsedTime` and error-handler compatibility work, staged deployment
+  detail, CI run ID, `ansible_become=false` preflight, and `become: false`
+  reference-check lesson with short links to KB-227, KB-087, and KB-216.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR325 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
