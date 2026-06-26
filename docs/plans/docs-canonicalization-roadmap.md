@@ -4044,7 +4044,21 @@ Status: implemented in PR326.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR327 And Later: Thin Indexes And Split Large Documents
+### PR327: Thin Signage Visualization Rebuild Index Block
+
+Status: implemented in PR327.
+
+- Thin only the 2026-01-31 signage visualization dashboard implementation and
+  Docker rebuild reliability latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the visualization slot, data-source and
+  renderer pattern, admin CRUD UI, `repo_changed` detection, `api/web`
+  rebuild, `git rev-list` parsing, onsite positive/negative deployment checks,
+  signage preview, and CI note with short links to KB-217, the signage module,
+  and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR328 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
