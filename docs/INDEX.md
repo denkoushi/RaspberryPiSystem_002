@@ -1007,7 +1007,7 @@
 
 - **キオスクヘッダーUI改善・React Portalモーダル位置修正 正本**: [KB-239](./knowledge-base/frontend.md#kb-239-キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決react-portal導入)。
 
-- **✅ Pi3デプロイ時のサービス再起動成功を確認（xsetエラーハンドリング修正の実機検証）**: xsetエラーハンドリング修正後のデプロイ（runId: `20260208-082138-11782`）で、サービス再起動が正常に完了することを確認。**確認内容**: Pi3標準手順（preflightチェック）に従って`--limit "server:signage"`でデプロイを実行。preflightチェック（サービス停止、lightdm停止、メモリチェック）が正しく実行され、サービス再起動は`Result=success`で完了。xsetエラーが発生しても警告ログが出力され、サービスが継続することを確認。**学んだこと**: Pi3デプロイ時は`--limit "server:signage"`を使用する必要がある（Pi5とPi3の両方をデプロイ）。preflightチェックは自動実行されるが、デプロイ実行時に標準手順を遵守することが重要。詳細は [knowledge-base/infrastructure/signage.md#kb-236](./knowledge-base/infrastructure/signage.md#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ) / [knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照。
+- **Pi3 signage-lite xsetエラーハンドリング・サービス再起動検証 正本**: [KB-236](./knowledge-base/infrastructure/signage.md#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ) · [KB-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策)。
 
 ### 🆕 最新アップデート（2026-02-07）
 
