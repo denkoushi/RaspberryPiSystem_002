@@ -3647,7 +3647,19 @@ Status: implemented in PR296.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR297 And Later: Thin Indexes And Split Large Documents
+### PR297: Thin Dropbox Cert Pinning Index Block
+
+Status: implemented in PR297.
+
+- Thin only the 2026-02-16 Dropbox certificate pinning recurrence, CI, deploy,
+  and onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the rejected OAuth refresh/API-outage
+  hypotheses, refreshed Dropbox certificate fingerprints, CI/deploy run IDs,
+  and onsite validation detail with a short link to KB-199.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR298 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

@@ -945,7 +945,7 @@
 
 - **CSV自動取得復旧とcron表示UI改善 正本**: [KB-216](./knowledge-base/api.md#kb-216-gmail-apiレート制限エラー429の対処方法) · [KB-111](./knowledge-base/frontend.md#kb-111-csvインポートスケジュールの表示を人間が読みやすい形式に変更) · [csv-import-export](./guides/csv-import-export.md)。
 
-- **✅ Dropbox証明書ピニング検証失敗の再発対応完了・CI成功・デプロイ完了・実機検証完了**: 2/10以降、Dropboxバックアップが全て失敗していた問題を解決。原因はDropboxが証明書を再更新し、証明書ピニング検証が失敗していたこと（KB-199と同様の問題）。**調査過程**: トークンリフレッシュの問題ではないことを確認（証明書ピニング失敗はTLSハンドシェイク段階で発生するため、HTTPステータスコードまで到達せず、トークンリフレッシュロジックは発動しない）。**解決方法**: `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`の`DROPBOX_CERTIFICATE_FINGERPRINTS`配列に最新の証明書フィンガープリント3件を追加（api/content/notify.dropboxapi.com）。**実装**: コミット`87c7303`、CI成功（Run ID: `22046681555`）、デプロイ成功（Run ID: `20260216-105415-23252`）、実機検証完了（正常動作を確認）。KB-199を更新し、再発事例として記録。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-199](./knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー) / [knowledge-base/index.md](./knowledge-base/index.md) を参照。
+- **Dropbox証明書ピニング再発対応 正本**: [KB-199](./knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー)。
 
 ### 🆕 最新アップデート（2026-02-14）
 
