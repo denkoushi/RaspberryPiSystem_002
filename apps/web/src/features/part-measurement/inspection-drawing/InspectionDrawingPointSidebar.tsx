@@ -17,7 +17,7 @@ type Props = {
   onCommitTestValue?: (payload: {
     pointId: string;
     value: string;
-    source: 'dropdown' | 'enter' | 'blur' | 'blur_without_guide' | 'manual_switch';
+    source: 'dropdown' | 'hundredths_button' | 'enter' | 'blur' | 'blur_without_guide' | 'manual_switch';
   }) => void;
   guidedTrialHint?: string | null;
   onResumeGuidedTrial?: () => void;

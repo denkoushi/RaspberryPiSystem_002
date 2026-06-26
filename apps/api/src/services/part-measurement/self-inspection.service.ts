@@ -1,5 +1,9 @@
 import { Prisma } from '@prisma/client';
-import type { PartMeasurementProcessGroup, SelfInspectionMode } from '@prisma/client';
+import type {
+  PartMeasurementProcessGroup,
+  SelfInspectionMeasurementReviewStatus,
+  SelfInspectionMode
+} from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
@@ -55,6 +59,11 @@ const listSessionsSummaryInclude = {
       selfInspectionSampleSize: true
     }
   },
+  entries: {
+    select: {
+      entryIndex: true
+    }
+  },
   _count: { select: { entries: true } }
 } as const;
 
@@ -77,6 +86,11 @@ type SessionWithCounts = Prisma.SelfInspectionSessionGetPayload<{
   include: {
     template: {
       include: typeof partMeasurementTemplateFullInclude;
+    };
+    entries: {
+      select: {
+        entryIndex: true;
+      };
     };
     _count: {
       select: {
@@ -196,6 +210,8 @@ export type SelfInspectionSessionForDecoration = {
   expectedEntryCount: number;
   completedAt: Date | null;
   updatedAt: Date;
+  pendingReviewCount?: number;
+  entries: Array<{ entryIndex: number }>;
   template: {
     selfInspectionMode: SelfInspectionMode;
     selfInspectionFixedCount: number | null;
@@ -315,11 +331,24 @@ export async function ensureSelfInspectionSessionsInCache(
           selfInspectionSampleSize: true,
         },
       },
+      entries: {
+        select: {
+          entryIndex: true,
+        },
+      },
       _count: { select: { entries: true } },
     },
   });
+  const pendingReviewCounts = await loadPendingReviewCountsBySessionIds(
+    prisma,
+    sessions.map((session) => session.id)
+  );
   const foundScheduleRowIds = new Set<string>();
-  for (const session of sessions) {
+  for (const rawSession of sessions) {
+    const session = {
+      ...rawSession,
+      pendingReviewCount: pendingReviewCounts.get(rawSession.id) ?? 0
+    };
     if (!session.scheduleRowId) {
       continue;
     }
@@ -422,6 +451,37 @@ function enrichSessionEntryCountFields<
   };
 }
 
+async function loadPendingReviewCountsBySessionIds(
+  db: Prisma.TransactionClient | typeof prisma,
+  sessionIds: string[]
+): Promise<Map<string, number>> {
+  const uniqueSessionIds = [...new Set(sessionIds.filter((id) => id.trim().length > 0))];
+  if (uniqueSessionIds.length === 0) {
+    return new Map();
+  }
+  const rows = await db.selfInspectionMeasurementValue.findMany({
+    where: {
+      reviewStatus: 'PENDING',
+      entry: {
+        sessionId: { in: uniqueSessionIds }
+      }
+    },
+    select: {
+      entry: {
+        select: {
+          sessionId: true
+        }
+      }
+    }
+  });
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const sessionId = row.entry.sessionId;
+    counts.set(sessionId, (counts.get(sessionId) ?? 0) + 1);
+  }
+  return counts;
+}
+
 function assertEntryUnmodifiedSince(ifUnmodifiedSince: string, entryUpdatedAt: Date): void {
   const clientAt = new Date(ifUnmodifiedSince);
   if (Number.isNaN(clientAt.getTime())) {
@@ -440,13 +500,58 @@ function resolveExpectedEntryCount(template: SelfInspectionTemplateConfig, plann
   throw new ApiError(400, '自主検査の必要件数を決定できません');
 }
 
-function resolveStatus(
-  completedEntryCount: number,
-  _expectedEntryCount: number,
-  completedAt: Date | null
-): 'not_started' | 'in_progress' | 'completed' {
+type SelfInspectionStatusDto = 'not_started' | 'in_progress' | 'review_pending' | 'completed';
+
+type SelfInspectionMeasurementPayloadValue = {
+  templateItemId: string;
+  value: string | number | null;
+  outOfToleranceAcknowledged?: boolean;
+};
+
+type ExistingMeasurementReviewValue = {
+  templateItemId: string;
+  value: Prisma.Decimal | null;
+  reviewStatus: SelfInspectionMeasurementReviewStatus;
+  outOfToleranceAcknowledgedAt: Date | null;
+  approvedAt: Date | null;
+  approvedByUserId: string | null;
+  approvedByUsername: string | null;
+  approvalComment: string | null;
+};
+
+type NormalizedMeasurementValue = {
+  templateItemId: string;
+  value: Prisma.Decimal;
+  reviewStatus: SelfInspectionMeasurementReviewStatus;
+  outOfToleranceAcknowledgedAt: Date | null;
+  approvedAt: Date | null;
+  approvedByUserId: string | null;
+  approvedByUsername: string | null;
+  approvalComment: string | null;
+};
+
+function resolveStatus(input: {
+  completedEntryCount: number;
+  completedAt: Date | null;
+  pendingReviewCount?: number;
+  entryIndices?: number[];
+  completionPolicy?: SessionForEntryCountPolicy;
+}): SelfInspectionStatusDto {
+  const {
+    completedEntryCount,
+    completedAt,
+    pendingReviewCount = 0,
+    entryIndices,
+    completionPolicy
+  } = input;
   if (completedAt) return 'completed';
   if (completedEntryCount <= 0) return 'not_started';
+  if (pendingReviewCount > 0 && entryIndices && completionPolicy) {
+    const templateConfig = templateConfigFromTemplate(completionPolicy.template);
+    if (isSessionCompletionReady(templateConfig, completionPolicy.plannedQuantity, entryIndices)) {
+      return 'review_pending';
+    }
+  }
   return 'in_progress';
 }
 
@@ -454,11 +559,12 @@ type LeaderboardSelfInspectionDecoration = {
   id: string;
   hasSelfInspectionDrawing: boolean;
   selfInspectionTemplateId: string | null;
-  selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+  selfInspectionStatus: SelfInspectionStatusDto | null;
   selfInspectionEntryPath: string | null;
   resolvedPlannedQuantity?: number | null;
   resolvedRequiredEntryCount?: number | null;
   completedEntryCount?: number | null;
+  pendingReviewCount?: number | null;
 };
 
 function emptyLeaderboardSelfInspectionDecoration(rowId: string): LeaderboardSelfInspectionDecoration {
@@ -479,23 +585,27 @@ function buildLeaderboardDecorationFromSession(
 ): LeaderboardSelfInspectionDecoration {
   const planned =
     plannedQuantity ?? resolveProductionSchedulePlannedQuantity(session.plannedQuantity);
+  const policy = {
+    expectedEntryCount: session.expectedEntryCount,
+    plannedQuantity: session.plannedQuantity,
+    template: templateConfigFromTemplate(session.template),
+  };
   return {
     id: rowId,
     hasSelfInspectionDrawing: true,
     selfInspectionTemplateId: session.templateId,
-    selfInspectionStatus: resolveStatus(
-      session._count.entries,
-      session.expectedEntryCount,
-      session.completedAt
-    ),
+    selfInspectionStatus: resolveStatus({
+      completedEntryCount: session._count.entries,
+      completedAt: session.completedAt,
+      pendingReviewCount: session.pendingReviewCount ?? 0,
+      entryIndices: session.entries.map((entry) => entry.entryIndex),
+      completionPolicy: policy
+    }),
     selfInspectionEntryPath: `/kiosk/part-measurement/self-inspection/sessions/${session.id}`,
     resolvedPlannedQuantity: planned,
-    resolvedRequiredEntryCount: resolveRequiredEntryCountForCompletion({
-      expectedEntryCount: session.expectedEntryCount,
-      plannedQuantity: session.plannedQuantity,
-      template: templateConfigFromTemplate(session.template),
-    }),
+    resolvedRequiredEntryCount: resolveRequiredEntryCountForCompletion(policy),
     completedEntryCount: session._count.entries,
+    pendingReviewCount: session.pendingReviewCount ?? 0,
   };
 }
 
@@ -547,12 +657,18 @@ function serializeResetNewSession(session: {
 
 function serializeSessionSummary(
   session: SessionSummarySource | SessionWithCounts,
-  participantEmployeeNames: string[] = []
+  participantEmployeeNames: string[] = [],
+  pendingReviewCount = 0
 ) {
   const policy = sessionForEntryCountPolicy(session);
   const completedEntryCount = session._count.entries;
-  const requiredEntryCount = resolveRequiredEntryCountForCompletion(policy);
-  const status = resolveStatus(completedEntryCount, requiredEntryCount, session.completedAt);
+  const status = resolveStatus({
+    completedEntryCount,
+    completedAt: session.completedAt,
+    pendingReviewCount,
+    entryIndices: 'entries' in session ? session.entries.map((entry) => entry.entryIndex) : undefined,
+    completionPolicy: policy
+  });
   const templateConfig = templateConfigFromTemplate(session.template);
   return {
     id: session.id,
@@ -571,6 +687,7 @@ function serializeSessionSummary(
     expectedEntryCount: session.expectedEntryCount,
     ...enrichSessionEntryCountFields({ ...policy, completedEntryCount }),
     completedEntryCount,
+    pendingReviewCount,
     participantEmployeeNames,
     selfInspectionMode: serializeSelfInspectionMode(session.template.selfInspectionMode),
     selfInspectionFixedCount: resolveTemplateFixedCount(templateConfig),
@@ -585,8 +702,15 @@ function serializeSessionSummary(
 async function serializeSessionSummaryWithAggregatedParticipantNames(
   session: SessionSummarySource | SessionWithCounts
 ) {
-  const participantNamesBySessionId = await loadParticipantEmployeeNamesBySessionIds([session.id]);
-  return serializeSessionSummary(session, participantNamesBySessionId.get(session.id) ?? []);
+  const [participantNamesBySessionId, pendingReviewCounts] = await Promise.all([
+    loadParticipantEmployeeNamesBySessionIds([session.id]),
+    loadPendingReviewCountsBySessionIds(prisma, [session.id])
+  ]);
+  return serializeSessionSummary(
+    session,
+    participantNamesBySessionId.get(session.id) ?? [],
+    pendingReviewCounts.get(session.id) ?? 0
+  );
 }
 
 export class SelfInspectionService {
@@ -907,6 +1031,7 @@ export class SelfInspectionService {
 
     const sessionInclude = {
       template: { include: partMeasurementTemplateFullInclude },
+      entries: { select: { entryIndex: true } },
       _count: { select: { entries: true } }
     } as const;
 
@@ -939,11 +1064,11 @@ export class SelfInspectionService {
     productNo?: string;
     resourceCd?: string;
     processGroup?: PartMeasurementProcessGroup;
-    status?: 'not_started' | 'in_progress' | 'completed';
+    status?: SelfInspectionStatusDto;
   }) {
     const productNo = normalizeText(query.productNo);
     const resourceCd = normalizeText(query.resourceCd);
-    if (!productNo && !resourceCd && query.status !== 'in_progress') {
+    if (!productNo && !resourceCd && query.status !== 'in_progress' && query.status !== 'review_pending') {
       throw new ApiError(400, '製造order または資源CDのいずれかで絞り込んでください');
     }
     const rows = await prisma.selfInspectionSession.findMany({
@@ -955,6 +1080,12 @@ export class SelfInspectionService {
         ...(query.status === 'in_progress'
           ? { completedAt: null, entries: { some: {} } }
           : {}),
+        ...(query.status === 'review_pending'
+          ? {
+              completedAt: null,
+              entries: { some: { values: { some: { reviewStatus: 'PENDING' } } } }
+            }
+          : {}),
         ...(query.status === 'completed' ? { completedAt: { not: null } } : {})
       },
       include: listSessionsSummaryInclude,
@@ -963,18 +1094,26 @@ export class SelfInspectionService {
     });
     const truncated = rows.length > LIST_SESSIONS_MAX;
     const boundedRows = truncated ? rows.slice(0, LIST_SESSIONS_MAX) : rows;
-    const participantNamesBySessionId = await loadParticipantEmployeeNamesBySessionIds(
-      boundedRows.map((row) => row.id)
-    );
+    const sessionIds = boundedRows.map((row) => row.id);
+    const [participantNamesBySessionId, pendingReviewCounts] = await Promise.all([
+      loadParticipantEmployeeNamesBySessionIds(sessionIds),
+      loadPendingReviewCountsBySessionIds(prisma, sessionIds)
+    ]);
     const summaries = boundedRows.map((row) =>
-      serializeSessionSummary(row, participantNamesBySessionId.get(row.id) ?? [])
+      serializeSessionSummary(
+        row,
+        participantNamesBySessionId.get(row.id) ?? [],
+        pendingReviewCounts.get(row.id) ?? 0
+      )
     );
     const sessions =
       query.status === 'in_progress'
         ? summaries.filter((row) => row.status === 'in_progress')
-        : query.status === 'completed'
-          ? summaries.filter((row) => row.status === 'completed')
-          : summaries;
+      : query.status === 'completed'
+        ? summaries.filter((row) => row.status === 'completed')
+        : query.status === 'review_pending'
+          ? summaries.filter((row) => row.status === 'review_pending')
+        : summaries;
     return {
       sessions,
       listLimit: LIST_SESSIONS_MAX,
@@ -1034,8 +1173,9 @@ export class SelfInspectionService {
 
     const policy = sessionForEntryCountPolicy(session);
     const completedEntryCount = session._count.entries;
-    const requiredEntryCount = resolveRequiredEntryCountForCompletion(policy);
     const templateConfig = templateConfigFromTemplate(session.template);
+    const pendingReviewCounts = await loadPendingReviewCountsBySessionIds(prisma, [session.id]);
+    const pendingReviewCount = pendingReviewCounts.get(session.id) ?? 0;
     return {
       id: session.id,
       sessionBusinessKey: session.sessionBusinessKey,
@@ -1053,11 +1193,18 @@ export class SelfInspectionService {
       expectedEntryCount: session.expectedEntryCount,
       ...enrichSessionEntryCountFields({ ...policy, completedEntryCount }),
       completedEntryCount,
+      pendingReviewCount,
       participantEmployeeNames: collectParticipantEmployeeNames(session.entries),
       selfInspectionMode: serializeSelfInspectionMode(session.template.selfInspectionMode),
       selfInspectionFixedCount: resolveTemplateFixedCount(templateConfig),
       selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
-      status: resolveStatus(completedEntryCount, requiredEntryCount, session.completedAt),
+      status: resolveStatus({
+        completedEntryCount,
+        completedAt: session.completedAt,
+        pendingReviewCount,
+        entryIndices: session.entries.map((entry) => entry.entryIndex),
+        completionPolicy: policy
+      }),
       startedAt: session.startedAt?.toISOString() ?? null,
       completedAt: session.completedAt?.toISOString() ?? null,
       updatedAt: session.updatedAt.toISOString(),
@@ -1122,14 +1269,17 @@ export class SelfInspectionService {
 
   private validateMeasurementPayload(
     template: SelfInspectionTemplate,
-    values: Array<{ templateItemId: string; value: string | number | null }>
-  ) {
+    values: SelfInspectionMeasurementPayloadValue[],
+    existingValues: ExistingMeasurementReviewValue[] = []
+  ): NormalizedMeasurementValue[] {
     if (values.length !== template.items.length) {
       throw new ApiError(400, '全測定点の値を送信してください');
     }
     const expectedIds = new Set(template.items.map((item) => item.id));
     const seen = new Set<string>();
-    const normalized = values.map((value) => {
+    const existingByItemId = new Map(existingValues.map((value) => [value.templateItemId, value]));
+    const acknowledgedAt = new Date();
+    const normalized: NormalizedMeasurementValue[] = values.map((value) => {
       if (!expectedIds.has(value.templateItemId) || seen.has(value.templateItemId)) {
         throw new ApiError(400, '測定点の指定が不正です');
       }
@@ -1155,18 +1305,51 @@ export class SelfInspectionService {
         }
       }
       assertDecimalPlacesWithinLimit(decimalValue, item.decimalPlaces);
-      if (!isValueWithinTolerance(item, decimalValue)) {
-        throw new ApiError(400, '公差外の測定値は保存できません');
+      const existingValue = existingByItemId.get(value.templateItemId);
+      const existingSameValue =
+        existingValue?.value != null && existingValue.value.equals(decimalValue);
+      if (isValueWithinTolerance(item, decimalValue)) {
+        return {
+          templateItemId: value.templateItemId,
+          value: decimalValue,
+          reviewStatus: 'NOT_REQUIRED',
+          outOfToleranceAcknowledgedAt: null,
+          approvedAt: null,
+          approvedByUserId: null,
+          approvedByUsername: null,
+          approvalComment: null
+        };
+      }
+      if (existingSameValue && existingValue.reviewStatus !== 'NOT_REQUIRED') {
+        return {
+          templateItemId: value.templateItemId,
+          value: decimalValue,
+          reviewStatus: existingValue.reviewStatus,
+          outOfToleranceAcknowledgedAt: existingValue.outOfToleranceAcknowledgedAt,
+          approvedAt: existingValue.approvedAt,
+          approvedByUserId: existingValue.approvedByUserId,
+          approvedByUsername: existingValue.approvedByUsername,
+          approvalComment: existingValue.approvalComment
+        };
+      }
+      if (value.outOfToleranceAcknowledged !== true) {
+        throw new ApiError(400, '公差外の測定値は確認が必要です');
       }
       return {
         templateItemId: value.templateItemId,
-        value: decimalValue
+        value: decimalValue,
+        reviewStatus: 'PENDING',
+        outOfToleranceAcknowledgedAt: acknowledgedAt,
+        approvedAt: null,
+        approvedByUserId: null,
+        approvedByUsername: null,
+        approvalComment: null
       };
     });
     return normalized;
   }
 
-  private async assertAllEntriesWithinTolerance(
+  private async assertAllEntriesReviewReady(
     db: Prisma.TransactionClient,
     sessionId: string,
     template: SelfInspectionTemplate
@@ -1176,14 +1359,14 @@ export class SelfInspectionService {
       include: { values: true }
     });
     for (const entry of entries) {
-      const valuesByItem = new Map(entry.values.map((value) => [value.templateItemId, value.value]));
+      const valuesByItem = new Map(entry.values.map((value) => [value.templateItemId, value]));
       for (const item of template.items) {
         const stored = valuesByItem.get(item.id);
-        if (stored == null) {
+        if (stored?.value == null) {
           throw new ApiError(409, '測定値が未登録のため完了できません');
         }
-        if (!isValueWithinTolerance(item, stored)) {
-          throw new ApiError(409, '公差外の測定値があるため完了できません');
+        if (!isValueWithinTolerance(item, stored.value) && stored.reviewStatus !== 'APPROVED') {
+          throw new ApiError(409, '公差外の測定値が未承認のため完了できません');
         }
       }
     }
@@ -1210,7 +1393,7 @@ export class SelfInspectionService {
 
   private assertLotEntryValuesMatchPayload(
     existing: Prisma.SelfInspectionLotEntryGetPayload<{ include: { values: true } }>,
-    normalized: Array<{ templateItemId: string; value: Prisma.Decimal }>
+    normalized: NormalizedMeasurementValue[]
   ) {
     if (existing.values.length !== normalized.length) {
       throw new ApiError(409, '他端末で既に登録された入力と競合しています');
@@ -1256,7 +1439,17 @@ export class SelfInspectionService {
       measuringInstrumentTagUidSnapshot: entry.measuringInstrumentTagUidSnapshot,
       createdAt: entry.createdAt.toISOString(),
       updatedAt: entry.updatedAt.toISOString(),
-      values: [] as Array<{ id: string; templateItemId: string; value: string | null }>
+      values: [] as Array<{
+        id: string;
+        templateItemId: string;
+        value: string | null;
+        reviewStatus: SelfInspectionMeasurementReviewStatus;
+        outOfToleranceAcknowledgedAt: string | null;
+        approvedAt: string | null;
+        approvedByUserId: string | null;
+        approvedByUsername: string | null;
+        approvalComment: string | null;
+      }>
     };
   }
 
@@ -1280,14 +1473,20 @@ export class SelfInspectionService {
       values: entry.values.map((value) => ({
         id: value.id,
         templateItemId: value.templateItemId,
-        value: value.value != null ? String(value.value) : null
+        value: value.value != null ? String(value.value) : null,
+        reviewStatus: value.reviewStatus,
+        outOfToleranceAcknowledgedAt: value.outOfToleranceAcknowledgedAt?.toISOString() ?? null,
+        approvedAt: value.approvedAt?.toISOString() ?? null,
+        approvedByUserId: value.approvedByUserId,
+        approvedByUsername: value.approvedByUsername,
+        approvalComment: value.approvalComment
       }))
     };
   }
 
   async createEntry(sessionId: string, input: {
     entryIndex: number;
-    values: Array<{ templateItemId: string; value: string | number | null }>;
+    values: SelfInspectionMeasurementPayloadValue[];
     employeeTagUid?: string | null;
     measuringInstrumentTagUid?: string | null;
     createdByEmployeeId?: string | null;
@@ -1305,7 +1504,6 @@ export class SelfInspectionService {
         session.plannedQuantity,
         entryIndex
       );
-      const values = this.validateMeasurementPayload(session.template, input.values);
 
       const existingAtIndex = await tx.selfInspectionLotEntry.findUnique({
         where: {
@@ -1316,6 +1514,11 @@ export class SelfInspectionService {
         },
         include: { values: true }
       });
+      const values = this.validateMeasurementPayload(
+        session.template,
+        input.values,
+        existingAtIndex?.values ?? []
+      );
       if (existingAtIndex) {
         this.assertLotEntryValuesMatchPayload(existingAtIndex, values);
         const registration = await this.resolveRegistrationForCreateEntry(
@@ -1406,7 +1609,7 @@ export class SelfInspectionService {
     entryId: string,
     input: {
       ifUnmodifiedSince: string;
-      values: Array<{ templateItemId: string; value: string | number | null }>;
+      values: SelfInspectionMeasurementPayloadValue[];
       employeeTagUid?: string | null;
       measuringInstrumentTagUid?: string | null;
     }
@@ -1424,7 +1627,7 @@ export class SelfInspectionService {
       }
       assertEntryUnmodifiedSince(input.ifUnmodifiedSince, existingEntry.updatedAt);
       const registrationPatch = await this.resolveRegistrationPatchForUpdate(existingEntry, input);
-      const values = this.validateMeasurementPayload(session.template, input.values);
+      const values = this.validateMeasurementPayload(session.template, input.values, existingEntry.values);
       const locked = await tx.selfInspectionLotEntry.updateMany({
         where: { id: entryId, sessionId, updatedAt: existingEntry.updatedAt },
         data: {
@@ -1441,7 +1644,13 @@ export class SelfInspectionService {
           data: values.map((value) => ({
             entryId,
             templateItemId: value.templateItemId,
-            value: value.value
+            value: value.value,
+            reviewStatus: value.reviewStatus,
+            outOfToleranceAcknowledgedAt: value.outOfToleranceAcknowledgedAt,
+            approvedAt: value.approvedAt,
+            approvedByUserId: value.approvedByUserId,
+            approvedByUsername: value.approvedByUsername,
+            approvalComment: value.approvalComment
           }))
         });
       }
@@ -1458,6 +1667,7 @@ export class SelfInspectionService {
   async completeSession(sessionId: string) {
     const sessionInclude = {
       template: { include: partMeasurementTemplateFullInclude },
+      entries: { select: { entryIndex: true } },
       _count: { select: { entries: true } }
     } as const;
 
@@ -1489,7 +1699,7 @@ export class SelfInspectionService {
         throw new ApiError(409, '必要件数に達していないため完了できません');
       }
       await this.assertAllEntriesHaveRegistration(tx, sessionId);
-      await this.assertAllEntriesWithinTolerance(tx, sessionId, existing.template);
+      await this.assertAllEntriesReviewReady(tx, sessionId, existing.template);
       const finalized = await tx.selfInspectionSession.updateMany({
         where: { id: sessionId, completedAt: null },
         data: { completedAt: new Date() }
@@ -1514,8 +1724,269 @@ export class SelfInspectionService {
       return completed;
     });
     resetSelfInspectionMachineBoardScheduleRowCaches();
-    const participantNamesBySessionId = await loadParticipantEmployeeNamesBySessionIds([session.id]);
-    return serializeSessionSummary(session, participantNamesBySessionId.get(session.id) ?? []);
+    const [participantNamesBySessionId, pendingReviewCounts] = await Promise.all([
+      loadParticipantEmployeeNamesBySessionIds([session.id]),
+      loadPendingReviewCountsBySessionIds(prisma, [session.id])
+    ]);
+    return serializeSessionSummary(
+      session,
+      participantNamesBySessionId.get(session.id) ?? [],
+      pendingReviewCounts.get(session.id) ?? 0
+    );
+  }
+
+  async listPendingOutOfToleranceReviews() {
+    const rows = await prisma.selfInspectionMeasurementValue.findMany({
+      where: { reviewStatus: 'PENDING' },
+      include: {
+        templateItem: {
+          select: {
+            id: true,
+            sortOrder: true,
+            datumSurface: true,
+            measurementPoint: true,
+            measurementLabel: true,
+            displayMarker: true,
+            unit: true,
+            lowerLimit: true,
+            upperLimit: true
+          }
+        },
+        entry: {
+          select: {
+            id: true,
+            entryIndex: true,
+            entrySlotKind: true,
+            updatedAt: true,
+            session: {
+              select: {
+                id: true,
+                sessionBusinessKey: true,
+                templateId: true,
+                productNo: true,
+                processGroup: true,
+                resourceCd: true,
+                scheduleRowId: true,
+                fseiban: true,
+                fhincd: true,
+                fhinmei: true,
+                machineName: true,
+                plannedQuantity: true,
+                expectedEntryCount: true,
+                startedAt: true,
+                completedAt: true,
+                updatedAt: true,
+                template: {
+                  select: {
+                    name: true,
+                    selfInspectionMode: true,
+                    selfInspectionFixedCount: true,
+                    selfInspectionSampleSize: true
+                  }
+                },
+                entries: {
+                  select: { entryIndex: true }
+                },
+                _count: {
+                  select: { entries: true }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: [{ updatedAt: 'desc' }]
+    });
+
+    const sessions = new Map<
+      string,
+      {
+        session: (typeof rows)[number]['entry']['session'];
+        values: Array<{
+          id: string;
+          entryId: string;
+          entryIndex: number;
+          entrySlotKind: ReturnType<typeof serializeEntrySlotKind>;
+          entrySlotLabel: string;
+          templateItemId: string;
+          displayMarker: string | null;
+          datumSurface: string;
+          measurementPoint: string;
+          measurementLabel: string;
+          unit: string | null;
+          value: string | null;
+          lowerLimit: string | null;
+          upperLimit: string | null;
+          outOfToleranceAcknowledgedAt: string | null;
+          updatedAt: string;
+        }>;
+      }
+    >();
+
+    for (const row of rows) {
+      const sessionId = row.entry.session.id;
+      const group = sessions.get(sessionId) ?? {
+        session: row.entry.session,
+        values: []
+      };
+      const slotDto = serializeEntrySlotKind(row.entry.entrySlotKind);
+      group.values.push({
+        id: row.id,
+        entryId: row.entry.id,
+        entryIndex: row.entry.entryIndex,
+        entrySlotKind: slotDto,
+        entrySlotLabel: entrySlotLabelFromKind(slotDto, row.entry.entryIndex),
+        templateItemId: row.templateItemId,
+        displayMarker: row.templateItem.displayMarker,
+        datumSurface: row.templateItem.datumSurface,
+        measurementPoint: row.templateItem.measurementPoint,
+        measurementLabel: row.templateItem.measurementLabel,
+        unit: row.templateItem.unit,
+        value: row.value != null ? String(row.value) : null,
+        lowerLimit: row.templateItem.lowerLimit != null ? String(row.templateItem.lowerLimit) : null,
+        upperLimit: row.templateItem.upperLimit != null ? String(row.templateItem.upperLimit) : null,
+        outOfToleranceAcknowledgedAt: row.outOfToleranceAcknowledgedAt?.toISOString() ?? null,
+        updatedAt: row.updatedAt.toISOString()
+      });
+      sessions.set(sessionId, group);
+    }
+
+    return {
+      sessions: [...sessions.values()]
+        .map((group) => {
+          const policy = sessionForEntryCountPolicy(group.session);
+          const completedEntryCount = group.session._count.entries;
+          const pendingReviewCount = group.values.length;
+          const templateConfig = templateConfigFromTemplate(group.session.template);
+          return {
+            id: group.session.id,
+            sessionBusinessKey: group.session.sessionBusinessKey,
+            templateId: group.session.templateId,
+            templateName: group.session.template.name,
+            productNo: group.session.productNo,
+            fseiban: group.session.fseiban,
+            fhincd: group.session.fhincd,
+            fhinmei: group.session.fhinmei,
+            processGroup: serializeProcessGroup(group.session.processGroup),
+            resourceCd: group.session.resourceCd,
+            scheduleRowId: group.session.scheduleRowId,
+            machineName: group.session.machineName,
+            plannedQuantity: group.session.plannedQuantity,
+            expectedEntryCount: group.session.expectedEntryCount,
+            ...enrichSessionEntryCountFields({ ...policy, completedEntryCount }),
+            completedEntryCount,
+            pendingReviewCount,
+            selfInspectionMode: serializeSelfInspectionMode(group.session.template.selfInspectionMode),
+            selfInspectionFixedCount: resolveTemplateFixedCount(templateConfig),
+            selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
+            status: resolveStatus({
+              completedEntryCount,
+              completedAt: group.session.completedAt,
+              pendingReviewCount,
+              entryIndices: group.session.entries.map((entry) => entry.entryIndex),
+              completionPolicy: policy
+            }),
+            startedAt: group.session.startedAt?.toISOString() ?? null,
+            completedAt: group.session.completedAt?.toISOString() ?? null,
+            updatedAt: group.session.updatedAt.toISOString(),
+            values: group.values.sort((a, b) => {
+              if (a.entryIndex !== b.entryIndex) return a.entryIndex - b.entryIndex;
+              return a.displayMarker?.localeCompare(b.displayMarker ?? '') ?? 0;
+            })
+          };
+        })
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    };
+  }
+
+  async approveOutOfToleranceReview(sessionId: string, input: {
+    comment?: string | null;
+    actorUserId: string;
+    actorUsername: string;
+  }) {
+    const comment = input.comment?.trim() || null;
+    const sessionInclude = {
+      template: { include: partMeasurementTemplateFullInclude },
+      entries: { select: { entryIndex: true } },
+      _count: { select: { entries: true } }
+    } as const;
+
+    const session = await prisma.$transaction(async (tx) => {
+      await this.lockSessionRow(tx, sessionId);
+      const existing = await tx.selfInspectionSession.findUnique({
+        where: { id: sessionId },
+        include: sessionInclude
+      });
+      if (!existing) {
+        throw new ApiError(404, '自主検査セッションが見つかりません');
+      }
+      const pendingCount = await tx.selfInspectionMeasurementValue.count({
+        where: {
+          reviewStatus: 'PENDING',
+          entry: { sessionId }
+        }
+      });
+      if (pendingCount === 0) {
+        throw new ApiError(409, '承認待ちの公差外測定値がありません');
+      }
+      this.assertSessionEntryCountWritable(existing);
+      const templateConfig = templateConfigFromTemplate(existing.template);
+      if (
+        !isSessionCompletionReady(
+          templateConfig,
+          existing.plannedQuantity,
+          existing.entries.map((entry) => entry.entryIndex)
+        )
+      ) {
+        throw new ApiError(409, '必要件数に達していないため承認完了できません');
+      }
+      await this.assertAllEntriesHaveRegistration(tx, sessionId);
+
+      const approvedAt = new Date();
+      await tx.selfInspectionMeasurementValue.updateMany({
+        where: {
+          reviewStatus: 'PENDING',
+          entry: { sessionId }
+        },
+        data: {
+          reviewStatus: 'APPROVED',
+          approvedAt,
+          approvedByUserId: input.actorUserId,
+          approvedByUsername: input.actorUsername,
+          approvalComment: comment
+        }
+      });
+      await this.assertAllEntriesReviewReady(tx, sessionId, existing.template);
+
+      if (!existing.completedAt) {
+        const finalized = await tx.selfInspectionSession.updateMany({
+          where: { id: sessionId, completedAt: null },
+          data: { completedAt: approvedAt }
+        });
+        if (finalized.count === 0) {
+          throw new ApiError(409, '自主検査セッションを完了できません');
+        }
+      }
+      const updated = await tx.selfInspectionSession.findUnique({
+        where: { id: sessionId },
+        include: sessionInclude
+      });
+      if (!updated) {
+        throw new ApiError(404, '自主検査セッションが見つかりません');
+      }
+      return updated;
+    });
+
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+    const [participantNamesBySessionId, pendingReviewCounts] = await Promise.all([
+      loadParticipantEmployeeNamesBySessionIds([session.id]),
+      loadPendingReviewCountsBySessionIds(prisma, [session.id])
+    ]);
+    return serializeSessionSummary(
+      session,
+      participantNamesBySessionId.get(session.id) ?? [],
+      pendingReviewCounts.get(session.id) ?? 0
+    );
   }
 
   async resetSession(
@@ -1779,7 +2250,10 @@ export class SelfInspectionService {
         id: row.id,
         hasSelfInspectionDrawing: true,
         selfInspectionTemplateId: template.id,
-        selfInspectionStatus: resolveStatus(0, expectedEntryCount, null),
+        selfInspectionStatus: resolveStatus({
+          completedEntryCount: 0,
+          completedAt: null
+        }),
         selfInspectionEntryPath: buildStartPath({
           templateId: template.id,
           productNo,

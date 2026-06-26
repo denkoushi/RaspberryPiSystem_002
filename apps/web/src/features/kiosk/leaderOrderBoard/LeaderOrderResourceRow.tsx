@@ -83,6 +83,8 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   const selfInspectionStatusClass =
     row.selfInspectionStatus === 'completed'
       ? 'border-sky-300 bg-sky-500 text-slate-950'
+      : row.selfInspectionStatus === 'review_pending'
+        ? 'border-red-300 bg-red-500 text-white'
       : row.selfInspectionStatus === 'in_progress'
         ? 'border-yellow-300 bg-yellow-400 text-slate-950'
         : 'border-white/70 bg-white text-slate-950';

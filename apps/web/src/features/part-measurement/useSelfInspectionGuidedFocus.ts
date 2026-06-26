@@ -23,6 +23,7 @@ type Args = {
   selectedEntryIndex: number;
   selectedPointId: string | null;
   draftValuesByEntryIndex: Record<number, Record<string, string>>;
+  outOfToleranceAcknowledgedByEntryIndex?: Record<number, Record<string, boolean>>;
   isSessionReadOnly: boolean;
   isDrawingCanvasReady: boolean;
   /** ページ側で session 用 baseline draft の準備が完了したときだけ true */
@@ -39,6 +40,7 @@ export function useSelfInspectionGuidedFocus({
   selectedEntryIndex,
   selectedPointId,
   draftValuesByEntryIndex,
+  outOfToleranceAcknowledgedByEntryIndex,
   isSessionReadOnly,
   isDrawingCanvasReady,
   isDraftReadyForGuidedFocus,
@@ -60,6 +62,10 @@ export function useSelfInspectionGuidedFocus({
   const buildPrimedKey = useCallback((sessionId: string, entryIndex: number) => `${sessionId}:${entryIndex}`, []);
 
   const activeDraft = session ? draftValuesByEntryIndex[selectedEntryIndex] : undefined;
+  const activeOutOfToleranceAcknowledgedByPointId = useMemo(
+    () => outOfToleranceAcknowledgedByEntryIndex?.[selectedEntryIndex] ?? {},
+    [outOfToleranceAcknowledgedByEntryIndex, selectedEntryIndex]
+  );
   const activePoints = useMemo((): InspectionDrawingPoint[] => {
     if (!session || !activeDraft) return [];
     return buildEntryDrawingPoints(session, activeDraft);
@@ -118,11 +124,19 @@ export function useSelfInspectionGuidedFocus({
       ) {
         return false;
       }
-      const pointId = findFirstGuidedPointId(points, session.template.items);
+      const pointId = findFirstGuidedPointId(
+        points,
+        session.template.items,
+        activeOutOfToleranceAcknowledgedByPointId
+      );
       if (!pointId) {
         clearConsumeNextBlurGuideAdvance();
         const allComplete =
-          points.length > 0 && points.every((pt) => resolvePointInputStatus(pt) === 'ok');
+          points.length > 0 &&
+          points.every((pt) => {
+            const status = resolvePointInputStatus(pt);
+            return status === 'ok' || (status === 'ng' && activeOutOfToleranceAcknowledgedByPointId[pt.id] === true);
+          });
         setGuideMode('manual');
         setFocusRequest(null);
         setGuideHint(
@@ -145,6 +159,7 @@ export function useSelfInspectionGuidedFocus({
     },
     [
       activeDraft,
+      activeOutOfToleranceAcknowledgedByPointId,
       applyFocusTarget,
       isDrawingCanvasReady,
       isSessionReadOnly,
@@ -172,7 +187,8 @@ export function useSelfInspectionGuidedFocus({
     const target = resolveResumeGuidedFocusTarget({
       session,
       draft: activeDraft,
-      requestId: nextRequestId()
+      requestId: nextRequestId(),
+      outOfToleranceAcknowledgedByPointId: activeOutOfToleranceAcknowledgedByPointId
     });
     if (!target) {
       setGuideMode('manual');
@@ -184,6 +200,7 @@ export function useSelfInspectionGuidedFocus({
     applyFocusTarget(target);
   }, [
     activeDraft,
+    activeOutOfToleranceAcknowledgedByPointId,
     applyFocusTarget,
     clearConsumeNextBlurGuideAdvance,
     isDrawingCanvasReady,
@@ -297,7 +314,8 @@ export function useSelfInspectionGuidedFocus({
         entryIndex: commit.entryIndex,
         currentDraft: activeDraft,
         commit,
-        nextFocusRequestId
+        nextFocusRequestId,
+        outOfToleranceAcknowledgedByPointId: activeOutOfToleranceAcknowledgedByPointId
       });
 
       onDraftChange(commit.entryIndex, result.draft);
@@ -334,6 +352,7 @@ export function useSelfInspectionGuidedFocus({
     },
     [
       activeDraft,
+      activeOutOfToleranceAcknowledgedByPointId,
       applyFocusTarget,
       guideMode,
       nextRequestId,

@@ -172,6 +172,7 @@ describe('part-measurement templates API', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let closeServer: (() => Promise<void>) | null = null;
   let adminToken: string;
+  let managerToken: string;
   let viewerToken: string;
 
   beforeAll(async () => {
@@ -185,6 +186,8 @@ describe('part-measurement templates API', () => {
     await cleanPartMeasurementTables();
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
+    const manager = await createTestUser('MANAGER');
+    managerToken = manager.token;
     const viewer = await createTestUser('VIEWER');
     viewerToken = viewer.token;
   });
@@ -2374,6 +2377,7 @@ describe('part-measurement templates API', () => {
       }
     });
     expect(outOfToleranceRes.statusCode).toBe(400);
+    expect(outOfToleranceRes.json().message).toContain('確認');
 
     const numericPrecisionRes = await app.inject({
       method: 'POST',
@@ -2446,10 +2450,22 @@ describe('part-measurement templates API', () => {
       payload: {
         entryIndex: 1,
         ...entryRegistrationTags,
-        values: [{ templateItemId, value: '9.99' }]
+        values: [{ templateItemId, value: '10.5', outOfToleranceAcknowledged: true }]
       }
     });
     expect(secondEntryRes.statusCode).toBe(200);
+    expect(secondEntryRes.json().entry.values[0]?.reviewStatus).toBe('PENDING');
+    expect(secondEntryRes.json().entry.values[0]?.outOfToleranceAcknowledgedAt).toBeTruthy();
+
+    const listReviewPendingRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/sessions?status=review_pending',
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(listReviewPendingRes.statusCode).toBe(200);
+    expect(
+      (listReviewPendingRes.json().sessions as Array<Record<string, unknown>>).some((row) => row.id === sessionId)
+    ).toBe(true);
 
     const duplicateIndexRes = await app.inject({
       method: 'POST',
@@ -2468,20 +2484,59 @@ describe('part-measurement templates API', () => {
       headers: createAuthHeader(viewerToken)
     });
     expect(beforeCompleteRes.statusCode).toBe(200);
-    expect(beforeCompleteRes.json().session.status).toBe('in_progress');
+    expect(beforeCompleteRes.json().session.status).toBe('review_pending');
+    expect(beforeCompleteRes.json().session.pendingReviewCount).toBe(1);
     expect(beforeCompleteRes.json().session.completedAt).toBeNull();
 
-    const completeRes = await app.inject({
+    const completeBeforeApprovalRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/complete`,
       headers: createAuthHeader(adminToken),
       payload: {}
     });
-    expect(completeRes.statusCode).toBe(200);
-    expect(completeRes.json().session.status).toBe('completed');
-    expect(completeRes.json().session.completedAt).toBeTruthy();
-    expect(completeRes.json().session.participantEmployeeNames).toEqual(['Self Inspection Operator']);
-    const completedAtAfterFirst = completeRes.json().session.completedAt as string;
+    expect(completeBeforeApprovalRes.statusCode).toBe(409);
+    expect(completeBeforeApprovalRes.json().message).toContain('未承認');
+
+    const reviewListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/out-of-tolerance-reviews',
+      headers: createAuthHeader(managerToken)
+    });
+    expect(reviewListRes.statusCode).toBe(200);
+    const reviewSession = (reviewListRes.json().sessions as Array<Record<string, unknown>>).find(
+      (row) => row.id === sessionId
+    ) as { values?: Array<Record<string, unknown>> } | undefined;
+    expect(reviewSession).toBeTruthy();
+    expect(reviewSession?.values?.[0]?.value).toBe('10.5');
+
+    const viewerApproveRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/out-of-tolerance-review/approve`,
+      headers: createAuthHeader(viewerToken),
+      payload: { comment: 'viewer rejected' }
+    });
+    expect(viewerApproveRes.statusCode).toBe(403);
+
+    const clientKeyApproveRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/out-of-tolerance-review/approve`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { comment: 'client key rejected' }
+    });
+    expect([401, 403]).toContain(clientKeyApproveRes.statusCode);
+
+    const approveRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/out-of-tolerance-review/approve`,
+      headers: createAuthHeader(managerToken),
+      payload: { comment: '現場リーダー確認済み' }
+    });
+    expect(approveRes.statusCode).toBe(200);
+    expect(approveRes.json().session.status).toBe('completed');
+    expect(approveRes.json().session.pendingReviewCount).toBe(0);
+    expect(approveRes.json().session.completedAt).toBeTruthy();
+    expect(approveRes.json().session.participantEmployeeNames).toEqual(['Self Inspection Operator']);
+    const completedAtAfterFirst = approveRes.json().session.completedAt as string;
 
     const completeAgainRes = await app.inject({
       method: 'POST',

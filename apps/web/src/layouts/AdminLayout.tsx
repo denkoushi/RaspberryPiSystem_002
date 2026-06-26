@@ -69,6 +69,9 @@ export function AdminLayout() {
             <NavLink to="/admin/tools/part-measurement-templates" className={navLinkClass}>
               部品測定テンプレ
             </NavLink>
+            <NavLink to="/admin/part-measurement/self-inspection-reviews" className={navLinkClass}>
+              自主検査レビュー
+            </NavLink>
             <NavLink to="/admin/tools/inspection-items" className={navLinkClass}>
               点検項目
             </NavLink>

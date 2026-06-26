@@ -1,4 +1,8 @@
-export type SelfInspectionMachineBoardPartStatus = 'not_started' | 'in_progress' | 'completed';
+export type SelfInspectionMachineBoardPartStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'review_pending'
+  | 'completed';
 
 export type SelfInspectionMachineBoardPartItem = {
   scheduleRowId: string;

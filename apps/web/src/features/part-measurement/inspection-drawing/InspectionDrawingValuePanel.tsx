@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Input } from '../../../components/ui/Input';
 
@@ -13,6 +13,12 @@ import {
   MEASUREMENT_POINT_INPUT_STATUS_LABEL,
   resolveMeasurementPointInputStatus
 } from './measurementPointInputStatus';
+import {
+  applyHundredthsDigitToDimensionValue,
+  buildSelfInspectionDimensionTenthsOptions,
+  formatDimensionTenthsProvisionalValue,
+  resolveSelfInspectionMeasurementValueInputKind
+} from './selfInspectionDimensionValueInput';
 import { buildSelfInspectionMeasurementValueOptions } from './selfInspectionMeasurementValueOptions';
 
 import type { InspectionDrawingPoint } from './types';
@@ -22,7 +28,7 @@ export type InspectionDrawingValueInputMode = 'free_only' | 'self_inspection_opt
 export type InspectionDrawingValueCommitPayload = {
   pointId: string;
   value: string;
-  source: 'dropdown' | 'enter' | 'blur' | 'blur_without_guide';
+  source: 'dropdown' | 'hundredths_button' | 'enter' | 'blur' | 'blur_without_guide';
 };
 
 type Props = {
@@ -61,17 +67,29 @@ export function InspectionDrawingValuePanel({
     pointId: string;
     value: string;
   } | null>(null);
+  const [dimensionTenthsBase, setDimensionTenthsBase] = useState<string | null>(null);
 
   useEffect(() => {
     lastBlurCommitRef.current = null;
+    setDimensionTenthsBase(null);
   }, [point?.id, valueCommitScopeKey]);
+
+  const measurementValueInputKind = useMemo(() => {
+    if (!point || valueInputMode !== 'self_inspection_options') {
+      return 'standard_options' as const;
+    }
+    return resolveSelfInspectionMeasurementValueInputKind(point);
+  }, [point, valueInputMode]);
 
   const optionResult = useMemo(() => {
     if (!point || valueInputMode !== 'self_inspection_options') {
       return null;
     }
+    if (measurementValueInputKind === 'dimension_hundredths') {
+      return buildSelfInspectionDimensionTenthsOptions(point);
+    }
     return buildSelfInspectionMeasurementValueOptions(point);
-  }, [point, valueInputMode]);
+  }, [measurementValueInputKind, point, valueInputMode]);
 
   const emitCommit = (value: string, source: InspectionDrawingValueCommitPayload['source']) => {
     if (!point || !onCommitValue || readOnly) return;
@@ -103,19 +121,27 @@ export function InspectionDrawingValuePanel({
   const bounds = toleranceBoundsFromPoint(point);
   const inputStatus = resolveMeasurementPointInputStatus(point);
 
+  const isSelfInspectionOptions = valueInputMode === 'self_inspection_options';
   const showDropdown =
     optionResult?.mode === 'dropdown_and_free' && optionResult.options.length > 0;
+  const showDimensionHundredths =
+    isSelfInspectionOptions && measurementValueInputKind === 'dimension_hundredths' && showDropdown;
+  const dimensionProvisionalDisplay = dimensionTenthsBase
+    ? formatDimensionTenthsProvisionalValue(dimensionTenthsBase)
+    : null;
   const dropdownHint =
     optionResult?.mode === 'free_only' && optionResult.reason && valueInputMode === 'self_inspection_options'
       ? optionResult.reason
       : null;
-  const isSelfInspectionOptions = valueInputMode === 'self_inspection_options';
   const toleranceClassName = isSelfInspectionOptions ? 'text-2xl text-white/80' : 'text-sm text-white/70';
 
   const manualInputField = (
     <Input
       value={point.testValue}
-      onChange={(e) => onValueChange(e.target.value)}
+      onChange={(e) => {
+        setDimensionTenthsBase(null);
+        onValueChange(e.target.value);
+      }}
       onKeyDown={(e) => {
         if (e.key !== 'Enter' || readOnly) return;
         e.preventDefault();
@@ -142,6 +168,18 @@ export function InspectionDrawingValuePanel({
     />
   );
 
+  const handleDimensionHundredthsClick = (digit: number) => {
+    if (!point || readOnly) return;
+    const value = applyHundredthsDigitToDimensionValue(
+      dimensionTenthsBase ?? point.testValue,
+      digit
+    );
+    if (!value) return;
+    setDimensionTenthsBase(null);
+    onValueChange(value);
+    emitCommit(value, 'hundredths_button');
+  };
+
   return (
     <div className="flex flex-col gap-3 rounded border border-white/20 bg-slate-900/90 p-4 text-white shadow-lg">
       <div>
@@ -159,7 +197,7 @@ export function InspectionDrawingValuePanel({
       {isSelfInspectionOptions && showDropdown ? (
         <div className="grid grid-cols-2 gap-2">
           <label className="grid min-w-0 gap-1 text-sm font-semibold">
-            候補から選択
+            {showDimensionHundredths ? '0.1候補' : '候補から選択'}
             <div className={inspectionDrawingBoundedSelectShellClassName}>
               <select
                 value=""
@@ -168,6 +206,11 @@ export function InspectionDrawingValuePanel({
                 onChange={(e) => {
                   const v = e.target.value;
                   if (!v) return;
+                  if (showDimensionHundredths) {
+                    setDimensionTenthsBase(v);
+                    return;
+                  }
+                  setDimensionTenthsBase(null);
                   onValueChange(v);
                   emitCommit(v, 'dropdown');
                 }}
@@ -185,6 +228,29 @@ export function InspectionDrawingValuePanel({
             測定値（直接入力）
             {manualInputField}
           </label>
+          {showDimensionHundredths ? (
+            <div className="col-span-2 grid gap-2 rounded border border-white/10 bg-slate-950/40 p-2">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="font-semibold text-white/75">百分台</span>
+                <span className="min-h-6 rounded bg-slate-800 px-2 py-1 font-mono text-base text-amber-200">
+                  {dimensionProvisionalDisplay ?? '0.1候補を選択'}
+                </span>
+              </div>
+              <div className="grid grid-cols-5 gap-1">
+                {Array.from({ length: 10 }, (_, digit) => (
+                  <button
+                    key={digit}
+                    type="button"
+                    disabled={readOnly || (!dimensionTenthsBase && !point.testValue.trim())}
+                    className="h-11 rounded border border-white/15 bg-slate-100 text-lg font-bold text-slate-950 shadow-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => handleDimensionHundredthsClick(digit)}
+                  >
+                    {digit}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <>

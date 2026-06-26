@@ -45,7 +45,7 @@ function rowDataField(rowData: Prisma.JsonValue, key: string): string {
 }
 
 function resolvePartStatus(
-  decorationStatus: 'not_started' | 'in_progress' | 'completed' | null,
+  decorationStatus: SelfInspectionMachineBoardPartStatus | null,
   hasDrawing: boolean
 ): SelfInspectionMachineBoardPartStatus | null {
   if (!hasDrawing) {
@@ -56,14 +56,16 @@ function resolvePartStatus(
 
 function statusSortWeight(status: SelfInspectionMachineBoardPartStatus): number {
   switch (status) {
-    case 'in_progress':
+    case 'review_pending':
       return 0;
-    case 'not_started':
+    case 'in_progress':
       return 1;
-    case 'completed':
+    case 'not_started':
       return 2;
-    default:
+    case 'completed':
       return 3;
+    default:
+      return 4;
   }
 }
 
@@ -106,7 +108,7 @@ function buildProgressLabel(completed: number, required: number): string {
 type LeaderboardSelfInspectionDecoration = {
   id: string;
   hasSelfInspectionDrawing: boolean;
-  selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+  selfInspectionStatus: SelfInspectionMachineBoardPartStatus | null;
   completedEntryCount?: number | null;
   resolvedRequiredEntryCount?: number | null;
   resolvedPlannedQuantity?: number | null;

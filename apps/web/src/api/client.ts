@@ -49,7 +49,9 @@ import type {
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
   PartMeasurementSheetWithSession,
+  SelfInspectionEntryValuePayload,
   SelfInspectionLotEntryDto,
+  SelfInspectionOutOfToleranceReviewsListDto,
   SelfInspectionPaperOcrReviewDto,
   SelfInspectionPaperOcrValueDto,
   SelfInspectionPaperReportDto,
@@ -58,6 +60,7 @@ import type {
   SelfInspectionSessionDetailDto,
   SelfInspectionSessionsListDto,
   SelfInspectionSessionSummaryDto,
+  SelfInspectionStatus,
   PartMeasurementTemplateCandidateDto,
   PartMeasurementTemplateDto,
   PartMeasurementTemplateScope,
@@ -352,7 +355,7 @@ export interface ProductionScheduleRow {
   /** `responseProfile=leaderboard` のとき。自主検査開始用テンプレ ID */
   selfInspectionTemplateId?: string | null;
   hasSelfInspectionDrawing?: boolean;
-  selfInspectionStatus?: 'not_started' | 'in_progress' | 'completed' | null;
+  selfInspectionStatus?: SelfInspectionStatus | null;
   selfInspectionEntryPath?: string | null;
   /** 順位ボード: 機械行の FSIGENSHOYORYO（分）。`+人` OFF 時の表示基準。 */
   machineRequiredMinutes?: number;
@@ -426,7 +429,7 @@ export type ProductionScheduleLeaderboardDecorationsResponse = {
     customerName: string | null;
     hasSelfInspectionDrawing: boolean;
     selfInspectionTemplateId: string | null;
-    selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+    selfInspectionStatus: SelfInspectionStatus | null;
     selfInspectionEntryPath: string | null;
   }>;
   leaderboardFooterChipsByPartKey?: ProductionScheduleListResponse['leaderboardFooterChipsByPartKey'];
@@ -3281,7 +3284,7 @@ export async function listSelfInspectionSessions(
     productNo?: string;
     resourceCd?: string;
     processGroup?: PartMeasurementProcessGroup;
-    status?: 'not_started' | 'in_progress' | 'completed';
+    status?: SelfInspectionStatus;
   },
   clientKey?: string
 ): Promise<SelfInspectionSessionsListDto> {
@@ -3291,6 +3294,13 @@ export async function listSelfInspectionSessions(
       params,
       headers: clientKey ? { 'x-client-key': clientKey } : undefined
     }
+  );
+  return data;
+}
+
+export async function listSelfInspectionOutOfToleranceReviews(): Promise<SelfInspectionOutOfToleranceReviewsListDto> {
+  const { data } = await api.get<SelfInspectionOutOfToleranceReviewsListDto>(
+    '/part-measurement/self-inspection/out-of-tolerance-reviews'
   );
   return data;
 }
@@ -3351,7 +3361,7 @@ export async function createSelfInspectionEntry(
     entryIndex: number;
     employeeTagUid?: string | null;
     measuringInstrumentTagUid?: string | null;
-    values: Array<{ templateItemId: string; value: string | number | null }>;
+    values: SelfInspectionEntryValuePayload[];
   },
   clientKey?: string
 ): Promise<SelfInspectionLotEntryDto> {
@@ -3372,7 +3382,7 @@ export async function updateSelfInspectionEntry(
     ifUnmodifiedSince: string;
     employeeTagUid?: string | null;
     measuringInstrumentTagUid?: string | null;
-    values: Array<{ templateItemId: string; value: string | number | null }>;
+    values: SelfInspectionEntryValuePayload[];
   },
   clientKey?: string
 ): Promise<SelfInspectionLotEntryDto> {
@@ -3396,6 +3406,17 @@ export async function completeSelfInspectionSession(
     {
       headers: clientKey ? { 'x-client-key': clientKey } : undefined
     }
+  );
+  return data.session;
+}
+
+export async function approveSelfInspectionOutOfToleranceReview(
+  sessionId: string,
+  body: { comment?: string | null } = {}
+): Promise<SelfInspectionSessionSummaryDto> {
+  const { data } = await api.post<{ session: SelfInspectionSessionSummaryDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/out-of-tolerance-review/approve`,
+    body
   );
   return data.session;
 }

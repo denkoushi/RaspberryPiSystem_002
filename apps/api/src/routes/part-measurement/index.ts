@@ -304,7 +304,7 @@ const listSelfInspectionSessionsQuerySchema = z.object({
   productNo: z.string().max(120).optional(),
   resourceCd: z.string().max(120).optional(),
   processGroup: processGroupSchema.optional(),
-  status: z.enum(['not_started', 'in_progress', 'completed']).optional()
+  status: z.enum(['not_started', 'in_progress', 'review_pending', 'completed']).optional()
 });
 
 const getSelfInspectionSessionQuerySchema = z.object({
@@ -320,34 +320,24 @@ const selfInspectionEntryIdParamsSchema = z.object({
   entryId: z.string().uuid()
 });
 
+const selfInspectionEntryValueSchema = z.object({
+  templateItemId: z.string().uuid(),
+  value: z.union([z.string(), z.number(), z.null()]),
+  outOfToleranceAcknowledged: z.boolean().optional()
+});
+
 const selfInspectionCreateEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
   employeeTagUid: z.string().min(1).max(200).optional().nullable(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
-  values: z
-    .array(
-      z.object({
-        templateItemId: z.string().uuid(),
-        value: z.union([z.string(), z.number(), z.null()])
-      })
-    )
-    .min(1)
-    .max(200)
+  values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
 
 const selfInspectionUpdateEntryBodySchema = z.object({
   ifUnmodifiedSince: z.string().min(1).max(100),
   employeeTagUid: z.string().min(1).max(200).optional().nullable(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
-  values: z
-    .array(
-      z.object({
-        templateItemId: z.string().uuid(),
-        value: z.union([z.string(), z.number(), z.null()])
-      })
-    )
-    .min(1)
-    .max(200)
+  values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
 
 const selfInspectionResetSessionBodySchema = z.object({
@@ -355,6 +345,10 @@ const selfInspectionResetSessionBodySchema = z.object({
   confirmCompletedSessionReset: z.boolean(),
   requestId: z.string().min(1).max(120),
   reason: z.string().max(500).optional().nullable()
+});
+
+const approveSelfInspectionOutOfToleranceReviewBodySchema = z.object({
+  comment: z.string().max(500).optional().nullable()
 });
 
 const issueSelfInspectionPaperReportBodySchema = z.object({
@@ -1461,6 +1455,12 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     });
   });
 
+  app.get(
+    '/part-measurement/self-inspection/out-of-tolerance-reviews',
+    { preHandler: canWrite },
+    async () => selfInspectionService.listPendingOutOfToleranceReviews()
+  );
+
   app.get('/part-measurement/self-inspection/sessions/:id', { preHandler: allowView }, async (request) => {
     const params = selfInspectionSessionIdParamsSchema.parse(request.params);
     const query = getSelfInspectionSessionQuerySchema.parse(request.query ?? {});
@@ -1509,6 +1509,21 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const session = await selfInspectionService.completeSession(params.id);
     return { session };
   });
+
+  app.post(
+    '/part-measurement/self-inspection/sessions/:id/out-of-tolerance-review/approve',
+    { preHandler: canWrite },
+    async (request) => {
+      const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+      const body = approveSelfInspectionOutOfToleranceReviewBodySchema.parse(request.body ?? {});
+      const session = await selfInspectionService.approveOutOfToleranceReview(params.id, {
+        comment: body.comment,
+        actorUserId: request.user!.id,
+        actorUsername: request.user!.username
+      });
+      return { session };
+    }
+  );
 
   app.post('/part-measurement/self-inspection/sessions/:id/reset', { preHandler: allowWriteKiosk }, async (request) => {
     const params = selfInspectionSessionIdParamsSchema.parse(request.params);

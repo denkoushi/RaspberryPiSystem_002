@@ -13,6 +13,9 @@ vi.mock('../../../lib/prisma.js', () => ({
     selfInspectionSession: {
       findUnique: vi.fn(),
     },
+    selfInspectionMeasurementValue: {
+      findMany: vi.fn(),
+    },
   },
 }));
 
@@ -84,6 +87,7 @@ describe('self-inspection.service cache reset hooks', () => {
     };
     vi.mocked(prisma.$transaction).mockResolvedValue(result as never);
     vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
+    vi.mocked(prisma.selfInspectionMeasurementValue.findMany).mockResolvedValue([] as never);
 
     const response = await service.completeSession('session-1');
 

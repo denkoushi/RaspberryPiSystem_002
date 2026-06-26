@@ -6,7 +6,13 @@ import { toleranceBoundsFromPoint } from './markerNumbering';
 
 import type { InspectionDrawingPoint } from './types';
 
-export type GuidedTrialValueCommitSource = 'dropdown' | 'enter' | 'blur' | 'blur_without_guide' | 'manual_switch';
+export type GuidedTrialValueCommitSource =
+  | 'dropdown'
+  | 'hundredths_button'
+  | 'enter'
+  | 'blur'
+  | 'blur_without_guide'
+  | 'manual_switch';
 
 export type GuidedTrialValueCommitPayload = {
   pointId: string;
@@ -52,7 +58,7 @@ export function resolveGuidedTrialPointInputStatus(point: InspectionDrawingPoint
 }
 
 export function shouldAdvanceGuidedTrialOnCommit(source: GuidedTrialValueCommitSource): boolean {
-  return source === 'dropdown' || source === 'enter' || source === 'blur';
+  return source === 'dropdown' || source === 'hundredths_button' || source === 'enter' || source === 'blur';
 }
 
 export function resolveGuidedTrialInitialTarget(

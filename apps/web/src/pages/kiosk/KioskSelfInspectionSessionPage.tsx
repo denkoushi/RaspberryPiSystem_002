@@ -16,6 +16,7 @@ import {
   InspectionDrawingPointSummaryList,
   InspectionDrawingValuePanel,
   inspectionDrawingCanvasColumnClassName,
+  resolveMeasurementPointInputStatus,
   templateItemToDrawingPoint,
   useInspectionDrawingZoom
 } from '../../features/part-measurement/inspection-drawing';
@@ -81,6 +82,16 @@ type StartState = {
   processGroup: 'cutting' | 'grinding';
 };
 
+type ValuePanelCommit = {
+  pointId: string;
+  value: string;
+  source: 'dropdown' | 'hundredths_button' | 'enter' | 'blur' | 'blur_without_guide';
+};
+
+type PendingOutOfToleranceCommit = ValuePanelCommit & {
+  entryIndex: number;
+};
+
 export function KioskSelfInspectionSessionPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -123,6 +134,11 @@ export function KioskSelfInspectionSessionPage() {
   const [entryIndexPage, setEntryIndexPage] = useState(0);
   const [draftValuesByEntryIndex, setDraftValuesByEntryIndex] = useState<Record<number, Record<string, string>>>({});
   const [savedDraftByEntryIndex, setSavedDraftByEntryIndex] = useState<Record<number, Record<string, string>>>({});
+  const [outOfToleranceAcknowledgedByEntryIndex, setOutOfToleranceAcknowledgedByEntryIndex] = useState<
+    Record<number, Record<string, boolean>>
+  >({});
+  const [pendingOutOfToleranceCommit, setPendingOutOfToleranceCommit] =
+    useState<PendingOutOfToleranceCommit | null>(null);
   /** entry 単位で baseline draft が束ねられたキー */
   const [draftBoundKey, setDraftBoundKey] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
@@ -189,8 +205,29 @@ export function KioskSelfInspectionSessionPage() {
     const binding = createSelfInspectionEntryDraftBinding(currentSession, 0);
     setDraftValuesByEntryIndex({ 0: binding.draft });
     setSavedDraftByEntryIndex({ 0: binding.saved });
+    setOutOfToleranceAcknowledgedByEntryIndex({});
+    setPendingOutOfToleranceCommit(null);
     setDraftBoundKey(binding.boundKey);
   }, [session?.id]);
+
+  const focusedEntry = session?.focusedEntry;
+
+  useEffect(() => {
+    if (!focusedEntry) return;
+    const acknowledgedByPointId = Object.fromEntries(
+      focusedEntry.values
+        .filter((value) => value.reviewStatus !== 'NOT_REQUIRED')
+        .map((value) => [value.templateItemId, true])
+    );
+    if (Object.keys(acknowledgedByPointId).length === 0) return;
+    setOutOfToleranceAcknowledgedByEntryIndex((prev) => ({
+      ...prev,
+      [focusedEntry.entryIndex]: {
+        ...(prev[focusedEntry.entryIndex] ?? {}),
+        ...acknowledgedByPointId
+      }
+    }));
+  }, [focusedEntry]);
 
   useEffect(() => {
     if (!session?.id) return;
@@ -259,6 +296,7 @@ export function KioskSelfInspectionSessionPage() {
     selectedEntryIndex,
     selectedPointId,
     draftValuesByEntryIndex,
+    outOfToleranceAcknowledgedByEntryIndex,
     isSessionReadOnly,
     isDrawingCanvasReady,
     isDraftReadyForGuidedFocus,
@@ -352,7 +390,8 @@ export function KioskSelfInspectionSessionPage() {
       guideMode,
       guideActionsEnabled,
       entryRegistrationReady: registration.isReady && registration.status !== 'duplicate',
-      entryRegistrationDirty: registrationDirty
+      entryRegistrationDirty: registrationDirty,
+      outOfToleranceAcknowledgedByEntryIndex
     };
   }, [
     draftValuesByEntryIndex,
@@ -367,6 +406,7 @@ export function KioskSelfInspectionSessionPage() {
     registrationDirty,
     savedDraftByEntryIndex,
     selectedEntryIndex,
+    outOfToleranceAcknowledgedByEntryIndex,
     session
   ]);
 
@@ -446,7 +486,8 @@ export function KioskSelfInspectionSessionPage() {
       guideMode,
       guideActionsEnabled,
       entryRegistrationReady: registration.isReady && registration.status !== 'duplicate',
-      entryRegistrationDirty: registrationDirty
+      entryRegistrationDirty: registrationDirty,
+      outOfToleranceAcknowledgedByEntryIndex
     });
     if (!saveState.enabled) {
       const message = selfInspectionActionReasonMessage(saveState.reason);
@@ -459,11 +500,13 @@ export function KioskSelfInspectionSessionPage() {
     }
     persistInFlightRef.current = true;
     setActionError(null);
+    const acknowledgedByPointId = outOfToleranceAcknowledgedByEntryIndex[entryIndex] ?? {};
     const payload = {
       ...registrationPayload,
       values: session.template.items.map((item) => ({
         templateItemId: item.id,
-        value: draft[item.id] ?? ''
+        value: draft[item.id] ?? '',
+        outOfToleranceAcknowledged: acknowledgedByPointId[item.id] === true ? true : undefined
       }))
     };
     try {
@@ -487,6 +530,14 @@ export function KioskSelfInspectionSessionPage() {
       setSavedDraftByEntryIndex((prev) => ({
         ...prev,
         [entryIndex]: { ...draft }
+      }));
+      setOutOfToleranceAcknowledgedByEntryIndex((prev) => ({
+        ...prev,
+        [entryIndex]: Object.fromEntries(
+          savedEntry.values
+            .filter((value) => value.reviewStatus !== 'NOT_REQUIRED')
+            .map((value) => [value.templateItemId, true])
+        )
       }));
       return savedEntry;
     } catch (error: unknown) {
@@ -541,22 +592,60 @@ export function KioskSelfInspectionSessionPage() {
   };
 
   const onValuePanelCommit = useCallback(
-    (panelCommit: {
-      pointId: string;
-      value: string;
-      source: 'dropdown' | 'enter' | 'blur' | 'blur_without_guide';
-    }) => {
+    (panelCommit: ValuePanelCommit) => {
       if (!session || isCompletingSession) return;
+      const item = session.template.items.find((templateItem) => templateItem.id === panelCommit.pointId);
+      if (!item) return;
+      const committedPoint = templateItemToDrawingPoint(item, panelCommit.value);
+      const status = resolveMeasurementPointInputStatus(committedPoint);
+      const acknowledged =
+        outOfToleranceAcknowledgedByEntryIndex[selectedEntryIndex]?.[panelCommit.pointId] === true;
+      if (status === 'ng' && !acknowledged) {
+        setPendingOutOfToleranceCommit({ ...panelCommit, entryIndex: selectedEntryIndex });
+        setActionError(null);
+        return;
+      }
       const commit: SelfInspectionValueCommitPayload = {
         pointId: panelCommit.pointId,
         entryIndex: selectedEntryIndex,
         value: panelCommit.value,
-        source: panelCommit.source
+        source: panelCommit.source,
+        outOfToleranceConfirmed: acknowledged
       };
       handleCommitValue(commit);
     },
-    [handleCommitValue, isCompletingSession, selectedEntryIndex, session]
+    [
+      handleCommitValue,
+      isCompletingSession,
+      outOfToleranceAcknowledgedByEntryIndex,
+      selectedEntryIndex,
+      session
+    ]
   );
+
+  const confirmOutOfToleranceCommit = () => {
+    if (!pendingOutOfToleranceCommit) return;
+    const commit = pendingOutOfToleranceCommit;
+    setPendingOutOfToleranceCommit(null);
+    setOutOfToleranceAcknowledgedByEntryIndex((prev) => ({
+      ...prev,
+      [commit.entryIndex]: {
+        ...(prev[commit.entryIndex] ?? {}),
+        [commit.pointId]: true
+      }
+    }));
+    handleCommitValue({
+      pointId: commit.pointId,
+      entryIndex: commit.entryIndex,
+      value: commit.value,
+      source: commit.source,
+      outOfToleranceConfirmed: true
+    });
+  };
+
+  const cancelOutOfToleranceCommit = () => {
+    setPendingOutOfToleranceCommit(null);
+  };
 
   if (!resolvedSessionId && resolveMutation.isPending) {
     return <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-900 text-white">セッション作成中…</div>;
@@ -648,6 +737,20 @@ export function KioskSelfInspectionSessionPage() {
         tone="danger"
         onCancel={() => setResetPhase(null)}
         onConfirm={() => void runSessionReset(true)}
+      />
+      <ConfirmDialog
+        isOpen={pendingOutOfToleranceCommit !== null}
+        title="公差外の測定値です"
+        description={
+          pendingOutOfToleranceCommit
+            ? `測定値 ${pendingOutOfToleranceCommit.value} は合格範囲外です。再入力するか、公差外のまま次へ進みます。`
+            : undefined
+        }
+        cancelLabel="再入力"
+        confirmLabel="公差外のまま進む"
+        tone="danger"
+        onCancel={cancelOutOfToleranceCommit}
+        onConfirm={confirmOutOfToleranceCommit}
       />
 
       {guideHint ? (
@@ -753,6 +856,22 @@ export function KioskSelfInspectionSessionPage() {
               readOnly={isSessionInputLocked}
               onValueChange={(value) => {
                 if (!selectedPoint || isSessionInputLocked || !session) return;
+                const savedValue =
+                  session.focusedEntry?.entryIndex === selectedEntryIndex
+                    ? session.focusedEntry.values.find((row) => row.templateItemId === selectedPoint.id)?.value
+                    : undefined;
+                if (savedValue !== value) {
+                  setOutOfToleranceAcknowledgedByEntryIndex((prev) => {
+                    const current = prev[selectedEntryIndex] ?? {};
+                    if (current[selectedPoint.id] !== true) return prev;
+                    const nextForEntry = { ...current };
+                    delete nextForEntry[selectedPoint.id];
+                    return {
+                      ...prev,
+                      [selectedEntryIndex]: nextForEntry
+                    };
+                  });
+                }
                 setDraftValuesByEntryIndex((prev) => {
                   const current =
                     prev[selectedEntryIndex] ?? buildSelfInspectionEntryDraft(session, selectedEntryIndex);
@@ -822,4 +941,3 @@ export function KioskSelfInspectionSessionPage() {
     </div>
   );
 }
-

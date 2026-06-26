@@ -1,6 +1,7 @@
 import { LEADERBOARD_BOARD_CACHE_SCHEMA_VERSION } from './leaderboardBoardCacheConstants';
 
 import type { ProductionScheduleLeaderboardBoardResponse } from '../../../../api/client';
+import type { SelfInspectionStatus } from '../../../part-measurement/types';
 import type {
   AccumulatedLeaderboardDecorations,
   LeaderboardRowDecoration
@@ -47,7 +48,7 @@ export type PersistedLeaderboardBoardCacheRecord = {
         customerName: string | null;
         hasSelfInspectionDrawing: boolean;
         selfInspectionTemplateId: string | null;
-        selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+        selfInspectionStatus: SelfInspectionStatus | null;
         selfInspectionEntryPath: string | null;
       }
     >;

@@ -235,10 +235,12 @@ import {
   deleteInspectionItem,
   resolveOrCreateSelfInspectionSession,
   listSelfInspectionSessions,
+  listSelfInspectionOutOfToleranceReviews,
   getSelfInspectionSession,
   createSelfInspectionEntry,
   updateSelfInspectionEntry,
   completeSelfInspectionSession,
+  approveSelfInspectionOutOfToleranceReview,
   resetSelfInspectionSession,
   getInstrumentTags,
   createInstrumentTag,
@@ -278,6 +280,7 @@ import type {
   RiggingInspectionResult
 } from './types';
 import type { KioskProductionScheduleListCache } from '../features/kiosk/productionSchedule/cache/kioskProductionScheduleListCache';
+import type { SelfInspectionStatus } from '../features/part-measurement/types';
 
 export function useDepartments() {
   return useQuery({
@@ -376,7 +379,7 @@ export function useSelfInspectionSessions(
     productNo?: string;
     resourceCd?: string;
     processGroup?: 'cutting' | 'grinding';
-    status?: 'not_started' | 'in_progress' | 'completed';
+    status?: SelfInspectionStatus;
   },
   options?: { enabled?: boolean; pauseRefetch?: boolean; refetchIntervalMs?: number | false }
 ) {
@@ -387,6 +390,15 @@ export function useSelfInspectionSessions(
     queryFn: () => listSelfInspectionSessions(params),
     placeholderData: (previousData) => previousData,
     refetchInterval: interval,
+    enabled: options?.enabled ?? true
+  });
+}
+
+export function useSelfInspectionOutOfToleranceReviews(options?: { enabled?: boolean; refetchIntervalMs?: number | false }) {
+  return useQuery({
+    queryKey: ['self-inspection-out-of-tolerance-reviews'],
+    queryFn: () => listSelfInspectionOutOfToleranceReviews(),
+    refetchInterval: options?.refetchIntervalMs ?? 30000,
     enabled: options?.enabled ?? true
   });
 }
@@ -457,6 +469,21 @@ export function useCompleteSelfInspectionSession() {
     onSuccess: (session) => {
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+    }
+  });
+}
+
+export function useApproveSelfInspectionOutOfToleranceReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId, comment }: { sessionId: string; comment?: string | null }) =>
+      approveSelfInspectionOutOfToleranceReview(sessionId, { comment }),
+    onSuccess: (session) => {
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-out-of-tolerance-reviews'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
     }
   });
 }

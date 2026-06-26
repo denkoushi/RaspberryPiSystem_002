@@ -91,6 +91,12 @@ const SELF_INSPECTION_SCHEDULE_MAX_SCAN_PAGES = 50;
 
 export { normalizeMachineNameForCompare } from './machine-name-compare.js';
 
+export type ProductionScheduleSelfInspectionStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'review_pending'
+  | 'completed';
+
 export type ProductionScheduleRow = {
   id: string;
   /** 生産日程一覧と progress-overview を製番単位で突合するための専用キー。 */
@@ -113,7 +119,7 @@ export type ProductionScheduleRow = {
   /** `responseProfile=leaderboard` のとき。自主検査開始に使う active テンプレ ID */
   selfInspectionTemplateId?: string | null;
   hasSelfInspectionDrawing?: boolean;
-  selfInspectionStatus?: 'not_started' | 'in_progress' | 'completed' | null;
+  selfInspectionStatus?: ProductionScheduleSelfInspectionStatus | null;
   selfInspectionEntryPath?: string | null;
   /** 順位ボード: 機械行の FSIGENSHOYORYO（分）。`+人` OFF 時の表示基準。 */
   machineRequiredMinutes?: number;
@@ -803,7 +809,7 @@ export type ProductionScheduleLeaderboardDecorationPayload = {
     customerName: string | null;
     hasSelfInspectionDrawing: boolean;
     selfInspectionTemplateId: string | null;
-    selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+    selfInspectionStatus: ProductionScheduleSelfInspectionStatus | null;
     selfInspectionEntryPath: string | null;
   }>;
   leaderboardFooterChipsByPartKey: Record<string, LeaderboardPartFooterProcessItem[]>;
@@ -1525,7 +1531,7 @@ export type SelfInspectionMachineTargetSelectorRowDecoration = {
   id: string;
   resolvedMachineName: string | null;
   hasSelfInspectionDrawing: boolean;
-  selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+  selfInspectionStatus: ProductionScheduleSelfInspectionStatus | null;
 };
 
 /**

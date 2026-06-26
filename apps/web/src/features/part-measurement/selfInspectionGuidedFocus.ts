@@ -12,6 +12,7 @@ export type SelfInspectionGuideMode = 'guided' | 'manual';
 
 export type SelfInspectionValueCommitSource =
   | 'dropdown'
+  | 'hundredths_button'
   | 'enter'
   | 'blur'
   /** セッションツールバーへフォーカス移動時の blur（ガイド自動進行なし） */
@@ -23,6 +24,7 @@ export type SelfInspectionValueCommitPayload = {
   entryIndex: number;
   value: string;
   source: SelfInspectionValueCommitSource;
+  outOfToleranceConfirmed?: boolean;
 };
 
 export type SelfInspectionPointInputStatus = MeasurementPointInputStatus;
@@ -108,43 +110,60 @@ export function resolvePointInputStatus(point: InspectionDrawingPoint): SelfInsp
   return resolveMeasurementPointInputStatus(point);
 }
 
-export function isPointCommitEligible(status: SelfInspectionPointInputStatus): boolean {
-  return status === 'ok';
+export function isPointInputComplete(
+  point: InspectionDrawingPoint,
+  outOfToleranceAcknowledgedByPointId: Record<string, boolean> = {}
+): boolean {
+  const status = resolvePointInputStatus(point);
+  return status === 'ok' || (status === 'ng' && outOfToleranceAcknowledgedByPointId[point.id] === true);
+}
+
+export function isPointCommitEligible(
+  status: SelfInspectionPointInputStatus,
+  outOfToleranceConfirmed = false
+): boolean {
+  return status === 'ok' || (status === 'ng' && outOfToleranceConfirmed);
 }
 
 export function shouldAdvanceGuideOnCommit(source: SelfInspectionValueCommitSource): boolean {
-  return source === 'dropdown' || source === 'enter' || source === 'blur';
+  return source === 'dropdown' || source === 'hundredths_button' || source === 'enter' || source === 'blur';
 }
 
 /** 丸数字順で最初の未完了測定点（全点 OK なら null）。再開・ガイド遷移用。 */
 export function findFirstPendingPointId(
   points: InspectionDrawingPoint[],
-  templateItems: PartMeasurementTemplateItemDto[]
+  templateItems: PartMeasurementTemplateItemDto[],
+  outOfToleranceAcknowledgedByPointId: Record<string, boolean> = {}
 ): string | null {
   const sorted = sortPointsByMarkerNoStable(points, templateItems);
-  return sorted.find((pt) => resolvePointInputStatus(pt) !== 'ok')?.id ?? null;
+  return sorted.find((pt) => !isPointInputComplete(pt, outOfToleranceAcknowledgedByPointId))?.id ?? null;
 }
 
 /** @deprecated 名称互換。初回開始も {@link findFirstPendingPointId} と同じ（全点空なら No.1 が最小未完了になる）。 */
 export function findFirstGuidedPointId(
   points: InspectionDrawingPoint[],
-  templateItems: PartMeasurementTemplateItemDto[]
+  templateItems: PartMeasurementTemplateItemDto[],
+  outOfToleranceAcknowledgedByPointId: Record<string, boolean> = {}
 ): string | null {
-  return findFirstPendingPointId(points, templateItems);
+  return findFirstPendingPointId(points, templateItems, outOfToleranceAcknowledgedByPointId);
 }
 
 export function findNextGuidedPointIdAfter(
   points: InspectionDrawingPoint[],
   templateItems: PartMeasurementTemplateItemDto[],
-  afterPointId: string
+  afterPointId: string,
+  outOfToleranceAcknowledgedByPointId: Record<string, boolean> = {}
 ): string | null {
   const sorted = sortPointsByMarkerNoStable(points, templateItems);
   const afterIndex = sorted.findIndex((pt) => pt.id === afterPointId);
-  if (afterIndex < 0) return findFirstPendingPointId(points, templateItems);
+  if (afterIndex < 0) {
+    return findFirstPendingPointId(points, templateItems, outOfToleranceAcknowledgedByPointId);
+  }
 
   for (let i = afterIndex + 1; i < sorted.length; i += 1) {
-    const status = resolvePointInputStatus(sorted[i]!);
-    if (status !== 'ok') return sorted[i]!.id;
+    if (!isPointInputComplete(sorted[i]!, outOfToleranceAcknowledgedByPointId)) {
+      return sorted[i]!.id;
+    }
   }
   return null;
 }
@@ -181,6 +200,7 @@ export function applySelfInspectionGuidedCommit(input: {
   currentDraft: Record<string, string>;
   commit: SelfInspectionValueCommitPayload;
   nextFocusRequestId: number;
+  outOfToleranceAcknowledgedByPointId?: Record<string, boolean>;
 }): SelfInspectionGuidedCommitResult {
   const nextDraft = {
     ...input.currentDraft,
@@ -198,7 +218,10 @@ export function applySelfInspectionGuidedCommit(input: {
   }
 
   const inputStatus = resolvePointInputStatus(committedPoint);
-  if (!shouldAdvanceGuideOnCommit(input.commit.source) || !isPointCommitEligible(inputStatus)) {
+  if (
+    !shouldAdvanceGuideOnCommit(input.commit.source) ||
+    !isPointCommitEligible(inputStatus, input.commit.outOfToleranceConfirmed === true)
+  ) {
     return {
       kind: 'stay',
       pointId: input.commit.pointId,
@@ -207,10 +230,15 @@ export function applySelfInspectionGuidedCommit(input: {
     };
   }
 
+  const acknowledgedByPointId = {
+    ...(input.outOfToleranceAcknowledgedByPointId ?? {}),
+    ...(input.commit.outOfToleranceConfirmed === true ? { [input.commit.pointId]: true } : {})
+  };
   const nextPointId = findNextGuidedPointIdAfter(
     points,
     input.session.template.items,
-    input.commit.pointId
+    input.commit.pointId,
+    acknowledgedByPointId
   );
   if (!nextPointId) {
     return {
@@ -233,9 +261,14 @@ export function resolveResumeGuidedFocusTarget(input: {
   session: SelfInspectionSessionDetailDto;
   draft: Record<string, string>;
   requestId: number;
+  outOfToleranceAcknowledgedByPointId?: Record<string, boolean>;
 }): SelfInspectionGuidedFocusTarget | null {
   const points = buildEntryDrawingPoints(input.session, input.draft);
-  const pointId = findFirstPendingPointId(points, input.session.template.items);
+  const pointId = findFirstPendingPointId(
+    points,
+    input.session.template.items,
+    input.outOfToleranceAcknowledgedByPointId
+  );
   if (!pointId) return null;
   return createGuidedFocusTarget(pointId, input.requestId);
 }
