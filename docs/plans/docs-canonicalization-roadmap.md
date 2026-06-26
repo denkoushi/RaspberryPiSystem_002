@@ -3038,7 +3038,19 @@ Status: implemented in PR246.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR247 And Later: Thin Indexes And Split Large Documents
+### PR247: Thin Global Rank Actual Hours Index Block
+
+Status: implemented in PR247.
+
+- Thin only the 2026-03-11 global-rank display extension and actual-hours
+  column latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace display-rank context, actual-hours column,
+  deploy, and real-device verification detail with short links to KB-297 and
+  deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR248 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
