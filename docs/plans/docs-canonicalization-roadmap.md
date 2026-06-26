@@ -3276,7 +3276,19 @@ Status: implemented in PR266.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR267 And Later: Thin Indexes And Split Large Documents
+### PR267: Thin VNC Recovery Index Block
+
+Status: implemented in PR267.
+
+- Thin only the 2026-03-06 RealVNC Pi4/Pi3 recovery and onsite validation
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Tailscale ACL, Pi5 SSH tunnel,
+  RealVNC port mapping, and validation detail with short links to
+  vnc-tailscale-recovery and KB-293.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR268 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
