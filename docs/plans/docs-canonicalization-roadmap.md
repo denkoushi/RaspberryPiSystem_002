@@ -1980,7 +1980,19 @@ Status: implemented in PR158.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR159 And Later: Thin Indexes And Split Large Documents
+### PR159: Thin Registered Seiban History Index Block
+
+Status: implemented in PR159.
+
+- Thin only the 2026-03-30 production schedule registered-seiban shared history
+  limit latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace shared-types implementation, rollout,
+  Phase12, Trivy, and `EXEC_PLAN.md` detail with short links to KB-231, KB-297,
+  and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR160 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
