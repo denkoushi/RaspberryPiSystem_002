@@ -2560,7 +2560,19 @@ Status: implemented in PR206.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR207 And Later: Thin Indexes And Split Large Documents
+### PR207: Thin Production Schedule UI Unify Index Block
+
+Status: implemented in PR207.
+
+- Thin only the 2026-03-18 production-schedule registered-seiban and resource
+  CD dropdown UI unification latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace UI behavior, resource filter controls,
+  deployment branch, Phase12, and onsite verification detail with short links
+  to frontend KB-307 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR208 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
