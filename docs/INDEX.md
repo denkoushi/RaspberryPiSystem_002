@@ -719,7 +719,7 @@
 
 ### 🆕 最新アップデート（2026-03-25）
 
-- **✅ 工具貸出 active loan の `clientId` 手動補正 API・Pi5+Pi4×2 順次デプロイ・Phase12 実機検証・ドキュメント反映・`main` マージ**: `PUT /api/tools/loans/:id/client`（`ADMIN`/`MANAGER`）。旧 borrow で `Loan.clientId` が null のままの active loan を運用補正し、キオスク返却一覧の「端末場所」`-` を解消可能に。**デプロイ（Pi3 除外・1台ずつ）**: [deployment.md](./guides/deployment.md) の `--limit raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01`。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**。**参照**: [kb-kiosk-rigging-return-cancel-investigation.md](./knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md)（2026-03-25 追記節）/ [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **工具貸出 active loan `clientId` 手動補正 API 正本**: [KB](./knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md#2026-03-25-追記-旧-active-loan-の-location-補正手段) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 
 ### 🆕 最新アップデート（2026-03-24）
 
