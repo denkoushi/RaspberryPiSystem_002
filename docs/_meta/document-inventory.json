@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 137238,
-    "totalBytes": 10273136,
+    "totalLines": 137250,
+    "totalBytes": 10273182,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5205,
+    "localLinkCount": 5206,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 6,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 489359,
+      "byteSize": 488911,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -8852,6 +8852,11 @@
         },
         {
           "href": "./knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase12完全体化2026-03-16",
+          "targetPath": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
+          "exists": true
+        },
+        {
+          "href": "./knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase1挙動不変の境界導入2026-03-14",
           "targetPath": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
           "exists": true
         },
@@ -20161,7 +20166,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 370,
+      "inboundCount": 371,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -29603,8 +29608,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 2816,
-      "byteSize": 114872,
+      "lineCount": 2828,
+      "byteSize": 115366,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
