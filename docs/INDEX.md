@@ -1075,7 +1075,7 @@
 
 ### 🆕 最新アップデート（2026-01-24）
 
-- **✅ 旧キー自動削除機能の実装完了（backup.json保存時の自動クリーンアップ）**: 管理コンソールのバックアップタブで「設定の健全性: 警告」が表示される問題を根本解決。原因は`backup.json`の`storage.options`直下に旧キー（`accessToken`, `refreshToken`, `appKey`, `appSecret` for Dropbox; `clientId`, `clientSecret`, `redirectUri`, `subjectPattern`, `fromEmail`, `gmailAccessToken`, `gmailRefreshToken` for Gmail）が残っていたこと。KB-168で手動削除方法は記録されていたが、保存時に自動的に削除する機能がなかった。`BackupConfigLoader.save()`メソッドに`pruneLegacyKeysOnSave()`静的メソッドを追加し、保存時に新構造（`options.dropbox.*`, `options.gmail.*`）が存在し値が非空の場合のみ旧キーを自動削除するように実装。後方互換性を維持し、新構造の値が空の場合は旧キーを保持。ユニットテストを追加して自動削除ロジックの動作を確認。CI成功、デプロイ完了、実機検証完了（デプロイ後、`BackupConfigLoader.load()`と`BackupConfigLoader.save()`を実行し、ヘルスチェックで警告が解消されたことを確認）。ナレッジベースにKB-196を追加。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-196](./knowledge-base/infrastructure/backup-restore.md#kb-196-旧キー自動削除機能の実装backupjson保存時の自動クリーンアップ) / [knowledge-base/infrastructure/backup-restore.md#kb-168](./knowledge-base/infrastructure/backup-restore.md#kb-168-旧キーと新構造の衝突問題と解決方法) を参照。
+- **backup.json 旧キー自動削除 正本**: [KB-196](./knowledge-base/infrastructure/backup-restore.md#kb-196-旧キー自動削除機能の実装backupjson保存時の自動クリーンアップ) · [KB-168](./knowledge-base/infrastructure/backup-restore.md#kb-168-旧キーと新構造の衝突問題と解決方法)。
 
 ### 🆕 最新アップデート（2026-01-23）
 

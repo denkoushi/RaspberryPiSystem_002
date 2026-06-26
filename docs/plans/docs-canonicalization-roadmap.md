@@ -4166,7 +4166,21 @@ Status: implemented in PR335.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR336 And Later: Thin Indexes And Split Large Documents
+### PR336: Thin Backup Legacy Key Cleanup Index Block
+
+Status: implemented in PR336.
+
+- Thin only the 2026-01-24 backup.json legacy-key automatic cleanup
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the backup health warning, legacy flat
+  fields under `storage.options`, KB-168 manual cleanup background,
+  `BackupConfigLoader.save()` cleanup behavior, compatibility rule, tests,
+  CI/deploy/onsite validation, and KB-196 addition with short links to KB-196
+  and KB-168.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR337 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
