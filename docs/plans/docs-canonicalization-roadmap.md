@@ -4017,7 +4017,21 @@ Status: implemented in PR324.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR325 And Later: Thin Indexes And Split Large Documents
+### PR325: Thin Kiosk Input Protection Index Block
+
+Status: implemented in PR325.
+
+- Thin only the 2026-02-02 kiosk input-field protection and onsite
+  verification latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the keyboard-misinput incident,
+  `KioskHeader.tsx` input removal, display-only client label, page-level
+  localStorage removal, `DEFAULT_CLIENT_KEY` startup guard, 401 recovery,
+  onsite validation, deferred recovery test note, and web rebuild lesson with
+  short links to KB-225 frontend and the KB-225 investigation document.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR326 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
