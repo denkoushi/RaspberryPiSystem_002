@@ -101,6 +101,42 @@ export function getRecommendedBackupTargetCatalog(): RecommendedBackupTargetSpec
         retention: DEFAULT_RETENTION,
       },
     },
+    {
+      id: 'server-directory-measuring-instrument-genres',
+      message: '計測機器ジャンル画像ストレージ（ホスト永続ボリューム）',
+      target: {
+        kind: 'directory',
+        source: '/app/storage/measuring-instrument-genres',
+        schedule: DEFAULT_SCHEDULE,
+        enabled: true,
+        storage: DROPBOX,
+        retention: DEFAULT_RETENTION,
+      },
+    },
+    {
+      id: 'server-directory-pallet-machine-illustrations',
+      message: 'パレット加工機イラストストレージ（ホスト永続ボリューム）',
+      target: {
+        kind: 'directory',
+        source: '/app/storage/pallet-machine-illustrations',
+        schedule: DEFAULT_SCHEDULE,
+        enabled: true,
+        storage: DROPBOX,
+        retention: DEFAULT_RETENTION,
+      },
+    },
+    {
+      id: 'server-directory-pdfs',
+      message: 'サイネージ・要領書PDFストレージ（ホスト永続ボリューム）',
+      target: {
+        kind: 'directory',
+        source: '/app/storage/pdfs',
+        schedule: DEFAULT_SCHEDULE,
+        enabled: true,
+        storage: DROPBOX,
+        retention: { days: 14, maxBackups: 2 },
+      },
+    },
   ];
 
   const kiosks = PI4_KIOSK_CLIENTS.flatMap((k) => kioskClientSpecs(k.inventoryHost, k.sshHomeUser));

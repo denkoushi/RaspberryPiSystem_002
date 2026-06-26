@@ -20,6 +20,9 @@ describe('backup-recommended-targets.catalog', () => {
   it('returns catalog entries for part-measurement drawings and extra Pi4 kiosks', () => {
     const catalog = getRecommendedBackupTargetCatalog();
     expect(catalog.some((c) => c.id === 'server-directory-part-measurement-drawings')).toBe(true);
+    expect(catalog.some((c) => c.id === 'server-directory-measuring-instrument-genres')).toBe(true);
+    expect(catalog.some((c) => c.id === 'server-directory-pallet-machine-illustrations')).toBe(true);
+    expect(catalog.some((c) => c.id === 'server-directory-pdfs')).toBe(true);
     expect(catalog.some((c) => c.target.source.includes('raspi4-robodrill01:'))).toBe(true);
     expect(catalog.some((c) => c.target.source.includes('/home/tools04/.ssh'))).toBe(true);
   });

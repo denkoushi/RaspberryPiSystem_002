@@ -54,6 +54,7 @@ export class BackupHistoryService {
       where: { id: historyId },
       data: {
         status: BackupStatus.COMPLETED,
+        backupPath: summary?.path,
         completedAt: new Date(),
         summary: summary ? (summary as Prisma.JsonObject) : undefined,
         sizeBytes: summary?.sizeBytes,

@@ -8,6 +8,7 @@ set -e
 # - PostgreSQLデータベース
 # - 環境変数ファイル（.env）
 # - 写真ディレクトリ
+# - 復旧必須の永続ディレクトリ（図面、PDF、マスタ画像など）
 #
 # バックアップ先:
 # - ローカルディレクトリ: /opt/backups/
@@ -220,9 +221,27 @@ if [ "${USE_API}" = true ]; then
   backup_via_api "csv" "items" "items-${DATE}" || true
 fi
 
-# 5. 古いバックアップを削除（30日以上前）
+# 5. 復旧必須の永続ディレクトリバックアップ
+if [ "${USE_API}" = true ]; then
+  echo ""
+  echo "5. 復旧必須ディレクトリのバックアップを開始..."
+  for directory_source in \
+    "/app/storage/part-measurement-drawings" \
+    "/app/storage/measuring-instrument-genres" \
+    "/app/storage/pallet-machine-illustrations" \
+    "/app/storage/pdfs"
+  do
+    if is_api_target_enabled "directory" "${directory_source}"; then
+      backup_via_api "directory" "${directory_source}" "$(basename "${directory_source}")-${DATE}" || true
+    else
+      echo "   → ${directory_source} はbackup.jsonで無効化されています（スキップ）"
+    fi
+  done
+fi
+
+# 6. 古いバックアップを削除（30日以上前）
 echo ""
-echo "5. 古いバックアップを削除中..."
+echo "6. 古いバックアップを削除中..."
 find "${BACKUP_DIR}" -name "*.gz" -mtime +${RETENTION_DAYS} -delete 2>/dev/null || true
 find "${BACKUP_DIR}" -name "*.tar.gz" -mtime +${RETENTION_DAYS} -delete 2>/dev/null || true
 find "${BACKUP_DIR}" -name "*.env" -mtime +${RETENTION_DAYS} -delete 2>/dev/null || true
