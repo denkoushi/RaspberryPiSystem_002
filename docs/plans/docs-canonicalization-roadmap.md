@@ -2740,7 +2740,19 @@ Status: implemented in PR221.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR222 And Later: Thin Indexes And Split Large Documents
+### PR222: Thin Location Scope Phase3 Index Block
+
+Status: implemented in PR222.
+
+- Thin only the 2026-03-16 Location Scope Phase3 latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace scope contract/flag rollout, staged
+  deployment, and real-device verification detail with short links to KB-297,
+  ADR-20260315 Phase3, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR223 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
