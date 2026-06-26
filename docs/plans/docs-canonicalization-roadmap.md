@@ -2548,7 +2548,19 @@ Status: implemented in PR205.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR206 And Later: Thin Indexes And Split Large Documents
+### PR206: Thin Progress Overview Seiban Filter Index Block
+
+Status: implemented in PR206.
+
+- Thin only the 2026-03-18 progress overview seiban filter latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace dropdown behavior, persisted state,
+  Phase12 API check, and onsite browser caveat with short links to KB-306 and
+  deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR207 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
