@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 137714,
-    "totalBytes": 10264596,
+    "totalLines": 137726,
+    "totalBytes": 10264670,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5213,
+    "localLinkCount": 5214,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 461726,
+      "byteSize": 461297,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -7172,6 +7172,11 @@
         },
         {
           "href": "./guides/operation-manual.md",
+          "targetPath": "docs/guides/operation-manual.md",
+          "exists": true
+        },
+        {
+          "href": "./guides/operation-manual.md#低レイヤー観測pi5カナリア",
           "targetPath": "docs/guides/operation-manual.md",
           "exists": true
         },
@@ -17873,7 +17878,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 14,
+      "inboundCount": 15,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29635,8 +29640,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 3292,
-      "byteSize": 133965,
+      "lineCount": 3304,
+      "byteSize": 134468,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",

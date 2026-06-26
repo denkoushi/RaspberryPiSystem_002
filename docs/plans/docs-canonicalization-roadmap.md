@@ -3240,7 +3240,19 @@ Status: implemented in PR263.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR264 And Later: Thin Indexes And Split Large Documents
+### PR264: Thin Low-Level Observability Index Block
+
+Status: implemented in PR264.
+
+- Thin only the 2026-03-06 low-level observability canary
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace eventLoop metrics, signage worker metrics,
+  cursor-debug, canary criteria, and warmup-window detail with short links to
+  ADR-20260306, operation-manual, KB-296, KB-268, and KB-274.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR265 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
