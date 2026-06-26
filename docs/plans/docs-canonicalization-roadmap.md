@@ -3074,7 +3074,18 @@ Status: implemented in PR249.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR250 And Later: Thin Indexes And Split Large Documents
+### PR250: Thin Global Rank Display Ops Index Block
+
+Status: implemented in PR250.
+
+- Thin only the 2026-03-10 production-schedule global-rank display
+  operational-alignment latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace filtered-rank display behavior and
+  storage/display-layer detail with a short link to KB-297.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR251 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
