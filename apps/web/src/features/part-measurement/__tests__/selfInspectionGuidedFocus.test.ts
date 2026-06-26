@@ -85,6 +85,17 @@ describe('selfInspectionGuidedFocus', () => {
     expect(findFirstPendingPointId(points, items)).toBeNull();
   });
 
+  it('findFirstPendingPointId treats acknowledged NG points as complete', () => {
+    const items = [
+      makeItem({ id: 'p1', sortOrder: 0, displayMarker: '1' }),
+      makeItem({ id: 'p2', sortOrder: 1, displayMarker: '2' })
+    ];
+    const session = makeSession(items);
+    const draft = { p1: '99', p2: '10' };
+    const points = buildEntryDrawingPoints(session, draft);
+    expect(findFirstPendingPointId(points, items, { p1: true })).toBeNull();
+  });
+
   it('findFirstGuidedPointId focuses No.1 when all points are empty', () => {
     const items = [
       makeItem({ id: 'p1', sortOrder: 0, displayMarker: '1' }),
@@ -149,6 +160,31 @@ describe('selfInspectionGuidedFocus', () => {
     }
   });
 
+  it('advances on acknowledged NG commit', () => {
+    const items = [
+      makeItem({ id: 'p1', sortOrder: 0, displayMarker: '1' }),
+      makeItem({ id: 'p2', sortOrder: 1, displayMarker: '2' })
+    ];
+    const session = makeSession(items);
+    const result = applySelfInspectionGuidedCommit({
+      session,
+      entryIndex: 0,
+      currentDraft: { p1: '', p2: '' },
+      commit: {
+        pointId: 'p1',
+        entryIndex: 0,
+        value: '99',
+        source: 'enter',
+        outOfToleranceConfirmed: true
+      },
+      nextFocusRequestId: 3
+    });
+    expect(result.kind).toBe('advance');
+    if (result.kind === 'advance') {
+      expect(result.next?.pointId).toBe('p2');
+    }
+  });
+
   it('returns null next when all points are OK after commit', () => {
     const items = [makeItem({ id: 'p1', sortOrder: 0, displayMarker: '1' })];
     const session = makeSession(items);
@@ -203,6 +239,18 @@ describe('selfInspectionGuidedFocus', () => {
     const draft = { p1: '10', p2: '10', p3: '' };
     const points = buildEntryDrawingPoints(session, draft);
     expect(findNextGuidedPointIdAfter(points, items, 'p1')).toBe('p3');
+  });
+
+  it('findNextGuidedPointIdAfter skips acknowledged NG points', () => {
+    const items = [
+      makeItem({ id: 'p1', sortOrder: 0, displayMarker: '1' }),
+      makeItem({ id: 'p2', sortOrder: 1, displayMarker: '2' }),
+      makeItem({ id: 'p3', sortOrder: 2, displayMarker: '3' })
+    ];
+    const session = makeSession(items);
+    const draft = { p1: '10', p2: '99', p3: '' };
+    const points = buildEntryDrawingPoints(session, draft);
+    expect(findNextGuidedPointIdAfter(points, items, 'p1', { p2: true })).toBe('p3');
   });
 
   it('resolveResumeGuidedFocusTarget uses guided zoom', () => {

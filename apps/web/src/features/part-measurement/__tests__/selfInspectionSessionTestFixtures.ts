@@ -77,6 +77,7 @@ export function makeSelfInspectionSessionDetailForTest(
     expectedEntryCount,
     requiredEntryCount: expectedEntryCount,
     completedEntryCount: 0,
+    pendingReviewCount: 0,
     participantEmployeeNames: [],
     entryCountBlockedReason: null,
     selfInspectionMode: options.selfInspectionMode ?? 'full',

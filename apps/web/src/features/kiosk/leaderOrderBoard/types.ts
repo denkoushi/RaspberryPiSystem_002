@@ -1,3 +1,5 @@
+import type { SelfInspectionStatus } from '../../part-measurement/types';
+
 export type LeaderBoardRow = {
   id: string;
   /** progress-overview の製番単位集約と結ぶ専用キー。 */
@@ -32,7 +34,7 @@ export type LeaderBoardRow = {
   note: string | null;
   hasSelfInspectionDrawing: boolean;
   selfInspectionTemplateId: string | null;
-  selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+  selfInspectionStatus: SelfInspectionStatus | null;
   selfInspectionEntryPath: string | null;
   /** display item 契約 */
   sourceRowId: string;

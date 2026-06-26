@@ -23,6 +23,7 @@ export type SelfInspectionActionReason =
   | 'ng_value'
   | 'tolerance_error'
   | 'missing_required_entries'
+  | 'pending_review'
   | 'unsaved_changes'
   | 'already_guided'
   | 'no_pending_points_unsaved'
@@ -49,6 +50,7 @@ export type SelfInspectionSessionActionContext = {
   guideActionsEnabled: boolean;
   entryRegistrationReady: boolean;
   entryRegistrationDirty: boolean;
+  outOfToleranceAcknowledgedByEntryIndex?: Record<number, Record<string, boolean>>;
 };
 
 function disabledState(reason: SelfInspectionActionReason): SelfInspectionActionState {
@@ -62,7 +64,8 @@ function enabledState(): SelfInspectionActionState {
 /** 現在入力件ドラフトの保存ブロック理由（測定点単位・優先順固定） */
 export function resolveCurrentEntryDraftSaveBlockReason(
   session: SelfInspectionSessionDetailDto,
-  draft: Record<string, string>
+  draft: Record<string, string>,
+  outOfToleranceAcknowledgedByPointId: Record<string, boolean> = {}
 ): SelfInspectionActionReason | null {
   const points = buildEntryDrawingPoints(session, draft);
   let hasEmpty = false;
@@ -82,6 +85,9 @@ export function resolveCurrentEntryDraftSaveBlockReason(
       continue;
     }
     if (status === 'ng') {
+      if (outOfToleranceAcknowledgedByPointId[point.id] === true) {
+        continue;
+      }
       hasNg = true;
       continue;
     }
@@ -129,7 +135,11 @@ export function resolveSelfInspectionSaveActionState(
     return disabledState('no_changes');
   }
 
-  const draftBlockReason = resolveCurrentEntryDraftSaveBlockReason(context.session, draft);
+  const draftBlockReason = resolveCurrentEntryDraftSaveBlockReason(
+    context.session,
+    draft,
+    context.outOfToleranceAcknowledgedByEntryIndex?.[context.selectedEntryIndex] ?? {}
+  );
   if (draftBlockReason) return disabledState(draftBlockReason);
 
   if (!context.entryRegistrationReady) {
@@ -168,6 +178,10 @@ export function resolveSelfInspectionCompleteActionState(
     }
   }
 
+  if (context.session.pendingReviewCount > 0) {
+    return disabledState('pending_review');
+  }
+
   return enabledState();
 }
 
@@ -199,7 +213,11 @@ export function resolveSelfInspectionResumeGuideActionState(
   if (!draft) return disabledState('no_pending_points_saved');
 
   const points = buildEntryDrawingPoints(context.session, draft);
-  const pendingPointId = findFirstPendingPointId(points, context.session.template.items);
+  const pendingPointId = findFirstPendingPointId(
+    points,
+    context.session.template.items,
+    context.outOfToleranceAcknowledgedByEntryIndex?.[context.selectedEntryIndex] ?? {}
+  );
   if (!pendingPointId) {
     return disabledState(resolveNoPendingPointsResumeReason(context, draft));
   }
@@ -229,6 +247,8 @@ export function selfInspectionActionReasonMessage(
       return '基準・公差が未設定の測定点があります。';
     case 'missing_required_entries':
       return '必要な入力件がすべて保存されていません。各入力件を保存してください。';
+    case 'pending_review':
+      return '公差外の測定値が現場リーダー承認待ちです。管理画面で承認してください。';
     case 'missing_registration':
       return '測定者と測定機器のNFC登録が必要です。';
     case 'incomplete_registration':

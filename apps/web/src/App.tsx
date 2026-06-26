@@ -27,6 +27,7 @@ import { PhotoGallerySeedPage } from './pages/admin/PhotoGallerySeedPage';
 import { PhotoLoanLabelReviewsPage } from './pages/admin/PhotoLoanLabelReviewsPage';
 import { ProductionScheduleSettingsPage } from './pages/admin/ProductionScheduleSettingsPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
+import { SelfInspectionOutOfToleranceReviewsPage } from './pages/admin/SelfInspectionOutOfToleranceReviewsPage';
 import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
 import { SignagePdfsPage } from './pages/admin/SignagePdfsPage';
 import { SignagePreviewPage } from './pages/admin/SignagePreviewPage';
@@ -270,6 +271,10 @@ function App() {
         </Route>
         <Route path="csv-dashboards" element={<CsvDashboardsPage />} />
         <Route path="production-schedule-settings" element={<ProductionScheduleSettingsPage />} />
+        <Route
+          path="part-measurement/self-inspection-reviews"
+          element={<SelfInspectionOutOfToleranceReviewsPage />}
+        />
         <Route path="visualization-dashboards" element={<VisualizationDashboardsPage />} />
         <Route path="pallet-machine-illustrations" element={<PalletMachineIllustrationsPage />} />
         <Route path="gmail">

@@ -153,6 +153,14 @@ export {
   SELF_INSPECTION_MEASUREMENT_VALUE_OPTION_MAX
 } from './selfInspectionMeasurementValueOptions';
 export {
+  applyHundredthsDigitToDimensionValue,
+  buildSelfInspectionDimensionTenthsOptions,
+  formatDimensionTenthsProvisionalValue,
+  resolveSelfInspectionMeasurementValueInputKind,
+  SELF_INSPECTION_DIMENSION_MEASUREMENT_LABELS,
+  type SelfInspectionMeasurementValueInputKind
+} from './selfInspectionDimensionValueInput';
+export {
   buildMeasurementLabelSelectOptions,
   INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS
 } from './inspectionDrawingMeasurementLabelOptions';

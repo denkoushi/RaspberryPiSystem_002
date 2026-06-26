@@ -9,7 +9,7 @@ function makePoint(overrides: Partial<InspectionDrawingPoint> = {}): InspectionD
   return {
     id: 'p1',
     markerNo: 1,
-    name: '外径',
+    name: '幾何公差',
     xRatio: 0.5,
     yRatio: 0.5,
     nominalRaw: '10',

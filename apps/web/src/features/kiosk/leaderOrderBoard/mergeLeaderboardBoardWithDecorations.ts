@@ -4,13 +4,14 @@ import type {
   ProductionScheduleListResponse,
   ProductionScheduleRow
 } from '../../../api/client';
+import type { SelfInspectionStatus } from '../../part-measurement/types';
 
 export type LeaderboardRowDecoration = {
   resolvedMachineName: string | null;
   customerName: string | null;
   hasSelfInspectionDrawing: boolean;
   selfInspectionTemplateId: string | null;
-  selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+  selfInspectionStatus: SelfInspectionStatus | null;
   selfInspectionEntryPath: string | null;
 };
 

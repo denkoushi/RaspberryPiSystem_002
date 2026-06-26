@@ -1,5 +1,6 @@
 import type {
   SelfInspectionMachineBoardDetailPage,
+  SelfInspectionMachineBoardPartStatus,
   SelfInspectionMachineBoardSummaryPage,
 } from '../../part-measurement/self-inspection-machine-board.types.js';
 import {
@@ -60,7 +61,7 @@ function buildProgressBar(args: {
   height: number;
   completed: number;
   required: number;
-  status: 'not_started' | 'in_progress' | 'completed';
+  status: SelfInspectionMachineBoardPartStatus;
 }): string {
   const ratio = args.required > 0 ? Math.min(1, args.completed / args.required) : 0;
   const fillW = Math.max(0, Math.round(args.width * ratio));

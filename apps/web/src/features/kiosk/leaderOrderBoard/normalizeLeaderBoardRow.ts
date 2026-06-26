@@ -7,6 +7,7 @@ import { buildFseibanToMachineDisplayName } from './seibanMachineNameIndex';
 
 import type { LeaderBoardRow } from './types';
 import type { ProductionScheduleRow } from '../../../api/client';
+import type { SelfInspectionStatus } from '../../part-measurement/types';
 
 const strField = (data: Record<string, unknown>, key: string): string => {
   const v = data[key];
@@ -92,7 +93,7 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
       }).selfInspectionTemplateId ?? null,
     selfInspectionStatus:
       (row as ProductionScheduleRow & {
-        selfInspectionStatus?: 'not_started' | 'in_progress' | 'completed' | null;
+        selfInspectionStatus?: SelfInspectionStatus | null;
       }).selfInspectionStatus ?? null,
     selfInspectionEntryPath:
       (row as ProductionScheduleRow & {

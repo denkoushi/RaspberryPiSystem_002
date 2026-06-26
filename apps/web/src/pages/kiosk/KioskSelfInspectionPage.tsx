@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -7,7 +8,7 @@ import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/
 import { presentSelfInspectionWipCard } from '../../features/part-measurement/selfInspectionWipCardPresentation';
 
 import type { ProductionScheduleRow } from '../../api/client';
-import type { SelfInspectionSessionSummaryDto } from '../../features/part-measurement/types';
+import type { SelfInspectionSessionSummaryDto, SelfInspectionStatus } from '../../features/part-measurement/types';
 
 const CANDIDATE_PAGE_SIZE = 50;
 const CANDIDATE_SEARCH_DEBOUNCE_MS = 400;
@@ -35,8 +36,9 @@ function mapEligibleRow(row: ProductionScheduleRow) {
   };
 }
 
-function statusLabel(status: 'not_started' | 'in_progress' | 'completed' | null) {
+function statusLabel(status: SelfInspectionStatus | null) {
   if (status === 'completed') return '完了';
+  if (status === 'review_pending') return '承認待ち';
   if (status === 'in_progress') return '入力中';
   return '未開始';
 }
@@ -76,8 +78,15 @@ function SessionWipCard({ session }: { session: SelfInspectionSessionSummaryDto 
             氏名 {card.participantNamesLine}
           </p>
         </div>
-        <span className="shrink-0 rounded bg-yellow-400/20 px-1.5 py-0.5 text-[0.68rem] font-semibold text-yellow-200">
-          入力中
+        <span
+          className={clsx(
+            'shrink-0 rounded px-1.5 py-0.5 text-[0.68rem] font-semibold',
+            session.status === 'review_pending'
+              ? 'bg-red-400/20 text-red-100'
+              : 'bg-yellow-400/20 text-yellow-200'
+          )}
+        >
+          {statusLabel(session.status)}
         </span>
       </div>
       <p className="text-[0.72rem] text-white/55">進捗 {card.progressLine}</p>
@@ -130,6 +139,10 @@ export function KioskSelfInspectionPage() {
     { status: 'in_progress' },
     { enabled: !hasSearchInput, refetchIntervalMs: WIP_REFETCH_INTERVAL_MS }
   );
+  const reviewPendingSessionsQuery = useSelfInspectionSessions(
+    { status: 'review_pending' },
+    { enabled: !hasSearchInput, refetchIntervalMs: WIP_REFETCH_INTERVAL_MS }
+  );
 
   const scheduleQuery = useKioskProductionSchedule(
     {
@@ -151,9 +164,19 @@ export function KioskSelfInspectionPage() {
     [scheduleQuery.data?.rows]
   );
 
-  const wipSessions = wipSessionsQuery.data?.sessions ?? [];
-  const wipListTruncated = wipSessionsQuery.data?.truncated === true;
-  const wipListLimit = wipSessionsQuery.data?.listLimit ?? 200;
+  const wipSessions = useMemo(
+    () =>
+      [...(reviewPendingSessionsQuery.data?.sessions ?? []), ...(wipSessionsQuery.data?.sessions ?? [])]
+        .filter((session, index, sessions) => sessions.findIndex((row) => row.id === session.id) === index)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    [reviewPendingSessionsQuery.data?.sessions, wipSessionsQuery.data?.sessions]
+  );
+  const wipListTruncated =
+    wipSessionsQuery.data?.truncated === true || reviewPendingSessionsQuery.data?.truncated === true;
+  const wipListLimit = Math.min(
+    wipSessionsQuery.data?.listLimit ?? 200,
+    reviewPendingSessionsQuery.data?.listLimit ?? 200
+  );
   const hasMore = scheduleQuery.data?.hasMore === true;
 
   return (
@@ -283,7 +306,7 @@ export function KioskSelfInspectionPage() {
               ) : null}
             </>
           )
-        ) : wipSessionsQuery.isLoading && wipSessions.length === 0 ? (
+        ) : (wipSessionsQuery.isLoading || reviewPendingSessionsQuery.isLoading) && wipSessions.length === 0 ? (
           <div className="py-12 text-center text-white/60">仕掛中を読込中…</div>
         ) : wipSessions.length === 0 ? (
           <div className="py-12 text-center text-white/60">

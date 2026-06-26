@@ -1,4 +1,7 @@
-import type { HeatstripCellTone } from '../../part-measurement/self-inspection-machine-board.types.js';
+import type {
+  HeatstripCellTone,
+  SelfInspectionMachineBoardPartStatus
+} from '../../part-measurement/self-inspection-machine-board.types.js';
 import {
   SIMB_HEAT_CENTER,
   SIMB_HEAT_EDGE,
@@ -23,10 +26,12 @@ export function heatstripToneColor(tone: HeatstripCellTone): string {
   }
 }
 
-export function statusColor(status: 'not_started' | 'in_progress' | 'completed'): string {
+export function statusColor(status: SelfInspectionMachineBoardPartStatus): string {
   switch (status) {
     case 'completed':
       return '#22c55e';
+    case 'review_pending':
+      return '#ef4444';
     case 'in_progress':
       return '#f59e0b';
     case 'not_started':
@@ -35,10 +40,12 @@ export function statusColor(status: 'not_started' | 'in_progress' | 'completed')
   }
 }
 
-export function statusLabel(status: 'not_started' | 'in_progress' | 'completed'): string {
+export function statusLabel(status: SelfInspectionMachineBoardPartStatus): string {
   switch (status) {
     case 'completed':
       return '完了';
+    case 'review_pending':
+      return '承認待ち';
     case 'in_progress':
       return '入力中';
     case 'not_started':

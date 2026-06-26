@@ -1,3 +1,6 @@
+
+import { areRequiredSelfInspectionSlotsFilled } from './selfInspectionEntrySlots';
+
 import type { SelfInspectionLotEntryDto, SelfInspectionSessionDetailDto } from './types';
 import type { QueryClient } from '@tanstack/react-query';
 
@@ -52,18 +55,37 @@ export function applySelfInspectionEntrySaveToSessionCache(
       ].sort((left, right) => left.entryIndex - right.entryIndex);
 
   const completedEntryCount = entries.length;
+  const previousFocusedPendingCount =
+    previous.focusedEntry?.entryIndex === entryIndex
+      ? previous.focusedEntry.values.filter((value) => value.reviewStatus === 'PENDING').length
+      : 0;
+  const savedPendingCount = savedEntry.values.filter((value) => value.reviewStatus === 'PENDING').length;
+  const pendingReviewCount = Math.max(
+    0,
+    (previous.pendingReviewCount ?? 0) - previousFocusedPendingCount + savedPendingCount
+  );
+
+  const focusedEntry = queryEntryIndex === entryIndex ? savedEntry : (previous.focusedEntry ?? null);
+  const nextSessionForStatus = {
+    ...previous,
+    entries,
+    completedEntryCount,
+    pendingReviewCount,
+    focusedEntry
+  };
   const status = previous.completedAt
     ? 'completed'
     : completedEntryCount <= 0
       ? 'not_started'
+      : pendingReviewCount > 0 && areRequiredSelfInspectionSlotsFilled(nextSessionForStatus)
+        ? 'review_pending'
       : 'in_progress';
-
-  const focusedEntry = queryEntryIndex === entryIndex ? savedEntry : (previous.focusedEntry ?? null);
 
   return {
     ...previous,
     entries,
     completedEntryCount,
+    pendingReviewCount,
     status,
     focusedEntry
   };

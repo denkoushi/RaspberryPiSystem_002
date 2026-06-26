@@ -16,6 +16,7 @@ import {
 import { LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE } from './constants';
 
 import type { LeaderboardAppendAcquire } from './leaderboard-append-concurrency';
+import type { SelfInspectionStatus } from '../../part-measurement/types';
 
 function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof useQueryClient>) {
   return queryClient.invalidateQueries({
@@ -321,7 +322,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
         customerName: string | null;
         hasSelfInspectionDrawing: boolean;
         selfInspectionTemplateId: string | null;
-        selfInspectionStatus: 'not_started' | 'in_progress' | 'completed' | null;
+        selfInspectionStatus: SelfInspectionStatus | null;
         selfInspectionEntryPath: string | null;
       }
     >();

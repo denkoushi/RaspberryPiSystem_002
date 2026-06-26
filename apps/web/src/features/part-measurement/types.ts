@@ -92,7 +92,9 @@ export type PartMeasurementTemplateDto = {
   items: PartMeasurementTemplateItemDto[];
 };
 
-export type SelfInspectionStatus = 'not_started' | 'in_progress' | 'completed';
+export type SelfInspectionStatus = 'not_started' | 'in_progress' | 'review_pending' | 'completed';
+
+export type SelfInspectionMeasurementReviewStatus = 'NOT_REQUIRED' | 'PENDING' | 'APPROVED';
 
 export type SelfInspectionPaperReportStatus =
   | 'ISSUED'
@@ -183,6 +185,8 @@ export type SelfInspectionSessionSummaryDto = {
   /** 旧形式で操作不能なときの案内（再作成導線） */
   entryCountBlockedReason?: string | null;
   completedEntryCount: number;
+  /** 公差外入力のうち現場リーダー承認待ちの測定値数 */
+  pendingReviewCount: number;
   /** entry 登録済み測定者氏名（entryIndex 昇順・重複除去） */
   participantEmployeeNames: string[];
   selfInspectionMode: SelfInspectionMode;
@@ -205,6 +209,45 @@ export type SelfInspectionMeasurementValueDto = {
   id: string;
   templateItemId: string;
   value: string | null;
+  reviewStatus: SelfInspectionMeasurementReviewStatus;
+  outOfToleranceAcknowledgedAt: string | null;
+  approvedAt: string | null;
+  approvedByUserId: string | null;
+  approvedByUsername: string | null;
+  approvalComment: string | null;
+};
+
+export type SelfInspectionEntryValuePayload = {
+  templateItemId: string;
+  value: string | number | null;
+  outOfToleranceAcknowledged?: boolean;
+};
+
+export type SelfInspectionOutOfToleranceReviewValueDto = {
+  id: string;
+  entryId: string;
+  entryIndex: number;
+  entrySlotKind: 'single' | 'first' | 'last' | 'fixed';
+  entrySlotLabel: string;
+  templateItemId: string;
+  displayMarker: string | null;
+  datumSurface: string;
+  measurementPoint: string;
+  measurementLabel: string;
+  unit: string | null;
+  value: string | null;
+  lowerLimit: string | null;
+  upperLimit: string | null;
+  outOfToleranceAcknowledgedAt: string | null;
+  updatedAt: string;
+};
+
+export type SelfInspectionOutOfToleranceReviewSessionDto = SelfInspectionSessionSummaryDto & {
+  values: SelfInspectionOutOfToleranceReviewValueDto[];
+};
+
+export type SelfInspectionOutOfToleranceReviewsListDto = {
+  sessions: SelfInspectionOutOfToleranceReviewSessionDto[];
 };
 
 export type SelfInspectionLotEntryDto = {

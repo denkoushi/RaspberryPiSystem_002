@@ -80,6 +80,18 @@ describe('selfInspectionSessionActionState', () => {
     expect(state.reason).toBe('ng_value');
   });
 
+  it('save is enabled when NG value is acknowledged', () => {
+    const state = resolveSelfInspectionSaveActionState(
+      makeContext({
+        draftValuesByEntryIndex: { 0: { p1: '10', p2: '99' } },
+        savedDraftByEntryIndex: { 0: { p1: '10', p2: '10' } },
+        outOfToleranceAcknowledgedByEntryIndex: { 0: { p2: true } }
+      })
+    );
+    expect(state.enabled).toBe(true);
+    expect(state.reason).toBeNull();
+  });
+
   it('save is disabled while session completion is in flight', () => {
     const state = resolveSelfInspectionSaveActionState(
       makeContext({
@@ -270,6 +282,18 @@ describe('selfInspectionSessionActionState', () => {
     expect(state.enabled).toBe(false);
     expect(state.reason).toBe('no_pending_points_saved');
     expect(selfInspectionActionReasonMessage(state.reason)).toContain('未完了の測定点はありません');
+  });
+
+  it('resume is disabled when remaining NG point is acknowledged', () => {
+    const state = resolveSelfInspectionResumeGuideActionState(
+      makeContext({
+        draftValuesByEntryIndex: { 0: { p1: '10', p2: '99' } },
+        savedDraftByEntryIndex: { 0: { p1: '10', p2: '99' } },
+        outOfToleranceAcknowledgedByEntryIndex: { 0: { p2: true } }
+      })
+    );
+    expect(state.enabled).toBe(false);
+    expect(state.reason).toBe('no_pending_points_saved');
   });
 
   it('resume is disabled when all points are ok but draft is unsaved', () => {
