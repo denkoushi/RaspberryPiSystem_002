@@ -1124,7 +1124,7 @@
 
 ### 🆕 最新アップデート（2026-01-18）
 
-- **✅ デプロイ安定化の恒久対策実装・実機検証完了**: KB-176で発見された問題（環境変数反映、vault.yml権限問題）に対する恒久対策を実装・実機検証完了。`.env`更新時のapiコンテナ強制再作成、デプロイ後の環境変数検証（fail-fast）、vault.yml権限ドリフトの自動修復、handlersの再起動ロジック統一を実装。実機検証でPi5へのデプロイ成功（ok=91, changed=3, failed=0）、APIコンテナ内の環境変数が正しく設定されていること、vault.ymlファイルの権限が適切に設定されていることを確認。デプロイ前にvault.yml権限問題が発生したが、手動で修正。次回のデプロイからは自動修復機能が動作する。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-176](./knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) を参照。
+- **デプロイ安定化恒久対策 正本**: [KB-176](./knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題)。
 
 - **✅ Slack通知チャンネル分離機能の実機検証完了**: Slack通知を4系統（deploy/ops/security/support）に分類し、それぞれ別チャンネル（`#rps-deploy`, `#rps-ops`, `#rps-security`, `#rps-support`）に着弾させる機能を実装・検証完了。Ansible VaultにWebhook URLを登録し、`docker.env.j2`テンプレートで環境変数を生成。実機検証で4チャンネルすべてでの通知受信を確認。デプロイ時のトラブルシューティング（Ansibleテンプレートの既存値保持パターン、ファイル権限問題、コンテナ再起動の必要性）をナレッジベースに記録。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-176](./knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) / [guides/slack-webhook-setup.md](./guides/slack-webhook-setup.md) / [guides/deployment.md#slack通知のチャンネル分離](./guides/deployment.md#slack通知のチャンネル分離2026-01-18実装) を参照。
 
