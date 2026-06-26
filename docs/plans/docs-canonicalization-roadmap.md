@@ -4111,7 +4111,20 @@ Status: implemented in PR331.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR332 And Later: Thin Indexes And Split Large Documents
+### PR332: Thin Kiosk Active Loans Sharing Index Block
+
+Status: implemented in PR332.
+
+- Thin only the 2026-01-29 kiosk active-loans cross-device sharing
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the NFC/photo tab symptom, local
+  `clientId` filtering root cause, `useActiveLoans(undefined, ...)` fix,
+  active loan list scope, CI/deploy/onsite validation note, and KB-211 addition
+  with short links to KB-211 and the tools API.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR333 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
