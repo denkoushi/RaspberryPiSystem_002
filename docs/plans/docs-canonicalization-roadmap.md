@@ -3498,7 +3498,19 @@ Status: implemented in PR284.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR285 And Later: Thin Indexes And Split Large Documents
+### PR285: Thin Trivy Minimatch Index Block
+
+Status: implemented in PR285.
+
+- Thin only the 2026-02-28 Trivy minimatch CVE fix, deployment, and onsite
+  validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the dependency override, lockfile update,
+  CI, deployment, onsite validation, and Pi4 Tailscale SSH documentation detail
+  with short links to KB-279 and client-initial-setup.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR286 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
