@@ -276,6 +276,41 @@ all:
               barcode_agent_serial_device: "/dev/ttyACM0"
               barcode_agent_serial_baud: 9600
               barcode_agent_rest_port: 7072
+            raspi4-sessaku-01:
+              # Sessaku-01 キオスク（Pi4 5台目）
+              # NOTE: 通常運用は Tailscale、初期セットアップ時のみ local_network にフォールバックする
+              ansible_host: "{{ current_network.raspi4_sessaku_01_ip | default(local_network.raspi4_sessaku_01_ip) }}"
+              ansible_user: raspi4-sessaku-01
+              kiosk_browser_engine: "firefox"
+              kiosk_browser_mode: "app-like"
+              ibus_owner_mode: "single-owner"
+              ibus_disable_competing_autostart: true
+              tailscale_enabled: true
+              ansible_command_timeout: 600
+              status_agent_client_id: raspi4-sessaku-01-kiosk1
+              status_agent_client_key: "client-key-raspi4-sessaku-01-kiosk1"
+              status_agent_location: "第2工場 - Sessaku-01"
+              kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
+              manage_kiosk_browser: true
+              services_to_restart:
+                - kiosk-browser.service
+                - status-agent.service
+                - status-agent.timer
+              sudo_nopasswd_commands:
+                - /usr/bin/systemctl start kiosk-browser.service
+                - /usr/bin/systemctl stop kiosk-browser.service
+                - /usr/bin/systemctl restart kiosk-browser.service
+                - /usr/bin/systemctl reboot
+                - /usr/bin/systemctl poweroff
+                - /usr/bin/systemctl start status-agent.service
+                - /usr/bin/systemctl stop status-agent.service
+                - /usr/bin/systemctl restart status-agent.service
+                - /usr/bin/systemctl start status-agent.timer
+                - /usr/bin/systemctl stop status-agent.timer
+                - /usr/bin/systemctl restart status-agent.timer
+              nfc_agent_api_base_url: "{{ api_base_url }}"
+              nfc_agent_client_id: "raspi4-sessaku-01-kiosk1"
+              nfc_agent_client_secret: "client-key-raspi4-sessaku-01-kiosk1"
         signage:
           hosts:
             raspberrypi3:

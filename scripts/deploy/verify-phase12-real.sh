@@ -19,6 +19,7 @@ CLIENT_KEY_PI4="client-key-raspberrypi4-kiosk1"
 CLIENT_KEY_ROBODRILL="client-key-raspi4-robodrill01-kiosk1"
 CLIENT_KEY_FJV="client-key-raspi4-fjv60-80-kiosk1"
 CLIENT_KEY_STONEBASE="client-key-raspi4-kensaku-stonebase01-kiosk1"
+CLIENT_KEY_SESSAKU="client-key-raspi4-sessaku-01-kiosk1"
 
 PI5_USER="denkon5sd02"
 PI3_USER="signageras3"
@@ -26,6 +27,7 @@ PI4_USER="tools03"
 PI4_ROBODRILL_USER="tools04"
 PI4_FJV_USER="raspi4-fjv60-80"
 PI4_STONEBASE_USER="raspi4-kensaku-stonebase01"
+PI4_SESSAKU_USER="raspi4-sessaku-01"
 
 log_pass() {
   PASSED=$((PASSED + 1))
@@ -127,9 +129,11 @@ else
   exit 1
 fi
 
-# StoneBase01: all.yml の tailscale_network に 100.x が無い間は LAN にフォールバック（Ansible と同じ）
-PI4_STONEBASE_IP="$(
-  ACTUAL_MODE="${ACTUAL_MODE}" python3 - <<'PY'
+# all.yml の tailscale_network に 100.x が無い間は LAN にフォールバック（Ansible と同じ）
+resolve_inventory_ip() {
+  local key="$1"
+  local fallback="$2"
+  ACTUAL_MODE="${ACTUAL_MODE}" INVENTORY_IP_KEY="${key}" INVENTORY_IP_FALLBACK="${fallback}" python3 - <<'PY'
 import os
 import sys
 from pathlib import Path
@@ -137,20 +141,25 @@ from pathlib import Path
 try:
     import yaml  # type: ignore
 except Exception:
-    print("192.168.10.238")
+    print(os.environ.get("INVENTORY_IP_FALLBACK", ""))
     sys.exit(0)
 
 actual = os.environ.get("ACTUAL_MODE", "tailscale")
+key = os.environ.get("INVENTORY_IP_KEY", "")
+fallback = os.environ.get("INVENTORY_IP_FALLBACK", "")
 path = Path("infrastructure/ansible/group_vars/all.yml")
 data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-lan = (data.get("local_network") or {}).get("raspi4_kensaku_stonebase01_ip") or "192.168.10.238"
+lan = (data.get("local_network") or {}).get(key) or fallback
 if actual == "local":
     print(lan)
 else:
-    ts = (data.get("tailscale_network") or {}).get("raspi4_kensaku_stonebase01_ip")
+    ts = (data.get("tailscale_network") or {}).get(key)
     print(ts or lan)
 PY
-)"
+}
+
+PI4_STONEBASE_IP="$(resolve_inventory_ip "raspi4_kensaku_stonebase01_ip" "192.168.10.238")"
+PI4_SESSAKU_IP="$(resolve_inventory_ip "raspi4_sessaku_01_ip" "192.168.128.187")"
 
 BASE_URL="https://${PI5_IP}"
 
@@ -175,6 +184,9 @@ check_contains "deploy-status raspi4-fjv60-80" "${DEPLOY_FJV}" '"isMaintenance":
 
 DEPLOY_STONEBASE="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_STONEBASE}" 2>&1 || true)"
 check_contains "deploy-status raspi4-kensaku-stonebase01" "${DEPLOY_STONEBASE}" '"isMaintenance":false'
+
+DEPLOY_SESSAKU="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_SESSAKU}" 2>&1 || true)"
+check_contains "deploy-status raspi4-sessaku-01" "${DEPLOY_SESSAKU}" '"isMaintenance":false'
 
 KIOSK_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/tools/loans/active" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "キオスクAPI /tools/loans/active" "${KIOSK_CODE}" "200"
@@ -367,6 +379,15 @@ elif printf "%s" "${PI4_STONEBASE_STATUS}" | grep -Ec '^active$' >/dev/null 2>&1
   log_pass "Pi4 stonebase01 kiosk/status-agent"
 else
   log_fail "Pi4 stonebase01 kiosk/status-agent" "${PI4_STONEBASE_STATUS}"
+fi
+
+PI4_SESSAKU_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI4_SESSAKU_USER}@${PI4_SESSAKU_IP} 'systemctl is-active kiosk-browser.service status-agent.timer' 2>&1" || true)"
+if printf "%s" "${PI4_SESSAKU_STATUS}" | grep -Eqi 'No route to host|timed out|Connection refused'; then
+  log_warn "Pi4 sessaku-01 kiosk/status-agent" "Pi5 から ${PI4_SESSAKU_USER}@${PI4_SESSAKU_IP} へ SSH 不可。Tailscale と authorized_keys を確認"
+elif printf "%s" "${PI4_SESSAKU_STATUS}" | grep -Ec '^active$' >/dev/null 2>&1 && [ "$(printf "%s\n" "${PI4_SESSAKU_STATUS}" | grep -Ec '^active$' || true)" -ge 2 ]; then
+  log_pass "Pi4 sessaku-01 kiosk/status-agent"
+else
+  log_fail "Pi4 sessaku-01 kiosk/status-agent" "${PI4_SESSAKU_STATUS}"
 fi
 
 PI3_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI3_USER}@${PI3_IP} 'systemctl is-active signage-lite.service signage-lite-update.timer' 2>&1" || true)"

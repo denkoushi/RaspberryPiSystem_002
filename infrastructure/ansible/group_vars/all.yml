@@ -11,6 +11,8 @@ local_network:
   raspi4_fjv60_80_ip: "192.168.10.12"
   # Kensaku StoneBase01（Pi4 4台目）— LAN 到達確認用。通常運用は tailscale_network の 100.x を追記すること
   raspi4_kensaku_stonebase01_ip: "192.168.10.238"
+  # Sessaku-01（Pi4 5台目）— 自宅セットアップ時の LAN 到達確認用
+  raspi4_sessaku_01_ip: "192.168.128.187"
   raspberrypi3_ip: "192.168.128.152"
 
 # 通常運用（Tailscale経由）に使用するIPアドレス
@@ -21,6 +23,7 @@ tailscale_network:
   raspi4_robodrill01_ip: "100.123.1.113"
   raspi4_fjv60_80_ip: "100.100.229.95"
   raspi4_kensaku_stonebase01_ip: "100.101.113.95"
+  raspi4_sessaku_01_ip: "100.115.109.18"
   raspberrypi3_ip: "100.105.224.86"
 
 # 現在有効なネットワーク設定（network_modeに応じて切り替え）

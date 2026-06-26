@@ -27,6 +27,7 @@ const PI4_KIOSK_CLIENTS: Array<{ inventoryHost: string; sshHomeUser: string }> =
   { inventoryHost: 'raspi4-robodrill01', sshHomeUser: 'tools04' },
   { inventoryHost: 'raspi4-fjv60-80', sshHomeUser: 'raspi4-fjv60-80' },
   { inventoryHost: 'raspi4-kensaku-stonebase01', sshHomeUser: 'raspi4-kensaku-stonebase01' },
+  { inventoryHost: 'raspi4-sessaku-01', sshHomeUser: 'raspi4-sessaku-01' },
 ];
 
 function kioskClientSpecs(host: string, sshHomeUser: string): RecommendedBackupTargetSpec[] {
