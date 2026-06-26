@@ -2644,7 +2644,19 @@ Status: implemented in PR213.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR214 And Later: Thin Indexes And Split Large Documents
+### PR214: Thin Location Scope Phase0-4 Index Block
+
+Status: implemented in PR214.
+
+- Thin only the 2026-03-16 Location Scope Phase0-4 safe rollout latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace terminology/boundary/logging/DB no-go,
+  staged deployment, remote verification, and fallback monitoring detail with
+  short links to KB-297, ADR-20260315, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR215 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
