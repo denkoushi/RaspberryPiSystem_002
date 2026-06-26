@@ -3179,7 +3179,19 @@ Status: implemented in PR258.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR259 And Later: Thin Indexes And Split Large Documents
+### PR259: Thin B3 Global Rank Handoff Index Block
+
+Status: implemented in PR259.
+
+- Thin only the 2026-03-07 due-management B3 global-rank / handoff
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace global-rank persistence, initial-order,
+  handoff badge, deploy, Pi5-proxy verification, and validation detail with
+  short links to KB-297, KB-299, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR260 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
