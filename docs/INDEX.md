@@ -892,7 +892,7 @@
 
 ### 🆕 最新アップデート（2026-03-01）
 
-- **✅ KB-288恒久対策・連打防止オーバーレイ強化・deployment.md電源記述更新・Pi5デプロイ完了・Pi4実機検証完了**: タスク1（power-actions に `notify: restart api` 追加）、タスク2（押下直後オーバーレイ表示）、タスク4（deployment.md 電源フロー記述更新）を実装。研削メイン・raspi4-robodrill01 がオフラインのため Pi5 のみデプロイ。Pi4 復帰後に実機検証を実施し、両端末とも電源操作・連打防止が正常動作することを確認。詳細は [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) / [Runbook](./runbooks/kiosk-power-operation-recovery.md) / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+- **KB-288恒久対策・連打防止オーバーレイ強化 正本**: [KB-288](./knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md) · [kiosk-power-operation-recovery](./runbooks/kiosk-power-operation-recovery.md) · [deployment](./guides/deployment.md)。
 
 - **🔄 キオスク備考欄 IME 診断基盤の実装**: 備考欄で「キー入力のたびに ibus-ui ウィンドウが出現しスムーズに入力できない」不具合の原因切り分けのため、診断スクリプト（`scripts/kiosk/diagnose-ime.sh`）と Ansible 診断タスク（`diagnose-ime.yml`）を実装。デプロイ時に IBus 状態がログに記録される。実機診断後の原因分析と対策は未実施。詳細は [plans/kiosk-ime-remark-field-execplan.md](./plans/kiosk-ime-remark-field-execplan.md) / [knowledge-base/frontend.md#kb-287](./knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) / [runbooks/kiosk-ime-diagnosis.md](./runbooks/kiosk-ime-diagnosis.md) を参照。
 
