@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { gunzipSync } from 'zlib';
 import type { BackupTargetInfo } from './backup-types.js';
 
 /**
@@ -81,7 +82,15 @@ export class BackupVerifier {
 
     if (targetInfo.type === 'database') {
       // データベースバックアップの検証（pg_dump形式）
-      const content = data.toString('utf-8', 0, Math.min(100, data.length));
+      let databaseData = data;
+      if (this.isGzipData(data)) {
+        try {
+          databaseData = gunzipSync(data);
+        } catch {
+          errors.push('Invalid database backup format: gzip decompression failed');
+        }
+      }
+      const content = databaseData.toString('utf-8', 0, Math.min(100, databaseData.length));
       // pg_dump形式は通常"--"で始まるか、"PostgreSQL database dump"を含む
       if (!content.includes('PostgreSQL database dump') && !content.trim().startsWith('--')) {
         errors.push('Invalid database backup format: expected pg_dump format');
@@ -101,5 +110,9 @@ export class BackupVerifier {
       errors,
       fileSize: data.length
     };
+  }
+
+  private static isGzipData(data: Buffer): boolean {
+    return data.length >= 2 && data[0] === 0x1f && data[1] === 0x8b;
   }
 }

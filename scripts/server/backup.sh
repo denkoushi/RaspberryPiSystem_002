@@ -77,6 +77,38 @@ get_database_url() {
   echo "${db_url}"
 }
 
+get_database_source_for_api() {
+  local target_source=""
+
+  if command -v jq >/dev/null 2>&1 && [ -f "${PROJECT_DIR}/config/backup.json" ]; then
+    target_source=$(jq -r '.targets[]? | select(.kind == "database") | .source' "${PROJECT_DIR}/config/backup.json" 2>/dev/null | head -1 || echo "")
+  fi
+
+  if [ -n "${target_source}" ] && [ "${target_source}" != "null" ]; then
+    echo "${target_source}"
+    return 0
+  fi
+
+  get_database_url
+}
+
+is_api_target_enabled() {
+  local kind="$1"
+  local source="$2"
+  local enabled=""
+
+  if ! command -v jq >/dev/null 2>&1 || [ ! -f "${PROJECT_DIR}/config/backup.json" ]; then
+    return 0
+  fi
+
+  enabled=$(jq -r --arg kind "${kind}" --arg source "${source}" '
+    [.targets[]? | select(.kind == $kind and .source == $source) | if has("enabled") then .enabled else true end]
+    | if length == 0 then true else .[0] end
+  ' "${PROJECT_DIR}/config/backup.json" 2>/dev/null || echo "true")
+
+  [ "${enabled}" = "true" ]
+}
+
 # バックアップ実行
 echo "=========================================="
 echo "バックアップを開始します: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -95,8 +127,8 @@ fi
 echo ""
 echo "1. データベースバックアップを開始..."
 if [ "${USE_API}" = true ]; then
-  DB_URL=$(get_database_url)
-  if backup_via_api "database" "${DB_URL}" "backup-${DATE}"; then
+  DB_SOURCE=$(get_database_source_for_api)
+  if backup_via_api "database" "${DB_SOURCE}" "backup-${DATE}"; then
     echo "   → API経由でバックアップ完了"
   else
     echo "   → API経由のバックアップに失敗、ローカルバックアップにフォールバック"
@@ -150,16 +182,23 @@ echo ""
 echo "3. 写真ディレクトリのバックアップを開始..."
 PHOTO_STORAGE_DIR="${PROJECT_DIR}/storage"
 if [ -d "${PHOTO_STORAGE_DIR}/photos" ] || [ -d "${PHOTO_STORAGE_DIR}/thumbnails" ]; then
+  RUN_LOCAL_PHOTO_BACKUP=false
   if [ "${USE_API}" = true ]; then
-    if backup_via_api "image" "photo-storage" "photos-${DATE}"; then
+    if ! is_api_target_enabled "image" "photo-storage"; then
+      echo "   → API経由の写真バックアップはbackup.jsonで無効化されています（Dropbox容量保護）"
+      RUN_LOCAL_PHOTO_BACKUP=true
+    elif backup_via_api "image" "photo-storage" "photos-${DATE}"; then
       echo "   → API経由でバックアップ完了"
     else
       echo "   → API経由のバックアップに失敗、ローカルバックアップにフォールバック"
       USE_API=false
+      RUN_LOCAL_PHOTO_BACKUP=true
     fi
+  else
+    RUN_LOCAL_PHOTO_BACKUP=true
   fi
   
-  if [ "${USE_API}" != true ]; then
+  if [ "${RUN_LOCAL_PHOTO_BACKUP}" = true ]; then
     # ローカルバックアップ（従来の方法）
     tar -czf "${BACKUP_DIR}/photos_backup_${DATE}.tar.gz" -C "${PHOTO_STORAGE_DIR}" photos thumbnails 2>/dev/null || {
       echo "警告: 写真ディレクトリのバックアップに失敗しました（スキップします）"
@@ -199,4 +238,3 @@ fi
 if [ "${USE_API}" = true ]; then
   echo "API経由のバックアップ: 設定ファイル（/opt/RaspberryPiSystem_002/config/backup.json）でDropboxが有効化されている場合、自動的にDropboxにアップロードされます"
 fi
-

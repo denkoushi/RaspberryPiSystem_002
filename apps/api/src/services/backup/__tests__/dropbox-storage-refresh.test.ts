@@ -181,10 +181,8 @@ describe('DropboxStorageProvider - Refresh Token Auto-Refresh', () => {
         mockDbx.filesUpload.mockRejectedValueOnce(error401);
       }
 
-      // リフレッシュされずにエラーが再スローされることを確認
-      await expect(providerWithoutRefresh.upload(mockFile, mockPath)).rejects.toMatchObject({
-        status: 401
-      });
+      // リフレッシュされず、Dropboxの認証エラー詳細を含むエラーが再スローされることを確認
+      await expect(providerWithoutRefresh.upload(mockFile, mockPath)).rejects.toThrow('expired_access_token');
     });
 
     it('should not refresh token for non-401 errors', async () => {
@@ -205,13 +203,32 @@ describe('DropboxStorageProvider - Refresh Token Auto-Refresh', () => {
       // 1回だけエラーを返す（リトライされない）
       mockDbx.filesUpload.mockRejectedValueOnce(error500);
 
-      // リフレッシュされずにエラーが再スローされることを確認
-      await expect(storageProvider.upload(mockFile, mockPath)).rejects.toMatchObject({
-        status: 500
-      });
+      // リフレッシュされず、Dropboxのエラー詳細を含むエラーが再スローされることを確認
+      await expect(storageProvider.upload(mockFile, mockPath)).rejects.toThrow('internal_error');
 
       // リフレッシュトークンが呼ばれていないことを確認
       expect(mockOAuthService.refreshAccessToken).not.toHaveBeenCalled();
+    });
+
+    it('should include Dropbox error_summary when upload fails with insufficient space', async () => {
+      const mockFile = Buffer.from('test-file-content');
+      const mockPath = 'test/path.txt';
+
+      mockDbx.filesUpload.mockRejectedValueOnce({
+        status: 409,
+        message: 'Response failed with a 409 code',
+        error: {
+          error_summary: 'path/insufficient_space/..',
+          error: {
+            '.tag': 'path',
+            path: {
+              '.tag': 'insufficient_space'
+            }
+          }
+        }
+      });
+
+      await expect(storageProvider.upload(mockFile, mockPath)).rejects.toThrow('path/insufficient_space');
     });
 
     it('should read fileBinary from response.result.fileBinary', async () => {

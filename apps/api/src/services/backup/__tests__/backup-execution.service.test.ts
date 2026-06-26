@@ -39,7 +39,11 @@ vi.mock('../backup-history.service.js', () => ({
   }),
 }));
 
-import { executeBackupAcrossProviders, resolveBackupProviders } from '../backup-execution.service.js';
+import {
+  executeBackupAcrossProviders,
+  findBackupTargetConfig,
+  resolveBackupProviders,
+} from '../backup-execution.service.js';
 
 describe('backup-execution.service', () => {
   beforeEach(() => {
@@ -61,6 +65,26 @@ describe('backup-execution.service', () => {
     });
 
     expect(providers).toEqual(['dropbox', 'local']);
+  });
+
+  it('finds database target config by database name when URL host differs', () => {
+    const target = {
+      kind: 'database',
+      source: 'postgresql://postgres:postgres@localhost:5432/borrow_return',
+      storage: { provider: 'dropbox' },
+      enabled: true,
+    };
+
+    const found = findBackupTargetConfig(
+      {
+        storage: { provider: 'gmail', options: {} },
+        targets: [target],
+      } as any,
+      'database',
+      'postgresql://postgres:postgres@db:5432/borrow_return'
+    );
+
+    expect(found).toBe(target);
   });
 
   it('records success history with provider and duration summary', async () => {
@@ -116,7 +140,7 @@ describe('backup-execution.service', () => {
   });
 
   it('records failed history when backup throws error', async () => {
-    createFromConfigMock.mockResolvedValue({
+    createFromTargetMock.mockResolvedValue({
       provider: 'local',
       storageProvider: { upload: vi.fn(), download: vi.fn(), delete: vi.fn(), list: vi.fn() },
     });
@@ -135,6 +159,66 @@ describe('backup-execution.service', () => {
     });
 
     expect(results).toEqual([{ provider: 'local', success: false, error: 'backup failed' }]);
+    expect(createFromConfigMock).not.toHaveBeenCalled();
+    expect(createFromTargetMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        kind: 'csv',
+        source: 'employees',
+        storage: { provider: 'local' },
+      }),
+      'https:',
+      'example.local',
+      undefined,
+      true
+    );
     expect(failHistoryMock).toHaveBeenCalledWith('history-1', 'backup failed');
+  });
+
+  it('does not instantiate Gmail provider for backup upload when global provider is gmail', async () => {
+    createFromTargetMock.mockResolvedValue({
+      provider: 'local',
+      storageProvider: { upload: vi.fn(), download: vi.fn(), delete: vi.fn(), list: vi.fn() },
+    });
+    backupMock.mockResolvedValue({
+      success: true,
+      path: 'csv/path.csv',
+      sizeBytes: 12,
+    });
+
+    const { results } = await executeBackupAcrossProviders({
+      config: {
+        storage: {
+          provider: 'gmail',
+          options: {
+            gmail: {
+              accessToken: 'gmail-access',
+              refreshToken: 'gmail-refresh',
+              clientId: 'gmail-client',
+              clientSecret: 'gmail-secret',
+            },
+          },
+        },
+        targets: [],
+      } as any,
+      target: {} as any,
+      targetKind: 'csv',
+      targetSource: 'employees',
+      protocol: 'https:',
+      host: 'example.local',
+    });
+
+    expect(results).toEqual([{ provider: 'local', success: true, path: 'csv/path.csv', sizeBytes: 12 }]);
+    expect(createFromConfigMock).not.toHaveBeenCalled();
+    expect(createFromTargetMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        storage: { provider: 'local' },
+      }),
+      'https:',
+      'example.local',
+      undefined,
+      true
+    );
   });
 });

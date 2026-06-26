@@ -59,6 +59,41 @@ export function resolveBackupProviders(params: {
   return providers;
 }
 
+function getDatabaseName(source: string): string | undefined {
+  if (!source) return undefined;
+
+  if (source.startsWith('postgresql://') || source.startsWith('postgres://')) {
+    try {
+      const parsed = new URL(source);
+      return parsed.pathname.replace(/^\//, '') || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (!source.includes('/') && !source.includes(':')) {
+    return source;
+  }
+
+  return undefined;
+}
+
+export function findBackupTargetConfig(
+  config: BackupConfig,
+  kind: BackupKind,
+  source: string
+): BackupConfig['targets'][number] | undefined {
+  const exact = config.targets.find((t) => t.kind === kind && t.source === source);
+  if (exact) return exact;
+
+  if (kind !== 'database') return undefined;
+
+  const sourceDbName = getDatabaseName(source);
+  if (!sourceDbName) return undefined;
+
+  return config.targets.find((t) => t.kind === 'database' && getDatabaseName(t.source) === sourceDbName);
+}
+
 export async function executeBackupAcrossProviders(
   params: ExecuteBackupAcrossProvidersParams
 ): Promise<{ results: BackupExecutionResult[] }> {
@@ -82,22 +117,22 @@ export async function executeBackupAcrossProviders(
 
   for (const requestedProvider of providers) {
     try {
-      const targetWithProvider = targetConfig
-        ? {
-            ...targetConfig,
-            storage: { provider: requestedProvider },
-          }
-        : undefined;
-      const providerResult = targetWithProvider
-        ? await StorageProviderFactory.createFromTarget(
-            config,
-            targetWithProvider,
-            protocol,
-            host,
-            onTokenUpdate,
-            true
-          )
-        : await StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate, true);
+      const targetWithProvider = {
+        ...(targetConfig ?? {
+          kind: targetKind,
+          source: targetSource,
+          enabled: true,
+        }),
+        storage: { provider: requestedProvider },
+      } satisfies BackupConfig['targets'][number];
+      const providerResult = await StorageProviderFactory.createFromTarget(
+        config,
+        targetWithProvider,
+        protocol,
+        host,
+        onTokenUpdate,
+        true
+      );
       const actualProvider = providerResult.provider;
       const safeProvider: BackupProvider =
         actualProvider === 'local' || actualProvider === 'dropbox' ? actualProvider : 'local';

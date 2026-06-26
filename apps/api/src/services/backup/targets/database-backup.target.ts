@@ -1,9 +1,11 @@
 import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
+import { createWriteStream, promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
 import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
+import { createGunzip, createGzip } from 'zlib';
 import type { BackupTarget } from '../backup-target.interface.js';
 import type { BackupTargetInfo, RestoreOptions, RestoreResult } from '../backup-types.js';
 import type { UploadSource } from '../storage/storage-provider.interface.js';
@@ -84,15 +86,15 @@ export class DatabaseBackupTarget implements BackupTarget {
       env.PGPASSWORD = password;
     }
 
-    const tempFilePath = path.join(os.tmpdir(), `db-backup-${dbName}-${Date.now()}-${randomUUID()}.sql`);
+    const tempFilePath = path.join(os.tmpdir(), `db-backup-${dbName}-${Date.now()}-${randomUUID()}.sql.gz`);
 
-    await new Promise<void>((resolve, reject) => {
+    try {
       const pgDump = spawn(
         'pg_dump',
-        ['-h', host, '-p', port, '-U', user, '--clean', '--if-exists', '-f', tempFilePath, dbName],
+        ['-h', host, '-p', port, '-U', user, '--clean', '--if-exists', dbName],
         {
           env,
-          stdio: ['ignore', 'ignore', 'pipe']
+          stdio: ['ignore', 'pipe', 'pipe']
         }
       );
 
@@ -101,22 +103,33 @@ export class DatabaseBackupTarget implements BackupTarget {
         errors.push(chunk.toString('utf-8'));
       });
 
-      pgDump.on('error', (error) => {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          reject(new ApiError(500, 'pg_dumpコマンドが見つかりません。Dockerコンテナ内にpg_dumpが必要です。'));
-          return;
-        }
-        reject(error);
+      const exitPromise = new Promise<void>((resolve, reject) => {
+        pgDump.on('error', (error) => {
+          pgDump.stdout.destroy(error);
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+            reject(new ApiError(500, 'pg_dumpコマンドが見つかりません。Dockerコンテナ内にpg_dumpが必要です。'));
+            return;
+          }
+          reject(error);
+        });
+
+        pgDump.on('close', (code) => {
+          if (code !== 0) {
+            reject(new ApiError(500, `データベースバックアップに失敗しました: ${errors.join('')}`));
+            return;
+          }
+          resolve();
+        });
       });
 
-      pgDump.on('close', (code) => {
-        if (code !== 0) {
-          reject(new ApiError(500, `データベースバックアップに失敗しました: ${errors.join('')}`));
-          return;
-        }
-        resolve();
-      });
-    });
+      await Promise.all([
+        exitPromise,
+        pipeline(pgDump.stdout, createGzip(), createWriteStream(tempFilePath))
+      ]);
+    } catch (error) {
+      await fs.rm(tempFilePath, { force: true }).catch(() => {});
+      throw error;
+    }
 
     return tempFilePath;
   }
@@ -154,6 +167,18 @@ export class DatabaseBackupTarget implements BackupTarget {
     logger?.info({ dbName, host, port }, '[DatabaseBackupTarget] Restoring database from backup');
 
     return new Promise<RestoreResult>((resolve, reject) => {
+      let settled = false;
+      const resolveOnce = (result: RestoreResult) => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+      const rejectOnce = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
+
       const psql = spawn('psql', ['-h', host, '-p', port, '-U', user, '-d', dbName, '--set', 'ON_ERROR_STOP=off'], {
         env,
         stdio: ['pipe', 'pipe', 'pipe']
@@ -171,10 +196,10 @@ export class DatabaseBackupTarget implements BackupTarget {
       psql.on('close', (code) => {
         if (code !== 0 && errors.length > 0) {
           logger?.error({ errors, code }, '[DatabaseBackupTarget] Database restore failed');
-          reject(new ApiError(500, `Database restore failed: ${errors.join(', ')}`));
+          rejectOnce(new ApiError(500, `Database restore failed: ${errors.join(', ')}`));
         } else {
           logger?.info({ dbName }, '[DatabaseBackupTarget] Database restore completed');
-          resolve({
+          resolveOnce({
             backupId: dbName,
             success: true,
             timestamp: new Date()
@@ -184,16 +209,29 @@ export class DatabaseBackupTarget implements BackupTarget {
 
       psql.on('error', (error) => {
         logger?.error({ err: error }, '[DatabaseBackupTarget] Failed to spawn psql');
-        reject(new ApiError(500, `Failed to spawn psql: ${error.message}`));
+        rejectOnce(new ApiError(500, `Failed to spawn psql: ${error.message}`));
       });
 
-      // バックアップデータをstdinに書き込む
-      const inputStream = Readable.from(backupData);
-      inputStream.pipe(psql.stdin);
-      inputStream.on('end', () => {
-        psql.stdin.end();
+      // バックアップデータをstdinに書き込む。gzip済みDBバックアップも復元できるようにする。
+      const inputStream = this.createRestoreInputStream(backupData);
+      inputStream.on('error', (error) => {
+        logger?.error({ err: error }, '[DatabaseBackupTarget] Failed to read restore backup stream');
+        psql.kill('SIGTERM');
+        rejectOnce(new ApiError(500, `Database restore input failed: ${error.message}`));
       });
+      inputStream.pipe(psql.stdin);
     });
   }
-}
 
+  private createRestoreInputStream(backupData: Buffer): Readable {
+    const input = Readable.from(backupData);
+    if (this.isGzipData(backupData)) {
+      return input.pipe(createGunzip());
+    }
+    return input;
+  }
+
+  private isGzipData(data: Buffer): boolean {
+    return data.length >= 2 && data[0] === 0x1f && data[1] === 0x8b;
+  }
+}

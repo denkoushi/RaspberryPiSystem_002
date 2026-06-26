@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - バックアップ・リストア関連
 
 **カテゴリ**: インフラ関連 > バックアップ・リストア関連  
-**件数**: 32件  
+**件数**: 35件
 **索引**: [index.md](../index.md)
 
 バックアップとリストア機能に関するトラブルシューティング情報
@@ -2099,5 +2099,76 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
 - KB-144: バックアップ手動実行時の500エラー（client-directory kind追加とbackup.json正規化）
 - KB-165: Dropboxからのbackup.json復元方法
 - KB-166: Gmail OAuth設定の復元方法
+
+---
+
+## KB-201: 手動backup.shがGmail uploadに落ちる問題とDropbox容量不足の切り分け
+
+**発生日**: 2026-06-26
+
+**事象**:
+- Pi5で `./scripts/server/backup.sh` を実行すると、ローカルDB/写真バックアップは作成されたが、API経由バックアップが失敗した。
+- エラー: `Backup failed on all providers: local: GmailStorageProvider does not support upload. Gmail is read-only.`
+- 定期バックアップ履歴では、Dropbox provider が選ばれているが `Response failed with a 409 code` で失敗していた。
+
+**根本原因**:
+1. 実機 `backup.json` は `storage.provider: gmail` だが、backup target 個別には `storage.provider: dropbox` が設定されていた。Gmail はCSV/要領書取り込み用で、backup upload 用 provider ではない。
+2. `backup.sh` は Docker Compose から取得した `postgresql://...@db:5432/borrow_return` を `/api/backup/internal` に渡していた。一方、`backup.json` の database target は `postgresql://...@localhost:5432/borrow_return` だったため、完全一致検索に失敗し target 個別の Dropbox 設定に乗れなかった。
+3. target が見つからない場合、`resolveBackupProviders()` は `local` にフォールバックしていたが、実体生成では global `storage.provider: gmail` を見て `GmailStorageProvider` を作っていたため、履歴上は `local`、実体は Gmail という不整合が起きた。
+4. Dropbox側の 409 は token 失効ではなく容量不足だった。Dropbox API 直接検証で `path/insufficient_space` を確認したが、既存実装は SDK エラーを `Response failed with a 409 code` に丸めていたため、容量不足リカバリが発火していなかった。
+5. 2026-06-26時点で `api.dropboxapi.com` と `notify.dropboxapi.com` の証明書 fingerprint も更新されており、証明書 pin の追加が必要だった。
+6. API経由のDB backupはファイル名が`.sql.gz`でも実体は未圧縮SQLで、2GB Dropboxのほぼ全容量を1世代で使っていた。
+7. `backup.sh` は `backup.json` で `image:photo-storage` が disabled でも写真API backupを明示実行していたため、Dropbox容量保護の設定が効かなかった。
+
+**対策**:
+- `backup.sh` は API 実行時、`backup.json` の database target source を優先して送る。
+- `backup.sh` は `backup.json` で disabled の写真 target をAPI/Dropboxへ送らず、必要な場合はローカルtarのみ作成する。
+- API側の target 解決は、database URL の host が異なってもDB名が同じなら同一 target とみなす。
+- backup upload 経路では `resolveBackupProviders()` が返した `local/dropbox` を明示して `StorageProviderFactory.createFromTarget()` を呼び、global `gmail` から Gmail provider を生成しない。
+- API経由DB backupは `pg_dump` stdout を `gzip` して `.sql.gz` として保存・アップロードする。
+- gzip済みDB backupもrestoreできるよう、DB restore入力でgzipを自動展開する。
+- `/api/backup/internal` でもbackup後cleanupを呼び、`backup.sh` 経由でもtarget retentionを適用する。
+- Dropbox upload 失敗時は `error_summary` / tag を Error message に含め、`path/insufficient_space` を容量不足リカバリへ渡す。
+- 2026-06-26確認分の Dropbox 証明書 fingerprint を追加する。
+
+**確認コマンド例（秘密値は出さない）**:
+```bash
+ssh denkon5sd02@100.106.158.2 'jq '\''def redact_source: if type == "string" then sub("://[^/@]*@"; "://***:***@") else . end; {storageProvider:.storage.provider, hasDropbox:(.storage.options.dropbox? != null), hasGmail:(.storage.options.gmail? != null), targets:[.targets[]? | {kind, source:(.source|redact_source), enabled, storageProvider:.storage.provider}]}'\'' /opt/RaspberryPiSystem_002/config/backup.json'
+```
+
+**実機検証結果**（2026-06-26）:
+- `csv:employees` の内部バックアップで Gmail 誤選択が止まり、Dropbox provider が選ばれること、409 の詳細が `path/insufficient_space` として履歴に記録されることを確認。
+- Dropbox APIで古いDBバックアップ2件を削除し、該当履歴を`fileStatus=DELETED`へ更新。
+  - `/backups/database/2026-05-25T19-05-00-721Z/borrow_return.sql.gz`
+  - `/backups/database/2026-05-28T19-05-00-241Z/borrow_return.sql.gz`
+- DB内部バックアップを再実行し、未圧縮状態ではDropbox uploadが成功しても2GBをほぼ使い切ることを確認。
+  - `storageProvider=dropbox`
+  - `status=COMPLETED`
+  - `summaryPath=database/2026-06-26T05-43-16-604Z-codex-db-verify-20260626/borrow_return.sql.gz`
+  - `sizeBytes=2080544037`
+- DB gzip対応後、`backup.sh` 経由でDropbox uploadが成功することを確認。
+  - `summaryPath=database/2026-06-26T06-16-57-694Z-backup-20260626_151657/borrow_return.sql.gz`
+  - `sizeBytes=285175935`
+  - 未圧縮時の約2.08GBから約285MBへ圧縮された。
+- `backup.json` はDB retentionを `maxBackups: 5` に変更し、`image:photo-storage` と `/app/storage/pdfs` は disabled を維持。
+- 誤って作成された検証用/写真用Dropboxバックアップは削除し、履歴は`fileStatus=DELETED`へ更新。
+- 最終Dropbox使用量は `287303454 / 2147483648 bytes`、残りは `1860180194 bytes`。DB gzip 1世代あたり約285MBのため、2GB DropboxでもDB 5世代 + 復旧必須ファイルを保持可能。
+
+**解決状況**: ✅ **解決済み**（2026-06-26）。Gmail upload誤選択、Dropbox 409詳細化、DB gzip化、internal cleanup、写真/PDF除外、2GB DropboxでのDB gzip uploadを実機確認済み。
+
+**関連ファイル**:
+- `scripts/server/backup.sh`
+- `apps/api/src/routes/backup/execution.ts`
+- `apps/api/src/services/backup/backup-execution.service.ts`
+- `apps/api/src/services/backup/targets/database-backup.target.ts`
+- `apps/api/src/services/backup/backup-verifier.ts`
+- `apps/api/src/services/backup/storage/dropbox-storage.provider.ts`
+- `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`
+
+**関連ナレッジ**:
+- KB-146: Gmail OAuthがDropboxトークンを上書きし、Dropboxバックアップが失敗する
+- KB-147: backup.jsonのprovider別名前空間化
+- KB-195: Dropbox 409 Conflictエラー
+- KB-199: Dropbox証明書ピニング検証失敗によるバックアップ500エラー
 
 ---

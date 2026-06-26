@@ -16,6 +16,7 @@ import { logger } from '../../../lib/logger.js';
  * - 2025-01-19更新: api.dropboxapi.comの新しい証明書フィンガープリントを追加
  * - 2026-01-28更新: content.dropboxapi.comの新しい証明書フィンガープリントを追加
  * - 2026-02-16更新: api/content/notify.dropboxapi.comの新しい証明書フィンガープリントを追加
+ * - 2026-06-26更新: api/notify.dropboxapi.comの新しい証明書フィンガープリントを追加
  */
 const DROPBOX_CERTIFICATE_FINGERPRINTS = [
   'sha256/df9a4cabca84f3de17c1f52b7247b95d7a3e1166dd1eb55a2f2917b29f9e7cad', // api.dropboxapi.com (旧)
@@ -25,7 +26,9 @@ const DROPBOX_CERTIFICATE_FINGERPRINTS = [
   'sha256/32350553629468be49a2780aa0b0c0b8d5e7474bac6cb44db128e1261bf8a991', // content.dropboxapi.com (新、2026-01-28確認)
   'sha256/aa0e37dc4382850e07897e7c63be2dc6622d2fc4e7674d1aa70610448748f40a', // api.dropboxapi.com (新、2026-02-16確認)
   'sha256/2b2ffab566b828495e4a0c8cd8f477cc13d308209fd55169f15c933687868dd1', // content.dropboxapi.com (新、2026-02-16確認)
-  'sha256/118d3ebeae3bf03eed53227bb933efc2fb8857c7e2a679e12ec62c14fe5f874c'  // notify.dropboxapi.com (新、2026-02-16確認)
+  'sha256/118d3ebeae3bf03eed53227bb933efc2fb8857c7e2a679e12ec62c14fe5f874c', // notify.dropboxapi.com (新、2026-02-16確認)
+  'sha256/1405eaa6ffd622dd36906e3082e5124f226155d9933432ad4ae4a122b5bf26fc', // api.dropboxapi.com (新、2026-06-26確認)
+  'sha256/d079bba2c85fece7467456badabefd93002d640c241f430baa8cd51835f7928e'  // notify.dropboxapi.com (新、2026-06-26確認)
 ] as const;
 
 /**
@@ -126,4 +129,3 @@ export async function getDropboxCertificateFingerprint(): Promise<string> {
     req.end();
   });
 }
-

@@ -2,7 +2,7 @@ import { ApiError } from '../../lib/errors.js';
 import { BackupTargetFactory } from './backup-target-factory.js';
 import type { BackupKind } from './backup-types.js';
 import type { BackupConfig } from './backup-config.js';
-import { executeBackupAcrossProviders } from './backup-execution.service.js';
+import { executeBackupAcrossProviders, findBackupTargetConfig } from './backup-execution.service.js';
 
 export async function runPreRestoreBackup(params: {
   config: BackupConfig;
@@ -12,7 +12,7 @@ export async function runPreRestoreBackup(params: {
   host: string;
 }): Promise<void> {
   const { config, targetKind, targetSource, protocol, host } = params;
-  const targetConfig = config.targets.find((t) => t.kind === targetKind && t.source === targetSource);
+  const targetConfig = findBackupTargetConfig(config, targetKind, targetSource);
   const preBackupLabel = `pre-restore-${new Date().toISOString().replace(/[:.]/g, '-')}`;
   const target = BackupTargetFactory.createFromConfig(config, targetKind, targetSource, { label: preBackupLabel });
 

@@ -198,9 +198,9 @@ export class DropboxStorageProvider implements StorageProvider, LargeFileUploadP
           continue;
         }
 
-        // その他のエラーは再スロー
+        // その他のエラーはDropbox APIの要約を含めて再スロー
         logger?.error({ err: error, path: fullPath }, '[DropboxStorageProvider] Upload failed');
-        throw error;
+        throw this.createOperationError('Upload failed', error);
       }
     }
 
@@ -233,7 +233,7 @@ export class DropboxStorageProvider implements StorageProvider, LargeFileUploadP
         }
 
         logger?.error({ err: error, path: fullPath, filePath }, '[DropboxStorageProvider] Upload from file failed');
-        throw error;
+        throw this.createOperationError('Upload from file failed', error);
       }
     }
 
@@ -628,6 +628,48 @@ export class DropboxStorageProvider implements StorageProvider, LargeFileUploadP
     return getString(record, 'error_summary');
   }
 
+  private getNestedDropboxErrorTags(error: unknown): string[] {
+    const tags: string[] = [];
+    const visit = (value: unknown) => {
+      if (!isRecord(value)) return;
+      const tag = value['.tag'];
+      if (typeof tag === 'string') {
+        tags.push(tag);
+      }
+      for (const nested of Object.values(value)) {
+        if (isRecord(nested)) {
+          visit(nested);
+        }
+      }
+    };
+
+    const record = this.getDropboxErrorRecord(error);
+    if (record) {
+      visit(record.error);
+    }
+
+    return Array.from(new Set(tags));
+  }
+
+  private createOperationError(operation: string, error: unknown): Error {
+    const status = this.getErrorStatus(error);
+    const summary = this.getDropboxErrorSummary(error);
+    const message = this.getErrorMessage(error);
+    const tags = this.getNestedDropboxErrorTags(error);
+    const details = [
+      status ? `status=${status}` : undefined,
+      summary ? `summary=${summary}` : undefined,
+      tags.length > 0 ? `tags=${tags.join('/')}` : undefined,
+      message && message !== summary ? `message=${message}` : undefined,
+    ].filter(Boolean);
+
+    if (details.length === 0) {
+      return error instanceof Error ? error : new Error(`${operation}: Unknown Dropbox error`);
+    }
+
+    return new Error(`${operation}: ${details.join(', ')}`, { cause: error });
+  }
+
   private isRateLimitError(error: unknown): boolean {
     return this.getErrorStatus(error) === 429 || this.getDropboxTag(error) === 'rate_limit';
   }
@@ -721,4 +763,3 @@ export class DropboxStorageProvider implements StorageProvider, LargeFileUploadP
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
-

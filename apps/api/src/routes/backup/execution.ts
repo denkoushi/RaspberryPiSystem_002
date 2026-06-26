@@ -5,7 +5,11 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
-import { executeBackupAcrossProviders, resolveBackupProviders } from '../../services/backup/backup-execution.service.js';
+import {
+  executeBackupAcrossProviders,
+  findBackupTargetConfig,
+  resolveBackupProviders,
+} from '../../services/backup/backup-execution.service.js';
 import { BackupTargetFactory } from '../../services/backup/backup-target-factory.js';
 import { cleanupBackupsAfterManualExecution } from '../../services/backup/post-backup-cleanup.service.js';
 
@@ -42,9 +46,7 @@ export async function registerBackupExecutionRoutes(app: FastifyInstance): Promi
     const config = await BackupConfigLoader.load();
 
     // 設定ファイルから対象を検索（対象ごとのストレージ設定を取得するため）
-    const targetConfig = config.targets.find(
-      (t) => t.kind === body.kind && t.source === body.source
-    );
+    const targetConfig = findBackupTargetConfig(config, body.kind, body.source);
 
     // ストレージプロバイダーを作成（Factoryパターンを使用）
     const protocol = Array.isArray(request.headers['x-forwarded-proto'])
@@ -69,6 +71,7 @@ export async function registerBackupExecutionRoutes(app: FastifyInstance): Promi
     // バックアップターゲットを作成（Factoryパターンを使用）
     const target = BackupTargetFactory.createFromConfig(config, body.kind, body.source, body.metadata);
 
+    const resolvedProviders = resolveBackupProviders({ config, targetConfig });
     const { results } = await executeBackupAcrossProviders({
       config,
       targetConfig,
@@ -95,6 +98,18 @@ export async function registerBackupExecutionRoutes(app: FastifyInstance): Promi
     if (!successfulResult) {
       throw new ApiError(500, 'No successful backup result');
     }
+
+    await cleanupBackupsAfterManualExecution({
+      config,
+      targetConfig,
+      targetKind: body.kind,
+      targetSource: body.source,
+      protocol,
+      host,
+      resolvedProviders,
+      results,
+      onTokenUpdate,
+    });
 
     return reply.status(200).send({
       success: true,
@@ -134,9 +149,7 @@ export async function registerBackupExecutionRoutes(app: FastifyInstance): Promi
     const config = await BackupConfigLoader.load();
 
     // 設定ファイルから対象を検索（対象ごとのストレージ設定を取得するため）
-    const targetConfig = config.targets.find(
-      (t) => t.kind === body.kind && t.source === body.source
-    );
+    const targetConfig = findBackupTargetConfig(config, body.kind, body.source);
 
     // ストレージプロバイダーを作成（Factoryパターンを使用）
     const protocol = Array.isArray(request.headers['x-forwarded-proto'])

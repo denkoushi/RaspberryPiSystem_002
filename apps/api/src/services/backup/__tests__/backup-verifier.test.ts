@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BackupVerifier } from '../backup-verifier.js';
 import crypto from 'crypto';
+import { gzipSync } from 'zlib';
 
 describe('BackupVerifier', () => {
   describe('verify', () => {
@@ -81,6 +82,17 @@ describe('BackupVerifier', () => {
   describe('verifyFormat', () => {
     it('should verify database backup format', () => {
       const data = Buffer.from('-- PostgreSQL database dump\n-- Version 14');
+      const result = BackupVerifier.verifyFormat(data, {
+        type: 'database',
+        source: 'borrow_return'
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should verify gzip database backup format', () => {
+      const data = gzipSync(Buffer.from('-- PostgreSQL database dump\n-- Version 14'));
       const result = BackupVerifier.verifyFormat(data, {
         type: 'database',
         source: 'borrow_return'
