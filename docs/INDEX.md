@@ -1021,7 +1021,7 @@
 
 - **Docker build最適化（変更ファイルに基づくbuild判定）正本**: [KB-235](./knowledge-base/infrastructure/ansible-deployment.md#kb-235-docker-build最適化変更ファイルに基づくbuild判定) · [KB-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策)。
 
-- **🔄 Ansibleデプロイ性能の調査（段階展開: カナリア→ロールアウト / Pi4並行・Pi3単独 / 重複タスク排除）**: Pi4が将来20台規模に増える前提で、デプロイを「1台カナリア→成功確認→全台」へ移行できるように構造を整備しつつ、遅さの原因（逐次実行固定、重複タスク、Tailscale再インストール、実態と合わないpnpmタスク、計測欠如）を調査・暫定対策を実施。詳細は [knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) を参照。
+- **Ansibleデプロイ性能調査・段階展開/並行化/重複タスク排除 正本**: [KB-234](./knowledge-base/infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策)。
 
 ### 🆕 最新アップデート（2026-02-06）
 

@@ -3935,7 +3935,21 @@ Status: implemented in PR318.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR319 And Later: Thin Indexes And Split Large Documents
+### PR319: Thin Ansible Performance Investigation Index Block
+
+Status: implemented in PR319.
+
+- Thin only the 2026-02-07 Ansible deployment performance investigation,
+  canary-to-rollout staging, Pi4/Pi3 deployment split, and duplicate-task
+  elimination latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the 20-device Pi4 scaling premise,
+  rollout structure, sequential execution, duplicate-task, Tailscale reinstall,
+  pnpm-task mismatch, and profiling-gap investigation summary with a short
+  link to KB-234.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR320 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
