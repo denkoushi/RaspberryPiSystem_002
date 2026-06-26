@@ -4425,7 +4425,20 @@ Status: implemented in PR354.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR355 And Later: Thin Indexes And Split Large Documents
+### PR355: Thin Slack Channel Separation Index Block
+
+Status: implemented in PR355.
+
+- Thin only the 2026-01-18 Slack notification channel-separation latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the deploy/ops/security/support routing,
+  Ansible Vault registration, generated environment, four-channel onsite
+  validation, deployment troubleshooting, and KB-176 note with short links to
+  KB-176, the Slack setup guide, and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR356 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
