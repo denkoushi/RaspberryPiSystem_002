@@ -2441,7 +2441,19 @@ Status: implemented in PR196.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR197 And Later: Thin Indexes And Split Large Documents
+### PR197: Thin Manual Order Pencil Reset Index Block
+
+Status: implemented in PR197.
+
+- Thin only the 2026-03-20 manual-order lower-pane pencil and site-change
+  reset latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace reset behavior, branch, staged deployment,
+  Phase12, and `EXEC_PLAN.md` detail with short links to KB-297 and
+  deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR198 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
