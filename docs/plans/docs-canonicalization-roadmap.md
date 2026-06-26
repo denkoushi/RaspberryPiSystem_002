@@ -2297,7 +2297,19 @@ Status: implemented in PR184.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR185 And Later: Thin Indexes And Split Large Documents
+### PR185: Thin Production Dropdown Portal Index Block
+
+Status: implemented in PR185.
+
+- Thin only the 2026-03-23 production schedule registered-seiban and resource
+  dropdown Portal latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace implementation-file, commit, CI,
+  staged deployment, Phase12, and `EXEC_PLAN.md` detail with short links to
+  KB-297 and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR186 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
