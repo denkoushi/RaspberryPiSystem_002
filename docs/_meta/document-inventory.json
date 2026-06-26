@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 138598,
-    "totalBytes": 10227472,
+    "totalLines": 138612,
+    "totalBytes": 10226676,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5216,
+    "localLinkCount": 5214,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 386270,
+      "byteSize": 384792,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -8422,16 +8422,6 @@
         },
         {
           "href": "./knowledge-base/infrastructure/security.md#kb-178-ログの機密情報保護実装x-client-keyのredacted置換",
-          "targetPath": "docs/knowledge-base/infrastructure/security.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/infrastructure/security.md#kb-213-セキュリティ評価の実機検証2026-01-28",
-          "targetPath": "docs/knowledge-base/infrastructure/security.md",
-          "exists": true
-        },
-        {
-          "href": "./knowledge-base/infrastructure/security.md#kb-214-ルーターのデフォルト設定によるポート露出評価の誤解解消",
           "targetPath": "docs/knowledge-base/infrastructure/security.md",
           "exists": true
         },
@@ -28365,7 +28355,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 105,
+      "inboundCount": 103,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29598,8 +29588,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 4176,
-      "byteSize": 172297,
+      "lineCount": 4190,
+      "byteSize": 172979,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",

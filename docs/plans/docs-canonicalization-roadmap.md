@@ -4124,7 +4124,21 @@ Status: implemented in PR332.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR333 And Later: Thin Indexes And Split Large Documents
+### PR333: Thin Security Verification Index Block
+
+Status: implemented in PR333.
+
+- Thin only the 2026-01-28 security evaluation, onsite verification, and
+  router exposure assessment latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the standards-based evaluation summary,
+  port exposure, fail2ban and security-monitor results, router default
+  assessment, remaining backup/restore and USB validation items, evidence
+  script, report updates, and KB-213/KB-214 note with short links to the
+  security evaluation report and production verification guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR334 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
