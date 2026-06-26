@@ -3844,7 +3844,21 @@ Status: implemented in PR311.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR312 And Later: Thin Indexes And Split Large Documents
+### PR312: Thin Kiosk Header Portal Index Block
+
+Status: implemented in PR312.
+
+- Thin only the 2026-02-08 kiosk header UI, React Portal modal positioning,
+  E2E stabilization, and onsite validation latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the header icon changes, signage preview
+  and power menu updates, CSS `filter` containing-block cause, Portal fix,
+  modal sizing, E2E workaround, and onsite validation detail with a short link
+  to KB-239.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR313 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
