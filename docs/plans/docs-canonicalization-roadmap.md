@@ -4138,7 +4138,21 @@ Status: implemented in PR333.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR334 And Later: Thin Indexes And Split Large Documents
+### PR334: Thin Production Schedule Search Sharing Index Block
+
+Status: implemented in PR334.
+
+- Thin only the 2026-01-28 production schedule registered-seiban search
+  sharing regression latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the KB-209 regression context,
+  `search-history` versus `search-state` root cause, `activeQueries` sharing,
+  resource-filter scope, debug-code removal, shared-key reuse, CI/deploy/onsite
+  validation, and KB-210 addition with short links to KB-210 and the production
+  schedule kiosk plan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR335 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
