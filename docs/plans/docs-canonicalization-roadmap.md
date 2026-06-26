@@ -3215,7 +3215,20 @@ Status: implemented in PR261.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR262 And Later: Thin Indexes And Split Large Documents
+### PR262: Thin Due Management Schedule Link Index Block
+
+Status: implemented in PR262.
+
+- Thin only the 2026-03-07 due-management and production-schedule linkage
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace registered-seiban sync, machine-name,
+  process-progress, FHINCD processing master, A-fix deploy, CI-fix, and
+  checklist detail with short links to KB-297, KB-298, the
+  production-schedule-kiosk ExecPlan, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR263 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
