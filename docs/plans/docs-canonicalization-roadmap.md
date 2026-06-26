@@ -3436,7 +3436,20 @@ Status: implemented in PR279.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR280 And Later: Thin Indexes And Split Large Documents
+### PR280: Thin Seiban Button Machine Name Index Block
+
+Status: implemented in PR280.
+
+- Thin only the 2026-02-28 registered-seiban button three-line display and
+  machine-name deployment and onsite validation latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the SeibanHistoryButton, normalization,
+  API machineName, CI, deployment, and onsite validation detail with short links
+  to KB-282 frontend, KB-282 API, and the production-schedule-kiosk ExecPlan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR281 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
