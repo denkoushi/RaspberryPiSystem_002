@@ -3474,7 +3474,19 @@ Status: implemented in PR282.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR283 And Later: Thin Indexes And Split Large Documents
+### PR283: Thin Tailscale VNC Index Block
+
+Status: implemented in PR283.
+
+- Thin only the 2026-02-28 Tailscale-over-VNC access issue and onsite
+  validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Tailscale ACL, wayvnc, UFW,
+  connectivity test, and layered network troubleshooting detail with short links
+  to KB-277, mac-ssh-access, and port-security-audit.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR284 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
