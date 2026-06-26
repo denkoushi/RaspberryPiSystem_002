@@ -2055,7 +2055,21 @@ Status: implemented in PR164.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR165 And Later: Thin Indexes And Split Large Documents
+### PR165: Thin Photo VLM Gallery Index Block
+
+Status: implemented in PR165.
+
+- Thin only the 2026-03-28 photo-loan VLM initial release, phase1 human review,
+  Vision input, and similar-candidates gallery latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace VLM storage, review/display semantics,
+  candidate API, real-device smoke, and `EXEC_PLAN.md` detail with short links
+  to the photo-loan module doc, KB-319, ADR-20260330, and the
+  similarity-gallery runbook.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR166 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
