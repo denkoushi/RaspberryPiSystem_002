@@ -4372,7 +4372,20 @@ Status: implemented in PR350.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR351 And Later: Thin Indexes And Split Large Documents
+### PR351: Thin Pi4 Deploy Verification Index Block
+
+Status: implemented in PR351.
+
+- Thin only the 2026-01-19 Pi4 deploy-stability verification latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the KB-172 stability feature verification,
+  preflight/remote-lock/resource-guard check, Pi4 deploy result, systemd/API
+  post-check, and KB-182 addition with short links to KB-182 and the deployment
+  guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR352 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
