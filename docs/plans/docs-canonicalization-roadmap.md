@@ -2369,7 +2369,19 @@ Status: implemented in PR190.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR191 And Later: Thin Indexes And Split Large Documents
+### PR191: Thin Kiosk Immersive Allowlist Index Block
+
+Status: implemented in PR191.
+
+- Thin only the 2026-03-21 kiosk immersive allowlist and manual-order row
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace implementation policy, E2E, branch,
+  staged deployment, Phase12, and `EXEC_PLAN.md` detail with short links to
+  KB-311, KB-297, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR192 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
