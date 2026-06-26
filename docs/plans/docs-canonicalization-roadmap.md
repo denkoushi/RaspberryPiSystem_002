@@ -3144,7 +3144,19 @@ Status: implemented in PR255.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR256 And Later: Thin Indexes And Split Large Documents
+### PR256: Thin B4 Correction Implementation Index Block
+
+Status: implemented in PR256.
+
+- Thin only the 2026-03-07 due-management B4 correction implementation
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace due-date candidate filtering,
+  auto-generate exclusion, JST day-boundary, and validation detail with a short
+  link to KB-297.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR257 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
