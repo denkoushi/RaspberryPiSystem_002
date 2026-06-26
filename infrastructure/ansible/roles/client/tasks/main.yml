@@ -110,7 +110,7 @@
     - client_sudo_user | length > 0
     - client_sudoers_services_file != client_sudo_user
     - client_legacy_sudoers_stat.stat.exists | default(false)
-    - (client_legacy_sudoers_content.content | b64decode) is match('^# Ansible managed: allow required systemctl commands')
+    - "'# Ansible managed: allow required systemctl commands' in (client_legacy_sudoers_content.content | b64decode)"
 
 - name: Ensure sudoers overrides for client services
   ansible.builtin.template:
