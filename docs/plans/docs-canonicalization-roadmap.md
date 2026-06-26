@@ -2202,7 +2202,19 @@ Status: implemented in PR176.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR177 And Later: Thin Indexes And Split Large Documents
+### PR177: Thin Kiosk Document Viewer Performance Index Block
+
+Status: implemented in PR177.
+
+- Thin only the 2026-03-26 kiosk documents viewer performance and scroll
+  improvement latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace implementation identifiers, staged
+  deployment, Phase12, and `EXEC_PLAN.md` detail with short links to KB-313
+  and the kiosk-documents runbook.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR178 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

@@ -715,7 +715,7 @@
 
 ### 🆕 最新アップデート（2026-03-26）
 
-- **✅ キオスク要領書ビューア表示速度・スクロール改善（一覧プリフェッチ・IO rAF・pdf-pages キャッシュ）・本番デプロイ（Pi5+Pi4×2・Pi3 除外・順次）・Phase12 実機検証・ドキュメント反映・`main` マージ**: Web+API。`useKioskDocumentListPrefetch`・`kioskDocumentViewerScrollPolicy`・`pdf-page-http-cache`。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 29 / WARN 1 / FAIL 0**（Pi3 WARN）。**参照**: [KB-313](./knowledge-base/KB-313-kiosk-documents.md) / [kiosk-documents.md](./runbooks/kiosk-documents.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **キオスク要領書 ビューア表示速度・スクロール改善 正本**: [KB-313](./knowledge-base/KB-313-kiosk-documents.md) · [Runbook](./runbooks/kiosk-documents.md)。
 
 ### 🆕 最新アップデート（2026-03-25）
 
