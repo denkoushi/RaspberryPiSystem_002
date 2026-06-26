@@ -2465,7 +2465,19 @@ Status: implemented in PR198.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR199 And Later: Thin Indexes And Split Large Documents
+### PR199: Thin Manual Order Solid Refactor Index Block
+
+Status: implemented in PR199.
+
+- Thin only the 2026-03-20 manual-order upper-pane SOLID refactor
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace component decomposition, branch, staged
+  deployment, detach prerequisite, and Phase12 detail with short links to
+  KB-297, deploy-status, and deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR200 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
