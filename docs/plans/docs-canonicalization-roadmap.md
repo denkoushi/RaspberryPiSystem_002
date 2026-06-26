@@ -2537,7 +2537,18 @@ Status: implemented in PR204.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR205 And Later: Thin Indexes And Split Large Documents
+### PR205: Thin Caddy Self-Build Index Block
+
+Status: implemented in PR205.
+
+- Thin only the 2026-03-19 Caddy self-build Trivy image web CVE latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace Dockerfile, dependency pinning, Trivy scan,
+  and remediation detail with a short link to ci-cd KB-307.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR206 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

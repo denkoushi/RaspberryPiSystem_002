@@ -767,7 +767,7 @@
 - **手動順番の端末単位正規化（deviceScopeKey + siteKey 集計 + Mac targetDeviceScopeKey 必須）正本**: [KB-297 §Device-scope v2](./knowledge-base/KB-297-kiosk-due-management-workflow.md#device-scope-v2-manual-order-mac-proxy-pi4-scope-ui-hints-2026-03-20) · [ADR-20260319](./decisions/ADR-20260319-manual-order-device-scope-v2.md) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 - **生産順序モード拡張（自動順番/手動順番 + targetLocation + 全体像パネル）正本**: [KB-297 §生産順序モード拡張](./knowledge-base/KB-297-kiosk-due-management-workflow.md#生産順序モード拡張手動順番自動順番--targetlocation2026-03-19) · [ADR-20260319](./decisions/ADR-20260319-production-schedule-manual-order-target-location.md)。
 - **統合ブランチ（生産スケジュールUI統一 + Caddy自前ビルド）正本**: [KB-308](./knowledge-base/frontend.md#kb-308-生産スケジュールuiが古いのに戻った事象ブランチ分岐によるデプロイ内容ずれ) · [KB-307 UI統一](./knowledge-base/frontend.md#kb-307-生産スケジュールui統一登録製番資源cdドロップダウン併設) · [KB-307 Caddy](./knowledge-base/ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する) · [deploy-status](./runbooks/deploy-status-recovery.md)。
-- **✅ Caddy自前ビルド移行で Trivy image web の CVE を解消**: `Dockerfile.web` を公式 Caddy イメージ依存から multi-stage 自前ビルドへ変更し、`grpc` を修正版へ固定。`trivy image` の HIGH/CRITICAL スキャンで `usr/bin/caddy` を含め 0 件を確認。背景と再発防止は [KB-307](./knowledge-base/ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する) を参照。
+- **Caddy自前ビルド移行で Trivy image web の CVE を解消 正本**: [KB-307](./knowledge-base/ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する)。
 
 ### 🆕 最新アップデート（2026-03-18）
 
