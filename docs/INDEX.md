@@ -672,7 +672,7 @@
 
 ### 🆕 最新アップデート（2026-03-31）
 
-- **サイネージ: キオスク進捗一覧フルスロット（`kiosk_progress_overview`）・JPEG **4列×2段**・`seibanPerPage` 1〜8・`deviceScopeKey` 必須・本番順次デプロイ・Phase12 実機検証・`main` 反映（初回スロット 2026-04-01・レイアウト刷新 2026-03-31）**: 初回 `feature/signage-kiosk-progress-overview`、刷新 `feature/kiosk-progress-overview-two-row-grid`。API `SignageRenderer` + `kiosk-progress-overview-layout.ts` / `kiosk-progress-overview-svg.ts`、`signage-slide-rotation.ts`、Web・Zod。**デプロイ**: [deployment.md](./guides/deployment.md) どおり **Pi5 → Pi4×4 → Pi3** を **`--limit` 1 台ずつ**・**`--detach --follow`**。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 38 / WARN 0 / FAIL 0**（当時基準・`GET /api/signage/current-image` + Pi3 `x-client-key`）。**参照**: [KB-321](./knowledge-base/infrastructure/signage.md#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) / [verification-checklist.md](./guides/verification-checklist.md) 6.6.13 / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **サイネージ キオスク進捗一覧 `kiosk_progress_overview` 正本**: [KB-321](./knowledge-base/infrastructure/signage.md#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) · [verification](./guides/verification-checklist.md) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-03-30）
 
