@@ -696,7 +696,7 @@
 - **Pi5 API → Ubuntu LocalLLM 代理疎通 正本**: [Runbook](./runbooks/local-llm-tailscale-sidecar.md) · [KB-317](./knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する)。
 - **Ubuntu LocalLLM 専用ノード・Tailscale sidecar 正本**: [KB-317](./knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する) · [ADR-20260328](./decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md) · [Runbook](./runbooks/local-llm-tailscale-sidecar.md) · [tailscale-policy](./security/tailscale-policy.md)。
 - **Pi4 3台目 FJV60/80 追加 正本**: [KB-315](./knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk) · [client setup](./guides/client-initial-setup.md) · [deploy-status](./runbooks/deploy-status-recovery.md)。
-- **Pi4 4台目（第2工場 StoneBase01・Ansible `raspi4-kensaku-stonebase01`）追加・Tailscale `100.101.113.95` 反映・register-clients・`deploy-staged --limit` 成功**: 初回は `nfc-agent には Docker が必要です` で fail-fastし、`curl -fsSL https://get.docker.com | sudo sh` 後に再実行で復旧。最終的に `deploy-status` は `isMaintenance=false`、`kiosk-browser.service` / `status-agent.timer` active、`docker-nfc-agent-1` Up を確認。**参照**: [KB-316](./knowledge-base/infrastructure/ansible-deployment.md#kb-316-pi4-stonebase-fourth-kiosk) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **Pi4 4台目 StoneBase01 追加 正本**: [KB-316](./knowledge-base/infrastructure/ansible-deployment.md#kb-316-pi4-stonebase-fourth-kiosk) · [deploy-status](./runbooks/deploy-status-recovery.md) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-03-27）
 

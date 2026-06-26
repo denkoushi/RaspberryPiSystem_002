@@ -2153,7 +2153,19 @@ Status: implemented in PR172.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR173 And Later: Thin Indexes And Split Large Documents
+### PR173: Thin Pi4 StoneBase Fourth Kiosk Index Block
+
+Status: implemented in PR173.
+
+- Thin only the 2026-03-28 Pi4 StoneBase01 fourth-kiosk addition latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace Tailscale address, client registration,
+  staged deploy, Docker bootstrap recovery, service status, and `EXEC_PLAN.md`
+  detail with short links to KB-316, deploy-status, and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR174 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
