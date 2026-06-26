@@ -2453,7 +2453,19 @@ Status: implemented in PR197.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR198 And Later: Thin Indexes And Split Large Documents
+### PR198: Thin Manual Order Density And Machine Name Index Block
+
+Status: implemented in PR198.
+
+- Thin only the 2026-03-20 manual-order overview density and machine-name fix
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace UI density, machine-name API detail,
+  branch, staged deployment, and Phase12 detail with short links to KB-297 and
+  deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR199 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
