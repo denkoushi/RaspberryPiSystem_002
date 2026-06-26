@@ -3609,7 +3609,19 @@ Status: implemented in PR293.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR294 And Later: Thin Indexes And Split Large Documents
+### PR294: Thin Rigging Borrow Info Index Block
+
+Status: implemented in PR294.
+
+- Thin only the 2026-02-18 rigging-borrow page rigging information display,
+  deployment, and onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the tag lookup, display block, state
+  handling, duplicate API avoidance, CI, deploy run, and onsite validation
+  detail with a short link to KB-267.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR295 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
