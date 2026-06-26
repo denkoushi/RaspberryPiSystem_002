@@ -3570,7 +3570,20 @@ Status: implemented in PR290.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR291 And Later: Thin Indexes And Split Large Documents
+### PR291: Thin Gmail CsvDashboards Batch Index Block
+
+Status: implemented in PR291.
+
+- Thin only the 2026-02-22 Gmail csvDashboards 10-minute/30-message
+  optimization, deployment, and onsite validation latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the limited search, default batch size,
+  Sunday schedule, CI, deploy run, onsite validation, and 429 monitoring detail
+  with short links to KB-272 and csv-import-export.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR292 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

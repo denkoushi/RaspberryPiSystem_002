@@ -927,7 +927,7 @@
 
 ### 🆕 最新アップデート（2026-02-22）
 
-- **✅ Gmail csvDashboards取得を10分30件運用へ最適化・CI成功・デプロイ完了・実機検証完了**: Gmail APIの429レート制限エラーを低減するため、`searchMessagesAll`（全件ページング）から`searchMessagesLimited`（最大N件）への変更を実装。**実装内容**: `GmailApiClient`に`searchMessagesLimited(query: string, maxResults: number)`メソッドを追加し、`searchMessages`を`searchMessagesLimited(query, 10)`に変更。`GmailStorageProvider`の`downloadAllWithMetadata`を`searchMessagesLimited`を使用するように変更し、デフォルトバッチサイズを50→30に変更（`GMAIL_MAX_MESSAGES_PER_BATCH`環境変数、デフォルト30）。加工機日常点検結果のスケジュールに日曜日（0）を追加（`21,31,41,51 * * * 0,1,2,3,4,5,6`）。**実装ファイル**: `apps/api/src/services/backup/gmail-api-client.ts`（`searchMessagesLimited`追加）、`apps/api/src/services/backup/storage/gmail-storage.provider.ts`（`searchMessagesLimited`使用、デフォルト30）、`apps/api/src/routes/imports/schedule.ts`（日曜日追加）、ユニットテスト追加。**CI実行**: GitHub Actions Run ID `22268463453`成功（全ジョブ成功）。**デプロイ結果**: Pi5でデプロイ成功（runId `20260222-111603-30625`, `state: success`, `exitCode: 0`）。**実機検証結果**: デプロイ実体確認（ブランチ `main`、コミット `1bd081d4` が反映済み）、コード実装確認（`searchMessagesLimited`定義・使用、デフォルト30設定、`searchMessagesLimited`使用を確認）、スケジュール設定確認（加工機日常点検結果のスケジュールに日曜日（0）が含まれることを確認）、API正常動作確認（`GET /api/system/health` → `200`、`status: degraded`はメモリ高負荷による既存の問題）。**効果**: `searchMessagesAll`による全件ページングを回避し、1回の実行で最大30件のみ取得することで、Gmail APIの429エラー発生リスクを低減。**ドキュメント更新**: KB-272を追加、csv-import-export.mdに429監視手順を追記、EXEC_PLAN.mdを更新、INDEX.mdを更新。詳細は [knowledge-base/api.md#kb-272](./knowledge-base/api.md#kb-272-gmail-csvdashboards取得を10分30件運用へ最適化) / [guides/csv-import-export.md](./guides/csv-import-export.md) / [EXEC_PLAN.md](../EXEC_PLAN.md) を参照。
+- **Gmail csvDashboards 10分30件運用 正本**: [KB-272](./knowledge-base/api.md#kb-272-gmail-csvdashboards取得を10分30件運用へ最適化) · [csv-import-export](./guides/csv-import-export.md)。
 
 ### 🆕 最新アップデート（2026-02-19）
 
