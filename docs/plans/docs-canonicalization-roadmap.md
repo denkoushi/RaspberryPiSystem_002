@@ -2918,7 +2918,19 @@ Status: implemented in PR236.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR237 And Later: Thin Indexes And Split Large Documents
+### PR237: Thin P2-4 Web Split Index Block
+
+Status: implemented in PR237.
+
+- Thin only the 2026-03-13 P2-4 Web Split Part 2 latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace mutation/side-effect separation,
+  deployment, and real-device verification detail with short links to the
+  Phase2 backlog, KB-297, and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR238 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
