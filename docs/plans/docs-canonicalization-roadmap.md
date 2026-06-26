@@ -3659,7 +3659,19 @@ Status: implemented in PR297.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR298 And Later: Thin Indexes And Split Large Documents
+### PR298: Thin Machine Inspection Signage Index Block
+
+Status: implemented in PR298.
+
+- Thin only the 2026-02-14 machine inspection signage card layout, deploy, and
+  onsite validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the 49-item card layout, badge/background
+  color fixes, maintenance-flag troubleshooting, CI run IDs, deploy run IDs,
+  and onsite validation detail with short links to KB-262 and KB-263.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR299 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
