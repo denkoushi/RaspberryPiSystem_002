@@ -2381,7 +2381,19 @@ Status: implemented in PR191.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR192 And Later: Thin Indexes And Split Large Documents
+### PR192: Thin Manual Order Lower Toolbar Index Block
+
+Status: implemented in PR192.
+
+- Thin only the 2026-03-21 manual-order lower-pane right-edge hover toolbar
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace component, hover hook, test, branch,
+  staged deployment, Phase12, and merged PR detail with short links to KB-297
+  and deploy-status.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR193 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
