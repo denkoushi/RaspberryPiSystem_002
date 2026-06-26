@@ -4234,7 +4234,21 @@ Status: implemented in PR340.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR341 And Later: Thin Indexes And Split Large Documents
+### PR341: Thin CSV Dashboard Column Width Index Block
+
+Status: implemented in PR341.
+
+- Thin only the 2026-01-23 CSV dashboard column-width latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the Pi3 signage column-width incident,
+  font-size propagation, all-row scan, formatted value handling, header width
+  rule, shrink-to-fit behavior, NDJSON/debug note, unit tests, CI/deploy/onsite
+  validation, and KB-193 addition with short links to KB-193 and the signage
+  module document.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR342 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
