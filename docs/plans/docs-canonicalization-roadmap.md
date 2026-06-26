@@ -4058,7 +4058,21 @@ Status: implemented in PR327.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR328 And Later: Thin Indexes And Split Large Documents
+### PR328: Thin Pi5 Storage Maintenance Index Block
+
+Status: implemented in PR328.
+
+- Thin only the 2026-01-31 Pi5 storage maintenance follow-up latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the disk growth investigation,
+  `storage-maintenance.sh` deletion-count bug, accumulated rendered signage
+  images, Docker build cache cleanup, unused image cleanup, script fix, disk
+  recovery result, and CI note with short links to KB-130 and the operation
+  manual.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR329 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
