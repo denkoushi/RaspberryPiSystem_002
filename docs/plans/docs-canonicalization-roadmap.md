@@ -2190,7 +2190,19 @@ Status: implemented in PR175.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR176 And Later: Thin Indexes And Split Large Documents
+### PR176: Thin Kiosk Document Detail Cache Index Block
+
+Status: implemented in PR176.
+
+- Thin only the 2026-03-27 kiosk documents page-position reset and detail
+  query cache latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace PR, web-only deployment, Phase12,
+  onsite confirmation, and `EXEC_PLAN.md` detail with short links to KB-313,
+  ADR-20260327, and the kiosk-documents runbook.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR177 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
