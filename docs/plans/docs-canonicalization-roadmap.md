@@ -3228,7 +3228,19 @@ Status: implemented in PR262.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR263 And Later: Thin Indexes And Split Large Documents
+### PR263: Thin Kiosk Due Management Index Block
+
+Status: implemented in PR263.
+
+- Thin only the 2026-03-07 kiosk due-management deployment and onsite
+  validation latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the seiban due-date, part-priority,
+  cutting-exclusion, deployment, and onsite validation detail with short links
+  to KB-297, ADR-20260307, and the production-schedule-kiosk ExecPlan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR264 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
