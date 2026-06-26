@@ -2004,7 +2004,20 @@ Status: implemented in PR160.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR161 And Later: Thin Indexes And Split Large Documents
+### PR161: Thin Part Measurement Visual Template Index Block
+
+Status: implemented in PR161.
+
+- Thin only the 2026-03-30 kiosk part-measurement visual template latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace branch, Prisma/storage implementation,
+  rollout, Phase12, deploy-log note, and `EXEC_PLAN.md` detail with short
+  links to ADR-20260330, KB-320, the part-measurement runbook, and the
+  verification checklist.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR162 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
