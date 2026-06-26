@@ -3634,7 +3634,20 @@ Status: implemented in PR295.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR296 And Later: Thin Indexes And Split Large Documents
+### PR296: Thin CSV Auto Fetch Recovery Index Block
+
+Status: implemented in PR296.
+
+- Thin only the 2026-02-16 CSV auto-fetch recovery and cron display UI
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Gmail 429 recovery chain,
+  `PROCESSING` cleanup, cron-minute distribution, `retryConfig.maxRetries=0`,
+  cron display formatting, interval editability, and onsite validation detail
+  with short links to KB-216, KB-111, and the CSV import/export guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR297 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
