@@ -1170,7 +1170,7 @@
 
 - **Mac/Pi3 status-agent復旧 正本**: [KB-157](./knowledge-base/infrastructure/ansible-deployment.md#kb-157-pi3のstatus-agenttimerが無効化されていた問題) · [KB-158](./knowledge-base/infrastructure/miscellaneous.md#kb-158-macのstatus-agent未設定問題とmacos対応) · [status-agent](./guides/status-agent.md)。
 
-- **✅ 複数スケジュールの順番切り替え機能実装完了**: 複数のスケジュールが同時にマッチする場合、優先順位順（高い順）にソートされ、設定された間隔（デフォルト: 30秒）で順番に切り替えて表示する機能を実装。環境変数`SIGNAGE_SCHEDULE_SWITCH_INTERVAL_SECONDS`で切り替え間隔を設定可能。優先順位100（分割表示）と優先順位10（全画面表示）が同時にマッチする場合、30秒ごとに交互に表示される。CI成功・デプロイ完了・実機検証完了を確認。詳細は [knowledge-base/infrastructure/signage.md#kb-156](./knowledge-base/infrastructure/signage.md#kb-156-複数スケジュールの順番切り替え機能実装) / [modules/signage/README.md](./modules/signage/README.md) を参照。
+- **サイネージ複数スケジュール順番切替 正本**: [KB-156](./knowledge-base/infrastructure/signage.md#kb-156-複数スケジュールの順番切り替え機能実装) · [signage module](./modules/signage/README.md)。
 
 - **✅ Pi3サイネージの画像更新方式改善完了**: Pi3サイネージの「1ページずつ表示されない」問題の再発要因を特定し、画像更新方式を改善。`signage-update.sh`が`mv`で置換していたため、更新のたびに`current.jpg`のinodeが変わり、`feh --auto-reload(inotify)`が追従できない問題を解決。既存`current.jpg`がある場合は上書き更新（inode維持）に変更し、画面更新が安定するように改善。Ansibleテンプレートも同様に修正。詳細は [knowledge-base/infrastructure/signage.md#kb-152](./knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) / [modules/signage/signage-lite.md](./modules/signage/signage-lite.md) を参照。
 
