@@ -4531,7 +4531,20 @@ Status: implemented in PR362.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR363 And Later: Thin Indexes And Split Large Documents
+### PR363: Thin Pi3 Deploy Reliability Index Block
+
+Status: implemented in PR363.
+
+- Thin only the 2026-01-16 Pi3 deploy reliability latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the memory shortage mitigation, lightdm
+  stop, post-deploy reboot, signage/client service skips, onsite deployment
+  result, elapsed time, and KB-169 note with short links to KB-169 and the
+  deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR364 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

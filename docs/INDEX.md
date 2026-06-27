@@ -1146,7 +1146,7 @@
 
 - **サイネージ端末デバイスタイプ汎用化 正本**: [KB-170](./knowledge-base/infrastructure/signage.md#kb-170-デバイスタイプ汎用化による将来クライアント拡張対応) · [deployment](./guides/deployment.md#新しいサイネージ端末デバイスタイプの追加手順)。
 
-- **✅ Pi3デプロイ信頼性向上（lightdm停止・自動再起動）**: Pi3デプロイがメモリ不足で完了しない問題を根本解決。プレフライトチェックでlightdm（GUIディスプレイマネージャー）を停止し約100MBのメモリを確保。デプロイ完了後はPi3を自動再起動してGUIとサイネージサービスを復活。signageロール・clientロールでlightdm停止時はサービス起動をスキップし、デプロイエラーを回避。デプロイ成功（ok=101, changed=22, failed=0）、所要時間約10分を実機検証で確認。詳細は [knowledge-base/infrastructure/signage.md#kb-169](./knowledge-base/infrastructure/signage.md#kb-169-pi3デプロイ時のlightdm停止によるメモリ確保と自動再起動) / [guides/deployment.md](./guides/deployment.md) を参照。
+- **Pi3デプロイ信頼性向上 正本**: [KB-169](./knowledge-base/infrastructure/signage.md#kb-169-pi3デプロイ時のlightdm停止によるメモリ確保と自動再起動) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2025-12-31）
 
