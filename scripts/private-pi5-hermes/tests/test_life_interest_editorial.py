@@ -55,9 +55,9 @@ class FakeEditorialClient:
 
 def _raw_editorial(**updates: object) -> str:
     payload: dict[str, object] = {
-        "main_story": "DGX Spark運用は、vLLMの起動安定化とローカルLLM活用の実務寄りに進んでいます。",
-        "latest": "直近では cold start と NVFP4 の扱いが話題で、実運用の詰まりどころが見えています。",
-        "item_notes": ["起動時間の回避策を確認する価値があります。"],
+        "main_story": "DGX Spark運用は、vLLMの起動安定化とローカルLLM活用の話がかなり実務寄りに進んでいます。",
+        "latest": "直近では cold start と NVFP4 の扱いが話題で、運用で詰まりそうな場所を先回りで見られます。",
+        "item_notes": ["起動待ちで時間を溶かしたくないなら、先に見ておく価値があります。"],
     }
     payload.update(updates)
     return json.dumps(payload, ensure_ascii=False)
@@ -124,10 +124,15 @@ class LifeInterestEditorialTests(unittest.TestCase):
         self.assertIn("主筋", result.message)
         self.assertIn("最新", result.message)
         self.assertIn("DGX Spark運用", result.message)
+        self.assertIn("見どころ:", result.message)
         self.assertIn("https://forums.developer.nvidia.com/t/dgx-spark-vllm/123", result.message)
         self.assertIn("/interest like 1", result.message)
         self.assertEqual(client.calls[0]["items"][0]["number"], 1)
         self.assertNotIn("url", client.calls[0]["items"][0])
+        contract_text = " ".join(str(value) for value in client.calls[0]["contract"])
+        self.assertIn("casual", contract_text)
+        self.assertIn("want to open", contract_text)
+        self.assertEqual(client.calls[0]["style_guide"]["tone"], "friendly, curious, concise, lightly conversational")
 
     def test_build_digest_uses_editorial_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

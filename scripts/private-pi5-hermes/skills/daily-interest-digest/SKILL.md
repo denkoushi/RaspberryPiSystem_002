@@ -64,7 +64,12 @@ message to one concise post with:
 - `今日見るなら`
 - `主筋`
 - `最新`
-- numbered items with trusted source/title/URL from stored items
+- numbered items with trusted source/title/URL from stored items and a short `見どころ`
+
+Editorial wording should be readable Japanese, not a stiff machine summary:
+use a casual, curious tone that makes the user want to open the links, while
+keeping technical claims grounded in the provided metadata. Do not hype beyond
+the source text, invent conclusions, or turn the digest into a chatty essay.
 
 When editorial rendering is disabled or falls back, for each item include:
 
