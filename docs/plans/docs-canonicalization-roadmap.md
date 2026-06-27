@@ -4597,7 +4597,21 @@ Status: implemented in PR367.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR368 And Later: Thin Indexes And Split Large Documents
+### PR368: Thin TalkPlaza Multisite Index Block
+
+Status: implemented in PR368.
+
+- Thin only the 2026-01-14 TalkPlaza factory multisite latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the inventory split, group/host vars split,
+  prefix naming, required inventory argument, Dropbox base path split,
+  inventory/playbook relative path fix, first-factory rollout note, and KB-159
+  through KB-162 references with short links to those KB entries and the
+  TalkPlaza/deployment guides.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR369 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
