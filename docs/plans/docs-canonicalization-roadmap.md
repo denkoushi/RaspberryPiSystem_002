@@ -4544,7 +4544,20 @@ Status: implemented in PR363.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR364 And Later: Thin Indexes And Split Large Documents
+### PR364: Thin CSV Import UI Index Block
+
+Status: implemented in PR364.
+
+- Thin only the 2025-12-31 CSV import UI improvement latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the USB upload UI split, measuring
+  instrument and rigging support, single data-type endpoint, `ImportForm`
+  component, `replaceExisting` per-form setting, CI note, and KB-117 references
+  with short links to API KB-117, frontend KB-117, and the CSV import guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR365 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
