@@ -4465,7 +4465,21 @@ Status: implemented in PR357.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR358 And Later: Thin Indexes And Split Large Documents
+### PR358: Thin Alerts Phase2 Ingest Index Block
+
+Status: implemented in PR358.
+
+- Thin only the 2026-01-18 Alerts Platform Phase2 DB ingest latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Ingest implementation, Prisma
+  `Alert`/`AlertDelivery` models, 60-second ingest loop, alert API compatibility,
+  DB-side acknowledge handling, empty-file and malformed JSON skip behavior,
+  Pi5 ingest and delivery validation, and KB-173 note with short links to
+  KB-173, the local alerts guide, and the Alerts Phase2 plan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR359 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
