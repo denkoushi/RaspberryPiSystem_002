@@ -4624,7 +4624,19 @@ Status: implemented in PR369.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR370 And Later: Thin Indexes And Split Large Documents
+### PR370: Thin Signage Schedule Switch Index Block
+
+Status: implemented in PR370.
+
+- Thin only the 2026-01-09 signage multi-schedule switching latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the priority ordering, interval setting,
+  30-second alternating example, CI/deploy/onsite validation, and KB-156 note
+  with short links to KB-156 and the signage module README.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR371 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
