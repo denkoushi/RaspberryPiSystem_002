@@ -195,6 +195,8 @@ X の自動検索は正規API/OAuthが用意できるまで未接続。ブラウ
 
 `/interest` は最大5件を提示し、`like` / `save` / `later` / `dismiss` / `more` / `less` で local feedback を更新する。安定した好みは Memory 昇格候補として表示するが、raw 外部投稿や一時URLは Memory に保存しない。
 
+2026-06-27 の editorial refinement では、候補収集・保存・ランキングを維持したまま、選定後だけ `life_interest_editorial.py` に渡して DGX OpenAI互換 `/v1/chat/completions` で日本語の「主筋」「最新」「要点」へ整える。LLM には title/snippet/source/time/reason だけを渡し、URL と番号は保存済み `InterestItem` から deterministic に描画する。LLM 失敗時は従来 digest に fallback し、`items.jsonl` 等の保存形式は変えない。
+
 Hermes skill は `scripts/private-pi5-hermes/skills/daily-interest-digest/SKILL.md` から `~/.hermes/skills/research/daily-interest-digest/SKILL.md` へ配備する。`private_pi5_hermes_life_interest_digest_enabled: true` の時だけ chat profile の `memory` / `skills` / `cronjob` を解放する。日次配信は `hermes-life-interest-digest.timer`（既定 `08:10:00`）で実行し、`interest/dispatch.jsonl` で同日重複を抑止する。terminal/file/git/deploy/Codex/Cursor は引き続き disabled。
 
 Local validation（2026-06-07）:

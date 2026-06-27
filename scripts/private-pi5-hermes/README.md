@@ -123,11 +123,11 @@ python3 -m unittest scripts/private-pi5-hermes/tests/test_life_pilot_policy.py s
 
 ## Daily Interest Digest（D19-life）
 
-正本: [`life_interest_digest.py`](lib/life_interest_digest.py) · [`skills/daily-interest-digest/SKILL.md`](skills/daily-interest-digest/SKILL.md)
+正本: [`life_interest_digest.py`](lib/life_interest_digest.py) · [`life_interest_editorial.py`](lib/life_interest_editorial.py) · [`skills/daily-interest-digest/SKILL.md`](skills/daily-interest-digest/SKILL.md)
 
 `/interest` と `hermes-life-interest-digest.timer` で NVIDIA DGX Spark / GB10 Forum/Announcements、Hermes Agent GitHub、Discord shared inbox の X リンクから最大5件のダイジェストを出す。定期配信は新しい候補がない日は投稿しない。手動 `/interest` は空結果でも短く応答する。`like/save/later/dismiss/more/less` の反応は `/home/hermes/.hermes-life/interest` に保存し、次回ランキングに反映する。外部投稿は `untrusted` として扱い、本文全文・添付・OCR・実行系には接続しない。
 
-Hermes標準の Memory / Skills / Cron を使う場合は fragment に `private_pi5_hermes_life_interest_digest_enabled: true` を置く。日次配信は既定 `08:10:00`、固定送信先は `private_pi5_hermes_life_interest_digest_channel_id` で指定できる。terminal/file/git/deploy/Codex/Cursor は引き続き無効。
+Hermes標準の Memory / Skills / Cron を使う場合は fragment に `private_pi5_hermes_life_interest_digest_enabled: true` を置く。日次配信は既定 `08:10:00`、固定送信先は `private_pi5_hermes_life_interest_digest_channel_id` で指定できる。`private_pi5_hermes_life_interest_editorial_enabled: true` では、選定済み候補を DGX `/v1/chat/completions` で「主筋」「最新」「要点」へ日本語編集し、失敗時は現行 deterministic digest に戻す。手動確認で LLM を外す時は `hermes-life-interest-digest --no-editorial` を使う。terminal/file/git/deploy/Codex/Cursor は引き続き無効。
 
 ## トラブルシュート（`/task` · 2026-06-05 追記）
 
