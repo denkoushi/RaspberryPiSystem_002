@@ -4557,7 +4557,20 @@ Status: implemented in PR364.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR365 And Later: Thin Indexes And Split Large Documents
+### PR365: Thin CSV Employee Format Index Block
+
+Status: implemented in PR365.
+
+- Thin only the 2025-12-31 CSV employee format latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the `lastName`/`firstName` CSV format,
+  employee edit form split, generated display name, schema fields, existing data
+  split logic, onsite import/list/edit validation, and checklist note with short
+  links to the CSV import guide and the verification checklist.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR366 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 139031,
-    "totalBytes": 10217700,
+    "totalLines": 139044,
+    "totalBytes": 10217570,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -6034,7 +6034,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 357183,
+      "byteSize": 356483,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6652,6 +6652,11 @@
         },
         {
           "href": "./guides/csv-import-export.md#fkojunst-2csv-disappearance-schedule-notes",
+          "targetPath": "docs/guides/csv-import-export.md",
+          "exists": true
+        },
+        {
+          "href": "./guides/csv-import-export.md#従業員csvemployeescsv",
           "targetPath": "docs/guides/csv-import-export.md",
           "exists": true
         },
@@ -7312,11 +7317,6 @@
         },
         {
           "href": "./guides/verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31",
-          "targetPath": "docs/guides/verification-checklist.md",
-          "exists": true
-        },
-        {
-          "href": "./guides/verification-checklist.md#62-従業員csvインポート新フォーマット",
           "targetPath": "docs/guides/verification-checklist.md",
           "exists": true
         },
@@ -14717,7 +14717,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 38,
+      "inboundCount": 39,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -19558,7 +19558,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 76,
+      "inboundCount": 75,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -29570,8 +29570,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 4609,
-      "byteSize": 191612,
+      "lineCount": 4622,
+      "byteSize": 192182,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
