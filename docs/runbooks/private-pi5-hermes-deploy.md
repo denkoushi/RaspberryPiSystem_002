@@ -831,7 +831,7 @@ git diff --check
 | 項目 | 結果 |
 |------|------|
 | root filesystem | まだ SD boot。`/dev/mmcblk0p2 / ext4 rw,noatime` |
-| 接続中ディスク | `sda` 232.9G `ESD-EMC`、`sda1` は NTFS で `/media/raspi5-private/24481BDB481BAB16` にマウント中。boot target として初期化してよいディスクか未確認 |
+| 接続中ディスク | `sda` 232.9G `ESD-EMC`、`sda1` は NTFS で `/media/raspi5-private/24481BDB481BAB16` にマウント中。この時点では boot target として初期化してよいディスクか未確認 |
 | SD カード | `mmcblk0` 59.5G。`mmcblk0p1` は `/boot/firmware`、`mmcblk0p2` は `/` |
 | 使用量 | `/` は 58G 中 12G 使用（21%）。`/home/hermes` は 1.6G、`/var/lib/docker` は 1.6G |
 | Hermes services | `hermes-gateway` / `hermes-tools-gateway` active。`hermes-dgx-keep-warm.timer`、`hermes-life-reminder.timer`、`hermes-life-proactive-morning.timer`、`hermes-life-followup.timer`、`hermes-life-interest-digest.timer`、`hermes-life-discord-ui.service` active。`hermes-life-proactive-evening.timer` inactive |
@@ -840,7 +840,25 @@ git diff --check
 | Syncthing | `syncthing@hermes.service` active。HermesLife folder は `id=d5s97-8v6z5`、`type=receiveonly`、path `/home/hermes/.hermes-life/obsidian/HermesLife` |
 | DGX profile env | `.hermes-tools/.env` と `.hermes/dgx-keep-warm.env` は `DGX_MODEL_PROFILE_ID=business_qwen36_27b_nvfp4` |
 
-判断: 移行本番は未開始。現在接続中の USB ディスクは NTFS データディスクとしてマウントされているため、boot target として初期化してよいかを明示確認するまでは触らない。SSD 移行時は [ssd-migration.md](../guides/ssd-migration.md) の Private Pi5 Hermes preflight checklist に従い、SD カードを fallback として保持する。
+判断: この時点では移行本番は未開始。現在接続中の USB ディスクは NTFS データディスクとしてマウントされているため、boot target として初期化してよいかを明示確認するまでは触らない。SSD 移行時は [ssd-migration.md](../guides/ssd-migration.md) の Private Pi5 Hermes preflight checklist に従い、SD カードを fallback として保持する。
+
+**SSD boot migration（2026-06-27 16:56-17:02 JST）**:
+
+| 項目 | 結果 |
+|------|------|
+| 許可 | ユーザーが USB ディスク初期化を明示許可 |
+| 対象ガード | `sda` / 232.9G / `ESD-EMC`、現 root `/dev/mmcblk0p2`、現 boot `/dev/mmcblk0p1` を満たす場合だけ実行 |
+| 初期化 | `sda1` NTFS を unmount し、`sda` を MBR + `sda1` 512M FAT32 + `sda2` ext4 へ再作成 |
+| clone | root は 202,448 regular files / 11.4GB、boot は 492 files / 90MB を rsync |
+| 新 PARTUUID | boot `6bd87e92-01`、root `6bd87e92-02` |
+| SSD 設定 | SSD 側 `cmdline.txt` の `root=PARTUUID=6bd87e92-02`、SSD 側 `/etc/fstab` の `/boot/firmware` と `/` を `6bd87e92-01/02` へ更新 |
+| bootloader | `BOOT_ORDER=0xf164`（USB 優先、NVMe、SD fallback、restart）へ更新。`VERIFY: SUCCESS` / `UPDATE SUCCESSFUL` |
+| reboot | Ansible reboot 完了、elapsed 37s |
+| boot 後 root | `/dev/sda2 / ext4 rw,noatime`、`/dev/sda1 /boot/firmware vfat`。`/` は 228G 中 12G 使用（6%） |
+| SD fallback | `mmcblk0p1/2` は未変更で保持。自動マウントされた旧 SD bootfs は誤操作防止のため unmount 済み |
+| systemd | `systemctl --failed` は 0 loaded units。Hermes / Life / Syncthing の期待 unit は active、`hermes-life-proactive-evening.timer` は既定どおり inactive |
+| data check | Hermes data owner/mode と Life counts は preflight と一致。Syncthing HermesLife は `type=receiveonly` のまま |
+| DGX check | `systemctl start hermes-dgx-keep-warm.service` 実行。journal は `ok=true`、`phase=already_target_profile`、`activeProfileId=business_qwen36_27b_nvfp4`、`/v1/models` 200 |
 
 **Troubleshooting（実機）**:
 
@@ -849,9 +867,9 @@ git diff --check
 | deploy verify の `Verify DGX accepts tools profile Bearer token` が `/v1/models=502` で失敗 | DGX `system-prod-trtllm` が起動失敗。`docker logs system-prod-trtllm` で `Free memory ... 48.56/121.63 GiB ... less than desired GPU memory utilization (0.65, 79.06 GiB)`。`dgx-private-comfyui` が約 66GiB を保持していた | `docker stop dgx-private-comfyui`（データ削除なし）→ Pi5 から `systemctl start hermes-dgx-keep-warm.service` → `/v1/models` 200 → deploy 再実行 |
 | keep-warm が 10 分待っても ready にならない | GPU メモリ競合または blue backend exit | DGX で `docker ps -a --filter name=system-prod-trtllm` と `docker logs system-prod-trtllm` を確認。ComfyUI 等の GPU 利用を止めるか、DGX 側 profile の `gpu-memory-utilization` を再調整してから keep-warm 再実行 |
 
-**Open items**:
+**Follow-up**:
 
-- SSD boot 移行は未実施。read-only preflight は取得済みだが、現在接続中の `sda` は 232.9G NTFS マウントのため、boot target として初期化してよいか確認してから [ssd-migration.md](../guides/ssd-migration.md) の Private Pi5 Hermes チェックリストで進める。
+- 旧 SD カードは fallback として保持し、SSD boot が安定するまで初期化しない。
 
 ### 本番反映 — Discord 承認 relay 完結（2026-05-30）
 
