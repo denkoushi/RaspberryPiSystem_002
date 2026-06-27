@@ -50,7 +50,16 @@ from typing import Callable
 
 from active_model_state import active_model_state_to_api, read_active_model_state
 from gateway_llm_auth import load_llm_shared_tokens_from_env, llm_shared_token_ok
-from model_profiles import load_model_profiles, model_profile_to_api
+from model_profiles import UnknownModelProfileError, find_model_profile, load_model_profiles, model_profile_to_api
+from model_storage_delete import (
+    DEFAULT_MODEL_STORAGE_DELETE_ALLOWED_ROOTS,
+    ModelStorageDeleteError,
+    build_model_storage_delete_plan,
+    delete_preview_to_api,
+    delete_protection_to_api,
+    execute_model_storage_delete,
+    parse_allowed_roots,
+)
 from resource_state import read_resource_state, state_to_api, write_resource_state
 
 
@@ -87,6 +96,7 @@ class GatewayConfig:
     model_registry_root: str = "/srv/dgx/shared-models/registry"
     active_model_state_path: str = "/srv/dgx/system-prod/state/active-model-profile.json"
     resource_state_path: str = "/srv/dgx/system-prod/state/dgx-resource-state.json"
+    model_storage_delete_allowed_roots: tuple[str, ...] = DEFAULT_MODEL_STORAGE_DELETE_ALLOWED_ROOTS
 
 
 def load_config_from_env() -> GatewayConfig:
@@ -147,6 +157,7 @@ def load_config_from_env() -> GatewayConfig:
             os.environ.get("DGX_RESOURCE_STATE_PATH")
             or "/srv/dgx/system-prod/state/dgx-resource-state.json"
         ).strip(),
+        model_storage_delete_allowed_roots=parse_allowed_roots(os.environ.get("DGX_MODEL_STORAGE_DELETE_ALLOWED_ROOTS")),
     )
 
 
@@ -192,6 +203,21 @@ def reason_from_json_body(body: bytes) -> str | None:
     return reason.strip() if isinstance(reason, str) and reason.strip() else None
 
 
+def json_body_object(body: bytes) -> dict[str, object]:
+    if not body:
+        return {}
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def string_from_json_body(body: bytes, key: str) -> str | None:
+    value = json_body_object(body).get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def write_gateway_resource_state_best_effort(
     config: GatewayConfig,
     *,
@@ -213,6 +239,27 @@ def write_gateway_resource_state_best_effort(
     except OSError:
         return None
     return state_to_api(state)
+
+
+def model_profiles_to_api_with_delete_protection(
+    profiles: list,
+    *,
+    active_profile_id: str | None,
+    allowed_roots: tuple[str, ...],
+) -> list[dict[str, object]]:
+    payloads: list[dict[str, object]] = []
+    for profile in profiles:
+        payload = model_profile_to_api(profile)
+        delete_plan = build_model_storage_delete_plan(
+            profile,
+            all_profiles=profiles,
+            active_profile_id=active_profile_id,
+            allowed_roots=allowed_roots,
+            include_size=False,
+        )
+        payload["deleteProtection"] = delete_protection_to_api(delete_plan)
+        payloads.append(payload)
+    return payloads
 
 
 def inject_blue_chat_completions_defaults(path: str, body: bytes, active_backend: str) -> bytes:
@@ -313,8 +360,82 @@ def avg_or_none(values: list[float]) -> float | None:
     return sum(values) / len(values) if values else None
 
 
+def read_proc_meminfo_gib() -> dict[str, float]:
+    proc = subprocess.run(
+        ["bash", "-lc", "awk '/MemTotal:|MemAvailable:/ {print $1,$2}' /proc/meminfo"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return {}
+    values: dict[str, float] = {}
+    for line in (proc.stdout or "").splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        key = parts[0].rstrip(":")
+        try:
+            values[key] = float(parts[1]) / (1024.0 * 1024.0)
+        except ValueError:
+            continue
+    return values
+
+
+def collect_compute_app_processes() -> tuple[float, list[dict[str, object]]]:
+    proc = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            "nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        legacy_proc = subprocess.run(
+            [
+                "bash",
+                "-lc",
+                "nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        total_mib = 0.0
+        if legacy_proc.returncode == 0:
+            for line in (legacy_proc.stdout or "").splitlines():
+                value = parse_nvidia_smi_number(line)
+                if value is not None:
+                    total_mib += value
+        return total_mib, []
+
+    total_mib = 0.0
+    processes: list[dict[str, object]] = []
+    for line in (proc.stdout or "").splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 3:
+            continue
+        used_mib = parse_nvidia_smi_number(parts[2])
+        if used_mib is None:
+            continue
+        total_mib += used_mib
+        process: dict[str, object] = {
+            "processName": parts[1],
+            "usedMemoryGiB": round(used_mib / 1024.0, 3),
+        }
+        try:
+            process["pid"] = int(parts[0])
+        except ValueError:
+            pass
+        processes.append(process)
+    return total_mib, processes[:12]
+
+
 def add_gpu_detail_metrics(
-    payload: dict[str, float | str],
+    payload: dict[str, object],
     gpu_temperatures: list[float],
     gpu_power_draws: list[float],
     gpu_power_limits: list[float],
@@ -365,7 +486,7 @@ def run_nvidia_smi_gpu_query(query: str):
     )
 
 
-def collect_gpu_metrics() -> tuple[bool, dict[str, float | str] | None]:
+def collect_gpu_metrics() -> tuple[bool, dict[str, object] | None]:
     proc = run_nvidia_smi_gpu_query(
         "utilization.gpu,memory.used,memory.total,temperature.gpu,"
         "power.draw,power.limit,clocks.sm,clocks.gr,clocks.mem,pstate,"
@@ -457,8 +578,11 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, float | str] | None]:
         # endregion
         return False, None
     util_avg = sum(gpu_utils) / len(gpu_utils)
+    meminfo_gib = read_proc_meminfo_gib()
+    compute_apps_used_mib, compute_processes = collect_compute_app_processes()
     used_gib: float | None = None
     total_gib: float | None = None
+    memory_metric_source = "gpu_memory"
     if mem_pairs:
         used_gib = sum(v[0] for v in mem_pairs) / 1024.0
         total_gib = sum(v[1] for v in mem_pairs) / 1024.0
@@ -471,59 +595,32 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, float | str] | None]:
             {"rows": rows[:3]},
         )
         # endregion
-        apps_proc = subprocess.run(
-            [
-                "bash",
-                "-lc",
-                "nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        app_used_mib = 0.0
-        if apps_proc.returncode == 0:
-            for line in (apps_proc.stdout or "").splitlines():
-                raw = line.strip().replace(" MiB", "")
-                if not raw:
-                    continue
-                try:
-                    app_used_mib += float(raw)
-                except ValueError:
-                    continue
-
-        memtotal_proc = subprocess.run(
-            ["bash", "-lc", "awk '/MemTotal:/ {print $2}' /proc/meminfo"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        memtotal_kib: float | None = None
-        if memtotal_proc.returncode == 0:
-            raw = (memtotal_proc.stdout or "").strip()
-            try:
-                memtotal_kib = float(raw)
-            except ValueError:
-                memtotal_kib = None
-
-        if memtotal_kib and memtotal_kib > 0:
-            used_gib = app_used_mib / 1024.0
-            total_gib = memtotal_kib / (1024.0 * 1024.0)
+        if meminfo_gib.get("MemTotal", 0) > 0:
+            used_gib = compute_apps_used_mib / 1024.0
+            total_gib = meminfo_gib["MemTotal"]
+            memory_metric_source = "compute_apps_memtotal"
             # region agent log
             emit_agent_debug_log(
                 "H8",
                 "gateway-server.py:collect_gpu_metrics:compute-apps-fallback",
                 "compute-apps memory fallback succeeded",
                 {
-                    "appUsedMiB": round(app_used_mib, 1),
-                    "memTotalKiB": round(memtotal_kib, 1),
+                    "appUsedMiB": round(compute_apps_used_mib, 1),
+                    "memTotalGiB": round(meminfo_gib["MemTotal"], 1),
                     "usedGiB": round(used_gib, 1),
                     "totalGiB": round(total_gib, 1),
                 },
             )
             # endregion
         else:
-            payload: dict[str, float | str] = {"gpuUtilPct": round(util_avg, 1)}
+            payload: dict[str, object] = {"gpuUtilPct": round(util_avg, 1), "memoryMetricSource": "gpu_only"}
+            if compute_processes:
+                payload["gpuProcesses"] = compute_processes
+                payload["gpuProcessCount"] = len(compute_processes)
+                payload["gpuProcessMemoryUsedGiB"] = round(compute_apps_used_mib / 1024.0, 3)
+            if meminfo_gib.get("MemAvailable") is not None:
+                payload["systemMemoryAvailableGiB"] = round(meminfo_gib["MemAvailable"], 1)
+                payload["startupFreeMemoryGiB"] = round(meminfo_gib["MemAvailable"], 1)
             add_gpu_detail_metrics(
                 payload,
                 gpu_temperatures,
@@ -547,8 +644,8 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, float | str] | None]:
                     "usedRamFallback": False,
                     "rows": rows[:3],
                     "appMemoryFallbackTried": True,
-                    "appUsedMiB": round(app_used_mib, 1),
-                    "memTotalKiB": memtotal_kib,
+                    "appUsedMiB": round(compute_apps_used_mib, 1),
+                    "memInfo": meminfo_gib,
                 },
             )
             # endregion
@@ -557,12 +654,22 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, float | str] | None]:
     if used_gib is None or total_gib is None or total_gib <= 0:
         return False, None
 
-    payload: dict[str, float | str] = {
+    payload: dict[str, object] = {
         "gpuUtilPct": round(util_avg, 1),
         "unifiedMemoryUsedGiB": round(used_gib, 1),
         "unifiedMemoryTotalGiB": round(total_gib, 1),
         "freeMemoryGiB": round(max(0.0, total_gib - used_gib), 1),
+        "memoryMetricSource": memory_metric_source,
     }
+    if meminfo_gib.get("MemAvailable") is not None:
+        payload["systemMemoryAvailableGiB"] = round(meminfo_gib["MemAvailable"], 1)
+        payload["startupFreeMemoryGiB"] = round(meminfo_gib["MemAvailable"], 1)
+    elif payload.get("freeMemoryGiB") is not None:
+        payload["startupFreeMemoryGiB"] = payload["freeMemoryGiB"]
+    if compute_processes:
+        payload["gpuProcesses"] = compute_processes
+        payload["gpuProcessCount"] = len(compute_processes)
+        payload["gpuProcessMemoryUsedGiB"] = round(compute_apps_used_mib / 1024.0, 3)
     add_gpu_detail_metrics(
         payload,
         gpu_temperatures,
@@ -585,7 +692,7 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, float | str] | None]:
             "gpuUtilAvg": round(util_avg, 1),
             "usedGiB": payload["unifiedMemoryUsedGiB"],
             "totalGiB": payload["unifiedMemoryTotalGiB"],
-                "usedRamFallback": False,
+            "usedRamFallback": memory_metric_source == "compute_apps_memtotal",
             "rows": rows[:3],
         },
     )
@@ -668,7 +775,11 @@ def make_handler(
                         200,
                         {
                             "ok": True,
-                            "profiles": [model_profile_to_api(profile) for profile in profiles],
+                            "profiles": model_profiles_to_api_with_delete_protection(
+                                profiles,
+                                active_profile_id=active_state.model_profile_id if active_state else None,
+                                allowed_roots=config.model_storage_delete_allowed_roots,
+                            ),
                             "activeProfileId": active_state.model_profile_id if active_state else None,
                             "state": active_model_state_to_api(active_state) if active_state else None,
                             "resourceState": state_to_api(resource_state) if resource_state else None,
@@ -766,6 +877,65 @@ def make_handler(
 
         def do_POST(self) -> None:
             body = read_body(self)
+            if self.path in ("/system/model-storage-delete/preview", "/system/model-storage-delete/execute"):
+                if self.headers.get("X-Runtime-Control-Token", "") != config.runtime_control_token:
+                    self._send_text(403, "forbidden")
+                    return
+                model_profile_id = string_from_json_body(body, "modelProfileId")
+                if not model_profile_id:
+                    self._send_json(
+                        400,
+                        {
+                            "ok": False,
+                            "code": "MODEL_PROFILE_ID_REQUIRED",
+                            "message": "modelProfileId is required",
+                        },
+                    )
+                    return
+                try:
+                    profiles = load_model_profiles(config.model_registry_root)
+                    profile = find_model_profile(config.model_registry_root, model_profile_id)
+                    active_state = read_active_model_state(config.active_model_state_path)
+                    plan = build_model_storage_delete_plan(
+                        profile,
+                        all_profiles=profiles,
+                        active_profile_id=active_state.model_profile_id if active_state else None,
+                        allowed_roots=config.model_storage_delete_allowed_roots,
+                        include_size=True,
+                    )
+                    if self.path.endswith("/preview"):
+                        self._send_json(200, delete_preview_to_api(plan))
+                        return
+                    result = execute_model_storage_delete(
+                        plan,
+                        plan_fingerprint=string_from_json_body(body, "planFingerprint") or "",
+                        confirmation=string_from_json_body(body, "confirmation") or "",
+                    )
+                    self._send_json(200, result)
+                    return
+                except UnknownModelProfileError as exc:
+                    self._send_json(exc.status_code, {"ok": False, "code": exc.code, "message": str(exc)})
+                    return
+                except ModelStorageDeleteError as exc:
+                    self._send_json(
+                        exc.status_code,
+                        {
+                            "ok": False,
+                            "code": exc.code,
+                            "message": str(exc),
+                        },
+                    )
+                    return
+                except Exception as exc:
+                    self._send_json(
+                        500,
+                        {
+                            "ok": False,
+                            "code": "MODEL_STORAGE_DELETE_FAILED",
+                            "message": str(exc),
+                        },
+                    )
+                    return
             if self.path in ("/start", "/stop", "/stop-force"):
                 if self.headers.get("X-Runtime-Control-Token", "") != config.runtime_control_token:
                     self._send_text(403, "forbidden")

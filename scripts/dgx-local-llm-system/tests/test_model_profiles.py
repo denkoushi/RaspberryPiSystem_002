@@ -18,6 +18,12 @@ from model_profiles import (  # noqa: E402
     profile_storage_available,
     validate_startable_profile,
 )
+from model_storage_delete import (  # noqa: E402
+    ModelStorageDeleteBlockedError,
+    build_model_storage_delete_plan,
+    delete_preview_to_api,
+    execute_model_storage_delete,
+)
 
 
 class ModelProfileTests(unittest.TestCase):
@@ -199,6 +205,105 @@ class ModelProfileTests(unittest.TestCase):
             api = model_profile_to_api(profile)
             self.assertEqual(api["status"], "unavailable")
             self.assertIn("unavailableReasonJa", api)
+
+    def test_model_storage_delete_preview_and_execute_removes_storage_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "registry"
+            storage = Path(tmp) / "hf-cache" / "hub" / "models--org--model"
+            storage.mkdir(parents=True)
+            (storage / "weights.safetensors").write_bytes(b"x" * 1024)
+            self.write_manifest(
+                root,
+                "business_test_model",
+                {
+                    "modelProfileId": "business_test_model",
+                    "displayNameJa": "Test Model",
+                    "backend": "blue",
+                    "servedAlias": "system-prod-primary",
+                    "currentStorageLocation": str(storage),
+                    "enabled": True,
+                },
+            )
+            profile = load_model_profiles(str(root))[0]
+            plan = build_model_storage_delete_plan(
+                profile,
+                all_profiles=[profile],
+                active_profile_id=None,
+                allowed_roots=(str(Path(tmp) / "hf-cache"),),
+                include_size=True,
+            )
+
+            self.assertTrue(plan.can_delete)
+            self.assertIsNotNone(plan.plan_fingerprint)
+            preview = delete_preview_to_api(plan)
+            self.assertEqual(preview["requiredConfirmation"], "DELETE business_test_model")
+            result = execute_model_storage_delete(
+                plan,
+                plan_fingerprint=plan.plan_fingerprint or "",
+                confirmation="DELETE business_test_model",
+            )
+
+            self.assertTrue(result["ok"])
+            self.assertFalse(storage.exists())
+            self.assertTrue((root / "business_test_model" / "manifest.json").exists())
+
+    def test_model_storage_delete_blocks_active_shared_and_outside_allowed_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "registry"
+            storage = Path(tmp) / "hf-cache" / "hub" / "models--org--shared"
+            storage.mkdir(parents=True)
+            self.write_manifest(
+                root,
+                "business_active",
+                {
+                    "modelProfileId": "business_active",
+                    "displayNameJa": "Active",
+                    "backend": "blue",
+                    "servedAlias": "system-prod-primary",
+                    "currentStorageLocation": str(storage),
+                    "enabled": True,
+                },
+            )
+            self.write_manifest(
+                root,
+                "business_shared",
+                {
+                    "modelProfileId": "business_shared",
+                    "displayNameJa": "Shared",
+                    "backend": "blue",
+                    "servedAlias": "system-prod-primary",
+                    "currentStorageLocation": str(storage),
+                    "enabled": True,
+                },
+            )
+            active, shared = load_model_profiles(str(root))
+
+            active_plan = build_model_storage_delete_plan(
+                active,
+                all_profiles=[active, shared],
+                active_profile_id="business_active",
+                allowed_roots=(str(Path(tmp) / "hf-cache"),),
+                include_size=True,
+            )
+            self.assertFalse(active_plan.can_delete)
+            self.assertIn("active_profile", [reason.code for reason in active_plan.blocked_reasons])
+            self.assertIn("shared_storage", [reason.code for reason in active_plan.blocked_reasons])
+
+            outside_plan = build_model_storage_delete_plan(
+                shared,
+                all_profiles=[shared],
+                active_profile_id=None,
+                allowed_roots=(str(Path(tmp) / "other-root"),),
+                include_size=True,
+            )
+            self.assertFalse(outside_plan.can_delete)
+            self.assertIn("outside_allowed_roots", [reason.code for reason in outside_plan.blocked_reasons])
+            with self.assertRaises(ModelStorageDeleteBlockedError):
+                execute_model_storage_delete(
+                    outside_plan,
+                    plan_fingerprint=outside_plan.plan_fingerprint or "",
+                    confirmation="DELETE business_shared",
+                )
 
 
 if __name__ == "__main__":

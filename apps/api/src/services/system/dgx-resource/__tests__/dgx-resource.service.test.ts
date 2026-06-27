@@ -179,6 +179,76 @@ describe('createDgxResourceService', () => {
     expect(overview.notes.some((note) => note.includes('degraded'))).toBe(false);
   });
 
+  it('overview adds startupFit from startup free memory instead of current used memory only', async () => {
+    const store = new DgxResourcePolicyStore(20);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: true,
+        baseUrl: 'http://127.0.0.1:38081',
+        model: 'm1',
+        timeoutMs: 60_000,
+        health: { ok: true, statusCode: 200 },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const u = typeof input === 'string' ? input : (input as URL).href;
+      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          url: u,
+          text: async () => '',
+          json: async () => ({
+            ok: true,
+            activeProfileId: null,
+            profiles: [
+              {
+                id: 'business_ornith_35b_nvfp4',
+                displayNameJa: 'Ornith 1.0 35B NVFP4',
+                backend: 'blue',
+                servedAlias: 'system-prod-primary',
+                recommended: false,
+                enabled: true,
+                status: 'available',
+                runtimeProfile: {
+                  engine: 'vllm',
+                  vllm: { gpuMemoryUtilization: 0.65 },
+                },
+              },
+            ],
+          }),
+        } as Response;
+      }
+      if (u === 'http://127.0.0.1:38081/system/metrics') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          url: u,
+          text: async () => '',
+          json: async () => ({
+            gpuUtilPct: 0,
+            unifiedMemoryUsedGiB: 0.6,
+            unifiedMemoryTotalGiB: 121.6,
+            freeMemoryGiB: 121,
+            startupFreeMemoryGiB: 48.6,
+            memoryMetricSource: 'compute_apps_memtotal',
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+    });
+    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+
+    const overview = await svc.getOverview();
+
+    expect(overview.kpis.startupFreeMemoryGiB).toBe(48.6);
+    expect(overview.modelProfiles.available[0]?.startupFit?.status).toBe('insufficient');
+    expect(overview.modelProfiles.available[0]?.startupFit?.requiredGiB).toBe(79);
+  });
+
   it('PREVIEW_ORCHESTRATION_SCENARIO succeeds with modelProfileId when activeProfileId is null', async () => {
     const store = new DgxResourcePolicyStore(10);
     store.setPolicyMode('private_ok');
@@ -653,6 +723,166 @@ describe('createDgxResourceService', () => {
     await expect(
       svc.executeAction({ type: 'START_MODEL_PROFILE', modelProfileId: 'qwen36_35b_uncensored' })
     ).rejects.toMatchObject({ code: 'DGX_MODEL_PROFILE_UNKNOWN' });
+  });
+
+  it('RELEASE_DGX_RESOURCES stops only configured runtime targets and reports skipped ones', async () => {
+    const prev = {
+      runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
+      runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
+      runtimeStop: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
+      runtimeToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
+      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
+      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
+      expStart: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL,
+      expStop: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL,
+      agentStart: env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL,
+      agentStop: env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL,
+    };
+    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
+    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://dgx/start';
+    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://dgx/stop';
+    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token-xxxxxxxxxxxxxxxxxxxxxxxx';
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = 'http://dgx/private/start';
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = 'http://dgx/private/stop';
+    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = '';
+    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = '';
+    env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL = '';
+    env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL = '';
+
+    try {
+      const store = new DgxResourcePolicyStore(20);
+      const gateway: LocalLlmGateway = {
+        getStatus: vi.fn(),
+        createChatCompletion: vi.fn(),
+      };
+      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+        const u = typeof input === 'string' ? input : (input as URL).href;
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          url: u,
+          text: async () => '',
+          json: async () => ({}),
+        } as Response;
+      });
+      const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+
+      const result = await svc.executeAction({ type: 'RELEASE_DGX_RESOURCES', reason: 'unit_test_release' });
+
+      expect(result.releaseResult?.success).toBe(true);
+      expect(result.releaseResult?.steps.map((step) => [step.targetId, step.status])).toEqual([
+        ['system-prod-gateway', 'success'],
+        ['private-comfyui', 'success'],
+        ['experiment-lab', 'skipped'],
+        ['agent-container', 'skipped'],
+      ]);
+      expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toContain('http://dgx/stop-force');
+      expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toContain('http://dgx/private/stop');
+    } finally {
+      env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
+      env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
+      env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = prev.runtimeStop;
+      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prev.runtimeToken;
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
+      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = prev.expStart;
+      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = prev.expStop;
+      env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL = prev.agentStart;
+      env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL = prev.agentStop;
+    }
+  });
+
+  it('model storage delete preview and execute relay to DGX gateway with runtime token', async () => {
+    const prevToken = env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN;
+    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token-xxxxxxxxxxxxxxxxxxxxxxxx';
+    try {
+      const store = new DgxResourcePolicyStore(20);
+      const gateway: LocalLlmGateway = {
+        getStatus: vi.fn(async () => ({
+          configured: true,
+          baseUrl: 'http://127.0.0.1:38081',
+          model: 'm1',
+          timeoutMs: 60_000,
+          health: { ok: true, statusCode: 200 },
+        })),
+        createChatCompletion: vi.fn(),
+      };
+      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> => {
+        const u = typeof input === 'string' ? input : (input as URL).href;
+        if (u === 'http://127.0.0.1:38081/system/model-profiles') {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            url: u,
+            text: async () => '',
+            json: async () => ({ ok: true, activeProfileId: null, profiles: [] }),
+          } as Response;
+        }
+        if (u === 'http://127.0.0.1:38081/system/model-storage-delete/preview') {
+          expect(init?.headers).toMatchObject({ 'X-Runtime-Control-Token': env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN });
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            url: u,
+            text: async () => '',
+            json: async () => ({
+              ok: true,
+              modelProfileId: 'business_ornith_35b_nvfp4',
+              displayNameJa: 'Ornith',
+              canDelete: true,
+              blockedReasons: [],
+              storagePath: '/srv/dgx/hf-cache/hub/models--ornith',
+              resolvedStoragePath: '/srv/dgx/hf-cache/hub/models--ornith',
+              requiredConfirmation: 'DELETE business_ornith_35b_nvfp4',
+              planFingerprint: 'f'.repeat(64),
+              sizeGiB: 22.5,
+            }),
+          } as Response;
+        }
+        if (u === 'http://127.0.0.1:38081/system/model-storage-delete/execute') {
+          expect(JSON.parse(String(init?.body))).toEqual({
+            modelProfileId: 'business_ornith_35b_nvfp4',
+            planFingerprint: 'f'.repeat(64),
+            confirmation: 'DELETE business_ornith_35b_nvfp4',
+          });
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            url: u,
+            text: async () => '',
+            json: async () => ({
+              ok: true,
+              modelProfileId: 'business_ornith_35b_nvfp4',
+              displayNameJa: 'Ornith',
+              deletedStoragePath: '/srv/dgx/hf-cache/hub/models--ornith',
+              sizeGiB: 22.5,
+            }),
+          } as Response;
+        }
+        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+      });
+      const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+
+      const preview = await svc.executeAction({
+        type: 'PREVIEW_MODEL_STORAGE_DELETE',
+        modelProfileId: 'business_ornith_35b_nvfp4',
+      });
+      const execute = await svc.executeAction({
+        type: 'EXECUTE_MODEL_STORAGE_DELETE',
+        modelProfileId: 'business_ornith_35b_nvfp4',
+        planFingerprint: 'f'.repeat(64),
+        confirmation: 'DELETE business_ornith_35b_nvfp4',
+      });
+
+      expect(preview.modelStorageDeletePreview?.canDelete).toBe(true);
+      expect(execute.modelStorageDeleteExecute?.deletedStoragePath).toContain('models--ornith');
+    } finally {
+      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prevToken;
+    }
   });
 
   it('getOverview includes targets registry aligned with legacy services', async () => {

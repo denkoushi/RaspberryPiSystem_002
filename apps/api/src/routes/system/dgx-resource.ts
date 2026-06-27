@@ -63,6 +63,20 @@ const actionBodySchema = z.discriminatedUnion('type', [
     confirmed: z.literal(true),
     modelProfileId: modelProfileIdSchema.optional(),
   }),
+  z.object({
+    type: z.literal('RELEASE_DGX_RESOURCES'),
+    reason: z.string().trim().max(200).optional(),
+  }),
+  z.object({
+    type: z.literal('PREVIEW_MODEL_STORAGE_DELETE'),
+    modelProfileId: modelProfileIdSchema,
+  }),
+  z.object({
+    type: z.literal('EXECUTE_MODEL_STORAGE_DELETE'),
+    modelProfileId: modelProfileIdSchema,
+    planFingerprint: z.string().trim().min(32).max(128),
+    confirmation: z.string().trim().min(1).max(160),
+  }),
 ]);
 
 function resolveDgxResourceService(app: FastifyInstance): DgxResourceServicePort {

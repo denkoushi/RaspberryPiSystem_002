@@ -67,6 +67,22 @@ function compactScenarioLabel(scenarioId: DgxOrchestrationScenarioIdApi): string
   }
 }
 
+function actionStateClass(stateKind: DgxOperatorConsoleActionApi['stateKind'] | undefined): string {
+  switch (stateKind) {
+    case 'current':
+      return 'border-slate-300 bg-slate-100 text-slate-700';
+    case 'warning':
+      return 'border-amber-200 bg-amber-50 text-amber-800';
+    case 'blocked':
+      return 'border-red-200 bg-red-50 text-red-700';
+    case 'ready':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+    case 'busy':
+    default:
+      return 'border-slate-200 bg-white text-slate-600';
+  }
+}
+
 function readPersistedPendingState(): DgxPersistedScenarioPendingState | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -325,6 +341,7 @@ export function DgxResourcePrimaryScenarioFlow({
       <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
         {actions.map((action) => {
           const disabled = Boolean(action.disabledReasonJa) || busy;
+          const stateLabel = busy ? '処理中' : action.stateLabelJa ?? (action.disabledReasonJa ? '現在' : '実行可');
           return (
             <button
               key={action.id}
@@ -337,15 +354,18 @@ export function DgxResourcePrimaryScenarioFlow({
                 void executeScenario(action);
               }}
               className={clsx(
-                'grid h-14 content-center rounded-lg border px-3 text-center transition disabled:cursor-not-allowed',
+                'grid min-h-16 content-center gap-1 rounded-lg border px-3 py-2 text-center transition disabled:cursor-not-allowed',
                 action.primary
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
                   : 'border-slate-300 bg-white text-slate-950 hover:bg-slate-50',
-                disabled && 'opacity-45'
+                disabled && 'bg-slate-50 text-slate-500 opacity-75'
               )}
-              title={action.disabledReasonJa ?? action.subtitleJa}
+              title={action.disabledReasonJa ?? stateLabel}
             >
               <strong className="text-sm font-bold leading-tight sm:text-[15px]">{compactScenarioLabel(action.scenarioId)}</strong>
+              <span className={clsx('mx-auto rounded-full border px-2 py-0.5 text-[11px] font-bold leading-tight', actionStateClass(busy ? 'busy' : action.stateKind))}>
+                {stateLabel}
+              </span>
             </button>
           );
         })}

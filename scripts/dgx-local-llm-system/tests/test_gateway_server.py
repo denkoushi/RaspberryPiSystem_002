@@ -48,6 +48,10 @@ class GatewayServerTests(unittest.TestCase):
                         "P2, None, NVIDIA GB10, 580.159.03\n"
                     ),
                 )
+            if "--query-compute-apps=pid,process_name,used_memory" in command:
+                return Proc(0, "1234, python, 2048\n")
+            if "/proc/meminfo" in command:
+                return Proc(0, "MemTotal: 134217728\nMemAvailable: 104857600\n")
             raise AssertionError(f"unexpected command: {command}")
 
         original_run = module.subprocess.run
@@ -62,6 +66,12 @@ class GatewayServerTests(unittest.TestCase):
         self.assertEqual(payload["unifiedMemoryUsedGiB"], 32)
         self.assertEqual(payload["unifiedMemoryTotalGiB"], 128)
         self.assertEqual(payload["freeMemoryGiB"], 96)
+        self.assertEqual(payload["startupFreeMemoryGiB"], 100)
+        self.assertEqual(payload["systemMemoryAvailableGiB"], 100)
+        self.assertEqual(payload["memoryMetricSource"], "gpu_memory")
+        self.assertEqual(payload["gpuProcessCount"], 1)
+        self.assertEqual(payload["gpuProcessMemoryUsedGiB"], 2)
+        self.assertEqual(payload["gpuProcesses"][0]["processName"], "python")
         self.assertEqual(payload["gpuTemperatureC"], 46)
         self.assertEqual(payload["gpuPowerDrawW"], 11.3)
         self.assertEqual(payload["gpuPowerLimitW"], 120)
@@ -72,7 +82,7 @@ class GatewayServerTests(unittest.TestCase):
         self.assertEqual(payload["gpuClocksThrottleReason"], "None")
         self.assertEqual(payload["gpuName"], "NVIDIA GB10")
         self.assertEqual(payload["driverVersion"], "580.159.03")
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls), 3)
 
     def test_collect_gpu_metrics_falls_back_to_legacy_query(self):
         module = load_module()
@@ -91,6 +101,10 @@ class GatewayServerTests(unittest.TestCase):
                 return Proc(1, "")
             if "--query-gpu=utilization.gpu,memory.used,memory.total " in command:
                 return Proc(0, "44, 32768, 131072\n")
+            if "--query-compute-apps=pid,process_name,used_memory" in command:
+                return Proc(0, "")
+            if "/proc/meminfo" in command:
+                return Proc(0, "MemTotal: 134217728\nMemAvailable: 67108864\n")
             raise AssertionError(f"unexpected command: {command}")
 
         original_run = module.subprocess.run
@@ -105,8 +119,10 @@ class GatewayServerTests(unittest.TestCase):
         self.assertEqual(payload["unifiedMemoryUsedGiB"], 32)
         self.assertEqual(payload["unifiedMemoryTotalGiB"], 128)
         self.assertEqual(payload["freeMemoryGiB"], 96)
+        self.assertEqual(payload["startupFreeMemoryGiB"], 64)
+        self.assertEqual(payload["memoryMetricSource"], "gpu_memory")
         self.assertNotIn("gpuTemperatureC", payload)
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 4)
 
     def test_resolve_backend_base_url_uses_active_backend(self):
         module = load_module()

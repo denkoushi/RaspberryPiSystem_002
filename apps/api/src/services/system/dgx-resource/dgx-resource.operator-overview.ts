@@ -32,6 +32,8 @@ export type DgxOperatorConsoleAction = {
   /** 主要導線として強調（現在のポリシーからの「次にありがちな操作」） */
   primary: boolean;
   disabledReasonJa?: string;
+  stateKind?: 'current' | 'ready' | 'warning' | 'blocked' | 'busy';
+  stateLabelJa?: string;
 };
 
 export type DgxResourceOperatorConsole = {
@@ -169,6 +171,33 @@ function buildAlertPreview(monitoring: DgxResourceMonitoringSummary, limit: numb
   return monitoring.alerts.slice(0, limit).map((a) => `${a.title}${a.level === 'danger' ? '（要対応）' : ''}`);
 }
 
+function actionState(input: {
+  scenarioId: DgxOrchestrationScenarioId;
+  policyMode: DgxPolicyMode;
+  targets: DgxControlTargetSnapshot[];
+  disabledReasonJa?: string;
+}): { stateKind: 'current' | 'ready' | 'warning' | 'blocked'; stateLabelJa: string } {
+  if (input.disabledReasonJa) {
+    return { stateKind: 'current', stateLabelJa: '現在' };
+  }
+  const privateRunning = input.targets.find((t) => t.id === 'private-comfyui')?.status === 'running';
+  const experimentRunning = input.targets.find((t) => t.id === 'experiment-lab')?.status === 'running';
+  const agentRunning = input.targets.find((t) => t.id === 'agent-container')?.status === 'running';
+  if (
+    (input.scenarioId === 'private_to_business' && (privateRunning || agentRunning)) ||
+    (input.scenarioId === 'experiment_to_business' && (experimentRunning || agentRunning))
+  ) {
+    return { stateKind: 'warning', stateLabelJa: '停止対象あり' };
+  }
+  if (
+    (input.scenarioId === 'business_to_private' && input.policyMode === 'experiment_first') ||
+    (input.scenarioId === 'business_to_experiment' && input.policyMode === 'private_ok')
+  ) {
+    return { stateKind: 'warning', stateLabelJa: '切替可' };
+  }
+  return { stateKind: 'ready', stateLabelJa: '実行可' };
+}
+
 /**
  * Control Target スナップショットとモニタリング要約から、運用者向けコンソール表示モデルを生成する。
  * 既存の targets[] とは別レイヤー（翻訳・優先度付け）に留める。
@@ -210,6 +239,7 @@ export function buildDgxResourceOperatorConsole(input: {
   const primaryReturnFromPrivate = policyMode === 'private_ok';
   const primaryReturnFromExperiment = policyMode === 'experiment_first';
 
+  const businessToPrivateDisabled = policyMode === 'private_ok' ? 'すでに「私用OK」です' : undefined;
   add({
     id: 'business_to_private',
     scenarioId: 'business_to_private',
@@ -217,7 +247,8 @@ export function buildDgxResourceOperatorConsole(input: {
     subtitleJa:
       '「私用OK」へ切り替えます。Pi5 に Comfy の起停 URL が揃っていれば、続けて私用 ComfyUI の起動も依頼します。',
     primary: primaryForPrivate,
-    disabledReasonJa: policyMode === 'private_ok' ? 'すでに「私用OK」です' : undefined,
+    disabledReasonJa: businessToPrivateDisabled,
+    ...actionState({ scenarioId: 'business_to_private', policyMode, targets, disabledReasonJa: businessToPrivateDisabled }),
   });
 
   add({
@@ -226,15 +257,18 @@ export function buildDgxResourceOperatorConsole(input: {
     labelJa: '業務に戻す（私用を終える）',
     subtitleJa: '必要な停止試行の後、「業務優先」へ戻します。',
     primary: primaryReturnFromPrivate,
+    ...actionState({ scenarioId: 'private_to_business', policyMode, targets }),
   });
 
+  const businessToExperimentDisabled = policyMode === 'experiment_first' ? 'すでに「実験優先」です' : undefined;
   add({
     id: 'business_to_experiment',
     scenarioId: 'business_to_experiment',
     labelJa: '実験を始める',
     subtitleJa: 'ワークロード調停（設定されている POST）の後、「実験優先」へ進みます。',
     primary: primaryForExperiment,
-    disabledReasonJa: policyMode === 'experiment_first' ? 'すでに「実験優先」です' : undefined,
+    disabledReasonJa: businessToExperimentDisabled,
+    ...actionState({ scenarioId: 'business_to_experiment', policyMode, targets, disabledReasonJa: businessToExperimentDisabled }),
   });
 
   add({
@@ -243,6 +277,7 @@ export function buildDgxResourceOperatorConsole(input: {
     labelJa: '実験を終えて業務に戻す',
     subtitleJa: '調停による停止試行の後、「業務優先」へ戻します。失敗時はイベントログと個別復旧を確認してください。',
     primary: primaryReturnFromExperiment,
+    ...actionState({ scenarioId: 'experiment_to_business', policyMode, targets }),
   });
 
   return {
