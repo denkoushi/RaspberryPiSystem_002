@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-06-27（D19 editorial digest 実装 · D19 運用改善実機 E2E 完了 · D20 Discord `/ask` Web research repo実装）
+最終更新: 2026-06-27（D19 editorial digest 本番反映 · D19 運用改善実機 E2E 完了 · D20 Discord `/ask` Web research repo実装）
 
 ## 運用状態サマリ（2026-05-24 時点）
 
@@ -729,6 +729,8 @@ Web backend は Hermes 公式対応の `firecrawl` / `searxng` / `parallel` / `t
 
 **ローカル検証（repo · 2026-06-27 D20）**: Hermes unittest **250 tests OK** · py_compile OK · Ansible syntax-check OK · research config template contract OK · `git diff --check` OK
 
+**ローカル検証（repo · 2026-06-27 D19 editorial）**: focused unittest **28 OK** · full Hermes unittest **260 OK** · py_compile OK · Ansible syntax-check OK · `git diff --check` OK · PR #862 CI / CodeQL / gitleaks / e2e **pass**
+
 **ローカル検証（repo · 2026-06-07）**: full pytest **225 passed** · focused D19 **40 passed** · life/daily policy OK · py_compile OK · Ansible syntax-check OK · `git diff --check` OK
 
 **標準デプロイ手順**:
@@ -923,6 +925,37 @@ git diff --check
 | systemd | `systemctl --failed` は 0 loaded units。Hermes / Life / Syncthing の期待 unit は active、`hermes-life-proactive-evening.timer` は既定どおり inactive |
 | data check | Hermes data owner/mode と Life counts は preflight と一致。Syncthing HermesLife は `type=receiveonly` のまま |
 | DGX check | `systemctl start hermes-dgx-keep-warm.service` 実行。journal は `ok=true`、`phase=already_target_profile`、`activeProfileId=business_qwen36_27b_nvfp4`、`/v1/models` 200 |
+
+### 本番反映 — D19 editorial digest（2026-06-27）
+
+**対象**: PR #862 · squash merge **`b5e847f3`** `feat: add Hermes interest editorial digest`。Private Pi5 Hermes の D19 `/interest` と `hermes-life-interest-digest.timer` のみ。D20 `/ask` 汎用 Web research は pending のまま。
+
+**Production deploy**:
+
+```bash
+./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
+# final PLAY RECAP: ok=188 changed=9 failed=0 skipped=26
+```
+
+**Post-deploy state（2026-06-27 20:57 JST 頃）**:
+
+| 対象 | 状態 |
+|------|------|
+| `hermes-gateway` | active / PID `17686` / 起動 `2026-06-27 20:57:15 JST` |
+| `hermes-life-interest-digest.timer` | active。次回 `2026-06-28 08:10:00 JST` |
+| `hermes-dgx-keep-warm.timer` / `hermes-tools-gateway` | active |
+| D19 env | `LIFE_PILOT_INTEREST_EDITORIAL_ENABLED=true`、model `system-prod-primary`、`max_chars=1800`、`timeout_sec=90` |
+| remote compile | `life_interest_digest.py` / `life_interest_editorial.py` / `hermes-life-interest-digest` py_compile OK |
+
+**Manual verification**:
+
+| 項目 | 結果 |
+|------|------|
+| Pi5 CLI dry render | OK。送信なしで `今日見るなら`、`主筋`、`最新`、番号付き item、元URL、feedback 行を生成 |
+| Discord `/interest` | OK。Discord に editorial 版が配信された |
+| 取得失敗の扱い | `hermes_agent_issues: HTTPError` は「一部取得失敗」として表示し、DGX Spark Forum 候補で digest は成立 |
+
+**Follow-up**: 現行文体は正確だがやや硬い。次の refinement では、同じ安全境界と deterministic URL/番号描画を維持したまま、翻訳・要約をもっとフランクで興味をそそる文体へ寄せる。
 
 **Troubleshooting（実機）**:
 

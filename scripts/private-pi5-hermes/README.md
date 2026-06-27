@@ -129,6 +129,8 @@ python3 -m unittest scripts/private-pi5-hermes/tests/test_life_pilot_policy.py s
 
 Hermes標準の Memory / Skills / Cron を使う場合は fragment に `private_pi5_hermes_life_interest_digest_enabled: true` を置く。日次配信は既定 `08:10:00`、固定送信先は `private_pi5_hermes_life_interest_digest_channel_id` で指定できる。`private_pi5_hermes_life_interest_editorial_enabled: true` では、選定済み候補を DGX `/v1/chat/completions` で「主筋」「最新」「要点」へ日本語編集し、失敗時は現行 deterministic digest に戻す。手動確認で LLM を外す時は `hermes-life-interest-digest --no-editorial` を使う。terminal/file/git/deploy/Codex/Cursor は引き続き無効。
 
+2026-06-27 に PR #862（`b5e847f3`）を Private Pi5 へ本番反映済み。`/interest` は Discord 実機で editorial 版の配信を確認済み。次の改善対象は、正確性と安全境界を維持したまま、硬い報告調から「読みたくなる」フランクな日本語要約へ寄せること。
+
 ## トラブルシュート（`/task` · 2026-06-05 追記）
 
 | 症状 | 正本 |
