@@ -1198,7 +1198,7 @@
 
 - **backup.json破壊的上書き防止 正本**: [KB-151](./knowledge-base/infrastructure/backup-restore.md#kb-151-backupjsonの破壊的上書きを防ぐセーフガード実装)。
 
-- **✅ サイネージレイアウト設定の実機検証完了・UI改善**: サイネージレイアウトとコンテンツの疎結合化実装の実機検証を完了。SPLITレイアウトで左PDF・右工具管理の組み合わせに対応し、タイトルを動的に表示するように改善。タイトルとアイテムの重なりを解消し、PDF表示の重複タイトルを削除。スケジュールの優先順位ロジックを改善し、優先順位が高いスケジュールが優先されることを確認。実機検証で発見された問題（Pi3のサイネージサービス更新タイマーが停止していた）も解決。すべてのレイアウトパターン（FULL/SPLIT、左PDF右工具管理、左工具管理右PDF）が正常に動作することを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-150](./knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了) / [guides/signage-layout-config-verification-results.md](./guides/signage-layout-config-verification-results.md) / [modules/signage/README.md](./modules/signage/README.md) を参照。
+- **サイネージレイアウト実機検証・UI改善 正本**: [KB-150](./knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了) · [verification results](./guides/signage-layout-config-verification-results.md) · [signage module](./modules/signage/README.md)。
 
 ### 🆕 最新アップデート（2026-01-06）
 

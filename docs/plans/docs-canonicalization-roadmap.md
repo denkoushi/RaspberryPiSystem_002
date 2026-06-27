@@ -4750,7 +4750,21 @@ Status: implemented in PR379.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR380 And Later: Thin Indexes And Split Large Documents
+### PR380: Thin Signage Layout Verification Index Block
+
+Status: implemented in PR380.
+
+- Thin only the 2026-01-07 signage layout verification and UI improvement
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the SPLIT left-PDF/right-tools
+  validation, dynamic title, title overlap fix, duplicate PDF title removal,
+  priority behavior, Pi3 timer issue, and layout-pattern validation details
+  with short links to KB-150, the verification results guide, and the signage
+  module doc.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR381 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
