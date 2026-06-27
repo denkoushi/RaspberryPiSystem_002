@@ -4452,7 +4452,20 @@ Status: implemented in PR356.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR357 And Later: Thin Indexes And Split Large Documents
+### PR357: Thin Alerts Phase2 Dispatcher Index Block
+
+Status: implemented in PR357.
+
+- Thin only the 2026-01-18 Alerts Platform Phase2 DB Dispatcher latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the DB Dispatcher behavior, dedupe window,
+  retry/backoff, Phase1 stop, Pi5 dispatch validation, sent/suppressed counts,
+  fingerprint calculation, and KB-174 note with short links to KB-174, the local
+  alerts guide, and the Alerts Phase2 plan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR358 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
