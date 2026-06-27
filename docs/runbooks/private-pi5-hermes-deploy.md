@@ -815,6 +815,17 @@ git diff --check
 | 朝 check-in | 部分OK。2026-06-27 07:30 JST の既存 scheduled send は `sent=1`。post-deploy の現行コードを送信なしで評価し、生成文は候補1件、返信3択、debug 行なし |
 | 空候補時 | OK（実配置コードを Pi5 上の一時 storage root + fake sender で確認）。朝 check-in は `sent=0` / `skipped_no_candidate=1`、interest 定期 dispatch は `sent=0` / `skipped_empty=1` |
 
+**DGX リソース運用ルール（Hermes vs ComfyUI · 2026-06-27）**:
+
+| 場面 | ルール |
+|------|--------|
+| Hermes deploy / `/task` / `/interest` / 朝 check-in / keep-warm 検証 | 業務 profile `business_qwen36_27b_nvfp4`（DGX `system-prod-trtllm`）を優先する。`dgx-private-comfyui` が GPU メモリを保持している場合は停止したままにする |
+| 私用 ComfyUI を使う時 | 明示的に DGX を私用へ貸す。推奨は Pi5 管理 UI `/admin/tools/dgx-resource` の **業務→私用**（ワークロード自動調整 ON）。UI 経路が使えない時だけ DGX で `docker stop system-prod-trtllm` を手動実行する |
+| Hermes へ戻す時 | ComfyUI の作業を終えて `dgx-private-comfyui` を停止し、Pi5 管理 UI の **私用→業務** で `business_qwen36_27b_nvfp4` を選ぶ。`DGX 所有=業務`、`/v1/models=200`、必要なら Pi5 で `systemctl start hermes-dgx-keep-warm.service` を確認する |
+| 自動化方針 | Hermes 側から ComfyUI を自動 stop/start しない。ComfyUI 生成は対話作業であり、停止は作業中断になり得るため、既存の DGX resource UI / Runbook による明示操作に留める |
+
+背景: 2026-06-27 の deploy verify では、`dgx-private-comfyui` が約 66GiB を保持し、`system-prod-trtllm` が `gpu-memory-utilization=0.65` の確保に失敗した。一般的な GPU 競合の切り分けは [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)、resource owner / profile 契約は [dgx-system-prod-local-llm.md](./dgx-system-prod-local-llm.md) と [KB-389](../knowledge-base/KB-389-dgx-resource-runtime-profile-resource-state.md) を正本とする。
+
 **Troubleshooting（実機）**:
 
 | 症状 | 原因 | 対処 |
@@ -824,7 +835,6 @@ git diff --check
 
 **Open items**:
 
-- `dgx-private-comfyui` は停止中。ComfyUI を使う前に、`system-prod-trtllm` との GPU メモリ競合をどちら優先にするか判断する。
 - SSD boot 移行は未実施。Hermes 運用が安定してから [ssd-migration.md](../guides/ssd-migration.md) の Private Pi5 Hermes チェックリストで進める。
 
 ### 本番反映 — Discord 承認 relay 完結（2026-05-30）
