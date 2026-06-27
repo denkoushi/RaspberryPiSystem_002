@@ -38,6 +38,14 @@ describe('fetchDgxModelProfilesOverview', () => {
                 tensorParallelSize: 2,
               },
             },
+            deleteProtection: {
+              canDelete: false,
+              protected: true,
+              reasons: ['active_profile'],
+              reasonJa: '現在 active なモデルは削除できません',
+              storagePath: '/srv/dgx/hf-cache/hub/models--qwen',
+              resolvedStoragePath: '/srv/dgx/hf-cache/hub/models--qwen',
+            },
           },
         ],
         resourceState: {
@@ -72,6 +80,8 @@ describe('fetchDgxModelProfilesOverview', () => {
     expect(overview.available[0]?.runtimeProfile?.vllm?.quantization).toBe('compressed-tensors');
     expect(overview.available[0]?.runtimeProfile?.vllm?.disableCustomAllReduce).toBe(true);
     expect(overview.available[0]?.runtimeProfile?.vllm?.tensorParallelSize).toBe(2);
+    expect(overview.available[0]?.deleteProtection?.canDelete).toBe(false);
+    expect(overview.available[0]?.deleteProtection?.reasons).toEqual(['active_profile']);
     expect(overview.resourceState?.owner).toBe('business');
     expect(overview.resourceState?.modelProfileId).toBe('business_qwen36_27b_nvfp4');
   });

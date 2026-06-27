@@ -42,6 +42,16 @@ export type DgxResourceKpis = {
   unifiedMemoryUsedGiB: number | null;
   unifiedMemoryTotalGiB: number | null;
   freeMemoryGiB: number | null;
+  systemMemoryAvailableGiB?: number | null;
+  startupFreeMemoryGiB?: number | null;
+  memoryMetricSource?: string | null;
+  gpuProcessCount?: number | null;
+  gpuProcessMemoryUsedGiB?: number | null;
+  gpuProcesses?: Array<{
+    pid?: number;
+    processName?: string;
+    usedMemoryGiB?: number;
+  }>;
   policyMode: DgxPolicyModeApi;
   policyLabel: string;
 };
@@ -178,6 +188,8 @@ export type DgxOperatorWorkloadApi = {
   runtimeControlConfigured: boolean;
 };
 
+export type DgxOperatorActionStateKindApi = 'current' | 'ready' | 'warning' | 'blocked' | 'busy';
+
 export type DgxOperatorConsoleActionApi = {
   id: DgxOrchestrationScenarioIdApi;
   labelJa: string;
@@ -185,6 +197,24 @@ export type DgxOperatorConsoleActionApi = {
   scenarioId: DgxOrchestrationScenarioIdApi;
   primary: boolean;
   disabledReasonJa?: string;
+  stateKind?: DgxOperatorActionStateKindApi;
+  stateLabelJa?: string;
+};
+
+export type DgxModelStartupFitApi = {
+  status: 'fits' | 'insufficient' | 'unknown' | 'not_applicable';
+  requiredGiB?: number;
+  availableGiB?: number;
+  detailJa: string;
+};
+
+export type DgxModelDeleteProtectionApi = {
+  canDelete: boolean;
+  protected: boolean;
+  reasons: string[];
+  reasonJa?: string;
+  storagePath?: string;
+  resolvedStoragePath?: string;
 };
 
 export type DgxResourceOperatorConsoleApi = {
@@ -251,6 +281,8 @@ export type DgxBusinessModelProfileApi = {
       nGpuLayers?: number;
     };
   };
+  startupFit?: DgxModelStartupFitApi;
+  deleteProtection?: DgxModelDeleteProtectionApi;
 };
 
 export type DgxResourceSharedStateApi = {
@@ -367,11 +399,60 @@ export type DgxResourceActionBody =
       planFingerprint: string;
       confirmed: true;
       modelProfileId?: string;
+    }
+  | { type: 'RELEASE_DGX_RESOURCES'; reason?: string }
+  | { type: 'PREVIEW_MODEL_STORAGE_DELETE'; modelProfileId: string }
+  | {
+      type: 'EXECUTE_MODEL_STORAGE_DELETE';
+      modelProfileId: string;
+      planFingerprint: string;
+      confirmation: string;
     };
+
+export type DgxResourceReleaseResultApi = {
+  success: boolean;
+  steps: Array<{
+    targetId: DgxControlTargetIdApi;
+    labelJa: string;
+    action: 'start' | 'stop' | 'stop_force';
+    status: 'success' | 'skipped' | 'failed';
+    messageJa: string;
+  }>;
+};
+
+export type DgxModelStorageDeletePreviewApi = {
+  ok: true;
+  modelProfileId: string;
+  displayNameJa: string;
+  canDelete: boolean;
+  blockedReasons: Array<{ code: string; detailJa: string }>;
+  storagePath: string | null;
+  resolvedStoragePath: string | null;
+  requiredConfirmation: string;
+  planFingerprint: string | null;
+  sizeBytes?: number;
+  sizeGiB?: number;
+  fileCount?: number;
+  directoryCount?: number;
+};
+
+export type DgxModelStorageDeleteExecuteApi = {
+  ok: true;
+  modelProfileId: string;
+  displayNameJa: string;
+  deletedStoragePath: string;
+  sizeBytes?: number | null;
+  sizeGiB?: number | null;
+  fileCount?: number | null;
+  directoryCount?: number | null;
+};
 
 export type DgxResourceActionResult = {
   ok: true;
   message: string;
   scenarioPreview?: ScenarioPlanPreviewApi;
   scenarioExecute?: DgxResourceScenarioExecuteResultApi;
+  releaseResult?: DgxResourceReleaseResultApi;
+  modelStorageDeletePreview?: DgxModelStorageDeletePreviewApi;
+  modelStorageDeleteExecute?: DgxModelStorageDeleteExecuteApi;
 };

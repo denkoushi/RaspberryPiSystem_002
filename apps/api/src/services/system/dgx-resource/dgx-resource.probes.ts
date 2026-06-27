@@ -13,6 +13,16 @@ export type MetricsPayload = {
   unifiedMemoryUsedGiB?: number;
   unifiedMemoryTotalGiB?: number;
   freeMemoryGiB?: number;
+  systemMemoryAvailableGiB?: number;
+  startupFreeMemoryGiB?: number;
+  memoryMetricSource?: string;
+  gpuProcessCount?: number;
+  gpuProcessMemoryUsedGiB?: number;
+  gpuProcesses?: Array<{
+    pid?: number;
+    processName?: string;
+    usedMemoryGiB?: number;
+  }>;
 };
 
 export const createTimeoutSignal = (timeoutMs: number): { signal: AbortSignal; cleanup: () => void } => {
@@ -41,6 +51,20 @@ export async function fetchJsonMetrics(
       typeof v === 'number' && Number.isFinite(v) ? v : undefined;
     const toStr = (v: unknown): string | undefined =>
       typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
+    const toGpuProcesses = (v: unknown): MetricsPayload['gpuProcesses'] | undefined => {
+      if (!Array.isArray(v)) return undefined;
+      const rows = v
+        .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item))
+        .map((item) => ({
+          ...(toNum(item.pid) !== undefined ? { pid: Math.trunc(toNum(item.pid)!) } : {}),
+          ...(toStr(item.processName ?? item.process_name) ? { processName: toStr(item.processName ?? item.process_name)! } : {}),
+          ...(toNum(item.usedMemoryGiB ?? item.used_memory_gib) !== undefined
+            ? { usedMemoryGiB: toNum(item.usedMemoryGiB ?? item.used_memory_gib)! }
+            : {}),
+        }))
+        .filter((item) => item.pid !== undefined || item.processName !== undefined || item.usedMemoryGiB !== undefined);
+      return rows.length > 0 ? rows : undefined;
+    };
     const payload: MetricsPayload = {
       gpuUtilPct: toNum(o.gpuUtilPct ?? o.gpu_util_pct),
       gpuTemperatureC: toNum(
@@ -110,6 +134,12 @@ export async function fetchJsonMetrics(
       unifiedMemoryUsedGiB: toNum(o.unifiedMemoryUsedGiB ?? o.unified_memory_used_gib),
       unifiedMemoryTotalGiB: toNum(o.unifiedMemoryTotalGiB ?? o.unified_memory_total_gib),
       freeMemoryGiB: toNum(o.freeMemoryGiB ?? o.free_memory_gib),
+      systemMemoryAvailableGiB: toNum(o.systemMemoryAvailableGiB ?? o.system_memory_available_gib),
+      startupFreeMemoryGiB: toNum(o.startupFreeMemoryGiB ?? o.startup_free_memory_gib),
+      memoryMetricSource: toStr(o.memoryMetricSource ?? o.memory_metric_source),
+      gpuProcessCount: toNum(o.gpuProcessCount ?? o.gpu_process_count),
+      gpuProcessMemoryUsedGiB: toNum(o.gpuProcessMemoryUsedGiB ?? o.gpu_process_memory_used_gib),
+      gpuProcesses: toGpuProcesses(o.gpuProcesses ?? o.gpu_processes),
     };
     const hasAtLeastOneMetric = Object.values(payload).some((value) => value !== undefined);
     return hasAtLeastOneMetric ? payload : undefined;

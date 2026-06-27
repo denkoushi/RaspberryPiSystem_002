@@ -30,6 +30,24 @@ export type DgxBusinessModelProfile = {
   visionRequiresMmproj?: boolean;
   launcherHints?: Record<string, string>;
   runtimeProfile?: DgxModelRuntimeProfile;
+  startupFit?: DgxModelStartupFit;
+  deleteProtection?: DgxModelDeleteProtection;
+};
+
+export type DgxModelStartupFit = {
+  status: 'fits' | 'insufficient' | 'unknown' | 'not_applicable';
+  requiredGiB?: number;
+  availableGiB?: number;
+  detailJa: string;
+};
+
+export type DgxModelDeleteProtection = {
+  canDelete: boolean;
+  protected: boolean;
+  reasons: string[];
+  reasonJa?: string;
+  storagePath?: string;
+  resolvedStoragePath?: string;
 };
 
 export type DgxModelRuntimeProfile = {
@@ -112,6 +130,18 @@ const asNumber = (value: unknown): number | undefined =>
 
 const asStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0) : [];
+
+const parseDeleteProtection = (value: unknown): DgxModelDeleteProtection | undefined => {
+  if (!isRecord(value)) return undefined;
+  return {
+    canDelete: value.canDelete === true,
+    protected: value.protected !== false,
+    reasons: asStringArray(value.reasons),
+    ...(asString(value.reasonJa) ? { reasonJa: asString(value.reasonJa)! } : {}),
+    ...(asString(value.storagePath) ? { storagePath: asString(value.storagePath)! } : {}),
+    ...(asString(value.resolvedStoragePath) ? { resolvedStoragePath: asString(value.resolvedStoragePath)! } : {}),
+  };
+};
 
 const parseRuntimeProfile = (value: unknown): DgxModelRuntimeProfile | undefined => {
   if (!isRecord(value)) return undefined;
@@ -235,6 +265,9 @@ export function normalizeDgxModelProfile(value: unknown): DgxBusinessModelProfil
         }
       : {}),
     ...(parseRuntimeProfile(value.runtimeProfile) ? { runtimeProfile: parseRuntimeProfile(value.runtimeProfile)! } : {}),
+    ...(parseDeleteProtection(value.deleteProtection)
+      ? { deleteProtection: parseDeleteProtection(value.deleteProtection)! }
+      : {}),
   };
 }
 

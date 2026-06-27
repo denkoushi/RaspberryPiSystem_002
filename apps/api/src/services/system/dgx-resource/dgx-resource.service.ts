@@ -34,6 +34,13 @@ import {
   type DgxResourceSharedState,
 } from './dgx-resource.model-profiles.js';
 import {
+  executeDgxModelStorageDelete,
+  previewDgxModelStorageDelete,
+  type DgxModelStorageDeleteExecuteResult,
+  type DgxModelStorageDeletePreview,
+} from './dgx-resource.model-storage-delete.js';
+import { enrichDgxModelProfilesStartupFit } from './dgx-resource.startup-fit.js';
+import {
   executeOrchestrationScenarioTransition,
   executeWorkloadTransitionsThenApplyPolicyMode,
 } from './dgx-resource.workload-transition.js';
@@ -63,6 +70,16 @@ export type DgxResourceKpis = {
   unifiedMemoryUsedGiB: number | null;
   unifiedMemoryTotalGiB: number | null;
   freeMemoryGiB: number | null;
+  systemMemoryAvailableGiB: number | null;
+  startupFreeMemoryGiB: number | null;
+  memoryMetricSource: string | null;
+  gpuProcessCount: number | null;
+  gpuProcessMemoryUsedGiB: number | null;
+  gpuProcesses: Array<{
+    pid?: number;
+    processName?: string;
+    usedMemoryGiB?: number;
+  }>;
   /** グラフ配色などはこちらで分岐（表示ラベル文字列依存を避ける） */
   policyMode: DgxPolicyMode;
   policyLabel: string;
@@ -76,6 +93,20 @@ export type DgxResourceActionResult = {
   message: string;
   scenarioPreview?: ScenarioPlanPreview;
   scenarioExecute?: DgxResourceScenarioExecuteResult;
+  releaseResult?: DgxResourceReleaseResult;
+  modelStorageDeletePreview?: DgxModelStorageDeletePreview;
+  modelStorageDeleteExecute?: DgxModelStorageDeleteExecuteResult;
+};
+
+export type DgxResourceReleaseResult = {
+  success: boolean;
+  steps: Array<{
+    targetId: DgxControlTargetId;
+    labelJa: string;
+    action: DgxControlTargetAction;
+    status: 'success' | 'skipped' | 'failed';
+    messageJa: string;
+  }>;
 };
 
 export type DgxSparkHostOverview = {
@@ -157,6 +188,14 @@ export type DgxResourceActionBody =
       planFingerprint: string;
       confirmed: true;
       modelProfileId?: string;
+    }
+  | { type: 'RELEASE_DGX_RESOURCES'; reason?: string }
+  | { type: 'PREVIEW_MODEL_STORAGE_DELETE'; modelProfileId: string }
+  | {
+      type: 'EXECUTE_MODEL_STORAGE_DELETE';
+      modelProfileId: string;
+      planFingerprint: string;
+      confirmation: string;
     };
 
 export type DgxResourceServicePort = {
@@ -207,6 +246,21 @@ function gatewayRuntimeControlConfiguredFlag(): boolean {
     Boolean(env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim() && env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim()) &&
     env.LOCAL_LLM_RUNTIME_MODE === 'on_demand'
   );
+}
+
+function releaseTargetLabelJa(targetId: DgxControlTargetId): string {
+  switch (targetId) {
+    case 'system-prod-gateway':
+      return '業務 LLM';
+    case 'private-comfyui':
+      return 'ComfyUI';
+    case 'experiment-lab':
+      return '実験ラボ';
+    case 'agent-container':
+      return 'Agent';
+    default:
+      return targetId;
+  }
 }
 
 function readComfyRuntimeEndpoints(): { startUrl: string; stopUrl: string; token?: string } | undefined {
@@ -302,7 +356,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       modelsProbe = await probeV1Models(adminCfg.baseUrl, adminCfg.sharedToken, deps.fetchImpl, deps.probeTimeoutMs);
     }
 
-    const modelProfiles = await fetchDgxModelProfilesOverview({
+    let modelProfiles = await fetchDgxModelProfilesOverview({
       baseUrl: adminCfg.baseUrl,
       sharedToken: adminCfg.sharedToken,
       fetchImpl: deps.fetchImpl,
@@ -331,6 +385,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       metricsPayload = await fetchJsonMetrics(candidate.url, deps.fetchImpl, deps.probeTimeoutMs, candidate.headers);
       if (metricsPayload) break;
     }
+    modelProfiles = enrichDgxModelProfilesStartupFit(modelProfiles, metricsPayload);
     const comfyConfigured = Boolean(deps.comfyHealthUrl?.trim());
     let comfyReachable = false;
     if (comfyConfigured) {
@@ -734,6 +789,109 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     return runTargetRuntimeAction(targetId, action, reason, 'default');
   };
 
+  const handleReleaseDgxResources = async (reason?: string): Promise<DgxResourceActionResult> => {
+    const releaseTargets: Array<{
+      targetId: DgxControlTargetId;
+      action: DgxControlTargetAction;
+      configured: boolean;
+    }> = [
+      { targetId: 'system-prod-gateway', action: 'stop_force', configured: gatewayRuntimeControlConfiguredFlag() },
+      { targetId: 'private-comfyui', action: 'stop', configured: comfyRuntimeControlConfigured() },
+      { targetId: 'experiment-lab', action: 'stop', configured: experimentLabRuntimeControlConfigured() },
+      { targetId: 'agent-container', action: 'stop', configured: agentContainerRuntimeControlConfigured() },
+    ];
+    const steps: DgxResourceReleaseResult['steps'] = [];
+    for (const target of releaseTargets) {
+      const labelJa = releaseTargetLabelJa(target.targetId);
+      if (!target.configured) {
+        steps.push({
+          targetId: target.targetId,
+          labelJa,
+          action: target.action,
+          status: 'skipped',
+          messageJa: '制御URL未設定',
+        });
+        continue;
+      }
+      try {
+        const result = await runTargetRuntimeAction(
+          target.targetId,
+          target.action,
+          reason ?? 'admin_dgx_resource_release',
+          'none'
+        );
+        steps.push({
+          targetId: target.targetId,
+          labelJa,
+          action: target.action,
+          status: 'success',
+          messageJa: result.message,
+        });
+      } catch (error) {
+        steps.push({
+          targetId: target.targetId,
+          labelJa,
+          action: target.action,
+          status: 'failed',
+          messageJa: error instanceof Error ? error.message : '停止に失敗しました',
+        });
+      }
+    }
+    const failed = steps.filter((step) => step.status === 'failed');
+    const success = failed.length === 0;
+    deps.policyStore.clearScenarioFailure();
+    deps.policyStore.appendEvent(
+      success
+        ? 'DGX 完全解放を実行しました'
+        : `DGX 完全解放を実行しました（一部失敗: ${failed.map((step) => step.labelJa).join(', ')}）`
+    );
+    return {
+      ok: true,
+      message: success ? 'DGX 完全解放を実行しました' : 'DGX 完全解放を実行しました（一部失敗あり）',
+      releaseResult: { success, steps },
+    };
+  };
+
+  const handlePreviewModelStorageDelete = async (modelProfileId: string): Promise<DgxResourceActionResult> => {
+    const pb = await collectOverviewProbeBundle();
+    const preview = await previewDgxModelStorageDelete({
+      baseUrl: pb.adminCfg.baseUrl,
+      fetchImpl: deps.fetchImpl,
+      timeoutMs: deps.probeTimeoutMs,
+      modelProfileId,
+    });
+    return {
+      ok: true,
+      message: preview.canDelete
+        ? `model profile「${modelProfileId}」の保存先削除プレビューを取得しました`
+        : `model profile「${modelProfileId}」は削除保護中です`,
+      modelStorageDeletePreview: preview,
+    };
+  };
+
+  const handleExecuteModelStorageDelete = async (
+    modelProfileId: string,
+    planFingerprint: string,
+    confirmation: string
+  ): Promise<DgxResourceActionResult> => {
+    const pb = await collectOverviewProbeBundle();
+    const result = await executeDgxModelStorageDelete({
+      baseUrl: pb.adminCfg.baseUrl,
+      fetchImpl: deps.fetchImpl,
+      timeoutMs: deps.probeTimeoutMs,
+      modelProfileId,
+      planFingerprint,
+      confirmation,
+    });
+    deps.policyStore.clearScenarioFailure();
+    deps.policyStore.appendEvent(`model profile「${modelProfileId}」の保存先を削除しました`);
+    return {
+      ok: true,
+      message: `model profile「${modelProfileId}」の保存先を削除しました`,
+      modelStorageDeleteExecute: result,
+    };
+  };
+
   const handleStartModelProfile = async (
     modelProfileId: string,
     reason?: string
@@ -858,6 +1016,15 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       if (body.type === 'EXECUTE_ORCHESTRATION_SCENARIO') {
         return orchestrationScenarioExecute(body.scenarioId, body.planFingerprint, body.modelProfileId);
       }
+      if (body.type === 'RELEASE_DGX_RESOURCES') {
+        return handleReleaseDgxResources(body.reason);
+      }
+      if (body.type === 'PREVIEW_MODEL_STORAGE_DELETE') {
+        return handlePreviewModelStorageDelete(body.modelProfileId);
+      }
+      if (body.type === 'EXECUTE_MODEL_STORAGE_DELETE') {
+        return handleExecuteModelStorageDelete(body.modelProfileId, body.planFingerprint, body.confirmation);
+      }
       if (body.type === 'EXECUTE_TARGET_ACTION') {
         const r = await handleExecuteTargetAction(body.targetId, body.action, body.reason);
         deps.policyStore.clearScenarioFailure();
@@ -920,6 +1087,12 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           unifiedMemoryUsedGiB: bundle.metricsPayload?.unifiedMemoryUsedGiB ?? null,
           unifiedMemoryTotalGiB: bundle.metricsPayload?.unifiedMemoryTotalGiB ?? null,
           freeMemoryGiB: bundle.metricsPayload?.freeMemoryGiB ?? null,
+          systemMemoryAvailableGiB: bundle.metricsPayload?.systemMemoryAvailableGiB ?? null,
+          startupFreeMemoryGiB: bundle.metricsPayload?.startupFreeMemoryGiB ?? null,
+          memoryMetricSource: bundle.metricsPayload?.memoryMetricSource ?? null,
+          gpuProcessCount: bundle.metricsPayload?.gpuProcessCount ?? null,
+          gpuProcessMemoryUsedGiB: bundle.metricsPayload?.gpuProcessMemoryUsedGiB ?? null,
+          gpuProcesses: bundle.metricsPayload?.gpuProcesses ?? [],
           policyMode: pb.policyMode,
           policyLabel: policyLabelJa(pb.policyMode),
         },

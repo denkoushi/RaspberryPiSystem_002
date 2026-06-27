@@ -162,17 +162,30 @@ function profileSummaryStatus(profileRows: DgxBusinessModelProfileApi[], activeP
   return profileRows.some((profile) => profile.id === activeProfileId) ? 'active' : 'available';
 }
 
-function profileBadges(profile: DgxBusinessModelProfileApi, activeProfileId?: string | null): string[] {
+type ProfileBadge = { label: string; tone: 'active' | 'recommended' | 'business' | 'available' | 'warning' | 'muted' };
+
+function profileBadges(profile: DgxBusinessModelProfileApi, activeProfileId?: string | null): ProfileBadge[] {
+  const startup =
+    profile.status === 'unavailable'
+      ? ({ label: '保存先なし', tone: 'warning' } satisfies ProfileBadge)
+      : profile.startupFit?.status === 'insufficient'
+        ? ({ label: 'メモリ不足', tone: 'warning' } satisfies ProfileBadge)
+        : profile.startupFit?.status === 'fits'
+          ? ({ label: '起動可', tone: 'available' } satisfies ProfileBadge)
+          : ({ label: '判定なし', tone: 'muted' } satisfies ProfileBadge);
   return [
-    profile.id === activeProfileId ? 'active' : null,
-    profile.recommended ? 'recommended' : null,
-    profile.businessOrchestrationEligible !== false ? 'business' : 'manual',
-    profile.status,
-  ].filter((badge): badge is string => Boolean(badge));
+    profile.id === activeProfileId ? ({ label: 'active', tone: 'active' } satisfies ProfileBadge) : null,
+    profile.recommended ? ({ label: '推奨', tone: 'recommended' } satisfies ProfileBadge) : null,
+    profile.businessOrchestrationEligible !== false
+      ? ({ label: '業務復帰可', tone: 'business' } satisfies ProfileBadge)
+      : ({ label: 'manual', tone: 'muted' } satisfies ProfileBadge),
+    startup,
+    profile.deleteProtection?.protected ? ({ label: '削除保護', tone: 'muted' } satisfies ProfileBadge) : null,
+  ].filter((badge): badge is ProfileBadge => badge != null);
 }
 
-function profileBadgeClass(badge: string): string {
-  switch (badge) {
+function profileBadgeClass(tone: ProfileBadge['tone']): string {
+  switch (tone) {
     case 'active':
       return 'border-emerald-200 bg-emerald-50 text-emerald-700';
     case 'recommended':
@@ -181,7 +194,7 @@ function profileBadgeClass(badge: string): string {
       return 'border-indigo-200 bg-indigo-50 text-indigo-700';
     case 'available':
       return 'border-slate-200 bg-white text-slate-600';
-    case 'unavailable':
+    case 'warning':
       return 'border-amber-200 bg-amber-50 text-amber-700';
     default:
       return 'border-slate-200 bg-slate-50 text-slate-500';
@@ -305,7 +318,7 @@ export function DgxResourceDashboard() {
 
   if (!overview) {
     return (
-      <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-2 text-base">
+      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-2 text-base">
         <h1 className="text-xl font-bold text-slate-950">DGX リソース</h1>
         {overviewError ? <p className="text-sm text-red-700">{overviewError}</p> : null}
         <p className="text-sm text-slate-500">{overviewQuery.isLoading ? '読み込み中…' : 'データなし'}</p>
@@ -346,7 +359,7 @@ export function DgxResourceDashboard() {
     );
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-3 text-base">
+    <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-3 text-base">
       {overview.operator ? (
         <DgxResourceOperatorConsole
           overview={overview}
@@ -396,7 +409,7 @@ export function DgxResourceDashboard() {
         </p>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)]">
         <section className="overflow-hidden rounded-lg border border-slate-300 bg-white" aria-label="モデルプロファイル">
           <div className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-200 px-4">
             <h2 className="text-sm font-bold text-slate-950">モデルプロファイル</h2>
@@ -417,22 +430,22 @@ export function DgxResourceDashboard() {
                 return (
                   <div
                     key={profile.id}
-                    className="grid min-h-12 grid-cols-[minmax(130px,0.9fr)_minmax(0,1fr)_minmax(150px,auto)] items-center gap-3 border-b border-slate-200 px-4 py-2 text-sm font-semibold last:border-b-0 max-sm:grid-cols-1 max-sm:gap-1"
+                    className="grid min-h-12 grid-cols-[minmax(260px,1.2fr)_minmax(180px,0.8fr)_minmax(220px,auto)] items-center gap-3 border-b border-slate-200 px-4 py-2 text-sm font-semibold last:border-b-0 max-md:grid-cols-1 max-md:gap-1"
                   >
                     <div className="flex min-w-0 items-center gap-2">
                       <span className={clsx('h-2 w-2 shrink-0 rounded-full', active ? 'bg-emerald-700' : 'bg-slate-400')} aria-hidden />
-                      <span className="min-w-0 truncate text-slate-950" title={profile.displayNameJa}>{profile.displayNameJa}</span>
+                      <span className="min-w-0 break-words text-slate-950" title={profile.displayNameJa}>{profile.displayNameJa}</span>
                     </div>
-                    <span className="min-w-0 truncate text-slate-500" title={`${subtitle} / ${profile.id}`}>
+                    <span className="min-w-0 break-words text-slate-500" title={`${subtitle} / ${profile.id}`}>
                       {subtitle}
                     </span>
-                    <div className="flex min-w-0 flex-wrap justify-end gap-1 max-sm:justify-start">
+                    <div className="flex min-w-0 flex-wrap justify-end gap-1 max-md:justify-start">
                       {badges.map((badge) => (
                         <span
-                          key={`${profile.id}-${badge}`}
-                          className={clsx('rounded-full border px-2 py-0.5 text-[11px] font-bold leading-tight', profileBadgeClass(badge))}
+                          key={`${profile.id}-${badge.label}`}
+                          className={clsx('rounded-full border px-2 py-0.5 text-[11px] font-bold leading-tight', profileBadgeClass(badge.tone))}
                         >
-                          {badge}
+                          {badge.label}
                         </span>
                       ))}
                     </div>
