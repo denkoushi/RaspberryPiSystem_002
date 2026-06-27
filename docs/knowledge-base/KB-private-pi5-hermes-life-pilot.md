@@ -140,23 +140,20 @@ fragment 例（ローカル inventory · 非追跡）:
 private_pi5_hermes_life_interest_digest_enabled: true
 private_pi5_hermes_life_interest_digest_memory_enabled: true
 private_pi5_hermes_life_interest_digest_channel_id: "<Discord channel id>"
+private_pi5_hermes_life_interest_weather_enabled: true
+private_pi5_hermes_life_interest_weather_latitude: "35.6812"
+private_pi5_hermes_life_interest_weather_longitude: "139.7671"
+private_pi5_hermes_life_interest_weather_label: "Tokyo"
+private_pi5_hermes_life_interest_weather_timezone: "Asia/Tokyo"
+
+private_pi5_hermes_life_interest_web_search_enabled: true
+private_pi5_hermes_life_interest_web_search_queries: "DGX Spark||Hermes Agent local LLM"
+private_pi5_hermes_life_interest_web_search_country: "JP"
+private_pi5_hermes_life_interest_web_search_lang: "ja"
+private_pi5_hermes_life_interest_brave_search_api_key: "<Brave Search API key>"
 ```
 
-`.env` 例（任意 · 秘密は非追跡）:
-
-```dotenv
-LIFE_PILOT_INTEREST_WEATHER_ENABLED=true
-LIFE_PILOT_INTEREST_WEATHER_LATITUDE=35.6812
-LIFE_PILOT_INTEREST_WEATHER_LONGITUDE=139.7671
-LIFE_PILOT_INTEREST_WEATHER_LABEL=Tokyo
-LIFE_PILOT_INTEREST_WEATHER_TIMEZONE=Asia/Tokyo
-
-LIFE_PILOT_INTEREST_WEB_SEARCH_ENABLED=true
-LIFE_PILOT_INTEREST_WEB_SEARCH_QUERIES=DGX Spark||Hermes Agent local LLM
-LIFE_PILOT_INTEREST_WEB_SEARCH_COUNTRY=JP
-LIFE_PILOT_INTEREST_WEB_SEARCH_LANG=ja
-BRAVE_SEARCH_API_KEY=<Brave Search API key>
-```
+Ansible deploy は chat profile の `/home/hermes/.hermes/.env` を fragment から再生成する。任意の天気/Web検索設定も fragment に置き、API key はローカル非追跡 fragment にだけ保存する。
 
 `hermes-life-interest-digest.service` は `/bin/sh -c` 経由で `LIFE_PILOT_INTEREST_CHANNEL_ID` を `--channel-id` に展開する。PR [#414](https://github.com/denkoushi/RaspberryPiSystem_002/pull/414) で、Jinja テンプレート上の `ExecStart` と `StandardOutput` 連結バグを修正済み。
 
