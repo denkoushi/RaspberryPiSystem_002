@@ -1164,7 +1164,7 @@
 
 ### 🆕 最新アップデート（2026-01-14）
 
-- **✅ トークプラザ工場へのマルチサイト対応実装完了**: トークプラザ工場（別拠点）への同一システム導入に対応。inventoryファイルの分離（`inventory-talkplaza.yml`）、group_vars/host_varsの分離、プレフィックス命名規則（`talkplaza-`）の実装により、設定の混在を防止。デプロイスクリプトのinventory引数必須化により、誤デプロイのリスクを大幅に削減。Dropbox basePathの分離対応により、拠点別フォルダにバックアップを分離。デプロイスクリプトのinventory/playbookパス相対パス修正により、Pi5上での実行時のパス重複問題を解決。第1工場への導入時も同様の手順で対応可能。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-159](./knowledge-base/infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則) / [knowledge-base/infrastructure/ansible-deployment.md#kb-160](./knowledge-base/infrastructure/ansible-deployment.md#kb-160-デプロイスクリプトのinventory引数必須化誤デプロイ防止) / [knowledge-base/infrastructure/ansible-deployment.md#kb-162](./knowledge-base/infrastructure/ansible-deployment.md#kb-162-デプロイスクリプトのinventoryplaybookパス相対パス修正pi5上での実行時) / [knowledge-base/infrastructure/backup-restore.md#kb-161](./knowledge-base/infrastructure/backup-restore.md#kb-161-dropbox-basepathの分離対応拠点別フォルダ分離) / [guides/talkplaza-rollout.md](./guides/talkplaza-rollout.md) / [guides/deployment.md](./guides/deployment.md) を参照。
+- **トークプラザ工場マルチサイト対応 正本**: [KB-159](./knowledge-base/infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則) · [KB-160](./knowledge-base/infrastructure/ansible-deployment.md#kb-160-デプロイスクリプトのinventory引数必須化誤デプロイ防止) · [KB-161](./knowledge-base/infrastructure/backup-restore.md#kb-161-dropbox-basepathの分離対応拠点別フォルダ分離) · [KB-162](./knowledge-base/infrastructure/ansible-deployment.md#kb-162-デプロイスクリプトのinventoryplaybookパス相対パス修正pi5上での実行時) · [talkplaza-rollout](./guides/talkplaza-rollout.md) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-01-09）
 
