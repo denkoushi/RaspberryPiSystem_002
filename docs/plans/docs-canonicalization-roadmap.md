@@ -4675,7 +4675,19 @@ Status: implemented in PR373.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR374 And Later: Thin Indexes And Split Large Documents
+### PR374: Thin CSV Dashboard Onsite Fix Index Block
+
+Status: implemented in PR374.
+
+- Thin only the 2026-01-09 CSV dashboard onsite verification and fix
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the schema, manual upload, date filtering,
+  null fallback, and onsite display validation details with short links to
+  KB-155 and the CSV dashboard verification guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR375 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
