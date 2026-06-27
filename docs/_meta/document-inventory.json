@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 138953,
-    "totalBytes": 10218471,
+    "totalLines": 138966,
+    "totalBytes": 10218390,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,8 +25,8 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5215,
-    "brokenLocalLinkCount": 116,
+    "localLinkCount": 5214,
+    "brokenLocalLinkCount": 115,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 7,
     "brokenLocalLinks": [
@@ -39,11 +39,6 @@
         "sourcePath": "EXEC_PLAN.md",
         "href": "../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-?15[question-mark-corruption]pi5[question-mark-corruption]",
         "targetPath": "../docs/knowledge-base/infrastructure/security.md"
-      },
-      {
-        "sourcePath": "docs/INDEX.md",
-        "href": "../plans/alerts-platform-phase2.md",
-        "targetPath": "plans/alerts-platform-phase2.md"
       },
       {
         "sourcePath": "docs/INDEX.md",
@@ -6044,7 +6039,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 361279,
+      "byteSize": 360625,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10659,11 +10654,6 @@
           "href": "../infrastructure/docker/docker-compose.server.yml",
           "targetPath": "infrastructure/docker/docker-compose.server.yml",
           "exists": true
-        },
-        {
-          "href": "../plans/alerts-platform-phase2.md",
-          "targetPath": "plans/alerts-platform-phase2.md",
-          "exists": false
         },
         {
           "href": "../plans/deploy-stability-execplan.md",
@@ -29585,8 +29575,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 4531,
-      "byteSize": 188287,
+      "lineCount": 4544,
+      "byteSize": 188860,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
