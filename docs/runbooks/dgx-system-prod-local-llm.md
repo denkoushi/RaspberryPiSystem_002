@@ -187,7 +187,7 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
   - `business_qwen36_27b_nvfp4`: `runtimeProfile.engine=vllm`、`vllm.gpuMemoryUtilization=0.65`、`maxModelLen=8192`、`maxNumSeqs=4`、`languageModelOnly=true`、`quantization=compressed-tensors` を known-good default とする。`languageModelOnly=true` の blue 起動は runtime vision-ready と見なさない。
   - `business_ornith_35b_nvfp4`: `sakamakismile/Ornith-1.0-35B-NVFP4`。VLM smoke（text + small image chat）成功後に `enabled=true` とし、業務復帰候補に出す。Ornith は `--quantization` を付けず、`disableCustomAllReduce=true` を使う。
   - GGUF / llama.cpp profile は `gpuMemoryUtilization` ではなく `llamaCpp.ctxSize` / `parallel` / `nGpuLayers` を正本にする。
-  - `launcher_env_for_profile()` は `runtimeProfile` を `VLLM_*` / `LLAMA_SERVER_*` env へ展開できる。secret 側 `BLUE_SERVER_COMMAND` は legacy override とし、通常は空にして `vllm_command_builder.py` に snapshot path を解決させる。
+  - `launcher_env_for_profile()` は `runtimeProfile` を `VLLM_*` / `LLAMA_SERVER_*` env へ展開できる。profile 指定の blue 起動では `BLUE_SERVER_COMMAND` / `TRTLLM_SERVER_COMMAND` を空で上書きし、manifest の `BLUE_MODEL_DIR` と runtimeProfile を優先する。secret 側 `BLUE_SERVER_COMMAND` は legacy override とし、通常は空にして `vllm_command_builder.py` に snapshot path を解決させる。
 - 初期 profile: `business_qwen36_27b_nvfp4`（blue / Qwen3.6 27B NVFP4 / text only）、`business_qwen35_35b_gguf`（green / Qwen3.5 35B GGUF）、`business_ornith_35b_nvfp4`（blue / Ornith 35B NVFP4 / smoke 後に有効化）
 - 私用テキスト向け（業務キオスク非対象）: `qwen36_35b_uncensored`（green / Qwen3.6 35B Uncensored GGUF / text only）— 下記 [§uncensored profile](#dgx-uncensored-profile-2026-05-29)
 - HF 移行: `sakamakismile/Qwen3.6-27B-NVFP4` は `/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4` へ寄せる。既存 cache は manifest の `currentStorageLocation` に残し、実ファイル移動は実機手動確認で行う
@@ -711,6 +711,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 
 - `TRTLLM_*` という env 名は互換のため残しているだけで、blue backend の実体は TRT-LLM に限らない
 - 新しい設定では `BLUE_SERVER_*` / `BLUE_MODEL_DIR` / `BLUE_EXTRA_DOCKER_ARGS` の別名も使える
+- profile 指定の blue 起動では、launcher が `BLUE_SERVER_COMMAND` / `TRTLLM_SERVER_COMMAND` を空上書きする。既存 env に legacy fallback command を残す運用でも、管理コンソールの profile 起動は manifest 側のモデルを使う
 - **snapshot path の解決**: `vllm_command_builder.py` が `cat ${BLUE_MODEL_DIR}/refs/main` 相当を実行し、`snapshots/<sha>` を `vllm serve` に渡す。secret に snapshot SHA 直書きは不要
 - **Hermes `/task` 復旧（2026-06-05）**: repo id ではなく **snapshot path** · **`gpu-memory-utilization 0.65`** · **`language_model_only`** が実機で必須だった — 詳細 [KB-366 §8.1](./../knowledge-base/KB-366-dgx-spark-operational-understanding.md#81-blue-27b-起動失敗と-hermes-task-5022026-06-05) · [KB `/task` blue 502](./../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05)
 

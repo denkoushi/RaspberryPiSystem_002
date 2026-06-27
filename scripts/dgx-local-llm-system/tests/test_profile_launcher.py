@@ -80,6 +80,8 @@ class ProfileLauncherTests(unittest.TestCase):
             self.assertEqual(env["VLLM_DISABLE_CUSTOM_ALL_REDUCE"], "true")
             self.assertEqual(env["VLLM_TENSOR_PARALLEL_SIZE"], "2")
             self.assertEqual(env["VLLM_SERVED_MODEL_NAME"], "system-prod-primary")
+            self.assertEqual(env["BLUE_SERVER_COMMAND"], "")
+            self.assertEqual(env["TRTLLM_SERVER_COMMAND"], "")
 
 
 if __name__ == "__main__":

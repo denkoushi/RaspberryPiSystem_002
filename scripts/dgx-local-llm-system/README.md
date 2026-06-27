@@ -161,6 +161,7 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
   - 必要なら model repository / engine ディレクトリを read-only mount する
 - `TRTLLM_SERVER_COMMAND`
   - legacy override。未指定かつ `BLUE_MODEL_DIR` / `TRTLLM_MODEL_DIR` がある場合、`vllm_command_builder.py` が Hugging Face cache の `refs/main` から snapshot path を解決して `vllm serve` を生成する
+  - profile 指定の blue 起動では `profile_launcher.py` が `BLUE_SERVER_COMMAND` / `TRTLLM_SERVER_COMMAND` を空で上書きし、manifest の `BLUE_MODEL_DIR` と runtimeProfile を優先する
 - `TRTLLM_EXTRA_DOCKER_ARGS`
   - `--shm-size=32g` など追加の `docker run` 引数
 
@@ -284,7 +285,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 
 この例のポイントは、**Pi5 から見える `38081` / token / alias を固定したまま**、DGX 内部だけで green / blue を切り替えることにある。
 
-`TRTLLM_*` という env 名は歴史的な互換のため残しているだけで、blue backend の実体は TRT-LLM に限らない。`start-trtllm-server.sh` は **任意 image + 任意 command** を受けるため、Spark 向け `vLLM` + NVFP4 モデルを起動できる。`BLUE_SERVER_COMMAND` が空で `BLUE_MODEL_DIR` がある場合は、`vllm_command_builder.py` が `${BLUE_MODEL_DIR}/refs/main` から snapshot path を解決して `vllm serve` を生成する。image 既定 entrypoint が shell でない場合は、`BLUE_SERVER_ENTRYPOINT=bash` を併用する。
+`TRTLLM_*` という env 名は歴史的な互換のため残しているだけで、blue backend の実体は TRT-LLM に限らない。`start-trtllm-server.sh` は **任意 image + 任意 command** を受けるため、Spark 向け `vLLM` + NVFP4 モデルを起動できる。`BLUE_SERVER_COMMAND` が空で `BLUE_MODEL_DIR` がある場合は、`vllm_command_builder.py` が `${BLUE_MODEL_DIR}/refs/main` から snapshot path を解決して `vllm serve` を生成する。profile 指定の blue 起動では legacy command を launcher が空上書きするため、既存 env に fallback command が残っていても manifest 側のモデルが優先される。image 既定 entrypoint が shell でない場合は、`BLUE_SERVER_ENTRYPOINT=bash` を併用する。
 
 **Hermes `/task` 向けメモ（2026-06-05）**: repo id 直指定は HF metadata で失敗し得るため **snapshot path** を使う。現在は builder が `refs/main` を読んで snapshot path を生成する。トラブルシュート: [Runbook §blue 502](../../docs/runbooks/dgx-system-prod-local-llm.md#トラブルシュート--blue-backend-起動失敗--v1models-5022026-06-05) · [KB-366 §8.1](../../docs/knowledge-base/KB-366-dgx-spark-operational-understanding.md#81-blue-27b-起動失敗と-hermes-task-5022026-06-05)。
 

@@ -54,6 +54,10 @@ def launcher_env_for_profile(profile: ModelProfile) -> dict[str, str]:
         env["DGX_RUNTIME_ENGINE"] = engine
     if profile.backend == "blue":
         env["VLLM_SERVED_MODEL_NAME"] = profile.served_alias
+        # Profile-scoped blue launches must ignore legacy raw command overrides.
+        # Otherwise BLUE_SERVER_COMMAND from the production env wins over BLUE_MODEL_DIR.
+        env["BLUE_SERVER_COMMAND"] = ""
+        env["TRTLLM_SERVER_COMMAND"] = ""
     memory_policy = _env_value(runtime_profile.get("memoryPolicy"))
     if memory_policy:
         env["DGX_MEMORY_POLICY"] = memory_policy
