@@ -4570,7 +4570,21 @@ Status: implemented in PR365.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR366 And Later: Thin Indexes And Split Large Documents
+### PR366: Thin CSV Import Verification Index Block
+
+Status: implemented in PR366.
+
+- Thin only the 2025-12-30 CSV import verification and UI improvement
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the schedule form reset behavior, manual-run
+  retry skip, target/type/provider selection validation, Gmail subject pattern
+  management, schedule CRUD/delete/manual-run checks, readable schedule display,
+  and KB-116 notes with short links to frontend KB-116, API KB-116, and the CSV
+  import guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR367 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
