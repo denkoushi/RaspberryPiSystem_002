@@ -1176,7 +1176,7 @@
 
 - **CSVダッシュボード表示期間フィルタ検証 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [csv-dashboard-verification](./guides/csv-dashboard-verification.md)。
 
-- **✅ CSVダッシュボード機能のCI修正・デプロイ完了**: CSVダッシュボード可視化機能のCI修正とデプロイを完了。E2Eテストのstrict mode violation（「ダッシュボード」リンクが「CSVダッシュボード」リンクと重複マッチ）を修正し、`@remix-run/router`の脆弱性対応（1.23.2へ強制）を実施。GitHub Actions CIが成功し、Pi5へのデプロイも正常に完了。管理コンソールの「CSVダッシュボード」タブが表示され、機能が利用可能な状態に到達。詳細は [knowledge-base/infrastructure/signage.md#kb-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) / [guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md) を参照。
+- **CSVダッシュボードCI修正・デプロイ 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [csv-dashboard-verification](./guides/csv-dashboard-verification.md)。
 
 - **✅ CSVダッシュボード機能の実機検証・修正完了**: CSVダッシュボード可視化機能の実機検証を実施し、4つの問題を発見・修正。スキーマ修正で`csvDashboardId`が保持されるように改善、手動アップロードでデータ取り込みを実行するように修正、日付フィルタリングでJST/UTCの変換を正しく計算するように修正、`displayPeriodDays`のnullチェックを追加。実機検証でCSVダッシュボードのデータが正しく表示されることを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) / [guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md) を参照。
 

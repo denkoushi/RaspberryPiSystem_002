@@ -4662,7 +4662,20 @@ Status: implemented in PR372.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR373 And Later: Thin Indexes And Split Large Documents
+### PR373: Thin CSV Dashboard CI Deploy Index Block
+
+Status: implemented in PR373.
+
+- Thin only the 2026-01-09 CSV dashboard CI fix and deploy latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the E2E strict-mode selector fix,
+  dependency override, GitHub Actions success, Pi5 deploy, admin-tab
+  availability, and KB-155 reference with short links to KB-155 and the CSV
+  dashboard verification guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR374 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
