@@ -1178,7 +1178,7 @@
 
 - **CSVダッシュボードCI修正・デプロイ 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [csv-dashboard-verification](./guides/csv-dashboard-verification.md)。
 
-- **✅ CSVダッシュボード機能の実機検証・修正完了**: CSVダッシュボード可視化機能の実機検証を実施し、4つの問題を発見・修正。スキーマ修正で`csvDashboardId`が保持されるように改善、手動アップロードでデータ取り込みを実行するように修正、日付フィルタリングでJST/UTCの変換を正しく計算するように修正、`displayPeriodDays`のnullチェックを追加。実機検証でCSVダッシュボードのデータが正しく表示されることを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) / [guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md) を参照。
+- **CSVダッシュボード実機検証・修正 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [csv-dashboard-verification](./guides/csv-dashboard-verification.md)。
 
 ### 🆕 最新アップデート（2026-01-XX）
 
