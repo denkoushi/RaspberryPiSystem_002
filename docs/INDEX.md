@@ -1192,7 +1192,7 @@
 
 - **Pi3デプロイ安定化プレフライト 正本**: [KB-154](./knowledge-base/infrastructure/ansible-deployment.md#kb-154-pi3デプロイ安定化の十分条件実装プレフライトチェック自動化) · [deployment](./guides/deployment.md)。
 
-- **✅ Pi3サイネージ安定化施策実装・デプロイ完了**: Pi3サイネージの安定稼働を向上させるため、SDカードへの高頻度書込み削減（tmpfs化）、systemdサービス堅牢化、画像更新停止の自己修復（Watchdog）、深夜の日次再起動、Ansibleによる設定の収束を実装。デプロイ時に`signage`ロールのテンプレートディレクトリ不足で失敗した問題を解決し、テンプレートファイルを`roles/signage/templates/`に配置してデプロイ成功。すべてのサービス（signage-lite.service、signage-lite-update.timer、signage-lite-watchdog.timer、signage-daily-reboot.timer、status-agent.timer）が正常に起動することを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-153](./knowledge-base/infrastructure/signage.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) / [knowledge-base/infrastructure/ansible-deployment.md#kb-153](./knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) / [modules/signage/README.md](./modules/signage/README.md) を参照。
+- **Pi3サイネージ安定化施策 正本**: [KB-153](./knowledge-base/infrastructure/signage.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) · [KB-153 ansible](./knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) · [signage module](./modules/signage/README.md)。
 
 ### 🆕 最新アップデート（2026-01-07）
 
