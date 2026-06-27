@@ -50,6 +50,7 @@ import type {
   PartMeasurementSheetDto,
   PartMeasurementSheetWithSession,
   SelfInspectionEntryValuePayload,
+  SelfInspectionInstrumentUsageDto,
   SelfInspectionLotEntryDto,
   SelfInspectionOutOfToleranceReviewsListDto,
   SelfInspectionPaperOcrReviewDto,
@@ -3398,6 +3399,66 @@ export async function resolveSelfInspectionNfcTagUid(
     }
   );
   return data.result;
+}
+
+export async function registerSelfInspectionOperator(
+  sessionId: string,
+  body: { employeeTagUid: string },
+  clientKey?: string
+): Promise<{
+  sessionId: string;
+  operatorEmployeeId: string | null;
+  operatorEmployeeNameSnapshot: string | null;
+  operatorEmployeeTagUidSnapshot: string | null;
+  operatorRegisteredAt: string | null;
+}> {
+  const { data } = await api.post<{
+    operator: {
+      sessionId: string;
+      operatorEmployeeId: string | null;
+      operatorEmployeeNameSnapshot: string | null;
+      operatorEmployeeTagUidSnapshot: string | null;
+      operatorRegisteredAt: string | null;
+    };
+  }>(`/part-measurement/self-inspection/sessions/${sessionId}/operator`, body, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data.operator;
+}
+
+export async function registerSelfInspectionInstrumentUsage(
+  sessionId: string,
+  body: {
+    measuringInstrumentTagUid?: string | null;
+    measuringInstrumentId?: string | null;
+    employeeTagUid?: string | null;
+    loanId?: string | null;
+    inspectionDateJst?: string | null;
+  },
+  clientKey?: string
+): Promise<SelfInspectionInstrumentUsageDto> {
+  const { data } = await api.post<{ usage: SelfInspectionInstrumentUsageDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/instrument-usages`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.usage;
+}
+
+export async function cancelSelfInspectionInstrumentUsage(
+  sessionId: string,
+  usageId: string,
+  clientKey?: string
+): Promise<SelfInspectionInstrumentUsageDto> {
+  const { data } = await api.delete<{ usage: SelfInspectionInstrumentUsageDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/instrument-usages/${usageId}`,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.usage;
 }
 
 export async function createSelfInspectionEntry(

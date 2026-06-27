@@ -239,6 +239,9 @@ import {
   listSelfInspectionRecordApprovals,
   getSelfInspectionRecordApprovalSession,
   getSelfInspectionSession,
+  registerSelfInspectionOperator,
+  registerSelfInspectionInstrumentUsage,
+  cancelSelfInspectionInstrumentUsage,
   createSelfInspectionEntry,
   updateSelfInspectionEntry,
   completeSelfInspectionSession,
@@ -498,6 +501,49 @@ export function useCompleteSelfInspectionSession() {
     onSuccess: (session) => {
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+    }
+  });
+}
+
+export function useRegisterSelfInspectionOperator() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId, employeeTagUid }: { sessionId: string; employeeTagUid: string }) =>
+      registerSelfInspectionOperator(sessionId, { employeeTagUid }),
+    onSuccess: (operator) => {
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', operator.sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+    }
+  });
+}
+
+export function useRegisterSelfInspectionInstrumentUsage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      body
+    }: {
+      sessionId: string;
+      body: Parameters<typeof registerSelfInspectionInstrumentUsage>[1];
+    }) => registerSelfInspectionInstrumentUsage(sessionId, body),
+    onSuccess: (usage, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', variables.sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
+    }
+  });
+}
+
+export function useCancelSelfInspectionInstrumentUsage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId, usageId }: { sessionId: string; usageId: string }) =>
+      cancelSelfInspectionInstrumentUsage(sessionId, usageId),
+    onSuccess: (usage, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', variables.sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
     }
   });
 }

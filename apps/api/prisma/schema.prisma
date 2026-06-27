@@ -125,6 +125,8 @@ model Employee {
   partMeasurementSheetsCreated  PartMeasurementSheet[] @relation("PartMeasurementSheetCreatedBy")
   partMeasurementSheetsFinalized PartMeasurementSheet[] @relation("PartMeasurementSheetFinalizedBy")
   selfInspectionLotEntries SelfInspectionLotEntry[]
+  selfInspectionOperatorSessions SelfInspectionSession[]
+  selfInspectionInstrumentUsages SelfInspectionInstrumentUsage[]
   selfInspectionRecordApprovals SelfInspectionRecordApproval[] @relation("SelfInspectionRecordApprover")
 }
 
@@ -161,6 +163,7 @@ model MeasuringInstrument {
   tags                  MeasuringInstrumentTag[]
   loans                 Loan[]
   selfInspectionLotEntries SelfInspectionLotEntry[]
+  selfInspectionInstrumentUsages SelfInspectionInstrumentUsage[]
 
   @@index([genreId])
 }
@@ -646,6 +649,7 @@ model Loan {
   transactions            Transaction[]
   InspectionRecord        InspectionRecord[]
   RiggingInspectionRecord RiggingInspectionRecord[]
+  selfInspectionInstrumentUsages SelfInspectionInstrumentUsage[]
 
   @@index([itemId])
   @@index([measuringInstrumentId])
@@ -2196,11 +2200,17 @@ model SelfInspectionSession {
   startedAt          DateTime?
   completedAt        DateTime?
   recordApprovalRequiredAt DateTime?
+  operatorEmployeeId String?
+  operatorEmployeeNameSnapshot String?
+  operatorEmployeeTagUidSnapshot String?
+  operatorRegisteredAt DateTime?
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
   template           PartMeasurementTemplate     @relation(fields: [templateId], references: [id], onDelete: Restrict)
   clientDevice       ClientDevice?               @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  operatorEmployee   Employee?                   @relation(fields: [operatorEmployeeId], references: [id], onDelete: SetNull)
   entries            SelfInspectionLotEntry[]
+  instrumentUsages   SelfInspectionInstrumentUsage[]
   paperReports       SelfInspectionPaperReport[]
   recordApproval     SelfInspectionRecordApproval?
 
@@ -2210,6 +2220,7 @@ model SelfInspectionSession {
   @@index([completedAt], map: "SelfInspectionSession_idx_completed_at")
   @@index([completedAt, updatedAt], map: "SelfInspectionSession_idx_completed_at_updated_at")
   @@index([recordApprovalRequiredAt], map: "SelfInspectionSession_idx_record_approval_required_at")
+  @@index([operatorEmployeeId], map: "SelfInspectionSession_idx_operator_employee")
 }
 
 model SelfInspectionLotEntry {
@@ -2233,6 +2244,33 @@ model SelfInspectionLotEntry {
   @@unique([sessionId, entryIndex], map: "SelfInspectionLotEntry_unique_session_entry")
   @@index([sessionId], map: "SelfInspectionLotEntry_idx_session")
   @@index([measuringInstrumentId], map: "SelfInspectionLotEntry_idx_measuring_instrument")
+}
+
+model SelfInspectionInstrumentUsage {
+  id                                           String                    @id @default(uuid())
+  sessionId                                    String
+  inspectionDateJst                            String                    @db.VarChar(10)
+  measuringInstrumentId                        String?
+  loanId                                       String?
+  registeredByEmployeeId                       String?
+  registeredByEmployeeNameSnapshot             String?
+  measuringInstrumentManagementNumberSnapshot  String
+  measuringInstrumentNameSnapshot              String
+  measuringInstrumentTagUidSnapshot            String?
+  registeredAt                                 DateTime                  @default(now())
+  cancelledAt                                  DateTime?
+  createdAt                                    DateTime                  @default(now())
+  updatedAt                                    DateTime                  @updatedAt
+  session                                      SelfInspectionSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  measuringInstrument                          MeasuringInstrument?      @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
+  loan                                         Loan?                     @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  registeredByEmployee                         Employee?                 @relation(fields: [registeredByEmployeeId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, inspectionDateJst], map: "SelfInspectionInstrumentUsage_idx_session_date")
+  @@index([measuringInstrumentId], map: "SelfInspectionInstrumentUsage_idx_instrument")
+  @@index([loanId], map: "SelfInspectionInstrumentUsage_idx_loan")
+  @@index([registeredByEmployeeId], map: "SelfInspectionInstrumentUsage_idx_registered_by")
+  @@index([cancelledAt], map: "SelfInspectionInstrumentUsage_idx_cancelled_at")
 }
 
 model SelfInspectionMeasurementValue {

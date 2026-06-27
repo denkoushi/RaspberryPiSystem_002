@@ -2,8 +2,7 @@ import {
   isSelfInspectionEntryDraftDirty,
   listDirtySelfInspectionEntryIndices
 } from './selfInspectionEntryDraft';
-import { isSelfInspectionSavedEntryRegistrationComplete } from './selfInspectionEntryRegistration';
-import { areRequiredSelfInspectionSlotsFilled, listSelfInspectionEntrySlots } from './selfInspectionEntrySlots';
+import { areRequiredSelfInspectionSlotsFilled } from './selfInspectionEntrySlots';
 import {
   buildEntryDrawingPoints,
   findFirstPendingPointId,
@@ -171,12 +170,8 @@ export function resolveSelfInspectionCompleteActionState(
     return disabledState('missing_required_entries');
   }
 
-  const requiredSlots = listSelfInspectionEntrySlots(context.session);
-  for (const slot of requiredSlots) {
-    const saved = context.session.entries.find((entry) => entry.entryIndex === slot.entryIndex);
-    if (!saved || !isSelfInspectionSavedEntryRegistrationComplete(saved)) {
-      return disabledState('incomplete_registration');
-    }
+  if (!context.session.operatorEmployeeId || context.session.activeInstrumentUsageCount <= 0) {
+    return disabledState('incomplete_registration');
   }
 
   if (context.session.recordApprovalRequiredAt && !context.session.recordApproval) {
@@ -257,9 +252,9 @@ export function selfInspectionActionReasonMessage(
     case 'record_approval_required':
       return '検査記録確認画面で承認すると自主検査が完了します。';
     case 'missing_registration':
-      return '測定者と測定機器のNFC登録が必要です。';
+      return '測定者のNFC登録が必要です。';
     case 'incomplete_registration':
-      return '未登録の測定者または測定機器がある入力件があります。';
+      return '測定者または当日の計測機器登録がありません。';
     case 'unsaved_changes':
       return '未保存の入力があります。「入力を保存」してから完了してください。';
     case 'already_guided':

@@ -71,6 +71,7 @@ export interface MeasuringInstrumentBorrowPayload {
   clientId?: string;
   dueAt?: string;
   note?: string | null;
+  allowExistingSameEmployee?: boolean;
 }
 
 export interface MeasuringInstrumentReturnPayload {

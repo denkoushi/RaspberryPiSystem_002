@@ -6,7 +6,13 @@ import { randomUUID } from 'node:crypto';
 
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
-import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
+import {
+  createAuthHeader,
+  createTestClientDevice,
+  createTestEmployee,
+  createTestMeasuringInstrumentWithTag,
+  createTestUser
+} from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -215,6 +221,68 @@ describe('measuring instrument genres integration', () => {
       employeeId: employee.id,
       result: 'PASS'
     });
+  });
+
+  it('reuses an active measuring instrument loan for the same employee only when explicitly allowed', async () => {
+    const { rfidTagUid } = await createTestMeasuringInstrumentWithTag({
+      name: `貸出再利用テスト-${randomUUID()}`,
+      managementNumber: `MI-REUSE-${Date.now()}`
+    });
+    const employee = await createTestEmployee({
+      displayName: `貸出再利用作業者-${randomUUID()}`,
+      nfcTagUid: `EMP-REUSE-${randomUUID()}`
+    });
+    const otherEmployee = await createTestEmployee({
+      displayName: `別作業者-${randomUUID()}`,
+      nfcTagUid: `EMP-OTHER-${randomUUID()}`
+    });
+
+    const firstBorrow = await app.inject({
+      method: 'POST',
+      url: '/api/measuring-instruments/borrow',
+      headers: {
+        ...createAuthHeader(adminToken),
+        'Content-Type': 'application/json'
+      },
+      payload: {
+        instrumentTagUid: rfidTagUid,
+        employeeTagUid: employee.nfcTagUid
+      }
+    });
+    expect(firstBorrow.statusCode).toBe(200);
+    const firstLoan = firstBorrow.json().loan as { id: string; employeeId: string };
+
+    const sameEmployeeBorrow = await app.inject({
+      method: 'POST',
+      url: '/api/measuring-instruments/borrow',
+      headers: {
+        ...createAuthHeader(adminToken),
+        'Content-Type': 'application/json'
+      },
+      payload: {
+        instrumentTagUid: rfidTagUid,
+        employeeTagUid: employee.nfcTagUid,
+        allowExistingSameEmployee: true
+      }
+    });
+    expect(sameEmployeeBorrow.statusCode).toBe(200);
+    expect((sameEmployeeBorrow.json().loan as { id: string }).id).toBe(firstLoan.id);
+
+    const otherEmployeeBorrow = await app.inject({
+      method: 'POST',
+      url: '/api/measuring-instruments/borrow',
+      headers: {
+        ...createAuthHeader(adminToken),
+        'Content-Type': 'application/json'
+      },
+      payload: {
+        instrumentTagUid: rfidTagUid,
+        employeeTagUid: otherEmployee.nfcTagUid,
+        allowExistingSameEmployee: true
+      }
+    });
+    expect(otherEmployeeBorrow.statusCode).toBe(400);
+    expect(otherEmployeeBorrow.json().message).toContain('すでに貸出中');
   });
 
   it('stores uploaded genre images under PHOTO_STORAGE_DIR and serves them back', async () => {

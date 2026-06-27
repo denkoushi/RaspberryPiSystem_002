@@ -320,6 +320,23 @@ const selfInspectionEntryIdParamsSchema = z.object({
   entryId: z.string().uuid()
 });
 
+const selfInspectionInstrumentUsageParamsSchema = z.object({
+  id: z.string().uuid(),
+  usageId: z.string().uuid()
+});
+
+const selfInspectionRegisterOperatorBodySchema = z.object({
+  employeeTagUid: z.string().min(1).max(200)
+});
+
+const selfInspectionRegisterInstrumentUsageBodySchema = z.object({
+  measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
+  measuringInstrumentId: z.string().uuid().optional().nullable(),
+  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  loanId: z.string().uuid().optional().nullable(),
+  inspectionDateJst: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable()
+});
+
 const selfInspectionEntryValueSchema = z.object({
   templateItemId: z.string().uuid(),
   value: z.union([z.string(), z.number(), z.null()]),
@@ -1522,6 +1539,25 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         })
       }
     };
+  });
+
+  app.post('/part-measurement/self-inspection/sessions/:id/operator', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+    const body = selfInspectionRegisterOperatorBodySchema.parse(request.body);
+    return { operator: await selfInspectionService.registerSessionOperator(params.id, body) };
+  });
+
+  app.post('/part-measurement/self-inspection/sessions/:id/instrument-usages', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+    const body = selfInspectionRegisterInstrumentUsageBodySchema.parse(request.body);
+    const usage = await selfInspectionService.registerInstrumentUsage(params.id, body);
+    return { usage };
+  });
+
+  app.delete('/part-measurement/self-inspection/sessions/:id/instrument-usages/:usageId', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = selfInspectionInstrumentUsageParamsSchema.parse(request.params);
+    const usage = await selfInspectionService.cancelInstrumentUsage(params.id, params.usageId);
+    return { usage };
   });
 
   app.post('/part-measurement/self-inspection/sessions/:id/entries', { preHandler: allowWriteKiosk }, async (request) => {

@@ -101,7 +101,8 @@ export const instrumentBorrowSchema = z.object({
   employeeTagUid: z.string().min(1),
   clientId: z.string().uuid().optional(),
   dueAt: z.coerce.date().optional(),
-  note: z.string().optional().nullable()
+  note: z.string().optional().nullable(),
+  allowExistingSameEmployee: z.boolean().optional()
 });
 
 export const instrumentReturnSchema = z.object({

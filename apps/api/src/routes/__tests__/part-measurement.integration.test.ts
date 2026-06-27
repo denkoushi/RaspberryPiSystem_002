@@ -2489,6 +2489,10 @@ describe('part-measurement templates API', () => {
         measuringInstrumentTagUidSnapshot: null
       }
     });
+    await prisma.selfInspectionInstrumentUsage.updateMany({
+      where: { sessionId },
+      data: { cancelledAt: new Date() }
+    });
 
     const recordApprovalRegistrationIncompleteRes = await app.inject({
       method: 'GET',

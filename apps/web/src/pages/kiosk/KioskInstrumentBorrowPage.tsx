@@ -9,6 +9,7 @@ import {
   getMeasuringInstrumentInspectionProfile,
   getMeasuringInstrumentByTagUid,
   getMeasuringInstrumentTags,
+  registerSelfInspectionInstrumentUsage,
   postClientLogs
 } from '../../api/client';
 import { useKioskConfig, useMeasuringInstruments } from '../../api/hooks';
@@ -28,6 +29,18 @@ import type { AxiosError } from 'axios';
 
 type InstrumentSource = 'select' | 'tag' | null;
 
+function resolveSafeKioskReturnPath(rawReturnTo: string | null, fallback: string): string {
+  if (!rawReturnTo) return fallback;
+  try {
+    const url = new URL(rawReturnTo, window.location.origin);
+    if (url.origin !== window.location.origin) return fallback;
+    if (!url.pathname.startsWith('/kiosk/')) return fallback;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
 export function KioskInstrumentBorrowPage() {
   const { data: instruments, isLoading: isLoadingInstruments } = useMeasuringInstruments();
   const { data: kioskConfig } = useKioskConfig();
@@ -37,7 +50,11 @@ export function KioskInstrumentBorrowPage() {
   const resolvedClientId = undefined;
 
   // defaultModeに基づいて戻り先を決定
-  const returnPath = kioskConfig?.defaultMode === 'PHOTO' ? '/kiosk/photo' : '/kiosk/tag';
+  const defaultReturnPath = kioskConfig?.defaultMode === 'PHOTO' ? '/kiosk/photo' : '/kiosk/tag';
+  const requestedReturnPath = searchParams.get('returnTo');
+  const selfInspectionSessionId = searchParams.get('selfInspectionSessionId')?.trim() || null;
+  const initialEmployeeTagUid = searchParams.get('employeeTagUid')?.trim() ?? '';
+  const returnPath = resolveSafeKioskReturnPath(requestedReturnPath, defaultReturnPath);
 
   const [selectedInstrumentId, setSelectedInstrumentId] = useState('');
   const [instrumentSource, setInstrumentSource] = useState<InstrumentSource>(null);
@@ -53,6 +70,7 @@ export function KioskInstrumentBorrowPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNg, setIsNg] = useState(false);
   const employeeTagInputRef = useRef<HTMLInputElement>(null);
+  const employeePrefilledFromQueryRef = useRef(false);
   // スコープ分離: このページがアクティブな場合のみNFCを有効にする
   const isActiveRoute = useMatch('/kiosk/instruments/borrow');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
@@ -87,6 +105,10 @@ export function KioskInstrumentBorrowPage() {
     const initialTag = searchParams.get('tagUid');
     if (initialTag) {
       setInstrumentTagUid(initialTag);
+    }
+    if (initialEmployeeTagUid) {
+      setEmployeeTagUid(initialEmployeeTagUid);
+      employeePrefilledFromQueryRef.current = true;
     }
     // 一度だけ評価
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -231,7 +253,8 @@ export function KioskInstrumentBorrowPage() {
     try {
       const loan = await borrowMeasuringInstrument({
         instrumentTagUid: resolvedInstrumentTagUid.trim(),
-        employeeTagUid
+        employeeTagUid,
+        allowExistingSameEmployee: Boolean(selfInspectionSessionId)
       });
       // NGの場合は点検記録を作成しない（個別項目の記録は不要）
       setMessage(`持出登録完了（NG）: Loan ID = ${loan.id}`);
@@ -306,9 +329,13 @@ export function KioskInstrumentBorrowPage() {
         employeeTagUid: string;
         instrumentTagUid?: string;
         instrumentId?: string;
+        allowExistingSameEmployee?: boolean;
       } = {
         employeeTagUid: effectiveEmployeeUid
       };
+      if (selfInspectionSessionId) {
+        payload.allowExistingSameEmployee = true;
+      }
       const tagUid = resolvedInstrumentTagUid.trim();
       if (tagUid) {
         payload.instrumentTagUid = tagUid;
@@ -331,6 +358,14 @@ export function KioskInstrumentBorrowPage() {
           })
         );
         await Promise.all(tasks);
+      }
+      if (selfInspectionSessionId) {
+        await registerSelfInspectionInstrumentUsage(selfInspectionSessionId, {
+          measuringInstrumentTagUid: tagUid || undefined,
+          measuringInstrumentId: selectedInstrumentId || undefined,
+          employeeTagUid: effectiveEmployeeUid,
+          loanId: loan.id
+        }, resolvedClientKey);
       }
       setMessage(`持出登録完了: Loan ID = ${loan.id}`);
       resetForm();
@@ -393,7 +428,8 @@ export function KioskInstrumentBorrowPage() {
     navigate,
     returnPath,
     resolvedClientId,
-    resolvedClientKey
+    resolvedClientKey,
+    selfInspectionSessionId
   ]);
 
   // NFCエージェントのイベントを処理（計測機器→氏名タグの順で自動送信）
@@ -433,6 +469,7 @@ export function KioskInstrumentBorrowPage() {
 
     // 2枚目のスキャンは氏名タグとみなす（setStateは次描画まで反映されないため、APIは nfcEvent.uid を明示渡しする）
     if (!employeeTagUid) {
+      employeePrefilledFromQueryRef.current = false;
       setEmployeeTagUid(nfcEvent.uid);
       if (isNg || isSubmitting) {
         return;
@@ -461,7 +498,8 @@ export function KioskInstrumentBorrowPage() {
       !employeeTagUid.trim() ||
       !hasInstrument ||
       isNg ||
-      isSubmitting
+      isSubmitting ||
+      (selfInspectionSessionId && employeePrefilledFromQueryRef.current)
     ) {
       return;
     }
@@ -470,7 +508,7 @@ export function KioskInstrumentBorrowPage() {
       handleSubmit();
     }, 500);
     return () => clearTimeout(timeoutId);
-  }, [employeeTagUid, hasInstrument, isNg, isSubmitting, handleSubmit, resolvedInstrumentTagUid]);
+  }, [employeeTagUid, hasInstrument, isNg, isSubmitting, handleSubmit, resolvedInstrumentTagUid, selfInspectionSessionId]);
 
   return (
     <div className="flex h-dvh min-h-0 flex-col gap-6 p-6">
@@ -482,15 +520,28 @@ export function KioskInstrumentBorrowPage() {
               statusMessage={message}
               trailing={
                 inspectionItems.length > 0 ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className={clsx('rounded-lg px-[18px] py-2 text-sm', isNg && 'bg-red-500 text-white hover:bg-red-600')}
-                    onClick={handleNg}
-                    disabled={isSubmitting || !hasInstrument || !employeeTagUid.trim() || !genreReady}
-                  >
-                    NGにする
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {selfInspectionSessionId ? (
+                      <Button
+                        type="button"
+                        variant="primary"
+                        className="rounded-lg px-[18px] py-2 text-sm"
+                        onClick={() => void handleSubmit()}
+                        disabled={isSubmitting || !hasInstrument || !employeeTagUid.trim() || !genreReady}
+                      >
+                        OKにする
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className={clsx('rounded-lg px-[18px] py-2 text-sm', isNg && 'bg-red-500 text-white hover:bg-red-600')}
+                      onClick={handleNg}
+                      disabled={isSubmitting || !hasInstrument || !employeeTagUid.trim() || !genreReady}
+                    >
+                      NGにする
+                    </Button>
+                  </div>
                 ) : undefined
               }
             />
@@ -533,7 +584,10 @@ export function KioskInstrumentBorrowPage() {
                 instrumentInputDisabled={instrumentSource === 'select' && Boolean(resolvedInstrumentTagUid)}
                 instrumentRequired={selectedInstrumentId.trim().length === 0}
                 employeeTagUid={employeeTagUid}
-                onEmployeeTagUidChange={setEmployeeTagUid}
+                onEmployeeTagUidChange={(value) => {
+                  employeePrefilledFromQueryRef.current = false;
+                  setEmployeeTagUid(value);
+                }}
                 onEmployeeKeyDown={(e) => {
                   if (e.key === 'Enter' && !isNg && !isSubmitting && employeeTagUid.trim() && hasInstrument) {
                     e.preventDefault();

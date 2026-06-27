@@ -87,7 +87,31 @@ export function makeSelfInspectionSessionDetailForTest(
     startedAt: now,
     completedAt: null,
     recordApprovalRequiredAt: null,
+    operatorEmployeeId: 'emp-1',
+    operatorEmployeeNameSnapshot: 'Tester',
+    operatorEmployeeTagUidSnapshot: 'emp-tag',
+    operatorRegisteredAt: now,
     recordApproval: null,
+    currentInspectionDateJst: '2026-06-04',
+    activeInstrumentUsageCount: 1,
+    instrumentUsages: [
+      {
+        id: 'usage-1',
+        sessionId: options.id ?? 'session-1',
+        inspectionDateJst: '2026-06-04',
+        measuringInstrumentId: 'inst-1',
+        loanId: 'loan-1',
+        registeredByEmployeeId: 'emp-1',
+        registeredByEmployeeNameSnapshot: 'Tester',
+        measuringInstrumentManagementNumberSnapshot: 'MI-001',
+        measuringInstrumentNameSnapshot: 'Caliper',
+        measuringInstrumentTagUidSnapshot: 'inst-tag',
+        registeredAt: now,
+        cancelledAt: null,
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
     updatedAt: now,
     template: {
       id: templateId,

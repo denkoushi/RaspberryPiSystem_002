@@ -14,6 +14,7 @@ export interface InstrumentBorrowInput {
   clientId?: string;
   dueAt?: Date;
   note?: string | null;
+  allowExistingSameEmployee?: boolean;
 }
 
 export interface InstrumentReturnInput {
@@ -79,9 +80,17 @@ export class MeasuringInstrumentLoanService {
     }
 
     const existingLoan = await prisma.loan.findFirst({
-      where: { measuringInstrumentId: instrument.id, returnedAt: null, cancelledAt: null }
+      where: { measuringInstrumentId: instrument.id, returnedAt: null, cancelledAt: null },
+      include: { measuringInstrument: true, employee: true, client: true }
     });
     if (existingLoan) {
+      if (input.allowExistingSameEmployee && existingLoan.employeeId === employee.id) {
+        logger.info(
+          { loanId: existingLoan.id, instrumentId: instrument.id, employeeId: employee.id },
+          'Instrument borrow reused existing same-employee loan'
+        );
+        return existingLoan as LoanWithRelations;
+      }
       throw new ApiError(400, 'この計測機器はすでに貸出中です');
     }
 

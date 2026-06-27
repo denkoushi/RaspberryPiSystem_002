@@ -2,9 +2,12 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
+import { resolveSelfInspectionNfcTagUid } from '../../api/client';
 import {
+  useCancelSelfInspectionInstrumentUsage,
   useCompleteSelfInspectionSession,
   useCreateSelfInspectionEntry,
+  useRegisterSelfInspectionOperator,
   useResetSelfInspectionSession,
   useResolveSelfInspectionSession,
   useSelfInspectionSession,
@@ -30,7 +33,6 @@ import {
 } from '../../features/part-measurement/selfInspectionEntryDraft';
 import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionEntrySlots';
 import { SelfInspectionKioskButton } from '../../features/part-measurement/SelfInspectionKioskButton';
-import { SelfInspectionNfcRegistrationPanel } from '../../features/part-measurement/SelfInspectionNfcRegistrationPanel';
 import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
 import {
   hasDirtySelfInspectionDrafts,
@@ -51,9 +53,9 @@ import {
 } from '../../features/part-measurement/selfInspectionSessionDrawingPanelState';
 import { resolveSelfInspectionRequiredEntryCount } from '../../features/part-measurement/selfInspectionSessionEntryCount';
 import { SelfInspectionSessionHeader } from '../../features/part-measurement/SelfInspectionSessionHeader';
+import { SelfInspectionSessionNfcPanel } from '../../features/part-measurement/SelfInspectionSessionNfcPanel';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useSelfInspectionGuidedFocus } from '../../features/part-measurement/useSelfInspectionGuidedFocus';
-import { useSelfInspectionNfcRegistration } from '../../features/part-measurement/useSelfInspectionNfcRegistration';
 import { useSelfInspectionWorkbenchCameraExperiment } from '../../features/part-measurement/useSelfInspectionWorkbenchCameraExperiment';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
@@ -127,10 +129,16 @@ export function KioskSelfInspectionSessionPage() {
   const updateEntryMutation = useUpdateSelfInspectionEntry();
   const completeSessionMutation = useCompleteSelfInspectionSession();
   const resetSessionMutation = useResetSelfInspectionSession();
+  const registerOperatorMutation = useRegisterSelfInspectionOperator();
+  const cancelInstrumentUsageMutation = useCancelSelfInspectionInstrumentUsage();
+  const initialEntryIndex = useMemo(() => {
+    const raw = Number.parseInt(searchParams.get('entryIndex') ?? '0', 10);
+    return Number.isFinite(raw) && raw >= 0 ? raw : 0;
+  }, [searchParams]);
   const [resetPhase, setResetPhase] = useState<null | 'destructive' | 'completed'>(null);
   const [resolvedSessionId, setResolvedSessionId] = useState<string | null>(sessionId ?? null);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
-  const [selectedEntryIndex, setSelectedEntryIndex] = useState(0);
+  const [selectedEntryIndex, setSelectedEntryIndex] = useState(initialEntryIndex);
   const [entryIndexPage, setEntryIndexPage] = useState(0);
   const [draftValuesByEntryIndex, setDraftValuesByEntryIndex] = useState<Record<number, Record<string, string>>>({});
   const [savedDraftByEntryIndex, setSavedDraftByEntryIndex] = useState<Record<number, Record<string, string>>>({});
@@ -143,8 +151,10 @@ export function KioskSelfInspectionSessionPage() {
   const [draftBoundKey, setDraftBoundKey] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [sessionNfcMessage, setSessionNfcMessage] = useState<string | null>(null);
   const resolveAttemptedRef = useRef(false);
   const persistInFlightRef = useRef(false);
+  const lastNfcEventKeyRef = useRef<string | null>(null);
   const isActiveRoute = useMatch('/kiosk/part-measurement/self-inspection/sessions/:sessionId');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
 
@@ -166,13 +176,6 @@ export function KioskSelfInspectionSessionPage() {
   const requiredEntryCount = session ? resolveSelfInspectionRequiredEntryCount(session) : 0;
   const isSessionIdentityReady = Boolean(session && resolvedSessionId && session.id === resolvedSessionId);
   const isSessionReadOnly = Boolean(session?.completedAt || session?.entryCountBlockedReason);
-  const { registration, registrationPayload, registrationDirty, hasUnsavedRegistrationDrafts } =
-    useSelfInspectionNfcRegistration({
-    session,
-    selectedEntryIndex,
-    nfcEvent,
-    enabled: Boolean(isActiveRoute && session && !isSessionReadOnly)
-  });
   const { workbenchCameraEnabled, toggleWorkbenchCamera } = useSelfInspectionWorkbenchCameraExperiment({
     onLog: (cameraMetrics) => {
       console.debug('[self-inspection workbench camera experiment]', cameraMetrics);
@@ -198,17 +201,17 @@ export function KioskSelfInspectionSessionPage() {
   useEffect(() => {
     const currentSession = latestSessionRef.current;
     if (!session?.id || !currentSession) return;
-    setEntryIndexPage(0);
-    setSelectedEntryIndex(0);
+    setEntryIndexPage(selfInspectionEntryPageForEntryIndex(currentSession, initialEntryIndex));
+    setSelectedEntryIndex(initialEntryIndex);
     setSelectedPointId(null);
     setDraftBoundKey(null);
-    const binding = createSelfInspectionEntryDraftBinding(currentSession, 0);
-    setDraftValuesByEntryIndex({ 0: binding.draft });
-    setSavedDraftByEntryIndex({ 0: binding.saved });
+    const binding = createSelfInspectionEntryDraftBinding(currentSession, initialEntryIndex);
+    setDraftValuesByEntryIndex({ [initialEntryIndex]: binding.draft });
+    setSavedDraftByEntryIndex({ [initialEntryIndex]: binding.saved });
     setOutOfToleranceAcknowledgedByEntryIndex({});
     setPendingOutOfToleranceCommit(null);
     setDraftBoundKey(binding.boundKey);
-  }, [session?.id]);
+  }, [initialEntryIndex, session?.id]);
 
   const focusedEntry = session?.focusedEntry;
 
@@ -348,6 +351,72 @@ export function KioskSelfInspectionSessionPage() {
       });
   }, [navigate, resolvedSessionId, startState, startStateKey, resolveMutation]);
 
+  useEffect(() => {
+    if (!nfcEvent || !session || !isSessionIdentityReady || isSessionReadOnly) return;
+    const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
+    if (lastNfcEventKeyRef.current === eventKey) return;
+    lastNfcEventKeyRef.current = eventKey;
+
+    let cancelled = false;
+    const handleNfc = async () => {
+      setSessionNfcMessage('NFCタグを確認しています。');
+      try {
+        const result = await resolveSelfInspectionNfcTagUid(nfcEvent.uid);
+        if (cancelled) return;
+        if (result.kind === 'unknown') {
+          setSessionNfcMessage('未登録のNFCタグです。');
+          return;
+        }
+        if (result.kind === 'duplicate') {
+          setSessionNfcMessage('同一タグが社員と計測機器の両方に登録されています。');
+          return;
+        }
+        if (result.kind === 'instrument_unavailable') {
+          setSessionNfcMessage('廃棄済みの計測機器は自主検査に使用できません。');
+          return;
+        }
+        if (result.kind === 'employee') {
+          await registerOperatorMutation.mutateAsync({
+            sessionId: session.id,
+            employeeTagUid: result.employee.nfcTagUid
+          });
+          if (!cancelled) {
+            setSessionNfcMessage(`作業者を登録しました：${result.employee.displayName}`);
+          }
+          return;
+        }
+        if (!session.operatorEmployeeId || !session.operatorEmployeeTagUidSnapshot) {
+          setSessionNfcMessage('先に氏名タグをスキャンしてください。');
+          return;
+        }
+        const returnTo = `${kioskSelfInspectionSessionPath(session.id)}?entryIndex=${selectedEntryIndex}`;
+        navigate(
+          `/kiosk/instruments/borrow?tagUid=${encodeURIComponent(result.instrument.tagUid)}` +
+            `&returnTo=${encodeURIComponent(returnTo)}` +
+            `&selfInspectionSessionId=${encodeURIComponent(session.id)}` +
+            `&employeeTagUid=${encodeURIComponent(session.operatorEmployeeTagUidSnapshot)}`
+        );
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setSessionNfcMessage(readApiErrorMessage(error, 'NFCタグの処理に失敗しました。'));
+        }
+      }
+    };
+
+    void handleNfc();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isSessionIdentityReady,
+    isSessionReadOnly,
+    navigate,
+    nfcEvent,
+    registerOperatorMutation,
+    selectedEntryIndex,
+    session
+  ]);
+
   const entryPageCount = session ? selfInspectionEntryPageCountForSession(session) : 1;
   const visibleEntrySlots = useMemo(
     () => (session ? selfInspectionEntrySlotsForPage(session, entryIndexPage) : []),
@@ -389,8 +458,8 @@ export function KioskSelfInspectionSessionPage() {
       isDrawingCanvasReady,
       guideMode,
       guideActionsEnabled,
-      entryRegistrationReady: registration.isReady && registration.status !== 'duplicate',
-      entryRegistrationDirty: registrationDirty,
+      entryRegistrationReady: Boolean(session.operatorEmployeeId),
+      entryRegistrationDirty: false,
       outOfToleranceAcknowledgedByEntryIndex
     };
   }, [
@@ -401,9 +470,6 @@ export function KioskSelfInspectionSessionPage() {
     isDrawingCanvasReady,
     isSavingEntry,
     isSessionReadOnly,
-    registration.isReady,
-    registration.status,
-    registrationDirty,
     savedDraftByEntryIndex,
     selectedEntryIndex,
     outOfToleranceAcknowledgedByEntryIndex,
@@ -437,16 +503,14 @@ export function KioskSelfInspectionSessionPage() {
 
   const hasUnsavedDraftChangesForReset = useMemo(() => {
     if (!session) return false;
-    return (
-      hasDirtySelfInspectionDrafts(session, draftValuesByEntryIndex, savedDraftByEntryIndex) ||
-      hasUnsavedRegistrationDrafts
-    );
-  }, [draftValuesByEntryIndex, hasUnsavedRegistrationDrafts, savedDraftByEntryIndex, session]);
+    return hasDirtySelfInspectionDrafts(session, draftValuesByEntryIndex, savedDraftByEntryIndex);
+  }, [draftValuesByEntryIndex, savedDraftByEntryIndex, session]);
 
-  const isSessionInputLocked = isSessionReadOnly || isCompletingSession || isEntryFocusFetching;
+  const isSessionInputLocked =
+    isSessionReadOnly || isCompletingSession || isEntryFocusFetching || !session?.operatorEmployeeId;
 
   const resetDestructiveDescriptionText = hasUnsavedDraftChangesForReset
-    ? '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。未保存の入力またはNFC登録があります。リセットすると破棄されます。'
+    ? '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。未保存の入力があります。リセットすると破棄されます。'
     : '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。';
 
   const runSessionReset = async (confirmCompletedSessionReset: boolean) => {
@@ -486,8 +550,8 @@ export function KioskSelfInspectionSessionPage() {
       isDrawingCanvasReady,
       guideMode,
       guideActionsEnabled,
-      entryRegistrationReady: registration.isReady && registration.status !== 'duplicate',
-      entryRegistrationDirty: registrationDirty,
+      entryRegistrationReady: Boolean(session.operatorEmployeeId),
+      entryRegistrationDirty: false,
       outOfToleranceAcknowledgedByEntryIndex
     });
     if (!saveState.enabled) {
@@ -495,15 +559,10 @@ export function KioskSelfInspectionSessionPage() {
       if (message) setActionError(message);
       return null;
     }
-    if (!registrationPayload) {
-      setActionError(selfInspectionActionReasonMessage('missing_registration'));
-      return null;
-    }
     persistInFlightRef.current = true;
     setActionError(null);
     const acknowledgedByPointId = outOfToleranceAcknowledgedByEntryIndex[entryIndex] ?? {};
     const payload = {
-      ...registrationPayload,
       values: session.template.items.map((item) => ({
         templateItemId: item.id,
         value: draft[item.id] ?? '',
@@ -589,6 +648,17 @@ export function KioskSelfInspectionSessionPage() {
       await completeSessionMutation.mutateAsync(session.id);
     } catch (error: unknown) {
       setActionError(readApiErrorMessage(error, '完了処理に失敗しました。'));
+    }
+  };
+
+  const cancelInstrumentUsage = async (usageId: string) => {
+    if (!session || isSessionReadOnly) return;
+    setActionError(null);
+    try {
+      await cancelInstrumentUsageMutation.mutateAsync({ sessionId: session.id, usageId });
+      setSessionNfcMessage('計測機器登録を取り消しました。');
+    } catch (error: unknown) {
+      setActionError(readApiErrorMessage(error, '計測機器登録の取消に失敗しました。'));
     }
   };
 
@@ -790,7 +860,13 @@ export function KioskSelfInspectionSessionPage() {
         </div>
 
         <div className="flex min-h-0 min-w-0 flex-col gap-2 xl:w-[360px] xl:shrink-0">
-          <SelfInspectionNfcRegistrationPanel registration={registration} />
+          <SelfInspectionSessionNfcPanel
+            session={session}
+            message={sessionNfcMessage}
+            busy={registerOperatorMutation.isPending || cancelInstrumentUsageMutation.isPending}
+            readOnly={isSessionReadOnly}
+            onCancelUsage={(usageId) => void cancelInstrumentUsage(usageId)}
+          />
 
           <div className="shrink-0 rounded border border-white/15 bg-slate-800/70 p-2">
             <div className="flex flex-wrap items-center justify-between gap-2">

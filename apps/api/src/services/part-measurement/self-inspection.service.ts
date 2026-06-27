@@ -21,7 +21,10 @@ import { assertMeasuringInstrumentAvailableForSelfInspection } from './self-insp
 import { assertSelfInspectionEntryRegistrationTagUids } from './self-inspection-registration-tag-validation.js';
 import { collectParticipantEmployeeNames } from './self-inspection-participant-names.js';
 import { loadParticipantEmployeeNamesBySessionIds } from './self-inspection-participant-names.query.js';
-import { isSelfInspectionLotEntryRegistrationComplete } from './self-inspection-nfc-tag-resolve.js';
+import {
+  resolveInspectionDateJst,
+  resolveSelfInspectionEffectiveDateJst
+} from './self-inspection-jst-date.js';
 
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import {
@@ -68,6 +71,23 @@ const listSessionsSummaryInclude = {
   _count: { select: { entries: true } }
 } as const;
 
+const selfInspectionInstrumentUsageSelect = {
+  id: true,
+  sessionId: true,
+  inspectionDateJst: true,
+  measuringInstrumentId: true,
+  loanId: true,
+  registeredByEmployeeId: true,
+  registeredByEmployeeNameSnapshot: true,
+  measuringInstrumentManagementNumberSnapshot: true,
+  measuringInstrumentNameSnapshot: true,
+  measuringInstrumentTagUidSnapshot: true,
+  registeredAt: true,
+  cancelledAt: true,
+  createdAt: true,
+  updatedAt: true
+} as const;
+
 const recordApprovalSessionInclude = {
   template: { include: partMeasurementTemplateFullInclude },
   entries: {
@@ -96,6 +116,11 @@ const recordApprovalSessionInclude = {
         }
       }
     }
+  },
+  instrumentUsages: {
+    where: { cancelledAt: null },
+    orderBy: { registeredAt: 'asc' },
+    select: selfInspectionInstrumentUsageSelect
   },
   recordApproval: true,
   _count: { select: { entries: true } }
@@ -693,6 +718,63 @@ function serializeResetNewSession(session: {
   };
 }
 
+type SelfInspectionInstrumentUsageSource = {
+  id: string;
+  sessionId: string;
+  inspectionDateJst: string;
+  measuringInstrumentId: string | null;
+  loanId: string | null;
+  registeredByEmployeeId: string | null;
+  registeredByEmployeeNameSnapshot: string | null;
+  measuringInstrumentManagementNumberSnapshot: string;
+  measuringInstrumentNameSnapshot: string;
+  measuringInstrumentTagUidSnapshot: string | null;
+  registeredAt: Date;
+  cancelledAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function serializeSessionOperator(session: {
+  operatorEmployeeId?: string | null;
+  operatorEmployeeNameSnapshot?: string | null;
+  operatorEmployeeTagUidSnapshot?: string | null;
+  operatorRegisteredAt?: Date | null;
+}) {
+  return {
+    operatorEmployeeId: session.operatorEmployeeId ?? null,
+    operatorEmployeeNameSnapshot: session.operatorEmployeeNameSnapshot ?? null,
+    operatorEmployeeTagUidSnapshot: session.operatorEmployeeTagUidSnapshot ?? null,
+    operatorRegisteredAt: session.operatorRegisteredAt?.toISOString() ?? null
+  };
+}
+
+function serializeSelfInspectionInstrumentUsage(usage: SelfInspectionInstrumentUsageSource) {
+  return {
+    id: usage.id,
+    sessionId: usage.sessionId,
+    inspectionDateJst: usage.inspectionDateJst,
+    measuringInstrumentId: usage.measuringInstrumentId,
+    loanId: usage.loanId,
+    registeredByEmployeeId: usage.registeredByEmployeeId,
+    registeredByEmployeeNameSnapshot: usage.registeredByEmployeeNameSnapshot,
+    measuringInstrumentManagementNumberSnapshot: usage.measuringInstrumentManagementNumberSnapshot,
+    measuringInstrumentNameSnapshot: usage.measuringInstrumentNameSnapshot,
+    measuringInstrumentTagUidSnapshot: usage.measuringInstrumentTagUidSnapshot,
+    registeredAt: usage.registeredAt.toISOString(),
+    cancelledAt: usage.cancelledAt?.toISOString() ?? null,
+    createdAt: usage.createdAt.toISOString(),
+    updatedAt: usage.updatedAt.toISOString()
+  };
+}
+
+function activeInstrumentUsagesForInspectionDate(
+  usages: SelfInspectionInstrumentUsageSource[] | undefined,
+  inspectionDateJst: string
+): SelfInspectionInstrumentUsageSource[] {
+  return (usages ?? []).filter((usage) => usage.cancelledAt == null && usage.inspectionDateJst === inspectionDateJst);
+}
+
 function serializeSessionSummary(
   session: SessionSummarySource | SessionWithCounts,
   participantEmployeeNames: string[] = [],
@@ -734,6 +816,7 @@ function serializeSessionSummary(
     startedAt: session.startedAt?.toISOString() ?? null,
     completedAt: session.completedAt?.toISOString() ?? null,
     recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
+    ...serializeSessionOperator(session),
     updatedAt: session.updatedAt.toISOString()
   };
 }
@@ -830,9 +913,14 @@ function buildRecordApprovalReadiness(session: RecordApprovalSessionSource): {
     if (hasMissingValue) {
       incompleteValueEntryCount += 1;
     }
-    if (!isSelfInspectionLotEntryRegistrationComplete(entry)) {
-      incompleteRegistrationEntryCount += 1;
-    }
+  }
+
+  const inspectionDateJst = resolveSelfInspectionEffectiveDateJst(session);
+  const hasSessionRegistration =
+    Boolean(session.operatorEmployeeId) &&
+    activeInstrumentUsagesForInspectionDate(session.instrumentUsages, inspectionDateJst).length > 0;
+  if (!hasSessionRegistration && requiredSlots.length > 0) {
+    incompleteRegistrationEntryCount = requiredSlots.length;
   }
 
   const pendingReviewCount = pendingReviewCountFromRecordApprovalSession(session);
@@ -903,7 +991,10 @@ function serializeRecordApprovalEntryDetail(
     };
   });
   const hasMissingValue = values.some((value) => value.value == null);
-  const registrationComplete = entry ? isSelfInspectionLotEntryRegistrationComplete(entry) : false;
+  const inspectionDateJst = resolveSelfInspectionEffectiveDateJst(session);
+  const registrationComplete =
+    Boolean(session.operatorEmployeeId) &&
+    activeInstrumentUsagesForInspectionDate(session.instrumentUsages, inspectionDateJst).length > 0;
   const state = !entry || hasMissingValue
     ? 'input_incomplete'
     : !registrationComplete
@@ -993,6 +1084,284 @@ export class SelfInspectionService {
     };
   }
 
+  private async resolveMeasuringInstrumentForUsage(
+    db: Prisma.TransactionClient | typeof prisma,
+    input: {
+      measuringInstrumentTagUid?: string | null;
+      measuringInstrumentId?: string | null;
+    }
+  ): Promise<{
+    measuringInstrumentId: string;
+    measuringInstrumentManagementNumberSnapshot: string;
+    measuringInstrumentNameSnapshot: string;
+    measuringInstrumentTagUidSnapshot: string | null;
+  }> {
+    const tag = (input.measuringInstrumentTagUid ?? '').trim();
+    if (tag) {
+      const instrumentTag = await db.measuringInstrumentTag.findUnique({
+        where: { rfidTagUid: tag },
+        include: { measuringInstrument: true }
+      });
+      if (!instrumentTag?.measuringInstrument) {
+        throw new ApiError(404, '計測機器が登録されていません');
+      }
+      assertMeasuringInstrumentAvailableForSelfInspection(instrumentTag.measuringInstrument);
+      return {
+        measuringInstrumentId: instrumentTag.measuringInstrument.id,
+        measuringInstrumentManagementNumberSnapshot: instrumentTag.measuringInstrument.managementNumber,
+        measuringInstrumentNameSnapshot: instrumentTag.measuringInstrument.name,
+        measuringInstrumentTagUidSnapshot: tag
+      };
+    }
+    const id = (input.measuringInstrumentId ?? '').trim();
+    if (!id) {
+      throw new ApiError(400, '測定機器のNFCタグまたはIDが必要です');
+    }
+    const instrument = await db.measuringInstrument.findUnique({
+      where: { id },
+      select: { id: true, managementNumber: true, name: true, status: true }
+    });
+    if (!instrument) {
+      throw new ApiError(404, '計測機器が登録されていません');
+    }
+    assertMeasuringInstrumentAvailableForSelfInspection(instrument);
+    return {
+      measuringInstrumentId: instrument.id,
+      measuringInstrumentManagementNumberSnapshot: instrument.managementNumber,
+      measuringInstrumentNameSnapshot: instrument.name,
+      measuringInstrumentTagUidSnapshot: null
+    };
+  }
+
+  async registerSessionOperator(sessionId: string, input: { employeeTagUid: string }) {
+    const tag = input.employeeTagUid.trim();
+    if (!tag) {
+      throw new ApiError(400, '測定者のNFCタグが必要です');
+    }
+    const result = await prisma.$transaction(async (tx) => {
+      await this.lockSessionRow(tx, sessionId);
+      const session = await tx.selfInspectionSession.findUnique({
+        where: { id: sessionId },
+        select: {
+          id: true,
+          completedAt: true,
+          operatorEmployeeId: true,
+          operatorEmployeeNameSnapshot: true,
+          operatorEmployeeTagUidSnapshot: true,
+          operatorRegisteredAt: true
+        }
+      });
+      if (!session) {
+        throw new ApiError(404, '自主検査セッションが見つかりません');
+      }
+      if (session.completedAt) {
+        throw new ApiError(409, '完了済みの自主検査は編集できません');
+      }
+      const employee = await tx.employee.findFirst({
+        where: { nfcTagUid: tag },
+        select: { id: true, displayName: true, nfcTagUid: true, status: true }
+      });
+      if (!employee?.nfcTagUid) {
+        throw new ApiError(404, '従業員が登録されていません');
+      }
+      const duplicateInstrumentTag = await tx.measuringInstrumentTag.findUnique({
+        where: { rfidTagUid: tag },
+        select: { id: true }
+      });
+      if (duplicateInstrumentTag) {
+        throw new ApiError(409, '同一タグが社員と計測機器の両方に登録されています');
+      }
+      if (session.operatorEmployeeId) {
+        if (session.operatorEmployeeId !== employee.id) {
+          throw new ApiError(409, '別の測定者が既に登録されています');
+        }
+        return session;
+      }
+      return tx.selfInspectionSession.update({
+        where: { id: sessionId },
+        data: {
+          operatorEmployeeId: employee.id,
+          operatorEmployeeNameSnapshot: employee.displayName,
+          operatorEmployeeTagUidSnapshot: employee.nfcTagUid,
+          operatorRegisteredAt: new Date()
+        },
+        select: {
+          id: true,
+          operatorEmployeeId: true,
+          operatorEmployeeNameSnapshot: true,
+          operatorEmployeeTagUidSnapshot: true,
+          operatorRegisteredAt: true
+        }
+      });
+    });
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+    return {
+      sessionId: result.id,
+      ...serializeSessionOperator(result)
+    };
+  }
+
+  async registerInstrumentUsage(sessionId: string, input: {
+    measuringInstrumentTagUid?: string | null;
+    measuringInstrumentId?: string | null;
+    employeeTagUid?: string | null;
+    loanId?: string | null;
+    inspectionDateJst?: string | null;
+  }) {
+    const inspectionDateJst = input.inspectionDateJst?.trim() || resolveInspectionDateJst();
+    const result = await prisma.$transaction(async (tx) => {
+      await this.lockSessionRow(tx, sessionId);
+      const session = await tx.selfInspectionSession.findUnique({
+        where: { id: sessionId },
+        select: {
+          id: true,
+          completedAt: true,
+          operatorEmployeeId: true,
+          operatorEmployeeNameSnapshot: true,
+          operatorEmployeeTagUidSnapshot: true
+        }
+      });
+      if (!session) {
+        throw new ApiError(404, '自主検査セッションが見つかりません');
+      }
+      if (session.completedAt) {
+        throw new ApiError(409, '完了済みの自主検査は編集できません');
+      }
+      if (!session.operatorEmployeeId) {
+        throw new ApiError(409, '先に測定者タグをスキャンしてください');
+      }
+
+      const instrument = await this.resolveMeasuringInstrumentForUsage(tx, input);
+      let registeredByEmployeeId = session.operatorEmployeeId;
+      let registeredByEmployeeNameSnapshot = session.operatorEmployeeNameSnapshot;
+      const employeeTag = (input.employeeTagUid ?? '').trim();
+      if (employeeTag) {
+        const employee = await tx.employee.findFirst({
+          where: { nfcTagUid: employeeTag },
+          select: { id: true, displayName: true }
+        });
+        if (!employee) {
+          throw new ApiError(404, '従業員が登録されていません');
+        }
+        if (employee.id !== session.operatorEmployeeId) {
+          throw new ApiError(409, '自主検査の測定者と持出者が一致しません');
+        }
+        registeredByEmployeeId = employee.id;
+        registeredByEmployeeNameSnapshot = employee.displayName;
+      }
+
+      const loanId = (input.loanId ?? '').trim() || null;
+      if (loanId) {
+        const loan = await tx.loan.findUnique({
+          where: { id: loanId },
+          select: { measuringInstrumentId: true, employeeId: true, returnedAt: true, cancelledAt: true }
+        });
+        if (!loan || loan.measuringInstrumentId !== instrument.measuringInstrumentId) {
+          throw new ApiError(400, '持出記録と計測機器が一致しません');
+        }
+        if (loan.employeeId !== session.operatorEmployeeId) {
+          throw new ApiError(409, '自主検査の測定者と持出者が一致しません');
+        }
+        if (loan.returnedAt || loan.cancelledAt) {
+          throw new ApiError(409, '有効な持出記録ではありません');
+        }
+      }
+
+      const existing = await tx.selfInspectionInstrumentUsage.findFirst({
+        where: {
+          sessionId,
+          inspectionDateJst,
+          measuringInstrumentId: instrument.measuringInstrumentId,
+          cancelledAt: null
+        },
+        select: selfInspectionInstrumentUsageSelect
+      });
+      if (existing) {
+        if (loanId && existing.loanId !== loanId) {
+          return tx.selfInspectionInstrumentUsage.update({
+            where: { id: existing.id },
+            data: { loanId },
+            select: selfInspectionInstrumentUsageSelect
+          });
+        }
+        return existing;
+      }
+
+      try {
+        return await tx.selfInspectionInstrumentUsage.create({
+          data: {
+            sessionId,
+            inspectionDateJst,
+            measuringInstrumentId: instrument.measuringInstrumentId,
+            loanId,
+            registeredByEmployeeId,
+            registeredByEmployeeNameSnapshot,
+            measuringInstrumentManagementNumberSnapshot:
+              instrument.measuringInstrumentManagementNumberSnapshot,
+            measuringInstrumentNameSnapshot: instrument.measuringInstrumentNameSnapshot,
+            measuringInstrumentTagUidSnapshot: instrument.measuringInstrumentTagUidSnapshot
+          },
+          select: selfInspectionInstrumentUsageSelect
+        });
+      } catch (error) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+          throw error;
+        }
+        const raced = await tx.selfInspectionInstrumentUsage.findFirst({
+          where: {
+            sessionId,
+            inspectionDateJst,
+            measuringInstrumentId: instrument.measuringInstrumentId,
+            cancelledAt: null
+          },
+          select: selfInspectionInstrumentUsageSelect
+        });
+        if (!raced) {
+          throw error;
+        }
+        return raced;
+      }
+    });
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+    return serializeSelfInspectionInstrumentUsage(result);
+  }
+
+  async cancelInstrumentUsage(sessionId: string, usageId: string) {
+    const result = await prisma.$transaction(async (tx) => {
+      await this.lockSessionRow(tx, sessionId);
+      const session = await tx.selfInspectionSession.findUnique({
+        where: { id: sessionId },
+        select: { completedAt: true }
+      });
+      if (!session) {
+        throw new ApiError(404, '自主検査セッションが見つかりません');
+      }
+      if (session.completedAt) {
+        throw new ApiError(409, '完了済みの自主検査は編集できません');
+      }
+      const usage = await tx.selfInspectionInstrumentUsage.findFirst({
+        where: { id: usageId, sessionId },
+        select: { id: true, cancelledAt: true }
+      });
+      if (!usage) {
+        throw new ApiError(404, '計測機器登録が見つかりません');
+      }
+      if (usage.cancelledAt) {
+        return tx.selfInspectionInstrumentUsage.findUniqueOrThrow({
+          where: { id: usageId },
+          select: selfInspectionInstrumentUsageSelect
+        });
+      }
+      return tx.selfInspectionInstrumentUsage.update({
+        where: { id: usageId },
+        data: { cancelledAt: new Date() },
+        select: selfInspectionInstrumentUsageSelect
+      });
+    });
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+    return serializeSelfInspectionInstrumentUsage(result);
+  }
+
   private entryRegistrationFromRow(entry: {
     createdByEmployeeId: string | null;
     createdByEmployeeNameSnapshot: string | null;
@@ -1064,8 +1433,6 @@ export class SelfInspectionService {
           instrument.measuringInstrumentManagementNumberSnapshot;
         measuringInstrumentNameSnapshot = instrument.measuringInstrumentNameSnapshot;
         measuringInstrumentTagUidSnapshot = instrument.measuringInstrumentTagUidSnapshot;
-      } else if (isNew) {
-        throw new ApiError(400, '測定機器のNFCタグが必要です');
       }
     }
 
@@ -1119,6 +1486,88 @@ export class SelfInspectionService {
     return Object.keys(data).length > 0 ? data : null;
   }
 
+  private async ensureSessionRegistrationFromEntryRegistration(
+    db: Prisma.TransactionClient,
+    sessionId: string,
+    registration: {
+      createdByEmployeeId: string | null;
+      createdByEmployeeNameSnapshot: string | null;
+      measuringInstrumentId: string | null;
+      measuringInstrumentManagementNumberSnapshot: string | null;
+      measuringInstrumentNameSnapshot: string | null;
+      measuringInstrumentTagUidSnapshot: string | null;
+    }
+  ) {
+    if (!registration.createdByEmployeeId) {
+      return;
+    }
+    const session = await db.selfInspectionSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        operatorEmployeeId: true,
+        operatorEmployeeNameSnapshot: true,
+        operatorEmployeeTagUidSnapshot: true
+      }
+    });
+    if (!session) {
+      throw new ApiError(404, '自主検査セッションが見つかりません');
+    }
+    if (session.operatorEmployeeId && session.operatorEmployeeId !== registration.createdByEmployeeId) {
+      throw new ApiError(409, '別の測定者が既に登録されています');
+    }
+    if (!session.operatorEmployeeId) {
+      const employee = await db.employee.findUnique({
+        where: { id: registration.createdByEmployeeId },
+        select: { nfcTagUid: true }
+      });
+      await db.selfInspectionSession.update({
+        where: { id: sessionId },
+        data: {
+          operatorEmployeeId: registration.createdByEmployeeId,
+          operatorEmployeeNameSnapshot: registration.createdByEmployeeNameSnapshot,
+          operatorEmployeeTagUidSnapshot: employee?.nfcTagUid ?? null,
+          operatorRegisteredAt: new Date()
+        }
+      });
+    }
+
+    if (!registration.measuringInstrumentId) {
+      return;
+    }
+    const inspectionDateJst = resolveInspectionDateJst();
+    const existing = await db.selfInspectionInstrumentUsage.findFirst({
+      where: {
+        sessionId,
+        inspectionDateJst,
+        measuringInstrumentId: registration.measuringInstrumentId,
+        cancelledAt: null
+      },
+      select: { id: true }
+    });
+    if (existing) {
+      return;
+    }
+    try {
+      await db.selfInspectionInstrumentUsage.create({
+        data: {
+          sessionId,
+          inspectionDateJst,
+          measuringInstrumentId: registration.measuringInstrumentId,
+          registeredByEmployeeId: registration.createdByEmployeeId,
+          registeredByEmployeeNameSnapshot: registration.createdByEmployeeNameSnapshot,
+          measuringInstrumentManagementNumberSnapshot:
+            registration.measuringInstrumentManagementNumberSnapshot ?? '',
+          measuringInstrumentNameSnapshot: registration.measuringInstrumentNameSnapshot ?? '',
+          measuringInstrumentTagUidSnapshot: registration.measuringInstrumentTagUidSnapshot
+        }
+      });
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+        throw error;
+      }
+    }
+  }
+
   private async resolveRegistrationPatchForUpdate(
     existingEntry: {
       createdByEmployeeId: string | null;
@@ -1151,13 +1600,13 @@ export class SelfInspectionService {
       measuringInstrumentTagUid: pendingInstrumentTag || null
     });
 
-    if (!existingEntry.createdByEmployeeId) {
+    if (!existingEntry.createdByEmployeeId && (input.employeeTagUid ?? '').trim()) {
       const actor = await this.resolveEntryActorRequired(input.employeeTagUid);
       patch.createdByEmployeeId = actor.createdByEmployeeId;
       patch.createdByEmployeeNameSnapshot = actor.createdByEmployeeNameSnapshot;
     }
 
-    if (!existingEntry.measuringInstrumentId) {
+    if (!existingEntry.measuringInstrumentId && (input.measuringInstrumentTagUid ?? '').trim()) {
       const instrument = await this.resolveMeasuringInstrumentByTag(input.measuringInstrumentTagUid);
       patch.measuringInstrumentId = instrument.measuringInstrumentId;
       patch.measuringInstrumentManagementNumberSnapshot =
@@ -1587,6 +2036,11 @@ export class SelfInspectionService {
           }
         },
         recordApproval: true,
+        instrumentUsages: {
+          where: { cancelledAt: null },
+          orderBy: { registeredAt: 'asc' },
+          select: selfInspectionInstrumentUsageSelect
+        },
         _count: { select: { entries: true } }
       }
     });
@@ -1616,6 +2070,11 @@ export class SelfInspectionService {
     const templateConfig = templateConfigFromTemplate(session.template);
     const pendingReviewCounts = await loadPendingReviewCountsBySessionIds(prisma, [session.id]);
     const pendingReviewCount = pendingReviewCounts.get(session.id) ?? 0;
+    const currentInspectionDateJst = resolveSelfInspectionEffectiveDateJst(session);
+    const instrumentUsages = activeInstrumentUsagesForInspectionDate(
+      session.instrumentUsages,
+      currentInspectionDateJst
+    );
     return {
       id: session.id,
       sessionBusinessKey: session.sessionBusinessKey,
@@ -1648,6 +2107,10 @@ export class SelfInspectionService {
       startedAt: session.startedAt?.toISOString() ?? null,
       completedAt: session.completedAt?.toISOString() ?? null,
       recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
+      ...serializeSessionOperator(session),
+      currentInspectionDateJst,
+      activeInstrumentUsageCount: instrumentUsages.length,
+      instrumentUsages: instrumentUsages.map(serializeSelfInspectionInstrumentUsage),
       recordApproval: serializeRecordApproval(session.recordApproval),
       updatedAt: session.updatedAt.toISOString(),
       template: session.template,
@@ -1814,22 +2277,24 @@ export class SelfInspectionService {
     }
   }
 
-  private async assertAllEntriesHaveRegistration(db: Prisma.TransactionClient, sessionId: string) {
-    const entries = await db.selfInspectionLotEntry.findMany({
-      where: { sessionId },
-      select: {
-        entryIndex: true,
-        createdByEmployeeId: true,
-        measuringInstrumentId: true
+  private async assertSessionRegistrationReady(db: Prisma.TransactionClient, sessionId: string) {
+    const session = await db.selfInspectionSession.findUnique({
+      where: { id: sessionId },
+      select: { operatorEmployeeId: true, completedAt: true }
+    });
+    if (!session?.operatorEmployeeId) {
+      throw new ApiError(409, '測定者が未登録のため完了できません');
+    }
+    const inspectionDateJst = resolveSelfInspectionEffectiveDateJst(session);
+    const usageCount = await db.selfInspectionInstrumentUsage.count({
+      where: {
+        sessionId,
+        inspectionDateJst,
+        cancelledAt: null
       }
     });
-    for (const entry of entries) {
-      if (!isSelfInspectionLotEntryRegistrationComplete(entry)) {
-        throw new ApiError(
-          409,
-          `入力件 ${entry.entryIndex + 1} の測定者または測定機器が未登録のため完了できません`
-        );
-      }
+    if (usageCount === 0) {
+      throw new ApiError(409, '計測機器が未登録のため完了できません');
     }
   }
 
@@ -1961,12 +2426,19 @@ export class SelfInspectionService {
         input.values,
         existingAtIndex?.values ?? []
       );
+      const registrationInput = {
+        ...input,
+        createdByEmployeeId: input.createdByEmployeeId ?? session.operatorEmployeeId ?? null,
+        createdByEmployeeNameSnapshot:
+          input.createdByEmployeeNameSnapshot ?? session.operatorEmployeeNameSnapshot ?? null
+      };
       if (existingAtIndex) {
         this.assertLotEntryValuesMatchPayload(existingAtIndex, values);
         const registration = await this.resolveRegistrationForCreateEntry(
           this.entryRegistrationFromRow(existingAtIndex),
-          input
+          registrationInput
         );
+        await this.ensureSessionRegistrationFromEntryRegistration(tx, sessionId, registration);
         const backfillData = this.buildRegistrationBackfillData(existingAtIndex, registration);
         if (backfillData) {
           const backfilled = await tx.selfInspectionLotEntry.update({
@@ -1976,13 +2448,14 @@ export class SelfInspectionService {
           });
           return this.serializeLotEntry(backfilled);
         }
-        if (!isSelfInspectionLotEntryRegistrationComplete(existingAtIndex)) {
-          throw new ApiError(400, '測定者または測定機器のNFCタグが必要です');
+        if (!existingAtIndex.createdByEmployeeId) {
+          throw new ApiError(400, '測定者のNFCタグが必要です');
         }
         return this.serializeLotEntry(existingAtIndex);
       }
 
-      const registration = await this.resolveRegistrationForCreateEntry(null, input);
+      const registration = await this.resolveRegistrationForCreateEntry(null, registrationInput);
+      await this.ensureSessionRegistrationFromEntryRegistration(tx, sessionId, registration);
 
       try {
         const entry = await tx.selfInspectionLotEntry.create({
@@ -2025,8 +2498,9 @@ export class SelfInspectionService {
         this.assertLotEntryValuesMatchPayload(raced, values);
         const racedRegistration = await this.resolveRegistrationForCreateEntry(
           this.entryRegistrationFromRow(raced),
-          input
+          registrationInput
         );
+        await this.ensureSessionRegistrationFromEntryRegistration(tx, sessionId, racedRegistration);
         const backfillData = this.buildRegistrationBackfillData(raced, racedRegistration);
         if (backfillData) {
           const backfilled = await tx.selfInspectionLotEntry.update({
@@ -2036,8 +2510,8 @@ export class SelfInspectionService {
           });
           return this.serializeLotEntry(backfilled);
         }
-        if (!isSelfInspectionLotEntryRegistrationComplete(raced)) {
-          throw new ApiError(400, '測定者または測定機器のNFCタグが必要です');
+        if (!raced.createdByEmployeeId) {
+          throw new ApiError(400, '測定者のNFCタグが必要です');
         }
         return this.serializeLotEntry(raced);
       }
@@ -2068,8 +2542,14 @@ export class SelfInspectionService {
         throw new ApiError(404, '自主検査入力が見つかりません');
       }
       assertEntryUnmodifiedSince(input.ifUnmodifiedSince, existingEntry.updatedAt);
-      const registrationPatch = await this.resolveRegistrationPatchForUpdate(existingEntry, input);
+      const registrationPatch = await this.resolveRegistrationPatchForUpdate(existingEntry, {
+        ...input,
+        employeeTagUid: input.employeeTagUid ?? session.operatorEmployeeTagUidSnapshot ?? null
+      });
       const values = this.validateMeasurementPayload(session.template, input.values, existingEntry.values);
+      if (!existingEntry.createdByEmployeeId && !registrationPatch.createdByEmployeeId) {
+        throw new ApiError(400, '測定者のNFCタグが必要です');
+      }
       const locked = await tx.selfInspectionLotEntry.updateMany({
         where: { id: entryId, sessionId, updatedAt: existingEntry.updatedAt },
         data: {
@@ -2100,6 +2580,11 @@ export class SelfInspectionService {
         where: { id: entryId },
         include: { values: true }
       });
+      await this.ensureSessionRegistrationFromEntryRegistration(
+        tx,
+        sessionId,
+        this.entryRegistrationFromRow(updated)
+      );
       return this.serializeLotEntry(updated);
     });
     resetSelfInspectionMachineBoardScheduleRowCaches();
@@ -2144,7 +2629,7 @@ export class SelfInspectionService {
       ) {
         throw new ApiError(409, '必要件数に達していないため完了できません');
       }
-      await this.assertAllEntriesHaveRegistration(tx, sessionId);
+      await this.assertSessionRegistrationReady(tx, sessionId);
       await this.assertAllEntriesReviewReady(tx, sessionId, existing.template);
       const finalized = await tx.selfInspectionSession.updateMany({
         where: { id: sessionId, completedAt: null },
@@ -2396,7 +2881,7 @@ export class SelfInspectionService {
       ) {
         throw new ApiError(409, '必要件数に達していないため承認完了できません');
       }
-      await this.assertAllEntriesHaveRegistration(tx, sessionId);
+      await this.assertSessionRegistrationReady(tx, sessionId);
 
       const approvedAt = new Date();
       await tx.selfInspectionMeasurementValue.updateMany({

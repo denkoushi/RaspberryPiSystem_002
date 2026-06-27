@@ -139,6 +139,22 @@ describe('selfInspectionSessionActionState', () => {
     expect(state.reason).toBeNull();
   });
 
+  it('save is enabled with operator registration even when no instrument is registered yet', () => {
+    const session = makeContext().session;
+    session.activeInstrumentUsageCount = 0;
+    session.instrumentUsages = [];
+    const state = resolveSelfInspectionSaveActionState(
+      makeContext({
+        session,
+        draftValuesByEntryIndex: { 0: { p1: '10.01', p2: '10' } },
+        savedDraftByEntryIndex: { 0: { p1: '10', p2: '10' } },
+        entryRegistrationReady: true
+      })
+    );
+    expect(state.enabled).toBe(true);
+    expect(state.reason).toBeNull();
+  });
+
   it('complete is disabled when required slots are missing', () => {
     const state = resolveSelfInspectionCompleteActionState(makeContext());
     expect(state.enabled).toBe(false);
@@ -262,9 +278,11 @@ describe('selfInspectionSessionActionState', () => {
     expect(selfInspectionActionReasonMessage(state.reason)).toContain('検査記録確認画面');
   });
 
-  it('complete is disabled when saved entries lack registration', () => {
+  it('complete is disabled when no instrument is registered for the inspection date', () => {
     const session = makeContext().session;
     const now = '2026-06-04T00:00:00.000Z';
+    session.activeInstrumentUsageCount = 0;
+    session.instrumentUsages = [];
     session.entries = [
       {
         id: 'e0',

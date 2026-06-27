@@ -215,6 +215,10 @@ export type SelfInspectionSessionSummaryDto = {
   startedAt: string | null;
   completedAt: string | null;
   recordApprovalRequiredAt: string | null;
+  operatorEmployeeId?: string | null;
+  operatorEmployeeNameSnapshot?: string | null;
+  operatorEmployeeTagUidSnapshot?: string | null;
+  operatorRegisteredAt?: string | null;
   updatedAt: string;
 };
 
@@ -300,6 +304,23 @@ export type SelfInspectionLotEntryDto = {
   values: SelfInspectionMeasurementValueDto[];
 };
 
+export type SelfInspectionInstrumentUsageDto = {
+  id: string;
+  sessionId: string;
+  inspectionDateJst: string;
+  measuringInstrumentId: string | null;
+  loanId: string | null;
+  registeredByEmployeeId: string | null;
+  registeredByEmployeeNameSnapshot: string | null;
+  measuringInstrumentManagementNumberSnapshot: string;
+  measuringInstrumentNameSnapshot: string;
+  measuringInstrumentTagUidSnapshot: string | null;
+  registeredAt: string;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type SelfInspectionRecordApprovalEntryValueDto = {
   id: string | null;
   templateItemId: string;
@@ -335,6 +356,9 @@ export type SelfInspectionRecordApprovalSessionDetailDto =
 export type SelfInspectionSessionDetailDto = SelfInspectionSessionSummaryDto & {
   recordApproval: SelfInspectionRecordApprovalDto | null;
   template: PartMeasurementTemplateDto;
+  currentInspectionDateJst: string;
+  activeInstrumentUsageCount: number;
+  instrumentUsages: SelfInspectionInstrumentUsageDto[];
   /** 測定値は含まない（大量件数対策）。値は focusedEntry を参照 */
   entries: SelfInspectionLotEntryDto[];
   /** `entryIndex` クエリ指定時のみ、当該入力件の測定値 */
