@@ -4699,7 +4699,19 @@ Status: implemented in PR375.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR376 And Later: Thin Indexes And Split Large Documents
+### PR376: Thin Split PDF Signage Index Block
+
+Status: implemented in PR376.
+
+- Thin only the 2026-01-08 SPLIT mode left/right PDF display latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the content response, `pdfsById`,
+  renderer, web display, independent slideshow validation, CI, and deploy
+  details with short links to KB-154 and the signage module doc.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR377 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
