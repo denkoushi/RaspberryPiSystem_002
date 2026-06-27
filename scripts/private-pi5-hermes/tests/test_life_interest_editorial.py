@@ -134,6 +134,19 @@ class LifeInterestEditorialTests(unittest.TestCase):
         self.assertIn("want to open", contract_text)
         self.assertEqual(client.calls[0]["style_guide"]["tone"], "friendly, curious, concise, lightly conversational")
 
+    def test_item_note_number_prefix_is_stripped_from_rendered_message(self) -> None:
+        client = FakeEditorialClient(_raw_editorial(item_notes=["1: 先に見ておく価値があります。"]))
+
+        result = render_editorial_interest_digest(
+            (_item(),),
+            config=EditorialDigestConfig(enabled=True, max_chars=1800),
+            client=client,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertIn("見どころ: 先に見ておく価値があります。", result.message)
+        self.assertNotIn("見どころ: 1:", result.message)
+
     def test_build_digest_uses_editorial_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             digest = build_interest_digest(
