@@ -803,6 +803,18 @@ git diff --check
 | DGX `system-prod-trtllm` | Up |
 | DGX `dgx-private-comfyui` | Exited。Hermes 業務 profile 起動を優先するため停止したまま |
 
+**Discord manual E2E（2026-06-27 15:48-16:40 JST）**:
+
+| 項目 | 結果 |
+|------|------|
+| `/task List files in workspace` | OK。Discord から tools profile が起動し、`/workspace` の 7 ファイルを read-only で列挙 |
+| `/task Create e2e-20260627-1549.txt in workspace with content ok` | OK。Discord に write 承認依頼が即時表示され、`yes` 後に `/home/hermes/.hermes-tools/workspace/e2e-20260627-1549.txt` を作成 |
+| `/interest` | OK。初回は既存 session 状態で `Unknown command /interest`。`/reset` 後に `今日見るなら` の通常 digest を返した。`hermes_agent_issues: HTTPError` は一部取得失敗として表示されたが、DGX Spark Forum 候補で digest は成立 |
+| `/interest like 1` | OK。`興味ありとして記録しました`、`boundary=local-only/no-tools` |
+| `/interest more vLLM` | OK。`好みに反映しました: vllm`、`boundary=local-only/no-tools` |
+| 朝 check-in | 部分OK。2026-06-27 07:30 JST の既存 scheduled send は `sent=1`。post-deploy の現行コードを送信なしで評価し、生成文は候補1件、返信3択、debug 行なし |
+| 空候補時 | OK（実配置コードを Pi5 上の一時 storage root + fake sender で確認）。朝 check-in は `sent=0` / `skipped_no_candidate=1`、interest 定期 dispatch は `sent=0` / `skipped_empty=1` |
+
 **Troubleshooting（実機）**:
 
 | 症状 | 原因 | 対処 |
@@ -812,7 +824,6 @@ git diff --check
 
 **Open items**:
 
-- Discord 手動 E2E（`/task` read-only と承認つき write、`/interest`、朝 check-in の実 UI 表示）は未実施。playbook smoke と unit/integration は通過済み。
 - `dgx-private-comfyui` は停止中。ComfyUI を使う前に、`system-prod-trtllm` との GPU メモリ競合をどちら優先にするか判断する。
 - SSD boot 移行は未実施。Hermes 運用が安定してから [ssd-migration.md](../guides/ssd-migration.md) の Private Pi5 Hermes チェックリストで進める。
 
