@@ -52,6 +52,9 @@ try:
     from .life_reminder_scheduler import send_discord_channel_message
     from .discord_novel_bridge import run_novel_bridge_async
     from .novel_request import NovelRequest
+    from .discord_research_bridge import run_research_bridge_async
+    from .research_profile_runner import render_research_usage
+    from .research_request import ResearchRequest
     from .novel_profile_runner import NovelProfilePaths, render_novel_usage
     from .task_request import TaskRequest
 except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
@@ -99,6 +102,9 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
     from life_reminder_scheduler import send_discord_channel_message
     from discord_novel_bridge import run_novel_bridge_async
     from novel_request import NovelRequest
+    from discord_research_bridge import run_research_bridge_async
+    from research_profile_runner import render_research_usage
+    from research_request import ResearchRequest
     from novel_profile_runner import NovelProfilePaths, render_novel_usage
     from task_request import TaskRequest
 
@@ -131,6 +137,11 @@ def _task_bridge_enabled() -> bool:
 def _novel_bridge_enabled() -> bool:
     """True when Ansible explicitly enabled the Discord novel bridge."""
     return (_plugin_dir() / "novel-bridge.enabled").is_file()
+
+
+def _research_bridge_enabled() -> bool:
+    """True when Ansible explicitly enabled the Discord research bridge."""
+    return (_plugin_dir() / "research-bridge.enabled").is_file()
 
 
 def _daily_pilot_enabled() -> bool:
@@ -390,6 +401,14 @@ async def _handle_novel_command(raw_args: str) -> str:
     if not request.prompt:
         return render_novel_usage()
     return await run_novel_bridge_async(request)
+
+
+async def _handle_ask_command(raw_args: str) -> str:
+    """Run isolated web research work off the Discord gateway asyncio loop."""
+    request = ResearchRequest.from_text(raw_args)
+    if not request.prompt:
+        return render_research_usage()
+    return await run_research_bridge_async(request)
 
 
 async def _handle_daily_command(raw_args: str) -> str:
@@ -656,12 +675,20 @@ def register(ctx) -> None:
     """Register bridge commands matching deployed capabilities (policy / novel .env)."""
     life_enabled = _life_pilot_enabled()
     task_enabled = _task_bridge_enabled()
+    research_enabled = _research_bridge_enabled()
     if _daily_pilot_enabled():
         ctx.register_command(
             "daily",
             handler=_handle_daily_command,
             description="Draft a safe daily-use Markdown handoff without execution",
             args_hint="<memo or request>",
+        )
+    if research_enabled:
+        ctx.register_command(
+            "ask",
+            handler=_handle_ask_command,
+            description="Research the web with the isolated built-in web profile",
+            args_hint="<question>",
         )
     if life_enabled:
         ctx.register_command(

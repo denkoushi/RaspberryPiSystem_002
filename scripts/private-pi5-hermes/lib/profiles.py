@@ -68,10 +68,21 @@ NOVEL_PROFILE = HermesProfileSpec(
     expected_gateway_active=False,
 )
 
+RESEARCH_PROFILE = HermesProfileSpec(
+    name="research",
+    data_dir_name="hermes-research",
+    systemd_unit="hermes-research-gateway",
+    discord_enabled=False,
+    tools_enabled=True,
+    enabled_toolsets=frozenset({"web"}),
+    expected_gateway_active=False,
+)
+
 PROFILES_BY_NAME: dict[str, HermesProfileSpec] = {
     CHAT_PROFILE.name: CHAT_PROFILE,
     TOOLS_PROFILE.name: TOOLS_PROFILE,
     NOVEL_PROFILE.name: NOVEL_PROFILE,
+    RESEARCH_PROFILE.name: RESEARCH_PROFILE,
     "tools-d2": TOOLS_PROFILE_D2,
     "tools-d3": TOOLS_PROFILE_D3,
     "tools-d4": TOOLS_PROFILE_D4,

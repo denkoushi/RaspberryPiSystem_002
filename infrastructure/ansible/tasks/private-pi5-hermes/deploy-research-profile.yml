@@ -1,0 +1,72 @@
+---
+- name: Ensure Hermes research data directory exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_research_data_dir }}"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
+
+- name: Ensure Hermes research isolated HOME exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_research_home }}"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
+
+- name: Ensure Hermes research config directory exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_research_config_dir }}"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
+
+- name: Deploy Hermes research boundary policy reference
+  ansible.builtin.copy:
+    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/boundary-policy.tools.yaml"
+    dest: "{{ private_pi5_hermes_research_data_dir }}/boundary-policy.tools.yaml"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0644"
+
+- name: Emit Hermes research security blocklist
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/validate_boundary_policy.py"
+      - --emit-hermes-security
+  delegate_to: localhost
+  become: false
+  register: private_pi5_hermes_research_security_emit
+  changed_when: false
+
+- name: Set Hermes website blocklist domains for research template
+  ansible.builtin.set_fact:
+    private_pi5_hermes_research_website_blocklist_domains: >-
+      {{
+        (
+          (private_pi5_hermes_research_security_emit.stdout | from_json).hermes_security.website_blocklist.domains
+          | default([])
+        )
+      }}
+  when:
+    - private_pi5_hermes_research_security_emit is defined
+    - private_pi5_hermes_research_security_emit.rc == 0
+
+- name: Deploy Hermes research config.yaml
+  ansible.builtin.template:
+    src: "../../templates/private-pi5-hermes/config.research.yaml.j2"
+    dest: "{{ private_pi5_hermes_research_config_dir }}/config.yaml"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0600"
+
+- name: Deploy Hermes research .env (secrets + DGX runtime)
+  ansible.builtin.template:
+    src: "../../templates/private-pi5-hermes/env.research.j2"
+    dest: "{{ private_pi5_hermes_research_data_dir }}/.env"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0600"

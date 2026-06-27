@@ -19,6 +19,16 @@
     private_pi5_hermes_novel_home: "{{ private_pi5_hermes_novel_data_dir }}/home"
     private_pi5_hermes_novel_config_dir: "{{ private_pi5_hermes_novel_home }}/.hermes"
     private_pi5_hermes_novel_model_profile_id: "qwen36_35b_uncensored"
+    private_pi5_hermes_research_data_dir: "{{ private_pi5_hermes_home }}/.hermes-research"
+    private_pi5_hermes_research_home: "{{ private_pi5_hermes_research_data_dir }}/home"
+    private_pi5_hermes_research_config_dir: "{{ private_pi5_hermes_research_home }}/.hermes"
+    private_pi5_hermes_research_official_web_backends:
+      - ""
+      - firecrawl
+      - searxng
+      - parallel
+      - tavily
+      - exa
     private_pi5_hermes_life_data_dir: "{{ private_pi5_hermes_home }}/.hermes-life"
     private_pi5_hermes_life_obsidian_vault_dir: "{{ private_pi5_hermes_life_data_dir }}/obsidian/HermesLife"
     private_pi5_hermes_life_reminder_scheduler_active: >-
@@ -198,6 +208,20 @@
           }}
       when: private_pi5_hermes_novel_profile_enabled | default(false) | bool
 
+    - name: Resolve Hermes research DGX token from inventory
+      ansible.builtin.set_fact:
+        private_pi5_hermes_research_dgx_llm_token_resolved: >-
+          {{ hostvars[inventory_hostname].get('private_pi5_hermes_research_dgx_llm_token', '') | trim }}
+        private_pi5_hermes_research_effective_dgx_llm_token: >-
+          {{
+            hostvars[inventory_hostname].get('private_pi5_hermes_research_dgx_llm_token', '') | trim
+            if (hostvars[inventory_hostname].get('private_pi5_hermes_research_dgx_llm_token', '') | trim) | length > 0
+            else private_pi5_hermes_chat_dgx_llm_token
+          }}
+      when: >
+        private_pi5_hermes_research_profile_enabled | default(false) | bool or
+        private_pi5_hermes_discord_research_bridge_enabled | default(false) | bool
+
     - name: Validate Hermes novel profile requires runtime control token
       ansible.builtin.assert:
         that:
@@ -216,6 +240,85 @@
           Discord novel bridge (private_pi5_hermes_discord_novel_bridge_enabled: true)
           requires novel profile and chat gateway (Discord) enabled.
       when: private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool
+
+    - name: Validate Hermes Discord research bridge prerequisites
+      ansible.builtin.assert:
+        that:
+          - private_pi5_hermes_research_profile_enabled | default(false) | bool
+          - private_pi5_hermes_gateway_enabled | default(false) | bool
+          - (private_pi5_dgx_runtime_control_token | default('') | trim) | length > 0
+          - (private_pi5_hermes_research_effective_dgx_llm_token | default('') | trim) | length > 0
+        fail_msg: >-
+          Discord research bridge (private_pi5_hermes_discord_research_bridge_enabled: true)
+          requires research profile, chat gateway, DGX runtime control token, and a research/chat DGX token.
+      when: private_pi5_hermes_discord_research_bridge_enabled | default(false) | bool
+
+    - name: Validate Hermes research web provider prerequisites
+      ansible.builtin.assert:
+        that:
+          - (private_pi5_hermes_research_web_backend | default('') | trim | lower) in private_pi5_hermes_research_official_web_backends
+          - (private_pi5_hermes_research_web_search_backend | default('') | trim | lower) in private_pi5_hermes_research_official_web_backends
+          - (private_pi5_hermes_research_web_extract_backend | default('') | trim | lower) in private_pi5_hermes_research_official_web_backends
+          - >-
+            ((private_pi5_hermes_research_firecrawl_api_key | default('') | trim) | length > 0)
+            or ((private_pi5_hermes_research_firecrawl_api_url | default('') | trim) | length > 0)
+            or ((private_pi5_hermes_research_tavily_api_key | default('') | trim) | length > 0)
+            or ((private_pi5_hermes_research_exa_api_key | default('') | trim) | length > 0)
+            or ((private_pi5_hermes_research_parallel_api_key | default('') | trim) | length > 0)
+            or ((private_pi5_hermes_research_searxng_url | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_backend | default('') | trim | lower) != 'searxng'
+            or ((private_pi5_hermes_research_searxng_url | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_search_backend | default('') | trim | lower) != 'searxng'
+            or ((private_pi5_hermes_research_searxng_url | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_extract_backend | default('') | trim | lower) != 'searxng'
+            or ((private_pi5_hermes_research_searxng_url | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_backend | default('') | trim | lower) != 'firecrawl'
+            or ((private_pi5_hermes_research_firecrawl_api_key | default('') | trim) | length > 0)
+            or ((private_pi5_hermes_research_firecrawl_api_url | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_search_backend | default('') | trim | lower) != 'firecrawl'
+            or ((private_pi5_hermes_research_firecrawl_api_key | default('') | trim) | length > 0)
+            or ((private_pi5_hermes_research_firecrawl_api_url | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_extract_backend | default('') | trim | lower) != 'firecrawl'
+            or ((private_pi5_hermes_research_firecrawl_api_key | default('') | trim) | length > 0)
+            or ((private_pi5_hermes_research_firecrawl_api_url | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_backend | default('') | trim | lower) != 'tavily'
+            or ((private_pi5_hermes_research_tavily_api_key | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_search_backend | default('') | trim | lower) != 'tavily'
+            or ((private_pi5_hermes_research_tavily_api_key | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_extract_backend | default('') | trim | lower) != 'tavily'
+            or ((private_pi5_hermes_research_tavily_api_key | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_backend | default('') | trim | lower) != 'exa'
+            or ((private_pi5_hermes_research_exa_api_key | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_search_backend | default('') | trim | lower) != 'exa'
+            or ((private_pi5_hermes_research_exa_api_key | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_extract_backend | default('') | trim | lower) != 'exa'
+            or ((private_pi5_hermes_research_exa_api_key | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_backend | default('') | trim | lower) != 'parallel'
+            or ((private_pi5_hermes_research_parallel_api_key | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_search_backend | default('') | trim | lower) != 'parallel'
+            or ((private_pi5_hermes_research_parallel_api_key | default('') | trim) | length > 0)
+          - >-
+            (private_pi5_hermes_research_web_extract_backend | default('') | trim | lower) != 'parallel'
+            or ((private_pi5_hermes_research_parallel_api_key | default('') | trim) | length > 0)
+        fail_msg: >-
+          Hermes research profile requires an official Hermes web provider:
+          firecrawl, searxng, parallel, tavily, or exa. Set the matching API key or
+          SEARXNG_URL/FIRECRAWL_API_URL in the private inventory fragment.
+      when: private_pi5_hermes_research_profile_enabled | default(false) | bool
 
     - name: Validate Hermes daily pilot prerequisites
       ansible.builtin.assert:
@@ -275,11 +378,16 @@
     - name: Deploy Hermes chat profile
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-chat-profile.yml"
 
+    - name: Deploy Hermes research profile skeleton
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-research-profile.yml"
+      when: private_pi5_hermes_research_profile_enabled | default(false) | bool
+
     - name: Deploy Hermes Discord gateway plugins (task + novel bridges)
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-discord-task-bridge.yml"
       when: >
         private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool or
         private_pi5_hermes_discord_novel_bridge_enabled | default(false) | bool or
+        private_pi5_hermes_discord_research_bridge_enabled | default(false) | bool or
         private_pi5_hermes_daily_pilot_enabled | default(false) | bool or
         private_pi5_hermes_life_pilot_enabled | default(false) | bool
 
@@ -343,6 +451,10 @@
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-discord-life-pilot.yml"
       when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
 
+    - name: Verify Hermes research profile deployment
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-research-profile.yml"
+      when: private_pi5_hermes_research_profile_enabled | default(false) | bool
+
     - name: Verify Hermes novel profile deployment
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-novel-profile.yml"
       when: private_pi5_hermes_novel_profile_enabled | default(false) | bool
@@ -362,6 +474,8 @@
           - "discord_tools_bridge_enabled={{ private_pi5_hermes_discord_tools_bridge_enabled | default(false) }}"
           - "novel_profile_enabled={{ private_pi5_hermes_novel_profile_enabled | default(false) }}"
           - "discord_novel_bridge_enabled={{ private_pi5_hermes_discord_novel_bridge_enabled | default(false) }}"
+          - "research_profile_enabled={{ private_pi5_hermes_research_profile_enabled | default(false) }}"
+          - "discord_research_bridge_enabled={{ private_pi5_hermes_discord_research_bridge_enabled | default(false) }}"
           - "daily_pilot_enabled={{ private_pi5_hermes_daily_pilot_enabled | default(false) }}"
           - "life_pilot_enabled={{ private_pi5_hermes_life_pilot_enabled | default(false) }}"
           - "life_reminder_scheduler_active={{ private_pi5_hermes_life_reminder_scheduler_active }}"
