@@ -4438,7 +4438,21 @@ Status: implemented in PR355.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR356 And Later: Thin Indexes And Split Large Documents
+### PR356: Thin Alerts Phase2 DB Operations Index Block
+
+Status: implemented in PR356.
+
+- Thin only the 2026-01-18 Alerts Platform Phase2 DB-centered operations
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the API/UI DB-only migration, file-scan
+  removal, DB-side acknowledge path, admin dashboard `dbAlerts`, Ansible
+  environment persistence, integration test, Pi5 API/UI/acknowledge/stale-client
+  onsite validation, and KB-175 note with short links to KB-175, the local
+  alerts guide, and the Alerts Phase2 plan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR357 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
