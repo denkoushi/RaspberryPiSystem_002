@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 447 |
-| Total lines | 138953 |
-| Total bytes | 10218471 |
+| Total lines | 138966 |
+| Total bytes | 10218390 |
 | With frontmatter | 162 |
 | With status | 23 |
 | source_of_truth declared | 7 |
@@ -21,8 +21,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
 | Long-line documents | 16 |
-| Local links | 5215 |
-| Broken local links | 116 |
+| Local links | 5214 |
+| Broken local links | 115 |
 | Documents over 1,000 lines | 27 |
 | Documents over 3,000 lines | 7 |
 
@@ -34,13 +34,13 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/knowledge-base/api.md` | 4881 | 354497 |
 | `EXEC_PLAN.md` | 4658 | 975476 |
 | `docs/knowledge-base/frontend.md` | 4643 | 277726 |
-| `docs/plans/docs-canonicalization-roadmap.md` | 4531 | 188287 |
+| `docs/plans/docs-canonicalization-roadmap.md` | 4544 | 188860 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4368 | 281572 |
 | `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3175 | 430815 |
 | `docs/architecture/deployment-modules.md` | 2523 | 128110 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188223 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2190 | 135175 |
-| `docs/INDEX.md` | 1824 | 361279 |
+| `docs/INDEX.md` | 1824 | 360625 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153339 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1567 | 165051 |
 | `docs/knowledge-base/infrastructure/miscellaneous.md` | 1322 | 74222 |
@@ -92,7 +92,6 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 - `EXEC_PLAN.md` -> `../docs/guides/ssd-migration.md` (../docs/guides/ssd-migration.md)
 - `EXEC_PLAN.md` -> `../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-?15[question-mark-corruption]pi5[question-mark-corruption]` (../docs/knowledge-base/infrastructure/security.md)
-- `docs/INDEX.md` -> `../plans/alerts-platform-phase2.md` (plans/alerts-platform-phase2.md)
 - `docs/INDEX.md` -> `../plans/deploy-stability-execplan.md` (plans/deploy-stability-execplan.md)
 - `docs/api/overview.md` -> `./kiosk.md` (docs/api/kiosk.md)
 - `docs/api/overview.md` -> `./tools.md` (docs/api/tools.md)
@@ -140,3 +139,4 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/guides/measuring-instrument-loan-events-verification.md` -> `../../.cursor/plans/measuring-instrument-events-retention_02349d3d.plan.md` (.cursor/plans/measuring-instrument-events-retention_02349d3d.plan.md)
 - `docs/guides/production-setup.md` -> `../architecture/client-device-integration.md` (docs/architecture/client-device-integration.md)
 - `docs/guides/verification-checklist.md` -> `./knowledge-base/api.md#kb-118-計測機器uid編集時の複数タグ問題の修正` (docs/guides/knowledge-base/api.md)
+- `docs/guides/verification-checklist.md` -> `./knowledge-base/frontend.md#kb-119-計測機器uid編集時の手動編集フラグ管理` (docs/guides/knowledge-base/frontend.md)

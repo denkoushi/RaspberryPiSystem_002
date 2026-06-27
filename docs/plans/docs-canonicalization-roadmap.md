@@ -4479,7 +4479,20 @@ Status: implemented in PR358.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR359 And Later: Thin Indexes And Split Large Documents
+### PR359: Thin Alerts Dispatcher Phase 1 Index Block
+
+Status: implemented in PR359.
+
+- Thin only the 2026-01-18 Alerts Dispatcher Phase 1 latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the B1 file-generation/API-dispatch
+  architecture, Pi5 Slack delivery validation, stale alert resend guard, sent
+  status guard, gitignore scope correction, and KB-172 note with short links to
+  KB-172, the local alerts guide, and the Alerts Phase2 plan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR360 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
