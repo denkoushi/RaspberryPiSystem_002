@@ -1188,7 +1188,7 @@
 
 - **CSVダッシュボード可視化機能実装 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [signage module](./modules/signage/README.md)。
 
-- **✅ SPLITモードで左右別PDF表示に対応完了**: SPLITレイアウトで左右ともPDFを表示できる機能を実装。`SignageContentResponse`に`pdfsById`フィールドを追加し、複数PDFを辞書形式で提供可能に。レンダラーに`renderSplitWithPanes`メソッドを追加し、左右ともPDFの場合に対応。Web側の`SignageDisplayPage`を`layoutConfig`準拠の2ペインSPLIT描画に更新し、左右それぞれのスロットに応じてPDFまたは工具を描画。左右それぞれのPDFが独立してスライドショー表示されることを実機検証で確認。CI通過・デプロイ完了を確認。詳細は [knowledge-base/infrastructure/signage.md#kb-154](./knowledge-base/infrastructure/signage.md#kb-154-splitモードで左右別pdf表示に対応) / [modules/signage/README.md](./modules/signage/README.md) を参照。
+- **SPLITモード左右別PDF表示 正本**: [KB-154](./knowledge-base/infrastructure/signage.md#kb-154-splitモードで左右別pdf表示に対応) · [signage module](./modules/signage/README.md)。
 
 - **✅ Pi3デプロイ安定化の十分条件実装完了**: Pi3デプロイ時のプレフライトチェックを自動化し、手順遵守に依存しない運用を実現。コントロールノード側でAnsibleロールのテンプレートファイル存在チェックを実装し、Pi3側でサービス停止・無効化・mask、残存AnsiballZ掃除、メモリ閾値チェック（>= 120MB）を自動実行。条件を満たせない場合はfail-fastし、エラーメッセージに手動対処手順を表示。標準手順ドキュメントを更新し、プレフライトチェックが自動実行されることを明記。実機検証でコントロールノード側のロール構造チェックとPi3側のプレフライトチェックが正常に動作し、メモリ不足時にfail-fastすることを確認。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-154](./knowledge-base/infrastructure/ansible-deployment.md#kb-154-pi3デプロイ安定化の十分条件実装プレフライトチェック自動化) / [guides/deployment.md](./guides/deployment.md) を参照。
 
