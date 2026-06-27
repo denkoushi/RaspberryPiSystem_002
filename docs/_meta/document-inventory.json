@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 138912,
-    "totalBytes": 10218752,
+    "totalLines": 138926,
+    "totalBytes": 10218689,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5214,
+    "localLinkCount": 5215,
     "brokenLocalLinkCount": 116,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 7,
@@ -6044,7 +6044,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 363434,
+      "byteSize": 362719,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -9933,6 +9933,11 @@
         {
           "href": "./modules/tools/services.md",
           "targetPath": "docs/modules/tools/services.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/alerts-platform-phase2.md",
+          "targetPath": "docs/plans/alerts-platform-phase2.md",
           "exists": true
         },
         {
@@ -29328,7 +29333,7 @@
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 3,
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29580,8 +29585,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 4490,
-      "byteSize": 186413,
+      "lineCount": 4504,
+      "byteSize": 187065,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
