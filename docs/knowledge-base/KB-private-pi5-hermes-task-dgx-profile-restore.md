@@ -39,6 +39,7 @@ category: knowledge-base
 - **D5 `/task` 有効時は `private_pi5_dgx_runtime_control_token` 必須**（playbook assert）。未設定だと `/task` は常に runtime prepare 失敗
 - plugin 配備に **`dgx_runtime_prepare.py` と `tools_profile_constants.py`** を含める（`deploy-discord-task-bridge.yml`）
 - `private_pi5_hermes_dgx_default_model_profile_id` を変更した場合は、`~/.hermes-tools/.env` と `~/.hermes/dgx-keep-warm.env` の `DGX_MODEL_PROFILE_ID` が同じ値になっていることを確認する
+- active profile が目的 ID でも `/v1/models` が 502 の場合があるため、profile 指定 keep-warm は active profile 確認後も ready probe を行い、未 ready なら同じ profile で `/start` し直す
 - DGX 確認: `cat /srv/dgx/system-prod/state/active-model-profile.json` · `ss -ltn | grep 3808`
 - **playbook verify の 502**: デプロイ直後に DGX が cold / llama 再起動中だと **`Verify DGX accepts tools profile Bearer token` が 502** になり得る。配置自体は完了しているため **keep-warm 手動起動または 10 分待ち後に再検証**（下記本番記録）
 

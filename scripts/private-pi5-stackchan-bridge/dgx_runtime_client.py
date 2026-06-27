@@ -107,7 +107,13 @@ class DgxUpstreamClient:
         if profile_id:
             active_ok, active = self.fetch_active_model_profile()
             if active_ok and str(active.get("modelProfileId") or active.get("activeProfileId") or "").strip() == profile_id:
-                return True, {"phase": "already_target_profile", "activeProfile": active}
+                ready, probe = self.probe_runtime_ready()
+                if ready:
+                    return True, {
+                        "phase": "already_target_profile",
+                        "activeProfile": active,
+                        "probe": probe,
+                    }
             started, details = self.ensure_runtime_ready()
             if started:
                 details = {**details, "phase": "profile_ensure"}
