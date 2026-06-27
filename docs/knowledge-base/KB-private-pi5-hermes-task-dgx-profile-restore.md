@@ -29,15 +29,17 @@ category: knowledge-base
 
 | 経路 | 動作 |
 |------|------|
-| **`/task`** | `tools_profile_runner.ensure_tools_dgx_runtime_ready()` → `POST /start` with **`business_qwen36_27b_nvfp4`** |
-| **keep-warm** | `DGX_MODEL_PROFILE_ID` 設定時は `DgxUpstreamClient.warm_runtime()` → 常に profile 付き ensure |
-| **設定** | `~/.hermes-tools/.env` · `~/.hermes/dgx-keep-warm.env` · playbook 変数 `private_pi5_hermes_dgx_default_model_profile_id` |
+| **`/task`** | `tools_profile_runner.ensure_tools_dgx_runtime_ready()` → `~/.hermes-tools/.env` の `DGX_MODEL_PROFILE_ID` で `POST /start` と `/system/model-profile` 検証 |
+| **keep-warm** | `~/.hermes/dgx-keep-warm.env` の `DGX_MODEL_PROFILE_ID` で `DgxUpstreamClient.warm_runtime()` → 常に profile 付き ensure |
+| **設定** | 両 env は playbook 変数 `private_pi5_hermes_dgx_default_model_profile_id` から生成。既定は **`business_qwen36_27b_nvfp4`**、fragment で別の業務 profile に変更可能 |
 
 ## Prevention
 
 - `/novel` 後に `/task` する運用では、**デプロイに本 Fix を含める**こと
 - **D5 `/task` 有効時は `private_pi5_dgx_runtime_control_token` 必須**（playbook assert）。未設定だと `/task` は常に runtime prepare 失敗
 - plugin 配備に **`dgx_runtime_prepare.py` と `tools_profile_constants.py`** を含める（`deploy-discord-task-bridge.yml`）
+- `private_pi5_hermes_dgx_default_model_profile_id` を変更した場合は、`~/.hermes-tools/.env` と `~/.hermes/dgx-keep-warm.env` の `DGX_MODEL_PROFILE_ID` が同じ値になっていることを確認する
+- active profile が目的 ID でも `/v1/models` が 502 の場合があるため、profile 指定 keep-warm は active profile 確認後も ready probe を行い、未 ready なら同じ profile で `/start` し直す
 - DGX 確認: `cat /srv/dgx/system-prod/state/active-model-profile.json` · `ss -ltn | grep 3808`
 - **playbook verify の 502**: デプロイ直後に DGX が cold / llama 再起動中だと **`Verify DGX accepts tools profile Bearer token` が 502** になり得る。配置自体は完了しているため **keep-warm 手動起動または 10 分待ち後に再検証**（下記本番記録）
 
@@ -93,8 +95,9 @@ keep-warm 成功ログ（抜粋）:
 
 1. **単一 DGX ランタイム**が chat / tools / novel で **`system-prod-primary` を共有**する。
 2. `/novel` は **green 35B（ctx 2048）** を起動し得る。`/task` は tool schema 込みで **2048 を超えやすい**。
-3. **Fix**: `run_tools_profile_prompt` の先頭で `ensure_tools_dgx_runtime_ready` → **`business_qwen36_27b_nvfp4`** へ `POST /start`（既に active なら `/system/model-profile` で **skip**）。
+3. **Fix**: `run_tools_profile_prompt` の先頭で `ensure_tools_dgx_runtime_ready` → `DGX_MODEL_PROFILE_ID` へ `POST /start`（既に active なら `/system/model-profile` で **skip**）。
 4. **keep-warm**: 同 profile を `DGX_MODEL_PROFILE_ID` 付きで定期 ensure（novel 残留の矯正）。
+5. **既定 profile**: 指定がなければ `business_qwen36_27b_nvfp4`。別の業務 profile へ変更する場合も、tools と keep-warm の復帰先は同一にする。
 
 ## 追記 — blue backend 起動失敗で `/v1/models` 502（2026-06-05）
 

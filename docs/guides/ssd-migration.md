@@ -25,6 +25,21 @@ update-frequency: medium
 
 ## 移行前の確認事項
 
+### Private Pi5 Hermes の移行タイミング
+
+Private Pi5 Hermes は、Hermes の DGX profile 復帰・Discord 定期投稿・Life Pilot の運用が安定してから SSD 移行する。Hermes 機能改善のデプロイと同日に boot 移行を重ねない。
+
+移行時は SD カードを fallback として保管し、SSD boot 確認が終わるまで SD 側を初期化しない。
+
+追加で退避・確認する対象:
+
+- `/home/hermes/.hermes`
+- `/home/hermes/.hermes-tools`
+- `/home/hermes/.hermes-life`
+- `hermes` ユーザーの systemd unit 状態と timer 状態
+- Syncthing の HermesLife receive-only 設定
+- ローカル inventory fragment、Discord token、DGX token、Hermes profile の secret 類
+
 ### 1. 現在の状態確認
 
 ```bash
@@ -306,10 +321,15 @@ docker compose -f infrastructure/docker/docker-compose.server.yml up -d
 - [ ] キオスク画面が正常に動作していること
 - [ ] バックアップスクリプトが正常に動作すること
 - [ ] 再起動後も正常に動作すること
+- [ ] Private Pi5 Hermes の `hermes-gateway` が active であること
+- [ ] `hermes-dgx-keep-warm.timer`、`hermes-life-reminder.timer`、`hermes-life-proactive-morning.timer`、`hermes-life-followup.timer` の active/inactive が移行前の設計どおりであること
+- [ ] `hermes-life-proactive-evening.timer` は opt-in にしていない限り inactive であること
+- [ ] `/home/hermes/.hermes-life` の notes/reminders/inbox/interest/proactive が移行前と同じ件数であること
+- [ ] Syncthing の HermesLife 共有が receive-only のまま復旧していること
+- [ ] SD カード fallback で元環境へ戻せることを確認するまで、旧 SD を消去しないこと
 
 ## 参考資料
 
 - [バックアップ・リストア手順](./backup-and-restore.md)
 - [デプロイメントガイド](./deployment.md)
 - [監視・アラートガイド](./monitoring.md)
-

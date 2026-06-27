@@ -88,10 +88,10 @@ class LifeInterestDigestTests(unittest.TestCase):
 
             digest = build_interest_digest(root, now=now, fetch=False)
 
-        self.assertIn("今日の気になる投稿", digest.message)
+        self.assertIn("今日見るなら", digest.message)
         self.assertIn("Discord shared X", digest.message)
         self.assertIn("https://x.com/example/status/123", digest.message)
-        self.assertIn("boundary=read-summary-only/no-tools", digest.message)
+        self.assertNotIn("boundary=read-summary-only/no-tools", digest.message)
 
     def test_fetcher_items_are_stored_and_ranked(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -180,8 +180,31 @@ class LifeInterestDigestTests(unittest.TestCase):
         self.assertEqual(second.skipped_duplicate, 1)
         self.assertEqual(len(sent), 1)
         self.assertEqual(sent[0][0], "channel-1")
-        self.assertIn("今日の気になる投稿", sent[0][1])
+        self.assertIn("今日見るなら", sent[0][1])
         self.assertGreaterEqual(len(seen_rows), 1)
+
+    def test_daily_dispatch_empty_digest_skips_without_sending(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "context").mkdir(parents=True)
+            (root / "context" / "discord.json").write_text(
+                json.dumps({"userId": "user-1", "channelId": "channel-1"}) + "\n",
+                encoding="utf-8",
+            )
+            now = datetime(2026, 6, 7, 10, 0, tzinfo=timezone(timedelta(hours=9)))
+            sent: list[tuple[str, str]] = []
+
+            result = dispatch_daily_interest_digest(
+                root,
+                now=now,
+                sender=lambda channel_id, content: sent.append((channel_id, content))
+                or DiscordSendResult(ok=True),
+                fetch=False,
+            )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.skipped_empty, 1)
+        self.assertEqual(sent, [])
 
     def test_daily_dispatch_without_channel_skips(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

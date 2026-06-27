@@ -122,11 +122,23 @@ def _write_discord_inbox(root: Path, item: dict[str, object]) -> None:
         handle.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def _write_basic_reminder(root: Path, now: datetime, text: str = "朝の確認候補") -> None:
+    _write_reminder(
+        root,
+        {
+            "createdAt": now.isoformat(timespec="seconds"),
+            "status": "pending",
+            "text": text,
+        },
+    )
+
+
 class LifeProactiveLoopTests(unittest.TestCase):
     def test_morning_checkin_message_offers_choice_and_free_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             now = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
+            _write_basic_reminder(root, now)
 
             message = build_proactive_checkin_message("morning", root, now=now)
 
@@ -137,7 +149,28 @@ class LifeProactiveLoopTests(unittest.TestCase):
             self.assertIn("[3] 今日は外す", message)
             self.assertIn("ボタンで返信できます", message)
             self.assertIn("/life-reply 1", message)
-            self.assertIn("boundary=local-only/no-tools", message)
+            self.assertNotIn("boundary=local-only/no-tools", message)
+
+    def test_morning_checkin_skips_empty_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
+            sender = FakeSender()
+
+            message = build_proactive_checkin_message("morning", root, now=now)
+            result = dispatch_proactive_checkin(
+                root,
+                "morning",
+                now=now,
+                sender=sender,
+                channel_id="channel-1",
+                user_id="user-1",
+            )
+
+        self.assertEqual(message, "")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.skipped_no_candidate, 1)
+        self.assertEqual(sender.calls, [])
 
     def test_morning_checkin_message_selects_one_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -166,18 +199,19 @@ class LifeProactiveLoopTests(unittest.TestCase):
             message = build_proactive_checkin_message("morning", root, now=now)
 
             self.assertIn("今日まず見るなら:\n燃えるごみを出す", message)
-            self.assertIn("ほかに残っているもの:\n- ラズパイシステムのデモ準備", message)
+            self.assertIn("ほか:\n- ラズパイシステムのデモ準備", message)
 
     def test_morning_checkin_softens_when_recent_notes_look_tired(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             now = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
             _write_note(root, "2026-06-05", "2026-06-05 21:00", "今日は疲れて眠い。")
+            _write_basic_reminder(root, now)
 
             message = build_proactive_checkin_message("morning", root, now=now)
 
             self.assertIn(
-                "今日の見方:\n最近の体調メモが少し重めです。今日は軽く1つだけ見ます。",
+                "最近の体調メモが少し重めです。今日は軽く1つだけ見ます。",
                 message,
             )
 
@@ -217,7 +251,7 @@ class LifeProactiveLoopTests(unittest.TestCase):
                 user_id="user-1",
             )
 
-            self.assertIn("今日の見方:\n前に後回しにしたものを、もう一度だけ出します。", message)
+            self.assertIn("前に後回しにしたものを、もう一度だけ出します。", message)
             self.assertIn("今日まず見るなら:\n風呂洗い", message)
             checkins = [
                 json.loads(line)
@@ -295,7 +329,7 @@ class LifeProactiveLoopTests(unittest.TestCase):
                 user_id="user-1",
             )
 
-            self.assertIn("Obsidian新着:", message)
+            self.assertIn("補足:", message)
             self.assertIn("今日のメモ: 今日は少し眠い。買い物リストを見直す。", message)
             self.assertIn("今日まず見るなら:\nObsidian新着を見返す", message)
             self.assertIn("今日は軽く1つだけ見ます", message)
@@ -334,7 +368,7 @@ class LifeProactiveLoopTests(unittest.TestCase):
                 user_id="user-1",
             )
 
-            self.assertIn("共有メモ新着:", message)
+            self.assertIn("補足:", message)
             self.assertIn("Xリンク: あとで読みたいX投稿", message)
             self.assertIn("今日まず見るなら:\n共有メモを見返す", message)
             checkin = json.loads(
@@ -365,7 +399,7 @@ class LifeProactiveLoopTests(unittest.TestCase):
 
             message = build_proactive_checkin_message("morning", root, now=now)
 
-            self.assertIn("Obsidian新着:", message)
+            self.assertIn("補足:", message)
             self.assertIn("画像: screenshot-shopping", message)
             self.assertIn("今日まず見るなら:\nObsidian新着画像を確認: screenshot-shopping", message)
 
@@ -419,6 +453,7 @@ class LifeProactiveLoopTests(unittest.TestCase):
             root = Path(tmp)
             now = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
             sender = FakeSender()
+            _write_basic_reminder(root, now)
 
             result = dispatch_proactive_checkin(
                 root,
@@ -455,6 +490,16 @@ class LifeProactiveLoopTests(unittest.TestCase):
             root = Path(tmp)
             now = datetime(2026, 6, 6, 21, 30, tzinfo=timezone(timedelta(hours=9)))
             sender = FakeSender()
+            _write_checkin(
+                root,
+                {
+                    "id": "2026-06-06-morning",
+                    "createdAt": now.replace(hour=7, minute=30).isoformat(timespec="seconds"),
+                    "mode": "morning",
+                    "status": "pending_reply",
+                    "candidateText": "風呂洗い",
+                },
+            )
 
             self.assertTrue(
                 remember_life_discord_context("user-1", "channel-1", _policy(), root, now=now)
@@ -471,6 +516,7 @@ class LifeProactiveLoopTests(unittest.TestCase):
             root = Path(tmp)
             now = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
             sender = FakeSender()
+            _write_basic_reminder(root, now)
             dispatch_proactive_checkin(
                 root,
                 "morning",
@@ -550,6 +596,16 @@ class LifeProactiveLoopTests(unittest.TestCase):
             root = Path(tmp)
             now = datetime(2026, 6, 6, 21, 30, tzinfo=timezone(timedelta(hours=9)))
             sender = FakeSender()
+            _write_checkin(
+                root,
+                {
+                    "id": "2026-06-06-morning",
+                    "createdAt": now.replace(hour=7, minute=30).isoformat(timespec="seconds"),
+                    "mode": "morning",
+                    "status": "pending_reply",
+                    "candidateText": "風呂洗い",
+                },
+            )
             dispatch_proactive_checkin(
                 root,
                 "evening",
@@ -584,6 +640,7 @@ class LifeProactiveLoopTests(unittest.TestCase):
             morning = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
             evening = datetime(2026, 6, 6, 21, 30, tzinfo=timezone(timedelta(hours=9)))
             sender = FakeSender()
+            _write_basic_reminder(root, morning, "風呂洗い")
             dispatch_proactive_checkin(
                 root,
                 "morning",
@@ -730,7 +787,7 @@ class LifeProactiveLoopTests(unittest.TestCase):
 
         self.assertIn("今ならこれだけ見ますか:\n風呂洗い", message)
         self.assertIn("[1] やる", message)
-        self.assertIn("boundary=local-only/no-tools", message)
+        self.assertNotIn("boundary=local-only/no-tools", message)
 
 
 if __name__ == "__main__":

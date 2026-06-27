@@ -88,6 +88,7 @@ def main() -> int:
                     "sent": dispatch.sent,
                     "failed": dispatch.failed,
                     "skipped_duplicate": dispatch.skipped_duplicate,
+                    "skipped_empty": dispatch.skipped_empty,
                     "skipped_missing_channel": dispatch.skipped_missing_channel,
                     "dispatch_id": dispatch.dispatch_id,
                     "error": dispatch.error,

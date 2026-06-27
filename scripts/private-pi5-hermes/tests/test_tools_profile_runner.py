@@ -14,8 +14,11 @@ from lib.task_bridge_policy import TaskBridgePolicy  # noqa: E402
 from lib.tools_profile_runner import (  # noqa: E402
     ToolsProfilePaths,
     _resolve_hermes_python,
+    ensure_tools_dgx_runtime_ready,
+    resolve_tools_model_profile_id,
     run_tools_profile_prompt,
 )
+from lib.tools_profile_constants import TOOLS_BUSINESS_MODEL_PROFILE_ID  # noqa: E402
 
 
 def _policy_data(**overrides: object) -> dict:
@@ -43,6 +46,65 @@ def _policy() -> TaskBridgePolicy:
 
 
 class ToolsProfileRunnerTests(unittest.TestCase):
+    def test_resolve_tools_model_profile_id_uses_env_override(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env_path = Path(tmp) / ".env"
+            env_path.write_text(
+                "DGX_MODEL_PROFILE_ID=business_ornith_35b_nvfp4\n",
+                encoding="utf-8",
+            )
+
+            resolved = resolve_tools_model_profile_id(env_path)
+
+        self.assertEqual(resolved, "business_ornith_35b_nvfp4")
+
+    def test_resolve_tools_model_profile_id_falls_back_to_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env_path = Path(tmp) / ".env"
+            env_path.write_text("OPENAI_API_KEY=token\n", encoding="utf-8")
+
+            resolved = resolve_tools_model_profile_id(env_path)
+
+        self.assertEqual(resolved, TOOLS_BUSINESS_MODEL_PROFILE_ID)
+
+    @mock.patch("lib.tools_profile_runner.verify_dgx_runtime_profile", return_value=(True, ""))
+    @mock.patch("lib.tools_profile_runner.ensure_dgx_runtime_ready", return_value=(True, ""))
+    def test_ensure_tools_dgx_runtime_ready_uses_env_profile_for_verify(
+        self,
+        ensure_mock: mock.MagicMock,
+        verify_mock: mock.MagicMock,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env_path = Path(tmp) / ".env"
+            env_path.write_text(
+                "DGX_MODEL_PROFILE_ID=business_ornith_35b_nvfp4\n",
+                encoding="utf-8",
+            )
+            paths = ToolsProfilePaths(
+                hermes_user="hermes",
+                hermes_home="/tmp/hermes",
+                tools_data_dir="/tmp/hermes-tools",
+                tools_home="/tmp/hermes-tools/home",
+                tools_env_path=str(env_path),
+                hermes_bin="/tmp/hermes/.local/bin/hermes",
+                dgx_keep_warm_dir="/tmp/hermes/dgx-keep-warm",
+            )
+
+            ok, hint = ensure_tools_dgx_runtime_ready(paths)
+
+        self.assertTrue(ok)
+        self.assertEqual(hint, "")
+        ensure_mock.assert_called_once_with(
+            env_path,
+            keep_warm_dir="/tmp/hermes/dgx-keep-warm",
+            default_model_profile_id="business_ornith_35b_nvfp4",
+        )
+        verify_mock.assert_called_once_with(
+            env_path,
+            keep_warm_dir="/tmp/hermes/dgx-keep-warm",
+            expected_model_profile_id="business_ornith_35b_nvfp4",
+        )
+
     def test_resolve_hermes_python_from_bash_wrapper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

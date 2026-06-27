@@ -47,6 +47,34 @@ class DgxRuntimePrepareTests(unittest.TestCase):
             )
             self.assertEqual(config.model_profile_id, TOOLS_BUSINESS_MODEL_PROFILE_ID)
 
+    def test_dgx_config_from_env_file_prefers_env_profile_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            keep_warm = Path(tmp) / "dgx-keep-warm"
+            keep_warm.mkdir()
+            client_src = _BRIDGE_ROOT / "dgx_runtime_client.py"
+            (keep_warm / "dgx_runtime_client.py").write_text(
+                client_src.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            env_path = Path(tmp) / ".env"
+            env_path.write_text(
+                "\n".join(
+                    [
+                        "OPENAI_API_KEY=token",
+                        "DGX_RUNTIME_CONTROL_TOKEN=ctrl",
+                        "DGX_RUNTIME_AUTO_START=true",
+                        "DGX_MODEL_PROFILE_ID=business_ornith_35b_nvfp4",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            config = dgx_config_from_env_file(
+                env_path,
+                keep_warm_dir=keep_warm,
+                default_model_profile_id=TOOLS_BUSINESS_MODEL_PROFILE_ID,
+            )
+            self.assertEqual(config.model_profile_id, "business_ornith_35b_nvfp4")
+
     def test_ensure_dgx_runtime_ready_missing_env(self) -> None:
         ok, hint = ensure_dgx_runtime_ready(
             Path("/tmp/nonexistent-hermes-tools.env"),

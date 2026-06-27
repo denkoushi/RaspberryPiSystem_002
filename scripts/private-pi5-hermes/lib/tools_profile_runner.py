@@ -11,11 +11,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 try:
-    from .dgx_runtime_prepare import ensure_dgx_runtime_ready, verify_dgx_runtime_profile
+    from .dgx_runtime_prepare import (
+        ensure_dgx_runtime_ready,
+        parse_env_file,
+        verify_dgx_runtime_profile,
+    )
     from .task_bridge_policy import TaskBridgePolicy, toolsets_cli_argument
     from .tools_profile_constants import TOOLS_BUSINESS_MODEL_PROFILE_ID
 except ImportError:
-    from dgx_runtime_prepare import ensure_dgx_runtime_ready, verify_dgx_runtime_profile
+    from dgx_runtime_prepare import (
+        ensure_dgx_runtime_ready,
+        parse_env_file,
+        verify_dgx_runtime_profile,
+    )
     from task_bridge_policy import TaskBridgePolicy, toolsets_cli_argument
     from tools_profile_constants import TOOLS_BUSINESS_MODEL_PROFILE_ID
 
@@ -68,12 +76,20 @@ def _runner_script_path() -> Path:
     return base / "approval_relay" / "runner.py"
 
 
+def resolve_tools_model_profile_id(env_path: Path) -> str:
+    """Resolve the tools DGX profile from .env, falling back to the default."""
+    values = parse_env_file(env_path)
+    return values.get("DGX_MODEL_PROFILE_ID", "").strip() or TOOLS_BUSINESS_MODEL_PROFILE_ID
+
+
 def ensure_tools_dgx_runtime_ready(paths: ToolsProfilePaths) -> tuple[bool, str]:
     """Restore DGX to the business profile before /task tools execution."""
+    env_path = Path(paths.tools_env_path)
+    target_profile_id = resolve_tools_model_profile_id(env_path)
     ok, hint = ensure_dgx_runtime_ready(
-        Path(paths.tools_env_path),
+        env_path,
         keep_warm_dir=paths.dgx_keep_warm_dir,
-        default_model_profile_id=TOOLS_BUSINESS_MODEL_PROFILE_ID,
+        default_model_profile_id=target_profile_id,
     )
     if not ok:
         if "tools" not in hint:
@@ -81,9 +97,9 @@ def ensure_tools_dgx_runtime_ready(paths: ToolsProfilePaths) -> tuple[bool, str]
         return False, hint
 
     verify_ok, verify_hint = verify_dgx_runtime_profile(
-        Path(paths.tools_env_path),
+        env_path,
         keep_warm_dir=paths.dgx_keep_warm_dir,
-        expected_model_profile_id=TOOLS_BUSINESS_MODEL_PROFILE_ID,
+        expected_model_profile_id=target_profile_id,
     )
     if not verify_ok:
         if "tools" not in verify_hint:

@@ -33,6 +33,16 @@
         and (private_pi5_hermes_life_proactive_loop_enabled | default(true) | bool)
         and ((private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0)
       }}
+    private_pi5_hermes_life_proactive_morning_active: >-
+      {{
+        private_pi5_hermes_life_proactive_loop_active
+        and (private_pi5_hermes_life_proactive_morning_enabled | default(true) | bool)
+      }}
+    private_pi5_hermes_life_proactive_evening_active: >-
+      {{
+        private_pi5_hermes_life_proactive_loop_active
+        and (private_pi5_hermes_life_proactive_evening_enabled | default(false) | bool)
+      }}
     private_pi5_hermes_life_followup_loop_active: >-
       {{
         private_pi5_hermes_life_proactive_loop_active
@@ -334,6 +344,8 @@
           - "life_pilot_enabled={{ private_pi5_hermes_life_pilot_enabled | default(false) }}"
           - "life_reminder_scheduler_active={{ private_pi5_hermes_life_reminder_scheduler_active }}"
           - "life_proactive_loop_active={{ private_pi5_hermes_life_proactive_loop_active }}"
+          - "life_proactive_morning_active={{ private_pi5_hermes_life_proactive_morning_active }}"
+          - "life_proactive_evening_active={{ private_pi5_hermes_life_proactive_evening_active }}"
           - "life_followup_loop_active={{ private_pi5_hermes_life_followup_loop_active }}"
           - "life_discord_ui_relay_active={{ private_pi5_hermes_life_discord_ui_relay_active }}"
           - "life_obsidian_vault_dir={{ private_pi5_hermes_life_obsidian_vault_dir }}"

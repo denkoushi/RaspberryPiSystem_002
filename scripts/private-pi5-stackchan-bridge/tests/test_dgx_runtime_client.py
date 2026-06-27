@@ -95,7 +95,7 @@ class TestDgxRuntimeClient(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(details["phase"], "profile_ensure")
 
-    def test_warm_runtime_with_profile_skips_start_when_already_active(self):
+    def test_warm_runtime_with_profile_skips_start_when_already_active_and_ready(self):
         client = DgxUpstreamClient(_config(model_profile_id="business_qwen36_27b_nvfp4"))
 
         with patch.object(
@@ -103,12 +103,35 @@ class TestDgxRuntimeClient(unittest.TestCase):
             "fetch_active_model_profile",
             return_value=(True, {"modelProfileId": "business_qwen36_27b_nvfp4"}),
         ):
-            with patch.object(client, "ensure_runtime_ready") as ensure:
-                ok, details = client.warm_runtime()
+            with patch.object(client, "probe_runtime_ready", return_value=(True, {"status": 200})) as probe:
+                with patch.object(client, "ensure_runtime_ready") as ensure:
+                    ok, details = client.warm_runtime()
 
+        probe.assert_called_once()
         ensure.assert_not_called()
         self.assertTrue(ok)
         self.assertEqual(details["phase"], "already_target_profile")
+
+    def test_warm_runtime_with_profile_ensures_when_active_but_not_ready(self):
+        client = DgxUpstreamClient(_config(model_profile_id="business_qwen36_27b_nvfp4"))
+
+        with patch.object(
+            client,
+            "fetch_active_model_profile",
+            return_value=(True, {"modelProfileId": "business_qwen36_27b_nvfp4"}),
+        ):
+            with patch.object(client, "probe_runtime_ready", return_value=(False, {"status": 502})) as probe:
+                with patch.object(
+                    client,
+                    "ensure_runtime_ready",
+                    return_value=(True, {"start": {"status": 200}, "ready": {"status": 200}}),
+                ) as ensure:
+                    ok, details = client.warm_runtime()
+
+        probe.assert_called_once()
+        ensure.assert_called_once()
+        self.assertTrue(ok)
+        self.assertEqual(details["phase"], "profile_ensure")
 
     def test_warm_runtime_without_profile_delegates_to_if_needed(self):
         client = DgxUpstreamClient(_config())

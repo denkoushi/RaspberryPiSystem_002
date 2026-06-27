@@ -62,7 +62,11 @@ Discord 有効化後は fragment を更新して再実行。初回のみ Pi5 ven
 
 ## DGX keep-warm
 
-fragment に `private_pi5_dgx_runtime_control_token` を設定してデプロイすると、`hermes-dgx-keep-warm.timer` が **10 分毎**（起動 **3 分**後も）DGX を warm します。既定では **`DGX_MODEL_PROFILE_ID=business_qwen36_27b_nvfp4`** を維持（`/novel` 後のドリフト矯正）。`/task` も実行前に同 profile へ復帰します。詳細は [Runbook §keep-warm](../../docs/runbooks/private-pi5-hermes-deploy.md#dgx-keep-warm体感速度)。
+fragment に `private_pi5_dgx_runtime_control_token` を設定してデプロイすると、`hermes-dgx-keep-warm.timer` が **10 分毎**（起動 **3 分**後も）DGX を warm します。既定では **`DGX_MODEL_PROFILE_ID=business_qwen36_27b_nvfp4`** を維持（`/novel` 後のドリフト矯正）。`private_pi5_hermes_dgx_default_model_profile_id` を fragment で変更した場合は、keep-warm と `/task` 実行前の ensure/verify が同じ profile へ復帰します。詳細は [Runbook §keep-warm](../../docs/runbooks/private-pi5-hermes-deploy.md#dgx-keep-warm体感速度)。
+
+## Desktop 併用
+
+Discord は日常の入口・通知先として残し、Hermes Desktop は Provider / Model / Tools / Skills / Cron / Memory を確認する作業机として使う。Desktop から Private Pi5 を直接操作する権限拡張はこの profile には入れない。
 
 ## `/task` 安全枠（2026-06-05）
 
@@ -121,7 +125,7 @@ python3 -m unittest scripts/private-pi5-hermes/tests/test_life_pilot_policy.py s
 
 正本: [`life_interest_digest.py`](lib/life_interest_digest.py) · [`skills/daily-interest-digest/SKILL.md`](skills/daily-interest-digest/SKILL.md)
 
-`/interest` と `hermes-life-interest-digest.timer` で NVIDIA DGX Spark / GB10 Forum/Announcements、Hermes Agent GitHub、Discord shared inbox の X リンクから最大5件のダイジェストを出す。`like/save/later/dismiss/more/less` の反応は `/home/hermes/.hermes-life/interest` に保存し、次回ランキングに反映する。外部投稿は `untrusted` として扱い、本文全文・添付・OCR・実行系には接続しない。
+`/interest` と `hermes-life-interest-digest.timer` で NVIDIA DGX Spark / GB10 Forum/Announcements、Hermes Agent GitHub、Discord shared inbox の X リンクから最大5件のダイジェストを出す。定期配信は新しい候補がない日は投稿しない。手動 `/interest` は空結果でも短く応答する。`like/save/later/dismiss/more/less` の反応は `/home/hermes/.hermes-life/interest` に保存し、次回ランキングに反映する。外部投稿は `untrusted` として扱い、本文全文・添付・OCR・実行系には接続しない。
 
 Hermes標準の Memory / Skills / Cron を使う場合は fragment に `private_pi5_hermes_life_interest_digest_enabled: true` を置く。日次配信は既定 `08:10:00`、固定送信先は `private_pi5_hermes_life_interest_digest_channel_id` で指定できる。terminal/file/git/deploy/Codex/Cursor は引き続き無効。
 

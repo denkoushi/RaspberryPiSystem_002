@@ -56,6 +56,15 @@ class ReminderDispatchResult:
 ReminderSender = Callable[[str, str], DiscordSendResult]
 
 
+def _discord_debug_lines_enabled() -> bool:
+    return os.environ.get("HERMES_LIFE_DISCORD_DEBUG_LINES", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _reminders_path(storage_root: Path) -> Path:
     return storage_root / "reminders" / "reminders.jsonl"
 
@@ -100,6 +109,8 @@ def format_reminder_notification(item: dict[str, Any]) -> str:
     text = _clip_line(str(item.get("text", "") or ""), 700)
     due_at = _parse_due_at_item(item)
     due = _timestamp(due_at) if due_at is not None else "unknown"
+    if not _discord_debug_lines_enabled():
+        return text
     return f"""{text}
 
 {_render_debug_line(reminder="due", due=due, boundary="local-only/no-tools")}
