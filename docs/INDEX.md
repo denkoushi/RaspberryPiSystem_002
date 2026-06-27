@@ -1140,7 +1140,7 @@
 
 ### 🆕 最新アップデート（2026-01-16）
 
-- **✅ WebRTCビデオ通話機能の修正（clientKey/clientId未設定問題）**: `KioskCallPage.tsx`で`clientKey`と`clientId`が設定されていなかったため、WebSocket接続が確立されずビデオ通話機能が動作しない問題を解決。`useLocalStorage`フックを追加し、`localStorage`から`clientKey`と`clientId`を取得して`useWebRTC`フックに渡すように修正。`resolveClientKey`関数で`DEFAULT_CLIENT_KEY`をフォールバックとして使用するように改善。実機検証でPi4とMac間のビデオ通話が正常に動作することを確認。詳細は [knowledge-base/frontend.md#kb-171](./knowledge-base/frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定) を参照。
+- **WebRTC通話クライアント識別設定 正本**: [KB-171](./knowledge-base/frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定)。
 
 ### 🆕 最新アップデート（2026-01-16）
 

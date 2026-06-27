@@ -4506,7 +4506,19 @@ Status: implemented in PR360.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR361 And Later: Thin Indexes And Split Large Documents
+### PR361: Thin WebRTC Client Identity Index Block
+
+Status: implemented in PR361.
+
+- Thin only the 2026-01-16 WebRTC video-call client identity latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Kiosk call page identity initialization,
+  local storage hook wiring, default fallback behavior, Pi4/Mac validation, and
+  KB-171 note with a short link to KB-171.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR362 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
