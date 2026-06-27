@@ -12,6 +12,7 @@ from model_profiles import ModelProfile
 
 DEFAULT_MODEL_STORAGE_DELETE_ALLOWED_ROOTS = (
     "/srv/dgx/shared-models",
+    "/srv/dgx/system-prod/data/hf-cache",
     "/srv/dgx/hf-cache",
     "/srv/dgx/.cache/huggingface",
     "/home/dgx/.cache/huggingface",

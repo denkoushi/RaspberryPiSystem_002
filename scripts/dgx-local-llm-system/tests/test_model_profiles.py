@@ -19,10 +19,12 @@ from model_profiles import (  # noqa: E402
     validate_startable_profile,
 )
 from model_storage_delete import (  # noqa: E402
+    DEFAULT_MODEL_STORAGE_DELETE_ALLOWED_ROOTS,
     ModelStorageDeleteBlockedError,
     build_model_storage_delete_plan,
     delete_preview_to_api,
     execute_model_storage_delete,
+    parse_allowed_roots,
 )
 
 
@@ -31,6 +33,12 @@ class ModelProfileTests(unittest.TestCase):
         target = root / profile_id
         target.mkdir(parents=True)
         (target / "manifest.json").write_text(json.dumps(body), encoding="utf-8")
+
+    def test_default_model_storage_delete_roots_include_system_prod_hf_cache(self):
+        roots = parse_allowed_roots(None)
+
+        self.assertEqual(roots, DEFAULT_MODEL_STORAGE_DELETE_ALLOWED_ROOTS)
+        self.assertIn("/srv/dgx/system-prod/data/hf-cache", roots)
 
     def test_loads_profiles_and_writes_active_state(self):
         with tempfile.TemporaryDirectory() as tmp:
