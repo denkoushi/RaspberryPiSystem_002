@@ -1168,7 +1168,7 @@
 
 ### 🆕 最新アップデート（2026-01-09）
 
-- **✅ MacとPi3のstatus-agent問題修正完了**: 管理コンソールでMacとPi3のステータスが表示されない問題を解決。Pi3の`status-agent.timer`が無効化されていたため、`systemctl enable --now status-agent.timer`で再有効化。MacにはLinux用の`status-agent.py`しか存在せず、macOSでは動作しないため、macOS専用の`status-agent-macos.py`を作成し、`launchd`設定ファイルを追加して定期実行を設定。`docs/guides/status-agent.md`にmacOS向けセットアップ手順を追加。CI成功・デプロイ完了を確認。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-157](./knowledge-base/infrastructure/ansible-deployment.md#kb-157-pi3のstatus-agenttimerが無効化されていた問題) / [knowledge-base/infrastructure/miscellaneous.md#kb-158](./knowledge-base/infrastructure/miscellaneous.md#kb-158-macのstatus-agent未設定問題とmacos対応) / [guides/status-agent.md](./guides/status-agent.md) を参照。
+- **Mac/Pi3 status-agent復旧 正本**: [KB-157](./knowledge-base/infrastructure/ansible-deployment.md#kb-157-pi3のstatus-agenttimerが無効化されていた問題) · [KB-158](./knowledge-base/infrastructure/miscellaneous.md#kb-158-macのstatus-agent未設定問題とmacos対応) · [status-agent](./guides/status-agent.md)。
 
 - **✅ 複数スケジュールの順番切り替え機能実装完了**: 複数のスケジュールが同時にマッチする場合、優先順位順（高い順）にソートされ、設定された間隔（デフォルト: 30秒）で順番に切り替えて表示する機能を実装。環境変数`SIGNAGE_SCHEDULE_SWITCH_INTERVAL_SECONDS`で切り替え間隔を設定可能。優先順位100（分割表示）と優先順位10（全画面表示）が同時にマッチする場合、30秒ごとに交互に表示される。CI成功・デプロイ完了・実機検証完了を確認。詳細は [knowledge-base/infrastructure/signage.md#kb-156](./knowledge-base/infrastructure/signage.md#kb-156-複数スケジュールの順番切り替え機能実装) / [modules/signage/README.md](./modules/signage/README.md) を参照。
 

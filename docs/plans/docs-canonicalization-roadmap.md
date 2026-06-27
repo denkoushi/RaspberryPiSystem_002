@@ -4611,7 +4611,20 @@ Status: implemented in PR368.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR369 And Later: Thin Indexes And Split Large Documents
+### PR369: Thin Status Agent Mac Pi3 Index Block
+
+Status: implemented in PR369.
+
+- Thin only the 2026-01-09 Mac/Pi3 status-agent latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the Pi3 timer re-enable, macOS-specific
+  status-agent implementation, launchd setup, guide update, CI/deploy note, and
+  KB-157/KB-158 references with short links to KB-157, KB-158, and the
+  status-agent guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR370 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
