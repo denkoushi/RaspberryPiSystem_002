@@ -4737,7 +4737,20 @@ Status: implemented in PR378.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR379 And Later: Thin Indexes And Split Large Documents
+### PR379: Thin backup.json Guard Index Block
+
+Status: implemented in PR379.
+
+- Thin only the 2026-01-07 `backup.json` destructive-overwrite guard
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the fallback marker retention, clone
+  removal, fallback-save rejection, target-count anti-wipe guard, detailed
+  logging, CI/deploy/onsite validation, and settings-continuity notes with a
+  short link to KB-151.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR380 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
