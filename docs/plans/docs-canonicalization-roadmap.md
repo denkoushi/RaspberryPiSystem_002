@@ -4584,7 +4584,20 @@ Status: implemented in PR366.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR367 And Later: Thin Indexes And Split Large Documents
+### PR367: Thin Backup Json Recovery Index Block
+
+Status: implemented in PR367.
+
+- Thin only the 2026-01-15 backup.json deletion and recovery latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the git clean removal, config ignore
+  protection, Dropbox restore, Gmail OAuth restore, OAuth route structure fix,
+  old/new structure collision handling, and KB-163 through KB-168 notes with
+  short links to those KB entries.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR368 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
