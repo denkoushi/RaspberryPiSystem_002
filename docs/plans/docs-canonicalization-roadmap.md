@@ -4649,7 +4649,20 @@ Status: implemented in PR371.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR372 And Later: Thin Indexes And Split Large Documents
+### PR372: Thin CSV Dashboard Period Filter Index Block
+
+Status: implemented in PR372.
+
+- Thin only the 2026-01-09 CSV dashboard period-filter verification
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the display-period-days validation,
+  same-day and previous-day filtering result, JST-to-UTC conversion note, and
+  KB-155 reference with short links to KB-155 and the CSV dashboard verification
+  guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR373 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

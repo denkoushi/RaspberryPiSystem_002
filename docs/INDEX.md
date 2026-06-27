@@ -1174,7 +1174,7 @@
 
 - **Pi3サイネージ画像更新方式 正本**: [KB-152](./knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) · [signage-lite](./modules/signage/signage-lite.md)。
 
-- **✅ CSVダッシュボード機能の検証9完了**: CSVダッシュボード可視化機能の検証9（表示期間フィルタ）を実施し、表示期間フィルタ（`displayPeriodDays: 1`）が正しく動作することを確認。当日分（8行）のみが表示され、前日分（2行）は除外されている。JSTの「今日の0:00」から「今日の23:59:59」をUTCに正しく変換してフィルタリングしていることを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) / [guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md) を参照。
+- **CSVダッシュボード表示期間フィルタ検証 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [csv-dashboard-verification](./guides/csv-dashboard-verification.md)。
 
 - **✅ CSVダッシュボード機能のCI修正・デプロイ完了**: CSVダッシュボード可視化機能のCI修正とデプロイを完了。E2Eテストのstrict mode violation（「ダッシュボード」リンクが「CSVダッシュボード」リンクと重複マッチ）を修正し、`@remix-run/router`の脆弱性対応（1.23.2へ強制）を実施。GitHub Actions CIが成功し、Pi5へのデプロイも正常に完了。管理コンソールの「CSVダッシュボード」タブが表示され、機能が利用可能な状態に到達。詳細は [knowledge-base/infrastructure/signage.md#kb-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) / [guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md) を参照。
 
