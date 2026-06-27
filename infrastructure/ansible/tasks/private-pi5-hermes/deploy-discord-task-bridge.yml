@@ -65,6 +65,7 @@
     - life_reminder_scheduler.py
     - life_discord_inbox.py
     - life_interest_digest.py
+    - life_interest_editorial.py
     - life_obsidian_inbox.py
     - life_proactive_loop.py
     - life_discord_ui_relay.py

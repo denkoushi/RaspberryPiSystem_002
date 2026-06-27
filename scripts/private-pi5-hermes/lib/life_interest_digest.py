@@ -7,7 +7,7 @@ metadata, and local feedback. External posts remain untrusted input.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 import hashlib
@@ -29,9 +29,19 @@ except ImportError:  # pragma: no cover
     fcntl = None  # type: ignore[assignment]
 
 try:
+    from .life_interest_editorial import (
+        EditorialDigestConfig,
+        EditorialLlmClient,
+        render_editorial_interest_digest,
+    )
     from .life_discord_inbox import read_discord_inbox
     from .life_reminder_scheduler import DiscordSendResult, send_discord_channel_message
 except ImportError:
+    from life_interest_editorial import (
+        EditorialDigestConfig,
+        EditorialLlmClient,
+        render_editorial_interest_digest,
+    )
     from life_discord_inbox import read_discord_inbox
     from life_reminder_scheduler import DiscordSendResult, send_discord_channel_message
 
@@ -213,6 +223,8 @@ class InterestDigestResult:
     items: tuple[InterestItem, ...]
     fetched_count: int = 0
     errors: tuple[str, ...] = ()
+    render_mode: str = "deterministic"
+    fallback_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -1070,6 +1082,13 @@ def render_interest_digest(
     return "\n".join(lines).strip()
 
 
+def _interest_editorial_config(enabled: bool | None) -> EditorialDigestConfig:
+    config = EditorialDigestConfig.from_env()
+    if enabled is None:
+        return config
+    return replace(config, enabled=enabled)
+
+
 def build_interest_digest(
     storage_root: Path,
     *,
@@ -1080,6 +1099,8 @@ def build_interest_digest(
     max_items: int = 5,
     include_seen: bool = False,
     mark_seen: bool = True,
+    editorial_enabled: bool | None = None,
+    editorial_client: EditorialLlmClient | None = None,
 ) -> InterestDigestResult:
     current = now or _now()
     ensure_interest_storage(storage_root)
@@ -1106,11 +1127,31 @@ def build_interest_digest(
     _save_last(storage_root, selected, current)
     if mark_seen:
         _mark_seen(storage_root, selected, now=current)
+    message = render_interest_digest(selected, fetched_count=added, errors=errors)
+    render_mode = "deterministic"
+    fallback_reason = ""
+    if selected:
+        editorial = render_editorial_interest_digest(
+            selected,
+            fetched_count=added,
+            errors=errors,
+            now=current,
+            config=_interest_editorial_config(editorial_enabled),
+            client=editorial_client,
+            debug_lines=_discord_debug_lines_enabled(),
+        )
+        if editorial.ok:
+            message = editorial.message
+            render_mode = "editorial"
+        elif editorial.fallback_reason not in {"editorial_disabled", "no_items"}:
+            fallback_reason = editorial.fallback_reason
     return InterestDigestResult(
-        message=render_interest_digest(selected, fetched_count=added, errors=errors),
+        message=message,
         items=selected,
         fetched_count=added,
         errors=errors,
+        render_mode=render_mode,
+        fallback_reason=fallback_reason,
     )
 
 
@@ -1262,6 +1303,8 @@ def dispatch_daily_interest_digest(
     fetch: bool = True,
     fetcher: Fetcher = fetch_text,
     web_searcher: WebSearcher = fetch_brave_web_search,
+    editorial_enabled: bool | None = None,
+    editorial_client: EditorialLlmClient | None = None,
 ) -> InterestDispatchResult:
     current = now or _now()
     ensure_interest_storage(storage_root)
@@ -1293,6 +1336,8 @@ def dispatch_daily_interest_digest(
         fetcher=fetcher,
         web_searcher=web_searcher,
         mark_seen=False,
+        editorial_enabled=editorial_enabled,
+        editorial_client=editorial_client,
     )
     if not digest.items:
         return InterestDispatchResult(
@@ -1478,7 +1523,7 @@ def render_interest_usage() -> str:
         "usage: /interest [refresh|search <query>|profile|like N|save N|later N|dismiss N|more <topic>|less <topic>]\n"
         "examples:\n"
         "- /interest\n"
-        "- /interest search 今日の天気\n"
+        "- /interest search Hermes Agent local LLM\n"
         "- /interest like 1\n"
         "- /interest more vLLM\n"
         "- /interest less 価格だけの話"
@@ -1505,7 +1550,7 @@ def handle_interest_command(
     rest = parts[1].strip() if len(parts) > 1 else ""
     if action == "search":
         if not rest:
-            return "検索語を指定してください。\n例: /interest search 今日の天気"
+            return "検索語を指定してください。\n例: /interest search Hermes Agent local LLM"
         return build_interest_search_digest(
             storage_root,
             rest,

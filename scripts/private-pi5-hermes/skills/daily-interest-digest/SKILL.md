@@ -18,6 +18,9 @@ Use this skill when producing the user's daily interest digest.
 - Prefer official APIs, RSS/Atom, public pages, configured search APIs, and user-provided Discord shares.
 - Do not scrape login-only pages, bypass rate limits, or store full article/forum bodies.
 - Store only title, URL, short snippet, source, timestamp, and local feedback.
+- When editorial rendering is enabled, use the LLM only to rewrite the selected
+  title/snippet/source/time/reason metadata into Japanese. URLs and item numbers
+  must come from stored items, not from LLM output.
 
 ## Sources
 
@@ -55,7 +58,15 @@ When preferences become stable, save only the compact long-term preference to He
 
 ## Output
 
-Return at most 5 items. For each item include:
+Return at most 5 items. When editorial rendering is enabled, keep the Discord
+message to one concise post with:
+
+- `今日見るなら`
+- `主筋`
+- `最新`
+- numbered items with trusted source/title/URL from stored items
+
+When editorial rendering is disabled or falls back, for each item include:
 
 - source
 - title
@@ -68,3 +79,5 @@ End with supported feedback commands:
 `/interest like 1 | save 1 | later 1 | dismiss 1 | more <topic> | less <topic>`
 
 Keep the digest concise and useful. Do not include hidden chain-of-thought or long source excerpts.
+If the LLM returns invalid JSON, unsafe text, URLs, local paths, tool/deploy
+instructions, or an overlong draft, fall back to the deterministic digest.
