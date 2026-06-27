@@ -680,7 +680,7 @@ def register(ctx) -> None:
             "interest",
             handler=_handle_interest_command,
             description="Show a personalized daily digest from safe public sources",
-            args_hint="[refresh|profile|like N|save N|later N|dismiss N|more <topic>|less <topic>]",
+            args_hint="[refresh|search <query>|profile|like N|save N|later N|dismiss N|more <topic>|less <topic>]",
         )
         ctx.register_command(
             "digest",

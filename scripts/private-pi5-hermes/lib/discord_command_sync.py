@@ -70,7 +70,7 @@ LIFE_COMMANDS: tuple[dict[str, Any], ...] = (
             {
                 "type": 3,
                 "name": "args",
-                "description": "Arguments: refresh, profile, like 1, save 1, later 1, dismiss 1, more topic",
+                "description": "Arguments: refresh, search query, profile, like 1, save 1, later 1, dismiss 1",
                 "required": False,
             }
         ],
