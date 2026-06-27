@@ -4518,7 +4518,20 @@ Status: implemented in PR361.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR362 And Later: Thin Indexes And Split Large Documents
+### PR362: Thin Signage Device Type Index Block
+
+Status: implemented in PR362.
+
+- Thin only the 2026-01-16 signage device-type generalization latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the preflight task generalization, Pi Zero
+  2W extension path, `device_type_defaults`, inventory variable, default
+  fallback, added device procedure, CI/syntax validation, and KB-170 note with
+  short links to KB-170 and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR363 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
