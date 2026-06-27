@@ -4724,7 +4724,20 @@ Status: implemented in PR377.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR378 And Later: Thin Indexes And Split Large Documents
+### PR378: Thin Pi3 Signage Stability Index Block
+
+Status: implemented in PR378.
+
+- Thin only the 2026-01-08 Pi3 signage stability latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the tmpfs write reduction, systemd
+  hardening, watchdog recovery, daily reboot, Ansible convergence, role
+  template placement, deploy result, and service-state validation details with
+  short links to KB-153 and the signage module doc.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR379 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
