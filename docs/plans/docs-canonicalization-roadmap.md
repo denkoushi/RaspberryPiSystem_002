@@ -4636,7 +4636,20 @@ Status: implemented in PR370.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR371 And Later: Thin Indexes And Split Large Documents
+### PR371: Thin Pi3 Signage Image Update Index Block
+
+Status: implemented in PR371.
+
+- Thin only the 2026-01-09 Pi3 signage image update latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the skipped-page recurrence cause,
+  inode-changing image replacement, `feh` auto-reload behavior, inode-preserving
+  overwrite update, Ansible template update, and KB-152 note with short links to
+  KB-152 and the signage-lite module doc.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR372 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

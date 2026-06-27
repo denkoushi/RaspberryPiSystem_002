@@ -1172,7 +1172,7 @@
 
 - **サイネージ複数スケジュール順番切替 正本**: [KB-156](./knowledge-base/infrastructure/signage.md#kb-156-複数スケジュールの順番切り替え機能実装) · [signage module](./modules/signage/README.md)。
 
-- **✅ Pi3サイネージの画像更新方式改善完了**: Pi3サイネージの「1ページずつ表示されない」問題の再発要因を特定し、画像更新方式を改善。`signage-update.sh`が`mv`で置換していたため、更新のたびに`current.jpg`のinodeが変わり、`feh --auto-reload(inotify)`が追従できない問題を解決。既存`current.jpg`がある場合は上書き更新（inode維持）に変更し、画面更新が安定するように改善。Ansibleテンプレートも同様に修正。詳細は [knowledge-base/infrastructure/signage.md#kb-152](./knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) / [modules/signage/signage-lite.md](./modules/signage/signage-lite.md) を参照。
+- **Pi3サイネージ画像更新方式 正本**: [KB-152](./knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) · [signage-lite](./modules/signage/signage-lite.md)。
 
 - **✅ CSVダッシュボード機能の検証9完了**: CSVダッシュボード可視化機能の検証9（表示期間フィルタ）を実施し、表示期間フィルタ（`displayPeriodDays: 1`）が正しく動作することを確認。当日分（8行）のみが表示され、前日分（2行）は除外されている。JSTの「今日の0:00」から「今日の23:59:59」をUTCに正しく変換してフィルタリングしていることを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) / [guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md) を参照。
 
