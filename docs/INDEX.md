@@ -1136,7 +1136,7 @@
 
 - **Alerts Dispatcher Phase 1 正本**: [KB-172](./knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) · [local-alerts](./guides/local-alerts.md) · [alerts-platform-phase2](./plans/alerts-platform-phase2.md)。
 
-- **✅ デプロイ安定化機能の実装完了**: デプロイプロセスの安全性と可観測性を向上させる機能を実装。プリフライトリーチビリティチェック（Pi5 + inventory hosts）、リモートロック（並行実行防止、古いロックの自動クリーンアップ）、リソースガード（メモリ120MB、ディスク90%）、環境限定リトライ（unreachable hostsのみ、3回、30秒）、ホストごとのタイムアウト（Pi3 30m / Pi4 10m / Pi5 15m）、Slack通知（start/success/failure/per-host failure）、`--limit`オプション（特定ホストのみ更新）を実装。実機検証でPi5とPi4でのデプロイ成功を確認。実装時の発見事項（locale問題、git権限問題、ESLint設定問題、`.gitignore`全階層マッチ問題）も解決。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-172](./knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) / [guides/deployment.md](./guides/deployment.md#デプロイ安定化機能2026-01-17実装) / [plans/deploy-stability-execplan.md](../plans/deploy-stability-execplan.md) を参照。
+- **デプロイ安定化機能 正本**: [KB-172](./knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) · [deployment](./guides/deployment.md#デプロイ安定化機能2026-01-17実装) · [deploy-stability plan](./plans/deploy-stability-execplan.md)。
 
 ### 🆕 最新アップデート（2026-01-16）
 
