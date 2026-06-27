@@ -826,6 +826,22 @@ git diff --check
 
 背景: 2026-06-27 の deploy verify では、`dgx-private-comfyui` が約 66GiB を保持し、`system-prod-trtllm` が `gpu-memory-utilization=0.65` の確保に失敗した。一般的な GPU 競合の切り分けは [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)、resource owner / profile 契約は [dgx-system-prod-local-llm.md](./dgx-system-prod-local-llm.md) と [KB-389](../knowledge-base/KB-389-dgx-resource-runtime-profile-resource-state.md) を正本とする。
 
+**SSD boot migration preflight（2026-06-27 16:51 JST · read-only）**:
+
+| 項目 | 結果 |
+|------|------|
+| root filesystem | まだ SD boot。`/dev/mmcblk0p2 / ext4 rw,noatime` |
+| 接続中ディスク | `sda` 232.9G `ESD-EMC`、`sda1` は NTFS で `/media/raspi5-private/24481BDB481BAB16` にマウント中。boot target として初期化してよいディスクか未確認 |
+| SD カード | `mmcblk0` 59.5G。`mmcblk0p1` は `/boot/firmware`、`mmcblk0p2` は `/` |
+| 使用量 | `/` は 58G 中 12G 使用（21%）。`/home/hermes` は 1.6G、`/var/lib/docker` は 1.6G |
+| Hermes services | `hermes-gateway` / `hermes-tools-gateway` active。`hermes-dgx-keep-warm.timer`、`hermes-life-reminder.timer`、`hermes-life-proactive-morning.timer`、`hermes-life-followup.timer`、`hermes-life-interest-digest.timer`、`hermes-life-discord-ui.service` active。`hermes-life-proactive-evening.timer` inactive |
+| Hermes data | `/home/hermes/.hermes` 1.3G、`.hermes-tools` 34M、`.hermes-life` 1.6M。3 ディレクトリとも `hermes:hermes 700` |
+| Life counts | `notes=4`、`reminders=2`、`inbox=2`、`interest=7`、`proactive=4`、`obsidian/HermesLife=10` files |
+| Syncthing | `syncthing@hermes.service` active。HermesLife folder は `id=d5s97-8v6z5`、`type=receiveonly`、path `/home/hermes/.hermes-life/obsidian/HermesLife` |
+| DGX profile env | `.hermes-tools/.env` と `.hermes/dgx-keep-warm.env` は `DGX_MODEL_PROFILE_ID=business_qwen36_27b_nvfp4` |
+
+判断: 移行本番は未開始。現在接続中の USB ディスクは NTFS データディスクとしてマウントされているため、boot target として初期化してよいかを明示確認するまでは触らない。SSD 移行時は [ssd-migration.md](../guides/ssd-migration.md) の Private Pi5 Hermes preflight checklist に従い、SD カードを fallback として保持する。
+
 **Troubleshooting（実機）**:
 
 | 症状 | 原因 | 対処 |
@@ -835,7 +851,7 @@ git diff --check
 
 **Open items**:
 
-- SSD boot 移行は未実施。Hermes 運用が安定してから [ssd-migration.md](../guides/ssd-migration.md) の Private Pi5 Hermes チェックリストで進める。
+- SSD boot 移行は未実施。read-only preflight は取得済みだが、現在接続中の `sda` は 232.9G NTFS マウントのため、boot target として初期化してよいか確認してから [ssd-migration.md](../guides/ssd-migration.md) の Private Pi5 Hermes チェックリストで進める。
 
 ### 本番反映 — Discord 承認 relay 完結（2026-05-30）
 

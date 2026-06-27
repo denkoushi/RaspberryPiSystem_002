@@ -10,7 +10,7 @@ update-frequency: medium
 
 # SDカードからSSDへの移行手順
 
-最終更新: 2025-11-27
+最終更新: 2026-06-27（Private Pi5 Hermes preflight checklist 追記）
 
 ## 概要
 
@@ -39,6 +39,15 @@ Private Pi5 Hermes は、Hermes の DGX profile 復帰・Discord 定期投稿・
 - `hermes` ユーザーの systemd unit 状態と timer 状態
 - Syncthing の HermesLife receive-only 設定
 - ローカル inventory fragment、Discord token、DGX token、Hermes profile の secret 類
+
+移行直前の read-only snapshot:
+
+- `findmnt -no SOURCE,TARGET,FSTYPE,OPTIONS /` で、現在の root が SD か SSD かを記録する。
+- `lsblk -o NAME,PATH,SIZE,TYPE,FSTYPE,MOUNTPOINTS,MODEL` で、移行先 SSD の device、容量、filesystem、mountpoint を記録する。NTFS 等で既に `/media/...` にマウントされている USB ディスクは、boot target として初期化してよいかを明示確認するまで触らない。
+- `systemctl is-active` で `hermes-gateway.service`、`hermes-tools-gateway.service`、`hermes-dgx-keep-warm.timer`、`hermes-life-reminder.timer`、`hermes-life-proactive-morning.timer`、`hermes-life-proactive-evening.timer`、`hermes-life-followup.timer`、`hermes-life-interest-digest.timer`、`hermes-life-discord-ui.service` を記録する。
+- `/home/hermes/.hermes`、`/home/hermes/.hermes-tools`、`/home/hermes/.hermes-life` の owner/mode、容量、主要サブディレクトリのファイル数を記録する。本文や token の中身は出力しない。
+- Syncthing は `syncthing@hermes.service` の active 状態と、HermesLife folder の `type=receiveonly`、path `/home/hermes/.hermes-life/obsidian/HermesLife` を記録する。
+- ローカル非追跡 inventory fragment と secret 類は、存在と必要キーだけ確認し、値をチャット・ログ・Git に出さない。
 
 ### 1. 現在の状態確認
 
