@@ -87,6 +87,7 @@ class DiscordCommandSyncTests(unittest.TestCase):
             "Show a personalized daily digest from safe public sources",
         )
         self.assertIn("like 1", interest["options"][0]["description"])
+        self.assertIn("search query", interest["options"][0]["description"])
         remind = payloads[4]
         self.assertEqual(
             remind["description"],

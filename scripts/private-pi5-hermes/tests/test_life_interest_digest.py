@@ -2,11 +2,13 @@
 """Daily Interest Digest tests."""
 
 import json
+import os
 import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,7 +55,62 @@ ATOM_BODY = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+EMPTY_RSS_BODY = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Empty</title>
+  </channel>
+</rss>
+"""
+
+
+OPEN_METEO_BODY = json.dumps(
+    {
+        "daily": {
+            "time": ["2026-06-07"],
+            "weather_code": [61],
+            "temperature_2m_max": [28.4],
+            "temperature_2m_min": [21.1],
+            "precipitation_probability_max": [70],
+        }
+    }
+)
+
+
+def brave_payload(query: str) -> dict[str, object]:
+    slug = query.lower().replace(" ", "-")
+    return {
+        "web": {
+            "results": [
+                {
+                    "title": f"{query} field report",
+                    "url": f"https://example.com/search/{slug}",
+                    "description": "A concise public web result about vLLM and local LLM operations.",
+                }
+            ]
+        }
+    }
+
+
 class LifeInterestDigestTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.env_patcher = patch.dict(
+            os.environ,
+            {
+                "BRAVE_SEARCH_API_KEY": "",
+                "LIFE_PILOT_INTEREST_BRAVE_SEARCH_API_KEY": "",
+                "LIFE_PILOT_INTEREST_WEATHER_ENABLED": "",
+                "LIFE_PILOT_INTEREST_WEB_SEARCH_ENABLED": "",
+                "LIFE_PILOT_INTEREST_WEB_SEARCH_QUERIES": "",
+                "LIFE_PILOT_INTEREST_WEB_SEARCH_QUERIES_JSON": "",
+            },
+            clear=False,
+        )
+        self.env_patcher.start()
+
+    def tearDown(self) -> None:
+        self.env_patcher.stop()
+
     def test_parse_rss_and_atom_items(self) -> None:
         now = datetime(2026, 6, 7, 10, 0, tzinfo=timezone(timedelta(hours=9)))
 
@@ -112,6 +169,94 @@ class LifeInterestDigestTests(unittest.TestCase):
         self.assertGreaterEqual(len(rows), 2)
         self.assertIn("vLLM", digest.message)
         self.assertIn("Hermes Agent", digest.message)
+
+    def test_weather_env_source_is_stored_as_untrusted_digest_item(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = datetime(2026, 6, 7, 10, 0, tzinfo=timezone(timedelta(hours=9)))
+
+            def fetcher(url: str) -> str:
+                if "open-meteo.com" in url:
+                    return OPEN_METEO_BODY
+                return EMPTY_RSS_BODY
+
+            with patch.dict(
+                os.environ,
+                {
+                    "LIFE_PILOT_INTEREST_WEATHER_ENABLED": "true",
+                    "LIFE_PILOT_INTEREST_WEATHER_LATITUDE": "35.6812",
+                    "LIFE_PILOT_INTEREST_WEATHER_LONGITUDE": "139.7671",
+                    "LIFE_PILOT_INTEREST_WEATHER_LABEL": "東京",
+                    "LIFE_PILOT_INTEREST_WEATHER_TIMEZONE": "Asia/Tokyo",
+                },
+                clear=False,
+            ):
+                digest = build_interest_digest(root, now=now, fetch=True, fetcher=fetcher)
+            rows = [
+                json.loads(line)
+                for line in (root / "interest" / "items.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+
+        self.assertIn("東京 今日の天気", digest.message)
+        weather_rows = [row for row in rows if row["source"] == "open_meteo_weather"]
+        self.assertEqual(len(weather_rows), 1)
+        self.assertTrue(weather_rows[0]["untrusted"])
+        self.assertIn("#date=2026-06-07", weather_rows[0]["url"])
+
+    def test_configured_brave_search_queries_are_stored_and_ranked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = datetime(2026, 6, 7, 10, 0, tzinfo=timezone(timedelta(hours=9)))
+            calls: list[tuple[str, int]] = []
+
+            def searcher(query: str, count: int) -> dict[str, object]:
+                calls.append((query, count))
+                return brave_payload(query)
+
+            with patch.dict(
+                os.environ,
+                {
+                    "LIFE_PILOT_INTEREST_WEB_SEARCH_ENABLED": "true",
+                    "LIFE_PILOT_INTEREST_WEB_SEARCH_QUERIES": "DGX Spark||local LLM operations",
+                },
+                clear=False,
+            ):
+                digest = build_interest_digest(
+                    root,
+                    now=now,
+                    fetch=True,
+                    fetcher=lambda _url: EMPTY_RSS_BODY,
+                    web_searcher=searcher,
+                )
+
+        self.assertEqual(calls, [("DGX Spark", 3), ("local LLM operations", 3)])
+        self.assertIn("Brave Search: DGX Spark", digest.message)
+        self.assertIn("local LLM operations field report", digest.message)
+
+    def test_interest_search_runs_one_shot_web_search(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = datetime(2026, 6, 7, 10, 0, tzinfo=timezone(timedelta(hours=9)))
+
+            with patch.dict(
+                os.environ,
+                {
+                    "LIFE_PILOT_INTEREST_WEB_SEARCH_ENABLED": "true",
+                },
+                clear=False,
+            ):
+                message = handle_interest_command(
+                    root,
+                    "search vLLM NVFP4",
+                    now=now,
+                    web_searcher=lambda query, _count: brave_payload(query),
+                )
+
+        self.assertIn("Web検索: vLLM NVFP4", message)
+        self.assertIn("vLLM NVFP4 field report", message)
+        self.assertIn("URL: https://example.com/search/vllm-nvfp4", message)
 
     def test_feedback_updates_profile_and_memory_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

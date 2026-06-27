@@ -106,6 +106,7 @@ class PluginRegisterTests(unittest.TestCase):
             )
             interest_call = ctx.register_command.call_args_list[2]
             self.assertIn("like N", interest_call[1].get("args_hint"))
+            self.assertIn("search <query>", interest_call[1].get("args_hint"))
             remind_call = ctx.register_command.call_args_list[4]
             self.assertEqual(remind_call[1].get("args_hint"), "<when and reminder>")
             recommend_call = ctx.register_command.call_args_list[5]

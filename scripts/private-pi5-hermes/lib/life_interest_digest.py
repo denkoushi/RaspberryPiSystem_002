@@ -19,6 +19,7 @@ import re
 import tempfile
 from typing import Any, Callable, Iterator
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -39,6 +40,11 @@ USER_AGENT = "private-pi5-hermes-interest-digest/1.0"
 MAX_STORED_ITEMS = 700
 MAX_FEEDBACK = 1000
 MAX_SEEN = 1200
+MAX_WEB_SEARCH_QUERIES = 5
+MAX_WEB_SEARCH_RESULTS_PER_QUERY = 3
+
+OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+BRAVE_WEB_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 
 DEFAULT_FEED_SOURCES: tuple[dict[str, str], ...] = (
     {
@@ -81,6 +87,10 @@ DEFAULT_POSITIVE_KEYWORDS: tuple[str, ...] = (
     "life pilot",
     "browser",
     "x_search",
+    "weather",
+    "forecast",
+    "天気",
+    "web search",
 )
 
 DEFAULT_NEGATIVE_KEYWORDS: tuple[str, ...] = (
@@ -96,6 +106,37 @@ ACTION_LABELS: dict[str, str] = {
     "dismiss": "外す",
 }
 
+WEATHER_CODE_LABELS: dict[int, str] = {
+    0: "快晴",
+    1: "晴れ",
+    2: "一部くもり",
+    3: "くもり",
+    45: "霧",
+    48: "霧氷",
+    51: "弱い霧雨",
+    53: "霧雨",
+    55: "強い霧雨",
+    56: "弱い着氷性霧雨",
+    57: "着氷性霧雨",
+    61: "弱い雨",
+    63: "雨",
+    65: "強い雨",
+    66: "弱い着氷性雨",
+    67: "着氷性雨",
+    71: "弱い雪",
+    73: "雪",
+    75: "強い雪",
+    77: "雪粒",
+    80: "弱いにわか雨",
+    81: "にわか雨",
+    82: "強いにわか雨",
+    85: "弱いにわか雪",
+    86: "にわか雪",
+    95: "雷雨",
+    96: "ひょうを伴う雷雨",
+    99: "強いひょうを伴う雷雨",
+}
+
 
 def _discord_debug_lines_enabled() -> bool:
     return os.environ.get("HERMES_LIFE_DISCORD_DEBUG_LINES", "").lower() in {
@@ -104,6 +145,50 @@ def _discord_debug_lines_enabled() -> bool:
         "yes",
         "on",
     }
+
+
+def _env_bool(name: str, *, default: bool = False) -> bool:
+    raw = os.environ.get(name, "")
+    if not raw:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, *, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(str(os.environ.get(name, "") or "").strip())
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, value))
+
+
+def _split_env_list(raw: str) -> tuple[str, ...]:
+    values: list[str] = []
+    for part in re.split(r"\|\||[\n\r]+", raw or ""):
+        clean = _clip_line(part, 160).strip()
+        if clean:
+            values.append(clean)
+    return tuple(values)
+
+
+def _json_env_list(name: str) -> tuple[Any, ...]:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return ()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return ()
+    if not isinstance(data, list):
+        return ()
+    return tuple(data)
+
+
+def _source_key(prefix: str, value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+    if not slug:
+        return prefix
+    return _clip_line(f"{prefix}_{slug}", 80)
 
 
 @dataclass(frozen=True)
@@ -379,17 +464,269 @@ def parse_feed_items(
     return items
 
 
-def fetch_text(url: str, timeout: int = 20) -> str:
+def _fetch_url_text(url: str, *, headers: dict[str, str] | None = None, timeout: int = 20) -> str:
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": USER_AGENT, "Accept": "application/rss+xml, application/atom+xml, text/xml"},
+        headers={"User-Agent": USER_AGENT, **(headers or {})},
         method="GET",
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8", errors="replace")
 
 
+def fetch_text(url: str, timeout: int = 20) -> str:
+    return _fetch_url_text(
+        url,
+        headers={"Accept": "application/rss+xml, application/atom+xml, text/xml"},
+        timeout=timeout,
+    )
+
+
 Fetcher = Callable[[str], str]
+WebSearcher = Callable[[str, int], dict[str, Any]]
+
+
+def _weather_enabled() -> bool:
+    return _env_bool("LIFE_PILOT_INTEREST_WEATHER_ENABLED")
+
+
+def _weather_forecast_url() -> tuple[str, str]:
+    if not _weather_enabled():
+        return "", ""
+    latitude = str(os.environ.get("LIFE_PILOT_INTEREST_WEATHER_LATITUDE", "") or "").strip()
+    longitude = str(os.environ.get("LIFE_PILOT_INTEREST_WEATHER_LONGITUDE", "") or "").strip()
+    if not latitude or not longitude:
+        return "", "open_meteo_weather: missing coordinates"
+    timezone_name = str(
+        os.environ.get("LIFE_PILOT_INTEREST_WEATHER_TIMEZONE")
+        or os.environ.get("TZ")
+        or "Asia/Tokyo"
+    ).strip()
+    endpoint = str(os.environ.get("LIFE_PILOT_INTEREST_WEATHER_ENDPOINT") or OPEN_METEO_FORECAST_URL).strip()
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+        "timezone": timezone_name,
+        "forecast_days": "1",
+    }
+    return f"{endpoint}?{urllib.parse.urlencode(params)}", ""
+
+
+def _daily_value(daily: dict[str, Any], key: str) -> Any:
+    value = daily.get(key)
+    if isinstance(value, list) and value:
+        return value[0]
+    return value
+
+
+def _format_float(value: Any, *, suffix: str = "", digits: int = 1) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "不明"
+    if number.is_integer():
+        return f"{int(number)}{suffix}"
+    return f"{number:.{digits}f}{suffix}"
+
+
+def parse_open_meteo_weather_item(
+    body: str,
+    *,
+    request_url: str,
+    now: datetime | None = None,
+) -> InterestItem | None:
+    current = now or _now()
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    daily = payload.get("daily")
+    if not isinstance(daily, dict):
+        return None
+    date_text = str(_daily_value(daily, "time") or current.strftime("%Y-%m-%d"))
+    code_raw = _daily_value(daily, "weather_code")
+    try:
+        code = int(code_raw)
+    except (TypeError, ValueError):
+        code = -1
+    condition = WEATHER_CODE_LABELS.get(code, f"天気コード{code}" if code >= 0 else "天気不明")
+    max_temp = _format_float(_daily_value(daily, "temperature_2m_max"), suffix="C")
+    min_temp = _format_float(_daily_value(daily, "temperature_2m_min"), suffix="C")
+    precip = _format_float(_daily_value(daily, "precipitation_probability_max"), suffix="%")
+    location = _clip_line(os.environ.get("LIFE_PILOT_INTEREST_WEATHER_LABEL", "") or "local weather", 80)
+    title = f"{location} 今日の天気 ({date_text}): {condition} {min_temp}-{max_temp} / 降水確率{precip}"
+    summary = f"{date_text} のOpen-Meteo日次予報。気温 {min_temp}-{max_temp}、降水確率最大 {precip}。"
+    item_url = f"{request_url}#date={urllib.parse.quote(date_text)}"
+    return InterestItem(
+        item_id=_item_id("open_meteo_weather", item_url, title),
+        source="open_meteo_weather",
+        source_label=f"Open-Meteo Weather: {location}",
+        title=_clip_line(title, 180),
+        url=_clip_line(item_url, 300),
+        summary=_clip_line(summary, 240),
+        published_at=current,
+        captured_at=current,
+        tags=("weather", "forecast", "天気"),
+        untrusted=True,
+    )
+
+
+def collect_weather_items(
+    *,
+    fetcher: Fetcher = fetch_text,
+    now: datetime | None = None,
+) -> tuple[list[InterestItem], tuple[str, ...]]:
+    url, error = _weather_forecast_url()
+    if error:
+        return [], (error,)
+    if not url:
+        return [], ()
+    try:
+        body = fetcher(url)
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        return [], (f"open_meteo_weather: {type(exc).__name__}",)
+    item = parse_open_meteo_weather_item(body, request_url=url, now=now)
+    if item is None:
+        return [], ("open_meteo_weather: parse_error",)
+    return [item], ()
+
+
+def _web_search_enabled() -> bool:
+    return _env_bool("LIFE_PILOT_INTEREST_WEB_SEARCH_ENABLED")
+
+
+def _configured_web_search_queries() -> tuple[str, ...]:
+    queries: list[str] = []
+    for item in _json_env_list("LIFE_PILOT_INTEREST_WEB_SEARCH_QUERIES_JSON"):
+        if isinstance(item, str):
+            clean = _clip_line(item, 160).strip()
+        elif isinstance(item, dict):
+            clean = _clip_line(str(item.get("query", "") or ""), 160).strip()
+        else:
+            clean = ""
+        if clean and clean not in queries:
+            queries.append(clean)
+    for query in _split_env_list(os.environ.get("LIFE_PILOT_INTEREST_WEB_SEARCH_QUERIES", "")):
+        if query not in queries:
+            queries.append(query)
+    return tuple(queries[:MAX_WEB_SEARCH_QUERIES])
+
+
+def fetch_brave_web_search(query: str, count: int = MAX_WEB_SEARCH_RESULTS_PER_QUERY) -> dict[str, Any]:
+    token = str(
+        os.environ.get("BRAVE_SEARCH_API_KEY")
+        or os.environ.get("LIFE_PILOT_INTEREST_BRAVE_SEARCH_API_KEY")
+        or ""
+    ).strip()
+    if not token:
+        raise ValueError("BRAVE_SEARCH_API_KEY missing")
+    endpoint = str(os.environ.get("LIFE_PILOT_INTEREST_WEB_SEARCH_ENDPOINT") or BRAVE_WEB_SEARCH_URL).strip()
+    params: dict[str, str] = {
+        "q": query,
+        "count": str(max(1, min(MAX_WEB_SEARCH_RESULTS_PER_QUERY, count))),
+    }
+    optional_env = {
+        "country": "LIFE_PILOT_INTEREST_WEB_SEARCH_COUNTRY",
+        "search_lang": "LIFE_PILOT_INTEREST_WEB_SEARCH_LANG",
+        "ui_lang": "LIFE_PILOT_INTEREST_WEB_SEARCH_UI_LANG",
+        "freshness": "LIFE_PILOT_INTEREST_WEB_SEARCH_FRESHNESS",
+        "safesearch": "LIFE_PILOT_INTEREST_WEB_SEARCH_SAFESEARCH",
+    }
+    for param, env_name in optional_env.items():
+        value = str(os.environ.get(env_name, "") or "").strip()
+        if value:
+            params[param] = value
+    url = f"{endpoint}?{urllib.parse.urlencode(params)}"
+    body = _fetch_url_text(
+        url,
+        headers={
+            "Accept": "application/json",
+            "X-Subscription-Token": token,
+        },
+    )
+    payload = json.loads(body)
+    if not isinstance(payload, dict):
+        raise ValueError("Brave Search response is not a JSON object")
+    return payload
+
+
+def parse_brave_search_items(
+    payload: dict[str, Any],
+    *,
+    query: str,
+    now: datetime | None = None,
+) -> list[InterestItem]:
+    current = now or _now()
+    web = payload.get("web")
+    if not isinstance(web, dict):
+        return []
+    results = web.get("results", [])
+    if not isinstance(results, list):
+        return []
+    clean_query = _clip_line(query, 120)
+    items: list[InterestItem] = []
+    for result in results[:MAX_WEB_SEARCH_RESULTS_PER_QUERY]:
+        if not isinstance(result, dict):
+            continue
+        title = _clip_line(str(result.get("title", "") or ""), 180)
+        url = _clip_line(str(result.get("url", "") or ""), 300)
+        summary = _clip_line(str(result.get("description", "") or ""), 240)
+        if not title or not url:
+            continue
+        source = _source_key("brave_web_search", clean_query)
+        tags = ("web", "search") + _keywords_for_text(
+            f"{clean_query} {title} {summary}",
+            iter(DEFAULT_POSITIVE_KEYWORDS),
+        )
+        items.append(
+            InterestItem(
+                item_id=_item_id(source, url, title),
+                source=source,
+                source_label=f"Brave Search: {clean_query}",
+                title=title,
+                url=url,
+                summary=summary,
+                published_at=current,
+                captured_at=current,
+                tags=tuple(dict.fromkeys(tags)),
+                untrusted=True,
+            )
+        )
+    return items
+
+
+def collect_web_search_items(
+    *,
+    searcher: WebSearcher = fetch_brave_web_search,
+    queries: tuple[str, ...] | None = None,
+    now: datetime | None = None,
+    require_enabled: bool = True,
+) -> tuple[list[InterestItem], tuple[str, ...]]:
+    if require_enabled and not _web_search_enabled():
+        return [], ("brave_web_search: disabled",) if queries else ()
+    clean_queries = queries if queries is not None else _configured_web_search_queries()
+    clean_queries = tuple(_clip_line(query, 160).strip() for query in clean_queries if str(query).strip())
+    if not clean_queries:
+        return [], ("brave_web_search: no queries",) if _web_search_enabled() else ()
+    count = _env_int(
+        "LIFE_PILOT_INTEREST_WEB_SEARCH_COUNT",
+        default=MAX_WEB_SEARCH_RESULTS_PER_QUERY,
+        minimum=1,
+        maximum=MAX_WEB_SEARCH_RESULTS_PER_QUERY,
+    )
+    items: list[InterestItem] = []
+    errors: list[str] = []
+    for query in clean_queries[:MAX_WEB_SEARCH_QUERIES]:
+        try:
+            payload = searcher(query, count)
+        except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as exc:
+            errors.append(f"brave_web_search: {type(exc).__name__}")
+            continue
+        items.extend(parse_brave_search_items(payload, query=query, now=now))
+    return items, tuple(errors)
 
 
 def collect_feed_items(
@@ -739,6 +1076,7 @@ def build_interest_digest(
     now: datetime | None = None,
     fetch: bool = True,
     fetcher: Fetcher = fetch_text,
+    web_searcher: WebSearcher = fetch_brave_web_search,
     max_items: int = 5,
     include_seen: bool = False,
     mark_seen: bool = True,
@@ -748,7 +1086,11 @@ def build_interest_digest(
     fetched_items: list[InterestItem] = []
     errors: tuple[str, ...] = ()
     if fetch:
-        fetched_items, errors = collect_feed_items(fetcher=fetcher, now=current)
+        feed_items, feed_errors = collect_feed_items(fetcher=fetcher, now=current)
+        weather_items, weather_errors = collect_weather_items(fetcher=fetcher, now=current)
+        search_items, search_errors = collect_web_search_items(searcher=web_searcher, now=current)
+        fetched_items = feed_items + weather_items + search_items
+        errors = feed_errors + weather_errors + search_errors
     local_items = collect_shared_x_items(storage_root, now=current)
     added = merge_interest_items(storage_root, fetched_items + local_items)
     profile = read_interest_profile(storage_root)
@@ -766,6 +1108,77 @@ def build_interest_digest(
         _mark_seen(storage_root, selected, now=current)
     return InterestDigestResult(
         message=render_interest_digest(selected, fetched_count=added, errors=errors),
+        items=selected,
+        fetched_count=added,
+        errors=errors,
+    )
+
+
+def render_interest_search_digest(
+    query: str,
+    items: tuple[InterestItem, ...],
+    *,
+    fetched_count: int = 0,
+    errors: tuple[str, ...] = (),
+) -> str:
+    clean_query = _clip_line(query, 120)
+    if not items:
+        error_line = f"\n取得エラー: {', '.join(errors)}" if errors else ""
+        return f"""Web検索: {clean_query}
+
+候補を取得できませんでした。{error_line}
+
+設定: LIFE_PILOT_INTEREST_WEB_SEARCH_ENABLED=true と BRAVE_SEARCH_API_KEY が必要です。
+返信: /interest search <調べたいこと>""".strip()
+    lines = [f"Web検索: {clean_query}"]
+    if errors:
+        lines.append(f"一部取得失敗: {', '.join(errors)}")
+    for index, item in enumerate(items, start=1):
+        lines.append("")
+        lines.append(_render_item(index, item))
+    lines.extend(
+        [
+            "",
+            "返信: /interest like 1 | save 1 | later 1 | dismiss 1 | more <話題> | less <話題>",
+        ]
+    )
+    if _discord_debug_lines_enabled():
+        lines.append(
+            "-# debug: interest=web-search "
+            f"items={len(items)} fetched={fetched_count} boundary=read-summary-only/no-tools"
+        )
+    return "\n".join(lines).strip()
+
+
+def build_interest_search_digest(
+    storage_root: Path,
+    query: str,
+    *,
+    now: datetime | None = None,
+    web_searcher: WebSearcher = fetch_brave_web_search,
+    max_items: int = 5,
+) -> InterestDigestResult:
+    current = now or _now()
+    ensure_interest_storage(storage_root)
+    items, errors = collect_web_search_items(
+        searcher=web_searcher,
+        queries=(_clip_line(query, 160),),
+        now=current,
+        require_enabled=True,
+    )
+    added = merge_interest_items(storage_root, items)
+    profile = read_interest_profile(storage_root)
+    ranked = rank_interest_items(
+        items,
+        profile,
+        storage_root=storage_root,
+        now=current,
+        include_seen=True,
+    )
+    selected = tuple(ranked[:max_items])
+    _save_last(storage_root, selected, current)
+    return InterestDigestResult(
+        message=render_interest_search_digest(query, selected, fetched_count=added, errors=errors),
         items=selected,
         fetched_count=added,
         errors=errors,
@@ -848,6 +1261,7 @@ def dispatch_daily_interest_digest(
     user_id: str = "",
     fetch: bool = True,
     fetcher: Fetcher = fetch_text,
+    web_searcher: WebSearcher = fetch_brave_web_search,
 ) -> InterestDispatchResult:
     current = now or _now()
     ensure_interest_storage(storage_root)
@@ -877,6 +1291,7 @@ def dispatch_daily_interest_digest(
         now=current,
         fetch=fetch,
         fetcher=fetcher,
+        web_searcher=web_searcher,
         mark_seen=False,
     )
     if not digest.items:
@@ -1060,9 +1475,10 @@ source重み: {', '.join(top_sources) if top_sources else '(未記録)'}{memory_
 
 def render_interest_usage() -> str:
     return (
-        "usage: /interest [refresh|profile|like N|save N|later N|dismiss N|more <topic>|less <topic>]\n"
+        "usage: /interest [refresh|search <query>|profile|like N|save N|later N|dismiss N|more <topic>|less <topic>]\n"
         "examples:\n"
         "- /interest\n"
+        "- /interest search 今日の天気\n"
         "- /interest like 1\n"
         "- /interest more vLLM\n"
         "- /interest less 価格だけの話"
@@ -1075,6 +1491,7 @@ def handle_interest_command(
     *,
     now: datetime | None = None,
     fetcher: Fetcher = fetch_text,
+    web_searcher: WebSearcher = fetch_brave_web_search,
 ) -> str:
     text = " ".join((raw_args or "").strip().split())
     if text.startswith("/interest "):
@@ -1086,6 +1503,15 @@ def handle_interest_command(
     parts = text.split(maxsplit=1)
     action = parts[0].strip().lower()
     rest = parts[1].strip() if len(parts) > 1 else ""
+    if action == "search":
+        if not rest:
+            return "検索語を指定してください。\n例: /interest search 今日の天気"
+        return build_interest_search_digest(
+            storage_root,
+            rest,
+            now=now,
+            web_searcher=web_searcher,
+        ).message
     if action in {"like", "save", "later", "dismiss"}:
         return record_interest_feedback(storage_root, action, selector=rest, now=now)
     if action in {"more", "less"}:
