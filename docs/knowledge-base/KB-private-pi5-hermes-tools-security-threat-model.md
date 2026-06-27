@@ -46,7 +46,7 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 | 症状 | 根因 | 対策 |
 |------|------|------|
 | `Recursive loop detected`（chat token） | playbook `vars` が `private_pi5_hermes_chat_dgx_llm_token` を自分自身で解決 | `pre_tasks` で `hostvars[inventory_hostname].get(...)` + `set_fact` |
-| `config.base.yaml.j2 not found` | Jinja include が `private-pi5-hermes/...` プレフィックス付き | 同ディレクトリ `{% include 'config.base.yaml.j2' %}` |
+| `config.base.yaml.j2 not found` | Jinja include が `private-pi5-hermes/...` プレフィックス付き | 同ディレクトリ `&#123;% include 'config.base.yaml.j2' %&#125;` |
 | ローカル SSH で Pi5 不可 | 鍵が Ansible 用のみ | `ansible -i inventory-private-pi5-stackchan-bridge-fragment.yml ...` |
 
 **Prevention**: トークン解決は playbook `vars` に置かず **inventory または `set_fact`**。プロファイル用テンプレ include は **ファイル名のみ**。CI に `ansible-playbook --syntax-check` と boundary `validate_boundary_policy.py` を維持。
