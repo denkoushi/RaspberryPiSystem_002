@@ -4711,7 +4711,20 @@ Status: implemented in PR376.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR377 And Later: Thin Indexes And Split Large Documents
+### PR377: Thin Pi3 Deploy Preflight Index Block
+
+Status: implemented in PR377.
+
+- Thin only the 2026-01-08 Pi3 deploy stabilization preflight latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the role template check, service stop and
+  disable flow, runtime mask, leftover process cleanup, memory threshold,
+  fail-fast behavior, documentation update, and onsite validation details with
+  short links to KB-154 and deployment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR378 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

@@ -1190,7 +1190,7 @@
 
 - **SPLITモード左右別PDF表示 正本**: [KB-154](./knowledge-base/infrastructure/signage.md#kb-154-splitモードで左右別pdf表示に対応) · [signage module](./modules/signage/README.md)。
 
-- **✅ Pi3デプロイ安定化の十分条件実装完了**: Pi3デプロイ時のプレフライトチェックを自動化し、手順遵守に依存しない運用を実現。コントロールノード側でAnsibleロールのテンプレートファイル存在チェックを実装し、Pi3側でサービス停止・無効化・mask、残存AnsiballZ掃除、メモリ閾値チェック（>= 120MB）を自動実行。条件を満たせない場合はfail-fastし、エラーメッセージに手動対処手順を表示。標準手順ドキュメントを更新し、プレフライトチェックが自動実行されることを明記。実機検証でコントロールノード側のロール構造チェックとPi3側のプレフライトチェックが正常に動作し、メモリ不足時にfail-fastすることを確認。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-154](./knowledge-base/infrastructure/ansible-deployment.md#kb-154-pi3デプロイ安定化の十分条件実装プレフライトチェック自動化) / [guides/deployment.md](./guides/deployment.md) を参照。
+- **Pi3デプロイ安定化プレフライト 正本**: [KB-154](./knowledge-base/infrastructure/ansible-deployment.md#kb-154-pi3デプロイ安定化の十分条件実装プレフライトチェック自動化) · [deployment](./guides/deployment.md)。
 
 - **✅ Pi3サイネージ安定化施策実装・デプロイ完了**: Pi3サイネージの安定稼働を向上させるため、SDカードへの高頻度書込み削減（tmpfs化）、systemdサービス堅牢化、画像更新停止の自己修復（Watchdog）、深夜の日次再起動、Ansibleによる設定の収束を実装。デプロイ時に`signage`ロールのテンプレートディレクトリ不足で失敗した問題を解決し、テンプレートファイルを`roles/signage/templates/`に配置してデプロイ成功。すべてのサービス（signage-lite.service、signage-lite-update.timer、signage-lite-watchdog.timer、signage-daily-reboot.timer、status-agent.timer）が正常に起動することを確認。詳細は [knowledge-base/infrastructure/signage.md#kb-153](./knowledge-base/infrastructure/signage.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) / [knowledge-base/infrastructure/ansible-deployment.md#kb-153](./knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) / [modules/signage/README.md](./modules/signage/README.md) を参照。
 
