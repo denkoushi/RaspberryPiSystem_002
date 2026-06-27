@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-06-27（D19 editorial digest 本番反映 · D19 運用改善実機 E2E 完了 · D20 Discord `/ask` Web research repo実装）
+最終更新: 2026-06-27（D19 editorial digest/tone 本番反映 · D19 運用改善実機 E2E 完了 · D20 Discord `/ask` Web research repo実装）
 
 ## 運用状態サマリ（2026-05-24 時点）
 
@@ -930,6 +930,13 @@ git diff --check
 
 **対象**: PR #862 · squash merge **`b5e847f3`** `feat: add Hermes interest editorial digest`。Private Pi5 Hermes の D19 `/interest` と `hermes-life-interest-digest.timer` のみ。D20 `/ask` 汎用 Web research は pending のまま。
 
+**Repo refinements（2026-06-27）**:
+
+| PR | merge | 内容 |
+|----|-------|------|
+| #863 | `3a5c0a60` | prompt に casual/curious な style guide を追加し、item 固定ラベルを `見どころ` に変更 |
+| #864 | `28878724` | LLM が item note に番号を混ぜても deterministic renderer 側で除去。`見どころ: 1:` の再発を unit test で防止 |
+
 **Production deploy**:
 
 ```bash
@@ -937,11 +944,18 @@ git diff --check
 # final PLAY RECAP: ok=188 changed=9 failed=0 skipped=26
 ```
 
-**Post-deploy state（2026-06-27 20:57 JST 頃）**:
+追加反映:
+
+| 対象 | 結果 |
+|------|------|
+| PR #863 deploy | `PLAY RECAP` ok=188 changed=6 failed=0 |
+| PR #864 deploy | `PLAY RECAP` ok=188 changed=4 failed=0 |
+
+**Post-deploy state（2026-06-27 22:20 JST 頃）**:
 
 | 対象 | 状態 |
 |------|------|
-| `hermes-gateway` | active / PID `17686` / 起動 `2026-06-27 20:57:15 JST` |
+| `hermes-gateway` | active / PID `33186` / 起動 `2026-06-27 21:50:27 JST` |
 | `hermes-life-interest-digest.timer` | active。次回 `2026-06-28 08:10:00 JST` |
 | `hermes-dgx-keep-warm.timer` / `hermes-tools-gateway` | active |
 | D19 env | `LIFE_PILOT_INTEREST_EDITORIAL_ENABLED=true`、model `system-prod-primary`、`max_chars=1800`、`timeout_sec=90` |
@@ -951,11 +965,23 @@ git diff --check
 
 | 項目 | 結果 |
 |------|------|
-| Pi5 CLI dry render | OK。送信なしで `今日見るなら`、`主筋`、`最新`、番号付き item、元URL、feedback 行を生成 |
-| Discord `/interest` | OK。Discord に editorial 版が配信された |
+| Pi5 CLI render | OK。Pi5 本番 `.env`、本番 storage、DGX OpenAI互換 endpoint で `今日見るなら`、`主筋`、`最新`、番号付き item、元URL、feedback 行を生成。Discord 送信はしないが、候補の既読化は `/interest` と同じ |
+| Pi5 CLI `--no-editorial` | OK。fallback 用 deterministic digest を明示的に生成 |
+| Discord `/interest` | OK。PR #862 反映後に Discord へ editorial 版が配信された。PR #863/#864 後の strict client-side slash E2E は未実施 |
+| 文体・prefix | OK。`見どころ` ラベルが出力され、`見どころ: 1:` のような item 番号混入は再現しない |
 | 取得失敗の扱い | `hermes_agent_issues: HTTPError` は「一部取得失敗」として表示し、DGX Spark Forum 候補で digest は成立 |
+| gateway log | 最新起動後は起動時の既知 warning のみ。検証に伴う新規 traceback はなし |
 
-**Follow-up**: 初回 editorial 版は正確だがやや硬い。次の repo refinement では、同じ安全境界と deterministic URL/番号描画を維持したまま、LLM prompt に casual/curious な style guide を追加し、item の固定ラベルも `見どころ` へ寄せる。反映後は Discord `/interest` で「読みたくなる」文体を実機確認する。
+**Operational notes**:
+
+- LLM には feed title/snippet/source/time/reason のみを渡す。URL、番号、feedback 行は repo 側 deterministic renderer が元 `InterestItem` から描画する。
+- LLM の JSON parse 失敗、timeout、DGX未ready、長すぎる出力、URL混入などは deterministic digest へ fallback する。
+- 次回の strict client-side E2E は、ユーザーが Discord で `/interest` を実行し、`主筋`、`最新`、`見どころ`、元URL、feedback 行を目視確認する。サーバー側の実機 render は 2026-06-27 に正常終了済み。
+
+**Open items**:
+
+- 文体は prompt のみで追加調整する。安全境界、保存形式、URL/番号の deterministic 描画は変えない。
+- D20 `/ask` 汎用 Web research は pending のまま。D19 fixed-source digest の読み物化とは別タスクとして扱う。
 
 **Troubleshooting（実機）**:
 
