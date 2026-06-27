@@ -4492,7 +4492,21 @@ Status: implemented in PR359.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR360 And Later: Thin Indexes And Split Large Documents
+### PR360: Thin Deploy Stability Feature Index Block
+
+Status: implemented in PR360.
+
+- Thin only the 2026-01-18 deploy stability feature latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the preflight checks, remote lock,
+  resource guard, environment retry, host timeouts, Slack status notices,
+  `--limit` support, Pi5/Pi4 validation, locale/git/ESLint/gitignore findings,
+  and KB-172 note with short links to KB-172, the deployment guide, and the
+  deploy stability plan.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR361 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

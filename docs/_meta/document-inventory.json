@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 138966,
-    "totalBytes": 10218390,
+    "totalLines": 138980,
+    "totalBytes": 10218100,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
@@ -26,7 +26,7 @@
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
     "localLinkCount": 5214,
-    "brokenLocalLinkCount": 115,
+    "brokenLocalLinkCount": 114,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 7,
     "brokenLocalLinks": [
@@ -39,11 +39,6 @@
         "sourcePath": "EXEC_PLAN.md",
         "href": "../docs/knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-?15[question-mark-corruption]pi5[question-mark-corruption]",
         "targetPath": "../docs/knowledge-base/infrastructure/security.md"
-      },
-      {
-        "sourcePath": "docs/INDEX.md",
-        "href": "../plans/deploy-stability-execplan.md",
-        "targetPath": "plans/deploy-stability-execplan.md"
       },
       {
         "sourcePath": "docs/api/overview.md",
@@ -6039,7 +6034,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 360625,
+      "byteSize": 359731,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -9951,6 +9946,11 @@
           "exists": true
         },
         {
+          "href": "./plans/deploy-stability-execplan.md",
+          "targetPath": "docs/plans/deploy-stability-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/dgx-resource-dashboard-ui-phase8.md",
           "targetPath": "docs/plans/dgx-resource-dashboard-ui-phase8.md",
           "exists": true
@@ -10654,11 +10654,6 @@
           "href": "../infrastructure/docker/docker-compose.server.yml",
           "targetPath": "infrastructure/docker/docker-compose.server.yml",
           "exists": true
-        },
-        {
-          "href": "../plans/deploy-stability-execplan.md",
-          "targetPath": "plans/deploy-stability-execplan.md",
-          "exists": false
         },
         {
           "href": "../README.md",
@@ -29404,7 +29399,7 @@
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29575,8 +29570,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 4544,
-      "byteSize": 188860,
+      "lineCount": 4558,
+      "byteSize": 189464,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
