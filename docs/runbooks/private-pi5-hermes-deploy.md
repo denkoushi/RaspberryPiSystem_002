@@ -667,23 +667,20 @@ Hermes標準機能を使う場合は fragment に以下を追加する。
 private_pi5_hermes_life_interest_digest_enabled: true
 private_pi5_hermes_life_interest_digest_memory_enabled: true
 private_pi5_hermes_life_interest_digest_time: "08:10:00"
+private_pi5_hermes_life_interest_weather_enabled: true
+private_pi5_hermes_life_interest_weather_latitude: "35.6812"
+private_pi5_hermes_life_interest_weather_longitude: "139.7671"
+private_pi5_hermes_life_interest_weather_label: "Tokyo"
+private_pi5_hermes_life_interest_weather_timezone: "Asia/Tokyo"
+
+private_pi5_hermes_life_interest_web_search_enabled: true
+private_pi5_hermes_life_interest_web_search_queries: "DGX Spark||Hermes Agent local LLM"
+private_pi5_hermes_life_interest_web_search_country: "JP"
+private_pi5_hermes_life_interest_web_search_lang: "ja"
+private_pi5_hermes_life_interest_brave_search_api_key: "<Brave Search API key>"
 ```
 
-任意の天気/検索を使う場合は、Pi5 の `.env`（通常 `/home/hermes/.hermes/.env`）に以下を追加する（API key は repo/fragment にコミットしない）。
-
-```dotenv
-LIFE_PILOT_INTEREST_WEATHER_ENABLED=true
-LIFE_PILOT_INTEREST_WEATHER_LATITUDE=35.6812
-LIFE_PILOT_INTEREST_WEATHER_LONGITUDE=139.7671
-LIFE_PILOT_INTEREST_WEATHER_LABEL=Tokyo
-LIFE_PILOT_INTEREST_WEATHER_TIMEZONE=Asia/Tokyo
-
-LIFE_PILOT_INTEREST_WEB_SEARCH_ENABLED=true
-LIFE_PILOT_INTEREST_WEB_SEARCH_QUERIES=DGX Spark||Hermes Agent local LLM
-LIFE_PILOT_INTEREST_WEB_SEARCH_COUNTRY=JP
-LIFE_PILOT_INTEREST_WEB_SEARCH_LANG=ja
-BRAVE_SEARCH_API_KEY=<Brave Search API key>
-```
+Ansible deploy は `/home/hermes/.hermes/.env` を fragment から再生成する。任意の天気/Web検索設定も fragment に置き、API key はローカル非追跡 fragment にだけ保存する。
 
 これにより `daily-interest-digest` skill を `~/.hermes/skills/research/daily-interest-digest/` へ配備し、chat profile で `memory` / `skills` / `cronjob` を解放する。日次配信は `hermes-life-interest-digest.timer` が担当し、送信先は固定 `private_pi5_hermes_life_interest_digest_channel_id` または直近のLife Pilot Discord context。解放後も terminal/file/git/deploy 系 toolset は disabled のまま。
 

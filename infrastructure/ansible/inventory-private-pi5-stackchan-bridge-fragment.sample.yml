@@ -140,6 +140,23 @@ all:
       # private_pi5_hermes_life_interest_digest_time: "08:10:00"
       # Optional fixed Discord target; otherwise Hermes uses the last Life Pilot channel context.
       # private_pi5_hermes_life_interest_digest_channel_id: ""
+      # Optional Open-Meteo weather source for /interest and daily digest.
+      # private_pi5_hermes_life_interest_weather_enabled: true
+      # private_pi5_hermes_life_interest_weather_latitude: "35.6812"
+      # private_pi5_hermes_life_interest_weather_longitude: "139.7671"
+      # private_pi5_hermes_life_interest_weather_label: "Tokyo"
+      # private_pi5_hermes_life_interest_weather_timezone: "Asia/Tokyo"
+      # Optional Brave Search source for /interest search and configured daily queries.
+      # Keep the API key in the local fragment only.
+      # private_pi5_hermes_life_interest_web_search_enabled: true
+      # private_pi5_hermes_life_interest_web_search_queries: "DGX Spark||Hermes Agent local LLM"
+      # private_pi5_hermes_life_interest_web_search_country: "JP"
+      # private_pi5_hermes_life_interest_web_search_lang: "ja"
+      # private_pi5_hermes_life_interest_web_search_ui_lang: "ja-JP"
+      # private_pi5_hermes_life_interest_web_search_freshness: "pd"
+      # private_pi5_hermes_life_interest_web_search_safesearch: "moderate"
+      # private_pi5_hermes_life_interest_web_search_count: "3"
+      # private_pi5_hermes_life_interest_brave_search_api_key: ""
       # Novel profile: creative writing via /novel (on-demand DGX qwen36_35b_uncensored)
       # private_pi5_hermes_novel_profile_enabled: true
       # private_pi5_hermes_discord_novel_bridge_enabled: true

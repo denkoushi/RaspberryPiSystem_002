@@ -235,6 +235,28 @@
           requires chat gateway (Discord) enabled.
       when: private_pi5_hermes_life_pilot_enabled | default(false) | bool
 
+    - name: Validate Hermes Life Pilot interest weather prerequisites
+      ansible.builtin.assert:
+        that:
+          - (private_pi5_hermes_life_interest_weather_latitude | default('') | string | trim) | length > 0
+          - (private_pi5_hermes_life_interest_weather_longitude | default('') | string | trim) | length > 0
+        fail_msg: >-
+          private_pi5_hermes_life_interest_weather_enabled requires
+          private_pi5_hermes_life_interest_weather_latitude and
+          private_pi5_hermes_life_interest_weather_longitude in the local inventory fragment.
+      when: private_pi5_hermes_life_interest_weather_enabled | default(false) | bool
+
+    - name: Validate Hermes Life Pilot interest web search prerequisites
+      ansible.builtin.assert:
+        that:
+          - (private_pi5_hermes_life_interest_brave_search_api_key | default('') | string | trim) | length > 0
+          - (private_pi5_hermes_life_interest_web_search_queries | default('') | string | trim) | length > 0
+        fail_msg: >-
+          private_pi5_hermes_life_interest_web_search_enabled requires
+          private_pi5_hermes_life_interest_brave_search_api_key and
+          private_pi5_hermes_life_interest_web_search_queries in the local inventory fragment.
+      when: private_pi5_hermes_life_interest_web_search_enabled | default(false) | bool
+
     - name: Validate Hermes prerequisites
       ansible.builtin.assert:
         that:
