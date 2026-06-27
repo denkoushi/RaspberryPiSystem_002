@@ -1186,7 +1186,7 @@
 
 ### 🆕 最新アップデート（2026-01-08）
 
-- **✅ CSVダッシュボード可視化機能実装完了**: Gmail経由でPowerAutomateから送信されたCSVファイルをサイネージで可視化表示する機能を実装。`slot.kind=csv_dashboard`の実装が完了し、FULL/SPLITレイアウトでCSVダッシュボードを表示可能に。データ構造定義、可視化テンプレート（テーブル/カードグリッド）、表示期間フィルタ、データ保持期間管理を実装。管理コンソールUIでCSVダッシュボードを選択可能に。CI通過・デプロイ完了を確認。詳細は [knowledge-base/infrastructure/signage.md#kb-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) / [modules/signage/README.md](./modules/signage/README.md) を参照。
+- **CSVダッシュボード可視化機能実装 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [signage module](./modules/signage/README.md)。
 
 - **✅ SPLITモードで左右別PDF表示に対応完了**: SPLITレイアウトで左右ともPDFを表示できる機能を実装。`SignageContentResponse`に`pdfsById`フィールドを追加し、複数PDFを辞書形式で提供可能に。レンダラーに`renderSplitWithPanes`メソッドを追加し、左右ともPDFの場合に対応。Web側の`SignageDisplayPage`を`layoutConfig`準拠の2ペインSPLIT描画に更新し、左右それぞれのスロットに応じてPDFまたは工具を描画。左右それぞれのPDFが独立してスライドショー表示されることを実機検証で確認。CI通過・デプロイ完了を確認。詳細は [knowledge-base/infrastructure/signage.md#kb-154](./knowledge-base/infrastructure/signage.md#kb-154-splitモードで左右別pdf表示に対応) / [modules/signage/README.md](./modules/signage/README.md) を参照。
 
