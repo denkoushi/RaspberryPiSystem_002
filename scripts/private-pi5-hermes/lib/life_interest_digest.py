@@ -1478,7 +1478,7 @@ def render_interest_usage() -> str:
         "usage: /interest [refresh|search <query>|profile|like N|save N|later N|dismiss N|more <topic>|less <topic>]\n"
         "examples:\n"
         "- /interest\n"
-        "- /interest search 今日の天気\n"
+        "- /interest search Hermes Agent local LLM\n"
         "- /interest like 1\n"
         "- /interest more vLLM\n"
         "- /interest less 価格だけの話"
@@ -1505,7 +1505,7 @@ def handle_interest_command(
     rest = parts[1].strip() if len(parts) > 1 else ""
     if action == "search":
         if not rest:
-            return "検索語を指定してください。\n例: /interest search 今日の天気"
+            return "検索語を指定してください。\n例: /interest search Hermes Agent local LLM"
         return build_interest_search_digest(
             storage_root,
             rest,
