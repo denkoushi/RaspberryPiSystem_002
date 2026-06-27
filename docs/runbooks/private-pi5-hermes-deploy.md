@@ -757,6 +757,65 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py --validate-task-b
 
 **記録**: [KB Phase D5 本番](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) · [KB `/task` profile 復帰](../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md)。
 
+### 本番反映 — Private Pi5 Hermes 運用改善（2026-06-27）
+
+**対象**: branch `feat/private-pi5-hermes-ops-refine` · commits **`a6b36009`** / **`e2cd45e2`**。Private Pi5 Hermes のみ。Discord を入口、Desktop は設定・観察の作業机として扱い、`/task` の権限拡張は行っていない。
+
+**仕様反映**:
+
+| 領域 | 反映内容 |
+|------|----------|
+| DGX profile | `~/.hermes-tools/.env` と `~/.hermes/dgx-keep-warm.env` の `DGX_MODEL_PROFILE_ID` を `/task` 前の ensure/verify と keep-warm の同一復帰先にした。既定は `business_qwen36_27b_nvfp4`、fragment で別の業務 profile に変更可 |
+| DGX ready guard | active profile が目的 ID でも `/v1/models` が 502 なら OK とせず、同 profile で `/start` し直して ready を待つ |
+| Discord scheduled UX | 朝 check-in は有用候補がある時だけ送信。夕方 proactive timer は既定無効。follow-up timer は維持。定期・自動通知の debug 行は既定非表示 |
+| Daily Interest Digest | 定期 dispatch は空なら `skipped_empty=1` で投稿しない。手動 `/interest` は空応答を維持 |
+| Docs | Desktop 併用の位置づけ、Life Pilot の朝のみ既定、SSD 移行は Hermes 安定後に実施する手順へ更新 |
+
+**Local validation**:
+
+```bash
+python3 -m unittest discover -s scripts/private-pi5-hermes/tests -v
+# 231 tests OK
+cd scripts/private-pi5-stackchan-bridge
+python3 -m unittest discover -s tests -p 'test_dgx_runtime_client.py' -v
+# 9 tests OK
+python3 scripts/private-pi5-hermes/validate_boundary_policy.py --validate-daily-pilot --validate-life-pilot --validate-task-bridge
+ansible-playbook -i infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample.yml infrastructure/ansible/playbooks/private-pi5-hermes.yml --syntax-check
+git diff --check
+```
+
+**Production deploy**:
+
+```bash
+./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
+# final PLAY RECAP: ok=186 changed=4 failed=0 skipped=19
+```
+
+**Post-deploy state（2026-06-27 15:12 JST 頃）**:
+
+| 対象 | 状態 |
+|------|------|
+| `hermes-gateway` / `hermes-tools-gateway` | active |
+| `hermes-dgx-keep-warm.timer` | active |
+| `hermes-life-proactive-morning.timer` | active |
+| `hermes-life-proactive-evening.timer` | inactive（既定どおり） |
+| `hermes-life-followup.timer` / `hermes-life-interest-digest.timer` / `hermes-life-discord-ui.service` | active |
+| DGX `system-prod-trtllm` | Up |
+| DGX `dgx-private-comfyui` | Exited。Hermes 業務 profile 起動を優先するため停止したまま |
+
+**Troubleshooting（実機）**:
+
+| 症状 | 原因 | 対処 |
+|------|------|------|
+| deploy verify の `Verify DGX accepts tools profile Bearer token` が `/v1/models=502` で失敗 | DGX `system-prod-trtllm` が起動失敗。`docker logs system-prod-trtllm` で `Free memory ... 48.56/121.63 GiB ... less than desired GPU memory utilization (0.65, 79.06 GiB)`。`dgx-private-comfyui` が約 66GiB を保持していた | `docker stop dgx-private-comfyui`（データ削除なし）→ Pi5 から `systemctl start hermes-dgx-keep-warm.service` → `/v1/models` 200 → deploy 再実行 |
+| keep-warm が 10 分待っても ready にならない | GPU メモリ競合または blue backend exit | DGX で `docker ps -a --filter name=system-prod-trtllm` と `docker logs system-prod-trtllm` を確認。ComfyUI 等の GPU 利用を止めるか、DGX 側 profile の `gpu-memory-utilization` を再調整してから keep-warm 再実行 |
+
+**Open items**:
+
+- Discord 手動 E2E（`/task` read-only と承認つき write、`/interest`、朝 check-in の実 UI 表示）は未実施。playbook smoke と unit/integration は通過済み。
+- `dgx-private-comfyui` は停止中。ComfyUI を使う前に、`system-prod-trtllm` との GPU メモリ競合をどちら優先にするか判断する。
+- SSD boot 移行は未実施。Hermes 運用が安定してから [ssd-migration.md](../guides/ssd-migration.md) の Private Pi5 Hermes チェックリストで進める。
+
 ### 本番反映 — Discord 承認 relay 完結（2026-05-30）
 
 | # | 対象 | 手順 | 結果 |
