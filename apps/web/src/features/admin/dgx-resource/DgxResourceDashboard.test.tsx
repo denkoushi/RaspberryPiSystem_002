@@ -167,6 +167,52 @@ function makeOverview(): DgxResourceOverview {
       resourceStateStatus: 'ready',
       resourceStateDetailJa: 'ready',
     },
+    modelProfiles: {
+      configured: true,
+      status: 'ok',
+      activeProfileId: 'business_qwen36_27b_nvfp4',
+      activeStateBackend: 'blue',
+      pendingProfileId: null,
+      lastLoadedProfileId: 'business_qwen36_27b_nvfp4',
+      available: [
+        {
+          id: 'business_qwen36_27b_nvfp4',
+          displayNameJa: 'Qwen3.6 27B NVFP4',
+          backend: 'blue',
+          servedAlias: 'system-prod-primary',
+          recommended: true,
+          enabled: true,
+          status: 'available',
+          canonicalNames: [],
+          legacyNames: [],
+        },
+        {
+          id: 'business_qwen35_35b_gguf',
+          displayNameJa: 'Qwen3.5 35B GGUF',
+          backend: 'green',
+          servedAlias: 'system-prod-primary',
+          recommended: false,
+          enabled: true,
+          status: 'available',
+          canonicalNames: [],
+          legacyNames: [],
+        },
+        {
+          id: 'business_ornith_35b_nvfp4',
+          displayNameJa: 'Ornith 1.0 35B NVFP4',
+          backend: 'blue',
+          servedAlias: 'system-prod-primary',
+          recommended: false,
+          businessOrchestrationEligible: true,
+          enabled: true,
+          status: 'available',
+          canonicalNames: [],
+          legacyNames: [],
+          declaredCapabilities: ['text', 'vision'],
+        },
+      ],
+      businessReturnSelectable: [],
+    },
   };
 }
 
@@ -199,5 +245,16 @@ describe('DgxResourceDashboard', () => {
     expect(screen.getByText('なし')).toBeInTheDocument();
     expect(screen.getByText('詳細・保守・ログ')).toBeInTheDocument();
     expect(screen.getByText('primary-scenario-flow')).toBeInTheDocument();
+  });
+
+  it('renders all model profiles in the main profile list', async () => {
+    fetchDgxResourceOverview.mockResolvedValue(makeOverview());
+    fetchDgxResourceEvents.mockResolvedValue({ events: [] });
+
+    renderWithClient(<DgxResourceDashboard />);
+
+    expect(await screen.findByText('Qwen3.6 27B NVFP4')).toBeInTheDocument();
+    expect(screen.getByText('Qwen3.5 35B GGUF')).toBeInTheDocument();
+    expect(screen.getByText('Ornith 1.0 35B NVFP4')).toBeInTheDocument();
   });
 });

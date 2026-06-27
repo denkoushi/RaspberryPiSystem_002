@@ -18,6 +18,9 @@ _VLLM_RUNTIME_ENV_MAP: dict[str, str] = {
     "maxNumBatchedTokens": "VLLM_MAX_NUM_BATCHED_TOKENS",
     "kvCacheDtype": "VLLM_KV_CACHE_DTYPE",
     "languageModelOnly": "VLLM_LANGUAGE_MODEL_ONLY",
+    "quantization": "VLLM_QUANTIZATION",
+    "disableCustomAllReduce": "VLLM_DISABLE_CUSTOM_ALL_REDUCE",
+    "tensorParallelSize": "VLLM_TENSOR_PARALLEL_SIZE",
 }
 
 _LLAMA_RUNTIME_ENV_MAP: dict[str, str] = {
@@ -49,6 +52,8 @@ def launcher_env_for_profile(profile: ModelProfile) -> dict[str, str]:
     engine = _env_value(runtime_profile.get("engine"))
     if engine:
         env["DGX_RUNTIME_ENGINE"] = engine
+    if profile.backend == "blue":
+        env["VLLM_SERVED_MODEL_NAME"] = profile.served_alias
     memory_policy = _env_value(runtime_profile.get("memoryPolicy"))
     if memory_policy:
         env["DGX_MEMORY_POLICY"] = memory_policy

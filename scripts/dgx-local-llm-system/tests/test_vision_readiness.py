@@ -34,6 +34,27 @@ class VisionReadinessTests(unittest.TestCase):
             self.assertEqual(ready, ("text", "vision"))
             self.assertEqual(reason, "blue_native_vlm")
 
+    def test_blue_language_model_only_is_not_vision_ready(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = Path(tmp) / "manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "modelProfileId": "business_qwen36_27b_nvfp4",
+                        "displayNameJa": "27B",
+                        "backend": "blue",
+                        "servedAlias": "system-prod-primary",
+                        "declaredCapabilities": ["text", "vision"],
+                        "runtimeProfile": {"engine": "vllm", "vllm": {"languageModelOnly": True}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            profile = load_model_profile_manifest(manifest)
+            ready, reason = assess_runtime_readiness(profile)
+            self.assertEqual(ready, ("text",))
+            self.assertEqual(reason, "blue_language_model_only")
+
     def test_green_without_mmproj_in_log_is_not_vision_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
             manifest = Path(tmp) / "manifest.json"

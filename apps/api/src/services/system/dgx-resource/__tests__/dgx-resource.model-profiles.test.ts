@@ -29,7 +29,14 @@ describe('fetchDgxModelProfilesOverview', () => {
             runtimeProfile: {
               engine: 'vllm',
               memoryPolicy: 'known_good_business_text_tools',
-              vllm: { gpuMemoryUtilization: 0.65, maxModelLen: 8192, languageModelOnly: true },
+              vllm: {
+                gpuMemoryUtilization: 0.65,
+                maxModelLen: 8192,
+                languageModelOnly: true,
+                quantization: 'compressed-tensors',
+                disableCustomAllReduce: true,
+                tensorParallelSize: 2,
+              },
             },
           },
         ],
@@ -62,6 +69,9 @@ describe('fetchDgxModelProfilesOverview', () => {
     expect(overview.available).toHaveLength(1);
     expect(overview.businessReturnSelectable).toHaveLength(1);
     expect(overview.available[0]?.runtimeProfile?.vllm?.gpuMemoryUtilization).toBe(0.65);
+    expect(overview.available[0]?.runtimeProfile?.vllm?.quantization).toBe('compressed-tensors');
+    expect(overview.available[0]?.runtimeProfile?.vllm?.disableCustomAllReduce).toBe(true);
+    expect(overview.available[0]?.runtimeProfile?.vllm?.tensorParallelSize).toBe(2);
     expect(overview.resourceState?.owner).toBe('business');
     expect(overview.resourceState?.modelProfileId).toBe('business_qwen36_27b_nvfp4');
   });
@@ -97,6 +107,16 @@ describe('fetchDgxModelProfilesOverview', () => {
             enabled: true,
             status: 'available',
           },
+          {
+            id: 'business_ornith_35b_nvfp4',
+            displayNameJa: 'Ornith 1.0 35B NVFP4',
+            backend: 'blue',
+            servedAlias: 'system-prod-primary',
+            recommended: false,
+            businessOrchestrationEligible: true,
+            enabled: true,
+            status: 'available',
+          },
         ],
       }),
     })) as typeof fetch;
@@ -108,8 +128,11 @@ describe('fetchDgxModelProfilesOverview', () => {
       timeoutMs: 3000,
     });
 
-    expect(overview.available).toHaveLength(2);
-    expect(overview.businessReturnSelectable.map((p) => p.id)).toEqual(['business_qwen36_27b_nvfp4']);
+    expect(overview.available).toHaveLength(3);
+    expect(overview.businessReturnSelectable.map((p) => p.id)).toEqual([
+      'business_qwen36_27b_nvfp4',
+      'business_ornith_35b_nvfp4',
+    ]);
   });
 
   it('parses activeStateBackend from state payload', async () => {

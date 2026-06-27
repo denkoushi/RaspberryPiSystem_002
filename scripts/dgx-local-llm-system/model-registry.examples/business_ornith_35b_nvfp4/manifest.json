@@ -1,0 +1,41 @@
+{
+  "modelProfileId": "business_ornith_35b_nvfp4",
+  "displayNameJa": "業務 Ornith 1.0 35B NVFP4",
+  "descriptionJa": "Ornith 1.0 35B NVFP4。vLLM blue backend で VLM smoke 確認後に業務復帰候補として有効化する。",
+  "backend": "blue",
+  "servedAlias": "system-prod-primary",
+  "enabled": false,
+  "recommended": false,
+  "businessOrchestrationEligible": true,
+  "declaredCapabilities": ["text", "vision"],
+  "visionRequiresMmproj": false,
+  "launcherHints": {
+    "blueModelDir": "/srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Ornith-1.0-35B-NVFP4"
+  },
+  "runtimeProfile": {
+    "engine": "vllm",
+    "memoryPolicy": "ornith_business_vlm_smoke_required",
+    "coexistencePolicy": "single_active_not_comfy",
+    "guaranteeLevel": "strict_ready_when_orchestrated",
+    "vllm": {
+      "gpuMemoryUtilization": 0.65,
+      "maxModelLen": 8192,
+      "maxNumSeqs": 4,
+      "maxNumBatchedTokens": 16384,
+      "kvCacheDtype": "fp8",
+      "disableCustomAllReduce": true
+    }
+  },
+  "sourceKind": "huggingface",
+  "sourceModelRef": "sakamakismile/Ornith-1.0-35B-NVFP4",
+  "modelFamily": "Ornith-1.0",
+  "format": "safetensors",
+  "quantization": "NVFP4",
+  "storageLocation": "/srv/dgx/shared-models/hf/sakamakismile/Ornith-1.0-35B-NVFP4",
+  "currentStorageLocation": "/srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Ornith-1.0-35B-NVFP4",
+  "storageStatus": "planned_shared_models_migration",
+  "expectedSizeGb": 21.9,
+  "expectedColdStartSec": 240,
+  "canonicalNames": ["Ornith-1.0-35B-NVFP4"],
+  "legacyNames": ["blue", "system-prod-trtllm"]
+}

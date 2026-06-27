@@ -6,7 +6,7 @@
   "servedAlias": "system-prod-primary",
   "enabled": true,
   "recommended": true,
-  "declaredCapabilities": ["text", "vision"],
+  "declaredCapabilities": ["text"],
   "visionRequiresMmproj": false,
   "launcherHints": {
     "blueModelDir": "/srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4"
@@ -22,7 +22,8 @@
       "maxNumSeqs": 4,
       "maxNumBatchedTokens": 16384,
       "kvCacheDtype": "fp8",
-      "languageModelOnly": true
+      "languageModelOnly": true,
+      "quantization": "compressed-tensors"
     }
   },
   "sourceKind": "huggingface",

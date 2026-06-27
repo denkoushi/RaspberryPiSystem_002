@@ -241,6 +241,9 @@ export type DgxBusinessModelProfileApi = {
       maxNumBatchedTokens?: number;
       kvCacheDtype?: string;
       languageModelOnly?: boolean;
+      quantization?: string;
+      disableCustomAllReduce?: boolean;
+      tensorParallelSize?: number;
     };
     llamaCpp?: {
       ctxSize?: number;
@@ -289,6 +292,10 @@ export type DgxModelProfilesOverviewApi = {
   businessReturnSelectable?: DgxBusinessModelProfileApi[];
   activeProfileId: string | null;
   activeStateBackend: 'green' | 'blue' | null;
+  activeRuntimeState?: {
+    runtimeReadyCapabilities: readonly string[];
+    visionReadyReason: string | null;
+  } | null;
   pendingProfileId: string | null;
   lastLoadedProfileId: string | null;
   resourceState?: DgxResourceSharedStateApi | null;

@@ -4,9 +4,8 @@ import { getDgxResourceApiErrorMessage } from '../../../api/dgx-resource';
 import { Button } from '../../../components/ui/Button';
 import { useConfirm } from '../../../contexts/ConfirmContext';
 
-import { DGX_QUICK_START_MODEL_PROFILES } from './dgxResourceQuickProfileConfig';
-
 import type {
+  DgxBusinessModelProfileApi,
   DgxModelProfilesOverviewApi,
   DgxResourceActionBody,
   DgxResourceActionResult,
@@ -35,8 +34,7 @@ export function DgxResourceQuickProfileActions({
   const selectable =
     modelProfiles?.available.filter((profile) => profile.enabled && profile.status === 'available') ?? [];
 
-  const runtimeBudgetLine = (modelProfileId: string): string | null => {
-    const profile = selectable.find((p) => p.id === modelProfileId);
+  const runtimeBudgetLine = (profile: DgxBusinessModelProfileApi): string | null => {
     const runtime = profile?.runtimeProfile;
     if (!runtime) return null;
     if (runtime.vllm?.gpuMemoryUtilization != null) {
@@ -49,18 +47,14 @@ export function DgxResourceQuickProfileActions({
     return runtime.guaranteeLevel ?? null;
   };
 
-  const startProfile = async (modelProfileId: string, label: string) => {
-    const profile = selectable.find((p) => p.id === modelProfileId);
-    if (!profile) {
-      onControlUiError(`${label} は現在 DGX で利用できません（manifest / 実体パスを確認）`);
-      return;
-    }
+  const startProfile = async (profile: DgxBusinessModelProfileApi) => {
+    const modelProfileId = profile.id;
 
     const ok = await confirm({
-      title: `${label} を起動`,
+      title: `${profile.displayNameJa} を起動`,
       description: [
-        `DGX の LocalLLM を model profile「${modelProfileId}」で起動します。`,
-        '保証レベル: POSTのみ。業務復帰シナリオのStrict Ready確認は通しません。',
+        `modelProfileId: ${modelProfileId}`,
+        '保証レベル: POSTのみ。Strict Ready確認は通しません。',
         '既存の業務モデルと同時常時オンにはなりません（単一アクティブ運用）。',
       ].join('\n'),
       tone: 'primary',
@@ -91,7 +85,7 @@ export function DgxResourceQuickProfileActions({
       <div className="rounded-lg border border-slate-200 bg-white p-3">
         <h3 className="text-sm font-bold text-slate-950">保守: モデルプロファイル起動</h3>
         <p className="mt-1 text-xs text-amber-700">
-          {modelProfiles?.errorMessageJa ?? 'DGX model profiles を取得できないため、固定起動ボタンは無効です'}
+          {modelProfiles?.errorMessageJa ?? 'DGX model profiles を取得できないため、モデル起動は無効です'}
         </p>
       </div>
     );
@@ -100,27 +94,39 @@ export function DgxResourceQuickProfileActions({
   return (
     <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
       <h3 className="text-sm font-bold text-slate-950">保守: モデルプロファイル起動</h3>
-      <p className="text-xs leading-snug text-slate-500">保証レベル: POSTのみ。Strict Ready確認や業務意図更新は行いません。</p>
-      <div className="flex flex-wrap gap-2">
-        {DGX_QUICK_START_MODEL_PROFILES.map(({ modelProfileId, label }) => {
-          const available = selectable.some((p) => p.id === modelProfileId);
-          const budget = runtimeBudgetLine(modelProfileId);
-          return (
-            <div key={modelProfileId} className="space-y-1">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={busy || !available}
-                aria-label={label}
-                onClick={() => void startProfile(modelProfileId, label)}
-              >
-                {label}
-              </Button>
-              {budget ? <p className="max-w-56 text-[11px] leading-snug text-slate-500">{budget}</p> : null}
-            </div>
-          );
-        })}
-      </div>
+      {selectable.length === 0 ? (
+        <p className="text-xs font-semibold text-slate-500">起動可能なモデルなし</p>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {selectable.map((profile) => {
+            const active = profile.id === modelProfiles?.activeProfileId;
+            const budget = runtimeBudgetLine(profile);
+            return (
+              <div key={profile.id} className="space-y-1 rounded-md border border-slate-200 bg-slate-50 p-2">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant={active ? 'primary' : 'secondary'}
+                    disabled={busy}
+                    aria-label={profile.displayNameJa}
+                    onClick={() => void startProfile(profile)}
+                  >
+                    {profile.displayNameJa}
+                  </Button>
+                  <span
+                    className={active ? 'h-2 w-2 rounded-full bg-emerald-700' : 'h-2 w-2 rounded-full bg-slate-400'}
+                    aria-label={active ? 'active' : 'available'}
+                  />
+                </div>
+                <p className="truncate text-[11px] font-semibold text-slate-500" title={profile.id}>
+                  {profile.id}
+                </p>
+                {budget ? <p className="max-w-72 text-[11px] leading-snug text-slate-500">{budget}</p> : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
       {resultNote ? (
         <p
           role="status"

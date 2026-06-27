@@ -44,6 +44,9 @@ export type DgxModelRuntimeProfile = {
     maxNumBatchedTokens?: number;
     kvCacheDtype?: string;
     languageModelOnly?: boolean;
+    quantization?: string;
+    disableCustomAllReduce?: boolean;
+    tensorParallelSize?: number;
   };
   llamaCpp?: {
     ctxSize?: number;
@@ -122,6 +125,13 @@ const parseRuntimeProfile = (value: unknown): DgxModelRuntimeProfile | undefined
           : {}),
         ...(asString(value.vllm.kvCacheDtype) ? { kvCacheDtype: asString(value.vllm.kvCacheDtype)! } : {}),
         ...(typeof value.vllm.languageModelOnly === 'boolean' ? { languageModelOnly: value.vllm.languageModelOnly } : {}),
+        ...(asString(value.vllm.quantization) ? { quantization: asString(value.vllm.quantization)! } : {}),
+        ...(typeof value.vllm.disableCustomAllReduce === 'boolean'
+          ? { disableCustomAllReduce: value.vllm.disableCustomAllReduce }
+          : {}),
+        ...(asNumber(value.vllm.tensorParallelSize) !== undefined
+          ? { tensorParallelSize: asNumber(value.vllm.tensorParallelSize)! }
+          : {}),
       }
     : undefined;
   const llamaCpp = isRecord(value.llamaCpp)

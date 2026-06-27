@@ -4,6 +4,7 @@ set -euo pipefail
 # 歴史的なファイル名だが、blue backend 用の汎用コンテナランチャーとして使う。
 # 新しい設定では BLUE_* を推奨しつつ、既存の TRTLLM_* 互換も維持する。
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTAINER_NAME="${BLUE_CONTAINER_NAME:-${TRTLLM_CONTAINER_NAME:-system-prod-trtllm}}"
 MODE="${BLUE_SERVER_MODE:-${TRTLLM_SERVER_MODE:-container}}"
 IMAGE="${BLUE_SERVER_IMAGE:-${TRTLLM_SERVER_IMAGE:-}}"
@@ -23,6 +24,21 @@ install -d "$(dirname "${LOG_PATH}")"
 if [[ "${MODE}" != "container" && "${MODE}" != "host" ]]; then
   echo "BLUE_SERVER_MODE/TRTLLM_SERVER_MODE must be container or host: ${MODE}" >&2
   exit 1
+fi
+
+if [[ -z "${SERVER_COMMAND}" && -n "${MODEL_DIR}" ]]; then
+  VLLM_COMMAND_BUILDER="${BLUE_VLLM_COMMAND_BUILDER_PATH:-${SCRIPT_DIR}/vllm_command_builder.py}"
+  if [[ ! -f "${VLLM_COMMAND_BUILDER}" ]]; then
+    echo "vLLM command builder not found: ${VLLM_COMMAND_BUILDER}" >&2
+    exit 1
+  fi
+  SERVER_COMMAND="$(
+    BLUE_MODEL_DIR="${MODEL_DIR}" \
+    TRTLLM_MODEL_DIR="${MODEL_DIR}" \
+    BLUE_SERVER_CONTAINER_PORT="${CONTAINER_PORT}" \
+    TRTLLM_SERVER_CONTAINER_PORT="${CONTAINER_PORT}" \
+    python3 "${VLLM_COMMAND_BUILDER}"
+  )"
 fi
 
 if [[ "${MODE}" == "host" ]]; then

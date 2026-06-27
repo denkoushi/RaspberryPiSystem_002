@@ -57,6 +57,9 @@ class ProfileLauncherTests(unittest.TestCase):
                                 "maxNumBatchedTokens": 16384,
                                 "kvCacheDtype": "fp8",
                                 "languageModelOnly": True,
+                                "quantization": "compressed-tensors",
+                                "disableCustomAllReduce": True,
+                                "tensorParallelSize": 2,
                             },
                         },
                     }
@@ -73,6 +76,10 @@ class ProfileLauncherTests(unittest.TestCase):
             self.assertEqual(env["VLLM_MAX_NUM_BATCHED_TOKENS"], "16384")
             self.assertEqual(env["VLLM_KV_CACHE_DTYPE"], "fp8")
             self.assertEqual(env["VLLM_LANGUAGE_MODEL_ONLY"], "true")
+            self.assertEqual(env["VLLM_QUANTIZATION"], "compressed-tensors")
+            self.assertEqual(env["VLLM_DISABLE_CUSTOM_ALL_REDUCE"], "true")
+            self.assertEqual(env["VLLM_TENSOR_PARALLEL_SIZE"], "2")
+            self.assertEqual(env["VLLM_SERVED_MODEL_NAME"], "system-prod-primary")
 
 
 if __name__ == "__main__":

@@ -337,18 +337,15 @@ export function DgxResourcePrimaryScenarioFlow({
                 void executeScenario(action);
               }}
               className={clsx(
-                'grid h-[4.25rem] content-center gap-1 rounded-lg border px-3 text-left transition disabled:cursor-not-allowed',
+                'grid h-14 content-center rounded-lg border px-3 text-center transition disabled:cursor-not-allowed',
                 action.primary
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
                   : 'border-slate-300 bg-white text-slate-950 hover:bg-slate-50',
                 disabled && 'opacity-45'
               )}
-              title={action.disabledReasonJa}
+              title={action.disabledReasonJa ?? action.subtitleJa}
             >
               <strong className="text-sm font-bold leading-tight sm:text-[15px]">{compactScenarioLabel(action.scenarioId)}</strong>
-              <span className={clsx('line-clamp-2 text-xs font-semibold leading-snug', action.primary ? 'text-emerald-700' : 'text-slate-500')}>
-                {action.subtitleJa}
-              </span>
             </button>
           );
         })}

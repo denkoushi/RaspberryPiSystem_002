@@ -123,7 +123,7 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 **本番反映（2026-05-29 · profile capabilities / runtime intent · Pi5→DGX 順次・各 1 台）** {#本番反映2026-05-29-dgx-profile-capabilities-runtime-intent}
 
 - **① Pi5** — `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/dgx-profile-capability-intent-foundation infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。**Detach `20260529-121631-3901`** · **`ok=138` `changed=7` `failed=0`** · **`--follow` 約 994s**。
-- **② DGX** — 以下を **`scp`** → **`/srv/dgx/system-prod/bin/`**: [`control-server.py`](../../scripts/dgx-local-llm-system/control-server.py), [`model_profiles.py`](../../scripts/dgx-local-llm-system/model_profiles.py), [`active_model_state.py`](../../scripts/dgx-local-llm-system/active_model_state.py), [`profile_capabilities.py`](../../scripts/dgx-local-llm-system/profile_capabilities.py), [`profile_launcher.py`](../../scripts/dgx-local-llm-system/profile_launcher.py), [`vision_readiness.py`](../../scripts/dgx-local-llm-system/vision_readiness.py), [`start-llama-server.sh`](../../scripts/dgx-local-llm-system/start-llama-server.sh)。registry: 例 manifest → **`/srv/dgx/shared-models/registry/business_qwen35_35b_gguf/manifest.json`** および **`business_qwen36_27b_nvfp4/manifest.json`**。**再起動**: **`control-server.pid`** と **`gateway-server.pid`** の PID を **`kill` → ファイル削除 → 各 `start-*.sh`**（**gateway-server.py 本体は未更新だが `model_profiles` import 先が変わるため gateway 再起動必須**）。
+- **② DGX** — 以下を **`scp`** → **`/srv/dgx/system-prod/bin/`**: [`control-server.py`](../../scripts/dgx-local-llm-system/control-server.py), [`model_profiles.py`](../../scripts/dgx-local-llm-system/model_profiles.py), [`active_model_state.py`](../../scripts/dgx-local-llm-system/active_model_state.py), [`profile_capabilities.py`](../../scripts/dgx-local-llm-system/profile_capabilities.py), [`profile_launcher.py`](../../scripts/dgx-local-llm-system/profile_launcher.py), [`vision_readiness.py`](../../scripts/dgx-local-llm-system/vision_readiness.py), [`vllm_command_builder.py`](../../scripts/dgx-local-llm-system/vllm_command_builder.py), [`start-llama-server.sh`](../../scripts/dgx-local-llm-system/start-llama-server.sh), [`start-trtllm-server.sh`](../../scripts/dgx-local-llm-system/start-trtllm-server.sh)。registry: 例 manifest → **`/srv/dgx/shared-models/registry/business_qwen35_35b_gguf/manifest.json`** / **`business_qwen36_27b_nvfp4/manifest.json`** / **`business_ornith_35b_nvfp4/manifest.json`**。**再起動**: **`control-server.pid`** と **`gateway-server.pid`** の PID を **`kill` → ファイル削除 → 各 `start-*.sh`**（**gateway-server.py 本体は未更新だが `model_profiles` import 先が変わるため gateway 再起動必須**）。
 - **検証**: `./scripts/deploy/verify-phase12-real.sh` → **43/0/0**（約 **31s**）。DGX: `TOKEN=$(tr -d '\n' < /srv/dgx/system-prod/secrets/api-token)` · `curl -H "X-LLM-Token: $TOKEN" http://127.0.0.1:38081/system/model-profiles` → profiles の **`declaredCapabilities`** と state の **`runtimeReadyCapabilities`**。
 - **トラブルシュート**: `update-all-clients.sh` が **未 push** で止まる → **push 後に再実行**。gateway 再起動直後 **`healthz` Connection refused** → **数秒待って再試行**。
 - **正本**: [deployment.md §2026-05-29 capabilities](../guides/deployment.md#dgx-profile-capabilities-runtime-intent-2026-05-29) · [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-profile-capabilities-runtime-intent)
@@ -184,10 +184,11 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
   - `owner`: `business` / `private` / `experiment` / `unknown`。業務eligible profile は `business`、`businessOrchestrationEligible:false` の profile は `private`。`stop-force` は GPU を私用へ空ける操作として `private`。
   - `status`: `preparing` / `released`。Strict Ready の最終成功判定は Pi5 orchestration 側が `/v1/models` / activeProfile / backend / runtime capability で行う。resource-state は「誰に貸しているか」の共有表示であり、KPIではない。**本番検証・実測メモリ・未完了（非同期復帰）**: [KB-389](../knowledge-base/KB-389-dgx-resource-runtime-profile-resource-state.md)。
 - **runtimeProfile 契約（profile別運用予算）**:
-  - `business_qwen36_27b_nvfp4`: `runtimeProfile.engine=vllm`、`vllm.gpuMemoryUtilization=0.65`、`maxModelLen=8192`、`maxNumSeqs=4`、`languageModelOnly=true` を known-good default とする。`0.65` はグローバル値ではなく、この profile の vLLM 予算。
+  - `business_qwen36_27b_nvfp4`: `runtimeProfile.engine=vllm`、`vllm.gpuMemoryUtilization=0.65`、`maxModelLen=8192`、`maxNumSeqs=4`、`languageModelOnly=true`、`quantization=compressed-tensors` を known-good default とする。`languageModelOnly=true` の blue 起動は runtime vision-ready と見なさない。
+  - `business_ornith_35b_nvfp4`: `sakamakismile/Ornith-1.0-35B-NVFP4`。VLM smoke（text + small image chat）成功後に `enabled=true` とし、業務復帰候補に出す。Ornith は `--quantization` を付けず、`disableCustomAllReduce=true` を使う。
   - GGUF / llama.cpp profile は `gpuMemoryUtilization` ではなく `llamaCpp.ctxSize` / `parallel` / `nGpuLayers` を正本にする。
-  - `launcher_env_for_profile()` は `runtimeProfile` を `VLLM_*` / `LLAMA_SERVER_*` env へ展開できる。secret 側 `BLUE_SERVER_COMMAND` はこの env を参照する形に揃える。
-- 初期 profile: `business_qwen36_27b_nvfp4`（blue / Qwen3.6 27B NVFP4 / 推奨）と `business_qwen35_35b_gguf`（green / Qwen3.5 35B GGUF）
+  - `launcher_env_for_profile()` は `runtimeProfile` を `VLLM_*` / `LLAMA_SERVER_*` env へ展開できる。secret 側 `BLUE_SERVER_COMMAND` は legacy override とし、通常は空にして `vllm_command_builder.py` に snapshot path を解決させる。
+- 初期 profile: `business_qwen36_27b_nvfp4`（blue / Qwen3.6 27B NVFP4 / text only）、`business_qwen35_35b_gguf`（green / Qwen3.5 35B GGUF）、`business_ornith_35b_nvfp4`（blue / Ornith 35B NVFP4 / smoke 後に有効化）
 - 私用テキスト向け（業務キオスク非対象）: `qwen36_35b_uncensored`（green / Qwen3.6 35B Uncensored GGUF / text only）— 下記 [§uncensored profile](#dgx-uncensored-profile-2026-05-29)
 - HF 移行: `sakamakismile/Qwen3.6-27B-NVFP4` は `/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4` へ寄せる。既存 cache は manifest の `currentStorageLocation` に残し、実ファイル移動は実機手動確認で行う
 - **ストレージパス契約（可用性判定）**:
@@ -262,7 +263,7 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 **本番反映（2026-05-28・業務復帰モデル選択・Pi5 API+Web + DGX control/gateway）** {#本番反映2026-05-28-業務復帰モデル選択}
 
 - **① Pi5 のみ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-business-model-selection infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach `20260528-184011-18178`**·`PLAY RECAP`: **`ok=134` `changed=4` `failed=0`**·`--follow` 約 **1195s**·Git **`91be7dcf`**。Pi4／Pi3 **no hosts matched**。
-- **② DGX**（Ansible 対象外）: repo から **`control-server.py`·`gateway-server.py`·`model_profiles.py`·`active_model_state.py`** を **`scp`** → **`/srv/dgx/system-prod/bin/`**。例 manifest を **`/srv/dgx/shared-models/registry/<modelProfileId>/manifest.json`** へ配置（初期 **`business_qwen36_27b_nvfp4`** / **`business_qwen35_35b_gguf`**）。**再起動**: **`/srv/dgx/system-prod/logs/control-server.pid`** と **`gateway-server.pid`** の PID を **`kill`** → ファイル削除 → **`bash /srv/dgx/system-prod/bin/start-control-server.sh`** → **`start-gateway-server.sh`**。
+- **② DGX**（Ansible 対象外）: repo から **`control-server.py`·`gateway-server.py`·`model_profiles.py`·`active_model_state.py`·`profile_launcher.py`·`vision_readiness.py`·`vllm_command_builder.py`·`start-trtllm-server.sh`** を **`scp`** → **`/srv/dgx/system-prod/bin/`**。例 manifest を **`/srv/dgx/shared-models/registry/<modelProfileId>/manifest.json`** へ配置（初期 **`business_qwen36_27b_nvfp4`** / **`business_qwen35_35b_gguf`** / **`business_ornith_35b_nvfp4`**）。**再起動**: **`/srv/dgx/system-prod/logs/control-server.pid`** と **`gateway-server.pid`** の PID を **`kill`** → ファイル削除 → **`bash /srv/dgx/system-prod/bin/start-control-server.sh`** → **`start-gateway-server.sh`**。
 - **検証（Pi5 から）**: `curl -sS -H "X-Runtime-Control-Token: $TOKEN" http://100.118.82.72:38081/system/model-profiles` → **`ok: true`**・**`profiles` 2 件**（未 start 前 **`activeProfileId: null` は想定内**）。**`./scripts/deploy/verify-phase12-real.sh`** → **43/0/0**（約 **111s**）。
 - **知見**: 再起動直後 **`curl …/healthz` が Connection refused** → **1s 程度待つと 200**（PID ガード起動スクリプトのレース）。**管理 UI** で業務復帰時にモデル選択が出ない場合は Pi5 **`web` ref** と **`overview.modelProfiles`**（[KB-365 §2026-05-28](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-business-return-model-selection)）。
 - **KB**: [KB-365 §本番 2026-05-28](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-business-return-model-selection)·[deployment.md §2026-05-28](../guides/deployment.md#dgx-business-return-model-selection-2026-05-28)·[KB-366](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-business-return-model-selection)。
@@ -688,8 +689,8 @@ VLLM_MAX_NUM_SEQS=4
 VLLM_MAX_NUM_BATCHED_TOKENS=16384
 VLLM_KV_CACHE_DTYPE=fp8
 VLLM_LANGUAGE_MODEL_ONLY=true
-# <snapshot-sha> は ${BLUE_MODEL_DIR}/refs/main の内容で置き換える
-BLUE_SERVER_COMMAND='export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 && export TORCH_MATMUL_PRECISION=high && export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && export NVIDIA_FORWARD_COMPAT=1 && export VLLM_TEST_FORCE_FP8_MARLIN=1 && exec vllm serve /srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4/snapshots/<snapshot-sha> --served-model-name system-prod-primary --host 0.0.0.0 --port 8000 --dtype auto --quantization compressed-tensors --max-model-len "${VLLM_MAX_MODEL_LEN:-8192}" --max-num-seqs "${VLLM_MAX_NUM_SEQS:-4}" --max-num-batched-tokens "${VLLM_MAX_NUM_BATCHED_TOKENS:-16384}" --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.65}" --kv-cache-dtype "${VLLM_KV_CACHE_DTYPE:-fp8}" --enable-chunked-prefill --enable-prefix-caching --load-format safetensors --trust-remote-code --hf-overrides "{\"language_model_only\": ${VLLM_LANGUAGE_MODEL_ONLY:-true}}" --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3'
+VLLM_QUANTIZATION=compressed-tensors
+# BLUE_SERVER_COMMAND は通常空。start-trtllm-server.sh が vllm_command_builder.py で snapshot path を解決する。
 BLUE_EXTRA_DOCKER_ARGS='--ipc host --ulimit memlock=-1 --ulimit stack=67108864'
 ```
 
@@ -710,7 +711,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 
 - `TRTLLM_*` という env 名は互換のため残しているだけで、blue backend の実体は TRT-LLM に限らない
 - 新しい設定では `BLUE_SERVER_*` / `BLUE_MODEL_DIR` / `BLUE_EXTRA_DOCKER_ARGS` の別名も使える
-- **`<snapshot-sha>` の解決**: `cat ${BLUE_MODEL_DIR}/refs/main`（実機例: `c12989315a26e1cc5d3f8a5d4b96fdd5921adc8c`）— **secret の実値は Git 禁止**、example はプレースホルダのまま
+- **snapshot path の解決**: `vllm_command_builder.py` が `cat ${BLUE_MODEL_DIR}/refs/main` 相当を実行し、`snapshots/<sha>` を `vllm serve` に渡す。secret に snapshot SHA 直書きは不要
 - **Hermes `/task` 復旧（2026-06-05）**: repo id ではなく **snapshot path** · **`gpu-memory-utilization 0.65`** · **`language_model_only`** が実機で必須だった — 詳細 [KB-366 §8.1](./../knowledge-base/KB-366-dgx-spark-operational-understanding.md#81-blue-27b-起動失敗と-hermes-task-5022026-06-05) · [KB `/task` blue 502](./../knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05)
 
 ### トラブルシュート — blue backend 起動失敗 / `/v1/models` 502（2026-06-05）
@@ -718,7 +719,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 | 症状 | 確認 | 対処 |
 |------|------|------|
 | `POST /start` 200 だが `/v1/models` **502** | `docker ps` · `docker logs system-prod-trtllm` | 起動中なら **数分待ち**（compile/autotune）。container exit なら下記 |
-| vLLM が HF metadata で落ちる | `BLUE_SERVER_COMMAND` が **repo id** か **snapshot path** か | **snapshot path** + `BLUE_MODEL_DIR` を [上記例](#phase-2-blue-単体) に合わせる |
+| vLLM が HF metadata で落ちる | `BLUE_SERVER_COMMAND` が残っていないか、`BLUE_MODEL_DIR/refs/main` と `snapshots/<sha>` があるか | `BLUE_SERVER_COMMAND` を空にし、`BLUE_MODEL_DIR` + `vllm_command_builder.py` に snapshot path を解決させる |
 | `CUDA out of memory` / メモリ不足 | `--gpu-memory-utilization` | **`0.65`** から試す（実機で Hermes `/task` 復旧確認済） |
 | Hermes `/task` のみ失敗・業務 Pi5 は別症状 | Pi5 から `curl …/v1/models`（tools Bearer） | DGX backend 正本。profile 切替は [Hermes Runbook §profile 復帰](./private-pi5-hermes-deploy.md#本番反映--task-dgx-通常-profile-復帰2026-05-30) |
 

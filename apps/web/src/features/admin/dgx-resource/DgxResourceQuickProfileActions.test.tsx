@@ -3,7 +3,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DgxResourceQuickProfileActions } from './DgxResourceQuickProfileActions';
-import { DGX_QUICK_START_MODEL_PROFILE_ID } from './dgxResourceQuickProfileConfig';
 
 import type {
   DgxModelProfilesOverviewApi,
@@ -36,8 +35,8 @@ const modelProfiles: DgxModelProfilesOverviewApi = {
   lastLoadedProfileId: null,
   available: [
     {
-      id: DGX_QUICK_START_MODEL_PROFILE_ID,
-      displayNameJa: DGX_QUICK_START_MODEL_PROFILE_ID,
+      id: 'business_qwen36_27b_nvfp4',
+      displayNameJa: 'Qwen3.6 27B NVFP4',
       backend: 'green',
       servedAlias: 'system-prod-primary',
       recommended: false,
@@ -54,7 +53,7 @@ describe('DgxResourceQuickProfileActions', () => {
     confirmMock.mockClear();
   });
 
-  it('posts START_MODEL_PROFILE when quick button is confirmed', async () => {
+  it('posts START_MODEL_PROFILE for profiles returned by DGX', async () => {
     const postDgxAction = vi.fn(
       async (_body: DgxResourceActionBody): Promise<DgxResourceActionResult> => ({
         ok: true,
@@ -71,18 +70,18 @@ describe('DgxResourceQuickProfileActions', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: DGX_QUICK_START_MODEL_PROFILE_ID }));
+    fireEvent.click(screen.getByRole('button', { name: 'Qwen3.6 27B NVFP4' }));
 
     await waitFor(() => {
       expect(postDgxAction).toHaveBeenCalledWith({
         type: 'START_MODEL_PROFILE',
-        modelProfileId: DGX_QUICK_START_MODEL_PROFILE_ID,
+        modelProfileId: 'business_qwen36_27b_nvfp4',
         reason: 'admin_dgx_resource_quick_profile',
       });
     });
   });
 
-  it('disables button when profile is not available', () => {
+  it('shows empty state when no profile is startable', () => {
     renderWithClient(
       <DgxResourceQuickProfileActions
         modelProfiles={{ ...modelProfiles, available: [] }}
@@ -92,6 +91,6 @@ describe('DgxResourceQuickProfileActions', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: DGX_QUICK_START_MODEL_PROFILE_ID })).toBeDisabled();
+    expect(screen.getByText('起動可能なモデルなし')).toBeInTheDocument();
   });
 });

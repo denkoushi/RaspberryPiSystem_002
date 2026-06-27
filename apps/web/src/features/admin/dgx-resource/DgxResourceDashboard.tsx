@@ -154,13 +154,38 @@ function selectProfileRows(profiles: DgxBusinessModelProfileApi[], activeProfile
       const recommendedDelta = Number(b.recommended) - Number(a.recommended);
       if (recommendedDelta !== 0) return recommendedDelta;
       return a.displayNameJa.localeCompare(b.displayNameJa, 'ja');
-    })
-    .slice(0, 2);
+    });
 }
 
 function profileSummaryStatus(profileRows: DgxBusinessModelProfileApi[], activeProfileId?: string | null): string {
   if (profileRows.length === 0) return 'not loaded';
   return profileRows.some((profile) => profile.id === activeProfileId) ? 'active' : 'available';
+}
+
+function profileBadges(profile: DgxBusinessModelProfileApi, activeProfileId?: string | null): string[] {
+  return [
+    profile.id === activeProfileId ? 'active' : null,
+    profile.recommended ? 'recommended' : null,
+    profile.businessOrchestrationEligible !== false ? 'business' : 'manual',
+    profile.status,
+  ].filter((badge): badge is string => Boolean(badge));
+}
+
+function profileBadgeClass(badge: string): string {
+  switch (badge) {
+    case 'active':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'recommended':
+      return 'border-sky-200 bg-sky-50 text-sky-700';
+    case 'business':
+      return 'border-indigo-200 bg-indigo-50 text-indigo-700';
+    case 'available':
+      return 'border-slate-200 bg-white text-slate-600';
+    case 'unavailable':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-500';
+  }
 }
 
 function findTarget(
@@ -388,16 +413,29 @@ export function DgxResourceDashboard() {
               profileRows.map((profile) => {
                 const active = profile.id === runtimeSummary?.activeProfileId;
                 const subtitle = profileRowSubtitle(profile);
+                const badges = profileBadges(profile, runtimeSummary?.activeProfileId);
                 return (
                   <div
                     key={profile.id}
-                    className="grid min-h-11 grid-cols-[minmax(120px,0.8fr)_minmax(0,1.2fr)_auto] items-center gap-3 border-b border-slate-200 px-4 text-sm font-semibold last:border-b-0"
+                    className="grid min-h-12 grid-cols-[minmax(130px,0.9fr)_minmax(0,1fr)_minmax(150px,auto)] items-center gap-3 border-b border-slate-200 px-4 py-2 text-sm font-semibold last:border-b-0 max-sm:grid-cols-1 max-sm:gap-1"
                   >
-                    <span className="min-w-0 truncate text-slate-950" title={profile.displayNameJa}>{profile.displayNameJa}</span>
-                    <span className="min-w-0 truncate text-slate-500" title={subtitle}>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className={clsx('h-2 w-2 shrink-0 rounded-full', active ? 'bg-emerald-700' : 'bg-slate-400')} aria-hidden />
+                      <span className="min-w-0 truncate text-slate-950" title={profile.displayNameJa}>{profile.displayNameJa}</span>
+                    </div>
+                    <span className="min-w-0 truncate text-slate-500" title={`${subtitle} / ${profile.id}`}>
                       {subtitle}
                     </span>
-                    <span className={clsx('h-2 w-2 rounded-full', active ? 'bg-emerald-700' : 'bg-slate-400')} aria-hidden />
+                    <div className="flex min-w-0 flex-wrap justify-end gap-1 max-sm:justify-start">
+                      {badges.map((badge) => (
+                        <span
+                          key={`${profile.id}-${badge}`}
+                          className={clsx('rounded-full border px-2 py-0.5 text-[11px] font-bold leading-tight', profileBadgeClass(badge))}
+                        >
+                          {badge}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 );
               })
@@ -409,7 +447,7 @@ export function DgxResourceDashboard() {
           <div className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-200 px-4">
             <h2 className="text-sm font-bold text-slate-950">詳細</h2>
             <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-700">
-              閉じた状態を既定
+              {detailRows.length}
             </span>
           </div>
           <div className="grid">
@@ -540,10 +578,6 @@ export function DgxResourceDashboard() {
           </div>
         ) : null}
       </DgxResourceAdvancedControls>
-      <div className="flex justify-between gap-4 text-xs font-semibold text-slate-500 max-sm:flex-col">
-        <span>通常表示は「状態」と「主要操作」に限定</span>
-        <span>Target grid / preflight / raw events は詳細へ統合</span>
-      </div>
     </div>
   );
 }
