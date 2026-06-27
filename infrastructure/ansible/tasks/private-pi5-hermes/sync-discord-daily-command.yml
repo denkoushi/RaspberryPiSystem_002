@@ -9,6 +9,8 @@
       - "{{ 'present' if (private_pi5_hermes_daily_pilot_enabled | default(false) | bool) else 'absent' }}"
       - --life-state
       - "{{ 'present' if (private_pi5_hermes_life_pilot_enabled | default(false) | bool) else 'absent' }}"
+      - --research-state
+      - "{{ 'present' if (private_pi5_hermes_discord_research_bridge_enabled | default(false) | bool) else 'absent' }}"
   environment:
     DISCORD_BOT_TOKEN: "{{ private_pi5_hermes_discord_bot_token }}"
   register: private_pi5_hermes_daily_command_sync

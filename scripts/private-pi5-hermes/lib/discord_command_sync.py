@@ -29,6 +29,22 @@ DAILY_COMMAND: dict[str, Any] = {
     ],
 }
 
+RESEARCH_COMMAND: dict[str, Any] = {
+    "name": "ask",
+    "description": "Research the web with the isolated built-in web profile",
+    "type": 1,
+    "dm_permission": True,
+    "integration_types": [0, 1],
+    "options": [
+        {
+            "type": 3,
+            "name": "args",
+            "description": "Question to research on the web",
+            "required": True,
+        }
+    ],
+}
+
 LIFE_COMMANDS: tuple[dict[str, Any], ...] = (
     {
         "name": "memo",
@@ -144,6 +160,10 @@ class DiscordCommandSyncError(RuntimeError):
 
 def daily_command_payload() -> dict[str, Any]:
     return copy.deepcopy(DAILY_COMMAND)
+
+
+def research_command_payload() -> dict[str, Any]:
+    return copy.deepcopy(RESEARCH_COMMAND)
 
 
 def life_command_payloads() -> list[dict[str, Any]]:
@@ -383,6 +403,11 @@ def sync_daily_command_with_client(client: Any, state: str) -> dict[str, Any]:
     return dict(result["commands"][0])
 
 
+def sync_research_command_with_client(client: Any, state: str) -> dict[str, Any]:
+    result = sync_command_payloads_with_client(client, [research_command_payload()], state)
+    return dict(result["commands"][0])
+
+
 def sync_life_commands_with_client(client: Any, state: str) -> dict[str, Any]:
     return sync_command_payloads_with_client(client, life_command_payloads(), state)
 
@@ -394,6 +419,15 @@ def sync_daily_command(
 ) -> dict[str, Any]:
     client = DiscordCommandSyncClient(token, base_url)
     return sync_daily_command_with_client(client, state)
+
+
+def sync_research_command(
+    token: str,
+    state: str,
+    base_url: str = DISCORD_API_BASE,
+) -> dict[str, Any]:
+    client = DiscordCommandSyncClient(token, base_url)
+    return sync_research_command_with_client(client, state)
 
 
 def sync_life_commands(

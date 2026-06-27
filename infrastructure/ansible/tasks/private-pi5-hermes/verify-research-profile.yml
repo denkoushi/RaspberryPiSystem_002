@@ -1,0 +1,76 @@
+---
+- name: Assert Hermes research profile paths exist
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: private_pi5_hermes_research_paths
+  loop:
+    - "{{ private_pi5_hermes_research_data_dir }}"
+    - "{{ private_pi5_hermes_research_home }}"
+    - "{{ private_pi5_hermes_research_config_dir }}"
+    - "{{ private_pi5_hermes_research_config_dir }}/config.yaml"
+    - "{{ private_pi5_hermes_research_data_dir }}/.env"
+
+- name: Verify Hermes research profile paths are present
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    fail_msg: "research profile path missing: {{ item.item }}"
+  loop: "{{ private_pi5_hermes_research_paths.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Read deployed Hermes research config.yaml
+  ansible.builtin.slurp:
+    src: "{{ private_pi5_hermes_research_config_dir }}/config.yaml"
+  register: private_pi5_hermes_research_config_slurp
+
+- name: Validate research profile web-only contract
+  ansible.builtin.assert:
+    that:
+      - "'web:' in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+      - "'    - file' in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+      - "'    - terminal' in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+      - "'    - browser' in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+      - "'    - web' not in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+    fail_msg: "research config must enable web only and keep file/terminal/browser disabled"
+
+- name: Validate research profile URL boundary
+  ansible.builtin.assert:
+    that:
+      - "'allow_private_urls: true' in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+      - "'website_blocklist:' in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+      - "'enabled: true' in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+      - "'\"localhost\"' in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+      - "'\"127.0.0.1\"' in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+      - "'\"*.local\"' in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+      - "'\"*.internal\"' in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+      - "'\"192.168.128.\"' in (private_pi5_hermes_research_config_slurp.content | b64decode)"
+    fail_msg: "research config must keep DGX private provider access while blocklisting known local/private web targets"
+
+- name: Smoke research plugin command registration
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import runpy
+        import sys
+        from pathlib import Path
+        plugin_dir = "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
+        sys.path.insert(0, plugin_dir)
+        ns = runpy.run_path(plugin_dir + "/__init__.py")
+        register = ns.get("register")
+        assert callable(register), "register() missing"
+        class Ctx:
+            def __init__(self):
+                self.commands = []
+            def register_command(self, name, handler, description="", **kwargs):
+                self.commands.append(name)
+            def register_hook(self, name, callback):
+                pass
+        ctx = Ctx()
+        register(ctx)
+        assert "ask" in ctx.commands, ctx.commands
+        assert "usage: /ask" in ns["render_research_usage"]()
+  become: true
+  become_user: "{{ private_pi5_hermes_user }}"

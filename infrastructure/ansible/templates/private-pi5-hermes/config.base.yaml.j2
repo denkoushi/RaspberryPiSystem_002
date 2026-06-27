@@ -25,7 +25,7 @@ approvals:
 
 security:
   allow_lazy_installs: false
-  allow_private_urls: true
+  allow_private_urls: {{ (hermes_security_allow_private_urls | default(true) | bool) | lower }}
   tirith_enabled: true
   tirith_fail_open: false
 {% if (hermes_security_extra_lines | default('') | trim) | length > 0 %}

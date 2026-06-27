@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Hermes profile metadata consistency tests."""
 
+import sys
 import unittest
+from pathlib import Path
 
-from lib.profiles import (
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from lib.profiles import (  # noqa: E402
     CHAT_PROFILE,
     NOVEL_PROFILE,
+    RESEARCH_PROFILE,
     TOOLS_PROFILE,
     TOOLS_PROFILE_D1,
     TOOLS_PROFILE_D2,
@@ -51,10 +57,17 @@ class HermesProfileSpecTests(unittest.TestCase):
         self.assertFalse(NOVEL_PROFILE.tools_enabled)
         self.assertFalse(NOVEL_PROFILE.expected_gateway_active)
 
+    def test_research_profile_enables_web_only_without_gateway(self) -> None:
+        self.assertEqual(RESEARCH_PROFILE.data_dir_name, "hermes-research")
+        self.assertFalse(RESEARCH_PROFILE.discord_enabled)
+        self.assertTrue(RESEARCH_PROFILE.tools_enabled)
+        self.assertEqual(RESEARCH_PROFILE.enabled_toolsets, frozenset({"web"}))
+        self.assertFalse(RESEARCH_PROFILE.expected_gateway_active)
+
     def test_profiles_registry(self) -> None:
         self.assertEqual(
             set(PROFILES_BY_NAME.keys()),
-            {"chat", "tools", "novel", "tools-d2", "tools-d3", "tools-d4"},
+            {"chat", "tools", "novel", "research", "tools-d2", "tools-d3", "tools-d4"},
         )
 
 

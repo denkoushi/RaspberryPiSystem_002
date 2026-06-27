@@ -18,8 +18,10 @@ from lib.discord_command_sync import (  # noqa: E402
     commands_match,
     daily_command_payload,
     life_command_payloads,
+    research_command_payload,
     sync_daily_command_with_client,
     sync_life_commands_with_client,
+    sync_research_command_with_client,
 )
 
 
@@ -96,6 +98,20 @@ class DiscordCommandSyncTests(unittest.TestCase):
         self.assertEqual(remind["options"][0]["required"], True)
         self.assertIn("明日の朝", remind["options"][0]["description"])
 
+    def test_research_payload_matches_expected_contract(self) -> None:
+        payload = research_command_payload()
+
+        self.assertEqual(payload["name"], "ask")
+        self.assertEqual(
+            payload["description"],
+            "Research the web with the isolated built-in web profile",
+        )
+        self.assertEqual(payload["type"], 1)
+        self.assertEqual(payload["dm_permission"], True)
+        self.assertEqual(payload["integration_types"], [0, 1])
+        self.assertEqual(payload["options"][0]["name"], "args")
+        self.assertEqual(payload["options"][0]["required"], True)
+
     def test_present_matching_command_is_unchanged(self) -> None:
         existing = {"id": "daily-1", **daily_command_payload(), "version": "99"}
         client = FakeDiscordClient([existing])
@@ -161,6 +177,17 @@ class DiscordCommandSyncTests(unittest.TestCase):
             ["memo", "inbox", "interest", "digest", "remind", "recommend", "life-reply"],
         )
         self.assertEqual(len(client.upserts), 7)
+        self.assertEqual(client.deletes, [])
+
+    def test_present_research_command_creates_missing_command(self) -> None:
+        client = FakeDiscordClient([])
+
+        result = sync_research_command_with_client(client, "present")
+
+        self.assertEqual(result["changed"], True)
+        self.assertEqual(result["state"], "present")
+        self.assertEqual(result["name"], "ask")
+        self.assertEqual(client.upserts[0][1]["name"], "ask")
         self.assertEqual(client.deletes, [])
 
     def test_absent_life_commands_deletes_existing_life_commands_only(self) -> None:

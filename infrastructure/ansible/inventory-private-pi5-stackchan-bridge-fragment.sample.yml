@@ -164,6 +164,24 @@ all:
       # private_pi5_hermes_novel_runtime_ready_timeout_sec: 900
       # optional dedicated novel DGX token (defaults to chat token)
       # private_pi5_hermes_novel_dgx_llm_token: ""
+      # Research profile: /ask uses Hermes built-in web in an isolated profile.
+      # Chat profile keeps web/file/terminal/browser disabled.
+      # private_pi5_hermes_research_profile_enabled: true
+      # private_pi5_hermes_discord_research_bridge_enabled: true
+      # Official Hermes web backends: firecrawl, searxng, parallel, tavily, exa.
+      # private_pi5_hermes_research_web_backend: ""
+      # private_pi5_hermes_research_web_search_backend: "searxng"
+      # private_pi5_hermes_research_web_extract_backend: ""
+      # private_pi5_hermes_research_max_tokens: 768
+      # optional dedicated research DGX token (defaults to chat token)
+      # private_pi5_hermes_research_dgx_llm_token: ""
+      # at least one official web provider key or URL is required when enabled
+      # private_pi5_hermes_research_firecrawl_api_key: ""
+      # private_pi5_hermes_research_firecrawl_api_url: ""
+      # private_pi5_hermes_research_tavily_api_key: ""
+      # private_pi5_hermes_research_exa_api_key: ""
+      # private_pi5_hermes_research_parallel_api_key: ""
+      # private_pi5_hermes_research_searxng_url: ""
       # private_pi5_hermes_ssh_ufw_tailscale_only: false
       # private_pi5_hermes_system_prompt: |
       #   （fragment で agent.system_prompt を上書きする場合）

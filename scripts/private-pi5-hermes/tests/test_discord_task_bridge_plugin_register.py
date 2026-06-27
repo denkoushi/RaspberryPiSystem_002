@@ -32,6 +32,21 @@ class PluginRegisterTests(unittest.TestCase):
             self.assertIn("Arguments", novel_call[1].get("description", ""))
             ctx.register_hook.assert_not_called()
 
+    def test_register_research_command_when_marker_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plugin_dir = Path(tmp)
+            (plugin_dir / "research-bridge.enabled").write_text("enabled=true\n", encoding="utf-8")
+            with unittest.mock.patch.object(plugin, "_plugin_dir", return_value=plugin_dir):
+                ctx = MagicMock()
+                plugin.register(ctx)
+
+            registered = [c[0][0] for c in ctx.register_command.call_args_list]
+            self.assertEqual(registered, ["ask"])
+            ask_call = ctx.register_command.call_args_list[0]
+            self.assertEqual(ask_call[1].get("args_hint"), "<question>")
+            self.assertIn("built-in web", ask_call[1].get("description", ""))
+            ctx.register_hook.assert_not_called()
+
     def test_register_nothing_when_no_bridge_markers_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             plugin_dir = Path(tmp)
@@ -114,6 +129,18 @@ class PluginRegisterTests(unittest.TestCase):
             reply_call = ctx.register_command.call_args_list[6]
             self.assertEqual(reply_call[1].get("args_hint"), "<1|2|3|free text>")
             ctx.register_hook.assert_called_once()
+
+    def test_handle_ask_command_delegates_to_research_bridge(self) -> None:
+        with unittest.mock.patch.object(
+            plugin,
+            "run_research_bridge_async",
+            return_value="調査結果",
+        ) as bridge_mock:
+            result = asyncio.run(plugin._handle_ask_command("Hermes Agentを調べて"))
+
+        self.assertEqual(result, "調査結果")
+        request = bridge_mock.call_args.args[0]
+        self.assertEqual(request.prompt, "Hermes Agentを調べて")
 
     def test_task_approve_returns_expired_message_without_failed_prefix(self) -> None:
         with unittest.mock.patch.object(

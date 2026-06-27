@@ -18,6 +18,7 @@ from lib.discord_command_sync import (  # noqa: E402
     DiscordCommandSyncError,
     sync_daily_command,
     sync_life_commands,
+    sync_research_command,
 )
 
 
@@ -36,13 +37,19 @@ def main() -> int:
         help="Desired state for global /memo, /digest, /remind, and /recommend commands.",
     )
     parser.add_argument(
+        "--research-state",
+        choices=("present", "absent"),
+        default=None,
+        help="Desired state for the global /ask command.",
+    )
+    parser.add_argument(
         "--base-url",
         default=DISCORD_API_BASE,
         help=argparse.SUPPRESS,
     )
     args = parser.parse_args()
-    if args.daily_state is None and args.life_state is None:
-        parser.error("at least one of --daily-state or --life-state is required")
+    if args.daily_state is None and args.life_state is None and args.research_state is None:
+        parser.error("at least one of --daily-state, --life-state, or --research-state is required")
 
     token = os.environ.get("DISCORD_BOT_TOKEN", "").strip()
     try:
@@ -59,6 +66,13 @@ def main() -> int:
                 {
                     "scope": "life",
                     **sync_life_commands(token, args.life_state, args.base_url),
+                }
+            )
+        if args.research_state is not None:
+            results.append(
+                {
+                    "scope": "research",
+                    **sync_research_command(token, args.research_state, args.base_url),
                 }
             )
     except DiscordCommandSyncError as exc:
