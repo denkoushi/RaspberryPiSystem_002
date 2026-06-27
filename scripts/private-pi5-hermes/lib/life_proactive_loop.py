@@ -117,6 +117,7 @@ class ProactiveDispatchResult:
     sent: int = 0
     skipped_duplicate: int = 0
     skipped_missing_channel: int = 0
+    skipped_no_candidate: int = 0
     failed: int = 0
     mode: str = ""
     checkin_id: str = ""
@@ -298,6 +299,21 @@ def _format_options(mode: str) -> str:
     lines = [f"[{item['id']}] {item['label']}" for item in _option_rows(mode)]
     lines.append("ボタンで返信できます。うまく出ない時だけ /life-reply 1 を使ってください。")
     return "\n".join(lines)
+
+
+def _discord_debug_lines_enabled() -> bool:
+    return os.environ.get("HERMES_LIFE_DISCORD_DEBUG_LINES", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _optional_debug_line(**items: str) -> str:
+    if not _discord_debug_lines_enabled():
+        return ""
+    return _render_debug_line(**items)
 
 
 def build_proactive_components(checkin_id: str, mode: str) -> list[dict[str, Any]]:
@@ -504,6 +520,27 @@ def _remaining_candidate_lines(
     return "\n".join(lines)
 
 
+def _remaining_candidate_lines_optional(
+    reminders: list[dict[str, Any]],
+    candidate_text: str,
+    now: datetime,
+    *,
+    limit: int = 3,
+) -> str:
+    ordered = _scheduled_for_day(reminders, now) + _unscheduled(reminders) + _scheduled_next(reminders, now)
+    lines: list[str] = []
+    seen: set[str] = set()
+    for item in ordered:
+        text = _candidate_text(item)
+        if not text or text == candidate_text or text in seen:
+            continue
+        seen.add(text)
+        lines.append(f"- {text}")
+        if len(lines) >= limit:
+            break
+    return "\n".join(lines)
+
+
 def _reminder_lines(items: list[dict[str, Any]], empty: str, limit: int = 4) -> str:
     if not items:
         return f"- {empty}"
@@ -544,16 +581,29 @@ def build_followup_checkin_message(
     now: datetime | None = None,
 ) -> str:
     candidate = _clip_line(candidate_text, 180) or "さっきの用事"
-    return f"""さっきの確認です。
+    lines = [
+        "さっきの確認です。",
+        "",
+        "今ならこれだけ見ますか:",
+        candidate,
+        "",
+        "返信:",
+        _format_options("followup"),
+    ]
+    debug_line = _optional_debug_line(checkin="followup", boundary="local-only/no-tools")
+    if debug_line:
+        lines.extend(["", debug_line])
+    return "\n".join(lines).strip()
 
-今ならこれだけ見ますか:
-{candidate}
 
-返信:
-{_format_options("followup")}
-
-{_render_debug_line(checkin="followup", boundary="local-only/no-tools")}
-""".strip()
+def _checkin_candidate_is_dispatchable(mode: str, candidate: dict[str, str]) -> bool:
+    source = str(candidate.get("source", "") or "")
+    text = str(candidate.get("text", "") or "").strip()
+    if mode == "morning":
+        return bool(text) and source not in {"empty", "recent_note"}
+    if mode == "evening":
+        return bool(text)
+    return bool(text)
 
 
 def build_proactive_checkin_message(
@@ -587,38 +637,28 @@ def build_proactive_checkin_message(
             discord_items=discord_items,
         )
         candidate_text = candidate["text"]
-        candidate_display = candidate_text or "今日は急ぎの候補はありません。"
-        return f"""おはようございます。今日の確認です。
-
-今日の見方:
-{_morning_briefing_line(context)}
-
-今日まず見るなら:
-{candidate_display}
-
-ほかに残っているもの:
-{_remaining_candidate_lines(reminders, candidate_text, current, limit=3)}
-
-今日見るもの:
-{_reminder_lines(today_items, "今日までの予定はありません。")}
-
-日時がない用事:
-{_reminder_lines(unscheduled, "日時なしの用事はありません。", limit=3)}
-
-最近のメモ:
-{_note_lines(entries, "まだメモがありません。", limit=2)}
-
-Obsidian新着:
-{format_obsidian_inbox_lines(obsidian_items, limit=3)}
-
-共有メモ新着:
-{format_discord_inbox_lines(discord_items, limit=3)}
-
-返信:
-{_format_options(mode)}
-
-{_render_debug_line(checkin=mode, boundary="local-only/no-tools")}
-""".strip()
+        if not _checkin_candidate_is_dispatchable(mode, candidate):
+            return ""
+        lines = [
+            "おはようございます。今日の確認です。",
+            "",
+            _morning_briefing_line(context),
+            "",
+            "今日まず見るなら:",
+            candidate_text,
+        ]
+        remaining = _remaining_candidate_lines_optional(reminders, candidate_text, current, limit=3)
+        if remaining:
+            lines.extend(["", "ほか:", remaining])
+        if candidate.get("source") == "obsidian_inbox":
+            lines.extend(["", "補足:", format_obsidian_inbox_lines(obsidian_items, limit=3)])
+        if candidate.get("source") == "discord_inbox":
+            lines.extend(["", "補足:", format_discord_inbox_lines(discord_items, limit=3)])
+        lines.extend(["", "返信:", _format_options(mode)])
+        debug_line = _optional_debug_line(checkin=mode, boundary="local-only/no-tools")
+        if debug_line:
+            lines.extend(["", debug_line])
+        return "\n".join(lines).strip()
 
     today_key = _date_key(current)
     today_entries = [entry for entry in entries if entry[0].startswith(today_key)]
@@ -629,20 +669,23 @@ Obsidian新着:
         if daily_candidate
         else ""
     )
-    return f"""こんばんは。今日の片付けです。
-{candidate_block}
-
-今日のメモ:
-{_note_lines(today_entries, "今日のメモはまだありません。", limit=4)}
-
-残っている用事:
-{_reminder_lines(next_items, "日時つきの未処理用事はありません。", limit=4)}
-
-返信:
-{_format_options(mode)}
-
-{_render_debug_line(checkin=mode, boundary="local-only/no-tools")}
-""".strip()
+    lines = [
+        "こんばんは。今日の片付けです。",
+        candidate_block.strip(),
+        "",
+        "今日のメモ:",
+        _note_lines(today_entries, "今日のメモはまだありません。", limit=4),
+        "",
+        "残っている用事:",
+        _reminder_lines(next_items, "日時つきの未処理用事はありません。", limit=4),
+        "",
+        "返信:",
+        _format_options(mode),
+    ]
+    debug_line = _optional_debug_line(checkin=mode, boundary="local-only/no-tools")
+    if debug_line:
+        lines.extend(["", debug_line])
+    return "\n".join(line for line in lines if line != "").strip()
 
 
 def _checkin_candidate(mode: str, storage_root: Path, now: datetime) -> dict[str, str]:
@@ -737,8 +780,22 @@ def dispatch_proactive_checkin(
             mode=mode,
             checkin_id=checkin_id,
         )
-    content = build_proactive_checkin_message(mode, storage_root, now=current)
     candidate = _checkin_candidate(mode, storage_root, current)
+    if not _checkin_candidate_is_dispatchable(mode, candidate):
+        return ProactiveDispatchResult(
+            ok=True,
+            skipped_no_candidate=1,
+            mode=mode,
+            checkin_id=checkin_id,
+        )
+    content = build_proactive_checkin_message(mode, storage_root, now=current)
+    if not content.strip():
+        return ProactiveDispatchResult(
+            ok=True,
+            skipped_no_candidate=1,
+            mode=mode,
+            checkin_id=checkin_id,
+        )
     with _proactive_file_lock(storage_root):
         rows = _read_jsonl(_checkins_path(storage_root))
         for item in rows:
@@ -1117,6 +1174,7 @@ def main() -> int:
                 "failed": result.failed,
                 "skipped_duplicate": result.skipped_duplicate,
                 "skipped_missing_channel": result.skipped_missing_channel,
+                "skipped_no_candidate": result.skipped_no_candidate,
                 "mode": result.mode,
                 "checkin_id": result.checkin_id,
             },

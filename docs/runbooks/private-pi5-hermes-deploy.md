@@ -150,13 +150,17 @@ sudo systemctl restart hermes-gateway
 
 Discord: **`/reset`** → 短いメッセージで試す。
 
+## Hermes Desktop 併用
+
+Discord は私用 Pi5 Hermes の主入口・通知先として残す。Hermes Desktop は Provider / Model / Tools / Skills / Cron / Memory を画面で確認する作業机として使う。Desktop 併用だけでは `/task` の権限、terminal、git、deploy、Codex/Cursor 自動実行を広げない。
+
 ## DGX keep-warm（体感速度）
 
 | 項目 | 内容 |
 |------|------|
 | 目的 | DGX コールドスタート（数十秒〜数分）を Discord 応答前に回避 |
 | 実装 | `hermes-dgx-keep-warm.timer` → `DGX_MODEL_PROFILE_ID` 設定時は **`POST /start` で通常 profile を維持**（未設定時は従来どおり ready のみ見て cold 時 `{}` start） |
-| 通常 profile | 既定 **`business_qwen36_27b_nvfp4`**（`private_pi5_hermes_dgx_default_model_profile_id`） |
+| 通常 profile | 既定 **`business_qwen36_27b_nvfp4`**。fragment の `private_pi5_hermes_dgx_default_model_profile_id` で変更可 |
 | 前提 | fragment に **`private_pi5_dgx_runtime_control_token`**（StackChan bridge と同値可） |
 | 無効化 | `private_pi5_hermes_dgx_keep_warm_enabled: false` または制御トークン未設定 |
 
@@ -569,7 +573,7 @@ private_pi5_hermes_life_pilot_enabled: true
 | digest | `Scheduled reminders:` と `Pending without time:` が分離表示 |
 | recommend | 次の scheduled reminder と日時未指定 reminder を優先して提案 |
 | `/remind 2026-06-06 HH:MM ...` | `scheduled: 2026-06-06 HH:MM`、`status=pending`、`notification=scheduled` を表示 |
-| due notification | 指定時刻に Discord 通知が届き、debug は `reminder=due` と `boundary=local-only/no-tools` |
+| due notification | 指定時刻に Discord 通知が届く。Discord 上の debug 行は既定非表示（必要時のみ `private_pi5_hermes_life_discord_debug_lines_enabled: true`） |
 
 補足: `notification=not-enabled` の既存/別経路 reminder は送信先 channel context がないため通知対象外。日時つき・送信先ありの reminder は `notification=scheduled` となり、timer により通知されることを確認済み。
 
@@ -577,8 +581,8 @@ private_pi5_hermes_life_pilot_enabled: true
 
 | 項目 | 内容 |
 |------|------|
-| 朝 | `hermes-life-proactive-morning.timer`（既定 07:30）で今日の確認を送る |
-| 夜 | `hermes-life-proactive-evening.timer`（既定 21:30）で今日の片付けを送る |
+| 朝 | `hermes-life-proactive-morning.timer`（既定 07:30）で、有用候補がある時だけ今日の確認を短く送る |
+| 夜 | `hermes-life-proactive-evening.timer`（既定 21:30）は opt-in。`private_pi5_hermes_life_proactive_evening_enabled: true` の時だけ有効 |
 | follow-up | `hermes-life-followup.timer`（既定 5分）で `夕方にもう一度` の再確認を送る |
 | 返信 | Discord button または `自由入力` modal から返す。朝は `これをやる` / `夕方にもう一度` / `今日は外す` |
 | fallback | button が出ない時だけ `/life-reply 1` または `/life-reply <文章>` を使う |
@@ -598,7 +602,7 @@ private_pi5_hermes_life_pilot_enabled: true
 | 同期 | Syncthing-Fork で vault だけを共有。スマホ全体・写真全体・Download は共有しない |
 | Pi5 | `/home/hermes/.hermes-life/obsidian/HermesLife` を receive-only 受け皿にする |
 | Hermes | Pi5 側コピーを read-only 入力として読む |
-| 朝 | `Obsidian新着:` に Markdown snippet / 画像・PDF の存在を表示 |
+| 朝 | 有用候補として選ばれた時だけ、朝 check-in の `補足:` に Markdown snippet / 画像・PDF の存在を表示 |
 | 安全境界 | vault 書込・削除、Syncthing 設定操作、OCR/画像認識、外部Webは行わない |
 
 Syncthing の pairing は端末IDと folder ID の承認が必要なので、Ansible は受け皿ディレクトリ作成まで。Pi5 側 Syncthing は `hermes` user で動かし、folder path を `/home/hermes/.hermes-life/obsidian/HermesLife`、folder type を **Receive Only** にする。
@@ -610,7 +614,7 @@ Syncthing の pairing は端末IDと folder ID の承認が必要なので、Ans
 | Android | 標準の共有メニューから X/URL/画像を Discord DM または専用チャンネルへ送る |
 | Hermes | URL・添付・Discord embed・添付プレースホルダ・`共有:` / `メモ:` prefix の通常メッセージを Life Pilot inbox として保存 |
 | Pi5 | `/home/hermes/.hermes-life/inbox/discord.jsonl` |
-| 朝 | `共有メモ新着:` に X/リンク/添付ファイル名を表示 |
+| 朝 | 有用候補として選ばれた時だけ、朝 check-in の `補足:` に X/リンク/添付ファイル名を表示 |
 | 安全境界 | 外部Webを開かない。添付をダウンロードしない。OCR/画像認識しない。通常会話は既定では保存しない |
 
 Discord 共有は Syncthing や Tailscale 常時接続を必要としない。リンク相談ではなく、後で見るための「受け取り箱」として扱う。添付/画像共有は `hermes-life-discord-ui.service` 側でも捕捉し、Hermes本体の画像解析ルートへ流れないようにする。
@@ -683,7 +687,7 @@ private_pi5_hermes_life_interest_digest_time: "08:10:00"
    - `/memo git pushしてdeployして` → **memo rejected**
 7. proactive loop（D8）:
    - `systemctl is-active hermes-life-proactive-morning.timer` → `active`
-   - `systemctl is-active hermes-life-proactive-evening.timer` → `active`
+   - `systemctl is-active hermes-life-proactive-evening.timer` → 既定は `inactive`。夕方 check-in を戻す時だけ `private_pi5_hermes_life_proactive_evening_enabled: true`
    - `systemctl is-active hermes-life-followup.timer` → `active`
    - `systemctl is-active hermes-life-discord-ui.service` → `active`
    - 手動即時確認: `sudo systemctl start hermes-life-proactive@morning.service`
@@ -695,7 +699,7 @@ private_pi5_hermes_life_interest_digest_time: "08:10:00"
    - Pi5 Syncthing の共有先が `/home/hermes/.hermes-life/obsidian/HermesLife` で、Receive Only であること
    - Android Obsidian で作った `今日のメモ` が Pi5 側にコピーされること
    - 手動即時確認: `sudo systemctl start hermes-life-proactive@morning.service`
-   - Discord 朝 check-in に `Obsidian新着:` と `boundary=local-only/no-tools` が出ること
+   - Discord 朝 check-in に `補足:` と Obsidian snippet が出ること（debug 行は既定非表示）
 9. Discord shared inbox（D13）:
    - Discord 画面から通常 DM `おはよう` を送る
    - `受け取りました: ...` ではなく Hermes 通常会話として応答すること
@@ -712,12 +716,12 @@ private_pi5_hermes_life_interest_digest_time: "08:10:00"
    - 画像添付で `クリックして添付ファイルを表示` 系の本文になっても、通常チャット解析ではなく inbox 保存になること
    - 画像-only 共有で `vision_analyze_tool` が動かないこと
    - 手動即時確認: `sudo systemctl start hermes-life-proactive@morning.service`
-   - Discord 朝 check-in に `共有メモ新着:` と `共有メモを見返す` が出ること
+   - Discord 朝 check-in に `補足:` と `共有メモを見返す` が出ること
 10. Daily Interest Digest（D19）:
-   - `/interest` → `今日の気になる投稿` と `boundary=read-summary-only/no-tools` が返ること
+   - `/interest` → 候補ありなら `今日見るなら`、候補なしなら短い空結果が返ること
    - `/interest like 1` → `興味ありとして記録しました`
    - `/interest more vLLM` → `好みに反映しました`
-   - `sudo systemctl start hermes-life-interest-digest.service` → Discord に同じ形式のダイジェストが届くこと
+   - `sudo systemctl start hermes-life-interest-digest.service` → 候補ありなら Discord にダイジェストが届く。候補なしなら `skipped_empty=1` で投稿しないこと
    - Pi5 側 `/home/hermes/.hermes-life/interest/profile.json` に重みが残ること
 
 **禁止（意図的）**: Cursor/Codex CLI · production repo 編集 · git · deploy · terminal · 秘密読取 · 外部Web検索 · Home Assistant/カメラ制御。
@@ -736,8 +740,8 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py --validate-task-b
 **DGX 通常 profile 復帰（`/novel` 後の `/task`）**:
 
 - **問題**: `/novel` は `qwen36_35b_uncensored`（green・llama **ctx 2048**）を起動する。`/task` は同じ `system-prod-primary` alias を使うため、復帰しないと **prompt+tool schema が 2048 超過で LLM 400** → 承認リレーまで到達しない。
-- **対策（repo）**: `/task` 実行前に tools runner が **`business_qwen36_27b_nvfp4` へ `POST /start`**（`~/.hermes-tools/.env` の `DGX_MODEL_PROFILE_ID`）。keep-warm も同 profile を定期維持。
-- **検証**: デプロイ後 `grep DGX_MODEL_PROFILE_ID=~/.hermes-tools/.env` と `~/.hermes/dgx-keep-warm.env` が **`business_qwen36_27b_nvfp4`** であること。DGX で `active-model-profile.json` の `activeProfileId` が blue 27B 系に戻っていること。
+- **対策（repo）**: `/task` 実行前に tools runner が `~/.hermes-tools/.env` の **`DGX_MODEL_PROFILE_ID` へ `POST /start`** し、同じ ID で active profile を verify する。keep-warm も `~/.hermes/dgx-keep-warm.env` の同 profile を定期維持。
+- **検証**: デプロイ後 `grep DGX_MODEL_PROFILE_ID ~/.hermes-tools/.env ~/.hermes/dgx-keep-warm.env` で同じ profile ID であること。DGX で `active-model-profile.json` の `activeProfileId` が設定した業務 profile に戻っていること。
 
 ### 本番反映 — `/task` DGX 通常 profile 復帰（2026-05-30）
 
@@ -1037,9 +1041,9 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | 安全な Cursor 文案が拒否 | 広い日本語 regex（修正前） | 同上 · [KB §policy regex](../knowledge-base/KB-private-pi5-hermes-daily-pilot.md#investigation--policy-regex-修正2026-06-06) |
 | `/memo` 等が登録されない | `life-pilot.policy.yaml` 未配備 · Discord command sync 未実行 · token 未設定 | fragment ON + `private_pi5_hermes_discord_bot_token` 設定 → deploy · `hermes-gateway` restart · [KB Life Pilot](../knowledge-base/KB-private-pi5-hermes-life-pilot.md) |
 | `/remind` で通知が来ない | 日時を読めない · `notifyChannelId` がない · `hermes-life-reminder.timer` inactive | 日時つき slash で登録し `notification=scheduled` を確認 · `systemctl is-active hermes-life-reminder.timer` · [ExecPlan D6-life](../plans/private-pi5-hermes-life-pilot-execplan.md) |
-| 朝晩の問いかけが来ない | proactive timer inactive · channel context 未保存 · Discord token 未設定 | `systemctl is-active hermes-life-proactive-morning.timer` · `/memo` 等を一度実行して context 保存 · 必要なら `private_pi5_hermes_life_proactive_channel_id` 固定 |
+| 朝の問いかけが来ない | proactive timer inactive · channel context 未保存 · Discord token 未設定 · 有用候補なし | `systemctl is-active hermes-life-proactive-morning.timer` · `/memo` 等を一度実行して context 保存 · reminder/inbox 候補を確認 · 必要なら `private_pi5_hermes_life_proactive_channel_id` 固定 |
 | proactive button が出ない | 古い deploy · Discord UI relay inactive · Discord API components 送信失敗 | 最新 branch を deploy · `systemctl is-active hermes-life-discord-ui.service` · journal で relay/error を確認 |
-| button を押しても「受け取りました」が返らない | `hermes-life-discord-ui.service` inactive · check-in が回答済み/期限切れ · allowed user 不一致 | relay active 確認 · 次の朝/夜確認で再試行 · 必要なら `/life-reply 1` fallback |
+| button を押しても「受け取りました」が返らない | `hermes-life-discord-ui.service` inactive · check-in が回答済み/期限切れ · allowed user 不一致 | relay active 確認 · 次の朝/follow-up確認で再試行 · 必要なら `/life-reply 1` fallback |
 | `1` だけ送っても「受け取りました」が返らない | Hermes 本体 hotfix は `yes/no` 系短文のみ pre-dispatch する場合がある | button を押す。button が出ない時だけ `/life-reply 1` を使う |
 
 ## ロールバック

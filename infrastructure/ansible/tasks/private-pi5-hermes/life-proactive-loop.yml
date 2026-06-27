@@ -24,25 +24,29 @@
 
 - name: Enable Hermes Life Pilot proactive timers
   ansible.builtin.systemd:
-    name: "{{ item }}"
+    name: "{{ item.name }}"
     enabled: true
     state: started
     daemon_reload: true
   loop:
-    - hermes-life-proactive-morning.timer
-    - hermes-life-proactive-evening.timer
-  when: private_pi5_hermes_life_proactive_loop_active | bool
+    - name: hermes-life-proactive-morning.timer
+      active: "{{ private_pi5_hermes_life_proactive_morning_active }}"
+    - name: hermes-life-proactive-evening.timer
+      active: "{{ private_pi5_hermes_life_proactive_evening_active }}"
+  when: item.active | bool
 
 - name: Disable Hermes Life Pilot proactive timers when inactive
   ansible.builtin.systemd:
-    name: "{{ item }}"
+    name: "{{ item.name }}"
     enabled: false
     state: stopped
     daemon_reload: true
   loop:
-    - hermes-life-proactive-morning.timer
-    - hermes-life-proactive-evening.timer
-  when: not (private_pi5_hermes_life_proactive_loop_active | bool)
+    - name: hermes-life-proactive-morning.timer
+      active: "{{ private_pi5_hermes_life_proactive_morning_active }}"
+    - name: hermes-life-proactive-evening.timer
+      active: "{{ private_pi5_hermes_life_proactive_evening_active }}"
+  when: not (item.active | bool)
 
 - name: Enable Hermes Life Pilot follow-up timer
   ansible.builtin.systemd:

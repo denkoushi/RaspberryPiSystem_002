@@ -106,7 +106,7 @@ class LifeReminderSchedulerTests(unittest.TestCase):
         self.assertEqual(second.sent, 0)
         self.assertEqual(sent[0][0], "channel-1")
         self.assertTrue(sent[0][1].startswith("燃えるごみを出す"))
-        self.assertIn("-# debug:", sent[0][1])
+        self.assertNotIn("-# debug:", sent[0][1])
         self.assertEqual(item["status"], "notified")
         self.assertIn("notifiedAt", item)
 

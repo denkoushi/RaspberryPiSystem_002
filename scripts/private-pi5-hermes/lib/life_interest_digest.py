@@ -97,6 +97,15 @@ ACTION_LABELS: dict[str, str] = {
 }
 
 
+def _discord_debug_lines_enabled() -> bool:
+    return os.environ.get("HERMES_LIFE_DISCORD_DEBUG_LINES", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 @dataclass(frozen=True)
 class InterestItem:
     item_id: str
@@ -128,6 +137,7 @@ class InterestDispatchResult:
     failed: int = 0
     skipped_duplicate: int = 0
     skipped_missing_channel: int = 0
+    skipped_empty: int = 0
     dispatch_id: str = ""
     error: str = ""
 
@@ -690,13 +700,22 @@ def render_interest_digest(
 ) -> str:
     if not items:
         error_line = f"\n取得エラー: {', '.join(errors)}" if errors else ""
-        return f"""今日の気になる投稿はまだありません。
-
-新しい共有やフォーラム更新が入るとここに出ます。{error_line}
-
-返信: /interest refresh
--# debug: interest=digest items=0 fetched={fetched_count} boundary=read-summary-only/no-tools""".strip()
-    lines = ["今日の気になる投稿"]
+        lines = [
+            "今日の気になる投稿はまだありません。",
+            "",
+            f"新しい共有やフォーラム更新が入るとここに出ます。{error_line}",
+            "",
+            "返信: /interest refresh",
+        ]
+        if _discord_debug_lines_enabled():
+            lines.append(
+                f"-# debug: interest=digest items=0 fetched={fetched_count} "
+                "boundary=read-summary-only/no-tools"
+            )
+        return "\n".join(lines).strip()
+    lines = ["今日見るなら"]
+    if errors:
+        lines.append(f"一部取得失敗: {', '.join(errors)}")
     for index, item in enumerate(items, start=1):
         lines.append("")
         lines.append(_render_item(index, item))
@@ -704,12 +723,13 @@ def render_interest_digest(
         [
             "",
             "返信: /interest like 1 | save 1 | later 1 | dismiss 1 | more <話題> | less <話題>",
-            "-# debug: interest=digest "
-            f"items={len(items)} fetched={fetched_count} boundary=read-summary-only/no-tools",
         ]
     )
-    if errors:
-        lines.insert(1, f"一部取得失敗: {', '.join(errors)}")
+    if _discord_debug_lines_enabled():
+        lines.append(
+            "-# debug: interest=digest "
+            f"items={len(items)} fetched={fetched_count} boundary=read-summary-only/no-tools"
+        )
     return "\n".join(lines).strip()
 
 
@@ -859,6 +879,12 @@ def dispatch_daily_interest_digest(
         fetcher=fetcher,
         mark_seen=False,
     )
+    if not digest.items:
+        return InterestDispatchResult(
+            ok=True,
+            skipped_empty=1,
+            dispatch_id=dispatch_id,
+        )
     send = sender or _env_sender()
     result = send(context_channel, digest.message)
     row: dict[str, Any] = {

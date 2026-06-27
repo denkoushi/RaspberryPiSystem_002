@@ -76,6 +76,18 @@ class FakeSender:
         return DiscordSendResult(ok=True, status_code=200)
 
 
+def _write_basic_reminder(root: Path, now: datetime) -> None:
+    path = root / "reminders" / "reminders.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    item = {
+        "createdAt": now.isoformat(timespec="seconds"),
+        "status": "pending",
+        "text": "朝の確認候補",
+    }
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
+
+
 class LifeDiscordUiRelayTests(unittest.TestCase):
     def test_parse_custom_id_accepts_life_button_ids(self) -> None:
         self.assertEqual(
@@ -116,6 +128,7 @@ class LifeDiscordUiRelayTests(unittest.TestCase):
             root = Path(tmp)
             now = datetime.now(timezone(timedelta(hours=9)))
             checkin_id = f"{now.date().isoformat()}-morning"
+            _write_basic_reminder(root, now)
             dispatch_proactive_checkin(
                 root,
                 "morning",

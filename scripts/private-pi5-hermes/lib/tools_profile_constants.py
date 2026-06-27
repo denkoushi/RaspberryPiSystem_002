@@ -3,4 +3,7 @@
 
 from __future__ import annotations
 
-TOOLS_BUSINESS_MODEL_PROFILE_ID = "business_qwen36_27b_nvfp4"
+DEFAULT_TOOLS_BUSINESS_MODEL_PROFILE_ID = "business_qwen36_27b_nvfp4"
+
+# Backward-compatible name used by older tests and docs.
+TOOLS_BUSINESS_MODEL_PROFILE_ID = DEFAULT_TOOLS_BUSINESS_MODEL_PROFILE_ID
