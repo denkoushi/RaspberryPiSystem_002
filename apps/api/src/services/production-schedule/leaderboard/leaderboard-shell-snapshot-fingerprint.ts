@@ -1,3 +1,5 @@
+import type { ProductionScheduleCompletionFilter } from '../production-schedule-effective-completion.sql.js';
+
 /**
  * 順位ボード段階取得の snapshot が指すフィルタ条件の同一性を検証するための指紋。
  * 正規化してソート順を固定し、JSON 一本化で比較する。
@@ -14,6 +16,7 @@ export function buildLeaderboardShellFilterFingerprint(input: {
   hasNoteOnly: boolean;
   hasDueDateOnly: boolean;
   allowResourceOnly: boolean;
+  completionFilter?: ProductionScheduleCompletionFilter;
 }): string {
   const normalized = {
     locationKey: input.locationKey.trim(),
@@ -29,7 +32,8 @@ export function buildLeaderboardShellFilterFingerprint(input: {
     resourceCategory: input.resourceCategory ?? '',
     hasNoteOnly: input.hasNoteOnly,
     hasDueDateOnly: input.hasDueDateOnly,
-    allowResourceOnly: input.allowResourceOnly
+    allowResourceOnly: input.allowResourceOnly,
+    completionFilter: input.completionFilter ?? 'all'
   };
   return JSON.stringify(normalized);
 }

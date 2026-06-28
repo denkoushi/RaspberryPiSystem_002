@@ -52,6 +52,7 @@ export async function registerProductionScheduleListRoute(
       hasNoteOnly,
       hasDueDateOnly,
       allowResourceOnly: query.allowResourceOnly === true,
+      completionFilter: query.completionFilter,
       locationKey: assignmentLocationKey,
       siteKey: locationScopeContext.siteKey,
       // 自主検査候補一覧は `listSelfInspectionEligibleProductionScheduleRows` が OFFSET 付きダッシュボード SQL で走査する。

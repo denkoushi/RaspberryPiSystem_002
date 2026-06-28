@@ -41,6 +41,7 @@ export async function resolveLeaderboardBoardResourceTotalsForContinue(
           hasNoteOnly: listParamsBase.hasNoteOnly,
           hasDueDateOnly: listParamsBase.hasDueDateOnly,
           allowResourceOnly: listParamsBase.allowResourceOnly,
+          completionFilter: listParamsBase.completionFilter,
           locationKey: listParamsBase.locationKey,
           siteKey: listParamsBase.siteKey,
           processChangeResidualMode: 'normal',

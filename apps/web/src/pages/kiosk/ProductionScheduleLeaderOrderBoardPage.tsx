@@ -163,6 +163,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     [laborEnabledBySlotIndex]
   );
 
+  const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('incomplete');
+
   const leaderboardPhasedBase = useMemo(() => {
     const { resourceCds: _omitResourceCds, q: _omitQ, ...rest } = baseQueryParams;
     void _omitResourceCds;
@@ -172,11 +174,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       pageSize: LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE,
       allowResourceOnly: true,
       includeLabor: includeLaborInLeaderboardRequest,
+      completionFilter,
       ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
         : {})
     };
-  }, [activeDeviceScopeKey, baseQueryParams, includeLaborInLeaderboardRequest, macManualOrderV2]);
+  }, [activeDeviceScopeKey, baseQueryParams, completionFilter, includeLaborInLeaderboardRequest, macManualOrderV2]);
 
   const targetDeviceScopeKey =
     macManualOrderV2 && activeDeviceScopeKey.trim().length > 0 ? activeDeviceScopeKey.trim() : undefined;
@@ -423,8 +426,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     const rows = (scheduleQuery.data?.rows ?? []) as ProductionScheduleRow[];
     return buildLeaderBoardGroupedRows(rows, historyProgressQuery.data?.progressBySeiban);
   }, [scheduleQuery.data?.rows, historyProgressQuery.data?.progressBySeiban]);
-
-  const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('incomplete');
 
   const sortedGrouped = useMemo(
     () =>

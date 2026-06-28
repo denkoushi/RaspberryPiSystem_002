@@ -101,6 +101,25 @@ describe('buildLeaderboardShellDisplayFreshnessKey', () => {
       })
     );
   });
+
+  it('completionFilter の差分は別 key にする', () => {
+    const base = {
+      allowResourceOnly: true,
+      pageSize: 80,
+      boardResourceCds: '581,305',
+      includeLabor: false,
+      includeDecorations: false,
+      deferTotals: true,
+      completionFilter: 'incomplete' as const
+    };
+
+    expect(buildLeaderboardShellDisplayFreshnessKey(base)).not.toBe(
+      buildLeaderboardShellDisplayFreshnessKey({
+        ...base,
+        completionFilter: 'all'
+      })
+    );
+  });
 });
 
 describe('resolveLeaderboardShellForDisplay', () => {

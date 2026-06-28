@@ -6,6 +6,10 @@ import {
 import {
   buildFkojunstProductionScheduleListVisibilityWhereSql,
 } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
+import {
+  buildProductionScheduleCompletionFilterWhereSql,
+  type ProductionScheduleCompletionFilter
+} from '../production-schedule-effective-completion.sql.js';
 import { buildLeaderboardProcessChangeResidualFilterWhereSql } from './leaderboard-process-change-residual.sql.js';
 import type { ProcessChangeResidualMode } from './leaderboard-process-change-residual.types.js';
 import {
@@ -43,15 +47,17 @@ export type LeaderboardShellPriorityContext = {
 export function buildLeaderboardShellListWhereSql(params: {
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
+  completionFilter?: ProductionScheduleCompletionFilter;
   processChangeResidualMode?: ProcessChangeResidualMode;
   processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
 }): Prisma.Sql {
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
+  const completionSql = buildProductionScheduleCompletionFilterWhereSql(params.completionFilter);
   const residualFilterSql = buildLeaderboardProcessChangeResidualFilterWhereSql(
     params.processChangeResidualMode,
     params.processChangeResidualStrongEvidenceKeys
   );
-  return Prisma.sql`${params.leaderboardMaterializedBaseWhere} ${params.queryWhere} ${visibilitySql} ${residualFilterSql}`;
+  return Prisma.sql`${params.leaderboardMaterializedBaseWhere} ${params.queryWhere} ${visibilitySql} ${completionSql} ${residualFilterSql}`;
 }
 
 async function buildLeaderboardShellPriorityContext(params: {
@@ -60,6 +66,7 @@ async function buildLeaderboardShellPriorityContext(params: {
   expansionWhere: Prisma.Sql;
   locationKey: string;
   siteScopedGlobalRankLocation: string;
+  completionFilter?: ProductionScheduleCompletionFilter;
   /** キオスク順位ボード通常表示のみ `normal`。省略時は `include`（除外なし）。 */
   processChangeResidualMode?: ProcessChangeResidualMode;
   /**
@@ -77,6 +84,7 @@ async function buildLeaderboardShellPriorityContext(params: {
     expansionWhere,
     locationKey,
     siteScopedGlobalRankLocation,
+    completionFilter,
     seibanExpansion = true,
     prefixLimit,
     processChangeResidualMode
@@ -85,6 +93,7 @@ async function buildLeaderboardShellPriorityContext(params: {
   const commonWhere = buildLeaderboardShellListWhereSql({
     leaderboardMaterializedBaseWhere,
     queryWhere,
+    completionFilter,
     processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
@@ -165,6 +174,7 @@ async function buildLeaderboardShellPriorityContext(params: {
     const expansionWhereSql = Prisma.sql`${buildLeaderboardShellListWhereSql({
       leaderboardMaterializedBaseWhere,
       queryWhere: expansionWhere,
+      completionFilter,
       processChangeResidualMode,
       processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
     })}
@@ -323,6 +333,7 @@ export async function fetchLeaderboardShellMergedPrefixRows(params: {
   siteScopedGlobalRankLocation: string;
   seibanExpansion?: boolean;
   prefixLimit: number;
+  completionFilter?: ProductionScheduleCompletionFilter;
   processChangeResidualMode?: ProcessChangeResidualMode;
   processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
 }): Promise<{ mergedPrefix: LeaderboardScheduleRowSql[]; mergeFullyCompleted: boolean }> {
@@ -370,6 +381,7 @@ export async function fetchFullLeaderboardShellMergedOrderedRows(params: {
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
   expansionWhere: Prisma.Sql;
+  completionFilter?: ProductionScheduleCompletionFilter;
   processChangeResidualMode?: ProcessChangeResidualMode;
   processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
   locationKey: string;
@@ -552,6 +564,7 @@ export async function fetchLeaderboardShellRowsContinuationChunk(params: {
   siteScopedGlobalRankLocation: string;
   excludeRowIds: readonly string[];
   chunkSize: number;
+  completionFilter?: ProductionScheduleCompletionFilter;
   seibanExpansion?: boolean;
   processChangeResidualMode?: ProcessChangeResidualMode;
   processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
@@ -581,6 +594,7 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
   locationKey: string;
   siteScopedGlobalRankLocation: string;
   pageSize: number;
+  completionFilter?: ProductionScheduleCompletionFilter;
   seibanExpansion?: boolean;
   processChangeResidualMode?: ProcessChangeResidualMode;
   processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;

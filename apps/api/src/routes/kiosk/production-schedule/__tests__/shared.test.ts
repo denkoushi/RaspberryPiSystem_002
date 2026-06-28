@@ -113,6 +113,41 @@ describe('production-schedule route shared helpers', () => {
     ).toBe(true);
   });
 
+  it('leaderboard board schemas は completionFilter を既定 all / 明示値で解釈する', () => {
+    const queryBase = {
+      boardResourceCds: 'R1',
+      pageSize: '80',
+      allowResourceOnly: 'true'
+    };
+    expect(productionScheduleLeaderboardBoardQuerySchema.parse(queryBase).completionFilter).toBe('all');
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...queryBase,
+        completionFilter: 'incomplete'
+      }).completionFilter
+    ).toBe('incomplete');
+    expect(() =>
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...queryBase,
+        completionFilter: 'done'
+      })
+    ).toThrow();
+
+    const continueBase = {
+      boardResourceCds: 'R1',
+      pageSize: 160,
+      allowResourceOnly: true,
+      resourceSlices: [{ resourceCd: 'R1', hasMore: false }]
+    };
+    expect(productionScheduleLeaderboardBoardContinueBodySchema.parse(continueBase).completionFilter).toBe('all');
+    expect(
+      productionScheduleLeaderboardBoardContinueBodySchema.parse({
+        ...continueBase,
+        completionFilter: 'complete'
+      }).completionFilter
+    ).toBe('complete');
+  });
+
   it('productionScheduleLeaderboardClientPerfBodySchema は計測イベントを制限付きで受け付ける', () => {
     const parsed = productionScheduleLeaderboardClientPerfBodySchema.parse({
       sessionId: 'session-1',

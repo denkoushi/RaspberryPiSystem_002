@@ -82,6 +82,7 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.productionScheduleResourceCategoryConfig.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleResourceCodeMapping.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleProgress.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleExternalCompletion.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleRowNote.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -118,6 +119,7 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.productionScheduleResourceCategoryConfig.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleResourceCodeMapping.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleProgress.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleExternalCompletion.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleRowNote.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.kioskProductionScheduleSearchState.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -1147,6 +1149,113 @@ describe('Kiosk Production Schedule API', () => {
     const sum = (tt1.json() as { total: number }).total + (tt2.json() as { total: number }).total;
     expect(b.total).toBe(sum);
     expect(b.resources).toHaveLength(2);
+  });
+
+  it('leaderboard-board completionFilter=incomplete fills shell before client-side filtering and continues with the same filter', async () => {
+    await prisma.csvDashboardRow.createMany({
+      data: Array.from({ length: 70 }, (_, index) => ({
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date(Date.UTC(2026, 1, 1, 0, 0, index)),
+        dataHash: `completion-pushdown-${String(index).padStart(3, '0')}`,
+        rowData: {
+          ProductNo: `CP${String(index).padStart(4, '0')}`,
+          FSEIBAN: `CP-S${String(index).padStart(7, '0')}`,
+          FHINCD: `CP-P${String(index).padStart(4, '0')}`,
+          FHINMEI: `Completion Pushdown Part ${index}`,
+          FSIGENCD: '1',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }))
+    });
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
+
+    const seededRows = await prisma.csvDashboardRow.findMany({
+      where: {
+        csvDashboardId: DASHBOARD_ID,
+        dataHash: { startsWith: 'completion-pushdown-' }
+      },
+      orderBy: { dataHash: 'asc' },
+      select: { id: true }
+    });
+    expect(seededRows).toHaveLength(70);
+
+    await prisma.productionScheduleProgress.createMany({
+      data: seededRows.slice(0, 28).map((row) => ({
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        isCompleted: true
+      }))
+    });
+    await prisma.productionScheduleExternalCompletion.createMany({
+      data: seededRows.slice(28, 55).map((row) => ({
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        isExternallyCompleted: true,
+        externallyCompletedFromFkojunstMailStatus: true
+      }))
+    });
+
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-board?q=CP&boardResourceCds=1&pageSize=10&allowResourceOnly=true&includeDecorations=false&completionFilter=incomplete',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(shell.statusCode).toBe(200);
+    const shellBody = shell.json() as {
+      rows: Array<{ rowData: { ProductNo?: string; progress?: string } }>;
+      total: number;
+      resources: Array<{
+        resourceCd: string;
+        snapshotId?: string;
+        nextCursor?: number;
+        hasMore: boolean;
+        total: number;
+      }>;
+    };
+    expect(shellBody.rows.map((row) => row.rowData.ProductNo)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `CP${String(index + 55).padStart(4, '0')}`)
+    );
+    expect(shellBody.rows.every((row) => row.rowData.progress !== '完了')).toBe(true);
+    expect(shellBody.total).toBe(15);
+    expect(shellBody.resources).toHaveLength(1);
+    expect(shellBody.resources[0]).toMatchObject({ resourceCd: '1', total: 15, hasMore: true });
+
+    const cont = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/production-schedule/leaderboard-board/continue',
+      headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+      payload: {
+        boardResourceCds: '1',
+        q: 'CP',
+        allowResourceOnly: true,
+        includeDecorations: false,
+        completionFilter: 'incomplete',
+        pageSize: 10,
+        resourceSlices: shellBody.resources.map((r) => ({
+          resourceCd: r.resourceCd,
+          snapshotId: r.snapshotId,
+          cursor: r.nextCursor,
+          hasMore: r.hasMore
+        }))
+      }
+    });
+    expect(cont.statusCode).toBe(200);
+    const contBody = cont.json() as {
+      rows: Array<{ rowData: { ProductNo?: string; progress?: string } }>;
+      deltaRows?: Array<{ rowData: { ProductNo?: string; progress?: string } }>;
+      total: number;
+      resources: Array<{ resourceCd: string; hasMore: boolean; total: number }>;
+    };
+    expect(contBody.rows.map((row) => row.rowData.ProductNo)).toEqual(
+      Array.from({ length: 15 }, (_, index) => `CP${String(index + 55).padStart(4, '0')}`)
+    );
+    expect(contBody.deltaRows?.map((row) => row.rowData.ProductNo)).toEqual(
+      Array.from({ length: 5 }, (_, index) => `CP${String(index + 65).padStart(4, '0')}`)
+    );
+    expect(contBody.rows.every((row) => row.rowData.progress !== '完了')).toBe(true);
+    expect(contBody.total).toBe(15);
+    expect(contBody.resources[0]).toMatchObject({ resourceCd: '1', total: 15, hasMore: false });
   });
 
   it('leaderboard-board returns laborRequiredMinutes with includeLabor=true when FSIGENCD=10 rows lack fkmail', async () => {

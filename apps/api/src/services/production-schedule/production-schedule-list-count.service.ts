@@ -5,6 +5,11 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import {
   buildFkojunstProductionScheduleListVisibilityWhereSql,
 } from './policies/fkojunst-production-schedule-list-visibility.policy.js';
+import {
+  buildProductionScheduleCompletionFilterJoinSql,
+  buildProductionScheduleCompletionFilterWhereSql,
+  type ProductionScheduleCompletionFilter
+} from './production-schedule-effective-completion.sql.js';
 import { buildLeaderboardProcessChangeResidualFilterWhereSql } from './leaderboard/leaderboard-process-change-residual.sql.js';
 import type { ProcessChangeResidualMode } from './leaderboard/leaderboard-process-change-residual.types.js';
 import { isProductionScheduleOrderSplitEnabled } from './order-split/production-schedule-order-split-feature.js';
@@ -13,6 +18,7 @@ type CountVisibleRowsParams = {
   baseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
   hasDueDateOnly?: boolean;
+  completionFilter?: ProductionScheduleCompletionFilter;
   processChangeResidualMode?: ProcessChangeResidualMode;
   processChangeResidualStrongEvidenceKeys?: ReadonlySet<string>;
 };
@@ -29,6 +35,8 @@ export async function countProductionScheduleDashboardVisibleRows(
     processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys
   );
+  const completionJoinSql = buildProductionScheduleCompletionFilterJoinSql(params.completionFilter);
+  const completionFilterSql = buildProductionScheduleCompletionFilterWhereSql(params.completionFilter);
   const rows = await prisma.$queryRaw<Array<{ total: bigint }>>`
     SELECT COUNT(*)::bigint AS total
     FROM "CsvDashboardRow"
@@ -38,7 +46,8 @@ export async function countProductionScheduleDashboardVisibleRows(
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()} ${residualFilterSql}
+    ${completionJoinSql}
+    WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()} ${completionFilterSql} ${residualFilterSql}
   `;
 
   return rows[0]?.total ?? 0n;
@@ -56,6 +65,8 @@ export async function countProductionScheduleDashboardVisibleDisplayItems(
     processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys
   );
+  const completionJoinSql = buildProductionScheduleCompletionFilterJoinSql(params.completionFilter);
+  const completionFilterSql = buildProductionScheduleCompletionFilterWhereSql(params.completionFilter);
   const displayItemCountSql = params.hasDueDateOnly
     ? Prisma.sql`CASE
         WHEN COALESCE("split_counts"."split_count", 0) > 0 THEN
@@ -81,6 +92,7 @@ export async function countProductionScheduleDashboardVisibleDisplayItems(
     LEFT JOIN "ProductionScheduleRowNote" AS "n_due"
       ON "n_due"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "n_due"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    ${completionJoinSql}
     LEFT JOIN (
       SELECT
         "parentCsvDashboardRowId",
@@ -91,7 +103,7 @@ export async function countProductionScheduleDashboardVisibleDisplayItems(
       GROUP BY "parentCsvDashboardRowId"
     ) AS "split_counts"
       ON "split_counts"."parentCsvDashboardRowId" = "CsvDashboardRow"."id"
-    WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()} ${residualFilterSql}
+    WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()} ${completionFilterSql} ${residualFilterSql}
   `;
 
   return rows[0]?.total ?? 0n;
