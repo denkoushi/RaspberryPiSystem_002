@@ -1,8 +1,8 @@
 ---
 id: leaderboard-defer-totals-performance-recovery
-status: pi4_completion_filter_pushdown_deployed_plus_labor_toggle_latency_open
+status: labor_metadata_overlay_verified
 scope: kiosk leader order board first usable performance and Web display stability
-date: 2026-06-28
+date: 2026-06-29
 source_of_truth: true
 related_code:
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts
@@ -35,13 +35,18 @@ related_docs:
   - docs/decisions/ADR-20260211-production-schedule-expression-indexes.md
   - docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md
   - docs/guides/deployment.md
-validation: focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK · f978c15e CI/deploy/Phase12 succeeded but its Gantt ruler-height behavior was later classified as a visual-contract regression · 2026-06-28 d507780f completionFilter pushdown CI/CodeQL success, Pi5+4 Pi4 deploy success, Pi4-like Playwright first visible 5.6-8.4s, user real device reported much faster
+validation: >-
+  focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK · f978c15e CI/deploy/Phase12 succeeded but its Gantt ruler-height behavior was later classified as a visual-contract regression ·
+  2026-06-28 d507780f completionFilter pushdown CI/CodeQL success, Pi5+4 Pi4 deploy success, Pi4-like Playwright first visible 5.6-8.4s, user real device reported much faster ·
+  2026-06-28 bcf79b04 labor metadata lightweight overlay PR #867 CI/CodeQL/gitleaks success, Pi5+5 Pi4 deploy and health success, real Pi4 labor metadata POST verified ·
+  2026-06-29 post-deploy comparison showed +人 metadata POST about 3.0-3.5s for 80 displayed ids, faster than the old includeLabor full-board refetch class at about 4.9-6.5s
 open_items:
   - If the physical browser still appears busy, distinguish three states: initial shell load, 5-minute board refresh, and `+人` labor metadata refresh. Only the first two should show 「一覧を更新中です。」.
   - `resourceShell` can still be multi-second on large resources; do not add API/index work until browser/client-perf logs show API shell is again the bottleneck.
   - Kiosk browsers must hard reload to pick up the deployed Web bundle; already-open SPA tabs can keep old banner/refetch/labor-overlay behavior until reload.
-  - `+人` still takes noticeable time before labor display is reflected; instrument the `includeLabor=true` shell/continue path and UI state before changing DB/indexes.
-  - `raspi4-sessaku-01` was not updated by the 2026-06-28 deploy because the first SSH preflight timed out; deploy or intentionally skip it before calling all Pi4 clients current.
+  - For further `+人` speed work, profile `leaderboardPerf=1` events (`labor-metadata-start/end/error`) plus server `endpoint="laborMetadata"` phases. Current production metadata POST cost is about 3.0-3.5s for 80 displayed ids; do not reintroduce a full board refetch to solve this.
+  - Actual DOM reflection after `labor-metadata-end` is not yet quantified on the physical browser. Measure it before optimizing API internals further if operators still report delay.
+  - `raspi4-sessaku-01` was updated successfully by deploy runs `20260628-222904` and `20260628-231744`; it is no longer the known old-commit outlier from the completionFilter deploy.
 ---
 
 # Plan: Leaderboard deferTotals Performance Recovery
@@ -748,6 +753,20 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
   - User physical-device validation on 2026-06-28: "非常に早くなりました" and accepted continuing further optimization.
 - Remaining gap: `+人` is still slow to reflect after pressing. Treat this separately from initial first-visible performance. It intentionally changes `includeLabor=false -> true` and needs a labor metadata fetch; do not remove that refetch. Next investigation should measure `includeLabor=true` shell/continue duration, whether retained labor metadata covers all currently displayed rows, and whether the UI can show immediate local feedback while labor metadata is loading without changing row identity or hiding existing rows.
 
+**API/Web follow-up: labor metadata lightweight overlay for `+人`（2026-06-28/29 · PR #867 verified）**:
+
+- Implementation branch: `perf/kiosk-leaderboard-labor-metadata-overlay`; runtime commit `bcf79b04` (`perf(kiosk): fetch leaderboard labor metadata lazily`); docs/rollout commit `742fafb8`; PR #867.
+- Design: keep `leaderboard-board` and `leaderboard-board/continue` requests on `includeLabor=false` for first-use and append stability. `+人` no longer changes the board query key. Instead, Web posts only the currently displayed row ids for resource slots where `+人` is ON to `POST /api/kiosk/production-schedule/leaderboard-board/labor-metadata`.
+- API shape: the endpoint accepts DisplayItemId values (`uuid` and `split:{uuid}`) up to the existing display-row scope cap (`8000`) and returns finite `machineRequiredMinutes` / `laborRequiredMinutes` by row id. It reuses `fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds` and `attachLeaderboardLaborMinutes`; no separate labor SQL path or migration is introduced.
+- Web behavior: metadata results are stored in the existing retained labor metadata map and overlaid through `mergeLeaderboardBoardLaborMetadataForDisplay`. Existing rows, append-complete rows, scroll state, and row order are preserved. Endpoint failure is non-blocking and must not show 「一覧を更新中です。」.
+- Perf diagnostics: client events add `labor-metadata-start`, `labor-metadata-end`, and `labor-metadata-error` with only row/resource counts. Server perf uses `endpoint: "laborMetadata"` with phases `materializedBaseWhere`, `hydrateRows`, `attachLabor`, and `requestTotal` when `LEADERBOARD_BOARD_PERF_LOG=true`.
+- Local validation on 2026-06-28: API schema/service focused tests PASS, Web fetch-param/hook focused tests PASS, temporary Docker `pgvector/pgvector:pg15` migration/integration/EXPLAIN PASS. The temporary container, volume, and network were removed. API/Web lint and build PASS.
+- CI/deploy: GitHub CI run `28323382336`, CodeQL run `28323382315`, and gitleaks run `28323382321` succeeded. Deploy run `20260628-222904` succeeded for Pi5 and all Pi4 kiosk clients (`raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`, `raspi4-kensaku-stonebase01`, `raspi4-sessaku-01`) with `failed=0`, `unreachable=0`, health success, and exit `0`. Post-deploy commit/service check from Pi5 showed all six hosts on `bcf79b04` / branch `perf/kiosk-leaderboard-labor-metadata-overlay`; Pi4 `kiosk-browser.service` and `status-agent.timer` were active.
+- Final PR-head verification: after the docs/rollout commit, GitHub CI run `28324698726`, CodeQL run `28324698727`, and gitleaks run `28324698725` all succeeded. Sync deploy `20260628-231744` succeeded for Pi5 plus all five Pi4 kiosk clients with health success. Post-sync check showed all six hosts on `742fafb8`; Pi4 `kiosk-browser.service` and `status-agent.timer` were active.
+- Production API verification: for assigned boards, `leaderboard-board` stayed `includeLabor=false` with first row `laborRequiredMinutes=0`, and separate `labor-metadata` POST returned overlay rows. Mac-to-Pi5 checks: kensakuMain `boardRows=300`, metadata `80/80` non-zero, board `4.130s`, metadata `3.728s`; RoboDrill01 `boardRows=239`, metadata `80/80` non-zero, board `3.083s`, metadata `2.534s`; FJV60/80 `boardRows=242`, metadata `79/80` non-zero, board `2.885s`, metadata `3.335s`.
+- Real Pi4 verification: Ansible `uri` executed on the physical Pi4 clients for kensakuMain, RoboDrill01, and FJV60/80. Each Pi4 performed `leaderboard-board includeLabor=false -> labor-metadata POST`; all returned HTTP 200, kept first board labor at `0`, sent `80` row ids, and returned `80` metadata rows (`80`, `80`, and `79` non-zero labor rows respectively).
+- 2026-06-29 speed comparison: `+人` no longer triggers a board GET, so compare old `includeLabor=true` full-board refetch time against the new metadata POST only. Production samples: kensakuMain old full-board `6.485s` vs metadata `3.484s`; RoboDrill01 `4.907s` vs `2.982s`; FJV60/80 `5.110s` vs `3.411s`. This reduces the labor reflection request by roughly 1.7-3.0s and preserves row/scroll state. A separate kensakuMain machine-only board sample was anomalously slow (`16.805s`) and should not be added to `+人` cost because `+人` no longer refetches the board.
+
 **Relevant files for Cursor**:
 
 - `apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`
@@ -756,6 +775,14 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
   - after display selection, retained/fresh labor metadata is overlaid by `row.id`
   - `isBoardDataSyncStatusVisible` separates UI banner visibility from internal `isBoardDataSyncing`
   - continuation-only background sync after shell rows are displayed is silent in the global banner
+- `apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts`
+  - registers `POST /kiosk/production-schedule/leaderboard-board/labor-metadata` and routes it through the same client-device/site scope boundary as the board endpoints
+- `apps/api/src/services/production-schedule/leaderboard/leaderboard-labor-metadata.service.ts`
+  - hydrates only requested display row ids and attaches labor minutes through the existing shared labor service
+- `apps/api/src/routes/kiosk/production-schedule/shared.ts`
+  - owns the request body schema and DisplayItemId validation for the labor metadata endpoint
+- `apps/web/src/api/client.ts`
+  - exposes `postKioskProductionScheduleLeaderboardLaborMetadata()` for the lightweight overlay path
 - `apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardLaborMetadata.ts`
   - preserves the selected display board shape/row count while refreshing `machineRequiredMinutes` and `laborRequiredMinutes`; retained metadata is preferred over machine-only `includeLabor=false` zeros
 - `apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendOverrideScopePolicy.ts`
@@ -789,7 +816,7 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 
 **Do not regress**:
 
-- Do not remove the `includeLabor=true` refetch on `+人`; it is required for real labor minutes.
+- Do not remove the `+人` labor metadata fetch; real labor minutes still require a server lookup. The current Web path is the dedicated `labor-metadata` POST, while `includeLabor=true` board/continue remains only as a compatibility path.
 - Do not use raw `paramsKey` for display fallback freshness when only `includeLabor` changes.
 - Do not let a shorter fresh append override a longer previous display append unless it has caught up.
 - Do not keep an old `includeLabor=false` display board without overlaying retained/fresh labor metadata from the current display scope.

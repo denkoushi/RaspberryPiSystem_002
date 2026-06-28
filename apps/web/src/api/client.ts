@@ -1114,6 +1114,27 @@ export async function postKioskProductionScheduleLeaderboardDecorations(payload:
   return data;
 }
 
+export type ProductionScheduleLeaderboardLaborMetadataEntry = {
+  id: string;
+  machineRequiredMinutes: number;
+  laborRequiredMinutes: number;
+};
+
+export type ProductionScheduleLeaderboardLaborMetadataResponse = {
+  rowMetadata: ProductionScheduleLeaderboardLaborMetadataEntry[];
+};
+
+export async function postKioskProductionScheduleLeaderboardLaborMetadata(payload: {
+  rowIds: string[];
+  targetDeviceScopeKey?: string;
+}) {
+  const { data } = await api.post<ProductionScheduleLeaderboardLaborMetadataResponse>(
+    '/kiosk/production-schedule/leaderboard-board/labor-metadata',
+    payload
+  );
+  return data;
+}
+
 /** 順位ボード集約 GET: `boardResourceCds` にスロット順の資源（カンマ区切り） */
 export type KioskProductionScheduleLeaderboardBoardQueryParams = KioskProductionScheduleLeaderboardPhasedQueryParams & {
   boardResourceCds: string;

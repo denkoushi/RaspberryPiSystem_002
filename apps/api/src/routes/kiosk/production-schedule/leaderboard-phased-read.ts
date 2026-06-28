@@ -11,6 +11,7 @@ import {
   fetchLeaderboardCompositeBoardShell,
   type LeaderboardBoardPerformanceSink
 } from '../../../services/production-schedule/leaderboard/leaderboard-composite-board.service.js';
+import { fetchLeaderboardBoardLaborMetadata } from '../../../services/production-schedule/leaderboard/leaderboard-labor-metadata.service.js';
 import {
   materializeProcessChangeResidualStrongEvidence,
   type ProcessChangeResidualStrongEvidenceMaterialization
@@ -23,6 +24,7 @@ import {
   productionScheduleLeaderboardBoardQuerySchema,
   productionScheduleLeaderboardClientPerfBodySchema,
   productionScheduleLeaderboardDecorationsBodySchema,
+  productionScheduleLeaderboardLaborMetadataBodySchema,
   productionScheduleLeaderboardPhasedQuerySchema,
   productionScheduleLeaderboardShellContinuationBodySchema,
   toLegacyLocationKeyFromDeviceScope,
@@ -248,6 +250,29 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     );
 
     return reply.status(204).send();
+  });
+
+  app.post('/kiosk/production-schedule/leaderboard-board/labor-metadata', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+    const deviceScopeKey = locationScopeContext.deviceScopeKey;
+
+    const body = productionScheduleLeaderboardLaborMetadataBodySchema.parse(request.body ?? {});
+    const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
+      actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
+      targetDeviceScopeKey: body.targetDeviceScopeKey
+    });
+
+    return fetchLeaderboardBoardLaborMetadata(
+      {
+        orderedRowIds: body.rowIds,
+        locationKey: assignmentLocationKey,
+        siteKey: locationScopeContext.siteKey
+      },
+      {
+        performanceSink: createLeaderboardBoardPerformanceSink(request)
+      }
+    );
   });
 
   app.get('/kiosk/production-schedule/leaderboard-board', { config: { rateLimit: false } }, async (request, reply) => {

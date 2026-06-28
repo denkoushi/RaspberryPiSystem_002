@@ -1311,13 +1311,14 @@ describe('Kiosk Production Schedule API', () => {
 
     const boardWithoutLabor = await app.inject({
       method: 'GET',
-      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true&includeLabor=false',
+      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true&includeLabor=false&includeDecorations=false',
       headers: { 'x-client-key': CLIENT_KEY }
     });
 
     expect(boardWithoutLabor.statusCode).toBe(200);
     const noLaborBody = boardWithoutLabor.json() as {
       rows: Array<{
+        id: string;
         rowData: Record<string, unknown>;
         machineRequiredMinutes?: number;
         laborRequiredMinutes?: number;
@@ -1330,9 +1331,34 @@ describe('Kiosk Production Schedule API', () => {
     expect(noLaborTarget?.machineRequiredMinutes).toBe(400);
     expect(noLaborTarget?.laborRequiredMinutes).toBe(0);
 
+    const laborMetadata = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/production-schedule/leaderboard-board/labor-metadata',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: {
+        rowIds: [noLaborTarget!.id]
+      }
+    });
+
+    expect(laborMetadata.statusCode).toBe(200);
+    const laborMetadataBody = laborMetadata.json() as {
+      rowMetadata: Array<{
+        id: string;
+        machineRequiredMinutes: number;
+        laborRequiredMinutes: number;
+      }>;
+    };
+    expect(laborMetadataBody.rowMetadata).toEqual([
+      {
+        id: noLaborTarget!.id,
+        machineRequiredMinutes: 400,
+        laborRequiredMinutes: 175
+      }
+    ]);
+
     const board = await app.inject({
       method: 'GET',
-      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true&includeLabor=true',
+      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=160&allowResourceOnly=true&includeLabor=true&includeDecorations=false',
       headers: { 'x-client-key': CLIENT_KEY }
     });
 
