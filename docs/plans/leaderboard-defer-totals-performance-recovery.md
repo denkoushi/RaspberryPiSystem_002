@@ -1,18 +1,22 @@
 ---
 id: leaderboard-defer-totals-performance-recovery
-status: pi5_labor_toggle_banner_deployed_plus_labor_display_and_gantt_ruler_verified
+status: pi4_completion_filter_pushdown_deployed_plus_labor_toggle_latency_open
 scope: kiosk leader order board first usable performance and Web display stability
-date: 2026-06-23
+date: 2026-06-28
 source_of_truth: true
 related_code:
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts
+  - apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-labor-minutes.service.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.materialization.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.service.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-process-change-residual.sql.ts
   - apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-prefix-row-cache.ts
+  - apps/api/src/services/production-schedule/production-schedule-effective-completion.sql.ts
+  - apps/api/src/services/production-schedule/production-schedule-list-count.service.ts
   - apps/api/src/services/production-schedule/fkojunst-status-mail-source-rows.reader.ts
   - apps/api/src/services/production-schedule/fkojunst-status-mail-generation-signals.ts
+  - apps/api/src/routes/kiosk/production-schedule/shared.ts
   - apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardFetchParams.ts
   - apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendOverrideScopePolicy.ts
@@ -31,11 +35,13 @@ related_docs:
   - docs/decisions/ADR-20260211-production-schedule-expression-indexes.md
   - docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md
   - docs/guides/deployment.md
-validation: focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK · f978c15e CI/deploy/Phase12 succeeded but its Gantt ruler-height behavior was later classified as a visual-contract regression
+validation: focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK · f978c15e CI/deploy/Phase12 succeeded but its Gantt ruler-height behavior was later classified as a visual-contract regression · 2026-06-28 d507780f completionFilter pushdown CI/CodeQL success, Pi5+4 Pi4 deploy success, Pi4-like Playwright first visible 5.6-8.4s, user real device reported much faster
 open_items:
   - If the physical browser still appears busy, distinguish three states: initial shell load, 5-minute board refresh, and `+人` labor metadata refresh. Only the first two should show 「一覧を更新中です。」.
   - `resourceShell` can still be multi-second on large resources; do not add API/index work until browser/client-perf logs show API shell is again the bottleneck.
   - Kiosk browsers must hard reload to pick up the deployed Web bundle; already-open SPA tabs can keep old banner/refetch/labor-overlay behavior until reload.
+  - `+人` still takes noticeable time before labor display is reflected; instrument the `includeLabor=true` shell/continue path and UI state before changing DB/indexes.
+  - `raspi4-sessaku-01` was not updated by the 2026-06-28 deploy because the first SSH preflight timed out; deploy or intentionally skip it before calling all Pi4 clients current.
 ---
 
 # Plan: Leaderboard deferTotals Performance Recovery
@@ -180,7 +186,7 @@ After Pi5 sign-off, deploy **one host at a time** (recommended order):
 
 Pi3 / signage: out of scope (`skipping: no hosts matched`).
 
-Each Pi4: `update-all-clients.sh` with `--limit <host>` + force reload per [verification-checklist §6.6.4](../verification-checklist.md).
+Each Pi4: `update-all-clients.sh` with `--limit <host>` + force reload per [verification-checklist §6.6.4](../guides/verification-checklist.md).
 
 ## Phase 2 (open — not in this branch)
 
@@ -727,6 +733,20 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - Fix: `fetchLeaderboardCompositeBoardShell` now lazily resolves `resolveLeaderboardMaterializedBaseWhere()` only when exact totals or labor lookup need it. For `deferTotals=true` shell residual summary, it passes `buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner(PRODUCTION_SCHEDULE_DASHBOARD_ID)` instead of building the global materialized winner set. If residual evidence keys are empty, it returns the standard zero residual summary without calling the residual summary service. This keeps output semantics while removing global winner materialization from the normal first-usable request shape (`includeLabor=false`, `deferTotals=true`).
 - Perf logging: `phase=processChangeResidualSummary` now includes `winnerBaseStrategy: 'correlated'` for deferred shell and `materialized` for exact shell. In the expected first-usable path, no `phase=materializedBaseWhere` event should appear unless `includeLabor=true` or exact totals are requested.
 - Local validation: `pnpm --filter @raspi-system/api test -- src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-generation-token.test.ts src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts` PASS; `pnpm --filter @raspi-system/api lint` PASS; `pnpm --filter @raspi-system/api build` PASS.
+
+**API/Web follow-up: completionFilter pushdown for incomplete default（2026-06-28 · d507780f）**:
+
+- Context: after the shell/defer/labor work above, physical kiosk first-visible performance was still not consistently inside 10s. The important remaining waste was that the leaderboard could fetch completed rows and then let the Web/UI completion view discard them. The kiosk board default is `completionFilter='incomplete'`, so the incomplete filter must be part of the server-side row selection, count/snapshot identity, cache/freshness key, and continue payload.
+- Spec: accepted values are `all`, `complete`, and `incomplete`. The SQL source of truth is `production-schedule-effective-completion.sql.ts`; it preserves the existing effective completion semantics and only changes where the filter is applied. `completionFilter=all` keeps the legacy broad behavior. `completionFilter=incomplete` is now pushed into list/count, `leaderboard-board` shell, shell snapshot fingerprint, `leaderboard-board/continue`, and Web fetch params. Continue must echo the same filter as shell, otherwise snapshot totals and row identity can diverge.
+- Implementation branch: `perf/kiosk-leaderboard-completion-pushdown`; commit `d507780f9f4f83b3b06d85448826cc34f5789a33` (`perf(kiosk): push down leaderboard completion filter`). Files touched: API shared schema/routes, production schedule query/list count, leaderboard row selection/composite board/continue totals/snapshot fingerprint, Web API client/fetch params/continue payload/page default tests.
+- Local validation before deploy: API build/lint PASS, Web build/lint PASS, focused API schema/integration tests PASS, focused Web leaderboard tests PASS, `git diff --check` PASS, commit hook workspace lint PASS. Temporary Docker pgvector/Postgres validation applied 119 migrations, ran targeted integration, verified the normalized index, and showed synthetic EXPLAIN improvement for current-like pushdown rows `625 -> 125` and first 50 incomplete `0 -> 50`; temporary container, volume, and network were removed.
+- CI/deploy: GitHub CI run `28320684848` success and CodeQL run `28320684808` success. Manual full-history Secret scan run `28320684799` failed only on older historical findings; scoped gitleaks for `origin/main..HEAD` reported `no leaks found`. Deploy run `20260628-204154-6536` succeeded for Pi5 plus reachable Pi4 clients `raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`, and `raspi4-kensaku-stonebase01` (`failed=0`, `unreachable=0`, summary success, exit `0`). `raspi4-sessaku-01` was excluded after the first preflight timed out; later service check showed it active but still on old commit `43d77489`.
+- Production measurements after deploy:
+  - Pi5 API, `completionFilter=incomplete`, `pageSize=80`, `includeDecorations=false`, `deferTotals=true`: robodrill median `2.253s` for 272 rows, FJV median `2.462s` for 284 rows, stonebase median `4.052s` for 522 rows.
+  - Browser Playwright with Pi4-like keys and production page, first visible card bodies: RoboDrill01 `5.999s`, FJV60/80 `5.558s`, kensakuMain `8.401s`. Requests used `pageSize=50`, `completionFilter=incomplete`, `deferTotals=true`, `includeDecorations=false`, and no Mac `targetDeviceScopeKey`.
+  - Real Pi4 curl via Pi5 to production API, same page shape: robodrill `3.61s`, FJV `4.20s`, kensaku `4.81s`.
+  - User physical-device validation on 2026-06-28: "非常に早くなりました" and accepted continuing further optimization.
+- Remaining gap: `+人` is still slow to reflect after pressing. Treat this separately from initial first-visible performance. It intentionally changes `includeLabor=false -> true` and needs a labor metadata fetch; do not remove that refetch. Next investigation should measure `includeLabor=true` shell/continue duration, whether retained labor metadata covers all currently displayed rows, and whether the UI can show immediate local feedback while labor metadata is loading without changing row identity or hiding existing rows.
 
 **Relevant files for Cursor**:
 

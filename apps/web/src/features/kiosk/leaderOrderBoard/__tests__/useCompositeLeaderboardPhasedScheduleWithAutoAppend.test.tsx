@@ -178,7 +178,12 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     function Harness() {
       useCompositeLeaderboardPhasedScheduleWithAutoAppend({
         seibanOrFilters: [],
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80, includeLabor: false },
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          includeLabor: false,
+          completionFilter: 'incomplete'
+        },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -197,10 +202,12 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       const params = boardHookMock.mock.calls.find((c) => (c[1] as { enabled?: boolean } | undefined)?.enabled !== false)?.[0] as {
         includeDecorations?: boolean;
         includeLabor?: boolean;
+        completionFilter?: string;
         deferTotals?: boolean;
       };
       expect(params.includeDecorations).toBe(false);
       expect(params.includeLabor).toBe(false);
+      expect(params.completionFilter).toBe('incomplete');
       expect(params.deferTotals).toBe(true);
       expect(postDecorations).toHaveBeenCalled();
     });

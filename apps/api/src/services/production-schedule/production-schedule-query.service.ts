@@ -13,7 +13,10 @@ import {
   buildFkojunstProductionScheduleListRowDataFkojunstSql,
   buildFkojunstProductionScheduleListVisibilityWhereSql,
 } from './policies/fkojunst-production-schedule-list-visibility.policy.js';
-import { buildProductionScheduleEffectiveCompletedSql } from './production-schedule-effective-completion.sql.js';
+import {
+  buildProductionScheduleEffectiveCompletedSql,
+  type ProductionScheduleCompletionFilter
+} from './production-schedule-effective-completion.sql.js';
 import { GLOBAL_SHARED_LOCATION_KEY } from './due-management-ranking-scope-policy.service.js';
 import {
   filterProductionScheduleResourceCdsByCategoryWithPolicy,
@@ -155,6 +158,8 @@ export type ProductionScheduleListParams = {
   responseProfile?: 'full' | 'leaderboard';
   /** true のとき自主検査開始可能行だけを返す（生産日程をチャンク走査） */
   selfInspectionEligibleOnly?: boolean;
+  /** 順位ボード向け。既定 all で後方互換を維持する。 */
+  completionFilter?: ProductionScheduleCompletionFilter;
   /** キオスク順位ボード専用。公開 API ではなくサービス内部で設定する。 */
   processChangeResidualMode?: ProcessChangeResidualMode;
   /** {@link materializeProcessChangeResidualStrongEvidence} を同一リクエスト内 1 回だけ実行した結果。 */
@@ -320,6 +325,7 @@ export async function listLeaderboardShellProductionScheduleRows(
   const leaderboardShellListWhere = buildLeaderboardShellListWhereSql({
     leaderboardMaterializedBaseWhere,
     queryWhere,
+    completionFilter: params.completionFilter,
     processChangeResidualMode: params.processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
@@ -332,6 +338,7 @@ export async function listLeaderboardShellProductionScheduleRows(
     siteScopedGlobalRankLocation,
     seibanExpansion,
     prefixLimit: pageSize,
+    completionFilter: params.completionFilter,
     processChangeResidualMode: params.processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
@@ -364,7 +371,8 @@ export async function listLeaderboardShellProductionScheduleRows(
     resourceCategory: params.resourceCategory,
     hasNoteOnly: params.hasNoteOnly,
     hasDueDateOnly: params.hasDueDateOnly,
-    allowResourceOnly: params.allowResourceOnly ?? false
+    allowResourceOnly: params.allowResourceOnly ?? false,
+    completionFilter: params.completionFilter
   });
 
   const snapshotId = options.snapshotStore.create({
@@ -433,7 +441,8 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
     resourceCategory: params.resourceCategory,
     hasNoteOnly: params.hasNoteOnly,
     hasDueDateOnly: params.hasDueDateOnly,
-    allowResourceOnly: params.allowResourceOnly ?? false
+    allowResourceOnly: params.allowResourceOnly ?? false,
+    completionFilter: params.completionFilter
   });
 
   const snapshotId = params.snapshotId?.trim();
@@ -479,6 +488,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
           excludeRowIds: excludeParentRowIds,
           chunkSize: appliedChunk,
           seibanExpansion,
+          completionFilter: params.completionFilter,
           processChangeResidualMode: params.processChangeResidualMode,
           processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
         });
@@ -628,6 +638,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
     excludeRowIds: [...fullyExcludedParentRowIds, ...partiallyExcludedParentRowIds],
     chunkSize: appliedChunk,
     seibanExpansion,
+    completionFilter: params.completionFilter,
     processChangeResidualMode: params.processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
@@ -696,6 +707,7 @@ export async function countProductionScheduleDashboardVisibleRowsFromListFilters
     baseWhere: leaderboardMaterializedBaseWhere,
     queryWhere,
     hasDueDateOnly: params.hasDueDateOnly,
+    completionFilter: params.completionFilter,
     processChangeResidualMode: params.processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
@@ -1755,6 +1767,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     baseWhere: leaderboardMaterializedBaseWhere ?? baseWhere,
     queryWhere,
     hasDueDateOnly,
+    completionFilter: params.completionFilter,
     processChangeResidualMode: params.processChangeResidualMode,
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   };
@@ -1777,6 +1790,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       siteScopedGlobalRankLocation,
       pageSize,
       seibanExpansion: shouldExpandLeaderboardSeibanAcrossResources(resourceCds),
+      completionFilter: params.completionFilter,
       processChangeResidualMode: params.processChangeResidualMode,
       processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
     }).then(async (rawRows) =>

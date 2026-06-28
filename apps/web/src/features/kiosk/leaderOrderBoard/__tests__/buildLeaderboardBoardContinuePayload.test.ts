@@ -12,6 +12,7 @@ const base: KioskProductionScheduleLeaderboardBoardQueryParams = {
   boardResourceCds: 'R1',
   allowResourceOnly: true,
   includeLabor: false,
+  completionFilter: 'incomplete',
   pageSize: 10
 };
 
@@ -36,6 +37,7 @@ describe('buildLeaderboardBoardContinuePayload', () => {
     expect(payload.pageSize).toBe(LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE);
     expect(payload.includeDecorations).toBe(false);
     expect(payload.includeLabor).toBe(false);
+    expect(payload.completionFilter).toBe('incomplete');
     expect(payload.resourceSlices[0]!.cursor).toBe(0);
     expect(payload.resourceSlices[0]!.hasMore).toBe(true);
   });

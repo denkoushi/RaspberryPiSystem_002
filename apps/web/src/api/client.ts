@@ -438,6 +438,8 @@ export type ProductionScheduleLeaderboardDecorationsResponse = {
   leaderboardFooterChipsByPartKey?: ProductionScheduleListResponse['leaderboardFooterChipsByPartKey'];
 };
 
+export type ProductionScheduleCompletionFilter = 'all' | 'complete' | 'incomplete';
+
 export type KioskProductionScheduleLeaderboardPhasedQueryParams = {
   productNo?: string;
   q?: string;
@@ -451,6 +453,7 @@ export type KioskProductionScheduleLeaderboardPhasedQueryParams = {
   page?: number;
   pageSize?: number;
   allowResourceOnly?: boolean;
+  completionFilter?: ProductionScheduleCompletionFilter;
   targetDeviceScopeKey?: string;
 };
 

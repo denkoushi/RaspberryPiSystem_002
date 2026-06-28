@@ -8,6 +8,7 @@ import type { ClientDeviceForScopeResolution, LocationScopeContext } from '../sh
 export const ORDER_NUMBER_MIN = 1;
 export const ORDER_NUMBER_MAX = 10;
 export const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01', 'その他02'] as const;
+export const PRODUCTION_SCHEDULE_COMPLETION_FILTER_VALUES = ['all', 'complete', 'incomplete'] as const;
 
 export const productionScheduleQuerySchema = z.object({
   productNo: z.string().min(1).max(100).optional(),
@@ -31,6 +32,7 @@ export const productionScheduleQuerySchema = z.object({
     .string()
     .optional()
     .transform((v) => v === 'true' || v === '1'),
+  completionFilter: z.enum(PRODUCTION_SCHEDULE_COMPLETION_FILTER_VALUES).optional().default('all'),
   /** v2: Mac の一覧/usage 取得時に必須（サーバ側で検証） */
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
   /**
@@ -75,6 +77,7 @@ export const productionScheduleLeaderboardShellContinuationFieldsSchema = z.obje
   hasNoteOnly: z.boolean().optional(),
   hasDueDateOnly: z.boolean().optional(),
   allowResourceOnly: z.boolean().optional(),
+  completionFilter: z.enum(PRODUCTION_SCHEDULE_COMPLETION_FILTER_VALUES).optional().default('all'),
   targetDeviceScopeKey: z.string().min(1).max(200).optional()
 });
 
