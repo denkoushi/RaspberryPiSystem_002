@@ -158,11 +158,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     slotCount
   );
 
-  const includeLaborInLeaderboardRequest = useMemo(
-    () => laborEnabledBySlotIndex.some(Boolean),
-    [laborEnabledBySlotIndex]
-  );
-
   const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('incomplete');
 
   const leaderboardPhasedBase = useMemo(() => {
@@ -173,13 +168,26 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       ...rest,
       pageSize: LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE,
       allowResourceOnly: true,
-      includeLabor: includeLaborInLeaderboardRequest,
+      includeLabor: false,
       completionFilter,
       ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
         : {})
     };
-  }, [activeDeviceScopeKey, baseQueryParams, completionFilter, includeLaborInLeaderboardRequest, macManualOrderV2]);
+  }, [activeDeviceScopeKey, baseQueryParams, completionFilter, macManualOrderV2]);
+
+  const laborMetadataResourceCds = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    resourceCdBySlotIndex.forEach((resourceCdRaw, slotIndex) => {
+      if (!laborEnabledBySlotIndex[slotIndex]) return;
+      const resourceCd = resourceCdRaw?.trim();
+      if (!resourceCd || seen.has(resourceCd)) return;
+      seen.add(resourceCd);
+      out.push(resourceCd);
+    });
+    return out;
+  }, [laborEnabledBySlotIndex, resourceCdBySlotIndex]);
 
   const targetDeviceScopeKey =
     macManualOrderV2 && activeDeviceScopeKey.trim().length > 0 ? activeDeviceScopeKey.trim() : undefined;
@@ -277,6 +285,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     leaderboardPhasedBaseParams: leaderboardPhasedBase,
     seibanOrFilters: dueAssist.selectedFseibanFilters,
     resourceCdsOrdered: activeResourceCds,
+    laborMetadataResourceCds,
     scheduleEnabled,
     pauseRefetch: writePause,
     refetchIntervalMs: LEADER_BOARD_SCHEDULE_REFETCH_MS,

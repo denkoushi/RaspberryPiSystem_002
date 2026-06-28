@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 
 import {
   postKioskProductionScheduleLeaderboardBoardContinue,
+  postKioskProductionScheduleLeaderboardLaborMetadata,
   type KioskProductionScheduleLeaderboardBoardQueryParams,
   type ProductionScheduleLeaderboardBoardResponse,
   type ProductionScheduleListResponse
@@ -72,8 +73,37 @@ const SCHEDULE_QUERY_DISABLED = {
   isFetching: false
 };
 
+const EMPTY_LABOR_METADATA_RESOURCE_CDS: readonly string[] = [];
+
 function isLeaderboardLaborRequestEnabled(includeLabor: unknown): boolean {
   return includeLabor === true || includeLabor === 'true';
+}
+
+function normalizeLeaderboardResourceCd(value: unknown): string {
+  if (typeof value !== 'string' && typeof value !== 'number') return '';
+  return String(value).trim();
+}
+
+function readLeaderboardRowResourceCd(row: ProductionScheduleListResponse['rows'][number]): string {
+  const rowData = row.rowData;
+  if (rowData == null || typeof rowData !== 'object') return '';
+  return normalizeLeaderboardResourceCd((rowData as Record<string, unknown>).FSIGENCD);
+}
+
+function normalizeLaborMetadataResourceCds(resourceCds: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of resourceCds) {
+    const cd = normalizeLeaderboardResourceCd(raw);
+    if (!cd || seen.has(cd)) continue;
+    seen.add(cd);
+    out.push(cd);
+  }
+  return out;
+}
+
+function normalizeLaborMetadataMinutes(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
 function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof useQueryClient>) {
@@ -94,6 +124,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   /** スロット順など、画面上のカード並び */
   resourceCdsOrdered: string[];
   seibanOrFilters?: string[];
+  /** `+人` ON のスロットに割り当てられている resourceCd。board query key からは分離する。 */
+  laborMetadataResourceCds?: readonly string[];
   scheduleEnabled: boolean;
   pauseRefetch: boolean;
   refetchIntervalMs: number;
@@ -133,6 +165,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     leaderboardPhasedBaseParams,
     resourceCdsOrdered,
     seibanOrFilters = [],
+    laborMetadataResourceCds = EMPTY_LABOR_METADATA_RESOURCE_CDS,
     scheduleEnabled,
     pauseRefetch,
     refetchIntervalMs,
@@ -158,6 +191,18 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const orderedResourceCds = useMemo(
     () => (resourceCdsOrderedKey.length > 0 ? resourceCdsOrderedKey.split('\0') : []),
     [resourceCdsOrderedKey]
+  );
+  const laborMetadataResourceCdsKey = useMemo(
+    () => normalizeLaborMetadataResourceCds(laborMetadataResourceCds).join('\0'),
+    [laborMetadataResourceCds]
+  );
+  const laborMetadataEnabledResourceCds = useMemo(
+    () => (laborMetadataResourceCdsKey.length > 0 ? laborMetadataResourceCdsKey.split('\0') : []),
+    [laborMetadataResourceCdsKey]
+  );
+  const laborMetadataEnabledResourceCdSet = useMemo(
+    () => new Set(laborMetadataEnabledResourceCds),
+    [laborMetadataEnabledResourceCds]
   );
 
   const boardQueryParams = useMemo((): KioskProductionScheduleLeaderboardBoardQueryParams | undefined => {
@@ -205,6 +250,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const [appendError, setAppendError] = useState<Error | null>(null);
   const [isAppending, setIsAppending] = useState(false);
   const appendRunIdRef = useRef(0);
+  const laborMetadataRunIdRef = useRef(0);
   const appendCompleteForParamsKeyRef = useRef<string | null>(null);
   const appendCompleteShellFingerprintRef = useRef<string | null>(null);
   const lastStartedShellFingerprintRef = useRef<string | null>(null);
@@ -651,6 +697,23 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     appendRunIdRef,
     setIsAppending
   });
+  const laborMetadataRowIdsKey = useMemo(() => {
+    if (laborMetadataEnabledResourceCdSet.size === 0) return '';
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const row of displayBoardForUi?.rows ?? []) {
+      if (!laborMetadataEnabledResourceCdSet.has(readLeaderboardRowResourceCd(row))) continue;
+      const id = typeof row.id === 'string' ? row.id.trim() : '';
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+    return ids.join('\0');
+  }, [displayBoardForUi?.rows, laborMetadataEnabledResourceCdSet]);
+  const laborMetadataFetchKey = useMemo(
+    () => `${laborMetadataResourceCdsKey}\u0001${laborMetadataRowIdsKey}`,
+    [laborMetadataResourceCdsKey, laborMetadataRowIdsKey]
+  );
   const hasDisplayRowsForUi = (displayBoardForUi?.rows.length ?? 0) > 0;
   const isContinuationOnlyBoardDataSyncStatus =
     hasDisplayRowsForUi &&
@@ -663,6 +726,81 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
       isDisplayOnlyParamsPlaceholder ||
       silentBoardDataSyncStatusParamsKeyRef.current === paramsKey);
   const isBoardDataSyncStatusVisible = isBoardDataSyncing && !isSilentBoardDataSyncStatus;
+
+  useEffect(() => {
+    if (!scheduleEnabled || paramsKey.length === 0) return;
+    if (laborMetadataEnabledResourceCds.length === 0 || laborMetadataRowIdsKey.length === 0) return;
+
+    const rowIds = laborMetadataRowIdsKey.split('\0').filter(Boolean);
+    if (rowIds.length === 0) return;
+
+    const runId = ++laborMetadataRunIdRef.current;
+    let cancelled = false;
+    const targetDeviceScopeKey =
+      macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
+        ? activeDeviceScopeKey.trim()
+        : undefined;
+    const enabledResourceCount = laborMetadataEnabledResourceCds.length;
+
+    void (async () => {
+      logClientPerfEvent('labor-metadata-start', {
+        rowCount: rowIds.length,
+        enabledResourceCount
+      });
+      try {
+        const response = await postKioskProductionScheduleLeaderboardLaborMetadata({
+          rowIds,
+          targetDeviceScopeKey
+        });
+        if (cancelled || runId !== laborMetadataRunIdRef.current) return;
+
+        let changed = false;
+        for (const entry of response.rowMetadata) {
+          const next = {
+            machineRequiredMinutes: normalizeLaborMetadataMinutes(entry.machineRequiredMinutes),
+            laborRequiredMinutes: normalizeLaborMetadataMinutes(entry.laborRequiredMinutes)
+          };
+          const prev = retainedLaborMetadataByIdRef.current.get(entry.id);
+          if (
+            prev?.machineRequiredMinutes === next.machineRequiredMinutes &&
+            prev?.laborRequiredMinutes === next.laborRequiredMinutes
+          ) {
+            continue;
+          }
+          retainedLaborMetadataByIdRef.current.set(entry.id, next);
+          changed = true;
+        }
+        if (changed) {
+          setRetainedLaborMetadataVersion((version) => version + 1);
+        }
+        logClientPerfEvent('labor-metadata-end', {
+          rowCount: rowIds.length,
+          returnedCount: response.rowMetadata.length,
+          enabledResourceCount
+        });
+      } catch (error) {
+        if (cancelled || runId !== laborMetadataRunIdRef.current) return;
+        logClientPerfEvent('labor-metadata-error', {
+          rowCount: rowIds.length,
+          enabledResourceCount,
+          message: error instanceof Error ? error.message : 'UnknownError'
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeDeviceScopeKey,
+    laborMetadataEnabledResourceCds.length,
+    laborMetadataFetchKey,
+    laborMetadataRowIdsKey,
+    logClientPerfEvent,
+    macManualOrderV2,
+    paramsKey,
+    scheduleEnabled
+  ]);
 
   useEffect(() => {
     const rowCount = displayBoardForUi?.rows.length ?? 0;
@@ -777,9 +915,6 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
       });
     }
   }, [isDecorationsFetching, logClientPerfEvent, networkDisplayBoard?.rows.length]);
-
-  void macManualOrderV2;
-  void activeDeviceScopeKey;
 
   return {
     scheduleQuery,

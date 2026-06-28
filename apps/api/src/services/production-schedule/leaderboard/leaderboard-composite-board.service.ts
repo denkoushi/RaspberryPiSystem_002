@@ -132,7 +132,7 @@ async function resolveLeaderboardBoardProcessChangeResidualContext(
 type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
 
 export type LeaderboardBoardPerformanceEvent = {
-  endpoint: 'shell' | 'continue';
+  endpoint: 'shell' | 'continue' | 'laborMetadata';
   phase: string;
   durationMs: number;
   ok?: boolean;

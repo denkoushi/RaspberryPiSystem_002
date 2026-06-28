@@ -4,6 +4,7 @@ import {
   parseCsvList,
   productionScheduleLeaderboardBoardContinueBodySchema,
   productionScheduleLeaderboardClientPerfBodySchema,
+  productionScheduleLeaderboardLaborMetadataBodySchema,
   productionScheduleLeaderboardBoardQuerySchema,
   productionScheduleSeibanMachineNamesBodySchema,
   toLegacyLocationKeyFromDeviceScope
@@ -111,6 +112,39 @@ describe('production-schedule route shared helpers', () => {
         includeLabor: true
       }).includeLabor
     ).toBe(true);
+  });
+
+  it('productionScheduleLeaderboardLaborMetadataBodySchema は UUID / split UUID と target scope を受け付ける', () => {
+    const uuid = '550e8400-e29b-41d4-a716-446655440000';
+    const splitUuid = 'split:550e8400-e29b-41d4-a716-446655440001';
+
+    const parsed = productionScheduleLeaderboardLaborMetadataBodySchema.parse({
+      rowIds: [uuid, splitUuid],
+      targetDeviceScopeKey: 'site-a - mac'
+    });
+
+    expect(parsed.rowIds).toEqual([uuid, splitUuid]);
+    expect(parsed.targetDeviceScopeKey).toBe('site-a - mac');
+  });
+
+  it('productionScheduleLeaderboardLaborMetadataBodySchema は空配列・不正 ID・上限超過を拒否する', () => {
+    const uuid = '550e8400-e29b-41d4-a716-446655440000';
+
+    expect(() =>
+      productionScheduleLeaderboardLaborMetadataBodySchema.parse({
+        rowIds: []
+      })
+    ).toThrow();
+    expect(() =>
+      productionScheduleLeaderboardLaborMetadataBodySchema.parse({
+        rowIds: ['not-a-display-id']
+      })
+    ).toThrow();
+    expect(() =>
+      productionScheduleLeaderboardLaborMetadataBodySchema.parse({
+        rowIds: Array.from({ length: 8001 }, () => uuid)
+      })
+    ).toThrow();
   });
 
   it('leaderboard board schemas は completionFilter を既定 all / 明示値で解釈する', () => {

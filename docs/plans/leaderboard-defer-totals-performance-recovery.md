@@ -748,6 +748,15 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
   - User physical-device validation on 2026-06-28: "非常に早くなりました" and accepted continuing further optimization.
 - Remaining gap: `+人` is still slow to reflect after pressing. Treat this separately from initial first-visible performance. It intentionally changes `includeLabor=false -> true` and needs a labor metadata fetch; do not remove that refetch. Next investigation should measure `includeLabor=true` shell/continue duration, whether retained labor metadata covers all currently displayed rows, and whether the UI can show immediate local feedback while labor metadata is loading without changing row identity or hiding existing rows.
 
+**API/Web follow-up: labor metadata lightweight overlay for `+人`（2026-06-28 · in progress）**:
+
+- Implementation branch: `perf/kiosk-leaderboard-labor-metadata-overlay`.
+- Design: keep `leaderboard-board` and `leaderboard-board/continue` requests on `includeLabor=false` for first-use and append stability. `+人` no longer changes the board query key. Instead, Web posts only the currently displayed row ids for resource slots where `+人` is ON to `POST /api/kiosk/production-schedule/leaderboard-board/labor-metadata`.
+- API shape: the endpoint accepts DisplayItemId values (`uuid` and `split:{uuid}`) up to the existing display-row scope cap (`8000`) and returns finite `machineRequiredMinutes` / `laborRequiredMinutes` by row id. It reuses `fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds` and `attachLeaderboardLaborMinutes`; no separate labor SQL path or migration is introduced.
+- Web behavior: metadata results are stored in the existing retained labor metadata map and overlaid through `mergeLeaderboardBoardLaborMetadataForDisplay`. Existing rows, append-complete rows, scroll state, and row order are preserved. Endpoint failure is non-blocking and must not show 「一覧を更新中です。」.
+- Perf diagnostics: client events add `labor-metadata-start`, `labor-metadata-end`, and `labor-metadata-error` with only row/resource counts. Server perf uses `endpoint: "laborMetadata"` with phases `materializedBaseWhere`, `hydrateRows`, `attachLabor`, and `requestTotal` when `LEADERBOARD_BOARD_PERF_LOG=true`.
+- Local validation on 2026-06-28: API schema/service focused tests PASS, Web fetch-param/hook focused tests PASS, temporary Docker `pgvector/pgvector:pg15` migration/integration/EXPLAIN PASS. The temporary container, volume, and network were removed. API/Web lint and build PASS. No merge or deploy has been run for this branch.
+
 **Relevant files for Cursor**:
 
 - `apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`

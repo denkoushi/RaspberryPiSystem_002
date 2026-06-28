@@ -1,6 +1,7 @@
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { z } from 'zod';
 import { DUE_MANAGEMENT_TUNING_REASON_CODES } from '../../../services/production-schedule/auto-tuning/tuning-reason-code.js';
+import { LEADERBOARD_DISPLAY_ROW_SCOPE_ABS_MAX } from '../../../services/production-schedule/leaderboard/leaderboard-display-row-scope.js';
 import { displayItemIdSchema } from '../../../services/production-schedule/order-split/leaderboard-display-item-id.js';
 import type { LeaderboardShellSnapshotStore } from '../../../services/production-schedule/leaderboard/leaderboard-shell-snapshot.store.js';
 import type { ClientDeviceForScopeResolution, LocationScopeContext } from '../shared.js';
@@ -225,6 +226,13 @@ export type ProductionScheduleLeaderboardShellContinuationBody = z.infer<
 export const productionScheduleLeaderboardDecorationsBodySchema = z.object({
   /** shell 応答の `rows[].id` を **表示順のまま** 渡す（DisplayItemId・順位ボード全件表示に合わせ上限を緩和） */
   rowIds: z.array(displayItemIdSchema).max(20_000).optional().default([]),
+  /** v2: Mac が参照する端末の deviceScopeKey（一覧 shell/total と一致させる） */
+  targetDeviceScopeKey: z.string().min(1).max(200).optional()
+});
+
+export const productionScheduleLeaderboardLaborMetadataBodySchema = z.object({
+  /** 表示中の `rows[].id`（DisplayItemId）だけを渡し、行集合・並びは変更しない。 */
+  rowIds: z.array(displayItemIdSchema).min(1).max(LEADERBOARD_DISPLAY_ROW_SCOPE_ABS_MAX),
   /** v2: Mac が参照する端末の deviceScopeKey（一覧 shell/total と一致させる） */
   targetDeviceScopeKey: z.string().min(1).max(200).optional()
 });

@@ -27,6 +27,7 @@ export function applyLeaderboardBoardLightShellFetchPolicy(
   return {
     ...params,
     includeDecorations: false,
+    includeLabor: false,
     deferTotals: true
   };
 }

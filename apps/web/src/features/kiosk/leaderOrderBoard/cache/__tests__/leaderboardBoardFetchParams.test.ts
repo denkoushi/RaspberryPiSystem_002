@@ -19,7 +19,7 @@ describe('leaderboardBoardFetchParams', () => {
         allowResourceOnly: true,
         pageSize: 80,
         q: 'OLD',
-        includeLabor: false,
+        includeLabor: true,
         completionFilter: 'incomplete'
       },
       boardResourceCds: ['R1', 'R2']
@@ -40,6 +40,7 @@ describe('leaderboardBoardFetchParams', () => {
     });
     expect(reconcile?.q).toBe('AA111111,BB222222');
     expect(reconcile?.includeDecorations).toBe(false);
+    expect(reconcile?.includeLabor).toBe(false);
     expect(reconcile?.deferTotals).toBe(true);
   });
 
@@ -51,6 +52,7 @@ describe('leaderboardBoardFetchParams', () => {
     });
     expect(legacy.q).toBe('AA111111');
     expect(legacy.includeDecorations).toBe(false);
+    expect(legacy.includeLabor).toBe(false);
     expect(legacy.deferTotals).toBe(true);
   });
 });
