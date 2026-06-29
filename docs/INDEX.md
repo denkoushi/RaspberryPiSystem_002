@@ -1214,7 +1214,7 @@
 
 - **バックアップ手動実行500エラー・client-directory 正本**: [KB-144](./knowledge-base/infrastructure/backup-restore.md#kb-144-バックアップ手動実行時の500エラーclient-directory-kind追加とbackupjson正規化) · [backup API](./api/backup.md)。
 
-- **✅ Dropbox設定の恒久対策とbackup.json保護機能追加・実機検証完了**: Ansibleで`.env`再生成時にDropbox設定が消失する問題を解決。KB-142でSlack Webhook URLの恒久対策を実施したが、同様の問題がDropbox設定でも発生したため、AnsibleテンプレートにDropbox環境変数を追加し、vaultで管理するように改善。さらに、`backup.json`の存在保証と健全性チェック機能を追加し、ファイル消失時に設定が失われる問題を防止。実機検証でAnsible再実行後もSlack/Dropbox設定が維持され、システムが正常に動作することを確認。CI失敗の修正（`slack-webhook.ts`のデバッグログ削除）も完了。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-143](./knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策) / [guides/deployment.md](./guides/deployment.md) を参照。
+- **Dropbox設定恒久対策・backup.json保護 正本**: [KB-143](./knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策) · [deployment](./guides/deployment.md)。
 
 - **✅ Gmail OAuthとDropboxバックアップのトークン衝突（refreshToken共有）を恒久対策（トークン分離）**: Gmail OAuthのトークン保存がDropbox用トークンを上書きしてしまい、Dropbox手動バックアップが大量に失敗する問題を解決。`backup.json`の`storage.options`でGmail用トークンを`gmailAccessToken/gmailRefreshToken`に分離し、Gmail設定の「設定済み」判定も`storage.provider`に依存しない形へ改善。CSVインポート後の自動バックアップ等のトークン更新も分離し、再発を防止。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-146](./knowledge-base/infrastructure/backup-restore.md#kb-146-gmail-oauthがdropboxトークンを上書きしdropboxバックアップが失敗するトークン分離で恒久対策) / [guides/gmail-setup-guide.md](./guides/gmail-setup-guide.md) を参照。
 
