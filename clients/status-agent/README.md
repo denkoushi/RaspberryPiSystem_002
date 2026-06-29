@@ -92,6 +92,8 @@ journalctl -u status-agent.service -n 30 -f
 
 kernel logは、既定では実行間隔+5分ぶんを見ます。1時間ごとの運用でも短時間のI/O errorを見逃しにくくするためです。送信ログの `context` は `{ category: "storage_health", signal, rootSource, raw, observedAt }` 形式です。1回のPOSTで追加するSDヘルスログは最大10件です。
 
+`WARN` / `ERROR` のSDヘルスログは、API側でDB `Alert` と `AlertDelivery(SLACK)` に昇格されます。Slack配送先は既存Alerts Dispatcherの `storage-*` ルートに従い、通常は `ops` です。同じ端末・同じsignalの未確認Alertが残っている間は追加Alertを作らず、通知連打を抑えます。
+
 運用確認:
 
 ```bash

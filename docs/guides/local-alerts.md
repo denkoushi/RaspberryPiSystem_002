@@ -2,7 +2,7 @@
 title: ローカル環境対応の通知機能ガイド
 tags: [通知, アラート, ローカル環境]
 audience: [運用者, 開発者]
-last-verified: 2026-01-18
+last-verified: 2026-06-29
 related: [quick-start-deployment.md, operation-manual.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # ローカル環境対応の通知機能ガイド
 
-最終更新: 2026-01-18
+最終更新: 2026-06-29
 
 ## 概要
 
@@ -150,6 +150,21 @@ environment:
 
 **表示場所**:
 - 管理画面のダッシュボード（`/admin`）
+
+### 3. SDカードヘルスアラート
+
+**検出条件**:
+- Pi4 kioskの `status-agent` が `storage_health` カテゴリの `WARN` / `ERROR` ログを送信した場合
+- root filesystem read-only、kernel logのmmc/I/O/EXT4 error、ディスク/inode閾値超過、低電圧/throttleなど
+
+**通知経路**:
+- `ClientLog` に保存
+- DB `Alert` と `AlertDelivery(SLACK)` を作成
+- 既存Alerts Dispatcherの `storage-*` ルートにより、通常は `ops` Slack Webhookへ配送
+
+**重複抑制**:
+- 同じ端末・同じsignalの未確認Alertが残っている間は追加Alertを作りません
+- 管理画面で確認済みにした後も異常が続いていれば、次回ヘルスチェックで再通知されます
 
 ## 使用方法
 
@@ -411,4 +426,3 @@ cat alerts/alert-YYYYMMDD-HHMMSS.json | jq '.'
 - [クイックスタートガイド](./quick-start-deployment.md)
 - [運用マニュアル](./operation-manual.md)
 - [Ansibleエラーハンドリングガイド](./ansible-error-handling.md)
-

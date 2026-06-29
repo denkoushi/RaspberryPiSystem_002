@@ -107,6 +107,8 @@ Pi4 kiosk groupではAnsibleにより `STORAGE_HEALTH_ENABLED=1` を配布しま
 
 kernel logは、既定では実行間隔+5分ぶんを見ます。1時間ごとの運用でも短時間のI/O errorを見逃しにくくするためです。ログは既存の `ClientLog` に保存され、`context` は `{ category: "storage_health", signal, rootSource, raw, observedAt }` 形式です。1回のPOSTで追加するSDヘルスログは最大10件です。
 
+`WARN` / `ERROR` のSDヘルスログは、API側でDB `Alert` と `AlertDelivery(SLACK)` に昇格されます。Slack配送先は既存Alerts Dispatcherの `storage-*` ルートに従い、通常は `ops` です。同じ端末・同じsignalの未確認Alertが残っている間は追加Alertを作らず、通知連打を抑えます。
+
 運用確認:
 
 ```bash
@@ -127,6 +129,7 @@ findmnt -no OPTIONS /
 | CPU 温度が `null` | `TEMPERATURE_FILE` で thermal パスを明示 |
 | systemd が失敗する | `journalctl -u status-agent.service -xe` で詳細を確認 |
 | `/admin/clients` にSDヘルスログが出ない | Pi4 kioskの `/etc/raspi-status-agent.conf` で `STORAGE_HEALTH_ENABLED=1` か確認。通常は1時間ごとのため、即時確認は `--dry-run` を使う |
+| SDヘルス異常のSlack通知が届かない | Pi5 API環境で `ALERTS_DISPATCHER_MODE=db`, `ALERTS_DB_DISPATCHER_ENABLED=true`, `ALERTS_SLACK_WEBHOOK_OPS` が設定されているか確認 |
 | 成功ログが `/var/log/raspi-status-agent.log` に出ない | 既定では書込削減のため正常。必要時のみ `STATUS_AGENT_LOG_SUCCESS=1` を一時設定 |
 | `INVALIDARGUMENT` エラー | `API_BASE_URL` が正しく設定されているか確認（`http://localhost:8080/api`は使用不可。`https://<Pi5のIP>/api`を使用） |
 | サーバー側（Pi5）でstatus-agentが動作しない | Pi5のホストからはDocker内部ネットワークの`localhost:8080`にアクセスできないため、Caddy経由（HTTPS 443）でAPIにアクセスする必要がある（[KB-129](../knowledge-base/infrastructure/ansible-deployment.md#kb-129-pi5サーバー側のstatus-agent設定ファイルが古い設定のまま)参照） |

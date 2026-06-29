@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
 import { createAuthHeader, createTestClientDevice, createTestUser } from './helpers.js';
-import { AlertSeverity } from '@prisma/client';
+import { AlertChannel, AlertDeliveryStatus, AlertSeverity } from '@prisma/client';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -122,6 +122,8 @@ describe('クライアントテレメトリーAPI', () => {
   });
 
   beforeEach(async () => {
+    await prisma.alertDelivery.deleteMany();
+    await prisma.alert.deleteMany();
     await prisma.clientLog.deleteMany();
     await prisma.clientStatus.deleteMany();
     const admin = await createTestUser('ADMIN');
@@ -233,6 +235,57 @@ describe('クライアントテレメトリーAPI', () => {
     expect(listResponse.statusCode).toBe(200);
     const body = listResponse.json();
     expect(body.logs[0].context).toMatchObject(storageHealthContext);
+
+    const alert = await prisma.alert.findFirst({
+      where: {
+        type: 'storage-health-root_filesystem_read_only'
+      }
+    });
+    expect(alert).toBeTruthy();
+    expect(alert?.severity).toBe(AlertSeverity.ERROR);
+    expect(alert?.message).toContain(clientId);
+    expect(alert?.fingerprint).toBeTruthy();
+
+    const delivery = await prisma.alertDelivery.findFirst({
+      where: {
+        alertId: alert?.id
+      }
+    });
+    expect(delivery).toBeTruthy();
+    expect(delivery?.channel).toBe(AlertChannel.SLACK);
+    expect(delivery?.routeKey).toBe('ops');
+    expect(delivery?.status).toBe(AlertDeliveryStatus.PENDING);
+
+    const duplicateResponse = await app.inject({
+      method: 'POST',
+      url: '/api/clients/status',
+      headers: {
+        'x-client-key': clientKey,
+        'Content-Type': 'application/json'
+      },
+      payload: {
+        clientId,
+        hostname: 'pi-kiosk-storage-health',
+        ipAddress: '192.168.0.32',
+        cpuUsage: 10.0,
+        memoryUsage: 20.0,
+        diskUsage: 30.0,
+        logs: [
+          {
+            level: 'ERROR',
+            message: 'Root filesystem is mounted read-only',
+            context: storageHealthContext
+          }
+        ]
+      }
+    });
+    expect(duplicateResponse.statusCode).toBe(200);
+    const duplicateAlertCount = await prisma.alert.count({
+      where: {
+        fingerprint: alert?.fingerprint ?? ''
+      }
+    });
+    expect(duplicateAlertCount).toBe(1);
   });
 
   it('POST /api/clients/status updates ClientDevice.statusClientId', async () => {
