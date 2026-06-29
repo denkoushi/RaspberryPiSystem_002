@@ -5272,7 +5272,20 @@ Status: implemented in PR420.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR421 And Later: Thin Indexes And Split Large Documents
+### PR421: Thin Dropbox CSV Phase 1 Implementation Index Block
+
+Status: implemented in PR421.
+
+- Thin only the 2025-12-15 Dropbox CSV import Phase 1 implementation
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Dropbox CSV download/import,
+  path-traversal prevention, validation, logging, error handling, added tests,
+  CI requirement, and branch-protection guide details with short links to the
+  integration status and CI branch protection guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR422 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
