@@ -5349,7 +5349,19 @@ Status: implemented in PR426.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR427 And Later: Thin Indexes And Split Large Documents
+### PR427: Thin Ansible Branch Selection Index Block
+
+Status: implemented in PR427.
+
+- Thin only the 2025-12-12 Ansible deployment branch selection latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the branch selection, inventory
+  requirement, `ANSIBLE_REPO_VERSION`, deploy playbook, and all-device update
+  details with a short link to the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR428 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

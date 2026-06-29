@@ -1322,7 +1322,7 @@
 
 ### 🆕 最新アップデート（2025-12-12）
 
-- **✅ Ansibleデプロイのブランチ指定機能追加**: `scripts/update-all-clients.sh`とAnsibleの`deploy.yml`でブランチを指定可能に。デフォルトは`main`ブランチ。開発ブランチ（`feature/production-deployment-management`）のハードコードを削除し、環境変数`ANSIBLE_REPO_VERSION`または引数でブランチを指定可能に。`scripts/update-all-clients.sh <branch> <inventory_path>`で全デバイス（Pi5 + Pi3/Pi4）を更新可能（**誤デプロイ防止のためinventory指定は必須**）。詳細は [guides/deployment.md](./guides/deployment.md) / [guides/quick-start-deployment.md](./guides/quick-start-deployment.md) を参照。
+- **Ansibleデプロイのブランチ指定 正本**: [deployment guide](./guides/deployment.md)。
 
 - **✅ デプロイメントベストプラクティスの明確化**: 開発時（Pi5のみ）は`scripts/server/deploy.sh <branch>`、運用時（全デバイス）は`scripts/update-all-clients.sh <branch> <inventory_path>`を使用する使い分けをドキュメント化。デフォルトは`main`ブランチで、開発ブランチをハードコードしない設計に統一。詳細は [guides/deployment.md](./guides/deployment.md) を参照。
 
