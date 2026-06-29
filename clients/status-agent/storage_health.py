@@ -18,6 +18,8 @@ from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 DEFAULT_DISK_WARN_PCT = 80.0
 DEFAULT_DISK_ERROR_PCT = 90.0
+DEFAULT_INTERVAL_SECONDS = 3600
+KERNEL_LOG_LOOKBACK_MARGIN_SECONDS = 300
 MAX_STORAGE_HEALTH_LOGS = 10
 COMMAND_TIMEOUT_SECONDS = 2.0
 
@@ -56,12 +58,40 @@ def parse_percent(value: Optional[object], default: float) -> float:
     return default
 
 
+def parse_non_negative_int(value: Optional[object], default: int) -> int:
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    if parsed < 0:
+        return default
+    return parsed
+
+
 def read_thresholds(config: Mapping[str, str]) -> Tuple[float, float]:
     warn = parse_percent(config.get("STORAGE_HEALTH_DISK_WARN_PCT"), DEFAULT_DISK_WARN_PCT)
     error = parse_percent(config.get("STORAGE_HEALTH_DISK_ERROR_PCT"), DEFAULT_DISK_ERROR_PCT)
     if error < warn:
         error = warn
     return warn, error
+
+
+def read_interval_seconds(config: Mapping[str, str]) -> int:
+    return parse_non_negative_int(
+        config.get("STORAGE_HEALTH_INTERVAL_SECONDS"),
+        DEFAULT_INTERVAL_SECONDS,
+    )
+
+
+def kernel_log_since_arg(config: Mapping[str, str]) -> str:
+    configured = str(config.get("STORAGE_HEALTH_KERNEL_LOG_SINCE", "")).strip()
+    if configured:
+        return configured
+
+    interval_seconds = read_interval_seconds(config)
+    if interval_seconds <= 0:
+        return "-2min"
+    return f"-{interval_seconds + KERNEL_LOG_LOOKBACK_MARGIN_SECONDS}s"
 
 
 def now_utc() -> dt.datetime:
@@ -283,10 +313,14 @@ def run_command(args: Sequence[str], timeout: float = COMMAND_TIMEOUT_SECONDS) -
         return CommandResult(tuple(args), 127, "", str(exc))
 
 
-def read_kernel_log(runner: CommandRunner = run_command, timeout: float = COMMAND_TIMEOUT_SECONDS) -> Tuple[str, str]:
-    journal = runner(["journalctl", "-k", "--since", "-2min", "--no-pager"], timeout)
+def read_kernel_log(
+    runner: CommandRunner = run_command,
+    timeout: float = COMMAND_TIMEOUT_SECONDS,
+    since: str = "-2min",
+) -> Tuple[str, str]:
+    journal = runner(["journalctl", "-k", "--since", since, "--no-pager"], timeout)
     if journal.returncode == 0 and journal.stdout.strip():
-        return journal.stdout, "journalctl -k --since -2min"
+        return journal.stdout, f"journalctl -k --since {since}"
 
     dmesg = runner(["dmesg"], timeout)
     if dmesg.returncode == 0 and dmesg.stdout.strip():
@@ -349,7 +383,7 @@ def collect_storage_health_logs(
     except OSError:
         pass
 
-    kernel_log, kernel_source = read_kernel_log(runner)
+    kernel_log, kernel_source = read_kernel_log(runner, since=kernel_log_since_arg(config))
     logs.extend(evaluate_kernel_log(kernel_log, kernel_source, observed))
 
     throttled = read_throttled(runner)

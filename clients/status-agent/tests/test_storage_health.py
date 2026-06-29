@@ -40,6 +40,33 @@ class StorageHealthTest(unittest.TestCase):
         self.assertEqual(context["signal"], "kernel_storage_error")
         self.assertIn("mmc0", context["raw"])
 
+    def test_kernel_log_since_follows_storage_health_interval(self) -> None:
+        calls = []
+
+        def runner(args: Sequence[str], timeout: float) -> storage_health.CommandResult:
+            calls.append(tuple(args))
+            if args[0] == "journalctl":
+                return storage_health.CommandResult(tuple(args), 0, "mmc0: error -110 test\n", "")
+            return storage_health.CommandResult(tuple(args), 0, "", "")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            mounts_path = Path(temp_dir) / "mounts"
+            mounts_path.write_text("/dev/mmcblk0p2 / ext4 rw,relatime 0 0\n", encoding="utf-8")
+
+            storage_health.collect_storage_health_logs(
+                {
+                    "STORAGE_HEALTH_INTERVAL_SECONDS": "3600",
+                    "STORAGE_HEALTH_DISK_WARN_PCT": "100",
+                    "STORAGE_HEALTH_DISK_ERROR_PCT": "100",
+                },
+                runner=runner,
+                mounts_path=mounts_path,
+                disk_path=temp_dir,
+                observed_at=OBSERVED_AT,
+            )
+
+        self.assertIn(("journalctl", "-k", "--since", "-3900s", "--no-pager"), calls)
+
     def test_disk_and_inode_thresholds(self) -> None:
         warn_logs = storage_health.evaluate_disk_usage(85.0, 80.0, 90.0, OBSERVED_AT)
         error_logs = storage_health.evaluate_disk_usage(92.0, 80.0, 90.0, OBSERVED_AT)

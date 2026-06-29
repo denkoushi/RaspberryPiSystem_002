@@ -28,8 +28,10 @@ Pi4 SDカード予防保全用パラメータ:
 | 変数 | 既定値 | 説明 |
 | --- | --- | --- |
 | `STORAGE_HEALTH_ENABLED` | `0` | `1` の時だけSDヘルス監視ログを `payload.logs` に追加 |
+| `STORAGE_HEALTH_INTERVAL_SECONDS` | `3600` | SDヘルス監視の実行間隔。status heartbeatは毎分のまま、SDヘルスだけ既定1時間ごと |
 | `STORAGE_HEALTH_DISK_WARN_PCT` | `80` | `/` のディスク使用率またはinode使用率がこの値以上なら `WARN` |
 | `STORAGE_HEALTH_DISK_ERROR_PCT` | `90` | `/` のディスク使用率またはinode使用率がこの値以上なら `ERROR` |
+| `STORAGE_HEALTH_STATE_FILE` | `/run/raspi-status-agent/storage-health-last-run` | 最終実行時刻の記録先。`/run` はtmpfsなのでSDカードへ書き込まない |
 | `STATUS_AGENT_LOG_SUCCESS` | `0` | 成功時のローカルログ追記。SDカード書込削減のため既定は無効 |
 
 ### 手動実行テスト
@@ -74,11 +76,11 @@ journalctl -u status-agent.service -n 30 -f
 | CPU 温度 | `/sys/class/thermal/thermal_zone0/temp` が存在すれば読み取り |
 | アップタイム | `/proc/uptime` |
 | Last Boot | `uptimeSeconds` を現在時刻から減算して ISO8601 形式で送信 |
-| SDヘルスログ | 有効時のみ `/proc/mounts`, `/`, kernel log, `vcgencmd get_throttled` を確認 |
+| SDヘルスログ | 有効時のみ既定1時間ごとに `/proc/mounts`, `/`, kernel log, `vcgencmd get_throttled` を確認 |
 
 ### SDカード予防保全ログ
 
-`STORAGE_HEALTH_ENABLED=1` の時、次の兆候を既存APIの `ClientLog` に送ります。DB schemaやAPI schemaは変更しません。
+`STORAGE_HEALTH_ENABLED=1` の時、次の兆候を既存APIの `ClientLog` に送ります。DB schemaやAPI schemaは変更しません。通常実行では `STORAGE_HEALTH_INTERVAL_SECONDS` ごとに確認し、`--dry-run` では現場確認のため毎回確認します。
 
 | 兆候 | レベル |
 | --- | --- |
@@ -88,7 +90,7 @@ journalctl -u status-agent.service -n 30 -f
 | `vcgencmd get_throttled` の現在低電圧 | `ERROR` |
 | `vcgencmd get_throttled` の現在throttle/温度制限 | `WARN` |
 
-送信ログの `context` は `{ category: "storage_health", signal, rootSource, raw, observedAt }` 形式です。1回のPOSTで追加するSDヘルスログは最大10件です。
+kernel logは、既定では実行間隔+5分ぶんを見ます。1時間ごとの運用でも短時間のI/O errorを見逃しにくくするためです。送信ログの `context` は `{ category: "storage_health", signal, rootSource, raw, observedAt }` 形式です。1回のPOSTで追加するSDヘルスログは最大10件です。
 
 運用確認:
 
