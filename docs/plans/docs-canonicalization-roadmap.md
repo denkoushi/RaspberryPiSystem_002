@@ -4868,7 +4868,19 @@ Status: implemented in PR388.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR389 And Later: Thin Indexes And Split Large Documents
+### PR389: Thin WebRTC Video Index Block
+
+Status: implemented in PR389.
+
+- Thin only the 2026-01-05 WebRTC video call latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the audio/video onsite validation,
+  recvonly fallback, keepalive behavior, and related issue list with short
+  links to the WebRTC verification guide and KB-132, KB-136, and KB-141.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR390 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
