@@ -5313,7 +5313,19 @@ Status: implemented in PR423.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR424 And Later: Thin Indexes And Split Large Documents
+### PR424: Thin Security Incident Assessment Index Block
+
+Status: implemented in PR424.
+
+- Thin only the 2025-12-14 external incident assessment and added
+  countermeasures latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the ransomware incident comparison, MFA,
+  real-time monitoring, and permission audit status details with a short link to
+  the security implementation assessment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR425 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

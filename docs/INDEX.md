@@ -1312,7 +1312,7 @@
 
 - **Phase 9/10 セキュリティ強化 正本**: [security hardening plan](./plans/security-hardening-execplan.md) · [phase 9/10 specifications](./security/phase9-10-specifications.md) · [implementation assessment](./security/implementation-assessment.md)。
 
-- **📊 外部インシデント評価と追加対策**: アスクル社ランサムウェア事故を踏まえた対応可否と推奨対策（MFA、リアルタイム監視、権限監査）を実装完了。詳細は [security/implementation-assessment.md](./security/implementation-assessment.md) を参照。
+- **外部インシデント評価と追加対策 正本**: [security implementation assessment](./security/implementation-assessment.md)。
 
 ### 🆕 最新アップデート（2025-12-13）
 
