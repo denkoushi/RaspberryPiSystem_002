@@ -1238,7 +1238,7 @@
 
 - **キオスク・サイネージ自端末温度表示 正本**: [KB-126](./knowledge-base/api.md#kb-126-キオスクuiで自端末の温度表示機能追加) · [KB-127](./knowledge-base/infrastructure/signage.md#kb-127-サイネージuiで自端末の温度表示機能追加とデザイン変更) · [temperature investigation](./investigation/temperature-display-investigation.md)。
 
-- **✅ APIエンドポイントのHTTPS化・デプロイ標準手順のブラッシュアップ完了**: APIエンドポイントをHTTPS経由（Caddy経由）に変更し、デプロイ標準手順をブラッシュアップ。`group_vars/all.yml`の`api_base_url`を`http://{{ server_ip }}:8080/api`から`https://{{ server_ip }}/api`に変更。クライアント（Pi3/Pi4）のエージェントがCaddy経由（HTTPS 443）でAPIにアクセスするように統一。ポート8080は外部公開されていない（Docker内部ネットワークでのみアクセス可能）ことを明記。デプロイドキュメントを更新し、HTTPS経由での確認方法を追加。セキュリティ強度が向上（HTTPS化、8080非公開の維持）。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-128](./knowledge-base/infrastructure/ansible-deployment.md#kb-128-apiエンドポイントのhttps化caddy経由) / [guides/deployment.md](./guides/deployment.md) を参照。
+- **APIエンドポイントHTTPS化・デプロイ標準手順 正本**: [KB-128](./knowledge-base/infrastructure/ansible-deployment.md#kb-128-apiエンドポイントのhttps化caddy経由) · [deployment](./guides/deployment.md)。
 
 - **✅ キオスクお問い合わせフォームのデザイン変更・実機検証完了**: キオスクUIのお問い合わせフォームを改善し、実機検証を完了。送信者を社員名簿から選択するドロップダウンに変更し、依頼内容を「現場まで来てください。」のドロップダウンに変更。打合せ日時の選択フィールド（日付・時刻）を追加し、デフォルト値として現在の日時を設定。キオスク専用の従業員リスト取得エンドポイント（`/api/kiosk/employees`）を追加し、`x-client-key`認証のみでアクセス可能に。実機検証でフォームの各フィールドが正常に動作することを確認済み。詳細は [knowledge-base/api.md#kb-125](./knowledge-base/api.md#kb-125-キオスク専用従業員リスト取得エンドポイント追加) / [knowledge-base/frontend.md#kb-125](./knowledge-base/frontend.md#kb-125-キオスクお問い合わせフォームのデザイン変更) / [guides/verification-checklist.md#69-キオスクサポート機能slack通知](./guides/verification-checklist.md#69-キオスクサポート機能slack通知) を参照。
 
