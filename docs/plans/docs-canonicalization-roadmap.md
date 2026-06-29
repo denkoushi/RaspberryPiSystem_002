@@ -5361,7 +5361,19 @@ Status: implemented in PR427.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR428 And Later: Thin Indexes And Split Large Documents
+### PR428: Thin Deployment Practice Index Block
+
+Status: implemented in PR428.
+
+- Thin only the 2025-12-12 deployment practice clarification latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Pi5-only emergency deploy path,
+  all-device standard update path, branch handling, and hard-coded branch
+  cleanup details with a short link to the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR429 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
