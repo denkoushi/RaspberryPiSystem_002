@@ -49,6 +49,21 @@ export type LeaderboardShellSnapshotGenerationTokenDetails = {
   fkojunstStatusMailRowsRevision: string;
 };
 
+export function extractFkojunstStatusMailRowsRevisionFromLeaderboardShellSnapshotGenerationToken(
+  generationToken: string
+): string | undefined {
+  try {
+    const parsed = JSON.parse(generationToken) as { fkojunstStatusMailRowsRevision?: unknown };
+    const revision =
+      typeof parsed.fkojunstStatusMailRowsRevision === 'string'
+        ? parsed.fkojunstStatusMailRowsRevision.trim()
+        : '';
+    return revision.length > 0 ? revision : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function resolveFkojunstStatusMailRowsRevision(params: {
   row: SnapshotGenerationRow | undefined;
   explicitRevision?: string;

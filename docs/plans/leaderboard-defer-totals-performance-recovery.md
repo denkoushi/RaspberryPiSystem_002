@@ -777,12 +777,24 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - Server `laborMetadata` breakdown for the same six POSTs shows the previous unmeasured `requestTotal` residual is now effectively decomposed (`0-1ms` residual after summing phases). First round request totals: kensakuMain `2.996s` = process context `0.971s` + materializedBaseWhere `0.479s` + hydrateRows `0.334s` + attachLabor `1.211s`; RoboDrill01 `2.891s` = `1.007s` + `0.499s` + `0.267s` + `1.117s`; FJV60/80 `3.305s` = `1.250s` + `0.530s` + `0.354s` + `1.171s`. Second round after labor cache warm: kensakuMain `1.876s` = `1.015s` + `0.522s` + `0.338s` + `0.001s`; RoboDrill01 `1.775s` = `1.006s` + `0.483s` + `0.285s` + `0.001s`; FJV60/80 `1.719s` = `0.877s` + `0.501s` + `0.339s` + `0.001s`.
 - Materialization telemetry in these production samples reported `residualMaterialization.cacheHit=true`, `strongEvidenceKeyCount=186`, and `revisionChanged=false`; no `generationTokenRefresh` event appeared. Current optimization candidates should therefore be chosen from measured costs, especially `generationTokenInitial` (~`0.9-1.25s`), `materializedBaseWhere` (~`0.48-0.53s`), `hydrateRows` (~`0.27-0.35s`), and cold `attachLabor` (~`1.1-1.2s`). Keep the dedicated `labor-metadata` POST path; do not return to full board refetch.
 
+**API/Web follow-up: laborMetadata snapshot fast path（2026-06-29 · local implementation）**:
+
+- Implementation branch: `perf/kiosk-labor-metadata-snapshot-fast-path`. Public response shape is unchanged. The `labor-metadata` POST body now accepts optional `snapshotIds`; clients without it use the existing fallback path.
+- Web sends snapshot ids for `+人` enabled resource slots and suppresses re-POST of rows already fetched successfully for the same display freshness + snapshot scope. Failed metadata fetches still leave rows intact and do not mark rows as fetched.
+- API validates snapshot scope before using the fast path: snapshot must exist, match `locationKey` / `siteKey`, share one generation token, expose `fkojunstStatusMailRowsRevision`, and contain every requested display row id. Any miss falls back to the previous generation-token/materialized-base path.
+- Snapshot fast path uses the snapshot generation token as the labor cache scope, hydrates trusted display rows without resolving the global materialized winner base, and uses the correlated winner base for the FSIGENCD=10 labor lookup. No DB migration is added.
+- Perf diagnostics add snapshot/fallback visibility for `endpoint: "laborMetadata"`: `snapshotScope`, `snapshotHit`, `snapshotIdCount`, `trustedDisplayScope`, `fallbackReason`, and `winnerBaseStrategy`. Existing `requestTotal` remains.
+- Local validation: API labor metadata service focused test PASS; Web auto-append/labor metadata hook focused test PASS; API lint/build PASS; Web lint/build PASS. Temporary Docker `pgvector/pgvector:pg15` on port `55432` applied 119 migrations and the targeted labor metadata route integration scenario PASS.
+- Temporary DB EXPLAIN with 10k filler rows showed the correlated lookup using `csv_dashboard_row_winner_lookup_global_idx` and completing in `0.517ms`; the forced materialized winner shape completed in `89.198ms` on the same synthetic data. The temporary container was stopped and removed.
+- Full `kiosk-production-schedule.integration.test.ts` was also attempted on the migration-only temporary DB: 92/98 tests passed, but 6 unrelated monolithic leaderboard tests failed with existing schema drift `P2022` because `SelfInspectionSession.operatorEmployeeId` was missing after `prisma migrate deploy`. The targeted labor metadata integration scenario passed on the same DB.
+
 **Relevant files for Cursor**:
 
 - `apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`
   - `displayFreshnessParamsKey` ignores `includeLabor`
   - `displayAppendOverrideRef` keeps previous long append display
   - after display selection, retained/fresh labor metadata is overlaid by `row.id`
+  - `labor-metadata` sends `snapshotIds` when available and skips rows already fetched for the same snapshot scope
   - `isBoardDataSyncStatusVisible` separates UI banner visibility from internal `isBoardDataSyncing`
   - continuation-only background sync after shell rows are displayed is silent in the global banner
 - `apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts`

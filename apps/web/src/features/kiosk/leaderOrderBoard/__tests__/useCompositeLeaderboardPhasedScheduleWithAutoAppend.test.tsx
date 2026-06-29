@@ -780,6 +780,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
   });
 
   it('+人 ON は board includeLabor=false のまま表示中 resource 行だけ metadata POST で overlay する', async () => {
+    const snapshotId = '550e8400-e29b-41d4-a716-446655440010';
     const shell = boardPayload({
       total: 3,
       rows: [
@@ -787,7 +788,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         rowWithLabor('b1', 'R2', 500, 0)
       ],
       resources: [
-        { resourceCd: 'R1', hasMore: true, nextCursor: 1, total: 2, pageSize: 80 },
+        { resourceCd: 'R1', hasMore: true, nextCursor: 1, total: 2, pageSize: 80, snapshotId },
         { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
       ]
     });
@@ -801,7 +802,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       ],
       deltaRows: [appended],
       resources: [
-        { resourceCd: 'R1', hasMore: false, nextCursor: 2, total: 2, pageSize: 80 },
+        { resourceCd: 'R1', hasMore: false, nextCursor: 2, total: 2, pageSize: 80, snapshotId },
         { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
       ]
     });
@@ -861,14 +862,71 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       (call) => (call[1] as { enabled?: boolean } | undefined)?.enabled !== false
     )?.[0] as { includeLabor?: boolean };
     expect(boardParams.includeLabor).toBe(false);
-    expect(
-      postLaborMetadata.mock.calls.some(
-        ([payload]) =>
-          payload.targetDeviceScopeKey === 'device-a' &&
-          JSON.stringify(payload.rowIds) === JSON.stringify(['a1', 'a2'])
-      )
-    ).toBe(true);
-    expect(postLaborMetadata.mock.calls.every(([payload]) => !payload.rowIds.includes('b1'))).toBe(true);
+    const laborPayloads = postLaborMetadata.mock.calls.map(([payload]) => payload);
+    expect(laborPayloads.every((payload) => payload.targetDeviceScopeKey === 'device-a')).toBe(true);
+    expect(laborPayloads.every((payload) => JSON.stringify(payload.snapshotIds) === JSON.stringify([snapshotId]))).toBe(true);
+    expect(laborPayloads.flatMap((payload) => payload.rowIds)).toEqual(expect.arrayContaining(['a1', 'a2']));
+    expect(laborPayloads.every((payload) => !payload.rowIds.includes('b1'))).toBe(true);
+  });
+
+  it('同一 snapshot scope では取得済み labor metadata row を再 POST しない', async () => {
+    const snapshotId = '550e8400-e29b-41d4-a716-446655440011';
+    const shell = boardPayload({
+      total: 2,
+      rows: [
+        rowWithLabor('a1', 'R1', 100, 0),
+        rowWithLabor('a2', 'R1', 200, 0)
+      ],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80, snapshotId }]
+    });
+    postLaborMetadata.mockResolvedValue({
+      rowMetadata: [
+        { id: 'a1', machineRequiredMinutes: 100, laborRequiredMinutes: 11 },
+        { id: 'a2', machineRequiredMinutes: 200, laborRequiredMinutes: 22 }
+      ]
+    });
+    installBoardHookMock(() => ({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000
+    }));
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        resourceCdsOrdered: ['R1'],
+        laborMetadataResourceCds: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.laborRequiredMinutes)).toEqual([11, 22]);
+      expect(postLaborMetadata).toHaveBeenCalledTimes(1);
+    });
+
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(postLaborMetadata).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('labor metadata endpoint 失敗時は既存 rows を維持し一覧更新バナーを出さない', async () => {

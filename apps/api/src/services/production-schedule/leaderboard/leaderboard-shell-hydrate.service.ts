@@ -132,10 +132,13 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByIds(params: {
     return [];
   }
 
-  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(
-    prisma,
-    params.leaderboardMaterializedBaseWhere
-  );
+  const leaderboardMaterializedBaseWhere =
+    leaderboardShellListWhere !== undefined
+      ? Prisma.empty
+      : await resolveLeaderboardMaterializedBaseWhere(
+          prisma,
+          params.leaderboardMaterializedBaseWhere
+        );
 
   const chunks = chunkLeaderboardRowIdsForHydrate(uniqueOrdered);
   const byId = new Map<string, LeaderboardScheduleRowSql>();

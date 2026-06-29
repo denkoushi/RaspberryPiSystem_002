@@ -1,21 +1,31 @@
 import { performance } from 'node:perf_hooks';
 
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma.js';
-import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import {
+  buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner,
+  resolveLeaderboardMaterializedBaseWhere
+} from '../row-resolver/index.js';
 import { attachLeaderboardLaborMinutes } from './leaderboard-labor-minutes.service.js';
 import {
   materializeProcessChangeResidualStrongEvidence,
   type ProcessChangeResidualStrongEvidenceMaterialization,
   type ProcessChangeResidualStrongEvidenceMaterializationTelemetryEvent
 } from './leaderboard-process-change-residual.materialization.js';
-import { readLeaderboardShellSnapshotGenerationTokenDetails } from './leaderboard-shell-snapshot-generation.js';
+import {
+  readLeaderboardShellSnapshotGenerationTokenDetails,
+  type LeaderboardShellSnapshotGenerationTokenDetails
+} from './leaderboard-shell-snapshot-generation.js';
 import { fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds } from './leaderboard-split-expansion.service.js';
 import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard-display-row-scope.js';
+import { resolveLeaderboardLaborMetadataSnapshotContext } from './leaderboard-labor-metadata-snapshot-context.js';
 
 import type {
   LeaderboardBoardPerformanceEvent,
   LeaderboardBoardPerformanceSink
 } from './leaderboard-composite-board.service.js';
+import type { LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
 import type { ProductionScheduleRow } from '../production-schedule-query.service.js';
 
 const KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE = 'normal' as const;
@@ -81,20 +91,41 @@ async function measureLeaderboardLaborMetadataPhase<T>(
 
 async function resolveLaborMetadataProcessChangeResidualContext(
   sink: LeaderboardBoardPerformanceSink | undefined,
-  eventBase: Pick<LeaderboardBoardPerformanceEvent, 'endpoint' | 'rowCount'>
+  eventBase: Pick<
+    LeaderboardBoardPerformanceEvent,
+    'endpoint' | 'rowCount' | 'snapshotHit' | 'snapshotIdCount' | 'fallbackReason'
+  >,
+  snapshotGenerationTokenDetails?: {
+    tokenDetails: LeaderboardShellSnapshotGenerationTokenDetails;
+    snapshotIdCount: number;
+  }
 ): Promise<{
   generationToken: string;
   processChangeResidualMaterialization: ProcessChangeResidualStrongEvidenceMaterialization;
 }> {
-  const initialTokenDetails = await measureLeaderboardLaborMetadataPhase(
-    sink,
-    {
-      ...eventBase,
-      phase: 'processChangeResidualContext',
-      subphase: 'generationTokenInitial'
-    },
-    () => readLeaderboardShellSnapshotGenerationTokenDetails()
-  );
+  const initialTokenDetails =
+    snapshotGenerationTokenDetails != null
+      ? await measureLeaderboardLaborMetadataPhase(
+          sink,
+          {
+            ...eventBase,
+            phase: 'processChangeResidualContext',
+            subphase: 'generationTokenSnapshot',
+            snapshotHit: true,
+            snapshotIdCount: snapshotGenerationTokenDetails.snapshotIdCount
+          },
+          async () => snapshotGenerationTokenDetails.tokenDetails
+        )
+      : await measureLeaderboardLaborMetadataPhase(
+          sink,
+          {
+            ...eventBase,
+            phase: 'processChangeResidualContext',
+            subphase: 'generationTokenInitial',
+            snapshotHit: false
+          },
+          () => readLeaderboardShellSnapshotGenerationTokenDetails()
+        );
 
   let materializationTelemetry: ProcessChangeResidualStrongEvidenceMaterializationTelemetryEvent | undefined;
   const processChangeResidualMaterialization = await measureLeaderboardLaborMetadataPhase(
@@ -171,17 +202,47 @@ export async function fetchLeaderboardBoardLaborMetadata(
     orderedRowIds: readonly string[];
     locationKey: string;
     siteKey?: string;
+    snapshotIds?: readonly string[];
   },
   deps: {
     performanceSink?: LeaderboardBoardPerformanceSink;
+    snapshotStore?: LeaderboardShellSnapshotStore;
   } = {}
 ): Promise<{ rowMetadata: LeaderboardLaborMetadataEntry[] }> {
   const requestStarted = performance.now();
   const sink = deps.performanceSink;
   const orderedRowIds = normalizeLeaderboardDisplayRowIdScope(params.orderedRowIds);
+  const snapshotContextStarted = performance.now();
+  const snapshotContext = resolveLeaderboardLaborMetadataSnapshotContext({
+    snapshotStore: deps.snapshotStore,
+    snapshotIds: params.snapshotIds,
+    orderedRowIds,
+    locationKey: params.locationKey,
+    siteKey: params.siteKey
+  });
+  const snapshotIdsRequested = (params.snapshotIds?.length ?? 0) > 0;
+  if (snapshotIdsRequested) {
+    emitLeaderboardLaborMetadataPerformance(sink, {
+      endpoint: 'laborMetadata',
+      phase: 'snapshotScope',
+      durationMs: performance.now() - snapshotContextStarted,
+      ok: true,
+      rowCount: orderedRowIds.length,
+      snapshotHit: snapshotContext.kind === 'hit',
+      snapshotIdCount: snapshotContext.snapshotIdCount,
+      trustedDisplayScope: snapshotContext.kind === 'hit',
+      ...(snapshotContext.kind === 'miss' ? { fallbackReason: snapshotContext.reason } : {})
+    });
+  }
+
+  const snapshotHit = snapshotContext.kind === 'hit';
+  const fallbackReason = snapshotContext.kind === 'miss' ? snapshotContext.reason : undefined;
   const eventBase = {
     endpoint: 'laborMetadata' as const,
-    rowCount: orderedRowIds.length
+    rowCount: orderedRowIds.length,
+    snapshotHit,
+    ...(snapshotIdsRequested ? { snapshotIdCount: snapshotContext.snapshotIdCount } : {}),
+    ...(fallbackReason && snapshotIdsRequested ? { fallbackReason } : {})
   };
 
   const { generationToken, processChangeResidualMaterialization } =
@@ -191,16 +252,43 @@ export async function fetchLeaderboardBoardLaborMetadata(
         ...eventBase,
         phase: 'processChangeResidualContext'
       },
-      () => resolveLaborMetadataProcessChangeResidualContext(sink, eventBase)
+      () =>
+        resolveLaborMetadataProcessChangeResidualContext(
+          sink,
+          eventBase,
+          snapshotContext.kind === 'hit'
+            ? {
+                tokenDetails: snapshotContext.generationTokenDetails,
+                snapshotIdCount: snapshotContext.snapshotIdCount
+              }
+            : undefined
+        )
     );
-  const leaderboardMaterializedBaseWhere = await measureLeaderboardLaborMetadataPhase(
-    sink,
-    {
+  const hydrateShellListWhere = snapshotHit
+    ? Prisma.sql`"CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`
+    : undefined;
+  const laborLookupBaseWhere = snapshotHit
+    ? buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner(PRODUCTION_SCHEDULE_DASHBOARD_ID)
+    : await measureLeaderboardLaborMetadataPhase(
+        sink,
+        {
+          ...eventBase,
+          phase: 'materializedBaseWhere',
+          winnerBaseStrategy: 'materialized'
+        },
+        () => resolveLeaderboardMaterializedBaseWhere(prisma)
+      );
+
+  if (snapshotHit) {
+    emitLeaderboardLaborMetadataPerformance(sink, {
       ...eventBase,
-      phase: 'materializedBaseWhere'
-    },
-    () => resolveLeaderboardMaterializedBaseWhere(prisma)
-  );
+      phase: 'laborLookupBaseWhere',
+      durationMs: 0,
+      ok: true,
+      winnerBaseStrategy: 'correlated',
+      trustedDisplayScope: true
+    });
+  }
 
   const siteScopedGlobalRankLocation = params.siteKey?.trim().length
     ? params.siteKey.trim()
@@ -216,10 +304,12 @@ export async function fetchLeaderboardBoardLaborMetadata(
         orderedDisplayItemIds: orderedRowIds,
         locationKey: params.locationKey,
         siteScopedGlobalRankLocation,
-        leaderboardMaterializedBaseWhere
+        leaderboardMaterializedBaseWhere: snapshotHit ? undefined : laborLookupBaseWhere,
+        leaderboardShellListWhere: hydrateShellListWhere
       }),
     (rows) => ({
-      rowCount: rows.length
+      rowCount: rows.length,
+      trustedDisplayScope: snapshotHit
     })
   );
 
@@ -229,11 +319,12 @@ export async function fetchLeaderboardBoardLaborMetadata(
       ...eventBase,
       phase: 'attachLabor',
       rowCount: hydratedRows.length,
-      includeLabor: true
+      includeLabor: true,
+      winnerBaseStrategy: snapshotHit ? 'correlated' : 'materialized'
     },
     () =>
       attachLeaderboardLaborMinutes(hydratedRows, {
-        leaderboardMaterializedBaseWhere,
+        leaderboardMaterializedBaseWhere: laborLookupBaseWhere,
         processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
         processChangeResidualStrongEvidenceKeys: processChangeResidualMaterialization.keys,
         cacheScopeKey: generationToken
@@ -253,7 +344,9 @@ export async function fetchLeaderboardBoardLaborMetadata(
     durationMs: performance.now() - requestStarted,
     ok: true,
     rowCount: rowMetadata.length,
-    includeLabor: true
+    includeLabor: true,
+    trustedDisplayScope: snapshotHit,
+    winnerBaseStrategy: snapshotHit ? 'correlated' : 'materialized'
   });
 
   return { rowMetadata };
