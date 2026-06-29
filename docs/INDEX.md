@@ -1290,7 +1290,7 @@
 
 - **UI視認性向上カラーテーマ 正本**: [UI visibility requirements](./requirements/ui-visibility-color-theme.md) · [tools module](./modules/tools/README.md) · [measuring instruments UI](./modules/measuring-instruments/ui.md) · [signage module](./modules/signage/README.md)。
 
-- **✅ Dropbox CSVインポート Phase 3完全検証・ベストプラクティス実装完了**: Phase 3の必須検証（実際のデータファイルを使用したエンドツーエンドテスト、エラーハンドリングテスト）を完了。ベストプラクティス実装（バックアップ履歴の記録機能、リストアAPIのパス処理改善）も完了。すべての検証項目が正常に動作することを確認し、本番運用可能な状態に到達。詳細は [analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md) / [guides/phase3-complete-verification-summary.md](./guides/phase3-complete-verification-summary.md) / [guides/phase3-mandatory-verification-results.md](./guides/phase3-mandatory-verification-results.md) / [guides/phase3-error-handling-test-results.md](./guides/phase3-error-handling-test-results.md) / [guides/phase3-next-tasks.md](./guides/phase3-next-tasks.md) を参照。
+- **Dropbox CSVインポート Phase 3完全検証 正本**: [integration status](./analysis/dropbox-csv-integration-status.md) · [complete verification](./guides/phase3-complete-verification-summary.md) · [mandatory verification](./guides/phase3-mandatory-verification-results.md) · [error handling tests](./guides/phase3-error-handling-test-results.md) · [next tasks](./guides/phase3-next-tasks.md)。
 
 ### 🆕 最新アップデート（2025-12-16）
 

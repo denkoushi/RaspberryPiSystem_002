@@ -5206,7 +5206,20 @@ Status: implemented in PR415.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR416 And Later: Thin Indexes And Split Large Documents
+### PR416: Thin Dropbox CSV Phase 3 Verification Index Block
+
+Status: implemented in PR416.
+
+- Thin only the 2025-12-17 Dropbox CSV import Phase 3 complete verification
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the real-data end-to-end verification,
+  error-handling tests, backup history recording, restore path handling, all
+  checks passing, and production-readiness details with short links to the
+  integration status and Phase 3 verification documents.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR417 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
