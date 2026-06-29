@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 447 |
-| Total lines | 140491 |
-| Total bytes | 10264316 |
+| Total lines | 140503 |
+| Total bytes | 10264517 |
 | With frontmatter | 162 |
 | With status | 23 |
 | source_of_truth declared | 7 |
@@ -30,7 +30,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Path | Lines | Bytes |
 |------|------:|------:|
-| `docs/plans/docs-canonicalization-roadmap.md` | 5556 | 231539 |
+| `docs/plans/docs-canonicalization-roadmap.md` | 5568 | 232018 |
 | `docs/guides/deployment.md` | 5161 | 776938 |
 | `docs/knowledge-base/api.md` | 4881 | 354497 |
 | `EXEC_PLAN.md` | 4658 | 975476 |
@@ -40,7 +40,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/architecture/deployment-modules.md` | 2523 | 128110 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188223 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2190 | 135175 |
-| `docs/INDEX.md` | 1824 | 311263 |
+| `docs/INDEX.md` | 1824 | 310985 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153339 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1567 | 165051 |
 | `docs/knowledge-base/infrastructure/miscellaneous.md` | 1322 | 74222 |

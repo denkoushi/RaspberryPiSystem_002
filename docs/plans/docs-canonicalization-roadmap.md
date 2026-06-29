@@ -5504,7 +5504,19 @@ Status: implemented in PR439.
 - Do not edit module docs, requirements, deployment guide, verification
   checklist, KB index, or `EXEC_PLAN.md` in this PR.
 
-### PR440 And Later: Thin Indexes And Split Large Documents
+### PR440: Thin Lint Phase 8 Index Block
+
+Status: implemented in PR440.
+
+- Thin only the 2025-12-11 lint integration Phase 8 latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the contract-test, snapshot, CI run, and
+  import/order details with short links to the lint integration Plan, lint
+  guide, and CI troubleshooting guide.
+- Do not edit Plan bodies, guides, deployment guide, verification checklist,
+  KB index, or `EXEC_PLAN.md` in this PR.
+
+### PR441 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
