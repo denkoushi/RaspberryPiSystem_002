@@ -1274,7 +1274,7 @@
 
 - **バックアップロジックアーキテクチャ改善 正本**: [backup target requirements](./requirements/backup-target-management-ui.md#phase-7-バックアップロジックのアーキテクチャ改善--完了) · [backup configuration](./guides/backup-configuration.md)。
 
-- **✅ Ansibleによるクライアント端末バックアップ機能実装完了**: クライアント端末（Pi4、Pi3など）のファイルは物理的に別マシン上に存在するため、Pi5（サーバー）のAPIから直接アクセスできない問題を解決するため、Ansibleを使用してクライアント端末のファイルをPi5に取得してバックアップする機能を実装完了。Ansibleのinventoryでクライアント端末を管理し、スケーラブルに対応。実装時にAnsibleとTailscaleの連携で問題が発生したが、`hosts: "{{ client_host }}"`への変更とSSH鍵のマウントにより解決。詳細は [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md) / [guides/backup-and-restore.md](./guides/backup-and-restore.md) / [guides/backup-configuration.md](./guides/backup-configuration.md) / [knowledge-base/infrastructure/backup-restore.md#kb-102](./knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照。
+- **Ansibleクライアント端末バックアップ 正本**: [backup target requirements](./requirements/backup-target-management-ui.md) · [backup and restore](./guides/backup-and-restore.md) · [backup configuration](./guides/backup-configuration.md) · [KB-102](./knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題)。
 
 - **✅ 画像バックアップリストア処理追加**: 画像バックアップは`tar.gz`形式で保存されるが、リストア時に展開処理がなかった問題を修正。`/api/backup/restore/from-dropbox`と`/api/backup/restore`エンドポイントに画像バックアップのリストア処理を追加。`tar.gz`を展開して写真ディレクトリ（`photos`）とサムネイルディレクトリ（`thumbnails`）に復元。既存ディレクトリの自動バックアップ機能も追加。ドキュメントを更新して画像バックアップのリストア手順を明記。詳細は [guides/backup-and-restore.md](./guides/backup-and-restore.md) / [guides/backup-configuration.md](./guides/backup-configuration.md) / [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md) を参照。
 

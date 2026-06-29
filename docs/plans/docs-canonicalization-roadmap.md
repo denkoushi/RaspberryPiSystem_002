@@ -5129,7 +5129,19 @@ Status: implemented in PR409.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR410 And Later: Thin Indexes And Split Large Documents
+### PR410: Thin Ansible Client Backup Index Block
+
+Status: implemented in PR410.
+
+- Thin only the 2025-12-19 Ansible client-device backup latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the Pi client file location, Ansible fetch,
+  inventory scaling, Tailscale host resolution, and SSH key mount details with
+  short links to the backup target requirements, backup guides, and KB-102.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR411 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
