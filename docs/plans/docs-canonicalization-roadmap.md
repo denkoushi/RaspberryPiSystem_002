@@ -5397,7 +5397,19 @@ Status: implemented in PR430.
 - Do not edit module docs, deployment guide, verification checklist, KB index,
   or `EXEC_PLAN.md` in this PR.
 
-### PR431 And Later: Thin Indexes And Split Large Documents
+### PR431: Thin Signage Instrument Display Index Block
+
+Status: implemented in PR431.
+
+- Thin only the 2025-12-11 signage left-pane measuring-instrument display
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Pi3 left-pane color, two-line
+  display, service, and renderer details with short links to the signage lite
+  and measuring instruments UI documents.
+- Do not edit module docs, deployment guide, verification checklist, KB index,
+  or `EXEC_PLAN.md` in this PR.
+
+### PR432 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
