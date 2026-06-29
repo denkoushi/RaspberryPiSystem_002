@@ -5066,7 +5066,20 @@ Status: implemented in PR404.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR405 And Later: Thin Indexes And Split Large Documents
+### PR405: Thin Gmail Data Acquisition Index Block
+
+Status: implemented in PR405.
+
+- Thin only the 2025-12-29 Gmail data acquisition latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the PowerAutomate delivery, OAuth flow,
+  Gmail settings UI, hosts fallback, verification, and provider refresh
+  behavior details with short links to the Gmail data acquisition plan, Gmail
+  setup guide, and KB-108.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR406 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
