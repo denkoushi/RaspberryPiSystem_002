@@ -13,6 +13,9 @@ LOCATION="工場1階ラインA"
 # 任意: ログファイル
 LOG_FILE="/var/log/raspi-status-agent.log"
 
+# 任意: 成功時のローカルログ書き込み（SDカード書込削減のため既定は0）
+STATUS_AGENT_LOG_SUCCESS=0
+
 # 任意: HTTPタイムアウト秒
 REQUEST_TIMEOUT=10
 
@@ -22,3 +25,9 @@ TLS_SKIP_VERIFY=0
 # 任意: CPU温度を取得するファイルパス（未設定時は thermal_zone0 を自動検出）
 # TEMPERATURE_FILE="/sys/class/thermal/thermal_zone0/temp"
 
+# 任意: SDカード予防保全ログ（Pi4 kioskのみAnsibleで有効化）
+STORAGE_HEALTH_ENABLED=0
+STORAGE_HEALTH_INTERVAL_SECONDS=3600
+STORAGE_HEALTH_DISK_WARN_PCT=80
+STORAGE_HEALTH_DISK_ERROR_PCT=90
+STORAGE_HEALTH_STATE_FILE=/run/raspi-status-agent/storage-health-last-run

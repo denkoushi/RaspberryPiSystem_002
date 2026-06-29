@@ -1,10 +1,125 @@
-import { Prisma } from '@prisma/client';
+import crypto from 'crypto';
+import { AlertChannel, AlertDeliveryStatus, AlertSeverity, Prisma } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import { logger } from '../../lib/logger.js';
+import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
 
 const staleThresholdMs = 1000 * 60 * 60 * 12; // 12 hours
+const storageHealthCategory = 'storage_health';
+const storageHealthAlertTypePrefix = 'storage-health';
+
+type ClientTelemetryLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+type ClientTelemetryLogEntry = {
+  level: ClientTelemetryLogLevel;
+  message: string;
+  context?: Record<string, unknown>;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isStorageHealthAlertLog(entry: ClientTelemetryLogEntry): boolean {
+  return (
+    (entry.level === 'WARN' || entry.level === 'ERROR') &&
+    isRecord(entry.context) &&
+    entry.context.category === storageHealthCategory
+  );
+}
+
+function storageHealthSignal(context: Record<string, unknown>): string {
+  const raw = context.signal;
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : 'unknown_signal';
+}
+
+function storageHealthTimestamp(context: Record<string, unknown>): Date {
+  const observedAt = context.observedAt;
+  if (typeof observedAt === 'string') {
+    const parsed = new Date(observedAt);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  return new Date();
+}
+
+async function createStorageHealthSlackAlerts(params: {
+  clientId: string;
+  logs: ClientTelemetryLogEntry[];
+  requestId: string;
+}): Promise<void> {
+  const alertLogs = params.logs.filter(isStorageHealthAlertLog);
+  if (alertLogs.length === 0) return;
+
+  try {
+    const config = await loadAlertsDispatcherConfig();
+
+    for (const entry of alertLogs) {
+      const context = entry.context ?? {};
+      const signal = storageHealthSignal(context);
+      const type = `${storageHealthAlertTypePrefix}-${signal}`;
+      const severity = entry.level === 'ERROR' ? AlertSeverity.ERROR : AlertSeverity.WARNING;
+      const fingerprint = crypto
+        .createHash('sha256')
+        .update(`${type}:${params.clientId}:${signal}`)
+        .digest('hex');
+
+      const existingOpenAlert = await prisma.alert.findFirst({
+        where: {
+          fingerprint,
+          acknowledged: false
+        },
+        select: { id: true }
+      });
+      if (existingOpenAlert) continue;
+
+      const routeKey = resolveRouteKey(type, config.routing);
+      await prisma.$transaction(async (tx) => {
+        const alert = await tx.alert.create({
+          data: {
+            id: crypto.randomUUID(),
+            type,
+            severity,
+            message: `SDカードヘルス異常: ${params.clientId}: ${entry.message.slice(0, 500)}`,
+            details: {
+              clientId: params.clientId,
+              level: entry.level,
+              signal,
+              logMessage: entry.message,
+              logContext: context
+            } as Prisma.InputJsonValue,
+            source: {
+              service: 'status-agent',
+              clientId: params.clientId,
+              category: storageHealthCategory
+            } as Prisma.InputJsonValue,
+            context: {
+              requestId: params.requestId
+            } as Prisma.InputJsonValue,
+            fingerprint,
+            timestamp: storageHealthTimestamp(context),
+            acknowledged: false
+          }
+        });
+
+        await tx.alertDelivery.create({
+          data: {
+            alertId: alert.id,
+            channel: AlertChannel.SLACK,
+            routeKey,
+            status: AlertDeliveryStatus.PENDING,
+            attemptCount: 0
+          }
+        });
+      });
+    }
+  } catch (error) {
+    logger.warn({ err: error, clientId: params.clientId }, '[ClientTelemetry] failed to create storage health alert');
+  }
+}
 
 /**
  * 管理者のみ: 端末を inventory 等から登録・再同期する（create + update の upsert）。
@@ -113,7 +228,7 @@ export async function upsertClientStatus(params: {
     temperature?: number;
     uptimeSeconds?: number;
     lastBoot?: Date;
-    logs?: Array<{ level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'; message: string; context?: Record<string, unknown> }>;
+    logs?: ClientTelemetryLogEntry[];
   };
   requestId: string;
 }) {
@@ -162,6 +277,11 @@ export async function upsertClientStatus(params: {
         context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
       }))
     });
+    await createStorageHealthSlackAlerts({
+      clientId: metrics.clientId,
+      logs: logEntries,
+      requestId
+    });
   }
 
   return {
@@ -175,7 +295,7 @@ export async function upsertClientStatus(params: {
 export async function storeClientLogs(params: {
   clientKey: string;
   clientId: string;
-  logs: Array<{ level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'; message: string; context?: Record<string, unknown> }>;
+  logs: ClientTelemetryLogEntry[];
   requestId: string;
 }) {
   const { clientKey, clientId, logs, requestId } = params;
@@ -189,6 +309,7 @@ export async function storeClientLogs(params: {
       context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
     }))
   });
+  await createStorageHealthSlackAlerts({ clientId, logs, requestId });
 
   return { requestId, logsStored: logs.length };
 }

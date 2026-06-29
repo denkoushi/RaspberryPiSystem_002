@@ -34,6 +34,17 @@ sudo nano /etc/raspi-status-agent.conf
 
 任意設定: `LOG_FILE`, `REQUEST_TIMEOUT`, `TLS_SKIP_VERIFY`, `TEMPERATURE_FILE`, `LOCATION` など。
 
+Pi4 SDカード予防保全:
+
+| 変数 | 既定値 | 意味 |
+| --- | --- | --- |
+| `STORAGE_HEALTH_ENABLED` | `0` | `1` の時だけSDヘルス監視ログを `payload.logs` に追加 |
+| `STORAGE_HEALTH_INTERVAL_SECONDS` | `3600` | SDヘルス監視の実行間隔。status heartbeatは毎分のまま、SDヘルスだけ既定1時間ごと |
+| `STORAGE_HEALTH_DISK_WARN_PCT` | `80` | `/` のディスク使用率またはinode使用率がこの値以上なら `WARN` |
+| `STORAGE_HEALTH_DISK_ERROR_PCT` | `90` | `/` のディスク使用率またはinode使用率がこの値以上なら `ERROR` |
+| `STORAGE_HEALTH_STATE_FILE` | `/run/raspi-status-agent/storage-health-last-run` | 最終実行時刻の記録先。`/run` はtmpfsなのでSDカードへ書き込まない |
+| `STATUS_AGENT_LOG_SUCCESS` | `0` | 成功時のローカルログ追記。SDカード書込削減のため既定は無効 |
+
 ---
 
 ## 3. 手動テスト
@@ -78,7 +89,34 @@ journalctl -u status-agent.service -n 20
 | `diskUsage` | `shutil.disk_usage('/')` |
 | `temperature` | thermal ゾーン (`/sys/class/thermal/thermal_zone0/temp`) が存在すれば添付 |
 | `uptimeSeconds` / `lastBoot` | `/proc/uptime` から算出 |
-| `logs` | デフォルトは空配列（今後、閾値超過時にメッセージを挿入予定） |
+| `logs` | デフォルトは空配列。`STORAGE_HEALTH_ENABLED=1` かつ実行間隔に達した時だけSDヘルス兆候を追加 |
+
+### 5.1 SDカード予防保全ログ
+
+Pi4 kiosk groupではAnsibleにより `STORAGE_HEALTH_ENABLED=1` を配布します。Pi5/Pi3/TalkPlazaではv1時点では無効です。通常実行では `STORAGE_HEALTH_INTERVAL_SECONDS=3600` により1時間ごとに確認し、`--dry-run` では現場確認のため毎回確認します。
+
+検出対象:
+
+| 兆候 | レベル |
+| --- | --- |
+| root filesystem が read-only (`ro`) | `ERROR` |
+| kernel log の `mmc` error / `I/O error` / `EXT4-fs error` / read-only remount | `ERROR` |
+| `/` のディスク使用率またはinode使用率が閾値以上 | `WARN` / `ERROR` |
+| `vcgencmd get_throttled` の現在低電圧 | `ERROR` |
+| `vcgencmd get_throttled` の現在throttle/温度制限 | `WARN` |
+
+kernel logは、既定では実行間隔+5分ぶんを見ます。1時間ごとの運用でも短時間のI/O errorを見逃しにくくするためです。ログは既存の `ClientLog` に保存され、`context` は `{ category: "storage_health", signal, rootSource, raw, observedAt }` 形式です。1回のPOSTで追加するSDヘルスログは最大10件です。
+
+`WARN` / `ERROR` のSDヘルスログは、API側でDB `Alert` と `AlertDelivery(SLACK)` に昇格されます。Slack配送先は既存Alerts Dispatcherの `storage-*` ルートに従い、通常は `ops` です。同じ端末・同じsignalの未確認Alertが残っている間は追加Alertを作らず、通知連打を抑えます。
+
+運用確認:
+
+```bash
+STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf /opt/RaspberryPiSystem_002/clients/status-agent/status-agent.py --dry-run
+journalctl -u status-agent.service -n 50
+vcgencmd get_throttled
+findmnt -no OPTIONS /
+```
 
 ---
 
@@ -90,6 +128,9 @@ journalctl -u status-agent.service -n 20
 | TLS 証明書エラー | 一時的に `TLS_SKIP_VERIFY=1` を設定（社内ネットワーク限定） |
 | CPU 温度が `null` | `TEMPERATURE_FILE` で thermal パスを明示 |
 | systemd が失敗する | `journalctl -u status-agent.service -xe` で詳細を確認 |
+| `/admin/clients` にSDヘルスログが出ない | Pi4 kioskの `/etc/raspi-status-agent.conf` で `STORAGE_HEALTH_ENABLED=1` か確認。通常は1時間ごとのため、即時確認は `--dry-run` を使う |
+| SDヘルス異常のSlack通知が届かない | Pi5 API環境で `ALERTS_DISPATCHER_MODE=db`, `ALERTS_DB_DISPATCHER_ENABLED=true`, `ALERTS_SLACK_WEBHOOK_OPS` が設定されているか確認 |
+| 成功ログが `/var/log/raspi-status-agent.log` に出ない | 既定では書込削減のため正常。必要時のみ `STATUS_AGENT_LOG_SUCCESS=1` を一時設定 |
 | `INVALIDARGUMENT` エラー | `API_BASE_URL` が正しく設定されているか確認（`http://localhost:8080/api`は使用不可。`https://<Pi5のIP>/api`を使用） |
 | サーバー側（Pi5）でstatus-agentが動作しない | Pi5のホストからはDocker内部ネットワークの`localhost:8080`にアクセスできないため、Caddy経由（HTTPS 443）でAPIにアクセスする必要がある（[KB-129](../knowledge-base/infrastructure/ansible-deployment.md#kb-129-pi5サーバー側のstatus-agent設定ファイルが古い設定のまま)参照） |
 
@@ -180,4 +221,3 @@ rm ~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist
 - 詳細なファイル構成・コメント付き手順: `clients/status-agent/README.md`
 - API 側の受け皿: `apps/api/src/routes/clients.ts`
 - 管理画面の実装タスク: `docs/plans/production-deployment-phase2-execplan.md`
-

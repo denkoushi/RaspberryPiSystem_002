@@ -21,7 +21,10 @@ from pathlib import Path
 from typing import Dict, Optional
 import shutil
 
+import storage_health
+
 SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_STORAGE_HEALTH_STATE_FILE = Path("/run/raspi-status-agent/storage-health-last-run")
 DEFAULT_CONFIG_PATHS = [
     os.environ.get("STATUS_AGENT_CONFIG"),
     SCRIPT_DIR / "status-agent.conf",
@@ -61,7 +64,63 @@ def parse_config_file(path: Path) -> Dict[str, str]:
         raise ValueError(f"Missing required config keys: {', '.join(missing)}")
     config.setdefault("REQUEST_TIMEOUT", "10")
     config.setdefault("TLS_SKIP_VERIFY", "0")
+    config.setdefault("STORAGE_HEALTH_ENABLED", "0")
+    config.setdefault("STORAGE_HEALTH_DISK_WARN_PCT", "80")
+    config.setdefault("STORAGE_HEALTH_DISK_ERROR_PCT", "90")
+    config.setdefault("STORAGE_HEALTH_INTERVAL_SECONDS", str(storage_health.DEFAULT_INTERVAL_SECONDS))
+    config.setdefault("STORAGE_HEALTH_STATE_FILE", str(DEFAULT_STORAGE_HEALTH_STATE_FILE))
+    config.setdefault("STATUS_AGENT_LOG_SUCCESS", "0")
     return config
+
+
+def storage_health_state_path(config: Dict[str, str]) -> Path:
+    raw = config.get("STORAGE_HEALTH_STATE_FILE") or str(DEFAULT_STORAGE_HEALTH_STATE_FILE)
+    return Path(raw).expanduser()
+
+
+def read_storage_health_last_run(path: Path) -> Optional[float]:
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+        return float(raw)
+    except (OSError, ValueError):
+        return None
+
+
+def should_collect_storage_health(
+    config: Dict[str, str],
+    *,
+    now: Optional[dt.datetime] = None,
+) -> bool:
+    interval_seconds = storage_health.read_interval_seconds(config)
+    if interval_seconds <= 0:
+        return True
+
+    current = now or dt.datetime.now(dt.timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=dt.timezone.utc)
+
+    last_run = read_storage_health_last_run(storage_health_state_path(config))
+    if last_run is None:
+        return True
+    return current.timestamp() - last_run >= interval_seconds
+
+
+def mark_storage_health_checked(config: Dict[str, str], *, checked_at: Optional[dt.datetime] = None) -> None:
+    interval_seconds = storage_health.read_interval_seconds(config)
+    if interval_seconds <= 0:
+        return
+
+    current = checked_at or dt.datetime.now(dt.timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=dt.timezone.utc)
+
+    path = storage_health_state_path(config)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(current.timestamp()), encoding="utf-8")
+    except OSError:
+        # /run is tmpfs on Raspberry Pi OS. If it is unavailable, keep monitoring.
+        pass
 
 
 def log(message: str, level: str = "INFO", log_file: Optional[Path] = None) -> None:
@@ -161,7 +220,7 @@ def get_ip_address() -> str:
             return "127.0.0.1"
 
 
-def build_payload(config: Dict[str, str]) -> Dict[str, object]:
+def build_payload(config: Dict[str, str], *, force_storage_health: bool = False) -> Dict[str, object]:
     required_paths = [Path("/proc/stat"), Path("/proc/meminfo")]
     for required in required_paths:
         if not required.exists():
@@ -189,7 +248,26 @@ def build_payload(config: Dict[str, str]) -> Dict[str, object]:
     temperature = read_temperature(config)
     if temperature is not None:
         payload["temperature"] = temperature
-    payload["logs"] = []
+    logs = []
+    should_collect = storage_health.is_truthy(config.get("STORAGE_HEALTH_ENABLED")) and (
+        force_storage_health or should_collect_storage_health(config)
+    )
+    if should_collect:
+        try:
+            logs = storage_health.collect_storage_health_logs(config)
+        except Exception as exc:  # pragma: no cover - defensive guard for telemetry
+            logs = [
+                storage_health.build_log_entry(
+                    "WARN",
+                    "storage_health_check_failed",
+                    f"Storage health check failed: {exc}",
+                    "status-agent",
+                    str(exc),
+                )
+            ]
+        finally:
+            mark_storage_health_checked(config)
+    payload["logs"] = logs
 
     return payload
 
@@ -233,16 +311,18 @@ def main() -> int:
     log_file = Path(config["LOG_FILE"]).expanduser() if config.get("LOG_FILE") else None
 
     try:
-        payload = build_payload(config)
+        payload = build_payload(config, force_storage_health=args.dry_run)
         if args.dry_run:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
-            log("status heartbeat dry-run (no HTTP request)", "INFO", log_file)
+            if storage_health.is_truthy(config.get("STATUS_AGENT_LOG_SUCCESS")):
+                log("status heartbeat dry-run (no HTTP request)", "INFO", log_file)
             return 0
 
         post_payload(config, payload)
-        location = config.get("LOCATION")
-        suffix = f" ({location})" if location else ""
-        log(f"status heartbeat sent{suffix}", "INFO", log_file)
+        if storage_health.is_truthy(config.get("STATUS_AGENT_LOG_SUCCESS")):
+            location = config.get("LOCATION")
+            suffix = f" ({location})" if location else ""
+            log(f"status heartbeat sent{suffix}", "INFO", log_file)
         return 0
     except (urllib.error.URLError, RuntimeError, TimeoutError) as exc:
         log(f"failed to send status: {exc}", "ERROR", log_file)
@@ -254,4 +334,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
