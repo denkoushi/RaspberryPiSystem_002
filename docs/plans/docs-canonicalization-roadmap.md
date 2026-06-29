@@ -4966,7 +4966,20 @@ Status: implemented in PR396.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR397 And Later: Thin Indexes And Split Large Documents
+### PR397: Thin Kiosk Contact Form Index Block
+
+Status: implemented in PR397.
+
+- Thin only the 2026-01-03 kiosk contact form design latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the sender selection, request option,
+  meeting datetime, kiosk employee endpoint, and onsite field validation
+  details with short links to API KB-125, frontend KB-125, and the verification
+  checklist.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR398 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
