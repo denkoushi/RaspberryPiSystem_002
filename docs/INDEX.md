@@ -1206,7 +1206,7 @@
 
 - **バックアップ履歴ページ用途列 正本**: [KB-149](./knowledge-base/frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善)。
 
-- **✅ 外部連携運用台帳ドキュメント作成完了（P2実装）**: Dropbox/Gmail/Slackなどの外部サービス連携の設定・運用情報を一元管理する運用台帳ドキュメントを作成。各外部サービスの設定場所（Ansible Vault、backup.json、環境変数）、設定手順へのリンク、運用時の注意事項、トラブルシューティング情報、設定の永続化方法、ヘルスチェック方法をまとめ。既存のセットアップガイドやナレッジベースへの参照を整理し、運用者が外部連携の設定・運用を効率的に管理できるように改善。詳細は [guides/external-integration-ledger.md](./guides/external-integration-ledger.md) を参照。
+- **外部連携運用台帳 正本**: [external-integration-ledger](./guides/external-integration-ledger.md)。
 
 - **✅ バックアップ設定の衝突・ドリフト検出の自動化（P1実装）完了**: `backup.json`の新旧構造間の設定値の衝突や、環境変数と設定ファイル間のドリフトを自動検出する機能を実装。`BackupConfigLoader.checkHealth()`メソッドと`GET /api/backup/config/health`エンドポイントを追加し、管理コンソールUIに統合。衝突検出（旧キーと新構造の両方に値がある場合）、ドリフト検出（環境変数と設定ファイルの値の不一致）、欠落チェック（必須設定の欠落）を実装。実機検証でヘルスチェックエンドポイントが正常に動作し、UI表示が成功することを確認。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-148](./knowledge-base/infrastructure/backup-restore.md#kb-148-バックアップ設定の衝突ドリフト検出の自動化p1実装) / [api/backup.md](./api/backup.md) を参照。
 
