@@ -4880,7 +4880,19 @@ Status: implemented in PR389.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR390 And Later: Thin Indexes And Split Large Documents
+### PR390: Thin WebRTC Audio Index Block
+
+Status: implemented in PR390.
+
+- Thin only the 2026-01-04 WebRTC audio call verification latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the signaling, offer/answer/ICE,
+  connection-maintenance, and microphone fallback details with a short link to
+  the WebRTC verification guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR391 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
