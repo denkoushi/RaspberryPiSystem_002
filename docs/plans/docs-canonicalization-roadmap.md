@@ -5421,7 +5421,18 @@ Status: implemented in PR432.
 - Do not edit module docs, deployment guide, verification checklist, KB index,
   or `EXEC_PLAN.md` in this PR.
 
-### PR433 And Later: Thin Indexes And Split Large Documents
+### PR433: Thin Active Loan Card Button Layout Index Block
+
+Status: implemented in PR433.
+
+- Thin only the 2025-12-11 / 2026-04-01 active-loan-card return/cancel button
+  layout latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the long-name layout, component split, and
+  Blob URL revoke details with a short link to KB-323.
+- Do not edit KB files, deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR434 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
