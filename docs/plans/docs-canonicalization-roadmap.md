@@ -5409,7 +5409,19 @@ Status: implemented in PR431.
 - Do not edit module docs, deployment guide, verification checklist, KB index,
   or `EXEC_PLAN.md` in this PR.
 
-### PR432 And Later: Thin Indexes And Split Large Documents
+### PR432: Thin Kiosk Loan List UI Index Block
+
+Status: implemented in PR432.
+
+- Thin only the 2025-12-11 kiosk active-loan-list UI improvement latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the measuring-instrument card,
+  photo-loan label, client-location label, and empty-item wording details with
+  short links to the measuring instruments UI document and KB-314.
+- Do not edit module docs, deployment guide, verification checklist, KB index,
+  or `EXEC_PLAN.md` in this PR.
+
+### PR433 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
