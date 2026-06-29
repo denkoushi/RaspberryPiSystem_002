@@ -5444,7 +5444,19 @@ Status: implemented in PR434.
 - Do not edit module docs, deployment guide, verification checklist, KB index,
   or `EXEC_PLAN.md` in this PR.
 
-### PR435 And Later: Thin Indexes And Split Large Documents
+### PR435: Thin NFC Scope Isolation Index Block
+
+Status: implemented in PR435.
+
+- Thin only the 2025-12-11 NFC/camera input scope isolation latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the PHOTO-mode misfire, `useNfcStream`,
+  `enabledAt`, and route-active subscription details with short links to the
+  NFC stream isolation Plan and KB-091.
+- Do not edit Plan bodies, KB files, module docs, deployment guide,
+  verification checklist, KB index, or `EXEC_PLAN.md` in this PR.
+
+### PR436 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
