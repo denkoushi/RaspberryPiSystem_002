@@ -5385,7 +5385,19 @@ Status: implemented in PR429.
 - Do not edit module docs, deployment guide, verification checklist, KB index,
   or `EXEC_PLAN.md` in this PR.
 
-### PR430 And Later: Thin Indexes And Split Large Documents
+### PR430: Thin Kiosk Return Tab Index Block
+
+Status: implemented in PR430.
+
+- Thin only the 2025-12-11 kiosk UI return-tab removal latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the duplicate return-tab removal and
+  active-loan-list return behavior details with a short link to the measuring
+  instruments UI document.
+- Do not edit module docs, deployment guide, verification checklist, KB index,
+  or `EXEC_PLAN.md` in this PR.
+
+### PR431 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
