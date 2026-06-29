@@ -4843,7 +4843,19 @@ Status: implemented in PR386.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR387 And Later: Thin Indexes And Split Large Documents
+### PR387: Thin Dropbox Config Index Block
+
+Status: implemented in PR387.
+
+- Thin only the 2026-01-06 Dropbox settings and `backup.json` protection
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Ansible regeneration, template and
+  vault coverage, `backup.json` existence and health checks, onsite validation,
+  and CI cleanup details with short links to KB-143 and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR388 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
