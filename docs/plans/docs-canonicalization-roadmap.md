@@ -5054,7 +5054,19 @@ Status: implemented in PR403.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR404 And Later: Thin Indexes And Split Large Documents
+### PR404: Thin CSV Schedule UI Index Block
+
+Status: implemented in PR404.
+
+- Thin only the 2025-12-29 CSV import schedule UI latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the backup-pane UI alignment, time/day
+  controls, cron display conversion, and deployment-procedure correction details
+  with short links to KB-109, KB-111, KB-110, and the deployment guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR405 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
