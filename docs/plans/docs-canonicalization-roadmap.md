@@ -5492,7 +5492,19 @@ Status: implemented in PR438.
 - Do not edit module docs, deployment guide, verification checklist, KB index,
   or `EXEC_PLAN.md` in this PR.
 
-### PR439 And Later: Thin Indexes And Split Large Documents
+### PR439: Thin Measuring Instrument Phase 1-3 Index Block
+
+Status: implemented in PR439.
+
+- Thin only the 2025-12-11 measuring-instrument management system Phase 1-3
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the schema, API, admin UI, kiosk UI, and
+  TS100/status details with short links to the measuring instruments README,
+  requirements, and UI documents.
+- Do not edit module docs, requirements, deployment guide, verification
+  checklist, KB index, or `EXEC_PLAN.md` in this PR.
+
+### PR440 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

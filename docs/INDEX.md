@@ -1354,7 +1354,7 @@
 - **計測機器キオスク: エラーメッセージ/リセット修正 正本**: [measuring instruments verification](./guides/measuring-instruments-verification.md#問題6-エラーメッセージが古いリセットが効かない)。
 - **計測機器キオスク実機検証トラブル対応 正本**: [measuring instruments verification](./guides/measuring-instruments-verification.md#問題5-キオスクブラウザ起動が空urlでカメラapiが動かない)。
 
-- **計測機器管理システム Phase 1-3 実装完了**: データベーススキーマ、バックエンドAPI（CRUD、持ち出し/返却API）、フロントエンドAPI統合、管理コンソールUI（計測機器・点検項目・RFIDタグ・点検記録のCRUDページ）、キオスク持出・返却ページ（手入力対応）を実装完了。TS100統合と点検項目表示・NGボタン機能は未実装。詳細は [modules/measuring-instruments/README.md](./modules/measuring-instruments/README.md) / [requirements/measuring-instruments-requirements.md](./requirements/measuring-instruments-requirements.md) / [modules/measuring-instruments/ui.md](./modules/measuring-instruments/ui.md) を参照。
+- **計測機器管理システム Phase 1-3 正本**: [measuring instruments README](./modules/measuring-instruments/README.md) / [requirements](./requirements/measuring-instruments-requirements.md) / [UI](./modules/measuring-instruments/ui.md)。
 
 - **Lint統合 Phase 8 完了**: 契約テスト（API/Web）と破壊的変更検知スナップショットを追加。`pnpm lint --max-warnings=0`/e2e-smoke/e2e-tests/docker-build がCIで成功（run #641）。import/order違反ナレッジをガイドに追加。詳細は [plans/lint-integration-plan.md](./plans/lint-integration-plan.md) / [guides/lint.md](./guides/lint.md) / [guides/ci-troubleshooting.md](./guides/ci-troubleshooting.md) を参照。
 
