@@ -4892,7 +4892,20 @@ Status: implemented in PR390.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR391 And Later: Thin Indexes And Split Large Documents
+### PR391: Thin Pi5 Storage Index Block
+
+Status: implemented in PR391.
+
+- Thin only the 2026-01-04 Pi5 storage maintenance latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the disk cleanup, storage-maintenance
+  timer, threshold tuning, signage history setting, Ansible timer management,
+  onsite validation, and API restart-loop side note with short links to KB-130,
+  KB-131, and the operation manual.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR392 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
