@@ -1234,7 +1234,7 @@
 
 ### 🆕 最新アップデート（2026-01-03）
 
-- **✅ Pi3サイネージ正常化作業完了**: Pi3のサイネージ画面が旧デザイン（「工具管理データ」タイトル、温度表示なし）のままだった問題を解決。Pi5のTSソース（`signage.renderer.ts`）が旧い実装のままだったため、正しい実装（「持出中アイテム」＋`getClientSystemMetricsText()`）を反映し、APIコンテナを`--no-cache`で再ビルドして正常化完了。DEBUG MODEのNDJSONログでrepo/コンテナの不一致を検出し、修正前後のログ比較で正常化を確認。Pi3のサイネージ画面で「持出中アイテム」タイトルと温度表示（`CPU xx% Temp yy.y°C`）が正常に表示されることを確認済み。詳細は [knowledge-base/infrastructure/signage.md#kb-127](./knowledge-base/infrastructure/signage.md#kb-127-サイネージuiで自端末の温度表示機能追加とデザイン変更) / [investigation/temperature-display-investigation.md](./investigation/temperature-display-investigation.md) を参照。
+- **Pi3サイネージ正常化 正本**: [KB-127](./knowledge-base/infrastructure/signage.md#kb-127-サイネージuiで自端末の温度表示機能追加とデザイン変更) · [temperature investigation](./investigation/temperature-display-investigation.md)。
 
 - **✅ キオスク・サイネージUIで自端末の温度表示機能追加・実機検証完了**: キオスクUI（Pi4）とサイネージUI（Pi3）で自端末の温度を表示する機能を実装し、実機検証を完了。`ClientDevice.statusClientId`フィールドを追加し、`x-client-key`と`status-agent`の`clientId`を紐づけ。`GET /api/kiosk/config`エンドポイントを拡張し、`clientStatus`を返却。サイネージレンダラーで`getClientSystemMetricsText()`を実装し、Pi3の温度を取得して画像に埋め込む。サイネージ左ペインのタイトルを「工具管理データ」→「持出中アイテム」に変更。実機検証でPi4のキオスクUIで自端末の温度が正しく表示されることを確認済み。詳細は [knowledge-base/api.md#kb-126](./knowledge-base/api.md#kb-126-キオスクuiで自端末の温度表示機能追加) / [knowledge-base/infrastructure/signage.md#kb-127](./knowledge-base/infrastructure/signage.md#kb-127-サイネージuiで自端末の温度表示機能追加とデザイン変更) / [investigation/temperature-display-investigation.md](./investigation/temperature-display-investigation.md) を参照。
 

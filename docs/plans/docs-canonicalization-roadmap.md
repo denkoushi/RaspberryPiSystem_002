@@ -4929,7 +4929,19 @@ Status: implemented in PR393.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR394 And Later: Thin Indexes And Split Large Documents
+### PR394: Thin Pi3 Signage Normalization Index Block
+
+Status: implemented in PR394.
+
+- Thin only the 2026-01-03 Pi3 signage normalization latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the old renderer diagnosis, rebuild,
+  debug-log comparison, and onsite screen confirmation details with short links
+  to KB-127 and the temperature display investigation.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR395 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
