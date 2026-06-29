@@ -5016,7 +5016,19 @@ Status: implemented in PR400.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR401 And Later: Thin Indexes And Split Large Documents
+### PR401: Thin Rigging CSV Layout Index Block
+
+Status: implemented in PR401.
+
+- Thin only the 2025-01-XX rigging CSV verification and layout improvement
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the new CSV field validation, layout
+  separation, form grid, and onsite save/display/edit checks with short links
+  to KB-120 and the verification checklist anchors.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR402 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
