@@ -1288,7 +1288,7 @@
 
 ### 🆕 最新アップデート（2025-12-17）
 
-- **✅ UI視認性向上カラーテーマ実装完了（Phase 1-8）**: 工場現場での視認性を向上させるため、提案3（工場現場特化・高視認性テーマ）を採用し、管理コンソール、サイネージ、キオスクのカラーテーマを改善完了。主要ページ（統合一覧、アイテム一覧、キオスク返却画面、サイネージレンダラー、管理コンソール全ページ、工具管理全ページ）に提案3カラーパレットを適用。コントラスト比約21:1（WCAG AAA準拠）を達成。詳細は [requirements/ui-visibility-color-theme.md](./requirements/ui-visibility-color-theme.md) / [modules/tools/README.md](./modules/tools/README.md) / [modules/measuring-instruments/ui.md](./modules/measuring-instruments/ui.md) / [modules/signage/README.md](./modules/signage/README.md) を参照。
+- **UI視認性向上カラーテーマ 正本**: [UI visibility requirements](./requirements/ui-visibility-color-theme.md) · [tools module](./modules/tools/README.md) · [measuring instruments UI](./modules/measuring-instruments/ui.md) · [signage module](./modules/signage/README.md)。
 
 - **✅ Dropbox CSVインポート Phase 3完全検証・ベストプラクティス実装完了**: Phase 3の必須検証（実際のデータファイルを使用したエンドツーエンドテスト、エラーハンドリングテスト）を完了。ベストプラクティス実装（バックアップ履歴の記録機能、リストアAPIのパス処理改善）も完了。すべての検証項目が正常に動作することを確認し、本番運用可能な状態に到達。詳細は [analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md) / [guides/phase3-complete-verification-summary.md](./guides/phase3-complete-verification-summary.md) / [guides/phase3-mandatory-verification-results.md](./guides/phase3-mandatory-verification-results.md) / [guides/phase3-error-handling-test-results.md](./guides/phase3-error-handling-test-results.md) / [guides/phase3-next-tasks.md](./guides/phase3-next-tasks.md) を参照。
 

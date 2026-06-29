@@ -5193,7 +5193,20 @@ Status: implemented in PR414.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR415 And Later: Thin Indexes And Split Large Documents
+### PR415: Thin UI Visibility Theme Index Block
+
+Status: implemented in PR415.
+
+- Thin only the 2025-12-17 UI visibility color theme latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the factory-floor visibility rationale,
+  selected theme proposal, admin/signage/kiosk scope, page coverage, color
+  palette, and contrast result details with short links to the UI visibility
+  requirements and affected module docs.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR416 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
