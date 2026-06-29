@@ -5456,7 +5456,19 @@ Status: implemented in PR435.
 - Do not edit Plan bodies, KB files, module docs, deployment guide,
   verification checklist, KB index, or `EXEC_PLAN.md` in this PR.
 
-### PR436 And Later: Thin Indexes And Split Large Documents
+### PR436: Thin Instrument Dropdown Auto-Submit Index Block
+
+Status: implemented in PR436.
+
+- Thin only the 2025-12-11 measuring-instrument kiosk dropdown auto-submit
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the JWT fallback, dropdown restoration,
+  and tag-unregistered auto-submit condition details with short links to the
+  measuring instruments verification and UI documents.
+- Do not edit module docs, deployment guide, verification checklist, KB index,
+  or `EXEC_PLAN.md` in this PR.
+
+### PR437 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
