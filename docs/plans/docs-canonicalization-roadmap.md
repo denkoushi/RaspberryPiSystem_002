@@ -4992,7 +4992,19 @@ Status: implemented in PR398.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR399 And Later: Thin Indexes And Split Large Documents
+### PR399: Thin Gmail CSV Manual Verification Index Block
+
+Status: implemented in PR399.
+
+- Thin only the 2026-01-03 Gmail CSV manual-run verification latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the Gmail search, CSV import,
+  error-handling, mail archive, and planned scheduled E2E details with short
+  links to KB-123 and the verification checklist.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR400 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
