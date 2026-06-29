@@ -1272,7 +1272,7 @@
 
 ### 🆕 最新アップデート（2025-12-19）
 
-- **✅ バックアップロジックのアーキテクチャ改善完了**: Factoryパターンとレジストリパターンを実装し、コード重複を完全に解消。新しいバックアップターゲット追加時の修正箇所が7箇所から2箇所に削減（約71%削減）。`BackupTargetFactory`と`StorageProviderFactory`を追加し、リストアロジックを各ターゲットに分離。設定ファイルによるパスマッピング管理を実装。`backup-scheduler.ts`に`client-file`ケースを追加して設定と実装の整合性を確保。リンター0エラー、ユニットテスト16/16成功。詳細は [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md#phase-7-バックアップロジックのアーキテクチャ改善--完了) / [guides/backup-configuration.md](./guides/backup-configuration.md) を参照。
+- **バックアップロジックアーキテクチャ改善 正本**: [backup target requirements](./requirements/backup-target-management-ui.md#phase-7-バックアップロジックのアーキテクチャ改善--完了) · [backup configuration](./guides/backup-configuration.md)。
 
 - **✅ Ansibleによるクライアント端末バックアップ機能実装完了**: クライアント端末（Pi4、Pi3など）のファイルは物理的に別マシン上に存在するため、Pi5（サーバー）のAPIから直接アクセスできない問題を解決するため、Ansibleを使用してクライアント端末のファイルをPi5に取得してバックアップする機能を実装完了。Ansibleのinventoryでクライアント端末を管理し、スケーラブルに対応。実装時にAnsibleとTailscaleの連携で問題が発生したが、`hosts: "{{ client_host }}"`への変更とSSH鍵のマウントにより解決。詳細は [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md) / [guides/backup-and-restore.md](./guides/backup-and-restore.md) / [guides/backup-configuration.md](./guides/backup-configuration.md) / [knowledge-base/infrastructure/backup-restore.md#kb-102](./knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照。
 

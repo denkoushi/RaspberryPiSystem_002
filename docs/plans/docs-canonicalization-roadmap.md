@@ -5116,7 +5116,20 @@ Status: implemented in PR408.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR409 And Later: Thin Indexes And Split Large Documents
+### PR409: Thin Backup Architecture Index Block
+
+Status: implemented in PR409.
+
+- Thin only the 2025-12-19 backup logic architecture latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the Factory/registry pattern, duplicated
+  backup logic, target addition, restore separation, path mapping, and scheduler
+  consistency details with short links to the backup target requirements and
+  backup configuration guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR410 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
