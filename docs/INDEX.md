@@ -1268,7 +1268,7 @@
 
 - **バックアップスクリプト整合性確認 正本**: [backup script integration](./guides/backup-script-integration-verification.md) · [KB-106](./knowledge-base/infrastructure/backup-restore.md#kb-106-バックアップスクリプトとの整合性確認)。
 
-- **✅ 実機検証完了（画像バックアップ・items.csv）**: 画像バックアップのリストア検証を完了。`tar.gz`形式のバックアップを正常に展開・復元することを確認。items.csvのバックアップ・リストア検証も完了。バリデーションエラーはデータの問題（`ITEM-XXX`形式が`TOXXXX`形式に適合しない）であり、リストア機能自体は正常動作していることを確認。詳細は [guides/backup-restore-verification-results.md](./guides/backup-restore-verification-results.md) / [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md) を参照。
+- **画像バックアップ・items.csv実機検証 正本**: [backup restore verification](./guides/backup-restore-verification-results.md) · [backup target requirements](./requirements/backup-target-management-ui.md)。
 
 ### 🆕 最新アップデート（2025-12-19）
 
