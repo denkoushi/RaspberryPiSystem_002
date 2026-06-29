@@ -5325,7 +5325,19 @@ Status: implemented in PR424.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR425 And Later: Thin Indexes And Split Large Documents
+### PR425: Thin Signage Layout Index Block
+
+Status: implemented in PR425.
+
+- Thin only the 2025-12-13 signage design layout and coordinate adjustment
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the server-side renderer spacing, right
+  pane title and file-name overlap, baseline offset, and PDF display area
+  adjustment details with short links to the signage module README and KB-084.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR426 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
