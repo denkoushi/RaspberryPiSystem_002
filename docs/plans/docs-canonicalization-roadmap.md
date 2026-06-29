@@ -5168,7 +5168,19 @@ Status: implemented in PR412.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR413 And Later: Thin Indexes And Split Large Documents
+### PR413: Thin Security Checklist Audit Index Block
+
+Status: implemented in PR413.
+
+- Thin only the 2025-12-18 standard security checklist audit latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the IPA, OWASP Top 10, CIS benchmark,
+  implemented-control summary, and deferred-control assessment details with a
+  short link to the standard security checklist audit report.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR414 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
