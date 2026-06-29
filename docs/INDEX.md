@@ -1284,7 +1284,7 @@
 
 - **標準セキュリティチェックリスト監査 正本**: [security checklist audit](./security/standard-security-checklist-audit.md)。
 
-- **✅ ポートセキュリティ強化（追加）完了**: Docker Composeのポートマッピング削除により、PostgreSQL（5432）とAPI（8080）のポートをDocker内部ネットワークでのみアクセス可能に（UFW依存を低減）。加えて、Pi5上の不要サービス（rpcbind/avahi/exim4/cups）をstop+disable+maskしてLISTEN自体を削減し、`ports-unexpected` を「外部露出 + プロセス込み」で有意にした。ベースライン証跡を保存。詳細は [security/port-security-audit.md](./security/port-security-audit.md) / [security/port-security-verification-results.md](./security/port-security-verification-results.md) / [knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ](./knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ) / [knowledge-base/infrastructure/ports-baseline-20260118.md](./knowledge-base/infrastructure/ports-baseline-20260118.md) を参照。
+- **ポートセキュリティ強化 正本**: [port security audit](./security/port-security-audit.md) · [verification results](./security/port-security-verification-results.md) · [KB-177](./knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ) · [ports baseline](./knowledge-base/infrastructure/ports-baseline-20260118.md)。
 
 ### 🆕 最新アップデート（2025-12-17）
 
