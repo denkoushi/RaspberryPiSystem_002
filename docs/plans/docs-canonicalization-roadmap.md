@@ -4830,7 +4830,20 @@ Status: implemented in PR385.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR386 And Later: Thin Indexes And Split Large Documents
+### PR386: Thin Backup Client Directory Index Block
+
+Status: implemented in PR386.
+
+- Thin only the 2026-01-06 manual backup 500-error and `client-directory`
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the target kind fixes, `client-directory`
+  support, `backup.json` normalization, Tailscale path correction, compose
+  certificate mount, and onsite validation details with short links to KB-144
+  and the backup API doc.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR387 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
