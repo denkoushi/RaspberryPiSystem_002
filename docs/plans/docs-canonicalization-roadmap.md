@@ -5337,7 +5337,19 @@ Status: implemented in PR425.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR426 And Later: Thin Indexes And Split Large Documents
+### PR426: Thin Signage PDF Upload Index Block
+
+Status: implemented in PR426.
+
+- Thin only the 2025-12-13 signage tab PDF upload integration latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the admin signage tab path, schedule-page
+  workflow, and shared `SignagePdfManager` details with a short link to the
+  signage module README.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR427 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

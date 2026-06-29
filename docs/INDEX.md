@@ -1318,7 +1318,7 @@
 
 - **サイネージデザイン改善 正本**: [signage module README](./modules/signage/README.md) · [KB-084](./knowledge-base/infrastructure/signage.md#kb-084-サイネージsvgレンダラーでカード内テキストが正しい位置に表示されない)。
 
-- **✅ サイネージタブ内にPDFアップロード機能を統合**: 管理コンソールの「サイネージ」タブ（`/admin/signage/schedules`）にPDFアップロード・管理機能を追加。スケジュール設定画面と同じページでPDFをアップロード・管理できるようになり、ワークフローが改善されました。`SignagePdfManager`コンポーネントを新規作成して共通化し、サイネージタブとクライアント端末管理ページの両方で使用可能に。詳細は [modules/signage/README.md](./modules/signage/README.md) を参照。
+- **サイネージPDFアップロード統合 正本**: [signage module README](./modules/signage/README.md)。
 
 ### 🆕 最新アップデート（2025-12-12）
 
