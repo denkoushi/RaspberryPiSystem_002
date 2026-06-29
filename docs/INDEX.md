@@ -1204,7 +1204,7 @@
 
 - **サイネージレイアウト・コンテンツ疎結合化 正本**: [KB-150](./knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了) · [signage module](./modules/signage/README.md) · [deployment](./guides/deployment.md)。
 
-- **✅ バックアップ履歴ページに用途列を追加（UI改善）完了**: バックアップ履歴のテーブルに「用途」列を追加し、各バックアップ対象の用途を一目で把握できるように改善。`targetKind`と`targetSource`から用途を自動判定する`getTargetPurpose`関数を実装し、日本語で分かりやすく表示。backup.json、vault.yml、.env、データベース、CSV、画像などの用途を適切に表示。実機検証で用途列が正しく表示され、レイアウトが崩れないことを確認。詳細は [knowledge-base/frontend.md#kb-149](./knowledge-base/frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善) を参照。
+- **バックアップ履歴ページ用途列 正本**: [KB-149](./knowledge-base/frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善)。
 
 - **✅ 外部連携運用台帳ドキュメント作成完了（P2実装）**: Dropbox/Gmail/Slackなどの外部サービス連携の設定・運用情報を一元管理する運用台帳ドキュメントを作成。各外部サービスの設定場所（Ansible Vault、backup.json、環境変数）、設定手順へのリンク、運用時の注意事項、トラブルシューティング情報、設定の永続化方法、ヘルスチェック方法をまとめ。既存のセットアップガイドやナレッジベースへの参照を整理し、運用者が外部連携の設定・運用を効率的に管理できるように改善。詳細は [guides/external-integration-ledger.md](./guides/external-integration-ledger.md) を参照。
 

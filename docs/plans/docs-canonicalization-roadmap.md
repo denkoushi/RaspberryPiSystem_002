@@ -4777,7 +4777,20 @@ Status: implemented in PR381.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR382 And Later: Thin Indexes And Split Large Documents
+### PR382: Thin Backup History Purpose Column Index Block
+
+Status: implemented in PR382.
+
+- Thin only the 2026-01-06 backup history purpose-column UI latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the purpose-column addition,
+  target-derived purpose detection, Japanese display labels, representative
+  target examples, onsite validation, and layout stability details with a short
+  link to KB-149.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR383 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
