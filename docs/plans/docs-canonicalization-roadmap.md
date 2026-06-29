@@ -5079,7 +5079,19 @@ Status: implemented in PR405.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR406 And Later: Thin Indexes And Split Large Documents
+### PR406: Thin Backup Error Handling Index Block
+
+Status: implemented in PR406.
+
+- Thin only the 2025-12-29 backup error handling latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the Dropbox download/delete retry,
+  rate-limit handling, network retry, and exponential backoff details with
+  short links to the backup error handling guide and KB-107.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR407 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
