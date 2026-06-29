@@ -5516,7 +5516,19 @@ Status: implemented in PR440.
 - Do not edit Plan bodies, guides, deployment guide, verification checklist,
   KB index, or `EXEC_PLAN.md` in this PR.
 
-### PR441 And Later: Thin Indexes And Split Large Documents
+### PR441: Thin Deployment Modules Index Block
+
+Status: implemented in PR441.
+
+- Thin only the 2025-12-11 deployment modules design latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the root-cause, impact analysis, modular
+  JSON pipeline, and test-plan details with a short link to the deployment
+  modules architecture document.
+- Do not edit architecture docs, deployment guide, verification checklist,
+  KB index, or `EXEC_PLAN.md` in this PR.
+
+### PR442 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
