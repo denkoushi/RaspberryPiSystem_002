@@ -4917,7 +4917,19 @@ Status: implemented in PR392.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR393 And Later: Thin Indexes And Split Large Documents
+### PR393: Thin Status Agent Config Index Block
+
+Status: implemented in PR393.
+
+- Thin only the 2026-01-04 Pi5 status-agent Ansible management latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the configuration drift, inventory/vault
+  coverage, role task rollout, timer enablement, and onsite validation details
+  with short links to KB-129 and the status-agent guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR394 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
