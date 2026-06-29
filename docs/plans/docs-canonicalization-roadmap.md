@@ -5480,7 +5480,19 @@ Status: implemented in PR437.
 - Do not edit module docs, deployment guide, verification checklist, KB index,
   or `EXEC_PLAN.md` in this PR.
 
-### PR438 And Later: Thin Indexes And Split Large Documents
+### PR438: Thin Instrument Kiosk Launch Troubleshooting Index Block
+
+Status: implemented in PR438.
+
+- Thin only the 2025-12-11 measuring-instrument kiosk launch troubleshooting
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the empty `kiosk-launch.sh` URL,
+  camera/API impact, and prevention details with a short link to the measuring
+  instruments verification guide.
+- Do not edit module docs, deployment guide, verification checklist, KB index,
+  or `EXEC_PLAN.md` in this PR.
+
+### PR439 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
