@@ -1345,7 +1345,7 @@
 - **持出一覧キオスクUI改善 正本**: [measuring instruments UI](./modules/measuring-instruments/ui.md) / [KB-314](./knowledge-base/KB-314-kiosk-loan-card-display-labels.md)。
 - **持出一覧カード: 返却・取消ボタン下段配置 正本**: [KB-323](./knowledge-base/KB-323-kiosk-return-card-button-layout.md)。
 
-- **✅ 計測機器持出: エラー時の無限ループ修正とメッセージ改善**: エラー発生時に持出登録ボタンが無限ループ動作する問題を修正。エラー時に氏名タグをクリアして自動再送を防止し、APIエラーメッセージを短縮・ユーザーフレンドリーに改善（「タグ未登録（計測機器）」「タグ未登録（社員）」「既に貸出中です」など）。詳細は [guides/measuring-instruments-verification.md](./guides/measuring-instruments-verification.md#問題9-エラー時に持出登録ボタンが無限ループ動作する) を参照。
+- **計測機器持出エラー処理 正本**: [measuring instruments verification](./guides/measuring-instruments-verification.md#問題9-エラー時に持出登録ボタンが無限ループ動作する) / [measuring instruments UI](./modules/measuring-instruments/ui.md)。
 
 - **✅ NFC/カメラ入力のスコープ分離: 実装完了**: 計測機器モードでの氏名タグスキャン直後にPHOTOモードが誤発火する問題を解決。`useNfcStream`フックに`enabled`フラグと`enabledAt`タイムスタンプを追加し、ページ遷移前のイベントを無視。各キオスクページで`useMatch`を使用して、アクティブなページの時のみNFC購読を有効化。詳細は [plans/nfc-stream-isolation-plan.md](./plans/nfc-stream-isolation-plan.md) を参照。
 
