@@ -5028,7 +5028,20 @@ Status: implemented in PR401.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR402 And Later: Thin Indexes And Split Large Documents
+### PR402: Thin Measuring UID Index Block
+
+Status: implemented in PR402.
+
+- Thin only the 2025-01-XX measuring instrument UID edit bugfix latest-update
+  block in `docs/INDEX.md`.
+- Preserve reachability, but replace the multiple-tag root cause, API update
+  behavior, manual-edit flag, runtime evidence, and onsite validation details
+  with short links to API KB-118, frontend KB-119, and the verification
+  checklist.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR403 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
