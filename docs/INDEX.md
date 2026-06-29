@@ -1298,7 +1298,7 @@
 
 - **Dropbox CSVインポート Phase 1/2補完 正本**: [integration status](./analysis/dropbox-csv-integration-status.md) · [PowerAutomate integration guide](./guides/powerautomate-dropbox-integration.md)。
 
-- **✅ Dropbox CSVインポート Phase 2 実機検証完了**: Phase 2の実機検証を完了。スケジュールAPI（CRUD）、手動実行API、CsvImportScheduler、ImportHistoryService（履歴記録）、ImportAlertService（アラート生成）のすべてが正常に動作することを確認。Dockerfile.apiにscriptsディレクトリを追加し、アラート生成機能も正常動作を確認。KB-101としてPi5へのSSH接続不可問題（force pushの影響）も記録。詳細は [analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md) / [knowledge-base/infrastructure/ansible-deployment.md#kb-101](./knowledge-base/infrastructure/ansible-deployment.md#kb-101-pi5へのssh接続不可問題の原因と解決) を参照。
+- **Dropbox CSVインポート Phase 2実機検証 正本**: [integration status](./analysis/dropbox-csv-integration-status.md) · [KB-101](./knowledge-base/infrastructure/ansible-deployment.md#kb-101-pi5へのssh接続不可問題の原因と解決)。
 
 ### 🆕 最新アップデート（2025-12-15）
 
