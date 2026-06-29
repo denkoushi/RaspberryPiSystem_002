@@ -1202,7 +1202,7 @@
 
 ### 🆕 最新アップデート（2026-01-06）
 
-- **✅ サイネージレイアウトとコンテンツの疎結合化実装完了**: サイネージのレイアウト（全体/左右）と各エリアのコンテンツ（PDF/持出一覧/将来のCSV可視化）を分離し、新しい可視化を追加する際のコード変更を最小限に抑えられる構造を実現。`SignageSchedule`と`SignageEmergency`に`layoutConfig Json?`フィールドを追加し、レイアウトごとのキャンバス割当とslotごとのSVG生成を分離。既存の`contentType`/`pdfId`形式を新形式へ自動変換する機能を実装し、後方互換性を維持。管理コンソールUIでレイアウト（全体/左右）と各スロットのコンテンツ種別（PDF/持出一覧）を選択可能に。デプロイ時にPrisma Client再生成が必要な場合があることをナレッジベースに記録。詳細は [knowledge-base/infrastructure/signage.md#kb-150](./knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了) / [modules/signage/README.md](./modules/signage/README.md) / [guides/deployment.md](./guides/deployment.md) を参照。
+- **サイネージレイアウト・コンテンツ疎結合化 正本**: [KB-150](./knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了) · [signage module](./modules/signage/README.md) · [deployment](./guides/deployment.md)。
 
 - **✅ バックアップ履歴ページに用途列を追加（UI改善）完了**: バックアップ履歴のテーブルに「用途」列を追加し、各バックアップ対象の用途を一目で把握できるように改善。`targetKind`と`targetSource`から用途を自動判定する`getTargetPurpose`関数を実装し、日本語で分かりやすく表示。backup.json、vault.yml、.env、データベース、CSV、画像などの用途を適切に表示。実機検証で用途列が正しく表示され、レイアウトが崩れないことを確認。詳細は [knowledge-base/frontend.md#kb-149](./knowledge-base/frontend.md#kb-149-バックアップ履歴ページに用途列を追加ui改善) を参照。
 

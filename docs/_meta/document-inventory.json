@@ -16,17 +16,17 @@
   },
   "summary": {
     "documentCount": 447,
-    "totalLines": 139238,
-    "totalBytes": 10215066,
+    "totalLines": 139764,
+    "totalBytes": 10267363,
     "withFrontmatter": 162,
     "withStatus": 23,
     "sourceOfTruthDeclared": 7,
-    "execPlanReferences": 61,
+    "execPlanReferences": 62,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 16,
-    "localLinkCount": 5214,
-    "brokenLocalLinkCount": 114,
+    "localLinkCount": 5224,
+    "brokenLocalLinkCount": 113,
     "documentsOver1000Lines": 27,
     "documentsOver3000Lines": 7,
     "brokenLocalLinks": [
@@ -559,11 +559,6 @@
         "sourcePath": "docs/modules/tools/photo-loan.md",
         "href": "../runbooks/photo-tool-similarity-gallery.md",
         "targetPath": "docs/modules/runbooks/photo-tool-similarity-gallery.md"
-      },
-      {
-        "sourcePath": "docs/plans/leaderboard-defer-totals-performance-recovery.md",
-        "href": "../verification-checklist.md",
-        "targetPath": "docs/verification-checklist.md"
       },
       {
         "sourcePath": "docs/plans/load-balancing-outsourcing-improvement-proposal.md",
@@ -6034,7 +6029,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1824,
-      "byteSize": 345766,
+      "byteSize": 344884,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -17363,8 +17358,8 @@
     },
     {
       "path": "docs/guides/local-alerts.md",
-      "lineCount": 414,
-      "byteSize": 16939,
+      "lineCount": 428,
+      "byteSize": 17671,
       "hasFrontmatter": true,
       "title": "ローカル環境対応の通知機能ガイド",
       "status": null,
@@ -17386,7 +17381,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 3,
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -18874,8 +18869,8 @@
     },
     {
       "path": "docs/guides/ssd-migration.md",
-      "lineCount": 315,
-      "byteSize": 8699,
+      "lineCount": 344,
+      "byteSize": 11546,
       "hasFrontmatter": true,
       "title": "SDカードからSSDへの移行手順",
       "status": null,
@@ -18897,7 +18892,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -18952,8 +18947,8 @@
     },
     {
       "path": "docs/guides/status-agent.md",
-      "lineCount": 183,
-      "byteSize": 6490,
+      "lineCount": 223,
+      "byteSize": 9712,
       "hasFrontmatter": false,
       "title": "🛰️ status-agent セットアップガイド",
       "status": null,
@@ -18965,7 +18960,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 7,
+      "inboundCount": 8,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -19550,7 +19545,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 75,
+      "inboundCount": 76,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -21625,7 +21620,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 12,
+      "inboundCount": 13,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -23249,7 +23244,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 3,
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -23616,8 +23611,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-private-pi5-hermes-life-pilot.md",
-      "lineCount": 492,
-      "byteSize": 33612,
+      "lineCount": 509,
+      "byteSize": 35625,
       "hasFrontmatter": false,
       "title": "KB-private-pi5-hermes-life-pilot: Discord Life Pilot（D6-life 以降）",
       "status": null,
@@ -24010,8 +24005,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md",
-      "lineCount": 145,
-      "byteSize": 10596,
+      "lineCount": 148,
+      "byteSize": 11337,
       "hasFrontmatter": true,
       "title": "KB-private-pi5-hermes-task-dgx-profile-restore",
       "status": null,
@@ -24062,7 +24057,7 @@
     {
       "path": "docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md",
       "lineCount": 144,
-      "byteSize": 9796,
+      "byteSize": 9806,
       "hasFrontmatter": false,
       "title": "KB-private-pi5-hermes-tools-security-threat-model: ツール有効化前の脅威モデル",
       "status": null,
@@ -29562,8 +29557,8 @@
     },
     {
       "path": "docs/plans/docs-canonicalization-roadmap.md",
-      "lineCount": 4816,
-      "byteSize": 200395,
+      "lineCount": 4829,
+      "byteSize": 200965,
       "hasFrontmatter": true,
       "title": "Docs Canonicalization Roadmap",
       "status": "active",
@@ -29973,16 +29968,21 @@
     },
     {
       "path": "docs/plans/leaderboard-defer-totals-performance-recovery.md",
-      "lineCount": 782,
-      "byteSize": 57877,
+      "lineCount": 839,
+      "byteSize": 72236,
       "hasFrontmatter": true,
       "title": "Plan: Leaderboard deferTotals Performance Recovery",
-      "status": "pi5_labor_toggle_banner_deployed_plus_labor_display_and_gantt_ruler_verified",
+      "status": "labor_metadata_overlay_verified",
       "source_of_truth": "true",
       "localLinks": [
         {
           "href": "../guides/deployment.md#deploy-api-build-cache-health-wait-2026-06-17",
           "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
+        {
+          "href": "../guides/verification-checklist.md",
+          "targetPath": "docs/guides/verification-checklist.md",
           "exists": true
         },
         {
@@ -29994,11 +29994,6 @@
           "href": "../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
           "targetPath": "docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md",
           "exists": true
-        },
-        {
-          "href": "../verification-checklist.md",
-          "targetPath": "docs/verification-checklist.md",
-          "exists": false
         }
       ],
       "inboundCount": 14,
@@ -30605,8 +30600,8 @@
     },
     {
       "path": "docs/plans/private-pi5-hermes-life-pilot-execplan.md",
-      "lineCount": 345,
-      "byteSize": 22969,
+      "lineCount": 362,
+      "byteSize": 24453,
       "hasFrontmatter": true,
       "title": "Hermes Life Pilot（D6-life）",
       "status": null,
@@ -31247,16 +31242,36 @@
     },
     {
       "path": "docs/plans/stability-improvement-plan.md",
-      "lineCount": 255,
-      "byteSize": 10776,
+      "lineCount": 348,
+      "byteSize": 16380,
       "hasFrontmatter": false,
       "title": "システムの安定性向上 - 開発計画",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
         {
+          "href": "../../apps/api/src/services/clients/client-telemetry.service.ts",
+          "targetPath": "apps/api/src/services/clients/client-telemetry.service.ts",
+          "exists": true
+        },
+        {
+          "href": "../../clients/status-agent/status-agent.py",
+          "targetPath": "clients/status-agent/status-agent.py",
+          "exists": true
+        },
+        {
+          "href": "../../clients/status-agent/storage_health.py",
+          "targetPath": "clients/status-agent/storage_health.py",
+          "exists": true
+        },
+        {
           "href": "../guides/error-handling.md",
           "targetPath": "docs/guides/error-handling.md",
+          "exists": true
+        },
+        {
+          "href": "../guides/local-alerts.md",
+          "targetPath": "docs/guides/local-alerts.md",
           "exists": true
         },
         {
@@ -31265,8 +31280,23 @@
           "exists": true
         },
         {
+          "href": "../guides/status-agent.md",
+          "targetPath": "docs/guides/status-agent.md",
+          "exists": true
+        },
+        {
           "href": "../requirements/system-requirements.md",
           "targetPath": "docs/requirements/system-requirements.md",
+          "exists": true
+        },
+        {
+          "href": "../../infrastructure/ansible/inventory.yml",
+          "targetPath": "infrastructure/ansible/inventory.yml",
+          "exists": true
+        },
+        {
+          "href": "../../infrastructure/ansible/templates/status-agent.conf.j2",
+          "targetPath": "infrastructure/ansible/templates/status-agent.conf.j2",
           "exists": true
         }
       ],
@@ -31274,7 +31304,7 @@
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
-      "referencesExecPlan": false
+      "referencesExecPlan": true
     },
     {
       "path": "docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md",
@@ -32144,8 +32174,8 @@
     },
     {
       "path": "docs/runbooks/dgx-system-prod-local-llm.md",
-      "lineCount": 1179,
-      "byteSize": 134426,
+      "lineCount": 1181,
+      "byteSize": 134848,
       "hasFrontmatter": false,
       "title": "Runbook: DGX Spark system-prod LocalLLM 段階切替",
       "status": null,
@@ -32476,6 +32506,10 @@
           "length": 1202
         },
         {
+          "line": 126,
+          "length": 1193
+        },
+        {
           "line": 139,
           "length": 1684
         },
@@ -32492,27 +32526,27 @@
           "length": 1671
         },
         {
-          "line": 339,
+          "line": 340,
           "length": 1220
         },
         {
-          "line": 341,
+          "line": 342,
           "length": 1167
         },
         {
-          "line": 343,
+          "line": 344,
           "length": 1120
         },
         {
-          "line": 345,
+          "line": 346,
           "length": 1414
         },
         {
-          "line": 347,
+          "line": 348,
           "length": 1098
         },
         {
-          "line": 349,
+          "line": 350,
           "length": 1145
         }
       ],
@@ -33401,8 +33435,8 @@
     },
     {
       "path": "docs/runbooks/private-pi5-hermes-deploy.md",
-      "lineCount": 1063,
-      "byteSize": 72716,
+      "lineCount": 1304,
+      "byteSize": 93891,
       "hasFrontmatter": false,
       "title": "私用 Pi5 Hermes Agent 標準デプロイ",
       "status": null,
@@ -33426,6 +33460,21 @@
         {
           "href": "../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
           "targetPath": "docs/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md",
+          "exists": true
+        },
+        {
+          "href": "../guides/ssd-migration.md",
+          "targetPath": "docs/guides/ssd-migration.md",
+          "exists": true
+        },
+        {
+          "href": "../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md",
+          "targetPath": "docs/knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md",
+          "exists": true
+        },
+        {
+          "href": "../knowledge-base/KB-389-dgx-resource-runtime-profile-resource-state.md",
+          "targetPath": "docs/knowledge-base/KB-389-dgx-resource-runtime-profile-resource-state.md",
           "exists": true
         },
         {

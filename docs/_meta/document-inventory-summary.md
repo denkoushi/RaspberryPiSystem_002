@@ -12,17 +12,17 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 447 |
-| Total lines | 139238 |
-| Total bytes | 10215066 |
+| Total lines | 139764 |
+| Total bytes | 10267363 |
 | With frontmatter | 162 |
 | With status | 23 |
 | source_of_truth declared | 7 |
-| References to EXEC_PLAN.md | 61 |
+| References to EXEC_PLAN.md | 62 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
 | Long-line documents | 16 |
-| Local links | 5214 |
-| Broken local links | 114 |
+| Local links | 5224 |
+| Broken local links | 113 |
 | Documents over 1,000 lines | 27 |
 | Documents over 3,000 lines | 7 |
 
@@ -32,7 +32,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 |------|------:|------:|
 | `docs/guides/deployment.md` | 5161 | 776938 |
 | `docs/knowledge-base/api.md` | 4881 | 354497 |
-| `docs/plans/docs-canonicalization-roadmap.md` | 4816 | 200395 |
+| `docs/plans/docs-canonicalization-roadmap.md` | 4829 | 200965 |
 | `EXEC_PLAN.md` | 4658 | 975476 |
 | `docs/knowledge-base/frontend.md` | 4643 | 277726 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4368 | 281572 |
@@ -40,7 +40,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/architecture/deployment-modules.md` | 2523 | 128110 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188223 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2190 | 135175 |
-| `docs/INDEX.md` | 1824 | 345766 |
+| `docs/INDEX.md` | 1824 | 344884 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153339 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1567 | 165051 |
 | `docs/knowledge-base/infrastructure/miscellaneous.md` | 1322 | 74222 |
@@ -83,7 +83,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 349:1050)
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (38:1075)
 - `docs/runbooks/deploy-status-recovery.md` (44:1743, 84:1016, 85:1999)
-- `docs/runbooks/dgx-system-prod-local-llm.md` (46:1202, 139:1684, 141:1075)
+- `docs/runbooks/dgx-system-prod-local-llm.md` (46:1202, 126:1193, 139:1684)
 - `docs/runbooks/kiosk-documents.md` (174:1747)
 - `docs/runbooks/mobile-placement-smartphone.md` (3:1780, 16:1012, 26:2108)
 - `docs/runbooks/zero2w-tanaban-edge-setup.md` (77:1038)
