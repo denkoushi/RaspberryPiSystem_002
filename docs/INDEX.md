@@ -1294,7 +1294,7 @@
 
 ### 🆕 最新アップデート（2025-12-16）
 
-- **✅ Dropbox CSVインポート Phase 3実装完了**: CSVインポート後の自動バックアップ機能、Dropboxからの自動リストア機能、バックアップ・リストア履歴機能を実装完了。`BackupHistory`モデル追加、`BackupHistoryService`実装、`BackupVerifier`による整合性検証機能、バックアップ履歴APIエンドポイント追加を完了。CIテストもすべて成功（BackupVerifier 12件、自動バックアップ機能 21件、バックアップAPI統合テストすべて成功）。詳細は [analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md) / [guides/csv-import-export.md](./guides/csv-import-export.md) を参照。
+- **Dropbox CSVインポート Phase 3実装 正本**: [integration status](./analysis/dropbox-csv-integration-status.md) · [CSV import/export](./guides/csv-import-export.md)。
 
 - **✅ Dropbox CSVインポート Phase 1/2補完タスク完了**: Phase 1補完として認可設定確認（mustBeAdmin適用、rateLimit設定）、大規模CSV性能テスト（1000行・10000行）、テスト独立性の問題修正を完了。Phase 2補完としてPowerAutomate側仕様のドキュメント化（`docs/guides/powerautomate-dropbox-integration.md`）、PowerAutomate未配置時のリトライ/アラート確認テスト追加、履歴APIフィルタ/ページング機能実装を完了。CIテストもすべて成功（192 passed, 21 passed, 14 passed, 18 passed, 24 passed, 4 passed）。詳細は [analysis/dropbox-csv-integration-status.md](./analysis/dropbox-csv-integration-status.md) / [guides/powerautomate-dropbox-integration.md](./guides/powerautomate-dropbox-integration.md) を参照。
 
