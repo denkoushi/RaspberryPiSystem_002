@@ -1258,7 +1258,7 @@
 
 ### 🆕 最新アップデート（2025-12-29）
 
-- **✅ CSVインポートスケジュールページのUI統一・表示改善完了**: CSVインポートスケジュールページの日付指定UIをバックアップペイン（`BackupTargetForm.tsx`）と同じUIに統一。時刻入力（`type="time"`）と曜日選択ボタンを使用し、UI形式からcron形式への変換関数を実装。スケジュール表示を人間が読みやすい形式に変更（cron形式 `0 4 * * 1,2,3` → 「毎週月曜日、火曜日、水曜日の午前4時」）。デプロイ標準手順の遵守を徹底し、現在のブランチを使用するように修正。詳細は [knowledge-base/frontend.md#kb-109](./knowledge-base/frontend.md#kb-109-csvインポートスケジュールページのui統一バックアップペインと同じui) / [knowledge-base/frontend.md#kb-111](./knowledge-base/frontend.md#kb-111-csvインポートスケジュールの表示を人間が読みやすい形式に変更) / [knowledge-base/infrastructure/ansible-deployment.md#kb-110](./knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた) / [guides/deployment.md](./guides/deployment.md) を参照。
+- **CSVインポートスケジュールUI統一・表示改善 正本**: [KB-109](./knowledge-base/frontend.md#kb-109-csvインポートスケジュールページのui統一バックアップペインと同じui) · [KB-111](./knowledge-base/frontend.md#kb-111-csvインポートスケジュールの表示を人間が読みやすい形式に変更) · [KB-110](./knowledge-base/infrastructure/ansible-deployment.md#kb-110-デプロイ時の問題リモートにプッシュしていなかった標準手順を無視していた) · [deployment](./guides/deployment.md)。
 
 - **✅ Gmailデータ取得機能実装完了**: PowerAutomateからGmail経由でCSVファイルやJPEGファイルをPi5に送信し、自動的にインポートする機能を実装完了。OAuth 2.0認証によるセキュアな認証フローを実装し、管理画面からGmail設定を管理できるUIを実装。Tailscale DNSをオフにした場合の`/etc/hosts`設定スクリプトを作成し、Gmail OAuth認証が正常に完了（refresh token取得済み）。GmailとDropboxのトークンリフレッシュの違いを明確化（Gmailは自動リフレッシュ、Dropboxは手動リフレッシュ）。詳細は [plans/gmail-data-acquisition-execplan.md](./plans/gmail-data-acquisition-execplan.md) / [guides/gmail-setup-guide.md](./guides/gmail-setup-guide.md) / [knowledge-base/infrastructure/backup-restore.md#kb-108](./knowledge-base/infrastructure/backup-restore.md#kb-108-gmail-oauth認証時のtailscale-dns解決問題とetchosts設定) を参照。
 
