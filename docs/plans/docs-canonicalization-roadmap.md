@@ -5232,7 +5232,21 @@ Status: implemented in PR417.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR418 And Later: Thin Indexes And Split Large Documents
+### PR418: Thin Dropbox CSV Phase 1/2 Follow-Up Index Block
+
+Status: implemented in PR418.
+
+- Thin only the 2025-12-16 Dropbox CSV import Phase 1/2 follow-up
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the mustBeAdmin/rateLimit confirmation,
+  large CSV performance tests, test isolation fix, PowerAutomate-side
+  specification, unavailable-file retry/alert tests, history API filter/paging,
+  and CI result details with short links to the integration status and
+  PowerAutomate integration guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR419 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
