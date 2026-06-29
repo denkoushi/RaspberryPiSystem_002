@@ -1306,7 +1306,7 @@
 
 - **Dropbox CSVインポート Phase 1実装 正本**: [integration status](./analysis/dropbox-csv-integration-status.md) · [CI branch protection](./guides/ci-branch-protection.md)。
 
-- **✅ Dropbox OAuth 2.0フローとリフレッシュトークン自動更新機能実装・実機検証完了**: OAuth 2.0認証フロー、リフレッシュトークンによる自動アクセストークン更新機能を実装完了し、実機検証も完了。401エラー（`expired_access_token`）時に自動的にリフレッシュし、設定ファイルを自動更新。テストも実装済み（10件すべてパス）。実機検証では、Docker Composeのconfigボリューム読み書き権限問題（KB-099）を解決し、OAuth認証フロー、リフレッシュトークン更新、ファイルバックアップの動作を確認済み。詳細は [plans/backup-modularization-execplan.md](./plans/backup-modularization-execplan.md) / [guides/dropbox-oauth-setup-guide.md](./guides/dropbox-oauth-setup-guide.md) / [guides/dropbox-oauth-verification-checklist.md](./guides/dropbox-oauth-verification-checklist.md) / [knowledge-base/infrastructure/backup-restore.md#kb-099](./knowledge-base/infrastructure/backup-restore.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題) を参照。
+- **Dropbox OAuth 2.0フロー・自動更新 正本**: [backup modularization plan](./plans/backup-modularization-execplan.md) · [setup guide](./guides/dropbox-oauth-setup-guide.md) · [verification checklist](./guides/dropbox-oauth-verification-checklist.md) · [KB-099](./knowledge-base/infrastructure/backup-restore.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題)。
 
 ### 🆕 最新アップデート（2025-12-14）
 
