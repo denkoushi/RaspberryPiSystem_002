@@ -1280,7 +1280,7 @@
 
 ### 🆕 最新アップデート（2025-12-18）
 
-- **✅ バックアップ対象管理UI実装完了**: 管理コンソールの「バックアップ」タブからバックアップ対象（`targets`）を管理できる機能を実装完了。バックアップ対象の追加・編集・削除、有効/無効切り替え、手動バックアップ実行が可能。`backup.sh`スクリプトと管理コンソールの機能が整合性を保ち、設定ファイル（`backup.json`）の変更が即座に反映される。統合テスト・E2Eテストも実装済み。詳細は [requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md) / [guides/backup-target-management-verification.md](./guides/backup-target-management-verification.md) / [guides/backup-and-restore.md](./guides/backup-and-restore.md) / [guides/backup-configuration.md](./guides/backup-configuration.md) を参照。
+- **バックアップ対象管理UI 正本**: [backup target requirements](./requirements/backup-target-management-ui.md) · [verification](./guides/backup-target-management-verification.md) · [backup and restore](./guides/backup-and-restore.md) · [backup configuration](./guides/backup-configuration.md)。
 
 - **✅ 標準セキュリティチェックリスト監査完了**: IPA「安全なウェブサイトの作り方」、OWASP Top 10 2021、CISベンチマークに基づく監査を実施。主要なセキュリティ対策がほぼ完了していることを確認。未実施項目（CSRF対策、PostgreSQLのSSL/TLS接続強制、パスワードポリシー強化など）と必要性を評価。詳細は [security/standard-security-checklist-audit.md](./security/standard-security-checklist-audit.md) を参照。
 
