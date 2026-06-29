@@ -4816,7 +4816,21 @@ Status: implemented in PR384.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR385 And Later: Thin Indexes And Split Large Documents
+### PR385: Thin backup.json Provider Namespace Index Block
+
+Status: implemented in PR385.
+
+- Thin only the 2026-01-06 `backup.json` provider namespace latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the provider namespace migration,
+  cross-provider overwrite prevention, compatibility, legacy normalization,
+  nested environment resolution, OAuth flow handling, Gmail settings support,
+  and onsite validation details with short links to KB-147, the backup API doc,
+  and the Gmail setup guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR386 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
