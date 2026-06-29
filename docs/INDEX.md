@@ -1310,7 +1310,7 @@
 
 ### 🆕 最新アップデート（2025-12-14）
 
-- **✅ Phase 9/10 セキュリティ強化完了**: インターネット接続時の追加防御（Phase 9）と認証・監視強化（Phase 10）を実装完了。管理画面IP制限、Webhookアラート通知、セキュリティヘッダー（Strict-Transport-Security含む）、DDoS/ブルートフォース緩和（レート制限）、MFA（多要素認証）、リアルタイム監視強化、権限監査を実装。実機テストも完了し、ローカルネットワークとインターネットの両環境で安全に運用可能。詳細は [plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md) / [security/phase9-10-specifications.md](./security/phase9-10-specifications.md) / [security/implementation-assessment.md](./security/implementation-assessment.md) を参照。
+- **Phase 9/10 セキュリティ強化 正本**: [security hardening plan](./plans/security-hardening-execplan.md) · [phase 9/10 specifications](./security/phase9-10-specifications.md) · [implementation assessment](./security/implementation-assessment.md)。
 
 - **📊 外部インシデント評価と追加対策**: アスクル社ランサムウェア事故を踏まえた対応可否と推奨対策（MFA、リアルタイム監視、権限監査）を実装完了。詳細は [security/implementation-assessment.md](./security/implementation-assessment.md) を参照。
 

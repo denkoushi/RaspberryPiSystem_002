@@ -5298,7 +5298,22 @@ Status: implemented in PR422.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR423 And Later: Thin Indexes And Split Large Documents
+### PR423: Thin Security Phase 9/10 Index Block
+
+Status: implemented in PR423.
+
+- Thin only the 2025-12-14 Phase 9/10 security hardening latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the internet-facing defense,
+  authentication and monitoring hardening, admin IP restriction, webhook alerts,
+  security headers, DDoS and brute-force mitigation, MFA, real-time monitoring,
+  permission audit, and real-device validation details with short links to the
+  security hardening plan, Phase 9/10 specifications, and implementation
+  assessment.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR424 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
