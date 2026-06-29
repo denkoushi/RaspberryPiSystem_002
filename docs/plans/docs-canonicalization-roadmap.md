@@ -5432,7 +5432,19 @@ Status: implemented in PR433.
 - Do not edit KB files, deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR434 And Later: Thin Indexes And Split Large Documents
+### PR434: Thin Instrument Borrow Error Handling Index Block
+
+Status: implemented in PR434.
+
+- Thin only the 2025-12-11 measuring-instrument borrow error-loop and message
+  improvement latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the auto-resubmit prevention and short
+  error-message details with short links to the measuring instruments
+  verification and UI documents.
+- Do not edit module docs, deployment guide, verification checklist, KB index,
+  or `EXEC_PLAN.md` in this PR.
+
+### PR435 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
