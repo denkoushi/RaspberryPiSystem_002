@@ -1216,7 +1216,7 @@
 
 - **Dropbox設定恒久対策・backup.json保護 正本**: [KB-143](./knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策) · [deployment](./guides/deployment.md)。
 
-- **✅ Gmail OAuthとDropboxバックアップのトークン衝突（refreshToken共有）を恒久対策（トークン分離）**: Gmail OAuthのトークン保存がDropbox用トークンを上書きしてしまい、Dropbox手動バックアップが大量に失敗する問題を解決。`backup.json`の`storage.options`でGmail用トークンを`gmailAccessToken/gmailRefreshToken`に分離し、Gmail設定の「設定済み」判定も`storage.provider`に依存しない形へ改善。CSVインポート後の自動バックアップ等のトークン更新も分離し、再発を防止。詳細は [knowledge-base/infrastructure/backup-restore.md#kb-146](./knowledge-base/infrastructure/backup-restore.md#kb-146-gmail-oauthがdropboxトークンを上書きしdropboxバックアップが失敗するトークン分離で恒久対策) / [guides/gmail-setup-guide.md](./guides/gmail-setup-guide.md) を参照。
+- **Gmail OAuth / Dropboxバックアップ衝突対策 正本**: [KB-146](./knowledge-base/infrastructure/backup-restore.md#kb-146-gmail-oauthがdropboxトークンを上書きしdropboxバックアップが失敗するトークン分離で恒久対策) · [gmail setup](./guides/gmail-setup-guide.md)。
 
 ### 🆕 最新アップデート（2026-01-05）
 

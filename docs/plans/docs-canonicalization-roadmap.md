@@ -4855,7 +4855,20 @@ Status: implemented in PR387.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR388 And Later: Thin Indexes And Split Large Documents
+### PR388: Thin Gmail Dropbox Conflict Index Block
+
+Status: implemented in PR388.
+
+- Thin only the 2026-01-06 Gmail OAuth and Dropbox backup conflict
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the OAuth storage separation,
+  configured-state handling, CSV auto-backup update handling, and
+  recurrence-prevention details with short links to KB-146 and the Gmail setup
+  guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR389 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
