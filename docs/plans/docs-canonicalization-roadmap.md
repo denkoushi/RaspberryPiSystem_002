@@ -4790,7 +4790,20 @@ Status: implemented in PR382.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR383 And Later: Thin Indexes And Split Large Documents
+### PR383: Thin External Integration Ledger Index Block
+
+Status: implemented in PR383.
+
+- Thin only the 2026-01-06 external integration ledger latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the service coverage, setting locations,
+  setup links, operation notes, troubleshooting references, persistence,
+  health-check, and existing-guide consolidation details with a short link to
+  the external integration ledger.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR384 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
