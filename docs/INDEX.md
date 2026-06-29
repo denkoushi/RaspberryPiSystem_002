@@ -1236,7 +1236,7 @@
 
 - **Pi3サイネージ正常化 正本**: [KB-127](./knowledge-base/infrastructure/signage.md#kb-127-サイネージuiで自端末の温度表示機能追加とデザイン変更) · [temperature investigation](./investigation/temperature-display-investigation.md)。
 
-- **✅ キオスク・サイネージUIで自端末の温度表示機能追加・実機検証完了**: キオスクUI（Pi4）とサイネージUI（Pi3）で自端末の温度を表示する機能を実装し、実機検証を完了。`ClientDevice.statusClientId`フィールドを追加し、`x-client-key`と`status-agent`の`clientId`を紐づけ。`GET /api/kiosk/config`エンドポイントを拡張し、`clientStatus`を返却。サイネージレンダラーで`getClientSystemMetricsText()`を実装し、Pi3の温度を取得して画像に埋め込む。サイネージ左ペインのタイトルを「工具管理データ」→「持出中アイテム」に変更。実機検証でPi4のキオスクUIで自端末の温度が正しく表示されることを確認済み。詳細は [knowledge-base/api.md#kb-126](./knowledge-base/api.md#kb-126-キオスクuiで自端末の温度表示機能追加) / [knowledge-base/infrastructure/signage.md#kb-127](./knowledge-base/infrastructure/signage.md#kb-127-サイネージuiで自端末の温度表示機能追加とデザイン変更) / [investigation/temperature-display-investigation.md](./investigation/temperature-display-investigation.md) を参照。
+- **キオスク・サイネージ自端末温度表示 正本**: [KB-126](./knowledge-base/api.md#kb-126-キオスクuiで自端末の温度表示機能追加) · [KB-127](./knowledge-base/infrastructure/signage.md#kb-127-サイネージuiで自端末の温度表示機能追加とデザイン変更) · [temperature investigation](./investigation/temperature-display-investigation.md)。
 
 - **✅ APIエンドポイントのHTTPS化・デプロイ標準手順のブラッシュアップ完了**: APIエンドポイントをHTTPS経由（Caddy経由）に変更し、デプロイ標準手順をブラッシュアップ。`group_vars/all.yml`の`api_base_url`を`http://{{ server_ip }}:8080/api`から`https://{{ server_ip }}/api`に変更。クライアント（Pi3/Pi4）のエージェントがCaddy経由（HTTPS 443）でAPIにアクセスするように統一。ポート8080は外部公開されていない（Docker内部ネットワークでのみアクセス可能）ことを明記。デプロイドキュメントを更新し、HTTPS経由での確認方法を追加。セキュリティ強度が向上（HTTPS化、8080非公開の維持）。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-128](./knowledge-base/infrastructure/ansible-deployment.md#kb-128-apiエンドポイントのhttps化caddy経由) / [guides/deployment.md](./guides/deployment.md) を参照。
 

@@ -4941,7 +4941,20 @@ Status: implemented in PR394.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR395 And Later: Thin Indexes And Split Large Documents
+### PR395: Thin Client Temperature Index Block
+
+Status: implemented in PR395.
+
+- Thin only the 2026-01-03 kiosk/signage client temperature latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the client-status mapping, kiosk API
+  response expansion, signage renderer update, left-pane title change, and
+  onsite validation details with short links to KB-126, KB-127, and the
+  temperature display investigation.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR396 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
