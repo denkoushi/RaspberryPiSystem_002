@@ -1126,6 +1126,7 @@ export type ProductionScheduleLeaderboardLaborMetadataResponse = {
 
 export async function postKioskProductionScheduleLeaderboardLaborMetadata(payload: {
   rowIds: string[];
+  snapshotIds?: string[];
   targetDeviceScopeKey?: string;
 }) {
   const { data } = await api.post<ProductionScheduleLeaderboardLaborMetadataResponse>(

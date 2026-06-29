@@ -266,11 +266,13 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     return fetchLeaderboardBoardLaborMetadata(
       {
         orderedRowIds: body.rowIds,
+        snapshotIds: body.snapshotIds,
         locationKey: assignmentLocationKey,
         siteKey: locationScopeContext.siteKey
       },
       {
-        performanceSink: createLeaderboardBoardPerformanceSink(request)
+        performanceSink: createLeaderboardBoardPerformanceSink(request),
+        snapshotStore: deps.leaderboardShellSnapshotStore
       }
     );
   });

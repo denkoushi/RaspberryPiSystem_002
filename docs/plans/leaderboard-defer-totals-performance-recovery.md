@@ -1,6 +1,6 @@
 ---
 id: leaderboard-defer-totals-performance-recovery
-status: labor_metadata_overlay_verified
+status: labor_metadata_snapshot_fast_path_verified
 scope: kiosk leader order board first usable performance and Web display stability
 date: 2026-06-29
 source_of_truth: true
@@ -39,12 +39,13 @@ validation: >-
   focused api/web tests PASS · Web lint/build PASS · commit hook workspace lint PASS · PR #464 HEAD e98de7ce deploy success · Pi5 deploy 20260623-200308-94 success · API container healthy · health ok · 6-slot first usable perf beacon 8.344s · +人 toggle no scrollHeight collapse · labor-toggle sync banner suppressed · 2026-06-24 +人 labor metadata overlay focused Web tests/lint/build PASS · real-device visual OK · f978c15e CI/deploy/Phase12 succeeded but its Gantt ruler-height behavior was later classified as a visual-contract regression ·
   2026-06-28 d507780f completionFilter pushdown CI/CodeQL success, Pi5+4 Pi4 deploy success, Pi4-like Playwright first visible 5.6-8.4s, user real device reported much faster ·
   2026-06-28 bcf79b04 labor metadata lightweight overlay PR #867 CI/CodeQL/gitleaks success, Pi5+5 Pi4 deploy and health success, real Pi4 labor metadata POST verified ·
-  2026-06-29 post-deploy comparison showed +人 metadata POST about 3.0-3.5s for 80 displayed ids, faster than the old includeLabor full-board refetch class at about 4.9-6.5s
+  2026-06-29 post-deploy comparison showed +人 metadata POST about 3.0-3.5s for 80 displayed ids, faster than the old includeLabor full-board refetch class at about 4.9-6.5s ·
+  PR #870 snapshot fast path CI success, deploy 20260629-112901-17190 success, Phase12 PASS 45/0/0, production laborMetadata snapshot hit server requestTotal 165-182ms and HTTPS observed 332-383ms
 open_items:
   - If the physical browser still appears busy, distinguish three states: initial shell load, 5-minute board refresh, and `+人` labor metadata refresh. Only the first two should show 「一覧を更新中です。」.
   - `resourceShell` can still be multi-second on large resources; do not add API/index work until browser/client-perf logs show API shell is again the bottleneck.
   - Kiosk browsers must hard reload to pick up the deployed Web bundle; already-open SPA tabs can keep old banner/refetch/labor-overlay behavior until reload.
-  - For further `+人` speed work, profile `leaderboardPerf=1` events (`labor-metadata-start/end/error`) plus server `endpoint="laborMetadata"` phases. Current production metadata POST cost is about 3.0-3.5s for 80 displayed ids; do not reintroduce a full board refetch to solve this.
+  - For further `+人` speed work, profile `leaderboardPerf=1` events (`labor-metadata-start/end/error`) plus server `endpoint="laborMetadata"` phases. Current production snapshot-hit metadata POST cost is sub-second for 80 displayed ids (about 0.33-0.78s observed from Mac over HTTPS after PR #870); do not reintroduce a full board refetch to solve this.
   - Actual DOM reflection after `labor-metadata-end` is not yet quantified on the physical browser. Measure it before optimizing API internals further if operators still report delay.
   - `raspi4-sessaku-01` was updated successfully by deploy runs `20260628-222904` and `20260628-231744`; it is no longer the known old-commit outlier from the completionFilter deploy.
 ---
@@ -777,12 +778,29 @@ This is the latest context for PR #464 on branch `feat/production-schedule-split
 - Server `laborMetadata` breakdown for the same six POSTs shows the previous unmeasured `requestTotal` residual is now effectively decomposed (`0-1ms` residual after summing phases). First round request totals: kensakuMain `2.996s` = process context `0.971s` + materializedBaseWhere `0.479s` + hydrateRows `0.334s` + attachLabor `1.211s`; RoboDrill01 `2.891s` = `1.007s` + `0.499s` + `0.267s` + `1.117s`; FJV60/80 `3.305s` = `1.250s` + `0.530s` + `0.354s` + `1.171s`. Second round after labor cache warm: kensakuMain `1.876s` = `1.015s` + `0.522s` + `0.338s` + `0.001s`; RoboDrill01 `1.775s` = `1.006s` + `0.483s` + `0.285s` + `0.001s`; FJV60/80 `1.719s` = `0.877s` + `0.501s` + `0.339s` + `0.001s`.
 - Materialization telemetry in these production samples reported `residualMaterialization.cacheHit=true`, `strongEvidenceKeyCount=186`, and `revisionChanged=false`; no `generationTokenRefresh` event appeared. Current optimization candidates should therefore be chosen from measured costs, especially `generationTokenInitial` (~`0.9-1.25s`), `materializedBaseWhere` (~`0.48-0.53s`), `hydrateRows` (~`0.27-0.35s`), and cold `attachLabor` (~`1.1-1.2s`). Keep the dedicated `labor-metadata` POST path; do not return to full board refetch.
 
+**API/Web follow-up: laborMetadata snapshot fast path（2026-06-29 · PR #870 deployed）**:
+
+- Implementation branch: `perf/kiosk-labor-metadata-snapshot-fast-path`; commit `e7ea8648` (`perf(kiosk): speed labor metadata with snapshot scope`); PR #870. Public response shape is unchanged. The `labor-metadata` POST body now accepts optional `snapshotIds`; clients without it use the existing fallback path.
+- Web sends snapshot ids for `+人` enabled resource slots and suppresses re-POST of rows already fetched successfully for the same display freshness + snapshot scope. Failed metadata fetches still leave rows intact and do not mark rows as fetched.
+- API validates snapshot scope before using the fast path: snapshot must exist, match `locationKey` / `siteKey`, share one generation token, expose `fkojunstStatusMailRowsRevision`, and contain every requested display row id. Any miss falls back to the previous generation-token/materialized-base path.
+- Snapshot fast path uses the snapshot generation token as the labor cache scope, hydrates trusted display rows without resolving the global materialized winner base, and uses the correlated winner base for the FSIGENCD=10 labor lookup. No DB migration is added.
+- Perf diagnostics add snapshot/fallback visibility for `endpoint: "laborMetadata"`: `snapshotScope`, `snapshotHit`, `snapshotIdCount`, `trustedDisplayScope`, `fallbackReason`, and `winnerBaseStrategy`. Existing `requestTotal` remains.
+- Local validation: API labor metadata service focused test PASS; Web auto-append/labor metadata hook focused test PASS; API lint/build PASS; Web lint/build PASS. Temporary Docker `pgvector/pgvector:pg15` on port `55432` applied 119 migrations and the targeted labor metadata route integration scenario PASS.
+- Temporary DB EXPLAIN with 10k filler rows showed the correlated lookup using `csv_dashboard_row_winner_lookup_global_idx` and completing in `0.517ms`; the forced materialized winner shape completed in `89.198ms` on the same synthetic data. The temporary container was stopped and removed.
+- Full `kiosk-production-schedule.integration.test.ts` was also attempted on the migration-only temporary DB: 92/98 tests passed, but 6 unrelated monolithic leaderboard tests failed with existing schema drift `P2022` because `SelfInspectionSession.operatorEmployeeId` was missing after `prisma migrate deploy`. The targeted labor metadata integration scenario passed on the same DB.
+- CI/deploy: PR #870 checks all passed (`lint-build-unit`, `api-db-and-infra`, `e2e-smoke`, `e2e-tests`, `security-docker`, CodeQL, and gitleaks). Deploy run `20260629-112901-17190` succeeded for Pi5, all five Pi4 kiosk clients, and Pi3 signage with `failed=0`, `unreachable=0`, summary success, and exit `0`. Phase12 real verification after deploy passed `PASS=45`, `WARN=0`, `FAIL=0`.
+- Post-deploy host verification: Pi5, all five Pi4 kiosk clients, and Pi3 were all on `e7ea8648`. Pi4 `kiosk-browser.service` and `status-agent.timer` were active on `raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`, `raspi4-kensaku-stonebase01`, and `raspi4-sessaku-01`; Pi3 `signage-lite.service`, `signage-lite-update.timer`, and `status-agent.timer` were active. API health was `status: ok`.
+- Production API verification without perf log: assigned boards returned snapshot ids and separate `labor-metadata` POSTs returned the requested 80 rows. kensakuMain: board rows `433`, sent/returned `80/80`, non-zero labor `77`, metadata `0.776s` (the immediately preceding board GET was a cold `21.093s` outlier after deploy). RoboDrill01: board rows `266`, `80/80`, non-zero `80`, metadata `0.287s`. FJV60/80: board rows `267`, `80/80`, non-zero `79`, metadata `0.500s`. StoneBase01 and Sessaku-01 currently have no manual-order resource assignment rows, so they were not valid `+人` board samples.
+- Production perf-log verification: `LEADERBOARD_BOARD_PERF_LOG=true` was enabled temporarily on Pi5, then restored OFF. Snapshot-hit samples for kensakuMain, RoboDrill01, and FJV60/80 all logged `snapshotHit=true`, `trustedDisplayScope=true`, `snapshotIdCount=6`, and `winnerBaseStrategy="correlated"`. Server `laborMetadata.requestTotal` was `182ms`, `165ms`, and `169ms` respectively; subphases were `snapshotScope` `0-1ms`, `processChangeResidualContext` `0ms` via `generationTokenSnapshot`, `laborLookupBaseWhere` `0ms`, `hydrateRows` `22/17/17ms`, and `attachLabor` `158/147/152ms`. The same POSTs observed from Mac over HTTPS were `0.383s`, `0.332s`, and `0.346s`.
+- Perf flag restoration: `LEADERBOARD_BOARD_PERF_LOG` was removed from Pi5 `infrastructure/docker/.env` and was absent from the API container environment after API recreation. Final health check was `status: ok`; `api` and `db` containers were healthy and `web` was up.
+
 **Relevant files for Cursor**:
 
 - `apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`
   - `displayFreshnessParamsKey` ignores `includeLabor`
   - `displayAppendOverrideRef` keeps previous long append display
   - after display selection, retained/fresh labor metadata is overlaid by `row.id`
+  - `labor-metadata` sends `snapshotIds` when available and skips rows already fetched for the same snapshot scope
   - `isBoardDataSyncStatusVisible` separates UI banner visibility from internal `isBoardDataSyncing`
   - continuation-only background sync after shell rows are displayed is silent in the global banner
 - `apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts`

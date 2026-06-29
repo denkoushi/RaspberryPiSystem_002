@@ -233,6 +233,8 @@ export const productionScheduleLeaderboardDecorationsBodySchema = z.object({
 export const productionScheduleLeaderboardLaborMetadataBodySchema = z.object({
   /** 表示中の `rows[].id`（DisplayItemId）だけを渡し、行集合・並びは変更しない。 */
   rowIds: z.array(displayItemIdSchema).min(1).max(LEADERBOARD_DISPLAY_ROW_SCOPE_ABS_MAX),
+  /** 任意: 表示行を生成した shell/continue snapshot。妥当な場合だけ API が軽量経路を使う。 */
+  snapshotIds: z.array(z.string().uuid()).max(100).optional().default([]),
   /** v2: Mac が参照する端末の deviceScopeKey（一覧 shell/total と一致させる） */
   targetDeviceScopeKey: z.string().min(1).max(200).optional()
 });

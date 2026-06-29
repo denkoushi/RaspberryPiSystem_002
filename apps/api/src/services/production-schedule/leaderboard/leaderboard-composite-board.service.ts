@@ -164,6 +164,10 @@ export type LeaderboardBoardPerformanceEvent = {
   chunkSize?: number;
   deferredTotals?: boolean;
   winnerBaseStrategy?: 'materialized' | 'correlated';
+  snapshotHit?: boolean;
+  snapshotIdCount?: number;
+  trustedDisplayScope?: boolean;
+  fallbackReason?: string;
 };
 
 export type LeaderboardBoardPerformanceSink = (event: LeaderboardBoardPerformanceEvent) => void;

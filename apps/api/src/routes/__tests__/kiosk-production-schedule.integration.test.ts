@@ -1323,6 +1323,9 @@ describe('Kiosk Production Schedule API', () => {
         machineRequiredMinutes?: number;
         laborRequiredMinutes?: number;
       }>;
+      resources: Array<{
+        snapshotId?: string;
+      }>;
     };
     const noLaborTarget = noLaborBody.rows.find(
       (row) => (row.rowData as { ProductNo?: string }).ProductNo === productNo
@@ -1336,7 +1339,8 @@ describe('Kiosk Production Schedule API', () => {
       url: '/api/kiosk/production-schedule/leaderboard-board/labor-metadata',
       headers: { 'x-client-key': CLIENT_KEY },
       payload: {
-        rowIds: [noLaborTarget!.id]
+        rowIds: [noLaborTarget!.id],
+        snapshotIds: noLaborBody.resources.map((resource) => resource.snapshotId).filter(Boolean)
       }
     });
 

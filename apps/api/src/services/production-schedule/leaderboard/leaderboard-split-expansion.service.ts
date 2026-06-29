@@ -83,6 +83,7 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemId
   locationKey: string;
   siteScopedGlobalRankLocation: string;
   leaderboardMaterializedBaseWhere?: Prisma.Sql;
+  leaderboardShellListWhere?: Prisma.Sql;
 }): Promise<ProductionScheduleRow[]> {
   const enabled = isProductionScheduleOrderSplitEnabled();
   const sourceRowIds = await resolveHydrateSourceRowIdsFromDisplayItemIds(params.orderedDisplayItemIds);
@@ -95,7 +96,8 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemId
     orderedRowIds: sourceRowIds,
     locationKey: params.locationKey,
     siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
-    leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere
+    leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere,
+    leaderboardShellListWhere: params.leaderboardShellListWhere
   });
 
   const parentProductionRows = hydratedParentRows.map(mapHydratedSqlRowToProductionScheduleRow);

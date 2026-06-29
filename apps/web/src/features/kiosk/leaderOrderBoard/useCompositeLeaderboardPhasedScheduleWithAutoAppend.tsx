@@ -106,6 +106,23 @@ function normalizeLaborMetadataMinutes(value: number): number {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
+function collectLaborMetadataSnapshotIds(
+  board: ProductionScheduleLeaderboardBoardResponse | null | undefined,
+  enabledResourceCdSet: ReadonlySet<string>
+): string[] {
+  if (!board || enabledResourceCdSet.size === 0) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const resource of board.resources) {
+    if (!enabledResourceCdSet.has(normalizeLeaderboardResourceCd(resource.resourceCd))) continue;
+    const snapshotId = typeof resource.snapshotId === 'string' ? resource.snapshotId.trim() : '';
+    if (!snapshotId || seen.has(snapshotId)) continue;
+    seen.add(snapshotId);
+    out.push(snapshotId);
+  }
+  return out;
+}
+
 function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof useQueryClient>) {
   return queryClient.invalidateQueries({
     predicate: (q) =>
@@ -265,12 +282,14 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const lastCommittedParamsKeyRef = useRef<string | null>(null);
   const lastCommittedDisplayFreshnessParamsKeyRef = useRef<string | null>(null);
   const retainedLaborMetadataByIdRef = useRef<Map<string, LeaderboardLaborMetadata>>(new Map());
+  const retainedLaborMetadataFetchedScopeByIdRef = useRef<Map<string, string>>(new Map());
   const retainedLaborMetadataScopeKeyRef = useRef(displayFreshnessParamsKey);
   const [retainedLaborMetadataVersion, setRetainedLaborMetadataVersion] = useState(0);
 
   latestParamsKeyRef.current = paramsKey;
   if (retainedLaborMetadataScopeKeyRef.current !== displayFreshnessParamsKey) {
     retainedLaborMetadataByIdRef.current.clear();
+    retainedLaborMetadataFetchedScopeByIdRef.current.clear();
     retainedLaborMetadataScopeKeyRef.current = displayFreshnessParamsKey;
   }
 
@@ -697,7 +716,20 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     appendRunIdRef,
     setIsAppending
   });
+  const laborMetadataSnapshotIdsKey = useMemo(
+    () =>
+      collectLaborMetadataSnapshotIds(displayBoardForUi, laborMetadataEnabledResourceCdSet).join('\0'),
+    [displayBoardForUi, laborMetadataEnabledResourceCdSet]
+  );
+  const laborMetadataRequestScopeKey = useMemo(
+    () =>
+      laborMetadataSnapshotIdsKey.length > 0
+        ? `${displayFreshnessParamsKey}\u0002${laborMetadataSnapshotIdsKey}`
+        : '',
+    [displayFreshnessParamsKey, laborMetadataSnapshotIdsKey]
+  );
   const laborMetadataRowIdsKey = useMemo(() => {
+    void retainedLaborMetadataVersion;
     if (laborMetadataEnabledResourceCdSet.size === 0) return '';
     const seen = new Set<string>();
     const ids: string[] = [];
@@ -705,14 +737,25 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
       if (!laborMetadataEnabledResourceCdSet.has(readLeaderboardRowResourceCd(row))) continue;
       const id = typeof row.id === 'string' ? row.id.trim() : '';
       if (!id || seen.has(id)) continue;
+      if (
+        laborMetadataRequestScopeKey.length > 0 &&
+        retainedLaborMetadataFetchedScopeByIdRef.current.get(id) === laborMetadataRequestScopeKey
+      ) {
+        continue;
+      }
       seen.add(id);
       ids.push(id);
     }
     return ids.join('\0');
-  }, [displayBoardForUi?.rows, laborMetadataEnabledResourceCdSet]);
+  }, [
+    displayBoardForUi?.rows,
+    laborMetadataEnabledResourceCdSet,
+    laborMetadataRequestScopeKey,
+    retainedLaborMetadataVersion
+  ]);
   const laborMetadataFetchKey = useMemo(
-    () => `${laborMetadataResourceCdsKey}\u0001${laborMetadataRowIdsKey}`,
-    [laborMetadataResourceCdsKey, laborMetadataRowIdsKey]
+    () => `${laborMetadataResourceCdsKey}\u0001${laborMetadataSnapshotIdsKey}\u0001${laborMetadataRowIdsKey}`,
+    [laborMetadataResourceCdsKey, laborMetadataRowIdsKey, laborMetadataSnapshotIdsKey]
   );
   const hasDisplayRowsForUi = (displayBoardForUi?.rows.length ?? 0) > 0;
   const isContinuationOnlyBoardDataSyncStatus =
@@ -733,6 +776,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
 
     const rowIds = laborMetadataRowIdsKey.split('\0').filter(Boolean);
     if (rowIds.length === 0) return;
+    const snapshotIds = laborMetadataSnapshotIdsKey.split('\0').filter(Boolean);
+    const requestScopeKey = laborMetadataRequestScopeKey;
 
     const runId = ++laborMetadataRunIdRef.current;
     let cancelled = false;
@@ -750,11 +795,20 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
       try {
         const response = await postKioskProductionScheduleLeaderboardLaborMetadata({
           rowIds,
+          ...(snapshotIds.length > 0 ? { snapshotIds } : {}),
           targetDeviceScopeKey
         });
         if (cancelled || runId !== laborMetadataRunIdRef.current) return;
 
         let changed = false;
+        let scopeChanged = false;
+        if (requestScopeKey.length > 0) {
+          for (const id of rowIds) {
+            if (retainedLaborMetadataFetchedScopeByIdRef.current.get(id) === requestScopeKey) continue;
+            retainedLaborMetadataFetchedScopeByIdRef.current.set(id, requestScopeKey);
+            scopeChanged = true;
+          }
+        }
         for (const entry of response.rowMetadata) {
           const next = {
             machineRequiredMinutes: normalizeLaborMetadataMinutes(entry.machineRequiredMinutes),
@@ -770,7 +824,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
           retainedLaborMetadataByIdRef.current.set(entry.id, next);
           changed = true;
         }
-        if (changed) {
+        if (changed || scopeChanged) {
           setRetainedLaborMetadataVersion((version) => version + 1);
         }
         logClientPerfEvent('labor-metadata-end', {
@@ -795,7 +849,9 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     activeDeviceScopeKey,
     laborMetadataEnabledResourceCds.length,
     laborMetadataFetchKey,
+    laborMetadataRequestScopeKey,
     laborMetadataRowIdsKey,
+    laborMetadataSnapshotIdsKey,
     logClientPerfEvent,
     macManualOrderV2,
     paramsKey,
