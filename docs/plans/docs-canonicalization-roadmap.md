@@ -4979,7 +4979,20 @@ Status: implemented in PR397.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR398 And Later: Thin Indexes And Split Large Documents
+### PR398: Thin Kiosk Slack Support Index Block
+
+Status: implemented in PR398.
+
+- Thin only the 2026-01-03 kiosk Slack support latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the notification flow, client log
+  recording, rate limiting, timeout handling, and onsite validation details
+  with short links to KB-124, the verification checklist, and the Slack setup
+  guide.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR399 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
