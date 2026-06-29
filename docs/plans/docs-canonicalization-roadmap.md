@@ -5041,7 +5041,20 @@ Status: implemented in PR402.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR403 And Later: Thin Indexes And Split Large Documents
+### PR403: Thin CSV Import Scaling Index Block
+
+Status: implemented in PR403.
+
+- Thin only the 2025-01-XX CSV Import Scaling completion latest-update block
+  in `docs/INDEX.md`.
+- Preserve reachability, but replace the registry/factory structure,
+  measuring/rigging import support, target-array schedules, compatibility,
+  replaceExisting handling, subject-pattern settings, and completion note with
+  short links to the CSV guide and KB-112 through KB-115.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR404 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
