@@ -1228,7 +1228,7 @@
 
 - **Pi5ストレージ経時劣化対策 正本**: [KB-130](./knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) · [KB-131](./knowledge-base/api.md#kb-131-apiコンテナがslack-webhook-url環境変数の空文字で再起動ループする問題) · [operation manual](./guides/operation-manual.md)。
 
-- **✅ APIコンテナ再起動ループ問題修正完了**: APIコンテナが`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`環境変数の空文字でZodバリデーションエラーを起こし、再起動ループに陥っていた問題を修正。`docker-compose.server.yml`の`${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}`により未設定時でも空文字が注入されるため、`z.preprocess`で空文字を`undefined`に変換してからURL検証するように変更。実機検証完了（APIコンテナが正常起動、ヘルスチェック200、サイネージ画像取得正常を確認）。詳細は [knowledge-base/api.md#kb-131](./knowledge-base/api.md#kb-131-apiコンテナがslack-webhook-url環境変数の空文字で再起動ループする問題) を参照。
+- **APIコンテナ再起動ループ修正 正本**: [KB-131](./knowledge-base/api.md#kb-131-apiコンテナがslack-webhook-url環境変数の空文字で再起動ループする問題)。
 
 - **✅ Pi5サーバー側のstatus-agent設定をAnsible管理化完了**: Pi5サーバー側のstatus-agent設定が手動設定のままで、設定のドリフトが発生していた問題を解決。Pi5に`status_agent_client_id`、`status_agent_client_key`などのホスト変数を追加（`inventory.yml`）。Pi5用vaultに`vault_status_agent_client_key`を追加（`host_vars/raspberrypi5/vault.yml`）。serverロールに`status-agent.yml`タスクを追加（設定ファイル配布、systemdユニット配布、タイマー有効化）。`main.yml`から`status-agent.yml`をインポート。Ansible実行時に自動的に設定ファイルが更新されるように改善。設定のドリフトを防止し、自動更新が可能になった。実機検証完了（設定ファイルが正しく生成、systemdサービスが正常動作、データベースに最新データが記録されることを確認）。詳細は [knowledge-base/infrastructure/ansible-deployment.md#kb-129](./knowledge-base/infrastructure/ansible-deployment.md#kb-129-pi5サーバー側のstatus-agent設定ファイルが古い設定のまま) / [guides/status-agent.md](./guides/status-agent.md) を参照。
 
