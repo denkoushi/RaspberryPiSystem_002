@@ -23,6 +23,15 @@ sudo nano /etc/raspi-status-agent.conf
 任意パラメータ: `LOCATION`（ローカルログに表示）、`LOG_FILE`, `REQUEST_TIMEOUT`, `TLS_SKIP_VERIFY` など。  
 詳しくは `status-agent.conf.example` を参照してください。
 
+Pi4 SDカード予防保全用パラメータ:
+
+| 変数 | 既定値 | 説明 |
+| --- | --- | --- |
+| `STORAGE_HEALTH_ENABLED` | `0` | `1` の時だけSDヘルス監視ログを `payload.logs` に追加 |
+| `STORAGE_HEALTH_DISK_WARN_PCT` | `80` | `/` のディスク使用率またはinode使用率がこの値以上なら `WARN` |
+| `STORAGE_HEALTH_DISK_ERROR_PCT` | `90` | `/` のディスク使用率またはinode使用率がこの値以上なら `ERROR` |
+| `STATUS_AGENT_LOG_SUCCESS` | `0` | 成功時のローカルログ追記。SDカード書込削減のため既定は無効 |
+
 ### 手動実行テスト
 
 ```bash
@@ -65,6 +74,30 @@ journalctl -u status-agent.service -n 30 -f
 | CPU 温度 | `/sys/class/thermal/thermal_zone0/temp` が存在すれば読み取り |
 | アップタイム | `/proc/uptime` |
 | Last Boot | `uptimeSeconds` を現在時刻から減算して ISO8601 形式で送信 |
+| SDヘルスログ | 有効時のみ `/proc/mounts`, `/`, kernel log, `vcgencmd get_throttled` を確認 |
+
+### SDカード予防保全ログ
+
+`STORAGE_HEALTH_ENABLED=1` の時、次の兆候を既存APIの `ClientLog` に送ります。DB schemaやAPI schemaは変更しません。
+
+| 兆候 | レベル |
+| --- | --- |
+| root filesystem が read-only (`ro`) | `ERROR` |
+| kernel log の `mmc` error / `I/O error` / `EXT4-fs error` / read-only remount | `ERROR` |
+| `/` のディスク使用率またはinode使用率が閾値以上 | `WARN` / `ERROR` |
+| `vcgencmd get_throttled` の現在低電圧 | `ERROR` |
+| `vcgencmd get_throttled` の現在throttle/温度制限 | `WARN` |
+
+送信ログの `context` は `{ category: "storage_health", signal, rootSource, raw, observedAt }` 形式です。1回のPOSTで追加するSDヘルスログは最大10件です。
+
+運用確認:
+
+```bash
+STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf /opt/RaspberryPiSystem_002/clients/status-agent/status-agent.py --dry-run
+journalctl -u status-agent.service -n 50
+vcgencmd get_throttled
+findmnt -no OPTIONS /
+```
 
 ### トラブルシューティング
 
@@ -80,11 +113,12 @@ journalctl -u status-agent.service -n 30 -f
 ```
 clients/status-agent/
 ├── README.md
+├── storage_health.py            # SDカード予防保全ログの判定
 ├── status-agent.py              # メトリクス収集 & 送信スクリプト
 ├── status-agent.conf.example    # 設定テンプレート
 ├── status-agent.service         # systemd service (oneshot)
-└── status-agent.timer           # 1分毎に起動する systemd timer
+├── status-agent.timer           # 1分毎に起動する systemd timer
+└── tests/                       # macOSでも実行できるユニットテスト
 ```
 
 このフォルダごと `rsync` / `ansible` で配布し、`/etc/raspi-status-agent.conf` を端末ごとに上書きして運用します。***
-

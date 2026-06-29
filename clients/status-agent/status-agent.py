@@ -21,6 +21,8 @@ from pathlib import Path
 from typing import Dict, Optional
 import shutil
 
+import storage_health
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATHS = [
     os.environ.get("STATUS_AGENT_CONFIG"),
@@ -61,6 +63,10 @@ def parse_config_file(path: Path) -> Dict[str, str]:
         raise ValueError(f"Missing required config keys: {', '.join(missing)}")
     config.setdefault("REQUEST_TIMEOUT", "10")
     config.setdefault("TLS_SKIP_VERIFY", "0")
+    config.setdefault("STORAGE_HEALTH_ENABLED", "0")
+    config.setdefault("STORAGE_HEALTH_DISK_WARN_PCT", "80")
+    config.setdefault("STORAGE_HEALTH_DISK_ERROR_PCT", "90")
+    config.setdefault("STATUS_AGENT_LOG_SUCCESS", "0")
     return config
 
 
@@ -189,7 +195,21 @@ def build_payload(config: Dict[str, str]) -> Dict[str, object]:
     temperature = read_temperature(config)
     if temperature is not None:
         payload["temperature"] = temperature
-    payload["logs"] = []
+    logs = []
+    if storage_health.is_truthy(config.get("STORAGE_HEALTH_ENABLED")):
+        try:
+            logs = storage_health.collect_storage_health_logs(config)
+        except Exception as exc:  # pragma: no cover - defensive guard for telemetry
+            logs = [
+                storage_health.build_log_entry(
+                    "WARN",
+                    "storage_health_check_failed",
+                    f"Storage health check failed: {exc}",
+                    "status-agent",
+                    str(exc),
+                )
+            ]
+    payload["logs"] = logs
 
     return payload
 
@@ -236,13 +256,15 @@ def main() -> int:
         payload = build_payload(config)
         if args.dry_run:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
-            log("status heartbeat dry-run (no HTTP request)", "INFO", log_file)
+            if storage_health.is_truthy(config.get("STATUS_AGENT_LOG_SUCCESS")):
+                log("status heartbeat dry-run (no HTTP request)", "INFO", log_file)
             return 0
 
         post_payload(config, payload)
-        location = config.get("LOCATION")
-        suffix = f" ({location})" if location else ""
-        log(f"status heartbeat sent{suffix}", "INFO", log_file)
+        if storage_health.is_truthy(config.get("STATUS_AGENT_LOG_SUCCESS")):
+            location = config.get("LOCATION")
+            suffix = f" ({location})" if location else ""
+            log(f"status heartbeat sent{suffix}", "INFO", log_file)
         return 0
     except (urllib.error.URLError, RuntimeError, TimeoutError) as exc:
         log(f"failed to send status: {exc}", "ERROR", log_file)
@@ -254,4 +276,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

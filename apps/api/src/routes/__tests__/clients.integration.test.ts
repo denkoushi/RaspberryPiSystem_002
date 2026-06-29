@@ -178,6 +178,63 @@ describe('クライアントテレメトリーAPI', () => {
     expect(logRecords).toHaveLength(2);
   });
 
+  it('POST /api/clients/status stores storage health log context', async () => {
+    const clientId = `pi-storage-health-${Date.now()}`;
+    const storageHealthContext = {
+      category: 'storage_health',
+      signal: 'root_filesystem_read_only',
+      rootSource: '/proc/mounts',
+      raw: 'ro,relatime',
+      observedAt: '2026-06-29T00:00:00+00:00'
+    };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients/status',
+      headers: {
+        'x-client-key': clientKey,
+        'Content-Type': 'application/json'
+      },
+      payload: {
+        clientId,
+        hostname: 'pi-kiosk-storage-health',
+        ipAddress: '192.168.0.32',
+        cpuUsage: 10.0,
+        memoryUsage: 20.0,
+        diskUsage: 30.0,
+        logs: [
+          {
+            level: 'ERROR',
+            message: 'Root filesystem is mounted read-only',
+            context: storageHealthContext
+          }
+        ]
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    const records = await prisma.clientLog.findMany({ where: { clientId } });
+    expect(records).toHaveLength(1);
+    const storedContext = records[0].context as {
+      category?: string;
+      signal?: string;
+      rootSource?: string;
+      raw?: string;
+      observedAt?: string;
+    };
+    expect(storedContext).toMatchObject(storageHealthContext);
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: `/api/clients/logs?clientId=${clientId}&limit=5`,
+      headers: { ...createAuthHeader(adminToken) }
+    });
+    expect(listResponse.statusCode).toBe(200);
+    const body = listResponse.json();
+    expect(body.logs[0].context).toMatchObject(storageHealthContext);
+  });
+
   it('POST /api/clients/status updates ClientDevice.statusClientId', async () => {
     const statusClientId = `pi-status-${Date.now()}`;
     const payload = {
@@ -663,4 +720,3 @@ describe('Alerts API (Phase2完全移行: DBのみ参照)', () => {
     expect(viewerResponse.statusCode).toBe(403);
   });
 });
-

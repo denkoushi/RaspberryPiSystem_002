@@ -126,6 +126,8 @@ all:
       # 目的: 段階展開（カナリア→全台）と、Pi4並行 / Pi3単独運用を安全に実現する。
       children:
         kiosk:
+          vars:
+            status_agent_storage_health_enabled: "1"
           hosts:
             raspberrypi4:
               ansible_host: "{{ kiosk_ip }}"

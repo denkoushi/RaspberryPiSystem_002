@@ -13,6 +13,9 @@ LOCATION="{{ status_agent_location | default('') }}"
 # 任意: ログファイル
 LOG_FILE="/var/log/raspi-status-agent.log"
 
+# 任意: 成功時のローカルログ書き込み（SDカード書込削減のため既定は0）
+STATUS_AGENT_LOG_SUCCESS="{{ status_agent_log_success | default('0') }}"
+
 # 任意: HTTPタイムアウト秒
 REQUEST_TIMEOUT=10
 
@@ -22,3 +25,7 @@ TLS_SKIP_VERIFY="{{ status_agent_tls_skip_verify | default('0') }}"
 # 任意: CPU温度を取得するファイルパス（未設定時は thermal_zone0 を自動検出）
 # TEMPERATURE_FILE="/sys/class/thermal/thermal_zone0/temp"
 
+# 任意: Pi4 SDカード予防保全ログ（Pi4 kiosk groupのみ1で有効化）
+STORAGE_HEALTH_ENABLED="{{ status_agent_storage_health_enabled | default('0') }}"
+STORAGE_HEALTH_DISK_WARN_PCT="{{ status_agent_storage_health_disk_warn_pct | default('80') }}"
+STORAGE_HEALTH_DISK_ERROR_PCT="{{ status_agent_storage_health_disk_error_pct | default('90') }}"
