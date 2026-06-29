@@ -1343,7 +1343,7 @@
 - **サイネージ左ペインの計測機器表示 正本**: [signage lite](./modules/signage/signage-lite.md) / [measuring instruments UI](./modules/measuring-instruments/ui.md)。
 
 - **持出一覧キオスクUI改善 正本**: [measuring instruments UI](./modules/measuring-instruments/ui.md) / [KB-314](./knowledge-base/KB-314-kiosk-loan-card-display-labels.md)。
-- **✅ 持出一覧カード: 返却・取消ボタン下段配置（2026-04-01）**: 長いアイテム名がボタン列と横方向に競合しにくいよう、`KioskActiveLoanCard` に分離し **明細の下**に **返却・取消**を配置。画像モーダル用 Blob URL は入替・アンマウント時に `revoke`。詳細は [KB-323](./knowledge-base/KB-323-kiosk-return-card-button-layout.md) / [verification-checklist.md](./guides/verification-checklist.md) §6.6.4 / [deployment-modules.md](./architecture/deployment-modules.md) を参照。
+- **持出一覧カード: 返却・取消ボタン下段配置 正本**: [KB-323](./knowledge-base/KB-323-kiosk-return-card-button-layout.md)。
 
 - **✅ 計測機器持出: エラー時の無限ループ修正とメッセージ改善**: エラー発生時に持出登録ボタンが無限ループ動作する問題を修正。エラー時に氏名タグをクリアして自動再送を防止し、APIエラーメッセージを短縮・ユーザーフレンドリーに改善（「タグ未登録（計測機器）」「タグ未登録（社員）」「既に貸出中です」など）。詳細は [guides/measuring-instruments-verification.md](./guides/measuring-instruments-verification.md#問題9-エラー時に持出登録ボタンが無限ループ動作する) を参照。
 
