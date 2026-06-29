@@ -5004,7 +5004,19 @@ Status: implemented in PR399.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR400 And Later: Thin Indexes And Split Large Documents
+### PR400: Thin Measuring Department Index Block
+
+Status: implemented in PR400.
+
+- Thin only the 2026-01-03 measuring instrument department display/edit
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the list column, create-form field,
+  option loading, save/update, and onsite validation details with short links
+  to API KB-121, frontend KB-122, and the verification checklist.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR401 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.

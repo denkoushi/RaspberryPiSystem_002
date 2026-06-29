@@ -1246,7 +1246,7 @@
 
 - **Gmail経由CSV取り込み手動実行検証 正本**: [KB-123](./knowledge-base/api.md#kb-123-gmail経由csv取り込み手動実行の実機検証完了) · [verification](./guides/verification-checklist.md#682-gmail経由csv取り込みスケジュール実行の実機検証)。
 
-- **✅ 計測機器管理画面の部署表示・編集機能の実機検証完了**: 計測機器管理画面に`department`列と選択式編集機能を追加し、実機検証を完了。一覧表への部署列表示、新規作成フォームでの部署選択フィールド表示、部署候補の動的取得、部署の保存・更新がすべて正常に動作することを確認。詳細は [knowledge-base/api.md#kb-121](./knowledge-base/api.md#kb-121-部署一覧取得エンドポイント追加とprisma-where句の重複プロパティエラー修正) / [knowledge-base/frontend.md#kb-122](./knowledge-base/frontend.md#kb-122-計測機器管理画面にdepartment表示編集機能を追加) / [guides/verification-checklist.md#662-計測機器管理画面](./guides/verification-checklist.md#662-計測機器管理画面admintoolsmeasuring-instruments) を参照。
+- **計測機器管理画面 部署表示・編集 正本**: [API KB-121](./knowledge-base/api.md#kb-121-部署一覧取得エンドポイント追加とprisma-where句の重複プロパティエラー修正) · [frontend KB-122](./knowledge-base/frontend.md#kb-122-計測機器管理画面にdepartment表示編集機能を追加) · [verification](./guides/verification-checklist.md#662-計測機器管理画面admintoolsmeasuring-instruments)。
 
 ### 🆕 最新アップデート（2025-01-XX）
 
