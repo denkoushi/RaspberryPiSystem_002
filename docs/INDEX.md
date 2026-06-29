@@ -1254,7 +1254,7 @@
 
 - **計測機器UID編集バグ修正 正本**: [API KB-118](./knowledge-base/api.md#kb-118-計測機器uid編集時の複数タグ問題の修正) · [frontend KB-119](./knowledge-base/frontend.md#kb-119-計測機器uid編集時の手動編集フラグ管理) · [verification](./guides/verification-checklist.md#63-計測機器csvインポート新フィールド)。
 
-- **✅ CSVインポート構造改善と計測機器・吊具対応完了（CSV Import Scalingプラン完了）**: CSVインポート機能をレジストリ・ファクトリパターンでモジュール化し、計測機器・吊具のCSVインポートに対応。新しいデータタイプの追加が容易になり、コードの重複を削減。スケジュール設定を`targets`配列形式に拡張し、複数のデータタイプを1つのスケジュールで処理可能に。後方互換性を確保（旧`employeesPath`/`itemsPath`形式もサポート）。`replaceExisting=true`時の安全性を確保（参照がある個体は削除しない）。Gmail件名パターンを管理コンソールから編集できる機能を実装し、設定ファイル（`backup.json`）に保存されるように変更。**プラン完了日**: 2025-12-29（全6To-do完了）。詳細は [guides/csv-import-export.md](./guides/csv-import-export.md) / [knowledge-base/frontend.md#kb-112](./knowledge-base/frontend.md#kb-112-csvインポート構造改善と計測機器吊具対応) / [knowledge-base/frontend.md#kb-113](./knowledge-base/frontend.md#kb-113-gmail件名パターンの管理コンソール編集機能) / [knowledge-base/api.md#kb-114](./knowledge-base/api.md#kb-114-csvインポート構造改善レジストリファクトリパターン) / [knowledge-base/api.md#kb-115](./knowledge-base/api.md#kb-115-gmail件名パターンの設定ファイル管理) を参照。
+- **CSVインポート構造改善・計測機器/吊具対応 正本**: [CSV import/export](./guides/csv-import-export.md) · [frontend KB-112](./knowledge-base/frontend.md#kb-112-csvインポート構造改善と計測機器吊具対応) · [frontend KB-113](./knowledge-base/frontend.md#kb-113-gmail件名パターンの管理コンソール編集機能) · [API KB-114](./knowledge-base/api.md#kb-114-csvインポート構造改善レジストリファクトリパターン) · [API KB-115](./knowledge-base/api.md#kb-115-gmail件名パターンの設定ファイル管理)。
 
 ### 🆕 最新アップデート（2025-12-29）
 
