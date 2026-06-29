@@ -4803,7 +4803,20 @@ Status: implemented in PR383.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR384 And Later: Thin Indexes And Split Large Documents
+### PR384: Thin Backup Config Health Index Block
+
+Status: implemented in PR384.
+
+- Thin only the 2026-01-06 backup configuration collision and drift detection
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the structure comparison, drift detection,
+  health-check method, health endpoint, admin UI integration, missing-setting
+  checks, onsite validation, and UI validation details with short links to
+  KB-148 and the backup API doc.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR385 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
