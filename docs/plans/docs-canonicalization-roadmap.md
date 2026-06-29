@@ -5103,7 +5103,20 @@ Status: implemented in PR407.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR408 And Later: Thin Indexes And Split Large Documents
+### PR408: Thin Backup Restore Verification Index Block
+
+Status: implemented in PR408.
+
+- Thin only the 2025-12-29 image backup and items.csv restore verification
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the tar archive restore, items.csv restore
+  validation result, data-format issue, and restore-function status details with
+  short links to the backup restore verification guide and backup target
+  requirements.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR409 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
