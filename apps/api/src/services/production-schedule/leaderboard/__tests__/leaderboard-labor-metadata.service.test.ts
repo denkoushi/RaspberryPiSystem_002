@@ -112,13 +112,95 @@ describe('fetchLeaderboardBoardLaborMetadata', () => {
     expect(result).toEqual({
       rowMetadata: [{ id: 'known', machineRequiredMinutes: 400, laborRequiredMinutes: 175 }]
     });
-    expect(perf.mock.calls.map(([event]) => event.phase)).toEqual([
-      'materializedBaseWhere',
-      'hydrateRows',
-      'attachLabor',
-      'requestTotal'
+    const events = perf.mock.calls.map(([event]) => event);
+    expect(events.map((event) => `${event.phase}:${event.subphase ?? ''}`)).toEqual([
+      'processChangeResidualContext:generationTokenInitial',
+      'processChangeResidualContext:residualMaterialization',
+      'processChangeResidualContext:',
+      'materializedBaseWhere:',
+      'hydrateRows:',
+      'attachLabor:',
+      'requestTotal:'
     ]);
+    expect(events.filter((event) => event.phase === 'processChangeResidualContext' && event.subphase == null)).toHaveLength(1);
     expect(perf.mock.calls.every(([event]) => event.endpoint === 'laborMetadata')).toBe(true);
+  });
+
+  it('revision 変化時は processChangeResidualContext の refresh と materialization telemetry を出す', async () => {
+    vi.mocked(readLeaderboardShellSnapshotGenerationTokenDetails)
+      .mockResolvedValueOnce({
+        generationToken: 'gen-1',
+        fkojunstStatusMailRowsRevision: 'rev-1'
+      })
+      .mockResolvedValueOnce({
+        generationToken: 'gen-2',
+        fkojunstStatusMailRowsRevision: 'rev-2'
+      });
+    vi.mocked(materializeProcessChangeResidualStrongEvidence).mockImplementation(async (_prisma, options) => {
+      options?.telemetry?.({
+        cacheHit: false,
+        rawRowCount: 10,
+        normalizedRowCount: 9,
+        dedupedRowCount: 8,
+        strongEvidenceKeyCount: 2,
+        sourceRowFetchDurationMs: 12.5,
+        normalizeDurationMs: 3.2,
+        dedupeDurationMs: 1.1,
+        buildEvidenceDurationMs: 0.8
+      });
+      return {
+        keys: new Set(['k1', 'k2']),
+        keyArrays: { productNos: [], fkojuns: [], resourceCds: [] },
+        evidenceByKey: new Map(),
+        rawMailRowsRevision: 'rev-2'
+      };
+    });
+    vi.mocked(fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds).mockResolvedValue([]);
+    vi.mocked(attachLeaderboardLaborMinutes).mockResolvedValue([]);
+    const perf = vi.fn();
+
+    await fetchLeaderboardBoardLaborMetadata(
+      {
+        orderedRowIds: ['known'],
+        locationKey: 'device-a'
+      },
+      { performanceSink: perf }
+    );
+
+    expect(readLeaderboardShellSnapshotGenerationTokenDetails).toHaveBeenCalledTimes(2);
+    expect(attachLeaderboardLaborMinutes).toHaveBeenCalledWith(
+      [],
+      expect.objectContaining({
+        cacheScopeKey: 'gen-2'
+      })
+    );
+    const contextEvents = perf.mock.calls
+      .map(([event]) => event)
+      .filter((event) => event.phase === 'processChangeResidualContext');
+    expect(contextEvents).toContainEqual(
+      expect.objectContaining({
+        endpoint: 'laborMetadata',
+        subphase: 'residualMaterialization',
+        cacheHit: false,
+        rawRowCount: 10,
+        normalizedRowCount: 9,
+        dedupedRowCount: 8,
+        strongEvidenceKeyCount: 2,
+        revisionChanged: true,
+        sourceRowFetchDurationMs: 13,
+        normalizeDurationMs: 3,
+        dedupeDurationMs: 1,
+        buildEvidenceDurationMs: 1
+      })
+    );
+    expect(contextEvents).toContainEqual(
+      expect.objectContaining({
+        endpoint: 'laborMetadata',
+        subphase: 'generationTokenRefresh',
+        revisionChanged: true
+      })
+    );
+    expect(contextEvents.filter((event) => event.subphase == null)).toHaveLength(1);
   });
 
   it('metadata 数値が揃わない hydrate 結果は応答から omit する', async () => {
