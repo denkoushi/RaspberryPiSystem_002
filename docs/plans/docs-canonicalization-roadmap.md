@@ -5468,7 +5468,19 @@ Status: implemented in PR436.
 - Do not edit module docs, deployment guide, verification checklist, KB index,
   or `EXEC_PLAN.md` in this PR.
 
-### PR437 And Later: Thin Indexes And Split Large Documents
+### PR437: Thin Instrument Kiosk Reset Error Index Block
+
+Status: implemented in PR437.
+
+- Thin only the 2025-12-11 measuring-instrument kiosk error-message/reset
+  latest-update block in `docs/INDEX.md`.
+- Preserve reachability, but replace the stale frontend build, unregistered tag
+  message, and reset behavior details with a short link to the measuring
+  instruments verification guide.
+- Do not edit module docs, deployment guide, verification checklist, KB index,
+  or `EXEC_PLAN.md` in this PR.
+
+### PR438 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
