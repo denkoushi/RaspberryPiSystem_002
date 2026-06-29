@@ -5091,7 +5091,19 @@ Status: implemented in PR406.
 - Do not edit deployment guide, verification checklist, KB index, or
   `EXEC_PLAN.md` in this PR.
 
-### PR407 And Later: Thin Indexes And Split Large Documents
+### PR407: Thin Backup Script Integration Index Block
+
+Status: implemented in PR407.
+
+- Thin only the 2025-12-29 backup script integration latest-update block in
+  `docs/INDEX.md`.
+- Preserve reachability, but replace the script/admin console compatibility,
+  internal endpoint, kind/source matching, shared config, and history recording
+  details with short links to the backup script integration guide and KB-106.
+- Do not edit deployment guide, verification checklist, KB index, or
+  `EXEC_PLAN.md` in this PR.
+
+### PR408 And Later: Thin Indexes And Split Large Documents
 
 - Thin `docs/INDEX.md` one domain at a time after ledger confirmation.
 - Thin remaining long entries in `docs/knowledge-base/index.md`.
