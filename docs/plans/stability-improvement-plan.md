@@ -241,6 +241,100 @@
 2. ✅ **ドキュメント更新**: エラーハンドリングガイドとログ出力ガイドを作成 → **完了**
 3. **mainブランチへのマージ**: 実装完了後、`main`ブランチにマージ
 
+## 2026-06-29: Pi4 SDカード予防保全 v1
+
+### source_of_truth
+
+この節を、Pi4 SDカード予防保全 v1 の進捗、仕様、検証結果、未完了事項の正本とする。詳細はここに集約し、索引文書や`EXEC_PLAN.md`には重複記録しない。
+
+### 進捗
+
+- 作業ブランチ: `feat/pi4-sd-card-health-monitor`
+- 対象コミット:
+  - `29a1c993 feat: add pi4 sd card health monitoring`
+  - `5d0e754b fix: throttle pi4 storage health checks`
+  - `ed5fb29b feat: notify slack on storage health alerts`
+- 実装済み:
+  - Pi4キオスク向けのSDカード破損兆候監視
+  - 監視頻度の抑制
+  - ローカル成功ログの削減
+  - storage health異常時のAlert作成とSlack配送キュー登録
+- DB schemaと既存API schemaは変更していない。
+
+### v1仕様
+
+- 有効化対象は`kiosk`グループのPi4のみ。Pi3、Pi5、TalkPlazaはv1では未有効化。
+- 通常のステータス送信は毎分継続する。
+- SDヘルスチェック本体は毎分実行しない。既定は`STORAGE_HEALTH_INTERVAL_SECONDS=3600`で、最終実行時刻はtmpfs上の`/run/raspi-status-agent/storage-health-last-run`に保持し、SDカードへの不要な書き込みを避ける。
+- `STATUS_AGENT_LOG_SUCCESS=0`を既定にし、成功時のローカルログ書き込みを抑制する。異常時はローカルログとAPI送信ログに残す。
+- 1日1回まで落とす案は保留。kernel logの短時間エラーを拾うため、v1は1時間間隔で開始し、運用データを見て日次化を再判断する。
+- 監視シグナル:
+  - `/proc/mounts`でroot filesystemが`ro`なら`ERROR`
+  - `journalctl -k`またはfallbackの`dmesg`で`mmc`、`I/O error`、`EXT4-fs error`、`Buffer I/O error`、read-only remount系を検出したら`ERROR`
+  - rootディスク使用率またはinode使用率が80%以上なら`WARN`、90%以上なら`ERROR`
+  - `vcgencmd get_throttled`で現在の低電圧は`ERROR`、現在のthrottleまたは温度制限は`WARN`
+- `ClientLog.context`には`category: "storage_health"`、`signal`、`rootSource`、`raw`、`observedAt`を入れる。
+- 1回のPOSTに追加するstorage healthログは最大10件。
+
+### 実装箇所
+
+- status agent:
+  - [storage_health.py](../../clients/status-agent/storage_health.py)
+  - [status-agent.py](../../clients/status-agent/status-agent.py)
+  - [status-agent.conf.j2](../../infrastructure/ansible/templates/status-agent.conf.j2)
+  - [inventory.yml](../../infrastructure/ansible/inventory.yml)
+- API通知:
+  - [client-telemetry.service.ts](../../apps/api/src/services/clients/client-telemetry.service.ts)
+- 運用ガイド:
+  - [status-agent guide](../guides/status-agent.md)
+  - [local alerts guide](../guides/local-alerts.md)
+
+### Slack通知仕様
+
+- APIは`WARN`または`ERROR`の`ClientLog`で`context.category === "storage_health"`を検出すると、DB transaction内で`Alert`と`AlertDelivery(channel=SLACK, routeKey=ops)`を作成する。
+- `type`は`storage-health-${signal}`、severityは`WARN -> WARNING`、`ERROR -> ERROR`。
+- fingerprintはclient、signal、type単位。同じfingerprintの未acknowledged alertが残っている間は新規通知を作らず、Slack連投を抑制する。
+- Alert作成に失敗してもstatus ingestは失敗させず、APIログにwarnを残す。
+- 本番で必要な既存設定は`ALERTS_DISPATCHER_MODE=db`、`ALERTS_DB_DISPATCHER_ENABLED=true`、`ALERTS_SLACK_WEBHOOK_OPS`。
+
+### 検証結果
+
+- Python unit:
+  - `python3 -m unittest discover -s clients/status-agent/tests -v`成功
+- API unit:
+  - `pnpm --filter @raspi-system/api test -- src/services/clients/__tests__/client-telemetry.service.test.ts`成功
+- API integration:
+  - 一時Postgres `pgvector/pgvector:pg16`でmigrations 119件を適用
+  - `pnpm --filter @raspi-system/api test -- src/routes/__tests__/clients.integration.test.ts`成功
+  - storage healthログが`ClientLog`、`Alert`、`AlertDelivery(SLACK, ops)`として保存されることを確認
+  - 同じsignalの未acknowledged alertが重複作成されないことを確認
+  - 一時DBコンテナは検証後に削除済み
+- API checks:
+  - `pnpm --filter @raspi-system/api lint`成功
+  - `pnpm --filter @raspi-system/api build`成功
+- CI:
+  - GitHub Actions run `28357286183`は成功
+  - `lint-build-unit`、`security-docker`、`api-db-and-infra`、`e2e-smoke`、`e2e-tests`が成功
+- 実機:
+  - Pi5 serverへ`ed5fb29b`をデプロイ成功
+  - deploy run id: `20260629-171426-7629`
+  - API containerはhealthy
+  - `https://127.0.0.1/api/system/health`は`status: "ok"`
+  - DB dispatcherとSlack ops webhook設定が有効であることを確認
+  - deploy時のDB dispatcher runで`processed=1 sent=1 failed=0 suppressed=0`を確認
+
+### 未完了事項
+
+- 本番DBに人工のstorage health異常を投入する検証は未実施。実データを汚さないため、Slack着弾は既存dispatcher動作確認までに留めた。
+- Pi4実機での次回確認項目:
+  - `systemctl status status-agent.timer`
+  - `journalctl -u status-agent.service -n 50`
+  - `/admin/clients`の最新storage healthログ
+  - 異常検出時のSlack通知
+- 専用ダッシュボード、履歴集計、交換判断ワークフローは次フェーズ。v1は既存`ClientLog`と`Alert`を使う。
+- SDカード摩耗低減の追加策として、overlayfs、tmpfs拡張、read-only root化は未実装。監視とログ削減を先に安定させる。
+- 1時間間隔を日次へ下げるかは、数日分の実機ログと通知頻度を見て判断する。
+
 ## 関連ドキュメント
 
 - [システム要件定義](../requirements/system-requirements.md)（NFR-004: 保守性）
@@ -252,4 +346,3 @@
 - 機密情報（パスワード、トークンなど）はログに出力しない
 - パフォーマンスへの影響を考慮する（過度なログ出力は避ける）
 - 既存のログ出力との互換性を保つ
-
