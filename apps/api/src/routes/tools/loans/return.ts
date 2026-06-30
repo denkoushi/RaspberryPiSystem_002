@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { LoanService } from '../../../services/tools/loan.service.js';
 import { returnSchema } from './schemas.js';
+import { resolveAuthorizedLoanClientId } from './auth.js';
 
 export function registerReturnRoute(app: FastifyInstance, loanService: LoanService): void {
-  app.post('/return', { config: { rateLimit: false } }, async (request) => {
+  app.post('/return', { config: { rateLimit: false } }, async (request, reply) => {
     // 機密情報保護: x-client-keyをログから除外
     const sanitizedHeaders = { ...request.headers };
     if ('x-client-key' in sanitizedHeaders) {
@@ -13,8 +14,7 @@ export function registerReturnRoute(app: FastifyInstance, loanService: LoanServi
     try {
       const body = returnSchema.parse(request.body);
       app.log.info({ body }, 'Return request body validated');
-      const headerKey = request.headers['x-client-key'];
-      const resolvedClientId = await loanService.resolveClientId(body.clientId, headerKey);
+      const resolvedClientId = await resolveAuthorizedLoanClientId(request, reply, body.clientId, 'write');
       // 機密情報保護: headerKeyをログから除外
       app.log.info({ resolvedClientId, headerKey: '[REDACTED]' }, 'Client ID resolved');
       const performedByUserId = request.user?.id ?? body.performedByUserId;
@@ -28,4 +28,3 @@ export function registerReturnRoute(app: FastifyInstance, loanService: LoanServi
     }
   });
 }
-

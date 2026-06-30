@@ -1,35 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import { authorizeRoles } from '../../../lib/auth.js';
 import { LoanService } from '../../../services/tools/loan.service.js';
 import { activeLoanQuerySchema } from './schemas.js';
+import { resolveAuthorizedLoanClientId } from './auth.js';
 
 export function registerActiveLoansRoute(app: FastifyInstance, loanService: LoanService): void {
-  const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
-
   app.get('/active', { config: { rateLimit: false } }, async (request, reply) => {
     const query = activeLoanQuerySchema.parse(request.query);
-    let resolvedClientId = query.clientId;
-
-    // クライアントキーがあれば優先的にデバイス認証とみなす
-    const headerKey = request.headers['x-client-key'];
-    if (headerKey) {
-      // clientIdがクエリパラメータで指定されていない場合のみ、クライアントキーから解決
-      if (!resolvedClientId) {
-        resolvedClientId = await loanService.resolveClientId(undefined, headerKey);
-      } else {
-        // clientIdが指定されている場合は検証のみ
-        await loanService.resolveClientId(resolvedClientId, headerKey);
-      }
-    } else {
-      try {
-        await canView(request, reply);
-      } catch (error) {
-        // JWT が無効でも clientId が明示されていれば許可する
-        if (!resolvedClientId) {
-          throw error;
-        }
-      }
-    }
+    await resolveAuthorizedLoanClientId(request, reply, query.clientId, 'read');
 
     // キオスク画面では、クライアントキー認証があっても全件表示する
     // （異なるAPIキーで作成された貸出も含めて表示するため）
@@ -41,4 +18,3 @@ export function registerActiveLoansRoute(app: FastifyInstance, loanService: Loan
     return { loans };
   });
 }
-

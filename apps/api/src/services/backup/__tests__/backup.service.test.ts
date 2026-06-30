@@ -71,5 +71,11 @@ describe('BackupService with LocalStorageProvider', () => {
     // 正規化されたラベルが path の中間要素に入ること
     expect(result.path!).toContain('-manual-test_app_config_host-etc/');
   });
-});
 
+  it('rejects local backup paths outside the storage directory', async () => {
+    const provider = new LocalStorageProvider({ baseDir: workDir });
+
+    await expect(provider.download('../outside.sql')).rejects.toThrow('Invalid backup storage path');
+    await expect(provider.upload(Buffer.from('x'), '/tmp/outside.sql')).rejects.toThrow('Invalid backup storage path');
+  });
+});

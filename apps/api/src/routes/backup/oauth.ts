@@ -1,10 +1,9 @@
-import crypto from 'crypto';
-
 import type { FastifyInstance } from 'fastify';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
+import { createOAuthState, verifyOAuthState } from '../../lib/oauth-state.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { DropboxOAuthService } from '../../services/backup/dropbox-oauth.service.js';
@@ -43,11 +42,7 @@ export async function registerBackupOAuthRoutes(app: FastifyInstance): Promise<v
       redirectUri,
     });
 
-    // CSRF保護用のstateパラメータを生成
-    const state = crypto.randomBytes(32).toString('hex');
-
-    // セッションにstateを保存（簡易実装、本番環境では適切なセッション管理を使用）
-    // ここではクエリパラメータとして返す（実際の実装ではセッションストアを使用）
+    const state = createOAuthState('dropbox', appSecret);
     const authUrl = oauthService.getAuthorizationUrl(state);
 
     return reply.status(200).send({
@@ -58,7 +53,7 @@ export async function registerBackupOAuthRoutes(app: FastifyInstance): Promise<v
 
   // OAuth 2.0コールバック（認証コードを受け取る）
   // 注意: コールバックエンドポイントはDropboxからリダイレクトされるため、認証をスキップする
-  // CSRF保護は`state`パラメータで行う（簡易実装）
+  // CSRF保護は署名付き`state`パラメータで行う
   app.get('/backup/oauth/callback', async (request, reply) => {
     const query = oauthCallbackQuerySchema.parse(request.query);
 
@@ -77,6 +72,8 @@ export async function registerBackupOAuthRoutes(app: FastifyInstance): Promise<v
     if (!appKey || !appSecret) {
       throw new ApiError(400, 'Dropbox App Key and App Secret are required in config file');
     }
+
+    verifyOAuthState(query.state, 'dropbox', appSecret);
 
     // リダイレクトURI（現在のホストを使用）
     const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';

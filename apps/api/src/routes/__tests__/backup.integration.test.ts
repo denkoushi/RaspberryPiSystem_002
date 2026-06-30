@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
-import { createAuthHeader, createTestUser } from './helpers.js';
+import { createAuthHeader, createTestUser, expectApiError } from './helpers.js';
 import { promises as fs } from 'fs';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -14,6 +14,26 @@ describe('Backup API integration', () => {
   let authHeader: Record<string, string>;
   let testUser: { user: Awaited<ReturnType<typeof createTestUser>>['user']; token: string; password: string };
   let testConfigPath: string | null = null;
+
+  const writeBackupConfig = async (options: Record<string, unknown>) => {
+    if (!testConfigPath) {
+      throw new Error('testConfigPath is not initialized');
+    }
+    await fs.writeFile(
+      testConfigPath,
+      JSON.stringify(
+        {
+          storage: { provider: 'local', options },
+          targets: [],
+          csvImports: [],
+          retention: { days: 30, maxItems: 100 },
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    );
+  };
 
   beforeEach(async () => {
     // BackupConfigLoader は初期化時に /app/config/backup.json を参照するケースがあるため、
@@ -161,6 +181,54 @@ describe('Backup API integration', () => {
     expect(body.errorCode).toBe('VALIDATION_ERROR');
   });
 
+  it('should issue signed backup oauth state', async () => {
+    await writeBackupConfig({
+      appKey: 'dropbox-app-key',
+      appSecret: 'dropbox-app-secret-with-enough-length',
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/backup/oauth/authorize',
+      headers: authHeader,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { authorizationUrl: string; state: string };
+    expect(body.state.split('.')).toHaveLength(2);
+    expect(new URL(body.authorizationUrl).searchParams.get('state')).toBe(body.state);
+  });
+
+  it('should reject backup oauth callback with code but missing state', async () => {
+    await writeBackupConfig({
+      appKey: 'dropbox-app-key',
+      appSecret: 'dropbox-app-secret-with-enough-length',
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/backup/oauth/callback?code=fake-code',
+    });
+
+    const body = expectApiError(response, 400);
+    expect(body.errorCode).toBe('OAUTH_STATE_REQUIRED');
+  });
+
+  it('should reject backup oauth callback with invalid state', async () => {
+    await writeBackupConfig({
+      appKey: 'dropbox-app-key',
+      appSecret: 'dropbox-app-secret-with-enough-length',
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/backup/oauth/callback?code=fake-code&state=invalid',
+    });
+
+    const body = expectApiError(response, 400);
+    expect(body.errorCode).toBe('OAUTH_STATE_INVALID');
+  });
+
   it('should reject gmail oauth callback without code and error', async () => {
     const response = await app.inject({
       method: 'GET',
@@ -170,6 +238,63 @@ describe('Backup API integration', () => {
     expect(response.statusCode).toBe(400);
     const body = response.json();
     expect(body.errorCode).toBe('VALIDATION_ERROR');
+  });
+
+  it('should issue signed gmail oauth state', async () => {
+    await writeBackupConfig({
+      gmail: {
+        clientId: 'gmail-client-id',
+        clientSecret: 'gmail-client-secret-with-enough-length',
+        redirectUri: 'http://localhost:8080/api/gmail/oauth/callback',
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/gmail/oauth/authorize',
+      headers: authHeader,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { authorizationUrl: string; state: string };
+    expect(body.state.split('.')).toHaveLength(2);
+    expect(new URL(body.authorizationUrl).searchParams.get('state')).toBe(body.state);
+  });
+
+  it('should reject gmail oauth callback with code but missing state', async () => {
+    await writeBackupConfig({
+      gmail: {
+        clientId: 'gmail-client-id',
+        clientSecret: 'gmail-client-secret-with-enough-length',
+        redirectUri: 'http://localhost:8080/api/gmail/oauth/callback',
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/gmail/oauth/callback?code=fake-code',
+    });
+
+    const body = expectApiError(response, 400);
+    expect(body.errorCode).toBe('OAUTH_STATE_REQUIRED');
+  });
+
+  it('should reject gmail oauth callback with invalid state', async () => {
+    await writeBackupConfig({
+      gmail: {
+        clientId: 'gmail-client-id',
+        clientSecret: 'gmail-client-secret-with-enough-length',
+        redirectUri: 'http://localhost:8080/api/gmail/oauth/callback',
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/gmail/oauth/callback?code=fake-code&state=invalid',
+    });
+
+    const body = expectApiError(response, 400);
+    expect(body.errorCode).toBe('OAUTH_STATE_INVALID');
   });
 
   describe('Backup target management', () => {

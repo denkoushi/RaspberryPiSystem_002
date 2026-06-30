@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import crypto from 'crypto';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
+import { createOAuthState, verifyOAuthState } from '../../lib/oauth-state.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { GmailOAuthService, GmailReauthRequiredError, isInvalidGrantMessage } from '../../services/backup/gmail-oauth.service.js';
@@ -62,9 +62,8 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
       redirectUri
     });
 
-    // CSRF保護用のstateパラメータを生成
-    const state = crypto.randomBytes(32).toString('hex');
-    
+    const state = createOAuthState('gmail', clientSecret);
+
     // 認証URLを生成
     const authUrl = oauthService.getAuthorizationUrl(state);
 
@@ -78,7 +77,7 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
 
   // OAuth 2.0コールバック（認証コードを受け取る）
   // 注意: コールバックエンドポイントはGoogleからリダイレクトされるため、認証をスキップする
-  // CSRF保護は`state`パラメータで行う（簡易実装）
+  // CSRF保護は署名付き`state`パラメータで行う
   app.get('/gmail/oauth/callback', async (request, reply) => {
     const query = gmailOauthCallbackQuerySchema.parse(request.query);
     
@@ -105,6 +104,8 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
     if (!clientId || !clientSecret) {
       throw new ApiError(400, 'Gmail Client ID and Client Secret are required in config file');
     }
+
+    verifyOAuthState(query.state, 'gmail', clientSecret);
 
     // リダイレクトURI（設定ファイルに保存されている場合はそれを使用、なければ動的に生成）
     const configuredRedirectUri = (config.storage.options?.gmail?.redirectUri as string | undefined)
@@ -271,4 +272,3 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
     }
   });
 }
-

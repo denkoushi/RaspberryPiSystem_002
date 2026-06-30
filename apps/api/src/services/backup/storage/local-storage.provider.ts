@@ -16,30 +16,48 @@ export class LocalStorageProvider implements StorageProvider, LargeFileUploadPro
   private readonly baseDir: string;
 
   constructor(options?: { baseDir?: string }) {
-    this.baseDir = options?.baseDir || getDefaultBaseDir();
+    this.baseDir = path.resolve(options?.baseDir || getDefaultBaseDir());
+  }
+
+  private resolveTargetPath(targetPath: string): string {
+    if (targetPath.includes('\0') || path.isAbsolute(targetPath)) {
+      throw new Error('Invalid backup storage path');
+    }
+
+    const normalized = path.normalize(targetPath || '.');
+    if (normalized === '..' || normalized.startsWith(`..${path.sep}`) || path.isAbsolute(normalized)) {
+      throw new Error('Invalid backup storage path');
+    }
+
+    const fullPath = path.resolve(this.baseDir, normalized);
+    if (fullPath !== this.baseDir && !fullPath.startsWith(`${this.baseDir}${path.sep}`)) {
+      throw new Error('Invalid backup storage path');
+    }
+
+    return fullPath;
   }
 
   async upload(file: Buffer, targetPath: string): Promise<void> {
-    const fullPath = path.join(this.baseDir, targetPath);
+    const fullPath = this.resolveTargetPath(targetPath);
     const dir = path.dirname(fullPath);
     await ensureDir(dir);
     await fs.writeFile(fullPath, file);
   }
 
   async uploadFromFile(filePath: string, targetPath: string): Promise<void> {
-    const fullPath = path.join(this.baseDir, targetPath);
+    const fullPath = this.resolveTargetPath(targetPath);
     const dir = path.dirname(fullPath);
     await ensureDir(dir);
     await fs.copyFile(filePath, fullPath);
   }
 
   async download(targetPath: string): Promise<Buffer> {
-    const fullPath = path.join(this.baseDir, targetPath);
+    const fullPath = this.resolveTargetPath(targetPath);
     return fs.readFile(fullPath);
   }
 
   async delete(targetPath: string): Promise<void> {
-    const fullPath = path.join(this.baseDir, targetPath);
+    const fullPath = this.resolveTargetPath(targetPath);
     await fs.rm(fullPath, { force: true });
     
     // ファイル削除後、親ディレクトリが空なら削除を試みる
@@ -57,7 +75,7 @@ export class LocalStorageProvider implements StorageProvider, LargeFileUploadPro
   }
 
   async list(targetPath: string): Promise<FileInfo[]> {
-    const fullPath = path.join(this.baseDir, targetPath);
+    const fullPath = this.resolveTargetPath(targetPath);
     const results: FileInfo[] = [];
 
     const walk = async (base: string, rel: string) => {
@@ -83,4 +101,3 @@ export class LocalStorageProvider implements StorageProvider, LargeFileUploadPro
     return results;
   }
 }
-

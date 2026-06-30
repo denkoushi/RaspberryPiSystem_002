@@ -1,7 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
-import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestItem, createTestUser } from './helpers.js';
+import {
+  createAuthHeader,
+  createTestClientDevice,
+  createTestEmployee,
+  createTestItem,
+  createTestUser,
+  expectApiError,
+} from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -62,6 +69,44 @@ describe('POST /api/tools/loans/borrow', () => {
     expect(body).toHaveProperty('loan');
     expect(body.loan.itemId).toBe(itemId);
     expect(body.loan.employeeId).toBe(employeeId);
+  });
+
+  it('should reject borrow without client key or auth token', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tools/loans/borrow',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      payload: {
+        itemTagUid,
+        employeeTagUid,
+      },
+    });
+
+    const body = expectApiError(response, 401);
+    expect(body.errorCode).toBe('AUTH_OR_CLIENT_KEY_REQUIRED');
+  });
+
+  it('should reject borrow when clientId does not match client key', async () => {
+    const otherClient = await createTestClientDevice();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tools/loans/borrow',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey,
+      },
+      payload: {
+        itemTagUid,
+        employeeTagUid,
+        clientId: otherClient.id,
+      },
+    });
+
+    const body = expectApiError(response, 403);
+    expect(body.errorCode).toBe('CLIENT_KEY_CLIENT_MISMATCH');
   });
 
   it('should return 404 for non-existent item', async () => {
@@ -280,4 +325,3 @@ describe('PUT /api/tools/loans/:id/client', () => {
     expect(response.statusCode).toBe(401);
   });
 });
-

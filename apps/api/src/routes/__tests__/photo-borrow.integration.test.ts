@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
-import { createTestClientDevice, createTestEmployee } from './helpers.js';
+import { createTestClientDevice, createTestEmployee, expectApiError } from './helpers.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 import sharp from 'sharp';
@@ -117,6 +117,39 @@ const buildPayload = (overrides: Record<string, unknown> = {}) => ({
     expect(body.loan.photoUrl).toMatch(/^\/api\/storage\/photos\/\d{4}\/\d{2}\/\d{8}_\d{6}_[a-f0-9-]+\.jpg$/);
   });
 
+  it('should reject photo loan without client key or auth token', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tools/loans/photo-borrow',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      payload: buildPayload(),
+    });
+
+    const body = expectApiError(response, 401);
+    expect(body.errorCode).toBe('AUTH_OR_CLIENT_KEY_REQUIRED');
+  });
+
+  it('should reject photo loan when clientId does not match client key', async () => {
+    const otherClient = await createTestClientDevice();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tools/loans/photo-borrow',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey,
+      },
+      payload: buildPayload({
+        clientId: otherClient.id,
+      }),
+    });
+
+    const body = expectApiError(response, 403);
+    expect(body.errorCode).toBe('CLIENT_KEY_CLIENT_MISMATCH');
+  });
+
   it('should return 404 for non-existent employee tag', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -194,4 +227,3 @@ const buildPayload = (overrides: Record<string, unknown> = {}) => ({
     // このテストはスキップ（閾値チェックを削除したため、暗い画像でも受け入れる）
   });
 });
-

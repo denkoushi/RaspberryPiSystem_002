@@ -8,6 +8,43 @@ const getStorageBaseDir = () =>
   (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
 const getPhotosDir = () => path.join(getStorageBaseDir(), 'photos');
 const getThumbnailsDir = () => path.join(getStorageBaseDir(), 'thumbnails');
+const PHOTO_PUBLIC_PREFIX = '/api/storage/photos/';
+
+const resolvePathInside = (baseDir: string, relativePath: string): string => {
+  if (!relativePath || relativePath.includes('\0') || path.isAbsolute(relativePath)) {
+    throw new Error('Invalid photo path');
+  }
+
+  const normalized = path.normalize(relativePath);
+  if (normalized === '..' || normalized.startsWith(`..${path.sep}`) || path.isAbsolute(normalized)) {
+    throw new Error('Invalid photo path');
+  }
+
+  const base = path.resolve(baseDir);
+  const fullPath = path.resolve(base, normalized);
+  if (fullPath !== base && !fullPath.startsWith(`${base}${path.sep}`)) {
+    throw new Error('Invalid photo path');
+  }
+
+  return fullPath;
+};
+
+const extractPhotoRelativePath = (photoUrl: string): string => {
+  if (!photoUrl.startsWith(PHOTO_PUBLIC_PREFIX)) {
+    throw new Error(`Invalid photoUrl: ${photoUrl}`);
+  }
+
+  let relativePath: string;
+  try {
+    relativePath = decodeURIComponent(photoUrl.slice(PHOTO_PUBLIC_PREFIX.length));
+  } catch {
+    throw new Error('Invalid photo path');
+  }
+  if (!relativePath || relativePath.includes('/') === false) {
+    throw new Error('Invalid photo path');
+  }
+  return path.normalize(relativePath);
+};
 
 /**
  * 写真ファイルのパス情報
@@ -111,16 +148,12 @@ export class PhotoStorage {
    * @param photoUrl 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
    */
   static async deletePhoto(photoUrl: string): Promise<void> {
-    // URLからファイルパスを抽出
-    // /api/storage/photos/YYYY/MM/filename.jpg -> /opt/RaspberryPiSystem_002/storage/photos/YYYY/MM/filename.jpg
-    const relativePath = photoUrl.replace('/api/storage/photos/', '');
-    const fullPath = path.join(getPhotosDir(), relativePath);
+    const relativePath = extractPhotoRelativePath(photoUrl);
+    const fullPath = resolvePathInside(getPhotosDir(), relativePath);
 
     // サムネイルのパスも生成
-    const thumbnailRelativePath = photoUrl
-      .replace('/api/storage/photos/', '/storage/thumbnails/')
-      .replace('.jpg', '_thumb.jpg');
-    const thumbnailFullPath = thumbnailRelativePath.replace('/storage/thumbnails/', getThumbnailsDir() + '/');
+    const thumbnailRelativePath = relativePath.replace(/\.jpe?g$/i, '_thumb.jpg');
+    const thumbnailFullPath = resolvePathInside(getThumbnailsDir(), thumbnailRelativePath);
 
     // ファイルを削除（存在しない場合はエラーを無視）
     try {
@@ -190,9 +223,8 @@ export class PhotoStorage {
    * @returns 画像のBuffer
    */
   static async readPhoto(photoUrl: string): Promise<Buffer> {
-    // URLからファイルパスを抽出
-    const relativePath = photoUrl.replace('/api/storage/photos/', '');
-    const fullPath = path.join(getPhotosDir(), relativePath);
+    const relativePath = extractPhotoRelativePath(photoUrl);
+    const fullPath = resolvePathInside(getPhotosDir(), relativePath);
 
     return await fs.readFile(fullPath);
   }
@@ -202,16 +234,9 @@ export class PhotoStorage {
    * （`deletePhoto` と同じパス規則。`signage.service` の buildThumbnailUrl と整合）
    */
   static async readThumbnailBuffer(photoUrl: string): Promise<Buffer> {
-    if (!photoUrl.startsWith('/api/storage/photos/')) {
-      throw new Error(`Invalid photoUrl for thumbnail: ${photoUrl}`);
-    }
-    const thumbnailRelativePath = photoUrl
-      .replace('/api/storage/photos/', '/storage/thumbnails/')
-      .replace('.jpg', '_thumb.jpg');
-    const thumbnailFullPath = thumbnailRelativePath.replace(
-      '/storage/thumbnails/',
-      `${getThumbnailsDir()}/`
-    );
+    const relativePath = extractPhotoRelativePath(photoUrl);
+    const thumbnailRelativePath = relativePath.replace(/\.jpe?g$/i, '_thumb.jpg');
+    const thumbnailFullPath = resolvePathInside(getThumbnailsDir(), thumbnailRelativePath);
     return await fs.readFile(thumbnailFullPath);
   }
 
@@ -236,4 +261,3 @@ export class PhotoStorage {
       .toBuffer();
   }
 }
-
