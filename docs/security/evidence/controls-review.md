@@ -18,7 +18,7 @@
 | A01 Access Control | `/api/tools/loans/*` の未認証操作を遮断。`x-client-key` と `clientId` の不一致を拒否。 | Pi5反映済み・統合テスト済み |
 | CSRF / OAuth | Dropbox/Gmail OAuth callback に署名付き `state` 検証を追加。 | Pi5反映済み・統合テスト済み |
 | パストラバーサル | 写真/ローカルバックアップ保存で保存ディレクトリ外パスを拒否。 | Pi5反映済み・単体テスト済み |
-| 運用監視API | `/api/system/health` と `/api/system/metrics` は監視依存が大きいため今回未変更。 | 次段階で要確認 |
+| 運用監視API | `/api/system/metrics`, `/api/system/system-info`, `/api/system/network-mode`, `/api/system/deploy-status`, `/api/system/health` の公開範囲を調査。 | 調査済み・実装未変更 |
 
 検証:
 
@@ -29,6 +29,7 @@
 - 一時Postgresコンテナは削除済み。
 - Pi5反映 run `20260630-210326-19753` 成功。PLAY RECAP `failed=0`。
 - Pi5反映後、API health `200`、貸出系未認証拒否 `401`、正規 `x-client-key` 付き `/api/tools/loans/active` `200` を確認。
+- system系API公開範囲レビュー: [../system-api-exposure-review-20260630.md](../system-api-exposure-review-20260630.md)
 
 ## OWASP Top 10 2021（再評価の基準）
 

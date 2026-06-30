@@ -190,6 +190,26 @@ RASPI_SERVER_HOST='denkon5sd02@100.106.158.2' \
 - 未認証拒否確認のため、APIログに意図した `AUTH_OR_CLIENT_KEY_REQUIRED` が記録されている。
 - 最初のcurl確認でJSON形式ミスを2件発生させたが、これは検証コマンド側のミスによる `400` で、DB変更はない。
 
+## 追加調査: system系API公開範囲（2026-06-30 21:28 JST）
+
+詳細: [system-api-exposure-review-20260630.md](./system-api-exposure-review-20260630.md)
+
+実装変更は行っていない。Pi5へ読み取り確認のみ実施。
+
+確認結果:
+
+- `/api/system/health`, `/api/system/metrics`, `/api/system/system-info`, `/api/system/network-mode`, `/api/system/deploy-status` は未認証でHTTP `200`。
+- `/api/system/debug/*`, `/api/system/local-llm/*`, `/api/system/dgx-resource/*` は未認証でHTTP `401`。
+- `/api/system/metrics` は業務件数とNode.js/サイネージ状態を返すため、次段階の優先度が高い。
+- Pi5は `USE_LOCAL_CERTS=true` のため `Caddyfile.local` を使用しており、`Caddyfile.production` にある `/admin*` CIDR制限ブロックが無い。
+
+推奨:
+
+- まず `metrics` と `system-info` を閉じる案を作る。
+- 次に `network-mode` を管理者系認証へ寄せる。
+- `health` は公開版を薄くし、詳細版を認証/localhost限定に分ける。
+- `deploy-status` はキオスク依存が強いため、全端末の `x-client-key` 実運用確認後に扱う。
+
 ## 運用上の注意
 
 - 正常なキオスク端末は、有効な `x-client-key` を持っていれば従来どおり利用可能。
@@ -200,6 +220,7 @@ RASPI_SERVER_HOST='denkon5sd02@100.106.158.2' \
 
 - MFA/2段階認証: iPhone/旧スマホ確認完了まで保留。
 - system系APIの公開範囲整理: `/api/system/health` と `/api/system/metrics` は監視・手順依存が大きいため未変更。`system-info`/`network-mode` も preview画面への波及確認後に別段階で扱う。
+- system系APIの公開範囲整理: 2026-06-30 21:28 JST に調査完了。実装は未変更。優先候補は `metrics`、`system-info`、`network-mode`。
 - Ansible vault 暗号化/秘密情報ローテーション: 実機運用と復旧手順に影響するため未変更。
 - APIコンテナのSSH鍵/Ansibleマウント縮小: デプロイ経路に影響するため未変更。
 - Tailscale ACLの実設定レビュー: repo外のtailnet設定確認が必要。

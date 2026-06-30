@@ -18,6 +18,7 @@
 - **Dropbox/Gmail OAuth callback の `state` 検証**を追加した。
 - ローカル検証として API build、DBなしテスト、一時Postgresでの migration 122件と関連統合テストを実施済み。
 - Pi5反映 run `20260630-210326-19753` 成功。反映後に API health `200`、貸出系未認証拒否 `401`、正規 `x-client-key` 付き貸出一覧 `200` を確認済み。
+- **system系API公開範囲は調査済み・実装未変更**。詳細は [system-api-exposure-review-20260630.md](./system-api-exposure-review-20260630.md)。優先候補は `/api/system/metrics`、`/api/system/system-info`、`/api/system/network-mode`。
 
 ### 追加の外部インシデント評価（2025-12-13）
 - 2025年10月のアスクル社ランサムウェア攻撃（[事故報告](https://prtimes.jp/main/html/rd/p/000000500.000021550.html)）を分析し、本システムへの当てはまりを評価。
@@ -147,6 +148,7 @@
 1. **管理画面のアクセス制限**
    - 現状はローカルネットワーク内の誰でもアクセス可能
    - Tailscale ACLまたはufwでIP制限を追加すべき
+   - 2026-06-30追加確認: Pi5は `USE_LOCAL_CERTS=true` のため `Caddyfile.local` を使用しており、`Caddyfile.production` にある `/admin*` CIDR制限ブロックが無い。Tailscale ACL実体と合わせて確認が必要。
 
 2. **Dockerイメージのスキャン**
    - ファイルシステムモードのみで、コンテナ内の脆弱性検出が不完全
@@ -201,6 +203,7 @@
    - **PostgreSQLのパスワードを強力なパスワードに変更（環境変数で管理）** 🔴 高優先度
    - USBメディア接続時にオフライン保存テストを実施
    - ログローテーション設定をデプロイ（次回デプロイ時に適用）
+   - system系APIのうち `/api/system/metrics` と `/api/system/system-info` の認証/到達制限案を作成
 
 2. **中期（1ヶ月以内）**
    - CSRF対策の実装（SameSite Cookie属性の設定、CSRFトークンの実装）
