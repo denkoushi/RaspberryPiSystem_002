@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-05-20
+last-verified: 2026-06-30
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -2974,6 +2974,13 @@ category: knowledge-base
   - **手動（任意·Pi4/VNC）**: [verification-checklist §6.6.30](../guides/verification-checklist.md#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05) — 製番ありで **長い品名 truncate 行**を **マウスオーバー**し **`title` 全文**を確認
   - **知見**: Pi5 の `--follow` 完走前に次 `--limit` を起動すると **Mac 側 local lock（exit 3）** — **前 run 完了後**に再実行する
   - **未完了**: なし（手動ホバー目視は現場任意）
+- **本番デプロイ（2026-06-30 · クラスタ行/手動順位幅/slot解除 · Web のみ）**:
+  - **変更**: クラスタ行は **`品目コード · 個数 · 工順 · 資源所要量`**。手動順位アンカーは **`h-7 w-7`**。選択済み資源 CD slot の再クリック/Enter/Space は **選択解除**し、全 slot を通常輝度へ戻す。
+  - **正本実装**: commit **`317a6aa0`** · [`leaderOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts) · [`LeaderOrderResourceRow.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx) · [`LeaderBoardGrid.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardGrid.tsx) · [`LeaderOrderRowOrderSelect.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderRowOrderSelect.tsx)
+  - **不変**: API · DB · Prisma migration · SQL · Gantt 計算契約 · `+人` 合算契約 · サイネージ JPEG レンダラ。
+  - **CI**: GitHub Actions **main CI `28412915194` success**、Secret scan **`28412915196` success**、CodeQL **`28412915197` success**、Pages **`28412914915` success**。
+  - **本番反映**: [deployment.md §2026-06-30](../guides/deployment.md#kiosk-leaderboard-row-cluster-order-slot-toggle-2026-06-30)。標準全体 run **`20260630-101347-10287`** 後、`.git` 一時 lock 消失で未到達だった端末を **`20260630-103004-20424`**（stonebase）· **`20260630-103545-19235`**（sessaku）· **`20260630-104001-9466`**（Pi3）で収束。最終 PLAY RECAP は各対象 **`failed=0`**。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（全対象収束後）。
 - **Presentation 契約（[`leaderOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）**:
   - **`fseibanLine`**: 品名行右に出す製番（trim 済み・空なら非表示）。
   - **`clusterTailSegments`**: クラスタ行先頭用（**`fhincd` のみ** · 製番は含めない）。表示時は `quantityInlineJa`・`fkojunInline`・`requiredMinutesInline` と連結する。

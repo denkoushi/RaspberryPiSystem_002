@@ -2,13 +2,31 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-06-24
+last-verified: 2026-06-30
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-06-30 · **キオスク順位ボード 行クラスタ/手動順位幅/slot解除** · **Web** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-leaderboard-row-cluster-order-slot-toggle-2026-06-30}
+
+- **変更概要（正本）**: [KB-297 §card row emphasis layout](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05) · commit **`317a6aa0`** (`fix(kiosk): compact leaderboard row metadata`)
+  - クラスタ行を **品目コード · 個数 · 工順 · 資源所要量** に統一し、上段から工順/資源所要量を外して納期との被りを解消。
+  - 手動順位アンカーは **`h-7 w-7`**（旧 `w-14` の半分）へ縮小し、フォントサイズは維持。
+  - 資源 CD slot は選択済み slot の再クリック/Enter/Space で **`selectedResourceCd=null`** に戻し、全 slot を明るい状態へ戻す。
+  - **API / DB / Prisma migration / SQL 契約変更なし**。サイネージ JPEG レンダラは対象外。
+- **ローカル検証**: 対象 Vitest（3 files / 36 tests）· `pnpm --filter @raspi-system/web lint` · `pnpm --filter @raspi-system/web build` · `pnpm --filter @raspi-system/web test`（237 files / 1131 tests）すべて成功。Web-only のためローカル Docker/Postgres は不要。
+- **CI（`317a6aa0`）**: **main CI `28412915194` success**（`lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` all success）· **Secret scan `28412915196` success** · **CodeQL `28412915197` success** · **Pages `28412914915` success**。`pnpm audit` high severity は annotation のみで job success。
+- **本番デプロイ（実績）**:
+  - 標準全体 run: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Detach Run ID `20260630-101347-10287`**: Pi5 `75a49e3c` → `317a6aa0` fast-forward · Docker rebuild/restart OK · Prisma migrate/status OK · API health recovered。Pi4 `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` は `kiosk-browser.service` / `status-agent.service` / `status-agent.timer` restart OK。
+  - **一時失敗**: `raspi4-kensaku-stonebase01` の `Fix .git directory ownership` で `.git/logs/...lock` 消失による `failed=1`。wrapper は remote exit 0 だったが、当該端末は後続 task 未到達のため **無視せず対象限定 rerun**。
+  - **対象限定 rerun**: `raspi4-kensaku-stonebase01` **`20260630-103004-20424`** · `failed=0` · kiosk UI reachable · restart summary OK。
+  - **初回停止後の未処理端末を収束**: `raspi4-sessaku-01` **`20260630-103545-19235`** · `failed=0` · kiosk UI reachable · restart summary OK。`raspberrypi3` **`20260630-104001-9466`** · `failed=0` · `signage-lite.service is active`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` を全対象収束後に再実行 → **PASS 45 / WARN 0 / FAIL 0**。API health、Pi4 deploy-status、Pi4 kiosk/status-agent、Pi3 signage-lite/timer、`verify-services-real.sh` すべて PASS。
+- **運用メモ**: `.git/logs/...lock` 消失は repo sync 直後の一時ファイル race と見える。PLAY RECAP に `failed=1` が出た場合は wrapper exit 0 でも成功扱いにせず、該当 host を `--limit <host>` で再実行して `failed=0` と service restart を確認する。
 
 ### 補足（2026-06-24 · **キオスク順位ボード +人 / 8H・10H Gantt 縦バー回帰記録** · **Web** · **Pi5 + Pi4×4 反映済**） {#kiosk-leaderboard-labor-gantt-ruler-stretch-2026-06-24}
 
