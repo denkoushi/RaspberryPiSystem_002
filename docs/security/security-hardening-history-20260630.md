@@ -1,12 +1,13 @@
-# セキュリティ強化履歴（2026-06-30 ローカル第1-2段階）
+# セキュリティ強化履歴（2026-06-30 第1-2段階 + Pi5反映）
 
-最終更新: 2026-06-30 20:55 JST
+最終更新: 2026-06-30 21:14 JST
 
 ## 前提
 
 - 対象はローカルリポジトリ `/Users/tsudatakashi/RaspberryPiSystem_002`。
-- 実機反映は未実施。
-- 既存DB、既存Dockerコンテナ、実機設定、実機ファイルは変更していない。
+- Pi5実機へ反映済み。Pi4/Pi3は今回の反映対象外。
+- 既存DBデータの変更を目的とする操作は行っていない。DB migration追加もなし。
+- 一時Postgresコンテナはローカル検証後に削除済み。
 - 2段階認証/MFAは、iPhone/旧スマホの確認が終わるまで保留。今回も未変更。
 - Ansible vault の中身確認、鍵ローテーション、実機SSH設定変更は未実施。
 
@@ -139,7 +140,57 @@ pnpm --filter @raspi-system/api test -- \
 - 一時コンテナ `raspi-sec-test-postgres-*` は削除済み。
 - 検証前の `docker ps` は空で、既存コンテナ変更なし。
 
-## 実機反映前の注意
+## 実機反映履歴
+
+### Pi5反映（2026-06-30 21:03-21:10 JST）
+
+対象:
+
+- host: `raspberrypi5`
+- remote: `denkon5sd02@100.106.158.2`
+- branch: `security-hardening-20260630-pi5`
+- deployed commit: `4e058cb2` (`fix(api): harden loan and oauth security`)
+- detach run ID: `20260630-210326-19753`
+- remote log: `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260630-210326-19753.log`
+- summary: `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260630-210326-19753.summary.json`
+
+実行:
+
+```bash
+RASPI_SERVER_HOST='denkon5sd02@100.106.158.2' \
+  ./scripts/update-all-clients.sh security-hardening-20260630-pi5 \
+  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+結果:
+
+- wrapper exit code: `0`
+- PLAY RECAP: `raspberrypi5 ok=134 changed=4 unreachable=0 failed=0 skipped=43 rescued=0 ignored=0`
+- Pi4/Pi3 play: `no hosts matched` でスキップ。
+- Docker restart summary: `ok`
+- Prisma migrate deploy/status: 成功。`Database schema is up to date!`
+- API health wait: 成功。
+- remote HEAD: `4e058cb2`
+
+反映後確認:
+
+- `GET /api/system/health`: HTTP `200`
+- `GET /api/tools/loans/active` 未認証: HTTP `401`
+- `POST /api/tools/loans/borrow` 未認証・形式正しいダミーJSON: HTTP `401`
+- `POST /api/tools/loans/photo-borrow` 未認証・形式正しいダミーJSON: HTTP `401`
+- `POST /api/tools/loans/return` 未認証・ダミーUUID: HTTP `401`
+- `POST /api/tools/loans/cancel` 未認証・ダミーUUID: HTTP `401`
+- `DELETE /api/tools/loans/{dummyUuid}` 未認証: HTTP `401`
+- `GET /api/tools/loans/active` 正規 `x-client-key`: HTTP `200`
+- `docker compose ps`: api/db/web 起動中。api/db は healthy。
+
+補足:
+
+- 実機の Dropbox OAuth callback は実機設定に Dropbox App Key/Secret が無いため、state検証の実機到達前に設定不足で `400` になる。state検証自体はローカル統合テストで確認済み。
+- 未認証拒否確認のため、APIログに意図した `AUTH_OR_CLIENT_KEY_REQUIRED` が記録されている。
+- 最初のcurl確認でJSON形式ミスを2件発生させたが、これは検証コマンド側のミスによる `400` で、DB変更はない。
+
+## 運用上の注意
 
 - 正常なキオスク端末は、有効な `x-client-key` を持っていれば従来どおり利用可能。
 - 不正/古い `x-client-key`、またはキーと違う `clientId` を送る呼び出しは拒否される。

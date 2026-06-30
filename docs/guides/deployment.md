@@ -10,6 +10,24 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-06-30 · **セキュリティ強化 第1-2段階** · **API** · **Pi5 反映済**） {#security-hardening-stage-1-2-pi5-2026-06-30}
+
+- **変更概要（正本）**: [セキュリティ強化履歴](../security/security-hardening-history-20260630.md) · branch **`security-hardening-20260630-pi5`** · deployed commit **`4e058cb2`** (`fix(api): harden loan and oauth security`)
+  - 貸出APIの未認証操作を遮断し、有効な `x-client-key` または管理者系JWTを必須化。
+  - `x-client-key` と `clientId` の不一致を拒否。
+  - 写真/ローカルバックアップのパストラバーサル対策を強化。
+  - Dropbox/Gmail OAuth callback に署名付き `state` 検証を追加。
+  - **MFA/2段階認証は未変更**。iPhone/旧スマホ確認完了まで保留。
+  - **Prisma migration追加なし**。既存DBデータ変更を目的とする操作なし。
+- **ローカル検証**: `pnpm --filter @raspi-system/api build` 成功。DBなしテスト **11 passed**。一時Postgresで migration **122 applied**、統合テスト **35 passed / 1 skipped**。一時コンテナは削除済み。
+- **本番デプロイ（実績）**:
+  - `RASPI_SERVER_HOST='denkon5sd02@100.106.158.2' ./scripts/update-all-clients.sh security-hardening-20260630-pi5 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+  - **Detach Run ID `20260630-210326-19753`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260630-210326-19753.log`
+  - **結果**: wrapper exit `0` · PLAY RECAP `raspberrypi5 ok=134 changed=4 unreachable=0 failed=0 skipped=43` · Docker restart OK · Prisma migrate/status OK · API health recovered · remote HEAD `4e058cb2`
+  - **Pi4/Pi3**: `no hosts matched` で未反映。
+- **反映後確認**: API health `200`。貸出系未認証アクセスは `401`。正規 `x-client-key` 付き `/api/tools/loans/active` は `200`。api/db/web コンテナ起動中、api/db は healthy。
+- **運用メモ**: 反映前に発行済みの古い Dropbox/Gmail OAuth 認可URLは使えない。必要な場合は管理画面から認可URLを発行し直す。
+
 ### 補足（2026-06-30 · **キオスク順位ボード 行クラスタ/手動順位幅/slot解除** · **Web** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-leaderboard-row-cluster-order-slot-toggle-2026-06-30}
 
 - **変更概要（正本）**: [KB-297 §card row emphasis layout](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05) · commit **`317a6aa0`** (`fix(kiosk): compact leaderboard row metadata`)

@@ -7,17 +7,17 @@
 既存評価（2026-01-18）を基に、現在のコード・設定・運用ドキュメントに紐づく証跡を整理する。
 再評価の差分確認ポイントを明示し、最終報告書作成時の根拠とする。
 
-## 2026-06-30 ローカル強化差分
+## 2026-06-30 強化差分
 
 詳細履歴: [../security-hardening-history-20260630.md](../security-hardening-history-20260630.md)
 
-今回の差分はローカルリポジトリのみ。実機反映、既存DB変更、既存Dockerコンテナ変更、MFA変更は行っていない。
+今回の差分は Pi5 へ反映済み。Pi4/Pi3、MFA/2段階認証、既存DBデータ、鍵ローテーションは変更していない。
 
 | 項目 | 差分 | 状態 |
 |------|------|------|
-| A01 Access Control | `/api/tools/loans/*` の未認証操作を遮断。`x-client-key` と `clientId` の不一致を拒否。 | ローカル実装・統合テスト済み |
-| CSRF / OAuth | Dropbox/Gmail OAuth callback に署名付き `state` 検証を追加。 | ローカル実装・統合テスト済み |
-| パストラバーサル | 写真/ローカルバックアップ保存で保存ディレクトリ外パスを拒否。 | ローカル実装・単体テスト済み |
+| A01 Access Control | `/api/tools/loans/*` の未認証操作を遮断。`x-client-key` と `clientId` の不一致を拒否。 | Pi5反映済み・統合テスト済み |
+| CSRF / OAuth | Dropbox/Gmail OAuth callback に署名付き `state` 検証を追加。 | Pi5反映済み・統合テスト済み |
+| パストラバーサル | 写真/ローカルバックアップ保存で保存ディレクトリ外パスを拒否。 | Pi5反映済み・単体テスト済み |
 | 運用監視API | `/api/system/health` と `/api/system/metrics` は監視依存が大きいため今回未変更。 | 次段階で要確認 |
 
 検証:
@@ -27,6 +27,8 @@
 - 一時Postgresで migration 122件適用成功。
 - 貸出/写真貸出/バックアップOAuth関連の統合テスト 35件成功、1件skip。
 - 一時Postgresコンテナは削除済み。
+- Pi5反映 run `20260630-210326-19753` 成功。PLAY RECAP `failed=0`。
+- Pi5反映後、API health `200`、貸出系未認証拒否 `401`、正規 `x-client-key` 付き `/api/tools/loans/active` `200` を確認。
 
 ## OWASP Top 10 2021（再評価の基準）
 
