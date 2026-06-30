@@ -8,6 +8,57 @@ import { mkLeaderBoardRow } from './leaderBoardRowTestFixtures';
 const noop = vi.fn();
 
 describe('LeaderOrderResourceRow', () => {
+  it('renders part code, quantity, fkojun, and required minutes on the cluster row', () => {
+    const row = mkLeaderBoardRow({
+      id: 'row-cluster',
+      fhincd: 'MH001',
+      plannedQuantity: 3,
+      fkojun: ' 10 ',
+      requiredMinutes: 400
+    });
+
+    render(
+      <LeaderOrderResourceRow
+        resourceCd="305"
+        row={row}
+        orderUsageNumbers={undefined}
+        onOrderChange={noop}
+        onCompleteRow={noop}
+        completePending={false}
+        orderPending={false}
+      />
+    );
+
+    const clusterLine = screen.getByText('MH001').closest('div');
+    expect(clusterLine).toHaveTextContent('MH001·3個·10·400分');
+    expect(screen.getByTitle('表示所要時間（分）')).toHaveTextContent('400分');
+  });
+
+  it('uses compact width for manual order anchor while keeping ranked font classes', () => {
+    const row = mkLeaderBoardRow({
+      id: 'row-order-width',
+      processingOrder: 10
+    });
+
+    render(
+      <LeaderOrderResourceRow
+        resourceCd="305"
+        row={row}
+        orderUsageNumbers={undefined}
+        onOrderChange={noop}
+        onCompleteRow={noop}
+        completePending={false}
+        orderPending={false}
+      />
+    );
+
+    const orderButton = screen.getByRole('button', { name: '資源内の順位 10、タップで変更' });
+    expect(orderButton).toHaveClass('w-7');
+    expect(orderButton).toHaveClass('text-sm');
+    expect(orderButton).toHaveClass('font-semibold');
+    expect(orderButton.className).not.toContain('w-14');
+  });
+
   it('exposes full trimmed part name via title when fseiban truncates the row', () => {
     const longPartName = '  超長い品名テスト部品ABCDEFGHIJKLMNOPQRSTUVWXYZ  ';
     const trimmedPartName = longPartName.trim();

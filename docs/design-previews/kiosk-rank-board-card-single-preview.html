@@ -133,7 +133,7 @@
 
     .order-select {
       height: 28px;
-      width: 56px;
+      width: 28px;
       flex-shrink: 0;
       border-radius: 4px;
       border: 1px solid rgb(250 204 21);
@@ -154,7 +154,7 @@
       font-weight: 400;
     }
 
-    .fkojun-wrap { flex: 1; min-width: 0; display: flex; }
+    .top-spacer { flex: 1; min-width: 0; }
 
     .fkojun {
       min-width: 0;
@@ -313,7 +313,7 @@
   <div class="page">
     <p class="note">
       <strong>本番相当</strong> — <code>LeaderOrderResourceRow.tsx</code> と同期。<br />
-      納期 20px / 品名·製番 16.5px / 機種名 16.5px。左右2列は<strong>右側要素がある時のみ</strong>左50%。
+      納期 20px / 品名·製番 16.5px / 機種名 16.5px。クラスタ行は品目コード·個数·工順·資源所要量。左右2列は<strong>右側要素がある時のみ</strong>左50%。
     </p>
 
     <div class="grid-mock">
@@ -327,9 +327,7 @@
             <div class="loc-row-top">
               <button type="button" class="btn-complete" aria-label="完了にする">✓</button>
               <div class="order-select" aria-label="資源内の順位 2">2</div>
-              <div class="fkojun-wrap">
-                <span class="fkojun">010 / 切削</span>
-              </div>
+              <div class="top-spacer"></div>
               <button type="button" class="due-btn">1/6(火)</button>
               <button type="button" class="btn-note" aria-label="備考を編集">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
@@ -340,6 +338,10 @@
                 <span>MD004433830</span>
                 <span class="cluster-sep" aria-hidden="true">·</span>
                 <span>8個</span>
+                <span class="cluster-sep" aria-hidden="true">·</span>
+                <span class="fkojun">010 / 切削</span>
+                <span class="cluster-sep" aria-hidden="true">·</span>
+                <span>240分</span>
               </div>
               <div class="customer-line">株式会社サンプル商事</div>
             </div>
@@ -358,9 +360,7 @@
             <div class="loc-row-top">
               <button type="button" class="btn-complete" aria-label="完了にする">✓</button>
               <div class="order-select order-select--empty" aria-label="資源内の順位 未割当">-</div>
-              <div class="fkojun-wrap">
-                <span class="fkojun">020 / 仕上</span>
-              </div>
+              <div class="top-spacer"></div>
               <button type="button" class="due-btn">1/8(木)</button>
             </div>
             <div class="cluster-customer-row">
@@ -368,6 +368,10 @@
                 <span>MD004433831</span>
                 <span class="cluster-sep" aria-hidden="true">·</span>
                 <span>2個</span>
+                <span class="cluster-sep" aria-hidden="true">·</span>
+                <span class="fkojun">020 / 仕上</span>
+                <span class="cluster-sep" aria-hidden="true">·</span>
+                <span>90分</span>
               </div>
             </div>
             <div class="part-fseiban-row">

@@ -65,7 +65,7 @@ describe('presentLeaderOrderRow', () => {
     expect(p.machineTypeNameLine).toBe('ABCXYZ');
   });
 
-  it('part name line is fhinmei only (kojun shown in card top row)', () => {
+  it('part name line is fhinmei only', () => {
     const p = presentLeaderOrderRow(base());
     expect(p.partNameLine).toBe('部品A');
   });
@@ -92,5 +92,15 @@ describe('presentLeaderOrderRow', () => {
     expect(presentLeaderOrderRow(base()).quantityInlineJa).toBe('3個');
     expect(presentLeaderOrderRow({ ...base(), plannedQuantity: null }).quantityInlineJa).toBeNull();
     expect(presentLeaderOrderRow({ ...base(), plannedQuantity: -1 }).quantityInlineJa).toBe('-1個');
+  });
+
+  it('formats fkojun and required minutes for the cluster row', () => {
+    const p = presentLeaderOrderRow({ ...base(), fkojun: ' 020 ', requiredMinutes: 399.6 });
+    expect(p.fkojunInline).toBe('020');
+    expect(p.requiredMinutesInline).toBe('400分');
+
+    const empty = presentLeaderOrderRow({ ...base(), fkojun: ' ', requiredMinutes: 0 });
+    expect(empty.fkojunInline).toBe('—');
+    expect(empty.requiredMinutesInline).toBe('—');
   });
 });

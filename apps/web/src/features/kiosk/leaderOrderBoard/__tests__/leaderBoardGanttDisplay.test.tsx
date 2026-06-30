@@ -207,14 +207,12 @@ describe('LeaderOrderResourceCard gantt', () => {
       mkLeaderBoardRow({ id: 'r1', fkojun: '10' }),
       mkLeaderBoardRow({ id: 'r2', fkojun: '20' })
     ];
-    const { container } = render(
-      <LeaderOrderResourceCard {...cardProps} ganttEnabled={false} rows={rows} />
-    );
+    render(<LeaderOrderResourceCard {...cardProps} ganttEnabled={false} rows={rows} />);
 
     const body = screen.getByTestId('leader-order-resource-card-body');
     expect(body).toHaveClass('space-y-1');
     expect(body.children).toHaveLength(2);
-    expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
+    expect(screen.queryByTestId('leader-board-gantt-ruler-gutter')).toBeNull();
   });
 });
 
@@ -403,5 +401,37 @@ describe('LeaderBoardGrid gantt', () => {
     const bands = screen.getAllByTestId('leader-board-gantt-ruler-band');
     expect(bands).toHaveLength(2);
     expect(bands.map((band) => band.getAttribute('data-band-index'))).toEqual(['0', '1']);
+  });
+
+  it('clears selected resource when selected slot is clicked again', () => {
+    const setSelectedResourceCd = vi.fn();
+    render(
+      <LeaderBoardGrid
+        {...gridProps}
+        selectedResourceCd="305"
+        setSelectedResourceCd={setSelectedResourceCd}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole('group', {
+        name: '資源 305（選択中）。タップ、Enter、Spaceで選択解除'
+      })
+    );
+
+    expect(setSelectedResourceCd).toHaveBeenCalledWith(null);
+  });
+
+  it('selects an unselected resource when a slot is clicked', () => {
+    const setSelectedResourceCd = vi.fn();
+    render(<LeaderBoardGrid {...gridProps} setSelectedResourceCd={setSelectedResourceCd} />);
+
+    fireEvent.click(
+      screen.getByRole('group', {
+        name: '資源 305。タップ、Enter、Spaceで選択'
+      })
+    );
+
+    expect(setSelectedResourceCd).toHaveBeenCalledWith('305');
   });
 });

@@ -61,7 +61,7 @@ export function LeaderOrderRowOrderSelect({
         aria-expanded={isOpen}
         aria-controls={isOpen ? panelId : undefined}
         className={clsx(
-          'h-7 w-14 shrink-0 rounded border px-1.5 tabular-nums',
+          'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border px-0 tabular-nums',
           disabled
             ? 'cursor-not-allowed border-white/15 bg-slate-900/50 text-[11px] text-white/40'
             : hasRankedOrder

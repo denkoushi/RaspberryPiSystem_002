@@ -2770,13 +2770,13 @@ category: knowledge-base
 
 ### Leader order board: 行内順位ピッカー（製番順位 UI 統一）（2026-05-22） {#leader-order-board-row-order-rank-picker-2026-05-22}
 
-- **目的**: 各行の **`processingOrder` 設定**を、左ペイン登録製番の順位ピッカーと **同一 UI**（アンカー + Portal 縦リスト）に統一。**資源カードサイズ不変**（`h-7 w-14`）。
+- **目的**: 各行の **`processingOrder` 設定**を、左ペイン登録製番の順位ピッカーと **同一 UI**（アンカー + Portal 縦リスト）に統一。**資源カードサイズ不変**。2026-06-30 以降のアンカー寸法は `h-7 w-7`。
 - **仕様**:
   - **対象ファイル**: [`LeaderOrderRowOrderSelect.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderRowOrderSelect.tsx) のみ。
   - **共通**: [`LeaderBoardRankPickerDropdown.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardRankPickerDropdown.tsx)（[`LeaderBoardSeibanRankPicker.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardSeibanRankPicker.tsx) も利用）。
   - **リスト**: 「-」+ `availableProcessingOrderOptions`（1–10·現在値 or 空き番）。**emerald 選択**·**白 hover**。
   - **アンカー**: **「-」** → `border-white/25 bg-slate-900/90 text-[11px] text-white`。**1–10** → `border-yellow-400 bg-slate-900/90 text-sm font-semibold text-yellow-300`。**disabled** → 従来の薄表示。
-  - **不変**: API·DB·サイネージ SVG 行背景·`h-7 w-14` 寸法。
+  - **不変**: API·DB·サイネージ SVG 行背景·ドロップダウン本体。アンカー幅は 2026-06-30 に `h-7 w-7` へ縮小。
   - **プレビュー**: [leader-board-ranked-order-select-highlight-preview.html](../design-previews/leader-board-ranked-order-select-highlight-preview.html)。
 - **本番（Pi5 のみ）**: **`949eea9c`**·PR [#327](https://github.com/denkoushi/RaspberryPiSystem_002/pull/327)·CI **`26285460170` success**·Detach **`20260522-204821-6687`**（**`failed=0`**·約 **461s**）·Phase12 **43/0/0**（約 **116s**）·**現場目視 OK**（2026-05-22）。
 - **トラブルシューティング**: 旧 `<select>` → **`web` ref + 強制リロード**（§6.6.4）。ポップアップ背面 → `KIOSK_RANK_PICKER_Z_ABOVE_LEFT_STACK`。黄色にならない → 「-」または完了 disabled。
@@ -2948,7 +2948,7 @@ category: knowledge-base
   | 品名 | `text-[11px]` 相当 | **`text-[16.5px]`** | 1.5 倍 |
   | 製番（`fseiban`） | クラスタ行内 | **品名行の右** · **`text-[16.5px]`** | `font-mono` · semibold |
   | 機種名 | `text-[11px]` 相当 | **`text-[16.5px]`** | |
-  | クラスタ行 | 製番+品目+個数 | **品目コード+個数のみ** | 製番は上表どおり分離 |
+  | クラスタ行 | 製番+品目+個数 | **品目コード+個数+工順+資源所要量** | 製番は上表どおり分離 · 値だけを中黒区切り |
   | 顧客名 | `text-[11px]` | **変更なし** | クラスタ行右 |
   | 資源CDヘッダ | 15px / 12px | **変更なし** | `LeaderOrderResourceCard` |
   | カード外寸 | — | **変更なし** | 現場合意 |
@@ -2976,7 +2976,9 @@ category: knowledge-base
   - **未完了**: なし（手動ホバー目視は現場任意）
 - **Presentation 契約（[`leaderOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）**:
   - **`fseibanLine`**: 品名行右に出す製番（trim 済み・空なら非表示）。
-  - **`clusterTailSegments`**: クラスタ行用（**`fhincd` のみ** · 製番は含めない）。
+  - **`clusterTailSegments`**: クラスタ行先頭用（**`fhincd` のみ** · 製番は含めない）。表示時は `quantityInlineJa`・`fkojunInline`・`requiredMinutesInline` と連結する。
+  - **`fkojunInline`**: クラスタ行に出す工順（trim 済み・空なら `—`）。
+  - **`requiredMinutesInline`**: クラスタ行に出す資源所要量（例 `400分`・無効値/0以下なら `—`）。
   - **`clusterSegments`**: **`@deprecated`** — 後方互換（製番+品目の旧配列）。**新規表示は `fseibanLine` + `clusterTailSegments` を使う**。
   - **却下パターン**: component 側で `clusterSegments[0]` と `row.fseiban` を比較して製番を剥がす（presentation 変更時に重複/欠落しやすい）。
 - **その他実装**:

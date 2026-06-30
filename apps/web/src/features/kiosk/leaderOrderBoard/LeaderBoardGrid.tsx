@@ -20,7 +20,7 @@ export type LeaderBoardGridProps = {
   /** 製番 OR フィルタ。1件以上のときリスト順と左縁色を対応付け。**空でも製番単位でハッシュ着色**される */
   activeSeibanFilters?: readonly string[];
   selectedResourceCd: string | null;
-  setSelectedResourceCd: (cd: string) => void;
+  setSelectedResourceCd: (cd: string | null) => void;
   onOpenDueDatePicker: (row: LeaderBoardRow) => void;
   dueDatePending: boolean;
   onOrderChange: (row: LeaderBoardRow, nextValue: string) => void;
@@ -58,7 +58,7 @@ type SlotCardProps = {
   rows: LeaderBoardRow[];
   activeSeibanFilters: readonly string[] | undefined;
   selectedResourceCd: string | null;
-  setSelectedResourceCd: (cd: string) => void;
+  setSelectedResourceCd: (cd: string | null) => void;
   resourceJapaneseNames: string;
   orderUsageNumbers: readonly number[] | undefined;
   onOpenDueDatePicker: (row: LeaderBoardRow) => void;
@@ -114,8 +114,8 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   onToggleCapacityMinutes
 }: SlotCardProps) {
   const onSelect = useCallback(() => {
-    setSelectedResourceCd(resourceCd);
-  }, [resourceCd, setSelectedResourceCd]);
+    setSelectedResourceCd(selectedResourceCd === resourceCd ? null : resourceCd);
+  }, [resourceCd, selectedResourceCd, setSelectedResourceCd]);
 
   const selected = selectedResourceCd === resourceCd;
   const dimmed = selectedResourceCd != null && !selected;

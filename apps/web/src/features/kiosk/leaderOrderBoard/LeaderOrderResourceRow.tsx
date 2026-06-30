@@ -9,8 +9,7 @@ import {
 import { formatDueDate } from '../productionSchedule/formatDueDate';
 import { isManualDueDateSet } from '../productionSchedule/plannedDueDisplay';
 
-import { formatLeaderBoardRequiredMinutesLabel } from './formatLeaderBoardRequiredMinutesLabel';
-import { LeaderOrderRowClusterLine } from './LeaderOrderRowClusterLine';
+import { LeaderOrderRowClusterLine, type LeaderOrderRowClusterToken } from './LeaderOrderRowClusterLine';
 import { LeaderOrderRowOrderSelect } from './LeaderOrderRowOrderSelect';
 import { presentLeaderOrderRow } from './leaderOrderRowPresentation';
 
@@ -67,7 +66,21 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   const manual = isManualDueDateSet(row.dueDate);
   const dueLabel = formatDueDate(row.displayDue) || '—';
   const pres = presentLeaderOrderRow(row);
-  const hasClusterTail = pres.clusterTailSegments.length > 0 || pres.quantityInlineJa != null;
+  const clusterTokens: LeaderOrderRowClusterToken[] = [
+    ...pres.clusterTailSegments.map((value) => ({ value })),
+    ...(pres.quantityInlineJa ? [{ value: pres.quantityInlineJa, className: 'shrink-0' }] : []),
+    {
+      value: pres.fkojunInline,
+      className: 'shrink-0 font-mono text-white/75',
+      title: row.fkojun.trim() || undefined
+    },
+    {
+      value: pres.requiredMinutesInline,
+      className: 'shrink-0 font-mono tabular-nums text-white/55',
+      title: '表示所要時間（分）'
+    }
+  ];
+  const hasClusterTail = clusterTokens.length > 0;
   const hasCustomer = pres.customerLine.length > 0;
   const hasClusterCustomerRow = hasClusterTail || hasCustomer;
   const hasPart = pres.partNameLine.length > 0;
@@ -131,17 +144,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
             onChange={(nextValue) => onOrderChange(row, nextValue)}
           />
         )}
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="min-w-0 truncate font-mono text-[11px] text-white/88" title={row.fkojun.trim() || undefined}>
-            {row.fkojun.trim() || '—'}
-          </span>
-          <span
-            className="shrink-0 font-mono text-[10px] tabular-nums text-white/55"
-            title="表示所要時間（分）"
-          >
-            {formatLeaderBoardRequiredMinutesLabel(row.requiredMinutes)}
-          </span>
-        </div>
+        <div className="min-w-0 flex-1" />
         {isSignage ? (
           <span className={dueDateClass}>{dueLabel}</span>
         ) : (
@@ -219,10 +222,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
         <div className="flex w-full items-baseline gap-1.5">
           {hasClusterTail ? (
             <div className={pairLeftColumnClass(hasCustomer)}>
-              <LeaderOrderRowClusterLine
-                segments={pres.clusterTailSegments}
-                quantityInlineJa={pres.quantityInlineJa}
-              />
+              <LeaderOrderRowClusterLine tokens={clusterTokens} />
             </div>
           ) : null}
           {hasCustomer ? (

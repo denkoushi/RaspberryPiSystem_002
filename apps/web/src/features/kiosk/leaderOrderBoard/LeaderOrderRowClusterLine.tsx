@@ -1,40 +1,40 @@
+import clsx from 'clsx';
 import { Fragment } from 'react';
 
+export type LeaderOrderRowClusterToken = {
+  value: string;
+  className?: string;
+  title?: string;
+};
+
 type Props = {
-  segments: string[];
-  quantityInlineJa: string | null;
+  tokens: readonly LeaderOrderRowClusterToken[];
 };
 
 /**
- * 製番・品目コード・個数を中点区切りで1行に並べる（順位ボード子行の先頭ブロック）。
+ * 順位ボード子行の先頭ブロックを中点区切りで1行に並べる。
  */
-export function LeaderOrderRowClusterLine({ segments, quantityInlineJa }: Props) {
-  if (segments.length === 0 && !quantityInlineJa) {
+export function LeaderOrderRowClusterLine({ tokens }: Props) {
+  const visibleTokens = tokens.filter((token) => token.value.trim().length > 0);
+
+  if (visibleTokens.length === 0) {
     return null;
   }
 
   return (
     <div className="flex min-w-0 flex-wrap items-baseline gap-x-[0.35em] gap-y-0.5 text-[11px] text-white/80">
-      {segments.map((seg, i) => (
-        <Fragment key={`${seg}-${i}`}>
+      {visibleTokens.map((token, i) => (
+        <Fragment key={`${token.value}-${i}`}>
           {i > 0 ? (
             <span className="select-none text-white/40" aria-hidden>
               ·
             </span>
           ) : null}
-          <span className="min-w-0 break-words">{seg}</span>
+          <span className={clsx('min-w-0 break-words', token.className)} title={token.title}>
+            {token.value}
+          </span>
         </Fragment>
       ))}
-      {quantityInlineJa ? (
-        <>
-          {segments.length > 0 ? (
-            <span className="select-none text-white/40" aria-hidden>
-              ·
-            </span>
-          ) : null}
-          <span className="shrink-0">{quantityInlineJa}</span>
-        </>
-      ) : null}
     </div>
   );
 }

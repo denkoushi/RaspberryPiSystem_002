@@ -1,6 +1,8 @@
 import { normalizeMachineName } from '../productionSchedule/machineName';
 import { formatPlannedQuantityInlineJa } from '../productionSchedule/plannedDueDisplay';
 
+import { formatLeaderBoardRequiredMinutesLabel } from './formatLeaderBoardRequiredMinutesLabel';
+
 import type { LeaderBoardRow } from './types';
 
 export type LeaderOrderRowPresentation = {
@@ -24,10 +26,14 @@ export type LeaderOrderRowPresentation = {
    * 品名の下: 機種記号 · 機種名（いずれも空なら空文字）。
    */
   machineTypeNameLine: string;
-  /** 品名のみ（工順は上段インライン表示） */
+  /** 品名のみ */
   partNameLine: string;
   /** 数量サフィックス（例 `3個`）。無ければ null */
   quantityInlineJa: string | null;
+  /** クラスタ行に表示する工順（空なら `—`） */
+  fkojunInline: string;
+  /** クラスタ行に表示する資源所要量（例 `400分`。無効値なら `—`） */
+  requiredMinutesInline: string;
 };
 
 const joinMiddleDot = (parts: string[]): string =>
@@ -74,6 +80,8 @@ export function presentLeaderOrderRow(row: LeaderBoardRow): LeaderOrderRowPresen
     customerLine,
     machineTypeNameLine,
     partNameLine,
-    quantityInlineJa: formatPlannedQuantityInlineJa(row.plannedQuantity)
+    quantityInlineJa: formatPlannedQuantityInlineJa(row.plannedQuantity),
+    fkojunInline: row.fkojun.trim() || '—',
+    requiredMinutesInline: formatLeaderBoardRequiredMinutesLabel(row.requiredMinutes)
   };
 }

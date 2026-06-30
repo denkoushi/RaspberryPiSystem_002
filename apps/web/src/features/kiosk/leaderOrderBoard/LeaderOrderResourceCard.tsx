@@ -229,8 +229,8 @@ function LeaderOrderResourceCardInner({
         isSignage
           ? `資源 ${resourceCd}${jp ? ` ${jp}` : ''}（閲覧）`
           : selected
-            ? `資源 ${resourceCd}${jp ? ` ${jp}` : ''}（選択中）`
-            : `資源 ${resourceCd}${jp ? ` ${jp}` : ''}。Enter か Space で選択`
+            ? `資源 ${resourceCd}${jp ? ` ${jp}` : ''}（選択中）。タップ、Enter、Spaceで選択解除`
+            : `資源 ${resourceCd}${jp ? ` ${jp}` : ''}。タップ、Enter、Spaceで選択`
       }
     >
       <div className="mb-1.5 flex shrink-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 px-0.5">

@@ -77,11 +77,11 @@
       font-size: 11px; flex-shrink: 0;
     }
 
-    /* 旧 select と同寸 h-7 w-14（28×56px）— カードレイアウト不変 */
+    /* コンパクト h-7 w-7（28×28px）— フォントサイズは従来どおり */
     .order-anchor {
       position: relative;
       height: 28px;
-      width: 56px;
+      width: 28px;
       flex-shrink: 0;
       border-radius: 4px;
       border: 1px solid rgba(255 255 255 / 0.25);
@@ -89,7 +89,7 @@
       color: #fff;
       font-size: 11px;
       font-variant-numeric: tabular-nums;
-      padding: 0 6px;
+      padding: 0;
       cursor: pointer;
     }
 
@@ -189,7 +189,7 @@
   <div class="page">
     <h1>順位ボード — 行内順位ドロップダウンのみ変更</h1>
     <p class="lead">
-      変更対象は <code>LeaderOrderRowOrderSelect</code> のみ。資源カード・行背景・サイズ（<code>h-7 w-14</code>）は従来どおり。
+      変更対象は <code>LeaderOrderRowOrderSelect</code> のみ。資源カード・行背景は従来どおり、アンカー幅は <code>h-7 w-7</code>。
       ポップアップは左ペイン製番順位と同じ <code>LeaderBoardRankPickerDropdown</code>。
       数字を選んだあとのアンカー表示は <strong>黄色縁 + 黄色文字</strong>。
     </p>
@@ -241,7 +241,7 @@
     <div class="note-box">
       <h2>実装メモ</h2>
       <ul>
-        <li>アンカー寸法: <code>h-7 w-14 px-1.5 text-[11px]</code>（旧 <code>&lt;select&gt;</code> と同一）</li>
+        <li>アンカー寸法: <code>h-7 w-7 px-0 text-[11px]</code>（幅のみ半分、フォントは維持）</li>
         <li>順位あり: <code>border-yellow-400 bg-slate-900/90 text-sm font-semibold text-yellow-300</code></li>
         <li>順位なし「-」: <code>border-white/25 bg-slate-900/90 text-white</code></li>
         <li>ポップアップ: <code>LeaderBoardRankPickerDropdown</code>（左ペイン製番順位と同一 UI）</li>
