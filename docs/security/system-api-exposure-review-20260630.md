@@ -112,4 +112,3 @@
 - Tailscale管理画面側のACL実体。
 - LAN側からの到達性。
 - 実運用Prometheus等が `/api/system/metrics` を外部からscrapeしているか。
-
