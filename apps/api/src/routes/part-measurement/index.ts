@@ -325,6 +325,11 @@ const selfInspectionEntryIdParamsSchema = z.object({
   entryId: z.string().uuid()
 });
 
+const selfInspectionEntryIndexParamsSchema = z.object({
+  id: z.string().uuid(),
+  entryIndex: z.coerce.number().int().min(0).max(1999)
+});
+
 const selfInspectionEntryValueSchema = z.object({
   templateItemId: z.string().uuid(),
   value: z.union([z.string(), z.number(), z.null()]),
@@ -343,6 +348,11 @@ const selfInspectionUpdateEntryBodySchema = z.object({
   employeeTagUid: z.string().min(1).max(200).optional().nullable(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
+});
+
+const selfInspectionInstrumentPreUseInspectionBodySchema = z.object({
+  instrumentTagUid: z.string().min(1).max(200),
+  employeeTagUid: z.string().min(1).max(200)
 });
 
 const selfInspectionResetSessionBodySchema = z.object({
@@ -1580,6 +1590,21 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     });
     return { entry };
   });
+
+  app.post(
+    '/part-measurement/self-inspection/sessions/:id/entries/:entryIndex/instrument-usages/pre-use-inspection',
+    { preHandler: allowWriteKiosk },
+    async (request) => {
+      const params = selfInspectionEntryIndexParamsSchema.parse(request.params);
+      const body = selfInspectionInstrumentPreUseInspectionBodySchema.parse(request.body);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      return selfInspectionService.recordInstrumentPreUseInspection(params.id, params.entryIndex, {
+        instrumentTagUid: body.instrumentTagUid,
+        employeeTagUid: body.employeeTagUid,
+        clientDeviceId
+      });
+    }
+  );
 
   app.post('/part-measurement/self-inspection/sessions/:id/complete', { preHandler: allowWriteKiosk }, async (request) => {
     const params = selfInspectionSessionIdParamsSchema.parse(request.params);

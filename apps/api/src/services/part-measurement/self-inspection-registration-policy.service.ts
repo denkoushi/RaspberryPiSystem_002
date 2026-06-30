@@ -21,6 +21,7 @@ type RegistrationPolicyDb = Pick<Prisma.TransactionClient, 'selfInspectionRegist
 type EntryRegistrationFields = {
   createdByEmployeeId: string | null;
   measuringInstrumentId: string | null;
+  measuringInstrumentUsageCount?: number | null;
 };
 
 function defaultSelfInspectionRegistrationPolicy(): SelfInspectionRegistrationPolicy {
@@ -93,7 +94,10 @@ export function isSelfInspectionLotEntryRegistrationCompleteForPolicy(
   if (!entry.createdByEmployeeId) {
     return false;
   }
-  if (policy.requireMeasuringInstrumentTag && !entry.measuringInstrumentId) {
+  const hasMeasuringInstrumentUsage =
+    Boolean(entry.measuringInstrumentId) ||
+    (entry.measuringInstrumentUsageCount != null && entry.measuringInstrumentUsageCount > 0);
+  if (policy.requireMeasuringInstrumentTag && !hasMeasuringInstrumentUsage) {
     return false;
   }
   return true;

@@ -38,6 +38,7 @@ export function makeSelfInspectionLotEntryForTest(
     measuringInstrumentManagementNumberSnapshot: null,
     measuringInstrumentNameSnapshot: null,
     measuringInstrumentTagUidSnapshot: null,
+    instrumentUsages: [],
     createdAt: now,
     updatedAt: now,
     values: [],

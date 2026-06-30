@@ -43,7 +43,7 @@ describe('assertSelfInspectionEntryRegistrationTagUids', () => {
     ).rejects.toEqual(
       expect.objectContaining({
         statusCode: 400,
-        message: '測定者と測定機器に同じNFCタグは使用できません'
+        message: '測定者と計測機器に同じNFCタグは使用できません'
       })
     );
   });

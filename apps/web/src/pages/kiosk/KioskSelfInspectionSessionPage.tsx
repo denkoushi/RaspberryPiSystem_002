@@ -123,6 +123,11 @@ export function KioskSelfInspectionSessionPage() {
       processGroup
     } satisfies StartState;
   }, [location.state, searchParams]);
+  const requestedEntryIndex = useMemo(() => {
+    const raw = searchParams.get('entryIndex');
+    const parsed = raw != null ? Number(raw) : 0;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+  }, [searchParams]);
   const resolveMutation = useResolveSelfInspectionSession();
   const createEntryMutation = useCreateSelfInspectionEntry();
   const updateEntryMutation = useUpdateSelfInspectionEntry();
@@ -131,7 +136,7 @@ export function KioskSelfInspectionSessionPage() {
   const [resetPhase, setResetPhase] = useState<null | 'destructive' | 'completed'>(null);
   const [resolvedSessionId, setResolvedSessionId] = useState<string | null>(sessionId ?? null);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
-  const [selectedEntryIndex, setSelectedEntryIndex] = useState(0);
+  const [selectedEntryIndex, setSelectedEntryIndex] = useState(requestedEntryIndex);
   const [entryIndexPage, setEntryIndexPage] = useState(0);
   const [draftValuesByEntryIndex, setDraftValuesByEntryIndex] = useState<Record<number, Record<string, string>>>({});
   const [savedDraftByEntryIndex, setSavedDraftByEntryIndex] = useState<Record<number, Record<string, string>>>({});
@@ -170,13 +175,27 @@ export function KioskSelfInspectionSessionPage() {
   const requiredEntryCount = session ? resolveSelfInspectionRequiredEntryCount(session) : 0;
   const isSessionIdentityReady = Boolean(session && resolvedSessionId && session.id === resolvedSessionId);
   const isSessionReadOnly = Boolean(session?.completedAt || session?.entryCountBlockedReason);
+  const handleInstrumentTagResolvedForPreUseInspection = useCallback(
+    (instrument: { tagUid: string }) => {
+      if (!session || isSessionReadOnly) return false;
+      const params = new URLSearchParams({
+        tagUid: instrument.tagUid,
+        selfInspectionSessionId: session.id,
+        selfInspectionEntryIndex: String(selectedEntryIndex)
+      });
+      navigate(`/kiosk/instruments/borrow?${params.toString()}`);
+      return true;
+    },
+    [isSessionReadOnly, navigate, selectedEntryIndex, session]
+  );
   const { registration, registrationPayload, registrationDirty, hasUnsavedRegistrationDrafts } =
     useSelfInspectionNfcRegistration({
     session,
     selectedEntryIndex,
     nfcEvent,
     enabled: Boolean(isActiveRoute && session && !isSessionReadOnly),
-    requireMeasuringInstrumentTag
+    requireMeasuringInstrumentTag,
+    onInstrumentTagResolved: handleInstrumentTagResolvedForPreUseInspection
   });
   const { workbenchCameraEnabled, toggleWorkbenchCamera } = useSelfInspectionWorkbenchCameraExperiment({
     onLog: (cameraMetrics) => {
@@ -203,17 +222,17 @@ export function KioskSelfInspectionSessionPage() {
   useEffect(() => {
     const currentSession = latestSessionRef.current;
     if (!session?.id || !currentSession) return;
-    setEntryIndexPage(0);
-    setSelectedEntryIndex(0);
+    setEntryIndexPage(selfInspectionEntryPageForEntryIndex(currentSession, requestedEntryIndex));
+    setSelectedEntryIndex(requestedEntryIndex);
     setSelectedPointId(null);
     setDraftBoundKey(null);
-    const binding = createSelfInspectionEntryDraftBinding(currentSession, 0);
-    setDraftValuesByEntryIndex({ 0: binding.draft });
-    setSavedDraftByEntryIndex({ 0: binding.saved });
+    const binding = createSelfInspectionEntryDraftBinding(currentSession, requestedEntryIndex);
+    setDraftValuesByEntryIndex({ [requestedEntryIndex]: binding.draft });
+    setSavedDraftByEntryIndex({ [requestedEntryIndex]: binding.saved });
     setOutOfToleranceAcknowledgedByEntryIndex({});
     setPendingOutOfToleranceCommit(null);
     setDraftBoundKey(binding.boundKey);
-  }, [session?.id]);
+  }, [requestedEntryIndex, session?.id]);
 
   const focusedEntry = session?.focusedEntry;
 
@@ -374,6 +393,10 @@ export function KioskSelfInspectionSessionPage() {
   }, [draftValuesByEntryIndex, selectedEntryIndex, session]);
 
   const selectedPoint = activeDraft?.points.find((point) => point.id === selectedPointId) ?? activeDraft?.points[0] ?? null;
+  const selectedSavedEntry = useMemo(
+    () => session?.entries.find((entry) => entry.entryIndex === selectedEntryIndex) ?? null,
+    [selectedEntryIndex, session?.entries]
+  );
 
   const isSavingEntry = createEntryMutation.isPending || updateEntryMutation.isPending;
   const isCompletingSession = completeSessionMutation.isPending;
@@ -453,7 +476,7 @@ export function KioskSelfInspectionSessionPage() {
   const isSessionInputLocked = isSessionReadOnly || isCompletingSession || isEntryFocusFetching;
 
   const resetDestructiveDescriptionText = hasUnsavedDraftChangesForReset
-    ? '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。未保存の入力またはNFC登録があります。リセットすると破棄されます。'
+    ? '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。未保存の入力またはNFC読み取りがあります。リセットすると破棄されます。'
     : '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。';
 
   const runSessionReset = async (confirmCompletedSessionReset: boolean) => {
@@ -805,6 +828,7 @@ export function KioskSelfInspectionSessionPage() {
           <SelfInspectionNfcRegistrationPanel
             registration={registration}
             requireMeasuringInstrumentTag={requireMeasuringInstrumentTag}
+            instrumentUsages={selectedSavedEntry?.instrumentUsages ?? []}
           />
 
           <div className="shrink-0 rounded border border-white/15 bg-slate-800/70 p-2">

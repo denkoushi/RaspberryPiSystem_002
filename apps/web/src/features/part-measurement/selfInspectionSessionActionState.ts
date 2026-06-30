@@ -269,11 +269,11 @@ export function selfInspectionActionReasonMessage(
     case 'missing_employee_registration':
       return '測定者のNFC登録が必要です。';
     case 'missing_registration':
-      return '測定者と測定機器のNFC登録が必要です。';
+      return '測定者と計測機器の使用前点検が必要です。';
     case 'incomplete_employee_registration':
       return '未登録の測定者がある入力件があります。';
     case 'incomplete_registration':
-      return '未登録の測定者または測定機器がある入力件があります。';
+      return '測定者または計測機器の使用前点検が不足している入力件があります。';
     case 'unsaved_changes':
       return '未保存の入力があります。「入力を保存」してから完了してください。';
     case 'already_guided':

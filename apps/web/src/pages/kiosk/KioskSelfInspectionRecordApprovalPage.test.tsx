@@ -82,13 +82,13 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
   it('toggles measuring instrument tag requirement from the top menu', async () => {
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: '計測機器タグ必須 OFF' }));
+    fireEvent.click(screen.getByRole('button', { name: '計測機器の使用前点検必須 OFF' }));
 
     await waitFor(() => {
       expect(mockUpdateRegistrationPolicy).toHaveBeenCalledWith({
         requireMeasuringInstrumentTag: true
       });
     });
-    expect(await screen.findByText('計測機器タグ必須をONにしました。')).toBeInTheDocument();
+    expect(await screen.findByText('計測機器の使用前点検必須をONにしました。')).toBeInTheDocument();
   });
 });

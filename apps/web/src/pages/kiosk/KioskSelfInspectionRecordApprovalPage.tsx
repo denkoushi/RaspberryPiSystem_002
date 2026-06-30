@@ -27,7 +27,7 @@ const EMPTY_SESSIONS: SelfInspectionRecordApprovalSessionListItemDto[] = [];
 const STATE_OPTIONS: Array<{ value: RecordApprovalFilterState; label: string }> = [
   { value: 'active', label: '未完了' },
   { value: 'input_incomplete', label: '入力途中' },
-  { value: 'registration_incomplete', label: '登録不足' },
+  { value: 'registration_incomplete', label: '点検不足' },
   { value: 'approvable', label: '承認可能' },
   { value: 'approved', label: '承認済み' }
 ];
@@ -39,7 +39,7 @@ function stateLabel(state: SelfInspectionRecordApprovalState): string {
     case 'approvable':
       return '承認可能';
     case 'registration_incomplete':
-      return '登録不足';
+      return '点検不足';
     case 'input_incomplete':
     default:
       return '入力途中';
@@ -63,6 +63,13 @@ function stateClassName(state: SelfInspectionRecordApprovalState): string {
 function formatDateTime(raw: string | null): string {
   if (!raw) return '-';
   return new Date(raw).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+}
+
+function formatInstrumentUsageLabel(usage: {
+  measuringInstrumentManagementNumberSnapshot: string;
+  measuringInstrumentNameSnapshot: string;
+}): string {
+  return `${usage.measuringInstrumentManagementNumberSnapshot} ${usage.measuringInstrumentNameSnapshot}`;
 }
 
 function readApiErrorMessage(error: unknown, fallback: string): string {
@@ -107,7 +114,7 @@ function SessionListItem({
       </div>
       <p className="text-xs text-white/55">
         入力 {session.completedRequiredEntryCount}/{session.requiredEntryCount}件
-        {session.incompleteRegistrationEntryCount > 0 ? ` / 登録不足 ${session.incompleteRegistrationEntryCount}件` : ''}
+        {session.incompleteRegistrationEntryCount > 0 ? ` / 点検不足 ${session.incompleteRegistrationEntryCount}件` : ''}
         {session.pendingReviewCount > 0 ? ` / 公差外 ${session.pendingReviewCount}点` : ''}
       </p>
     </button>
@@ -127,7 +134,7 @@ function DetailTable({
         <thead className="sticky top-0 bg-slate-950 text-xs text-white/55">
           <tr>
             <th className="px-3 py-2">入力件</th>
-            <th className="px-3 py-2">登録</th>
+            <th className="px-3 py-2">点検</th>
             <th className="px-3 py-2">丸数字</th>
             <th className="px-3 py-2">測定</th>
             <th className="px-3 py-2">値</th>
@@ -139,6 +146,11 @@ function DetailTable({
             entry.values.map((value, valueIndex) => {
               const outOfTolerance = value.isWithinTolerance === false;
               const missing = value.value == null;
+              const instrumentUsages = entry.entry?.instrumentUsages ?? [];
+              const legacyInstrumentLabel =
+                entry.entry?.measuringInstrumentManagementNumberSnapshot && entry.entry?.measuringInstrumentNameSnapshot
+                  ? `${entry.entry.measuringInstrumentManagementNumberSnapshot} ${entry.entry.measuringInstrumentNameSnapshot}`
+                  : entry.entry?.measuringInstrumentNameSnapshot;
               return (
                 <tr
                   key={`${entry.entryIndex}:${value.templateItemId}`}
@@ -159,17 +171,28 @@ function DetailTable({
                       <div className={entry.entry?.createdByEmployeeNameSnapshot ? 'text-emerald-100' : 'text-amber-100'}>
                         測定者 {entry.entry?.createdByEmployeeNameSnapshot ?? '未登録'}
                       </div>
-                      <div
-                        className={
-                          entry.entry?.measuringInstrumentNameSnapshot
-                            ? 'text-emerald-100'
-                            : requireMeasuringInstrumentTag
-                              ? 'text-amber-100'
-                              : 'text-white/55'
-                        }
-                      >
-                        機器 {entry.entry?.measuringInstrumentNameSnapshot ?? (requireMeasuringInstrumentTag ? '未登録' : '任意')}
-                      </div>
+                      {instrumentUsages.length > 0 ? (
+                        <div className="mt-1 grid gap-0.5 text-emerald-100">
+                          <div>使用前点検済</div>
+                          {instrumentUsages.map((usage) => (
+                            <div key={usage.id} className="max-w-52 truncate text-xs text-emerald-100/85">
+                              {formatInstrumentUsageLabel(usage)}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div
+                          className={
+                            legacyInstrumentLabel
+                              ? 'text-emerald-100'
+                              : requireMeasuringInstrumentTag
+                                ? 'text-amber-100'
+                                : 'text-white/55'
+                          }
+                        >
+                          使用前点検 {legacyInstrumentLabel ?? (requireMeasuringInstrumentTag ? '未点検' : '任意')}
+                        </div>
+                      )}
                     </td>
                   ) : null}
                   <td className="px-3 py-2">{value.displayMarker ?? '-'}</td>
@@ -272,7 +295,7 @@ export function KioskSelfInspectionRecordApprovalPage() {
   const canApprove = selectedSession?.recordApprovalState === 'approvable' && approver != null;
   const approveDisabledReason = useMemo(() => {
     if (!selectedSession) return '承認する検査記録を選択してください。';
-    if (selectedSession.recordApprovalState !== 'approvable') return '入力と登録がそろうと承認できます。';
+    if (selectedSession.recordApprovalState !== 'approvable') return '入力と使用前点検がそろうと承認できます。';
     if (!approver) return '承認者の社員NFCタグをタッチしてください。';
     return null;
   }, [approver, selectedSession]);
@@ -300,9 +323,9 @@ export function KioskSelfInspectionRecordApprovalPage() {
       await updateRegistrationPolicyMutation.mutateAsync({
         requireMeasuringInstrumentTag: next
       });
-      setPolicyMessage(`計測機器タグ必須を${next ? 'ON' : 'OFF'}にしました。`);
+      setPolicyMessage(`計測機器の使用前点検必須を${next ? 'ON' : 'OFF'}にしました。`);
     } catch (error: unknown) {
-      setPolicyMessage(readApiErrorMessage(error, '計測機器タグ必須の切替に失敗しました。'));
+      setPolicyMessage(readApiErrorMessage(error, '計測機器の使用前点検必須の切替に失敗しました。'));
     }
   };
 
@@ -313,15 +336,15 @@ export function KioskSelfInspectionRecordApprovalPage() {
           <div>
             <h1 className="text-2xl font-bold">検査記録確認</h1>
             <p className="mt-1 text-sm text-white/65">
-              入力途中、登録不足、承認可能な自主検査を確認します。
+              入力途中、点検不足、承認可能な自主検査を確認します。
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
             <div className="grid gap-1 text-sm">
-              <span className="text-white/65">計測機器タグ必須</span>
+              <span className="text-white/65">計測機器の使用前点検必須</span>
               <button
                 type="button"
-                aria-label={`計測機器タグ必須 ${requireMeasuringInstrumentTag ? 'ON' : 'OFF'}`}
+                aria-label={`計測機器の使用前点検必須 ${requireMeasuringInstrumentTag ? 'ON' : 'OFF'}`}
                 aria-pressed={requireMeasuringInstrumentTag}
                 disabled={registrationPolicyQuery.isLoading || updateRegistrationPolicyMutation.isPending}
                 onClick={() => void toggleMeasuringInstrumentRequirement()}

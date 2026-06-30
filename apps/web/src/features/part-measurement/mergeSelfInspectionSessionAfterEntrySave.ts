@@ -30,6 +30,7 @@ export function applySelfInspectionEntrySaveToSessionCache(
                 savedEntry.measuringInstrumentManagementNumberSnapshot,
               measuringInstrumentNameSnapshot: savedEntry.measuringInstrumentNameSnapshot,
               measuringInstrumentTagUidSnapshot: savedEntry.measuringInstrumentTagUidSnapshot,
+              instrumentUsages: savedEntry.instrumentUsages,
               values: []
             }
           : row
@@ -48,6 +49,7 @@ export function applySelfInspectionEntrySaveToSessionCache(
                 savedEntry.measuringInstrumentManagementNumberSnapshot,
               measuringInstrumentNameSnapshot: savedEntry.measuringInstrumentNameSnapshot,
               measuringInstrumentTagUidSnapshot: savedEntry.measuringInstrumentTagUidSnapshot,
+              instrumentUsages: savedEntry.instrumentUsages,
               createdAt: savedEntry.createdAt,
           updatedAt: savedEntry.updatedAt,
           values: []
