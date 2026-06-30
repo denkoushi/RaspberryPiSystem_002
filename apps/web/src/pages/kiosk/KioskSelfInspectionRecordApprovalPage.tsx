@@ -1,9 +1,10 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import {
   useApproveSelfInspectionRecordApproval,
+  useVerifyKioskSelfInspectionRecordApprovalAccessPassword,
   useResolveSelfInspectionRecordApprovalApprover,
   useSelfInspectionRegistrationPolicy,
   useSelfInspectionRecordApprovalSession,
@@ -65,6 +66,11 @@ function formatDateTime(raw: string | null): string {
   return new Date(raw).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
 }
 
+function formatParticipantNames(names: string[] | null | undefined): string {
+  if (!names || names.length === 0) return '未登録';
+  return names.join('、');
+}
+
 function formatInstrumentUsageLabel(usage: {
   measuringInstrumentManagementNumberSnapshot: string;
   measuringInstrumentNameSnapshot: string;
@@ -116,6 +122,9 @@ function SessionListItem({
         入力 {session.completedRequiredEntryCount}/{session.requiredEntryCount}件
         {session.incompleteRegistrationEntryCount > 0 ? ` / 点検不足 ${session.incompleteRegistrationEntryCount}件` : ''}
         {session.pendingReviewCount > 0 ? ` / 公差外 ${session.pendingReviewCount}点` : ''}
+      </p>
+      <p className="text-xs text-white/55">
+        更新 {formatDateTime(session.updatedAt)} / 入力者 {formatParticipantNames(session.participantEmployeeNames)}
       </p>
     </button>
   );
@@ -171,6 +180,9 @@ function DetailTable({
                       <div className={entry.entry?.createdByEmployeeNameSnapshot ? 'text-emerald-100' : 'text-amber-100'}>
                         測定者 {entry.entry?.createdByEmployeeNameSnapshot ?? '未登録'}
                       </div>
+                      <div className={entry.entry?.updatedAt ? 'text-xs text-white/55' : 'text-xs text-amber-100'}>
+                        保存 {entry.entry?.updatedAt ? formatDateTime(entry.entry.updatedAt) : '未保存'}
+                      </div>
                       {instrumentUsages.length > 0 ? (
                         <div className="mt-1 grid gap-0.5 text-emerald-100">
                           <div>使用前点検済</div>
@@ -219,7 +231,12 @@ function DetailTable({
 
 export function KioskSelfInspectionRecordApprovalPage() {
   const location = useLocation();
-  const isActiveRoute = location.pathname.startsWith('/kiosk/part-measurement/self-inspection/record-approvals');
+  const [accessGranted, setAccessGranted] = useState(false);
+  const [accessMessage, setAccessMessage] = useState<string | null>(null);
+  const accessPromptShownRef = useRef(false);
+  const verifyAccessPasswordMutation = useVerifyKioskSelfInspectionRecordApprovalAccessPassword();
+  const isActiveRoute =
+    accessGranted && location.pathname.startsWith('/kiosk/part-measurement/self-inspection/record-approvals');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
   const lastProcessedNfcKeyRef = useRef<string | null>(null);
   const [state, setState] = useState<RecordApprovalFilterState>('active');
@@ -234,7 +251,7 @@ export function KioskSelfInspectionRecordApprovalPage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [policyMessage, setPolicyMessage] = useState<string | null>(null);
 
-  const registrationPolicyQuery = useSelfInspectionRegistrationPolicy();
+  const registrationPolicyQuery = useSelfInspectionRegistrationPolicy({ enabled: accessGranted });
   const updateRegistrationPolicyMutation = useUpdateSelfInspectionRegistrationPolicy();
   const requireMeasuringInstrumentTag =
     registrationPolicyQuery.data?.requireMeasuringInstrumentTag ?? false;
@@ -242,13 +259,40 @@ export function KioskSelfInspectionRecordApprovalPage() {
     state,
     productNo: productNo.trim() || undefined,
     resourceCd: resourceCd.trim() || undefined
-  });
+  }, { enabled: accessGranted });
   const sessions = listQuery.data?.sessions ?? EMPTY_SESSIONS;
   const detailQuery = useSelfInspectionRecordApprovalSession(selectedSessionId, {
-    enabled: Boolean(selectedSessionId)
+    enabled: accessGranted && Boolean(selectedSessionId)
   });
   const resolveApproverMutation = useResolveSelfInspectionRecordApprovalApprover();
   const approveMutation = useApproveSelfInspectionRecordApproval();
+
+  const requestAccessPassword = useCallback(async () => {
+    const password = typeof window !== 'undefined' ? window.prompt('検査記録確認パスワードを入力してください') : null;
+    if (!password) {
+      setAccessMessage('検査記録確認にはパスワード認証が必要です。');
+      return;
+    }
+    try {
+      const result = await verifyAccessPasswordMutation.mutateAsync({ password });
+      if (!result.success) {
+        setAccessMessage('パスワードが違います。');
+        window.alert('パスワードが違います');
+        return;
+      }
+      setAccessMessage(null);
+      setAccessGranted(true);
+    } catch {
+      setAccessMessage('認証に失敗しました。ネットワーク接続を確認してください。');
+      window.alert('認証に失敗しました。ネットワーク接続を確認してください。');
+    }
+  }, [verifyAccessPasswordMutation]);
+
+  useEffect(() => {
+    if (accessGranted || accessPromptShownRef.current) return;
+    accessPromptShownRef.current = true;
+    void requestAccessPassword();
+  }, [accessGranted, requestAccessPassword]);
 
   useEffect(() => {
     if (sessions.length === 0) {
@@ -315,6 +359,39 @@ export function KioskSelfInspectionRecordApprovalPage() {
       setStatusMessage(readApiErrorMessage(error, '承認処理に失敗しました。'));
     }
   };
+
+  if (!accessGranted) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col gap-3 bg-slate-800 p-3 text-white">
+        <div className="rounded border border-white/15 bg-slate-900/70 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold">検査記録確認</h1>
+              <p className="mt-1 text-sm text-white/65">
+                {accessMessage ?? 'パスワード認証中です。'}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={verifyAccessPasswordMutation.isPending}
+                onClick={() => void requestAccessPassword()}
+              >
+                認証する
+              </Button>
+              <Link
+                to="/kiosk/part-measurement/self-inspection"
+                className={buttonClassName('ghostOnDark', 'inline-flex items-center justify-center')}
+              >
+                戻る
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const toggleMeasuringInstrumentRequirement = async () => {
     const next = !requireMeasuringInstrumentTag;
@@ -462,6 +539,9 @@ export function KioskSelfInspectionRecordApprovalPage() {
                     {selectedSession.recordApproval
                       ? ` / 承認 ${formatDateTime(selectedSession.recordApproval.approvedAt)} ${selectedSession.recordApproval.approverEmployeeNameSnapshot}`
                       : ''}
+                  </p>
+                  <p className="text-xs text-white/50">
+                    更新 {formatDateTime(selectedSession.updatedAt)} / 入力者 {formatParticipantNames(selectedSession.participantEmployeeNames)}
                   </p>
                 </div>
                 <Link

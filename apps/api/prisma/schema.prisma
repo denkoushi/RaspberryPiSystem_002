@@ -2198,6 +2198,7 @@ model SelfInspectionSession {
   startedAt          DateTime?
   completedAt        DateTime?
   recordApprovalRequiredAt DateTime?
+  recordApprovalWorkflowStartedAt DateTime?
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
   template           PartMeasurementTemplate     @relation(fields: [templateId], references: [id], onDelete: Restrict)
@@ -2212,6 +2213,7 @@ model SelfInspectionSession {
   @@index([completedAt], map: "SelfInspectionSession_idx_completed_at")
   @@index([completedAt, updatedAt], map: "SelfInspectionSession_idx_completed_at_updated_at")
   @@index([recordApprovalRequiredAt], map: "SelfInspectionSession_idx_record_approval_required_at")
+  @@index([recordApprovalWorkflowStartedAt], map: "SelfInspectionSession_idx_record_approval_workflow_started_at")
 }
 
 model SelfInspectionLotEntry {

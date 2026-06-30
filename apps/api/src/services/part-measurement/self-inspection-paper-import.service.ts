@@ -14,6 +14,7 @@ import {
   inferEntrySlotKindForIndex,
   type SelfInspectionTemplateConfig
 } from './self-inspection-config.js';
+import { markSelfInspectionRecordApprovalRequiredAfterMeasurementSave } from './self-inspection-record-approval-saved-gate.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 
 export type ConfirmSelfInspectionPaperOcrReviewInput = {
@@ -155,6 +156,8 @@ export class SelfInspectionPaperImportService {
           });
         }
       }
+
+      await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, session.id);
 
       const confirmedValues = serializeConfirmedValues(values);
       const confirmed = await tx.selfInspectionPaperOcrReview.update({

@@ -20,6 +20,7 @@ import { MeasuringInstrumentLoanEventService } from '../measuring-instruments/me
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from './self-inspection-machine-board-cache-invalidation.js';
 import { assertMeasuringInstrumentAvailableForSelfInspection } from './self-inspection-measuring-instrument-eligibility.js';
 import { assertSelfInspectionEntryRegistrationTagUids } from './self-inspection-registration-tag-validation.js';
+import { markSelfInspectionRecordApprovalRequiredAfterMeasurementSave } from './self-inspection-record-approval-saved-gate.js';
 import { collectParticipantEmployeeNames } from './self-inspection-participant-names.js';
 import { loadParticipantEmployeeNamesBySessionIds } from './self-inspection-participant-names.query.js';
 import {
@@ -695,6 +696,8 @@ function serializeResetNewSession(session: {
   machineName: string | null;
   plannedQuantity: number;
   expectedEntryCount: number;
+  recordApprovalRequiredAt: Date | null;
+  recordApprovalWorkflowStartedAt: Date | null;
 }) {
   return {
     id: session.id,
@@ -708,7 +711,9 @@ function serializeResetNewSession(session: {
     fhinmei: session.fhinmei,
     machineName: session.machineName,
     plannedQuantity: session.plannedQuantity,
-    expectedEntryCount: session.expectedEntryCount
+    expectedEntryCount: session.expectedEntryCount,
+    recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
+    recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null
   };
 }
 
@@ -753,6 +758,7 @@ function serializeSessionSummary(
     startedAt: session.startedAt?.toISOString() ?? null,
     completedAt: session.completedAt?.toISOString() ?? null,
     recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
+    recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
     updatedAt: session.updatedAt.toISOString()
   };
 }
@@ -1344,7 +1350,7 @@ export class SelfInspectionService {
         expectedEntryCount,
         clientDeviceId: input.clientDeviceId ?? null,
         startedAt: new Date(),
-        recordApprovalRequiredAt: new Date()
+        recordApprovalWorkflowStartedAt: new Date()
       },
       update: {},
       include: sessionInclude
@@ -1757,6 +1763,7 @@ export class SelfInspectionService {
       startedAt: session.startedAt?.toISOString() ?? null,
       completedAt: session.completedAt?.toISOString() ?? null,
       recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
+      recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
       recordApproval: serializeRecordApproval(session.recordApproval),
       updatedAt: session.updatedAt.toISOString(),
       template: session.template,
@@ -2388,6 +2395,7 @@ export class SelfInspectionService {
             data: backfillData,
             include: { values: true, instrumentUsages: true }
           });
+          await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
           return this.serializeLotEntry(backfilled);
         }
         if (!isSelfInspectionLotEntryRegistrationCompleteForPolicy(existingAtIndex, registrationPolicy)) {
@@ -2396,6 +2404,7 @@ export class SelfInspectionService {
             `${requiredRegistrationLabelForPolicy(registrationPolicy)}のNFCタグが必要です`
           );
         }
+        await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
         return this.serializeLotEntry(existingAtIndex);
       }
 
@@ -2423,6 +2432,7 @@ export class SelfInspectionService {
             instrumentUsages: true
           }
         });
+        await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
         return this.serializeLotEntry(entry);
       } catch (error) {
         if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
@@ -2453,6 +2463,7 @@ export class SelfInspectionService {
             data: backfillData,
             include: { values: true, instrumentUsages: true }
           });
+          await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
           return this.serializeLotEntry(backfilled);
         }
         if (!isSelfInspectionLotEntryRegistrationCompleteForPolicy(raced, registrationPolicy)) {
@@ -2461,6 +2472,7 @@ export class SelfInspectionService {
             `${requiredRegistrationLabelForPolicy(registrationPolicy)}のNFCタグが必要です`
           );
         }
+        await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
         return this.serializeLotEntry(raced);
       }
     });
@@ -2519,6 +2531,7 @@ export class SelfInspectionService {
           }))
         });
       }
+      await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
       const updated = await tx.selfInspectionLotEntry.findUniqueOrThrow({
         where: { id: entryId },
         include: { values: true, instrumentUsages: true }
@@ -2611,7 +2624,7 @@ export class SelfInspectionService {
         reviewStatus: 'PENDING',
         entry: {
           session: {
-            recordApprovalRequiredAt: null
+            recordApprovalWorkflowStartedAt: null
           }
         }
       },
@@ -2797,7 +2810,7 @@ export class SelfInspectionService {
       if (!existing) {
         throw new ApiError(404, '自主検査セッションが見つかりません');
       }
-      if (existing.recordApprovalRequiredAt) {
+      if (existing.recordApprovalWorkflowStartedAt) {
         throw new ApiError(409, 'この自主検査はキオスクの検査記録承認で承認してください');
       }
       const pendingCount = await tx.selfInspectionMeasurementValue.count({
@@ -3000,7 +3013,7 @@ export class SelfInspectionService {
           expectedEntryCount: restartPayload.expectedEntryCount,
           clientDeviceId: input.clientDeviceId ?? null,
           startedAt: new Date(),
-          recordApprovalRequiredAt: new Date()
+          recordApprovalWorkflowStartedAt: new Date()
         }
       });
 

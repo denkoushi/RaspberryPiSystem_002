@@ -222,6 +222,7 @@ export type SelfInspectionSessionSummaryDto = {
   startedAt: string | null;
   completedAt: string | null;
   recordApprovalRequiredAt: string | null;
+  recordApprovalWorkflowStartedAt: string | null;
   updatedAt: string;
 };
 

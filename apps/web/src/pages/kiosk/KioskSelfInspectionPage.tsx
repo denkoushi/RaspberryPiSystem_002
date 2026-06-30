@@ -5,8 +5,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { issueSelfInspectionPaperReport } from '../../api/client';
 import {
   useKioskProductionSchedule,
-  useSelfInspectionSessions,
-  useVerifyKioskSelfInspectionRecordApprovalAccessPassword
+  useSelfInspectionSessions
 } from '../../api/hooks';
 import { buttonClassName, Button } from '../../components/ui/Button';
 import { useKeyboardWedgeScan } from '../../features/barcode-scan';
@@ -30,7 +29,6 @@ const CANDIDATE_SEARCH_DEBOUNCE_MS = 400;
 const WIP_REFETCH_INTERVAL_MS = 60_000;
 /** 製番・品番テキストのみのときは API 走査を避けるための最小文字数（資源CD 併用時は不要） */
 const CANDIDATE_MIN_TEXT_SEARCH_LENGTH = 2;
-const RECORD_APPROVAL_AUTH_SESSION_KEY = 'kiosk-self-inspection-record-approval-authenticated';
 
 type ScanStatus = {
   kind: 'waiting' | 'success' | 'error';
@@ -157,8 +155,6 @@ export function KioskSelfInspectionPage() {
   const [page, setPage] = useState(1);
   const scanFocusRef = useRef<HTMLDivElement | null>(null);
   const autoOpenedScanKeyRef = useRef<string | null>(null);
-  const verifyRecordApprovalAccessPasswordMutation =
-    useVerifyKioskSelfInspectionRecordApprovalAccessPassword();
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -342,27 +338,8 @@ export function KioskSelfInspectionPage() {
     [inspectionPaperPrintReturnTo, navigate]
   );
 
-  const handleRecordApprovalNavigate = async () => {
-    const isAuthenticated =
-      typeof window !== 'undefined' &&
-      window.sessionStorage.getItem(RECORD_APPROVAL_AUTH_SESSION_KEY) === '1';
-    if (isAuthenticated) {
-      navigate(KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH);
-      return;
-    }
-    const password = typeof window !== 'undefined' ? window.prompt('検査記録確認パスワードを入力してください') : null;
-    if (!password) return;
-    try {
-      const result = await verifyRecordApprovalAccessPasswordMutation.mutateAsync({ password });
-      if (!result.success) {
-        window.alert('パスワードが違います');
-        return;
-      }
-      window.sessionStorage.setItem(RECORD_APPROVAL_AUTH_SESSION_KEY, '1');
-      navigate(KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH);
-    } catch {
-      window.alert('認証に失敗しました。ネットワーク接続を確認してください。');
-    }
+  const handleRecordApprovalNavigate = () => {
+    navigate(KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH);
   };
 
   const scanStatusClassName =
@@ -393,8 +370,7 @@ export function KioskSelfInspectionPage() {
             <Button
               type="button"
               variant="secondary"
-              disabled={verifyRecordApprovalAccessPasswordMutation.isPending}
-              onClick={() => void handleRecordApprovalNavigate()}
+              onClick={handleRecordApprovalNavigate}
             >
               検査記録確認
             </Button>
@@ -483,17 +459,17 @@ export function KioskSelfInspectionPage() {
                 {page} ページ目（1 ページ {CANDIDATE_PAGE_SIZE} 件）
                 {hasMore ? ' — さらに候補がある可能性があります' : ''}
               </p>
-              <div className="grid gap-2">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-4 xl:grid-cols-6">
                 {rows.map((row) => (
-                  <section key={row.id} className="grid gap-2 rounded border border-white/15 bg-slate-900/80 p-3">
+                  <section key={row.id} className="grid min-w-0 gap-2 rounded border border-white/15 bg-slate-900/80 p-3">
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="text-lg font-bold">{row.productNo}</p>
-                        <p className="text-sm text-white/70">
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-bold">{row.productNo}</p>
+                        <p className="line-clamp-2 text-xs text-white/70">
                           {row.fhincd} / {row.fhinmei} / {row.resourceCd} / 指示数{' '}
                           {row.plannedQuantity ?? '—'}
                         </p>
-                        <p className="text-xs text-white/55">製番 {row.fseiban}</p>
+                        <p className="truncate text-xs text-white/55">製番 {row.fseiban}</p>
                       </div>
                       {row.status ? (
                         <span className="rounded bg-cyan-500/20 px-2 py-1 text-xs font-semibold text-cyan-200">
@@ -505,7 +481,7 @@ export function KioskSelfInspectionPage() {
                       <Button
                         type="button"
                         variant={row.status === 'in_progress' || row.status === 'completed' ? 'primary' : 'ghostOnDark'}
-                        className="inline-flex min-h-11 items-center text-[1rem]"
+                        className="inline-flex min-h-11 w-full items-center justify-center text-[1rem]"
                         onClick={() => setInspectionWorkflowTarget(row)}
                       >
                         検査方法を選択
