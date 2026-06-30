@@ -21,7 +21,11 @@ import { assertMeasuringInstrumentAvailableForSelfInspection } from './self-insp
 import { assertSelfInspectionEntryRegistrationTagUids } from './self-inspection-registration-tag-validation.js';
 import { collectParticipantEmployeeNames } from './self-inspection-participant-names.js';
 import { loadParticipantEmployeeNamesBySessionIds } from './self-inspection-participant-names.query.js';
-import { isSelfInspectionLotEntryRegistrationComplete } from './self-inspection-nfc-tag-resolve.js';
+import {
+  getSelfInspectionRegistrationPolicy,
+  isSelfInspectionLotEntryRegistrationCompleteForPolicy,
+  type SelfInspectionRegistrationRequirementPolicy
+} from './self-inspection-registration-policy.service.js';
 
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import {
@@ -788,6 +792,12 @@ function serializeRecordApproval(approval: RecordApprovalSessionSource['recordAp
   };
 }
 
+function requiredRegistrationLabelForPolicy(
+  registrationPolicy: SelfInspectionRegistrationRequirementPolicy
+): string {
+  return registrationPolicy.requireMeasuringInstrumentTag ? '測定者または測定機器' : '測定者';
+}
+
 function pendingReviewCountFromRecordApprovalSession(session: RecordApprovalSessionSource): number {
   let count = 0;
   for (const entry of session.entries) {
@@ -796,7 +806,10 @@ function pendingReviewCountFromRecordApprovalSession(session: RecordApprovalSess
   return count;
 }
 
-function buildRecordApprovalReadiness(session: RecordApprovalSessionSource): {
+function buildRecordApprovalReadiness(
+  session: RecordApprovalSessionSource,
+  registrationPolicy: SelfInspectionRegistrationRequirementPolicy
+): {
   state: SelfInspectionRecordApprovalState;
   requiredEntryCount: number;
   completedRequiredEntryCount: number;
@@ -830,7 +843,7 @@ function buildRecordApprovalReadiness(session: RecordApprovalSessionSource): {
     if (hasMissingValue) {
       incompleteValueEntryCount += 1;
     }
-    if (!isSelfInspectionLotEntryRegistrationComplete(entry)) {
+    if (!isSelfInspectionLotEntryRegistrationCompleteForPolicy(entry, registrationPolicy)) {
       incompleteRegistrationEntryCount += 1;
     }
   }
@@ -855,8 +868,11 @@ function buildRecordApprovalReadiness(session: RecordApprovalSessionSource): {
   };
 }
 
-function serializeRecordApprovalSessionListItem(session: RecordApprovalSessionSource) {
-  const readiness = buildRecordApprovalReadiness(session);
+function serializeRecordApprovalSessionListItem(
+  session: RecordApprovalSessionSource,
+  registrationPolicy: SelfInspectionRegistrationRequirementPolicy
+) {
+  const readiness = buildRecordApprovalReadiness(session, registrationPolicy);
   const summary = serializeSessionSummary(
     session,
     collectParticipantEmployeeNames(session.entries),
@@ -877,7 +893,8 @@ function serializeRecordApprovalSessionListItem(session: RecordApprovalSessionSo
 
 function serializeRecordApprovalEntryDetail(
   session: RecordApprovalSessionSource,
-  slot: ReturnType<typeof listRequiredEntrySlots>[number]
+  slot: ReturnType<typeof listRequiredEntrySlots>[number],
+  registrationPolicy: SelfInspectionRegistrationRequirementPolicy
 ) {
   const entry = session.entries.find((row) => row.entryIndex === slot.entryIndex) ?? null;
   const valuesByItemId = new Map((entry?.values ?? []).map((value) => [value.templateItemId, value]));
@@ -903,7 +920,9 @@ function serializeRecordApprovalEntryDetail(
     };
   });
   const hasMissingValue = values.some((value) => value.value == null);
-  const registrationComplete = entry ? isSelfInspectionLotEntryRegistrationComplete(entry) : false;
+  const registrationComplete = entry
+    ? isSelfInspectionLotEntryRegistrationCompleteForPolicy(entry, registrationPolicy)
+    : false;
   const state = !entry || hasMissingValue
     ? 'input_incomplete'
     : !registrationComplete
@@ -1025,7 +1044,8 @@ export class SelfInspectionService {
       measuringInstrumentTagUid?: string | null;
       createdByEmployeeId?: string | null;
       createdByEmployeeNameSnapshot?: string | null;
-    }
+    },
+    registrationPolicy: SelfInspectionRegistrationRequirementPolicy
   ) {
     const isNew = !existingEntry;
     let createdByEmployeeId = existingEntry?.createdByEmployeeId ?? null;
@@ -1064,7 +1084,7 @@ export class SelfInspectionService {
           instrument.measuringInstrumentManagementNumberSnapshot;
         measuringInstrumentNameSnapshot = instrument.measuringInstrumentNameSnapshot;
         measuringInstrumentTagUidSnapshot = instrument.measuringInstrumentTagUidSnapshot;
-      } else if (isNew) {
+      } else if (isNew && registrationPolicy.requireMeasuringInstrumentTag) {
         throw new ApiError(400, '測定機器のNFCタグが必要です');
       }
     }
@@ -1131,7 +1151,8 @@ export class SelfInspectionService {
     input: {
       employeeTagUid?: string | null;
       measuringInstrumentTagUid?: string | null;
-    }
+    },
+    registrationPolicy: SelfInspectionRegistrationRequirementPolicy
   ) {
     const patch: {
       createdByEmployeeId?: string;
@@ -1157,13 +1178,15 @@ export class SelfInspectionService {
       patch.createdByEmployeeNameSnapshot = actor.createdByEmployeeNameSnapshot;
     }
 
-    if (!existingEntry.measuringInstrumentId) {
+    if (!existingEntry.measuringInstrumentId && (input.measuringInstrumentTagUid ?? '').trim()) {
       const instrument = await this.resolveMeasuringInstrumentByTag(input.measuringInstrumentTagUid);
       patch.measuringInstrumentId = instrument.measuringInstrumentId;
       patch.measuringInstrumentManagementNumberSnapshot =
         instrument.measuringInstrumentManagementNumberSnapshot;
       patch.measuringInstrumentNameSnapshot = instrument.measuringInstrumentNameSnapshot;
       patch.measuringInstrumentTagUidSnapshot = instrument.measuringInstrumentTagUidSnapshot;
+    } else if (!existingEntry.measuringInstrumentId && registrationPolicy.requireMeasuringInstrumentTag) {
+      await this.resolveMeasuringInstrumentByTag(input.measuringInstrumentTagUid);
     }
 
     return patch;
@@ -1366,8 +1389,9 @@ export class SelfInspectionService {
     });
     const truncated = rows.length > LIST_SESSIONS_MAX;
     const boundedRows = truncated ? rows.slice(0, LIST_SESSIONS_MAX) : rows;
+    const registrationPolicy = await getSelfInspectionRegistrationPolicy();
     const sessions = boundedRows
-      .map((row) => serializeRecordApprovalSessionListItem(row))
+      .map((row) => serializeRecordApprovalSessionListItem(row, registrationPolicy))
       .filter((row) => state === 'active' || row.recordApprovalState === state);
     return {
       sessions,
@@ -1384,14 +1408,17 @@ export class SelfInspectionService {
     if (!session || !session.recordApprovalRequiredAt) {
       throw new ApiError(404, '検査記録承認対象の自主検査セッションが見つかりません');
     }
-    const summary = serializeRecordApprovalSessionListItem(session);
+    const registrationPolicy = await getSelfInspectionRegistrationPolicy();
+    const summary = serializeRecordApprovalSessionListItem(session, registrationPolicy);
     const requiredSlots = listRequiredEntrySlots(
       templateConfigFromTemplate(session.template),
       session.plannedQuantity
     );
     return {
       ...summary,
-      requiredEntries: requiredSlots.map((slot) => serializeRecordApprovalEntryDetail(session, slot))
+      requiredEntries: requiredSlots.map((slot) =>
+        serializeRecordApprovalEntryDetail(session, slot, registrationPolicy)
+      )
     };
   }
 
@@ -1460,12 +1487,16 @@ export class SelfInspectionService {
         throw new ApiError(409, 'この検査記録は既に承認済みです');
       }
       this.assertSessionEntryCountWritable(existing);
-      const readiness = buildRecordApprovalReadiness(existing);
+      const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
+      const readiness = buildRecordApprovalReadiness(existing, registrationPolicy);
       if (readiness.state === 'input_incomplete') {
         throw new ApiError(409, '測定値が未登録のため承認できません');
       }
       if (readiness.state === 'registration_incomplete') {
-        throw new ApiError(409, '測定者または測定機器が未登録のため承認できません');
+        throw new ApiError(
+          409,
+          `${requiredRegistrationLabelForPolicy(registrationPolicy)}が未登録のため承認できません`
+        );
       }
       const approver = await tx.employee.findFirst({
         where: { nfcTagUid: input.approverEmployeeTagUid.trim() },
@@ -1814,7 +1845,11 @@ export class SelfInspectionService {
     }
   }
 
-  private async assertAllEntriesHaveRegistration(db: Prisma.TransactionClient, sessionId: string) {
+  private async assertAllEntriesHaveRegistration(
+    db: Prisma.TransactionClient,
+    sessionId: string,
+    registrationPolicy: SelfInspectionRegistrationRequirementPolicy
+  ) {
     const entries = await db.selfInspectionLotEntry.findMany({
       where: { sessionId },
       select: {
@@ -1824,10 +1859,15 @@ export class SelfInspectionService {
       }
     });
     for (const entry of entries) {
-      if (!isSelfInspectionLotEntryRegistrationComplete(entry)) {
+      if (!isSelfInspectionLotEntryRegistrationCompleteForPolicy(entry, registrationPolicy)) {
+        const missing = entry.createdByEmployeeId
+          ? '測定機器'
+          : registrationPolicy.requireMeasuringInstrumentTag
+            ? '測定者または測定機器'
+            : '測定者';
         throw new ApiError(
           409,
-          `入力件 ${entry.entryIndex + 1} の測定者または測定機器が未登録のため完了できません`
+          `入力件 ${entry.entryIndex + 1} の${missing}が未登録のため完了できません`
         );
       }
     }
@@ -1939,6 +1979,7 @@ export class SelfInspectionService {
       await this.lockSessionRow(tx, sessionId);
       const session = await this.loadSessionForMutation(tx, sessionId);
       this.assertSessionEntryCountWritable(session);
+      const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
       const templateConfig = templateConfigFromTemplate(session.template);
       assertEntryIndexAllowed(templateConfig, session.plannedQuantity, entryIndex);
       const slotKind = inferEntrySlotKindForIndex(
@@ -1965,7 +2006,8 @@ export class SelfInspectionService {
         this.assertLotEntryValuesMatchPayload(existingAtIndex, values);
         const registration = await this.resolveRegistrationForCreateEntry(
           this.entryRegistrationFromRow(existingAtIndex),
-          input
+          input,
+          registrationPolicy
         );
         const backfillData = this.buildRegistrationBackfillData(existingAtIndex, registration);
         if (backfillData) {
@@ -1976,13 +2018,16 @@ export class SelfInspectionService {
           });
           return this.serializeLotEntry(backfilled);
         }
-        if (!isSelfInspectionLotEntryRegistrationComplete(existingAtIndex)) {
-          throw new ApiError(400, '測定者または測定機器のNFCタグが必要です');
+        if (!isSelfInspectionLotEntryRegistrationCompleteForPolicy(existingAtIndex, registrationPolicy)) {
+          throw new ApiError(
+            400,
+            `${requiredRegistrationLabelForPolicy(registrationPolicy)}のNFCタグが必要です`
+          );
         }
         return this.serializeLotEntry(existingAtIndex);
       }
 
-      const registration = await this.resolveRegistrationForCreateEntry(null, input);
+      const registration = await this.resolveRegistrationForCreateEntry(null, input, registrationPolicy);
 
       try {
         const entry = await tx.selfInspectionLotEntry.create({
@@ -2025,7 +2070,8 @@ export class SelfInspectionService {
         this.assertLotEntryValuesMatchPayload(raced, values);
         const racedRegistration = await this.resolveRegistrationForCreateEntry(
           this.entryRegistrationFromRow(raced),
-          input
+          input,
+          registrationPolicy
         );
         const backfillData = this.buildRegistrationBackfillData(raced, racedRegistration);
         if (backfillData) {
@@ -2036,8 +2082,11 @@ export class SelfInspectionService {
           });
           return this.serializeLotEntry(backfilled);
         }
-        if (!isSelfInspectionLotEntryRegistrationComplete(raced)) {
-          throw new ApiError(400, '測定者または測定機器のNFCタグが必要です');
+        if (!isSelfInspectionLotEntryRegistrationCompleteForPolicy(raced, registrationPolicy)) {
+          throw new ApiError(
+            400,
+            `${requiredRegistrationLabelForPolicy(registrationPolicy)}のNFCタグが必要です`
+          );
         }
         return this.serializeLotEntry(raced);
       }
@@ -2060,6 +2109,7 @@ export class SelfInspectionService {
       await this.lockSessionRow(tx, sessionId);
       const session = await this.loadSessionForMutation(tx, sessionId);
       this.assertSessionEntryCountWritable(session);
+      const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
       const existingEntry = await tx.selfInspectionLotEntry.findFirst({
         where: { id: entryId, sessionId },
         include: { values: true }
@@ -2068,7 +2118,7 @@ export class SelfInspectionService {
         throw new ApiError(404, '自主検査入力が見つかりません');
       }
       assertEntryUnmodifiedSince(input.ifUnmodifiedSince, existingEntry.updatedAt);
-      const registrationPatch = await this.resolveRegistrationPatchForUpdate(existingEntry, input);
+      const registrationPatch = await this.resolveRegistrationPatchForUpdate(existingEntry, input, registrationPolicy);
       const values = this.validateMeasurementPayload(session.template, input.values, existingEntry.values);
       const locked = await tx.selfInspectionLotEntry.updateMany({
         where: { id: entryId, sessionId, updatedAt: existingEntry.updatedAt },
@@ -2130,6 +2180,7 @@ export class SelfInspectionService {
         throw new ApiError(409, '検査記録承認が未完了のため完了できません');
       }
       this.assertSessionEntryCountWritable(existing);
+      const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
       const templateConfig = templateConfigFromTemplate(existing.template);
       const entryRows = await tx.selfInspectionLotEntry.findMany({
         where: { sessionId },
@@ -2144,7 +2195,7 @@ export class SelfInspectionService {
       ) {
         throw new ApiError(409, '必要件数に達していないため完了できません');
       }
-      await this.assertAllEntriesHaveRegistration(tx, sessionId);
+      await this.assertAllEntriesHaveRegistration(tx, sessionId, registrationPolicy);
       await this.assertAllEntriesReviewReady(tx, sessionId, existing.template);
       const finalized = await tx.selfInspectionSession.updateMany({
         where: { id: sessionId, completedAt: null },
@@ -2386,6 +2437,7 @@ export class SelfInspectionService {
         throw new ApiError(409, '承認待ちの公差外測定値がありません');
       }
       this.assertSessionEntryCountWritable(existing);
+      const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
       const templateConfig = templateConfigFromTemplate(existing.template);
       if (
         !isSessionCompletionReady(
@@ -2396,7 +2448,7 @@ export class SelfInspectionService {
       ) {
         throw new ApiError(409, '必要件数に達していないため承認完了できません');
       }
-      await this.assertAllEntriesHaveRegistration(tx, sessionId);
+      await this.assertAllEntriesHaveRegistration(tx, sessionId, registrationPolicy);
 
       const approvedAt = new Date();
       await tx.selfInspectionMeasurementValue.updateMany({

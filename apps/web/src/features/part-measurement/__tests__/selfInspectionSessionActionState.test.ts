@@ -40,6 +40,7 @@ function makeContext(
     guideActionsEnabled: true,
     entryRegistrationReady: true,
     entryRegistrationDirty: false,
+    requireMeasuringInstrumentTag: true,
     ...overrides
   };
 }
@@ -114,6 +115,20 @@ describe('selfInspectionSessionActionState', () => {
     );
     expect(state.enabled).toBe(false);
     expect(state.reason).toBe('missing_registration');
+  });
+
+  it('save is disabled with employee-only message when instrument tag is optional and employee registration is missing', () => {
+    const state = resolveSelfInspectionSaveActionState(
+      makeContext({
+        requireMeasuringInstrumentTag: false,
+        entryRegistrationReady: false,
+        draftValuesByEntryIndex: { 0: { p1: '10.01', p2: '10' } },
+        savedDraftByEntryIndex: { 0: { p1: '10', p2: '10' } }
+      })
+    );
+    expect(state.enabled).toBe(false);
+    expect(state.reason).toBe('missing_employee_registration');
+    expect(selfInspectionActionReasonMessage(state.reason)).toContain('測定者');
   });
 
   it('save is enabled when only NFC registration is pending on a saved entry', () => {
@@ -194,6 +209,58 @@ describe('selfInspectionSessionActionState', () => {
     const state = resolveSelfInspectionCompleteActionState(
       makeContext({
         session,
+        draftValuesByEntryIndex: {
+          0: { p1: '10', p2: '10' },
+          1: { p1: '10', p2: '10' }
+        },
+        savedDraftByEntryIndex: {
+          0: { p1: '10', p2: '10' },
+          1: { p1: '10', p2: '10' }
+        }
+      })
+    );
+    expect(state.enabled).toBe(true);
+  });
+
+  it('complete is enabled with employee registration only when instrument tag is optional', () => {
+    const session = makeContext().session;
+    const now = '2026-06-04T00:00:00.000Z';
+    session.entries = [
+      {
+        id: 'e0',
+        entryIndex: 0,
+        entrySlotKind: 'fixed',
+        entrySlotLabel: '1',
+        createdByEmployeeId: 'emp-1',
+        createdByEmployeeNameSnapshot: 'Tester',
+        measuringInstrumentId: null,
+        measuringInstrumentManagementNumberSnapshot: null,
+        measuringInstrumentNameSnapshot: null,
+        measuringInstrumentTagUidSnapshot: null,
+        createdAt: now,
+        updatedAt: now,
+        values: []
+      },
+      {
+        id: 'e1',
+        entryIndex: 1,
+        entrySlotKind: 'fixed',
+        entrySlotLabel: '2',
+        createdByEmployeeId: 'emp-1',
+        createdByEmployeeNameSnapshot: 'Tester',
+        measuringInstrumentId: null,
+        measuringInstrumentManagementNumberSnapshot: null,
+        measuringInstrumentNameSnapshot: null,
+        measuringInstrumentTagUidSnapshot: null,
+        createdAt: now,
+        updatedAt: now,
+        values: []
+      }
+    ];
+    const state = resolveSelfInspectionCompleteActionState(
+      makeContext({
+        session,
+        requireMeasuringInstrumentTag: false,
         draftValuesByEntryIndex: {
           0: { p1: '10', p2: '10' },
           1: { p1: '10', p2: '10' }

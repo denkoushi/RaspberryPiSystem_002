@@ -2356,6 +2356,14 @@ model KioskHeaderTabOrderConfig {
   updatedAt DateTime @updatedAt
 }
 
+model SelfInspectionRegistrationPolicyConfig {
+  key                           String   @id @db.VarChar(80)
+  requireMeasuringInstrumentTag Boolean  @default(false)
+  updatedBy                     String?  @db.VarChar(120)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+}
+
 model SelfInspectionSessionResetAuditLog {
   id                String   @id @default(uuid())
   actionType        String

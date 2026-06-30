@@ -26,6 +26,21 @@ describe('selfInspectionEntryRegistration', () => {
     ).toBe(false);
   });
 
+  it('accepts employee tag only when measuring instrument tag is optional', () => {
+    expect(
+      isSelfInspectionEntryRegistrationReadyForSave(
+        {
+          employeeTagUid: 'emp-tag',
+          employeeDisplayName: 'Alice',
+          measuringInstrumentTagUid: null,
+          measuringInstrumentDisplayName: null
+        },
+        null,
+        { requireMeasuringInstrumentTag: false }
+      )
+    ).toBe(true);
+  });
+
   it('accepts saved entry with persisted registration', () => {
     expect(
       isSelfInspectionEntryRegistrationReadyForSave(
@@ -51,6 +66,25 @@ describe('selfInspectionEntryRegistration', () => {
       buildSelfInspectionEntryRegistrationPayload(
         {
           employeeTagUid: 'emp-tag',
+          employeeDisplayName: 'Alice',
+          measuringInstrumentTagUid: 'inst-tag',
+          measuringInstrumentDisplayName: 'MI-001 Caliper'
+        },
+        {
+          createdByEmployeeId: 'emp-1',
+          measuringInstrumentId: null
+        }
+      )
+    ).toEqual({
+      measuringInstrumentTagUid: 'inst-tag'
+    });
+  });
+
+  it('keeps optional instrument tag in payload when scanned after employee registration', () => {
+    expect(
+      buildSelfInspectionEntryRegistrationPayload(
+        {
+          employeeTagUid: null,
           employeeDisplayName: 'Alice',
           measuringInstrumentTagUid: 'inst-tag',
           measuringInstrumentDisplayName: 'MI-001 Caliper'
@@ -114,6 +148,36 @@ describe('selfInspectionEntryRegistration', () => {
         createdByEmployeeId: 'emp-1',
         measuringInstrumentId: null
       })
+    ).toBe(false);
+    expect(
+      isSelfInspectionSavedEntryRegistrationComplete(
+        {
+          createdByEmployeeId: 'emp-1',
+          measuringInstrumentId: null
+        },
+        { requireMeasuringInstrumentTag: false }
+      )
+    ).toBe(true);
+  });
+
+  it('does not treat missing optional instrument as dirty without a scanned instrument tag', () => {
+    expect(
+      isSelfInspectionEntryRegistrationDirtyForSave(
+        {
+          employeeTagUid: null,
+          employeeDisplayName: 'Alice',
+          measuringInstrumentTagUid: null,
+          measuringInstrumentDisplayName: null
+        },
+        {
+          createdByEmployeeId: 'emp-1',
+          measuringInstrumentId: null,
+          createdByEmployeeNameSnapshot: 'Alice',
+          measuringInstrumentNameSnapshot: null,
+          measuringInstrumentManagementNumberSnapshot: null
+        },
+        { requireMeasuringInstrumentTag: false }
+      )
     ).toBe(false);
   });
 

@@ -60,6 +60,7 @@ import type {
   SelfInspectionRecordApprovalSessionDetailDto,
   SelfInspectionRecordApprovalsListDto,
   SelfInspectionRecordApprovalState,
+  SelfInspectionRegistrationPolicyDto,
   SelfInspectionSessionDetailDto,
   SelfInspectionSessionsListDto,
   SelfInspectionSessionSummaryDto,
@@ -3330,6 +3331,23 @@ export async function listSelfInspectionOutOfToleranceReviews(): Promise<SelfIns
     '/part-measurement/self-inspection/out-of-tolerance-reviews'
   );
   return data;
+}
+
+export async function getSelfInspectionRegistrationPolicy(): Promise<SelfInspectionRegistrationPolicyDto> {
+  const { data } = await api.get<{ policy: SelfInspectionRegistrationPolicyDto }>(
+    '/part-measurement/self-inspection/registration-policy'
+  );
+  return data.policy;
+}
+
+export async function updateSelfInspectionRegistrationPolicy(payload: {
+  requireMeasuringInstrumentTag: boolean;
+}): Promise<SelfInspectionRegistrationPolicyDto> {
+  const { data } = await api.put<{ policy: SelfInspectionRegistrationPolicyDto }>(
+    '/part-measurement/self-inspection/registration-policy',
+    payload
+  );
+  return data.policy;
 }
 
 export async function listSelfInspectionRecordApprovals(params?: {

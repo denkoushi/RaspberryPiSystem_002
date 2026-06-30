@@ -4,6 +4,7 @@ import type { SelfInspectionNfcRegistrationView } from './useSelfInspectionNfcRe
 
 type Props = {
   registration: SelfInspectionNfcRegistrationView;
+  requireMeasuringInstrumentTag: boolean;
 };
 
 function registrationValueClass(registered: boolean): string {
@@ -13,7 +14,8 @@ function registrationValueClass(registered: boolean): string {
   );
 }
 
-export function SelfInspectionNfcRegistrationPanel({ registration }: Props) {
+export function SelfInspectionNfcRegistrationPanel({ registration, requireMeasuringInstrumentTag }: Props) {
+  const instrumentRegistered = Boolean(registration.measuringInstrumentDisplayName);
   return (
     <div
       className="shrink-0 rounded border border-white/15 bg-slate-800/70 p-2"
@@ -22,9 +24,9 @@ export function SelfInspectionNfcRegistrationPanel({ registration }: Props) {
       <p className="text-sm font-semibold text-white/80">NFC 登録（この入力件）</p>
       <div className="mt-2 grid grid-cols-2 gap-2">
         <div className="min-w-0">
-          <p className="text-xs text-white/55">測定機器</p>
-          <p className={registrationValueClass(Boolean(registration.measuringInstrumentDisplayName))}>
-            {registration.measuringInstrumentDisplayName ?? '未登録'}
+          <p className="text-xs text-white/55">測定機器{requireMeasuringInstrumentTag ? '' : '（任意）'}</p>
+          <p className={registrationValueClass(instrumentRegistered)}>
+            {registration.measuringInstrumentDisplayName ?? (requireMeasuringInstrumentTag ? '未登録' : '未登録（任意）')}
           </p>
         </div>
         <div className="min-w-0">
