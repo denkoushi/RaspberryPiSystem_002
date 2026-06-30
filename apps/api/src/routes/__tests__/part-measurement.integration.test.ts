@@ -92,6 +92,83 @@ async function seedProductionScheduleRow(input: {
   return row.id;
 }
 
+async function createSelfInspectionSessionFixture(input?: {
+  expectedEntryCount?: number;
+  suffix?: string;
+}) {
+  const expectedEntryCount = input?.expectedEntryCount ?? 1;
+  const suffix = input?.suffix ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const fhincd = `SELF-USAGE-${suffix}`;
+  const resourceCd = `RES-USAGE-${suffix}`.slice(0, 30);
+  const template = await prisma.partMeasurementTemplate.create({
+    data: {
+      fhincd,
+      processGroup: 'CUTTING',
+      resourceCd,
+      name: `自主検査使用機器 ${suffix}`,
+      selfInspectionMode: 'FIXED_COUNT',
+      selfInspectionFixedCount: expectedEntryCount,
+      items: {
+        create: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'P1',
+            measurementLabel: '寸法1',
+            displayMarker: '1',
+            markerXRatio: '0.2',
+            markerYRatio: '0.4',
+            nominalValue: '10',
+            lowerLimit: '9.8',
+            upperLimit: '10.2',
+            allowNegative: false,
+            decimalPlaces: 2
+          }
+        ]
+      }
+    },
+    include: { items: true }
+  });
+  const session = await prisma.selfInspectionSession.create({
+    data: {
+      sessionBusinessKey: `self-inspection-usage:${suffix}`,
+      templateId: template.id,
+      productNo: `PN-USAGE-${suffix}`,
+      processGroup: 'CUTTING',
+      resourceCd,
+      fhincd,
+      fhinmei: '自主検査使用機器品',
+      plannedQuantity: expectedEntryCount,
+      expectedEntryCount,
+      startedAt: new Date(),
+      recordApprovalRequiredAt: new Date()
+    }
+  });
+  return { session, template, templateItem: template.items[0] };
+}
+
+async function createInstrumentWithInspectionItem(input: {
+  name: string;
+  managementNumber: string;
+  rfidTagUid: string;
+}) {
+  const { instrument, rfidTagUid } = await createTestMeasuringInstrumentWithTag(input);
+  if (!instrument.genreId) {
+    throw new Error('test instrument genreId is required');
+  }
+  const inspectionItem = await prisma.inspectionItem.create({
+    data: {
+      genreId: instrument.genreId,
+      name: `使用前点検 ${input.managementNumber}`,
+      content: '外観',
+      criteria: '異常なし',
+      method: '目視',
+      order: 1
+    }
+  });
+  return { instrument, rfidTagUid, inspectionItem };
+}
+
 function buildMultipartPng(name: string, png: Buffer): { body: Buffer; contentType: string } {
   return buildMultipartDrawingFile(name, png, { filename: 't.png', contentType: 'image/png' });
 }
@@ -2511,7 +2588,7 @@ describe('part-measurement templates API', () => {
       }
     });
     expect(secondEntryMissingInstrumentWhenRequiredRes.statusCode).toBe(400);
-    expect(secondEntryMissingInstrumentWhenRequiredRes.json().message).toContain('測定機器');
+    expect(secondEntryMissingInstrumentWhenRequiredRes.json().message).toContain('計測機器');
 
     const secondEntryRes = await app.inject({
       method: 'POST',
@@ -2686,7 +2763,7 @@ describe('part-measurement templates API', () => {
       payload: { approverEmployeeTagUid: auditEmployee.nfcTagUid }
     });
     expect(requiredPolicyApproveRes.statusCode).toBe(409);
-    expect(requiredPolicyApproveRes.json().message).toContain('測定機器');
+    expect(requiredPolicyApproveRes.json().message).toContain('計測機器');
 
     const disableInstrumentRequirementBeforeApprovalRes = await app.inject({
       method: 'PUT',
@@ -2948,6 +3025,210 @@ describe('part-measurement templates API', () => {
     expect(auditRows[0]?.entryCount).toBe(2);
     expect(auditRows[0]?.valueCount).toBe(2);
     expect(auditRows[0]?.completedAtWasSet).toBe(true);
+  });
+
+  it('records multiple loan-backed pre-use inspected instruments for one self-inspection entry', async () => {
+    const kioskClient = await createTestClientDevice();
+    const employee = await createTestEmployee({
+      displayName: 'Pre Use Operator',
+      nfcTagUid: `EMP-PREUSE-${Date.now()}`
+    });
+    const { session } = await createSelfInspectionSessionFixture({
+      expectedEntryCount: 1,
+      suffix: `multi-${Date.now()}`
+    });
+    const firstInstrument = await createInstrumentWithInspectionItem({
+      name: 'Pre Use Caliper A',
+      managementNumber: `MI-PREUSE-A-${Date.now()}`,
+      rfidTagUid: `INST-PREUSE-A-${Date.now()}`
+    });
+    const secondInstrument = await createInstrumentWithInspectionItem({
+      name: 'Pre Use Caliper B',
+      managementNumber: `MI-PREUSE-B-${Date.now()}`,
+      rfidTagUid: `INST-PREUSE-B-${Date.now()}`
+    });
+
+    const firstRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/entries/0/instrument-usages/pre-use-inspection`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {
+        instrumentTagUid: firstInstrument.rfidTagUid,
+        employeeTagUid: employee.nfcTagUid
+      }
+    });
+    expect(firstRes.statusCode).toBe(200);
+    const firstBody = firstRes.json();
+    const firstLoanId = firstBody.usage.loanId as string;
+    expect(firstBody.entry.createdByEmployeeId).toBe(employee.id);
+    expect(firstBody.entry.measuringInstrumentId).toBe(firstInstrument.instrument.id);
+    expect(firstBody.entry.instrumentUsages).toHaveLength(1);
+    expect(firstBody.loan).toEqual({ id: firstLoanId, reused: false });
+    expect(firstBody.loanEvent.loanId).toBe(firstLoanId);
+
+    const firstLoan = await prisma.loan.findUnique({ where: { id: firstLoanId } });
+    expect(firstLoan?.measuringInstrumentId).toBe(firstInstrument.instrument.id);
+    expect(firstLoan?.employeeId).toBe(employee.id);
+    expect(firstLoan?.clientId).toBe(kioskClient.id);
+    expect(firstLoan?.returnedAt).toBeNull();
+    expect(
+      await prisma.inspectionRecord.count({
+        where: { loanId: firstLoanId, inspectionItemId: firstInstrument.inspectionItem.id, result: 'PASS' }
+      })
+    ).toBe(1);
+    expect(
+      await prisma.measuringInstrumentLoanEvent.count({
+        where: { managementNumber: firstInstrument.instrument.managementNumber, action: '持ち出し' }
+      })
+    ).toBe(1);
+
+    const secondRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/entries/0/instrument-usages/pre-use-inspection`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {
+        instrumentTagUid: secondInstrument.rfidTagUid,
+        employeeTagUid: employee.nfcTagUid
+      }
+    });
+    expect(secondRes.statusCode).toBe(200);
+    const secondBody = secondRes.json();
+    const secondLoanId = secondBody.usage.loanId as string;
+    expect(secondBody.entry.measuringInstrumentId).toBe(firstInstrument.instrument.id);
+    expect(secondBody.entry.instrumentUsages.map((usage: { measuringInstrumentId: string }) => usage.measuringInstrumentId)).toEqual([
+      firstInstrument.instrument.id,
+      secondInstrument.instrument.id
+    ]);
+    expect(secondBody.loan).toEqual({ id: secondLoanId, reused: false });
+
+    const duplicateRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/entries/0/instrument-usages/pre-use-inspection`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {
+        instrumentTagUid: secondInstrument.rfidTagUid,
+        employeeTagUid: employee.nfcTagUid
+      }
+    });
+    expect(duplicateRes.statusCode).toBe(200);
+    expect(duplicateRes.json().reusedExistingUsage).toBe(true);
+    expect(duplicateRes.json().loan).toBeNull();
+    expect(
+      await prisma.selfInspectionLotEntryInstrumentUsage.count({
+        where: { entry: { sessionId: session.id } }
+      })
+    ).toBe(2);
+    expect(
+      await prisma.loan.count({
+        where: {
+          measuringInstrumentId: { in: [firstInstrument.instrument.id, secondInstrument.instrument.id] },
+          returnedAt: null,
+          cancelledAt: null
+        }
+      })
+    ).toBe(2);
+    expect(
+      await prisma.inspectionRecord.count({
+        where: { loanId: secondLoanId, inspectionItemId: secondInstrument.inspectionItem.id, result: 'PASS' }
+      })
+    ).toBe(1);
+  });
+
+  it('reuses the same employee active loan and rejects another employee active loan for self-inspection pre-use inspection', async () => {
+    const kioskClient = await createTestClientDevice();
+    const employee = await createTestEmployee({
+      displayName: 'Loan Reuse Operator',
+      nfcTagUid: `EMP-REUSE-${Date.now()}`
+    });
+    const otherEmployee = await createTestEmployee({
+      displayName: 'Other Borrower',
+      nfcTagUid: `EMP-OTHER-${Date.now()}`
+    });
+    const { session } = await createSelfInspectionSessionFixture({
+      expectedEntryCount: 1,
+      suffix: `reuse-${Date.now()}`
+    });
+    const reusableInstrument = await createInstrumentWithInspectionItem({
+      name: 'Reusable Indicator',
+      managementNumber: `MI-REUSE-${Date.now()}`,
+      rfidTagUid: `INST-REUSE-${Date.now()}`
+    });
+    const blockedInstrument = await createInstrumentWithInspectionItem({
+      name: 'Blocked Indicator',
+      managementNumber: `MI-BLOCKED-${Date.now()}`,
+      rfidTagUid: `INST-BLOCKED-${Date.now()}`
+    });
+    const reusableLoan = await prisma.loan.create({
+      data: {
+        measuringInstrumentId: reusableInstrument.instrument.id,
+        employeeId: employee.id,
+        clientId: kioskClient.id
+      }
+    });
+    await prisma.loan.create({
+      data: {
+        measuringInstrumentId: blockedInstrument.instrument.id,
+        employeeId: otherEmployee.id,
+        clientId: kioskClient.id
+      }
+    });
+    await prisma.measuringInstrument.updateMany({
+      where: { id: { in: [reusableInstrument.instrument.id, blockedInstrument.instrument.id] } },
+      data: { status: 'IN_USE' }
+    });
+
+    const reuseRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/entries/0/instrument-usages/pre-use-inspection`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {
+        instrumentTagUid: reusableInstrument.rfidTagUid,
+        employeeTagUid: employee.nfcTagUid
+      }
+    });
+    expect(reuseRes.statusCode).toBe(200);
+    expect(reuseRes.json().loan).toEqual({ id: reusableLoan.id, reused: true });
+    expect(reuseRes.json().usage.loanId).toBe(reusableLoan.id);
+    expect(
+      await prisma.loan.count({
+        where: { measuringInstrumentId: reusableInstrument.instrument.id, returnedAt: null, cancelledAt: null }
+      })
+    ).toBe(1);
+    expect(
+      await prisma.inspectionRecord.count({
+        where: { loanId: reusableLoan.id, inspectionItemId: reusableInstrument.inspectionItem.id, result: 'PASS' }
+      })
+    ).toBe(1);
+    expect(
+      await prisma.measuringInstrumentLoanEvent.count({
+        where: { managementNumber: reusableInstrument.instrument.managementNumber, action: '持ち出し' }
+      })
+    ).toBe(0);
+
+    const blockedRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/entries/0/instrument-usages/pre-use-inspection`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {
+        instrumentTagUid: blockedInstrument.rfidTagUid,
+        employeeTagUid: employee.nfcTagUid
+      }
+    });
+    expect(blockedRes.statusCode).toBe(409);
+    expect(blockedRes.json().message).toContain('別の社員が貸出中');
+    expect(
+      await prisma.selfInspectionLotEntryInstrumentUsage.count({
+        where: {
+          entry: { sessionId: session.id },
+          measuringInstrumentId: blockedInstrument.instrument.id
+        }
+      })
+    ).toBe(0);
+    expect(
+      await prisma.inspectionRecord.count({
+        where: { measuringInstrumentId: blockedInstrument.instrument.id }
+      })
+    ).toBe(0);
   });
 
   it('keeps legacy out-of-tolerance approval for sessions without record approval requirement', async () => {

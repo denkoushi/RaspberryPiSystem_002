@@ -4,7 +4,7 @@ import { resolveSelfInspectionNfcTagUid } from './self-inspection-nfc-tag-resolv
 
 const DUPLICATE_TAG_MESSAGE =
   '同一タグが社員と計測機器の両方に登録されています。管理データを修正してください。';
-const SAME_TAG_MESSAGE = '測定者と測定機器に同じNFCタグは使用できません';
+const SAME_TAG_MESSAGE = '測定者と計測機器に同じNFCタグは使用できません';
 
 /** createEntry / updateEntry が resolve API と同じ NFC 不変条件を満たすことを保証する */
 export async function assertSelfInspectionEntryRegistrationTagUids(input: {
@@ -56,7 +56,7 @@ async function assertMeasuringInstrumentRegistrationTagUid(uid: string): Promise
     throw new ApiError(404, '計測機器が登録されていません');
   }
   if (result.kind === 'employee') {
-    throw new ApiError(400, '測定機器タグとして社員タグが指定されています');
+    throw new ApiError(400, '計測機器タグとして社員タグが指定されています');
   }
   if (result.kind === 'instrument_unavailable') {
     throw new ApiError(400, '廃棄済みの計測機器は自主検査に使用できません');

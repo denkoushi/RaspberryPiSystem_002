@@ -4,6 +4,7 @@ import { resolveSelfInspectionNfcTagUid, type SelfInspectionNfcTagResolveResult 
 
 import {
   buildSelfInspectionEntryRegistrationPayload,
+  hasSelfInspectionEntryInstrumentUsage,
   hasUnsavedSelfInspectionRegistrationDrafts,
   isSelfInspectionEntryRegistrationDirtyForSave,
   isSelfInspectionEntryRegistrationReady,
@@ -40,6 +41,7 @@ type SavedEntryRegistrationContext = Pick<
   SelfInspectionLotEntryDto,
   | 'createdByEmployeeId'
   | 'measuringInstrumentId'
+  | 'instrumentUsages'
   | 'createdByEmployeeNameSnapshot'
   | 'measuringInstrumentNameSnapshot'
   | 'measuringInstrumentManagementNumberSnapshot'
@@ -93,11 +95,11 @@ function nextActionLabelForDraft(
   }
   const needsInstrument =
     policy.requireMeasuringInstrumentTag &&
-    !savedEntry?.measuringInstrumentId &&
+    !hasSelfInspectionEntryInstrumentUsage(savedEntry) &&
     !draft.measuringInstrumentTagUid;
   const needsEmployee = !savedEntry?.createdByEmployeeId && !draft.employeeTagUid;
   if (needsInstrument) {
-    return '測定機器タグをスキャン';
+    return '計測機器タグをスキャン';
   }
   if (needsEmployee) {
     return '社員タグをスキャン';
@@ -139,7 +141,7 @@ function mergeResolveResultIntoDraft(
       };
     }
     if (next.measuringInstrumentTagUid === result.employee.nfcTagUid) {
-      return { type: 'error', errorStatus: 'duplicate', message: '測定機器と同じタグです。' };
+      return { type: 'error', errorStatus: 'duplicate', message: '計測機器と同じタグです。' };
     }
     if (next.employeeTagUid && next.employeeTagUid !== result.employee.nfcTagUid) {
       return {
@@ -153,11 +155,11 @@ function mergeResolveResultIntoDraft(
   }
 
   if (result.kind === 'instrument') {
-    if (savedEntry?.measuringInstrumentId) {
+    if (hasSelfInspectionEntryInstrumentUsage(savedEntry)) {
       return {
         type: 'error',
         errorStatus: 'error',
-        message: '測定機器は既に登録済みです。別の計測機器タグは不要です。'
+        message: 'この入力件では使用前点検済みです。'
       };
     }
     if (next.employeeTagUid === result.instrument.tagUid) {
@@ -167,7 +169,7 @@ function mergeResolveResultIntoDraft(
       return {
         type: 'error',
         errorStatus: 'error',
-        message: '測定機器は既に登録済みです。差し替えはできません。'
+        message: '計測機器は既に使用前点検済みです。差し替えはできません。'
       };
     }
     next.measuringInstrumentTagUid = result.instrument.tagUid;
@@ -319,8 +321,21 @@ export function useSelfInspectionNfcRegistration(options: {
   nfcEvent: NfcEvent | null | undefined;
   enabled: boolean;
   requireMeasuringInstrumentTag: boolean;
+  onInstrumentTagResolved?: (instrument: {
+    id: string;
+    name: string;
+    managementNumber: string;
+    tagUid: string;
+  }) => boolean | void;
 }) {
-  const { session, selectedEntryIndex, nfcEvent, enabled, requireMeasuringInstrumentTag } = options;
+  const {
+    session,
+    selectedEntryIndex,
+    nfcEvent,
+    enabled,
+    requireMeasuringInstrumentTag,
+    onInstrumentTagResolved
+  } = options;
   const registrationPolicy = useMemo(
     () => ({ requireMeasuringInstrumentTag }),
     [requireMeasuringInstrumentTag]
@@ -340,9 +355,7 @@ export function useSelfInspectionNfcRegistration(options: {
     () => resolveSelfInspectionEntryRegistrationFromSaved(savedEntry),
     [savedEntry]
   );
-  const isLocked = Boolean(
-    savedEntry?.createdByEmployeeId && savedEntry?.measuringInstrumentId
-  );
+  const isLocked = false;
 
   const draft = useMemo(
     () =>
@@ -391,6 +404,9 @@ export function useSelfInspectionNfcRegistration(options: {
         if (contextGeneration !== contextGenerationRef.current) {
           return;
         }
+        if (result.kind === 'instrument' && onInstrumentTagResolved?.(result.instrument) === true) {
+          return;
+        }
         dispatch({
           type: 'resolve_result',
           entryIndex,
@@ -405,7 +421,7 @@ export function useSelfInspectionNfcRegistration(options: {
         dispatch({ type: 'resolve_failed' });
       }
     },
-    [enabled, isLocked, savedEntry, savedRegistration, selectedEntryIndex]
+    [enabled, isLocked, onInstrumentTagResolved, savedEntry, savedRegistration, selectedEntryIndex]
   );
 
   useEffect(() => {

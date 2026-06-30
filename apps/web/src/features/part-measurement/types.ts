@@ -302,9 +302,22 @@ export type SelfInspectionLotEntryDto = {
   measuringInstrumentManagementNumberSnapshot: string | null;
   measuringInstrumentNameSnapshot: string | null;
   measuringInstrumentTagUidSnapshot: string | null;
+  instrumentUsages: SelfInspectionLotEntryInstrumentUsageDto[];
   createdAt: string;
   updatedAt: string;
   values: SelfInspectionMeasurementValueDto[];
+};
+
+export type SelfInspectionLotEntryInstrumentUsageDto = {
+  id: string;
+  measuringInstrumentId: string | null;
+  loanId: string | null;
+  measuringInstrumentManagementNumberSnapshot: string;
+  measuringInstrumentNameSnapshot: string;
+  measuringInstrumentTagUidSnapshot: string | null;
+  preUseInspectedAt: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type SelfInspectionRecordApprovalEntryValueDto = {

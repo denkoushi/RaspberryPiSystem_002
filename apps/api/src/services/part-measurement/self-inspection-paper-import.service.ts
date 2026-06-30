@@ -213,7 +213,7 @@ export class SelfInspectionPaperImportService {
     if (instrumentTag) {
       const result = await resolveSelfInspectionNfcTagUid(instrumentTag);
       if (result.kind !== 'instrument') {
-        throw new ApiError(400, '測定機器タグとして登録済みの計測機器タグが必要です');
+        throw new ApiError(400, '計測機器タグとして登録済みのタグが必要です');
       }
       patch.measuringInstrumentId = result.instrument.id;
       patch.measuringInstrumentManagementNumberSnapshot = result.instrument.managementNumber;

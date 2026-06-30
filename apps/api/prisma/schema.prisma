@@ -161,6 +161,7 @@ model MeasuringInstrument {
   tags                  MeasuringInstrumentTag[]
   loans                 Loan[]
   selfInspectionLotEntries SelfInspectionLotEntry[]
+  selfInspectionLotEntryInstrumentUsages SelfInspectionLotEntryInstrumentUsage[]
 
   @@index([genreId])
 }
@@ -646,6 +647,7 @@ model Loan {
   transactions            Transaction[]
   InspectionRecord        InspectionRecord[]
   RiggingInspectionRecord RiggingInspectionRecord[]
+  selfInspectionLotEntryInstrumentUsages SelfInspectionLotEntryInstrumentUsage[]
 
   @@index([itemId])
   @@index([measuringInstrumentId])
@@ -2229,10 +2231,32 @@ model SelfInspectionLotEntry {
   createdByEmployee            Employee?                      @relation(fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   measuringInstrument          MeasuringInstrument?           @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
   values                       SelfInspectionMeasurementValue[]
+  instrumentUsages             SelfInspectionLotEntryInstrumentUsage[]
 
   @@unique([sessionId, entryIndex], map: "SelfInspectionLotEntry_unique_session_entry")
   @@index([sessionId], map: "SelfInspectionLotEntry_idx_session")
   @@index([measuringInstrumentId], map: "SelfInspectionLotEntry_idx_measuring_instrument")
+}
+
+model SelfInspectionLotEntryInstrumentUsage {
+  id                                           String                 @id @default(uuid())
+  entryId                                      String
+  measuringInstrumentId                        String?
+  loanId                                       String?
+  measuringInstrumentManagementNumberSnapshot String
+  measuringInstrumentNameSnapshot             String
+  measuringInstrumentTagUidSnapshot           String?
+  preUseInspectedAt                            DateTime               @default(now())
+  createdAt                                    DateTime               @default(now())
+  updatedAt                                    DateTime               @updatedAt
+  entry                                        SelfInspectionLotEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  measuringInstrument                          MeasuringInstrument?   @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
+  loan                                         Loan?                  @relation(fields: [loanId], references: [id], onDelete: SetNull)
+
+  @@unique([entryId, measuringInstrumentId], map: "SelfInspectionLotEntryInstrumentUsage_unique_entry_instrument")
+  @@index([entryId], map: "SelfInspectionLotEntryInstrumentUsage_idx_entry")
+  @@index([measuringInstrumentId], map: "SelfInspectionLotEntryInstrumentUsage_idx_instrument")
+  @@index([loanId], map: "SelfInspectionLotEntryInstrumentUsage_idx_loan")
 }
 
 model SelfInspectionMeasurementValue {

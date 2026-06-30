@@ -3483,6 +3483,35 @@ export async function updateSelfInspectionEntry(
   return data.entry;
 }
 
+export async function recordSelfInspectionInstrumentPreUseInspection(
+  sessionId: string,
+  entryIndex: number,
+  body: {
+    instrumentTagUid: string;
+    employeeTagUid: string;
+  },
+  clientKey?: string
+): Promise<{
+  entry: SelfInspectionLotEntryDto;
+  usage: SelfInspectionLotEntryDto['instrumentUsages'][number];
+  loan: { id: string; reused: boolean } | null;
+  reusedExistingUsage: boolean;
+}> {
+  const { data } = await api.post<{
+    entry: SelfInspectionLotEntryDto;
+    usage: SelfInspectionLotEntryDto['instrumentUsages'][number];
+    loan: { id: string; reused: boolean } | null;
+    reusedExistingUsage: boolean;
+  }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/entries/${entryIndex}/instrument-usages/pre-use-inspection`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data;
+}
+
 export async function completeSelfInspectionSession(
   sessionId: string,
   clientKey?: string

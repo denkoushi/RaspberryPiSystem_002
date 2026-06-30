@@ -18,11 +18,28 @@ const DEFAULT_SELF_INSPECTION_REGISTRATION_REQUIREMENT: SelfInspectionRegistrati
 export function formatMeasuringInstrumentDisplayLabel(entry: {
   measuringInstrumentManagementNumberSnapshot: string | null;
   measuringInstrumentNameSnapshot: string | null;
+  instrumentUsages?: Array<{
+    measuringInstrumentManagementNumberSnapshot: string;
+    measuringInstrumentNameSnapshot: string;
+  }>;
 }): string | null {
+  if (entry.instrumentUsages && entry.instrumentUsages.length > 0) {
+    return entry.instrumentUsages
+      .map((usage) => `${usage.measuringInstrumentManagementNumberSnapshot} ${usage.measuringInstrumentNameSnapshot}`)
+      .join('、');
+  }
   if (entry.measuringInstrumentNameSnapshot && entry.measuringInstrumentManagementNumberSnapshot) {
     return `${entry.measuringInstrumentManagementNumberSnapshot} ${entry.measuringInstrumentNameSnapshot}`;
   }
   return entry.measuringInstrumentNameSnapshot;
+}
+
+export function hasSelfInspectionEntryInstrumentUsage(
+  entry: Pick<SelfInspectionLotEntryDto, 'measuringInstrumentId'> & {
+    instrumentUsages?: SelfInspectionLotEntryDto['instrumentUsages'];
+  } | null | undefined
+): boolean {
+  return Boolean((entry?.instrumentUsages?.length ?? 0) > 0 || entry?.measuringInstrumentId);
 }
 
 export function resolveSelfInspectionEntryRegistrationFromSaved(
@@ -34,6 +51,7 @@ export function resolveSelfInspectionEntryRegistrationFromSaved(
     | 'measuringInstrumentNameSnapshot'
     | 'measuringInstrumentManagementNumberSnapshot'
     | 'measuringInstrumentTagUidSnapshot'
+    | 'instrumentUsages'
   > | null | undefined
 ): SelfInspectionEntryRegistrationDraft {
   if (!entry) {
@@ -59,7 +77,7 @@ export function mergeSelfInspectionEntryRegistrationDraftWithSaved(
   savedEntry: Pick<SelfInspectionLotEntryDto, 'createdByEmployeeId' | 'measuringInstrumentId'> | null | undefined
 ): SelfInspectionEntryRegistrationDraft {
   const employeePersisted = Boolean(savedEntry?.createdByEmployeeId);
-  const instrumentPersisted = Boolean(savedEntry?.measuringInstrumentId);
+  const instrumentPersisted = hasSelfInspectionEntryInstrumentUsage(savedEntry);
 
   return {
     employeeTagUid: employeePersisted
@@ -87,6 +105,7 @@ export function resolveSelfInspectionEntryRegistrationForDisplay(
     | 'measuringInstrumentNameSnapshot'
     | 'measuringInstrumentManagementNumberSnapshot'
     | 'measuringInstrumentTagUidSnapshot'
+    | 'instrumentUsages'
   > | null | undefined
 ): SelfInspectionEntryRegistrationDraft {
   const savedRegistration = resolveSelfInspectionEntryRegistrationFromSaved(savedEntry);
@@ -102,7 +121,9 @@ export function resolveSelfInspectionEntryRegistrationForDisplay(
 
 export function isSelfInspectionEntryRegistrationReadyForSave(
   registration: SelfInspectionEntryRegistrationDraft,
-  savedEntry: Pick<SelfInspectionLotEntryDto, 'createdByEmployeeId' | 'measuringInstrumentId' | 'createdByEmployeeNameSnapshot' | 'measuringInstrumentNameSnapshot' | 'measuringInstrumentManagementNumberSnapshot'> | null | undefined,
+  savedEntry: Pick<SelfInspectionLotEntryDto, 'createdByEmployeeId' | 'measuringInstrumentId' | 'createdByEmployeeNameSnapshot' | 'measuringInstrumentNameSnapshot' | 'measuringInstrumentManagementNumberSnapshot'> & {
+    instrumentUsages?: SelfInspectionLotEntryDto['instrumentUsages'];
+  } | null | undefined,
   policy: SelfInspectionRegistrationRequirementPolicy = DEFAULT_SELF_INSPECTION_REGISTRATION_REQUIREMENT
 ): boolean {
   if (isSelfInspectionSavedEntryRegistrationComplete(savedEntry, policy)) {
@@ -113,7 +134,7 @@ export function isSelfInspectionEntryRegistrationReadyForSave(
       (registration.employeeTagUid && registration.employeeDisplayName)
   );
   const hasInstrument = Boolean(
-    savedEntry?.measuringInstrumentId ||
+    hasSelfInspectionEntryInstrumentUsage(savedEntry) ||
       (registration.measuringInstrumentTagUid && registration.measuringInstrumentDisplayName)
   );
   return hasEmployee && (!policy.requireMeasuringInstrumentTag || hasInstrument);
@@ -121,13 +142,15 @@ export function isSelfInspectionEntryRegistrationReadyForSave(
 
 export function buildSelfInspectionEntryRegistrationPayload(
   registration: SelfInspectionEntryRegistrationDraft,
-  savedEntry: Pick<SelfInspectionLotEntryDto, 'createdByEmployeeId' | 'measuringInstrumentId'> | null | undefined
+  savedEntry: Pick<SelfInspectionLotEntryDto, 'createdByEmployeeId' | 'measuringInstrumentId'> & {
+    instrumentUsages?: SelfInspectionLotEntryDto['instrumentUsages'];
+  } | null | undefined
 ): { employeeTagUid?: string | null; measuringInstrumentTagUid?: string | null } {
   const payload: { employeeTagUid?: string | null; measuringInstrumentTagUid?: string | null } = {};
   if (!savedEntry?.createdByEmployeeId && registration.employeeTagUid) {
     payload.employeeTagUid = registration.employeeTagUid;
   }
-  if (!savedEntry?.measuringInstrumentId && registration.measuringInstrumentTagUid) {
+  if (!hasSelfInspectionEntryInstrumentUsage(savedEntry) && registration.measuringInstrumentTagUid) {
     payload.measuringInstrumentTagUid = registration.measuringInstrumentTagUid;
   }
   return payload;
@@ -143,10 +166,14 @@ export function isSelfInspectionEntryRegistrationReady(
 }
 
 export function isSelfInspectionSavedEntryRegistrationComplete(
-  entry: Pick<SelfInspectionLotEntryDto, 'createdByEmployeeId' | 'measuringInstrumentId'> | null | undefined,
+  entry: Pick<SelfInspectionLotEntryDto, 'createdByEmployeeId' | 'measuringInstrumentId'> & {
+    instrumentUsages?: SelfInspectionLotEntryDto['instrumentUsages'];
+  } | null | undefined,
   policy: SelfInspectionRegistrationRequirementPolicy = DEFAULT_SELF_INSPECTION_REGISTRATION_REQUIREMENT
 ): boolean {
-  return Boolean(entry?.createdByEmployeeId && (!policy.requireMeasuringInstrumentTag || entry.measuringInstrumentId));
+  return Boolean(
+    entry?.createdByEmployeeId && (!policy.requireMeasuringInstrumentTag || hasSelfInspectionEntryInstrumentUsage(entry))
+  );
 }
 
 /** 測定値は保存済みだが NFC 登録だけ未反映の entry を保存可能にする */
@@ -159,6 +186,7 @@ export function isSelfInspectionEntryRegistrationDirtyForSave(
     | 'createdByEmployeeNameSnapshot'
     | 'measuringInstrumentNameSnapshot'
     | 'measuringInstrumentManagementNumberSnapshot'
+    | 'instrumentUsages'
   > | null | undefined,
   policy: SelfInspectionRegistrationRequirementPolicy = DEFAULT_SELF_INSPECTION_REGISTRATION_REQUIREMENT
 ): boolean {
@@ -168,7 +196,7 @@ export function isSelfInspectionEntryRegistrationDirtyForSave(
       registration.employeeDisplayName
   );
   const hasPendingInstrument = Boolean(
-    !savedEntry?.measuringInstrumentId &&
+    !hasSelfInspectionEntryInstrumentUsage(savedEntry) &&
       registration.measuringInstrumentTagUid &&
       registration.measuringInstrumentDisplayName
   );
@@ -189,6 +217,7 @@ export function hasUnsavedSelfInspectionRegistrationDraftWork(
     | 'measuringInstrumentNameSnapshot'
     | 'measuringInstrumentManagementNumberSnapshot'
     | 'measuringInstrumentTagUidSnapshot'
+    | 'instrumentUsages'
   > | null | undefined,
   policy: SelfInspectionRegistrationRequirementPolicy = DEFAULT_SELF_INSPECTION_REGISTRATION_REQUIREMENT
 ): boolean {
@@ -199,7 +228,7 @@ export function hasUnsavedSelfInspectionRegistrationDraftWork(
   if (!savedEntry?.createdByEmployeeId && draftFromState.employeeTagUid) {
     return true;
   }
-  if (!savedEntry?.measuringInstrumentId && draftFromState.measuringInstrumentTagUid) {
+  if (!hasSelfInspectionEntryInstrumentUsage(savedEntry) && draftFromState.measuringInstrumentTagUid) {
     return true;
   }
   return false;

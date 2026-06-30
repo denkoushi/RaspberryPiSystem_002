@@ -9,7 +9,8 @@ import {
   getMeasuringInstrumentInspectionProfile,
   getMeasuringInstrumentByTagUid,
   getMeasuringInstrumentTags,
-  postClientLogs
+  postClientLogs,
+  recordSelfInspectionInstrumentPreUseInspection
 } from '../../api/client';
 import { useKioskConfig, useMeasuringInstruments } from '../../api/hooks';
 import { INSTRUMENT_BORROW_FIELD_WIDTH_CLASS } from '../../components/kiosk/instrumentBorrow/formFieldClass';
@@ -21,6 +22,7 @@ import { InstrumentBorrowPageLayout } from '../../components/kiosk/instrumentBor
 import { InstrumentBorrowTagUidFields } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowTagUidFields';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { InspectionItem, MeasuringInstrumentBorrowPayload } from '../../api/types';
@@ -35,9 +37,18 @@ export function KioskInstrumentBorrowPage() {
   const navigate = useNavigate();
   const resolvedClientKey = getResolvedClientKey();
   const resolvedClientId = undefined;
+  const selfInspectionSessionId = searchParams.get('selfInspectionSessionId')?.trim() ?? '';
+  const selfInspectionEntryIndexRaw = searchParams.get('selfInspectionEntryIndex')?.trim() ?? '';
+  const selfInspectionEntryIndex = Number(selfInspectionEntryIndexRaw);
+  const isSelfInspectionPreUseMode =
+    Boolean(selfInspectionSessionId) && Number.isFinite(selfInspectionEntryIndex) && selfInspectionEntryIndex >= 0;
 
   // defaultModeに基づいて戻り先を決定
-  const returnPath = kioskConfig?.defaultMode === 'PHOTO' ? '/kiosk/photo' : '/kiosk/tag';
+  const returnPath = isSelfInspectionPreUseMode
+    ? `${kioskSelfInspectionSessionPath(selfInspectionSessionId)}?entryIndex=${Math.floor(selfInspectionEntryIndex)}`
+    : kioskConfig?.defaultMode === 'PHOTO'
+      ? '/kiosk/photo'
+      : '/kiosk/tag';
 
   const [selectedInstrumentId, setSelectedInstrumentId] = useState('');
   const [instrumentSource, setInstrumentSource] = useState<InstrumentSource>(null);
@@ -225,6 +236,11 @@ export function KioskInstrumentBorrowPage() {
       setMessage('計測機器ジャンルまたは点検画像が未設定のため、持出できません。管理コンソールで設定してください。');
       return;
     }
+    if (isSelfInspectionPreUseMode) {
+      setMessage('使用前点検NGのため、自主検査の使用機器には追加しません。');
+      navigate(returnPath, { replace: true });
+      return;
+    }
     setIsNg(true);
     setIsSubmitting(true);
     setMessage(null);
@@ -316,6 +332,27 @@ export function KioskInstrumentBorrowPage() {
         payload.instrumentId = selectedInstrumentId;
       }
 
+      if (isSelfInspectionPreUseMode) {
+        if (!tagUid) {
+          setMessage('自主検査の使用前点検には計測機器タグが必要です。');
+          setIsSubmitting(false);
+          return;
+        }
+        await recordSelfInspectionInstrumentPreUseInspection(
+          selfInspectionSessionId,
+          Math.floor(selfInspectionEntryIndex),
+          {
+            instrumentTagUid: tagUid,
+            employeeTagUid: effectiveEmployeeUid
+          },
+          resolvedClientKey
+        );
+        setMessage('使用前点検済');
+        resetForm();
+        navigate(returnPath, { replace: true });
+        return;
+      }
+
       const loan = await borrowMeasuringInstrument(payload as MeasuringInstrumentBorrowPayload);
       // OKの場合：全項目PASSとして点検記録を作成
       const selectedInstrument = instruments?.find((inst) => inst.id === selectedInstrumentId);
@@ -393,7 +430,10 @@ export function KioskInstrumentBorrowPage() {
     navigate,
     returnPath,
     resolvedClientId,
-    resolvedClientKey
+    resolvedClientKey,
+    isSelfInspectionPreUseMode,
+    selfInspectionEntryIndex,
+    selfInspectionSessionId
   ]);
 
   // NFCエージェントのイベントを処理（計測機器→氏名タグの順で自動送信）
@@ -478,10 +518,10 @@ export function KioskInstrumentBorrowPage() {
         <InstrumentBorrowPageLayout
           header={
             <InstrumentBorrowHeaderRow
-              title="計測機器 持出"
+              title={isSelfInspectionPreUseMode ? '計測機器 使用前点検' : '計測機器 持出'}
               statusMessage={message}
               trailing={
-                inspectionItems.length > 0 ? (
+                inspectionItems.length > 0 && !isSelfInspectionPreUseMode ? (
                   <Button
                     type="button"
                     variant="secondary"

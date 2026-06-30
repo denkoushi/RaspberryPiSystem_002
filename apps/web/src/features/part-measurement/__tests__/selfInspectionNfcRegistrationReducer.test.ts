@@ -15,6 +15,7 @@ const emptySaved = {
 const savedEntryWithEmployee = {
   createdByEmployeeId: 'emp-1',
   measuringInstrumentId: null,
+  instrumentUsages: [],
   createdByEmployeeNameSnapshot: 'Alice',
   measuringInstrumentNameSnapshot: null,
   measuringInstrumentManagementNumberSnapshot: null
