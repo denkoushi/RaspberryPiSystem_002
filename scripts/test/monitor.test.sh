@@ -63,7 +63,7 @@ else
 fi
 
 echo ""
-echo "2. メトリクスエンドポイントのテスト"
+echo "2. メトリクスエンドポイント保護のテスト"
 echo "-----------------------------------"
 
 check_metrics() {
@@ -71,19 +71,24 @@ check_metrics() {
   # macOSのheadコマンドは-n -1をサポートしていないため、tail -n 1で最後の行を取得
   local status_code=$(echo "${response}" | tail -n 1)
 
-  if [ "${status_code}" != "200" ]; then
-    echo "⚠️  Metrics endpoint check failed (HTTP ${status_code})"
+  if [ "${status_code}" = "000" ]; then
+    echo "⚠️  Metrics endpoint check skipped (APIサーバー未起動の可能性)"
     return 1
   fi
 
-  echo "✅ Metrics endpoint is accessible"
+  if [ "${status_code}" != "401" ]; then
+    echo "⚠️  Metrics endpoint should require authentication (HTTP ${status_code})"
+    return 1
+  fi
+
+  echo "✅ Metrics endpoint is protected from unauthenticated access"
   return 0
 }
 
 if check_metrics; then
-  echo "✅ メトリクスエンドポイントは正常に動作しています"
+  echo "✅ メトリクスエンドポイント保護は正常に動作しています"
 else
-  echo "⚠️  メトリクスエンドポイントのテストをスキップ（APIサーバーが起動していない可能性）"
+  echo "⚠️  メトリクスエンドポイント保護のテストをスキップ（APIサーバーが起動していない可能性）"
 fi
 
 echo ""
@@ -350,4 +355,3 @@ else
 fi
 
 rm -rf "${TMP_DIR}"
-

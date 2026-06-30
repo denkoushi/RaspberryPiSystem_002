@@ -137,6 +137,7 @@ describe('Performance Tests (NFR-001)', () => {
         request: {
           method: 'GET',
           url: '/api/system/metrics',
+          headers: authHeaders,
         },
       });
 
@@ -221,4 +222,3 @@ describe('Performance Tests (NFR-001)', () => {
     });
   });
 });
-

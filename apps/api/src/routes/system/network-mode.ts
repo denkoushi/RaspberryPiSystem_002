@@ -2,6 +2,7 @@ import dns from 'node:dns';
 import { performance } from 'node:perf_hooks';
 import type { FastifyInstance } from 'fastify';
 import { env } from '../../config/env.js';
+import { canViewSystemDiagnostics } from './access.js';
 
 const dnsPromises = dns.promises;
 const CONNECTIVITY_TEST_HOSTS = ['github.com', 'tailscale.com', 'cloudflare.com'];
@@ -55,7 +56,7 @@ async function lookupWithTimeout(host: string, timeoutMs: number): Promise<boole
 }
 
 export function registerNetworkModeRoute(app: FastifyInstance): void {
-  app.get('/system/network-mode', async () => {
+  app.get('/system/network-mode', { preHandler: canViewSystemDiagnostics }, async () => {
     const ttl = env.NETWORK_MODE_CACHE_TTL_MS;
     const now = Date.now();
 

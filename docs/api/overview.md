@@ -1,6 +1,6 @@
 # API概要
 
-最終更新: 2025-01-XX
+最終更新: 2026-07-01
 
 ## 概要
 
@@ -35,8 +35,12 @@ APIの大部分のエンドポイントは認証が必要です。JWT（JSON Web
 
 ### システム
 
-- `GET /api/system/health` - ヘルスチェック
-- `GET /api/system/metrics` - Prometheus形式のメトリクス
+- `GET /api/system/health` - 公開ヘルスチェック（`status`/`timestamp`のみ）
+- `GET /api/system/health/detail` - 詳細ヘルスチェック（ADMIN/MANAGER）
+- `GET /api/system/metrics` - Prometheus形式のメトリクス（ADMIN/MANAGER）
+- `GET /api/system/system-info` - CPU温度・負荷（ADMIN/MANAGER）
+- `GET /api/system/network-mode` - ネットワーク判定（ADMIN/MANAGER）
+- `GET /api/system/deploy-status` - 端末別メンテナンス状態（有効な`x-client-key`必須）
 
 ### ツール管理
 
@@ -144,4 +148,3 @@ APIは以下の形式でエラーを返します：
 - [ツール管理API](./tools.md)
 - [キオスクAPI](./kiosk.md)
 - [バックアップAPI](./backup.md)
-

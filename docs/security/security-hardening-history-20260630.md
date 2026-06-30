@@ -1,6 +1,6 @@
-# セキュリティ強化履歴（2026-06-30 第1-2段階 + Pi5反映）
+# セキュリティ強化履歴（2026-06-30 第1-2段階 + Pi5反映 / 2026-07-01 第3段階）
 
-最終更新: 2026-06-30 21:14 JST
+最終更新: 2026-07-01 JST
 
 ## 前提
 
@@ -10,6 +10,7 @@
 - 一時Postgresコンテナはローカル検証後に削除済み。
 - 2段階認証/MFAは、iPhone/旧スマホの確認が終わるまで保留。今回も未変更。
 - Ansible vault の中身確認、鍵ローテーション、実機SSH設定変更は未実施。
+- 2026-07-01 第3段階はローカルブランチ `security-system-api-hardening-20260701` で実装。実機反映は未実施。
 
 ## 背景
 
@@ -86,7 +87,131 @@
 
 - 実機反映後、反映前に発行済みの古いOAuth認可URLは使えない。必要なら管理画面からOAuth認証を最初からやり直す。
 
+## 実装済み（第3段階: system系API公開範囲の縮小）
+
+対象ブランチ:
+
+- `security-system-api-hardening-20260701`
+
+対象:
+
+- `GET /api/system/health`
+- `GET /api/system/health/detail`
+- `GET /api/system/metrics`
+- `GET /api/system/system-info`
+- `GET /api/system/network-mode`
+- `GET /api/system/deploy-status`
+- `infrastructure/docker/Caddyfile.local`
+- `infrastructure/docker/Caddyfile.local.template`
+
+内容:
+
+- 公開 `health` は `status` と `timestamp` のみ返す薄いレスポンスへ変更。
+- 詳細な `checks`、`memory`、`eventLoop`、`uptime` は新設 `GET /api/system/health/detail` に移し、ADMIN/MANAGER JWT必須にした。
+- `metrics`、`system-info`、`network-mode` を ADMIN/MANAGER JWT必須にした。
+- `deploy-status` は有効な `x-client-key` 必須にした。キーなしは `CLIENT_KEY_REQUIRED`、不正キーは `INVALID_CLIENT_KEY`。
+- `AdminLayout` は未ログイン時に `NetworkModeBadge` を表示しないようにし、`/preview/import` 等で不要な401を発生させない。
+- Pi5実機が使う `Caddyfile.local` とテンプレートに、production/dev と同じ `/admin*` CIDR制限を追加した。
+
+期待する効果:
+
+- 外部から内部状態、業務件数、DB接続数、CPU/Node.js/サイネージworker状態を読まれにくくする。
+- 管理画面SPAへの到達をCaddyでもCIDR制限し、Tailscale/管理LAN以外からの足がかりを減らす。
+- `deploy-status` のキーなし公開口を閉じる。
+
+運用影響:
+
+- Docker healthcheck、Ansible health-check、Phase12検証は公開 `health` の `status` を引き続き使える。
+- Prometheus等の無人 `/api/system/metrics` scrape は現仕様では使えない。必要時は専用トークンまたは内部限定経路を別途設計する。
+- 正常なキオスクWebは `x-client-key` を自動付与するため、`deploy-status` は従来どおり利用できる見込み。
+- MFA/2段階認証、30日記憶仕様、Microsoft Authenticator関連は変更していない。
+
 ## 検証履歴
+
+### 第3段階 DBなしテスト
+
+```bash
+pnpm --filter @raspi-system/api test -- \
+  src/routes/__tests__/health.test.ts \
+  src/routes/__tests__/network-mode.test.ts
+```
+
+結果:
+
+- 2ファイル成功。
+- 9テスト成功。
+- 公開 `health` が薄いレスポンスであること、詳細 `health/detail` が ADMIN/MANAGER 必須であること、`network-mode` が ADMIN/MANAGER 必須であることを確認。
+
+### 第3段階 一時Postgres migration + 関連テスト
+
+方針:
+
+- 既存DB/既存コンテナは変更しない。
+- 一時Postgresコンテナを作成し、検証後に削除。
+- image: `pgvector/pgvector:pg15`
+- コンテナ名: `rps-system-api-hardening-pg-20260701`
+- 公開: `127.0.0.1:55434`
+- DB: `borrow_return`
+- 名前付きvolume/networkは作成していない。
+
+実行内容:
+
+```bash
+DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:55434/borrow_return' \
+  pnpm --filter @raspi-system/api prisma:deploy
+
+DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:55434/borrow_return' \
+  pnpm --filter @raspi-system/api test -- \
+    src/routes/system/__tests__/diagnostics-auth.test.ts \
+    src/routes/system/__tests__/deploy-status.test.ts \
+    src/routes/__tests__/performance.test.ts
+```
+
+結果:
+
+- migration 122件適用成功。
+- 関連テスト 3ファイル成功。
+- 19テスト成功。
+- `deploy-status` のキーなし `401`、不正キー `401`、正規キー `200` を確認。
+- `metrics` / `system-info` の未認証 `401`、VIEWER `403`、ADMIN/MANAGER `200` を確認。
+- performance test の `/api/system/metrics` はADMIN JWT付きで成功。
+- 一時コンテナ `rps-system-api-hardening-pg-20260701` は削除済み。
+- 今回作成した名前付きvolume/networkはなし。
+
+### 第3段階 EXPLAIN
+
+一時Postgresで確認:
+
+```sql
+EXPLAIN SELECT "id", "statusClientId" FROM "ClientDevice" WHERE "apiKey" = 'dummy-key' LIMIT 1;
+EXPLAIN SELECT count(*) FROM "Loan" WHERE "returnedAt" IS NULL;
+EXPLAIN SELECT count(*) FROM "Employee" WHERE "status" = 'ACTIVE';
+EXPLAIN SELECT count(*) FROM "Item" WHERE "status" IN ('AVAILABLE', 'IN_USE');
+EXPLAIN SELECT count(*) as count FROM pg_stat_activity WHERE datname = 'borrow_return';
+```
+
+結果:
+
+- `ClientDevice.apiKey` は unique index `ClientDevice_apiKey_key` を使用。
+- `Loan.returnedAt IS NULL` は `Loan_returnedAt_idx` の Index Only Scan を使用。
+- `Employee.status` / `Item.status` の件数は既存どおり Seq Scan。今回新規のDB構造変更は入れていない。metrics集計は既存TTLキャッシュ対象。
+- `pg_stat_activity` 件数はPostgreSQL内部ビューの参照。
+
+### 第3段階 build / Caddy / 監視スクリプト
+
+```bash
+pnpm --filter @raspi-system/api build
+pnpm --filter @raspi-system/web build
+bash scripts/test/monitor.test.sh
+```
+
+結果:
+
+- API build 成功。
+- Web build 成功。
+- `scripts/test/monitor.test.sh` 成功。API未起動のためhealth/metrics疎通はスキップ、関数テストとAnsibleテンプレート由来の監視ロジックは成功。
+- `Caddyfile.local` と `Caddyfile.local.template` は、ダミー自己署名証明書を一時作成して `caddy:2 caddy validate` 成功。
+- 最初の `caddy validate` は証明書ファイル未配置により失敗したが、Caddyfile構文変換自体は通っていた。ダミー証明書付きの再実行で `Valid configuration` を確認。
 
 ### ビルド
 
@@ -194,7 +319,7 @@ RASPI_SERVER_HOST='denkon5sd02@100.106.158.2' \
 
 詳細: [system-api-exposure-review-20260630.md](./system-api-exposure-review-20260630.md)
 
-実装変更は行っていない。Pi5へ読み取り確認のみ実施。
+以下は2026-06-30時点の調査記録。この時点では実装変更は行っておらず、Pi5へ読み取り確認のみ実施した。2026-07-01 第3段階でローカル実装済み、実機未反映。
 
 確認結果:
 
@@ -205,10 +330,9 @@ RASPI_SERVER_HOST='denkon5sd02@100.106.158.2' \
 
 推奨:
 
-- まず `metrics` と `system-info` を閉じる案を作る。
-- 次に `network-mode` を管理者系認証へ寄せる。
-- `health` は公開版を薄くし、詳細版を認証/localhost限定に分ける。
-- `deploy-status` はキオスク依存が強いため、全端末の `x-client-key` 実運用確認後に扱う。
+- 第3段階で、`metrics` / `system-info` / `network-mode` は ADMIN/MANAGER 必須へ変更済み。
+- 第3段階で、`health` は公開薄型 + 詳細認証へ分割済み。
+- 第3段階で、`deploy-status` は有効な `x-client-key` 必須へ変更済み。
 
 ## Pi5反映翌朝確認（2026-07-01 07:33 JST）
 

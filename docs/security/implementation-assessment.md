@@ -1,6 +1,6 @@
 # セキュリティ実装の妥当性評価
 
-最終更新: 2026-06-30
+最終更新: 2026-07-01
 
 ## 概要
 
@@ -18,7 +18,7 @@
 - **Dropbox/Gmail OAuth callback の `state` 検証**を追加した。
 - ローカル検証として API build、DBなしテスト、一時Postgresでの migration 122件と関連統合テストを実施済み。
 - Pi5反映 run `20260630-210326-19753` 成功。反映後に API health `200`、貸出系未認証拒否 `401`、正規 `x-client-key` 付き貸出一覧 `200` を確認済み。
-- **system系API公開範囲は調査済み・実装未変更**。詳細は [system-api-exposure-review-20260630.md](./system-api-exposure-review-20260630.md)。優先候補は `/api/system/metrics`、`/api/system/system-info`、`/api/system/network-mode`。
+- **system系API公開範囲の縮小をローカル実装済み（2026-07-01、実機未反映）**。詳細は [system-api-exposure-review-20260630.md](./system-api-exposure-review-20260630.md)。`metrics`、`system-info`、`network-mode` は ADMIN/MANAGER 必須、`health` は公開薄型 + 詳細認証、`deploy-status` は `x-client-key` 必須へ変更。
 
 ### 追加の外部インシデント評価（2025-12-13）
 - 2025年10月のアスクル社ランサムウェア攻撃（[事故報告](https://prtimes.jp/main/html/rd/p/000000500.000021550.html)）を分析し、本システムへの当てはまりを評価。
@@ -203,7 +203,7 @@
    - **PostgreSQLのパスワードを強力なパスワードに変更（環境変数で管理）** 🔴 高優先度
    - USBメディア接続時にオフライン保存テストを実施
    - ログローテーション設定をデプロイ（次回デプロイ時に適用）
-   - system系APIのうち `/api/system/metrics` と `/api/system/system-info` の認証/到達制限案を作成
+   - system系API公開範囲縮小のローカル検証と、必要ならPi5先行反映を実施
 
 2. **中期（1ヶ月以内）**
    - CSRF対策の実装（SameSite Cookie属性の設定、CSRFトークンの実装）

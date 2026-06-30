@@ -146,9 +146,11 @@ export function AdminLayout() {
             </NavLink>
             </nav>
             <div className="flex shrink-0 items-center gap-2">
-              <div className="hidden xl:block">
-                <NetworkModeBadge />
-              </div>
+              {user ? (
+                <div className="hidden xl:block">
+                  <NetworkModeBadge />
+                </div>
+              ) : null}
               <Link
                 to="/kiosk"
                 className="hidden h-9 items-center rounded-md bg-blue-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-blue-500 sm:flex"

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { readFile } from 'fs/promises';
 import os from 'os';
+import { canViewSystemDiagnostics } from './access.js';
 
 /**
  * システム情報エンドポイント
@@ -8,7 +9,7 @@ import os from 'os';
  * CPU温度とCPU負荷を返す
  */
 export function registerSystemInfoRoute(app: FastifyInstance): void {
-  app.get('/system/system-info', async (request, reply) => {
+  app.get('/system/system-info', { preHandler: canViewSystemDiagnostics }, async (request, reply) => {
     try {
       // CPU温度を取得（ラズパイの場合）
       // /sys/class/thermal/thermal_zone0/tempから読み取る（ミリ度で返される）
@@ -45,4 +46,3 @@ export function registerSystemInfoRoute(app: FastifyInstance): void {
     }
   });
 }
-

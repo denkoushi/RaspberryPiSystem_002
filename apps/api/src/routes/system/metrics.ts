@@ -3,6 +3,7 @@ import { prisma } from '../../lib/prisma.js';
 import { env } from '../../config/env.js';
 import { snapshotEventLoopObservability } from '../../services/system/event-loop-observability.js';
 import { resolveMetricsDbAggregates } from './metrics-db-aggregates-cache.js';
+import { canViewSystemDiagnostics } from './access.js';
 
 /**
  * システムメトリクスエンドポイント
@@ -10,7 +11,7 @@ import { resolveMetricsDbAggregates } from './metrics-db-aggregates-cache.js';
  * Prometheus形式のメトリクスを返す
  */
 export function registerMetricsRoute(app: FastifyInstance): void {
-  app.get('/system/metrics', async (request, reply) => {
+  app.get('/system/metrics', { preHandler: canViewSystemDiagnostics }, async (request, reply) => {
     const metrics: string[] = [];
 
     try {
@@ -100,4 +101,3 @@ export function registerMetricsRoute(app: FastifyInstance): void {
     }
   });
 }
-

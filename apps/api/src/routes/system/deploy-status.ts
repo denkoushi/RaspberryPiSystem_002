@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
 import { normalizeClientKey } from '../../lib/client-key.js';
+import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 
-const DEPLOY_STATUS_FILE =
+const getDeployStatusFilePath = () =>
   process.env.DEPLOY_STATUS_FILE_PATH ?? '/app/config/deploy-status.json';
 
 /** Raw JSON from deploy-status.json (version 2) */
@@ -19,17 +20,21 @@ export interface DeployStatusResponse {
 
 /**
  * Resolve statusClientId from x-client-key for deploy-status lookup.
- * Returns null if key is missing/invalid (caller treats as isMaintenance: false).
+ * A registered client without statusClientId is valid, but has no maintenance scope.
  */
-async function resolveStatusClientId(rawClientKey: unknown): Promise<string | null> {
+async function requireStatusClientId(rawClientKey: unknown): Promise<string | null> {
   const clientKey = normalizeClientKey(rawClientKey);
-  if (!clientKey) return null;
+  if (!clientKey) {
+    throw new ApiError(401, 'クライアントキーが必要です', undefined, 'CLIENT_KEY_REQUIRED');
+  }
 
   const clientDevice = await prisma.clientDevice.findUnique({
     where: { apiKey: clientKey },
     select: { statusClientId: true }
   });
-  if (!clientDevice) return null;
+  if (!clientDevice) {
+    throw new ApiError(401, '無効なクライアントキーです', undefined, 'INVALID_CLIENT_KEY');
+  }
 
   return clientDevice.statusClientId ?? null;
 }
@@ -46,7 +51,7 @@ async function readDeployStatusFile(): Promise<DeployStatusRawV2 | null> {
   }
 
   try {
-    const content = await readFile(DEPLOY_STATUS_FILE, 'utf-8');
+    const content = await readFile(getDeployStatusFilePath(), 'utf-8');
     const parsed = JSON.parse(content) as unknown;
     if (parsed && typeof parsed === 'object') {
       return parsed as DeployStatusRawV2;
@@ -71,7 +76,7 @@ function resolveIsMaintenance(raw: DeployStatusRawV2 | null, statusClientId: str
 export function registerDeployStatusRoute(app: FastifyInstance): void {
   app.get('/system/deploy-status', async (request, reply) => {
     const rawClientKey = request.headers['x-client-key'];
-    const statusClientId = await resolveStatusClientId(rawClientKey);
+    const statusClientId = await requireStatusClientId(rawClientKey);
     const raw = await readDeployStatusFile();
     const isMaintenance = resolveIsMaintenance(raw, statusClientId);
 

@@ -2,7 +2,7 @@
 title: 監視・アラートガイド
 tags: [運用, 監視, アラート, ヘルスチェック]
 audience: [運用者, 開発者]
-last-verified: 2025-11-27
+last-verified: 2026-07-01
 related: [backup-and-restore.md, deployment.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # 監視・アラートガイド
 
-最終更新: 2025-11-27
+最終更新: 2026-07-01
 
 ## 概要
 
@@ -18,7 +18,7 @@ update-frequency: medium
 
 ## 監視対象
 
-- **APIヘルスチェック**: データベース接続、メモリ使用量
+- **APIヘルスチェック**: 公開版は稼働状態のみ。詳細なデータベース接続、メモリ使用量、イベントループ状態は管理者向け詳細APIで確認
 - **Dockerコンテナ**: コンテナの稼働状態
 - **ディスク使用量**: ディスク容量の監視
 - **メモリ使用量**: システムメモリの監視
@@ -37,20 +37,11 @@ GET /api/system/health
 ```json
 {
   "status": "ok",
-  "timestamp": "2025-01-XXT00:00:00.000Z",
-  "checks": {
-    "database": { "status": "ok" },
-    "memory": { "status": "ok" }
-  },
-  "memory": {
-    "rss": 150,
-    "heapTotal": 50,
-    "heapUsed": 30,
-    "external": 10
-  },
-  "uptime": 3600
+  "timestamp": "2026-07-01T00:00:00.000Z"
 }
 ```
+
+詳細な `checks`、`memory`、`eventLoop`、`uptime` は `GET /api/system/health/detail` で確認します。この詳細APIは `Authorization: Bearer <ADMINまたはMANAGERのJWT>` が必要です。
 
 ### ステータスコード
 
@@ -64,6 +55,8 @@ GET /api/system/health
 ```
 GET /api/system/metrics
 ```
+
+ADMIN/MANAGER のJWTが必要です。未認証では `401`、VIEWERでは `403` を返します。
 
 ### レスポンス形式
 
@@ -83,14 +76,11 @@ Prometheus形式のテキストを返します。
 
 ```bash
 # メトリクスを取得
-curl http://localhost:8080/api/system/metrics
+curl -H "Authorization: Bearer <ADMIN_OR_MANAGER_JWT>" \
+  http://localhost:8080/api/system/metrics
 
-# Prometheusでスクレイプする場合
-# prometheus.ymlに以下を追加:
-#   - job_name: 'raspberry-pi-system'
-#     static_configs:
-#       - targets: ['localhost:8080']
-#     metrics_path: '/api/system/metrics'
+# Prometheus等の無人scrapeを使う場合は、短期JWTではなく専用方式を別途設計する。
+# 現時点では専用metricsトークンは実装していない。
 ```
 
 ## 監視スクリプト
@@ -137,7 +127,9 @@ export ALERT_EMAIL="admin@example.com"
 
 ### Prometheus
 
-Prometheusを使用してメトリクスを収集する場合：
+現時点の `/api/system/metrics` は ADMIN/MANAGER JWT 必須です。短期JWTをPrometheusへ固定設定する運用は推奨しません。Prometheus等の無人scrapeを正式運用する場合は、専用トークンや内部限定経路を別途設計してください。
+
+旧来の未認証 scrape 設定は使用できません：
 
 ```yaml
 # prometheus.yml
@@ -193,7 +185,8 @@ check_http -H raspberry-pi-5 -p 8080 -u /api/system/health -e "200"
 
 1. APIサーバーが稼働しているか確認
 2. エンドポイントのパスが正しいか確認（`/api/system/metrics`）
-3. ファイアウォール設定を確認
+3. ADMIN/MANAGER JWTを付けているか確認
+4. ファイアウォール設定を確認
 
 ### 監視スクリプトがエラーを報告する
 
@@ -238,4 +231,3 @@ check_http -H raspberry-pi-5 -p 8080 -u /api/system/health -e "200"
 4. **外部監視ツールの活用**: PrometheusやGrafanaを使用して可視化
 5. **バックアップとの連携**: 監視スクリプトとバックアップスクリプトを連携させて、異常検知時に自動バックアップを実行
 6. **ストレージメンテナンスの自動化**: `storage-maintenance.service`（systemd timer）で毎日自動実行され、不要ファイルを削除
-
