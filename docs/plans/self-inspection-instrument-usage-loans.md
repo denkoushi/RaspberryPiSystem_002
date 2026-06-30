@@ -1,5 +1,8 @@
 # 自主検査の計測機器使用前点検・持出統合
 
+Status: completed / deployed / user-verified
+Last updated: 2026-06-30
+
 作業ブランチ: `feat/self-inspection-instrument-usage-loans`
 
 ## 目的
@@ -71,3 +74,20 @@ body:
 - `pnpm --filter @raspi-system/web test`
 - `pnpm --filter @raspi-system/api test -- src/services/part-measurement/__tests__/self-inspection-registration-tag-validation.test.ts`
 
+## 完了記録（2026-06-30）
+
+- 実装 commit: `006f8ea0 feat: integrate self-inspection instrument usage loans`
+- CI: GitHub Actions run `28427006703` success
+- 本番デプロイ: `update-all-clients.sh` run `20260630-162728-8098` success、対象 host はすべて `failed=0`
+- 実機自動検証: Phase12 `PASS 45 / WARN 0 / FAIL 0`
+- ユーザー実機検証: OK
+
+## 次回AI向けの最小引き継ぎ
+
+- 自主検査の計測機器使用前点検は、入力件単位で複数台を `SelfInspectionLotEntryInstrumentUsage` に保持する。
+- 業務イベントの正本は既存の `Loan` / `InspectionRecord` / 計測機器貸出イベント。自主検査専用の別集計元は作らない。
+- 既存互換のため `SelfInspectionLotEntry.measuringInstrumentId` は残し、最初の1台だけを入れる。
+- 同じ社員の既存貸出は再利用し、別社員が貸出中の機器は拒否する。
+- 同じ入力件で同じ機器を再スキャンしても二重作成しない。
+- 返却は自主検査画面では扱わず、既存の計測機器持出一覧/返却フローで行う。
+- 本件スコープの未完了事項はなし。紙/OCR取込からのリアルタイム `Loan` 作成、点検NG時の詳細UI、返却導線の自主検査画面内追加は今回の対象外。
