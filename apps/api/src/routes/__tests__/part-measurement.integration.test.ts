@@ -141,7 +141,7 @@ async function createSelfInspectionSessionFixture(input?: {
       plannedQuantity: expectedEntryCount,
       expectedEntryCount,
       startedAt: new Date(),
-      recordApprovalRequiredAt: new Date()
+      recordApprovalWorkflowStartedAt: new Date()
     }
   });
   return { session, template, templateItem: template.items[0] };
@@ -2259,7 +2259,8 @@ describe('part-measurement templates API', () => {
     expect(resolveRes.json().session.selfInspectionMode).toBe('fixed_count');
     expect(resolveRes.json().session.expectedEntryCount).toBe(2);
     const sessionId = resolveRes.json().session.id as string;
-    expect(resolveRes.json().session.recordApprovalRequiredAt).toBeTruthy();
+    expect(resolveRes.json().session.recordApprovalRequiredAt).toBeNull();
+    expect(resolveRes.json().session.recordApprovalWorkflowStartedAt).toBeTruthy();
 
     const kioskClient = await createTestClientDevice();
     const recordApprovalWithoutClientKeyRes = await app.inject({
@@ -2302,10 +2303,10 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey }
     });
     expect(recordApprovalInputIncompleteRes.statusCode).toBe(200);
-    const inputIncompleteSession = (
+    const inputIncompleteSessionBeforeSave = (
       recordApprovalInputIncompleteRes.json().sessions as Array<Record<string, unknown>>
     ).find((row) => row.id === sessionId);
-    expect(inputIncompleteSession?.recordApprovalState).toBe('input_incomplete');
+    expect(inputIncompleteSessionBeforeSave).toBeUndefined();
 
     const auditEmployee = await createTestEmployee({
       displayName: 'Self Inspection Operator',
@@ -2375,6 +2376,20 @@ describe('part-measurement templates API', () => {
     const firstEntryId = createEntryRes.json().entry.id as string;
     expect(createEntryRes.json().entry.createdByEmployeeId).toBe(auditEmployee.id);
     expect(createEntryRes.json().entry.measuringInstrumentId).toBeNull();
+
+    const recordApprovalAfterFirstSaveRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=input_incomplete',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(recordApprovalAfterFirstSaveRes.statusCode).toBe(200);
+    const inputIncompleteSessionAfterSave = (
+      recordApprovalAfterFirstSaveRes.json().sessions as Array<Record<string, unknown>>
+    ).find((row) => row.id === sessionId);
+    expect(inputIncompleteSessionAfterSave?.recordApprovalState).toBe('input_incomplete');
+    expect(inputIncompleteSessionAfterSave?.recordApprovalRequiredAt).toBeTruthy();
+    expect(inputIncompleteSessionAfterSave?.recordApprovalWorkflowStartedAt).toBeTruthy();
+
     const auditedUpdateRes = await app.inject({
       method: 'PATCH',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${firstEntryId}`,
@@ -3009,6 +3024,20 @@ describe('part-measurement templates API', () => {
     expect(resetRes.json().newSession.id).not.toBe(sessionId);
     expect(resetRes.json().newSession.templateId).toBe(revisedTemplateId);
     expect(resetRes.json().newSession.expectedEntryCount).toBe(2);
+    expect(resetRes.json().newSession.recordApprovalRequiredAt).toBeNull();
+    expect(resetRes.json().newSession.recordApprovalWorkflowStartedAt).toBeTruthy();
+
+    const resetRecordApprovalListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=active',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(resetRecordApprovalListRes.statusCode).toBe(200);
+    expect(
+      (resetRecordApprovalListRes.json().sessions as Array<Record<string, unknown>>).some(
+        (row) => row.id === resetRes.json().newSession.id
+      )
+    ).toBe(false);
 
     const oldSessionRes = await app.inject({
       method: 'GET',
@@ -3118,6 +3147,17 @@ describe('part-measurement templates API', () => {
         where: { entry: { sessionId: session.id } }
       })
     ).toBe(2);
+    const preUseOnlyRecordApprovalListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=active',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(preUseOnlyRecordApprovalListRes.statusCode).toBe(200);
+    expect(
+      (preUseOnlyRecordApprovalListRes.json().sessions as Array<Record<string, unknown>>).some(
+        (row) => row.id === session.id
+      )
+    ).toBe(false);
     expect(
       await prisma.loan.count({
         where: {
@@ -3309,7 +3349,10 @@ describe('part-measurement templates API', () => {
     const sessionId = resolveRes.json().session.id as string;
     await prisma.selfInspectionSession.update({
       where: { id: sessionId },
-      data: { recordApprovalRequiredAt: null }
+      data: {
+        recordApprovalRequiredAt: null,
+        recordApprovalWorkflowStartedAt: null
+      }
     });
 
     const employee = await createTestEmployee({

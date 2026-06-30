@@ -8,16 +8,13 @@ import type { ProductionScheduleRow } from '../../api/client';
 
 const mockUseKioskProductionSchedule = vi.fn();
 const mockUseSelfInspectionSessions = vi.fn();
-const mockUseVerifyRecordApprovalAccessPassword = vi.fn();
 const mockIssueSelfInspectionPaperReport = vi.fn();
 
 let scheduleRows: ProductionScheduleRow[] = [];
 
 vi.mock('../../api/hooks', () => ({
   useKioskProductionSchedule: (...args: unknown[]) => mockUseKioskProductionSchedule(...args),
-  useSelfInspectionSessions: (...args: unknown[]) => mockUseSelfInspectionSessions(...args),
-  useVerifyKioskSelfInspectionRecordApprovalAccessPassword: (...args: unknown[]) =>
-    mockUseVerifyRecordApprovalAccessPassword(...args)
+  useSelfInspectionSessions: (...args: unknown[]) => mockUseSelfInspectionSessions(...args)
 }));
 
 vi.mock('../../api/client', () => ({
@@ -79,7 +76,6 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     scheduleRows = [];
     mockUseKioskProductionSchedule.mockReset();
     mockUseSelfInspectionSessions.mockReset();
-    mockUseVerifyRecordApprovalAccessPassword.mockReset();
     mockIssueSelfInspectionPaperReport.mockReset();
 
     mockUseKioskProductionSchedule.mockImplementation(() => ({
@@ -90,10 +86,6 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     mockUseSelfInspectionSessions.mockReturnValue({
       data: { sessions: [], truncated: false, listLimit: 200 },
       isLoading: false
-    });
-    mockUseVerifyRecordApprovalAccessPassword.mockReturnValue({
-      isPending: false,
-      mutateAsync: vi.fn()
     });
     mockIssueSelfInspectionPaperReport.mockResolvedValue({
       report: { id: 'paper-report-1' }
@@ -138,12 +130,16 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
 
   it('shows candidate selection first when scanned product has no resource filter, then opens digital input from the modal', async () => {
     scheduleRows = [buildScheduleRow()];
-    renderPage();
+    const { container } = renderPage();
 
     await scanHidText('0002178005');
 
     await waitFor(() => expect(lastScheduleParams()?.productNos).toBe('0002178005'));
     expect(screen.queryByRole('dialog', { name: '検査方法を選択' })).not.toBeInTheDocument();
+    const candidateGrid = Array.from(container.querySelectorAll('div')).find((element) =>
+      String(element.className).includes('xl:grid-cols-6')
+    );
+    expect(candidateGrid).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '検査方法を選択' }));
     fireEvent.click(screen.getByRole('button', { name: 'デジタル入力' }));

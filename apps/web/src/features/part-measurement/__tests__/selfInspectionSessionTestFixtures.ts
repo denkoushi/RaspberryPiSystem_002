@@ -88,6 +88,7 @@ export function makeSelfInspectionSessionDetailForTest(
     startedAt: now,
     completedAt: null,
     recordApprovalRequiredAt: null,
+    recordApprovalWorkflowStartedAt: null,
     recordApproval: null,
     updatedAt: now,
     template: {

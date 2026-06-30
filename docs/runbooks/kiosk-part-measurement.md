@@ -646,7 +646,7 @@ cd apps/web && pnpm exec vitest run \
 ### デプロイ注意
 
 1. API + Web + Prisma migration を同時に反映する。
-2. `prisma migrate deploy` 後に API を再起動し、`SelfInspectionMeasurementValue.reviewStatus`、`SelfInspectionSession.recordApprovalRequiredAt`、`SelfInspectionRecordApproval` が存在することを確認する。
+2. `prisma migrate deploy` 後に API を再起動し、`SelfInspectionMeasurementValue.reviewStatus`、`SelfInspectionSession.recordApprovalRequiredAt`、`SelfInspectionSession.recordApprovalWorkflowStartedAt`、`SelfInspectionRecordApproval` が存在することを確認する。
 3. Web 反映後、Pi4 は `kiosk-browser` 再起動または強制リロードで Pi5 配信 SPA を取り直す。
 
 ### 手動確認（Pi4/Pi5）
@@ -660,14 +660,14 @@ cd apps/web && pnpm exec vitest run \
 7. 同じ公差外値で **公差外のまま進む** を選ぶと、ドラフトに入り次の丸数字へ進むこと。
 8. 確認済み公差外を含む入力件は **入力を保存** でき、保存後のセッションが **承認待ち**（`review_pending`）として表示されること。
 9. 新方式セッションでは **自主検査を完了** が「検査記録承認待ち」の案内になり、API `complete` も 409 を返すこと。
-10. 自主検査トップ **検査記録確認** → パスワード `2520` で入場でき、ブラウザ session 中は再入力不要であること。
+10. 自主検査トップ **検査記録確認** → パスワード `2520` で入場でき、入力画面など別画面へ移動して戻ると再度 `2520` を要求されること。
 11. 上辺メニュー **計測機器の使用前点検必須** が初期 **OFF** で表示され、ON/OFF を切り替えられること。
-12. 承認一覧で、未入力は **入力途中**、測定者不足または **計測機器の使用前点検必須 ON** 時の未点検は **点検不足**、全 required slot 入力・必要な使用前点検済みは **承認可能** と表示されること。
+12. 承認一覧では、測定値保存済みのセッションだけが表示されること。開いただけ/リセット直後/使用前点検のみのセッションは表示されず、保存後は未入力残りが **入力途中**、測定者不足または **計測機器の使用前点検必須 ON** 時の未点検が **点検不足**、全 required slot 入力・必要な使用前点検済みが **承認可能** と表示されること。
 13. 詳細で required slot 単位の入力漏れ/点検不足、保存済みの公差内/公差外値、公差外強調、pending 公差外数、使用前点検済み計測機器が確認できること。
 14. ACTIVE 社員 NFC を承認者としてタッチすると社員名が表示され、**承認して完了** で `SelfInspectionRecordApproval` と pending 値の `APPROVED` が保存され、セッションが完了扱いになること。
 15. INACTIVE/SUSPENDED 社員、未登録 UID、計測器タグ、社員/計測器重複タグでは承認不可であること。
 16. 順位ボード・自主検査一覧・機種別ボードで、承認前は **承認待ち**、承認後は **完了** 表示になること。
-17. legacy 確認として、`recordApprovalRequiredAt=null` の既存セッションだけは管理 `/admin/part-measurement/self-inspection-reviews` の ADMIN/MANAGER 承認で従来どおり完了できること。
+17. legacy 確認として、`recordApprovalWorkflowStartedAt=null` の既存セッションだけは管理 `/admin/part-measurement/self-inspection-reviews` の ADMIN/MANAGER 承認で従来どおり完了できること。
 
 ### 単体・結合テスト
 
@@ -693,7 +693,7 @@ cd apps/api && pnpm exec vitest run \
 | 検査記録確認に入れない | `x-client-key` が有効か · パスワードが `2520` または設定値か | ClientDevice と納期管理パスワード設定を確認 |
 | 承認ボタンが押せない | 一覧状態が `承認可能` か · 承認者 NFC が ACTIVE 社員として解決済みか | 入力漏れ/点検不足を詳細で確認し、社員タグを再スキャン |
 | 承認後も完了しない | required slot が全部保存済みか · 測定者登録欠落がないか · 計測機器の使用前点検必須 ON 時は使用前点検欠落がないか · pending 公差外が承認更新されたか | 未保存/未点検 entry を再保存/点検し、API ログと `SelfInspectionRecordApproval` を確認 |
-| 管理画面で新方式セッションを承認できない | `recordApprovalRequiredAt != null` か | 正常。キオスク「検査記録確認」で ACTIVE 社員 NFC 承認する |
+| 管理画面で新方式セッションを承認できない | `recordApprovalWorkflowStartedAt != null` か | 正常。測定値保存後にキオスク「検査記録確認」で ACTIVE 社員 NFC 承認する |
 
 ---
 
