@@ -7,6 +7,7 @@ import {
   useCreateSelfInspectionEntry,
   useResetSelfInspectionSession,
   useResolveSelfInspectionSession,
+  useSelfInspectionRegistrationPolicy,
   useSelfInspectionSession,
   useUpdateSelfInspectionEntry
 } from '../../api/hooks';
@@ -158,6 +159,9 @@ export function KioskSelfInspectionSessionPage() {
     enabled: Boolean(resolvedSessionId),
     entryIndex: selectedEntryIndex
   });
+  const registrationPolicyQuery = useSelfInspectionRegistrationPolicy();
+  const requireMeasuringInstrumentTag =
+    registrationPolicyQuery.data?.requireMeasuringInstrumentTag ?? false;
   const session = sessionQuery.data;
   const isSessionPlaceholderData = sessionQuery.isPlaceholderData;
   const isEntryFocusFetching = sessionQuery.isFetching && isSessionPlaceholderData;
@@ -171,7 +175,8 @@ export function KioskSelfInspectionSessionPage() {
     session,
     selectedEntryIndex,
     nfcEvent,
-    enabled: Boolean(isActiveRoute && session && !isSessionReadOnly)
+    enabled: Boolean(isActiveRoute && session && !isSessionReadOnly),
+    requireMeasuringInstrumentTag
   });
   const { workbenchCameraEnabled, toggleWorkbenchCamera } = useSelfInspectionWorkbenchCameraExperiment({
     onLog: (cameraMetrics) => {
@@ -391,6 +396,7 @@ export function KioskSelfInspectionSessionPage() {
       guideActionsEnabled,
       entryRegistrationReady: registration.isReady && registration.status !== 'duplicate',
       entryRegistrationDirty: registrationDirty,
+      requireMeasuringInstrumentTag,
       outOfToleranceAcknowledgedByEntryIndex
     };
   }, [
@@ -404,6 +410,7 @@ export function KioskSelfInspectionSessionPage() {
     registration.isReady,
     registration.status,
     registrationDirty,
+    requireMeasuringInstrumentTag,
     savedDraftByEntryIndex,
     selectedEntryIndex,
     outOfToleranceAcknowledgedByEntryIndex,
@@ -488,6 +495,7 @@ export function KioskSelfInspectionSessionPage() {
       guideActionsEnabled,
       entryRegistrationReady: registration.isReady && registration.status !== 'duplicate',
       entryRegistrationDirty: registrationDirty,
+      requireMeasuringInstrumentTag,
       outOfToleranceAcknowledgedByEntryIndex
     });
     if (!saveState.enabled) {
@@ -496,7 +504,11 @@ export function KioskSelfInspectionSessionPage() {
       return null;
     }
     if (!registrationPayload) {
-      setActionError(selfInspectionActionReasonMessage('missing_registration'));
+      setActionError(
+        selfInspectionActionReasonMessage(
+          requireMeasuringInstrumentTag ? 'missing_registration' : 'missing_employee_registration'
+        )
+      );
       return null;
     }
     persistInFlightRef.current = true;
@@ -790,7 +802,10 @@ export function KioskSelfInspectionSessionPage() {
         </div>
 
         <div className="flex min-h-0 min-w-0 flex-col gap-2 xl:w-[360px] xl:shrink-0">
-          <SelfInspectionNfcRegistrationPanel registration={registration} />
+          <SelfInspectionNfcRegistrationPanel
+            registration={registration}
+            requireMeasuringInstrumentTag={requireMeasuringInstrumentTag}
+          />
 
           <div className="shrink-0 rounded border border-white/15 bg-slate-800/70 p-2">
             <div className="flex flex-wrap items-center justify-between gap-2">

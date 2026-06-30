@@ -5,8 +5,10 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   useApproveSelfInspectionRecordApproval,
   useResolveSelfInspectionRecordApprovalApprover,
+  useSelfInspectionRegistrationPolicy,
   useSelfInspectionRecordApprovalSession,
-  useSelfInspectionRecordApprovals
+  useSelfInspectionRecordApprovals,
+  useUpdateSelfInspectionRegistrationPolicy
 } from '../../api/hooks';
 import { buttonClassName, Button } from '../../components/ui/Button';
 import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
@@ -112,7 +114,13 @@ function SessionListItem({
   );
 }
 
-function DetailTable({ session }: { session: SelfInspectionRecordApprovalSessionDetailDto }) {
+function DetailTable({
+  session,
+  requireMeasuringInstrumentTag
+}: {
+  session: SelfInspectionRecordApprovalSessionDetailDto;
+  requireMeasuringInstrumentTag: boolean;
+}) {
   return (
     <div className="min-h-0 overflow-auto rounded border border-white/10">
       <table className="min-w-full text-left text-sm">
@@ -151,8 +159,16 @@ function DetailTable({ session }: { session: SelfInspectionRecordApprovalSession
                       <div className={entry.entry?.createdByEmployeeNameSnapshot ? 'text-emerald-100' : 'text-amber-100'}>
                         測定者 {entry.entry?.createdByEmployeeNameSnapshot ?? '未登録'}
                       </div>
-                      <div className={entry.entry?.measuringInstrumentNameSnapshot ? 'text-emerald-100' : 'text-amber-100'}>
-                        機器 {entry.entry?.measuringInstrumentNameSnapshot ?? '未登録'}
+                      <div
+                        className={
+                          entry.entry?.measuringInstrumentNameSnapshot
+                            ? 'text-emerald-100'
+                            : requireMeasuringInstrumentTag
+                              ? 'text-amber-100'
+                              : 'text-white/55'
+                        }
+                      >
+                        機器 {entry.entry?.measuringInstrumentNameSnapshot ?? (requireMeasuringInstrumentTag ? '未登録' : '任意')}
                       </div>
                     </td>
                   ) : null}
@@ -193,7 +209,12 @@ export function KioskSelfInspectionRecordApprovalPage() {
     nfcTagUid: string;
   } | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [policyMessage, setPolicyMessage] = useState<string | null>(null);
 
+  const registrationPolicyQuery = useSelfInspectionRegistrationPolicy();
+  const updateRegistrationPolicyMutation = useUpdateSelfInspectionRegistrationPolicy();
+  const requireMeasuringInstrumentTag =
+    registrationPolicyQuery.data?.requireMeasuringInstrumentTag ?? false;
   const listQuery = useSelfInspectionRecordApprovals({
     state,
     productNo: productNo.trim() || undefined,
@@ -272,6 +293,19 @@ export function KioskSelfInspectionRecordApprovalPage() {
     }
   };
 
+  const toggleMeasuringInstrumentRequirement = async () => {
+    const next = !requireMeasuringInstrumentTag;
+    setPolicyMessage(null);
+    try {
+      await updateRegistrationPolicyMutation.mutateAsync({
+        requireMeasuringInstrumentTag: next
+      });
+      setPolicyMessage(`計測機器タグ必須を${next ? 'ON' : 'OFF'}にしました。`);
+    } catch (error: unknown) {
+      setPolicyMessage(readApiErrorMessage(error, '計測機器タグ必須の切替に失敗しました。'));
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 bg-slate-800 p-3 text-white">
       <div className="rounded border border-white/15 bg-slate-900/70 p-3">
@@ -283,6 +317,39 @@ export function KioskSelfInspectionRecordApprovalPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
+            <div className="grid gap-1 text-sm">
+              <span className="text-white/65">計測機器タグ必須</span>
+              <button
+                type="button"
+                aria-label={`計測機器タグ必須 ${requireMeasuringInstrumentTag ? 'ON' : 'OFF'}`}
+                aria-pressed={requireMeasuringInstrumentTag}
+                disabled={registrationPolicyQuery.isLoading || updateRegistrationPolicyMutation.isPending}
+                onClick={() => void toggleMeasuringInstrumentRequirement()}
+                className={clsx(
+                  'inline-flex h-10 items-center gap-2 rounded border px-3 text-sm font-semibold transition-colors',
+                  requireMeasuringInstrumentTag
+                    ? 'border-amber-300/50 bg-amber-400/20 text-amber-100'
+                    : 'border-white/15 bg-slate-950/70 text-white/75 hover:border-white/35',
+                  (registrationPolicyQuery.isLoading || updateRegistrationPolicyMutation.isPending) && 'opacity-60'
+                )}
+              >
+                <span
+                  className={clsx(
+                    'relative inline-flex h-5 w-9 rounded-full border transition-colors',
+                    requireMeasuringInstrumentTag ? 'border-amber-200/70 bg-amber-300/80' : 'border-white/20 bg-white/10'
+                  )}
+                >
+                  <span
+                    className={clsx(
+                      'absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-transform',
+                      requireMeasuringInstrumentTag ? 'translate-x-4' : 'translate-x-0.5'
+                    )}
+                  />
+                </span>
+                {requireMeasuringInstrumentTag ? 'ON' : 'OFF'}
+              </button>
+              {policyMessage ? <span className="max-w-48 text-xs text-amber-100">{policyMessage}</span> : null}
+            </div>
             <label className="grid gap-1 text-sm">
               <span className="text-white/65">状態</span>
               <select
@@ -406,7 +473,10 @@ export function KioskSelfInspectionRecordApprovalPage() {
                 </Button>
               </div>
 
-              <DetailTable session={selectedSession} />
+              <DetailTable
+                session={selectedSession}
+                requireMeasuringInstrumentTag={requireMeasuringInstrumentTag}
+              />
             </>
           )}
         </section>

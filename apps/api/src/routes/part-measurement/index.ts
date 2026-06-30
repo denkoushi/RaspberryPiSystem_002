@@ -37,6 +37,11 @@ import {
 } from '../../services/part-measurement/self-inspection-config.js';
 import { resolveSelfInspectionNfcTagUid } from '../../services/part-measurement/self-inspection-nfc-tag-resolve.js';
 import {
+  getSelfInspectionRegistrationPolicy,
+  updateSelfInspectionRegistrationPolicy,
+  type SelfInspectionRegistrationPolicy
+} from '../../services/part-measurement/self-inspection-registration-policy.service.js';
+import {
   patchInspectionDrawingEvaluationSheetBodySchema,
   toInspectionDrawingEvaluationPatchInput
 } from '../../services/part-measurement/part-measurement-evaluation-sheet.contract.js';
@@ -375,6 +380,10 @@ const approveSelfInspectionRecordApprovalBodySchema = z.object({
   comment: z.string().max(500).optional().nullable()
 });
 
+const selfInspectionRegistrationPolicyBodySchema = z.object({
+  requireMeasuringInstrumentTag: z.boolean()
+});
+
 const issueSelfInspectionPaperReportBodySchema = z.object({
   templateId: z.string().uuid(),
   productNo: z.string().min(1).max(120),
@@ -670,6 +679,15 @@ function serializeSelfInspectionPaperOcrReview(review: {
     failureReason: review.failureReason,
     createdAt: review.createdAt.toISOString(),
     updatedAt: review.updatedAt.toISOString()
+  };
+}
+
+function serializeSelfInspectionRegistrationPolicy(policy: SelfInspectionRegistrationPolicy) {
+  return {
+    key: policy.key,
+    requireMeasuringInstrumentTag: policy.requireMeasuringInstrumentTag,
+    updatedAt: policy.updatedAt?.toISOString() ?? null,
+    updatedBy: policy.updatedBy
   };
 }
 
@@ -1449,6 +1467,21 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const body = z.object({ uid: z.string().min(1).max(200) }).parse(request.body);
     const result = await resolveSelfInspectionNfcTagUid(body.uid);
     return { result };
+  });
+
+  app.get('/part-measurement/self-inspection/registration-policy', { preHandler: allowView }, async () => {
+    const policy = await getSelfInspectionRegistrationPolicy();
+    return { policy: serializeSelfInspectionRegistrationPolicy(policy) };
+  });
+
+  app.put('/part-measurement/self-inspection/registration-policy', { preHandler: allowWriteKiosk }, async (request) => {
+    const body = selfInspectionRegistrationPolicyBodySchema.parse(request.body);
+    const clientDeviceId = request.user ? undefined : await tryGetClientDeviceId(request.headers);
+    const policy = await updateSelfInspectionRegistrationPolicy({
+      requireMeasuringInstrumentTag: body.requireMeasuringInstrumentTag,
+      updatedBy: request.user?.username ?? clientDeviceId ?? 'kiosk'
+    });
+    return { policy: serializeSelfInspectionRegistrationPolicy(policy) };
   });
 
   app.post('/part-measurement/self-inspection/sessions/resolve-or-create', { preHandler: allowWriteKiosk }, async (request) => {

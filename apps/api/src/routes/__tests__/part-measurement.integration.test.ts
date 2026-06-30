@@ -16,6 +16,7 @@ process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
 async function cleanPartMeasurementTables() {
+  await prisma.selfInspectionRegistrationPolicyConfig.deleteMany({});
   await prisma.selfInspectionRecordApproval.deleteMany({});
   await prisma.selfInspectionMeasurementValue.deleteMany({});
   await prisma.selfInspectionLotEntry.deleteMany({});
@@ -2190,6 +2191,34 @@ describe('part-measurement templates API', () => {
     });
     expect(recordApprovalWithoutClientKeyRes.statusCode).toBe(401);
 
+    const defaultRegistrationPolicyRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(defaultRegistrationPolicyRes.statusCode).toBe(200);
+    expect(defaultRegistrationPolicyRes.json().policy.requireMeasuringInstrumentTag).toBe(false);
+    expect(defaultRegistrationPolicyRes.json().policy.updatedAt).toBeNull();
+
+    const requireInstrumentPolicyRes = await app.inject({
+      method: 'PUT',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { requireMeasuringInstrumentTag: true }
+    });
+    expect(requireInstrumentPolicyRes.statusCode).toBe(200);
+    expect(requireInstrumentPolicyRes.json().policy.requireMeasuringInstrumentTag).toBe(true);
+    expect(requireInstrumentPolicyRes.json().policy.updatedBy).toBe(kioskClient.id);
+
+    const optionalInstrumentPolicyRes = await app.inject({
+      method: 'PUT',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { requireMeasuringInstrumentTag: false }
+    });
+    expect(optionalInstrumentPolicyRes.statusCode).toBe(200);
+    expect(optionalInstrumentPolicyRes.json().policy.requireMeasuringInstrumentTag).toBe(false);
+
     const recordApprovalInputIncompleteRes = await app.inject({
       method: 'GET',
       url: '/api/part-measurement/self-inspection/record-approvals?state=input_incomplete',
@@ -2261,14 +2290,14 @@ describe('part-measurement templates API', () => {
       headers: createAuthHeader(adminToken),
       payload: {
         entryIndex: 0,
-        ...entryRegistrationTags,
+        employeeTagUid: auditEmployee.nfcTagUid,
         values: [{ templateItemId, value: '10.01' }]
       }
     });
     expect(createEntryRes.statusCode).toBe(200);
     const firstEntryId = createEntryRes.json().entry.id as string;
     expect(createEntryRes.json().entry.createdByEmployeeId).toBe(auditEmployee.id);
-    expect(createEntryRes.json().entry.measuringInstrumentId).toBeTruthy();
+    expect(createEntryRes.json().entry.measuringInstrumentId).toBeNull();
     const auditedUpdateRes = await app.inject({
       method: 'PATCH',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${firstEntryId}`,
@@ -2462,6 +2491,28 @@ describe('part-measurement templates API', () => {
     });
     expect(listProcessGroupOnlyRes.statusCode).toBe(400);
 
+    const requireInstrumentPolicyBeforeSecondEntryRes = await app.inject({
+      method: 'PUT',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { requireMeasuringInstrumentTag: true }
+    });
+    expect(requireInstrumentPolicyBeforeSecondEntryRes.statusCode).toBe(200);
+    expect(requireInstrumentPolicyBeforeSecondEntryRes.json().policy.requireMeasuringInstrumentTag).toBe(true);
+
+    const secondEntryMissingInstrumentWhenRequiredRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        entryIndex: 1,
+        employeeTagUid: auditEmployee.nfcTagUid,
+        values: [{ templateItemId, value: '10.5', outOfToleranceAcknowledged: true }]
+      }
+    });
+    expect(secondEntryMissingInstrumentWhenRequiredRes.statusCode).toBe(400);
+    expect(secondEntryMissingInstrumentWhenRequiredRes.json().message).toContain('測定機器');
+
     const secondEntryRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
@@ -2616,6 +2667,35 @@ describe('part-measurement templates API', () => {
     });
     expect(badPasswordRes.statusCode).toBe(200);
     expect(badPasswordRes.json().success).toBe(false);
+
+    const requiredPolicyRegistrationIncompleteRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=registration_incomplete',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(requiredPolicyRegistrationIncompleteRes.statusCode).toBe(200);
+    const requiredPolicyIncompleteSession = (
+      requiredPolicyRegistrationIncompleteRes.json().sessions as Array<Record<string, unknown>>
+    ).find((row) => row.id === sessionId);
+    expect(requiredPolicyIncompleteSession?.recordApprovalState).toBe('registration_incomplete');
+
+    const requiredPolicyApproveRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { approverEmployeeTagUid: auditEmployee.nfcTagUid }
+    });
+    expect(requiredPolicyApproveRes.statusCode).toBe(409);
+    expect(requiredPolicyApproveRes.json().message).toContain('測定機器');
+
+    const disableInstrumentRequirementBeforeApprovalRes = await app.inject({
+      method: 'PUT',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { requireMeasuringInstrumentTag: false }
+    });
+    expect(disableInstrumentRequirementBeforeApprovalRes.statusCode).toBe(200);
+    expect(disableInstrumentRequirementBeforeApprovalRes.json().policy.requireMeasuringInstrumentTag).toBe(false);
 
     const recordApprovalApprovableRes = await app.inject({
       method: 'GET',

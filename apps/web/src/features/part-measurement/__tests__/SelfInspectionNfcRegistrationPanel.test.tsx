@@ -25,7 +25,10 @@ function makeRegistration(
 describe('SelfInspectionNfcRegistrationPanel', () => {
   it('renders instrument and employee fields in a two-column grid with min-w-0', () => {
     const { container } = render(
-      <SelfInspectionNfcRegistrationPanel registration={makeRegistration()} />
+      <SelfInspectionNfcRegistrationPanel
+        registration={makeRegistration()}
+        requireMeasuringInstrumentTag={true}
+      />
     );
 
     const grid = container.querySelector('.grid.grid-cols-2');
@@ -43,6 +46,7 @@ describe('SelfInspectionNfcRegistrationPanel', () => {
     render(
       <SelfInspectionNfcRegistrationPanel
         registration={makeRegistration({ nextActionLabel: '測定機器タグをスキャン' })}
+        requireMeasuringInstrumentTag={true}
       />
     );
 
@@ -54,6 +58,7 @@ describe('SelfInspectionNfcRegistrationPanel', () => {
     const { rerender } = render(
       <SelfInspectionNfcRegistrationPanel
         registration={makeRegistration({ message: '未登録のNFCタグです。' })}
+        requireMeasuringInstrumentTag={true}
       />
     );
     expect(screen.getByText('未登録のNFCタグです。')).toBeInTheDocument();
@@ -61,8 +66,21 @@ describe('SelfInspectionNfcRegistrationPanel', () => {
     rerender(
       <SelfInspectionNfcRegistrationPanel
         registration={makeRegistration({ isLocked: true, nextActionLabel: null })}
+        requireMeasuringInstrumentTag={true}
       />
     );
     expect(screen.getByText('保存済みの登録は変更できません。')).toBeInTheDocument();
+  });
+
+  it('shows optional instrument state when instrument tag is not required', () => {
+    render(
+      <SelfInspectionNfcRegistrationPanel
+        registration={makeRegistration()}
+        requireMeasuringInstrumentTag={false}
+      />
+    );
+
+    expect(screen.getByText('測定機器（任意）')).toBeInTheDocument();
+    expect(screen.getByText('未登録（任意）')).toBeInTheDocument();
   });
 });

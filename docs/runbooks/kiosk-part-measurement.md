@@ -661,12 +661,13 @@ cd apps/web && pnpm exec vitest run \
 8. 確認済み公差外を含む入力件は **入力を保存** でき、保存後のセッションが **承認待ち**（`review_pending`）として表示されること。
 9. 新方式セッションでは **自主検査を完了** が「検査記録承認待ち」の案内になり、API `complete` も 409 を返すこと。
 10. 自主検査トップ **検査記録確認** → パスワード `2520` で入場でき、ブラウザ session 中は再入力不要であること。
-11. 承認一覧で、未入力は **入力途中**、測定者/測定機器 NFC 不足は **登録不足**、全 required slot 入力・登録済みは **承認可能** と表示されること。
-12. 詳細で required slot 単位の入力漏れ/登録漏れ、保存済みの公差内/公差外値、公差外強調、pending 公差外数が確認できること。
-13. ACTIVE 社員 NFC を承認者としてタッチすると社員名が表示され、**承認して完了** で `SelfInspectionRecordApproval` と pending 値の `APPROVED` が保存され、セッションが完了扱いになること。
-14. INACTIVE/SUSPENDED 社員、未登録 UID、計測器タグ、社員/計測器重複タグでは承認不可であること。
-15. 順位ボード・自主検査一覧・機種別ボードで、承認前は **承認待ち**、承認後は **完了** 表示になること。
-16. legacy 確認として、`recordApprovalRequiredAt=null` の既存セッションだけは管理 `/admin/part-measurement/self-inspection-reviews` の ADMIN/MANAGER 承認で従来どおり完了できること。
+11. 上辺メニュー **計測機器タグ必須** が初期 **OFF** で表示され、ON/OFF を切り替えられること。
+12. 承認一覧で、未入力は **入力途中**、測定者不足または **計測機器タグ必須 ON** 時の測定機器不足は **登録不足**、全 required slot 入力・必要登録済みは **承認可能** と表示されること。
+13. 詳細で required slot 単位の入力漏れ/登録漏れ、保存済みの公差内/公差外値、公差外強調、pending 公差外数が確認できること。
+14. ACTIVE 社員 NFC を承認者としてタッチすると社員名が表示され、**承認して完了** で `SelfInspectionRecordApproval` と pending 値の `APPROVED` が保存され、セッションが完了扱いになること。
+15. INACTIVE/SUSPENDED 社員、未登録 UID、計測器タグ、社員/計測器重複タグでは承認不可であること。
+16. 順位ボード・自主検査一覧・機種別ボードで、承認前は **承認待ち**、承認後は **完了** 表示になること。
+17. legacy 確認として、`recordApprovalRequiredAt=null` の既存セッションだけは管理 `/admin/part-measurement/self-inspection-reviews` の ADMIN/MANAGER 承認で従来どおり完了できること。
 
 ### 単体・結合テスト
 
@@ -688,10 +689,10 @@ cd apps/api && pnpm exec vitest run \
 |------|------|------|
 | 寸法 dropdown が 0.01 刻みで多すぎる | 測定点名称が寸法ラベルに一致しているか · Web bundle が新しいか | Pi5 web 再デプロイ · Pi4 強制リロード |
 | `100.1※` のまま保存できる | 百分台ボタン押下前の未確定値をドラフトへ入れていないか | `InspectionDrawingValuePanel` / `selfInspectionDimensionValueInput.ts` を確認 |
-| 公差外を確認しても保存できない | `outOfToleranceAcknowledged` が payload に入っているか · NFC 登録が揃っているか | Network と action reason を確認 |
+| 公差外を確認しても保存できない | `outOfToleranceAcknowledged` が payload に入っているか · 測定者 NFC 登録があるか · 計測機器タグ必須 ON 時は機器登録もあるか | Network と action reason を確認 |
 | 検査記録確認に入れない | `x-client-key` が有効か · パスワードが `2520` または設定値か | ClientDevice と納期管理パスワード設定を確認 |
 | 承認ボタンが押せない | 一覧状態が `承認可能` か · 承認者 NFC が ACTIVE 社員として解決済みか | 入力漏れ/登録漏れを詳細で確認し、社員タグを再スキャン |
-| 承認後も完了しない | required slot が全部保存済みか · NFC 登録欠落がないか · pending 公差外が承認更新されたか | 未保存/未登録 entry を再保存し、API ログと `SelfInspectionRecordApproval` を確認 |
+| 承認後も完了しない | required slot が全部保存済みか · 測定者登録欠落がないか · 計測機器タグ必須 ON 時は機器登録欠落がないか · pending 公差外が承認更新されたか | 未保存/未登録 entry を再保存し、API ログと `SelfInspectionRecordApproval` を確認 |
 | 管理画面で新方式セッションを承認できない | `recordApprovalRequiredAt != null` か | 正常。キオスク「検査記録確認」で ACTIVE 社員 NFC 承認する |
 
 ---
@@ -702,8 +703,8 @@ cd apps/api && pnpm exec vitest run \
 
 ### 仕様・知見
 
-- **対象画面**: 順位ボード **検** → `/kiosk/part-measurement/self-inspection/sessions/:sessionId` 右ペイン + 上辺ヘッダー（手元カメラ）。**API/保存/完了/ガイド活性/NFC解決は不変**。
-- **NFC**: 測定機器/測定者 **1行2列** · `nextActionLabel` 非表示 · エラー/ロック文言は維持。
+- **対象画面**: 順位ボード **検** → `/kiosk/part-measurement/self-inspection/sessions/:sessionId` 右ペイン + 上辺ヘッダー（手元カメラ）。2026-06-30 以降の保存/完了の NFC 必須条件は「測定者必須、測定機器は設定依存」を正とする。
+- **NFC**: 測定機器/測定者 **1行2列** · 測定機器任意時は `未登録（任意）` 表示 · `nextActionLabel` 非表示 · エラー/ロック文言は維持。
 - **測定点一覧**: 自主検査のみ `layout="twoColumn"` · 作成/改版は1列維持 · 選択中は高彩度 cyan + `ring-2`。
 - **保存/完了**: `actionCompact` = **`min-h-6 py-0 text-[15px] leading-none`** · 青外枠契約維持 · 親 `p-1 gap-1` で境目。
 - **手元カメラ**: OFF = `tone="inactive"`（押せる inactive）· ON = 通常見た目。
@@ -711,7 +712,7 @@ cd apps/api && pnpm exec vitest run \
 ### 手動確認（Pi4/Pi5）
 
 1. 順位ボード **検** → セッション入室。
-2. NFC 登録が **1行2列**、スキャン案内（`測定機器タグをスキャン` 等）が **出ない** こと。未登録タグエラーは amber で表示されること。
+2. NFC 登録が **1行2列**、測定機器任意時は `未登録（任意）`、スキャン案内（`測定機器タグをスキャン` 等）が **出ない** こと。未登録タグエラーは amber で表示されること。
 3. 測定点一覧が **2列**、選択中カードの **青枠が太く視認しやすい** こと。
 4. **入力を保存** / **自主検査を完了** が **より薄型**（フォント 15px 維持）で、境目と青外枠が崩れないこと。
 5. **手元カメラ OFF** がグレーアウトかつ **クリックで ON** に切り替わること（`disabled` ではない）。
@@ -783,16 +784,16 @@ cd apps/web && pnpm exec vitest run \
 ### 概要
 
 - **対象**: 順位ボード **検** → `/kiosk/part-measurement/self-inspection/sessions/:sessionId`
-- **NFC**: 入力件ごとに **測定機器 → 測定者** を登録（逆順スキャンも UID 解決で正しい slot へ）。保存/完了は **API 正本**で未登録を拒否。
+- **NFC**: 入力件ごとに **測定者** を必ず登録。測定機器は **計測機器タグ必須 ON** 時のみ必須、OFF 時は任意。タグをスキャンした場合は UID 解決で正しい slot へ入り、保存/完了は **API 正本**で判定。
 - **手元カメラ**: 上辺ツールバー **`手元カメラ OFF/ON`**（ズーム `−` の左）。既定 OFF · ON 時 **10 秒間隔** · **毎回 getUserMedia → 1 フレーム → stop**（保存 API なし · 第一段階は計測のみ）。
 
 ### 手動確認（Pi4 実機）
 
 1. セッション入室後、右ペイン上部に **NFC 登録** パネルが表示されること。
-2. **測定機器タグ → 社員タグ** の順でスキャンし、表示名が埋まること（逆順でも可）。
-3. 両方未登録のまま **入力を保存** が disabled · 理由表示されること。
-4. 登録後に測定値を入力して保存 → entry に測定者/機器 snapshot が付くこと（API `GET …/sessions/:id`）。
-5. 必要件数すべて保存後のみ **自主検査を完了** が有効になること。
+2. **社員タグ** をスキャンし、測定者表示名が埋まること。計測機器タグは任意時でも後からスキャンできること。
+3. 測定者未登録のまま **入力を保存** が disabled · 理由表示されること。**計測機器タグ必須 ON** 時だけ機器未登録でも disabled になること。
+4. 登録後に測定値を入力して保存 → entry に測定者 snapshot が付き、計測機器タグを読んだ場合は機器 snapshot も付くこと（API `GET …/sessions/:id`）。
+5. 必要件数すべて保存後、測定者登録済みかつポリシー上必要な機器登録済みのときだけ **自主検査を完了** が有効になること。
 6. **手元カメラ ON** で 10 秒ごとに DevTools/console に `[self-inspection workbench camera experiment]` ログ（`getUserMedia ms` / `capture ms` / `blob size`）が出ること。
 7. OFF / タブ非表示 / 画面離脱で **stream が残留しない**こと（Pi4 負荷 — 常時プレビュー禁止の継続）。
 

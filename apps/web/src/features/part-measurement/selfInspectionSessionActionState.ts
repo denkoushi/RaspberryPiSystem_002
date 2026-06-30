@@ -29,7 +29,9 @@ export type SelfInspectionActionReason =
   | 'already_guided'
   | 'no_pending_points_unsaved'
   | 'no_pending_points_saved'
+  | 'missing_employee_registration'
   | 'missing_registration'
+  | 'incomplete_employee_registration'
   | 'incomplete_registration'
   | 'canvas_not_ready';
 
@@ -51,6 +53,7 @@ export type SelfInspectionSessionActionContext = {
   guideActionsEnabled: boolean;
   entryRegistrationReady: boolean;
   entryRegistrationDirty: boolean;
+  requireMeasuringInstrumentTag: boolean;
   outOfToleranceAcknowledgedByEntryIndex?: Record<number, Record<string, boolean>>;
 };
 
@@ -144,7 +147,7 @@ export function resolveSelfInspectionSaveActionState(
   if (draftBlockReason) return disabledState(draftBlockReason);
 
   if (!context.entryRegistrationReady) {
-    return disabledState('missing_registration');
+    return disabledState(context.requireMeasuringInstrumentTag ? 'missing_registration' : 'missing_employee_registration');
   }
 
   return enabledState();
@@ -174,8 +177,15 @@ export function resolveSelfInspectionCompleteActionState(
   const requiredSlots = listSelfInspectionEntrySlots(context.session);
   for (const slot of requiredSlots) {
     const saved = context.session.entries.find((entry) => entry.entryIndex === slot.entryIndex);
-    if (!saved || !isSelfInspectionSavedEntryRegistrationComplete(saved)) {
-      return disabledState('incomplete_registration');
+    if (
+      !saved ||
+      !isSelfInspectionSavedEntryRegistrationComplete(saved, {
+        requireMeasuringInstrumentTag: context.requireMeasuringInstrumentTag
+      })
+    ) {
+      return disabledState(
+        context.requireMeasuringInstrumentTag ? 'incomplete_registration' : 'incomplete_employee_registration'
+      );
     }
   }
 
@@ -256,8 +266,12 @@ export function selfInspectionActionReasonMessage(
       return '公差外の測定値が現場リーダー承認待ちです。';
     case 'record_approval_required':
       return '検査記録確認画面で承認すると自主検査が完了します。';
+    case 'missing_employee_registration':
+      return '測定者のNFC登録が必要です。';
     case 'missing_registration':
       return '測定者と測定機器のNFC登録が必要です。';
+    case 'incomplete_employee_registration':
+      return '未登録の測定者がある入力件があります。';
     case 'incomplete_registration':
       return '未登録の測定者または測定機器がある入力件があります。';
     case 'unsaved_changes':

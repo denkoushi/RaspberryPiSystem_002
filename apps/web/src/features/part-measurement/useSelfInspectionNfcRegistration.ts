@@ -11,7 +11,8 @@ import {
   mergeSelfInspectionEntryRegistrationDraftWithSaved,
   resolveSelfInspectionEntryRegistrationForDisplay,
   resolveSelfInspectionEntryRegistrationFromSaved,
-  type SelfInspectionEntryRegistrationDraft
+  type SelfInspectionEntryRegistrationDraft,
+  type SelfInspectionRegistrationRequirementPolicy
 } from './selfInspectionEntryRegistration';
 
 import type { SelfInspectionLotEntryDto, SelfInspectionSessionDetailDto } from './types';
@@ -64,12 +65,13 @@ function instrumentLabelFromResolve(instrument: {
 
 function deriveStatus(
   draft: SelfInspectionEntryRegistrationDraft,
-  errorStatus: SelfInspectionNfcRegistrationStatus | null
+  errorStatus: SelfInspectionNfcRegistrationStatus | null,
+  policy: SelfInspectionRegistrationRequirementPolicy
 ): SelfInspectionNfcRegistrationStatus {
   if (errorStatus && errorStatus !== 'idle') {
     return errorStatus;
   }
-  if (isSelfInspectionEntryRegistrationReady(draft)) {
+  if (isSelfInspectionEntryRegistrationReady(draft, policy)) {
     return 'ready';
   }
   if (draft.measuringInstrumentTagUid && !draft.employeeTagUid) {
@@ -83,12 +85,16 @@ function deriveStatus(
 
 function nextActionLabelForDraft(
   draft: SelfInspectionEntryRegistrationDraft,
-  savedEntry: SavedEntryRegistrationContext
+  savedEntry: SavedEntryRegistrationContext,
+  policy: SelfInspectionRegistrationRequirementPolicy
 ): string | null {
-  if (isSelfInspectionEntryRegistrationReadyForSave(draft, savedEntry)) {
+  if (isSelfInspectionEntryRegistrationReadyForSave(draft, savedEntry, policy)) {
     return null;
   }
-  const needsInstrument = !savedEntry?.measuringInstrumentId && !draft.measuringInstrumentTagUid;
+  const needsInstrument =
+    policy.requireMeasuringInstrumentTag &&
+    !savedEntry?.measuringInstrumentId &&
+    !draft.measuringInstrumentTagUid;
   const needsEmployee = !savedEntry?.createdByEmployeeId && !draft.employeeTagUid;
   if (needsInstrument) {
     return '測定機器タグをスキャン';
@@ -312,8 +318,13 @@ export function useSelfInspectionNfcRegistration(options: {
   selectedEntryIndex: number;
   nfcEvent: NfcEvent | null | undefined;
   enabled: boolean;
+  requireMeasuringInstrumentTag: boolean;
 }) {
-  const { session, selectedEntryIndex, nfcEvent, enabled } = options;
+  const { session, selectedEntryIndex, nfcEvent, enabled, requireMeasuringInstrumentTag } = options;
+  const registrationPolicy = useMemo(
+    () => ({ requireMeasuringInstrumentTag }),
+    [requireMeasuringInstrumentTag]
+  );
   const [{ draftByEntryIndex, errorStatus, message }, dispatch] = useReducer(
     reduceSelfInspectionNfcRegistrationState,
     INITIAL_NFC_REGISTRATION_STATE
@@ -405,32 +416,32 @@ export function useSelfInspectionNfcRegistration(options: {
     void applyResolvedUid(nfcEvent.uid);
   }, [applyResolvedUid, enabled, isLocked, nfcEvent, selectedEntryIndex]);
 
-  const status = deriveStatus(draft, errorStatus);
+  const status = deriveStatus(draft, errorStatus, registrationPolicy);
 
   const registrationPayload = useMemo(() => {
-    if (!isSelfInspectionEntryRegistrationReadyForSave(draft, savedEntry)) {
+    if (!isSelfInspectionEntryRegistrationReadyForSave(draft, savedEntry, registrationPolicy)) {
       return null;
     }
     return buildSelfInspectionEntryRegistrationPayload(draft, savedEntry);
-  }, [draft, savedEntry]);
+  }, [draft, registrationPolicy, savedEntry]);
 
   const registrationDirty = useMemo(
-    () => isSelfInspectionEntryRegistrationDirtyForSave(draft, savedEntry),
-    [draft, savedEntry]
+    () => isSelfInspectionEntryRegistrationDirtyForSave(draft, savedEntry, registrationPolicy),
+    [draft, registrationPolicy, savedEntry]
   );
 
   const hasUnsavedRegistrationDrafts = useMemo(() => {
     if (!session) return false;
-    return hasUnsavedSelfInspectionRegistrationDrafts(session, draftByEntryIndex);
-  }, [draftByEntryIndex, session]);
+    return hasUnsavedSelfInspectionRegistrationDrafts(session, draftByEntryIndex, registrationPolicy);
+  }, [draftByEntryIndex, registrationPolicy, session]);
 
   const view: SelfInspectionNfcRegistrationView = {
     ...draft,
     status: status === 'resolving' ? 'resolving' : status,
     message,
-    isReady: isSelfInspectionEntryRegistrationReadyForSave(draft, savedEntry),
+    isReady: isSelfInspectionEntryRegistrationReadyForSave(draft, savedEntry, registrationPolicy),
     isLocked,
-    nextActionLabel: isLocked ? null : nextActionLabelForDraft(draft, savedEntry)
+    nextActionLabel: isLocked ? null : nextActionLabelForDraft(draft, savedEntry, registrationPolicy)
   };
 
   return {

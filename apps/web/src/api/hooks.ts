@@ -244,6 +244,8 @@ import {
   completeSelfInspectionSession,
   approveSelfInspectionOutOfToleranceReview,
   approveSelfInspectionRecordApproval,
+  getSelfInspectionRegistrationPolicy,
+  updateSelfInspectionRegistrationPolicy,
   resolveSelfInspectionRecordApprovalApprover,
   verifyKioskSelfInspectionRecordApprovalAccessPassword,
   resetSelfInspectionSession,
@@ -405,6 +407,36 @@ export function useSelfInspectionOutOfToleranceReviews(options?: { enabled?: boo
     queryFn: () => listSelfInspectionOutOfToleranceReviews(),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
     enabled: options?.enabled ?? true
+  });
+}
+
+export function useSelfInspectionRegistrationPolicy(options?: {
+  enabled?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
+  return useQuery({
+    queryKey: ['self-inspection-registration-policy'],
+    queryFn: () => getSelfInspectionRegistrationPolicy(),
+    refetchInterval: options?.refetchIntervalMs ?? 30000,
+    enabled: options?.enabled ?? true
+  });
+}
+
+export function useUpdateSelfInspectionRegistrationPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { requireMeasuringInstrumentTag: boolean }) =>
+      updateSelfInspectionRegistrationPolicy(payload),
+    onSuccess: (policy) => {
+      queryClient.setQueryData(['self-inspection-registration-policy'], policy);
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-registration-policy'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approvals'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
   });
 }
 

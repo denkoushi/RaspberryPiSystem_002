@@ -114,6 +114,13 @@ export type SelfInspectionRecordApprovalDto = {
   clientDeviceNameSnapshot: string | null;
 };
 
+export type SelfInspectionRegistrationPolicyDto = {
+  key: string;
+  requireMeasuringInstrumentTag: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
 export type SelfInspectionPaperReportStatus =
   | 'ISSUED'
   | 'OCR_REVIEW'
