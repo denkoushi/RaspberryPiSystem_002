@@ -210,6 +210,32 @@ RASPI_SERVER_HOST='denkon5sd02@100.106.158.2' \
 - `health` は公開版を薄くし、詳細版を認証/localhost限定に分ける。
 - `deploy-status` はキオスク依存が強いため、全端末の `x-client-key` 実運用確認後に扱う。
 
+## Pi5反映翌朝確認（2026-07-01 07:33 JST）
+
+目的:
+
+- 2026-06-30 21:10 JST 頃のPi5反映後、一晩の安定性を確認する。
+- 現場端末での貸出/返却は利用者確認で正常。
+- こちらではAPI health、認証拒否ログ、Docker/APIログ、コンテナ状態を読み取り確認。
+
+結果:
+
+- `GET /api/system/health`: HTTP `200`, `status=ok`
+- health checks: `database=ok`, `memory=ok`, `eventLoop=ok`, `playwright=ok`
+- api/db/web: 起動中。api/db は healthy。
+- api/web/db restart count: `0`
+- api/web/db OOMKilled: `false`
+- `AUTH_OR_CLIENT_KEY_REQUIRED`: 2026-06-30 21:10 JST 以降 `0` 件
+- `CLIENT_KEY_CLIENT_MISMATCH`: 2026-06-30 21:10 JST 以降 `0` 件
+- `INVALID_CLIENT_KEY` / `CLIENT_KEY_INVALID`: 2026-06-30 21:10 JST 以降 `0` 件
+
+補足:
+
+- API health の `memory` には `Allocated heap usage warning` が付いていたが、heap上限に対する使用率は低く、既知の運用上の警告表示。
+- 2026-07-01 02:02 JST 頃に Dropbox の古いバックアップ掃除で `429 too_many_requests` が発生。対象はバックアップ後のcleanupであり、今回の貸出API強化とは別系統。
+- 2026-07-01 03:02 JST 頃に Caddy reverse proxy の一時 `502` が2件発生。対象は `/api/kiosk/pallet-visualization/board` と `/api/clients/status`。apiコンテナ停止・restart・OOMは無く、現在のhealthは正常。
+- 2026-07-01 06:00 JST 以降、level 50 のAPIエラーは確認されず、残るwarningは既存のCSV日付形式、サイネージschedule fallback、rigging gear不一致のskip。
+
 ## 運用上の注意
 
 - 正常なキオスク端末は、有効な `x-client-key` を持っていれば従来どおり利用可能。
