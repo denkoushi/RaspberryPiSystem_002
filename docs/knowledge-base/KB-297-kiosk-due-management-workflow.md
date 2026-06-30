@@ -214,7 +214,12 @@ category: knowledge-base
 - **本番デプロイ（2026-04-22・購買照会バーコード読取安定化・Web のみ）**: ブランチ **`feat/purchase-order-scan-stability`**・代表 **`b2180b1e`**（`barcodeReadStability.ts`・`useBarcodeScanSession` / `BarcodeScanModal` の任意 **`stabilityConfig` / `readerOptions`**・購買照会のみ **`BARCODE_FORMAT_PRESET_PURCHASE_ORDER`** と **短時間の同一値2連続一致で確定**・`zxingVideoReader` の既定間隔は **呼び出し側未指定時は従来寄り**）。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**（**Pi3 は対象外**）。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/purchase-order-scan-stability infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Detach Run ID**: `20260422-091400-26049` → `20260422-091829-21827` → `20260422-092256-32471` → `20260422-092617-8016` → `20260422-093223-17140`（各 **`failed=0` / `unreachable=0` / exit `0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **26s**）。**追加スモーク**: `GET https://100.106.158.2/kiosk/purchase-order-lookup` → **200**。**仕様**: 要領書など他画面のバーコード UI は **`stabilityConfig` 未指定で即確定**のまま。**知見**: 共有 `BarcodeScanModal` へ波及させず購買照会だけチューニングするため **オプション化**。**トラブルシュート**: **`update-all-clients.sh` の並列起動禁止**・プレフライト失敗後の **stale lock** は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) §5.2。ラベルが **`BARCODE_FORMAT_PRESET_PURCHASE_ORDER` 外**なら `formatPresets.ts` の配列へ追加。
 - **実機（Android Chrome・2026-04-24 追記）**: `feat/kiosk-barcode-reader-tuning`（`main`）反映後、**注番**（現品票一次元・**10 桁**）の **カメラ読取体感**が速くなったとの場内確認。Web は **`PurchaseOrderLookupPage`** で **`BARCODE_READER_OPTIONS_KIOSK_DEFAULT`（220/120ms）** を `BarcodeScanModal` に明示し、上記 **`PURCHASE_ORDER` プリセット**・**`stabilityConfig`（短時間2連続一致）**と併用。配膳の **製造order** 一次元も同リリースで体感改善の報告あり（[KB-339 V24](./KB-339-mobile-placement-barcode-survey.md#v24-barcode-reader-tuning-2026-04-23)）。照明・ピント・ラベル品質で変動。
 - **本番デプロイ（2026-04-21・追記・FHINCD 照合キー v2・Pi5→Pi4×4）**: ブランチ **`fix/fhincd-normalization-v2`**・代表 **`65955268`**（Prisma `20260422120000_purchase_order_lookup_fhincd_match_key`・`purchase-fhincd-normalize.ts`・`purchase-fhincd-match-sql.ts`・照会の段階移行フォールバック）。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **1 台ずつ**。**Pi3**: 対象外（本変更は Pi5 API + Pi4 キオスク Web）。[deployment.md](../guides/deployment.md) 標準・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/fhincd-normalization-v2 infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260421-211718-16570` → `20260421-213337-30126` → `20260421-213832-8006` → `20260421-214223-235` → `20260421-214721-3204`（各 **`failed=0` / `unreachable=0` / exit `0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **53s**）。**トラブルシュート**: **同一 Pi5 へ `update-all-clients.sh` を並列起動しない**（ローカル／リモートロック・exit 3）。
-- **本番デプロイ（2026-04-21・蓄積 upsert・着手日・`Dockerfile.web` Caddy 依存 pin）**: ブランチ **`feat/purchase-order-lookup-history-start-date`**・代表 **`92fd37e4`**。**対象**: **`raspberrypi5` のみ**（Pi4/Pi3 未反映）。[deployment.md](../guides/deployment.md) 標準・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/purchase-order-lookup-history-start-date infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260421-192642-23281`**（**`failed=0` / `unreachable=0` / exit `0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **94s**）。**CI/Trivy**: `security-docker` の **`trivy image web`** 通過のため Caddy 同梱 `go.mod` で **`pgx` / `puddle` / `smallstep/certificates` / OTel SDK** 等を `replace` ピン（詳細 [KB-307](../ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する) 追記）。**PR**: [#175](https://github.com/denkoushi/RaspberryPiSystem_002/pull/175)。
+- **本番デプロイ（2026-04-21・蓄積 upsert・着手日・`Dockerfile.web` Caddy 依存 pin）**:
+  - **ブランチ/対象**: **`feat/purchase-order-lookup-history-start-date`**・代表 **`92fd37e4`**。**`raspberrypi5` のみ**（Pi4/Pi3 未反映）。
+  - **手順/実績**: [deployment.md](../guides/deployment.md) 標準・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/purchase-order-lookup-history-start-date infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260421-192642-23281`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+  - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **94s**）。
+  - **CI/Trivy**: `security-docker` の **`trivy image web`** 通過のため Caddy 同梱 `go.mod` で **`pgx` / `puddle` / `smallstep/certificates` / OTel SDK** 等を `replace` ピン（詳細 [KB-307](./ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する) 追記）。
+  - **PR**: [#175](https://github.com/denkoushi/RaspberryPiSystem_002/pull/175)。
 - **運用（Gmail スケジュール）**: `backup.json` / 管理 API 経由で **固定 ID** **`csv-import-purchase-order-fkobaino`**（`ImportScheduleAdminService` で **自動補完・削除不可**）を **`ensureFkobainoCsvImportSchedule`** が維持。件名 **`FKOBAINO`** は他用途と重複させない。
 - **本番デプロイ（2026-04-20・追記・キオスク Web UX）**: ブランチ **`feat/kiosk-purchase-order-lookup-ux`**・代表コミット **`b0c2e68e`**（`PurchaseOrderLookupPage`・`usePurchaseOrderLookup`・進行中照会と短いスキャンで `loading` が残る不具合の修正・`buildPurchaseOrderRowLines`・Vitest・デザインプレビュー HTML）。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260420-185803-18736` → `20260420-191222-23450` → `20260420-191818-15715` → `20260420-193055-747`。**`raspi4-fjv60-80`**: プレフライト **SSH timeout**（**未デプロイ**）。**Pi3**: 対象外（`/kiosk` は Pi5 SPA + Pi4 キオスク）。**トラブルシュート**: `raspi4-fjv60-80` 失敗後に Pi5 に **stale lock**（`runPid: null`）が残り、続く **`raspi4-kensaku-stonebase01` でロック取得不能** → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) §5.2。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**。**追加スモーク**: `GET …/kiosk/purchase-order-lookup` → **200**。
 - **本番デプロイ（2026-04-20・追記・モバイル注文入力スキャン専用化）**: ブランチ **`feat/scan-only-order-inputs-and-shelf-chip-mobile`**・代表 **`423e32bb`**。**Web**: **`/kiosk/purchase-order-lookup`** の注文番号は **`readOnly` + `inputMode="none"`**（**スキャンのみ**）・`usePurchaseOrderLookup` から手入力用 debounce / `onOrderNoChange` を除去。**配膳** `/kiosk/mobile-placement` メイン下半の **製造order** も同様（`onOrderBarcodeChange` 廃止）。**棚番チップ**: `mobilePlacementKioskTheme` で **`grid-cols-3 sm:grid-cols-4`** 等（詳細は [KB-339 §V23](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v23-scan-only-shelf-chip-2026-04-20)）。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-kensaku-stonebase01`** を **1 台ずつ**。**Detach Run ID**: `20260420-211100-899` → `20260420-211743-28526` → `20260420-212322-14477` → `20260420-213004-29970`。**`raspi4-fjv60-80`**: プレフライト **SSH timeout**（**未デプロイ**）。**Pi3**: 対象外。**トラブルシュート**: fjv60 失敗後 Pi5 ロックが **`runPid: null`** のまま残ると次ホストで **ロック取得不能**（本記録では runId **`20260420-212814-6231`**）→ [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) §5.2。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**。**追加スモーク**: `GET …/kiosk/purchase-order-lookup`・`…/kiosk/mobile-placement` → **各 200**。
@@ -360,7 +365,7 @@ category: knowledge-base
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-23）。
 - **Troubleshooting**:
   - **CI の web ビルドのみ失敗**（`AnchoredDropdownPortal.tsx` TS2322）: 上記の `RefObject` 型定義を確認。ローカル `pnpm --filter @raspi-system/web build` で再現可能。
-  - **見た目の確認**: Phase12 は API・サービス中心のため、ドロップダウンが画面端で切れないことは **実機/VNC** で `/kiosk/production-schedule` を開き、登録製番・資源CDのドロップダウンを展開して確認（自己署名で Mac 直ブラウザが失敗しうる件は [KB-306](../knowledge-base/frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) と同趣旨）。
+  - **見た目の確認**: Phase12 は API・サービス中心のため、ドロップダウンが画面端で切れないことは **実機/VNC** で `/kiosk/production-schedule` を開き、登録製番・資源CDのドロップダウンを展開して確認（自己署名で Mac 直ブラウザが失敗しうる件は [KB-306](./frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) と同趣旨）。
 
 <a id="manual-order-overview-card-two-line-header-2026-03-23"></a>
 
@@ -463,7 +468,7 @@ category: knowledge-base
 - **Context**:
   - 手動順番専用ルートでキオスク最上段メニューを畳みつつ操作領域を確保し、端末カードの情報密度とグリッド列数を調整したい。
 - **Fix（仕様）**:
-  - **ルート限定ヘッダー**: [`useKioskTopEdgeHeaderReveal`](../../apps/web/src/hooks/useKioskTopEdgeHeaderReveal.ts) と [`KioskLayout`](../../apps/web/src/layouts/KioskLayout.tsx) で **`/kiosk/production-schedule/manual-order` のときのみ** 既定で `KioskLayout` 最上段を非表示。画面上端付近へポインタを寄せるとスライドイン（タッチ専用代替は未実装）。
+  - **ルート限定ヘッダー**: [`useKioskBottomCenterHeaderReveal`](../../apps/web/src/hooks/useKioskBottomCenterHeaderReveal.ts) と [`KioskLayout`](../../apps/web/src/layouts/KioskLayout.tsx) で **`/kiosk/production-schedule/manual-order` のときのみ** 既定で `KioskLayout` ヘッダーを非表示。現行は画面下辺中央付近へポインタを寄せるとスライドイン（タッチ専用代替は未実装）。
   - **カード**: `ManualOrderActiveDeviceBanner` を廃止。編集状態は [`ManualOrderDeviceCardHeaderRow`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCardHeaderRow.tsx) / [`ManualOrderDeviceCard`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCard.tsx) の「編集中」表示とグレーアウトで示す。複数資源時は先頭のみヘッダー1行、2件目以降はブロック内に `資源CD·件数`（全体仕様は本ファイル「手動順番 専用ページ」節の Spec を参照）。
   - **行表示**: [`presentManualOrderRow`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts)（純関数・Vitest [`manualOrderRowPresentation.test.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.test.ts)）。
   - **グリッド**: [`ManualOrderOverviewPane`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewPane.tsx) で `md:grid-cols-4` / `xl:grid-cols-6`。
@@ -508,7 +513,11 @@ category: knowledge-base
   - 上ペインに割当 UI に無い資源が載ると運用が紛らわしい。カード先頭の Location 行が工場ドロップダウンと重複し幅を圧迫する。下ペインのツールバー＋資源帯が縦に大きい。
 - **Fix（仕様）**:
   - **API**: [`mergeManualOrderOverviewResourcesWithAssignmentOrder`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) は **割当順が1件以上ある端末**では `assignmentOrder` のスロットのみ返し、割当に無い `derived` 資源は **末尾に付けない**。`assignmentOrder` が空のときは関数単体契約として `derived` をそのまま返す（v2 では割当0件端末は呼び出し側で `[]`）。Vitest: `merge-manual-order-resource-assignments.test.ts`。
-  - **Web**: [`stripSitePrefixFromDeviceLabel`](../../apps/web/src/features/kiosk/manualOrder/manualOrderDeviceDisplayLabel.ts) で `{siteKey} - ` プレフィックスのみ除去（[`useManualOrderPageController`](../../apps/web/src/features/kiosk/productionSchedule/useManualOrderPageController.ts) に集約）。下ペインのツールバー＋資源帯は [`ManualOrderLowerPaneCollapsibleToolbar`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar.tsx) で包み、**見た目の開閉は [`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts) の `isVisible` のみ**（絞り込み有無とは独立）。一覧取得の `enabled`・空状態「検索してください」・`showFetching` 等は従来どおり [`hasScheduleFilterQuery`](../../apps/web/src/pages/kiosk/ProductionScheduleManualOrderPage.tsx)（`hasQuery || hasResourceCategoryResourceSelection`）。キオスク最上段は [`useKioskTopEdgeHeaderReveal`](../../apps/web/src/hooks/useKioskTopEdgeHeaderReveal.ts) が同フックを拡張利用。
+  - **Web**:
+    - [`stripSitePrefixFromDeviceLabel`](../../apps/web/src/features/kiosk/manualOrder/manualOrderDeviceDisplayLabel.ts) で `{siteKey} - ` プレフィックスのみ除去（[`useManualOrderPageController`](../../apps/web/src/features/kiosk/productionSchedule/useManualOrderPageController.ts) に集約）。
+    - 下ペインのツールバー＋資源帯は [`ManualOrderLowerPaneCollapsibleToolbar`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar.tsx) で包み、**見た目の開閉は [`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts) の `isVisible` のみ**（絞り込み有無とは独立）。
+    - 一覧取得の `enabled`・空状態「検索してください」・`showFetching` 等は従来どおり [`hasScheduleFilterQuery`](../../apps/web/src/pages/kiosk/ProductionScheduleManualOrderPage.tsx)（`hasQuery || hasResourceCategoryResourceSelection`）。
+    - キオスクヘッダーは [`useKioskBottomCenterHeaderReveal`](../../apps/web/src/hooks/useKioskBottomCenterHeaderReveal.ts) が同フック系を拡張利用。
 - **Deploy / verify（実績、2026-03-21）**:
   - ブランチ **`feat/manual-order-pane-assignment-label-toolbar`**（API 割当のみ・ラベル短縮・当時の下ペイン折りたたみ初版）。[deployment.md](../guides/deployment.md) 標準。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`、`--detach --follow`。
   - **Run ID**: `20260321-145746-1455`（Pi5）/ `20260321-150253-8405`（raspberrypi4）/ `20260321-150735-6173`（raspi4-robodrill01）、いずれも success。
@@ -661,7 +670,7 @@ category: knowledge-base
 - **Troubleshooting**:
   - **ESLint import/order**: `ProductionScheduleManualOrderPage.tsx` 等で import 順エラー → `eslint --fix` または deployment.md の import グループ規則に合わせる。
   - **型エラー（製番検索モーダル）**: `ProductionOrderSearchModal` は `useProductionOrderSearch` の戻り値（`productNoInput` 等）と props を一致させる（古い prop 名はビルド失敗）。
-  - **Phase12 と overview**: device-scope v2 時は無印 `manual-order-overview` が 400 になるのは仕様。スクリプトが `global-rank` から `siteKey` を導出できているか確認（[KB-302](../knowledge-base/ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗) — ping 失敗時は手動 curl 代替）。
+  - **Phase12 と overview**: device-scope v2 時は無印 `manual-order-overview` が 400 になるのは仕様。スクリプトが `global-rank` から `siteKey` を導出できているか確認（[KB-302](./ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗) — ping 失敗時は手動 curl 代替）。
   - **`rows[]` が curl で見えない**: `resources` が空のときは `rows[]` も返らない。本番データで手動順の行が存在する端末・サイトで再確認する。
 - **main マージ**: ドキュメント反映後、PR 経由で `main` へ統合（運用標準）。
 
@@ -1063,7 +1072,7 @@ category: knowledge-base
 - **実機検証**:
   - `verify-phase12-real.sh` は先頭の `ping` 判定で「Pi5に到達できません」と停止（ICMP ブロック環境）。runbook の curl/ssh 項目を手動実行して代替検証。
   - APIヘルス ok、deploy-status 両Pi4 false、キオスクAPI・納期管理API群 200、global-rank/actual-hours/stats、fallback 0件、PUT auto-generate 200、Pi3/Pi4 サービス active。
-- **トラブルシューティング**: [KB-302](../knowledge-base/ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗)
+- **トラブルシューティング**: [KB-302](./ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗)
 
 ## Location Scope Phase9（compat呼び出し棚卸し・公開面縮小、2026-03-15）
 
@@ -1224,7 +1233,7 @@ category: knowledge-base
 - **背景**: 進捗一覧で製番単位の表示/非表示を切り替えられるよう、製番フィルタドロップダウンを追加。
 - **実装**: 手動更新ボタン左に「製番フィルタ (n/m)」ドロップダウン。候補は `scheduled` 製番のみ、製番＋機種名を複数列表示。ON/OFFでカード表示を絞り込み、全OFF時は「フィルタで非表示にしています」を表示。状態は `localStorage`（`kiosk-progress-overview-seiban-filter`、schemaVersion付き）で端末別保存。`useProgressOverviewSeibanFilter` フック、`ProgressOverviewSeibanFilterDropdown` コンポーネントを新設。
 - **デプロイ**: ブランチ `feat/kiosk-progress-overview-seiban-filter-dropdown`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行。
-- **実機検証**: Phase12 全24項目PASS（`verify-phase12-real.sh` に progress-overview API チェックを追加）、実機UIで製番フィルタ・永続化を確認OK。詳細は [KB-306](../frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
+- **実機検証**: Phase12 全24項目PASS（`verify-phase12-real.sh` に progress-overview API チェックを追加）、実機UIで製番フィルタ・永続化を確認OK。詳細は [KB-306](./frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
 
 <a id="progress-overview-five-cols-layout-2026-03-22"></a>
 
@@ -1283,7 +1292,7 @@ category: knowledge-base
   - 納期管理画面: 工程カードの資源CDにホバーで日本語名が表示されること
 - **実機検証結果**: OK（両画面で `title` 属性による標準ツールチップでホバー表示を確認済み）
 - **トラブルシューティング**:
-  - **本番DBで `pnpm prisma db seed` 失敗**: 既存EmployeeのNFC UID等他シードと競合し、seed全体が失敗。FSIGENマスタ（`ProductionScheduleResourceMaster`）は `dataSIGEN.csv` をSQLで直接投入して対応（125件）。類似事例は [KB-203](../infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) 参照。
+  - **本番DBで `pnpm prisma db seed` 失敗**: 既存EmployeeのNFC UID等他シードと競合し、seed全体が失敗。FSIGENマスタ（`ProductionScheduleResourceMaster`）は `dataSIGEN.csv` をSQLで直接投入して対応（125件）。類似事例は [KB-203](./infrastructure/ansible-deployment.md#kb-203-本番環境でのprisma-db-seed失敗と直接sql更新) 参照。
   - **ローカル統合テスト**: DB未起動時は `docker run` でPostgreSQL（例: postgres-test-local）を起動してから `kiosk-production-schedule.integration.test.ts` を実行。
 - **知見**: 同一 `seed.ts` 内で複数テーブルを投入する場合、既存データとの競合に注意。本番DBは既存データありのため、新規マスタ追加はSQL直接投入で柔軟に対応可能。ホバー表示は `title` 属性で標準ツールチップが動作し、追加ライブラリ不要。
 
@@ -1987,7 +1996,7 @@ category: knowledge-base
 - **デプロイ結果（初回復旧）**: Run ID `20260309-165843-1497`（raspberrypi4）、`20260309-170927-5242`（raspi4-robodrill01）、両端末とも `state: success`
 - **2回目デプロイ（1台ずつ順番実施）**: ブランチ `feat/global-row-rank-phase1` で、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に `--limit` で1台ずつデプロイ。Run ID `20260309-180244-10720`（Pi5、約2.7分）、`20260309-180529-15837`（raspberrypi4、約9.3分）、`20260309-181644-11063`（raspi4-robodrill01、約4.0分）、3台とも `state: success`。推奨運用は [deployment.md](../guides/deployment.md) の「1台ずつ順番デプロイ」を参照
 - **実機検証**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の「3. 実機検証チェックリスト」を実施。APIヘルス、deploy-status（両Pi4で `isMaintenance: false`）、キオスクAPI、納期管理API（triage・daily-plan・global-rank・global-rank/proposal・global-rank/learning-report）、サイネージAPI、backup.json、マイグレーション（43件）、Pi4/Pi3サービス稼働を確認
-- **トラブルシューティング**: Pi4 ハングの詳細は [KB-300](../infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時) を参照
+- **トラブルシューティング**: Pi4 ハングの詳細は [KB-300](./infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時) を参照
 
 ### 知見（B第6段階）
 
@@ -2981,6 +2990,8 @@ category: knowledge-base
   - **CI**: GitHub Actions **main CI `28412915194` success**、Secret scan **`28412915196` success**、CodeQL **`28412915197` success**、Pages **`28412914915` success**。
   - **本番反映**: [deployment.md §2026-06-30](../guides/deployment.md#kiosk-leaderboard-row-cluster-order-slot-toggle-2026-06-30)。標準全体 run **`20260630-101347-10287`** 後、`.git` 一時 lock 消失で未到達だった端末を **`20260630-103004-20424`**（stonebase）· **`20260630-103545-19235`**（sessaku）· **`20260630-104001-9466`**（Pi3）で収束。最終 PLAY RECAP は各対象 **`failed=0`**。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（全対象収束後）。
+  - **現場実機検証**: ユーザー確認 **OK**（2026-06-30）。
+  - **AI再開メモ**: 状態は **完了**。仕様の正本は本節と実装コードで、再開時は `317a6aa0` と docs commit `4263368d` 以降の `main` を前提にする。未完了事項は **なし**。同種デプロイで wrapper が exit 0 でも PLAY RECAP に `failed=1` が出た場合は成功扱いにせず、該当 host を `--limit <host>` で再実行して service restart / UI reachable / Phase12 を確認する。
 - **Presentation 契約（[`leaderOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）**:
   - **`fseibanLine`**: 品名行右に出す製番（trim 済み・空なら非表示）。
   - **`clusterTailSegments`**: クラスタ行先頭用（**`fhincd` のみ** · 製番は含めない）。表示時は `quantityInlineJa`・`fkojunInline`・`requiredMinutesInline` と連結する。
