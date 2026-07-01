@@ -5,7 +5,7 @@ import { useKioskProductionScheduleResources } from '../../api/hooks';
 import { Button, buttonClassName } from '../../components/ui/Button';
 import {
   InspectionDrawingLibraryFilterBar,
-  InspectionDrawingLibraryTemplateGrid,
+  InspectionDrawingLibraryTemplateTable,
   InspectionDrawingTemplateHistoryDialog,
   INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED,
   KioskInspectionDrawingVisualLibrarySection,
@@ -28,7 +28,7 @@ function lineageGroupKey(template: KioskInspectionDrawingTemplateSummaryDto): st
   return `${template.fhincd}::${template.processGroup ?? 'none'}::${template.resourceCd}`;
 }
 
-/** 一覧カードは有効版を代表表示。無効版のみの系譜は最新版を表示 */
+/** 一覧行は有効版を代表表示。無効版のみの系譜は最新版を表示 */
 function pickLineageCardRepresentative(
   group: KioskInspectionDrawingTemplateSummaryDto[]
 ): KioskInspectionDrawingTemplateSummaryDto | undefined {
@@ -76,7 +76,7 @@ export function KioskInspectionDrawingLibraryPage() {
     }
     return map;
   }, [templates]);
-  const visibleTemplateCards = useMemo(
+  const visibleTemplateRows = useMemo(
     () =>
       [...groupedTemplates.values()]
         .map((group) => pickLineageCardRepresentative(group))
@@ -124,80 +124,82 @@ export function KioskInspectionDrawingLibraryPage() {
         </div>
       </div>
 
-      <KioskInspectionDrawingVisualLibrarySection
-        refreshToken={visualLibraryRefreshToken}
-        onRegisterClick={() => setVisualUploadOpen(true)}
-        onVisualRenamed={handleVisualRenamed}
-      />
-
       <KioskInspectionDrawingVisualUploadModal
         isOpen={visualUploadOpen}
         onClose={() => setVisualUploadOpen(false)}
         onSuccess={handleVisualUploadSuccess}
       />
 
-      <section
-        className="flex min-h-0 flex-1 flex-col gap-1.5 rounded border border-white/15 bg-slate-950/45 p-1.5"
-        aria-labelledby="inspection-drawing-template-pane-heading"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-          <h2 id="inspection-drawing-template-pane-heading" className="text-[1.08rem] font-bold text-white/90">
-            検査図面テンプレート
-          </h2>
-          <span className="text-[0.9rem] font-semibold text-white/55">{visibleTemplateCards.length}件</span>
-        </div>
-
-        <InspectionDrawingLibraryFilterBar
-          fhincd={filters.fhincd}
-          onFhincdChange={templateLibrary.setFhincd}
-          visualName={filters.visualName}
-          onVisualNameChange={templateLibrary.setVisualName}
-          resourceCd={filters.resourceCd}
-          onResourceCdChange={templateLibrary.setResourceCd}
-          resourceOptions={resourceOptions}
-          resourceNameMap={resourceNameMap}
-          processFilter={filters.processFilter}
-          onProcessFilterChange={templateLibrary.setProcessFilter}
-          includeInactive={filters.includeInactive}
-          onIncludeInactiveChange={templateLibrary.setIncludeInactive}
-          onReload={templateLibrary.reload}
-          onReset={templateLibrary.resetFilters}
-          resetDisabled={!templateLibrary.hasActiveFilters}
-          busy={templateLibrary.loading}
+      <div className="flex min-h-0 flex-1 flex-wrap items-start gap-2 overflow-auto">
+        <KioskInspectionDrawingVisualLibrarySection
+          refreshToken={visualLibraryRefreshToken}
+          onRegisterClick={() => setVisualUploadOpen(true)}
+          onVisualRenamed={handleVisualRenamed}
         />
 
-        {templateLibrary.error ?? templateMessage ? (
-          <p className="px-1 text-[1rem] font-semibold text-amber-200">{templateLibrary.error ?? templateMessage}</p>
-        ) : null}
+        <section
+          className="flex w-[49rem] max-w-full shrink-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-950/45 p-1.5"
+          aria-labelledby="inspection-drawing-template-pane-heading"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            <h2 id="inspection-drawing-template-pane-heading" className="text-[1.08rem] font-bold text-white/90">
+              検査図面テンプレート
+            </h2>
+            <span className="text-[0.9rem] font-semibold text-white/55">{visibleTemplateRows.length}件</span>
+          </div>
 
-        <InspectionDrawingTemplateHistoryDialog
-          isOpen={Boolean(historyGroupKey)}
-          templateName={activeHistoryTitle}
-          templates={activeHistoryTemplates}
-          onClose={() => setHistoryGroupKey(null)}
-          onOpen={(template) => {
-            setHistoryGroupKey(null);
-            void navigate(kioskInspectionDrawingTemplateEditPath(template.id), {
-              state: INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE
-            });
-          }}
-        />
-
-        <div className="min-h-0 flex-1 overflow-auto rounded bg-slate-950/35 p-1">
-          <InspectionDrawingLibraryTemplateGrid
-            templates={visibleTemplateCards}
+          <InspectionDrawingLibraryFilterBar
+            fhincd={filters.fhincd}
+            onFhincdChange={templateLibrary.setFhincd}
+            visualName={filters.visualName}
+            onVisualNameChange={templateLibrary.setVisualName}
+            resourceCd={filters.resourceCd}
+            onResourceCdChange={templateLibrary.setResourceCd}
+            resourceOptions={resourceOptions}
             resourceNameMap={resourceNameMap}
+            processFilter={filters.processFilter}
+            onProcessFilterChange={templateLibrary.setProcessFilter}
+            includeInactive={filters.includeInactive}
+            onIncludeInactiveChange={templateLibrary.setIncludeInactive}
+            onReload={templateLibrary.reload}
+            onReset={templateLibrary.resetFilters}
+            resetDisabled={!templateLibrary.hasActiveFilters}
             busy={templateLibrary.loading}
-            onHistoryClick={setHistoryGroupKey}
-            lineageGroupKey={lineageGroupKey}
-            printPath={
-              INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED
-                ? kioskInspectionDrawingTemplatePrintPath
-                : undefined
-            }
           />
-        </div>
-      </section>
+
+          {templateLibrary.error ?? templateMessage ? (
+            <p className="px-1 text-[1rem] font-semibold text-amber-200">{templateLibrary.error ?? templateMessage}</p>
+          ) : null}
+
+          <InspectionDrawingTemplateHistoryDialog
+            isOpen={Boolean(historyGroupKey)}
+            templateName={activeHistoryTitle}
+            templates={activeHistoryTemplates}
+            onClose={() => setHistoryGroupKey(null)}
+            onOpen={(template) => {
+              setHistoryGroupKey(null);
+              void navigate(kioskInspectionDrawingTemplateEditPath(template.id), {
+                state: INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE
+              });
+            }}
+          />
+
+          <div className="max-h-[calc(100dvh-12rem)] overflow-auto rounded bg-slate-950/35 p-1">
+            <InspectionDrawingLibraryTemplateTable
+              templates={visibleTemplateRows}
+              resourceNameMap={resourceNameMap}
+              busy={templateLibrary.loading}
+              onHistoryClick={setHistoryGroupKey}
+              lineageGroupKey={lineageGroupKey}
+              printPath={
+                INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED
+                  ? kioskInspectionDrawingTemplatePrintPath
+                  : undefined
+              }
+            />
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
