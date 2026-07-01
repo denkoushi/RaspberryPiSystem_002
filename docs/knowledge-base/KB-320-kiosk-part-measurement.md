@@ -1133,7 +1133,7 @@ data-testid=inspection-drawing-create-header-band
 | **preview 入口** | `POST …/drawings/preview`（multipart `file` · **DB/storage なし** · rate limit 有効） |
 | **変換** | `importDrawingAndSave` / `convertDrawingUploadToPreviewBuffer` → JPEG 保存契約。PDF: 1 ページ目（`pdftoppm`）。TIFF/TIF: `sharp`（magic bytes 検証・最大 16384px） |
 | **Web プレビュー** | 画像はローカル `blob:` · PDF/TIFF は preview API → JPEG `blob:` + 保存時 **同一 JPEG File** |
-| **上限** | 画像 12MB / PDF・TIFF 30MB / 保存 12MB |
+| **上限** | 画像 12MB / PDF・TIFF 30MB / 保存 12MB。TIFF は `limitInputPixels=150_000_000`、最大幅/高さ 16384px |
 | **負荷** | PDF/TIFF ラスタ変換はプロセス内 **同時 1 件**・待ち **最大 4**（超過時 **503**）— preview / save 共通 |
 | **検証順** | evaluation multipart は **items/body 検証後**に `importDrawingAndSave`（孤立ファイル防止） |
 | **表示** | Canvas は **画像 URL のみ**（PDF/TIFF Blob 直 `<img>` なし） |
@@ -1184,6 +1184,19 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 - **Pi5 実機 curl**: SSH 先 `127.0.0.1:3000` は Caddy 構成では **000** になりうる。**Tailscale HTTPS** で `/api/...` を叩く（[deployment §PDF プレビュー](../guides/deployment.md#kiosk-inspection-drawing-pdf-preview-parity-2026-06-02)）。
 - **Phase12**: `verify-phase12-real.sh` は **`drawings/preview` を個別 grep しない**。上記 curl + キオスク目視で担保。
 
+### 検査図面 TIFF 1件だけ「図面を登録」が失敗（2026-07-01） {#検査図面-tiff-limitinputpixels-2026-07-01}
+
+| 区分 | 内容 |
+|------|------|
+| **症状** | キオスク **検査図面** → **図面を登録** で、`7161テーブル.tif` のみ preview/save 変換が 400 失敗 |
+| **対象ファイル** | TIFF little-endian / 1bit Group4 / WhiteIsZero / 138KB / `13248 x 9355 = 123,935,040px` |
+| **原因** | ファイルサイズは小さいが展開後ピクセル数が旧 `PART_MEASUREMENT_TIFF_LIMIT_INPUT_PIXELS=100_000_000` を超え、`sharp` が `limitInputPixels` で reject。API エラーは `TIFF 画像の解像度が大きすぎます` |
+| **修正** | `apps/api/src/lib/part-measurement-drawing-import.constants.ts` の TIFF pixel 上限を **150,000,000px** に拡張。30MB 入力上限、保存 JPEG 12MB 上限、最大幅/高さ 16384px、PDF/TIFF 変換キュー契約は維持 |
+| **回帰防止** | `apps/api/src/lib/__tests__/convert-tiff-to-jpeg.test.ts` に、大きな圧縮 TIFF 図面を許容する上限テストを追加 |
+| **検証** | `pnpm --dir apps/api exec vitest run src/lib/__tests__/convert-tiff-to-jpeg.test.ts src/lib/__tests__/part-measurement-drawing-preview.test.ts` → 9 tests pass。直接変換 → JPEG `2,255,678 bytes`。CI / CodeQL / secret scan success。Pi5 deploy `20260701-162204-28434` → `failed=0`。Phase12 → **PASS 45 / WARN 0 / FAIL 0**。実機 preview curl → **`200 image/jpeg`**、JPEG `13248x9355` |
+| **代表 commit** | `67537ab3` `fix(api): allow larger tiff inspection drawings` |
+| **未完了** | なし。API サーバ側の上限修正のため Pi4 個別デプロイは不要 |
+
 ### トラブルシュート（検査図面）
 
 | 症状 | 確認 | 対処 |
@@ -1207,6 +1220,7 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 | PDF 変換後に文字欠け | Arial 等のフォント | 本番コンテナのフォント追加を検討 |
 | PDF 変換失敗後 **保存できない** | preview 失敗時に pending が残る | **`8307c995` 以降** — 失敗時 pending 解除 · 強制リロード |
 | ファイル差し替えで **古い図面が一瞬表示** | abort レース | **`8307c995` 以降** — 成功パスでも `signal.aborted` 確認 |
+| TIFF が 1件だけ **解像度が大きすぎます** で失敗 | 展開後ピクセル数が 100M 超か | [§TIFF pixel 上限](#検査図面-tiff-limitinputpixels-2026-07-01) · **`67537ab3` 以降** |
 | Pi5 SSH で API health **000** | localhost:3000 直叩き | **HTTPS Tailscale IP** 経由で確認 |
 | 図面UIに行かず表形式 | `quantity !== 1` または図面条件不足 | `45c02e0a` 参照。数量・テンプレを確認 |
 | 評価保存で本番テンプレが消える | 誤 API | **evaluation-templates** のみ |
