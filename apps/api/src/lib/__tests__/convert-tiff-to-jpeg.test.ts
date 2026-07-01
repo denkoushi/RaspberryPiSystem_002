@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
 
 import { convertTiffBufferToJpeg } from '../convert-tiff-to-jpeg.js';
+import { PART_MEASUREMENT_TIFF_LIMIT_INPUT_PIXELS } from '../part-measurement-drawing-import.constants.js';
 
 describe('convertTiffBufferToJpeg', () => {
   it('converts a minimal tiff buffer to jpeg', async () => {
@@ -45,5 +46,9 @@ describe('convertTiffBufferToJpeg', () => {
       statusCode: 400,
       message: 'TIFF 画像の解像度が大きすぎます'
     });
+  });
+
+  it('keeps the pixel limit high enough for large compressed inspection drawings', () => {
+    expect(PART_MEASUREMENT_TIFF_LIMIT_INPUT_PIXELS).toBeGreaterThanOrEqual(13_248 * 9_355);
   });
 });
