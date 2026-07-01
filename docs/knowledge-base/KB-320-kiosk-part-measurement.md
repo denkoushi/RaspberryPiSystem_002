@@ -177,6 +177,57 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 | **integration が DB 接続失敗** | テスト中に Postgres コンテナを先に `stop` しない。CI 手順どおり migrate 後に vitest |
 | **デプロイ拒否（ahead）** | `origin/feat/kiosk-inspection-drawing-reuse-flow` へ push 後に再実行 |
 
+### 検査図面・複数資源兄弟グループ（2026-07-01） {#検査図面-複数資源兄弟グループ-2026-07-01}
+
+複数資源CDへ同じ図面・測定点を登録する導線を追加した。正本判断は [ADR-20260701](../decisions/ADR-20260701-part-measurement-template-sibling-groups.md)。1テンプレに複数資源CDを持たせず、従来どおり `fhincd + processGroup + resourceCd + version` のテンプレ実体を資源CDごとに作り、`PartMeasurementTemplateSiblingGroup` で同時作成した兄弟テンプレを束ねる。
+
+| 項目 | 内容 |
+|------|------|
+| ブランチ | **`feat/inspection-drawing-sibling-groups`** |
+| 変更種別 | **API + Web + Prisma migration** |
+| DB | `PartMeasurementTemplateSiblingGroup` 追加、`PartMeasurementTemplate.siblingGroupId` nullable FK 追加。既存テンプレは `null` のまま。 |
+| 互換 | 記録表・自主検査のテンプレ解決は引き続き **資源CD単位**。既存の単一資源テンプレ導線も維持。 |
+
+#### API 契約
+
+| エンドポイント | 用途 |
+|----------------|------|
+| `POST /api/part-measurement/inspection-drawing/template-groups` | 複数資源CDへ同一内容テンプレを一括作成。1資源でも既存 active と衝突したら **409** で全体ロールバック。 |
+| `POST /api/part-measurement/inspection-drawing/template-groups/:id/revise` | グループ内の現在 active な兄弟テンプレを同内容でまとめて版上げ。 |
+| `POST /api/part-measurement/inspection-drawing/template-groups/:id/resources` | 保存済み最新版をコピーして資源CDを追加。グループ内既存資源は no-op、外部 active 衝突は **409**。 |
+| `POST /api/part-measurement/inspection-drawing/templates/:id/revise` | `detachFromSiblingGroup: true` 指定時、新バージョンは `siblingGroupId = null`。個別改版として以後のまとめて改版対象外。 |
+
+一覧・詳細 DTO は `siblingGroupId` と `siblingGroup` 要約を返す。要約には表示名と有効メンバーの資源CD一覧を含める。
+
+#### UI 契約
+
+| 画面 | 内容 |
+|------|------|
+| 新規作成 | 資源CDは複数選択。チップ + 検索付きチェックリストで、選択済みは省略表示する。 |
+| テンプレ名 | 図面ライブラリ表示名 `visualTemplate.name` + 品番を自動提案する。例: `7161テーブル ABC-123`。手編集後は上書きせず、空欄に戻すと自動提案へ戻る。 |
+| 保存ボタン | 品番・資源CD・図面・測定点・測定点名・公差・検査数設定・衝突なし・プレビュー完了が揃うまで disabled。 |
+| 改版 | グループ所属テンプレの既定は **兄弟テンプレをまとめて改版**。切替で **この資源だけ個別改版**を選ぶと保存後にグループから外れる。 |
+| 資源追加 | グループ編集画面から追加。未保存変更は含まず、保存済み最新版をコピーする。 |
+| 一覧 | 兄弟グループを1カードに集約し、資源CDをチップ表示。1件でも横幅いっぱいに伸ばさず、ボタンは文字量に合う幅を基本にする。 |
+
+#### 検証（ローカル一時 Postgres）
+
+- `pnpm --filter @raspi-system/api prisma:generate` — PASS
+- `pnpm --filter @raspi-system/api build` — PASS
+- `pnpm --filter @raspi-system/web build` — PASS
+- `pnpm --filter @raspi-system/web test -- src/features/part-measurement/inspection-drawing/__tests__/inspectionDrawingCreateDraft.test.ts` — **8 PASS**
+- 一時 Postgres `pgvector/pgvector:pg15` に migration 適用後、`pnpm --filter @raspi-system/api test -- src/routes/__tests__/part-measurement.integration.test.ts` — **63 PASS**
+- `EXPLAIN` で `PartMeasurementTemplate_idx_sibling_active` と既存3キー lookup の index scan を確認。
+
+#### トラブルシュート
+
+| 事象 | 対処 |
+|------|------|
+| 一括作成が 409 | 選択資源のどれかに同一 `fhincd + processGroup + resourceCd` の active がある。衝突資源を外すか、既存テンプレを改版する。 |
+| 個別改版後にまとめて改版されない | 仕様どおり。`detachFromSiblingGroup: true` の新バージョンはグループから外れる。 |
+| 資源追加に未保存変更が反映されない | 仕様どおり。資源追加は保存済み最新版をコピーするため、必要なら先にまとめて改版で保存する。 |
+| 一覧でカードが増えすぎる | `siblingGroupId` が返っているか、DTO の `siblingGroup.activeResourceCds` が空でないかを確認する。 |
+
 ### 検査図面 trio（名称変更・図面名検索・自主検査遷移）（2026-06-09） {#kiosk-inspection-drawing-trio-2026-06-09}
 
 | 項目 | 内容 |

@@ -17,13 +17,18 @@ export {
 export { useInspectionDrawingVisualLibrary } from './useInspectionDrawingVisualLibrary';
 export {
   inspectionDrawingCreateKeyCollisionMessage,
+  normalizeUniqueInspectionDrawingResourceCds,
   normalizeTemplateBusinessKey,
   resolveInspectionDrawingCreateKeyCollision,
+  resolveInspectionDrawingCreateKeyCollisionForResources,
+  resolveInspectionDrawingCreateSaveBlockReason,
+  suggestInspectionDrawingTemplateName,
   templateBusinessKeysEqual,
   templateItemsToDraftDrawingPoints,
   templateToCreateDraft,
   type InspectionDrawingCreateDraftForm,
   type InspectionDrawingCreateKeyCollision,
+  type InspectionDrawingCreateSaveBlockReason,
   type InspectionDrawingSourceTemplateDraft,
   type InspectionDrawingVisualSource,
   type TemplateBusinessKey

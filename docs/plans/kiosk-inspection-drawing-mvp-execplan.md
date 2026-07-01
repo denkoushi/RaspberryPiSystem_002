@@ -85,8 +85,13 @@ Maintained in accordance with `.agent/PLANS.md`.
   - `PATCH /visual-templates/:id`（name のみ）· `KioskInspectionDrawingVisualRenameModal`
   - `GET …/inspection-drawing/templates?visualName=` · `InspectionDrawingLibraryFilterBar`
   - 自主検査: `placeholderData` · `draftBoundKey` · 保存後次 slot 自動切替 · entry 単位 guided priming
-- [ ] **Pi4×4 本番** — visual library + 密度改善（第1弾 `38b7583f` + 第2弾 `ddc3ce8b`）を順次（`raspi4-kensaku-stonebase01` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` · Pi3 除外 · 各台強制リロード §6.6.4）
-- [ ] **Pi4×4 本番（旧積み残し）** — MVP 以降の parity / overflow / ズーム / 図面読込 / PDF preview が未反映の端末があれば同手順で一括
+- [x] (2026-07-01) **Pi4/Pi3 fleet 本番** — sibling group ブランチの全台デプロイで、visual library + 密度改善、parity / overflow / ズーム / 図面読込 / PDF preview の旧積み残しも現行 bundle へ収束（Deploy `20260701-183748-11286` · failed=0）
+- [x] (2026-07-01) **検査図面 複数資源兄弟グループ** — ブランチ `feat/inspection-drawing-sibling-groups` · commit `580324b5`
+  - 仕様: 1テンプレに複数資源を持たせず、資源CD別 `PartMeasurementTemplate` を `PartMeasurementTemplateSiblingGroup` で束ねる。個別改版は `detachFromSiblingGroup: true` でグループから外す。
+  - UI: 新規作成の資源CD複数選択、`visualTemplate.name + 品番` のテンプレ名自動提案、保存条件 disabled、グループまとめて改版/個別改版、保存済み最新版からの資源追加、一覧のグループ1カード集約。
+  - 検証: GitHub Actions `28507352316` success、全台デプロイ `20260701-183748-11286` exit 0、Phase12 実機検証 PASS 45 / WARN 0 / FAIL 0、読み取りスモーク `GET /inspection-drawing/templates` 200 と `GET /visual-templates?sort=recentlyUpdated&limit=5` 200。
+  - 詳細な設計判断は [ADR-20260701](../decisions/ADR-20260701-part-measurement-template-sibling-groups.md)。この Plan は次回再開用の状態正本。
+- [ ] (2026-07-01) **残り手動確認** — 本番DBを書き換える一括作成/まとめて改版/資源追加は実機で未実行。次回は検証用データまたは明示許可のある品番・資源CDで、作成→まとめて改版→個別分離→資源追加を画面操作で確認する。
 
 ## Surprises & Discoveries
 
@@ -149,6 +154,12 @@ Maintained in accordance with `.agent/PLANS.md`.
 
 - Observation: DEV プレビューで `previewVisuals` を渡しても hook が `enabled` 既定 true だと **不要な visual-templates API** が走る
   Evidence: コードレビュー 2026-06-08 → `enabled: !isPreview` + `useInspectionDrawingVisualLibrary.test.ts`（`38b7583f`）
+
+- Observation: 複数資源を1テンプレ配列にすると、記録表・自主検査の資源CD単位解決と履歴管理を広範囲に変える
+  Evidence: 2026-07-01 実装前調査 → `PartMeasurementTemplateSiblingGroup` で資源別テンプレを束ねる方針を採用（ADR-20260701）
+
+- Observation: 図面ライブラリ表示名は `visualTemplates` 配列で返る。実機では `7161テーブル` などの表示名を取得でき、テンプレ名サジェストの入力源として使える
+  Evidence: 2026-07-01 実機読み取りスモーク `GET /api/part-measurement/visual-templates?sort=recentlyUpdated&limit=5` → 200
 
 ## Decision Log
 
@@ -228,6 +239,10 @@ Maintained in accordance with `.agent/PLANS.md`.
   Rationale: 実機で検索視認性・重複導線・一覧密度の追加改善。共有 `Input` への `!w-*` 上書きより wrapper で境界を閉じる
   Date/Author: 2026-06-08 / agent
 
+- Decision: 検査図面の複数資源対応は **資源CD別テンプレ + 兄弟グループ**。グループ改版は現在 active なメンバーのみ、個別改版はグループから外す
+  Rationale: `fhincd + processGroup + resourceCd + version` の既存正本キー、記録表・自主検査の資源CD単位解決、既存単一資源テンプレ互換を維持するため
+  Date/Author: 2026-07-01 / agent（[ADR-20260701](../decisions/ADR-20260701-part-measurement-template-sibling-groups.md)）
+
 ## Outcomes & Retrospective
 
 - **評価用作成（互換）**: `/kiosk/part-measurement/inspection/create` は残置。評価用 API は UI 主導線から外した。
@@ -237,8 +252,9 @@ Maintained in accordance with `.agent/PLANS.md`.
 - **デプロイ**: Pi5 で MVP 導線・タブ・一覧ハブ・**プレビュー parity（`ccacef85`）**・**フィルタ overflow（`e19f9b07`）**・**キャンバスズーム（`364aa184`）**・**図面読込/ズーム痙攣（`e12a5a9c`/`f6a9544a`）**・**PDF プレビュー整合（`8307c995`）** まで反映。**Pi4×4 は `main` マージ後の次タスク**。
 - **PDF プレビュー（2026-06-02）**: Pi5 Detach `20260602-190538-1780` · キオスク目視 OK · preview API は副作用なし JPEG 契約で save と座標一致。
 - **DEV プレビュー**: `/dev/kiosk-inspection-drawing-*` で本番コンポーネントを Mac 上で反復可能（fixture）。
-- **図面ライブラリ（2026-06-08）**: Pi5 で **standalone visual 登録 → ライブラリ → 新規作成** 導線 + **5列/4列** 密度レイアウトまで反映。**Pi4×4 は未**。
-- **図面ライブラリ密度調整（第2弾 · 2026-06-08）**: **6列**・検索 wrapper・登録導線一本化 — **`ddc3ce8b`**。**Pi5 本番・実機目視 OK**。**Pi4×4 は未**（`main` マージ後に `--limit` 順次）。
+- **図面ライブラリ（2026-06-08）**: Pi5 で **standalone visual 登録 → ライブラリ → 新規作成** 導線 + **5列/4列** 密度レイアウトまで反映。当時 Pi4×4 は未、2026-07-01 の全台デプロイで現行 branch へ収束。
+- **図面ライブラリ密度調整（第2弾 · 2026-06-08）**: **6列**・検索 wrapper・登録導線一本化 — **`ddc3ce8b`**。**Pi5 本番・実機目視 OK**。当時 Pi4×4 は未、2026-07-01 の全台デプロイで現行 branch へ収束。
+- **複数資源兄弟グループ（2026-07-01）**: `feat/inspection-drawing-sibling-groups` · `580324b5` を全台デプロイ。既存DB/既存コンテナはローカル検証で変更せず、一時 Postgres で migration / integration / EXPLAIN を確認。実機では読み取りスモークまで実施し、本番データを書き換える一括作成系の画面操作は未実施。
 - **未着手**: 複数個数図面UI、TIFF、順位ボード連携、Phase12 への専用 visual-library スモーク追加（任意）。
 
 ## 代表コミット
@@ -259,6 +275,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 | `127d2d4a` | `feat/kiosk-inspection-drawing-visual-library` | 図面ライブラリ・visual 登録・deep link |
 | `38b7583f` | 同上 | 5列/4列密度レイアウト・preview `enabled: false` |
 | `ddc3ce8b` | `fix/kiosk-inspection-drawing-library-density-tuning` | 図面ライブラリ 6列・検索 wrapper・登録導線一本化 |
+| `580324b5` | `feat/inspection-drawing-sibling-groups` | 複数資源兄弟グループ・まとめて改版・資源追加・一覧集約 |
 
 ## 主要ファイル（後続読者向け）
 
@@ -282,6 +299,10 @@ Maintained in accordance with `.agent/PLANS.md`.
 | 記録図面編集 UI | `KioskInspectionDrawingEditPage.tsx` |
 | キャンバスズーム | `useInspectionDrawingZoom.ts` · `InspectionDrawingCanvasZoomControls.tsx` · `inspectionDrawingCanvasLayout.ts` |
 | テンプレサービス | `part-measurement-template.service.ts`（`list/get/reviseKioskInspectionDrawing*`） |
+| 兄弟グループ schema | `apps/api/prisma/migrations/20260701120000_part_measurement_template_sibling_groups` |
+| 兄弟グループ API | `apps/api/src/routes/part-measurement/index.ts`（`inspection-drawing/template-groups*`） |
+| 兄弟グループ service | `apps/api/src/services/part-measurement/part-measurement-template.service.ts`（`create/revise/addResources*SiblingGroup`） |
+| 複数資源選択 UI | `apps/web/src/features/part-measurement/inspection-drawing/InspectionDrawingResourceCdMultiSelect.tsx` |
 | PDF preview API | `part-measurement-drawing-preview.ts` · `POST …/drawings/preview` |
 | Web PDF preview | `usePartMeasurementDrawingLocalPreview.ts` · `partMeasurementDrawingLocalPreview.ts` |
 
@@ -309,4 +330,9 @@ Maintained in accordance with `.agent/PLANS.md`.
 - 手動（Mac DEV・密度調整第2弾）: `/dev/kiosk-inspection-drawing-library` で **1280px 前提**（`KioskInspectionDrawingDevPreviewChrome` の `min-w-[1280px]` により viewport を狭めても中身は 1280px 相当）· 図面ライブラリ **6列**（`lg` 有効）· 検索黒文字・**20% wrapper** · ヘッダーに「図面を登録」なし · Section 内に再読込/登録 · カード/ボタンはみ出しなし · 検索絞り込み動作
 - 手動（Pi5・密度調整第2弾）: 図面ライブラリ **6列** · 検索黒文字 · ヘッダーに「図面を登録」なし · Section 内に再読込/登録1つ · はみ出しなし · 検索絞り込み（**2026-06-08 実機 OK**）
 - 手動（Mac DEV）: `/dev/kiosk-inspection-drawing-library`（fixture 10件・API 無しプレビュー · **1280px 前提**）
-- 手動（Pi4 未）: visual library + 密度改善（第1+第2弾）を `main` 反映後に各キオスクで同確認（強制リロード [verification-checklist §6.6.4](../guides/verification-checklist.md)）
+- 自動（2026-07-01・複数資源兄弟グループ）: GitHub Actions `28507352316` success（lint/build/unit, api-db-and-infra, security-docker, e2e-smoke, e2e-tests）
+- 自動（2026-07-01・ローカル一時 Postgres）: migration deploy/generate、API integration `part-measurement.integration.test.ts` **63 PASS**、`siblingGroupId + isActive` と既存3キー lookup の `EXPLAIN` index scan、検証後に一時コンテナ削除
+- 自動（2026-07-01・全台実機）: `./scripts/update-all-clients.sh feat/inspection-drawing-sibling-groups infrastructure/ansible/inventory.yml --detach --follow` → Run `20260701-183748-11286` success / failed=0、Pi5 HEAD `580324b5`
+- 自動（2026-07-01・Phase12）: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**
+- 読み取りスモーク（2026-07-01・実機API）: `GET /api/part-measurement/inspection-drawing/templates` → 200、`GET /api/part-measurement/visual-templates?sort=recentlyUpdated&limit=5` → 200（`visualTemplates` に `7161テーブル` 等）
+- 手動（残り）: 本番DBを書き換える一括作成・まとめて改版・個別分離・資源追加は未確認。次回は検証用データを決めてから画面操作で確認する。

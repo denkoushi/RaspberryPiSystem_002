@@ -69,6 +69,8 @@ export const INSPECTION_DRAWING_PREVIEW_PRINT_TEMPLATE: PartMeasurementTemplateD
     createdAt: '2026-06-14T08:00:00.000Z',
     updatedAt: '2026-06-14T08:00:00.000Z'
   },
+  siblingGroupId: null,
+  siblingGroup: null,
   items: INSPECTION_DRAWING_PREVIEW_POINTS.map((point, index) => {
     const bounds = parseToleranceRawFields({
       nominalRaw: point.nominalRaw,
@@ -122,6 +124,16 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
         createdAt: previewVisualUpdatedAt,
         updatedAt: previewVisualUpdatedAt
       },
+      siblingGroupId: 'preview-sibling-1',
+      siblingGroup: {
+        id: 'preview-sibling-1',
+        displayName: 'サンプル図面 A DEMO-12345',
+        fhincd: 'DEMO-12345',
+        processGroup: 'cutting',
+        activeResourceCds: ['R001', 'R002', 'R003'],
+        createdAt: '2026-05-30T08:30:00.000Z',
+        updatedAt: '2026-05-30T08:30:00.000Z'
+      },
       itemCount: 12
     },
     {
@@ -144,6 +156,8 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
         createdAt: '2026-05-20T08:00:00.000Z',
         updatedAt: '2026-05-25T10:00:00.000Z'
       },
+      siblingGroupId: null,
+      siblingGroup: null,
       itemCount: 10
     },
     {
@@ -166,6 +180,8 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
         createdAt: previewVisualUpdatedAt,
         updatedAt: '2026-05-28T14:00:00.000Z'
       },
+      siblingGroupId: null,
+      siblingGroup: null,
       itemCount: 8
     }
   ];
@@ -221,6 +237,8 @@ function previewLibraryTemplate(
       createdAt: previewVisualUpdatedAt,
       updatedAt: previewVisualUpdatedAt
     },
+    siblingGroupId: overrides.siblingGroupId ?? null,
+    siblingGroup: overrides.siblingGroup ?? null,
     ...overrides
   };
 }

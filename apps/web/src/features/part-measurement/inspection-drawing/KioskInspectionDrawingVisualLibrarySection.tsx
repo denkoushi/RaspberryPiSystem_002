@@ -65,7 +65,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
         <h2 id="inspection-drawing-visual-library-heading" className="shrink-0 text-[1.15rem] font-bold leading-tight">
           図面ライブラリ
         </h2>
-        <div className="min-w-[10rem] max-w-[20%] shrink-0 basis-[20%]">
+        <div className="w-[18rem] max-w-full shrink-0">
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -105,11 +105,11 @@ export function KioskInspectionDrawingVisualLibrarySection({
             {debouncedQuery ? '条件に合う図面はありません。' : '登録済み図面はありません。'}
           </p>
         ) : (
-          <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+          <ul className="grid grid-cols-[repeat(auto-fit,minmax(12rem,14rem))] gap-1.5">
             {visuals.map((visual) => (
               <li
                 key={visual.id}
-                className="flex min-w-0 flex-col gap-1 rounded border border-white/10 bg-slate-900/80 p-1.5"
+                className="flex min-h-[8rem] min-w-0 max-w-[14rem] flex-col gap-1 rounded border border-white/10 bg-slate-900/80 p-1.5"
               >
                 <p className="line-clamp-2 min-h-[2.4em] text-[0.82rem] font-semibold leading-snug text-white">
                   {visual.name}
@@ -117,13 +117,13 @@ export function KioskInspectionDrawingVisualLibrarySection({
                 <p className="text-[0.72rem] text-white/55">
                   更新 {formatVisualLibraryTimestamp(visual.updatedAt)}
                 </p>
-                <div className="flex min-w-0 gap-1">
+                <div className="flex min-w-0 flex-wrap gap-1">
                   <Link
                     to={kioskInspectionDrawingCreatePathWithVisual(visual.id)}
                     state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
                     className={buttonClassName(
                       'primary',
-                      'inline-flex min-h-9 min-w-0 flex-1 items-center justify-center px-0.5 text-[0.68rem]'
+                      'inline-flex min-h-9 min-w-0 items-center justify-center px-2 text-[0.68rem]'
                     )}
                   >
                     新規作成
@@ -131,7 +131,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
                   <Button
                     type="button"
                     variant="secondary"
-                    className="min-h-9 min-w-0 flex-1 px-0.5 text-[0.68rem]"
+                    className="min-h-9 min-w-0 px-2 text-[0.68rem]"
                     disabled={isPreview}
                     onClick={() => setRenameTarget(visual)}
                   >

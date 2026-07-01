@@ -106,6 +106,8 @@ export function makeSelfInspectionSessionDetailForTest(
       selfInspectionSampleSize: null,
       visualTemplateId: 'vt-1',
       visualTemplate: null,
+      siblingGroupId: null,
+      siblingGroup: null,
       items: options.items
     },
     entries: [],

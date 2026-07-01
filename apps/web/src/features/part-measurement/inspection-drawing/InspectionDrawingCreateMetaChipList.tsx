@@ -8,8 +8,10 @@ import {
   inspectionDrawingCreateFlatMetaRowClassName,
   inspectionDrawingCreateMetaChipControlClassName,
   inspectionDrawingCreateMetaChipReadonlyValueClassName,
+  inspectionDrawingCreateMetaChipWideControlClassName,
   inspectionDrawingCreateMetaChipSelectClassName
 } from './inspectionDrawingKioskUi';
+import { InspectionDrawingResourceCdMultiSelect } from './InspectionDrawingResourceCdMultiSelect';
 import { InspectionDrawingResourceCdSelect } from './InspectionDrawingResourceCdSelect';
 
 import type { InspectionDrawingCreateMetadataRowProps } from './InspectionDrawingCreateMetadataRow';
@@ -28,6 +30,8 @@ export function InspectionDrawingCreateMetaChipList({
   onFhincdChange,
   resourceCd,
   onResourceCdChange,
+  resourceCds,
+  onResourceCdsChange,
   resourceSelectOptions,
   resourceNameMap,
   processGroup,
@@ -85,14 +89,24 @@ export function InspectionDrawingCreateMetaChipList({
               disabled={contentReadOnly}
             />
           </InspectionDrawingCreateMetaChip>
-          <InspectionDrawingResourceCdSelect
-            value={resourceCd}
-            onChange={onResourceCdChange}
-            options={resourceSelectOptions}
-            emptyOptionLabel="選択"
-            widthVariant="createChip"
-            disabled={contentReadOnly}
-          />
+          {resourceCds && onResourceCdsChange ? (
+            <InspectionDrawingResourceCdMultiSelect
+              values={resourceCds}
+              onChange={onResourceCdsChange}
+              options={resourceSelectOptions}
+              resourceNameMap={resourceNameMap}
+              disabled={contentReadOnly}
+            />
+          ) : (
+            <InspectionDrawingResourceCdSelect
+              value={resourceCd}
+              onChange={onResourceCdChange}
+              options={resourceSelectOptions}
+              emptyOptionLabel="選択"
+              widthVariant="createChip"
+              disabled={contentReadOnly}
+            />
+          )}
         </>
       )}
       <InspectionDrawingCreateMetaChip term="テンプレ" controlId={templateNameFieldId}>
@@ -100,7 +114,7 @@ export function InspectionDrawingCreateMetaChipList({
           id={templateNameFieldId}
           value={templateName}
           onChange={(e) => onTemplateNameChange(e.target.value)}
-          className={inspectionDrawingCreateMetaChipControlClassName}
+          className={inspectionDrawingCreateMetaChipWideControlClassName}
           disabled={contentReadOnly}
         />
       </InspectionDrawingCreateMetaChip>

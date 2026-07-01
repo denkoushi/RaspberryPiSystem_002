@@ -6,5 +6,6 @@ import type { Prisma } from '@prisma/client';
  */
 export const partMeasurementTemplateFullInclude = {
   items: { orderBy: { sortOrder: 'asc' as const } },
-  visualTemplate: true
+  visualTemplate: true,
+  siblingGroup: true
 } satisfies Prisma.PartMeasurementTemplateInclude;

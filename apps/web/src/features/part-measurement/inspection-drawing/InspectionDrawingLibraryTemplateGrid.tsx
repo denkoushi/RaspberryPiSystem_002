@@ -64,14 +64,20 @@ export function InspectionDrawingLibraryTemplateGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-1.5 md:grid-cols-3 xl:grid-cols-4">
-      {templates.map((template) => (
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(18rem,22rem))] gap-1.5">
+      {templates.map((template) => {
+        const activeResourceCds =
+          template.siblingGroup?.activeResourceCds && template.siblingGroup.activeResourceCds.length > 0
+            ? template.siblingGroup.activeResourceCds
+            : [template.resourceCd];
+        const displayName = template.siblingGroup?.displayName ?? template.name;
+        return (
         <section
-          key={template.id}
-          className="flex min-w-0 flex-col gap-1 rounded border border-white/15 bg-slate-900/80 p-2"
+          key={template.siblingGroupId ?? template.id}
+          className="flex min-h-[13rem] min-w-0 max-w-[22rem] flex-col gap-1 rounded border border-white/15 bg-slate-900/80 p-2"
         >
           <div className="flex min-w-0 items-start justify-between gap-1">
-            <p className="min-w-0 truncate text-[0.95rem] font-bold leading-tight">{template.name}</p>
+            <p className="min-w-0 truncate text-[0.95rem] font-bold leading-tight">{displayName}</p>
             <span
               className={clsx(
                 'shrink-0 rounded px-1.5 py-0.5 text-[0.72rem] font-semibold leading-none',
@@ -83,9 +89,24 @@ export function InspectionDrawingLibraryTemplateGrid({
           </div>
 
           <p className="truncate text-[0.78rem] leading-snug text-white/75">
-            {template.fhincd} · {formatResourceCdWithJapaneseNames(template.resourceCd, resourceNameMap)} ·{' '}
-            {processLabel(template.processGroup)}
+            {template.fhincd} · {processLabel(template.processGroup)}
           </p>
+          <div className="flex min-h-[1.65rem] flex-wrap items-center gap-1 overflow-hidden">
+            {activeResourceCds.slice(0, 5).map((cd) => (
+              <span
+                key={cd}
+                className="max-w-[8.5rem] truncate rounded border border-cyan-300/35 bg-cyan-950/50 px-1.5 py-0.5 text-[0.7rem] text-cyan-100"
+                title={formatResourceCdWithJapaneseNames(cd, resourceNameMap)}
+              >
+                {cd}
+              </span>
+            ))}
+            {activeResourceCds.length > 5 ? (
+              <span className="rounded border border-white/15 px-1.5 py-0.5 text-[0.7rem] text-white/70">
+                +{activeResourceCds.length - 5}
+              </span>
+            ) : null}
+          </div>
           <p className="text-[0.78rem] leading-snug text-white/65">測定点 {template.itemCount}</p>
           <p className="text-[0.78rem] leading-snug text-white/65">更新 {updatedLabel(template)}</p>
           <p className="truncate text-[0.78rem] leading-snug text-white/65">
@@ -96,7 +117,7 @@ export function InspectionDrawingLibraryTemplateGrid({
             <Link
               to={editPath(template.id)}
               state={linkState}
-              className={buttonClassName('primary', 'inline-flex min-h-9 flex-1 items-center justify-center px-2 text-[0.78rem]')}
+              className={buttonClassName('primary', 'inline-flex min-h-9 items-center justify-center px-3 text-[0.78rem]')}
             >
               編集
             </Link>
@@ -108,7 +129,7 @@ export function InspectionDrawingLibraryTemplateGrid({
                 title="保存済みテンプレートの帳票プレビュー（未保存の変更は反映されません）"
                 className={buttonClassName(
                   'ghostOnDark',
-                  'inline-flex min-h-9 flex-1 items-center justify-center px-1.5 text-[0.72rem]'
+                  'inline-flex min-h-9 items-center justify-center px-2.5 text-[0.72rem]'
                 )}
               >
                 帳票
@@ -120,7 +141,7 @@ export function InspectionDrawingLibraryTemplateGrid({
                 state={linkState}
                 className={buttonClassName(
                   'ghostOnDark',
-                  'inline-flex min-h-9 flex-1 items-center justify-center px-1.5 text-[0.72rem]'
+                  'inline-flex min-h-9 items-center justify-center px-2.5 text-[0.72rem]'
                 )}
               >
                 雛形新規
@@ -129,14 +150,15 @@ export function InspectionDrawingLibraryTemplateGrid({
             <Button
               type="button"
               variant="ghostOnDark"
-              className="min-h-9 flex-1 px-1.5 text-[0.72rem]"
+              className="min-h-9 px-2.5 text-[0.72rem]"
               onClick={() => onHistoryClick(lineageGroupKey(template))}
             >
               履歴
             </Button>
           </div>
         </section>
-      ))}
+        );
+      })}
     </div>
   );
 }
