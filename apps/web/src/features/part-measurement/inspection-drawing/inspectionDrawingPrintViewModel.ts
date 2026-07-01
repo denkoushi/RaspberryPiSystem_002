@@ -5,7 +5,7 @@ import {
   INSPECTION_DRAWING_PRINT_RECORD_POINTS_PER_PAGE,
   INSPECTION_DRAWING_PRINT_TIME_ZONE
 } from './inspectionDrawingPrintConstants';
-import { isLegacyAbsoluteOnlyPoint } from './markerNumbering';
+import { formatInspectionDrawingToleranceDisplay } from './inspectionDrawingToleranceDisplay';
 import { templateItemToDrawingPoint, templateSupportsInspectionDrawing } from './templateItemMappers';
 
 import type { PartMeasurementProcessGroup, PartMeasurementTemplateDto } from '../types';
@@ -157,16 +157,7 @@ export function buildInspectionDrawingPrintRecordPageQrPayload(input: {
 }
 
 export function formatInspectionDrawingPrintTolerance(point: InspectionDrawingPoint): string {
-  if (isLegacyAbsoluteOnlyPoint(point) && point.legacyAbsoluteBounds) {
-    const { lowerLimit, upperLimit } = point.legacyAbsoluteBounds;
-    return `合格範囲 ${lowerLimit} - ${upperLimit}`;
-  }
-
-  const nominal = point.nominalRaw.trim();
-  const lower = point.lowerToleranceRaw.trim();
-  const upper = point.upperToleranceRaw.trim();
-  if (!nominal && !lower && !upper) return '-';
-  return `${nominal || '-'} / ${lower || '-'} - ${upper || '-'}`;
+  return formatInspectionDrawingToleranceDisplay(point);
 }
 
 export function buildInspectionDrawingPrintViewModel(

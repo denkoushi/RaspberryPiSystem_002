@@ -32,11 +32,27 @@ describe('InspectionDrawingValuePanel', () => {
 
     const tolerance = container.querySelector('.text-2xl');
     expect(tolerance).toBeTruthy();
-    expect(tolerance?.textContent).toContain('基準 10');
+    expect(tolerance?.textContent).toContain('基準 10 / -0.1〜+0.1');
 
-    expect(screen.getByText('候補から選択')).toBeInTheDocument();
+    expect(screen.getByText('測定値選択')).toBeInTheDocument();
+    expect(screen.queryByText('候補から選択')).toBeNull();
+    expect(screen.queryByText(/候補（刻み/)).toBeNull();
     expect(screen.getByText('測定値（直接入力）')).toBeInTheDocument();
     expect(container.querySelector('.grid.grid-cols-2')).toBeTruthy();
+  });
+
+  it('uses the same measurement selector title for dimension hundredths dropdown', () => {
+    render(
+      <InspectionDrawingValuePanel
+        point={makePoint({ name: '外径', nominalRaw: '100', lowerToleranceRaw: '-0.05', upperToleranceRaw: '0.05' })}
+        valueInputMode="self_inspection_options"
+        onValueChange={() => undefined}
+      />
+    );
+
+    expect(screen.getByText('測定値選択')).toBeInTheDocument();
+    expect(screen.queryByText(/0\.1候補/)).toBeNull();
+    expect(screen.queryByText(/候補（刻み/)).toBeNull();
   });
 
   it('shows invalid status via shared measurement point input status helper', () => {

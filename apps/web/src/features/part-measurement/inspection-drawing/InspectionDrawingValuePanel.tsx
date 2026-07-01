@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Input } from '../../../components/ui/Input';
 
 import {
-  inspectionDrawingBoundedSelectClassName,
   inspectionDrawingBoundedSelectShellClassName,
+  inspectionDrawingMeasurementValueSelectClassName,
   isSelfInspectionSessionChromeFocusTarget
 } from './inspectionDrawingKioskUi';
-import { isLegacyAbsoluteOnlyPoint, toleranceBoundsFromPoint } from './markerNumbering';
+import { formatInspectionDrawingToleranceDisplay } from './inspectionDrawingToleranceDisplay';
+import { toleranceBoundsFromPoint } from './markerNumbering';
 import {
   MEASUREMENT_POINT_INPUT_STATUS_LABEL,
   resolveMeasurementPointInputStatus
@@ -117,7 +118,6 @@ export function InspectionDrawingValuePanel({
     );
   }
 
-  const legacyDisplay = isLegacyAbsoluteOnlyPoint(point);
   const bounds = toleranceBoundsFromPoint(point);
   const inputStatus = resolveMeasurementPointInputStatus(point);
 
@@ -189,20 +189,18 @@ export function InspectionDrawingValuePanel({
         <p className={toleranceClassName}>
           {'error' in bounds
             ? '基準・公差を設定してください'
-            : legacyDisplay && point.legacyAbsoluteBounds
-              ? `合格範囲 ${point.legacyAbsoluteBounds.lowerLimit} – ${point.legacyAbsoluteBounds.upperLimit}（基準値未設定）`
-              : `基準 ${bounds.nominal} / ${bounds.lowerLimit} – ${bounds.upperLimit}`}
+            : formatInspectionDrawingToleranceDisplay(point, { includeLegacyReason: true })}
         </p>
       </div>
       {isSelfInspectionOptions && showDropdown ? (
         <div className="grid grid-cols-2 gap-2">
           <label className="grid min-w-0 gap-1 text-sm font-semibold">
-            {showDimensionHundredths ? '0.1候補' : '候補から選択'}
+            測定値選択
             <div className={inspectionDrawingBoundedSelectShellClassName}>
               <select
                 value=""
                 disabled={readOnly}
-                className={inspectionDrawingBoundedSelectClassName}
+                className={inspectionDrawingMeasurementValueSelectClassName}
                 onChange={(e) => {
                   const v = e.target.value;
                   if (!v) return;
@@ -215,7 +213,7 @@ export function InspectionDrawingValuePanel({
                   emitCommit(v, 'dropdown');
                 }}
               >
-                <option value="">候補（刻み {optionResult.stepLabel}）</option>
+                <option value=""></option>
                 {optionResult.options.map((opt) => (
                   <option key={opt} value={opt}>
                     {opt}
@@ -233,7 +231,7 @@ export function InspectionDrawingValuePanel({
               <div className="flex items-center justify-between gap-2 text-sm">
                 <span className="font-semibold text-white/75">百分台</span>
                 <span className="min-h-6 rounded bg-slate-800 px-2 py-1 font-mono text-base text-amber-200">
-                  {dimensionProvisionalDisplay ?? '0.1候補を選択'}
+                  {dimensionProvisionalDisplay ?? ''}
                 </span>
               </div>
               <div className="grid grid-cols-5 gap-1">
@@ -256,12 +254,12 @@ export function InspectionDrawingValuePanel({
         <>
           {showDropdown ? (
             <label className="grid gap-1 text-sm font-semibold">
-              候補から選択
+              測定値選択
               <div className={inspectionDrawingBoundedSelectShellClassName}>
                 <select
                   value=""
                   disabled={readOnly}
-                  className={inspectionDrawingBoundedSelectClassName}
+                  className={inspectionDrawingMeasurementValueSelectClassName}
                   onChange={(e) => {
                     const v = e.target.value;
                     if (!v) return;
@@ -269,7 +267,7 @@ export function InspectionDrawingValuePanel({
                     emitCommit(v, 'dropdown');
                   }}
                 >
-                  <option value="">候補を選ぶ（刻み {optionResult.stepLabel}）</option>
+                  <option value=""></option>
                   {optionResult.options.map((opt) => (
                     <option key={opt} value={opt}>
                       {opt}

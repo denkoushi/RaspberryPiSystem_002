@@ -745,10 +745,11 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 #### 仕様（保存契約は不変）
 
 - **公差 UI**: 基準値 + **符号付き**下限/上限公差 → 保存時 `lowerLimit = nominal + lowerOffset`, `upperLimit = nominal + upperOffset`（`toleranceFields.ts`）。
+- **公差表示（2026-07-01 追補）**: デジタル入力・HTML 帳票は通常行を `基準 10 / -0.05〜+0.05` と表示する。正の公差 raw は `+` を付け、legacy（`nominalValue=null`）は `合格範囲 lower〜upper` 表示を維持する。**Web のみ**（API / Prisma / migration なし）。
 - **legacy**（`nominalValue=null` + 絶対上下限のみ）: 名称のみ・基準値のみ入力は絶対値維持。片側公差入力で符号付きモードへ移行し、legacy から両側 offset を seed（`mergeInspectionDrawingPointPatch`）。
 - **名称**: 固定候補 `inspectionDrawingMeasurementLabelOptions.ts`。候補外既存値は `（既存）` option。新規点は名称未選択から select。
 - **上辺一覧（〜2026-06-03 旧 UI）**: `pointListSlot` + `InspectionDrawingPointSummaryStrip` — **作成/改版では廃止**（[§作成レイアウト](#検査図面-作成改版レイアウト-2026-06-03)）。
-- **自主検査のみ**: `valueInputMode="self_inspection_options"` — 候補 dropdown + 手入力。刻みは offset 最小桁・最大 **200** 件・格子は **ceil/floor**（`selfInspectionMeasurementValueOptions.ts`）。
+- **自主検査のみ**: `valueInputMode="self_inspection_options"` — **測定値選択** dropdown + 手入力。select 内ヒントは表示しない。刻みは offset 最小桁・最大 **200** 件・格子は **ceil/floor**（`selfInspectionMeasurementValueOptions.ts`）。
 - **本番記録**（`KioskInspectionDrawingEditPage`）: 測定値は **自由入力のまま**。
 
 #### 先行デプロイ（2026-06-03）

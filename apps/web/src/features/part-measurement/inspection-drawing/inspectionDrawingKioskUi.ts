@@ -236,6 +236,12 @@ export const inspectionDrawingBoundedSelectShellClassName =
 export const inspectionDrawingBoundedSelectClassName =
   'box-border h-11 w-full min-w-0 max-w-full rounded-md border-2 border-slate-500 bg-white px-3 text-[1.02rem] text-slate-900';
 
+/** 測定値選択 select — 資源 select には影響させない */
+export const inspectionDrawingMeasurementValueSelectClassName = clsx(
+  inspectionDrawingBoundedSelectClassName,
+  'font-bold'
+);
+
 /** 作成画面メタデータ — 資源 select フィールド幅（品番・テンプレ名等と同じ 10.5rem + はみ出しクリップ用 min-w-0） */
 export const inspectionDrawingMetadataResourceFieldWidthClass = clsx(
   inspectionDrawingMetadataControlWidthClass,

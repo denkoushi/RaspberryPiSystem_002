@@ -73,6 +73,22 @@ describe('toleranceFields', () => {
     expect(result).toEqual({ nominal: 101, lowerLimit: 100.95, upperLimit: 101.05 });
   });
 
+  it('treats unsigned and explicitly signed upper tolerance as the same positive offset', () => {
+    const unsigned = parseToleranceRawFields({
+      nominalRaw: '10',
+      lowerToleranceRaw: '-0.05',
+      upperToleranceRaw: '0.05'
+    });
+    const explicit = parseToleranceRawFields({
+      nominalRaw: '10',
+      lowerToleranceRaw: '-0.05',
+      upperToleranceRaw: '+0.05'
+    });
+
+    expect(unsigned).toEqual({ nominal: 10, lowerLimit: 9.95, upperLimit: 10.05 });
+    expect(explicit).toEqual(unsigned);
+  });
+
   it('does not coerce null nominal to zero for legacy absolute-only rows', () => {
     const raw = dbAbsoluteBoundsToToleranceRawFields({
       nominalValue: null,
