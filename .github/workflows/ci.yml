@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -89,7 +89,7 @@ jobs:
     needs: lint-build-unit
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -150,7 +150,7 @@ jobs:
 
       - name: Upload API coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: api-coverage
           path: apps/api/coverage/
@@ -198,7 +198,7 @@ jobs:
           command -v ansible-playbook
 
       - name: Cache Ansible collections
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.ansible/collections
           key: ansible-collections-${{ runner.os }}-community-general-v1
@@ -288,7 +288,7 @@ jobs:
     needs: lint-build-unit
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Security scan (Trivy fs)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
@@ -303,10 +303,10 @@ jobs:
             **/alerts
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build API image (Buildx) and load
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./infrastructure/docker/Dockerfile.api
@@ -317,7 +317,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build Web image (Buildx) and load
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./infrastructure/docker/Dockerfile.web
@@ -354,7 +354,7 @@ jobs:
     needs: lint-build-unit
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -419,7 +419,7 @@ jobs:
     needs: [e2e-smoke, api-db-and-infra]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -487,7 +487,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-report
           path: playwright-report/
@@ -495,7 +495,7 @@ jobs:
 
       - name: Upload Playwright traces (on failure)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-traces
           path: test-results/
