@@ -23,6 +23,7 @@ import { INSPECTION_DRAWING_DEV_RETURN_TO_LIBRARY_STATE } from './kioskInspectio
 import type { KioskInspectionDrawingTemplateSummaryDto } from '../../features/part-measurement/types';
 
 function lineageGroupKey(template: KioskInspectionDrawingTemplateSummaryDto): string {
+  if (template.siblingGroupId) return `sibling:${template.siblingGroupId}`;
   return `${template.fhincd}::${template.processGroup ?? 'none'}::${template.resourceCd}`;
 }
 
@@ -89,6 +90,19 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
 
   const activeHistoryTemplates = historyGroupKey ? groupedAll.get(historyGroupKey) ?? [] : [];
   const activeHistoryTitle = activeHistoryTemplates[0]?.name ?? '履歴';
+  const hasActiveTemplateFilters =
+    fhincd.trim() !== '' ||
+    visualName.trim() !== '' ||
+    resourceCd !== '' ||
+    processFilter !== 'all' ||
+    includeInactive;
+  const resetTemplateFilters = () => {
+    setFhincd('');
+    setVisualName('');
+    setResourceCd('');
+    setProcessFilter('all');
+    setIncludeInactive(false);
+  };
 
   return (
     <KioskInspectionDrawingDevPreviewChrome
@@ -118,46 +132,58 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
         onRegisterClick={() => undefined}
       />
 
-      <div className="rounded border border-white/10 bg-slate-900/40 px-2 py-1">
-        <h2 className="text-[1.05rem] font-bold text-white/90">検査図面テンプレート</h2>
-      </div>
+      <section
+        className="flex min-h-0 flex-1 flex-col gap-1.5 rounded border border-white/15 bg-slate-950/45 p-1.5"
+        aria-labelledby="inspection-drawing-template-pane-heading"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+          <h2 id="inspection-drawing-template-pane-heading" className="text-[1.08rem] font-bold text-white/90">
+            検査図面テンプレート
+          </h2>
+          <span className="text-[0.9rem] font-semibold text-white/55">{visibleTemplateCards.length}件</span>
+        </div>
 
-      <InspectionDrawingLibraryFilterBar
-        fhincd={fhincd}
-        onFhincdChange={setFhincd}
-        visualName={visualName}
-        onVisualNameChange={setVisualName}
-        resourceCd={resourceCd}
-        onResourceCdChange={setResourceCd}
-        resourceOptions={resourceOptions}
-        resourceNameMap={resourceNameMap}
-        processFilter={processFilter}
-        onProcessFilterChange={setProcessFilter}
-        includeInactive={includeInactive}
-        onIncludeInactiveChange={setIncludeInactive}
-        onRefresh={() => undefined}
-      />
-
-      <InspectionDrawingTemplateHistoryDialog
-        isOpen={Boolean(historyGroupKey)}
-        templateName={activeHistoryTitle}
-        templates={activeHistoryTemplates.length > 0 ? activeHistoryTemplates : INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES}
-        onClose={() => setHistoryGroupKey(null)}
-        onOpen={() => setHistoryGroupKey(null)}
-      />
-
-      <div className="min-h-0 flex-1 overflow-auto rounded border border-white/15 bg-slate-950/50 p-1.5">
-        <InspectionDrawingLibraryTemplateGrid
-          templates={visibleTemplateCards}
+        <InspectionDrawingLibraryFilterBar
+          fhincd={fhincd}
+          onFhincdChange={setFhincd}
+          visualName={visualName}
+          onVisualNameChange={setVisualName}
+          resourceCd={resourceCd}
+          onResourceCdChange={setResourceCd}
+          resourceOptions={resourceOptions}
           resourceNameMap={resourceNameMap}
-          onHistoryClick={setHistoryGroupKey}
-          lineageGroupKey={lineageGroupKey}
-          editPath={() => '/dev/kiosk-inspection-drawing-create'}
-          printPath={() => '/dev/kiosk-inspection-drawing-print'}
-          createFromSourcePath={() => '/dev/kiosk-inspection-drawing-create'}
-          linkState={INSPECTION_DRAWING_DEV_RETURN_TO_LIBRARY_STATE}
+          processFilter={processFilter}
+          onProcessFilterChange={setProcessFilter}
+          includeInactive={includeInactive}
+          onIncludeInactiveChange={setIncludeInactive}
+          onReload={() => undefined}
+          onReset={resetTemplateFilters}
+          resetDisabled={!hasActiveTemplateFilters}
         />
-      </div>
+
+        <InspectionDrawingTemplateHistoryDialog
+          isOpen={Boolean(historyGroupKey)}
+          templateName={activeHistoryTitle}
+          templates={
+            activeHistoryTemplates.length > 0 ? activeHistoryTemplates : INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES
+          }
+          onClose={() => setHistoryGroupKey(null)}
+          onOpen={() => setHistoryGroupKey(null)}
+        />
+
+        <div className="min-h-0 flex-1 overflow-auto rounded bg-slate-950/35 p-1">
+          <InspectionDrawingLibraryTemplateGrid
+            templates={visibleTemplateCards}
+            resourceNameMap={resourceNameMap}
+            onHistoryClick={setHistoryGroupKey}
+            lineageGroupKey={lineageGroupKey}
+            editPath={() => '/dev/kiosk-inspection-drawing-create'}
+            printPath={() => '/dev/kiosk-inspection-drawing-print'}
+            createFromSourcePath={() => '/dev/kiosk-inspection-drawing-create'}
+            linkState={INSPECTION_DRAWING_DEV_RETURN_TO_LIBRARY_STATE}
+          />
+        </div>
+      </section>
     </KioskInspectionDrawingDevPreviewChrome>
   );
 }

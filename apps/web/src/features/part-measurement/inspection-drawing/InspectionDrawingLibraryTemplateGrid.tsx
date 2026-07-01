@@ -29,6 +29,8 @@ function updatedLabel(template: KioskInspectionDrawingTemplateSummaryDto): strin
   });
 }
 
+const MAX_VISIBLE_RESOURCE_CHIPS = 4;
+
 export type InspectionDrawingLibraryTemplateGridProps = {
   templates: KioskInspectionDrawingTemplateSummaryDto[];
   resourceNameMap: Record<string, string[]>;
@@ -71,10 +73,14 @@ export function InspectionDrawingLibraryTemplateGrid({
             ? template.siblingGroup.activeResourceCds
             : [template.resourceCd];
         const displayName = template.siblingGroup?.displayName ?? template.name;
+        const visibleResourceCds = activeResourceCds.slice(0, MAX_VISIBLE_RESOURCE_CHIPS);
+        const hiddenResourceCount = activeResourceCds.length - visibleResourceCds.length;
+        const visualName = template.visualTemplate?.name ?? '未設定';
+        const metadataLabel = `測定点 ${template.itemCount} · 更新 ${updatedLabel(template)} · 図面 ${visualName}`;
         return (
         <section
           key={template.siblingGroupId ?? template.id}
-          className="flex min-h-[13rem] min-w-0 max-w-[22rem] flex-col gap-1 rounded border border-white/15 bg-slate-900/80 p-2"
+          className="flex min-h-[10rem] min-w-0 max-w-[22rem] flex-col gap-1 rounded border border-white/15 bg-slate-900/80 p-2"
         >
           <div className="flex min-w-0 items-start justify-between gap-1">
             <p className="min-w-0 truncate text-[0.95rem] font-bold leading-tight">{displayName}</p>
@@ -91,8 +97,11 @@ export function InspectionDrawingLibraryTemplateGrid({
           <p className="truncate text-[0.78rem] leading-snug text-white/75">
             {template.fhincd} · {processLabel(template.processGroup)}
           </p>
-          <div className="flex min-h-[1.65rem] flex-wrap items-center gap-1 overflow-hidden">
-            {activeResourceCds.slice(0, 5).map((cd) => (
+          <div
+            className="flex min-h-[1.55rem] flex-nowrap items-center gap-1 overflow-hidden"
+            data-testid="inspection-template-resource-chips"
+          >
+            {visibleResourceCds.map((cd) => (
               <span
                 key={cd}
                 className="max-w-[8.5rem] truncate rounded border border-cyan-300/35 bg-cyan-950/50 px-1.5 py-0.5 text-[0.7rem] text-cyan-100"
@@ -101,23 +110,25 @@ export function InspectionDrawingLibraryTemplateGrid({
                 {cd}
               </span>
             ))}
-            {activeResourceCds.length > 5 ? (
+            {hiddenResourceCount > 0 ? (
               <span className="rounded border border-white/15 px-1.5 py-0.5 text-[0.7rem] text-white/70">
-                +{activeResourceCds.length - 5}
+                +{hiddenResourceCount}
               </span>
             ) : null}
           </div>
-          <p className="text-[0.78rem] leading-snug text-white/65">測定点 {template.itemCount}</p>
-          <p className="text-[0.78rem] leading-snug text-white/65">更新 {updatedLabel(template)}</p>
-          <p className="truncate text-[0.78rem] leading-snug text-white/65">
-            図面 {template.visualTemplate?.name ?? '未設定'}
+          <p
+            className="truncate text-[0.8rem] leading-snug text-white/65"
+            title={metadataLabel}
+            data-testid="inspection-template-card-metadata"
+          >
+            {metadataLabel}
           </p>
 
           <div className="mt-auto flex flex-wrap gap-1 pt-1">
             <Link
               to={editPath(template.id)}
               state={linkState}
-              className={buttonClassName('primary', 'inline-flex min-h-9 items-center justify-center px-3 text-[0.78rem]')}
+              className={buttonClassName('primary', 'inline-flex min-h-9 items-center justify-center px-3 text-[0.9rem]')}
             >
               編集
             </Link>
@@ -129,7 +140,7 @@ export function InspectionDrawingLibraryTemplateGrid({
                 title="保存済みテンプレートの帳票プレビュー（未保存の変更は反映されません）"
                 className={buttonClassName(
                   'ghostOnDark',
-                  'inline-flex min-h-9 items-center justify-center px-2.5 text-[0.72rem]'
+                  'inline-flex min-h-9 items-center justify-center px-2.5 text-[0.9rem]'
                 )}
               >
                 帳票
@@ -141,7 +152,7 @@ export function InspectionDrawingLibraryTemplateGrid({
                 state={linkState}
                 className={buttonClassName(
                   'ghostOnDark',
-                  'inline-flex min-h-9 items-center justify-center px-2.5 text-[0.72rem]'
+                  'inline-flex min-h-9 items-center justify-center px-2.5 text-[0.9rem]'
                 )}
               >
                 雛形新規
@@ -150,7 +161,7 @@ export function InspectionDrawingLibraryTemplateGrid({
             <Button
               type="button"
               variant="ghostOnDark"
-              className="min-h-9 px-2.5 text-[0.72rem]"
+              className="min-h-9 px-2.5 text-[0.9rem]"
               onClick={() => onHistoryClick(lineageGroupKey(template))}
             >
               履歴

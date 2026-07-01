@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { listKioskInspectionDrawingTemplates } from '../../api/client';
 import { useKioskProductionScheduleResources } from '../../api/hooks';
 import { Button, buttonClassName } from '../../components/ui/Button';
 import {
@@ -14,7 +13,7 @@ import {
   kioskInspectionDrawingTemplateEditPath,
   kioskInspectionDrawingTemplatePrintPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
-  type InspectionDrawingLibraryProcessFilter
+  useInspectionDrawingTemplateLibrary
 } from '../../features/part-measurement/inspection-drawing';
 
 import { INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE } from './kioskInspectionDrawingReturnNavigation';
@@ -41,17 +40,12 @@ function pickLineageCardRepresentative(
 export function KioskInspectionDrawingLibraryPage() {
   const navigate = useNavigate();
   const resourcesQuery = useKioskProductionScheduleResources();
-  const [fhincd, setFhincd] = useState('');
-  const [visualName, setVisualName] = useState('');
-  const [resourceCd, setResourceCd] = useState('');
-  const [processFilter, setProcessFilter] = useState<InspectionDrawingLibraryProcessFilter>('all');
-  const [includeInactive, setIncludeInactive] = useState(false);
-  const [templates, setTemplates] = useState<KioskInspectionDrawingTemplateSummaryDto[]>([]);
-  const [templateBusy, setTemplateBusy] = useState(false);
   const [templateMessage, setTemplateMessage] = useState<string | null>(null);
   const [historyGroupKey, setHistoryGroupKey] = useState<string | null>(null);
   const [visualUploadOpen, setVisualUploadOpen] = useState(false);
   const [visualLibraryRefreshToken, setVisualLibraryRefreshToken] = useState(0);
+  const templateLibrary = useInspectionDrawingTemplateLibrary();
+  const { filters, templates } = templateLibrary;
 
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
@@ -95,39 +89,6 @@ export function KioskInspectionDrawingLibraryPage() {
     activeHistoryTemplates[0]?.name ??
     '履歴';
 
-  const loadTemplates = useCallback(
-    async (filters: {
-      includeInactive: boolean;
-      fhincd: string;
-      visualName: string;
-      resourceCd: string;
-      processFilter: InspectionDrawingLibraryProcessFilter;
-    }) =>
-      listKioskInspectionDrawingTemplates({
-        includeInactive: filters.includeInactive,
-        fhincd: filters.fhincd.trim() || undefined,
-        visualName: filters.visualName.trim() || undefined,
-        processGroup: filters.processFilter === 'all' ? undefined : filters.processFilter,
-        resourceCd: filters.resourceCd || undefined
-      }),
-    []
-  );
-
-  const refresh = useCallback(async () => {
-    setTemplateBusy(true);
-    setTemplateMessage(null);
-    try {
-      const list = await loadTemplates({ includeInactive, fhincd, visualName, resourceCd, processFilter });
-      setTemplates(list);
-    } catch (e: unknown) {
-      const err = e as { response?: { data?: { message?: string } } };
-      setTemplateMessage(err.response?.data?.message ?? '検査図面テンプレートの取得に失敗しました。');
-      setTemplates([]);
-    } finally {
-      setTemplateBusy(false);
-    }
-  }, [fhincd, includeInactive, loadTemplates, processFilter, resourceCd, visualName]);
-
   const handleVisualUploadSuccess = useCallback((visual: PartMeasurementVisualTemplateDto) => {
     setVisualUploadOpen(false);
     setVisualLibraryRefreshToken((token) => token + 1);
@@ -135,36 +96,8 @@ export function KioskInspectionDrawingLibraryPage() {
   }, []);
 
   const handleVisualRenamed = useCallback(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setTemplateBusy(true);
-    setTemplateMessage(null);
-    void loadTemplates({
-      includeInactive: false,
-      fhincd: '',
-      visualName: '',
-      resourceCd: '',
-      processFilter: 'all'
-    })
-      .then((list) => {
-        if (!cancelled) setTemplates(list);
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        const err = e as { response?: { data?: { message?: string } } };
-        setTemplateMessage(err.response?.data?.message ?? '検査図面テンプレートの取得に失敗しました。');
-        setTemplates([]);
-      })
-      .finally(() => {
-        if (!cancelled) setTemplateBusy(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [loadTemplates]);
+    templateLibrary.reload();
+  }, [templateLibrary]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
@@ -203,56 +136,68 @@ export function KioskInspectionDrawingLibraryPage() {
         onSuccess={handleVisualUploadSuccess}
       />
 
-      <div className="rounded border border-white/10 bg-slate-900/40 px-2 py-1">
-        <h2 className="text-[1.05rem] font-bold text-white/90">検査図面テンプレート</h2>
-      </div>
+      <section
+        className="flex min-h-0 flex-1 flex-col gap-1.5 rounded border border-white/15 bg-slate-950/45 p-1.5"
+        aria-labelledby="inspection-drawing-template-pane-heading"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+          <h2 id="inspection-drawing-template-pane-heading" className="text-[1.08rem] font-bold text-white/90">
+            検査図面テンプレート
+          </h2>
+          <span className="text-[0.9rem] font-semibold text-white/55">{visibleTemplateCards.length}件</span>
+        </div>
 
-      <InspectionDrawingLibraryFilterBar
-        fhincd={fhincd}
-        onFhincdChange={setFhincd}
-        visualName={visualName}
-        onVisualNameChange={setVisualName}
-        resourceCd={resourceCd}
-        onResourceCdChange={setResourceCd}
-        resourceOptions={resourceOptions}
-        resourceNameMap={resourceNameMap}
-        processFilter={processFilter}
-        onProcessFilterChange={setProcessFilter}
-        includeInactive={includeInactive}
-        onIncludeInactiveChange={setIncludeInactive}
-        onRefresh={() => void refresh()}
-        refreshBusy={templateBusy}
-      />
-
-      {templateMessage ? <p className="text-[1rem] font-semibold text-amber-200">{templateMessage}</p> : null}
-
-      <InspectionDrawingTemplateHistoryDialog
-        isOpen={Boolean(historyGroupKey)}
-        templateName={activeHistoryTitle}
-        templates={activeHistoryTemplates}
-        onClose={() => setHistoryGroupKey(null)}
-        onOpen={(template) => {
-          setHistoryGroupKey(null);
-          void navigate(kioskInspectionDrawingTemplateEditPath(template.id), {
-            state: INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE
-          });
-        }}
-      />
-
-      <div className="min-h-0 flex-1 overflow-auto rounded border border-white/15 bg-slate-950/50 p-1.5">
-        <InspectionDrawingLibraryTemplateGrid
-          templates={visibleTemplateCards}
+        <InspectionDrawingLibraryFilterBar
+          fhincd={filters.fhincd}
+          onFhincdChange={templateLibrary.setFhincd}
+          visualName={filters.visualName}
+          onVisualNameChange={templateLibrary.setVisualName}
+          resourceCd={filters.resourceCd}
+          onResourceCdChange={templateLibrary.setResourceCd}
+          resourceOptions={resourceOptions}
           resourceNameMap={resourceNameMap}
-          busy={templateBusy}
-          onHistoryClick={setHistoryGroupKey}
-          lineageGroupKey={lineageGroupKey}
-          printPath={
-            INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED
-              ? kioskInspectionDrawingTemplatePrintPath
-              : undefined
-          }
+          processFilter={filters.processFilter}
+          onProcessFilterChange={templateLibrary.setProcessFilter}
+          includeInactive={filters.includeInactive}
+          onIncludeInactiveChange={templateLibrary.setIncludeInactive}
+          onReload={templateLibrary.reload}
+          onReset={templateLibrary.resetFilters}
+          resetDisabled={!templateLibrary.hasActiveFilters}
+          busy={templateLibrary.loading}
         />
-      </div>
+
+        {templateLibrary.error ?? templateMessage ? (
+          <p className="px-1 text-[1rem] font-semibold text-amber-200">{templateLibrary.error ?? templateMessage}</p>
+        ) : null}
+
+        <InspectionDrawingTemplateHistoryDialog
+          isOpen={Boolean(historyGroupKey)}
+          templateName={activeHistoryTitle}
+          templates={activeHistoryTemplates}
+          onClose={() => setHistoryGroupKey(null)}
+          onOpen={(template) => {
+            setHistoryGroupKey(null);
+            void navigate(kioskInspectionDrawingTemplateEditPath(template.id), {
+              state: INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE
+            });
+          }}
+        />
+
+        <div className="min-h-0 flex-1 overflow-auto rounded bg-slate-950/35 p-1">
+          <InspectionDrawingLibraryTemplateGrid
+            templates={visibleTemplateCards}
+            resourceNameMap={resourceNameMap}
+            busy={templateLibrary.loading}
+            onHistoryClick={setHistoryGroupKey}
+            lineageGroupKey={lineageGroupKey}
+            printPath={
+              INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED
+                ? kioskInspectionDrawingTemplatePrintPath
+                : undefined
+            }
+          />
+        </div>
+      </section>
     </div>
   );
 }

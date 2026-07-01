@@ -15,6 +15,7 @@ export {
   resolveVisualTemplateById
 } from './inspectionDrawingVisualLibraryHelpers';
 export { useInspectionDrawingVisualLibrary } from './useInspectionDrawingVisualLibrary';
+export { useInspectionDrawingTemplateLibrary } from './useInspectionDrawingTemplateLibrary';
 export {
   inspectionDrawingCreateKeyCollisionMessage,
   normalizeUniqueInspectionDrawingResourceCds,

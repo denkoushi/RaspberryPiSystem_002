@@ -91,6 +91,11 @@ Maintained in accordance with `.agent/PLANS.md`.
   - UI: 新規作成の資源CD複数選択、`visualTemplate.name + 品番` のテンプレ名自動提案、保存条件 disabled、グループまとめて改版/個別改版、保存済み最新版からの資源追加、一覧のグループ1カード集約。
   - 検証: GitHub Actions `28507352316` success、全台デプロイ `20260701-183748-11286` exit 0、Phase12 実機検証 PASS 45 / WARN 0 / FAIL 0、読み取りスモーク `GET /inspection-drawing/templates` 200 と `GET /visual-templates?sort=recentlyUpdated&limit=5` 200。
   - 詳細な設計判断は [ADR-20260701](../decisions/ADR-20260701-part-measurement-template-sibling-groups.md)。この Plan は次回再開用の状態正本。
+- [x] (2026-07-01) **検査図面テンプレートペイン UX/密度改善** — ブランチ `fix/inspection-drawing-template-pane-layout` · commit `b11e64ff`
+  - 仕様: テンプレート検索を手動「更新」から、品番/図面名 400ms debounce・資源CD/工程/履歴即時反映の自動検索へ変更。ボタンは現在条件の `再読込` と、条件初期化の `リセット` に分離。
+  - 実装: `useInspectionDrawingTemplateLibrary` を追加し、検索条件・リクエスト順序ガード・リセット/再読込をページから分離。テンプレートペインは見出しカードを廃止し、フィルタと一覧余白を圧縮。
+  - UI: 資源CD chip は横一列 + `+N` 省略、`測定点 / 更新 / 図面` は1行メタ情報、図面名は `truncate` + `title`、カード縦幅を圧縮し、`編集` / `帳票` / `雛形新規` / `履歴` は外寸維持でフォントを拡大。
+  - 検証: GitHub Actions `28514390128` success、全台デプロイ `20260701-204628-31038` 後に Pi3 限定再デプロイ `20260701-212100-29479` success、Phase12 実機検証 PASS 45 / WARN 0 / FAIL 0、実機画面 `/kiosk/part-measurement/inspection` でユーザー目視 OK。
 - [ ] (2026-07-01) **残り手動確認** — 本番DBを書き換える一括作成/まとめて改版/資源追加は実機で未実行。次回は検証用データまたは明示許可のある品番・資源CDで、作成→まとめて改版→個別分離→資源追加を画面操作で確認する。
 
 ## Surprises & Discoveries
@@ -160,6 +165,12 @@ Maintained in accordance with `.agent/PLANS.md`.
 
 - Observation: 図面ライブラリ表示名は `visualTemplates` 配列で返る。実機では `7161テーブル` などの表示名を取得でき、テンプレ名サジェストの入力源として使える
   Evidence: 2026-07-01 実機読み取りスモーク `GET /api/part-measurement/visual-templates?sort=recentlyUpdated&limit=5` → 200
+
+- Observation: テンプレートペインの旧 `更新` は検索実行ボタンとして見え、図面ライブラリ側の入力連動検索と同一画面内で UX が不一致になる
+  Evidence: 2026-07-01 実機フィードバック → `useInspectionDrawingTemplateLibrary` で自動検索 + `再読込` + `リセット` に分離（`b11e64ff`）
+
+- Observation: 本番 bundle では DEV ルート `/dev/kiosk-inspection-drawing-library` は実機確認に使わず、実機目視は `/kiosk/part-measurement/inspection` で行う。本文検索で `更新` を探すとカードの更新日時メタ情報にも一致するため、旧ボタン確認は exact role name で見る
+  Evidence: 2026-07-01 Playwright 実機スモーク。`button[name="更新"]` は 0、`再読込` は存在、`リセット` は条件なしで disabled・条件入力後 enabled・リセット後 disabled
 
 ## Decision Log
 
@@ -243,6 +254,10 @@ Maintained in accordance with `.agent/PLANS.md`.
   Rationale: `fhincd + processGroup + resourceCd + version` の既存正本キー、記録表・自主検査の資源CD単位解決、既存単一資源テンプレ互換を維持するため
   Date/Author: 2026-07-01 / agent（[ADR-20260701](../decisions/ADR-20260701-part-measurement-template-sibling-groups.md)）
 
+- Decision: テンプレートペイン検索は **自動検索 + `再読込` + `リセット`** とし、図面ライブラリ検索と操作モデルを揃える。`再読込` は検索実行ではなく、現在条件の再取得だけを担う
+  Rationale: 検索条件変更後に `更新` を押さないと反映されない UX は、同一画面内の図面ライブラリ検索と不整合。リセットがないとキオスクで条件解除の手数が多い
+  Date/Author: 2026-07-01 / agent（`b11e64ff`）
+
 ## Outcomes & Retrospective
 
 - **評価用作成（互換）**: `/kiosk/part-measurement/inspection/create` は残置。評価用 API は UI 主導線から外した。
@@ -255,6 +270,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 - **図面ライブラリ（2026-06-08）**: Pi5 で **standalone visual 登録 → ライブラリ → 新規作成** 導線 + **5列/4列** 密度レイアウトまで反映。当時 Pi4×4 は未、2026-07-01 の全台デプロイで現行 branch へ収束。
 - **図面ライブラリ密度調整（第2弾 · 2026-06-08）**: **6列**・検索 wrapper・登録導線一本化 — **`ddc3ce8b`**。**Pi5 本番・実機目視 OK**。当時 Pi4×4 は未、2026-07-01 の全台デプロイで現行 branch へ収束。
 - **複数資源兄弟グループ（2026-07-01）**: `feat/inspection-drawing-sibling-groups` · `580324b5` を全台デプロイ。既存DB/既存コンテナはローカル検証で変更せず、一時 Postgres で migration / integration / EXPLAIN を確認。実機では読み取りスモークまで実施し、本番データを書き換える一括作成系の画面操作は未実施。
+- **テンプレートペイン UX/密度改善（2026-07-01）**: `fix/inspection-drawing-template-pane-layout` · `b11e64ff` を全台デプロイ。テンプレート検索は自動検索 + `再読込` + `リセット`、カードは資源chip横一列・1行メタ情報・フォント拡大ボタンへ圧縮。実機 `/kiosk/part-measurement/inspection` で目視 OK。
 - **未着手**: 複数個数図面UI、TIFF、順位ボード連携、Phase12 への専用 visual-library スモーク追加（任意）。
 
 ## 代表コミット
@@ -276,6 +292,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 | `38b7583f` | 同上 | 5列/4列密度レイアウト・preview `enabled: false` |
 | `ddc3ce8b` | `fix/kiosk-inspection-drawing-library-density-tuning` | 図面ライブラリ 6列・検索 wrapper・登録導線一本化 |
 | `580324b5` | `feat/inspection-drawing-sibling-groups` | 複数資源兄弟グループ・まとめて改版・資源追加・一覧集約 |
+| `b11e64ff` | `fix/inspection-drawing-template-pane-layout` | テンプレートペイン自動検索・再読込/リセット・カード密度改善 |
 
 ## 主要ファイル（後続読者向け）
 
@@ -292,6 +309,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 | テンプレ4列グリッド | `InspectionDrawingLibraryTemplateGrid.tsx` |
 | visual API | `part-measurement-visual-template.service.ts` · `GET …/visual-templates` |
 | 一覧フィルタ（共有） | `InspectionDrawingLibraryFilterBar.tsx` |
+| テンプレ一覧 hook | `useInspectionDrawingTemplateLibrary.ts` |
 | 資源 select（共有） | `InspectionDrawingResourceCdSelect.tsx` · `inspectionDrawingKioskUi.ts` |
 | 作成/テンプレ編集 UI | `KioskInspectionDrawingCreatePage.tsx` |
 | 測定点パネル（共有） | `InspectionDrawingPointSettingsPanel.tsx` |
@@ -335,4 +353,8 @@ Maintained in accordance with `.agent/PLANS.md`.
 - 自動（2026-07-01・全台実機）: `./scripts/update-all-clients.sh feat/inspection-drawing-sibling-groups infrastructure/ansible/inventory.yml --detach --follow` → Run `20260701-183748-11286` success / failed=0、Pi5 HEAD `580324b5`
 - 自動（2026-07-01・Phase12）: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**
 - 読み取りスモーク（2026-07-01・実機API）: `GET /api/part-measurement/inspection-drawing/templates` → 200、`GET /api/part-measurement/visual-templates?sort=recentlyUpdated&limit=5` → 200（`visualTemplates` に `7161テーブル` 等）
+- 自動（2026-07-01・テンプレートペイン UX）: `pnpm --filter @raspi-system/web test -- useInspectionDrawingTemplateLibrary.test.ts InspectionDrawingLibraryFilterBar.test.tsx InspectionDrawingLibraryTemplateGrid.test.tsx` PASS、`pnpm --filter @raspi-system/web build` PASS、`pnpm --filter @raspi-system/web lint` PASS
+- 自動（2026-07-01・CI）: GitHub Actions `28514390128` success（lint/build/unit, api-db-and-infra, e2e-smoke, security-docker, e2e-tests）
+- 自動（2026-07-01・全台実機）: `./scripts/update-all-clients.sh fix/inspection-drawing-template-pane-layout infrastructure/ansible/inventory.yml --detach --follow` → Run `20260701-204628-31038`。Pi3 は `signage-lite-update.timer` 起動タスクで一度 recap failure になったが、実状態は healthy。Pi3 限定再デプロイ `20260701-212100-29479` は failed=0、最終 Phase12 は **PASS 45 / WARN 0 / FAIL 0**
+- 手動（2026-07-01・実機テンプレートペイン）: `/kiosk/part-measurement/inspection` で `再読込` / `リセット` 表示、旧検索ボタンとしての `更新` なし、リセット disabled/復帰、カード密度改善、ユーザー目視 OK
 - 手動（残り）: 本番DBを書き換える一括作成・まとめて改版・個別分離・資源追加は未確認。次回は検証用データを決めてから画面操作で確認する。

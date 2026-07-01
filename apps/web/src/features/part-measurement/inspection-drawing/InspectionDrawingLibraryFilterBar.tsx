@@ -34,8 +34,10 @@ type Props = {
   onProcessFilterChange: (value: InspectionDrawingLibraryProcessFilter) => void;
   includeInactive: boolean;
   onIncludeInactiveChange: (value: boolean) => void;
-  onRefresh: () => void;
-  refreshBusy?: boolean;
+  onReload: () => void;
+  onReset: () => void;
+  resetDisabled: boolean;
+  busy?: boolean;
 };
 
 /**
@@ -55,8 +57,10 @@ export function InspectionDrawingLibraryFilterBar({
   onProcessFilterChange,
   includeInactive,
   onIncludeInactiveChange,
-  onRefresh,
-  refreshBusy = false
+  onReload,
+  onReset,
+  resetDisabled,
+  busy = false
 }: Props) {
   const resourceSelectOptions = useMemo(
     () =>
@@ -68,7 +72,7 @@ export function InspectionDrawingLibraryFilterBar({
   );
 
   return (
-    <div className="flex min-w-0 flex-col gap-3 rounded border border-white/15 bg-slate-900/60 p-2 sm:flex-row sm:flex-wrap sm:items-end">
+    <div className="flex min-w-0 flex-col gap-2 rounded border border-white/10 bg-slate-900/60 px-2 py-1.5 sm:flex-row sm:flex-wrap sm:items-end">
       <label
         className={clsx(
           'shrink-0',
@@ -137,15 +141,24 @@ export function InspectionDrawingLibraryFilterBar({
         履歴を含む
       </label>
 
-      <div className="flex w-full shrink-0 items-end justify-start sm:ml-auto sm:w-auto">
+      <div className="flex w-full shrink-0 items-end justify-start gap-2 sm:ml-auto sm:w-auto">
         <Button
           type="button"
           variant="secondary"
           className="min-h-11 min-w-[7rem] text-[1.02rem]"
-          onClick={onRefresh}
-          disabled={refreshBusy}
+          onClick={onReload}
+          disabled={busy}
         >
-          {refreshBusy ? '取得中…' : '更新'}
+          {busy ? '取得中…' : '再読込'}
+        </Button>
+        <Button
+          type="button"
+          variant="ghostOnDark"
+          className="min-h-11 min-w-[7rem] text-[1.02rem]"
+          onClick={onReset}
+          disabled={resetDisabled || busy}
+        >
+          リセット
         </Button>
       </div>
     </div>
