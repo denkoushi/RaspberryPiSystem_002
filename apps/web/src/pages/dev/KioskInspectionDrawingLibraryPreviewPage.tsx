@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Button, buttonClassName } from '../../components/ui/Button';
 import {
   InspectionDrawingLibraryFilterBar,
-  InspectionDrawingLibraryTemplateGrid,
+  InspectionDrawingLibraryTemplateTable,
   InspectionDrawingTemplateHistoryDialog,
   KioskInspectionDrawingVisualLibrarySection,
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
@@ -80,7 +80,7 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
   const groupedFiltered = useMemo(() => groupByLineage(filteredTemplates), [filteredTemplates]);
   const groupedAll = useMemo(() => groupByLineage(sourceTemplates), [sourceTemplates]);
 
-  const visibleTemplateCards = useMemo(
+  const visibleTemplateRows = useMemo(
     () =>
       [...groupedFiltered.values()]
         .map((group) => pickLineageCardRepresentative(group))
@@ -127,63 +127,65 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
         </div>
       </div>
 
-      <KioskInspectionDrawingVisualLibrarySection
-        previewVisuals={INSPECTION_DRAWING_PREVIEW_VISUAL_LIBRARY}
-        onRegisterClick={() => undefined}
-      />
-
-      <section
-        className="flex min-h-0 flex-1 flex-col gap-1.5 rounded border border-white/15 bg-slate-950/45 p-1.5"
-        aria-labelledby="inspection-drawing-template-pane-heading"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-          <h2 id="inspection-drawing-template-pane-heading" className="text-[1.08rem] font-bold text-white/90">
-            検査図面テンプレート
-          </h2>
-          <span className="text-[0.9rem] font-semibold text-white/55">{visibleTemplateCards.length}件</span>
-        </div>
-
-        <InspectionDrawingLibraryFilterBar
-          fhincd={fhincd}
-          onFhincdChange={setFhincd}
-          visualName={visualName}
-          onVisualNameChange={setVisualName}
-          resourceCd={resourceCd}
-          onResourceCdChange={setResourceCd}
-          resourceOptions={resourceOptions}
-          resourceNameMap={resourceNameMap}
-          processFilter={processFilter}
-          onProcessFilterChange={setProcessFilter}
-          includeInactive={includeInactive}
-          onIncludeInactiveChange={setIncludeInactive}
-          onReload={() => undefined}
-          onReset={resetTemplateFilters}
-          resetDisabled={!hasActiveTemplateFilters}
+      <div className="flex min-h-0 flex-1 flex-wrap items-start gap-2 overflow-auto">
+        <KioskInspectionDrawingVisualLibrarySection
+          previewVisuals={INSPECTION_DRAWING_PREVIEW_VISUAL_LIBRARY}
+          onRegisterClick={() => undefined}
         />
 
-        <InspectionDrawingTemplateHistoryDialog
-          isOpen={Boolean(historyGroupKey)}
-          templateName={activeHistoryTitle}
-          templates={
-            activeHistoryTemplates.length > 0 ? activeHistoryTemplates : INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES
-          }
-          onClose={() => setHistoryGroupKey(null)}
-          onOpen={() => setHistoryGroupKey(null)}
-        />
+        <section
+          className="flex w-[49rem] max-w-full shrink-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-950/45 p-1.5"
+          aria-labelledby="inspection-drawing-template-pane-heading"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            <h2 id="inspection-drawing-template-pane-heading" className="text-[1.08rem] font-bold text-white/90">
+              検査図面テンプレート
+            </h2>
+            <span className="text-[0.9rem] font-semibold text-white/55">{visibleTemplateRows.length}件</span>
+          </div>
 
-        <div className="min-h-0 flex-1 overflow-auto rounded bg-slate-950/35 p-1">
-          <InspectionDrawingLibraryTemplateGrid
-            templates={visibleTemplateCards}
+          <InspectionDrawingLibraryFilterBar
+            fhincd={fhincd}
+            onFhincdChange={setFhincd}
+            visualName={visualName}
+            onVisualNameChange={setVisualName}
+            resourceCd={resourceCd}
+            onResourceCdChange={setResourceCd}
+            resourceOptions={resourceOptions}
             resourceNameMap={resourceNameMap}
-            onHistoryClick={setHistoryGroupKey}
-            lineageGroupKey={lineageGroupKey}
-            editPath={() => '/dev/kiosk-inspection-drawing-create'}
-            printPath={() => '/dev/kiosk-inspection-drawing-print'}
-            createFromSourcePath={() => '/dev/kiosk-inspection-drawing-create'}
-            linkState={INSPECTION_DRAWING_DEV_RETURN_TO_LIBRARY_STATE}
+            processFilter={processFilter}
+            onProcessFilterChange={setProcessFilter}
+            includeInactive={includeInactive}
+            onIncludeInactiveChange={setIncludeInactive}
+            onReload={() => undefined}
+            onReset={resetTemplateFilters}
+            resetDisabled={!hasActiveTemplateFilters}
           />
-        </div>
-      </section>
+
+          <InspectionDrawingTemplateHistoryDialog
+            isOpen={Boolean(historyGroupKey)}
+            templateName={activeHistoryTitle}
+            templates={
+              activeHistoryTemplates.length > 0 ? activeHistoryTemplates : INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES
+            }
+            onClose={() => setHistoryGroupKey(null)}
+            onOpen={() => setHistoryGroupKey(null)}
+          />
+
+          <div className="max-h-[calc(100dvh-12rem)] overflow-auto rounded bg-slate-950/35 p-1">
+            <InspectionDrawingLibraryTemplateTable
+              templates={visibleTemplateRows}
+              resourceNameMap={resourceNameMap}
+              onHistoryClick={setHistoryGroupKey}
+              lineageGroupKey={lineageGroupKey}
+              editPath={() => '/dev/kiosk-inspection-drawing-create'}
+              printPath={() => '/dev/kiosk-inspection-drawing-print'}
+              createFromSourcePath={() => '/dev/kiosk-inspection-drawing-create'}
+              linkState={INSPECTION_DRAWING_DEV_RETURN_TO_LIBRARY_STATE}
+            />
+          </div>
+        </section>
+      </div>
     </KioskInspectionDrawingDevPreviewChrome>
   );
 }

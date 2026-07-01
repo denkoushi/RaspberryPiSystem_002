@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
-import { InspectionDrawingLibraryTemplateGrid } from '../InspectionDrawingLibraryTemplateGrid';
+import { InspectionDrawingLibraryTemplateTable } from '../InspectionDrawingLibraryTemplateTable';
 
 import type { KioskInspectionDrawingTemplateSummaryDto } from '../../types';
 
@@ -39,11 +39,11 @@ const template: KioskInspectionDrawingTemplateSummaryDto = {
   itemCount: 12
 };
 
-describe('InspectionDrawingLibraryTemplateGrid', () => {
-  it('keeps resource chips on one row and summarizes metadata on one line', () => {
+describe('InspectionDrawingLibraryTemplateTable', () => {
+  it('renders compact table columns and keeps resource chips on one row', () => {
     render(
       <MemoryRouter>
-        <InspectionDrawingLibraryTemplateGrid
+        <InspectionDrawingLibraryTemplateTable
           templates={[template]}
           resourceNameMap={{}}
           onHistoryClick={vi.fn()}
@@ -54,20 +54,23 @@ describe('InspectionDrawingLibraryTemplateGrid', () => {
         />
       </MemoryRouter>
     );
+
+    expect(screen.getByRole('table', { name: '検査図面テンプレート' })).toBeInTheDocument();
+    for (const header of ['品番', '図面名', '資源CD', '工程', '点', '更新', '操作']) {
+      expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument();
+    }
+    expect(screen.getByText('ABC-123')).toBeInTheDocument();
+    expect(screen.getByText('7161テーブル')).toHaveAttribute('title', '7161テーブル');
+    expect(screen.getByText('12')).toBeInTheDocument();
 
     expect(screen.getByTestId('inspection-template-resource-chips')).toHaveClass('flex-nowrap');
     expect(screen.getByText('+1')).toBeInTheDocument();
-
-    const metadata = screen.getByTestId('inspection-template-card-metadata');
-    expect(metadata).toHaveTextContent(/測定点 12 · 更新 .* · 図面 7161テーブル/);
-    expect(metadata).toHaveClass('truncate');
-    expect(metadata).toHaveAttribute('title', expect.stringContaining('図面 7161テーブル'));
   });
 
-  it('keeps action button size while increasing action text size', () => {
+  it('uses shortened action labels with compact button classes', () => {
     render(
       <MemoryRouter>
-        <InspectionDrawingLibraryTemplateGrid
+        <InspectionDrawingLibraryTemplateTable
           templates={[template]}
           resourceNameMap={{}}
           onHistoryClick={vi.fn()}
@@ -79,9 +82,25 @@ describe('InspectionDrawingLibraryTemplateGrid', () => {
       </MemoryRouter>
     );
 
-    for (const label of ['編集', '帳票', '雛形新規', '履歴']) {
-      expect(screen.getByRole(label === '履歴' ? 'button' : 'link', { name: label })).toHaveClass('min-h-9');
-      expect(screen.getByRole(label === '履歴' ? 'button' : 'link', { name: label })).toHaveClass('text-[0.9rem]');
+    for (const label of ['編集', '帳票', '雛形', '履歴']) {
+      const action = screen.getByRole(label === '履歴' ? 'button' : 'link', { name: label });
+      expect(action).toHaveClass('min-h-6');
+      expect(action).toHaveClass('text-[0.68rem]');
     }
+    expect(screen.getByRole('link', { name: '雛形' })).toHaveAttribute('title', '雛形新規');
+  });
+
+  it('renders loading empty state', () => {
+    render(
+      <InspectionDrawingLibraryTemplateTable
+        templates={[]}
+        resourceNameMap={{}}
+        busy
+        onHistoryClick={vi.fn()}
+        lineageGroupKey={(row) => row.id}
+      />
+    );
+
+    expect(screen.getByText('読込中…')).toBeInTheDocument();
   });
 });

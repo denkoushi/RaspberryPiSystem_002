@@ -6,10 +6,9 @@ import { Input } from '../../../components/ui/Input';
 import { formatResourceCdWithJapaneseNames } from '../../kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
 
 import {
-  inspectionDrawingLibraryFilterFieldLabelClassName,
-  inspectionDrawingLibraryFilterFhincdWidthClass
+  inspectionDrawingBoundedSelectClassName,
+  inspectionDrawingBoundedSelectShellClassName
 } from './inspectionDrawingKioskUi';
-import { InspectionDrawingResourceCdSelect } from './InspectionDrawingResourceCdSelect';
 
 import type { PartMeasurementProcessGroup } from '../types';
 
@@ -72,80 +71,71 @@ export function InspectionDrawingLibraryFilterBar({
   );
 
   return (
-    <div className="flex min-w-0 flex-col gap-2 rounded border border-white/10 bg-slate-900/60 px-2 py-1.5 sm:flex-row sm:flex-wrap sm:items-end">
-      <label
-        className={clsx(
-          'shrink-0',
-          inspectionDrawingLibraryFilterFieldLabelClassName,
-          inspectionDrawingLibraryFilterFhincdWidthClass
-        )}
-      >
-        品番
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5 rounded border border-white/10 bg-slate-900/60 px-2 py-1.5">
+      <div className="w-[7.8rem] max-w-full shrink-0">
         <Input
           value={fhincd}
           onChange={(e) => onFhincdChange(e.target.value)}
-          className="h-11 text-[1.08rem] text-slate-900"
-          placeholder="例: ABC（部分一致）"
+          className="h-9 w-full px-2 text-[0.9rem] text-slate-900"
+          placeholder="品番"
+          aria-label="品番"
         />
-      </label>
+      </div>
 
-      <label
-        className={clsx(
-          'shrink-0',
-          inspectionDrawingLibraryFilterFieldLabelClassName,
-          inspectionDrawingLibraryFilterFhincdWidthClass
-        )}
-      >
-        図面名
+      <div className="w-[8.8rem] max-w-full shrink-0">
         <Input
           value={visualName}
           onChange={(e) => onVisualNameChange(e.target.value)}
-          className="h-11 text-[1.08rem] text-slate-900"
-          placeholder="図面名で検索"
+          className="h-9 w-full px-2 text-[0.9rem] text-slate-900"
+          placeholder="図面名"
           aria-label="図面名で検索"
         />
-      </label>
-
-      <InspectionDrawingResourceCdSelect
-        value={resourceCd}
-        onChange={onResourceCdChange}
-        options={resourceSelectOptions}
-        emptyOptionLabel="すべて"
-        widthVariant="library"
-      />
-
-      <div className="grid w-full shrink-0 gap-1 sm:w-auto">
-        <span className="text-[1rem] font-semibold">工程</span>
-        <div className="flex flex-nowrap gap-2">
-          {PROCESS_FILTER_OPTIONS.map(([value, label]) => (
-            <Button
-              key={value}
-              type="button"
-              variant={processFilter === value ? 'primary' : 'ghostOnDark'}
-              className={clsx('min-h-11 shrink-0 px-3 text-[1rem]', processFilter !== value && 'opacity-80')}
-              onClick={() => onProcessFilterChange(value)}
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
       </div>
 
-      <label className="flex shrink-0 items-center gap-2 whitespace-nowrap pb-1 text-[1rem] font-semibold text-white/90 sm:pb-1">
+      <div className={clsx('w-[8.8rem] max-w-full shrink-0', inspectionDrawingBoundedSelectShellClassName)}>
+        <select
+          value={resourceCd}
+          aria-label="資源CD"
+          onChange={(e) => onResourceCdChange(e.target.value)}
+          className={clsx(inspectionDrawingBoundedSelectClassName, 'h-9 px-2 text-[0.9rem]')}
+        >
+          <option value="">資源CD</option>
+          {resourceSelectOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <select
+        value={processFilter}
+        aria-label="工程"
+        onChange={(e) => onProcessFilterChange(e.target.value as InspectionDrawingLibraryProcessFilter)}
+        className="h-9 w-[5.2rem] shrink-0 rounded-md border-2 border-slate-500 bg-white px-2 text-[0.9rem] font-semibold text-slate-900"
+      >
+        {PROCESS_FILTER_OPTIONS.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </select>
+
+      <label className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[0.88rem] font-semibold text-white/90">
         <input
           type="checkbox"
           checked={includeInactive}
           onChange={(e) => onIncludeInactiveChange(e.target.checked)}
-          className="h-5 w-5 shrink-0"
+          className="h-4 w-4 shrink-0"
         />
-        履歴を含む
+        履歴
       </label>
 
-      <div className="flex w-full shrink-0 items-end justify-start gap-2 sm:ml-auto sm:w-auto">
+      <div className="ml-auto flex shrink-0 items-center justify-start gap-2">
         <Button
           type="button"
           variant="secondary"
-          className="min-h-11 min-w-[7rem] text-[1.02rem]"
+          className="min-h-9 min-w-[4.8rem] !px-2 !py-0 text-[0.9rem]"
           onClick={onReload}
           disabled={busy}
         >
@@ -154,7 +144,7 @@ export function InspectionDrawingLibraryFilterBar({
         <Button
           type="button"
           variant="ghostOnDark"
-          className="min-h-11 min-w-[7rem] text-[1.02rem]"
+          className="min-h-9 min-w-[4.8rem] !px-2 !py-0 text-[0.9rem]"
           onClick={onReset}
           disabled={resetDisabled || busy}
         >
