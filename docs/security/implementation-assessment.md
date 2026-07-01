@@ -18,7 +18,7 @@
 - **Dropbox/Gmail OAuth callback の `state` 検証**を追加した。
 - ローカル検証として API build、DBなしテスト、一時Postgresでの migration 122件と関連統合テストを実施済み。
 - Pi5反映 run `20260630-210326-19753` 成功。反映後に API health `200`、貸出系未認証拒否 `401`、正規 `x-client-key` 付き貸出一覧 `200` を確認済み。
-- **system系API公開範囲の縮小をローカル実装済み（2026-07-01、実機未反映）**。詳細は [system-api-exposure-review-20260630.md](./system-api-exposure-review-20260630.md)。`metrics`、`system-info`、`network-mode` は ADMIN/MANAGER 必須、`health` は公開薄型 + 詳細認証、`deploy-status` は `x-client-key` 必須へ変更。
+- **system系API公開範囲の縮小をPi5へ反映済み（2026-07-01）**。詳細は [system-api-exposure-review-20260630.md](./system-api-exposure-review-20260630.md)。`metrics`、`system-info`、`network-mode` は ADMIN/MANAGER 必須、`health` は公開薄型 + 詳細認証、`deploy-status` は `x-client-key` 必須へ変更。CI `28484641504` 成功、Pi5 deploy `20260701-093510-6042` 成功、Phase12 `PASS 45 / WARN 0 / FAIL 0`。
 
 ### 追加の外部インシデント評価（2025-12-13）
 - 2025年10月のアスクル社ランサムウェア攻撃（[事故報告](https://prtimes.jp/main/html/rd/p/000000500.000021550.html)）を分析し、本システムへの当てはまりを評価。
@@ -146,9 +146,9 @@
 ### ⚠️ 改善の余地がある点
 
 1. **管理画面のアクセス制限**
-   - 現状はローカルネットワーク内の誰でもアクセス可能
-   - Tailscale ACLまたはufwでIP制限を追加すべき
-   - 2026-06-30追加確認: Pi5は `USE_LOCAL_CERTS=true` のため `Caddyfile.local` を使用しており、`Caddyfile.production` にある `/admin*` CIDR制限ブロックが無い。Tailscale ACL実体と合わせて確認が必要。
+   - Pi5の `Caddyfile.local` / template にも `/admin*` CIDR制限を追加済み。
+   - デフォルト許可CIDRは `192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32`。
+   - Tailscale ACL実体はrepo外のため、必要時にtailnet側で別途確認する。
 
 2. **Dockerイメージのスキャン**
    - ファイルシステムモードのみで、コンテナ内の脆弱性検出が不完全
@@ -203,7 +203,6 @@
    - **PostgreSQLのパスワードを強力なパスワードに変更（環境変数で管理）** 🔴 高優先度
    - USBメディア接続時にオフライン保存テストを実施
    - ログローテーション設定をデプロイ（次回デプロイ時に適用）
-   - system系API公開範囲縮小のローカル検証と、必要ならPi5先行反映を実施
 
 2. **中期（1ヶ月以内）**
    - CSRF対策の実装（SameSite Cookie属性の設定、CSRFトークンの実装）

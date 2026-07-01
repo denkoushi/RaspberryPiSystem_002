@@ -1,6 +1,6 @@
 # Phase 9/10 セキュリティ機能詳細仕様書
 
-最終更新: 2026-01-03
+最終更新: 2026-07-01
 
 ## 概要
 
@@ -17,7 +17,7 @@ Caddyのマッチャー機能を使用して、管理画面（`/admin*`）への
 
 **設定ファイル**: `infrastructure/docker/Caddyfile.local.template`、`infrastructure/docker/Caddyfile.production`
 
-**設定方法**:
+**設定方法（`Caddyfile.production` など、Caddyが直接読むファイル）**:
 ```caddy
 # 管理画面へのIP制限（Tailscale / ローカルLAN をデフォルト許可）
 # 環境変数 ADMIN_ALLOW_NETS で上書き可能（空白区切りのCIDRリスト）
@@ -28,11 +28,22 @@ Caddyのマッチャー機能を使用して、管理画面（`/admin*`）への
 respond @admin_protect "Forbidden" 403
 ```
 
+**設定方法（`Caddyfile.local.template`。起動時に `envsubst` してからCaddyへ渡す）**:
+```caddy
+@admin_protect {
+  path /admin*
+  not remote_ip ${ADMIN_ALLOW_NETS}
+}
+respond @admin_protect "Forbidden" 403
+```
+
+注意: local templateではCaddyの `{$ADMIN_ALLOW_NETS:...}` 記法を使わない。`envsubst` が先に展開し、CIDRが `{...}` 付きになってCaddyの `remote_ip` parseに失敗するため。
+
 **環境変数設定** (`docker-compose.server.yml`):
 ```yaml
 web:
   environment:
-    ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:-"192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32"}
+    ADMIN_ALLOW_NETS: "${ADMIN_ALLOW_NETS:-192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32}"
 ```
 
 **デフォルト許可ネットワーク**:

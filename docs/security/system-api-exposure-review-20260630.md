@@ -14,7 +14,7 @@
 
 特に `/api/system/metrics` は、業務規模に関する件数とNode.js/サイネージ状態を返すため、ADMIN/MANAGER JWT 必須へ変更した。
 
-実機反映はこの文書更新時点では未実施。ローカル検証は [security-hardening-history-20260630.md](./security-hardening-history-20260630.md) の第3段階に記録済み。反映する場合は Pi5 先行で `verify-phase12-real.sh`、未認証拒否、正規 `x-client-key` の `deploy-status`、Docker/APIログを確認する。
+2026-07-01にPi5へ反映済み。検証結果は [security-hardening-history-20260630.md](./security-hardening-history-20260630.md) の第3段階に記録済み。`verify-phase12-real.sh`、未認証拒否、正規 `x-client-key` の `deploy-status`、Docker/API/Webログを確認した。
 
 ## 対象API
 
@@ -35,7 +35,7 @@
 | `POST /api/system/dgx-resource/actions` | ADMIN/MANAGER必須 | DGX操作 | 管理画面 | 低 |
 | `POST /api/system/stackchan/chat` | ADMIN/MANAGER必須 | LLM実行 | 管理画面 | 低 |
 
-## 実機確認（Pi5）
+## 実機確認（Pi5・反映前）
 
 対象:
 
@@ -68,13 +68,14 @@
 
 ## 影響整理
 
-### 2026-07-01 実装差分
+### 2026-07-01 実装差分・Pi5反映
 
 - `metrics`、`system-info`、`network-mode` は ADMIN/MANAGER JWT 必須。
 - `health` は公開版を薄くし、詳細版を `/api/system/health/detail` として追加。
 - `deploy-status` は有効な `x-client-key` 必須。キーなしは `CLIENT_KEY_REQUIRED`、不正キーは `INVALID_CLIENT_KEY`。
 - `/preview/import` など未ログインの `AdminLayout` では `NetworkModeBadge` を表示せず、不要な401を避ける。
 - Pi5 が使う `Caddyfile.local` / `Caddyfile.local.template` に `/admin*` CIDR制限を追加。
+- `Caddyfile.local.template` は `envsubst` 対象のため `${ADMIN_ALLOW_NETS}` を使う。Caddyの `{$VAR:default}` 記法はlocal templateでは使わない。
 
 ### 運用影響
 
@@ -82,14 +83,46 @@
 - Prometheus等の無人 `/api/system/metrics` scrape は、現仕様では使えない。必要になった場合は専用トークンまたは内部限定経路を別途設計する。
 - 正常なキオスクWebは全リクエストに `x-client-key` を付けるため、`deploy-status` は従来通り利用可能。キー欠落/不正端末は401になる。
 
+## 実機確認（Pi5・反映後）
+
+対象:
+
+- Pi5: `100.106.158.2`
+- ブランチ: `security-system-api-hardening-20260701`
+- HEAD: `54657ba7`
+- CI: `28484641504` 成功
+- Deploy: `20260701-093510-6042` 成功、`failed=0`
+
+結果:
+
+| API | 未認証/キー | HTTP | 備考 |
+|-----|-------------|------|------|
+| `/api/system/health` | 未認証 | `200` | `status,timestamp` のみ |
+| `/api/system/health/detail` | 未認証 | `401` | 詳細はADMIN/MANAGER必須 |
+| `/api/system/metrics` | 未認証 | `401` | ADMIN/MANAGER必須 |
+| `/api/system/system-info` | 未認証 | `401` | ADMIN/MANAGER必須 |
+| `/api/system/network-mode` | 未認証 | `401` | ADMIN/MANAGER必須 |
+| `/api/system/deploy-status` | キーなし | `401` | `CLIENT_KEY_REQUIRED` |
+| `/api/system/deploy-status` | 不正キー | `401` | `INVALID_CLIENT_KEY` |
+| `/api/system/deploy-status` | 正規 `x-client-key` | `200` | `isMaintenance=false` |
+| `/api/tools/loans/active` | 正規 `x-client-key` | `200` | キオスク基本API |
+| `/admin` | Tailscale許可経路 | `200` | Caddy CIDR制限下でSPA到達 |
+
+追加確認:
+
+- `./scripts/deploy/verify-phase12-real.sh`: `PASS 45 / WARN 0 / FAIL 0`
+- api/db/web 起動中。api/db は healthy。
+- Caddy render後のadmin matcherは `192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32`。
+- WebログにCaddy config parse errorなし。
+- APIログの401は、遮断確認のため意図的に発生させたもの。
+
 ## 次の段階
 
-1. 実機反映する場合は Pi5 のみ先行し、標準検証とログ確認を行う。
-2. Prometheus等の無人監視が必要になった場合のみ、専用metricsトークンまたは内部限定経路を設計する。
+1. Prometheus等の無人監視が必要になった場合のみ、専用metricsトークンまたは内部限定経路を設計する。
+2. Tailscale管理画面側のACL実体はrepo外のため、必要時に別途確認する。
 
 ## 今回未確認
 
 - Tailscale管理画面側のACL実体。
 - LAN側からの到達性。
 - 実運用Prometheus等が `/api/system/metrics` を外部からscrapeしているか。
-- 2026-07-01追加実装のPi5実機反映。

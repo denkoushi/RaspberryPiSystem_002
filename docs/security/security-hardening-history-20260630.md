@@ -10,7 +10,7 @@
 - 一時Postgresコンテナはローカル検証後に削除済み。
 - 2段階認証/MFAは、iPhone/旧スマホの確認が終わるまで保留。今回も未変更。
 - Ansible vault の中身確認、鍵ローテーション、実機SSH設定変更は未実施。
-- 2026-07-01 第3段階はローカルブランチ `security-system-api-hardening-20260701` で実装。実機反映は未実施。
+- 2026-07-01 第3段階はブランチ `security-system-api-hardening-20260701` で実装し、Pi5実機へ反映済み。Pi4/Pi3は今回の反映対象外。
 
 ## 背景
 
@@ -103,6 +103,8 @@
 - `GET /api/system/deploy-status`
 - `infrastructure/docker/Caddyfile.local`
 - `infrastructure/docker/Caddyfile.local.template`
+- `infrastructure/docker/Dockerfile.web`
+- `infrastructure/docker/docker-compose.server.yml`
 
 内容:
 
@@ -125,6 +127,12 @@
 - Prometheus等の無人 `/api/system/metrics` scrape は現仕様では使えない。必要時は専用トークンまたは内部限定経路を別途設計する。
 - 正常なキオスクWebは `x-client-key` を自動付与するため、`deploy-status` は従来どおり利用できる見込み。
 - MFA/2段階認証、30日記憶仕様、Microsoft Authenticator関連は変更していない。
+
+反映状態:
+
+- 実装 commit: `fb522e10` (`fix(api): harden system diagnostics endpoints`)
+- Caddy local template hotfix commit: `54657ba7` (`fix(web): render local Caddy admin CIDRs correctly`)
+- Pi5最終反映済み。Pi5 HEAD: `54657ba7`
 
 ## 検証履歴
 
@@ -212,6 +220,39 @@ bash scripts/test/monitor.test.sh
 - `scripts/test/monitor.test.sh` 成功。API未起動のためhealth/metrics疎通はスキップ、関数テストとAnsibleテンプレート由来の監視ロジックは成功。
 - `Caddyfile.local` と `Caddyfile.local.template` は、ダミー自己署名証明書を一時作成して `caddy:2 caddy validate` 成功。
 - 最初の `caddy validate` は証明書ファイル未配置により失敗したが、Caddyfile構文変換自体は通っていた。ダミー証明書付きの再実行で `Valid configuration` を確認。
+
+### 第3段階 CI / Pi5反映 / 実機検証
+
+CI:
+
+- CI run `28481684146`: 初回は `security-docker` が GitHub Actions cache export の `error writing layer blob: not_found` で失敗。Docker build本体は完了しており、失敗ジョブのみ再実行後に全ジョブ成功。
+- Caddy hotfix後のCI run `28484641504`: 全ジョブ成功。
+
+Pi5反映:
+
+- 初回 deploy run `20260701-083429-24005`: API/Web image rebuild と Prisma migrate は完了したが、Web/Caddyが起動失敗。原因は `Caddyfile.local.template` が `envsubst` 対象なのに Caddy の `{$ADMIN_ALLOW_NETS:...}` 記法を使っていたため、render後に `{"192.168...` 形式となり `remote_ip` のCIDR parseに失敗したこと。
+- 暫定復旧: 再起動中の `docker-web-1` を一度停止し、コンテナ内 `Caddyfile.local.template` のadmin CIDR行を固定CIDRへ差し替えて起動。`https://127.0.0.1/api/system/health` は HTTP `200` に復旧。
+- 恒久修正: `Caddyfile.local.template` は `envsubst` 用の `${ADMIN_ALLOW_NETS}` に変更。`Dockerfile.web` でデフォルトCIDRをexportし、`docker-compose.server.yml` の `ADMIN_ALLOW_NETS` は引用符が値に混ざらない形へ修正。
+- 最終 deploy run `20260701-093510-6042`: `failed=0`, remote status `success`, Pi5 HEAD `54657ba7`。
+
+実機検証:
+
+- `./scripts/deploy/verify-phase12-real.sh`: `PASS 45 / WARN 0 / FAIL 0`
+- 個別system API確認:
+  - `GET /api/system/health`: HTTP `200`, 返却keyは `status,timestamp` のみ。
+  - `GET /api/system/health/detail`: 未認証 HTTP `401`。
+  - `GET /api/system/metrics`: 未認証 HTTP `401`。
+  - `GET /api/system/system-info`: 未認証 HTTP `401`。
+  - `GET /api/system/network-mode`: 未認証 HTTP `401`。
+  - `GET /api/system/deploy-status`: キーなし HTTP `401`。
+  - `GET /api/system/deploy-status`: 不正 `x-client-key` HTTP `401`。
+  - `GET /api/system/deploy-status`: 正規 `x-client-key` HTTP `200`, `isMaintenance=false`。
+  - `GET /api/tools/loans/active`: 正規 `x-client-key` HTTP `200`。
+  - `GET /admin`: Tailscale許可経路から HTTP `200`。
+- Docker compose: api/db/web 起動中。api/db は healthy。
+- Caddy render後の `/admin*` matcher は `192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32`。
+- Webログ: 最終反映後に `loading initial config` / `unexpected character` はなし。
+- APIログ: 個別検証で意図的に発生させた `AUTH_TOKEN_REQUIRED` / `CLIENT_KEY_REQUIRED` / `INVALID_CLIENT_KEY` の401を確認。新しいlevel 50例外はなし。
 
 ### ビルド
 
@@ -319,7 +360,7 @@ RASPI_SERVER_HOST='denkon5sd02@100.106.158.2' \
 
 詳細: [system-api-exposure-review-20260630.md](./system-api-exposure-review-20260630.md)
 
-以下は2026-06-30時点の調査記録。この時点では実装変更は行っておらず、Pi5へ読み取り確認のみ実施した。2026-07-01 第3段階でローカル実装済み、実機未反映。
+以下は2026-06-30時点の反映前調査記録。この時点では実装変更は行っておらず、Pi5へ読み取り確認のみ実施した。2026-07-01 第3段階で実装し、Pi5へ反映済み。
 
 確認結果:
 
@@ -330,9 +371,9 @@ RASPI_SERVER_HOST='denkon5sd02@100.106.158.2' \
 
 推奨:
 
-- 第3段階で、`metrics` / `system-info` / `network-mode` は ADMIN/MANAGER 必須へ変更済み。
-- 第3段階で、`health` は公開薄型 + 詳細認証へ分割済み。
-- 第3段階で、`deploy-status` は有効な `x-client-key` 必須へ変更済み。
+- 第3段階で、`metrics` / `system-info` / `network-mode` は ADMIN/MANAGER 必須へ変更済み、Pi5反映済み。
+- 第3段階で、`health` は公開薄型 + 詳細認証へ分割済み、Pi5反映済み。
+- 第3段階で、`deploy-status` は有効な `x-client-key` 必須へ変更済み、Pi5反映済み。
 
 ## Pi5反映翌朝確認（2026-07-01 07:33 JST）
 
@@ -369,8 +410,7 @@ RASPI_SERVER_HOST='denkon5sd02@100.106.158.2' \
 ## 保留した項目
 
 - MFA/2段階認証: iPhone/旧スマホ確認完了まで保留。
-- system系APIの公開範囲整理: `/api/system/health` と `/api/system/metrics` は監視・手順依存が大きいため未変更。`system-info`/`network-mode` も preview画面への波及確認後に別段階で扱う。
-- system系APIの公開範囲整理: 2026-06-30 21:28 JST に調査完了。実装は未変更。優先候補は `metrics`、`system-info`、`network-mode`。
+- system系APIの無人metrics scrape: 現時点では専用トークン未設計。必要になった場合に内部限定経路または専用トークンを設計する。
 - Ansible vault 暗号化/秘密情報ローテーション: 実機運用と復旧手順に影響するため未変更。
 - APIコンテナのSSH鍵/Ansibleマウント縮小: デプロイ経路に影響するため未変更。
 - Tailscale ACLの実設定レビュー: repo外のtailnet設定確認が必要。

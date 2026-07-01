@@ -10,6 +10,23 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-01 · **セキュリティ強化 第3段階 system系API公開範囲縮小** · **API + Web/Caddy** · **Pi5 反映済**） {#security-hardening-system-api-pi5-2026-07-01}
+
+- **変更概要（正本）**: [セキュリティ強化履歴](../security/security-hardening-history-20260630.md) · [system系API公開範囲レビュー](../security/system-api-exposure-review-20260630.md) · branch **`security-system-api-hardening-20260701`** · deployed commit **`54657ba7`**
+  - `/api/system/metrics`、`/api/system/system-info`、`/api/system/network-mode` を ADMIN/MANAGER JWT 必須化。
+  - `/api/system/health` は公開薄型 `{status,timestamp}` のみに変更し、詳細は `/api/system/health/detail` へ移動。
+  - `/api/system/deploy-status` は有効な `x-client-key` 必須化。
+  - Pi5実機が使う `Caddyfile.local.template` に `/admin*` CIDR制限を追加。local template は `envsubst` 対象のため `${ADMIN_ALLOW_NETS}` を使う。
+  - **MFA/2段階認証、30日記憶仕様は未変更**。
+- **CI**:
+  - 初回 run **`28481684146`** は `security-docker` の GitHub Actions cache export `not_found` で一度失敗。失敗ジョブ再実行後に全ジョブ成功。
+  - hotfix後 run **`28484641504`** は全ジョブ成功。
+- **本番デプロイ（実績）**:
+  - 初回 **Detach Run ID `20260701-083429-24005`**: API/Web rebuild と Prisma migrate は完了したが、Web/Caddyが起動失敗。原因は `Caddyfile.local.template` でCaddyの `{$ADMIN_ALLOW_NETS:...}` 記法を `envsubst` に通したため、render後CIDRが `{...}` 付きになったこと。コンテナ内templateを一時差し替え、health `200` に復旧。
+  - 恒久修正 commit **`54657ba7`**: `Caddyfile.local.template` を `${ADMIN_ALLOW_NETS}` に変更し、`Dockerfile.web` と `docker-compose.server.yml` のデフォルト値処理を修正。
+  - 最終 **Detach Run ID `20260701-093510-6042`**: `failed=0` · remote status `success` · Pi5 HEAD `54657ba7` · Docker restart OK · Prisma migrate/status OK · API health recovered。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。個別確認で公開health薄型、system詳細系未認証401、deploy-statusキーなし/不正キー401、正規 `x-client-key` 200、`/admin` 許可経路200を確認。Web/Caddyログにconfig parse errorなし。
+
 ### 補足（2026-06-30 · **セキュリティ強化 第1-2段階** · **API** · **Pi5 反映済**） {#security-hardening-stage-1-2-pi5-2026-06-30}
 
 - **変更概要（正本）**: [セキュリティ強化履歴](../security/security-hardening-history-20260630.md) · branch **`security-hardening-20260630-pi5`** · deployed commit **`4e058cb2`** (`fix(api): harden loan and oauth security`)

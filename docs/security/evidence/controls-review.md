@@ -18,8 +18,8 @@
 | A01 Access Control | `/api/tools/loans/*` の未認証操作を遮断。`x-client-key` と `clientId` の不一致を拒否。 | Pi5反映済み・統合テスト済み |
 | CSRF / OAuth | Dropbox/Gmail OAuth callback に署名付き `state` 検証を追加。 | Pi5反映済み・統合テスト済み |
 | パストラバーサル | 写真/ローカルバックアップ保存で保存ディレクトリ外パスを拒否。 | Pi5反映済み・単体テスト済み |
-| 運用監視API | `/api/system/metrics`, `/api/system/system-info`, `/api/system/network-mode` を ADMIN/MANAGER 必須化。`/api/system/health` は公開薄型 + 詳細認証へ分割。`/api/system/deploy-status` は `x-client-key` 必須化。 | ローカル実装済み・実機未反映 |
-| Security Misconfig | Pi5実機が使う `Caddyfile.local` / template に `/admin*` CIDR制限を追加。 | ローカル実装済み・実機未反映 |
+| 運用監視API | `/api/system/metrics`, `/api/system/system-info`, `/api/system/network-mode` を ADMIN/MANAGER 必須化。`/api/system/health` は公開薄型 + 詳細認証へ分割。`/api/system/deploy-status` は `x-client-key` 必須化。 | Pi5反映済み・実機検証済み |
+| Security Misconfig | Pi5実機が使う `Caddyfile.local` / template に `/admin*` CIDR制限を追加。local templateは `envsubst` 前提の `${ADMIN_ALLOW_NETS}` に修正。 | Pi5反映済み・実機検証済み |
 
 検証:
 
@@ -31,7 +31,7 @@
 - Pi5反映 run `20260630-210326-19753` 成功。PLAY RECAP `failed=0`。
 - Pi5反映後、API health `200`、貸出系未認証拒否 `401`、正規 `x-client-key` 付き `/api/tools/loans/active` `200` を確認。
 - system系API公開範囲レビュー: [../system-api-exposure-review-20260630.md](../system-api-exposure-review-20260630.md)
-- 2026-07-01 第3段階のローカル検証結果は [../security-hardening-history-20260630.md](../security-hardening-history-20260630.md) へ追記済み。
+- 2026-07-01 第3段階のローカル検証・CI・Pi5反映・実機検証結果は [../security-hardening-history-20260630.md](../security-hardening-history-20260630.md) へ追記済み。
 
 ## OWASP Top 10 2021（再評価の基準）
 
