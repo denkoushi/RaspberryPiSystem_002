@@ -279,6 +279,27 @@ describe('inspectionDrawingPrintViewModel', () => {
     ).toThrow(InspectionDrawingPrintBuildError);
   });
 
+  it('formats signed offset tolerance for print specifications', () => {
+    const point = templateItemToDrawingPoint({
+      id: 'pt-signed',
+      sortOrder: 0,
+      datumSurface: 'A',
+      measurementPoint: 'P',
+      measurementLabel: '穴径 A',
+      displayMarker: '1',
+      unit: 'mm',
+      allowNegative: false,
+      decimalPlaces: 3,
+      markerXRatio: '0.35',
+      markerYRatio: '0.42',
+      nominalValue: '10',
+      lowerLimit: '9.95',
+      upperLimit: '10.05'
+    });
+
+    expect(formatInspectionDrawingPrintTolerance(point)).toBe('基準 10 / -0.05〜+0.05');
+  });
+
   it('formats legacy absolute-only tolerance like the editor UI', () => {
     const point = templateItemToDrawingPoint({
       id: 'pt-legacy',
@@ -297,6 +318,6 @@ describe('inspectionDrawingPrintViewModel', () => {
       upperLimit: '10.05'
     });
 
-    expect(formatInspectionDrawingPrintTolerance(point)).toBe('合格範囲 9.95 - 10.05');
+    expect(formatInspectionDrawingPrintTolerance(point)).toBe('合格範囲 9.95〜10.05');
   });
 });

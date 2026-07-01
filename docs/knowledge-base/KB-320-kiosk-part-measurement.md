@@ -745,11 +745,25 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 #### 仕様（保存契約は不変）
 
 - **公差 UI**: 基準値 + **符号付き**下限/上限公差 → 保存時 `lowerLimit = nominal + lowerOffset`, `upperLimit = nominal + upperOffset`（`toleranceFields.ts`）。
+- **公差表示（2026-07-01 追補）**: デジタル入力・HTML 帳票は通常行を `基準 10 / -0.05〜+0.05` と表示する。正の公差 raw は `+` を付け、legacy（`nominalValue=null`）は `合格範囲 lower〜upper` 表示を維持する。**Web のみ**（API / Prisma / migration なし）。
 - **legacy**（`nominalValue=null` + 絶対上下限のみ）: 名称のみ・基準値のみ入力は絶対値維持。片側公差入力で符号付きモードへ移行し、legacy から両側 offset を seed（`mergeInspectionDrawingPointPatch`）。
 - **名称**: 固定候補 `inspectionDrawingMeasurementLabelOptions.ts`。候補外既存値は `（既存）` option。新規点は名称未選択から select。
 - **上辺一覧（〜2026-06-03 旧 UI）**: `pointListSlot` + `InspectionDrawingPointSummaryStrip` — **作成/改版では廃止**（[§作成レイアウト](#検査図面-作成改版レイアウト-2026-06-03)）。
-- **自主検査のみ**: `valueInputMode="self_inspection_options"` — 候補 dropdown + 手入力。刻みは offset 最小桁・最大 **200** 件・格子は **ceil/floor**（`selfInspectionMeasurementValueOptions.ts`）。
+- **自主検査のみ**: `valueInputMode="self_inspection_options"` — **測定値選択** dropdown + 手入力。select 内ヒントは表示しない。刻みは offset 最小桁・最大 **200** 件・格子は **ceil/floor**（`selfInspectionMeasurementValueOptions.ts`）。
 - **本番記録**（`KioskInspectionDrawingEditPage`）: 測定値は **自由入力のまま**。
+
+#### 2026-07-01 公差オフセット表示・測定値選択 UI 変更
+
+- **作業ブランチ / 代表コミット**: `feat/inspection-drawing-tolerance-offset-display` / `091bc4ce`（`feat(web): update inspection tolerance display`）。
+- **契約**: API / Prisma / migration / wire shape は変更しない。DB と API は従来どおり絶対値 `nominalValue` / `lowerLimit` / `upperLimit` を保持し、Web 表示だけを公差オフセット表記にする。
+- **表示 helper**: `inspectionDrawingToleranceDisplay.ts` が UI と HTML 帳票の共通 presentation utility。保存・判定責務の `toleranceFields.ts` へ表示責務を混ぜない。
+- **通常行**: `lowerToleranceRaw` / `upperToleranceRaw` を使い、`基準 10 / -0.05〜+0.05` の形式で表示する。正の raw は `0.05` でも `+0.05` と表示し、区切りは `〜`。
+- **legacy 行**: `nominalValue=null` は推定基準値を作らず、絶対範囲の `合格範囲 9.95〜10.05（基準値未設定）` 系を維持する。
+- **入力 parser**: `parseToleranceRawFields` は現行維持。検査図面作成時の上限公差 raw は `0.05` と `+0.05` を同じ正の offset として扱う。
+- **測定値選択**: 自主検査候補 select のラベルは `測定値選択`。select 内の `候補（刻み ...）` ヒント option は空欄 option にし、`value=""` によるリセット挙動と `測定値（直接入力）` は維持する。
+- **検証**: targeted Vitest 5 files / 41 tests、`pnpm --filter @raspi-system/web test` 239 files / 1149 tests、web lint、web build は pass。CI `28493255636` は success（Node.js 20 deprecation と `pnpm audit` high severity は非ブロッキング注記）。
+- **デプロイ / 実機**: Pi5 + Pi4 キオスク 5 台へ順次 deploy 済み。Detach Run ID は `raspberrypi5=20260701-133452-21002`、`raspberrypi4=20260701-134131-2281`、`raspi4-robodrill01=20260701-134606-22779`、`raspi4-fjv60-80=20260701-134932-194`、`raspi4-kensaku-stonebase01=20260701-135305-6496`、`raspi4-sessaku-01=20260701-135926-3791`。Phase12 再検証は **PASS 45 / WARN 0 / FAIL 0**。現場実機目視は 2026-07-01 に OK 確認済み。
+- **未完了**: この変更範囲の未完了はなし。CI の Node.js 20 deprecation / audit 注記は別タスクで扱う。
 
 #### 先行デプロイ（2026-06-03）
 

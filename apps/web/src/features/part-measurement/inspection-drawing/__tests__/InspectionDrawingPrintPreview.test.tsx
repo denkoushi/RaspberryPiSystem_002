@@ -92,8 +92,8 @@ describe('InspectionDrawingPrintPreview', () => {
     expect(screen.queryByText(/QR予定/)).toBeNull();
     expect(screen.queryByText(/将来読取用/)).toBeNull();
     expect(screen.queryByText(/数値欄は仮配置/)).toBeNull();
-    expect(screen.getByText('10')).toBeInTheDocument();
-    expect(screen.getByText('-0.05 - 0.05')).toBeInTheDocument();
+    expect(screen.getAllByText('基準 10').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('-0.05〜+0.05').length).toBeGreaterThan(0);
   });
 
   it('keeps the preview disclaimer in the toolbar only', () => {
