@@ -37,6 +37,10 @@ describe('KioskInspectionDrawingVisualLibrarySection', () => {
 
     expect(listPartMeasurementVisualTemplates).not.toHaveBeenCalled();
     expect(screen.getByRole('table', { name: '図面ライブラリ' })).toBeInTheDocument();
+    expect(screen.getByTestId('inspection-visual-library-scroll')).toHaveClass('flex-1');
+    expect(screen.getByTestId('inspection-visual-library-scroll')).toHaveClass('min-h-0');
+    expect(screen.getByTestId('inspection-visual-library-scroll')).toHaveClass('overflow-auto');
+    expect(screen.getByTestId('inspection-visual-name-column')).toHaveClass('w-[60%]');
     for (const header of ['図面名', '更新', '操作']) {
       expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument();
     }

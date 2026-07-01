@@ -5,10 +5,7 @@ import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { formatResourceCdWithJapaneseNames } from '../../kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
 
-import {
-  inspectionDrawingBoundedSelectClassName,
-  inspectionDrawingBoundedSelectShellClassName
-} from './inspectionDrawingKioskUi';
+import { inspectionDrawingBoundedSelectClassName } from './inspectionDrawingKioskUi';
 
 import type { PartMeasurementProcessGroup } from '../types';
 
@@ -72,7 +69,7 @@ export function InspectionDrawingLibraryFilterBar({
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5 rounded border border-white/10 bg-slate-900/60 px-2 py-1.5">
-      <div className="w-[7.8rem] max-w-full shrink-0">
+      <div className="w-[11rem] max-w-full shrink-0">
         <Input
           value={fhincd}
           onChange={(e) => onFhincdChange(e.target.value)}
@@ -82,7 +79,7 @@ export function InspectionDrawingLibraryFilterBar({
         />
       </div>
 
-      <div className="w-[8.8rem] max-w-full shrink-0">
+      <div className="w-[13rem] max-w-full shrink-0">
         <Input
           value={visualName}
           onChange={(e) => onVisualNameChange(e.target.value)}
@@ -92,7 +89,7 @@ export function InspectionDrawingLibraryFilterBar({
         />
       </div>
 
-      <div className={clsx('w-[8.8rem] max-w-full shrink-0', inspectionDrawingBoundedSelectShellClassName)}>
+      <div className="w-[19rem] max-w-full shrink-0 overflow-hidden rounded-md">
         <select
           value={resourceCd}
           aria-label="資源CD"

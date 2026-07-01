@@ -189,7 +189,14 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
 /** 開発プレビュー — 資源表示名（resources API の resourceNameMap 形式） */
 export const INSPECTION_DRAWING_PREVIEW_RESOURCE_NAME_MAP: Record<string, string[]> = {
   R001: ['FJV50/80'],
-  R002: ['研削ライン2']
+  R002: ['研削ライン2'],
+  R003: ['切削ライン3'],
+  R004: ['MC-7161A'],
+  R005: ['MC-7161B'],
+  R006: ['MC-7161C'],
+  '25M': ['25M'],
+  '033': ['33号機'],
+  '589': ['589号機']
 };
 
 function previewVisual(id: string, name: string, updatedAt: string) {
@@ -203,18 +210,28 @@ function previewVisual(id: string, name: string, updatedAt: string) {
   };
 }
 
-/** 開発プレビュー — 図面ライブラリ6列グリッド確認用（10件） */
+/** 開発プレビュー — 図面ライブラリ表の縦スクロール確認用 */
 export const INSPECTION_DRAWING_PREVIEW_VISUAL_LIBRARY: ReturnType<typeof previewVisual>[] = [
-  previewVisual('preview-visual-1', 'サンプル図面 A', previewVisualUpdatedAt),
-  previewVisual('preview-visual-2', 'サンプル図面 B', '2026-05-28T14:00:00.000Z'),
-  previewVisual('preview-visual-3', 'シャフト断面図', '2026-05-27T09:15:00.000Z'),
-  previewVisual('preview-visual-4', 'フランジ面取り', '2026-05-26T11:30:00.000Z'),
-  previewVisual('preview-visual-5', '内径研削図', '2026-05-25T16:45:00.000Z'),
-  previewVisual('preview-visual-6', '外径仕上げ', '2026-05-24T08:00:00.000Z'),
-  previewVisual('preview-visual-7', '穴位置検査', '2026-05-23T13:20:00.000Z'),
-  previewVisual('preview-visual-8', '面粗度確認', '2026-05-22T10:10:00.000Z'),
-  previewVisual('preview-visual-9', 'キー溝加工', '2026-05-21T15:55:00.000Z'),
-  previewVisual('preview-visual-10', 'ねじ切り部', '2026-05-20T07:40:00.000Z')
+  previewVisual('preview-visual-1', '7161テーブル', previewVisualUpdatedAt),
+  previewVisual('preview-visual-2', '7161固定金具', '2026-05-28T14:00:00.000Z'),
+  previewVisual('preview-visual-3', '7161固定板', '2026-05-27T09:15:00.000Z'),
+  previewVisual('preview-visual-4', '7161モータブラケット', '2026-05-26T11:30:00.000Z'),
+  previewVisual('preview-visual-5', '7161マニホールド', '2026-05-25T16:45:00.000Z'),
+  previewVisual('preview-visual-6', '7161ベアリング押エ', '2026-05-24T08:00:00.000Z'),
+  previewVisual('preview-visual-7', '7161ベアリングサポート', '2026-05-23T13:20:00.000Z'),
+  previewVisual('preview-visual-8', '7161ナットホルダー', '2026-05-22T10:10:00.000Z'),
+  previewVisual('preview-visual-9', '7161ストッパー（2）', '2026-05-21T15:55:00.000Z'),
+  previewVisual('preview-visual-10', '7161サドル', '2026-05-20T07:40:00.000Z'),
+  previewVisual('preview-visual-11', '7161工具受けプレート', '2026-05-19T16:40:00.000Z'),
+  previewVisual('preview-visual-12', '7161カバー支柱', '2026-05-18T12:30:00.000Z'),
+  previewVisual('preview-visual-13', '7161長尺ガイドプレート', '2026-05-17T10:20:00.000Z'),
+  previewVisual('preview-visual-14', '7161クランプベース', '2026-05-16T09:10:00.000Z'),
+  previewVisual('preview-visual-15', '7161位置決めピン受け', '2026-05-15T15:50:00.000Z'),
+  previewVisual('preview-visual-16', '7161リニアガイド支え', '2026-05-14T14:25:00.000Z'),
+  previewVisual('preview-visual-17', '7161センサーブラケット', '2026-05-13T11:15:00.000Z'),
+  previewVisual('preview-visual-18', '7161カップリングホルダー', '2026-05-12T08:45:00.000Z'),
+  previewVisual('preview-visual-19', '7161スライドブロック', '2026-05-11T17:05:00.000Z'),
+  previewVisual('preview-visual-20', '7161調整板', '2026-05-10T07:35:00.000Z')
 ];
 
 function previewLibraryTemplate(
@@ -243,7 +260,7 @@ function previewLibraryTemplate(
   };
 }
 
-/** 開発プレビュー — テンプレ3〜4列グリッド確認用（12件） */
+/** 開発プレビュー — テンプレ2表・1.5行レイアウト確認用 */
 export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATE_GRID: KioskInspectionDrawingTemplateSummaryDto[] =
   [
     previewLibraryTemplate({
@@ -254,7 +271,18 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATE_GRID: KioskInspectionDr
       name: '検査図面プレビュー（有効）',
       version: 3,
       isActive: true,
-      itemCount: 12
+      itemCount: 12,
+      visualTemplate: previewVisual('preview-visual-1', '7161テーブル', previewVisualUpdatedAt),
+      siblingGroupId: 'preview-grid-sibling-01',
+      siblingGroup: {
+        id: 'preview-grid-sibling-01',
+        displayName: '7161テーブル DEMO-12345',
+        fhincd: 'DEMO-12345',
+        processGroup: 'cutting',
+        activeResourceCds: ['R001', 'R002', 'R003', 'R004', 'R005', 'R006'],
+        createdAt: previewVisualUpdatedAt,
+        updatedAt: previewVisualUpdatedAt
+      }
     }),
     previewLibraryTemplate({
       id: 'preview-tpl-02',
@@ -267,7 +295,7 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATE_GRID: KioskInspectionDr
       itemCount: 8,
       visualTemplate: {
         id: 'preview-visual-2',
-        name: 'サンプル図面 B',
+        name: '7161固定金具',
         drawingImageRelativePath: '/preview/sample-b.svg',
         isActive: true,
         createdAt: previewVisualUpdatedAt,
@@ -373,5 +401,169 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATE_GRID: KioskInspectionDr
       version: 1,
       isActive: false,
       itemCount: 6
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-13',
+      fhincd: 'MD004293-01',
+      resourceCd: '021',
+      processGroup: 'cutting',
+      name: '7161足（1）',
+      version: 1,
+      isActive: true,
+      itemCount: 14,
+      visualTemplate: previewVisual('preview-visual-3', '7161固定板', '2026-05-27T09:15:00.000Z')
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-14',
+      fhincd: 'MD100465-02',
+      resourceCd: '033',
+      processGroup: 'cutting',
+      name: '7161サドル',
+      version: 1,
+      isActive: true,
+      itemCount: 11,
+      visualTemplate: previewVisual('preview-visual-10', '7161サドル', '2026-05-20T07:40:00.000Z'),
+      siblingGroupId: 'preview-grid-sibling-02',
+      siblingGroup: {
+        id: 'preview-grid-sibling-02',
+        displayName: '7161サドル MD100465-02',
+        fhincd: 'MD100465-02',
+        processGroup: 'cutting',
+        activeResourceCds: ['033', '589', '25M'],
+        createdAt: '2026-05-20T07:40:00.000Z',
+        updatedAt: '2026-05-20T07:40:00.000Z'
+      }
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-15',
+      fhincd: 'SD000107-01',
+      resourceCd: '25M',
+      processGroup: 'cutting',
+      name: 'test01',
+      version: 1,
+      isActive: true,
+      itemCount: 1,
+      visualTemplate: previewVisual('preview-visual-11', '7161工具受けプレート', '2026-05-19T16:40:00.000Z')
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-16',
+      fhincd: 'ABCD123456-1',
+      resourceCd: 'R003',
+      processGroup: 'cutting',
+      name: '7161長尺ガイドプレート',
+      version: 2,
+      isActive: true,
+      itemCount: 18,
+      visualTemplate: previewVisual('preview-visual-13', '7161長尺ガイドプレート', '2026-05-17T10:20:00.000Z')
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-17',
+      fhincd: 'ABCD123456-2',
+      resourceCd: 'R004',
+      processGroup: 'cutting',
+      name: '7161クランプベース',
+      version: 1,
+      isActive: true,
+      itemCount: 9,
+      visualTemplate: previewVisual('preview-visual-14', '7161クランプベース', '2026-05-16T09:10:00.000Z')
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-18',
+      fhincd: 'FGHI987654-1',
+      resourceCd: 'R005',
+      processGroup: 'grinding',
+      name: '7161位置決めピン受け',
+      version: 3,
+      isActive: true,
+      itemCount: 13,
+      visualTemplate: previewVisual('preview-visual-15', '7161位置決めピン受け', '2026-05-15T15:50:00.000Z')
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-19',
+      fhincd: 'FGHI987654-2',
+      resourceCd: 'R006',
+      processGroup: 'grinding',
+      name: '7161リニアガイド支え',
+      version: 2,
+      isActive: true,
+      itemCount: 16,
+      visualTemplate: previewVisual('preview-visual-16', '7161リニアガイド支え', '2026-05-14T14:25:00.000Z')
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-20',
+      fhincd: 'JKL000112-1',
+      resourceCd: 'R001',
+      processGroup: 'cutting',
+      name: '7161センサーブラケット',
+      version: 1,
+      isActive: true,
+      itemCount: 7,
+      visualTemplate: previewVisual('preview-visual-17', '7161センサーブラケット', '2026-05-13T11:15:00.000Z')
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-21',
+      fhincd: 'JKL000112-2',
+      resourceCd: 'R002',
+      processGroup: 'cutting',
+      name: '7161カップリングホルダー',
+      version: 1,
+      isActive: true,
+      itemCount: 10,
+      visualTemplate: previewVisual('preview-visual-18', '7161カップリングホルダー', '2026-05-12T08:45:00.000Z')
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-22',
+      fhincd: 'MNO000334-1',
+      resourceCd: 'R003',
+      processGroup: 'grinding',
+      name: '7161スライドブロック',
+      version: 4,
+      isActive: true,
+      itemCount: 12,
+      visualTemplate: previewVisual('preview-visual-19', '7161スライドブロック', '2026-05-11T17:05:00.000Z')
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-23',
+      fhincd: 'MNO000334-2',
+      resourceCd: 'R004',
+      processGroup: 'grinding',
+      name: '7161調整板',
+      version: 2,
+      isActive: true,
+      itemCount: 8,
+      visualTemplate: previewVisual('preview-visual-20', '7161調整板', '2026-05-10T07:35:00.000Z')
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-24',
+      fhincd: 'PQR000556-1',
+      resourceCd: 'R005',
+      processGroup: 'cutting',
+      name: '7161モータブラケット',
+      version: 1,
+      isActive: true,
+      itemCount: 17,
+      visualTemplate: previewVisual('preview-visual-4', '7161モータブラケット', '2026-05-26T11:30:00.000Z')
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-25',
+      fhincd: 'PQR000556-2',
+      resourceCd: 'R006',
+      processGroup: 'cutting',
+      name: '7161マニホールド',
+      version: 1,
+      isActive: true,
+      itemCount: 19,
+      visualTemplate: previewVisual('preview-visual-5', '7161マニホールド', '2026-05-25T16:45:00.000Z')
+    }),
+    previewLibraryTemplate({
+      id: 'preview-tpl-26',
+      fhincd: 'UVW000778-1',
+      resourceCd: '589',
+      processGroup: 'grinding',
+      name: '7161ベアリングサポート',
+      version: 2,
+      isActive: true,
+      itemCount: 6,
+      visualTemplate: previewVisual('preview-visual-7', '7161ベアリングサポート', '2026-05-23T13:20:00.000Z')
     })
   ];

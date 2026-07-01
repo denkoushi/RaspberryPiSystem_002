@@ -101,6 +101,10 @@ Maintained in accordance with `.agent/PLANS.md`.
   - UI: 図面ライブラリは `図面名 / 更新 / 操作`、テンプレートは `品番 / 図面名 / 資源CD / 工程 / 点 / 更新 / 操作`。行内操作は `新規` / `名称` / `雛形` の短縮ラベルにし、意味は `title` で補足。
   - 検証: Web targeted tests **11 PASS**、`pnpm --filter @raspi-system/web build` PASS、`pnpm --filter @raspi-system/web lint` PASS、Mac DEV `/dev/kiosk-inspection-drawing-library` 1280px screenshot OK、GitHub Actions `28520681342` success。
   - 本番: 全台デプロイ `20260701-223712-23737` success / failed=0、Pi5 HEAD `2a6db097`、Phase12 実機検証 PASS 45 / WARN 0 / FAIL 0。
+- [x] (2026-07-02) **検査図面一覧 2表・1.5行密度改善** — ブランチ `fix/inspection-drawing-two-table-density`（Web-only）
+  - 仕様: 図面ライブラリ表は縦方向に画面下まで伸ばし、テンプレート一覧は単一横長表をやめて左右2表に分割。各テンプレートは上段 `品番 / 図面名 / 工程 / 点 / 更新`、下段 `資源CD` chip + `編集 / 帳票 / 雛形 / 履歴` の1.5行表示にする。
+  - UI: 品番列は本体最大10桁 + 追番を想定して幅を確保。複数資源CDは最大4 chip + `+N` 省略。下段4ボタンは更新時刻の右端に揃え、図面ライブラリ側は図面名列を優先する。
+  - 検証: Web targeted tests **12 PASS**、`pnpm --filter @raspi-system/web build` PASS、`pnpm --filter @raspi-system/web lint` PASS、Mac DEV `/dev/kiosk-inspection-drawing-library` 2048x1108 で2表・縦伸長・右端揃え・横 overflow なしを確認。
 - [ ] (2026-07-01) **残り手動確認** — 本番DBを書き換える一括作成/まとめて改版/資源追加は実機で未実行。次回は検証用データまたは明示許可のある品番・資源CDで、作成→まとめて改版→個別分離→資源追加を画面操作で確認する。
 
 ## Surprises & Discoveries
@@ -267,6 +271,10 @@ Maintained in accordance with `.agent/PLANS.md`.
   Rationale: 図面名・品番・資源CD・更新日時を比較して探す画面であり、カード余白と大きいボタンが一覧性を下げていたため
   Date/Author: 2026-07-01 / agent
 
+- Decision: 検査図面テンプレート一覧は、広いキオスク幅では **左右2表 + 1.5行** で表示する。単一横長表にはしない
+  Rationale: 今後テンプレート件数が増える前提では、横長1表より左右2表の方が1画面同時表示件数を増やせる。資源CDと操作ボタンを下段へ逃がすことで、品番・図面名・更新日時の見切れも抑えられるため
+  Date/Author: 2026-07-02 / agent
+
 ## Outcomes & Retrospective
 
 - **評価用作成（互換）**: `/kiosk/part-measurement/inspection/create` は残置。評価用 API は UI 主導線から外した。
@@ -373,4 +381,6 @@ Maintained in accordance with `.agent/PLANS.md`.
 - 自動（2026-07-01・CI 表形式化）: GitHub Actions `28520681342` success（lint/build/unit, api-db-and-infra, security-docker, e2e-smoke, e2e-tests）
 - 自動（2026-07-01・全台実機 表形式化）: `./scripts/update-all-clients.sh fix/inspection-drawing-table-panes infrastructure/ansible/inventory.yml --detach --follow` → Run `20260701-223712-23737` success / failed=0、Pi5 HEAD `2a6db097`
 - 自動（2026-07-01・Phase12 表形式化）: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**
+- 自動（2026-07-02・2表/1.5行密度改善）: `pnpm --filter @raspi-system/web test -- InspectionDrawingLibraryTemplateTable.test.tsx KioskInspectionDrawingVisualLibrarySection.test.tsx InspectionDrawingLibraryFilterBar.test.tsx useInspectionDrawingTemplateLibrary.test.ts` → **12 PASS**、`pnpm --filter @raspi-system/web build` PASS、`pnpm --filter @raspi-system/web lint` PASS
+- 手動（2026-07-02・Mac DEV 2表/1.5行密度改善）: `/dev/kiosk-inspection-drawing-library` を 2048x1108 で確認。図面ライブラリ表は縦に伸長、テンプレートは左右2表、資源CDと4操作ボタンは下段、ボタン右端は更新時刻の右端に揃う。本文 `scrollWidth` は viewport 内で横 overflow なし。React Router future warning と WebRTC signaling error は既存DEVログ。
 - 手動（残り）: 本番DBを書き換える一括作成・まとめて改版・個別分離・資源追加は未確認。次回は検証用データを決めてから画面操作で確認する。

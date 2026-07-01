@@ -130,7 +130,7 @@ export function KioskInspectionDrawingLibraryPage() {
         onSuccess={handleVisualUploadSuccess}
       />
 
-      <div className="flex min-h-0 flex-1 flex-wrap items-start gap-2 overflow-auto">
+      <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-2 overflow-auto 2xl:grid-cols-[31rem_minmax(0,1fr)] 2xl:overflow-hidden">
         <KioskInspectionDrawingVisualLibrarySection
           refreshToken={visualLibraryRefreshToken}
           onRegisterClick={() => setVisualUploadOpen(true)}
@@ -138,7 +138,7 @@ export function KioskInspectionDrawingLibraryPage() {
         />
 
         <section
-          className="flex w-[49rem] max-w-full shrink-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-950/45 p-1.5"
+          className="flex min-h-0 min-w-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-950/45 p-1.5"
           aria-labelledby="inspection-drawing-template-pane-heading"
         >
           <div className="flex flex-wrap items-center justify-between gap-2 px-1">
@@ -184,7 +184,7 @@ export function KioskInspectionDrawingLibraryPage() {
             }}
           />
 
-          <div className="max-h-[calc(100dvh-12rem)] overflow-auto rounded bg-slate-950/35 p-1">
+          <div className="min-h-0 flex-1 rounded bg-slate-950/35 p-1">
             <InspectionDrawingLibraryTemplateTable
               templates={visibleTemplateRows}
               resourceNameMap={resourceNameMap}
