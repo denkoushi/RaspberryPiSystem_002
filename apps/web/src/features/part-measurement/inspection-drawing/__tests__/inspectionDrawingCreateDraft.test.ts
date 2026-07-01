@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   inspectionDrawingCreateKeyCollisionMessage,
   resolveInspectionDrawingCreateKeyCollision,
+  resolveInspectionDrawingCreateKeyCollisionForResources,
+  resolveInspectionDrawingCreateSaveBlockReason,
+  suggestInspectionDrawingTemplateName,
   templateItemsToDraftDrawingPoints,
   templateToCreateDraft
 } from '../inspectionDrawingCreateDraft';
@@ -32,6 +35,8 @@ function buildTemplate(overrides: Partial<PartMeasurementTemplateDto> = {}): Par
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z'
     },
+    siblingGroupId: null,
+    siblingGroup: null,
     items: [
       {
         id: '33333333-3333-4333-8333-333333333333',
@@ -114,5 +119,56 @@ describe('inspectionDrawingCreateDraft', () => {
       activeExists: true
     });
     expect(reason).toBe('active_exists');
+  });
+
+  it('suggests template name from visual library display name and fhincd', () => {
+    expect(
+      suggestInspectionDrawingTemplateName({
+        visualTemplateName: '7161テーブル',
+        fhincd: 'ABC-123'
+      })
+    ).toBe('7161テーブル ABC-123');
+  });
+
+  it('detects collisions across multiple selected resources', () => {
+    const reason = resolveInspectionDrawingCreateKeyCollisionForResources({
+      fhincd: 'ABC',
+      processGroup: 'cutting',
+      resourceCds: ['031', '033', '035'],
+      sourceDraft: null,
+      activeExistsByResourceCd: { '033': true }
+    });
+    expect(reason).toBe('active_exists');
+  });
+
+  it('keeps save disabled until required fields are ready', () => {
+    expect(
+      resolveInspectionDrawingCreateSaveBlockReason({
+        contentReadOnly: false,
+        busy: false,
+        fhincd: 'ABC',
+        resourceCds: ['033'],
+        hasDrawing: true,
+        pointCount: 1,
+        pointsValid: true,
+        selfInspectionValid: true,
+        keyCollision: null,
+        saveBlockedByPreview: false
+      })
+    ).toBeNull();
+    expect(
+      resolveInspectionDrawingCreateSaveBlockReason({
+        contentReadOnly: false,
+        busy: false,
+        fhincd: 'ABC',
+        resourceCds: [],
+        hasDrawing: true,
+        pointCount: 1,
+        pointsValid: true,
+        selfInspectionValid: true,
+        keyCollision: null,
+        saveBlockedByPreview: false
+      })
+    ).toBe('missing_resource');
   });
 });

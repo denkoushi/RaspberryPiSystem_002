@@ -54,6 +54,16 @@ export type PartMeasurementTemplateMatchKind =
   | 'two_key_fhincd_resource'
   | 'one_key_fhinmei';
 
+export type PartMeasurementTemplateSiblingGroupDto = {
+  id: string;
+  displayName: string;
+  fhincd: string;
+  processGroup: PartMeasurementProcessGroup | null;
+  activeResourceCds: string[];
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
 /** キオスク検査図面一覧（要約のみ。測定点詳細は含まない） */
 export type KioskInspectionDrawingTemplateSummaryDto = {
   id: string;
@@ -69,6 +79,8 @@ export type KioskInspectionDrawingTemplateSummaryDto = {
   selfInspectionSampleSize: number | null;
   visualTemplateId: string | null;
   visualTemplate: PartMeasurementVisualTemplateDto | null;
+  siblingGroupId: string | null;
+  siblingGroup: PartMeasurementTemplateSiblingGroupDto | null;
   itemCount: number;
 };
 
@@ -89,6 +101,8 @@ export type PartMeasurementTemplateDto = {
   selfInspectionSampleSize: number | null;
   visualTemplateId: string | null;
   visualTemplate: PartMeasurementVisualTemplateDto | null;
+  siblingGroupId: string | null;
+  siblingGroup: PartMeasurementTemplateSiblingGroupDto | null;
   items: PartMeasurementTemplateItemDto[];
 };
 

@@ -26,6 +26,7 @@ async function cleanPartMeasurementTables() {
   await prisma.partMeasurementSheet.deleteMany({});
   await prisma.partMeasurementSession.deleteMany({});
   await prisma.partMeasurementTemplate.deleteMany({});
+  await prisma.partMeasurementTemplateSiblingGroup.deleteMany({});
   await prisma.partMeasurementVisualTemplate.deleteMany({});
 }
 
@@ -174,6 +175,23 @@ function buildMultipartPng(name: string, png: Buffer): { body: Buffer; contentTy
 }
 
 const MIN_PDF = buildMinimalValidPdfBuffer();
+
+function validInspectionDrawingItems(label = 'L1') {
+  return [
+    {
+      sortOrder: 0,
+      datumSurface: 'A',
+      measurementPoint: 'B',
+      measurementLabel: label,
+      displayMarker: '1',
+      markerXRatio: 0.25,
+      markerYRatio: 0.75,
+      nominalValue: 20,
+      lowerLimit: 19.98,
+      upperLimit: 20.02
+    }
+  ];
+}
 
 function buildMultipartDrawingFile(
   name: string,
@@ -583,6 +601,188 @@ describe('part-measurement templates API', () => {
       }
     });
     expect(inactiveRevise.statusCode).toBe(409);
+  });
+
+  it('creates, revises, detaches, and extends inspection drawing sibling groups', async () => {
+    const upload = buildMultipartPng('7161テーブル', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': upload.contentType },
+      payload: upload.body
+    });
+    expect(up.statusCode).toBe(200);
+    const visualTemplateId = up.json().visualTemplate.id as string;
+    const fhincd = `GROUP-${Date.now()}`;
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/inspection-drawing/template-groups',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCds: ['RES-G3', 'RES-G1', 'RES-G2'],
+        name: `7161テーブル ${fhincd}`,
+        visualTemplateId,
+        selfInspectionMode: 'fixed_count',
+        selfInspectionFixedCount: 2,
+        items: validInspectionDrawingItems()
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+    const created = createRes.json();
+    expect(created.group.displayName).toBe(`7161テーブル ${fhincd}`);
+    expect(created.group.activeResourceCds).toEqual(['RES-G1', 'RES-G2', 'RES-G3']);
+    expect(created.templates).toHaveLength(3);
+    const siblingGroupId = created.group.id as string;
+    expect(new Set(created.templates.map((row: { siblingGroupId: string }) => row.siblingGroupId))).toEqual(
+      new Set([siblingGroupId])
+    );
+
+    const activeAfterCreate = await prisma.partMeasurementTemplate.findMany({
+      where: { fhincd, isActive: true },
+      orderBy: { resourceCd: 'asc' }
+    });
+    expect(activeAfterCreate.map((row) => `${row.resourceCd}:v${row.version}`)).toEqual([
+      'RES-G1:v1',
+      'RES-G2:v1',
+      'RES-G3:v1'
+    ]);
+
+    const reviseRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/inspection-drawing/template-groups/${siblingGroupId}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: `7161テーブル ${fhincd} 改`,
+        visualTemplateId,
+        selfInspectionMode: 'fixed_count',
+        selfInspectionFixedCount: 3,
+        items: validInspectionDrawingItems('L2')
+      }
+    });
+    expect(reviseRes.statusCode).toBe(200);
+    expect(reviseRes.json().templates.map((row: { version: number }) => row.version)).toEqual([2, 2, 2]);
+
+    const groupMemberToDetach = reviseRes
+      .json()
+      .templates.find((row: { resourceCd: string }) => row.resourceCd === 'RES-G2') as { id: string };
+    const detachRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/inspection-drawing/templates/${groupMemberToDetach.id}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: `7161テーブル ${fhincd} 個別`,
+        visualTemplateId,
+        detachFromSiblingGroup: true,
+        selfInspectionMode: 'fixed_count',
+        selfInspectionFixedCount: 4,
+        items: validInspectionDrawingItems('L3')
+      }
+    });
+    expect(detachRes.statusCode).toBe(200);
+    expect(detachRes.json().template.resourceCd).toBe('RES-G2');
+    expect(detachRes.json().template.siblingGroupId).toBeNull();
+
+    const addRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/inspection-drawing/template-groups/${siblingGroupId}/resources`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        resourceCds: ['RES-G1', 'RES-G4'],
+        sourceTemplateId: reviseRes.json().templates[0].id
+      }
+    });
+    expect(addRes.statusCode).toBe(200);
+    expect(addRes.json().group.activeResourceCds).toEqual(['RES-G1', 'RES-G3', 'RES-G4']);
+
+    const reviseAfterDetach = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/inspection-drawing/template-groups/${siblingGroupId}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: `7161テーブル ${fhincd} 改2`,
+        visualTemplateId,
+        selfInspectionMode: 'fixed_count',
+        selfInspectionFixedCount: 5,
+        items: validInspectionDrawingItems('L4')
+      }
+    });
+    expect(reviseAfterDetach.statusCode).toBe(200);
+    expect(reviseAfterDetach.json().group.activeResourceCds).toEqual(['RES-G1', 'RES-G3', 'RES-G4']);
+
+    const activeAfterDetach = await prisma.partMeasurementTemplate.findMany({
+      where: { fhincd, isActive: true },
+      orderBy: { resourceCd: 'asc' }
+    });
+    expect(activeAfterDetach.map((row) => `${row.resourceCd}:v${row.version}:${row.siblingGroupId ?? 'none'}`)).toEqual([
+      `RES-G1:v3:${siblingGroupId}`,
+      'RES-G2:v3:none',
+      `RES-G3:v3:${siblingGroupId}`,
+      `RES-G4:v2:${siblingGroupId}`
+    ]);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/templates?fhincd=${encodeURIComponent(fhincd)}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(listRes.statusCode).toBe(200);
+    const groupRows = (listRes.json().templates as Array<{ siblingGroupId: string | null; siblingGroup?: { activeResourceCds: string[] } | null }>).filter(
+      (row) => row.siblingGroupId === siblingGroupId
+    );
+    expect(groupRows.length).toBeGreaterThan(0);
+    expect(groupRows[0]?.siblingGroup?.activeResourceCds).toEqual(['RES-G1', 'RES-G3', 'RES-G4']);
+  });
+
+  it('rolls back inspection drawing sibling group create when one resource collides', async () => {
+    const upload = buildMultipartPng('conflict drawing', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': upload.contentType },
+      payload: upload.body
+    });
+    expect(up.statusCode).toBe(200);
+    const visualTemplateId = up.json().visualTemplate.id as string;
+    const fhincd = `GROUP-CONFLICT-${Date.now()}`;
+
+    const existing = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-C2',
+        name: 'existing',
+        visualTemplateId,
+        items: validInspectionDrawingItems()
+      }
+    });
+    expect(existing.statusCode).toBe(200);
+
+    const conflict = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/inspection-drawing/template-groups',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCds: ['RES-C1', 'RES-C2', 'RES-C3'],
+        name: 'should rollback',
+        visualTemplateId,
+        items: validInspectionDrawingItems()
+      }
+    });
+    expect(conflict.statusCode).toBe(409);
+    const rows = await prisma.partMeasurementTemplate.findMany({
+      where: { fhincd },
+      orderBy: { resourceCd: 'asc' }
+    });
+    expect(rows.map((row) => row.resourceCd)).toEqual(['RES-C2']);
+    expect(await prisma.partMeasurementTemplateSiblingGroup.count()).toBe(0);
   });
 
   it('inspection-drawing evaluation template save does not deactivate production THREE_KEY template', async () => {

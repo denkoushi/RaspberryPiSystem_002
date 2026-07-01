@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
+  addKioskInspectionDrawingTemplateGroupResources,
   activatePartMeasurementTemplate,
+  createKioskInspectionDrawingTemplateGroup,
   createPartMeasurementTemplate,
   createPartMeasurementVisualTemplate,
   deleteUnusedPartMeasurementVisualTemplate,
@@ -10,7 +12,8 @@ import {
   getResolvedClientKey,
   existsActivePartMeasurementTemplate,
   listPartMeasurementVisualTemplates,
-  reviseKioskInspectionDrawingTemplate
+  reviseKioskInspectionDrawingTemplate,
+  reviseKioskInspectionDrawingTemplateGroup
 } from '../../api/client';
 import { useKioskProductionScheduleResources } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
@@ -40,9 +43,13 @@ import {
   inspectionDrawingHasImageSource,
   parseInspectionDrawingSourceTemplateIdFromSearch,
   parseInspectionDrawingVisualTemplateIdFromSearch,
+  normalizeUniqueInspectionDrawingResourceCds,
+  resolveInspectionDrawingCreateKeyCollisionForResources,
+  resolveInspectionDrawingCreateSaveBlockReason,
+  suggestInspectionDrawingTemplateName,
   templateToCreateDraft,
-  resolveInspectionDrawingCreateKeyCollision
 } from '../../features/part-measurement/inspection-drawing';
+import { InspectionDrawingResourceCdMultiSelect } from '../../features/part-measurement/inspection-drawing/InspectionDrawingResourceCdMultiSelect';
 import { INSPECTION_DRAWING_VISUAL_PICKER_LIMIT } from '../../features/part-measurement/inspection-drawing/inspectionDrawingVisualLibraryConstants';
 import { resolveVisualTemplateById } from '../../features/part-measurement/inspection-drawing/inspectionDrawingVisualLibraryHelpers';
 import {
@@ -93,7 +100,9 @@ export function KioskInspectionDrawingCreatePage() {
   const [processGroup, setProcessGroup] = useState<PartMeasurementProcessGroup>('cutting');
   const [fhincd, setFhincd] = useState('');
   const [resourceCd, setResourceCd] = useState('');
+  const [resourceCds, setResourceCds] = useState<string[]>([]);
   const [templateName, setTemplateName] = useState('');
+  const [templateNameAutoMode, setTemplateNameAutoMode] = useState(true);
   const [serverDrawingPath, setServerDrawingPath] = useState<string | null>(null);
   const [points, setPoints] = useState<InspectionDrawingPoint[]>([]);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
@@ -110,7 +119,10 @@ export function KioskInspectionDrawingCreatePage() {
     useState<InspectionDrawingSourceTemplateDraft | null>(null);
   const [visuals, setVisuals] = useState<PartMeasurementVisualTemplateDto[]>([]);
   const [visualsLoading, setVisualsLoading] = useState(false);
-  const [activeKeyExists, setActiveKeyExists] = useState(false);
+  const [activeKeyExistsByResourceCd, setActiveKeyExistsByResourceCd] = useState<Record<string, boolean>>({});
+  const [groupSaveMode, setGroupSaveMode] = useState<'group' | 'single'>('single');
+  const [resourceAddCds, setResourceAddCds] = useState<string[]>([]);
+  const [resourceAddBusy, setResourceAddBusy] = useState(false);
   const { zoom, zoomIn, zoomOut, fitToView, resetZoom, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
 
   const {
@@ -140,8 +152,14 @@ export function KioskInspectionDrawingCreatePage() {
   const resourceOptions = useMemo(() => {
     const unique = new Set(resourcesQuery.data?.resources ?? []);
     if (resourceCd.trim()) unique.add(resourceCd.trim());
+    for (const cd of resourceCds) {
+      if (cd.trim()) unique.add(cd.trim());
+    }
+    for (const cd of resourceAddCds) {
+      if (cd.trim()) unique.add(cd.trim());
+    }
     return [...unique].sort((a, b) => a.localeCompare(b, 'ja'));
-  }, [resourceCd, resourcesQuery.data?.resources]);
+  }, [resourceAddCds, resourceCd, resourceCds, resourcesQuery.data?.resources]);
   const resourceSelectOptions = useMemo(
     () =>
       resourceOptions.map((cd) => ({
@@ -151,19 +169,33 @@ export function KioskInspectionDrawingCreatePage() {
     [resourceNameMap, resourceOptions]
   );
 
+  const selectedResourceCds = useMemo(
+    () =>
+      isEditing
+        ? normalizeUniqueInspectionDrawingResourceCds(resourceCd.trim() ? [resourceCd] : [])
+        : normalizeUniqueInspectionDrawingResourceCds(resourceCds),
+    [isEditing, resourceCd, resourceCds]
+  );
+
   const keyCollision = useMemo(() => {
     if (isEditing) return null;
     const f = fhincd.trim();
-    const r = resourceCd.trim();
-    if (!f || !r) return null;
-    return resolveInspectionDrawingCreateKeyCollision({
+    if (!f || selectedResourceCds.length === 0) return null;
+    return resolveInspectionDrawingCreateKeyCollisionForResources({
       fhincd: f,
       processGroup,
-      resourceCd: r,
+      resourceCds: selectedResourceCds,
       sourceDraft: sourceTemplateDraft,
-      activeExists: activeKeyExists
+      activeExistsByResourceCd: activeKeyExistsByResourceCd
     });
-  }, [activeKeyExists, fhincd, isEditing, processGroup, resourceCd, sourceTemplateDraft]);
+  }, [
+    activeKeyExistsByResourceCd,
+    fhincd,
+    isEditing,
+    processGroup,
+    selectedResourceCds,
+    sourceTemplateDraft
+  ]);
 
   const keyCollisionMessage = keyCollision
     ? inspectionDrawingCreateKeyCollisionMessage(keyCollision)
@@ -198,17 +230,82 @@ export function KioskInspectionDrawingCreatePage() {
       !hasLocalRenderablePreview ||
       (hasPendingLocalSelection && !saveFile));
 
+  const suggestedTemplateName = useMemo(
+    () =>
+      suggestInspectionDrawingTemplateName({
+        visualTemplateName: selectedVisualLabel,
+        fhincd
+      }),
+    [fhincd, selectedVisualLabel]
+  );
+
+  const hasSaveReadyDrawing =
+    visualSource === 'pickExisting'
+      ? Boolean(selectedVisualTemplateId?.trim())
+      : visualSource === 'upload'
+        ? Boolean(saveFile && hasLocalRenderablePreview && !previewError && !previewResolving)
+        : Boolean(isEditing && template?.visualTemplateId?.trim());
+
+  const pointsValid = useMemo(
+    () =>
+      points.length > 0 &&
+      points.every((pt) => pt.name.trim().length > 0 && !('error' in toleranceBoundsFromPoint(pt))),
+    [points]
+  );
+
+  const selfInspectionPayloadPreview = useMemo(
+    () => buildSelfInspectionTemplateApiBody(selfInspectionMode, selfInspectionFixedCount),
+    [selfInspectionFixedCount, selfInspectionMode]
+  );
+
+  const saveBlockReason = resolveInspectionDrawingCreateSaveBlockReason({
+    contentReadOnly,
+    busy,
+    fhincd,
+    resourceCds: selectedResourceCds,
+    hasDrawing: hasSaveReadyDrawing,
+    pointCount: points.length,
+    pointsValid,
+    selfInspectionValid: !('error' in selfInspectionPayloadPreview),
+    keyCollision,
+    saveBlockedByPreview
+  });
+
   const drawingReplacePendingRef = useRef(false);
   const prevSourceTemplateIdRef = useRef<string | null>(null);
   const prevVisualTemplateIdFromSearchRef = useRef<string | null>(null);
   const visualSearchRequestSeqRef = useRef(0);
 
+  const handleTemplateNameChange = useCallback((value: string) => {
+    setTemplateName(value);
+    if (value.trim().length === 0) {
+      setTemplateNameAutoMode(true);
+    } else {
+      setTemplateNameAutoMode(false);
+    }
+  }, []);
+
+  const handleResourceCdsChange = useCallback((values: string[]) => {
+    const normalized = normalizeUniqueInspectionDrawingResourceCds(values);
+    setResourceCds(normalized);
+    setResourceCd(normalized[0] ?? '');
+  }, []);
+
+  useEffect(() => {
+    if (isEditing || !templateNameAutoMode) return;
+    setTemplateName(suggestedTemplateName);
+  }, [isEditing, suggestedTemplateName, templateNameAutoMode]);
+
   const applyLoadedTemplate = useCallback(
     (loaded: PartMeasurementTemplateDto) => {
       setTemplate(loaded);
       setTemplateName(loaded.name);
+      setTemplateNameAutoMode(false);
       setFhincd(loaded.fhincd);
       setResourceCd(loaded.resourceCd);
+      setResourceCds([loaded.resourceCd]);
+      setGroupSaveMode(loaded.siblingGroupId ? 'group' : 'single');
+      setResourceAddCds([]);
       setProcessGroup(loaded.processGroup === 'grinding' ? 'grinding' : 'cutting');
       setPoints(loaded.items.map((item) => templateItemToDrawingPoint(item)));
       setSelectedPointId(loaded.items[0]?.id ?? null);
@@ -238,8 +335,12 @@ export function KioskInspectionDrawingCreatePage() {
   const resetBlankCreateForm = useCallback(() => {
     setSourceTemplateDraft(null);
     setTemplateName('');
+    setTemplateNameAutoMode(true);
     setFhincd('');
     setResourceCd('');
+    setResourceCds([]);
+    setGroupSaveMode('single');
+    setResourceAddCds([]);
     setProcessGroup('cutting');
     setPoints([]);
     setSelectedPointId(null);
@@ -255,9 +356,11 @@ export function KioskInspectionDrawingCreatePage() {
   const applyCreateDraft = useCallback(
     (draft: InspectionDrawingCreateDraftForm) => {
       setSourceTemplateDraft(draft.sourceDraft);
-      setTemplateName(draft.templateName);
+      setTemplateNameAutoMode(true);
+      setTemplateName('');
       setFhincd(draft.fhincd);
       setResourceCd(draft.resourceCd);
+      setResourceCds([draft.resourceCd]);
       setProcessGroup(draft.processGroup);
       setPoints(draft.points);
       setSelectedPointId(draft.points[0]?.id ?? null);
@@ -486,13 +589,12 @@ export function KioskInspectionDrawingCreatePage() {
 
   useEffect(() => {
     if (isEditing) {
-      setActiveKeyExists(false);
+      setActiveKeyExistsByResourceCd({});
       return;
     }
     const f = fhincd.trim();
-    const r = resourceCd.trim();
-    if (!f || !r) {
-      setActiveKeyExists(false);
+    if (!f || selectedResourceCds.length === 0) {
+      setActiveKeyExistsByResourceCd({});
       return;
     }
 
@@ -500,15 +602,20 @@ export function KioskInspectionDrawingCreatePage() {
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          const exists = await existsActivePartMeasurementTemplate(
-            { fhincd: f, processGroup, resourceCd: r },
-            clientKey
+          const entries = await Promise.all(
+            selectedResourceCds.map(async (selectedResourceCd) => {
+              const exists = await existsActivePartMeasurementTemplate(
+                { fhincd: f, processGroup, resourceCd: selectedResourceCd },
+                clientKey
+              );
+              return [selectedResourceCd, exists] as const;
+            })
           );
           if (!cancelled) {
-            setActiveKeyExists(exists);
+            setActiveKeyExistsByResourceCd(Object.fromEntries(entries));
           }
         } catch {
-          if (!cancelled) setActiveKeyExists(false);
+          if (!cancelled) setActiveKeyExistsByResourceCd({});
         }
       })();
     }, 400);
@@ -517,7 +624,7 @@ export function KioskInspectionDrawingCreatePage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [clientKey, fhincd, isEditing, processGroup, resourceCd]);
+  }, [clientKey, fhincd, isEditing, processGroup, selectedResourceCds]);
 
   useEffect(() => {
     resetZoom();
@@ -602,9 +709,9 @@ export function KioskInspectionDrawingCreatePage() {
       return;
     }
     const f = fhincd.trim();
-    const r = resourceCd.trim();
-    const name = templateName.trim() || `検査図面 ${f}`;
-    if (!f || !r) {
+    const targetResourceCds = selectedResourceCds;
+    const name = templateName.trim() || suggestedTemplateName || `検査図面 ${f}`;
+    if (!f || targetResourceCds.length === 0) {
       setMessage('品番と資源CDを入力してください。');
       return;
     }
@@ -687,10 +794,59 @@ export function KioskInspectionDrawingCreatePage() {
 
       const items = points.map((pt, idx) => drawingPointToTemplateItemInput(pt, idx));
       if (isEditing && templateId) {
-        const saved = await reviseKioskInspectionDrawingTemplate(
-          templateId,
+        let saved: PartMeasurementTemplateDto;
+        if (template?.siblingGroupId && groupSaveMode === 'group') {
+          const result = await reviseKioskInspectionDrawingTemplateGroup(
+            template.siblingGroupId,
+            {
+              name,
+              visualTemplateId,
+              selfInspectionMode: selfInspectionPayload.selfInspectionMode,
+              selfInspectionFixedCount: selfInspectionPayload.selfInspectionFixedCount,
+              items
+            },
+            clientKey
+          );
+          const nextTemplate =
+            result.templates.find((candidate) => candidate.resourceCd === template.resourceCd) ??
+            result.templates[0];
+          if (!nextTemplate) {
+            setMessage('保存結果の取得に失敗しました。一覧を確認してください。');
+            return;
+          }
+          saved = nextTemplate;
+        } else {
+          saved = await reviseKioskInspectionDrawingTemplate(
+            templateId,
+            {
+              name,
+              visualTemplateId,
+              selfInspectionMode: selfInspectionPayload.selfInspectionMode,
+              selfInspectionFixedCount: selfInspectionPayload.selfInspectionFixedCount,
+              detachFromSiblingGroup: Boolean(template?.siblingGroupId && groupSaveMode === 'single'),
+              items
+            },
+            clientKey
+          );
+        }
+        applyLoadedTemplate(saved);
+        setMessage(
+          template?.siblingGroupId && groupSaveMode === 'single'
+            ? '個別改版として保存しました。この資源は兄弟グループから外れました。'
+            : '保存しました。履歴から旧版を確認できます。'
+        );
+        void navigate(kioskInspectionDrawingTemplateEditPath(saved.id), {
+          replace: true,
+          state: inspectionReturn
+        });
+      } else if (targetResourceCds.length >= 2) {
+        const result = await createKioskInspectionDrawingTemplateGroup(
           {
+            fhincd: f,
+            resourceCds: targetResourceCds,
+            processGroup,
             name,
+            displayName: name,
             visualTemplateId,
             selfInspectionMode: selfInspectionPayload.selfInspectionMode,
             selfInspectionFixedCount: selfInspectionPayload.selfInspectionFixedCount,
@@ -698,9 +854,14 @@ export function KioskInspectionDrawingCreatePage() {
           },
           clientKey
         );
-        applyLoadedTemplate(saved);
-        setMessage('保存しました。履歴から旧版を確認できます。');
-        void navigate(kioskInspectionDrawingTemplateEditPath(saved.id), {
+        const created = result.templates[0];
+        if (!created) {
+          setMessage('保存結果の取得に失敗しました。一覧を確認してください。');
+          return;
+        }
+        applyLoadedTemplate(created);
+        setMessage(`${targetResourceCds.length}件の資源へ保存しました。一覧では1グループとして表示されます。`);
+        void navigate(kioskInspectionDrawingTemplateEditPath(created.id), {
           replace: true,
           state: inspectionReturn
         });
@@ -709,7 +870,7 @@ export function KioskInspectionDrawingCreatePage() {
           {
             templateScope: 'three_key',
             fhincd: f,
-            resourceCd: r,
+            resourceCd: targetResourceCds[0]!,
             processGroup,
             name,
             visualTemplateId,
@@ -742,6 +903,36 @@ export function KioskInspectionDrawingCreatePage() {
     }
   };
 
+  const handleAddResourcesToGroup = async () => {
+    if (!template?.siblingGroupId) return;
+    const targetResourceCds = normalizeUniqueInspectionDrawingResourceCds(resourceAddCds);
+    if (targetResourceCds.length === 0) {
+      setMessage('追加する資源CDを選択してください。');
+      return;
+    }
+    setResourceAddBusy(true);
+    setMessage(null);
+    try {
+      await addKioskInspectionDrawingTemplateGroupResources(
+        template.siblingGroupId,
+        {
+          resourceCds: targetResourceCds,
+          sourceTemplateId: template.id
+        },
+        clientKey
+      );
+      const reloaded = await getKioskInspectionDrawingTemplate(template.id, clientKey);
+      applyLoadedTemplate(reloaded);
+      setResourceAddCds([]);
+      setMessage('資源を追加しました。保存済み最新版の内容をコピーしています。');
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setMessage(err.response?.data?.message ?? '資源追加に失敗しました。');
+    } finally {
+      setResourceAddBusy(false);
+    }
+  };
+
   const handleSelectPointFromList = (id: string) => {
     if (mode === 'guidedTrial') {
       guidedTrial.handleManualSelect(id);
@@ -751,7 +942,7 @@ export function KioskInspectionDrawingCreatePage() {
   };
 
   const saveDisabled =
-    contentReadOnly || saveBlockedByPreview || Boolean(keyCollision) || busy;
+    saveBlockReason !== null;
 
   return (
     <div className={inspectionDrawingCreatePageRootClassName}>
@@ -772,12 +963,14 @@ export function KioskInspectionDrawingCreatePage() {
           onFhincdChange: setFhincd,
           resourceCd,
           onResourceCdChange: setResourceCd,
+          resourceCds: lineageLocked ? undefined : resourceCds,
+          onResourceCdsChange: lineageLocked ? undefined : handleResourceCdsChange,
           resourceSelectOptions,
           resourceNameMap,
           processGroup,
           templateProcessGroup: template?.processGroup,
           templateName,
-          onTemplateNameChange: setTemplateName,
+          onTemplateNameChange: handleTemplateNameChange,
           selfInspectionMode,
           onSelfInspectionModeChange: setSelfInspectionMode,
           selfInspectionFixedCount,
@@ -836,6 +1029,63 @@ export function KioskInspectionDrawingCreatePage() {
         <p className="px-1 text-[1rem] font-semibold text-sky-200">
           履歴版は閲覧のみです。編集するには有効化してください。
         </p>
+      ) : null}
+      {isEditing && template?.siblingGroup ? (
+        <div className="flex flex-wrap items-center gap-2 rounded border border-white/15 bg-slate-900/70 px-2 py-1 text-sm text-white">
+          <span className="font-semibold text-slate-300">保存範囲</span>
+          <label className="inline-flex min-h-10 items-center gap-1 rounded border border-white/15 px-2">
+            <input
+              type="radio"
+              checked={groupSaveMode === 'group'}
+              disabled={contentReadOnly}
+              onChange={() => setGroupSaveMode('group')}
+            />
+            <span>兄弟テンプレをまとめて改版</span>
+          </label>
+          <label className="inline-flex min-h-10 items-center gap-1 rounded border border-white/15 px-2">
+            <input
+              type="radio"
+              checked={groupSaveMode === 'single'}
+              disabled={contentReadOnly}
+              onChange={() => setGroupSaveMode('single')}
+            />
+            <span>この資源だけ個別改版</span>
+          </label>
+          {groupSaveMode === 'single' ? (
+            <span className="text-amber-200">保存後、この資源はグループから外れます。</span>
+          ) : null}
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
+            {(template.siblingGroup.activeResourceCds.length > 0
+              ? template.siblingGroup.activeResourceCds
+              : [template.resourceCd]
+            ).map((cd) => (
+              <span
+                key={cd}
+                className="rounded border border-cyan-300/40 bg-cyan-950/60 px-1.5 py-0.5 text-xs text-cyan-100"
+                title={formatResourceCdWithJapaneseNames(cd, resourceNameMap)}
+              >
+                {cd}
+              </span>
+            ))}
+          </div>
+          <InspectionDrawingResourceCdMultiSelect
+            values={resourceAddCds}
+            onChange={setResourceAddCds}
+            options={resourceSelectOptions}
+            resourceNameMap={resourceNameMap}
+            disabled={contentReadOnly || resourceAddBusy}
+            label="追加資源"
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={contentReadOnly || resourceAddBusy || resourceAddCds.length === 0}
+            className="min-h-10 px-3 py-1.5"
+            onClick={() => void handleAddResourcesToGroup()}
+          >
+            {resourceAddBusy ? '追加中...' : '資源追加'}
+          </Button>
+        </div>
       ) : null}
       {keyCollisionMessage ? (
         <p className="px-1 text-[1rem] font-semibold text-amber-200">{keyCollisionMessage}</p>

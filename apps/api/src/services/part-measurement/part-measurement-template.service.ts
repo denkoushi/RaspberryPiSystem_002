@@ -110,6 +110,8 @@ type InsertNextTemplateVersionOptions = {
   lineageLockHeld?: boolean;
 };
 
+type TemplateWithSiblingResourceCds<T> = T & { siblingGroupActiveResourceCds?: string[] };
+
 const ACTIVE_PRODUCTION_THREE_KEY_EXISTS_MESSAGE =
   '同一品番・工程・資源CDの有効テンプレートが既にあります。改版する場合は既存テンプレを編集してください。';
 
@@ -134,6 +136,52 @@ async function assertNoActiveProductionThreeKeyTemplateInTransaction(
   }
 }
 
+function normalizeUniqueResourceCds(raw: string[]): string[] {
+  const seen = new Set<string>();
+  const values: string[] = [];
+  for (const item of raw) {
+    const resourceCd = normalizeResourceCd(String(item ?? ''));
+    if (seen.has(resourceCd)) continue;
+    seen.add(resourceCd);
+    values.push(resourceCd);
+  }
+  return values.sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+function copyTemplateItemsFromDb(
+  items: Array<{
+    sortOrder: number;
+    datumSurface: string;
+    measurementPoint: string;
+    measurementLabel: string;
+    displayMarker?: string | null;
+    unit: string | null;
+    allowNegative: boolean;
+    decimalPlaces: number;
+    markerXRatio?: unknown;
+    markerYRatio?: unknown;
+    nominalValue?: unknown;
+    lowerLimit?: unknown;
+    upperLimit?: unknown;
+  }>
+): TemplateItemInput[] {
+  return items.map((item) => ({
+    sortOrder: item.sortOrder,
+    datumSurface: item.datumSurface,
+    measurementPoint: item.measurementPoint,
+    measurementLabel: item.measurementLabel,
+    displayMarker: item.displayMarker,
+    unit: item.unit,
+    allowNegative: item.allowNegative,
+    decimalPlaces: item.decimalPlaces,
+    markerXRatio: item.markerXRatio != null ? Number(item.markerXRatio) : null,
+    markerYRatio: item.markerYRatio != null ? Number(item.markerYRatio) : null,
+    nominalValue: item.nominalValue != null ? Number(item.nominalValue) : null,
+    lowerLimit: item.lowerLimit != null ? Number(item.lowerLimit) : null,
+    upperLimit: item.upperLimit != null ? Number(item.upperLimit) : null
+  }));
+}
+
 async function insertNextTemplateVersionInTransaction(
   tx: Prisma.TransactionClient,
   lineage: ResolvedLineage,
@@ -143,6 +191,7 @@ async function insertNextTemplateVersionInTransaction(
     visualTemplateId: string | null;
     selfInspectionMode: SelfInspectionMode;
     selfInspectionFixedCount: number | null;
+    siblingGroupId?: string | null;
   },
   options?: InsertNextTemplateVersionOptions
 ) {
@@ -185,6 +234,7 @@ async function insertNextTemplateVersionInTransaction(
       selfInspectionFixedCount: content.selfInspectionFixedCount,
       selfInspectionSampleSize: null,
       visualTemplateId: visualId,
+      siblingGroupId: content.siblingGroupId ?? null,
       items: {
         create: content.items.map((item) => {
           const dp = item.decimalPlaces ?? 6;
@@ -215,6 +265,49 @@ async function insertNextTemplateVersionInTransaction(
 }
 
 export class PartMeasurementTemplateService {
+  private async loadActiveResourceCdsBySiblingGroupIds(groupIds: string[]): Promise<Map<string, string[]>> {
+    const uniqueIds = Array.from(new Set(groupIds.filter((id) => id.trim().length > 0)));
+    const map = new Map<string, string[]>();
+    if (uniqueIds.length === 0) return map;
+
+    const rows = await prisma.partMeasurementTemplate.findMany({
+      where: {
+        siblingGroupId: { in: uniqueIds },
+        isActive: true,
+        templateScope: 'THREE_KEY'
+      },
+      orderBy: [{ siblingGroupId: 'asc' }, { resourceCd: 'asc' }],
+      select: {
+        siblingGroupId: true,
+        resourceCd: true
+      }
+    });
+
+    for (const row of rows) {
+      if (!row.siblingGroupId) continue;
+      const list = map.get(row.siblingGroupId) ?? [];
+      list.push(row.resourceCd);
+      map.set(row.siblingGroupId, list);
+    }
+    return map;
+  }
+
+  private attachSiblingGroupResourceCds<T extends { siblingGroupId?: string | null }>(
+    template: T,
+    resourceMap: Map<string, string[]>
+  ): TemplateWithSiblingResourceCds<T> {
+    return {
+      ...template,
+      siblingGroupActiveResourceCds: template.siblingGroupId
+        ? (resourceMap.get(template.siblingGroupId) ?? [])
+        : []
+    };
+  }
+
+  async getActiveResourceCdsBySiblingGroupIds(groupIds: string[]): Promise<Map<string, string[]>> {
+    return this.loadActiveResourceCdsBySiblingGroupIds(groupIds);
+  }
+
   /**
    * キオスク検査図面テンプレ編集用。本番テンプレ条件 + 図面・全測定点マーカー必須。
    * 履歴版（isActive=false）も閲覧用に返す。
@@ -237,7 +330,10 @@ export class PartMeasurementTemplateService {
     if (!templateSupportsInspectionDrawing(template)) {
       throw new ApiError(409, 'このテンプレートは検査図面編集の対象外です');
     }
-    return template;
+    const resourceMap = await this.loadActiveResourceCdsBySiblingGroupIds(
+      template.siblingGroupId ? [template.siblingGroupId] : []
+    );
+    return this.attachSiblingGroupResourceCds(template, resourceMap);
   }
 
   /**
@@ -281,6 +377,7 @@ export class PartMeasurementTemplateService {
       where: productionPartMeasurementTemplateWhere(where),
       orderBy: [{ fhincd: 'asc' }, { processGroup: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }],
       include: {
+        siblingGroup: true,
         visualTemplate: true,
         items: {
           orderBy: { sortOrder: 'asc' },
@@ -294,12 +391,20 @@ export class PartMeasurementTemplateService {
       }
     });
 
-    return rows
+    const filteredRows = rows
       .filter((row) => templateSupportsInspectionDrawing(row))
       .map((row) => ({
         template: row,
         itemCount: row.items.length
       }));
+    const resourceMap = await this.loadActiveResourceCdsBySiblingGroupIds(
+      filteredRows.map(({ template }) => template.siblingGroupId ?? '').filter(Boolean)
+    );
+
+    return filteredRows.map((row) => ({
+      template: this.attachSiblingGroupResourceCds(row.template, resourceMap),
+      itemCount: row.itemCount
+    }));
   }
 
   /** キオスク検査図面テンプレの改版（有効版かつ図面対象のみ） */
@@ -312,6 +417,7 @@ export class PartMeasurementTemplateService {
       selfInspectionMode?: SelfInspectionMode;
       selfInspectionFixedCount?: number | null;
       selfInspectionSampleSize?: number | null;
+      detachFromSiblingGroup?: boolean;
     }
   ) {
     const source = await this.getKioskInspectionDrawingTemplateById(sourceTemplateId);
@@ -487,6 +593,304 @@ export class PartMeasurementTemplateService {
     });
   }
 
+  async createInspectionDrawingTemplateSiblingGroup(params: {
+    fhincd: string;
+    processGroup: PartMeasurementProcessGroup;
+    resourceCds: string[];
+    name: string;
+    displayName?: string | null;
+    items: TemplateItemInput[];
+    visualTemplateId?: string | null;
+    selfInspectionMode?: SelfInspectionMode;
+    selfInspectionFixedCount?: number | null;
+    /** @deprecated API 互換 */
+    selfInspectionSampleSize?: number | null;
+  }) {
+    if (params.items.length === 0) {
+      throw new ApiError(400, 'テンプレート項目が空です');
+    }
+    if (params.processGroup !== 'CUTTING' && params.processGroup !== 'GRINDING') {
+      throw new ApiError(400, '検査図面テンプレートは切削または研削で作成してください');
+    }
+    const fhincd = normalizeFhincd(params.fhincd);
+    if (fhincd.length === 0) {
+      throw new ApiError(400, 'FIHNCD が空です');
+    }
+    const resourceCds = normalizeUniqueResourceCds(params.resourceCds);
+    if (resourceCds.length === 0) {
+      throw new ApiError(400, '資源CDを1件以上選択してください');
+    }
+    const visualTemplateId = params.visualTemplateId?.trim() || null;
+    if (!visualTemplateId) {
+      throw new ApiError(400, '図面テンプレートを選択してください');
+    }
+    const validated = validateSelfInspectionConfigFromDb(
+      params.selfInspectionMode ?? 'FULL',
+      params.selfInspectionFixedCount,
+      params.selfInspectionSampleSize
+    );
+    const name = params.name.trim();
+    const displayName = (params.displayName?.trim() || name).slice(0, 200);
+
+    const result = await prisma.$transaction(async (tx) => {
+      for (const resourceCd of resourceCds) {
+        await acquireThreeKeyLineageTransactionLock(tx, fhincd, params.processGroup, resourceCd);
+      }
+      for (const resourceCd of resourceCds) {
+        await assertNoActiveProductionThreeKeyTemplateInTransaction(
+          tx,
+          fhincd,
+          params.processGroup,
+          resourceCd
+        );
+      }
+
+      const group = await tx.partMeasurementTemplateSiblingGroup.create({
+        data: {
+          displayName,
+          fhincd,
+          processGroup: params.processGroup
+        }
+      });
+      const templates = [];
+      for (const resourceCd of resourceCds) {
+        const template = await insertNextTemplateVersionInTransaction(
+          tx,
+          {
+            templateScope: 'THREE_KEY',
+            fhincd,
+            processGroup: params.processGroup,
+            resourceCd,
+            candidateFhinmei: null
+          },
+          {
+            name,
+            items: params.items,
+            visualTemplateId,
+            selfInspectionMode: validated.mode,
+            selfInspectionFixedCount: validated.fixedCount,
+            siblingGroupId: group.id
+          },
+          { lineageLockHeld: true }
+        );
+        templates.push(template);
+      }
+      return { group, templates };
+    });
+
+    const activeResourceCds = result.templates.map((template) => template.resourceCd).sort((a, b) => a.localeCompare(b, 'ja'));
+    return {
+      group: { ...result.group, activeResourceCds },
+      templates: result.templates.map((template) => ({
+        ...template,
+        siblingGroupActiveResourceCds: activeResourceCds
+      }))
+    };
+  }
+
+  async reviseInspectionDrawingTemplateSiblingGroup(
+    siblingGroupId: string,
+    body: {
+      name: string;
+      items: TemplateItemInput[];
+      visualTemplateId?: string | null;
+      selfInspectionMode?: SelfInspectionMode;
+      selfInspectionFixedCount?: number | null;
+      /** @deprecated API 互換 */
+      selfInspectionSampleSize?: number | null;
+    }
+  ) {
+    if (body.items.length === 0) {
+      throw new ApiError(400, 'テンプレート項目が空です');
+    }
+    const group = await prisma.partMeasurementTemplateSiblingGroup.findUnique({
+      where: { id: siblingGroupId }
+    });
+    if (!group) {
+      throw new ApiError(404, '兄弟テンプレートグループが見つかりません');
+    }
+    const activeMembers = await prisma.partMeasurementTemplate.findMany({
+      where: {
+        siblingGroupId,
+        isActive: true,
+        templateScope: 'THREE_KEY'
+      },
+      orderBy: [{ resourceCd: 'asc' }],
+      include: partMeasurementTemplateFullInclude
+    });
+    const members = activeMembers.filter((template) => templateSupportsInspectionDrawing(template));
+    if (members.length === 0) {
+      throw new ApiError(409, 'まとめて改版できる有効な兄弟テンプレートがありません');
+    }
+    const visualTemplateId =
+      body.visualTemplateId !== undefined
+        ? (body.visualTemplateId?.trim() || null)
+        : members[0]!.visualTemplateId;
+    if (!visualTemplateId) {
+      throw new ApiError(400, '図面テンプレートを選択してください');
+    }
+    const validated = resolveReviseSelfInspectionFields(body, members[0]!);
+    const resourceCds = members.map((member) => member.resourceCd).sort((a, b) => a.localeCompare(b, 'ja'));
+    const name = body.name.trim();
+
+    const result = await prisma.$transaction(async (tx) => {
+      for (const resourceCd of resourceCds) {
+        await acquireThreeKeyLineageTransactionLock(tx, group.fhincd, group.processGroup, resourceCd);
+      }
+      const updatedGroup = await tx.partMeasurementTemplateSiblingGroup.update({
+        where: { id: siblingGroupId },
+        data: { displayName: name }
+      });
+      const templates = [];
+      for (const member of members) {
+        const template = await insertNextTemplateVersionInTransaction(
+          tx,
+          {
+            templateScope: member.templateScope,
+            fhincd: member.fhincd,
+            processGroup: member.processGroup,
+            resourceCd: member.resourceCd,
+            candidateFhinmei: member.candidateFhinmei
+          },
+          {
+            name,
+            items: body.items,
+            visualTemplateId,
+            selfInspectionMode: validated.mode,
+            selfInspectionFixedCount: validated.fixedCount,
+            siblingGroupId
+          },
+          { lineageLockHeld: true }
+        );
+        templates.push(template);
+      }
+      return { group: updatedGroup, templates };
+    });
+
+    const activeResourceCds = result.templates.map((template) => template.resourceCd).sort((a, b) => a.localeCompare(b, 'ja'));
+    return {
+      group: { ...result.group, activeResourceCds },
+      templates: result.templates.map((template) => ({
+        ...template,
+        siblingGroupActiveResourceCds: activeResourceCds
+      }))
+    };
+  }
+
+  async addResourcesToInspectionDrawingTemplateSiblingGroup(
+    siblingGroupId: string,
+    params: {
+      resourceCds: string[];
+      sourceTemplateId?: string | null;
+    }
+  ) {
+    const group = await prisma.partMeasurementTemplateSiblingGroup.findUnique({
+      where: { id: siblingGroupId }
+    });
+    if (!group) {
+      throw new ApiError(404, '兄弟テンプレートグループが見つかりません');
+    }
+    const resourceCds = normalizeUniqueResourceCds(params.resourceCds);
+    if (resourceCds.length === 0) {
+      throw new ApiError(400, '追加する資源CDを1件以上選択してください');
+    }
+
+    const activeMembers = await prisma.partMeasurementTemplate.findMany({
+      where: {
+        siblingGroupId,
+        isActive: true,
+        templateScope: 'THREE_KEY'
+      },
+      orderBy: [{ updatedAt: 'desc' }, { resourceCd: 'asc' }],
+      include: partMeasurementTemplateFullInclude
+    });
+    if (activeMembers.length === 0) {
+      throw new ApiError(409, 'コピー元にできる有効な兄弟テンプレートがありません');
+    }
+    const source =
+      params.sourceTemplateId != null
+        ? activeMembers.find((member) => member.id === params.sourceTemplateId)
+        : activeMembers[0];
+    if (!source) {
+      throw new ApiError(400, '指定されたコピー元テンプレートはこのグループの有効版ではありません');
+    }
+    if (!source.items.length) {
+      throw new ApiError(400, 'コピー元テンプレートに項目がありません');
+    }
+    if (!source.visualTemplateId) {
+      throw new ApiError(400, 'コピー元テンプレートに図面がありません');
+    }
+    const sourceItems = copyTemplateItemsFromDb(source.items);
+
+    const result = await prisma.$transaction(async (tx) => {
+      for (const resourceCd of resourceCds) {
+        await acquireThreeKeyLineageTransactionLock(tx, group.fhincd, group.processGroup, resourceCd);
+      }
+
+      const templates = [];
+      for (const resourceCd of resourceCds) {
+        const existingActive = await tx.partMeasurementTemplate.findFirst({
+          where: productionPartMeasurementTemplateWhere({
+            fhincd: threeKeyFhincdEqualsFilter(group.fhincd),
+            processGroup: group.processGroup,
+            resourceCd,
+            isActive: true,
+            templateScope: 'THREE_KEY'
+          }),
+          orderBy: { version: 'desc' },
+          include: partMeasurementTemplateFullInclude
+        });
+        if (existingActive) {
+          if (existingActive.siblingGroupId === siblingGroupId) {
+            templates.push(existingActive);
+            continue;
+          }
+          throw new ApiError(409, ACTIVE_PRODUCTION_THREE_KEY_EXISTS_MESSAGE);
+        }
+
+        const created = await insertNextTemplateVersionInTransaction(
+          tx,
+          {
+            templateScope: 'THREE_KEY',
+            fhincd: group.fhincd,
+            processGroup: group.processGroup,
+            resourceCd,
+            candidateFhinmei: null
+          },
+          {
+            name: source.name,
+            items: sourceItems,
+            visualTemplateId: source.visualTemplateId,
+            selfInspectionMode: source.selfInspectionMode,
+            selfInspectionFixedCount: source.selfInspectionFixedCount,
+            siblingGroupId
+          },
+          { lineageLockHeld: true }
+        );
+        templates.push(created);
+      }
+      const allActive = await tx.partMeasurementTemplate.findMany({
+        where: {
+          siblingGroupId,
+          isActive: true,
+          templateScope: 'THREE_KEY'
+        },
+        orderBy: { resourceCd: 'asc' },
+        include: partMeasurementTemplateFullInclude
+      });
+      return { templates, allActive };
+    });
+
+    const activeResourceCds = result.allActive.map((template) => template.resourceCd).sort((a, b) => a.localeCompare(b, 'ja'));
+    return {
+      group: { ...group, activeResourceCds },
+      templates: result.templates.map((template) => ({
+        ...template,
+        siblingGroupActiveResourceCds: activeResourceCds
+      }))
+    };
+  }
+
   /**
    * 検査図面 MVP 用の評価テンプレ。実品番・資源CD とは別バケットに保存し、本番 active テンプレを非アクティブ化しない。
    */
@@ -633,6 +1037,8 @@ export class PartMeasurementTemplateService {
       selfInspectionFixedCount?: number | null;
       /** @deprecated API 互換 */
       selfInspectionSampleSize?: number | null;
+      /** true のとき個別改版として兄弟グループから外す */
+      detachFromSiblingGroup?: boolean;
     }
   ) {
     if (body.items.length === 0) {
@@ -695,7 +1101,8 @@ export class PartMeasurementTemplateService {
           items: body.items,
           visualTemplateId: normalizedVisual,
           selfInspectionMode: validated.mode,
-          selfInspectionFixedCount: validated.fixedCount
+          selfInspectionFixedCount: validated.fixedCount,
+          siblingGroupId: body.detachFromSiblingGroup === true ? null : source.siblingGroupId
         },
         { lineageLockHeld }
       );
@@ -769,21 +1176,7 @@ export class PartMeasurementTemplateService {
       throw new ApiError(400, '参照テンプレートに項目がありません');
     }
 
-    const items: TemplateItemInput[] = source.items.map((item) => ({
-      sortOrder: item.sortOrder,
-      datumSurface: item.datumSurface,
-      measurementPoint: item.measurementPoint,
-      measurementLabel: item.measurementLabel,
-      displayMarker: item.displayMarker,
-      unit: item.unit,
-      allowNegative: item.allowNegative,
-      decimalPlaces: item.decimalPlaces,
-      markerXRatio: item.markerXRatio != null ? Number(item.markerXRatio) : null,
-      markerYRatio: item.markerYRatio != null ? Number(item.markerYRatio) : null,
-      nominalValue: item.nominalValue != null ? Number(item.nominalValue) : null,
-      lowerLimit: item.lowerLimit != null ? Number(item.lowerLimit) : null,
-      upperLimit: item.upperLimit != null ? Number(item.upperLimit) : null
-    }));
+    const items = copyTemplateItemsFromDb(source.items);
 
     const baseName = source.name.trim().slice(0, 120);
     const crossPart = sourceFhincdNorm !== targetFhincdNorm;

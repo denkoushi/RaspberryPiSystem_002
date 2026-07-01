@@ -67,6 +67,7 @@ import type {
   SelfInspectionStatus,
   PartMeasurementTemplateCandidateDto,
   PartMeasurementTemplateDto,
+  PartMeasurementTemplateSiblingGroupDto,
   PartMeasurementTemplateScope,
   PartMeasurementVisualTemplateDto,
   ResolveTicketResponse
@@ -3727,6 +3728,7 @@ export async function reviseKioskInspectionDrawingTemplate(
     selfInspectionMode?: 'full' | 'single' | 'first_last' | 'fixed_count' | 'sample';
     selfInspectionFixedCount?: number | null;
     selfInspectionSampleSize?: number | null;
+    detachFromSiblingGroup?: boolean;
     items: Array<{
       sortOrder: number;
       datumSurface: string;
@@ -3753,6 +3755,96 @@ export async function reviseKioskInspectionDrawingTemplate(
     }
   );
   return data.template;
+}
+
+export async function createKioskInspectionDrawingTemplateGroup(
+  body: {
+    fhincd: string;
+    processGroup: PartMeasurementProcessGroup;
+    resourceCds: string[];
+    name: string;
+    displayName?: string | null;
+    visualTemplateId: string;
+    selfInspectionMode?: 'full' | 'single' | 'first_last' | 'fixed_count' | 'sample';
+    selfInspectionFixedCount?: number | null;
+    selfInspectionSampleSize?: number | null;
+    items: Array<{
+      sortOrder: number;
+      datumSurface: string;
+      measurementPoint: string;
+      measurementLabel: string;
+      displayMarker?: string | null;
+      unit?: string | null;
+      allowNegative?: boolean;
+      decimalPlaces?: number;
+      markerXRatio?: number | null;
+      markerYRatio?: number | null;
+      nominalValue?: number | null;
+      lowerLimit?: number | null;
+      upperLimit?: number | null;
+    }>;
+  },
+  clientKey?: string
+): Promise<{ group: PartMeasurementTemplateSiblingGroupDto; templates: PartMeasurementTemplateDto[] }> {
+  const { data } = await api.post<{
+    group: PartMeasurementTemplateSiblingGroupDto;
+    templates: PartMeasurementTemplateDto[];
+  }>('/part-measurement/inspection-drawing/template-groups', body, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data;
+}
+
+export async function reviseKioskInspectionDrawingTemplateGroup(
+  siblingGroupId: string,
+  body: {
+    name: string;
+    visualTemplateId?: string | null;
+    selfInspectionMode?: 'full' | 'single' | 'first_last' | 'fixed_count' | 'sample';
+    selfInspectionFixedCount?: number | null;
+    selfInspectionSampleSize?: number | null;
+    items: Array<{
+      sortOrder: number;
+      datumSurface: string;
+      measurementPoint: string;
+      measurementLabel: string;
+      displayMarker?: string | null;
+      unit?: string | null;
+      allowNegative?: boolean;
+      decimalPlaces?: number;
+      markerXRatio?: number | null;
+      markerYRatio?: number | null;
+      nominalValue?: number | null;
+      lowerLimit?: number | null;
+      upperLimit?: number | null;
+    }>;
+  },
+  clientKey?: string
+): Promise<{ group: PartMeasurementTemplateSiblingGroupDto; templates: PartMeasurementTemplateDto[] }> {
+  const { data } = await api.post<{
+    group: PartMeasurementTemplateSiblingGroupDto;
+    templates: PartMeasurementTemplateDto[];
+  }>(`/part-measurement/inspection-drawing/template-groups/${siblingGroupId}/revise`, body, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data;
+}
+
+export async function addKioskInspectionDrawingTemplateGroupResources(
+  siblingGroupId: string,
+  body: {
+    resourceCds: string[];
+    sourceTemplateId?: string | null;
+  },
+  clientKey?: string
+): Promise<{ group: PartMeasurementTemplateSiblingGroupDto; templates: PartMeasurementTemplateDto[] }> {
+  const { data } = await api.post<{
+    group: PartMeasurementTemplateSiblingGroupDto;
+    templates: PartMeasurementTemplateDto[];
+  }>(`/part-measurement/inspection-drawing/template-groups/${siblingGroupId}/resources`, body, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data;
 }
 
 export async function listPartMeasurementTemplateCandidates(

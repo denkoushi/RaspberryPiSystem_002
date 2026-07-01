@@ -210,6 +210,33 @@ const createTemplateBodySchema = z
     refineSelfInspectionConfig(val, ctx);
   });
 
+const inspectionDrawingTemplateResourceCdsSchema = z
+  .array(z.string().min(1).max(120))
+  .min(1)
+  .max(50);
+
+const createInspectionDrawingTemplateGroupBodySchema = z
+  .object({
+    fhincd: z.string().min(1).max(120),
+    processGroup: processGroupSchema,
+    resourceCds: inspectionDrawingTemplateResourceCdsSchema,
+    name: z.string().min(1).max(200),
+    displayName: z.string().max(200).optional().nullable(),
+    items: z.array(templateItemSchema).min(1).max(200),
+    visualTemplateId: z.string().uuid(),
+    selfInspectionMode: selfInspectionModeSchema.optional().default('full'),
+    selfInspectionFixedCount: z.number().int().min(1).max(2000).optional().nullable(),
+    selfInspectionSampleSize: z.number().int().min(1).max(2000).optional().nullable()
+  })
+  .superRefine((val, ctx) => {
+    refineSelfInspectionConfig(val, ctx);
+  });
+
+const addInspectionDrawingTemplateGroupResourcesBodySchema = z.object({
+  resourceCds: inspectionDrawingTemplateResourceCdsSchema,
+  sourceTemplateId: z.string().uuid().optional().nullable()
+});
+
 /** 検査図面 MVP: 評価用テンプレ（本番 THREE_KEY 系譜とは別バケット） */
 const createInspectionDrawingEvaluationTemplateBodySchema = z.object({
   referenceFhincd: z.string().min(1).max(120),
@@ -229,7 +256,8 @@ const reviseTemplateBodySchema = z
     candidateFhinmei: z.string().max(500).optional().nullable(),
     selfInspectionMode: selfInspectionModeSchema.optional(),
     selfInspectionFixedCount: z.number().int().min(1).max(2000).optional().nullable(),
-    selfInspectionSampleSize: z.number().int().min(1).max(2000).optional().nullable()
+    selfInspectionSampleSize: z.number().int().min(1).max(2000).optional().nullable(),
+    detachFromSiblingGroup: z.boolean().optional()
   })
   .superRefine((val, ctx) => {
     if (val.candidateFhinmei !== undefined && val.candidateFhinmei !== null) {
@@ -518,6 +546,28 @@ function serializeTemplateProcessGroup(
   return null;
 }
 
+function serializeTemplateSiblingGroup(
+  group: {
+    id: string;
+    displayName: string;
+    fhincd: string;
+    processGroup: string;
+    createdAt?: Date;
+    updatedAt?: Date;
+  },
+  activeResourceCds: string[]
+) {
+  return {
+    id: group.id,
+    displayName: group.displayName,
+    fhincd: group.fhincd,
+    processGroup: serializeTemplateProcessGroup(group.processGroup),
+    activeResourceCds,
+    createdAt: group.createdAt?.toISOString?.() ?? null,
+    updatedAt: group.updatedAt?.toISOString?.() ?? null
+  };
+}
+
 function serializeTemplate(
   t: {
     id: string;
@@ -535,8 +585,12 @@ function serializeTemplate(
     visualTemplateId?: string | null;
     visualTemplate?: Parameters<typeof serializeVisualTemplate>[0] | null;
     items?: Array<Parameters<typeof serializeTemplateItem>[0]>;
+    siblingGroupId?: string | null;
+    siblingGroup?: Parameters<typeof serializeTemplateSiblingGroup>[0] | null;
+    siblingGroupActiveResourceCds?: string[];
   }
 ) {
+  const activeResourceCds = t.siblingGroupActiveResourceCds ?? [];
   return {
     id: t.id,
     fhincd: t.fhincd,
@@ -562,7 +616,11 @@ function serializeTemplate(
     }),
     visualTemplateId: t.visualTemplateId ?? null,
     visualTemplate: t.visualTemplate ? serializeVisualTemplate(t.visualTemplate) : null,
-    items: (t.items ?? []).map(serializeTemplateItem)
+    items: (t.items ?? []).map(serializeTemplateItem),
+    siblingGroupId: t.siblingGroupId ?? null,
+    siblingGroup: t.siblingGroup
+      ? serializeTemplateSiblingGroup(t.siblingGroup, activeResourceCds)
+      : null
   };
 }
 
@@ -1773,6 +1831,89 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     };
   });
 
+  app.post(
+    '/part-measurement/inspection-drawing/template-groups',
+    { preHandler: allowWriteKiosk },
+    async (request) => {
+      const body = createInspectionDrawingTemplateGroupBodySchema.parse(request.body);
+      const processGroup = body.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
+      const selfInspection = selfInspectionFieldsFromBody(body);
+      const result = await templateService.createInspectionDrawingTemplateSiblingGroup({
+        fhincd: body.fhincd,
+        processGroup,
+        resourceCds: body.resourceCds,
+        name: body.name,
+        displayName: body.displayName,
+        items: body.items,
+        visualTemplateId: body.visualTemplateId,
+        selfInspectionMode: selfInspection.selfInspectionMode,
+        selfInspectionFixedCount: selfInspection.selfInspectionFixedCount
+      });
+      return {
+        group: serializeTemplateSiblingGroup(result.group, result.group.activeResourceCds),
+        templates: result.templates.map((template) =>
+          serializeTemplate({
+            ...template,
+            visualTemplateId: template.visualTemplateId,
+            visualTemplate: template.visualTemplate,
+            items: template.items
+          })
+        )
+      };
+    }
+  );
+
+  app.post(
+    '/part-measurement/inspection-drawing/template-groups/:id/revise',
+    { preHandler: allowWriteKiosk },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = reviseTemplateBodySchema.parse(request.body);
+      const selfInspectionPatch = selfInspectionPatchFromReviseBody(body);
+      const result = await templateService.reviseInspectionDrawingTemplateSiblingGroup(params.id, {
+        name: body.name,
+        items: body.items,
+        visualTemplateId: body.visualTemplateId,
+        ...selfInspectionPatch
+      });
+      return {
+        group: serializeTemplateSiblingGroup(result.group, result.group.activeResourceCds),
+        templates: result.templates.map((template) =>
+          serializeTemplate({
+            ...template,
+            visualTemplateId: template.visualTemplateId,
+            visualTemplate: template.visualTemplate,
+            items: template.items
+          })
+        )
+      };
+    }
+  );
+
+  app.post(
+    '/part-measurement/inspection-drawing/template-groups/:id/resources',
+    { preHandler: allowWriteKiosk },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = addInspectionDrawingTemplateGroupResourcesBodySchema.parse(request.body);
+      const result = await templateService.addResourcesToInspectionDrawingTemplateSiblingGroup(params.id, {
+        resourceCds: body.resourceCds,
+        sourceTemplateId: body.sourceTemplateId
+      });
+      return {
+        group: serializeTemplateSiblingGroup(result.group, result.group.activeResourceCds),
+        templates: result.templates.map((template) =>
+          serializeTemplate({
+            ...template,
+            visualTemplateId: template.visualTemplateId,
+            visualTemplate: template.visualTemplate,
+            items: template.items
+          })
+        )
+      };
+    }
+  );
+
   app.get('/part-measurement/inspection-drawing/templates', { preHandler: allowView }, async (request) => {
     const q = kioskInspectionDrawingTemplatesQuerySchema.parse(request.query);
     const processGroup =
@@ -1798,6 +1939,13 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         selfInspectionSampleSize: resolveTemplateFixedCount(template),
         visualTemplateId: template.visualTemplateId ?? null,
         visualTemplate: template.visualTemplate ? serializeVisualTemplate(template.visualTemplate) : null,
+        siblingGroupId: template.siblingGroupId ?? null,
+        siblingGroup: template.siblingGroup
+          ? serializeTemplateSiblingGroup(
+              template.siblingGroup,
+              template.siblingGroupActiveResourceCds ?? []
+            )
+          : null,
         itemCount
       }))
     };
@@ -1827,6 +1975,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         name: body.name,
         items: body.items,
         visualTemplateId: body.visualTemplateId,
+        detachFromSiblingGroup: body.detachFromSiblingGroup === true,
         ...selfInspectionPatch
       });
       return {
@@ -2001,6 +2150,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       items: body.items,
       visualTemplateId: body.visualTemplateId,
       candidateFhinmei: body.candidateFhinmei,
+      detachFromSiblingGroup: body.detachFromSiblingGroup === true,
       ...selfInspectionPatch
     });
     return {

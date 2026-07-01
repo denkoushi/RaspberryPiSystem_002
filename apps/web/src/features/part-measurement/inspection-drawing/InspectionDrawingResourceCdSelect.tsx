@@ -5,6 +5,7 @@ import { InspectionDrawingCreateMetaChip } from './InspectionDrawingCreateMetaCh
 import {
   inspectionDrawingBoundedSelectClassName,
   inspectionDrawingBoundedSelectShellClassName,
+  inspectionDrawingCreateMetaChipWideShellClassName,
   inspectionDrawingCreateMetaChipSelectClassName,
   inspectionDrawingLibraryFilterFieldLabelClassName,
   inspectionDrawingLibraryFilterResourceWidthClass,
@@ -59,13 +60,13 @@ export function InspectionDrawingResourceCdSelect({
   if (widthVariant === 'createChip') {
     return (
       <InspectionDrawingCreateMetaChip term={label} controlId={id}>
-        <div className="min-w-0 max-w-[11rem] overflow-hidden rounded-md">
+        <div className={inspectionDrawingCreateMetaChipWideShellClassName}>
           <select
             id={id}
             value={value}
             disabled={disabled}
             onChange={(e) => onChange(e.target.value)}
-            className={inspectionDrawingCreateMetaChipSelectClassName}
+            className={clsx(inspectionDrawingCreateMetaChipSelectClassName, 'max-w-[22rem]')}
           >
             <option value="">{emptyOptionLabel}</option>
             {options.map((option) => (

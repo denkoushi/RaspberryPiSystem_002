@@ -2050,6 +2050,20 @@ model PartMeasurementVisualTemplate {
   @@index([isActive, name])
 }
 
+/// 検査図面の同時作成・まとめて改版単位。
+/// 業務解決は従来どおり PartMeasurementTemplate の fhincd + processGroup + resourceCd。
+model PartMeasurementTemplateSiblingGroup {
+  id           String                       @id @default(uuid())
+  displayName  String
+  fhincd       String
+  processGroup PartMeasurementProcessGroup
+  createdAt    DateTime                     @default(now())
+  updatedAt    DateTime                     @updatedAt
+  templates    PartMeasurementTemplate[]
+
+  @@index([fhincd, processGroup], map: "PartMeasurementTemplateSiblingGroup_idx_key")
+}
+
 model PartMeasurementTemplate {
   id                 String                       @id @default(uuid())
   /// 登録スコープ。既存データは THREE_KEY。
@@ -2069,6 +2083,7 @@ model PartMeasurementTemplate {
   /// @deprecated 新規は selfInspectionFixedCount を使用
   selfInspectionSampleSize Int?
   visualTemplateId   String?
+  siblingGroupId     String?
   createdAt          DateTime                     @default(now())
   updatedAt          DateTime                     @updatedAt
   items              PartMeasurementTemplateItem[]
@@ -2076,11 +2091,13 @@ model PartMeasurementTemplate {
   selfInspectionSessions SelfInspectionSession[]
   selfInspectionPaperReports SelfInspectionPaperReport[]
   visualTemplate     PartMeasurementVisualTemplate? @relation(fields: [visualTemplateId], references: [id], onDelete: SetNull)
+  siblingGroup       PartMeasurementTemplateSiblingGroup? @relation(fields: [siblingGroupId], references: [id], onDelete: SetNull)
 
   @@unique([fhincd, processGroup, resourceCd, version], map: "PartMeasurementTemplate_unique_fhincd_group_resource_version")
   @@index([fhincd, processGroup, resourceCd, isActive], map: "PartMeasurementTemplate_idx_lookup")
   @@index([templateScope, fhincd, resourceCd, isActive])
   @@index([visualTemplateId])
+  @@index([siblingGroupId, isActive], map: "PartMeasurementTemplate_idx_sibling_active")
 }
 
 model PartMeasurementTemplateItem {

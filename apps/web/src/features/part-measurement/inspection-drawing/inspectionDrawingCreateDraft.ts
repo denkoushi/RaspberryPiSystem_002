@@ -45,9 +45,45 @@ export type InspectionDrawingCreateKeyCollision =
   | 'same_as_source'
   | 'active_exists';
 
+export type InspectionDrawingCreateSaveBlockReason =
+  | 'content_read_only'
+  | 'busy'
+  | 'missing_fhincd'
+  | 'missing_resource'
+  | 'missing_drawing'
+  | 'missing_points'
+  | 'invalid_points'
+  | 'invalid_self_inspection'
+  | 'key_collision'
+  | 'preview_pending';
+
 /** API の normalizeFhincd と同じ（trim + 大文字化） */
 export function normalizeFhincdForTemplateKey(raw: string): string {
   return raw.trim().toUpperCase();
+}
+
+export function normalizeUniqueInspectionDrawingResourceCds(raw: string[]): string[] {
+  const seen = new Set<string>();
+  const values: string[] = [];
+  for (const item of raw) {
+    const value = item.trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    values.push(value);
+  }
+  return values.sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+export function suggestInspectionDrawingTemplateName(params: {
+  visualTemplateName: string | null | undefined;
+  fhincd: string;
+}): string {
+  const visualName = params.visualTemplateName?.trim() ?? '';
+  const fhincd = params.fhincd.trim();
+  if (visualName && fhincd) return `${visualName} ${fhincd}`.slice(0, 200);
+  if (visualName) return visualName.slice(0, 200);
+  if (fhincd) return `検査図面 ${fhincd}`.slice(0, 200);
+  return '';
 }
 
 export function normalizeTemplateBusinessKey(key: TemplateBusinessKey): TemplateBusinessKey {
@@ -137,6 +173,51 @@ export function resolveInspectionDrawingCreateKeyCollision(params: {
     return 'active_exists';
   }
 
+  return null;
+}
+
+export function resolveInspectionDrawingCreateKeyCollisionForResources(params: {
+  fhincd: string;
+  processGroup: PartMeasurementProcessGroup;
+  resourceCds: string[];
+  sourceDraft: InspectionDrawingSourceTemplateDraft | null;
+  activeExistsByResourceCd: Record<string, boolean>;
+}): InspectionDrawingCreateKeyCollision | null {
+  for (const resourceCd of params.resourceCds) {
+    const collision = resolveInspectionDrawingCreateKeyCollision({
+      fhincd: params.fhincd,
+      processGroup: params.processGroup,
+      resourceCd,
+      sourceDraft: params.sourceDraft,
+      activeExists: params.activeExistsByResourceCd[resourceCd] === true
+    });
+    if (collision) return collision;
+  }
+  return null;
+}
+
+export function resolveInspectionDrawingCreateSaveBlockReason(params: {
+  contentReadOnly: boolean;
+  busy: boolean;
+  fhincd: string;
+  resourceCds: string[];
+  hasDrawing: boolean;
+  pointCount: number;
+  pointsValid: boolean;
+  selfInspectionValid: boolean;
+  keyCollision: InspectionDrawingCreateKeyCollision | null;
+  saveBlockedByPreview: boolean;
+}): InspectionDrawingCreateSaveBlockReason | null {
+  if (params.contentReadOnly) return 'content_read_only';
+  if (params.busy) return 'busy';
+  if (!params.fhincd.trim()) return 'missing_fhincd';
+  if (params.resourceCds.length === 0) return 'missing_resource';
+  if (!params.hasDrawing) return 'missing_drawing';
+  if (params.pointCount === 0) return 'missing_points';
+  if (!params.pointsValid) return 'invalid_points';
+  if (!params.selfInspectionValid) return 'invalid_self_inspection';
+  if (params.keyCollision) return 'key_collision';
+  if (params.saveBlockedByPreview) return 'preview_pending';
   return null;
 }
 

@@ -25,6 +25,7 @@ import type {
 } from '../../features/part-measurement/types';
 
 function lineageGroupKey(template: KioskInspectionDrawingTemplateSummaryDto): string {
+  if (template.siblingGroupId) return `sibling:${template.siblingGroupId}`;
   return `${template.fhincd}::${template.processGroup ?? 'none'}::${template.resourceCd}`;
 }
 
@@ -58,7 +59,12 @@ export function KioskInspectionDrawingLibraryPage() {
   );
   const resourceOptions = useMemo(() => {
     const unique = new Set(resourcesQuery.data?.resources ?? []);
-    for (const template of templates) unique.add(template.resourceCd);
+    for (const template of templates) {
+      unique.add(template.resourceCd);
+      for (const cd of template.siblingGroup?.activeResourceCds ?? []) {
+        unique.add(cd);
+      }
+    }
     return [...unique].sort((a, b) => a.localeCompare(b, 'ja'));
   }, [resourcesQuery.data?.resources, templates]);
 
@@ -68,7 +74,10 @@ export function KioskInspectionDrawingLibraryPage() {
       const key = lineageGroupKey(template);
       const list = map.get(key) ?? [];
       list.push(template);
-      list.sort((a, b) => b.version - a.version);
+      list.sort((a, b) => {
+        if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+        return b.version - a.version || a.resourceCd.localeCompare(b.resourceCd, 'ja');
+      });
       map.set(key, list);
     }
     return map;
@@ -81,7 +90,10 @@ export function KioskInspectionDrawingLibraryPage() {
     [groupedTemplates]
   );
   const activeHistoryTemplates = historyGroupKey ? groupedTemplates.get(historyGroupKey) ?? [] : [];
-  const activeHistoryTitle = activeHistoryTemplates[0]?.name ?? '履歴';
+  const activeHistoryTitle =
+    activeHistoryTemplates[0]?.siblingGroup?.displayName ??
+    activeHistoryTemplates[0]?.name ??
+    '履歴';
 
   const loadTemplates = useCallback(
     async (filters: {

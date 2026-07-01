@@ -72,6 +72,12 @@ export const inspectionDrawingCreateMetaChipReadonlyValueClassName =
 export const inspectionDrawingCreateMetaChipControlClassName =
   'box-border h-9 max-w-[11rem] min-w-0 rounded-md border-2 border-slate-500 bg-white px-2 text-[0.95rem] text-slate-900';
 
+export const inspectionDrawingCreateMetaChipWideShellClassName =
+  'min-w-0 w-[22rem] max-w-[22rem] overflow-hidden rounded-md';
+
+export const inspectionDrawingCreateMetaChipWideControlClassName =
+  'box-border h-9 w-full min-w-0 max-w-[22rem] rounded-md border-2 border-slate-500 bg-white px-2 text-[0.95rem] text-slate-900 disabled:opacity-60';
+
 export const inspectionDrawingCreateMetaChipSelectClassName = clsx(
   inspectionDrawingCreateMetaChipControlClassName,
   'w-full max-w-[11rem]'

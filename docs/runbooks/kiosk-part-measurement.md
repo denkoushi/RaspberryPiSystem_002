@@ -176,6 +176,63 @@ curl -sk -H "x-client-key: ${KEY}" \
 | 保存 409 | 同一キー active あり → 改版導線か別キーへ |
 | orphan 削除 403 | `cleanupToken` 不一致 · 既にテンプレ参照あり（409） |
 
+### 検査図面・複数資源兄弟グループ（2026-07-01） {#検査図面-複数資源兄弟グループ-2026-07-01}
+
+正本: [KB-320 §複数資源兄弟グループ](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-複数資源兄弟グループ-2026-07-01) · [ADR-20260701](../decisions/ADR-20260701-part-measurement-template-sibling-groups.md) · ブランチ **`feat/inspection-drawing-sibling-groups`**
+
+`品番 × 工程 × 資源CD = 1テンプレ` は維持する。同時作成した資源別テンプレは兄弟グループで束ね、一覧では1カードに集約する。
+
+#### 手動確認（キオスク）
+
+1. **検査図面** → 図面ライブラリ → 任意の図面カード **新規作成**。
+2. 品番を入力し、資源CDを2件以上選択する。テンプレ名が **図面表示名 + 品番** で自動提案されることを確認する。
+3. 図面・測定点・測定点名・公差・検査数設定が揃うまで保存ボタンが disabled のままになることを確認する。
+4. 保存後、図面ライブラリ/テンプレ一覧で兄弟グループが **1カード**に集約され、選択資源CDがチップ表示されることを確認する。
+5. グループ所属テンプレを編集し、既定の **兄弟テンプレをまとめて改版**で保存する。全資源の有効版が新バージョンになることを確認する。
+6. 同じ画面で **この資源だけ個別改版**に切り替えて保存する。保存後、その資源がグループから外れ、以後のまとめて改版対象外になることを確認する。
+7. グループ編集画面で資源を追加する。保存済み最新版がコピーされ、未保存の画面変更は含まれないことを確認する。
+8. 既存 active がある資源を含めて一括作成または資源追加し、409 でロールバックされることを確認する。
+
+#### ローカル DB 検証（既存 DB 禁止）
+
+既存DB/既存コンテナには書き込まない。一時 Postgres だけを使い、検証後に必ず削除する。
+
+```bash
+docker run -d --name rps-idg-pg-$(date +%s) \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=borrow_return \
+  -p 55433:5432 \
+  pgvector/pgvector:pg15
+
+export DATABASE_URL="postgresql://postgres:postgres@localhost:55433/borrow_return"
+export JWT_ACCESS_SECRET="local-access-secret"
+export JWT_REFRESH_SECRET="local-refresh-secret"
+
+pnpm --filter @raspi-system/api prisma:deploy
+pnpm --filter @raspi-system/api prisma:generate
+pnpm --filter @raspi-system/api test -- src/routes/__tests__/part-measurement.integration.test.ts
+```
+
+`EXPLAIN` では次を確認する。
+
+- `siblingGroupId + isActive` が `PartMeasurementTemplate_idx_sibling_active` を使う。
+- `fhincd + processGroup + resourceCd` の既存 lookup が index scan になる。
+
+終了後:
+
+```bash
+docker rm -f <temporary-container-name>
+```
+
+#### トラブルシュート
+
+| 事象 | 対処 |
+|------|------|
+| 保存ボタンが押せない | 品番・資源CD・図面・測定点・測定点名・上下限・検査数・衝突確認・プレビュー完了の不足を確認する |
+| 自動提案名に戻らない | テンプレ名欄を空に戻す。手入力済みの間は自動上書きしない |
+| 資源追加に画面上の未保存変更が入らない | 仕様どおり。先にまとめて改版で保存してから資源追加する |
+| 個別改版後にグループから外れた | 仕様どおり。資源固有変更をまとめて改版で上書きしないため |
+
 ### 検査図面 · PDF / TIFF 取込（2026-06-02 · TIFF 2026-06-10） {#検査図面--pdf-取込2026-06-02}
 
 - **UI**: 図面ファイル選択は **「図面画像・PDF（1ページ目）・TIFF/TIF」**。`accept` に `application/pdf` / `image/tiff` / `.tif` / `.tiff` を含む（検査図面作成・図面を登録・管理/キオスクテンプレ作成）。

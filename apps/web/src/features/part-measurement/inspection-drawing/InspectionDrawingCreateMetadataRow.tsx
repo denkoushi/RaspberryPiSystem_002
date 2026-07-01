@@ -11,6 +11,8 @@ export type InspectionDrawingCreateMetadataRowProps = {
   onFhincdChange: (value: string) => void;
   resourceCd: string;
   onResourceCdChange: (value: string) => void;
+  resourceCds?: string[];
+  onResourceCdsChange?: (values: string[]) => void;
   resourceSelectOptions: ReadonlyArray<InspectionDrawingResourceCdSelectOption>;
   resourceNameMap: Readonly<Record<string, string[]>>;
   processGroup: PartMeasurementProcessGroup;
