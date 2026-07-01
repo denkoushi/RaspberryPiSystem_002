@@ -722,7 +722,42 @@ cd apps/api && pnpm exec vitest run \
 未完了・次回確認:
 
 - ACTIVE 社員 NFC による本番の最終承認フローは、対象 session が 0 件であり本番DBを不要に変更しないため未実施。実データで測定値保存済み session ができたら、検査記録確認 → `2520` → ACTIVE 社員 NFC → 承認して完了 → `SelfInspectionRecordApproval` と `completedAt` を確認する。
-- CI は success だが `pnpm audit` の high severity annotation が出ている。今回機能の blocker ではないため、依存脆弱性確認は別タスクで扱う。
+- `pnpm audit` の high severity は 2026-07-01 の follow-up で解消済み。残る low/moderate は [§公差オフセット表示・CI/Audit/E2E](#公差オフセット表示-ciaudit-e2e-本番反映-2026-07-01) を参照。
+
+### 公差オフセット表示・CI/Audit/E2E 本番反映（2026-07-01） {#公差オフセット表示-ciaudit-e2e-本番反映-2026-07-01}
+
+次回 AI 再開用の最小メモ。詳細仕様は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) の「2026-07-01 公差オフセット表示・測定値選択 UI 変更」を正本とし、本節は release / validation / open items だけを扱う。
+
+| 項目 | 内容 |
+|------|------|
+| 機能 PR | #937 `feat(web): update inspection tolerance display` · merge `f3c78df6527766cd78c13f99af321fc2261e4a77` |
+| CI follow-up | #938 `ci: update actions for Node 24 runtime` · merge `ae19dcc9cca2bd8a9d5350ebdf7ca6adf029eaa5` |
+| audit follow-up | #939 `chore: resolve high pnpm audit findings` · merge `880a645f5f085a634fba9817df250bb5a1433a70` |
+| E2E follow-up | #940 `test: add inspection tolerance display e2e` · merge `de5ad3a265bb9997921676c8e8f1c482ec178503` |
+| 契約 | API / Prisma / migration / wire shape は変更なし。Web 表示と GitHub Actions / lockfile / E2E のみ |
+| 仕様要点 | 通常行は `基準 10 / -0.05〜+0.05`、legacy は `合格範囲 lower〜upper`。自主検査 select は `測定値選択`、select 内ヒント option なし |
+
+知見:
+
+- `pnpm/action-setup@v5` は `package.json` の `packageManager: pnpm@9.15.9` を読むため、workflow 側で `with.version` を同時指定しない。
+- `pnpm audit --audit-level=high` は #939 後に pass。残存 audit は **low 2 / moderate 10** で、high blocker はなし。
+- #940 の Playwright E2E は self-inspection session route を API mock で固定し、`測定値選択`、空 option、旧 `0.1候補` / `候補から選択` / `候補（刻み...` の不在を確認する。
+
+検証結果:
+
+- PR #937-#940 はそれぞれ CI green 後に merge 済み。
+- ローカル E2E 再確認: `PLAYWRIGHT_HTML_OPEN=never pnpm exec playwright test e2e/self-inspection-measurement-select-regression.spec.ts --project=chromium` → **1 passed**。
+- 本番 deploy: `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`、Run ID **`20260701-151214-24087`**、remote summary success **true**、全 host `failed=0` / `unreachable=0`。
+- Pi5: `prisma migrate deploy` / `prisma migrate status` / API health OK。今回 main 差分は Dockerfile なしのため Docker rebuild **false**。
+- Pi4 kiosk: `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` の `kiosk-browser`、`status-agent`、IME 診断 OK。
+- Pi3 signage: `signage-lite.service` active、lightdm 復旧 OK。
+- 実機自動検証: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- 公差表示・測定値選択 UI の現場実機目視は 2026-07-01 に OK 確認済み（KB-320 記録）。
+
+未完了・次回確認:
+
+- 機能 / CI / deploy / Phase12 の必須残作業なし。
+- セキュリティ依存更新を続ける場合は、残存 low/moderate audit を別タスクで評価する。
 
 ---
 
