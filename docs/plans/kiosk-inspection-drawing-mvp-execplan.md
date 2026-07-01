@@ -96,10 +96,11 @@ Maintained in accordance with `.agent/PLANS.md`.
   - 実装: `useInspectionDrawingTemplateLibrary` を追加し、検索条件・リクエスト順序ガード・リセット/再読込をページから分離。テンプレートペインは見出しカードを廃止し、フィルタと一覧余白を圧縮。
   - UI: 資源CD chip は横一列 + `+N` 省略、`測定点 / 更新 / 図面` は1行メタ情報、図面名は `truncate` + `title`、カード縦幅を圧縮し、`編集` / `帳票` / `雛形新規` / `履歴` は外寸維持でフォントを拡大。
   - 検証: GitHub Actions `28514390128` success、全台デプロイ `20260701-204628-31038` 後に Pi3 限定再デプロイ `20260701-212100-29479` success、Phase12 実機検証 PASS 45 / WARN 0 / FAIL 0、実機画面 `/kiosk/part-measurement/inspection` でユーザー目視 OK。
-- [x] (2026-07-01) **図面ライブラリ/テンプレート一覧 表形式化** — ブランチ `fix/inspection-drawing-table-panes`
+- [x] (2026-07-01) **図面ライブラリ/テンプレート一覧 表形式化** — ブランチ `fix/inspection-drawing-table-panes` · commit `2a6db097`
   - 仕様: 図面ライブラリと検査図面テンプレートをカードからサムネイルなしのコンパクト表へ変更。ペインは内容幅ベースで横並び、横幅いっぱいには伸ばさない。
   - UI: 図面ライブラリは `図面名 / 更新 / 操作`、テンプレートは `品番 / 図面名 / 資源CD / 工程 / 点 / 更新 / 操作`。行内操作は `新規` / `名称` / `雛形` の短縮ラベルにし、意味は `title` で補足。
-  - 検証: Web targeted tests **11 PASS**、`pnpm --filter @raspi-system/web build` PASS、`pnpm --filter @raspi-system/web lint` PASS、Mac DEV `/dev/kiosk-inspection-drawing-library` 1280px screenshot OK。
+  - 検証: Web targeted tests **11 PASS**、`pnpm --filter @raspi-system/web build` PASS、`pnpm --filter @raspi-system/web lint` PASS、Mac DEV `/dev/kiosk-inspection-drawing-library` 1280px screenshot OK、GitHub Actions `28520681342` success。
+  - 本番: 全台デプロイ `20260701-223712-23737` success / failed=0、Pi5 HEAD `2a6db097`、Phase12 実機検証 PASS 45 / WARN 0 / FAIL 0。
 - [ ] (2026-07-01) **残り手動確認** — 本番DBを書き換える一括作成/まとめて改版/資源追加は実機で未実行。次回は検証用データまたは明示許可のある品番・資源CDで、作成→まとめて改版→個別分離→資源追加を画面操作で確認する。
 
 ## Surprises & Discoveries
@@ -279,7 +280,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 - **図面ライブラリ密度調整（第2弾 · 2026-06-08）**: **6列**・検索 wrapper・登録導線一本化 — **`ddc3ce8b`**。**Pi5 本番・実機目視 OK**。当時 Pi4×4 は未、2026-07-01 の全台デプロイで現行 branch へ収束。
 - **複数資源兄弟グループ（2026-07-01）**: `feat/inspection-drawing-sibling-groups` · `580324b5` を全台デプロイ。既存DB/既存コンテナはローカル検証で変更せず、一時 Postgres で migration / integration / EXPLAIN を確認。実機では読み取りスモークまで実施し、本番データを書き換える一括作成系の画面操作は未実施。
 - **テンプレートペイン UX/密度改善（2026-07-01）**: `fix/inspection-drawing-template-pane-layout` · `b11e64ff` を全台デプロイ。テンプレート検索は自動検索 + `再読込` + `リセット`、カードは資源chip横一列・1行メタ情報・フォント拡大ボタンへ圧縮。実機 `/kiosk/part-measurement/inspection` で目視 OK。
-- **図面ライブラリ/テンプレート一覧 表形式化（2026-07-01）**: `fix/inspection-drawing-table-panes` でカードを廃止し、両ペインを内容幅ベースのコンパクト表に変更。API/DB契約は変更なし。
+- **図面ライブラリ/テンプレート一覧 表形式化（2026-07-01）**: `fix/inspection-drawing-table-panes` · `2a6db097` でカードを廃止し、両ペインを内容幅ベースのコンパクト表に変更。API/DB契約は変更なし。CI `28520681342` success、全台デプロイ `20260701-223712-23737` failed=0、Phase12 **45/0/0**。
 - **未着手**: 複数個数図面UI、TIFF、順位ボード連携、Phase12 への専用 visual-library スモーク追加（任意）。
 
 ## 代表コミット
@@ -302,6 +303,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 | `ddc3ce8b` | `fix/kiosk-inspection-drawing-library-density-tuning` | 図面ライブラリ 6列・検索 wrapper・登録導線一本化 |
 | `580324b5` | `feat/inspection-drawing-sibling-groups` | 複数資源兄弟グループ・まとめて改版・資源追加・一覧集約 |
 | `b11e64ff` | `fix/inspection-drawing-template-pane-layout` | テンプレートペイン自動検索・再読込/リセット・カード密度改善 |
+| `2a6db097` | `fix/inspection-drawing-table-panes` | 図面ライブラリ/テンプレート一覧をカードからコンパクト表へ変更 |
 
 ## 主要ファイル（後続読者向け）
 
@@ -368,4 +370,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 - 手動（2026-07-01・実機テンプレートペイン）: `/kiosk/part-measurement/inspection` で `再読込` / `リセット` 表示、旧検索ボタンとしての `更新` なし、リセット disabled/復帰、カード密度改善、ユーザー目視 OK
 - 自動（2026-07-01・表形式化）: `pnpm --filter @raspi-system/web test -- InspectionDrawingLibraryTemplateTable.test.tsx KioskInspectionDrawingVisualLibrarySection.test.tsx InspectionDrawingLibraryFilterBar.test.tsx useInspectionDrawingTemplateLibrary.test.ts` → **11 PASS**、`pnpm --filter @raspi-system/web build` PASS、`pnpm --filter @raspi-system/web lint` PASS
 - 手動（2026-07-01・Mac DEV 表形式化）: `/dev/kiosk-inspection-drawing-library` を 1280x760 Chrome headless screenshot で確認。図面ライブラリ/テンプレートとも表形式、サムネイルなし、短縮操作ボタン横並び、更新日時列の見切れ改善。
+- 自動（2026-07-01・CI 表形式化）: GitHub Actions `28520681342` success（lint/build/unit, api-db-and-infra, security-docker, e2e-smoke, e2e-tests）
+- 自動（2026-07-01・全台実機 表形式化）: `./scripts/update-all-clients.sh fix/inspection-drawing-table-panes infrastructure/ansible/inventory.yml --detach --follow` → Run `20260701-223712-23737` success / failed=0、Pi5 HEAD `2a6db097`
+- 自動（2026-07-01・Phase12 表形式化）: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**
 - 手動（残り）: 本番DBを書き換える一括作成・まとめて改版・個別分離・資源追加は未確認。次回は検証用データを決めてから画面操作で確認する。
