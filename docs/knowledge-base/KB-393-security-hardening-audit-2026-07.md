@@ -11,7 +11,7 @@
 | source_of_truth | this file (findings + applied code fixes). Operator-side remediation procedure: [runbooks/security-hardening-remediation.md](../runbooks/security-hardening-remediation.md) |
 | related_code | `apps/api/src/lib/photo-storage.ts`, `apps/api/src/routes/storage/pdf-pages.ts`, `apps/api/src/plugins/error-handler.ts`, `apps/api/src/routes/webrtc/signaling.ts`, `apps/web/src/features/webrtc/hooks/useWebRTC.ts`, `apps/api/src/routes/tools/loans/{delete,return,cancel,active}.ts`, `apps/api/src/routes/tools/loans/require-loan-auth.ts`, `apps/api/src/routes/kiosk/production-schedule/due-management-auth.ts` |
 | related_docs | [pr-review-bots.md](../security/pr-review-bots.md), [api-key-policy.md](../guides/api-key-policy.md), [deployment.md](../guides/deployment.md) |
-| validation | tsc (tsconfig.build.json) clean, eslint clean, vitest 186 tests passed on ephemeral pgvector Postgres |
+| validation | tsc (tsconfig.build.json) clean, eslint clean, vitest 186 tests passed on ephemeral pgvector Postgres; CI green (PR #948); deployed to prod (main `b1172baf`) + real-device verify PASS 45/WARN 0/FAIL 0 on 2026-07-02 |
 | open_items | Batch C operator actions (secret rotation, SSH-key mount removal, container de-root, client bind hardening, admin IP allowlist, TLS verify) — see Runbook |
 
 ## Context
@@ -65,6 +65,9 @@ Design goal: legitimate kiosk (client-key) and admin (JWT) flows keep working; o
 - `eslint` on all changed files → clean.
 - `vitest` on ephemeral `pgvector/pgvector:pg16` Postgres (127.0.0.1:55432, isolated; removed after): loans/photo-storage/kiosk/kiosk-production-schedule/client-device-resolution/contracts.loans/loan.service/transaction.service/auth = **186 tests passed**, including "401 without client key" and the `2520` verify path (still 200 under the new rate limit).
 - Ephemeral container + anonymous volumes removed; no existing DB/container/volume modified.
+- **CI (PR #948)**: `lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` / CodeQL / gitleaks all green. CodeQL flagged 3 new `js/missing-rate-limiting` alerts on loan `return`/`cancel`/`delete` (introduced because the added authz is now visible to CodeQL); these routes are deliberately rate-limit-exempt for uninterrupted kiosk operation (`plugins/rate-limit.ts` skipPrefixes) and were dismissed as **won't fix** (alerts #44/#45/#46), consistent with the pre-existing accepted `/loans/active` alert.
+- **Production deploy (2026-07-02)**: `./scripts/update-all-clients.sh main ... --detach --follow`, Run ID `20260702-205710-10848`. PLAY RECAP `failed=0 / unreachable=0` on all 7 hosts (Pi5 + Pi4×5 + Pi3); summary success true; Pi5 repo → `b1172baf`; `docker-api-1` healthy.
+- **Real-device verify**: `scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**. Targeted checks against prod API: unauthenticated `return`/`cancel`/`delete`/`active?clientId=` → **401**; valid client-key `active` → **200**; storage path-traversal (raw `%2e%2e` / `..%2f`, both with valid key) → **500 with no `/etc/passwd` leak** (containment error, file access blocked). Kiosk/admin flows unaffected.
 
 ## Open Items
 
