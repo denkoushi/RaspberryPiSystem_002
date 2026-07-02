@@ -10,6 +10,7 @@
  */
 
 import { prisma } from '../lib/prisma.js';
+import { shutdownImageOcrPort } from '../services/ocr/image-ocr-runtime.js';
 import { getPartMeasurementDrawingOcrService } from '../services/part-measurement/part-measurement-drawing-ocr.service.js';
 
 type Args = {
@@ -94,8 +95,11 @@ void main()
     console.error('[backfill-part-measurement-drawing-ocr] error', error);
     process.exitCode = 1;
   })
-  .finally(() =>
-    prisma.$disconnect().catch(() => {
+  .finally(async () => {
+    await shutdownImageOcrPort().catch((error: unknown) => {
+      console.warn('[backfill-part-measurement-drawing-ocr] OCR shutdown failed', error);
+    });
+    await prisma.$disconnect().catch(() => {
       /* ignore */
-    })
-  );
+    });
+  });

@@ -11,4 +11,9 @@ export type {
 export { NdlOcrEngineAdapter } from './adapters/ndlocr-engine.adapter.js';
 export { TesseractJsImageOcrAdapter } from './adapters/tesseract-js-image-ocr.adapter.js';
 export { StubImageOcrAdapter } from './adapters/stub-image-ocr.adapter.js';
-export { getImageOcrPort, getImageOcrLayoutPort, resetImageOcrPortForTests } from './image-ocr-runtime.js';
+export {
+  getImageOcrPort,
+  getImageOcrLayoutPort,
+  resetImageOcrPortForTests,
+  shutdownImageOcrPort
+} from './image-ocr-runtime.js';

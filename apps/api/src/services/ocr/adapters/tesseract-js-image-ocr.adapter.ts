@@ -22,6 +22,19 @@ export class TesseractJsImageOcrAdapter implements ImageOcrPort, ImageOcrLayoutP
   private workerJpnEngPromise: Promise<Worker> | null = null;
   private workerEngPromise: Promise<Worker> | null = null;
 
+  async terminate(): Promise<void> {
+    const workers = [this.workerJpnEngPromise, this.workerEngPromise];
+    this.workerJpnEngPromise = null;
+    this.workerEngPromise = null;
+    await Promise.all(
+      workers.map(async (workerPromise) => {
+        if (!workerPromise) return;
+        const worker = await workerPromise;
+        await worker.terminate();
+      })
+    );
+  }
+
   async runOcrOnImage(input: ImageOcrInput): Promise<ImageOcrResult> {
     if (input.profile == null) {
       return this.runLegacyJpnEng(input);
