@@ -421,7 +421,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       throw error;
     }
 
-    const callId = `call-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const callId = `call-${Date.now()}-${crypto.randomUUID()}`;
     setCurrentCallId(callId);
     
     // エラーレスポンスを待機するためのPromiseを作成

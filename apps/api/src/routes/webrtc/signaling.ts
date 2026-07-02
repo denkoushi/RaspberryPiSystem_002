@@ -3,6 +3,8 @@
  * WebSocket経由でSDP offer/answer、ICE candidateを中継
  */
 
+import { randomUUID } from 'node:crypto';
+
 import type { FastifyInstance } from 'fastify';
 
 import { prisma } from '../../lib/prisma.js';
@@ -181,7 +183,7 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
             }
 
             // コールIDを生成
-            const callId = `call-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+            const callId = `call-${Date.now()}-${randomUUID()}`;
             callStore.createCall(callId, clientId, data.to);
 
             // 発信者を参加者に追加

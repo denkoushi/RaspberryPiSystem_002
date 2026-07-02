@@ -25,13 +25,31 @@ export function registerPdfPageRoutes(app: FastifyInstance): void {
     const params = request.params as { pdfId: string; filename: string };
     const { pdfId, filename } = params;
 
+    let decodedPdfId: string;
+    let decodedFilename: string;
+    try {
+      decodedPdfId = decodeURIComponent(pdfId);
+      decodedFilename = decodeURIComponent(filename);
+    } catch {
+      return reply.status(400).send({ message: '無効なパスです' });
+    }
+
     // パストラバーサル対策
-    if (filename.includes('..') || pdfId.includes('..')) {
+    if (
+      decodedFilename.includes('..') ||
+      decodedPdfId.includes('..') ||
+      decodedFilename.split(/[/\\]/).some((segment) => segment === '..') ||
+      decodedPdfId.split(/[/\\]/).some((segment) => segment === '..')
+    ) {
       return reply.status(400).send({ message: '無効なパスです' });
     }
 
     // ファイルパスを構築
-    const filePath = path.join(PDF_PAGES_DIR, pdfId, filename);
+    const resolvedBase = path.resolve(PDF_PAGES_DIR);
+    const filePath = path.resolve(resolvedBase, decodedPdfId, decodedFilename);
+    if (!filePath.startsWith(resolvedBase + path.sep)) {
+      return reply.status(400).send({ message: '無効なパスです' });
+    }
 
     try {
       const stat = await fs.stat(filePath);

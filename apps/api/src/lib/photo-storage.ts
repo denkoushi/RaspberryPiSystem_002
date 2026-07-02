@@ -9,6 +9,27 @@ const getStorageBaseDir = () =>
 const getPhotosDir = () => path.join(getStorageBaseDir(), 'photos');
 const getThumbnailsDir = () => path.join(getStorageBaseDir(), 'thumbnails');
 
+function resolvePathWithinBase(baseDir: string, relativePath: string): string {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(relativePath);
+  } catch {
+    throw new Error('Invalid photo path');
+  }
+  if (decoded.includes('\0')) {
+    throw new Error('Invalid photo path');
+  }
+  if (decoded.split(/[/\\]/).some((segment) => segment === '..')) {
+    throw new Error('Invalid photo path');
+  }
+  const resolvedBase = path.resolve(baseDir);
+  const fullPath = path.resolve(resolvedBase, decoded);
+  if (fullPath !== resolvedBase && !fullPath.startsWith(resolvedBase + path.sep)) {
+    throw new Error('Invalid photo path');
+  }
+  return fullPath;
+}
+
 /**
  * 写真ファイルのパス情報
  */
@@ -192,7 +213,7 @@ export class PhotoStorage {
   static async readPhoto(photoUrl: string): Promise<Buffer> {
     // URLからファイルパスを抽出
     const relativePath = photoUrl.replace('/api/storage/photos/', '');
-    const fullPath = path.join(getPhotosDir(), relativePath);
+    const fullPath = resolvePathWithinBase(getPhotosDir(), relativePath);
 
     return await fs.readFile(fullPath);
   }
@@ -205,13 +226,9 @@ export class PhotoStorage {
     if (!photoUrl.startsWith('/api/storage/photos/')) {
       throw new Error(`Invalid photoUrl for thumbnail: ${photoUrl}`);
     }
-    const thumbnailRelativePath = photoUrl
-      .replace('/api/storage/photos/', '/storage/thumbnails/')
-      .replace('.jpg', '_thumb.jpg');
-    const thumbnailFullPath = thumbnailRelativePath.replace(
-      '/storage/thumbnails/',
-      `${getThumbnailsDir()}/`
-    );
+    const relativePath = photoUrl.replace('/api/storage/photos/', '');
+    const thumbnailRelativePath = relativePath.replace('.jpg', '_thumb.jpg');
+    const thumbnailFullPath = resolvePathWithinBase(getThumbnailsDir(), thumbnailRelativePath);
     return await fs.readFile(thumbnailFullPath);
   }
 
