@@ -141,6 +141,10 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
       completedRequiredEntryCount: 1,
       requiredEntryCount: 2,
       incompleteRegistrationEntryCount: 0,
+      inspectorCompletedRequiredEntryCount: 0,
+      inspectorMissingRequiredEntryCount: 2,
+      inspectorIncompleteValueEntryCount: 0,
+      inspectorIncompleteRegistrationEntryCount: 0,
       pendingReviewCount: 0
     };
     mockUseSelfInspectionRecordApprovals.mockReturnValue({
@@ -170,6 +174,7 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
               createdAt: '2026-06-30T01:00:00.000Z',
               updatedAt: '2026-06-30T01:02:03.000Z'
             },
+            inspectorEntry: null,
             values: [
               {
                 id: 'value-1',
@@ -186,7 +191,15 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
                 reviewStatus: 'NOT_REQUIRED',
                 outOfToleranceAcknowledgedAt: null,
                 approvedAt: null,
-                updatedAt: '2026-06-30T01:02:03.000Z'
+                updatedAt: '2026-06-30T01:02:03.000Z',
+                inspectorValueId: null,
+                inspectorValue: null,
+                operatorValueSnapshot: null,
+                differenceValue: null,
+                inspectorJudgementStatus: null,
+                inspectorJudgedAt: null,
+                inspectorJudgementComment: null,
+                inspectorUpdatedAt: null
               }
             ]
           }

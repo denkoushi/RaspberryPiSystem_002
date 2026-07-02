@@ -2733,6 +2733,7 @@ describe('part-measurement templates API', () => {
     expect(inputIncompleteSessionAfterSave?.recordApprovalState).toBe('input_incomplete');
     expect(inputIncompleteSessionAfterSave?.recordApprovalRequiredAt).toBeTruthy();
     expect(inputIncompleteSessionAfterSave?.recordApprovalWorkflowStartedAt).toBeTruthy();
+    expect(inputIncompleteSessionAfterSave?.inspectorRemeasurementRequiredAt).toBeTruthy();
 
     const auditedUpdateRes = await app.inject({
       method: 'PATCH',
@@ -3133,6 +3134,99 @@ describe('part-measurement templates API', () => {
     expect(disableInstrumentRequirementBeforeApprovalRes.statusCode).toBe(200);
     expect(disableInstrumentRequirementBeforeApprovalRes.json().policy.requireMeasuringInstrumentTag).toBe(false);
 
+    const recordApprovalInspectorPendingRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=inspector_measurement_pending',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(recordApprovalInspectorPendingRes.statusCode).toBe(200);
+    const inspectorPendingSession = (
+      recordApprovalInspectorPendingRes.json().sessions as Array<Record<string, unknown>>
+    ).find((row) => row.id === sessionId);
+    expect(inspectorPendingSession?.recordApprovalState).toBe('inspector_measurement_pending');
+    expect(inspectorPendingSession?.inspectorCompletedRequiredEntryCount).toBe(0);
+
+    const approveBeforeInspectorRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { approverEmployeeTagUid: auditEmployee.nfcTagUid }
+    });
+    expect(approveBeforeInspectorRes.statusCode).toBe(409);
+    expect(approveBeforeInspectorRes.json().message).toContain('検査員');
+
+    const inspectorEmployee = await createTestEmployee({
+      displayName: 'Self Inspection Inspector',
+      nfcTagUid: `EMP-INSPECTOR-${Date.now()}`
+    });
+
+    const sameEmployeeInspectorRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/inspector-entries`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {
+        entryIndex: 0,
+        employeeTagUid: auditEmployee.nfcTagUid,
+        values: [{ templateItemId, value: '10.01' }]
+      }
+    });
+    expect(sameEmployeeInspectorRes.statusCode).toBe(409);
+    expect(sameEmployeeInspectorRes.json().message).toContain('別の社員');
+
+    const inspectorEntry0Res = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/inspector-entries`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {
+        entryIndex: 0,
+        employeeTagUid: inspectorEmployee.nfcTagUid,
+        values: [{ templateItemId, value: '10.02' }]
+      }
+    });
+    expect(inspectorEntry0Res.statusCode).toBe(200);
+    expect(inspectorEntry0Res.json().entry.createdByEmployeeId).toBe(inspectorEmployee.id);
+    expect(inspectorEntry0Res.json().entry.values[0]?.operatorValueSnapshot).toBe('10.01');
+    expect(inspectorEntry0Res.json().entry.values[0]?.differenceValue).toBe('0.01');
+    expect(inspectorEntry0Res.json().entry.values[0]?.judgementStatus).toBe('NOT_EVALUATED');
+
+    const operatorUpdateAfterInspectorStartRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${firstEntryId}`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        ifUnmodifiedSince: auditedUpdateRes.json().entry.updatedAt as string,
+        employeeTagUid: auditEmployee.nfcTagUid,
+        values: [{ templateItemId, value: '10.02' }]
+      }
+    });
+    expect(operatorUpdateAfterInspectorStartRes.statusCode).toBe(409);
+    expect(operatorUpdateAfterInspectorStartRes.json().message).toContain('検査員');
+
+    const inspectorDetailAfterFirstRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/inspector-measurements?entryIndex=0`,
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(inspectorDetailAfterFirstRes.statusCode).toBe(200);
+    expect(inspectorDetailAfterFirstRes.json().session.focusedEntry?.entryIndex).toBe(0);
+    expect(inspectorDetailAfterFirstRes.json().session.operatorEntries).toHaveLength(2);
+    expect(inspectorDetailAfterFirstRes.json().session.inspectorMeasurementState).toBe('in_progress');
+
+    const inspectorEntry1Res = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/inspector-entries`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {
+        entryIndex: 1,
+        employeeTagUid: inspectorEmployee.nfcTagUid,
+        values: [{ templateItemId, value: '10.51', outOfToleranceAcknowledged: true }]
+      }
+    });
+    expect(inspectorEntry1Res.statusCode).toBe(200);
+    expect(inspectorEntry1Res.json().entry.values[0]?.operatorValueSnapshot).toBe('10.5');
+    expect(inspectorEntry1Res.json().entry.values[0]?.differenceValue).toBe('0.01');
+    expect(inspectorEntry1Res.json().entry.values[0]?.judgementStatus).toBe('NOT_EVALUATED');
+
     const recordApprovalApprovableRes = await app.inject({
       method: 'GET',
       url: '/api/part-measurement/self-inspection/record-approvals?state=approvable',
@@ -3144,6 +3238,7 @@ describe('part-measurement templates API', () => {
     ).find((row) => row.id === sessionId);
     expect(approvableSession?.recordApprovalState).toBe('approvable');
     expect(approvableSession?.pendingReviewCount).toBe(1);
+    expect(approvableSession?.inspectorCompletedRequiredEntryCount).toBe(2);
 
     const recordApprovalDetailRes = await app.inject({
       method: 'GET',
@@ -3154,6 +3249,9 @@ describe('part-measurement templates API', () => {
     expect(recordApprovalDetailRes.json().session.recordApprovalState).toBe('approvable');
     expect(recordApprovalDetailRes.json().session.requiredEntries).toHaveLength(2);
     expect(recordApprovalDetailRes.json().session.pendingReviewCount).toBe(1);
+    expect(recordApprovalDetailRes.json().session.requiredEntries[0].values[0].inspectorValue).toBe('10.02');
+    expect(recordApprovalDetailRes.json().session.requiredEntries[0].values[0].differenceValue).toBe('0.01');
+    expect(recordApprovalDetailRes.json().session.requiredEntries[0].values[0].inspectorJudgementStatus).toBe('NOT_EVALUATED');
 
     const unknownApproverRes = await app.inject({
       method: 'POST',
@@ -3274,6 +3372,18 @@ describe('part-measurement templates API', () => {
     expect(approvedMeasurementValue?.reviewStatus).toBe('APPROVED');
     expect(approvedMeasurementValue?.approvedByUserId).toBe(activeApprover.id);
     expect(approvedMeasurementValue?.approvedByUsername).toBe('Record Approver');
+
+    const inspectorMeasurementValue = await prisma.selfInspectionInspectorMeasurementValue.findFirst({
+      where: {
+        inspectorEntry: { sessionId },
+        templateItemId
+      },
+      orderBy: { inspectorValue: 'desc' }
+    });
+    expect(String(inspectorMeasurementValue?.inspectorValue)).toBe('10.51');
+    expect(String(inspectorMeasurementValue?.operatorValueSnapshot)).toBe('10.5');
+    expect(String(inspectorMeasurementValue?.differenceValue)).toBe('0.01');
+    expect(inspectorMeasurementValue?.judgementStatus).toBe('NOT_EVALUATED');
 
     const activeRecordApprovalAfterApprovalRes = await app.inject({
       method: 'GET',
@@ -3882,7 +3992,13 @@ describe('part-measurement templates API', () => {
     });
     expect(cloneRes.statusCode).toBe(200);
     const body = cloneRes.json() as {
-      template: { id: string; resourceCd: string; fhincd: string; items: Array<{ measurementLabel: string }> };
+      template: {
+        id: string;
+        resourceCd: string;
+        fhincd: string;
+        templateScope: string;
+        items: Array<{ measurementLabel: string }>;
+      };
       didClone: boolean;
     };
     expect(body.template.resourceCd).toBe('RES-TARGET');

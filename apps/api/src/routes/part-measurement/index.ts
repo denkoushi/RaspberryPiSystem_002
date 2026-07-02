@@ -389,6 +389,21 @@ const selfInspectionUpdateEntryBodySchema = z.object({
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
 
+const selfInspectionCreateInspectorEntryBodySchema = z.object({
+  entryIndex: z.number().int().min(0),
+  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
+  values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
+});
+
+const selfInspectionUpdateInspectorEntryBodySchema = z.object({
+  entryIndex: z.number().int().min(0),
+  ifUnmodifiedSince: z.string().min(1).max(100),
+  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
+  values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
+});
+
 const selfInspectionInstrumentPreUseInspectionBodySchema = z.object({
   instrumentTagUid: z.string().min(1).max(200),
   employeeTagUid: z.string().min(1).max(200)
@@ -408,6 +423,7 @@ const approveSelfInspectionOutOfToleranceReviewBodySchema = z.object({
 const selfInspectionRecordApprovalStateSchema = z.enum([
   'active',
   'input_incomplete',
+  'inspector_measurement_pending',
   'registration_incomplete',
   'approvable',
   'approved'
@@ -1725,6 +1741,29 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     async () => selfInspectionService.listPendingOutOfToleranceReviews()
   );
 
+  app.get(
+    '/part-measurement/self-inspection/sessions/:id/inspector-measurements',
+    { preHandler: allowView },
+    async (request) => {
+      const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+      const query = getSelfInspectionSessionQuerySchema.parse(request.query ?? {});
+      const session = await selfInspectionService.getInspectorMeasurementSessionDetail(params.id, {
+        entryIndex: query.entryIndex
+      });
+      return {
+        session: {
+          ...session,
+          template: serializeTemplate({
+            ...session.template,
+            visualTemplateId: session.template.visualTemplateId,
+            visualTemplate: session.template.visualTemplate,
+            items: session.template.items
+          })
+        }
+      };
+    }
+  );
+
   app.get('/part-measurement/self-inspection/sessions/:id', { preHandler: allowView }, async (request) => {
     const params = selfInspectionSessionIdParamsSchema.parse(request.params);
     const query = getSelfInspectionSessionQuerySchema.parse(request.query ?? {});
@@ -1756,6 +1795,35 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     return { entry };
   });
 
+  app.post('/part-measurement/self-inspection/sessions/:id/inspector-entries', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+    const body = selfInspectionCreateInspectorEntryBodySchema.parse(request.body);
+    const clientDeviceId = await tryGetClientDeviceId(request.headers);
+    const entry = await selfInspectionService.createInspectorEntry(params.id, {
+      entryIndex: body.entryIndex,
+      employeeTagUid: body.employeeTagUid,
+      measuringInstrumentTagUid: body.measuringInstrumentTagUid,
+      values: body.values,
+      clientDeviceId
+    });
+    return { entry };
+  });
+
+  app.patch('/part-measurement/self-inspection/sessions/:id/inspector-entries/:entryId', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = selfInspectionEntryIdParamsSchema.parse(request.params);
+    const body = selfInspectionUpdateInspectorEntryBodySchema.parse(request.body);
+    const clientDeviceId = await tryGetClientDeviceId(request.headers);
+    const entry = await selfInspectionService.updateInspectorEntry(params.id, params.entryId, {
+      entryIndex: body.entryIndex,
+      ifUnmodifiedSince: body.ifUnmodifiedSince,
+      employeeTagUid: body.employeeTagUid,
+      measuringInstrumentTagUid: body.measuringInstrumentTagUid,
+      values: body.values,
+      clientDeviceId
+    });
+    return { entry };
+  });
+
   app.patch('/part-measurement/self-inspection/sessions/:id/entries/:entryId', { preHandler: allowWriteKiosk }, async (request) => {
     const params = selfInspectionEntryIdParamsSchema.parse(request.params);
     const body = selfInspectionUpdateEntryBodySchema.parse(request.body);
@@ -1776,6 +1844,21 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       const body = selfInspectionInstrumentPreUseInspectionBodySchema.parse(request.body);
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
       return selfInspectionService.recordInstrumentPreUseInspection(params.id, params.entryIndex, {
+        instrumentTagUid: body.instrumentTagUid,
+        employeeTagUid: body.employeeTagUid,
+        clientDeviceId
+      });
+    }
+  );
+
+  app.post(
+    '/part-measurement/self-inspection/sessions/:id/inspector-entries/:entryIndex/instrument-usages/pre-use-inspection',
+    { preHandler: allowWriteKiosk },
+    async (request) => {
+      const params = selfInspectionEntryIndexParamsSchema.parse(request.params);
+      const body = selfInspectionInstrumentPreUseInspectionBodySchema.parse(request.body);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      return selfInspectionService.recordInspectorInstrumentPreUseInspection(params.id, params.entryIndex, {
         instrumentTagUid: body.instrumentTagUid,
         employeeTagUid: body.employeeTagUid,
         clientDeviceId

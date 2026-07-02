@@ -174,6 +174,10 @@ function App() {
             path="/kiosk/part-measurement/self-inspection/sessions/:sessionId"
             element={lazyRouteElement(<KioskSelfInspectionSessionPage />)}
           />
+          <Route
+            path="/kiosk/part-measurement/self-inspection/sessions/:sessionId/inspector"
+            element={lazyRouteElement(<KioskSelfInspectionSessionPage mode="inspector" />)}
+          />
           <Route path="/kiosk/part-measurement/edit/:sheetId" element={<KioskPartMeasurementEditPage />} />
           <Route path="/kiosk/part-measurement/template/pick" element={<KioskPartMeasurementTemplatePickPage />} />
           <Route path="/kiosk/part-measurement/template/new" element={<KioskPartMeasurementTemplatePage />} />

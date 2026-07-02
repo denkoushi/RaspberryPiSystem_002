@@ -13,6 +13,7 @@ import { kioskInspectionDrawingPaperReportPrintPath } from '../../features/part-
 import { normalizeManufacturingOrderScanText } from '../../features/part-measurement/manufacturingOrderScan';
 import {
   KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
+  kioskSelfInspectionInspectorSessionPath,
   kioskSelfInspectionSessionPath
 } from '../../features/part-measurement/selfInspectionRoutes';
 import { presentSelfInspectionWipCard } from '../../features/part-measurement/selfInspectionWipCardPresentation';
@@ -80,6 +81,27 @@ function statusLabel(status: SelfInspectionStatus | null) {
 }
 
 function SessionWipCard({ session }: { session: SelfInspectionSessionSummaryDto }) {
+  const inspectorState = session.inspectorMeasurementState;
+  const isInspectorRemeasurementActive =
+    Boolean(session.inspectorRemeasurementRequiredAt) &&
+    (inspectorState === 'pending' || inspectorState === 'in_progress');
+  const isInspectorRemeasurementComplete =
+    Boolean(session.inspectorRemeasurementRequiredAt) && inspectorState === 'complete';
+  const actionPath = isInspectorRemeasurementActive
+    ? kioskSelfInspectionInspectorSessionPath(session.id)
+    : isInspectorRemeasurementComplete && session.recordApprovalRequiredAt
+      ? KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH
+      : kioskSelfInspectionSessionPath(session.id);
+  const actionLabel = isInspectorRemeasurementActive
+    ? '検査員測定'
+    : isInspectorRemeasurementComplete && session.recordApprovalRequiredAt
+      ? '記録確認'
+      : '再開';
+  const badgeLabel = isInspectorRemeasurementActive
+    ? '検査員待ち'
+    : isInspectorRemeasurementComplete && session.recordApprovalRequiredAt
+      ? '確認待ち'
+      : statusLabel(session.status);
   const card = presentSelfInspectionWipCard({
     productNo: session.productNo,
     fhincd: session.fhincd,
@@ -117,24 +139,28 @@ function SessionWipCard({ session }: { session: SelfInspectionSessionSummaryDto 
         <span
           className={clsx(
             'shrink-0 rounded px-1.5 py-0.5 text-[0.68rem] font-semibold',
-            session.status === 'review_pending'
+            session.status === 'review_pending' || isInspectorRemeasurementActive || isInspectorRemeasurementComplete
               ? 'bg-red-400/20 text-red-100'
               : 'bg-yellow-400/20 text-yellow-200'
           )}
         >
-          {statusLabel(session.status)}
+          {badgeLabel}
         </span>
       </div>
-      <p className="text-[0.72rem] text-white/55">進捗 {card.progressLine}</p>
+      <p className="text-[0.72rem] text-white/55">
+        {isInspectorRemeasurementActive || isInspectorRemeasurementComplete
+          ? `検査員 ${session.inspectorCompletedRequiredEntryCount}/${session.inspectorRequiredEntryCount} 件`
+          : `進捗 ${card.progressLine}`}
+      </p>
       <div className="flex flex-wrap gap-1">
         <Link
-          to={kioskSelfInspectionSessionPath(session.id)}
+          to={actionPath}
           className={buttonClassName(
             'primary',
             'inline-flex min-h-9 w-full items-center justify-center text-[0.82rem]'
           )}
         >
-          再開
+          {actionLabel}
         </Link>
       </div>
     </section>

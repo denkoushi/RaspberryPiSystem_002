@@ -239,8 +239,11 @@ import {
   listSelfInspectionRecordApprovals,
   getSelfInspectionRecordApprovalSession,
   getSelfInspectionSession,
+  getSelfInspectionInspectorMeasurementSession,
   createSelfInspectionEntry,
   updateSelfInspectionEntry,
+  createSelfInspectionInspectorEntry,
+  updateSelfInspectionInspectorEntry,
   completeSelfInspectionSession,
   approveSelfInspectionOutOfToleranceReview,
   approveSelfInspectionRecordApproval,
@@ -468,6 +471,10 @@ function selfInspectionSessionQueryKey(sessionId: string, entryIndex?: number) {
   return ['self-inspection-session', sessionId, entryIndex ?? null] as const;
 }
 
+function selfInspectionInspectorSessionQueryKey(sessionId: string, entryIndex?: number) {
+  return ['self-inspection-inspector-session', sessionId, entryIndex ?? null] as const;
+}
+
 export function useSelfInspectionSession(
   sessionId?: string | null,
   options?: { enabled?: boolean; entryIndex?: number }
@@ -476,6 +483,19 @@ export function useSelfInspectionSession(
   return useQuery({
     queryKey: selfInspectionSessionQueryKey(sessionId!, entryIndex),
     queryFn: () => getSelfInspectionSession(sessionId!, { entryIndex }),
+    placeholderData: (previousData) => resolveSelfInspectionSessionPlaceholderData(previousData, sessionId),
+    enabled: (options?.enabled ?? true) && Boolean(sessionId)
+  });
+}
+
+export function useSelfInspectionInspectorMeasurementSession(
+  sessionId?: string | null,
+  options?: { enabled?: boolean; entryIndex?: number }
+) {
+  const entryIndex = options?.entryIndex;
+  return useQuery({
+    queryKey: selfInspectionInspectorSessionQueryKey(sessionId!, entryIndex),
+    queryFn: () => getSelfInspectionInspectorMeasurementSession(sessionId!, { entryIndex }),
     placeholderData: (previousData) => resolveSelfInspectionSessionPlaceholderData(previousData, sessionId),
     enabled: (options?.enabled ?? true) && Boolean(sessionId)
   });
@@ -518,6 +538,46 @@ export function useUpdateSelfInspectionEntry() {
     }) => updateSelfInspectionEntry(sessionId, entryId, body),
     onSuccess: (entry, variables) => {
       patchSelfInspectionSessionCachesAfterEntrySave(queryClient, variables.sessionId, entry);
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+    }
+  });
+}
+
+export function useCreateSelfInspectionInspectorEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      body
+    }: {
+      sessionId: string;
+      body: Parameters<typeof createSelfInspectionInspectorEntry>[1];
+    }) => createSelfInspectionInspectorEntry(sessionId, body),
+    onSuccess: (_entry, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approvals'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session', variables.sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+    }
+  });
+}
+
+export function useUpdateSelfInspectionInspectorEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      entryId,
+      body
+    }: {
+      sessionId: string;
+      entryId: string;
+      body: Parameters<typeof updateSelfInspectionInspectorEntry>[2];
+    }) => updateSelfInspectionInspectorEntry(sessionId, entryId, body),
+    onSuccess: (_entry, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approvals'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session', variables.sessionId] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
     }
   });

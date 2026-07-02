@@ -5,11 +5,14 @@ import { useLocation, useMatch, useNavigate, useParams, useSearchParams } from '
 import {
   useCompleteSelfInspectionSession,
   useCreateSelfInspectionEntry,
+  useCreateSelfInspectionInspectorEntry,
   useResetSelfInspectionSession,
   useResolveSelfInspectionSession,
+  useSelfInspectionInspectorMeasurementSession,
   useSelfInspectionRegistrationPolicy,
   useSelfInspectionSession,
-  useUpdateSelfInspectionEntry
+  useUpdateSelfInspectionEntry,
+  useUpdateSelfInspectionInspectorEntry
 } from '../../api/hooks';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import {
@@ -32,7 +35,10 @@ import {
 import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionEntrySlots';
 import { SelfInspectionKioskButton } from '../../features/part-measurement/SelfInspectionKioskButton';
 import { SelfInspectionNfcRegistrationPanel } from '../../features/part-measurement/SelfInspectionNfcRegistrationPanel';
-import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
+import {
+  KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
+  kioskSelfInspectionSessionPath
+} from '../../features/part-measurement/selfInspectionRoutes';
 import {
   hasDirtySelfInspectionDrafts,
   resolveSelfInspectionCompleteActionState,
@@ -93,7 +99,12 @@ type PendingOutOfToleranceCommit = ValuePanelCommit & {
   entryIndex: number;
 };
 
-export function KioskSelfInspectionSessionPage() {
+type Props = {
+  mode?: 'operator' | 'inspector';
+};
+
+export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
+  const isInspectorMode = mode === 'inspector';
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -131,6 +142,8 @@ export function KioskSelfInspectionSessionPage() {
   const resolveMutation = useResolveSelfInspectionSession();
   const createEntryMutation = useCreateSelfInspectionEntry();
   const updateEntryMutation = useUpdateSelfInspectionEntry();
+  const createInspectorEntryMutation = useCreateSelfInspectionInspectorEntry();
+  const updateInspectorEntryMutation = useUpdateSelfInspectionInspectorEntry();
   const completeSessionMutation = useCompleteSelfInspectionSession();
   const resetSessionMutation = useResetSelfInspectionSession();
   const [resetPhase, setResetPhase] = useState<null | 'destructive' | 'completed'>(null);
@@ -151,7 +164,11 @@ export function KioskSelfInspectionSessionPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const resolveAttemptedRef = useRef(false);
   const persistInFlightRef = useRef(false);
-  const isActiveRoute = useMatch('/kiosk/part-measurement/self-inspection/sessions/:sessionId');
+  const isActiveRoute = useMatch(
+    isInspectorMode
+      ? '/kiosk/part-measurement/self-inspection/sessions/:sessionId/inspector'
+      : '/kiosk/part-measurement/self-inspection/sessions/:sessionId'
+  );
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
 
   useEffect(() => {
@@ -160,10 +177,15 @@ export function KioskSelfInspectionSessionPage() {
     }
   }, [sessionId]);
 
-  const sessionQuery = useSelfInspectionSession(resolvedSessionId, {
-    enabled: Boolean(resolvedSessionId),
+  const operatorSessionQuery = useSelfInspectionSession(resolvedSessionId, {
+    enabled: Boolean(resolvedSessionId) && !isInspectorMode,
     entryIndex: selectedEntryIndex
   });
+  const inspectorSessionQuery = useSelfInspectionInspectorMeasurementSession(resolvedSessionId, {
+    enabled: Boolean(resolvedSessionId) && isInspectorMode,
+    entryIndex: selectedEntryIndex
+  });
+  const sessionQuery = isInspectorMode ? inspectorSessionQuery : operatorSessionQuery;
   const registrationPolicyQuery = useSelfInspectionRegistrationPolicy();
   const requireMeasuringInstrumentTag =
     registrationPolicyQuery.data?.requireMeasuringInstrumentTag ?? false;
@@ -181,12 +203,13 @@ export function KioskSelfInspectionSessionPage() {
       const params = new URLSearchParams({
         tagUid: instrument.tagUid,
         selfInspectionSessionId: session.id,
-        selfInspectionEntryIndex: String(selectedEntryIndex)
+        selfInspectionEntryIndex: String(selectedEntryIndex),
+        selfInspectionMode: isInspectorMode ? 'inspector' : 'operator'
       });
       navigate(`/kiosk/instruments/borrow?${params.toString()}`);
       return true;
     },
-    [isSessionReadOnly, navigate, selectedEntryIndex, session]
+    [isInspectorMode, isSessionReadOnly, navigate, selectedEntryIndex, session]
   );
   const { registration, registrationPayload, registrationDirty, hasUnsavedRegistrationDrafts } =
     useSelfInspectionNfcRegistration({
@@ -340,7 +363,7 @@ export function KioskSelfInspectionSessionPage() {
   }, [startStateKey]);
 
   useEffect(() => {
-    if (resolvedSessionId || !startState || resolveAttemptedRef.current) {
+    if (isInspectorMode || resolvedSessionId || !startState || resolveAttemptedRef.current) {
       return;
     }
     resolveAttemptedRef.current = true;
@@ -370,7 +393,7 @@ export function KioskSelfInspectionSessionPage() {
             : null;
         setResolveError(message ?? '自主検査セッションの開始に失敗しました。');
       });
-  }, [navigate, resolvedSessionId, startState, startStateKey, resolveMutation]);
+  }, [isInspectorMode, navigate, resolvedSessionId, startState, startStateKey, resolveMutation]);
 
   const entryPageCount = session ? selfInspectionEntryPageCountForSession(session) : 1;
   const visibleEntrySlots = useMemo(
@@ -398,7 +421,11 @@ export function KioskSelfInspectionSessionPage() {
     [selectedEntryIndex, session?.entries]
   );
 
-  const isSavingEntry = createEntryMutation.isPending || updateEntryMutation.isPending;
+  const isSavingEntry =
+    createEntryMutation.isPending ||
+    updateEntryMutation.isPending ||
+    createInspectorEntryMutation.isPending ||
+    updateInspectorEntryMutation.isPending;
   const isCompletingSession = completeSessionMutation.isPending;
   const isResettingSession = resetSessionMutation.isPending;
   const resetDisabled =
@@ -450,12 +477,23 @@ export function KioskSelfInspectionSessionPage() {
 
   const completeActionState = useMemo(
     () =>
-      sessionActionContext && isSessionIdentityReady
+      isInspectorMode
+        ? {
+            enabled: Boolean(session && session.inspectorMeasurementState === 'complete'),
+            reason: session?.inspectorMeasurementState === 'complete'
+              ? null
+              : ('incomplete_values' as const)
+          }
+      : sessionActionContext && isSessionIdentityReady
         ? resolveSelfInspectionCompleteActionState(sessionActionContext)
         : { enabled: false, reason: 'read_only' as const },
-    [isSessionIdentityReady, sessionActionContext]
+    [isInspectorMode, isSessionIdentityReady, session, sessionActionContext]
   );
-  const completeActionHint = selfInspectionActionReasonMessage(completeActionState.reason);
+  const completeActionHint = isInspectorMode
+    ? completeActionState.enabled
+      ? null
+      : '検査員の必要件数をすべて保存すると記録確認へ進めます。'
+    : selfInspectionActionReasonMessage(completeActionState.reason);
 
   const resumeGuideActionState = useMemo(
     () =>
@@ -547,22 +585,40 @@ export function KioskSelfInspectionSessionPage() {
     };
     try {
       const existing = session.entries.find((entry) => entry.entryIndex === entryIndex);
-      const savedEntry = existing
-        ? await updateEntryMutation.mutateAsync({
-            sessionId: session.id,
-            entryId: existing.id,
-            body: {
-              ...payload,
-              ifUnmodifiedSince: existing.updatedAt
-            }
-          })
-        : await createEntryMutation.mutateAsync({
-            sessionId: session.id,
-            body: {
-              entryIndex,
-              ...payload
-            }
-          });
+      const savedEntry = isInspectorMode
+        ? existing
+          ? await updateInspectorEntryMutation.mutateAsync({
+              sessionId: session.id,
+              entryId: existing.id,
+              body: {
+                entryIndex,
+                ...payload,
+                ifUnmodifiedSince: existing.updatedAt
+              }
+            })
+          : await createInspectorEntryMutation.mutateAsync({
+              sessionId: session.id,
+              body: {
+                entryIndex,
+                ...payload
+              }
+            })
+        : existing
+          ? await updateEntryMutation.mutateAsync({
+              sessionId: session.id,
+              entryId: existing.id,
+              body: {
+                ...payload,
+                ifUnmodifiedSince: existing.updatedAt
+              }
+            })
+          : await createEntryMutation.mutateAsync({
+              sessionId: session.id,
+              body: {
+                entryIndex,
+                ...payload
+              }
+            });
       setSavedDraftByEntryIndex((prev) => ({
         ...prev,
         [entryIndex]: { ...draft }
@@ -617,6 +673,10 @@ export function KioskSelfInspectionSessionPage() {
 
   const completeSession = async () => {
     if (!completeActionState.enabled || !session || !isSessionIdentityReady) {
+      return;
+    }
+    if (isInspectorMode) {
+      navigate(KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH);
       return;
     }
     setActionError(null);
@@ -721,7 +781,7 @@ export function KioskSelfInspectionSessionPage() {
         modeLabel={selfInspectionModeDisplayLabel(
           session.selfInspectionMode,
           session.selfInspectionFixedCount ?? session.selfInspectionSampleSize
-        )}
+        ) + (isInspectorMode ? ' / 検査員再測定' : '')}
         requiredEntryCount={requiredEntryCount}
         entryCountBlockedReason={session.entryCountBlockedReason ?? null}
         guideMode={guideMode}
@@ -744,7 +804,7 @@ export function KioskSelfInspectionSessionPage() {
         onPrepareNextPoint={consumeNextBlurGuideAdvance}
         onNextPoint={goToNextPointManual}
         onBackToList={() => navigate('/kiosk/part-measurement/self-inspection')}
-        onReset={() => setResetPhase('destructive')}
+        onReset={isInspectorMode ? undefined : () => setResetPhase('destructive')}
         resetDisabled={resetDisabled}
         workbenchCameraEnabled={workbenchCameraEnabled}
         onToggleWorkbenchCamera={toggleWorkbenchCamera}
@@ -957,10 +1017,10 @@ export function KioskSelfInspectionSessionPage() {
                 onPointerDownCapture={consumeNextBlurGuideAdvance}
                 onClick={() => void completeSession()}
               >
-                自主検査を完了
+                {isInspectorMode ? '記録確認へ' : '自主検査を完了'}
               </SelfInspectionKioskButton>
             </div>
-            {!actionError && completeActionState.reason === 'record_approval_required' && completeActionHint ? (
+            {!actionError && (completeActionState.reason === 'record_approval_required' || isInspectorMode) && completeActionHint ? (
               <p className="rounded border border-sky-400/30 bg-sky-500/15 px-3 py-2 text-sm text-sky-100">
                 {completeActionHint}
               </p>

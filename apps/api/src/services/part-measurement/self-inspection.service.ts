@@ -63,12 +63,26 @@ const listSessionsSummaryInclude = {
       name: true,
       selfInspectionMode: true,
       selfInspectionFixedCount: true,
-      selfInspectionSampleSize: true
+      selfInspectionSampleSize: true,
+      items: {
+        select: { id: true }
+      }
     }
   },
   entries: {
     select: {
       entryIndex: true
+    }
+  },
+  inspectorEntries: {
+    select: {
+      entryIndex: true,
+      values: {
+        select: {
+          templateItemId: true,
+          inspectorValue: true
+        }
+      }
     }
   },
   _count: { select: { entries: true } }
@@ -117,6 +131,54 @@ const recordApprovalSessionInclude = {
       }
     }
   },
+  inspectorEntries: {
+    orderBy: { entryIndex: 'asc' },
+    select: {
+      id: true,
+      entryIndex: true,
+      entrySlotKind: true,
+      inspectorEmployeeId: true,
+      inspectorEmployeeCodeSnapshot: true,
+      inspectorEmployeeNameSnapshot: true,
+      inspectorEmployeeNfcTagUidSnapshot: true,
+      measuringInstrumentId: true,
+      measuringInstrumentManagementNumberSnapshot: true,
+      measuringInstrumentNameSnapshot: true,
+      measuringInstrumentTagUidSnapshot: true,
+      clientDeviceId: true,
+      clientDeviceNameSnapshot: true,
+      instrumentUsages: {
+        orderBy: { preUseInspectedAt: 'asc' },
+        select: {
+          id: true,
+          measuringInstrumentId: true,
+          loanId: true,
+          measuringInstrumentManagementNumberSnapshot: true,
+          measuringInstrumentNameSnapshot: true,
+          measuringInstrumentTagUidSnapshot: true,
+          preUseInspectedAt: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      },
+      createdAt: true,
+      updatedAt: true,
+      values: {
+        select: {
+          id: true,
+          templateItemId: true,
+          operatorMeasurementValueId: true,
+          operatorValueSnapshot: true,
+          inspectorValue: true,
+          differenceValue: true,
+          judgementStatus: true,
+          judgedAt: true,
+          judgementComment: true,
+          updatedAt: true
+        }
+      }
+    }
+  },
   recordApproval: true,
   _count: { select: { entries: true } }
 } as const;
@@ -148,6 +210,17 @@ type SessionWithCounts = Prisma.SelfInspectionSessionGetPayload<{
     entries: {
       select: {
         entryIndex: true;
+      };
+    };
+    inspectorEntries: {
+      select: {
+        entryIndex: true;
+        values: {
+          select: {
+            templateItemId: true;
+            inspectorValue: true;
+          };
+        };
       };
     };
     _count: {
@@ -560,6 +633,12 @@ function resolveExpectedEntryCount(template: SelfInspectionTemplateConfig, plann
 
 type SelfInspectionStatusDto = 'not_started' | 'in_progress' | 'review_pending' | 'completed';
 
+type SelfInspectionInspectorMeasurementState =
+  | 'not_required'
+  | 'pending'
+  | 'in_progress'
+  | 'complete';
+
 type SelfInspectionMeasurementPayloadValue = {
   templateItemId: string;
   value: string | number | null;
@@ -587,6 +666,82 @@ type NormalizedMeasurementValue = {
   approvedByUsername: string | null;
   approvalComment: string | null;
 };
+
+type InspectorEntryValueCompletionSource = {
+  entryIndex: number;
+  values: Array<{
+    templateItemId: string;
+    inspectorValue: Prisma.Decimal | null;
+  }>;
+};
+
+function buildInspectorMeasurementCompletion(input: {
+  inspectorRemeasurementRequiredAt?: Date | null;
+  recordApproval?: unknown | null;
+  completedAt?: Date | null;
+  template: SelfInspectionTemplateConfig & { itemIds?: string[] };
+  plannedQuantity: number;
+  inspectorEntries?: InspectorEntryValueCompletionSource[];
+}): {
+  state: SelfInspectionInspectorMeasurementState;
+  requiredEntryCount: number;
+  completedRequiredEntryCount: number;
+  missingRequiredEntryCount: number;
+  incompleteValueEntryCount: number;
+} {
+  const requiredSlots = listRequiredEntrySlots(input.template, input.plannedQuantity);
+  const requiredItemIds = input.template.itemIds ?? [];
+  if (!input.inspectorRemeasurementRequiredAt || input.recordApproval || input.completedAt) {
+    return {
+      state: 'not_required',
+      requiredEntryCount: requiredSlots.length,
+      completedRequiredEntryCount: 0,
+      missingRequiredEntryCount: 0,
+      incompleteValueEntryCount: 0
+    };
+  }
+
+  const entriesByIndex = new Map(
+    (input.inspectorEntries ?? []).map((entry) => [entry.entryIndex, entry])
+  );
+  let completedRequiredEntryCount = 0;
+  let missingRequiredEntryCount = 0;
+  let incompleteValueEntryCount = 0;
+
+  for (const slot of requiredSlots) {
+    const entry = entriesByIndex.get(slot.entryIndex);
+    if (!entry) {
+      missingRequiredEntryCount += 1;
+      continue;
+    }
+    completedRequiredEntryCount += 1;
+    const valuesByItemId = new Map(entry.values.map((value) => [value.templateItemId, value]));
+    const hasMissingValue = requiredItemIds.some((itemId) => {
+      const value = valuesByItemId.get(itemId);
+      return value?.inspectorValue == null;
+    });
+    if (hasMissingValue) {
+      incompleteValueEntryCount += 1;
+    }
+  }
+
+  const state =
+    missingRequiredEntryCount === 0 &&
+    incompleteValueEntryCount === 0 &&
+    requiredSlots.length > 0
+      ? 'complete'
+      : completedRequiredEntryCount > 0
+        ? 'in_progress'
+        : 'pending';
+
+  return {
+    state,
+    requiredEntryCount: requiredSlots.length,
+    completedRequiredEntryCount,
+    missingRequiredEntryCount,
+    incompleteValueEntryCount
+  };
+}
 
 function resolveStatus(input: {
   completedEntryCount: number;
@@ -732,6 +887,17 @@ function serializeSessionSummary(
     completionPolicy: policy
   });
   const templateConfig = templateConfigFromTemplate(session.template);
+  const inspectorMeasurement = buildInspectorMeasurementCompletion({
+    inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt,
+    recordApproval: 'recordApproval' in session ? session.recordApproval : null,
+    completedAt: session.completedAt,
+    template: {
+      ...templateConfig,
+      itemIds: session.template.items.map((item) => item.id)
+    },
+    plannedQuantity: session.plannedQuantity,
+    inspectorEntries: 'inspectorEntries' in session ? session.inspectorEntries : []
+  });
   return {
     id: session.id,
     sessionBusinessKey: session.sessionBusinessKey,
@@ -759,6 +925,12 @@ function serializeSessionSummary(
     completedAt: session.completedAt?.toISOString() ?? null,
     recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
     recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
+    inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt?.toISOString() ?? null,
+    inspectorMeasurementState: inspectorMeasurement.state,
+    inspectorRequiredEntryCount: inspectorMeasurement.requiredEntryCount,
+    inspectorCompletedRequiredEntryCount: inspectorMeasurement.completedRequiredEntryCount,
+    inspectorMissingRequiredEntryCount: inspectorMeasurement.missingRequiredEntryCount,
+    inspectorIncompleteValueEntryCount: inspectorMeasurement.incompleteValueEntryCount,
     updatedAt: session.updatedAt.toISOString()
   };
 }
@@ -779,6 +951,7 @@ async function serializeSessionSummaryWithAggregatedParticipantNames(
 
 export type SelfInspectionRecordApprovalState =
   | 'input_incomplete'
+  | 'inspector_measurement_pending'
   | 'registration_incomplete'
   | 'approvable'
   | 'approved';
@@ -851,6 +1024,24 @@ function serializeInstrumentUsage(usage: {
   };
 }
 
+function isSelfInspectionInspectorEntryRegistrationCompleteForPolicy(
+  entry: {
+    inspectorEmployeeId: string | null;
+    measuringInstrumentId: string | null;
+    instrumentUsages: unknown[];
+  },
+  registrationPolicy: SelfInspectionRegistrationRequirementPolicy
+): boolean {
+  return isSelfInspectionLotEntryRegistrationCompleteForPolicy(
+    {
+      createdByEmployeeId: entry.inspectorEmployeeId,
+      measuringInstrumentId: entry.measuringInstrumentId,
+      measuringInstrumentUsageCount: entry.instrumentUsages.length
+    },
+    registrationPolicy
+  );
+}
+
 function buildRecordApprovalReadiness(
   session: RecordApprovalSessionSource,
   registrationPolicy: SelfInspectionRegistrationRequirementPolicy
@@ -861,6 +1052,10 @@ function buildRecordApprovalReadiness(
   missingRequiredEntryCount: number;
   incompleteValueEntryCount: number;
   incompleteRegistrationEntryCount: number;
+  inspectorCompletedRequiredEntryCount: number;
+  inspectorMissingRequiredEntryCount: number;
+  inspectorIncompleteValueEntryCount: number;
+  inspectorIncompleteRegistrationEntryCount: number;
   pendingReviewCount: number;
 } {
   const requiredSlots = listRequiredEntrySlots(
@@ -872,6 +1067,10 @@ function buildRecordApprovalReadiness(
   let missingRequiredEntryCount = 0;
   let incompleteValueEntryCount = 0;
   let incompleteRegistrationEntryCount = 0;
+  let inspectorCompletedRequiredEntryCount = 0;
+  let inspectorMissingRequiredEntryCount = 0;
+  let inspectorIncompleteValueEntryCount = 0;
+  let inspectorIncompleteRegistrationEntryCount = 0;
 
   for (const slot of requiredSlots) {
     const entry = entriesByIndex.get(slot.entryIndex);
@@ -898,12 +1097,48 @@ function buildRecordApprovalReadiness(
     }
   }
 
+  if (session.inspectorRemeasurementRequiredAt && !session.recordApproval) {
+    const inspectorEntriesByIndex = new Map(
+      session.inspectorEntries.map((entry) => [entry.entryIndex, entry])
+    );
+    for (const slot of requiredSlots) {
+      const inspectorEntry = inspectorEntriesByIndex.get(slot.entryIndex);
+      if (!inspectorEntry) {
+        inspectorMissingRequiredEntryCount += 1;
+        continue;
+      }
+      inspectorCompletedRequiredEntryCount += 1;
+      const valuesByItemId = new Map(
+        inspectorEntry.values.map((value) => [value.templateItemId, value])
+      );
+      const hasMissingValue = session.template.items.some((item) => {
+        const stored = valuesByItemId.get(item.id);
+        return stored?.inspectorValue == null;
+      });
+      if (hasMissingValue) {
+        inspectorIncompleteValueEntryCount += 1;
+      }
+      if (
+        !isSelfInspectionInspectorEntryRegistrationCompleteForPolicy(
+          inspectorEntry,
+          registrationPolicy
+        )
+      ) {
+        inspectorIncompleteRegistrationEntryCount += 1;
+      }
+    }
+  }
+
   const pendingReviewCount = pendingReviewCountFromRecordApprovalSession(session);
   const state: SelfInspectionRecordApprovalState = session.recordApproval
     ? 'approved'
     : missingRequiredEntryCount > 0 || incompleteValueEntryCount > 0 || requiredSlots.length === 0
       ? 'input_incomplete'
       : incompleteRegistrationEntryCount > 0
+        ? 'registration_incomplete'
+      : inspectorMissingRequiredEntryCount > 0 || inspectorIncompleteValueEntryCount > 0
+        ? 'inspector_measurement_pending'
+      : inspectorIncompleteRegistrationEntryCount > 0
         ? 'registration_incomplete'
         : 'approvable';
 
@@ -914,6 +1149,10 @@ function buildRecordApprovalReadiness(
     missingRequiredEntryCount,
     incompleteValueEntryCount,
     incompleteRegistrationEntryCount,
+    inspectorCompletedRequiredEntryCount,
+    inspectorMissingRequiredEntryCount,
+    inspectorIncompleteValueEntryCount,
+    inspectorIncompleteRegistrationEntryCount,
     pendingReviewCount
   };
 }
@@ -937,7 +1176,11 @@ function serializeRecordApprovalSessionListItem(
     completedRequiredEntryCount: readiness.completedRequiredEntryCount,
     missingRequiredEntryCount: readiness.missingRequiredEntryCount,
     incompleteValueEntryCount: readiness.incompleteValueEntryCount,
-    incompleteRegistrationEntryCount: readiness.incompleteRegistrationEntryCount
+    incompleteRegistrationEntryCount: readiness.incompleteRegistrationEntryCount,
+    inspectorCompletedRequiredEntryCount: readiness.inspectorCompletedRequiredEntryCount,
+    inspectorMissingRequiredEntryCount: readiness.inspectorMissingRequiredEntryCount,
+    inspectorIncompleteValueEntryCount: readiness.inspectorIncompleteValueEntryCount,
+    inspectorIncompleteRegistrationEntryCount: readiness.inspectorIncompleteRegistrationEntryCount
   };
 }
 
@@ -947,9 +1190,15 @@ function serializeRecordApprovalEntryDetail(
   registrationPolicy: SelfInspectionRegistrationRequirementPolicy
 ) {
   const entry = session.entries.find((row) => row.entryIndex === slot.entryIndex) ?? null;
+  const inspectorEntry =
+    session.inspectorEntries.find((row) => row.entryIndex === slot.entryIndex) ?? null;
   const valuesByItemId = new Map((entry?.values ?? []).map((value) => [value.templateItemId, value]));
+  const inspectorValuesByItemId = new Map(
+    (inspectorEntry?.values ?? []).map((value) => [value.templateItemId, value])
+  );
   const values = session.template.items.map((item) => {
     const stored = valuesByItemId.get(item.id) ?? null;
+    const inspectorStored = inspectorValuesByItemId.get(item.id) ?? null;
     const numericValue = stored?.value ?? null;
     return {
       id: stored?.id ?? null,
@@ -966,7 +1215,17 @@ function serializeRecordApprovalEntryDetail(
       reviewStatus: stored?.reviewStatus ?? null,
       outOfToleranceAcknowledgedAt: stored?.outOfToleranceAcknowledgedAt?.toISOString() ?? null,
       approvedAt: stored?.approvedAt?.toISOString() ?? null,
-      updatedAt: stored?.updatedAt.toISOString() ?? null
+      updatedAt: stored?.updatedAt.toISOString() ?? null,
+      inspectorValueId: inspectorStored?.id ?? null,
+      inspectorValue: inspectorStored?.inspectorValue != null ? String(inspectorStored.inspectorValue) : null,
+      operatorValueSnapshot:
+        inspectorStored?.operatorValueSnapshot != null ? String(inspectorStored.operatorValueSnapshot) : null,
+      differenceValue:
+        inspectorStored?.differenceValue != null ? String(inspectorStored.differenceValue) : null,
+      inspectorJudgementStatus: inspectorStored?.judgementStatus ?? null,
+      inspectorJudgedAt: inspectorStored?.judgedAt?.toISOString() ?? null,
+      inspectorJudgementComment: inspectorStored?.judgementComment ?? null,
+      inspectorUpdatedAt: inspectorStored?.updatedAt.toISOString() ?? null
     };
   });
   const hasMissingValue = values.some((value) => value.value == null);
@@ -998,6 +1257,25 @@ function serializeRecordApprovalEntryDetail(
           instrumentUsages: entry.instrumentUsages.map(serializeInstrumentUsage),
           createdAt: entry.createdAt.toISOString(),
           updatedAt: entry.updatedAt.toISOString()
+        }
+      : null,
+    inspectorEntry: inspectorEntry
+      ? {
+          id: inspectorEntry.id,
+          inspectorEmployeeId: inspectorEntry.inspectorEmployeeId,
+          inspectorEmployeeCodeSnapshot: inspectorEntry.inspectorEmployeeCodeSnapshot,
+          inspectorEmployeeNameSnapshot: inspectorEntry.inspectorEmployeeNameSnapshot,
+          inspectorEmployeeNfcTagUidSnapshot: inspectorEntry.inspectorEmployeeNfcTagUidSnapshot,
+          measuringInstrumentId: inspectorEntry.measuringInstrumentId,
+          measuringInstrumentManagementNumberSnapshot:
+            inspectorEntry.measuringInstrumentManagementNumberSnapshot,
+          measuringInstrumentNameSnapshot: inspectorEntry.measuringInstrumentNameSnapshot,
+          measuringInstrumentTagUidSnapshot: inspectorEntry.measuringInstrumentTagUidSnapshot,
+          clientDeviceId: inspectorEntry.clientDeviceId,
+          clientDeviceNameSnapshot: inspectorEntry.clientDeviceNameSnapshot,
+          instrumentUsages: inspectorEntry.instrumentUsages.map(serializeInstrumentUsage),
+          createdAt: inspectorEntry.createdAt.toISOString(),
+          updatedAt: inspectorEntry.updatedAt.toISOString()
         }
       : null,
     values
@@ -1329,6 +1607,17 @@ export class SelfInspectionService {
     const sessionInclude = {
       template: { include: partMeasurementTemplateFullInclude },
       entries: { select: { entryIndex: true } },
+      inspectorEntries: {
+        select: {
+          entryIndex: true,
+          values: {
+            select: {
+              templateItemId: true,
+              inspectorValue: true
+            }
+          }
+        }
+      },
       recordApproval: { select: { id: true } },
       _count: { select: { entries: true } }
     } as const;
@@ -1548,6 +1837,9 @@ export class SelfInspectionService {
       if (readiness.state === 'input_incomplete') {
         throw new ApiError(409, '測定値が未登録のため承認できません');
       }
+      if (readiness.state === 'inspector_measurement_pending') {
+        throw new ApiError(409, '検査員の再測定が未完了のため承認できません');
+      }
       if (readiness.state === 'registration_incomplete') {
         throw new ApiError(
           409,
@@ -1627,6 +1919,17 @@ export class SelfInspectionService {
         include: {
           template: { include: partMeasurementTemplateFullInclude },
           entries: { select: { entryIndex: true } },
+          inspectorEntries: {
+            select: {
+              entryIndex: true,
+              values: {
+                select: {
+                  templateItemId: true,
+                  inspectorValue: true
+                }
+              }
+            }
+          },
           _count: { select: { entries: true } }
         }
       });
@@ -1687,6 +1990,17 @@ export class SelfInspectionService {
             updatedAt: true
           }
         },
+        inspectorEntries: {
+          select: {
+            entryIndex: true,
+            values: {
+              select: {
+                templateItemId: true,
+                inspectorValue: true
+              }
+            }
+          }
+        },
         recordApproval: true,
         _count: { select: { entries: true } }
       }
@@ -1731,6 +2045,17 @@ export class SelfInspectionService {
     const templateConfig = templateConfigFromTemplate(session.template);
     const pendingReviewCounts = await loadPendingReviewCountsBySessionIds(prisma, [session.id]);
     const pendingReviewCount = pendingReviewCounts.get(session.id) ?? 0;
+    const inspectorMeasurement = buildInspectorMeasurementCompletion({
+      inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt,
+      recordApproval: session.recordApproval,
+      completedAt: session.completedAt,
+      template: {
+        ...templateConfig,
+        itemIds: session.template.items.map((item) => item.id)
+      },
+      plannedQuantity: session.plannedQuantity,
+      inspectorEntries: session.inspectorEntries
+    });
     return {
       id: session.id,
       sessionBusinessKey: session.sessionBusinessKey,
@@ -1764,6 +2089,12 @@ export class SelfInspectionService {
       completedAt: session.completedAt?.toISOString() ?? null,
       recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
       recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
+      inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt?.toISOString() ?? null,
+      inspectorMeasurementState: inspectorMeasurement.state,
+      inspectorRequiredEntryCount: inspectorMeasurement.requiredEntryCount,
+      inspectorCompletedRequiredEntryCount: inspectorMeasurement.completedRequiredEntryCount,
+      inspectorMissingRequiredEntryCount: inspectorMeasurement.missingRequiredEntryCount,
+      inspectorIncompleteValueEntryCount: inspectorMeasurement.incompleteValueEntryCount,
       recordApproval: serializeRecordApproval(session.recordApproval),
       updatedAt: session.updatedAt.toISOString(),
       template: session.template,
@@ -1964,6 +2295,18 @@ export class SelfInspectionService {
     }
   }
 
+  private async assertInspectorRemeasurementNotStarted(
+    db: Prisma.TransactionClient,
+    sessionId: string
+  ): Promise<void> {
+    const inspectorEntryCount = await db.selfInspectionInspectorEntry.count({
+      where: { sessionId }
+    });
+    if (inspectorEntryCount > 0) {
+      throw new ApiError(409, '検査員の再測定が開始済みのためオペレータ測定値は変更できません');
+    }
+  }
+
   private assertLotEntryValuesMatchPayload(
     existing: Prisma.SelfInspectionLotEntryGetPayload<{ include: { values: true } }>,
     normalized: NormalizedMeasurementValue[]
@@ -2083,6 +2426,855 @@ export class SelfInspectionService {
     });
   }
 
+  private serializeInspectorEntryMeta(entry: {
+    id: string;
+    entryIndex: number;
+    entrySlotKind: import('@prisma/client').SelfInspectionEntrySlotKind;
+    inspectorEmployeeId: string | null;
+    inspectorEmployeeCodeSnapshot: string | null;
+    inspectorEmployeeNameSnapshot: string | null;
+    inspectorEmployeeNfcTagUidSnapshot: string | null;
+    measuringInstrumentId: string | null;
+    measuringInstrumentManagementNumberSnapshot: string | null;
+    measuringInstrumentNameSnapshot: string | null;
+    measuringInstrumentTagUidSnapshot: string | null;
+    clientDeviceId?: string | null;
+    clientDeviceNameSnapshot?: string | null;
+    instrumentUsages?: Array<Parameters<typeof serializeInstrumentUsage>[0]>;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
+    const slotDto = serializeEntrySlotKind(entry.entrySlotKind);
+    return {
+      id: entry.id,
+      entryIndex: entry.entryIndex,
+      entrySlotKind: slotDto,
+      entrySlotLabel: entrySlotLabelFromKind(slotDto, entry.entryIndex),
+      createdByEmployeeId: entry.inspectorEmployeeId,
+      createdByEmployeeNameSnapshot: entry.inspectorEmployeeNameSnapshot,
+      inspectorEmployeeId: entry.inspectorEmployeeId,
+      inspectorEmployeeCodeSnapshot: entry.inspectorEmployeeCodeSnapshot,
+      inspectorEmployeeNameSnapshot: entry.inspectorEmployeeNameSnapshot,
+      inspectorEmployeeNfcTagUidSnapshot: entry.inspectorEmployeeNfcTagUidSnapshot,
+      measuringInstrumentId: entry.measuringInstrumentId,
+      measuringInstrumentManagementNumberSnapshot: entry.measuringInstrumentManagementNumberSnapshot,
+      measuringInstrumentNameSnapshot: entry.measuringInstrumentNameSnapshot,
+      measuringInstrumentTagUidSnapshot: entry.measuringInstrumentTagUidSnapshot,
+      clientDeviceId: entry.clientDeviceId ?? null,
+      clientDeviceNameSnapshot: entry.clientDeviceNameSnapshot ?? null,
+      instrumentUsages: (entry.instrumentUsages ?? []).map(serializeInstrumentUsage),
+      createdAt: entry.createdAt.toISOString(),
+      updatedAt: entry.updatedAt.toISOString(),
+      values: [] as Array<{
+        id: string;
+        templateItemId: string;
+        value: string | null;
+        reviewStatus: SelfInspectionMeasurementReviewStatus;
+        outOfToleranceAcknowledgedAt: string | null;
+        approvedAt: string | null;
+        approvedByUserId: string | null;
+        approvedByUsername: string | null;
+        approvalComment: string | null;
+        operatorValueSnapshot?: string | null;
+        differenceValue?: string | null;
+        judgementStatus?: string;
+      }>
+    };
+  }
+
+  private serializeInspectorEntry(
+    entry: Prisma.SelfInspectionInspectorEntryGetPayload<{
+      include: { values: true };
+    }> & {
+      instrumentUsages: Array<Parameters<typeof serializeInstrumentUsage>[0]>;
+    }
+  ) {
+    const meta = this.serializeInspectorEntryMeta(entry);
+    return {
+      ...meta,
+      values: entry.values.map((value) => ({
+        id: value.id,
+        templateItemId: value.templateItemId,
+        value: value.inspectorValue != null ? String(value.inspectorValue) : null,
+        reviewStatus: 'NOT_REQUIRED' as SelfInspectionMeasurementReviewStatus,
+        outOfToleranceAcknowledgedAt: null,
+        approvedAt: null,
+        approvedByUserId: null,
+        approvedByUsername: null,
+        approvalComment: null,
+        operatorMeasurementValueId: value.operatorMeasurementValueId,
+        operatorValueSnapshot:
+          value.operatorValueSnapshot != null ? String(value.operatorValueSnapshot) : null,
+        differenceValue: value.differenceValue != null ? String(value.differenceValue) : null,
+        judgementStatus: value.judgementStatus,
+        judgedAt: value.judgedAt?.toISOString() ?? null,
+        judgementComment: value.judgementComment,
+        updatedAt: value.updatedAt.toISOString()
+      }))
+    };
+  }
+
+  private async loadInspectorEntryForSerialization(
+    db: Prisma.TransactionClient,
+    entryId: string
+  ): Promise<
+    Prisma.SelfInspectionInspectorEntryGetPayload<{ include: { values: true } }> & {
+      instrumentUsages: Array<Parameters<typeof serializeInstrumentUsage>[0]>;
+    }
+  > {
+    return db.selfInspectionInspectorEntry.findUniqueOrThrow({
+      where: { id: entryId },
+      include: {
+        instrumentUsages: {
+          orderBy: { preUseInspectedAt: 'asc' }
+        },
+        values: {
+          orderBy: { createdAt: 'asc' }
+        }
+      }
+    });
+  }
+
+  private async resolveInspectorEmployeeRequired(
+    db: Prisma.TransactionClient,
+    employeeTagUid?: string | null
+  ) {
+    const tag = (employeeTagUid ?? '').trim();
+    if (!tag) {
+      throw new ApiError(400, '検査員の社員NFCタグが必要です');
+    }
+    const employee = await db.employee.findFirst({
+      where: { nfcTagUid: tag },
+      select: {
+        id: true,
+        employeeCode: true,
+        displayName: true,
+        nfcTagUid: true,
+        status: true
+      }
+    });
+    if (!employee?.nfcTagUid) {
+      throw new ApiError(404, '検査員の社員NFCタグが登録されていません');
+    }
+    if (employee.status !== 'ACTIVE') {
+      throw new ApiError(403, '有効な社員のみ検査員として測定できます');
+    }
+    return employee;
+  }
+
+  private async resolveInspectorRegistrationForSave(
+    db: Prisma.TransactionClient,
+    existingEntry: {
+      inspectorEmployeeId: string | null;
+      inspectorEmployeeCodeSnapshot: string | null;
+      inspectorEmployeeNameSnapshot: string | null;
+      inspectorEmployeeNfcTagUidSnapshot: string | null;
+      measuringInstrumentId: string | null;
+      measuringInstrumentManagementNumberSnapshot: string | null;
+      measuringInstrumentNameSnapshot: string | null;
+      measuringInstrumentTagUidSnapshot: string | null;
+    } | null,
+    operatorEntry: {
+      createdByEmployeeId: string | null;
+      createdByEmployeeNameSnapshot: string | null;
+    },
+    input: {
+      employeeTagUid?: string | null;
+      measuringInstrumentTagUid?: string | null;
+    },
+    registrationPolicy: SelfInspectionRegistrationRequirementPolicy
+  ) {
+    let inspectorEmployeeId = existingEntry?.inspectorEmployeeId ?? null;
+    let inspectorEmployeeCodeSnapshot = existingEntry?.inspectorEmployeeCodeSnapshot ?? null;
+    let inspectorEmployeeNameSnapshot = existingEntry?.inspectorEmployeeNameSnapshot ?? null;
+    let inspectorEmployeeNfcTagUidSnapshot = existingEntry?.inspectorEmployeeNfcTagUidSnapshot ?? null;
+    let measuringInstrumentId = existingEntry?.measuringInstrumentId ?? null;
+    let measuringInstrumentManagementNumberSnapshot =
+      existingEntry?.measuringInstrumentManagementNumberSnapshot ?? null;
+    let measuringInstrumentNameSnapshot = existingEntry?.measuringInstrumentNameSnapshot ?? null;
+    let measuringInstrumentTagUidSnapshot = existingEntry?.measuringInstrumentTagUidSnapshot ?? null;
+
+    const pendingEmployeeTag = !inspectorEmployeeId ? (input.employeeTagUid ?? '').trim() : '';
+    const pendingInstrumentTag = !measuringInstrumentId ? (input.measuringInstrumentTagUid ?? '').trim() : '';
+    await assertSelfInspectionEntryRegistrationTagUids({
+      employeeTagUid: pendingEmployeeTag || null,
+      measuringInstrumentTagUid: pendingInstrumentTag || null
+    });
+
+    if (!inspectorEmployeeId) {
+      const employee = await this.resolveInspectorEmployeeRequired(db, input.employeeTagUid);
+      if (operatorEntry.createdByEmployeeId && operatorEntry.createdByEmployeeId === employee.id) {
+        throw new ApiError(409, '検査員はオペレータ本人とは別の社員を登録してください');
+      }
+      inspectorEmployeeId = employee.id;
+      inspectorEmployeeCodeSnapshot = employee.employeeCode;
+      inspectorEmployeeNameSnapshot = employee.displayName;
+      inspectorEmployeeNfcTagUidSnapshot = employee.nfcTagUid;
+    } else if (operatorEntry.createdByEmployeeId && operatorEntry.createdByEmployeeId === inspectorEmployeeId) {
+      throw new ApiError(409, '検査員はオペレータ本人とは別の社員を登録してください');
+    }
+
+    if (!measuringInstrumentId) {
+      if ((input.measuringInstrumentTagUid ?? '').trim()) {
+        const instrument = await this.resolveMeasuringInstrumentByTag(input.measuringInstrumentTagUid);
+        measuringInstrumentId = instrument.measuringInstrumentId;
+        measuringInstrumentManagementNumberSnapshot =
+          instrument.measuringInstrumentManagementNumberSnapshot;
+        measuringInstrumentNameSnapshot = instrument.measuringInstrumentNameSnapshot;
+        measuringInstrumentTagUidSnapshot = instrument.measuringInstrumentTagUidSnapshot;
+      } else if (registrationPolicy.requireMeasuringInstrumentTag) {
+        throw new ApiError(400, '計測機器のNFCタグが必要です');
+      }
+    }
+
+    return {
+      inspectorEmployeeId,
+      inspectorEmployeeCodeSnapshot,
+      inspectorEmployeeNameSnapshot,
+      inspectorEmployeeNfcTagUidSnapshot,
+      measuringInstrumentId,
+      measuringInstrumentManagementNumberSnapshot,
+      measuringInstrumentNameSnapshot,
+      measuringInstrumentTagUidSnapshot
+    };
+  }
+
+  async getInspectorMeasurementSessionDetail(sessionId: string, options?: { entryIndex?: number }) {
+    const entryIndex =
+      options?.entryIndex != null && Number.isFinite(options.entryIndex)
+        ? Math.floor(options.entryIndex)
+        : null;
+
+    const session = await prisma.selfInspectionSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        template: { include: partMeasurementTemplateFullInclude },
+        entries: {
+          orderBy: { entryIndex: 'asc' },
+          select: {
+            id: true,
+            entryIndex: true,
+            entrySlotKind: true,
+            createdByEmployeeId: true,
+            createdByEmployeeNameSnapshot: true,
+            measuringInstrumentId: true,
+            measuringInstrumentManagementNumberSnapshot: true,
+            measuringInstrumentNameSnapshot: true,
+            measuringInstrumentTagUidSnapshot: true,
+            instrumentUsages: {
+              orderBy: { preUseInspectedAt: 'asc' },
+              select: {
+                id: true,
+                measuringInstrumentId: true,
+                loanId: true,
+                measuringInstrumentManagementNumberSnapshot: true,
+                measuringInstrumentNameSnapshot: true,
+                measuringInstrumentTagUidSnapshot: true,
+                preUseInspectedAt: true,
+                createdAt: true,
+                updatedAt: true
+              }
+            },
+            createdAt: true,
+            updatedAt: true
+          }
+        },
+        inspectorEntries: {
+          orderBy: { entryIndex: 'asc' },
+          include: {
+            instrumentUsages: {
+              orderBy: { preUseInspectedAt: 'asc' }
+            },
+            values: {
+              orderBy: { createdAt: 'asc' }
+            }
+          }
+        },
+        recordApproval: true,
+        _count: { select: { entries: true } }
+      }
+    });
+    if (!session || !session.recordApprovalRequiredAt || !session.inspectorRemeasurementRequiredAt) {
+      throw new ApiError(404, '検査員再測定対象の自主検査セッションが見つかりません');
+    }
+
+    const focusedEntryRow =
+      entryIndex != null
+        ? await prisma.selfInspectionInspectorEntry.findUnique({
+            where: {
+              sessionId_entryIndex: {
+                sessionId,
+                entryIndex
+              }
+            },
+            include: {
+              instrumentUsages: {
+                orderBy: { preUseInspectedAt: 'asc' }
+              },
+              values: {
+                orderBy: { createdAt: 'asc' }
+              }
+            }
+          })
+        : null;
+
+    const policy = sessionForEntryCountPolicy(session);
+    const completedEntryCount = session._count.entries;
+    const templateConfig = templateConfigFromTemplate(session.template);
+    const pendingReviewCounts = await loadPendingReviewCountsBySessionIds(prisma, [session.id]);
+    const pendingReviewCount = pendingReviewCounts.get(session.id) ?? 0;
+    const inspectorMeasurement = buildInspectorMeasurementCompletion({
+      inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt,
+      recordApproval: session.recordApproval,
+      completedAt: session.completedAt,
+      template: {
+        ...templateConfig,
+        itemIds: session.template.items.map((item) => item.id)
+      },
+      plannedQuantity: session.plannedQuantity,
+      inspectorEntries: session.inspectorEntries
+    });
+
+    return {
+      id: session.id,
+      sessionBusinessKey: session.sessionBusinessKey,
+      templateId: session.templateId,
+      templateName: session.template.name,
+      productNo: session.productNo,
+      fseiban: session.fseiban,
+      fhincd: session.fhincd,
+      fhinmei: session.fhinmei,
+      processGroup: serializeProcessGroup(session.processGroup),
+      resourceCd: session.resourceCd,
+      scheduleRowId: session.scheduleRowId,
+      machineName: session.machineName,
+      plannedQuantity: session.plannedQuantity,
+      expectedEntryCount: session.expectedEntryCount,
+      ...enrichSessionEntryCountFields({ ...policy, completedEntryCount }),
+      completedEntryCount,
+      pendingReviewCount,
+      participantEmployeeNames: collectParticipantEmployeeNames(session.entries),
+      selfInspectionMode: serializeSelfInspectionMode(session.template.selfInspectionMode),
+      selfInspectionFixedCount: resolveTemplateFixedCount(templateConfig),
+      selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
+      status: resolveStatus({
+        completedEntryCount,
+        completedAt: session.completedAt,
+        pendingReviewCount,
+        entryIndices: session.entries.map((entry) => entry.entryIndex),
+        completionPolicy: policy
+      }),
+      startedAt: session.startedAt?.toISOString() ?? null,
+      completedAt: session.completedAt?.toISOString() ?? null,
+      recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
+      recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
+      inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt?.toISOString() ?? null,
+      inspectorMeasurementState: inspectorMeasurement.state,
+      inspectorRequiredEntryCount: inspectorMeasurement.requiredEntryCount,
+      inspectorCompletedRequiredEntryCount: inspectorMeasurement.completedRequiredEntryCount,
+      inspectorMissingRequiredEntryCount: inspectorMeasurement.missingRequiredEntryCount,
+      inspectorIncompleteValueEntryCount: inspectorMeasurement.incompleteValueEntryCount,
+      recordApproval: serializeRecordApproval(session.recordApproval),
+      updatedAt: session.updatedAt.toISOString(),
+      template: session.template,
+      entries: session.inspectorEntries.map((entry) => this.serializeInspectorEntryMeta(entry)),
+      operatorEntries: session.entries.map((entry) => this.serializeLotEntryMeta(entry)),
+      focusedEntry: focusedEntryRow ? this.serializeInspectorEntry(focusedEntryRow) : null
+    };
+  }
+
+  private async saveInspectorEntry(
+    sessionId: string,
+    input: {
+      entryIndex: number;
+      values: SelfInspectionMeasurementPayloadValue[];
+      employeeTagUid?: string | null;
+      measuringInstrumentTagUid?: string | null;
+      clientDeviceId?: string | null;
+    },
+    options?: {
+      entryId?: string;
+      ifUnmodifiedSince?: string;
+    }
+  ) {
+    const entryIndex = Math.floor(input.entryIndex);
+    const result = await prisma.$transaction(async (tx) => {
+      await this.lockSessionRow(tx, sessionId);
+      const session = await this.loadSessionForMutation(tx, sessionId);
+      this.assertSessionEntryCountWritable(session);
+      if (!session.recordApprovalRequiredAt || !session.inspectorRemeasurementRequiredAt) {
+        throw new ApiError(409, 'オペレータの自主検査記録保存後に検査員再測定を開始してください');
+      }
+      const existingApproval = await tx.selfInspectionRecordApproval.findUnique({
+        where: { sessionId },
+        select: { id: true }
+      });
+      if (existingApproval) {
+        throw new ApiError(409, '承認済みの検査記録は検査員再測定を変更できません');
+      }
+
+      const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
+      const templateConfig = templateConfigFromTemplate(session.template);
+      assertEntryIndexAllowed(templateConfig, session.plannedQuantity, entryIndex);
+      const slotKind = inferEntrySlotKindForIndex(
+        templateConfig,
+        session.plannedQuantity,
+        entryIndex
+      );
+
+      const operatorEntry = await tx.selfInspectionLotEntry.findUnique({
+        where: {
+          sessionId_entryIndex: {
+            sessionId,
+            entryIndex
+          }
+        },
+        include: {
+          values: true
+        }
+      });
+      if (!operatorEntry) {
+        throw new ApiError(409, 'オペレータの測定値が未登録のため検査員再測定できません');
+      }
+      if (!operatorEntry.createdByEmployeeId) {
+        throw new ApiError(409, 'オペレータの測定者が未登録のため検査員再測定できません');
+      }
+      const operatorValuesByItemId = new Map(
+        operatorEntry.values.map((value) => [value.templateItemId, value])
+      );
+      for (const item of session.template.items) {
+        const operatorValue = operatorValuesByItemId.get(item.id);
+        if (operatorValue?.value == null) {
+          throw new ApiError(409, 'オペレータの測定値が未登録のため検査員再測定できません');
+        }
+      }
+
+      const existingEntry = options?.entryId
+        ? await tx.selfInspectionInspectorEntry.findFirst({
+            where: { id: options.entryId, sessionId },
+            include: { values: true, instrumentUsages: true }
+          })
+        : await tx.selfInspectionInspectorEntry.findUnique({
+            where: {
+              sessionId_entryIndex: {
+                sessionId,
+                entryIndex
+              }
+            },
+            include: { values: true, instrumentUsages: true }
+          });
+      if (options?.entryId && !existingEntry) {
+        throw new ApiError(404, '検査員再測定入力が見つかりません');
+      }
+      if (existingEntry && existingEntry.entryIndex !== entryIndex) {
+        throw new ApiError(400, '入力件番号が検査員再測定入力と一致しません');
+      }
+      if (existingEntry && options?.ifUnmodifiedSince) {
+        assertEntryUnmodifiedSince(options.ifUnmodifiedSince, existingEntry.updatedAt);
+      }
+
+      const values = this.validateMeasurementPayload(
+        session.template,
+        input.values,
+        []
+      );
+      const registration = await this.resolveInspectorRegistrationForSave(
+        tx,
+        existingEntry,
+        operatorEntry,
+        input,
+        registrationPolicy
+      );
+      const clientDevice = input.clientDeviceId
+        ? await tx.clientDevice.findUnique({
+            where: { id: input.clientDeviceId },
+            select: { id: true, name: true }
+          })
+        : null;
+
+      const entryData = {
+        entryIndex,
+        entrySlotKind: slotKind,
+        inspectorEmployeeId: registration.inspectorEmployeeId,
+        inspectorEmployeeCodeSnapshot: registration.inspectorEmployeeCodeSnapshot,
+        inspectorEmployeeNameSnapshot: registration.inspectorEmployeeNameSnapshot,
+        inspectorEmployeeNfcTagUidSnapshot: registration.inspectorEmployeeNfcTagUidSnapshot,
+        measuringInstrumentId: registration.measuringInstrumentId,
+        measuringInstrumentManagementNumberSnapshot:
+          registration.measuringInstrumentManagementNumberSnapshot,
+        measuringInstrumentNameSnapshot: registration.measuringInstrumentNameSnapshot,
+        measuringInstrumentTagUidSnapshot: registration.measuringInstrumentTagUidSnapshot,
+        clientDeviceId: clientDevice?.id ?? null,
+        clientDeviceNameSnapshot: clientDevice?.name ?? null
+      };
+
+      const savedEntry = existingEntry
+        ? await tx.selfInspectionInspectorEntry.update({
+            where: { id: existingEntry.id },
+            data: entryData
+          })
+        : await tx.selfInspectionInspectorEntry.create({
+            data: {
+              sessionId,
+              ...entryData
+            }
+          });
+
+      await tx.selfInspectionInspectorMeasurementValue.deleteMany({
+        where: { inspectorEntryId: savedEntry.id }
+      });
+      await tx.selfInspectionInspectorMeasurementValue.createMany({
+        data: values.map((value) => {
+          const operatorValue = operatorValuesByItemId.get(value.templateItemId);
+          const operatorValueSnapshot = operatorValue?.value ?? null;
+          return {
+            inspectorEntryId: savedEntry.id,
+            templateItemId: value.templateItemId,
+            operatorMeasurementValueId: operatorValue?.id ?? null,
+            operatorValueSnapshot,
+            inspectorValue: value.value,
+            differenceValue:
+              operatorValueSnapshot != null ? value.value.minus(operatorValueSnapshot) : null,
+            judgementStatus: 'NOT_EVALUATED' as const
+          };
+        })
+      });
+      await tx.selfInspectionSession.update({
+        where: { id: sessionId },
+        data: { updatedAt: new Date() }
+      });
+
+      const serializedEntry = await this.loadInspectorEntryForSerialization(tx, savedEntry.id);
+      return this.serializeInspectorEntry(serializedEntry);
+    });
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+    return result;
+  }
+
+  async createInspectorEntry(sessionId: string, input: {
+    entryIndex: number;
+    values: SelfInspectionMeasurementPayloadValue[];
+    employeeTagUid?: string | null;
+    measuringInstrumentTagUid?: string | null;
+    clientDeviceId?: string | null;
+  }) {
+    return this.saveInspectorEntry(sessionId, input);
+  }
+
+  async updateInspectorEntry(
+    sessionId: string,
+    entryId: string,
+    input: {
+      entryIndex: number;
+      ifUnmodifiedSince: string;
+      values: SelfInspectionMeasurementPayloadValue[];
+      employeeTagUid?: string | null;
+      measuringInstrumentTagUid?: string | null;
+      clientDeviceId?: string | null;
+    }
+  ) {
+    return this.saveInspectorEntry(sessionId, input, {
+      entryId,
+      ifUnmodifiedSince: input.ifUnmodifiedSince
+    });
+  }
+
+  async recordInspectorInstrumentPreUseInspection(
+    sessionId: string,
+    entryIndexInput: number,
+    input: {
+      instrumentTagUid: string;
+      employeeTagUid: string;
+      clientDeviceId?: string | null;
+    }
+  ) {
+    const entryIndex = Math.floor(entryIndexInput);
+    const instrumentTagUid = input.instrumentTagUid.trim();
+    const employeeTagUid = input.employeeTagUid.trim();
+    if (!instrumentTagUid) {
+      throw new ApiError(400, '計測機器タグが必要です');
+    }
+    if (!employeeTagUid) {
+      throw new ApiError(400, '氏名タグが必要です');
+    }
+    await assertSelfInspectionEntryRegistrationTagUids({
+      employeeTagUid,
+      measuringInstrumentTagUid: instrumentTagUid
+    });
+
+    const result = await prisma.$transaction(async (tx) => {
+      await this.lockSessionRow(tx, sessionId);
+      const session = await this.loadSessionForMutation(tx, sessionId);
+      this.assertSessionEntryCountWritable(session);
+      if (!session.recordApprovalRequiredAt || !session.inspectorRemeasurementRequiredAt) {
+        throw new ApiError(409, 'オペレータの自主検査記録保存後に検査員再測定を開始してください');
+      }
+      const existingApproval = await tx.selfInspectionRecordApproval.findUnique({
+        where: { sessionId },
+        select: { id: true }
+      });
+      if (existingApproval) {
+        throw new ApiError(409, '承認済みの検査記録は検査員再測定を変更できません');
+      }
+      const templateConfig = templateConfigFromTemplate(session.template);
+      assertEntryIndexAllowed(templateConfig, session.plannedQuantity, entryIndex);
+      const slotKind = inferEntrySlotKindForIndex(
+        templateConfig,
+        session.plannedQuantity,
+        entryIndex
+      );
+
+      const operatorEntry = await tx.selfInspectionLotEntry.findUnique({
+        where: {
+          sessionId_entryIndex: {
+            sessionId,
+            entryIndex
+          }
+        },
+        select: {
+          id: true,
+          createdByEmployeeId: true,
+          createdByEmployeeNameSnapshot: true
+        }
+      });
+      if (!operatorEntry?.createdByEmployeeId) {
+        throw new ApiError(409, 'オペレータの測定者が未登録のため検査員再測定できません');
+      }
+
+      const [instrumentTag, employee] = await Promise.all([
+        tx.measuringInstrumentTag.findUnique({
+          where: { rfidTagUid: instrumentTagUid },
+          include: { measuringInstrument: true }
+        }),
+        this.resolveInspectorEmployeeRequired(tx, employeeTagUid)
+      ]);
+      if (!instrumentTag?.measuringInstrument) {
+        throw new ApiError(404, '計測機器が登録されていません');
+      }
+      if (operatorEntry.createdByEmployeeId === employee.id) {
+        throw new ApiError(409, '検査員はオペレータ本人とは別の社員を登録してください');
+      }
+      const instrument = instrumentTag.measuringInstrument;
+      assertMeasuringInstrumentAvailableForSelfInspection(instrument);
+
+      let entry = await tx.selfInspectionInspectorEntry.findUnique({
+        where: {
+          sessionId_entryIndex: {
+            sessionId,
+            entryIndex
+          }
+        },
+        include: {
+          instrumentUsages: true,
+          values: true
+        }
+      });
+      if (entry?.inspectorEmployeeId && entry.inspectorEmployeeId !== employee.id) {
+        throw new ApiError(409, 'この入力件の検査員と氏名タグが一致しません');
+      }
+      if (!entry) {
+        entry = await tx.selfInspectionInspectorEntry.create({
+          data: {
+            sessionId,
+            entryIndex,
+            entrySlotKind: slotKind,
+            inspectorEmployeeId: employee.id,
+            inspectorEmployeeCodeSnapshot: employee.employeeCode,
+            inspectorEmployeeNameSnapshot: employee.displayName,
+            inspectorEmployeeNfcTagUidSnapshot: employee.nfcTagUid,
+            clientDeviceId: input.clientDeviceId ?? null
+          },
+          include: {
+            instrumentUsages: true,
+            values: true
+          }
+        });
+      } else if (!entry.inspectorEmployeeId) {
+        entry = await tx.selfInspectionInspectorEntry.update({
+          where: { id: entry.id },
+          data: {
+            inspectorEmployeeId: employee.id,
+            inspectorEmployeeCodeSnapshot: employee.employeeCode,
+            inspectorEmployeeNameSnapshot: employee.displayName,
+            inspectorEmployeeNfcTagUidSnapshot: employee.nfcTagUid,
+            clientDeviceId: input.clientDeviceId ?? null
+          },
+          include: {
+            instrumentUsages: true,
+            values: true
+          }
+        });
+      }
+
+      const existingUsage = entry.instrumentUsages.find(
+        (usage) => usage.measuringInstrumentId === instrument.id
+      );
+      if (existingUsage) {
+        const serializedEntry = await this.loadInspectorEntryForSerialization(tx, entry.id);
+        return {
+          entry: this.serializeInspectorEntry(serializedEntry),
+          usage: serializeInstrumentUsage(existingUsage),
+          loan: null,
+          loanEvent: null,
+          reusedExistingUsage: true
+        };
+      }
+
+      const existingLoan = await tx.loan.findFirst({
+        where: {
+          measuringInstrumentId: instrument.id,
+          returnedAt: null,
+          cancelledAt: null
+        },
+        include: {
+          measuringInstrument: true,
+          employee: true,
+          client: true
+        }
+      });
+      if (existingLoan && existingLoan.employeeId !== employee.id) {
+        throw new ApiError(409, 'この計測機器は別の社員が貸出中です');
+      }
+
+      const instrumentSnapshot = {
+        id: instrument.id,
+        managementNumber: instrument.managementNumber,
+        name: instrument.name
+      };
+      const employeeSnapshot = {
+        id: employee.id,
+        code: employee.employeeCode,
+        name: employee.displayName
+      };
+      const inspectedAt = new Date();
+      const loan = existingLoan
+        ? existingLoan
+        : await tx.loan.create({
+            data: {
+              measuringInstrumentId: instrument.id,
+              employeeId: employee.id,
+              clientId: input.clientDeviceId ?? undefined
+            },
+            include: {
+              measuringInstrument: true,
+              employee: true,
+              client: true
+            }
+          });
+
+      if (!existingLoan) {
+        await tx.measuringInstrument.update({
+          where: { id: instrument.id },
+          data: { status: MeasuringInstrumentStatus.IN_USE }
+        });
+        await tx.transaction.create({
+          data: {
+            loanId: loan.id,
+            action: TransactionAction.BORROW,
+            actorEmployeeId: employee.id,
+            clientId: input.clientDeviceId ?? undefined,
+            details: {
+              note: null,
+              instrumentSnapshot,
+              employeeSnapshot,
+              source: 'self_inspection_inspector_pre_use_inspection'
+            }
+          }
+        });
+      }
+
+      if (!instrument.genreId) {
+        throw new ApiError(409, '計測機器ジャンルが未設定のため使用前点検できません');
+      }
+      const inspectionItems = await tx.inspectionItem.findMany({
+        where: { genreId: instrument.genreId },
+        orderBy: { order: 'asc' },
+        select: { id: true }
+      });
+      if (inspectionItems.length > 0) {
+        await tx.inspectionRecord.createMany({
+          data: inspectionItems.map((item) => ({
+            measuringInstrumentId: instrument.id,
+            loanId: loan.id,
+            employeeId: employee.id,
+            inspectionItemId: item.id,
+            result: 'PASS',
+            inspectedAt
+          }))
+        });
+      }
+
+      const usage = await tx.selfInspectionInspectorEntryInstrumentUsage.create({
+        data: {
+          entryId: entry.id,
+          measuringInstrumentId: instrument.id,
+          loanId: loan.id,
+          measuringInstrumentManagementNumberSnapshot: instrument.managementNumber,
+          measuringInstrumentNameSnapshot: instrument.name,
+          measuringInstrumentTagUidSnapshot: instrumentTagUid,
+          preUseInspectedAt: inspectedAt
+        }
+      });
+
+      if (!entry.measuringInstrumentId) {
+        await tx.selfInspectionInspectorEntry.update({
+          where: { id: entry.id },
+          data: {
+            measuringInstrumentId: instrument.id,
+            measuringInstrumentManagementNumberSnapshot: instrument.managementNumber,
+            measuringInstrumentNameSnapshot: instrument.name,
+            measuringInstrumentTagUidSnapshot: instrumentTagUid
+          }
+        });
+      }
+      await tx.selfInspectionSession.update({
+        where: { id: sessionId },
+        data: { updatedAt: new Date() }
+      });
+
+      const serializedEntry = await this.loadInspectorEntryForSerialization(tx, entry.id);
+      return {
+        entry: this.serializeInspectorEntry(serializedEntry),
+        usage: serializeInstrumentUsage(usage),
+        loan: {
+          id: loan.id,
+          reused: Boolean(existingLoan)
+        },
+        loanEvent: existingLoan
+          ? null
+          : {
+              managementNumber: instrument.managementNumber,
+              eventAt: loan.borrowedAt,
+              borrowerName: employee.displayName,
+              employeeCode: employee.employeeCode,
+              instrumentName: instrument.name,
+              loanId: loan.id,
+              clientId: input.clientDeviceId ?? null
+            },
+        reusedExistingUsage: false
+      };
+    });
+
+    if (result.loanEvent) {
+      try {
+        await this.loanEventService.recordNfcEvent({
+          managementNumber: result.loanEvent.managementNumber,
+          action: '持ち出し',
+          eventAt: result.loanEvent.eventAt,
+          borrowerName: result.loanEvent.borrowerName,
+          employeeCode: result.loanEvent.employeeCode,
+          instrumentName: result.loanEvent.instrumentName,
+          loanId: result.loanEvent.loanId,
+          clientId: result.loanEvent.clientId
+        });
+      } catch (error) {
+        logger.warn({ err: error, loanId: result.loanEvent.loanId }, 'Failed to mirror inspector self-inspection instrument loan event');
+      }
+    }
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+    return result;
+  }
+
   async recordInstrumentPreUseInspection(
     sessionId: string,
     entryIndexInput: number,
@@ -2110,6 +3302,7 @@ export class SelfInspectionService {
       await this.lockSessionRow(tx, sessionId);
       const session = await this.loadSessionForMutation(tx, sessionId);
       this.assertSessionEntryCountWritable(session);
+      await this.assertInspectorRemeasurementNotStarted(tx, sessionId);
       const templateConfig = templateConfigFromTemplate(session.template);
       assertEntryIndexAllowed(templateConfig, session.plannedQuantity, entryIndex);
       const slotKind = inferEntrySlotKindForIndex(
@@ -2358,6 +3551,7 @@ export class SelfInspectionService {
       await this.lockSessionRow(tx, sessionId);
       const session = await this.loadSessionForMutation(tx, sessionId);
       this.assertSessionEntryCountWritable(session);
+      await this.assertInspectorRemeasurementNotStarted(tx, sessionId);
       const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
       const templateConfig = templateConfigFromTemplate(session.template);
       assertEntryIndexAllowed(templateConfig, session.plannedQuantity, entryIndex);
@@ -2494,6 +3688,7 @@ export class SelfInspectionService {
       await this.lockSessionRow(tx, sessionId);
       const session = await this.loadSessionForMutation(tx, sessionId);
       this.assertSessionEntryCountWritable(session);
+      await this.assertInspectorRemeasurementNotStarted(tx, sessionId);
       const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
       const existingEntry = await tx.selfInspectionLotEntry.findFirst({
         where: { id: entryId, sessionId },
@@ -2546,6 +3741,17 @@ export class SelfInspectionService {
     const sessionInclude = {
       template: { include: partMeasurementTemplateFullInclude },
       entries: { select: { entryIndex: true } },
+      inspectorEntries: {
+        select: {
+          entryIndex: true,
+          values: {
+            select: {
+              templateItemId: true,
+              inspectorValue: true
+            }
+          }
+        }
+      },
       recordApproval: { select: { id: true } },
       _count: { select: { entries: true } }
     } as const;
@@ -2798,6 +4004,17 @@ export class SelfInspectionService {
     const sessionInclude = {
       template: { include: partMeasurementTemplateFullInclude },
       entries: { select: { entryIndex: true } },
+      inspectorEntries: {
+        select: {
+          entryIndex: true,
+          values: {
+            select: {
+              templateItemId: true,
+              inspectorValue: true
+            }
+          }
+        }
+      },
       _count: { select: { entries: true } }
     } as const;
 

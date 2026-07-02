@@ -89,6 +89,12 @@ export function makeSelfInspectionSessionDetailForTest(
     completedAt: null,
     recordApprovalRequiredAt: null,
     recordApprovalWorkflowStartedAt: null,
+    inspectorRemeasurementRequiredAt: null,
+    inspectorMeasurementState: 'not_required',
+    inspectorRequiredEntryCount: expectedEntryCount,
+    inspectorCompletedRequiredEntryCount: 0,
+    inspectorMissingRequiredEntryCount: 0,
+    inspectorIncompleteValueEntryCount: 0,
     recordApproval: null,
     updatedAt: now,
     template: {
