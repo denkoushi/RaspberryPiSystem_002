@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_SCHEMA_VERSION,
   PART_MEASUREMENT_DRAWING_OCR_VERSION,
+  type PartMeasurementDrawingOcrPassKind,
+  type PartMeasurementDrawingOcrPreprocessKind,
   type PartMeasurementDrawingOcrPayload,
   type PartMeasurementDrawingOcrToken
 } from './part-measurement-drawing-ocr-payload.js';
@@ -13,17 +15,20 @@ function token(
   xRatio: number,
   yRatio: number,
   confidence = 90,
-  passKind: 'full' | 'tile' = 'full'
+  passKind: PartMeasurementDrawingOcrPassKind = 'full',
+  preprocessKind: PartMeasurementDrawingOcrPreprocessKind = 'raw',
+  size: { widthRatio: number; heightRatio: number } = { widthRatio: 0.03, heightRatio: 0.02 }
 ): PartMeasurementDrawingOcrToken {
   return {
     text,
     confidence,
     xRatio,
     yRatio,
-    widthRatio: 0.03,
-    heightRatio: 0.02,
+    widthRatio: size.widthRatio,
+    heightRatio: size.heightRatio,
     passId: `${passKind}-${text}`,
     passKind,
+    preprocessKind,
     rotation: 0
   };
 }
@@ -79,5 +84,35 @@ describe('part measurement drawing OCR ranking', () => {
 
     expect(marker5.map((candidate) => candidate.valueText)).toContain('25');
     expect(marker7.map((candidate) => candidate.valueText)).toContain('37');
+  });
+
+  it('does not synthesize one-digit-deletion candidates from raw line noise', () => {
+    const candidates = rankPartMeasurementDrawingOcrCandidates(
+      payload([token('1180', 0.4, 0.4, 90)]),
+      { xRatio: 0.4, yRatio: 0.4, markerNo: 1, limit: 5 }
+    );
+
+    expect(candidates.map((candidate) => candidate.valueText)).toEqual(['1180']);
+  });
+
+  it('prefers a line-suppressed token over a conflicting raw token in the same region', () => {
+    const candidates = rankPartMeasurementDrawingOcrCandidates(
+      payload([
+        token('1180', 0.4, 0.4, 90, 'full', 'raw', { widthRatio: 0.05, heightRatio: 0.02 }),
+        token('180', 0.4, 0.4, 88, 'full', 'lineSuppressed', { widthRatio: 0.04, heightRatio: 0.02 })
+      ]),
+      { xRatio: 0.4, yRatio: 0.4, markerNo: 1, limit: 5 }
+    );
+
+    expect(candidates[0]?.valueText).toBe('180');
+  });
+
+  it('splits stacked four-digit dimension text into two two-digit candidates', () => {
+    const candidates = rankPartMeasurementDrawingOcrCandidates(
+      payload([token('1322', 0.5, 0.4, 86, 'tile', 'raw', { widthRatio: 0.015, heightRatio: 0.07 })]),
+      { xRatio: 0.5, yRatio: 0.4, markerNo: 3, limit: 5 }
+    );
+
+    expect(candidates.map((candidate) => candidate.valueText)).toEqual(['13', '22']);
   });
 });

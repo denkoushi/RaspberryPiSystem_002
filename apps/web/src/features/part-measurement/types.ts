@@ -61,10 +61,12 @@ export type PartMeasurementDrawingOcrStatusDto = {
   imageHeight: number | null;
   tokenCount: number;
   payloadBytes: number;
+  queuePriority: number;
   attemptCount: number;
   failureReason: string | null;
   ocrStartedAt: string | null;
   ocrFinishedAt: string | null;
+  lastQueuedAt: string | null;
   nextAttemptAt: string | null;
   updatedAt: string;
 };
@@ -79,7 +81,8 @@ export type PartMeasurementDrawingOcrCandidateDto = {
   yRatio: number;
   widthRatio: number;
   heightRatio: number;
-  passKind: 'full' | 'tile';
+  passKind: 'full' | 'tile' | 'frame';
+  preprocessKind: 'raw' | 'lineSuppressed' | 'boxedFrame';
   rotation: number;
 };
 

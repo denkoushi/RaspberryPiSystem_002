@@ -62,6 +62,7 @@ describe('InspectionDrawingPointSettingsPanel', () => {
             widthRatio: 0.03,
             heightRatio: 0.02,
             passKind: 'tile',
+            preprocessKind: 'raw',
             rotation: 0
           }
         ]}
@@ -73,5 +74,18 @@ describe('InspectionDrawingPointSettingsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '25' }));
 
     expect(onApplyOcrCandidate).toHaveBeenCalledWith('25');
+  });
+
+  it('does not render OCR waiting states in the nominal value candidate row', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={point}
+        onChange={vi.fn()}
+        ocrCandidateStatus="pending"
+      />
+    );
+
+    expect(screen.queryByText('OCR待ち')).not.toBeInTheDocument();
+    expect(screen.queryByText('OCR処理中')).not.toBeInTheDocument();
   });
 });

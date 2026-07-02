@@ -2073,10 +2073,12 @@ model PartMeasurementDrawingOcrCache {
   imageHeight             Int?
   tokenCount              Int                             @default(0)
   payloadBytes            Int                             @default(0)
+  queuePriority           Int                             @default(0)
   attemptCount            Int                             @default(0)
   ocrStartedAt            DateTime?
   ocrFinishedAt           DateTime?
   lastAttemptAt           DateTime?
+  lastQueuedAt            DateTime?
   nextAttemptAt           DateTime?
   failureReason           String?
   createdAt               DateTime                        @default(now())
@@ -2087,6 +2089,7 @@ model PartMeasurementDrawingOcrCache {
   @@index([visualTemplateId, status], map: "PMDrawingOcrCache_idx_visual_status")
   @@index([status, updatedAt], map: "PMDrawingOcrCache_idx_status_updated")
   @@index([status, createdAt], map: "PMDrawingOcrCache_idx_claim")
+  @@index([status, queuePriority, lastQueuedAt, createdAt], map: "PMDrawingOcrCache_idx_claim_priority")
 }
 
 /// 検査図面の同時作成・まとめて改版単位。

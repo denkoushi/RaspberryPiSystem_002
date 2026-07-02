@@ -9,6 +9,7 @@ import {
   createPartMeasurementVisualTemplate,
   deleteUnusedPartMeasurementVisualTemplate,
   getKioskInspectionDrawingTemplate,
+  getPartMeasurementVisualTemplateOcrStatus,
   getResolvedClientKey,
   existsActivePartMeasurementTemplate,
   listPartMeasurementDrawingOcrCandidates,
@@ -78,6 +79,7 @@ import type {
   PartMeasurementProcessGroup,
   PartMeasurementDrawingOcrCandidateDto,
   PartMeasurementDrawingOcrStatus,
+  PartMeasurementDrawingOcrStatusDto,
   PartMeasurementTemplateDto,
   PartMeasurementVisualTemplateDto,
   SelfInspectionMode
@@ -118,6 +120,9 @@ export function KioskInspectionDrawingCreatePage() {
   const [points, setPoints] = useState<InspectionDrawingPoint[]>([]);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [ocrCandidatesByPointId, setOcrCandidatesByPointId] = useState<Record<string, DrawingOcrCandidateState>>({});
+  const [visualOcrStatus, setVisualOcrStatus] = useState<PartMeasurementDrawingOcrStatusDto | null>(null);
+  const [visualOcrLoading, setVisualOcrLoading] = useState(false);
+  const [visualOcrError, setVisualOcrError] = useState<string | null>(null);
   const [mode, setMode] = useState<'place' | 'test' | 'guidedTrial'>('place');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -228,6 +233,50 @@ export function KioskInspectionDrawingCreatePage() {
     visualSource === 'pickExisting' && selectedVisualTemplateId?.trim()
       ? selectedVisualTemplateId
       : null;
+  const visualOcrPending =
+    visualOcrLoading || visualOcrStatus?.status === 'pending' || visualOcrStatus?.status === 'processing';
+  const visualOcrNotice =
+    visualTemplateIdForOcr && visualOcrPending
+      ? 'OCR準備中'
+      : visualTemplateIdForOcr && visualOcrStatus?.status === 'failed'
+        ? 'OCR準備失敗（手入力は可能です）'
+        : visualTemplateIdForOcr && visualOcrError
+          ? visualOcrError
+          : null;
+
+  useEffect(() => {
+    setOcrCandidatesByPointId({});
+    setVisualOcrStatus(null);
+    setVisualOcrError(null);
+    if (!visualTemplateIdForOcr) {
+      setVisualOcrLoading(false);
+      return;
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof window.setTimeout> | null = null;
+    const load = async () => {
+      setVisualOcrLoading(true);
+      try {
+        const status = await getPartMeasurementVisualTemplateOcrStatus(visualTemplateIdForOcr, clientKey);
+        if (cancelled) return;
+        setVisualOcrStatus(status);
+        setVisualOcrError(null);
+        if (status.status === 'pending' || status.status === 'processing') {
+          timer = window.setTimeout(load, 5000);
+        }
+      } catch {
+        if (cancelled) return;
+        setVisualOcrError('OCR準備状態を確認できません');
+      } finally {
+        if (!cancelled) setVisualOcrLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [clientKey, visualTemplateIdForOcr]);
 
   const guidedTrial = useInspectionDrawingGuidedTrial({
     enabled: mode === 'guidedTrial',
@@ -694,6 +743,7 @@ export function KioskInspectionDrawingCreatePage() {
     (point: InspectionDrawingPoint) => {
       const visualId = visualTemplateIdForOcr;
       if (!visualId) return;
+      if (visualOcrStatus?.status !== 'completed') return;
       const requestId = ++ocrCandidateRequestSeqRef.current;
       setOcrCandidatesByPointId((prev) => ({
         ...prev,
@@ -749,8 +799,16 @@ export function KioskInspectionDrawingCreatePage() {
         }
       })();
     },
-    [clientKey, visualTemplateIdForOcr]
+    [clientKey, visualOcrStatus?.status, visualTemplateIdForOcr]
   );
+
+  useEffect(() => {
+    if (visualOcrStatus?.status !== 'completed') return;
+    if (!selectedPoint) return;
+    const current = ocrCandidatesByPointId[selectedPoint.id];
+    if (current?.loading || current?.candidates.length || current?.status === 'completed') return;
+    requestOcrCandidatesForPoint(selectedPoint);
+  }, [ocrCandidatesByPointId, requestOcrCandidatesForPoint, selectedPoint, visualOcrStatus?.status]);
 
   const removeSelected = () => {
     if (contentReadOnly || !selectedPointId) return;
@@ -1185,6 +1243,7 @@ export function KioskInspectionDrawingCreatePage() {
       {message ? <p className="px-1 text-[1rem] font-semibold text-amber-200">{message}</p> : null}
       {previewError ? <p className="px-1 text-sm text-red-300">{previewError}</p> : null}
       {drawingLoadError ? <p className="px-1 text-sm text-red-300">{drawingLoadError}</p> : null}
+      {visualOcrNotice ? <p className="px-1 text-sm font-semibold text-cyan-100/75">{visualOcrNotice}</p> : null}
       {template && readOnly ? (
         <div className="px-1">
           <Button type="button" variant="primary" disabled={busy} onClick={() => void handleActivate()}>

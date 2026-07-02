@@ -26,6 +26,7 @@ describe('part measurement drawing OCR payload', () => {
           heightRatio: 0.02,
           passId: 'tile-2-1-r0',
           passKind: 'tile',
+          preprocessKind: 'raw',
           rotation: 0
         }
       ]

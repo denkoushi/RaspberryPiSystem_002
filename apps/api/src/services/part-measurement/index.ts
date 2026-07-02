@@ -10,6 +10,7 @@ export { PartMeasurementTemplateService } from './part-measurement-template.serv
 export { PartMeasurementVisualTemplateService } from './part-measurement-visual-template.service.js';
 export {
   PartMeasurementDrawingOcrService,
+  PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY,
   getPartMeasurementDrawingOcrService,
   type PartMeasurementDrawingOcrCandidateResult,
   type PartMeasurementDrawingOcrStatusSummary

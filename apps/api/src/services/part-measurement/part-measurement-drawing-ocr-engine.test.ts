@@ -39,10 +39,33 @@ describe('PartMeasurementDrawingOcrEngine', () => {
     const layoutOcr = new RecordingLayoutOcr();
     const payload = await new PartMeasurementDrawingOcrEngine(layoutOcr).run(source);
 
-    expect(payload.ocrVersion).toBe('pm-drawing-ocr-v2');
-    expect(layoutOcr.calls).toHaveLength(31);
+    expect(payload.ocrVersion).toBe('pm-drawing-ocr-v3');
+    expect(layoutOcr.calls).toHaveLength(62);
     expect(new Set(payload.tokens.map((token) => token.rotation))).toEqual(new Set([0, 90, 180, 270]));
     expect(payload.tokens.some((token) => token.passKind === 'tile' && token.rotation === 90)).toBe(true);
     expect(payload.tokens.some((token) => token.passKind === 'tile' && token.rotation === 270)).toBe(true);
+    expect(payload.tokens.some((token) => token.preprocessKind === 'lineSuppressed')).toBe(true);
+  });
+
+  it('adds boxed frame passes for detected geometric tolerance frames', async () => {
+    const source = await sharp(
+      Buffer.from(`
+        <svg width="240" height="160" xmlns="http://www.w3.org/2000/svg">
+          <rect width="240" height="160" fill="white"/>
+          <rect x="64" y="70" width="112" height="28" fill="none" stroke="black" stroke-width="2"/>
+          <line x1="112" y1="70" x2="112" y2="98" stroke="black" stroke-width="2"/>
+          <text x="120" y="90" font-family="monospace" font-size="18" fill="black">0.050</text>
+        </svg>
+      `),
+      { failOn: 'none' }
+    )
+      .png()
+      .toBuffer();
+    const layoutOcr = new RecordingLayoutOcr();
+    const payload = await new PartMeasurementDrawingOcrEngine(layoutOcr).run(source);
+
+    expect(layoutOcr.calls.length).toBeGreaterThan(62);
+    expect(payload.tokens.some((token) => token.passKind === 'frame')).toBe(true);
+    expect(payload.tokens.some((token) => token.preprocessKind === 'boxedFrame')).toBe(true);
   });
 });

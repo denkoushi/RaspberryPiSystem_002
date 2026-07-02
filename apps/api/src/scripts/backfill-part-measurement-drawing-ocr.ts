@@ -11,7 +11,10 @@
 
 import { prisma } from '../lib/prisma.js';
 import { shutdownImageOcrPort } from '../services/ocr/image-ocr-runtime.js';
-import { getPartMeasurementDrawingOcrService } from '../services/part-measurement/part-measurement-drawing-ocr.service.js';
+import {
+  getPartMeasurementDrawingOcrService,
+  PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY
+} from '../services/part-measurement/part-measurement-drawing-ocr.service.js';
 
 type Args = {
   dryRun: boolean;
@@ -47,26 +50,48 @@ function parseArgs(argv: string[]): Args {
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
   const service = getPartMeasurementDrawingOcrService();
-  const ids = await service.listVisualTemplateIdsForBackfill({
+  if (args.dryRun) {
+    const inspection = await service.inspectBackfillTargets({
+      includeInactive: args.includeInactive,
+      visualTemplateId: args.visualTemplateId,
+      limit: args.limit
+    });
+    console.log(
+      `[backfill-part-measurement-drawing-ocr] dryRun=true includeInactive=${args.includeInactive} targets=${inspection.summary.totalTargets} referenced=${inspection.summary.referencedByActiveTemplate} missing=${inspection.summary.missing} pending=${inspection.summary.pending} processing=${inspection.summary.processing} completed=${inspection.summary.completed} failed=${inspection.summary.failed} unreadable=${inspection.summary.unreadable}`
+    );
+    for (const target of inspection.targets.slice(0, 20)) {
+      console.log(
+        `[backfill-part-measurement-drawing-ocr] target visualTemplateId=${target.visualTemplateId} referenced=${target.isReferencedByActiveTemplate} status=${target.cacheStatus} priority=${target.priority}`
+      );
+    }
+    if (inspection.targets.length > 20) {
+      console.log(`[backfill-part-measurement-drawing-ocr] ... ${inspection.targets.length - 20} more targets`);
+    }
+    return 0;
+  }
+
+  const targets = await service.listVisualTemplateBackfillTargets({
     includeInactive: args.includeInactive,
     visualTemplateId: args.visualTemplateId,
     limit: args.limit
   });
   console.log(
-    `[backfill-part-measurement-drawing-ocr] targets=${ids.length} dryRun=${args.dryRun} includeInactive=${args.includeInactive}`
+    `[backfill-part-measurement-drawing-ocr] targets=${targets.length} dryRun=${args.dryRun} includeInactive=${args.includeInactive}`
   );
-  if (args.dryRun) return 0;
 
   let enqueued = 0;
   let enqueueFailed = 0;
-  for (const id of ids) {
+  for (const target of targets) {
     try {
       // eslint-disable-next-line no-await-in-loop
-      await service.enqueueVisualTemplate(id, { includeInactive: args.includeInactive });
+      await service.enqueueVisualTemplate(target.visualTemplateId, {
+        includeInactive: args.includeInactive,
+        priority: target.priority || PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY.BACKFILL_ACTIVE
+      });
       enqueued += 1;
     } catch (error) {
       enqueueFailed += 1;
-      console.warn('[backfill-part-measurement-drawing-ocr] enqueue failed', id, error);
+      console.warn('[backfill-part-measurement-drawing-ocr] enqueue failed', target.visualTemplateId, error);
     }
   }
 

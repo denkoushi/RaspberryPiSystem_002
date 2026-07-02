@@ -4,9 +4,12 @@ import { promisify } from 'node:util';
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
-export const PART_MEASUREMENT_DRAWING_OCR_VERSION = 'pm-drawing-ocr-v2';
-export const PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_SCHEMA_VERSION = 1;
+export const PART_MEASUREMENT_DRAWING_OCR_VERSION = 'pm-drawing-ocr-v3';
+export const PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_SCHEMA_VERSION = 2;
 export const PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_ENCODING = 'gzip+json';
+
+export type PartMeasurementDrawingOcrPassKind = 'full' | 'tile' | 'frame';
+export type PartMeasurementDrawingOcrPreprocessKind = 'raw' | 'lineSuppressed' | 'boxedFrame';
 
 export type PartMeasurementDrawingOcrToken = {
   text: string;
@@ -16,7 +19,8 @@ export type PartMeasurementDrawingOcrToken = {
   widthRatio: number;
   heightRatio: number;
   passId: string;
-  passKind: 'full' | 'tile';
+  passKind: PartMeasurementDrawingOcrPassKind;
+  preprocessKind: PartMeasurementDrawingOcrPreprocessKind;
   rotation: number;
 };
 

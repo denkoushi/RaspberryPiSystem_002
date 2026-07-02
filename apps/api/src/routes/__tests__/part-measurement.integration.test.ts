@@ -15,6 +15,7 @@ import {
 } from '../../services/part-measurement/part-measurement-drawing-ocr-payload.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
 import { SelfInspectionService } from '../../services/part-measurement/self-inspection.service.js';
+import { getPartMeasurementDrawingOcrService } from '../../services/part-measurement/part-measurement-drawing-ocr.service.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestMeasuringInstrumentWithTag, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -369,6 +370,38 @@ describe('part-measurement templates API', () => {
     expect(response.json().status).toBe('pending');
     expect(response.json().candidates).toEqual([]);
     expect(response.json().cache.status).toBe('pending');
+    expect(response.json().cache.queuePriority).toBe(100);
+    expect(response.json().cache.lastQueuedAt).toEqual(expect.any(String));
+  });
+
+  it('prioritizes visual templates without a completed current OCR cache during backfill discovery', async () => {
+    const firstUpload = buildMultipartPng('ocr-completed-first', MIN_PNG);
+    const firstRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': firstUpload.contentType },
+      payload: firstUpload.body
+    });
+    expect(firstRes.statusCode).toBe(200);
+    const firstId = firstRes.json().visualTemplate.id as string;
+
+    const secondUpload = buildMultipartPng('ocr-pending-second', MIN_PNG);
+    const secondRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': secondUpload.contentType },
+      payload: secondUpload.body
+    });
+    expect(secondRes.statusCode).toBe(200);
+    const secondId = secondRes.json().visualTemplate.id as string;
+
+    await prisma.partMeasurementDrawingOcrCache.updateMany({
+      where: { visualTemplateId: firstId, ocrVersion: PART_MEASUREMENT_DRAWING_OCR_VERSION },
+      data: { status: 'COMPLETED', ocrFinishedAt: new Date() }
+    });
+
+    const targets = await getPartMeasurementDrawingOcrService().listVisualTemplateBackfillTargets({ limit: 1 });
+    expect(targets[0]?.visualTemplateId).toBe(secondId);
   });
 
   it('returns ranked drawing OCR candidates from completed cache', async () => {
@@ -406,6 +439,7 @@ describe('part-measurement templates API', () => {
           heightRatio: 0.01,
           passId: 'full-0',
           passKind: 'full',
+          preprocessKind: 'raw',
           rotation: 0
         },
         {
@@ -417,6 +451,7 @@ describe('part-measurement templates API', () => {
           heightRatio: 0.02,
           passId: 'full-0',
           passKind: 'full',
+          preprocessKind: 'raw',
           rotation: 0
         }
       ]
@@ -4350,6 +4385,33 @@ describe('part-measurement drawing PDF import', () => {
     expect(up.statusCode).toBe(200);
     expect(up.json().visualTemplate.drawingImageRelativePath).toMatch(/\.png$/);
     expect(up.json().cleanupToken).toEqual(expect.any(String));
+  });
+
+  it('enqueues OCR for evaluation multipart uploads that create a visual template', async () => {
+    const { body, contentType } = buildMultipartEvaluationTemplate({
+      referenceFhincd: 'FH-EVAL-OCR',
+      referenceResourceCd: 'RES-OCR',
+      itemsJson: JSON.stringify(validInspectionDrawingItems()),
+      fileBuffer: MIN_PNG,
+      filename: 'drawing.png',
+      contentType: 'image/png'
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/inspection-drawing/evaluation-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(res.statusCode).toBe(200);
+    const visualTemplateId = res.json().template.visualTemplateId as string;
+    const cache = await prisma.partMeasurementDrawingOcrCache.findFirst({
+      where: {
+        visualTemplateId,
+        ocrVersion: PART_MEASUREMENT_DRAWING_OCR_VERSION
+      }
+    });
+    expect(cache?.status).toBe('PENDING');
+    expect(cache?.queuePriority).toBe(100);
   });
 
   it('does not save drawing when evaluation multipart items are invalid', async () => {

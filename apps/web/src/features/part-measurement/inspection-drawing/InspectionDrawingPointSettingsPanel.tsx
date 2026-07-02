@@ -50,8 +50,6 @@ export function InspectionDrawingPointSettingsPanel({
     ocrCandidateLoading ||
     ocrCandidateError ||
     ocrCandidates.length > 0 ||
-    ocrCandidateStatus === 'pending' ||
-    ocrCandidateStatus === 'processing' ||
     ocrCandidateStatus === 'failed';
 
   return (
@@ -93,12 +91,6 @@ export function InspectionDrawingPointSettingsPanel({
           {showOcrCandidateRow ? (
             <div className="flex min-h-8 flex-wrap items-center gap-1 text-[0.8rem] font-semibold">
               {ocrCandidateLoading ? <span className="text-cyan-100/75">OCR確認中</span> : null}
-              {!ocrCandidateLoading && ocrCandidateStatus === 'pending' ? (
-                <span className="text-cyan-100/75">OCR待ち</span>
-              ) : null}
-              {!ocrCandidateLoading && ocrCandidateStatus === 'processing' ? (
-                <span className="text-cyan-100/75">OCR処理中</span>
-              ) : null}
               {!ocrCandidateLoading && ocrCandidateStatus === 'failed' ? (
                 <span className="text-amber-200">OCR失敗</span>
               ) : null}
