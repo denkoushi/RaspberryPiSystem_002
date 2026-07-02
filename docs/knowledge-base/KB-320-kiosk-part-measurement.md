@@ -1693,12 +1693,54 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ## 自主検査 · 工程内検査員再測定（2026-07-02）
 
-- オペレータが自主検査を保存して `recordApprovalRequiredAt` が立つ新規ワークフローでは、同時に `inspectorRemeasurementRequiredAt` を立てる。既存の承認待ちセッションにはバックフィルしない。
-- 検査員再測定は `/kiosk/part-measurement/self-inspection/sessions/:sessionId/inspector`。既存の図面・測定値入力 UI を `mode=inspector` で再利用し、保存先は `SelfInspectionInspectorEntry` / `SelfInspectionInspectorMeasurementValue` / `SelfInspectionInspectorEntryInstrumentUsage`。
-- 検査員は、該当入力件のオペレータ本人と同じ社員タグでは保存できない。検査員測定開始後は、基準値固定のためオペレータ入力・使用前点検の更新を 409 で拒否する。
-- 検査員値は `operatorValueSnapshot`、`inspectorValue`、`differenceValue`、`judgementStatus=NOT_EVALUATED` を保存する。差異異常の判定基準は未実装で、承認可否には使わない。
-- 検査記録確認の `recordApprovalState` は `inspector_measurement_pending` を返す。全 required slot の検査員値がそろい、既存の測定者/使用前点検ポリシーも満たすと `approvable` になる。
-- 計測器使用前点検は既存の共有ON/OFF設定に従う。ONの場合は検査員側も使用前点検または計測器登録が必要。
+### 状態と対象
+
+| 項目 | 内容 |
+|------|------|
+| 状態 | 実装済み、push済み、本番デプロイ済み。`main` マージ前の作業ブランチは `feat/self-inspection-inspector-remeasurement`、代表 HEAD は `e3ee2e21`。 |
+| 変更範囲 | Prisma migration + API + Web kiosk + 既存ドキュメント更新。 |
+| migration | `20260702170000_self_inspection_inspector_remeasurement`。 |
+| 既存データ | 既存の承認待ちセッションには `inspectorRemeasurementRequiredAt` をバックフィルしない。新規ワークフローだけが検査員再測定必須になる。 |
+
+### 仕様サマリ
+
+- オペレータが自主検査を保存して `recordApprovalRequiredAt` が立つ新規ワークフローでは、同時に `inspectorRemeasurementRequiredAt` を立てる。
+- 自主検査トップのカードは、オペレータ未完了なら従来入力画面へ、検査員再測定待ちなら **検査員測定** として `/kiosk/part-measurement/self-inspection/sessions/:sessionId/inspector` へ遷移する。
+- 検査員画面は既存の図面・測定値入力 UI を `mode="inspector"` で再利用する。検査員もオペレータと同じ required slot、同じ測定点、同じ入力順で保存する。
+- 検査員の保存先は `SelfInspectionInspectorEntry` / `SelfInspectionInspectorMeasurementValue` / `SelfInspectionInspectorEntryInstrumentUsage`。オペレータ値は上書きしない。
+- 検査員値には `operatorValueSnapshot`、`inspectorValue`、`differenceValue`、`judgementStatus=NOT_EVALUATED` を保存する。差異異常の判定基準は今回未実装で、承認可否には使わない。
+- 検査員は、該当入力件のオペレータ本人と同じ社員タグでは保存できない。
+- 検査員測定開始後は差分基準値を固定するため、オペレータ入力とオペレータ側使用前点検の更新を 409 で拒否する。
+- 検査記録確認の `recordApprovalState` は、検査員再測定が未完了なら `inspector_measurement_pending`。全 required slot の検査員値がそろい、既存の測定者/使用前点検ポリシーも満たすと `approvable` になる。
+- 計測器使用前点検は既存の共有 ON/OFF 設定に従う。ON の場合は検査員側も使用前点検または計測器登録が必要。
+
+### API 契約（追加分）
+
+| エンドポイント | 用途 |
+|----------------|------|
+| `GET /api/part-measurement/self-inspection/sessions/:id/inspector-measurements` | 検査員再測定画面の取得。オペレータ値 snapshot、検査員値、差分、使用前点検状態を返す。 |
+| `POST /api/part-measurement/self-inspection/sessions/:id/inspector-entries` | 検査員 entry 新規保存。 |
+| `PATCH /api/part-measurement/self-inspection/sessions/:id/inspector-entries/:entryId` | 検査員 entry 更新。 |
+| `POST /api/part-measurement/self-inspection/sessions/:id/inspector-entries/:entryIndex/instrument-usages/pre-use-inspection` | 検査員側の計測器使用前点検保存。 |
+
+### 検証結果
+
+| 区分 | 結果 |
+|------|------|
+| ローカル API | 一時 Postgres `rps002-self-inspection-test` で migration deploy、Prisma generate、関連 integration test、SQL/EXPLAIN 確認まで実施。一時コンテナは削除済み。 |
+| ローカル Web | 関連 Web tests と Web `tsc --noEmit` は PASS。API 全体 `tsc` は既存の対象外エラーが残るため、今回触った経路はテストと CI で担保。 |
+| CI | GitHub Actions run `28580694564` は `lint-build-unit`、`api-db-and-infra`、`e2e-smoke`、`security-docker`、`e2e-tests` すべて success。 |
+| CI 知見 | 初回 run `28579766159` は `self-inspection.service.cache-reset.test.ts` の mock template が `items` を持たず失敗。mock に `items: []` を追加し、対象 vitest PASS 後に amend/push した。 |
+| デプロイ | `update-all-clients.sh feat/self-inspection-inspector-remeasurement infrastructure/ansible/inventory.yml --detach --follow`、remote run `20260702-185848-16375`、exit code 0。Pi5 + Pi4 kiosk 5台 + Pi3 signage の 7 hosts で `failed=0` / `unreachable=0`、summary `success:true`。 |
+| 実機自動検証 | `./scripts/deploy/verify-phase12-real.sh` → `PASS: 45` / `WARN: 0` / `FAIL: 0`。 |
+| 本番 DB | `SelfInspectionInspectorEntry`、`SelfInspectionInspectorMeasurementValue`、`SelfInspectionInspectorEntryInstrumentUsage` と `SelfInspectionSession.inspectorRemeasurementRequiredAt` の存在を確認。`_prisma_migrations` で migration applied を確認。 |
+| 本番 API | `api` / `db` / `web` が running。`GET /api/system/health` は DB 含め `status:"ok"`。追加 GET route は未認証 probe で期待どおり `401 CLIENT_KEY_REQUIRED` まで到達。 |
+
+### 未完了・次回注意
+
+- 差異異常の判定基準は未実装。将来は保存済みの `operatorValueSnapshot` / `inspectorValue` / `differenceValue` / `judgementStatus` を使って判定ルールを追加する。
+- 遠隔で可能な実機自動検証と API/DB/サービス確認は完了。現場で実際に NFC タグを使い、オペレータ測定 → 検査員再測定 → 検査記録確認 → 承認完了までの物理操作は未実施。
+- 検査員再測定開始後はオペレータ値を編集できない仕様のため、現場で入力ミスが見つかった場合は既存のセッションリセット/再開始運用を使う前提。
 
 ## References
 
