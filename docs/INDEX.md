@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-02 · キオスク検査図面 OCR キャッシュ）
+
+- **丸数字配置時の基準値候補**: `PartMeasurementVisualTemplate` の保存済み図面は複製せず、OCR由来の座標付き数値トークンだけを `PartMeasurementDrawingOcrCache` に保持。UIは候補提示のみで自動確定しない。**記録**: [ADR-20260702](./decisions/ADR-20260702-part-measurement-drawing-ocr-cache.md)
+
 ### 最新アップデート（2026-07-01 · キオスク検査図面 複数資源兄弟グループ · repo実装）
 
 - **複数資源作成 + 兄弟テンプレまとめて改版**: `PartMeasurementTemplateSiblingGroup` を追加し、資源CD別テンプレの正本キーは維持したまま兄弟グループで束ねる。個別改版はグループから外す。図面ライブラリはグループを1カード表示、資源CDはチップ表示。**記録**: [ADR-20260701](./decisions/ADR-20260701-part-measurement-template-sibling-groups.md) · [KB-320 §複数資源兄弟グループ](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-複数資源兄弟グループ-2026-07-01) · [Runbook](./runbooks/kiosk-part-measurement.md#検査図面-複数資源兄弟グループ-2026-07-01) · [`EXEC_PLAN`](../EXEC_PLAN.md)

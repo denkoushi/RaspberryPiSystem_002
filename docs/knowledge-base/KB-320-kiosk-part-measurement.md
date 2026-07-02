@@ -228,6 +228,18 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 | 資源追加に未保存変更が反映されない | 仕様どおり。資源追加は保存済み最新版をコピーするため、必要なら先にまとめて改版で保存する。 |
 | 一覧でカードが増えすぎる | `siblingGroupId` が返っているか、DTO の `siblingGroup.activeResourceCds` が空でないかを確認する。 |
 
+### 検査図面・OCRキャッシュ候補提示（2026-07-02） {#検査図面-ocrキャッシュ候補提示-2026-07-02}
+
+正本判断は [ADR-20260702](../decisions/ADR-20260702-part-measurement-drawing-ocr-cache.md)。v1 は **インポート済み図面のOCRキャッシュ**と、丸数字配置位置からの **基準値候補提示**に限定する。図面画像は複製せず、`PartMeasurementVisualTemplate.drawingImageRelativePath` の保存済み画像を唯一の画像ソースとし、OCR由来の数値トークン・正規化bbox・confidenceだけを `PartMeasurementDrawingOcrCache` に `gzip+json` で保持する。
+
+| 項目 | 内容 |
+|------|------|
+| API | `GET /api/part-measurement/visual-templates/:id/ocr`、`POST .../:id/ocr/candidates`、`POST .../:id/ocr/retry` |
+| UI | 検査図面作成/改版で既存 visual を使って点を追加した直後だけ候補APIを呼ぶ。候補選択は対象点の `nominalRaw` だけ更新する。 |
+| OCR | `tesseract.js` の座標付き単語OCRを使い、全体 + タイルOCRで数値候補を作る。LLMによる自動確定はしない。 |
+| 既存図面 | migrationではOCRしない。deploy後に `pnpm --filter @raspi-system/api backfill:part-measurement-drawing-ocr -- --dry-run` で対象確認し、必要件数だけ実行する。 |
+| 失敗時 | retry最大3回。失敗理由はcache行に保存し、手動retry APIまたはbackfill再実行で復帰させる。 |
+
 ### 検査図面 trio（名称変更・図面名検索・自主検査遷移）（2026-06-09） {#kiosk-inspection-drawing-trio-2026-06-09}
 
 | 項目 | 内容 |

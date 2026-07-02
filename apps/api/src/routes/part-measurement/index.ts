@@ -10,9 +10,11 @@ import {
 } from '../../lib/part-measurement-drawing-import.js';
 import { convertDrawingUploadToPreviewBuffer } from '../../lib/part-measurement-drawing-preview.js';
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
+import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { verifyProductionScheduleRowOrThrow } from '../../services/production-schedule/verify-production-schedule-row.js';
 import {
+  getPartMeasurementDrawingOcrService,
   PartMeasurementResolveService,
   PartMeasurementSheetService,
   PartMeasurementTemplateCandidateService,
@@ -311,6 +313,13 @@ const activeTemplateExistsQuerySchema = z.object({
   resourceCd: z.string().min(1).max(120)
 });
 
+const drawingOcrCandidateBodySchema = z.object({
+  xRatio: z.number().min(0).max(1),
+  yRatio: z.number().min(0).max(1),
+  markerNo: z.number().int().min(1).max(999).optional().nullable(),
+  limit: z.number().int().min(1).max(20).optional()
+});
+
 const listTemplateCandidatesQuerySchema = z.object({
   fhincd: z.string().min(1).max(120),
   processGroup: processGroupSchema,
@@ -530,6 +539,46 @@ function serializeVisualTemplate(v: {
     createdAt: v.createdAt.toISOString(),
     updatedAt: v.updatedAt.toISOString()
   };
+}
+
+function serializeDrawingOcrStatus(status: {
+  id: string;
+  visualTemplateId: string;
+  status: string;
+  ocrVersion: string;
+  drawingImageFingerprint: string;
+  engine: string | null;
+  imageWidth: number | null;
+  imageHeight: number | null;
+  tokenCount: number;
+  payloadBytes: number;
+  attemptCount: number;
+  failureReason: string | null;
+  ocrStartedAt: string | null;
+  ocrFinishedAt: string | null;
+  nextAttemptAt: string | null;
+  updatedAt: string;
+}) {
+  return {
+    ...status,
+    status: status.status.toLowerCase()
+  };
+}
+
+function serializeDrawingOcrCandidate(candidate: {
+  valueText: string;
+  rawText: string;
+  confidence: number | null;
+  score: number;
+  distanceRatio: number;
+  xRatio: number;
+  yRatio: number;
+  widthRatio: number;
+  heightRatio: number;
+  passKind: 'full' | 'tile';
+  rotation: number;
+}) {
+  return candidate;
 }
 
 function serializeTemplateScope(scope: string): 'three_key' | 'fhincd_resource' | 'fhinmei_only' {
@@ -958,6 +1007,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   const paperImportService = new SelfInspectionPaperImportService();
   const templateCandidateService = new PartMeasurementTemplateCandidateService();
   const visualTemplateService = new PartMeasurementVisualTemplateService();
+  const drawingOcrService = getPartMeasurementDrawingOcrService();
 
   const createInspectionDrawingEvaluationSetup = async (
     templateParams: Parameters<PartMeasurementTemplateService['createInspectionDrawingEvaluationTemplate']>[0],
@@ -1018,6 +1068,46 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     }
   );
 
+  app.get(
+    '/part-measurement/visual-templates/:id/ocr',
+    { preHandler: allowView, config: { rateLimit: false } },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const status = await drawingOcrService.getCurrentStatus(params.id);
+      return { ocr: serializeDrawingOcrStatus(status) };
+    }
+  );
+
+  app.post(
+    '/part-measurement/visual-templates/:id/ocr/candidates',
+    { preHandler: allowView, config: { rateLimit: false } },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = drawingOcrCandidateBodySchema.parse(request.body);
+      const result = await drawingOcrService.getCandidates(params.id, {
+        xRatio: body.xRatio,
+        yRatio: body.yRatio,
+        markerNo: body.markerNo,
+        limit: body.limit ?? 5
+      });
+      return {
+        status: result.status.toLowerCase(),
+        candidates: result.candidates.map(serializeDrawingOcrCandidate),
+        cache: serializeDrawingOcrStatus(result.cache)
+      };
+    }
+  );
+
+  app.post(
+    '/part-measurement/visual-templates/:id/ocr/retry',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const status = await drawingOcrService.retryVisualTemplate(params.id);
+      return { ocr: serializeDrawingOcrStatus(status) };
+    }
+  );
+
   app.post(
     '/part-measurement/visual-templates',
     { preHandler: allowWriteKiosk, config: { rateLimit: false } },
@@ -1073,6 +1163,12 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         await PartMeasurementDrawingStorage.deleteDrawing(relativeUrl).catch(() => undefined);
         throw error;
       }
+      void drawingOcrService.enqueueVisualTemplate(created.id).catch((error) => {
+        logger.warn(
+          { err: error, visualTemplateId: created.id },
+          'part_measurement_drawing_ocr_enqueue_after_visual_create_failed'
+        );
+      });
       return {
         visualTemplate: serializeVisualTemplate(created),
         cleanupToken: signVisualCleanupToken(created.id)

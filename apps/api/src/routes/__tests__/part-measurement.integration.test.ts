@@ -7,6 +7,12 @@ import { buildMinimalValidPdfBuffer } from '../../lib/__tests__/fixtures/minimal
 import * as drawingImport from '../../lib/part-measurement-drawing-import.js';
 import { prisma } from '../../lib/prisma.js';
 import { PART_MEASUREMENT_INSPECTION_DRAWING_EVAL_BUCKET_FHINCD } from '../../services/part-measurement/part-measurement-constants.js';
+import {
+  encodePartMeasurementDrawingOcrPayload,
+  PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_ENCODING,
+  PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_SCHEMA_VERSION,
+  PART_MEASUREMENT_DRAWING_OCR_VERSION
+} from '../../services/part-measurement/part-measurement-drawing-ocr-payload.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
 import { SelfInspectionService } from '../../services/part-measurement/self-inspection.service.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestMeasuringInstrumentWithTag, createTestUser } from './helpers.js';
@@ -339,6 +345,109 @@ describe('part-measurement templates API', () => {
       headers: createAuthHeader(viewerToken)
     });
     expect(missing.statusCode).toBe(404);
+  });
+
+  it('returns pending drawing OCR candidates before cache completion', async () => {
+    const { body, contentType } = buildMultipartPng('ocr-pending-visual', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    const vid = up.json().visualTemplate.id as string;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/visual-templates/${vid}/ocr/candidates`,
+      headers: { ...createAuthHeader(viewerToken), 'content-type': 'application/json' },
+      payload: { xRatio: 0.2, yRatio: 0.3, markerNo: 2, limit: 5 }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().status).toBe('pending');
+    expect(response.json().candidates).toEqual([]);
+    expect(response.json().cache.status).toBe('pending');
+  });
+
+  it('returns ranked drawing OCR candidates from completed cache', async () => {
+    const { body, contentType } = buildMultipartPng('ocr-completed-visual', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    const vid = up.json().visualTemplate.id as string;
+
+    const statusResponse = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/visual-templates/${vid}/ocr`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(statusResponse.statusCode).toBe(200);
+    const cacheId = statusResponse.json().ocr.id as string;
+
+    const compressed = await encodePartMeasurementDrawingOcrPayload({
+      schemaVersion: PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_SCHEMA_VERSION,
+      ocrVersion: PART_MEASUREMENT_DRAWING_OCR_VERSION,
+      engine: 'test-layout',
+      createdAt: new Date().toISOString(),
+      image: { width: 1000, height: 1000 },
+      tokens: [
+        {
+          text: '2',
+          confidence: 98,
+          xRatio: 0.2,
+          yRatio: 0.3,
+          widthRatio: 0.01,
+          heightRatio: 0.01,
+          passId: 'full-0',
+          passKind: 'full',
+          rotation: 0
+        },
+        {
+          text: '360',
+          confidence: 91,
+          xRatio: 0.22,
+          yRatio: 0.31,
+          widthRatio: 0.05,
+          heightRatio: 0.02,
+          passId: 'full-0',
+          passKind: 'full',
+          rotation: 0
+        }
+      ]
+    });
+
+    await prisma.partMeasurementDrawingOcrCache.update({
+      where: { id: cacheId },
+      data: {
+        status: 'COMPLETED',
+        payloadCompressed: compressed,
+        payloadEncoding: PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_ENCODING,
+        engine: 'test-layout',
+        imageWidth: 1000,
+        imageHeight: 1000,
+        tokenCount: 2,
+        payloadBytes: compressed.length,
+        ocrFinishedAt: new Date()
+      }
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/visual-templates/${vid}/ocr/candidates`,
+      headers: { ...createAuthHeader(viewerToken), 'content-type': 'application/json' },
+      payload: { xRatio: 0.2, yRatio: 0.3, markerNo: 2, limit: 5 }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().status).toBe('completed');
+    expect(response.json().candidates[0].valueText).toBe('360');
+    expect(response.json().cache.tokenCount).toBe(2);
   });
 
   it('treats includeInactive=false as false and only returns inactive visual when true', async () => {

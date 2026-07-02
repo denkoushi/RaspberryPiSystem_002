@@ -48,6 +48,47 @@ export type PartMeasurementVisualTemplateDto = {
   updatedAt: string;
 };
 
+export type PartMeasurementDrawingOcrStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+export type PartMeasurementDrawingOcrStatusDto = {
+  id: string;
+  visualTemplateId: string;
+  status: PartMeasurementDrawingOcrStatus;
+  ocrVersion: string;
+  drawingImageFingerprint: string;
+  engine: string | null;
+  imageWidth: number | null;
+  imageHeight: number | null;
+  tokenCount: number;
+  payloadBytes: number;
+  attemptCount: number;
+  failureReason: string | null;
+  ocrStartedAt: string | null;
+  ocrFinishedAt: string | null;
+  nextAttemptAt: string | null;
+  updatedAt: string;
+};
+
+export type PartMeasurementDrawingOcrCandidateDto = {
+  valueText: string;
+  rawText: string;
+  confidence: number | null;
+  score: number;
+  distanceRatio: number;
+  xRatio: number;
+  yRatio: number;
+  widthRatio: number;
+  heightRatio: number;
+  passKind: 'full' | 'tile';
+  rotation: number;
+};
+
+export type PartMeasurementDrawingOcrCandidateResponseDto = {
+  status: PartMeasurementDrawingOcrStatus;
+  candidates: PartMeasurementDrawingOcrCandidateDto[];
+  cache: PartMeasurementDrawingOcrStatusDto;
+};
+
 /** GET /part-measurement/templates/candidates の matchKind（API と同期） */
 export type PartMeasurementTemplateMatchKind =
   | 'exact_resource'

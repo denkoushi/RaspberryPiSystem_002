@@ -8,6 +8,12 @@ export { PartMeasurementSessionService } from './part-measurement-session.servic
 export { PartMeasurementTemplateCandidateService } from './part-measurement-template-candidate.service.js';
 export { PartMeasurementTemplateService } from './part-measurement-template.service.js';
 export { PartMeasurementVisualTemplateService } from './part-measurement-visual-template.service.js';
+export {
+  PartMeasurementDrawingOcrService,
+  getPartMeasurementDrawingOcrService,
+  type PartMeasurementDrawingOcrCandidateResult,
+  type PartMeasurementDrawingOcrStatusSummary
+} from './part-measurement-drawing-ocr.service.js';
 export { SelfInspectionService } from './self-inspection.service.js';
 export { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 export {

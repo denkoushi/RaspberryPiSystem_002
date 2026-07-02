@@ -1849,6 +1849,13 @@ enum KioskDocumentOcrStatus {
   FAILED
 }
 
+enum PartMeasurementDrawingOcrStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 /// キオスク「要領書」用PDF（手動アップロード / Gmail取り込み）
 model KioskDocument {
   id                   String              @id @default(uuid())
@@ -2046,8 +2053,40 @@ model PartMeasurementVisualTemplate {
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   businessTemplates        PartMeasurementTemplate[]
+  ocrCaches                PartMeasurementDrawingOcrCache[]
 
   @@index([isActive, name])
+}
+
+/// PartMeasurementVisualTemplate の保存済み図面画像から抽出した OCR 派生メタデータ。
+/// 図面画像は複製せず、座標付き数値トークンのみ gzip+json で保持する。
+model PartMeasurementDrawingOcrCache {
+  id                      String                          @id @default(uuid())
+  visualTemplateId        String
+  ocrVersion              String
+  drawingImageFingerprint String
+  status                  PartMeasurementDrawingOcrStatus @default(PENDING)
+  payloadCompressed       Bytes?
+  payloadEncoding         String?
+  engine                  String?
+  imageWidth              Int?
+  imageHeight             Int?
+  tokenCount              Int                             @default(0)
+  payloadBytes            Int                             @default(0)
+  attemptCount            Int                             @default(0)
+  ocrStartedAt            DateTime?
+  ocrFinishedAt           DateTime?
+  lastAttemptAt           DateTime?
+  nextAttemptAt           DateTime?
+  failureReason           String?
+  createdAt               DateTime                        @default(now())
+  updatedAt               DateTime                        @updatedAt
+  visualTemplate          PartMeasurementVisualTemplate    @relation(fields: [visualTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([visualTemplateId, ocrVersion, drawingImageFingerprint], map: "PMDrawingOcrCache_unique_visual_version_hash")
+  @@index([visualTemplateId, status], map: "PMDrawingOcrCache_idx_visual_status")
+  @@index([status, updatedAt], map: "PMDrawingOcrCache_idx_status_updated")
+  @@index([status, createdAt], map: "PMDrawingOcrCache_idx_claim")
 }
 
 /// 検査図面の同時作成・まとめて改版単位。

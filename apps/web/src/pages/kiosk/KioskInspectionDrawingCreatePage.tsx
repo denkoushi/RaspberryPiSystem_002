@@ -11,6 +11,7 @@ import {
   getKioskInspectionDrawingTemplate,
   getResolvedClientKey,
   existsActivePartMeasurementTemplate,
+  listPartMeasurementDrawingOcrCandidates,
   listPartMeasurementVisualTemplates,
   reviseKioskInspectionDrawingTemplate,
   reviseKioskInspectionDrawingTemplateGroup
@@ -75,6 +76,8 @@ import type {
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
 import type {
   PartMeasurementProcessGroup,
+  PartMeasurementDrawingOcrCandidateDto,
+  PartMeasurementDrawingOcrStatus,
   PartMeasurementTemplateDto,
   PartMeasurementVisualTemplateDto,
   SelfInspectionMode
@@ -84,6 +87,14 @@ function confirmVisualChange(message: string): boolean {
   if (typeof window === 'undefined') return true;
   return window.confirm(message);
 }
+
+type DrawingOcrCandidateState = {
+  requestId: number;
+  loading: boolean;
+  status: PartMeasurementDrawingOcrStatus | null;
+  candidates: PartMeasurementDrawingOcrCandidateDto[];
+  error: string | null;
+};
 
 export function KioskInspectionDrawingCreatePage() {
   const { templateId } = useParams<{ templateId: string }>();
@@ -106,6 +117,7 @@ export function KioskInspectionDrawingCreatePage() {
   const [serverDrawingPath, setServerDrawingPath] = useState<string | null>(null);
   const [points, setPoints] = useState<InspectionDrawingPoint[]>([]);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const [ocrCandidatesByPointId, setOcrCandidatesByPointId] = useState<Record<string, DrawingOcrCandidateState>>({});
   const [mode, setMode] = useState<'place' | 'test' | 'guidedTrial'>('place');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -145,6 +157,7 @@ export function KioskInspectionDrawingCreatePage() {
     () => points.find((p) => p.id === selectedPointId) ?? null,
     [points, selectedPointId]
   );
+  const selectedPointOcrState = selectedPoint ? ocrCandidatesByPointId[selectedPoint.id] : undefined;
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
     [resourcesQuery.data?.resourceNameMap]
@@ -211,6 +224,10 @@ export function KioskInspectionDrawingCreatePage() {
     serverDrawingPath,
     previewResolving
   );
+  const visualTemplateIdForOcr =
+    visualSource === 'pickExisting' && selectedVisualTemplateId?.trim()
+      ? selectedVisualTemplateId
+      : null;
 
   const guidedTrial = useInspectionDrawingGuidedTrial({
     enabled: mode === 'guidedTrial',
@@ -275,6 +292,7 @@ export function KioskInspectionDrawingCreatePage() {
   const prevSourceTemplateIdRef = useRef<string | null>(null);
   const prevVisualTemplateIdFromSearchRef = useRef<string | null>(null);
   const visualSearchRequestSeqRef = useRef(0);
+  const ocrCandidateRequestSeqRef = useRef(0);
 
   const handleTemplateNameChange = useCallback((value: string) => {
     setTemplateName(value);
@@ -309,6 +327,7 @@ export function KioskInspectionDrawingCreatePage() {
       setProcessGroup(loaded.processGroup === 'grinding' ? 'grinding' : 'cutting');
       setPoints(loaded.items.map((item) => templateItemToDrawingPoint(item)));
       setSelectedPointId(loaded.items[0]?.id ?? null);
+      setOcrCandidatesByPointId({});
       setServerDrawingPath(loaded.visualTemplate?.drawingImageRelativePath ?? null);
       setSelfInspectionMode(loaded.selfInspectionMode);
       setSelfInspectionFixedCount(
@@ -344,6 +363,7 @@ export function KioskInspectionDrawingCreatePage() {
     setProcessGroup('cutting');
     setPoints([]);
     setSelectedPointId(null);
+    setOcrCandidatesByPointId({});
     setSelfInspectionMode('full');
     setSelfInspectionFixedCount('');
     setVisualSource('unselected');
@@ -364,6 +384,7 @@ export function KioskInspectionDrawingCreatePage() {
       setProcessGroup(draft.processGroup);
       setPoints(draft.points);
       setSelectedPointId(draft.points[0]?.id ?? null);
+      setOcrCandidatesByPointId({});
       setSelfInspectionMode(draft.selfInspectionMode);
       setSelfInspectionFixedCount(draft.selfInspectionFixedCount);
       if (draft.visualTemplateId && draft.drawingImageRelativePath) {
@@ -389,6 +410,7 @@ export function KioskInspectionDrawingCreatePage() {
       setSelectedVisualTemplateId(visual.id);
       setSelectedVisualLabel(visual.name);
       setServerDrawingPath(visual.drawingImageRelativePath);
+      setOcrCandidatesByPointId({});
     },
     [resetLocalPreview]
   );
@@ -416,6 +438,7 @@ export function KioskInspectionDrawingCreatePage() {
       setServerDrawingPath(visual.drawingImageRelativePath);
       setPoints([]);
       setSelectedPointId(null);
+      setOcrCandidatesByPointId({});
       guidedTrial.resetTrialState();
       return true;
     },
@@ -431,6 +454,7 @@ export function KioskInspectionDrawingCreatePage() {
       setSelectedVisualTemplateId(null);
       setSelectedVisualLabel(null);
       setServerDrawingPath(null);
+      setOcrCandidatesByPointId({});
       if (file && (points.length > 0 || visualSource === 'pickExisting')) {
         drawingReplacePendingRef.current = true;
       }
@@ -635,6 +659,7 @@ export function KioskInspectionDrawingCreatePage() {
     drawingReplacePendingRef.current = false;
     setPoints([]);
     setSelectedPointId(null);
+    setOcrCandidatesByPointId({});
     setMessage('図面を差し替えました。測定点を置き直してください。');
   }, [hasLocalRenderablePreview, saveFile]);
 
@@ -665,9 +690,76 @@ export function KioskInspectionDrawingCreatePage() {
     );
   };
 
+  const requestOcrCandidatesForPoint = useCallback(
+    (point: InspectionDrawingPoint) => {
+      const visualId = visualTemplateIdForOcr;
+      if (!visualId) return;
+      const requestId = ++ocrCandidateRequestSeqRef.current;
+      setOcrCandidatesByPointId((prev) => ({
+        ...prev,
+        [point.id]: {
+          requestId,
+          loading: true,
+          status: null,
+          candidates: [],
+          error: null
+        }
+      }));
+      void (async () => {
+        try {
+          const result = await listPartMeasurementDrawingOcrCandidates(
+            visualId,
+            {
+              xRatio: point.xRatio,
+              yRatio: point.yRatio,
+              markerNo: point.markerNo,
+              limit: 5
+            },
+            clientKey
+          );
+          setOcrCandidatesByPointId((prev) => {
+            const current = prev[point.id];
+            if (!current || current.requestId !== requestId) return prev;
+            return {
+              ...prev,
+              [point.id]: {
+                requestId,
+                loading: false,
+                status: result.status,
+                candidates: result.candidates,
+                error: null
+              }
+            };
+          });
+        } catch {
+          setOcrCandidatesByPointId((prev) => {
+            const current = prev[point.id];
+            if (!current || current.requestId !== requestId) return prev;
+            return {
+              ...prev,
+              [point.id]: {
+                ...current,
+                loading: false,
+                status: null,
+                candidates: [],
+                error: 'OCR候補なし'
+              }
+            };
+          });
+        }
+      })();
+    },
+    [clientKey, visualTemplateIdForOcr]
+  );
+
   const removeSelected = () => {
     if (contentReadOnly || !selectedPointId) return;
     setPoints((prev) => prev.filter((p) => p.id !== selectedPointId));
+    setOcrCandidatesByPointId((prev) => {
+      const next = { ...prev };
+      delete next[selectedPointId];
+      return next;
+    });
     setSelectedPointId(null);
     guidedTrial.resetTrialState();
   };
@@ -1121,6 +1213,7 @@ export function KioskInspectionDrawingCreatePage() {
                       const pt = createInspectionDrawingPoint(x, y, markerNo);
                       setPoints((prev) => [...prev, pt]);
                       setSelectedPointId(pt.id);
+                      requestOcrCandidatesForPoint(pt);
                     }
               }
             />
@@ -1160,6 +1253,14 @@ export function KioskInspectionDrawingCreatePage() {
             }
             guidedTrialHint={mode === 'guidedTrial' ? guidedTrial.hint : null}
             onResumeGuidedTrial={mode === 'guidedTrial' ? guidedTrial.resumeTrial : undefined}
+            ocrCandidates={selectedPointOcrState?.candidates ?? []}
+            ocrCandidateStatus={selectedPointOcrState?.status ?? null}
+            ocrCandidateLoading={selectedPointOcrState?.loading ?? false}
+            ocrCandidateError={selectedPointOcrState?.error ?? null}
+            onApplyOcrCandidate={(valueText) => {
+              if (!selectedPoint) return;
+              updatePoint(selectedPoint.id, { nominalRaw: valueText });
+            }}
           />
         </aside>
       </div>

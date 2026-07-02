@@ -42,4 +42,36 @@ describe('InspectionDrawingPointSettingsPanel', () => {
       yRatio: 0.6 - INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO
     });
   });
+
+  it('renders OCR candidate chips and applies selected value', () => {
+    const onApplyOcrCandidate = vi.fn();
+
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={point}
+        onChange={vi.fn()}
+        ocrCandidates={[
+          {
+            valueText: '25',
+            rawText: '25',
+            confidence: 84,
+            score: 0.01,
+            distanceRatio: 0.01,
+            xRatio: 0.62,
+            yRatio: 0.54,
+            widthRatio: 0.03,
+            heightRatio: 0.02,
+            passKind: 'tile',
+            rotation: 0
+          }
+        ]}
+        ocrCandidateStatus="completed"
+        onApplyOcrCandidate={onApplyOcrCandidate}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '25' }));
+
+    expect(onApplyOcrCandidate).toHaveBeenCalledWith('25');
+  });
 });

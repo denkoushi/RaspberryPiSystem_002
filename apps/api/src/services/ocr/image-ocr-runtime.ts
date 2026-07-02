@@ -1,4 +1,5 @@
 import type { ImageOcrPort } from './ports/image-ocr.port.js';
+import type { ImageOcrLayoutPort } from './ports/image-ocr-layout.port.js';
 import { StubImageOcrAdapter } from './adapters/stub-image-ocr.adapter.js';
 import { TesseractJsImageOcrAdapter } from './adapters/tesseract-js-image-ocr.adapter.js';
 
@@ -18,6 +19,14 @@ export function getImageOcrPort(): ImageOcrPort {
   }
   cached = new TesseractJsImageOcrAdapter();
   return cached;
+}
+
+export function getImageOcrLayoutPort(): ImageOcrLayoutPort {
+  const port = getImageOcrPort();
+  if ('runLayoutOcrOnImage' in port && typeof port.runLayoutOcrOnImage === 'function') {
+    return port as ImageOcrLayoutPort;
+  }
+  return new TesseractJsImageOcrAdapter();
 }
 
 /** 単体テスト用 */

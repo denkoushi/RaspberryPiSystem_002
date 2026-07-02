@@ -65,6 +65,8 @@ import type {
   SelfInspectionSessionsListDto,
   SelfInspectionSessionSummaryDto,
   SelfInspectionStatus,
+  PartMeasurementDrawingOcrCandidateResponseDto,
+  PartMeasurementDrawingOcrStatusDto,
   PartMeasurementTemplateCandidateDto,
   PartMeasurementTemplateDto,
   PartMeasurementTemplateSiblingGroupDto,
@@ -3923,6 +3925,53 @@ export async function getPartMeasurementVisualTemplate(
     if (err.response?.status === 404) return null;
     throw e;
   }
+}
+
+export async function getPartMeasurementVisualTemplateOcrStatus(
+  visualTemplateId: string,
+  clientKey?: string
+): Promise<PartMeasurementDrawingOcrStatusDto> {
+  const { data } = await api.get<{ ocr: PartMeasurementDrawingOcrStatusDto }>(
+    `/part-measurement/visual-templates/${visualTemplateId}/ocr`,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.ocr;
+}
+
+export async function listPartMeasurementDrawingOcrCandidates(
+  visualTemplateId: string,
+  body: {
+    xRatio: number;
+    yRatio: number;
+    markerNo?: number | null;
+    limit?: number;
+  },
+  clientKey?: string
+): Promise<PartMeasurementDrawingOcrCandidateResponseDto> {
+  const { data } = await api.post<PartMeasurementDrawingOcrCandidateResponseDto>(
+    `/part-measurement/visual-templates/${visualTemplateId}/ocr/candidates`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data;
+}
+
+export async function retryPartMeasurementVisualTemplateOcr(
+  visualTemplateId: string,
+  clientKey?: string
+): Promise<PartMeasurementDrawingOcrStatusDto> {
+  const { data } = await api.post<{ ocr: PartMeasurementDrawingOcrStatusDto }>(
+    `/part-measurement/visual-templates/${visualTemplateId}/ocr/retry`,
+    {},
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.ocr;
 }
 
 export type PartMeasurementVisualTemplateCreateResult = {

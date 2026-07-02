@@ -15,6 +15,10 @@ import {
 } from './inspectionDrawingMeasurementLabelOptions';
 import { InspectionDrawingPointPositionNudge } from './InspectionDrawingPointPositionNudge';
 
+import type {
+  PartMeasurementDrawingOcrCandidateDto,
+  PartMeasurementDrawingOcrStatus
+} from '../types';
 import type { InspectionDrawingPoint } from './types';
 
 type Props = {
@@ -22,6 +26,11 @@ type Props = {
   disabled?: boolean;
   onChange: (patch: Partial<InspectionDrawingPoint>) => void;
   onRemove?: () => void;
+  ocrCandidates?: PartMeasurementDrawingOcrCandidateDto[];
+  ocrCandidateStatus?: PartMeasurementDrawingOcrStatus | null;
+  ocrCandidateLoading?: boolean;
+  ocrCandidateError?: string | null;
+  onApplyOcrCandidate?: (valueText: string) => void;
 };
 
 /** 作成/編集画面右欄 — 測定点の名称・基準・公差（本番・開発プレビュー共通） */
@@ -29,9 +38,21 @@ export function InspectionDrawingPointSettingsPanel({
   point,
   disabled = false,
   onChange,
-  onRemove
+  onRemove,
+  ocrCandidates = [],
+  ocrCandidateStatus = null,
+  ocrCandidateLoading = false,
+  ocrCandidateError = null,
+  onApplyOcrCandidate
 }: Props) {
   const labelOptions = buildMeasurementLabelSelectOptions(point.name);
+  const showOcrCandidateRow =
+    ocrCandidateLoading ||
+    ocrCandidateError ||
+    ocrCandidates.length > 0 ||
+    ocrCandidateStatus === 'pending' ||
+    ocrCandidateStatus === 'processing' ||
+    ocrCandidateStatus === 'failed';
 
   return (
     <div className={inspectionDrawingPointSettingPanelClassName}>
@@ -69,6 +90,33 @@ export function InspectionDrawingPointSettingsPanel({
             className={inspectionDrawingPointSettingInputClassName}
             disabled={disabled}
           />
+          {showOcrCandidateRow ? (
+            <div className="flex min-h-8 flex-wrap items-center gap-1 text-[0.8rem] font-semibold">
+              {ocrCandidateLoading ? <span className="text-cyan-100/75">OCR確認中</span> : null}
+              {!ocrCandidateLoading && ocrCandidateStatus === 'pending' ? (
+                <span className="text-cyan-100/75">OCR待ち</span>
+              ) : null}
+              {!ocrCandidateLoading && ocrCandidateStatus === 'processing' ? (
+                <span className="text-cyan-100/75">OCR処理中</span>
+              ) : null}
+              {!ocrCandidateLoading && ocrCandidateStatus === 'failed' ? (
+                <span className="text-amber-200">OCR失敗</span>
+              ) : null}
+              {ocrCandidateError ? <span className="text-amber-200">{ocrCandidateError}</span> : null}
+              {ocrCandidates.map((candidate) => (
+                <button
+                  key={`${candidate.valueText}-${candidate.xRatio}-${candidate.yRatio}`}
+                  type="button"
+                  disabled={disabled || !onApplyOcrCandidate}
+                  className="min-h-7 rounded border border-cyan-300/40 bg-cyan-950/70 px-2 text-cyan-50 disabled:opacity-50"
+                  onClick={() => onApplyOcrCandidate?.(candidate.valueText)}
+                  title={`raw: ${candidate.rawText}`}
+                >
+                  {candidate.valueText}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </label>
       </div>
       <div className="grid grid-cols-2 gap-1.5">

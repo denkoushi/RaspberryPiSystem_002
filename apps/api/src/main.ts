@@ -24,6 +24,7 @@ if (process.env['NODE_ENV'] !== 'test') {
           handles.kioskDocOcrScheduler.stop();
           handles.gmailTrashCleanupScheduler.stop();
           handles.dueManagementTuningOrchestrator.stop();
+          handles.partMeasurementDrawingOcrScheduler.stop();
           getPhotoToolLabelScheduler().stop();
           await app.close();
         } catch (err) {
