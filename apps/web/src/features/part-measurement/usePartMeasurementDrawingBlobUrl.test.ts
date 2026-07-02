@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../../api/client';
 
-import { usePartMeasurementDrawingBlobUrl } from './usePartMeasurementDrawingBlobUrl';
+import {
+  __resetPartMeasurementDrawingBlobUrlCacheForTests,
+  usePartMeasurementDrawingBlobUrl
+} from './usePartMeasurementDrawingBlobUrl';
 
 vi.mock('../../api/client', () => ({
   api: {
@@ -18,6 +21,7 @@ describe('usePartMeasurementDrawingBlobUrl', () => {
   const revokeObjectURL = vi.fn();
 
   beforeEach(() => {
+    __resetPartMeasurementDrawingBlobUrlCacheForTests();
     apiGet.mockReset();
     createObjectURL.mockClear();
     revokeObjectURL.mockClear();
@@ -29,6 +33,7 @@ describe('usePartMeasurementDrawingBlobUrl', () => {
   });
 
   afterEach(() => {
+    __resetPartMeasurementDrawingBlobUrlCacheForTests();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
@@ -45,6 +50,22 @@ describe('usePartMeasurementDrawingBlobUrl', () => {
     expect(apiGet).toHaveBeenCalledWith('storage/part-measurement-drawings/a.png', {
       responseType: 'blob'
     });
+  });
+
+  it('reuses cache on remount so fetch runs only once', async () => {
+    apiGet.mockResolvedValue({ data: new Blob(['x']) } as never);
+    const path = '/api/storage/part-measurement-drawings/cached.png';
+
+    const { unmount } = renderHook(() => usePartMeasurementDrawingBlobUrl(path));
+
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1));
+
+    unmount();
+
+    const { result } = renderHook(() => usePartMeasurementDrawingBlobUrl(path));
+
+    await waitFor(() => expect(result.current.blobUrl).toBe('blob:mock-drawing'));
+    expect(apiGet).toHaveBeenCalledTimes(1);
   });
 
   it('clears blobUrl immediately when path changes before next fetch completes', async () => {
@@ -98,5 +119,25 @@ describe('usePartMeasurementDrawingBlobUrl', () => {
     await waitFor(() => expect(result.current.error).toBe('図面の読み込みに失敗しました'));
 
     expect(result.current.blobUrl).toBeNull();
+  });
+
+  it('does not cache fetch errors and retries on remount', async () => {
+    apiGet
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce({ data: new Blob(['x']) } as never);
+
+    const path = '/api/storage/part-measurement-drawings/retry.png';
+
+    const { result, unmount } = renderHook(() => usePartMeasurementDrawingBlobUrl(path));
+
+    await waitFor(() => expect(result.current.error).toBe('図面の読み込みに失敗しました'));
+    expect(apiGet).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    const { result: retryResult } = renderHook(() => usePartMeasurementDrawingBlobUrl(path));
+
+    await waitFor(() => expect(retryResult.current.blobUrl).toBe('blob:mock-drawing'));
+    expect(apiGet).toHaveBeenCalledTimes(2);
   });
 });

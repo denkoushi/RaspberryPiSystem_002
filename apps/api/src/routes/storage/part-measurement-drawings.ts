@@ -2,6 +2,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { prisma } from '../../lib/prisma.js';
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
+import { buildPdfPageEtag, ifNoneMatchSatisfied } from './pdf-page-http-cache.js';
+
+const PART_MEASUREMENT_DRAWING_CACHE_CONTROL = 'private, max-age=86400, immutable';
 
 /**
  * GET /api/storage/part-measurement-drawings/*
@@ -30,6 +33,15 @@ export function registerPartMeasurementDrawingStorageRoutes(app: FastifyInstance
     const drawingUrl = `/api/storage/part-measurement-drawings/${urlPath}`;
 
     try {
+      const stat = await PartMeasurementDrawingStorage.statDrawing(drawingUrl);
+      const etag = buildPdfPageEtag(stat);
+      reply.header('ETag', etag);
+      reply.header('Cache-Control', PART_MEASUREMENT_DRAWING_CACHE_CONTROL);
+
+      if (ifNoneMatchSatisfied(request.headers['if-none-match'], etag)) {
+        return reply.code(304).send();
+      }
+
       const { buffer, contentType } = await PartMeasurementDrawingStorage.readDrawing(drawingUrl);
       reply.type(contentType);
       return reply.send(buffer);

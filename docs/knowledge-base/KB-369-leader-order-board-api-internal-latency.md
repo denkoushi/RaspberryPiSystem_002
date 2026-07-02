@@ -376,3 +376,4 @@ category: knowledge-base
 - [ADR-20260507-leaderboard-shell-snapshot](../decisions/ADR-20260507-leaderboard-shell-snapshot.md)
 - [KB-297 · COUNT 並列化（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-api-count-parallel-2026-05-06)
 - [KB-297 · 段階取得（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-phased-fetch-2026-05-06)
+- [KB-394 · decorations 経路の winner materialization 世代キャッシュ（2026-07-02）](./KB-394-kiosk-drawing-display-and-leaderboard-decoration-speedup.md)

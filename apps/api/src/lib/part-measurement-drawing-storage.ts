@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
+import { promises as fs, type Stats } from 'fs';
 import path from 'path';
 
 const getStorageBaseDir = () =>
@@ -16,6 +16,29 @@ const MIME_TO_EXT: Record<string, string> = {
 };
 
 const MAX_BYTES = 12 * 1024 * 1024;
+
+const DRAWING_URL_PREFIX = '/api/storage/part-measurement-drawings/';
+
+function resolveDrawingFile(relativeUrl: string): { fullPath: string; contentType: string } {
+  if (!relativeUrl.startsWith(DRAWING_URL_PREFIX)) {
+    throw new Error('Invalid drawing URL');
+  }
+  const filename = relativeUrl.slice(DRAWING_URL_PREFIX.length);
+  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    throw new Error('Invalid drawing path');
+  }
+  const ext = path.extname(filename).toLowerCase();
+  const contentType =
+    ext === '.png'
+      ? 'image/png'
+      : ext === '.jpg' || ext === '.jpeg'
+        ? 'image/jpeg'
+        : ext === '.webp'
+          ? 'image/webp'
+          : 'application/octet-stream';
+  const fullPath = path.join(getDrawingsDir(), filename);
+  return { fullPath, contentType };
+}
 
 /**
  * 部品測定 visual template 用の図面画像（1枚）を保存・読み込みする。
@@ -60,40 +83,24 @@ export class PartMeasurementDrawingStorage {
   /**
    * `/api/storage/part-measurement-drawings/...` からファイル名部分を除いたパスを解決して読み込む。
    */
+  static async statDrawing(relativeUrl: string): Promise<Stats> {
+    const { fullPath } = resolveDrawingFile(relativeUrl);
+    return fs.stat(fullPath);
+  }
+
   static async readDrawing(relativeUrl: string): Promise<{ buffer: Buffer; contentType: string }> {
-    const prefix = '/api/storage/part-measurement-drawings/';
-    if (!relativeUrl.startsWith(prefix)) {
-      throw new Error('Invalid drawing URL');
-    }
-    const filename = relativeUrl.slice(prefix.length);
-    if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-      throw new Error('Invalid drawing path');
-    }
-    const ext = path.extname(filename).toLowerCase();
-    const contentType =
-      ext === '.png'
-        ? 'image/png'
-        : ext === '.jpg' || ext === '.jpeg'
-          ? 'image/jpeg'
-          : ext === '.webp'
-            ? 'image/webp'
-            : 'application/octet-stream';
-    const fullPath = path.join(getDrawingsDir(), filename);
+    const { fullPath, contentType } = resolveDrawingFile(relativeUrl);
     const buffer = await fs.readFile(fullPath);
     return { buffer, contentType };
   }
 
   /** 保存に失敗した図面ファイルのロールバック用（未参照時のみ呼ぶ） */
   static async deleteDrawing(relativeUrl: string): Promise<void> {
-    const prefix = '/api/storage/part-measurement-drawings/';
-    if (!relativeUrl.startsWith(prefix)) {
+    try {
+      const { fullPath } = resolveDrawingFile(relativeUrl);
+      await fs.unlink(fullPath).catch(() => undefined);
+    } catch {
       return;
     }
-    const filename = relativeUrl.slice(prefix.length);
-    if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-      return;
-    }
-    const fullPath = path.join(getDrawingsDir(), filename);
-    await fs.unlink(fullPath).catch(() => undefined);
   }
 }

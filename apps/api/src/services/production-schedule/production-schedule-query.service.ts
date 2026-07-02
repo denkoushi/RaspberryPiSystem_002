@@ -58,6 +58,7 @@ import type { ProcessChangeResidualMode } from './leaderboard/leaderboard-proces
 import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard/leaderboard-display-row-scope.js';
 import { buildLeaderboardShellFilterFingerprint } from './leaderboard/leaderboard-shell-snapshot-fingerprint.js';
 import { resolveLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
+import { resolveLeaderboardMaterializedBaseWhereWithGenerationCache } from './leaderboard/leaderboard-materialized-winner-cache.js';
 import type { LeaderboardShellSnapshotStore } from './leaderboard/leaderboard-shell-snapshot.store.js';
 import {
   isLeaderboardShellSnapshotStaleForContinue,
@@ -791,7 +792,8 @@ export async function decorateLeaderboardShellRowsForKiosk(params: {
     };
   }
 
-  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+  const leaderboardMaterializedBaseWhere =
+    await resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma);
 
   const rawRows = await fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds({
     orderedDisplayItemIds: preferredDisplayRowIds,
