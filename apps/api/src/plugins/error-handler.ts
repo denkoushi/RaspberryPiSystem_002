@@ -19,6 +19,7 @@
 import type { FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { env } from '../config/env.js';
 import { ApiError } from '../lib/errors.js';
 
 type ErrorResponse = {
@@ -56,6 +57,23 @@ const buildErrorResponse = (
   }
 
   return payload;
+};
+
+const isProduction = env.NODE_ENV === 'production';
+
+const buildPrismaClientResponse = (
+  requestId: string | number,
+  detailedMessage: string,
+  genericMessage: string,
+  options?: {
+    errorCode?: string;
+    details?: unknown;
+  },
+): ErrorResponse => {
+  if (isProduction) {
+    return buildErrorResponse(requestId, genericMessage);
+  }
+  return buildErrorResponse(requestId, detailedMessage, options);
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -299,10 +317,15 @@ export function registerErrorHandler(app: FastifyInstance): void {
         reply
           .status(400)
           .send(
-            buildErrorResponse(requestId, detailedMessage, {
-              errorCode: error.code,
-              details: error.meta,
-            }),
+            buildPrismaClientResponse(
+              requestId,
+              detailedMessage,
+              '外部キー制約違反のため、操作できません。',
+              {
+                errorCode: error.code,
+                details: error.meta,
+              },
+            ),
           );
         return;
       }
@@ -331,10 +354,15 @@ export function registerErrorHandler(app: FastifyInstance): void {
         reply
           .status(400)
           .send(
-            buildErrorResponse(requestId, detailedMessage, {
-              errorCode: error.code,
-              details: error.meta,
-            }),
+            buildPrismaClientResponse(
+              requestId,
+              detailedMessage,
+              'ユニーク制約違反のため、操作できません。',
+              {
+                errorCode: error.code,
+                details: error.meta,
+              },
+            ),
           );
         return;
       }
@@ -342,12 +370,17 @@ export function registerErrorHandler(app: FastifyInstance): void {
       reply
         .status(400)
         .send(
-          buildErrorResponse(requestId, `データベースエラー: ${error.code} - ${error.message}`, {
-            errorCode: error.code,
-            details: error.meta,
-          }),
+          buildPrismaClientResponse(
+            requestId,
+            `データベースエラー: ${error.code} - ${error.message}`,
+            'データベースエラーが発生しました。',
+            {
+              errorCode: error.code,
+              details: error.meta,
+            },
+          ),
         );
-      return;
+        return;
     }
     
     // PrismaClientKnownRequestErrorのインスタンスチェックが失敗する場合のフォールバック
@@ -378,10 +411,15 @@ export function registerErrorHandler(app: FastifyInstance): void {
         reply
           .status(400)
           .send(
-            buildErrorResponse(requestId, detailedMessage, {
-              errorCode,
-              details: prismaError.meta,
-            }),
+            buildPrismaClientResponse(
+              requestId,
+              detailedMessage,
+              '外部キー制約違反のため、操作できません。',
+              {
+                errorCode,
+                details: prismaError.meta,
+              },
+            ),
           );
         return;
       }
@@ -409,10 +447,15 @@ export function registerErrorHandler(app: FastifyInstance): void {
         reply
           .status(400)
           .send(
-            buildErrorResponse(requestId, detailedMessage, {
-              errorCode,
-              details: prismaError.meta,
-            }),
+            buildPrismaClientResponse(
+              requestId,
+              detailedMessage,
+              'ユニーク制約違反のため、操作できません。',
+              {
+                errorCode,
+                details: prismaError.meta,
+              },
+            ),
           );
         return;
       }

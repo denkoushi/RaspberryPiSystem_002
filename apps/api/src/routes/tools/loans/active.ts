@@ -21,14 +21,7 @@ export function registerActiveLoansRoute(app: FastifyInstance, loanService: Loan
         await loanService.resolveClientId(resolvedClientId, headerKey);
       }
     } else {
-      try {
-        await canView(request, reply);
-      } catch (error) {
-        // JWT が無効でも clientId が明示されていれば許可する
-        if (!resolvedClientId) {
-          throw error;
-        }
-      }
+      await canView(request, reply);
     }
 
     // キオスク画面では、クライアントキー認証があっても全件表示する

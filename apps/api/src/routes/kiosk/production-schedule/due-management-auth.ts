@@ -11,11 +11,14 @@ const dueManagementAccessPasswordVerifyBodySchema = z.object({
   password: z.string().min(1).max(128)
 });
 
+// PIN 総当たり対策: IP + URL + client-key ごとに制限（record-approval ルートと同等）
+const dueManagementAccessPasswordRateLimit = { max: 10, timeWindow: '1 minute' };
+
 export async function registerProductionScheduleDueManagementAuthRoute(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  app.post('/kiosk/production-schedule/due-management/verify-access-password', { config: { rateLimit: false } }, async (request) => {
+  app.post('/kiosk/production-schedule/due-management/verify-access-password', { config: { rateLimit: dueManagementAccessPasswordRateLimit } }, async (request) => {
     await deps.requireClientDevice(request.headers['x-client-key']);
     const body = dueManagementAccessPasswordVerifyBodySchema.parse(request.body);
     return verifyDueManagementAccessPassword({

@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { LoanService } from '../../../services/tools/loan.service.js';
+import { requireLoanClientOrJwt } from './require-loan-auth.js';
 import { loanParamsSchema } from './schemas.js';
 
 export function registerLoanDeleteRoute(app: FastifyInstance, loanService: LoanService): void {
-  app.delete('/:id', { config: { rateLimit: false } }, async (request) => {
+  app.delete('/:id', { config: { rateLimit: false } }, async (request, reply) => {
     // 機密情報保護: x-client-keyをログから除外
     const sanitizedHeaders = { ...request.headers };
     if ('x-client-key' in sanitizedHeaders) {
@@ -12,12 +13,7 @@ export function registerLoanDeleteRoute(app: FastifyInstance, loanService: LoanS
     app.log.info({ params: request.params, headers: sanitizedHeaders }, 'Loan delete request received');
     try {
       const params = loanParamsSchema.parse(request.params);
-      // client-keyがあれば認証をスキップ（キオスク画面からのアクセス）
-      const headerKey = request.headers['x-client-key'];
-      if (headerKey) {
-        // client-keyの有効性を確認（LoanService.resolveClientIdを使用）
-        await loanService.resolveClientId(undefined, headerKey);
-      }
+      await requireLoanClientOrJwt(request, reply, loanService, ['ADMIN', 'MANAGER']);
       await loanService.delete(params.id);
       app.log.info({ loanId: params.id }, 'Loan deleted');
       return { success: true };
