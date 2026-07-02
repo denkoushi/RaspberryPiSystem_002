@@ -22,6 +22,7 @@ export async function markSelfInspectionRecordApprovalRequiredAfterMeasurementSa
     },
     data: {
       recordApprovalRequiredAt: now,
+      inspectorRemeasurementRequiredAt: now,
       updatedAt: now
     }
   });

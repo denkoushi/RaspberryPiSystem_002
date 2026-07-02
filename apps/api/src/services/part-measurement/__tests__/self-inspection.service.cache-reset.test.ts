@@ -82,7 +82,8 @@ describe('self-inspection.service cache reset hooks', () => {
         name: 'template',
         selfInspectionMode: 'sample',
         selfInspectionFixedCount: null,
-        selfInspectionSampleSize: 2
+        selfInspectionSampleSize: 2,
+        items: []
       }
     };
     vi.mocked(prisma.$transaction).mockResolvedValue(result as never);

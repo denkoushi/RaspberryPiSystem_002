@@ -10,6 +10,7 @@ import {
   getMeasuringInstrumentByTagUid,
   getMeasuringInstrumentTags,
   postClientLogs,
+  recordSelfInspectionInspectorInstrumentPreUseInspection,
   recordSelfInspectionInstrumentPreUseInspection
 } from '../../api/client';
 import { useKioskConfig, useMeasuringInstruments } from '../../api/hooks';
@@ -22,7 +23,10 @@ import { InstrumentBorrowPageLayout } from '../../components/kiosk/instrumentBor
 import { InstrumentBorrowTagUidFields } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowTagUidFields';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
+import {
+  kioskSelfInspectionInspectorSessionPath,
+  kioskSelfInspectionSessionPath
+} from '../../features/part-measurement/selfInspectionRoutes';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { InspectionItem, MeasuringInstrumentBorrowPayload } from '../../api/types';
@@ -39,13 +43,18 @@ export function KioskInstrumentBorrowPage() {
   const resolvedClientId = undefined;
   const selfInspectionSessionId = searchParams.get('selfInspectionSessionId')?.trim() ?? '';
   const selfInspectionEntryIndexRaw = searchParams.get('selfInspectionEntryIndex')?.trim() ?? '';
+  const selfInspectionMode = searchParams.get('selfInspectionMode')?.trim() === 'inspector' ? 'inspector' : 'operator';
   const selfInspectionEntryIndex = Number(selfInspectionEntryIndexRaw);
   const isSelfInspectionPreUseMode =
     Boolean(selfInspectionSessionId) && Number.isFinite(selfInspectionEntryIndex) && selfInspectionEntryIndex >= 0;
 
   // defaultModeに基づいて戻り先を決定
   const returnPath = isSelfInspectionPreUseMode
-    ? `${kioskSelfInspectionSessionPath(selfInspectionSessionId)}?entryIndex=${Math.floor(selfInspectionEntryIndex)}`
+    ? `${
+        selfInspectionMode === 'inspector'
+          ? kioskSelfInspectionInspectorSessionPath(selfInspectionSessionId)
+          : kioskSelfInspectionSessionPath(selfInspectionSessionId)
+      }?entryIndex=${Math.floor(selfInspectionEntryIndex)}`
     : kioskConfig?.defaultMode === 'PHOTO'
       ? '/kiosk/photo'
       : '/kiosk/tag';
@@ -338,7 +347,11 @@ export function KioskInstrumentBorrowPage() {
           setIsSubmitting(false);
           return;
         }
-        await recordSelfInspectionInstrumentPreUseInspection(
+        const recordPreUseInspection =
+          selfInspectionMode === 'inspector'
+            ? recordSelfInspectionInspectorInstrumentPreUseInspection
+            : recordSelfInspectionInstrumentPreUseInspection;
+        await recordPreUseInspection(
           selfInspectionSessionId,
           Math.floor(selfInspectionEntryIndex),
           {
@@ -432,6 +445,7 @@ export function KioskInstrumentBorrowPage() {
     resolvedClientId,
     resolvedClientKey,
     isSelfInspectionPreUseMode,
+    selfInspectionMode,
     selfInspectionEntryIndex,
     selfInspectionSessionId
   ]);

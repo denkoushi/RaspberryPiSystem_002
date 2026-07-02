@@ -1691,6 +1691,15 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - **トラブルシュート（デプロイ）**: **同じ `RASPI_SERVER_HOST` に対し、`update-all-clients.sh` を複数プロセスで同時起動しない**。2026-03-29 hardening 後は、2本目は Mac 側ローカルロック（`logs/.update-all-clients.local.lock`）または Pi5 ロック（`/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock`）で停止する。ロックを手動削除する前に、`runPid` が生存していないことを確認する（[deployment.md](../guides/deployment.md) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）。
 - **認可**: `Authorization` 付きで **403（権限不足）** のとき、書き込み系（例: `POST .../sheets`）では `x-client-key` にフォールバックしない（401 のみキー許可）。キオスクは通常キーのみで十分。
 
+## 自主検査 · 工程内検査員再測定（2026-07-02）
+
+- オペレータが自主検査を保存して `recordApprovalRequiredAt` が立つ新規ワークフローでは、同時に `inspectorRemeasurementRequiredAt` を立てる。既存の承認待ちセッションにはバックフィルしない。
+- 検査員再測定は `/kiosk/part-measurement/self-inspection/sessions/:sessionId/inspector`。既存の図面・測定値入力 UI を `mode=inspector` で再利用し、保存先は `SelfInspectionInspectorEntry` / `SelfInspectionInspectorMeasurementValue` / `SelfInspectionInspectorEntryInstrumentUsage`。
+- 検査員は、該当入力件のオペレータ本人と同じ社員タグでは保存できない。検査員測定開始後は、基準値固定のためオペレータ入力・使用前点検の更新を 409 で拒否する。
+- 検査員値は `operatorValueSnapshot`、`inspectorValue`、`differenceValue`、`judgementStatus=NOT_EVALUATED` を保存する。差異異常の判定基準は未実装で、承認可否には使わない。
+- 検査記録確認の `recordApprovalState` は `inspector_measurement_pending` を返す。全 required slot の検査員値がそろい、既存の測定者/使用前点検ポリシーも満たすと `approvable` になる。
+- 計測器使用前点検は既存の共有ON/OFF設定に従う。ONの場合は検査員側も使用前点検または計測器登録が必要。
+
 ## References
 
 - Runbook: [kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)

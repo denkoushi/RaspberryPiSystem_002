@@ -12,7 +12,10 @@ import {
   useUpdateSelfInspectionRegistrationPolicy
 } from '../../api/hooks';
 import { buttonClassName, Button } from '../../components/ui/Button';
-import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
+import {
+  kioskSelfInspectionInspectorSessionPath,
+  kioskSelfInspectionSessionPath
+} from '../../features/part-measurement/selfInspectionRoutes';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type {
@@ -28,6 +31,7 @@ const EMPTY_SESSIONS: SelfInspectionRecordApprovalSessionListItemDto[] = [];
 const STATE_OPTIONS: Array<{ value: RecordApprovalFilterState; label: string }> = [
   { value: 'active', label: '未完了' },
   { value: 'input_incomplete', label: '入力途中' },
+  { value: 'inspector_measurement_pending', label: '検査員待ち' },
   { value: 'registration_incomplete', label: '点検不足' },
   { value: 'approvable', label: '承認可能' },
   { value: 'approved', label: '承認済み' }
@@ -41,6 +45,8 @@ function stateLabel(state: SelfInspectionRecordApprovalState): string {
       return '承認可能';
     case 'registration_incomplete':
       return '点検不足';
+    case 'inspector_measurement_pending':
+      return '検査員待ち';
     case 'input_incomplete':
     default:
       return '入力途中';
@@ -55,6 +61,8 @@ function stateClassName(state: SelfInspectionRecordApprovalState): string {
       return 'bg-sky-400/25 text-sky-100';
     case 'registration_incomplete':
       return 'bg-amber-400/25 text-amber-100';
+    case 'inspector_measurement_pending':
+      return 'bg-red-400/20 text-red-100';
     case 'input_incomplete':
     default:
       return 'bg-slate-500/35 text-white/80';
@@ -76,6 +84,11 @@ function formatInstrumentUsageLabel(usage: {
   measuringInstrumentNameSnapshot: string;
 }): string {
   return `${usage.measuringInstrumentManagementNumberSnapshot} ${usage.measuringInstrumentNameSnapshot}`;
+}
+
+function inspectorJudgementLabel(status: string | null): string {
+  if (status === 'NOT_EVALUATED') return '未判定';
+  return status ?? '-';
 }
 
 function readApiErrorMessage(error: unknown, fallback: string): string {
@@ -120,7 +133,13 @@ function SessionListItem({
       </div>
       <p className="text-xs text-white/55">
         入力 {session.completedRequiredEntryCount}/{session.requiredEntryCount}件
+        {session.inspectorMissingRequiredEntryCount > 0 || session.inspectorIncompleteValueEntryCount > 0
+          ? ` / 検査員 ${session.inspectorCompletedRequiredEntryCount}/${session.requiredEntryCount}件`
+          : session.inspectorCompletedRequiredEntryCount > 0
+            ? ` / 検査員 ${session.inspectorCompletedRequiredEntryCount}/${session.requiredEntryCount}件`
+            : ''}
         {session.incompleteRegistrationEntryCount > 0 ? ` / 点検不足 ${session.incompleteRegistrationEntryCount}件` : ''}
+        {session.inspectorIncompleteRegistrationEntryCount > 0 ? ` / 検査員点検不足 ${session.inspectorIncompleteRegistrationEntryCount}件` : ''}
         {session.pendingReviewCount > 0 ? ` / 公差外 ${session.pendingReviewCount}点` : ''}
       </p>
       <p className="text-xs text-white/55">
@@ -146,7 +165,10 @@ function DetailTable({
             <th className="px-3 py-2">点検</th>
             <th className="px-3 py-2">丸数字</th>
             <th className="px-3 py-2">測定</th>
-            <th className="px-3 py-2">値</th>
+            <th className="px-3 py-2">オペレータ値</th>
+            <th className="px-3 py-2">検査員値</th>
+            <th className="px-3 py-2">差分</th>
+            <th className="px-3 py-2">差異判定</th>
             <th className="px-3 py-2">合格範囲</th>
           </tr>
         </thead>
@@ -156,10 +178,16 @@ function DetailTable({
               const outOfTolerance = value.isWithinTolerance === false;
               const missing = value.value == null;
               const instrumentUsages = entry.entry?.instrumentUsages ?? [];
+              const inspectorInstrumentUsages = entry.inspectorEntry?.instrumentUsages ?? [];
               const legacyInstrumentLabel =
                 entry.entry?.measuringInstrumentManagementNumberSnapshot && entry.entry?.measuringInstrumentNameSnapshot
                   ? `${entry.entry.measuringInstrumentManagementNumberSnapshot} ${entry.entry.measuringInstrumentNameSnapshot}`
                   : entry.entry?.measuringInstrumentNameSnapshot;
+              const inspectorLegacyInstrumentLabel =
+                entry.inspectorEntry?.measuringInstrumentManagementNumberSnapshot &&
+                entry.inspectorEntry?.measuringInstrumentNameSnapshot
+                  ? `${entry.inspectorEntry.measuringInstrumentManagementNumberSnapshot} ${entry.inspectorEntry.measuringInstrumentNameSnapshot}`
+                  : entry.inspectorEntry?.measuringInstrumentNameSnapshot;
               return (
                 <tr
                   key={`${entry.entryIndex}:${value.templateItemId}`}
@@ -185,7 +213,7 @@ function DetailTable({
                       </div>
                       {instrumentUsages.length > 0 ? (
                         <div className="mt-1 grid gap-0.5 text-emerald-100">
-                          <div>使用前点検済</div>
+                          <div>オペレータ使用前点検済</div>
                           {instrumentUsages.map((usage) => (
                             <div key={usage.id} className="max-w-52 truncate text-xs text-emerald-100/85">
                               {formatInstrumentUsageLabel(usage)}
@@ -205,6 +233,36 @@ function DetailTable({
                           使用前点検 {legacyInstrumentLabel ?? (requireMeasuringInstrumentTag ? '未点検' : '任意')}
                         </div>
                       )}
+                      <div className="mt-2 border-t border-white/10 pt-2">
+                        <div className={entry.inspectorEntry?.inspectorEmployeeNameSnapshot ? 'text-sky-100' : 'text-amber-100'}>
+                          検査員 {entry.inspectorEntry?.inspectorEmployeeNameSnapshot ?? '未登録'}
+                        </div>
+                        <div className={entry.inspectorEntry?.updatedAt ? 'text-xs text-white/55' : 'text-xs text-amber-100'}>
+                          保存 {entry.inspectorEntry?.updatedAt ? formatDateTime(entry.inspectorEntry.updatedAt) : '未保存'}
+                        </div>
+                        {inspectorInstrumentUsages.length > 0 ? (
+                          <div className="mt-1 grid gap-0.5 text-sky-100">
+                            <div>検査員使用前点検済</div>
+                            {inspectorInstrumentUsages.map((usage) => (
+                              <div key={usage.id} className="max-w-52 truncate text-xs text-sky-100/85">
+                                {formatInstrumentUsageLabel(usage)}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div
+                            className={
+                              inspectorLegacyInstrumentLabel
+                                ? 'text-sky-100'
+                                : requireMeasuringInstrumentTag
+                                  ? 'text-amber-100'
+                                  : 'text-white/55'
+                            }
+                          >
+                            検査員使用前点検 {inspectorLegacyInstrumentLabel ?? (requireMeasuringInstrumentTag ? '未点検' : '任意')}
+                          </div>
+                        )}
+                      </div>
                     </td>
                   ) : null}
                   <td className="px-3 py-2">{value.displayMarker ?? '-'}</td>
@@ -215,6 +273,16 @@ function DetailTable({
                   <td className={clsx('px-3 py-2 font-mono', outOfTolerance ? 'text-red-100' : missing ? 'text-amber-100' : 'text-white')}>
                     {value.value ?? '未入力'}
                     {value.value && value.unit ? ` ${value.unit}` : ''}
+                  </td>
+                  <td className={clsx('px-3 py-2 font-mono', value.inspectorValue == null ? 'text-amber-100' : 'text-sky-100')}>
+                    {value.inspectorValue ?? '未入力'}
+                    {value.inspectorValue && value.unit ? ` ${value.unit}` : ''}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-white/75">
+                    {value.differenceValue ?? '-'}
+                  </td>
+                  <td className="px-3 py-2 text-white/75">
+                    {inspectorJudgementLabel(value.inspectorJudgementStatus)}
                   </td>
                   <td className="px-3 py-2 font-mono text-white/75">
                     {value.lowerLimit ?? '-'} - {value.upperLimit ?? '-'}
@@ -339,6 +407,9 @@ export function KioskSelfInspectionRecordApprovalPage() {
   const canApprove = selectedSession?.recordApprovalState === 'approvable' && approver != null;
   const approveDisabledReason = useMemo(() => {
     if (!selectedSession) return '承認する検査記録を選択してください。';
+    if (selectedSession.recordApprovalState === 'inspector_measurement_pending') {
+      return '検査員再測定がそろうと承認できます。';
+    }
     if (selectedSession.recordApprovalState !== 'approvable') return '入力と使用前点検がそろうと承認できます。';
     if (!approver) return '承認者の社員NFCタグをタッチしてください。';
     return null;
@@ -544,12 +615,20 @@ export function KioskSelfInspectionRecordApprovalPage() {
                     更新 {formatDateTime(selectedSession.updatedAt)} / 入力者 {formatParticipantNames(selectedSession.participantEmployeeNames)}
                   </p>
                 </div>
-                <Link
-                  to={kioskSelfInspectionSessionPath(selectedSession.id)}
-                  className={buttonClassName('ghostOnDark', 'inline-flex items-center justify-center')}
-                >
-                  入力画面
-                </Link>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    to={kioskSelfInspectionSessionPath(selectedSession.id)}
+                    className={buttonClassName('ghostOnDark', 'inline-flex items-center justify-center')}
+                  >
+                    入力画面
+                  </Link>
+                  <Link
+                    to={kioskSelfInspectionInspectorSessionPath(selectedSession.id)}
+                    className={buttonClassName('secondary', 'inline-flex items-center justify-center')}
+                  >
+                    検査員画面
+                  </Link>
+                </div>
               </div>
 
               <div className="grid gap-2 rounded border border-white/10 bg-slate-950/40 p-3 md:grid-cols-[1fr_auto]">

@@ -3413,6 +3413,24 @@ export async function getSelfInspectionSession(
   return data.session;
 }
 
+export async function getSelfInspectionInspectorMeasurementSession(
+  sessionId: string,
+  options?: { entryIndex?: number; clientKey?: string }
+): Promise<SelfInspectionSessionDetailDto> {
+  const clientKey = options?.clientKey;
+  const { data } = await api.get<{ session: SelfInspectionSessionDetailDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/inspector-measurements`,
+    {
+      params:
+        options?.entryIndex != null && Number.isFinite(options.entryIndex)
+          ? { entryIndex: Math.floor(options.entryIndex) }
+          : undefined,
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.session;
+}
+
 export type SelfInspectionNfcTagResolveResult =
   | {
       kind: 'employee';
@@ -3486,6 +3504,48 @@ export async function updateSelfInspectionEntry(
   return data.entry;
 }
 
+export async function createSelfInspectionInspectorEntry(
+  sessionId: string,
+  body: {
+    entryIndex: number;
+    employeeTagUid?: string | null;
+    measuringInstrumentTagUid?: string | null;
+    values: SelfInspectionEntryValuePayload[];
+  },
+  clientKey?: string
+): Promise<SelfInspectionLotEntryDto> {
+  const { data } = await api.post<{ entry: SelfInspectionLotEntryDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/inspector-entries`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.entry;
+}
+
+export async function updateSelfInspectionInspectorEntry(
+  sessionId: string,
+  entryId: string,
+  body: {
+    entryIndex: number;
+    ifUnmodifiedSince: string;
+    employeeTagUid?: string | null;
+    measuringInstrumentTagUid?: string | null;
+    values: SelfInspectionEntryValuePayload[];
+  },
+  clientKey?: string
+): Promise<SelfInspectionLotEntryDto> {
+  const { data } = await api.patch<{ entry: SelfInspectionLotEntryDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/inspector-entries/${entryId}`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.entry;
+}
+
 export async function recordSelfInspectionInstrumentPreUseInspection(
   sessionId: string,
   entryIndex: number,
@@ -3507,6 +3567,35 @@ export async function recordSelfInspectionInstrumentPreUseInspection(
     reusedExistingUsage: boolean;
   }>(
     `/part-measurement/self-inspection/sessions/${sessionId}/entries/${entryIndex}/instrument-usages/pre-use-inspection`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data;
+}
+
+export async function recordSelfInspectionInspectorInstrumentPreUseInspection(
+  sessionId: string,
+  entryIndex: number,
+  body: {
+    instrumentTagUid: string;
+    employeeTagUid: string;
+  },
+  clientKey?: string
+): Promise<{
+  entry: SelfInspectionLotEntryDto;
+  usage: SelfInspectionLotEntryDto['instrumentUsages'][number];
+  loan: { id: string; reused: boolean } | null;
+  reusedExistingUsage: boolean;
+}> {
+  const { data } = await api.post<{
+    entry: SelfInspectionLotEntryDto;
+    usage: SelfInspectionLotEntryDto['instrumentUsages'][number];
+    loan: { id: string; reused: boolean } | null;
+    reusedExistingUsage: boolean;
+  }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/inspector-entries/${entryIndex}/instrument-usages/pre-use-inspection`,
     body,
     {
       headers: clientKey ? { 'x-client-key': clientKey } : undefined

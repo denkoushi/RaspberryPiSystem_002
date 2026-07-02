@@ -19,3 +19,7 @@ export function isKioskSelfInspectionPath(pathname: string): boolean {
 export function kioskSelfInspectionSessionPath(sessionId: string): string {
   return `${KIOSK_SELF_INSPECTION_PATH_PREFIX}/sessions/${sessionId}`;
 }
+
+export function kioskSelfInspectionInspectorSessionPath(sessionId: string): string {
+  return `${kioskSelfInspectionSessionPath(sessionId)}/inspector`;
+}

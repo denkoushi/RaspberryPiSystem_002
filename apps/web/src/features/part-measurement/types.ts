@@ -154,8 +154,17 @@ export type SelfInspectionStatus = 'not_started' | 'in_progress' | 'review_pendi
 
 export type SelfInspectionMeasurementReviewStatus = 'NOT_REQUIRED' | 'PENDING' | 'APPROVED';
 
+export type SelfInspectionInspectorMeasurementState =
+  | 'not_required'
+  | 'pending'
+  | 'in_progress'
+  | 'complete';
+
+export type SelfInspectionInspectorMeasurementJudgementStatus = 'NOT_EVALUATED';
+
 export type SelfInspectionRecordApprovalState =
   | 'input_incomplete'
+  | 'inspector_measurement_pending'
   | 'registration_incomplete'
   | 'approvable'
   | 'approved';
@@ -281,6 +290,12 @@ export type SelfInspectionSessionSummaryDto = {
   completedAt: string | null;
   recordApprovalRequiredAt: string | null;
   recordApprovalWorkflowStartedAt: string | null;
+  inspectorRemeasurementRequiredAt: string | null;
+  inspectorMeasurementState: SelfInspectionInspectorMeasurementState;
+  inspectorRequiredEntryCount: number;
+  inspectorCompletedRequiredEntryCount: number;
+  inspectorMissingRequiredEntryCount: number;
+  inspectorIncompleteValueEntryCount: number;
   updatedAt: string;
 };
 
@@ -300,6 +315,13 @@ export type SelfInspectionMeasurementValueDto = {
   approvedByUserId: string | null;
   approvedByUsername: string | null;
   approvalComment: string | null;
+  operatorMeasurementValueId?: string | null;
+  operatorValueSnapshot?: string | null;
+  differenceValue?: string | null;
+  judgementStatus?: SelfInspectionInspectorMeasurementJudgementStatus;
+  judgedAt?: string | null;
+  judgementComment?: string | null;
+  updatedAt?: string;
 };
 
 export type SelfInspectionEntryValuePayload = {
@@ -342,6 +364,10 @@ export type SelfInspectionRecordApprovalSessionListItemDto = SelfInspectionSessi
   missingRequiredEntryCount: number;
   incompleteValueEntryCount: number;
   incompleteRegistrationEntryCount: number;
+  inspectorCompletedRequiredEntryCount: number;
+  inspectorMissingRequiredEntryCount: number;
+  inspectorIncompleteValueEntryCount: number;
+  inspectorIncompleteRegistrationEntryCount: number;
 };
 
 export type SelfInspectionRecordApprovalsListDto = {
@@ -357,6 +383,10 @@ export type SelfInspectionLotEntryDto = {
   entrySlotLabel: string;
   createdByEmployeeId: string | null;
   createdByEmployeeNameSnapshot: string | null;
+  inspectorEmployeeId?: string | null;
+  inspectorEmployeeCodeSnapshot?: string | null;
+  inspectorEmployeeNameSnapshot?: string | null;
+  inspectorEmployeeNfcTagUidSnapshot?: string | null;
   measuringInstrumentId: string | null;
   measuringInstrumentManagementNumberSnapshot: string | null;
   measuringInstrumentNameSnapshot: string | null;
@@ -395,6 +425,14 @@ export type SelfInspectionRecordApprovalEntryValueDto = {
   outOfToleranceAcknowledgedAt: string | null;
   approvedAt: string | null;
   updatedAt: string | null;
+  inspectorValueId: string | null;
+  inspectorValue: string | null;
+  operatorValueSnapshot: string | null;
+  differenceValue: string | null;
+  inspectorJudgementStatus: SelfInspectionInspectorMeasurementJudgementStatus | null;
+  inspectorJudgedAt: string | null;
+  inspectorJudgementComment: string | null;
+  inspectorUpdatedAt: string | null;
 };
 
 export type SelfInspectionRecordApprovalRequiredEntryDto = {
@@ -403,6 +441,16 @@ export type SelfInspectionRecordApprovalRequiredEntryDto = {
   entrySlotLabel: string;
   state: 'input_incomplete' | 'registration_incomplete' | 'ready';
   entry: Omit<SelfInspectionLotEntryDto, 'values' | 'entrySlotKind' | 'entrySlotLabel'> | null;
+  inspectorEntry:
+    | (Omit<SelfInspectionLotEntryDto, 'values' | 'entrySlotKind' | 'entrySlotLabel' | 'createdByEmployeeId' | 'createdByEmployeeNameSnapshot'> & {
+        inspectorEmployeeId: string | null;
+        inspectorEmployeeCodeSnapshot: string | null;
+        inspectorEmployeeNameSnapshot: string | null;
+        inspectorEmployeeNfcTagUidSnapshot: string | null;
+        clientDeviceId: string | null;
+        clientDeviceNameSnapshot: string | null;
+      })
+    | null;
   values: SelfInspectionRecordApprovalEntryValueDto[];
 };
 
@@ -416,6 +464,7 @@ export type SelfInspectionSessionDetailDto = SelfInspectionSessionSummaryDto & {
   template: PartMeasurementTemplateDto;
   /** 測定値は含まない（大量件数対策）。値は focusedEntry を参照 */
   entries: SelfInspectionLotEntryDto[];
+  operatorEntries?: SelfInspectionLotEntryDto[];
   /** `entryIndex` クエリ指定時のみ、当該入力件の測定値 */
   focusedEntry?: SelfInspectionLotEntryDto | null;
 };

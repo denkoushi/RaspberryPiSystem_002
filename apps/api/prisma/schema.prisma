@@ -125,6 +125,7 @@ model Employee {
   partMeasurementSheetsCreated  PartMeasurementSheet[] @relation("PartMeasurementSheetCreatedBy")
   partMeasurementSheetsFinalized PartMeasurementSheet[] @relation("PartMeasurementSheetFinalizedBy")
   selfInspectionLotEntries SelfInspectionLotEntry[]
+  selfInspectionInspectorEntries SelfInspectionInspectorEntry[] @relation("SelfInspectionInspectorEntryEmployee")
   selfInspectionRecordApprovals SelfInspectionRecordApproval[] @relation("SelfInspectionRecordApprover")
 }
 
@@ -162,6 +163,8 @@ model MeasuringInstrument {
   loans                 Loan[]
   selfInspectionLotEntries SelfInspectionLotEntry[]
   selfInspectionLotEntryInstrumentUsages SelfInspectionLotEntryInstrumentUsage[]
+  selfInspectionInspectorEntries SelfInspectionInspectorEntry[]
+  selfInspectionInspectorEntryInstrumentUsages SelfInspectionInspectorEntryInstrumentUsage[]
 
   @@index([genreId])
 }
@@ -328,6 +331,7 @@ model ClientDevice {
   partMeasurementEditLocks PartMeasurementSheet[] @relation("PartMeasurementSheetEditLock")
   selfInspectionSessions  SelfInspectionSession[]
   selfInspectionPaperReports SelfInspectionPaperReport[]
+  selfInspectionInspectorEntries SelfInspectionInspectorEntry[]
   selfInspectionRecordApprovals SelfInspectionRecordApproval[]
   mobilePlacementEvents   MobilePlacementEvent[]
   orderPlacementEvents    OrderPlacementEvent[]
@@ -648,6 +652,7 @@ model Loan {
   InspectionRecord        InspectionRecord[]
   RiggingInspectionRecord RiggingInspectionRecord[]
   selfInspectionLotEntryInstrumentUsages SelfInspectionLotEntryInstrumentUsage[]
+  selfInspectionInspectorEntryInstrumentUsages SelfInspectionInspectorEntryInstrumentUsage[]
 
   @@index([itemId])
   @@index([measuringInstrumentId])
@@ -2027,6 +2032,10 @@ enum SelfInspectionMeasurementReviewStatus {
   APPROVED
 }
 
+enum SelfInspectionInspectorMeasurementJudgementStatus {
+  NOT_EVALUATED
+}
+
 /// 同一測定対象（製造order・工程・資源CD）に複数の記録表をぶら下げる親集約。
 model PartMeasurementSession {
   id           String                      @id @default(uuid())
@@ -2170,6 +2179,7 @@ model PartMeasurementTemplateItem {
   template         PartMeasurementTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
   results          PartMeasurementResult[]
   selfInspectionMeasurementValues SelfInspectionMeasurementValue[]
+  selfInspectionInspectorMeasurementValues SelfInspectionInspectorMeasurementValue[]
 
   @@index([templateId, sortOrder])
 }
@@ -2258,11 +2268,13 @@ model SelfInspectionSession {
   completedAt        DateTime?
   recordApprovalRequiredAt DateTime?
   recordApprovalWorkflowStartedAt DateTime?
+  inspectorRemeasurementRequiredAt DateTime?
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
   template           PartMeasurementTemplate     @relation(fields: [templateId], references: [id], onDelete: Restrict)
   clientDevice       ClientDevice?               @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
   entries            SelfInspectionLotEntry[]
+  inspectorEntries   SelfInspectionInspectorEntry[]
   paperReports       SelfInspectionPaperReport[]
   recordApproval     SelfInspectionRecordApproval?
 
@@ -2273,6 +2285,7 @@ model SelfInspectionSession {
   @@index([completedAt, updatedAt], map: "SelfInspectionSession_idx_completed_at_updated_at")
   @@index([recordApprovalRequiredAt], map: "SelfInspectionSession_idx_record_approval_required_at")
   @@index([recordApprovalWorkflowStartedAt], map: "SelfInspectionSession_idx_record_approval_workflow_started_at")
+  @@index([inspectorRemeasurementRequiredAt], map: "SelfInspectionSession_idx_inspector_remeasurement_required_at")
 }
 
 model SelfInspectionLotEntry {
@@ -2335,11 +2348,88 @@ model SelfInspectionMeasurementValue {
   updatedAt                     DateTime                                @updatedAt
   entry                         SelfInspectionLotEntry                  @relation(fields: [entryId], references: [id], onDelete: Cascade)
   templateItem                  PartMeasurementTemplateItem             @relation(fields: [templateItemId], references: [id], onDelete: Restrict)
+  inspectorMeasurements         SelfInspectionInspectorMeasurementValue[]
 
   @@unique([entryId, templateItemId], map: "SelfInspectionMeasurementValue_unique_entry_item")
   @@index([entryId], map: "SelfInspectionMeasurementValue_idx_entry")
   @@index([reviewStatus], map: "SelfInspectionMeasurementValue_idx_review_status")
   @@index([approvedAt], map: "SelfInspectionMeasurementValue_idx_approved_at")
+}
+
+model SelfInspectionInspectorEntry {
+  id                                           String                         @id @default(uuid())
+  sessionId                                    String
+  entryIndex                                   Int
+  entrySlotKind                                SelfInspectionEntrySlotKind    @default(FIXED)
+  inspectorEmployeeId                          String?
+  inspectorEmployeeCodeSnapshot                String?
+  inspectorEmployeeNameSnapshot                String?
+  inspectorEmployeeNfcTagUidSnapshot           String?
+  measuringInstrumentId                        String?
+  measuringInstrumentManagementNumberSnapshot  String?
+  measuringInstrumentNameSnapshot              String?
+  measuringInstrumentTagUidSnapshot            String?
+  clientDeviceId                               String?
+  clientDeviceNameSnapshot                     String?
+  createdAt                                    DateTime                       @default(now())
+  updatedAt                                    DateTime                       @updatedAt
+  session                                      SelfInspectionSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  inspectorEmployee                            Employee?                      @relation("SelfInspectionInspectorEntryEmployee", fields: [inspectorEmployeeId], references: [id], onDelete: SetNull)
+  measuringInstrument                          MeasuringInstrument?           @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
+  clientDevice                                 ClientDevice?                  @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  values                                       SelfInspectionInspectorMeasurementValue[]
+  instrumentUsages                             SelfInspectionInspectorEntryInstrumentUsage[]
+
+  @@unique([sessionId, entryIndex], map: "SelfInspectionInspectorEntry_unique_session_entry")
+  @@index([sessionId], map: "SelfInspectionInspectorEntry_idx_session")
+  @@index([inspectorEmployeeId], map: "SelfInspectionInspectorEntry_idx_inspector_employee")
+  @@index([measuringInstrumentId], map: "SelfInspectionInspectorEntry_idx_measuring_instrument")
+  @@index([clientDeviceId], map: "SelfInspectionInspectorEntry_idx_client_device")
+}
+
+model SelfInspectionInspectorEntryInstrumentUsage {
+  id                                           String                       @id @default(uuid())
+  entryId                                      String
+  measuringInstrumentId                        String?
+  loanId                                       String?
+  measuringInstrumentManagementNumberSnapshot String
+  measuringInstrumentNameSnapshot             String
+  measuringInstrumentTagUidSnapshot           String?
+  preUseInspectedAt                            DateTime                     @default(now())
+  createdAt                                    DateTime                     @default(now())
+  updatedAt                                    DateTime                     @updatedAt
+  entry                                        SelfInspectionInspectorEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  measuringInstrument                          MeasuringInstrument?         @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
+  loan                                         Loan?                        @relation(fields: [loanId], references: [id], onDelete: SetNull)
+
+  @@unique([entryId, measuringInstrumentId], map: "SelfInspectionInspectorEntryUsage_unique_entry_instrument")
+  @@index([entryId], map: "SelfInspectionInspectorEntryUsage_idx_entry")
+  @@index([measuringInstrumentId], map: "SelfInspectionInspectorEntryUsage_idx_instrument")
+  @@index([loanId], map: "SelfInspectionInspectorEntryUsage_idx_loan")
+}
+
+model SelfInspectionInspectorMeasurementValue {
+  id                         String                                                @id @default(uuid())
+  inspectorEntryId           String
+  templateItemId             String
+  operatorMeasurementValueId String?
+  operatorValueSnapshot      Decimal?                                              @db.Decimal(18, 6)
+  inspectorValue             Decimal?                                              @db.Decimal(18, 6)
+  differenceValue            Decimal?                                              @db.Decimal(18, 6)
+  judgementStatus            SelfInspectionInspectorMeasurementJudgementStatus      @default(NOT_EVALUATED)
+  judgedAt                   DateTime?
+  judgementComment           String?
+  createdAt                  DateTime                                              @default(now())
+  updatedAt                  DateTime                                              @updatedAt
+  inspectorEntry             SelfInspectionInspectorEntry                           @relation(fields: [inspectorEntryId], references: [id], onDelete: Cascade)
+  templateItem               PartMeasurementTemplateItem                           @relation(fields: [templateItemId], references: [id], onDelete: Restrict)
+  operatorMeasurementValue   SelfInspectionMeasurementValue?                       @relation(fields: [operatorMeasurementValueId], references: [id], onDelete: SetNull)
+
+  @@unique([inspectorEntryId, templateItemId], map: "SelfInspectionInspectorValue_unique_entry_item")
+  @@index([inspectorEntryId], map: "SelfInspectionInspectorValue_idx_entry")
+  @@index([templateItemId], map: "SelfInspectionInspectorValue_idx_template_item")
+  @@index([operatorMeasurementValueId], map: "SelfInspectionInspectorValue_idx_operator_value")
+  @@index([judgementStatus], map: "SelfInspectionInspectorValue_idx_judgement_status")
 }
 
 model SelfInspectionRecordApproval {
