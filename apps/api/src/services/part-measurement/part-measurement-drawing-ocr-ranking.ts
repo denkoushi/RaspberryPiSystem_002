@@ -125,6 +125,19 @@ function bboxOverlapRatio(a: PartMeasurementDrawingOcrToken, b: PartMeasurementD
   return overlapArea / smallerArea;
 }
 
+function compactNumericDigits(valueText: string): string {
+  return valueText.replace(/\D/g, '');
+}
+
+function isLikelyLineArtifactValue(rawValueText: string, lineSuppressedValueText: string): boolean {
+  const rawDigits = compactNumericDigits(rawValueText);
+  const lineSuppressedDigits = compactNumericDigits(lineSuppressedValueText);
+  if (rawDigits.length <= lineSuppressedDigits.length) return false;
+  if (lineSuppressedDigits.length < 2) return false;
+  if (rawDigits.length - lineSuppressedDigits.length > 2) return false;
+  return rawDigits.startsWith(lineSuppressedDigits) || rawDigits.endsWith(lineSuppressedDigits);
+}
+
 function hasConflictingLineSuppressedToken(
   token: PartMeasurementDrawingOcrToken,
   valueText: string,
@@ -135,7 +148,7 @@ function hasConflictingLineSuppressedToken(
     if (Math.hypot(token.xRatio - other.xRatio, token.yRatio - other.yRatio) > 0.035) continue;
     if (bboxOverlapRatio(token, other) < 0.35) continue;
     const otherValues = extractNumericValues(other);
-    if (otherValues.length > 0 && !otherValues.includes(valueText)) return true;
+    if (otherValues.some((otherValue) => isLikelyLineArtifactValue(valueText, otherValue))) return true;
   }
   return false;
 }

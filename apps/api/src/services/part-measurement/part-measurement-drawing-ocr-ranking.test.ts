@@ -107,6 +107,18 @@ describe('part measurement drawing OCR ranking', () => {
     expect(candidates[0]?.valueText).toBe('180');
   });
 
+  it('does not suppress a raw value when line suppression reads a different same-length value', () => {
+    const candidates = rankPartMeasurementDrawingOcrCandidates(
+      payload([
+        token('37', 0.628, 0.385, 72, 'tile', 'raw', { widthRatio: 0.004, heightRatio: 0.008 }),
+        token('31', 0.628, 0.385, 84, 'full', 'lineSuppressed', { widthRatio: 0.004, heightRatio: 0.008 })
+      ]),
+      { xRatio: 0.632, yRatio: 0.357, markerNo: 7, limit: 5 }
+    );
+
+    expect(candidates.map((candidate) => candidate.valueText)).toContain('37');
+  });
+
   it('splits stacked four-digit dimension text into two two-digit candidates', () => {
     const candidates = rankPartMeasurementDrawingOcrCandidates(
       payload([token('1322', 0.5, 0.4, 86, 'tile', 'raw', { widthRatio: 0.015, heightRatio: 0.07 })]),
