@@ -10,9 +10,12 @@ import {
 } from '../../lib/part-measurement-drawing-import.js';
 import { convertDrawingUploadToPreviewBuffer } from '../../lib/part-measurement-drawing-preview.js';
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
+import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { verifyProductionScheduleRowOrThrow } from '../../services/production-schedule/verify-production-schedule-row.js';
 import {
+  getPartMeasurementDrawingOcrService,
+  PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY,
   PartMeasurementResolveService,
   PartMeasurementSheetService,
   PartMeasurementTemplateCandidateService,
@@ -20,6 +23,7 @@ import {
   PartMeasurementVisualTemplateService,
   SelfInspectionService
 } from '../../services/part-measurement/index.js';
+import { getPartMeasurementDrawingOcrScheduler } from '../../services/part-measurement/part-measurement-drawing-ocr.scheduler.js';
 import { SelfInspectionPaperReportIssueService } from '../../services/part-measurement/self-inspection-paper-report-issue.service.js';
 import { SelfInspectionPaperReportResolver } from '../../services/part-measurement/self-inspection-paper-report-resolver.service.js';
 import { SelfInspectionPaperOcrReviewService } from '../../services/part-measurement/self-inspection-paper-ocr-review.service.js';
@@ -311,6 +315,13 @@ const activeTemplateExistsQuerySchema = z.object({
   resourceCd: z.string().min(1).max(120)
 });
 
+const drawingOcrCandidateBodySchema = z.object({
+  xRatio: z.number().min(0).max(1),
+  yRatio: z.number().min(0).max(1),
+  markerNo: z.number().int().min(1).max(999).optional().nullable(),
+  limit: z.number().int().min(1).max(20).optional()
+});
+
 const listTemplateCandidatesQuerySchema = z.object({
   fhincd: z.string().min(1).max(120),
   processGroup: processGroupSchema,
@@ -530,6 +541,49 @@ function serializeVisualTemplate(v: {
     createdAt: v.createdAt.toISOString(),
     updatedAt: v.updatedAt.toISOString()
   };
+}
+
+function serializeDrawingOcrStatus(status: {
+  id: string;
+  visualTemplateId: string;
+  status: string;
+  ocrVersion: string;
+  drawingImageFingerprint: string;
+  engine: string | null;
+  imageWidth: number | null;
+  imageHeight: number | null;
+  tokenCount: number;
+  payloadBytes: number;
+  queuePriority: number;
+  attemptCount: number;
+  failureReason: string | null;
+  ocrStartedAt: string | null;
+  ocrFinishedAt: string | null;
+  lastQueuedAt: string | null;
+  nextAttemptAt: string | null;
+  updatedAt: string;
+}) {
+  return {
+    ...status,
+    status: status.status.toLowerCase()
+  };
+}
+
+function serializeDrawingOcrCandidate(candidate: {
+  valueText: string;
+  rawText: string;
+  confidence: number | null;
+  score: number;
+  distanceRatio: number;
+  xRatio: number;
+  yRatio: number;
+  widthRatio: number;
+  heightRatio: number;
+  passKind: 'full' | 'tile' | 'frame';
+  preprocessKind: 'raw' | 'lineSuppressed' | 'boxedFrame';
+  rotation: number;
+}) {
+  return candidate;
 }
 
 function serializeTemplateScope(scope: string): 'three_key' | 'fhincd_resource' | 'fhinmei_only' {
@@ -958,6 +1012,25 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   const paperImportService = new SelfInspectionPaperImportService();
   const templateCandidateService = new PartMeasurementTemplateCandidateService();
   const visualTemplateService = new PartMeasurementVisualTemplateService();
+  const drawingOcrService = getPartMeasurementDrawingOcrService();
+
+  const enqueueDrawingOcrAndWake = async (
+    visualTemplateId: string | null | undefined,
+    context: string,
+    priority: number = PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY.USER_INITIATED
+  ): Promise<void> => {
+    const id = visualTemplateId?.trim();
+    if (!id) return;
+    try {
+      await drawingOcrService.enqueueVisualTemplate(id, { priority });
+      getPartMeasurementDrawingOcrScheduler().wake();
+    } catch (error) {
+      logger.warn(
+        { err: error, visualTemplateId: id, context },
+        'part_measurement_drawing_ocr_enqueue_wake_failed'
+      );
+    }
+  };
 
   const createInspectionDrawingEvaluationSetup = async (
     templateParams: Parameters<PartMeasurementTemplateService['createInspectionDrawingEvaluationTemplate']>[0],
@@ -967,6 +1040,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       await templateService.createInspectionDrawingEvaluationTemplate(templateParams);
     try {
       const sheet = await sheetService.createInspectionDrawingEvaluationDraft(template.id, clientDeviceId);
+      await enqueueDrawingOcrAndWake(template.visualTemplateId, 'inspection_drawing_evaluation_setup');
       return { template, sheet };
     } catch (error) {
       await templateService.cleanupInspectionDrawingEvaluationTemplate(template.id, {
@@ -1015,6 +1089,50 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         return reply.status(404).send({ message: '図面テンプレートが見つかりません。' });
       }
       return { visualTemplate: serializeVisualTemplate(visual) };
+    }
+  );
+
+  app.get(
+    '/part-measurement/visual-templates/:id/ocr',
+    { preHandler: allowView, config: { rateLimit: false } },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const status = await drawingOcrService.getCurrentStatus(params.id);
+      if (status.status === 'PENDING') {
+        getPartMeasurementDrawingOcrScheduler().wake();
+      }
+      return { ocr: serializeDrawingOcrStatus(status) };
+    }
+  );
+
+  app.post(
+    '/part-measurement/visual-templates/:id/ocr/candidates',
+    { preHandler: allowView, config: { rateLimit: false } },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = drawingOcrCandidateBodySchema.parse(request.body);
+      const result = await drawingOcrService.getCandidates(params.id, {
+        xRatio: body.xRatio,
+        yRatio: body.yRatio,
+        markerNo: body.markerNo,
+        limit: body.limit ?? 5
+      });
+      return {
+        status: result.status.toLowerCase(),
+        candidates: result.candidates.map(serializeDrawingOcrCandidate),
+        cache: serializeDrawingOcrStatus(result.cache)
+      };
+    }
+  );
+
+  app.post(
+    '/part-measurement/visual-templates/:id/ocr/retry',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const status = await drawingOcrService.retryVisualTemplate(params.id);
+      getPartMeasurementDrawingOcrScheduler().wake();
+      return { ocr: serializeDrawingOcrStatus(status) };
     }
   );
 
@@ -1073,6 +1191,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         await PartMeasurementDrawingStorage.deleteDrawing(relativeUrl).catch(() => undefined);
         throw error;
       }
+      await enqueueDrawingOcrAndWake(created.id, 'visual_template_create');
       return {
         visualTemplate: serializeVisualTemplate(created),
         cleanupToken: signVisualCleanupToken(created.id)
@@ -1821,6 +1940,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       selfInspectionFixedCount: selfInspection.selfInspectionFixedCount,
       failIfActiveExists: body.failIfActiveExists === true
     });
+    await enqueueDrawingOcrAndWake(template.visualTemplateId, 'template_create');
     return {
       template: serializeTemplate({
         ...template,
@@ -1849,6 +1969,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         selfInspectionMode: selfInspection.selfInspectionMode,
         selfInspectionFixedCount: selfInspection.selfInspectionFixedCount
       });
+      await enqueueDrawingOcrAndWake(body.visualTemplateId, 'inspection_drawing_template_group_create');
       return {
         group: serializeTemplateSiblingGroup(result.group, result.group.activeResourceCds),
         templates: result.templates.map((template) =>
@@ -1876,6 +1997,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         visualTemplateId: body.visualTemplateId,
         ...selfInspectionPatch
       });
+      await enqueueDrawingOcrAndWake(result.templates[0]?.visualTemplateId, 'inspection_drawing_template_group_revise');
       return {
         group: serializeTemplateSiblingGroup(result.group, result.group.activeResourceCds),
         templates: result.templates.map((template) =>
@@ -1900,6 +2022,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         resourceCds: body.resourceCds,
         sourceTemplateId: body.sourceTemplateId
       });
+      await enqueueDrawingOcrAndWake(result.templates[0]?.visualTemplateId, 'inspection_drawing_template_group_add_resources');
       return {
         group: serializeTemplateSiblingGroup(result.group, result.group.activeResourceCds),
         templates: result.templates.map((template) =>
@@ -1978,6 +2101,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         detachFromSiblingGroup: body.detachFromSiblingGroup === true,
         ...selfInspectionPatch
       });
+      await enqueueDrawingOcrAndWake(template.visualTemplateId, 'inspection_drawing_template_revise');
       return {
         template: serializeTemplate({
           ...template,
@@ -2128,6 +2252,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         targetProcessGroup: processGroup,
         targetResourceCd: body.resourceCd
       });
+      await enqueueDrawingOcrAndWake(result.template.visualTemplateId, 'template_clone_for_schedule_key');
       return {
         template: serializeTemplate({
           ...result.template,
@@ -2153,6 +2278,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       detachFromSiblingGroup: body.detachFromSiblingGroup === true,
       ...selfInspectionPatch
     });
+    await enqueueDrawingOcrAndWake(template.visualTemplateId, 'template_revise');
     return {
       template: serializeTemplate({
         ...template,
@@ -2179,6 +2305,11 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   app.post('/part-measurement/templates/:id/activate', { preHandler: allowWriteKiosk }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
     const template = await templateService.setActiveVersion(params.id);
+    await enqueueDrawingOcrAndWake(
+      template.visualTemplateId,
+      'template_activate',
+      PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY.REFERENCED_ACTIVE
+    );
     return {
       template: serializeTemplate({
         ...template,

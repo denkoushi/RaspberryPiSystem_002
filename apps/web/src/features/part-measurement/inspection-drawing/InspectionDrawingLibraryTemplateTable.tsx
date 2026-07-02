@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Button, buttonClassName } from '../../../components/ui/Button';
@@ -29,6 +30,7 @@ function updatedLabel(template: KioskInspectionDrawingTemplateSummaryDto): strin
 }
 
 const MAX_VISIBLE_RESOURCE_CHIPS = 4;
+const TEMPLATE_TABLE_SPLIT_MIN_ROWS = 2;
 
 export type InspectionDrawingLibraryTemplateTableProps = {
   templates: KioskInspectionDrawingTemplateSummaryDto[];
@@ -42,6 +44,183 @@ export type InspectionDrawingLibraryTemplateTableProps = {
   createFromSourcePath?: (templateId: string) => string;
   linkState?: object;
 };
+
+function activeResourceCdsForTemplate(template: KioskInspectionDrawingTemplateSummaryDto): string[] {
+  return template.siblingGroup?.activeResourceCds && template.siblingGroup.activeResourceCds.length > 0
+    ? template.siblingGroup.activeResourceCds
+    : [template.resourceCd];
+}
+
+function rangeLabel(startIndex: number, rowCount: number): string {
+  if (rowCount <= 0) return '';
+  return `${startIndex + 1} - ${startIndex + rowCount}`;
+}
+
+type TemplateTablePaneProps = {
+  label: string;
+  templates: KioskInspectionDrawingTemplateSummaryDto[];
+  startIndex: number;
+  resourceNameMap: Record<string, string[]>;
+  onHistoryClick: (lineageGroupKey: string) => void;
+  lineageGroupKey: (template: KioskInspectionDrawingTemplateSummaryDto) => string;
+  editPath: (templateId: string) => string;
+  printPath?: (templateId: string) => string;
+  createFromSourcePath: (templateId: string) => string;
+  linkState: object;
+};
+
+function TemplateTablePane({
+  label,
+  templates,
+  startIndex,
+  resourceNameMap,
+  onHistoryClick,
+  lineageGroupKey,
+  editPath,
+  printPath,
+  createFromSourcePath,
+  linkState
+}: TemplateTablePaneProps) {
+  return (
+    <div
+      className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded border border-white/10 bg-slate-950/35"
+      data-testid="inspection-template-table-pane"
+    >
+      <div className="min-h-0 flex-1 overflow-auto p-1">
+        <table
+          className="w-full table-fixed border-collapse text-left text-[0.84rem]"
+          aria-label={`検査図面テンプレート ${label} ${rangeLabel(startIndex, templates.length)}`}
+        >
+          <colgroup>
+            <col className="w-[24%]" />
+            <col className="w-[43%]" />
+            <col className="w-[8%]" />
+            <col className="w-[6%]" />
+            <col className="w-[19%]" />
+          </colgroup>
+          <thead className="sticky top-0 bg-slate-900 text-[0.74rem] text-white/70">
+            <tr className="border-b border-white/10">
+              <th className="px-2 py-1.5 font-bold">品番</th>
+              <th className="px-2 py-1.5 font-bold">図面名</th>
+              <th className="px-2 py-1.5 font-bold">工程</th>
+              <th className="px-2 py-1.5 font-bold">点</th>
+              <th className="px-2 py-1.5 text-right font-bold">更新</th>
+            </tr>
+          </thead>
+          <tbody>
+            {templates.map((template) => {
+              const activeResourceCds = activeResourceCdsForTemplate(template);
+              const visibleResourceCds = activeResourceCds.slice(0, MAX_VISIBLE_RESOURCE_CHIPS);
+              const hiddenResourceCount = activeResourceCds.length - visibleResourceCds.length;
+              const visualName = template.visualTemplate?.name ?? '未設定';
+              const resourceSummaryTitle = activeResourceCds
+                .map((cd) => formatResourceCdWithJapaneseNames(cd, resourceNameMap))
+                .join(' / ');
+              return (
+                <Fragment key={template.siblingGroupId ?? template.id}>
+                  <tr className="border-t border-white/10 first:border-t-0">
+                    <td className="truncate px-2 pb-0.5 pt-1.5 font-bold text-white" title={template.fhincd}>
+                      {template.fhincd}
+                    </td>
+                    <td className="truncate px-2 pb-0.5 pt-1.5 font-semibold text-white/90" title={visualName}>
+                      {visualName}
+                    </td>
+                    <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 text-white/80">
+                      {processLabel(template.processGroup)}
+                    </td>
+                    <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 font-semibold text-white/80">
+                      {template.itemCount}
+                    </td>
+                    <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 text-right font-semibold text-white/65">
+                      {updatedLabel(template)}
+                    </td>
+                  </tr>
+                  <tr className="border-b border-white/10 last:border-b-0">
+                    <td colSpan={5} className="px-2 pb-1 pt-0 text-[0.68rem] text-white/55">
+                      <div className="flex min-w-0 items-center gap-1 overflow-hidden">
+                        <span className="shrink-0 font-semibold">資源CD</span>
+                        <div
+                          className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden"
+                          data-testid="inspection-template-resource-chips"
+                          title={resourceSummaryTitle}
+                        >
+                          {visibleResourceCds.map((cd) => (
+                            <span
+                              key={cd}
+                              className="shrink-0 truncate rounded border border-cyan-300/35 bg-cyan-950/50 px-1.5 py-0.5 text-[0.68rem] font-semibold leading-tight text-cyan-100"
+                              title={formatResourceCdWithJapaneseNames(cd, resourceNameMap)}
+                            >
+                              {cd}
+                            </span>
+                          ))}
+                          {hiddenResourceCount > 0 ? (
+                            <span className="shrink-0 rounded border border-white/15 px-1.5 py-0.5 text-[0.68rem] leading-tight text-white/70">
+                              +{hiddenResourceCount}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div
+                          className="ml-auto flex w-[7rem] shrink-0 justify-end gap-0.5"
+                          data-testid="inspection-template-secondary-actions"
+                        >
+                          <Link
+                            to={editPath(template.id)}
+                            state={linkState}
+                            className={buttonClassName(
+                              'primary',
+                              'inline-flex min-h-5 min-w-[1.75rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-[0.58rem] leading-none whitespace-nowrap'
+                            )}
+                          >
+                            編集
+                          </Link>
+                          {printPath ? (
+                            <Link
+                              to={printPath(template.id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="保存済みテンプレートの帳票プレビュー（未保存の変更は反映されません）"
+                              className={buttonClassName(
+                                'ghostOnDark',
+                                'inline-flex min-h-5 min-w-[1.5rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-[0.58rem] leading-none whitespace-nowrap'
+                              )}
+                            >
+                              帳票
+                            </Link>
+                          ) : null}
+                          {template.isActive ? (
+                            <Link
+                              to={createFromSourcePath(template.id)}
+                              state={linkState}
+                              title="雛形新規"
+                              className={buttonClassName(
+                                'ghostOnDark',
+                                'inline-flex min-h-5 min-w-[1.5rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-[0.58rem] leading-none whitespace-nowrap'
+                              )}
+                            >
+                              雛形
+                            </Link>
+                          ) : null}
+                          <Button
+                            type="button"
+                            variant="ghostOnDark"
+                            className="min-h-5 min-w-[1.5rem] shrink-0 whitespace-nowrap rounded !px-1 !py-0 text-[0.58rem] leading-none"
+                            onClick={() => onHistoryClick(lineageGroupKey(template))}
+                          >
+                            履歴
+                          </Button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 /** 検査図面テンプレート一覧 — 内容幅ベースのコンパクト表で表示 */
 export function InspectionDrawingLibraryTemplateTable({
@@ -64,122 +243,39 @@ export function InspectionDrawingLibraryTemplateTable({
     );
   }
 
+  const shouldSplit = templates.length >= TEMPLATE_TABLE_SPLIT_MIN_ROWS;
+  const splitIndex = shouldSplit ? Math.ceil(templates.length / 2) : templates.length;
+  const firstTemplates = templates.slice(0, splitIndex);
+  const secondTemplates = shouldSplit ? templates.slice(splitIndex) : [];
+
   return (
-    <table className="w-full table-fixed border-collapse text-left text-[0.84rem]" aria-label="検査図面テンプレート">
-      <colgroup>
-        <col className="w-[5.7rem]" />
-        <col className="w-[10.2rem]" />
-        <col className="w-[9.5rem]" />
-        <col className="w-[2.8rem]" />
-        <col className="w-[2.5rem]" />
-        <col className="w-[6.2rem]" />
-        <col className="w-[8rem]" />
-      </colgroup>
-      <thead className="sticky top-0 bg-slate-900 text-[0.74rem] text-white/70">
-        <tr className="border-b border-white/10">
-          <th className="px-2 py-1.5 font-bold">品番</th>
-          <th className="px-2 py-1.5 font-bold">図面名</th>
-          <th className="px-2 py-1.5 font-bold">資源CD</th>
-          <th className="px-2 py-1.5 font-bold">工程</th>
-          <th className="px-2 py-1.5 font-bold">点</th>
-          <th className="px-2 py-1.5 font-bold">更新</th>
-          <th className="px-2 py-1.5 text-right font-bold">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {templates.map((template) => {
-          const activeResourceCds =
-            template.siblingGroup?.activeResourceCds && template.siblingGroup.activeResourceCds.length > 0
-              ? template.siblingGroup.activeResourceCds
-              : [template.resourceCd];
-          const visibleResourceCds = activeResourceCds.slice(0, MAX_VISIBLE_RESOURCE_CHIPS);
-          const hiddenResourceCount = activeResourceCds.length - visibleResourceCds.length;
-          const visualName = template.visualTemplate?.name ?? '未設定';
-          return (
-            <tr key={template.siblingGroupId ?? template.id} className="border-b border-white/10 last:border-b-0">
-              <td className="truncate px-2 py-1.5 font-bold text-white" title={template.fhincd}>
-                {template.fhincd}
-              </td>
-              <td className="truncate px-2 py-1.5 font-semibold text-white/90" title={visualName}>
-                {visualName}
-              </td>
-              <td className="px-2 py-1.5">
-                <div
-                  className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden"
-                  data-testid="inspection-template-resource-chips"
-                >
-                  {visibleResourceCds.map((cd) => (
-                    <span
-                      key={cd}
-                      className="max-w-[4.8rem] shrink-0 truncate rounded border border-cyan-300/35 bg-cyan-950/50 px-1.5 py-0.5 text-[0.7rem] font-semibold leading-tight text-cyan-100"
-                      title={formatResourceCdWithJapaneseNames(cd, resourceNameMap)}
-                    >
-                      {cd}
-                    </span>
-                  ))}
-                  {hiddenResourceCount > 0 ? (
-                    <span className="shrink-0 rounded border border-white/15 px-1.5 py-0.5 text-[0.7rem] leading-tight text-white/70">
-                      +{hiddenResourceCount}
-                    </span>
-                  ) : null}
-                </div>
-              </td>
-              <td className="whitespace-nowrap px-2 py-1.5 text-white/80">{processLabel(template.processGroup)}</td>
-              <td className="whitespace-nowrap px-2 py-1.5 font-semibold text-white/80">{template.itemCount}</td>
-              <td className="whitespace-nowrap px-2 py-1.5 font-semibold text-white/65">{updatedLabel(template)}</td>
-              <td className="px-2 py-1.5">
-                <div className="flex justify-end gap-0.5">
-                  <Link
-                    to={editPath(template.id)}
-                    state={linkState}
-                    className={buttonClassName(
-                      'primary',
-                      'inline-flex min-h-6 shrink-0 items-center justify-center rounded !px-1.5 !py-0 text-[0.68rem] leading-none whitespace-nowrap'
-                    )}
-                  >
-                    編集
-                  </Link>
-                  {printPath ? (
-                    <Link
-                      to={printPath(template.id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="保存済みテンプレートの帳票プレビュー（未保存の変更は反映されません）"
-                      className={buttonClassName(
-                        'ghostOnDark',
-                        'inline-flex min-h-6 shrink-0 items-center justify-center rounded !px-1.5 !py-0 text-[0.68rem] leading-none whitespace-nowrap'
-                      )}
-                    >
-                      帳票
-                    </Link>
-                  ) : null}
-                  {template.isActive ? (
-                    <Link
-                      to={createFromSourcePath(template.id)}
-                      state={linkState}
-                      title="雛形新規"
-                      className={buttonClassName(
-                        'ghostOnDark',
-                        'inline-flex min-h-6 shrink-0 items-center justify-center rounded !px-1.5 !py-0 text-[0.68rem] leading-none whitespace-nowrap'
-                      )}
-                    >
-                      雛形
-                    </Link>
-                  ) : null}
-                  <Button
-                    type="button"
-                    variant="ghostOnDark"
-                    className="min-h-6 shrink-0 whitespace-nowrap rounded !px-1.5 !py-0 text-[0.68rem] leading-none"
-                    onClick={() => onHistoryClick(lineageGroupKey(template))}
-                  >
-                    履歴
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div className="grid h-full min-h-0 w-full grid-cols-1 gap-2 2xl:grid-cols-2">
+      <TemplateTablePane
+        label={shouldSplit ? '上段' : '一覧'}
+        templates={firstTemplates}
+        startIndex={0}
+        resourceNameMap={resourceNameMap}
+        onHistoryClick={onHistoryClick}
+        lineageGroupKey={lineageGroupKey}
+        editPath={editPath}
+        printPath={printPath}
+        createFromSourcePath={createFromSourcePath}
+        linkState={linkState}
+      />
+      {secondTemplates.length > 0 ? (
+        <TemplateTablePane
+          label="下段"
+          templates={secondTemplates}
+          startIndex={splitIndex}
+          resourceNameMap={resourceNameMap}
+          onHistoryClick={onHistoryClick}
+          lineageGroupKey={lineageGroupKey}
+          editPath={editPath}
+          printPath={printPath}
+          createFromSourcePath={createFromSourcePath}
+          linkState={linkState}
+        />
+      ) : null}
+    </div>
   );
 }

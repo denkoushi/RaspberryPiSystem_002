@@ -8,4 +8,6 @@ export type ImageOcrProfile =
   /** 製造 order（10 桁）抽出用。数字に制限して誤認を抑える */
   | 'actualSlipManufacturingDigits'
   /** FSEIBAN 等の英数字候補。英字主体でひらがな誤認を抑える */
-  | 'actualSlipAuxiliaryAlnum';
+  | 'actualSlipAuxiliaryAlnum'
+  /** 検査図面の寸法数値候補。座標付き OCR で数字・小数・符号を優先する */
+  | 'partMeasurementDrawingDimensions';

@@ -46,4 +46,11 @@ describe('InspectionDrawingLibraryFilterBar', () => {
     expect(props.onReload).toHaveBeenCalledTimes(1);
     expect(props.onReset).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps the resource filter at an explicit compact width', () => {
+    renderFilterBar();
+
+    expect(screen.getByLabelText('資源CD').parentElement).toHaveClass('w-[19rem]');
+    expect(screen.getByLabelText('資源CD').parentElement).not.toHaveClass('w-full');
+  });
 });

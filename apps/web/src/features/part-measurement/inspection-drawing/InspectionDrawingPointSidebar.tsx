@@ -3,6 +3,10 @@ import { InspectionDrawingPointSummaryList } from './InspectionDrawingPointSumma
 import { InspectionDrawingValuePanel } from './InspectionDrawingValuePanel';
 
 import type { InspectionDrawingToolbarMode } from './InspectionDrawingCreateToolbar';
+import type {
+  PartMeasurementDrawingOcrCandidateDto,
+  PartMeasurementDrawingOcrStatus
+} from '../types';
 import type { InspectionDrawingPoint } from './types';
 
 type Props = {
@@ -21,6 +25,11 @@ type Props = {
   }) => void;
   guidedTrialHint?: string | null;
   onResumeGuidedTrial?: () => void;
+  ocrCandidates?: PartMeasurementDrawingOcrCandidateDto[];
+  ocrCandidateStatus?: PartMeasurementDrawingOcrStatus | null;
+  ocrCandidateLoading?: boolean;
+  ocrCandidateError?: string | null;
+  onApplyOcrCandidate?: (valueText: string) => void;
 };
 
 /** 作成/改版 — 右ペイン（設定 or テスト入力 + 測定点一覧） */
@@ -35,7 +44,12 @@ export function InspectionDrawingPointSidebar({
   onTestValueChange,
   onCommitTestValue,
   guidedTrialHint,
-  onResumeGuidedTrial
+  onResumeGuidedTrial,
+  ocrCandidates,
+  ocrCandidateStatus,
+  ocrCandidateLoading,
+  ocrCandidateError,
+  onApplyOcrCandidate
 }: Props) {
   const showHistoryPlaceHint = contentReadOnly && mode === 'place' && !selectedPoint;
 
@@ -48,6 +62,11 @@ export function InspectionDrawingPointSidebar({
             disabled={contentReadOnly}
             onChange={onPointChange}
             onRemove={onRemovePoint}
+            ocrCandidates={ocrCandidates}
+            ocrCandidateStatus={ocrCandidateStatus}
+            ocrCandidateLoading={ocrCandidateLoading}
+            ocrCandidateError={ocrCandidateError}
+            onApplyOcrCandidate={onApplyOcrCandidate}
           />
         ) : null}
 

@@ -58,7 +58,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
 
   return (
     <section
-      className="grid w-[28rem] max-w-full shrink-0 gap-2 rounded border border-white/15 bg-slate-900/70 p-2"
+      className="flex min-h-0 w-full max-w-full flex-col gap-2 rounded border border-white/15 bg-slate-900/70 p-2 2xl:w-[31rem] 2xl:shrink-0"
       aria-labelledby="inspection-drawing-visual-library-heading"
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -97,7 +97,10 @@ export function KioskInspectionDrawingVisualLibrarySection({
 
       {error ? <p className="text-[0.98rem] font-semibold text-amber-200">{error}</p> : null}
 
-      <div className="max-h-[22rem] overflow-auto rounded border border-white/10 bg-slate-950/40 p-1.5">
+      <div
+        className="min-h-0 flex-1 overflow-auto rounded border border-white/10 bg-slate-950/40 p-1.5"
+        data-testid="inspection-visual-library-scroll"
+      >
         {loading && visuals.length === 0 ? (
           <p className="py-4 text-center text-[0.88rem] text-white/60">読込中…</p>
         ) : visuals.length === 0 ? (
@@ -107,9 +110,9 @@ export function KioskInspectionDrawingVisualLibrarySection({
         ) : (
           <table className="w-full table-fixed border-collapse text-left text-[0.82rem]" aria-label="図面ライブラリ">
             <colgroup>
-              <col className="w-[12.5rem]" />
-              <col className="w-[5.8rem]" />
-              <col className="w-[6.1rem]" />
+              <col className="w-[60%]" data-testid="inspection-visual-name-column" />
+              <col className="w-[22%]" />
+              <col className="w-[18%]" />
             </colgroup>
             <thead className="sticky top-0 bg-slate-900 text-[0.74rem] text-white/70">
               <tr className="border-b border-white/10">

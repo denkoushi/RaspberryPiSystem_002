@@ -54,14 +54,26 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
       if (!includeInactive && !template.isActive) return false;
       if (q && !template.fhincd.toLowerCase().includes(q)) return false;
       if (visualQ && !template.visualTemplate?.name.toLowerCase().includes(visualQ)) return false;
-      if (resourceCd && template.resourceCd !== resourceCd) return false;
+      if (
+        resourceCd &&
+        template.resourceCd !== resourceCd &&
+        !template.siblingGroup?.activeResourceCds.includes(resourceCd)
+      ) {
+        return false;
+      }
       if (processFilter !== 'all' && template.processGroup !== processFilter) return false;
       return true;
     });
   }, [fhincd, includeInactive, processFilter, resourceCd, sourceTemplates, visualName]);
 
   const resourceOptions = useMemo(() => {
-    const unique = new Set(sourceTemplates.map((t) => t.resourceCd));
+    const unique = new Set<string>();
+    for (const template of sourceTemplates) {
+      unique.add(template.resourceCd);
+      for (const cd of template.siblingGroup?.activeResourceCds ?? []) {
+        unique.add(cd);
+      }
+    }
     return [...unique].sort((a, b) => a.localeCompare(b, 'ja'));
   }, [sourceTemplates]);
 
@@ -127,14 +139,14 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-wrap items-start gap-2 overflow-auto">
+      <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-2 overflow-auto 2xl:grid-cols-[31rem_minmax(0,1fr)] 2xl:overflow-hidden">
         <KioskInspectionDrawingVisualLibrarySection
           previewVisuals={INSPECTION_DRAWING_PREVIEW_VISUAL_LIBRARY}
           onRegisterClick={() => undefined}
         />
 
         <section
-          className="flex w-[49rem] max-w-full shrink-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-950/45 p-1.5"
+          className="flex min-h-0 min-w-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-950/45 p-1.5"
           aria-labelledby="inspection-drawing-template-pane-heading"
         >
           <div className="flex flex-wrap items-center justify-between gap-2 px-1">
@@ -172,7 +184,7 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
             onOpen={() => setHistoryGroupKey(null)}
           />
 
-          <div className="max-h-[calc(100dvh-12rem)] overflow-auto rounded bg-slate-950/35 p-1">
+          <div className="min-h-0 flex-1 rounded bg-slate-950/35 p-1">
             <InspectionDrawingLibraryTemplateTable
               templates={visibleTemplateRows}
               resourceNameMap={resourceNameMap}

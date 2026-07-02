@@ -12,6 +12,7 @@ import { getAlertsDbDispatcher } from '../services/alerts/alerts-db-dispatcher.j
 import { getAlertsIngestor } from '../services/alerts/alerts-ingestor.js';
 import { loadAlertsDispatcherConfig } from '../services/alerts/alerts-config.js';
 import { getPhotoToolLabelScheduler } from '../services/tools/photo-tool-label/photo-tool-label.scheduler.js';
+import { getPartMeasurementDrawingOcrScheduler } from '../services/part-measurement/part-measurement-drawing-ocr.scheduler.js';
 
 export type PostListenSchedulerHandles = {
   alertsIngestor: ReturnType<typeof getAlertsIngestor>;
@@ -20,6 +21,7 @@ export type PostListenSchedulerHandles = {
   kioskDocOcrScheduler: ReturnType<typeof getKioskDocumentOcrScheduler>;
   gmailTrashCleanupScheduler: ReturnType<typeof getGmailTrashCleanupScheduler>;
   dueManagementTuningOrchestrator: ReturnType<typeof getDueManagementTuningOrchestrator>;
+  partMeasurementDrawingOcrScheduler: ReturnType<typeof getPartMeasurementDrawingOcrScheduler>;
 };
 
 /**
@@ -74,12 +76,17 @@ export async function startPostListenSchedulers(app: FastifyInstance): Promise<P
   photoToolLabelScheduler.start();
   logger.info('Photo tool label scheduler started');
 
+  const partMeasurementDrawingOcrScheduler = getPartMeasurementDrawingOcrScheduler();
+  await partMeasurementDrawingOcrScheduler.start();
+  logger.info('Part measurement drawing OCR scheduler started');
+
   return {
     alertsIngestor,
     alertsDbDispatcher,
     alertsDispatcher,
     kioskDocOcrScheduler,
     gmailTrashCleanupScheduler,
-    dueManagementTuningOrchestrator
+    dueManagementTuningOrchestrator,
+    partMeasurementDrawingOcrScheduler
   };
 }

@@ -1241,6 +1241,22 @@ HAVING COUNT(*) > 1;
 7. 一覧は **有効版のみ**が既定。必要なら **無効版も表示**で旧版を確認できる。
 8. 過去版を有効に戻す場合は一覧の **有効化** を使う。
 
+## 検査図面 OCRキャッシュ候補提示（2026-07-02）
+
+正本判断: [ADR-20260702](../decisions/ADR-20260702-part-measurement-drawing-ocr-cache.md) / KB: [KB-320 §OCRキャッシュ](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-ocrキャッシュ候補提示-2026-07-02)。
+
+1. deploy後、既存図面を処理する前に対象件数を確認する。
+   - `pnpm --filter @raspi-system/api backfill:part-measurement-drawing-ocr -- --dry-run`
+   - 必要なら `--limit` または `--visual-template-id` で対象を絞る。
+2. 問題なければ backfill を実行する。
+   - ローカル/検証: `pnpm --filter @raspi-system/api backfill:part-measurement-drawing-ocr -- --limit 20`
+   - 本番コンテナ内: `pnpm --filter @raspi-system/api backfill:part-measurement-drawing-ocr:prod -- --limit 20`
+3. キオスク **検査図面** → 既存 visual を選んで作成/改版し、丸数字を置く。
+4. 右ペインの基準値欄付近に OCR 候補チップが出ることを確認する。選択時に変わるのは対象点の **基準値**だけで、公差・座標・他点は変わらない。
+5. 失敗時は `GET /api/part-measurement/visual-templates/:id/ocr` で状態と `failureReason` を確認し、必要なら `POST /api/part-measurement/visual-templates/:id/ocr/retry` を実行する。
+
+注意: v1 は候補提示までで、自動確定しない。未保存ローカルアップロードは対象外で、保存済み visual の再利用/編集時に候補が使える。
+
 ## 確認・トラブル時
 
 - テンプレが無い・工程が合わない: [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) を参照。

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -39,12 +39,28 @@ const template: KioskInspectionDrawingTemplateSummaryDto = {
   itemCount: 12
 };
 
+const secondTemplate: KioskInspectionDrawingTemplateSummaryDto = {
+  ...template,
+  id: 'template-2',
+  fhincd: 'ABCDEFGHIJ-1',
+  resourceCd: 'R007',
+  name: '長めの図面名確認用',
+  visualTemplate: {
+    ...template.visualTemplate!,
+    id: 'visual-2',
+    name: '長めの図面名確認用'
+  },
+  siblingGroupId: null,
+  siblingGroup: null,
+  itemCount: 5
+};
+
 describe('InspectionDrawingLibraryTemplateTable', () => {
-  it('renders compact table columns and keeps resource chips on one row', () => {
+  it('splits templates into two compact tables and moves resource chips to the secondary row', () => {
     render(
       <MemoryRouter>
         <InspectionDrawingLibraryTemplateTable
-          templates={[template]}
+          templates={[template, secondTemplate]}
           resourceNameMap={{}}
           onHistoryClick={vi.fn()}
           lineageGroupKey={(row) => row.id}
@@ -55,25 +71,29 @@ describe('InspectionDrawingLibraryTemplateTable', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('table', { name: '検査図面テンプレート' })).toBeInTheDocument();
-    for (const header of ['品番', '図面名', '資源CD', '工程', '点', '更新', '操作']) {
-      expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument();
+    expect(screen.getAllByTestId('inspection-template-table-pane')).toHaveLength(2);
+    expect(screen.getAllByRole('table', { name: /検査図面テンプレート/ })).toHaveLength(2);
+    for (const header of ['品番', '図面名', '工程', '点', '更新']) {
+      expect(screen.getAllByRole('columnheader', { name: header })).toHaveLength(2);
     }
+    expect(screen.queryByRole('columnheader', { name: '資源CD' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: '操作' })).not.toBeInTheDocument();
     expect(screen.getByText('ABC-123')).toBeInTheDocument();
     expect(screen.getByText('7161テーブル')).toHaveAttribute('title', '7161テーブル');
     expect(screen.getByText('12')).toBeInTheDocument();
 
-    expect(screen.getByTestId('inspection-template-resource-chips')).toHaveClass('flex-nowrap');
+    expect(screen.getAllByTestId('inspection-template-resource-chips')[0]).toHaveClass('flex-nowrap');
     expect(screen.getByText('+1')).toBeInTheDocument();
   });
 
-  it('uses shortened action labels with compact button classes', () => {
+  it('uses shortened action labels in the secondary row and keeps history lineage keys', () => {
+    const onHistoryClick = vi.fn();
     render(
       <MemoryRouter>
         <InspectionDrawingLibraryTemplateTable
           templates={[template]}
           resourceNameMap={{}}
-          onHistoryClick={vi.fn()}
+          onHistoryClick={onHistoryClick}
           lineageGroupKey={(row) => row.id}
           editPath={() => '/edit'}
           printPath={() => '/print'}
@@ -82,12 +102,19 @@ describe('InspectionDrawingLibraryTemplateTable', () => {
       </MemoryRouter>
     );
 
+    expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('ml-auto');
+    expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('w-[7rem]');
+    expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('justify-end');
     for (const label of ['編集', '帳票', '雛形', '履歴']) {
       const action = screen.getByRole(label === '履歴' ? 'button' : 'link', { name: label });
-      expect(action).toHaveClass('min-h-6');
-      expect(action).toHaveClass('text-[0.68rem]');
+      expect(action).toHaveClass('min-h-5');
+      expect(action).toHaveClass('text-[0.58rem]');
     }
     expect(screen.getByRole('link', { name: '雛形' })).toHaveAttribute('title', '雛形新規');
+
+    fireEvent.click(screen.getByRole('button', { name: '履歴' }));
+
+    expect(onHistoryClick).toHaveBeenCalledWith('template-1');
   });
 
   it('renders loading empty state', () => {
