@@ -24,8 +24,8 @@ type PixelRect = {
   height: number;
 };
 
-const FULL_ROTATIONS: Array<0 | 90 | 180 | 270> = [0, 180];
-const TILE_ROTATIONS: Array<0 | 90 | 180 | 270> = [0];
+const FULL_ROTATIONS: Array<0 | 90 | 180 | 270> = [0, 90, 180, 270];
+const TILE_ROTATIONS: Array<0 | 90 | 180 | 270> = [0, 90, 270];
 const TILE_GRID = 3;
 const TILE_OVERLAP_RATIO = 0.16;
 const MAX_LONG_EDGE = 2400;
@@ -152,9 +152,12 @@ function mapBboxToOriginalRatios(input: {
 }
 
 async function renderPassImage(buffer: Buffer, pass: OcrPass): Promise<{ buffer: Buffer; width: number; height: number }> {
-  const rendered = await sharp(buffer, { failOn: 'none' })
-    .extract(pass.rect)
-    .rotate(pass.rotation)
+  const crop = sharp(buffer, { failOn: 'none' }).extract(pass.rect);
+  const source =
+    pass.rotation === 90 || pass.rotation === 270
+      ? sharp(await crop.toBuffer(), { failOn: 'none' }).rotate(pass.rotation)
+      : crop.rotate(pass.rotation);
+  const rendered = await source
     .resize({
       width: MAX_LONG_EDGE,
       height: MAX_LONG_EDGE,

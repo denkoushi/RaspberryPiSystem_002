@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
-export const PART_MEASUREMENT_DRAWING_OCR_VERSION = 'pm-drawing-ocr-v1';
+export const PART_MEASUREMENT_DRAWING_OCR_VERSION = 'pm-drawing-ocr-v2';
 export const PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_SCHEMA_VERSION = 1;
 export const PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_ENCODING = 'gzip+json';
 
