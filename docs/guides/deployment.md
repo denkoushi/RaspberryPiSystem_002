@@ -10,6 +10,14 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-02 · **セキュリティ堅牢化（loan認可・path traversal・Prismaエラー秘匿・PIN rate limit）** · **API + Web** · **Pi5 + Pi4×5 + Pi3 反映済**） {#security-hardening-audit-2026-07-02}
+
+- **変更概要（正本）**: [KB-393](../knowledge-base/KB-393-security-hardening-audit-2026-07.md) · PR **#948** · main **`b1172baf`**。残りの運用対応（秘密情報ローテ等 Batch C）は [Runbook](../runbooks/security-hardening-remediation.md)。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260702-205710-10848`** · summary success true · exitCode 0。PLAY RECAP は全 7 ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。Pi5 repo → `b1172baf`、`docker-api-1` healthy。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **実機（ターゲット・本番API）**: 無認証の `POST /tools/loans/return|cancel` · `DELETE /tools/loans/:id` · `GET /tools/loans/active?clientId=` はいずれも **401**、有効 `x-client-key` の `active` は **200**。写真 storage の path traversal（生 `%2e%2e` / `..%2f`、有効 key 付き）は **500 かつ `/etc/passwd` 漏洩なし**（封じ込めエラーでファイルアクセス遮断）。キオスク/管理フローは非回帰。
+
 ### 補足（2026-06-30 · **キオスク順位ボード 行クラスタ/手動順位幅/slot解除** · **Web** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-leaderboard-row-cluster-order-slot-toggle-2026-06-30}
 
 - **変更概要（正本）**: [KB-297 §card row emphasis layout](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05) · commit **`317a6aa0`** (`fix(kiosk): compact leaderboard row metadata`)

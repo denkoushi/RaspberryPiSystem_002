@@ -13,7 +13,7 @@
 
 ## When to use
 
-After the code-level fixes in KB-393 (Batch A/B) are deployed. These steps change secrets/config/runtime and **can break running kiosks if done carelessly**, so each is gated on explicit operator go-ahead and staged (change → verify → next). Do NOT run these automatically. Each item lists risk and a verification step.
+The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #948 → main `b1172baf`, 2026-07-02, real-device verify PASS 45/0/0). The items below are the remaining **Batch C** operator actions. They change secrets/config/runtime and **can break running kiosks if done carelessly**, so each is gated on explicit operator go-ahead and staged (change → verify → next). Do NOT run these automatically. Each item lists risk and a verification step. All items C-1..C-9 are **not yet started**.
 
 > Safety: take a DB/config backup before secret rotation. Do one item at a time and verify the kiosk borrow/return flow after each.
 
