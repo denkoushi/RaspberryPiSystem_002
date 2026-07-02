@@ -2,7 +2,7 @@
 title: KB-394 Kiosk drawing display and leaderboard decoration speedup
 tags: [kiosk, part-measurement, leaderboard, performance, cache]
 audience: [開発者]
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 category: knowledge-base
 ---
 
@@ -22,6 +22,8 @@ category: knowledge-base
 ## Context
 
 ユーザー要望（2026-07-02）: キオスクの「順位ボード」「検査図面」「自主検査」で表示する図面の表示速度向上、および順位ボードのアイテム表示速度向上。
+
+2026-07-03 handoff update: 実装 commit `2ceb79c1` は `origin/main` へ反映済み。GitHub Actions、標準デプロイ、Pi 実機検証、対象 API の本番確認まで完了している。
 
 ## Symptoms Or Trigger
 
@@ -82,15 +84,34 @@ category: knowledge-base
 | `apps/web`: `usePartMeasurementDrawingBlobUrl.test.ts` | 5 passed |
 | `apps/web`: `tsc -b` | PASS |
 
+### Post-Merge / Production Validation
+
+2026-07-02 から 2026-07-03 にかけて、commit `2ceb79c1`（`fix(kiosk): cache drawing assets and leaderboard decorations`）を `origin/main` に push し、CI と実機反映を確認した。
+
+| Check | Result |
+|-------|--------|
+| GitHub Actions CI run `28592650438` | success（`lint-build-unit`, `api-db-and-infra`, `e2e-smoke`, `security-docker`, `e2e-tests`） |
+| Secret scan `28592650510` | success |
+| CodeQL `28592650528` | success |
+| Pages build/deploy `28592648491` | success |
+| Standard deploy | success。Run ID `20260702-222623-917`、remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260702-222623-917.log` |
+| Deploy recap | all hosts `failed=0` / `unreachable=0`（Pi5、全 Pi4、Pi3） |
+| `verify-phase12-real.sh` | `PASS: 45`, `WARN: 0`, `FAIL: 0` |
+| Pi5 health | `/api/system/health` returned `status: ok`; `docker-api-1` and `docker-db-1` healthy, `docker-web-1` running |
+| Production drawing API | existing drawing returned first `200`, `Cache-Control: private, max-age=86400, immutable`, stable `ETag`, then `If-None-Match` returned `304` |
+| Production leaderboard decorations API | 80 requested rows returned `rowDecorations=80`; consecutive POSTs succeeded; sample row resolved machine name and `hasSelfInspectionDrawing=false` |
+
+Observed production drawing path used for cache verification: `/api/storage/part-measurement-drawings/403c2bf4-ba0c-488c-aeb0-3b579981d687.jpg`.
+
 ## Open Items
 
-- **Pi 実機での体感確認**（キオスク 3 画面の図面表示、順位ボード装飾の後追い表示）は未実施。デプロイはユーザー指示待ち。
 - **図面サムネイル/リサイズ配信**（原寸最大 12MiB のまま）は未着手の追加改善候補。
 - **装飾 per-batch の client-perf 計測**（[KB-369](./KB-369-leader-order-board-api-internal-latency.md) / [KB-374](./KB-374-leaderboard-board-continue-cursor-contract.md) の推奨）は未実装。
+- **キオスク 3 画面の人手体感確認**（現場の実操作で図面再表示と順位ボード装飾追従を確認）は、API/サービス実機検証後の任意フォローアップ。
 
 ## References
 
 - [KB-369 · 順位ボード API 内部レイテンシ](./KB-369-leader-order-board-api-internal-latency.md)
 - [KB-374 · board/continue 契約](./KB-374-leaderboard-board-continue-cursor-contract.md)
 - [KB-392 · 順位ボード現行契約の正本](./KB-392-kiosk-leaderboard-spec-source-of-truth.md)
-- 変更ファイル一覧: 作業時点の `git status` 参照（コミット前）
+- Implementation commit: `2ceb79c1`
