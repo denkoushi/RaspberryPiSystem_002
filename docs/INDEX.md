@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-03 · 組立トルク管理 MVP + 管理UI）
+
+- **組立トルク管理**: 組立専用DB/API、手順書ライブラリ、テンプレート別画面編集、作業開始/締付記録、Pi5 + `raspi4-sessaku-01` 限定デプロイ済。**正本**: [Plan](./plans/kiosk-assembly-torque-management-mvp.md)
+
 ### 最新アップデート（2026-07-02 · キオスク検査図面 OCR キャッシュ）
 
 - **丸数字配置時の基準値候補**: `PartMeasurementVisualTemplate` の保存済み図面は複製せず、OCR由来の座標付き数値トークンだけを `PartMeasurementDrawingOcrCache` に保持。UIは候補提示のみで自動確定しない。**記録**: [ADR-20260702](./decisions/ADR-20260702-part-measurement-drawing-ocr-cache.md)
