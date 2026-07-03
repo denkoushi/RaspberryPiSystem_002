@@ -1,5 +1,11 @@
 import clsx from 'clsx';
 
+import {
+  kioskButtonBaseClassName,
+  kioskButtonPrimaryClassName,
+  kioskButtonSecondaryClassName
+} from '../kiosk/kioskTheme';
+
 export type SelfInspectionKioskButtonSize = 'default' | 'compact' | 'icon' | 'actionCompact';
 
 export type SelfInspectionKioskButtonTone = 'default' | 'inactive';
@@ -9,7 +15,7 @@ export type SelfInspectionKioskButtonClassOptions = {
   size?: SelfInspectionKioskButtonSize;
   wide?: boolean;
   pressed?: boolean;
-  /** 押せる状態の強調（青外枠）。業務フローとは無関係な見た目フラグ */
+  /** 押せる状態の強調（emerald 塗り）。業務フローとは無関係な見た目フラグ */
   highlighted?: boolean;
   /** 操作可能だが OFF / 非選択の見た目（disabled とは別） */
   tone?: SelfInspectionKioskButtonTone;
@@ -22,40 +28,57 @@ const sizeClass: Record<SelfInspectionKioskButtonSize, string> = {
   actionCompact: 'min-h-6 px-4 py-0 text-[15px] leading-none'
 };
 
-const enabledVisual =
-  'rounded-md border-0 bg-slate-700 font-semibold text-white transition-colors hover:bg-slate-600';
+const actionCompactPrimaryVisual = clsx(
+  'rounded-md font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40'
+);
+
+const actionCompactSecondaryVisual = clsx(
+  'rounded-md font-semibold border border-white/20 bg-white/5 text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40'
+);
+
+const actionCompactDisabledVisual = clsx(
+  'cursor-not-allowed rounded-md border border-white/20 bg-white/5 font-semibold text-white/40 opacity-40'
+);
 
 /** 操作可能だが inactive（例: 手元カメラ OFF）。disabled 属性は付けない */
-const inactiveVisual =
-  'rounded-md border-0 bg-slate-800/50 font-semibold text-white/40 transition-colors hover:bg-slate-800/65 hover:text-white/55';
+const inactiveVisual = clsx(
+  kioskButtonBaseClassName,
+  'border border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/55'
+);
 
-/** ring / shadow のみ。border 幅は変えずレイアウトを維持する */
-const highlightedAccent =
-  'ring-2 ring-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.55)]';
+const disabledVisual = clsx(
+  kioskButtonBaseClassName,
+  'border border-white/20 bg-white/5 text-white/40 opacity-40'
+);
 
-const disabledVisual =
-  'cursor-not-allowed rounded-md border-0 bg-slate-800/50 font-semibold text-white/40';
+function resolveBaseVisual(
+  options: SelfInspectionKioskButtonClassOptions,
+  size: SelfInspectionKioskButtonSize
+): string {
+  const compact = size === 'actionCompact';
+  if (options.disabled) {
+    return compact ? actionCompactDisabledVisual : disabledVisual;
+  }
+  if (options.highlighted) {
+    return compact ? actionCompactPrimaryVisual : kioskButtonPrimaryClassName;
+  }
+  if (options.tone === 'inactive') {
+    return inactiveVisual;
+  }
+  return compact ? actionCompactSecondaryVisual : kioskButtonSecondaryClassName;
+}
 
 /**
- * 自主検査セッション専用ボタン見た目（押せる＝1形・押せない＝1形・強調＝青外枠のみ）。
- * opacity/grayscale による無効表現は使わない。
+ * 自主検査セッション専用ボタン見た目（キオスク共通文法: secondary / primary-emerald / disabled-opacity）。
  */
 export function selfInspectionKioskButtonClass(
   options: SelfInspectionKioskButtonClassOptions = {}
 ): string {
   const size = options.size ?? 'default';
-  const tone = options.tone ?? 'default';
-  const showHighlight = Boolean(options.highlighted && !options.disabled);
-  const baseVisual = options.disabled
-    ? disabledVisual
-    : tone === 'inactive'
-      ? inactiveVisual
-      : enabledVisual;
   return clsx(
     'inline-flex items-center justify-center',
     sizeClass[size],
-    baseVisual,
-    showHighlight && highlightedAccent,
+    resolveBaseVisual(options, size),
     options.wide && 'min-w-[11rem] px-5'
   );
 }

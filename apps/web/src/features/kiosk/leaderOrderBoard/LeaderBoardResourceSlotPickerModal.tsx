@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 
+import { kioskButtonSecondaryClassName, kioskPanelClassName, kioskSelectClassName } from '../kioskTheme';
 import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manualOrderOverviewTypography';
 
 import {
@@ -44,15 +45,16 @@ export function LeaderBoardResourceSlotPickerModal({
     >
       <div
         className={clsx(
-          'flex max-h-[min(90vh,720px)] w-full max-w-3xl flex-col rounded-lg border border-white/15 bg-slate-900 shadow-xl',
+          kioskPanelClassName,
+          'flex max-h-[min(90vh,720px)] w-full max-w-3xl flex-col bg-slate-900',
           KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS
         )}
       >
         <div className="border-b border-white/10 px-4 py-3">
-          <h2 id="leader-board-slot-modal-title" className="text-sm font-semibold text-cyan-200">
+          <h2 id="leader-board-slot-modal-title" className="text-sm font-semibold text-sky-200">
             順位ボードの資源スロット
           </h2>
-          <p className="mt-1 text-xs text-white/55">
+          <p className="mt-1 text-xs text-white/60">
             各スロットに資源 CD を割り当てます。一覧の取得単位はスロット設定に従います（端末の手動順番割当とは別）。
           </p>
         </div>
@@ -63,7 +65,7 @@ export function LeaderBoardResourceSlotPickerModal({
             <select
               value={slotCount}
               onChange={(e) => onSlotCountChange(Number(e.target.value))}
-              className="rounded border border-white/20 bg-slate-950 px-2 py-1 text-white"
+              className={clsx(kioskSelectClassName, 'px-2 text-xs')}
             >
               {Array.from(
                 { length: LEADER_BOARD_MAX_RESOURCE_SLOTS - LEADER_BOARD_MIN_RESOURCE_SLOTS + 1 },
@@ -84,7 +86,7 @@ export function LeaderBoardResourceSlotPickerModal({
                 key={slotIndex}
                 className="rounded border border-white/10 bg-slate-950/50 px-3 py-2"
               >
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-white/50">
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-white/60">
                   スロット {slotIndex + 1}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -94,7 +96,7 @@ export function LeaderBoardResourceSlotPickerModal({
                       const v = e.target.value.trim();
                       assignSlotCd(slotIndex, v.length > 0 ? v : null);
                     }}
-                    className="min-w-[12rem] flex-1 rounded border border-white/20 bg-slate-900 px-2 py-1.5 font-mono text-xs text-white"
+                    className={clsx(kioskSelectClassName, 'min-w-[12rem] flex-1 font-mono text-xs')}
                     aria-label={`スロット ${slotIndex + 1} の資源 CD`}
                   >
                     <option value="">（未設定）</option>
@@ -114,7 +116,7 @@ export function LeaderBoardResourceSlotPickerModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-white/25 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10"
+            className={clsx(kioskButtonSecondaryClassName, 'text-xs')}
           >
             閉じる
           </button>

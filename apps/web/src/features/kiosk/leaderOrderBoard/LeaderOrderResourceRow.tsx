@@ -99,11 +99,11 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
       : row.selfInspectionStatus === 'review_pending'
         ? 'border-red-300 bg-red-500 text-white'
       : row.selfInspectionStatus === 'in_progress'
-        ? 'border-yellow-300 bg-yellow-400 text-slate-950'
+        ? 'border-amber-300 bg-amber-400 text-slate-950'
         : 'border-white/70 bg-white text-slate-950';
   const dueDateClass = clsx(
     'shrink-0 font-mono text-[20px] leading-tight',
-    manual ? 'font-medium text-amber-200' : 'text-cyan-300/90'
+    manual ? 'font-medium text-amber-200' : 'text-sky-300/90'
   );
 
   return (
@@ -120,10 +120,10 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
           <button
             type="button"
             className={clsx(
-              'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[11px] shadow hover:bg-white/5 disabled:opacity-60',
+              'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[11px] hover:bg-white/5 disabled:opacity-60',
               row.isCompleted
                 ? 'border-slate-400 bg-slate-800 text-white/80'
-                : 'border-white/80 bg-slate-900 text-white'
+                : 'border-emerald-400 bg-emerald-600/20 text-emerald-100'
             )}
             aria-label={row.isCompleted ? '未完了に戻す' : '完了にする'}
             disabled={completePending}
@@ -178,8 +178,8 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
             className={clsx(
               'flex h-7 w-7 shrink-0 items-center justify-center rounded border transition-colors disabled:opacity-50',
               hasNote
-                ? 'border-2 border-yellow-400 bg-gradient-to-br from-yellow-500/55 via-amber-600/45 to-amber-800/40 text-amber-50 shadow-[0_0_0_1px_rgba(253,224,71,0.5),0_0_14px_rgba(250,204,21,0.35),inset_0_1px_0_rgba(255,255,255,0.15)] hover:from-yellow-500/65 hover:to-amber-800/50 [&_svg]:drop-shadow-[0_0_3px_rgba(254,252,232,0.5)]'
-                : 'border-white/20 bg-white/[0.07] text-white/40 hover:bg-white/15 hover:text-white/55'
+                ? 'border-amber-400 bg-amber-500/40 text-amber-50 hover:bg-amber-500/50'
+                : 'border-white/20 bg-white/[0.07] text-white/60 hover:bg-white/15 hover:text-white/70'
             )}
           >
             <KioskPencilGlyph />
@@ -193,7 +193,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
               onOpenInspectionWorkflow?.(row);
             }}
             className={clsx(
-              'flex h-7 min-w-7 shrink-0 items-center justify-center rounded border px-2 text-[10px] font-bold transition-colors',
+              'flex h-7 min-w-7 shrink-0 items-center justify-center rounded border px-2 text-xs font-bold transition-colors',
               selfInspectionStatusClass
             )}
             aria-label="検査方法を選択"
@@ -212,7 +212,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
               e.stopPropagation();
               onOpenSplitModal(row);
             }}
-            className="shrink-0 rounded border border-violet-300/50 px-1.5 py-0.5 text-[10px] text-violet-100 hover:bg-violet-500/20 disabled:opacity-50"
+            className="shrink-0 rounded border border-violet-300/50 px-1.5 py-0.5 text-xs text-violet-100 hover:bg-violet-500/20 disabled:opacity-50"
           >
             分割
           </button>

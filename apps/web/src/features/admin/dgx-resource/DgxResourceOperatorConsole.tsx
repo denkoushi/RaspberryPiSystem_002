@@ -7,7 +7,7 @@ import { useConfirm } from '../../../contexts/ConfirmContext';
 
 import { formatUnifiedMemDisplay } from './dgxResourceKpiStripModel';
 import { DgxResourcePrimaryScenarioFlow } from './DgxResourcePrimaryScenarioFlow';
-import { serviceStatusDotTokens } from './dgxResourceUi';
+import { serviceStatusDotTokens, statusBadgeTokens } from './dgxResourceUi';
 
 import type {
   DgxResourceActionBody,
@@ -57,16 +57,7 @@ function statusLabel(status: DgxServiceStatusKind): string {
 }
 
 function statusBadgeClass(status: DgxServiceStatusKind): string {
-  switch (status) {
-    case 'running':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    case 'degraded':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
-    case 'stopped':
-      return 'border-slate-200 bg-slate-50 text-slate-600';
-    default:
-      return 'border-slate-200 bg-white text-slate-500';
-  }
+  return statusBadgeTokens(status);
 }
 
 function ownerLabel(owner: string | null | undefined): string {
@@ -208,64 +199,64 @@ export function DgxResourceOperatorConsole({
   return (
     <section className="flex min-h-0 flex-col gap-2">
       <header className="flex min-h-0 flex-wrap items-center justify-between gap-2 leading-none">
-        <h1 className="text-xl font-bold leading-none text-slate-950">DGX リソース</h1>
-        <time className="font-mono text-xs font-semibold leading-none text-slate-500" dateTime={overview.generatedAt}>
+        <h1 className="text-xl font-bold leading-none text-white">DGX リソース</h1>
+        <time className="font-mono text-xs font-semibold leading-none text-white/60" dateTime={overview.generatedAt}>
           {generatedAt}
         </time>
       </header>
 
       <div
-        className="overflow-hidden rounded-lg border border-slate-300 bg-white text-slate-950 shadow-[0_16px_48px_rgba(16,24,40,0.08)]"
+        className="overflow-hidden rounded-lg border border-white/15 bg-slate-900/60 text-white"
         aria-label="DGX 状態と操作"
       >
-        <div className="grid grid-cols-1 divide-y divide-slate-200 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-[minmax(170px,0.75fr)_minmax(300px,1.8fr)_minmax(190px,0.9fr)_minmax(150px,0.7fr)_minmax(180px,0.8fr)]">
+        <div className="grid grid-cols-1 divide-y divide-white/15 md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-[minmax(170px,0.75fr)_minmax(300px,1.8fr)_minmax(190px,0.9fr)_minmax(150px,0.7fr)_minmax(180px,0.8fr)]">
           <div className="grid min-h-[5.375rem] content-center gap-1.5 px-4 py-3">
-            <div className="text-xs font-bold uppercase text-slate-500">Current State</div>
-            <div className={clsx('text-2xl font-bold leading-tight', runtime?.businessReady ? 'text-emerald-700' : 'text-slate-900')}>
+            <div className="text-xs font-bold uppercase text-white/60">Current State</div>
+            <div className={clsx('text-2xl font-bold leading-tight', runtime?.businessReady ? 'text-emerald-300' : 'text-white')}>
               {currentStateLabel(overview, operator)}
             </div>
-            <div className="text-xs font-semibold text-slate-500">
+            <div className="text-xs font-semibold text-white/60">
               owner: {ownerLabel(runtime?.resourceOwner)} / policy: {operator.operatorSummary.policyLabelJa}
             </div>
           </div>
 
           <div className="grid min-h-[5.375rem] content-center gap-1.5 px-4 py-3">
-            <div className="text-xs font-bold uppercase text-slate-500">Model</div>
-            <div className="break-words text-lg font-bold leading-tight text-slate-900" title={modelText}>
+            <div className="text-xs font-bold uppercase text-white/60">Model</div>
+            <div className="break-words text-lg font-bold leading-tight text-white" title={modelText}>
               {modelText}
             </div>
-            <div className="break-words text-xs font-semibold text-slate-500">{modelMeta}</div>
+            <div className="break-words text-xs font-semibold text-white/60">{modelMeta}</div>
           </div>
 
           <div className="grid min-h-[5.375rem] content-center gap-1.5 px-4 py-3">
-            <div className="text-xs font-bold uppercase text-slate-500">Memory</div>
-            <div className="text-lg font-bold leading-tight text-slate-900">{memoryText}</div>
-            <div className="text-xs font-bold leading-tight text-slate-600">{startupFitText}</div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden>
-              <div className="h-full rounded-full bg-blue-600" style={{ width: `${memoryPct ?? 0}%` }} />
+            <div className="text-xs font-bold uppercase text-white/60">Memory</div>
+            <div className="text-lg font-bold leading-tight text-white">{memoryText}</div>
+            <div className="text-xs font-bold leading-tight text-white/70">{startupFitText}</div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/10" aria-hidden>
+              <div className="h-full rounded-full bg-emerald-500" style={{ width: `${memoryPct ?? 0}%` }} />
             </div>
           </div>
 
           <div className="grid min-h-[5.375rem] content-center gap-1.5 px-4 py-3">
-            <div className="text-xs font-bold uppercase text-slate-500">GPU</div>
-            <div className="text-lg font-bold leading-tight text-slate-900">{formatPct(kpis.gpuUtilPct)}</div>
-            <div className="truncate text-xs font-semibold text-slate-500">
+            <div className="text-xs font-bold uppercase text-white/60">GPU</div>
+            <div className="text-lg font-bold leading-tight text-white">{formatPct(kpis.gpuUtilPct)}</div>
+            <div className="truncate text-xs font-semibold text-white/60">
               {formatTemperature(kpis.gpuTemperatureC)} / {formatPower(kpis.gpuPowerDrawW)}
             </div>
           </div>
 
           <div className="grid min-h-[5.375rem] content-center gap-1.5 px-4 py-3 md:col-span-2 xl:col-span-1">
-            <div className="text-xs font-bold uppercase text-slate-500">Alerts</div>
-            <div className={clsx('text-lg font-bold leading-tight', alerts.length > 0 ? 'text-amber-700' : 'text-slate-900')}>
+            <div className="text-xs font-bold uppercase text-white/60">Alerts</div>
+            <div className={clsx('text-lg font-bold leading-tight', alerts.length > 0 ? 'text-amber-300' : 'text-white')}>
               {alerts.length > 0 ? `${alerts.length}件` : 'なし'}
             </div>
-            <div className="truncate text-xs font-semibold text-slate-500" title={alerts.map((alert) => `${alert.title}: ${alert.detail}`).join('\n')}>
+            <div className="truncate text-xs font-semibold text-white/60" title={alerts.map((alert) => `${alert.title}: ${alert.detail}`).join('\n')}>
               {alerts[0]?.title ?? 'all checks normal'}
             </div>
           </div>
         </div>
 
-          <div className="grid gap-4 border-t border-slate-200 p-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="grid gap-4 border-t border-white/15 p-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <DgxResourcePrimaryScenarioFlow
             operator={operator}
             modelProfiles={overview.modelProfiles}
@@ -276,10 +267,10 @@ export function DgxResourceOperatorConsole({
             onControlUiError={onControlUiError}
           />
 
-          <div className="grid content-start gap-2 border-t border-slate-200 pt-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0" aria-label="補助状態">
+          <div className="grid content-start gap-2 border-t border-white/15 pt-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0" aria-label="補助状態">
             {workloads.map((workload) => (
               <div key={workload.id} className="flex min-h-8 items-center justify-between gap-3 text-sm font-semibold">
-                <span className="inline-flex min-w-0 items-center gap-2 text-slate-600">
+                <span className="inline-flex min-w-0 items-center gap-2 text-white/70">
                   <span className={clsx('h-2 w-2 shrink-0 rounded-full', serviceStatusDotTokens(workload.status))} aria-hidden />
                   <span className="truncate">{compactWorkloadLabel(workload)}</span>
                 </span>
@@ -288,7 +279,7 @@ export function DgxResourceOperatorConsole({
                 </span>
               </div>
             ))}
-            <div className="mt-2 border-t border-slate-200 pt-3">
+            <div className="mt-2 border-t border-white/15 pt-3">
               <Button
                 type="button"
                 variant="danger"
@@ -303,7 +294,7 @@ export function DgxResourceOperatorConsole({
                   role="status"
                   className={clsx(
                     'mt-2 break-words text-xs font-bold leading-snug',
-                    releaseNote.tone === 'success' ? 'text-emerald-700' : 'text-red-700'
+                    releaseNote.tone === 'success' ? 'text-emerald-300' : 'text-red-300'
                   )}
                 >
                   {releaseNote.message}

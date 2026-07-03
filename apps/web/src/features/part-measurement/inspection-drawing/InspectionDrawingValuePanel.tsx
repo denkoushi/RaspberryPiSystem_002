@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Input } from '../../../components/ui/Input';
+import { kioskInputClassName } from '../../../features/kiosk/kioskTheme';
 
 import {
   inspectionDrawingBoundedSelectShellClassName,
@@ -136,7 +136,7 @@ export function InspectionDrawingValuePanel({
   const toleranceClassName = isSelfInspectionOptions ? 'text-2xl text-white/80' : 'text-sm text-white/70';
 
   const manualInputField = (
-    <Input
+    <input
       value={point.testValue}
       onChange={(e) => {
         setDimensionTenthsBase(null);
@@ -156,7 +156,7 @@ export function InspectionDrawingValuePanel({
       }}
       disabled={readOnly}
       inputMode="decimal"
-      className="w-full text-slate-900"
+      className={kioskInputClassName}
       autoFocus={!showDropdown}
       key={
         onCommitValue
@@ -181,7 +181,7 @@ export function InspectionDrawingValuePanel({
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded border border-white/20 bg-slate-900/90 p-4 text-white shadow-lg">
+    <div className="flex flex-col gap-3 rounded-lg border border-white/15 bg-slate-900/60 p-4 text-white">
       <div>
         <p className="text-lg font-bold">
           {point.name || '測定点'}（No.{point.markerNo}）
@@ -240,7 +240,7 @@ export function InspectionDrawingValuePanel({
                     key={digit}
                     type="button"
                     disabled={readOnly || (!dimensionTenthsBase && !point.testValue.trim())}
-                    className="h-11 rounded border border-white/15 bg-slate-100 text-lg font-bold text-slate-950 shadow-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="min-h-11 rounded-md border border-white/20 bg-slate-950/60 text-lg font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                     onClick={() => handleDimensionHundredthsClick(digit)}
                   >
                     {digit}

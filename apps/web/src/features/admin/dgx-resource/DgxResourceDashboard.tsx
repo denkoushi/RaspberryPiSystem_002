@@ -127,14 +127,14 @@ function compactStatusLabel(status: DgxServiceStatusKind | undefined): string {
 function detailDotClass(status: DgxServiceStatusKind | 'event' | undefined): string {
   switch (status) {
     case 'running':
-      return 'bg-emerald-700';
+      return 'bg-emerald-400';
     case 'degraded':
     case 'event':
-      return 'bg-amber-500';
+      return 'bg-amber-400';
     case 'stopped':
-      return 'bg-slate-400';
+      return 'bg-slate-500';
     default:
-      return 'bg-slate-400';
+      return 'bg-slate-500';
   }
 }
 
@@ -187,17 +187,17 @@ function profileBadges(profile: DgxBusinessModelProfileApi, activeProfileId?: st
 function profileBadgeClass(tone: ProfileBadge['tone']): string {
   switch (tone) {
     case 'active':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+      return 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300';
     case 'recommended':
-      return 'border-sky-200 bg-sky-50 text-sky-700';
+      return 'border-sky-400/30 bg-sky-500/15 text-sky-300';
     case 'business':
-      return 'border-indigo-200 bg-indigo-50 text-indigo-700';
+      return 'border-violet-400/30 bg-violet-500/15 text-violet-300';
     case 'available':
-      return 'border-slate-200 bg-white text-slate-600';
+      return 'border-white/20 bg-white/5 text-white/70';
     case 'warning':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
+      return 'border-amber-400/30 bg-amber-500/15 text-amber-300';
     default:
-      return 'border-slate-200 bg-slate-50 text-slate-500';
+      return 'border-white/20 bg-white/5 text-white/60';
   }
 }
 
@@ -319,9 +319,9 @@ export function DgxResourceDashboard() {
   if (!overview) {
     return (
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-2 text-base">
-        <h1 className="text-xl font-bold text-slate-950">DGX リソース</h1>
-        {overviewError ? <p className="text-sm text-red-700">{overviewError}</p> : null}
-        <p className="text-sm text-slate-500">{overviewQuery.isLoading ? '読み込み中…' : 'データなし'}</p>
+        <h1 className="text-xl font-bold text-white">DGX リソース</h1>
+        {overviewError ? <p className="text-sm text-red-300">{overviewError}</p> : null}
+        <p className="text-sm text-white/60">{overviewQuery.isLoading ? '読み込み中…' : 'データなし'}</p>
       </div>
     );
   }
@@ -354,8 +354,8 @@ export function DgxResourceDashboard() {
     clsx(
       'rounded-md px-3 py-1.5 text-sm font-semibold transition',
       detailTab === tab
-        ? 'bg-slate-950 text-white'
-        : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+        ? 'bg-emerald-600 text-white'
+        : 'border border-white/20 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white'
     );
 
   return (
@@ -373,29 +373,29 @@ export function DgxResourceDashboard() {
           }}
         />
       ) : (
-        <section className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-          <h1 className="text-xl font-bold text-slate-950">DGX リソース</h1>
-          <p className="mt-2 text-sm text-amber-800">
+        <section className="rounded-lg border border-amber-400/30 bg-amber-500/15 p-3">
+          <h1 className="text-xl font-bold text-white">DGX リソース</h1>
+          <p className="mt-2 text-sm text-amber-300">
             API が運用者向け overview（operator）を返していません。Pi5 API を更新してください。
           </p>
         </section>
       )}
 
       <div className="space-y-1">
-        {overviewError ? <p className="text-sm text-red-700">{overviewError}</p> : null}
+        {overviewError ? <p className="text-sm text-red-300">{overviewError}</p> : null}
         {actionError ? (
-          <p className="text-sm font-semibold text-red-700" role="alert">
+          <p className="text-sm font-semibold text-red-300" role="alert">
             {actionError}
           </p>
         ) : null}
       </div>
 
       {scenarioPending ? (
-        <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-800" role="status">
+        <p className="rounded-md border border-sky-400/30 bg-sky-500/15 px-3 py-2 text-sm font-semibold text-sky-300" role="status">
           {businessReturnPreparing || businessReturnStoragePending ? (
             <>
               業務復帰中
-              <span className="mx-2 text-sky-300">/</span>
+              <span className="mx-2 text-sky-400/50">/</span>
               DGX 側でモデルをロードしています
             </>
           ) : (
@@ -410,16 +410,16 @@ export function DgxResourceDashboard() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)]">
-        <section className="overflow-hidden rounded-lg border border-slate-300 bg-white" aria-label="モデルプロファイル">
-          <div className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-200 px-4">
-            <h2 className="text-sm font-bold text-slate-950">モデルプロファイル</h2>
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+        <section className="overflow-hidden rounded-lg border border-white/15 bg-slate-900/60" aria-label="モデルプロファイル">
+          <div className="flex min-h-12 items-center justify-between gap-3 border-b border-white/15 px-4">
+            <h2 className="text-sm font-bold text-white">モデルプロファイル</h2>
+            <span className="rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-bold text-emerald-300">
               {profileStatus}
             </span>
           </div>
           <div className="grid">
             {profileRows.length === 0 ? (
-              <div className="grid min-h-11 items-center px-4 text-sm font-semibold text-slate-500">
+              <div className="grid min-h-11 items-center px-4 text-sm font-semibold text-white/60">
                 モデルプロファイル未取得
               </div>
             ) : (
@@ -430,20 +430,20 @@ export function DgxResourceDashboard() {
                 return (
                   <div
                     key={profile.id}
-                    className="grid min-h-12 grid-cols-[minmax(260px,1.2fr)_minmax(180px,0.8fr)_minmax(220px,auto)] items-center gap-3 border-b border-slate-200 px-4 py-2 text-sm font-semibold last:border-b-0 max-md:grid-cols-1 max-md:gap-1"
+                    className="grid min-h-12 grid-cols-[minmax(260px,1.2fr)_minmax(180px,0.8fr)_minmax(220px,auto)] items-center gap-3 border-b border-white/15 px-4 py-2 text-sm font-semibold last:border-b-0 max-md:grid-cols-1 max-md:gap-1"
                   >
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className={clsx('h-2 w-2 shrink-0 rounded-full', active ? 'bg-emerald-700' : 'bg-slate-400')} aria-hidden />
-                      <span className="min-w-0 break-words text-slate-950" title={profile.displayNameJa}>{profile.displayNameJa}</span>
+                      <span className={clsx('h-2 w-2 shrink-0 rounded-full', active ? 'bg-emerald-400' : 'bg-slate-500')} aria-hidden />
+                      <span className="min-w-0 break-words text-white" title={profile.displayNameJa}>{profile.displayNameJa}</span>
                     </div>
-                    <span className="min-w-0 break-words text-slate-500" title={`${subtitle} / ${profile.id}`}>
+                    <span className="min-w-0 break-words text-white/60" title={`${subtitle} / ${profile.id}`}>
                       {subtitle}
                     </span>
                     <div className="flex min-w-0 flex-wrap justify-end gap-1 max-md:justify-start">
                       {badges.map((badge) => (
                         <span
                           key={`${profile.id}-${badge.label}`}
-                          className={clsx('rounded-full border px-2 py-0.5 text-[11px] font-bold leading-tight', profileBadgeClass(badge.tone))}
+                          className={clsx('rounded-full border px-2 py-0.5 text-xs font-bold leading-tight', profileBadgeClass(badge.tone))}
                         >
                           {badge.label}
                         </span>
@@ -456,10 +456,10 @@ export function DgxResourceDashboard() {
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-lg border border-slate-300 bg-white" aria-label="詳細">
-          <div className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-200 px-4">
-            <h2 className="text-sm font-bold text-slate-950">詳細</h2>
-            <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-700">
+        <section className="overflow-hidden rounded-lg border border-white/15 bg-slate-900/60" aria-label="詳細">
+          <div className="flex min-h-12 items-center justify-between gap-3 border-b border-white/15 px-4">
+            <h2 className="text-sm font-bold text-white">詳細</h2>
+            <span className="rounded-full border border-white/20 bg-white/5 px-2.5 py-1 text-xs font-bold text-white/70">
               {detailRows.length}
             </span>
           </div>
@@ -467,10 +467,10 @@ export function DgxResourceDashboard() {
             {detailRows.map((row) => (
               <div
                 key={row.key}
-                className="grid min-h-11 grid-cols-[minmax(120px,0.8fr)_minmax(0,1.2fr)_auto] items-center gap-3 border-b border-slate-200 px-4 text-sm font-semibold last:border-b-0"
+                className="grid min-h-11 grid-cols-[minmax(120px,0.8fr)_minmax(0,1.2fr)_auto] items-center gap-3 border-b border-white/15 px-4 text-sm font-semibold last:border-b-0"
               >
-                <span className="text-slate-950">{row.label}</span>
-                <span className="min-w-0 truncate text-slate-500" title={row.value}>{row.value}</span>
+                <span className="text-white">{row.label}</span>
+                <span className="min-w-0 truncate text-white/60" title={row.value}>{row.value}</span>
                 <span className={clsx('h-2 w-2 rounded-full', detailDotClass(row.status))} aria-hidden />
               </div>
             ))}
@@ -520,9 +520,9 @@ export function DgxResourceDashboard() {
             <DgxResourcePreflightPanel overview={overview} />
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
               {viewModel.detailRows.map((row) => (
-                <div key={row.key} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2" title={row.hint}>
-                  <div className="text-xs text-slate-500">{row.label}</div>
-                  <div className="mt-1 truncate text-sm font-semibold text-slate-950">{row.value}</div>
+                <div key={row.key} className="rounded-md border border-white/15 bg-white/5 px-3 py-2" title={row.hint}>
+                  <div className="text-xs text-white/60">{row.label}</div>
+                  <div className="mt-1 truncate text-sm font-semibold text-white">{row.value}</div>
                 </div>
               ))}
             </div>
@@ -582,7 +582,7 @@ export function DgxResourceDashboard() {
           <div id="dgx-resource-logs-tab" role="tabpanel" className="space-y-3">
             <DgxResourceEventsTimeline events={events} />
             {overview.notes.length > 0 ? (
-              <div className="space-y-1 text-xs text-slate-500">
+              <div className="space-y-1 text-xs text-white/60">
                 {overview.notes.map((line) => (
                   <div key={line}>{line}</div>
                 ))}

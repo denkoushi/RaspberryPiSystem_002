@@ -25,7 +25,7 @@ describe('KioskActiveLoanCard', () => {
     onCancel: noop,
   };
 
-  it('ルートに固定外寸（248px）とレイアウトモジュールのクラスを付与する', () => {
+  it('ルートに固定外寸（260px）とレイアウトモジュールのクラスを付与する', () => {
     render(<KioskActiveLoanCard {...baseProps} />);
     const root = screen.getByTestId('kiosk-active-loan-card');
     expect(root.className).toContain(kioskActiveLoanCardRootClassName);

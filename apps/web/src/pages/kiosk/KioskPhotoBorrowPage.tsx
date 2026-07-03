@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { useMatch, useNavigate } from 'react-router-dom';
 
@@ -9,8 +10,15 @@ import {
   postClientLogs
 } from '../../api/client';
 import { useActiveLoans, useKioskConfig, usePhotoBorrowMutation } from '../../api/hooks';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
+import {
+  kioskButtonSecondaryClassName,
+  kioskErrorPanelClassName,
+  kioskInfoPanelClassName,
+  kioskMetaTextClassName,
+  kioskPanelClassName,
+  kioskSectionTitleClassName,
+  kioskSuccessPanelClassName,
+} from '../../features/kiosk/kioskTheme';
 import { PalletVizEmbeddedPanel } from '../../features/kiosk/pallet-visualization';
 import { useNfcStream } from '../../hooks/useNfcStream';
 import { captureAndCompressPhoto } from '../../utils/camera';
@@ -424,24 +432,28 @@ export function KioskPhotoBorrowPage() {
   return (
     <div className="flex h-full min-h-0 gap-4">
       <div className="flex w-80 shrink-0 flex-col gap-3 overflow-hidden min-h-0">
-        <Card title="写真撮影持出" className="shrink-0">
+        <section className={clsx(kioskPanelClassName, 'shrink-0 p-4 text-white')}>
+          <header className="mb-3">
+            <h2 className={kioskSectionTitleClassName}>写真撮影持出</h2>
+          </header>
           <div className="space-y-4 text-center">
             {/* 撮影中の表示（スキャン時のみカメラを起動） */}
             {isCapturing && (
-              <div className="mx-auto w-full rounded-lg bg-blue-600/20 p-4">
+              <div className={clsx(kioskInfoPanelClassName, 'mx-auto w-full border-sky-500/40 bg-sky-950/40')}>
                 <div className="flex flex-col items-center justify-center space-y-2">
-                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-300 border-t-transparent"></div>
-                  <p className="text-sm font-semibold text-blue-300">カメラを起動中...</p>
-                  <p className="text-xs text-white/70">写真を撮影しています</p>
+                  <p className="text-sm font-semibold text-sky-300">カメラを起動中...</p>
+                  <p className={kioskMetaTextClassName}>写真を撮影しています</p>
                 </div>
               </div>
             )}
-            
+
             {/* 待機中の表示（スキャン待ち） */}
             {!isCapturing && !employeeTagUid && !error && !successLoan && (
-              <div className="mx-auto w-full rounded-lg border border-white/10 bg-black/20 p-2">
+              <div className={clsx(kioskInfoPanelClassName, 'mx-auto w-full p-3')}>
                 <div className="flex flex-col items-center justify-center space-y-1">
-                  <div className="text-2xl">📷</div>
+                  <div className="text-2xl" aria-hidden>
+                    📷
+                  </div>
                   <p className="text-xs font-semibold text-white">従業員タグをスキャンしてください</p>
                 </div>
               </div>
@@ -449,25 +461,25 @@ export function KioskPhotoBorrowPage() {
 
             {/* 従業員タグスキャン済みの表示 */}
             {employeeTagUid && !isCapturing && !successLoan && !error && (
-              <div className="rounded-lg border border-white/10 p-4">
-                <p className="text-sm text-white/70">従業員タグ</p>
-                <p className="mt-2 text-xl font-bold">{employeeTagUid}</p>
+              <div className={kioskInfoPanelClassName}>
+                <p className={kioskMetaTextClassName}>従業員タグ</p>
+                <p className="mt-2 text-xl font-bold text-white">{employeeTagUid}</p>
               </div>
             )}
 
             {/* エラー表示 */}
             {error && (
-              <div className="rounded-lg bg-red-600/20 p-4 text-left">
+              <div className={kioskErrorPanelClassName}>
                 <p className="text-lg font-semibold text-red-300">エラー</p>
-                <p className="mt-2 text-sm text-white/70">{error}</p>
+                <p className="mt-2 text-sm text-white/80">{error}</p>
               </div>
             )}
 
             {/* 成功表示 */}
             {successLoan && (
-              <div className="rounded-lg bg-emerald-600/20 p-4 text-left">
-                <p className="text-lg font-semibold text-emerald-300">登録完了</p>
-                <p className="mt-2 text-sm text-white/70">
+              <div className={kioskSuccessPanelClassName}>
+                <p className="text-lg font-bold">登録完了</p>
+                <p className="mt-2 text-sm text-white/90">
                   {successLoan.employee.displayName} さんが持出を記録しました
                 </p>
                 {successLoan.photoUrl && (
@@ -489,13 +501,13 @@ export function KioskPhotoBorrowPage() {
             {/* リセットボタン */}
             {(employeeTagUid || error || successLoan) && (
               <div className="flex justify-center gap-4">
-                <Button onClick={handleReset} disabled={isCapturing}>
+                <button type="button" onClick={handleReset} disabled={isCapturing} className={kioskButtonSecondaryClassName}>
                   リセット
-                </Button>
+                </button>
               </div>
             )}
           </div>
-        </Card>
+        </section>
         <PalletVizEmbeddedPanel className="min-h-0 flex-1" />
       </div>
 

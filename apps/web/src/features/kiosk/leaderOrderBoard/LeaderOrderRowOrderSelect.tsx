@@ -63,9 +63,9 @@ export function LeaderOrderRowOrderSelect({
         className={clsx(
           'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border px-0 tabular-nums',
           disabled
-            ? 'cursor-not-allowed border-white/15 bg-slate-900/50 text-[11px] text-white/40'
+            ? 'cursor-not-allowed border-white/15 bg-slate-900/50 text-[11px] text-white/60'
             : hasRankedOrder
-              ? 'border-yellow-400 bg-slate-900/90 text-sm font-semibold text-yellow-300'
+              ? 'border-sky-400 bg-sky-500/25 text-sm font-semibold text-sky-100'
               : 'border-white/25 bg-slate-900/90 text-[11px] text-white'
         )}
       >

@@ -10,7 +10,7 @@ export function DgxResourceWarmRuntimeNotice({ overview }: Props) {
   const canControl = overview.runtime.runtimeControlConfigured;
 
   return (
-    <div className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
+    <div className="shrink-0 rounded-lg border border-white/15 bg-slate-900/60 px-3 py-2.5 text-sm text-white/70">
       {warm.enabled ? (
         <p>
           Warm: {warm.timeZone ?? '—'} · {warm.startHourInclusive}–{warm.endHourExclusive}
@@ -18,12 +18,12 @@ export function DgxResourceWarmRuntimeNotice({ overview }: Props) {
         </p>
       ) : null}
       <p className={warm.enabled ? 'mt-1' : ''}>
-        LocalLLM mode: <span className="font-mono text-slate-800">{overview.runtime.localLlmMode}</span>
+        LocalLLM mode: <span className="font-mono text-white">{overview.runtime.localLlmMode}</span>
         {' · '}
         gateway 制御:{' '}
-        <span className="font-mono text-slate-800">{canControl ? 'on' : 'off'}</span>
+        <span className="font-mono text-white">{canControl ? 'on' : 'off'}</span>
         {canControl ? null : (
-          <span className="text-slate-500">（on_demand かつ起動/停止 URL 設定時のみ）</span>
+          <span className="text-white/60">（on_demand かつ起動/停止 URL 設定時のみ）</span>
         )}
       </p>
     </div>

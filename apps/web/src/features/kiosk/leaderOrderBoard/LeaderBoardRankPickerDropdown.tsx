@@ -72,9 +72,9 @@ export function LeaderBoardRankPickerDropdown({
       anchorRef={anchorRef}
       panelRef={panelRef}
       fixedZIndex={fixedZIndex}
-      className="w-[min(12rem,calc(100vw-2rem))] rounded-lg border border-white/20 bg-slate-950/95 p-2 shadow-xl"
+      className="w-[min(12rem,calc(100vw-2rem))] rounded-lg border border-white/20 bg-slate-950/95 p-2"
     >
-      <p className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/55">{title}</p>
+      <p className="mb-1.5 px-0.5 text-xs font-semibold uppercase tracking-wide text-white/60">{title}</p>
       <div className="max-h-[14rem] overflow-y-auto">
         <div className="flex flex-col gap-0.5">
           {choices.map((choice) => {

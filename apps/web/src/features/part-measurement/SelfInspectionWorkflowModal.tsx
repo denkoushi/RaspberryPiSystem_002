@@ -1,6 +1,10 @@
 import clsx from 'clsx';
 
 import { Dialog } from '../../components/ui/Dialog';
+import {
+  kioskButtonPrimaryClassName,
+  kioskButtonSecondaryClassName
+} from '../kiosk/kioskTheme';
 
 export type SelfInspectionWorkflowTarget = {
   productNo: string;
@@ -36,33 +40,33 @@ export function SelfInspectionWorkflowModal({
       onClose={onClose}
       title="検査方法を選択"
       size="sm"
-      className="border-2 border-slate-950 bg-white text-slate-950 shadow-2xl"
-      titleClassName="text-base font-bold text-slate-950"
+      className="!rounded-lg !border !border-white/20 !bg-slate-900 !text-white !shadow-none [&_p.text-sm]:!text-white/60"
+      titleClassName="text-base font-bold text-white"
       overlayZIndex={90}
     >
       {target ? (
         <div className="mt-3 space-y-4">
-          <div className="space-y-1 border-y border-slate-300 py-3 text-xs text-slate-800">
+          <div className="space-y-1 border-y border-white/15 py-3 text-xs text-white/80">
             <div className="flex min-w-0 gap-2">
-              <span className="shrink-0 font-semibold text-slate-600">製造order</span>
-              <span className="min-w-0 truncate font-mono font-bold text-slate-950">
+              <span className="shrink-0 font-semibold text-white/55">製造order</span>
+              <span className="min-w-0 truncate font-mono font-bold text-white">
                 {target.productNo.trim() || '—'}
               </span>
             </div>
             <div className="flex min-w-0 gap-2">
-              <span className="shrink-0 font-semibold text-slate-600">資源</span>
-              <span className="font-mono font-bold text-slate-950">{target.resourceCd.trim() || '—'}</span>
+              <span className="shrink-0 font-semibold text-white/55">資源</span>
+              <span className="font-mono font-bold text-white">{target.resourceCd.trim() || '—'}</span>
             </div>
             <div className="flex min-w-0 gap-2">
-              <span className="shrink-0 font-semibold text-slate-600">部品</span>
-              <span className="min-w-0 truncate font-semibold text-slate-950">
+              <span className="shrink-0 font-semibold text-white/55">部品</span>
+              <span className="min-w-0 truncate font-semibold text-white">
                 {target.fhincd.trim() || '—'}
                 {target.fhinmei.trim() ? ` / ${target.fhinmei.trim()}` : ''}
               </span>
             </div>
             <div className="flex min-w-0 gap-2">
-              <span className="shrink-0 font-semibold text-slate-600">製番</span>
-              <span className="min-w-0 truncate font-mono font-bold text-slate-950">
+              <span className="shrink-0 font-semibold text-white/55">製番</span>
+              <span className="min-w-0 truncate font-mono font-bold text-white">
                 {target.fseiban.trim() || '—'}
               </span>
             </div>
@@ -74,10 +78,10 @@ export function SelfInspectionWorkflowModal({
               disabled={!canOpenDigitalInput}
               onClick={() => onOpenDigitalInput(target)}
               className={clsx(
-                'rounded border px-4 py-3 text-left text-sm font-semibold transition-colors',
+                'rounded-md px-4 py-3 text-left text-sm font-semibold transition-colors',
                 canOpenDigitalInput
-                  ? 'border-sky-900 bg-sky-700 text-white shadow hover:bg-sky-800'
-                  : 'cursor-not-allowed border-slate-300 bg-slate-100 text-slate-400'
+                  ? kioskButtonPrimaryClassName
+                  : clsx(kioskButtonSecondaryClassName, 'cursor-not-allowed opacity-40')
               )}
             >
               デジタル入力
@@ -87,21 +91,21 @@ export function SelfInspectionWorkflowModal({
               disabled={!canOpenPaperPrint}
               onClick={() => onOpenPaperPrint(target)}
               className={clsx(
-                'rounded border px-4 py-3 text-left text-sm font-semibold transition-colors',
+                'rounded-md px-4 py-3 text-left text-sm font-semibold transition-colors',
                 canOpenPaperPrint
-                  ? 'border-emerald-900 bg-emerald-700 text-white shadow hover:bg-emerald-800'
-                  : 'cursor-not-allowed border-slate-300 bg-slate-100 text-slate-400'
+                  ? kioskButtonPrimaryClassName
+                  : clsx(kioskButtonSecondaryClassName, 'cursor-not-allowed opacity-40')
               )}
             >
               帳票紙印刷
             </button>
           </div>
 
-          <div className="flex justify-end border-t border-slate-300 pt-3">
+          <div className="flex justify-end border-t border-white/15 pt-3">
             <button
               type="button"
               onClick={onClose}
-              className="rounded border border-slate-400 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-slate-100"
+              className={clsx(kioskButtonSecondaryClassName, 'px-3 py-2 text-xs')}
             >
               閉じる
             </button>

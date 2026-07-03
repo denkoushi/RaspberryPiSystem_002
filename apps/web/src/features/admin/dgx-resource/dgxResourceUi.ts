@@ -27,13 +27,13 @@ export function workloadRiskCardTokens(risk: DgxOperatorRiskLevelApi): string {
 export function statusBadgeTokens(status: DgxServiceStatusKind): string {
   switch (status) {
     case 'running':
-      return 'border border-emerald-200 bg-emerald-50 text-emerald-700';
+      return 'border border-emerald-400/30 bg-emerald-500/15 text-emerald-300';
     case 'degraded':
-      return 'border border-amber-200 bg-amber-50 text-amber-700';
+      return 'border border-amber-400/30 bg-amber-500/15 text-amber-300';
     case 'stopped':
-      return 'border border-slate-200 bg-slate-50 text-slate-600';
+      return 'border border-white/20 bg-white/5 text-white/60';
     default:
-      return 'border border-slate-300 bg-white text-slate-500';
+      return 'border border-white/20 bg-white/5 text-white/60';
   }
 }
 
@@ -41,7 +41,7 @@ export function statusBadgeTokens(status: DgxServiceStatusKind): string {
 export function serviceStatusDotTokens(status: DgxServiceStatusKind): string {
   switch (status) {
     case 'running':
-      return 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.55)]';
+      return 'bg-emerald-400';
     case 'degraded':
       return 'bg-amber-400';
     case 'stopped':
@@ -55,11 +55,11 @@ export function serviceStatusDotTokens(status: DgxServiceStatusKind): string {
 export function policyModeBadgeTokens(mode: DgxPolicyModeApi): string {
   switch (mode) {
     case 'business_first':
-      return 'border border-amber-200 bg-amber-50 text-amber-700';
+      return 'border border-amber-400/30 bg-amber-500/15 text-amber-300';
     case 'private_ok':
-      return 'border border-emerald-200 bg-emerald-50 text-emerald-700';
+      return 'border border-emerald-400/30 bg-emerald-500/15 text-emerald-300';
     case 'experiment_first':
-      return 'border border-violet-200 bg-violet-50 text-violet-700';
+      return 'border border-violet-400/30 bg-violet-500/15 text-violet-300';
     default: {
       const _x: never = mode;
       return _x;
@@ -71,11 +71,11 @@ export function policyModeBadgeTokens(mode: DgxPolicyModeApi): string {
 export function monitoringAlertContainerTokens(level: DgxResourceMonitoringAlertApi['level']): string {
   switch (level) {
     case 'danger':
-      return 'border-red-200 bg-red-50 text-red-800';
+      return 'border-red-400/30 bg-red-500/15 text-red-300';
     case 'warning':
-      return 'border-amber-200 bg-amber-50 text-amber-800';
+      return 'border-amber-400/30 bg-amber-500/15 text-amber-300';
     default:
-      return 'border-slate-200 bg-slate-50 text-slate-700';
+      return 'border-white/20 bg-white/5 text-white/70';
   }
 }
 

@@ -239,7 +239,7 @@ export function LeaderOrderSplitModal({
 
   return (
     <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/70 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-slate-600 bg-slate-900 text-slate-100 shadow-xl">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-white/20 bg-slate-900 text-slate-100">
         <div className="border-b border-slate-700 px-4 py-3">
           <h2 className="text-lg font-semibold">指示数の分割</h2>
           <p className="mt-1 text-sm text-slate-300">

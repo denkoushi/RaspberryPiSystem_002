@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-03 · キオスク/DGX UI ブラッシュアップ）
+
+- **キオスク4画面（持出/順位ボード/自主検査/検査図面）+ DGXリソースのデザイン統一**: ダークテーマ一本化・グラデーション/装飾shadow全廃・ボタン文法統一・44pxタッチターゲット。**正本**: [Plan](./plans/kiosk-admin-ui-brushup-202607.md)
+
 ### 最新アップデート（2026-07-03 · 組立トルク管理 MVP + 管理UI）
 
 - **組立トルク管理**: 組立専用DB/API、手順書ライブラリ、テンプレート別画面編集、作業開始/締付記録、Pi5 + `raspi4-sessaku-01` 限定デプロイ済。**正本**: [Plan](./plans/kiosk-assembly-torque-management-mvp.md)

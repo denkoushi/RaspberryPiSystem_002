@@ -1,4 +1,5 @@
 import { useMachine } from '@xstate/react';
+import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMatch, useNavigate } from 'react-router-dom';
 
@@ -10,9 +11,15 @@ import {
   postClientLogs
 } from '../../api/client';
 import { useActiveLoans, useBorrowMutation, useKioskConfig } from '../../api/hooks';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
 import { createBorrowMachine } from '../../features/kiosk/borrowMachine';
+import {
+  kioskButtonSecondaryClassName,
+  kioskPanelClassName,
+  kioskSectionTitleClassName,
+  kioskStepCardActiveClassName,
+  kioskStepCardInactiveClassName,
+  kioskSuccessPanelClassName,
+} from '../../features/kiosk/kioskTheme';
 import { PalletVizEmbeddedPanel } from '../../features/kiosk/pallet-visualization';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
@@ -284,7 +291,10 @@ export function KioskBorrowPage() {
   return (
     <div className="flex h-full min-h-0 gap-4">
       <div className="flex w-80 shrink-0 flex-col gap-3 overflow-hidden min-h-0">
-        <Card title="持出フロー" className="shrink-0">
+        <section className={clsx(kioskPanelClassName, 'shrink-0 p-4 text-white')}>
+          <header className="mb-3">
+            <h2 className={kioskSectionTitleClassName}>持出フロー</h2>
+          </header>
           <div className="space-y-3 text-center">
             <div className="grid gap-4 md:grid-cols-2">
               <StepCard
@@ -299,19 +309,21 @@ export function KioskBorrowPage() {
               />
             </div>
             <div className="flex justify-center gap-4">
-              <Button onClick={handleReset}>リセット</Button>
+              <button type="button" onClick={handleReset} className={kioskButtonSecondaryClassName}>
+                リセット
+              </button>
             </div>
             {state.context.error ? <p className="text-sm font-semibold text-red-400">{state.context.error}</p> : null}
             {state.context.loan ? (
-              <div className="rounded-lg border-2 border-emerald-700 bg-emerald-600 p-4 text-left text-white shadow-lg">
+              <div className={kioskSuccessPanelClassName}>
                 <p className="text-lg font-bold">登録完了</p>
-                <p className="text-base font-semibold mt-1">
+                <p className="mt-1 text-base font-semibold">
                   {state.context.loan.item?.name ?? 'アイテム情報なし'} を {state.context.loan.employee.displayName} さんが持出済み
                 </p>
               </div>
             ) : null}
           </div>
-        </Card>
+        </section>
         <PalletVizEmbeddedPanel className="min-h-0 flex-1" />
       </div>
 
@@ -324,13 +336,7 @@ export function KioskBorrowPage() {
 
 function StepCard({ title, value, active }: { title: string; value?: string; active: boolean }) {
   return (
-    <div
-      className={`rounded-xl border-2 p-4 shadow-lg ${
-        active
-          ? 'border-emerald-400 bg-emerald-600 text-white'
-          : 'border-white/20 bg-white/10 text-white/80'
-      }`}
-    >
+    <div className={active ? kioskStepCardActiveClassName : kioskStepCardInactiveClassName}>
       <p className="text-sm font-semibold">{title}</p>
       <p className="mt-2 text-xl font-bold">{value ?? '---'}</p>
     </div>

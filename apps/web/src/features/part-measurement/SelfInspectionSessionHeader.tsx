@@ -80,11 +80,11 @@ export function SelfInspectionSessionHeader({
           {modeLabel} / 必要 {requiredEntryCount} 件
         </span>
         {entryCountBlockedReason ? (
-          <span className="shrink-0 text-[0.75rem] text-amber-200">{entryCountBlockedReason}</span>
+          <span className="shrink-0 text-xs text-amber-200">{entryCountBlockedReason}</span>
         ) : null}
         <span
           className={clsx(
-            'shrink-0 rounded border px-1.5 py-0.5 text-[0.7rem] font-semibold',
+            'shrink-0 rounded border px-1.5 py-0.5 text-xs font-semibold',
             guideMode === 'guided'
               ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-100'
               : 'border-white/20 bg-white/5 text-white/55'

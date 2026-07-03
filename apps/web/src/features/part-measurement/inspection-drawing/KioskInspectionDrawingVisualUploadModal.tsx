@@ -1,9 +1,14 @@
+import clsx from 'clsx';
 import { useCallback, useEffect, useState } from 'react';
 
 import { createPartMeasurementVisualTemplate } from '../../../api/client';
-import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
-import { Input } from '../../../components/ui/Input';
+import {
+  kioskButtonPrimaryClassName,
+  kioskButtonSecondaryClassName,
+  kioskInputClassName,
+  kioskPanelClassName
+} from '../../../features/kiosk/kioskTheme';
 import {
   PART_MEASUREMENT_DRAWING_FILE_ACCEPT,
   PART_MEASUREMENT_DRAWING_FILE_LABEL
@@ -11,6 +16,10 @@ import {
 import { partMeasurementDrawingPreviewConvertingLabel } from '../partMeasurementDrawingLocalPreview';
 import { usePartMeasurementDrawingLocalPreview } from '../usePartMeasurementDrawingLocalPreview';
 
+import {
+  inspectionDrawingKioskDialogClassName,
+  inspectionDrawingKioskDialogTitleClassName
+} from './inspectionDrawingKioskUi';
 import { defaultVisualNameFromFileName } from './inspectionDrawingVisualLibraryHelpers';
 
 import type { PartMeasurementVisualTemplateDto } from '../types';
@@ -123,11 +132,13 @@ export function KioskInspectionDrawingVisualUploadModal({
       size="lg"
       closeOnEsc={!submitting}
       closeOnBackdrop={!submitting}
+      className={inspectionDrawingKioskDialogClassName}
+      titleClassName={inspectionDrawingKioskDialogTitleClassName}
     >
       <div className="mt-4 grid gap-4">
-        <label className="grid gap-1 text-sm font-semibold text-slate-800">
+        <label className="grid gap-1 text-sm font-semibold text-white/80">
           図面名
-          <Input
+          <input
             value={visualName}
             onChange={(e) => {
               setNameTouched(true);
@@ -135,28 +146,29 @@ export function KioskInspectionDrawingVisualUploadModal({
             }}
             placeholder="検索しやすい名前"
             disabled={submitting}
+            className={kioskInputClassName}
           />
         </label>
 
-        <label className="grid gap-1 text-sm font-semibold text-slate-800">
+        <label className="grid gap-1 text-sm font-semibold text-white/80">
           {PART_MEASUREMENT_DRAWING_FILE_LABEL}
           <input
             type="file"
             accept={PART_MEASUREMENT_DRAWING_FILE_ACCEPT}
-            className="text-sm"
+            className="text-sm text-white/80 file:mr-2 file:rounded file:border-0 file:bg-white/10 file:px-2 file:py-1 file:text-xs file:text-white"
             disabled={submitting}
             onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
           />
         </label>
 
         {previewResolving ? (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-white/60">
             {partMeasurementDrawingPreviewConvertingLabel(pendingPreviewFile)}
           </p>
         ) : null}
-        {previewError ? <p className="text-sm font-semibold text-red-600">{previewError}</p> : null}
+        {previewError ? <p className="text-sm font-semibold text-red-300">{previewError}</p> : null}
         {localPreviewUrl ? (
-          <div className="overflow-hidden rounded border border-slate-200 bg-slate-50 p-2">
+          <div className={clsx(kioskPanelClassName, 'overflow-hidden p-2')}>
             <img
               src={localPreviewUrl}
               alt="選択中の図面プレビュー"
@@ -165,15 +177,25 @@ export function KioskInspectionDrawingVisualUploadModal({
           </div>
         ) : null}
 
-        {error ? <p className="text-sm font-semibold text-red-600">{error}</p> : null}
+        {error ? <p className="text-sm font-semibold text-red-300">{error}</p> : null}
 
         <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="secondary" disabled={submitting} onClick={handleClose}>
+          <button
+            type="button"
+            className={kioskButtonSecondaryClassName}
+            disabled={submitting}
+            onClick={handleClose}
+          >
             キャンセル
-          </Button>
-          <Button type="button" variant="primary" disabled={registerBlocked} onClick={() => void handleRegister()}>
+          </button>
+          <button
+            type="button"
+            className={kioskButtonPrimaryClassName}
+            disabled={registerBlocked}
+            onClick={() => void handleRegister()}
+          >
             {submitting ? '登録中…' : '図面を登録'}
-          </Button>
+          </button>
         </div>
       </div>
     </Dialog>

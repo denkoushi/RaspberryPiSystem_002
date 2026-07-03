@@ -88,7 +88,7 @@ function TemplateTablePane({
     >
       <div className="min-h-0 flex-1 overflow-auto p-1">
         <table
-          className="w-full table-fixed border-collapse text-left text-[0.84rem]"
+          className="w-full table-fixed border-collapse text-left text-xs"
           aria-label={`検査図面テンプレート ${label} ${rangeLabel(startIndex, templates.length)}`}
         >
           <colgroup>
@@ -98,7 +98,7 @@ function TemplateTablePane({
             <col className="w-[6%]" />
             <col className="w-[19%]" />
           </colgroup>
-          <thead className="sticky top-0 bg-slate-900 text-[0.74rem] text-white/70">
+          <thead className="sticky top-0 bg-slate-900 text-xs text-white/70">
             <tr className="border-b border-white/10">
               <th className="px-2 py-1.5 font-bold">品番</th>
               <th className="px-2 py-1.5 font-bold">図面名</th>
@@ -136,7 +136,7 @@ function TemplateTablePane({
                     </td>
                   </tr>
                   <tr className="border-b border-white/10 last:border-b-0">
-                    <td colSpan={5} className="px-2 pb-1 pt-0 text-[0.68rem] text-white/55">
+                    <td colSpan={5} className="px-2 pb-1 pt-0 text-xs text-white/55">
                       <div className="flex min-w-0 items-center gap-1 overflow-hidden">
                         <span className="shrink-0 font-semibold">資源CD</span>
                         <div
@@ -147,14 +147,14 @@ function TemplateTablePane({
                           {visibleResourceCds.map((cd) => (
                             <span
                               key={cd}
-                              className="shrink-0 truncate rounded border border-cyan-300/35 bg-cyan-950/50 px-1.5 py-0.5 text-[0.68rem] font-semibold leading-tight text-cyan-100"
+                              className="shrink-0 truncate rounded border border-cyan-300/35 bg-cyan-950/50 px-1.5 py-0.5 text-xs font-semibold leading-tight text-cyan-100"
                               title={formatResourceCdWithJapaneseNames(cd, resourceNameMap)}
                             >
                               {cd}
                             </span>
                           ))}
                           {hiddenResourceCount > 0 ? (
-                            <span className="shrink-0 rounded border border-white/15 px-1.5 py-0.5 text-[0.68rem] leading-tight text-white/70">
+                            <span className="shrink-0 rounded border border-white/15 px-1.5 py-0.5 text-xs leading-tight text-white/70">
                               +{hiddenResourceCount}
                             </span>
                           ) : null}
@@ -168,7 +168,7 @@ function TemplateTablePane({
                             state={linkState}
                             className={buttonClassName(
                               'primary',
-                              'inline-flex min-h-5 min-w-[1.75rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-[0.58rem] leading-none whitespace-nowrap'
+                              'inline-flex min-h-11 min-w-[1.75rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-xs leading-none whitespace-nowrap'
                             )}
                           >
                             編集
@@ -181,7 +181,7 @@ function TemplateTablePane({
                               title="保存済みテンプレートの帳票プレビュー（未保存の変更は反映されません）"
                               className={buttonClassName(
                                 'ghostOnDark',
-                                'inline-flex min-h-5 min-w-[1.5rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-[0.58rem] leading-none whitespace-nowrap'
+                                'inline-flex min-h-11 min-w-[1.5rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-xs leading-none whitespace-nowrap'
                               )}
                             >
                               帳票
@@ -194,7 +194,7 @@ function TemplateTablePane({
                               title="雛形新規"
                               className={buttonClassName(
                                 'ghostOnDark',
-                                'inline-flex min-h-5 min-w-[1.5rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-[0.58rem] leading-none whitespace-nowrap'
+                                'inline-flex min-h-11 min-w-[1.5rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-xs leading-none whitespace-nowrap'
                               )}
                             >
                               雛形
@@ -203,7 +203,7 @@ function TemplateTablePane({
                           <Button
                             type="button"
                             variant="ghostOnDark"
-                            className="min-h-5 min-w-[1.5rem] shrink-0 whitespace-nowrap rounded !px-1 !py-0 text-[0.58rem] leading-none"
+                            className="min-h-11 min-w-[1.5rem] shrink-0 whitespace-nowrap rounded !px-1 !py-0 text-xs leading-none"
                             onClick={() => onHistoryClick(lineageGroupKey(template))}
                           >
                             履歴

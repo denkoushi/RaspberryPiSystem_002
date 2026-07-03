@@ -107,8 +107,8 @@ describe('InspectionDrawingLibraryTemplateTable', () => {
     expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('justify-end');
     for (const label of ['編集', '帳票', '雛形', '履歴']) {
       const action = screen.getByRole(label === '履歴' ? 'button' : 'link', { name: label });
-      expect(action).toHaveClass('min-h-5');
-      expect(action).toHaveClass('text-[0.58rem]');
+      expect(action).toHaveClass('min-h-11');
+      expect(action).toHaveClass('text-xs');
     }
     expect(screen.getByRole('link', { name: '雛形' })).toHaveAttribute('title', '雛形新規');
 

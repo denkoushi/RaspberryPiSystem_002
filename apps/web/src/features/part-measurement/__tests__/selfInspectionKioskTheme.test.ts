@@ -27,18 +27,18 @@ describe('selfInspectionKioskButtonClass', () => {
     }
   );
 
-  it('enabled and disabled use borderless base styles', () => {
+  it('enabled and disabled use kiosk secondary / disabled-opacity grammar', () => {
     const enabled = selfInspectionKioskButtonClass({ disabled: false });
     const disabled = selfInspectionKioskButtonClass({ disabled: true });
-    expect(enabled).toContain('border-0');
-    expect(enabled).toContain('bg-slate-700');
-    expect(disabled).toContain('border-0');
+    expect(enabled).toContain('border-white/20');
+    expect(enabled).toContain('bg-white/5');
+    expect(disabled).toContain('opacity-40');
     expect(disabled).toContain('text-white/40');
   });
 
   it('inactive tone uses muted visual without disabled opacity tricks', () => {
     const inactive = selfInspectionKioskButtonClass({ tone: 'inactive' });
-    expect(inactive).toContain('bg-slate-800/50');
+    expect(inactive).toContain('bg-white/5');
     expect(inactive).toContain('text-white/40');
     expect(inactive).not.toMatch(/opacity-60/);
     expect(inactive).not.toMatch(/grayscale/);
@@ -47,15 +47,14 @@ describe('selfInspectionKioskButtonClass', () => {
   it('disabled takes precedence over inactive tone', () => {
     const disabledInactive = selfInspectionKioskButtonClass({ tone: 'inactive', disabled: true });
     expect(disabledInactive).toContain('cursor-not-allowed');
-    expect(disabledInactive).not.toContain('hover:bg-slate-800/65');
+    expect(disabledInactive).not.toContain('hover:text-white/55');
   });
 
-  it('highlighted uses ring and shadow without changing border width', () => {
+  it('highlighted uses emerald primary fill without ring or shadow', () => {
     const highlighted = selfInspectionKioskButtonClass({ highlighted: true });
-    expect(highlighted).toContain('ring-sky-400');
-    expect(highlighted).toContain('shadow-');
-    expect(highlighted).toContain('border-0');
-    expect(highlighted).not.toContain('border-2');
+    expect(highlighted).toContain('bg-emerald-500');
+    expect(highlighted).not.toContain('ring-sky-400');
+    expect(highlighted).not.toContain('shadow-');
   });
 
   it('highlighted is ignored when disabled', () => {
@@ -63,8 +62,8 @@ describe('selfInspectionKioskButtonClass', () => {
       highlighted: true,
       disabled: true
     });
-    expect(highlightedDisabled).not.toContain('ring-sky-400');
-    expect(highlightedDisabled).toContain('border-0');
+    expect(highlightedDisabled).not.toContain('bg-emerald-500');
+    expect(highlightedDisabled).toContain('opacity-40');
   });
 
   it('wide keeps min width when disabled (no layout shift)', () => {

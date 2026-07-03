@@ -1,9 +1,14 @@
+import clsx from 'clsx';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { getResolvedClientKey } from '../../../api/client';
 import { Button, buttonClassName } from '../../../components/ui/Button';
-import { Input } from '../../../components/ui/Input';
+import {
+  kioskButtonPrimaryClassName,
+  kioskButtonSecondaryClassName,
+  kioskInputClassName
+} from '../../../features/kiosk/kioskTheme';
 
 import { formatVisualLibraryTimestamp } from './inspectionDrawingVisualLibraryHelpers';
 import {
@@ -66,19 +71,19 @@ export function KioskInspectionDrawingVisualLibrarySection({
           図面ライブラリ
         </h2>
         <div className="w-[8.75rem] max-w-full shrink-0">
-          <Input
+          <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="図面名で検索"
             aria-label="図面名で検索"
-            className="min-h-9 w-full px-2 text-[0.9rem] text-slate-900 placeholder-slate-500"
+            className={clsx(kioskInputClassName, 'w-full text-sm placeholder:text-white/40')}
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="ghostOnDark"
-            className="min-h-9 shrink-0 !px-2 !py-0 text-[0.86rem]"
+            className="min-h-11 shrink-0 !px-2 !py-0 text-sm"
             disabled={loading}
             onClick={() => void reload()}
           >
@@ -87,7 +92,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
           <Button
             type="button"
             variant="ghostOnDark"
-            className="min-h-9 shrink-0 !px-2 !py-0 text-[0.86rem]"
+            className="min-h-11 shrink-0 !px-2 !py-0 text-sm"
             onClick={onRegisterClick}
           >
             図面を登録
@@ -108,13 +113,13 @@ export function KioskInspectionDrawingVisualLibrarySection({
             {debouncedQuery ? '条件に合う図面はありません。' : '登録済み図面はありません。'}
           </p>
         ) : (
-          <table className="w-full table-fixed border-collapse text-left text-[0.82rem]" aria-label="図面ライブラリ">
+          <table className="w-full table-fixed border-collapse text-left text-xs" aria-label="図面ライブラリ">
             <colgroup>
               <col className="w-[60%]" data-testid="inspection-visual-name-column" />
               <col className="w-[22%]" />
               <col className="w-[18%]" />
             </colgroup>
-            <thead className="sticky top-0 bg-slate-900 text-[0.74rem] text-white/70">
+            <thead className="sticky top-0 bg-slate-900 text-xs text-white/70">
               <tr className="border-b border-white/10">
                 <th className="px-2 py-1.5 font-bold">図面名</th>
                 <th className="px-2 py-1.5 font-bold">更新</th>
@@ -138,21 +143,20 @@ export function KioskInspectionDrawingVisualLibrarySection({
                         title="新規作成"
                         className={buttonClassName(
                           'primary',
-                          'inline-flex min-h-6 shrink-0 items-center justify-center rounded !px-1.5 !py-0 text-[0.68rem] leading-none whitespace-nowrap'
+                          clsx(kioskButtonPrimaryClassName, 'inline-flex shrink-0 items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap')
                         )}
                       >
                         新規
                       </Link>
-                      <Button
+                      <button
                         type="button"
-                        variant="secondary"
                         title="名称変更"
-                        className="min-h-6 shrink-0 whitespace-nowrap rounded !px-1.5 !py-0 text-[0.68rem] leading-none"
+                        className={clsx(kioskButtonSecondaryClassName, 'min-h-11 shrink-0 whitespace-nowrap !px-1.5 !py-0 text-xs leading-none')}
                         disabled={isPreview}
                         onClick={() => setRenameTarget(visual)}
                       >
                         名称
-                      </Button>
+                      </button>
                     </div>
                   </td>
                 </tr>

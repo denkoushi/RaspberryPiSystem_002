@@ -7,13 +7,13 @@ function badge(
   badges: string[]
 ): { text: string; className: string } {
   if (badges.includes('policy')) {
-    return { text: 'POLICY', className: 'border-amber-200 bg-amber-50 text-amber-700' };
+    return { text: 'POLICY', className: 'border-amber-400/30 bg-amber-500/15 text-amber-300' };
   }
-  if (status === 'running') return { text: 'RUN', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' };
+  if (status === 'running') return { text: 'RUN', className: 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300' };
   if (status === 'degraded')
-    return { text: 'WARN', className: 'border-amber-200 bg-amber-50 text-amber-700' };
-  if (status === 'stopped') return { text: 'OFF', className: 'border-slate-200 bg-slate-50 text-slate-600' };
-  return { text: 'N/A', className: 'border-slate-300 bg-white text-slate-500' };
+    return { text: 'WARN', className: 'border-amber-400/30 bg-amber-500/15 text-amber-300' };
+  if (status === 'stopped') return { text: 'OFF', className: 'border-white/20 bg-white/5 text-white/60' };
+  return { text: 'N/A', className: 'border-white/20 bg-white/5 text-white/60' };
 }
 
 function kindLabel(kind: DgxControlTargetSnapshotApi['kind']): string {
@@ -112,12 +112,12 @@ export function DgxResourceTargetGrid({
         return (
           <section
             key={t.id}
-            className="flex min-h-[6.5rem] flex-col rounded-lg border border-slate-200 bg-white p-3"
+            className="flex min-h-[6.5rem] flex-col rounded-lg border border-white/15 bg-slate-900/60 p-3"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <h3 className="truncate text-base font-bold text-slate-950">{t.displayName}</h3>
-                <p className="truncate text-sm text-slate-500">
+                <h3 className="truncate text-base font-bold text-white">{t.displayName}</h3>
+                <p className="truncate text-sm text-white/60">
                   {kindLabel(t.kind)} · {capabilitySummary(t.capabilities)}
                 </p>
               </div>
@@ -125,7 +125,7 @@ export function DgxResourceTargetGrid({
                 {b.text}
               </span>
             </div>
-            <ul className="mt-1.5 space-y-1 text-sm leading-snug text-slate-600">
+            <ul className="mt-1.5 space-y-1 text-sm leading-snug text-white/70">
               {t.metaLines.slice(0, 3).map((line, i) => (
                 <li key={i} className="truncate" title={line}>
                   {line}
@@ -133,7 +133,7 @@ export function DgxResourceTargetGrid({
               ))}
             </ul>
             {showButtons ? (
-              <div className="mt-2 flex flex-wrap gap-1.5 border-t border-slate-200 pt-2">
+              <div className="mt-2 flex flex-wrap gap-1.5 border-t border-white/15 pt-2">
                 <Button
                   type="button"
                   variant="ghost"
@@ -142,7 +142,7 @@ export function DgxResourceTargetGrid({
                     onControlUiError(null);
                     onExecuteTarget(t.id as DgxControlTargetIdApi, 'start');
                   }}
-                  className="border border-slate-300 px-3 py-1.5 text-sm"
+                  className="border border-white/20 bg-white/5 px-3 py-1.5 text-sm text-white hover:bg-white/10"
                 >
                   起動
                 </Button>
@@ -167,7 +167,7 @@ export function DgxResourceTargetGrid({
               </div>
             ) : null}
             {cardError ? (
-              <p className="mt-2 rounded border border-red-200 bg-red-50 px-2.5 py-1.5 text-sm text-red-700" role="alert">
+              <p className="mt-2 rounded border border-red-400/30 bg-red-500/15 px-2.5 py-1.5 text-sm text-red-300" role="alert">
                 {cardError}
               </p>
             ) : null}

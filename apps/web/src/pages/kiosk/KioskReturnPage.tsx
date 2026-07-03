@@ -1,11 +1,17 @@
+import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 
 import { api, getResolvedClientKey, postClientLogs } from '../../api/client';
 import { useActiveLoans, useReturnMutation, useCancelLoanMutation } from '../../api/hooks';
 import { KioskActiveLoanCard } from '../../components/kiosk/KioskActiveLoanCard';
-import { Card } from '../../components/ui/Card';
 import { presentActiveLoanListLines } from '../../features/kiosk/activeLoanListLines';
 import { formatKioskActiveLoanBorrowedAt } from '../../features/kiosk/formatKioskActiveLoanBorrowedAt';
+import {
+  kioskMetaTextClassName,
+  kioskModalCloseButtonClassName,
+  kioskPanelClassName,
+  kioskSectionTitleClassName,
+} from '../../features/kiosk/kioskTheme';
 
 import type { Loan, ReturnPayload } from '../../api/types';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -151,13 +157,16 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
 
   return (
     <div className="h-full flex flex-col">
-      <Card title="持出一覧" className="h-full flex flex-col">
+      <section className={clsx(kioskPanelClassName, 'flex h-full flex-col p-4 text-white')}>
+        <header className="mb-3 shrink-0">
+          <h2 className={kioskSectionTitleClassName}>持出一覧</h2>
+        </header>
         {loansQuery.isError ? (
           <p className="text-sm font-semibold text-red-400">返却一覧の取得に失敗しました</p>
         ) : loansQuery.isLoading ? (
-          <p className="text-sm text-slate-200">読み込み中...</p>
+          <p className="text-sm text-white/80">読み込み中...</p>
         ) : loansQuery.data && loansQuery.data.length > 0 ? (
-          <div className="flex-1 overflow-y-auto min-h-0 -mx-4 px-4">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {/* `[&>li]:min-w-0`: グリッド子の既定 min-width:auto による横あふれを抑える（カード外寸固定時の縮み許可） */}
             <ul className="grid grid-cols-5 gap-2 [&>li]:min-w-0">
               {loansQuery.data.map((loan) => {
@@ -189,12 +198,12 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
                 );
               })}
             </ul>
-            {loansQuery.isFetching ? <p className="text-sm text-white/80">更新中...</p> : null}
+            {loansQuery.isFetching ? <p className={kioskMetaTextClassName}>更新中...</p> : null}
           </div>
         ) : (
-          <p className="text-sm text-slate-200">現在貸出中のアイテムはありません。</p>
+          <p className="text-sm text-white/80">現在貸出中のアイテムはありません。</p>
         )}
-      </Card>
+      </section>
 
       {/* 画像モーダル */}
       {selectedImageUrl && (
@@ -210,7 +219,9 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
               onClick={(e) => e.stopPropagation()}
             />
             <button
-              className="absolute right-2 top-2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
+              type="button"
+              className={kioskModalCloseButtonClassName}
+              aria-label="閉じる"
               onClick={closeImageModal}
             >
               ✕

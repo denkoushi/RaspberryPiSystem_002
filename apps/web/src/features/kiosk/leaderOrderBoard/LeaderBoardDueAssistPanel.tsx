@@ -26,7 +26,7 @@ function PartRow({ part }: { part: ProductionScheduleDueManagementPartItem }) {
       <td className="px-2 py-2">{part.fhinmei || '-'}</td>
       <td className="min-w-[8rem] px-2 py-2 align-top">
         <div className="flex flex-col gap-1">
-          <span className="whitespace-nowrap font-mono text-[10px] text-white/60 tabular-nums">
+          <span className="whitespace-nowrap font-mono text-xs text-white/60 tabular-nums">
             {part.completedProcessCount}/{part.totalProcessCount}
           </span>
           <KioskResourceProcessChips processes={part.processes} />
@@ -56,7 +56,7 @@ export function LeaderBoardDueAssistPanel({
   return (
     <aside
       className={clsx(
-        'flex h-full min-h-0 flex-col overflow-hidden bg-slate-900 shadow-2xl transition-[max-width,width,opacity] duration-200 ease-out',
+        'flex h-full min-h-0 flex-col overflow-hidden border-white/15 bg-slate-900 transition-[max-width,width,opacity] duration-200 ease-out',
         isOpen
           ? 'w-[min(52rem,min(92vw,calc(100vw-5rem)))] shrink-0 border-l border-white/15 opacity-100'
           : 'pointer-events-none w-0 max-w-0 shrink-0 border-0 opacity-0'

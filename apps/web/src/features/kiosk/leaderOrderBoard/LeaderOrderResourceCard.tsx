@@ -2,6 +2,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 
+import { kioskPanelClassName } from '../kioskTheme';
 import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manualOrderOverviewTypography';
 
 import { buildLeaderBoardPartResourceProcessKey } from './buildLeaderBoardPartResourceProcessKey';
@@ -218,11 +219,12 @@ function LeaderOrderResourceCardInner({
             }
       }
       className={clsx(
-        'flex min-h-[12rem] h-full flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-[border-color,box-shadow,opacity] outline-none',
-        !isSignage && 'cursor-pointer focus-visible:ring-2 focus-visible:ring-cyan-400/60',
+        kioskPanelClassName,
+        'flex min-h-[12rem] h-full flex-col p-2.5 transition-[border-color,opacity] outline-none',
+        !isSignage && 'cursor-pointer focus-visible:ring-2 focus-visible:ring-sky-400/60',
         isSignage && 'cursor-default',
         KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS,
-        selected ? 'border-cyan-300/70 shadow-[0_0_0_1px_rgba(34,211,238,0.3)]' : 'border-white/10',
+        selected ? 'border-sky-400/70' : '',
         dimmed ? 'opacity-[0.52]' : 'opacity-100'
       )}
       aria-label={
@@ -254,9 +256,9 @@ function LeaderOrderResourceCardInner({
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
                 className={clsx(
-                  'shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold tabular-nums transition-colors',
+                  'shrink-0 rounded border px-2 py-0.5 text-xs font-semibold tabular-nums transition-colors',
                   capacityIsTenHours
-                    ? 'border-cyan-300/70 bg-cyan-500/25 text-cyan-50 shadow-[0_0_10px_rgba(34,211,238,0.22)] hover:bg-cyan-500/35'
+                    ? 'border-sky-400 bg-sky-500/30 text-sky-50 hover:bg-sky-500/40'
                     : 'border-white/25 bg-white/[0.08] text-white/75 hover:bg-white/15 hover:text-white/90'
                 )}
               >
@@ -274,10 +276,10 @@ function LeaderOrderResourceCardInner({
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
                 className={clsx(
-                  'shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold tabular-nums transition-colors',
+                  'shrink-0 rounded border px-2 py-0.5 text-xs font-semibold tabular-nums transition-colors',
                   laborEnabled
-                    ? 'border-2 border-yellow-400 bg-gradient-to-br from-yellow-500/55 via-amber-600/45 to-amber-800/40 text-amber-50 shadow-[0_0_0_1px_rgba(253,224,71,0.5),0_0_14px_rgba(250,204,21,0.35),inset_0_1px_0_rgba(255,255,255,0.15)] hover:from-yellow-500/65 hover:to-amber-800/50'
-                    : 'border-white/20 bg-white/[0.07] text-white/40 hover:bg-white/15 hover:text-white/55'
+                    ? 'border-amber-400 bg-amber-500/40 text-amber-50 hover:bg-amber-500/50'
+                    : 'border-white/20 bg-white/[0.07] text-white/60 hover:bg-white/15 hover:text-white/70'
                 )}
               >
                 +人
@@ -294,9 +296,9 @@ function LeaderOrderResourceCardInner({
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
                 className={clsx(
-                  'shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold tabular-nums',
+                  'shrink-0 rounded border px-2 py-0.5 text-xs font-semibold tabular-nums',
                   autoRankDisabled || autoRankPending
-                    ? 'cursor-not-allowed border-white/15 bg-slate-900/50 text-white/40'
+                    ? 'cursor-not-allowed border-white/15 bg-slate-900/50 text-white/60'
                     : 'border-violet-300/50 bg-violet-500/25 text-violet-50 hover:bg-violet-500/40'
                 )}
               >
@@ -316,7 +318,7 @@ function LeaderOrderResourceCardInner({
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {rowsWithFooter.length === 0 ? (
-          <p className="rounded bg-slate-800/80 px-2 py-2 text-xs text-white/45">行なし</p>
+          <p className="rounded bg-slate-800/80 px-2 py-2 text-xs text-white/60">行なし</p>
         ) : useVirtual ? (
           <div
             className="relative w-full"

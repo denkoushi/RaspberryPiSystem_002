@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { updatePartMeasurementVisualTemplateName } from '../../../api/client';
-import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
-import { Input } from '../../../components/ui/Input';
+import {
+  kioskButtonPrimaryClassName,
+  kioskButtonSecondaryClassName,
+  kioskInputClassName
+} from '../../../features/kiosk/kioskTheme';
+
+import {
+  inspectionDrawingKioskDialogClassName,
+  inspectionDrawingKioskDialogTitleClassName
+} from './inspectionDrawingKioskUi';
 
 import type { PartMeasurementVisualTemplateDto } from '../types';
 
@@ -79,28 +87,41 @@ export function KioskInspectionDrawingVisualRenameModal({
       size="md"
       closeOnEsc={!submitting}
       closeOnBackdrop={!submitting}
+      className={inspectionDrawingKioskDialogClassName}
+      titleClassName={inspectionDrawingKioskDialogTitleClassName}
     >
       <div className="mt-4 grid gap-4">
-        <label className="grid gap-1 text-sm font-semibold text-slate-800">
+        <label className="grid gap-1 text-sm font-semibold text-white/80">
           図面名
-          <Input
+          <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="検索しやすい名前"
             disabled={submitting}
             maxLength={200}
+            className={kioskInputClassName}
           />
         </label>
 
-        {error ? <p className="text-sm font-semibold text-red-600">{error}</p> : null}
+        {error ? <p className="text-sm font-semibold text-red-300">{error}</p> : null}
 
         <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="secondary" disabled={submitting} onClick={handleClose}>
+          <button
+            type="button"
+            className={kioskButtonSecondaryClassName}
+            disabled={submitting}
+            onClick={handleClose}
+          >
             キャンセル
-          </Button>
-          <Button type="button" variant="primary" disabled={saveDisabled} onClick={() => void handleSave()}>
+          </button>
+          <button
+            type="button"
+            className={kioskButtonPrimaryClassName}
+            disabled={saveDisabled}
+            onClick={() => void handleSave()}
+          >
             {submitting ? '保存中…' : '名称を保存'}
-          </Button>
+          </button>
         </div>
       </div>
     </Dialog>

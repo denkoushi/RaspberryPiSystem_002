@@ -9,6 +9,14 @@ import {
 } from '../../api/hooks';
 import { buttonClassName, Button } from '../../components/ui/Button';
 import { useKeyboardWedgeScan } from '../../features/barcode-scan';
+import {
+  kioskButtonPrimaryClassName,
+  kioskButtonSecondaryClassName,
+  kioskInputClassName,
+  kioskMetaTextClassName,
+  kioskPageTitleClassName,
+  kioskPanelClassName
+} from '../../features/kiosk/kioskTheme';
 import { kioskInspectionDrawingPaperReportPrintPath } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 import { normalizeManufacturingOrderScanText } from '../../features/part-measurement/manufacturingOrderScan';
 import {
@@ -115,22 +123,22 @@ function SessionWipCard({ session }: { session: SelfInspectionSessionSummaryDto 
   });
 
   return (
-    <section className="flex min-w-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-900/80 p-2">
+    <section className={clsx(kioskPanelClassName, 'flex min-w-0 flex-col gap-1.5 p-2')}>
       <div className="flex min-w-0 items-start justify-between gap-1">
         <div className="min-w-0 flex-1">
           <p className="line-clamp-1 text-base font-bold" title={card.productNo}>
             {card.productNo}
           </p>
-          <p className="line-clamp-2 text-[0.78rem] leading-snug text-white/70" title={card.metaLine}>
+          <p className="line-clamp-2 text-xs leading-snug text-white/70" title={card.metaLine}>
             {card.metaLine}
           </p>
           {card.fseibanLine ? (
-            <p className="line-clamp-1 text-[0.72rem] text-white/55" title={card.fseibanLine}>
+            <p className={clsx(kioskMetaTextClassName, 'line-clamp-1')} title={card.fseibanLine}>
               {card.fseibanLine}
             </p>
           ) : null}
           <p
-            className="line-clamp-2 text-[0.72rem] leading-snug text-white/60"
+            className={clsx(kioskMetaTextClassName, 'line-clamp-2 leading-snug')}
             title={card.participantNamesTitle ?? undefined}
           >
             氏名 {card.participantNamesLine}
@@ -138,7 +146,7 @@ function SessionWipCard({ session }: { session: SelfInspectionSessionSummaryDto 
         </div>
         <span
           className={clsx(
-            'shrink-0 rounded px-1.5 py-0.5 text-[0.68rem] font-semibold',
+            'shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold',
             session.status === 'review_pending' || isInspectorRemeasurementActive || isInspectorRemeasurementComplete
               ? 'bg-red-400/20 text-red-100'
               : 'bg-yellow-400/20 text-yellow-200'
@@ -147,7 +155,7 @@ function SessionWipCard({ session }: { session: SelfInspectionSessionSummaryDto 
           {badgeLabel}
         </span>
       </div>
-      <p className="text-[0.72rem] text-white/55">
+      <p className={kioskMetaTextClassName}>
         {isInspectorRemeasurementActive || isInspectorRemeasurementComplete
           ? `検査員 ${session.inspectorCompletedRequiredEntryCount}/${session.inspectorRequiredEntryCount} 件`
           : `進捗 ${card.progressLine}`}
@@ -155,10 +163,7 @@ function SessionWipCard({ session }: { session: SelfInspectionSessionSummaryDto 
       <div className="flex flex-wrap gap-1">
         <Link
           to={actionPath}
-          className={buttonClassName(
-            'primary',
-            'inline-flex min-h-9 w-full items-center justify-center text-[0.82rem]'
-          )}
+          className={buttonClassName('primary', clsx(kioskButtonPrimaryClassName, 'inline-flex w-full items-center justify-center text-sm'))}
         >
           {actionLabel}
         </Link>
@@ -377,33 +382,33 @@ export function KioskSelfInspectionPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 bg-slate-800 p-3 text-white">
-      <div className="rounded border border-white/15 bg-slate-900/70 p-3">
+      <div className={clsx(kioskPanelClassName, 'p-3')}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold">自主検査</h1>
+            <h1 className={kioskPageTitleClassName}>自主検査</h1>
             <p className="mt-1 text-sm text-white/70">
               仕掛中（全端末共通）を表示します。検索で新規開始の候補を絞り込めます。
             </p>
           </div>
           <div className="flex min-w-0 flex-wrap items-end gap-2">
-            <Button
+            <button
               type="button"
-              variant={scanArmed ? 'primary' : 'secondary'}
+              className={scanArmed ? kioskButtonPrimaryClassName : kioskButtonSecondaryClassName}
               onClick={scanArmed ? handleCancelScan : handleStartScan}
             >
               {scanArmed ? 'スキャン中止' : '移動票スキャン'}
-            </Button>
-            <Button
+            </button>
+            <button
               type="button"
-              variant="secondary"
+              className={kioskButtonSecondaryClassName}
               onClick={handleRecordApprovalNavigate}
             >
               検査記録確認
-            </Button>
+            </button>
             <label className="grid min-w-[12rem] max-w-xs flex-1 gap-1 text-sm">
               <span className="text-white/70">製造order / 製番 / 品番</span>
               <input
-                className="rounded border border-white/15 bg-slate-950/70 px-3 py-2 text-white"
+                className={kioskInputClassName}
                 value={productNo}
                 onChange={(e) => {
                   setProductNo(e.target.value);
@@ -418,7 +423,7 @@ export function KioskSelfInspectionPage() {
             <label className="grid w-[7rem] gap-1 text-sm">
               <span className="text-white/70">資源CD</span>
               <input
-                className="rounded border border-white/15 bg-slate-950/70 px-3 py-2 text-white"
+                className={kioskInputClassName}
                 value={resourceCd}
                 onChange={(e) => {
                   setResourceCd(e.target.value);
@@ -431,6 +436,7 @@ export function KioskSelfInspectionPage() {
             <Button
               type="button"
               variant="ghostOnDark"
+              className="min-h-11"
               onClick={() => {
                 setProductNo('');
                 setResourceCd('');
@@ -487,7 +493,7 @@ export function KioskSelfInspectionPage() {
               </p>
               <div className="grid grid-cols-1 gap-2 md:grid-cols-4 xl:grid-cols-6">
                 {rows.map((row) => (
-                  <section key={row.id} className="grid min-w-0 gap-2 rounded border border-white/15 bg-slate-900/80 p-3">
+                  <section key={row.id} className={clsx(kioskPanelClassName, 'grid min-w-0 gap-2 p-3')}>
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="truncate text-base font-bold">{row.productNo}</p>
@@ -504,14 +510,18 @@ export function KioskSelfInspectionPage() {
                       ) : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button
+                      <button
                         type="button"
-                        variant={row.status === 'in_progress' || row.status === 'completed' ? 'primary' : 'ghostOnDark'}
-                        className="inline-flex min-h-11 w-full items-center justify-center text-[1rem]"
+                        className={clsx(
+                          row.status === 'in_progress' || row.status === 'completed'
+                            ? kioskButtonPrimaryClassName
+                            : buttonClassName('ghostOnDark'),
+                          'inline-flex w-full min-h-11 items-center justify-center text-base'
+                        )}
                         onClick={() => setInspectionWorkflowTarget(row)}
                       >
                         検査方法を選択
-                      </Button>
+                      </button>
                     </div>
                   </section>
                 ))}
@@ -521,6 +531,7 @@ export function KioskSelfInspectionPage() {
                   <Button
                     type="button"
                     variant="ghostOnDark"
+                    className="min-h-11"
                     disabled={page <= 1 || scheduleQuery.isFetching}
                     onClick={() => setPage((current) => Math.max(1, current - 1))}
                   >
@@ -529,6 +540,7 @@ export function KioskSelfInspectionPage() {
                   <Button
                     type="button"
                     variant="ghostOnDark"
+                    className="min-h-11"
                     disabled={!hasMore || scheduleQuery.isFetching}
                     onClick={() => setPage((current) => current + 1)}
                   >

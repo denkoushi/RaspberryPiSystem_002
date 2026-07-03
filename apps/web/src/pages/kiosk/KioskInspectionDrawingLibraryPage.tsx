@@ -1,8 +1,13 @@
+import clsx from 'clsx';
 import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { useKioskProductionScheduleResources } from '../../api/hooks';
 import { Button, buttonClassName } from '../../components/ui/Button';
+import {
+  kioskButtonPrimaryClassName,
+  kioskPageTitleClassName
+} from '../../features/kiosk/kioskTheme';
 import {
   InspectionDrawingLibraryFilterBar,
   InspectionDrawingLibraryTemplateTable,
@@ -103,7 +108,7 @@ export function KioskInspectionDrawingLibraryPage() {
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 p-2">
         <div className="min-w-0">
-          <h1 className="text-[1.35rem] font-bold leading-tight">検査図面</h1>
+          <h1 className={kioskPageTitleClassName}>検査図面</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -117,7 +122,7 @@ export function KioskInspectionDrawingLibraryPage() {
           <Link
             to={KIOSK_INSPECTION_DRAWING_CREATE_PATH}
             state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
-            className={buttonClassName('primary', 'inline-flex min-h-11 items-center text-[1.02rem]')}
+            className={buttonClassName('primary', clsx(kioskButtonPrimaryClassName, 'inline-flex items-center text-base'))}
           >
             新規
           </Link>
@@ -145,7 +150,7 @@ export function KioskInspectionDrawingLibraryPage() {
             <h2 id="inspection-drawing-template-pane-heading" className="text-[1.08rem] font-bold text-white/90">
               検査図面テンプレート
             </h2>
-            <span className="text-[0.9rem] font-semibold text-white/55">{visibleTemplateRows.length}件</span>
+            <span className="text-sm font-semibold text-white/55">{visibleTemplateRows.length}件</span>
           </div>
 
           <InspectionDrawingLibraryFilterBar

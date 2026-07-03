@@ -70,16 +70,16 @@ function compactScenarioLabel(scenarioId: DgxOrchestrationScenarioIdApi): string
 function actionStateClass(stateKind: DgxOperatorConsoleActionApi['stateKind'] | undefined): string {
   switch (stateKind) {
     case 'current':
-      return 'border-slate-300 bg-slate-100 text-slate-700';
+      return 'border-white/20 bg-white/10 text-white/70';
     case 'warning':
-      return 'border-amber-200 bg-amber-50 text-amber-800';
+      return 'border-amber-400/30 bg-amber-500/15 text-amber-300';
     case 'blocked':
-      return 'border-red-200 bg-red-50 text-red-700';
+      return 'border-red-400/30 bg-red-500/15 text-red-300';
     case 'ready':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+      return 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300';
     case 'busy':
     default:
-      return 'border-slate-200 bg-white text-slate-600';
+      return 'border-white/20 bg-white/5 text-white/60';
   }
 }
 
@@ -356,14 +356,14 @@ export function DgxResourcePrimaryScenarioFlow({
               className={clsx(
                 'grid min-h-16 content-center gap-1 rounded-lg border px-3 py-2 text-center transition disabled:cursor-not-allowed',
                 action.primary
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
-                  : 'border-slate-300 bg-white text-slate-950 hover:bg-slate-50',
-                disabled && 'bg-slate-50 text-slate-500 opacity-75'
+                  ? 'border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-500'
+                  : 'border-white/20 bg-white/5 text-white hover:bg-white/10',
+                disabled && 'opacity-40'
               )}
               title={action.disabledReasonJa ?? stateLabel}
             >
               <strong className="text-sm font-bold leading-tight sm:text-[15px]">{compactScenarioLabel(action.scenarioId)}</strong>
-              <span className={clsx('mx-auto rounded-full border px-2 py-0.5 text-[11px] font-bold leading-tight', actionStateClass(busy ? 'busy' : action.stateKind))}>
+              <span className={clsx('mx-auto rounded-full border px-2 py-0.5 text-xs font-bold leading-tight', actionStateClass(busy ? 'busy' : action.stateKind))}>
                 {stateLabel}
               </span>
             </button>
@@ -372,8 +372,8 @@ export function DgxResourcePrimaryScenarioFlow({
       </div>
 
       {needsModelProfile ? (
-        <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center">
-          <label className="shrink-0 text-sm font-bold text-slate-600" htmlFor="dgx-business-model-profile">
+        <div className="flex flex-col gap-2 rounded-lg border border-white/15 bg-white/5 p-3 sm:flex-row sm:items-center">
+          <label className="shrink-0 text-sm font-bold text-white/70" htmlFor="dgx-business-model-profile">
             ロードモデル
           </label>
           <select
@@ -381,7 +381,7 @@ export function DgxResourcePrimaryScenarioFlow({
             value={selectedModelProfileId ?? ''}
             disabled={busy || selectableProfiles.length === 0}
             onChange={(event) => setSelectedModelProfileId(event.target.value || null)}
-            className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 disabled:opacity-50"
+            className="min-w-0 flex-1 rounded-md border border-white/20 bg-slate-950/60 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40 focus:border-sky-400 focus:outline-none"
           >
             {selectableProfiles.length === 0 ? <option value="">選択できるモデルがありません</option> : null}
             {selectableProfiles.map((profile) => (
@@ -391,7 +391,7 @@ export function DgxResourcePrimaryScenarioFlow({
             ))}
           </select>
           {!selectedModelProfile ? (
-            <p className="text-xs font-semibold text-amber-700">
+            <p className="text-xs font-semibold text-amber-300">
               {modelProfiles?.errorMessageJa ?? 'DGX からモデルプロファイルを取得できませんでした'}
             </p>
           ) : null}
@@ -404,15 +404,15 @@ export function DgxResourcePrimaryScenarioFlow({
           className={clsx(
             'whitespace-pre-line break-words rounded-lg border px-3 py-2 text-sm font-semibold leading-snug',
             resultNote.tone === 'success'
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-              : 'border-red-200 bg-red-50 text-red-800'
+              ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300'
+              : 'border-red-400/30 bg-red-500/15 text-red-300'
           )}
         >
           {resultNote.message}
         </p>
       ) : null}
       {busy ? (
-        <div role="status" className="break-words rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold leading-snug text-sky-800">
+        <div role="status" className="break-words rounded-lg border border-sky-400/30 bg-sky-500/15 px-3 py-2 text-sm font-semibold leading-snug text-sky-300">
           {businessReturnPending ? (
             <>
               <p>業務復帰中</p>

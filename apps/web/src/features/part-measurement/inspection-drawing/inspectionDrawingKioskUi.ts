@@ -1,5 +1,11 @@
 import clsx from 'clsx';
 
+import {
+  kioskInputClassName,
+  kioskPanelClassName,
+  kioskSelectClassName
+} from '../../kiosk/kioskTheme';
+
 /** キオスクトグル: 非選択（KioskPartMeasurementPage の工程ボタンと同じ） */
 export function inspectionDrawingKioskToggleInactiveClass(isActive: boolean): string {
   return clsx(!isActive && 'opacity-40 grayscale');
@@ -7,11 +13,18 @@ export function inspectionDrawingKioskToggleInactiveClass(isActive: boolean): st
 
 /** 押せないボタンをより明確にグレーアウト */
 export const inspectionDrawingKioskDisabledButtonClass =
-  'disabled:opacity-35 disabled:grayscale disabled:saturate-50';
+  'disabled:opacity-40 disabled:cursor-not-allowed';
+
+/** キオスクモーダル面（ダーク） */
+export const inspectionDrawingKioskDialogClassName =
+  '!rounded-lg !border !border-white/20 !bg-slate-900 !p-4 !text-white !shadow-none [&_p.text-sm]:!text-white/60';
+
+/** キオスクモーダルタイトル */
+export const inspectionDrawingKioskDialogTitleClassName = 'text-base font-semibold text-white';
 
 /** 上部メタデータ欄 Input — 既定 ~1rem の 1.3 倍 */
 export const inspectionDrawingMetadataInputClassName =
-  'text-slate-900 text-[1.18rem] leading-snug py-2';
+  'text-[1.18rem] leading-snug py-2 text-white';
 
 /** 図面ファイル選択 — text-xs 相当を 1.3 倍 */
 export const inspectionDrawingMetadataFileInputClassName = 'text-[1rem] text-white';
@@ -20,6 +33,7 @@ export const inspectionDrawingMetadataFileInputClassName = 'text-[1rem] text-whi
 export const inspectionDrawingMetadataControlWidthClass = 'w-[10.5rem] max-w-full';
 
 export const inspectionDrawingMetadataInputClass = clsx(
+  kioskInputClassName,
   inspectionDrawingMetadataInputClassName,
   inspectionDrawingMetadataControlWidthClass
 );
@@ -31,15 +45,15 @@ export const inspectionDrawingMetadataFileInputClass = clsx(
 
 /** 上部1行バンド（メタデータ + ツールバー）— 本番記録など */
 export const inspectionDrawingHeaderBandClassName =
-  'flex shrink-0 flex-col gap-1.5 rounded border border-white/15 bg-slate-900/50 p-1.5 lg:flex-row lg:items-end lg:justify-between lg:gap-2';
+  'flex shrink-0 flex-col gap-1.5 rounded-lg border border-white/15 bg-slate-900/60 p-1.5 lg:flex-row lg:items-end lg:justify-between lg:gap-2';
 
 /** 作成/改版 — コンパクト1バンド（測定点一覧は右ペインへ）— 旧3スロット HeaderBand 用 */
 export const inspectionDrawingCreateHeaderBandClassName =
-  'flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded border border-white/15 bg-slate-900/50 px-2 py-1';
+  'flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-white/15 bg-slate-900/60 px-2 py-1';
 
 /** 作成/改版 — フラット band（CompactHeader 専用・top-band 相当） */
 export const inspectionDrawingCreateFlatBandClassName =
-  'flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded border border-white/15 bg-slate-900/50 px-2 py-1';
+  'flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-white/15 bg-slate-900/60 px-2 py-1';
 
 /** フラット band — meta-row（dl）。band 直下・内部 nowrap */
 export const inspectionDrawingCreateFlatMetaRowClassName =
@@ -66,17 +80,21 @@ export const inspectionDrawingCreateMetaChipValueClassName = 'm-0 min-w-0';
 
 /** chip 内の読取専用値 */
 export const inspectionDrawingCreateMetaChipReadonlyValueClassName =
-  'inline-block max-w-[11rem] overflow-hidden text-ellipsis whitespace-nowrap rounded border border-slate-600 bg-slate-800/90 px-1.5 py-0.5 text-[0.95rem] text-white';
+  'inline-block max-w-[11rem] overflow-hidden text-ellipsis whitespace-nowrap rounded-md border border-white/20 bg-slate-950/60 px-1.5 py-0.5 text-[0.95rem] text-white';
 
 /** chip 内の Input / select */
-export const inspectionDrawingCreateMetaChipControlClassName =
-  'box-border h-9 max-w-[11rem] min-w-0 rounded-md border-2 border-slate-500 bg-white px-2 text-[0.95rem] text-slate-900';
+export const inspectionDrawingCreateMetaChipControlClassName = clsx(
+  kioskInputClassName,
+  'box-border h-9 max-w-[11rem] min-w-0 px-2 text-[0.95rem]'
+);
 
 export const inspectionDrawingCreateMetaChipWideShellClassName =
   'min-w-0 w-[22rem] max-w-[22rem] overflow-hidden rounded-md';
 
-export const inspectionDrawingCreateMetaChipWideControlClassName =
-  'box-border h-9 w-full min-w-0 max-w-[22rem] rounded-md border-2 border-slate-500 bg-white px-2 text-[0.95rem] text-slate-900 disabled:opacity-60';
+export const inspectionDrawingCreateMetaChipWideControlClassName = clsx(
+  kioskInputClassName,
+  'box-border h-9 w-full min-w-0 max-w-[22rem] px-2 text-[0.95rem] disabled:opacity-40'
+);
 
 export const inspectionDrawingCreateMetaChipSelectClassName = clsx(
   inspectionDrawingCreateMetaChipControlClassName,
@@ -85,14 +103,14 @@ export const inspectionDrawingCreateMetaChipSelectClassName = clsx(
 
 /** 版バッジ（v2 · 有効） */
 export const inspectionDrawingCreateVersionBadgeClassName =
-  'rounded border border-white/20 px-1.5 py-0.5 text-[0.75rem] text-white/55';
+  'rounded border border-white/20 px-1.5 py-0.5 text-xs text-white/55';
 
 /** 図面ファイル — バンド内インライン */
 export const inspectionDrawingCreateFileLabelClassName =
-  'inline-flex shrink-0 items-center gap-1 text-[0.75rem] text-white/55';
+  'inline-flex shrink-0 items-center gap-1 text-xs text-white/55';
 
 export const inspectionDrawingCreateFileInputClassName =
-  'max-w-[7rem] text-[0.7rem] text-white/70 file:mr-1 file:rounded file:border-0 file:bg-white/10 file:px-1.5 file:py-0.5 file:text-[0.7rem] file:text-white/80';
+  'max-w-[7rem] text-xs text-white/70 file:mr-1 file:rounded file:border-0 file:bg-white/10 file:px-1.5 file:py-0.5 file:text-xs file:text-white/80';
 
 /** 作成/改版ページ root */
 export const inspectionDrawingCreatePageRootClassName =
@@ -111,17 +129,17 @@ export const inspectionDrawingPointSummaryListSidebarTwoColumnClassName =
   'grid min-h-0 flex-1 grid-cols-2 gap-1 overflow-y-auto [scrollbar-gutter:stable]';
 
 export const inspectionDrawingPointSummaryListSidebarCardClassName =
-  'flex w-full flex-col gap-0.5 rounded border border-white/20 bg-slate-800/90 px-2 py-1 text-left text-[0.82rem] leading-snug text-white transition hover:border-white/35 disabled:opacity-50';
+  'flex w-full flex-col gap-0.5 rounded-lg border border-white/15 bg-slate-900/60 px-2 py-1 text-left text-xs leading-snug text-white transition hover:border-white/35 disabled:opacity-50';
 
 /** 測定点一覧 — 自主検査セッション選択中カード（高彩度 cyan · ring 主強調） */
 export const inspectionDrawingPointSummaryListSidebarCardSelectedClassName =
-  'border-cyan-300 bg-cyan-900/55 ring-2 ring-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.45)]';
+  'border-cyan-300 bg-cyan-900/55 ring-2 ring-cyan-300';
 
 export const inspectionDrawingPointSummaryListSidebarSectionClassName =
   'mt-1.5 flex min-h-0 flex-1 flex-col gap-1 border-t border-white/10 pt-1.5';
 
 export const inspectionDrawingPointSummaryListSidebarTitleClassName =
-  'shrink-0 text-[0.8rem] font-semibold text-white/50';
+  'shrink-0 text-xs font-semibold text-white/50';
 
 export const inspectionDrawingMetadataGridClassName =
   'grid min-w-0 shrink grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-4 lg:max-w-[58rem] lg:min-w-0 lg:flex-1';
@@ -153,15 +171,17 @@ export const inspectionDrawingSideAsideClassName =
   'flex w-full shrink-0 flex-col gap-2 lg:w-[20rem]';
 
 /** 右サイドバー — 作成/改版（設定 + 縦一覧） */
-export const inspectionDrawingCreateSideAsideClassName =
-  'flex min-h-0 w-full shrink-0 flex-col rounded border border-white/15 bg-slate-900/80 p-1.5 lg:w-[17rem]';
+export const inspectionDrawingCreateSideAsideClassName = clsx(
+  kioskPanelClassName,
+  'flex min-h-0 w-full shrink-0 flex-col p-1.5 lg:w-[17rem]'
+);
 
 /** 自主検査セッション — フラット top-band（作成/改版と同型の密度） */
 export const selfInspectionSessionFlatBandClassName =
-  'flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded border border-white/15 bg-slate-800/80 px-2 py-1';
+  'flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-white/15 bg-slate-900/60 px-2 py-1';
 
 export const selfInspectionSessionMetaRowClassName =
-  'flex min-w-0 flex-1 flex-nowrap items-center gap-x-2 overflow-x-auto text-[0.82rem]';
+  'flex min-w-0 flex-1 flex-nowrap items-center gap-x-2 overflow-x-auto text-xs';
 
 export const selfInspectionSessionMetaChipClassName =
   'inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap text-white/80';
@@ -201,15 +221,19 @@ export const inspectionDrawingCreateCanvasColumnClassName =
 
 /** 図面キャンバス scrollport — スクロールバー出現時の client 寸法揺れを抑える */
 export const inspectionDrawingCanvasViewportBaseClassName =
-  'relative min-h-0 flex-1 select-none overflow-auto rounded border border-white/20 bg-black/40 [scrollbar-gutter:stable]';
+  'relative min-h-0 flex-1 select-none overflow-auto rounded-lg border border-white/15 bg-black/40 [scrollbar-gutter:stable]';
 
 /** 測定点設定パネル — サイドバー幅いっぱい */
-export const inspectionDrawingPointSettingPanelClassName =
-  'grid w-full max-w-full gap-2 rounded border border-white/15 bg-slate-900/80 p-2';
+export const inspectionDrawingPointSettingPanelClassName = clsx(
+  kioskPanelClassName,
+  'grid w-full max-w-full gap-2 p-2'
+);
 
 /** 測定点設定パネル内 Input — 既定 ~1rem の 1.3 倍 */
-export const inspectionDrawingPointSettingInputClassName =
-  'text-slate-900 text-[1.12rem] leading-snug py-2';
+export const inspectionDrawingPointSettingInputClassName = clsx(
+  kioskInputClassName,
+  'text-[1.12rem] leading-snug py-2'
+);
 
 /** 測定点設定 — 名称・基準値 2 列行（17rem 右ペイン向け） */
 export const inspectionDrawingPointSettingDualRowClassName =
@@ -224,7 +248,7 @@ export const inspectionDrawingPointNudgeGridClassName =
 
 /** 測定点位置微調整 — icon-only 方向ボタン（既存 Button の px-4 を使わない） */
 export const inspectionDrawingPointNudgeButtonClassName =
-  'inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-white/25 bg-slate-800/90 text-[1.1rem] font-bold leading-none text-white/90 hover:bg-slate-700/90 disabled:cursor-not-allowed';
+  'inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-white/20 bg-white/5 text-[1.1rem] font-bold leading-none text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40';
 
 /** 一覧フィルタ — 品番欄幅 */
 export const inspectionDrawingLibraryFilterFhincdWidthClass =
@@ -239,8 +263,10 @@ export const inspectionDrawingBoundedSelectShellClassName =
   'min-w-0 w-full overflow-hidden rounded-md';
 
 /** 資源 select 本体（シェル内で幅 100% に収める） */
-export const inspectionDrawingBoundedSelectClassName =
-  'box-border h-11 w-full min-w-0 max-w-full rounded-md border-2 border-slate-500 bg-white px-3 text-[1.02rem] text-slate-900';
+export const inspectionDrawingBoundedSelectClassName = clsx(
+  kioskSelectClassName,
+  'box-border w-full min-w-0 max-w-full text-[1.02rem]'
+);
 
 /** 測定値選択 select — 資源 select には影響させない */
 export const inspectionDrawingMeasurementValueSelectClassName = clsx(

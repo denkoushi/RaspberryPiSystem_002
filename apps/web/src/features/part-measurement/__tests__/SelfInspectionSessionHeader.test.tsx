@@ -37,7 +37,7 @@ describe('SelfInspectionSessionHeader', () => {
     const button = screen.getByRole('button', { name: '手元カメラ OFF' });
     expect(button).not.toBeDisabled();
     expect(button).toHaveAttribute('aria-pressed', 'false');
-    expect(button.className).toContain('bg-slate-800/50');
+    expect(button.className).toContain('bg-white/5');
     expect(button.className).toContain('text-white/40');
     fireEvent.click(button);
     expect(onToggle).toHaveBeenCalledTimes(1);
@@ -55,7 +55,8 @@ describe('SelfInspectionSessionHeader', () => {
     const button = screen.getByRole('button', { name: '手元カメラ ON' });
     expect(button).not.toBeDisabled();
     expect(button).toHaveAttribute('aria-pressed', 'true');
-    expect(button.className).toContain('bg-slate-700');
-    expect(button.className).not.toContain('bg-slate-800/50');
+    expect(button.className).toContain('border-white/20');
+    expect(button.className).toContain('bg-white/5');
+    expect(button.className).not.toContain('text-white/40');
   });
 });

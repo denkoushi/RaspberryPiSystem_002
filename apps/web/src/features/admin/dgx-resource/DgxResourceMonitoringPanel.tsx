@@ -9,28 +9,28 @@ type Props = {
 /** Phase4 overview.monitoring をそのまま可視化 */
 export function DgxResourceMonitoringPanel({ monitoring }: Props) {
   return (
-    <div className="flex shrink-0 flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3">
-      <h2 className="text-base font-bold text-slate-950">運用監視ヒント</h2>
+    <div className="flex shrink-0 flex-col gap-2 rounded-lg border border-white/15 bg-slate-900/60 p-3">
+      <h2 className="text-base font-bold text-white">運用監視ヒント</h2>
 
-      <div className="space-y-1.5 text-sm leading-snug text-slate-700">
+      <div className="space-y-1.5 text-sm leading-snug text-white/70">
         {monitoring.activeInferenceSummary ? (
           <p title={monitoring.activeInferenceSummary} className="truncate">
-            <span className="font-semibold text-slate-950">Inference 状況: </span>
+            <span className="font-semibold text-white">Inference 状況: </span>
             <span>{monitoring.activeInferenceSummary}</span>
           </p>
         ) : (
-          <p className="text-slate-500">Inference 状態の詳細ヒントは現在ありません。</p>
+          <p className="text-white/60">Inference 状態の詳細ヒントは現在ありません。</p>
         )}
         <p>
-          <span className="font-semibold text-slate-950">Spark: </span>
+          <span className="font-semibold text-white">Spark: </span>
           {monitoring.sparkSummaryJa}
         </p>
       </div>
 
       {monitoring.targetHighlights.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5 text-sm font-mono text-slate-600">
+        <div className="flex flex-wrap gap-1.5 text-sm font-mono text-white/70">
           {monitoring.targetHighlights.map((h) => (
-            <span key={h.id} className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5" title={`${h.id}: ${h.status}`}>
+            <span key={h.id} className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5" title={`${h.id}: ${h.status}`}>
               {h.label}: {h.status}
             </span>
           ))}
@@ -38,7 +38,7 @@ export function DgxResourceMonitoringPanel({ monitoring }: Props) {
       ) : null}
 
       {monitoring.alerts.length === 0 ? (
-        <p className="text-sm font-semibold text-emerald-700">運用上の自動アラートはありません。</p>
+        <p className="text-sm font-semibold text-emerald-300">運用上の自動アラートはありません。</p>
       ) : (
         <ul className="max-h-[18rem] space-y-1.5 overflow-y-auto pr-0.5 text-sm leading-snug">
           {monitoring.alerts.map((a) => (

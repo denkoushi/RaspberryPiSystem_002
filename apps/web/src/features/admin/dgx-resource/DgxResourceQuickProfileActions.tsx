@@ -156,9 +156,9 @@ export function DgxResourceQuickProfileActions({
 
   if (modelProfiles?.status !== 'ok') {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
-        <h3 className="text-sm font-bold text-slate-950">保守: モデルプロファイル起動</h3>
-        <p className="mt-1 text-xs text-amber-700">
+      <div className="rounded-lg border border-white/15 bg-slate-900/60 p-3">
+        <h3 className="text-sm font-bold text-white">保守: モデルプロファイル起動</h3>
+        <p className="mt-1 text-xs text-amber-300">
           {modelProfiles?.errorMessageJa ?? 'DGX model profiles を取得できないため、モデル起動は無効です'}
         </p>
       </div>
@@ -166,17 +166,17 @@ export function DgxResourceQuickProfileActions({
   }
 
   return (
-    <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
-      <h3 className="text-sm font-bold text-slate-950">保守: モデルプロファイル起動</h3>
+    <div className="space-y-2 rounded-lg border border-white/15 bg-slate-900/60 p-3">
+      <h3 className="text-sm font-bold text-white">保守: モデルプロファイル起動</h3>
       {selectable.length === 0 ? (
-        <p className="text-xs font-semibold text-slate-500">起動可能なモデルなし</p>
+        <p className="text-xs font-semibold text-white/60">起動可能なモデルなし</p>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {selectable.map((profile) => {
             const active = profile.id === modelProfiles?.activeProfileId;
             const budget = runtimeBudgetLine(profile);
             return (
-              <div key={profile.id} className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+              <div key={profile.id} className="space-y-2 rounded-md border border-white/15 bg-white/5 p-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     type="button"
@@ -198,21 +198,21 @@ export function DgxResourceQuickProfileActions({
                     削除
                   </Button>
                   <span
-                    className={active ? 'h-2 w-2 rounded-full bg-emerald-700' : 'h-2 w-2 rounded-full bg-slate-400'}
+                    className={active ? 'h-2 w-2 rounded-full bg-emerald-400' : 'h-2 w-2 rounded-full bg-slate-500'}
                     aria-label={active ? 'active' : 'available'}
                   />
                 </div>
-                <p className="truncate text-[11px] font-semibold text-slate-500" title={profile.id}>
+                <p className="truncate text-xs font-semibold text-white/60" title={profile.id}>
                   {profile.id}
                 </p>
-                {budget ? <p className="max-w-72 text-[11px] leading-snug text-slate-500">{budget}</p> : null}
+                {budget ? <p className="max-w-72 text-xs leading-snug text-white/60">{budget}</p> : null}
                 {profile.startupFit ? (
-                  <p className={profile.startupFit.status === 'insufficient' ? 'text-[11px] font-bold text-amber-700' : 'text-[11px] font-semibold text-slate-500'}>
+                  <p className={profile.startupFit.status === 'insufficient' ? 'text-xs font-bold text-amber-300' : 'text-xs font-semibold text-white/60'}>
                     {profile.startupFit.detailJa}
                   </p>
                 ) : null}
                 {profile.deleteProtection?.protected ? (
-                  <p className="text-[11px] font-semibold text-slate-500">{profile.deleteProtection.reasonJa ?? '削除保護'}</p>
+                  <p className="text-xs font-semibold text-white/60">{profile.deleteProtection.reasonJa ?? '削除保護'}</p>
                 ) : null}
               </div>
             );
@@ -220,15 +220,15 @@ export function DgxResourceQuickProfileActions({
         </div>
       )}
       {deletePreview ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+        <div className="rounded-md border border-amber-400/30 bg-amber-500/15 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div className="text-sm font-bold text-slate-950">{deletePreview.displayNameJa}</div>
-              <div className="break-all text-xs font-semibold text-slate-600">
+              <div className="text-sm font-bold text-white">{deletePreview.displayNameJa}</div>
+              <div className="break-all text-xs font-semibold text-white/70">
                 {deletePreview.resolvedStoragePath ?? deletePreview.storagePath ?? '保存先未取得'}
               </div>
             </div>
-            <span className="rounded-full border border-amber-200 bg-white px-2 py-1 text-xs font-bold text-amber-800">
+            <span className="rounded-full border border-amber-400/30 bg-amber-500/15 px-2 py-1 text-xs font-bold text-amber-300">
               {deletePreview.canDelete ? `${deletePreview.sizeGiB ?? 0} GiB` : '削除保護'}
             </span>
           </div>
@@ -269,8 +269,8 @@ export function DgxResourceQuickProfileActions({
           role="status"
           className={
             resultNote.tone === 'success'
-              ? 'text-xs text-emerald-700'
-              : 'text-xs text-red-700'
+              ? 'text-xs text-emerald-300'
+              : 'text-xs text-red-300'
           }
         >
           {resultNote.message}

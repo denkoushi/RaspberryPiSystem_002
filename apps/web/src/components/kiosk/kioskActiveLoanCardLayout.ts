@@ -18,11 +18,11 @@ export const KIOSK_ACTIVE_LOAN_CARD_THUMB_DISPLAY_PX = Math.round(
  * カード外寸の固定高さ（px）。
  * グリッド行の縦位置を揃え、サムネ108px + メタ情報 + ボタン行が収まる前提。
  */
-export const KIOSK_ACTIVE_LOAN_CARD_FIXED_HEIGHT_PX = 248;
+export const KIOSK_ACTIVE_LOAN_CARD_FIXED_HEIGHT_PX = 260;
 
 /** ルート `<li>`（固定外寸・縦フレックス・クリップ）。値は {@link KIOSK_ACTIVE_LOAN_CARD_FIXED_HEIGHT_PX} と同期すること。 */
 export const kioskActiveLoanCardRootClassName =
-  'relative flex flex-col gap-3 overflow-hidden rounded-lg p-3 min-h-[248px] h-[248px]';
+  'relative flex flex-col gap-3 overflow-hidden rounded-lg p-3 min-h-[260px] h-[260px]';
 
 /** メイン行（サムネ + 本文）。本文が縦にはみ出さないよう `min-h-0`。 */
 export const kioskActiveLoanCardMainRowClassName =

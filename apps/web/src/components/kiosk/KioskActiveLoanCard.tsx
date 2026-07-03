@@ -1,6 +1,6 @@
 import { resolveKioskLoanCardSurfaceTokens } from '@raspi-system/shared-types';
 
-import { Button } from '../ui/Button';
+import { kioskButtonPrimaryClassName, kioskButtonSecondaryClassName } from '../../features/kiosk/kioskTheme';
 
 import {
   kioskActiveLoanCardActionsRowClassName,
@@ -113,21 +113,12 @@ export function KioskActiveLoanCard({
         </div>
       </div>
       <div className={kioskActiveLoanCardActionsRowClassName}>
-        <Button
-          onClick={onReturn}
-          disabled={actionsDisabled}
-          className="h-auto px-3 py-1 text-sm font-semibold"
-        >
+        <button type="button" onClick={onReturn} disabled={actionsDisabled} className={kioskButtonPrimaryClassName}>
           {returnButtonLabel}
-        </Button>
-        <Button
-          onClick={onCancel}
-          disabled={actionsDisabled}
-          variant="ghostOnDark"
-          className="h-auto px-3 py-1 text-sm font-semibold hover:bg-white/20"
-        >
+        </button>
+        <button type="button" onClick={onCancel} disabled={actionsDisabled} className={kioskButtonSecondaryClassName}>
           {cancelButtonLabel}
-        </Button>
+        </button>
       </div>
     </li>
   );

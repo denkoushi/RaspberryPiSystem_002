@@ -103,36 +103,36 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
   const canRollback = rb != null && rb !== policyMode;
 
   return (
-    <div className="flex shrink-0 flex-col gap-2.5 rounded-lg border border-slate-200 bg-white p-3">
-      <h2 className="text-base font-bold text-slate-950">運用モード（保守・手動切替）</h2>
-      <p className="text-sm leading-snug text-slate-600">
+    <div className="flex shrink-0 flex-col gap-2.5 rounded-lg border border-white/15 bg-slate-900/60 p-3">
+      <h2 className="text-base font-bold text-white">運用モード（保守・手動切替）</h2>
+      <p className="text-sm leading-snug text-white/70">
         左上の運用ガイドで済む場合は触らなくて大丈夫です。ここではモードのみを明示的に切り替えます。詳しい意味は{' '}
-        <abbr className="cursor-help underline decoration-dotted decoration-slate-400" title={DGX_POLICY_PROFILES.business_first.description}>
+        <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={DGX_POLICY_PROFILES.business_first.description}>
           業務優先
         </abbr>
         ／
-        <abbr className="cursor-help underline decoration-dotted decoration-slate-400" title={DGX_POLICY_PROFILES.private_ok.description}>
+        <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={DGX_POLICY_PROFILES.private_ok.description}>
           私用OK
         </abbr>
         ／
-        <abbr className="cursor-help underline decoration-dotted decoration-slate-400" title={DGX_POLICY_PROFILES.experiment_first.description}>
+        <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={DGX_POLICY_PROFILES.experiment_first.description}>
           実験優先
         </abbr>
         のツールチップを参照。
       </p>
 
-      <label className="flex cursor-pointer items-start gap-2.5 text-sm leading-snug text-slate-700">
+      <label className="flex cursor-pointer items-start gap-2.5 text-sm leading-snug text-white/70">
         <input
           type="checkbox"
-          className="mt-1 h-4 w-4 rounded border-slate-300 bg-white"
+          className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950/60"
           checked={applyWorkloadChanges}
           disabled={busy}
           onChange={(ev) => setApplyWorkloadChanges(ev.target.checked)}
         />
         <span>
-          <span className="font-semibold text-slate-950">切替時にワークロード自動調整</span>
+          <span className="font-semibold text-white">切替時にワークロード自動調整</span>
           <span
-            className="ml-1 inline-block text-slate-500"
+            className="ml-1 inline-block text-white/60"
             title="業務優先／実験優先では補助ワークロード停止を追加します。私用OK は常に業務 LLM を退避し、このチェックは experiment-lab / agent-container の追加停止に効きます。"
           >
             ⓘ
@@ -141,7 +141,7 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
       </label>
 
       {degraded ? (
-        <p className="rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-sm text-amber-800">
+        <p className="rounded border border-amber-400/30 bg-amber-500/15 px-2.5 py-1.5 text-sm text-amber-300">
           推論レイヤが degraded の可能性があります（/v1/models）。切り替え前に復旧を推奨します。
         </p>
       ) : null}
@@ -169,7 +169,7 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
           </Button>
         ))}
       </div>
-      <div className="border-t border-slate-200 pt-2">
+      <div className="border-t border-white/15 pt-2">
         {canRollback && rb ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -187,12 +187,12 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
             >
               直前モードへ戻す ({DGX_POLICY_PROFILES[rb].titleShort})
             </Button>
-            <span className="text-sm text-slate-500" title="ワークロード POST は送信しません">
+            <span className="text-sm text-white/60" title="ワークロード POST は送信しません">
               直前状態へ（自動調整なし）
             </span>
           </div>
         ) : (
-          <p className="text-sm leading-tight text-slate-500">
+          <p className="text-sm leading-tight text-white/60">
             まだ運用変更の履歴がありません。運用モード変更後は「直前モードへ戻す」が使えます。
           </p>
         )}

@@ -1,6 +1,8 @@
 import clsx from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
 
+import { kioskButtonSecondaryClassName } from '../kioskTheme';
+
 import { collectNextPrefixChars } from './collectSeibanPrefixCharset';
 import {
   LEADER_BOARD_SEIBAN_PREFIX_MAX_LEN,
@@ -77,7 +79,7 @@ export function LeaderBoardSeibanListPanel({
         onClick={onClose}
       />
       <aside
-        className="relative flex h-full w-[min(100vw,84rem)] max-w-[92vw] flex-col border-l border-white/25 bg-slate-950 shadow-2xl"
+        className="relative flex h-full w-[min(100vw,84rem)] max-w-[92vw] flex-col border-l border-white/15 bg-slate-900"
         role="dialog"
         aria-modal="true"
         aria-labelledby="leader-board-seiban-list-title"
@@ -89,7 +91,7 @@ export function LeaderBoardSeibanListPanel({
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-white/25 px-3 py-1.5 text-sm text-white/90 hover:bg-white/10"
+            className={clsx(kioskButtonSecondaryClassName, 'px-3 text-sm')}
           >
             閉じる
           </button>
@@ -124,7 +126,7 @@ export function LeaderBoardSeibanListPanel({
                     'rounded border px-3 py-1.5 text-sm font-medium transition-colors',
                     'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/70',
                     prefixFilter.length === 0
-                      ? 'cursor-not-allowed border-white/15 text-white/40'
+                      ? 'cursor-not-allowed border-white/15 text-white/60'
                       : 'border-white/35 bg-slate-900 text-white hover:bg-slate-800',
                     historyWriting && 'cursor-wait opacity-70'
                   )}
@@ -165,7 +167,7 @@ export function LeaderBoardSeibanListPanel({
                   className={clsx(
                     'min-h-[2rem] min-w-[2rem] rounded-md border px-2 font-mono text-xl font-semibold text-white transition-colors',
                     'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/70',
-                    'border-cyan-500/45 bg-slate-900 hover:bg-slate-800',
+                    'border-sky-500/45 bg-slate-900 hover:bg-slate-800',
                     (historyWriting || prefixFilter.length >= LEADER_BOARD_SEIBAN_PREFIX_MAX_LEN) &&
                       'cursor-not-allowed opacity-60'
                   )}
@@ -200,8 +202,8 @@ export function LeaderBoardSeibanListPanel({
                         'flex w-full flex-col items-start rounded-lg border-2 px-3 py-3 text-left transition-colors',
                         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/70',
                         isRegistered
-                          ? 'border-slate-500/70 bg-slate-800/90 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.18)] hover:bg-slate-700/90'
-                          : 'border-cyan-400/70 bg-slate-900 hover:bg-slate-800',
+                          ? 'border-slate-500/70 bg-slate-800/90 hover:bg-slate-700/90'
+                          : 'border-sky-400/70 bg-slate-900 hover:bg-slate-800',
                         historyWriting && 'cursor-wait opacity-75'
                       )}
                     >

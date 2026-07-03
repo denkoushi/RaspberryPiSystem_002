@@ -3,6 +3,14 @@ import { useEffect, useId, useRef, useState } from 'react';
 
 import { KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS } from '../../../hooks/kioskRevealUi';
 import { KIOSK_LEFT_EDGE_HOT_ZONE_PX } from '../../../hooks/useKioskLeftEdgeDrawerReveal';
+import {
+  kioskButtonPrimaryClassName,
+  kioskButtonSecondaryClassName,
+  kioskInputClassName,
+  kioskMetaTextClassName,
+  kioskPanelClassName,
+  kioskSelectClassName
+} from '../kioskTheme';
 
 import { LeaderBoardDueAssistPanel } from './LeaderBoardDueAssistPanel';
 import { LeaderBoardSeibanRankPicker } from './LeaderBoardSeibanRankPicker';
@@ -143,17 +151,18 @@ export function LeaderBoardLeftToolStack({
       />
       <aside
         className={clsx(
-          'flex h-full min-h-0 shrink-0 flex-col gap-2 border-r border-white/10 bg-slate-950 p-3 shadow-xl max-w-[90vw]',
+          kioskPanelClassName,
+          'flex h-full min-h-0 shrink-0 flex-col gap-2 border-r p-3 max-w-[90vw]',
           seibanEvalEnabled ? 'w-96' : 'w-80'
         )}
         aria-label="操作パネル"
       >
-        <label className="flex shrink-0 flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
+        <label className={clsx('flex shrink-0 flex-col gap-1 uppercase tracking-wide', kioskMetaTextClassName)}>
           工場
           <select
             value={siteKey}
             onChange={(event) => handleSiteChange(event.target.value)}
-            className="rounded border border-white/20 bg-slate-900 px-2 py-2 text-xs text-white"
+            className={clsx(kioskSelectClassName, 'text-xs')}
             aria-label="工場を選択"
           >
             {defaultSites.map((site) => (
@@ -163,7 +172,7 @@ export function LeaderBoardLeftToolStack({
             ))}
           </select>
         </label>
-        <label className="flex shrink-0 flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
+        <label className={clsx('flex shrink-0 flex-col gap-1 uppercase tracking-wide', kioskMetaTextClassName)}>
           対象端末
           <select
             value={activeDeviceScopeKey}
@@ -171,7 +180,7 @@ export function LeaderBoardLeftToolStack({
               setActiveDeviceScopeKey(ev.target.value);
               setSelectedResourceCd(null);
             }}
-            className="rounded border border-white/20 bg-slate-900 px-2 py-2 text-xs text-white"
+            className={clsx(kioskSelectClassName, 'text-xs')}
           >
             {deviceCards.length === 0 ? (
               <option value="">端末なし</option>
@@ -184,20 +193,20 @@ export function LeaderBoardLeftToolStack({
             )}
           </select>
         </label>
-        <div className="flex shrink-0 items-center justify-between gap-2 rounded border border-white/10 bg-slate-900/70 px-2 py-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-white/55">分割</span>
+        <div className="flex shrink-0 items-center justify-between gap-2 rounded border border-white/15 bg-slate-950/60 px-2 py-1">
+          <span className={clsx('font-semibold uppercase tracking-wide', kioskMetaTextClassName)}>分割</span>
           <span
             className={clsx(
-              'shrink-0 rounded border px-2 py-0.5 text-[10px] font-bold leading-tight',
+              'shrink-0 rounded border px-2 py-0.5 text-xs font-bold leading-tight',
               splitFeatureStatus.className
             )}
           >
             {splitFeatureStatus.label}
           </span>
         </div>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded border border-white/15 bg-slate-900 p-2">
+        <div className={clsx(kioskPanelClassName, 'flex min-h-0 min-w-0 flex-1 flex-col p-2')}>
           <div className="mb-2 flex min-w-0 shrink-0 items-center justify-between gap-1">
-            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white/70">
+            <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-white/70">
               製番検索
             </span>
             <div className="flex shrink-0 items-center gap-1">
@@ -206,10 +215,10 @@ export function LeaderBoardLeftToolStack({
                 onClick={onToggleSeibanListPanel}
                 aria-pressed={isSeibanListPanelOpen}
                 className={clsx(
-                  'rounded border px-2 py-0.5 text-[10px] hover:bg-white/10',
+                  'rounded-md border px-2 text-xs font-semibold',
                   isSeibanListPanelOpen
-                    ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-50'
-                    : 'border-white/25 bg-white/5 text-white/90'
+                    ? 'border-emerald-400 bg-emerald-500 text-white hover:bg-emerald-600'
+                    : kioskButtonSecondaryClassName
                 )}
               >
                 製番一覧
@@ -218,7 +227,10 @@ export function LeaderBoardLeftToolStack({
                 type="button"
                 onClick={() => dueAssist.openDetail()}
                 disabled={!dueAssist.selectedFseiban}
-                className="rounded border border-cyan-400/40 px-2 py-0.5 text-[10px] text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50"
+                className={clsx(
+                  kioskButtonSecondaryClassName,
+                  'border-sky-400/40 px-2 text-xs text-sky-100 hover:bg-sky-500/20'
+                )}
               >
                 詳細
               </button>
@@ -228,24 +240,24 @@ export function LeaderBoardLeftToolStack({
             type="button"
             onClick={() => dueAssist.clearFseibanFilters()}
             disabled={seibanControlsLocked || dueAssist.selectedFseibanFilters.length === 0}
-            className="mb-2 w-full shrink-0 rounded border border-white/20 bg-slate-800/70 px-2 py-1 text-[10px] text-white/90 hover:bg-slate-800 disabled:opacity-40"
+            className={clsx(kioskButtonSecondaryClassName, 'mb-2 w-full shrink-0 px-2 text-xs')}
           >
             製番OR検索を全解除
           </button>
           <div className="mb-2 flex shrink-0 items-center justify-between gap-2 rounded border border-violet-400/30 bg-violet-500/10 px-2 py-1.5">
-            <div className="min-w-0 text-[9px] leading-tight text-violet-100/90">
+            <div className="min-w-0 text-xs leading-tight text-violet-100/90">
               <div className="font-semibold text-violet-50">製番順評価</div>
-              <div className="text-white/55">ON で順位ボードを製番順優先（この端末のみ）</div>
+              <div className="text-white/60">ON で順位ボードを製番順優先（この端末のみ）</div>
             </div>
             <button
               type="button"
               onClick={onToggleSeibanEval}
               aria-pressed={seibanEvalEnabled}
               className={clsx(
-                'shrink-0 rounded border px-2 py-1 text-[10px] font-semibold',
+                'shrink-0 rounded-md border px-2 text-xs font-semibold',
                 seibanEvalEnabled
                   ? 'border-violet-300 bg-violet-500/40 text-white'
-                  : 'border-white/25 bg-white/5 text-white/80 hover:bg-white/10'
+                  : kioskButtonSecondaryClassName
               )}
             >
               {seibanEvalEnabled ? 'ON' : 'OFF'}
@@ -263,13 +275,13 @@ export function LeaderBoardLeftToolStack({
                 }
               }}
               placeholder="製番を検索"
-              className="h-8 min-w-0 flex-1 rounded border border-white/20 bg-white px-2 text-xs text-slate-900"
+              className={clsx(kioskInputClassName, 'min-w-0 flex-1 text-xs')}
             />
             <button
               type="button"
               onClick={openSearchKeyboard}
               disabled={seibanControlsLocked}
-              className="rounded border border-white/20 bg-slate-800 px-2 text-xs text-white hover:bg-slate-700 disabled:opacity-50"
+              className={clsx(kioskButtonSecondaryClassName, 'px-2 text-xs')}
               aria-label="キーボードを開く"
             >
               ⌨
@@ -278,7 +290,7 @@ export function LeaderBoardLeftToolStack({
               type="button"
               onClick={() => void dueAssist.applySearch()}
               disabled={seibanControlsLocked || dueAssist.historyWriting}
-              className="rounded bg-blue-600 px-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
+              className={clsx(kioskButtonPrimaryClassName, 'px-2 text-xs')}
             >
               登録
             </button>
@@ -366,7 +378,7 @@ export function LeaderBoardLeftToolStack({
               );
             })}
           </div>
-          <div className="mt-2 shrink-0 space-y-0.5 text-[10px] text-white/60">
+          <div className={clsx('mt-2 shrink-0 space-y-0.5', kioskMetaTextClassName)}>
             <div>
               OR検索:{' '}
               <span className="break-all font-mono text-white/90">
@@ -386,10 +398,10 @@ export function LeaderBoardLeftToolStack({
             type="button"
             onClick={toggleGrinding}
             className={clsx(
-              'rounded border px-2 py-1',
+              'rounded-md border px-2 font-semibold',
               searchConditions.showGrindingResources
-                ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-100'
-                : 'border-white/20 text-white/70'
+                ? 'border-sky-400 bg-sky-500 text-white hover:bg-sky-600'
+                : kioskButtonSecondaryClassName
             )}
           >
             研削
@@ -398,17 +410,17 @@ export function LeaderBoardLeftToolStack({
             type="button"
             onClick={toggleCutting}
             className={clsx(
-              'rounded border px-2 py-1',
+              'rounded-md border px-2 font-semibold',
               searchConditions.showCuttingResources
-                ? 'border-amber-400/50 bg-amber-500/20 text-amber-100'
-                : 'border-white/20 text-white/70'
+                ? 'border-amber-400 bg-amber-500 text-white hover:bg-amber-600'
+                : kioskButtonSecondaryClassName
             )}
           >
             切削
           </button>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2 text-[10px] text-white/70">
-          <span className="w-full text-[9px] uppercase tracking-wide text-white/45">表示</span>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs text-white/70">
+          <span className={clsx('w-full uppercase tracking-wide', kioskMetaTextClassName)}>表示</span>
           {(
             [
               ['all', '両方'],
@@ -421,10 +433,10 @@ export function LeaderBoardLeftToolStack({
               type="button"
               onClick={() => setCompletionFilter(key)}
               className={clsx(
-                'rounded border px-2 py-1',
+                'rounded-md border px-2 font-semibold',
                 completionFilter === key
-                  ? 'border-violet-400/50 bg-violet-500/20 text-violet-100'
-                  : 'border-white/20 text-white/70'
+                  ? 'border-sky-400 bg-sky-500 text-white hover:bg-sky-600'
+                  : kioskButtonSecondaryClassName
               )}
             >
               {label}
@@ -436,32 +448,32 @@ export function LeaderBoardLeftToolStack({
             aria-pressed={ganttEnabled}
             aria-label={ganttEnabled ? 'ガント表示をオフにする' : 'ガント表示をオンにする'}
             className={clsx(
-              'rounded border px-2 py-1 font-semibold',
+              'rounded-md border px-2 font-semibold',
               ganttEnabled
-                ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-100'
-                : 'border-white/20 text-white/70 hover:bg-white/5'
+                ? 'border-sky-400 bg-sky-500 text-white hover:bg-sky-600'
+                : kioskButtonSecondaryClassName
             )}
           >
             {ganttEnabled ? 'ガントON' : 'ガントOFF'}
           </button>
         </div>
         {selectedResourceCategory ? (
-          <p className="shrink-0 text-[10px] text-white/45">検索: {selectedResourceCategory}</p>
+          <p className={clsx('shrink-0', kioskMetaTextClassName)}>検索: {selectedResourceCategory}</p>
         ) : null}
         <button
           type="button"
           onClick={() => setSlotModalOpen(true)}
-          className="shrink-0 rounded border border-white/25 bg-slate-800/80 px-2 py-1.5 text-left text-[11px] text-cyan-100 hover:bg-slate-800"
+          className={clsx(kioskButtonSecondaryClassName, 'shrink-0 px-2 text-left text-xs text-sky-100')}
         >
           資源スロット（{activeResourceCds.length}/{slotCount}）
         </button>
-        <p className="shrink-0 text-[10px] text-white/55">選択資源: {selectedResourceCd ?? '—'}</p>
+        <p className={clsx('shrink-0', kioskMetaTextClassName)}>選択資源: {selectedResourceCd ?? '—'}</p>
         {listIncomplete ? (
           <p className="shrink-0 text-xs text-amber-200/90">
             一覧が1ページに収まっていません。一部の行が表示されないことがあります。
           </p>
         ) : null}
-        <div className="mt-auto shrink-0 text-[10px] text-white/40">
+        <div className={clsx('mt-auto shrink-0', kioskMetaTextClassName)}>
           順位は各行のドロップダウンで保存。「-」で納期順の自動並びへ。
           {seibanEvalEnabled ? (
             <>

@@ -615,15 +615,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     scheduleEnabled && !scheduleQuery.isLoading && !scheduleQuery.isError;
 
   return (
-    <div className="relative flex h-full min-h-0 flex-1 flex-col bg-[#0c1222] text-white">
-      <div
-        className="pointer-events-none fixed inset-0 z-0 opacity-100"
-        style={{
-          background:
-            'radial-gradient(ellipse 120% 80% at 20% 0%, rgba(34, 211, 238, 0.07), transparent 50%), radial-gradient(ellipse 100% 60% at 100% 100%, rgba(99, 102, 241, 0.06), transparent 45%)'
-        }}
-      />
-
+    <div className="relative flex h-full min-h-0 flex-1 flex-col bg-slate-900 text-white">
       <div className="pointer-events-none fixed inset-y-0 left-0 z-50 flex">
         <LeaderBoardLeftToolStack
           leftToolStackOuterRef={leftToolStackOuterRef}
@@ -671,7 +663,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           <div className="pointer-events-none absolute right-3 top-3 z-30 flex justify-end">
             <p
               className={clsx(
-                'rounded border px-3 py-1 text-xs font-semibold shadow-lg backdrop-blur-sm',
+                'rounded border px-3 py-1 text-xs font-semibold',
                 boardSyncStatusClassName
               )}
               role="status"

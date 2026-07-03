@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
-import { Input } from '../../../components/ui/Input';
+import { kioskInputClassName, kioskPanelClassName } from '../../../features/kiosk/kioskTheme';
 import {
   PART_MEASUREMENT_DRAWING_FILE_ACCEPT,
   PART_MEASUREMENT_DRAWING_FILE_LABEL
@@ -10,6 +10,8 @@ import {
 
 import {
   inspectionDrawingCreateFlatBandItemClassName,
+  inspectionDrawingKioskDialogClassName,
+  inspectionDrawingKioskDialogTitleClassName,
   inspectionDrawingKioskDisabledButtonClass
 } from './inspectionDrawingKioskUi';
 
@@ -81,7 +83,7 @@ export function InspectionDrawingVisualSourceControl({
         <Button
           type="button"
           variant="ghostOnDark"
-          className={`min-h-9 max-w-[12rem] truncate px-2 text-[0.92rem] ${inspectionDrawingKioskDisabledButtonClass}`}
+          className={`min-h-11 max-w-[12rem] truncate px-2 text-sm ${inspectionDrawingKioskDisabledButtonClass}`}
           disabled={contentReadOnly}
           onClick={handleOpen}
           aria-label="図面ソースを選択"
@@ -98,16 +100,18 @@ export function InspectionDrawingVisualSourceControl({
         ariaLabel="図面ソース選択"
         size="lg"
         overlayZIndex={80}
+        className={inspectionDrawingKioskDialogClassName}
+        titleClassName={inspectionDrawingKioskDialogTitleClassName}
       >
-        <div className="grid gap-4 text-slate-900">
-          <section className="grid gap-2 rounded border border-slate-200 p-3">
-            <h3 className="text-sm font-bold text-slate-800">新規アップロード</h3>
-            <label className="grid gap-1 text-sm font-semibold text-slate-700">
+        <div className="grid gap-4 text-white">
+          <section className={`grid gap-2 p-3 ${kioskPanelClassName}`}>
+            <h3 className="text-sm font-bold text-white">新規アップロード</h3>
+            <label className="grid gap-1 text-sm font-semibold text-white/80">
               {PART_MEASUREMENT_DRAWING_FILE_LABEL}
               <input
                 type="file"
                 accept={PART_MEASUREMENT_DRAWING_FILE_ACCEPT}
-                className="text-sm text-slate-900"
+                className="text-sm text-white/80 file:mr-2 file:rounded file:border-0 file:bg-white/10 file:px-2 file:py-1 file:text-xs file:text-white"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
@@ -121,29 +125,29 @@ export function InspectionDrawingVisualSourceControl({
             </label>
           </section>
 
-          <section className="grid gap-2 rounded border border-slate-200 p-3">
-            <h3 className="text-sm font-bold text-slate-800">既存から選択</h3>
-            <label className="grid gap-1 text-sm font-semibold text-slate-700">
+          <section className={`grid gap-2 p-3 ${kioskPanelClassName}`}>
+            <h3 className="text-sm font-bold text-white">既存から選択</h3>
+            <label className="grid gap-1 text-sm font-semibold text-white/80">
               検索
-              <Input
+              <input
                 value={filterQ}
                 onChange={(e) => setFilterQ(e.target.value)}
-                className="text-slate-900"
+                className={kioskInputClassName}
                 placeholder="図面名で絞り込み"
               />
             </label>
-            <div className="max-h-56 overflow-y-auto rounded border border-slate-200">
+            <div className="max-h-56 overflow-y-auto rounded-md border border-white/15">
               {visualsLoading ? (
-                <p className="p-3 text-sm text-slate-600">図面一覧を読み込み中…</p>
+                <p className="p-3 text-sm text-white/60">図面一覧を読み込み中…</p>
               ) : visuals.length === 0 ? (
-                <p className="p-3 text-sm text-slate-600">該当する図面がありません。</p>
+                <p className="p-3 text-sm text-white/60">該当する図面がありません。</p>
               ) : (
-                <ul className="divide-y divide-slate-200">
+                <ul className="divide-y divide-white/10">
                   {visuals.map((visual) => (
                     <li key={visual.id}>
                       <button
                         type="button"
-                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-white/5"
                         aria-pressed={selectedVisualTemplateId === visual.id}
                         onClick={() => {
                           const accepted = onPickExisting(visual);
@@ -154,7 +158,7 @@ export function InspectionDrawingVisualSourceControl({
                       >
                         <span className="truncate font-semibold">{visual.name}</span>
                         {selectedVisualTemplateId === visual.id ? (
-                          <span className="shrink-0 text-xs text-emerald-700">選択中</span>
+                          <span className="shrink-0 text-xs text-emerald-300">選択中</span>
                         ) : null}
                       </button>
                     </li>
