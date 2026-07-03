@@ -3,8 +3,8 @@
 This ExecPlan is a living document maintained in accordance with `.agent/PLANS.md`. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 - id: plan-kiosk-admin-ui-brushup-202607
-- status: in-progress
-- scope: apps/web only (no API, no DB, no deploy)
+- status: completed
+- scope: apps/web UI + docs; no API/DB behavior changes; production deploy completed
 - date: 2026-07-03
 - source_of_truth: this document
 - related_code: apps/web/src/features/kiosk/, apps/web/src/features/part-measurement/, apps/web/src/features/admin/dgx-resource/, apps/web/src/components/ui/, apps/web/src/layouts/
@@ -48,6 +48,10 @@ These rules are the single source of truth for the implementation subtasks.
 - [x] (2026-07-03 19:26 JST) Step 6: DGX リソース dark-theme unification (AdminLayout light branch fully removed; `dgxResourceUi.ts` tokens dark; decorative shadows removed).
 - [x] (2026-07-03 19:37 JST) Fix: Tailwind class conflicts between shared `Input`/`Button` base classes and kiosk tokens (replaced with plain input/button elements at 20+ call sites; Dialog dark overrides use `!` classes).
 - [x] (2026-07-03 19:40 JST) Validation: `pnpm lint` clean, `pnpm test` 1179 passed, `pnpm build` (tsc -b) clean; visual check of all five screens via temp Postgres (`postgres-test-local`, removed) + local api/web dev servers + browser screenshots.
+- [x] (2026-07-03 19:49 JST) Committed and pushed implementation to `main` as `2f7f5069 feat: unify kiosk and DGX UI theme`.
+- [x] (2026-07-03 20:46 JST) GitHub checks passed: CI `28655706399`, Secret scan `28655706381`, CodeQL `28655706437`, Pages `28655706002`.
+- [x] (2026-07-03 20:46 JST) Production deploy run `20260703-200852-8077` completed successfully on all seven Raspberry Pi hosts.
+- [x] (2026-07-03 20:48 JST) Real hardware verification `./scripts/deploy/verify-phase12-real.sh` passed with `PASS: 45`, `WARN: 0`, `FAIL: 0`.
 
 ## Surprises & Discoveries
 
@@ -57,6 +61,7 @@ These rules are the single source of truth for the implementation subtasks.
 - Passing kiosk token class strings via `className` into shared `Input`/`Button` produced Tailwind property conflicts (e.g. `bg-white` vs `bg-slate-950/60`) whose winner depends on CSS output order because tailwind-merge is not installed. Browser check caught white inputs surviving on 検査図面; fixed by using plain elements where the full style comes from kiosk tokens.
   Evidence: screenshot of `/kiosk/part-measurement/inspection` before fix showed white filter inputs; after fix all inputs render dark.
 - `prisma:seed` runs via tsx and does not load `apps/api/.env` (unlike prisma CLI); `DATABASE_URL` must be passed explicitly when seeding locally.
+- Deploy run `20260703-200552-28612` stopped on `raspberrypi5` before pull because a root-owned untracked copy of `apps/api/prisma/migrations/20260703150000_assembly_summary_indexes/migration.sql` would have been overwritten by merge. SHA256 matched the tracked file (`992059742ae54037e79e972ac1010478434197c365186f37ceb0dd1389d0f765`), so the safe recovery was to move that untracked migration directory to `/opt/RaspberryPiSystem_002/logs/deploy/prepull-backup-20260703-200552-28612-20260703-200826/` and move the stale lock to `/opt/RaspberryPiSystem_002/logs/deploy/stale-lock-20260703-200552-28612.json`, then rerun deploy. Prevention: if this Git safety stop recurs, compare checksums before moving files and keep a timestamped backup under deploy logs instead of deleting.
 
 ## Decision Log
 
@@ -77,12 +82,13 @@ These rules are the single source of truth for the implementation subtasks.
 
 - All five target screens share the dark surface system (`border-white/15 bg-slate-900/60` panels on `bg-slate-800` shells), the emerald/sky/red/amber color roles, the unified typography scale, and `min-h-11` touch targets. The only light-theme exception (DGX) and the only gradient background (順位ボード) are gone.
 - Validation results (2026-07-03): `pnpm lint` 0 errors, `pnpm test` 244 files / 1179 tests passed, `pnpm build` (tsc -b + vite) succeeded. Visual verification of all five routes on local dev servers confirmed dark panels, dark inputs, no gradients, and visible button hierarchy. Temporary Postgres container and validation `.env` were removed afterwards; no existing containers/volumes touched.
+- Release validation (2026-07-03): implementation commit `2f7f5069` is on `origin/main`; GitHub CI, Secret scan, CodeQL, and Pages runs all succeeded; deploy run `20260703-200852-8077` reached all seven hosts with `failed=0` and `unreachable=0`; every host HEAD was `2f7f5069`; `raspberrypi5` had `docker-web-1 Up`, `docker-api-1 Up (healthy)`, and `docker-db-1 Up`; real hardware verification passed with `PASS: 45`, `WARN: 0`, `FAIL: 0`.
 - Lesson: without tailwind-merge, never layer full token class strings onto shared primitives that carry conflicting base classes; use plain elements or restrict overrides to non-conflicting utilities.
-- Remaining candidates for a later pass (out of scope here): `KioskHeader` tab bar, admin screens other than DGX (e.g. dashboard stat cards are still white on dark), other kiosk pages (計測機器持出, 部品測定テンプレ選択, 呼出 etc. still have white surfaces), and 順位ボード row-internal control sizes (kept for virtual-list stability).
+- Open items for this scope: none. Remaining candidates for a later pass (out of scope here): `KioskHeader` tab bar, admin screens other than DGX (e.g. dashboard stat cards are still white on dark), other kiosk pages (計測機器持出, 部品測定テンプレ選択, 呼出 etc. still have white surfaces), and 順位ボード row-internal control sizes (kept for virtual-list stability).
 
 ## Update Notes
 
-- 2026-07-03: Initial plan, implementation (Steps 1–6), conflict fix, and validation completed in one session. Progress timestamps are JST.
+- 2026-07-03: Initial plan, implementation (Steps 1–6), conflict fix, local validation, commit/push, GitHub checks, production deploy, and real hardware verification completed in one session. Progress timestamps are JST.
 
 ## Context and Orientation
 
