@@ -2,6 +2,7 @@
 
 FROM node:20-bookworm-slim AS base
 WORKDIR /app
+ENV NODE_OPTIONS=--max-old-space-size=4096
 
 RUN apt-get update \
   && apt-get install -y openssl poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible \
