@@ -1,7 +1,7 @@
-import axios from 'axios';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
+import { getApiErrorMessage } from '../api/errors';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { VIEWPORT_MIN_HEIGHT_FULL } from '../constants/viewportLayout';
@@ -48,14 +48,7 @@ export function LoginPage() {
         rememberMe
       });
     } catch (err) {
-      // axiosエラーの場合、response.data.messageを優先的に使用
-      let errorMessage = 'ログインに失敗しました';
-      if (axios.isAxiosError(err) && err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      } else if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      setError(errorMessage);
+      setError(getApiErrorMessage(err, 'ログインに失敗しました'));
     }
   };
 

@@ -1,7 +1,7 @@
-import axios from 'axios';
 import { FormEvent, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import { getApiErrorMessage } from '../../api/errors';
 import { useItemMutations, useItems } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -136,9 +136,7 @@ export function ItemsPage() {
           <div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-200">
             <p className="font-semibold">エラー</p>
             <p className="mt-1">
-              {axios.isAxiosError(remove.error) && remove.error.response?.data?.message
-                ? remove.error.response.data.message
-                : (remove.error as Error).message || '削除に失敗しました'}
+              {getApiErrorMessage(remove.error, '削除に失敗しました')}
             </p>
           </div>
         ) : null}

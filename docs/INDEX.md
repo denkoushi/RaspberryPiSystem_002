@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-03 · SOLID リファクタ第1弾）
+
+- **API/Web の god module 分割（挙動不変）**: `routes/auth.ts` の `AuthService` 抽出・`routes/part-measurement/index.ts` サブレジストラ分割・web `api/client.ts` ドメイン分割ファサード化・`api/errors.ts` 共通エラーヘルパー。残課題（self-inspection.service 分解ほか）含む。**正本**: [Plan](./plans/solid-refactor-execplan-202607.md)
+
 ### 最新アップデート（2026-07-03 · キオスク/DGX UI ブラッシュアップ）
 
 - **キオスク4画面（持出/順位ボード/自主検査/検査図面）+ DGXリソースのデザイン統一**: ダークテーマ一本化・グラデーション/装飾shadow全廃・ボタン文法統一・44pxタッチターゲット。**正本**: [Plan](./plans/kiosk-admin-ui-brushup-202607.md)

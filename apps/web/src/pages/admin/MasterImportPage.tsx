@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { FormEvent, useState } from 'react';
 
+import { getApiErrorMessage } from '../../api/errors';
 import { useImportMasterSingle } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -88,9 +89,7 @@ function ImportForm({ type, title, description, formatSpec }: ImportFormProps) {
           <div className="rounded-lg border-2 border-red-700 bg-red-600 p-4 text-sm text-white shadow-lg">
             <p className="font-bold">エラー</p>
             <p className="mt-1 font-semibold">
-              {axios.isAxiosError(importMutation.error) && importMutation.error.response?.data?.message
-                ? importMutation.error.response.data.message
-                : (importMutation.error as Error).message || '取り込みに失敗しました'}
+              {getApiErrorMessage(importMutation.error, '取り込みに失敗しました')}
             </p>
             {axios.isAxiosError(importMutation.error) && importMutation.error.response?.data && (
               <details className="mt-2 text-xs">

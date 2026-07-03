@@ -1,7 +1,7 @@
-import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { getApiErrorMessage } from '../../api/errors';
 import { useRestoreFromDropbox, useBackupHistory, useRestoreDryRun } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -78,14 +78,7 @@ export function BackupRestorePage() {
     visibleCandidates.length
   ]);
 
-  const formatRestoreError = (error: unknown) => {
-    if (axios.isAxiosError(error)) {
-      const data = error.response?.data as { message?: unknown } | undefined;
-      const message = typeof data?.message === 'string' ? data.message : undefined;
-      return message || error.message;
-    }
-    return error instanceof Error ? error.message : 'リストアに失敗しました';
-  };
+  const formatRestoreError = (error: unknown) => getApiErrorMessage(error, 'リストアに失敗しました');
 
   const handleRestore = async () => {
     if (!selectedBackupPath.trim()) {

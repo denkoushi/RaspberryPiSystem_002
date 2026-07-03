@@ -266,7 +266,8 @@ import {
   createRiggingGear,
   updateRiggingGear,
   deleteRiggingGear,
-  createRiggingInspectionRecord
+  createRiggingInspectionRecord,
+  getRiggingInspectionRecords
 } from './client';
 import {
   KIOSK_DOCUMENT_DETAIL_GC_TIME_MS,
@@ -2646,13 +2647,7 @@ export function useRiggingInspectionRecords(riggingGearId?: string) {
     queryKey: ['rigging-inspection-records', riggingGearId],
     queryFn: async () => {
       if (!riggingGearId) return [] as RiggingInspectionRecord[];
-      const res = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL ?? '/api'}/rigging-gears/${riggingGearId}/inspection-records`,
-        { headers: { 'Content-Type': 'application/json' } }
-      );
-      if (!res.ok) throw new Error('点検記録の取得に失敗しました');
-      const json = await res.json();
-      return json.inspectionRecords as RiggingInspectionRecord[];
+      return getRiggingInspectionRecords(riggingGearId);
     },
     enabled: Boolean(riggingGearId)
   });
