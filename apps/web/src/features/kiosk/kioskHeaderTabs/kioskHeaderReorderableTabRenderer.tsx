@@ -138,6 +138,13 @@ export function renderKioskReorderableHeaderTab(
         isActive: pathname.startsWith('/kiosk/documents'),
         activeClassName: 'bg-teal-600 text-white'
       });
+    case 'assembly':
+      return renderNavLinkTab({
+        to: '/kiosk/assembly',
+        label: '組立',
+        isActive: pathname.startsWith('/kiosk/assembly'),
+        activeClassName: 'bg-cyan-500 text-slate-950'
+      });
     case 'part_measurement':
       return renderNavLinkTab({
         to: '/kiosk/part-measurement',

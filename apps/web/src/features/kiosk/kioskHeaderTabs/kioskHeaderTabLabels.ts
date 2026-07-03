@@ -14,6 +14,7 @@ export const KIOSK_HEADER_TAB_LABELS: Record<KioskReorderableHeaderTabId, string
   pallet_visualization: 'パレット',
   shelf_master: '棚マスタ',
   documents: '要領書',
+  assembly: '組立',
   part_measurement: '部品測定',
   inspection_drawing: '検査図面',
   rigging_analytics: '集計',

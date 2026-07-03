@@ -30,6 +30,8 @@ describe('usesKioskImmersiveLayout', () => {
     ['/kiosk/production-schedule/load-balancing/'],
     ['/kiosk/documents'],
     ['/kiosk/documents/'],
+    ['/kiosk/assembly'],
+    ['/kiosk/assembly/'],
     ['/kiosk/part-measurement'],
     ['/kiosk/part-measurement/'],
     ['/kiosk/part-measurement/edit/00000000-0000-4000-8000-000000000001'],

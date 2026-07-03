@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { registerAssemblyProcedureImageStorageRoutes } from './assembly-procedure-images.js';
 import { registerMeasuringInstrumentGenreStorageRoutes } from './measuring-instrument-genres.js';
 import { registerPartMeasurementDrawingStorageRoutes } from './part-measurement-drawings.js';
 import { registerPalletMachineIllustrationStorageRoutes } from './pallet-machine-illustrations.js';
@@ -10,6 +11,7 @@ import { registerPdfPageRoutes } from './pdf-pages.js';
  * ストレージルートの登録
  */
 export function registerStorageRoutes(app: FastifyInstance): void {
+  registerAssemblyProcedureImageStorageRoutes(app);
   registerPhotoStorageRoutes(app);
   registerPdfStorageRoutes(app);
   registerPdfPageRoutes(app);
@@ -17,4 +19,3 @@ export function registerStorageRoutes(app: FastifyInstance): void {
   registerPalletMachineIllustrationStorageRoutes(app);
   registerMeasuringInstrumentGenreStorageRoutes(app);
 }
-

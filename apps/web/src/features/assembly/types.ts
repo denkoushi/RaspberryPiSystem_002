@@ -1,0 +1,156 @@
+export type AssemblyProcedureDocumentDto = {
+  id: string;
+  name: string;
+  imageRelativePath: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AssemblyTemplateBoltDto = {
+  id: string;
+  areaId: string;
+  sortOrder: number;
+  tighteningId: string;
+  markerNo: number;
+  xRatio: string;
+  yRatio: string;
+  boltSpec: string;
+  nominalTorque: string;
+  lowerLimit: string;
+  upperLimit: string;
+  unit: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AssemblyTemplateAreaDto = {
+  id: string;
+  templateId: string;
+  sortOrder: number;
+  processNo: string;
+  areaCode: string;
+  areaName: string;
+  unitCode: string;
+  requireManualAdvance: boolean;
+  createdAt: string;
+  updatedAt: string;
+  bolts: AssemblyTemplateBoltDto[];
+};
+
+export type AssemblyTemplateDto = {
+  id: string;
+  modelCode: string;
+  procedurePattern: string;
+  name: string;
+  version: number;
+  isActive: boolean;
+  procedureDocumentId: string;
+  createdAt: string;
+  updatedAt: string;
+  procedureDocument: AssemblyProcedureDocumentDto;
+  areas: AssemblyTemplateAreaDto[];
+};
+
+export type AssemblyTorqueRecordDto = {
+  id: string;
+  sessionId: string;
+  templateBoltId: string;
+  attempt: number;
+  inputSource: 'manual' | 'mock' | 'agent';
+  rawPayload?: unknown;
+  value: string | null;
+  judgement: 'ok' | 'ng' | 'ignored';
+  accepted: boolean;
+  ignoredReason: string | null;
+  recordedAt: string;
+  createdAt: string;
+  tighteningId: string;
+  markerNo: number;
+  areaId: string;
+  areaName: string;
+};
+
+export type AssemblyAreaRestartLogDto = {
+  id: string;
+  sessionId: string;
+  areaId: string;
+  reason: string;
+  createdAt: string;
+};
+
+export type AssemblyWorkSessionDto = {
+  id: string;
+  templateId: string;
+  status: 'in_progress' | 'completed' | 'cancelled';
+  productNo: string;
+  serialNo: string;
+  nameplateNo: string;
+  operatorEmployeeId: string | null;
+  operatorNameSnapshot: string;
+  targetUnit: string;
+  torqueWrenchId: string;
+  clientDeviceId: string | null;
+  clientDeviceNameSnapshot: string | null;
+  currentAreaId: string | null;
+  currentBoltId: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  template: AssemblyTemplateDto;
+  torqueRecords: AssemblyTorqueRecordDto[];
+  restartLogs: AssemblyAreaRestartLogDto[];
+};
+
+export type AssemblyTemplateBoltInput = {
+  sortOrder: number;
+  tighteningId: string;
+  markerNo: number;
+  xRatio: number;
+  yRatio: number;
+  boltSpec: string;
+  nominalTorque: number;
+  lowerLimit: number;
+  upperLimit: number;
+  unit: string;
+};
+
+export type AssemblyTemplateAreaInput = {
+  sortOrder: number;
+  processNo: string;
+  areaCode: string;
+  areaName: string;
+  unitCode: string;
+  requireManualAdvance?: boolean;
+  bolts: AssemblyTemplateBoltInput[];
+};
+
+export type AssemblyTemplateCreateInput = {
+  modelCode: string;
+  procedurePattern: string;
+  name: string;
+  procedureDocumentId: string;
+  areas: AssemblyTemplateAreaInput[];
+};
+
+export type AssemblyWorkSessionStartInput = {
+  templateId: string;
+  productNo: string;
+  serialNo: string;
+  nameplateNo: string;
+  operatorEmployeeId?: string | null;
+  operatorNameSnapshot: string;
+  targetUnit: string;
+  torqueWrenchId: string;
+};
+
+export type AssemblyTorqueRecordOutcome = {
+  kind: 'accepted_ok' | 'recorded_ng' | 'ignored_duplicate';
+  movedToBoltId: string | null;
+  areaCompleted: boolean;
+  allBoltsCompleted: boolean;
+  requiresAreaRestart: boolean;
+};

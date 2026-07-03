@@ -2036,6 +2036,24 @@ enum SelfInspectionInspectorMeasurementJudgementStatus {
   NOT_EVALUATED
 }
 
+enum AssemblyWorkSessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum AssemblyTorqueInputSource {
+  MANUAL
+  MOCK
+  AGENT
+}
+
+enum AssemblyTorqueRecordJudgement {
+  OK
+  NG
+  IGNORED
+}
+
 /// 同一測定対象（製造order・工程・資源CD）に複数の記録表をぶら下げる親集約。
 model PartMeasurementSession {
   id           String                      @id @default(uuid())
@@ -2247,6 +2265,148 @@ model PartMeasurementResult {
 
   @@unique([sheetId, pieceIndex, templateItemId], map: "PartMeasurementResult_unique_cell")
   @@index([sheetId], map: "PartMeasurementResult_idx_sheet")
+}
+
+/// 組立トルク管理: 手順書1ページ画像。部品測定図面とは保存先・責務を分ける。
+model AssemblyProcedureDocument {
+  id                String             @id @default(uuid())
+  name              String
+  imageRelativePath String
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  templates         AssemblyTemplate[]
+
+  @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
+}
+
+/// 組立トルク管理: 形番/FHINCD + 手順パターンごとの締付テンプレート。
+model AssemblyTemplate {
+  id                  String                    @id @default(uuid())
+  modelCode           String
+  procedurePattern    String
+  name                String
+  version             Int                       @default(1)
+  isActive            Boolean                   @default(true)
+  procedureDocumentId String
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  procedureDocument   AssemblyProcedureDocument @relation(fields: [procedureDocumentId], references: [id], onDelete: Restrict)
+  areas               AssemblyTemplateArea[]
+  workSessions        AssemblyWorkSession[]
+
+  @@unique([modelCode, procedurePattern, version], map: "AssemblyTemplate_unique_model_pattern_version")
+  @@index([modelCode, procedurePattern, isActive], map: "AssemblyTemplate_idx_model_pattern_active")
+  @@index([procedureDocumentId], map: "AssemblyTemplate_idx_document")
+}
+
+/// 組立トルク管理: 工程/エリア単位。エリア完了後は作業者が次工程へ進める。
+model AssemblyTemplateArea {
+  id                   String                 @id @default(uuid())
+  templateId           String
+  sortOrder            Int
+  processNo            String
+  areaCode             String
+  areaName             String
+  unitCode             String
+  requireManualAdvance Boolean                @default(true)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  template             AssemblyTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  bolts                AssemblyTemplateBolt[]
+
+  @@unique([templateId, sortOrder], map: "AssemblyTemplateArea_unique_template_sort")
+  @@index([templateId], map: "AssemblyTemplateArea_idx_template")
+}
+
+/// 組立トルク管理: 手順書上に丸数字で配置する締付箇所。
+model AssemblyTemplateBolt {
+  id            String                 @id @default(uuid())
+  areaId        String
+  sortOrder     Int
+  tighteningId  String
+  markerNo      Int
+  xRatio        Decimal                @db.Decimal(10, 8)
+  yRatio        Decimal                @db.Decimal(10, 8)
+  boltSpec      String
+  nominalTorque Decimal                @db.Decimal(18, 6)
+  lowerLimit    Decimal                @db.Decimal(18, 6)
+  upperLimit    Decimal                @db.Decimal(18, 6)
+  unit          String
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  area          AssemblyTemplateArea   @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  torqueRecords AssemblyTorqueRecord[]
+
+  @@unique([areaId, sortOrder], map: "AssemblyTemplateBolt_unique_area_sort")
+  @@unique([areaId, tighteningId], map: "AssemblyTemplateBolt_unique_area_tightening")
+  @@index([areaId, markerNo], map: "AssemblyTemplateBolt_idx_area_marker")
+}
+
+/// 組立トルク管理: 製番/シリアル単位の作業実績。
+model AssemblyWorkSession {
+  id                       String                    @id @default(uuid())
+  templateId               String
+  status                   AssemblyWorkSessionStatus @default(IN_PROGRESS)
+  productNo                String
+  serialNo                 String
+  nameplateNo              String
+  operatorEmployeeId       String?
+  operatorNameSnapshot     String
+  targetUnit               String
+  torqueWrenchId           String
+  clientDeviceId           String?
+  clientDeviceNameSnapshot String?
+  currentAreaId            String?
+  currentBoltId            String?
+  startedAt                DateTime                  @default(now())
+  completedAt              DateTime?
+  cancelledAt              DateTime?
+  cancelReason             String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  template                 AssemblyTemplate          @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  torqueRecords            AssemblyTorqueRecord[]
+  restartLogs              AssemblyAreaRestartLog[]
+
+  @@index([status, updatedAt], map: "AssemblyWorkSession_idx_status_updated")
+  @@index([productNo, status], map: "AssemblyWorkSession_idx_product_status")
+  @@index([templateId, status], map: "AssemblyWorkSession_idx_template_status")
+}
+
+/// 組立トルク管理: トルクレンチ入力の履歴。NGや重複無視も削除せず残す。
+model AssemblyTorqueRecord {
+  id             String                        @id @default(uuid())
+  sessionId      String
+  templateBoltId String
+  attempt        Int
+  inputSource    AssemblyTorqueInputSource     @default(MANUAL)
+  rawPayload     Json?
+  value          Decimal?                      @db.Decimal(18, 6)
+  judgement      AssemblyTorqueRecordJudgement
+  accepted       Boolean                       @default(false)
+  ignoredReason  String?
+  recordedAt     DateTime                      @default(now())
+  createdAt      DateTime                      @default(now())
+  session        AssemblyWorkSession           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  templateBolt   AssemblyTemplateBolt          @relation(fields: [templateBoltId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, templateBoltId, attempt], map: "AssemblyTorqueRecord_unique_attempt")
+  @@index([sessionId, recordedAt], map: "AssemblyTorqueRecord_idx_session_recorded")
+  @@index([templateBoltId], map: "AssemblyTorqueRecord_idx_bolt")
+}
+
+/// 組立トルク管理: エリアやり直し履歴。
+model AssemblyAreaRestartLog {
+  id        String              @id @default(uuid())
+  sessionId String
+  areaId    String
+  reason    String
+  createdAt DateTime            @default(now())
+  session   AssemblyWorkSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt], map: "AssemblyAreaRestartLog_idx_session_created")
+  @@index([areaId], map: "AssemblyAreaRestartLog_idx_area")
 }
 
 model SelfInspectionSession {
