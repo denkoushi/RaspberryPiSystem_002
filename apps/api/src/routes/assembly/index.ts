@@ -17,8 +17,10 @@ import {
   AssemblyWorkSessionService,
   TORQUE_INPUT_PORT_SOURCES,
   toPrismaTorqueInputSource,
+  type AssemblyProcedureDocumentSummary,
   type AssemblyTemplateAreaInput,
   type AssemblyTemplateDetail,
+  type AssemblyTemplateSummary,
   type AssemblyWorkSessionDetail
 } from '../../services/assembly/index.js';
 
@@ -105,6 +107,31 @@ function serializeProcedureDocument(doc: {
     isActive: doc.isActive,
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString()
+  };
+}
+
+function serializeProcedureDocumentSummary(doc: AssemblyProcedureDocumentSummary) {
+  return {
+    ...serializeProcedureDocument(doc),
+    activeTemplateCount: doc.activeTemplateCount,
+    totalTemplateCount: doc.totalTemplateCount
+  };
+}
+
+function serializeTemplateSummary(template: AssemblyTemplateSummary) {
+  return {
+    id: template.id,
+    modelCode: template.modelCode,
+    procedurePattern: template.procedurePattern,
+    name: template.name,
+    version: template.version,
+    isActive: template.isActive,
+    procedureDocumentId: template.procedureDocumentId,
+    procedureDocumentName: template.procedureDocumentName,
+    areaCount: template.areaCount,
+    boltCount: template.boltCount,
+    createdAt: template.createdAt.toISOString(),
+    updatedAt: template.updatedAt.toISOString()
   };
 }
 
@@ -303,6 +330,18 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
     return { documents: documents.map(serializeProcedureDocument) };
   });
 
+  app.get('/assembly/procedure-documents/summary', { preHandler: allowView }, async (request) => {
+    const q = z
+      .object({
+        includeInactive: optionalTrueOnlyBooleanSchema,
+        q: z.string().optional(),
+        limit: z.coerce.number().int().min(1).max(200).optional()
+      })
+      .parse(request.query);
+    const documents = await procedureService.listSummary({ includeInactive: q.includeInactive, q: q.q, limit: q.limit });
+    return { documents: documents.map(serializeProcedureDocumentSummary) };
+  });
+
   app.get('/assembly/procedure-documents/:id', { preHandler: allowView }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
     const doc = await procedureService.getById(params.id, { includeInactive: true });
@@ -367,6 +406,22 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       .parse(request.query);
     const templates = await templateService.list(q);
     return { templates: templates.map(serializeTemplate) };
+  });
+
+  app.get('/assembly/templates/summary', { preHandler: allowView }, async (request) => {
+    const q = z
+      .object({
+        includeInactive: optionalTrueOnlyBooleanSchema,
+        modelCode: z.string().optional(),
+        procedurePattern: z.string().optional(),
+        procedureDocumentId: z.string().uuid().optional(),
+        procedureDocumentName: z.string().optional(),
+        q: z.string().optional(),
+        limit: z.coerce.number().int().min(1).max(200).optional()
+      })
+      .parse(request.query);
+    const templates = await templateService.listSummary(q);
+    return { templates: templates.map(serializeTemplateSummary) };
   });
 
   app.get('/assembly/templates/:id', { preHandler: allowView }, async (request, reply) => {

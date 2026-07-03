@@ -2278,6 +2278,7 @@ model AssemblyProcedureDocument {
   templates         AssemblyTemplate[]
 
   @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
+  @@index([isActive, updatedAt], map: "AssemblyProcedureDocument_idx_active_updated")
 }
 
 /// 組立トルク管理: 形番/FHINCD + 手順パターンごとの締付テンプレート。
@@ -2298,6 +2299,8 @@ model AssemblyTemplate {
   @@unique([modelCode, procedurePattern, version], map: "AssemblyTemplate_unique_model_pattern_version")
   @@index([modelCode, procedurePattern, isActive], map: "AssemblyTemplate_idx_model_pattern_active")
   @@index([procedureDocumentId], map: "AssemblyTemplate_idx_document")
+  @@index([isActive, updatedAt], map: "AssemblyTemplate_idx_active_updated")
+  @@index([procedureDocumentId, isActive, updatedAt], map: "AssemblyTemplate_idx_document_active_updated")
 }
 
 /// 組立トルク管理: 工程/エリア単位。エリア完了後は作業者が次工程へ進める。

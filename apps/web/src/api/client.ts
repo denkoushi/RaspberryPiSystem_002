@@ -43,8 +43,10 @@ import type {
 } from './types';
 import type {
   AssemblyProcedureDocumentDto,
+  AssemblyProcedureDocumentSummaryDto,
   AssemblyTemplateCreateInput,
   AssemblyTemplateDto,
+  AssemblyTemplateSummaryDto,
   AssemblyTorqueRecordOutcome,
   AssemblyWorkSessionDto,
   AssemblyWorkSessionStartInput
@@ -5354,6 +5356,22 @@ export async function listAssemblyProcedureDocuments(params?: { q?: string; incl
   return data.documents;
 }
 
+export async function listAssemblyProcedureDocumentSummaries(params?: {
+  q?: string;
+  includeInactive?: boolean;
+  limit?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.q) qs.set('q', params.q);
+  if (params?.includeInactive) qs.set('includeInactive', 'true');
+  if (params?.limit) qs.set('limit', String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const { data } = await api.get<{ documents: AssemblyProcedureDocumentSummaryDto[] }>(
+    `/assembly/procedure-documents/summary${suffix}`
+  );
+  return data.documents;
+}
+
 export async function uploadAssemblyProcedureDocument(input: { name: string; file: File }) {
   const formData = new FormData();
   formData.append('name', input.name);
@@ -5377,15 +5395,46 @@ export async function listAssemblyTemplates(params?: {
   q?: string;
   modelCode?: string;
   procedurePattern?: string;
+  procedureDocumentId?: string;
+  procedureDocumentName?: string;
   includeInactive?: boolean;
 }) {
   const qs = new URLSearchParams();
   if (params?.q) qs.set('q', params.q);
   if (params?.modelCode) qs.set('modelCode', params.modelCode);
   if (params?.procedurePattern) qs.set('procedurePattern', params.procedurePattern);
+  if (params?.procedureDocumentId) qs.set('procedureDocumentId', params.procedureDocumentId);
+  if (params?.procedureDocumentName) qs.set('procedureDocumentName', params.procedureDocumentName);
   if (params?.includeInactive) qs.set('includeInactive', 'true');
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   const { data } = await api.get<{ templates: AssemblyTemplateDto[] }>(`/assembly/templates${suffix}`);
+  return data.templates;
+}
+
+export async function getAssemblyTemplate(id: string) {
+  const { data } = await api.get<{ template: AssemblyTemplateDto }>(`/assembly/templates/${id}`);
+  return data.template;
+}
+
+export async function listAssemblyTemplateSummaries(params?: {
+  q?: string;
+  modelCode?: string;
+  procedurePattern?: string;
+  procedureDocumentId?: string;
+  procedureDocumentName?: string;
+  includeInactive?: boolean;
+  limit?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.q) qs.set('q', params.q);
+  if (params?.modelCode) qs.set('modelCode', params.modelCode);
+  if (params?.procedurePattern) qs.set('procedurePattern', params.procedurePattern);
+  if (params?.procedureDocumentId) qs.set('procedureDocumentId', params.procedureDocumentId);
+  if (params?.procedureDocumentName) qs.set('procedureDocumentName', params.procedureDocumentName);
+  if (params?.includeInactive) qs.set('includeInactive', 'true');
+  if (params?.limit) qs.set('limit', String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const { data } = await api.get<{ templates: AssemblyTemplateSummaryDto[] }>(`/assembly/templates/summary${suffix}`);
   return data.templates;
 }
 
@@ -5465,7 +5514,9 @@ export async function downloadAssemblyWorkSessionXlsx(sessionId: string) {
 
 export type {
   AssemblyProcedureDocumentDto,
+  AssemblyProcedureDocumentSummaryDto,
   AssemblyTemplateDto,
+  AssemblyTemplateSummaryDto,
   AssemblyWorkSessionDto
 } from '../features/assembly/types';
 

@@ -18,6 +18,21 @@ export type AssemblyTemplateDetail = Prisma.AssemblyTemplateGetPayload<{
   include: typeof assemblyTemplateDetailInclude;
 }>;
 
+export type AssemblyTemplateSummary = {
+  id: string;
+  modelCode: string;
+  procedurePattern: string;
+  name: string;
+  version: number;
+  isActive: boolean;
+  procedureDocumentId: string;
+  procedureDocumentName: string;
+  areaCount: number;
+  boltCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type AssemblyTemplateBoltInput = {
   sortOrder: number;
   tighteningId: string;
@@ -128,6 +143,87 @@ export class AssemblyTemplateService {
       orderBy: [{ updatedAt: 'desc' }, { modelCode: 'asc' }, { procedurePattern: 'asc' }],
       take: Math.min(Math.max(params.limit ?? 100, 1), 200)
     });
+  }
+
+  async listSummary(params: {
+    includeInactive?: boolean;
+    modelCode?: string;
+    procedurePattern?: string;
+    procedureDocumentId?: string;
+    procedureDocumentName?: string;
+    q?: string;
+    limit?: number;
+  }): Promise<AssemblyTemplateSummary[]> {
+    const modelCode = params.modelCode?.trim();
+    const procedurePattern = params.procedurePattern?.trim();
+    const procedureDocumentName = params.procedureDocumentName?.trim();
+    const q = params.q?.trim();
+    const templates = await prisma.assemblyTemplate.findMany({
+      where: {
+        ...(params.includeInactive ? {} : { isActive: true }),
+        ...(modelCode ? { modelCode: { equals: modelCode, mode: 'insensitive' } } : {}),
+        ...(procedurePattern ? { procedurePattern: { equals: procedurePattern, mode: 'insensitive' } } : {}),
+        ...(params.procedureDocumentId ? { procedureDocumentId: params.procedureDocumentId } : {}),
+        ...(procedureDocumentName
+          ? {
+              procedureDocument: {
+                name: { contains: procedureDocumentName, mode: 'insensitive' }
+              }
+            }
+          : {}),
+        ...(q
+          ? {
+              OR: [
+                { modelCode: { contains: q, mode: 'insensitive' } },
+                { procedurePattern: { contains: q, mode: 'insensitive' } },
+                { name: { contains: q, mode: 'insensitive' } },
+                { procedureDocument: { name: { contains: q, mode: 'insensitive' } } }
+              ]
+            }
+          : {})
+      },
+      select: {
+        id: true,
+        modelCode: true,
+        procedurePattern: true,
+        name: true,
+        version: true,
+        isActive: true,
+        procedureDocumentId: true,
+        createdAt: true,
+        updatedAt: true,
+        procedureDocument: {
+          select: {
+            name: true
+          }
+        },
+        areas: {
+          select: {
+            id: true,
+            _count: {
+              select: { bolts: true }
+            }
+          }
+        }
+      },
+      orderBy: [{ updatedAt: 'desc' }, { modelCode: 'asc' }, { procedurePattern: 'asc' }, { version: 'desc' }],
+      take: Math.min(Math.max(params.limit ?? 100, 1), 200)
+    });
+
+    return templates.map((template) => ({
+      id: template.id,
+      modelCode: template.modelCode,
+      procedurePattern: template.procedurePattern,
+      name: template.name,
+      version: template.version,
+      isActive: template.isActive,
+      procedureDocumentId: template.procedureDocumentId,
+      procedureDocumentName: template.procedureDocument.name,
+      areaCount: template.areas.length,
+      boltCount: template.areas.reduce((sum, area) => sum + area._count.bolts, 0),
+      createdAt: template.createdAt,
+      updatedAt: template.updatedAt
+    }));
   }
 
   async getById(id: string, options: { includeInactive?: boolean } = {}): Promise<AssemblyTemplateDetail | null> {

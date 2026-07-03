@@ -32,6 +32,41 @@ function buildMultipartProcedure(name: string): { body: Buffer; contentType: str
   };
 }
 
+function buildTemplatePayload(documentId: string, overrides: Partial<Record<'modelCode' | 'procedurePattern' | 'name', string>> = {}) {
+  const modelCode = overrides.modelCode ?? 'DFL7161';
+  const procedurePattern = overrides.procedurePattern ?? '手順7';
+  return {
+    modelCode,
+    procedurePattern,
+    name: overrides.name ?? `${modelCode} ${procedurePattern}`,
+    procedureDocumentId: documentId,
+    areas: [
+      {
+        sortOrder: 0,
+        processNo: '7',
+        areaCode: '13',
+        areaName: 'ストッパー取付',
+        unitCode: 'U1',
+        requireManualAdvance: true,
+        bolts: [
+          {
+            sortOrder: 0,
+            tighteningId: 'P7-A13-U1-B1',
+            markerNo: 1,
+            xRatio: 0.25,
+            yRatio: 0.25,
+            boltSpec: 'M8x16',
+            nominalTorque: 10,
+            lowerLimit: 9,
+            upperLimit: 11,
+            unit: 'N-m'
+          }
+        ]
+      }
+    ]
+  };
+}
+
 async function cleanAssemblyTables() {
   await prisma.assemblyAreaRestartLog.deleteMany({});
   await prisma.assemblyTorqueRecord.deleteMany({});
@@ -261,5 +296,101 @@ describe('assembly torque management API', () => {
     expect(exported.statusCode).toBe(200);
     expect(exported.headers['content-type']).toContain('spreadsheetml.sheet');
     expect(exported.rawPayload.length).toBeGreaterThan(1000);
+  });
+
+  it('returns procedure and template summaries for library management', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey };
+
+    const uploadA = buildMultipartProcedure('ストッパー取付 手順書');
+    const docARes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/procedure-documents',
+      headers: { ...headers, 'Content-Type': uploadA.contentType },
+      payload: uploadA.body
+    });
+    expect(docARes.statusCode).toBe(200);
+    const documentAId = docARes.json().document.id as string;
+
+    const firstTemplate = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: buildTemplatePayload(documentAId, { modelCode: 'FH-20A', procedurePattern: '手順7', name: 'FH-20A v1' })
+    });
+    expect(firstTemplate.statusCode).toBe(200);
+
+    const secondTemplate = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: buildTemplatePayload(documentAId, { modelCode: 'FH-20A', procedurePattern: '手順7', name: 'FH-20A v2' })
+    });
+    expect(secondTemplate.statusCode).toBe(200);
+
+    const procedureSummary = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/procedure-documents/summary?q=ストッパー',
+      headers
+    });
+    expect(procedureSummary.statusCode).toBe(200);
+    const docSummary = procedureSummary.json().documents[0];
+    expect(docSummary.id).toBe(documentAId);
+    expect(docSummary.activeTemplateCount).toBe(1);
+    expect(docSummary.totalTemplateCount).toBe(2);
+
+    const renamed = await app.inject({
+      method: 'PATCH',
+      url: `/api/assembly/procedure-documents/${documentAId}`,
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: { name: '変更後 手順書' }
+    });
+    expect(renamed.statusCode).toBe(200);
+
+    const templateSummary = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/templates/summary?modelCode=FH-20A&procedurePattern=%E6%89%8B%E9%A0%867&includeInactive=true',
+      headers
+    });
+    expect(templateSummary.statusCode).toBe(200);
+    const templates = templateSummary.json().templates;
+    expect(templates).toHaveLength(2);
+    expect(templates[0]).toMatchObject({
+      modelCode: 'FH-20A',
+      procedurePattern: '手順7',
+      procedureDocumentName: '変更後 手順書',
+      areaCount: 1,
+      boltCount: 1,
+      isActive: true
+    });
+    expect(templates[1]).toMatchObject({ isActive: false });
+
+    const byProcedureName = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/templates/summary?procedureDocumentName=%E5%A4%89%E6%9B%B4%E5%BE%8C&includeInactive=true',
+      headers
+    });
+    expect(byProcedureName.statusCode).toBe(200);
+    expect(byProcedureName.json().templates).toHaveLength(2);
+
+    const retired = await app.inject({
+      method: 'DELETE',
+      url: `/api/assembly/procedure-documents/${documentAId}`,
+      headers
+    });
+    expect(retired.statusCode).toBe(204);
+
+    const inactiveProcedureSummary = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/procedure-documents/summary?q=%E5%A4%89%E6%9B%B4%E5%BE%8C&includeInactive=true',
+      headers
+    });
+    expect(inactiveProcedureSummary.statusCode).toBe(200);
+    expect(inactiveProcedureSummary.json().documents[0]).toMatchObject({
+      id: documentAId,
+      isActive: false,
+      activeTemplateCount: 1,
+      totalTemplateCount: 2
+    });
   });
 });

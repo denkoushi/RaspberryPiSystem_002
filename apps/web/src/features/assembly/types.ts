@@ -7,6 +7,11 @@ export type AssemblyProcedureDocumentDto = {
   updatedAt: string;
 };
 
+export type AssemblyProcedureDocumentSummaryDto = AssemblyProcedureDocumentDto & {
+  activeTemplateCount: number;
+  totalTemplateCount: number;
+};
+
 export type AssemblyTemplateBoltDto = {
   id: string;
   areaId: string;
@@ -50,6 +55,21 @@ export type AssemblyTemplateDto = {
   updatedAt: string;
   procedureDocument: AssemblyProcedureDocumentDto;
   areas: AssemblyTemplateAreaDto[];
+};
+
+export type AssemblyTemplateSummaryDto = {
+  id: string;
+  modelCode: string;
+  procedurePattern: string;
+  name: string;
+  version: number;
+  isActive: boolean;
+  procedureDocumentId: string;
+  procedureDocumentName: string;
+  areaCount: number;
+  boltCount: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type AssemblyTorqueRecordDto = {

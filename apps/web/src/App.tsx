@@ -88,6 +88,16 @@ const KioskInspectionDrawingLibraryPreviewPage = lazy(() =>
     default: module.KioskInspectionDrawingLibraryPreviewPage
   }))
 );
+const KioskAssemblyLibraryPreviewPage = lazy(() =>
+  import('./pages/dev/KioskAssemblyLibraryPreviewPage').then((module) => ({
+    default: module.KioskAssemblyLibraryPreviewPage
+  }))
+);
+const KioskAssemblyTemplateEditorPreviewPage = lazy(() =>
+  import('./pages/dev/KioskAssemblyTemplateEditorPreviewPage').then((module) => ({
+    default: module.KioskAssemblyTemplateEditorPreviewPage
+  }))
+);
 const KioskInspectionDrawingPrintPreviewPage = lazy(() =>
   import('./pages/dev/KioskInspectionDrawingPrintPreviewPage').then((module) => ({
     default: module.KioskInspectionDrawingPrintPreviewPage
@@ -111,6 +121,21 @@ const KioskInspectionDrawingLibraryPage = lazy(() =>
 const KioskInspectionDrawingPrintPage = lazy(() =>
   import('./pages/kiosk/KioskInspectionDrawingPrintPage').then((module) => ({
     default: module.KioskInspectionDrawingPrintPage
+  }))
+);
+const KioskAssemblyTemplateEditorPage = lazy(() =>
+  import('./pages/kiosk/KioskAssemblyTemplateEditorPage').then((module) => ({
+    default: module.KioskAssemblyTemplateEditorPage
+  }))
+);
+const KioskAssemblyWorkStartPage = lazy(() =>
+  import('./pages/kiosk/KioskAssemblyWorkStartPage').then((module) => ({
+    default: module.KioskAssemblyWorkStartPage
+  }))
+);
+const KioskAssemblyWorkSessionPage = lazy(() =>
+  import('./pages/kiosk/KioskAssemblyWorkSessionPage').then((module) => ({
+    default: module.KioskAssemblyWorkSessionPage
   }))
 );
 const KioskSelfInspectionSessionPage = lazy(() =>
@@ -162,6 +187,22 @@ function App() {
           <Route path="/kiosk/pallet-visualization" element={<KioskPalletVisualizationPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
           <Route path="/kiosk/assembly" element={<KioskAssemblyPage />} />
+          <Route
+            path="/kiosk/assembly/templates/new"
+            element={lazyRouteElement(<KioskAssemblyTemplateEditorPage />)}
+          />
+          <Route
+            path="/kiosk/assembly/templates/:templateId/edit"
+            element={lazyRouteElement(<KioskAssemblyTemplateEditorPage />)}
+          />
+          <Route
+            path="/kiosk/assembly/work/start"
+            element={lazyRouteElement(<KioskAssemblyWorkStartPage />)}
+          />
+          <Route
+            path="/kiosk/assembly/work-sessions/:sessionId"
+            element={lazyRouteElement(<KioskAssemblyWorkSessionPage />)}
+          />
           <Route path="/kiosk/part-measurement" element={<KioskPartMeasurementPage />} />
           <Route path="/kiosk/part-measurement/self-inspection" element={<KioskSelfInspectionPage />} />
           <Route
@@ -210,6 +251,14 @@ function App() {
               <Route
                 path="/dev/kiosk-inspection-drawing-create"
                 element={lazyRouteElement(<KioskInspectionDrawingCreatePreviewPage />)}
+              />
+              <Route
+                path="/dev/kiosk-assembly-library"
+                element={lazyRouteElement(<KioskAssemblyLibraryPreviewPage />)}
+              />
+              <Route
+                path="/dev/kiosk-assembly-template-editor"
+                element={lazyRouteElement(<KioskAssemblyTemplateEditorPreviewPage />)}
               />
             </>
           ) : null}

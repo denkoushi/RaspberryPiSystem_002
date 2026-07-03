@@ -2,6 +2,17 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
 
+export type AssemblyProcedureDocumentSummary = {
+  id: string;
+  name: string;
+  imageRelativePath: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  activeTemplateCount: number;
+  totalTemplateCount: number;
+};
+
 export class AssemblyProcedureDocumentService {
   async list(params: { includeInactive?: boolean; q?: string; limit?: number }) {
     const q = params.q?.trim();
@@ -20,6 +31,48 @@ export class AssemblyProcedureDocumentService {
       orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
       take: Math.min(Math.max(params.limit ?? 100, 1), 200)
     });
+  }
+
+  async listSummary(params: { includeInactive?: boolean; q?: string; limit?: number }): Promise<AssemblyProcedureDocumentSummary[]> {
+    const q = params.q?.trim();
+    const documents = await prisma.assemblyProcedureDocument.findMany({
+      where: {
+        ...(params.includeInactive ? {} : { isActive: true }),
+        ...(q
+          ? {
+              name: {
+                contains: q,
+                mode: 'insensitive'
+              }
+            }
+          : {})
+      },
+      orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+      take: Math.min(Math.max(params.limit ?? 100, 1), 200)
+    });
+    const documentIds = documents.map((document) => document.id);
+    if (documentIds.length === 0) return [];
+
+    const [totalCounts, activeCounts] = await Promise.all([
+      prisma.assemblyTemplate.groupBy({
+        by: ['procedureDocumentId'],
+        where: { procedureDocumentId: { in: documentIds } },
+        _count: { _all: true }
+      }),
+      prisma.assemblyTemplate.groupBy({
+        by: ['procedureDocumentId'],
+        where: { procedureDocumentId: { in: documentIds }, isActive: true },
+        _count: { _all: true }
+      })
+    ]);
+    const totalCountByDocument = new Map(totalCounts.map((row) => [row.procedureDocumentId, row._count._all]));
+    const activeCountByDocument = new Map(activeCounts.map((row) => [row.procedureDocumentId, row._count._all]));
+
+    return documents.map((document) => ({
+      ...document,
+      activeTemplateCount: activeCountByDocument.get(document.id) ?? 0,
+      totalTemplateCount: totalCountByDocument.get(document.id) ?? 0
+    }));
   }
 
   async getById(id: string, options: { includeInactive?: boolean } = {}) {
