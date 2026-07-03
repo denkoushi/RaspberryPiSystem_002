@@ -22,10 +22,13 @@ const KIOSK_PART_MEASUREMENT_PREFIX = '/kiosk/part-measurement';
 
 /** 開発プレビュー — 本番 part-measurement と同じ沉浸式・ビューポート契約 */
 const KIOSK_INSPECTION_DRAWING_DEV_PREVIEW_PREFIX = '/dev/kiosk-inspection-drawing';
+const KIOSK_ASSEMBLY_DEV_PREVIEW_PREFIX = '/dev/kiosk-assembly';
 
 const KIOSK_MOBILE_PLACEMENT_PREFIX = '/kiosk/mobile-placement';
 
 const KIOSK_PURCHASE_ORDER_LOOKUP_PREFIX = '/kiosk/purchase-order-lookup';
+
+const KIOSK_ASSEMBLY_PREFIX = '/kiosk/assembly';
 
 /** パレット可視化: 左・右の独立スクロールのためビューポート高を `h-dvh` で固定する */
 const KIOSK_PALLET_VISUALIZATION_PREFIX = '/kiosk/pallet-visualization';
@@ -60,8 +63,10 @@ export function usesKioskImmersiveLayout(pathname: string): boolean {
   if (p.startsWith(KIOSK_LOAD_BALANCING_PATH_PREFIX)) return true;
   if (p === KIOSK_PART_MEASUREMENT_PREFIX || p.startsWith(`${KIOSK_PART_MEASUREMENT_PREFIX}/`)) return true;
   if (p.startsWith(KIOSK_INSPECTION_DRAWING_DEV_PREVIEW_PREFIX)) return true;
+  if (p.startsWith(KIOSK_ASSEMBLY_DEV_PREVIEW_PREFIX)) return true;
   if (p === KIOSK_MOBILE_PLACEMENT_PREFIX || p.startsWith(`${KIOSK_MOBILE_PLACEMENT_PREFIX}/`)) return true;
   if (p === KIOSK_PURCHASE_ORDER_LOOKUP_PREFIX || p.startsWith(`${KIOSK_PURCHASE_ORDER_LOOKUP_PREFIX}/`)) return true;
+  if (p === KIOSK_ASSEMBLY_PREFIX || p.startsWith(`${KIOSK_ASSEMBLY_PREFIX}/`)) return true;
   if (p === KIOSK_PALLET_VISUALIZATION_PREFIX || p.startsWith(`${KIOSK_PALLET_VISUALIZATION_PREFIX}/`)) return true;
   return IMMERSIVE_PATH_EXACT.has(p);
 }

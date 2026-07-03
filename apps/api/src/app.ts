@@ -13,6 +13,7 @@ import { registerRoutes } from './routes/index.js';
 import { initializeCsvImporters } from './services/imports/index.js';
 import { initializeVisualizationModules } from './services/visualization/index.js';
 import { MeasuringInstrumentGenreImageStorage } from './lib/measuring-instrument-genre-image-storage.js';
+import { AssemblyProcedureImageStorage } from './lib/assembly-procedure-image-storage.js';
 import { PartMeasurementDrawingStorage } from './lib/part-measurement-drawing-storage.js';
 import { PalletMachineIllustrationStorage } from './lib/pallet-machine-illustration-storage.js';
 import { PhotoStorage } from './lib/photo-storage.js';
@@ -59,6 +60,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   // ストレージディレクトリを初期化（I/O 並列化で起動クリティカルパス短縮）
   const storageTasks: Array<{ label: string; run: () => Promise<unknown> }> = [
     { label: 'Photo storage directories', run: () => PhotoStorage.initialize() },
+    { label: 'Assembly procedure image storage', run: () => AssemblyProcedureImageStorage.initialize() },
     { label: 'Measuring instrument genre image storage', run: () => MeasuringInstrumentGenreImageStorage.initialize() },
     { label: 'Part-measurement drawing storage', run: () => PartMeasurementDrawingStorage.initialize() },
     { label: 'Pallet machine illustration storage', run: () => PalletMachineIllustrationStorage.initialize() },

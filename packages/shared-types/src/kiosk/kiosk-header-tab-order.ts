@@ -20,6 +20,7 @@ export const KIOSK_REORDERABLE_HEADER_TAB_IDS = [
   'pallet_visualization',
   'shelf_master',
   'documents',
+  'assembly',
   'part_measurement',
   'inspection_drawing',
   'rigging_analytics',

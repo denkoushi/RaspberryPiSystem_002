@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { registerSystemRoutes } from './system/index.js';
 import { registerAuthRoutes } from './auth.js';
+import { registerAssemblyRoutes } from './assembly/index.js';
 import { registerToolsRoutes } from './tools/index.js';
 import { registerClientRoutes } from './clients/index.js';
 import { registerKioskRoutes } from './kiosk/index.js';
@@ -35,14 +36,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     async (subApp) => {
       await registerSystemRoutes(subApp);
       await registerAuthRoutes(subApp);
-      
+      await registerAssemblyRoutes(subApp);
+
       // ツール管理モジュール（パス: /api/tools/*）
       await registerToolsRoutes(subApp);
       // 計測機器管理モジュール（パス: /api/measuring-instruments/*）
       await registerMeasuringInstrumentRoutes(subApp);
       // 吊具管理モジュール（パス: /api/rigging-gears/*）
       await registerRiggingRoutes(subApp);
-      
+
       await registerClientRoutes(subApp);
       await registerKioskRoutes(subApp);
       registerKioskDocumentRoutes(subApp);

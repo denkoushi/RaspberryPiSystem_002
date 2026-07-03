@@ -20,6 +20,12 @@ export function useProtectedImageBlobUrl(imagePath: string | null | undefined): 
       return;
     }
 
+    if (imagePath.startsWith('data:') || imagePath.startsWith('blob:')) {
+      setBlobUrl(imagePath);
+      setError(null);
+      return;
+    }
+
     let revoked: string | null = null;
     let cancelled = false;
 
