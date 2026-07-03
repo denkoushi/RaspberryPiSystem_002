@@ -5387,7 +5387,7 @@ export async function renameAssemblyProcedureDocument(id: string, name: string) 
   return data.document;
 }
 
-export async function retireAssemblyProcedureDocument(id: string) {
+export async function deleteAssemblyProcedureDocument(id: string) {
   await api.delete(`/assembly/procedure-documents/${id}`);
 }
 

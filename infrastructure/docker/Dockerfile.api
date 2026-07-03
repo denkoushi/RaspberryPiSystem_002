@@ -90,6 +90,7 @@ RUN mkdir -p /app/storage/photos \
   /app/storage/pdfs \
   /app/storage/pdf-pages \
   /app/storage/signage-rendered \
+  /app/storage/assembly-procedure-images \
   && rm -rf /usr/local/lib/node_modules/npm \
   && rm -rf /root/.cache/node/corepack
 

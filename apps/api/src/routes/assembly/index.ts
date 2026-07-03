@@ -389,8 +389,9 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
 
   app.delete('/assembly/procedure-documents/:id', { preHandler: allowWriteKiosk }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
-    const result = await procedureService.retire(params.id);
+    const result = await procedureService.deleteIfUnused(params.id);
     if (result === 'not_found') return reply.status(404).send({ message: '手順書が見つかりません' });
+    if (result === 'in_use') return reply.status(409).send({ message: 'テンプレートで使用中の手順書は削除できません' });
     return reply.status(204).send();
   });
 

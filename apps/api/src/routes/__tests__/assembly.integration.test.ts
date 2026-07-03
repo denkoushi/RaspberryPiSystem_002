@@ -373,24 +373,63 @@ describe('assembly torque management API', () => {
     expect(byProcedureName.statusCode).toBe(200);
     expect(byProcedureName.json().templates).toHaveLength(2);
 
-    const retired = await app.inject({
+    const inUseDelete = await app.inject({
       method: 'DELETE',
       url: `/api/assembly/procedure-documents/${documentAId}`,
       headers
     });
-    expect(retired.statusCode).toBe(204);
+    expect(inUseDelete.statusCode).toBe(409);
 
-    const inactiveProcedureSummary = await app.inject({
+    const stillActiveProcedureSummary = await app.inject({
       method: 'GET',
       url: '/api/assembly/procedure-documents/summary?q=%E5%A4%89%E6%9B%B4%E5%BE%8C&includeInactive=true',
       headers
     });
-    expect(inactiveProcedureSummary.statusCode).toBe(200);
-    expect(inactiveProcedureSummary.json().documents[0]).toMatchObject({
+    expect(stillActiveProcedureSummary.statusCode).toBe(200);
+    expect(stillActiveProcedureSummary.json().documents[0]).toMatchObject({
       id: documentAId,
-      isActive: false,
+      isActive: true,
       activeTemplateCount: 1,
       totalTemplateCount: 2
     });
+
+    const uploadUnused = buildMultipartProcedure('未使用 手順書');
+    const unusedDocRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/procedure-documents',
+      headers: { ...headers, 'Content-Type': uploadUnused.contentType },
+      payload: uploadUnused.body
+    });
+    expect(unusedDocRes.statusCode).toBe(200);
+    const unusedDocumentId = unusedDocRes.json().document.id as string;
+    const unusedImagePath = unusedDocRes.json().document.imageRelativePath as string;
+
+    const imageBeforeDelete = await app.inject({
+      method: 'GET',
+      url: unusedImagePath,
+      headers
+    });
+    expect(imageBeforeDelete.statusCode).toBe(200);
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/assembly/procedure-documents/${unusedDocumentId}`,
+      headers
+    });
+    expect(deleted.statusCode).toBe(204);
+
+    const deletedLookup = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/procedure-documents/${unusedDocumentId}`,
+      headers
+    });
+    expect(deletedLookup.statusCode).toBe(404);
+
+    const imageAfterDelete = await app.inject({
+      method: 'GET',
+      url: unusedImagePath,
+      headers
+    });
+    expect(imageAfterDelete.statusCode).toBe(404);
   });
 });

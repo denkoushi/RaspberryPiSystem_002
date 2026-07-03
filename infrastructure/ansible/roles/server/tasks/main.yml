@@ -152,6 +152,14 @@
     group: "{{ ansible_user }}"
     mode: '0755'
 
+- name: Ensure assembly procedure image storage directory exists
+  ansible.builtin.file:
+    path: "{{ repo_path }}/storage/assembly-procedure-images"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+
 - name: Ensure measuring instrument genre image storage directory exists
   ansible.builtin.file:
     path: "{{ repo_path }}/storage/measuring-instrument-genres"

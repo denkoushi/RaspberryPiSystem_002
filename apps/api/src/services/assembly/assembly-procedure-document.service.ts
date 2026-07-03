@@ -1,4 +1,5 @@
 import { ApiError } from '../../lib/errors.js';
+import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
 
@@ -116,17 +117,40 @@ export class AssemblyProcedureDocumentService {
     }
   }
 
-  async retire(id: string) {
-    const doc = await prisma.assemblyProcedureDocument.findUnique({
-      where: { id },
-      select: { id: true }
+  async deleteIfUnused(id: string): Promise<'deleted' | 'not_found' | 'in_use'> {
+    let imageRelativePath: string | null = null;
+    const outcome = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "AssemblyProcedureDocument"
+        WHERE id = ${id}
+        FOR UPDATE
+      `;
+      if (locked.length === 0) return 'not_found' as const;
+
+      const doc = await tx.assemblyProcedureDocument.findUnique({
+        where: { id },
+        select: { imageRelativePath: true }
+      });
+      if (!doc) return 'not_found' as const;
+
+      const referenceCount = await tx.assemblyTemplate.count({
+        where: { procedureDocumentId: id }
+      });
+      if (referenceCount > 0) return 'in_use' as const;
+
+      await tx.assemblyProcedureDocument.delete({ where: { id } });
+      imageRelativePath = doc.imageRelativePath;
+      return 'deleted' as const;
     });
-    if (!doc) return 'not_found' as const;
-    await prisma.assemblyProcedureDocument.update({
-      where: { id },
-      data: { isActive: false }
-    });
-    return 'retired' as const;
+
+    if (outcome === 'deleted' && imageRelativePath) {
+      try {
+        await AssemblyProcedureImageStorage.deleteImage(imageRelativePath);
+      } catch (err) {
+        logger.warn({ err, id, imageRelativePath }, 'assembly_procedure_document_image_delete_failed');
+      }
+    }
+    return outcome;
   }
 
   async deleteImageIfUnused(imageRelativePath: string): Promise<void> {

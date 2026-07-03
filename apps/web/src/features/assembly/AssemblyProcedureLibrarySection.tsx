@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { retireAssemblyProcedureDocument } from '../../api/client';
+import { deleteAssemblyProcedureDocument } from '../../api/client';
 import { Button, buttonClassName } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 
@@ -42,8 +42,6 @@ export function AssemblyProcedureLibrarySection({
   const documents = isPreview ? previewFilteredDocuments : apiState.documents;
   const searchQuery = isPreview ? previewSearchQuery : apiState.searchQuery;
   const setSearchQuery = isPreview ? setPreviewSearchQuery : apiState.setSearchQuery;
-  const includeInactive = isPreview ? false : apiState.includeInactive;
-  const setIncludeInactive = isPreview ? () => undefined : apiState.setIncludeInactive;
   const loading = isPreview ? false : apiState.loading;
   const error = isPreview ? null : apiState.error;
   const reload = isPreview ? () => undefined : apiState.reload;
@@ -54,17 +52,17 @@ export function AssemblyProcedureLibrarySection({
     reload();
   };
 
-  const handleRetire = async (document: AssemblyProcedureDocumentSummaryDto) => {
+  const handleDelete = async (document: AssemblyProcedureDocumentSummaryDto) => {
     if (isPreview) return;
-    if (!window.confirm(`手順書「${document.name}」を無効化します。よろしいですか。`)) return;
+    if (!window.confirm(`手順書「${document.name}」を削除します。よろしいですか。`)) return;
     setBusyDocumentId(document.id);
     setActionError(null);
     try {
-      await retireAssemblyProcedureDocument(document.id);
-      onChanged?.(`手順書を無効化しました: ${document.name}`);
+      await deleteAssemblyProcedureDocument(document.id);
+      onChanged?.(`手順書を削除しました: ${document.name}`);
       reload();
     } catch (e: unknown) {
-      setActionError(readAssemblyApiErrorMessage(e, '手順書の無効化に失敗しました。'));
+      setActionError(readAssemblyApiErrorMessage(e, '手順書の削除に失敗しました。'));
     } finally {
       setBusyDocumentId(null);
     }
@@ -88,15 +86,6 @@ export function AssemblyProcedureLibrarySection({
             className="min-h-9 px-2 text-[0.9rem]"
           />
         </div>
-        <label className="flex min-h-9 items-center gap-1 rounded border border-white/20 px-2 text-[0.78rem] font-semibold text-white/80">
-          <input
-            type="checkbox"
-            checked={includeInactive}
-            disabled={isPreview}
-            onChange={(event) => setIncludeInactive(event.target.checked)}
-          />
-          無効含む
-        </label>
         <Button
           type="button"
           variant="ghostOnDark"
@@ -146,7 +135,6 @@ export function AssemblyProcedureLibrarySection({
                 <tr key={document.id} className="border-b border-white/10 last:border-b-0">
                   <td className="truncate px-2 py-1.5 font-bold text-white" title={document.name}>
                     {document.name}
-                    {!document.isActive ? <span className="ml-1 text-[0.68rem] text-amber-200">無効</span> : null}
                   </td>
                   <td className="whitespace-nowrap px-2 py-1.5 font-semibold text-white/70">
                     {document.activeTemplateCount}/{document.totalTemplateCount}
@@ -176,12 +164,13 @@ export function AssemblyProcedureLibrarySection({
                       </Button>
                       <Button
                         type="button"
-                        variant="ghostOnDark"
+                        variant="danger"
                         className="min-h-6 shrink-0 rounded !px-1.5 !py-0 text-[0.68rem] leading-none"
-                        disabled={isPreview || busyDocumentId === document.id || !document.isActive}
-                        onClick={() => void handleRetire(document)}
+                        disabled={isPreview || busyDocumentId === document.id || document.totalTemplateCount > 0}
+                        title={document.totalTemplateCount > 0 ? 'テンプレートで使用中のため削除できません' : '削除'}
+                        onClick={() => void handleDelete(document)}
                       >
-                        無効
+                        削除
                       </Button>
                     </div>
                   </td>
