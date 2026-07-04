@@ -5,7 +5,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 This document must be maintained in accordance with `.agent/PLANS.md`.
 
 - id: solid-refactor-phase4-execplan-202607
-- status: completed (implementation); committed `3042f8cd`, pushed, CI green; production deploy pending explicit user request
+- status: completed; committed, pushed, CI green, deployed to Pi5 + Pi4x5 + Pi3, Phase12 verified
 - scope: apps/api config/env.ts domain partition; apps/web CsvDashboardsPage.tsx and VisualizationDashboardsPage.tsx feature split
 - date: 2026-07-04
 - source_of_truth: this file
@@ -32,8 +32,9 @@ Out of scope (carried open items): residual direct `lib/prisma` imports in ~26 n
 - [x] (2026-07-04 17:12+09:00) Step W5b done (worker subagent): `VisualizationDashboardsPage.tsx` reduced from 700 to 37 lines (thin composition). 9 new files under `apps/web/src/features/admin/visualization-dashboards/`: `visualizationDashboardPresets.ts` (145), `visualizationDashboardFormModel.ts` (272), `visualizationDashboardFormModel.test.ts` (270, NEW: 23 cases — parseJson, isDirty, togglePalletVizMachine order/key-removal, per-preset save validation, description empty→null), `useVisualizationDashboardEditor.ts` (267), `VisualizationDashboardHeaderSection.tsx` (25), `VisualizationDashboardListSection.tsx` (31), `VisualizationDashboardEditorForm.tsx` (181), `UninspectedCsvDashboardPicker.tsx` (44), `PalletVizMachinePicker.tsx` (63). Deviations (output-identical): measuring/rigging presets unified via `buildLoanInspectionPresetFields` factory; pallet-viz selected-set `useMemo` logic extracted to the model; `isCreating`↔`selectedId` exclusivity centralized in one hook handler; the create/edit form stays one component. Verified by worker: `tsc -b` clean, lint 0 errors, web suite 249 files / 1,245 tests (= 248/1,222 + exactly 1 new file / 23 new tests). Orchestrator verified: page now 37 lines, git footprint limited to the two page files + two new feature dirs (+ A5's env changes from the parallel worker).
 - [x] (2026-07-04 17:27+09:00) Final verification (orchestrator): web `tsc -b` clean + suite 249 files / 1,245 tests (= baseline 247/1,206 + this phase's 2 new test files / 39 new tests) + lint clean. Full API suite: one run had a single failure (see Surprises — flaky, not reproducible), two subsequent full runs both exactly 412 files passed | 2 skipped, 2,098 tests passed | 9 skipped = baseline. Test container `postgres-test-local` and this session's anonymous volume (created 2026-07-04T07:54:06Z) removed; the 229 pre-existing dangling volumes untouched.
 - [x] (2026-07-04 17:46+09:00) Committed and pushed to `origin/main`: `3042f8cd` (`refactor: split env config and dashboard admin pages`; 36 files, +3,576/−2,079; pre-commit lint hook passed). GitHub Actions all green for `3042f8cd`: CI `28700601324` success (watched to completion), CodeQL `28700601328` success, Secret scan `28700601342` success, Pages `28700600910` success. docs/INDEX.md link added.
-
-Production deploy is intentionally NOT executed in this phase; it awaits an explicit user request (per repo safety rules).
+- [x] (2026-07-04 17:48+09:00) Follow-up docs-only commit `3f0abd1c` (`docs: record solid refactor phase4 verification and CI results`) reached `origin/main` before production deploy. Its main CI `28701006540`, CodeQL `28701006547`, and Secret scan `28701006557` succeeded; the dynamic Pages run `28701006342` hit a transient deploy failure and should be superseded/rerun by the final documentation push.
+- [x] (2026-07-04 17:48-18:22+09:00) Production deploy completed with the standard all-client command: `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow` using `RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`. Run ID `20260704-174822-4765`; remote exit code `0`; summary success `true`; PLAY RECAP all 7 hosts had `failed=0` and `unreachable=0` (`raspberrypi5`, `raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`, `raspi4-kensaku-stonebase01`, `raspi4-sessaku-01`, `raspberrypi3`). Pi5 `/opt/RaspberryPiSystem_002` HEAD after deployment was `3f0abd1c` (docs-only on top of implementation `3042f8cd`).
+- [x] (2026-07-04 18:23+09:00) Real-machine verification passed: `./scripts/deploy/verify-phase12-real.sh` = PASS 45 / WARN 0 / FAIL 0. Covered API health/deploy-status, due-management/manual-order/part-measurement/signage endpoints, Pi5 migration/fallback/auto-tuning checks, all Pi4 kiosk/status-agent services, Pi3 signage-lite/timer, and `verify-services-real.sh`.
 
 Open items carried from phases 1–3 (not in this phase's scope):
 
@@ -77,8 +78,9 @@ Acceptance met: API suite 412 files / 2,098 tests identical to baseline (one fla
 Operational acceptance:
 
 - Commit: `3042f8cd` on `main`, pushed to `origin/main`.
-- CI: CI `28700601324`, CodeQL `28700601328`, Secret scan `28700601342`, Pages `28700600910` — all success.
-- Deploy: not executed; awaiting explicit user request.
+- CI: implementation commit `3042f8cd` had CI `28700601324`, CodeQL `28700601328`, Secret scan `28700601342`, Pages `28700600910` — all success. Follow-up docs commit `3f0abd1c` had CI `28701006540`, CodeQL `28701006547`, Secret scan `28701006557` success; Pages had a transient dynamic deploy failure to be superseded/rerun by the final docs push.
+- Deploy: all-client deploy run `20260704-174822-4765`, summary success true, exit code 0, PLAY RECAP all 7 hosts `failed=0 / unreachable=0`; Pi5 deployed HEAD `3f0abd1c` (docs-only atop `3042f8cd`).
+- Real-machine verification: `./scripts/deploy/verify-phase12-real.sh` PASS 45 / WARN 0 / FAIL 0.
 
 Retrospective notes:
 
