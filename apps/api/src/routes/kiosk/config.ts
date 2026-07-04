@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 
-import { prisma } from '../../lib/prisma.js';
 import { getKioskHeaderTabOrderSettings } from '../../services/kiosk/kiosk-header-tab-order.service.js';
+import { resolveKioskConfigClientState } from '../../services/kiosk/kiosk-config.service.js';
 
 type ConfigRouteDeps = {
   normalizeClientKey: (rawKey: unknown) => string | undefined;
@@ -29,53 +29,20 @@ export async function registerKioskConfigRoute(
       },
       'Kiosk config request'
     );
-    let defaultMode: 'PHOTO' | 'TAG' = 'TAG'; // デフォルトはTAG
-    let clientStatus: {
-      temperature: number | null;
-      cpuUsage: number;
-      lastSeen: Date;
-    } | null = null;
 
-    if (clientKey) {
-      const client = await prisma.clientDevice.findUnique({
-        where: { apiKey: clientKey }
-      });
-      // 機密情報保護: clientKeyとclient.apiKeyをログから除外
-      const sanitizedClient = client ? { ...client, apiKey: '[REDACTED]' } : null;
-      app.log.info(
-        {
-          client: sanitizedClient,
-          clientKey: '[REDACTED]',
-          found: !!client,
-          defaultMode: client?.defaultMode
-        },
-        'Client device lookup result'
-      );
-      if (client) {
-        await prisma.clientDevice.update({
-          where: { id: client.id },
-          data: { lastSeenAt: new Date() }
-        });
-      }
-      if (client?.defaultMode) {
-        defaultMode = client.defaultMode as 'PHOTO' | 'TAG';
-      }
+    const { client, defaultMode, clientStatus } = await resolveKioskConfigClientState(clientKey);
 
-      // statusClientId で ClientStatus を取得（自端末の温度・CPU負荷を返す）
-      const statusClientId = (client as { statusClientId?: string | null } | null)?.statusClientId;
-      if (statusClientId) {
-        const status = await prisma.clientStatus.findUnique({
-          where: { clientId: statusClientId }
-        });
-        if (status) {
-          clientStatus = {
-            temperature: status.temperature,
-            cpuUsage: status.cpuUsage,
-            lastSeen: status.lastSeen
-          };
-        }
-      }
-    }
+    // 機密情報保護: clientKeyとclient.apiKeyをログから除外
+    const sanitizedClient = client ? { ...client, apiKey: '[REDACTED]' } : null;
+    app.log.info(
+      {
+        client: sanitizedClient,
+        clientKey: '[REDACTED]',
+        found: !!client,
+        defaultMode: client?.defaultMode
+      },
+      'Client device lookup result'
+    );
 
     // 機密情報保護: clientKeyをログから除外
     app.log.info(

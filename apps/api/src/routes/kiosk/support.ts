@@ -1,10 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
 
-import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { sendSlackNotification } from '../../services/notifications/slack-webhook.js';
+import {
+  findClientDeviceByApiKey,
+  recordKioskSupportMessage
+} from '../../services/kiosk/kiosk-support.service.js';
 import type { ClientDeviceForScopeResolution, LocationScopeContext } from './shared.js';
 
 const supportMessageSchema = z.object({
@@ -39,9 +41,7 @@ export async function registerKioskSupportRoute(
     const body = supportMessageSchema.parse(request.body);
 
     // クライアントデバイスを取得
-    const clientDevice = await prisma.clientDevice.findUnique({
-      where: { apiKey: clientKey }
-    });
+    const clientDevice = await findClientDeviceByApiKey(clientKey);
 
     if (!clientDevice) {
       throw new ApiError(401, 'クライアントキーが無効です', undefined, 'CLIENT_KEY_INVALID');
@@ -53,22 +53,13 @@ export async function registerKioskSupportRoute(
     const clientId = (request.body as { clientId?: string })?.clientId || clientDevice.id;
 
     // クライアントログとして保存
-    const logMessage = `[SUPPORT] ${body.message}`;
-    await prisma.clientLog.create({
-      data: {
-        clientId,
-        level: 'INFO',
-        message: logMessage.slice(0, 1000),
-        context: {
-          kind: 'kiosk-support',
-          page: body.page,
-          clientId,
-          clientDeviceId: clientDevice.id,
-          clientName: clientDevice.name,
-          location: actorLocation,
-          userMessage: body.message
-        } as Prisma.InputJsonValue
-      }
+    await recordKioskSupportMessage({
+      clientId,
+      userMessage: body.message,
+      page: body.page,
+      clientDeviceId: clientDevice.id,
+      clientName: clientDevice.name,
+      location: actorLocation
     });
 
     // Slack通知を送信（非同期、エラーはログに記録するがAPIレスポンスには影響しない）

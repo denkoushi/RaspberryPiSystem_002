@@ -4,10 +4,12 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import {
   RiggingGearService,
+  RiggingGearTagService,
   RiggingInspectionRecordService,
   RiggingLoanAnalyticsService,
   RiggingLoanService
 } from '../../services/rigging/index.js';
+import { assertKioskApiClientKeyValid } from '../../services/clients/client-device-auth.service.js';
 import { resolveClientDeviceId } from '../../services/clients/client-device-resolution.service.js';
 import {
   riggingBorrowSchema,
@@ -22,39 +24,19 @@ import {
   riggingTagCreateSchema,
   riggingTagParamsSchema
 } from './schemas.js';
-import { prisma } from '../../lib/prisma.js';
 
 export async function registerRiggingRoutes(app: FastifyInstance): Promise<void> {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
   const canWrite = authorizeRoles('ADMIN', 'MANAGER');
 
   const gearService = new RiggingGearService();
+  const tagService = new RiggingGearTagService();
   const inspectionService = new RiggingInspectionRecordService();
   const loanService = new RiggingLoanService();
   const riggingLoanAnalyticsService = RiggingLoanAnalyticsService.createDefault();
 
   const allowClientKey = async (request: FastifyRequest) => {
-    const rawClientKey = request.headers['x-client-key'];
-    let clientKey: string | undefined;
-    if (typeof rawClientKey === 'string') {
-      try {
-        const parsed = JSON.parse(rawClientKey);
-        clientKey = typeof parsed === 'string' ? parsed : rawClientKey;
-      } catch {
-        clientKey = rawClientKey;
-      }
-    } else if (Array.isArray(rawClientKey) && rawClientKey.length > 0) {
-      clientKey = rawClientKey[0];
-    }
-
-    if (!clientKey) {
-      throw new ApiError(401, 'クライアントキーが必要です', undefined, 'CLIENT_KEY_REQUIRED');
-    }
-
-    const client = await prisma.clientDevice.findUnique({ where: { apiKey: clientKey } });
-    if (!client) {
-      throw new ApiError(403, 'クライアントキーが無効です', undefined, 'CLIENT_KEY_INVALID');
-    }
+    await assertKioskApiClientKeyValid(request.headers['x-client-key']);
   };
 
   const allowView = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -150,18 +132,14 @@ export async function registerRiggingRoutes(app: FastifyInstance): Promise<void>
   app.post('/rigging-gears/:id/tags', { preHandler: canWrite }, async (request) => {
     const params = riggingGearParamsSchema.parse(request.params);
     const body = riggingTagCreateSchema.parse(request.body);
-    // 既存タグを入れ替え
-    await prisma.riggingGearTag.deleteMany({ where: { riggingGearId: params.id } });
-    const tag = await prisma.riggingGearTag.create({
-      data: { riggingGearId: params.id, rfidTagUid: body.rfidTagUid }
-    });
+    const tag = await tagService.replaceTagForGear(params.id, body.rfidTagUid);
     return { tag };
   });
 
   // タグ削除
   app.delete('/rigging-gear-tags/:tagId', { preHandler: canWrite }, async (request) => {
     const params = riggingTagParamsSchema.parse(request.params);
-    const tag = await prisma.riggingGearTag.delete({ where: { id: params.tagId } });
+    const tag = await tagService.deleteTag(params.tagId);
     return { tag };
   });
 

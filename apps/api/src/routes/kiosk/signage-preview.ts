@@ -2,9 +2,15 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
-import { prisma } from '../../lib/prisma.js';
 import { isSignageDisplayClientDeviceApiKey } from '../../lib/signage/signage-display-client.js';
 import { resolveEffectiveKioskSignagePreviewApiKey } from '../../lib/signage/kiosk-signage-preview-target.js';
+import {
+  clearSignagePreviewTarget,
+  findSignagePreviewTargetDeviceByApiKey,
+  getSignagePreviewTarget,
+  listSignagePreviewCandidates,
+  setSignagePreviewTarget
+} from '../../services/kiosk/kiosk-signage-preview.service.js';
 
 const selectionBodySchema = z.object({
   signagePreviewTargetApiKey: z.string().min(1).nullable(),
@@ -17,21 +23,6 @@ type SignagePreviewRouteDeps = {
   }>;
 };
 
-async function listSignageCandidateDevices(): Promise<
-  Array<{ id: string; name: string; location: string | null; apiKey: string }>
-> {
-  return prisma.clientDevice.findMany({
-    where: {
-      apiKey: {
-        contains: 'signage',
-        mode: 'insensitive',
-      },
-    },
-    select: { id: true, name: true, location: true, apiKey: true },
-    orderBy: { name: 'asc' },
-  });
-}
-
 export async function registerKioskSignagePreviewRoutes(
   app: FastifyInstance,
   deps: SignagePreviewRouteDeps
@@ -40,12 +31,9 @@ export async function registerKioskSignagePreviewRoutes(
     const rawHeader = request.headers['x-client-key'];
     const { clientKey, clientDevice } = await deps.requireClientDevice(rawHeader);
 
-    const row = await prisma.clientDevice.findUnique({
-      where: { id: clientDevice.id },
-      select: { signagePreviewTargetApiKey: true },
-    });
+    const row = await getSignagePreviewTarget(clientDevice.id);
 
-    const candidates = await listSignageCandidateDevices();
+    const candidates = await listSignagePreviewCandidates();
     const signageApiKeys = new Set(candidates.map((c) => c.apiKey));
     const selectedApiKeyRaw = row?.signagePreviewTargetApiKey ?? null;
     const selectedApiKey = selectedApiKeyRaw && signageApiKeys.has(selectedApiKeyRaw) ? selectedApiKeyRaw : null;
@@ -69,10 +57,7 @@ export async function registerKioskSignagePreviewRoutes(
     const body = selectionBodySchema.parse(request.body);
 
     if (body.signagePreviewTargetApiKey === null) {
-      await prisma.clientDevice.update({
-        where: { id: clientDevice.id },
-        data: { signagePreviewTargetApiKey: null },
-      });
+      await clearSignagePreviewTarget(clientDevice.id);
       return { ok: true as const, signagePreviewTargetApiKey: null as string | null };
     }
 
@@ -81,18 +66,12 @@ export async function registerKioskSignagePreviewRoutes(
       throw new ApiError(400, 'サイネージ表示端末のAPIキーのみ選択できます', undefined, 'INVALID_SIGNAGE_PREVIEW_TARGET');
     }
 
-    const targetDevice = await prisma.clientDevice.findUnique({
-      where: { apiKey: targetKey },
-      select: { id: true },
-    });
+    const targetDevice = await findSignagePreviewTargetDeviceByApiKey(targetKey);
     if (!targetDevice) {
       throw new ApiError(400, '指定された端末が見つかりません', undefined, 'SIGNAGE_PREVIEW_TARGET_NOT_FOUND');
     }
 
-    await prisma.clientDevice.update({
-      where: { id: clientDevice.id },
-      data: { signagePreviewTargetApiKey: targetKey },
-    });
+    await setSignagePreviewTarget(clientDevice.id, targetKey);
 
     return { ok: true as const, signagePreviewTargetApiKey: targetKey };
   });
