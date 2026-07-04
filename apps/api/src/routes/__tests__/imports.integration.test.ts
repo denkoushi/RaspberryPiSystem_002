@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
+import { prisma } from '../../lib/prisma.js';
 import { createAuthHeader, createTestEmployee, createTestItem, createTestLoan, createTestUser } from './helpers.js';
 import FormData from 'form-data';
 import { Readable } from 'stream';
@@ -58,6 +59,21 @@ describe('POST /api/imports/master', () => {
     const timestamp = Date.now() % 10000;
     const base = 1000 + ((timestamp + testCounter * 100 + offset) % 9000);
     return base;
+  }
+
+  async function generateUnusedEmployeeCode(offset: number): Promise<string> {
+    for (let attempt = 0; attempt < 9000; attempt++) {
+      const candidate = String(1000 + ((generateTestId(offset) + attempt) % 9000)).padStart(4, '0');
+      const existing = await prisma.employee.findUnique({
+        where: { employeeCode: candidate },
+        select: { id: true },
+      });
+      if (!existing) {
+        return candidate;
+      }
+    }
+
+    throw new Error('Failed to find unused employeeCode for import test');
   }
 
   beforeAll(async () => {
@@ -399,9 +415,10 @@ describe('POST /api/imports/master', () => {
 
   it('should handle replaceExisting=true correctly', async () => {
     // 既存の従業員を作成
-    const empOld = String(generateTestId(80)).padStart(4, '0');
-    const empNew = String(generateTestId(90)).padStart(4, '0');
+    const empOld = await generateUnusedEmployeeCode(80);
+    const empNew = await generateUnusedEmployeeCode(90);
     await createTestEmployee({ employeeCode: empOld, displayName: 'Original Employee' });
+    await createTestEmployee({ employeeCode: empNew, displayName: 'Replace Candidate' });
 
     const formData = new FormData();
     const csvContent = `employeeCode,lastName,firstName\n${empNew},New,Employee`;
