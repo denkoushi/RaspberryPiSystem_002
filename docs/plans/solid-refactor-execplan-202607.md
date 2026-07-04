@@ -5,9 +5,9 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 This document must be maintained in accordance with `.agent/PLANS.md` (repository root relative path: `.agent/PLANS.md`).
 
 - id: solid-refactor-execplan-202607
-- status: in-progress
+- status: completed
 - scope: apps/api route/service layering, apps/web api module decomposition
-- date: 2026-07-03
+- date: 2026-07-04
 - source_of_truth: this file
 - related_docs: docs/INDEX.md, docs/plans/kiosk-admin-ui-brushup-202607.md
 - open_items: see `Progress` and `Outcomes & Retrospective`
@@ -40,6 +40,10 @@ Reading those files is allowed (e.g. to keep imports compiling); editing them is
 - [x] (2026-07-03 22:40+09:00) Step W2 done (worker subagent): `apps/web/src/api/client.ts` reduced from 5,532 to 46 lines (pure re-export facade with feature-type compat section). New `apps/web/src/api/http.ts` (120 lines: axios instance, interceptors, client-key, getWebSocketUrl) and 15 domain modules under `apps/web/src/api/domains/` (auth, tools, kiosk, production-schedule 1,822, mobile-placement, measuring-instruments, rigging, part-measurement 1,315, clients, system, signage, kiosk-documents, csv-visualization, assembly). Export-surface diff vs original 495 exports: no loss. Verified: tsc -b clean, web tests 244 files / 1179 tests green, lint 0 errors. Orchestrator cleanup: removed now-unused `axios` import in `pages/tools/ItemsPage.tsx` (last lint warning) and deleted the worker's one-off split script; tsc + lint re-verified clean.
 - [x] (2026-07-03 22:52+09:00) Step A2 done (worker subagent): `apps/api/src/routes/part-measurement/index.ts` reduced from 2,405 to 172 lines (composition root; export `registerPartMeasurementRoutes(app): Promise<void>` unchanged). New `shared.ts` (948 lines: shared Zod schemas, serializers, `PartMeasurementRouteDeps`) plus 7 sub-registrars: `visual-templates.ts` (362), `sheets.ts` (436), `production-templates-read.ts` (165), `self-inspection.ts` (455), `production-templates-create.ts` (155), `inspection-drawing-templates.ts` (412), `production-templates-lifecycle.ts` (201). Registration order preserved. Verified: part-measurement integration tests 67 passed | 2 skipped + drawings 2 passed; full API suite 412 files / 2098 tests green (baseline match).
 - [x] (2026-07-03 22:55+09:00) Final verification: web suite re-run green (244 files / 1179 tests); `git status` confirms changed files are exactly the refactor scope and no WIP path was touched; docs/INDEX.md link added; test Postgres container removed.
+- [x] (2026-07-04 08:10-09:05+09:00) Explicit user request received to commit, push, run CI, deploy, and verify on real devices. Refactor committed and pushed as `893c7799 refactor: split API routes and web client` on `origin/main`. Local final verification passed: `pnpm lint --max-warnings=0`, `pnpm audit --audit-level=critical` (no critical findings), shared package builds/tests, Prisma generate, API build, web tests (244 files / 1179 tests), web build, Prisma migrate deploy on local test Postgres, and API coverage suite.
+- [x] (2026-07-04 08:10-09:05+09:00) GitHub Actions for `893c7799` completed successfully: CI run `28687272120`, Secret scan `28687272144`, CodeQL `28687272119`, and pages build/deployment `28687271757`.
+- [x] (2026-07-04 08:29-09:03+09:00) Production deployment completed with run ID `20260704-082918-881`. Remote summary success was `true`, exit code `0`, and the final Ansible recap showed all 7 hosts with `failed=0` and `unreachable=0`: `raspberrypi5`, `raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`, `raspi4-kensaku-stonebase01`, `raspi4-sessaku-01`, and `raspberrypi3`. Pi5 `/opt/RaspberryPiSystem_002` HEAD after deployment was `893c7799`.
+- [x] (2026-07-04 09:04+09:00) Real-device validation completed with `./scripts/deploy/verify-phase12-real.sh`: `PASS: 45`, `WARN: 0`, `FAIL: 0`. Covered API health/deploy-status, due-management/manual-order/part-measurement/signage endpoints, Pi5 migration/backup checks, Pi4 kiosk/status-agent services, and Pi3 signage services.
 - [ ] Open item (future plan): decompose `apps/api/src/services/part-measurement/self-inspection.service.ts` (4,386 lines) into session/query/command/loan-bridge sub-services with repositories.
 - [ ] Open item (future plan): split `apps/web/src/api/hooks.ts` (2,951 lines) by domain; move feature-specific cache patching into feature-side mutation wrappers.
 - [ ] Open item (future plan): remove remaining direct `lib/prisma` imports from ~26 other route files (rigging, measuring-instruments, kiosk config/support, storage, tools, system, signage, webrtc, backup).
@@ -69,6 +73,9 @@ Reading those files is allowed (e.g. to keep imports compiling); editing them is
 - Decision: Do not commit anything in this session.
   Rationale: Repository rule `.cursor/rules/20-git-workflow.mdc` requires explicit user request for git operations; the working tree also holds unrelated UI WIP that must not be mixed into commits.
   Date/Author: 2026-07-03 / Fable 5
+- Decision: Commit, push, deploy, and run real-device validation after the user explicitly requested those operations.
+  Rationale: This supersedes the earlier no-commit constraint for the already-verified refactor. The commit contains only the intended refactor/documentation scope; unrelated WIP paths were excluded.
+  Date/Author: 2026-07-04 / Codex
 - Decision: Keep `apps/web/src/api/client.ts` and `apps/api/src/routes/part-measurement/index.ts` as facades that re-export/compose the new modules, instead of updating every import site.
   Rationale: Preserves the public import surface, keeps the diff mechanical and reviewable, avoids touching WIP files that import from these modules.
   Date/Author: 2026-07-03 / Fable 5
@@ -81,17 +88,27 @@ Reading those files is allowed (e.g. to keep imports compiling); editing them is
 
 ## Outcomes & Retrospective
 
-(2026-07-03) All four planned steps completed with zero behavior change; every suite matches baseline exactly (API 412 files / 2098 tests, Web 244 files / 1179 tests).
+(2026-07-04) All four planned steps completed, committed, pushed, deployed, and verified on real devices. The source commit is `893c7799 refactor: split API routes and web client`; production Pi5 is at the same commit.
 
 Achieved:
 
 - Web: shared `getApiErrorMessage` helper in `apps/web/src/api/errors.ts` adopted by 6 pages; last raw `fetch` removed; `client.ts` reduced from 5,532 lines to a 46-line facade over `http.ts` + 15 domain modules under `api/domains/`.
 - API: `routes/auth.ts` reduced 211 to 91 lines with all Prisma access moved into `services/auth/auth.service.ts`; `routes/part-measurement/index.ts` reduced 2,405 to 172 lines composing 7 sub-registrars plus `shared.ts`.
-- No WIP file (kiosk admin UI brushup) was modified; nothing was committed (per repo git rules, commits require explicit user request).
+- Validation: local lint/audit/build/test suites passed, CI/Secret scan/CodeQL/pages succeeded for `893c7799`, deployment run `20260704-082918-881` exited `0`, and `verify-phase12-real.sh` reported `PASS: 45`, `WARN: 0`, `FAIL: 0`.
+- No WIP file (kiosk admin UI brushup) was modified during the refactor. Git operations were performed only after the explicit user request on 2026-07-04.
 
 Remaining work is recorded as open items in `Progress`: the `self-inspection.service.ts` god service (4,386 lines), the `hooks.ts` split (2,951 lines), ~26 remaining route files importing `lib/prisma` directly, the `production-schedule-query.service.ts` split, shared loan orchestration, `config/env.ts` partitioning, and the admin god pages. Each should get its own follow-up plan of similar shape.
 
 Lesson: facade-preserving mechanical splits (old path re-exports new modules; composition root keeps its export signature) allowed multi-thousand-line decompositions with no import-site churn and no test churn. This is the recommended template for the open items.
+
+## Handoff Snapshot
+
+Next AI can resume from `main` at or after `893c7799`. The refactor is not pending deployment; it is already live and validated.
+
+- Current state: completed and deployed to Pi5/Pi4/Pi3 fleet by run `20260704-082918-881`.
+- Preserved contracts: `apps/web/src/api/client.ts` remains the compatibility facade for all previous exports; `registerPartMeasurementRoutes(app)` keeps the same signature and route registration behavior.
+- Validation anchor: use `./scripts/deploy/verify-phase12-real.sh` for production regression checks; the last known result was `PASS: 45`, `WARN: 0`, `FAIL: 0`.
+- No unresolved blocker remains for this plan. Follow-up work should start from one of the open items above and should not reopen the completed W1/A1/W2/A2 scope unless a regression is reported.
 
 ## Context and Orientation
 
