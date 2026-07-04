@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-04 · SOLID リファクタ第4弾）
+
+- **API `config/env.ts` ドメイン分割 + 管理ダッシュボード2ページの features 分割（挙動不変）**: env スキーマを10ドメイン断片+dotenv初期化モジュールへのファサード化（554→104行、公開APIは `env` のみ不変）・`CsvDashboardsPage`（916→74行）と `VisualizationDashboardsPage`（700→37行）を `features/admin/csv-dashboards|visualization-dashboards/` へ分解（純モデル関数の新規テスト39件追加）。**正本**: [Plan](./plans/solid-refactor-phase4-execplan-202607.md)
+
 ### 最新アップデート（2026-07-04 · SOLID リファクタ第3弾）
 
 - **API `production-schedule-query.service.ts` 分解 + 管理画面2ページの features 分割（挙動不変）**: production-schedule クエリを12サブモジュールへのファサード化（2,052→78行）・`SignageSchedulesPage`（1,618→41行）と `CsvImportSchedulePage`（1,568→56行）を `features/admin/signage|csv-import/` へ分解（純モデル関数の新規テスト27件追加）。公開API・ルートは不変。main `72ff6550` · CI success · Pi5 + Pi4×5 + Pi3 反映済 · Phase12 45/0/0。**正本**: [Plan](./plans/solid-refactor-phase3-execplan-202607.md)
