@@ -2,13 +2,24 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-06-30
+last-verified: 2026-07-04
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-07-04 · **SOLID リファクタ第3弾** · **API + Web** · **Pi5 + Pi4×5 + Pi3 反映済**） {#solid-refactor-phase3-2026-07-04}
+
+- **変更概要（正本）**: [Plan](../plans/solid-refactor-phase3-execplan-202607.md) · main **`72ff6550`** (`refactor: split production schedule query and admin pages`)。
+  - `production-schedule-query.service.ts` を12サブモジュール + re-export facade へ分解。
+  - `SignageSchedulesPage.tsx` と `CsvImportSchedulePage.tsx` を `features/admin/signage|csv-import/` へ分解。公開API・ルートは不変。
+- **CI（`72ff6550`）**: main CI **`28698292125` success**（`lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` all success）· Secret scan **`28698292124` success** · CodeQL **`28698292122` success** · Pages **`28698291788` success**（初回は GitHub Pages の一時 deploy failure、failed job rerun で成功）。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260704-161204-25937`** · summary success true · exitCode 0。PLAY RECAP は全 7 ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。
+  - Pi5 は Docker rebuild/restart、Prisma migrate/status、API health recover を通過。Pi4×5 は kiosk-browser/status-agent restart OK。Pi3 は lightdm 復旧後 `signage-lite.service is active`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
 
 ### 補足（2026-07-02 · **セキュリティ堅牢化（loan認可・path traversal・Prismaエラー秘匿・PIN rate limit）** · **API + Web** · **Pi5 + Pi4×5 + Pi3 反映済**） {#security-hardening-audit-2026-07-02}
 

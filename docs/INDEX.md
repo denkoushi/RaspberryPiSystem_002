@@ -14,7 +14,7 @@
 
 ### 最新アップデート（2026-07-04 · SOLID リファクタ第3弾）
 
-- **API `production-schedule-query.service.ts` 分解 + 管理画面2ページの features 分割（挙動不変）**: production-schedule クエリを12サブモジュールへのファサード化（2,052→78行）・`SignageSchedulesPage`（1,618→41行）と `CsvImportSchedulePage`（1,568→56行）を `features/admin/signage|csv-import/` へ分解（純モデル関数の新規テスト27件追加）。公開API・ルートは不変。**正本**: [Plan](./plans/solid-refactor-phase3-execplan-202607.md)
+- **API `production-schedule-query.service.ts` 分解 + 管理画面2ページの features 分割（挙動不変）**: production-schedule クエリを12サブモジュールへのファサード化（2,052→78行）・`SignageSchedulesPage`（1,618→41行）と `CsvImportSchedulePage`（1,568→56行）を `features/admin/signage|csv-import/` へ分解（純モデル関数の新規テスト27件追加）。公開API・ルートは不変。main `72ff6550` · CI success · Pi5 + Pi4×5 + Pi3 反映済 · Phase12 45/0/0。**正本**: [Plan](./plans/solid-refactor-phase3-execplan-202607.md)
 
 ### 最新アップデート（2026-07-04 · SOLID リファクタ第2弾）
 

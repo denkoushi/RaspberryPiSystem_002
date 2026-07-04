@@ -5,7 +5,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 This document must be maintained in accordance with `.agent/PLANS.md`.
 
 - id: solid-refactor-phase3-execplan-202607
-- status: completed (uncommitted; commit/deploy await explicit user request per `.cursor/rules/20-git-workflow.mdc`)
+- status: completed; committed, pushed, CI green, deployed to Pi5 + Pi4x5 + Pi3, Phase12 verified
 - scope: apps/api production-schedule-query.service.ts decomposition; apps/web SignageSchedulesPage.tsx and CsvImportSchedulePage.tsx feature split
 - date: 2026-07-04
 - source_of_truth: this file
@@ -29,6 +29,10 @@ All steps are strictly behavior-preserving. Success is observable by identical t
 - [x] (2026-07-04 15:28+09:00) Step W4a done (worker subagent): `SignageSchedulesPage.tsx` reduced from 1,618 to 41 lines (thin composition). 8 new files under `apps/web/src/features/admin/signage/`: `signageScheduleDisplay.ts` (76), `signageLayoutConfigModel.ts` (640, pure build/parse conversion), `signageLayoutConfigModel.test.ts` (407, NEW: 22 round-trip/validation tests covering all 8 FULL slot kinds, SPLIT, legacy forms), `VisualizationDashboardGroupedSelect.tsx` (92), `useSignageScheduleEditor.ts` (481), `SignageScheduleEditorForm.tsx` (742), `SignageScheduleListTable.tsx` (93), `SignageScheduleToolbar.tsx` (39). Deviations: conversion logic extracted as pure patch-returning functions (state application stays in the hook); `(isCreating || editingId)` conditional moved into component early-returns (render result identical). Verified: `tsc -b` clean, lint 0 errors, web suite 245 files / 1,201 tests (= baseline 244/1,179 + exactly the 1 new file / 22 new tests).
 - [x] (2026-07-04 15:33+09:00) Step W4b done (worker subagent): `CsvImportSchedulePage.tsx` reduced from 1,568 to 56 lines (thin composition). 13 new files under `apps/web/src/features/admin/csv-import/`: `csvImportScheduleUtils.ts` (337, moved from pages/admin with its 14-case test; old paths deleted, no external importers so no re-export shim needed), `csvImportError.ts` (16) + test (4 cases, NEW), `useCsvImportScheduleForm.ts` (347), `useCsvImportScheduleRun.ts` (132) + double-run-guard test (1 case, NEW), `CsvImportScheduleWarningsBanner.tsx` (23), `CsvImportScheduleTimingFields.tsx` (221), `CsvImportTargetsEditor.tsx` (162), `CsvImportScheduleCreateForm.tsx` (201), `CsvImportScheduleListSection.tsx` (238), `CsvImportSubjectPatternSection.tsx` (252). The create/edit JSX pairs were NOT identical (button labels, presets/help text, `scheduleEditable` handling, offset field position; differing dashboard auto-ID logic), so each pair became one component with a `variant`/`compact` prop preserving both behaviors. Verified: `tsc -b` clean, lint 0 errors, web suite 247 files / 1,206 tests (= 245/1,201 + exactly 2 new files / 5 new tests).
 - [x] (2026-07-04 15:40+09:00) Final verification: orchestrator re-ran web suite (247 files / 1,206 tests = baseline 244/1,179 + this phase's 3 new test files / 27 new tests), web `tsc -b` and lint clean, and full API suite (`POSTGRES_PORT=5432 bash scripts/test/run-tests.sh`) = 412 files passed | 2 skipped, 2,098 tests passed | 9 skipped — baseline match. `git status` footprint is exactly the three refactor scopes + this plan file. Test container `postgres-test-local` and its anonymous volume removed (pre-existing dangling volumes untouched). docs/INDEX.md link added.
+- [x] (2026-07-04 15:51+09:00) Committed and pushed to `origin/main`: `72ff6550ca453cd4a2b130c04fb3b6d2df8e88a6` (`refactor: split production schedule query and admin pages`). Pre-push verification also included `git diff --check`, web `tsc -b`/lint/test, API build/lint, and full API DB suite. The final local full API run passed 412 files | 2 skipped and 2,100 tests | 7 skipped; skip distribution differed from the earlier baseline run, but there were no failures.
+- [x] (2026-07-04 16:11+09:00) GitHub Actions green for `72ff6550`: Secret scan `28698292124` success, CodeQL `28698292122` success, main CI `28698292125` success (`lint-build-unit`, `api-db-and-infra`, `security-docker`, `e2e-smoke`, `e2e-tests` all success), Pages `28698291788` success after rerunning a transient GitHub Pages deploy failure (`Deployment failed, try again later`).
+- [x] (2026-07-04 16:44+09:00) Production deploy completed with the standard all-client command: `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow` using `RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`. Run ID `20260704-161204-25937`; summary success `true`; exit code 0; PLAY RECAP all 7 hosts had `failed=0` and `unreachable=0` (`raspberrypi5`, `raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`, `raspi4-kensaku-stonebase01`, `raspi4-sessaku-01`, `raspberrypi3`).
+- [x] (2026-07-04 16:46+09:00) Real-machine verification passed: `./scripts/deploy/verify-phase12-real.sh` = PASS 45 / WARN 0 / FAIL 0. Covered API health, deploy-status for all Pi4 clients, production-schedule and due-management APIs, Pi5 migration/fallback/auto-tuning checks, all Pi4 kiosk/status-agent services, Pi3 signage-lite/timer, and `verify-services-real.sh`.
 
 Open items carried from phases 1–2 (not in this phase's scope):
 
@@ -41,6 +45,8 @@ Open items carried from phases 1–2 (not in this phase's scope):
 - (2026-07-04) Plain `export { ... } from` re-exports in the A4 facade were sufficient for all `vi.spyOn`-based tests (3 files); the anticipated fallback (explicit `export const x = impl` bindings) was never needed. Vitest's module transformation keeps re-exported bindings spy-able.
 - (2026-07-04) The create/edit JSX "duplicates" in CsvImportSchedulePage were NOT byte-identical: button labels, interval presets/help text, `scheduleEditable` gating, offset-field position, and dashboard auto-ID fallback logic all differ subtly between the two copies. Unifying them required explicit `variant`/`compact` props; a naive DRY merge would have silently changed behavior.
 - (2026-07-04) The `signageLayoutConfigModel` round-trip tests (22 cases) passed on first run against the verbatim-moved conversion logic, confirming the parse/build pair was internally consistent in the original monolith.
+- (2026-07-04) GitHub Pages had a source-unrelated transient deploy failure on the first run, then succeeded by rerunning the failed job. CodeQL, Secret scan, and main CI were unaffected.
+- (2026-07-04) During Pi3 deploy, `signage-lite.service` can briefly show `activating (auto-restart)` with exit code while `lightdm` is stopped for memory savings. The play restores `lightdm`, starts the signage timers/services, waits for `signage-lite.service` to become active, and reports the final active state before success.
 
 ## Decision Log
 
@@ -65,7 +71,14 @@ All three target god modules were decomposed with zero behavior change, verified
 - `apps/web/src/pages/admin/SignageSchedulesPage.tsx`: 1,618 → 41 lines (thin composition over 8 files in `features/admin/signage/`; the risky bidirectional layout conversion now lives in pure `signageLayoutConfigModel.ts` guarded by 22 new round-trip/validation tests).
 - `apps/web/src/pages/admin/CsvImportSchedulePage.tsx`: 1,568 → 56 lines (thin composition over 13 files in `features/admin/csv-import/`; cron utils + test moved in from pages/admin; 5 new tests for error formatting and the double-run guard).
 
-Acceptance met: API suite 412 files / 2,098 tests identical to baseline; web suite 247 files / 1,206 tests = baseline + exactly the 3 new test files / 27 new tests; typecheck and lint clean on both workspaces.
+Acceptance met: API suite 412 files / 2,098 tests identical to baseline during implementation, and the final pre-push DB run also passed all files with 2,100 passed / 7 skipped tests due skip distribution; web suite 247 files / 1,206 tests = baseline + exactly the 3 new test files / 27 new tests; typecheck and lint clean on both workspaces. GitHub main CI, CodeQL, Secret scan, and Pages were green after push.
+
+Operational acceptance:
+
+- Commit: `72ff6550ca453cd4a2b130c04fb3b6d2df8e88a6` on `main`, pushed to `origin/main`.
+- CI: main CI `28698292125` success; Secret scan `28698292124` success; CodeQL `28698292122` success; Pages `28698291788` success after a transient rerun.
+- Deploy: all-client deploy run `20260704-161204-25937`, summary success true, exit code 0, PLAY RECAP all 7 hosts `failed=0 / unreachable=0`.
+- Real-machine verification: `./scripts/deploy/verify-phase12-real.sh` PASS 45 / WARN 0 / FAIL 0.
 
 Retrospective notes:
 
@@ -73,7 +86,7 @@ Retrospective notes:
 - "Duplicate" JSX blocks in god pages should be diffed carefully before unifying; both W4b pairs looked identical in the survey but carried real behavioral differences.
 - This was the first phase where workers added tests during a behavior-preserving refactor (allowed by an explicit Decision Log entry); the +27 tests are pure additions and the counts were reconciled explicitly against baseline.
 
-Changes are uncommitted, as in phases 1–2. Remaining hotspots for a future phase: residual direct `lib/prisma` route imports (~50 files), shared loan orchestration extraction, `config/env.ts` partition, `CsvDashboardsPage.tsx` (916) and `VisualizationDashboardsPage.tsx` (700).
+Remaining hotspots for a future phase: residual direct `lib/prisma` route imports (~50 files), shared loan orchestration extraction, `config/env.ts` partition, `CsvDashboardsPage.tsx` (916) and `VisualizationDashboardsPage.tsx` (700).
 
 ## Context and Orientation
 
@@ -149,3 +162,5 @@ Baseline (2026-07-04 15:21+09:00, before any change; identical to phase 1/2 base
 These counts are the acceptance reference for every subsequent step.
 
 Revision note (2026-07-04): initial version, written before step execution.
+
+Operational revision note (2026-07-04 16:46+09:00): `72ff6550` committed/pushed, CI green, all-client production deploy `20260704-161204-25937` completed with all hosts `failed=0 / unreachable=0`, and Phase12 real-machine verification passed 45/0/0.
