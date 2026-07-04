@@ -6,7 +6,7 @@ import {
   formatOffsetIntervalCronSchedule,
   formatScheduleForDisplay,
   parseCronSchedule
-} from '../csv-import-schedule-utils';
+} from './csvImportScheduleUtils';
 
 describe('csv-import-schedule-utils', () => {
   it('parses hourly cron schedules (fixed minute, wildcard hour)', () => {

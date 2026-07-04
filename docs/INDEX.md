@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-04 · SOLID リファクタ第3弾）
+
+- **API `production-schedule-query.service.ts` 分解 + 管理画面2ページの features 分割（挙動不変）**: production-schedule クエリを12サブモジュールへのファサード化（2,052→78行）・`SignageSchedulesPage`（1,618→41行）と `CsvImportSchedulePage`（1,568→56行）を `features/admin/signage|csv-import/` へ分解（純モデル関数の新規テスト27件追加）。公開API・ルートは不変。**正本**: [Plan](./plans/solid-refactor-phase3-execplan-202607.md)
+
 ### 最新アップデート（2026-07-04 · SOLID リファクタ第2弾）
 
 - **web `api/hooks.ts` ドメイン分割 + API `self-inspection.service.ts` 分解（挙動不変）**: hooks.ts を12ドメインモジュールへのファサード化（2,946→15行）・self-inspection サービスを7サブモジュール+クラスファサードに分解（4,386→1,685行）。公開API・import経路は不変、全テストがベースライン一致。**正本**: [Plan](./plans/solid-refactor-phase2-execplan-202607.md)
