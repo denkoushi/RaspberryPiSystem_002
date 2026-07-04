@@ -15,12 +15,11 @@ update-frequency: medium
 - **変更概要（正本）**: [Plan](../plans/solid-refactor-phase4-execplan-202607.md) · main **`3042f8cd`** (`refactor: split env config and dashboard admin pages`)。
   - `apps/api/src/config/env.ts` を `config/env/` の11ファイル + facade へ分解し、単一 `env` export と cross-domain `superRefine` は維持。
   - `CsvDashboardsPage.tsx` と `VisualizationDashboardsPage.tsx` を `features/admin/csv-dashboards|visualization-dashboards/` へ分解。公開API・ルートは不変。
-- **CI（`3042f8cd`）**: main CI **`28700601324` success**（`lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` all success）· Secret scan **`28700601342` success** · CodeQL **`28700601328` success** · Pages **`28700600910` success**。
-- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
-  - **Run ID `20260704-174822-4765`** · summary success true · exitCode 0。PLAY RECAP は全 7 ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。
-  - Pi5 は Docker rebuild/restart、Prisma migrate/status、API health recover を通過。Pi4×5 は kiosk-browser/status-agent restart OK。Pi3 は lightdm 復旧後 `signage-lite.service is active`。
-  - デプロイ時点の Pi5 HEAD は docs-only follow-up **`3f0abd1c`**（`3042f8cd` の実装に Phase4 記録を重ねたもの）。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **CI**: 実装 commit **`3042f8cd`** は main CI **`28700601324` success**（`lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` all success）· Secret scan **`28700601342` success** · CodeQL **`28700601328` success** · Pages **`28700600910` success**。最終デプロイ前の docs-only commit **`18b8a35c`** は main CI **`28701948636` success** · Secret scan **`28701948656` success** · CodeQL **`28701948607` success** · Pages **`28701948364` success**（`3f0abd1c` の Pages 一時 failure を後続成功で supersede）。
+- **本番デプロイ（最終実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260704-210702-32291`** · summary success true · exitCode 0。PLAY RECAP は全 7 ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。
+  - Pi5 は repo sync to **`18b8a35c`**、docs-only 差分のため Docker rebuild/restart は skip、compose services running 確保、Prisma migrate/status、API health recover を通過。Pi4×5 は kiosk-browser/status-agent restart OK。Pi3 は lightdm 復旧後 `signage-lite.service is active`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-04 21:38 JST）。
 
 ### 補足（2026-07-04 · **SOLID リファクタ第3弾** · **API + Web** · **Pi5 + Pi4×5 + Pi3 反映済**） {#solid-refactor-phase3-2026-07-04}
 
