@@ -17,7 +17,6 @@ import {
   type ProcessChangeResidualStrongEvidenceMaterialization
 } from '../../../services/production-schedule/leaderboard/leaderboard-process-change-residual.materialization.js';
 import { readLeaderboardShellSnapshotGenerationTokenDetails } from '../../../services/production-schedule/leaderboard/leaderboard-shell-snapshot-generation.js';
-import { prisma } from '../../../lib/prisma.js';
 import {
   parseCsvList,
   productionScheduleLeaderboardBoardContinueBodySchema,
@@ -63,7 +62,7 @@ async function resolveKioskLeaderboardProcessChangeResidualContext(): Promise<{
   processChangeResidualMaterialization: ProcessChangeResidualStrongEvidenceMaterialization;
 }> {
   const initialTokenDetails = await readLeaderboardShellSnapshotGenerationTokenDetails();
-  const processChangeResidualMaterialization = await materializeProcessChangeResidualStrongEvidence(prisma, {
+  const processChangeResidualMaterialization = await materializeProcessChangeResidualStrongEvidence({
     fkojunstStatusMailRowsRevision: initialTokenDetails.fkojunstStatusMailRowsRevision
   });
   const tokenDetails =

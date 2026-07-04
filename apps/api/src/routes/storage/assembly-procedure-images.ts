@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
-import { prisma } from '../../lib/prisma.js';
+import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
 import { buildPdfPageEtag, ifNoneMatchSatisfied } from './pdf-page-http-cache.js';
 
@@ -17,7 +17,7 @@ export function registerAssemblyProcedureImageStorageRoutes(app: FastifyInstance
       const headerKey = request.headers['x-client-key'];
       if (headerKey) {
         const apiKey = Array.isArray(headerKey) ? headerKey[0] : headerKey;
-        const client = await prisma.clientDevice.findUnique({ where: { apiKey } });
+        const client = await findClientDeviceByApiKey(apiKey);
         if (!client) {
           await canView(request, reply);
         }

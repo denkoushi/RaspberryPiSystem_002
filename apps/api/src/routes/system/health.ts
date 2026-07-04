@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getHeapStatistics } from 'node:v8';
-import { prisma } from '../../lib/prisma.js';
+import { checkDatabaseConnection } from '../../services/system/db-health.service.js';
 import { probePlaywrightChromiumAvailability } from '../../services/signage/loan-grid/playwright/playwright-chromium-availability.js';
 import {
   evaluateEventLoopHealth,
@@ -22,7 +22,7 @@ export function registerSystemHealthRoute(app: FastifyInstance): void {
 
     // データベース接続チェック
     try {
-      await prisma.$queryRaw`SELECT 1`;
+      await checkDatabaseConnection();
       checks.database = { status: 'ok' };
     } catch (error) {
       checks.database = {

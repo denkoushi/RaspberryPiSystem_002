@@ -3,24 +3,19 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { authorizeRoles } from '../../../lib/auth.js';
 import { ApiError } from '../../../lib/errors.js';
 import { EmployeeService } from '../../../services/tools/employee.service.js';
+import { LoanService } from '../../../services/tools/loan.service.js';
 import { employeeParamsSchema } from './schemas.js';
-import { prisma } from '../../../lib/prisma.js';
 
 export function registerEmployeeDeleteRoute(app: FastifyInstance, employeeService: EmployeeService): void {
   const canEdit = authorizeRoles('ADMIN', 'MANAGER');
+  const loanService = new LoanService();
 
   app.delete('/employees/:id', { preHandler: canEdit, config: { rateLimit: false } }, async (request) => {
     const params = employeeParamsSchema.parse(request.params);
     try {
       // 削除前に未返却の貸出記録の存在を確認
       // 未返却かつ未取消のLoanのみをカウント（履歴は保持するがブロックしない）
-      const activeLoanCount = await prisma.loan.count({
-        where: {
-          employeeId: params.id,
-          returnedAt: null,
-          cancelledAt: null
-        }
-      });
+      const activeLoanCount = await loanService.countActiveLoansForEmployee(params.id);
 
       if (activeLoanCount > 0) {
         throw new ApiError(400, `この従業員には未返却の貸出記録が${activeLoanCount}件存在するため、削除できません。先にすべての貸出を返却してください。`);

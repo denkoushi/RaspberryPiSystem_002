@@ -3,7 +3,6 @@ import type { FastifyInstance } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
-import { prisma } from '../../lib/prisma.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { BackupConfigHistoryService, redactBackupConfig } from '../../services/backup/backup-config-history.service.js';
@@ -44,14 +43,8 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
     const query = backupConfigHistoryQuerySchema.parse(request.query);
     const offset = query.offset ?? 0;
     const limit = query.limit ?? 50;
-    const [items, total] = await Promise.all([
-      prisma.backupConfigChange.findMany({
-        orderBy: { createdAt: 'desc' },
-        skip: offset,
-        take: limit,
-      }),
-      prisma.backupConfigChange.count(),
-    ]);
+    const historyService = new BackupConfigHistoryService();
+    const { items, total } = await historyService.listHistory({ limit, offset });
     return reply.status(200).send({ history: items, total, offset, limit });
   });
 
@@ -66,7 +59,8 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
     },
   }, async (request, reply) => {
     const { id } = backupConfigHistoryIdParamsSchema.parse(request.params);
-    const entry = await prisma.backupConfigChange.findUnique({ where: { id } });
+    const historyService = new BackupConfigHistoryService();
+    const entry = await historyService.getHistoryEntryById(id);
     if (!entry) {
       throw new ApiError(404, `Backup config history not found: ${id}`);
     }

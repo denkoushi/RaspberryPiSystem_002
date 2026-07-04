@@ -7,7 +7,10 @@ import { randomUUID } from 'node:crypto';
 
 import type { FastifyInstance } from 'fastify';
 
-import { prisma } from '../../lib/prisma.js';
+import {
+  findClientDeviceIdRecordByApiKey,
+  findClientDeviceProfileById
+} from '../../services/clients/client-device-auth.service.js';
 import { ApiError } from '../../lib/errors.js';
 import { normalizeClientKey } from '../../lib/client-key.js';
 import { callStore } from './call-store.js';
@@ -20,10 +23,7 @@ const WS_OPEN = 1;
  * - WebRTCの疎通IDはClientDevice.id(UUID)を使用
  */
 async function validateClient(clientKey: string): Promise<{ id: string; clientId: string }> {
-  const client = await prisma.clientDevice.findUnique({
-    where: { apiKey: clientKey },
-    select: { id: true }
-  });
+  const client = await findClientDeviceIdRecordByApiKey(clientKey);
 
   if (!client) {
     throw new ApiError(401, 'Invalid client key', undefined, 'INVALID_CLIENT_KEY');
@@ -41,12 +41,7 @@ async function validateClient(clientKey: string): Promise<{ id: string; clientId
 async function getClientByClientId(
   clientId: string
 ): Promise<{ id: string; name: string; location: string | null } | null> {
-  const client = await prisma.clientDevice.findUnique({
-    where: { id: clientId },
-    select: { id: true, name: true, location: true }
-  });
-
-  return client;
+  return findClientDeviceProfileById(clientId);
 }
 
 export function registerWebRTCSignaling(app: FastifyInstance): void {

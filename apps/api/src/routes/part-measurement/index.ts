@@ -1,8 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
-import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
-import { prisma } from '../../lib/prisma.js';
+import { assertKioskApiClientKeyValid } from '../../services/clients/client-device-auth.service.js';
 import {
   getPartMeasurementDrawingOcrService,
   PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY,
@@ -38,27 +37,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const canWrite = authorizeRoles('ADMIN', 'MANAGER');
 
     const allowClientKey = async (request: FastifyRequest) => {
-      const rawClientKey = request.headers['x-client-key'];
-      let clientKey: string | undefined;
-      if (typeof rawClientKey === 'string') {
-        try {
-          const parsed = JSON.parse(rawClientKey);
-          clientKey = typeof parsed === 'string' ? parsed : rawClientKey;
-        } catch {
-          clientKey = rawClientKey;
-        }
-      } else if (Array.isArray(rawClientKey) && rawClientKey.length > 0) {
-        clientKey = rawClientKey[0];
-      }
-
-      if (!clientKey) {
-        throw new ApiError(401, 'クライアントキーが必要です', undefined, 'CLIENT_KEY_REQUIRED');
-      }
-
-      const client = await prisma.clientDevice.findUnique({ where: { apiKey: clientKey } });
-      if (!client) {
-        throw new ApiError(403, 'クライアントキーが無効です', undefined, 'CLIENT_KEY_INVALID');
-      }
+      await assertKioskApiClientKeyValid(request.headers['x-client-key']);
     };
 
     const allowView = async (request: FastifyRequest, reply: FastifyReply) => {

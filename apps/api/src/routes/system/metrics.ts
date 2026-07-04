@@ -1,8 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '../../lib/prisma.js';
 import { env } from '../../config/env.js';
 import { snapshotEventLoopObservability } from '../../services/system/event-loop-observability.js';
-import { resolveMetricsDbAggregates } from './metrics-db-aggregates-cache.js';
+import { resolveMetricsDbAggregates } from '../../services/system/metrics-db-aggregates-cache.js';
 
 /**
  * システムメトリクスエンドポイント
@@ -15,7 +14,7 @@ export function registerMetricsRoute(app: FastifyInstance): void {
 
     try {
       // DB 集計は比較的重いため、既定で短い TTL のメモリキャッシュを使用（Pi の高頻度観測向け）
-      const aggregates = await resolveMetricsDbAggregates(prisma, env.SYSTEM_METRICS_DB_AGGREGATES_TTL_MS);
+      const aggregates = await resolveMetricsDbAggregates(env.SYSTEM_METRICS_DB_AGGREGATES_TTL_MS);
       metrics.push(`# HELP db_connections_total Current database connections`);
       metrics.push(`# TYPE db_connections_total gauge`);
       metrics.push(`db_connections_total ${aggregates.dbConnections}`);

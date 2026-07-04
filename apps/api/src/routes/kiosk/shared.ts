@@ -1,6 +1,5 @@
-import { prisma } from '../../lib/prisma.js';
-import { ApiError } from '../../lib/errors.js';
 import { normalizeClientKey } from '../../lib/client-key.js';
+import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
 import {
   resolveCredentialIdentity as resolveCredentialIdentityFromDevice,
   resolveDeviceName as resolveDeviceNameFromDevice,
@@ -60,18 +59,7 @@ export async function requireClientDevice(rawClientKey: unknown): Promise<{
   clientKey: string;
   clientDevice: { id: string; apiKey: string; name: string; location: string | null; statusClientId: string | null };
 }> {
-  const clientKey = normalizeClientKey(rawClientKey);
-  if (!clientKey) {
-    throw new ApiError(401, 'クライアントキーが必要です', undefined, 'CLIENT_KEY_REQUIRED');
-  }
-
-  const clientDevice = await prisma.clientDevice.findUnique({
-    where: { apiKey: clientKey }
-  });
-  if (!clientDevice) {
-    throw new ApiError(401, '無効なクライアントキーです', undefined, 'INVALID_CLIENT_KEY');
-  }
-  return { clientKey, clientDevice };
+  return requireKioskClientDevice(rawClientKey);
 }
 
 export type { ClientDeviceForScopeResolution, CredentialIdentity, LocationScopeContext };

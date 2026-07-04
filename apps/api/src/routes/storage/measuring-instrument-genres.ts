@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
-import { prisma } from '../../lib/prisma.js';
+import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
 import { MeasuringInstrumentGenreImageStorage } from '../../lib/measuring-instrument-genre-image-storage.js';
 
 export function registerMeasuringInstrumentGenreStorageRoutes(app: FastifyInstance): void {
@@ -10,7 +10,7 @@ export function registerMeasuringInstrumentGenreStorageRoutes(app: FastifyInstan
     const headerKey = request.headers['x-client-key'];
     if (headerKey) {
       const apiKey = Array.isArray(headerKey) ? headerKey[0] : headerKey;
-      const client = await prisma.clientDevice.findUnique({ where: { apiKey } });
+      const client = await findClientDeviceByApiKey(apiKey);
       if (!client) {
         await canView(request, reply);
       }

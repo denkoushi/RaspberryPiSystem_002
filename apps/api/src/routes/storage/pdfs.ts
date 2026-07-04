@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PdfStorage } from '../../lib/pdf-storage.js';
 import { authorizeRoles } from '../../lib/auth.js';
-import { prisma } from '../../lib/prisma.js';
+import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
 import { ApiError } from '../../lib/errors.js';
 
 /**
@@ -28,9 +28,7 @@ export function registerPdfStorageRoutes(app: FastifyInstance): void {
       await canView(request, reply);
     } else {
       // client-keyの有効性を確認
-      const client = await prisma.clientDevice.findUnique({ 
-        where: { apiKey: typeof headerKey === 'string' ? headerKey : headerKey[0] } 
-      });
+      const client = await findClientDeviceByApiKey(typeof headerKey === 'string' ? headerKey : headerKey[0]);
       if (!client) {
         throw new ApiError(401, 'クライアント API キーが不正です');
       }

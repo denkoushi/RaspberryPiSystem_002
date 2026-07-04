@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
-import { prisma } from '../../lib/prisma.js';
+import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
 import { SignageRenderer } from '../../services/signage/signage.renderer.js';
 import { SignageService } from '../../services/signage/index.js';
 import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
@@ -34,9 +34,7 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
       await canView(request, reply);
     } else {
       // クライアントキーがある場合は検証
-      const client = await prisma.clientDevice.findUnique({
-        where: { apiKey: typeof headerKey === 'string' ? headerKey : headerKey[0] }
-      });
+      const client = await findClientDeviceByApiKey(typeof headerKey === 'string' ? headerKey : headerKey[0]);
       if (!client) {
         throw new ApiError(401, 'クライアント API キーが不正です');
       }
@@ -62,9 +60,7 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
     if (!keyValue) {
       await canView(request, reply);
     } else {
-      const client = await prisma.clientDevice.findUnique({
-        where: { apiKey: keyValue },
-      });
+      const client = await findClientDeviceByApiKey(keyValue);
       if (!client) {
         throw new ApiError(401, 'クライアント API キーが不正です');
       }

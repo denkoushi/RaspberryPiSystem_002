@@ -6,6 +6,11 @@ import { logger } from '../../lib/logger.js';
 import { MeasuringInstrumentService } from './measuring-instrument.service.js';
 import { EmployeeService } from '../tools/employee.service.js';
 import { MeasuringInstrumentLoanEventService } from './measuring-instrument-loan-event.service.js';
+import {
+  executeAssetBorrowTransaction,
+  executeAssetReturnTransaction,
+  findActiveLoanForAsset,
+} from '../loan/loan-transaction.helpers.js';
 
 export interface InstrumentBorrowInput {
   instrumentTagUid?: string;
@@ -78,8 +83,9 @@ export class MeasuringInstrumentLoanService {
       throw new ApiError(404, '従業員が登録されていません');
     }
 
-    const existingLoan = await prisma.loan.findFirst({
-      where: { measuringInstrumentId: instrument.id, returnedAt: null, cancelledAt: null }
+    const existingLoan = await findActiveLoanForAsset({
+      assetFkField: 'measuringInstrumentId',
+      assetId: instrument.id,
     });
     if (existingLoan) {
       throw new ApiError(400, 'この計測機器はすでに貸出中です');
@@ -96,8 +102,8 @@ export class MeasuringInstrumentLoanService {
       name: employee.displayName
     };
 
-    const loan = await prisma.$transaction(async (tx) => {
-      const createdLoan = await tx.loan.create({
+    const loan = await executeAssetBorrowTransaction<LoanWithRelations>({
+      loanCreate: {
         data: {
           measuringInstrumentId: instrument.id,
           employeeId: employee.id,
@@ -106,28 +112,23 @@ export class MeasuringInstrumentLoanService {
           notes: input.note ?? undefined
         },
         include: { measuringInstrument: true, employee: true, client: true }
-      });
-
-      await tx.measuringInstrument.update({
-        where: { id: instrument.id },
-        data: { status: MeasuringInstrumentStatus.IN_USE }
-      });
-
-      await tx.transaction.create({
-        data: {
-          loanId: createdLoan.id,
-          action: TransactionAction.BORROW,
-          actorEmployeeId: employee.id,
-          clientId: input.clientId,
-          details: {
-            note: input.note ?? null,
-            instrumentSnapshot,
-            employeeSnapshot
-          }
+      },
+      setAssetInUse: (tx) =>
+        tx.measuringInstrument.update({
+          where: { id: instrument.id },
+          data: { status: MeasuringInstrumentStatus.IN_USE }
+        }),
+      buildTransactionCreateData: (createdLoan) => ({
+        loanId: createdLoan.id,
+        action: TransactionAction.BORROW,
+        actorEmployeeId: employee.id,
+        clientId: input.clientId,
+        details: {
+          note: input.note ?? null,
+          instrumentSnapshot,
+          employeeSnapshot
         }
-      });
-
-      return createdLoan;
+      })
     });
 
     logger.info({ loanId: loan.id, instrumentId: instrument.id, employeeId: employee.id }, 'Instrument borrow completed');
@@ -160,33 +161,27 @@ export class MeasuringInstrumentLoanService {
       throw new ApiError(400, 'すでに返却済みです');
     }
 
-    const updatedLoan = await prisma.$transaction(async (tx) => {
-      const result = await tx.loan.update({
-        where: { id: input.loanId },
+    const updatedLoan = await executeAssetReturnTransaction<LoanWithRelations>({
+      loanId: input.loanId,
+      loanUpdate: {
         data: { returnedAt: new Date(), notes: input.note ?? undefined },
         include: { measuringInstrument: true, employee: true, client: true }
-      });
-
-      if (loan.measuringInstrumentId) {
-        await tx.measuringInstrument.update({
-          where: { id: loan.measuringInstrumentId },
+      },
+      assetId: loan.measuringInstrumentId,
+      setAssetAvailable: (tx, assetId) =>
+        tx.measuringInstrument.update({
+          where: { id: assetId },
           data: { status: MeasuringInstrumentStatus.AVAILABLE }
-        });
-      }
-
-      await tx.transaction.create({
-        data: {
-          loanId: loan.id,
-          action: TransactionAction.RETURN,
-          actorEmployeeId: loan.employeeId ?? undefined,
-          clientId: input.clientId ?? loan.clientId ?? undefined,
-          details: {
-            note: input.note ?? null
-          }
+        }),
+      transactionCreate: {
+        loanId: loan.id,
+        action: TransactionAction.RETURN,
+        actorEmployeeId: loan.employeeId ?? undefined,
+        clientId: input.clientId ?? loan.clientId ?? undefined,
+        details: {
+          note: input.note ?? null
         }
-      });
-
-      return result;
+      }
     });
 
     logger.info({ loanId: updatedLoan.id }, 'Instrument return completed');

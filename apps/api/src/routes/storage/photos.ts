@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PhotoStorage } from '../../lib/photo-storage.js';
 import { authorizeRoles } from '../../lib/auth.js';
-import { prisma } from '../../lib/prisma.js';
+import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
 
 /**
  * 写真配信ルート
@@ -25,7 +25,7 @@ export function registerPhotoStorageRoutes(app: FastifyInstance): void {
     if (headerKey) {
       // client-key が提供されている場合は優先的に検証し、無効な場合はJWTにフォールバック
       const apiKey = Array.isArray(headerKey) ? headerKey[0] : headerKey;
-      const client = await prisma.clientDevice.findUnique({ where: { apiKey } });
+      const client = await findClientDeviceByApiKey(apiKey);
       if (!client) {
         await canView(request, reply);
       }

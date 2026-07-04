@@ -1,7 +1,6 @@
-import { readFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
-import { normalizeClientKey } from '../../lib/client-key.js';
-import { prisma } from '../../lib/prisma.js';
+import { readFile } from 'node:fs/promises';
+import { resolveStatusClientIdFromRawKey } from '../../services/clients/client-device-auth.service.js';
 
 const DEPLOY_STATUS_FILE =
   process.env.DEPLOY_STATUS_FILE_PATH ?? '/app/config/deploy-status.json';
@@ -22,16 +21,7 @@ export interface DeployStatusResponse {
  * Returns null if key is missing/invalid (caller treats as isMaintenance: false).
  */
 async function resolveStatusClientId(rawClientKey: unknown): Promise<string | null> {
-  const clientKey = normalizeClientKey(rawClientKey);
-  if (!clientKey) return null;
-
-  const clientDevice = await prisma.clientDevice.findUnique({
-    where: { apiKey: clientKey },
-    select: { statusClientId: true }
-  });
-  if (!clientDevice) return null;
-
-  return clientDevice.statusClientId ?? null;
+  return resolveStatusClientIdFromRawKey(rawClientKey);
 }
 
 /**

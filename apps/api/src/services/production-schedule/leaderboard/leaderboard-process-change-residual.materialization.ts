@@ -1,5 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import type { Prisma } from '@prisma/client';
+import { prisma as defaultPrisma } from '../../../lib/prisma.js';
 import type { prisma as prismaSingleton } from '../../../lib/prisma.js';
 import {
   collectFkojunstMailNormalizedRowsFromSourceRows,
@@ -57,6 +58,12 @@ type PrismaClientLike = Pick<typeof prismaSingleton, 'csvDashboardRow' | '$query
       'productionScheduleProcessChangeResidualSnapshot' | 'productionScheduleProcessChangeResidualEvidence'
     >
   >;
+
+function isPrismaClientLike(
+  value: PrismaClientLike | ProcessChangeResidualStrongEvidenceMaterializationOptions
+): value is PrismaClientLike {
+  return typeof value === 'object' && value !== null && ('$queryRaw' in value || 'csvDashboardRow' in value);
+}
 
 type PersistedProcessChangeResidualEvidenceRow = {
   productNo: string;
@@ -311,9 +318,18 @@ async function fetchPersistedProcessChangeResidualStrongEvidence(
  * SQL 相関 / cast は使わず、メール同期 pipeline と同一の JS 正本で residual 判定する。
  */
 export async function materializeProcessChangeResidualStrongEvidence(
+  options: ProcessChangeResidualStrongEvidenceMaterializationOptions
+): Promise<ProcessChangeResidualStrongEvidenceMaterialization>;
+export async function materializeProcessChangeResidualStrongEvidence(
   prisma: PrismaClientLike,
   options?: ProcessChangeResidualStrongEvidenceMaterializationOptions
+): Promise<ProcessChangeResidualStrongEvidenceMaterialization>;
+export async function materializeProcessChangeResidualStrongEvidence(
+  prismaOrOptions: PrismaClientLike | ProcessChangeResidualStrongEvidenceMaterializationOptions,
+  maybeOptions?: ProcessChangeResidualStrongEvidenceMaterializationOptions
 ): Promise<ProcessChangeResidualStrongEvidenceMaterialization> {
+  const prisma = isPrismaClientLike(prismaOrOptions) ? prismaOrOptions : defaultPrisma;
+  const options = isPrismaClientLike(prismaOrOptions) ? maybeOptions : prismaOrOptions;
   const requestedRawMailRevision = options?.fkojunstStatusMailRowsRevision?.trim();
   if (
     requestedRawMailRevision != null &&

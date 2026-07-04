@@ -1,5 +1,5 @@
-import type { PrismaClient } from '@prisma/client';
 import { ItemStatus, EmployeeStatus } from '@prisma/client';
+import { prisma } from '../../lib/prisma.js';
 
 export type MetricsDbAggregates = {
   dbConnections: bigint;
@@ -12,7 +12,6 @@ export type MetricsDbAggregates = {
 let aggregatesCache: { computedAt: number; data: MetricsDbAggregates } | null = null;
 
 export async function resolveMetricsDbAggregates(
-  prisma: PrismaClient,
   ttlMs: number
 ): Promise<MetricsDbAggregates> {
   const now = Date.now();

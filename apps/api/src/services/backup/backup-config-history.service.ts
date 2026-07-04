@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
-import { Prisma } from '@prisma/client';
+import { Prisma, type BackupConfigChange } from '@prisma/client';
 import type { BackupConfig } from './backup-config.js';
 import { logger } from '../../lib/logger.js';
 
@@ -44,6 +44,25 @@ export const redactBackupConfig = (config: BackupConfig): BackupConfig => {
 };
 
 export class BackupConfigHistoryService {
+  async listHistory(params: { limit: number; offset: number }): Promise<{
+    items: BackupConfigChange[];
+    total: number;
+  }> {
+    const [items, total] = await Promise.all([
+      prisma.backupConfigChange.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: params.offset,
+        take: params.limit,
+      }),
+      prisma.backupConfigChange.count(),
+    ]);
+    return { items, total };
+  }
+
+  async getHistoryEntryById(id: string): Promise<BackupConfigChange | null> {
+    return prisma.backupConfigChange.findUnique({ where: { id } });
+  }
+
   async recordChange(params: {
     actionType: BackupConfigChangeAction;
     actorUserId?: string;

@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-04 · SOLID リファクタ第5弾）
+
+- **route層のPrisma直import解消（19ファイル）+ loan共有トランザクションヘルパー抽出（挙動不変）**: 重複していた x-client-key 認証を `services/clients/client-device-auth.service.ts` へ集約（12ファイル）・Tier-1ワンライナー7ファイルをサービス層へ移動（route の prisma 直 import 26→6ファイル）・measuring/rigging loan の borrow/return トランザクション核を `services/loan/loan-transaction.helpers.ts` へ抽出（characterisation テスト24件を先行追加）。**正本**: [Plan](./plans/solid-refactor-phase5-execplan-202607.md)
+
 ### 最新アップデート（2026-07-04 · SOLID リファクタ第4弾）
 
 - **API `config/env.ts` ドメイン分割 + 管理ダッシュボード2ページの features 分割（挙動不変）**: env スキーマを10ドメイン断片+dotenv初期化モジュールへのファサード化（554→104行、公開APIは `env` のみ不変）・`CsvDashboardsPage`（916→74行）と `VisualizationDashboardsPage`（700→37行）を `features/admin/csv-dashboards|visualization-dashboards/` へ分解（純モデル関数の新規テスト39件追加）。**正本**: [Plan](./plans/solid-refactor-phase4-execplan-202607.md)

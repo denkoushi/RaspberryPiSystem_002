@@ -6,6 +6,11 @@ import { logger } from '../../lib/logger.js';
 import { RiggingGearService } from './rigging-gear.service.js';
 import { EmployeeService } from '../tools/employee.service.js';
 import { RiggingBorrowInspectionOrchestrator } from './inspection/rigging-borrow-inspection.orchestrator.js';
+import {
+  executeAssetBorrowTransaction,
+  executeAssetReturnTransaction,
+  findActiveLoanForAsset,
+} from '../loan/loan-transaction.helpers.js';
 
 export interface RiggingBorrowInput {
   riggingTagUid?: string;
@@ -70,8 +75,9 @@ export class RiggingLoanService {
       throw new ApiError(404, '従業員が登録されていません');
     }
 
-    const existingLoan = await prisma.loan.findFirst({
-      where: { riggingGearId: gear.id, returnedAt: null, cancelledAt: null }
+    const existingLoan = await findActiveLoanForAsset({
+      assetFkField: 'riggingGearId',
+      assetId: gear.id,
     });
     if (existingLoan) {
       throw new ApiError(400, 'この吊具はすでに貸出中です');
@@ -88,8 +94,8 @@ export class RiggingLoanService {
       name: employee.displayName
     };
 
-    const loan = await prisma.$transaction(async (tx) => {
-      const createdLoan = await tx.loan.create({
+    const loan = await executeAssetBorrowTransaction<LoanWithRelations>({
+      loanCreate: {
         data: {
           riggingGearId: gear.id,
           employeeId: employee.id,
@@ -98,28 +104,23 @@ export class RiggingLoanService {
           notes: input.note ?? undefined
         },
         include: { riggingGear: true, employee: true, client: true }
-      });
-
-      await tx.riggingGear.update({
-        where: { id: gear.id },
-        data: { status: RiggingStatus.IN_USE }
-      });
-
-      await tx.transaction.create({
-        data: {
-          loanId: createdLoan.id,
-          action: TransactionAction.BORROW,
-          actorEmployeeId: employee.id,
-          clientId: input.clientId,
-          details: {
-            note: input.note ?? null,
-            riggingSnapshot: gearSnapshot,
-            employeeSnapshot
-          }
+      },
+      setAssetInUse: (tx) =>
+        tx.riggingGear.update({
+          where: { id: gear.id },
+          data: { status: RiggingStatus.IN_USE }
+        }),
+      buildTransactionCreateData: (createdLoan) => ({
+        loanId: createdLoan.id,
+        action: TransactionAction.BORROW,
+        actorEmployeeId: employee.id,
+        clientId: input.clientId,
+        details: {
+          note: input.note ?? null,
+          riggingSnapshot: gearSnapshot,
+          employeeSnapshot
         }
-      });
-
-      return createdLoan;
+      })
     });
 
     logger.info({ loanId: loan.id, riggingGearId: gear.id, employeeId: employee.id }, 'Rigging borrow completed');
@@ -150,33 +151,27 @@ export class RiggingLoanService {
       throw new ApiError(400, 'すでに返却済みです');
     }
 
-    const updatedLoan = await prisma.$transaction(async (tx) => {
-      const result = await tx.loan.update({
-        where: { id: input.loanId },
+    const updatedLoan = await executeAssetReturnTransaction<LoanWithRelations>({
+      loanId: input.loanId,
+      loanUpdate: {
         data: { returnedAt: new Date(), notes: input.note ?? undefined },
         include: { riggingGear: true, employee: true, client: true }
-      });
-
-      if (loan.riggingGearId) {
-        await tx.riggingGear.update({
-          where: { id: loan.riggingGearId },
+      },
+      assetId: loan.riggingGearId,
+      setAssetAvailable: (tx, assetId) =>
+        tx.riggingGear.update({
+          where: { id: assetId },
           data: { status: RiggingStatus.AVAILABLE }
-        });
-      }
-
-      await tx.transaction.create({
-        data: {
-          loanId: loan.id,
-          action: TransactionAction.RETURN,
-          actorEmployeeId: loan.employeeId ?? undefined,
-          clientId: input.clientId ?? loan.clientId ?? undefined,
-          details: {
-            note: input.note ?? null
-          }
+        }),
+      transactionCreate: {
+        loanId: loan.id,
+        action: TransactionAction.RETURN,
+        actorEmployeeId: loan.employeeId ?? undefined,
+        clientId: input.clientId ?? loan.clientId ?? undefined,
+        details: {
+          note: input.note ?? null
         }
-      });
-
-      return result;
+      }
     });
 
     logger.info({ loanId: updatedLoan.id }, 'Rigging return completed');

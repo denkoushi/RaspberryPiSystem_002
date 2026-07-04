@@ -152,5 +152,50 @@ export class EmployeeService {
   async delete(id: string): Promise<Employee> {
     return await prisma.employee.delete({ where: { id } });
   }
+
+  /**
+   * 従業員マスターの department から重複を除いた部署一覧を返す
+   */
+  async listDistinctDepartments(): Promise<string[]> {
+    const employees = await prisma.employee.findMany({
+      select: {
+        department: true
+      },
+      where: {
+        AND: [
+          { department: { not: null } },
+          { department: { not: '' } }
+        ]
+      }
+    });
+
+    const departmentSet = new Set<string>();
+    employees.forEach((emp) => {
+      if (emp.department && emp.department.trim() !== '') {
+        departmentSet.add(emp.department);
+      }
+    });
+
+    return Array.from(departmentSet).sort();
+  }
+
+  /**
+   * キオスク向け: アクティブな従業員の基本情報のみ
+   */
+  async listActiveForKiosk(): Promise<Array<Pick<Employee, 'id' | 'displayName' | 'department'>>> {
+    return await prisma.employee.findMany({
+      where: {
+        status: 'ACTIVE'
+      },
+      select: {
+        id: true,
+        displayName: true,
+        department: true
+      },
+      orderBy: {
+        displayName: 'asc'
+      }
+    });
+  }
 }
 

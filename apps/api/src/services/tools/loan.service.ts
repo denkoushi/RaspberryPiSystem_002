@@ -576,5 +576,31 @@ export class LoanService {
 
     logger.info({ loanId }, 'Loan deleted successfully');
   }
+
+  /**
+   * 未返却かつ未取消の貸出記録件数（アイテム削除前チェック用）
+   */
+  async countActiveLoansForItem(itemId: string): Promise<number> {
+    return await prisma.loan.count({
+      where: {
+        itemId,
+        returnedAt: null,
+        cancelledAt: null
+      }
+    });
+  }
+
+  /**
+   * 未返却かつ未取消の貸出記録件数（従業員削除前チェック用）
+   */
+  async countActiveLoansForEmployee(employeeId: string): Promise<number> {
+    return await prisma.loan.count({
+      where: {
+        employeeId,
+        returnedAt: null,
+        cancelledAt: null
+      }
+    });
+  }
 }
 
