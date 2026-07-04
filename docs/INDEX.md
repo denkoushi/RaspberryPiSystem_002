@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-04 · SOLID リファクタ第2弾）
+
+- **web `api/hooks.ts` ドメイン分割 + API `self-inspection.service.ts` 分解（挙動不変）**: hooks.ts を12ドメインモジュールへのファサード化（2,946→15行）・self-inspection サービスを7サブモジュール+クラスファサードに分解（4,386→1,685行）。公開API・import経路は不変、全テストがベースライン一致。**正本**: [Plan](./plans/solid-refactor-phase2-execplan-202607.md)
+
 ### 最新アップデート（2026-07-03 · SOLID リファクタ第1弾）
 
 - **API/Web の god module 分割（挙動不変）**: `routes/auth.ts` の `AuthService` 抽出・`routes/part-measurement/index.ts` サブレジストラ分割・web `api/client.ts` ドメイン分割ファサード化・`api/errors.ts` 共通エラーヘルパー。残課題（self-inspection.service 分解ほか）含む。**正本**: [Plan](./plans/solid-refactor-execplan-202607.md)
