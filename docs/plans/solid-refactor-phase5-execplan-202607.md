@@ -5,11 +5,11 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 This document must be maintained in accordance with `.agent/PLANS.md`.
 
 - id: solid-refactor-phase5-execplan-202607
-- status: completed (implementation); committed `ba875509`, pushed, CI green; production deploy not yet requested
+- status: completed; implementation `ba875509`, docs `af9c80ed`, CI-stability `d5c26eb1`; CI green; production deploy `20260705-071343-12926`; real-device verification PASS 45/0/0
 - scope: apps/api services/clients auth hub; ~19 Tier-1 route files losing direct lib/prisma imports; measuring/rigging loan shared transaction helpers with characterisation tests
 - date: 2026-07-04
 - source_of_truth: this file
-- related_docs: docs/plans/solid-refactor-execplan-202607.md (phase 1, deployed `893c7799`), docs/plans/solid-refactor-phase2-execplan-202607.md (phase 2, deployed `fe2d4a42`), docs/plans/solid-refactor-phase3-execplan-202607.md (phase 3, deployed `72ff6550`), docs/plans/solid-refactor-phase4-execplan-202607.md (phase 4, deployed `3042f8cd`)
+- related_docs: docs/plans/solid-refactor-execplan-202607.md (phase 1, deployed `893c7799`), docs/plans/solid-refactor-phase2-execplan-202607.md (phase 2, deployed `fe2d4a42`), docs/plans/solid-refactor-phase3-execplan-202607.md (phase 3, deployed `72ff6550`), docs/plans/solid-refactor-phase4-execplan-202607.md (phase 4, deployed `3042f8cd`), docs/guides/deployment.md (phase 5 deployed `d5c26eb1`)
 
 ## Purpose / Big Picture
 
@@ -31,12 +31,18 @@ Out of scope (deferred with reasons): `webrtc/signaling.ts` (447-line WebSocket 
 - [x] (2026-07-04 21:59+09:00) Step R1b done (worker subagent): 7 more route files prisma-free. `BackupConfigHistoryService.listHistory/getHistoryEntryById` (backup/config-write.ts), `EmployeeService.listDistinctDepartments/listActiveForKiosk` (tools/departments.ts, kiosk/employees.ts), `LoanService.countActiveLoansForItem/ForEmployee` (tools delete preflights), `routes/system/metrics-db-aggregates-cache.ts` relocated to `services/system/` with prisma defaulted inside (signature `(prisma, ttlMs)` → `(ttlMs)`; sole caller updated), new `services/system/db-health.service.ts` `checkDatabaseConnection()` (health route; `health.test.ts`'s `vi.mock('lib/prisma')` still intercepts, test unchanged and green), `materializeProcessChangeResidualStrongEvidence` gained an options-only overload (existing `(prisma, options?)` callers unchanged). Verified by worker: `tsc -p tsconfig.build.json --noEmit` clean, full API suite = baseline exactly (412/2,098), lint clean. Orchestrator verified: all query moves verbatim (where/select/orderBy identical), route prisma-importers now exactly the 6 deferred files (kiosk/config.ts, kiosk/support.ts, kiosk/signage-preview.ts, kiosk/call-targets.ts, rigging/index.ts, tools/unified/list.ts).
 - [x] (2026-07-04 22:06+09:00) Step A6 done (worker subagent): Stage 1 characterisation tests written FIRST against the unmodified services and verified green (`measuring-instruments/__tests__/loan.service.test.ts` 426 lines / 12 cases, `rigging/__tests__/loan.service.test.ts` 412 lines / 12 cases; mocked prisma/EmployeeService/logger/post-tx services, mirroring tools' test style). Stage 2: new `apps/api/src/services/loan/loan-transaction.helpers.ts` (77 lines; `findActiveLoanForAsset`, `executeAssetBorrowTransaction`, `executeAssetReturnTransaction` — explicit named params, delegate-specific callbacks for asset status updates); measuring loan.service 209→204 lines, rigging 185→180, facades/exports/log messages/error codes unchanged, post-tx side effects (NFC event / rigging inspection) stayed in facades. Stage-1 tests passed UNCHANGED after extraction. Verified by worker: tsc clean, full API suite 414 files / 2,122 tests (= baseline + exactly 2 files / 24 tests), lint clean. Orchestrator verified: diffs show byte-identical where/data/include objects and operation order inside transactions.
 - [x] (2026-07-04 22:08+09:00) Final verification (orchestrator): web suite 249 files / 1,245 tests (= phase-4 final; web untouched), `git diff --check` clean. Test container `postgres-test-local` and its anonymous volume (created 2026-07-04T12:37:30Z this session) removed; pre-existing dangling volumes untouched.
-- [x] (2026-07-04 22:28+09:00) Committed and pushed to `origin/main`: `ba875509` (`refactor: extract client-device auth service and loan transaction helpers`; 34 files, +1,398/−297; pre-commit lint hook passed). GitHub Actions all green for `ba875509`: CI `28707253310` success (watched to completion), CodeQL `28707253359` success, Secret scan `28707253411` success, Pages `28707252996` success. docs/INDEX.md link added. Production deploy intentionally NOT run (not requested this session).
+- [x] (2026-07-04 22:28+09:00) Committed and pushed to `origin/main`: `ba875509` (`refactor: extract client-device auth service and loan transaction helpers`; 34 files, +1,398/−297; pre-commit lint hook passed). GitHub Actions all green for `ba875509`: CI `28707253310` success (watched to completion), CodeQL `28707253359` success, Secret scan `28707253411` success, Pages `28707252996` success. docs/INDEX.md link added. Production deploy was not run in that session; see 2026-07-05 rollout entries below.
+- [x] (2026-07-04 22:29+09:00) Documentation commit `af9c80ed` (`docs: record solid refactor phase5 verification and CI results`) pushed. The follow-up main CI `28707740578` failed in `api-db-and-infra` at `src/routes/__tests__/imports.integration.test.ts > POST /api/imports/master > should handle replaceExisting=true correctly`: expected `summary.employees.created` = 1, received 0.
+- [x] (2026-07-05 06:56+09:00) Root cause isolated to test-data collision, not production import behavior: `replaceExisting=true` deletes employees without loans but preserves loan-backed employees; the test used generated 4-digit employee codes that can collide with preserved employees left by the full suite. Commit `d5c26eb1` (`test(api): stabilize import replaceExisting test`) added unused-code probing and a delete-eligible no-loan placeholder for the replace candidate.
+- [x] (2026-07-05 06:57-07:13+09:00) Local and GitHub verification green for `d5c26eb1`: focused import integration test 19/19 passed; full API coverage 414 files passed | 2 skipped (416), 2124 tests passed | 7 skipped (2131); API lint/build passed; monorepo pre-commit lint passed. GitHub Actions: CI `28720917749` success, Secret scan `28720917759` success, CodeQL `28720917748` success, Pages `28720917193` success.
+- [x] (2026-07-05 07:13-07:47+09:00) Production deploy completed with `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` and `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`: run `20260705-071343-12926`, summary success true, exit code 0, totalHosts 7, failedHosts/unreachableHosts empty. PLAY RECAP `failed=0 / unreachable=0` for Pi5, Pi4×5, and Pi3. Pi5 rebuilt/restarted Docker and passed Prisma migrate/status + API health; Pi4×5 restarted kiosk/status-agent services; Pi3 restored lightdm and reported `signage-lite.service is active`.
+- [x] (2026-07-05 07:48+09:00) Real-device verification completed: `./scripts/deploy/verify-phase12-real.sh` → PASS 45 / WARN 0 / FAIL 0.
 
 ## Surprises & Discoveries
 
 - (2026-07-04) 42 direct prisma call sites in routes collapse to essentially ONE duplicated auth pattern (~35 sites) plus a handful of one-line queries. Zero transactions in any of the 26 files. The debt is far more uniform than the raw file count suggested.
 - (2026-07-04) measuring/rigging loan services have zero unit tests and zero route-level integration tests for borrow/return; the only indirect coverage is via tools' polymorphic return/cancel paths. Characterisation tests are a precondition, not an option.
+- (2026-07-05) The full API suite can expose collisions that focused route tests miss when test data uses small generated numeric domains. `EmployeeCsvImporter`'s `replaceExisting=true` behavior intentionally preserves employees with loans, so replace tests must reserve a truly delete-eligible fixture instead of assuming a generated employee code is globally unused.
 
 ## Decision Log
 
@@ -55,6 +61,9 @@ Out of scope (deferred with reasons): `webrtc/signaling.ts` (447-line WebSocket 
 - Decision: Reuse the repo-standard disposable test container flow (`scripts/test/run-tests.sh`, container `postgres-test-local` on 5432) and remove it after final verification. No production/dev database is touched.
   Rationale: Same as phases 1–4.
   Date/Author: 2026-07-04 / Fable 5
+- Decision: Stabilize the `replaceExisting=true` import integration test by controlling fixture identity, not by changing importer behavior.
+  Rationale: The production behavior is correct: replaceExisting may update/delete no-loan employees while preserving loan-backed employees. The CI failure was a test isolation bug caused by small 4-digit employee-code collisions in the full suite.
+  Date/Author: 2026-07-05 / Codex
 
 ## Outcomes & Retrospective
 
@@ -64,6 +73,8 @@ All three steps landed with zero behavior change, verified against the recorded 
 - Loan layer: measuring/rigging borrow/return transaction cores now share `services/loan/loan-transaction.helpers.ts` with explicit named-parameter contracts; both service facades, their exports, and post-tx side effects are unchanged. The previously untested services gained 24 characterisation tests that were green before AND after the extraction, unmodified.
 
 Acceptance met: API suite 414 files / 2,122 tests = baseline 412/2,098 + exactly the 2 new test files / 24 new tests; web suite 249/1,245 identical to phase-4 final (web untouched); typecheck (`tsc -p tsconfig.build.json --noEmit`) and lint clean after every step; `git diff --check` clean. Disposable test container and its anonymous volume removed.
+
+Production rollout was completed on 2026-07-05 after the CI test-data stabilization commit `d5c26eb1`. Main CI `28720917749`, Secret scan `28720917759`, CodeQL `28720917748`, and Pages `28720917193` all succeeded. Deploy run `20260705-071343-12926` completed with summary success true and PLAY RECAP `failed=0 / unreachable=0` across all 7 hosts. `verify-phase12-real.sh` passed 45/0/0.
 
 Retrospective notes:
 
@@ -134,5 +145,19 @@ Baseline (2026-07-04 21:42+09:00, before any change; equals phase-4 final state)
       Tests       1245 passed (1245)
 
 These counts are the acceptance reference for every subsequent step.
+
+Production record (2026-07-05):
+
+    CI:
+      d5c26eb1 main CI 28720917749 success
+      Secret scan 28720917759 success
+      CodeQL 28720917748 success
+      Pages 28720917193 success
+    Deploy:
+      update-all-clients run 20260705-071343-12926
+      summary success true, exit 0, totalHosts 7
+      failedHosts [], unreachableHosts []
+    Real device:
+      verify-phase12-real.sh PASS 45 / WARN 0 / FAIL 0
 
 Revision note (2026-07-04): initial version, written before step execution.

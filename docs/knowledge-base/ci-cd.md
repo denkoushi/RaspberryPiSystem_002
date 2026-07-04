@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - CI/CD関連
 tags: [トラブルシューティング, CI/CD, GitHub Actions, テスト]
 audience: [開発者]
-last-verified: 2026-04-27
+last-verified: 2026-07-05
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: high
@@ -11,8 +11,46 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 17件  
+**件数**: 18件
 **索引**: [index.md](./index.md)
+
+---
+
+<a id="kb-395-import-replaceexisting-full-suite-flake"></a>
+
+### [KB-395] API import `replaceExisting=true` 統合テストが full suite でだけ flake する
+
+**発生日・反映**: 2026-07-05（main `d5c26eb1`、CI `28720917749` success）
+
+**事象**:
+- main CI `28707740578` の **`api-db-and-infra`** で、`src/routes/__tests__/imports.integration.test.ts > POST /api/imports/master > should handle replaceExisting=true correctly` が失敗。
+- assertion は `summary.employees.created` の期待値 **1** に対して実値 **0**。
+- focused test では再現しにくく、full API suite の既存 fixture と衝突したときだけ出る。
+
+**根本原因**:
+- `EmployeeCsvImporter` の `replaceExisting=true` は、貸出履歴を持たない従業員を削除対象にする一方、loan-backed の従業員は保持する。
+- テストは 4 桁の生成 `employeeCode` を使っており、full suite 内の preserved employee と衝突すると、CSV import が「新規作成」ではなく既存保持/更新扱いになり、`created=0` になる。
+- production import の仕様不具合ではなく、テストデータ隔離の不足。
+
+**修正（最小）**:
+- `generateUnusedEmployeeCode()` で DB 上未使用の employeeCode を探索。
+- replace candidate は import 前に **loan を持たない placeholder employee** として作成し、`replaceExisting=true` の削除・再作成対象であることを明示。
+- importer 本体の挙動は変更しない。
+
+**検証**:
+- focused `imports.integration.test.ts`: **19 passed**
+- full API coverage: **414 passed | 2 skipped (416)**、**2124 passed | 7 skipped (2131)**
+- API lint/build、monorepo pre-commit lint: success
+- GitHub Actions: CI **`28720917749` success**、Secret scan **`28720917759` success**、CodeQL **`28720917748` success**、Pages **`28720917193` success**
+
+**再発防止**:
+- full suite で共有 DB を使う integration test は、小さい生成 ID 空間を「一意」と仮定しない。
+- delete/replace 系の期待値を検証する場合は、削除対象・保持対象をテスト内で明示的に作る。
+- production 仕様が「保持する」条件を持つ場合、テストはその条件に偶然当たらないことではなく、fixture の状態で期待結果を固定する。
+
+**関連**:
+- [solid-refactor-phase5-execplan-202607.md](../plans/solid-refactor-phase5-execplan-202607.md)
+- [deployment.md §2026-07-05 Phase5](../guides/deployment.md#solid-refactor-phase5-ci-stabilization-2026-07-05)
 
 ---
 

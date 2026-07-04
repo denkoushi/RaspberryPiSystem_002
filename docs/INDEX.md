@@ -12,9 +12,9 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
-### 最新アップデート（2026-07-04 · SOLID リファクタ第5弾）
+### 最新アップデート（2026-07-05 · SOLID リファクタ第5弾 · 本番反映済）
 
-- **route層のPrisma直import解消（19ファイル）+ loan共有トランザクションヘルパー抽出（挙動不変）**: 重複していた x-client-key 認証を `services/clients/client-device-auth.service.ts` へ集約（12ファイル）・Tier-1ワンライナー7ファイルをサービス層へ移動（route の prisma 直 import 26→6ファイル）・measuring/rigging loan の borrow/return トランザクション核を `services/loan/loan-transaction.helpers.ts` へ抽出（characterisation テスト24件を先行追加）。**正本**: [Plan](./plans/solid-refactor-phase5-execplan-202607.md)
+- **route層のPrisma直import解消（19ファイル）+ loan共有トランザクションヘルパー抽出（挙動不変）**: 重複していた x-client-key 認証を `services/clients/client-device-auth.service.ts` へ集約（12ファイル）・Tier-1ワンライナー7ファイルをサービス層へ移動（route の prisma 直 import 26→6ファイル）・measuring/rigging loan の borrow/return トランザクション核を `services/loan/loan-transaction.helpers.ts` へ抽出（characterisation テスト24件を先行追加）。main **`d5c26eb1`** · CI **`28720917749` success** · Deploy **`20260705-071343-12926`** · Phase12 **45/0/0**。**正本**: [Plan](./plans/solid-refactor-phase5-execplan-202607.md) · [Deployment](./guides/deployment.md#solid-refactor-phase5-ci-stabilization-2026-07-05)
 
 ### 最新アップデート（2026-07-04 · SOLID リファクタ第4弾）
 

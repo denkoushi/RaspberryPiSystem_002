@@ -2,13 +2,27 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-07-04
+last-verified: 2026-07-05
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-07-05 · **SOLID リファクタ第5弾 + CI安定化** · **API** · **Pi5 + Pi4×5 + Pi3 反映済**） {#solid-refactor-phase5-ci-stabilization-2026-07-05}
+
+- **変更概要（正本）**: [Plan](../plans/solid-refactor-phase5-execplan-202607.md) · 実装 main **`ba875509`** (`refactor: extract client-device auth service and loan transaction helpers`) · CI安定化 main **`d5c26eb1`** (`test(api): stabilize import replaceExisting test`)。
+  - route 層の重複 `x-client-key` 認証を `services/clients/client-device-auth.service.ts` へ集約し、Tier-1 route の直接 `lib/prisma` import を 26→6 に削減。
+  - measuring/rigging loan の borrow/return トランザクション核を `services/loan/loan-transaction.helpers.ts` へ抽出し、characterisation test 24件を先行追加。公開 facade と副作用は不変。
+  - `imports.integration.test.ts` の `replaceExisting=true` ケースは full API suite で社員コード衝突し得たため、未使用コード探索 + delete 対象の no-loan placeholder を明示して安定化。
+- **CI**: main **`d5c26eb1`** は CI **`28720917749` success**（`lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` all success）· Secret scan **`28720917759` success** · CodeQL **`28720917748` success** · Pages **`28720917193` success**。
+  - 直前 docs commit **`af9c80ed`** の CI **`28707740578`** は `api-db-and-infra` の `imports.integration.test.ts` で **1件 failure**（`created` 期待値衝突）となり、`d5c26eb1` で収束。
+- **ローカル検証**: focused `imports.integration.test.ts` **19 passed**。API coverage **414 passed | 2 skipped (416)** / **2124 passed | 7 skipped (2131)**。`pnpm --filter @raspi-system/api lint` / `build` success。commit hook の monorepo lint success。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260705-071343-12926`** · summary success true · exitCode 0 · totalHosts 7 · failedHosts/unreachableHosts なし。PLAY RECAP は全 7 ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。
+  - Pi5 は repo sync to **`d5c26eb1`**、Docker rebuild/restart、Prisma migrate/status、API health recover を通過。Pi4×5 は kiosk-browser/status-agent restart OK（stonebase は barcode-agent ready も確認）。Pi3 は lightdm 復旧後 `signage-lite.service is active`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-05 JST）。
 
 ### 補足（2026-07-04 · **SOLID リファクタ第4弾** · **API + Web** · **Pi5 + Pi4×5 + Pi3 反映済**） {#solid-refactor-phase4-2026-07-04}
 

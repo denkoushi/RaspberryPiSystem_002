@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - 索引
 tags: [トラブルシューティング, ナレッジベース, 索引]
 audience: [開発者, 運用者]
-last-verified: 2026-06-06
+last-verified: 2026-07-05
 related: [api.md, database.md, ci-cd.md, frontend.md, infrastructure.md]
 category: knowledge-base
 update-frequency: high
@@ -97,7 +97,7 @@ update-frequency: high
 | DGXリソース Phase3–11（補助起停〜複合シナリオ／運用コンソール／目的別4操作／post-policy・最小 UI・gateway／Strict Ready／進行中表示持続化・業務復帰モデル選択） | [KB-365-dgx-resource-phase3-workload-orchestration.md](./KB-365-dgx-resource-phase3-workload-orchestration.md) | 1件 | 詳細はリンク先を参照。 |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 63件 | 詳細はリンク先を参照。 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
-| CI/CD関連 | [ci-cd.md](./ci-cd.md) | 17件 | CIテスト失敗、E2Eテスト、バックアップ/リストア、依存監査（pnpm audit）、test-excludeとminimatchの非互換エラー、Trivy脆弱性スキャンでminimatchのCVE-2026-27903/27904が検出される、ユニットテストでPrismaモデル未モック（KB-298）、Prisma JSONカラムへのRecord/null代入でCIビルド失敗（KB-299）、location-scope-resolverブランド型CIビルド失敗・verify-phase12 ping失敗（KB-302）、Caddy依存CVEsでTrivy image web失敗（KB-307）、trivy-action タグ参照解決失敗（KB-310）、Trivy image api の Pillow CVE-2026-40192（KB-342）、GitHub Actions ジョブ分割・composite action・CI 高速化（KB-353）、**`api-db-and-infra` Wait for PostgreSQL フレーク（KB-358）**、**Mac `python3`/`pyenv` 経路と `update-all-clients` 警告（KB-359）** |
+| CI/CD関連 | [ci-cd.md](./ci-cd.md) | 18件 | CIテスト失敗、E2Eテスト、バックアップ/リストア、依存監査（pnpm audit）、test-excludeとminimatchの非互換エラー、Trivy脆弱性スキャンでminimatchのCVE-2026-27903/27904が検出される、ユニットテストでPrismaモデル未モック（KB-298）、Prisma JSONカラムへのRecord/null代入でCIビルド失敗（KB-299）、location-scope-resolverブランド型CIビルド失敗・verify-phase12 ping失敗（KB-302）、Caddy依存CVEsでTrivy image web失敗（KB-307）、trivy-action タグ参照解決失敗（KB-310）、Trivy image api の Pillow CVE-2026-40192（KB-342）、GitHub Actions ジョブ分割・composite action・CI 高速化（KB-353）、**`api-db-and-infra` Wait for PostgreSQL フレーク（KB-358）**、**Mac `python3`/`pyenv` 経路と `update-all-clients` 警告（KB-359）**、**import `replaceExisting` full suite flake（KB-395）** |
 | インフラ関連 | [infrastructure.md](./infrastructure.md) | 77件（サブカテゴリ別に分割） | 詳細はリンク先を参照。 |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 32件 | 詳細はリンク先を参照。 |
@@ -215,6 +215,7 @@ update-frequency: high
 | [KB-353](./ci-cd.md#kb-353-github-actions-のジョブ分割と-composite-action-による-ci-高速化2026-04-18) | GitHub Actions のジョブ分割と composite action による CI 高速化（2026-04-18） | ✅ 解決済み |
 | [KB-358](./ci-cd.md#kb-358-api-db-and-infra-の-wait-for-postgresql-が-flake-するborrow_return-等) | `api-db-and-infra` の Wait for PostgreSQL が flake する（`borrow_return` 等） | 🔄 運用回避（再実行） |
 | [KB-359](./ci-cd.md#kb-359-開発端末の-python3-パス不良update-all-clients-の非致命警告) | 開発端末の `python3` パス不良（`update-all-clients` の非致命警告） | 🔄 進行中（環境依存） |
+| [KB-395](./ci-cd.md#kb-395-import-replaceexisting-full-suite-flake) | API import `replaceExisting=true` 統合テストが full suite でだけ flake する | ✅ 解決済み |
 | [KB-388](./KB-388-cursor-state-db-corruption-external-ssd-recovery.md) | Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧（2026-06-06） | ✅ 復旧済み（監視継続） |
 
 ### フロントエンド関連
