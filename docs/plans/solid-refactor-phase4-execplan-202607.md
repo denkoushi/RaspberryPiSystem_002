@@ -5,7 +5,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 This document must be maintained in accordance with `.agent/PLANS.md`.
 
 - id: solid-refactor-phase4-execplan-202607
-- status: in progress
+- status: completed (implementation); committed `3042f8cd`, pushed, CI green; production deploy pending explicit user request
 - scope: apps/api config/env.ts domain partition; apps/web CsvDashboardsPage.tsx and VisualizationDashboardsPage.tsx feature split
 - date: 2026-07-04
 - source_of_truth: this file
@@ -31,7 +31,14 @@ Out of scope (carried open items): residual direct `lib/prisma` imports in ~26 n
 - [x] (2026-07-04 17:07+09:00) Step W5a done (worker subagent): `CsvDashboardsPage.tsx` reduced from 916 to 74 lines (thin composition; the save-button row stayed on the page). 11 new files under `apps/web/src/features/admin/csv-dashboards/`: `csvDashboardPresets.ts` (102), `csvDashboardFormModel.ts` (244), `csvDashboardFormModel.test.ts` (235, NEW: 16 cases — normalize/validate/sync TABLE+non-TABLE/buildUpdatePayload/applyDisplayNameChange/parseCsvHeaderCandidates/preset), `useCsvDashboardEditor.ts` (349), `CsvDashboardHeaderSection.tsx` (43), `CsvDashboardListSection.tsx` (34), `CsvDashboardBasicSettingsFields.tsx` (85), `CsvDashboardTableTemplateSection.tsx` (194), `CsvDashboardColumnDefinitionsTable.tsx` (95), `CsvDashboardPreviewSection.tsx` (79), `CsvDashboardUploadSection.tsx` (39). Known quirks preserved (preset fontSize 16 vs sync default 14; two independent reorder blocks; direct api/client data layer; width cleanup on display-column removal; FileReader preview). Verified by worker: `tsc -b` clean, lint 0 errors, web suite 248 files / 1,222 tests (= baseline 247/1,206 + exactly 1 new file / 16 new tests). Orchestrator verified: git footprint limited to the page file + new feature dir.
 - [x] (2026-07-04 17:12+09:00) Step W5b done (worker subagent): `VisualizationDashboardsPage.tsx` reduced from 700 to 37 lines (thin composition). 9 new files under `apps/web/src/features/admin/visualization-dashboards/`: `visualizationDashboardPresets.ts` (145), `visualizationDashboardFormModel.ts` (272), `visualizationDashboardFormModel.test.ts` (270, NEW: 23 cases — parseJson, isDirty, togglePalletVizMachine order/key-removal, per-preset save validation, description empty→null), `useVisualizationDashboardEditor.ts` (267), `VisualizationDashboardHeaderSection.tsx` (25), `VisualizationDashboardListSection.tsx` (31), `VisualizationDashboardEditorForm.tsx` (181), `UninspectedCsvDashboardPicker.tsx` (44), `PalletVizMachinePicker.tsx` (63). Deviations (output-identical): measuring/rigging presets unified via `buildLoanInspectionPresetFields` factory; pallet-viz selected-set `useMemo` logic extracted to the model; `isCreating`↔`selectedId` exclusivity centralized in one hook handler; the create/edit form stays one component. Verified by worker: `tsc -b` clean, lint 0 errors, web suite 249 files / 1,245 tests (= 248/1,222 + exactly 1 new file / 23 new tests). Orchestrator verified: page now 37 lines, git footprint limited to the two page files + two new feature dirs (+ A5's env changes from the parallel worker).
 - [x] (2026-07-04 17:27+09:00) Final verification (orchestrator): web `tsc -b` clean + suite 249 files / 1,245 tests (= baseline 247/1,206 + this phase's 2 new test files / 39 new tests) + lint clean. Full API suite: one run had a single failure (see Surprises — flaky, not reproducible), two subsequent full runs both exactly 412 files passed | 2 skipped, 2,098 tests passed | 9 skipped = baseline. Test container `postgres-test-local` and this session's anonymous volume (created 2026-07-04T07:54:06Z) removed; the 229 pre-existing dangling volumes untouched.
-- [ ] Commit, push, CI green, ExecPlan/docs updated.
+- [x] (2026-07-04 17:46+09:00) Committed and pushed to `origin/main`: `3042f8cd` (`refactor: split env config and dashboard admin pages`; 36 files, +3,576/−2,079; pre-commit lint hook passed). GitHub Actions all green for `3042f8cd`: CI `28700601324` success (watched to completion), CodeQL `28700601328` success, Secret scan `28700601342` success, Pages `28700600910` success. docs/INDEX.md link added.
+
+Production deploy is intentionally NOT executed in this phase; it awaits an explicit user request (per repo safety rules).
+
+Open items carried from phases 1–3 (not in this phase's scope):
+
+- Remove remaining direct `lib/prisma` imports from route files (~26 non-test files; requires new service-layer design per route domain).
+- Extract shared loan orchestration from tools/rigging/measuring-instruments loan services (`tools/loan.service.ts` 580, `measuring-instruments/loan.service.ts` 209, `rigging/loan.service.ts` 185).
 
 ## Surprises & Discoveries
 
@@ -59,7 +66,27 @@ Out of scope (carried open items): residual direct `lib/prisma` imports in ~26 n
 
 ## Outcomes & Retrospective
 
-(to be filled at completion)
+All three target modules were decomposed with zero behavior change, verified against the recorded baseline:
+
+- `apps/api/src/config/env.ts`: 554 → 104 lines (facade over 11 files in `config/env/`; the single `env` export, merged schema, and verbatim cross-domain `superRefine` preserved; all 137 keys verified identical in set and order vs HEAD).
+- `apps/web/src/pages/admin/CsvDashboardsPage.tsx`: 916 → 74 lines (thin composition over 11 files in `features/admin/csv-dashboards/`; the 15-setter form-sync effect now backed by pure model functions guarded by 16 new tests; known quirks like preset fontSize 16 vs sync default 14 intentionally preserved).
+- `apps/web/src/pages/admin/VisualizationDashboardsPage.tsx`: 700 → 37 lines (thin composition over 9 files in `features/admin/visualization-dashboards/`; JSON-string config patching extracted to a pure model with 23 new tests; create/edit stays one shared form component).
+
+Acceptance met: API suite 412 files / 2,098 tests identical to baseline (one flaky single-failure run did not reproduce across two subsequent full runs); web suite 249 files / 1,245 tests = baseline + exactly the 2 new test files / 39 new tests; typecheck and lint clean on both workspaces; `git diff --check` clean.
+
+Operational acceptance:
+
+- Commit: `3042f8cd` on `main`, pushed to `origin/main`.
+- CI: CI `28700601324`, CodeQL `28700601328`, Secret scan `28700601342`, Pages `28700600910` — all success.
+- Deploy: not executed; awaiting explicit user request.
+
+Retrospective notes:
+
+- The dotenv evaluation-order hazard (definition-time `process.env.NODE_ENV` reads in two defaults) was identified during exploration and neutralized by design (`load-dotenv.ts` as first import in the facade and in the two affected sub-modules) rather than discovered by a failing test — the `env.test.ts` resetModules suite would only have caught it indirectly.
+- Verifying key set AND order against `git show HEAD:` with a small script is a cheap, high-confidence acceptance check for schema-partition refactors; worth repeating for similar splits.
+- With three vitest suites running concurrently on one machine, a single flaky failure appeared in one full API run; when a run fails with truncated output, re-run with the log captured to a file before investigating.
+
+Remaining hotspots for a future phase: residual direct `lib/prisma` route imports (~26 non-test files), shared loan orchestration extraction.
 
 ## Context and Orientation
 
