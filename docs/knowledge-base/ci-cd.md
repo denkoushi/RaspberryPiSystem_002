@@ -11,8 +11,37 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 18件
+**件数**: 19件
 **索引**: [index.md](./index.md)
+
+---
+
+<a id="kb-396-route-integration-shared-fixture-postgres-test-local"></a>
+
+### [KB-396] route 統合テストの共有 fixture 干渉と `postgres-test-local` 消失
+
+**発生日・反映**: 2026-07-05（main `d669dc53`、CI `28723350855` success、deploy `20260705-102444-13837` success）
+
+**事象**:
+- Phase6 の rigging タグ / unified list route characterisation test 追加時、共有 DB の `clientDevice` fixture を広く掃除すると、他テストの API key を無効化し得ることを確認。
+- ローカル full API rerun の途中で disposable `postgres-test-local` が消え、Prisma が `localhost:5432` へ接続できず一度だけ失敗。fresh rerun では全件成功した。
+
+**対処（最小）**:
+- 新しい route integration test は `"Test Client "` のような汎用 prefix を deleteMany しない。`Unified Test Client` / `Rigging Tag Test Client` のような route 固有 prefix と固有 apiKey を使い、削除はテストが作成した ID に限定する。
+- `Can't reach database server at localhost:5432` が full suite 途中で突然出た場合は、まず `docker ps -a --filter name=postgres-test-local` でテスト用 DB の存在を確認する。コンテナ消失なら `POSTGRES_PORT=5432 bash scripts/test/run-tests.sh` で fresh rerun し、再現するかを見る。
+
+**検証**:
+- route Prisma import check: **0 files**
+- full API rerun: **416 passed | 2 skipped (418)**、**2135 passed | 7 skipped (2142)**
+- GitHub Actions: CI **`28723350855` success**、Secret scan **`28723350876` success**、CodeQL **`28723350866` success**、Pages **`28723350512` success**
+
+**再発防止**:
+- 共有 DB を使う route integration test では、掃除条件を fixture 名の広い prefix に寄せず、route 固有 prefix + 作成 ID で閉じる。
+- ローカル DB 消失はまず開発端末のテスト基盤干渉として切り分け、CI と fresh rerun の両方が緑ならアプリ回帰扱いにしない。
+
+**関連**:
+- [solid-refactor-phase6-execplan-202607.md](../plans/solid-refactor-phase6-execplan-202607.md)
+- [deployment.md §2026-07-05 Phase6](../guides/deployment.md#solid-refactor-phase6-2026-07-05)
 
 ---
 

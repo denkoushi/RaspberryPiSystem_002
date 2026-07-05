@@ -10,6 +10,19 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-05 · **SOLID リファクタ第6弾** · **API** · **Pi5 + Pi4×5 + Pi3 反映済**） {#solid-refactor-phase6-2026-07-05}
+
+- **変更概要（正本）**: [Plan](../plans/solid-refactor-phase6-execplan-202607.md) · 実装 main **`d669dc53`** (`refactor: eliminate remaining direct prisma imports from route layer`) · デプロイ時 main **`fac1d6a5`**（docs-only on `d669dc53`）。
+  - route 層の直接 `lib/prisma` import を残 6 ファイルから **0** に収束。kiosk 4 ルートは `services/kiosk/` の小サービスへ、rigging タグ CRUD は `RiggingGearTagService` へ、統合在庫リストは `UnifiedInventoryListService` へ委譲。
+  - テストゼロだった rigging タグ / unified list に characterisation 統合テスト **11件**を先行追加し、replace semantics・dual auth・タグ UID 投影・ja sort を固定。HTTP 契約・Prisma migration は変更なし。
+- **CI（`d669dc53`）**: CI **`28723350855` success**（`lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` all success）· Secret scan **`28723350876` success** · CodeQL **`28723350866` success** · Pages **`28723350512` success**。
+- **ローカル検証**: route Prisma import check **0 files**。API full rerun **416 passed | 2 skipped (418)** / **2135 passed | 7 skipped (2142)**。Web **249 files / 1245 tests passed**。`pnpm --filter @raspi-system/api lint` / `build`、focused API tests **13 passed**、`git diff --check` success。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260705-102444-13837`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260705-102444-13837.log` · summary success true · exitCode 0 · totalHosts 7 · failedHosts/unreachableHosts なし。
+  - PLAY RECAP は全 7 ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。
+  - Pi5 は repo sync to **`fac1d6a5`**、Docker compose rebuild/restart、Prisma migrate/status、API health recover を通過。Pi4×5 は kiosk-browser/status-agent/status-agent.timer restart OK（stonebase の barcode-agent は 1 回 readiness retry 後 OK）。Pi3 は lightdm 復旧後 `signage-lite.service is active`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-05 JST）。
+
 ### 補足（2026-07-05 · **SOLID リファクタ第5弾 + CI安定化** · **API** · **Pi5 + Pi4×5 + Pi3 反映済**） {#solid-refactor-phase5-ci-stabilization-2026-07-05}
 
 - **変更概要（正本）**: [Plan](../plans/solid-refactor-phase5-execplan-202607.md) · 実装 main **`ba875509`** (`refactor: extract client-device auth service and loan transaction helpers`) · CI安定化 main **`d5c26eb1`** (`test(api): stabilize import replaceExisting test`)。
