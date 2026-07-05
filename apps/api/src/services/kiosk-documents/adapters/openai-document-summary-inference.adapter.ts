@@ -3,10 +3,8 @@ import { logger } from '../../../lib/logger.js';
 
 import type { TextCompletionPort } from '../../inference/ports/text-completion.port.js';
 import type { DocumentSummaryInferencePort } from '../ports/document-summary-inference.port.js';
-import {
-  buildKioskDocumentSummaryUserMessage,
-  KIOSK_DOCUMENT_SUMMARY_SYSTEM_PROMPT,
-} from '../kiosk-document-summary-prompt.js';
+import { resolveDocumentSummarySystemPrompt } from '../../inference/prompts/inference-prompt-registry.js';
+import { buildKioskDocumentSummaryUserMessage } from '../kiosk-document-summary-prompt.js';
 
 const log = logger.child({ component: 'kioskDocumentSummaryInference' });
 
@@ -32,7 +30,7 @@ export class OpenAiCompatibleDocumentSummaryInferenceAdapter implements Document
       const { rawText } = await this.text.complete({
         useCase: 'document_summary',
         messages: [
-          { role: 'system', content: KIOSK_DOCUMENT_SUMMARY_SYSTEM_PROMPT },
+          { role: 'system', content: resolveDocumentSummarySystemPrompt() },
           { role: 'user', content: buildKioskDocumentSummaryUserMessage(truncated) },
         ],
         maxTokens: env.INFERENCE_DOCUMENT_SUMMARY_MAX_TOKENS,

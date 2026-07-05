@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { InferenceProviderDefinition } from '../../config/inference-provider.types.js';
-import { InferenceRouter } from '../../routing/inference-router.js';
+import { InferenceRouter, type InferenceRouteTarget } from '../../routing/inference-router.js';
+import type { InferenceUseCase } from '../../types/inference-usecase.js';
 import { ProviderLocalLlmRuntimeController } from '../provider-local-llm-runtime.controller.js';
 
 function createProviders(): InferenceProviderDefinition[] {
@@ -37,6 +38,18 @@ function createProviders(): InferenceProviderDefinition[] {
   ];
 }
 
+function inferenceRoutes(
+  overrides: Partial<Record<InferenceUseCase, InferenceRouteTarget>> = {}
+): Record<InferenceUseCase, InferenceRouteTarget> {
+  return {
+    photo_label: { providerId: 'dgx_text' },
+    document_summary: { providerId: 'dgx_text' },
+    admin_console_chat: { providerId: 'dgx_text' },
+    stackchan_chat: { providerId: 'dgx_text' },
+    ...overrides,
+  };
+}
+
 const defaultRuntimeIntentEnv = { runtimeStartProfileEnabled: false };
 
 describe('ProviderLocalLlmRuntimeController', () => {
@@ -44,10 +57,10 @@ describe('ProviderLocalLlmRuntimeController', () => {
     const providers = createProviders();
     const router = new InferenceRouter({
       providers,
-      routes: {
+      routes: inferenceRoutes({
         document_summary: { providerId: 'dgx_text', modelOverride: 'system-prod-primary' },
         photo_label: { providerId: 'ubuntu_vlm', modelOverride: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf' },
-      },
+      }),
     });
 
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -96,10 +109,10 @@ describe('ProviderLocalLlmRuntimeController', () => {
     );
     const router = new InferenceRouter({
       providers,
-      routes: {
+      routes: inferenceRoutes({
         document_summary: { providerId: 'dgx_text' },
         photo_label: { providerId: 'ubuntu_vlm' },
-      },
+      }),
     });
 
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -151,10 +164,10 @@ describe('ProviderLocalLlmRuntimeController', () => {
     );
     const router = new InferenceRouter({
       providers,
-      routes: {
+      routes: inferenceRoutes({
         document_summary: { providerId: 'dgx_text' },
         photo_label: { providerId: 'ubuntu_vlm' },
-      },
+      }),
     });
 
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -204,10 +217,10 @@ describe('ProviderLocalLlmRuntimeController', () => {
     const providers = createProviders();
     const router = new InferenceRouter({
       providers,
-      routes: {
+      routes: inferenceRoutes({
         document_summary: { providerId: 'dgx_text', modelOverride: 'system-prod-primary' },
         photo_label: { providerId: 'ubuntu_vlm', modelOverride: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf' },
-      },
+      }),
     });
 
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -250,10 +263,10 @@ describe('ProviderLocalLlmRuntimeController', () => {
     const providers = createProviders();
     const router = new InferenceRouter({
       providers,
-      routes: {
+      routes: inferenceRoutes({
         document_summary: { providerId: 'dgx_text' },
         photo_label: { providerId: 'ubuntu_vlm' },
-      },
+      }),
     });
 
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -304,10 +317,7 @@ describe('ProviderLocalLlmRuntimeController', () => {
     const providers = createProviders();
     const router = new InferenceRouter({
       providers,
-      routes: {
-        photo_label: { providerId: 'dgx_text' },
-        document_summary: { providerId: 'dgx_text' },
-      },
+      routes: inferenceRoutes(),
     });
 
     const startBodies: Array<{ modelProfileId?: string }> = [];
@@ -373,9 +383,9 @@ describe('ProviderLocalLlmRuntimeController', () => {
     const providers = createProviders();
     const router = new InferenceRouter({
       providers,
-      routes: {
+      routes: inferenceRoutes({
         photo_label: { providerId: 'dgx_text' },
-      },
+      }),
     });
 
     const startBodies: Array<{ modelProfileId?: string }> = [];

@@ -27,6 +27,8 @@ describe('InferenceRouter', () => {
       routes: {
         photo_label: { providerId: 'sub' },
         document_summary: { providerId: 'default' },
+        admin_console_chat: { providerId: 'default' },
+        stackchan_chat: { providerId: 'default' },
       },
     });
     const r = router.resolve('photo_label');
@@ -40,6 +42,8 @@ describe('InferenceRouter', () => {
       routes: {
         photo_label: { providerId: 'default', modelOverride: 'override-x' },
         document_summary: { providerId: 'default' },
+        admin_console_chat: { providerId: 'default' },
+        stackchan_chat: { providerId: 'default' },
       },
     });
     expect(router.resolve('photo_label').model).toBe('override-x');
@@ -51,9 +55,30 @@ describe('InferenceRouter', () => {
       routes: {
         photo_label: { providerId: 'nope' },
         document_summary: { providerId: 'default' },
+        admin_console_chat: { providerId: 'default' },
+        stackchan_chat: { providerId: 'default' },
       },
     });
     expect(router.isResolvable('photo_label')).toBe(false);
     expect(router.isResolvable('document_summary')).toBe(true);
+  });
+
+  it('resolves admin chat use cases with modelOverride', () => {
+    const router = new InferenceRouter({
+      providers,
+      routes: {
+        photo_label: { providerId: 'default' },
+        document_summary: { providerId: 'default' },
+        admin_console_chat: { providerId: 'sub', modelOverride: 'chat-model' },
+        stackchan_chat: { providerId: 'sub', modelOverride: 'chat-model' },
+      },
+    });
+    const adminResolved = router.resolve('admin_console_chat');
+    const stackchanResolved = router.resolve('stackchan_chat');
+    expect(adminResolved.provider.id).toBe('sub');
+    expect(adminResolved.model).toBe('chat-model');
+    expect(stackchanResolved).toEqual(adminResolved);
+    expect(router.isResolvable('admin_console_chat')).toBe(true);
+    expect(router.isResolvable('stackchan_chat')).toBe(true);
   });
 });

@@ -8,7 +8,11 @@ import {
 } from './config/admin-inference-provider.js';
 import { synthesizeProvidersFromLegacyLlm, tryParseInferenceProvidersJson } from './config/parse-inference-providers.js';
 import type { InferenceProviderDefinition } from './config/inference-provider.types.js';
-import { InferenceRouter, type InferenceRouterConfig } from './routing/inference-router.js';
+import {
+  InferenceRouter,
+  type InferenceRouteTarget,
+  type InferenceRouterConfig,
+} from './routing/inference-router.js';
 import type { TextCompletionPort } from './ports/text-completion.port.js';
 import type { VisionCompletionPort } from './ports/vision-completion.port.js';
 
@@ -51,7 +55,16 @@ function buildProviders(): InferenceProviderDefinition[] {
   });
 }
 
+function buildAdminChatRouteTarget(providers: InferenceProviderDefinition[]): InferenceRouteTarget {
+  const adminProvider = resolveAdminInferenceProvider(providers, env.INFERENCE_ADMIN_PROVIDER_ID);
+  return {
+    providerId: adminProvider?.id ?? env.INFERENCE_ADMIN_PROVIDER_ID,
+    modelOverride: env.INFERENCE_ADMIN_MODEL,
+  };
+}
+
 function buildRouterConfig(providers: InferenceProviderDefinition[]): InferenceRouterConfig {
+  const adminChatRoute = buildAdminChatRouteTarget(providers);
   return {
     providers,
     routes: {
@@ -63,6 +76,8 @@ function buildRouterConfig(providers: InferenceProviderDefinition[]): InferenceR
         providerId: env.INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID,
         modelOverride: env.INFERENCE_DOCUMENT_SUMMARY_MODEL,
       },
+      admin_console_chat: adminChatRoute,
+      stackchan_chat: adminChatRoute,
     },
   };
 }

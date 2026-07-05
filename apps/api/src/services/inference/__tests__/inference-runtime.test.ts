@@ -100,4 +100,60 @@ describe('buildInferenceRuntime', () => {
       timeoutMs: 61000,
     });
   });
+
+  it('routes chat use cases to the same provider/model as getAdminLocalLlmRuntimeConfig (legacy synthesis)', () => {
+    env.INFERENCE_PROVIDERS_JSON = undefined;
+    env.LOCAL_LLM_BASE_URL = 'http://legacy:38081';
+    env.LOCAL_LLM_SHARED_TOKEN = 'legacy-token';
+    env.LOCAL_LLM_MODEL = 'system-prod-primary';
+    env.LOCAL_LLM_TIMEOUT_MS = 61000;
+    env.LOCAL_LLM_RUNTIME_MODE = 'always_on';
+    env.INFERENCE_ADMIN_PROVIDER_ID = 'default';
+    env.INFERENCE_ADMIN_MODEL = undefined;
+    env.INFERENCE_PHOTO_LABEL_PROVIDER_ID = 'default';
+    env.INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID = 'default';
+
+    const runtime = buildInferenceRuntime();
+    const adminConfig = runtime.getAdminLocalLlmRuntimeConfig();
+
+    for (const useCase of ['admin_console_chat', 'stackchan_chat'] as const) {
+      expect(runtime.router.isResolvable(useCase)).toBe(true);
+      const resolved = runtime.router.resolve(useCase);
+      expect(resolved.provider.id).toBe(runtime.getAdminProvider()?.id);
+      expect(resolved.model).toBe(adminConfig.model);
+    }
+  });
+
+  it('routes chat use cases via resolved admin provider when INFERENCE_ADMIN_PROVIDER_ID is default but provider id differs', () => {
+    env.INFERENCE_PROVIDERS_JSON = JSON.stringify([
+      {
+        id: 'dgx_primary',
+        baseUrl: 'http://dgx:38081',
+        sharedToken: 'dgx-token',
+        defaultModel: 'system-prod-primary',
+        timeoutMs: 60000,
+      },
+    ]);
+    env.INFERENCE_ADMIN_PROVIDER_ID = 'default';
+    env.INFERENCE_ADMIN_MODEL = 'admin-override-model';
+    env.INFERENCE_PHOTO_LABEL_PROVIDER_ID = 'dgx_primary';
+    env.INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID = 'dgx_primary';
+
+    const runtime = buildInferenceRuntime();
+    const adminConfig = runtime.getAdminLocalLlmRuntimeConfig();
+
+    expect(runtime.getAdminProvider()?.id).toBe('dgx_primary');
+    expect(adminConfig).toMatchObject({
+      configured: true,
+      model: 'admin-override-model',
+    });
+
+    for (const useCase of ['admin_console_chat', 'stackchan_chat'] as const) {
+      expect(runtime.router.isResolvable(useCase)).toBe(true);
+      const resolved = runtime.router.resolve(useCase);
+      expect(resolved.provider.id).toBe('dgx_primary');
+      expect(resolved.model).toBe('admin-override-model');
+      expect(resolved.model).toBe(adminConfig.model);
+    }
+  });
 });

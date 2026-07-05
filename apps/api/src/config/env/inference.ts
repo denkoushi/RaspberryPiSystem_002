@@ -69,4 +69,19 @@ export const inferenceEnvShape = {
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().min(1).max(128).optional()
   ),
+  /** 要領書要約の system プロンプト上書き（未設定時はコード内デフォルト） */
+  INFERENCE_DOCUMENT_SUMMARY_SYSTEM_PROMPT: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).optional()
+  ),
+  /** StackChan チャットの system プロンプト上書き（未設定時はコード内デフォルト） */
+  INFERENCE_STACKCHAN_SYSTEM_PROMPT: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).optional()
+  ),
+  /** orchestration 由来の business modelProfileId 意図を JSON で永続化するパス（未設定時はメモリのみ） */
+  INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).optional()
+  ),
 } as const;

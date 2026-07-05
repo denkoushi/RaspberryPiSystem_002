@@ -1,8 +1,7 @@
+import { INFERENCE_PROMPT_DEFAULTS } from '../inference/prompts/inference-prompt-registry.js';
+
 /** 要領書要約: システム指示（業務側プロンプト） */
-export const KIOSK_DOCUMENT_SUMMARY_SYSTEM_PROMPT =
-  'あなたは製造現場の要領書・手順書の要約アシスタントです。与えられたOCRテキストのみを根拠に、日本語で簡潔な要約を1段落で出力してください。' +
-  '数値・記号・固有名詞は可能な限り原文どおり残してください。推測で情報を追加しないでください。' +
-  '出力は要約本文のみ（見出しや箇条書きラベルは不要）。';
+export const KIOSK_DOCUMENT_SUMMARY_SYSTEM_PROMPT = INFERENCE_PROMPT_DEFAULTS.documentSummarySystemPrompt;
 
 export function buildKioskDocumentSummaryUserMessage(truncatedNormalizedText: string): string {
   return (

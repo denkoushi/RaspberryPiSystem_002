@@ -1,4 +1,4 @@
-export const INFERENCE_USE_CASES = ['photo_label', 'document_summary'] as const;
+export const INFERENCE_USE_CASES = ['photo_label', 'document_summary', 'admin_console_chat', 'stackchan_chat'] as const;
 
 export type InferenceUseCase = (typeof INFERENCE_USE_CASES)[number];
 

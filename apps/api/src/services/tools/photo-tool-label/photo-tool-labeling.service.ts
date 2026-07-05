@@ -25,9 +25,12 @@ import type { PhotoToolLabelAssistPort } from './photo-tool-label-assist.port.js
 import type { PhotoToolLabelActiveAssistGatePort } from './photo-tool-label-active-assist-gate.port.js';
 import { buildShadowAssistedUserPrompt } from './photo-tool-label-prompt-builder.js';
 import type { LocalLlmRuntimeControllerPort } from '../../inference/runtime/local-llm-runtime-control.port.js';
+import {
+  INFERENCE_PROMPT_DEFAULTS,
+  resolvePhotoLabelUserPrompt,
+} from '../../inference/prompts/inference-prompt-registry.js';
 
-export const DEFAULT_PHOTO_TOOL_VISION_USER_PROMPT =
-  '画像の中で最も目立つ工具を1つだけ選び、日本語の短い工具名だけを答えてください。説明文や句読点は不要です。';
+export const DEFAULT_PHOTO_TOOL_VISION_USER_PROMPT = INFERENCE_PROMPT_DEFAULTS.photoLabelUserPrompt;
 
 const log = logger.child({ component: 'photoToolLabeling' });
 
@@ -80,9 +83,7 @@ export class PhotoToolLabelingService {
 
   private visionUserPrompt(): string {
     return (
-      this.deps.getVisionUserPrompt?.() ??
-      env.PHOTO_TOOL_LABEL_USER_PROMPT?.trim() ??
-      DEFAULT_PHOTO_TOOL_VISION_USER_PROMPT
+      this.deps.getVisionUserPrompt?.() ?? resolvePhotoLabelUserPrompt()
     );
   }
 

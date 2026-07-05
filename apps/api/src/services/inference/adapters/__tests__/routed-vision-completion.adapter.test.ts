@@ -18,6 +18,8 @@ const baseRouter = () =>
     routes: {
       photo_label: { providerId: 'default' },
       document_summary: { providerId: 'default' },
+      admin_console_chat: { providerId: 'default' },
+      stackchan_chat: { providerId: 'default' },
     },
   });
 
