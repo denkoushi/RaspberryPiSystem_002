@@ -21,6 +21,10 @@ _VLLM_RUNTIME_ENV_MAP: dict[str, str] = {
     "quantization": "VLLM_QUANTIZATION",
     "disableCustomAllReduce": "VLLM_DISABLE_CUSTOM_ALL_REDUCE",
     "tensorParallelSize": "VLLM_TENSOR_PARALLEL_SIZE",
+    "moeBackend": "VLLM_MOE_BACKEND",
+    "attentionBackend": "VLLM_ATTENTION_BACKEND",
+    "enableChunkedPrefill": "VLLM_ENABLE_CHUNKED_PREFILL",
+    "enablePrefixCaching": "VLLM_ENABLE_PREFIX_CACHING",
 }
 
 _LLAMA_RUNTIME_ENV_MAP: dict[str, str] = {

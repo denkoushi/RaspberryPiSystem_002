@@ -1179,3 +1179,39 @@ NODE
 4. Ubuntu fallback の rollback 手順と token 依存を縮退し、退役判断の条件を明文化する
 5. `ねじゲージ` / `金属棒` / `てこ式ダイヤルゲージ` などの hard case は、困りごととして再浮上した時点で将来課題として再開する
 6. 最後に必要になった時点で、同じ alias / 同じ入口のまま `Qwen3.6` 系へ置き換えるかを判断する
+
+## DGX 実機適用とロールバック（GB10 性能パラメータ · 2026-07-05）
+
+**対象**: repo 内 `scripts/dgx-local-llm-system/` の vLLM コマンドビルダー・model profile manifest（`business_qwen36_27b_nvfp4` / `business_ornith_35b_nvfp4` 等）。
+
+**前提**: 本節は **DGX ホストへの手動反映**用。Pi5 `--limit raspberrypi5` だけでは DGX 側スクリプトは更新されない。
+
+### 適用手順（概要）
+
+1. Mac または管理端末から DGX へ SSH（tailnet 例: `100.118.82.72`）。
+2. `/srv/dgx/system-prod/bin/`（または運用中の正本パス）へ repo から `vllm_command_builder.py`・`profile_launcher.py`・`model-registry.examples/` を **rsync/scp** で反映。
+3. 対象 model profile manifest を DGX の model registry 正本へコピー（`business_qwen36_27b_nvfp4` 等）。
+4. **業務→私用→業務** または orchestration **業務復帰** で blue backend を再起動（profile 切替で vLLM 再起動）。
+5. 確認:
+   - `GET /healthz` · `GET /v1/models`（activeProfileId 一致）
+   - 管理 Chat 疎通 · 代表 `photo_label` / `document_summary`（設定済み用途）
+   - DGX 側ログで `--moe-backend marlin` · `VLLM_MARLIN_USE_ATOMIC_ADD=1` · `--enable-chunked-prefill` **無し**（NVFP4 業務 profile の場合）
+
+### 変更内容（2026-07-05 repo 正本）
+
+| 項目 | 旧 | 新（NVFP4 業務 profile） |
+| --- | --- | --- |
+| Marlin atomic add | 未設定 | `VLLM_MARLIN_USE_ATOMIC_ADD=1` |
+| MoE backend | 自動 | `--moe-backend marlin` |
+| KV cache | `fp8` | 未指定（f16 既定） |
+| Chunked prefill | 既定 ON | manifest で `false` |
+| max-model-len | 8192 | 16384 |
+
+### ロールバック
+
+1. 反映前の `vllm_command_builder.py` / manifest を timestamp 付き backup から復元。
+2. 同一 profile で gateway `/stop` → `/start`（または orchestration 業務復帰）。
+3. `GET /v1/models` と管理 Chat で疎通確認。
+4. 性能劣化・OOM の場合は `maxModelLen` を 8192 に戻し、`gpuMemoryUtilization` を下げる。
+
+**参照**: [docs/plans/dgx-spark-optimization-execplan-202607.md](../plans/dgx-spark-optimization-execplan-202607.md) · [ADR-20260705](../decisions/ADR-20260705-dgx-spark-gb10-inference-performance-parameters.md)

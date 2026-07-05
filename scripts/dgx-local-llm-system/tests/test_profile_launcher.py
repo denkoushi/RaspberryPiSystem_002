@@ -52,14 +52,16 @@ class ProfileLauncherTests(unittest.TestCase):
                             "memoryPolicy": "known_good_business_text_tools",
                             "vllm": {
                                 "gpuMemoryUtilization": 0.65,
-                                "maxModelLen": 8192,
+                                "maxModelLen": 16384,
                                 "maxNumSeqs": 4,
                                 "maxNumBatchedTokens": 16384,
-                                "kvCacheDtype": "fp8",
                                 "languageModelOnly": True,
                                 "quantization": "compressed-tensors",
                                 "disableCustomAllReduce": True,
                                 "tensorParallelSize": 2,
+                                "moeBackend": "marlin",
+                                "enableChunkedPrefill": False,
+                                "enablePrefixCaching": True,
                             },
                         },
                     }
@@ -71,14 +73,16 @@ class ProfileLauncherTests(unittest.TestCase):
             self.assertEqual(env["DGX_RUNTIME_ENGINE"], "vllm")
             self.assertEqual(env["DGX_MEMORY_POLICY"], "known_good_business_text_tools")
             self.assertEqual(env["VLLM_GPU_MEMORY_UTILIZATION"], "0.65")
-            self.assertEqual(env["VLLM_MAX_MODEL_LEN"], "8192")
+            self.assertEqual(env["VLLM_MAX_MODEL_LEN"], "16384")
             self.assertEqual(env["VLLM_MAX_NUM_SEQS"], "4")
             self.assertEqual(env["VLLM_MAX_NUM_BATCHED_TOKENS"], "16384")
-            self.assertEqual(env["VLLM_KV_CACHE_DTYPE"], "fp8")
             self.assertEqual(env["VLLM_LANGUAGE_MODEL_ONLY"], "true")
             self.assertEqual(env["VLLM_QUANTIZATION"], "compressed-tensors")
             self.assertEqual(env["VLLM_DISABLE_CUSTOM_ALL_REDUCE"], "true")
             self.assertEqual(env["VLLM_TENSOR_PARALLEL_SIZE"], "2")
+            self.assertEqual(env["VLLM_MOE_BACKEND"], "marlin")
+            self.assertEqual(env["VLLM_ENABLE_CHUNKED_PREFILL"], "false")
+            self.assertEqual(env["VLLM_ENABLE_PREFIX_CACHING"], "true")
             self.assertEqual(env["VLLM_SERVED_MODEL_NAME"], "system-prod-primary")
             self.assertEqual(env["BLUE_SERVER_COMMAND"], "")
             self.assertEqual(env["TRTLLM_SERVER_COMMAND"], "")

@@ -67,6 +67,8 @@ def build_vllm_argv(model_path: str) -> list[str]:
     _append_value(argv, "--max-num-batched-tokens", "VLLM_MAX_NUM_BATCHED_TOKENS")
     _append_value(argv, "--gpu-memory-utilization", "VLLM_GPU_MEMORY_UTILIZATION")
     _append_value(argv, "--kv-cache-dtype", "VLLM_KV_CACHE_DTYPE")
+    _append_value(argv, "--moe-backend", "VLLM_MOE_BACKEND")
+    _append_value(argv, "--attention-backend", "VLLM_ATTENTION_BACKEND")
     _append_bool(argv, "--enable-chunked-prefill", "VLLM_ENABLE_CHUNKED_PREFILL", default=True)
     _append_bool(argv, "--enable-prefix-caching", "VLLM_ENABLE_PREFIX_CACHING", default=True)
     _append_value(argv, "--load-format", "VLLM_LOAD_FORMAT", "safetensors")
@@ -93,6 +95,8 @@ def build_command(model_dir: str | None = None) -> str:
         "PYTORCH_CUDA_ALLOC_CONF": _env("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True"),
         "NVIDIA_FORWARD_COMPAT": _env("NVIDIA_FORWARD_COMPAT", "1"),
         "VLLM_TEST_FORCE_FP8_MARLIN": _env("VLLM_TEST_FORCE_FP8_MARLIN", "1"),
+        "VLLM_MARLIN_USE_ATOMIC_ADD": _env("VLLM_MARLIN_USE_ATOMIC_ADD", "1"),
+        "VLLM_NVFP4_GEMM_BACKEND": _env("VLLM_NVFP4_GEMM_BACKEND"),
     }
     export_cmd = " && ".join(f"export {key}={shlex.quote(value)}" for key, value in exports.items() if value)
     serve_cmd = "exec " + shlex.join(build_vllm_argv(model_path))

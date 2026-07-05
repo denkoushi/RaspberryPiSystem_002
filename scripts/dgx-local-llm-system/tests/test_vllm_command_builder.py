@@ -37,8 +37,9 @@ class VllmCommandBuilderTests(unittest.TestCase):
                 "VLLM_SERVED_MODEL_NAME": "system-prod-primary",
                 "VLLM_QUANTIZATION": "compressed-tensors",
                 "VLLM_LANGUAGE_MODEL_ONLY": "true",
-                "VLLM_MAX_MODEL_LEN": "8192",
-                "VLLM_KV_CACHE_DTYPE": "fp8",
+                "VLLM_MAX_MODEL_LEN": "16384",
+                "VLLM_MOE_BACKEND": "marlin",
+                "VLLM_ENABLE_CHUNKED_PREFILL": "false",
             }
             with patch.dict(os.environ, env, clear=True):
                 command = build_command()
@@ -48,6 +49,27 @@ class VllmCommandBuilderTests(unittest.TestCase):
             self.assertIn("compressed-tensors", parts)
             self.assertIn("--hf-overrides", parts)
             self.assertTrue(any('"language_model_only": true' in part for part in parts))
+            self.assertIn("--moe-backend", parts)
+            self.assertIn("marlin", parts)
+            self.assertNotIn("--enable-chunked-prefill", parts)
+            self.assertIn("VLLM_MARLIN_USE_ATOMIC_ADD=1", command)
+
+    def test_marlin_atomic_add_and_moe_backend_in_exports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "models--test"
+            make_hf_cache(root)
+            env = {
+                "BLUE_MODEL_DIR": str(root),
+                "VLLM_MOE_BACKEND": "marlin",
+                "VLLM_NVFP4_GEMM_BACKEND": "marlin",
+            }
+            with patch.dict(os.environ, env, clear=True):
+                command = build_command()
+            self.assertIn("VLLM_MARLIN_USE_ATOMIC_ADD=1", command)
+            self.assertIn("VLLM_NVFP4_GEMM_BACKEND=marlin", command)
+            parts = shlex.split(command)
+            self.assertIn("--moe-backend", parts)
+            self.assertIn("marlin", parts)
 
     def test_ornith_argv_omits_quantization_and_disables_custom_all_reduce(self):
         with patch.dict(

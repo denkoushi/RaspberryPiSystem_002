@@ -18,12 +18,14 @@
     "guaranteeLevel": "strict_ready_when_orchestrated",
     "vllm": {
       "gpuMemoryUtilization": 0.65,
-      "maxModelLen": 8192,
+      "maxModelLen": 16384,
       "maxNumSeqs": 4,
       "maxNumBatchedTokens": 16384,
-      "kvCacheDtype": "fp8",
       "languageModelOnly": true,
-      "quantization": "compressed-tensors"
+      "quantization": "compressed-tensors",
+      "moeBackend": "marlin",
+      "enableChunkedPrefill": false,
+      "enablePrefixCaching": true
     }
   },
   "sourceKind": "huggingface",
