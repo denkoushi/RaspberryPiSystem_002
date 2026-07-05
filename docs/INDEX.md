@@ -1633,6 +1633,7 @@
 | [ADR-20260130-tailscale-primary-operations.md](./decisions/ADR-20260130-tailscale-primary-operations.md) | Tailscale主運用への移行決定 |
 | [ADR-20260211-production-schedule-expression-indexes.md](./decisions/ADR-20260211-production-schedule-expression-indexes.md) | 生産スケジュールパフォーマンス最適化のための式インデックス追加 |
 | [ADR-20260228-ibus-kiosk-multilayer-suppression.md](./decisions/ADR-20260228-ibus-kiosk-multilayer-suppression.md) | IBus UI 再発を防ぐ多層抑止とモジュール分離 |
+| [ADR-20260705-dgx-spark-gb10-inference-performance-parameters.md](./decisions/ADR-20260705-dgx-spark-gb10-inference-performance-parameters.md) | DGX Spark GB10 推論性能パラメータ（Marlin/KV f16/chunked prefill無効） |
 
 ### モジュール仕様（modules/）
 
@@ -1685,6 +1686,7 @@ APIの概要と詳細。
 | [ansible-phase9-role-execplan.md](./plans/ansible-phase9-role-execplan.md) | **Ansible Phase 9（ロール化）実行計画** |
 | [tool-management-debug-execplan.md](./plans/tool-management-debug-execplan.md) | **キオスク工具スキャン重複＆黒画像対策 ExecPlan** |
 | [ts100-integration-plan.md](./plans/ts100-integration-plan.md) | **TS100 RFIDリーダー統合計画**（計測機器管理システム用） |
+| [dgx-spark-optimization-execplan-202607.md](./plans/dgx-spark-optimization-execplan-202607.md) | **DGX Spark 運用最適化 ExecPlan**（性能・疎結合・モード切替・UI） |
 
 ### 実践ガイド（guides/）
 

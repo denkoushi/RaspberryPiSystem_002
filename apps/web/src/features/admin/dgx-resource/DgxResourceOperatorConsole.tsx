@@ -258,14 +258,15 @@ export function DgxResourceOperatorConsole({
 
           <div className="grid gap-4 border-t border-white/15 p-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <DgxResourcePrimaryScenarioFlow
-            operator={operator}
-            modelProfiles={overview.modelProfiles}
-            runtimeSummary={overview.runtimeSummary}
-            postDgxAction={postDgxAction}
+              operator={operator}
+              overview={overview}
+              modelProfiles={overview.modelProfiles}
+              runtimeSummary={overview.runtimeSummary}
+              postDgxAction={postDgxAction}
               actionBusy={actionBusy || releaseBusy}
-            externalBusy={externalBusy}
-            onControlUiError={onControlUiError}
-          />
+              externalBusy={externalBusy}
+              onControlUiError={onControlUiError}
+            />
 
           <div className="grid content-start gap-2 border-t border-white/15 pt-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0" aria-label="補助状態">
             {workloads.map((workload) => (

@@ -47,6 +47,7 @@ import {
 import type { DgxResourceScenarioExecuteResult } from './dgx-resource.scenario-execute.types.js';
 import { fetchJsonMetrics, probeHttpGet, probeHttpOk, probeV1Models } from './dgx-resource.probes.js';
 import { buildDgxResourceRuntimeSummary, type DgxResourceRuntimeSummary } from './dgx-resource.runtime-summary.js';
+import { buildDgxResourceUiMetadata, type DgxResourceUiMetadata } from './dgx-resource.ui-metadata.js';
 
 import type { LocalLlmGateway, LocalLlmRuntimeConfig } from '../local-llm-proxy.service.js';
 
@@ -166,7 +167,11 @@ export type DgxResourceOverview = {
   resourceState: DgxResourceSharedState | null;
   /** メトリクス KPI とは分離した実行時状態（モデル・backend・Ready ヒント） */
   runtimeSummary: DgxResourceRuntimeSummary;
+  /** ダッシュボード表示メタデータ（シナリオ・運用モードの説明。additive） */
+  uiMetadata: DgxResourceUiMetadata;
 };
+
+export type { DgxResourceUiMetadata };
 
 export type { DgxResourceRuntimeSummary };
 
@@ -1126,6 +1131,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         modelProfiles: pb.modelProfiles,
         resourceState: pb.modelProfiles.resourceState,
         runtimeSummary,
+        uiMetadata: buildDgxResourceUiMetadata(),
       };
     },
   };

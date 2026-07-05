@@ -9,24 +9,27 @@ import {
 import { Button } from '../../../components/ui/Button';
 import { useConfirm } from '../../../contexts/ConfirmContext';
 
-import { DGX_ORCHESTRATION_SCENARIO_META, DGX_ORCHESTRATION_SCENARIO_ORDER } from './dgxOrchestrationScenarios';
+import { resolveScenarioMeta, resolveScenarioOrder } from './dgxResourceUiMetadataResolve';
 
 import type {
   DgxOrchestrationScenarioIdApi,
   DgxResourceActionResult,
+  DgxResourceOverview,
   DgxResourceScenarioExecuteResultApi,
   ScenarioPlanPreviewApi,
 } from '../../../api/dgx-resource.types';
 
 type Props = {
   onControlUiError: (message: string | null) => void;
+  /** 提供時は uiMetadata を優先（未提供時はローカル fallback） */
+  overview?: Pick<DgxResourceOverview, 'uiMetadata'>;
 };
 
 function formatStepsForConfirm(preview: ScenarioPlanPreviewApi): string {
   return preview.steps.map((s) => `${s.order}. ${s.summaryJa}`).join('\n');
 }
 
-export function DgxResourceOrchestrationPanel({ onControlUiError }: Props) {
+export function DgxResourceOrchestrationPanel({ onControlUiError, overview }: Props) {
   const qc = useQueryClient();
   const confirm = useConfirm();
 
@@ -38,7 +41,8 @@ export function DgxResourceOrchestrationPanel({ onControlUiError }: Props) {
     detail: DgxResourceScenarioExecuteResultApi;
   } | null>(null);
 
-  const meta = DGX_ORCHESTRATION_SCENARIO_META[scenarioId];
+  const scenarioOrder = resolveScenarioOrder(overview);
+  const meta = resolveScenarioMeta(scenarioId, overview);
 
   useEffect(() => {
     setLastPreview(null);
@@ -116,8 +120,8 @@ export function DgxResourceOrchestrationPanel({ onControlUiError }: Props) {
       </p>
 
       <div className="flex flex-wrap gap-1">
-        {DGX_ORCHESTRATION_SCENARIO_ORDER.map((sid) => {
-          const m = DGX_ORCHESTRATION_SCENARIO_META[sid];
+        {scenarioOrder.map((sid) => {
+          const m = resolveScenarioMeta(sid, overview);
           return (
             <Button
               key={sid}
@@ -136,6 +140,14 @@ export function DgxResourceOrchestrationPanel({ onControlUiError }: Props) {
       <p className="text-sm text-white/60">
         <span className="font-medium text-teal-100/90">{meta.titleJa}</span> — {meta.descriptionJa}
       </p>
+
+      {meta.cautionsJa.length > 0 ? (
+        <ul className="list-none space-y-1 rounded border border-amber-400/25 bg-amber-500/10 px-2.5 py-2 text-sm leading-snug text-amber-100/95">
+          {meta.cautionsJa.map((caution) => (
+            <li key={caution}>⚠ {caution}</li>
+          ))}
+        </ul>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         <Button

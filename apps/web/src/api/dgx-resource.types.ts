@@ -217,6 +217,26 @@ export type DgxModelDeleteProtectionApi = {
   resolvedStoragePath?: string;
 };
 
+export type DgxUiScenarioMetadataApi = {
+  id: DgxOrchestrationScenarioIdApi;
+  titleJa: string;
+  descriptionJa: string;
+  cautionsJa: string[];
+};
+
+export type DgxUiPolicyModeMetadataApi = {
+  mode: DgxPolicyModeApi;
+  labelJa: string;
+  titleFullJa: string;
+  descriptionJa: string;
+  autoArbitrationNotesJa: string[];
+};
+
+export type DgxResourceUiMetadataApi = {
+  scenarios: DgxUiScenarioMetadataApi[];
+  policyModes: DgxUiPolicyModeMetadataApi[];
+};
+
 export type DgxResourceOperatorConsoleApi = {
   workloads: DgxOperatorWorkloadApi[];
   operatorSummary: {
@@ -369,6 +389,8 @@ export type DgxResourceOverview = {
   modelProfiles?: DgxModelProfilesOverviewApi;
   resourceState?: DgxResourceSharedStateApi | null;
   runtimeSummary?: DgxResourceRuntimeSummaryApi;
+  /** シナリオ・運用モードの表示メタデータ（API 正本。未提供時は Web ローカル fallback） */
+  uiMetadata?: DgxResourceUiMetadataApi;
 };
 
 export type DgxResourceEvent = {

@@ -6,6 +6,7 @@ import { dgxResourceQueryKeys, getDgxResourceApiErrorMessage } from '../../../ap
 import { useConfirm } from '../../../contexts/ConfirmContext';
 
 import { orderPrimaryScenarioActions } from './dgxResourceTaskFlows';
+import { resolveScenarioMeta } from './dgxResourceUiMetadataResolve';
 
 import type {
   DgxOperatorConsoleActionApi,
@@ -14,6 +15,7 @@ import type {
   DgxResourceActionBody,
   DgxResourceActionResult,
   DgxResourceOperatorConsoleApi,
+  DgxResourceOverview,
   DgxResourceRuntimeSummaryApi,
 } from '../../../api/dgx-resource.types';
 
@@ -129,6 +131,7 @@ function persistPendingState(pending: boolean, scenarioId: DgxOrchestrationScena
 
 type Props = {
   operator: DgxResourceOperatorConsoleApi;
+  overview?: Pick<DgxResourceOverview, 'uiMetadata'>;
   modelProfiles?: DgxModelProfilesOverviewApi;
   runtimeSummary?: DgxResourceRuntimeSummaryApi;
   postDgxAction: (body: DgxResourceActionBody) => Promise<DgxResourceActionResult>;
@@ -140,6 +143,7 @@ type Props = {
 /** 日常運用向け UI: 4操作を選んで、そのまま確認→実行。 */
 export function DgxResourcePrimaryScenarioFlow({
   operator,
+  overview,
   modelProfiles,
   runtimeSummary,
   postDgxAction,
@@ -173,6 +177,8 @@ export function DgxResourcePrimaryScenarioFlow({
 
   const selectedAction: DgxOperatorConsoleActionApi | undefined =
     selectedScenarioId != null ? actions.find((a) => a.scenarioId === selectedScenarioId) : undefined;
+  const selectedScenarioMeta =
+    selectedScenarioId != null ? resolveScenarioMeta(selectedScenarioId, overview) : null;
   const needsModelProfile = isBusinessReturnScenario(selectedAction?.scenarioId);
   const selectableProfiles = useMemo(() => {
     if (modelProfiles?.businessReturnSelectable) {
@@ -370,6 +376,14 @@ export function DgxResourcePrimaryScenarioFlow({
           );
         })}
       </div>
+
+      {selectedScenarioMeta != null && selectedScenarioMeta.cautionsJa.length > 0 ? (
+        <ul className="list-none space-y-1 rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs font-semibold leading-snug text-amber-100/95">
+          {selectedScenarioMeta.cautionsJa.map((caution) => (
+            <li key={caution}>⚠ {caution}</li>
+          ))}
+        </ul>
+      ) : null}
 
       {needsModelProfile ? (
         <div className="flex flex-col gap-2 rounded-lg border border-white/15 bg-white/5 p-3 sm:flex-row sm:items-center">

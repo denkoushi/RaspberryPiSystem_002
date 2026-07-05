@@ -17,10 +17,12 @@ import { buildDgxResourceDashboardViewModel } from './dgxResourceDashboardViewMo
 import { DgxResourceEventsTimeline } from './DgxResourceEventsTimeline';
 import { DgxResourceMonitoringPanel } from './DgxResourceMonitoringPanel';
 import { DgxResourceOperatorConsole } from './DgxResourceOperatorConsole';
+import { DgxResourceOrchestrationPanel } from './DgxResourceOrchestrationPanel';
 import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
 import { DgxResourcePreflightPanel } from './DgxResourcePreflightPanel';
 import { DgxResourceQuickProfileActions } from './DgxResourceQuickProfileActions';
 import { DgxResourceSparkStatusPanel } from './DgxResourceSparkStatusPanel';
+import { DgxResourceStatusSummary } from './DgxResourceStatusSummary';
 import { DgxResourceTargetGrid } from './DgxResourceTargetGrid';
 import { shouldShowMonitoringPanel } from './dgxResourceUi';
 import { DgxResourceWarmRuntimeNotice } from './DgxResourceWarmRuntimeNotice';
@@ -360,6 +362,8 @@ export function DgxResourceDashboard() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-3 text-base">
+      <DgxResourceStatusSummary overview={overview} />
+
       {overview.operator ? (
         <DgxResourceOperatorConsole
           overview={overview}
@@ -409,75 +413,6 @@ export function DgxResourceDashboard() {
         </p>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)]">
-        <section className="overflow-hidden rounded-lg border border-white/15 bg-slate-900/60" aria-label="モデルプロファイル">
-          <div className="flex min-h-12 items-center justify-between gap-3 border-b border-white/15 px-4">
-            <h2 className="text-sm font-bold text-white">モデルプロファイル</h2>
-            <span className="rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-bold text-emerald-300">
-              {profileStatus}
-            </span>
-          </div>
-          <div className="grid">
-            {profileRows.length === 0 ? (
-              <div className="grid min-h-11 items-center px-4 text-sm font-semibold text-white/60">
-                モデルプロファイル未取得
-              </div>
-            ) : (
-              profileRows.map((profile) => {
-                const active = profile.id === runtimeSummary?.activeProfileId;
-                const subtitle = profileRowSubtitle(profile);
-                const badges = profileBadges(profile, runtimeSummary?.activeProfileId);
-                return (
-                  <div
-                    key={profile.id}
-                    className="grid min-h-12 grid-cols-[minmax(260px,1.2fr)_minmax(180px,0.8fr)_minmax(220px,auto)] items-center gap-3 border-b border-white/15 px-4 py-2 text-sm font-semibold last:border-b-0 max-md:grid-cols-1 max-md:gap-1"
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className={clsx('h-2 w-2 shrink-0 rounded-full', active ? 'bg-emerald-400' : 'bg-slate-500')} aria-hidden />
-                      <span className="min-w-0 break-words text-white" title={profile.displayNameJa}>{profile.displayNameJa}</span>
-                    </div>
-                    <span className="min-w-0 break-words text-white/60" title={`${subtitle} / ${profile.id}`}>
-                      {subtitle}
-                    </span>
-                    <div className="flex min-w-0 flex-wrap justify-end gap-1 max-md:justify-start">
-                      {badges.map((badge) => (
-                        <span
-                          key={`${profile.id}-${badge.label}`}
-                          className={clsx('rounded-full border px-2 py-0.5 text-xs font-bold leading-tight', profileBadgeClass(badge.tone))}
-                        >
-                          {badge.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </section>
-
-        <section className="overflow-hidden rounded-lg border border-white/15 bg-slate-900/60" aria-label="詳細">
-          <div className="flex min-h-12 items-center justify-between gap-3 border-b border-white/15 px-4">
-            <h2 className="text-sm font-bold text-white">詳細</h2>
-            <span className="rounded-full border border-white/20 bg-white/5 px-2.5 py-1 text-xs font-bold text-white/70">
-              {detailRows.length}
-            </span>
-          </div>
-          <div className="grid">
-            {detailRows.map((row) => (
-              <div
-                key={row.key}
-                className="grid min-h-11 grid-cols-[minmax(120px,0.8fr)_minmax(0,1.2fr)_auto] items-center gap-3 border-b border-white/15 px-4 text-sm font-semibold last:border-b-0"
-              >
-                <span className="text-white">{row.label}</span>
-                <span className="min-w-0 truncate text-white/60" title={row.value}>{row.value}</span>
-                <span className={clsx('h-2 w-2 rounded-full', detailDotClass(row.status))} aria-hidden />
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-
       <DgxResourceAdvancedControls summary="詳細・保守・ログ">
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="DGX 詳細">
           <button
@@ -517,6 +452,75 @@ export function DgxResourceDashboard() {
 
         {detailTab === 'state' ? (
           <div id="dgx-resource-state-tab" role="tabpanel" className="space-y-3">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)]">
+              <section className="overflow-hidden rounded-lg border border-white/15 bg-slate-900/60" aria-label="モデルプロファイル">
+                <div className="flex min-h-12 items-center justify-between gap-3 border-b border-white/15 px-4">
+                  <h2 className="text-sm font-bold text-white">モデルプロファイル</h2>
+                  <span className="rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-bold text-emerald-300">
+                    {profileStatus}
+                  </span>
+                </div>
+                <div className="grid">
+                  {profileRows.length === 0 ? (
+                    <div className="grid min-h-11 items-center px-4 text-sm font-semibold text-white/60">
+                      モデルプロファイル未取得
+                    </div>
+                  ) : (
+                    profileRows.map((profile) => {
+                      const active = profile.id === runtimeSummary?.activeProfileId;
+                      const subtitle = profileRowSubtitle(profile);
+                      const badges = profileBadges(profile, runtimeSummary?.activeProfileId);
+                      return (
+                        <div
+                          key={profile.id}
+                          className="grid min-h-12 grid-cols-[minmax(260px,1.2fr)_minmax(180px,0.8fr)_minmax(220px,auto)] items-center gap-3 border-b border-white/15 px-4 py-2 text-sm font-semibold last:border-b-0 max-md:grid-cols-1 max-md:gap-1"
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className={clsx('h-2 w-2 shrink-0 rounded-full', active ? 'bg-emerald-400' : 'bg-slate-500')} aria-hidden />
+                            <span className="min-w-0 break-words text-white" title={profile.displayNameJa}>{profile.displayNameJa}</span>
+                          </div>
+                          <span className="min-w-0 break-words text-white/60" title={`${subtitle} / ${profile.id}`}>
+                            {subtitle}
+                          </span>
+                          <div className="flex min-w-0 flex-wrap justify-end gap-1 max-md:justify-start">
+                            {badges.map((badge) => (
+                              <span
+                                key={`${profile.id}-${badge.label}`}
+                                className={clsx('rounded-full border px-2 py-0.5 text-xs font-bold leading-tight', profileBadgeClass(badge.tone))}
+                              >
+                                {badge.label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+
+              <section className="overflow-hidden rounded-lg border border-white/15 bg-slate-900/60" aria-label="詳細">
+                <div className="flex min-h-12 items-center justify-between gap-3 border-b border-white/15 px-4">
+                  <h2 className="text-sm font-bold text-white">詳細</h2>
+                  <span className="rounded-full border border-white/20 bg-white/5 px-2.5 py-1 text-xs font-bold text-white/70">
+                    {detailRows.length}
+                  </span>
+                </div>
+                <div className="grid">
+                  {detailRows.map((row) => (
+                    <div
+                      key={row.key}
+                      className="grid min-h-11 grid-cols-[minmax(120px,0.8fr)_minmax(0,1.2fr)_auto] items-center gap-3 border-b border-white/15 px-4 text-sm font-semibold last:border-b-0"
+                    >
+                      <span className="text-white">{row.label}</span>
+                      <span className="min-w-0 truncate text-white/60" title={row.value}>{row.value}</span>
+                      <span className={clsx('h-2 w-2 rounded-full', detailDotClass(row.status))} aria-hidden />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
             <DgxResourcePreflightPanel overview={overview} />
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
               {viewModel.detailRows.map((row) => (
@@ -575,6 +579,8 @@ export function DgxResourceDashboard() {
                 });
               }}
             />
+
+            <DgxResourceOrchestrationPanel overview={overview} onControlUiError={setActionError} />
           </div>
         ) : null}
 

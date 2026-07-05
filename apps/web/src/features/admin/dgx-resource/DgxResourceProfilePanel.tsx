@@ -9,7 +9,7 @@ import {
 import { Button } from '../../../components/ui/Button';
 import { useConfirm } from '../../../contexts/ConfirmContext';
 
-import { DGX_POLICY_PROFILES, orderProfilesForUi } from './dgxResourceProfiles';
+import { resolvePolicyProfile, resolvePolicyProfiles } from './dgxResourceUiMetadataResolve';
 
 import type { DgxPolicyModeApi, DgxResourceActionBody, DgxResourceOverview } from '../../../api/dgx-resource.types';
 
@@ -64,6 +64,7 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
   const qc = useQueryClient();
   const confirm = useConfirm();
   const policyMode = overview.policy.mode;
+  const policyProfiles = resolvePolicyProfiles(overview);
   const [applyWorkloadChanges, setApplyWorkloadChanges] = useState(false);
 
   const mutatePolicy = useMutation({
@@ -107,15 +108,15 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
       <h2 className="text-base font-bold text-white">運用モード（保守・手動切替）</h2>
       <p className="text-sm leading-snug text-white/70">
         左上の運用ガイドで済む場合は触らなくて大丈夫です。ここではモードのみを明示的に切り替えます。詳しい意味は{' '}
-        <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={DGX_POLICY_PROFILES.business_first.description}>
+        <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={resolvePolicyProfile('business_first', overview).description}>
           業務優先
         </abbr>
         ／
-        <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={DGX_POLICY_PROFILES.private_ok.description}>
+        <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={resolvePolicyProfile('private_ok', overview).description}>
           私用OK
         </abbr>
         ／
-        <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={DGX_POLICY_PROFILES.experiment_first.description}>
+        <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={resolvePolicyProfile('experiment_first', overview).description}>
           実験優先
         </abbr>
         のツールチップを参照。
@@ -133,12 +134,15 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
           <span className="font-semibold text-white">切替時にワークロード自動調整</span>
           <span
             className="ml-1 inline-block text-white/60"
-            title="業務優先／実験優先では補助ワークロード停止を追加します。私用OK は常に業務 LLM を退避し、このチェックは experiment-lab / agent-container の追加停止に効きます。"
+            title="業務優先／実験優先では補助ワークロード停止を追加します。私用OK ではチェック ON 時のみ業務 LLM 強制停止と experiment-lab / agent-container 停止が走ります。"
           >
             ⓘ
           </span>
         </span>
       </label>
+      <p className="text-xs leading-snug text-amber-300/90">
+        私用OK へ切替時、チェック OFF のままだと業務 LLM の強制停止は走りません（確認ダイアログのみ）。メモリ解放が必要ならチェックを ON にするか、画面上部の運用ガイド「業務→私用」を使ってください。
+      </p>
 
       {degraded ? (
         <p className="rounded border border-amber-400/30 bg-amber-500/15 px-2.5 py-1.5 text-sm text-amber-300">
@@ -146,7 +150,7 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
         </p>
       ) : null}
       <div className="flex flex-wrap gap-1.5">
-        {orderProfilesForUi().map((p) => (
+        {policyProfiles.map((p) => (
           <Button
             key={p.mode}
             type="button"
@@ -185,7 +189,7 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
                 })
               }
             >
-              直前モードへ戻す ({DGX_POLICY_PROFILES[rb].titleShort})
+              直前モードへ戻す ({resolvePolicyProfile(rb, overview).titleShort})
             </Button>
             <span className="text-sm text-white/60" title="ワークロード POST は送信しません">
               直前状態へ（自動調整なし）

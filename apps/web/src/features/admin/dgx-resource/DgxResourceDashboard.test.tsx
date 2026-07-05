@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { DgxResourceDashboard } from './DgxResourceDashboard';
@@ -42,6 +42,10 @@ vi.mock('./DgxResourceSparkStatusPanel', () => ({
 
 vi.mock('./DgxResourceTargetGrid', () => ({
   DgxResourceTargetGrid: () => <div>target-grid</div>,
+}));
+
+vi.mock('./DgxResourceOrchestrationPanel', () => ({
+  DgxResourceOrchestrationPanel: () => <div>orchestration-panel</div>,
 }));
 
 vi.mock('./DgxResourceWarmRuntimeNotice', () => ({
@@ -233,6 +237,8 @@ describe('DgxResourceDashboard', () => {
     expect(screen.getByRole('heading', { name: 'DGX リソース' })).toBeInTheDocument();
 
     expect(await screen.findByText('業務 Ready')).toBeInTheDocument();
+    expect(screen.getByLabelText('DGX 運用状態サマリー')).toBeInTheDocument();
+    expect(screen.getByText('問題なし')).toBeInTheDocument();
     expect(screen.getByText('Current State')).toBeInTheDocument();
     expect(screen.getByText('Model')).toBeInTheDocument();
     expect(screen.getByText('Memory')).toBeInTheDocument();
@@ -247,14 +253,38 @@ describe('DgxResourceDashboard', () => {
     expect(screen.getByText('primary-scenario-flow')).toBeInTheDocument();
   });
 
-  it('renders all model profiles in the main profile list', async () => {
+  it('renders all model profiles inside the maintenance section after expand', async () => {
     fetchDgxResourceOverview.mockResolvedValue(makeOverview());
     fetchDgxResourceEvents.mockResolvedValue({ events: [] });
 
     renderWithClient(<DgxResourceDashboard />);
 
-    expect(await screen.findByText('Qwen3.6 27B NVFP4')).toBeInTheDocument();
-    expect(screen.getByText('Qwen3.5 35B GGUF')).toBeInTheDocument();
-    expect(screen.getByText('Ornith 1.0 35B NVFP4')).toBeInTheDocument();
+    expect(await screen.findByText('業務 Ready')).toBeInTheDocument();
+    const details = screen.getByText('詳細・保守・ログ').closest('details');
+    expect(details).not.toHaveAttribute('open');
+    expect(screen.getByLabelText('モデルプロファイル')).not.toBeVisible();
+
+    fireEvent.click(screen.getByText('詳細・保守・ログ'));
+
+    expect(details).toHaveAttribute('open');
+    expect(await screen.findByLabelText('モデルプロファイル')).toBeVisible();
+    expect(screen.getByText('Qwen3.5 35B GGUF')).toBeVisible();
+    expect(screen.getByText('Ornith 1.0 35B NVFP4')).toBeVisible();
+  });
+
+  it('keeps maintenance panels collapsed until expanded and maintenance tab selected', async () => {
+    fetchDgxResourceOverview.mockResolvedValue(makeOverview());
+    fetchDgxResourceEvents.mockResolvedValue({ events: [] });
+
+    renderWithClient(<DgxResourceDashboard />);
+    expect(await screen.findByText('primary-scenario-flow')).toBeInTheDocument();
+    expect(screen.queryByText('policy-panel')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('詳細・保守・ログ'));
+    fireEvent.click(screen.getByRole('tab', { name: '保守' }));
+
+    expect(screen.getByText('policy-panel')).toBeVisible();
+    expect(screen.getByText('orchestration-panel')).toBeVisible();
+    expect(screen.getByText('target-grid')).toBeVisible();
   });
 });
