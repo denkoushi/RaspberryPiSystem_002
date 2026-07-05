@@ -8,6 +8,7 @@ import type {
   PartMeasurementDrawingOcrStatus
 } from '../types';
 import type { InspectionDrawingPoint } from './types';
+import type { InspectionDrawingMeasurementLabelSetting } from '@raspi-system/shared-types';
 
 type Props = {
   mode: InspectionDrawingToolbarMode;
@@ -30,6 +31,7 @@ type Props = {
   ocrCandidateLoading?: boolean;
   ocrCandidateError?: string | null;
   onApplyOcrCandidate?: (valueText: string) => void;
+  measurementLabelSettings?: readonly InspectionDrawingMeasurementLabelSetting[];
 };
 
 /** 作成/改版 — 右ペイン（設定 or テスト入力 + 測定点一覧） */
@@ -49,7 +51,8 @@ export function InspectionDrawingPointSidebar({
   ocrCandidateStatus,
   ocrCandidateLoading,
   ocrCandidateError,
-  onApplyOcrCandidate
+  onApplyOcrCandidate,
+  measurementLabelSettings
 }: Props) {
   const showHistoryPlaceHint = contentReadOnly && mode === 'place' && !selectedPoint;
 
@@ -67,6 +70,7 @@ export function InspectionDrawingPointSidebar({
             ocrCandidateLoading={ocrCandidateLoading}
             ocrCandidateError={ocrCandidateError}
             onApplyOcrCandidate={onApplyOcrCandidate}
+            measurementLabelSettings={measurementLabelSettings}
           />
         ) : null}
 

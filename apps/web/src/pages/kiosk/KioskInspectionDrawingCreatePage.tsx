@@ -1,3 +1,7 @@
+import {
+  buildDefaultInspectionDrawingMeasurementLabelSettings,
+  type InspectionDrawingMeasurementLabelSetting
+} from '@raspi-system/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
@@ -12,6 +16,7 @@ import {
   getPartMeasurementVisualTemplateOcrStatus,
   getResolvedClientKey,
   existsActivePartMeasurementTemplate,
+  listInspectionDrawingMeasurementLabelSettings,
   listPartMeasurementDrawingOcrCandidates,
   listPartMeasurementVisualTemplates,
   reviseKioskInspectionDrawingTemplate,
@@ -140,6 +145,9 @@ export function KioskInspectionDrawingCreatePage() {
   const [groupSaveMode, setGroupSaveMode] = useState<'group' | 'single'>('single');
   const [resourceAddCds, setResourceAddCds] = useState<string[]>([]);
   const [resourceAddBusy, setResourceAddBusy] = useState(false);
+  const [measurementLabelSettings, setMeasurementLabelSettings] = useState<
+    InspectionDrawingMeasurementLabelSetting[]
+  >(() => buildDefaultInspectionDrawingMeasurementLabelSettings());
   const { zoom, zoomIn, zoomOut, fitToView, resetZoom, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
 
   const {
@@ -243,6 +251,23 @@ export function KioskInspectionDrawingCreatePage() {
         : visualTemplateIdForOcr && visualOcrError
           ? visualOcrError
           : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const settings = await listInspectionDrawingMeasurementLabelSettings(clientKey);
+        if (!cancelled) setMeasurementLabelSettings(settings);
+      } catch {
+        if (!cancelled) {
+          setMeasurementLabelSettings(buildDefaultInspectionDrawingMeasurementLabelSettings());
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clientKey]);
 
   useEffect(() => {
     setOcrCandidatesByPointId({});
@@ -1316,6 +1341,7 @@ export function KioskInspectionDrawingCreatePage() {
             ocrCandidateStatus={selectedPointOcrState?.status ?? null}
             ocrCandidateLoading={selectedPointOcrState?.loading ?? false}
             ocrCandidateError={selectedPointOcrState?.error ?? null}
+            measurementLabelSettings={measurementLabelSettings}
             onApplyOcrCandidate={(valueText) => {
               if (!selectedPoint) return;
               updatePoint(selectedPoint.id, { nominalRaw: valueText });

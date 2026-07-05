@@ -1982,6 +1982,11 @@ enum PartMeasurementProcessGroup {
   CANDIDATE_FHINMEI_ONLY
 }
 
+enum PartMeasurementToleranceKind {
+  DIMENSION
+  GEOMETRIC
+}
+
 /// 部品測定テンプレの登録スコープ（候補抽出・キオスク表示の基準）
 enum PartMeasurementTemplateScope {
   THREE_KEY
@@ -2200,6 +2205,16 @@ model PartMeasurementTemplateItem {
   selfInspectionInspectorMeasurementValues SelfInspectionInspectorMeasurementValue[]
 
   @@index([templateId, sortOrder])
+}
+
+model PartMeasurementInspectionLabelSetting {
+  id            String                       @id @default(uuid())
+  label         String                       @unique @db.VarChar(120)
+  toleranceKind PartMeasurementToleranceKind
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+
+  @@index([toleranceKind, label], map: "PMInspectionLabelSetting_idx_kind_label")
 }
 
 model PartMeasurementSheet {

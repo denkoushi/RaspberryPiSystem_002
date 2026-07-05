@@ -1,3 +1,11 @@
+import {
+  buildDefaultInspectionDrawingMeasurementLabelSettings,
+  buildInspectionDrawingToleranceCandidateValues,
+  resolveInspectionDrawingToleranceKindForLabel,
+  type InspectionDrawingMeasurementLabelSetting
+} from '@raspi-system/shared-types';
+import { useId } from 'react';
+
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 
@@ -31,7 +39,10 @@ type Props = {
   ocrCandidateLoading?: boolean;
   ocrCandidateError?: string | null;
   onApplyOcrCandidate?: (valueText: string) => void;
+  measurementLabelSettings?: readonly InspectionDrawingMeasurementLabelSetting[];
 };
+
+const DEFAULT_MEASUREMENT_LABEL_SETTINGS = buildDefaultInspectionDrawingMeasurementLabelSettings();
 
 /** 作成/編集画面右欄 — 測定点の名称・基準・公差（本番・開発プレビュー共通） */
 export function InspectionDrawingPointSettingsPanel({
@@ -43,9 +54,20 @@ export function InspectionDrawingPointSettingsPanel({
   ocrCandidateStatus = null,
   ocrCandidateLoading = false,
   ocrCandidateError = null,
-  onApplyOcrCandidate
+  onApplyOcrCandidate,
+  measurementLabelSettings
 }: Props) {
-  const labelOptions = buildMeasurementLabelSelectOptions(point.name);
+  const toleranceCandidateListId = useId();
+  const effectiveMeasurementLabelSettings =
+    measurementLabelSettings && measurementLabelSettings.length > 0
+      ? measurementLabelSettings
+      : DEFAULT_MEASUREMENT_LABEL_SETTINGS;
+  const labelOptions = buildMeasurementLabelSelectOptions(point.name, effectiveMeasurementLabelSettings);
+  const toleranceKind = resolveInspectionDrawingToleranceKindForLabel(
+    point.name,
+    effectiveMeasurementLabelSettings
+  );
+  const toleranceCandidateValues = buildInspectionDrawingToleranceCandidateValues(toleranceKind);
   const showOcrCandidateRow =
     ocrCandidateLoading ||
     ocrCandidateError ||
@@ -112,11 +134,17 @@ export function InspectionDrawingPointSettingsPanel({
         </label>
       </div>
       <div className="grid grid-cols-2 gap-1.5">
+        <datalist id={toleranceCandidateListId}>
+          {toleranceCandidateValues.map((value) => (
+            <option key={value} value={value} />
+          ))}
+        </datalist>
         <label className="grid gap-1 text-[1rem] font-semibold">
           上限公差
           <Input
             type="text"
             inputMode="decimal"
+            list={toleranceCandidateListId}
             value={point.upperToleranceRaw}
             onChange={(e) => onChange({ upperToleranceRaw: e.target.value })}
             className={inspectionDrawingPointSettingInputClassName}
@@ -128,6 +156,7 @@ export function InspectionDrawingPointSettingsPanel({
           <Input
             type="text"
             inputMode="decimal"
+            list={toleranceCandidateListId}
             value={point.lowerToleranceRaw}
             onChange={(e) => onChange({ lowerToleranceRaw: e.target.value })}
             className={inspectionDrawingPointSettingInputClassName}

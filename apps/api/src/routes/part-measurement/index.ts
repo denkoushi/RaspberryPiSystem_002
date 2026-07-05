@@ -10,6 +10,7 @@ import {
   PartMeasurementTemplateCandidateService,
   PartMeasurementTemplateService,
   PartMeasurementVisualTemplateService,
+  InspectionDrawingMeasurementLabelSettingsService,
   SelfInspectionService
 } from '../../services/part-measurement/index.js';
 import { getPartMeasurementDrawingOcrScheduler } from '../../services/part-measurement/part-measurement-drawing-ocr.scheduler.js';
@@ -24,6 +25,7 @@ import { registerSelfInspectionRoutes } from './self-inspection.js';
 import { registerProductionTemplateCreateRoutes } from './production-templates-create.js';
 import { registerInspectionDrawingTemplateRoutes } from './inspection-drawing-templates.js';
 import { registerProductionTemplateLifecycleRoutes } from './production-templates-lifecycle.js';
+import { registerInspectionDrawingMeasurementLabelSettingRoutes } from './inspection-drawing-measurement-label-settings.js';
 import { authOnlyErrorCodes, type PartMeasurementRouteDeps } from './shared.js';
 
 export async function registerPartMeasurementRoutes(app: FastifyInstance): Promise<void> {
@@ -84,6 +86,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const paperImportService = new SelfInspectionPaperImportService();
     const templateCandidateService = new PartMeasurementTemplateCandidateService();
     const visualTemplateService = new PartMeasurementVisualTemplateService();
+    const measurementLabelSettingsService = new InspectionDrawingMeasurementLabelSettingsService();
     const drawingOcrService = getPartMeasurementDrawingOcrService();
 
     const enqueueDrawingOcrAndWake = async (
@@ -136,6 +139,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     paperImportService,
     templateCandidateService,
     visualTemplateService,
+    measurementLabelSettingsService,
     drawingOcrService,
     enqueueDrawingOcrAndWake,
     createInspectionDrawingEvaluationSetup
@@ -146,6 +150,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   registerProductionTemplateReadRoutes(app, deps);
   registerSelfInspectionRoutes(app, deps);
   registerProductionTemplateCreateRoutes(app, deps);
+  registerInspectionDrawingMeasurementLabelSettingRoutes(app, deps);
   registerInspectionDrawingTemplateRoutes(app, deps);
   registerProductionTemplateLifecycleRoutes(app, deps);
 }

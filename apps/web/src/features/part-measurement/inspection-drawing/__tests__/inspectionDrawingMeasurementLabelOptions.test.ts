@@ -20,4 +20,13 @@ describe('inspectionDrawingMeasurementLabelOptions', () => {
     const options = buildMeasurementLabelSelectOptions('');
     expect(options[0]).toEqual({ value: '', label: '選択してください' });
   });
+
+  it('uses configured label settings as select candidates', () => {
+    const options = buildMeasurementLabelSelectOptions('', [
+      { label: '幅', toleranceKind: 'dimension' },
+      { label: 'カスタム直角度', toleranceKind: 'geometric' }
+    ]);
+
+    expect(options.map((option) => option.value)).toEqual(['', '幅', 'カスタム直角度']);
+  });
 });

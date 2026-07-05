@@ -828,6 +828,19 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 - **デプロイ / 実機**: Pi5 + Pi4 キオスク 5 台へ順次 deploy 済み。Detach Run ID は `raspberrypi5=20260701-133452-21002`、`raspberrypi4=20260701-134131-2281`、`raspi4-robodrill01=20260701-134606-22779`、`raspi4-fjv60-80=20260701-134932-194`、`raspi4-kensaku-stonebase01=20260701-135305-6496`、`raspi4-sessaku-01=20260701-135926-3791`。Phase12 再検証は **PASS 45 / WARN 0 / FAIL 0**。現場実機目視は 2026-07-01 に OK 確認済み。
 - **未完了**: この変更範囲の未完了はなし。CI の Node.js 20 deprecation / audit 注記は別タスクで扱う。
 
+#### 2026-07-06 名称・公差種別設定と上下限公差候補 {#検査図面-名称-公差種別設定-2026-07-06}
+
+- **作業ブランチ**: `feat/inspection-drawing-tolerance-kind-settings`。
+- **目的**: 基準値は OCR 候補で入力しやすくなったため、上限公差・下限公差も名称に応じた候補で入力補助する。
+- **保存契約**: 既存どおり `PartMeasurementTemplateItem.nominalValue/lowerLimit/upperLimit` は絶対値を保持する。既存テンプレの公差値移行・補正・自動変換はしない。
+- **DB/API**: `PartMeasurementToleranceKind` enum と `PartMeasurementInspectionLabelSetting` を追加。`GET /api/part-measurement/inspection-drawing/measurement-label-settings` は管理者系 JWT またはキオスク `x-client-key` で読める。`PATCH` は `ADMIN` / `MANAGER` JWT のみ。
+- **既定ルール**: 名称に **`度`** を含む場合は **幾何公差**、それ以外は **寸法公差**。このため初期状態では `直角度` と `面粗度` は幾何公差、`幅` は寸法公差。
+- **管理設定**: 管理コンソール `/admin/tools/part-measurement-templates` の **検査図面 名称・公差種別** セクションで、名称ごとに `寸法公差 / 幾何公差` を一覧編集・追加・削除・保存できる。
+- **候補値**: 幾何公差は `0.001`〜`0.009`。寸法公差は `-0.9`〜`+0.9` を `0.1` 刻み、表示は `-0.1` / `0` / `+0.1` 形式。
+- **UI契約**: 上限公差・下限公差は同じ `datalist` 候補を出す。候補外の手入力は維持し、名称変更時も入力済み上下限公差は自動変更しない。API 取得失敗時は既定ルールへフォールバックする。
+- **主な実装**: `packages/shared-types/src/part-measurement/inspection-drawing-tolerance-kind.ts`、`InspectionDrawingPointSettingsPanel.tsx`、`InspectionDrawingMeasurementLabelSettingsSection.tsx`、`inspection-drawing-measurement-label-settings.service.ts`。
+- **ローカル検証**: 一時 Postgres で migration / integration test / `EXPLAIN`、Web focused test **41 files / 211 tests passed**、Web build pass。既存 DB/既存コンテナは変更しない。
+
 #### 先行デプロイ（2026-06-03）
 
 | ホスト | Detach Run ID | 実機 |

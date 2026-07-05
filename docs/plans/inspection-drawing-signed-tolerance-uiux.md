@@ -21,6 +21,7 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 - [x] **`main` マージ**（2026-06-03）
 - [ ] 残 Pi4×3 ロールアウト（`raspberrypi4` · `raspi4-robodrill01` · `raspi4-fjv60-80`）
 - [x] **レイアウト改善（作成/改版）** — 別 ExecPlan [inspection-drawing-create-layout-and-return-nav.md](./inspection-drawing-create-layout-and-return-nav.md) · **`5274f1ee`** · Pi5 Detach **`20260603-211122-29648`**
+- [x] (2026-07-06) 名称ごとの **寸法公差 / 幾何公差** 紐づけ設定と上下限公差候補を追加（`feat/inspection-drawing-tolerance-kind-settings`）
 
 ## Decision Log
 
@@ -36,6 +37,10 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
   Rationale: 「基準値未設定」表示と保存契約の一致。2026-06-03 / agent
 - Decision: 本番記録画面（`KioskInspectionDrawingEditPage`）は `valueInputMode` デフォルト（自由入力のみ）。
   Rationale: 変更範囲限定。2026-06-03 / agent
+- Decision: 検査図面の測定点名称に `度` を含む場合は既定で **幾何公差**、それ以外は **寸法公差** とし、管理コンソール `/admin/tools/part-measurement-templates` で名称ごとに上書きできる。
+  Rationale: 初期導入を手作業なしで始めつつ、`幅=幾何公差` など現場例外を設定で吸収する。2026-07-06 / agent
+- Decision: 上限公差・下限公差は同じ候補リストを `datalist` で提示し、候補外の手入力値は保持する。名称変更時も入力済み上下限は自動変更しない。
+  Rationale: 既存テンプレ・現場入力を壊さず、入力補助だけを足す。2026-07-06 / agent
 
 ## Surprises & Discoveries
 
@@ -51,6 +56,8 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 | 公差変換 | `apps/web/.../toleranceFields.ts` |
 | legacy・保存 | `apps/web/.../markerNumbering.ts` |
 | 名称候補 | `apps/web/.../inspectionDrawingMeasurementLabelOptions.ts` |
+| 名称・公差種別設定 | `packages/shared-types/src/part-measurement/inspection-drawing-tolerance-kind.ts` · `apps/web/.../InspectionDrawingMeasurementLabelSettingsSection.tsx` |
+| 設定 API | `apps/api/src/routes/part-measurement/inspection-drawing-measurement-label-settings.ts` · `apps/api/src/services/part-measurement/inspection-drawing-measurement-label-settings.service.ts` |
 | 候補値 | `apps/web/.../selfInspectionMeasurementValueOptions.ts` |
 | UI | `InspectionDrawingPointSettingsPanel.tsx` · `InspectionDrawingValuePanel.tsx` · `InspectionDrawingPointSummaryStrip.tsx` · `InspectionDrawingCreateHeaderBand.tsx` · `inspectionDrawingKioskUi.ts` |
 | 画面 | `KioskInspectionDrawingCreatePage.tsx` · `KioskSelfInspectionSessionPage.tsx` |
@@ -66,6 +73,18 @@ pnpm --filter @raspi-system/web build
 ```
 
 手動（Runbook §実機確認ポイント拡張）: テンプレ新規/改版（符号付き公差・名称・一覧）· 自主検査候補+手入力 · 本番記録は自由入力 · legacy 行の上下限維持。
+
+2026-07-06 追加検証:
+
+```bash
+pnpm --filter @raspi-system/shared-types build
+DATABASE_URL=postgresql://postgres:postgres@localhost:55433/borrow_return pnpm --filter @raspi-system/api prisma:deploy
+DATABASE_URL=postgresql://postgres:postgres@localhost:55433/borrow_return pnpm --filter @raspi-system/api test -- src/routes/__tests__/part-measurement.integration.test.ts
+pnpm --filter @raspi-system/web test -- src/features/part-measurement/inspection-drawing
+pnpm --filter @raspi-system/web build
+```
+
+一時 Postgres で migration / integration test / `EXPLAIN` を確認し、検証後に一時コンテナを削除する。
 
 ## デプロイ（先行検証 2026-06-03）
 

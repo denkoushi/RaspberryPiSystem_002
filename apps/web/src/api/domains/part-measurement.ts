@@ -31,6 +31,7 @@ import type {
   PartMeasurementVisualTemplateDto,
   ResolveTicketResponse,
 } from '../../features/part-measurement/types';
+import type { InspectionDrawingMeasurementLabelSetting } from '@raspi-system/shared-types';
 export async function resolvePartMeasurementTicket(
   body: {
     productNo: string;
@@ -302,6 +303,28 @@ export async function listKioskInspectionDrawingTemplates(
     }
   );
   return data.templates;
+}
+
+export async function listInspectionDrawingMeasurementLabelSettings(
+  clientKey?: string
+): Promise<InspectionDrawingMeasurementLabelSetting[]> {
+  const { data } = await api.get<{ settings: InspectionDrawingMeasurementLabelSetting[] }>(
+    '/part-measurement/inspection-drawing/measurement-label-settings',
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.settings;
+}
+
+export async function updateInspectionDrawingMeasurementLabelSettings(
+  body: { settings: InspectionDrawingMeasurementLabelSetting[] }
+): Promise<InspectionDrawingMeasurementLabelSetting[]> {
+  const { data } = await api.patch<{ settings: InspectionDrawingMeasurementLabelSetting[] }>(
+    '/part-measurement/inspection-drawing/measurement-label-settings',
+    body
+  );
+  return data.settings;
 }
 
 export async function resolveOrCreateSelfInspectionSession(

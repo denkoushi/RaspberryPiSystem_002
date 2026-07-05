@@ -14,6 +14,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { InspectionDrawingMeasurementLabelSettingsSection } from '../../features/part-measurement/admin/InspectionDrawingMeasurementLabelSettingsSection';
 import {
   buildTemplateItemsPayload,
   mapTemplateDtoToAdminFormFields
@@ -355,6 +356,8 @@ export function PartMeasurementTemplatesPage() {
     <div className="space-y-6 p-6">
       <h1 className="text-2xl font-bold text-slate-900">部品測定テンプレート</h1>
       {message ? <p className="text-sm font-semibold text-amber-800">{message}</p> : null}
+
+      <InspectionDrawingMeasurementLabelSettingsSection />
 
       <Card title={editingTemplateId ? 'テンプレートを編集' : '新規テンプレート（新バージョンとして登録）'}>
         <form onSubmit={handleSubmit} className="grid max-w-3xl gap-4">

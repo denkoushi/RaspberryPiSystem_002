@@ -306,6 +306,34 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 2. 目視 OK 後、必要 Pi4 を `--limit` 1 台ずつ（実績: **`raspberrypi5`** `20260603-154307-28721` · **`raspi4-kensaku-stonebase01`** `20260603-154818-15503`）。
 3. Pi4 はキオスク **強制リロード**（§6.6.4）後、[§実機確認ポイント（拡張）](#実機確認ポイント拡張) の 2–4 を実施。
 
+## 検査図面 名称・公差種別設定（2026-07-06） {#検査図面-名称-公差種別設定-2026-07-06}
+
+正本: [KB-320 §名称・公差種別設定](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-名称-公差種別設定-2026-07-06) · ブランチ **`feat/inspection-drawing-tolerance-kind-settings`** · API+Web+migration。
+
+### 管理者操作
+
+1. 管理コンソール `/admin/tools/part-measurement-templates` を開く。
+2. **検査図面 名称・公差種別** セクションで、名称と `寸法公差 / 幾何公差` を確認する。
+3. 例外がある場合だけ行を編集する。例: `幅` を幾何公差候補にしたい場合は `幅=幾何公差` にして **保存**。
+4. 名称追加時は重複を避ける。空名称・重複名称は保存エラー。
+
+### キオスク確認
+
+1. **検査図面** → 新規または編集で測定点を選択する。
+2. 名称 `直角度` で上限公差・下限公差の候補に `0.001`〜`0.009` が出ること。
+3. 名称 `幅` の既定候補が `-0.9`〜`+0.9`（`+0.1` 表示あり）であること。
+4. 管理設定で `幅=幾何公差` に保存後、キオスクを再読込し、`幅` の候補が `0.001`〜`0.009` に切り替わること。
+5. 候補外の手入力値（例: `0.026`）が入力欄に保持され、保存時も従来どおり絶対 `lowerLimit` / `upperLimit` へ変換されること。
+
+### API確認（任意）
+
+```bash
+curl -sS -H "x-client-key: <kiosk-client-key>" \
+  https://<pi5-host>/api/part-measurement/inspection-drawing/measurement-label-settings
+```
+
+`PATCH` はキオスクキーだけでは 401/403。管理者またはマネージャー JWT が必要。
+
 ## 検査図面 測定点位置微調整（十字ボタン · 2026-06-05） {#検査図面-測定点位置微調整-十字ボタン-2026-06-05}
 
 正本: [KB-320 §十字ボタン](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [ExecPlan](../plans/inspection-drawing-point-nudge-execplan.md) · [deployment §2026-06-05](../guides/deployment.md#kiosk-inspection-drawing-point-nudge-2026-06-05) · ブランチ **`feat/inspection-drawing-point-nudge`** · **`da9d2675`** · CI **`26996602603`** · **Web のみ**

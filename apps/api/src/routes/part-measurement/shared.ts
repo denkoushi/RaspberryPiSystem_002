@@ -17,6 +17,7 @@ import type {
   PartMeasurementTemplateCandidateService,
   PartMeasurementTemplateService,
   PartMeasurementVisualTemplateService,
+  InspectionDrawingMeasurementLabelSettingsService,
   SelfInspectionService
 } from '../../services/part-measurement/index.js';
 import type { SelfInspectionPaperReportIssueService } from '../../services/part-measurement/self-inspection-paper-report-issue.service.js';
@@ -270,6 +271,17 @@ export const listTemplatesQuerySchema = z.object({
 export const kioskInspectionDrawingTemplatesQuerySchema = listTemplatesQuerySchema.extend({
   /** 図面名の部分一致（大文字小文字無視）。空文字は無視 */
   visualName: z.string().max(200).optional()
+});
+
+export const inspectionDrawingToleranceKindSchema = z.enum(['dimension', 'geometric']);
+
+export const inspectionDrawingMeasurementLabelSettingSchema = z.object({
+  label: z.string().min(1).max(120),
+  toleranceKind: inspectionDrawingToleranceKindSchema
+});
+
+export const updateInspectionDrawingMeasurementLabelSettingsBodySchema = z.object({
+  settings: z.array(inspectionDrawingMeasurementLabelSettingSchema).max(300)
 });
 
 /** Query string boolean: only the literal "true" (case-insensitive) is true. */
@@ -934,6 +946,7 @@ export type PartMeasurementRouteDeps = {
   paperImportService: SelfInspectionPaperImportService;
   templateCandidateService: PartMeasurementTemplateCandidateService;
   visualTemplateService: PartMeasurementVisualTemplateService;
+  measurementLabelSettingsService: InspectionDrawingMeasurementLabelSettingsService;
   drawingOcrService: ReturnType<typeof getPartMeasurementDrawingOcrService>;
   enqueueDrawingOcrAndWake: (
     visualTemplateId: string | null | undefined,

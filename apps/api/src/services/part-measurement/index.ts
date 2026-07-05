@@ -8,6 +8,7 @@ export { PartMeasurementSessionService } from './part-measurement-session.servic
 export { PartMeasurementTemplateCandidateService } from './part-measurement-template-candidate.service.js';
 export { PartMeasurementTemplateService } from './part-measurement-template.service.js';
 export { PartMeasurementVisualTemplateService } from './part-measurement-visual-template.service.js';
+export { InspectionDrawingMeasurementLabelSettingsService } from './inspection-drawing-measurement-label-settings.service.js';
 export {
   PartMeasurementDrawingOcrService,
   PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY,

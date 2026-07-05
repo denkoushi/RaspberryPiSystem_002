@@ -27,5 +27,7 @@ export * from './loan-card-visual-palette.js';
 // キオスク UX 設定
 export * from './kiosk/index.js';
 
+// 部品測定モジュール
+export * from './part-measurement/index.js';
 
 

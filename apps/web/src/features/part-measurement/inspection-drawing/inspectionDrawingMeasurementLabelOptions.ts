@@ -1,38 +1,12 @@
-/**
- * 検査図面測定点名称の固定候補。
- * 将来は管理コンソール API から取得する adapter に差し替え可能。
- */
-export const INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS: readonly string[] = [
-  '外径',
-  '内径',
-  '全長',
-  '全幅',
-  '幅',
-  '高さ',
-  '穴径',
-  'ピッチ',
-  '深さ',
-  '面粗度',
-  '振れ',
-  '平行度',
-  '直角度',
-  '真直度',
-  '平面度',
-  '真円度',
-  '円筒度',
-  '傾斜度',
-  '位置度',
-  '同心度',
-  '同軸度',
-  '対称度',
-  '円周振れ',
-  '全振れ',
-  '輪郭度',
-  '形状',
-  '姿勢',
-  '位置',
-  '輪郭'
-] as const;
+import {
+  buildDefaultInspectionDrawingMeasurementLabelSettings,
+  DEFAULT_INSPECTION_DRAWING_MEASUREMENT_LABELS,
+  normalizeInspectionDrawingMeasurementLabel,
+  type InspectionDrawingMeasurementLabelSetting
+} from '@raspi-system/shared-types';
+
+/** 検査図面測定点名称の既定候補。 */
+export const INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS = DEFAULT_INSPECTION_DRAWING_MEASUREMENT_LABELS;
 
 export type MeasurementLabelSelectOption = {
   value: string;
@@ -40,16 +14,24 @@ export type MeasurementLabelSelectOption = {
 };
 
 /** select 用。候補外の現在値は一時 option として先頭に追加 */
-export function buildMeasurementLabelSelectOptions(currentValue: string): MeasurementLabelSelectOption[] {
+export function buildMeasurementLabelSelectOptions(
+  currentValue: string,
+  settings: readonly InspectionDrawingMeasurementLabelSetting[] = buildDefaultInspectionDrawingMeasurementLabelSettings()
+): MeasurementLabelSelectOption[] {
   const trimmed = currentValue.trim();
-  const base = INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS.map((label) => ({
-    value: label,
-    label
-  }));
+  const labels: string[] = [];
+  const seen = new Set<string>();
+  for (const setting of settings) {
+    const label = normalizeInspectionDrawingMeasurementLabel(setting.label);
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    labels.push(label);
+  }
+  const base = labels.map((label) => ({ value: label, label }));
   if (!trimmed) {
     return [{ value: '', label: '選択してください' }, ...base];
   }
-  if (INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS.includes(trimmed as (typeof INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS)[number])) {
+  if (seen.has(trimmed)) {
     return base;
   }
   return [{ value: trimmed, label: `${trimmed}（既存）` }, ...base];

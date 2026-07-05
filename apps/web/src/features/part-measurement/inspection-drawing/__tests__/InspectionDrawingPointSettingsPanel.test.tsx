@@ -19,6 +19,12 @@ const point: InspectionDrawingPoint = {
   decimalPlaces: 3
 };
 
+function datalistOptionValues(): string[] {
+  return Array.from(document.querySelectorAll('datalist option')).map(
+    (option) => (option as HTMLOptionElement).value
+  );
+}
+
 describe('InspectionDrawingPointSettingsPanel', () => {
   it('renders nudge controls above the settings title and omits tolerance helper text', () => {
     render(<InspectionDrawingPointSettingsPanel point={point} onChange={vi.fn()} />);
@@ -87,5 +93,70 @@ describe('InspectionDrawingPointSettingsPanel', () => {
 
     expect(screen.queryByText('OCR待ち')).not.toBeInTheDocument();
     expect(screen.queryByText('OCR処理中')).not.toBeInTheDocument();
+  });
+
+  it('shows geometric tolerance candidates for 直角度', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, name: '直角度' }}
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(datalistOptionValues()).toEqual([
+      '0.001',
+      '0.002',
+      '0.003',
+      '0.004',
+      '0.005',
+      '0.006',
+      '0.007',
+      '0.008',
+      '0.009'
+    ]);
+  });
+
+  it('shows dimension tolerance candidates for 幅', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, name: '幅' }}
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(datalistOptionValues()).toContain('-0.9');
+    expect(datalistOptionValues()).toContain('+0.9');
+    expect(datalistOptionValues()).not.toContain('0.001');
+  });
+
+  it('switches 幅 to geometric candidates when configured', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, name: '幅' }}
+        onChange={vi.fn()}
+        measurementLabelSettings={[{ label: '幅', toleranceKind: 'geometric' }]}
+      />
+    );
+
+    expect(datalistOptionValues()).toContain('0.009');
+    expect(datalistOptionValues()).not.toContain('+0.9');
+  });
+
+  it('keeps manual tolerance values outside candidates editable', () => {
+    const onChange = vi.fn();
+
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, name: '幅', upperToleranceRaw: '0.025' }}
+        onChange={onChange}
+      />
+    );
+
+    const upperToleranceInput = screen.getByLabelText('上限公差') as HTMLInputElement;
+    expect(upperToleranceInput.value).toBe('0.025');
+
+    fireEvent.change(upperToleranceInput, { target: { value: '0.026' } });
+
+    expect(onChange).toHaveBeenCalledWith({ upperToleranceRaw: '0.026' });
   });
 });

@@ -23,6 +23,7 @@ process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
 async function cleanPartMeasurementTables() {
+  await prisma.partMeasurementInspectionLabelSetting.deleteMany({});
   await prisma.selfInspectionRegistrationPolicyConfig.deleteMany({});
   await prisma.selfInspectionRecordApproval.deleteMany({});
   await prisma.selfInspectionMeasurementValue.deleteMany({});
@@ -318,6 +319,67 @@ describe('part-measurement templates API', () => {
       url: '/api/part-measurement/visual-templates/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
     });
     expect(response.statusCode).toBe(401);
+  });
+
+  it('returns default inspection drawing label tolerance settings to kiosk clients', async () => {
+    const client = await createTestClientDevice();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/inspection-drawing/measurement-label-settings',
+      headers: { 'x-client-key': client.apiKey }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const settings = response.json().settings as Array<{ label: string; toleranceKind: string }>;
+    const byLabel = new Map(settings.map((setting) => [setting.label, setting.toleranceKind]));
+    expect(byLabel.get('直角度')).toBe('geometric');
+    expect(byLabel.get('面粗度')).toBe('geometric');
+    expect(byLabel.get('幅')).toBe('dimension');
+  });
+
+  it('updates inspection drawing label tolerance settings with manager auth and returns them to kiosk clients', async () => {
+    const patchResponse = await app.inject({
+      method: 'PATCH',
+      url: '/api/part-measurement/inspection-drawing/measurement-label-settings',
+      headers: { ...createAuthHeader(managerToken), 'content-type': 'application/json' },
+      payload: {
+        settings: [
+          { label: '幅', toleranceKind: 'geometric' },
+          { label: 'カスタム寸法', toleranceKind: 'dimension' }
+        ]
+      }
+    });
+    expect(patchResponse.statusCode).toBe(200);
+
+    const client = await createTestClientDevice();
+    const getResponse = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/inspection-drawing/measurement-label-settings',
+      headers: { 'x-client-key': client.apiKey }
+    });
+
+    expect(getResponse.statusCode).toBe(200);
+    const settings = getResponse.json().settings as Array<{ label: string; toleranceKind: string }>;
+    const byLabel = new Map(settings.map((setting) => [setting.label, setting.toleranceKind]));
+    expect(byLabel.get('幅')).toBe('geometric');
+    expect(byLabel.get('カスタム寸法')).toBe('dimension');
+    expect(byLabel.get('直角度')).toBe('geometric');
+  });
+
+  it('rejects inspection drawing label tolerance updates with only kiosk client key', async () => {
+    const client = await createTestClientDevice();
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/part-measurement/inspection-drawing/measurement-label-settings',
+      headers: { 'x-client-key': client.apiKey },
+      payload: {
+        settings: [{ label: '幅', toleranceKind: 'geometric' }]
+      }
+    });
+
+    expect([401, 403]).toContain(response.statusCode);
   });
 
   it('returns visual template by id for GET /api/part-measurement/visual-templates/:id', async () => {
