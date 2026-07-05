@@ -17,7 +17,7 @@ related_docs:
 validation: unit tests (vitest, pytest); DGX real-machine apply deferred
 open_items:
   - Post-apply observation: spot-check photo_label / document_summary logs over normal operation
-  - Optional: throughput baseline comparison (fp8 KV vs f16) if regression is suspected
+  - Business-model MoE switch decision (dense 27B ~12.4 tok/s is bandwidth-bound; MoE 35B-A3B measured ~62 tok/s) — product decision on context/vision/tooling tradeoffs
 supersedes: null
 superseded_by: null
 ---
@@ -46,6 +46,7 @@ Optimize DGX Spark as the AI inference engine across four areas:
 - (2026-07-05 PM) Committed on branch `feat/dgx-spark-optimization` (3 commits: dgx perf params / inference decoupling / dgx-resource UI+metadata). Pre-commit lint fixed 2 import-order errors in new Web files.
 - (2026-07-05 PM) DGX real-machine apply done (Mac → `ubudgxkoushi@100.118.82.72`): `vllm_command_builder.py` / `profile_launcher.py` / Ornith manifest were already applied (backup dir `bin/backup-20260705-130209-gb10-perf`); 27B manifest applied after backing up to the same dir. Blue backend restarted via gateway `/stop-force` → `/start` (`modelProfileId=business_qwen36_27b_nvfp4`). Launch command verified: `VLLM_MARLIN_USE_ATOMIC_ADD=1` / `--moe-backend marlin` / no `--kv-cache-dtype` / no `--enable-chunked-prefill` / `--enable-prefix-caching` / `--max-model-len 16384` all OK. Cold start ~310s (< 900s Pi5 timeout). `/v1/models` 200 (`max_model_len: 16384`). Japanese chat output clean (no repetition), decode ~12.3 tok/s (256 tok / ~20.7s, single request; no fp8-KV baseline measured before the change). Pi5 → DGX `/healthz` 200, Pi5 `/healthz` 200.
 - (2026-07-05 PM) Finding: the deployed 27B (`Qwen3_5ForConditionalGeneration`, `sakamakismile/Qwen3.6-27B-NVFP4`) is a dense model (`num_experts: None`), so `--moe-backend marlin` and the chunked-prefill SSM+MoE concern do not apply to it; both settings are harmless and remain correct for future MoE profiles. `VLLM_MARLIN_USE_ATOMIC_ADD=1` and f16 KV remain directly relevant (NVFP4 weights use Marlin GEMM on SM121).
+- (2026-07-05 PM) Benchmark sweep on real machine (Composer subagent): C1 baseline (FlashInferCutlassNvFp4LinearKernel) decode median 12.41 tok/s / TTFT 3.64s (2k-token prompt) is the fastest valid config. `attentionBackend: TRITON_ATTN` slightly slower (12.29). `nvfp4GemmBackend: marlin` crashes at weight load for this checkpoint (`size_n=96` not divisible by Marlin tile 64) — do not set it on this profile. Also learned: control-server must be restarted to pick up a deployed `profile_launcher.py` (long-running import). `profile_launcher.py` gained `nvfp4GemmBackend` mapping (repo + DGX, pytest 55 passed). System restored healthy on C1. Details: KB-395.
 
 ## Phases
 

@@ -60,6 +60,7 @@ class ProfileLauncherTests(unittest.TestCase):
                                 "disableCustomAllReduce": True,
                                 "tensorParallelSize": 2,
                                 "moeBackend": "marlin",
+                                "nvfp4GemmBackend": "marlin",
                                 "enableChunkedPrefill": False,
                                 "enablePrefixCaching": True,
                             },
@@ -81,6 +82,7 @@ class ProfileLauncherTests(unittest.TestCase):
             self.assertEqual(env["VLLM_DISABLE_CUSTOM_ALL_REDUCE"], "true")
             self.assertEqual(env["VLLM_TENSOR_PARALLEL_SIZE"], "2")
             self.assertEqual(env["VLLM_MOE_BACKEND"], "marlin")
+            self.assertEqual(env["VLLM_NVFP4_GEMM_BACKEND"], "marlin")
             self.assertEqual(env["VLLM_ENABLE_CHUNKED_PREFILL"], "false")
             self.assertEqual(env["VLLM_ENABLE_PREFIX_CACHING"], "true")
             self.assertEqual(env["VLLM_SERVED_MODEL_NAME"], "system-prod-primary")

@@ -67,7 +67,8 @@ All changes are backward compatible: unset fields/env vars preserve current beha
 
 ## Notes
 
-- The current 27B profile model (`Qwen3_5ForConditionalGeneration`) turned out to be dense, not MoE. `moeBackend: marlin` and the chunked-prefill guard are inert for it but remain correct defaults for future NVFP4 MoE profiles on SM121. `VLLM_MARLIN_USE_ATOMIC_ADD=1` and f16 KV apply regardless (NVFP4 weight GEMM uses Marlin).
+- The current 27B profile model (`Qwen3_5ForConditionalGeneration`) turned out to be dense, not MoE. `moeBackend: marlin` and the chunked-prefill guard are inert for it but remain correct defaults for future NVFP4 MoE profiles on SM121. `VLLM_MARLIN_USE_ATOMIC_ADD=1` and f16 KV apply regardless when a Marlin path is used.
+- Benchmark sweep (2026-07-05, KB-395): baseline FlashInferCutlass kernel is the fastest valid config (12.41 tok/s decode / TTFT 3.64s); `MarlinNvFp4LinearKernel` is incompatible with this checkpoint (`size_n=96` vs tile 64) and `TRITON_ATTN` is slightly slower. The "force Marlin on SM121" community guidance is checkpoint-dependent; verify per model.
 
 ## Supersedes / Superseded By
 

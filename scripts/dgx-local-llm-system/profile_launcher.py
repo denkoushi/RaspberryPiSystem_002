@@ -22,6 +22,7 @@ _VLLM_RUNTIME_ENV_MAP: dict[str, str] = {
     "disableCustomAllReduce": "VLLM_DISABLE_CUSTOM_ALL_REDUCE",
     "tensorParallelSize": "VLLM_TENSOR_PARALLEL_SIZE",
     "moeBackend": "VLLM_MOE_BACKEND",
+    "nvfp4GemmBackend": "VLLM_NVFP4_GEMM_BACKEND",
     "attentionBackend": "VLLM_ATTENTION_BACKEND",
     "enableChunkedPrefill": "VLLM_ENABLE_CHUNKED_PREFILL",
     "enablePrefixCaching": "VLLM_ENABLE_PREFIX_CACHING",
