@@ -30,9 +30,9 @@ The first observable success is text-only: StackChan sends a chat request to the
 - [x] (2026-07-05 11:12Z) Prepared secret-free SD YAML templates for `AI_StackChan_Ex` using `llm.type: 4` and `customEndpoint: http://<PRIVATE_PI5_LAN_IP>:18080/v1/chat/completions`.
 - [x] (2026-07-05 11:20Z) Received reviewer additional review with no blocking findings for the OpenAI-compatible error shape, SD templates, build-only evidence, and pre-flash gap analysis.
 - [x] (2026-07-05 11:40Z) Hardened the OpenAI-compatible bridge docs and tests. Added bearer-token success coverage for `/v1/chat/completions`, documented the endpoint/error-shape split in the bridge README, and added a private Pi5 loopback smoke to the deploy runbook. Local bridge tests now run 36 tests.
+- [x] (2026-07-05 13:20Z) Text-only E2E PASS (reviewer-approved): StackChan `/chat?text` → private Pi5 `POST /v1/chat/completions` 200 → audible non-fallback reply.
 - [ ] Reassess the flash gate with the user. Do not flash StackChan until the gap analysis and runbook update are complete, build-only checks pass, reviewer approves, and the user explicitly approves the exact flash attempt.
-- [ ] Validate text-only StackChan to Pi5 to DGX Spark to spoken response.
-- [ ] Choose and implement the voice path after text-only success: either current `AI_StackChan_Ex` native STT/TTS configuration, Pi5-compatible STT/TTS endpoints, or a minimal one-turn voice bridge if native configuration cannot target the private Pi5 cleanly.
+- [x] (2026-07-05 13:26Z) Scope-2 prep (reviewer-approved for commit-readiness, no upload): added [`apply_stt_private_bridge.py`](../../scripts/stackchan-ai-stackchan-ex/apply_stt_private_bridge.py) patching `CloudSpeechClient.cpp` for optional `STT_BRIDGE_URL` → `POST /api/stackchan/stt` with `{ok:true,text:...}` parsing; hermetic unit tests + fixture; build-only SUCCESS on `m5stack-cores3` with placeholder flags. Upload/flash still requires separate review.
 - [ ] Validate voice end-to-end and update this plan, runbooks, and KB with the final source of truth.
 
 ## Surprises & Discoveries

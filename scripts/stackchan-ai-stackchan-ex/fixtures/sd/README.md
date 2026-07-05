@@ -30,6 +30,31 @@ cp scripts/stackchan-ai-stackchan-ex/fixtures/sd/yaml/SC_SecConfig.spark.templat
 
 DGX / Spark の URL や token は SD に置かない。StackChan が知るのは private Pi5 の LAN URL だけにする。
 
+### 自動配置スクリプト（Mac + 取り外した SD）
+
+[`../../prepare-spark-sd.sh`](../../prepare-spark-sd.sh) は `/Volumes/<SD_VOLUME_NAME>` 配下だけを書き込む。実値は環境変数で渡し、標準出力には endpoint やボリューム名を出さない。**デフォルトは dry-run**（`STACKCHAN_SD_APPLY=1` で実書き込み）。既存 `SC_ExConfig.yaml` / `SC_SecConfig.yaml` がある場合は `STACKCHAN_SD_OVERWRITE=1` が必要（上書き前に `.bak.<timestamp>` を作成）。
+
+**Operator 手順（2 段階・ローカルターミナルのみ）**
+
+1. **Phase A（dry-run）**: `STACKCHAN_SD_APPLY` は**未設定**のまま `prepare-spark-sd.sh` を実行。`[DRY-RUN]` のみ出ることを確認。
+2. **Phase B（apply）**: Phase A 確認後、`STACKCHAN_SD_OVERWRITE=1`（既存 YAML がある場合）と `STACKCHAN_SD_APPLY=1` を付けて再実行。汎用 `[OK]` のみ期待。
+3. agmsg/チャットへボリューム名・IP・SSID・パスワード・token・生成 YAML を貼らない。
+
+`wifi.txt` は書き込まない（`yaml/SC_SecConfig.yaml` を正とする。旧 runbook の `wifi.txt` 併記は bring-up 安定化用の別経路）。
+
+## Scope-2 voice prep (STT_BRIDGE, build-only)
+
+Prep-only patch in repo (no SD write, no upload until separate review):
+
+- Patch script: [`../../apply_stt_private_bridge.py`](../../apply_stt_private_bridge.py) — idempotent `CloudSpeechClient.cpp` change; `--revert` removes `/* STT_BRIDGE_PATCH_* */` blocks.
+- Build flags (operator-local placeholders only):
+  `STT_BRIDGE_URL=http://<PRIVATE_PI5_LAN_IP>:18080/api/stackchan/stt`
+  optional `STT_BRIDGE_STACKCHAN_TOKEN` if bridge enforces token.
+- When `STT_BRIDGE_URL` is empty/unset at build time, upstream Google STT path is unchanged.
+- SD `llm.type: 4` / `customEndpoint` stays as text-only proof; no utterance overlay.
+- Rollback: `apply_stt_private_bridge.py --revert` on firmware tree, or reflash current known-good binary; stop on black screen / serial loss / display regression.
+- Upload requires separate reviewer approval (masked flags, artifact, serial watch plan).
+
 ## SC_BasicConfig.yaml
 
 | 項目 | 値 |

@@ -272,6 +272,15 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
 - [ ] LLM 応答待ちが長すぎる場合は **`STACKCHAN_CHAT_DEFAULT_MAX_TOKENS=160` / `STACKCHAN_CHAT_MAX_TOKENS_CAP=192` / `STACKCHAN_CHAT_ALLOW_THINKING=false`** が反映されていることを確認する
 - [ ] ウェイクワードまたは UI から発話入力後、**bridge ログに `POST /api/stackchan/chat` 系が増える**こと（STT 結果がテキストとして LLM に渡っている証拠）
 
+#### Scope-2 prep — STT_BRIDGE firmware patch（build-only、upload 別レビュー）
+
+text-only 完了後、upstream YAML だけでは Pi5 `/api/stackchan/stt` に向けられない。最小経路は [`apply_stt_private_bridge.py`](../../scripts/stackchan-ai-stackchan-ex/apply_stt_private_bridge.py) で `CloudSpeechClient.cpp` に optional `STT_BRIDGE_URL` を焼く（**utterance overlay は使わない**）。
+
+- **prep のみ（現時点）**: temp clone で `apply_stt_private_bridge.py` → `pio run -e m5stack-cores3`（`STT_BRIDGE_URL` はローカル build flag のプレースホルダのみ）
+- **SD**: `llm.type: 4` / `customEndpoint` は text-only 実績のまま（Scope-1 SD 書き込みは reviewer が不要と判断）
+- **upload 前**: reviewer 別承認（マスク済み flags、ロールバック用既知良好ファーム、serial 監視、黒画面/serial 喪失で停止）
+- 詳細: [`stackchan-spark-voice-assistant-restart-2026-07.md`](../plans/stackchan-spark-voice-assistant-restart-2026-07.md) · [`fixtures/sd/README.md`](../../scripts/stackchan-ai-stackchan-ex/fixtures/sd/README.md)
+
 ### CoreS3 実機の WakeWord 操作（2026-05-11 復旧仕様）
 
 - CoreS3 の物理ボタン非依存構成では、画面タッチを `BtnA` / `BtnB(long)` 相当に割り当てたファームを使う。
