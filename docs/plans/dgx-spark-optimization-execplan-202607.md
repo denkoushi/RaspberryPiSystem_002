@@ -16,7 +16,8 @@ related_docs:
   - docs/decisions/ADR-20260428-dgx-active-backend-prod-default.md
 validation: unit tests (vitest, pytest); DGX real-machine apply deferred
 open_items:
-  - DGX real-machine apply and benchmark (user instruction required)
+  - Post-apply observation: spot-check photo_label / document_summary logs over normal operation
+  - Optional: throughput baseline comparison (fp8 KV vs f16) if regression is suspected
 supersedes: null
 superseded_by: null
 ---
@@ -42,6 +43,9 @@ Optimize DGX Spark as the AI inference engine across four areas:
 - (2026-07-05) Phase 3 done (Composer subagent): API overview gained additive `overview.uiMetadata` (4 scenarios + 3 policy modes, Japanese text copied verbatim from Web metadata files). Web resolver `dgxResourceUiMetadataResolve.ts` prefers API metadata with local fallback. scenario-planner / policy-arbitrator left unchanged (already readable; no churn). API 98 + Web 34 tests passed.
 - (2026-07-05) Phase 4 done (Composer subagent): new `DgxResourceStatusSummary` at top of dashboard (mode / Active Model / Pi5 intent with mismatch warning / next-action hint), operator console directly below, maintenance panels grouped in collapsed `<details>` "詳細・保守・ログ". Policy panel caution for the applyWorkloadChanges=false trap. `cautionsJa` wired to scenario UI. Web dgx-resource 40 tests passed.
 - (2026-07-05) Phase 5 done: ADR-20260705 created, docs/INDEX.md links added, runbook apply/rollback section (Phase 1). Final verification: Web full suite 1253 passed (252 files), API changed-scope vitest green, API tsc + eslint green (1 duplicate-import warning fixed), DGX pytest 55 passed. No temporary Docker resources were created (pre-existing `postgres-test-local` untouched).
+- (2026-07-05 PM) Committed on branch `feat/dgx-spark-optimization` (3 commits: dgx perf params / inference decoupling / dgx-resource UI+metadata). Pre-commit lint fixed 2 import-order errors in new Web files.
+- (2026-07-05 PM) DGX real-machine apply done (Mac → `ubudgxkoushi@100.118.82.72`): `vllm_command_builder.py` / `profile_launcher.py` / Ornith manifest were already applied (backup dir `bin/backup-20260705-130209-gb10-perf`); 27B manifest applied after backing up to the same dir. Blue backend restarted via gateway `/stop-force` → `/start` (`modelProfileId=business_qwen36_27b_nvfp4`). Launch command verified: `VLLM_MARLIN_USE_ATOMIC_ADD=1` / `--moe-backend marlin` / no `--kv-cache-dtype` / no `--enable-chunked-prefill` / `--enable-prefix-caching` / `--max-model-len 16384` all OK. Cold start ~310s (< 900s Pi5 timeout). `/v1/models` 200 (`max_model_len: 16384`). Japanese chat output clean (no repetition), decode ~12.3 tok/s (256 tok / ~20.7s, single request; no fp8-KV baseline measured before the change). Pi5 → DGX `/healthz` 200, Pi5 `/healthz` 200.
+- (2026-07-05 PM) Finding: the deployed 27B (`Qwen3_5ForConditionalGeneration`, `sakamakismile/Qwen3.6-27B-NVFP4`) is a dense model (`num_experts: None`), so `--moe-backend marlin` and the chunked-prefill SSM+MoE concern do not apply to it; both settings are harmless and remain correct for future MoE profiles. `VLLM_MARLIN_USE_ATOMIC_ADD=1` and f16 KV remain directly relevant (NVFP4 weights use Marlin GEMM on SM121).
 
 ## Phases
 

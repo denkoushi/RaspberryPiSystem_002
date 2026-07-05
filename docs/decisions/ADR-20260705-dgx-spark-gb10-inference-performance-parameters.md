@@ -63,6 +63,11 @@ All changes are backward compatible: unset fields/env vars preserve current beha
 
 - pytest `scripts/dgx-local-llm-system/tests/` 55 passed (command assembly and launcher env mapping fixed by tests).
 - Real-machine validation checklist in runbook: `/v1/models` ready, admin chat, representative photo_label / document_summary, log inspection for `--moe-backend marlin` and absence of `--enable-chunked-prefill`.
+- Real-machine apply (2026-07-05): blue backend restarted with `business_qwen36_27b_nvfp4`; launch command carried all six intended parameters; cold start ~310s; `/v1/models` 200 with `max_model_len: 16384`; Japanese chat output clean with no repetition loops; decode ~12.3 tok/s single-request.
+
+## Notes
+
+- The current 27B profile model (`Qwen3_5ForConditionalGeneration`) turned out to be dense, not MoE. `moeBackend: marlin` and the chunked-prefill guard are inert for it but remain correct defaults for future NVFP4 MoE profiles on SM121. `VLLM_MARLIN_USE_ATOMIC_ADD=1` and f16 KV apply regardless (NVFP4 weight GEMM uses Marlin).
 
 ## Supersedes / Superseded By
 
