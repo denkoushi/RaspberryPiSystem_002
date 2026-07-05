@@ -110,6 +110,55 @@ class StackchanChatCoreTests(unittest.TestCase):
         self.assertIsNone(validated)
         self.assertEqual(err, "messages must be non-empty array")
 
+    def test_validate_openai_compatible_payload_accepts_snake_case_tokens(self):
+        module = load_module()
+
+        validated, err = module.validate_openai_compatible_chat_payload(
+            {
+                "model": "spark-qwen",
+                "messages": [{"role": "user", "content": "こんにちは"}],
+                "max_tokens": 48,
+                "temperature": 0.1,
+                "stream": False,
+            }
+        )
+
+        self.assertIsNone(err)
+        self.assertIsNotNone(validated)
+        self.assertEqual(validated.max_tokens, 48)
+        self.assertEqual(validated.temperature, 0.1)
+        self.assertEqual(validated.messages, [{"role": "user", "content": "こんにちは"}])
+
+    def test_validate_openai_compatible_payload_rejects_streaming(self):
+        module = load_module()
+
+        validated, err = module.validate_openai_compatible_chat_payload(
+            {
+                "model": "spark-qwen",
+                "messages": [{"role": "user", "content": "こんにちは"}],
+                "stream": True,
+            }
+        )
+
+        self.assertIsNone(validated)
+        self.assertEqual(err, "streaming responses are not supported")
+
+    def test_validate_openai_compatible_payload_caps_max_completion_tokens(self):
+        module = load_module()
+
+        validated, err = module.validate_openai_compatible_chat_payload(
+            {
+                "model": "spark-qwen",
+                "messages": [{"role": "user", "content": "こんにちは"}],
+                "max_completion_tokens": 4096,
+            },
+            module.ChatValidationConfig(max_tokens_cap=96),
+        )
+
+        self.assertIsNone(err)
+        self.assertIsNotNone(validated)
+        self.assertEqual(validated.max_tokens, 96)
+
     def test_workflow_retries_http_502_once_after_runtime_recovery(self):
         module = load_module()
         request = module.ValidatedChatRequest(

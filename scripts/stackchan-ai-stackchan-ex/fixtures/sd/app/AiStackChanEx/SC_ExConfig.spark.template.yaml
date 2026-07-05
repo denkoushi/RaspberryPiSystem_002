@@ -1,0 +1,25 @@
+## AI_StackChan_Ex app config for the Spark-backed private Pi5 bridge.
+## Copy to SD as: /app/AiStackChanEx/SC_ExConfig.yaml
+## Replace <PRIVATE_PI5_LAN_IP> before use. Do not put DGX secrets on the SD card.
+
+llm:
+  type: 4
+  model: "spark-qwen"
+  customEndpoint: "http://<PRIVATE_PI5_LAN_IP>:18080/v1/chat/completions"
+
+tts:
+  type: 0
+  model: ""
+  voice: "3"
+
+stt:
+  type: 0
+  model: ""
+
+wakeword:
+  type: 0
+  keyword: ""
+
+moduleLLM:
+  rxPin: 18
+  txPin: 17

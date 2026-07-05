@@ -95,6 +95,25 @@ def validate_chat_payload(
     ), None
 
 
+def validate_openai_compatible_chat_payload(
+    payload: dict[str, Any] | None,
+    config: ChatValidationConfig | None = None,
+) -> tuple[ValidatedChatRequest | None, str | None]:
+    """Validate OpenAI-compatible Chat Completions JSON for StackChan customEndpoint mode."""
+    if not isinstance(payload, dict):
+        return None, "invalid json payload"
+    if payload.get("stream") is True:
+        return None, "streaming responses are not supported"
+
+    adapted = dict(payload)
+    if "maxTokens" not in adapted:
+        if "max_tokens" in adapted:
+            adapted["maxTokens"] = adapted["max_tokens"]
+        elif "max_completion_tokens" in adapted:
+            adapted["maxTokens"] = adapted["max_completion_tokens"]
+    return validate_chat_payload(adapted, config)
+
+
 def build_upstream_dict(req: ValidatedChatRequest, model: str) -> dict[str, Any]:
     return {
         "model": model,

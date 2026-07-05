@@ -18,6 +18,7 @@ from stackchan_chat_core import (
     ChatSuccess,
     ChatValidationConfig,
     format_simple_success,
+    validate_openai_compatible_chat_payload,
     validate_chat_payload,
 )
 from stackchan_utterance_core import (
@@ -37,6 +38,7 @@ except ValueError:
     REQUEST_READ_TIMEOUT_SEC = 0.0
 
 STACKCHAN_TOKEN = os.getenv("STACKCHAN_TOKEN", "")
+OPENAI_COMPATIBLE_CHAT_PATHS = {"/v1/chat/completions", "/v1/chat/completions/"}
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -91,6 +93,38 @@ def _error_response(
     _json_response(handler, status_code, payload)
 
 
+def _openai_error_response(
+    handler: BaseHTTPRequestHandler,
+    status_code: int,
+    code: str,
+    message: str,
+    retryable: bool = False,
+    details: dict | None = None,
+) -> None:
+    if status_code == 401:
+        error_type = "authentication_error"
+    elif status_code == 408:
+        error_type = "timeout_error"
+    elif status_code == 429:
+        error_type = "rate_limit_error"
+    elif status_code >= 500:
+        error_type = "server_error"
+    else:
+        error_type = "invalid_request_error"
+
+    error: dict[str, Any] = {
+        "message": message,
+        "type": error_type,
+        "param": None,
+        "code": code,
+    }
+    if retryable:
+        error["retryable"] = True
+    if details:
+        error["details"] = details
+    _json_response(handler, status_code, {"error": error})
+
+
 def _read_json(handler: BaseHTTPRequestHandler):
     try:
         content_length = int(handler.headers.get("Content-Length", "0"))
@@ -103,6 +137,17 @@ def _read_json(handler: BaseHTTPRequestHandler):
         return json.loads(raw.decode("utf-8")), None
     except json.JSONDecodeError:
         return None, "invalid json"
+
+
+def _is_authorized(handler: BaseHTTPRequestHandler) -> bool:
+    if not STACKCHAN_TOKEN:
+        return True
+    client_token = handler.headers.get("X-Stackchan-Token", "")
+    if client_token == STACKCHAN_TOKEN:
+        return True
+    authorization = handler.headers.get("Authorization", "")
+    prefix = "Bearer "
+    return authorization.startswith(prefix) and authorization[len(prefix) :] == STACKCHAN_TOKEN
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -143,7 +188,12 @@ class Handler(BaseHTTPRequestHandler):
         except socket.timeout:
             self.log_message("request read timeout after %.1fs", REQUEST_READ_TIMEOUT_SEC)
             try:
-                _error_response(self, 408, "REQUEST_TIMEOUT", "request read timed out")
+                error_response = (
+                    _openai_error_response
+                    if urlsplit(self.path).path in OPENAI_COMPATIBLE_CHAT_PATHS
+                    else _error_response
+                )
+                error_response(self, 408, "REQUEST_TIMEOUT", "request read timed out")
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass
         finally:
@@ -162,20 +212,21 @@ class Handler(BaseHTTPRequestHandler):
         if (
             route_path not in raw_paths
             and route_path not in simple_paths
+            and route_path not in OPENAI_COMPATIBLE_CHAT_PATHS
             and route_path not in stt_paths
             and route_path not in utterance_paths
         ):
             _error_response(self, 404, "NOT_FOUND", "endpoint not found")
             return
         simple_mode = route_path in simple_paths
+        openai_compatible_mode = route_path in OPENAI_COMPATIBLE_CHAT_PATHS
         stt_mode = route_path in stt_paths
         utterance_mode = route_path in utterance_paths
+        error_response = _openai_error_response if openai_compatible_mode else _error_response
 
-        if STACKCHAN_TOKEN:
-            client_token = self.headers.get("X-Stackchan-Token", "")
-            if client_token != STACKCHAN_TOKEN:
-                _error_response(self, 401, "UNAUTHORIZED", "invalid stackchan token")
-                return
+        if not _is_authorized(self):
+            error_response(self, 401, "UNAUTHORIZED", "invalid stackchan token")
+            return
 
         if utterance_mode:
             content_type = self.headers.get("Content-Type", "")
@@ -291,11 +342,12 @@ class Handler(BaseHTTPRequestHandler):
 
         payload, err = _read_json(self)
         if err:
-            _error_response(self, 400, "BAD_REQUEST", err)
+            error_response(self, 400, "BAD_REQUEST", err)
             return
-        validated, verr = validate_chat_payload(payload if isinstance(payload, dict) else None, CHAT_VALIDATION_CONFIG)
+        validator = validate_openai_compatible_chat_payload if openai_compatible_mode else validate_chat_payload
+        validated, verr = validator(payload if isinstance(payload, dict) else None, CHAT_VALIDATION_CONFIG)
         if verr or validated is None:
-            _error_response(self, 400, "BAD_REQUEST", verr or "bad request")
+            error_response(self, 400, "BAD_REQUEST", verr or "bad request")
             return
 
         workflow = ChatCompletionWorkflow(self.dgx_client, self.dgx_model, self.home_assistant_client)
@@ -309,7 +361,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if isinstance(outcome, ChatFailure):
-            _error_response(
+            error_response(
                 self,
                 outcome.http_status,
                 outcome.code,

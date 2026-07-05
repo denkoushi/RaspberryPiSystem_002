@@ -1,0 +1,12 @@
+## AI_StackChan_Ex private settings template.
+## Copy to SD as: /yaml/SC_SecConfig.yaml
+## Replace placeholders manually. Keep real Wi-Fi and token values out of git.
+
+wifi:
+  ssid: "<HOME_WIFI_SSID>"
+  password: "<HOME_WIFI_PASSWORD>"
+
+apikey:
+  stt: "<STT_API_KEY_OR_DUMMY>"
+  aiservice: "<STACKCHAN_TOKEN_OR_DUMMY>"
+  tts: "<TTS_API_KEY_OR_DUMMY>"

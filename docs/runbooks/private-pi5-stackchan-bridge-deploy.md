@@ -1,6 +1,6 @@
 # 私用 Pi5 `stackchan-bridge` 標準デプロイ
 
-最終更新: 2026-05-23
+最終更新: 2026-07-05
 
 ## 目的
 
@@ -83,6 +83,25 @@ ssh <private-pi5-user>@<private-pi5-host> \
 
 - `systemctl is-active` が `active`
 - `/healthz` が `ok`
+
+**OpenAI 互換 chat（`AI_StackChan_Ex` `llm.type: 4` 向け）**:
+
+```bash
+curl -fsS -X POST "http://127.0.0.1:18080/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"spark-qwen","messages":[{"role":"user","content":"短く返答して"}],"max_tokens":32,"stream":false}'
+```
+
+`STACKCHAN_TOKEN` を設定している場合だけ、上の curl に次のヘッダを足す。
+
+```bash
+-H "Authorization: Bearer <STACKCHAN_TOKEN>"
+```
+
+- **期待**: `200` + OpenAI 互換 chat completion JSON（`choices[0].message.content` が非空）。
+- **400 / `streaming responses are not supported`**: `stream:false` が抜けている。
+- **401 / `authentication_error`**: `STACKCHAN_TOKEN` と `Authorization: Bearer ...` が一致していない。
+- この smoke は DGX Spark まで到達するため、DGX 側が停止中なら runtime auto-start 設定か upstream 到達性を先に確認する。
 
 **utterance（2026-05-23 以降・任意）**:
 

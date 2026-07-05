@@ -37,6 +37,10 @@ uv run --project scripts/private-pi5-stackchan-bridge \
 
 - `GET /healthz`
   - ヘルスチェック
+- `POST /v1/chat/completions`
+  - `AI_StackChan_Ex` の `llm.type: 4` から叩く OpenAI 互換入口
+  - リクエストの `model` は互換性のため受け付けるが、DGX へ送る model は private Pi5 側の `DGX_MODEL` を使う
+  - `stream: true` は非対応。`AI_StackChan_Ex` 側は `stream: false` を使う
 - `POST /api/stackchan/chat`
   - DGX upstream (`/v1/chat/completions`) の生レスポンスを返す
 - `POST /api/stackchan/chat/simple`
@@ -52,6 +56,20 @@ uv run --project scripts/private-pi5-stackchan-bridge \
     - `faster-whisper-local`: Pi5 ローカルで `faster-whisper` 実行
 
 ## Request body
+
+OpenAI 互換（`AI_StackChan_Ex` `llm.type: 4`）:
+
+```json
+{
+  "model": "spark-qwen",
+  "messages": [{ "role": "user", "content": "こんにちは" }],
+  "max_tokens": 160,
+  "temperature": 0.2,
+  "stream": false
+}
+```
+
+bridge 独自 API（`/api/stackchan/chat*`）:
 
 ```json
 {
@@ -102,6 +120,8 @@ uv sync --frozen --extra local-stt --project scripts/private-pi5-stackchan-bridg
 
 ## Error response (standardized)
 
+`/api/stackchan/*` は bridge 標準形を返す:
+
 ```json
 {
   "ok": false,
@@ -121,6 +141,18 @@ uv sync --frozen --extra local-stt --project scripts/private-pi5-stackchan-bridg
 - `UPSTREAM_UNREACHABLE`
 - `UPSTREAM_TIMEOUT`
 - `BRIDGE_INTERNAL_ERROR`
+
+`/v1/chat/completions` は OpenAI 互換の top-level `error` 形を返す:
+
+```json
+{
+  "error": {
+    "message": "streaming responses are not supported",
+    "type": "invalid_request_error",
+    "code": "BAD_REQUEST"
+  }
+}
+```
 
 ## Environment
 
@@ -189,10 +221,10 @@ DGX_RUNTIME_CONTROL_TOKEN=replace-me
 |--------------|-----------|------|
 | **`DGX_LLM_SHARED_TOKEN`** | **private Pi5 の `.env` のみ** | ブリッジ → DGX upstream の共有トークン（例: `X-LLM-Token`）。**ESP32 / StackChan ファーム・SD カード・ビルドログに載せない。** |
 | **`DGX_RUNTIME_CONTROL_TOKEN`** | **private Pi5 の `.env` のみ**。任意 | bridge が **DGX `/start`** を叩いて backend を起こすための制御トークン。**StackChan には載せない。** |
-| **`STACKCHAN_TOKEN`** | **同上（ブリッジのみ）**。任意 | LAN 内の簡易認証。設定時、クライアントは **`X-Stackchan-Token`** で同値を送る。コミュニティファーム側は **`-DCHATGPT_STACKCHAN_TOKEN=...`**（[`patches/ai_stackchan_ex_private_bridge.patch`](./patches/ai_stackchan_ex_private_bridge.patch) 適用後）でヘッダを付与。**DGX トークンとは別物でよい（推奨）。** |
+| **`STACKCHAN_TOKEN`** | **同上（ブリッジのみ）**。任意 | LAN 内の簡易認証。設定時、クライアントは **`X-Stackchan-Token`** または **`Authorization: Bearer <STACKCHAN_TOKEN>`** で同値を送る。`AI_StackChan_Ex` の OpenAI 互換 mode では `SC_SecConfig.yaml` の `apikey.aiservice` を bearer token として使える。コミュニティファーム側の旧 patch 経路では **`-DCHATGPT_STACKCHAN_TOKEN=...`**（[`patches/ai_stackchan_ex_private_bridge.patch`](./patches/ai_stackchan_ex_private_bridge.patch) 適用後）でヘッダを付与。**DGX トークンとは別物でよい（推奨）。** |
 | **OpenAI API キー等** | 原則どこにも置かない | bridge 経由運用なら不要。`SC_SecConfig.yaml` 等にクラウドキーを残さない運用を推奨。 |
 
-ブリッジは `STACKCHAN_TOKEN` が空なら **`X-Stackchan-Token` 検証をスキップ**します。開発・初回疎通で役立ちますが、恒常運用では **トークンを設定**した方がよいです。
+ブリッジは `STACKCHAN_TOKEN` が空なら **StackChan 向け認証ヘッダ検証をスキップ**します。開発・初回疎通で役立ちますが、恒常運用では **トークンを設定**した方がよいです。
 
 ## 2026-05-13 追補（STT POST と読取タイムアウト・ファーム URL ドリフト）
 

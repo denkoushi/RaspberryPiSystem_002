@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-05 · StackChan Spark 再開計画 · repo計画）
+
+- **StackChanをSpark前提の音声対話端末として再開**: 最新コミュニティ情報（`AI_StackChan_Ex` OpenAI互換endpoint / M5Unified更新）を踏まえ、private Pi5 bridgeへOpenAI互換入口を足す安全順で計画化。**正本**: [Plan](./plans/stackchan-spark-voice-assistant-restart-2026-07.md)
+
 ### 最新アップデート（2026-07-05 · SOLID リファクタ第6弾 · 本番反映済）
 
 - **route層のPrisma直import完全解消（残6ファイル→0）**: kiosk 4ルートを `services/kiosk/` の小サービス4つへ、rigging タグCRUDを `RiggingGearTagService`（置換セマンティクス保持）へ、統合在庫リストを `UnifiedInventoryListService` へ委譲。テストゼロだった rigging タグ / unified list に characterisation 統合テスト11件を先行追加（挙動不変）。main **`d669dc53`** · CI **`28723350855` success** · Deploy **`20260705-102444-13837`** · Phase12 **45/0/0**。**正本**: [Plan](./plans/solid-refactor-phase6-execplan-202607.md) · [Deployment](./guides/deployment.md#solid-refactor-phase6-2026-07-05)

@@ -1,6 +1,6 @@
 # StackChan CoreS3 bring-up probe（最小ファーム）
 
-最終更新: 2026-05-31
+最終更新: 2026-07-05
 
 ## 運用ステータス: **全面停止**
 
@@ -25,11 +25,75 @@
 - 理由のない **erase / write**（公式復旧済みの状態を壊さない）
 - probe 再開は **別途意思決定・Runbook 更新後**のみ
 
+### 再開検討の差分分析（2026-07-05・build-only）
+
+**結論**: 最新 `AI_StackChan_Ex` の `m5stack-cores3` build-only は成功したが、実機 upload 停止は継続する。M5Unified/M5GFX 側に `board_M5StackChan` 対応が入ったことは前進だが、公式 StackChan 系の電源・表示初期化との差分がまだ残るため、build-only 成功だけでは ADR-20260531 を解除しない。
+
+| 項目 | 2026-05-31 probe | 2026-07-05 `AI_StackChan_Ex` | 公式 StackChan 系 | 判定 |
+|------|------------------|------------------------------|-------------------|------|
+| build | probe build/upload 済み、再確認で黒画面 | `pio run -e m5stack-cores3` **SUCCESS** | 公式 UserDemo は 2026-05-31 に表示復旧済み | build-only は前進。upload 許可ではない |
+| upstream commit | local probe | `ronron-gh/AI_StackChan_Ex` `b5322e0795b2d8b17acfa65953b0194fe75b7dc1` | `stack-chan/stack-chan` develop `e33094a4e9688318823a5775979a2620d49d0c0e` も参照 | 参照元は固定済み |
+| PlatformIO / framework | `espressif32@6.3.2`, Arduino | `espressif32@6.3.2`, Arduino framework `3.20009.0` | UserDemo は IDF/LVGL 系。現在公式 develop は Moddable `m5stackchan_cores3` platform | 公式表示経路とは別物 |
+| board | `esp32s3box` | `esp32s3box` + `-DARDUINO_M5STACK_CORES3` | 公式 develop は `m5stackchan_cores3` subplatform | PlatformIO board 差は残る |
+| partition | `my_cores3_16MB.csv` | `my_cores3_16MB.csv` | 公式 web flash は `bootloader.bin` @ 0, `partition-table.bin` @ 0x8000, `xs_esp32.bin` @ 0x10000 | 実機状態への影響は未検証 |
+| M5Unified / M5GFX | M5Unified `0.2.7` | M5Unified `0.2.15`, M5GFX `0.2.24` | UserDemo は M5Unified 不使用。現在公式 develop は Moddable target | M5Unified 側は改善 |
+| StackChan board detection | なし | M5GFX が `board_M5StackChan` を自動判定。GC0308 + M5IOE1 `0x6F` fw `>=0x04` で StackChan 判定 | 公式 develop は `m5stackchan_cores3` platform | 改善。ただし実機未確認 |
+| LCD / backlight | `M5.Display`, `M5Canvas`, `setBrightness()` | M5GFX `Panel_M5StackCoreS3` + `Light_M5StackCoreS3` 経路 | UserDemo は IlI9342/LVGL/専用 HAL。公式 develop は追加 AXP2101 power patch を持つ | 差分あり。ここが主ゲート |
+| AXP2101 power rails | probe 側は明示 patch なし | M5GFX が `0x90`, `0x94`, `0x95`, `0x99` 等を扱う | 公式 develop `setup-target.js` は `0x90`, `0x97`, `0x69`, `0x30`, `0x94`, `0x95`, `0x27`, `0x62` を patch | 公式側の電源初期化がより広い |
+
+#### build-only 実測（2026-07-05）
+
+```bash
+cd /private/tmp/AI_StackChan_Ex-spark-restart/firmware
+env PLATFORMIO_CORE_DIR=/private/tmp/pio-core pio run -e m5stack-cores3
+```
+
+結果:
+
+```text
+Environment     Status    Duration
+--------------  --------  ------------
+m5stack-cores3  SUCCESS   00:04:24.450
+```
+
+サイズ:
+
+```text
+RAM:   21.1% (used 68996 bytes from 327680 bytes)
+Flash: 39.0% (used 2558133 bytes from 6553600 bytes)
+firmware.bin: 2.4M
+```
+
+依存:
+
+```text
+Platform espressif32 @ 6.3.2
+framework-arduinoespressif32 @ 3.20009.0
+M5Unified @ 0.2.15
+M5GFX @ 0.2.24
+stackchan-arduino @ 0.0.7+sha.b7b98f5
+ArduinoJson @ 7.4.3
+ESP8266Audio @ 1.9.9
+YAMLDuino @ 1.5.0
+FastLED @ 3.10.3
+```
+
+#### upload 再開条件（2026-07-05 時点）
+
+upload 再開を検討する場合でも、以下をすべて満たすまで実機へ書き込まない。
+
+1. 公式ファームの現時点表示を目視確認する。
+2. build-only 成功ログと依存バージョンを ExecPlan に記録する。
+3. 上記 AXP2101 power rail / LCD init 差分を reviewer に確認させる。
+4. 最初の flash 候補は custom overlay なしの upstream `AI_StackChan_Ex` `m5stack-cores3` に限定する。
+5. user が「この候補を flash してよい」と明示承認する。
+6. upload 後に黒画面化したら追加実験を止め、公式ファーム復旧へ戻す。
+
 ---
 
 ## 目的（参考・履歴）
 
-`AI_StackChan_Ex` 本体を焼く前に、**画面・USB Serial・SD マウント**だけを CoreS3 実機で確認する計画だった。  
+`AI_StackChan_Ex` 本体を焼く前に、**画面・USB Serial・SD マウント**だけを CoreS3 実機で確認する計画だった。
 2026-05-31 時点で **probe 経路の表示は未解決のため停止**。
 
 ## 成果物（リポジトリ内・**upload 停止中**）
