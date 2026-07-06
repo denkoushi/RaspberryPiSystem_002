@@ -39,6 +39,11 @@ This is separate from part measurement and self-inspection. The implementation r
   - Uses existing `KioskDocument` PDF records as the source of truth and stores only assembly viewing order.
   - Adds a configured PDF page-forward viewer to `/kiosk/assembly/work-sessions/:sessionId`.
   - Falls back to the existing single procedure image when no order is configured, no enabled PDF remains, or no page images can be rendered.
+- WIP-first UI refinement on 2026-07-07:
+  - `/kiosk/assembly` keeps the API, DB, DTO, and start/resume contracts unchanged while making `仕掛中` the primary left pane.
+  - New starts move into a fixed-width right pane that preserves seiban candidate search, seiban direct keypad, serial keypad, operator, torque wrench, template registration, and start controls.
+  - FHD shows both input keypads and the start action at once. At 1366x768, only the right input area scrolls internally while the start action remains fixed.
+  - Static reference preview: `design-previews/kiosk-assembly-home-wip-first-preview.html`.
 - Previous deployed scope on 2026-07-06:
   - `/kiosk/assembly` is now the operator start page.
   - Operators search by `FSEIBAN`, choose a candidate, see the resolved machine name, enter serial number with a software keypad, and start or resume work.
@@ -176,6 +181,14 @@ DEV preview routes:
 
 Local validation before push:
 
+- WIP-first UI refinement on 2026-07-07:
+  - `pnpm --filter @raspi-system/web test -- KioskAssemblyHomePage.test.tsx assemblyRoutes.test.ts`: passed, 2 files / 9 tests.
+  - `pnpm --filter @raspi-system/web test`: passed, 258 files / 1287 tests.
+  - `pnpm --filter @raspi-system/web lint`: passed.
+  - `pnpm --filter @raspi-system/web build`: passed.
+  - `git diff --check`: passed.
+  - Playwright visual check with mocked assembly API: passed at 1920x1080 and 1366x768. The 1920 viewport shows both keypads, torque wrench, and start action; the 1366 viewport keeps the WIP pane wider than the start pane and keeps the start action visible while the right input pane scrolls internally.
+  - Docker/Postgres validation was not run because this change only touches Web layout and tests, with no API, DB, Prisma, DTO, or migration changes.
 - `pnpm --filter @raspi-system/api build`: passed.
 - Temporary Docker Postgres on port `55433`:
   - `prisma migrate deploy`: passed.

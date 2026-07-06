@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>組立キオスク 仕掛中主ペイン案</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #161817;
+      --panel: #202520;
+      --panel-2: #171f1c;
+      --line: rgba(233, 239, 229, 0.14);
+      --line-strong: rgba(233, 239, 229, 0.24);
+      --text: #f4f7f1;
+      --muted: rgba(244, 247, 241, 0.68);
+      --weak: rgba(244, 247, 241, 0.48);
+      --green: #8fd38a;
+      --green-strong: #43b36a;
+      --teal: #5cc7c1;
+      --amber: #f5c25c;
+      --red: #ef7f78;
+      --black: #101210;
+      --focus: #d9f99d;
+      font-family: "Inter", "Noto Sans JP", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(92, 199, 193, 0.08), transparent 18rem),
+        var(--bg);
+      color: var(--text);
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .screen {
+      display: flex;
+      min-height: 100dvh;
+      flex-direction: column;
+      gap: 10px;
+      padding: 10px 12px 12px;
+    }
+
+    .topbar {
+      display: grid;
+      min-height: 58px;
+      grid-template-columns: minmax(18rem, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(23, 31, 28, 0.88);
+      padding: 8px 10px;
+    }
+
+    .title-group {
+      min-width: 0;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(1.24rem, 1.4vw, 1.58rem);
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .top-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .button {
+      min-height: 38px;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      background: #283028;
+      color: var(--text);
+      padding: 0 12px;
+      font-size: 0.92rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .button.primary {
+      border-color: rgba(143, 211, 138, 0.62);
+      background: #2f6f46;
+    }
+
+    .button.compact {
+      min-height: 34px;
+      padding: 0 10px;
+      font-size: 0.84rem;
+    }
+
+    .workspace {
+      display: grid;
+      min-height: 0;
+      flex: 1;
+      grid-template-columns: minmax(690px, 1fr) 392px;
+      gap: 10px;
+      overflow: hidden;
+    }
+
+    .pane {
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(32, 37, 32, 0.92);
+    }
+
+    .wip-pane {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .pane-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      padding: 12px;
+    }
+
+    .pane-title {
+      display: flex;
+      min-width: 0;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    h2 {
+      font-size: 1.22rem;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    .count {
+      color: var(--green);
+      font-size: 1.04rem;
+      font-weight: 900;
+    }
+
+    .head-note {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 0.84rem;
+      font-weight: 700;
+    }
+
+    .metric-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .metric {
+      display: grid;
+      min-width: 76px;
+      gap: 2px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(16, 18, 16, 0.54);
+      padding: 6px 8px;
+      text-align: right;
+    }
+
+    .metric span:first-child {
+      color: var(--weak);
+      font-size: 0.68rem;
+      font-weight: 800;
+    }
+
+    .metric span:last-child {
+      font-size: 1rem;
+      font-weight: 900;
+    }
+
+    .wip-list {
+      display: grid;
+      min-height: 0;
+      flex: 1;
+      grid-auto-rows: minmax(76px, auto);
+      gap: 7px;
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    .wip-row {
+      display: grid;
+      grid-template-columns: 9.5rem minmax(0, 1.2fr) minmax(10rem, 0.9fr) 8.5rem 6.2rem;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(16, 18, 16, 0.58);
+      padding: 10px;
+    }
+
+    .wip-row.current {
+      border-color: rgba(143, 211, 138, 0.64);
+      background: linear-gradient(90deg, rgba(67, 179, 106, 0.24), rgba(16, 18, 16, 0.6));
+    }
+
+    .product {
+      min-width: 0;
+    }
+
+    .product strong {
+      display: block;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 1.22rem;
+      font-weight: 950;
+      line-height: 1.05;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .product span {
+      display: block;
+      margin-top: 5px;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .area {
+      min-width: 0;
+    }
+
+    .area strong {
+      display: block;
+      overflow: hidden;
+      font-size: 1rem;
+      font-weight: 900;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .area span {
+      display: block;
+      margin-top: 5px;
+      overflow: hidden;
+      color: var(--weak);
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .progress {
+      display: grid;
+      gap: 6px;
+    }
+
+    .progress-label {
+      color: var(--teal);
+      font-size: 1.02rem;
+      font-weight: 950;
+      text-align: right;
+    }
+
+    .bar {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(244, 247, 241, 0.14);
+    }
+
+    .bar > span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), var(--teal));
+    }
+
+    .updated {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-align: right;
+    }
+
+    .resume {
+      min-height: 44px;
+      border: 1px solid rgba(143, 211, 138, 0.58);
+      border-radius: 7px;
+      background: #315f3c;
+      color: var(--text);
+      font-size: 0.98rem;
+      font-weight: 950;
+    }
+
+    .new-start {
+      display: flex;
+      height: calc(100dvh - 96px);
+      min-height: 0;
+      flex-direction: column;
+      gap: 8px;
+      overflow: hidden;
+      padding: 10px;
+    }
+
+    .start-head {
+      display: grid;
+      gap: 4px;
+    }
+
+    .start-head h2 {
+      font-size: 1.08rem;
+    }
+
+    .start-head p {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+
+    .field-stack {
+      display: grid;
+      min-height: 0;
+      flex: 1;
+      gap: 7px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .input-block {
+      display: grid;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(16, 18, 16, 0.32);
+      padding: 8px;
+    }
+
+    .block-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .block-head strong {
+      color: var(--text);
+      font-size: 0.88rem;
+      font-weight: 950;
+    }
+
+    .block-head span {
+      color: var(--weak);
+      font-size: 0.68rem;
+      font-weight: 900;
+    }
+
+    label {
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 900;
+    }
+
+    input {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      background: var(--black);
+      color: var(--text);
+      padding: 0 10px;
+      font-size: 0.96rem;
+      font-weight: 900;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--focus);
+    }
+
+    .candidate-list {
+      display: grid;
+      gap: 4px;
+    }
+
+    .candidate {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(16, 18, 16, 0.48);
+      padding: 6px 7px;
+    }
+
+    .candidate.selected {
+      border-color: rgba(92, 199, 193, 0.56);
+      background: rgba(92, 199, 193, 0.12);
+    }
+
+    .candidate strong {
+      overflow: hidden;
+      font-size: 0.94rem;
+      font-weight: 950;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .candidate span {
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 7.5rem;
+      gap: 6px;
+    }
+
+    .keypad {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 4px;
+    }
+
+    .key {
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(16, 18, 16, 0.66);
+      color: var(--text);
+      font-size: 0.72rem;
+      font-weight: 950;
+    }
+
+    .key.action {
+      color: var(--amber);
+      font-size: 0.68rem;
+    }
+
+    .start-button {
+      flex-shrink: 0;
+      min-height: 48px;
+      border: 1px solid rgba(143, 211, 138, 0.7);
+      border-radius: 8px;
+      background: #3b7a48;
+      color: var(--text);
+      font-size: 1.06rem;
+      font-weight: 950;
+    }
+
+    .side-footer {
+      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .quiet {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(16, 18, 16, 0.52);
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-weight: 900;
+    }
+
+    @media (max-width: 1120px) {
+      body {
+        overflow: auto;
+      }
+
+      .screen {
+        min-height: 100dvh;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+        overflow: visible;
+      }
+
+      .wip-pane {
+        min-height: 58dvh;
+      }
+
+      .new-start {
+        max-width: 520px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .topbar,
+      .pane-head,
+      .wip-row {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-row,
+      .top-actions {
+        justify-content: flex-start;
+      }
+
+      .updated,
+      .progress-label {
+        text-align: left;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="screen">
+    <header class="topbar">
+      <div class="title-group">
+        <h1>組立</h1>
+        <p class="subtitle">第2組立ステーション A03 / CEM20N3X10D-BTLA</p>
+      </div>
+      <div class="top-actions">
+        <button class="button">手順書ライブラリ</button>
+        <button class="button">組立テンプレート</button>
+        <button class="button compact">閲覧順設定</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="pane wip-pane" aria-label="仕掛中">
+        <div class="pane-head">
+          <div>
+            <div class="pane-title">
+              <h2>仕掛中</h2>
+              <span class="count">12件</span>
+            </div>
+            <p class="head-note">再開対象を最初に選ぶ。新規開始は右ペインから行う。</p>
+          </div>
+          <div class="metric-row">
+            <div class="metric"><span>要対応</span><span style="color: var(--amber)">2</span></div>
+            <div class="metric"><span>本日更新</span><span>8</span></div>
+            <button class="button compact primary">再読込</button>
+          </div>
+        </div>
+
+        <div class="wip-list">
+          <article class="wip-row current">
+            <div class="product">
+              <strong>F24-0318</strong>
+              <span>SN A0318-07 / 15:42更新</span>
+            </div>
+            <div class="area">
+              <strong>MH-AX900 右側ユニット</strong>
+              <span>作業者: 佐藤 / テンプレート v4</span>
+            </div>
+            <div class="area">
+              <strong>工程 30 ブラケット固定</strong>
+              <span>締付位置 #18</span>
+            </div>
+            <div class="progress">
+              <div class="progress-label">18 / 24</div>
+              <div class="bar"><span style="width: 75%"></span></div>
+            </div>
+            <button class="resume">再開</button>
+          </article>
+
+          <article class="wip-row">
+            <div class="product">
+              <strong>F24-0312</strong>
+              <span>SN A0312-02 / 15:18更新</span>
+            </div>
+            <div class="area">
+              <strong>MH-BT1200 下部フレーム</strong>
+              <span>作業者: 田中 / テンプレート v2</span>
+            </div>
+            <div class="area">
+              <strong>工程 20 左カバー</strong>
+              <span>締付位置 #09</span>
+            </div>
+            <div class="progress">
+              <div class="progress-label">9 / 32</div>
+              <div class="bar"><span style="width: 28%"></span></div>
+            </div>
+            <button class="resume">再開</button>
+          </article>
+
+          <article class="wip-row">
+            <div class="product">
+              <strong>F24-0307</strong>
+              <span>SN A0307-11 / 14:56更新</span>
+            </div>
+            <div class="area">
+              <strong>MH-AX900 駆動部</strong>
+              <span>作業者: 山本 / テンプレート v4</span>
+            </div>
+            <div class="area">
+              <strong>工程 40 電装固定</strong>
+              <span>エリア完了待ち</span>
+            </div>
+            <div class="progress">
+              <div class="progress-label">24 / 24</div>
+              <div class="bar"><span style="width: 100%"></span></div>
+            </div>
+            <button class="resume">再開</button>
+          </article>
+
+          <article class="wip-row">
+            <div class="product">
+              <strong>F24-0304</strong>
+              <span>SN A0304-04 / 14:12更新</span>
+            </div>
+            <div class="area">
+              <strong>MH-CT700 前面ユニット</strong>
+              <span>作業者: 鈴木 / テンプレート v3</span>
+            </div>
+            <div class="area">
+              <strong>工程 10 仮締め</strong>
+              <span>締付位置 #04</span>
+            </div>
+            <div class="progress">
+              <div class="progress-label">4 / 18</div>
+              <div class="bar"><span style="width: 22%"></span></div>
+            </div>
+            <button class="resume">再開</button>
+          </article>
+
+          <article class="wip-row">
+            <div class="product">
+              <strong>F24-0299</strong>
+              <span>SN A0299-03 / 13:38更新</span>
+            </div>
+            <div class="area">
+              <strong>MH-BT1200 右側パネル</strong>
+              <span>作業者: 佐藤 / テンプレート v2</span>
+            </div>
+            <div class="area">
+              <strong>工程 30 カバー本締め</strong>
+              <span>締付位置 #21</span>
+            </div>
+            <div class="progress">
+              <div class="progress-label">21 / 32</div>
+              <div class="bar"><span style="width: 66%"></span></div>
+            </div>
+            <button class="resume">再開</button>
+          </article>
+
+          <article class="wip-row">
+            <div class="product">
+              <strong>F24-0294</strong>
+              <span>SN A0294-01 / 12:50更新</span>
+            </div>
+            <div class="area">
+              <strong>MH-DX500 ベース</strong>
+              <span>作業者: 伊藤 / テンプレート v1</span>
+            </div>
+            <div class="area">
+              <strong>工程 20 本締め</strong>
+              <span>締付位置 #13</span>
+            </div>
+            <div class="progress">
+              <div class="progress-label">13 / 20</div>
+              <div class="bar"><span style="width: 65%"></span></div>
+            </div>
+            <button class="resume">再開</button>
+          </article>
+        </div>
+      </section>
+
+      <aside class="pane new-start" aria-label="新規開始">
+        <div class="start-head">
+          <h2>新規開始</h2>
+          <p>製番候補と2つの入力パッドを維持</p>
+        </div>
+
+        <div class="field-stack">
+          <section class="input-block" aria-label="製番入力">
+            <div class="block-head">
+              <strong>製番</strong>
+              <span>候補検索 + 直接入力</span>
+            </div>
+            <label>
+              製番
+              <input value="F24-03" aria-label="製番" />
+            </label>
+
+            <div class="candidate-list">
+              <div class="candidate selected">
+                <strong>F24-0319</strong>
+                <span>MH-AX900</span>
+              </div>
+              <div class="candidate">
+                <strong>F24-0318</strong>
+                <span>仕掛中</span>
+              </div>
+              <div class="candidate">
+                <strong>F24-0317</strong>
+                <span>MH-BT1200</span>
+              </div>
+            </div>
+
+            <div class="keypad" aria-label="製番入力パッド">
+              <button class="key">1</button>
+              <button class="key">2</button>
+              <button class="key">3</button>
+              <button class="key">4</button>
+              <button class="key">5</button>
+              <button class="key">6</button>
+              <button class="key">7</button>
+              <button class="key">8</button>
+              <button class="key">9</button>
+              <button class="key">0</button>
+              <button class="key">A</button>
+              <button class="key">B</button>
+              <button class="key">C</button>
+              <button class="key">D</button>
+              <button class="key">E</button>
+              <button class="key">F</button>
+              <button class="key">G</button>
+              <button class="key">H</button>
+              <button class="key">I</button>
+              <button class="key">J</button>
+              <button class="key">K</button>
+              <button class="key">L</button>
+              <button class="key">M</button>
+              <button class="key">N</button>
+              <button class="key">O</button>
+              <button class="key">P</button>
+              <button class="key">Q</button>
+              <button class="key">R</button>
+              <button class="key">S</button>
+              <button class="key">T</button>
+              <button class="key">U</button>
+              <button class="key">V</button>
+              <button class="key">W</button>
+              <button class="key">X</button>
+              <button class="key">Y</button>
+              <button class="key">Z</button>
+              <button class="key action">BS</button>
+              <button class="key action">CLR</button>
+            </div>
+          </section>
+
+          <section class="input-block" aria-label="シリアル入力">
+            <div class="block-head">
+              <strong>シリアル</strong>
+              <span>個体番号入力</span>
+            </div>
+
+            <div class="form-grid">
+              <label>
+                シリアルNo.
+                <input value="A0319-01" aria-label="シリアルNo." />
+              </label>
+              <label>
+                作業者
+                <input value="佐藤" aria-label="作業者" />
+              </label>
+            </div>
+
+            <div class="keypad" aria-label="シリアル入力パッド">
+              <button class="key">1</button>
+              <button class="key">2</button>
+              <button class="key">3</button>
+              <button class="key">4</button>
+              <button class="key">5</button>
+              <button class="key">6</button>
+              <button class="key">7</button>
+              <button class="key">8</button>
+              <button class="key">9</button>
+              <button class="key">0</button>
+              <button class="key">A</button>
+              <button class="key">B</button>
+              <button class="key">C</button>
+              <button class="key">D</button>
+              <button class="key">E</button>
+              <button class="key">F</button>
+              <button class="key">G</button>
+              <button class="key">H</button>
+              <button class="key">I</button>
+              <button class="key">J</button>
+              <button class="key">K</button>
+              <button class="key">L</button>
+              <button class="key">M</button>
+              <button class="key">N</button>
+              <button class="key">O</button>
+              <button class="key">P</button>
+              <button class="key">Q</button>
+              <button class="key">R</button>
+              <button class="key">S</button>
+              <button class="key">T</button>
+              <button class="key">U</button>
+              <button class="key">V</button>
+              <button class="key">W</button>
+              <button class="key">X</button>
+              <button class="key">Y</button>
+              <button class="key">Z</button>
+              <button class="key action">BS</button>
+              <button class="key action">CLR</button>
+            </div>
+          </section>
+
+          <label>
+            トルクレンチ
+            <input value="CEM20N3X10D-BTLA" aria-label="トルクレンチ" />
+          </label>
+        </div>
+
+        <button class="start-button">組立開始</button>
+
+        <div class="side-footer">
+          <button class="quiet">テンプレート登録</button>
+          <button class="quiet">候補再検索</button>
+        </div>
+      </aside>
+    </main>
+  </div>
+</body>
+</html>
