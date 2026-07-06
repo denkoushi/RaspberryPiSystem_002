@@ -7,9 +7,20 @@ import type {
   AssemblyTemplateDto,
   AssemblyTemplateSummaryDto,
   AssemblyTorqueRecordOutcome,
+  AssemblySeibanCandidateDto,
   AssemblyWorkSessionDto,
+  AssemblyWorkSessionSummaryDto,
   AssemblyWorkSessionStartInput,
 } from '../../features/assembly/types';
+
+export async function listAssemblySeibanCandidates(params: { prefix: string; limit?: number }) {
+  const qs = new URLSearchParams({ prefix: params.prefix });
+  if (params.limit) qs.set('limit', String(params.limit));
+  const { data } = await api.get<{ candidates: AssemblySeibanCandidateDto[] }>(
+    `/assembly/seiban-candidates?${qs.toString()}`
+  );
+  return data.candidates;
+}
 export async function listAssemblyProcedureDocuments(params?: { q?: string; includeInactive?: boolean }) {
   const qs = new URLSearchParams();
   if (params?.q) qs.set('q', params.q);
@@ -118,6 +129,22 @@ export async function retireAssemblyTemplate(id: string) {
 export async function startAssemblyWorkSession(payload: AssemblyWorkSessionStartInput) {
   const { data } = await api.post<{ session: AssemblyWorkSessionDto }>('/assembly/work-sessions', payload);
   return data.session;
+}
+
+export async function listAssemblyWorkSessionSummaries(params?: {
+  status?: 'in_progress' | 'completed' | 'cancelled' | 'all';
+  productNo?: string;
+  serialNo?: string;
+  limit?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.productNo) qs.set('productNo', params.productNo);
+  if (params?.serialNo) qs.set('serialNo', params.serialNo);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const { data } = await api.get<{ sessions: AssemblyWorkSessionSummaryDto[] }>(`/assembly/work-sessions/summary${suffix}`);
+  return data.sessions;
 }
 
 export async function getAssemblyWorkSession(id: string) {

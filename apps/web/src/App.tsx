@@ -34,6 +34,7 @@ import { SignagePreviewPage } from './pages/admin/SignagePreviewPage';
 import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
 import { VisualizationDashboardsPage } from './pages/admin/VisualizationDashboardsPage';
 import { LoadBalancingOverviewChartPreviewPage } from './pages/dev/LoadBalancingOverviewChartPreviewPage';
+import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
 import { KioskAssemblyPage } from './pages/kiosk/KioskAssemblyPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
@@ -186,7 +187,8 @@ function App() {
           <Route path="/kiosk/purchase-order-lookup" element={<PurchaseOrderLookupPage />} />
           <Route path="/kiosk/pallet-visualization" element={<KioskPalletVisualizationPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
-          <Route path="/kiosk/assembly" element={<KioskAssemblyPage />} />
+          <Route path="/kiosk/assembly" element={<KioskAssemblyHomePage />} />
+          <Route path="/kiosk/assembly/library" element={<KioskAssemblyPage />} />
           <Route
             path="/kiosk/assembly/templates/new"
             element={lazyRouteElement(<KioskAssemblyTemplateEditorPage />)}

@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-06 · 組立キオスク 製番起点開始導線 + 仕掛中可視化）
+
+- **組立開始を製番起点へ変更**: `/kiosk/assembly` を作業者向けの製番検索・機種名表示・シリアルソフトテンキー・開始/再開・仕掛中一覧に変更し、既存の手順書ライブラリ/組立テンプレート管理は `/kiosk/assembly/library` へ退避。`FSEIBAN + serialNo` の仕掛中は既存セッションへ再開する。**`b2ddbbd9`** · PR **#956** · CI **`28782487173` success** · Deploy **`20260706-185942-11851`** · Phase12 **45/0/0**。**正本**: [Plan](./plans/kiosk-assembly-torque-management-mvp.md) · [Deployment](./guides/deployment.md#kiosk-assembly-seiban-start-flow-2026-07-06)
+
 ### 最新アップデート（2026-07-06 · キオスク端末別 起動先 + 持出タブ回帰修正）
 
 - **端末ごとのキオスク起動先**: `起動先` で `2タグスキャン` / `写真撮影持出` / `順位ボード` / `組立` を選択。`組立` 起動先で `持出` タブが戻される回帰も修正し、Pi5 + Pi4 全5台へ反映済み。**正本**: [Runbook](./runbooks/kiosk-device-initial-route.md)

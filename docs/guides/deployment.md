@@ -10,6 +10,22 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-06 · **組立キオスク 製番起点開始導線 + 仕掛中可視化** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-seiban-start-flow-2026-07-06}
+
+- **変更概要（正本）**: [Plan](../plans/kiosk-assembly-torque-management-mvp.md) · PR **#956** · ブランチ **`feature/assembly-seiban-start-flow`** · 実装 **`b2ddbbd9`** (`feat(assembly): add seiban start flow`)。
+  - `/kiosk/assembly` を作業者向けの製番起点開始画面に変更し、既存の手順書ライブラリ/組立テンプレート管理は `/kiosk/assembly/library` へ退避。
+  - 製番候補API `GET /api/assembly/seiban-candidates` と仕掛中一覧API `GET /api/assembly/work-sessions/summary` を追加。機種名は既存の生産日程側解決ロジックを組立側から再利用する。
+  - 作業開始は `productNo = FSEIBAN`、`serialNo = ソフトテンキー入力`、`targetUnit = 機種名` に寄せ、同一 `FSEIBAN + serialNo` の仕掛中は既存セッションへ再開する。
+  - Prisma migration `20260706170000_assembly_seiban_start_flow` で `AssemblyWorkSession(productNo, serialNo, status, updatedAt)` の通常indexを追加。
+- **CI（`b2ddbbd9`）**: PR CI **`28782487173` success**（`lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` all success）· push CI **`28782461329` success** · CodeQL **`28782487159` success** · Secret scan **`28782487220` success**。
+- **ローカル検証**: 一時 Postgres `pgvector/pgvector:pg15`（port `55434`）で migration deploy、Prisma generate、組立統合テスト、`EXPLAIN`（製番候補は production-schedule winner lookup index、仕掛中一覧は `AssemblyWorkSession_idx_product_serial_status`）を確認。一時 container は削除済み。`pnpm --filter @raspi-system/api build`、Web focused test、`pnpm --filter @raspi-system/web build`、Web full test、`git diff --check`、pre-commit lint success。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feature/assembly-seiban-start-flow infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260706-185942-11851`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260706-185942-11851.log` · summary success true · exitCode 0 · totalHosts 7 · failedHosts/unreachableHosts なし。
+  - PLAY RECAP は全 7 ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。
+  - Pi5 は Docker compose rebuild/restart、Prisma migrate/status、API health recover を通過。Pi4×5 は repo sync、kiosk-browser/status-agent/status-agent.timer restart、kiosk UI reachability を通過（stonebase の barcode-agent は 1 回 readiness retry 後 OK）。Pi3 は lightdm 復旧後 `signage-lite.service is active`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-06 JST）。
+- **組立 smoke**: `/kiosk/assembly` と `/kiosk/assembly/library` は HTTP **200**。client-key認証付きで `GET /api/assembly/seiban-candidates?prefix=TEST&limit=3` と `GET /api/assembly/work-sessions/summary?status=in_progress&limit=5` は HTTP **200**。
+
 ### 補足（2026-07-06 · **検査図面 公差入力 実機フィードバック対応** · **Web + shared** · **Pi5 + Pi4×5 + Pi3 反映済**） {#inspection-drawing-tolerance-input-usability-fixes-2026-07-06}
 
 - **変更概要（正本）**: [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-公差入力-実機フィードバック-2026-07-06) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-公差入力-実機フィードバック-2026-07-06) · ブランチ **`feat/inspection-drawing-tolerance-input-usability-fixes`** · 実装 **`becb6e7c`** (`fix(web): improve inspection tolerance input usability`)。

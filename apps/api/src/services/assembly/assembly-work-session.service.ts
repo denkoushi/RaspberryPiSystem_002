@@ -2,6 +2,7 @@ import type { AssemblyTorqueInputSource, Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { assemblyTemplateDetailInclude, type AssemblyTemplateDetail } from './assembly-template.service.js';
+import { normalizeAssemblyUpperIdentifier } from './assembly-identifiers.js';
 
 export const assemblyWorkSessionDetailInclude = {
   template: {
@@ -30,13 +31,39 @@ export type AssemblyStartInput = {
   templateId: string;
   productNo: string;
   serialNo: string;
-  nameplateNo: string;
+  nameplateNo?: string | null;
   operatorEmployeeId?: string | null;
   operatorNameSnapshot: string;
   targetUnit: string;
   torqueWrenchId: string;
   clientDeviceId?: string | null;
   clientDeviceNameSnapshot?: string | null;
+};
+
+export type AssemblyWorkSessionSummary = {
+  id: string;
+  templateId: string;
+  status: string;
+  productNo: string;
+  serialNo: string;
+  nameplateNo: string;
+  operatorNameSnapshot: string;
+  targetUnit: string;
+  torqueWrenchId: string;
+  startedAt: Date;
+  completedAt: Date | null;
+  cancelledAt: Date | null;
+  updatedAt: Date;
+  templateModelCode: string;
+  templateProcedurePattern: string;
+  templateName: string;
+  templateVersion: number;
+  currentAreaId: string | null;
+  currentAreaName: string | null;
+  currentBoltId: string | null;
+  currentBoltMarkerNo: number | null;
+  acceptedBoltCount: number;
+  totalBoltCount: number;
 };
 
 export type AssemblyTorqueRecordOutcome = {
@@ -135,21 +162,34 @@ function recentlyAcceptedDuplicate(session: AssemblyWorkSessionDetail, now: Date
 
 export class AssemblyWorkSessionService {
   async start(input: AssemblyStartInput): Promise<AssemblyWorkSessionDetail> {
+    const productNo = required(normalizeAssemblyUpperIdentifier(input.productNo), '製番').slice(0, 120);
+    const serialNo = required(normalizeAssemblyUpperIdentifier(input.serialNo), 'シリアルNo.').slice(0, 120);
     const template = await prisma.assemblyTemplate.findFirst({
       where: { id: input.templateId, isActive: true },
       include: assemblyTemplateDetailInclude
     });
     if (!template) throw new ApiError(404, '有効な組立テンプレートが見つかりません');
+
+    const existing = await prisma.assemblyWorkSession.findFirst({
+      where: { productNo, serialNo, status: 'IN_PROGRESS' },
+      orderBy: [{ updatedAt: 'desc' }, { startedAt: 'desc' }],
+      include: assemblyWorkSessionDetailInclude
+    });
+    if (existing) {
+      return existing;
+    }
+
     const first = firstPosition(template);
+    const nameplateNo = (input.nameplateNo?.trim() || serialNo).slice(0, 120);
     return prisma.assemblyWorkSession.create({
       data: {
         templateId: template.id,
-        productNo: required(input.productNo, '製番/M番号').slice(0, 120),
-        serialNo: required(input.serialNo, 'シリアルNo.').slice(0, 120),
-        nameplateNo: required(input.nameplateNo, '銘板No.').slice(0, 120),
+        productNo,
+        serialNo,
+        nameplateNo,
         operatorEmployeeId: input.operatorEmployeeId?.trim() || null,
         operatorNameSnapshot: required(input.operatorNameSnapshot, '作業者名').slice(0, 120),
-        targetUnit: required(input.targetUnit, '対象ユニット').slice(0, 120),
+        targetUnit: required(normalizeAssemblyUpperIdentifier(input.targetUnit), '機種名').slice(0, 120),
         torqueWrenchId: required(input.torqueWrenchId, '使用トルクレンチ').slice(0, 120),
         clientDeviceId: input.clientDeviceId ?? null,
         clientDeviceNameSnapshot: input.clientDeviceNameSnapshot ?? null,
@@ -164,6 +204,94 @@ export class AssemblyWorkSessionService {
     return prisma.assemblyWorkSession.findUnique({
       where: { id },
       include: assemblyWorkSessionDetailInclude
+    });
+  }
+
+  async listSummary(params: {
+    status?: 'in_progress' | 'completed' | 'cancelled' | 'all';
+    limit?: number;
+    productNo?: string;
+    serialNo?: string;
+  } = {}): Promise<AssemblyWorkSessionSummary[]> {
+    const statusMap = {
+      in_progress: 'IN_PROGRESS',
+      completed: 'COMPLETED',
+      cancelled: 'CANCELLED'
+    } as const;
+    const status = params.status && params.status !== 'all' ? statusMap[params.status] : undefined;
+    const productNo = params.productNo ? normalizeAssemblyUpperIdentifier(params.productNo) : '';
+    const serialNo = params.serialNo ? normalizeAssemblyUpperIdentifier(params.serialNo) : '';
+    const limit = Math.min(Math.max(Math.trunc(params.limit ?? 50), 1), 100);
+
+    const sessions = await prisma.assemblyWorkSession.findMany({
+      where: {
+        ...(status ? { status } : {}),
+        ...(productNo ? { productNo: { equals: productNo, mode: 'insensitive' } } : {}),
+        ...(serialNo ? { serialNo: { equals: serialNo, mode: 'insensitive' } } : {})
+      },
+      include: {
+        template: {
+          select: {
+            id: true,
+            modelCode: true,
+            procedurePattern: true,
+            name: true,
+            version: true,
+            areas: {
+              orderBy: { sortOrder: 'asc' },
+              select: {
+                id: true,
+                areaName: true,
+                bolts: {
+                  orderBy: { sortOrder: 'asc' },
+                  select: {
+                    id: true,
+                    markerNo: true
+                  }
+                }
+              }
+            }
+          }
+        },
+        torqueRecords: {
+          where: { accepted: true, judgement: 'OK' },
+          select: { templateBoltId: true }
+        }
+      },
+      orderBy: [{ updatedAt: 'desc' }, { startedAt: 'desc' }],
+      take: limit
+    });
+
+    return sessions.map((session) => {
+      const bolts = session.template.areas.flatMap((area) => area.bolts.map((bolt) => ({ area, bolt })));
+      const acceptedBoltCount = new Set(session.torqueRecords.map((record) => record.templateBoltId)).size;
+      const current = bolts.find(({ bolt }) => bolt.id === session.currentBoltId) ?? null;
+      const currentArea = session.template.areas.find((area) => area.id === session.currentAreaId) ?? current?.area ?? null;
+      return {
+        id: session.id,
+        templateId: session.templateId,
+        status: session.status,
+        productNo: session.productNo,
+        serialNo: session.serialNo,
+        nameplateNo: session.nameplateNo,
+        operatorNameSnapshot: session.operatorNameSnapshot,
+        targetUnit: session.targetUnit,
+        torqueWrenchId: session.torqueWrenchId,
+        startedAt: session.startedAt,
+        completedAt: session.completedAt,
+        cancelledAt: session.cancelledAt,
+        updatedAt: session.updatedAt,
+        templateModelCode: session.template.modelCode,
+        templateProcedurePattern: session.template.procedurePattern,
+        templateName: session.template.name,
+        templateVersion: session.template.version,
+        currentAreaId: session.currentAreaId,
+        currentAreaName: currentArea?.areaName ?? null,
+        currentBoltId: session.currentBoltId,
+        currentBoltMarkerNo: current?.bolt.markerNo ?? null,
+        acceptedBoltCount,
+        totalBoltCount: bolts.length
+      };
     });
   }
 

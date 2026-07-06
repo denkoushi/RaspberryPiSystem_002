@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  KIOSK_ASSEMBLY_HOME_PATH,
+  KIOSK_ASSEMBLY_LIBRARY_PATH,
   kioskAssemblyTemplateEditPath,
   kioskAssemblyTemplateNewPath,
   kioskAssemblyWorkSessionPath,
@@ -10,6 +12,11 @@ import {
 } from './assemblyRoutes';
 
 describe('assemblyRoutes', () => {
+  it('keeps start top and management library paths separate', () => {
+    expect(KIOSK_ASSEMBLY_HOME_PATH).toBe('/kiosk/assembly');
+    expect(KIOSK_ASSEMBLY_LIBRARY_PATH).toBe('/kiosk/assembly/library');
+  });
+
   it('builds template and work paths', () => {
     expect(kioskAssemblyTemplateEditPath('template-1')).toBe('/kiosk/assembly/templates/template-1/edit');
     expect(kioskAssemblyWorkStartPath('template-1')).toBe('/kiosk/assembly/work/start?templateId=template-1');

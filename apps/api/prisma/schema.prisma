@@ -2390,6 +2390,7 @@ model AssemblyWorkSession {
 
   @@index([status, updatedAt], map: "AssemblyWorkSession_idx_status_updated")
   @@index([productNo, status], map: "AssemblyWorkSession_idx_product_status")
+  @@index([productNo, serialNo, status, updatedAt], map: "AssemblyWorkSession_idx_product_serial_status")
   @@index([templateId, status], map: "AssemblyWorkSession_idx_template_status")
 }
 
