@@ -31,6 +31,22 @@ KIOSK_FF_MINIMIZE="{% if kiosk_firefox_minimize_chrome_enabled | default(true) |
 FF_PROFILE="/home/{{ ansible_user }}/.mozilla/firefox/{{ kiosk_firefox_profile_dirname | default('kiosk-system') }}"
 REPO_PATH="{{ repo_path | default('/opt/RaspberryPiSystem_002') }}"
 
+clear_firefox_session_restore() {
+  if [[ ! -d "${FF_PROFILE}" ]]; then
+    return 0
+  fi
+
+  # Firefox can restore a previous /kiosk/* tab before the SPA sees /kiosk.
+  # Remove only session restore state; keep localStorage/cookies/profile prefs.
+  rm -f \
+    "${FF_PROFILE}/sessionstore.jsonlz4" \
+    "${FF_PROFILE}/sessionstore-backups/recovery.jsonlz4" \
+    "${FF_PROFILE}/sessionstore-backups/recovery.baklz4" \
+    "${FF_PROFILE}/sessionstore-backups/previous.jsonlz4" \
+    "${FF_PROFILE}/sessionstore-backups/upgrade.jsonlz4-"*
+  mkdir -p "${FF_PROFILE}/sessionstore-backups"
+}
+
 # Pi5 上の Web SPA 更新を Pi4 Firefox に届ける（clientKey だけでは URL が不変でキャッシュされ得る）
 KIOSK_TARGET_URL="{{ kiosk_url }}"
 if APP_REF="$(git -C "${REPO_PATH}" rev-parse --short HEAD 2>/dev/null)"; then
@@ -59,6 +75,7 @@ if [[ "${BROWSER_ENGINE}" == "chromium" ]]; then
   )
   exec "${BROWSER_BIN}" "${CHROMIUM_FLAGS[@]}"
 elif [[ "${BROWSER_ENGINE}" == "firefox" ]]; then
+  clear_firefox_session_restore
   FIREFOX_FLAGS=(
 {% if (kiosk_browser_mode | default('app-like') | lower) == 'kiosk' %}
 {% for flag in kiosk_browser_flags_firefox_kiosk | default(['--kiosk']) %}
