@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { KIOSK_INITIAL_ROUTE_IDS } from '@raspi-system/shared-types';
 import { authorizeRoles } from '../../lib/auth.js';
 import { normalizeClientKey } from '../../lib/client-key.js';
 import { ApiError } from '../../lib/errors.js';
@@ -67,6 +68,7 @@ const clientDisplayNameSchema = z
 export const updateClientSchema = z.object({
   name: clientDisplayNameSchema.optional(),
   defaultMode: z.enum(['PHOTO', 'TAG']).optional().nullable(),
+  kioskInitialRoute: z.enum(KIOSK_INITIAL_ROUTE_IDS).optional().nullable(),
   haizenEdgeEnabled: z.boolean().optional(),
   shelfLayoutEditEnabled: z.boolean().optional()
 });

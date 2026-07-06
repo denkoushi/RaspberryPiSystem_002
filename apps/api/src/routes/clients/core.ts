@@ -51,6 +51,7 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
       id,
       name: body.name,
       defaultMode: body.defaultMode ?? undefined,
+      kioskInitialRoute: body.kioskInitialRoute,
       haizenEdgeEnabled: body.haizenEdgeEnabled,
       shelfLayoutEditEnabled: body.shelfLayoutEditEnabled
     });

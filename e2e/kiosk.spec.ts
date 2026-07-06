@@ -5,8 +5,8 @@ import { clickByRoleSafe, closeDialogWithEscape, revealKioskHeader } from './hel
 test.describe('キオスク画面', () => {
   test('キオスク初期表示でヘッダーとナビゲーションが見える', async ({ page }) => {
     await page.goto('/kiosk');
-    // defaultMode により /kiosk/tag または /kiosk/photo へ遷移するが、ヘッダーナビは共通
-    await expect(page).toHaveURL(/\/kiosk(\/tag|\/photo)?/);
+    // 端末設定により各キオスク初期画面へ遷移するが、ヘッダーナビは共通
+    await expect(page).toHaveURL(/\/kiosk(?:\/tag|\/photo|\/production-schedule|\/assembly)?(?:[?#].*)?$/);
     await revealKioskHeader(page);
     await expect(page.getByText(/キオスク端末/i)).toBeVisible();
     await expect(page.locator('a[href="/kiosk"]').filter({ hasText: '持出' }).first()).toBeVisible();
@@ -25,13 +25,13 @@ test.describe('キオスク画面', () => {
     await riggingLink.click();
     await expect(page).toHaveURL(/\/kiosk\/rigging\/borrow/);
 
-    // 持出（タグまたはフォト）へ戻れることを確認
+    // /kiosk へ戻れることを確認（端末設定に従って初期画面へ再遷移）
     await revealKioskHeader(page);
     const borrowLink = page.getByRole('link', { name: '持出' }).first();
     await borrowLink.waitFor({ state: 'visible' });
     await borrowLink.scrollIntoViewIfNeeded();
     await borrowLink.click();
-    await expect(page).toHaveURL(/\/kiosk(\/tag|\/photo)?/);
+    await expect(page).toHaveURL(/\/kiosk(?:\/tag|\/photo|\/production-schedule|\/assembly)?(?:[?#].*)?$/);
   });
 
   test('サイネージプレビューと電源メニューのモーダルが開閉できる', async ({ page }) => {
@@ -81,4 +81,3 @@ test.describe('キオスク画面', () => {
   // - ローカル環境（物理デバイスがある場合）
   // - ステージング環境（実際のハードウェア統合テスト）
 });
-

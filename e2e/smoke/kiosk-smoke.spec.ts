@@ -5,8 +5,8 @@ import { revealKioskHeader } from '../helpers';
 test.describe('キオスク画面スモーク', () => {
   test('初期表示でキオスク端末にリダイレクトされる', async ({ page }) => {
     await page.goto('/kiosk');
-    // defaultMode（tag/photo）いずれでも /kiosk/* に遷移していることを確認
-    await expect(page).toHaveURL(/\/kiosk(\/tag|\/photo)?/);
+    // 端末設定の初期画面へ遷移していることを確認
+    await expect(page).toHaveURL(/\/kiosk(?:\/tag|\/photo|\/production-schedule|\/assembly)?(?:[?#].*)?$/);
     await revealKioskHeader(page);
     await expect(page.getByText(/キオスク端末/i)).toBeVisible({ timeout: 5000 });
     await expect(page.locator('a[href="/kiosk"]').filter({ hasText: '持出' }).first()).toBeVisible();
@@ -23,13 +23,12 @@ test.describe('キオスク画面スモーク', () => {
     await riggingLink.click();
     await expect(page).toHaveURL(/\/kiosk\/rigging\/borrow/);
 
-    // 持出に戻れることを確認（/kiosk に遷移し、KioskRedirectがdefaultModeに従い再遷移）
+    // /kiosk に戻れることを確認（KioskRedirect が端末設定に従い再遷移）
     await revealKioskHeader(page);
     const borrowLink = page.getByRole('link', { name: '持出' }).first();
     await borrowLink.waitFor({ state: 'visible' });
     await borrowLink.scrollIntoViewIfNeeded();
     await borrowLink.click();
-    await expect(page).toHaveURL(/\/kiosk(\/tag|\/photo)?/);
+    await expect(page).toHaveURL(/\/kiosk(?:\/tag|\/photo|\/production-schedule|\/assembly)?(?:[?#].*)?$/);
   });
 });
-

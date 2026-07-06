@@ -41,6 +41,8 @@ export interface KioskConfig {
   greeting: string;
   idleTimeoutMs: number;
   defaultMode?: 'PHOTO' | 'TAG';
+  initialKioskRoute?: string | null;
+  initialKioskPath?: string;
   navTabOrder?: string[];
   clientStatus?: {
     temperature: number | null;
