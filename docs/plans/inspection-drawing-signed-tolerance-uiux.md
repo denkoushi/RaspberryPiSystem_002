@@ -23,6 +23,8 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 - [x] **レイアウト改善（作成/改版）** — 別 ExecPlan [inspection-drawing-create-layout-and-return-nav.md](./inspection-drawing-create-layout-and-return-nav.md) · **`5274f1ee`** · Pi5 Detach **`20260603-211122-29648`**
 - [x] (2026-07-06) 名称ごとの **寸法公差 / 幾何公差** 紐づけ設定と上下限公差候補を追加（`feat/inspection-drawing-tolerance-kind-settings` · `20e90160`）
 - [x] (2026-07-06) CI **`28758193791`** success、Deploy **`20260706-082903-1300`** success、Phase12 **45/0/0**
+- [x] (2026-07-06) 公差入力の実機フィードバック対応（幾何公差 `0` 追加、候補再選択、入力文字色、名称 placeholder）を追加（`feat/inspection-drawing-tolerance-input-usability-fixes` · `becb6e7c`）
+- [x] (2026-07-06) CI **`28760895857`** success、Deploy **`20260706-100018-28681`** success、Phase12 **45/0/0**
 
 ## Decision Log
 
@@ -42,6 +44,10 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
   Rationale: 初期導入を手作業なしで始めつつ、`幅=幾何公差` など現場例外を設定で吸収する。2026-07-06 / agent
 - Decision: 上限公差・下限公差は同じ候補リストを `datalist` で提示し、候補外の手入力値は保持する。名称変更時も入力済み上下限は自動変更しない。
   Rationale: 既存テンプレ・現場入力を壊さず、入力補助だけを足す。2026-07-06 / agent
+- Decision: 幾何公差候補には `0` を先頭に含め、`0` / `0.001`〜`0.009` とする。
+  Rationale: 実機検証で幾何公差の下限・上限に `0` を選ぶ運用が必要だった。2026-07-06 / agent
+- Decision: 候補入力は選択済み候補の再フォーカス時に一時的に空にし、候補を選ばず blur した場合は元値を復元する。
+  Rationale: 実機ブラウザで同じ値が残ったままだと datalist の再選択がしにくく、手入力契約も維持する必要がある。2026-07-06 / agent
 
 ## Surprises & Discoveries
 
@@ -49,6 +55,7 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 - 候補生成で `Math.round` 両端だと 9.95–10.05・刻み 0.1 で **10.1** が候補に入り NG になる。**Fix**: `Math.ceil(lower*scale)` / `Math.floor(upper*scale)`。
 - `formatToleranceRawNumber` に `round6` 未適用だと seed 文字列が `0.04999999999999716` になる。
 - 上辺 `pointListSlot` + ヘッダー `p-1.5` + 右ペイン `lg:w-[20rem]` + ページ `p-2` の積み重ねで、**図面キャンバスの実表示面積が著しく減る**（Pi5 実機フィードバック 2026-06-03）。**作成/改版は [layout ExecPlan](./inspection-drawing-create-layout-and-return-nav.md) で対応済**（`5274f1ee`）。
+- 実機ブラウザでは、`datalist` 候補を一度選ぶと値が残ったままになり、同じ欄で候補を開き直して別値を選びにくい。**Fix**: 候補値に一致する入力だけ focus 時に一時クリアし、blur 時に復元する。
 
 ## Concrete Steps（実装ファイル）
 
@@ -59,6 +66,7 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 | 名称候補 | `apps/web/.../inspectionDrawingMeasurementLabelOptions.ts` |
 | 名称・公差種別設定 | `packages/shared-types/src/part-measurement/inspection-drawing-tolerance-kind.ts` · `apps/web/.../InspectionDrawingMeasurementLabelSettingsSection.tsx` |
 | 設定 API | `apps/api/src/routes/part-measurement/inspection-drawing-measurement-label-settings.ts` · `apps/api/src/services/part-measurement/inspection-drawing-measurement-label-settings.service.ts` |
+| 公差入力 UX | `InspectionDrawingPointSettingsPanel.tsx` · `inspectionDrawingKioskUi.ts` · `inspectionDrawingMeasurementLabelOptions.ts` |
 | 候補値 | `apps/web/.../selfInspectionMeasurementValueOptions.ts` |
 | UI | `InspectionDrawingPointSettingsPanel.tsx` · `InspectionDrawingValuePanel.tsx` · `InspectionDrawingPointSummaryStrip.tsx` · `InspectionDrawingCreateHeaderBand.tsx` · `inspectionDrawingKioskUi.ts` |
 | 画面 | `KioskInspectionDrawingCreatePage.tsx` · `KioskSelfInspectionSessionPage.tsx` |
@@ -93,6 +101,13 @@ pnpm --filter @raspi-system/web build
 - `./scripts/update-all-clients.sh feat/inspection-drawing-tolerance-kind-settings infrastructure/ansible/inventory.yml --detach --follow` → **Run ID `20260706-082903-1300`**、summary success true、exitCode 0、全 7 ホスト `failed=0 / unreachable=0`。
 - `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
 
+2026-07-06 実機フィードバック対応 追加検証:
+
+- `pnpm --filter @raspi-system/shared-types build`、`pnpm --filter @raspi-system/web test -- src/features/part-measurement/inspection-drawing`（**41 files / 213 tests passed**）、`pnpm --filter @raspi-system/web build`、`pnpm lint --max-warnings=0`、`git diff --check` success。
+- GitHub Actions CI **`28760895857`** — 全ジョブ success（`lint-build-unit` · `api-db-and-infra` · `security-docker` · `e2e-smoke` · `e2e-tests`）。
+- `./scripts/update-all-clients.sh feat/inspection-drawing-tolerance-input-usability-fixes infrastructure/ansible/inventory.yml --detach --follow` → **Run ID `20260706-100018-28681`**、summary success true、exitCode 0、全 7 ホスト `failed=0 / unreachable=0`。
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+
 ## デプロイ（先行検証 2026-06-03）
 
 | ホスト | Detach Run ID | HEAD | RECAP |
@@ -106,5 +121,6 @@ pnpm --filter @raspi-system/web build
 
 - **CI**: GitHub Actions **`26867660917`** — 全ジョブ success（`lint-build-unit` · `e2e-smoke` · `api-db-and-infra` · `security-docker` · `e2e-tests`）。
 - **名称・公差種別設定（2026-07-06）**: GitHub Actions **`28758193791`** success、Deploy **`20260706-082903-1300`** success、Phase12 **45/0/0**。
+- **公差入力 実機フィードバック対応（2026-07-06）**: GitHub Actions **`28760895857`** success、Deploy **`20260706-100018-28681`** success、Phase12 **45/0/0**。
 - **契約**: 保存 API は従来どおり絶対上下限。UI のみ符号付き offset 表示。
 - **残課題**: キオスク検査図面作成画面の **図面表示面積**（ヘッダー・一覧・余白）。プレビュー: `docs/plans/kiosk-inspection-drawing-layout-preview.html`（HTML のみ・未実装）。

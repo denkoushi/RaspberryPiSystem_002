@@ -836,11 +836,22 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 - **DB/API**: `PartMeasurementToleranceKind` enum と `PartMeasurementInspectionLabelSetting` を追加。`GET /api/part-measurement/inspection-drawing/measurement-label-settings` は管理者系 JWT またはキオスク `x-client-key` で読める。`PATCH` は `ADMIN` / `MANAGER` JWT のみ。
 - **既定ルール**: 名称に **`度`** を含む場合は **幾何公差**、それ以外は **寸法公差**。このため初期状態では `直角度` と `面粗度` は幾何公差、`幅` は寸法公差。
 - **管理設定**: 管理コンソール `/admin/tools/part-measurement-templates` の **検査図面 名称・公差種別** セクションで、名称ごとに `寸法公差 / 幾何公差` を一覧編集・追加・削除・保存できる。
-- **候補値**: 幾何公差は `0.001`〜`0.009`。寸法公差は `-0.9`〜`+0.9` を `0.1` 刻み、表示は `-0.1` / `0` / `+0.1` 形式。
+- **候補値**: 幾何公差は `0` / `0.001`〜`0.009`。寸法公差は `-0.9`〜`+0.9` を `0.1` 刻み、表示は `-0.1` / `0` / `+0.1` 形式。
 - **UI契約**: 上限公差・下限公差は同じ `datalist` 候補を出す。候補外の手入力は維持し、名称変更時も入力済み上下限公差は自動変更しない。API 取得失敗時は既定ルールへフォールバックする。
 - **主な実装**: `packages/shared-types/src/part-measurement/inspection-drawing-tolerance-kind.ts`、`InspectionDrawingPointSettingsPanel.tsx`、`InspectionDrawingMeasurementLabelSettingsSection.tsx`、`inspection-drawing-measurement-label-settings.service.ts`。
 - **ローカル検証**: 一時 Postgres で migration / integration test **70 tests passed** / `EXPLAIN`、Web focused test **41 files / 211 tests passed**、Web build pass。既存 DB/既存コンテナは変更しない。
 - **CI / デプロイ**: GitHub Actions **`28758193791` success**。本番デプロイ **`20260706-082903-1300`** は summary success true / exitCode 0 / totalHosts 7 / failedHosts・unreachableHosts なし。Pi5 は Docker rebuild + Prisma migrate/status + API health recover、Pi4×5 は kiosk-browser/status-agent restart OK、Pi3 は lightdm 復旧後 `signage-lite.service is active`。
+- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+
+#### 2026-07-06 公差入力 実機フィードバック対応 {#検査図面-公差入力-実機フィードバック-2026-07-06}
+
+- **作業ブランチ / 代表コミット**: `feat/inspection-drawing-tolerance-input-usability-fixes` / **`becb6e7c`**（`fix(web): improve inspection tolerance input usability`）。
+- **目的**: 実機検証で出た「幾何公差に `0` が必要」「候補選択後に別候補を選び直せない」「公差入力文字が背景と同化する」「名称 placeholder が長い」を解消する。
+- **変更内容**: 幾何公差候補は `0` / `0.001`〜`0.009`。候補入力は選択済み候補の再フォーカス時に一時クリアし、別候補を選び直せる。候補を選ばず blur した場合は元値へ復元する。基準値・上限公差・下限公差は白背景 + 黒文字で固定し、名称未選択表示は `選択`。
+- **契約**: Web/shared のみ。API / DB / Prisma migration / 既存テンプレ / 保存契約（絶対 `lowerLimit` / `upperLimit`）は変更しない。候補外の手入力値は引き続き保持・保存できる。
+- **主な実装**: `inspection-drawing-tolerance-kind.ts`、`InspectionDrawingPointSettingsPanel.tsx`、`inspectionDrawingKioskUi.ts`、`inspectionDrawingMeasurementLabelOptions.ts`。
+- **ローカル検証**: `shared-types build`、Web focused test **41 files / 213 tests passed**、Web build、monorepo lint、`git diff --check` success。
+- **CI / デプロイ**: GitHub Actions **`28760895857` success**。本番デプロイ **`20260706-100018-28681`** は summary success true / exitCode 0 / totalHosts 7 / failedHosts・unreachableHosts なし。
 - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
 
 #### 先行デプロイ（2026-06-03）

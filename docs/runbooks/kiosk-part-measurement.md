@@ -320,9 +320,9 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 ### キオスク確認
 
 1. **検査図面** → 新規または編集で測定点を選択する。
-2. 名称 `直角度` で上限公差・下限公差の候補に `0.001`〜`0.009` が出ること。
+2. 名称 `直角度` で上限公差・下限公差の候補に `0` / `0.001`〜`0.009` が出ること。
 3. 名称 `幅` の既定候補が `-0.9`〜`+0.9`（`+0.1` 表示あり）であること。
-4. 管理設定で `幅=幾何公差` に保存後、キオスクを再読込し、`幅` の候補が `0.001`〜`0.009` に切り替わること。
+4. 管理設定で `幅=幾何公差` に保存後、キオスクを再読込し、`幅` の候補が `0` / `0.001`〜`0.009` に切り替わること。
 5. 候補外の手入力値（例: `0.026`）が入力欄に保持され、保存時も従来どおり絶対 `lowerLimit` / `upperLimit` へ変換されること。
 
 ### API確認（任意）
@@ -342,6 +342,32 @@ curl -sS -H "x-client-key: <kiosk-client-key>" \
 | Detach Run ID | **`20260706-082903-1300`** |
 | PLAY RECAP | 全 7 ホスト `failed=0` / `unreachable=0` |
 | Pi5 | Docker rebuild/restart、Prisma migrate/status、API health recover OK |
+| Pi4×5 | `kiosk-browser.service` / `status-agent.service` / `status-agent.timer` restart OK |
+| Pi3 | lightdm 復旧後 `signage-lite.service is active` |
+| 実機自動検証 | `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0** |
+
+## 検査図面 公差入力 実機フィードバック対応（2026-07-06） {#検査図面-公差入力-実機フィードバック-2026-07-06}
+
+正本: [KB-320 §公差入力フィードバック](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-公差入力-実機フィードバック-2026-07-06) · ブランチ **`feat/inspection-drawing-tolerance-input-usability-fixes`** · **`becb6e7c`** · CI **`28760895857`** · Deploy **`20260706-100018-28681`** · Phase12 **45/0/0** · Web/shared のみ。
+
+### キオスク確認
+
+1. **検査図面** → 新規または編集で測定点を選択する。
+2. 名称ドロップダウンの未選択表示が `選択` であること。
+3. 名称 `直角度` で上限公差・下限公差の候補に `0` / `0.001`〜`0.009` が出ること。
+4. 上限公差または下限公差で候補を選んだ後、同じ欄を再フォーカスして別候補を選び直せること。
+5. 再フォーカス後に候補を選ばず欄外へ移動した場合、元の入力値が戻ること。
+6. 基準値・上限公差・下限公差の文字が黒で、背景と同化せず読めること。
+7. 候補外の手入力値（例: `0.026`）が入力欄に保持され、保存できること。
+
+### 本番反映実績
+
+| 項目 | 内容 |
+|------|------|
+| 反映対象 | Pi5 + Pi4×5 + Pi3 |
+| Detach Run ID | **`20260706-100018-28681`** |
+| PLAY RECAP | 全 7 ホスト `failed=0` / `unreachable=0` |
+| Pi5 | Docker compose rebuild/restart、Prisma migrate/status、API health recover OK |
 | Pi4×5 | `kiosk-browser.service` / `status-agent.service` / `status-agent.timer` restart OK |
 | Pi3 | lightdm 復旧後 `signage-lite.service is active` |
 | 実機自動検証 | `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0** |

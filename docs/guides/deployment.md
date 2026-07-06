@@ -10,6 +10,21 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-06 · **検査図面 公差入力 実機フィードバック対応** · **Web + shared** · **Pi5 + Pi4×5 + Pi3 反映済**） {#inspection-drawing-tolerance-input-usability-fixes-2026-07-06}
+
+- **変更概要（正本）**: [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-公差入力-実機フィードバック-2026-07-06) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-公差入力-実機フィードバック-2026-07-06) · ブランチ **`feat/inspection-drawing-tolerance-input-usability-fixes`** · 実装 **`becb6e7c`** (`fix(web): improve inspection tolerance input usability`)。
+  - 幾何公差候補に **`0`** を追加し、`0` / `0.001`〜`0.009` を候補にする。
+  - 上限公差・下限公差の候補入力は、候補選択後の再フォーカス時に一時的に空にして別候補を選び直せる。候補を選ばず blur した場合は元値を復元する。
+  - 基準値・上限公差・下限公差は白背景 + 黒文字で表示し、名称ドロップダウンの空表示は `選択` にする。
+  - Web/shared のみ。API / DB / Prisma migration / 保存契約（絶対 `lowerLimit` / `upperLimit`）は変更しない。
+- **CI（`becb6e7c`）**: CI **`28760895857` success**（`lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` all success）。
+- **ローカル検証**: `pnpm --filter @raspi-system/shared-types build`、Web focused test **41 files / 213 tests passed**、`pnpm --filter @raspi-system/web build`、`pnpm lint --max-warnings=0`、`git diff --check` success。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/inspection-drawing-tolerance-input-usability-fixes infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260706-100018-28681`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260706-100018-28681.log` · summary success true · exitCode 0 · totalHosts 7 · failedHosts/unreachableHosts なし。
+  - PLAY RECAP は全 7 ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。
+  - Pi5 は Docker compose rebuild/restart、Prisma migrate/status、API health recover を通過。Pi4×5 は kiosk-browser/status-agent/status-agent.timer restart OK（stonebase の barcode-agent は 1 回 readiness retry 後 OK）。Pi3 は lightdm 復旧後 `signage-lite.service is active`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-06 JST）。
+
 ### 補足（2026-07-06 · **検査図面 名称・公差種別設定** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#inspection-drawing-tolerance-kind-settings-2026-07-06}
 
 - **変更概要（正本）**: [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-名称-公差種別設定-2026-07-06) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-名称-公差種別設定-2026-07-06) · ブランチ **`feat/inspection-drawing-tolerance-kind-settings`** · 実装 **`20e90160`** (`feat(part-measurement): add inspection drawing tolerance kind settings`)。
