@@ -3,6 +3,9 @@ import { api } from '../http';
 import type {
   AssemblyProcedureDocumentDto,
   AssemblyProcedureDocumentSummaryDto,
+  AssemblyProcedureOrderDto,
+  AssemblyProcedureOrderSaveInput,
+  AssemblyProcedureSequenceDto,
   AssemblyTemplateCreateInput,
   AssemblyTemplateDto,
   AssemblyTemplateSummaryDto,
@@ -20,6 +23,34 @@ export async function listAssemblySeibanCandidates(params: { prefix: string; lim
     `/assembly/seiban-candidates?${qs.toString()}`
   );
   return data.candidates;
+}
+
+export async function verifyAssemblyProcedureOrderAccessPassword(payload: { password: string }) {
+  const { data } = await api.post<{ success: boolean }>(
+    '/kiosk/assembly/procedure-order-settings/verify-access-password',
+    payload
+  );
+  return data;
+}
+
+export async function getAssemblyProcedureOrder(machineName: string) {
+  const qs = new URLSearchParams({ machineName });
+  const { data } = await api.get<{ order: AssemblyProcedureOrderDto }>(
+    `/assembly/procedure-orders?${qs.toString()}`
+  );
+  return data.order;
+}
+
+export async function saveAssemblyProcedureOrder(payload: AssemblyProcedureOrderSaveInput) {
+  const { data } = await api.put<{ order: AssemblyProcedureOrderDto }>('/assembly/procedure-orders', payload);
+  return data.order;
+}
+
+export async function getAssemblyWorkSessionProcedureSequence(sessionId: string) {
+  const { data } = await api.get<{ sequence: AssemblyProcedureSequenceDto }>(
+    `/assembly/work-sessions/${sessionId}/procedure-sequence`
+  );
+  return data.sequence;
 }
 export async function listAssemblyProcedureDocuments(params?: { q?: string; includeInactive?: boolean }) {
   const qs = new URLSearchParams();

@@ -11,6 +11,7 @@ import { registerKioskPalletVisualizationRoutes } from './kiosk/pallet-visualiza
 import {
   registerKioskPartMeasurementSelfInspectionRecordApprovalAuthRoute
 } from './kiosk/part-measurement-self-inspection-record-approval-auth.js';
+import { registerKioskAssemblyProcedureOrderAuthRoute } from './kiosk/assembly-procedure-order-auth.js';
 import {
   checkPowerRateLimit,
   checkRateLimit,
@@ -83,6 +84,13 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   });
 
   await registerKioskPartMeasurementSelfInspectionRecordApprovalAuthRoute(app, {
+    requireClientDevice,
+    resolveLocationScopeContext,
+    resolveTargetLocation,
+    leaderboardShellSnapshotStore
+  });
+
+  await registerKioskAssemblyProcedureOrderAuthRoute(app, {
     requireClientDevice,
     resolveLocationScopeContext,
     resolveTargetLocation,

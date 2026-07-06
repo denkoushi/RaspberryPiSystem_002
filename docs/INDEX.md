@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-06 · 組立キオスク PDF閲覧順設定 + ページ送りビューア · 実装中）
+
+- **機種名ごとのPDF要領書閲覧順設定**: 既存 `KioskDocument` PDF を正本にし、組立側は機種名キーごとの閲覧順と任意ラベルだけを保持。`/kiosk/assembly/procedure-order-settings` は2520共有パスワードで認証し、作業画面は設定済みならPDFページ送りビューア、未設定/無効/ページ無しなら従来の単一手順画像へfallback。ブランチ **`feature/assembly-procedure-order-viewer`** · 未PR/未デプロイ。**正本**: [Plan](./plans/kiosk-assembly-torque-management-mvp.md)
+
 ### 最新アップデート（2026-07-06 · 組立キオスク 製番起点開始導線 + 仕掛中可視化）
 
 - **組立開始を製番起点へ変更**: `/kiosk/assembly` を作業者向けの製番検索・機種名表示・シリアルソフトテンキー・開始/再開・仕掛中一覧に変更し、既存の手順書ライブラリ/組立テンプレート管理は `/kiosk/assembly/library` へ退避。`FSEIBAN + serialNo` の仕掛中は既存セッションへ再開する。**`b2ddbbd9`** · PR **#956** · CI **`28782487173` success** · Deploy **`20260706-185942-11851`** · Phase12 **45/0/0**。**正本**: [Plan](./plans/kiosk-assembly-torque-management-mvp.md) · [Deployment](./guides/deployment.md#kiosk-assembly-seiban-start-flow-2026-07-06)

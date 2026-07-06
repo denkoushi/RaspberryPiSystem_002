@@ -6,12 +6,14 @@ import {
   completeAssemblyWorkSession,
   downloadAssemblyWorkSessionXlsx,
   getAssemblyWorkSession,
+  getAssemblyWorkSessionProcedureSequence,
   recordAssemblyTorque,
   restartAssemblyArea
 } from '../../api/client';
 import { Button, buttonClassName } from '../../components/ui/Button';
 import {
   AssemblyProcedureCanvas,
+  AssemblyProcedureSequenceViewer,
   currentAssemblyArea,
   currentAssemblyBolt,
   kioskAssemblyTemplateEditPath,
@@ -21,11 +23,13 @@ import {
   templateToCanvasBolts
 } from '../../features/assembly';
 
-import type { AssemblyWorkSessionDto } from '../../features/assembly/types';
+import type { AssemblyProcedureSequenceDto, AssemblyWorkSessionDto } from '../../features/assembly/types';
 
 export function KioskAssemblyWorkSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [session, setSession] = useState<AssemblyWorkSessionDto | null>(null);
+  const [procedureSequence, setProcedureSequence] = useState<AssemblyProcedureSequenceDto | null>(null);
+  const [procedureSequenceLoading, setProcedureSequenceLoading] = useState(false);
   const [torqueValue, setTorqueValue] = useState('');
   const [torqueSource, setTorqueSource] = useState<'manual' | 'mock'>('manual');
   const [loading, setLoading] = useState(true);
@@ -56,12 +60,36 @@ export function KioskAssemblyWorkSessionPage() {
     };
   }, [sessionId]);
 
+  useEffect(() => {
+    if (!session?.id) {
+      setProcedureSequence(null);
+      return;
+    }
+    let cancelled = false;
+    setProcedureSequenceLoading(true);
+    void getAssemblyWorkSessionProcedureSequence(session.id)
+      .then((next) => {
+        if (!cancelled) setProcedureSequence(next);
+      })
+      .catch(() => {
+        if (!cancelled) setProcedureSequence(null);
+      })
+      .finally(() => {
+        if (!cancelled) setProcedureSequenceLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.id]);
+
   const statusByBolt = useMemo(() => (session ? latestStatusByBolt(session) : new Map()), [session]);
   const currentArea = session ? currentAssemblyArea(session) : null;
   const currentBolt = session ? currentAssemblyBolt(session) : null;
   const allComplete = session
     ? session.template.areas.every((area) => area.bolts.every((bolt) => statusByBolt.get(bolt.id) === 'ok'))
     : false;
+  const hasConfiguredProcedureSequence =
+    procedureSequence?.mode === 'configured' && procedureSequence.documents.length > 0;
 
   const runBusy = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -138,16 +166,24 @@ export function KioskAssemblyWorkSessionPage() {
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(0,1fr)_minmax(21rem,27rem)] xl:overflow-hidden">
         <section className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
           <div className="shrink-0 border-b border-white/10 p-3">
-            <h2 className="text-[1.02rem] font-bold">手順書 / 締付位置</h2>
-            <p className="mt-1 text-sm text-white/60">{currentBolt?.tighteningId ?? (allComplete ? '全締付完了' : '次工程待ち')}</p>
+            <h2 className="text-[1.02rem] font-bold">{hasConfiguredProcedureSequence ? '要領書 / ページ送り' : '手順書 / 締付位置'}</h2>
+            <p className="mt-1 text-sm text-white/60">
+              {procedureSequenceLoading
+                ? '要領書を確認中'
+                : currentBolt?.tighteningId ?? (allComplete ? '全締付完了' : '次工程待ち')}
+            </p>
           </div>
           <div className="min-h-0 flex-1">
-            <AssemblyProcedureCanvas
-              imageRelativePath={session.template.procedureDocument.imageRelativePath}
-              bolts={templateToCanvasBolts(session.template, statusByBolt)}
-              selectedBoltId={session.currentBoltId}
-              className="h-full"
-            />
+            {hasConfiguredProcedureSequence ? (
+              <AssemblyProcedureSequenceViewer sequence={procedureSequence} className="h-full" />
+            ) : (
+              <AssemblyProcedureCanvas
+                imageRelativePath={session.template.procedureDocument.imageRelativePath}
+                bolts={templateToCanvasBolts(session.template, statusByBolt)}
+                selectedBoltId={session.currentBoltId}
+                className="h-full"
+              />
+            )}
           </div>
         </section>
 

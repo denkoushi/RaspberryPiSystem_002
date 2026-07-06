@@ -12,6 +12,8 @@ import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-imag
 import { requireClientDevice } from '../kiosk/shared.js';
 import {
   AssemblyExcelExportService,
+  AssemblyProcedureOrderService,
+  AssemblyProcedureSequenceService,
   AssemblyProcedureDocumentService,
   AssemblySeibanStartService,
   AssemblyTemplateService,
@@ -19,6 +21,9 @@ import {
   TORQUE_INPUT_PORT_SOURCES,
   toPrismaTorqueInputSource,
   type AssemblyProcedureDocumentSummary,
+  type AssemblyProcedureOrder,
+  type AssemblyProcedureOrderDocumentSummary,
+  type AssemblyProcedureSequence,
   type AssemblySeibanCandidate,
   type AssemblyTemplateAreaInput,
   type AssemblyTemplateDetail,
@@ -79,6 +84,17 @@ const startSessionBodySchema = z.object({
   operatorNameSnapshot: z.string().trim().min(1).max(120),
   targetUnit: z.string().trim().min(1).max(120),
   torqueWrenchId: z.string().trim().min(1).max(120)
+});
+
+const procedureOrderItemBodySchema = z.object({
+  kioskDocumentId: z.string().uuid(),
+  label: z.string().trim().max(120).optional().nullable()
+});
+
+const procedureOrderSaveBodySchema = z.object({
+  machineName: z.string().trim().min(1).max(120),
+  accessPassword: z.string().min(1).max(128),
+  items: z.array(procedureOrderItemBodySchema).max(50)
 });
 
 const recordTorqueBodySchema = z.object({
@@ -144,6 +160,60 @@ function serializeSeibanCandidate(candidate: AssemblySeibanCandidate) {
     machineName: candidate.machineName,
     machineNameSource: candidate.machineNameSource,
     activeTemplate: candidate.activeTemplate
+  };
+}
+
+function serializeProcedureOrderDocument(document: AssemblyProcedureOrderDocumentSummary) {
+  return {
+    id: document.id,
+    title: document.title,
+    displayTitle: document.displayTitle,
+    filename: document.filename,
+    confirmedDocumentNumber: document.confirmedDocumentNumber,
+    confirmedSummaryText: document.confirmedSummaryText,
+    pageCount: document.pageCount,
+    enabled: document.enabled,
+    updatedAt: document.updatedAt.toISOString()
+  };
+}
+
+function serializeProcedureOrder(order: AssemblyProcedureOrder) {
+  return {
+    id: order.id,
+    machineName: order.machineName,
+    machineNameKey: order.machineNameKey,
+    configured: order.configured,
+    items: order.items.map((item) => ({
+      id: item.id,
+      sortOrder: item.sortOrder,
+      label: item.label,
+      kioskDocumentId: item.kioskDocumentId,
+      document: serializeProcedureOrderDocument(item.document)
+    }))
+  };
+}
+
+function serializeProcedureSequence(sequence: AssemblyProcedureSequence) {
+  return {
+    mode: sequence.mode,
+    reason: sequence.mode === 'fallback' ? sequence.reason : null,
+    machineName: sequence.machineName,
+    machineNameKey: sequence.machineNameKey,
+    documents: sequence.documents.map((document) => ({
+      orderItemId: document.orderItemId,
+      sortOrder: document.sortOrder,
+      label: document.label,
+      kioskDocumentId: document.kioskDocumentId,
+      title: document.title,
+      displayTitle: document.displayTitle,
+      filename: document.filename,
+      confirmedDocumentNumber: document.confirmedDocumentNumber,
+      confirmedSummaryText: document.confirmedSummaryText,
+      pageCount: document.pageCount,
+      updatedAt: document.updatedAt.toISOString(),
+      pageUrls: document.pageUrls
+    })),
+    fallbackProcedureDocument: sequence.fallbackProcedureDocument
   };
 }
 
@@ -335,6 +405,8 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const templateService = new AssemblyTemplateService();
   const sessionService = new AssemblyWorkSessionService();
   const seibanStartService = new AssemblySeibanStartService();
+  const procedureOrderService = new AssemblyProcedureOrderService();
+  const procedureSequenceService = new AssemblyProcedureSequenceService(procedureOrderService);
   const excelService = new AssemblyExcelExportService(sessionService);
 
   app.get('/assembly/seiban-candidates', { preHandler: allowView }, async (request) => {
@@ -346,6 +418,22 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       .parse(request.query);
     const candidates = await seibanStartService.listSeibanCandidates(q);
     return { candidates: candidates.map(serializeSeibanCandidate) };
+  });
+
+  app.get('/assembly/procedure-orders', { preHandler: allowView }, async (request) => {
+    const q = z
+      .object({
+        machineName: z.string().trim().min(1).max(120)
+      })
+      .parse(request.query);
+    const order = await procedureOrderService.getByMachineName(q.machineName);
+    return { order: serializeProcedureOrder(order) };
+  });
+
+  app.put('/assembly/procedure-orders', { preHandler: allowWriteKiosk }, async (request) => {
+    const body = procedureOrderSaveBodySchema.parse(request.body);
+    const order = await procedureOrderService.save(body);
+    return { order: serializeProcedureOrder(order) };
   });
 
   app.post('/assembly/procedure-documents/preview', { preHandler: allowWriteKiosk }, async (request, reply) => {
@@ -529,6 +617,13 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       .parse(request.query);
     const sessions = await sessionService.listSummary(q);
     return { sessions: sessions.map(serializeSessionSummary) };
+  });
+
+  app.get('/assembly/work-sessions/:id/procedure-sequence', { preHandler: allowView }, async (request, reply) => {
+    const params = idParamSchema.parse(request.params);
+    const sequence = await procedureSequenceService.resolveForWorkSession(params.id);
+    if (!sequence) return reply.status(404).send({ message: '作業セッションが見つかりません' });
+    return { sequence: serializeProcedureSequence(sequence) };
   });
 
   app.get('/assembly/work-sessions/:id', { preHandler: allowView }, async (request, reply) => {

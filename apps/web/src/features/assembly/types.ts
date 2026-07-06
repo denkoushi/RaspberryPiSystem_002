@@ -164,6 +164,71 @@ export type AssemblyWorkSessionSummaryDto = {
   totalBoltCount: number;
 };
 
+export type AssemblyProcedureOrderDocumentDto = {
+  id: string;
+  title: string;
+  displayTitle: string | null;
+  filename: string;
+  confirmedDocumentNumber: string | null;
+  confirmedSummaryText: string | null;
+  pageCount: number | null;
+  enabled: boolean;
+  updatedAt: string;
+};
+
+export type AssemblyProcedureOrderItemDto = {
+  id: string;
+  sortOrder: number;
+  label: string | null;
+  kioskDocumentId: string;
+  document: AssemblyProcedureOrderDocumentDto;
+};
+
+export type AssemblyProcedureOrderDto = {
+  id: string | null;
+  machineName: string;
+  machineNameKey: string;
+  configured: boolean;
+  items: AssemblyProcedureOrderItemDto[];
+};
+
+export type AssemblyProcedureOrderSaveInput = {
+  machineName: string;
+  accessPassword: string;
+  items: Array<{
+    kioskDocumentId: string;
+    label?: string | null;
+  }>;
+};
+
+export type AssemblyProcedureSequenceDocumentDto = {
+  orderItemId: string;
+  sortOrder: number;
+  label: string | null;
+  kioskDocumentId: string;
+  title: string;
+  displayTitle: string | null;
+  filename: string;
+  confirmedDocumentNumber: string | null;
+  confirmedSummaryText: string | null;
+  pageCount: number | null;
+  updatedAt: string;
+  pageUrls: string[];
+};
+
+export type AssemblyProcedureSequenceDto = {
+  mode: 'configured' | 'fallback';
+  reason: 'not_configured' | 'no_enabled_documents' | 'no_page_images' | null;
+  machineName: string;
+  machineNameKey: string;
+  documents: AssemblyProcedureSequenceDocumentDto[];
+  fallbackProcedureDocument: {
+    id: string;
+    name: string;
+    imageRelativePath: string;
+  } | null;
+};
+
 export type AssemblyTemplateBoltInput = {
   sortOrder: number;
   tighteningId: string;

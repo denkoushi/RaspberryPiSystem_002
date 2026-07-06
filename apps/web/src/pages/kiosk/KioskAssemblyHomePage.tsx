@@ -11,6 +11,7 @@ import { Input } from '../../components/ui/Input';
 import {
   formatAssemblyTimestamp,
   KIOSK_ASSEMBLY_LIBRARY_PATH,
+  kioskAssemblyProcedureOrderSettingsPath,
   kioskAssemblyWorkSessionPath,
   readAssemblyApiErrorMessage
 } from '../../features/assembly';
@@ -159,6 +160,12 @@ export function KioskAssemblyHomePage() {
           </Link>
           <Link to={KIOSK_ASSEMBLY_LIBRARY_PATH} className={buttonClassName('primary', 'inline-flex min-h-11 items-center text-[1.02rem]')}>
             組立テンプレート
+          </Link>
+          <Link
+            to={kioskAssemblyProcedureOrderSettingsPath({ machineName: selectedCandidate?.machineName ?? null })}
+            className={buttonClassName('secondary', 'inline-flex min-h-11 items-center text-[1.02rem]')}
+          >
+            閲覧順設定
           </Link>
         </div>
       </div>

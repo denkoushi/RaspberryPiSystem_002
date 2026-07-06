@@ -80,12 +80,17 @@ describe('KioskAssemblyHomePage', () => {
     renderPage();
 
     expect(screen.getByRole('link', { name: '手順書ライブラリ' })).toHaveAttribute('href', '/kiosk/assembly/library');
+    expect(screen.getByRole('link', { name: '閲覧順設定' })).toHaveAttribute('href', '/kiosk/assembly/procedure-order-settings');
     fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
 
     await waitFor(() =>
       expect(mockListAssemblySeibanCandidates).toHaveBeenCalledWith({ prefix: 'ASMTEST-A', limit: 20 })
     );
     fireEvent.click(await screen.findByText('ASMTEST-A1'));
+    expect(screen.getByRole('link', { name: '閲覧順設定' })).toHaveAttribute(
+      'href',
+      '/kiosk/assembly/procedure-order-settings?machineName=MH-AX'
+    );
     fireEvent.change(screen.getByLabelText('シリアルNo.'), { target: { value: 's001' } });
     fireEvent.change(screen.getByLabelText('作業者'), { target: { value: '佐藤' } });
 
