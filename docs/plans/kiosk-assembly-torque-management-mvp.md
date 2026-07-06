@@ -6,8 +6,8 @@ scope: kiosk assembly torque management, seiban start flow, work-in-progress vis
 date: 2026-07-06
 source_of_truth: this file
 related_code: apps/api/src/routes/assembly/index.ts, apps/api/src/routes/storage/assembly-procedure-images.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx, infrastructure/docker/docker-compose.server.yml, infrastructure/ansible/roles/server/tasks/main.yml
-related_docs: ../INDEX.md
-validation: local Docker Postgres, GitHub Actions CI 28642360918 and 28650944516/28650941078, limited deployment run 20260703-183241-22704, user real-device acceptance 2026-07-03, local Docker Postgres 55434 for seiban start flow, focused API/web tests and web full test/build 2026-07-06
+related_docs: ../INDEX.md, ../guides/deployment.md
+validation: local Docker Postgres, GitHub Actions CI 28642360918 and 28650944516/28650941078, limited deployment run 20260703-183241-22704, user real-device acceptance 2026-07-03, local Docker Postgres 55434 for seiban start flow, focused API/web tests and web full test/build 2026-07-06, PR 956 CI 28782487173, full deployment 20260706-185942-11851, Phase12 45/0/0
 open_items: Bluetooth torque-agent, multi-page procedure documents, authenticated procedure order settings, completed work-session history/search enhancements
 ---
 
@@ -30,13 +30,19 @@ This is separate from part measurement and self-inspection. The implementation r
 ## Current State
 
 - Latest implementation branch: `feature/assembly-seiban-start-flow`.
+- Latest commit: `b2ddbbd9` (`feat(assembly): add seiban start flow`).
+- PR: `#956`.
 - Latest scope on 2026-07-06:
   - `/kiosk/assembly` is now the operator start page.
   - Operators search by `FSEIBAN`, choose a candidate, see the resolved machine name, enter serial number with a software keypad, and start or resume work.
   - The same `FSEIBAN + serialNo` with `IN_PROGRESS` resumes the existing session instead of creating a duplicate.
   - The lower section shows in-progress assembly sessions and links directly back to `/kiosk/assembly/work-sessions/:sessionId`.
   - The former library/template management page moved to `/kiosk/assembly/library`.
-- Local validation for the latest branch is complete. GitHub CI, production deployment, and merge are tracked in the deployment guide after rollout.
+- Latest CI/deployment:
+  - PR CI `28782487173`, push CI `28782461329`, CodeQL `28782487159`, and Secret scan `28782487220` succeeded.
+  - Full deployment run `20260706-185942-11851` completed on all 7 hosts with `failed=0 / unreachable=0`.
+  - Phase12 real-device verification passed: `PASS 45 / WARN 0 / FAIL 0`.
+  - Assembly smoke after deployment: `/kiosk/assembly`, `/kiosk/assembly/library`, seiban candidates API, and WIP summary API returned HTTP 200 with the expected authentication context.
 
 Earlier delivered branch: `feature/assembly-library-template-ui`.
 
@@ -176,8 +182,23 @@ CI:
   - CodeQL run `28650944450`: success.
   - CI runs `28650944516` and `28650941078`: success.
   - PR checks passed: lint/build/unit, API DB and infra, Docker security, e2e smoke, full e2e, CodeQL, gitleaks.
+- Seiban start flow CI:
+  - PR CI run `28782487173`: success.
+  - Push CI run `28782461329`: success.
+  - CodeQL run `28782487159`: success.
+  - Secret scan run `28782487220`: success.
 
 Real-device deployment and smoke:
+
+- Seiban start flow full deployment on 2026-07-06:
+  - Branch `feature/assembly-seiban-start-flow`, HEAD `b2ddbbd9`.
+  - Run `20260706-185942-11851`; remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260706-185942-11851.log`.
+  - All 7 hosts completed with `failed=0 / unreachable=0`.
+  - `raspberrypi5`: Docker compose rebuild/restart, Prisma migrate/status, and API health recovery passed.
+  - Pi4 kiosks: repo sync, `kiosk-browser.service`, `status-agent.service`, `status-agent.timer`, and kiosk UI reachability passed on all five Pi4 hosts.
+  - `raspberrypi3`: lightdm restored and `signage-lite.service is active`.
+  - `./scripts/deploy/verify-phase12-real.sh`: `PASS 45 / WARN 0 / FAIL 0`.
+  - Assembly smoke: `/kiosk/assembly`, `/kiosk/assembly/library`, `GET /api/assembly/seiban-candidates`, and `GET /api/assembly/work-sessions/summary` returned HTTP 200 with client-key authentication.
 
 - `raspberrypi5`:
   - Branch `feature/assembly-library-template-ui`, HEAD `3e8e3129`.
