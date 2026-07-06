@@ -1,11 +1,17 @@
 import type { KioskDocument, KioskDocumentOcrStatus, KioskDocumentSource, Prisma } from '@prisma/client';
 
+export type KioskDocumentListFields = 'summary';
+
 export type KioskDocumentListFilters = {
   query?: string;
   sourceType?: KioskDocumentSource;
   ocrStatus?: KioskDocumentOcrStatus;
   includeCandidateInSearch?: boolean;
   enabledOnly?: boolean;
+  /** summary: omit extractedText from DB read and response */
+  fields?: KioskDocumentListFields;
+  limit?: number;
+  offset?: number;
 };
 
 /**

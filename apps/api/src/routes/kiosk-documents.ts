@@ -42,6 +42,10 @@ const listQuerySchema = z.object({
     .union([z.boolean(), z.string()])
     .optional()
     .transform((v) => v === true || v === 'true'),
+  /** summary: extractedText を除外した軽量一覧 */
+  fields: z.enum(['summary']).optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
 });
 
 const ingestBodySchema = z.object({
@@ -63,12 +67,16 @@ const metadataPatchBodySchema = z.object({
   confirmedSummaryText: z.string().trim().min(1).max(300).nullable().optional(),
 });
 
+type ToDocumentDtoOptions = {
+  omitExtractedText?: boolean;
+};
+
 function toDocumentDto(doc: {
   id: string;
   title: string;
   displayTitle: string | null;
   filename: string;
-  extractedText: string | null;
+  extractedText?: string | null;
   ocrStatus: KioskDocumentOcrStatus;
   ocrEngine: string | null;
   ocrStartedAt: Date | null;
@@ -102,13 +110,13 @@ function toDocumentDto(doc: {
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;
-}) {
+}, options?: ToDocumentDtoOptions) {
   return {
     id: doc.id,
     title: doc.title,
     displayTitle: doc.displayTitle,
     filename: doc.filename,
-    extractedText: doc.extractedText,
+    extractedText: options?.omitExtractedText ? null : (doc.extractedText ?? null),
     ocrStatus: doc.ocrStatus,
     ocrEngine: doc.ocrEngine,
     ocrStartedAt: doc.ocrStartedAt?.toISOString() ?? null,
@@ -179,18 +187,25 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
       const ocrStatus = query.ocrStatus as KioskDocumentOcrStatus | undefined;
       const normalizedQuery = query.q ? normalizeDocumentText(query.q) : undefined;
       const hasClientKey = Boolean(request.headers['x-client-key']);
+      const listOptions = {
+        query: normalizedQuery,
+        sourceType,
+        ocrStatus,
+        fields: query.fields,
+        limit: query.limit,
+        offset: query.offset,
+      };
 
       const documents = hasClientKey
-        ? await service.listForKiosk({ query: normalizedQuery, sourceType, ocrStatus })
+        ? await service.listForKiosk(listOptions)
         : await service.listForAdmin({
-            query: normalizedQuery,
-            sourceType,
-            ocrStatus,
+            ...listOptions,
             includeCandidateInSearch: query.includeCandidates === true,
             enabledOnly: query.hideDisabled === true,
           });
 
-      return { documents: documents.map((d) => toDocumentDto(d)) };
+      const omitExtractedText = query.fields === 'summary';
+      return { documents: documents.map((d) => toDocumentDto(d, { omitExtractedText })) };
     }
   );
 

@@ -10,6 +10,52 @@ import {
   escapeLikePattern,
 } from '../search/build-kiosk-document-search-or.js';
 
+const KIOSK_DOCUMENT_SUMMARY_SELECT = {
+  id: true,
+  title: true,
+  displayTitle: true,
+  filename: true,
+  filePath: true,
+  fileHash: true,
+  sourceType: true,
+  gmailMessageId: true,
+  sourceAttachmentName: true,
+  gmailLogicalKey: true,
+  gmailInternalDateMs: true,
+  gmailDedupeKey: true,
+  pageCount: true,
+  ocrStatus: true,
+  ocrEngine: true,
+  ocrStartedAt: true,
+  ocrFinishedAt: true,
+  ocrRetryCount: true,
+  ocrFailureReason: true,
+  ocrTargetPages: true,
+  candidateFhincd: true,
+  candidateDrawingNumber: true,
+  candidateProcessName: true,
+  candidateResourceCd: true,
+  candidateDocumentNumber: true,
+  confidenceFhincd: true,
+  confidenceDrawingNumber: true,
+  confidenceProcessName: true,
+  confidenceResourceCd: true,
+  confidenceDocumentNumber: true,
+  confirmedFhincd: true,
+  confirmedDrawingNumber: true,
+  confirmedProcessName: true,
+  confirmedResourceCd: true,
+  confirmedDocumentNumber: true,
+  confirmedSummaryText: true,
+  documentCategory: true,
+  summaryCandidate1: true,
+  summaryCandidate2: true,
+  summaryCandidate3: true,
+  enabled: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.KioskDocumentSelect;
+
 export class PrismaKioskDocumentRepository implements KioskDocumentRepositoryPort {
   async create(data: Prisma.KioskDocumentCreateInput): Promise<KioskDocument> {
     return prisma.kioskDocument.create({ data });
@@ -28,7 +74,16 @@ export class PrismaKioskDocumentRepository implements KioskDocumentRepositoryPor
   }
 
   async list(filters: KioskDocumentListFilters): Promise<KioskDocument[]> {
-    const { query, sourceType, ocrStatus, includeCandidateInSearch = false, enabledOnly = true } = filters;
+    const {
+      query,
+      sourceType,
+      ocrStatus,
+      includeCandidateInSearch = false,
+      enabledOnly = true,
+      fields,
+      limit,
+      offset,
+    } = filters;
     const where: Prisma.KioskDocumentWhereInput = {};
     if (enabledOnly) {
       where.enabled = true;
@@ -40,22 +95,23 @@ export class PrismaKioskDocumentRepository implements KioskDocumentRepositoryPor
       where.ocrStatus = ocrStatus;
     }
     const searchQuery = query?.trim();
+    const listQuery = {
+      where,
+      orderBy: { createdAt: 'desc' as const },
+      ...(limit !== undefined ? { take: limit } : {}),
+      ...(offset !== undefined ? { skip: offset } : {}),
+      ...(fields === 'summary' ? { select: KIOSK_DOCUMENT_SUMMARY_SELECT } : {}),
+    };
     if (searchQuery && searchQuery.length > 0) {
       const q = escapeLikePattern(searchQuery);
       if (q.length === 0) {
-        return prisma.kioskDocument.findMany({
-          where,
-          orderBy: { createdAt: 'desc' },
-        });
+        return prisma.kioskDocument.findMany(listQuery);
       }
       where.OR = buildKioskDocumentSearchOrConditions(q, {
         includeCandidateFields: includeCandidateInSearch,
       });
     }
-    return prisma.kioskDocument.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-    });
+    return prisma.kioskDocument.findMany(listQuery);
   }
 
   async listPendingProcessing(limit: number): Promise<KioskDocument[]> {
