@@ -1,6 +1,7 @@
 export const KIOSK_ASSEMBLY_PATH_PREFIX = '/kiosk/assembly';
 export const KIOSK_ASSEMBLY_HOME_PATH = KIOSK_ASSEMBLY_PATH_PREFIX;
 export const KIOSK_ASSEMBLY_LIBRARY_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/library`;
+export const KIOSK_ASSEMBLY_PROCEDURE_ORDER_SETTINGS_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/procedure-order-settings`;
 export const KIOSK_ASSEMBLY_TEMPLATE_NEW_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/templates/new`;
 export const KIOSK_ASSEMBLY_WORK_START_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/work/start`;
 
@@ -15,6 +16,14 @@ export function kioskAssemblyWorkSessionPath(sessionId: string): string {
 export function kioskAssemblyWorkStartPath(templateId: string): string {
   const query = new URLSearchParams({ templateId });
   return `${KIOSK_ASSEMBLY_WORK_START_PATH}?${query.toString()}`;
+}
+
+export function kioskAssemblyProcedureOrderSettingsPath(params?: { machineName?: string | null }): string {
+  const query = new URLSearchParams();
+  const machineName = params?.machineName?.trim();
+  if (machineName) query.set('machineName', machineName);
+  const suffix = query.toString();
+  return suffix ? `${KIOSK_ASSEMBLY_PROCEDURE_ORDER_SETTINGS_PATH}?${suffix}` : KIOSK_ASSEMBLY_PROCEDURE_ORDER_SETTINGS_PATH;
 }
 
 export function kioskAssemblyTemplateNewPath(params?: {
@@ -41,4 +50,8 @@ export function parseAssemblyTemplateNewSearch(search: string): {
 
 export function parseAssemblyWorkStartSearch(search: string): { templateId: string | null } {
   return { templateId: new URLSearchParams(search).get('templateId') };
+}
+
+export function parseAssemblyProcedureOrderSettingsSearch(search: string): { machineName: string | null } {
+  return { machineName: new URLSearchParams(search).get('machineName') };
 }

@@ -1,4 +1,5 @@
 export * from './AssemblyProcedureCanvas';
+export * from './AssemblyProcedureSequenceViewer';
 export * from './AssemblyProcedureLibrarySection';
 export * from './AssemblyProcedureRenameModal';
 export * from './AssemblyProcedureUploadModal';

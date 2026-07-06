@@ -1914,6 +1914,7 @@ model KioskDocument {
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
   metadataHistories    KioskDocumentMetadataHistory[]
+  assemblyProcedureOrderItems AssemblyProcedureOrderItem[]
 
   @@index([enabled])
   @@index([title])
@@ -2295,6 +2296,35 @@ model AssemblyProcedureDocument {
 
   @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
   @@index([isActive, updatedAt], map: "AssemblyProcedureDocument_idx_active_updated")
+}
+
+/// 組立キオスク: 機種名ごとのPDF要領書閲覧順設定。
+model AssemblyProcedureOrderSet {
+  id             String                       @id @default(uuid())
+  machineName    String
+  machineNameKey String                       @unique
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+  items          AssemblyProcedureOrderItem[]
+
+  @@index([machineName], map: "AssemblyProcedureOrderSet_idx_machine_name")
+}
+
+/// 組立キオスク: 閲覧順に並べる既存キオスク要領書PDF。
+model AssemblyProcedureOrderItem {
+  id              String                    @id @default(uuid())
+  setId           String
+  kioskDocumentId String
+  sortOrder       Int
+  label           String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  set             AssemblyProcedureOrderSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  kioskDocument   KioskDocument             @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
+
+  @@unique([setId, sortOrder], map: "AssemblyProcedureOrderItem_unique_set_sort")
+  @@index([setId, sortOrder], map: "AssemblyProcedureOrderItem_idx_set_sort")
+  @@index([kioskDocumentId], map: "AssemblyProcedureOrderItem_idx_document")
 }
 
 /// 組立トルク管理: 形番/FHINCD + 手順パターンごとの締付テンプレート。

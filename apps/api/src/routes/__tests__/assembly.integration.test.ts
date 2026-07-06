@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildServer } from '../../app.js';
@@ -7,7 +11,8 @@ import {
   PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
   SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
 } from '../../services/production-schedule/constants.js';
-import { createTestClientDevice } from './helpers.js';
+import { SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION } from '../../services/production-schedule/production-schedule-settings.service.js';
+import { createAuthHeader, createTestClientDevice, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -19,6 +24,9 @@ const MIN_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64'
 );
+
+const TEST_KIOSK_DOCUMENT_TITLE_PREFIX = 'Assembly Test Doc';
+const MIN_JPG = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
 
 function buildMultipartProcedure(name: string): { body: Buffer; contentType: string } {
   const boundary = `----assemblyProcedure${Date.now()}`;
@@ -73,6 +81,9 @@ function buildTemplatePayload(documentId: string, overrides: Partial<Record<'mod
 }
 
 async function cleanAssemblyTables() {
+  await prisma.assemblyProcedureOrderItem.deleteMany({});
+  await prisma.assemblyProcedureOrderSet.deleteMany({});
+  await prisma.kioskDocument.deleteMany({ where: { title: { startsWith: TEST_KIOSK_DOCUMENT_TITLE_PREFIX } } });
   await prisma.assemblyAreaRestartLog.deleteMany({});
   await prisma.assemblyTorqueRecord.deleteMany({});
   await prisma.assemblyWorkSession.deleteMany({});
@@ -81,6 +92,9 @@ async function cleanAssemblyTables() {
   await prisma.assemblyTemplate.deleteMany({});
   await prisma.assemblyProcedureDocument.deleteMany({});
   await prisma.clientDevice.deleteMany({ where: { name: { startsWith: 'Test Client ' } } });
+  await prisma.productionScheduleAccessPasswordConfig.deleteMany({
+    where: { location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION }
+  });
 }
 
 async function ensureProductionScheduleDashboard() {
@@ -122,6 +136,43 @@ async function createScheduleRow(rowData: Record<string, string>) {
       rowData
     }
   });
+}
+
+function getPdfPagesBaseDir(): string {
+  const storageBaseDir =
+    process.env.PDF_STORAGE_DIR ||
+    (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
+  return path.join(storageBaseDir, 'pdf-pages');
+}
+
+async function createKioskDocumentWithRenderedPages(params: {
+  title: string;
+  pageCount?: number;
+  enabled?: boolean;
+}) {
+  const id = randomUUID();
+  const pageCount = params.pageCount ?? 1;
+  const document = await prisma.kioskDocument.create({
+    data: {
+      id,
+      title: `${TEST_KIOSK_DOCUMENT_TITLE_PREFIX} ${params.title}`,
+      displayTitle: params.title,
+      filename: `${id}.pdf`,
+      filePath: `/tmp/${id}.pdf`,
+      sourceType: 'MANUAL',
+      enabled: params.enabled ?? true,
+      ocrStatus: 'COMPLETED',
+      pageCount,
+      confirmedDocumentNumber: `ASM-${params.title}`,
+      confirmedSummaryText: `${params.title} の組立要領書`
+    }
+  });
+  const pagesDir = path.join(getPdfPagesBaseDir(), id);
+  await fs.mkdir(pagesDir, { recursive: true });
+  for (let page = 1; page <= pageCount; page += 1) {
+    await fs.writeFile(path.join(pagesDir, `page-${page}.jpg`), MIN_JPG);
+  }
+  return document;
 }
 
 describe('assembly torque management API', () => {
@@ -669,5 +720,199 @@ describe('assembly torque management API', () => {
     const remainingIds = summaryAfterCancel.json().sessions.map((session: { id: string }) => session.id);
     expect(remainingIds).not.toContain(firstSession.id);
     expect(remainingIds).toContain(secondSession.id);
+  });
+
+  it('verifies the shared 2520 password before assembly procedure order settings', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+
+    const failed = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/assembly/procedure-order-settings/verify-access-password',
+      headers,
+      payload: { password: '0000' }
+    });
+    expect(failed.statusCode).toBe(200);
+    expect(failed.json()).toEqual({ success: false });
+
+    const succeeded = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/assembly/procedure-order-settings/verify-access-password',
+      headers,
+      payload: { password: '2520' }
+    });
+    expect(succeeded.statusCode).toBe(200);
+    expect(succeeded.json()).toEqual({ success: true });
+  });
+
+  it('saves procedure order settings with password verification and resolves a work-session page sequence', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey };
+
+    const upload = buildMultipartProcedure('MH-AX 締付点 手順書');
+    const procedureDocRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/procedure-documents',
+      headers: { ...headers, 'Content-Type': upload.contentType },
+      payload: upload.body
+    });
+    expect(procedureDocRes.statusCode).toBe(200);
+    const procedureDocumentId = procedureDocRes.json().document.id as string;
+
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: buildTemplatePayload(procedureDocumentId, { modelCode: 'MH-AX', procedurePattern: '標準', name: 'MH-AX 標準' })
+    });
+    expect(templateRes.statusCode).toBe(200);
+    const templateId = templateRes.json().template.id as string;
+
+    const docX = await createKioskDocumentWithRenderedPages({ title: 'X軸', pageCount: 2 });
+    const docY = await createKioskDocumentWithRenderedPages({ title: 'Y軸', pageCount: 1 });
+
+    const wrongPassword = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: {
+        machineName: 'ｍｈ－ａｘ',
+        accessPassword: '0000',
+        items: [{ kioskDocumentId: docX.id, label: 'X軸' }]
+      }
+    });
+    expect(wrongPassword.statusCode).toBe(403);
+
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: {
+        machineName: 'ｍｈ－ａｘ',
+        accessPassword: '2520',
+        items: [
+          { kioskDocumentId: docY.id, label: 'Y軸' },
+          { kioskDocumentId: docX.id, label: 'X軸-1' }
+        ]
+      }
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().order).toMatchObject({
+      machineName: 'MH-AX',
+      machineNameKey: 'MH-AX',
+      configured: true
+    });
+    expect(saved.json().order.items.map((item: { label: string; kioskDocumentId: string; sortOrder: number }) => item)).toEqual([
+      expect.objectContaining({ kioskDocumentId: docY.id, label: 'Y軸', sortOrder: 0 }),
+      expect.objectContaining({ kioskDocumentId: docX.id, label: 'X軸-1', sortOrder: 1 })
+    ]);
+
+    const fetched = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/procedure-orders?machineName=mh-ax',
+      headers
+    });
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.json().order.items.map((item: { kioskDocumentId: string }) => item.kioskDocumentId)).toEqual([
+      docY.id,
+      docX.id
+    ]);
+
+    const startRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: {
+        templateId,
+        productNo: 'ASM-PDF-001',
+        serialNo: 'S001',
+        operatorNameSnapshot: '佐藤',
+        targetUnit: 'mh-ax',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    expect(startRes.statusCode).toBe(200);
+    const sessionId = startRes.json().session.id as string;
+
+    const sequence = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/work-sessions/${sessionId}/procedure-sequence`,
+      headers
+    });
+    expect(sequence.statusCode).toBe(200);
+    expect(sequence.json().sequence).toMatchObject({
+      mode: 'configured',
+      machineName: 'MH-AX',
+      machineNameKey: 'MH-AX'
+    });
+    expect(sequence.json().sequence.documents).toEqual([
+      expect.objectContaining({
+        kioskDocumentId: docY.id,
+        label: 'Y軸',
+        pageUrls: [`/api/storage/pdf-pages/${docY.id}/page-1.jpg`]
+      }),
+      expect.objectContaining({
+        kioskDocumentId: docX.id,
+        label: 'X軸-1',
+        pageUrls: [`/api/storage/pdf-pages/${docX.id}/page-1.jpg`, `/api/storage/pdf-pages/${docX.id}/page-2.jpg`]
+      })
+    ]);
+
+    const fallbackStart = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: {
+        templateId,
+        productNo: 'ASM-PDF-002',
+        serialNo: 'S001',
+        operatorNameSnapshot: '佐藤',
+        targetUnit: 'NO-ORDER',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    expect(fallbackStart.statusCode).toBe(200);
+
+    const fallbackSequence = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/work-sessions/${fallbackStart.json().session.id}/procedure-sequence`,
+      headers
+    });
+    expect(fallbackSequence.statusCode).toBe(200);
+    expect(fallbackSequence.json().sequence).toMatchObject({
+      mode: 'fallback',
+      reason: 'not_configured',
+      machineNameKey: 'NO-ORDER',
+      fallbackProcedureDocument: expect.objectContaining({ id: procedureDocumentId })
+    });
+  });
+
+  it('rejects deleting a KioskDocument while it is used by an assembly procedure order', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const doc = await createKioskDocumentWithRenderedPages({ title: '削除保護', pageCount: 1 });
+
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers,
+      payload: {
+        machineName: 'MH-LOCK',
+        accessPassword: '2520',
+        items: [{ kioskDocumentId: doc.id, label: '保護対象' }]
+      }
+    });
+    expect(saved.statusCode).toBe(200);
+
+    const admin = await createTestUser('ADMIN');
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/kiosk-documents/${doc.id}`,
+      headers: createAuthHeader(admin.token)
+    });
+    expect(deleted.statusCode).toBe(409);
+    expect(deleted.json()).toMatchObject({
+      errorCode: 'KIOSK_DOC_ASSEMBLY_ORDER_IN_USE'
+    });
   });
 });

@@ -2,13 +2,13 @@
 title: Kiosk Assembly Torque Management MVP
 id: plan-kiosk-assembly-torque-management-mvp
 status: active
-scope: kiosk assembly torque management, seiban start flow, work-in-progress visibility, procedure library, assembly template editor, work session
+scope: kiosk assembly torque management, seiban start flow, work-in-progress visibility, procedure library, procedure order settings, PDF procedure viewer, assembly template editor, work session
 date: 2026-07-06
 source_of_truth: this file
-related_code: apps/api/src/routes/assembly/index.ts, apps/api/src/routes/storage/assembly-procedure-images.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx, infrastructure/docker/docker-compose.server.yml, infrastructure/ansible/roles/server/tasks/main.yml
+related_code: apps/api/src/routes/assembly/index.ts, apps/api/src/routes/kiosk-documents.ts, apps/api/src/routes/kiosk/assembly-procedure-order-auth.ts, apps/api/src/routes/storage/assembly-procedure-images.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx, apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx, infrastructure/docker/docker-compose.server.yml, infrastructure/ansible/roles/server/tasks/main.yml
 related_docs: ../INDEX.md, ../guides/deployment.md
-validation: local Docker Postgres, GitHub Actions CI 28642360918 and 28650944516/28650941078, limited deployment run 20260703-183241-22704, user real-device acceptance 2026-07-03, local Docker Postgres 55434 for seiban start flow, focused API/web tests and web full test/build 2026-07-06, PR 956 CI 28782487173, full deployment 20260706-185942-11851, Phase12 45/0/0
-open_items: Bluetooth torque-agent, multi-page procedure documents, authenticated procedure order settings, completed work-session history/search enhancements
+validation: local Docker Postgres, GitHub Actions CI 28642360918 and 28650944516/28650941078, limited deployment run 20260703-183241-22704, user real-device acceptance 2026-07-03, local Docker Postgres 55434 for seiban start flow, focused API/web tests and web full test/build 2026-07-06, PR 956 CI 28782487173, full deployment 20260706-185942-11851, Phase12 45/0/0, procedure order viewer local Docker Postgres 55435, focused API/web tests and web full test/build 2026-07-06, PR 957 CI 28789861728, full deployment 20260706-212700-28308, Phase12 45/0/0, assembly procedure-order smoke
+open_items: Bluetooth torque-agent, PDF viewing completion tracking, NFC serial scan, completed work-session history/search enhancements
 ---
 
 # Kiosk Assembly Torque Management MVP
@@ -29,20 +29,28 @@ This is separate from part measurement and self-inspection. The implementation r
 
 ## Current State
 
-- Latest implementation branch: `feature/assembly-seiban-start-flow`.
-- Latest commit: `b2ddbbd9` (`feat(assembly): add seiban start flow`).
-- PR: `#956`.
-- Latest scope on 2026-07-06:
+- Latest working branch: `feature/assembly-procedure-order-viewer`.
+- Latest deployed implementation branch: `feature/assembly-procedure-order-viewer`.
+- Latest deployed runtime commit: `ad6eaa00` (`feat(assembly): add procedure order viewer`).
+- Latest deployed PR: `#957`.
+- Latest deployed scope on 2026-07-06:
+  - Adds machine-name-based PDF procedure viewing-order settings.
+  - Adds `/kiosk/assembly/procedure-order-settings` with 2520 shared password verification.
+  - Uses existing `KioskDocument` PDF records as the source of truth and stores only assembly viewing order.
+  - Adds a configured PDF page-forward viewer to `/kiosk/assembly/work-sessions/:sessionId`.
+  - Falls back to the existing single procedure image when no order is configured, no enabled PDF remains, or no page images can be rendered.
+- Previous deployed scope on 2026-07-06:
   - `/kiosk/assembly` is now the operator start page.
   - Operators search by `FSEIBAN`, choose a candidate, see the resolved machine name, enter serial number with a software keypad, and start or resume work.
   - The same `FSEIBAN + serialNo` with `IN_PROGRESS` resumes the existing session instead of creating a duplicate.
   - The lower section shows in-progress assembly sessions and links directly back to `/kiosk/assembly/work-sessions/:sessionId`.
   - The former library/template management page moved to `/kiosk/assembly/library`.
 - Latest CI/deployment:
-  - PR CI `28782487173`, push CI `28782461329`, CodeQL `28782487159`, and Secret scan `28782487220` succeeded.
-  - Full deployment run `20260706-185942-11851` completed on all 7 hosts with `failed=0 / unreachable=0`.
+  - Procedure order viewer PR CI `28789861728`, push CI `28789859917`, CodeQL `28789861725`, and Secret scan `28789861781` succeeded. The initial `security-docker` failure was a runner disk-space failure during Trivy scan; rerun succeeded.
+  - Procedure order viewer full deployment run `20260706-212700-28308` completed on all 7 hosts with `failed=0 / unreachable=0`.
   - Phase12 real-device verification passed: `PASS 45 / WARN 0 / FAIL 0`.
-  - Assembly smoke after deployment: `/kiosk/assembly`, `/kiosk/assembly/library`, seiban candidates API, and WIP summary API returned HTTP 200 with the expected authentication context.
+  - Assembly smoke after deployment: `/kiosk/assembly`, `/kiosk/assembly/library`, `/kiosk/assembly/procedure-order-settings`, seiban candidates API, WIP summary API, procedure-order get API, and 2520 password verify API passed.
+  - Previous seiban start flow PR CI `28782487173`, push CI `28782461329`, CodeQL `28782487159`, Secret scan `28782487220`, full deployment `20260706-185942-11851`, and Phase12 `45/0/0` also succeeded.
 
 Earlier delivered branch: `feature/assembly-library-template-ui`.
 
@@ -76,9 +84,13 @@ Assembly data is stored in dedicated Prisma models:
 - `AssemblyWorkSession`: product/session identity and current position.
 - `AssemblyTorqueRecord`: accepted OK, recorded NG, and ignored duplicate inputs.
 - `AssemblyAreaRestartLog`: area restart history.
+- `AssemblyProcedureOrderSet`: one normalized machine-name key per viewing-order setting.
+- `AssemblyProcedureOrderItem`: ordered references to existing `KioskDocument` PDF documents, with optional display labels such as `X軸` or `X軸-1`.
 
 Summary-list indexes were added in migration `20260703150000_assembly_summary_indexes`.
 The seiban start flow adds migration `20260706170000_assembly_seiban_start_flow` with a normal lookup index on `AssemblyWorkSession(productNo, serialNo, status, updatedAt)`. It intentionally does not add a partial unique constraint because existing data can contain duplicates and the first phase only needs deterministic resume behavior.
+
+The procedure order viewer adds migration `20260706193000_assembly_procedure_order_viewer` with `AssemblyProcedureOrderSet(machineNameKey)` unique lookup and `AssemblyProcedureOrderItem(setId, sortOrder)` ordering indexes. `AssemblyProcedureOrderItem.kioskDocumentId` references `KioskDocument(id)` with `ON DELETE RESTRICT`; the document delete route also returns HTTP 409 before deleting PDF/page files when a document is used by assembly viewing order.
 
 ### API
 
@@ -102,6 +114,14 @@ The seiban start flow adds:
   - Returns the matching active assembly template when `AssemblyTemplate.modelCode` matches the normalized machine name.
 - `GET /api/assembly/work-sessions/summary?status=in_progress&limit=...`
   - Returns product seiban, serial number, machine name, template name, current area/bolt, start/update timestamps, and progress for the kiosk WIP list.
+- `POST /api/kiosk/assembly/procedure-order-settings/verify-access-password`
+  - Reuses the existing shared 2520 due-management password verification.
+- `GET /api/assembly/procedure-orders?machineName=...`
+  - Returns the configured viewing order for the normalized machine name.
+- `PUT /api/assembly/procedure-orders`
+  - Requires `accessPassword`, validates active `KioskDocument` IDs, saves up to 50 ordered items, and normalizes the machine name to half-width uppercase.
+- `GET /api/assembly/work-sessions/:id/procedure-sequence`
+  - Resolves the work session `targetUnit` to a configured PDF viewing sequence, renders/uses page image URLs, or returns fallback metadata for the existing single-image procedure document.
 
 Procedure document images are served through the assembly storage path, separate from part-measurement drawing storage.
 The API image route has request rate limiting. In server Docker, the path is backed by persistent storage at `/opt/RaspberryPiSystem_002/storage/assembly-procedure-images`.
@@ -112,6 +132,7 @@ Routes:
 
 - `/kiosk/assembly`: operator start page with seiban search, machine-name display, serial software keypad, start/resume action, management links, and in-progress sessions.
 - `/kiosk/assembly/library`: management page with procedure library and template table.
+- `/kiosk/assembly/procedure-order-settings`: 2520-authenticated PDF viewing-order settings page for each machine name.
 - `/kiosk/assembly/templates/new`: template creation.
 - `/kiosk/assembly/templates/:templateId/edit`: template revision editor.
 - `/kiosk/assembly/work/start?templateId=...`: work start form.
@@ -120,6 +141,8 @@ Routes:
 The management page follows the inspection drawing management pattern: table-based procedure library, table-based template list, separate template editor, and separate work screen. The operator top page keeps the work-start path short and leaves the vertical screen space for search, serial entry, and WIP visibility.
 
 Procedure documents use a `削除` action instead of a `無効化` action. The delete action is disabled when any template references the document. If unused, the API deletes both the DB row and the stored image file.
+
+The procedure order settings page does not upload PDFs. Operators/admins search existing enabled `KioskDocument` records, add them to a machine-name order, move them up/down, edit labels, remove items, and save. The work-session screen uses the configured sequence when available, with separate previous/next page and previous/next document controls. Tightening input, area advancement, restart, completion, history, and Excel export remain unchanged.
 
 DEV preview routes:
 
@@ -143,6 +166,11 @@ DEV preview routes:
 - If `nameplateNo` is not sent, the API stores `serialNo` in `nameplateNo` to satisfy the existing non-null column while hiding nameplate number from the new operator flow.
 - If an in-progress session already exists for the same seiban and serial number, start returns that existing session.
 - If the machine name is `機種名未登録` or no active template matches the machine name, the kiosk shows the unregistered/template-missing state and links to the management page instead of forcing a start.
+- Procedure viewing order is keyed only by normalized machine name, not by seiban, serial number, or procedure pattern.
+- Viewing order changes require the shared 2520 password both at the kiosk settings entry point and at the save API.
+- Existing `KioskDocument` PDF records are the source of truth. Assembly stores ordering and labels only.
+- Referenced `KioskDocument` rows cannot be deleted; the API returns HTTP 409 while the document is used by an assembly procedure order.
+- Viewing order does not gate torque progress. If no valid configured PDF sequence is available, the work screen keeps showing the existing single procedure image and torque work continues.
 
 ## Validation Results
 
@@ -173,6 +201,23 @@ Local validation for seiban start flow before push:
 - Full web test suite: passed.
 - `git diff --check`: passed.
 
+Local validation for procedure order viewer before PR:
+
+- Temporary Docker Postgres `pgvector/pgvector:pg15` on port `55435`:
+  - `prisma migrate deploy`: passed, including `20260706193000_assembly_procedure_order_viewer`.
+  - `prisma generate`: passed.
+  - `pnpm --filter @raspi-system/api test -- assembly.integration.test.ts`: passed, 7 tests.
+  - `EXPLAIN` confirmed `AssemblyProcedureOrderSet_machineNameKey_key` for machine-name lookup.
+  - `EXPLAIN` confirmed `AssemblyProcedureOrderItem_idx_set_sort` for ordered item lookup.
+  - temporary container `raspi-assembly-procedure-order-pg` removed after verification.
+- `pnpm --filter @raspi-system/api exec prisma generate`: passed.
+- `pnpm --filter @raspi-system/api build`: passed.
+- Focused web tests for `KioskAssemblyProcedureOrderSettingsPage`, `KioskAssemblyWorkSessionPage`, `KioskAssemblyHomePage`, and assembly routes: passed.
+- `pnpm --filter @raspi-system/web test`: passed, 258 files / 1283 tests.
+- `pnpm --filter @raspi-system/web build`: passed.
+- `git diff --check`: passed.
+- API integration tests were added for password verification, procedure order save/get, work-session sequence fallback/configured resolution, and `KioskDocument` delete 409 protection.
+
 CI:
 
 - GitHub Actions run `28642360918`: success.
@@ -187,8 +232,24 @@ CI:
   - Push CI run `28782461329`: success.
   - CodeQL run `28782487159`: success.
   - Secret scan run `28782487220`: success.
+- Procedure order viewer CI:
+  - PR CI run `28789861728`: success.
+  - Push CI run `28789859917`: success.
+  - CodeQL run `28789861725`: success.
+  - Secret scan run `28789861781`: success.
+  - `security-docker` initially failed on runner disk space during Trivy DB extraction; failed jobs were rerun and the final PR check set passed.
 
 Real-device deployment and smoke:
+
+- Procedure order viewer full deployment on 2026-07-06:
+  - Branch `feature/assembly-procedure-order-viewer`, runtime HEAD `ad6eaa00`.
+  - Run `20260706-212700-28308`; remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260706-212700-28308.log`.
+  - All 7 hosts completed with `failed=0 / unreachable=0`; summary success check was true.
+  - `raspberrypi5`: Docker compose restart, Prisma migrate/status, and API health recovery passed.
+  - Pi4 kiosks: repo sync, `kiosk-browser.service`, `status-agent.service`, `status-agent.timer`, and kiosk UI reachability passed on all five Pi4 hosts.
+  - `raspberrypi3`: lightdm restored and `signage-lite.service is active`.
+  - `./scripts/deploy/verify-phase12-real.sh`: `PASS 45 / WARN 0 / FAIL 0`.
+  - Assembly smoke: `/kiosk/assembly`, `/kiosk/assembly/library`, `/kiosk/assembly/procedure-order-settings`, `GET /api/assembly/seiban-candidates`, `GET /api/assembly/work-sessions/summary`, `GET /api/assembly/procedure-orders`, and `POST /api/kiosk/assembly/procedure-order-settings/verify-access-password` returned expected success responses with client-key authentication.
 
 - Seiban start flow full deployment on 2026-07-06:
   - Branch `feature/assembly-seiban-start-flow`, HEAD `b2ddbbd9`.
@@ -233,7 +294,9 @@ Real-device deployment and smoke:
 - [Assembly services](../../apps/api/src/services/assembly)
 - [Assembly web feature module](../../apps/web/src/features/assembly)
 - [Assembly procedure library UI](../../apps/web/src/features/assembly/AssemblyProcedureLibrarySection.tsx)
+- [Assembly PDF sequence viewer](../../apps/web/src/features/assembly/AssemblyProcedureSequenceViewer.tsx)
 - [Assembly operator top page](../../apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx)
+- [Assembly procedure order settings page](../../apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx)
 - [Assembly management page](../../apps/web/src/pages/kiosk/KioskAssemblyPage.tsx)
 - [Template editor page](../../apps/web/src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx)
 - [Work start page](../../apps/web/src/pages/kiosk/KioskAssemblyWorkStartPage.tsx)
@@ -243,8 +306,8 @@ Real-device deployment and smoke:
 
 - Add real Bluetooth integration after confirming the exact Tohnichi output mode and pairing/security behavior for the planned tools.
 - Build or deploy the Raspberry Pi side `torque-agent` only after the real device protocol is confirmed.
-- Add multi-page/PDF procedure document support and a page-forward viewer that uses the vertical screen space better than the current one-page image view.
-- Add a 2520-authenticated procedure viewing-order settings page reachable from the assembly kiosk. Current assumption: one machine name normally maps to one procedure document, but some machine names need axis-specific or multiple documents in an operator-defined order.
+- Add page-viewed/completion audit if procedure viewing itself must become a quality gate.
+- Add NFC serial scan if/when serial identification moves from software keypad to tag scanning.
 - Decide whether Excel output needs full legacy form reproduction or whether the current quality-record workbook is enough.
 - Add richer completed/cancelled work-session search and history screens if operators need to find past assembly records from the kiosk.
 - Confirm the assembly tab order and visibility with the operator after more templates are present.
