@@ -401,6 +401,7 @@ async function measureApiTimings(ids) {
     'kiosk-documents': '/kiosk-documents',
     'assembly-procedure-sequence': `/assembly/work-sessions/${ids.assemblyWorkSessionId}/procedure-sequence`,
     'drawing-jpg': '/storage/part-measurement-drawings/perf-drawing-0.jpg',
+    'drawing-jpg-w1280': '/storage/part-measurement-drawings/perf-drawing-0.jpg?w=1280',
   };
 
   /** @type {Record<string, ApiScenarioResult>} */

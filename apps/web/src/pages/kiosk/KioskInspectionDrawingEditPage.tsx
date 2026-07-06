@@ -24,7 +24,7 @@ import {
   templateItemToDrawingPoint,
   templateSupportsInspectionDrawing
 } from '../../features/part-measurement/inspection-drawing';
-import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
+import { usePartMeasurementDrawingBlobUrl, resolveKioskDrawingDisplayWidth } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
@@ -54,7 +54,9 @@ export function KioskInspectionDrawingEditPage() {
   const { zoom, zoomIn, zoomOut, fitToView, resetZoom, fitGeneration } = useInspectionDrawingZoom();
 
   const drawingPath = sheet?.template?.visualTemplate?.drawingImageRelativePath;
-  const { blobUrl: drawingBlobUrl, error: drawingLoadError } = usePartMeasurementDrawingBlobUrl(drawingPath);
+  const { blobUrl: drawingBlobUrl, error: drawingLoadError } = usePartMeasurementDrawingBlobUrl(drawingPath, {
+    displayWidth: resolveKioskDrawingDisplayWidth()
+  });
 
   useEffect(() => {
     resetZoom();
