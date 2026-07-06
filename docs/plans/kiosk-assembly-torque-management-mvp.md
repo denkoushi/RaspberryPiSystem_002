@@ -7,8 +7,8 @@ date: 2026-07-06
 source_of_truth: this file
 related_code: apps/api/src/routes/assembly/index.ts, apps/api/src/routes/kiosk-documents.ts, apps/api/src/routes/kiosk/assembly-procedure-order-auth.ts, apps/api/src/routes/storage/assembly-procedure-images.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx, apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx, infrastructure/docker/docker-compose.server.yml, infrastructure/ansible/roles/server/tasks/main.yml
 related_docs: ../INDEX.md, ../guides/deployment.md
-validation: local Docker Postgres, GitHub Actions CI 28642360918 and 28650944516/28650941078, limited deployment run 20260703-183241-22704, user real-device acceptance 2026-07-03, local Docker Postgres 55434 for seiban start flow, focused API/web tests and web full test/build 2026-07-06, PR 956 CI 28782487173, full deployment 20260706-185942-11851, Phase12 45/0/0, procedure order viewer local Docker Postgres 55435, focused API/web tests and web full test/build 2026-07-06
-open_items: Bluetooth torque-agent, procedure order viewer PR/CI/deploy/real-device smoke, PDF viewing completion tracking, NFC serial scan, completed work-session history/search enhancements
+validation: local Docker Postgres, GitHub Actions CI 28642360918 and 28650944516/28650941078, limited deployment run 20260703-183241-22704, user real-device acceptance 2026-07-03, local Docker Postgres 55434 for seiban start flow, focused API/web tests and web full test/build 2026-07-06, PR 956 CI 28782487173, full deployment 20260706-185942-11851, Phase12 45/0/0, procedure order viewer local Docker Postgres 55435, focused API/web tests and web full test/build 2026-07-06, PR 957 CI 28789861728, full deployment 20260706-212700-28308, Phase12 45/0/0, assembly procedure-order smoke
+open_items: Bluetooth torque-agent, PDF viewing completion tracking, NFC serial scan, completed work-session history/search enhancements
 ---
 
 # Kiosk Assembly Torque Management MVP
@@ -30,26 +30,27 @@ This is separate from part measurement and self-inspection. The implementation r
 ## Current State
 
 - Latest working branch: `feature/assembly-procedure-order-viewer`.
-- Latest deployed implementation branch: `feature/assembly-seiban-start-flow`.
-- Latest deployed commit: `b2ddbbd9` (`feat(assembly): add seiban start flow`).
-- Latest deployed PR: `#956`.
-- Latest in-progress scope on 2026-07-06:
+- Latest deployed implementation branch: `feature/assembly-procedure-order-viewer`.
+- Latest deployed runtime commit: `ad6eaa00` (`feat(assembly): add procedure order viewer`).
+- Latest deployed PR: `#957`.
+- Latest deployed scope on 2026-07-06:
   - Adds machine-name-based PDF procedure viewing-order settings.
   - Adds `/kiosk/assembly/procedure-order-settings` with 2520 shared password verification.
   - Uses existing `KioskDocument` PDF records as the source of truth and stores only assembly viewing order.
   - Adds a configured PDF page-forward viewer to `/kiosk/assembly/work-sessions/:sessionId`.
   - Falls back to the existing single procedure image when no order is configured, no enabled PDF remains, or no page images can be rendered.
-- Latest deployed scope on 2026-07-06:
+- Previous deployed scope on 2026-07-06:
   - `/kiosk/assembly` is now the operator start page.
   - Operators search by `FSEIBAN`, choose a candidate, see the resolved machine name, enter serial number with a software keypad, and start or resume work.
   - The same `FSEIBAN + serialNo` with `IN_PROGRESS` resumes the existing session instead of creating a duplicate.
   - The lower section shows in-progress assembly sessions and links directly back to `/kiosk/assembly/work-sessions/:sessionId`.
   - The former library/template management page moved to `/kiosk/assembly/library`.
 - Latest CI/deployment:
-  - PR CI `28782487173`, push CI `28782461329`, CodeQL `28782487159`, and Secret scan `28782487220` succeeded.
-  - Full deployment run `20260706-185942-11851` completed on all 7 hosts with `failed=0 / unreachable=0`.
+  - Procedure order viewer PR CI `28789861728`, push CI `28789859917`, CodeQL `28789861725`, and Secret scan `28789861781` succeeded. The initial `security-docker` failure was a runner disk-space failure during Trivy scan; rerun succeeded.
+  - Procedure order viewer full deployment run `20260706-212700-28308` completed on all 7 hosts with `failed=0 / unreachable=0`.
   - Phase12 real-device verification passed: `PASS 45 / WARN 0 / FAIL 0`.
-  - Assembly smoke after deployment: `/kiosk/assembly`, `/kiosk/assembly/library`, seiban candidates API, and WIP summary API returned HTTP 200 with the expected authentication context.
+  - Assembly smoke after deployment: `/kiosk/assembly`, `/kiosk/assembly/library`, `/kiosk/assembly/procedure-order-settings`, seiban candidates API, WIP summary API, procedure-order get API, and 2520 password verify API passed.
+  - Previous seiban start flow PR CI `28782487173`, push CI `28782461329`, CodeQL `28782487159`, Secret scan `28782487220`, full deployment `20260706-185942-11851`, and Phase12 `45/0/0` also succeeded.
 
 Earlier delivered branch: `feature/assembly-library-template-ui`.
 
@@ -231,8 +232,24 @@ CI:
   - Push CI run `28782461329`: success.
   - CodeQL run `28782487159`: success.
   - Secret scan run `28782487220`: success.
+- Procedure order viewer CI:
+  - PR CI run `28789861728`: success.
+  - Push CI run `28789859917`: success.
+  - CodeQL run `28789861725`: success.
+  - Secret scan run `28789861781`: success.
+  - `security-docker` initially failed on runner disk space during Trivy DB extraction; failed jobs were rerun and the final PR check set passed.
 
 Real-device deployment and smoke:
+
+- Procedure order viewer full deployment on 2026-07-06:
+  - Branch `feature/assembly-procedure-order-viewer`, runtime HEAD `ad6eaa00`.
+  - Run `20260706-212700-28308`; remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260706-212700-28308.log`.
+  - All 7 hosts completed with `failed=0 / unreachable=0`; summary success check was true.
+  - `raspberrypi5`: Docker compose restart, Prisma migrate/status, and API health recovery passed.
+  - Pi4 kiosks: repo sync, `kiosk-browser.service`, `status-agent.service`, `status-agent.timer`, and kiosk UI reachability passed on all five Pi4 hosts.
+  - `raspberrypi3`: lightdm restored and `signage-lite.service is active`.
+  - `./scripts/deploy/verify-phase12-real.sh`: `PASS 45 / WARN 0 / FAIL 0`.
+  - Assembly smoke: `/kiosk/assembly`, `/kiosk/assembly/library`, `/kiosk/assembly/procedure-order-settings`, `GET /api/assembly/seiban-candidates`, `GET /api/assembly/work-sessions/summary`, `GET /api/assembly/procedure-orders`, and `POST /api/kiosk/assembly/procedure-order-settings/verify-access-password` returned expected success responses with client-key authentication.
 
 - Seiban start flow full deployment on 2026-07-06:
   - Branch `feature/assembly-seiban-start-flow`, HEAD `b2ddbbd9`.
@@ -289,7 +306,6 @@ Real-device deployment and smoke:
 
 - Add real Bluetooth integration after confirming the exact Tohnichi output mode and pairing/security behavior for the planned tools.
 - Build or deploy the Raspberry Pi side `torque-agent` only after the real device protocol is confirmed.
-- Run procedure order viewer PR CI, deploy, and real-device smoke after review.
 - Add page-viewed/completion audit if procedure viewing itself must become a quality gate.
 - Add NFC serial scan if/when serial identification moves from software keypad to tag scanning.
 - Decide whether Excel output needs full legacy form reproduction or whether the current quality-record workbook is enough.

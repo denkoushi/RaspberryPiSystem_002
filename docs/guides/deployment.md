@@ -10,6 +10,22 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-06 · **組立キオスク PDF閲覧順設定 + ページ送りビューア** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-procedure-order-viewer-2026-07-06}
+
+- **変更概要（正本）**: [Plan](../plans/kiosk-assembly-torque-management-mvp.md) · PR **#957** · ブランチ **`feature/assembly-procedure-order-viewer`** · 実装 **`ad6eaa00`** (`feat(assembly): add procedure order viewer`)。
+  - 機種名ごとのPDF要領書閲覧順を設定する `AssemblyProcedureOrderSet` / `AssemblyProcedureOrderItem` を追加。PDF実体は既存 `KioskDocument` を正本にし、組立側は順序とラベルだけを保持する。
+  - `/kiosk/assembly/procedure-order-settings` は2520共有パスワードで画面内認証し、保存APIも `accessPassword` を検証する。
+  - 作業画面 `/kiosk/assembly/work-sessions/:sessionId` は設定済みならPDFページ送りビューアを表示し、未設定/無効/ページ無しなら従来の単一手順画像へfallbackする。トルク入力、履歴、完了/次工程/やり直しは既存挙動を維持。
+  - 参照中の `KioskDocument` 削除は HTTP 409 で止め、PDF/ページ画像を削除しない。
+- **CI（`ad6eaa00`）**: PR CI **`28789861728` success**（`lint-build-unit` / `api-db-and-infra` / `security-docker` rerun / `e2e-smoke` / `e2e-tests` all success）· push CI **`28789859917` success** · CodeQL **`28789861725` success** · Secret scan **`28789861781` success**。初回 `security-docker` は Trivy DB 展開時の runner `no space left on device` で失敗し、failed jobs rerun で成功。
+- **ローカル検証**: 一時 Postgres `pgvector/pgvector:pg15`（port `55435`）で migration deploy、Prisma generate、組立統合テスト、`EXPLAIN`（`AssemblyProcedureOrderSet_machineNameKey_key` と `AssemblyProcedureOrderItem_idx_set_sort`）を確認。一時 container は削除済み。`pnpm --filter @raspi-system/api build`、Web focused test、Web full test **258 files / 1283 tests**、`pnpm --filter @raspi-system/web build`、`git diff --check` success。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feature/assembly-procedure-order-viewer infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260706-212700-28308`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260706-212700-28308.log` · summary success true · exitCode 0 · failedHosts/unreachableHosts なし。
+  - PLAY RECAP は全 7 ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。
+  - Pi5 は Docker compose restart、Prisma migrate/status、API health recover を通過。Pi4×5 は repo sync、`kiosk-browser.service` / `status-agent.service` / `status-agent.timer` restart、kiosk UI reachability を通過。Pi3 は lightdm 復旧後 `signage-lite.service is active`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-06 JST）。
+- **組立 smoke**: `/kiosk/assembly`、`/kiosk/assembly/library`、`/kiosk/assembly/procedure-order-settings` は HTTP **200**。client-key認証付きで `GET /api/assembly/seiban-candidates?prefix=TEST&limit=3`、`GET /api/assembly/work-sessions/summary?status=in_progress&limit=5`、`GET /api/assembly/procedure-orders?machineName=MH-TEST` は HTTP **200**。`POST /api/kiosk/assembly/procedure-order-settings/verify-access-password` は `{"success":true}`。
+
 ### 補足（2026-07-06 · **組立キオスク 製番起点開始導線 + 仕掛中可視化** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-seiban-start-flow-2026-07-06}
 
 - **変更概要（正本）**: [Plan](../plans/kiosk-assembly-torque-management-mvp.md) · PR **#956** · ブランチ **`feature/assembly-seiban-start-flow`** · 実装 **`b2ddbbd9`** (`feat(assembly): add seiban start flow`)。
