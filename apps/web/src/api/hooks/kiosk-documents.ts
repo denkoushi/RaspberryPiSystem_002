@@ -24,6 +24,9 @@ export function useKioskDocuments(params?: {
   ocrStatus?: KioskDocumentOcrStatus;
   includeCandidates?: boolean;
   hideDisabled?: boolean;
+  fields?: 'summary';
+  limit?: number;
+  offset?: number;
 }) {
   return useQuery({
     queryKey: ['kiosk-documents', params],

@@ -55,6 +55,10 @@ export async function getKioskDocuments(params?: {
   ocrStatus?: KioskDocumentOcrStatus;
   includeCandidates?: boolean;
   hideDisabled?: boolean;
+  /** summary: omit extractedText in list response */
+  fields?: 'summary';
+  limit?: number;
+  offset?: number;
 }) {
   const { data } = await api.get<{ documents: KioskDocumentSummary[] }>('/kiosk-documents', {
     params: {
@@ -63,6 +67,9 @@ export async function getKioskDocuments(params?: {
       ocrStatus: params?.ocrStatus,
       includeCandidates: params?.includeCandidates,
       hideDisabled: params?.hideDisabled,
+      fields: params?.fields,
+      limit: params?.limit,
+      offset: params?.offset,
     },
   });
   return data.documents;

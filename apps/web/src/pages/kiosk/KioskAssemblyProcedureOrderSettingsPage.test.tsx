@@ -108,6 +108,14 @@ describe('KioskAssemblyProcedureOrderSettingsPage', () => {
 
     await waitFor(() => expect(mockVerifyAccessPassword).toHaveBeenCalledWith({ password: '2520' }));
     await waitFor(() => expect(mockGetAssemblyProcedureOrder).toHaveBeenCalledWith('MH-AX'));
+    await waitFor(() =>
+      expect(mockGetKioskDocuments).toHaveBeenCalledWith({
+        q: undefined,
+        hideDisabled: true,
+        fields: 'summary',
+        limit: 200,
+      })
+    );
     expect(await screen.findByText(/産1-G025AAK X軸要領書/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /産1-G025AAK X軸要領書/ }));

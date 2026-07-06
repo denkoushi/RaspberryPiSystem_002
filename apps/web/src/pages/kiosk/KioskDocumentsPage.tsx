@@ -71,6 +71,7 @@ export function KioskDocumentsPage() {
   const listQuery = useKioskDocuments({
     q: debouncedSearch || undefined,
     sourceType: sourceFilter || undefined,
+    fields: 'summary',
   });
 
   const documents = useMemo(() => listQuery.data ?? [], [listQuery.data]);

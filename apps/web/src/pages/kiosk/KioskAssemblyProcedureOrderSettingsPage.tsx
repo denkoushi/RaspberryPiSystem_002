@@ -124,7 +124,9 @@ export function KioskAssemblyProcedureOrderSettingsPage() {
     const timer = window.setTimeout(() => {
       void getKioskDocuments({
         q: documentSearch.trim() || undefined,
-        hideDisabled: true
+        hideDisabled: true,
+        fields: 'summary',
+        limit: 200,
       })
         .then(setDocuments)
         .catch((error: unknown) => setMessage(readAssemblyApiErrorMessage(error, '要領書一覧の取得に失敗しました。')));
