@@ -2,6 +2,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
+import {
+  PRODUCTION_SCHEDULE_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+  SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
+} from '../../services/production-schedule/constants.js';
 import { createTestClientDevice } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -78,6 +83,47 @@ async function cleanAssemblyTables() {
   await prisma.clientDevice.deleteMany({ where: { name: { startsWith: 'Test Client ' } } });
 }
 
+async function ensureProductionScheduleDashboard() {
+  await prisma.csvDashboard.upsert({
+    where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+    create: {
+      id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      name: 'Test Production Schedule',
+      columnDefinitions: [],
+      templateConfig: {}
+    },
+    update: {}
+  });
+}
+
+async function cleanAssemblySeibanSearchFixtures() {
+  await prisma.csvDashboardRow.deleteMany({
+    where: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      OR: [
+        { rowData: { path: ['FSEIBAN'], string_starts_with: 'ASMTEST' } },
+        { rowData: { path: ['FSEIBAN'], string_starts_with: 'ASM-START' } }
+      ]
+    }
+  });
+  await prisma.productionScheduleSeibanMachineNameSupplement.deleteMany({
+    where: {
+      sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+      OR: [{ fseiban: { startsWith: 'ASMTEST' } }, { fseiban: { startsWith: 'ASM-START' } }]
+    }
+  });
+}
+
+async function createScheduleRow(rowData: Record<string, string>) {
+  await prisma.csvDashboardRow.create({
+    data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      occurredAt: new Date(),
+      rowData
+    }
+  });
+}
+
 describe('assembly torque management API', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
 
@@ -91,6 +137,7 @@ describe('assembly torque management API', () => {
 
   beforeEach(async () => {
     await cleanAssemblyTables();
+    await cleanAssemblySeibanSearchFixtures();
   });
 
   it('runs the MVP flow from procedure upload to Excel export', async () => {
@@ -431,5 +478,196 @@ describe('assembly torque management API', () => {
       headers
     });
     expect(imageAfterDelete.statusCode).toBe(404);
+  });
+
+  it('searches assembly seiban candidates with machine names and active template match', async () => {
+    await ensureProductionScheduleDashboard();
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey };
+
+    const upload = buildMultipartProcedure('ASMTEST 手順書');
+    const docRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/procedure-documents',
+      headers: { ...headers, 'Content-Type': upload.contentType },
+      payload: upload.body
+    });
+    expect(docRes.statusCode).toBe(200);
+    const documentId = docRes.json().document.id as string;
+
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: buildTemplatePayload(documentId, { modelCode: 'MH-AX', procedurePattern: '標準', name: 'MH-AX 標準' })
+    });
+    expect(templateRes.statusCode).toBe(200);
+    const activeTemplateId = templateRes.json().template.id;
+
+    await createScheduleRow({
+      FSEIBAN: 'ASMTEST-A1',
+      FHINCD: 'MH001',
+      FHINMEI: 'ｍｈ－ａｘ',
+      FSIGENCD: 'R1',
+      FKOJUN: '1',
+      ProductNo: '1'
+    });
+    await createScheduleRow({
+      FSEIBAN: 'ASMTEST-B2',
+      FHINCD: 'P001',
+      FHINMEI: '部品',
+      FSIGENCD: 'R2',
+      FKOJUN: '1',
+      ProductNo: '1'
+    });
+    await createScheduleRow({
+      FSEIBAN: 'ASMTEST-C3',
+      FHINCD: 'P002',
+      FHINMEI: '部品',
+      FSIGENCD: 'R3',
+      FKOJUN: '1',
+      ProductNo: '1'
+    });
+    await prisma.productionScheduleSeibanMachineNameSupplement.create({
+      data: {
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+        fseiban: 'ASMTEST-B2',
+        machineName: 'ｓｕｐｐ－ｚ'
+      }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/seiban-candidates?prefix=asmtest&limit=10',
+      headers
+    });
+    expect(res.statusCode).toBe(200);
+    const candidates = res.json().candidates;
+    expect(candidates).toHaveLength(3);
+    expect(candidates[0]).toMatchObject({
+      fseiban: 'ASMTEST-A1',
+      machineName: 'MH-AX',
+      machineNameSource: 'production_schedule',
+      activeTemplate: { id: activeTemplateId, name: 'MH-AX 標準' }
+    });
+    expect(candidates[1]).toMatchObject({
+      fseiban: 'ASMTEST-B2',
+      machineName: 'SUPP-Z',
+      machineNameSource: 'supplement',
+      activeTemplate: null
+    });
+    expect(candidates[2]).toMatchObject({
+      fseiban: 'ASMTEST-C3',
+      machineName: SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL,
+      machineNameSource: 'unregistered',
+      activeTemplate: null
+    });
+  });
+
+  it('resumes in-progress work by seiban and serial and lists in-progress summaries', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey };
+
+    const upload = buildMultipartProcedure('開始 手順書');
+    const docRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/procedure-documents',
+      headers: { ...headers, 'Content-Type': upload.contentType },
+      payload: upload.body
+    });
+    expect(docRes.statusCode).toBe(200);
+    const documentId = docRes.json().document.id as string;
+
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: buildTemplatePayload(documentId, { modelCode: 'MACHINE-X', procedurePattern: '標準', name: 'MACHINE-X 標準' })
+    });
+    expect(templateRes.statusCode).toBe(200);
+    const templateId = templateRes.json().template.id as string;
+
+    const startPayload = {
+      templateId,
+      productNo: 'ａｓｍ-start-001',
+      serialNo: 's001',
+      operatorNameSnapshot: '佐藤',
+      targetUnit: 'machine-x',
+      torqueWrenchId: 'CEM20N3X10D-BTLA'
+    };
+    const firstStart = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: startPayload
+    });
+    expect(firstStart.statusCode).toBe(200);
+    const firstSession = firstStart.json().session;
+    expect(firstSession.productNo).toBe('ASM-START-001');
+    expect(firstSession.serialNo).toBe('S001');
+    expect(firstSession.nameplateNo).toBe('S001');
+    expect(firstSession.targetUnit).toBe('MACHINE-X');
+
+    const duplicateStart = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: { ...startPayload, operatorNameSnapshot: '田中' }
+    });
+    expect(duplicateStart.statusCode).toBe(200);
+    expect(duplicateStart.json().session.id).toBe(firstSession.id);
+
+    const secondSerialStart = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: { ...startPayload, serialNo: 'S002' }
+    });
+    expect(secondSerialStart.statusCode).toBe(200);
+    const secondSession = secondSerialStart.json().session;
+    expect(secondSession.id).not.toBe(firstSession.id);
+
+    const summaryBeforeCancel = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/work-sessions/summary?status=in_progress&productNo=asm-start-001',
+      headers
+    });
+    expect(summaryBeforeCancel.statusCode).toBe(200);
+    expect(summaryBeforeCancel.json().sessions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: firstSession.id,
+          productNo: 'ASM-START-001',
+          serialNo: 'S001',
+          targetUnit: 'MACHINE-X',
+          acceptedBoltCount: 0,
+          totalBoltCount: 1,
+          currentAreaName: 'ストッパー取付',
+          currentBoltMarkerNo: 1
+        }),
+        expect.objectContaining({
+          id: secondSession.id,
+          serialNo: 'S002'
+        })
+      ])
+    );
+
+    const cancelled = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${firstSession.id}/cancel`,
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: { reason: 'test' }
+    });
+    expect(cancelled.statusCode).toBe(200);
+
+    const summaryAfterCancel = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/work-sessions/summary?status=in_progress&productNo=ASM-START-001',
+      headers
+    });
+    expect(summaryAfterCancel.statusCode).toBe(200);
+    const remainingIds = summaryAfterCancel.json().sessions.map((session: { id: string }) => session.id);
+    expect(remainingIds).not.toContain(firstSession.id);
+    expect(remainingIds).toContain(secondSession.id);
   });
 });

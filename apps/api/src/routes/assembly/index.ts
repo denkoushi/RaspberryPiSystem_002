@@ -13,15 +13,18 @@ import { requireClientDevice } from '../kiosk/shared.js';
 import {
   AssemblyExcelExportService,
   AssemblyProcedureDocumentService,
+  AssemblySeibanStartService,
   AssemblyTemplateService,
   AssemblyWorkSessionService,
   TORQUE_INPUT_PORT_SOURCES,
   toPrismaTorqueInputSource,
   type AssemblyProcedureDocumentSummary,
+  type AssemblySeibanCandidate,
   type AssemblyTemplateAreaInput,
   type AssemblyTemplateDetail,
   type AssemblyTemplateSummary,
-  type AssemblyWorkSessionDetail
+  type AssemblyWorkSessionDetail,
+  type AssemblyWorkSessionSummary
 } from '../../services/assembly/index.js';
 
 const authOnlyErrorCodes = new Set(['AUTH_TOKEN_REQUIRED', 'AUTH_TOKEN_INVALID', 'AUTH_TOKEN_EXPIRED']);
@@ -71,7 +74,7 @@ const startSessionBodySchema = z.object({
   templateId: z.string().uuid(),
   productNo: z.string().trim().min(1).max(120),
   serialNo: z.string().trim().min(1).max(120),
-  nameplateNo: z.string().trim().min(1).max(120),
+  nameplateNo: z.string().trim().min(1).max(120).optional().nullable(),
   operatorEmployeeId: z.string().trim().max(120).optional().nullable(),
   operatorNameSnapshot: z.string().trim().min(1).max(120),
   targetUnit: z.string().trim().min(1).max(120),
@@ -135,6 +138,15 @@ function serializeTemplateSummary(template: AssemblyTemplateSummary) {
   };
 }
 
+function serializeSeibanCandidate(candidate: AssemblySeibanCandidate) {
+  return {
+    fseiban: candidate.fseiban,
+    machineName: candidate.machineName,
+    machineNameSource: candidate.machineNameSource,
+    activeTemplate: candidate.activeTemplate
+  };
+}
+
 function serializeTemplate(template: AssemblyTemplateDetail) {
   return {
     id: template.id,
@@ -175,6 +187,34 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
         updatedAt: bolt.updatedAt.toISOString()
       }))
     }))
+  };
+}
+
+function serializeSessionSummary(session: AssemblyWorkSessionSummary) {
+  return {
+    id: session.id,
+    templateId: session.templateId,
+    status: session.status.toLowerCase(),
+    productNo: session.productNo,
+    serialNo: session.serialNo,
+    nameplateNo: session.nameplateNo,
+    operatorNameSnapshot: session.operatorNameSnapshot,
+    targetUnit: session.targetUnit,
+    torqueWrenchId: session.torqueWrenchId,
+    startedAt: session.startedAt.toISOString(),
+    completedAt: dateToIso(session.completedAt),
+    cancelledAt: dateToIso(session.cancelledAt),
+    updatedAt: session.updatedAt.toISOString(),
+    templateModelCode: session.templateModelCode,
+    templateProcedurePattern: session.templateProcedurePattern,
+    templateName: session.templateName,
+    templateVersion: session.templateVersion,
+    currentAreaId: session.currentAreaId,
+    currentAreaName: session.currentAreaName,
+    currentBoltId: session.currentBoltId,
+    currentBoltMarkerNo: session.currentBoltMarkerNo,
+    acceptedBoltCount: session.acceptedBoltCount,
+    totalBoltCount: session.totalBoltCount
   };
 }
 
@@ -294,7 +334,19 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const procedureService = new AssemblyProcedureDocumentService();
   const templateService = new AssemblyTemplateService();
   const sessionService = new AssemblyWorkSessionService();
+  const seibanStartService = new AssemblySeibanStartService();
   const excelService = new AssemblyExcelExportService(sessionService);
+
+  app.get('/assembly/seiban-candidates', { preHandler: allowView }, async (request) => {
+    const q = z
+      .object({
+        prefix: z.string().trim().min(1).max(120),
+        limit: z.coerce.number().int().min(1).max(50).optional()
+      })
+      .parse(request.query);
+    const candidates = await seibanStartService.listSeibanCandidates(q);
+    return { candidates: candidates.map(serializeSeibanCandidate) };
+  });
 
   app.post('/assembly/procedure-documents/preview', { preHandler: allowWriteKiosk }, async (request, reply) => {
     if (!request.isMultipart()) throw new ApiError(400, 'マルチパートフォームデータが必要です');
@@ -464,6 +516,19 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       clientDeviceNameSnapshot: clientDevice?.name ?? null
     });
     return { session: serializeSession(session) };
+  });
+
+  app.get('/assembly/work-sessions/summary', { preHandler: allowView }, async (request) => {
+    const q = z
+      .object({
+        status: z.enum(['in_progress', 'completed', 'cancelled', 'all']).optional(),
+        productNo: z.string().optional(),
+        serialNo: z.string().optional(),
+        limit: z.coerce.number().int().min(1).max(100).optional()
+      })
+      .parse(request.query);
+    const sessions = await sessionService.listSummary(q);
+    return { sessions: sessions.map(serializeSessionSummary) };
   });
 
   app.get('/assembly/work-sessions/:id', { preHandler: allowView }, async (request, reply) => {

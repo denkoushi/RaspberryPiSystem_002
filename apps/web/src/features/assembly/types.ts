@@ -125,6 +125,45 @@ export type AssemblyWorkSessionDto = {
   restartLogs: AssemblyAreaRestartLogDto[];
 };
 
+export type AssemblySeibanCandidateDto = {
+  fseiban: string;
+  machineName: string;
+  machineNameSource: 'production_schedule' | 'supplement' | 'unregistered';
+  activeTemplate: {
+    id: string;
+    modelCode: string;
+    procedurePattern: string;
+    name: string;
+    version: number;
+  } | null;
+};
+
+export type AssemblyWorkSessionSummaryDto = {
+  id: string;
+  templateId: string;
+  status: 'in_progress' | 'completed' | 'cancelled';
+  productNo: string;
+  serialNo: string;
+  nameplateNo: string;
+  operatorNameSnapshot: string;
+  targetUnit: string;
+  torqueWrenchId: string;
+  startedAt: string;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  updatedAt: string;
+  templateModelCode: string;
+  templateProcedurePattern: string;
+  templateName: string;
+  templateVersion: number;
+  currentAreaId: string | null;
+  currentAreaName: string | null;
+  currentBoltId: string | null;
+  currentBoltMarkerNo: number | null;
+  acceptedBoltCount: number;
+  totalBoltCount: number;
+};
+
 export type AssemblyTemplateBoltInput = {
   sortOrder: number;
   tighteningId: string;
@@ -160,7 +199,7 @@ export type AssemblyWorkSessionStartInput = {
   templateId: string;
   productNo: string;
   serialNo: string;
-  nameplateNo: string;
+  nameplateNo?: string | null;
   operatorEmployeeId?: string | null;
   operatorNameSnapshot: string;
   targetUnit: string;

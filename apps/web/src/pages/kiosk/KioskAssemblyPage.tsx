@@ -9,6 +9,7 @@ import {
   AssemblyProcedureUploadModal,
   AssemblyTemplateHistoryDialog,
   AssemblyTemplateLibraryTable,
+  KIOSK_ASSEMBLY_HOME_PATH,
   kioskAssemblyTemplateNewPath,
   readAssemblyApiErrorMessage,
   useAssemblyTemplateLibrary
@@ -128,9 +129,15 @@ export function KioskAssemblyPage() {
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 p-2">
         <div className="min-w-0">
-          <h1 className="text-[1.35rem] font-bold leading-tight">組立トルク管理</h1>
+          <h1 className="text-[1.35rem] font-bold leading-tight">組立 手順書/テンプレート管理</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to={KIOSK_ASSEMBLY_HOME_PATH}
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
+          >
+            組立開始へ
+          </Link>
           <Button
             type="button"
             variant="ghostOnDark"

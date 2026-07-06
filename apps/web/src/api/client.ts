@@ -29,9 +29,11 @@ export * from './domains/assembly';
 export type {
   AssemblyProcedureDocumentDto,
   AssemblyProcedureDocumentSummaryDto,
+  AssemblySeibanCandidateDto,
   AssemblyTemplateDto,
   AssemblyTemplateSummaryDto,
-  AssemblyWorkSessionDto
+  AssemblyWorkSessionDto,
+  AssemblyWorkSessionSummaryDto
 } from '../features/assembly/types';
 
 export type {

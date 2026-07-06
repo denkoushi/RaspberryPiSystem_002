@@ -15,7 +15,7 @@ import {
   currentAssemblyArea,
   currentAssemblyBolt,
   kioskAssemblyTemplateEditPath,
-  KIOSK_ASSEMBLY_LIBRARY_PATH,
+  KIOSK_ASSEMBLY_HOME_PATH,
   latestStatusByBolt,
   readAssemblyApiErrorMessage,
   templateToCanvasBolts
@@ -98,8 +98,8 @@ export function KioskAssemblyWorkSessionPage() {
   if (!session) {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
-        <Link to={KIOSK_ASSEMBLY_LIBRARY_PATH} className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 w-fit items-center')}>
-          一覧へ
+        <Link to={KIOSK_ASSEMBLY_HOME_PATH} className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 w-fit items-center')}>
+          組立トップ
         </Link>
         <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">
           {message ?? '作業データが見つかりません。'}
@@ -118,8 +118,8 @@ export function KioskAssemblyWorkSessionPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link to={KIOSK_ASSEMBLY_LIBRARY_PATH} className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center')}>
-            一覧へ
+          <Link to={KIOSK_ASSEMBLY_HOME_PATH} className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center')}>
+            組立トップ
           </Link>
           <Link
             to={kioskAssemblyTemplateEditPath(session.template.id)}
