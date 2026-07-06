@@ -21,7 +21,8 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 - [x] **`main` マージ**（2026-06-03）
 - [ ] 残 Pi4×3 ロールアウト（`raspberrypi4` · `raspi4-robodrill01` · `raspi4-fjv60-80`）
 - [x] **レイアウト改善（作成/改版）** — 別 ExecPlan [inspection-drawing-create-layout-and-return-nav.md](./inspection-drawing-create-layout-and-return-nav.md) · **`5274f1ee`** · Pi5 Detach **`20260603-211122-29648`**
-- [x] (2026-07-06) 名称ごとの **寸法公差 / 幾何公差** 紐づけ設定と上下限公差候補を追加（`feat/inspection-drawing-tolerance-kind-settings`）
+- [x] (2026-07-06) 名称ごとの **寸法公差 / 幾何公差** 紐づけ設定と上下限公差候補を追加（`feat/inspection-drawing-tolerance-kind-settings` · `20e90160`）
+- [x] (2026-07-06) CI **`28758193791`** success、Deploy **`20260706-082903-1300`** success、Phase12 **45/0/0**
 
 ## Decision Log
 
@@ -86,6 +87,12 @@ pnpm --filter @raspi-system/web build
 
 一時 Postgres で migration / integration test / `EXPLAIN` を確認し、検証後に一時コンテナを削除する。
 
+2026-07-06 本番反映:
+
+- GitHub Actions CI **`28758193791`** — 全ジョブ success（`lint-build-unit` · `api-db-and-infra` · `security-docker` · `e2e-smoke` · `e2e-tests`）。
+- `./scripts/update-all-clients.sh feat/inspection-drawing-tolerance-kind-settings infrastructure/ansible/inventory.yml --detach --follow` → **Run ID `20260706-082903-1300`**、summary success true、exitCode 0、全 7 ホスト `failed=0 / unreachable=0`。
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+
 ## デプロイ（先行検証 2026-06-03）
 
 | ホスト | Detach Run ID | HEAD | RECAP |
@@ -98,5 +105,6 @@ pnpm --filter @raspi-system/web build
 ## Outcomes & Retrospective
 
 - **CI**: GitHub Actions **`26867660917`** — 全ジョブ success（`lint-build-unit` · `e2e-smoke` · `api-db-and-infra` · `security-docker` · `e2e-tests`）。
+- **名称・公差種別設定（2026-07-06）**: GitHub Actions **`28758193791`** success、Deploy **`20260706-082903-1300`** success、Phase12 **45/0/0**。
 - **契約**: 保存 API は従来どおり絶対上下限。UI のみ符号付き offset 表示。
 - **残課題**: キオスク検査図面作成画面の **図面表示面積**（ヘッダー・一覧・余白）。プレビュー: `docs/plans/kiosk-inspection-drawing-layout-preview.html`（HTML のみ・未実装）。

@@ -830,7 +830,7 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 
 #### 2026-07-06 名称・公差種別設定と上下限公差候補 {#検査図面-名称-公差種別設定-2026-07-06}
 
-- **作業ブランチ**: `feat/inspection-drawing-tolerance-kind-settings`。
+- **作業ブランチ / 代表コミット**: `feat/inspection-drawing-tolerance-kind-settings` / **`20e90160`**（`feat(part-measurement): add inspection drawing tolerance kind settings`）。
 - **目的**: 基準値は OCR 候補で入力しやすくなったため、上限公差・下限公差も名称に応じた候補で入力補助する。
 - **保存契約**: 既存どおり `PartMeasurementTemplateItem.nominalValue/lowerLimit/upperLimit` は絶対値を保持する。既存テンプレの公差値移行・補正・自動変換はしない。
 - **DB/API**: `PartMeasurementToleranceKind` enum と `PartMeasurementInspectionLabelSetting` を追加。`GET /api/part-measurement/inspection-drawing/measurement-label-settings` は管理者系 JWT またはキオスク `x-client-key` で読める。`PATCH` は `ADMIN` / `MANAGER` JWT のみ。
@@ -839,7 +839,9 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 - **候補値**: 幾何公差は `0.001`〜`0.009`。寸法公差は `-0.9`〜`+0.9` を `0.1` 刻み、表示は `-0.1` / `0` / `+0.1` 形式。
 - **UI契約**: 上限公差・下限公差は同じ `datalist` 候補を出す。候補外の手入力は維持し、名称変更時も入力済み上下限公差は自動変更しない。API 取得失敗時は既定ルールへフォールバックする。
 - **主な実装**: `packages/shared-types/src/part-measurement/inspection-drawing-tolerance-kind.ts`、`InspectionDrawingPointSettingsPanel.tsx`、`InspectionDrawingMeasurementLabelSettingsSection.tsx`、`inspection-drawing-measurement-label-settings.service.ts`。
-- **ローカル検証**: 一時 Postgres で migration / integration test / `EXPLAIN`、Web focused test **41 files / 211 tests passed**、Web build pass。既存 DB/既存コンテナは変更しない。
+- **ローカル検証**: 一時 Postgres で migration / integration test **70 tests passed** / `EXPLAIN`、Web focused test **41 files / 211 tests passed**、Web build pass。既存 DB/既存コンテナは変更しない。
+- **CI / デプロイ**: GitHub Actions **`28758193791` success**。本番デプロイ **`20260706-082903-1300`** は summary success true / exitCode 0 / totalHosts 7 / failedHosts・unreachableHosts なし。Pi5 は Docker rebuild + Prisma migrate/status + API health recover、Pi4×5 は kiosk-browser/status-agent restart OK、Pi3 は lightdm 復旧後 `signage-lite.service is active`。
+- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
 
 #### 先行デプロイ（2026-06-03）
 

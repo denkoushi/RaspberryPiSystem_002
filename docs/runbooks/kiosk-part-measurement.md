@@ -308,7 +308,7 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 
 ## 検査図面 名称・公差種別設定（2026-07-06） {#検査図面-名称-公差種別設定-2026-07-06}
 
-正本: [KB-320 §名称・公差種別設定](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-名称-公差種別設定-2026-07-06) · ブランチ **`feat/inspection-drawing-tolerance-kind-settings`** · API+Web+migration。
+正本: [KB-320 §名称・公差種別設定](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-名称-公差種別設定-2026-07-06) · ブランチ **`feat/inspection-drawing-tolerance-kind-settings`** · **`20e90160`** · CI **`28758193791`** · Deploy **`20260706-082903-1300`** · Phase12 **45/0/0** · API+Web+migration。
 
 ### 管理者操作
 
@@ -333,6 +333,18 @@ curl -sS -H "x-client-key: <kiosk-client-key>" \
 ```
 
 `PATCH` はキオスクキーだけでは 401/403。管理者またはマネージャー JWT が必要。
+
+### 本番反映実績
+
+| 項目 | 内容 |
+|------|------|
+| 反映対象 | Pi5 + Pi4×5 + Pi3 |
+| Detach Run ID | **`20260706-082903-1300`** |
+| PLAY RECAP | 全 7 ホスト `failed=0` / `unreachable=0` |
+| Pi5 | Docker rebuild/restart、Prisma migrate/status、API health recover OK |
+| Pi4×5 | `kiosk-browser.service` / `status-agent.service` / `status-agent.timer` restart OK |
+| Pi3 | lightdm 復旧後 `signage-lite.service is active` |
+| 実機自動検証 | `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0** |
 
 ## 検査図面 測定点位置微調整（十字ボタン · 2026-06-05） {#検査図面-測定点位置微調整-十字ボタン-2026-06-05}
 

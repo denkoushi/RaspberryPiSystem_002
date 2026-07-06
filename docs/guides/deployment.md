@@ -2,13 +2,26 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-07-05
+last-verified: 2026-07-06
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-07-06 · **検査図面 名称・公差種別設定** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#inspection-drawing-tolerance-kind-settings-2026-07-06}
+
+- **変更概要（正本）**: [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-名称-公差種別設定-2026-07-06) · [Runbook](../runbooks/kiosk-part-measurement.md#検査図面-名称-公差種別設定-2026-07-06) · ブランチ **`feat/inspection-drawing-tolerance-kind-settings`** · 実装 **`20e90160`** (`feat(part-measurement): add inspection drawing tolerance kind settings`)。
+  - 測定点名称ごとに `寸法公差 / 幾何公差` を管理コンソールで設定できるようにし、キオスク検査図面の上限/下限公差入力へ候補を提示する。
+  - 既定は「名称に `度` を含むなら幾何公差、それ以外は寸法公差」。保存契約は従来どおり絶対 `lowerLimit` / `upperLimit` で、既存テンプレの公差値移行はしない。
+- **CI（`20e90160`）**: CI **`28758193791` success**（`lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` all success）。
+- **ローカル検証**: `shared-types build`、`api prisma:generate`、`api build`、`web build`、`pnpm lint --max-warnings=0`、`git diff --check` success。Web focused test **41 files / 211 tests passed**。一時 Postgres `pgvector/pgvector:pg15` で migration deploy、API integration **70 tests passed**、`PartMeasurementInspectionLabelSetting` の `toleranceKind + label` index scan を `EXPLAIN` で確認。一時 container / volume は削除済み。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/inspection-drawing-tolerance-kind-settings infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260706-082903-1300`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260706-082903-1300.log` · summary success true · exitCode 0 · totalHosts 7 · failedHosts/unreachableHosts なし。
+  - PLAY RECAP は全 7 ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。
+  - Pi5 は Docker compose rebuild/restart、Prisma migrate/status、API health recover を通過。Pi4×5 は kiosk-browser/status-agent/status-agent.timer restart OK（stonebase の barcode-agent は 1 回 readiness retry 後 OK）。Pi3 は lightdm 復旧後 `signage-lite.service is active`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-06 JST）。
 
 ### 補足（2026-07-05 · **SOLID リファクタ第6弾** · **API** · **Pi5 + Pi4×5 + Pi3 反映済**） {#solid-refactor-phase6-2026-07-05}
 
