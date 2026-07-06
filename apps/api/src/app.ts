@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import compress from '@fastify/compress';
 import multipart from '@fastify/multipart';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
@@ -49,6 +50,11 @@ export async function buildServer(): Promise<FastifyInstance> {
   // レート制限はここで全体に登録し、必要なルートのみ個別に除外する。
   await registerRateLimit(app);
   await registerSecurityHeaders(app);
+  await app.register(compress, {
+    global: true,
+    threshold: 1024,
+    encodings: ['gzip', 'br']
+  });
   await app.register(websocket);
   await app.register(multipart, {
     limits: {
