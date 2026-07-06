@@ -5,6 +5,7 @@ import { api } from '../../api/client';
 
 import {
   __resetPartMeasurementDrawingBlobUrlCacheForTests,
+  snapDisplayWidthToDerivativeWidth,
   usePartMeasurementDrawingBlobUrl
 } from './usePartMeasurementDrawingBlobUrl';
 
@@ -50,6 +51,29 @@ describe('usePartMeasurementDrawingBlobUrl', () => {
     expect(apiGet).toHaveBeenCalledWith('storage/part-measurement-drawings/a.png', {
       responseType: 'blob'
     });
+  });
+
+  it('appends whitelisted w query when displayWidth is provided', async () => {
+    apiGet.mockResolvedValue({ data: new Blob(['x']) } as never);
+
+    const { result } = renderHook(() =>
+      usePartMeasurementDrawingBlobUrl('/api/storage/part-measurement-drawings/a.png', {
+        displayWidth: 1500
+      })
+    );
+
+    await waitFor(() => expect(result.current.blobUrl).toBe('blob:mock-drawing'));
+
+    expect(apiGet).toHaveBeenCalledWith('storage/part-measurement-drawings/a.png?w=1920', {
+      responseType: 'blob'
+    });
+  });
+
+  it('snaps display width to derivative whitelist', () => {
+    expect(snapDisplayWidthToDerivativeWidth(800)).toBe(1280);
+    expect(snapDisplayWidthToDerivativeWidth(1280)).toBe(1280);
+    expect(snapDisplayWidthToDerivativeWidth(1500)).toBe(1920);
+    expect(snapDisplayWidthToDerivativeWidth(3000)).toBe(2560);
   });
 
   it('reuses cache on remount so fetch runs only once', async () => {

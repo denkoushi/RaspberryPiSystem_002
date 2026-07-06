@@ -58,7 +58,7 @@ import {
 } from '../../features/part-measurement/selfInspectionSessionDrawingPanelState';
 import { resolveSelfInspectionRequiredEntryCount } from '../../features/part-measurement/selfInspectionSessionEntryCount';
 import { SelfInspectionSessionHeader } from '../../features/part-measurement/SelfInspectionSessionHeader';
-import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
+import { usePartMeasurementDrawingBlobUrl, resolveKioskDrawingDisplayWidth } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useSelfInspectionGuidedFocus } from '../../features/part-measurement/useSelfInspectionGuidedFocus';
 import { useSelfInspectionNfcRegistration } from '../../features/part-measurement/useSelfInspectionNfcRegistration';
 import { useSelfInspectionWorkbenchCameraExperiment } from '../../features/part-measurement/useSelfInspectionWorkbenchCameraExperiment';
@@ -227,7 +227,9 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
   });
   const { zoom, zoomIn, zoomOut, fitToView, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
   const drawingPath = session?.template.visualTemplate?.drawingImageRelativePath ?? null;
-  const { blobUrl: drawingBlobUrl, error: drawingLoadError } = usePartMeasurementDrawingBlobUrl(drawingPath);
+  const { blobUrl: drawingBlobUrl, error: drawingLoadError } = usePartMeasurementDrawingBlobUrl(drawingPath, {
+    displayWidth: resolveKioskDrawingDisplayWidth()
+  });
   const drawingPanelPhase = resolveSelfInspectionDrawingPanelPhase({
     drawingPath,
     blobUrl: drawingBlobUrl,
