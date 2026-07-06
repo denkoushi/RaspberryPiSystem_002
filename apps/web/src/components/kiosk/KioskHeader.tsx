@@ -25,6 +25,7 @@ type KioskHeaderProps = {
   clientKey: string;
   clientId: string;
   onOpenSupport: () => void;
+  defaultMode?: 'PHOTO' | 'TAG';
   clientStatus?: ClientStatus | null;
   pathname: string;
   navTabOrder: readonly KioskReorderableHeaderTabId[];
@@ -68,6 +69,7 @@ export function KioskHeader({
   clientKey,
   clientId,
   onOpenSupport,
+  defaultMode,
   clientStatus,
   pathname,
   navTabOrder
@@ -144,10 +146,11 @@ export function KioskHeader({
   const reorderableTabContext = useMemo(
     () => ({
       pathname,
+      defaultMode,
       onDueManagementNavigate: handleDueManagementNavigate,
       dueManagementPending: verifyDueManagementAccessPasswordMutation.isPending
     }),
-    [handleDueManagementNavigate, pathname, verifyDueManagementAccessPasswordMutation.isPending]
+    [defaultMode, handleDueManagementNavigate, pathname, verifyDueManagementAccessPasswordMutation.isPending]
   );
 
   return (

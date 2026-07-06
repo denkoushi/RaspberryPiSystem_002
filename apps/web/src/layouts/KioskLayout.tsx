@@ -91,6 +91,7 @@ export function KioskLayout() {
           clientKey={clientKey}
           clientId={selfClientId}
           onOpenSupport={() => setShowSupportModal(true)}
+          defaultMode={kioskConfig?.defaultMode}
           clientStatus={kioskConfig?.clientStatus ?? null}
           pathname={location.pathname}
           navTabOrder={navTabOrder}

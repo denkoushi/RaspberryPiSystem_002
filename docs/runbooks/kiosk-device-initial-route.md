@@ -10,6 +10,7 @@ related:
   - ../../apps/api/src/routes/kiosk/config.ts
   - ../../apps/api/src/routes/clients/shared.ts
   - ../../apps/web/src/features/kiosk/kioskInitialRedirect.ts
+  - ../../apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderReorderableTabRenderer.tsx
   - ../../apps/web/src/pages/admin/ClientsPage.tsx
 category: runbooks
 id: RUNBOOK-kiosk-device-initial-route
@@ -17,7 +18,7 @@ status: active
 scope: Per-device kiosk startup route configuration and verification
 date: 2026-07-06
 source_of_truth: true
-validation: local tests, temporary pgvector Postgres migration, Pi5 deploy, Pi4 kiosk deploy
+validation: local tests, temporary pgvector Postgres migration, CI, Pi5 deploy, Pi4 kiosk deploy, Phase12
 open_items: tab filtering by process, common top screen, optional main-branch redeploy after merge
 ---
 
@@ -40,6 +41,9 @@ known operational notes needed by the next AI agent.
 - Authorization follows the existing client management rule: `ADMIN` or `MANAGER`.
 - Kiosk auto redirect only evaluates `/` and `/kiosk`; direct subpaths such as
   `/kiosk/tag` are not overwritten.
+- The header `持出` tab must link to a concrete borrow subpath, not `/kiosk`.
+  It resolves to `/kiosk/photo` when `defaultMode` is `PHOTO`, otherwise
+  `/kiosk/tag`.
 - If `kioskInitialRoute` is explicitly set, it takes priority over browser
   `kiosk-last-path`.
 - If `kioskInitialRoute` is null or invalid, the legacy fallback is:
@@ -77,6 +81,8 @@ edit dropdown keeps it visible as `既存設定`.
   [shared.ts](../../apps/api/src/routes/clients/shared.ts).
 - Web redirect decision is pure and tested:
   [kioskInitialRedirect.ts](../../apps/web/src/features/kiosk/kioskInitialRedirect.ts).
+- Kiosk header borrow-tab path resolution:
+  [kioskHeaderReorderableTabRenderer.tsx](../../apps/web/src/features/kiosk/kioskHeaderTabs/kioskHeaderReorderableTabRenderer.tsx).
 - Admin UI route selection:
   [ClientsPage.tsx](../../apps/web/src/pages/admin/ClientsPage.tsx).
 - Prisma migration:
@@ -108,6 +114,9 @@ Local validation completed on branch `feat/kiosk-device-initial-route` before me
 CI:
 
 - Commit `d78377ee` passed GitHub Actions run `28770698340`.
+- Follow-up regression fix commit `cbe78dab` passed GitHub Actions run
+  `28775139271`, including `lint-build-unit`, `api-db-and-infra`,
+  `security-docker`, `e2e-smoke`, and `e2e-tests`.
 
 ## Deployment State
 
@@ -131,6 +140,29 @@ Pi4 kiosk deploy:
 - Each verified host reported:
   `REV=d78377ee`, kiosk service active, status-agent timer active, and Firefox
   launched with `_appRef=d78377ee`.
+
+Follow-up deploy for header `持出` tab redirect regression:
+
+- Deployed commit: `cbe78dab`.
+- Branch at deploy time: `fix/kiosk-borrow-tab-direct-route`.
+- Pi5 deploy run: `20260706-164538-3734`; result `failed=0`,
+  `unreachable=0`, API health `status: ok`.
+- StoneBase deploy run: `20260706-165104-32318`; result `failed=0`,
+  `unreachable=0`.
+- Remaining Pi4 deploy run: `20260706-174215-29814`; targets:
+  `raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`,
+  `raspi4-sessaku-01`; result `failed=0`, `unreachable=0`.
+- Final automatic real-device verification:
+  `./scripts/deploy/verify-phase12-real.sh` -> `PASS 45 / WARN 0 / FAIL 0`.
+- All Pi4 kiosks were checked from Pi5 and reported `REV=cbe78dab`,
+  `kiosk-browser.service=active`, `status-agent.timer=active`, and Firefox
+  `_appRef=cbe78dab`.
+- StoneBase screen capture confirmed the configured `組立` startup screen
+  rendered as `組立トルク管理`.
+- Production Playwright regression check with the StoneBase client context:
+  `/kiosk/assembly` -> click `持出` -> `/kiosk/photo`; it did not return to
+  `/kiosk/assembly`.
+- Operator real-device check: OK.
 
 ## Operational Checks
 
@@ -166,6 +198,28 @@ target-device mix-up, not evidence of redirect failure.
 Check the actual client row, hostname, and browser URL before treating a startup
 route mismatch as a code issue.
 
+### `組立` startup immediately pulls `持出` back to `組立`
+
+Cause found on 2026-07-06:
+
+- The header `持出` tab still linked to `/kiosk`.
+- `/kiosk` is now the startup-entry route.
+- When a device had explicit `kioskInitialRoute=assembly`, clicking `持出`
+  navigated to `/kiosk`, then `KioskRedirect` correctly redirected that entry
+  route to `/kiosk/assembly`.
+
+Fix:
+
+- Resolve the `持出` header tab to a concrete borrow route:
+  `/kiosk/photo` for `PHOTO`, otherwise `/kiosk/tag`.
+- Keep `KioskRedirect` scoped to `/` and `/kiosk`; direct subpaths remain
+  untouched.
+- Regression tests cover both the redirect no-op for `/kiosk/tag` and the
+  rendered header link path.
+
+If this symptom recurs, inspect the rendered `持出` anchor first. It must be
+`/kiosk/tag` or `/kiosk/photo`, never `/kiosk`.
+
 ### Pi5 API build OOM
 
 The first Pi5 deploy attempt failed during API TypeScript build with Node heap
@@ -200,8 +254,6 @@ kiosk services active.
 ## Open Items
 
 - Optional: redeploy Pi5 and Pi4 kiosks from `main` after PR merge so the remote
-  branch label matches `main`. Behavior is already present at commit `d78377ee`.
-- Manual operator-facing smoke: set `raspi4-sessaku-01` to `組立`, open `/kiosk`,
-  and confirm `/kiosk/assembly`.
+  branch label matches `main`. Behavior is already present at commit `cbe78dab`.
 - Future phase: process-specific tab visibility or a common top screen. These
   were explicitly out of scope for v1.
