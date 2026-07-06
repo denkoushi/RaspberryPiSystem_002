@@ -18,6 +18,21 @@ describe('resolveKioskInitialRedirectDecision', () => {
     });
   });
 
+  it('redirects /kiosk to the leader order board initial route', () => {
+    expect(
+      resolveKioskInitialRedirectDecision({
+        pathname: '/kiosk',
+        isLoading: false,
+        hasError: false,
+        config: { defaultMode: 'TAG', initialKioskRoute: 'leader_order_board' }
+      })
+    ).toMatchObject({
+      targetPath: '/kiosk/production-schedule/leader-order-board',
+      nextRouteSignature: 'route:leader_order_board',
+      reason: 'initial-route'
+    });
+  });
+
   it('keeps user-operated kiosk subpaths untouched', () => {
     expect(
       resolveKioskInitialRedirectDecision({

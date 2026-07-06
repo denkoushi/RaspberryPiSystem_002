@@ -1,6 +1,7 @@
 import {
-  KIOSK_INITIAL_ROUTE_IDS,
   KIOSK_INITIAL_ROUTE_LABELS,
+  KIOSK_SELECTABLE_INITIAL_ROUTE_IDS,
+  isKioskSelectableInitialRouteId,
   normalizeKioskInitialRoute,
   type KioskInitialRouteId
 } from '@raspi-system/shared-types';
@@ -355,7 +356,12 @@ export function ClientsPage() {
                               className="rounded-md border-2 border-slate-500 bg-white px-2 py-1 text-sm font-semibold text-slate-900"
                             >
                               <option value="">未設定（旧設定を使用）</option>
-                              {KIOSK_INITIAL_ROUTE_IDS.map((routeId) => (
+                              {selectedInitialRoute && !isKioskSelectableInitialRouteId(selectedInitialRoute) ? (
+                                <option value={selectedInitialRoute}>
+                                  {KIOSK_INITIAL_ROUTE_LABELS[selectedInitialRoute]}（既存設定）
+                                </option>
+                              ) : null}
+                              {KIOSK_SELECTABLE_INITIAL_ROUTE_IDS.map((routeId) => (
                                 <option key={routeId} value={routeId}>
                                   {KIOSK_INITIAL_ROUTE_LABELS[routeId]}
                                 </option>

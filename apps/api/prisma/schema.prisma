@@ -314,7 +314,7 @@ model ClientDevice {
   apiKey         String        @unique
   statusClientId String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
   defaultMode    String?       @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
-  kioskInitialRoute String? // 端末ごとのキオスク起動先（borrow_tag | borrow_photo | production_schedule | assembly）
+  kioskInitialRoute String? // 端末ごとのキオスク起動先（borrow_tag | borrow_photo | leader_order_board | assembly。production_schedule は旧互換）
   /// キオスクのサイネージプレビューで参照する `ClientDevice.apiKey`（サイネージ用途端末のみ許可。未設定時は自端末キーでプレビュー）
   signagePreviewTargetApiKey String?
   /// Zero2W 棚番エッジ等: 端末に固定する棚番（`西-北-01` 形式・trim 保存）
