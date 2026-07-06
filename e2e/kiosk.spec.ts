@@ -9,7 +9,7 @@ test.describe('キオスク画面', () => {
     await expect(page).toHaveURL(/\/kiosk(?:\/tag|\/photo|\/production-schedule|\/assembly)?(?:[?#].*)?$/);
     await revealKioskHeader(page);
     await expect(page.getByText(/キオスク端末/i)).toBeVisible();
-    await expect(page.locator('a[href="/kiosk"]').filter({ hasText: '持出' }).first()).toBeVisible();
+    await expect(page.locator('a[href="/kiosk/tag"], a[href="/kiosk/photo"]').filter({ hasText: '持出' }).first()).toBeVisible();
     await expect(page.locator('a[href="/kiosk/rigging/borrow"]').filter({ hasText: '吊具 持出' }).first()).toBeVisible();
   });
 
@@ -25,13 +25,13 @@ test.describe('キオスク画面', () => {
     await riggingLink.click();
     await expect(page).toHaveURL(/\/kiosk\/rigging\/borrow/);
 
-    // /kiosk へ戻れることを確認（端末設定に従って初期画面へ再遷移）
+    // 持出タブは /kiosk 入口ではなく、具体的な持出画面へ戻る
     await revealKioskHeader(page);
     const borrowLink = page.getByRole('link', { name: '持出' }).first();
     await borrowLink.waitFor({ state: 'visible' });
     await borrowLink.scrollIntoViewIfNeeded();
     await borrowLink.click();
-    await expect(page).toHaveURL(/\/kiosk(?:\/tag|\/photo|\/production-schedule|\/assembly)?(?:[?#].*)?$/);
+    await expect(page).toHaveURL(/\/kiosk\/(?:tag|photo)(?:[?#].*)?$/);
   });
 
   test('サイネージプレビューと電源メニューのモーダルが開閉できる', async ({ page }) => {
