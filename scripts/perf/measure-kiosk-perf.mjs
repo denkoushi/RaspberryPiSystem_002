@@ -8,6 +8,8 @@
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,6 +27,7 @@ const DEFAULT_OUTPUT = path.join(repoRoot, 'tmp/perf-results/baseline.json');
 const MANIFEST_PATH = path.join(repoRoot, 'tmp/perf-storage/perf-seed-manifest.json');
 
 const RUNS = 3;
+const execFileAsync = promisify(execFile);
 const NAV_TIMEOUT_MS = 180_000;
 const WAIT_TIMEOUT_MS = 180_000;
 const VIEWPORT = { width: 1280, height: 720 };
@@ -36,7 +39,7 @@ const PERF_RESOURCE_CDS = ['1', '2', '3', '4', '5', '6'];
 /** @typedef {{ siteKey: string; deviceScopeKey: string; resourceCds: string[]; slotsStorageKey: string; deviceScopeStorageKey: string }} LeaderBoardBootstrap */
 
 /** @typedef {{ cold: number; warm: number[]; median: number; unit?: string }} MsScenarioResult */
-/** @typedef {{ ttfbMs: number; totalMs: number; bytes: number }} ApiTimingSample */
+/** @typedef {{ ttfbMs: number; totalMs: number; bytes: number; compressedBytes?: number }} ApiTimingSample */
 /** @typedef {{ cold: ApiTimingSample; warm: ApiTimingSample[]; median: ApiTimingSample }} ApiScenarioResult */
 
 /**
@@ -57,6 +60,7 @@ function medianApiSample(samples) {
     ttfbMs: Math.round(median(samples.map((s) => s.ttfbMs))),
     totalMs: Math.round(median(samples.map((s) => s.totalMs))),
     bytes: Math.round(median(samples.map((s) => s.bytes))),
+    compressedBytes: Math.round(median(samples.map((s) => s.compressedBytes ?? s.bytes))),
   };
 }
 
@@ -349,15 +353,38 @@ async function waitForAssemblyNextPage(page) {
 }
 
 /**
+ * @param {string} url
+ * @returns {Promise<number>}
+ */
+async function measureGzipWireBytes(url) {
+  const { stdout } = await execFileAsync('curl', [
+    '-s',
+    '-o',
+    '/dev/null',
+    '-w',
+    '%{size_download}',
+    '-H',
+    `x-client-key: ${CLIENT_KEY}`,
+    '-H',
+    'Accept-Encoding: gzip',
+    url,
+  ]);
+  return Number(stdout.trim());
+}
+
+/**
  * @param {string} urlPath
+ * @param {{ gzip?: boolean }} [options]
  * @returns {Promise<ApiTimingSample>}
  */
-async function measureApiFetch(urlPath) {
+async function measureApiFetch(urlPath, options = {}) {
   const url = `${API_BASE}${urlPath.startsWith('/') ? urlPath : `/${urlPath}`}`;
+  const headers = { 'x-client-key': CLIENT_KEY };
+  if (options.gzip) {
+    headers['Accept-Encoding'] = 'gzip';
+  }
   const start = Date.now();
-  const res = await fetch(url, {
-    headers: { 'x-client-key': CLIENT_KEY },
-  });
+  const res = await fetch(url, { headers });
   const ttfbMs = Date.now() - start;
   if (!res.ok) {
     const text = await res.text();
@@ -365,7 +392,13 @@ async function measureApiFetch(urlPath) {
   }
   const buf = Buffer.from(await res.arrayBuffer());
   const totalMs = Date.now() - start;
-  return { ttfbMs, totalMs, bytes: buf.length };
+  const compressedBytes = options.gzip ? await measureGzipWireBytes(url) : undefined;
+  return {
+    ttfbMs,
+    totalMs,
+    bytes: buf.length,
+    ...(compressedBytes !== undefined ? { compressedBytes } : {}),
+  };
 }
 
 /**
@@ -411,8 +444,13 @@ async function measureApiTimings(ids) {
     /** @type {ApiTimingSample[]} */
     const samples = [];
     for (let i = 0; i < RUNS; i++) {
-      samples.push(await measureApiFetch(pathSuffix));
-      process.stdout.write(`  api ${name} run ${i + 1}/${RUNS}: ${samples[i].totalMs}ms\n`);
+      samples.push(await measureApiFetch(pathSuffix, { gzip: true }));
+      const sample = samples[i];
+      const sizeNote =
+        sample.compressedBytes !== undefined && sample.compressedBytes !== sample.bytes
+          ? `${sample.compressedBytes}B gz / ${sample.bytes}B raw`
+          : `${sample.bytes}B`;
+      process.stdout.write(`  api ${name} run ${i + 1}/${RUNS}: ${sample.totalMs}ms (${sizeNote})\n`);
     }
     results[name] = buildApiScenarioResult(samples);
   }
@@ -525,11 +563,13 @@ function printMarkdownTables(browser, api) {
   }
 
   console.log('\n## API 計測\n');
-  console.log('| エンドポイント | cold TTFB | cold total | cold bytes | median TTFB | median total | median bytes |');
-  console.log('| --- | ---: | ---: | ---: | ---: | ---: | ---: |');
+  console.log(
+    '| エンドポイント | cold TTFB | cold total | cold bytes | cold gz bytes | median TTFB | median total | median bytes | median gz bytes |',
+  );
+  console.log('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
   for (const [name, r] of Object.entries(api)) {
     console.log(
-      `| ${name} | ${r.cold.ttfbMs} | ${r.cold.totalMs} | ${r.cold.bytes} | ${r.median.ttfbMs} | ${r.median.totalMs} | ${r.median.bytes} |`,
+      `| ${name} | ${r.cold.ttfbMs} | ${r.cold.totalMs} | ${r.cold.bytes} | ${r.cold.compressedBytes ?? r.cold.bytes} | ${r.median.ttfbMs} | ${r.median.totalMs} | ${r.median.bytes} | ${r.median.compressedBytes ?? r.median.bytes} |`,
     );
   }
 }

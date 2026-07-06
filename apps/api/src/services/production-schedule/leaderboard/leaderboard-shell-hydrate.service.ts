@@ -8,7 +8,11 @@ import {
 } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
 import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule-effective-completion.sql.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
-import { buildLeaderboardGlobalRankScalarSql } from './leaderboard-global-rank-scalar.sql.js';
+import {
+  buildLeaderboardShellRankJoinContext,
+  LEADERBOARD_SHELL_GLOBAL_RANK_EXPR,
+  LEADERBOARD_SHELL_PROCESSING_ORDER_EXPR
+} from './leaderboard-shell-rank-join.sql.js';
 import {
   chunkLeaderboardRowIdsForHydrate,
   normalizeLeaderboardDisplayRowIdScope
@@ -43,19 +47,7 @@ async function fetchLeaderboardScheduleHydratedRowsSingleBatch(params: {
   const rowScopeWhere =
     leaderboardShellListWhere ?? Prisma.sql`${leaderboardMaterializedBaseWhere} ${visibilitySql}`;
 
-  const processingOrderScalar = Prisma.sql`(
-    SELECT "orderNumber"
-    FROM "ProductionScheduleOrderAssignment"
-    WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND (
-        "location" = ${locationKey}
-        OR "siteKey" = ${locationKey}
-      )
-    ORDER BY
-      CASE WHEN "location" = ${locationKey} THEN 0 ELSE 1 END ASC,
-      "updatedAt" DESC
-    LIMIT 1
-  )`;
+  const rankJoins = buildLeaderboardShellRankJoinContext({ locationKey, siteScopedGlobalRankLocation });
 
   const orderedIdParts = orderedRowIdsChunk.map((id) => Prisma.sql`${id}`);
   const orderedIdArraySql = Prisma.sql`ARRAY[${Prisma.join(orderedIdParts)}]::text[]`;
@@ -76,8 +68,8 @@ async function fetchLeaderboardScheduleHydratedRowsSingleBatch(params: {
         'FKOJUNST', ( ${buildFkojunstProductionScheduleListRowDataFkojunstSql()} ),
         'progress', (CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
       ) AS "rowData",
-      ${processingOrderScalar} AS "processingOrder",
-      ${buildLeaderboardGlobalRankScalarSql({ siteScopedGlobalRankLocation, locationKey })} AS "globalRank",
+      ${LEADERBOARD_SHELL_PROCESSING_ORDER_EXPR} AS "processingOrder",
+      ${LEADERBOARD_SHELL_GLOBAL_RANK_EXPR} AS "globalRank",
       NULLIF(TRIM("n"."note"), '') AS "note",
       COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
       "n"."dueDate" AS "dueDate",
@@ -106,6 +98,8 @@ async function fetchLeaderboardScheduleHydratedRowsSingleBatch(params: {
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    ${rankJoins.orderAssignmentJoin}
+    ${rankJoins.globalRankJoin}
     WHERE ${rowScopeWhere}
       AND "CsvDashboardRow"."id"::text IN (${Prisma.join(orderedIdParts)})
     ORDER BY array_position(${orderedIdArraySql}, "CsvDashboardRow"."id"::text)
