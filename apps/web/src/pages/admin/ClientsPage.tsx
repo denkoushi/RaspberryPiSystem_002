@@ -1,3 +1,10 @@
+import {
+  KIOSK_INITIAL_ROUTE_LABELS,
+  KIOSK_SELECTABLE_INITIAL_ROUTE_IDS,
+  isKioskSelectableInitialRouteId,
+  normalizeKioskInitialRoute,
+  type KioskInitialRouteId
+} from '@raspi-system/shared-types';
 import clsx from 'clsx';
 import { useMemo, useState } from 'react';
 
@@ -10,6 +17,7 @@ import { Input } from '../../components/ui/Input';
 import type { ClientDevice, ClientLogLevel } from '../../api/client';
 
 const MAX_CLIENT_NAME_LENGTH = 100;
+type EditableKioskInitialRoute = KioskInitialRouteId | '';
 
 function formatUptime(seconds?: number | null) {
   if (!seconds) return '-';
@@ -37,6 +45,7 @@ export function ClientsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [selectedMode, setSelectedMode] = useState<'PHOTO' | 'TAG' | null>(null);
+  const [selectedInitialRoute, setSelectedInitialRoute] = useState<EditableKioskInitialRoute>('');
   const [editingHaizenEdge, setEditingHaizenEdge] = useState(false);
   const [editingShelfLayout, setEditingShelfLayout] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -59,6 +68,7 @@ export function ClientsPage() {
     setEditingId(client.id);
     setEditingName(client.name);
     setSelectedMode(client.defaultMode ?? 'TAG');
+    setSelectedInitialRoute(normalizeKioskInitialRoute(client.kioskInitialRoute) ?? '');
     setEditingHaizenEdge(Boolean(client.haizenEdgeEnabled));
     setEditingShelfLayout(Boolean(client.shelfLayoutEditEnabled));
     setEditError(null);
@@ -81,6 +91,7 @@ export function ClientsPage() {
         payload: {
           name: normalizedName,
           defaultMode: selectedMode,
+          kioskInitialRoute: selectedInitialRoute || null,
           haizenEdgeEnabled: editingHaizenEdge,
           shelfLayoutEditEnabled: editingShelfLayout
         }
@@ -88,7 +99,9 @@ export function ClientsPage() {
       setEditingId(null);
       setEditingName('');
       setSelectedMode(null);
+      setSelectedInitialRoute('');
       setEditingHaizenEdge(false);
+      setEditingShelfLayout(false);
       setEditError(null);
     } catch {
       setEditError('保存に失敗しました。時間をおいて再試行してください。');
@@ -99,6 +112,7 @@ export function ClientsPage() {
     setEditingId(null);
     setEditingName('');
     setSelectedMode(null);
+    setSelectedInitialRoute('');
     setEditingHaizenEdge(false);
     setEditingShelfLayout(false);
     setEditError(null);
@@ -307,7 +321,7 @@ export function ClientsPage() {
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">名前</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">場所</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">APIキー</th>
-                  <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">初期表示</th>
+                  <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">起動先</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">Zero2W配膳</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">棚レイアウト編集</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">最終確認</th>
@@ -335,18 +349,47 @@ export function ClientsPage() {
                       <td className="px-4 py-2 font-mono text-sm font-semibold text-slate-700">{client.apiKey}</td>
                       <td className="px-4 py-2">
                         {editingId === client.id ? (
-                          <select
-                            value={selectedMode ?? 'TAG'}
-                            onChange={(e) => setSelectedMode(e.target.value as 'PHOTO' | 'TAG')}
-                            className="rounded-md border-2 border-slate-500 bg-white px-2 py-1 text-sm font-semibold text-slate-900"
-                          >
-                            <option value="TAG">2タグスキャン</option>
-                            <option value="PHOTO">写真撮影持出</option>
-                          </select>
+                          <div className="flex min-w-[14rem] flex-col gap-2">
+                            <select
+                              value={selectedInitialRoute}
+                              onChange={(e) => setSelectedInitialRoute(e.target.value as EditableKioskInitialRoute)}
+                              className="rounded-md border-2 border-slate-500 bg-white px-2 py-1 text-sm font-semibold text-slate-900"
+                            >
+                              <option value="">未設定（旧設定を使用）</option>
+                              {selectedInitialRoute && !isKioskSelectableInitialRouteId(selectedInitialRoute) ? (
+                                <option value={selectedInitialRoute}>
+                                  {KIOSK_INITIAL_ROUTE_LABELS[selectedInitialRoute]}（既存設定）
+                                </option>
+                              ) : null}
+                              {KIOSK_SELECTABLE_INITIAL_ROUTE_IDS.map((routeId) => (
+                                <option key={routeId} value={routeId}>
+                                  {KIOSK_INITIAL_ROUTE_LABELS[routeId]}
+                                </option>
+                              ))}
+                            </select>
+                            {selectedInitialRoute === '' ? (
+                              <select
+                                value={selectedMode ?? 'TAG'}
+                                onChange={(e) => setSelectedMode(e.target.value as 'PHOTO' | 'TAG')}
+                                className="rounded-md border-2 border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+                                aria-label="未設定時の旧初期表示"
+                              >
+                                <option value="TAG">旧設定: 2タグスキャン</option>
+                                <option value="PHOTO">旧設定: 写真撮影持出</option>
+                              </select>
+                            ) : null}
+                          </div>
                         ) : (
-                          <span className="text-sm font-semibold text-slate-900">
-                            {client.defaultMode === 'PHOTO' ? '写真撮影持出' : '2タグスキャン'}
-                          </span>
+                          (() => {
+                            const route = normalizeKioskInitialRoute(client.kioskInitialRoute);
+                            return (
+                              <span className="text-sm font-semibold text-slate-900">
+                                {route
+                                  ? KIOSK_INITIAL_ROUTE_LABELS[route]
+                                  : `${client.defaultMode === 'PHOTO' ? '写真撮影持出' : '2タグスキャン'}（旧設定）`}
+                              </span>
+                            );
+                          })()
                         )}
                       </td>
                       <td className="px-4 py-2 align-top">

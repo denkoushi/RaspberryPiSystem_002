@@ -193,6 +193,7 @@ export async function updateClientDevice(params: {
   id: string;
   name?: string;
   defaultMode?: 'PHOTO' | 'TAG' | null;
+  kioskInitialRoute?: string | null;
   haizenEdgeEnabled?: boolean;
   shelfLayoutEditEnabled?: boolean;
 }) {
@@ -202,6 +203,7 @@ export async function updateClientDevice(params: {
       data: {
         name: params.name ?? undefined,
         defaultMode: params.defaultMode ?? undefined,
+        ...(params.kioskInitialRoute !== undefined ? { kioskInitialRoute: params.kioskInitialRoute } : {}),
         ...(params.haizenEdgeEnabled !== undefined ? { haizenEdgeEnabled: params.haizenEdgeEnabled } : {}),
         ...(params.shelfLayoutEditEnabled !== undefined
           ? { shelfLayoutEditEnabled: params.shelfLayoutEditEnabled }

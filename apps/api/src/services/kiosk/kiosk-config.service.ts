@@ -1,4 +1,9 @@
 import type { ClientDevice } from '@prisma/client';
+import {
+  normalizeKioskInitialRoute,
+  resolveKioskInitialPath,
+  type KioskInitialRouteId
+} from '@raspi-system/shared-types';
 
 import { prisma } from '../../lib/prisma.js';
 import { findClientDeviceByApiKey } from '../clients/client-device-auth.service.js';
@@ -12,6 +17,8 @@ export type KioskConfigClientStatus = {
 export type KioskConfigClientState = {
   client: ClientDevice | null;
   defaultMode: 'PHOTO' | 'TAG';
+  initialKioskRoute: KioskInitialRouteId | null;
+  initialKioskPath: string;
   clientStatus: KioskConfigClientStatus | null;
 };
 
@@ -22,7 +29,13 @@ export async function resolveKioskConfigClientState(
   let clientStatus: KioskConfigClientStatus | null = null;
 
   if (!clientKey) {
-    return { client: null, defaultMode, clientStatus };
+    return {
+      client: null,
+      defaultMode,
+      initialKioskRoute: null,
+      initialKioskPath: resolveKioskInitialPath({ defaultMode }),
+      clientStatus
+    };
   }
 
   const client = await findClientDeviceByApiKey(clientKey);
@@ -37,6 +50,11 @@ export async function resolveKioskConfigClientState(
   if (client?.defaultMode) {
     defaultMode = client.defaultMode as 'PHOTO' | 'TAG';
   }
+  const initialKioskRoute = normalizeKioskInitialRoute(client?.kioskInitialRoute);
+  const initialKioskPath = resolveKioskInitialPath({
+    initialRoute: initialKioskRoute,
+    defaultMode
+  });
 
   const statusClientId = (client as { statusClientId?: string | null } | null)?.statusClientId;
   if (statusClientId) {
@@ -52,5 +70,5 @@ export async function resolveKioskConfigClientState(
     }
   }
 
-  return { client, defaultMode, clientStatus };
+  return { client, defaultMode, initialKioskRoute, initialKioskPath, clientStatus };
 }

@@ -6,3 +6,9 @@ user_pref("browser.cache.disk.enable", false);
 user_pref("browser.cache.memory.enable", false);
 user_pref("browser.cache.offline.enable", false);
 user_pref("network.http.use-cache", false);
+// Kiosk 起動時は必ず kiosk_url から始める。前回タブ復元で /kiosk/tag 等が前面に戻るのを防ぐ。
+user_pref("browser.startup.page", 0);
+user_pref("browser.sessionstore.resume_from_crash", false);
+user_pref("browser.sessionstore.resume_session_once", false);
+user_pref("browser.sessionstore.max_tabs_undo", 0);
+user_pref("browser.sessionstore.max_windows_undo", 0);

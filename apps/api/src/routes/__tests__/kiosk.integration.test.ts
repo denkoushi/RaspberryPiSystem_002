@@ -299,6 +299,82 @@ describe('GET /api/kiosk/config', () => {
     expect(Array.isArray(body.navTabOrder)).toBe(true);
     expect(body.navTabOrder.length).toBeGreaterThan(0);
     expect(body.navTabOrder[0]).toBe('borrow');
+    expect(body.initialKioskRoute).toBeNull();
+    expect(body.initialKioskPath).toBe('/kiosk/tag');
+  });
+
+  it('should return explicit assembly initial route and path', async () => {
+    const client = await prisma.clientDevice.findUnique({
+      where: { apiKey: clientKey }
+    });
+    if (!client) throw new Error('client not found');
+    await prisma.clientDevice.update({
+      where: { id: client.id },
+      data: { defaultMode: 'PHOTO', kioskInitialRoute: 'assembly' }
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/config',
+      headers: {
+        'x-client-key': clientKey
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.defaultMode).toBe('PHOTO');
+    expect(body.initialKioskRoute).toBe('assembly');
+    expect(body.initialKioskPath).toBe('/kiosk/assembly');
+  });
+
+  it('should return explicit leader order board initial route and path', async () => {
+    const client = await prisma.clientDevice.findUnique({
+      where: { apiKey: clientKey }
+    });
+    if (!client) throw new Error('client not found');
+    await prisma.clientDevice.update({
+      where: { id: client.id },
+      data: { defaultMode: 'PHOTO', kioskInitialRoute: 'leader_order_board' }
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/config',
+      headers: {
+        'x-client-key': clientKey
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.defaultMode).toBe('PHOTO');
+    expect(body.initialKioskRoute).toBe('leader_order_board');
+    expect(body.initialKioskPath).toBe('/kiosk/production-schedule/leader-order-board');
+  });
+
+  it('should fallback to defaultMode path when kioskInitialRoute is unknown in DB', async () => {
+    const client = await prisma.clientDevice.findUnique({
+      where: { apiKey: clientKey }
+    });
+    if (!client) throw new Error('client not found');
+    await prisma.clientDevice.update({
+      where: { id: client.id },
+      data: { defaultMode: 'PHOTO', kioskInitialRoute: 'unknown_route' }
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/config',
+      headers: {
+        'x-client-key': clientKey
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.initialKioskRoute).toBeNull();
+    expect(body.initialKioskPath).toBe('/kiosk/photo');
   });
 
   it('should return kiosk config without clientStatus when statusClientId is not set', async () => {
@@ -584,4 +660,3 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
     expect(body.selectedApiKey).toBeNull();
   });
 });
-

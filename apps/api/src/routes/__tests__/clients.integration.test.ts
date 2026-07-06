@@ -64,6 +64,69 @@ describe('PUT /api/clients/:id', () => {
     expect(body.client.defaultMode).toBe('TAG');
   });
 
+  it('should update kioskInitialRoute to assembly', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/clients/${clientId}`,
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        kioskInitialRoute: 'assembly'
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.client.kioskInitialRoute).toBe('assembly');
+  });
+
+  it('should update kioskInitialRoute to leader order board', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/clients/${clientId}`,
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        kioskInitialRoute: 'leader_order_board'
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.client.kioskInitialRoute).toBe('leader_order_board');
+  });
+
+  it('should clear kioskInitialRoute with null', async () => {
+    await prisma.clientDevice.update({
+      where: { id: clientId },
+      data: { kioskInitialRoute: 'assembly' }
+    });
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/clients/${clientId}`,
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        kioskInitialRoute: null
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.client.kioskInitialRoute).toBeNull();
+  });
+
+  it('should reject unknown kioskInitialRoute', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/clients/${clientId}`,
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        kioskInitialRoute: 'unknown'
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
   it('should update client name with trimmed value', async () => {
     const response = await app.inject({
       method: 'PUT',

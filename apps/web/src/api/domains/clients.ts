@@ -7,6 +7,7 @@ export interface ClientDevice {
   location?: string | null;
   apiKey: string;
   defaultMode?: 'PHOTO' | 'TAG' | null;
+  kioskInitialRoute?: string | null;
   /** Zero2W / haizen-agent 配膳エッジとしてキオスク設定対象に含める */
   haizenEdgeEnabled?: boolean;
   /** キオスク棚レイアウト編集を許可 */
@@ -28,6 +29,7 @@ export async function updateClient(
   payload: {
     name?: string;
     defaultMode?: 'PHOTO' | 'TAG' | null;
+    kioskInitialRoute?: string | null;
     haizenEdgeEnabled?: boolean;
     shelfLayoutEditEnabled?: boolean;
   }

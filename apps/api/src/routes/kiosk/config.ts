@@ -30,7 +30,8 @@ export async function registerKioskConfigRoute(
       'Kiosk config request'
     );
 
-    const { client, defaultMode, clientStatus } = await resolveKioskConfigClientState(clientKey);
+    const { client, defaultMode, initialKioskRoute, initialKioskPath, clientStatus } =
+      await resolveKioskConfigClientState(clientKey);
 
     // 機密情報保護: clientKeyとclient.apiKeyをログから除外
     const sanitizedClient = client ? { ...client, apiKey: '[REDACTED]' } : null;
@@ -39,7 +40,8 @@ export async function registerKioskConfigRoute(
         client: sanitizedClient,
         clientKey: '[REDACTED]',
         found: !!client,
-        defaultMode: client?.defaultMode
+        defaultMode: client?.defaultMode,
+        initialKioskRoute
       },
       'Client device lookup result'
     );
@@ -48,6 +50,8 @@ export async function registerKioskConfigRoute(
     app.log.info(
       {
         defaultMode,
+        initialKioskRoute,
+        initialKioskPath,
         clientKey: '[REDACTED]',
         hasClientStatus: !!clientStatus
       },
@@ -60,6 +64,8 @@ export async function registerKioskConfigRoute(
       greeting: 'タグを順番にかざしてください',
       idleTimeoutMs: 30000,
       defaultMode,
+      initialKioskRoute,
+      initialKioskPath,
       clientStatus,
       navTabOrder
     };

@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-06 · キオスク端末別 起動先）
+
+- **端末ごとのキオスク起動先**: `起動先` で `2タグスキャン` / `写真撮影持出` / `順位ボード` / `組立` を選択。**正本**: [Runbook](./runbooks/kiosk-device-initial-route.md)
+
 ### 最新アップデート（2026-07-06 · キオスク検査図面 公差入力 実機フィードバック対応）
 
 - **公差入力の実機フィードバック対応**: 幾何公差候補に `0` を追加し、候補選択後も再フォーカスで別候補を選び直せるようにした。基準値・上限公差・下限公差は白背景 + 黒文字、名称ドロップダウンの空表示は `選択`。Web/shared のみで DB/API/migration 変更なし。**`becb6e7c`** · CI **`28760895857` success** · Deploy **`20260706-100018-28681`** · Phase12 **45/0/0**。**正本**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-公差入力-実機フィードバック-2026-07-06) · [Runbook](./runbooks/kiosk-part-measurement.md#検査図面-公差入力-実機フィードバック-2026-07-06) · [Deployment](./guides/deployment.md#inspection-drawing-tolerance-input-usability-fixes-2026-07-06)
