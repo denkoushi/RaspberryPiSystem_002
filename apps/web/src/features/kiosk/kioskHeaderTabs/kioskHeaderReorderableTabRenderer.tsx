@@ -1,3 +1,4 @@
+import { resolveKioskDefaultModePath } from '@raspi-system/shared-types';
 import { NavLink } from 'react-router-dom';
 
 import {
@@ -14,9 +15,14 @@ import type { ReactNode } from 'react';
 
 export type KioskHeaderReorderableTabContext = {
   pathname: string;
+  defaultMode?: 'PHOTO' | 'TAG';
   onDueManagementNavigate: () => void;
   dueManagementPending: boolean;
 };
+
+export function resolveKioskBorrowHeaderTabPath(defaultMode: KioskHeaderReorderableTabContext['defaultMode']): string {
+  return resolveKioskDefaultModePath(defaultMode);
+}
 
 function renderNavLinkTab(params: {
   to: string;
@@ -48,7 +54,7 @@ export function renderKioskReorderableHeaderTab(
   switch (tabId) {
     case 'borrow':
       return renderNavLinkTab({
-        to: '/kiosk',
+        to: resolveKioskBorrowHeaderTabPath(ctx.defaultMode),
         label: '持出',
         isActive: pathname === '/kiosk' || pathname === '/kiosk/tag' || pathname === '/kiosk/photo',
         activeClassName: 'bg-emerald-500 text-white'

@@ -44,6 +44,17 @@ describe('resolveKioskInitialRedirectDecision', () => {
     ).toMatchObject({ targetPath: null, reason: 'subpath' });
   });
 
+  it('keeps the borrow tag path untouched even when assembly is the initial route', () => {
+    expect(
+      resolveKioskInitialRedirectDecision({
+        pathname: '/kiosk/tag',
+        isLoading: false,
+        hasError: false,
+        config: { defaultMode: 'TAG', initialKioskRoute: 'assembly' }
+      })
+    ).toMatchObject({ targetPath: null, reason: 'subpath' });
+  });
+
   it('ignores non-entry paths even when they start with kiosk text', () => {
     expect(
       resolveKioskInitialRedirectDecision({
