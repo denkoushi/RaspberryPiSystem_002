@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
-import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
+import { PartMeasurementDrawingStorage, parseDerivativeWidth } from '../../lib/part-measurement-drawing-storage.js';
 import { buildPdfPageEtag, ifNoneMatchSatisfied } from './pdf-page-http-cache.js';
 
 const PART_MEASUREMENT_DRAWING_CACHE_CONTROL = 'private, max-age=86400, immutable';
@@ -25,14 +25,32 @@ export function registerPartMeasurementDrawingStorageRoutes(app: FastifyInstance
       await canView(request, reply);
     }
 
-    const urlPath = request.url.replace('/api/storage/part-measurement-drawings/', '');
+    const urlPath = request.url.split('?')[0].replace('/api/storage/part-measurement-drawings/', '');
     if (!urlPath) {
       return reply.status(400).send({ message: '図面のパスが指定されていません' });
     }
 
     const drawingUrl = `/api/storage/part-measurement-drawings/${urlPath}`;
+    const derivativeWidth = parseDerivativeWidth((request.query as { w?: string }).w);
 
     try {
+      if (derivativeWidth) {
+        const { buffer, contentType, stat } = await PartMeasurementDrawingStorage.readDrawingDerivative(
+          drawingUrl,
+          derivativeWidth
+        );
+        const etag = buildPdfPageEtag(stat);
+        reply.header('ETag', etag);
+        reply.header('Cache-Control', PART_MEASUREMENT_DRAWING_CACHE_CONTROL);
+
+        if (ifNoneMatchSatisfied(request.headers['if-none-match'], etag)) {
+          return reply.code(304).send();
+        }
+
+        reply.type(contentType);
+        return reply.send(buffer);
+      }
+
       const stat = await PartMeasurementDrawingStorage.statDrawing(drawingUrl);
       const etag = buildPdfPageEtag(stat);
       reply.header('ETag', etag);
