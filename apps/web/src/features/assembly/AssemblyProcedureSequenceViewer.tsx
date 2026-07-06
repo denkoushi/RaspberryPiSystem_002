@@ -25,7 +25,7 @@ export function AssemblyProcedureSequenceViewer({ sequence, className }: Props) 
   const [pageIndex, setPageIndex] = useState(0);
   const documents = sequence.documents;
   const document = documents[clampIndex(documentIndex, documents.length)] ?? null;
-  const pageUrls = document?.pageUrls ?? [];
+  const pageUrls = useMemo(() => document?.pageUrls ?? [], [document?.pageUrls]);
   const pageUrl = pageUrls[clampIndex(pageIndex, pageUrls.length)] ?? null;
 
   const totalPages = useMemo(
@@ -45,6 +45,18 @@ export function AssemblyProcedureSequenceViewer({ sequence, className }: Props) 
   useEffect(() => {
     setPageIndex((current) => clampIndex(current, pageUrls.length));
   }, [pageUrls.length]);
+
+  useEffect(() => {
+    const prefetchTargets = [
+      pageUrls[pageIndex + 1],
+      pageUrls[pageIndex + 2],
+      documents[documentIndex + 1]?.pageUrls[0],
+    ].filter((url): url is string => Boolean(url));
+    for (const url of prefetchTargets) {
+      const img = new Image();
+      img.src = resolveKioskDocumentPageImageUrl(url);
+    }
+  }, [documentIndex, documents, pageIndex, pageUrls]);
 
   const goPrevPage = () => {
     if (!document) return;
