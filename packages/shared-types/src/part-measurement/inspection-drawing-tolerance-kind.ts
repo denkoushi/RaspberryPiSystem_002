@@ -112,7 +112,7 @@ export function buildInspectionDrawingToleranceCandidateValues(
   kind: InspectionDrawingToleranceKind
 ): string[] {
   if (kind === INSPECTION_DRAWING_TOLERANCE_KIND_GEOMETRIC) {
-    return Array.from({ length: 9 }, (_, index) => `0.00${index + 1}`);
+    return ['0', ...Array.from({ length: 9 }, (_, index) => `0.00${index + 1}`)];
   }
 
   const values: string[] = [];

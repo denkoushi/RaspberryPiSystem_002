@@ -8,6 +8,7 @@ describe('inspection drawing tolerance candidates', () => {
   it('builds geometric tolerance candidates for degree labels', () => {
     expect(resolveDefaultInspectionDrawingToleranceKind('直角度')).toBe('geometric');
     expect(buildInspectionDrawingToleranceCandidateValues('geometric')).toEqual([
+      '0',
       '0.001',
       '0.002',
       '0.003',

@@ -29,7 +29,7 @@ export function buildMeasurementLabelSelectOptions(
   }
   const base = labels.map((label) => ({ value: label, label }));
   if (!trimmed) {
-    return [{ value: '', label: '選択してください' }, ...base];
+    return [{ value: '', label: '選択' }, ...base];
   }
   if (seen.has(trimmed)) {
     return base;

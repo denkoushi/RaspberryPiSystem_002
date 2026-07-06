@@ -232,7 +232,7 @@ export const inspectionDrawingPointSettingPanelClassName = clsx(
 /** 測定点設定パネル内 Input — 既定 ~1rem の 1.3 倍 */
 export const inspectionDrawingPointSettingInputClassName = clsx(
   kioskInputClassName,
-  'text-[1.12rem] leading-snug py-2'
+  '!bg-white !text-black !placeholder:text-slate-500 text-[1.12rem] leading-snug py-2'
 );
 
 /** 測定点設定 — 名称・基準値 2 列行（17rem 右ペイン向け） */

@@ -18,7 +18,7 @@ describe('inspectionDrawingMeasurementLabelOptions', () => {
 
   it('includes placeholder for empty new point', () => {
     const options = buildMeasurementLabelSelectOptions('');
-    expect(options[0]).toEqual({ value: '', label: '選択してください' });
+    expect(options[0]).toEqual({ value: '', label: '選択' });
   });
 
   it('uses configured label settings as select candidates', () => {

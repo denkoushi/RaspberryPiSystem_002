@@ -4,7 +4,7 @@ import {
   resolveInspectionDrawingToleranceKindForLabel,
   type InspectionDrawingMeasurementLabelSetting
 } from '@raspi-system/shared-types';
-import { useId } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -43,6 +43,68 @@ type Props = {
 };
 
 const DEFAULT_MEASUREMENT_LABEL_SETTINGS = buildDefaultInspectionDrawingMeasurementLabelSettings();
+
+type ToleranceCandidateInputProps = {
+  listId: string;
+  value: string;
+  candidateValues: readonly string[];
+  disabled: boolean;
+  onValueChange: (value: string) => void;
+};
+
+function openNativeCandidatePicker(input: HTMLInputElement) {
+  const showPicker = (input as HTMLInputElement & { showPicker?: () => void }).showPicker;
+  try {
+    showPicker?.call(input);
+  } catch {
+    // Some browser versions expose showPicker but reject it for text+datalist inputs.
+  }
+}
+
+function ToleranceCandidateInput({
+  listId,
+  value,
+  candidateValues,
+  disabled,
+  onValueChange
+}: ToleranceCandidateInputProps) {
+  const [draftValue, setDraftValue] = useState(value);
+  const [shouldRestoreOnBlur, setShouldRestoreOnBlur] = useState(false);
+
+  useEffect(() => {
+    setDraftValue(value);
+    setShouldRestoreOnBlur(false);
+  }, [value]);
+
+  return (
+    <Input
+      type="text"
+      inputMode="decimal"
+      list={listId}
+      value={draftValue}
+      onFocus={(event) => {
+        if (disabled || !candidateValues.includes(value)) return;
+        event.currentTarget.value = '';
+        setDraftValue('');
+        setShouldRestoreOnBlur(true);
+        openNativeCandidatePicker(event.currentTarget);
+      }}
+      onBlur={() => {
+        if (shouldRestoreOnBlur && draftValue === '') {
+          setDraftValue(value);
+        }
+        setShouldRestoreOnBlur(false);
+      }}
+      onChange={(event) => {
+        setDraftValue(event.target.value);
+        setShouldRestoreOnBlur(false);
+        onValueChange(event.target.value);
+      }}
+      className={inspectionDrawingPointSettingInputClassName}
+      disabled={disabled}
+    />
+  );
+}
 
 /** 作成/編集画面右欄 — 測定点の名称・基準・公差（本番・開発プレビュー共通） */
 export function InspectionDrawingPointSettingsPanel({
@@ -141,25 +203,21 @@ export function InspectionDrawingPointSettingsPanel({
         </datalist>
         <label className="grid gap-1 text-[1rem] font-semibold">
           上限公差
-          <Input
-            type="text"
-            inputMode="decimal"
-            list={toleranceCandidateListId}
+          <ToleranceCandidateInput
+            listId={toleranceCandidateListId}
             value={point.upperToleranceRaw}
-            onChange={(e) => onChange({ upperToleranceRaw: e.target.value })}
-            className={inspectionDrawingPointSettingInputClassName}
+            candidateValues={toleranceCandidateValues}
+            onValueChange={(value) => onChange({ upperToleranceRaw: value })}
             disabled={disabled}
           />
         </label>
         <label className="grid gap-1 text-[1rem] font-semibold">
           下限公差
-          <Input
-            type="text"
-            inputMode="decimal"
-            list={toleranceCandidateListId}
+          <ToleranceCandidateInput
+            listId={toleranceCandidateListId}
             value={point.lowerToleranceRaw}
-            onChange={(e) => onChange({ lowerToleranceRaw: e.target.value })}
-            className={inspectionDrawingPointSettingInputClassName}
+            candidateValues={toleranceCandidateValues}
+            onValueChange={(value) => onChange({ lowerToleranceRaw: value })}
             disabled={disabled}
           />
         </label>

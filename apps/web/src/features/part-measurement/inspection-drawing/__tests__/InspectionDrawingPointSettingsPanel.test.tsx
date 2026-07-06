@@ -104,6 +104,7 @@ describe('InspectionDrawingPointSettingsPanel', () => {
     );
 
     expect(datalistOptionValues()).toEqual([
+      '0',
       '0.001',
       '0.002',
       '0.003',
@@ -158,5 +159,33 @@ describe('InspectionDrawingPointSettingsPanel', () => {
     fireEvent.change(upperToleranceInput, { target: { value: '0.026' } });
 
     expect(onChange).toHaveBeenCalledWith({ upperToleranceRaw: '0.026' });
+  });
+
+  it('clears a selected candidate on focus for reselection without changing saved value', () => {
+    const onChange = vi.fn();
+
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, name: '直角度', upperToleranceRaw: '0.003' }}
+        onChange={onChange}
+      />
+    );
+
+    const upperToleranceInput = screen.getByLabelText('上限公差') as HTMLInputElement;
+
+    fireEvent.focus(upperToleranceInput);
+    expect(upperToleranceInput.value).toBe('');
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.blur(upperToleranceInput);
+    expect(upperToleranceInput.value).toBe('0.003');
+  });
+
+  it('uses black text for nominal and tolerance inputs', () => {
+    render(<InspectionDrawingPointSettingsPanel point={point} onChange={vi.fn()} />);
+
+    expect(screen.getByLabelText('基準値')).toHaveClass('!text-black');
+    expect(screen.getByLabelText('上限公差')).toHaveClass('!text-black');
+    expect(screen.getByLabelText('下限公差')).toHaveClass('!text-black');
   });
 });
