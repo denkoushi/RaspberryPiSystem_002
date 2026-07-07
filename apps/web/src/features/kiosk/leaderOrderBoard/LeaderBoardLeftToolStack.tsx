@@ -8,7 +8,6 @@ import {
   kioskButtonSecondaryClassName,
   kioskInputClassName,
   kioskMetaTextClassName,
-  kioskPanelClassName,
   kioskSelectClassName
 } from '../kioskTheme';
 
@@ -151,7 +150,7 @@ export function LeaderBoardLeftToolStack({
       />
       <aside
         className={clsx(
-          kioskPanelClassName,
+          'rounded-lg border border-white/15 bg-slate-950',
           'flex h-full min-h-0 shrink-0 flex-col gap-2 border-r p-3 max-w-[90vw]',
           seibanEvalEnabled ? 'w-96' : 'w-80'
         )}
@@ -204,7 +203,7 @@ export function LeaderBoardLeftToolStack({
             {splitFeatureStatus.label}
           </span>
         </div>
-        <div className={clsx(kioskPanelClassName, 'flex min-h-0 min-w-0 flex-1 flex-col p-2')}>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-white/15 bg-slate-900 p-2">
           <div className="mb-2 flex min-w-0 shrink-0 items-center justify-between gap-1">
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-white/70">
               製番検索
