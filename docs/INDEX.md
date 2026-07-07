@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-07 · 組立キオスク改良（閲覧順の組立ライブラリ限定 + プレビュー / 完了ペイン + ロット数 + NFC作業者入力） · 未デプロイ）
+
+- **組立キオスク機能改良**: 閲覧順設定の対象を組立ライブラリ手順書（`AssemblyProcedureDocument`）に変更（非破壊migration・既存PDF参照は互換維持）し3ペイン化（プレビュー追加）。組立トップに完了した製品ペイン・ロット数（生産実績 `FSEIBAN`×`lotQty`）・NFC作業者入力を追加。ライブラリ画面の「検査図面へ」「新規」「作業」ボタンと旧 `/kiosk/assembly/work/start` を削除。**正本**: [ADR](./decisions/ADR-20260707-assembly-procedure-order-library-scope.md)
+
 ### 最新アップデート（2026-07-06 · キオスク表示性能最適化（図面派生画像 / gzip / 要領書summary） · 未デプロイ）
 
 - **キオスク表示速度の最適化**: 図面のリサイズ済みWebP派生配信（`?w=`）、APIレスポンスgzip圧縮、順位ボードhydrate SQLのLATERAL化、`GET /api/kiosk-documents` の `fields=summary`+`limit`（件数非依存化）。ローカル実測で図面転送 −93%、順位ボードJSON −93%、要領書一覧 35MB/473ms→208KB/12ms（1500件時）。**正本**: [ADR](./decisions/ADR-20260706-kiosk-display-performance-optimizations.md)
