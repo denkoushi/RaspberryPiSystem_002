@@ -10,6 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-07 · **組立キオスク コンパクトレイアウト（記録確認 詳細幅上限 + トップカード余白縮小）** · **Web only** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-compact-layout-2026-07-07}
+
+- **変更概要（正本）**: [ADR-20260707](../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md)（Decision 5 追補） · main **`34414664`**。実装コミット: `ff9b8ec2`（組立記録確認: DetailPane に `max-w-[56rem]` 幅上限 + 左寄せ、メタ情報 dl のインライン key-value 化、トルク実績テーブルの内容幅化、承認ボックス `max-w-md`、リストアイテム余白縮小）· `36c4d788`（組立トップ: 仕掛中/完了カードを `xl:grid-cols-3 2xl:grid-cols-4` に拡張、カード内余白縮小、エリア/締付位置・作業者/ロット数の行統合）。**API / DB / Prisma migration 変更なし**。
+- **CI（`34414664`）**: main push CI **`28863733227` success** · CodeQL **`28863733188` success** · Secret scan **`28863733199` success** · Pages success。
+- **ローカル検証**: web vitest **261 files / 1313 tests passed** · lint · build すべて成功。一時 Postgres（`pgvector/pgvector:pg16` port 55432）+ API 経由データ投入で Playwright 1920x1080 視覚確認（詳細ペイン幅上限・key-value 1行表示・テーブル内容幅・カード4列）。一時コンテナ/volume/プロセスは削除済み（2026-07-07）。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260707-210657-1686`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260707-210657-1686.log` · summary success true · exitCode 0 · PLAY RECAP 全7ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。Pi5 repo は `34414664`（2026-07-07 21:35 JST）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-07 JST）。
+- **組立 smoke**: `/kiosk/assembly` · `/kiosk/assembly/record-approvals` HTTP **200**。配信バンドル `/assets/index-OqdegbAu.js` に新クラス `max-w-[56rem]` / `2xl:grid-cols-4` を確認。
+- **実機（目視・タッチ）**: 未実施（次回現場確認時: 記録確認の詳細ペインが右端まで伸びず値がラベル+値の1行表示になっていること、組立トップの仕掛中/完了カードが詰まった表示になっていること）。
+
 ### 補足（2026-07-07 · **検査図面 作成入力改善 + 図面ライブラリ資源CD chip** · **Web + shared-types** · **Pi5 + Pi4×5 + Pi3 反映済**） {#inspection-drawing-create-input-and-library-chips-2026-07-07}
 
 - **変更概要（正本）**: [Plan](../plans/kiosk-inspection-drawing-mvp-execplan.md)（2026-07-07 エントリ） · main **`b4d39cb6`**。実装コミット: `f5ad83b1`（品番/テンプレ/指定数 Input の白文字不可視を `!bg-white !text-black` 専用クラスで修正）· `2b8cd94d`（名称 `キリ穴ピッチ` / `ザグリ穴ピッチ` / `ネジ穴深さ` 追加 + 深さ系公差候補 0〜20 + 寸法公差の普通公差自動入力）· `04038f6c`（図面ライブラリ表に資源CD chip の1.5行目追加・両ペインの「資源CD」ラベル削除・chip共通化）。**API / DB / Prisma migration 変更なし**。
