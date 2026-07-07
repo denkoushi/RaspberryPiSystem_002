@@ -56,22 +56,27 @@ export function AssemblyWipPane({ sessions, loading, onReload }: Props) {
           </p>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 content-start gap-2 overflow-y-auto p-2">
+        <div className="grid min-h-0 flex-1 content-start grid-cols-1 gap-2 overflow-y-auto p-2 sm:grid-cols-2 2xl:grid-cols-3">
           {sessions.map((session) => (
             <Link
               key={session.id}
               to={kioskAssemblyWorkSessionPath(session.id)}
-              className="grid min-h-[4.8rem] gap-2 rounded border border-white/10 bg-slate-900/55 px-3 py-2 text-white hover:border-emerald-300/40 hover:bg-slate-800 md:grid-cols-[10rem_minmax(0,1fr)_minmax(10rem,0.85fr)_7rem_5.5rem] md:items-center"
+              className="flex min-h-11 min-w-0 flex-col gap-2 rounded border border-white/10 bg-slate-900/55 px-3 py-2.5 text-white hover:border-emerald-300/40 hover:bg-slate-800"
             >
-              <span className="min-w-0">
-                <span className="block truncate text-[1.22rem] font-bold leading-tight">{session.productNo}</span>
-                <span className="mt-1 block truncate text-xs font-semibold text-white/55">
-                  {formatAssemblyTimestamp(session.updatedAt)}
+              <div className="flex min-w-0 items-start justify-between gap-2">
+                <span className="min-w-0">
+                  <span className="block truncate text-[1.22rem] font-bold leading-tight">{session.productNo}</span>
+                  <span className="mt-0.5 block truncate text-xs font-semibold text-white/55">
+                    {formatAssemblyTimestamp(session.updatedAt)}
+                  </span>
                 </span>
-              </span>
+                <span className="flex min-h-11 shrink-0 items-center justify-center rounded border border-emerald-300/35 bg-emerald-500/25 px-3 text-sm font-bold text-emerald-50">
+                  再開
+                </span>
+              </div>
               <span className="min-w-0">
                 <span className="block truncate text-base font-bold text-white/90">{session.targetUnit}</span>
-                <span className="mt-1 block truncate text-xs font-semibold text-white/60">
+                <span className="mt-0.5 block truncate text-xs font-semibold text-white/60">
                   {session.serialNo} / {session.operatorNameSnapshot}
                 </span>
               </span>
@@ -79,7 +84,7 @@ export function AssemblyWipPane({ sessions, loading, onReload }: Props) {
                 <span className="block truncate text-sm font-bold text-white/90">
                   {session.currentAreaName ?? 'エリア完了'}
                 </span>
-                <span className="mt-1 block truncate text-xs font-semibold text-white/55">
+                <span className="mt-0.5 block truncate text-xs font-semibold text-white/55">
                   {session.currentBoltMarkerNo ? `締付位置 #${session.currentBoltMarkerNo}` : '次工程待ち'}
                 </span>
               </span>
@@ -91,9 +96,6 @@ export function AssemblyWipPane({ sessions, loading, onReload }: Props) {
                     style={{ width: `${progressPercent(session)}%` }}
                   />
                 </span>
-              </span>
-              <span className="flex min-h-10 items-center justify-center rounded border border-emerald-300/35 bg-emerald-500/25 px-2 text-sm font-bold text-emerald-50">
-                再開
               </span>
             </Link>
           ))}
