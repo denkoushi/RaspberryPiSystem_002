@@ -13,6 +13,7 @@ import {
   toEffectiveDueDateSource,
   toYearMonthKey
 } from './machine-monthly-load-query.service.js';
+import { fetchLoadBalancingWinnerRowIds } from './load-balancing-winner-row-ids.js';
 import type { MachineMonthlyLoadEnrichedRow, MachineMonthlyLoadResult } from './machine-monthly-load.types.js';
 import { parseYearMonthRangeInclusive } from './year-month-range.js';
 
@@ -60,11 +61,14 @@ export async function getProductionScheduleMachineMonthlyLoad(params: {
   const selectedMachineName = params.machineName?.trim() || null;
   const selectedFhincd = params.fhincd?.trim() || null;
 
+  const winnerRowIds = await fetchLoadBalancingWinnerRowIds();
+
   const fseibanAgg = await aggregateMachineMonthlyLoadByFseiban({
     siteKey,
     deviceScopeKey: params.deviceScopeKey,
     rangeStart: range.rangeStart,
-    rangeEndExclusive: range.rangeEndExclusive
+    rangeEndExclusive: range.rangeEndExclusive,
+    winnerRowIds
   });
 
   const fseibans = [...new Set(fseibanAgg.map((row) => row.fseiban).filter((value) => value.length > 0))];
@@ -102,7 +106,8 @@ export async function getProductionScheduleMachineMonthlyLoad(params: {
           deviceScopeKey: params.deviceScopeKey,
           rangeStart: range.rangeStart,
           rangeEndExclusive: range.rangeEndExclusive,
-          fseibans: matchingFseibans
+          fseibans: matchingFseibans,
+          winnerRowIds
         })
       : [];
 

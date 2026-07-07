@@ -4,19 +4,23 @@ import {
   listLoadBalancingMonthlyCapacityResolved
 } from './load-balancing-settings.service.js';
 import { aggregateMonthlyLoadByResource } from './monthly-load-query.service.js';
+import { fetchLoadBalancingWinnerRowIds } from './load-balancing-winner-row-ids.js';
 import type { LoadBalancingOverviewResult } from './types.js';
 
 export async function getProductionScheduleLoadBalancingOverview(params: {
   siteKey: string;
   deviceScopeKey: string;
   yearMonth: string;
+  winnerRowIds?: readonly string[];
 }): Promise<LoadBalancingOverviewResult> {
   const ym = params.yearMonth.trim();
+  const winnerRowIds = params.winnerRowIds ?? (await fetchLoadBalancingWinnerRowIds());
   const [aggregates, baseCap, monthlyCap, classes] = await Promise.all([
     aggregateMonthlyLoadByResource({
       siteKey: params.siteKey,
       deviceScopeKey: params.deviceScopeKey,
-      yearMonth: ym
+      yearMonth: ym,
+      winnerRowIds
     }),
     listLoadBalancingCapacityBaseResolved(params.siteKey),
     listLoadBalancingMonthlyCapacityResolved({ siteKeyInput: params.siteKey, yearMonth: ym }),

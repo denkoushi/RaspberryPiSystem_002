@@ -6,7 +6,7 @@ import {
   normalizeProductionScheduleResourceCd,
   type ResourceCategoryPolicy
 } from '../policies/resource-category-policy.service.js';
-import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
+import { buildMaterializedMaxProductNoWinnerInCondition } from '../row-resolver/index.js';
 import { buildCsvDashboardRowRequiredMinutesSql } from './csv-dashboard-row-required-minutes.sql.js';
 import { buildLoadBalancingRowEligibilityWhereSql } from './load-balancing-eligibility.policy.js';
 import { buildStartDateLevelingQueryWindowWhereSql } from './start-date-leveling-query-window.policy.js';
@@ -53,6 +53,7 @@ export async function listStartDateLevelingQueryRows(params: {
   rangeStart: Date;
   rangeEndExclusive: Date;
   resourceCdFilter?: string | null;
+  winnerRowIds: readonly string[];
 }): Promise<StartDateLevelingQueryRow[]> {
   const policy = await getResourceCategoryPolicy({
     siteKey: params.siteKey,
@@ -71,9 +72,6 @@ export async function listStartDateLevelingQueryRows(params: {
       "supplement"."plannedStartDate" AS "plannedStartDate",
       COALESCE("n"."dueDate", "supplement"."plannedEndDate") AS "effectiveDueDate"
     FROM "CsvDashboardRow"
-    LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
-      ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
@@ -90,7 +88,7 @@ export async function listStartDateLevelingQueryRows(params: {
       ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+      AND ${buildMaterializedMaxProductNoWinnerInCondition('CsvDashboardRow', params.winnerRowIds)}
       AND (
         UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) NOT LIKE 'MH%'
         AND UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) NOT LIKE 'SH%'
