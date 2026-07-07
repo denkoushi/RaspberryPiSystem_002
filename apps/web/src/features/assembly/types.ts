@@ -166,6 +166,7 @@ export type AssemblyWorkSessionSummaryDto = {
 
 export type AssemblyProcedureOrderDocumentDto = {
   id: string;
+  documentType: 'kiosk_document' | 'assembly_procedure_document';
   title: string;
   displayTitle: string | null;
   filename: string;
@@ -174,13 +175,16 @@ export type AssemblyProcedureOrderDocumentDto = {
   pageCount: number | null;
   enabled: boolean;
   updatedAt: string;
+  imageRelativePath: string | null;
 };
 
 export type AssemblyProcedureOrderItemDto = {
   id: string;
   sortOrder: number;
   label: string | null;
-  kioskDocumentId: string;
+  documentType: 'kiosk_document' | 'assembly_procedure_document';
+  kioskDocumentId: string | null;
+  assemblyProcedureDocumentId: string | null;
   document: AssemblyProcedureOrderDocumentDto;
 };
 
@@ -196,7 +200,8 @@ export type AssemblyProcedureOrderSaveInput = {
   machineName: string;
   accessPassword: string;
   items: Array<{
-    kioskDocumentId: string;
+    kioskDocumentId?: string | null;
+    assemblyProcedureDocumentId?: string | null;
     label?: string | null;
   }>;
 };
@@ -205,7 +210,9 @@ export type AssemblyProcedureSequenceDocumentDto = {
   orderItemId: string;
   sortOrder: number;
   label: string | null;
-  kioskDocumentId: string;
+  documentType: 'kiosk_document' | 'assembly_procedure_document';
+  kioskDocumentId: string | null;
+  assemblyProcedureDocumentId: string | null;
   title: string;
   displayTitle: string | null;
   filename: string;

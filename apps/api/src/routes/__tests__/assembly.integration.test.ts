@@ -915,4 +915,172 @@ describe('assembly torque management API', () => {
       errorCode: 'KIOSK_DOC_ASSEMBLY_ORDER_IN_USE'
     });
   });
+
+  it('saves assembly procedure documents in procedure order settings and resolves them in work-session sequence', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey };
+
+    const upload = buildMultipartProcedure('MH-AX 組立手順');
+    const procedureDocRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/procedure-documents',
+      headers: { ...headers, 'Content-Type': upload.contentType },
+      payload: upload.body
+    });
+    expect(procedureDocRes.statusCode).toBe(200);
+    const procedureDocument = procedureDocRes.json().document as {
+      id: string;
+      name: string;
+      imageRelativePath: string;
+    };
+
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: buildTemplatePayload(procedureDocument.id, { modelCode: 'MH-AX', procedurePattern: '標準', name: 'MH-AX 標準' })
+    });
+    expect(templateRes.statusCode).toBe(200);
+    const templateId = templateRes.json().template.id as string;
+
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: {
+        machineName: 'MH-AX',
+        accessPassword: '2520',
+        items: [{ assemblyProcedureDocumentId: procedureDocument.id, label: '組立手順' }]
+      }
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().order.items).toEqual([
+      expect.objectContaining({
+        documentType: 'assembly_procedure_document',
+        assemblyProcedureDocumentId: procedureDocument.id,
+        kioskDocumentId: null,
+        label: '組立手順',
+        document: expect.objectContaining({
+          documentType: 'assembly_procedure_document',
+          title: procedureDocument.name,
+          imageRelativePath: procedureDocument.imageRelativePath
+        })
+      })
+    ]);
+
+    const fetched = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/procedure-orders?machineName=MH-AX',
+      headers
+    });
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.json().order.items[0]).toMatchObject({
+      assemblyProcedureDocumentId: procedureDocument.id,
+      documentType: 'assembly_procedure_document'
+    });
+
+    const startRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: {
+        templateId,
+        productNo: 'ASM-PROC-001',
+        serialNo: 'S001',
+        operatorNameSnapshot: '佐藤',
+        targetUnit: 'MH-AX',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    expect(startRes.statusCode).toBe(200);
+    const sessionId = startRes.json().session.id as string;
+
+    const sequence = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/work-sessions/${sessionId}/procedure-sequence`,
+      headers
+    });
+    expect(sequence.statusCode).toBe(200);
+    expect(sequence.json().sequence).toMatchObject({
+      mode: 'configured',
+      machineNameKey: 'MH-AX'
+    });
+    expect(sequence.json().sequence.documents).toEqual([
+      expect.objectContaining({
+        documentType: 'assembly_procedure_document',
+        assemblyProcedureDocumentId: procedureDocument.id,
+        kioskDocumentId: null,
+        label: '組立手順',
+        title: procedureDocument.name,
+        pageUrls: [procedureDocument.imageRelativePath]
+      })
+    ]);
+  });
+
+  it('rejects deleting an AssemblyProcedureDocument while it is used by an assembly procedure order', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+
+    const upload = buildMultipartProcedure('削除保護手順');
+    const procedureDocRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/procedure-documents',
+      headers: { ...headers, 'Content-Type': upload.contentType },
+      payload: upload.body
+    });
+    expect(procedureDocRes.statusCode).toBe(200);
+    const procedureDocumentId = procedureDocRes.json().document.id as string;
+
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers,
+      payload: {
+        machineName: 'MH-LOCK-PROC',
+        accessPassword: '2520',
+        items: [{ assemblyProcedureDocumentId: procedureDocumentId, label: '保護対象' }]
+      }
+    });
+    expect(saved.statusCode).toBe(200);
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/assembly/procedure-documents/${procedureDocumentId}`,
+      headers: { 'x-client-key': client.apiKey }
+    });
+    expect(deleted.statusCode).toBe(409);
+    expect(deleted.json()).toMatchObject({
+      message: '組立の閲覧順設定で使用中の手順書は削除できません'
+    });
+  });
+
+  it('rejects procedure order items that specify both or neither document reference', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const doc = await createKioskDocumentWithRenderedPages({ title: '両方指定', pageCount: 1 });
+
+    const both = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers,
+      payload: {
+        machineName: 'MH-INVALID',
+        accessPassword: '2520',
+        items: [{ kioskDocumentId: doc.id, assemblyProcedureDocumentId: doc.id, label: 'invalid' }]
+      }
+    });
+    expect(both.statusCode).toBe(400);
+
+    const neither = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers,
+      payload: {
+        machineName: 'MH-INVALID',
+        accessPassword: '2520',
+        items: [{ label: 'invalid' }]
+      }
+    });
+    expect(neither.statusCode).toBe(400);
+  });
 });
