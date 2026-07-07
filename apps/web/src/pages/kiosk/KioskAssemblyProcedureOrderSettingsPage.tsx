@@ -8,7 +8,6 @@ import {
   saveAssemblyProcedureOrder,
   verifyAssemblyProcedureOrderAccessPassword
 } from '../../api/client';
-import { resolveKioskDocumentPageImageUrl } from '../../api/domains/signage';
 import { Button, buttonClassName } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import {
@@ -17,6 +16,7 @@ import {
   parseAssemblyProcedureOrderSettingsSearch,
   readAssemblyApiErrorMessage
 } from '../../features/assembly';
+import { KioskDocumentPageImage } from '../../features/assembly/KioskDocumentPageImage';
 
 import type { AssemblyProcedureDocumentSummaryDto, AssemblyProcedureOrderDocumentDto, AssemblyProcedureOrderDto } from '../../features/assembly/types';
 
@@ -215,11 +215,12 @@ function ProcedureOrderPreviewPane({ target, draftItems }: { target: PreviewTarg
         ) : error ? (
           <p className="text-sm font-semibold text-amber-100">{error}</p>
         ) : currentPageUrl ? (
-          <img
-            src={resolveKioskDocumentPageImageUrl(currentPageUrl)}
+          <KioskDocumentPageImage
+            pageUrl={currentPageUrl}
             alt=""
             className="h-full max-h-full w-full max-w-full object-contain"
-            draggable={false}
+            loadingFallback={<p className="text-sm font-semibold text-white/55">プレビューを読み込み中...</p>}
+            errorFallback={<p className="text-sm font-semibold text-amber-100">画像の読み込みに失敗しました</p>}
           />
         ) : (
           <p className="text-sm font-semibold text-white/55">表示できるプレビューがありません</p>
