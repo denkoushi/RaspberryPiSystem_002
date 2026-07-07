@@ -8,7 +8,7 @@ import {
   normalizeProductionScheduleResourceCd,
   type ResourceCategoryPolicy
 } from '../policies/resource-category-policy.service.js';
-import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
+import { buildMaterializedMaxProductNoWinnerInCondition } from '../row-resolver/index.js';
 import { buildCsvDashboardRowRequiredMinutesSql } from './csv-dashboard-row-required-minutes.sql.js';
 import { buildLoadBalancingRowEligibilityWhereSql } from './load-balancing-eligibility.policy.js';
 import { formatYearMonthFromUtcDate } from './year-month-range.js';
@@ -125,6 +125,7 @@ export async function aggregateMachineMonthlyLoadByFseiban(params: {
   deviceScopeKey: string;
   rangeStart: Date;
   rangeEndExclusive: Date;
+  winnerRowIds: readonly string[];
 }): Promise<MachineMonthlyLoadFseibanAggregate[]> {
   const policy = await getResourceCategoryPolicy({
     siteKey: params.siteKey,
@@ -137,9 +138,6 @@ export async function aggregateMachineMonthlyLoadByFseiban(params: {
       UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "resourceCd",
       SUM(${buildCsvDashboardRowRequiredMinutesSql()})::double precision AS "requiredMinutes"
     FROM "CsvDashboardRow"
-    LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
-      ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
@@ -156,7 +154,7 @@ export async function aggregateMachineMonthlyLoadByFseiban(params: {
       ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+      AND ${buildMaterializedMaxProductNoWinnerInCondition('CsvDashboardRow', params.winnerRowIds)}
       AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") IS NOT NULL
       AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") >= ${params.rangeStart}
       AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") < ${params.rangeEndExclusive}
@@ -181,6 +179,7 @@ export async function listMachineMonthlyLoadQueryRows(params: {
   rangeEndExclusive: Date;
   fseibans?: string[];
   fhincd?: string | null;
+  winnerRowIds: readonly string[];
 }): Promise<MachineMonthlyLoadQueryRow[]> {
   const policy = await getResourceCategoryPolicy({
     siteKey: params.siteKey,
@@ -201,9 +200,6 @@ export async function listMachineMonthlyLoadQueryRows(params: {
       "n"."dueDate" AS "noteDueDate",
       "supplement"."plannedEndDate" AS "plannedEndDate"
     FROM "CsvDashboardRow"
-    LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
-      ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
@@ -220,7 +216,7 @@ export async function listMachineMonthlyLoadQueryRows(params: {
       ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+      AND ${buildMaterializedMaxProductNoWinnerInCondition('CsvDashboardRow', params.winnerRowIds)}
       AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") IS NOT NULL
       AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") >= ${params.rangeStart}
       AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") < ${params.rangeEndExclusive}

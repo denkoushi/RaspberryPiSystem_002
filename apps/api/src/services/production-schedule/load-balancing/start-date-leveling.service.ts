@@ -1,6 +1,7 @@
 import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
 import { assembleStartDateLevelingResult } from './start-date-leveling-assembler.js';
 import { listStartDateLevelingQueryRows } from './start-date-leveling-query.service.js';
+import { fetchLoadBalancingWinnerRowIds } from './load-balancing-winner-row-ids.js';
 import type { StartDateLevelingMoveInput, StartDateLevelingResult } from './start-date-leveling.types.js';
 import { parseYearMonthRangeInclusive } from './year-month-range.js';
 
@@ -17,12 +18,14 @@ async function fetchLevelingRows(params: {
     maxMonths: 12
   });
   const siteKey = resolveSiteKeyFromScopeKey(params.siteKeyInput.trim());
+  const winnerRowIds = await fetchLoadBalancingWinnerRowIds();
   const queryRows = await listStartDateLevelingQueryRows({
     siteKey,
     deviceScopeKey: params.deviceScopeKey,
     rangeStart: range.rangeStart,
     rangeEndExclusive: range.rangeEndExclusive,
-    resourceCdFilter: params.resourceCdFilter
+    resourceCdFilter: params.resourceCdFilter,
+    winnerRowIds
   });
   return { siteKey, queryRows };
 }

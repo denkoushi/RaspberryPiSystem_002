@@ -1,6 +1,7 @@
 import { ApiError } from '../../../lib/errors.js';
 import { normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { getProductionScheduleLoadBalancingOverview } from './load-balancing-overview.service.js';
+import { fetchLoadBalancingWinnerRowIds } from './load-balancing-winner-row-ids.js';
 import { listMonthlyLoadRowCandidates } from './monthly-load-query.service.js';
 import {
   buildExternalizationCandidates,
@@ -44,9 +45,10 @@ function normalizeOverResourceCds(overResourceCds?: string[]): Set<string> | und
 }
 
 async function loadOverviewAndRows(params: LoadBalancingScopeParams & { overResourceCds?: string[] }) {
+  const winnerRowIds = await fetchLoadBalancingWinnerRowIds();
   const [overview, rows] = await Promise.all([
-    getProductionScheduleLoadBalancingOverview(params),
-    listMonthlyLoadRowCandidates(params)
+    getProductionScheduleLoadBalancingOverview({ ...params, winnerRowIds }),
+    listMonthlyLoadRowCandidates({ ...params, winnerRowIds })
   ]);
   const overFilter = normalizeOverResourceCds(params.overResourceCds);
   return { overview, rows, overFilter };

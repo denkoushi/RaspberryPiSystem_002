@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../../lib/prisma.js';
 import { listStartDateLevelingQueryRows } from '../start-date-leveling-query.service.js';
+import { captureTaggedTemplateQuerySql } from './prisma-query-sql-test-utils.js';
 
 vi.mock('../../../../lib/prisma.js', () => ({
   prisma: { $queryRaw: vi.fn() }
@@ -19,6 +20,24 @@ vi.mock('../../policies/resource-category-policy.service.js', () => ({
 describe('listStartDateLevelingQueryRows', () => {
   beforeEach(() => {
     vi.mocked(prisma.$queryRaw).mockReset();
+  });
+
+  it('uses materialized winner membership and omits fkst join', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
+
+    await listStartDateLevelingQueryRows({
+      siteKey: '第2工場',
+      deviceScopeKey: 'mac',
+      rangeStart: new Date('2026-05-01T00:00:00.000Z'),
+      rangeEndExclusive: new Date('2026-06-01T00:00:00.000Z'),
+      winnerRowIds: ['winner-row-a']
+    });
+
+    const sql = captureTaggedTemplateQuerySql();
+
+    expect(sql).toContain('= any');
+    expect(sql).not.toContain('"fkst"');
+    expect(sql).not.toContain('from "csvdashboardrow" as "r2"');
   });
 
   it('着手日または有効納期欠損行をクエリ結果から除外しない', async () => {
@@ -62,7 +81,8 @@ describe('listStartDateLevelingQueryRows', () => {
       siteKey: '第2工場',
       deviceScopeKey: 'mac',
       rangeStart: new Date('2026-05-01T00:00:00.000Z'),
-      rangeEndExclusive: new Date('2026-06-01T00:00:00.000Z')
+      rangeEndExclusive: new Date('2026-06-01T00:00:00.000Z'),
+      winnerRowIds: ['winner-row-a']
     });
 
     expect(rows.map((r) => r.rowId).sort()).toEqual(['complete', 'missing-due', 'missing-start']);

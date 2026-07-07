@@ -1,6 +1,7 @@
 import { normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { listLoadBalancingTransferRulesResolved } from './load-balancing-settings.service.js';
 import { getProductionScheduleLoadBalancingOverview } from './load-balancing-overview.service.js';
+import { fetchLoadBalancingWinnerRowIds } from './load-balancing-winner-row-ids.js';
 import { listMonthlyLoadRowCandidates } from './monthly-load-query.service.js';
 import { computeLoadBalancingSuggestions } from './reallocation-suggestion.engine.js';
 
@@ -15,9 +16,10 @@ export async function suggestProductionScheduleLoadBalancing(params: {
   yearMonth: string;
   suggestions: ReturnType<typeof computeLoadBalancingSuggestions>;
 }> {
+  const winnerRowIds = await fetchLoadBalancingWinnerRowIds();
   const [overview, rows, rules] = await Promise.all([
-    getProductionScheduleLoadBalancingOverview(params),
-    listMonthlyLoadRowCandidates({ ...params, includeFhinmei: false }),
+    getProductionScheduleLoadBalancingOverview({ ...params, winnerRowIds }),
+    listMonthlyLoadRowCandidates({ ...params, includeFhinmei: false, winnerRowIds }),
     listLoadBalancingTransferRulesResolved(params.siteKey)
   ]);
 
