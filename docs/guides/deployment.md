@@ -10,6 +10,18 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-07 · **キオスク負荷調整 API高速化（winner実体化）+ UI刷新** · **API + Web** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-load-balancing-perf-and-ui-refresh-2026-07-07}
+
+- **変更概要（正本）**: [KB-362 §APIレイテンシ改善](../knowledge-base/KB-362-kiosk-load-balancing.md#apiレイテンシ改善2026-07-07--winner-実体化) · main **`993fd2a1`** / **`ffc7295c`** / **`ebacf479`**。実装コミット: `5ed80ba6`（API第1弾: machine-monthly SQL集計化・月次能力範囲一括取得・行候補列削減）· `f91fa79a`（Web: タブ2/3 `loadBalancingUiClasses` 統一・生産システム非一致注記・管理設定保存エラー表示・`placeholderData`・初回スケルトン・「×指示数」文言修正）· `647c6512`（API第2弾: winner行ID実体化 + 未使用 `fkst` JOIN 削除）。**DB / Prisma migration 変更なし**。
+- **CI**: `ffc7295c` CI **`28870186161` success** · CodeQL / Secret scan success。`ebacf479` CI **`28875761733` success** · CodeQL **`28875762383`** · Secret scan **`28875762891`** success。
+- **ローカル検証**: api load-balancing vitest **62 passed** · web loadBalancing 関連 vitest **39 passed**（新規4テスト含む）· api/web build · web lint すべて成功。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - 第1弾+UI（`ffc7295c`）: **Run ID `20260707-224927-30475`** · PLAY RECAP 全7ホスト `failed=0 / unreachable=0` · summary success true。
+  - 第2弾（`ebacf479`）: **Run ID `20260708-000948-4642`**（`--limit raspberrypi5`）· `failed=0 / unreachable=0` · summary success true（API は Pi5 正本のため Pi5 のみで全端末へ反映）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2回実施 · 2026-07-07/08 JST）。
+- **負荷調整 smoke**: `overview` 1.5〜1.8s · `machine-monthly-load`（6ヶ月）**57s→4.4〜5.6s** · `start-date-leveling` **52s→1.9〜2.1s** · `outsourcing-plan` 2.6s · `suggestions` 1.6s（いずれも HTTP 200）。デプロイ前後のレスポンス同値性確認済み（俯瞰・機種別月次は完全一致、着手日は同値行の並び順のみ相違）。配信バンドル `/assets/index-Bz6vBEEk.js` に `load-balancing-production-system-note` / 初回ロード注記 / 「指示数は掛けません」を確認。
+- **実機（目視・タッチ）**: 未実施（次回現場確認時: 機種別月次・着手日タブが俯瞰タブと同じダークカード14pxデザインになっていること、月変更時に画面がチラつかないこと、管理設定の保存失敗時にエラーが出ること）。
+
 ### 補足（2026-07-07 · **組立キオスク コンパクトレイアウト（記録確認 詳細幅上限 + トップカード余白縮小）** · **Web only** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-compact-layout-2026-07-07}
 
 - **変更概要（正本）**: [ADR-20260707](../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md)（Decision 5 追補） · main **`34414664`**。実装コミット: `ff9b8ec2`（組立記録確認: DetailPane に `max-w-[56rem]` 幅上限 + 左寄せ、メタ情報 dl のインライン key-value 化、トルク実績テーブルの内容幅化、承認ボックス `max-w-md`、リストアイテム余白縮小）· `36c4d788`（組立トップ: 仕掛中/完了カードを `xl:grid-cols-3 2xl:grid-cols-4` に拡張、カード内余白縮小、エリア/締付位置・作業者/ロット数の行統合）。**API / DB / Prisma migration 変更なし**。
