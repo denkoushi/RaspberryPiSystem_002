@@ -19,7 +19,7 @@ update-frequency: medium
   - **Run ID `20260707-185840-29897`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260707-185840-29897.log` · summary success true · exitCode 0 · PLAY RECAP 全7ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。Pi5 repo は `b4d39cb6`。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-07 JST）。
 - **smoke**: `/kiosk/part-measurement` · `/kiosk/part-measurement/inspection` · `/kiosk/part-measurement/inspection/create` すべて HTTP **200**。配信バンドルで新コード確認: index chunk に新名称（`ザグリ穴ピッチ` / `ネジ穴深さ`）、CreatePage chunk に `!text-black`、共有 chunk に `inspection-visual-resource-chips`。
-- **実機（目視・タッチ）**: 未実施（次回現場確認時: 品番/テンプレ欄の黒文字表示・名称新選択肢・深さ公差候補 0〜20・基準値blur時の一般公差自動入力・図面ライブラリの資源CD chip）。
+- **実機（目視・タッチ）**: 2026-07-07 ユーザー確認OK（品番/テンプレ欄の黒文字表示・名称新選択肢・深さ公差候補 0〜20・基準値blur時の一般公差自動入力・図面ライブラリの資源CD chip表示と「資源CD」ラベル削除）。未完了なし。
 
 ### 補足（2026-07-07 · **組立キオスク改良 第2弾（組立記録確認+NFC承認 / プレビュー認証修正 / トップUI統一 / ペイン複数列化）** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-record-approval-2026-07-07}
 

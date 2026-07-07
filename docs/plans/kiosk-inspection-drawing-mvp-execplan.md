@@ -111,7 +111,7 @@ Maintained in accordance with `.agent/PLANS.md`.
   - 仕様3: 名称 `深さ` / `ネジ穴深さ` の上下限公差候補は `0`〜`20`（1刻み）— `buildInspectionDrawingToleranceCandidateValuesForLabel` を新設（既存 kind ベース関数は互換維持）。
   - 仕様4: 寸法公差のみ、基準値 blur 時に普通公差（削り加工: 0.5–6→±0.1, –30→±0.2, –120→±0.3, –400→±0.5, –1000→±0.8, –2000→±1.2, –4000→±2.0）を上下限が両方空のときだけ自動入力（`resolveInspectionDrawingGeneralToleranceForNominal`）。候補チップ/手入力は従来どおり。
   - 仕様5: 図面ライブラリ表にもテンプレ表と同じ1.5行目（`InspectionDrawingResourceCdChipList` へ共通化）でテンプレ作成済み資源CD chip を表示（`useInspectionDrawingResourceCdsByVisualId` がフィルタ非依存で visualTemplateId→資源CD map を構築）。両ペインの「資源CD」ラベル文字列は削除。
-  - 検証: Web 全テスト **1313 PASS**、`tsc -b` PASS、web/shared-types lint PASS、API `pnpm build` PASS、web `pnpm build` PASS（Mac ローカル、2026-07-07）。実機デプロイ・実機目視は未実施。
+  - 検証: Web 全テスト **1313 PASS**、`tsc -b` PASS、web/shared-types lint PASS、API `pnpm build` PASS、web `pnpm build` PASS（Mac ローカル、2026-07-07）。本番デプロイ Run ID `20260707-185840-29897`（全7ホスト failed=0）· Phase12 **PASS 45 / WARN 0 / FAIL 0** · main CI `28856707755` success · 実機目視 2026-07-07 ユーザー確認OK（詳細は [deployment.md §2026-07-07](../guides/deployment.md#inspection-drawing-create-input-and-library-chips-2026-07-07)）。
 - [ ] (2026-07-01) **残り手動確認** — 本番DBを書き換える一括作成/まとめて改版/資源追加は実機で未実行。次回は検証用データまたは明示許可のある品番・資源CDで、作成→まとめて改版→個別分離→資源追加を画面操作で確認する。
 
 ## Surprises & Discoveries
