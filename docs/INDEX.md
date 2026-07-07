@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-07 · 組立キオスク改良 第2弾（記録確認+NFC承認 / プレビュー認証修正 / トップUI統一） · 未デプロイ）
+
+- **組立記録確認とトップUI統一**: 完了した製品のクリック閲覧+NFC承認ページ `/kiosk/assembly/record-approvals` を新設（`AssemblyWorkSessionApproval` 追加・非破壊migration）。閲覧順設定プレビューの壊れ画像（認証付き `<img src>` 401）を保護画像フック経由に修正。トップの3ヘッダボタンを `ghostOnDark` に統一し、仕掛中/完了ペインを複数列カード化。**正本**: [ADR](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md)
+
 ### 最新アップデート（2026-07-07 · 組立キオスク改良（閲覧順の組立ライブラリ限定 + プレビュー / 完了ペイン + ロット数 + NFC作業者入力） · 本番反映済）
 
 - **組立キオスク機能改良**: 閲覧順設定の対象を組立ライブラリ手順書（`AssemblyProcedureDocument`）に変更（非破壊migration・既存PDF参照は互換維持）し3ペイン化（プレビュー追加）。組立トップに完了した製品ペイン・ロット数（生産実績 `FSEIBAN`×`lotQty`）・NFC作業者入力を追加。ライブラリ画面の「検査図面へ」「新規」「作業」ボタンと旧 `/kiosk/assembly/work/start` を削除。main **`c81f40c3`** · CI **`28841340246` success** · Deploy **`20260707-133922-15040`** · Phase12 **45/0/0**。**正本**: [ADR](./decisions/ADR-20260707-assembly-procedure-order-library-scope.md) · [Deployment](./guides/deployment.md#kiosk-assembly-improvements-2026-07-07)
