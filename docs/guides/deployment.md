@@ -10,6 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-07 · **組立キオスク改良 第2弾（組立記録確認+NFC承認 / プレビュー認証修正 / トップUI統一 / ペイン複数列化）** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-record-approval-2026-07-07}
+
+- **変更概要（正本）**: [ADR-20260707](../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · main **`be576f8c`**。実装コミット: `15914471`（閲覧順プレビューの保護画像フック化・`KioskDocumentPageImage` 新設）· `8cae4508`（トップ3ボタン `ghostOnDark` 統一 + `?focus=` ペインスクロール）· `685c1f4f`（仕掛中/完了ペインの複数列カード化）· `a2d300fa` + `3e866196`（組立記録確認: `/kiosk/assembly/record-approvals` + NFC承認）· `ab80ee68`（migration を新テーブルのみへ削減）。migration **`20260707061829_assembly_work_session_record_approval`**（`AssemblyWorkSessionApproval` テーブル追加のみの非破壊）。
+- **CI（`be576f8c`）**: main push CI **`28846859941` success** · CodeQL **`28846859946` success** · Secret scan **`28846859947` success** · Pages success。
+- **ローカル検証**: web vitest **261 files / 1299 tests passed** · api/web build · lint 成功。一時 Postgres（`pgvector/pgvector:pg15`）でクリーンDBに migrate deploy 全チェーン + 組立統合テスト **13 passed**（承認正常系 / COMPLETED以外409 / 二重承認409 / 不明NFC404 を含む）。一時コンテナ/volume 削除済み。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260707-155652-23773`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260707-155652-23773.log` · summary success true · exitCode 0 · PLAY RECAP 全7ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。Pi5 repo は `be576f8c`、`_prisma_migrations` に `20260707061829` 適用済み（2026-07-07 16:06 JST）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-07 JST）。
+- **組立 smoke**: `/kiosk/assembly` · `/kiosk/assembly/record-approvals` · `/kiosk/assembly/procedure-order-settings` · `/kiosk/assembly/library` HTTP **200**。client-key認証付きで `GET /api/assembly/work-sessions/summary?status=completed`（レスポンスに新 `approval` フィールド確認）· `GET /api/assembly/seiban-candidates` HTTP **200**。`POST /api/kiosk/assembly/record-approvals/verify-access-password` は client-key + 正パスワードで `{"success":true}`、誤パスワードで **401**、client-key なしで `CLIENT_KEY_REQUIRED`。未知セッションへの `POST .../record-approval/approve` は期待どおり **404**。
+- **実機（目視・タッチ）**: 未実施（次回現場確認時: 閲覧順設定プレビューの組立手順書画像表示、完了カード→記録確認ページ遷移、NFC承認、承認済みバッジ、ペイン複数列表示）。
+
 ### 補足（2026-07-07 · **組立キオスク改良（閲覧順の組立ライブラリ限定 + プレビュー / 完了ペイン + ロット数 + NFC作業者入力）** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-improvements-2026-07-07}
 
 - **変更概要（正本）**: [ADR-20260707](../decisions/ADR-20260707-assembly-procedure-order-library-scope.md) · main **`c81f40c3`**。実装コミット: `b6c7e74f`（ライブラリ画面ボタン整理 + 旧 `/kiosk/assembly/work/start` 削除）· `f4c966e6` + `8fd475d1`（組立トップ: 完了ペイン・ロット数・NFC作業者入力）· `72a3a714` + `498a583b`（閲覧順設定: `AssemblyProcedureDocument` 対応 + 3ペイン化）· `bec8e09c` + `c81f40c3`（テスト整合・CIフレーク対策）。migration **`20260707035701_assembly_procedure_order_item_assembly_document`**（列追加 + nullable化 + FK のみの非破壊）。

@@ -12,9 +12,9 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
-### 最新アップデート（2026-07-07 · 組立キオスク改良 第2弾（記録確認+NFC承認 / プレビュー認証修正 / トップUI統一） · 未デプロイ）
+### 最新アップデート（2026-07-07 · 組立キオスク改良 第2弾（記録確認+NFC承認 / プレビュー認証修正 / トップUI統一） · 本番反映済）
 
-- **組立記録確認とトップUI統一**: 完了した製品のクリック閲覧+NFC承認ページ `/kiosk/assembly/record-approvals` を新設（`AssemblyWorkSessionApproval` 追加・非破壊migration）。閲覧順設定プレビューの壊れ画像（認証付き `<img src>` 401）を保護画像フック経由に修正。トップの3ヘッダボタンを `ghostOnDark` に統一し、仕掛中/完了ペインを複数列カード化。**正本**: [ADR](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md)
+- **組立記録確認とトップUI統一**: 完了した製品のクリック閲覧+NFC承認ページ `/kiosk/assembly/record-approvals` を新設（`AssemblyWorkSessionApproval` 追加・非破壊migration）。閲覧順設定プレビューの壊れ画像（認証付き `<img src>` 401）を保護画像フック経由に修正。トップの3ヘッダボタンを `ghostOnDark` に統一し、仕掛中/完了ペインを複数列カード化。main **`be576f8c`** · CI **`28846859941` success** · Deploy **`20260707-155652-23773`** · Phase12 **45/0/0**。**正本**: [ADR](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Deployment](./guides/deployment.md#kiosk-assembly-record-approval-2026-07-07)
 
 ### 最新アップデート（2026-07-07 · 組立キオスク改良（閲覧順の組立ライブラリ限定 + プレビュー / 完了ペイン + ロット数 + NFC作業者入力） · 本番反映済）
 

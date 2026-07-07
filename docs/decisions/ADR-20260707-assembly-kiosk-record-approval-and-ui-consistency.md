@@ -55,8 +55,12 @@ Operator feedback on the assembly kiosk (組立):
 
 ## Open Items
 
-- Production deploy and Pi 実機 migration are not executed (requires explicit user instruction).
+- On-site visual/touch check of the new page is pending (see the deployment record for the checklist).
 - No dedicated approver-resolve preview endpoint; NFC is validated at approve time only.
+
+## Deployment
+
+Deployed to production on 2026-07-07 (all 7 hosts, migration applied). Record: `docs/guides/deployment.md#kiosk-assembly-record-approval-2026-07-07`.
 
 ## Local Notes JA
 
