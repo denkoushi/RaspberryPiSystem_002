@@ -10,6 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-07 · **キオスクUI修正3件（順位ボード左ペイン不透明化・検査公差候補チップ・組立テンキー安定化）** · **Web only** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-ui-fixes-leaderboard-tolerance-assembly-2026-07-07}
+
+- **変更概要（正本）**: [KB-396](../knowledge-base/KB-396-leader-board-left-panel-opacity-regression.md) · [KB-397](../knowledge-base/KB-397-inspection-tolerance-datalist-unselectable-kiosk.md) · [Plan](../plans/kiosk-assembly-torque-management-mvp.md) · main **`2e8862b7`**。実装コミット: `0c57d5a0`（順位ボード左ツールスタック不透明化）· `589d9d43`（公差候補チップUI）· `ce6d733d` + `7bea147a`（組立候補エリア h-32 固定・candidateLoading 中 disabled・製番全桁表示・機種名 title）。Web のみ、API/DB/migration 変更なし。
+- **CI（`2e8862b7`）**: main push CI **`28833882918` success** · CodeQL **`28833882901` success** · Secret scan **`28833882890` success**。
+- **ローカル検証**: web vitest **258 files / 1292 tests passed** · eslint · `tsc -b` すべて成功（2026-07-07）。
+- **本番デプロイ（実績）**: `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260707-101530-31384`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260707-101530-31384.log` · summary success true · exitCode 0 · PLAY RECAP 全7ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。Pi5 repo は `2e8862b7`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-07 JST）。
+- **smoke**: `/kiosk/assembly` · `/kiosk/production-schedule/leader-order-board` · `/kiosk/part-measurement/inspection` · `/kiosk/part-measurement/inspection/create` すべて HTTP **200**。配信アセットに新コード（`content-start`、公差候補 popover）を確認。
+- **未完了**: キオスク実機での目視確認（順位ボード左ペインの視認性・公差候補チップのタッチ操作・組立テンキーの非シフト）。
+
 ### 補足（2026-07-06 · **組立キオスク PDF閲覧順設定 + ページ送りビューア** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-procedure-order-viewer-2026-07-06}
 
 - **変更概要（正本）**: [Plan](../plans/kiosk-assembly-torque-management-mvp.md) · PR **#957** · ブランチ **`feature/assembly-procedure-order-viewer`** · 実装 **`ad6eaa00`** (`feat(assembly): add procedure order viewer`)。
