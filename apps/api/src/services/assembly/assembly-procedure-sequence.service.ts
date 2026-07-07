@@ -1,6 +1,10 @@
 import { prisma } from '../../lib/prisma.js';
 import { PdfStorageRenderAdapter } from '../kiosk-documents/adapters/pdf-storage-render.adapter.js';
-import { AssemblyProcedureOrderService, type AssemblyProcedureOrderItemSummary } from './assembly-procedure-order.service.js';
+import {
+  AssemblyProcedureOrderService,
+  type AssemblyProcedureOrderDocumentType,
+  type AssemblyProcedureOrderItemSummary
+} from './assembly-procedure-order.service.js';
 
 export type AssemblyProcedureSequenceFallbackReason = 'not_configured' | 'no_enabled_documents' | 'no_page_images';
 
@@ -8,7 +12,9 @@ export type AssemblyProcedureSequenceDocument = {
   orderItemId: string;
   sortOrder: number;
   label: string | null;
-  kioskDocumentId: string;
+  documentType: AssemblyProcedureOrderDocumentType;
+  kioskDocumentId: string | null;
+  assemblyProcedureDocumentId: string | null;
   title: string;
   displayTitle: string | null;
   filename: string;
@@ -48,12 +54,54 @@ async function toSequenceDocument(
   item: AssemblyProcedureOrderItemSummary,
   render: PdfStorageRenderAdapter
 ): Promise<AssemblyProcedureSequenceDocument> {
-  const pageUrls = await render.convertPdfToPageUrls(item.document.id, item.document.filePath);
+  if (item.documentType === 'assembly_procedure_document') {
+    const imageRelativePath = item.document.imageRelativePath;
+    return {
+      orderItemId: item.id,
+      sortOrder: item.sortOrder,
+      label: item.label,
+      documentType: item.documentType,
+      kioskDocumentId: null,
+      assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
+      title: item.document.title,
+      displayTitle: item.document.displayTitle,
+      filename: item.document.filename,
+      confirmedDocumentNumber: item.document.confirmedDocumentNumber,
+      confirmedSummaryText: item.document.confirmedSummaryText,
+      pageCount: item.document.pageCount,
+      updatedAt: item.document.updatedAt,
+      pageUrls: imageRelativePath ? [imageRelativePath] : []
+    };
+  }
+
+  const filePath = item.document.filePath;
+  if (!filePath) {
+    return {
+      orderItemId: item.id,
+      sortOrder: item.sortOrder,
+      label: item.label,
+      documentType: item.documentType,
+      kioskDocumentId: item.kioskDocumentId,
+      assemblyProcedureDocumentId: null,
+      title: item.document.title,
+      displayTitle: item.document.displayTitle,
+      filename: item.document.filename,
+      confirmedDocumentNumber: item.document.confirmedDocumentNumber,
+      confirmedSummaryText: item.document.confirmedSummaryText,
+      pageCount: item.document.pageCount,
+      updatedAt: item.document.updatedAt,
+      pageUrls: []
+    };
+  }
+
+  const pageUrls = await render.convertPdfToPageUrls(item.document.id, filePath);
   return {
     orderItemId: item.id,
     sortOrder: item.sortOrder,
     label: item.label,
+    documentType: item.documentType,
     kioskDocumentId: item.kioskDocumentId,
+    assemblyProcedureDocumentId: null,
     title: item.document.title,
     displayTitle: item.document.displayTitle,
     filename: item.document.filename,

@@ -86,10 +86,22 @@ const startSessionBodySchema = z.object({
   torqueWrenchId: z.string().trim().min(1).max(120)
 });
 
-const procedureOrderItemBodySchema = z.object({
-  kioskDocumentId: z.string().uuid(),
-  label: z.string().trim().max(120).optional().nullable()
-});
+const procedureOrderItemBodySchema = z
+  .object({
+    kioskDocumentId: z.string().uuid().optional().nullable(),
+    assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
+    label: z.string().trim().max(120).optional().nullable()
+  })
+  .superRefine((item, ctx) => {
+    const hasKiosk = Boolean(item.kioskDocumentId);
+    const hasAssembly = Boolean(item.assemblyProcedureDocumentId);
+    if (hasKiosk === hasAssembly) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '要領書PDFまたは組立手順書のどちらか一方を指定してください'
+      });
+    }
+  });
 
 const procedureOrderSaveBodySchema = z.object({
   machineName: z.string().trim().min(1).max(120),
@@ -166,6 +178,7 @@ function serializeSeibanCandidate(candidate: AssemblySeibanCandidate) {
 function serializeProcedureOrderDocument(document: AssemblyProcedureOrderDocumentSummary) {
   return {
     id: document.id,
+    documentType: document.documentType,
     title: document.title,
     displayTitle: document.displayTitle,
     filename: document.filename,
@@ -173,7 +186,8 @@ function serializeProcedureOrderDocument(document: AssemblyProcedureOrderDocumen
     confirmedSummaryText: document.confirmedSummaryText,
     pageCount: document.pageCount,
     enabled: document.enabled,
-    updatedAt: document.updatedAt.toISOString()
+    updatedAt: document.updatedAt.toISOString(),
+    imageRelativePath: document.imageRelativePath
   };
 }
 
@@ -187,7 +201,9 @@ function serializeProcedureOrder(order: AssemblyProcedureOrder) {
       id: item.id,
       sortOrder: item.sortOrder,
       label: item.label,
+      documentType: item.documentType,
       kioskDocumentId: item.kioskDocumentId,
+      assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
       document: serializeProcedureOrderDocument(item.document)
     }))
   };
@@ -203,7 +219,9 @@ function serializeProcedureSequence(sequence: AssemblyProcedureSequence) {
       orderItemId: document.orderItemId,
       sortOrder: document.sortOrder,
       label: document.label,
+      documentType: document.documentType,
       kioskDocumentId: document.kioskDocumentId,
+      assemblyProcedureDocumentId: document.assemblyProcedureDocumentId,
       title: document.title,
       displayTitle: document.displayTitle,
       filename: document.filename,
@@ -529,6 +547,10 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
 
   app.delete('/assembly/procedure-documents/:id', { preHandler: allowWriteKiosk }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
+    const orderReferenceCount = await procedureOrderService.countAssemblyProcedureDocumentReferences(params.id);
+    if (orderReferenceCount > 0) {
+      return reply.status(409).send({ message: '組立の閲覧順設定で使用中の手順書は削除できません' });
+    }
     const result = await procedureService.deleteIfUnused(params.id);
     if (result === 'not_found') return reply.status(404).send({ message: '手順書が見つかりません' });
     if (result === 'in_use') return reply.status(409).send({ message: 'テンプレートで使用中の手順書は削除できません' });
