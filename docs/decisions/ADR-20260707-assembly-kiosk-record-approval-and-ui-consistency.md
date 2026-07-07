@@ -33,6 +33,9 @@ Operator feedback on the assembly kiosk (組立):
    - UI: new page `/kiosk/assembly/record-approvals` (password gate → completed session list with approval filter → detail with area torque summary → approver NFC → 承認して完了; `?sessionId=` preselects). 完了した製品 cards link there and show 承認済み/未承認 badges. Home header gains a 記録確認 link.
    - Approver authority follows the self-inspection precedent: any ACTIVE employee NFC tag, no JWT role check.
 4. **Multi-column panes**: 仕掛中 / 完了した製品 items become compact cards in `grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3`, keeping all previously shown fields and `min-h-11` tap targets.
+5. **Compact layout follow-up (2026-07-07, third whitespace complaint)**: the initial card/detail layouts still spread value groups across the full page width with excess padding. Not a future-proofing design; it was unconstrained default stretching. Fixes:
+   - Record approval detail pane: capped at `max-w-[56rem]` (left-aligned, unused width stays background); the metadata `dl` becomes inline label+value pairs (`flex flex-wrap`) instead of a full-width 2-column grid; the area torque table shrinks to content width (`w-fit` / `w-auto`) with tighter cell padding; approval boxes capped at `max-w-md`.
+   - Home WIP/completed cards: grid extended to `xl:grid-cols-3 2xl:grid-cols-4` so each card is narrower; inner `gap-2 px-3 py-2.5` tightened to `gap-1 px-2.5 py-2`; the WIP area/bolt-position pair and the completed operator/lot-qty pair are merged into single lines. All fields and `min-h-11` tap targets kept.
 
 ## Alternatives
 
@@ -53,6 +56,7 @@ Operator feedback on the assembly kiosk (組立):
 - `pnpm --filter @raspi-system/api build` succeeded.
 - The generated migration initially contained unrelated drift statements (DROP of `photo_tool_similarity_gallery` etc.); it was hand-reduced to the new table only and re-verified with `migrate deploy` on a clean database.
 - On-site visual/touch verification passed on 2026-07-07 (user confirmed: preview images, completed-card navigation, NFC approval, approval badges, multi-column panes).
+- Compact layout follow-up (Decision 5): web lint / full vitest (261 files, 1313 tests) / build passed on merged main; visually verified at 1920x1080 via Playwright against a local stack (temp `pgvector/pgvector:pg16` container on 55432 + seeded assembly sessions created through the public API; stack disposed afterwards).
 
 ## Open Items
 
