@@ -67,7 +67,23 @@ const inProgressSession: AssemblyWorkSessionSummaryDto = {
   currentBoltId: 'bolt-1',
   currentBoltMarkerNo: 1,
   acceptedBoltCount: 0,
-  totalBoltCount: 1
+  totalBoltCount: 1,
+  approval: null
+};
+
+const completedSession: AssemblyWorkSessionSummaryDto = {
+  ...inProgressSession,
+  id: 'session-completed-1',
+  status: 'completed',
+  productNo: 'ASM-DONE-001',
+  completedAt: '2026-07-06T02:00:00.000Z',
+  currentAreaId: null,
+  currentAreaName: null,
+  currentBoltId: null,
+  currentBoltMarkerNo: null,
+  acceptedBoltCount: 1,
+  totalBoltCount: 1,
+  approval: null
 };
 
 function renderPage() {
@@ -90,7 +106,13 @@ describe('KioskAssemblyHomePage', () => {
     mockResolveAssemblyOperatorNfc.mockReset();
     mockListAssemblySeibanCandidates.mockResolvedValue([candidate]);
     mockListAssemblyWorkSessionSummaries.mockImplementation((params: { status?: string } = {}) =>
-      Promise.resolve(params.status === 'in_progress' ? [inProgressSession] : [])
+      Promise.resolve(
+        params.status === 'in_progress'
+          ? [inProgressSession]
+          : params.status === 'completed'
+            ? [completedSession]
+            : []
+      )
     );
     mockStartAssemblyWorkSession.mockResolvedValue({ id: 'session-1' });
     mockListAssemblySeibanLotQuantities.mockResolvedValue([]);
@@ -108,6 +130,7 @@ describe('KioskAssemblyHomePage', () => {
       '/kiosk/assembly/library?focus=templates'
     );
     expect(screen.getByRole('link', { name: '閲覧順設定' })).toHaveAttribute('href', '/kiosk/assembly/procedure-order-settings');
+    expect(screen.getByRole('link', { name: '記録確認' })).toHaveAttribute('href', '/kiosk/assembly/record-approvals');
     fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
 
     await waitFor(() =>

@@ -249,3 +249,22 @@ export async function downloadAssemblyWorkSessionXlsx(sessionId: string) {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+export async function verifyKioskAssemblyRecordApprovalAccessPassword(payload: { password: string }) {
+  const { data } = await api.post<{ success: boolean }>(
+    '/kiosk/assembly/record-approvals/verify-access-password',
+    payload
+  );
+  return data;
+}
+
+export async function approveAssemblyWorkSessionRecordApproval(
+  sessionId: string,
+  payload: { approverEmployeeTagUid: string; comment?: string | null }
+) {
+  const { data } = await api.post<{ session: AssemblyWorkSessionDto }>(
+    `/assembly/work-sessions/${sessionId}/record-approval/approve`,
+    payload
+  );
+  return data.session;
+}
