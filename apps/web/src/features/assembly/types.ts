@@ -99,6 +99,28 @@ export type AssemblyAreaRestartLogDto = {
   createdAt: string;
 };
 
+export type AssemblyWorkSessionApprovalDto = {
+  approvedAt: string;
+  approverEmployeeId: string | null;
+  approverEmployeeCodeSnapshot: string;
+  approverEmployeeNameSnapshot: string;
+  approverNfcTagUidSnapshot: string;
+  comment: string | null;
+  clientDeviceId: string | null;
+  clientDeviceNameSnapshot: string | null;
+};
+
+export type AssemblyAreaTorqueSummaryDto = {
+  areaId: string;
+  areaCode: string;
+  areaName: string;
+  processNo: string;
+  totalBoltCount: number;
+  acceptedOkCount: number;
+  ngCount: number;
+  ignoredCount: number;
+};
+
 export type AssemblyWorkSessionDto = {
   id: string;
   templateId: string;
@@ -123,6 +145,8 @@ export type AssemblyWorkSessionDto = {
   template: AssemblyTemplateDto;
   torqueRecords: AssemblyTorqueRecordDto[];
   restartLogs: AssemblyAreaRestartLogDto[];
+  approval: AssemblyWorkSessionApprovalDto | null;
+  areaTorqueSummaries: AssemblyAreaTorqueSummaryDto[];
 };
 
 export type AssemblySeibanCandidateDto = {
@@ -162,6 +186,7 @@ export type AssemblyWorkSessionSummaryDto = {
   currentBoltMarkerNo: number | null;
   acceptedBoltCount: number;
   totalBoltCount: number;
+  approval: AssemblyWorkSessionApprovalDto | null;
 };
 
 export type AssemblyProcedureOrderDocumentDto = {

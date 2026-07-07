@@ -15,6 +15,7 @@ import {
   AssemblyWipPane,
   kioskAssemblyLibraryPath,
   kioskAssemblyProcedureOrderSettingsPath,
+  kioskAssemblyRecordApprovalPath,
   kioskAssemblyWorkSessionPath,
   readAssemblyApiErrorMessage
 } from '../../features/assembly';
@@ -261,6 +262,12 @@ export function KioskAssemblyHomePage() {
             className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
           >
             閲覧順設定
+          </Link>
+          <Link
+            to={kioskAssemblyRecordApprovalPath()}
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
+          >
+            記録確認
           </Link>
         </div>
       </div>

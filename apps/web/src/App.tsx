@@ -37,6 +37,7 @@ import { LoadBalancingOverviewChartPreviewPage } from './pages/dev/LoadBalancing
 import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
 import { KioskAssemblyPage } from './pages/kiosk/KioskAssemblyPage';
 import { KioskAssemblyProcedureOrderSettingsPage } from './pages/kiosk/KioskAssemblyProcedureOrderSettingsPage';
+import { KioskAssemblyRecordApprovalPage } from './pages/kiosk/KioskAssemblyRecordApprovalPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
@@ -189,6 +190,7 @@ function App() {
             path="/kiosk/assembly/procedure-order-settings"
             element={<KioskAssemblyProcedureOrderSettingsPage />}
           />
+          <Route path="/kiosk/assembly/record-approvals" element={<KioskAssemblyRecordApprovalPage />} />
           <Route
             path="/kiosk/assembly/templates/new"
             element={lazyRouteElement(<KioskAssemblyTemplateEditorPage />)}
