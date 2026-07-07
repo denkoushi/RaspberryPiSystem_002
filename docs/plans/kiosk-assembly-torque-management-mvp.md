@@ -50,6 +50,11 @@ This is separate from part measurement and self-inspection. The implementation r
   - New starts move into a fixed-width right pane that preserves seiban candidate search, seiban direct keypad, serial keypad, operator, torque wrench, template registration, and start controls.
   - FHD shows both input keypads and the start action at once. At 1366x768, only the right input area scrolls internally while the start action remains fixed.
   - Static reference preview: `design-previews/kiosk-assembly-home-wip-first-preview.html`.
+- WIP-first UI follow-up on 2026-07-07 (field feedback, commits `ce6d733d`, `7bea147a`):
+  - Fixed candidate area height (`h-32`) with `content-start` top alignment to stop keypad layout shift when candidates load.
+  - Disabled seiban input, keypads, and candidate buttons while `candidateLoading` (`fseibanInputLocked = busy || candidateLoading`).
+  - Candidate rows use `grid-cols-[auto_minmax(0,1fr)]` so 8-digit seiban shows in full; machine name truncates with `title` hover for full text.
+  - Pi kiosk real-device verification not yet done.
 - Previous deployed scope on 2026-07-06:
   - `/kiosk/assembly` is now the operator start page.
   - Operators search by `FSEIBAN`, choose a candidate, see the resolved machine name, enter serial number with a software keypad, and start or resume work.
