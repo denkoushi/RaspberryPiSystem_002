@@ -881,7 +881,8 @@ export function useKioskProductionScheduleLoadBalancingOverview(
     queryKey: ['kiosk-production-schedule-load-balancing-overview', params],
     queryFn: () => getKioskProductionScheduleLoadBalancingOverview(params),
     enabled: (options?.enabled ?? true) && monthOk,
-    staleTime: 60_000
+    staleTime: 60_000,
+    placeholderData: (previousData) => previousData
   });
 }
 
@@ -930,7 +931,8 @@ export function useKioskProductionScheduleLoadBalancingMachineMonthlyLoad(
     queryKey: ['kiosk-production-schedule-load-balancing-machine-monthly-load', params],
     queryFn: () => getKioskProductionScheduleLoadBalancingMachineMonthlyLoad(params),
     enabled: (options?.enabled ?? true) && monthOk,
-    staleTime: 120_000
+    staleTime: 120_000,
+    placeholderData: (previousData) => previousData
   });
 }
 
@@ -953,7 +955,8 @@ export function useKioskProductionScheduleLoadBalancingStartDateLeveling(
     queryKey: ['kiosk-production-schedule-load-balancing-start-date-leveling', params],
     queryFn: () => getKioskProductionScheduleLoadBalancingStartDateLeveling(params),
     enabled: (options?.enabled ?? true) && monthOk && focusOk,
-    staleTime: 120_000
+    staleTime: 120_000,
+    placeholderData: (previousData) => previousData
   });
 }
 

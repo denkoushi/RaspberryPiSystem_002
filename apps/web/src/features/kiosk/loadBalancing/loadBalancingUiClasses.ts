@@ -54,9 +54,43 @@ export const lbTable = {
   headCell: 'px-2 py-1.5 text-sm font-semibold',
   bodyCell: 'px-2 py-1.5 text-sm',
   valueCell: 'px-2 py-1.5 text-sm tabular-nums',
+  cellMono: 'px-2 py-1.5 font-mono text-sm',
   headRow: 'border-b border-white/10',
   bodyRow: 'border-b border-white/5',
-  stickyHead: 'sticky top-0 z-[1] bg-slate-900'
+  interactiveRow: 'min-h-10 cursor-pointer border-b border-white/5',
+  interactiveRowActive: 'bg-fuchsia-900/40',
+  stickyHead: 'sticky top-0 z-[1] bg-slate-900',
+  scrollBox: 'max-h-56 overflow-auto',
+  scrollBoxMd: 'max-h-64 overflow-auto',
+  scrollBoxLg: 'max-h-72 overflow-auto'
+} as const;
+
+export const lbForm = {
+  label: 'flex flex-col gap-1 text-sm font-semibold text-white/90',
+  field:
+    'h-10 min-h-10 w-full rounded-lg border border-white/25 bg-slate-950 px-2.5 text-sm text-white',
+  fieldMono:
+    'h-10 min-h-10 w-full rounded-lg border border-white/25 bg-slate-950 px-2.5 font-mono text-sm uppercase text-white',
+  row: 'flex flex-wrap items-end gap-2.5',
+  fieldGroup: 'flex min-w-[12rem] flex-col gap-1',
+  fieldGroupSm: 'flex min-w-[10rem] flex-col gap-1',
+  fieldGroupLg: 'flex min-w-[14rem] flex-col gap-1'
+} as const;
+
+export const lbNote = {
+  disclaimer: 'text-xs text-white/55',
+  loadingHint: 'text-xs text-white/60'
+} as const;
+
+export const lbLoading = {
+  banner: 'rounded-lg border border-white/10 bg-slate-950/40 p-3',
+  skeletonBar: 'h-4 rounded bg-white/10',
+  skeletonRow: 'flex gap-2',
+  status: 'text-sm text-white/70'
+} as const;
+
+export const lbError = {
+  banner: 'rounded-lg border border-rose-500/40 bg-rose-950/40 p-3 text-sm text-rose-100'
 } as const;
 
 /** 試算結果表（4番）— 棒グラフ列幅に収め、数値列は右寄せ・狭幅 */

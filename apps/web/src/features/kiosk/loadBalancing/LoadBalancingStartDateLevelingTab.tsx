@@ -4,7 +4,6 @@ import {
   BarChart,
   CartesianGrid,
   Legend,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis
@@ -15,7 +14,20 @@ import {
   usePostKioskProductionScheduleLoadBalancingStartDateLevelingSimulate
 } from '../../../api/hooks';
 
+import { LoadBalancingChartContainer } from './LoadBalancingChartContainer';
 import { defaultMachineMonthlyRange, isValidYearMonth } from './loadBalancingMonthRange';
+import { LoadBalancingTabLoadingStatus } from './LoadBalancingTabLoadingStatus';
+import {
+  lbBtn,
+  lbCard,
+  lbError,
+  lbForm,
+  lbInput,
+  lbPage,
+  lbTabClassName,
+  lbTable,
+  lbText
+} from './loadBalancingUiClasses';
 import {
   mapStartDateLevelingChartRows,
   mapStartDateLevelingDayCompareRows
@@ -118,6 +130,47 @@ export function LoadBalancingStartDateLevelingTab({ scopeParams, scopeEnabled }:
     });
   }, [displayData, bucket, resourceCd]);
 
+  const isInitialLoad = loadQuery.isFetching && !loadQuery.data;
+  const isRefreshing = loadQuery.isFetching && Boolean(loadQuery.data);
+
+  const resourceSummaryRows = useMemo(() => {
+    return (displayData?.resources ?? []).map((row) => (
+      <tr key={row.resourceCd} className={lbTable.bodyRow}>
+        <td className={lbTable.cellMono}>{row.resourceCd}</td>
+        <td className={lbTable.bodyCell}>
+          {row.workCalendarMode === 'calendar_days' ? '暦日' : '平日'}
+        </td>
+        <td className={lbTable.valueCell}>{Math.round(row.requiredMinutes)}</td>
+        <td className={lbTable.valueCell}>
+          {row.availableMinutes == null ? '—' : Math.round(row.availableMinutes)}
+        </td>
+        <td className={lbTable.valueCell}>{Math.round(row.overMinutes)}</td>
+      </tr>
+    ));
+  }, [displayData?.resources]);
+
+  const simulatedMoveRows = useMemo(() => {
+    return (simResult?.simulatedMoves ?? []).map((move) => (
+      <tr key={move.rowId} className={lbTable.bodyRow}>
+        <td className={lbTable.cellMono}>{move.rowId.slice(0, 8)}…</td>
+        <td className={lbTable.cellMono}>{move.resourceCd}</td>
+        <td className={lbTable.cellMono}>{move.targetDate}</td>
+        <td className={lbTable.valueCell}>{Math.round(move.movedMinutes)}</td>
+      </tr>
+    ));
+  }, [simResult?.simulatedMoves]);
+
+  const unallocatedRows = useMemo(() => {
+    return (displayData?.unallocatedRows ?? []).slice(0, 100).map((row) => (
+      <tr key={row.rowId} className={lbTable.bodyRow}>
+        <td className={lbTable.cellMono}>{row.fseiban || '—'}</td>
+        <td className={lbTable.cellMono}>{row.fhincd || '—'}</td>
+        <td className={lbTable.cellMono}>{row.resourceCd}</td>
+        <td className={lbTable.bodyCell}>{UNALLOCATED_LABELS[row.reason] ?? row.reason}</td>
+      </tr>
+    ));
+  }, [displayData?.unallocatedRows]);
+
   const handleSimulate = async () => {
     if (!selectedRowId.trim() || !simTargetDate.trim()) return;
     const result = await simulateMutation.mutateAsync({
@@ -128,199 +181,179 @@ export function LoadBalancingStartDateLevelingTab({ scopeParams, scopeEnabled }:
   };
 
   return (
-    <>
-      <p className="max-w-3xl text-xs text-white/70">
-        未完了部品工程の負荷を <strong className="font-semibold text-white">FSIGENSHOYORYO × 指示数</strong>{' '}
-        で算出し、<strong className="font-semibold text-white">着手日</strong>（部品納期個数CSV）から{' '}
+    <div className={lbPage.stack}>
+      <p className={`max-w-3xl ${lbText.body}`}>
+        未完了部品工程の負荷を <strong className="font-semibold text-white">行総分</strong>（工程行の所要量合算。指示数は掛けません）で算出し、
+        <strong className="font-semibold text-white">着手日</strong>（部品納期個数CSV）から{' '}
         <strong className="font-semibold text-white">有効納期</strong>（行備考 → plannedEndDate）までを資源CDごとの稼働日ルールで日割りします。シミュレーションはDBを更新しません。
       </p>
 
-      <div className="mt-3 flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs font-semibold text-white/90">
-          開始月
-          <input
-            type="month"
-            value={fromMonth}
-            onChange={(event) => setFromMonth(event.target.value)}
-            className="rounded-md border border-white/30 bg-slate-950 px-2 py-1 text-white"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-white/90">
-          終了月
-          <input
-            type="month"
-            value={toMonth}
-            onChange={(event) => setToMonth(event.target.value)}
-            className="rounded-md border border-white/30 bg-slate-950 px-2 py-1 text-white"
-          />
-        </label>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-semibold text-white/90">表示</span>
-          <div className="flex gap-1">
-            <button
-              type="button"
-              className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
-                bucket === 'month' ? 'bg-fuchsia-700 text-white' : 'bg-slate-800 text-white/80'
-              }`}
-              onClick={() => setBucket('month')}
-            >
-              月次
-            </button>
-            <button
-              type="button"
-              className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
-                bucket === 'day' ? 'bg-fuchsia-700 text-white' : 'bg-slate-800 text-white/80'
-              }`}
-              onClick={() => setBucket('day')}
-            >
-              日次
-            </button>
-          </div>
-        </div>
-        {bucket === 'day' ? (
-          <label className="flex flex-col gap-1 text-xs font-semibold text-white/90">
-            日次の対象月
+      <section className={lbCard.base}>
+        <div className={lbForm.row}>
+          <label className={lbForm.label}>
+            開始月
             <input
               type="month"
-              value={focusMonth}
-              onChange={(event) => setFocusMonth(event.target.value)}
-              className="rounded-md border border-white/30 bg-slate-950 px-2 py-1 text-white"
+              value={fromMonth}
+              onChange={(event) => setFromMonth(event.target.value)}
+              className={lbInput.month}
             />
           </label>
-        ) : null}
-        <label className="flex min-w-[10rem] flex-col gap-1 text-xs font-semibold text-white/90">
-          資源CD（任意）
-          <input
-            value={resourceCd}
-            onChange={(event) => setResourceCd(event.target.value)}
-            className="rounded-md border border-white/30 bg-slate-950 px-2 py-1 font-mono text-white uppercase"
-            placeholder="例: 021"
-          />
-        </label>
-      </div>
+          <label className={lbForm.label}>
+            終了月
+            <input
+              type="month"
+              value={toMonth}
+              onChange={(event) => setToMonth(event.target.value)}
+              className={lbInput.month}
+            />
+          </label>
+          <div className={lbForm.fieldGroupSm}>
+            <span className="text-sm font-semibold text-white/90">表示</span>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                className={`inline-flex h-10 min-h-10 items-center ${lbTabClassName(bucket === 'month')}`}
+                onClick={() => setBucket('month')}
+              >
+                月次
+              </button>
+              <button
+                type="button"
+                className={`inline-flex h-10 min-h-10 items-center ${lbTabClassName(bucket === 'day')}`}
+                onClick={() => setBucket('day')}
+              >
+                日次
+              </button>
+            </div>
+          </div>
+          {bucket === 'day' ? (
+            <label className={lbForm.label}>
+              日次の対象月
+              <input
+                type="month"
+                value={focusMonth}
+                onChange={(event) => setFocusMonth(event.target.value)}
+                className={lbInput.month}
+              />
+            </label>
+          ) : null}
+          <label className={lbForm.fieldGroupSm}>
+            <span className="text-sm font-semibold text-white/90">資源CD（任意）</span>
+            <input
+              value={resourceCd}
+              onChange={(event) => setResourceCd(event.target.value)}
+              className={lbForm.fieldMono}
+              placeholder="例: 021"
+            />
+          </label>
+        </div>
+      </section>
 
       {loadQuery.error ? (
-        <div className="mt-3 rounded-md border border-rose-500/40 bg-rose-950/40 p-2 text-xs text-rose-100">
+        <div className={lbError.banner}>
           読み込みエラー:{' '}
           {loadQuery.error instanceof Error ? loadQuery.error.message : String(loadQuery.error)}
         </div>
       ) : null}
 
-      {loadQuery.isFetching ? <p className="mt-2 text-xs text-white/70">集計を読み込み中…</p> : null}
+      <LoadBalancingTabLoadingStatus isInitialLoad={isInitialLoad} isRefreshing={isRefreshing} />
 
       {displayData ? (
-        <p className="mt-2 text-[11px] text-white/60">
+        <p className={lbText.meta}>
           siteKey: <span className="font-mono text-white/90">{displayData.siteKey}</span>
           {simResult ? <span className="ml-2 text-amber-200">（シミュレーション結果）</span> : null}
         </p>
       ) : null}
 
-      <section className="mt-3 min-h-[260px] rounded-lg border border-white/15 bg-slate-950/50 p-2">
-        <p className="mb-2 text-xs font-semibold text-white">
+      <section className={`min-h-[260px] ${lbCard.base}`}>
+        <p className={`mb-2 ${lbText.section}`}>
           {bucket === 'month' ? '月別・資源CD別（積み上げ・上位24）' : '日別・資源CD別（積み上げ・上位24）'}
         </p>
         {chartRows.length === 0 ? (
-          <p className="text-xs text-white/60">表示できるデータがありません。</p>
+          <p className={lbText.muted}>表示できるデータがありません。</p>
         ) : (
-          <div className="h-[280px] w-full min-w-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartRows} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis
-                  dataKey="bucket"
-                  angle={-35}
-                  textAnchor="end"
-                  interval={0}
-                  height={70}
-                  tick={{ fill: '#e2e8f0', fontSize: 10 }}
+          <LoadBalancingChartContainer heightClassName="h-[280px] w-full min-w-0">
+            <BarChart data={chartRows} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis
+                dataKey="bucket"
+                angle={-35}
+                textAnchor="end"
+                interval={0}
+                height={70}
+                tick={{ fill: '#e2e8f0', fontSize: 12 }}
+              />
+              <YAxis tick={{ fill: '#e2e8f0', fontSize: 12 }} />
+              <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: 13 }} />
+              <Legend wrapperStyle={{ fontSize: 12, color: '#e2e8f0' }} />
+              {resourceCds.map((cd, index) => (
+                <Bar
+                  key={cd}
+                  dataKey={cd}
+                  name={cd}
+                  stackId="load"
+                  fill={STACK_COLORS[index % STACK_COLORS.length]}
                 />
-                <YAxis tick={{ fill: '#e2e8f0', fontSize: 10 }} />
-                <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: 11 }} />
-                <Legend wrapperStyle={{ fontSize: 11, color: '#e2e8f0' }} />
-                {resourceCds.map((cd, index) => (
-                  <Bar
-                    key={cd}
-                    dataKey={cd}
-                    name={cd}
-                    stackId="load"
-                    fill={STACK_COLORS[index % STACK_COLORS.length]}
-                  />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+              ))}
+            </BarChart>
+          </LoadBalancingChartContainer>
         )}
       </section>
 
       {bucket === 'day' && dayCompareRows.length > 0 ? (
-        <section className="mt-3 min-h-[220px] rounded-lg border border-white/15 bg-slate-950/50 p-2">
-          <p className="mb-2 text-xs font-semibold text-white">
+        <section className={`min-h-[220px] ${lbCard.base}`}>
+          <p className={`mb-2 ${lbText.section}`}>
             日次能力比較（資源 {resourceCd.trim().toUpperCase()}）
           </p>
-          <div className="h-[220px] w-full min-w-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dayCompareRows} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis
-                  dataKey="day"
-                  angle={-35}
-                  textAnchor="end"
-                  interval={0}
-                  height={70}
-                  tick={{ fill: '#e2e8f0', fontSize: 9 }}
-                />
-                <YAxis tick={{ fill: '#e2e8f0', fontSize: 10 }} />
-                <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: 11 }} />
-                <Legend wrapperStyle={{ fontSize: 11, color: '#e2e8f0' }} />
-                <Bar dataKey="req" name="必要分" fill="#38bdf8" />
-                <Bar dataKey="cap" name="日次能力" fill="#34d399" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <LoadBalancingChartContainer heightClassName="h-[220px] w-full min-w-0">
+            <BarChart data={dayCompareRows} margin={{ top: 8, right: 16, left: 0, bottom: 48 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis
+                dataKey="day"
+                angle={-35}
+                textAnchor="end"
+                interval={0}
+                height={70}
+                tick={{ fill: '#e2e8f0', fontSize: 11 }}
+              />
+              <YAxis tick={{ fill: '#e2e8f0', fontSize: 12 }} />
+              <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: 13 }} />
+              <Legend wrapperStyle={{ fontSize: 12, color: '#e2e8f0' }} />
+              <Bar dataKey="req" name="必要分" fill="#38bdf8" />
+              <Bar dataKey="cap" name="日次能力" fill="#34d399" />
+            </BarChart>
+          </LoadBalancingChartContainer>
         </section>
       ) : null}
 
-      <section className="mt-3 rounded-lg border border-white/15 bg-slate-950/40 p-2">
-        <p className="mb-2 text-xs font-semibold text-white">資源CDサマリ</p>
-        <div className="max-h-56 overflow-auto">
-          <table className="w-full border-collapse text-left text-[11px] text-white/90">
-            <thead className="sticky top-0 bg-slate-900">
-              <tr className="border-b border-white/10">
-                <th className="px-2 py-1">資源CD</th>
-                <th className="px-2 py-1">稼働日</th>
-                <th className="px-2 py-1">必要分</th>
-                <th className="px-2 py-1">能力分</th>
-                <th className="px-2 py-1">超過</th>
+      <section className={lbCard.base}>
+        <p className={`mb-2 ${lbText.section}`}>資源CDサマリ</p>
+        <div className={lbTable.scrollBox}>
+          <table className={lbTable.root}>
+            <thead className={lbTable.stickyHead}>
+              <tr className={lbTable.headRow}>
+                <th className={lbTable.headCell}>資源CD</th>
+                <th className={lbTable.headCell}>稼働日</th>
+                <th className={lbTable.headCell}>必要分</th>
+                <th className={lbTable.headCell}>能力分</th>
+                <th className={lbTable.headCell}>超過</th>
               </tr>
             </thead>
-            <tbody>
-              {(displayData?.resources ?? []).map((row) => (
-                <tr key={row.resourceCd} className="border-b border-white/5">
-                  <td className="px-2 py-1 font-mono">{row.resourceCd}</td>
-                  <td className="px-2 py-1">
-                    {row.workCalendarMode === 'calendar_days' ? '暦日' : '平日'}
-                  </td>
-                  <td className="px-2 py-1">{Math.round(row.requiredMinutes)}</td>
-                  <td className="px-2 py-1">
-                    {row.availableMinutes == null ? '—' : Math.round(row.availableMinutes)}
-                  </td>
-                  <td className="px-2 py-1">{Math.round(row.overMinutes)}</td>
-                </tr>
-              ))}
-            </tbody>
+            <tbody>{resourceSummaryRows}</tbody>
           </table>
         </div>
       </section>
 
-      <section className="mt-3 rounded-lg border border-amber-500/30 bg-amber-950/20 p-2">
-        <p className="mb-2 text-xs font-semibold text-amber-100">平準化シミュレーション（読み取り専用）</p>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex min-w-[14rem] flex-col gap-1 text-xs font-semibold text-white/90">
-            対象行
+      <section className={lbCard.amber}>
+        <p className={`mb-2 ${lbText.section} text-amber-100`}>平準化シミュレーション（読み取り専用）</p>
+        <div className={lbForm.row}>
+          <label className={lbForm.fieldGroupLg}>
+            <span className="text-sm font-semibold text-white/90">対象行</span>
             <select
               value={selectedRowId}
               onChange={(event) => setSelectedRowId(event.target.value)}
-              className="rounded-md border border-white/30 bg-slate-950 px-2 py-1 text-white"
+              className={lbForm.field}
             >
               <option value="">— 選択 —</option>
               {(displayData?.allocatedRows ?? []).map((row) => (
@@ -330,18 +363,18 @@ export function LoadBalancingStartDateLevelingTab({ scopeParams, scopeEnabled }:
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-white/90">
+          <label className={lbForm.label}>
             移動先日
             <input
               type="date"
               value={simTargetDate}
               onChange={(event) => setSimTargetDate(event.target.value)}
-              className="rounded-md border border-white/30 bg-slate-950 px-2 py-1 text-white"
+              className={lbForm.field}
             />
           </label>
           <button
             type="button"
-            className="rounded-md bg-amber-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+            className={`${lbBtn.amber} inline-flex h-10 min-h-10 items-center`}
             disabled={simulateMutation.isPending || !selectedRowId || !simTargetDate}
             onClick={() => void handleSimulate()}
           >
@@ -350,7 +383,7 @@ export function LoadBalancingStartDateLevelingTab({ scopeParams, scopeEnabled }:
           {simResult ? (
             <button
               type="button"
-              className="rounded-md bg-slate-700 px-3 py-2 text-xs font-semibold text-white"
+              className={`${lbBtn.slate} inline-flex h-10 min-h-10 items-center`}
               onClick={() => {
                 setSimResult(null);
                 simulateMutation.reset();
@@ -361,67 +394,49 @@ export function LoadBalancingStartDateLevelingTab({ scopeParams, scopeEnabled }:
           ) : null}
         </div>
         {simulateMutation.error ? (
-          <p className="mt-2 text-xs text-rose-200">
+          <p className={`mt-2 ${lbText.error}`}>
             {simulateMutation.error instanceof Error
               ? simulateMutation.error.message
               : String(simulateMutation.error)}
           </p>
         ) : null}
         {(simResult?.simulatedMoves ?? []).length > 0 ? (
-          <div className="mt-2 max-h-40 overflow-auto">
-            <table className="w-full border-collapse text-left text-[11px] text-white/90">
+          <div className={`mt-2 ${lbTable.scrollBox}`}>
+            <table className={lbTable.root}>
               <thead>
-                <tr className="border-b border-white/10">
-                  <th className="px-2 py-1">行</th>
-                  <th className="px-2 py-1">資源</th>
-                  <th className="px-2 py-1">移動先</th>
-                  <th className="px-2 py-1">分</th>
+                <tr className={lbTable.headRow}>
+                  <th className={lbTable.headCell}>行</th>
+                  <th className={lbTable.headCell}>資源</th>
+                  <th className={lbTable.headCell}>移動先</th>
+                  <th className={lbTable.headCell}>分</th>
                 </tr>
               </thead>
-              <tbody>
-                {simResult!.simulatedMoves.map((move) => (
-                  <tr key={move.rowId} className="border-b border-white/5">
-                    <td className="px-2 py-1 font-mono">{move.rowId.slice(0, 8)}…</td>
-                    <td className="px-2 py-1 font-mono">{move.resourceCd}</td>
-                    <td className="px-2 py-1 font-mono">{move.targetDate}</td>
-                    <td className="px-2 py-1">{Math.round(move.movedMinutes)}</td>
-                  </tr>
-                ))}
-              </tbody>
+              <tbody>{simulatedMoveRows}</tbody>
             </table>
           </div>
         ) : null}
       </section>
 
       {(displayData?.unallocatedRows ?? []).length > 0 ? (
-        <section className="mt-3 rounded-lg border border-white/15 bg-slate-950/40 p-2">
-          <p className="mb-2 text-xs font-semibold text-white">
+        <section className={lbCard.base}>
+          <p className={`mb-2 ${lbText.section}`}>
             未配分（{displayData!.unallocatedRows.length}件）
           </p>
-          <div className="max-h-48 overflow-auto">
-            <table className="w-full border-collapse text-left text-[11px] text-white/90">
-              <thead className="sticky top-0 bg-slate-900">
-                <tr className="border-b border-white/10">
-                  <th className="px-2 py-1">製番</th>
-                  <th className="px-2 py-1">品番</th>
-                  <th className="px-2 py-1">資源</th>
-                  <th className="px-2 py-1">理由</th>
+          <div className={lbTable.scrollBox}>
+            <table className={lbTable.root}>
+              <thead className={lbTable.stickyHead}>
+                <tr className={lbTable.headRow}>
+                  <th className={lbTable.headCell}>製番</th>
+                  <th className={lbTable.headCell}>品番</th>
+                  <th className={lbTable.headCell}>資源</th>
+                  <th className={lbTable.headCell}>理由</th>
                 </tr>
               </thead>
-              <tbody>
-                {displayData!.unallocatedRows.slice(0, 100).map((row) => (
-                  <tr key={row.rowId} className="border-b border-white/5">
-                    <td className="px-2 py-1 font-mono">{row.fseiban || '—'}</td>
-                    <td className="px-2 py-1 font-mono">{row.fhincd || '—'}</td>
-                    <td className="px-2 py-1 font-mono">{row.resourceCd}</td>
-                    <td className="px-2 py-1">{UNALLOCATED_LABELS[row.reason] ?? row.reason}</td>
-                  </tr>
-                ))}
-              </tbody>
+              <tbody>{unallocatedRows}</tbody>
             </table>
           </div>
         </section>
       ) : null}
-    </>
+    </div>
   );
 }
