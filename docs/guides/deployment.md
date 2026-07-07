@@ -19,7 +19,7 @@ update-frequency: medium
   - **Run ID `20260707-101530-31384`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260707-101530-31384.log` · summary success true · exitCode 0 · PLAY RECAP 全7ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。Pi5 repo は `2e8862b7`。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-07 JST）。
 - **smoke**: `/kiosk/assembly` · `/kiosk/production-schedule/leader-order-board` · `/kiosk/part-measurement/inspection` · `/kiosk/part-measurement/inspection/create` すべて HTTP **200**。配信アセットに新コード（`content-start`、公差候補 popover）を確認。
-- **未完了**: キオスク実機での目視確認（順位ボード左ペインの視認性・公差候補チップのタッチ操作・組立テンキーの非シフト）。
+- **実機（目視・タッチ）**: 2026-07-07 ユーザー確認OK（順位ボード左ペイン不透明・公差候補チップのタッチ選択・組立テンキー非シフト）。未完了なし。
 
 ### 補足（2026-07-06 · **組立キオスク PDF閲覧順設定 + ページ送りビューア** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-procedure-order-viewer-2026-07-06}
 

@@ -75,11 +75,12 @@ Implementation commit: `589d9d43`（branch `fix/inspection-tolerance-candidate-s
 | `apps/web` eslint | PASS |
 | `apps/web` `tsc -b` | PASS |
 
-本番デプロイ: 2026-07-07 に Run ID `20260707-101530-31384` で Pi5+Pi4×5+Pi3 へ反映済み（[deployment.md §キオスクUI修正3件](../guides/deployment.md#kiosk-ui-fixes-leaderboard-tolerance-assembly-2026-07-07)）。Pi キオスク実機での候補タップ選択確認は未実施。
+本番デプロイ: 2026-07-07 に Run ID `20260707-101530-31384` で Pi5+Pi4×5+Pi3 へ反映済み（[deployment.md §キオスクUI修正3件](../guides/deployment.md#kiosk-ui-fixes-leaderboard-tolerance-assembly-2026-07-07)）。
+- **On-device check (2026-07-07, user verified)**: tolerance candidate chips selectable by touch on kiosk.
+- **Remote browser note**: when the tab is in the background, `document.hasFocus()` is false so `element.focus()` does not fire React focus events and candidates do not appear; use `focusin` dispatch for display verification. No issue on on-device touch.
 
 ## Open Items
 
-- Pi キオスク実機で上限/下限公差の候補チップ選択を確認する（2026-07-07 本番デプロイ済み。残りは実機目視確認のみ）
 - 他画面に datalist/showPicker 依存の類似 UI が残っていないか横断確認
 
 ## References
