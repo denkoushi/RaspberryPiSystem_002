@@ -173,4 +173,43 @@ describe('KioskAssemblyHomePage', () => {
     expect(screen.getByRole('button', { name: '組立開始' })).toBeDisabled();
     expect(mockStartAssemblyWorkSession).not.toHaveBeenCalled();
   });
+
+  it('disables the seiban keypad while candidate search is in progress', async () => {
+    mockListAssemblySeibanCandidates.mockImplementation(
+      () => new Promise<AssemblySeibanCandidateDto[]>(() => undefined)
+    );
+
+    vi.useFakeTimers();
+    try {
+      renderPage();
+      await vi.runOnlyPendingTimersAsync();
+
+      fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'ASM' } });
+      await vi.advanceTimersByTimeAsync(180);
+
+      const fseibanPad = within(screen.getByRole('group', { name: '製番入力パッド' }));
+      expect(fseibanPad.getByRole('button', { name: 'A' })).toBeDisabled();
+      expect(fseibanPad.getByRole('button', { name: 'BS' })).toBeDisabled();
+      expect(fseibanPad.getByRole('button', { name: 'CLR' })).toBeDisabled();
+      expect(screen.getByLabelText('製番')).toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('adds title attribute to machine name in candidate list', async () => {
+    const longMachineName = 'VERY-LONG-MACHINE-NAME-THAT-GETS-TRUNCATED';
+    mockListAssemblySeibanCandidates.mockResolvedValue([{ ...candidate, machineName: longMachineName }]);
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest' } });
+    await waitFor(() =>
+      expect(mockListAssemblySeibanCandidates).toHaveBeenCalledWith({ prefix: 'ASMTEST', limit: 20 })
+    );
+
+    const candidateButton = (await screen.findByText('ASMTEST-A1')).closest('button');
+    expect(candidateButton).not.toBeNull();
+    const machineNameSpan = within(candidateButton!).getByText(longMachineName);
+    expect(machineNameSpan).toHaveAttribute('title', longMachineName);
+  });
 });
