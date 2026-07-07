@@ -52,15 +52,15 @@ Operator feedback on the assembly kiosk (組立):
 - `assembly.integration.test.ts` (13 tests, incl. approve success / non-COMPLETED 409 / double-approve 409 / unknown NFC 404) passed against a fresh `postgres-test-local` container after `prisma migrate deploy` of the full migration chain.
 - `pnpm --filter @raspi-system/api build` succeeded.
 - The generated migration initially contained unrelated drift statements (DROP of `photo_tool_similarity_gallery` etc.); it was hand-reduced to the new table only and re-verified with `migrate deploy` on a clean database.
+- On-site visual/touch verification passed on 2026-07-07 (user confirmed: preview images, completed-card navigation, NFC approval, approval badges, multi-column panes).
 
 ## Open Items
 
-- On-site visual/touch check of the new page is pending (see the deployment record for the checklist).
 - No dedicated approver-resolve preview endpoint; NFC is validated at approve time only.
 
 ## Deployment
 
-Deployed to production on 2026-07-07 (all 7 hosts, migration applied). Record: `docs/guides/deployment.md#kiosk-assembly-record-approval-2026-07-07`.
+Deployed to production on 2026-07-07 (all 7 hosts, migration applied). Record: `docs/guides/deployment.md#kiosk-assembly-record-approval-2026-07-07`. On-site verification passed on 2026-07-07.
 
 ## Local Notes JA
 

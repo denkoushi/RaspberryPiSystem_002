@@ -19,7 +19,7 @@ update-frequency: medium
   - **Run ID `20260707-155652-23773`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260707-155652-23773.log` · summary success true · exitCode 0 · PLAY RECAP 全7ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。Pi5 repo は `be576f8c`、`_prisma_migrations` に `20260707061829` 適用済み（2026-07-07 16:06 JST）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-07 JST）。
 - **組立 smoke**: `/kiosk/assembly` · `/kiosk/assembly/record-approvals` · `/kiosk/assembly/procedure-order-settings` · `/kiosk/assembly/library` HTTP **200**。client-key認証付きで `GET /api/assembly/work-sessions/summary?status=completed`（レスポンスに新 `approval` フィールド確認）· `GET /api/assembly/seiban-candidates` HTTP **200**。`POST /api/kiosk/assembly/record-approvals/verify-access-password` は client-key + 正パスワードで `{"success":true}`、誤パスワードで **401**、client-key なしで `CLIENT_KEY_REQUIRED`。未知セッションへの `POST .../record-approval/approve` は期待どおり **404**。
-- **実機（目視・タッチ）**: 未実施（次回現場確認時: 閲覧順設定プレビューの組立手順書画像表示、完了カード→記録確認ページ遷移、NFC承認、承認済みバッジ、ペイン複数列表示）。
+- **実機（目視・タッチ）**: 2026-07-07 ユーザー確認OK（閲覧順設定プレビューの組立手順書画像表示・完了カード→記録確認ページ遷移・NFC承認・承認済みバッジ・ペイン複数列表示）。未完了なし。
 
 ### 補足（2026-07-07 · **組立キオスク改良（閲覧順の組立ライブラリ限定 + プレビュー / 完了ペイン + ロット数 + NFC作業者入力）** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-improvements-2026-07-07}
 
