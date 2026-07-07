@@ -10,6 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-07 · **組立キオスク改良（閲覧順の組立ライブラリ限定 + プレビュー / 完了ペイン + ロット数 + NFC作業者入力）** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-improvements-2026-07-07}
+
+- **変更概要（正本）**: [ADR-20260707](../decisions/ADR-20260707-assembly-procedure-order-library-scope.md) · main **`c81f40c3`**。実装コミット: `b6c7e74f`（ライブラリ画面ボタン整理 + 旧 `/kiosk/assembly/work/start` 削除）· `f4c966e6` + `8fd475d1`（組立トップ: 完了ペイン・ロット数・NFC作業者入力）· `72a3a714` + `498a583b`（閲覧順設定: `AssemblyProcedureDocument` 対応 + 3ペイン化）· `bec8e09c` + `c81f40c3`（テスト整合・CIフレーク対策）。migration **`20260707035701_assembly_procedure_order_item_assembly_document`**（列追加 + nullable化 + FK のみの非破壊）。
+- **CI（`c81f40c3`）**: main push CI **`28841340246` success**（全5ジョブ success）· CodeQL / Secret scan / Pages success。直前 `126bd8ce` の CI は `KioskAssemblyWorkSessionPage.test.tsx` のページ送りテストが遅いランナーで waitFor 1秒を超過して **1件フレーク**（ローカル3回連続成功）→ timeout 5秒へ延長して収束。
+- **ローカル検証**: web vitest **258 files / 1291 tests passed** · api/web build · lint 成功。一時 Postgres（`pgvector/pgvector:pg16`）で migrate deploy 133本 + 組立統合テスト **10 passed**。一時コンテナ/volume 削除済み。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260707-133922-15040`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260707-133922-15040.log` · summary success true · exitCode 0 · PLAY RECAP 全7ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。Pi5 repo は `c81f40c3`、`_prisma_migrations` に `20260707035701` 適用済み（`kioskDocumentId` / `assemblyProcedureDocumentId` とも nullable 確認）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-07 JST）。
+- **組立 smoke**: `/kiosk/assembly` · `/kiosk/assembly/library` · `/kiosk/assembly/procedure-order-settings` HTTP **200**。client-key認証付きで `GET /api/assembly/seiban-candidates` · `GET /api/assembly/work-sessions/summary?status=completed` · `GET /api/assembly/seiban-lot-quantities?productNos=TEST` · `GET /api/assembly/procedure-documents/summary` · `GET /api/assembly/procedure-orders?machineName=MH-TEST` すべて HTTP **200**。`POST /api/assembly/operators/resolve-nfc`（未登録UID）は期待どおり **404**。
+- **実機（目視・タッチ）**: 未実施（次回現場確認時: 閲覧順設定への組立ライブラリ手順書追加とプレビュー、組立トップの完了ペイン/ロット数表示、NFCタグでの作業者自動入力）。
+
 ### 補足（2026-07-07 · **キオスクUI修正3件（順位ボード左ペイン不透明化・検査公差候補チップ・組立テンキー安定化）** · **Web only** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-ui-fixes-leaderboard-tolerance-assembly-2026-07-07}
 
 - **変更概要（正本）**: [KB-396](../knowledge-base/KB-396-leader-board-left-panel-opacity-regression.md) · [KB-397](../knowledge-base/KB-397-inspection-tolerance-datalist-unselectable-kiosk.md) · [Plan](../plans/kiosk-assembly-torque-management-mvp.md) · main **`2e8862b7`**。実装コミット: `0c57d5a0`（順位ボード左ツールスタック不透明化）· `589d9d43`（公差候補チップUI）· `ce6d733d` + `7bea147a`（組立候補エリア h-32 固定・candidateLoading 中 disabled・製番全桁表示・機種名 title）。Web のみ、API/DB/migration 変更なし。

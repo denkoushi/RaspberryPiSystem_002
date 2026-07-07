@@ -46,12 +46,12 @@ Related changes shipped together (same feature request, recorded here to avoid a
 - `pnpm --filter @raspi-system/api build` / `lint`, `pnpm --filter @raspi-system/web build` / `lint`: pass (merged main, 2026-07-07).
 - Web unit tests: 258 files / 1291 tests pass.
 - API assembly integration tests (`assembly.integration.test.ts`, 10 tests incl. new order-item compatibility and 409 guard cases) pass against a temporary Postgres container (`pgvector/pgvector:pg16`, `prisma migrate deploy` clean, 133 migrations). Temporary container/volume removed after verification.
-- Not yet verified: on-device kiosk behavior (NFC agent, Pi displays) and production deploy.
+- Production deploy 2026-07-07: main `c81f40c3`, CI `28841340246` success, Ansible Run ID `20260707-133922-15040` (all 7 hosts `failed=0`), migration `20260707035701` applied, Phase12 real-device check PASS 45 / WARN 0 / FAIL 0, kiosk pages and new APIs smoke-checked (200; unknown NFC uid returns 404). Details: `docs/guides/deployment.md#kiosk-assembly-improvements-2026-07-07`.
 
 ## Open Items
 
-- On-device verification and production deploy are pending user instruction.
+- On-device visual/touch verification by the operator (procedure order preview, completed pane, lot qty, NFC operator input) is pending.
 
 ## References
 
-- Merge commits on `main`: `d615062d` (library cleanup), `000ecc1a` (assembly home), `3f322653` (procedure order scope), `bec8e09c` (test alignment).
+- Merge commits on `main`: `d615062d` (library cleanup), `000ecc1a` (assembly home), `3f322653` (procedure order scope), `bec8e09c` (test alignment), `c81f40c3` (CI flake fix).
