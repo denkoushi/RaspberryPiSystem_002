@@ -4,7 +4,7 @@ import {
   resolveInspectionDrawingToleranceKindForLabel,
   type InspectionDrawingMeasurementLabelSetting
 } from '@raspi-system/shared-types';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -44,65 +44,73 @@ type Props = {
 
 const DEFAULT_MEASUREMENT_LABEL_SETTINGS = buildDefaultInspectionDrawingMeasurementLabelSettings();
 
+const toleranceCandidateChipClassName =
+  'min-h-7 rounded border border-cyan-300/40 bg-cyan-950/70 px-2 text-cyan-50 disabled:opacity-50';
+
 type ToleranceCandidateInputProps = {
-  listId: string;
   value: string;
   candidateValues: readonly string[];
   disabled: boolean;
   onValueChange: (value: string) => void;
 };
 
-function openNativeCandidatePicker(input: HTMLInputElement) {
-  const showPicker = (input as HTMLInputElement & { showPicker?: () => void }).showPicker;
-  try {
-    showPicker?.call(input);
-  } catch {
-    // Some browser versions expose showPicker but reject it for text+datalist inputs.
-  }
-}
-
 function ToleranceCandidateInput({
-  listId,
   value,
   candidateValues,
   disabled,
   onValueChange
 }: ToleranceCandidateInputProps) {
   const [draftValue, setDraftValue] = useState(value);
-  const [shouldRestoreOnBlur, setShouldRestoreOnBlur] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
 
   useEffect(() => {
     setDraftValue(value);
-    setShouldRestoreOnBlur(false);
   }, [value]);
 
+  const showCandidates = isFocused && !disabled;
+
   return (
-    <Input
-      type="text"
-      inputMode="decimal"
-      list={listId}
-      value={draftValue}
-      onFocus={(event) => {
-        if (disabled || !candidateValues.includes(value)) return;
-        event.currentTarget.value = '';
-        setDraftValue('');
-        setShouldRestoreOnBlur(true);
-        openNativeCandidatePicker(event.currentTarget);
-      }}
-      onBlur={() => {
-        if (shouldRestoreOnBlur && draftValue === '') {
-          setDraftValue(value);
-        }
-        setShouldRestoreOnBlur(false);
-      }}
-      onChange={(event) => {
-        setDraftValue(event.target.value);
-        setShouldRestoreOnBlur(false);
-        onValueChange(event.target.value);
-      }}
-      className={inspectionDrawingPointSettingInputClassName}
-      disabled={disabled}
-    />
+    <div className="relative">
+      <Input
+        type="text"
+        inputMode="decimal"
+        value={draftValue}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+        onChange={(event) => {
+          setDraftValue(event.target.value);
+          onValueChange(event.target.value);
+        }}
+        className={inspectionDrawingPointSettingInputClassName}
+        disabled={disabled}
+      />
+      {showCandidates ? (
+        <div
+          className="absolute left-0 right-0 top-full z-10 mt-1 flex min-h-8 flex-wrap items-center gap-1 rounded border border-cyan-300/20 bg-slate-950/95 p-1 text-[0.8rem] font-semibold shadow-md"
+          role="listbox"
+          aria-label="公差候補"
+        >
+          {candidateValues.map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              role="option"
+              disabled={disabled}
+              className={toleranceCandidateChipClassName}
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
+              onClick={() => {
+                setDraftValue(candidate);
+                onValueChange(candidate);
+              }}
+            >
+              {candidate}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -119,7 +127,6 @@ export function InspectionDrawingPointSettingsPanel({
   onApplyOcrCandidate,
   measurementLabelSettings
 }: Props) {
-  const toleranceCandidateListId = useId();
   const effectiveMeasurementLabelSettings =
     measurementLabelSettings && measurementLabelSettings.length > 0
       ? measurementLabelSettings
@@ -184,7 +191,7 @@ export function InspectionDrawingPointSettingsPanel({
                   key={`${candidate.valueText}-${candidate.xRatio}-${candidate.yRatio}`}
                   type="button"
                   disabled={disabled || !onApplyOcrCandidate}
-                  className="min-h-7 rounded border border-cyan-300/40 bg-cyan-950/70 px-2 text-cyan-50 disabled:opacity-50"
+                  className={toleranceCandidateChipClassName}
                   onClick={() => onApplyOcrCandidate?.(candidate.valueText)}
                   title={`raw: ${candidate.rawText}`}
                 >
@@ -196,15 +203,9 @@ export function InspectionDrawingPointSettingsPanel({
         </label>
       </div>
       <div className="grid grid-cols-2 gap-1.5">
-        <datalist id={toleranceCandidateListId}>
-          {toleranceCandidateValues.map((value) => (
-            <option key={value} value={value} />
-          ))}
-        </datalist>
         <label className="grid gap-1 text-[1rem] font-semibold">
           上限公差
           <ToleranceCandidateInput
-            listId={toleranceCandidateListId}
             value={point.upperToleranceRaw}
             candidateValues={toleranceCandidateValues}
             onValueChange={(value) => onChange({ upperToleranceRaw: value })}
@@ -214,7 +215,6 @@ export function InspectionDrawingPointSettingsPanel({
         <label className="grid gap-1 text-[1rem] font-semibold">
           下限公差
           <ToleranceCandidateInput
-            listId={toleranceCandidateListId}
             value={point.lowerToleranceRaw}
             candidateValues={toleranceCandidateValues}
             onValueChange={(value) => onChange({ lowerToleranceRaw: value })}
