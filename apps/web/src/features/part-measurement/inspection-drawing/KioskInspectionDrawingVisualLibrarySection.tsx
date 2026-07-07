@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { getResolvedClientKey } from '../../../api/client';
@@ -10,6 +10,7 @@ import {
   kioskInputClassName
 } from '../../../features/kiosk/kioskTheme';
 
+import { InspectionDrawingResourceCdChipList } from './InspectionDrawingResourceCdChipList';
 import { formatVisualLibraryTimestamp } from './inspectionDrawingVisualLibraryHelpers';
 import {
   INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE,
@@ -27,13 +28,18 @@ type Props = {
   onVisualRenamed?: (visual: PartMeasurementVisualTemplateDto) => void;
   /** 開発プレビュー用 — 指定時は API を呼ばずモック一覧を表示 */
   previewVisuals?: PartMeasurementVisualTemplateDto[];
+  /** 図面 ID ごとの資源 CD（未指定時はチップ行を描画しない） */
+  resourceCdsByVisualId?: Record<string, string[]>;
+  resourceNameMap?: Record<string, string[]>;
 };
 
 export function KioskInspectionDrawingVisualLibrarySection({
   refreshToken,
   onRegisterClick,
   onVisualRenamed,
-  previewVisuals
+  previewVisuals,
+  resourceCdsByVisualId,
+  resourceNameMap = {}
 }: Props) {
   const clientKey = getResolvedClientKey();
   const isPreview = previewVisuals != null;
@@ -127,40 +133,58 @@ export function KioskInspectionDrawingVisualLibrarySection({
               </tr>
             </thead>
             <tbody>
-              {visuals.map((visual) => (
-                <tr key={visual.id} className="border-b border-white/10 last:border-b-0">
-                  <td className="truncate px-2 py-1.5 font-bold text-white" title={visual.name}>
-                    {visual.name}
-                  </td>
-                  <td className="whitespace-nowrap px-2 py-1.5 font-semibold text-white/65">
-                    {formatVisualLibraryTimestamp(visual.updatedAt)}
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <div className="flex justify-end gap-1">
-                      <Link
-                        to={kioskInspectionDrawingCreatePathWithVisual(visual.id)}
-                        state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
-                        title="新規作成"
-                        className={buttonClassName(
-                          'primary',
-                          clsx(kioskButtonPrimaryClassName, 'inline-flex shrink-0 items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap')
-                        )}
-                      >
-                        新規
-                      </Link>
-                      <button
-                        type="button"
-                        title="名称変更"
-                        className={clsx(kioskButtonSecondaryClassName, 'min-h-11 shrink-0 whitespace-nowrap !px-1.5 !py-0 text-xs leading-none')}
-                        disabled={isPreview}
-                        onClick={() => setRenameTarget(visual)}
-                      >
-                        名称
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {visuals.map((visual) => {
+                const resourceCds = resourceCdsByVisualId?.[visual.id];
+                const showResourceRow = resourceCds != null && resourceCds.length > 0;
+
+                return (
+                  <Fragment key={visual.id}>
+                    <tr className="border-t border-white/10 first:border-t-0">
+                      <td className="truncate px-2 pb-0.5 pt-1.5 font-bold text-white" title={visual.name}>
+                        {visual.name}
+                      </td>
+                      <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 font-semibold text-white/65">
+                        {formatVisualLibraryTimestamp(visual.updatedAt)}
+                      </td>
+                      <td className="px-2 pb-0.5 pt-1.5">
+                        <div className="flex justify-end gap-1">
+                          <Link
+                            to={kioskInspectionDrawingCreatePathWithVisual(visual.id)}
+                            state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
+                            title="新規作成"
+                            className={buttonClassName(
+                              'primary',
+                              clsx(kioskButtonPrimaryClassName, 'inline-flex shrink-0 items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap')
+                            )}
+                          >
+                            新規
+                          </Link>
+                          <button
+                            type="button"
+                            title="名称変更"
+                            className={clsx(kioskButtonSecondaryClassName, 'min-h-11 shrink-0 whitespace-nowrap !px-1.5 !py-0 text-xs leading-none')}
+                            disabled={isPreview}
+                            onClick={() => setRenameTarget(visual)}
+                          >
+                            名称
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {showResourceRow ? (
+                      <tr className="border-b border-white/10 last:border-b-0">
+                        <td colSpan={3} className="px-2 pb-1 pt-0 text-xs text-white/55">
+                          <InspectionDrawingResourceCdChipList
+                            resourceCds={resourceCds}
+                            resourceNameMap={resourceNameMap}
+                            testId="inspection-visual-resource-chips"
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}

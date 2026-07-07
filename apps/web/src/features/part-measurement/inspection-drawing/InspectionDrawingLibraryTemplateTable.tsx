@@ -2,8 +2,9 @@ import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Button, buttonClassName } from '../../../components/ui/Button';
-import { formatResourceCdWithJapaneseNames } from '../../kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
 
+import { InspectionDrawingResourceCdChipList } from './InspectionDrawingResourceCdChipList';
+import { activeResourceCdsForTemplate } from './inspectionDrawingResourceCdHelpers';
 import {
   INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE,
   kioskInspectionDrawingCreatePathWithSource,
@@ -29,7 +30,6 @@ function updatedLabel(template: KioskInspectionDrawingTemplateSummaryDto): strin
   });
 }
 
-const MAX_VISIBLE_RESOURCE_CHIPS = 4;
 const TEMPLATE_TABLE_SPLIT_MIN_ROWS = 2;
 
 export type InspectionDrawingLibraryTemplateTableProps = {
@@ -44,12 +44,6 @@ export type InspectionDrawingLibraryTemplateTableProps = {
   createFromSourcePath?: (templateId: string) => string;
   linkState?: object;
 };
-
-function activeResourceCdsForTemplate(template: KioskInspectionDrawingTemplateSummaryDto): string[] {
-  return template.siblingGroup?.activeResourceCds && template.siblingGroup.activeResourceCds.length > 0
-    ? template.siblingGroup.activeResourceCds
-    : [template.resourceCd];
-}
 
 function rangeLabel(startIndex: number, rowCount: number): string {
   if (rowCount <= 0) return '';
@@ -110,12 +104,7 @@ function TemplateTablePane({
           <tbody>
             {templates.map((template) => {
               const activeResourceCds = activeResourceCdsForTemplate(template);
-              const visibleResourceCds = activeResourceCds.slice(0, MAX_VISIBLE_RESOURCE_CHIPS);
-              const hiddenResourceCount = activeResourceCds.length - visibleResourceCds.length;
               const visualName = template.visualTemplate?.name ?? '未設定';
-              const resourceSummaryTitle = activeResourceCds
-                .map((cd) => formatResourceCdWithJapaneseNames(cd, resourceNameMap))
-                .join(' / ');
               return (
                 <Fragment key={template.siblingGroupId ?? template.id}>
                   <tr className="border-t border-white/10 first:border-t-0">
@@ -138,27 +127,10 @@ function TemplateTablePane({
                   <tr className="border-b border-white/10 last:border-b-0">
                     <td colSpan={5} className="px-2 pb-1 pt-0 text-xs text-white/55">
                       <div className="flex min-w-0 items-center gap-1 overflow-hidden">
-                        <span className="shrink-0 font-semibold">資源CD</span>
-                        <div
-                          className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden"
-                          data-testid="inspection-template-resource-chips"
-                          title={resourceSummaryTitle}
-                        >
-                          {visibleResourceCds.map((cd) => (
-                            <span
-                              key={cd}
-                              className="shrink-0 truncate rounded border border-cyan-300/35 bg-cyan-950/50 px-1.5 py-0.5 text-xs font-semibold leading-tight text-cyan-100"
-                              title={formatResourceCdWithJapaneseNames(cd, resourceNameMap)}
-                            >
-                              {cd}
-                            </span>
-                          ))}
-                          {hiddenResourceCount > 0 ? (
-                            <span className="shrink-0 rounded border border-white/15 px-1.5 py-0.5 text-xs leading-tight text-white/70">
-                              +{hiddenResourceCount}
-                            </span>
-                          ) : null}
-                        </div>
+                        <InspectionDrawingResourceCdChipList
+                          resourceCds={activeResourceCds}
+                          resourceNameMap={resourceNameMap}
+                        />
                         <div
                           className="ml-auto flex w-[7rem] shrink-0 justify-end gap-0.5"
                           data-testid="inspection-template-secondary-actions"

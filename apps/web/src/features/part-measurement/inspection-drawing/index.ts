@@ -16,6 +16,8 @@ export {
 } from './inspectionDrawingVisualLibraryHelpers';
 export { useInspectionDrawingVisualLibrary } from './useInspectionDrawingVisualLibrary';
 export { useInspectionDrawingTemplateLibrary } from './useInspectionDrawingTemplateLibrary';
+export { useInspectionDrawingResourceCdsByVisualId } from './useInspectionDrawingResourceCdsByVisualId';
+export { InspectionDrawingResourceCdChipList } from './InspectionDrawingResourceCdChipList';
 export {
   inspectionDrawingCreateKeyCollisionMessage,
   normalizeUniqueInspectionDrawingResourceCds,

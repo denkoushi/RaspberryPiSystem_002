@@ -49,4 +49,55 @@ describe('KioskInspectionDrawingVisualLibrarySection', () => {
     expect(screen.getByRole('button', { name: '名称' })).toHaveAttribute('title', '名称変更');
     expect(screen.getByRole('button', { name: '名称' })).toBeDisabled();
   });
+
+  it('renders resource CD chips on the secondary row when resourceCdsByVisualId is provided', () => {
+    render(
+      <MemoryRouter>
+        <KioskInspectionDrawingVisualLibrarySection
+          previewVisuals={visuals}
+          onRegisterClick={vi.fn()}
+          resourceCdsByVisualId={{
+            'visual-1': ['R001', 'R002', 'R003', 'R004', 'R005']
+          }}
+          resourceNameMap={{}}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('inspection-visual-resource-chips')).toBeInTheDocument();
+    expect(screen.getByText('R001')).toBeInTheDocument();
+    expect(screen.getByText('+1')).toBeInTheDocument();
+    expect(screen.queryByText('資源CD')).not.toBeInTheDocument();
+  });
+
+  it('does not render a resource chip row when the visual has no mapped resource CDs', () => {
+    const mixedVisuals: PartMeasurementVisualTemplateDto[] = [
+      ...visuals,
+      {
+        id: 'visual-2',
+        name: '図面なし資源CD',
+        drawingImageRelativePath: '/api/storage/sample2.jpg',
+        isActive: true,
+        createdAt: '2026-07-01T07:46:02.229Z',
+        updatedAt: '2026-07-01T07:46:02.229Z'
+      }
+    ];
+
+    render(
+      <MemoryRouter>
+        <KioskInspectionDrawingVisualLibrarySection
+          previewVisuals={mixedVisuals}
+          onRegisterClick={vi.fn()}
+          resourceCdsByVisualId={{
+            'visual-1': ['R001']
+          }}
+          resourceNameMap={{}}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getAllByTestId('inspection-visual-resource-chips')).toHaveLength(1);
+    expect(screen.getByText('図面なし資源CD')).toBeInTheDocument();
+    expect(screen.queryByText('R002')).not.toBeInTheDocument();
+  });
 });

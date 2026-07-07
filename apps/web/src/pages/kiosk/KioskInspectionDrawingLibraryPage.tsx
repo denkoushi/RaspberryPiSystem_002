@@ -18,6 +18,7 @@ import {
   kioskInspectionDrawingTemplateEditPath,
   kioskInspectionDrawingTemplatePrintPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
+  useInspectionDrawingResourceCdsByVisualId,
   useInspectionDrawingTemplateLibrary
 } from '../../features/part-measurement/inspection-drawing';
 
@@ -49,7 +50,11 @@ export function KioskInspectionDrawingLibraryPage() {
   const [historyGroupKey, setHistoryGroupKey] = useState<string | null>(null);
   const [visualUploadOpen, setVisualUploadOpen] = useState(false);
   const [visualLibraryRefreshToken, setVisualLibraryRefreshToken] = useState(0);
+  const [resourceCdsMapRefreshToken, setResourceCdsMapRefreshToken] = useState(0);
   const templateLibrary = useInspectionDrawingTemplateLibrary();
+  const resourceCdsByVisualId = useInspectionDrawingResourceCdsByVisualId(
+    visualLibraryRefreshToken + resourceCdsMapRefreshToken
+  );
   const { filters, templates } = templateLibrary;
 
   const resourceNameMap = useMemo(
@@ -102,6 +107,7 @@ export function KioskInspectionDrawingLibraryPage() {
 
   const handleVisualRenamed = useCallback(() => {
     templateLibrary.reload();
+    setResourceCdsMapRefreshToken((token) => token + 1);
   }, [templateLibrary]);
 
   return (
@@ -140,6 +146,8 @@ export function KioskInspectionDrawingLibraryPage() {
           refreshToken={visualLibraryRefreshToken}
           onRegisterClick={() => setVisualUploadOpen(true)}
           onVisualRenamed={handleVisualRenamed}
+          resourceCdsByVisualId={resourceCdsByVisualId}
+          resourceNameMap={resourceNameMap}
         />
 
         <section
