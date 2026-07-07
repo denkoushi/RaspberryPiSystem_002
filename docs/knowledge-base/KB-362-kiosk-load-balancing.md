@@ -2,7 +2,7 @@
 title: KB-362 キオスク負荷調整（山崩し支援）画面
 tags: [kiosk, production-schedule, load-balancing, machine-monthly-load]
 audience: [開発者, 運用者]
-last-verified: 2026-05-28
+last-verified: 2026-07-07
 ---
 
 # KB-362: キオスク負荷調整（山崩し支援）画面
@@ -28,6 +28,8 @@ last-verified: 2026-05-28
 | 2026-05-28 UI | `feat/kiosk-load-balancing-chart-axis-padding` · **`cb339bfa`** | **棒グラフX軸ラベルパディング** — 資源CD/表示名を **+Y のみ** · 帯 **96px** · **Pi5 本番** · **→ CD下余白 fix で置換** |
 | 2026-05-28 UI | `feat/kiosk-load-balancing-axis-label-gap` · **`d0263cce`** | **棒グラフX軸 CD下余白+縦表示名** — 別 `<g>` 配置 · 帯 **108px** · **Pi5 本番** · **→ overview レイアウト fix で置換** |
 | 2026-05-28 UI | `fix/load-balancing-overview-chart-review` · **`da995573`** | **overview 棒グラフ最適化** — margin 二重解消 · 横スクロール · vertical-rl · ホバー枠線 · **Pi5 本番** |
+| 2026-07-07 改善 | `perf/load-balancing-api-speed` · **`5ed80ba6`** / `feat/kiosk-load-balancing-ui-refresh` · **`f91fa79a`** | **API高速化第1弾 + UI刷新** — machine-monthly のSQL集計化（機種未選択時の全行取得廃止）· 月次能力の範囲一括取得 · タブ2/3を `loadBalancingUiClasses` へ統一（14px・40pxタッチターゲット）· 生産システム非一致注記 · 管理設定保存エラー表示 · `placeholderData` · 初回ロードスケルトン — **全ホスト本番** |
+| 2026-07-07 改善 | `perf/load-balancing-winner-materialization` · **`647c6512`** | **API高速化第2弾（winner実体化）** — 相関サブクエリ起因の遅いプラン（下記 §APIレイテンシ改善）を順位ボードと同じ winner ID 実体化方式へ移行 · 未使用 `fkst` JOIN 削除 — **Pi5 本番** |
 
 **Prisma**: 機種別月次は既存テーブルのみ。着手日・平準化は **`ProductionScheduleResourceWorkCalendar`** 追加（`20260526100000_load_balancing_work_calendar`）。
 
@@ -42,6 +44,37 @@ last-verified: 2026-05-28
 **重要**: タブごとに「月」「負荷の載せ方」が異なる。混同すると集計が合わない。
 
 **生産システムとの関係**: 生産の積み上げグラフは **`FSIGENSHOYOYMD`（資源所要量）** 軸。キオスクは **着手日・納期** 軸。**数値一致は要件にしない**（2026-05-27 突合）。→ [KB-363](./KB-363-load-balancing-production-system-reconciliation.md) / [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)
+
+2026-07-07 より、資源CD俯瞰・機種別月次タブに非一致注記（`LoadBalancingProductionSystemNote`、`data-testid="load-balancing-production-system-note"`）を常時表示する（KB-363 未実施タスクの UI 明示に対応）。
+
+## APIレイテンシ改善（2026-07-07 · winner 実体化）
+
+### 症状
+
+- `machine-monthly-load` / `start-date-leveling` の実測が **約50秒**（Pi5 本番、初回・warm とも）。第1弾（SQL集計化・能力範囲一括取得）だけでは解消しなかった。
+
+### 根本原因（Pi5 本番DBで EXPLAIN ANALYZE 確認）
+
+- 負荷調整の集計 SQL は行ごとの相関サブクエリ `buildMaxProductNoWinnerCondition('CsvDashboardRow')` で winner 判定していた
+- この形だとプランナが `fkmail` の Seq Scan を起点に選び、`ProductionScheduleProgress` / `ProductionScheduleRowNote` への LEFT JOIN が **Seq Scan × 14,691 ループ**（Join Filter で 1.66 億行除外）になり、1クエリ **約70秒**
+- 順位ボードが既に採用していた winner 実体化（`fetchMaxProductNoWinnerRowIdsForDashboard` → `ANY(text[])` membership）は winner 確定 **340ms** + 集計 **0.7〜1.7秒**
+
+### 対処（`647c6512`）
+
+- 3クエリサービス（俯瞰集計・行候補・機種別月次・着手日）を winner 実体化方式へ移行
+- winner ID 取得はリクエスト毎に `load-balancing-winner-row-ids.ts` の `fetchLoadBalancingWinnerRowIds()` で **1回だけ**行い、複数クエリへ引き回す（順位ボード用 generation cache は境界を跨ぐため使わない）
+- 未使用の `ProductionScheduleFkojunstStatus AS "fkst"` LEFT JOIN を全クエリから削除
+- eligibility 条件・集計軸・レスポンス契約は不変（デプロイ前後のAPIレスポンスを保存し、俯瞰・機種別月次は完全一致、着手日は並び順のみ相違＝`plannedStartDate` 同値行のタイブレーク未固定による。内容は order-insensitive 比較で同値を確認）
+
+### 実測（Pi5 本番 · 2026-07-08 JST）
+
+| エンドポイント | 改善前 | 改善後 |
+|----------------|--------|--------|
+| `overview` | 1.3s | 1.5〜1.8s（同等） |
+| `machine-monthly-load`（6ヶ月） | **57s** | **4.4〜5.6s** |
+| `start-date-leveling`（月次） | **52s** | **1.9〜2.1s** |
+| `outsourcing-plan`（POST） | — | 2.6s |
+| `suggestions`（POST） | — | 1.6s |
 
 ## 機種別月次負荷 — 仕様（実装正本）
 
