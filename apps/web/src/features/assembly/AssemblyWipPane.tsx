@@ -23,6 +23,14 @@ function progressPercent(session: AssemblyWorkSessionSummaryDto): number {
   return Math.min(100, Math.max(0, Math.round((session.acceptedBoltCount / session.totalBoltCount) * 100)));
 }
 
+function areaStatusText(session: AssemblyWorkSessionSummaryDto): string {
+  const areaName = session.currentAreaName ?? 'エリア完了';
+  const position = session.currentBoltMarkerNo
+    ? `締付位置 #${session.currentBoltMarkerNo}`
+    : '次工程待ち';
+  return `${areaName} ・ ${position}`;
+}
+
 export function AssemblyWipPane({ sessions, loading, onReload }: Props) {
   return (
     <section
@@ -56,12 +64,12 @@ export function AssemblyWipPane({ sessions, loading, onReload }: Props) {
           </p>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 content-start grid-cols-1 gap-2 overflow-y-auto p-2 sm:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid min-h-0 flex-1 content-start grid-cols-1 gap-2 overflow-y-auto p-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {sessions.map((session) => (
             <Link
               key={session.id}
               to={kioskAssemblyWorkSessionPath(session.id)}
-              className="flex min-h-11 min-w-0 flex-col gap-2 rounded border border-white/10 bg-slate-900/55 px-3 py-2.5 text-white hover:border-emerald-300/40 hover:bg-slate-800"
+              className="flex min-h-11 min-w-0 flex-col gap-1 rounded border border-white/10 bg-slate-900/55 px-2.5 py-2 text-white hover:border-emerald-300/40 hover:bg-slate-800"
             >
               <div className="flex min-w-0 items-start justify-between gap-2">
                 <span className="min-w-0">
@@ -75,21 +83,14 @@ export function AssemblyWipPane({ sessions, loading, onReload }: Props) {
                 </span>
               </div>
               <span className="min-w-0">
-                <span className="block truncate text-base font-bold text-white/90">{session.targetUnit}</span>
+                <span className="block truncate text-sm font-bold text-white/90">{session.targetUnit}</span>
                 <span className="mt-0.5 block truncate text-xs font-semibold text-white/60">
                   {session.serialNo} / {session.operatorNameSnapshot}
                 </span>
               </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-bold text-white/90">
-                  {session.currentAreaName ?? 'エリア完了'}
-                </span>
-                <span className="mt-0.5 block truncate text-xs font-semibold text-white/55">
-                  {session.currentBoltMarkerNo ? `締付位置 #${session.currentBoltMarkerNo}` : '次工程待ち'}
-                </span>
-              </span>
+              <span className="block truncate text-xs font-bold text-white/85">{areaStatusText(session)}</span>
               <span className="grid gap-1">
-                <span className="text-right text-base font-bold text-cyan-200">{progressText(session)}</span>
+                <span className="text-right text-sm font-bold text-cyan-200">{progressText(session)}</span>
                 <span className="h-2 overflow-hidden rounded-full bg-white/10">
                   <span
                     className="block h-full rounded-full bg-gradient-to-r from-emerald-300 to-cyan-300"
