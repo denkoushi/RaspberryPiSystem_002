@@ -161,4 +161,39 @@ describe('InspectionDrawingCreateMetadataRow', () => {
     expect(screen.getByLabelText('検査数')).toHaveValue('fixed_count');
     expect(screen.getByLabelText('指定数')).toHaveValue(3);
   });
+
+  it('renders meta chip text inputs with black-on-white classes', () => {
+    render(
+      <InspectionDrawingCreateMetadataRow
+        lineageLocked={false}
+        fhincd="MD100469601"
+        onFhincdChange={vi.fn()}
+        resourceCd="033"
+        onResourceCdChange={vi.fn()}
+        resourceSelectOptions={[{ value: '033', label: '033 (横型)' }]}
+        resourceNameMap={{}}
+        processGroup="cutting"
+        templateName="7161サドル"
+        onTemplateNameChange={vi.fn()}
+        selfInspectionMode="fixed_count"
+        onSelfInspectionModeChange={vi.fn()}
+        selfInspectionFixedCount="3"
+        onSelfInspectionFixedCountChange={vi.fn()}
+        contentReadOnly={false}
+        onDrawingFileChange={vi.fn()}
+        templateVersion={2}
+        templateIsActive
+      />
+    );
+
+    for (const label of ['品番', 'テンプレ', '指定数'] as const) {
+      const input = screen.getByLabelText(label);
+      expect(input.className).toContain('!bg-white');
+      expect(input.className).toContain('!text-black');
+    }
+
+    const inspectionModeSelect = screen.getByLabelText('検査数');
+    expect(inspectionModeSelect.className).toContain('text-white');
+    expect(inspectionModeSelect.className).not.toContain('!text-black');
+  });
 });

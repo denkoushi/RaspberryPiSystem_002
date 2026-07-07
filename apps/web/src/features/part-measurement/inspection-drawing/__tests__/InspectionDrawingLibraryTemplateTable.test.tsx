@@ -77,6 +77,7 @@ describe('InspectionDrawingLibraryTemplateTable', () => {
       expect(screen.getAllByRole('columnheader', { name: header })).toHaveLength(2);
     }
     expect(screen.queryByRole('columnheader', { name: '資源CD' })).not.toBeInTheDocument();
+    expect(screen.queryByText('資源CD')).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: '操作' })).not.toBeInTheDocument();
     expect(screen.getByText('ABC-123')).toBeInTheDocument();
     expect(screen.getByText('7161テーブル')).toHaveAttribute('title', '7161テーブル');

@@ -1,6 +1,39 @@
 import { describe, expect, it } from 'vitest';
 
-import { isSelfInspectionSessionChromeFocusTarget } from './inspectionDrawingKioskUi';
+import {
+  inspectionDrawingCreateMetaChipControlClassName,
+  inspectionDrawingCreateMetaChipInputClassName,
+  inspectionDrawingCreateMetaChipWideControlClassName,
+  inspectionDrawingCreateMetaChipWideInputClassName,
+  isSelfInspectionSessionChromeFocusTarget
+} from './inspectionDrawingKioskUi';
+
+describe('inspectionDrawingCreateMetaChip input class names', () => {
+  it('applies black-on-white overrides to meta chip inputs', () => {
+    expect(inspectionDrawingCreateMetaChipInputClassName).toContain('!bg-white');
+    expect(inspectionDrawingCreateMetaChipInputClassName).toContain('!text-black');
+    expect(inspectionDrawingCreateMetaChipInputClassName).toContain('placeholder:!text-slate-500');
+    expect(inspectionDrawingCreateMetaChipInputClassName).toContain(
+      inspectionDrawingCreateMetaChipControlClassName
+    );
+  });
+
+  it('applies black-on-white overrides to wide meta chip inputs', () => {
+    expect(inspectionDrawingCreateMetaChipWideInputClassName).toContain('!bg-white');
+    expect(inspectionDrawingCreateMetaChipWideInputClassName).toContain('!text-black');
+    expect(inspectionDrawingCreateMetaChipWideInputClassName).toContain('placeholder:!text-slate-500');
+    expect(inspectionDrawingCreateMetaChipWideInputClassName).toContain(
+      inspectionDrawingCreateMetaChipWideControlClassName
+    );
+  });
+
+  it('keeps dark-theme control class names unchanged for selects and buttons', () => {
+    expect(inspectionDrawingCreateMetaChipControlClassName).toContain('text-white');
+    expect(inspectionDrawingCreateMetaChipControlClassName).not.toContain('!text-black');
+    expect(inspectionDrawingCreateMetaChipWideControlClassName).toContain('text-white');
+    expect(inspectionDrawingCreateMetaChipWideControlClassName).not.toContain('!text-black');
+  });
+});
 
 describe('isSelfInspectionSessionChromeFocusTarget', () => {
   it('returns true for toolbar and session action buttons', () => {
