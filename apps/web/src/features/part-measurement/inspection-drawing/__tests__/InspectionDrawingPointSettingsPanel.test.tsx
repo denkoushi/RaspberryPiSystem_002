@@ -237,4 +237,105 @@ describe('InspectionDrawingPointSettingsPanel', () => {
     expect(screen.getByLabelText('上限公差')).toHaveClass('!text-black');
     expect(screen.getByLabelText('下限公差')).toHaveClass('!text-black');
   });
+
+  it('auto-fills general tolerances on nominal blur when tolerances are empty', () => {
+    const onChange = vi.fn();
+
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{
+          ...point,
+          name: '幅',
+          nominalRaw: '50',
+          upperToleranceRaw: '',
+          lowerToleranceRaw: ''
+        }}
+        onChange={onChange}
+      />
+    );
+
+    fireEvent.blur(screen.getByLabelText('基準値'));
+
+    expect(onChange).toHaveBeenCalledWith({
+      upperToleranceRaw: '+0.3',
+      lowerToleranceRaw: '-0.3'
+    });
+  });
+
+  it('does not overwrite existing tolerances on nominal blur', () => {
+    const onChange = vi.fn();
+
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{
+          ...point,
+          name: '幅',
+          nominalRaw: '50',
+          upperToleranceRaw: '+0.1',
+          lowerToleranceRaw: '-0.1'
+        }}
+        onChange={onChange}
+      />
+    );
+
+    fireEvent.blur(screen.getByLabelText('基準値'));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-fill general tolerances for geometric labels on nominal blur', () => {
+    const onChange = vi.fn();
+
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{
+          ...point,
+          name: '直角度',
+          nominalRaw: '50',
+          upperToleranceRaw: '',
+          lowerToleranceRaw: ''
+        }}
+        onChange={onChange}
+      />
+    );
+
+    fireEvent.blur(screen.getByLabelText('基準値'));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('shows depth tolerance candidates for 深さ when focused', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, name: '深さ', upperToleranceRaw: '' }}
+        onChange={vi.fn()}
+      />
+    );
+
+    focusToleranceInput('上限公差');
+
+    expect(visibleToleranceCandidateButtons()).toEqual([
+      '0',
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+      '6',
+      '7',
+      '8',
+      '9',
+      '10',
+      '11',
+      '12',
+      '13',
+      '14',
+      '15',
+      '16',
+      '17',
+      '18',
+      '19',
+      '20'
+    ]);
+  });
 });

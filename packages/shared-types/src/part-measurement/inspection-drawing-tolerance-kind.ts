@@ -17,7 +17,10 @@ export const DEFAULT_INSPECTION_DRAWING_MEASUREMENT_LABELS: readonly string[] = 
   '高さ',
   '穴径',
   'ピッチ',
+  'キリ穴ピッチ',
+  'ザグリ穴ピッチ',
   '深さ',
+  'ネジ穴深さ',
   '面粗度',
   '振れ',
   '平行度',
@@ -126,4 +129,51 @@ export function buildInspectionDrawingToleranceCandidateValues(
     }
   }
   return values;
+}
+
+const DEPTH_TOLERANCE_CANDIDATE_LABELS = new Set(['深さ', 'ネジ穴深さ']);
+
+function buildDepthToleranceCandidateValues(): string[] {
+  return Array.from({ length: 21 }, (_, index) => String(index));
+}
+
+export function buildInspectionDrawingToleranceCandidateValuesForLabel(
+  label: string,
+  settings: readonly InspectionDrawingMeasurementLabelSetting[] = []
+): string[] {
+  const normalized = normalizeInspectionDrawingMeasurementLabel(label);
+  if (DEPTH_TOLERANCE_CANDIDATE_LABELS.has(normalized)) {
+    return buildDepthToleranceCandidateValues();
+  }
+  return buildInspectionDrawingToleranceCandidateValues(
+    resolveInspectionDrawingToleranceKindForLabel(label, settings)
+  );
+}
+
+export function resolveInspectionDrawingGeneralToleranceForNominal(nominal: number): string | null {
+  if (!Number.isFinite(nominal)) {
+    return null;
+  }
+  if (nominal >= 0.5 && nominal <= 6) {
+    return '0.1';
+  }
+  if (nominal > 6 && nominal <= 30) {
+    return '0.2';
+  }
+  if (nominal > 30 && nominal <= 120) {
+    return '0.3';
+  }
+  if (nominal > 120 && nominal <= 400) {
+    return '0.5';
+  }
+  if (nominal > 400 && nominal <= 1000) {
+    return '0.8';
+  }
+  if (nominal > 1000 && nominal <= 2000) {
+    return '1.2';
+  }
+  if (nominal > 2000 && nominal <= 4000) {
+    return '2.0';
+  }
+  return null;
 }
