@@ -106,7 +106,7 @@ export function AssemblyStartPane({
               ) : candidates.length === 0 ? (
                 <p className="px-2 py-2 text-xs font-semibold text-white/55">候補なし</p>
               ) : (
-                <div className="grid h-full gap-1 overflow-y-auto">
+                <div className="grid h-full content-start gap-1 overflow-y-auto">
                   {candidates.map((candidate) => {
                     const selected = selectedCandidate?.fseiban === candidate.fseiban;
                     return (
