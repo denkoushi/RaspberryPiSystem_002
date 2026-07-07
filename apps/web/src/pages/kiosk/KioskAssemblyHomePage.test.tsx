@@ -99,7 +99,14 @@ describe('KioskAssemblyHomePage', () => {
   it('selects a seiban candidate and starts work with normalized serial input', async () => {
     renderPage();
 
-    expect(screen.getByRole('link', { name: '手順書ライブラリ' })).toHaveAttribute('href', '/kiosk/assembly/library');
+    expect(screen.getByRole('link', { name: '手順書ライブラリ' })).toHaveAttribute(
+      'href',
+      '/kiosk/assembly/library?focus=procedures'
+    );
+    expect(screen.getByRole('link', { name: '組立テンプレート' })).toHaveAttribute(
+      'href',
+      '/kiosk/assembly/library?focus=templates'
+    );
     expect(screen.getByRole('link', { name: '閲覧順設定' })).toHaveAttribute('href', '/kiosk/assembly/procedure-order-settings');
     fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
 

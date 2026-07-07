@@ -13,7 +13,7 @@ import {
   AssemblyCompletedPane,
   AssemblyStartPane,
   AssemblyWipPane,
-  KIOSK_ASSEMBLY_LIBRARY_PATH,
+  kioskAssemblyLibraryPath,
   kioskAssemblyProcedureOrderSettingsPath,
   kioskAssemblyWorkSessionPath,
   readAssemblyApiErrorMessage
@@ -244,15 +244,21 @@ export function KioskAssemblyHomePage() {
       <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 p-2">
         <h1 className="text-[1.35rem] font-bold leading-tight">組立</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <Link to={KIOSK_ASSEMBLY_LIBRARY_PATH} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}>
+          <Link
+            to={kioskAssemblyLibraryPath({ focus: 'procedures' })}
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
+          >
             手順書ライブラリ
           </Link>
-          <Link to={KIOSK_ASSEMBLY_LIBRARY_PATH} className={buttonClassName('primary', 'inline-flex min-h-11 items-center text-[1.02rem]')}>
+          <Link
+            to={kioskAssemblyLibraryPath({ focus: 'templates' })}
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
+          >
             組立テンプレート
           </Link>
           <Link
             to={kioskAssemblyProcedureOrderSettingsPath({ machineName: selectedCandidate?.machineName ?? null })}
-            className={buttonClassName('secondary', 'inline-flex min-h-11 items-center text-[1.02rem]')}
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
           >
             閲覧順設定
           </Link>
