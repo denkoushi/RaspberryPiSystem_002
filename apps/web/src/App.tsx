@@ -130,11 +130,6 @@ const KioskAssemblyTemplateEditorPage = lazy(() =>
     default: module.KioskAssemblyTemplateEditorPage
   }))
 );
-const KioskAssemblyWorkStartPage = lazy(() =>
-  import('./pages/kiosk/KioskAssemblyWorkStartPage').then((module) => ({
-    default: module.KioskAssemblyWorkStartPage
-  }))
-);
 const KioskAssemblyWorkSessionPage = lazy(() =>
   import('./pages/kiosk/KioskAssemblyWorkSessionPage').then((module) => ({
     default: module.KioskAssemblyWorkSessionPage
@@ -201,10 +196,6 @@ function App() {
           <Route
             path="/kiosk/assembly/templates/:templateId/edit"
             element={lazyRouteElement(<KioskAssemblyTemplateEditorPage />)}
-          />
-          <Route
-            path="/kiosk/assembly/work/start"
-            element={lazyRouteElement(<KioskAssemblyWorkStartPage />)}
           />
           <Route
             path="/kiosk/assembly/work-sessions/:sessionId"

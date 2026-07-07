@@ -8,10 +8,8 @@ import {
   kioskAssemblyTemplateEditPath,
   kioskAssemblyTemplateNewPath,
   kioskAssemblyWorkSessionPath,
-  kioskAssemblyWorkStartPath,
   parseAssemblyProcedureOrderSettingsSearch,
-  parseAssemblyTemplateNewSearch,
-  parseAssemblyWorkStartSearch
+  parseAssemblyTemplateNewSearch
 } from './assemblyRoutes';
 
 describe('assemblyRoutes', () => {
@@ -21,9 +19,8 @@ describe('assemblyRoutes', () => {
     expect(KIOSK_ASSEMBLY_PROCEDURE_ORDER_SETTINGS_PATH).toBe('/kiosk/assembly/procedure-order-settings');
   });
 
-  it('builds template and work paths', () => {
+  it('builds template and session paths', () => {
     expect(kioskAssemblyTemplateEditPath('template-1')).toBe('/kiosk/assembly/templates/template-1/edit');
-    expect(kioskAssemblyWorkStartPath('template-1')).toBe('/kiosk/assembly/work/start?templateId=template-1');
     expect(kioskAssemblyWorkSessionPath('session-1')).toBe('/kiosk/assembly/work-sessions/session-1');
   });
 
@@ -37,10 +34,6 @@ describe('assemblyRoutes', () => {
       procedureDocumentId: 'doc-1',
       sourceTemplateId: 'template-1'
     });
-  });
-
-  it('parses work start query params', () => {
-    expect(parseAssemblyWorkStartSearch('?templateId=template-1')).toEqual({ templateId: 'template-1' });
   });
 
   it('builds and parses procedure order settings query params', () => {

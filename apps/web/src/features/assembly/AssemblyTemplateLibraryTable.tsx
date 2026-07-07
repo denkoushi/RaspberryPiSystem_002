@@ -3,11 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { Button, buttonClassName } from '../../components/ui/Button';
 
-import {
-  kioskAssemblyTemplateEditPath,
-  kioskAssemblyTemplateNewPath,
-  kioskAssemblyWorkStartPath
-} from './assemblyRoutes';
+import { kioskAssemblyTemplateEditPath, kioskAssemblyTemplateNewPath } from './assemblyRoutes';
 import { formatAssemblyTimestamp } from './assemblyUiHelpers';
 
 import type { AssemblyTemplateSummaryDto } from './types';
@@ -94,17 +90,6 @@ function TemplateTablePane({
                       </span>
                       <span className="truncate">{template.name}</span>
                       <div className="ml-auto flex w-[10.5rem] shrink-0 justify-end gap-0.5">
-                        {template.isActive ? (
-                          <Link
-                            to={kioskAssemblyWorkStartPath(template.id)}
-                            className={buttonClassName(
-                              'primary',
-                              'inline-flex min-h-5 min-w-[1.8rem] shrink-0 items-center rounded !px-1 !py-0 text-[0.58rem] leading-none'
-                            )}
-                          >
-                            作業
-                          </Link>
-                        ) : null}
                         <Link
                           to={kioskAssemblyTemplateEditPath(template.id)}
                           className={buttonClassName(

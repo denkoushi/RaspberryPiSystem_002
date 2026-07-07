@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 import { listAssemblyTemplateSummaries, retireAssemblyTemplate } from '../../api/client';
 import { Button, buttonClassName } from '../../components/ui/Button';
@@ -10,7 +10,6 @@ import {
   AssemblyTemplateHistoryDialog,
   AssemblyTemplateLibraryTable,
   KIOSK_ASSEMBLY_HOME_PATH,
-  kioskAssemblyTemplateNewPath,
   readAssemblyApiErrorMessage,
   useAssemblyTemplateLibrary
 } from '../../features/assembly';
@@ -28,7 +27,6 @@ function pickRepresentative(group: AssemblyTemplateSummaryDto[]): AssemblyTempla
 }
 
 export function KioskAssemblyPage() {
-  const navigate = useNavigate();
   const [message, setMessage] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
@@ -136,21 +134,7 @@ export function KioskAssemblyPage() {
             to={KIOSK_ASSEMBLY_HOME_PATH}
             className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
           >
-            組立開始へ
-          </Link>
-          <Button
-            type="button"
-            variant="ghostOnDark"
-            className="min-h-11 text-[1.02rem]"
-            onClick={() => void navigate('/kiosk/part-measurement/inspection')}
-          >
-            検査図面へ
-          </Button>
-          <Link
-            to={kioskAssemblyTemplateNewPath()}
-            className={buttonClassName('primary', 'inline-flex min-h-11 items-center text-[1.02rem]')}
-          >
-            新規
+            組立トップ
           </Link>
         </div>
       </div>
