@@ -6,9 +6,9 @@ import { formatResourceCdWithJapaneseNames } from '../../kiosk/leaderOrderBoard/
 import { InspectionDrawingCreateMetaChip } from './InspectionDrawingCreateMetaChip';
 import {
   inspectionDrawingCreateFlatMetaRowClassName,
-  inspectionDrawingCreateMetaChipControlClassName,
+  inspectionDrawingCreateMetaChipInputClassName,
   inspectionDrawingCreateMetaChipReadonlyValueClassName,
-  inspectionDrawingCreateMetaChipWideControlClassName,
+  inspectionDrawingCreateMetaChipWideInputClassName,
   inspectionDrawingCreateMetaChipSelectClassName
 } from './inspectionDrawingKioskUi';
 import { InspectionDrawingResourceCdMultiSelect } from './InspectionDrawingResourceCdMultiSelect';
@@ -85,7 +85,7 @@ export function InspectionDrawingCreateMetaChipList({
               id={fhincdFieldId}
               value={fhincd}
               onChange={(e) => onFhincdChange(e.target.value)}
-              className={inspectionDrawingCreateMetaChipControlClassName}
+              className={inspectionDrawingCreateMetaChipInputClassName}
               disabled={contentReadOnly}
             />
           </InspectionDrawingCreateMetaChip>
@@ -114,7 +114,7 @@ export function InspectionDrawingCreateMetaChipList({
           id={templateNameFieldId}
           value={templateName}
           onChange={(e) => onTemplateNameChange(e.target.value)}
-          className={inspectionDrawingCreateMetaChipWideControlClassName}
+          className={inspectionDrawingCreateMetaChipWideInputClassName}
           disabled={contentReadOnly}
         />
       </InspectionDrawingCreateMetaChip>
@@ -142,7 +142,7 @@ export function InspectionDrawingCreateMetaChipList({
             value={selfInspectionFixedCount}
             disabled={contentReadOnly}
             onChange={(e) => onSelfInspectionFixedCountChange(e.target.value)}
-            className={inspectionDrawingCreateMetaChipControlClassName}
+            className={inspectionDrawingCreateMetaChipInputClassName}
           />
         </InspectionDrawingCreateMetaChip>
       ) : null}

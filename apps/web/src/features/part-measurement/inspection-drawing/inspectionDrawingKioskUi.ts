@@ -96,6 +96,17 @@ export const inspectionDrawingCreateMetaChipWideControlClassName = clsx(
   'box-border h-9 w-full min-w-0 max-w-[22rem] px-2 text-[0.95rem] disabled:opacity-40'
 );
 
+/** chip 内の Input（品番・テンプレ・指定数）— 白背景＋黒文字で可読性を確保 */
+export const inspectionDrawingCreateMetaChipInputClassName = clsx(
+  inspectionDrawingCreateMetaChipControlClassName,
+  '!bg-white !text-black placeholder:!text-slate-500'
+);
+
+export const inspectionDrawingCreateMetaChipWideInputClassName = clsx(
+  inspectionDrawingCreateMetaChipWideControlClassName,
+  '!bg-white !text-black placeholder:!text-slate-500'
+);
+
 export const inspectionDrawingCreateMetaChipSelectClassName = clsx(
   inspectionDrawingCreateMetaChipControlClassName,
   'w-full max-w-[11rem]'
