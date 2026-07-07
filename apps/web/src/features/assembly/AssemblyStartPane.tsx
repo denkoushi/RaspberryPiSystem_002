@@ -166,11 +166,10 @@ export function AssemblyStartPane({
               <Input
                 value={operatorNameSnapshot}
                 onChange={(event) => onOperatorNameChange(event.target.value)}
-                placeholder="作業者（NFC可）"
+                placeholder="作業者（NFCタグでも入力可）"
                 className="min-h-10"
                 disabled={busy}
               />
-              <span className="text-[0.68rem] font-semibold text-white/45">NFCタグでも入力できます</span>
             </label>
           </div>
 

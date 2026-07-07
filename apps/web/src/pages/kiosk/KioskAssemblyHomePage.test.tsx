@@ -9,11 +9,19 @@ import type { AssemblySeibanCandidateDto, AssemblyWorkSessionSummaryDto } from '
 const mockListAssemblySeibanCandidates = vi.fn();
 const mockListAssemblyWorkSessionSummaries = vi.fn();
 const mockStartAssemblyWorkSession = vi.fn();
+const mockListAssemblySeibanLotQuantities = vi.fn();
+const mockResolveAssemblyOperatorNfc = vi.fn();
 
 vi.mock('../../api/client', () => ({
   listAssemblySeibanCandidates: (...args: unknown[]) => mockListAssemblySeibanCandidates(...args),
   listAssemblyWorkSessionSummaries: (...args: unknown[]) => mockListAssemblyWorkSessionSummaries(...args),
-  startAssemblyWorkSession: (...args: unknown[]) => mockStartAssemblyWorkSession(...args)
+  startAssemblyWorkSession: (...args: unknown[]) => mockStartAssemblyWorkSession(...args),
+  listAssemblySeibanLotQuantities: (...args: unknown[]) => mockListAssemblySeibanLotQuantities(...args),
+  resolveAssemblyOperatorNfc: (...args: unknown[]) => mockResolveAssemblyOperatorNfc(...args)
+}));
+
+vi.mock('../../hooks/useNfcStream', () => ({
+  useNfcStream: () => null
 }));
 
 const candidate: AssemblySeibanCandidateDto = {
@@ -78,9 +86,14 @@ describe('KioskAssemblyHomePage', () => {
     mockListAssemblySeibanCandidates.mockReset();
     mockListAssemblyWorkSessionSummaries.mockReset();
     mockStartAssemblyWorkSession.mockReset();
+    mockListAssemblySeibanLotQuantities.mockReset();
+    mockResolveAssemblyOperatorNfc.mockReset();
     mockListAssemblySeibanCandidates.mockResolvedValue([candidate]);
-    mockListAssemblyWorkSessionSummaries.mockResolvedValue([inProgressSession]);
+    mockListAssemblyWorkSessionSummaries.mockImplementation((params: { status?: string } = {}) =>
+      Promise.resolve(params.status === 'in_progress' ? [inProgressSession] : [])
+    );
     mockStartAssemblyWorkSession.mockResolvedValue({ id: 'session-1' });
+    mockListAssemblySeibanLotQuantities.mockResolvedValue([]);
   });
 
   it('selects a seiban candidate and starts work with normalized serial input', async () => {
@@ -109,6 +122,7 @@ describe('KioskAssemblyHomePage', () => {
         templateId: 'template-1',
         productNo: 'ASMTEST-A1',
         serialNo: 'S001',
+        operatorEmployeeId: null,
         operatorNameSnapshot: '佐藤',
         targetUnit: 'MH-AX',
         torqueWrenchId: 'CEM20N3X10D-BTLA'
