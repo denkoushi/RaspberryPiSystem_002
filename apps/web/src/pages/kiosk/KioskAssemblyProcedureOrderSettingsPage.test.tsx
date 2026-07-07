@@ -10,6 +10,11 @@ const mockVerifyAccessPassword = vi.fn();
 const mockGetAssemblyProcedureOrder = vi.fn();
 const mockSaveAssemblyProcedureOrder = vi.fn();
 const mockListAssemblyProcedureDocumentSummaries = vi.fn();
+const mockUseProtectedImageBlobUrl = vi.fn();
+
+vi.mock('../../hooks/useProtectedImageBlobUrl', () => ({
+  useProtectedImageBlobUrl: (...args: unknown[]) => mockUseProtectedImageBlobUrl(...args)
+}));
 
 vi.mock('../../api/client', () => ({
   verifyAssemblyProcedureOrderAccessPassword: (...args: unknown[]) => mockVerifyAccessPassword(...args),
@@ -54,63 +59,60 @@ describe('KioskAssemblyProcedureOrderSettingsPage', () => {
     mockGetAssemblyProcedureOrder.mockReset();
     mockSaveAssemblyProcedureOrder.mockReset();
     mockListAssemblyProcedureDocumentSummaries.mockReset();
+    mockUseProtectedImageBlobUrl.mockReset();
+    mockUseProtectedImageBlobUrl.mockReturnValue({ blobUrl: 'blob:preview-image', error: null });
     mockVerifyAccessPassword.mockResolvedValue({ success: true });
     mockGetAssemblyProcedureOrder.mockResolvedValue(emptyOrder);
     mockListAssemblyProcedureDocumentSummaries.mockResolvedValue([procedureDocumentA]);
     mockSaveAssemblyProcedureOrder.mockImplementation(async (payload) => ({
       ...emptyOrder,
       configured: payload.items.length > 0,
-      items: payload.items.map(
-        (
-          item: { assemblyProcedureDocumentId?: string | null; kioskDocumentId?: string | null; label?: string | null },
-          index: number
-        ) => ({
-          id: `item-${index}`,
-          sortOrder: index,
-          label: item.label ?? null,
+      items: payload.items.map((item, index) => ({
+        id: `item-${index}`,
+        sortOrder: index,
+        label: item.label ?? null,
+        documentType: item.assemblyProcedureDocumentId ? 'assembly_procedure_document' : 'kiosk_document',
+        kioskDocumentId: item.kioskDocumentId ?? null,
+        assemblyProcedureDocumentId: item.assemblyProcedureDocumentId ?? null,
+        document: {
+          id: item.assemblyProcedureDocumentId ?? item.kioskDocumentId ?? `doc-${index}`,
           documentType: item.assemblyProcedureDocumentId ? 'assembly_procedure_document' : 'kiosk_document',
-          kioskDocumentId: item.kioskDocumentId ?? null,
-          assemblyProcedureDocumentId: item.assemblyProcedureDocumentId ?? null,
-          document: {
-            id: item.assemblyProcedureDocumentId ?? item.kioskDocumentId ?? `doc-${index}`,
-            documentType: item.assemblyProcedureDocumentId ? 'assembly_procedure_document' : 'kiosk_document',
-            title: procedureDocumentA.name,
-            displayTitle: null,
-            filename: procedureDocumentA.name,
-            confirmedDocumentNumber: null,
-            confirmedSummaryText: null,
-            pageCount: 1,
-            enabled: true,
-            updatedAt: procedureDocumentA.updatedAt,
-            imageRelativePath: item.assemblyProcedureDocumentId ? procedureDocumentA.imageRelativePath : null
-          }
-        })
-      )
+          title: procedureDocumentA.name,
+          displayTitle: null,
+          filename: procedureDocumentA.name,
+          confirmedDocumentNumber: null,
+          confirmedSummaryText: null,
+          pageCount: 1,
+          enabled: true,
+          updatedAt: procedureDocumentA.updatedAt,
+          imageRelativePath: item.assemblyProcedureDocumentId ? procedureDocumentA.imageRelativePath : null
+        }
+      }))
     }));
   });
 
   it('authenticates, adds an assembly procedure document, and saves order items', async () => {
     renderPage();
-
     fireEvent.change(screen.getByPlaceholderText('パスワード'), { target: { value: '2520' } });
     fireEvent.click(screen.getByRole('button', { name: '認証' }));
-
     await waitFor(() => expect(mockVerifyAccessPassword).toHaveBeenCalledWith({ password: '2520' }));
     await waitFor(() => expect(mockGetAssemblyProcedureOrder).toHaveBeenCalledWith('MH-AX'));
     await waitFor(() => expect(mockListAssemblyProcedureDocumentSummaries).toHaveBeenCalledWith({ limit: 200 }));
     expect(await screen.findByText('MH-AX 締付手順')).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole('button', { name: '追加' }));
     fireEvent.change(screen.getByPlaceholderText('例: X軸'), { target: { value: 'X軸' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
-
-    await waitFor(() =>
-      expect(mockSaveAssemblyProcedureOrder).toHaveBeenCalledWith({
-        machineName: 'MH-AX',
-        accessPassword: '2520',
-        items: [{ assemblyProcedureDocumentId: procedureDocumentA.id, kioskDocumentId: null, label: 'X軸' }]
-      })
-    );
+    await waitFor(() => expect(mockSaveAssemblyProcedureOrder).toHaveBeenCalledWith({ machineName: 'MH-AX', accessPassword: '2520', items: [{ assemblyProcedureDocumentId: procedureDocumentA.id, kioskDocumentId: null, label: 'X軸' }] }));
     expect(await screen.findByText('閲覧順設定を保存しました。')).toBeInTheDocument();
+  });
+
+  it('loads assembly procedure preview via protected image fetch', async () => {
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText('パスワード'), { target: { value: '2520' } });
+    fireEvent.click(screen.getByRole('button', { name: '認証' }));
+    await waitFor(() => expect(mockListAssemblyProcedureDocumentSummaries).toHaveBeenCalledWith({ limit: 200 }));
+    fireEvent.click(screen.getByRole('button', { name: /MH-AX 締付手順/ }));
+    await waitFor(() => expect(mockUseProtectedImageBlobUrl).toHaveBeenCalledWith(procedureDocumentA.imageRelativePath));
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:preview-image');
   });
 });

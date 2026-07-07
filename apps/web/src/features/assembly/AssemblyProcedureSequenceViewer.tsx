@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { resolveKioskDocumentPageImageUrl } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 
+import { isAssemblyProcedureImagePath, KioskDocumentPageImage } from './KioskDocumentPageImage';
+
 import type { AssemblyProcedureSequenceDto } from './types';
 
 type Props = {
@@ -53,6 +55,7 @@ export function AssemblyProcedureSequenceViewer({ sequence, className }: Props) 
       documents[documentIndex + 1]?.pageUrls[0],
     ].filter((url): url is string => Boolean(url));
     for (const url of prefetchTargets) {
+      if (isAssemblyProcedureImagePath(url)) continue;
       const img = new Image();
       img.src = resolveKioskDocumentPageImageUrl(url);
     }
@@ -60,16 +63,12 @@ export function AssemblyProcedureSequenceViewer({ sequence, className }: Props) 
 
   const goPrevPage = () => {
     if (!document) return;
-    if (pageIndex > 0) {
-      setPageIndex((current) => current - 1);
-    }
+    if (pageIndex > 0) setPageIndex((current) => current - 1);
   };
 
   const goNextPage = () => {
     if (!document) return;
-    if (pageIndex < pageUrls.length - 1) {
-      setPageIndex((current) => current + 1);
-    }
+    if (pageIndex < pageUrls.length - 1) setPageIndex((current) => current + 1);
   };
 
   const goPrevDocument = () => {
@@ -103,79 +102,26 @@ export function AssemblyProcedureSequenceViewer({ sequence, className }: Props) 
       <div className="shrink-0 border-b border-white/10 bg-slate-900/80 p-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-white">
-              {document.label?.trim() || displayTitle(document)}
-            </p>
-            <p className="truncate text-xs font-semibold text-white/55">
-              {displayTitle(document)} / {pageIndex + 1}/{pageUrls.length}ページ / 全{totalPages}ページ
-            </p>
+            <p className="truncate text-sm font-bold text-white">{document.label?.trim() || displayTitle(document)}</p>
+            <p className="truncate text-xs font-semibold text-white/55">{displayTitle(document)} / {pageIndex + 1}/{pageUrls.length}ページ / 全{totalPages}ページ</p>
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-1">
-            <Button
-              type="button"
-              variant="ghostOnDark"
-              className="min-h-9 !px-2 !py-1 text-sm"
-              disabled={documentIndex === 0}
-              onClick={goPrevDocument}
-            >
-              前書
-            </Button>
-            <Button
-              type="button"
-              variant="ghostOnDark"
-              className="min-h-9 !px-2 !py-1 text-sm"
-              disabled={pageIndex === 0}
-              onClick={goPrevPage}
-            >
-              前頁
-            </Button>
-            <Button
-              type="button"
-              variant="ghostOnDark"
-              className="min-h-9 !px-2 !py-1 text-sm"
-              disabled={pageIndex === pageUrls.length - 1}
-              onClick={goNextPage}
-            >
-              次頁
-            </Button>
-            <Button
-              type="button"
-              variant="ghostOnDark"
-              className="min-h-9 !px-2 !py-1 text-sm"
-              disabled={documentIndex === documents.length - 1}
-              onClick={goNextDocument}
-            >
-              次書
-            </Button>
+            <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={documentIndex === 0} onClick={goPrevDocument}>前書</Button>
+            <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={pageIndex === 0} onClick={goPrevPage}>前頁</Button>
+            <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={pageIndex === pageUrls.length - 1} onClick={goNextPage}>次頁</Button>
+            <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={documentIndex === documents.length - 1} onClick={goNextDocument}>次書</Button>
           </div>
         </div>
         <div className="mt-2 flex gap-1 overflow-x-auto">
           {documents.map((item, index) => (
-            <button
-              key={item.orderItemId}
-              type="button"
-              className={`shrink-0 rounded border px-2 py-1 text-xs font-semibold ${
-                index === documentIndex
-                  ? 'border-cyan-300 bg-cyan-900/45 text-cyan-100'
-                  : 'border-white/10 bg-slate-950/70 text-white/65 hover:bg-slate-800'
-              }`}
-              onClick={() => {
-                setDocumentIndex(index);
-                setPageIndex(0);
-              }}
-            >
+            <button key={item.orderItemId} type="button" className={`shrink-0 rounded border px-2 py-1 text-xs font-semibold ${index === documentIndex ? 'border-cyan-300 bg-cyan-900/45 text-cyan-100' : 'border-white/10 bg-slate-950/70 text-white/65 hover:bg-slate-800'}`} onClick={() => { setDocumentIndex(index); setPageIndex(0); }}>
               {index + 1}. {item.label?.trim() || item.displayTitle || item.title}
             </button>
           ))}
         </div>
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-2">
-        <img
-          src={resolveKioskDocumentPageImageUrl(pageUrl)}
-          alt=""
-          className="h-full max-h-full w-full max-w-full object-contain"
-          draggable={false}
-        />
+        <KioskDocumentPageImage pageUrl={pageUrl} alt="" className="h-full max-h-full w-full max-w-full object-contain" />
       </div>
     </div>
   );
