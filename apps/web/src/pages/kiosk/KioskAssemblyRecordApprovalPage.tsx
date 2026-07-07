@@ -46,7 +46,7 @@ function SessionListItem({
       type="button"
       onClick={onSelect}
       className={clsx(
-        'grid w-full gap-1 rounded border p-3 text-left transition-colors',
+        'grid w-full gap-0.5 rounded border p-2 text-left transition-colors',
         selected
           ? 'border-sky-300 bg-sky-500/15'
           : 'border-white/15 bg-slate-900/80 hover:border-white/35 hover:bg-slate-800'
@@ -61,7 +61,7 @@ function SessionListItem({
         </div>
         <span
           className={clsx(
-            'shrink-0 rounded px-2 py-1 text-xs font-semibold',
+            'shrink-0 rounded px-2 py-0.5 text-xs font-semibold',
             approved ? 'bg-emerald-400/20 text-emerald-100' : 'bg-amber-400/25 text-amber-100'
           )}
         >
@@ -91,7 +91,7 @@ function DetailPane({
   const approved = session.approval != null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3">
+    <div className="flex min-h-0 w-full max-w-[56rem] flex-1 flex-col gap-2 justify-self-start overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-2.5">
       <div>
         <h2 className="text-xl font-bold">{session.productNo}</h2>
         <p className="mt-1 text-sm text-white/65">
@@ -99,23 +99,23 @@ function DetailPane({
         </p>
       </div>
 
-      <dl className="grid gap-2 text-sm sm:grid-cols-2">
-        <div>
+      <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+        <div className="flex items-baseline gap-1.5">
           <dt className="text-white/55">作業者</dt>
           <dd className="font-semibold">{session.operatorNameSnapshot}</dd>
         </div>
-        <div>
+        <div className="flex items-baseline gap-1.5">
           <dt className="text-white/55">完了日時</dt>
           <dd className="font-semibold">{formatDateTime(session.completedAt)}</dd>
         </div>
-        <div>
+        <div className="flex items-baseline gap-1.5">
           <dt className="text-white/55">締付完了</dt>
           <dd className="font-semibold">
             {session.areaTorqueSummaries.reduce((sum, area) => sum + area.acceptedOkCount, 0)}/
             {session.areaTorqueSummaries.reduce((sum, area) => sum + area.totalBoltCount, 0)} 箇所
           </dd>
         </div>
-        <div>
+        <div className="flex items-baseline gap-1.5">
           <dt className="text-white/55">承認状態</dt>
           <dd className="font-semibold">{approved ? '承認済み' : '未承認'}</dd>
         </div>
@@ -123,25 +123,25 @@ function DetailPane({
 
       <section>
         <h3 className="mb-2 text-sm font-bold text-white/80">エリア別トルク実績</h3>
-        <div className="overflow-x-auto rounded border border-white/10">
-          <table className="min-w-full text-left text-sm">
+        <div className="w-fit max-w-full overflow-x-auto rounded border border-white/10">
+          <table className="w-auto text-left text-sm">
             <thead className="bg-slate-950/70 text-white/60">
               <tr>
-                <th className="px-3 py-2">工程</th>
-                <th className="px-3 py-2">エリア</th>
-                <th className="px-3 py-2">OK</th>
-                <th className="px-3 py-2">NG</th>
-                <th className="px-3 py-2">無視</th>
+                <th className="px-2.5 py-1.5">工程</th>
+                <th className="px-2.5 py-1.5">エリア</th>
+                <th className="px-2.5 py-1.5">OK</th>
+                <th className="px-2.5 py-1.5">NG</th>
+                <th className="px-2.5 py-1.5">無視</th>
               </tr>
             </thead>
             <tbody>
               {session.areaTorqueSummaries.map((area) => (
                 <tr key={area.areaId} className="border-t border-white/10">
-                  <td className="px-3 py-2">{area.processNo}</td>
-                  <td className="px-3 py-2">{area.areaName}</td>
-                  <td className="px-3 py-2 font-mono">{area.acceptedOkCount}/{area.totalBoltCount}</td>
-                  <td className="px-3 py-2 font-mono">{area.ngCount}</td>
-                  <td className="px-3 py-2 font-mono">{area.ignoredCount}</td>
+                  <td className="px-2.5 py-1.5">{area.processNo}</td>
+                  <td className="px-2.5 py-1.5">{area.areaName}</td>
+                  <td className="px-2.5 py-1.5 font-mono">{area.acceptedOkCount}/{area.totalBoltCount}</td>
+                  <td className="px-2.5 py-1.5 font-mono">{area.ngCount}</td>
+                  <td className="px-2.5 py-1.5 font-mono">{area.ignoredCount}</td>
                 </tr>
               ))}
             </tbody>
@@ -150,22 +150,22 @@ function DetailPane({
       </section>
 
       {approved ? (
-        <div className="rounded border border-emerald-300/30 bg-emerald-500/10 p-3 text-sm">
+        <div className="max-w-md rounded border border-emerald-300/30 bg-emerald-500/10 p-2.5 text-sm">
           <p className="font-semibold text-emerald-100">
             承認者: {session.approval?.approverEmployeeNameSnapshot}
           </p>
-          <p className="mt-1 text-emerald-100/80">承認日時: {formatDateTime(session.approval?.approvedAt ?? null)}</p>
+          <p className="mt-0.5 text-emerald-100/80">承認日時: {formatDateTime(session.approval?.approvedAt ?? null)}</p>
         </div>
       ) : (
-        <div className="rounded border border-white/15 bg-slate-950/60 p-3">
+        <div className="max-w-md rounded border border-white/15 bg-slate-950/60 p-2.5">
           <p className="text-sm font-semibold text-white/80">承認者NFC</p>
-          <p className="mt-1 text-sm text-white/65">
+          <p className="mt-0.5 text-sm text-white/65">
             {approver ? `${approver.displayName} を承認者として読み取りました。` : '社員タグをタッチしてください。'}
           </p>
           <Button
             type="button"
             variant="secondary"
-            className="mt-3 min-h-11"
+            className="mt-2 min-h-11"
             disabled={!approver || approving}
             onClick={onApprove}
           >
@@ -414,7 +414,7 @@ export function KioskAssemblyRecordApprovalPage() {
         </section>
 
         {detailLoading ? (
-          <div className="flex min-h-0 flex-1 items-center justify-center rounded border border-white/15 bg-slate-900/70 p-6 text-sm text-white/60">
+          <div className="flex min-h-0 w-full max-w-[56rem] flex-1 items-center justify-center justify-self-start rounded border border-white/15 bg-slate-900/70 p-6 text-sm text-white/60">
             詳細を読込中…
           </div>
         ) : detail ? (
@@ -426,7 +426,7 @@ export function KioskAssemblyRecordApprovalPage() {
             onApprove={() => void approveSelectedSession()}
           />
         ) : (
-          <div className="flex min-h-0 flex-1 items-center justify-center rounded border border-white/15 bg-slate-900/70 p-6 text-sm text-white/60">
+          <div className="flex min-h-0 w-full max-w-[56rem] flex-1 items-center justify-center justify-self-start rounded border border-white/15 bg-slate-900/70 p-6 text-sm text-white/60">
             確認する完了製品を選択してください。
           </div>
         )}
