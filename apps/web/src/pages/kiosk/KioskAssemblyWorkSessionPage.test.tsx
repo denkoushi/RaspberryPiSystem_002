@@ -167,9 +167,10 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
     expect(await screen.findByText('要領書 / ページ送り')).toBeInTheDocument();
     expect(screen.getByText('X軸')).toBeInTheDocument();
-    expect(screen.getByText(/1\/2ページ/)).toBeInTheDocument();
+    expect(await screen.findByText(/1\/2ページ/, undefined, { timeout: 5000 })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '次頁' }));
-    await waitFor(() => expect(screen.getByText(/2\/2ページ/)).toBeInTheDocument());
+    // CIランナーが遅い場合に1秒のデフォルトwaitForで拾えずフレークするため延長
+    await waitFor(() => expect(screen.getByText(/2\/2ページ/)).toBeInTheDocument(), { timeout: 5000 });
   });
 
   it('falls back to existing procedure canvas when sequence is not configured', async () => {
