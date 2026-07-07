@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>棚マスタ — マス中心フロー（検討用・静的）</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --border: rgba(148, 163, 184, 0.22);
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --emerald: #34d399;
+      --machine: #334155;
+      --machine-b: #64748b;
+      --shelf: #422006;
+      --shelf-b: #b45309;
+      --unused: rgba(15, 23, 42, 0.65);
+      --modal-w: min(96vw, 920px);
+      --modal-h: min(92dvh, 800px);
+      --map-size: min(100%, 26rem);
+      --dock-max-h: min(38dvh, 320px);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #0b1220;
+      color: #f8fafc;
+    }
+    .page { max-width: 1280px; margin: 0 auto; padding: 0.5rem; }
+    .chip-hint {
+      margin: 0 0 0.5rem;
+      padding: 0.4rem 0.55rem;
+      border-radius: 8px;
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      background: rgba(120, 53, 15, 0.2);
+      font-size: 0.68rem;
+      color: #fde68a;
+    }
+    .monitor {
+      width: min(1280px, 100%);
+      height: min(800px, calc(100dvh - 5rem));
+      margin: 0 auto;
+      border-radius: 14px;
+      border: 3px solid #334155;
+      overflow: hidden;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+    .monitor-label {
+      flex-shrink: 0;
+      font-size: 0.62rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 0.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .kiosk { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .top {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.55rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .top h2 { margin: 0; font-size: 0.78rem; font-weight: 800; flex: 1; }
+    .top .back {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid rgba(148, 163, 184, 0.35);
+      background: rgba(255, 255, 255, 0.06);
+      color: #e2e8f0;
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      cursor: pointer;
+    }
+
+    .overlay {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.5rem;
+      min-height: 0;
+      background: rgba(2, 6, 23, 0.55);
+    }
+    .modal {
+      width: var(--modal-w);
+      max-height: var(--modal-h);
+      display: flex;
+      flex-direction: column;
+      border-radius: 12px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #0f172a;
+      overflow: hidden;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+    }
+    .modal-head {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.55rem;
+      border-bottom: 1px solid #cbd5e1;
+    }
+    .modal-head h3 { margin: 0; flex: 1; font-size: 0.82rem; font-weight: 700; }
+    .btn-close {
+      appearance: none;
+      border-radius: 6px;
+      border: 1px solid #94a3b8;
+      background: #fff;
+      font: inherit;
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 0.14rem 0.45rem;
+      cursor: pointer;
+    }
+    .modal-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      padding: 0.35rem 0.5rem 0.5rem;
+      overflow-y: auto;
+    }
+    .map-pane {
+      flex: 0 0 auto;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      background: #0f172a;
+      padding: 0.3rem;
+    }
+    .factory-map {
+      display: grid;
+      grid-template-columns: auto auto 1fr auto auto;
+      grid-template-rows: auto auto 1fr auto auto;
+      gap: 4px;
+      width: var(--map-size);
+      max-width: var(--map-size);
+      margin: 0 auto;
+      aspect-ratio: 1;
+    }
+    .zone-center {
+      grid-column: 3;
+      grid-row: 3;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-radius: 10px;
+      border: 2px solid var(--amber);
+      background: rgba(120, 53, 15, 0.15);
+      padding: 3px;
+    }
+    .zone-title {
+      text-align: center;
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: #fef3c7;
+      margin-bottom: 2px;
+    }
+    .zone-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 4px;
+      min-height: 11rem;
+    }
+    .neighbor {
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.06);
+      color: #94a3b8;
+      font-size: 0.58rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .n-nw { grid-column: 1; grid-row: 1; }
+    .n-n  { grid-column: 3; grid-row: 1; }
+    .n-ne { grid-column: 5; grid-row: 1; }
+    .n-w  { grid-column: 1; grid-row: 3; }
+    .n-e  { grid-column: 5; grid-row: 3; }
+    .n-sw { grid-column: 1; grid-row: 5; }
+    .n-s  { grid-column: 3; grid-row: 5; }
+    .n-se { grid-column: 5; grid-row: 5; }
+
+    .cell {
+      position: relative;
+      appearance: none;
+      border-radius: 6px;
+      border: 2px solid transparent;
+      font: inherit;
+      cursor: pointer;
+      padding: 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+      gap: 1px;
+    }
+    .cell:disabled { cursor: not-allowed; opacity: 0.32; }
+    .cell .badge { font-size: 0.5rem; font-weight: 800; opacity: 0.85; }
+    .cell .main { font-size: clamp(0.55rem, 2vw, 0.72rem); font-weight: 800; line-height: 1.1; text-align: center; }
+    .cell .code { font-family: ui-monospace, monospace; font-size: 0.48rem; color: #7dd3fc; }
+    .cell.machine { background: var(--machine); border-color: var(--machine-b); color: #cbd5e1; }
+    .cell.shelf { background: linear-gradient(180deg, #5c4008, var(--shelf)); border-color: var(--shelf-b); color: #fef3c7; }
+    .cell.unused { background: var(--unused); color: #64748b; }
+    .cell.unused .main { opacity: 0.45; }
+    .cell.sel {
+      outline: 3px solid var(--sky);
+      outline-offset: 1px;
+      z-index: 1;
+    }
+    .cell .pi-badge {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      font-size: 0.42rem;
+      font-weight: 800;
+      padding: 0.05rem 0.2rem;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.9);
+      color: #022c22;
+      max-width: 92%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dock-pane {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: var(--dock-max-h);
+      overflow: auto;
+      border-radius: 10px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      padding: 0.5rem;
+      color: #f8fafc;
+    }
+    .dock-context {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.45rem;
+      padding-bottom: 0.35rem;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+    }
+    .dock-context .dot {
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.empty { background: #64748b; }
+    .dot.shelf { background: var(--amber); }
+    .dot.pi { background: var(--emerald); }
+    .dock-context .where {
+      font-size: 0.72rem;
+      font-weight: 800;
+      flex: 1;
+    }
+    .dock-context .code {
+      font-family: ui-monospace, monospace;
+      font-size: 0.62rem;
+      color: #7dd3fc;
+    }
+
+    .dock-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+    .ctl {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid rgba(148, 163, 184, 0.35);
+      background: rgba(255, 255, 255, 0.06);
+      color: #e2e8f0;
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 800;
+      padding: 0.45rem 0.65rem;
+      cursor: pointer;
+    }
+    .ctl.primary {
+      border-color: #15803d;
+      background: linear-gradient(180deg, #166534, #14532d);
+      color: #ecfdf5;
+      flex: 1 1 100%;
+      min-height: 2.5rem;
+      font-size: 0.85rem;
+    }
+    .ctl.ghost { opacity: 0.55; font-size: 0.68rem; font-weight: 600; }
+    .ctl:disabled { opacity: 0.28; cursor: not-allowed; }
+    .ctl.flow {
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.65);
+    }
+
+    .pi-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.35rem;
+      margin-top: 0.25rem;
+    }
+    .pi-chip {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid #475569;
+      background: rgba(255, 255, 255, 0.04);
+      color: #e2e8f0;
+      font: inherit;
+      padding: 0.35rem 0.25rem;
+      text-align: left;
+      cursor: pointer;
+    }
+    .pi-chip.on {
+      border-color: var(--emerald);
+      background: rgba(6, 78, 59, 0.45);
+      box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.4);
+    }
+    .pi-chip .name { display: block; font-size: 0.58rem; font-weight: 800; }
+    .pi-chip .sub { display: block; font-size: 0.48rem; color: #94a3b8; margin-top: 0.1rem; }
+    .pi-chip.on .sub { color: #6ee7b7; }
+
+    .dock-secondary {
+      margin-top: 0.5rem;
+      padding-top: 0.4rem;
+      border-top: 1px dashed rgba(148, 163, 184, 0.2);
+    }
+    .dock-secondary summary {
+      font-size: 0.62rem;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .dock-secondary .row { margin-top: 0.35rem; }
+
+    .modal-foot {
+      flex-shrink: 0;
+      padding: 0.35rem 0.5rem 0.45rem;
+      border-top: 1px solid #cbd5e1;
+      background: #f1f5f9;
+    }
+    .save-zone {
+      width: 100%;
+      appearance: none;
+      border: none;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #1d4ed8, #1e3a8a);
+      color: #eff6ff;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 800;
+      padding: 0.55rem;
+      cursor: pointer;
+    }
+    .save-zone:disabled { opacity: 0.35; cursor: not-allowed; }
+    .toast {
+      position: fixed;
+      bottom: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 0.45rem 0.75rem;
+      border-radius: 8px;
+      background: rgba(6, 78, 59, 0.95);
+      color: #d1fae5;
+      font-size: 0.72rem;
+      font-weight: 700;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 99;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <p class="chip-hint">
+      <strong>検討用</strong> — タブ・左右並列なし。地図でマスを選ぶと下の操作だけが入れ替わる（空→部品置き場→Pi）。クリックで操作可能。
+    </p>
+    <div class="monitor" aria-label="キオスク 1280×800 想定">
+      <div class="monitor-label">棚マスタ — マス中心フロー（静的プレビュー）</div>
+      <div class="kiosk">
+        <header class="top">
+          <button type="button" class="back">戻る</button>
+          <h2>棚マスタ — 工場全体</h2>
+        </header>
+        <div class="overlay">
+          <div class="modal" role="dialog" aria-labelledby="dlg-title">
+            <header class="modal-head">
+              <h3 id="dlg-title">編集 — 東・南</h3>
+              <button type="button" class="btn-close" id="btn-close">閉じる</button>
+            </header>
+            <div class="modal-body">
+              <div class="map-pane">
+                <div class="factory-map" id="factory-map">
+                  <div class="neighbor n-nw">北西</div>
+                  <div class="neighbor n-n">北</div>
+                  <div class="neighbor n-ne">北東</div>
+                  <div class="neighbor n-w">西</div>
+                  <div class="zone-center">
+                    <div class="zone-title">東・南</div>
+                    <div class="zone-grid" id="zone-grid"></div>
+                  </div>
+                  <div class="neighbor n-e">東</div>
+                  <div class="neighbor n-sw">南西</div>
+                  <div class="neighbor n-s">南</div>
+                  <div class="neighbor n-se">南東</div>
+                </div>
+              </div>
+              <div class="dock-pane" id="dock"></div>
+            </div>
+            <footer class="modal-foot">
+              <button type="button" class="save-zone" id="save-zone" disabled>この区画を保存</button>
+            </footer>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script>
+    const GRID = 3;
+    const PI_DEVICES = [
+      { id: 'pi1', name: 'zero2w-tanaban01', preset: '西-北-01' },
+      { id: 'pi2', name: 'zero2w-tanaban02', preset: null },
+      { id: 'pi3', name: 'zero2w-line02', preset: '東-中央-02' }
+    ];
+
+    /** @type {{ kind: 'unused'|'shelf'|'machine', label?: string, code?: string, piId?: string|null }[]} */
+    let cells = Array(9).fill(null).map(() => ({ kind: 'unused' }));
+    cells[4] = {
+      kind: 'shelf',
+      label: '立型(FJV60/80)南',
+      code: '中央-南-03',
+      piId: null
+    };
+    cells[0] = { kind: 'machine', label: 'Robodrill01' };
+
+    let selectedIdx = null;
+    let dirty = false;
+
+    const zoneGrid = document.getElementById('zone-grid');
+    const dock = document.getElementById('dock');
+    const saveZone = document.getElementById('save-zone');
+    const toast = document.getElementById('toast');
+
+    function rc(i) {
+      const r = Math.floor(i / GRID);
+      const c = i % GRID;
+      return 'abcdef'[c] + (r + 1);
+    }
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 1600);
+    }
+
+    function cellState(idx) {
+      const c = cells[idx];
+      if (c.kind === 'unused') return 'empty';
+      if (c.kind === 'shelf' && !c.piId) return 'shelf';
+      if (c.kind === 'shelf' && c.piId) return 'pi';
+      return 'other';
+    }
+
+    function isMapCellDisabled(i, c) {
+      if (selectedIdx === null) return false;
+      const st = cellState(selectedIdx);
+      if (st === 'empty') return i !== selectedIdx;
+      if (st === 'shelf') return c.kind !== 'shelf';
+      if (st === 'pi') return i !== selectedIdx;
+      return true;
+    }
+
+    function renderMap() {
+      zoneGrid.innerHTML = '';
+      for (let i = 0; i < 9; i++) {
+        const c = cells[i];
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'cell';
+        btn.dataset.idx = String(i);
+        btn.disabled = isMapCellDisabled(i, c);
+
+        if (c.kind === 'machine') {
+          btn.classList.add('machine');
+          btn.innerHTML = '<span class="badge">機</span><span class="main">' + c.label + '</span>';
+        } else if (c.kind === 'shelf') {
+          btn.classList.add('shelf');
+          let html = '<span class="badge">棚</span><span class="main">' + (c.label || '棚') + '</span>';
+          if (c.code) html += '<span class="code">' + c.code + '</span>';
+          if (c.piId) {
+            const pi = PI_DEVICES.find((p) => p.id === c.piId);
+            if (pi) html += '<span class="pi-badge">' + pi.name.replace('zero2w-', '') + '</span>';
+          }
+          btn.innerHTML = html;
+        } else {
+          btn.classList.add('unused');
+          btn.innerHTML = '<span class="main">—</span>';
+        }
+
+        if (i === selectedIdx) btn.classList.add('sel');
+        btn.addEventListener('click', () => onCellClick(i));
+        zoneGrid.appendChild(btn);
+      }
+      saveZone.disabled = !dirty;
+    }
+
+    function onCellClick(idx) {
+      selectedIdx = idx;
+      renderMap();
+      renderDock();
+    }
+
+    function renderDock() {
+      if (selectedIdx === null) {
+        dock.innerHTML =
+          '<div class="dock-context"><span class="dot empty"></span><span class="where">マスを選ぶ</span></div>' +
+          '<p style="margin:0;font-size:0.68rem;color:#64748b">地図のマスをタップ</p>';
+        return;
+      }
+      const c = cells[selectedIdx];
+      const st = cellState(selectedIdx);
+
+      if (st === 'empty') {
+        dock.innerHTML =
+          '<div class="dock-context"><span class="dot empty"></span><span class="where">マス ' + rc(selectedIdx) + '</span><span class="code">未使用</span></div>' +
+          '<div class="dock-actions">' +
+          '<button type="button" class="ctl primary flow" id="act-place-shelf">部品置き場にする</button>' +
+          '</div>' +
+          '<details class="dock-secondary"><summary>その他</summary><div class="row">' +
+          '<button type="button" class="ctl ghost" disabled>加工機</button>' +
+          '<button type="button" class="ctl ghost" disabled>通路</button>' +
+          '</div></details>';
+        document.getElementById('act-place-shelf').onclick = () => {
+          cells[selectedIdx] = {
+            kind: 'shelf',
+            label: '置場-' + rc(selectedIdx),
+            code: '東-南-' + String(selectedIdx + 1).padStart(2, '0'),
+            piId: null
+          };
+          dirty = true;
+          renderMap();
+          renderDock();
+        };
+        return;
+      }
+
+      if (st === 'shelf') {
+        const shelf = c;
+        const chips = PI_DEVICES.map((pi) => {
+          const on = pi.preset === shelf.code || false;
+          const assignedElsewhere = cells.some((x, j) => j !== selectedIdx && x.piId === pi.id);
+          return (
+            '<button type="button" class="pi-chip' +
+            (on ? ' on' : '') +
+            '" data-pi="' +
+            pi.id +
+            '"' +
+            (assignedElsewhere && !on ? ' disabled style="opacity:0.35"' : '') +
+            '>' +
+            '<span class="name">' +
+            pi.name +
+            '</span><span class="sub">' +
+            (on ? 'この棚' : pi.preset || '未設定') +
+            '</span></button>'
+          );
+        }).join('');
+
+        dock.innerHTML =
+          '<div class="dock-context"><span class="dot shelf"></span><span class="where">' +
+          (shelf.label || '棚') +
+          '</span><span class="code">' +
+          shelf.code +
+          '</span></div>' +
+          '<div class="pi-row">' +
+          chips +
+          '</div>' +
+          '<div class="dock-actions" style="margin-top:0.45rem">' +
+          '<button type="button" class="ctl primary flow" id="act-clear-pi" disabled>スキャナを外す</button>' +
+          '</div>';
+
+        dock.querySelectorAll('.pi-chip').forEach((el) => {
+          el.addEventListener('click', () => {
+            const piId = el.getAttribute('data-pi');
+            PI_DEVICES.forEach((p) => {
+              if (p.preset === shelf.code) p.preset = null;
+            });
+            cells.forEach((x) => {
+              if (x.piId === piId) x.piId = null;
+            });
+            const pi = PI_DEVICES.find((p) => p.id === piId);
+            if (pi) pi.preset = shelf.code;
+            cells[selectedIdx].piId = piId;
+            dirty = true;
+            renderMap();
+            renderDock();
+          });
+        });
+        return;
+      }
+
+      if (st === 'pi') {
+        const shelf = c;
+        const pi = PI_DEVICES.find((p) => p.id === shelf.piId);
+        dock.innerHTML =
+          '<div class="dock-context"><span class="dot pi"></span><span class="where">' +
+          (shelf.label || '棚') +
+          '</span><span class="code">' +
+          shelf.code +
+          '</span></div>' +
+          '<div class="dock-actions">' +
+          '<button type="button" class="ctl" id="act-change-pi">スキャナを変更</button>' +
+          '<button type="button" class="ctl ghost" id="act-clear-pi">外す</button>' +
+          '</div>' +
+          '<p style="margin:0.35rem 0 0;font-size:0.62rem;color:#6ee7b7;font-weight:700">' +
+          (pi ? pi.name : '') +
+          '</p>';
+        document.getElementById('act-clear-pi').onclick = () => {
+          if (pi) pi.preset = null;
+          cells[selectedIdx].piId = null;
+          dirty = true;
+          renderMap();
+          renderDock();
+        };
+        document.getElementById('act-change-pi').onclick = () => {
+          cells[selectedIdx].piId = null;
+          if (pi) pi.preset = null;
+          dirty = true;
+          renderMap();
+          renderDock();
+        };
+      }
+    }
+
+    saveZone.addEventListener('click', () => {
+      if (!dirty) return;
+      dirty = false;
+      saveZone.disabled = true;
+      showToast('区画を保存しました（デモ）');
+      renderMap();
+    });
+
+    document.getElementById('btn-close').addEventListener('click', () => {
+      if (dirty && !confirm('未保存の変更があります。閉じますか？')) return;
+      showToast('閉じる（デモ）');
+    });
+
+    renderMap();
+    renderDock();
+  </script>
+</body>
+</html>
