@@ -105,6 +105,13 @@ Maintained in accordance with `.agent/PLANS.md`.
   - 仕様: 図面ライブラリ表は縦方向に画面下まで伸ばし、テンプレート一覧は単一横長表をやめて左右2表に分割。各テンプレートは上段 `品番 / 図面名 / 工程 / 点 / 更新`、下段 `資源CD` chip + `編集 / 帳票 / 雛形 / 履歴` の1.5行表示にする。
   - UI: 品番列は本体最大10桁 + 追番を想定して幅を確保。複数資源CDは最大4 chip + `+N` 省略。下段4ボタンは更新時刻の右端に揃え、図面ライブラリ側は図面名列を優先する。
   - 検証: Web targeted tests **12 PASS**、`pnpm --filter @raspi-system/web build` PASS、`pnpm --filter @raspi-system/web lint` PASS、Mac DEV `/dev/kiosk-inspection-drawing-library` 2048x1108 で2表・縦伸長・右端揃え・横 overflow なしを確認。
+- [x] (2026-07-07) **作成画面入力改善 + 図面ライブラリ資源CD chip** — ブランチ `fix/inspection-drawing-meta-input-visibility`（`f5ad83b1` / `04038f6c`）· `feat/kiosk-inspection-drawing-tolerance-labels`（`2b8cd94d`）· main マージ `1b17f397` / `664aedc2`
+  - 仕様1: 作成ヘッダーの品番/テンプレ/指定数 Input が白背景×白文字で不可視 → `inspectionDrawingCreateMetaChipInputClassName`（`!bg-white !text-black`）を新設して黒文字化。検査数 select・資源セレクトのダークテーマは不変。
+  - 仕様2: 名称候補に `キリ穴ピッチ` / `ザグリ穴ピッチ` / `ネジ穴深さ` を追加（shared-types `DEFAULT_INSPECTION_DRAWING_MEASUREMENT_LABELS` 正本のみ変更、API/Web 双方に反映）。
+  - 仕様3: 名称 `深さ` / `ネジ穴深さ` の上下限公差候補は `0`〜`20`（1刻み）— `buildInspectionDrawingToleranceCandidateValuesForLabel` を新設（既存 kind ベース関数は互換維持）。
+  - 仕様4: 寸法公差のみ、基準値 blur 時に普通公差（削り加工: 0.5–6→±0.1, –30→±0.2, –120→±0.3, –400→±0.5, –1000→±0.8, –2000→±1.2, –4000→±2.0）を上下限が両方空のときだけ自動入力（`resolveInspectionDrawingGeneralToleranceForNominal`）。候補チップ/手入力は従来どおり。
+  - 仕様5: 図面ライブラリ表にもテンプレ表と同じ1.5行目（`InspectionDrawingResourceCdChipList` へ共通化）でテンプレ作成済み資源CD chip を表示（`useInspectionDrawingResourceCdsByVisualId` がフィルタ非依存で visualTemplateId→資源CD map を構築）。両ペインの「資源CD」ラベル文字列は削除。
+  - 検証: Web 全テスト **1313 PASS**、`tsc -b` PASS、web/shared-types lint PASS、API `pnpm build` PASS、web `pnpm build` PASS（Mac ローカル、2026-07-07）。実機デプロイ・実機目視は未実施。
 - [ ] (2026-07-01) **残り手動確認** — 本番DBを書き換える一括作成/まとめて改版/資源追加は実機で未実行。次回は検証用データまたは明示許可のある品番・資源CDで、作成→まとめて改版→個別分離→資源追加を画面操作で確認する。
 
 ## Surprises & Discoveries
