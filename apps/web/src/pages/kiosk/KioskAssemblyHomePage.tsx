@@ -2,15 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router-dom';
 
 import {
+  createAssemblyLot,
+  listAssemblyLotSummaries,
   listAssemblySeibanCandidates,
   listAssemblySeibanLotQuantities,
   listAssemblyWorkSessionSummaries,
   resolveAssemblyOperatorNfc,
-  startAssemblyWorkSession
+  startAssemblyLotSerial
 } from '../../api/client';
 import { buttonClassName } from '../../components/ui/Button';
 import {
   AssemblyCompletedPane,
+  AssemblyLotPane,
   AssemblyStartPane,
   AssemblyWipPane,
   kioskAssemblyLibraryPath,
@@ -21,7 +24,7 @@ import {
 } from '../../features/assembly';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
-import type { AssemblySeibanCandidateDto, AssemblyWorkSessionSummaryDto } from '../../features/assembly/types';
+import type { AssemblyLotSummaryDto, AssemblySeibanCandidateDto, AssemblyWorkSessionSummaryDto } from '../../features/assembly/types';
 
 const DEFAULT_TORQUE_WRENCH_ID = 'CEM20N3X10D-BTLA';
 
@@ -48,36 +51,57 @@ export function KioskAssemblyHomePage() {
   const [selectedCandidate, setSelectedCandidate] = useState<AssemblySeibanCandidateDto | null>(null);
   const [candidates, setCandidates] = useState<AssemblySeibanCandidateDto[]>([]);
   const [candidateLoading, setCandidateLoading] = useState(false);
-  const [serialNo, setSerialNo] = useState('');
+  const [serialDraft, setSerialDraft] = useState('');
+  const [lotSerialNos, setLotSerialNos] = useState<string[]>([]);
   const [operatorNameSnapshot, setOperatorNameSnapshot] = useState('');
   const [operatorEmployeeId, setOperatorEmployeeId] = useState<string | null>(null);
   const [torqueWrenchId, setTorqueWrenchId] = useState(DEFAULT_TORQUE_WRENCH_ID);
+  const [lots, setLots] = useState<AssemblyLotSummaryDto[]>([]);
   const [sessions, setSessions] = useState<AssemblyWorkSessionSummaryDto[]>([]);
   const [completedSessions, setCompletedSessions] = useState<AssemblyWorkSessionSummaryDto[]>([]);
+  const [lotLoading, setLotLoading] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [completedLoading, setCompletedLoading] = useState(false);
   const [lotQtyByProductNo, setLotQtyByProductNo] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
+  const [busySerialId, setBusySerialId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const normalizedFseiban = useMemo(() => normalizeIdentifier(fseibanInput), [fseibanInput]);
-  const normalizedSerialNo = useMemo(() => normalizeSerialIdentifier(serialNo), [serialNo]);
-  const canStart =
+  const normalizedSerialDraft = useMemo(() => normalizeSerialIdentifier(serialDraft), [serialDraft]);
+  const selectedLotQty = selectedCandidate ? (lotQtyByProductNo[selectedCandidate.fseiban] ?? null) : null;
+  const expectedLotQuantity =
+    selectedLotQty != null && Number.isFinite(selectedLotQty) && Number.isInteger(selectedLotQty) && selectedLotQty > 0
+      ? selectedLotQty
+      : null;
+  const serialDraftDuplicate = normalizedSerialDraft.length > 0 && lotSerialNos.includes(normalizedSerialDraft);
+  const canRegisterLot =
     !!selectedCandidate?.activeTemplate &&
-    normalizedSerialNo.length > 0 &&
+    expectedLotQuantity != null &&
+    lotSerialNos.length === expectedLotQuantity &&
     operatorNameSnapshot.trim().length > 0 &&
     torqueWrenchId.trim().length > 0;
 
   const productNosForLotQty = useMemo(() => {
     const productNos = new Set<string>();
+    for (const lot of lots) productNos.add(lot.productNo);
     for (const session of sessions) productNos.add(session.productNo);
     for (const session of completedSessions) productNos.add(session.productNo);
     for (const candidate of candidates) productNos.add(candidate.fseiban);
     if (selectedCandidate) productNos.add(selectedCandidate.fseiban);
     return [...productNos];
-  }, [sessions, completedSessions, candidates, selectedCandidate]);
+  }, [lots, sessions, completedSessions, candidates, selectedCandidate]);
 
-  const selectedLotQty = selectedCandidate ? (lotQtyByProductNo[selectedCandidate.fseiban] ?? null) : null;
+  const reloadLots = useCallback(async () => {
+    setLotLoading(true);
+    try {
+      setLots(await listAssemblyLotSummaries({ limit: 30 }));
+    } catch (e: unknown) {
+      setMessage(readAssemblyApiErrorMessage(e, '登録済みロットの取得に失敗しました。'));
+    } finally {
+      setLotLoading(false);
+    }
+  }, []);
 
   const reloadSessions = useCallback(async () => {
     setSessionLoading(true);
@@ -102,9 +126,10 @@ export function KioskAssemblyHomePage() {
   }, []);
 
   useEffect(() => {
+    void reloadLots();
     void reloadSessions();
     void reloadCompletedSessions();
-  }, [reloadSessions, reloadCompletedSessions]);
+  }, [reloadLots, reloadSessions, reloadCompletedSessions]);
 
   useEffect(() => {
     if (productNosForLotQty.length === 0) {
@@ -134,8 +159,14 @@ export function KioskAssemblyHomePage() {
   }, [normalizedFseiban]);
 
   useEffect(() => {
-    setSerialNo(normalizedSerialNo);
-  }, [normalizedSerialNo]);
+    setSerialDraft(normalizedSerialDraft);
+  }, [normalizedSerialDraft]);
+
+  useEffect(() => {
+    if (selectedCandidate) return;
+    setSerialDraft('');
+    setLotSerialNos([]);
+  }, [selectedCandidate]);
 
   useEffect(() => {
     const prefix = normalizedFseiban.trim();
@@ -188,15 +219,15 @@ export function KioskAssemblyHomePage() {
   };
 
   const appendSerial = (key: string) => {
-    setSerialNo((current) => normalizeSerialIdentifier(`${current}${key}`));
+    setSerialDraft((current) => normalizeSerialIdentifier(`${current}${key}`));
   };
 
   const changeFseibanInput = (value: string) => {
     setFseibanInput(normalizeIdentifier(value));
   };
 
-  const changeSerialNo = (value: string) => {
-    setSerialNo(normalizeSerialIdentifier(value));
+  const changeSerialDraft = (value: string) => {
+    setSerialDraft(normalizeSerialIdentifier(value));
   };
 
   const backspaceFseiban = () => {
@@ -204,12 +235,14 @@ export function KioskAssemblyHomePage() {
   };
 
   const backspaceSerial = () => {
-    setSerialNo((current) => current.slice(0, -1));
+    setSerialDraft((current) => current.slice(0, -1));
   };
 
   const selectCandidate = (candidate: AssemblySeibanCandidateDto) => {
     setSelectedCandidate(candidate);
     setFseibanInput(candidate.fseiban);
+    setSerialDraft('');
+    setLotSerialNos([]);
     setMessage(null);
   };
 
@@ -218,25 +251,70 @@ export function KioskAssemblyHomePage() {
     setOperatorEmployeeId(null);
   };
 
-  const startWork = async () => {
+  const addSerialToLot = () => {
+    const next = normalizedSerialDraft;
+    if (!next) return;
+    if (expectedLotQuantity == null) {
+      setMessage('ロット数が正の整数で取得できる製番を選択してください。');
+      return;
+    }
+    if (lotSerialNos.length >= expectedLotQuantity) {
+      setMessage('ロット数を超えるシリアルNo.は登録できません。');
+      return;
+    }
+    if (lotSerialNos.includes(next)) {
+      setMessage('同じシリアルNo.は登録できません。');
+      return;
+    }
+    setLotSerialNos((current) => [...current, next]);
+    setSerialDraft('');
+    setMessage(null);
+  };
+
+  const removeSerialFromLot = (serialNo: string) => {
+    setLotSerialNos((current) => current.filter((item) => item !== serialNo));
+  };
+
+  const registerLot = async () => {
     if (!selectedCandidate?.activeTemplate) return;
+    if (expectedLotQuantity == null) {
+      setMessage('ロット数が正の整数で取得できないため、ロット登録できません。');
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
-      const session = await startAssemblyWorkSession({
+      await createAssemblyLot({
         templateId: selectedCandidate.activeTemplate.id,
         productNo: selectedCandidate.fseiban,
-        serialNo: normalizedSerialNo,
+        expectedQuantity: expectedLotQuantity,
+        serialNos: lotSerialNos,
         operatorEmployeeId,
         operatorNameSnapshot: operatorNameSnapshot.trim(),
         targetUnit: selectedCandidate.machineName,
         torqueWrenchId: torqueWrenchId.trim()
       });
-      navigate(kioskAssemblyWorkSessionPath(session.id));
+      setLotSerialNos([]);
+      setSerialDraft('');
+      setMessage('ロットを登録しました。登録済みロットからシリアルごとに開始してください。');
+      await reloadLots();
     } catch (e: unknown) {
-      setMessage(readAssemblyApiErrorMessage(e, '組立作業の開始に失敗しました。'));
+      setMessage(readAssemblyApiErrorMessage(e, 'ロット登録に失敗しました。'));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const startRegisteredSerial = async (lotId: string, lotSerialId: string) => {
+    setBusySerialId(lotSerialId);
+    setMessage(null);
+    try {
+      const session = await startAssemblyLotSerial(lotId, lotSerialId);
+      navigate(kioskAssemblyWorkSessionPath(session.id));
+    } catch (e: unknown) {
+      setMessage(readAssemblyApiErrorMessage(e, 'シリアルの組立開始に失敗しました。'));
+    } finally {
+      setBusySerialId(null);
     }
   };
 
@@ -276,6 +354,13 @@ export function KioskAssemblyHomePage() {
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(0,1fr)_24rem] xl:overflow-hidden 2xl:grid-cols-[minmax(0,1fr)_24.5rem]">
         <div className="flex min-h-0 min-w-0 flex-col gap-2 xl:min-h-0">
+          <AssemblyLotPane
+            lots={lots}
+            loading={lotLoading}
+            busySerialId={busySerialId}
+            onReload={() => void reloadLots()}
+            onStartSerial={(lotId, lotSerialId) => void startRegisteredSerial(lotId, lotSerialId)}
+          />
           <AssemblyWipPane sessions={sessions} loading={sessionLoading} onReload={() => void reloadSessions()} />
           <AssemblyCompletedPane
             sessions={completedSessions}
@@ -295,19 +380,24 @@ export function KioskAssemblyHomePage() {
           candidateLoading={candidateLoading}
           selectedCandidate={selectedCandidate}
           onSelectCandidate={selectCandidate}
-          serialNo={serialNo}
-          onSerialNoChange={changeSerialNo}
+          serialDraft={serialDraft}
+          serialNos={lotSerialNos}
+          expectedLotQuantity={expectedLotQuantity}
+          serialDraftDuplicate={serialDraftDuplicate}
+          onSerialDraftChange={changeSerialDraft}
           onSerialKey={appendSerial}
           onSerialBackspace={backspaceSerial}
-          onSerialClear={() => setSerialNo('')}
+          onSerialClear={() => setSerialDraft('')}
+          onSerialAdd={addSerialToLot}
+          onSerialRemove={removeSerialFromLot}
           operatorNameSnapshot={operatorNameSnapshot}
           onOperatorNameChange={changeOperatorName}
           selectedLotQty={selectedLotQty}
           torqueWrenchId={torqueWrenchId}
           onTorqueWrenchIdChange={setTorqueWrenchId}
-          canStart={canStart}
+          canRegisterLot={canRegisterLot}
           busy={busy}
-          onStart={() => void startWork()}
+          onRegisterLot={() => void registerLot()}
         />
       </main>
     </div>

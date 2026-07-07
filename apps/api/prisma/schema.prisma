@@ -2347,6 +2347,7 @@ model AssemblyTemplate {
   procedureDocument   AssemblyProcedureDocument @relation(fields: [procedureDocumentId], references: [id], onDelete: Restrict)
   areas               AssemblyTemplateArea[]
   workSessions        AssemblyWorkSession[]
+  lots                AssemblyLot[]
 
   @@unique([modelCode, procedurePattern, version], map: "AssemblyTemplate_unique_model_pattern_version")
   @@index([modelCode, procedurePattern, isActive], map: "AssemblyTemplate_idx_model_pattern_active")
@@ -2398,10 +2399,59 @@ model AssemblyTemplateBolt {
   @@index([areaId, markerNo], map: "AssemblyTemplateBolt_idx_area_marker")
 }
 
+/// 組立キオスク: シリアルNo.の全体一意予約。ロット登録時点で作業セッション未作成でも予約する。
+model AssemblySerialRegistry {
+  id          String               @id @default(uuid())
+  serialNo    String               @unique
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  lotSerial   AssemblyLotSerial?
+  workSession AssemblyWorkSession?
+}
+
+/// 組立キオスク: 製番ごとのロット計画。各シリアルの作業セッションは開始時に遅延作成する。
+model AssemblyLot {
+  id                       String              @id @default(uuid())
+  templateId               String
+  productNo                String
+  expectedQuantity         Int
+  operatorEmployeeId       String?
+  operatorNameSnapshot     String
+  targetUnit               String
+  torqueWrenchId           String
+  clientDeviceId           String?
+  clientDeviceNameSnapshot String?
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  template                 AssemblyTemplate    @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  serials                  AssemblyLotSerial[]
+
+  @@index([productNo, updatedAt], map: "AssemblyLot_idx_product_updated")
+  @@index([templateId, updatedAt], map: "AssemblyLot_idx_template_updated")
+}
+
+/// 組立キオスク: ロット内シリアル。シリアルはRegistry経由で全体一意にする。
+model AssemblyLotSerial {
+  id               String                 @id @default(uuid())
+  lotId            String
+  serialRegistryId String                 @unique
+  sortOrder        Int
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  lot              AssemblyLot            @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  serialRegistry   AssemblySerialRegistry @relation(fields: [serialRegistryId], references: [id], onDelete: Restrict)
+  workSession      AssemblyWorkSession?
+
+  @@unique([lotId, sortOrder], map: "AssemblyLotSerial_unique_lot_sort")
+  @@index([lotId, sortOrder], map: "AssemblyLotSerial_idx_lot_sort")
+}
+
 /// 組立トルク管理: 製番/シリアル単位の作業実績。
 model AssemblyWorkSession {
   id                       String                    @id @default(uuid())
   templateId               String
+  serialRegistryId         String?                   @unique
+  lotSerialId              String?                   @unique
   status                   AssemblyWorkSessionStatus @default(IN_PROGRESS)
   productNo                String
   serialNo                 String
@@ -2421,6 +2471,8 @@ model AssemblyWorkSession {
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   template                 AssemblyTemplate          @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  serialRegistry           AssemblySerialRegistry?   @relation(fields: [serialRegistryId], references: [id], onDelete: Restrict)
+  lotSerial                AssemblyLotSerial?        @relation(fields: [lotSerialId], references: [id], onDelete: SetNull)
   torqueRecords            AssemblyTorqueRecord[]
   restartLogs              AssemblyAreaRestartLog[]
   approval                 AssemblyWorkSessionApproval?

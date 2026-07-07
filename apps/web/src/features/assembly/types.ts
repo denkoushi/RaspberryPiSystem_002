@@ -123,6 +123,7 @@ export type AssemblyAreaTorqueSummaryDto = {
 
 export type AssemblyWorkSessionDto = {
   id: string;
+  lotSerialId: string | null;
   templateId: string;
   status: 'in_progress' | 'completed' | 'cancelled';
   productNo: string;
@@ -164,6 +165,7 @@ export type AssemblySeibanCandidateDto = {
 
 export type AssemblyWorkSessionSummaryDto = {
   id: string;
+  lotSerialId: string | null;
   templateId: string;
   status: 'in_progress' | 'completed' | 'cancelled';
   productNo: string;
@@ -187,6 +189,53 @@ export type AssemblyWorkSessionSummaryDto = {
   acceptedBoltCount: number;
   totalBoltCount: number;
   approval: AssemblyWorkSessionApprovalDto | null;
+};
+
+export type AssemblyLotSerialStatusDto = 'not_started' | 'in_progress' | 'completed' | 'cancelled';
+
+export type AssemblyLotSerialDto = {
+  id: string;
+  lotId: string;
+  sortOrder: number;
+  serialNo: string;
+  status: AssemblyLotSerialStatusDto;
+  workSessionId: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  updatedAt: string;
+  approval: AssemblyWorkSessionApprovalDto | null;
+};
+
+export type AssemblyLotSummaryDto = {
+  id: string;
+  templateId: string;
+  productNo: string;
+  expectedQuantity: number;
+  registeredSerialCount: number;
+  notStartedCount: number;
+  inProgressCount: number;
+  completedCount: number;
+  cancelledCount: number;
+  approvedCount: number;
+  isWorkComplete: boolean;
+  isFullyApproved: boolean;
+  operatorEmployeeId: string | null;
+  operatorNameSnapshot: string;
+  targetUnit: string;
+  torqueWrenchId: string;
+  clientDeviceId: string | null;
+  clientDeviceNameSnapshot: string | null;
+  createdAt: string;
+  updatedAt: string;
+  template: {
+    id: string;
+    modelCode: string;
+    procedurePattern: string;
+    name: string;
+    version: number;
+  };
+  serials: AssemblyLotSerialDto[];
 };
 
 export type AssemblyProcedureOrderDocumentDto = {
@@ -297,6 +346,17 @@ export type AssemblyWorkSessionStartInput = {
   productNo: string;
   serialNo: string;
   nameplateNo?: string | null;
+  operatorEmployeeId?: string | null;
+  operatorNameSnapshot: string;
+  targetUnit: string;
+  torqueWrenchId: string;
+};
+
+export type AssemblyLotCreateInput = {
+  templateId: string;
+  productNo: string;
+  expectedQuantity: number;
+  serialNos: string[];
   operatorEmployeeId?: string | null;
   operatorNameSnapshot: string;
   targetUnit: string;

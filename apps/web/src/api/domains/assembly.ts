@@ -6,6 +6,8 @@ import type {
   AssemblyProcedureOrderDto,
   AssemblyProcedureOrderSaveInput,
   AssemblyProcedureSequenceDto,
+  AssemblyLotCreateInput,
+  AssemblyLotSummaryDto,
   AssemblyTemplateCreateInput,
   AssemblyTemplateDto,
   AssemblyTemplateSummaryDto,
@@ -176,6 +178,33 @@ export async function retireAssemblyTemplate(id: string) {
 
 export async function startAssemblyWorkSession(payload: AssemblyWorkSessionStartInput) {
   const { data } = await api.post<{ session: AssemblyWorkSessionDto }>('/assembly/work-sessions', payload);
+  return data.session;
+}
+
+export async function createAssemblyLot(payload: AssemblyLotCreateInput) {
+  const { data } = await api.post<{ lot: AssemblyLotSummaryDto }>('/assembly/lots', payload);
+  return data.lot;
+}
+
+export async function listAssemblyLotSummaries(params?: { productNo?: string; limit?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.productNo) qs.set('productNo', params.productNo);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const { data } = await api.get<{ lots: AssemblyLotSummaryDto[] }>(`/assembly/lots/summary${suffix}`);
+  return data.lots;
+}
+
+export async function getAssemblyLot(id: string) {
+  const { data } = await api.get<{ lot: AssemblyLotSummaryDto }>(`/assembly/lots/${id}`);
+  return data.lot;
+}
+
+export async function startAssemblyLotSerial(lotId: string, lotSerialId: string) {
+  const { data } = await api.post<{ session: AssemblyWorkSessionDto }>(
+    `/assembly/lots/${lotId}/serials/${lotSerialId}/start`,
+    {}
+  );
   return data.session;
 }
 

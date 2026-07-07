@@ -1,5 +1,6 @@
 export * from './AssemblyCompletedPane';
 export * from './AssemblyKeypad';
+export * from './AssemblyLotPane';
 export * from './AssemblyStartPane';
 export * from './AssemblyProcedureCanvas';
 export * from './AssemblyProcedureSequenceViewer';

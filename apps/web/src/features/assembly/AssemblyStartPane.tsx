@@ -19,19 +19,24 @@ type Props = {
   candidateLoading: boolean;
   selectedCandidate: AssemblySeibanCandidateDto | null;
   onSelectCandidate: (candidate: AssemblySeibanCandidateDto) => void;
-  serialNo: string;
-  onSerialNoChange: (value: string) => void;
+  serialDraft: string;
+  serialNos: string[];
+  expectedLotQuantity: number | null;
+  serialDraftDuplicate: boolean;
+  onSerialDraftChange: (value: string) => void;
   onSerialKey: (key: string) => void;
   onSerialBackspace: () => void;
   onSerialClear: () => void;
+  onSerialAdd: () => void;
+  onSerialRemove: (serialNo: string) => void;
   operatorNameSnapshot: string;
   onOperatorNameChange: (value: string) => void;
   selectedLotQty: number | null;
   torqueWrenchId: string;
   onTorqueWrenchIdChange: (value: string) => void;
-  canStart: boolean;
+  canRegisterLot: boolean;
   busy: boolean;
-  onStart: () => void;
+  onRegisterLot: () => void;
 };
 
 function candidateClassName(selected: boolean): string {
@@ -51,21 +56,29 @@ export function AssemblyStartPane({
   candidateLoading,
   selectedCandidate,
   onSelectCandidate,
-  serialNo,
-  onSerialNoChange,
+  serialDraft,
+  serialNos,
+  expectedLotQuantity,
+  serialDraftDuplicate,
+  onSerialDraftChange,
   onSerialKey,
   onSerialBackspace,
   onSerialClear,
+  onSerialAdd,
+  onSerialRemove,
   operatorNameSnapshot,
   onOperatorNameChange,
   selectedLotQty,
   torqueWrenchId,
   onTorqueWrenchIdChange,
-  canStart,
+  canRegisterLot,
   busy,
-  onStart
+  onRegisterLot
 }: Props) {
   const fseibanInputLocked = busy || candidateLoading;
+  const serialLimitReached = expectedLotQuantity != null && serialNos.length >= expectedLotQuantity;
+  const serialInputLocked = busy || expectedLotQuantity == null || serialLimitReached;
+  const serialAddDisabled = serialInputLocked || !serialDraft || serialDraftDuplicate;
 
   return (
     <aside
@@ -74,7 +87,7 @@ export function AssemblyStartPane({
     >
       <div className="shrink-0">
         <h2 id="assembly-start-pane-heading" className="text-[1.14rem] font-bold leading-tight text-white">
-          新規開始
+          ロット登録
         </h2>
       </div>
 
@@ -152,13 +165,19 @@ export function AssemblyStartPane({
 
           <div className="grid grid-cols-1 gap-2 min-[1500px]:grid-cols-[minmax(0,1fr)_7.5rem]">
             <label className="grid gap-1 text-xs font-semibold text-white/70">
-              シリアルNo.
+              シリアルNo.追加
               <Input
-                value={serialNo}
-                onChange={(event) => onSerialNoChange(event.target.value)}
+                value={serialDraft}
+                onChange={(event) => onSerialDraftChange(event.target.value)}
                 placeholder="シリアルNo."
                 className="min-h-10 text-[1.05rem] font-bold tracking-normal"
-                disabled={busy}
+                disabled={serialInputLocked}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !serialAddDisabled) {
+                    event.preventDefault();
+                    onSerialAdd();
+                  }
+                }}
               />
             </label>
             <label className="grid gap-1 text-xs font-semibold text-white/70">
@@ -175,11 +194,58 @@ export function AssemblyStartPane({
 
           <AssemblyKeypad
             ariaLabel="シリアル入力パッド"
-            disabled={busy}
+            disabled={serialInputLocked}
             onKey={onSerialKey}
             onBackspace={onSerialBackspace}
             onClear={onSerialClear}
           />
+
+          <div className="grid gap-2 rounded border border-white/10 bg-slate-950/45 p-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-bold text-white/60">
+                入力済み {serialNos.length}/{expectedLotQuantity ?? '-'}
+              </span>
+              <Button type="button" variant="ghostOnDark" className="min-h-9 !px-3 !py-0 text-xs" disabled={serialAddDisabled} onClick={onSerialAdd}>
+                追加
+              </Button>
+            </div>
+            {expectedLotQuantity == null ? (
+              <p className="rounded border border-amber-300/25 bg-amber-500/10 px-2 py-1.5 text-xs font-semibold text-amber-100">
+                ロット数が正の整数で取得できる製番を選択してください。
+              </p>
+            ) : serialDraftDuplicate ? (
+              <p className="rounded border border-amber-300/25 bg-amber-500/10 px-2 py-1.5 text-xs font-semibold text-amber-100">
+                同じシリアルNo.は登録できません。
+              </p>
+            ) : serialLimitReached ? (
+              <p className="rounded border border-cyan-300/25 bg-cyan-500/10 px-2 py-1.5 text-xs font-semibold text-cyan-100">
+                ロット数分のシリアルNo.を入力済みです。
+              </p>
+            ) : null}
+            <div className="grid max-h-36 content-start gap-1 overflow-y-auto">
+              {serialNos.length === 0 ? (
+                <p className="rounded border border-white/10 bg-slate-950/55 px-2 py-3 text-center text-xs font-semibold text-white/50">
+                  シリアルNo.未入力
+                </p>
+              ) : (
+                serialNos.map((serialNo, index) => (
+                  <div key={serialNo} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 rounded border border-white/10 bg-slate-900/60 px-2 py-1">
+                    <span className="text-xs font-bold tabular-nums text-white/45">{index + 1}</span>
+                    <span className="truncate text-sm font-bold tabular-nums text-white">{serialNo}</span>
+                    <Button
+                      type="button"
+                      variant="ghostOnDark"
+                      className="min-h-8 !px-2 !py-0 text-xs"
+                      disabled={busy}
+                      onClick={() => onSerialRemove(serialNo)}
+                    >
+                      削除
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </section>
 
         <label className="grid gap-1 text-xs font-semibold text-white/70">
@@ -221,8 +287,8 @@ export function AssemblyStartPane({
             </p>
           </div>
         </div>
-        <Button type="button" variant="primary" className="min-h-12 w-full text-base" disabled={!canStart || busy} onClick={onStart}>
-          {busy ? '開始中…' : '組立開始'}
+        <Button type="button" variant="primary" className="min-h-12 w-full text-base" disabled={!canRegisterLot || busy} onClick={onRegisterLot}>
+          {busy ? '登録中…' : 'ロット登録'}
         </Button>
         {selectedCandidate && !selectedCandidate.activeTemplate ? (
           <Link to={KIOSK_ASSEMBLY_LIBRARY_PATH} className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center justify-center')}>

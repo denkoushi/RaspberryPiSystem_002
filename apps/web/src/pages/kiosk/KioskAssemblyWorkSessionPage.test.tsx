@@ -35,6 +35,7 @@ vi.mock('../../features/assembly', async () => {
 
 const session: AssemblyWorkSessionDto = {
   id: 'session-1',
+  lotSerialId: null,
   templateId: 'template-1',
   status: 'in_progress',
   productNo: 'ASM-001',
