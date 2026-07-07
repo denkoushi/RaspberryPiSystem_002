@@ -19,10 +19,15 @@ const point: InspectionDrawingPoint = {
   decimalPlaces: 3
 };
 
-function datalistOptionValues(): string[] {
-  return Array.from(document.querySelectorAll('datalist option')).map(
-    (option) => (option as HTMLOptionElement).value
-  );
+function focusToleranceInput(label: '上限公差' | '下限公差') {
+  fireEvent.focus(screen.getByLabelText(label));
+}
+
+function visibleToleranceCandidateButtons(): string[] {
+  const listbox = screen.getByRole('listbox', { name: '公差候補' });
+  return Array.from(listbox.querySelectorAll('[role="option"]'))
+    .map((button) => button.textContent ?? '')
+    .filter(Boolean);
 }
 
 describe('InspectionDrawingPointSettingsPanel', () => {
@@ -95,7 +100,7 @@ describe('InspectionDrawingPointSettingsPanel', () => {
     expect(screen.queryByText('OCR処理中')).not.toBeInTheDocument();
   });
 
-  it('shows geometric tolerance candidates for 直角度', () => {
+  it('shows geometric tolerance candidates for 直角度 when focused', () => {
     render(
       <InspectionDrawingPointSettingsPanel
         point={{ ...point, name: '直角度' }}
@@ -103,7 +108,9 @@ describe('InspectionDrawingPointSettingsPanel', () => {
       />
     );
 
-    expect(datalistOptionValues()).toEqual([
+    focusToleranceInput('上限公差');
+
+    expect(visibleToleranceCandidateButtons()).toEqual([
       '0',
       '0.001',
       '0.002',
@@ -117,7 +124,7 @@ describe('InspectionDrawingPointSettingsPanel', () => {
     ]);
   });
 
-  it('shows dimension tolerance candidates for 幅', () => {
+  it('shows dimension tolerance candidates for 幅 when focused', () => {
     render(
       <InspectionDrawingPointSettingsPanel
         point={{ ...point, name: '幅' }}
@@ -125,9 +132,11 @@ describe('InspectionDrawingPointSettingsPanel', () => {
       />
     );
 
-    expect(datalistOptionValues()).toContain('-0.9');
-    expect(datalistOptionValues()).toContain('+0.9');
-    expect(datalistOptionValues()).not.toContain('0.001');
+    focusToleranceInput('上限公差');
+
+    expect(visibleToleranceCandidateButtons()).toContain('-0.9');
+    expect(visibleToleranceCandidateButtons()).toContain('+0.9');
+    expect(visibleToleranceCandidateButtons()).not.toContain('0.001');
   });
 
   it('switches 幅 to geometric candidates when configured', () => {
@@ -139,8 +148,10 @@ describe('InspectionDrawingPointSettingsPanel', () => {
       />
     );
 
-    expect(datalistOptionValues()).toContain('0.009');
-    expect(datalistOptionValues()).not.toContain('+0.9');
+    focusToleranceInput('上限公差');
+
+    expect(visibleToleranceCandidateButtons()).toContain('0.009');
+    expect(visibleToleranceCandidateButtons()).not.toContain('+0.9');
   });
 
   it('keeps manual tolerance values outside candidates editable', () => {
@@ -161,24 +172,62 @@ describe('InspectionDrawingPointSettingsPanel', () => {
     expect(onChange).toHaveBeenCalledWith({ upperToleranceRaw: '0.026' });
   });
 
-  it('clears a selected candidate on focus for reselection without changing saved value', () => {
+  it('shows tolerance candidate chips when tolerance input is focused', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, name: '直角度' }}
+        onChange={vi.fn()}
+      />
+    );
+
+    focusToleranceInput('上限公差');
+
+    expect(screen.getByRole('listbox', { name: '公差候補' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '0.003' })).toBeInTheDocument();
+  });
+
+  it('applies tolerance candidate when chip is clicked', () => {
     const onChange = vi.fn();
 
     render(
       <InspectionDrawingPointSettingsPanel
-        point={{ ...point, name: '直角度', upperToleranceRaw: '0.003' }}
+        point={{ ...point, name: '直角度', upperToleranceRaw: '' }}
         onChange={onChange}
       />
     );
 
-    const upperToleranceInput = screen.getByLabelText('上限公差') as HTMLInputElement;
+    focusToleranceInput('上限公差');
+    fireEvent.click(screen.getByRole('option', { name: '0.003' }));
 
-    fireEvent.focus(upperToleranceInput);
-    expect(upperToleranceInput.value).toBe('');
-    expect(onChange).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledWith({ upperToleranceRaw: '0.003' });
+  });
 
-    fireEvent.blur(upperToleranceInput);
-    expect(upperToleranceInput.value).toBe('0.003');
+  it('shows tolerance candidate chips even when current value is outside candidates', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, name: '幅', upperToleranceRaw: '0.025' }}
+        onChange={vi.fn()}
+      />
+    );
+
+    focusToleranceInput('上限公差');
+
+    expect(screen.getByRole('option', { name: '+0.9' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '-0.9' })).toBeInTheDocument();
+  });
+
+  it('does not show tolerance candidate chips when disabled', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, name: '直角度' }}
+        onChange={vi.fn()}
+        disabled
+      />
+    );
+
+    focusToleranceInput('上限公差');
+
+    expect(screen.queryByRole('listbox', { name: '公差候補' })).not.toBeInTheDocument();
   });
 
   it('uses black text for nominal and tolerance inputs', () => {
