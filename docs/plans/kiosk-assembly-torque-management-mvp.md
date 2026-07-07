@@ -54,7 +54,7 @@ This is separate from part measurement and self-inspection. The implementation r
   - Fixed candidate area height (`h-32`) with `content-start` top alignment to stop keypad layout shift when candidates load.
   - Disabled seiban input, keypads, and candidate buttons while `candidateLoading` (`fseibanInputLocked = busy || candidateLoading`).
   - Candidate rows use `grid-cols-[auto_minmax(0,1fr)]` so 8-digit seiban shows in full; machine name truncates with `title` hover for full text.
-  - Deployed to production on 2026-07-07 (Run ID `20260707-101530-31384`); on-device visual check pending.
+  - Deployed to production on 2026-07-07 (Run ID `20260707-101530-31384`); on-device verification OK on 2026-07-07 (keypad stays fixed, candidates readable).
 - Previous deployed scope on 2026-07-06:
   - `/kiosk/assembly` is now the operator start page.
   - Operators search by `FSEIBAN`, choose a candidate, see the resolved machine name, enter serial number with a software keypad, and start or resume work.
