@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -27,6 +27,13 @@ const candidate: AssemblySeibanCandidateDto = {
     name: 'MH-AX 標準',
     version: 1
   }
+};
+
+const candidateWithoutTemplate: AssemblySeibanCandidateDto = {
+  fseiban: 'ASMTEST-B1',
+  machineName: 'MH-NO-TEMPLATE',
+  machineNameSource: 'production_schedule',
+  activeTemplate: null
 };
 
 const inProgressSession: AssemblyWorkSessionSummaryDto = {
@@ -114,12 +121,56 @@ describe('KioskAssemblyHomePage', () => {
     renderPage();
 
     expect(await screen.findByText('ASM-START-001')).toBeInTheDocument();
-    expect(screen.getByText('S002 / MACHINE-X')).toBeInTheDocument();
+    expect(screen.getByText('S002 / 佐藤')).toBeInTheDocument();
     expect(screen.getByText('0/1')).toBeInTheDocument();
     expect(screen.getByText(/#1/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /ASM-START-001/ })).toHaveAttribute(
       'href',
       '/kiosk/assembly/work-sessions/session-2'
     );
+  });
+
+  it('keeps independent seiban and serial keypads including BS and CLR', () => {
+    renderPage();
+
+    const fseibanInput = screen.getByLabelText('製番');
+    const serialInput = screen.getByLabelText('シリアルNo.');
+    const fseibanPad = within(screen.getByRole('group', { name: '製番入力パッド' }));
+    const serialPad = within(screen.getByRole('group', { name: 'シリアル入力パッド' }));
+
+    fireEvent.click(fseibanPad.getByRole('button', { name: 'A' }));
+    fireEvent.click(fseibanPad.getByRole('button', { name: '1' }));
+    fireEvent.click(serialPad.getByRole('button', { name: 'S' }));
+    fireEvent.click(serialPad.getByRole('button', { name: '2' }));
+
+    expect(fseibanInput).toHaveValue('A1');
+    expect(serialInput).toHaveValue('S2');
+
+    fireEvent.click(fseibanPad.getByRole('button', { name: 'BS' }));
+    expect(fseibanInput).toHaveValue('A');
+    expect(serialInput).toHaveValue('S2');
+
+    fireEvent.click(serialPad.getByRole('button', { name: 'CLR' }));
+    expect(fseibanInput).toHaveValue('A');
+    expect(serialInput).toHaveValue('');
+
+    fireEvent.click(fseibanPad.getByRole('button', { name: 'CLR' }));
+    expect(fseibanInput).toHaveValue('');
+  });
+
+  it('keeps the template registration path when the selected seiban has no active template', async () => {
+    mockListAssemblySeibanCandidates.mockResolvedValue([candidateWithoutTemplate]);
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-b' } });
+    await waitFor(() =>
+      expect(mockListAssemblySeibanCandidates).toHaveBeenCalledWith({ prefix: 'ASMTEST-B', limit: 20 })
+    );
+    fireEvent.click(await screen.findByText('ASMTEST-B1'));
+
+    expect(screen.getByText('テンプレート未登録')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'テンプレート登録' })).toHaveAttribute('href', '/kiosk/assembly/library');
+    expect(screen.getByRole('button', { name: '組立開始' })).toBeDisabled();
+    expect(mockStartAssemblyWorkSession).not.toHaveBeenCalled();
   });
 });

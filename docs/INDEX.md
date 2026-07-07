@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-06 · キオスク表示性能最適化（図面派生画像 / gzip / 要領書summary） · 未デプロイ）
+
+- **キオスク表示速度の最適化**: 図面のリサイズ済みWebP派生配信（`?w=`）、APIレスポンスgzip圧縮、順位ボードhydrate SQLのLATERAL化、`GET /api/kiosk-documents` の `fields=summary`+`limit`（件数非依存化）。ローカル実測で図面転送 −93%、順位ボードJSON −93%、要領書一覧 35MB/473ms→208KB/12ms（1500件時）。**正本**: [ADR](./decisions/ADR-20260706-kiosk-display-performance-optimizations.md)
+
 ### 最新アップデート（2026-07-06 · 組立キオスク PDF閲覧順設定 + ページ送りビューア · 本番反映済）
 
 - **機種名ごとのPDF要領書閲覧順設定**: 既存 `KioskDocument` PDF を正本にし、組立側は機種名キーごとの閲覧順と任意ラベルだけを保持。`/kiosk/assembly/procedure-order-settings` は2520共有パスワードで認証し、作業画面は設定済みならPDFページ送りビューア、未設定/無効/ページ無しなら従来の単一手順画像へfallback。**`ad6eaa00`** · PR **#957** · CI **`28789861728` success** · Deploy **`20260706-212700-28308`** · Phase12 **45/0/0**。**正本**: [Plan](./plans/kiosk-assembly-torque-management-mvp.md) · [Deployment](./guides/deployment.md#kiosk-assembly-procedure-order-viewer-2026-07-06)

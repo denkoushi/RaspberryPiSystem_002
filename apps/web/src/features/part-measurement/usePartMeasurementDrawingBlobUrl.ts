@@ -2,7 +2,13 @@ import { useLayoutEffect, useState } from 'react';
 
 import { api } from '../../api/client';
 
-const MAX_CACHE_ENTRIES = 10;
+const MAX_CACHE_ENTRIES = 30;
+
+const ALLOWED_DERIVATIVE_WIDTHS = [1280, 1920, 2560] as const;
+
+export type PartMeasurementDrawingBlobUrlOptions = {
+  displayWidth?: number;
+};
 
 type CacheEntry = {
   blobUrl: string;
@@ -13,16 +19,41 @@ const drawingBlobCache = new Map<string, CacheEntry>();
 const pendingFetches = new Map<string, Promise<string>>();
 
 /**
+ * キオスク表示用: 画面幅と devicePixelRatio から派生画像の要求幅へスナップする。
+ */
+export function resolveKioskDrawingDisplayWidth(): number {
+  const raw = Math.min(2560, Math.ceil(window.innerWidth * window.devicePixelRatio));
+  if (raw <= 1280) return 1280;
+  if (raw <= 1920) return 1920;
+  return 2560;
+}
+
+/** @internal test helper */
+export function snapDisplayWidthToDerivativeWidth(displayWidth: number): number {
+  const capped = Math.min(2560, Math.ceil(displayWidth));
+  for (const width of ALLOWED_DERIVATIVE_WIDTHS) {
+    if (capped <= width) {
+      return width;
+    }
+  }
+  return 2560;
+}
+
+/**
  * `/api/storage/...` の図面を x-client-key 付きで取得し、Blob URL を返す。
  * `<img src>` ではヘッダを付けられないためこの方式を使う。
  *
  * パス変更時は取得完了まで blobUrl を null にし、旧図面と新測定点の重なりを防ぐ。
  * キャッシュヒット時は即座に blobUrl を返す。
  */
-export function usePartMeasurementDrawingBlobUrl(drawingImageRelativePath: string | null | undefined): {
+export function usePartMeasurementDrawingBlobUrl(
+  drawingImageRelativePath: string | null | undefined,
+  options?: PartMeasurementDrawingBlobUrlOptions
+): {
   blobUrl: string | null;
   error: string | null;
 } {
+  const displayWidth = options?.displayWidth;
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +75,7 @@ export function usePartMeasurementDrawingBlobUrl(drawingImageRelativePath: strin
       return;
     }
 
-    const cacheKey = normalizeDrawingImagePath(trimmedPath);
+    const cacheKey = buildDrawingCacheKey(trimmedPath, displayWidth);
     releaseHeld();
 
     const cachedBlobUrl = getCachedDrawingBlobUrl(cacheKey);
@@ -78,7 +109,7 @@ export function usePartMeasurementDrawingBlobUrl(drawingImageRelativePath: strin
       cancelled = true;
       releaseHeld();
     };
-  }, [drawingImageRelativePath]);
+  }, [drawingImageRelativePath, displayWidth]);
 
   return { blobUrl, error };
 }
@@ -94,6 +125,18 @@ export function __resetPartMeasurementDrawingBlobUrlCacheForTests(): void {
 
 function normalizeDrawingImagePath(drawingImageRelativePath: string): string {
   return drawingImageRelativePath.replace(/^\/api\//, '');
+}
+
+function buildDrawingCacheKey(
+  drawingImageRelativePath: string,
+  displayWidth?: number
+): string {
+  const normalizedPath = normalizeDrawingImagePath(drawingImageRelativePath);
+  if (displayWidth == null) {
+    return normalizedPath;
+  }
+  const derivativeWidth = snapDisplayWidthToDerivativeWidth(displayWidth);
+  return `${normalizedPath}?w=${derivativeWidth}`;
 }
 
 function getCachedDrawingBlobUrl(cacheKey: string): string | null {

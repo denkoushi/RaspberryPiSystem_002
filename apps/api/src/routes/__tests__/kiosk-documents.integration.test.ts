@@ -124,5 +124,73 @@ describe('Kiosk documents API', () => {
         await prisma.kioskDocument.delete({ where: { id: doc.id } }).catch(() => undefined);
       }
     });
+
+    it('GET /api/kiosk-documents?fields=summary&limit= omits extractedText and caps rows', async () => {
+      if (!dbUp) {
+        return;
+      }
+      const marker = `kiosk_summary_fields_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const doc = await prisma.kioskDocument.create({
+        data: {
+          title: `${marker}-title`,
+          filename: `${marker}.pdf`,
+          filePath: `/tmp/${marker}.pdf`,
+          sourceType: 'MANUAL',
+          enabled: true,
+          ocrStatus: 'COMPLETED',
+          extractedText: `${marker}-extracted-body`,
+        },
+      });
+      try {
+        const res = await app.inject({
+          method: 'GET',
+          url: `/api/kiosk-documents?fields=summary&limit=1&q=${encodeURIComponent(marker)}`,
+          headers: { 'x-client-key': clientKey },
+        });
+        expect(res.statusCode).toBe(200);
+        const body = res.json() as {
+          documents: Array<{ id: string; extractedText: string | null; title: string }>;
+        };
+        expect(body.documents).toHaveLength(1);
+        expect(body.documents[0]?.id).toBe(doc.id);
+        expect(body.documents[0]?.extractedText).toBeNull();
+      } finally {
+        await prisma.kioskDocument.delete({ where: { id: doc.id } }).catch(() => undefined);
+      }
+    });
+
+    it('GET /api/kiosk-documents without list params keeps extractedText in response', async () => {
+      if (!dbUp) {
+        return;
+      }
+      const marker = `kiosk_legacy_list_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const extractedText = `${marker}-full-body`;
+      const doc = await prisma.kioskDocument.create({
+        data: {
+          title: `${marker}-title`,
+          filename: `${marker}.pdf`,
+          filePath: `/tmp/${marker}.pdf`,
+          sourceType: 'MANUAL',
+          enabled: true,
+          ocrStatus: 'COMPLETED',
+          extractedText,
+        },
+      });
+      try {
+        const res = await app.inject({
+          method: 'GET',
+          url: `/api/kiosk-documents?q=${encodeURIComponent(marker)}`,
+          headers: { 'x-client-key': clientKey },
+        });
+        expect(res.statusCode).toBe(200);
+        const body = res.json() as {
+          documents: Array<{ id: string; extractedText: string | null }>;
+        };
+        const found = body.documents.find((d) => d.id === doc.id);
+        expect(found?.extractedText).toBe(extractedText);
+      } finally {
+        await prisma.kioskDocument.delete({ where: { id: doc.id } }).catch(() => undefined);
+      }
+    });
   });
 });
