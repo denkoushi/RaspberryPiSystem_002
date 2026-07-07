@@ -26,6 +26,7 @@ type Props = {
   onSerialClear: () => void;
   operatorNameSnapshot: string;
   onOperatorNameChange: (value: string) => void;
+  selectedLotQty: number | null;
   torqueWrenchId: string;
   onTorqueWrenchIdChange: (value: string) => void;
   canStart: boolean;
@@ -57,6 +58,7 @@ export function AssemblyStartPane({
   onSerialClear,
   operatorNameSnapshot,
   onOperatorNameChange,
+  selectedLotQty,
   torqueWrenchId,
   onTorqueWrenchIdChange,
   canStart,
@@ -164,10 +166,11 @@ export function AssemblyStartPane({
               <Input
                 value={operatorNameSnapshot}
                 onChange={(event) => onOperatorNameChange(event.target.value)}
-                placeholder="作業者"
+                placeholder="作業者（NFC可）"
                 className="min-h-10"
                 disabled={busy}
               />
+              <span className="text-[0.68rem] font-semibold text-white/45">NFCタグでも入力できます</span>
             </label>
           </div>
 
@@ -200,6 +203,16 @@ export function AssemblyStartPane({
               title={selectedCandidate?.machineName}
             >
               {selectedCandidate?.machineName ?? '未選択'}
+            </p>
+          </div>
+          <div className="min-w-0 text-right">
+            <p className="text-xs font-semibold text-white/55">ロット数</p>
+            <p className="truncate text-sm font-bold tabular-nums text-cyan-200">
+              {selectedLotQty != null && Number.isFinite(selectedLotQty)
+                ? Number.isInteger(selectedLotQty)
+                  ? String(selectedLotQty)
+                  : selectedLotQty.toLocaleString('ja-JP')
+                : '-'}
             </p>
           </div>
           <div className="min-w-0 text-right">

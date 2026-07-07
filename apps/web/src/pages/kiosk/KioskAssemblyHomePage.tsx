@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useMatch, useNavigate } from 'react-router-dom';
 
 import {
   listAssemblySeibanCandidates,
+  listAssemblySeibanLotQuantities,
   listAssemblyWorkSessionSummaries,
+  resolveAssemblyOperatorNfc,
   startAssemblyWorkSession
 } from '../../api/client';
 import { buttonClassName } from '../../components/ui/Button';
 import {
+  AssemblyCompletedPane,
   AssemblyStartPane,
   AssemblyWipPane,
   KIOSK_ASSEMBLY_LIBRARY_PATH,
@@ -15,6 +18,7 @@ import {
   kioskAssemblyWorkSessionPath,
   readAssemblyApiErrorMessage
 } from '../../features/assembly';
+import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { AssemblySeibanCandidateDto, AssemblyWorkSessionSummaryDto } from '../../features/assembly/types';
 
@@ -36,15 +40,22 @@ function normalizeSerialIdentifier(value: string): string {
 
 export function KioskAssemblyHomePage() {
   const navigate = useNavigate();
+  const isActiveRoute = useMatch('/kiosk/assembly');
+  const nfcEvent = useNfcStream(Boolean(isActiveRoute));
+  const lastNfcKeyRef = useRef<string | null>(null);
   const [fseibanInput, setFseibanInput] = useState('');
   const [selectedCandidate, setSelectedCandidate] = useState<AssemblySeibanCandidateDto | null>(null);
   const [candidates, setCandidates] = useState<AssemblySeibanCandidateDto[]>([]);
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [serialNo, setSerialNo] = useState('');
   const [operatorNameSnapshot, setOperatorNameSnapshot] = useState('');
+  const [operatorEmployeeId, setOperatorEmployeeId] = useState<string | null>(null);
   const [torqueWrenchId, setTorqueWrenchId] = useState(DEFAULT_TORQUE_WRENCH_ID);
   const [sessions, setSessions] = useState<AssemblyWorkSessionSummaryDto[]>([]);
+  const [completedSessions, setCompletedSessions] = useState<AssemblyWorkSessionSummaryDto[]>([]);
   const [sessionLoading, setSessionLoading] = useState(false);
+  const [completedLoading, setCompletedLoading] = useState(false);
+  const [lotQtyByProductNo, setLotQtyByProductNo] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -55,6 +66,17 @@ export function KioskAssemblyHomePage() {
     normalizedSerialNo.length > 0 &&
     operatorNameSnapshot.trim().length > 0 &&
     torqueWrenchId.trim().length > 0;
+
+  const productNosForLotQty = useMemo(() => {
+    const productNos = new Set<string>();
+    for (const session of sessions) productNos.add(session.productNo);
+    for (const session of completedSessions) productNos.add(session.productNo);
+    for (const candidate of candidates) productNos.add(candidate.fseiban);
+    if (selectedCandidate) productNos.add(selectedCandidate.fseiban);
+    return [...productNos];
+  }, [sessions, completedSessions, candidates, selectedCandidate]);
+
+  const selectedLotQty = selectedCandidate ? (lotQtyByProductNo[selectedCandidate.fseiban] ?? null) : null;
 
   const reloadSessions = useCallback(async () => {
     setSessionLoading(true);
@@ -67,9 +89,44 @@ export function KioskAssemblyHomePage() {
     }
   }, []);
 
+  const reloadCompletedSessions = useCallback(async () => {
+    setCompletedLoading(true);
+    try {
+      setCompletedSessions(await listAssemblyWorkSessionSummaries({ status: 'completed', limit: 30 }));
+    } catch (e: unknown) {
+      setMessage(readAssemblyApiErrorMessage(e, '完了した製品の取得に失敗しました。'));
+    } finally {
+      setCompletedLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void reloadSessions();
-  }, [reloadSessions]);
+    void reloadCompletedSessions();
+  }, [reloadSessions, reloadCompletedSessions]);
+
+  useEffect(() => {
+    if (productNosForLotQty.length === 0) {
+      setLotQtyByProductNo({});
+      return;
+    }
+
+    let cancelled = false;
+    void listAssemblySeibanLotQuantities(productNosForLotQty)
+      .then((items) => {
+        if (cancelled) return;
+        const next: Record<string, number> = {};
+        for (const item of items) next[item.productNo] = item.lotQty;
+        setLotQtyByProductNo(next);
+      })
+      .catch(() => {
+        if (!cancelled) setLotQtyByProductNo({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [productNosForLotQty]);
 
   useEffect(() => {
     setFseibanInput(normalizedFseiban);
@@ -108,6 +165,23 @@ export function KioskAssemblyHomePage() {
     };
   }, [normalizedFseiban]);
 
+  useEffect(() => {
+    if (!nfcEvent || busy) return;
+    const key = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
+    if (lastNfcKeyRef.current === key) return;
+    lastNfcKeyRef.current = key;
+    void (async () => {
+      try {
+        const resolved = await resolveAssemblyOperatorNfc(nfcEvent.uid);
+        setOperatorNameSnapshot(resolved.displayName);
+        setOperatorEmployeeId(resolved.employeeId);
+        setMessage(null);
+      } catch (e: unknown) {
+        setMessage(readAssemblyApiErrorMessage(e, '社員タグの解決に失敗しました。'));
+      }
+    })();
+  }, [nfcEvent, busy]);
+
   const appendFseiban = (key: string) => {
     setFseibanInput((current) => normalizeIdentifier(`${current}${key}`));
   };
@@ -138,6 +212,11 @@ export function KioskAssemblyHomePage() {
     setMessage(null);
   };
 
+  const changeOperatorName = (value: string) => {
+    setOperatorNameSnapshot(value.slice(0, 120));
+    setOperatorEmployeeId(null);
+  };
+
   const startWork = async () => {
     if (!selectedCandidate?.activeTemplate) return;
     setBusy(true);
@@ -147,6 +226,7 @@ export function KioskAssemblyHomePage() {
         templateId: selectedCandidate.activeTemplate.id,
         productNo: selectedCandidate.fseiban,
         serialNo: normalizedSerialNo,
+        operatorEmployeeId,
         operatorNameSnapshot: operatorNameSnapshot.trim(),
         targetUnit: selectedCandidate.machineName,
         torqueWrenchId: torqueWrenchId.trim()
@@ -182,7 +262,15 @@ export function KioskAssemblyHomePage() {
       {message ? <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">{message}</p> : null}
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(0,1fr)_24rem] xl:overflow-hidden 2xl:grid-cols-[minmax(0,1fr)_24.5rem]">
-        <AssemblyWipPane sessions={sessions} loading={sessionLoading} onReload={() => void reloadSessions()} />
+        <div className="flex min-h-0 min-w-0 flex-col gap-2 xl:min-h-0">
+          <AssemblyWipPane sessions={sessions} loading={sessionLoading} onReload={() => void reloadSessions()} />
+          <AssemblyCompletedPane
+            sessions={completedSessions}
+            loading={completedLoading}
+            onReload={() => void reloadCompletedSessions()}
+            lotQtyByProductNo={lotQtyByProductNo}
+          />
+        </div>
         <AssemblyStartPane
           fseibanInput={fseibanInput}
           normalizedFseiban={normalizedFseiban}
@@ -200,7 +288,8 @@ export function KioskAssemblyHomePage() {
           onSerialBackspace={backspaceSerial}
           onSerialClear={() => setSerialNo('')}
           operatorNameSnapshot={operatorNameSnapshot}
-          onOperatorNameChange={(value) => setOperatorNameSnapshot(value.slice(0, 120))}
+          onOperatorNameChange={changeOperatorName}
+          selectedLotQty={selectedLotQty}
           torqueWrenchId={torqueWrenchId}
           onTorqueWrenchIdChange={setTorqueWrenchId}
           canStart={canStart}

@@ -1,3 +1,4 @@
+export * from './AssemblyCompletedPane';
 export * from './AssemblyKeypad';
 export * from './AssemblyStartPane';
 export * from './AssemblyProcedureCanvas';

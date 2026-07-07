@@ -15,9 +15,11 @@ import {
   AssemblyProcedureOrderService,
   AssemblyProcedureSequenceService,
   AssemblyProcedureDocumentService,
+  AssemblySeibanLotQuantityService,
   AssemblySeibanStartService,
   AssemblyTemplateService,
   AssemblyWorkSessionService,
+  resolveAssemblyOperatorNfcUid,
   TORQUE_INPUT_PORT_SOURCES,
   toPrismaTorqueInputSource,
   type AssemblyProcedureDocumentSummary,
@@ -405,6 +407,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const templateService = new AssemblyTemplateService();
   const sessionService = new AssemblyWorkSessionService();
   const seibanStartService = new AssemblySeibanStartService();
+  const seibanLotQuantityService = new AssemblySeibanLotQuantityService();
   const procedureOrderService = new AssemblyProcedureOrderService();
   const procedureSequenceService = new AssemblyProcedureSequenceService(procedureOrderService);
   const excelService = new AssemblyExcelExportService(sessionService);
@@ -418,6 +421,28 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       .parse(request.query);
     const candidates = await seibanStartService.listSeibanCandidates(q);
     return { candidates: candidates.map(serializeSeibanCandidate) };
+  });
+
+  app.get('/assembly/seiban-lot-quantities', { preHandler: allowView }, async (request) => {
+    const q = z
+      .object({
+        productNos: z.string().trim().min(1).max(4000)
+      })
+      .parse(request.query);
+    const productNos = q.productNos
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+      .slice(0, 100);
+    const items = await seibanLotQuantityService.listByProductNos(productNos);
+    return { items };
+  });
+
+  app.post('/assembly/operators/resolve-nfc', { preHandler: allowView }, async (request, reply) => {
+    const body = z.object({ uid: z.string().trim().min(1).max(200) }).parse(request.body);
+    const resolved = await resolveAssemblyOperatorNfcUid(body.uid);
+    if (!resolved) return reply.status(404).send({ message: '社員タグが見つかりません' });
+    return resolved;
   });
 
   app.get('/assembly/procedure-orders', { preHandler: allowView }, async (request) => {

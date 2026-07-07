@@ -27,7 +27,7 @@ export function AssemblyWipPane({ sessions, loading, onReload }: Props) {
   return (
     <section
       aria-labelledby="assembly-wip-pane-heading"
-      className="flex min-h-[32rem] min-w-0 flex-col overflow-hidden rounded border border-white/15 bg-slate-950/45 xl:min-h-0"
+      className="flex min-h-[12rem] min-w-0 flex-1 flex-col overflow-hidden rounded border border-white/15 bg-slate-950/45 xl:min-h-0"
     >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 p-3">
         <div className="min-w-0">

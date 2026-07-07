@@ -25,6 +25,23 @@ export async function listAssemblySeibanCandidates(params: { prefix: string; lim
   return data.candidates;
 }
 
+export async function listAssemblySeibanLotQuantities(productNos: string[]) {
+  if (productNos.length === 0) return [] as Array<{ productNo: string; lotQty: number }>;
+  const qs = new URLSearchParams({ productNos: productNos.join(',') });
+  const { data } = await api.get<{ items: Array<{ productNo: string; lotQty: number }> }>(
+    `/assembly/seiban-lot-quantities?${qs.toString()}`
+  );
+  return data.items;
+}
+
+export async function resolveAssemblyOperatorNfc(uid: string) {
+  const { data } = await api.post<{ employeeId: string; displayName: string }>(
+    '/assembly/operators/resolve-nfc',
+    { uid }
+  );
+  return data;
+}
+
 export async function verifyAssemblyProcedureOrderAccessPassword(payload: { password: string }) {
   const { data } = await api.post<{ success: boolean }>(
     '/kiosk/assembly/procedure-order-settings/verify-access-password',

@@ -1,5 +1,7 @@
 export * from './assembly-excel-export.service.js';
 export * from './assembly-identifiers.js';
+export * from './assembly-operator-nfc-resolve.service.js';
+export * from './assembly-seiban-lot-quantity.service.js';
 export * from './assembly-procedure-order.service.js';
 export * from './assembly-procedure-sequence.service.js';
 export * from './assembly-procedure-document.service.js';
