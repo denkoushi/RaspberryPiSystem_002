@@ -9,7 +9,7 @@ import {
 import {
   buildWorkCalendarModeMap,
   listLoadBalancingCapacityBaseResolved,
-  listLoadBalancingMonthlyCapacityResolved,
+  listLoadBalancingMonthlyCapacityRangeResolved,
   listLoadBalancingWorkCalendarsResolved
 } from './load-balancing-settings.service.js';
 import type {
@@ -76,26 +76,24 @@ export async function assembleStartDateLevelingResult(params: {
   const focusMonth =
     params.bucket === 'day' ? (params.focusMonth?.trim() || range.fromMonth) : null;
 
-  const [baseCap, monthlyCapByMonth, calendarSettings] = await Promise.all([
+  const [baseCap, monthlyCapRange, calendarSettings] = await Promise.all([
     listLoadBalancingCapacityBaseResolved(params.siteKeyInput),
-    Promise.all(
-      range.months.map(async (yearMonth) => {
-        const monthly = await listLoadBalancingMonthlyCapacityResolved({
-          siteKeyInput: params.siteKeyInput,
-          yearMonth
-        });
-        return [yearMonth, monthly.items] as const;
-      })
-    ),
+    listLoadBalancingMonthlyCapacityRangeResolved({
+      siteKeyInput: params.siteKeyInput,
+      fromMonth: params.fromMonth,
+      toMonth: params.toMonth
+    }),
     listLoadBalancingWorkCalendarsResolved(params.siteKeyInput)
   ]);
 
   const siteKey = baseCap.siteKey;
   const baseMap = new Map(baseCap.items.map((item) => [item.resourceCd, item.baseAvailableMinutes]));
   const monthlyMaps = new Map(
-    monthlyCapByMonth.map(([yearMonth, items]) => [
+    range.months.map((yearMonth) => [
       yearMonth,
-      new Map(items.map((item) => [item.resourceCd, item.availableMinutes]))
+      new Map(
+        (monthlyCapRange.itemsByMonth[yearMonth] ?? []).map((item) => [item.resourceCd, item.availableMinutes])
+      )
     ])
   );
   const calendarMap = buildWorkCalendarModeMap(calendarSettings.items);

@@ -9,8 +9,10 @@ vi.mock('../load-balancing-settings.service.js', () => ({
     siteKey: '第2工場',
     items: [{ resourceCd: '033', baseAvailableMinutes: 10000 }]
   }),
-  listLoadBalancingMonthlyCapacityResolved: vi.fn().mockResolvedValue({
-    items: [{ resourceCd: '033', availableMinutes: 10000 }]
+  listLoadBalancingMonthlyCapacityRangeResolved: vi.fn().mockResolvedValue({
+    itemsByMonth: {
+      '2026-05': [{ resourceCd: '033', availableMinutes: 10000 }]
+    }
   }),
   listLoadBalancingWorkCalendarsResolved: vi.fn().mockResolvedValue({
     items: [{ resourceCd: '033', workCalendarMode: 'weekdays' as const }]

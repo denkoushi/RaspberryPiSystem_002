@@ -8,6 +8,7 @@ import {
   listLoadBalancingCapacityBaseResolved,
   listLoadBalancingClassesResolved,
   listLoadBalancingMonthlyCapacityResolved,
+  listLoadBalancingMonthlyCapacityRangeResolved,
   listLoadBalancingTransferRulesResolved,
   listLoadBalancingWorkCalendarsResolved
 } from '../load-balancing-settings.service.js';
@@ -122,6 +123,27 @@ describe('load-balancing-settings.service (resolved readers)', () => {
       { resourceCd: '033', availableMinutes: 50 }
     ]);
     expect(logger.debug).toHaveBeenCalled();
+  });
+
+  it('monthlyCapacityRangeResolved: 範囲を2クエリで取得し月ごとに site 優先マージ', async () => {
+    vi.mocked(prisma.productionScheduleResourceMonthlyCapacity.findMany)
+      .mockResolvedValueOnce([
+        { resourceCd: '021', availableMinutes: 200, yearMonth: '2026-05' },
+        { resourceCd: '033', availableMinutes: 100, yearMonth: '2026-06' }
+      ])
+      .mockResolvedValueOnce([{ resourceCd: '033', availableMinutes: 50, yearMonth: '2026-06' }]);
+
+    const result = await listLoadBalancingMonthlyCapacityRangeResolved({
+      siteKeyInput: '第2工場',
+      fromMonth: '2026-05',
+      toMonth: '2026-06'
+    });
+
+    expect(prisma.productionScheduleResourceMonthlyCapacity.findMany).toHaveBeenCalledTimes(2);
+    expect(result.itemsByMonth['2026-05']).toEqual([{ resourceCd: '021', availableMinutes: 200 }]);
+    expect(result.itemsByMonth['2026-06']).toEqual([
+      { resourceCd: '033', availableMinutes: 100 }
+    ]);
   });
 
   it('classesResolved: shared のみから補完', async () => {
