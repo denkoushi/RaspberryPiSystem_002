@@ -1,6 +1,7 @@
 import {
   buildDefaultInspectionDrawingMeasurementLabelSettings,
-  buildInspectionDrawingToleranceCandidateValues,
+  buildInspectionDrawingToleranceCandidateValuesForLabel,
+  resolveInspectionDrawingGeneralToleranceForNominal,
   resolveInspectionDrawingToleranceKindForLabel,
   type InspectionDrawingMeasurementLabelSetting
 } from '@raspi-system/shared-types';
@@ -136,7 +137,10 @@ export function InspectionDrawingPointSettingsPanel({
     point.name,
     effectiveMeasurementLabelSettings
   );
-  const toleranceCandidateValues = buildInspectionDrawingToleranceCandidateValues(toleranceKind);
+  const toleranceCandidateValues = buildInspectionDrawingToleranceCandidateValuesForLabel(
+    point.name,
+    effectiveMeasurementLabelSettings
+  );
   const showOcrCandidateRow =
     ocrCandidateLoading ||
     ocrCandidateError ||
@@ -176,6 +180,26 @@ export function InspectionDrawingPointSettingsPanel({
             inputMode="decimal"
             value={point.nominalRaw}
             onChange={(e) => onChange({ nominalRaw: e.target.value })}
+            onBlur={() => {
+              if (toleranceKind !== 'dimension') {
+                return;
+              }
+              if (point.upperToleranceRaw.trim() !== '' || point.lowerToleranceRaw.trim() !== '') {
+                return;
+              }
+              const nominal = Number(point.nominalRaw.trim().replace(/,/g, ''));
+              if (!Number.isFinite(nominal)) {
+                return;
+              }
+              const generalTolerance = resolveInspectionDrawingGeneralToleranceForNominal(nominal);
+              if (generalTolerance === null) {
+                return;
+              }
+              onChange({
+                upperToleranceRaw: `+${generalTolerance}`,
+                lowerToleranceRaw: `-${generalTolerance}`
+              });
+            }}
             className={inspectionDrawingPointSettingInputClassName}
             disabled={disabled}
           />

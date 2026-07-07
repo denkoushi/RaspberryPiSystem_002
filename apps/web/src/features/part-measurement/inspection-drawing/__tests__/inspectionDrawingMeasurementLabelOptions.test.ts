@@ -1,3 +1,4 @@
+import { DEFAULT_INSPECTION_DRAWING_MEASUREMENT_LABELS } from '@raspi-system/shared-types';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -28,5 +29,14 @@ describe('inspectionDrawingMeasurementLabelOptions', () => {
     ]);
 
     expect(options.map((option) => option.value)).toEqual(['', '幅', 'カスタム直角度']);
+  });
+
+  it('includes newly added drill-hole and depth labels in fixed candidates', () => {
+    expect(INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS).toEqual(
+      DEFAULT_INSPECTION_DRAWING_MEASUREMENT_LABELS
+    );
+    expect(INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS).toContain('キリ穴ピッチ');
+    expect(INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS).toContain('ザグリ穴ピッチ');
+    expect(INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS).toContain('ネジ穴深さ');
   });
 });
