@@ -625,7 +625,7 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     render(<ProductionScheduleLoadBalancingPage />);
     fireEvent.click(screen.getByRole('tab', { name: '着手日・平準化' }));
 
-    expect(screen.getByText(/FSIGENSHOYORYO × 指示数/)).toBeInTheDocument();
+    expect(screen.getByText(/行総分/)).toBeInTheDocument();
     expect(mockUseStartDateLeveling).toHaveBeenCalled();
     const lastCall = mockUseStartDateLeveling.mock.calls.at(-1);
     expect(lastCall?.[0]).toMatchObject({
@@ -633,6 +633,78 @@ describe('ProductionScheduleLoadBalancingPage', () => {
       toMonth: '2026-09',
       bucket: 'month'
     });
+  });
+
+  it('資源CD俯瞰タブに生産システム非一致の注記を表示する', () => {
+    mockUseOverview.mockReturnValue({
+      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
+      isFetching: false,
+      error: null
+    });
+    mockUseSuggestions.mockReturnValue({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    });
+
+    render(<ProductionScheduleLoadBalancingPage />);
+
+    expect(screen.getByTestId('load-balancing-production-system-note')).toHaveTextContent(
+      /FSIGENSHOYOYMD軸/
+    );
+  });
+
+  it('機種別月次負荷タブに生産システム非一致の注記を表示する', () => {
+    mockUseOverview.mockReturnValue({
+      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
+      isFetching: false,
+      error: null
+    });
+    mockUseSuggestions.mockReturnValue({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    });
+
+    render(<ProductionScheduleLoadBalancingPage />);
+    fireEvent.click(screen.getByRole('tab', { name: '機種別月次負荷' }));
+
+    expect(screen.getByTestId('load-balancing-production-system-note')).toHaveTextContent(
+      /数値は一致しません/
+    );
+  });
+
+  it('機種別月次負荷タブの初回ロード中はスケルトンと注記を表示する', () => {
+    mockUseOverview.mockReturnValue({
+      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
+      isFetching: false,
+      error: null
+    });
+    mockUseSuggestions.mockReturnValue({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    });
+    mockUseMachineMonthly.mockReturnValue({
+      data: undefined,
+      isFetching: true,
+      error: null
+    });
+
+    render(<ProductionScheduleLoadBalancingPage />);
+    fireEvent.click(screen.getByRole('tab', { name: '機種別月次負荷' }));
+
+    expect(screen.getByText('集計を読み込み中…')).toBeInTheDocument();
+    expect(screen.getByText('初回集計には時間がかかる場合があります。')).toBeInTheDocument();
   });
 
   it('Mac代理時は targetDeviceScopeKey を overview と machine-monthly に渡す', () => {

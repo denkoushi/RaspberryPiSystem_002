@@ -21,6 +21,14 @@ type Props = {
   location: string;
 };
 
+type SaveSection = 'workCalendars' | 'base' | 'monthly' | 'classes' | 'rules';
+
+type SaveFeedback = {
+  section: SaveSection;
+  text: string;
+  tone: 'success' | 'error';
+};
+
 function defaultYearMonth(): string {
   const d = new Date();
   const y = d.getFullYear();
@@ -28,9 +36,13 @@ function defaultYearMonth(): string {
   return `${y}-${m}`;
 }
 
+function feedbackClassName(tone: SaveFeedback['tone']): string {
+  return tone === 'success' ? 'text-xs font-semibold text-emerald-700' : 'text-xs font-semibold text-rose-600';
+}
+
 export function ProductionScheduleLoadBalancingSettingsSection({ location }: Props) {
   const [yearMonth, setYearMonth] = useState(defaultYearMonth);
-  const [message, setMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<SaveFeedback | null>(null);
 
   const capacityBaseQuery = useProductionScheduleLoadBalancingCapacityBase(location);
   const monthlyQuery = useProductionScheduleLoadBalancingMonthlyCapacity(location, yearMonth);
@@ -82,34 +94,67 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
     workCalendarsQuery.data?.siteKey ??
     '';
 
+  const renderFeedback = (section: SaveSection) => {
+    if (feedback?.section !== section) return null;
+    return (
+      <p className={feedbackClassName(feedback.tone)} data-testid={`load-balancing-save-feedback-${section}`}>
+        {feedback.text}
+      </p>
+    );
+  };
+
   const handleSaveBase = async () => {
-    setMessage(null);
-    await mutBase.mutateAsync({ location, items: baseRows });
-    setMessage('基準能力を保存しました');
+    setFeedback(null);
+    try {
+      await mutBase.mutateAsync({ location, items: baseRows });
+      setFeedback({ section: 'base', text: '基準能力を保存しました', tone: 'success' });
+    } catch {
+      setFeedback({ section: 'base', text: '基準能力の保存に失敗しました', tone: 'error' });
+    }
   };
 
   const handleSaveMonthly = async () => {
-    setMessage(null);
-    await mutMonthly.mutateAsync({ location, yearMonth: yearMonth.trim(), items: monthlyRows });
-    setMessage(`月次能力（${yearMonth.trim()}）を保存しました`);
+    setFeedback(null);
+    try {
+      await mutMonthly.mutateAsync({ location, yearMonth: yearMonth.trim(), items: monthlyRows });
+      setFeedback({
+        section: 'monthly',
+        text: `月次能力（${yearMonth.trim()}）を保存しました`,
+        tone: 'success'
+      });
+    } catch {
+      setFeedback({ section: 'monthly', text: '月次能力の保存に失敗しました', tone: 'error' });
+    }
   };
 
   const handleSaveClasses = async () => {
-    setMessage(null);
-    await mutClasses.mutateAsync({ location, items: classRows });
-    setMessage('山崩し分類を保存しました');
+    setFeedback(null);
+    try {
+      await mutClasses.mutateAsync({ location, items: classRows });
+      setFeedback({ section: 'classes', text: '山崩し分類を保存しました', tone: 'success' });
+    } catch {
+      setFeedback({ section: 'classes', text: '山崩し分類の保存に失敗しました', tone: 'error' });
+    }
   };
 
   const handleSaveRules = async () => {
-    setMessage(null);
-    await mutRules.mutateAsync({ location, items: ruleRows });
-    setMessage('移管ルールを保存しました');
+    setFeedback(null);
+    try {
+      await mutRules.mutateAsync({ location, items: ruleRows });
+      setFeedback({ section: 'rules', text: '移管ルールを保存しました', tone: 'success' });
+    } catch {
+      setFeedback({ section: 'rules', text: '移管ルールの保存に失敗しました', tone: 'error' });
+    }
   };
 
   const handleSaveWorkCalendars = async () => {
-    setMessage(null);
-    await mutWorkCalendars.mutateAsync({ location, items: workCalendarRows });
-    setMessage('稼働日ルールを保存しました');
+    setFeedback(null);
+    try {
+      await mutWorkCalendars.mutateAsync({ location, items: workCalendarRows });
+      setFeedback({ section: 'workCalendars', text: '稼働日ルールを保存しました', tone: 'success' });
+    } catch {
+      setFeedback({ section: 'workCalendars', text: '稼働日ルールの保存に失敗しました', tone: 'error' });
+    }
   };
 
   return (
@@ -154,7 +199,7 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
               </div>
             ))}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               onClick={() =>
@@ -169,6 +214,7 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
             >
               {mutWorkCalendars.isPending ? '保存中...' : '稼働日ルールを保存'}
             </Button>
+            {renderFeedback('workCalendars')}
           </div>
         </div>
       </Card>
@@ -213,7 +259,7 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
               </div>
             ))}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               onClick={() =>
@@ -225,6 +271,7 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
             <Button onClick={() => void handleSaveBase()} disabled={mutBase.isPending || capacityBaseQuery.isLoading}>
               {mutBase.isPending ? '保存中...' : '基準能力を保存'}
             </Button>
+            {renderFeedback('base')}
           </div>
         </div>
       </Card>
@@ -273,7 +320,7 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
               </div>
             ))}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               onClick={() =>
@@ -285,6 +332,7 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
             <Button onClick={() => void handleSaveMonthly()} disabled={mutMonthly.isPending || monthlyQuery.isLoading}>
               {mutMonthly.isPending ? '保存中...' : '月次能力を保存'}
             </Button>
+            {renderFeedback('monthly')}
           </div>
         </div>
       </Card>
@@ -320,13 +368,14 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
               </div>
             ))}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" onClick={() => setClassRows((prev) => [...prev, { resourceCd: '', classCode: '' }])}>
               行を追加
             </Button>
             <Button onClick={() => void handleSaveClasses()} disabled={mutClasses.isPending || classesQuery.isLoading}>
               {mutClasses.isPending ? '保存中...' : '分類を保存'}
             </Button>
+            {renderFeedback('classes')}
           </div>
         </div>
       </Card>
@@ -403,7 +452,7 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
               </div>
             ))}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               onClick={() =>
@@ -418,11 +467,10 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
             <Button onClick={() => void handleSaveRules()} disabled={mutRules.isPending || rulesQuery.isLoading}>
               {mutRules.isPending ? '保存中...' : 'ルールを保存'}
             </Button>
+            {renderFeedback('rules')}
           </div>
         </div>
       </Card>
-
-      {message ? <p className="text-xs font-semibold text-emerald-700">{message}</p> : null}
     </>
   );
 }

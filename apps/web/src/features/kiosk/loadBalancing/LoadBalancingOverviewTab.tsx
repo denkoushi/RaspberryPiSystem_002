@@ -24,6 +24,7 @@ import {
   shouldResetLoadBalancingOverviewSession
 } from './loadBalancingOverviewSession';
 import { LoadBalancingOverviewSuggestionsSection } from './LoadBalancingOverviewSuggestionsSection';
+import { LoadBalancingProductionSystemNote } from './LoadBalancingProductionSystemNote';
 import { LoadBalancingStepHeading } from './LoadBalancingStepHeading';
 import { lbCard, lbGrid, lbInput, lbPage, lbText } from './loadBalancingUiClasses';
 import { mapOverviewResourceChartRows } from './mapOverviewResourceChartRows';
@@ -198,6 +199,8 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
 
   return (
     <div className={lbPage.stack}>
+      <LoadBalancingProductionSystemNote />
+
       <section className={lbCard.base}>
         <div className={lbGrid.topRow}>
           <div>
