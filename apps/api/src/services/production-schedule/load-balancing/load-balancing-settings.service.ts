@@ -12,6 +12,7 @@ import {
   usedSharedFallbackByTransferRule
 } from './load-balancing-settings-merge.js';
 import { normalizeWorkCalendarMode, type WorkCalendarMode } from './work-calendar-policy.js';
+import { parseYearMonthRangeInclusive } from './year-month-range.js';
 
 export { SHARED_LOAD_BALANCING_SITE_KEY } from './load-balancing-settings-merge.js';
 
@@ -191,6 +192,52 @@ async function fetchLoadBalancingMonthlyCapacityItems(
   }));
 }
 
+type LoadBalancingMonthlyCapacityItemWithMonth = LoadBalancingMonthlyCapacityItem & {
+  yearMonth: string;
+};
+
+async function fetchLoadBalancingMonthlyCapacityItemsForRange(
+  siteKey: string,
+  yearMonths: string[]
+): Promise<LoadBalancingMonthlyCapacityItemWithMonth[]> {
+  if (yearMonths.length === 0) {
+    return [];
+  }
+  const rows = await prisma.productionScheduleResourceMonthlyCapacity.findMany({
+    where: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      siteKey,
+      yearMonth: { in: yearMonths }
+    },
+    orderBy: [{ yearMonth: 'asc' }, { resourceCd: 'asc' }],
+    select: {
+      resourceCd: true,
+      availableMinutes: true,
+      yearMonth: true
+    }
+  });
+  return rows.map((row) => ({
+    resourceCd: row.resourceCd,
+    availableMinutes: row.availableMinutes,
+    yearMonth: row.yearMonth
+  }));
+}
+
+function groupMonthlyCapacityItemsByMonth(
+  items: LoadBalancingMonthlyCapacityItemWithMonth[]
+): Map<string, LoadBalancingMonthlyCapacityItem[]> {
+  const grouped = new Map<string, LoadBalancingMonthlyCapacityItem[]>();
+  for (const item of items) {
+    const list = grouped.get(item.yearMonth) ?? [];
+    list.push({
+      resourceCd: item.resourceCd,
+      availableMinutes: item.availableMinutes
+    });
+    grouped.set(item.yearMonth, list);
+  }
+  return grouped;
+}
+
 export async function listLoadBalancingMonthlyCapacity(params: {
   siteKeyInput: string;
   yearMonth: string;
@@ -233,6 +280,72 @@ export async function listLoadBalancingMonthlyCapacityResolved(params: {
     yearMonth
   });
   return { siteKey, yearMonth, items };
+}
+
+export async function listLoadBalancingMonthlyCapacityRangeResolved(params: {
+  siteKeyInput: string;
+  fromMonth: string;
+  toMonth: string;
+}): Promise<{
+  siteKey: string;
+  fromMonth: string;
+  toMonth: string;
+  itemsByMonth: Record<string, LoadBalancingMonthlyCapacityItem[]>;
+}> {
+  const range = parseYearMonthRangeInclusive({
+    fromMonth: params.fromMonth,
+    toMonth: params.toMonth,
+    maxMonths: 12
+  });
+  const siteKey = normalizeSiteKey(params.siteKeyInput);
+
+  const buildItemsByMonth = (
+    siteItems: LoadBalancingMonthlyCapacityItemWithMonth[],
+    sharedItems: LoadBalancingMonthlyCapacityItemWithMonth[]
+  ): Record<string, LoadBalancingMonthlyCapacityItem[]> => {
+    const siteByMonth = groupMonthlyCapacityItemsByMonth(siteItems);
+    const sharedByMonth = groupMonthlyCapacityItemsByMonth(sharedItems);
+    const itemsByMonth: Record<string, LoadBalancingMonthlyCapacityItem[]> = {};
+
+    for (const yearMonth of range.months) {
+      const siteMonthItems = siteByMonth.get(yearMonth) ?? [];
+      const sharedMonthItems = sharedByMonth.get(yearMonth) ?? [];
+      const merged = mergeLoadBalancingItemsByResourceCd(siteMonthItems, sharedMonthItems);
+      itemsByMonth[yearMonth] = merged;
+      logLoadBalancingSiteSharedResolution({
+        siteKey,
+        setting: 'monthly-capacity',
+        siteItems: siteMonthItems,
+        sharedItems: sharedMonthItems,
+        usedSharedSupplement: usedSharedFallbackByResourceCd(siteMonthItems, merged),
+        yearMonth
+      });
+    }
+
+    return itemsByMonth;
+  };
+
+  if (siteKey === SHARED_LOAD_BALANCING_SITE_KEY) {
+    const siteItems = await fetchLoadBalancingMonthlyCapacityItemsForRange(siteKey, range.months);
+    return {
+      siteKey,
+      fromMonth: range.fromMonth,
+      toMonth: range.toMonth,
+      itemsByMonth: buildItemsByMonth(siteItems, [])
+    };
+  }
+
+  const [siteItems, sharedItems] = await Promise.all([
+    fetchLoadBalancingMonthlyCapacityItemsForRange(siteKey, range.months),
+    fetchLoadBalancingMonthlyCapacityItemsForRange(SHARED_LOAD_BALANCING_SITE_KEY, range.months)
+  ]);
+
+  return {
+    siteKey,
+    fromMonth: range.fromMonth,
+    toMonth: range.toMonth,
+    itemsByMonth: buildItemsByMonth(siteItems, sharedItems)
+  };
 }
 
 export async function replaceLoadBalancingMonthlyCapacity(params: {

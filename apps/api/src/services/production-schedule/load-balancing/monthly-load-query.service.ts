@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { buildCsvDashboardRowRequiredMinutesSql } from './csv-dashboard-row-required-minutes.sql.js';
@@ -115,6 +117,7 @@ export async function listMonthlyLoadRowCandidates(params: {
   siteKey: string;
   deviceScopeKey: string;
   yearMonth: string;
+  includeFhinmei?: boolean;
 }): Promise<LoadBalancingRowCandidate[]> {
   const policy = await getResourceCategoryPolicy({
     siteKey: params.siteKey,
@@ -122,6 +125,7 @@ export async function listMonthlyLoadRowCandidates(params: {
   });
 
   const { monthStart, monthEndExclusive } = parseYearMonthRangeUtc(params.yearMonth);
+  const includeFhinmei = params.includeFhinmei ?? true;
 
   const rows = await prisma.$queryRaw<RawDetailRow[]>`
     SELECT
@@ -129,7 +133,7 @@ export async function listMonthlyLoadRowCandidates(params: {
       COALESCE(("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "fseiban",
       COALESCE(("CsvDashboardRow"."rowData"->>'ProductNo'), '') AS "productNo",
       COALESCE(("CsvDashboardRow"."rowData"->>'FHINCD'), '') AS "fhincd",
-      COALESCE(("CsvDashboardRow"."rowData"->>'FHINMEI'), '') AS "fhinmei",
+      ${includeFhinmei ? Prisma.sql`COALESCE(("CsvDashboardRow"."rowData"->>'FHINMEI'), '')` : Prisma.sql`''`} AS "fhinmei",
       COALESCE(("CsvDashboardRow"."rowData"->>'FKOJUN'), '') AS "fkojun",
       UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "resourceCd",
       ${buildCsvDashboardRowRequiredMinutesSql()} AS "requiredMinutes"

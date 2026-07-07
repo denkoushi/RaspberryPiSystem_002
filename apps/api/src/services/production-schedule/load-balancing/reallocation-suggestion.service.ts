@@ -17,7 +17,7 @@ export async function suggestProductionScheduleLoadBalancing(params: {
 }> {
   const [overview, rows, rules] = await Promise.all([
     getProductionScheduleLoadBalancingOverview(params),
-    listMonthlyLoadRowCandidates(params),
+    listMonthlyLoadRowCandidates({ ...params, includeFhinmei: false }),
     listLoadBalancingTransferRulesResolved(params.siteKey)
   ]);
 

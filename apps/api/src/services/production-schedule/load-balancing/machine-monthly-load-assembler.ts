@@ -6,6 +6,7 @@ import type {
   MachineMonthlyLoadResourceMonthCell,
   MachineMonthlyLoadResult
 } from './machine-monthly-load.types.js';
+import type { MachineMonthlyLoadFseibanAggregate } from './machine-monthly-load-query.service.js';
 
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10);
 
@@ -32,6 +33,60 @@ export function aggregateMachineSummaries(rows: MachineMonthlyLoadEnrichedRow[])
       requiredMinutes: agg.requiredMinutes
     }))
     .sort((a, b) => b.requiredMinutes - a.requiredMinutes || a.machineName.localeCompare(b.machineName));
+}
+
+export function buildMachineSummariesFromFseibanAgg(
+  aggregates: MachineMonthlyLoadFseibanAggregate[],
+  machineNames: Record<string, string | null | undefined>,
+  unregisteredLabel: string
+): MachineMonthlyLoadMachineSummary[] {
+  const byMachine = new Map<string, { fseibans: Set<string>; requiredMinutes: number }>();
+  for (const aggregate of aggregates) {
+    const machineName =
+      aggregate.fseiban.length > 0
+        ? (machineNames[aggregate.fseiban] ?? unregisteredLabel)
+        : unregisteredLabel;
+    const current = byMachine.get(machineName) ?? { fseibans: new Set<string>(), requiredMinutes: 0 };
+    if (aggregate.fseiban.length > 0) {
+      current.fseibans.add(aggregate.fseiban);
+    }
+    current.requiredMinutes += aggregate.requiredMinutes;
+    byMachine.set(machineName, current);
+  }
+
+  return [...byMachine.entries()]
+    .map(([machineName, agg]) => ({
+      machineName,
+      fseibanCount: agg.fseibans.size,
+      requiredMinutes: agg.requiredMinutes
+    }))
+    .sort((a, b) => b.requiredMinutes - a.requiredMinutes || a.machineName.localeCompare(b.machineName));
+}
+
+export function resolveMachineNameForFseiban(
+  fseiban: string,
+  machineNames: Record<string, string | null | undefined>,
+  unregisteredLabel: string
+): string {
+  return fseiban.length > 0 ? (machineNames[fseiban] ?? unregisteredLabel) : unregisteredLabel;
+}
+
+export function listFseibansForMachineName(params: {
+  aggregates: MachineMonthlyLoadFseibanAggregate[];
+  machineNames: Record<string, string | null | undefined>;
+  machineName: string;
+  unregisteredLabel: string;
+}): string[] {
+  return params.aggregates
+    .filter((aggregate) => {
+      const name = resolveMachineNameForFseiban(
+        aggregate.fseiban,
+        params.machineNames,
+        params.unregisteredLabel
+      );
+      return name === params.machineName;
+    })
+    .map((aggregate) => aggregate.fseiban);
 }
 
 export function filterRowsByMachine(
@@ -161,10 +216,11 @@ export function assembleMachineMonthlyLoadResult(params: {
   toMonth: string;
   months: string[];
   rows: MachineMonthlyLoadEnrichedRow[];
+  machines?: MachineMonthlyLoadMachineSummary[];
   selectedMachineName?: string | null;
   selectedFhincd?: string | null;
 }): MachineMonthlyLoadResult {
-  const machines = aggregateMachineSummaries(params.rows);
+  const machines = params.machines ?? aggregateMachineSummaries(params.rows);
   const selectedMachineName = params.selectedMachineName?.trim() || null;
   const selectedFhincd = params.selectedFhincd?.trim() || null;
 

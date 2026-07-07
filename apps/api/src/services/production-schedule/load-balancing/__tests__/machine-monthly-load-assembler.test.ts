@@ -4,7 +4,9 @@ import {
   aggregateMachineSummaries,
   aggregateResourceMonthCells,
   assembleMachineMonthlyLoadResult,
-  filterRowsByFhincd
+  buildMachineSummariesFromFseibanAgg,
+  filterRowsByFhincd,
+  listFseibansForMachineName
 } from '../machine-monthly-load-assembler.js';
 import type { MachineMonthlyLoadEnrichedRow } from '../machine-monthly-load.types.js';
 
@@ -122,5 +124,67 @@ describe('machine-monthly-load-assembler', () => {
     expect(result.parts.map((part) => part.fhincd)).toEqual(['PART-A', 'PART-B']);
     expect(result.resourceMonths).toEqual([{ resourceCd: 'B02', month: '2026-07', requiredMinutes: 50 }]);
     expect(result.partRows).toHaveLength(1);
+  });
+
+  it('builds machine summaries from fseiban aggregates and machine names', () => {
+    const machines = buildMachineSummariesFromFseibanAgg(
+      [
+        { fseiban: 'S1', requiredMinutes: 100 },
+        { fseiban: 'S2', requiredMinutes: 50 },
+        { fseiban: 'S3', requiredMinutes: 30 }
+      ],
+      {
+        S1: 'DFD6362',
+        S2: 'DFD6362',
+        S3: 'DFL7161'
+      },
+      '機種名未登録'
+    );
+
+    expect(machines).toEqual([
+      { machineName: 'DFD6362', fseibanCount: 2, requiredMinutes: 150 },
+      { machineName: 'DFL7161', fseibanCount: 1, requiredMinutes: 30 }
+    ]);
+  });
+
+  it('lists fseibans for a selected machine name', () => {
+    const aggregates = [
+      { fseiban: 'S1', requiredMinutes: 10 },
+      { fseiban: 'S2', requiredMinutes: 20 },
+      { fseiban: '', requiredMinutes: 5 }
+    ];
+    const machineNames = { S1: 'DFD6362', S2: 'DFL7161' };
+
+    expect(
+      listFseibansForMachineName({
+        aggregates,
+        machineNames,
+        machineName: 'DFD6362',
+        unregisteredLabel: '機種名未登録'
+      })
+    ).toEqual(['S1']);
+    expect(
+      listFseibansForMachineName({
+        aggregates,
+        machineNames,
+        machineName: '機種名未登録',
+        unregisteredLabel: '機種名未登録'
+      })
+    ).toEqual(['']);
+  });
+
+  it('uses precomputed machines when provided to assembler', () => {
+    const machines = [{ machineName: 'DFD6362', fseibanCount: 1, requiredMinutes: 10 }];
+    const result = assembleMachineMonthlyLoadResult({
+      siteKey: '第2工場',
+      fromMonth: '2026-06',
+      toMonth: '2026-06',
+      months: ['2026-06'],
+      rows: [],
+      machines,
+      selectedMachineName: null
+    });
+
+    expect(result.machines).toEqual(machines);
   });
 });
