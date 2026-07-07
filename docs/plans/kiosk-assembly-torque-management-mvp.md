@@ -7,7 +7,7 @@ date: 2026-07-06
 source_of_truth: this file
 related_code: apps/api/src/routes/assembly/index.ts, apps/api/src/routes/kiosk-documents.ts, apps/api/src/routes/kiosk/assembly-procedure-order-auth.ts, apps/api/src/routes/storage/assembly-procedure-images.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx, apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx, infrastructure/docker/docker-compose.server.yml, infrastructure/ansible/roles/server/tasks/main.yml
 related_docs: ../INDEX.md, ../guides/deployment.md
-validation: local Docker Postgres, GitHub Actions CI 28642360918 and 28650944516/28650941078, limited deployment run 20260703-183241-22704, user real-device acceptance 2026-07-03, local Docker Postgres 55434 for seiban start flow, focused API/web tests and web full test/build 2026-07-06, PR 956 CI 28782487173, full deployment 20260706-185942-11851, Phase12 45/0/0, procedure order viewer local Docker Postgres 55435, focused API/web tests and web full test/build 2026-07-06, PR 957 CI 28789861728, full deployment 20260706-212700-28308, Phase12 45/0/0, assembly procedure-order smoke
+validation: local Docker Postgres, GitHub Actions CI 28642360918 and 28650944516/28650941078, limited deployment run 20260703-183241-22704, user real-device acceptance 2026-07-03, seiban start flow CI/deploy/Phase12, procedure order viewer CI/deploy/Phase12, WIP-first UI CI 28829668364, Pi5/Pi4 deployment 2026-07-07, Phase12 45/0/0
 open_items: Bluetooth torque-agent, PDF viewing completion tracking, NFC serial scan, completed work-session history/search enhancements
 ---
 
@@ -29,11 +29,17 @@ This is separate from part measurement and self-inspection. The implementation r
 
 ## Current State
 
-- Latest working branch: `feature/assembly-procedure-order-viewer`.
-- Latest deployed implementation branch: `feature/assembly-procedure-order-viewer`.
-- Latest deployed runtime commit: `ad6eaa00` (`feat(assembly): add procedure order viewer`).
-- Latest deployed PR: `#957`.
-- Latest deployed scope on 2026-07-06:
+- Latest working branch before merge: `feat/kiosk-assembly-wip-first-ui`.
+- Latest deployed implementation branch: `feat/kiosk-assembly-wip-first-ui`.
+- Latest deployed runtime commit: `3a8c9e41` (`fix(assembly): prioritize kiosk wip pane`).
+- Latest deployed PR before this branch: `#957`.
+- Latest deployed scope on 2026-07-07:
+  - Makes `/kiosk/assembly` WIP-first: `仕掛中` is the primary left pane and new-start inputs are the right support pane.
+  - Preserves seiban candidate search, seiban direct keypad, serial keypad, operator input, torque wrench input, template registration link, start/resume behavior, and management links.
+  - Keeps all API, DB, Prisma, DTO, and start/resume contracts unchanged.
+  - Targets FHD first. At 1920x1080 both keypads, torque wrench, and start action fit in one viewport; at 1366x768 only the right input area scrolls internally and the start action stays visible.
+  - Deployed to `raspberrypi5` and all five Pi4 kiosk hosts. `raspberrypi3` was not deployed because this change is the assembly kiosk Web UI served by Pi5 and consumed by Pi4 kiosk browsers; Pi3 signage has no assembly kiosk surface.
+- Previous deployed scope on 2026-07-06:
   - Adds machine-name-based PDF procedure viewing-order settings.
   - Adds `/kiosk/assembly/procedure-order-settings` with 2520 shared password verification.
   - Uses existing `KioskDocument` PDF records as the source of truth and stores only assembly viewing order.
@@ -51,6 +57,16 @@ This is separate from part measurement and self-inspection. The implementation r
   - The lower section shows in-progress assembly sessions and links directly back to `/kiosk/assembly/work-sessions/:sessionId`.
   - The former library/template management page moved to `/kiosk/assembly/library`.
 - Latest CI/deployment:
+  - WIP-first UI CI run `28829668364` succeeded: lint/build/unit, API DB and infra, Docker security, e2e smoke, and full e2e passed.
+  - WIP-first deployment completed on 2026-07-07:
+    - `raspberrypi5`: run `20260707-082936-6133`, `failed=0`, exit `0`.
+    - `raspi4-kensaku-stonebase01`: run `20260707-085305-11559`, `failed=0`, exit `0`.
+    - `raspberrypi4`: run `20260707-090952-10665`, `failed=0`, exit `0`.
+    - `raspi4-robodrill01`: run `20260707-091436-12753`, `failed=0`, exit `0`.
+    - `raspi4-fjv60-80`: run `20260707-091820-20607`, `failed=0`, exit `0`.
+    - `raspi4-sessaku-01`: run `20260707-092210-22744`, `failed=0`, exit `0`.
+  - Phase12 real-device verification after all Pi4 rollout passed: `PASS 45 / WARN 0 / FAIL 0`.
+  - Assembly WIP-first smoke after deployment: `/kiosk/assembly` returned HTTP 200; `GET /api/assembly/work-sessions/summary?status=in_progress&limit=5` and `GET /api/assembly/seiban-candidates?prefix=TEST&limit=3` returned HTTP 200 with client-key authentication.
   - Procedure order viewer PR CI `28789861728`, push CI `28789859917`, CodeQL `28789861725`, and Secret scan `28789861781` succeeded. The initial `security-docker` failure was a runner disk-space failure during Trivy scan; rerun succeeded.
   - Procedure order viewer full deployment run `20260706-212700-28308` completed on all 7 hosts with `failed=0 / unreachable=0`.
   - Phase12 real-device verification passed: `PASS 45 / WARN 0 / FAIL 0`.
@@ -233,6 +249,9 @@ Local validation for procedure order viewer before PR:
 
 CI:
 
+- WIP-first UI CI:
+  - GitHub Actions run `28829668364`: success.
+  - Jobs passed: lint/build/unit, API DB and infra, Docker security, e2e smoke, full e2e.
 - GitHub Actions run `28642360918`: success.
 - Jobs passed: lint/build/unit, API DB and infra, Docker security, e2e smoke, full e2e.
 - Follow-up CI after persistent storage/delete and CodeQL rate-limit fix:
@@ -253,6 +272,20 @@ CI:
   - `security-docker` initially failed on runner disk space during Trivy DB extraction; failed jobs were rerun and the final PR check set passed.
 
 Real-device deployment and smoke:
+
+- WIP-first UI rollout on 2026-07-07:
+  - Branch `feat/kiosk-assembly-wip-first-ui`, runtime HEAD `3a8c9e41`.
+  - `raspberrypi5`: run `20260707-082936-6133`; Docker compose rebuild/restart, Prisma migrate/status, and API health recovery passed.
+  - `raspi4-kensaku-stonebase01`: run `20260707-085305-11559`; repo sync, barcode-agent readiness, `kiosk-browser.service`, `status-agent.service`, `status-agent.timer`, and kiosk UI reachability passed.
+  - Other Pi4 kiosk rollout after stonebase acceptance:
+    - `raspberrypi4`: run `20260707-090952-10665`, `failed=0`, exit `0`.
+    - `raspi4-robodrill01`: run `20260707-091436-12753`, `failed=0`, exit `0`.
+    - `raspi4-fjv60-80`: run `20260707-091820-20607`, `failed=0`, exit `0`.
+    - `raspi4-sessaku-01`: run `20260707-092210-22744`, `failed=0`, exit `0`.
+  - All Pi4 kiosk hosts passed repo sync, `kiosk-browser.service`, `status-agent.service`, `status-agent.timer`, and kiosk UI reachability.
+  - `raspberrypi3` was not deployed. It is signage-only for this scope and has no `/kiosk/assembly` browser surface; Phase12 still verified its signage service health.
+  - `./scripts/deploy/verify-phase12-real.sh` after the all-Pi4 rollout: `PASS 45 / WARN 0 / FAIL 0`.
+  - Additional assembly HTTP smoke: `/kiosk/assembly` returned HTTP 200, WIP summary returned `{"sessions":[]}`, and seiban candidates returned `{"candidates":[]}` with client-key authentication.
 
 - Procedure order viewer full deployment on 2026-07-06:
   - Branch `feature/assembly-procedure-order-viewer`, runtime HEAD `ad6eaa00`.
