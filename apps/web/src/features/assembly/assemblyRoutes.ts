@@ -12,6 +12,21 @@ export function kioskAssemblyWorkSessionPath(sessionId: string): string {
   return `${KIOSK_ASSEMBLY_PATH_PREFIX}/work-sessions/${encodeURIComponent(sessionId)}`;
 }
 
+export type AssemblyLibraryFocus = 'procedures' | 'templates';
+
+export function kioskAssemblyLibraryPath(params?: { focus?: AssemblyLibraryFocus }): string {
+  const query = new URLSearchParams();
+  if (params?.focus) query.set('focus', params.focus);
+  const suffix = query.toString();
+  return suffix ? `${KIOSK_ASSEMBLY_LIBRARY_PATH}?${suffix}` : KIOSK_ASSEMBLY_LIBRARY_PATH;
+}
+
+export function parseAssemblyLibrarySearch(search: string): { focus: AssemblyLibraryFocus | null } {
+  const focus = new URLSearchParams(search).get('focus');
+  if (focus === 'procedures' || focus === 'templates') return { focus };
+  return { focus: null };
+}
+
 export function kioskAssemblyProcedureOrderSettingsPath(params?: { machineName?: string | null }): string {
   const query = new URLSearchParams();
   const machineName = params?.machineName?.trim();

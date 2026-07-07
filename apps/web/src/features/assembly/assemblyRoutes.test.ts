@@ -4,10 +4,12 @@ import {
   KIOSK_ASSEMBLY_HOME_PATH,
   KIOSK_ASSEMBLY_LIBRARY_PATH,
   KIOSK_ASSEMBLY_PROCEDURE_ORDER_SETTINGS_PATH,
+  kioskAssemblyLibraryPath,
   kioskAssemblyProcedureOrderSettingsPath,
   kioskAssemblyTemplateEditPath,
   kioskAssemblyTemplateNewPath,
   kioskAssemblyWorkSessionPath,
+  parseAssemblyLibrarySearch,
   parseAssemblyProcedureOrderSettingsSearch,
   parseAssemblyTemplateNewSearch
 } from './assemblyRoutes';
@@ -34,6 +36,15 @@ describe('assemblyRoutes', () => {
       procedureDocumentId: 'doc-1',
       sourceTemplateId: 'template-1'
     });
+  });
+
+  it('builds and parses library focus query params', () => {
+    expect(kioskAssemblyLibraryPath({ focus: 'procedures' })).toBe('/kiosk/assembly/library?focus=procedures');
+    expect(kioskAssemblyLibraryPath({ focus: 'templates' })).toBe('/kiosk/assembly/library?focus=templates');
+    expect(kioskAssemblyLibraryPath()).toBe(KIOSK_ASSEMBLY_LIBRARY_PATH);
+    expect(parseAssemblyLibrarySearch('?focus=procedures')).toEqual({ focus: 'procedures' });
+    expect(parseAssemblyLibrarySearch('?focus=templates')).toEqual({ focus: 'templates' });
+    expect(parseAssemblyLibrarySearch('?focus=unknown')).toEqual({ focus: null });
   });
 
   it('builds and parses procedure order settings query params', () => {

@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 
 import { listAssemblyTemplateSummaries, retireAssemblyTemplate } from '../../api/client';
 import { Button, buttonClassName } from '../../components/ui/Button';
@@ -10,6 +10,7 @@ import {
   AssemblyTemplateHistoryDialog,
   AssemblyTemplateLibraryTable,
   KIOSK_ASSEMBLY_HOME_PATH,
+  parseAssemblyLibrarySearch,
   readAssemblyApiErrorMessage,
   useAssemblyTemplateLibrary
 } from '../../features/assembly';
@@ -27,6 +28,7 @@ function pickRepresentative(group: AssemblyTemplateSummaryDto[]): AssemblyTempla
 }
 
 export function KioskAssemblyPage() {
+  const location = useLocation();
   const [message, setMessage] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
@@ -37,6 +39,14 @@ export function KioskAssemblyPage() {
   const [actionBusy, setActionBusy] = useState(false);
   const templateLibrary = useAssemblyTemplateLibrary({ refreshToken: templateRefreshToken });
   const { filters, templates } = templateLibrary;
+
+  useEffect(() => {
+    const { focus } = parseAssemblyLibrarySearch(location.search);
+    if (!focus) return;
+    const targetId =
+      focus === 'procedures' ? 'assembly-procedure-library-heading' : 'assembly-template-pane-heading';
+    document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [location.search]);
 
   const groupedTemplates = useMemo(() => {
     const map = new Map<string, AssemblyTemplateSummaryDto[]>();
