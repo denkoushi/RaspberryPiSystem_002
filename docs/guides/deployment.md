@@ -10,6 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-07 · **検査図面 作成入力改善 + 図面ライブラリ資源CD chip** · **Web + shared-types** · **Pi5 + Pi4×5 + Pi3 反映済**） {#inspection-drawing-create-input-and-library-chips-2026-07-07}
+
+- **変更概要（正本）**: [Plan](../plans/kiosk-inspection-drawing-mvp-execplan.md)（2026-07-07 エントリ） · main **`b4d39cb6`**。実装コミット: `f5ad83b1`（品番/テンプレ/指定数 Input の白文字不可視を `!bg-white !text-black` 専用クラスで修正）· `2b8cd94d`（名称 `キリ穴ピッチ` / `ザグリ穴ピッチ` / `ネジ穴深さ` 追加 + 深さ系公差候補 0〜20 + 寸法公差の普通公差自動入力）· `04038f6c`（図面ライブラリ表に資源CD chip の1.5行目追加・両ペインの「資源CD」ラベル削除・chip共通化）。**API / DB / Prisma migration 変更なし**。
+- **CI（`b4d39cb6`）**: main push CI **`28856707755` success** · CodeQL **`28856707809` success** · Secret scan **`28856707798` success** · Pages success。
+- **ローカル検証**: web vitest **261 files / 1313 tests passed** · `tsc -b` · web/shared-types lint · api/web build すべて成功（2026-07-07）。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260707-185840-29897`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260707-185840-29897.log` · summary success true · exitCode 0 · PLAY RECAP 全7ホスト（`raspberrypi5` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` / `raspberrypi3`）で `failed=0 / unreachable=0`。Pi5 repo は `b4d39cb6`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-07 JST）。
+- **smoke**: `/kiosk/part-measurement` · `/kiosk/part-measurement/inspection` · `/kiosk/part-measurement/inspection/create` すべて HTTP **200**。配信バンドルで新コード確認: index chunk に新名称（`ザグリ穴ピッチ` / `ネジ穴深さ`）、CreatePage chunk に `!text-black`、共有 chunk に `inspection-visual-resource-chips`。
+- **実機（目視・タッチ）**: 未実施（次回現場確認時: 品番/テンプレ欄の黒文字表示・名称新選択肢・深さ公差候補 0〜20・基準値blur時の一般公差自動入力・図面ライブラリの資源CD chip）。
+
 ### 補足（2026-07-07 · **組立キオスク改良 第2弾（組立記録確認+NFC承認 / プレビュー認証修正 / トップUI統一 / ペイン複数列化）** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-record-approval-2026-07-07}
 
 - **変更概要（正本）**: [ADR-20260707](../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · main **`be576f8c`**。実装コミット: `15914471`（閲覧順プレビューの保護画像フック化・`KioskDocumentPageImage` 新設）· `8cae4508`（トップ3ボタン `ghostOnDark` 統一 + `?focus=` ペインスクロール）· `685c1f4f`（仕掛中/完了ペインの複数列カード化）· `a2d300fa` + `3e866196`（組立記録確認: `/kiosk/assembly/record-approvals` + NFC承認）· `ab80ee68`（migration を新テーブルのみへ削減）。migration **`20260707061829_assembly_work_session_record_approval`**（`AssemblyWorkSessionApproval` テーブル追加のみの非破壊）。
