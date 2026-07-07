@@ -127,6 +127,7 @@ model Employee {
   selfInspectionLotEntries SelfInspectionLotEntry[]
   selfInspectionInspectorEntries SelfInspectionInspectorEntry[] @relation("SelfInspectionInspectorEntryEmployee")
   selfInspectionRecordApprovals SelfInspectionRecordApproval[] @relation("SelfInspectionRecordApprover")
+  assemblyWorkSessionRecordApprovals AssemblyWorkSessionApproval[] @relation("AssemblyWorkSessionRecordApprover")
 }
 
 model Item {
@@ -334,6 +335,7 @@ model ClientDevice {
   selfInspectionPaperReports SelfInspectionPaperReport[]
   selfInspectionInspectorEntries SelfInspectionInspectorEntry[]
   selfInspectionRecordApprovals SelfInspectionRecordApproval[]
+  assemblyWorkSessionRecordApprovals AssemblyWorkSessionApproval[]
   mobilePlacementEvents   MobilePlacementEvent[]
   orderPlacementEvents    OrderPlacementEvent[]
   mobilePlacementShelvesCreated MobilePlacementShelf[]
@@ -2421,6 +2423,7 @@ model AssemblyWorkSession {
   template                 AssemblyTemplate          @relation(fields: [templateId], references: [id], onDelete: Restrict)
   torqueRecords            AssemblyTorqueRecord[]
   restartLogs              AssemblyAreaRestartLog[]
+  approval                 AssemblyWorkSessionApproval?
 
   @@index([status, updatedAt], map: "AssemblyWorkSession_idx_status_updated")
   @@index([productNo, status], map: "AssemblyWorkSession_idx_product_status")
@@ -2461,6 +2464,29 @@ model AssemblyAreaRestartLog {
 
   @@index([sessionId, createdAt], map: "AssemblyAreaRestartLog_idx_session_created")
   @@index([areaId], map: "AssemblyAreaRestartLog_idx_area")
+}
+
+/// 組立キオスク: 完了した作業セッションの記録承認。
+model AssemblyWorkSessionApproval {
+  id                            String              @id @default(uuid())
+  sessionId                     String              @unique
+  approvedAt                    DateTime            @default(now())
+  approverEmployeeId            String?
+  approverEmployeeCodeSnapshot  String
+  approverEmployeeNameSnapshot  String
+  approverNfcTagUidSnapshot     String
+  comment                       String?
+  clientDeviceId                String?
+  clientDeviceNameSnapshot      String?
+  createdAt                     DateTime            @default(now())
+  updatedAt                     DateTime            @updatedAt
+  session                       AssemblyWorkSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  approverEmployee              Employee?           @relation("AssemblyWorkSessionRecordApprover", fields: [approverEmployeeId], references: [id], onDelete: SetNull)
+  clientDevice                  ClientDevice?       @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([approvedAt], map: "AssemblyWorkSessionApproval_idx_approved_at")
+  @@index([approverEmployeeId], map: "AssemblyWorkSessionApproval_idx_approver_employee")
+  @@index([clientDeviceId], map: "AssemblyWorkSessionApproval_idx_client_device")
 }
 
 model SelfInspectionSession {

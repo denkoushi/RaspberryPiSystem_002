@@ -19,7 +19,9 @@ import {
   AssemblySeibanStartService,
   AssemblyTemplateService,
   AssemblyWorkSessionService,
+  AssemblyWorkSessionRecordApprovalService,
   resolveAssemblyOperatorNfcUid,
+  serializeAssemblyWorkSessionApproval,
   TORQUE_INPUT_PORT_SOURCES,
   toPrismaTorqueInputSource,
   type AssemblyProcedureDocumentSummary,
@@ -115,6 +117,11 @@ const recordTorqueBodySchema = z.object({
   value: z.coerce.number(),
   source: z.enum(TORQUE_INPUT_PORT_SOURCES).default('manual'),
   rawPayload: z.unknown().optional()
+});
+
+const approveAssemblyRecordApprovalBodySchema = z.object({
+  approverEmployeeTagUid: z.string().min(1).max(200),
+  comment: z.string().max(500).optional().nullable()
 });
 
 function decimalToString(value: { toString(): string } | number | string | null | undefined): string | null {
@@ -304,8 +311,31 @@ function serializeSessionSummary(session: AssemblyWorkSessionSummary) {
     currentBoltId: session.currentBoltId,
     currentBoltMarkerNo: session.currentBoltMarkerNo,
     acceptedBoltCount: session.acceptedBoltCount,
-    totalBoltCount: session.totalBoltCount
+    totalBoltCount: session.totalBoltCount,
+    approval: serializeAssemblyWorkSessionApproval(session.approval)
   };
+}
+
+function buildAreaTorqueSummaries(session: AssemblyWorkSessionDetail) {
+  return [...session.template.areas]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((area) => {
+      const boltIds = new Set(area.bolts.map((bolt) => bolt.id));
+      const records = session.torqueRecords.filter((record) => boltIds.has(record.templateBoltId));
+      const acceptedOkCount = records.filter((record) => record.accepted && record.judgement === 'OK').length;
+      const ngCount = records.filter((record) => record.judgement === 'NG').length;
+      const ignoredCount = records.filter((record) => record.judgement === 'IGNORED').length;
+      return {
+        areaId: area.id,
+        areaCode: area.areaCode,
+        areaName: area.areaName,
+        processNo: area.processNo,
+        totalBoltCount: area.bolts.length,
+        acceptedOkCount,
+        ngCount,
+        ignoredCount
+      };
+    });
 }
 
 function serializeSession(session: AssemblyWorkSessionDetail) {
@@ -355,7 +385,9 @@ function serializeSession(session: AssemblyWorkSessionDetail) {
       areaId: log.areaId,
       reason: log.reason,
       createdAt: log.createdAt.toISOString()
-    }))
+    })),
+    approval: serializeAssemblyWorkSessionApproval(session.approval),
+    areaTorqueSummaries: buildAreaTorqueSummaries(session)
   };
 }
 
@@ -424,6 +456,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const procedureService = new AssemblyProcedureDocumentService();
   const templateService = new AssemblyTemplateService();
   const sessionService = new AssemblyWorkSessionService();
+  const recordApprovalService = new AssemblyWorkSessionRecordApprovalService();
   const seibanStartService = new AssemblySeibanStartService();
   const seibanLotQuantityService = new AssemblySeibanLotQuantityService();
   const procedureOrderService = new AssemblyProcedureOrderService();
@@ -708,6 +741,18 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   app.post('/assembly/work-sessions/:id/complete', { preHandler: allowWriteKiosk }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const session = await sessionService.complete(params.id);
+    return { session: serializeSession(session) };
+  });
+
+  app.post('/assembly/work-sessions/:id/record-approval/approve', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const body = approveAssemblyRecordApprovalBodySchema.parse(request.body ?? {});
+    const clientDevice = await tryGetClientDevice(request.headers);
+    const session = await recordApprovalService.approve(params.id, {
+      approverEmployeeTagUid: body.approverEmployeeTagUid,
+      comment: body.comment,
+      clientDeviceId: clientDevice?.id ?? null
+    });
     return { session: serializeSession(session) };
   });
 

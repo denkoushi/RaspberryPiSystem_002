@@ -12,7 +12,7 @@ import {
   SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
 } from '../../services/production-schedule/constants.js';
 import { SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION } from '../../services/production-schedule/production-schedule-settings.service.js';
-import { createAuthHeader, createTestClientDevice, createTestUser } from './helpers.js';
+import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -84,6 +84,7 @@ async function cleanAssemblyTables() {
   await prisma.assemblyProcedureOrderItem.deleteMany({});
   await prisma.assemblyProcedureOrderSet.deleteMany({});
   await prisma.kioskDocument.deleteMany({ where: { title: { startsWith: TEST_KIOSK_DOCUMENT_TITLE_PREFIX } } });
+  await prisma.assemblyWorkSessionApproval.deleteMany({});
   await prisma.assemblyAreaRestartLog.deleteMany({});
   await prisma.assemblyTorqueRecord.deleteMany({});
   await prisma.assemblyWorkSession.deleteMany({});
@@ -1082,5 +1083,196 @@ describe('assembly torque management API', () => {
       }
     });
     expect(neither.statusCode).toBe(400);
+  });
+
+  it('approves completed assembly work session records via NFC and exposes approval in summary/detail', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const approver = await createTestEmployee({
+      displayName: 'Approval Tester',
+      nfcTagUid: `EMP-ASM-APPROVER-${Date.now()}`
+    });
+
+    const upload = buildMultipartProcedure('Approval Test Procedure');
+    const docRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/procedure-documents',
+      headers: { ...headers, 'Content-Type': upload.contentType },
+      payload: upload.body
+    });
+    const documentId = docRes.json().document.id as string;
+
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: buildTemplatePayload(documentId, { modelCode: 'ASM-APPROVAL', procedurePattern: '標準' })
+    });
+    const templateId = templateRes.json().template.id as string;
+
+    const startRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: {
+        templateId,
+        productNo: 'ASM-APPROVAL-001',
+        serialNo: 'S-APPROVAL-001',
+        operatorNameSnapshot: '作業者A',
+        targetUnit: 'X軸',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    const sessionId = startRes.json().session.id as string;
+
+    const ok = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/record-torque`,
+      headers,
+      payload: { value: 10, source: 'manual' }
+    });
+    expect(ok.statusCode).toBe(200);
+
+    const complete = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/complete`,
+      headers: { 'x-client-key': client.apiKey }
+    });
+    expect(complete.statusCode).toBe(200);
+    expect(complete.json().session.approval).toBeNull();
+    expect(complete.json().session.areaTorqueSummaries).toHaveLength(1);
+
+    const summaryBefore = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/work-sessions/summary?status=completed&productNo=ASM-APPROVAL-001',
+      headers
+    });
+    expect(summaryBefore.statusCode).toBe(200);
+    expect(summaryBefore.json().sessions[0].approval).toBeNull();
+
+    const approve = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/record-approval/approve`,
+      headers,
+      payload: { approverEmployeeTagUid: approver.nfcTagUid }
+    });
+    expect(approve.statusCode).toBe(200);
+    expect(approve.json().session.approval).toMatchObject({
+      approverEmployeeNameSnapshot: approver.displayName,
+      approverEmployeeCodeSnapshot: approver.employeeCode
+    });
+
+    const duplicateApprove = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/record-approval/approve`,
+      headers,
+      payload: { approverEmployeeTagUid: approver.nfcTagUid }
+    });
+    expect(duplicateApprove.statusCode).toBe(409);
+
+    const summaryAfter = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/work-sessions/summary?status=completed&productNo=ASM-APPROVAL-001',
+      headers
+    });
+    expect(summaryAfter.json().sessions[0].approval?.approverEmployeeNameSnapshot).toBe(approver.displayName);
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/work-sessions/${sessionId}`,
+      headers
+    });
+    expect(detail.json().session.approval?.approverEmployeeNameSnapshot).toBe(approver.displayName);
+  });
+
+  it('rejects assembly record approval for non-completed sessions and unknown NFC tags', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+
+    const upload = buildMultipartProcedure('Approval Guard Procedure');
+    const docRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/procedure-documents',
+      headers: { ...headers, 'Content-Type': upload.contentType },
+      payload: upload.body
+    });
+    const documentId = docRes.json().document.id as string;
+
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: buildTemplatePayload(documentId, { modelCode: 'ASM-GUARD', procedurePattern: '標準' })
+    });
+    const templateId = templateRes.json().template.id as string;
+
+    const startRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: {
+        templateId,
+        productNo: 'ASM-GUARD-001',
+        serialNo: 'S-GUARD-001',
+        operatorNameSnapshot: '作業者B',
+        targetUnit: 'Y軸',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    const sessionId = startRes.json().session.id as string;
+
+    const inProgressApprove = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/record-approval/approve`,
+      headers,
+      payload: { approverEmployeeTagUid: 'UNKNOWN-TAG' }
+    });
+    expect(inProgressApprove.statusCode).toBe(409);
+
+    const ok = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/record-torque`,
+      headers,
+      payload: { value: 10, source: 'manual' }
+    });
+    expect(ok.statusCode).toBe(200);
+
+    const complete = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/complete`,
+      headers: { 'x-client-key': client.apiKey }
+    });
+    expect(complete.statusCode).toBe(200);
+
+    const unknownTagApprove = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/record-approval/approve`,
+      headers,
+      payload: { approverEmployeeTagUid: 'UNKNOWN-TAG-404' }
+    });
+    expect(unknownTagApprove.statusCode).toBe(404);
+  });
+
+  it('verifies assembly record approval access password via kiosk endpoint', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+
+    const wrong = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/assembly/record-approvals/verify-access-password',
+      headers,
+      payload: { password: '0000' }
+    });
+    expect(wrong.statusCode).toBe(200);
+    expect(wrong.json()).toEqual({ success: false });
+
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/assembly/record-approvals/verify-access-password',
+      headers,
+      payload: { password: '2520' }
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toEqual({ success: true });
   });
 });

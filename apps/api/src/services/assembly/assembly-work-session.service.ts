@@ -20,7 +20,8 @@ export const assemblyWorkSessionDetailInclude = {
   },
   restartLogs: {
     orderBy: { createdAt: 'asc' }
-  }
+  },
+  approval: true
 } satisfies Prisma.AssemblyWorkSessionInclude;
 
 export type AssemblyWorkSessionDetail = Prisma.AssemblyWorkSessionGetPayload<{
@@ -64,6 +65,7 @@ export type AssemblyWorkSessionSummary = {
   currentBoltMarkerNo: number | null;
   acceptedBoltCount: number;
   totalBoltCount: number;
+  approval: AssemblyWorkSessionDetail['approval'];
 };
 
 export type AssemblyTorqueRecordOutcome = {
@@ -256,7 +258,8 @@ export class AssemblyWorkSessionService {
         torqueRecords: {
           where: { accepted: true, judgement: 'OK' },
           select: { templateBoltId: true }
-        }
+        },
+        approval: true
       },
       orderBy: [{ updatedAt: 'desc' }, { startedAt: 'desc' }],
       take: limit
@@ -290,7 +293,8 @@ export class AssemblyWorkSessionService {
         currentBoltId: session.currentBoltId,
         currentBoltMarkerNo: current?.bolt.markerNo ?? null,
         acceptedBoltCount,
-        totalBoltCount: bolts.length
+        totalBoltCount: bolts.length,
+        approval: session.approval
       };
     });
   }
