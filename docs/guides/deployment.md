@@ -10,6 +10,22 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-08 · **検査図面 ツールバー崩れ修正 + 品番自動入力 none フォールバック** · **Web のみ** · **Pi5 + stonebase 反映済**） {#inspection-drawing-toolbar-fhincd-fallback-2026-07-08}
+
+- **変更概要（正本）**: [KB-320 §作成画面ツールバー・品番none修正](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成画面-ツールバー崩れ-品番自動入力-none-サイレント修正-2026-07-08) · ブランチ **`fix/inspection-drawing-autofill-toolbar`** · 実装コミット **`3049e5fd`**（toolbar slot を flat band 契約 `shrink-0` へ復元）· **`c87b452d`**（`none` 時の図面名フォールバック + メッセージ表示）· デプロイ HEAD **`3f72efc4`**。**API / DB / Prisma migration 変更なし**（`f351343e` の fhincd API は継続使用）。
+- **CI**: GitHub Actions **`28923607828` success**（`28919030186` success は前提コミット `f351343e`）。
+- **ローカル検証**: Web vitest **266 files / 1348 tests passed** · Playwright `e2e/inspection-drawing-create-header-layout.spec.ts` **3 passed** · web build / lint success · DEV プレビューのスクリーンショット目視でレイアウト復元確認。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/inspection-drawing-autofill-toolbar infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | HEAD | RECAP / 備考 |
+|--------|---------------|------|--------------|
+| `raspberrypi5` | **`20260708-155545-7409`** | **`3f72efc4`** | `ok=135` `changed=4` `failed=0` |
+| `raspi4-kensaku-stonebase01` | **`20260708-155947-24513`** | **`3f72efc4`** | `ok=130` `changed=10` `failed=0` |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **deployed Web smoke（保存なし・DB読み取りのみ）**: `/kiosk/part-measurement/inspection/create?visualTemplateId=…` で、テンプレ紐付きあり図面（7161ベアリングサポート）は品番 `MD0004167150` 自動入力、図面名に品番あり（`7161ストッパー台（1）MD004433830`）はフォールバック自動入力 + 確認メッセージ、紐付きなし（7161テーブル）は「品番を手入力してください」メッセージを確認。ツールバーは1行復元。
+- **未完了**: `main` 未マージ · Pi4 他4台 + Pi3 未デプロイ（`main` マージ後に標準手順で反映） · ユーザー実機（目視・タッチ）確認待ち。
+
 ### 補足（2026-07-08 · **検査図面 丸数字設定改善（保存状態・右ペイン・幾何公差）** · **Web + shared-types** · **Pi5 + Pi4×5 反映済 / Pi3 対象外**） {#inspection-drawing-marker-settings-save-state-2026-07-08}
 
 - **変更概要（正本）**: [KB-320 §丸数字設定改善](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-丸数字設定改善-2026-07-08) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · ブランチ **`feature/assembly-lot-serial-workflow`** · 実装コミット **`04bb49fe`**（`feat: improve inspection drawing marker settings`）。**API / DB / Prisma migration 変更なし**。
