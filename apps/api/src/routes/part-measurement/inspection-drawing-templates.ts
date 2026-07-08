@@ -28,6 +28,8 @@ import {
   addInspectionDrawingTemplateGroupResourcesBodySchema,
   createInspectionDrawingEvaluationTemplateBodySchema,
   reviseTemplateBodySchema,
+  changeInspectionDrawingTemplateProcessGroupBodySchema,
+  inspectionDrawingFhincdCandidatesQuerySchema,
   kioskInspectionDrawingTemplatesQuerySchema,
   serializeVisualTemplate,
   serializeTemplateProcessGroup,
@@ -39,6 +41,7 @@ import {
   selfInspectionFieldsFromBody,
   type PartMeasurementRouteDeps
 } from './shared.js';
+import { listInspectionDrawingFhincdCandidates } from '../../services/part-measurement/inspection-drawing-fhincd-candidates.service.js';
 
 export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, deps: PartMeasurementRouteDeps): void {
   const {
@@ -135,6 +138,12 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
       }
     );
 
+    app.get('/part-measurement/inspection-drawing/fhincd-candidates', { preHandler: allowView }, async (request) => {
+      const q = inspectionDrawingFhincdCandidatesQuerySchema.parse(request.query);
+      const candidates = await listInspectionDrawingFhincdCandidates(q.prefix, q.limit);
+      return { candidates };
+    });
+
     app.get('/part-measurement/inspection-drawing/templates', { preHandler: allowView }, async (request) => {
       const q = kioskInspectionDrawingTemplatesQuerySchema.parse(request.query);
       const processGroup =
@@ -200,6 +209,28 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
           ...selfInspectionPatch
         });
         await enqueueDrawingOcrAndWake(template.visualTemplateId, 'inspection_drawing_template_revise');
+        return {
+          template: serializeTemplate({
+            ...template,
+            visualTemplateId: template.visualTemplateId,
+            visualTemplate: template.visualTemplate,
+            items: template.items
+          })
+        };
+      }
+    );
+
+    app.post(
+      '/part-measurement/inspection-drawing/templates/:id/change-process-group',
+      { preHandler: allowWriteKiosk },
+      async (request) => {
+        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const body = changeInspectionDrawingTemplateProcessGroupBodySchema.parse(request.body);
+        const processGroup = body.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
+        const template = await templateService.changeInspectionDrawingTemplateProcessGroup(
+          params.id,
+          processGroup
+        );
         return {
           template: serializeTemplate({
             ...template,

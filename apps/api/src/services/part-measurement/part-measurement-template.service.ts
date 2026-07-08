@@ -1242,6 +1242,95 @@ export class PartMeasurementTemplateService {
     };
   }
 
+  /**
+   * キオスク検査図面テンプレの工程変更。同一系譜（全バージョン）と兄弟グループ全体に適用する。
+   * Sheet の processGroupSnapshot 等の過去記録は変更しない。
+   */
+  async changeInspectionDrawingTemplateProcessGroup(
+    templateId: string,
+    newProcessGroup: PartMeasurementProcessGroup
+  ) {
+    if (newProcessGroup !== 'CUTTING' && newProcessGroup !== 'GRINDING') {
+      throw new ApiError(400, '検査図面テンプレートは切削または研削にのみ変更できます');
+    }
+
+    const source = await this.getKioskInspectionDrawingTemplateById(templateId);
+    if (source.processGroup === newProcessGroup) {
+      return source;
+    }
+
+    const currentProcessGroup = source.processGroup;
+    const fhincdWhere = threeKeyFhincdEqualsFilter(source.fhincd);
+
+    let resourceCds = [source.resourceCd];
+    const siblingGroupIds: string[] = [];
+    if (source.siblingGroupId) {
+      siblingGroupIds.push(source.siblingGroupId);
+      const siblingMembers = await prisma.partMeasurementTemplate.findMany({
+        where: { siblingGroupId: source.siblingGroupId, templateScope: 'THREE_KEY' },
+        select: { resourceCd: true },
+        distinct: ['resourceCd']
+      });
+      resourceCds = normalizeUniqueResourceCds([
+        ...resourceCds,
+        ...siblingMembers.map((member) => member.resourceCd)
+      ]);
+    }
+
+    const impactTemplates = await prisma.partMeasurementTemplate.findMany({
+      where: {
+        fhincd: fhincdWhere,
+        processGroup: currentProcessGroup,
+        resourceCd: { in: resourceCds },
+        templateScope: 'THREE_KEY'
+      },
+      select: { id: true, resourceCd: true }
+    });
+    const impactIds = impactTemplates.map((row) => row.id);
+    if (impactIds.length === 0) {
+      throw new ApiError(409, '工程を変更できるテンプレートがありません');
+    }
+
+    const conflictMessage = '変更先の工程に同じ品番・資源のテンプレートが既に存在します';
+    for (const resourceCd of resourceCds) {
+      const conflict = await prisma.partMeasurementTemplate.findFirst({
+        where: {
+          fhincd: fhincdWhere,
+          processGroup: newProcessGroup,
+          resourceCd,
+          templateScope: 'THREE_KEY',
+          id: { notIn: impactIds }
+        },
+        select: { id: true }
+      });
+      if (conflict) {
+        throw new ApiError(409, conflictMessage);
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.partMeasurementTemplate.updateMany({
+        where: { id: { in: impactIds } },
+        data: { processGroup: newProcessGroup }
+      });
+      if (siblingGroupIds.length > 0) {
+        await tx.partMeasurementTemplateSiblingGroup.updateMany({
+          where: { id: { in: siblingGroupIds } },
+          data: { processGroup: newProcessGroup }
+        });
+      }
+    });
+
+    const updated = await prisma.partMeasurementTemplate.findFirstOrThrow({
+      where: { id: templateId },
+      include: partMeasurementTemplateFullInclude
+    });
+    const resourceMap = await this.loadActiveResourceCdsBySiblingGroupIds(
+      updated.siblingGroupId ? [updated.siblingGroupId] : []
+    );
+    return this.attachSiblingGroupResourceCds(updated, resourceMap);
+  }
+
   async setActiveVersion(templateId: string) {
     const t = await prisma.partMeasurementTemplate.findUnique({ where: { id: templateId } });
     if (!t) {

@@ -196,4 +196,33 @@ describe('InspectionDrawingCreateMetadataRow', () => {
     expect(inspectionModeSelect.className).toContain('text-white');
     expect(inspectionModeSelect.className).not.toContain('!text-black');
   });
+
+  it('renders editable process group select when lineage is locked', () => {
+    render(
+      <InspectionDrawingCreateMetadataRow
+        lineageLocked
+        fhincd="SD000107240"
+        onFhincdChange={vi.fn()}
+        resourceCd="033"
+        onResourceCdChange={vi.fn()}
+        resourceSelectOptions={[{ value: '033', label: '033 (横型)' }]}
+        resourceNameMap={{}}
+        processGroup="cutting"
+        templateProcessGroup="cutting"
+        onLineageLockedProcessGroupChange={vi.fn()}
+        templateName="7161サドル"
+        onTemplateNameChange={vi.fn()}
+        selfInspectionMode="fixed_count"
+        onSelfInspectionModeChange={vi.fn()}
+        selfInspectionFixedCount="3"
+        onSelfInspectionFixedCountChange={vi.fn()}
+        contentReadOnly={false}
+        onDrawingFileChange={vi.fn()}
+        templateVersion={2}
+        templateIsActive
+      />
+    );
+
+    expect(screen.getByLabelText('工程')).toHaveValue('cutting');
+  });
 });

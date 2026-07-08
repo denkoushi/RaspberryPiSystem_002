@@ -70,96 +70,101 @@ export function InspectionDrawingCreateToolbar({
   );
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {showProcessGroup ? (
-        <>
-          <span className="sr-only">工程</span>
-          <Button
-            type="button"
-            variant="primary"
-            aria-pressed={processGroup === 'cutting'}
-            className={toggleClass(processGroup === 'cutting')}
-            onClick={() => onProcessGroupChange('cutting')}
-          >
-            切削
-          </Button>
-          <Button
-            type="button"
-            variant="primary"
-            aria-pressed={processGroup === 'grinding'}
-            className={toggleClass(processGroup === 'grinding')}
-            onClick={() => onProcessGroupChange('grinding')}
-          >
-            研削
-          </Button>
-          <span className="mx-1 hidden h-6 w-px bg-white/20 sm:block" aria-hidden />
-        </>
-      ) : null}
+    <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {showProcessGroup ? (
+          <>
+            <span className="sr-only">工程</span>
+            <Button
+              type="button"
+              variant="primary"
+              aria-pressed={processGroup === 'cutting'}
+              className={toggleClass(processGroup === 'cutting')}
+              onClick={() => onProcessGroupChange('cutting')}
+            >
+              切削
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              aria-pressed={processGroup === 'grinding'}
+              className={toggleClass(processGroup === 'grinding')}
+              onClick={() => onProcessGroupChange('grinding')}
+            >
+              研削
+            </Button>
+            <span className="mx-1 hidden h-6 w-px bg-white/20 sm:block" aria-hidden />
+          </>
+        ) : null}
 
-      <Button
-        type="button"
-        variant="primary"
-        aria-pressed={mode === 'place'}
-        className={toggleClass(mode === 'place')}
-        disabled={placeDisabled}
-        onClick={() => onModeChange('place')}
-      >
-        点を配置
-      </Button>
-      <Button
-        type="button"
-        variant="primary"
-        aria-pressed={mode === 'test'}
-        className={toggleClass(mode === 'test')}
-        disabled={testDisabled}
-        onClick={() => onModeChange('test')}
-      >
-        テスト入力
-      </Button>
-      <Button
-        type="button"
-        variant="primary"
-        aria-pressed={mode === 'guidedTrial'}
-        className={toggleClass(mode === 'guidedTrial')}
-        disabled={guidedTrialDisabled}
-        onClick={() => onModeChange('guidedTrial')}
-      >
-        ガイド試行
-      </Button>
-
-      <Button
-        type="button"
-        variant="primary"
-        className={inspectionDrawingKioskDisabledButtonClass}
-        disabled={saveBlocked}
-        onClick={onSave ? () => onSave() : undefined}
-      >
-        {saveBusy ? '保存中…' : '保存'}
-      </Button>
-
-      {saveStatus ? (
-        <span className={saveStatusClassName} aria-live="polite">
-          {INSPECTION_DRAWING_CREATE_SAVE_STATUS_LABEL[saveStatus]}
-        </span>
-      ) : null}
-
-      {savedPrintPath ? (
-        <Link
-          to={savedPrintPath}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="未保存の変更は反映されません"
-          className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}
+        <Button
+          type="button"
+          variant="primary"
+          aria-pressed={mode === 'place'}
+          className={toggleClass(mode === 'place')}
+          disabled={placeDisabled}
+          onClick={() => onModeChange('place')}
         >
-          保存済み帳票
-        </Link>
-      ) : null}
+          点を配置
+        </Button>
 
-      {returnTo && returnLabel ? (
-        <Link to={returnTo} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}>
-          {returnLabel}
-        </Link>
-      ) : null}
+        <Button
+          type="button"
+          variant="primary"
+          className={inspectionDrawingKioskDisabledButtonClass}
+          disabled={saveBlocked}
+          onClick={onSave ? () => onSave() : undefined}
+        >
+          {saveBusy ? '保存中…' : '保存'}
+        </Button>
+
+        {saveStatus ? (
+          <span className={saveStatusClassName} aria-live="polite">
+            {INSPECTION_DRAWING_CREATE_SAVE_STATUS_LABEL[saveStatus]}
+          </span>
+        ) : null}
+
+        {savedPrintPath ? (
+          <Link
+            to={savedPrintPath}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="未保存の変更は反映されません"
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}
+          >
+            保存済み帳票
+          </Link>
+        ) : null}
+      </div>
+
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="primary"
+          aria-pressed={mode === 'test'}
+          className={toggleClass(mode === 'test')}
+          disabled={testDisabled}
+          onClick={() => onModeChange('test')}
+        >
+          テスト入力
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          aria-pressed={mode === 'guidedTrial'}
+          className={toggleClass(mode === 'guidedTrial')}
+          disabled={guidedTrialDisabled}
+          onClick={() => onModeChange('guidedTrial')}
+        >
+          ガイド試行
+        </Button>
+
+        {returnTo && returnLabel ? (
+          <Link to={returnTo} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}>
+            {returnLabel}
+          </Link>
+        ) : null}
+      </div>
     </div>
   );
 }

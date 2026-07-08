@@ -17,6 +17,8 @@ export type InspectionDrawingCreateMetadataRowProps = {
   resourceNameMap: Readonly<Record<string, string[]>>;
   processGroup: PartMeasurementProcessGroup;
   templateProcessGroup?: PartMeasurementProcessGroup | null;
+  onLineageLockedProcessGroupChange?: (group: PartMeasurementProcessGroup) => void;
+  processGroupChangeDisabled?: boolean;
   templateName: string;
   onTemplateNameChange: (value: string) => void;
   selfInspectionMode: SelfInspectionMode;
