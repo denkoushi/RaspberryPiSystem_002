@@ -22,7 +22,7 @@ related_docs:
 
 ## Status
 
-accepted (merged to local `main`, not yet deployed)
+accepted (deployed to production 2026-07-08, see Validation)
 
 ## Context
 
@@ -61,10 +61,12 @@ Also in this batch: the テスト入力 / ガイド試行 / 一覧へ戻る butt
 - Temp Postgres (`postgres-test-local`, pgvector:pg15): `prisma migrate deploy` applied `20260708194000_add_assembly_seiban_fseiban_prefix_index` cleanly (opclass syntax verified against live PostgreSQL after fixing worker output).
 - apps/api integration: `part-measurement-inspection-drawing-change-process-group` (3 tests: lineage-wide change, 409 conflict, sibling-group-wide change), `part-measurement-inspection-drawing-fhincd-candidates` (2 tests), `assembly-seiban.integration` (5 tests: mode `[5,5,10]→5`, tie→min, actuals fallback, winner-free equivalence, route response) — all pass.
 - Regression: `assembly.integration.test.ts` + `part-measurement.integration.test.ts` (86 passed / 2 skipped), services suites (143 passed), apps/web suites for assembly + part-measurement (412 passed), `tsc` for api/web on merged `main` — all pass.
+- CI: first run failed on FK-ordered cleanup in the new change-process-group test (fixed in `10d4c69a`), second run hit a pre-existing multipart-boundary flake in `assembly.integration.test.ts` (fixed in `1a85d412`); final main `22e79e28` CI success.
+- Production deploy 2026-07-08: Run ID `20260708-231555-17031`, all 7 hosts `failed=0 / unreachable=0`, Pi5 HEAD `22e79e28`, migration + index applied, phase12 verify PASS 45 / WARN 0 / FAIL 0. Record: `docs/guides/deployment.md` §検査図面 工程変更/品番サジェスト 2026-07-08.
 
 ## Open Items
 
-- Production deploy (migration + app) not yet executed; follow `docs/guides/deployment.md`.
+- On-site visual/touch confirmation of the new UI (see deployment record checklist).
 - The manual lot-qty fallback message still says 「生産実績からロット数を取得できませんでした」; acceptable but could mention 指示数.
 - A stable drawing-to-schedule reference key (for true 品番 auto-fill) remains future work.
 
