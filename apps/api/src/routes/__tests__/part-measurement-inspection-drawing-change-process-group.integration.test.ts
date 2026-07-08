@@ -50,6 +50,13 @@ function validInspectionDrawingItems(label = 'L1') {
 }
 
 async function cleanPartMeasurementTables() {
+  await prisma.partMeasurementInspectionLabelSetting.deleteMany({});
+  await prisma.selfInspectionRegistrationPolicyConfig.deleteMany({});
+  await prisma.selfInspectionRecordApproval.deleteMany({});
+  await prisma.selfInspectionMeasurementValue.deleteMany({});
+  await prisma.selfInspectionLotEntry.deleteMany({});
+  await prisma.selfInspectionSessionResetAuditLog.deleteMany({});
+  await prisma.selfInspectionSession.deleteMany({});
   await prisma.partMeasurementResult.deleteMany({});
   await prisma.partMeasurementSheet.deleteMany({});
   await prisma.partMeasurementSession.deleteMany({});
