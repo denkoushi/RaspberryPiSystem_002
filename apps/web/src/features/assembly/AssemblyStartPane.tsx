@@ -83,7 +83,7 @@ export function AssemblyStartPane({
   busy,
   onRegisterLot
 }: Props) {
-  const fseibanInputLocked = busy || candidateLoading;
+  const fseibanInputLocked = busy;
   const serialLimitReached = expectedLotQuantity != null && serialNos.length >= expectedLotQuantity;
   const serialInputLocked = busy || expectedLotQuantity == null || serialLimitReached;
   const serialAddDisabled = serialInputLocked || !serialDraft || serialDraftDuplicate;

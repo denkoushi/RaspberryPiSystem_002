@@ -307,7 +307,7 @@ describe('KioskAssemblyHomePage', () => {
     expect(mockCreateAssemblyLot).not.toHaveBeenCalled();
   });
 
-  it('disables the seiban keypad while candidate search is in progress', async () => {
+  it('keeps the seiban keypad enabled while candidate search is in progress', async () => {
     mockListAssemblySeibanCandidates.mockImplementation(
       () => new Promise<AssemblySeibanCandidateDto[]>(() => undefined)
     );
@@ -321,13 +321,38 @@ describe('KioskAssemblyHomePage', () => {
       await vi.advanceTimersByTimeAsync(180);
 
       const fseibanPad = within(screen.getByRole('group', { name: '製番入力パッド' }));
-      expect(fseibanPad.getByRole('button', { name: 'A' })).toBeDisabled();
-      expect(fseibanPad.getByRole('button', { name: 'BS' })).toBeDisabled();
-      expect(fseibanPad.getByRole('button', { name: 'CLR' })).toBeDisabled();
-      expect(screen.getByLabelText('製番')).toBeDisabled();
+      expect(fseibanPad.getByRole('button', { name: 'A' })).not.toBeDisabled();
+      expect(fseibanPad.getByRole('button', { name: 'BS' })).not.toBeDisabled();
+      expect(fseibanPad.getByRole('button', { name: 'CLR' })).not.toBeDisabled();
+      expect(screen.getByLabelText('製番')).not.toBeDisabled();
+      expect(screen.getAllByText('検索中').length).toBeGreaterThan(0);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('does not fetch lot quantities for unselected seiban candidates', async () => {
+    renderPage();
+
+    await waitFor(() => expect(mockListAssemblySeibanLotQuantities).toHaveBeenCalled());
+    const initialCalls = mockListAssemblySeibanLotQuantities.mock.calls.at(-1)?.[0] as string[];
+    expect(initialCalls).toEqual(expect.arrayContaining(['ASM-START-001', 'ASM-DONE-001']));
+    expect(initialCalls).not.toContain('ASMTEST-A1');
+
+    mockListAssemblySeibanLotQuantities.mockClear();
+    fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
+    await waitFor(() =>
+      expect(mockListAssemblySeibanCandidates).toHaveBeenCalledWith({ prefix: 'ASMTEST-A', limit: 20 })
+    );
+
+    expect(mockListAssemblySeibanLotQuantities).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByText('ASMTEST-A1'));
+    await waitFor(() =>
+      expect(mockListAssemblySeibanLotQuantities).toHaveBeenCalledWith(
+        expect.arrayContaining(['ASM-START-001', 'ASM-DONE-001', 'ASMTEST-A1'])
+      )
+    );
   });
 
   it('adds title attribute to machine name in candidate list', async () => {
