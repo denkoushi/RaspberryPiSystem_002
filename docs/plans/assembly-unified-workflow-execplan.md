@@ -5,11 +5,11 @@ status: active
 scope: kiosk assembly procedure library, publish gate, multi-page procedure documents, page-level bolt/check markers, work-session completion gate, record approval aggregation
 date: 2026-07-08
 source_of_truth: this file
-phase: 1 complete (schema + migration + design); 2 complete (API); 3 complete (Web); 4 validation complete (deploy pending)
-branch: feature/assembly-uwf-p4-validation
+phase: 1 complete (schema + migration + design); 2 complete (API); 3 complete (Web); 4 validation complete; production deploy complete (2026-07-08)
+branch: main
 related_code: apps/api/prisma/schema.prisma, apps/api/prisma/migrations/20260708101417_assembly_unified_workflow_p1_schema, apps/api/src/routes/assembly/index.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyPage.tsx, apps/web/src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx, apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx
 related_docs: ../decisions/ADR-20260708-assembly-page-level-markers-and-publish-gate.md, ../decisions/ADR-20260707-assembly-procedure-order-library-scope.md, ./kiosk-assembly-torque-management-mvp.md, ../INDEX.md
-open_items: Pi deployment (follow deployment runbook); kiosk smoke on hardware
+open_items: kiosk touch smoke on hardware (publish badge, dual markers, check toggle)
 ---
 
 # Assembly Unified Workflow ExecPlan
@@ -328,6 +328,11 @@ Extend work-session detail used by `/kiosk/assembly/record-approvals` (same `GET
 | API integration | Extend `assembly.integration.test.ts`: publish/unpublish guards, multi-page import cap, order save rejects draft doc, complete rejects missing checks, record-check upsert, sequence page identifiers exclude draft docs. |
 | Web smoke | Library publish badge, template dual markers, work-session toggle + complete guard, record approval check summary. |
 | Deploy | Follow `docs/guides/deployment.md`; Pi5 + Pi4 kiosks; Phase12 script. |
+
+### Production deploy (2026-07-08, main `9fc67e3e`)
+
+- **Deploy**: pre-deploy DB backup OK (Dropbox env/csv partial 409) · `update-all-clients.sh main` Run ID **`20260708-203404-17566`** · PLAY RECAP 7/7 `failed=0` · Pi5 HEAD **`9fc67e3e`** · migration **`20260708101417_assembly_unified_workflow_p1_schema`** applied (136/136 up to date).
+- **Smoke (read-only)**: `verify-phase12-real.sh` PASS 45/0/0 · `GET /api/assembly/procedure-documents` 1 doc `status=published` + `pages[0].pageIndex=0` · templates/summary HTTP 200 · work-sessions/summary HTTP 200 · `/kiosk/assembly` HTTP 200.
 
 ### Validation results (2026-07-08, branch `feature/assembly-uwf-p4-validation`)
 
