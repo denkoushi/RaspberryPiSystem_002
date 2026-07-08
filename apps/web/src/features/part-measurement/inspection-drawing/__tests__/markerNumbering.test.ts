@@ -113,6 +113,78 @@ describe('markerNumbering', () => {
     expect(saved.upperLimit).toBe(0.01);
   });
 
+  it('restores supplement fields only from measurementPoint after the label prefix', () => {
+    const pt = templateItemToDrawingPoint({
+      id: 'i1',
+      sortOrder: 0,
+      datumSurface: 'A',
+      measurementPoint: 'ネジ穴ピッチ M10 正面 2箇所',
+      measurementLabel: 'ネジ穴ピッチ',
+      displayMarker: '1',
+      unit: null,
+      allowNegative: true,
+      decimalPlaces: 2,
+      markerXRatio: '0.2',
+      markerYRatio: '0.4',
+      nominalValue: '10',
+      lowerLimit: '9.9',
+      upperLimit: '10.1'
+    });
+
+    expect(pt.name).toBe('ネジ穴ピッチ');
+    expect(pt.threadNominal).toBe('M10');
+    expect(pt.surfaceSide).toBe('正面');
+    expect(pt.supplementText).toBe('2箇所');
+  });
+
+  it('does not decompose existing labels that already contain supplement text', () => {
+    const pt = templateItemToDrawingPoint({
+      id: 'i1',
+      sortOrder: 0,
+      datumSurface: 'A',
+      measurementPoint: 'ネジ穴ピッチ M10',
+      measurementLabel: 'ネジ穴ピッチ M10',
+      displayMarker: '1',
+      unit: null,
+      allowNegative: true,
+      decimalPlaces: 2,
+      markerXRatio: '0.2',
+      markerYRatio: '0.4',
+      nominalValue: '10',
+      lowerLimit: '9.9',
+      upperLimit: '10.1'
+    });
+
+    expect(pt.name).toBe('ネジ穴ピッチ M10');
+    expect(pt.threadNominal).toBe('');
+    expect(pt.surfaceSide).toBe('');
+    expect(pt.supplementText).toBe('');
+  });
+
+  it('saves label and supplement into separate measurement fields', () => {
+    const saved = drawingPointToTemplateItemInput(
+      {
+        id: 'i1',
+        name: 'ネジ穴ピッチ',
+        threadNominal: 'M10',
+        surfaceSide: '両面',
+        supplementText: '2箇所',
+        markerNo: 1,
+        xRatio: 0.2,
+        yRatio: 0.4,
+        nominalRaw: '10',
+        lowerToleranceRaw: '-0.1',
+        upperToleranceRaw: '+0.1',
+        testValue: '',
+        decimalPlaces: 3
+      },
+      0
+    );
+
+    expect(saved.measurementLabel).toBe('ネジ穴ピッチ');
+    expect(saved.measurementPoint).toBe('ネジ穴ピッチ M10 両面 2箇所');
+  });
+
   it('keeps legacy bounds when only name changes', () => {
     const pt = templateItemToDrawingPoint({
       id: 'i1',

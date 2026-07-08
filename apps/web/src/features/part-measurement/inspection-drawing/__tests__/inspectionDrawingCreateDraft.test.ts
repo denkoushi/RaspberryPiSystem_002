@@ -209,9 +209,11 @@ describe('inspectionDrawingCreateDraft', () => {
     const saved = buildSnapshot();
     const current = buildSnapshot([{ ...point, testValue: '10.01' }]);
     const renamed = buildSnapshot([{ ...point, name: '厚み' }]);
+    const supplemented = buildSnapshot([{ ...point, threadNominal: 'M10' }]);
 
     expect(inspectionDrawingCreateDirtySnapshotsEqual(saved, current)).toBe(true);
     expect(inspectionDrawingCreateDirtySnapshotsEqual(saved, renamed)).toBe(false);
+    expect(inspectionDrawingCreateDirtySnapshotsEqual(saved, supplemented)).toBe(false);
   });
 
   it('resolves save status from block reason and dirty state', () => {

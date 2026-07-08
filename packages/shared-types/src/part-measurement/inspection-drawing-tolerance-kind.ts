@@ -20,6 +20,8 @@ export const DEFAULT_INSPECTION_DRAWING_MEASUREMENT_LABELS: readonly string[] = 
   'ピッチ',
   'キリ穴ピッチ',
   'ザグリ穴ピッチ',
+  'ネジ穴ピッチ',
+  '穴ピッチ',
   '深さ',
   'ネジ穴深さ',
   '面粗度',

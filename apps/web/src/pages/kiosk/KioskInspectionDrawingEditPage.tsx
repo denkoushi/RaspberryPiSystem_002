@@ -258,6 +258,7 @@ export function KioskInspectionDrawingEditPage() {
               enabled={Boolean(drawingBlobUrl)}
               onZoomIn={zoomIn}
               onZoomOut={zoomOut}
+              onResetZoom={resetZoom}
               onFitToView={fitToView}
             />
           ) : undefined

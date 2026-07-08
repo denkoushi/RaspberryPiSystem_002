@@ -1,5 +1,3 @@
-import clsx from 'clsx';
-
 import { InspectionDrawingCreateMetaChipList } from './InspectionDrawingCreateMetaChipList';
 import { InspectionDrawingCreateVersionBadge } from './InspectionDrawingCreateVersionBadge';
 import {
@@ -52,7 +50,7 @@ export function InspectionDrawingCreateCompactHeader({
       ) : null}
       <div
         data-testid="inspection-drawing-create-toolbar-slot"
-        className={clsx(inspectionDrawingCreateFlatBandItemClassName, 'min-w-0 flex-1')}
+        className={`${inspectionDrawingCreateFlatBandItemClassName} w-full min-w-0`}
       >
         {toolbar}
       </div>

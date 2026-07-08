@@ -14,6 +14,7 @@ import {
   MEASUREMENT_POINT_INPUT_STATUS_LABEL,
   resolveMeasurementPointInputStatus
 } from './measurementPointInputStatus';
+import { formatInspectionDrawingPointDisplayName } from './measurementPointSupplement';
 import {
   applyHundredthsDigitToDimensionValue,
   buildSelfInspectionDimensionTenthsOptions,
@@ -134,6 +135,7 @@ export function InspectionDrawingValuePanel({
       ? optionResult.reason
       : null;
   const toleranceClassName = isSelfInspectionOptions ? 'text-2xl text-white/80' : 'text-sm text-white/70';
+  const pointDisplayName = formatInspectionDrawingPointDisplayName(point);
 
   const manualInputField = (
     <input
@@ -184,7 +186,7 @@ export function InspectionDrawingValuePanel({
     <div className="flex flex-col gap-3 rounded-lg border border-white/15 bg-slate-900/60 p-4 text-white">
       <div>
         <p className="text-lg font-bold">
-          {point.name || '測定点'}（No.{point.markerNo}）
+          {pointDisplayName}（No.{point.markerNo}）
         </p>
         <p className={toleranceClassName}>
           {'error' in bounds

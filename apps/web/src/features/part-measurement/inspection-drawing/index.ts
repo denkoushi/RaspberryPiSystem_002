@@ -181,6 +181,14 @@ export {
   buildMeasurementLabelSelectOptions,
   INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS
 } from './inspectionDrawingMeasurementLabelOptions';
+export {
+  buildInspectionDrawingMeasurementPoint,
+  buildInspectionDrawingPointSupplementParts,
+  formatInspectionDrawingPointDisplayName,
+  INSPECTION_DRAWING_SURFACE_SIDE_OPTIONS,
+  INSPECTION_DRAWING_THREAD_NOMINAL_OPTIONS,
+  parseInspectionDrawingMeasurementPointSupplement
+} from './measurementPointSupplement';
 export { InspectionDrawingTemplateHistoryDialog } from './InspectionDrawingTemplateHistoryDialog';
 export {
   inspectionDrawingBoundedSelectClassName,

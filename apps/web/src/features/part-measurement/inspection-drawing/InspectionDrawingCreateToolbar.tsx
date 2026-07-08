@@ -70,8 +70,11 @@ export function InspectionDrawingCreateToolbar({
   );
 
   return (
-    <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex w-full min-w-0 items-center gap-2">
+      <div
+        data-testid="inspection-drawing-create-toolbar-primary-actions"
+        className="flex min-w-0 flex-wrap items-center gap-2"
+      >
         {showProcessGroup ? (
           <>
             <span className="sr-only">工程</span>
@@ -137,7 +140,10 @@ export function InspectionDrawingCreateToolbar({
         ) : null}
       </div>
 
-      <div className="ml-auto flex flex-wrap items-center gap-2">
+      <div
+        data-testid="inspection-drawing-create-toolbar-secondary-actions"
+        className="ml-auto flex shrink-0 items-center gap-2"
+      >
         <Button
           type="button"
           variant="primary"

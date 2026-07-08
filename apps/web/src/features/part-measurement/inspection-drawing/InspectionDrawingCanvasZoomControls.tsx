@@ -10,6 +10,7 @@ type Props = {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFitToView: () => void;
+  onResetZoom?: () => void;
   /** 指定時: ネイティブ button + 親渡しクラス（Button/ghostOnDark を通さない） */
   getButtonClassName?: (disabled: boolean) => string;
 };
@@ -34,6 +35,7 @@ function CustomClassZoomButton({
     <button
       type="button"
       aria-label={action.label}
+      title={action.label}
       disabled={disabled}
       className={getButtonClassName(disabled)}
       onClick={action.onClick}
@@ -56,6 +58,7 @@ function LegacyZoomButton({
       variant="ghostOnDark"
       className={inspectionDrawingCanvasZoomButtonClassName}
       aria-label={action.label}
+      title={action.label}
       disabled={!enabled}
       onClick={action.onClick}
     >
@@ -72,10 +75,12 @@ export function InspectionDrawingCanvasZoomControls({
   onZoomIn,
   onZoomOut,
   onFitToView,
+  onResetZoom,
   getButtonClassName
 }: Props) {
   const actions: ZoomAction[] = [
     { label: '縮小', symbol: '−', onClick: onZoomOut },
+    ...(onResetZoom ? [{ label: '元サイズ', symbol: '100%', onClick: onResetZoom }] : []),
     { label: '拡大', symbol: '＋', onClick: onZoomIn },
     { label: '全面表示', symbol: '□', onClick: onFitToView }
   ];

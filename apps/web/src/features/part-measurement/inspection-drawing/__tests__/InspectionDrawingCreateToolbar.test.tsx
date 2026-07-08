@@ -5,8 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { InspectionDrawingCreateToolbar } from '../InspectionDrawingCreateToolbar';
 
 describe('InspectionDrawingCreateToolbar', () => {
-  it('renders save status between save and saved print, with right-aligned secondary actions', () => {
-    const { container } = render(
+  it('keeps only test, guided trial, and return actions in the right group', () => {
+    render(
       <MemoryRouter>
         <InspectionDrawingCreateToolbar
           processGroup="cutting"
@@ -31,15 +31,22 @@ describe('InspectionDrawingCreateToolbar', () => {
     expect(screen.getByText('保存').compareDocumentPosition(screen.getByText('未保存あり'))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     );
-    expect(screen.getByText('未保存あり').compareDocumentPosition(screen.getByText('保存済み帳票'))).toBe(
+    expect(screen.getByText('未保存あり').compareDocumentPosition(screen.getByText('一覧へ戻る'))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     );
 
-    const rightGroup = container.querySelector('.ml-auto');
-    expect(rightGroup).toBeTruthy();
-    const right = within(rightGroup as HTMLElement);
-    expect(right.getByRole('button', { name: 'テスト入力' })).toBeInTheDocument();
-    expect(right.getByRole('button', { name: 'ガイド試行' })).toBeInTheDocument();
-    expect(right.getByRole('link', { name: '一覧へ戻る' })).toBeInTheDocument();
+    const primary = within(screen.getByTestId('inspection-drawing-create-toolbar-primary-actions'));
+    const secondary = within(screen.getByTestId('inspection-drawing-create-toolbar-secondary-actions'));
+
+    expect(primary.getByRole('button', { name: '切削' })).toBeInTheDocument();
+    expect(primary.getByRole('button', { name: '点を配置' })).toBeInTheDocument();
+    expect(primary.getByRole('button', { name: '保存' })).toBeInTheDocument();
+    expect(primary.getByText('未保存あり')).toBeInTheDocument();
+    expect(primary.getByRole('link', { name: '保存済み帳票' })).toBeInTheDocument();
+
+    expect(secondary.getByRole('button', { name: 'テスト入力' })).toBeInTheDocument();
+    expect(secondary.getByRole('button', { name: 'ガイド試行' })).toBeInTheDocument();
+    expect(secondary.getByRole('link', { name: '一覧へ戻る' })).toBeInTheDocument();
+    expect(secondary.queryByRole('button', { name: '保存' })).not.toBeInTheDocument();
   });
 });

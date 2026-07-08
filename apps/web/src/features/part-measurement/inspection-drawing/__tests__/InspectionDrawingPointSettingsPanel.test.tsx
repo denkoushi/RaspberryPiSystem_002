@@ -334,6 +334,61 @@ describe('InspectionDrawingPointSettingsPanel', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('renders supplement selectors and direct input together', () => {
+    const onChange = vi.fn();
+
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{
+          ...point,
+          name: 'ネジ穴ピッチ',
+          threadNominal: 'M10',
+          surfaceSide: '正面',
+          supplementText: '2箇所'
+        }}
+        onChange={onChange}
+      />
+    );
+
+    expect(screen.getByLabelText('面')).toHaveValue('正面');
+    expect(screen.getByLabelText('呼び径')).toHaveValue('M10');
+    expect(screen.getByRole('option', { name: '背面' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '両面' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'M30' })).toBeInTheDocument();
+    expect(screen.getByLabelText('直接入力')).toHaveValue('2箇所');
+
+    fireEvent.change(screen.getByLabelText('面'), { target: { value: '両面' } });
+    fireEvent.change(screen.getByLabelText('呼び径'), { target: { value: 'M12' } });
+    fireEvent.change(screen.getByLabelText('直接入力'), { target: { value: '長穴側' } });
+
+    expect(onChange).toHaveBeenCalledWith({ surfaceSide: '両面' });
+    expect(onChange).toHaveBeenCalledWith({ threadNominal: 'M12' });
+    expect(onChange).toHaveBeenCalledWith({ supplementText: '長穴側' });
+  });
+
+  it('keeps supplement fields out of name-change patch', () => {
+    const onChange = vi.fn();
+
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, threadNominal: 'M10', surfaceSide: '正面', supplementText: '2箇所' }}
+        onChange={onChange}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('名称'), { target: { value: '穴ピッチ' } });
+
+    expect(onChange).toHaveBeenCalledWith({ name: '穴ピッチ' });
+  });
+
+  it('disables supplement controls when disabled', () => {
+    render(<InspectionDrawingPointSettingsPanel point={point} onChange={vi.fn()} disabled />);
+
+    expect(screen.getByLabelText('面')).toBeDisabled();
+    expect(screen.getByLabelText('呼び径')).toBeDisabled();
+    expect(screen.getByLabelText('直接入力')).toBeDisabled();
+  });
+
   it('shows depth tolerance candidates for 深さ when focused', () => {
     render(
       <InspectionDrawingPointSettingsPanel

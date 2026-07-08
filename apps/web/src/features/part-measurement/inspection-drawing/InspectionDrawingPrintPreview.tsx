@@ -16,6 +16,7 @@ import {
   type InspectionDrawingPrintRecordPage,
   type InspectionDrawingPrintViewModel
 } from './inspectionDrawingPrintViewModel';
+import { formatInspectionDrawingPointDisplayName } from './measurementPointSupplement';
 import { computePrintMarkerPosition } from './printMarkerLayout';
 
 import type { InspectionDrawingPoint } from './types';
@@ -228,7 +229,9 @@ function RecordSlot({
   }
 
   const { point } = slot;
-  const pointLabelLines = splitRecordPointLabel(point.name || `測定点 ${point.markerNo}`);
+  const pointLabelLines = splitRecordPointLabel(
+    formatInspectionDrawingPointDisplayName(point, `測定点 ${point.markerNo}`)
+  );
   const specificationLines = formatRecordSpecificationLines(point);
 
   return (
