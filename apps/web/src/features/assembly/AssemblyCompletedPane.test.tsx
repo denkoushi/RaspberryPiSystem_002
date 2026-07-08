@@ -73,5 +73,21 @@ describe('AssemblyCompletedPane', () => {
     );
     expect(screen.getAllByText('未承認')).toHaveLength(1);
     expect(screen.getAllByText('承認済み')).toHaveLength(1);
+    expect(screen.getByText('ロット数 3')).toBeInTheDocument();
+  });
+
+  it('looks up lot quantity with normalized product number keys', () => {
+    render(
+      <MemoryRouter>
+        <AssemblyCompletedPane
+          sessions={[{ ...completedSession, productNo: ' asm-done-001 ' }]}
+          loading={false}
+          onReload={() => undefined}
+          lotQtyByProductNo={{ 'ASM-DONE-001': 3 }}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('ロット数 3')).toBeInTheDocument();
   });
 });

@@ -345,4 +345,89 @@ describe('KioskAssemblyHomePage', () => {
     const machineNameSpan = within(candidateButton!).getByText(longMachineName);
     expect(machineNameSpan).toHaveAttribute('title', longMachineName);
   });
+
+  it('shows manual lot quantity input and registers a lot when API returns no quantity', async () => {
+    mockListAssemblySeibanLotQuantities.mockResolvedValue([]);
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
+    await waitFor(() =>
+      expect(mockListAssemblySeibanCandidates).toHaveBeenCalledWith({ prefix: 'ASMTEST-A', limit: 20 })
+    );
+    fireEvent.click(await screen.findByText('ASMTEST-A1'));
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          '生産実績からロット数を取得できませんでした。順番ボード等で数量を確認し、ロット数を手入力してください。'
+        )
+      ).toBeInTheDocument()
+    );
+    expect(screen.getByLabelText('ロット数（手入力）')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('ロット数（手入力）'), { target: { value: '2' } });
+    await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
+    expect(screen.getByText('2（手入力）')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('シリアルNo.追加'), { target: { value: 's001' } });
+    await waitFor(() => expect(screen.getByLabelText('シリアルNo.追加')).toHaveValue('S001'));
+    fireEvent.click(screen.getByRole('button', { name: '追加' }));
+    fireEvent.change(screen.getByLabelText('シリアルNo.追加'), { target: { value: 's002' } });
+    await waitFor(() => expect(screen.getByLabelText('シリアルNo.追加')).toHaveValue('S002'));
+    fireEvent.click(screen.getByRole('button', { name: '追加' }));
+    fireEvent.change(screen.getByLabelText('作業者'), { target: { value: '佐藤' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'ロット登録' }));
+
+    await waitFor(() =>
+      expect(mockCreateAssemblyLot).toHaveBeenCalledWith({
+        templateId: 'template-1',
+        productNo: 'ASMTEST-A1',
+        expectedQuantity: 2,
+        serialNos: ['S001', 'S002'],
+        operatorEmployeeId: null,
+        operatorNameSnapshot: '佐藤',
+        targetUnit: 'MH-AX',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      })
+    );
+  });
+
+  it('does not show manual lot quantity input when API returns a valid quantity', async () => {
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
+    fireEvent.click(await screen.findByText('ASMTEST-A1'));
+    await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
+
+    expect(screen.queryByLabelText('ロット数（手入力）')).not.toBeInTheDocument();
+    expect(screen.queryByText(/手入力/)).not.toBeInTheDocument();
+  });
+
+  it('looks up lot quantity with normalized product number keys', async () => {
+    mockListAssemblySeibanLotQuantities.mockResolvedValue([{ productNo: '  asmtest-a1  ', lotQty: 2 }]);
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
+    fireEvent.click(await screen.findByText('ASMTEST-A1'));
+    await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
+    expect(screen.queryByLabelText('ロット数（手入力）')).not.toBeInTheDocument();
+  });
+
+  it('blocks lot registration when manual lot quantity is empty or zero', async () => {
+    mockListAssemblySeibanLotQuantities.mockResolvedValue([]);
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
+    fireEvent.click(await screen.findByText('ASMTEST-A1'));
+    await waitFor(() => expect(screen.getByLabelText('ロット数（手入力）')).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: 'ロット登録' })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('ロット数（手入力）'), { target: { value: '0' } });
+    expect(screen.getByRole('button', { name: 'ロット登録' })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('ロット数（手入力）'), { target: { value: '' } });
+    expect(screen.getByRole('button', { name: 'ロット登録' })).toBeDisabled();
+    expect(mockCreateAssemblyLot).not.toHaveBeenCalled();
+  });
 });
