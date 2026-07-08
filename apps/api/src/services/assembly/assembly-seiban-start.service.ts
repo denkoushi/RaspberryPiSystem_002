@@ -6,7 +6,6 @@ import {
   SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
 } from '../production-schedule/constants.js';
 import { normalizeMachineNameForCompare } from '../production-schedule/machine-name-compare.js';
-import { buildMaxProductNoWinnerCondition } from '../production-schedule/row-resolver/index.js';
 import { SeibanMachineNameSupplementRepository } from '../production-schedule/seiban-machine-name-supplement.repository.js';
 import { fetchSeibanProgressRows } from '../production-schedule/seiban-progress.service.js';
 import { isAssemblyIdentifierLike, normalizeAssemblyUpperIdentifier } from './assembly-identifiers.js';
@@ -54,11 +53,11 @@ export class AssemblySeibanStartService {
     }
 
     const limit = clampLimit(params.limit);
+    // FSEIBAN は winner 論理キーの一部であり、パーティション内で同値のため候補列挙では winner 条件は結果に影響しない。
     const rows = await prisma.$queryRaw<SeibanCandidateRow[]>`
       SELECT MIN("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban"
       FROM "CsvDashboardRow"
       WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
         AND COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '') <> ''
         AND UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) LIKE ${`${prefix}%`}
       GROUP BY UPPER("CsvDashboardRow"."rowData"->>'FSEIBAN')

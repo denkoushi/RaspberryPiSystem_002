@@ -100,10 +100,9 @@ export function KioskAssemblyHomePage() {
     for (const lot of lots) productNos.add(lot.productNo);
     for (const session of sessions) productNos.add(session.productNo);
     for (const session of completedSessions) productNos.add(session.productNo);
-    for (const candidate of candidates) productNos.add(candidate.fseiban);
     if (selectedCandidate) productNos.add(selectedCandidate.fseiban);
     return [...productNos];
-  }, [lots, sessions, completedSessions, candidates, selectedCandidate]);
+  }, [lots, sessions, completedSessions, selectedCandidate]);
 
   const reloadLots = useCallback(async () => {
     setLotLoading(true);
