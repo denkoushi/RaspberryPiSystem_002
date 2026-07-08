@@ -47,6 +47,15 @@ active
 - **Result**: CONFIRMED（設計上の想定ケース）
 - 生産実績にまだ行が無い製番（実績未発生・月次取込ラグ・`isExcluded=true`・`fseiban` 欠損）ではロット数 API が該当キーを返さない
 - フロントでは `null` → 警告＋入力ブロック
+- **本番確認（2026-07-08）**: Pi5 `docker-db-1` read-only SQL で `BA1S7317` は `ProductionScheduleActualHoursRaw` **0行**、`CsvDashboardRow` **232行**、supplement `plannedQuantity` distinct **{5, 10}** — CONFIRMED（本番実データで確定）
+- 切り分け SQL（read-only、再診断用）:
+
+```sql
+SELECT "fseiban", "lotNo", "lotQty", "isExcluded", "workDate"
+FROM "ProductionScheduleActualHoursRaw"
+WHERE UPPER(TRIM(COALESCE("fseiban", ''))) = 'BA1S7317'
+ORDER BY "workDate" DESC;
+```
 
 ### H3: フロントのルックアップキーが API 正規化と不一致
 
@@ -102,18 +111,19 @@ active
 
 追加テスト（手入力フォールバック・正規化ルックアップ・自動取得時 UI）を含む。
 
+### 本番デプロイ（2026-07-08）
+
+| Check | Result |
+|-------|--------|
+| main push CI **`28930061845`** | success |
+| Run ID **`20260708-180942-18680`** | 全7ホスト `failed=0 / unreachable=0` |
+| `./scripts/deploy/verify-phase12-real.sh` | **PASS 45 / WARN 0 / FAIL 0** |
+| 配信バンドル新文言 | `/assets/index-DxYaeHkM.js` に「生産実績からロット数を取得できませんでした」「ロット数（手入力）」確認 |
+| デプロイ記録 | [deployment.md §組立トップ ロット数手入力フォールバック](../guides/deployment.md#kiosk-assembly-lot-quantity-manual-fallback-2026-07-08) |
+
 ## Open Items
 
-- **本番デプロイ未実施**: main ローカルマージまで。push・デプロイはユーザー指示待ち
-- **BA1S7317 の本番データ状態**: 生産実績 Raw に行が無いことの実機確認は未実施。切り分け SQL（read-only）:
-
-```sql
-SELECT "fseiban", "lotNo", "lotQty", "isExcluded", "workDate"
-FROM "ProductionScheduleActualHoursRaw"
-WHERE UPPER(TRIM(COALESCE("fseiban", ''))) = 'BA1S7317'
-ORDER BY "workDate" DESC;
-```
-
+- **実機（目視・タッチ）での手入力フロー確認**: 未実施（次回現場確認時: BA1S7317 等の実績未登録製番で「ロット数（手入力）」欄表示→手入力→シリアル入力→ロット登録まで進めること）
 - **plannedQuantity フォールバック**: 部品×工順単位の supplement を台数へ流用する案は見送り（将来必要なら別 ADR）
 
 ## Local Notes JA
