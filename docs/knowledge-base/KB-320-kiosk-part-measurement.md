@@ -97,7 +97,7 @@
 | 導線 | 操作 | 正本 state / ルート |
 |------|------|---------------------|
 | **雛形から新規** | 一覧有効版カード → **雛形として新規** | `?sourceTemplateId=` → 専用 `GET …/inspection-drawing/templates/:id` で再取得 → `templateToCreateDraft`（**point id は新規採番**） |
-| **既存図面再利用** | 新規作成 → **図面** ボタン → **既存から選択** | `visualSource='pickExisting'` · `visualTemplateId` のみで保存可（upload 不要）。関連有効テンプレの品番が一意なら `fhincd` を自動入力し、複数品番なら不整合として自動入力しない |
+| **既存図面再利用** | 新規作成 → **図面** ボタン → **既存から選択** | `visualSource='pickExisting'` · `visualTemplateId` のみで保存可（upload 不要）。関連有効テンプレの品番が一意なら `fhincd` を自動入力し、複数品番なら不整合として自動入力しない。→ 2026-07-08修正で `none` 時は図面名フォールバック・メッセージ表示（[§作成画面ツールバー・品番none修正](#検査図面-作成画面-ツールバー崩れ-品番自動入力-none-サイレント修正-2026-07-08)） |
 | **新規アップロード** | 同上ダイアログ → ファイル選択 | `visualSource='upload'` · `createPartMeasurementVisualTemplate` → `cleanupToken` 保持 |
 | **改版（既存キー）** | 一覧 → **編集** → 保存 | `POST …/inspection-drawing/templates/:id/revise`（新規作成ではない） |
 
@@ -859,8 +859,8 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 
 - **作業ブランチ / 代表コミット**: `feature/assembly-lot-serial-workflow` / **`04bb49fe`**（`feat: improve inspection drawing marker settings`）。
 - **変更種別**: Web + shared-types。2026-07-08 追加改善では API の一覧 query に `visualTemplateId` を追加し、品番自動入力用に `GET …/inspection-drawing/visual-templates/:id/fhincd` を追加するが、DB / Prisma migration / 保存 API の wire shape は変更しない。
-- **図面選択時の品番自動入力**: 新規作成で `visualTemplateId` から既存図面を開いた場合、専用 API `GET …/inspection-drawing/visual-templates/:id/fhincd` で関連有効テンプレの品番を取得する。品番が一意なら `fhincd` へ自動入力し、テンプレ名未手入力なら `図面名 + 品番` を自動提案する。複数品番ならデータ不整合として自動入力せずメッセージ表示する。同一品番の複数資源（兄弟グループ）は一意扱い。手入力済みの品番・テンプレ名は非同期レスポンスで上書きしない。
-- **保存状態とツールバー**: 保存ボタンは **変更あり + 入力有効 + 保存中でない + 閲覧版でない** ときだけ enabled。状態表示は既存1行ツールバー内の **保存ボタン右** に **枠なし文字**で置き、`保存済み` / `未保存あり` / `入力不足` / `保存中` / `閲覧のみ` を表示する。`テスト入力` / `ガイド試行` / `保存済み帳票` / `一覧へ戻る` は同じ行の右端グループに置く。未保存変更がある内部リンク遷移とブラウザ更新/終了は警告する。一時保存は追加せず、既存の改版保存を確定保存として維持する。
+- **図面選択時の品番自動入力**: 新規作成で `visualTemplateId` から既存図面を開いた場合、専用 API `GET …/inspection-drawing/visual-templates/:id/fhincd` で関連有効テンプレの品番を取得する。品番が一意なら `fhincd` へ自動入力し、テンプレ名未手入力なら `図面名 + 品番` を自動提案する。複数品番ならデータ不整合として自動入力せずメッセージ表示する。同一品番の複数資源（兄弟グループ）は一意扱い。手入力済みの品番・テンプレ名は非同期レスポンスで上書きしない。→ 2026-07-08修正で `none` 時の図面名フォールバック・メッセージ表示を追加（[§作成画面ツールバー・品番none修正](#検査図面-作成画面-ツールバー崩れ-品番自動入力-none-サイレント修正-2026-07-08)）。
+- **保存状態とツールバー**: 保存ボタンは **変更あり + 入力有効 + 保存中でない + 閲覧版でない** ときだけ enabled。状態表示は既存1行ツールバー内の **保存ボタン右** に **枠なし文字**で置き、`保存済み` / `未保存あり` / `入力不足` / `保存中` / `閲覧のみ` を表示する。`テスト入力` / `ガイド試行` / `保存済み帳票` / `一覧へ戻る` は同じ行の右端グループに置く。未保存変更がある内部リンク遷移とブラウザ更新/終了は警告する。一時保存は追加せず、既存の改版保存を確定保存として維持する。→ 2026-07-08修正で toolbar slot の flat band 契約回帰を修正（[§作成画面ツールバー・品番none修正](#検査図面-作成画面-ツールバー崩れ-品番自動入力-none-サイレント修正-2026-07-08)）。
 - **dirty 判定**: `inspectionDrawingCreateDraft.ts` に保存可否理由・dirty snapshot・状態表示の純粋関数を置く。比較対象から `testValue`、OCR状態、選択点、zoom、メッセージは除外する。新規作成は未保存データとして扱い、編集時だけ読込済みテンプレートを baseline にする。保存成功後は再読込内容で baseline を更新して `保存済み` に戻す。
 - **右ペイン**: 外枠 `lg:w-[17rem]` は維持。名称と基準値/上限値を1行ずつに分け、名称 select は見切れないよう全幅化する。名称とは別に **補足** 行を持ち、`面`（`正面` / `背面` / `両面`）、`呼び径`（`M3`〜`M30` の JIS メートルねじ候補）、直接入力を併設する。位置調整はタイトル「位置」を出さず、`↑ ↓ ← →` の1行配列。`この点を削除` と `全削除` は横2分割で、`全削除` は確認後に全点・選択・OCR候補・ガイド状態をクリアする。アクティブカードは背景色を維持し、枠線/ring を強くする。
 - **測定点名称/補足の保存契約**: `measurementLabel` は名称のみ、`measurementPoint` は `名称 呼び径 面 自由補足` で保存する。画面表示は `ネジ穴ピッチ / M10 / 正面` 形式。読込時は `measurementPoint` が `measurementLabel + " "` で始まる場合だけ補足として復元し、既存テンプレで `measurementLabel` 自体に `M10` 等が含まれるものは自動分解しない。
@@ -910,6 +910,30 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 | 自主検査候補値 | `apps/web/src/features/part-measurement/inspection-drawing/selfInspectionMeasurementValueOptions.ts` |
 | 測定点一覧（旧・上辺） | ~~`InspectionDrawingPointSummaryStrip.tsx`~~（作成/改版から削除） |
 | レイアウト共有 | `apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingKioskUi.ts` |
+
+#### 検査図面 作成画面 ツールバー崩れ + 品番自動入力 none サイレント修正（2026-07-08） {#検査図面-作成画面-ツールバー崩れ-品番自動入力-none-サイレント修正-2026-07-08}
+
+- **作業ブランチ / 代表コミット**: `fix/inspection-drawing-autofill-toolbar` / **`dfd6ad75`**（品番フォールバック）· **`50a860eb`**（ツールバーレイアウト）。
+- **変更種別**: Web のみ。API / DB / Prisma migration は変更しない。
+
+##### 事象1: ツールバーレイアウト崩れ
+
+| 項目 | 内容 |
+|------|------|
+| **症状** | 作成画面ツールバーで `テスト入力` / `ガイド試行` / `保存済み帳票` / `一覧へ戻る` が意図と違う位置に見える |
+| **原因** | コミット `f351343e` が flat band 契約（toolbar slot は `shrink-0`＝`inspectionDrawingCreateFlatBandItemClassName`）を破り、slot を `min-w-0 flex-1`、toolbar root に `w-full min-w-0` を追加。band root は `flex-wrap` のため折り返し時に slot が行幅いっぱいに伸び、`ml-auto` グループが右端へ大きく分離した |
+| **修正** | コミット `3049e5fd`（マージ `50a860eb`）で slot を `inspectionDrawingCreateFlatBandItemClassName`（`shrink-0`）へ、toolbar root から `w-full min-w-0` を削除して復元。`ml-auto` の DOM 構造は維持（slot が内容幅のため実質無効） |
+| **検証** | Web vitest 全 266 files / 1348 tests passed。Playwright `e2e/inspection-drawing-create-header-layout.spec.ts` 3 passed。DEV プレビュー（`/dev/kiosk-inspection-drawing-create`）スクリーンショット目視で `04bb49fe` 相当のレイアウト復元を確認 |
+
+##### 事象2: 図面選択時の品番自動入力が「効かない」ように見える
+
+| 項目 | 内容 |
+|------|------|
+| **症状** | 既存図面を選んでも品番欄が空のまま。メッセージも出ない |
+| **原因** | 専用 API `GET …/inspection-drawing/visual-templates/:id/fhincd` 自体は正常（例: `3a8dd157…`＝7161ベアリングサポート → `{"kind":"unique","fhincd":"MD0004167150"}`）。しかし実機テスト図面（7161ベアリング押エ / 7161ストッパー台（2）/ 7161固定板 / 7161テーブル。いずれも 2026-07-01 アップロード）は本番 DB で PartMeasurementTemplate との紐付きが 0 件のため `{"kind":"none"}` が返り、UI が無言で何もしなかった（`none` がサイレント）。本番 23 図面中、有効テンプレ紐付きがあるのは 8 図面のみ |
+| **修正** | コミット `c87b452d`（マージ `dfd6ad75`）。(1) `kind:'none'` かつ図面名に品番らしきトークン（NFKC 正規化 + 大文字化後 `[A-Z]{2}[0-9]{8,10}`、一意のときのみ）が含まれる場合は品番欄へ自動入力し「図面名から品番 X を自動入力しました。テンプレ紐付きの品番ではないため確認してください。」と表示（本番図面名の運用実態: 例 `7161ストッパー台（1）MD004121651`）。(2) 抽出できない場合は「この図面に紐づく品番が見つかりませんでした。品番を手入力してください。」を表示しサイレント挙動を解消。`unique` / `multiple` / エラー時の挙動は不変。手入力ガード（手入力済みなら上書きしない）も維持 |
+| **実装** | `extractFhincdFromVisualTemplateName()` を `inspectionDrawingCreateDraft.ts` に追加。`KioskInspectionDrawingCreatePage.tsx` の `applyVisualLinkedFhincdResult` / `requestVisualLinkedFhincd` を拡張 |
+| **運用上の注意** | 図面にテンプレが 1 件もない場合、DB 上に品番情報は存在しないため自動入力は原理的に不可能。図面名に品番を含めて登録するか、品番を手入力する |
 
 ### キオスク検査図面 測定点位置微調整（十字ボタン · 2026-06-05） {#検査図面-測定点位置微調整-十字ボタン-2026-06-05}
 
@@ -1029,7 +1053,7 @@ Runbook: [§十字ボタン](../runbooks/kiosk-part-measurement.md#検査図面-
 
 - **`InspectionDrawingCreateCompactHeader`**（作成/改版専用）— band 直下に **dl / version-badge / drawing-file / zoom-slot / toolbar-slot** を兄弟配置（[正本 HTML](../plans/kiosk-inspection-drawing-layout-preview.html) と同型）。
 - **meta-row（dl）**: `flex-nowrap` + `shrink min-w-0` — chip 列内では折り返さない。
-- **band**: `flex-wrap` — 狭幅時 **最大2物理行** を許容。版バッジ・図面ファイル・zoom・toolbar は **`shrink-0`**。
+- **band**: `flex-wrap` — 狭幅時 **最大2物理行** を許容。版バッジ・図面ファイル・zoom・toolbar は **`shrink-0`**。→ 2026-07-08修正で toolbar slot の `flex-1` 回帰を修正（[§作成画面ツールバー・品番none修正](#検査図面-作成画面-ツールバー崩れ-品番自動入力-none-サイレント修正-2026-07-08)）。
 - **公開 export**: `InspectionDrawingCreateCompactHeader` のみ。`MetaChipList` / `VersionBadge` / `DrawingFileControl` は内部。
 - **本番記録 edit**（`KioskInspectionDrawingEditPage`）: **非変更** — 引き続き `InspectionDrawingCreateHeaderBand`（`metadataLayout` 既定 `grid`）。
 
@@ -1328,7 +1352,7 @@ curl -sk -D - -o /tmp/preview-out.jpg \
 | 旧版で保存できない | `isActive: false` | 想定どおり閲覧専用。履歴から **有効化** または有効版を開く |
 | 有効化しても編集できない | 再取得していない | `ef78f4dd` 以降の「有効化→専用 GET 再読込」を確認 |
 | 品番検索でヒットしない | 完全一致フィルタになっていないか | 一覧は API **部分一致**。クライアント側で追加絞り込みしない |
-| 図面ライブラリ新規で品番・テンプレ名に品番が入らない | 品番解決に一覧 API を使っていないか。未完成テンプレは一覧から除外される | 品番解決は **専用** `GET …/inspection-drawing/visual-templates/:id/fhincd` を使う |
+| 図面ライブラリ新規で品番・テンプレ名に品番が入らない | 品番解決に一覧 API を使っていないか。未完成テンプレは一覧から除外される。テンプレ紐付き 0 件の図面は API が `none` を返す | 品番解決は **専用** `GET …/inspection-drawing/visual-templates/:id/fhincd` を使う。→ 2026-07-08修正で `none` 時は図面名フォールバックまたは「品番を手入力してください」メッセージ（[§作成画面ツールバー・品番none修正](#検査図面-作成画面-ツールバー崩れ-品番自動入力-none-サイレント修正-2026-07-08)）。テンプレ紐付きが無い図面は手入力が必要 |
 | デプロイが始まらない | `git status` で ahead | **push** してから `update-all-clients.sh` |
 | **一覧から編集で図面が出ない**（測定点は見える） | テンプレ編集画面が `drawingImageRelativePath` を `<img src>` 直指定している | 下記 [§テンプレ編集・認可付き図面読込](#検査図面-テンプレ編集-認可付き図面読込-2026-05-31) · **`main` `e12a5a9c` 以降** |
 | 編集で図面は出るが **拡大2回目（倍率1.5付近）だけ震える** | `ResizeObserver` + スクロールバーで `clientWidth`/`Height` が揺れ再レイアウトループ | 下記 [§キャンバスズーム痙攣](#検査図面-キャンバスズーム痙攣修正-2026-05-31) · **`main` `f6a9544a` 以降** · 強制リロード |
