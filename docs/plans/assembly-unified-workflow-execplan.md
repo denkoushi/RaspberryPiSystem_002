@@ -5,11 +5,11 @@ status: active
 scope: kiosk assembly procedure library, publish gate, multi-page procedure documents, page-level bolt/check markers, work-session completion gate, record approval aggregation
 date: 2026-07-08
 source_of_truth: this file
-phase: 1 complete (schema + migration + design); 2 complete (API); 3 Web; 4 validation/deploy
-branch: feature/assembly-uwf-p1-schema
+phase: 1 complete (schema + migration + design); 2 complete (API); 3 complete (Web); 4 validation complete (deploy pending)
+branch: feature/assembly-uwf-p4-validation
 related_code: apps/api/prisma/schema.prisma, apps/api/prisma/migrations/20260708101417_assembly_unified_workflow_p1_schema, apps/api/src/routes/assembly/index.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyPage.tsx, apps/web/src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx, apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx
 related_docs: ../decisions/ADR-20260708-assembly-page-level-markers-and-publish-gate.md, ../decisions/ADR-20260707-assembly-procedure-order-library-scope.md, ./kiosk-assembly-torque-management-mvp.md, ../INDEX.md
-open_items: Phase 3 Web UI, Phase 4 integration validation and deployment
+open_items: Pi deployment (follow deployment runbook); kiosk smoke on hardware
 ---
 
 # Assembly Unified Workflow ExecPlan
@@ -328,6 +328,20 @@ Extend work-session detail used by `/kiosk/assembly/record-approvals` (same `GET
 | API integration | Extend `assembly.integration.test.ts`: publish/unpublish guards, multi-page import cap, order save rejects draft doc, complete rejects missing checks, record-check upsert, sequence page identifiers exclude draft docs. |
 | Web smoke | Library publish badge, template dual markers, work-session toggle + complete guard, record approval check summary. |
 | Deploy | Follow `docs/guides/deployment.md`; Pi5 + Pi4 kiosks; Phase12 script. |
+
+### Validation results (2026-07-08, branch `feature/assembly-uwf-p4-validation`)
+
+| Check | Command | Result |
+|---|---|---|
+| Migration (fresh DB) | `DATABASE_URL=…55999/borrow_return prisma migrate deploy` on temp `pgvector/pgvector:pg15` | pass — all 136 migrations including `20260708101417_assembly_unified_workflow_p1_schema` |
+| API integration | `pnpm test` (apps/api, temp Postgres) | pass — 2193 tests; `assembly.integration.test.ts` 18/18 (3 test fixes: publish header, cleanup order, sortOrder seed) |
+| API typecheck | `pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit` | pass |
+| Web typecheck | `pnpm --filter @raspi-system/web exec tsc --noEmit` | pass |
+| Web build | `pnpm --filter @raspi-system/web build` | pass |
+| Lint | `pnpm --filter @raspi-system/api lint` + web lint | pass |
+| Web unit (assembly) | vitest: `AssemblyProcedureSequenceViewer`, `KioskAssemblyWorkSessionPage`, `KioskAssemblyRecordApprovalPage` | pass — 7/7 |
+| API⇔Web contract | static review `assembly/index.ts` serializers vs `types.ts` / `domains/assembly.ts` | pass — no mismatches found |
+| Legacy compat | integration tests (bolt-only complete, no page refs) | pass |
 
 ## Key files (Phase 1)
 
