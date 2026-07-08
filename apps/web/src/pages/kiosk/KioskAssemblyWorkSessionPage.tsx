@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import {
@@ -7,6 +7,7 @@ import {
   downloadAssemblyWorkSessionXlsx,
   getAssemblyWorkSession,
   getAssemblyWorkSessionProcedureSequence,
+  recordAssemblyCheck,
   recordAssemblyTorque,
   restartAssemblyArea
 } from '../../api/client';
@@ -20,16 +21,19 @@ import {
   KIOSK_ASSEMBLY_HOME_PATH,
   latestStatusByBolt,
   readAssemblyApiErrorMessage,
+  resolveAssemblyCheckSummary,
+  sessionCheckItemsToCanvas,
   templateToCanvasBolts
 } from '../../features/assembly';
 
-import type { AssemblyProcedureSequenceDto, AssemblyWorkSessionDto } from '../../features/assembly/types';
+import type { AssemblyProcedureSequencePageDto, AssemblyWorkSessionDto } from '../../features/assembly/types';
 
 export function KioskAssemblyWorkSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [session, setSession] = useState<AssemblyWorkSessionDto | null>(null);
-  const [procedureSequence, setProcedureSequence] = useState<AssemblyProcedureSequenceDto | null>(null);
+  const [procedureSequence, setProcedureSequence] = useState<Awaited<ReturnType<typeof getAssemblyWorkSessionProcedureSequence>> | null>(null);
   const [procedureSequenceLoading, setProcedureSequenceLoading] = useState(false);
+  const [currentSequencePage, setCurrentSequencePage] = useState<AssemblyProcedureSequencePageDto | null>(null);
   const [torqueValue, setTorqueValue] = useState('');
   const [torqueSource, setTorqueSource] = useState<'manual' | 'mock'>('manual');
   const [loading, setLoading] = useState(true);
@@ -83,13 +87,59 @@ export function KioskAssemblyWorkSessionPage() {
   }, [session?.id]);
 
   const statusByBolt = useMemo(() => (session ? latestStatusByBolt(session) : new Map()), [session]);
+  const checkSummary = useMemo(() => (session ? resolveAssemblyCheckSummary(session) : null), [session]);
   const currentArea = session ? currentAssemblyArea(session) : null;
   const currentBolt = session ? currentAssemblyBolt(session) : null;
-  const allComplete = session
+  const allBoltsComplete = session
     ? session.template.areas.every((area) => area.bolts.every((bolt) => statusByBolt.get(bolt.id) === 'ok'))
     : false;
+  const checksComplete = checkSummary?.allRequiredCompleted ?? true;
+  const canComplete = Boolean(session && allBoltsComplete && checksComplete && session.status === 'in_progress');
   const hasConfiguredProcedureSequence =
     procedureSequence?.mode === 'configured' && procedureSequence.documents.length > 0;
+
+  const fallbackPageRef = useMemo(() => {
+    if (!session) return null;
+    return {
+      source: 'assembly_procedure_document' as const,
+      documentId: session.template.procedureDocumentId,
+      pageIndex: 0
+    };
+  }, [session]);
+
+  const activePageRef = useMemo(() => {
+    if (hasConfiguredProcedureSequence && currentSequencePage) {
+      return {
+        source: currentSequencePage.source,
+        documentId: currentSequencePage.documentId,
+        pageIndex: currentSequencePage.pageIndex
+      };
+    }
+    return fallbackPageRef;
+  }, [currentSequencePage, fallbackPageRef, hasConfiguredProcedureSequence]);
+
+  const visibleBoltMarkers = useMemo(() => {
+    if (!session || !activePageRef) return [];
+    return templateToCanvasBolts(session.template, statusByBolt, activePageRef);
+  }, [activePageRef, session, statusByBolt]);
+
+  const visibleCheckMarkers = useMemo(() => {
+    if (!session || !activePageRef) return [];
+    return sessionCheckItemsToCanvas(session.checkItems, activePageRef, session.template.procedureDocumentId);
+  }, [activePageRef, session]);
+
+  const completeDisabledReason = useMemo(() => {
+    if (!session || session.status !== 'in_progress') return null;
+    if (!allBoltsComplete) return '締付が未完了です。';
+    if (!checksComplete && checkSummary) {
+      return `必須チェック ${checkSummary.requiredCompleted}/${checkSummary.requiredTotal} です。`;
+    }
+    return null;
+  }, [allBoltsComplete, checkSummary, checksComplete, session]);
+
+  const handleCurrentPageChange = useCallback((page: AssemblyProcedureSequencePageDto | null) => {
+    setCurrentSequencePage(page);
+  }, []);
 
   const runBusy = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -117,6 +167,33 @@ export function KioskAssemblyWorkSessionPage() {
       } else {
         setMessage(result.outcome.areaCompleted ? 'エリア完了です。次工程へ進んでください。' : 'OKです。次の締付箇所へ進みました。');
       }
+    });
+
+  const toggleCheckItem = (checkItemId: string) =>
+    runBusy(async () => {
+      if (!session) return;
+      const item = session.checkItems?.find((candidate) => candidate.id === checkItemId);
+      const nextChecked = !(item?.record?.checked ?? false);
+      const result = await recordAssemblyCheck(session.id, { checkItemId, checked: nextChecked });
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              checkSummary: result.checkSummary,
+              checkItems: (prev.checkItems ?? []).map((candidate) =>
+                candidate.id === checkItemId ? { ...candidate, record: result.record } : candidate
+              )
+            }
+          : prev
+      );
+    });
+
+  const completeSession = () =>
+    runBusy(async () => {
+      if (!session) return;
+      const updated = await completeAssemblyWorkSession(session.id);
+      setSession(updated);
+      setMessage('作業を完了しました。');
     });
 
   if (loading) {
@@ -170,17 +247,32 @@ export function KioskAssemblyWorkSessionPage() {
             <p className="mt-1 text-sm text-white/60">
               {procedureSequenceLoading
                 ? '要領書を確認中'
-                : currentBolt?.tighteningId ?? (allComplete ? '全締付完了' : '次工程待ち')}
+                : currentBolt?.tighteningId ?? (allBoltsComplete ? '全締付完了' : '次工程待ち')}
             </p>
+            {checkSummary && checkSummary.requiredTotal > 0 ? (
+              <p className="mt-1 text-sm font-semibold text-lime-200">
+                必須チェック {checkSummary.requiredCompleted}/{checkSummary.requiredTotal}
+              </p>
+            ) : null}
           </div>
           <div className="min-h-0 flex-1">
-            {hasConfiguredProcedureSequence ? (
-              <AssemblyProcedureSequenceViewer sequence={procedureSequence} className="h-full" />
+            {hasConfiguredProcedureSequence && procedureSequence ? (
+              <AssemblyProcedureSequenceViewer
+                sequence={procedureSequence}
+                className="h-full"
+                boltMarkers={visibleBoltMarkers}
+                checkMarkers={visibleCheckMarkers}
+                selectedBoltId={session.currentBoltId}
+                onToggleCheckItem={(checkItemId) => void toggleCheckItem(checkItemId)}
+                onCurrentPageChange={handleCurrentPageChange}
+              />
             ) : (
               <AssemblyProcedureCanvas
                 imageRelativePath={session.template.procedureDocument.imageRelativePath}
-                bolts={templateToCanvasBolts(session.template, statusByBolt)}
+                bolts={visibleBoltMarkers}
+                checkItems={visibleCheckMarkers}
                 selectedBoltId={session.currentBoltId}
+                onToggleCheckItem={(checkItemId) => void toggleCheckItem(checkItemId)}
                 className="h-full"
               />
             )}
@@ -191,7 +283,7 @@ export function KioskAssemblyWorkSessionPage() {
           <h2 className="text-[1.02rem] font-bold">締付</h2>
           <div className="mt-3 rounded border border-white/10 bg-slate-950 p-3">
             <div className="text-sm text-white/60">現在</div>
-            <div className="mt-1 text-lg font-bold">{currentBolt?.tighteningId ?? (allComplete ? '全締付完了' : '次工程待ち')}</div>
+            <div className="mt-1 text-lg font-bold">{currentBolt?.tighteningId ?? (allBoltsComplete ? '全締付完了' : '次工程待ち')}</div>
             <div className="mt-1 text-sm text-white/70">{currentArea?.areaName ?? ''}</div>
             {currentBolt ? (
               <div className="mt-2 text-sm text-white/80">
@@ -199,6 +291,14 @@ export function KioskAssemblyWorkSessionPage() {
               </div>
             ) : null}
           </div>
+          {checkSummary && checkSummary.requiredTotal > 0 ? (
+            <div className="mt-3 rounded border border-lime-300/20 bg-lime-500/10 p-3 text-sm">
+              <div className="font-semibold text-lime-100">チェック進捗</div>
+              <div className="mt-1 text-lime-50">
+                必須 {checkSummary.requiredCompleted}/{checkSummary.requiredTotal}
+              </div>
+            </div>
+          ) : null}
           <div className="mt-3 grid grid-cols-[1fr_6rem] gap-2">
             <input
               className="rounded bg-slate-950 px-3 py-3 text-lg"
@@ -222,7 +322,7 @@ export function KioskAssemblyWorkSessionPage() {
             <Button
               type="button"
               variant="secondary"
-              disabled={busy || Boolean(session.currentBoltId) || allComplete}
+              disabled={busy || Boolean(session.currentBoltId) || allBoltsComplete}
               onClick={() => void runBusy(async () => setSession(await advanceAssemblyArea(session.id)))}
             >
               次工程へ
@@ -238,13 +338,17 @@ export function KioskAssemblyWorkSessionPage() {
             <Button
               type="button"
               variant="primary"
-              disabled={busy || !allComplete || session.status !== 'in_progress'}
+              disabled={busy || !canComplete}
               className="col-span-2"
-              onClick={() => void runBusy(async () => setSession(await completeAssemblyWorkSession(session.id)))}
+              title={completeDisabledReason ?? undefined}
+              onClick={completeSession}
             >
               作業完了
             </Button>
           </div>
+          {completeDisabledReason ? (
+            <p className="mt-2 text-xs font-semibold text-amber-200">{completeDisabledReason}</p>
+          ) : null}
           <h3 className="mt-5 text-sm font-bold">履歴</h3>
           <div className="mt-2 max-h-80 overflow-y-auto rounded border border-white/10">
             {session.torqueRecords.slice().reverse().map((record) => (

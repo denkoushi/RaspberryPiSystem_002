@@ -80,7 +80,10 @@ export function KioskAssemblyPage() {
   const handleUploadSuccess = useCallback((document: AssemblyProcedureDocumentDto) => {
     setUploadOpen(false);
     setLibraryRefreshToken((token) => token + 1);
-    setMessage(`手順書「${document.name}」を登録しました。`);
+    const pageCount = document.pages?.length ?? (document.imageRelativePath ? 1 : 0);
+    setMessage(
+      `手順書「${document.name}」を${pageCount}ページ登録しました（下書き）。公開すると使用開始できます。`
+    );
   }, []);
 
   const handleLibraryChanged = useCallback((nextMessage: string) => {
