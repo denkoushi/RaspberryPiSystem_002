@@ -3,13 +3,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { resolveKioskDocumentPageImageUrl } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 
+import { AssemblyProcedureImageWithMarkers } from './AssemblyProcedureCanvas';
+import { getSequenceDocumentPages } from './assemblyTemplateDraft';
 import { isAssemblyProcedureImagePath, KioskDocumentPageImage } from './KioskDocumentPageImage';
 
-import type { AssemblyProcedureSequenceDto } from './types';
+import type { AssemblyCanvasBolt, AssemblyCanvasCheckItem } from './AssemblyProcedureCanvas';
+import type { AssemblyProcedureSequenceDto, AssemblyProcedureSequencePageDto } from './types';
 
 type Props = {
   sequence: AssemblyProcedureSequenceDto;
   className?: string;
+  boltMarkers?: AssemblyCanvasBolt[];
+  checkMarkers?: AssemblyCanvasCheckItem[];
+  selectedBoltId?: string | null;
+  onToggleCheckItem?: (checkItemId: string) => void;
+  onCurrentPageChange?: (page: AssemblyProcedureSequencePageDto | null) => void;
 };
 
 function displayTitle(document: AssemblyProcedureSequenceDto['documents'][number]): string {
@@ -22,16 +30,25 @@ function clampIndex(value: number, length: number): number {
   return Math.max(0, Math.min(length - 1, value));
 }
 
-export function AssemblyProcedureSequenceViewer({ sequence, className }: Props) {
+export function AssemblyProcedureSequenceViewer({
+  sequence,
+  className,
+  boltMarkers = [],
+  checkMarkers = [],
+  selectedBoltId,
+  onToggleCheckItem,
+  onCurrentPageChange
+}: Props) {
   const [documentIndex, setDocumentIndex] = useState(0);
   const [pageIndex, setPageIndex] = useState(0);
   const documents = sequence.documents;
   const document = documents[clampIndex(documentIndex, documents.length)] ?? null;
-  const pageUrls = useMemo(() => document?.pageUrls ?? [], [document?.pageUrls]);
-  const pageUrl = pageUrls[clampIndex(pageIndex, pageUrls.length)] ?? null;
+  const pageEntries = useMemo(() => (document ? getSequenceDocumentPages(document) : []), [document]);
+  const currentPage = pageEntries[clampIndex(pageIndex, pageEntries.length)] ?? null;
+  const pageUrl = currentPage?.pageUrl ?? null;
 
   const totalPages = useMemo(
-    () => documents.reduce((sum, item) => sum + item.pageUrls.length, 0),
+    () => documents.reduce((sum, item) => sum + getSequenceDocumentPages(item).length, 0),
     [documents]
   );
 
@@ -45,21 +62,25 @@ export function AssemblyProcedureSequenceViewer({ sequence, className }: Props) 
   }, [documents.length]);
 
   useEffect(() => {
-    setPageIndex((current) => clampIndex(current, pageUrls.length));
-  }, [pageUrls.length]);
+    setPageIndex((current) => clampIndex(current, pageEntries.length));
+  }, [pageEntries.length, document?.orderItemId]);
+
+  useEffect(() => {
+    onCurrentPageChange?.(currentPage);
+  }, [currentPage, onCurrentPageChange]);
 
   useEffect(() => {
     const prefetchTargets = [
-      pageUrls[pageIndex + 1],
-      pageUrls[pageIndex + 2],
-      documents[documentIndex + 1]?.pageUrls[0],
+      pageEntries[pageIndex + 1]?.pageUrl,
+      pageEntries[pageIndex + 2]?.pageUrl,
+      documents[documentIndex + 1] ? getSequenceDocumentPages(documents[documentIndex + 1])[0]?.pageUrl : null
     ].filter((url): url is string => Boolean(url));
     for (const url of prefetchTargets) {
       if (isAssemblyProcedureImagePath(url)) continue;
       const img = new Image();
       img.src = resolveKioskDocumentPageImageUrl(url);
     }
-  }, [documentIndex, documents, pageIndex, pageUrls]);
+  }, [documentIndex, documents, pageEntries, pageIndex]);
 
   const goPrevPage = () => {
     if (!document) return;
@@ -68,7 +89,7 @@ export function AssemblyProcedureSequenceViewer({ sequence, className }: Props) 
 
   const goNextPage = () => {
     if (!document) return;
-    if (pageIndex < pageUrls.length - 1) setPageIndex((current) => current + 1);
+    if (pageIndex < pageEntries.length - 1) setPageIndex((current) => current + 1);
   };
 
   const goPrevDocument = () => {
@@ -87,7 +108,7 @@ export function AssemblyProcedureSequenceViewer({ sequence, className }: Props) 
     }
   };
 
-  if (!document || !pageUrl) {
+  if (!document || !pageUrl || !currentPage) {
     return (
       <div className={className}>
         <div className="flex h-full min-h-[18rem] items-center justify-center bg-slate-950 text-sm font-semibold text-white/60">
@@ -103,12 +124,14 @@ export function AssemblyProcedureSequenceViewer({ sequence, className }: Props) 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
             <p className="truncate text-sm font-bold text-white">{document.label?.trim() || displayTitle(document)}</p>
-            <p className="truncate text-xs font-semibold text-white/55">{displayTitle(document)} / {pageIndex + 1}/{pageUrls.length}ページ / 全{totalPages}ページ</p>
+            <p className="truncate text-xs font-semibold text-white/55">
+              {displayTitle(document)} / {pageIndex + 1}/{pageEntries.length}ページ / 全{totalPages}ページ
+            </p>
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-1">
             <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={documentIndex === 0} onClick={goPrevDocument}>前書</Button>
             <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={pageIndex === 0} onClick={goPrevPage}>前頁</Button>
-            <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={pageIndex === pageUrls.length - 1} onClick={goNextPage}>次頁</Button>
+            <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={pageIndex === pageEntries.length - 1} onClick={goNextPage}>次頁</Button>
             <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={documentIndex === documents.length - 1} onClick={goNextDocument}>次書</Button>
           </div>
         </div>
@@ -121,8 +144,19 @@ export function AssemblyProcedureSequenceViewer({ sequence, className }: Props) 
         </div>
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-2">
-        <KioskDocumentPageImage pageUrl={pageUrl} alt="" className="h-full max-h-full w-full max-w-full object-contain" />
+        <AssemblyProcedureImageWithMarkers
+          className="h-full max-h-full w-full max-w-full"
+          imageContent={
+            <KioskDocumentPageImage pageUrl={pageUrl} alt="" className="h-full max-h-full w-full max-w-full object-contain" />
+          }
+          bolts={boltMarkers}
+          checkItems={checkMarkers}
+          selectedBoltId={selectedBoltId}
+          onToggleCheckItem={onToggleCheckItem}
+        />
       </div>
     </div>
   );
 }
+
+export type { AssemblyProcedureSequencePageDto };

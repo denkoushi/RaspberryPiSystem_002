@@ -80,10 +80,53 @@ function buildTemplatePayload(documentId: string, overrides: Partial<Record<'mod
   };
 }
 
+async function publishProcedureDocument(
+  app: Awaited<ReturnType<typeof buildServer>>,
+  headers: Record<string, string>,
+  documentId: string
+) {
+  const publishHeaders =
+    'x-client-key' in headers
+      ? { 'x-client-key': headers['x-client-key'] }
+      : headers;
+  const publishRes = await app.inject({
+    method: 'POST',
+    url: `/api/assembly/procedure-documents/${documentId}/publish`,
+    headers: publishHeaders
+  });
+  expect(publishRes.statusCode).toBe(200);
+  expect(publishRes.json().document.status).toBe('published');
+}
+
+async function uploadPublishedProcedureDocument(
+  app: Awaited<ReturnType<typeof buildServer>>,
+  headers: Record<string, string>,
+  name: string
+) {
+  const upload = buildMultipartProcedure(name);
+  const docRes = await app.inject({
+    method: 'POST',
+    url: '/api/assembly/procedure-documents',
+    headers: { ...headers, 'Content-Type': upload.contentType },
+    payload: upload.body
+  });
+  expect(docRes.statusCode).toBe(200);
+  const document = docRes.json().document as {
+    id: string;
+    status: string;
+    imageRelativePath: string;
+    name: string;
+    pages: Array<{ pageIndex: number; imageRelativePath: string }>;
+  };
+  expect(document.status).toBe('draft');
+  expect(document.pages.length).toBeGreaterThan(0);
+  await publishProcedureDocument(app, headers, document.id);
+  return document;
+}
+
 async function cleanAssemblyTables() {
   await prisma.assemblyProcedureOrderItem.deleteMany({});
   await prisma.assemblyProcedureOrderSet.deleteMany({});
-  await prisma.kioskDocument.deleteMany({ where: { title: { startsWith: TEST_KIOSK_DOCUMENT_TITLE_PREFIX } } });
   await prisma.assemblyWorkSessionApproval.deleteMany({});
   await prisma.assemblyAreaRestartLog.deleteMany({});
   await prisma.assemblyTorqueRecord.deleteMany({});
@@ -94,6 +137,10 @@ async function cleanAssemblyTables() {
   await prisma.assemblyTemplateBolt.deleteMany({});
   await prisma.assemblyTemplateArea.deleteMany({});
   await prisma.assemblyTemplate.deleteMany({});
+  await prisma.assemblyCheckRecord.deleteMany({});
+  await prisma.assemblyTemplateCheckItem.deleteMany({});
+  await prisma.kioskDocument.deleteMany({ where: { title: { startsWith: TEST_KIOSK_DOCUMENT_TITLE_PREFIX } } });
+  await prisma.assemblyProcedureDocumentPage.deleteMany({});
   await prisma.assemblyProcedureDocument.deleteMany({});
   await prisma.clientDevice.deleteMany({ where: { name: { startsWith: 'Test Client ' } } });
   await prisma.productionScheduleAccessPasswordConfig.deleteMany({
@@ -208,6 +255,7 @@ describe('assembly torque management API', () => {
     });
     expect(docRes.statusCode).toBe(200);
     const documentId = docRes.json().document.id as string;
+    await publishProcedureDocument(app, headers, documentId);
 
     const templateRes = await app.inject({
       method: 'POST',
@@ -414,6 +462,7 @@ describe('assembly torque management API', () => {
     });
     expect(docARes.statusCode).toBe(200);
     const documentAId = docARes.json().document.id as string;
+    await publishProcedureDocument(app, headers, documentAId);
 
     const firstTemplate = await app.inject({
       method: 'POST',
@@ -550,6 +599,7 @@ describe('assembly torque management API', () => {
     });
     expect(docRes.statusCode).toBe(200);
     const documentId = docRes.json().document.id as string;
+    await publishProcedureDocument(app, headers, documentId);
 
     const templateRes = await app.inject({
       method: 'POST',
@@ -633,6 +683,7 @@ describe('assembly torque management API', () => {
     });
     expect(docRes.statusCode).toBe(200);
     const documentId = docRes.json().document.id as string;
+    await publishProcedureDocument(app, headers, documentId);
 
     const templateRes = await app.inject({
       method: 'POST',
@@ -748,6 +799,7 @@ describe('assembly torque management API', () => {
       payload: upload.body
     });
     expect(docRes.statusCode).toBe(200);
+    await publishProcedureDocument(app, { 'x-client-key': client.apiKey }, docRes.json().document.id as string);
 
     const templateRes = await app.inject({
       method: 'POST',
@@ -957,6 +1009,7 @@ describe('assembly torque management API', () => {
     });
     expect(procedureDocRes.statusCode).toBe(200);
     const procedureDocumentId = procedureDocRes.json().document.id as string;
+    await publishProcedureDocument(app, headers, procedureDocumentId);
 
     const templateRes = await app.inject({
       method: 'POST',
@@ -1048,12 +1101,24 @@ describe('assembly torque management API', () => {
       expect.objectContaining({
         kioskDocumentId: docY.id,
         label: 'Y軸',
-        pageUrls: [`/api/storage/pdf-pages/${docY.id}/page-1.jpg`]
+        pageUrls: [`/api/storage/pdf-pages/${docY.id}/page-1.jpg`],
+        pages: [
+          expect.objectContaining({
+            source: 'kiosk_document',
+            documentId: docY.id,
+            pageIndex: 0,
+            pageUrl: `/api/storage/pdf-pages/${docY.id}/page-1.jpg`
+          })
+        ]
       }),
       expect.objectContaining({
         kioskDocumentId: docX.id,
         label: 'X軸-1',
-        pageUrls: [`/api/storage/pdf-pages/${docX.id}/page-1.jpg`, `/api/storage/pdf-pages/${docX.id}/page-2.jpg`]
+        pageUrls: [`/api/storage/pdf-pages/${docX.id}/page-1.jpg`, `/api/storage/pdf-pages/${docX.id}/page-2.jpg`],
+        pages: [
+          expect.objectContaining({ source: 'kiosk_document', documentId: docX.id, pageIndex: 0 }),
+          expect.objectContaining({ source: 'kiosk_document', documentId: docX.id, pageIndex: 1 })
+        ]
       })
     ]);
 
@@ -1132,6 +1197,7 @@ describe('assembly torque management API', () => {
       name: string;
       imageRelativePath: string;
     };
+    await publishProcedureDocument(app, headers, procedureDocument.id);
 
     const templateRes = await app.inject({
       method: 'POST',
@@ -1211,7 +1277,15 @@ describe('assembly torque management API', () => {
         kioskDocumentId: null,
         label: '組立手順',
         title: procedureDocument.name,
-        pageUrls: [procedureDocument.imageRelativePath]
+        pageUrls: [procedureDocument.imageRelativePath],
+        pages: [
+          expect.objectContaining({
+            source: 'assembly_procedure_document',
+            documentId: procedureDocument.id,
+            pageIndex: 0,
+            pageUrl: procedureDocument.imageRelativePath
+          })
+        ]
       })
     ]);
   });
@@ -1229,6 +1303,7 @@ describe('assembly torque management API', () => {
     });
     expect(procedureDocRes.statusCode).toBe(200);
     const procedureDocumentId = procedureDocRes.json().document.id as string;
+    await publishProcedureDocument(app, headers, procedureDocumentId);
 
     const saved = await app.inject({
       method: 'PUT',
@@ -1299,6 +1374,7 @@ describe('assembly torque management API', () => {
       payload: upload.body
     });
     const documentId = docRes.json().document.id as string;
+    await publishProcedureDocument(app, headers, documentId);
 
     const templateRes = await app.inject({
       method: 'POST',
@@ -1395,6 +1471,7 @@ describe('assembly torque management API', () => {
       payload: upload.body
     });
     const documentId = docRes.json().document.id as string;
+    await publishProcedureDocument(app, headers, documentId);
 
     const templateRes = await app.inject({
       method: 'POST',
@@ -1472,5 +1549,316 @@ describe('assembly torque management API', () => {
     });
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toEqual({ success: true });
+  });
+
+  describe('assembly unified workflow phase 2 API', () => {
+    it('imports procedure documents as draft with pages and supports publish/unpublish guards', async () => {
+      const client = await createTestClientDevice();
+      const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+
+      const publishedDoc = await uploadPublishedProcedureDocument(app, headers, '公開済み手順');
+      const draftDoc = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/procedure-documents',
+        headers: { ...headers, 'Content-Type': buildMultipartProcedure('下書き手順').contentType },
+        payload: buildMultipartProcedure('下書き手順').body
+      });
+      expect(draftDoc.statusCode).toBe(200);
+      const draftDocumentId = draftDoc.json().document.id as string;
+      expect(draftDoc.json().document).toMatchObject({
+        status: 'draft',
+        publishedAt: null,
+        pages: [expect.objectContaining({ pageIndex: 0 })]
+      });
+
+      const templateRes = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/templates',
+        headers,
+        payload: buildTemplatePayload(publishedDoc.id, { modelCode: 'UWF-P2', procedurePattern: '標準' })
+      });
+      expect(templateRes.statusCode).toBe(200);
+
+      const unpublishInUse = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/procedure-documents/${publishedDoc.id}/unpublish`,
+        headers: { 'x-client-key': client.apiKey }
+      });
+      expect(unpublishInUse.statusCode).toBe(409);
+
+      const orderSaveDraft = await app.inject({
+        method: 'PUT',
+        url: '/api/assembly/procedure-orders',
+        headers,
+        payload: {
+          machineName: 'UWF-P2',
+          accessPassword: '2520',
+          items: [{ assemblyProcedureDocumentId: draftDocumentId, label: '下書き' }]
+        }
+      });
+      expect(orderSaveDraft.statusCode).toBe(400);
+
+      const unpublishUnused = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/procedure-documents/${draftDocumentId}/unpublish`,
+        headers: { 'x-client-key': client.apiKey }
+      });
+      expect(unpublishUnused.statusCode).toBe(200);
+      expect(unpublishUnused.json().document.status).toBe('draft');
+    });
+
+    it('upserts record-check and enforces complete gate for required check items', async () => {
+      const client = await createTestClientDevice();
+      const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+      const kioskDoc = await createKioskDocumentWithRenderedPages({ title: 'Check Marker Doc', pageCount: 1 });
+      const publishedDoc = await uploadPublishedProcedureDocument(app, headers, 'チェック付き手順');
+
+      const templateRes = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/templates',
+        headers,
+        payload: {
+          ...buildTemplatePayload(publishedDoc.id, { modelCode: 'UWF-CHECK', procedurePattern: '標準' }),
+          checkItems: [
+            {
+              markerNo: 1,
+              label: '外観確認',
+              required: true,
+              xRatio: 0.2,
+              yRatio: 0.2,
+              sortOrder: 0,
+              kioskDocumentId: kioskDoc.id,
+              pageIndex: 0
+            },
+            {
+              markerNo: 2,
+              label: '任意確認',
+              required: false,
+              xRatio: 0.4,
+              yRatio: 0.4,
+              sortOrder: 1,
+              kioskDocumentId: kioskDoc.id,
+              pageIndex: 0
+            }
+          ]
+        }
+      });
+      expect(templateRes.statusCode).toBe(200);
+      const template = templateRes.json().template;
+      const checkItemId = template.checkItems[0].id as string;
+
+      const startRes = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/work-sessions',
+        headers,
+        payload: {
+          templateId: template.id,
+          productNo: 'UWF-CHECK-001',
+          serialNo: 'CHK-001',
+          operatorNameSnapshot: '佐藤',
+          targetUnit: 'UWF-CHECK',
+          torqueWrenchId: 'CEM20N3X10D-BTLA'
+        }
+      });
+      expect(startRes.statusCode).toBe(200);
+      const sessionId = startRes.json().session.id as string;
+      expect(startRes.json().session.checkSummary).toMatchObject({
+        requiredTotal: 1,
+        requiredCompleted: 0,
+        allRequiredCompleted: false
+      });
+
+      const torque = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-sessions/${sessionId}/record-torque`,
+        headers,
+        payload: { value: 10, source: 'manual' }
+      });
+      expect(torque.statusCode).toBe(200);
+
+      const blockedComplete = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-sessions/${sessionId}/complete`,
+        headers: { 'x-client-key': client.apiKey }
+      });
+      expect(blockedComplete.statusCode).toBe(409);
+      expect(blockedComplete.json().details.checkSummary).toMatchObject({
+        requiredTotal: 1,
+        requiredCompleted: 0,
+        allRequiredCompleted: false
+      });
+
+      const firstCheck = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-sessions/${sessionId}/record-check`,
+        headers,
+        payload: { checkItemId, checked: true }
+      });
+      expect(firstCheck.statusCode).toBe(200);
+      expect(firstCheck.json().record).toMatchObject({ checkItemId, checked: true });
+      expect(firstCheck.json().checkSummary.allRequiredCompleted).toBe(true);
+
+      const secondCheck = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-sessions/${sessionId}/record-check`,
+        headers,
+        payload: { checkItemId, checked: false }
+      });
+      expect(secondCheck.statusCode).toBe(200);
+      expect(secondCheck.json().record.checked).toBe(false);
+      expect(secondCheck.json().checkSummary.allRequiredCompleted).toBe(false);
+
+      const recheck = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-sessions/${sessionId}/record-check`,
+        headers,
+        payload: { checkItemId, checked: true }
+      });
+      expect(recheck.statusCode).toBe(200);
+
+      const complete = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-sessions/${sessionId}/complete`,
+        headers: { 'x-client-key': client.apiKey }
+      });
+      expect(complete.statusCode).toBe(200);
+      expect(complete.json().session.checkSummary.allRequiredCompleted).toBe(true);
+    });
+
+    it('excludes draft assembly procedure documents from configured procedure sequence page identifiers', async () => {
+      const client = await createTestClientDevice();
+      const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+
+      const publishedDoc = await uploadPublishedProcedureDocument(app, headers, '公開シーケンス手順');
+      const draftUpload = buildMultipartProcedure('下書きシーケンス手順');
+      const draftRes = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/procedure-documents',
+        headers: { ...headers, 'Content-Type': draftUpload.contentType },
+        payload: draftUpload.body
+      });
+      const draftDocumentId = draftRes.json().document.id as string;
+
+      const templateRes = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/templates',
+        headers,
+        payload: buildTemplatePayload(publishedDoc.id, { modelCode: 'UWF-SEQ', procedurePattern: '標準' })
+      });
+      const templateId = templateRes.json().template.id as string;
+
+      await app.inject({
+        method: 'PUT',
+        url: '/api/assembly/procedure-orders',
+        headers,
+        payload: {
+          machineName: 'UWF-SEQ',
+          accessPassword: '2520',
+          items: [{ assemblyProcedureDocumentId: publishedDoc.id, label: '公開' }]
+        }
+      });
+
+      const orderSet = await prisma.assemblyProcedureOrderSet.findUnique({
+        where: { machineNameKey: 'UWF-SEQ' }
+      });
+      expect(orderSet).not.toBeNull();
+      await prisma.assemblyProcedureOrderItem.updateMany({
+        where: { setId: orderSet!.id, assemblyProcedureDocumentId: publishedDoc.id },
+        data: { sortOrder: 1 }
+      });
+      await prisma.assemblyProcedureOrderItem.create({
+        data: {
+          setId: orderSet!.id,
+          assemblyProcedureDocumentId: draftDocumentId,
+          sortOrder: 0,
+          label: '下書き'
+        }
+      });
+
+      const startRes = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/work-sessions',
+        headers,
+        payload: {
+          templateId,
+          productNo: 'UWF-SEQ-001',
+          serialNo: 'SEQ-001',
+          operatorNameSnapshot: '佐藤',
+          targetUnit: 'UWF-SEQ',
+          torqueWrenchId: 'CEM20N3X10D-BTLA'
+        }
+      });
+      const sessionId = startRes.json().session.id as string;
+
+      const sequence = await app.inject({
+        method: 'GET',
+        url: `/api/assembly/work-sessions/${sessionId}/procedure-sequence`,
+        headers: { 'x-client-key': client.apiKey }
+      });
+      expect(sequence.statusCode).toBe(200);
+      expect(sequence.json().sequence.documents).toHaveLength(1);
+      expect(sequence.json().sequence.documents[0]).toMatchObject({
+        assemblyProcedureDocumentId: publishedDoc.id,
+        label: '公開',
+        pages: [
+          expect.objectContaining({
+            source: 'assembly_procedure_document',
+            documentId: publishedDoc.id,
+            pageIndex: 0,
+            pageUrl: publishedDoc.imageRelativePath
+          })
+        ]
+      });
+    });
+
+    it('allows legacy templates without check items to complete after bolt acceptance only', async () => {
+      const client = await createTestClientDevice();
+      const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+      const publishedDoc = await uploadPublishedProcedureDocument(app, headers, 'レガシー互換手順');
+
+      const templateRes = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/templates',
+        headers,
+        payload: buildTemplatePayload(publishedDoc.id, { modelCode: 'UWF-LEGACY', procedurePattern: '標準' })
+      });
+      expect(templateRes.statusCode).toBe(200);
+      expect(templateRes.json().template.checkItems).toEqual([]);
+
+      const startRes = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/work-sessions',
+        headers,
+        payload: {
+          templateId: templateRes.json().template.id,
+          productNo: 'UWF-LEGACY-001',
+          serialNo: 'LEG-001',
+          operatorNameSnapshot: '佐藤',
+          targetUnit: 'UWF-LEGACY',
+          torqueWrenchId: 'CEM20N3X10D-BTLA'
+        }
+      });
+      const sessionId = startRes.json().session.id as string;
+      expect(startRes.json().session.checkSummary).toMatchObject({
+        requiredTotal: 0,
+        requiredCompleted: 0,
+        allRequiredCompleted: true
+      });
+
+      const torque = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-sessions/${sessionId}/record-torque`,
+        headers,
+        payload: { value: 10, source: 'manual' }
+      });
+      expect(torque.statusCode).toBe(200);
+
+      const complete = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-sessions/${sessionId}/complete`,
+        headers: { 'x-client-key': client.apiKey }
+      });
+      expect(complete.statusCode).toBe(200);
+    });
   });
 });

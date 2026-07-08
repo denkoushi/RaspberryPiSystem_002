@@ -1917,6 +1917,8 @@ model KioskDocument {
   updatedAt            DateTime            @updatedAt
   metadataHistories    KioskDocumentMetadataHistory[]
   assemblyProcedureOrderItems AssemblyProcedureOrderItem[]
+  assemblyTemplateBolts       AssemblyTemplateBolt[]
+  assemblyTemplateCheckItems  AssemblyTemplateCheckItem[]
 
   @@index([enabled])
   @@index([title])
@@ -2061,6 +2063,11 @@ enum AssemblyTorqueRecordJudgement {
   OK
   NG
   IGNORED
+}
+
+enum AssemblyProcedureDocumentStatus {
+  DRAFT
+  PUBLISHED
 }
 
 /// 同一測定対象（製造order・工程・資源CD）に複数の記録表をぶら下げる親集約。
@@ -2286,19 +2293,39 @@ model PartMeasurementResult {
   @@index([sheetId], map: "PartMeasurementResult_idx_sheet")
 }
 
-/// 組立トルク管理: 手順書1ページ画像。部品測定図面とは保存先・責務を分ける。
+/// 組立トルク管理: 手順書画像（先頭ページは imageRelativePath にも保持）。部品測定図面とは保存先・責務を分ける。
 model AssemblyProcedureDocument {
-  id                String                       @id @default(uuid())
+  id                String                            @id @default(uuid())
   name              String
+  /// 互換用: 先頭ページ（pageIndex=0）と同一画像パス
   imageRelativePath String
-  isActive          Boolean                      @default(true)
-  createdAt         DateTime                     @default(now())
-  updatedAt         DateTime                     @updatedAt
+  status            AssemblyProcedureDocumentStatus   @default(DRAFT)
+  publishedAt       DateTime?
+  isActive          Boolean                           @default(true)
+  createdAt         DateTime                          @default(now())
+  updatedAt         DateTime                          @updatedAt
+  pages             AssemblyProcedureDocumentPage[]
   templates         AssemblyTemplate[]
   orderItems        AssemblyProcedureOrderItem[]
+  templateBolts     AssemblyTemplateBolt[]
+  templateCheckItems AssemblyTemplateCheckItem[]
 
   @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
   @@index([isActive, updatedAt], map: "AssemblyProcedureDocument_idx_active_updated")
+  @@index([status, isActive], map: "AssemblyProcedureDocument_idx_status_active")
+}
+
+/// 組立トルク管理: 手順書の各ページ画像。
+model AssemblyProcedureDocumentPage {
+  id                String                    @id @default(uuid())
+  documentId        String
+  pageIndex         Int
+  imageRelativePath String
+  createdAt         DateTime                  @default(now())
+  document          AssemblyProcedureDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, pageIndex], map: "AssemblyProcedureDocumentPage_unique_document_page")
+  @@index([documentId], map: "AssemblyProcedureDocumentPage_idx_document")
 }
 
 /// 組立キオスク: 機種名ごとのPDF要領書閲覧順設定。
@@ -2346,6 +2373,7 @@ model AssemblyTemplate {
   updatedAt           DateTime                  @updatedAt
   procedureDocument   AssemblyProcedureDocument @relation(fields: [procedureDocumentId], references: [id], onDelete: Restrict)
   areas               AssemblyTemplateArea[]
+  checkItems          AssemblyTemplateCheckItem[]
   workSessions        AssemblyWorkSession[]
   lots                AssemblyLot[]
 
@@ -2377,26 +2405,61 @@ model AssemblyTemplateArea {
 
 /// 組立トルク管理: 手順書上に丸数字で配置する締付箇所。
 model AssemblyTemplateBolt {
-  id            String                 @id @default(uuid())
-  areaId        String
-  sortOrder     Int
-  tighteningId  String
-  markerNo      Int
-  xRatio        Decimal                @db.Decimal(10, 8)
-  yRatio        Decimal                @db.Decimal(10, 8)
-  boltSpec      String
-  nominalTorque Decimal                @db.Decimal(18, 6)
-  lowerLimit    Decimal                @db.Decimal(18, 6)
-  upperLimit    Decimal                @db.Decimal(18, 6)
-  unit          String
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
-  area          AssemblyTemplateArea   @relation(fields: [areaId], references: [id], onDelete: Cascade)
-  torqueRecords AssemblyTorqueRecord[]
+  id                            String                     @id @default(uuid())
+  areaId                        String
+  sortOrder                     Int
+  tighteningId                  String
+  markerNo                      Int
+  xRatio                        Decimal                    @db.Decimal(10, 8)
+  yRatio                        Decimal                    @db.Decimal(10, 8)
+  /// 省略/null 時はテンプレート procedureDocument の先頭ページ
+  kioskDocumentId               String?
+  assemblyProcedureDocumentId   String?
+  pageIndex                     Int?
+  boltSpec                      String
+  nominalTorque                 Decimal                    @db.Decimal(18, 6)
+  lowerLimit                    Decimal                    @db.Decimal(18, 6)
+  upperLimit                    Decimal                    @db.Decimal(18, 6)
+  unit                          String
+  createdAt                     DateTime                   @default(now())
+  updatedAt                     DateTime                   @updatedAt
+  area                          AssemblyTemplateArea       @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  kioskDocument                 KioskDocument?             @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
+  assemblyProcedureDocument     AssemblyProcedureDocument? @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
+  torqueRecords                 AssemblyTorqueRecord[]
 
   @@unique([areaId, sortOrder], map: "AssemblyTemplateBolt_unique_area_sort")
   @@unique([areaId, tighteningId], map: "AssemblyTemplateBolt_unique_area_tightening")
   @@index([areaId, markerNo], map: "AssemblyTemplateBolt_idx_area_marker")
+  @@index([kioskDocumentId], map: "AssemblyTemplateBolt_idx_kiosk_document")
+  @@index([assemblyProcedureDocumentId], map: "AssemblyTemplateBolt_idx_assembly_document")
+}
+
+/// 組立トルク管理: 手順書上に丸数字で配置するチェック項目（OK/確認済みトグル）。
+model AssemblyTemplateCheckItem {
+  id                          String                     @id @default(uuid())
+  templateId                  String
+  markerNo                    Int
+  label                       String?
+  required                    Boolean                    @default(true)
+  xRatio                      Float
+  yRatio                      Float
+  kioskDocumentId             String?
+  assemblyProcedureDocumentId String?
+  pageIndex                   Int                        @default(0)
+  sortOrder                   Int
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+  template                    AssemblyTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  kioskDocument               KioskDocument?             @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
+  assemblyProcedureDocument   AssemblyProcedureDocument? @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
+  checkRecords                AssemblyCheckRecord[]
+
+  @@unique([templateId, sortOrder], map: "AssemblyTemplateCheckItem_unique_template_sort")
+  @@unique([templateId, markerNo], map: "AssemblyTemplateCheckItem_unique_template_marker")
+  @@index([templateId], map: "AssemblyTemplateCheckItem_idx_template")
+  @@index([kioskDocumentId], map: "AssemblyTemplateCheckItem_idx_kiosk_document")
+  @@index([assemblyProcedureDocumentId], map: "AssemblyTemplateCheckItem_idx_assembly_document")
 }
 
 /// 組立キオスク: シリアルNo.の全体一意予約。ロット登録時点で作業セッション未作成でも予約する。
@@ -2474,6 +2537,7 @@ model AssemblyWorkSession {
   serialRegistry           AssemblySerialRegistry?   @relation(fields: [serialRegistryId], references: [id], onDelete: Restrict)
   lotSerial                AssemblyLotSerial?        @relation(fields: [lotSerialId], references: [id], onDelete: SetNull)
   torqueRecords            AssemblyTorqueRecord[]
+  checkRecords             AssemblyCheckRecord[]
   restartLogs              AssemblyAreaRestartLog[]
   approval                 AssemblyWorkSessionApproval?
 
@@ -2503,6 +2567,23 @@ model AssemblyTorqueRecord {
   @@unique([sessionId, templateBoltId, attempt], map: "AssemblyTorqueRecord_unique_attempt")
   @@index([sessionId, recordedAt], map: "AssemblyTorqueRecord_idx_session_recorded")
   @@index([templateBoltId], map: "AssemblyTorqueRecord_idx_bolt")
+}
+
+/// 組立トルク管理: 作業セッションごとのチェック項目トグル状態。
+model AssemblyCheckRecord {
+  id                     String                    @id @default(uuid())
+  sessionId              String
+  checkItemId            String
+  checked                Boolean
+  checkedByOperatorName  String?
+  checkedAt              DateTime                  @updatedAt
+  createdAt              DateTime                  @default(now())
+  session                AssemblyWorkSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  checkItem              AssemblyTemplateCheckItem @relation(fields: [checkItemId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, checkItemId], map: "AssemblyCheckRecord_unique_session_check_item")
+  @@index([sessionId], map: "AssemblyCheckRecord_idx_session")
+  @@index([checkItemId], map: "AssemblyCheckRecord_idx_check_item")
 }
 
 /// 組立トルク管理: エリアやり直し履歴。

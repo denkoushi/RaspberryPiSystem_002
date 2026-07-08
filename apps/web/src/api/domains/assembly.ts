@@ -1,6 +1,8 @@
 import { api } from '../http';
 
 import type {
+  AssemblyCheckRecordDto,
+  AssemblyCheckSummaryDto,
   AssemblyProcedureDocumentDto,
   AssemblyProcedureDocumentSummaryDto,
   AssemblyProcedureOrderDto,
@@ -113,6 +115,20 @@ export async function renameAssemblyProcedureDocument(id: string, name: string) 
 
 export async function deleteAssemblyProcedureDocument(id: string) {
   await api.delete(`/assembly/procedure-documents/${id}`);
+}
+
+export async function publishAssemblyProcedureDocument(id: string) {
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(
+    `/assembly/procedure-documents/${id}/publish`
+  );
+  return data.document;
+}
+
+export async function unpublishAssemblyProcedureDocument(id: string) {
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(
+    `/assembly/procedure-documents/${id}/unpublish`
+  );
+  return data.document;
 }
 
 export async function listAssemblyTemplates(params?: {
@@ -235,6 +251,17 @@ export async function recordAssemblyTorque(
 ) {
   const { data } = await api.post<{ session: AssemblyWorkSessionDto; outcome: AssemblyTorqueRecordOutcome }>(
     `/assembly/work-sessions/${sessionId}/record-torque`,
+    payload
+  );
+  return data;
+}
+
+export async function recordAssemblyCheck(
+  sessionId: string,
+  payload: { checkItemId: string; checked: boolean }
+) {
+  const { data } = await api.post<{ record: AssemblyCheckRecordDto; checkSummary: AssemblyCheckSummaryDto }>(
+    `/assembly/work-sessions/${sessionId}/record-check`,
     payload
   );
   return data;

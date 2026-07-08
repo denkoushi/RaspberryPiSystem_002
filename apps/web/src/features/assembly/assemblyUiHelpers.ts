@@ -26,3 +26,13 @@ export function formatAssemblyTimestamp(value: string): string {
     minute: '2-digit'
   });
 }
+
+export function assemblyProcedureStatusLabel(status: 'draft' | 'published' | undefined): string {
+  return status === 'draft' ? '下書き' : '公開済み';
+}
+
+export function assemblyProcedureStatusClassName(status: 'draft' | 'published' | undefined): string {
+  return status === 'draft'
+    ? 'bg-amber-400/25 text-amber-100'
+    : 'bg-emerald-400/20 text-emerald-100';
+}
