@@ -28,6 +28,7 @@ import {
   addInspectionDrawingTemplateGroupResourcesBodySchema,
   createInspectionDrawingEvaluationTemplateBodySchema,
   reviseTemplateBodySchema,
+  changeInspectionDrawingTemplateProcessGroupBodySchema,
   kioskInspectionDrawingTemplatesQuerySchema,
   serializeVisualTemplate,
   serializeTemplateProcessGroup,
@@ -200,6 +201,28 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
           ...selfInspectionPatch
         });
         await enqueueDrawingOcrAndWake(template.visualTemplateId, 'inspection_drawing_template_revise');
+        return {
+          template: serializeTemplate({
+            ...template,
+            visualTemplateId: template.visualTemplateId,
+            visualTemplate: template.visualTemplate,
+            items: template.items
+          })
+        };
+      }
+    );
+
+    app.post(
+      '/part-measurement/inspection-drawing/templates/:id/change-process-group',
+      { preHandler: allowWriteKiosk },
+      async (request) => {
+        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const body = changeInspectionDrawingTemplateProcessGroupBodySchema.parse(request.body);
+        const processGroup = body.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
+        const template = await templateService.changeInspectionDrawingTemplateProcessGroup(
+          params.id,
+          processGroup
+        );
         return {
           template: serializeTemplate({
             ...template,

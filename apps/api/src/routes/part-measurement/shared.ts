@@ -273,6 +273,10 @@ export const kioskInspectionDrawingTemplatesQuerySchema = listTemplatesQuerySche
   visualName: z.string().max(200).optional()
 });
 
+export const changeInspectionDrawingTemplateProcessGroupBodySchema = z.object({
+  processGroup: processGroupSchema
+});
+
 export const inspectionDrawingToleranceKindSchema = z.enum(['dimension', 'geometric']);
 
 export const inspectionDrawingMeasurementLabelSettingSchema = z.object({

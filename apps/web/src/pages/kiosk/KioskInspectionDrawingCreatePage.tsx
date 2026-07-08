@@ -8,6 +8,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   addKioskInspectionDrawingTemplateGroupResources,
   activatePartMeasurementTemplate,
+  changeKioskInspectionDrawingTemplateProcessGroup,
   createKioskInspectionDrawingTemplateGroup,
   createPartMeasurementTemplate,
   createPartMeasurementVisualTemplate,
@@ -973,6 +974,41 @@ export function KioskInspectionDrawingCreatePage() {
     }
   };
 
+  const handleLineageLockedProcessGroupChange = async (next: PartMeasurementProcessGroup) => {
+    if (!templateId || !template) return;
+    const current = template.processGroup ?? processGroup;
+    if (next === current) return;
+
+    const label = next === 'cutting' ? '切削' : '研削';
+    if (
+      !confirmVisualChange(
+        `工程を${label}へ変更します。この図面の全バージョン（兄弟グループ含む）に適用されます。よろしいですか？`
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setMessage(null);
+    try {
+      const updated = await changeKioskInspectionDrawingTemplateProcessGroup(
+        templateId,
+        { processGroup: next },
+        clientKey
+      );
+      applyLoadedTemplate(updated);
+      if (updated.processGroup) {
+        setProcessGroup(updated.processGroup);
+      }
+      setMessage(`工程を${label}へ変更しました。`);
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setMessage(err.response?.data?.message ?? '工程の変更に失敗しました。');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSave = async () => {
     if (contentReadOnly) {
       setMessage('履歴版は閲覧のみです。編集するには有効化してください。');
@@ -1252,6 +1288,8 @@ export function KioskInspectionDrawingCreatePage() {
           resourceNameMap,
           processGroup,
           templateProcessGroup: template?.processGroup,
+          onLineageLockedProcessGroupChange: lineageLocked ? handleLineageLockedProcessGroupChange : undefined,
+          processGroupChangeDisabled: busy || contentReadOnly,
           templateName,
           onTemplateNameChange: handleTemplateNameChange,
           selfInspectionMode,

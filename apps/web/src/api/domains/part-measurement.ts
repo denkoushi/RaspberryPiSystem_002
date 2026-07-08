@@ -854,6 +854,21 @@ export async function getKioskInspectionDrawingTemplate(
   return data.template;
 }
 
+export async function changeKioskInspectionDrawingTemplateProcessGroup(
+  templateId: string,
+  body: { processGroup: PartMeasurementProcessGroup },
+  clientKey?: string
+): Promise<PartMeasurementTemplateDto> {
+  const { data } = await api.post<{ template: PartMeasurementTemplateDto }>(
+    `/part-measurement/inspection-drawing/templates/${templateId}/change-process-group`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.template;
+}
+
 export async function reviseKioskInspectionDrawingTemplate(
   templateId: string,
   body: {

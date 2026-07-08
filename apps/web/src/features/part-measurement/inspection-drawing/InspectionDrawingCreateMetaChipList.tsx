@@ -17,12 +17,6 @@ import { InspectionDrawingResourceCdSelect } from './InspectionDrawingResourceCd
 import type { InspectionDrawingCreateMetadataRowProps } from './InspectionDrawingCreateMetadataRow';
 import type { PartMeasurementProcessGroup, SelfInspectionMode } from '../types';
 
-function processGroupDisplayLabel(processGroup: PartMeasurementProcessGroup | null | undefined): string {
-  if (processGroup === 'cutting') return '切削';
-  if (processGroup === 'grinding') return '研削';
-  return '—';
-}
-
 /** 作成/改版ヘッダー — meta-chip 列（dl のみ・CompactHeader / MetadataRow から利用） */
 export function InspectionDrawingCreateMetaChipList({
   lineageLocked,
@@ -36,6 +30,8 @@ export function InspectionDrawingCreateMetaChipList({
   resourceNameMap,
   processGroup,
   templateProcessGroup,
+  onLineageLockedProcessGroupChange,
+  processGroupChangeDisabled,
   templateName,
   onTemplateNameChange,
   selfInspectionMode,
@@ -52,6 +48,8 @@ export function InspectionDrawingCreateMetaChipList({
   const templateNameFieldId = `${baseId}-template-name`;
   const selfInspectionModeFieldId = `${baseId}-self-inspection-mode`;
   const selfInspectionFixedCountFieldId = `${baseId}-self-inspection-fixed-count`;
+  const processGroupFieldId = `${baseId}-process-group`;
+  const lockedProcessGroup = templateProcessGroup ?? processGroup;
 
   return (
     <dl
@@ -72,10 +70,22 @@ export function InspectionDrawingCreateMetaChipList({
                 formatResourceCdWithJapaneseNames(resourceCd, resourceNameMap)}
             </span>
           </InspectionDrawingCreateMetaChip>
-          <InspectionDrawingCreateMetaChip term="工程">
-            <span className={inspectionDrawingCreateMetaChipReadonlyValueClassName}>
-              {processGroupDisplayLabel(templateProcessGroup ?? processGroup)}
-            </span>
+          <InspectionDrawingCreateMetaChip term="工程" controlId={processGroupFieldId}>
+            <select
+              id={processGroupFieldId}
+              className={inspectionDrawingCreateMetaChipSelectClassName}
+              value={lockedProcessGroup}
+              disabled={contentReadOnly || processGroupChangeDisabled || !onLineageLockedProcessGroupChange}
+              onChange={(e) => {
+                const next = e.target.value as PartMeasurementProcessGroup;
+                if (next !== lockedProcessGroup) {
+                  onLineageLockedProcessGroupChange?.(next);
+                }
+              }}
+            >
+              <option value="cutting">切削</option>
+              <option value="grinding">研削</option>
+            </select>
           </InspectionDrawingCreateMetaChip>
         </>
       ) : (
