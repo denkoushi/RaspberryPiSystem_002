@@ -50,7 +50,7 @@ export function InspectionDrawingCreateCompactHeader({
       ) : null}
       <div
         data-testid="inspection-drawing-create-toolbar-slot"
-        className={`${inspectionDrawingCreateFlatBandItemClassName} w-full min-w-0`}
+        className="min-w-0 flex-1"
       >
         {toolbar}
       </div>
