@@ -31,6 +31,8 @@ describe('InspectionDrawingCreateToolbar', () => {
     expect(screen.getByRole('button', { name: '保存' })).toBeEnabled();
     expect(screen.getByRole('link', { name: '保存済み帳票' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '一覧へ戻る' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存' }).parentElement).toHaveClass('w-full');
+    expect(screen.getByText('テスト入力').parentElement).toHaveClass('ml-auto');
     expect(screen.getByText('保存').compareDocumentPosition(saveStatus)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     );

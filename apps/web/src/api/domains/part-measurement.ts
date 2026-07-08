@@ -2,6 +2,7 @@ import { api, apiBase } from '../http';
 
 import type {
   FindOrOpenPartMeasurementResponse,
+  InspectionDrawingVisualLinkedFhincdResult,
   KioskInspectionDrawingTemplateSummaryDto,
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
@@ -304,6 +305,19 @@ export async function listKioskInspectionDrawingTemplates(
     }
   );
   return data.templates;
+}
+
+export async function resolveInspectionDrawingVisualLinkedFhincd(
+  visualTemplateId: string,
+  clientKey?: string
+): Promise<InspectionDrawingVisualLinkedFhincdResult> {
+  const { data } = await api.get<InspectionDrawingVisualLinkedFhincdResult>(
+    `/part-measurement/inspection-drawing/visual-templates/${encodeURIComponent(visualTemplateId)}/fhincd`,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data;
 }
 
 export async function listInspectionDrawingMeasurementLabelSettings(

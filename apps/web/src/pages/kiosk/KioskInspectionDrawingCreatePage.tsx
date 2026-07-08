@@ -17,11 +17,11 @@ import {
   getResolvedClientKey,
   existsActivePartMeasurementTemplate,
   listInspectionDrawingMeasurementLabelSettings,
-  listKioskInspectionDrawingTemplates,
   listPartMeasurementDrawingOcrCandidates,
   listPartMeasurementVisualTemplates,
   reviseKioskInspectionDrawingTemplate,
-  reviseKioskInspectionDrawingTemplateGroup
+  reviseKioskInspectionDrawingTemplateGroup,
+  resolveInspectionDrawingVisualLinkedFhincd
 } from '../../api/client';
 import { useKioskProductionScheduleResources } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
@@ -93,6 +93,7 @@ import type {
   PartMeasurementDrawingOcrCandidateDto,
   PartMeasurementDrawingOcrStatus,
   PartMeasurementDrawingOcrStatusDto,
+  InspectionDrawingVisualLinkedFhincdResult,
   PartMeasurementTemplateDto,
   PartMeasurementVisualTemplateDto,
   SelfInspectionMode
@@ -110,35 +111,6 @@ type DrawingOcrCandidateState = {
   candidates: PartMeasurementDrawingOcrCandidateDto[];
   error: string | null;
 };
-
-type VisualLinkedFhincdResult =
-  | { kind: 'none' }
-  | { kind: 'unique'; fhincd: string }
-  | { kind: 'multiple'; fhincds: string[] };
-
-async function resolveVisualLinkedFhincd(
-  visualTemplateId: string,
-  clientKey?: string
-): Promise<VisualLinkedFhincdResult> {
-  const templates = await listKioskInspectionDrawingTemplates({ visualTemplateId }, clientKey);
-  const fhincdsByNormalized = new Map<string, string>();
-  for (const template of templates) {
-    const fhincd = template.fhincd.trim();
-    if (!fhincd) continue;
-    const normalized = fhincd.toUpperCase();
-    if (!fhincdsByNormalized.has(normalized)) {
-      fhincdsByNormalized.set(normalized, fhincd);
-    }
-  }
-  const fhincds = [...fhincdsByNormalized.values()];
-  if (fhincds.length === 0) {
-    return { kind: 'none' };
-  }
-  if (fhincds.length === 1) {
-    return { kind: 'unique', fhincd: fhincds[0]! };
-  }
-  return { kind: 'multiple', fhincds };
-}
 
 export function KioskInspectionDrawingCreatePage() {
   const { templateId } = useParams<{ templateId: string }>();
@@ -470,8 +442,25 @@ export function KioskInspectionDrawingCreatePage() {
   const prevSourceTemplateIdRef = useRef<string | null>(null);
   const prevVisualTemplateIdFromSearchRef = useRef<string | null>(null);
   const visualLinkedFhincdRequestSeqRef = useRef(0);
+  const fhincdManualEditSeqRef = useRef(0);
+  const fhincdManualTouchedRef = useRef(false);
   const visualSearchRequestSeqRef = useRef(0);
   const ocrCandidateRequestSeqRef = useRef(0);
+
+  const setProgrammaticFhincd = useCallback((value: string) => {
+    setFhincd(value);
+  }, []);
+
+  const resetFhincdManualState = useCallback(() => {
+    fhincdManualTouchedRef.current = false;
+    fhincdManualEditSeqRef.current += 1;
+  }, []);
+
+  const handleFhincdChange = useCallback((value: string) => {
+    fhincdManualTouchedRef.current = true;
+    fhincdManualEditSeqRef.current += 1;
+    setFhincd(value);
+  }, []);
 
   const handleTemplateNameChange = useCallback((value: string) => {
     setTemplateName(value);
@@ -488,27 +477,37 @@ export function KioskInspectionDrawingCreatePage() {
     setResourceCd(normalized[0] ?? '');
   }, []);
 
-  const applyVisualLinkedFhincdResult = useCallback((result: VisualLinkedFhincdResult) => {
-    if (result.kind === 'unique') {
-      setFhincd(result.fhincd);
-      return;
-    }
-    if (result.kind === 'multiple') {
-      setMessage(
-        `選択した図面に複数の品番が紐付いています（${result.fhincds.join('、')}）。品番は自動入力しません。`
-      );
-    }
-  }, []);
+  const applyVisualLinkedFhincdResult = useCallback(
+    (result: InspectionDrawingVisualLinkedFhincdResult, manualEditSeqAtRequest: number) => {
+      if (result.kind === 'unique') {
+        if (
+          fhincdManualTouchedRef.current ||
+          fhincdManualEditSeqRef.current !== manualEditSeqAtRequest
+        ) {
+          return;
+        }
+        setProgrammaticFhincd(result.fhincd);
+        return;
+      }
+      if (result.kind === 'multiple') {
+        setMessage(
+          `選択した図面に複数の品番が紐付いています（${result.fhincds.join('、')}）。品番は自動入力しません。`
+        );
+      }
+    },
+    [setProgrammaticFhincd]
+  );
 
   const requestVisualLinkedFhincd = useCallback(
     (visualTemplateId: string) => {
       if (isEditing) return;
       const requestSeq = ++visualLinkedFhincdRequestSeqRef.current;
+      const manualEditSeqAtRequest = fhincdManualEditSeqRef.current;
       void (async () => {
         try {
-          const result = await resolveVisualLinkedFhincd(visualTemplateId, clientKey);
+          const result = await resolveInspectionDrawingVisualLinkedFhincd(visualTemplateId, clientKey);
           if (visualLinkedFhincdRequestSeqRef.current !== requestSeq) return;
-          applyVisualLinkedFhincdResult(result);
+          applyVisualLinkedFhincdResult(result, manualEditSeqAtRequest);
         } catch {
           if (visualLinkedFhincdRequestSeqRef.current === requestSeq) {
             setMessage('図面は選択しましたが、品番候補を確認できませんでした。');
@@ -537,7 +536,8 @@ export function KioskInspectionDrawingCreatePage() {
       setTemplate(loaded);
       setTemplateName(loaded.name);
       setTemplateNameAutoMode(false);
-      setFhincd(loaded.fhincd);
+      resetFhincdManualState();
+      setProgrammaticFhincd(loaded.fhincd);
       setResourceCd(loaded.resourceCd);
       setResourceCds([loaded.resourceCd]);
       setGroupSaveMode(loaded.siblingGroupId ? 'group' : 'single');
@@ -575,15 +575,16 @@ export function KioskInspectionDrawingCreatePage() {
       );
       resetLocalPreview();
     },
-    [resetLocalPreview]
+    [resetFhincdManualState, resetLocalPreview, setProgrammaticFhincd]
   );
 
   const resetBlankCreateForm = useCallback(() => {
     visualLinkedFhincdRequestSeqRef.current += 1;
+    resetFhincdManualState();
     setSourceTemplateDraft(null);
     setTemplateName('');
     setTemplateNameAutoMode(true);
-    setFhincd('');
+    setProgrammaticFhincd('');
     setResourceCd('');
     setResourceCds([]);
     setGroupSaveMode('single');
@@ -600,14 +601,15 @@ export function KioskInspectionDrawingCreatePage() {
     setServerDrawingPath(null);
     setSavedSnapshot(null);
     resetLocalPreview();
-  }, [resetLocalPreview]);
+  }, [resetFhincdManualState, resetLocalPreview, setProgrammaticFhincd]);
 
   const applyCreateDraft = useCallback(
     (draft: InspectionDrawingCreateDraftForm) => {
       setSourceTemplateDraft(draft.sourceDraft);
       setTemplateNameAutoMode(true);
       setTemplateName('');
-      setFhincd(draft.fhincd);
+      resetFhincdManualState();
+      setProgrammaticFhincd(draft.fhincd);
       setResourceCd(draft.resourceCd);
       setResourceCds([draft.resourceCd]);
       setProcessGroup(draft.processGroup);
@@ -630,7 +632,7 @@ export function KioskInspectionDrawingCreatePage() {
         setServerDrawingPath(null);
       }
     },
-    [resetLocalPreview]
+    [resetFhincdManualState, resetLocalPreview, setProgrammaticFhincd]
   );
 
   const applyInitialVisualPick = useCallback(
@@ -1312,7 +1314,7 @@ export function KioskInspectionDrawingCreatePage() {
         metadata={{
           lineageLocked,
           fhincd,
-          onFhincdChange: setFhincd,
+          onFhincdChange: handleFhincdChange,
           resourceCd,
           onResourceCdChange: setResourceCd,
           resourceCds: lineageLocked ? undefined : resourceCds,

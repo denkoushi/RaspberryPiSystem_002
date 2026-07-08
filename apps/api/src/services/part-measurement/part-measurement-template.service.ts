@@ -112,6 +112,11 @@ type InsertNextTemplateVersionOptions = {
 
 type TemplateWithSiblingResourceCds<T> = T & { siblingGroupActiveResourceCds?: string[] };
 
+export type InspectionDrawingVisualLinkedFhincdResult =
+  | { kind: 'none' }
+  | { kind: 'unique'; fhincd: string }
+  | { kind: 'multiple'; fhincds: string[] };
+
 const ACTIVE_PRODUCTION_THREE_KEY_EXISTS_MESSAGE =
   '同一品番・工程・資源CDの有効テンプレートが既にあります。改版する場合は既存テンプレを編集してください。';
 
@@ -306,6 +311,41 @@ export class PartMeasurementTemplateService {
 
   async getActiveResourceCdsBySiblingGroupIds(groupIds: string[]): Promise<Map<string, string[]>> {
     return this.loadActiveResourceCdsBySiblingGroupIds(groupIds);
+  }
+
+  /**
+   * 図面ライブラリからの新規作成用。検査図面一覧の「全マーカーあり」条件は使わず、
+   * 図面に紐づく本番 THREE_KEY 有効テンプレの品番だけを解決する。
+   */
+  async resolveInspectionDrawingVisualLinkedFhincd(
+    visualTemplateId: string
+  ): Promise<InspectionDrawingVisualLinkedFhincdResult> {
+    const rows = await prisma.partMeasurementTemplate.findMany({
+      where: productionPartMeasurementTemplateWhere({
+        templateScope: 'THREE_KEY',
+        processGroup: { in: ['CUTTING', 'GRINDING'] },
+        isActive: true,
+        visualTemplateId
+      }),
+      select: { fhincd: true }
+    });
+
+    const fhincdsByNormalized = new Map<string, string>();
+    for (const row of rows) {
+      const fhincd = row.fhincd.trim();
+      if (!fhincd) continue;
+      const normalized = normalizeFhincd(fhincd);
+      if (!fhincdsByNormalized.has(normalized)) {
+        fhincdsByNormalized.set(normalized, fhincd);
+      }
+    }
+
+    const fhincds = [...fhincdsByNormalized.values()].sort((a, b) =>
+      normalizeFhincd(a).localeCompare(normalizeFhincd(b))
+    );
+    if (fhincds.length === 0) return { kind: 'none' };
+    if (fhincds.length === 1) return { kind: 'unique', fhincd: fhincds[0]! };
+    return { kind: 'multiple', fhincds };
   }
 
   /**

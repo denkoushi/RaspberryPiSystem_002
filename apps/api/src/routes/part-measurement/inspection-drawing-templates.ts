@@ -173,6 +173,15 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
       };
     });
 
+    app.get(
+      '/part-measurement/inspection-drawing/visual-templates/:id/fhincd',
+      { preHandler: allowView },
+      async (request) => {
+        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        return templateService.resolveInspectionDrawingVisualLinkedFhincd(params.id);
+      }
+    );
+
     app.get('/part-measurement/inspection-drawing/templates/:id', { preHandler: allowView }, async (request) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const template = await templateService.getKioskInspectionDrawingTemplateById(params.id);

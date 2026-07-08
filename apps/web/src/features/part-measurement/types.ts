@@ -128,6 +128,11 @@ export type KioskInspectionDrawingTemplateSummaryDto = {
   itemCount: number;
 };
 
+export type InspectionDrawingVisualLinkedFhincdResult =
+  | { kind: 'none' }
+  | { kind: 'unique'; fhincd: string }
+  | { kind: 'multiple'; fhincds: string[] };
+
 export type PartMeasurementTemplateDto = {
   id: string;
   fhincd: string;

@@ -773,6 +773,14 @@ describe('part-measurement templates API', () => {
     expect(visualIdFiltered.some((row) => row.id === otherTpl.id)).toBe(false);
     expect(visualIdFiltered.every((row) => row.visualTemplateId === vid)).toBe(true);
 
+    const linkedFhincdBeforeNoMarker = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/visual-templates/${encodeURIComponent(vid)}/fhincd`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(linkedFhincdBeforeNoMarker.statusCode).toBe(200);
+    expect(linkedFhincdBeforeNoMarker.json()).toEqual({ kind: 'unique', fhincd });
+
     const noMarkerRes = await app.inject({
       method: 'POST',
       url: '/api/part-measurement/templates',
@@ -804,6 +812,17 @@ describe('part-measurement templates API', () => {
     expect(
       (visualIdListAfterNoMarker.json().templates as Array<{ id: string }>).some((row) => row.id === noMarkerTpl.id)
     ).toBe(false);
+
+    const linkedFhincdAfterNoMarker = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/visual-templates/${encodeURIComponent(vid)}/fhincd`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(linkedFhincdAfterNoMarker.statusCode).toBe(200);
+    expect(linkedFhincdAfterNoMarker.json()).toEqual({
+      kind: 'multiple',
+      fhincds: [fhincd, noMarkerTpl.fhincd].sort()
+    });
 
     const kioskReject = await app.inject({
       method: 'GET',
@@ -1018,6 +1037,14 @@ describe('part-measurement templates API', () => {
     ).filter((row) => row.siblingGroupId === siblingGroupId);
     expect(new Set(visualFilteredGroupRows.map((row) => row.fhincd))).toEqual(new Set([fhincd]));
     expect(visualFilteredGroupRows.map((row) => row.resourceCd).sort()).toEqual(['RES-G1', 'RES-G3', 'RES-G4']);
+
+    const linkedFhincdRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/visual-templates/${encodeURIComponent(visualTemplateId)}/fhincd`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(linkedFhincdRes.statusCode).toBe(200);
+    expect(linkedFhincdRes.json()).toEqual({ kind: 'unique', fhincd });
   });
 
   it('rolls back inspection drawing sibling group create when one resource collides', async () => {

@@ -71,6 +71,8 @@ describe('InspectionDrawingCreateCompactHeader', () => {
 
     const toolbarSlot = screen.getByTestId('inspection-drawing-create-toolbar-slot');
     expect(toolbarSlot.querySelector('[data-testid="toolbar-root"]')).toBeTruthy();
+    expect(toolbarSlot).toHaveClass('flex-1');
+    expect(toolbarSlot).toHaveClass('min-w-0');
   });
 
   it('applies shrink-0 to version badge as a flat band item', () => {
