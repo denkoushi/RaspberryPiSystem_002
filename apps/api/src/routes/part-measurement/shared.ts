@@ -277,6 +277,11 @@ export const changeInspectionDrawingTemplateProcessGroupBodySchema = z.object({
   processGroup: processGroupSchema
 });
 
+export const inspectionDrawingFhincdCandidatesQuerySchema = z.object({
+  prefix: z.string().max(120).default(''),
+  limit: z.coerce.number().int().min(1).max(20).optional().default(20)
+});
+
 export const inspectionDrawingToleranceKindSchema = z.enum(['dimension', 'geometric']);
 
 export const inspectionDrawingMeasurementLabelSettingSchema = z.object({

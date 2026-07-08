@@ -29,6 +29,7 @@ import {
   createInspectionDrawingEvaluationTemplateBodySchema,
   reviseTemplateBodySchema,
   changeInspectionDrawingTemplateProcessGroupBodySchema,
+  inspectionDrawingFhincdCandidatesQuerySchema,
   kioskInspectionDrawingTemplatesQuerySchema,
   serializeVisualTemplate,
   serializeTemplateProcessGroup,
@@ -40,6 +41,7 @@ import {
   selfInspectionFieldsFromBody,
   type PartMeasurementRouteDeps
 } from './shared.js';
+import { listInspectionDrawingFhincdCandidates } from '../../services/part-measurement/inspection-drawing-fhincd-candidates.service.js';
 
 export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, deps: PartMeasurementRouteDeps): void {
   const {
@@ -135,6 +137,12 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
         };
       }
     );
+
+    app.get('/part-measurement/inspection-drawing/fhincd-candidates', { preHandler: allowView }, async (request) => {
+      const q = inspectionDrawingFhincdCandidatesQuerySchema.parse(request.query);
+      const candidates = await listInspectionDrawingFhincdCandidates(q.prefix, q.limit);
+      return { candidates };
+    });
 
     app.get('/part-measurement/inspection-drawing/templates', { preHandler: allowView }, async (request) => {
       const q = kioskInspectionDrawingTemplatesQuerySchema.parse(request.query);

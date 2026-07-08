@@ -4,6 +4,7 @@ import { Input } from '../../../components/ui/Input';
 import { formatResourceCdWithJapaneseNames } from '../../kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
 
 import { InspectionDrawingCreateMetaChip } from './InspectionDrawingCreateMetaChip';
+import { InspectionDrawingFhincdSuggestInput } from './InspectionDrawingFhincdSuggestInput';
 import {
   inspectionDrawingCreateFlatMetaRowClassName,
   inspectionDrawingCreateMetaChipInputClassName,
@@ -91,11 +92,10 @@ export function InspectionDrawingCreateMetaChipList({
       ) : (
         <>
           <InspectionDrawingCreateMetaChip term="品番" controlId={fhincdFieldId}>
-            <Input
+            <InspectionDrawingFhincdSuggestInput
               id={fhincdFieldId}
               value={fhincd}
-              onChange={(e) => onFhincdChange(e.target.value)}
-              className={inspectionDrawingCreateMetaChipInputClassName}
+              onChange={onFhincdChange}
               disabled={contentReadOnly}
             />
           </InspectionDrawingCreateMetaChip>

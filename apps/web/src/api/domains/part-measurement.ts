@@ -854,6 +854,25 @@ export async function getKioskInspectionDrawingTemplate(
   return data.template;
 }
 
+export type InspectionDrawingFhincdCandidateDto = {
+  fhincd: string;
+  fhinmei: string | null;
+};
+
+export async function listInspectionDrawingFhincdCandidates(
+  params: { prefix: string; limit?: number },
+  clientKey?: string
+): Promise<InspectionDrawingFhincdCandidateDto[]> {
+  const { data } = await api.get<{ candidates: InspectionDrawingFhincdCandidateDto[] }>(
+    '/part-measurement/inspection-drawing/fhincd-candidates',
+    {
+      params,
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.candidates;
+}
+
 export async function changeKioskInspectionDrawingTemplateProcessGroup(
   templateId: string,
   body: { processGroup: PartMeasurementProcessGroup },
