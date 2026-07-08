@@ -1557,11 +1557,13 @@ describe('assembly torque management API', () => {
       const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
 
       const publishedDoc = await uploadPublishedProcedureDocument(app, headers, '公開済み手順');
+      // boundary はミリ秒時刻由来のため、2回生成するとヘッダーと本文で不一致になり 400 になる（1回生成して使い回す）
+      const draftUpload = buildMultipartProcedure('下書き手順');
       const draftDoc = await app.inject({
         method: 'POST',
         url: '/api/assembly/procedure-documents',
-        headers: { ...headers, 'Content-Type': buildMultipartProcedure('下書き手順').contentType },
-        payload: buildMultipartProcedure('下書き手順').body
+        headers: { ...headers, 'Content-Type': draftUpload.contentType },
+        payload: draftUpload.body
       });
       expect(draftDoc.statusCode).toBe(200);
       const draftDocumentId = draftDoc.json().document.id as string;
