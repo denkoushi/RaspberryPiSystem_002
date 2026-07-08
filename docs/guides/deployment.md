@@ -10,6 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-08 · **検査図面 工程変更/品番サジェスト/ツールバー右寄せ + 組立トップ 製番検索高速化/指示数ロット数** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-inspection-drawing-process-change-assembly-start-speedup-2026-07-08}
+
+- **変更概要（正本）**: [ADR-20260708](../decisions/ADR-20260708-kiosk-inspection-drawing-and-assembly-start-improvements.md) · main **`22e79e28`**。工程（切削/研削）の系譜一括変更API+UI、品番の生産日程サジェスト、作成ツールバーのテスト入力/ガイド試行/一覧へ戻る右寄せ、製番候補検索の winner 条件除去+式インデックス、ロット数を指示数最頻値（生産実績フォールバック付き）へ変更。migration **`20260708194000_add_assembly_seiban_fseiban_prefix_index`**（式インデックス追加のみの非破壊）。
+- **CI**: 初回 `41e1ad56` は新規統合テストのFK順クリーンアップ不足で `api-db-and-infra` failure → `10d4c69a` で修正。2回目 `3f7c4651` は既存 `assembly.integration.test.ts` の multipart boundary 二重生成flake → `1a85d412` で修正。最終 main **`22e79e28`** の CI **`28948073344` success** · CodeQL **`28948073361` success** · Secret scan **`28948073498` success**。
+- **ローカル検証**: 一時 Postgres（`pgvector/pgvector:pg15`）で migrate deploy + 新規統合テスト（工程変更3・品番候補2・組立製番/ロット数5）+ 回帰（assembly/part-measurement 統合 86 passed / 2 skipped・services 143 passed・web 412 passed）+ api/web tsc/lint すべて成功。一時コンテナは削除済み。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260708-231555-17031`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260708-231555-17031.log` · summary success true · exitCode 0 · PLAY RECAP 全7ホスト（raspberrypi5 ok=135 changed=4 / raspberrypi4 ok=123 changed=10 / raspi4-robodrill01 ok=123 changed=9 / raspi4-fjv60-80 ok=123 changed=9 / raspi4-kensaku-stonebase01 ok=130 changed=10 / raspi4-sessaku-01 ok=123 changed=9 / raspberrypi3 ok=112 changed=21）すべて `failed=0 / unreachable=0`。Pi5 repo HEAD **`22e79e28`**、`_prisma_migrations` に `20260708194000` 適用済み（2026-07-08 14:22 UTC）、`csv_dashboard_row_prod_schedule_seiban_prefix_idx` 存在確認済み。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-08 JST）。
+- **smoke**: `/kiosk/assembly` · `/kiosk/part-measurement/inspection` · `/kiosk/part-measurement/inspection/create` すべて HTTP **200**。
+- **実機（目視・タッチ）**: 未実施（次回現場確認時: 改版画面の「工程」チップで切削⇔研削を変更→確認ダイアログ→全バージョン反映、品番欄の2文字入力で候補ドロップダウン表示、テスト入力/ガイド試行/一覧へ戻るがバー右端にあること、組立トップで検索中もテンキーが押せること、実績未登録製番でも指示数からロット数が自動表示されること）。
+
 ### 補足（2026-07-08 · **組立トップ ロット数手入力フォールバック + キー正規化** · **Web only** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-lot-quantity-manual-fallback-2026-07-08}
 
 - **変更概要（正本）**: [KB-398](../knowledge-base/KB-398-assembly-lot-quantity-source-gap.md) · main **`9afc8f29`**。実装コミット **`63427ad7`**（fix マージ `6401d6a3`）+ KB `cf2bce74`（マージ `9afc8f29`）。生産実績Raw未登録の製番で組立トップのロット登録が完全ブロックされる問題への手入力フォールバック。**API / DB / Prisma migration 変更なし**。
