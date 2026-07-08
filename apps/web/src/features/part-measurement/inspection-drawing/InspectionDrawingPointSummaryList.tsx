@@ -96,7 +96,7 @@ export function InspectionDrawingPointSummaryList({
                     selected &&
                       (layout === 'twoColumn'
                         ? inspectionDrawingPointSummaryListSidebarCardSelectedClassName
-                        : 'border-cyan-400/80 bg-cyan-950/40 ring-1 ring-cyan-400/50')
+                        : 'border-cyan-300 bg-cyan-950/40 ring-2 ring-cyan-300/80')
                   )}
                   onPointerDownCapture={onSelectPointerDownCapture}
                   onClick={() => onSelectPoint(pt.id)}

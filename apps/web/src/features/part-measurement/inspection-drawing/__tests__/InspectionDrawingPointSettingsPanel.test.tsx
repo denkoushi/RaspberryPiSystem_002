@@ -19,7 +19,7 @@ const point: InspectionDrawingPoint = {
   decimalPlaces: 3
 };
 
-function focusToleranceInput(label: '上限公差' | '下限公差') {
+function focusToleranceInput(label: '上限値' | '上限公差' | '下限公差') {
   fireEvent.focus(screen.getByLabelText(label));
 }
 
@@ -52,6 +52,26 @@ describe('InspectionDrawingPointSettingsPanel', () => {
       xRatio: 0.4,
       yRatio: 0.6 - INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO
     });
+  });
+
+  it('renders selected-point delete and all delete actions', () => {
+    const onRemove = vi.fn();
+    const onRemoveAll = vi.fn();
+
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={point}
+        onChange={vi.fn()}
+        onRemove={onRemove}
+        onRemoveAll={onRemoveAll}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'この点を削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '全削除' }));
+
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(onRemoveAll).toHaveBeenCalledTimes(1);
   });
 
   it('renders OCR candidate chips and applies selected value', () => {
@@ -108,7 +128,7 @@ describe('InspectionDrawingPointSettingsPanel', () => {
       />
     );
 
-    focusToleranceInput('上限公差');
+    focusToleranceInput('上限値');
 
     expect(visibleToleranceCandidateButtons()).toEqual([
       '0',
@@ -120,8 +140,14 @@ describe('InspectionDrawingPointSettingsPanel', () => {
       '0.006',
       '0.007',
       '0.008',
-      '0.009'
+      '0.009',
+      '0.01',
+      '0.015',
+      '0.020',
+      '0.030',
+      '0.050'
     ]);
+    expect(screen.getByText('合格範囲 0〜10')).toBeInTheDocument();
   });
 
   it('shows dimension tolerance candidates for 幅 when focused', () => {
@@ -148,9 +174,9 @@ describe('InspectionDrawingPointSettingsPanel', () => {
       />
     );
 
-    focusToleranceInput('上限公差');
+    focusToleranceInput('上限値');
 
-    expect(visibleToleranceCandidateButtons()).toContain('0.009');
+    expect(visibleToleranceCandidateButtons()).toContain('0.050');
     expect(visibleToleranceCandidateButtons()).not.toContain('+0.9');
   });
 
@@ -180,7 +206,7 @@ describe('InspectionDrawingPointSettingsPanel', () => {
       />
     );
 
-    focusToleranceInput('上限公差');
+    focusToleranceInput('上限値');
 
     expect(screen.getByRole('listbox', { name: '公差候補' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: '0.003' })).toBeInTheDocument();
@@ -191,15 +217,19 @@ describe('InspectionDrawingPointSettingsPanel', () => {
 
     render(
       <InspectionDrawingPointSettingsPanel
-        point={{ ...point, name: '直角度', upperToleranceRaw: '' }}
+        point={{ ...point, name: '直角度', nominalRaw: '', upperToleranceRaw: '' }}
         onChange={onChange}
       />
     );
 
-    focusToleranceInput('上限公差');
+    focusToleranceInput('上限値');
     fireEvent.click(screen.getByRole('option', { name: '0.003' }));
 
-    expect(onChange).toHaveBeenCalledWith({ upperToleranceRaw: '0.003' });
+    expect(onChange).toHaveBeenCalledWith({
+      nominalRaw: '0.003',
+      lowerToleranceRaw: '-0.003',
+      upperToleranceRaw: '0'
+    });
   });
 
   it('shows tolerance candidate chips even when current value is outside candidates', () => {
@@ -225,7 +255,7 @@ describe('InspectionDrawingPointSettingsPanel', () => {
       />
     );
 
-    focusToleranceInput('上限公差');
+    focusToleranceInput('上限値');
 
     expect(screen.queryByRole('listbox', { name: '公差候補' })).not.toBeInTheDocument();
   });
@@ -299,7 +329,7 @@ describe('InspectionDrawingPointSettingsPanel', () => {
       />
     );
 
-    fireEvent.blur(screen.getByLabelText('基準値'));
+    fireEvent.blur(screen.getByLabelText('上限値'));
 
     expect(onChange).not.toHaveBeenCalled();
   });

@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildInspectionDrawingCreateDirtySnapshot,
   inspectionDrawingCreateKeyCollisionMessage,
+  inspectionDrawingCreateDirtySnapshotsEqual,
   resolveInspectionDrawingCreateKeyCollision,
   resolveInspectionDrawingCreateKeyCollisionForResources,
   resolveInspectionDrawingCreateSaveBlockReason,
+  resolveInspectionDrawingCreateSaveStatus,
   suggestInspectionDrawingTemplateName,
   templateItemsToDraftDrawingPoints,
   templateToCreateDraft
 } from '../inspectionDrawingCreateDraft';
 
 import type { PartMeasurementTemplateDto } from '../../types';
+import type { InspectionDrawingPoint } from '../types';
 
 function buildTemplate(overrides: Partial<PartMeasurementTemplateDto> = {}): PartMeasurementTemplateDto {
   return {
@@ -57,6 +61,35 @@ function buildTemplate(overrides: Partial<PartMeasurementTemplateDto> = {}): Par
     ],
     ...overrides
   };
+}
+
+const point: InspectionDrawingPoint = {
+  id: 'pt-1',
+  name: '幅',
+  markerNo: 1,
+  xRatio: 0.2,
+  yRatio: 0.4,
+  nominalRaw: '10',
+  lowerToleranceRaw: '-0.1',
+  upperToleranceRaw: '+0.1',
+  testValue: '',
+  decimalPlaces: 3
+};
+
+function buildSnapshot(points: InspectionDrawingPoint[] = [point]) {
+  return buildInspectionDrawingCreateDirtySnapshot({
+    templateName: '図面A',
+    fhincd: 'abc',
+    resourceCds: ['033'],
+    processGroup: 'cutting',
+    visualSource: 'pickExisting',
+    visualTemplateId: 'visual-1',
+    uploadPending: false,
+    selfInspectionMode: 'full',
+    selfInspectionFixedCount: '',
+    groupSaveMode: 'single',
+    points
+  });
 }
 
 describe('inspectionDrawingCreateDraft', () => {
@@ -170,5 +203,57 @@ describe('inspectionDrawingCreateDraft', () => {
         saveBlockedByPreview: false
       })
     ).toBe('missing_resource');
+  });
+
+  it('compares dirty snapshots without transient test values', () => {
+    const saved = buildSnapshot();
+    const current = buildSnapshot([{ ...point, testValue: '10.01' }]);
+    const renamed = buildSnapshot([{ ...point, name: '厚み' }]);
+
+    expect(inspectionDrawingCreateDirtySnapshotsEqual(saved, current)).toBe(true);
+    expect(inspectionDrawingCreateDirtySnapshotsEqual(saved, renamed)).toBe(false);
+  });
+
+  it('resolves save status from block reason and dirty state', () => {
+    expect(
+      resolveInspectionDrawingCreateSaveStatus({
+        contentReadOnly: false,
+        busy: false,
+        saveBlockReason: null,
+        dirty: false
+      })
+    ).toBe('saved');
+    expect(
+      resolveInspectionDrawingCreateSaveStatus({
+        contentReadOnly: false,
+        busy: false,
+        saveBlockReason: null,
+        dirty: true
+      })
+    ).toBe('dirty');
+    expect(
+      resolveInspectionDrawingCreateSaveStatus({
+        contentReadOnly: false,
+        busy: false,
+        saveBlockReason: 'invalid_points',
+        dirty: true
+      })
+    ).toBe('blocked');
+    expect(
+      resolveInspectionDrawingCreateSaveStatus({
+        contentReadOnly: false,
+        busy: true,
+        saveBlockReason: 'busy',
+        dirty: true
+      })
+    ).toBe('saving');
+    expect(
+      resolveInspectionDrawingCreateSaveStatus({
+        contentReadOnly: true,
+        busy: false,
+        saveBlockReason: 'content_read_only',
+        dirty: true
+      })
+    ).toBe('read_only');
   });
 });

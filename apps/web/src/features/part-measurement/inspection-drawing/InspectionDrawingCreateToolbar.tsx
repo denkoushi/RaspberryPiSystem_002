@@ -4,6 +4,10 @@ import { Link } from 'react-router-dom';
 import { Button, buttonClassName } from '../../../components/ui/Button';
 
 import {
+  INSPECTION_DRAWING_CREATE_SAVE_STATUS_LABEL,
+  type InspectionDrawingCreateSaveStatus
+} from './inspectionDrawingCreateDraft';
+import {
   inspectionDrawingKioskDisabledButtonClass,
   inspectionDrawingKioskToggleInactiveClass
 } from './inspectionDrawingKioskUi';
@@ -22,6 +26,7 @@ type Props = {
   onSave?: () => void;
   saveDisabled?: boolean;
   saveBusy?: boolean;
+  saveStatus?: InspectionDrawingCreateSaveStatus;
   /** 編集時は系譜キー（品番・工程）を変えられないため非表示 */
   showProcessGroup?: boolean;
   /** 指定時は保存ボタン右に戻るリンクを表示 */
@@ -42,6 +47,7 @@ export function InspectionDrawingCreateToolbar({
   onSave,
   saveDisabled = false,
   saveBusy = false,
+  saveStatus,
   showProcessGroup = true,
   returnTo,
   returnLabel,
@@ -54,6 +60,14 @@ export function InspectionDrawingCreateToolbar({
   const testDisabled = !hasDrawingImage || !hasMeasurementPoints;
   const guidedTrialDisabled = testDisabled;
   const saveBlocked = saveDisabled || saveBusy || !onSave;
+  const saveStatusClassName = clsx(
+    'inline-flex min-h-9 shrink-0 items-center rounded border px-2 text-[0.9rem] font-semibold',
+    saveStatus === 'dirty' && 'border-amber-300/55 bg-amber-400/15 text-amber-100',
+    saveStatus === 'blocked' && 'border-white/15 bg-white/5 text-white/65',
+    saveStatus === 'saved' && 'border-emerald-300/35 bg-emerald-400/10 text-emerald-100',
+    saveStatus === 'saving' && 'border-cyan-300/45 bg-cyan-400/10 text-cyan-100',
+    saveStatus === 'read_only' && 'border-sky-300/35 bg-sky-400/10 text-sky-100'
+  );
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -122,6 +136,12 @@ export function InspectionDrawingCreateToolbar({
       >
         {saveBusy ? '保存中…' : '保存'}
       </Button>
+
+      {saveStatus ? (
+        <span className={saveStatusClassName} aria-live="polite">
+          {INSPECTION_DRAWING_CREATE_SAVE_STATUS_LABEL[saveStatus]}
+        </span>
+      ) : null}
 
       {savedPrintPath ? (
         <Link

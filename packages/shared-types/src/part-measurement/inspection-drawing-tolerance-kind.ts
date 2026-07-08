@@ -14,6 +14,7 @@ export const DEFAULT_INSPECTION_DRAWING_MEASUREMENT_LABELS: readonly string[] = 
   '全長',
   '全幅',
   '幅',
+  '厚み',
   '高さ',
   '穴径',
   'ピッチ',
@@ -115,7 +116,15 @@ export function buildInspectionDrawingToleranceCandidateValues(
   kind: InspectionDrawingToleranceKind
 ): string[] {
   if (kind === INSPECTION_DRAWING_TOLERANCE_KIND_GEOMETRIC) {
-    return ['0', ...Array.from({ length: 9 }, (_, index) => `0.00${index + 1}`)];
+    return [
+      '0',
+      ...Array.from({ length: 9 }, (_, index) => `0.00${index + 1}`),
+      '0.01',
+      '0.015',
+      '0.020',
+      '0.030',
+      '0.050'
+    ];
   }
 
   const values: string[] = [];

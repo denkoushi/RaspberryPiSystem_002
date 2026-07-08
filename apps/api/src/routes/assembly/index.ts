@@ -12,6 +12,7 @@ import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-imag
 import { requireClientDevice } from '../kiosk/shared.js';
 import {
   AssemblyExcelExportService,
+  AssemblyLotService,
   AssemblyProcedureOrderService,
   AssemblyProcedureSequenceService,
   AssemblyProcedureDocumentService,
@@ -21,6 +22,7 @@ import {
   AssemblyWorkSessionService,
   AssemblyWorkSessionRecordApprovalService,
   resolveAssemblyOperatorNfcUid,
+  buildAssemblyLotSummary,
   serializeAssemblyWorkSessionApproval,
   TORQUE_INPUT_PORT_SOURCES,
   toPrismaTorqueInputSource,
@@ -29,6 +31,7 @@ import {
   type AssemblyProcedureOrderDocumentSummary,
   type AssemblyProcedureSequence,
   type AssemblySeibanCandidate,
+  type AssemblyLotSummary,
   type AssemblyTemplateAreaInput,
   type AssemblyTemplateDetail,
   type AssemblyTemplateSummary,
@@ -90,6 +93,17 @@ const startSessionBodySchema = z.object({
   torqueWrenchId: z.string().trim().min(1).max(120)
 });
 
+const createAssemblyLotBodySchema = z.object({
+  templateId: z.string().uuid(),
+  productNo: z.string().trim().min(1).max(120),
+  expectedQuantity: z.coerce.number().int().min(1).max(500),
+  serialNos: z.array(z.string().trim().min(1).max(120)).min(1).max(500),
+  operatorEmployeeId: z.string().trim().max(120).optional().nullable(),
+  operatorNameSnapshot: z.string().trim().min(1).max(120),
+  targetUnit: z.string().trim().min(1).max(120),
+  torqueWrenchId: z.string().trim().min(1).max(120)
+});
+
 const procedureOrderItemBodySchema = z
   .object({
     kioskDocumentId: z.string().uuid().optional().nullable(),
@@ -122,6 +136,11 @@ const recordTorqueBodySchema = z.object({
 const approveAssemblyRecordApprovalBodySchema = z.object({
   approverEmployeeTagUid: z.string().min(1).max(200),
   comment: z.string().max(500).optional().nullable()
+});
+
+const lotSerialParamsSchema = z.object({
+  lotId: z.string().uuid(),
+  lotSerialId: z.string().uuid()
 });
 
 function decimalToString(value: { toString(): string } | number | string | null | undefined): string | null {
@@ -244,6 +263,49 @@ function serializeProcedureSequence(sequence: AssemblyProcedureSequence) {
   };
 }
 
+function serializeLotSerialStatus(status: AssemblyLotSummary['serials'][number]['status']) {
+  return status === 'NOT_STARTED' ? 'not_started' : status.toLowerCase();
+}
+
+function serializeAssemblyLotSummary(lot: AssemblyLotSummary) {
+  return {
+    id: lot.id,
+    templateId: lot.templateId,
+    productNo: lot.productNo,
+    expectedQuantity: lot.expectedQuantity,
+    registeredSerialCount: lot.registeredSerialCount,
+    notStartedCount: lot.notStartedCount,
+    inProgressCount: lot.inProgressCount,
+    completedCount: lot.completedCount,
+    cancelledCount: lot.cancelledCount,
+    approvedCount: lot.approvedCount,
+    isWorkComplete: lot.isWorkComplete,
+    isFullyApproved: lot.isFullyApproved,
+    operatorEmployeeId: lot.operatorEmployeeId,
+    operatorNameSnapshot: lot.operatorNameSnapshot,
+    targetUnit: lot.targetUnit,
+    torqueWrenchId: lot.torqueWrenchId,
+    clientDeviceId: lot.clientDeviceId,
+    clientDeviceNameSnapshot: lot.clientDeviceNameSnapshot,
+    createdAt: lot.createdAt.toISOString(),
+    updatedAt: lot.updatedAt.toISOString(),
+    template: lot.template,
+    serials: lot.serials.map((serial) => ({
+      id: serial.id,
+      lotId: serial.lotId,
+      sortOrder: serial.sortOrder,
+      serialNo: serial.serialNo,
+      status: serializeLotSerialStatus(serial.status),
+      workSessionId: serial.workSessionId,
+      startedAt: dateToIso(serial.startedAt),
+      completedAt: dateToIso(serial.completedAt),
+      cancelledAt: dateToIso(serial.cancelledAt),
+      updatedAt: serial.updatedAt.toISOString(),
+      approval: serializeAssemblyWorkSessionApproval(serial.approval)
+    }))
+  };
+}
+
 function serializeTemplate(template: AssemblyTemplateDetail) {
   return {
     id: template.id,
@@ -290,6 +352,7 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
 function serializeSessionSummary(session: AssemblyWorkSessionSummary) {
   return {
     id: session.id,
+    lotSerialId: session.lotSerialId,
     templateId: session.templateId,
     status: session.status.toLowerCase(),
     productNo: session.productNo,
@@ -341,6 +404,7 @@ function buildAreaTorqueSummaries(session: AssemblyWorkSessionDetail) {
 function serializeSession(session: AssemblyWorkSessionDetail) {
   return {
     id: session.id,
+    lotSerialId: session.lotSerialId,
     templateId: session.templateId,
     status: session.status.toLowerCase(),
     productNo: session.productNo,
@@ -456,6 +520,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const procedureService = new AssemblyProcedureDocumentService();
   const templateService = new AssemblyTemplateService();
   const sessionService = new AssemblyWorkSessionService();
+  const lotService = new AssemblyLotService(sessionService);
   const recordApprovalService = new AssemblyWorkSessionRecordApprovalService();
   const seibanStartService = new AssemblySeibanStartService();
   const seibanLotQuantityService = new AssemblySeibanLotQuantityService();
@@ -673,6 +738,47 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
     const result = await templateService.retire(params.id);
     if (result === 'not_found') return reply.status(404).send({ message: 'テンプレートが見つかりません' });
     return reply.status(204).send();
+  });
+
+  app.post('/assembly/lots', { preHandler: allowWriteKiosk }, async (request) => {
+    const body = createAssemblyLotBodySchema.parse(request.body);
+    const clientDevice = await tryGetClientDevice(request.headers);
+    const lot = await lotService.create({
+      ...body,
+      clientDeviceId: clientDevice?.id ?? null,
+      clientDeviceNameSnapshot: clientDevice?.name ?? null
+    });
+    return { lot: serializeAssemblyLotSummary(buildAssemblyLotSummary(lot)) };
+  });
+
+  app.get('/assembly/lots/summary', { preHandler: allowView }, async (request) => {
+    const q = z
+      .object({
+        productNo: z.string().optional(),
+        limit: z.coerce.number().int().min(1).max(100).optional()
+      })
+      .parse(request.query);
+    const lots = await lotService.listSummary(q);
+    return { lots: lots.map(serializeAssemblyLotSummary) };
+  });
+
+  app.get('/assembly/lots/:id', { preHandler: allowView }, async (request, reply) => {
+    const params = idParamSchema.parse(request.params);
+    const lot = await lotService.getById(params.id);
+    if (!lot) return reply.status(404).send({ message: '組立ロットが見つかりません' });
+    return { lot: serializeAssemblyLotSummary(buildAssemblyLotSummary(lot)) };
+  });
+
+  app.post('/assembly/lots/:lotId/serials/:lotSerialId/start', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = lotSerialParamsSchema.parse(request.params);
+    const clientDevice = await tryGetClientDevice(request.headers);
+    const session = await lotService.startSerial({
+      lotId: params.lotId,
+      lotSerialId: params.lotSerialId,
+      clientDeviceId: clientDevice?.id ?? null,
+      clientDeviceNameSnapshot: clientDevice?.name ?? null
+    });
+    return { session: serializeSession(session) };
   });
 
   app.post('/assembly/work-sessions', { preHandler: allowWriteKiosk }, async (request) => {

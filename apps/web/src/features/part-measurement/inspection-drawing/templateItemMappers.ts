@@ -1,10 +1,12 @@
 import type { PartMeasurementTemplateItemDto } from '../types';
 
 export {
+  buildGeometricTolerancePointPatch,
   createInspectionDrawingPoint,
   drawingPointToTemplateItemInput,
   mergeInspectionDrawingPointPatch,
   nextAvailableMarkerNo,
+  pointUsesGeometricTolerance,
   templateItemToDrawingPoint,
   toleranceBoundsFromPoint
 } from './markerNumbering';

@@ -19,12 +19,18 @@ describe('inspection drawing tolerance candidates', () => {
       '0.006',
       '0.007',
       '0.008',
-      '0.009'
+      '0.009',
+      '0.01',
+      '0.015',
+      '0.020',
+      '0.030',
+      '0.050'
     ]);
   });
 
   it('builds dimension tolerance candidates with signed positive values', () => {
     expect(resolveDefaultInspectionDrawingToleranceKind('幅')).toBe('dimension');
+    expect(resolveDefaultInspectionDrawingToleranceKind('厚み')).toBe('dimension');
     expect(buildInspectionDrawingToleranceCandidateValues('dimension')).toEqual([
       '-0.9',
       '-0.8',

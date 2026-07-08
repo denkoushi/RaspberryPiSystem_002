@@ -18,6 +18,7 @@ type Props = {
   onSelectPoint: (pointId: string) => void;
   onPointChange: (patch: Partial<InspectionDrawingPoint>) => void;
   onRemovePoint?: () => void;
+  onRemoveAllPoints?: () => void;
   onTestValueChange: (value: string) => void;
   onCommitTestValue?: (payload: {
     pointId: string;
@@ -43,6 +44,7 @@ export function InspectionDrawingPointSidebar({
   onSelectPoint,
   onPointChange,
   onRemovePoint,
+  onRemoveAllPoints,
   onTestValueChange,
   onCommitTestValue,
   guidedTrialHint,
@@ -65,6 +67,7 @@ export function InspectionDrawingPointSidebar({
             disabled={contentReadOnly}
             onChange={onPointChange}
             onRemove={onRemovePoint}
+            onRemoveAll={onRemoveAllPoints}
             ocrCandidates={ocrCandidates}
             ocrCandidateStatus={ocrCandidateStatus}
             ocrCandidateLoading={ocrCandidateLoading}

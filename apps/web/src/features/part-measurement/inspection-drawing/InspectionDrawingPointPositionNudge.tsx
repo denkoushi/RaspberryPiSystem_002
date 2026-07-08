@@ -57,7 +57,9 @@ function NudgeButton({
   );
 }
 
-/** 測定点設定 — 十字ボタンで図面上の位置を微調整 */
+const NUDGE_BUTTON_ORDER: InspectionDrawingNudgeDirection[] = ['up', 'down', 'left', 'right'];
+
+/** 測定点設定 — 方向ボタンで図面上の位置を微調整 */
 export function InspectionDrawingPointPositionNudge({ point, disabled = false, onChange }: Props) {
   const handleNudge = (direction: InspectionDrawingNudgeDirection) => {
     onChange(inspectionDrawingPointPositionPatch(point, direction));
@@ -65,24 +67,14 @@ export function InspectionDrawingPointPositionNudge({ point, disabled = false, o
 
   return (
     <div className={inspectionDrawingPointNudgeGridClassName} role="group" aria-label="測定点の位置調整">
-      <span className="col-start-2 row-start-1">
-        <NudgeButton direction="up" disabled={disabled} onClick={() => handleNudge('up')} />
-      </span>
-      <span className="col-start-1 row-start-2">
-        <NudgeButton direction="left" disabled={disabled} onClick={() => handleNudge('left')} />
-      </span>
-      <span
-        className="col-start-2 row-start-2 flex min-h-11 min-w-11 items-center justify-center text-[0.72rem] font-semibold text-white/45"
-        aria-hidden
-      >
-        位置
-      </span>
-      <span className="col-start-3 row-start-2">
-        <NudgeButton direction="right" disabled={disabled} onClick={() => handleNudge('right')} />
-      </span>
-      <span className="col-start-2 row-start-3">
-        <NudgeButton direction="down" disabled={disabled} onClick={() => handleNudge('down')} />
-      </span>
+      {NUDGE_BUTTON_ORDER.map((direction) => (
+        <NudgeButton
+          key={direction}
+          direction={direction}
+          disabled={disabled}
+          onClick={() => handleNudge(direction)}
+        />
+      ))}
     </div>
   );
 }

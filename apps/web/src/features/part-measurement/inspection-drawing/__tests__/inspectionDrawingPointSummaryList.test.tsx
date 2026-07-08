@@ -61,8 +61,9 @@ describe('InspectionDrawingPointSummaryList', () => {
     expect(container.querySelector('.grid-cols-2')).toBeNull();
     expect(container.querySelector('.flex.flex-col')).toBeTruthy();
     const button = screen.getByRole('button', { name: /測定点 No\.1/ });
-    expect(button.className).toContain('ring-cyan-400/50');
-    expect(button.className).not.toContain('ring-cyan-300');
+    expect(button.className).toContain('bg-cyan-950/40');
+    expect(button.className).toContain('ring-2');
+    expect(button.className).toContain('ring-cyan-300/80');
   });
 
   it('uses two-column layout when layout is twoColumn', () => {

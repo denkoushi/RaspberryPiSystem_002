@@ -250,12 +250,16 @@ export const inspectionDrawingPointSettingInputClassName = clsx(
 export const inspectionDrawingPointSettingDualRowClassName =
   'grid min-w-0 grid-cols-2 gap-1.5';
 
+/** 測定点設定 — 右ペイン幅を使う 1 列行 */
+export const inspectionDrawingPointSettingSingleRowClassName =
+  'grid min-w-0 grid-cols-1 gap-1.5';
+
 /** 測定点設定 — 2 列行の各セル */
 export const inspectionDrawingPointSettingDualCellClassName = 'grid min-w-0 gap-1';
 
-/** 測定点位置微調整 — 3x3 十字ボタン配置 */
+/** 測定点位置微調整 — 右ペイン内 1 行配置 */
 export const inspectionDrawingPointNudgeGridClassName =
-  'grid w-fit grid-cols-3 grid-rows-3 gap-0.5 self-center';
+  'flex w-full justify-center gap-1';
 
 /** 測定点位置微調整 — icon-only 方向ボタン（既存 Button の px-4 を使わない） */
 export const inspectionDrawingPointNudgeButtonClassName =

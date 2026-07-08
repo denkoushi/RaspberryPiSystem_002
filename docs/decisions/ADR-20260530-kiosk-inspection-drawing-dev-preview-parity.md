@@ -51,8 +51,8 @@
 本変更で固定した表示（コード正本: `ccacef85` 系）:
 
 - **一覧フィルタ**: `flex-wrap`（旧 `lg:grid-cols-[13rem_15rem_auto…]` は長い資源名で工程列と重なった）
-- **測定点設定**: 基準値 / 下限 / 上限は **縦並び**（`InspectionDrawingPointSettingsPanel`）
-- **作成ツールバー**: 保存ボタン右に **「一覧へ戻る」**（`InspectionDrawingCreateToolbar` の `libraryTo`）
+- **測定点設定**: 名称と基準値/上限値は **1行ずつ**。寸法公差は上限/下限2入力、幾何公差は上限値1入力 + 合格範囲表示（`InspectionDrawingPointSettingsPanel`）
+- **作成ツールバー**: 保存ボタン右に **保存状態表示**、その右に保存済み帳票（該当時）と **「一覧へ戻る」**（`InspectionDrawingCreateToolbar`）
 - **作成画面下部**: 「図面をタップして…」「一覧プレビューへ」リンクは **削除**（本番・DEV 共通）
 
 ## References

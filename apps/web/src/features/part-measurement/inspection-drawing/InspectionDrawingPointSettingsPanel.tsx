@@ -14,15 +14,16 @@ import {
   inspectionDrawingBoundedSelectClassName,
   inspectionDrawingBoundedSelectShellClassName,
   inspectionDrawingPointSettingDualCellClassName,
-  inspectionDrawingPointSettingDualRowClassName,
   inspectionDrawingPointSettingInputClassName,
-  inspectionDrawingPointSettingPanelClassName
+  inspectionDrawingPointSettingPanelClassName,
+  inspectionDrawingPointSettingSingleRowClassName
 } from './inspectionDrawingKioskUi';
 import {
   buildMeasurementLabelSelectOptions,
   INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS
 } from './inspectionDrawingMeasurementLabelOptions';
 import { InspectionDrawingPointPositionNudge } from './InspectionDrawingPointPositionNudge';
+import { buildGeometricTolerancePointPatch } from './markerNumbering';
 
 import type {
   PartMeasurementDrawingOcrCandidateDto,
@@ -35,6 +36,7 @@ type Props = {
   disabled?: boolean;
   onChange: (patch: Partial<InspectionDrawingPoint>) => void;
   onRemove?: () => void;
+  onRemoveAll?: () => void;
   ocrCandidates?: PartMeasurementDrawingOcrCandidateDto[];
   ocrCandidateStatus?: PartMeasurementDrawingOcrStatus | null;
   ocrCandidateLoading?: boolean;
@@ -121,6 +123,7 @@ export function InspectionDrawingPointSettingsPanel({
   disabled = false,
   onChange,
   onRemove,
+  onRemoveAll,
   ocrCandidates = [],
   ocrCandidateStatus = null,
   ocrCandidateLoading = false,
@@ -141,11 +144,48 @@ export function InspectionDrawingPointSettingsPanel({
     point.name,
     effectiveMeasurementLabelSettings
   );
+  const isGeometricTolerance = toleranceKind === 'geometric';
   const showOcrCandidateRow =
     ocrCandidateLoading ||
     ocrCandidateError ||
     ocrCandidates.length > 0 ||
     ocrCandidateStatus === 'failed';
+  const handleNameChange = (name: string) => {
+    const nextKind = resolveInspectionDrawingToleranceKindForLabel(
+      name,
+      effectiveMeasurementLabelSettings
+    );
+    onChange({
+      name,
+      ...(nextKind === 'geometric'
+        ? buildGeometricTolerancePointPatch(point.nominalRaw)
+        : {})
+    });
+  };
+  const handleNominalBlur = () => {
+    if (toleranceKind !== 'dimension') {
+      return;
+    }
+    if (point.upperToleranceRaw.trim() !== '' || point.lowerToleranceRaw.trim() !== '') {
+      return;
+    }
+    const nominal = Number(point.nominalRaw.trim().replace(/,/g, ''));
+    if (!Number.isFinite(nominal)) {
+      return;
+    }
+    const generalTolerance = resolveInspectionDrawingGeneralToleranceForNominal(nominal);
+    if (generalTolerance === null) {
+      return;
+    }
+    onChange({
+      upperToleranceRaw: `+${generalTolerance}`,
+      lowerToleranceRaw: `-${generalTolerance}`
+    });
+  };
+  const handleUpperLimitChange = (value: string) => {
+    onChange(buildGeometricTolerancePointPatch(value));
+  };
+  const geometricRangeUpper = point.nominalRaw.trim() || '-';
 
   return (
     <div className={inspectionDrawingPointSettingPanelClassName}>
@@ -155,15 +195,16 @@ export function InspectionDrawingPointSettingsPanel({
         onChange={onChange}
       />
       <p className="text-[1.02rem] font-bold">測定点の設定（No.{point.markerNo}）</p>
-      <div className={inspectionDrawingPointSettingDualRowClassName}>
+      <div className={inspectionDrawingPointSettingSingleRowClassName}>
         <label className={inspectionDrawingPointSettingDualCellClassName}>
           <span className="text-[1rem] font-semibold">名称</span>
           <div className={inspectionDrawingBoundedSelectShellClassName}>
             <select
               value={point.name}
-              onChange={(e) => onChange({ name: e.target.value })}
+              onChange={(e) => handleNameChange(e.target.value)}
               className={inspectionDrawingBoundedSelectClassName}
               disabled={disabled}
+              title={point.name || '選択'}
             >
               {labelOptions.map((opt) => (
                 <option key={`${opt.value}-${opt.label}`} value={opt.value}>
@@ -173,36 +214,30 @@ export function InspectionDrawingPointSettingsPanel({
             </select>
           </div>
         </label>
+      </div>
+      <div className={inspectionDrawingPointSettingSingleRowClassName}>
         <label className={inspectionDrawingPointSettingDualCellClassName}>
-          <span className="text-[1rem] font-semibold">基準値</span>
-          <Input
-            type="text"
-            inputMode="decimal"
-            value={point.nominalRaw}
-            onChange={(e) => onChange({ nominalRaw: e.target.value })}
-            onBlur={() => {
-              if (toleranceKind !== 'dimension') {
-                return;
-              }
-              if (point.upperToleranceRaw.trim() !== '' || point.lowerToleranceRaw.trim() !== '') {
-                return;
-              }
-              const nominal = Number(point.nominalRaw.trim().replace(/,/g, ''));
-              if (!Number.isFinite(nominal)) {
-                return;
-              }
-              const generalTolerance = resolveInspectionDrawingGeneralToleranceForNominal(nominal);
-              if (generalTolerance === null) {
-                return;
-              }
-              onChange({
-                upperToleranceRaw: `+${generalTolerance}`,
-                lowerToleranceRaw: `-${generalTolerance}`
-              });
-            }}
-            className={inspectionDrawingPointSettingInputClassName}
-            disabled={disabled}
-          />
+          <span className="text-[1rem] font-semibold">
+            {isGeometricTolerance ? '上限値' : '基準値'}
+          </span>
+          {isGeometricTolerance ? (
+            <ToleranceCandidateInput
+              value={point.nominalRaw}
+              candidateValues={toleranceCandidateValues}
+              onValueChange={handleUpperLimitChange}
+              disabled={disabled}
+            />
+          ) : (
+            <Input
+              type="text"
+              inputMode="decimal"
+              value={point.nominalRaw}
+              onChange={(e) => onChange({ nominalRaw: e.target.value })}
+              onBlur={handleNominalBlur}
+              className={inspectionDrawingPointSettingInputClassName}
+              disabled={disabled}
+            />
+          )}
           {showOcrCandidateRow ? (
             <div className="flex min-h-8 flex-wrap items-center gap-1 text-[0.8rem] font-semibold">
               {ocrCandidateLoading ? <span className="text-cyan-100/75">OCR確認中</span> : null}
@@ -226,30 +261,45 @@ export function InspectionDrawingPointSettingsPanel({
           ) : null}
         </label>
       </div>
-      <div className="grid grid-cols-2 gap-1.5">
-        <label className="grid gap-1 text-[1rem] font-semibold">
-          上限公差
-          <ToleranceCandidateInput
-            value={point.upperToleranceRaw}
-            candidateValues={toleranceCandidateValues}
-            onValueChange={(value) => onChange({ upperToleranceRaw: value })}
-            disabled={disabled}
-          />
-        </label>
-        <label className="grid gap-1 text-[1rem] font-semibold">
-          下限公差
-          <ToleranceCandidateInput
-            value={point.lowerToleranceRaw}
-            candidateValues={toleranceCandidateValues}
-            onValueChange={(value) => onChange({ lowerToleranceRaw: value })}
-            disabled={disabled}
-          />
-        </label>
-      </div>
-      {onRemove ? (
-        <Button type="button" variant="secondary" disabled={disabled} onClick={onRemove}>
-          この点を削除
-        </Button>
+      {isGeometricTolerance ? (
+        <p className="rounded border border-cyan-300/25 bg-cyan-950/40 px-2 py-1 text-[0.92rem] font-semibold text-cyan-100">
+          合格範囲 0〜{geometricRangeUpper}
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 gap-1.5">
+          <label className="grid gap-1 text-[1rem] font-semibold">
+            上限公差
+            <ToleranceCandidateInput
+              value={point.upperToleranceRaw}
+              candidateValues={toleranceCandidateValues}
+              onValueChange={(value) => onChange({ upperToleranceRaw: value })}
+              disabled={disabled}
+            />
+          </label>
+          <label className="grid gap-1 text-[1rem] font-semibold">
+            下限公差
+            <ToleranceCandidateInput
+              value={point.lowerToleranceRaw}
+              candidateValues={toleranceCandidateValues}
+              onValueChange={(value) => onChange({ lowerToleranceRaw: value })}
+              disabled={disabled}
+            />
+          </label>
+        </div>
+      )}
+      {onRemove || onRemoveAll ? (
+        <div className={onRemove && onRemoveAll ? 'grid grid-cols-2 gap-1.5' : 'grid grid-cols-1'}>
+          {onRemove ? (
+            <Button type="button" variant="secondary" disabled={disabled} onClick={onRemove}>
+              この点を削除
+            </Button>
+          ) : null}
+          {onRemoveAll ? (
+            <Button type="button" variant="secondary" disabled={disabled} onClick={onRemoveAll}>
+              全削除
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

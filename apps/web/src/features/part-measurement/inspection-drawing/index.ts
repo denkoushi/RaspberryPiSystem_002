@@ -19,23 +19,30 @@ export { useInspectionDrawingTemplateLibrary } from './useInspectionDrawingTempl
 export { useInspectionDrawingResourceCdsByVisualId } from './useInspectionDrawingResourceCdsByVisualId';
 export { InspectionDrawingResourceCdChipList } from './InspectionDrawingResourceCdChipList';
 export {
+  buildInspectionDrawingCreateDirtySnapshot,
+  INSPECTION_DRAWING_CREATE_SAVE_STATUS_LABEL,
   inspectionDrawingCreateKeyCollisionMessage,
+  inspectionDrawingCreateDirtySnapshotsEqual,
   normalizeUniqueInspectionDrawingResourceCds,
   normalizeTemplateBusinessKey,
   resolveInspectionDrawingCreateKeyCollision,
   resolveInspectionDrawingCreateKeyCollisionForResources,
   resolveInspectionDrawingCreateSaveBlockReason,
+  resolveInspectionDrawingCreateSaveStatus,
   suggestInspectionDrawingTemplateName,
   templateBusinessKeysEqual,
   templateItemsToDraftDrawingPoints,
   templateToCreateDraft,
   type InspectionDrawingCreateDraftForm,
+  type InspectionDrawingCreateDirtySnapshot,
   type InspectionDrawingCreateKeyCollision,
   type InspectionDrawingCreateSaveBlockReason,
+  type InspectionDrawingCreateSaveStatus,
   type InspectionDrawingSourceTemplateDraft,
   type InspectionDrawingVisualSource,
   type TemplateBusinessKey
 } from './inspectionDrawingCreateDraft';
+export { useInspectionDrawingUnsavedChangesGuard } from './useInspectionDrawingUnsavedChangesGuard';
 export { InspectionDrawingCreateMetaChip } from './InspectionDrawingCreateMetaChip';
 export { InspectionDrawingCreateMetadataRow } from './InspectionDrawingCreateMetadataRow';
 export type { InspectionDrawingCreateMetadataRowProps } from './InspectionDrawingCreateMetadataRow';
@@ -114,9 +121,11 @@ export { computePrintMarkerPosition, markerPositionInObjectContainContainer } fr
 export { computeObjectContainLayout } from './computeObjectContainLayout';
 
 export {
+  buildGeometricTolerancePointPatch,
   drawingPointToTemplateItemInput,
   kioskPartMeasurementInspectionEditPath,
   mergeInspectionDrawingPointPatch,
+  pointUsesGeometricTolerance,
   templateItemHasInspectionMarker,
   templateItemToDrawingPoint,
   templateSupportsInspectionDrawing
@@ -209,6 +218,7 @@ export {
   inspectionDrawingMetadataResourceFieldWidthClass,
   inspectionDrawingPointSettingInputClassName,
   inspectionDrawingPointSettingPanelClassName,
+  inspectionDrawingPointSettingSingleRowClassName,
   inspectionDrawingSideAsideClassName
 } from './inspectionDrawingKioskUi';
 

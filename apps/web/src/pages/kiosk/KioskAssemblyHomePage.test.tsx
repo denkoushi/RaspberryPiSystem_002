@@ -4,18 +4,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { KioskAssemblyHomePage } from './KioskAssemblyHomePage';
 
-import type { AssemblySeibanCandidateDto, AssemblyWorkSessionSummaryDto } from '../../features/assembly/types';
+import type { AssemblyLotSummaryDto, AssemblySeibanCandidateDto, AssemblyWorkSessionSummaryDto } from '../../features/assembly/types';
 
+const mockCreateAssemblyLot = vi.fn();
+const mockListAssemblyLotSummaries = vi.fn();
 const mockListAssemblySeibanCandidates = vi.fn();
 const mockListAssemblyWorkSessionSummaries = vi.fn();
-const mockStartAssemblyWorkSession = vi.fn();
+const mockStartAssemblyLotSerial = vi.fn();
 const mockListAssemblySeibanLotQuantities = vi.fn();
 const mockResolveAssemblyOperatorNfc = vi.fn();
 
 vi.mock('../../api/client', () => ({
+  createAssemblyLot: (...args: unknown[]) => mockCreateAssemblyLot(...args),
+  listAssemblyLotSummaries: (...args: unknown[]) => mockListAssemblyLotSummaries(...args),
   listAssemblySeibanCandidates: (...args: unknown[]) => mockListAssemblySeibanCandidates(...args),
   listAssemblyWorkSessionSummaries: (...args: unknown[]) => mockListAssemblyWorkSessionSummaries(...args),
-  startAssemblyWorkSession: (...args: unknown[]) => mockStartAssemblyWorkSession(...args),
+  startAssemblyLotSerial: (...args: unknown[]) => mockStartAssemblyLotSerial(...args),
   listAssemblySeibanLotQuantities: (...args: unknown[]) => mockListAssemblySeibanLotQuantities(...args),
   resolveAssemblyOperatorNfc: (...args: unknown[]) => mockResolveAssemblyOperatorNfc(...args)
 }));
@@ -46,6 +50,7 @@ const candidateWithoutTemplate: AssemblySeibanCandidateDto = {
 
 const inProgressSession: AssemblyWorkSessionSummaryDto = {
   id: 'session-2',
+  lotSerialId: null,
   templateId: 'template-1',
   status: 'in_progress',
   productNo: 'ASM-START-001',
@@ -86,6 +91,64 @@ const completedSession: AssemblyWorkSessionSummaryDto = {
   approval: null
 };
 
+const registeredLot: AssemblyLotSummaryDto = {
+  id: 'lot-1',
+  templateId: 'template-1',
+  productNo: 'ASMTEST-A1',
+  expectedQuantity: 2,
+  registeredSerialCount: 2,
+  notStartedCount: 1,
+  inProgressCount: 1,
+  completedCount: 0,
+  cancelledCount: 0,
+  approvedCount: 0,
+  isWorkComplete: false,
+  isFullyApproved: false,
+  operatorEmployeeId: null,
+  operatorNameSnapshot: '佐藤',
+  targetUnit: 'MH-AX',
+  torqueWrenchId: 'CEM20N3X10D-BTLA',
+  clientDeviceId: null,
+  clientDeviceNameSnapshot: null,
+  createdAt: '2026-07-06T00:00:00.000Z',
+  updatedAt: '2026-07-06T00:01:00.000Z',
+  template: {
+    id: 'template-1',
+    modelCode: 'MH-AX',
+    procedurePattern: '標準',
+    name: 'MH-AX 標準',
+    version: 1
+  },
+  serials: [
+    {
+      id: 'lot-serial-1',
+      lotId: 'lot-1',
+      sortOrder: 0,
+      serialNo: 'S001',
+      status: 'not_started',
+      workSessionId: null,
+      startedAt: null,
+      completedAt: null,
+      cancelledAt: null,
+      updatedAt: '2026-07-06T00:01:00.000Z',
+      approval: null
+    },
+    {
+      id: 'lot-serial-2',
+      lotId: 'lot-1',
+      sortOrder: 1,
+      serialNo: 'S002',
+      status: 'in_progress',
+      workSessionId: 'session-2',
+      startedAt: '2026-07-06T00:02:00.000Z',
+      completedAt: null,
+      cancelledAt: null,
+      updatedAt: '2026-07-06T00:02:00.000Z',
+      approval: null
+    }
+  ]
+};
+
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={['/kiosk/assembly']}>
@@ -99,11 +162,14 @@ function renderPage() {
 
 describe('KioskAssemblyHomePage', () => {
   beforeEach(() => {
+    mockCreateAssemblyLot.mockReset();
+    mockListAssemblyLotSummaries.mockReset();
     mockListAssemblySeibanCandidates.mockReset();
     mockListAssemblyWorkSessionSummaries.mockReset();
-    mockStartAssemblyWorkSession.mockReset();
+    mockStartAssemblyLotSerial.mockReset();
     mockListAssemblySeibanLotQuantities.mockReset();
     mockResolveAssemblyOperatorNfc.mockReset();
+    mockListAssemblyLotSummaries.mockResolvedValue([]);
     mockListAssemblySeibanCandidates.mockResolvedValue([candidate]);
     mockListAssemblyWorkSessionSummaries.mockImplementation((params: { status?: string } = {}) =>
       Promise.resolve(
@@ -114,11 +180,14 @@ describe('KioskAssemblyHomePage', () => {
             : []
       )
     );
-    mockStartAssemblyWorkSession.mockResolvedValue({ id: 'session-1' });
-    mockListAssemblySeibanLotQuantities.mockResolvedValue([]);
+    mockCreateAssemblyLot.mockResolvedValue(registeredLot);
+    mockStartAssemblyLotSerial.mockResolvedValue({ id: 'session-1' });
+    mockListAssemblySeibanLotQuantities.mockImplementation((productNos: string[]) =>
+      Promise.resolve(productNos.map((productNo) => ({ productNo, lotQty: productNo === 'ASMTEST-A1' ? 2 : 1 })))
+    );
   });
 
-  it('selects a seiban candidate and starts work with normalized serial input', async () => {
+  it('selects a seiban candidate and registers a lot with exact serial count', async () => {
     renderPage();
 
     expect(screen.getByRole('link', { name: '手順書ライブラリ' })).toHaveAttribute(
@@ -141,23 +210,40 @@ describe('KioskAssemblyHomePage', () => {
       'href',
       '/kiosk/assembly/procedure-order-settings?machineName=MH-AX'
     );
-    fireEvent.change(screen.getByLabelText('シリアルNo.'), { target: { value: 's001' } });
+    await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('シリアルNo.追加'), { target: { value: 's001' } });
+    await waitFor(() => expect(screen.getByLabelText('シリアルNo.追加')).toHaveValue('S001'));
+    fireEvent.click(screen.getByRole('button', { name: '追加' }));
+    fireEvent.change(screen.getByLabelText('シリアルNo.追加'), { target: { value: 's002' } });
+    await waitFor(() => expect(screen.getByLabelText('シリアルNo.追加')).toHaveValue('S002'));
+    fireEvent.click(screen.getByRole('button', { name: '追加' }));
     fireEvent.change(screen.getByLabelText('作業者'), { target: { value: '佐藤' } });
 
-    await waitFor(() => expect(screen.getByLabelText('シリアルNo.')).toHaveValue('S001'));
-    fireEvent.click(screen.getByRole('button', { name: '組立開始' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ロット登録' }));
 
     await waitFor(() =>
-      expect(mockStartAssemblyWorkSession).toHaveBeenCalledWith({
+      expect(mockCreateAssemblyLot).toHaveBeenCalledWith({
         templateId: 'template-1',
         productNo: 'ASMTEST-A1',
-        serialNo: 'S001',
+        expectedQuantity: 2,
+        serialNos: ['S001', 'S002'],
         operatorEmployeeId: null,
         operatorNameSnapshot: '佐藤',
         targetUnit: 'MH-AX',
         torqueWrenchId: 'CEM20N3X10D-BTLA'
       })
     );
+    expect(await screen.findByText('ロットを登録しました。登録済みロットからシリアルごとに開始してください。')).toBeInTheDocument();
+  });
+
+  it('starts a not-started serial from a registered lot', async () => {
+    mockListAssemblyLotSummaries.mockResolvedValue([registeredLot]);
+    renderPage();
+
+    expect(await screen.findByText('登録済みロット')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '開始' }));
+
+    await waitFor(() => expect(mockStartAssemblyLotSerial).toHaveBeenCalledWith('lot-1', 'lot-serial-1'));
     expect(await screen.findByText('session opened')).toBeInTheDocument();
   });
 
@@ -174,32 +260,35 @@ describe('KioskAssemblyHomePage', () => {
     );
   });
 
-  it('keeps independent seiban and serial keypads including BS and CLR', () => {
+  it('keeps independent seiban and serial keypads including BS and CLR', async () => {
     renderPage();
 
     const fseibanInput = screen.getByLabelText('製番');
-    const serialInput = screen.getByLabelText('シリアルNo.');
+    const serialInput = screen.getByLabelText('シリアルNo.追加');
     const fseibanPad = within(screen.getByRole('group', { name: '製番入力パッド' }));
     const serialPad = within(screen.getByRole('group', { name: 'シリアル入力パッド' }));
 
     fireEvent.click(fseibanPad.getByRole('button', { name: 'A' }));
     fireEvent.click(fseibanPad.getByRole('button', { name: '1' }));
-    fireEvent.click(serialPad.getByRole('button', { name: 'S' }));
-    fireEvent.click(serialPad.getByRole('button', { name: '2' }));
-
     expect(fseibanInput).toHaveValue('A1');
-    expect(serialInput).toHaveValue('S2');
 
     fireEvent.click(fseibanPad.getByRole('button', { name: 'BS' }));
     expect(fseibanInput).toHaveValue('A');
-    expect(serialInput).toHaveValue('S2');
-
-    fireEvent.click(serialPad.getByRole('button', { name: 'CLR' }));
-    expect(fseibanInput).toHaveValue('A');
-    expect(serialInput).toHaveValue('');
 
     fireEvent.click(fseibanPad.getByRole('button', { name: 'CLR' }));
     expect(fseibanInput).toHaveValue('');
+
+    fireEvent.change(fseibanInput, { target: { value: 'asmtest-a' } });
+    fireEvent.click(await screen.findByText('ASMTEST-A1'));
+    await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
+    fireEvent.click(serialPad.getByRole('button', { name: 'S' }));
+    fireEvent.click(serialPad.getByRole('button', { name: '2' }));
+    expect(fseibanInput).toHaveValue('ASMTEST-A1');
+    expect(serialInput).toHaveValue('S2');
+
+    fireEvent.click(serialPad.getByRole('button', { name: 'CLR' }));
+    expect(fseibanInput).toHaveValue('ASMTEST-A1');
+    expect(serialInput).toHaveValue('');
   });
 
   it('keeps the template registration path when the selected seiban has no active template', async () => {
@@ -214,8 +303,8 @@ describe('KioskAssemblyHomePage', () => {
 
     expect(screen.getByText('テンプレート未登録')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'テンプレート登録' })).toHaveAttribute('href', '/kiosk/assembly/library');
-    expect(screen.getByRole('button', { name: '組立開始' })).toBeDisabled();
-    expect(mockStartAssemblyWorkSession).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'ロット登録' })).toBeDisabled();
+    expect(mockCreateAssemblyLot).not.toHaveBeenCalled();
   });
 
   it('disables the seiban keypad while candidate search is in progress', async () => {

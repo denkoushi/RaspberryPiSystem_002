@@ -26,6 +26,7 @@ vi.mock('../../hooks/useNfcStream', () => ({
 
 const summary: AssemblyWorkSessionSummaryDto = {
   id: 'session-1',
+  lotSerialId: null,
   templateId: 'template-1',
   status: 'completed',
   productNo: 'ASM-001',
@@ -53,6 +54,7 @@ const summary: AssemblyWorkSessionSummaryDto = {
 
 const detail: AssemblyWorkSessionDto = {
   id: 'session-1',
+  lotSerialId: null,
   templateId: 'template-1',
   status: 'completed',
   productNo: 'ASM-001',

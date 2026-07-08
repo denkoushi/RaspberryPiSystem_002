@@ -88,6 +88,9 @@ async function cleanAssemblyTables() {
   await prisma.assemblyAreaRestartLog.deleteMany({});
   await prisma.assemblyTorqueRecord.deleteMany({});
   await prisma.assemblyWorkSession.deleteMany({});
+  await prisma.assemblyLotSerial.deleteMany({});
+  await prisma.assemblyLot.deleteMany({});
+  await prisma.assemblySerialRegistry.deleteMany({});
   await prisma.assemblyTemplateBolt.deleteMany({});
   await prisma.assemblyTemplateArea.deleteMany({});
   await prisma.assemblyTemplate.deleteMany({});
@@ -382,7 +385,8 @@ describe('assembly torque management API', () => {
     const complete = await app.inject({
       method: 'POST',
       url: `/api/assembly/work-sessions/${session.id}/complete`,
-      headers
+      headers,
+      payload: {}
     });
     expect(complete.statusCode).toBe(200);
     expect(complete.json().session.status).toBe('completed');
@@ -721,6 +725,200 @@ describe('assembly torque management API', () => {
     const remainingIds = summaryAfterCancel.json().sessions.map((session: { id: string }) => session.id);
     expect(remainingIds).not.toContain(firstSession.id);
     expect(remainingIds).toContain(secondSession.id);
+
+    const cancelledSerialRestart = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: startPayload
+    });
+    expect(cancelledSerialRestart.statusCode).toBe(409);
+  });
+
+  it('registers an assembly lot, starts serial work lazily, and updates lot completion counts', async () => {
+    const client = await createTestClientDevice();
+    const approver = await createTestEmployee({ displayName: '承認者' });
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+
+    const upload = buildMultipartProcedure('ロット 手順書');
+    const docRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/procedure-documents',
+      headers: { 'x-client-key': client.apiKey, 'Content-Type': upload.contentType },
+      payload: upload.body
+    });
+    expect(docRes.statusCode).toBe(200);
+
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: buildTemplatePayload(docRes.json().document.id, {
+        modelCode: 'MACHINE-LOT',
+        procedurePattern: '標準',
+        name: 'MACHINE-LOT 標準'
+      })
+    });
+    expect(templateRes.statusCode).toBe(200);
+    const templateId = templateRes.json().template.id as string;
+
+    const shortLot = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/lots',
+      headers,
+      payload: {
+        templateId,
+        productNo: 'ASM-LOT-001',
+        expectedQuantity: 2,
+        serialNos: ['LOT001'],
+        operatorNameSnapshot: '佐藤',
+        targetUnit: 'machine-lot',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    expect(shortLot.statusCode).toBe(400);
+
+    const duplicateInPayload = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/lots',
+      headers,
+      payload: {
+        templateId,
+        productNo: 'ASM-LOT-001',
+        expectedQuantity: 2,
+        serialNos: ['LOT001', 'lot001'],
+        operatorNameSnapshot: '佐藤',
+        targetUnit: 'machine-lot',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    expect(duplicateInPayload.statusCode).toBe(400);
+
+    const lotRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/lots',
+      headers,
+      payload: {
+        templateId,
+        productNo: 'asm-lot-001',
+        expectedQuantity: 2,
+        serialNos: ['lot001', 'lot002'],
+        operatorNameSnapshot: '佐藤',
+        targetUnit: 'machine-lot',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    expect(lotRes.statusCode).toBe(200);
+    const lot = lotRes.json().lot;
+    expect(lot).toMatchObject({
+      productNo: 'ASM-LOT-001',
+      expectedQuantity: 2,
+      registeredSerialCount: 2,
+      notStartedCount: 2,
+      inProgressCount: 0,
+      completedCount: 0,
+      approvedCount: 0,
+      isWorkComplete: false,
+      isFullyApproved: false
+    });
+    expect(lot.serials.map((serial: { serialNo: string; status: string }) => [serial.serialNo, serial.status])).toEqual([
+      ['LOT001', 'not_started'],
+      ['LOT002', 'not_started']
+    ]);
+    expect(await prisma.assemblyWorkSession.count()).toBe(0);
+
+    const duplicateExisting = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/lots',
+      headers,
+      payload: {
+        templateId,
+        productNo: 'ASM-LOT-002',
+        expectedQuantity: 1,
+        serialNos: ['LOT001'],
+        operatorNameSnapshot: '佐藤',
+        targetUnit: 'machine-lot',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    expect(duplicateExisting.statusCode).toBe(409);
+
+    const firstSerial = lot.serials[0];
+    const start = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/lots/${lot.id}/serials/${firstSerial.id}/start`,
+      headers,
+      payload: {}
+    });
+    expect(start.statusCode).toBe(200);
+    const session = start.json().session;
+    expect(session).toMatchObject({
+      lotSerialId: firstSerial.id,
+      productNo: 'ASM-LOT-001',
+      serialNo: 'LOT001',
+      targetUnit: 'MACHINE-LOT'
+    });
+    expect(await prisma.assemblyWorkSession.count()).toBe(1);
+
+    const restart = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/lots/${lot.id}/serials/${firstSerial.id}/start`,
+      headers,
+      payload: {}
+    });
+    expect(restart.statusCode).toBe(200);
+    expect(restart.json().session.id).toBe(session.id);
+    expect(await prisma.assemblyWorkSession.count()).toBe(1);
+
+    const torque = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${session.id}/record-torque`,
+      headers,
+      payload: { value: 10, source: 'manual' }
+    });
+    expect(torque.statusCode).toBe(200);
+
+    const complete = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${session.id}/complete`,
+      headers,
+      payload: {}
+    });
+    expect(complete.statusCode).toBe(200);
+
+    const summaryAfterComplete = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/lots/${lot.id}`,
+      headers
+    });
+    expect(summaryAfterComplete.statusCode).toBe(200);
+    expect(summaryAfterComplete.json().lot).toMatchObject({
+      completedCount: 1,
+      approvedCount: 0,
+      isWorkComplete: false,
+      isFullyApproved: false
+    });
+
+    const approve = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${session.id}/record-approval/approve`,
+      headers,
+      payload: { approverEmployeeTagUid: approver.nfcTagUid }
+    });
+    expect(approve.statusCode).toBe(200);
+
+    const summaryAfterApprove = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/lots/summary?productNo=ASM-LOT-001',
+      headers
+    });
+    expect(summaryAfterApprove.statusCode).toBe(200);
+    expect(summaryAfterApprove.json().lots[0]).toMatchObject({
+      completedCount: 1,
+      approvedCount: 1,
+      isWorkComplete: false,
+      isFullyApproved: false
+    });
   });
 
   it('verifies the shared 2520 password before assembly procedure order settings', async () => {
@@ -866,7 +1064,7 @@ describe('assembly torque management API', () => {
       payload: {
         templateId,
         productNo: 'ASM-PDF-002',
-        serialNo: 'S001',
+        serialNo: 'S002',
         operatorNameSnapshot: '佐藤',
         targetUnit: 'NO-ORDER',
         torqueWrenchId: 'CEM20N3X10D-BTLA'

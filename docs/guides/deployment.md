@@ -2,13 +2,35 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-07-06
+last-verified: 2026-07-08
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-07-08 · **検査図面 丸数字設定改善（保存状態・右ペイン・幾何公差）** · **Web + shared-types** · **Pi5 + Pi4×5 反映済 / Pi3 対象外**） {#inspection-drawing-marker-settings-save-state-2026-07-08}
+
+- **変更概要（正本）**: [KB-320 §丸数字設定改善](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-丸数字設定改善-2026-07-08) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · ブランチ **`feature/assembly-lot-serial-workflow`** · 実装コミット **`04bb49fe`**（`feat: improve inspection drawing marker settings`）。**API / DB / Prisma migration 変更なし**。
+- **主な変更**: 保存ボタンは **変更あり + 入力有効 + 保存中でない + 閲覧版でない** ときだけ有効。ツールバーは **保存 → 状態表示 → 保存済み帳票 → 一覧へ戻る**。状態表示は `保存済み` / `未保存あり` / `入力不足` / `保存中` / `閲覧のみ`。未保存変更がある内部リンク遷移・ブラウザ更新/終了は警告。右ペイン外枠 `lg:w-[17rem]` は維持し、名称と基準値/上限値を1行ずつ、位置調整は `↑ ↓ ← →` の1行、`この点を削除` + `全削除` を横2分割。名称候補に `厚み` を追加し、アクティブカードは背景色維持のまま枠線/ring を強調。
+- **幾何公差契約**: 入力値を **上限値** とし、合格範囲は **0〜上限値**。保存 payload は `nominalValue=上限値` / `lowerLimit=0` / `upperLimit=上限値`。候補は `0` / `0.001`〜`0.009` / `0.01` / `0.015` / `0.020` / `0.030` / `0.050`。
+- **CI**: GitHub Actions **`28910499400` success**（`lint-build-unit` · `e2e-smoke` · `api-db-and-infra` · `security-docker` · `e2e-tests`）。
+- **ローカル検証**: Web targeted tests **9 files / 65 tests passed**、`pnpm --filter @raspi-system/web lint`、`pnpm --filter @raspi-system/web build`、`pnpm --filter @raspi-system/shared-types build`、`git diff --check` success。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feature/assembly-lot-serial-workflow infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | HEAD | RECAP / 備考 |
+|--------|---------------|------|--------------|
+| `raspberrypi5` | **`20260708-103842-32504`** | **`04bb49fe`** | `ok=135` `changed=4` `failed=0` · Docker rebuild/restart · Prisma migrate/status · API health OK |
+| `raspi4-kensaku-stonebase01` | **`20260708-104449-7203`** | **`04bb49fe`** | `ok=130` `changed=10` `failed=0` · kiosk/status-agent OK · NFC ready · barcode ready after 1 retry |
+| `raspberrypi4` | **`20260708-110444-28905`** | **`04bb49fe`** | `ok=123` `changed=10` `failed=0` · kiosk/status-agent OK · NFC ready · kiosk UI reachable |
+| `raspi4-robodrill01` | **`20260708-110943-19113`** | **`04bb49fe`** | `ok=123` `changed=9` `failed=0` · kiosk/status-agent OK · NFC ready · kiosk UI reachable |
+| `raspi4-fjv60-80` | **`20260708-111331-2379`** | **`04bb49fe`** | `ok=123` `changed=9` `failed=0` · kiosk/status-agent OK · NFC ready · kiosk UI reachable |
+| `raspi4-sessaku-01` | **`20260708-111719-728`** | **`04bb49fe`** | `ok=123` `changed=9` `failed=0` · kiosk/status-agent OK · NFC ready · kiosk UI reachable |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。全6ホストの `git rev-parse --short HEAD` は **`04bb49fe`**。
+- **deployed Web smoke（保存なし）**: `/kiosk/part-measurement/inspection/create` で初期表示 `入力不足` + 保存 disabled、テスト用一時 PNG + 測定点 + 寸法入力で `未保存あり` + 保存 enabled、`全削除` / `厚み` / `↑ ↓ ← →` 表示、幾何 `平行度 0.005` で `上限値` + `合格範囲 0〜0.005` を確認。DB 保存は実施せず。
+- **実機（目視・タッチ）**: 2026-07-08 ユーザー確認OK。未完了なし。
 
 ### 補足（2026-07-07 · **キオスク負荷調整 API高速化（winner実体化）+ UI刷新** · **API + Web** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-load-balancing-perf-and-ui-refresh-2026-07-07}
 

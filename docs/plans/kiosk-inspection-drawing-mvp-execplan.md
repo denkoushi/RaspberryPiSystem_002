@@ -112,6 +112,12 @@ Maintained in accordance with `.agent/PLANS.md`.
   - 仕様4: 寸法公差のみ、基準値 blur 時に普通公差（削り加工: 0.5–6→±0.1, –30→±0.2, –120→±0.3, –400→±0.5, –1000→±0.8, –2000→±1.2, –4000→±2.0）を上下限が両方空のときだけ自動入力（`resolveInspectionDrawingGeneralToleranceForNominal`）。候補チップ/手入力は従来どおり。
   - 仕様5: 図面ライブラリ表にもテンプレ表と同じ1.5行目（`InspectionDrawingResourceCdChipList` へ共通化）でテンプレ作成済み資源CD chip を表示（`useInspectionDrawingResourceCdsByVisualId` がフィルタ非依存で visualTemplateId→資源CD map を構築）。両ペインの「資源CD」ラベル文字列は削除。
   - 検証: Web 全テスト **1313 PASS**、`tsc -b` PASS、web/shared-types lint PASS、API `pnpm build` PASS、web `pnpm build` PASS（Mac ローカル、2026-07-07）。本番デプロイ Run ID `20260707-185840-29897`（全7ホスト failed=0）· Phase12 **PASS 45 / WARN 0 / FAIL 0** · main CI `28856707755` success · 実機目視 2026-07-07 ユーザー確認OK（詳細は [deployment.md §2026-07-07](../guides/deployment.md#inspection-drawing-create-input-and-library-chips-2026-07-07)）。
+- [x] (2026-07-08) **検査図面 丸数字設定改善** — ブランチ `feature/assembly-lot-serial-workflow` · commit **`04bb49fe`**
+  - 仕様1: 保存ボタンは **変更あり + 入力有効 + 保存中でない + 閲覧版でない** ときだけ押せる。ツールバーは **保存 → 状態表示 → 保存済み帳票 → 一覧へ戻る**。未保存変更がある内部リンク・ブラウザ更新/終了は警告する。
+  - 仕様2: 右ペイン外枠 `lg:w-[17rem]` は維持。名称と基準値/上限値を1行ずつに分け、位置調整はタイトルなしの `↑ ↓ ← →` 1行配列にする。
+  - 仕様3: `この点を削除` と `全削除` を横2分割で配置し、`全削除` は確認後に全点・選択・OCR候補・ガイド状態をクリアする。アクティブカードは背景色を維持し、枠線/ring を強める。
+  - 仕様4: 名称候補に `厚み` を追加（初期種別は寸法公差）。幾何公差は **入力値 = 上限値**、合格範囲 **0〜上限値**、保存 payload は `nominalValue=上限値` / `lowerLimit=0` / `upperLimit=上限値`。
+  - 検証: Web targeted tests **9 files / 65 tests passed**、web lint/build、shared-types build、`git diff --check` PASS。GitHub Actions **`28910499400`** success。Pi5 + Pi4×5 deploy success（Run ID は [deployment.md §2026-07-08](../guides/deployment.md#inspection-drawing-marker-settings-save-state-2026-07-08)）· Phase12 **PASS 45 / WARN 0 / FAIL 0** · deployed Web smoke（保存なし）PASS · 2026-07-08 ユーザー実機検証OK。
 - [ ] (2026-07-01) **残り手動確認** — 本番DBを書き換える一括作成/まとめて改版/資源追加は実機で未実行。次回は検証用データまたは明示許可のある品番・資源CDで、作成→まとめて改版→個別分離→資源追加を画面操作で確認する。
 
 ## Surprises & Discoveries
@@ -282,6 +288,14 @@ Maintained in accordance with `.agent/PLANS.md`.
   Rationale: 今後テンプレート件数が増える前提では、横長1表より左右2表の方が1画面同時表示件数を増やせる。資源CDと操作ボタンを下段へ逃がすことで、品番・図面名・更新日時の見切れも抑えられるため
   Date/Author: 2026-07-02 / agent
 
+- Decision: 検査図面作成/改版の保存状態は、テンプレート内容の dirty snapshot と入力妥当性から判定する。比較対象から `testValue`、OCR状態、選択点、zoom、メッセージは除外し、一時保存は追加しない
+  Rationale: API/DB/履歴契約を変えず、ユーザーが保存操作を必要とする状態だけ明示するため
+  Date/Author: 2026-07-08 / agent
+
+- Decision: 幾何公差は `入力値 = 上限値`、`合格範囲 = 0〜上限値`、保存 payload は `nominalValue=上限値` / `lowerLimit=0` / `upperLimit=上限値`
+  Rationale: 平行度などの幾何公差は規格値そのものが許容上限であり、下限は常に 0 と扱う現場運用に合わせるため
+  Date/Author: 2026-07-08 / agent
+
 ## Outcomes & Retrospective
 
 - **評価用作成（互換）**: `/kiosk/part-measurement/inspection/create` は残置。評価用 API は UI 主導線から外した。
@@ -296,6 +310,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 - **複数資源兄弟グループ（2026-07-01）**: `feat/inspection-drawing-sibling-groups` · `580324b5` を全台デプロイ。既存DB/既存コンテナはローカル検証で変更せず、一時 Postgres で migration / integration / EXPLAIN を確認。実機では読み取りスモークまで実施し、本番データを書き換える一括作成系の画面操作は未実施。
 - **テンプレートペイン UX/密度改善（2026-07-01）**: `fix/inspection-drawing-template-pane-layout` · `b11e64ff` を全台デプロイ。テンプレート検索は自動検索 + `再読込` + `リセット`、カードは資源chip横一列・1行メタ情報・フォント拡大ボタンへ圧縮。実機 `/kiosk/part-measurement/inspection` で目視 OK。
 - **図面ライブラリ/テンプレート一覧 表形式化（2026-07-01）**: `fix/inspection-drawing-table-panes` · `2a6db097` でカードを廃止し、両ペインを内容幅ベースのコンパクト表に変更。API/DB契約は変更なし。CI `28520681342` success、全台デプロイ `20260701-223712-23737` failed=0、Phase12 **45/0/0**。
+- **丸数字設定改善（2026-07-08）**: `feature/assembly-lot-serial-workflow` · `04bb49fe` で保存状態制御、未保存警告、右ペイン `全削除`、`厚み`、幾何公差 0〜上限値を反映。Pi5 + Pi4×5 の HEAD は全台 `04bb49fe`、CI `28910499400` success、Phase12 **45/0/0**、ユーザー実機検証OK。
 - **未着手**: 複数個数図面UI、TIFF、順位ボード連携、Phase12 への専用 visual-library スモーク追加（任意）。
 
 ## 代表コミット
@@ -319,6 +334,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 | `580324b5` | `feat/inspection-drawing-sibling-groups` | 複数資源兄弟グループ・まとめて改版・資源追加・一覧集約 |
 | `b11e64ff` | `fix/inspection-drawing-template-pane-layout` | テンプレートペイン自動検索・再読込/リセット・カード密度改善 |
 | `2a6db097` | `fix/inspection-drawing-table-panes` | 図面ライブラリ/テンプレート一覧をカードからコンパクト表へ変更 |
+| `04bb49fe` | `feature/assembly-lot-serial-workflow` | 丸数字設定改善（保存状態・右ペイン・幾何公差 0〜上限値） |
 
 ## 主要ファイル（後続読者向け）
 
@@ -339,6 +355,8 @@ Maintained in accordance with `.agent/PLANS.md`.
 | 資源 select（共有） | `InspectionDrawingResourceCdSelect.tsx` · `inspectionDrawingKioskUi.ts` |
 | 作成/テンプレ編集 UI | `KioskInspectionDrawingCreatePage.tsx` |
 | 測定点パネル（共有） | `InspectionDrawingPointSettingsPanel.tsx` |
+| 保存状態/dirty 判定 | `inspectionDrawingCreateDraft.ts` |
+| 幾何公差 payload 変換 | `markerNumbering.ts`（`buildGeometricTolerancePointPatch` / `drawingPointToTemplateItemInput`） |
 | DEV プレビュー | `pages/dev/KioskInspectionDrawing*PreviewPage.tsx` · `KioskInspectionDrawingDevPreviewChrome.tsx` |
 | 記録図面編集 UI | `KioskInspectionDrawingEditPage.tsx` |
 | キャンバスズーム | `useInspectionDrawingZoom.ts` · `InspectionDrawingCanvasZoomControls.tsx` · `inspectionDrawingCanvasLayout.ts` |
@@ -390,4 +408,8 @@ Maintained in accordance with `.agent/PLANS.md`.
 - 自動（2026-07-01・Phase12 表形式化）: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**
 - 自動（2026-07-02・2表/1.5行密度改善）: `pnpm --filter @raspi-system/web test -- InspectionDrawingLibraryTemplateTable.test.tsx KioskInspectionDrawingVisualLibrarySection.test.tsx InspectionDrawingLibraryFilterBar.test.tsx useInspectionDrawingTemplateLibrary.test.ts` → **12 PASS**、`pnpm --filter @raspi-system/web build` PASS、`pnpm --filter @raspi-system/web lint` PASS
 - 手動（2026-07-02・Mac DEV 2表/1.5行密度改善）: `/dev/kiosk-inspection-drawing-library` を 2048x1108 で確認。図面ライブラリ表は縦に伸長、テンプレートは左右2表、資源CDと4操作ボタンは下段、ボタン右端は更新時刻の右端に揃う。本文 `scrollWidth` は viewport 内で横 overflow なし。React Router future warning と WebRTC signaling error は既存DEVログ。
+- 自動（2026-07-08・丸数字設定改善）: Web targeted tests **9 files / 65 tests passed**、`pnpm --filter @raspi-system/web lint` PASS、`pnpm --filter @raspi-system/web build` PASS、`pnpm --filter @raspi-system/shared-types build` PASS、`git diff --check` PASS。
+- CI（2026-07-08・丸数字設定改善）: GitHub Actions **`28910499400`** success（`lint-build-unit` · `api-db-and-infra` · `security-docker` · `e2e-smoke` · `e2e-tests`）。
+- 自動実機（2026-07-08・丸数字設定改善）: Pi5 + Pi4×5 順次デプロイ success（`raspberrypi5=20260708-103842-32504`、`raspi4-kensaku-stonebase01=20260708-104449-7203`、`raspberrypi4=20260708-110444-28905`、`raspi4-robodrill01=20260708-110943-19113`、`raspi4-fjv60-80=20260708-111331-2379`、`raspi4-sessaku-01=20260708-111719-728`）。全台 HEAD **`04bb49fe`**、Phase12 **PASS 45 / WARN 0 / FAIL 0**。
+- 手動/Playwright smoke（2026-07-08・丸数字設定改善）: deployed Web で保存せずに、初期 `入力不足` + 保存 disabled、測定点追加後 `未保存あり` + 保存 enabled、`全削除` / `厚み` / 1行 `↑ ↓ ← →`、幾何 `平行度 0.005` の `合格範囲 0〜0.005` を確認。ユーザー実機検証OK。
 - 手動（残り）: 本番DBを書き換える一括作成・まとめて改版・個別分離・資源追加は未確認。次回は検証用データを決めてから画面操作で確認する。

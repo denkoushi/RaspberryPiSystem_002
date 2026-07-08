@@ -26,6 +26,8 @@ import { useKioskProductionScheduleResources } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { formatResourceCdWithJapaneseNames } from '../../features/kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
 import {
+  buildGeometricTolerancePointPatch,
+  buildInspectionDrawingCreateDirtySnapshot,
   drawingPointToTemplateItemInput,
   mergeInspectionDrawingPointPatch,
   InspectionDrawingCanvas,
@@ -48,13 +50,17 @@ import {
   inspectionDrawingBlobFetchPath,
   inspectionDrawingCanvasImageUrl,
   inspectionDrawingHasImageSource,
+  inspectionDrawingCreateDirtySnapshotsEqual,
   parseInspectionDrawingSourceTemplateIdFromSearch,
   parseInspectionDrawingVisualTemplateIdFromSearch,
   normalizeUniqueInspectionDrawingResourceCds,
+  pointUsesGeometricTolerance,
   resolveInspectionDrawingCreateKeyCollisionForResources,
   resolveInspectionDrawingCreateSaveBlockReason,
+  resolveInspectionDrawingCreateSaveStatus,
   suggestInspectionDrawingTemplateName,
   templateToCreateDraft,
+  useInspectionDrawingUnsavedChangesGuard
 } from '../../features/part-measurement/inspection-drawing';
 import { InspectionDrawingResourceCdMultiSelect } from '../../features/part-measurement/inspection-drawing/InspectionDrawingResourceCdMultiSelect';
 import { INSPECTION_DRAWING_VISUAL_PICKER_LIMIT } from '../../features/part-measurement/inspection-drawing/inspectionDrawingVisualLibraryConstants';
@@ -76,6 +82,7 @@ import { parseKioskInspectionDrawingReturnFromLocation } from './kioskInspection
 
 import type {
   InspectionDrawingCreateDraftForm,
+  InspectionDrawingCreateDirtySnapshot,
   InspectionDrawingSourceTemplateDraft,
   InspectionDrawingVisualSource
 } from '../../features/part-measurement/inspection-drawing/inspectionDrawingCreateDraft';
@@ -148,6 +155,8 @@ export function KioskInspectionDrawingCreatePage() {
   const [measurementLabelSettings, setMeasurementLabelSettings] = useState<
     InspectionDrawingMeasurementLabelSetting[]
   >(() => buildDefaultInspectionDrawingMeasurementLabelSettings());
+  const [savedSnapshot, setSavedSnapshot] =
+    useState<InspectionDrawingCreateDirtySnapshot | null>(null);
   const { zoom, zoomIn, zoomOut, fitToView, resetZoom, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
 
   const {
@@ -329,6 +338,10 @@ export function KioskInspectionDrawingCreatePage() {
       }),
     [fhincd, selectedVisualLabel]
   );
+  const effectiveTemplateName = useMemo(
+    () => templateName.trim() || suggestedTemplateName || (fhincd.trim() ? `検査図面 ${fhincd.trim()}` : ''),
+    [fhincd, suggestedTemplateName, templateName]
+  );
 
   const hasSaveReadyDrawing =
     visualSource === 'pickExisting'
@@ -340,8 +353,12 @@ export function KioskInspectionDrawingCreatePage() {
   const pointsValid = useMemo(
     () =>
       points.length > 0 &&
-      points.every((pt) => pt.name.trim().length > 0 && !('error' in toleranceBoundsFromPoint(pt))),
-    [points]
+      points.every(
+        (pt) =>
+          pt.name.trim().length > 0 &&
+          !('error' in toleranceBoundsFromPoint(pt, { measurementLabelSettings }))
+      ),
+    [measurementLabelSettings, points]
   );
 
   const selfInspectionPayloadPreview = useMemo(
@@ -361,6 +378,63 @@ export function KioskInspectionDrawingCreatePage() {
     keyCollision,
     saveBlockedByPreview
   });
+
+  const snapshotVisualTemplateId =
+    visualSource === 'pickExisting'
+      ? selectedVisualTemplateId
+      : visualSource === 'unselected'
+        ? template?.visualTemplateId ?? null
+        : null;
+  const currentSnapshot = useMemo(
+    () =>
+      buildInspectionDrawingCreateDirtySnapshot({
+        templateName: effectiveTemplateName,
+        fhincd,
+        resourceCds: selectedResourceCds,
+        processGroup,
+        visualSource,
+        visualTemplateId: snapshotVisualTemplateId,
+        uploadPending: visualSource === 'upload' && Boolean(saveFile || hasPendingLocalSelection),
+        selfInspectionMode,
+        selfInspectionFixedCount,
+        groupSaveMode,
+        points
+      }),
+    [
+      effectiveTemplateName,
+      fhincd,
+      groupSaveMode,
+      hasPendingLocalSelection,
+      points,
+      processGroup,
+      saveFile,
+      selectedResourceCds,
+      selfInspectionFixedCount,
+      selfInspectionMode,
+      snapshotVisualTemplateId,
+      visualSource
+    ]
+  );
+  const hasNewDraftContent =
+    effectiveTemplateName.trim().length > 0 ||
+    fhincd.trim().length > 0 ||
+    selectedResourceCds.length > 0 ||
+    points.length > 0 ||
+    Boolean(snapshotVisualTemplateId) ||
+    visualSource !== 'unselected' ||
+    selfInspectionMode !== 'full' ||
+    selfInspectionFixedCount.trim().length > 0;
+  const hasUnsavedChanges = savedSnapshot
+    ? !inspectionDrawingCreateDirtySnapshotsEqual(savedSnapshot, currentSnapshot)
+    : hasNewDraftContent;
+  const saveStatus = resolveInspectionDrawingCreateSaveStatus({
+    contentReadOnly,
+    busy,
+    saveBlockReason,
+    dirty: hasUnsavedChanges
+  });
+
+  useInspectionDrawingUnsavedChangesGuard(!contentReadOnly && !busy && hasUnsavedChanges);
 
   const drawingReplacePendingRef = useRef(false);
   const prevSourceTemplateIdRef = useRef<string | null>(null);
@@ -390,6 +464,14 @@ export function KioskInspectionDrawingCreatePage() {
 
   const applyLoadedTemplate = useCallback(
     (loaded: PartMeasurementTemplateDto) => {
+      const loadedProcessGroup: PartMeasurementProcessGroup =
+        loaded.processGroup === 'grinding' ? 'grinding' : 'cutting';
+      const loadedPoints = loaded.items.map((item) => templateItemToDrawingPoint(item));
+      const loadedSelfInspectionFixedCount = mapTemplateFixedCountToFormString(
+        loaded.selfInspectionMode,
+        loaded.selfInspectionFixedCount,
+        loaded.selfInspectionSampleSize
+      );
       setTemplate(loaded);
       setTemplateName(loaded.name);
       setTemplateNameAutoMode(false);
@@ -398,19 +480,13 @@ export function KioskInspectionDrawingCreatePage() {
       setResourceCds([loaded.resourceCd]);
       setGroupSaveMode(loaded.siblingGroupId ? 'group' : 'single');
       setResourceAddCds([]);
-      setProcessGroup(loaded.processGroup === 'grinding' ? 'grinding' : 'cutting');
-      setPoints(loaded.items.map((item) => templateItemToDrawingPoint(item)));
+      setProcessGroup(loadedProcessGroup);
+      setPoints(loadedPoints);
       setSelectedPointId(loaded.items[0]?.id ?? null);
       setOcrCandidatesByPointId({});
       setServerDrawingPath(loaded.visualTemplate?.drawingImageRelativePath ?? null);
       setSelfInspectionMode(loaded.selfInspectionMode);
-      setSelfInspectionFixedCount(
-        mapTemplateFixedCountToFormString(
-          loaded.selfInspectionMode,
-          loaded.selfInspectionFixedCount,
-          loaded.selfInspectionSampleSize
-        )
-      );
+      setSelfInspectionFixedCount(loadedSelfInspectionFixedCount);
       if (loaded.visualTemplateId?.trim()) {
         setVisualSource('pickExisting');
         setSelectedVisualTemplateId(loaded.visualTemplateId);
@@ -420,6 +496,21 @@ export function KioskInspectionDrawingCreatePage() {
         setSelectedVisualTemplateId(null);
         setSelectedVisualLabel(null);
       }
+      setSavedSnapshot(
+        buildInspectionDrawingCreateDirtySnapshot({
+          templateName: loaded.name,
+          fhincd: loaded.fhincd,
+          resourceCds: [loaded.resourceCd],
+          processGroup: loadedProcessGroup,
+          visualSource: loaded.visualTemplateId?.trim() ? 'pickExisting' : 'unselected',
+          visualTemplateId: loaded.visualTemplateId?.trim() ? loaded.visualTemplateId : null,
+          uploadPending: false,
+          selfInspectionMode: loaded.selfInspectionMode,
+          selfInspectionFixedCount: loadedSelfInspectionFixedCount,
+          groupSaveMode: loaded.siblingGroupId ? 'group' : 'single',
+          points: loadedPoints
+        })
+      );
       resetLocalPreview();
     },
     [resetLocalPreview]
@@ -444,6 +535,7 @@ export function KioskInspectionDrawingCreatePage() {
     setSelectedVisualTemplateId(null);
     setSelectedVisualLabel(null);
     setServerDrawingPath(null);
+    setSavedSnapshot(null);
     resetLocalPreview();
   }, [resetLocalPreview]);
 
@@ -461,6 +553,7 @@ export function KioskInspectionDrawingCreatePage() {
       setOcrCandidatesByPointId({});
       setSelfInspectionMode(draft.selfInspectionMode);
       setSelfInspectionFixedCount(draft.selfInspectionFixedCount);
+      setSavedSnapshot(null);
       if (draft.visualTemplateId && draft.drawingImageRelativePath) {
         setVisualSource('pickExisting');
         setSelectedVisualTemplateId(draft.visualTemplateId);
@@ -485,6 +578,7 @@ export function KioskInspectionDrawingCreatePage() {
       setSelectedVisualLabel(visual.name);
       setServerDrawingPath(visual.drawingImageRelativePath);
       setOcrCandidatesByPointId({});
+      setSavedSnapshot(null);
     },
     [resetLocalPreview]
   );
@@ -847,6 +941,15 @@ export function KioskInspectionDrawingCreatePage() {
     guidedTrial.resetTrialState();
   };
 
+  const removeAllPoints = () => {
+    if (contentReadOnly || points.length === 0) return;
+    if (!confirmVisualChange('すべての測定点を削除します。続行しますか？')) return;
+    setPoints([]);
+    setSelectedPointId(null);
+    setOcrCandidatesByPointId({});
+    guidedTrial.resetTrialState();
+  };
+
   const handleActivate = async () => {
     if (!templateId) return;
     setBusy(true);
@@ -883,9 +986,13 @@ export function KioskInspectionDrawingCreatePage() {
       setMessage('図面のプレビュー変換が完了するまで保存できません。');
       return;
     }
+    if (!hasUnsavedChanges) {
+      setMessage('変更はありません。');
+      return;
+    }
     const f = fhincd.trim();
     const targetResourceCds = selectedResourceCds;
-    const name = templateName.trim() || suggestedTemplateName || `検査図面 ${f}`;
+    const name = effectiveTemplateName || `検査図面 ${f}`;
     if (!f || targetResourceCds.length === 0) {
       setMessage('品番と資源CDを入力してください。');
       return;
@@ -899,7 +1006,7 @@ export function KioskInspectionDrawingCreatePage() {
         setMessage('すべての測定点に名称を入れてください。');
         return;
       }
-      const bounds = toleranceBoundsFromPoint(pt);
+      const bounds = toleranceBoundsFromPoint(pt, { measurementLabelSettings });
       if ('error' in bounds) {
         setMessage(`「${pt.name}」: ${bounds.error}`);
         return;
@@ -967,7 +1074,9 @@ export function KioskInspectionDrawingCreatePage() {
         return;
       }
 
-      const items = points.map((pt, idx) => drawingPointToTemplateItemInput(pt, idx));
+      const items = points.map((pt, idx) =>
+        drawingPointToTemplateItemInput(pt, idx, { measurementLabelSettings })
+      );
       if (isEditing && templateId) {
         let saved: PartMeasurementTemplateDto;
         if (template?.siblingGroupId && groupSaveMode === 'group') {
@@ -1116,8 +1225,7 @@ export function KioskInspectionDrawingCreatePage() {
     setSelectedPointId(id);
   };
 
-  const saveDisabled =
-    saveBlockReason !== null;
+  const saveDisabled = saveBlockReason !== null || !hasUnsavedChanges;
 
   return (
     <div className={inspectionDrawingCreatePageRootClassName}>
@@ -1182,6 +1290,7 @@ export function KioskInspectionDrawingCreatePage() {
             onSave={contentReadOnly ? undefined : () => void handleSave()}
             saveDisabled={saveDisabled}
             saveBusy={busy}
+            saveStatus={saveStatus}
             savedPrintPath={
               INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED && isEditing && templateId
                 ? kioskInspectionDrawingTemplatePrintPath(templateId)
@@ -1326,6 +1435,7 @@ export function KioskInspectionDrawingCreatePage() {
               updatePoint(selectedPoint.id, patch);
             }}
             onRemovePoint={contentReadOnly ? undefined : removeSelected}
+            onRemoveAllPoints={contentReadOnly ? undefined : removeAllPoints}
             onTestValueChange={(v) => {
               if (!selectedPoint) return;
               updatePoint(selectedPoint.id, { testValue: v });
@@ -1344,7 +1454,12 @@ export function KioskInspectionDrawingCreatePage() {
             measurementLabelSettings={measurementLabelSettings}
             onApplyOcrCandidate={(valueText) => {
               if (!selectedPoint) return;
-              updatePoint(selectedPoint.id, { nominalRaw: valueText });
+              updatePoint(
+                selectedPoint.id,
+                pointUsesGeometricTolerance(selectedPoint, { measurementLabelSettings })
+                  ? buildGeometricTolerancePointPatch(valueText)
+                  : { nominalRaw: valueText }
+              );
             }}
           />
         </aside>

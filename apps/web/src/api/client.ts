@@ -31,6 +31,7 @@ export type {
   AssemblyProcedureDocumentSummaryDto,
   AssemblyProcedureOrderDto,
   AssemblyProcedureSequenceDto,
+  AssemblyLotSummaryDto,
   AssemblySeibanCandidateDto,
   AssemblyTemplateDto,
   AssemblyTemplateSummaryDto,

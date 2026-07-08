@@ -41,8 +41,16 @@ export type AssemblyStartInput = {
   clientDeviceNameSnapshot?: string | null;
 };
 
+export type AssemblyRegisteredSerialStartInput = {
+  lotId: string;
+  lotSerialId: string;
+  clientDeviceId?: string | null;
+  clientDeviceNameSnapshot?: string | null;
+};
+
 export type AssemblyWorkSessionSummary = {
   id: string;
+  lotSerialId: string | null;
   templateId: string;
   status: string;
   productNo: string;
@@ -162,6 +170,14 @@ function recentlyAcceptedDuplicate(session: AssemblyWorkSessionDetail, now: Date
   return now.getTime() - last.recordedAt.getTime() < DUPLICATE_SUPPRESSION_MS;
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'P2002');
+}
+
+function duplicateSerialError(serialNo: string): ApiError {
+  return new ApiError(409, `シリアルNo. ${serialNo} は既に登録済みです`);
+}
+
 export class AssemblyWorkSessionService {
   async start(input: AssemblyStartInput): Promise<AssemblyWorkSessionDetail> {
     const productNo = required(normalizeAssemblyUpperIdentifier(input.productNo), '製番').slice(0, 120);
@@ -172,34 +188,114 @@ export class AssemblyWorkSessionService {
     });
     if (!template) throw new ApiError(404, '有効な組立テンプレートが見つかりません');
 
-    const existing = await prisma.assemblyWorkSession.findFirst({
-      where: { productNo, serialNo, status: 'IN_PROGRESS' },
-      orderBy: [{ updatedAt: 'desc' }, { startedAt: 'desc' }],
-      include: assemblyWorkSessionDetailInclude
-    });
-    if (existing) {
-      return existing;
-    }
-
     const first = firstPosition(template);
     const nameplateNo = (input.nameplateNo?.trim() || serialNo).slice(0, 120);
-    return prisma.assemblyWorkSession.create({
-      data: {
-        templateId: template.id,
-        productNo,
-        serialNo,
-        nameplateNo,
-        operatorEmployeeId: input.operatorEmployeeId?.trim() || null,
-        operatorNameSnapshot: required(input.operatorNameSnapshot, '作業者名').slice(0, 120),
-        targetUnit: required(normalizeAssemblyUpperIdentifier(input.targetUnit), '機種名').slice(0, 120),
-        torqueWrenchId: required(input.torqueWrenchId, '使用トルクレンチ').slice(0, 120),
-        clientDeviceId: input.clientDeviceId ?? null,
-        clientDeviceNameSnapshot: input.clientDeviceNameSnapshot ?? null,
-        currentAreaId: first.areaId,
-        currentBoltId: first.boltId
-      },
-      include: assemblyWorkSessionDetailInclude
-    });
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const registry = await tx.assemblySerialRegistry.findUnique({
+          where: { serialNo },
+          include: { lotSerial: true }
+        });
+        let registryId = registry?.id ?? null;
+        if (registry) {
+          const existing = await tx.assemblyWorkSession.findUnique({
+            where: { serialRegistryId: registry.id },
+            include: assemblyWorkSessionDetailInclude
+          });
+          if (existing) {
+            if (existing.status === 'IN_PROGRESS' && existing.productNo === productNo) return existing;
+            throw duplicateSerialError(serialNo);
+          }
+          if (registry.lotSerial) throw duplicateSerialError(serialNo);
+        } else {
+          const createdRegistry = await tx.assemblySerialRegistry.create({ data: { serialNo } });
+          registryId = createdRegistry.id;
+        }
+        if (!registryId) throw duplicateSerialError(serialNo);
+
+        return tx.assemblyWorkSession.create({
+          data: {
+            templateId: template.id,
+            serialRegistryId: registryId,
+            productNo,
+            serialNo,
+            nameplateNo,
+            operatorEmployeeId: input.operatorEmployeeId?.trim() || null,
+            operatorNameSnapshot: required(input.operatorNameSnapshot, '作業者名').slice(0, 120),
+            targetUnit: required(normalizeAssemblyUpperIdentifier(input.targetUnit), '機種名').slice(0, 120),
+            torqueWrenchId: required(input.torqueWrenchId, '使用トルクレンチ').slice(0, 120),
+            clientDeviceId: input.clientDeviceId ?? null,
+            clientDeviceNameSnapshot: input.clientDeviceNameSnapshot ?? null,
+            currentAreaId: first.areaId,
+            currentBoltId: first.boltId
+          },
+          include: assemblyWorkSessionDetailInclude
+        });
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) throw duplicateSerialError(serialNo);
+      throw error;
+    }
+  }
+
+  async startRegisteredSerial(input: AssemblyRegisteredSerialStartInput): Promise<AssemblyWorkSessionDetail> {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const lotSerial = await tx.assemblyLotSerial.findFirst({
+          where: { id: input.lotSerialId, lotId: input.lotId },
+          include: {
+            serialRegistry: true,
+            workSession: { include: assemblyWorkSessionDetailInclude },
+            lot: {
+              include: {
+                template: {
+                  include: assemblyTemplateDetailInclude
+                }
+              }
+            }
+          }
+        });
+        if (!lotSerial) throw new ApiError(404, 'ロット内シリアルが見つかりません');
+
+        if (lotSerial.workSession) {
+          if (lotSerial.workSession.status === 'IN_PROGRESS') return lotSerial.workSession;
+          throw duplicateSerialError(lotSerial.serialRegistry.serialNo);
+        }
+
+        const existing = await tx.assemblyWorkSession.findUnique({
+          where: { serialRegistryId: lotSerial.serialRegistryId },
+          include: assemblyWorkSessionDetailInclude
+        });
+        if (existing) {
+          if (existing.status === 'IN_PROGRESS' && existing.lotSerialId === lotSerial.id) return existing;
+          throw duplicateSerialError(lotSerial.serialRegistry.serialNo);
+        }
+
+        const first = firstPosition(lotSerial.lot.template);
+        return tx.assemblyWorkSession.create({
+          data: {
+            templateId: lotSerial.lot.templateId,
+            serialRegistryId: lotSerial.serialRegistryId,
+            lotSerialId: lotSerial.id,
+            productNo: lotSerial.lot.productNo,
+            serialNo: lotSerial.serialRegistry.serialNo,
+            nameplateNo: lotSerial.serialRegistry.serialNo,
+            operatorEmployeeId: lotSerial.lot.operatorEmployeeId,
+            operatorNameSnapshot: lotSerial.lot.operatorNameSnapshot,
+            targetUnit: lotSerial.lot.targetUnit,
+            torqueWrenchId: lotSerial.lot.torqueWrenchId,
+            clientDeviceId: input.clientDeviceId ?? lotSerial.lot.clientDeviceId,
+            clientDeviceNameSnapshot: input.clientDeviceNameSnapshot ?? lotSerial.lot.clientDeviceNameSnapshot,
+            currentAreaId: first.areaId,
+            currentBoltId: first.boltId
+          },
+          include: assemblyWorkSessionDetailInclude
+        });
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) throw new ApiError(409, 'このシリアルNo.は既に作業に使用されています');
+      throw error;
+    }
   }
 
   async getDetail(id: string): Promise<AssemblyWorkSessionDetail | null> {
@@ -272,6 +368,7 @@ export class AssemblyWorkSessionService {
       const currentArea = session.template.areas.find((area) => area.id === session.currentAreaId) ?? current?.area ?? null;
       return {
         id: session.id,
+        lotSerialId: session.lotSerialId,
         templateId: session.templateId,
         status: session.status,
         productNo: session.productNo,
