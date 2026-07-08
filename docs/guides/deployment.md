@@ -10,6 +10,18 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-08 · **組立トップ ロット数手入力フォールバック + キー正規化** · **Web only** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-assembly-lot-quantity-manual-fallback-2026-07-08}
+
+- **変更概要（正本）**: [KB-398](../knowledge-base/KB-398-assembly-lot-quantity-source-gap.md) · main **`9afc8f29`**。実装コミット **`63427ad7`**（fix マージ `6401d6a3`）+ KB `cf2bce74`（マージ `9afc8f29`）。生産実績Raw未登録の製番で組立トップのロット登録が完全ブロックされる問題への手入力フォールバック。**API / DB / Prisma migration 変更なし**。
+- **CI（`9afc8f29`）**: main push CI **`28930061845` success** · CodeQL **`28930061895` success** · Secret scan **`28930061962` success** · Pages success。
+- **ローカル検証**: web vitest **265 files / 1337 tests passed** · lint · build 成功（2026-07-08）。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+  - **Run ID `20260708-180942-18680`** · remote log `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260708-180942-18680.log` · summary success true · exitCode 0 · PLAY RECAP 全7ホスト（raspberrypi5 ok=135 changed=4 / raspberrypi4 ok=123 changed=10 / raspi4-robodrill01 ok=123 changed=9 / raspi4-fjv60-80 ok=123 changed=9 / raspi4-kensaku-stonebase01 ok=130 changed=10 / raspi4-sessaku-01 ok=123 changed=9 / raspberrypi3 ok=112 changed=22）すべて `failed=0 / unreachable=0`。Pi5 repo HEAD **`9afc8f29`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**（2026-07-08 JST）。
+- **smoke**: `/kiosk/assembly` HTTP **200**。配信バンドル `/assets/index-DxYaeHkM.js` に新文言「生産実績からロット数を取得できませんでした」「ロット数（手入力）」を確認。
+- **本番データ切り分け（read-only SQL、Pi5 `docker-db-1`）**: `ProductionScheduleActualHoursRaw` に `BA1S7317` は **0行**（根本原因確定）。`CsvDashboardRow` は 232 行、supplement `plannedQuantity` の distinct は **{5, 10}**（部品×工順で数量が混在し自動フォールバック不可の判断も妥当と確認）。
+- **実機（目視・タッチ）**: 未実施（次回現場確認時: BA1S7317 等の実績未登録製番で「ロット数（手入力）」欄が表示され、手入力→シリアル入力→ロット登録まで進めること）。
+
 ### 補足（2026-07-08 · **検査図面 丸数字設定改善（保存状態・右ペイン・幾何公差）** · **Web + shared-types** · **Pi5 + Pi4×5 反映済 / Pi3 対象外**） {#inspection-drawing-marker-settings-save-state-2026-07-08}
 
 - **変更概要（正本）**: [KB-320 §丸数字設定改善](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-丸数字設定改善-2026-07-08) · [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md) · ブランチ **`feature/assembly-lot-serial-workflow`** · 実装コミット **`04bb49fe`**（`feat: improve inspection drawing marker settings`）。**API / DB / Prisma migration 変更なし**。
