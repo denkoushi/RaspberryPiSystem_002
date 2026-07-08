@@ -19,12 +19,13 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 - [x] 先行デプロイ（Web のみ）— **Pi5** + **raspi4-kensaku-stonebase01**
 - [x] KB / Runbook / deployment / EXEC_PLAN 反映
 - [x] **`main` マージ**（2026-06-03）
-- [ ] 残 Pi4×3 ロールアウト（`raspberrypi4` · `raspi4-robodrill01` · `raspi4-fjv60-80`）
+- [x] (2026-07-08) 旧先行分の未展開 Pi4×3 + 追加 Pi4 `raspi4-sessaku-01` も現行 **`04bb49fe`** へ収束（Pi5 + Pi4×5 反映済）
 - [x] **レイアウト改善（作成/改版）** — 別 ExecPlan [inspection-drawing-create-layout-and-return-nav.md](./inspection-drawing-create-layout-and-return-nav.md) · **`5274f1ee`** · Pi5 Detach **`20260603-211122-29648`**
 - [x] (2026-07-06) 名称ごとの **寸法公差 / 幾何公差** 紐づけ設定と上下限公差候補を追加（`feat/inspection-drawing-tolerance-kind-settings` · `20e90160`）
 - [x] (2026-07-06) CI **`28758193791`** success、Deploy **`20260706-082903-1300`** success、Phase12 **45/0/0**
 - [x] (2026-07-06) 公差入力の実機フィードバック対応（幾何公差 `0` 追加、候補再選択、入力文字色、名称 placeholder）を追加（`feat/inspection-drawing-tolerance-input-usability-fixes` · `becb6e7c`）
 - [x] (2026-07-06) CI **`28760895857`** success、Deploy **`20260706-100018-28681`** success、Phase12 **45/0/0**
+- [x] (2026-07-08) 丸数字設定改善（保存状態・全削除・`厚み`・幾何公差 0〜上限値）— **`04bb49fe`**、CI **`28910499400`** success、Pi5 + Pi4×5 deploy success、Phase12 **45/0/0**、実機検証OK
 
 ## Decision Log
 
@@ -48,6 +49,10 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
   Rationale: 実機検証で幾何公差の下限・上限に `0` を選ぶ運用が必要だった。2026-07-06 / agent
 - Decision: 候補入力は選択済み候補の再フォーカス時に一時的に空にし、候補を選ばず blur した場合は元値を復元する。
   Rationale: 実機ブラウザで同じ値が残ったままだと datalist の再選択がしにくく、手入力契約も維持する必要がある。2026-07-06 / agent
+- Decision: 作成/改版の保存ボタンは「変更あり + 入力有効 + 保存中でない + 閲覧版でない」のときだけ enabled とし、一時保存は追加しない。状態表示は既存1行ツールバー内の保存ボタン右、一覧へ戻る左に置き、未保存の内部リンク遷移・ブラウザ更新/終了だけ警告する。
+  Rationale: 既存の改版保存を確定保存として保ち、履歴・API 契約を変えずに「押す必要がある時だけ押せる」状態へ寄せる。2026-07-08 / agent
+- Decision: 幾何公差は入力値を上限値とし、合格範囲を `0〜上限値` に統一する。保存 payload は `nominalValue=上限値` / `lowerLimit=0` / `upperLimit=上限値`。
+  Rationale: 平行度 `0.005` や `0.01` など、幾何公差の現場表記は上限のみを規格値として扱うため。2026-07-08 / agent
 
 ## Surprises & Discoveries
 
@@ -108,6 +113,13 @@ pnpm --filter @raspi-system/web build
 - `./scripts/update-all-clients.sh feat/inspection-drawing-tolerance-input-usability-fixes infrastructure/ansible/inventory.yml --detach --follow` → **Run ID `20260706-100018-28681`**、summary success true、exitCode 0、全 7 ホスト `failed=0 / unreachable=0`。
 - `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
 
+2026-07-08 丸数字設定改善 追加検証:
+
+- Web targeted tests **9 files / 65 tests passed**、`pnpm --filter @raspi-system/web lint`、`pnpm --filter @raspi-system/web build`、`pnpm --filter @raspi-system/shared-types build`、`git diff --check` success。
+- GitHub Actions CI **`28910499400`** — 全ジョブ success（`lint-build-unit` · `api-db-and-infra` · `security-docker` · `e2e-smoke` · `e2e-tests`）。
+- Pi5 + Pi4×5 順次デプロイ: `raspberrypi5=20260708-103842-32504`、`raspi4-kensaku-stonebase01=20260708-104449-7203`、`raspberrypi4=20260708-110444-28905`、`raspi4-robodrill01=20260708-110943-19113`、`raspi4-fjv60-80=20260708-111331-2379`、`raspi4-sessaku-01=20260708-111719-728`。全台 `failed=0`、HEAD **`04bb49fe`**。
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。deployed Web smoke は保存なしで、保存状態表示・`全削除`・`厚み`・1行 `↑ ↓ ← →`・幾何 `平行度 0.005` の `合格範囲 0〜0.005` を確認。2026-07-08 ユーザー実機検証OK。
+
 ## デプロイ（先行検証 2026-06-03）
 
 | ホスト | Detach Run ID | HEAD | RECAP |
@@ -122,5 +134,6 @@ pnpm --filter @raspi-system/web build
 - **CI**: GitHub Actions **`26867660917`** — 全ジョブ success（`lint-build-unit` · `e2e-smoke` · `api-db-and-infra` · `security-docker` · `e2e-tests`）。
 - **名称・公差種別設定（2026-07-06）**: GitHub Actions **`28758193791`** success、Deploy **`20260706-082903-1300`** success、Phase12 **45/0/0**。
 - **公差入力 実機フィードバック対応（2026-07-06）**: GitHub Actions **`28760895857`** success、Deploy **`20260706-100018-28681`** success、Phase12 **45/0/0**。
+- **丸数字設定改善（2026-07-08）**: GitHub Actions **`28910499400`** success、Pi5 + Pi4×5 deploy success、Phase12 **45/0/0**、ユーザー実機検証OK。
 - **契約**: 保存 API は従来どおり絶対上下限。UI のみ符号付き offset 表示。
 - **残課題**: キオスク検査図面作成画面の **図面表示面積**（ヘッダー・一覧・余白）。プレビュー: `docs/plans/kiosk-inspection-drawing-layout-preview.html`（HTML のみ・未実装）。

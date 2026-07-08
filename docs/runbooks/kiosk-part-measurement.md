@@ -152,7 +152,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | PLAY RECAP | `failed=0` · Docker `api`/`web` 再起動 |
 | Phase12 | **43/0/0** |
 | Pi5 キオスク目視 | **未記録**（手動 1–5 を実施） |
-| Pi4×4 | **未** |
+| Pi4×5（現行） | 2026-07-08 丸数字設定改善ロールアウトで全台 HEAD **`04bb49fe`** へ収束。Phase12 **45/0/0** |
 
 **API スモーク（Tailscale）**
 
@@ -268,7 +268,7 @@ docker rm -f <temporary-container-name>
 | PLAY RECAP | `failed=0` · Docker `api`/`web` 再起動 |
 | Phase12 | **41 PASS / WARN 1 / FAIL 1**（`raspberrypi4` SSH タイムアウトは既知） |
 | Pi5 キオスク目視 | **OK**（PDF プレビュー表示 · 保存 · 再読込座標一致 · 変換中保存不可） |
-| Pi4×4 | **未** — `main` 反映後 `--limit` 1 台ずつ（SPA は Pi5 配信のため多くは強制リロードで足りるが、検査図面系は Pi5 OK 後に順次が標準） |
+| Pi4×5（現行） | 2026-07-08 丸数字設定改善ロールアウトで全台 HEAD **`04bb49fe`** へ収束。Phase12 **45/0/0** |
 
 **preview API 自動確認（Tailscale · 2026-06-02）**:
 
@@ -376,27 +376,37 @@ curl -sS -H "x-client-key: <kiosk-client-key>" \
 
 正本: [KB-320 §十字ボタン](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [ExecPlan](../plans/inspection-drawing-point-nudge-execplan.md) · [deployment §2026-06-05](../guides/deployment.md#kiosk-inspection-drawing-point-nudge-2026-06-05) · ブランチ **`feat/inspection-drawing-point-nudge`** · **`da9d2675`** · CI **`26996602603`** · **Web のみ**
 
-### デプロイ（Web のみ · Pi5 + stonebase 反映済 · 2026-06-05）
+### デプロイ（Web のみ · Pi5 + Pi4×5 反映済 · 2026-07-08 現行 UI）
 
 1. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
-2. `./scripts/update-all-clients.sh feat/inspection-drawing-point-nudge infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-3. Pi5 目視 OK 後、`--limit raspi4-kensaku-stonebase01`（先行実機）→ 残 Pi4×3 を 1 台ずつ（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80`）。
+2. historical: `./scripts/update-all-clients.sh feat/inspection-drawing-point-nudge infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+3. 2026-07-08 現行 UI は `feature/assembly-lot-serial-workflow` / **`04bb49fe`** で Pi5 + Pi4×5 へ反映済み。追加反映時は同じく `--limit <host>` で 1 台ずつ。
 4. 各 Pi4 **強制リロード**（§6.6.4）。`kiosk-browser` 再起動のみで足りることもあるが、旧 bundle 残存時は必須。
 
 | ホスト | Detach Run ID | 実機 |
 |--------|---------------|------|
 | `raspberrypi5` | **`20260605-141538-27072`** | web 再ビルド · **`da9d2675`** |
 | `raspi4-kensaku-stonebase01` | **`20260605-142229-22757`** | **実機 OK** |
-| Pi4×3 | — | **未** |
+| `raspberrypi5`（現行 UI） | **`20260708-103842-32504`** | **`04bb49fe`** · ユーザー実機検証OK |
+| `raspi4-kensaku-stonebase01`（現行 UI） | **`20260708-104449-7203`** | **`04bb49fe`** |
+| `raspberrypi4`（現行 UI） | **`20260708-110444-28905`** | **`04bb49fe`** |
+| `raspi4-robodrill01`（現行 UI） | **`20260708-110943-19113`** | **`04bb49fe`** |
+| `raspi4-fjv60-80`（現行 UI） | **`20260708-111331-2379`** | **`04bb49fe`** |
+| `raspi4-sessaku-01`（現行 UI） | **`20260708-111719-728`** | **`04bb49fe`** |
+
+2026-07-08 現行 UI 反映後の Phase12 は **PASS 45 / WARN 0 / FAIL 0**。
 
 ### 手動確認（作成/改版）
 
 1. **検査図面** 新規/改版を開き、ツールバー **「点を配置」** を選択。
 2. 図面上の丸数字または右ペイン一覧で測定点を選択。
-3. 右ペイン **「測定点の位置調整」**（十字ボタン）がタイトル **上** に表示されること。
-4. ↑↓←→ でマーカーが **約 1–2px 刻み** で動くこと。端（0/1）でそれ以上はみ出さないこと。
-5. **テスト入力** / **ガイド試行** に切り替えると設定パネル（十字ボタン含む）が **非表示** になること。
+3. 右ペイン上部の `↑ ↓ ← →` 1行ボタンでマーカーが **約 1–2px 刻み** で動くこと。タイトル「位置」は表示されない。
+4. 端（0/1）でそれ以上はみ出さないこと。
+5. **テスト入力** / **ガイド試行** に切り替えると設定パネル（方向ボタン含む）が **非表示** になること。
 6. 保存後、再読込でも位置が維持されること。
+7. 保存ボタンは `未保存あり` かつ入力有効のときだけ押せ、保存済み・入力不足・閲覧版では押せないこと。
+8. `全削除` は確認後に全点を削除し、キャンセル時は変更しないこと。
+9. 幾何公差ラベル（例: `平行度`）は `上限値` 入力 + `合格範囲 0〜上限値` 表示になること。
 
 DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネント）。
 
@@ -609,7 +619,7 @@ ssh denkon5sd02@100.106.158.2 'docker exec docker-web-1 sh -c "grep -l ring-sky-
 | ホスト | Detach Run ID | Git HEAD | 備考 |
 |--------|---------------|----------|------|
 | `raspberrypi5` | **`20260605-105452-27065`** | **`ffdaebda`** | `failed=0` · **web** 再ビルド · **Pi5 目視 OK** |
-| Pi4×4 | — | — | **未** |
+| Pi4×5（後続収束） | 2026-07-08 現行ロールアウト | **`04bb49fe`** | Phase12 **45/0/0** · 丸数字設定改善ロールアウトで現行 UI へ収束 |
 
 ### 手動確認（Pi4/Pi5）
 
@@ -1014,7 +1024,7 @@ cd apps/web && pnpm exec vitest run \
 |--------|---------------|----------|------|
 | `raspberrypi5` | **`20260604-191118-31485`** | **`fb10f0e0`** | `failed=0` · **web** 再ビルド · **Pi5 目視 OK** |
 | `raspberrypi5`（polish 初回） | **`20260604-181929-755`** | **`c90647ac`** | `failed=0` · 保存後 manual 等（倍率は当時 1.5 のまま） |
-| Pi4×4 | — | — | **未** — Pi5 OK 後に順次 |
+| Pi4×5（後続収束） | 2026-07-08 現行ロールアウト | **`04bb49fe`** | Phase12 **45/0/0** · 現行 UI へ収束 |
 
 ### 手動確認（Pi4/Pi5）
 
@@ -1065,7 +1075,7 @@ cd apps/web && pnpm exec vitest run \
 | ホスト | Detach Run ID | Git HEAD | 備考 |
 |--------|---------------|----------|------|
 | `raspberrypi5` | **`20260604-155553-5452`** | **`f16cb7ca`** | `failed=0` · **web** 再ビルド（reset 同梱） |
-| Pi4×4 | — | — | **未** — Pi5 実機 OK 後に順次 |
+| Pi4×5（後続収束） | 2026-07-08 現行ロールアウト | **`04bb49fe`** | Phase12 **45/0/0** · 現行 UI へ収束 |
 
 ### 手動確認（Pi4/Pi5 · 初回は 1.5 倍）
 

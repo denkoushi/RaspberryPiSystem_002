@@ -17,7 +17,7 @@ This ExecPlan is a living document. Maintained in accordance with `.agent/PLANS.
 - [x] コミット / push — **`da9d2675`**
 - [x] CI — **`26996602603`** success（全ジョブ）
 - [x] デプロイ先行 — Pi5 **`20260605-141538-27072`** · stonebase **`20260605-142229-22757`** · **実機 OK**
-- [ ] Pi4×3 順次デプロイ（`raspberrypi4` · `raspi4-robodrill01` · `raspi4-fjv60-80`）
+- [x] (2026-07-08) Pi4×3 + `raspi4-sessaku-01` も現行 **`04bb49fe`** へ収束（`raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01`）
 - [x] `main` マージ — PR [#391](https://github.com/denkoushi/RaspberryPiSystem_002/pull/391) · **`791f1074`**
 
 ## Decision Log
@@ -65,5 +65,6 @@ pnpm --filter @raspi-system/web exec vitest run \
 ## Outcomes & Retrospective
 
 - **実装完了** — Web のみ · 純関数 + 既存 `onChange` / 保存契約維持 · テスト 14 + CI 全成功。
-- **本番先行** — Pi5 + stonebase **実機 OK**（2026-06-05）。残 Pi4×3 は stonebase パターンどおり順次。
-- **参照**: [KB-320 §十字ボタン](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [deployment §2026-06-05](../guides/deployment.md#kiosk-inspection-drawing-point-nudge-2026-06-05)
+- **本番先行** — Pi5 + stonebase **実機 OK**（2026-06-05）。
+- **全台収束（2026-07-08）** — 丸数字設定改善ロールアウトで Pi5 + Pi4×5 の HEAD は全台 **`04bb49fe`**。Run ID: `raspberrypi5=20260708-103842-32504`、`raspi4-kensaku-stonebase01=20260708-104449-7203`、`raspberrypi4=20260708-110444-28905`、`raspi4-robodrill01=20260708-110943-19113`、`raspi4-fjv60-80=20260708-111331-2379`、`raspi4-sessaku-01=20260708-111719-728`。Phase12 **PASS 45 / WARN 0 / FAIL 0**、ユーザー実機検証OK。
+- **参照**: [KB-320 §十字ボタン](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [KB-320 §丸数字設定改善](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-丸数字設定改善-2026-07-08) · [deployment §2026-07-08](../guides/deployment.md#inspection-drawing-marker-settings-save-state-2026-07-08)
