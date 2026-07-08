@@ -85,10 +85,14 @@ async function publishProcedureDocument(
   headers: Record<string, string>,
   documentId: string
 ) {
+  const publishHeaders =
+    'x-client-key' in headers
+      ? { 'x-client-key': headers['x-client-key'] }
+      : headers;
   const publishRes = await app.inject({
     method: 'POST',
     url: `/api/assembly/procedure-documents/${documentId}/publish`,
-    headers
+    headers: publishHeaders
   });
   expect(publishRes.statusCode).toBe(200);
   expect(publishRes.json().document.status).toBe('published');
@@ -123,7 +127,6 @@ async function uploadPublishedProcedureDocument(
 async function cleanAssemblyTables() {
   await prisma.assemblyProcedureOrderItem.deleteMany({});
   await prisma.assemblyProcedureOrderSet.deleteMany({});
-  await prisma.kioskDocument.deleteMany({ where: { title: { startsWith: TEST_KIOSK_DOCUMENT_TITLE_PREFIX } } });
   await prisma.assemblyWorkSessionApproval.deleteMany({});
   await prisma.assemblyAreaRestartLog.deleteMany({});
   await prisma.assemblyTorqueRecord.deleteMany({});
@@ -136,6 +139,7 @@ async function cleanAssemblyTables() {
   await prisma.assemblyTemplate.deleteMany({});
   await prisma.assemblyCheckRecord.deleteMany({});
   await prisma.assemblyTemplateCheckItem.deleteMany({});
+  await prisma.kioskDocument.deleteMany({ where: { title: { startsWith: TEST_KIOSK_DOCUMENT_TITLE_PREFIX } } });
   await prisma.assemblyProcedureDocumentPage.deleteMany({});
   await prisma.assemblyProcedureDocument.deleteMany({});
   await prisma.clientDevice.deleteMany({ where: { name: { startsWith: 'Test Client ' } } });
@@ -1758,6 +1762,10 @@ describe('assembly torque management API', () => {
         where: { machineNameKey: 'UWF-SEQ' }
       });
       expect(orderSet).not.toBeNull();
+      await prisma.assemblyProcedureOrderItem.updateMany({
+        where: { setId: orderSet!.id, assemblyProcedureDocumentId: publishedDoc.id },
+        data: { sortOrder: 1 }
+      });
       await prisma.assemblyProcedureOrderItem.create({
         data: {
           setId: orderSet!.id,
@@ -1765,10 +1773,6 @@ describe('assembly torque management API', () => {
           sortOrder: 0,
           label: '下書き'
         }
-      });
-      await prisma.assemblyProcedureOrderItem.updateMany({
-        where: { setId: orderSet!.id, assemblyProcedureDocumentId: publishedDoc.id },
-        data: { sortOrder: 1 }
       });
 
       const startRes = await app.inject({
