@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import {
-  importAssemblyProcedureDocumentAndSave,
+  importAssemblyProcedureDocumentPagesAndSave,
   resolveAssemblyProcedureMultipartReadLimit
 } from '../../lib/assembly-procedure-document-import.js';
 import { convertDrawingUploadToPreviewBuffer } from '../../lib/part-measurement-drawing-preview.js';
@@ -33,6 +33,7 @@ import {
   type AssemblySeibanCandidate,
   type AssemblyLotSummary,
   type AssemblyTemplateAreaInput,
+  type AssemblyTemplateCheckItemInput,
   type AssemblyTemplateDetail,
   type AssemblyTemplateSummary,
   type AssemblyWorkSessionDetail,
@@ -57,7 +58,22 @@ const boltInputSchema = z.object({
   nominalTorque: z.coerce.number(),
   lowerLimit: z.coerce.number(),
   upperLimit: z.coerce.number(),
-  unit: z.string().trim().min(1).max(40)
+  unit: z.string().trim().min(1).max(40),
+  kioskDocumentId: z.string().uuid().optional().nullable(),
+  assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
+  pageIndex: z.coerce.number().int().min(0).optional().nullable()
+});
+
+const checkItemInputSchema = z.object({
+  markerNo: z.coerce.number().int().min(1).max(999),
+  label: z.string().trim().max(200).optional().nullable(),
+  required: z.boolean().optional(),
+  xRatio: z.coerce.number().min(0).max(1),
+  yRatio: z.coerce.number().min(0).max(1),
+  sortOrder: z.coerce.number().int().min(0),
+  kioskDocumentId: z.string().uuid().optional().nullable(),
+  assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
+  pageIndex: z.coerce.number().int().min(0).optional()
 });
 
 const areaInputSchema = z.object({
@@ -75,11 +91,18 @@ const templateBodySchema = z.object({
   procedurePattern: z.string().trim().min(1).max(120),
   name: z.string().trim().min(1).max(200),
   procedureDocumentId: z.string().uuid(),
-  areas: z.array(areaInputSchema).min(1)
+  areas: z.array(areaInputSchema).min(1),
+  checkItems: z.array(checkItemInputSchema).optional()
 });
 
 const templateReviseBodySchema = templateBodySchema.partial().extend({
-  areas: z.array(areaInputSchema).min(1).optional()
+  areas: z.array(areaInputSchema).min(1).optional(),
+  checkItems: z.array(checkItemInputSchema).optional()
+});
+
+const recordCheckBodySchema = z.object({
+  checkItemId: z.string().uuid(),
+  checked: z.boolean()
 });
 
 const startSessionBodySchema = z.object({
@@ -151,19 +174,30 @@ function dateToIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
 }
 
-function serializeProcedureDocument(doc: {
-  id: string;
-  name: string;
-  imageRelativePath: string;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}) {
+function serializeProcedureDocument(
+  doc: {
+    id: string;
+    name: string;
+    imageRelativePath: string;
+    status: 'DRAFT' | 'PUBLISHED';
+    publishedAt: Date | null;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    pages?: Array<{ pageIndex: number; imageRelativePath: string }>;
+  }
+) {
   return {
     id: doc.id,
     name: doc.name,
     imageRelativePath: doc.imageRelativePath,
+    status: AssemblyProcedureDocumentService.toStatusDto(doc.status),
+    publishedAt: dateToIso(doc.publishedAt),
     isActive: doc.isActive,
+    pages: (doc.pages ?? []).map((page) => ({
+      pageIndex: page.pageIndex,
+      imageRelativePath: page.imageRelativePath
+    })),
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString()
   };
@@ -257,7 +291,8 @@ function serializeProcedureSequence(sequence: AssemblyProcedureSequence) {
       confirmedSummaryText: document.confirmedSummaryText,
       pageCount: document.pageCount,
       updatedAt: document.updatedAt.toISOString(),
-      pageUrls: document.pageUrls
+      pageUrls: document.pageUrls,
+      pages: document.pages
     })),
     fallbackProcedureDocument: sequence.fallbackProcedureDocument
   };
@@ -306,6 +341,28 @@ function serializeAssemblyLotSummary(lot: AssemblyLotSummary) {
   };
 }
 
+function serializeCheckSummary(summary: {
+  requiredTotal: number;
+  requiredCompleted: number;
+  allRequiredCompleted: boolean;
+}) {
+  return summary;
+}
+
+function serializeCheckRecord(record: {
+  checkItemId: string;
+  checked: boolean;
+  checkedByOperatorName: string | null;
+  checkedAt: Date | null;
+}) {
+  return {
+    checkItemId: record.checkItemId,
+    checked: record.checked,
+    checkedByOperatorName: record.checkedByOperatorName,
+    checkedAt: record.checked ? dateToIso(record.checkedAt) : null
+  };
+}
+
 function serializeTemplate(template: AssemblyTemplateDetail) {
   return {
     id: template.id,
@@ -318,6 +375,20 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
     procedureDocument: serializeProcedureDocument(template.procedureDocument),
+    checkItems: template.checkItems.map((item) => ({
+      id: item.id,
+      markerNo: item.markerNo,
+      label: item.label,
+      required: item.required,
+      xRatio: item.xRatio,
+      yRatio: item.yRatio,
+      sortOrder: item.sortOrder,
+      kioskDocumentId: item.kioskDocumentId,
+      assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
+      pageIndex: item.pageIndex,
+      createdAt: item.createdAt.toISOString(),
+      updatedAt: item.updatedAt.toISOString()
+    })),
     areas: template.areas.map((area) => ({
       id: area.id,
       templateId: area.templateId,
@@ -342,6 +413,9 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
         lowerLimit: decimalToString(bolt.lowerLimit),
         upperLimit: decimalToString(bolt.upperLimit),
         unit: bolt.unit,
+        kioskDocumentId: bolt.kioskDocumentId,
+        assemblyProcedureDocumentId: bolt.assemblyProcedureDocumentId,
+        pageIndex: bolt.pageIndex,
         createdAt: bolt.createdAt.toISOString(),
         updatedAt: bolt.updatedAt.toISOString()
       }))
@@ -401,7 +475,9 @@ function buildAreaTorqueSummaries(session: AssemblyWorkSessionDetail) {
     });
 }
 
-function serializeSession(session: AssemblyWorkSessionDetail) {
+function serializeSession(session: AssemblyWorkSessionDetail, sessionService: AssemblyWorkSessionService) {
+  const checkItems = sessionService.buildCheckItemsWithRecords(session);
+  const checkSummary = sessionService.buildCheckSummary(session);
   return {
     id: session.id,
     lotSerialId: session.lotSerialId,
@@ -451,7 +527,21 @@ function serializeSession(session: AssemblyWorkSessionDetail) {
       createdAt: log.createdAt.toISOString()
     })),
     approval: serializeAssemblyWorkSessionApproval(session.approval),
-    areaTorqueSummaries: buildAreaTorqueSummaries(session)
+    areaTorqueSummaries: buildAreaTorqueSummaries(session),
+    checkItems: checkItems.map((item) => ({
+      id: item.id,
+      markerNo: item.markerNo,
+      label: item.label,
+      required: item.required,
+      xRatio: item.xRatio,
+      yRatio: item.yRatio,
+      sortOrder: item.sortOrder,
+      kioskDocumentId: item.kioskDocumentId,
+      assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
+      pageIndex: item.pageIndex,
+      record: item.record ? serializeCheckRecord(item.record) : null
+    })),
+    checkSummary: serializeCheckSummary(checkSummary)
   };
 }
 
@@ -648,17 +738,31 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       }
     }
     if (!fileBuffer) throw new ApiError(400, '手順書ファイルが必要です');
-    const importResult = await importAssemblyProcedureDocumentAndSave({ buffer: fileBuffer, mimetype, filename });
+    const importResult = await importAssemblyProcedureDocumentPagesAndSave({ buffer: fileBuffer, mimetype, filename });
     try {
       const doc = await procedureService.create({
         name: name || filename.replace(/\.[^.]+$/, '') || '組立手順書',
-        imageRelativePath: importResult.relativeUrl
+        pages: importResult.pages.map((page) => ({ imageRelativePath: page.imageRelativePath }))
       });
       return { document: serializeProcedureDocument(doc) };
     } catch (error) {
-      await AssemblyProcedureImageStorage.deleteImage(importResult.relativeUrl).catch(() => undefined);
+      await Promise.all(
+        importResult.pages.map((page) => AssemblyProcedureImageStorage.deleteImage(page.imageRelativePath).catch(() => undefined))
+      );
       throw error;
     }
+  });
+
+  app.post('/assembly/procedure-documents/:id/publish', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const doc = await procedureService.publish(params.id);
+    return { document: serializeProcedureDocument(doc) };
+  });
+
+  app.post('/assembly/procedure-documents/:id/unpublish', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const doc = await procedureService.unpublish(params.id);
+    return { document: serializeProcedureDocument(doc) };
   });
 
   app.patch('/assembly/procedure-documents/:id', { preHandler: allowWriteKiosk }, async (request) => {
@@ -673,6 +777,10 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
     const orderReferenceCount = await procedureOrderService.countAssemblyProcedureDocumentReferences(params.id);
     if (orderReferenceCount > 0) {
       return reply.status(409).send({ message: '組立の閲覧順設定で使用中の手順書は削除できません' });
+    }
+    const usage = await procedureService.getReferenceUsage(params.id);
+    if (usage.inBoltPageRef || usage.inCheckPageRef) {
+      return reply.status(409).send({ message: 'マーカー参照で使用中の手順書は削除できません' });
     }
     const result = await procedureService.deleteIfUnused(params.id);
     if (result === 'not_found') return reply.status(404).send({ message: '手順書が見つかりません' });
@@ -719,7 +827,11 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
 
   app.post('/assembly/templates', { preHandler: allowWriteKiosk }, async (request) => {
     const body = templateBodySchema.parse(request.body);
-    const template = await templateService.create({ ...body, areas: body.areas as AssemblyTemplateAreaInput[] });
+    const template = await templateService.create({
+      ...body,
+      areas: body.areas as AssemblyTemplateAreaInput[],
+      checkItems: body.checkItems as AssemblyTemplateCheckItemInput[] | undefined
+    });
     return { template: serializeTemplate(template) };
   });
 
@@ -728,7 +840,8 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
     const body = templateReviseBodySchema.parse(request.body);
     const template = await templateService.revise(params.id, {
       ...body,
-      areas: body.areas as AssemblyTemplateAreaInput[] | undefined
+      areas: body.areas as AssemblyTemplateAreaInput[] | undefined,
+      checkItems: body.checkItems as AssemblyTemplateCheckItemInput[] | undefined
     });
     return { template: serializeTemplate(template) };
   });
@@ -778,7 +891,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       clientDeviceId: clientDevice?.id ?? null,
       clientDeviceNameSnapshot: clientDevice?.name ?? null
     });
-    return { session: serializeSession(session) };
+    return { session: serializeSession(session, sessionService) };
   });
 
   app.post('/assembly/work-sessions', { preHandler: allowWriteKiosk }, async (request) => {
@@ -789,7 +902,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       clientDeviceId: clientDevice?.id ?? null,
       clientDeviceNameSnapshot: clientDevice?.name ?? null
     });
-    return { session: serializeSession(session) };
+    return { session: serializeSession(session, sessionService) };
   });
 
   app.get('/assembly/work-sessions/summary', { preHandler: allowView }, async (request) => {
@@ -816,7 +929,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
     const params = idParamSchema.parse(request.params);
     const session = await sessionService.getDetail(params.id);
     if (!session) return reply.status(404).send({ message: '作業セッションが見つかりません' });
-    return { session: serializeSession(session) };
+    return { session: serializeSession(session, sessionService) };
   });
 
   app.post('/assembly/work-sessions/:id/record-torque', { preHandler: allowWriteKiosk }, async (request) => {
@@ -828,26 +941,40 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       inputSource: toPrismaTorqueInputSource(body.source),
       rawPayload: body.rawPayload ?? { source: body.source, value: body.value }
     });
-    return { session: serializeSession(result.session), outcome: result.outcome };
+    return { session: serializeSession(result.session, sessionService), outcome: result.outcome };
   });
 
   app.post('/assembly/work-sessions/:id/advance-area', { preHandler: allowWriteKiosk }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const session = await sessionService.advanceArea(params.id);
-    return { session: serializeSession(session) };
+    return { session: serializeSession(session, sessionService) };
   });
 
   app.post('/assembly/work-sessions/:id/restart-area', { preHandler: allowWriteKiosk }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const body = z.object({ areaId: z.string().uuid().optional().nullable(), reason: z.string().max(500).optional().nullable() }).parse(request.body ?? {});
     const session = await sessionService.restartArea(params.id, body);
-    return { session: serializeSession(session) };
+    return { session: serializeSession(session, sessionService) };
+  });
+
+  app.post('/assembly/work-sessions/:id/record-check', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const body = recordCheckBodySchema.parse(request.body);
+    const result = await sessionService.recordCheck({
+      sessionId: params.id,
+      checkItemId: body.checkItemId,
+      checked: body.checked
+    });
+    return {
+      record: serializeCheckRecord(result.record),
+      checkSummary: serializeCheckSummary(result.checkSummary)
+    };
   });
 
   app.post('/assembly/work-sessions/:id/complete', { preHandler: allowWriteKiosk }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const session = await sessionService.complete(params.id);
-    return { session: serializeSession(session) };
+    return { session: serializeSession(session, sessionService) };
   });
 
   app.post('/assembly/work-sessions/:id/record-approval/approve', { preHandler: allowWriteKiosk }, async (request) => {
@@ -859,14 +986,14 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       comment: body.comment,
       clientDeviceId: clientDevice?.id ?? null
     });
-    return { session: serializeSession(session) };
+    return { session: serializeSession(session, sessionService) };
   });
 
   app.post('/assembly/work-sessions/:id/cancel', { preHandler: allowWriteKiosk }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const body = z.object({ reason: z.string().max(500).optional().nullable() }).parse(request.body ?? {});
     const session = await sessionService.cancel(params.id, body.reason);
-    return { session: serializeSession(session) };
+    return { session: serializeSession(session, sessionService) };
   });
 
   app.get('/assembly/work-sessions/:id/export.xlsx', { preHandler: allowView }, async (request, reply) => {

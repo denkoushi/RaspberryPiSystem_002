@@ -3,6 +3,7 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { assemblyTemplateDetailInclude, type AssemblyTemplateDetail } from './assembly-template.service.js';
 import { normalizeAssemblyUpperIdentifier } from './assembly-identifiers.js';
+import { computeAssemblyCheckSummary, type AssemblyCheckSummary } from './assembly-check-summary.js';
 
 export const assemblyWorkSessionDetailInclude = {
   template: {
@@ -17,6 +18,9 @@ export const assemblyWorkSessionDetailInclude = {
         }
       }
     }
+  },
+  checkRecords: {
+    orderBy: [{ checkedAt: 'asc' }, { createdAt: 'asc' }]
   },
   restartLogs: {
     orderBy: { createdAt: 'asc' }
@@ -82,6 +86,17 @@ export type AssemblyTorqueRecordOutcome = {
   areaCompleted: boolean;
   allBoltsCompleted: boolean;
   requiresAreaRestart: boolean;
+};
+
+export type AssemblyCheckRecordResult = {
+  checkItemId: string;
+  checked: boolean;
+  checkedByOperatorName: string | null;
+  checkedAt: Date | null;
+};
+
+export type AssemblyWorkSessionCheckItemView = AssemblyTemplateDetail['checkItems'][number] & {
+  record: AssemblyCheckRecordResult | null;
 };
 
 const DUPLICATE_SUPPRESSION_MS = 1000;
@@ -178,7 +193,37 @@ function duplicateSerialError(serialNo: string): ApiError {
   return new ApiError(409, `シリアルNo. ${serialNo} は既に登録済みです`);
 }
 
+function buildCheckSummary(session: AssemblyWorkSessionDetail): AssemblyCheckSummary {
+  return computeAssemblyCheckSummary(session.template.checkItems, session.checkRecords);
+}
+
+function buildCheckItemsWithRecords(session: AssemblyWorkSessionDetail): AssemblyWorkSessionCheckItemView[] {
+  const recordByItemId = new Map(session.checkRecords.map((record) => [record.checkItemId, record]));
+  return session.template.checkItems.map((item) => {
+    const record = recordByItemId.get(item.id);
+    return {
+      ...item,
+      record: record
+        ? {
+            checkItemId: record.checkItemId,
+            checked: record.checked,
+            checkedByOperatorName: record.checkedByOperatorName,
+            checkedAt: record.checked ? record.checkedAt : null
+          }
+        : null
+    };
+  });
+}
+
 export class AssemblyWorkSessionService {
+  buildCheckSummary(session: AssemblyWorkSessionDetail): AssemblyCheckSummary {
+    return buildCheckSummary(session);
+  }
+
+  buildCheckItemsWithRecords(session: AssemblyWorkSessionDetail): AssemblyWorkSessionCheckItemView[] {
+    return buildCheckItemsWithRecords(session);
+  }
+
   async start(input: AssemblyStartInput): Promise<AssemblyWorkSessionDetail> {
     const productNo = required(normalizeAssemblyUpperIdentifier(input.productNo), '製番').slice(0, 120);
     const serialNo = required(normalizeAssemblyUpperIdentifier(input.serialNo), 'シリアルNo.').slice(0, 120);
@@ -557,11 +602,69 @@ export class AssemblyWorkSessionService {
     return updated;
   }
 
+  async recordCheck(input: {
+    sessionId: string;
+    checkItemId: string;
+    checked: boolean;
+  }): Promise<{ record: AssemblyCheckRecordResult; checkSummary: AssemblyCheckSummary }> {
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      const session = await tx.assemblyWorkSession.findUnique({
+        where: { id: input.sessionId },
+        include: assemblyWorkSessionDetailInclude
+      });
+      if (!session) throw new ApiError(404, '作業セッションが見つかりません');
+      if (session.status !== 'IN_PROGRESS') throw new ApiError(409, 'この作業は入力できない状態です');
+
+      const checkItem = session.template.checkItems.find((item) => item.id === input.checkItemId);
+      if (!checkItem) throw new ApiError(404, 'チェック項目が見つかりません');
+
+      await tx.assemblyCheckRecord.upsert({
+        where: {
+          sessionId_checkItemId: {
+            sessionId: session.id,
+            checkItemId: checkItem.id
+          }
+        },
+        create: {
+          sessionId: session.id,
+          checkItemId: checkItem.id,
+          checked: input.checked,
+          checkedByOperatorName: session.operatorNameSnapshot,
+          checkedAt: now
+        },
+        update: {
+          checked: input.checked,
+          checkedByOperatorName: session.operatorNameSnapshot,
+          ...(input.checked ? { checkedAt: now } : {})
+        }
+      });
+    });
+
+    const session = await this.getDetail(input.sessionId);
+    if (!session) throw new ApiError(404, '作業セッションが見つかりません');
+    const record = session.checkRecords.find((candidate) => candidate.checkItemId === input.checkItemId);
+    if (!record) throw new ApiError(500, 'チェック記録の保存に失敗しました');
+    return {
+      record: {
+        checkItemId: record.checkItemId,
+        checked: record.checked,
+        checkedByOperatorName: record.checkedByOperatorName,
+        checkedAt: record.checked ? record.checkedAt : null
+      },
+      checkSummary: buildCheckSummary(session)
+    };
+  }
+
   async complete(sessionId: string): Promise<AssemblyWorkSessionDetail> {
     const session = await this.getDetail(sessionId);
     if (!session) throw new ApiError(404, '作業セッションが見つかりません');
     if (session.status !== 'IN_PROGRESS') throw new ApiError(409, 'この作業は進行中ではありません');
     if (!allBoltsComplete(session)) throw new ApiError(409, '未完了の締付箇所があります');
+    const checkSummary = buildCheckSummary(session);
+    if (!checkSummary.allRequiredCompleted) {
+      throw new ApiError(409, '必須チェック項目が未完了です', { checkSummary });
+    }
     return prisma.assemblyWorkSession.update({
       where: { id: session.id },
       data: {

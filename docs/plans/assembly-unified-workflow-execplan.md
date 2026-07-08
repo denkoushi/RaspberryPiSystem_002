@@ -5,11 +5,11 @@ status: active
 scope: kiosk assembly procedure library, publish gate, multi-page procedure documents, page-level bolt/check markers, work-session completion gate, record approval aggregation
 date: 2026-07-08
 source_of_truth: this file
-phase: 1 complete (schema + migration + design); 2 API; 3 Web; 4 validation/deploy
+phase: 1 complete (schema + migration + design); 2 complete (API); 3 Web; 4 validation/deploy
 branch: feature/assembly-uwf-p1-schema
 related_code: apps/api/prisma/schema.prisma, apps/api/prisma/migrations/20260708101417_assembly_unified_workflow_p1_schema, apps/api/src/routes/assembly/index.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyPage.tsx, apps/web/src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx, apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx
 related_docs: ../decisions/ADR-20260708-assembly-page-level-markers-and-publish-gate.md, ../decisions/ADR-20260707-assembly-procedure-order-library-scope.md, ./kiosk-assembly-torque-management-mvp.md, ../INDEX.md
-open_items: Phase 2 API implementation, Phase 3 Web UI, Phase 4 integration validation and deployment
+open_items: Phase 3 Web UI, Phase 4 integration validation and deployment
 ---
 
 # Assembly Unified Workflow ExecPlan

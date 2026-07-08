@@ -1,3 +1,4 @@
+export * from './assembly-check-summary.js';
 export * from './assembly-excel-export.service.js';
 export * from './assembly-identifiers.js';
 export * from './assembly-lot.service.js';

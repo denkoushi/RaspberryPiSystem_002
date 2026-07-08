@@ -1,9 +1,26 @@
 import type { Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
+import {
+  assertMarkerPageRefValid,
+  loadAssemblyPageRefContext,
+  normalizeMarkerPageRef,
+  type AssemblyMarkerPageRefInput
+} from './assembly-check-summary.js';
+
+const procedureDocumentInclude = {
+  pages: {
+    orderBy: { pageIndex: 'asc' as const }
+  }
+} satisfies Prisma.AssemblyProcedureDocumentInclude;
 
 export const assemblyTemplateDetailInclude = {
-  procedureDocument: true,
+  procedureDocument: {
+    include: procedureDocumentInclude
+  },
+  checkItems: {
+    orderBy: { sortOrder: 'asc' }
+  },
   areas: {
     orderBy: { sortOrder: 'asc' },
     include: {
@@ -44,6 +61,21 @@ export type AssemblyTemplateBoltInput = {
   lowerLimit: number;
   upperLimit: number;
   unit: string;
+  kioskDocumentId?: string | null;
+  assemblyProcedureDocumentId?: string | null;
+  pageIndex?: number | null;
+};
+
+export type AssemblyTemplateCheckItemInput = {
+  markerNo: number;
+  label?: string | null;
+  required?: boolean;
+  xRatio: number;
+  yRatio: number;
+  sortOrder: number;
+  kioskDocumentId?: string | null;
+  assemblyProcedureDocumentId?: string | null;
+  pageIndex?: number;
 };
 
 export type AssemblyTemplateAreaInput = {
@@ -62,12 +94,46 @@ export type AssemblyTemplateUpsertInput = {
   name: string;
   procedureDocumentId: string;
   areas: AssemblyTemplateAreaInput[];
+  checkItems?: AssemblyTemplateCheckItemInput[];
 };
 
 function normalizeKey(value: string, fieldName: string): string {
   const trimmed = value.trim();
   if (!trimmed) throw new ApiError(400, `${fieldName}が必要です`);
   return trimmed;
+}
+
+function clampRatio(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function normalizeCheckItems(checkItems: AssemblyTemplateCheckItemInput[]): AssemblyTemplateCheckItemInput[] {
+  const markerNos = new Set<number>();
+  const sortOrders = new Set<number>();
+  return [...checkItems]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((item, index) => {
+      const markerNo = Math.max(1, Math.trunc(item.markerNo));
+      const sortOrder = index;
+      if (markerNos.has(markerNo)) {
+        throw new ApiError(400, `チェック項目 markerNo ${markerNo} が重複しています`);
+      }
+      if (sortOrders.has(sortOrder)) {
+        throw new ApiError(400, `チェック項目 sortOrder ${sortOrder} が重複しています`);
+      }
+      markerNos.add(markerNo);
+      sortOrders.add(sortOrder);
+      return {
+        ...item,
+        markerNo,
+        sortOrder,
+        label: item.label?.trim() || null,
+        required: item.required ?? true,
+        xRatio: clampRatio(item.xRatio),
+        yRatio: clampRatio(item.yRatio)
+      };
+    });
 }
 
 function normalizeAreas(areas: AssemblyTemplateAreaInput[]): AssemblyTemplateAreaInput[] {
@@ -108,9 +174,57 @@ function normalizeAreas(areas: AssemblyTemplateAreaInput[]): AssemblyTemplateAre
     });
 }
 
-function clampRatio(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, value));
+function collectMarkerRefs(input: {
+  areas: AssemblyTemplateAreaInput[];
+  checkItems: AssemblyTemplateCheckItemInput[];
+}): AssemblyMarkerPageRefInput[] {
+  return [
+    ...input.areas.flatMap((area) =>
+      area.bolts.map((bolt) => ({
+        kioskDocumentId: bolt.kioskDocumentId,
+        assemblyProcedureDocumentId: bolt.assemblyProcedureDocumentId,
+        pageIndex: bolt.pageIndex
+      }))
+    ),
+    ...input.checkItems.map((item) => ({
+      kioskDocumentId: item.kioskDocumentId,
+      assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
+      pageIndex: item.pageIndex
+    }))
+  ];
+}
+
+async function validateTemplateMarkerRefs(
+  tx: Prisma.TransactionClient,
+  input: { areas: AssemblyTemplateAreaInput[]; checkItems: AssemblyTemplateCheckItemInput[] }
+): Promise<void> {
+  const context = await loadAssemblyPageRefContext(tx, collectMarkerRefs(input));
+  for (const area of input.areas) {
+    for (const bolt of area.bolts) {
+      assertMarkerPageRefValid(
+        {
+          kioskDocumentId: bolt.kioskDocumentId,
+          assemblyProcedureDocumentId: bolt.assemblyProcedureDocumentId,
+          pageIndex: bolt.pageIndex
+        },
+        context,
+        bolt.tighteningId,
+        { allowOmitted: true }
+      );
+    }
+  }
+  for (const item of input.checkItems) {
+    assertMarkerPageRefValid(
+      {
+        kioskDocumentId: item.kioskDocumentId,
+        assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
+        pageIndex: item.pageIndex
+      },
+      context,
+      `チェック項目 ${item.markerNo}`,
+      { allowOmitted: false }
+    );
+  }
 }
 
 export class AssemblyTemplateService {
@@ -241,12 +355,15 @@ export class AssemblyTemplateService {
     const procedurePattern = normalizeKey(input.procedurePattern, '手順パターン').slice(0, 120);
     const name = normalizeKey(input.name, 'テンプレート名').slice(0, 200);
     const areas = normalizeAreas(input.areas);
+    const checkItems = normalizeCheckItems(input.checkItems ?? []);
 
     return prisma.$transaction(async (tx) => {
       const doc = await tx.assemblyProcedureDocument.findFirst({
-        where: { id: input.procedureDocumentId, isActive: true }
+        where: { id: input.procedureDocumentId, isActive: true, status: 'PUBLISHED' }
       });
-      if (!doc) throw new ApiError(404, '有効な手順書が見つかりません');
+      if (!doc) throw new ApiError(400, '公開済みで有効な手順書を指定してください');
+
+      await validateTemplateMarkerRefs(tx, { areas, checkItems });
 
       const versionAgg = await tx.assemblyTemplate.aggregate({
         where: { modelCode, procedurePattern },
@@ -264,6 +381,29 @@ export class AssemblyTemplateService {
           name,
           version,
           procedureDocumentId: doc.id,
+          checkItems: {
+            create: checkItems.map((item) => {
+              const pageRef = normalizeMarkerPageRef(
+                {
+                  kioskDocumentId: item.kioskDocumentId,
+                  assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
+                  pageIndex: item.pageIndex
+                },
+                { allowOmitted: false }
+              );
+              return {
+                markerNo: item.markerNo,
+                label: item.label,
+                required: item.required ?? true,
+                xRatio: item.xRatio,
+                yRatio: item.yRatio,
+                sortOrder: item.sortOrder,
+                kioskDocumentId: pageRef.kioskDocumentId,
+                assemblyProcedureDocumentId: pageRef.assemblyProcedureDocumentId,
+                pageIndex: pageRef.pageIndex ?? 0
+              };
+            })
+          },
           areas: {
             create: areas.map((area) => ({
               sortOrder: area.sortOrder,
@@ -273,18 +413,31 @@ export class AssemblyTemplateService {
               unitCode: area.unitCode,
               requireManualAdvance: area.requireManualAdvance ?? true,
               bolts: {
-                create: area.bolts.map((bolt) => ({
-                  sortOrder: bolt.sortOrder,
-                  tighteningId: bolt.tighteningId,
-                  markerNo: bolt.markerNo,
-                  xRatio: bolt.xRatio,
-                  yRatio: bolt.yRatio,
-                  boltSpec: bolt.boltSpec,
-                  nominalTorque: bolt.nominalTorque,
-                  lowerLimit: bolt.lowerLimit,
-                  upperLimit: bolt.upperLimit,
-                  unit: bolt.unit
-                }))
+                create: area.bolts.map((bolt) => {
+                  const pageRef = normalizeMarkerPageRef(
+                    {
+                      kioskDocumentId: bolt.kioskDocumentId,
+                      assemblyProcedureDocumentId: bolt.assemblyProcedureDocumentId,
+                      pageIndex: bolt.pageIndex
+                    },
+                    { allowOmitted: true }
+                  );
+                  return {
+                    sortOrder: bolt.sortOrder,
+                    tighteningId: bolt.tighteningId,
+                    markerNo: bolt.markerNo,
+                    xRatio: bolt.xRatio,
+                    yRatio: bolt.yRatio,
+                    boltSpec: bolt.boltSpec,
+                    nominalTorque: bolt.nominalTorque,
+                    lowerLimit: bolt.lowerLimit,
+                    upperLimit: bolt.upperLimit,
+                    unit: bolt.unit,
+                    kioskDocumentId: pageRef.kioskDocumentId,
+                    assemblyProcedureDocumentId: pageRef.assemblyProcedureDocumentId,
+                    pageIndex: pageRef.pageIndex
+                  };
+                })
               }
             }))
           }
@@ -316,15 +469,32 @@ export class AssemblyTemplateService {
           nominalTorque: Number(bolt.nominalTorque),
           lowerLimit: Number(bolt.lowerLimit),
           upperLimit: Number(bolt.upperLimit),
-          unit: bolt.unit
+          unit: bolt.unit,
+          kioskDocumentId: bolt.kioskDocumentId,
+          assemblyProcedureDocumentId: bolt.assemblyProcedureDocumentId,
+          pageIndex: bolt.pageIndex
         }))
+      }));
+    const checkItems =
+      input.checkItems ??
+      source.checkItems.map((item) => ({
+        markerNo: item.markerNo,
+        label: item.label,
+        required: item.required,
+        xRatio: item.xRatio,
+        yRatio: item.yRatio,
+        sortOrder: item.sortOrder,
+        kioskDocumentId: item.kioskDocumentId,
+        assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
+        pageIndex: item.pageIndex
       }));
     return this.create({
       modelCode: input.modelCode ?? source.modelCode,
       procedurePattern: input.procedurePattern ?? source.procedurePattern,
       name: input.name ?? source.name,
       procedureDocumentId: input.procedureDocumentId ?? source.procedureDocumentId,
-      areas
+      areas,
+      checkItems
     });
   }
 

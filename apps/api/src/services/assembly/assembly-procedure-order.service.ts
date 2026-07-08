@@ -18,6 +18,7 @@ export type AssemblyProcedureOrderDocumentSummary = {
   confirmedSummaryText: string | null;
   pageCount: number | null;
   enabled: boolean;
+  status: 'draft' | 'published' | null;
   updatedAt: Date;
   filePath: string | null;
   imageRelativePath: string | null;
@@ -65,7 +66,12 @@ const ORDER_ASSEMBLY_PROCEDURE_DOCUMENT_SELECT = {
   name: true,
   imageRelativePath: true,
   isActive: true,
-  updatedAt: true
+  status: true,
+  updatedAt: true,
+  pages: {
+    orderBy: { pageIndex: 'asc' as const },
+    select: { pageIndex: true, imageRelativePath: true }
+  }
 } as const;
 
 function normalizeMachineName(value: string): { machineName: string; machineNameKey: string } {
@@ -132,6 +138,7 @@ function mapKioskDocumentSummary(document: {
     confirmedSummaryText: document.confirmedSummaryText,
     pageCount: document.pageCount,
     enabled: document.enabled,
+    status: null,
     updatedAt: document.updatedAt,
     filePath: document.filePath,
     imageRelativePath: null
@@ -143,8 +150,11 @@ function mapAssemblyProcedureDocumentSummary(document: {
   name: string;
   imageRelativePath: string;
   isActive: boolean;
+  status: 'DRAFT' | 'PUBLISHED';
   updatedAt: Date;
+  pages: Array<{ pageIndex: number; imageRelativePath: string }>;
 }): AssemblyProcedureOrderDocumentSummary {
+  const pageCount = document.pages.length > 0 ? document.pages.length : 1;
   return {
     id: document.id,
     documentType: 'assembly_procedure_document',
@@ -153,8 +163,9 @@ function mapAssemblyProcedureDocumentSummary(document: {
     filename: document.name,
     confirmedDocumentNumber: null,
     confirmedSummaryText: null,
-    pageCount: 1,
+    pageCount,
     enabled: document.isActive,
+    status: document.status === 'PUBLISHED' ? 'published' : 'draft',
     updatedAt: document.updatedAt,
     filePath: null,
     imageRelativePath: document.imageRelativePath
@@ -184,7 +195,9 @@ function mapOrderItem(item: {
     name: string;
     imageRelativePath: string;
     isActive: boolean;
+    status: 'DRAFT' | 'PUBLISHED';
     updatedAt: Date;
+    pages: Array<{ pageIndex: number; imageRelativePath: string }>;
   } | null;
 }): AssemblyProcedureOrderItemSummary {
   if (item.kioskDocument) {
@@ -298,12 +311,13 @@ export class AssemblyProcedureOrderService {
       const validDocuments = await prisma.assemblyProcedureDocument.findMany({
         where: {
           id: { in: assemblyProcedureDocumentIds },
-          isActive: true
+          isActive: true,
+          status: 'PUBLISHED'
         },
         select: { id: true }
       });
       if (validDocuments.length !== assemblyProcedureDocumentIds.length) {
-        throw new ApiError(400, '有効な組立手順書を選択してください');
+        throw new ApiError(400, '公開済みで有効な組立手順書を選択してください');
       }
     }
 
