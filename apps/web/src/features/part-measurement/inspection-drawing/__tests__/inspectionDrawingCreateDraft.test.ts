@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildInspectionDrawingCreateDirtySnapshot,
+  extractFhincdFromVisualTemplateName,
   inspectionDrawingCreateKeyCollisionMessage,
   inspectionDrawingCreateDirtySnapshotsEqual,
   resolveInspectionDrawingCreateKeyCollision,
@@ -257,5 +258,34 @@ describe('inspectionDrawingCreateDraft', () => {
         dirty: true
       })
     ).toBe('read_only');
+  });
+});
+
+describe('extractFhincdFromVisualTemplateName', () => {
+  it('extracts a single fhincd embedded in a drawing name', () => {
+    expect(extractFhincdFromVisualTemplateName('7161ストッパー台（1）MD004121651')).toBe(
+      'MD004121651'
+    );
+  });
+
+  it('normalizes full-width alphanumerics before extraction', () => {
+    expect(extractFhincdFromVisualTemplateName('７１６１ストッパー台ＭＤ００４１２１６５１')).toBe(
+      'MD004121651'
+    );
+  });
+
+  it('returns null when no fhincd-like token is present', () => {
+    expect(extractFhincdFromVisualTemplateName('7161テーブル')).toBeNull();
+  });
+
+  it('returns null when multiple distinct fhincd candidates are present', () => {
+    expect(
+      extractFhincdFromVisualTemplateName('MD004121651とMD0004167150の比較図')
+    ).toBeNull();
+  });
+
+  it('returns null for empty or missing names', () => {
+    expect(extractFhincdFromVisualTemplateName(null)).toBeNull();
+    expect(extractFhincdFromVisualTemplateName('')).toBeNull();
   });
 });

@@ -107,6 +107,17 @@ export function normalizeFhincdForTemplateKey(raw: string): string {
   return raw.trim().toUpperCase();
 }
 
+const FHINCD_IN_NAME_PATTERN = /[A-Z]{2}[0-9]{8,10}/g;
+
+/** 図面名に埋め込まれた品番らしきトークンを抽出（一意のときのみ返す） */
+export function extractFhincdFromVisualTemplateName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const normalized = name.normalize('NFKC').toUpperCase();
+  const matches = normalized.match(FHINCD_IN_NAME_PATTERN) ?? [];
+  const unique = [...new Set(matches)];
+  return unique.length === 1 ? unique[0]! : null;
+}
+
 export function normalizeUniqueInspectionDrawingResourceCds(raw: string[]): string[] {
   const seen = new Set<string>();
   const values: string[] = [];

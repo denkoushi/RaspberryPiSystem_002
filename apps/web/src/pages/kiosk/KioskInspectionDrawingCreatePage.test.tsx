@@ -150,4 +150,35 @@ describe('KioskInspectionDrawingCreatePage visual-linked fhincd', () => {
     });
     expect(screen.getByLabelText('テンプレ')).toHaveValue('7161テーブル MANUAL-001');
   });
+
+  it('falls back to fhincd embedded in the visual name when linked fhincd is none', async () => {
+    const visualWithEmbeddedFhincd = {
+      ...visualTemplate,
+      name: '7161ストッパー台（1）MD004121651'
+    };
+    mockGetVisualTemplate.mockResolvedValue(visualWithEmbeddedFhincd);
+    mockResolveVisualLinkedFhincd.mockResolvedValue({ kind: 'none' });
+
+    renderCreatePage();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('品番')).toHaveValue('MD004121651');
+    });
+    expect(screen.getByText(/図面名から品番/)).toBeInTheDocument();
+    expect(screen.getByLabelText('テンプレ')).toHaveValue(
+      '7161ストッパー台（1）MD004121651 MD004121651'
+    );
+  });
+
+  it('prompts manual fhincd entry when linked fhincd is none and name has no token', async () => {
+    mockResolveVisualLinkedFhincd.mockResolvedValue({ kind: 'none' });
+
+    renderCreatePage();
+
+    await waitFor(() => {
+      expect(screen.getByText(/品番を手入力してください/)).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText('品番')).toHaveValue('');
+    expect(screen.getByLabelText('テンプレ')).toHaveValue('7161テーブル');
+  });
 });
