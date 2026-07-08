@@ -38,5 +38,6 @@ describe('inspectionDrawingMeasurementLabelOptions', () => {
     expect(INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS).toContain('キリ穴ピッチ');
     expect(INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS).toContain('ザグリ穴ピッチ');
     expect(INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS).toContain('ネジ穴深さ');
+    expect(INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS).toContain('厚み');
   });
 });

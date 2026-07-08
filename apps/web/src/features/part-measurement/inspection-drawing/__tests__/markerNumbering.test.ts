@@ -68,6 +68,51 @@ describe('markerNumbering', () => {
     expect(saved.upperLimit).toBe(20.02);
   });
 
+  it('normalizes geometric tolerance save bounds to zero and upper value', () => {
+    const saved = drawingPointToTemplateItemInput(
+      {
+        id: 'i1',
+        name: '平行度',
+        markerNo: 1,
+        xRatio: 0.2,
+        yRatio: 0.4,
+        nominalRaw: '0.005',
+        lowerToleranceRaw: '-0.005',
+        upperToleranceRaw: '0',
+        testValue: '',
+        decimalPlaces: 3
+      },
+      0
+    );
+
+    expect(saved.nominalValue).toBe(0.005);
+    expect(saved.lowerLimit).toBe(0);
+    expect(saved.upperLimit).toBe(0.005);
+  });
+
+  it('normalizes configured geometric labels with 0.01 upper value', () => {
+    const saved = drawingPointToTemplateItemInput(
+      {
+        id: 'i1',
+        name: '幅',
+        markerNo: 1,
+        xRatio: 0.2,
+        yRatio: 0.4,
+        nominalRaw: '0.01',
+        lowerToleranceRaw: '-0.01',
+        upperToleranceRaw: '0',
+        testValue: '',
+        decimalPlaces: 3
+      },
+      0,
+      { measurementLabelSettings: [{ label: '幅', toleranceKind: 'geometric' }] }
+    );
+
+    expect(saved.nominalValue).toBe(0.01);
+    expect(saved.lowerLimit).toBe(0);
+    expect(saved.upperLimit).toBe(0.01);
+  });
+
   it('keeps legacy bounds when only name changes', () => {
     const pt = templateItemToDrawingPoint({
       id: 'i1',

@@ -205,7 +205,7 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 |------|------|
 | 新規作成 | 資源CDは複数選択。チップ + 検索付きチェックリストで、選択済みは省略表示する。 |
 | テンプレ名 | 図面ライブラリ表示名 `visualTemplate.name` + 品番を自動提案する。例: `7161テーブル ABC-123`。手編集後は上書きせず、空欄に戻すと自動提案へ戻る。 |
-| 保存ボタン | 品番・資源CD・図面・測定点・測定点名・公差・検査数設定・衝突なし・プレビュー完了が揃うまで disabled。 |
+| 保存ボタン | 品番・資源CD・図面・測定点・測定点名・公差・検査数設定・衝突なし・プレビュー完了が揃い、かつ保存済み内容から変更があるときだけ enabled。保存ボタン右〜一覧へ戻る左に `保存済み` / `未保存あり` / `入力不足` / `保存中` / `閲覧のみ` を表示。未保存入力がある内部リンク遷移・ブラウザ更新/終了は確認を出す。 |
 | 改版 | グループ所属テンプレの既定は **兄弟テンプレをまとめて改版**。切替で **この資源だけ個別改版**を選ぶと保存後にグループから外れる。 |
 | 資源追加 | グループ編集画面から追加。未保存変更は含まず、保存済み最新版をコピーする。 |
 | 一覧 | 兄弟グループを1カードに集約し、資源CDをチップ表示。1件でも横幅いっぱいに伸ばさず、ボタンは文字量に合う幅を基本にする。 |
@@ -328,7 +328,7 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 - **キオスク一覧**: `GET /kiosk/production-schedule?selfInspectionEligibleOnly=true` で開始可能行のみをサーバー側抽出（生産日程をチャンク走査、`page` / `pageSize` / `hasMore`）。
 - 順位ボードの `selfInspectionEntryPath` は `/start?...` を返し、UI 側で resolve-or-create して **既存セッションへ再入場**できる。`selfInspectionTemplateId` があれば、同じ **検** 導線から保存済み検査図面の帳票プレビューを開く。
 - 検査図面一覧 API `GET /inspection-drawing/templates` も `selfInspectionMode` / `selfInspectionFixedCount`（互換で `selfInspectionSampleSize`）を返す。キオスク改版 `POST …/inspection-drawing/templates/:id/revise` も自主検査設定を受け付ける。
-- **検査図面編集（丸数字・公差）**: 測定点は `markerNo` 独立採番（削除で他番号は変えない・追加は最小欠番）。UI は **基準値＋下限/上限公差（基準値への符号付きオフセット）** → 保存時に絶対 `lowerLimit`/`upperLimit`（`lowerLimit = nominal + lowerOffset`, `upperLimit = nominal + upperOffset` · `apps/web/.../toleranceFields.ts`）。`nominalValue=null` で下限/上限だけある既存行は **`legacyAbsoluteBounds`**（名称のみ変更・基準値のみ入力は絶対値維持。片側公差入力で符号付きモードへ移行し両側 offset を seed · `markerNumbering.ts` / `mergeInspectionDrawingPointPatch`）。名称は固定候補 select（`inspectionDrawingMeasurementLabelOptions.ts`、候補外既存値は一時 option）。作成/改版は上辺 `pointListSlot` に測定点一覧（`InspectionDrawingPointSummaryStrip`）。自主検査セッションのみ測定値 **候補 dropdown + 手入力**（標準は `selfInspectionMeasurementValueOptions.ts`、最大 200 件・超過は手入力のみ。寸法ラベルは 0.1 刻み候補 + 百分台ボタン）。本番記録画面の測定値入力は **自由入力のまま**。
+- **検査図面編集（丸数字・公差）**: 測定点は `markerNo` 独立採番（削除で他番号は変えない・追加は最小欠番）。寸法公差 UI は **基準値＋下限/上限公差（基準値への符号付きオフセット）** → 保存時に絶対 `lowerLimit`/`upperLimit`（`lowerLimit = nominal + lowerOffset`, `upperLimit = nominal + upperOffset` · `apps/web/.../toleranceFields.ts`）。幾何公差 UI は **入力値 = 上限値**、合格範囲は **0〜上限値** として表示し、保存 payload は `nominalValue=上限値` / `lowerLimit=0` / `upperLimit=上限値`。`nominalValue=null` で下限/上限だけある既存行は **`legacyAbsoluteBounds`**（未編集なら絶対値維持。片側公差入力で符号付きモードへ移行し両側 offset を seed · `markerNumbering.ts` / `mergeInspectionDrawingPointPatch`）。名称は固定候補 select（`inspectionDrawingMeasurementLabelOptions.ts`、候補外既存値は一時 option）。右ペインは名称と値を1行ずつ、位置調整は `↑ ↓ ← →` の1行、削除は「この点を削除」+「全削除」。自主検査セッションのみ測定値 **候補 dropdown + 手入力**（標準は `selfInspectionMeasurementValueOptions.ts`、最大 200 件・超過は手入力のみ。寸法ラベルは 0.1 刻み候補 + 百分台ボタン）。本番記録画面の測定値入力は **自由入力のまま**。
 
 ### 自主検査セッション・ガイド付きフォーカス（2026-06-04） {#自主検査-セッション-ガイド付きフォーカス-2026-06-04}
 
@@ -834,9 +834,9 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 - **目的**: 基準値は OCR 候補で入力しやすくなったため、上限公差・下限公差も名称に応じた候補で入力補助する。
 - **保存契約**: 既存どおり `PartMeasurementTemplateItem.nominalValue/lowerLimit/upperLimit` は絶対値を保持する。既存テンプレの公差値移行・補正・自動変換はしない。
 - **DB/API**: `PartMeasurementToleranceKind` enum と `PartMeasurementInspectionLabelSetting` を追加。`GET /api/part-measurement/inspection-drawing/measurement-label-settings` は管理者系 JWT またはキオスク `x-client-key` で読める。`PATCH` は `ADMIN` / `MANAGER` JWT のみ。
-- **既定ルール**: 名称に **`度`** を含む場合は **幾何公差**、それ以外は **寸法公差**。このため初期状態では `直角度` と `面粗度` は幾何公差、`幅` は寸法公差。
+- **既定ルール**: 名称に **`度`** を含む場合は **幾何公差**、それ以外は **寸法公差**。このため初期状態では `直角度` と `面粗度` は幾何公差、`幅` / `厚み` は寸法公差。
 - **管理設定**: 管理コンソール `/admin/tools/part-measurement-templates` の **検査図面 名称・公差種別** セクションで、名称ごとに `寸法公差 / 幾何公差` を一覧編集・追加・削除・保存できる。
-- **候補値**: 幾何公差は `0` / `0.001`〜`0.009`。寸法公差は `-0.9`〜`+0.9` を `0.1` 刻み、表示は `-0.1` / `0` / `+0.1` 形式。
+- **候補値**: 幾何公差は `0` / `0.001`〜`0.009` / `0.01` / `0.015` / `0.020` / `0.030` / `0.050`。寸法公差は `-0.9`〜`+0.9` を `0.1` 刻み、表示は `-0.1` / `0` / `+0.1` 形式。
 - **UI契約**: 上限公差・下限公差は同じ `datalist` 候補を出す。候補外の手入力は維持し、名称変更時も入力済み上下限公差は自動変更しない。API 取得失敗時は既定ルールへフォールバックする。
 - **主な実装**: `packages/shared-types/src/part-measurement/inspection-drawing-tolerance-kind.ts`、`InspectionDrawingPointSettingsPanel.tsx`、`InspectionDrawingMeasurementLabelSettingsSection.tsx`、`inspection-drawing-measurement-label-settings.service.ts`。
 - **ローカル検証**: 一時 Postgres で migration / integration test **70 tests passed** / `EXPLAIN`、Web focused test **41 files / 211 tests passed**、Web build pass。既存 DB/既存コンテナは変更しない。
@@ -847,7 +847,7 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 
 - **作業ブランチ / 代表コミット**: `feat/inspection-drawing-tolerance-input-usability-fixes` / **`becb6e7c`**（`fix(web): improve inspection tolerance input usability`）。
 - **目的**: 実機検証で出た「幾何公差に `0` が必要」「候補選択後に別候補を選び直せない」「公差入力文字が背景と同化する」「名称 placeholder が長い」を解消する。
-- **変更内容**: 幾何公差候補は `0` / `0.001`〜`0.009`。候補入力は選択済み候補の再フォーカス時に一時クリアし、別候補を選び直せる。候補を選ばず blur した場合は元値へ復元する。基準値・上限公差・下限公差は白背景 + 黒文字で固定し、名称未選択表示は `選択`。
+- **変更内容**: 幾何公差候補は `0` / `0.001`〜`0.009` / `0.01` / `0.015` / `0.020` / `0.030` / `0.050`。幾何公差は上下限公差2入力ではなく `上限値` 入力 + `合格範囲 0〜上限値` 表示。候補入力は選択済み候補の再フォーカス時に一時クリアし、別候補を選び直せる。候補を選ばず blur した場合は元値へ復元する。基準値・上限値・上限公差・下限公差は白背景 + 黒文字で固定し、名称未選択表示は `選択`。
 - **契約**: Web/shared のみ。API / DB / Prisma migration / 既存テンプレ / 保存契約（絶対 `lowerLimit` / `upperLimit`）は変更しない。候補外の手入力値は引き続き保持・保存できる。
 - **主な実装**: `inspection-drawing-tolerance-kind.ts`、`InspectionDrawingPointSettingsPanel.tsx`、`inspectionDrawingKioskUi.ts`、`inspectionDrawingMeasurementLabelOptions.ts`。
 - **ローカル検証**: `shared-types build`、Web focused test **41 files / 213 tests passed**、Web build、monorepo lint、`git diff --check` success。
@@ -898,7 +898,7 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 
 #### 仕様（作成/改版のみ）
 
-- **UI**: 右ペイン `InspectionDrawingPointSettingsPanel` 上部に **3×3 十字ボタン**（↑←→↓ · 中央に「位置」ラベル）。タイトル「測定点の設定（No.N）」の **上**。`role="group"` · `aria-label="測定点の位置調整"` · 各方向 `aria-label`（例: 上へ移動）。
+- **UI**: 右ペイン `InspectionDrawingPointSettingsPanel` 上部に **1行方向ボタン**（`↑ ↓ ← →`）。タイトル「測定点の設定（No.N）」の **上**。`role="group"` · `aria-label="測定点の位置調整"` · 各方向 `aria-label`（例: 上へ移動）。
 - **レイアウト**: 名称・基準値を **1 行 2 列**（`inspectionDrawingPointSettingDualRowClassName` · 各列 `min-w-0` · select は `inspectionDrawingBoundedSelectShellClassName`）。削除ボタン上の説明文「合格範囲は…」は **削除**（公差 2 欄は維持）。
 - **ステップ**: `INSPECTION_DRAWING_POINT_NUDGE_STEP_RATIO = 0.0025`（800×600 DEV 図面で約横 2px / 縦 1.5px 相当）。ズーム倍率に依存しない固定 ratio（`computeZoomedCanvasLayout` 非依存）。
 - **座標正本**: `xRatio` / `yRatio`（0–1）。`clampInspectionDrawingRatio` — 有限 number は 0..1 clamp · `NaN` / `Infinity` / 非 number は **0**。

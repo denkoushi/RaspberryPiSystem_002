@@ -116,6 +116,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             hasDrawingImage
             hasMeasurementPoints={points.length > 0}
             saveDisabled
+            saveStatus="blocked"
             returnTo={inspectionReturn.inspectionDrawingReturnTo}
             returnLabel={inspectionReturn.inspectionDrawingReturnLabel}
           />
@@ -155,6 +156,11 @@ export function KioskInspectionDrawingCreatePreviewPage() {
               updatePoint(selectedPoint.id, patch);
             }}
             onRemovePoint={() => undefined}
+            onRemoveAllPoints={() => {
+              setPoints([]);
+              setSelectedPointId(null);
+              guidedTrial.resetTrialState();
+            }}
             onTestValueChange={(v) => {
               if (!selectedPoint) return;
               updatePoint(selectedPoint.id, { testValue: v });

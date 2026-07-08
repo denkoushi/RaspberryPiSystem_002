@@ -57,6 +57,48 @@ export type InspectionDrawingCreateSaveBlockReason =
   | 'key_collision'
   | 'preview_pending';
 
+export type InspectionDrawingCreateSaveStatus =
+  | 'saved'
+  | 'dirty'
+  | 'blocked'
+  | 'saving'
+  | 'read_only';
+
+export const INSPECTION_DRAWING_CREATE_SAVE_STATUS_LABEL: Record<
+  InspectionDrawingCreateSaveStatus,
+  string
+> = {
+  saved: '保存済み',
+  dirty: '未保存あり',
+  blocked: '入力不足',
+  saving: '保存中',
+  read_only: '閲覧のみ'
+};
+
+export type InspectionDrawingCreateDirtySnapshot = {
+  templateName: string;
+  fhincd: string;
+  resourceCds: string[];
+  processGroup: PartMeasurementProcessGroup;
+  visualSource: InspectionDrawingVisualSource;
+  visualTemplateId: string | null;
+  uploadPending: boolean;
+  selfInspectionMode: SelfInspectionMode;
+  selfInspectionFixedCount: string;
+  groupSaveMode: 'group' | 'single';
+  points: Array<{
+    markerNo: number;
+    name: string;
+    xRatio: number;
+    yRatio: number;
+    nominalRaw: string;
+    lowerToleranceRaw: string;
+    upperToleranceRaw: string;
+    decimalPlaces: number | null;
+    legacyAbsoluteBounds: { lowerLimit: number; upperLimit: number } | null;
+  }>;
+};
+
 /** API の normalizeFhincd と同じ（trim + 大文字化） */
 export function normalizeFhincdForTemplateKey(raw: string): string {
   return raw.trim().toUpperCase();
@@ -72,6 +114,82 @@ export function normalizeUniqueInspectionDrawingResourceCds(raw: string[]): stri
     values.push(value);
   }
   return values.sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+function normalizeNullableId(raw: string | null | undefined): string | null {
+  const value = raw?.trim() ?? '';
+  return value ? value : null;
+}
+
+function normalizeText(raw: string): string {
+  return raw.trim();
+}
+
+function normalizeRatio(raw: number): number {
+  return Math.round(raw * 1_000_000) / 1_000_000;
+}
+
+export function buildInspectionDrawingCreateDirtySnapshot(params: {
+  templateName: string;
+  fhincd: string;
+  resourceCds: string[];
+  processGroup: PartMeasurementProcessGroup;
+  visualSource: InspectionDrawingVisualSource;
+  visualTemplateId: string | null | undefined;
+  uploadPending: boolean;
+  selfInspectionMode: SelfInspectionMode;
+  selfInspectionFixedCount: string;
+  groupSaveMode: 'group' | 'single';
+  points: readonly InspectionDrawingPoint[];
+}): InspectionDrawingCreateDirtySnapshot {
+  return {
+    templateName: normalizeText(params.templateName),
+    fhincd: normalizeFhincdForTemplateKey(params.fhincd),
+    resourceCds: normalizeUniqueInspectionDrawingResourceCds(params.resourceCds),
+    processGroup: params.processGroup,
+    visualSource: params.visualSource,
+    visualTemplateId: normalizeNullableId(params.visualTemplateId),
+    uploadPending: params.uploadPending,
+    selfInspectionMode: params.selfInspectionMode,
+    selfInspectionFixedCount: normalizeText(params.selfInspectionFixedCount),
+    groupSaveMode: params.groupSaveMode,
+    points: params.points.map((pt) => ({
+      markerNo: pt.markerNo,
+      name: normalizeText(pt.name),
+      xRatio: normalizeRatio(pt.xRatio),
+      yRatio: normalizeRatio(pt.yRatio),
+      nominalRaw: normalizeText(pt.nominalRaw),
+      lowerToleranceRaw: normalizeText(pt.lowerToleranceRaw),
+      upperToleranceRaw: normalizeText(pt.upperToleranceRaw),
+      decimalPlaces: pt.decimalPlaces ?? null,
+      legacyAbsoluteBounds: pt.legacyAbsoluteBounds
+        ? {
+            lowerLimit: normalizeRatio(pt.legacyAbsoluteBounds.lowerLimit),
+            upperLimit: normalizeRatio(pt.legacyAbsoluteBounds.upperLimit)
+          }
+        : null
+    }))
+  };
+}
+
+export function inspectionDrawingCreateDirtySnapshotsEqual(
+  a: InspectionDrawingCreateDirtySnapshot | null,
+  b: InspectionDrawingCreateDirtySnapshot | null
+): boolean {
+  if (!a || !b) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function resolveInspectionDrawingCreateSaveStatus(params: {
+  contentReadOnly: boolean;
+  busy: boolean;
+  saveBlockReason: InspectionDrawingCreateSaveBlockReason | null;
+  dirty: boolean;
+}): InspectionDrawingCreateSaveStatus {
+  if (params.contentReadOnly) return 'read_only';
+  if (params.busy) return 'saving';
+  if (params.saveBlockReason) return 'blocked';
+  return params.dirty ? 'dirty' : 'saved';
 }
 
 export function suggestInspectionDrawingTemplateName(params: {

@@ -29,6 +29,15 @@ describe('InspectionDrawingPointPositionNudge', () => {
     expect(screen.getByRole('button', { name: '右へ移動' })).toBeInTheDocument();
   });
 
+  it('renders direction buttons in one row order', () => {
+    render(<InspectionDrawingPointPositionNudge point={point} onChange={vi.fn()} />);
+
+    expect(
+      screen.getAllByRole('button').map((button) => button.textContent)
+    ).toEqual(['↑', '↓', '←', '→']);
+    expect(screen.queryByText('位置')).not.toBeInTheDocument();
+  });
+
   it('calls onChange with clamped coordinate patch when a direction is pressed', () => {
     const onChange = vi.fn();
 

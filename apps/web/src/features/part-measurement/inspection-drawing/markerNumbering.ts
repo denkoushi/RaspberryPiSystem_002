@@ -1,4 +1,9 @@
 import {
+  resolveInspectionDrawingToleranceKindForLabel,
+  type InspectionDrawingMeasurementLabelSetting
+} from '@raspi-system/shared-types';
+
+import {
   dbAbsoluteBoundsToToleranceRawFields,
   formatToleranceRawNumber,
   inferDecimalPlacesFromToleranceRaw,
@@ -85,6 +90,55 @@ export function isLegacyAbsoluteOnlyPoint(pt: InspectionDrawingPoint): boolean {
   return Boolean(pt.legacyAbsoluteBounds && !pt.nominalRaw.trim() && !toleranceFieldsEdited(pt));
 }
 
+export type InspectionDrawingPointToleranceOptions = {
+  measurementLabelSettings?: readonly InspectionDrawingMeasurementLabelSetting[];
+};
+
+export function pointUsesGeometricTolerance(
+  pt: Pick<InspectionDrawingPoint, 'name'>,
+  options: InspectionDrawingPointToleranceOptions = {}
+): boolean {
+  return (
+    resolveInspectionDrawingToleranceKindForLabel(
+      pt.name,
+      options.measurementLabelSettings ?? []
+    ) === 'geometric'
+  );
+}
+
+function parseGeometricUpperLimitRaw(raw: string): number | { error: string } {
+  const trimmed = raw.trim().replace(/,/g, '');
+  if (!trimmed) {
+    return { error: '上限値を入力してください' };
+  }
+  const upperLimit = Number(trimmed);
+  if (!Number.isFinite(upperLimit)) {
+    return { error: '上限値の形式が不正です' };
+  }
+  if (upperLimit < 0) {
+    return { error: '上限値は0以上で入力してください' };
+  }
+  return upperLimit;
+}
+
+export function buildGeometricTolerancePointPatch(
+  upperLimitRaw: string
+): Pick<InspectionDrawingPoint, 'nominalRaw' | 'lowerToleranceRaw' | 'upperToleranceRaw'> {
+  const parsed = parseGeometricUpperLimitRaw(upperLimitRaw);
+  if (typeof parsed === 'object' && 'error' in parsed) {
+    return {
+      nominalRaw: upperLimitRaw,
+      lowerToleranceRaw: '',
+      upperToleranceRaw: ''
+    };
+  }
+  return {
+    nominalRaw: upperLimitRaw,
+    lowerToleranceRaw: formatToleranceRawNumber(parsed === 0 ? 0 : -parsed),
+    upperToleranceRaw: '0'
+  };
+}
+
 function resolveNominalForLegacySeed(pt: InspectionDrawingPoint): number {
   const parsed = parseOptionalNumber(pt.nominalRaw);
   if (parsed != null) return parsed;
@@ -105,7 +159,8 @@ export type ResolvedPointToleranceBounds =
 
 /** 保存・判定用: legacy 絶対値のみのときは 0 基準へ変換しない */
 export function resolvePointToleranceBoundsForSave(
-  pt: InspectionDrawingPoint
+  pt: InspectionDrawingPoint,
+  options: InspectionDrawingPointToleranceOptions = {}
 ): ResolvedPointToleranceBounds | { error: string } {
   if (pt.legacyAbsoluteBounds && !toleranceFieldsEdited(pt)) {
     if (!pt.nominalRaw.trim()) {
@@ -127,6 +182,19 @@ export function resolvePointToleranceBoundsForSave(
     };
   }
 
+  if (pointUsesGeometricTolerance(pt, options)) {
+    const upperLimit = parseGeometricUpperLimitRaw(pt.nominalRaw);
+    if (typeof upperLimit === 'object' && 'error' in upperLimit) {
+      return upperLimit;
+    }
+    return {
+      kind: 'absolute',
+      nominal: upperLimit,
+      lowerLimit: 0,
+      upperLimit
+    };
+  }
+
   const parsed = parseToleranceRawFields({
     nominalRaw: pt.nominalRaw,
     lowerToleranceRaw: pt.lowerToleranceRaw,
@@ -140,7 +208,8 @@ export function resolvePointToleranceBoundsForSave(
 
 export function drawingPointToTemplateItemInput(
   pt: InspectionDrawingPoint,
-  sortOrder: number
+  sortOrder: number,
+  options: InspectionDrawingPointToleranceOptions = {}
 ): {
   sortOrder: number;
   datumSurface: string;
@@ -157,15 +226,22 @@ export function drawingPointToTemplateItemInput(
   upperLimit: number;
 } {
   const label = pt.name.trim() || `測定点${pt.markerNo}`;
-  const bounds = resolvePointToleranceBoundsForSave(pt);
+  const bounds = resolvePointToleranceBoundsForSave(pt, options);
   if ('error' in bounds) {
     throw new Error(bounds.error);
   }
-  const inferredDp = inferDecimalPlacesFromToleranceRaw({
-    nominalRaw: pt.nominalRaw,
-    lowerToleranceRaw: pt.lowerToleranceRaw,
-    upperToleranceRaw: pt.upperToleranceRaw
-  });
+  const inferredDp =
+    pointUsesGeometricTolerance(pt, options) && bounds.kind === 'absolute'
+      ? inferDecimalPlacesFromToleranceRaw({
+          nominalRaw: pt.nominalRaw,
+          lowerToleranceRaw: '0',
+          upperToleranceRaw: pt.nominalRaw
+        })
+      : inferDecimalPlacesFromToleranceRaw({
+          nominalRaw: pt.nominalRaw,
+          lowerToleranceRaw: pt.lowerToleranceRaw,
+          upperToleranceRaw: pt.upperToleranceRaw
+        });
   const decimalPlaces = Math.min(
     6,
     Math.max(pt.decimalPlaces ?? 0, inferredDp)
@@ -206,13 +282,25 @@ export function drawingPointToTemplateItemInput(
 }
 
 export function toleranceBoundsFromPoint(
-  pt: InspectionDrawingPoint
+  pt: InspectionDrawingPoint,
+  options: InspectionDrawingPointToleranceOptions = {}
 ): ParsedToleranceBounds | { error: string } {
   if (pt.legacyAbsoluteBounds && !pt.nominalRaw.trim() && !toleranceFieldsEdited(pt)) {
     const { lowerLimit, upperLimit } = pt.legacyAbsoluteBounds;
     return {
       nominal: (lowerLimit + upperLimit) / 2,
       lowerLimit,
+      upperLimit
+    };
+  }
+  if (pointUsesGeometricTolerance(pt, options)) {
+    const upperLimit = parseGeometricUpperLimitRaw(pt.nominalRaw);
+    if (typeof upperLimit === 'object' && 'error' in upperLimit) {
+      return upperLimit;
+    }
+    return {
+      nominal: upperLimit,
+      lowerLimit: 0,
       upperLimit
     };
   }
