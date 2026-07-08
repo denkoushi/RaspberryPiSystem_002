@@ -70,7 +70,7 @@ export function InspectionDrawingCreateToolbar({
   );
 
   return (
-    <div className="flex w-full min-w-0 items-center gap-2 overflow-x-auto whitespace-nowrap">
+    <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
       {showProcessGroup ? (
         <>
           <span className="sr-only">工程</span>
