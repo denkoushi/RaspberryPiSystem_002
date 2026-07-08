@@ -20,6 +20,7 @@ export { useInspectionDrawingResourceCdsByVisualId } from './useInspectionDrawin
 export { InspectionDrawingResourceCdChipList } from './InspectionDrawingResourceCdChipList';
 export {
   buildInspectionDrawingCreateDirtySnapshot,
+  extractFhincdFromVisualTemplateName,
   INSPECTION_DRAWING_CREATE_SAVE_STATUS_LABEL,
   inspectionDrawingCreateKeyCollisionMessage,
   inspectionDrawingCreateDirtySnapshotsEqual,

@@ -29,6 +29,7 @@ import { formatResourceCdWithJapaneseNames } from '../../features/kiosk/leaderOr
 import {
   buildGeometricTolerancePointPatch,
   buildInspectionDrawingCreateDirtySnapshot,
+  extractFhincdFromVisualTemplateName,
   drawingPointToTemplateItemInput,
   mergeInspectionDrawingPointPatch,
   InspectionDrawingCanvas,
@@ -478,7 +479,11 @@ export function KioskInspectionDrawingCreatePage() {
   }, []);
 
   const applyVisualLinkedFhincdResult = useCallback(
-    (result: InspectionDrawingVisualLinkedFhincdResult, manualEditSeqAtRequest: number) => {
+    (
+      result: InspectionDrawingVisualLinkedFhincdResult,
+      manualEditSeqAtRequest: number,
+      visualTemplateName: string | null | undefined
+    ) => {
       if (result.kind === 'unique') {
         if (
           fhincdManualTouchedRef.current ||
@@ -493,13 +498,29 @@ export function KioskInspectionDrawingCreatePage() {
         setMessage(
           `選択した図面に複数の品番が紐付いています（${result.fhincds.join('、')}）。品番は自動入力しません。`
         );
+        return;
       }
+      const extracted = extractFhincdFromVisualTemplateName(visualTemplateName);
+      if (extracted) {
+        if (
+          fhincdManualTouchedRef.current ||
+          fhincdManualEditSeqRef.current !== manualEditSeqAtRequest
+        ) {
+          return;
+        }
+        setProgrammaticFhincd(extracted);
+        setMessage(
+          `図面名から品番 ${extracted} を自動入力しました。テンプレ紐付きの品番ではないため確認してください。`
+        );
+        return;
+      }
+      setMessage('この図面に紐づく品番が見つかりませんでした。品番を手入力してください。');
     },
     [setProgrammaticFhincd]
   );
 
   const requestVisualLinkedFhincd = useCallback(
-    (visualTemplateId: string) => {
+    (visualTemplateId: string, visualTemplateName: string | null | undefined) => {
       if (isEditing) return;
       const requestSeq = ++visualLinkedFhincdRequestSeqRef.current;
       const manualEditSeqAtRequest = fhincdManualEditSeqRef.current;
@@ -507,7 +528,7 @@ export function KioskInspectionDrawingCreatePage() {
         try {
           const result = await resolveInspectionDrawingVisualLinkedFhincd(visualTemplateId, clientKey);
           if (visualLinkedFhincdRequestSeqRef.current !== requestSeq) return;
-          applyVisualLinkedFhincdResult(result, manualEditSeqAtRequest);
+          applyVisualLinkedFhincdResult(result, manualEditSeqAtRequest, visualTemplateName);
         } catch {
           if (visualLinkedFhincdRequestSeqRef.current === requestSeq) {
             setMessage('図面は選択しましたが、品番候補を確認できませんでした。');
@@ -644,7 +665,7 @@ export function KioskInspectionDrawingCreatePage() {
       setServerDrawingPath(visual.drawingImageRelativePath);
       setOcrCandidatesByPointId({});
       setSavedSnapshot(null);
-      requestVisualLinkedFhincd(visual.id);
+      requestVisualLinkedFhincd(visual.id, visual.name);
     },
     [requestVisualLinkedFhincd, resetLocalPreview]
   );
@@ -663,7 +684,7 @@ export function KioskInspectionDrawingCreatePage() {
         setVisualSource('pickExisting');
         setSelectedVisualLabel(visual.name);
         setServerDrawingPath(visual.drawingImageRelativePath);
-        requestVisualLinkedFhincd(visual.id);
+        requestVisualLinkedFhincd(visual.id, visual.name);
         return true;
       }
       if (!clearPointsIfConfirmed()) return false;
@@ -677,7 +698,7 @@ export function KioskInspectionDrawingCreatePage() {
       setSelectedPointId(null);
       setOcrCandidatesByPointId({});
       guidedTrial.resetTrialState();
-      requestVisualLinkedFhincd(visual.id);
+      requestVisualLinkedFhincd(visual.id, visual.name);
       return true;
     },
     [clearPointsIfConfirmed, guidedTrial, requestVisualLinkedFhincd, resetLocalPreview, selectedVisualTemplateId]
