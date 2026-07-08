@@ -32,6 +32,10 @@ type Props = {
   operatorNameSnapshot: string;
   onOperatorNameChange: (value: string) => void;
   selectedLotQty: number | null;
+  autoLotQty: number | null;
+  manualLotQtyDraft: string;
+  onManualLotQtyDraftChange: (value: string) => void;
+  lotQtyLoading: boolean;
   torqueWrenchId: string;
   onTorqueWrenchIdChange: (value: string) => void;
   canRegisterLot: boolean;
@@ -69,6 +73,10 @@ export function AssemblyStartPane({
   operatorNameSnapshot,
   onOperatorNameChange,
   selectedLotQty,
+  autoLotQty,
+  manualLotQtyDraft,
+  onManualLotQtyDraftChange,
+  lotQtyLoading,
   torqueWrenchId,
   onTorqueWrenchIdChange,
   canRegisterLot,
@@ -79,6 +87,8 @@ export function AssemblyStartPane({
   const serialLimitReached = expectedLotQuantity != null && serialNos.length >= expectedLotQuantity;
   const serialInputLocked = busy || expectedLotQuantity == null || serialLimitReached;
   const serialAddDisabled = serialInputLocked || !serialDraft || serialDraftDuplicate;
+  const showManualLotQtyInput = !!selectedCandidate && !lotQtyLoading && autoLotQty == null;
+  const usingManualLotQty = autoLotQty == null && expectedLotQuantity != null;
 
   return (
     <aside
@@ -209,9 +219,13 @@ export function AssemblyStartPane({
                 追加
               </Button>
             </div>
-            {expectedLotQuantity == null ? (
+            {selectedCandidate && lotQtyLoading ? (
+              <p className="rounded border border-white/10 bg-slate-950/55 px-2 py-1.5 text-xs font-semibold text-white/70">
+                ロット数を取得中…
+              </p>
+            ) : selectedCandidate && expectedLotQuantity == null ? (
               <p className="rounded border border-amber-300/25 bg-amber-500/10 px-2 py-1.5 text-xs font-semibold text-amber-100">
-                ロット数が正の整数で取得できる製番を選択してください。
+                生産実績からロット数を取得できませんでした。順番ボード等で数量を確認し、ロット数を手入力してください。
               </p>
             ) : serialDraftDuplicate ? (
               <p className="rounded border border-amber-300/25 bg-amber-500/10 px-2 py-1.5 text-xs font-semibold text-amber-100">
@@ -221,6 +235,19 @@ export function AssemblyStartPane({
               <p className="rounded border border-cyan-300/25 bg-cyan-500/10 px-2 py-1.5 text-xs font-semibold text-cyan-100">
                 ロット数分のシリアルNo.を入力済みです。
               </p>
+            ) : null}
+            {showManualLotQtyInput ? (
+              <label className="grid gap-1 text-xs font-semibold text-white/70">
+                ロット数（手入力）
+                <Input
+                  value={manualLotQtyDraft}
+                  onChange={(event) => onManualLotQtyDraftChange(event.target.value)}
+                  inputMode="numeric"
+                  placeholder="ロット数"
+                  className="min-h-10 text-[1.05rem] font-bold tracking-normal"
+                  disabled={busy}
+                />
+              </label>
             ) : null}
             <div className="grid max-h-36 content-start gap-1 overflow-y-auto">
               {serialNos.length === 0 ? (
@@ -273,11 +300,13 @@ export function AssemblyStartPane({
           <div className="min-w-0 text-right">
             <p className="text-xs font-semibold text-white/55">ロット数</p>
             <p className="truncate text-sm font-bold tabular-nums text-cyan-200">
-              {selectedLotQty != null && Number.isFinite(selectedLotQty)
+              {autoLotQty != null && selectedLotQty != null && Number.isFinite(selectedLotQty)
                 ? Number.isInteger(selectedLotQty)
                   ? String(selectedLotQty)
                   : selectedLotQty.toLocaleString('ja-JP')
-                : '-'}
+                : usingManualLotQty
+                  ? `${expectedLotQuantity}（手入力）`
+                  : '-'}
             </p>
           </div>
           <div className="min-w-0 text-right">

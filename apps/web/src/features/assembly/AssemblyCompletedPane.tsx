@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 
 import { kioskAssemblyRecordApprovalPath } from './assemblyRoutes';
-import { formatAssemblyTimestamp } from './assemblyUiHelpers';
+import { formatAssemblyTimestamp, normalizeAssemblyUpperIdentifier } from './assemblyUiHelpers';
 
 import type { AssemblyWorkSessionSummaryDto } from './types';
 
@@ -15,7 +15,7 @@ type Props = {
 };
 
 function formatLotQty(productNo: string, lotQtyByProductNo: Record<string, number>): string {
-  const lotQty = lotQtyByProductNo[productNo];
+  const lotQty = lotQtyByProductNo[normalizeAssemblyUpperIdentifier(productNo)];
   if (lotQty == null || !Number.isFinite(lotQty)) return '-';
   return Number.isInteger(lotQty) ? String(lotQty) : lotQty.toLocaleString('ja-JP');
 }

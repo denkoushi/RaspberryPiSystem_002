@@ -1,3 +1,14 @@
+export function toHalfWidthAscii(value: string): string {
+  return value
+    .replace(/[\uFF01-\uFF5E]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace(/\u3000/g, ' ');
+}
+
+export function normalizeAssemblyUpperIdentifier(value: string | null | undefined): string {
+  if (value == null) return '';
+  return toHalfWidthAscii(String(value)).trim().toUpperCase();
+}
+
 export function readAssemblyApiErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
     const message = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;

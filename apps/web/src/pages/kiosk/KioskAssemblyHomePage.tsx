@@ -20,19 +20,16 @@ import {
   kioskAssemblyProcedureOrderSettingsPath,
   kioskAssemblyRecordApprovalPath,
   kioskAssemblyWorkSessionPath,
-  readAssemblyApiErrorMessage
+  normalizeAssemblyUpperIdentifier,
+  readAssemblyApiErrorMessage,
+  toHalfWidthAscii
 } from '../../features/assembly';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { AssemblyLotSummaryDto, AssemblySeibanCandidateDto, AssemblyWorkSessionSummaryDto } from '../../features/assembly/types';
 
 const DEFAULT_TORQUE_WRENCH_ID = 'CEM20N3X10D-BTLA';
-
-function toHalfWidthAscii(value: string): string {
-  return value
-    .replace(/[\uFF01-\uFF5E]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
-    .replace(/\u3000/g, ' ');
-}
+const MANUAL_LOT_QTY_MAX_DIGITS = 6;
 
 function normalizeIdentifier(value: string): string {
   return toHalfWidthAscii(value).toUpperCase().replace(/[^A-Z0-9._/-]/g, '').slice(0, 120);
@@ -40,6 +37,17 @@ function normalizeIdentifier(value: string): string {
 
 function normalizeSerialIdentifier(value: string): string {
   return toHalfWidthAscii(value).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 120);
+}
+
+function normalizeManualLotQtyDraft(value: string): string {
+  return toHalfWidthAscii(value).replace(/\D/g, '').slice(0, MANUAL_LOT_QTY_MAX_DIGITS);
+}
+
+function parsePositiveIntegerLotQty(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 export function KioskAssemblyHomePage() {
@@ -63,17 +71,22 @@ export function KioskAssemblyHomePage() {
   const [sessionLoading, setSessionLoading] = useState(false);
   const [completedLoading, setCompletedLoading] = useState(false);
   const [lotQtyByProductNo, setLotQtyByProductNo] = useState<Record<string, number>>({});
+  const [lotQtyLoading, setLotQtyLoading] = useState(false);
+  const [manualLotQtyDraft, setManualLotQtyDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [busySerialId, setBusySerialId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const normalizedFseiban = useMemo(() => normalizeIdentifier(fseibanInput), [fseibanInput]);
   const normalizedSerialDraft = useMemo(() => normalizeSerialIdentifier(serialDraft), [serialDraft]);
-  const selectedLotQty = selectedCandidate ? (lotQtyByProductNo[selectedCandidate.fseiban] ?? null) : null;
-  const expectedLotQuantity =
+  const selectedProductNoKey = selectedCandidate ? normalizeAssemblyUpperIdentifier(selectedCandidate.fseiban) : null;
+  const selectedLotQty = selectedProductNoKey ? (lotQtyByProductNo[selectedProductNoKey] ?? null) : null;
+  const autoLotQty =
     selectedLotQty != null && Number.isFinite(selectedLotQty) && Number.isInteger(selectedLotQty) && selectedLotQty > 0
       ? selectedLotQty
       : null;
+  const manualLotQty = autoLotQty == null ? parsePositiveIntegerLotQty(manualLotQtyDraft) : null;
+  const expectedLotQuantity = autoLotQty ?? manualLotQty ?? null;
   const serialDraftDuplicate = normalizedSerialDraft.length > 0 && lotSerialNos.includes(normalizedSerialDraft);
   const canRegisterLot =
     !!selectedCandidate?.activeTemplate &&
@@ -134,19 +147,26 @@ export function KioskAssemblyHomePage() {
   useEffect(() => {
     if (productNosForLotQty.length === 0) {
       setLotQtyByProductNo({});
+      setLotQtyLoading(false);
       return;
     }
 
     let cancelled = false;
+    setLotQtyLoading(true);
     void listAssemblySeibanLotQuantities(productNosForLotQty)
       .then((items) => {
         if (cancelled) return;
         const next: Record<string, number> = {};
-        for (const item of items) next[item.productNo] = item.lotQty;
+        for (const item of items) {
+          next[normalizeAssemblyUpperIdentifier(item.productNo)] = item.lotQty;
+        }
         setLotQtyByProductNo(next);
       })
       .catch(() => {
         if (!cancelled) setLotQtyByProductNo({});
+      })
+      .finally(() => {
+        if (!cancelled) setLotQtyLoading(false);
       });
 
     return () => {
@@ -166,6 +186,7 @@ export function KioskAssemblyHomePage() {
     if (selectedCandidate) return;
     setSerialDraft('');
     setLotSerialNos([]);
+    setManualLotQtyDraft('');
   }, [selectedCandidate]);
 
   useEffect(() => {
@@ -243,7 +264,12 @@ export function KioskAssemblyHomePage() {
     setFseibanInput(candidate.fseiban);
     setSerialDraft('');
     setLotSerialNos([]);
+    setManualLotQtyDraft('');
     setMessage(null);
+  };
+
+  const changeManualLotQtyDraft = (value: string) => {
+    setManualLotQtyDraft(normalizeManualLotQtyDraft(value));
   };
 
   const changeOperatorName = (value: string) => {
@@ -255,7 +281,11 @@ export function KioskAssemblyHomePage() {
     const next = normalizedSerialDraft;
     if (!next) return;
     if (expectedLotQuantity == null) {
-      setMessage('ロット数が正の整数で取得できる製番を選択してください。');
+      setMessage(
+        lotQtyLoading
+          ? 'ロット数を取得中です。しばらくお待ちください。'
+          : '生産実績からロット数を取得できませんでした。ロット数を手入力してください。'
+      );
       return;
     }
     if (lotSerialNos.length >= expectedLotQuantity) {
@@ -278,7 +308,11 @@ export function KioskAssemblyHomePage() {
   const registerLot = async () => {
     if (!selectedCandidate?.activeTemplate) return;
     if (expectedLotQuantity == null) {
-      setMessage('ロット数が正の整数で取得できないため、ロット登録できません。');
+      setMessage(
+        lotQtyLoading
+          ? 'ロット数を取得中です。しばらくお待ちください。'
+          : '生産実績からロット数を取得できませんでした。ロット数を手入力してください。'
+      );
       return;
     }
     setBusy(true);
@@ -393,6 +427,10 @@ export function KioskAssemblyHomePage() {
           operatorNameSnapshot={operatorNameSnapshot}
           onOperatorNameChange={changeOperatorName}
           selectedLotQty={selectedLotQty}
+          autoLotQty={autoLotQty}
+          manualLotQtyDraft={manualLotQtyDraft}
+          onManualLotQtyDraftChange={changeManualLotQtyDraft}
+          lotQtyLoading={lotQtyLoading}
           torqueWrenchId={torqueWrenchId}
           onTorqueWrenchIdChange={setTorqueWrenchId}
           canRegisterLot={canRegisterLot}
