@@ -12,7 +12,8 @@ import {
 import { buttonClassName, Button } from '../../components/ui/Button';
 import {
   KIOSK_ASSEMBLY_HOME_PATH,
-  readAssemblyApiErrorMessage
+  readAssemblyApiErrorMessage,
+  resolveAssemblyCheckSummary
 } from '../../features/assembly';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
@@ -89,6 +90,9 @@ function DetailPane({
   onApprove: () => void;
 }) {
   const approved = session.approval != null;
+  const checkSummary = resolveAssemblyCheckSummary(session);
+  const checkItems = session.checkItems ?? [];
+  const incompleteRequiredChecks = checkItems.filter((item) => item.required && !(item.record?.checked ?? false));
 
   return (
     <div className="flex min-h-0 w-full max-w-[56rem] flex-1 flex-col gap-2 justify-self-start overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-2.5">
@@ -115,6 +119,14 @@ function DetailPane({
             {session.areaTorqueSummaries.reduce((sum, area) => sum + area.totalBoltCount, 0)} 箇所
           </dd>
         </div>
+        {checkSummary.requiredTotal > 0 ? (
+          <div className="flex items-baseline gap-1.5">
+            <dt className="text-white/55">必須チェック</dt>
+            <dd className="font-semibold">
+              {checkSummary.requiredCompleted}/{checkSummary.requiredTotal}
+            </dd>
+          </div>
+        ) : null}
         <div className="flex items-baseline gap-1.5">
           <dt className="text-white/55">承認状態</dt>
           <dd className="font-semibold">{approved ? '承認済み' : '未承認'}</dd>
@@ -148,6 +160,45 @@ function DetailPane({
           </table>
         </div>
       </section>
+
+      {checkSummary.requiredTotal > 0 ? (
+        <section>
+          <h3 className="mb-2 text-sm font-bold text-white/80">チェック実績</h3>
+          <div className="mb-2 text-sm text-white/70">
+            必須 {checkSummary.requiredCompleted}/{checkSummary.requiredTotal}
+            {checkSummary.allRequiredCompleted ? '（完了）' : '（未完了あり）'}
+          </div>
+          <div className="w-fit max-w-full overflow-x-auto rounded border border-white/10">
+            <table className="w-auto text-left text-sm">
+              <thead className="bg-slate-950/70 text-white/60">
+                <tr>
+                  <th className="px-2.5 py-1.5">No.</th>
+                  <th className="px-2.5 py-1.5">項目</th>
+                  <th className="px-2.5 py-1.5">必須</th>
+                  <th className="px-2.5 py-1.5">状態</th>
+                </tr>
+              </thead>
+              <tbody>
+                {checkItems.map((item) => (
+                  <tr key={item.id} className="border-t border-white/10">
+                    <td className="px-2.5 py-1.5 font-mono">{item.markerNo}</td>
+                    <td className="px-2.5 py-1.5">{item.label ?? `チェック${item.markerNo}`}</td>
+                    <td className="px-2.5 py-1.5">{item.required ? '必須' : '任意'}</td>
+                    <td className={`px-2.5 py-1.5 font-semibold ${item.record?.checked ? 'text-emerald-200' : 'text-amber-200'}`}>
+                      {item.record?.checked ? 'OK' : '未'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {incompleteRequiredChecks.length > 0 ? (
+            <p className="mt-2 text-xs font-semibold text-amber-200">
+              未完了の必須チェック: {incompleteRequiredChecks.map((item) => item.label ?? `チェック${item.markerNo}`).join('、')}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {approved ? (
         <div className="max-w-md rounded border border-emerald-300/30 bg-emerald-500/10 p-2.5 text-sm">

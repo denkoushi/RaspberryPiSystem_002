@@ -1,8 +1,18 @@
+export type AssemblyProcedureDocumentStatusDto = 'draft' | 'published';
+
+export type AssemblyProcedureDocumentPageDto = {
+  pageIndex: number;
+  imageRelativePath: string;
+};
+
 export type AssemblyProcedureDocumentDto = {
   id: string;
   name: string;
   imageRelativePath: string;
+  status: AssemblyProcedureDocumentStatusDto;
+  publishedAt: string | null;
   isActive: boolean;
+  pages: AssemblyProcedureDocumentPageDto[];
   createdAt: string;
   updatedAt: string;
 };
@@ -25,8 +35,24 @@ export type AssemblyTemplateBoltDto = {
   lowerLimit: string;
   upperLimit: string;
   unit: string;
+  kioskDocumentId?: string | null;
+  assemblyProcedureDocumentId?: string | null;
+  pageIndex?: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type AssemblyTemplateCheckItemDto = {
+  id: string;
+  markerNo: number;
+  label: string | null;
+  required: boolean;
+  xRatio: number;
+  yRatio: number;
+  sortOrder: number;
+  kioskDocumentId: string | null;
+  assemblyProcedureDocumentId: string | null;
+  pageIndex: number;
 };
 
 export type AssemblyTemplateAreaDto = {
@@ -55,6 +81,7 @@ export type AssemblyTemplateDto = {
   updatedAt: string;
   procedureDocument: AssemblyProcedureDocumentDto;
   areas: AssemblyTemplateAreaDto[];
+  checkItems: AssemblyTemplateCheckItemDto[];
 };
 
 export type AssemblyTemplateSummaryDto = {
@@ -89,6 +116,23 @@ export type AssemblyTorqueRecordDto = {
   markerNo: number;
   areaId: string;
   areaName: string;
+};
+
+export type AssemblyCheckRecordDto = {
+  checkItemId: string;
+  checked: boolean;
+  checkedByOperatorName: string | null;
+  checkedAt: string | null;
+};
+
+export type AssemblyCheckSummaryDto = {
+  requiredTotal: number;
+  requiredCompleted: number;
+  allRequiredCompleted: boolean;
+};
+
+export type AssemblyWorkSessionCheckItemDto = AssemblyTemplateCheckItemDto & {
+  record: AssemblyCheckRecordDto | null;
 };
 
 export type AssemblyAreaRestartLogDto = {
@@ -148,6 +192,8 @@ export type AssemblyWorkSessionDto = {
   restartLogs: AssemblyAreaRestartLogDto[];
   approval: AssemblyWorkSessionApprovalDto | null;
   areaTorqueSummaries: AssemblyAreaTorqueSummaryDto[];
+  checkItems: AssemblyWorkSessionCheckItemDto[];
+  checkSummary: AssemblyCheckSummaryDto;
 };
 
 export type AssemblySeibanCandidateDto = {
@@ -280,6 +326,13 @@ export type AssemblyProcedureOrderSaveInput = {
   }>;
 };
 
+export type AssemblyProcedureSequencePageDto = {
+  source: 'kiosk_document' | 'assembly_procedure_document';
+  documentId: string;
+  pageIndex: number;
+  pageUrl: string;
+};
+
 export type AssemblyProcedureSequenceDocumentDto = {
   orderItemId: string;
   sortOrder: number;
@@ -295,6 +348,7 @@ export type AssemblyProcedureSequenceDocumentDto = {
   pageCount: number | null;
   updatedAt: string;
   pageUrls: string[];
+  pages: AssemblyProcedureSequencePageDto[];
 };
 
 export type AssemblyProcedureSequenceDto = {
@@ -321,6 +375,21 @@ export type AssemblyTemplateBoltInput = {
   lowerLimit: number;
   upperLimit: number;
   unit: string;
+  kioskDocumentId?: string | null;
+  assemblyProcedureDocumentId?: string | null;
+  pageIndex?: number | null;
+};
+
+export type AssemblyTemplateCheckItemInput = {
+  markerNo: number;
+  label?: string | null;
+  required?: boolean;
+  xRatio: number;
+  yRatio: number;
+  sortOrder: number;
+  kioskDocumentId?: string | null;
+  assemblyProcedureDocumentId?: string | null;
+  pageIndex?: number;
 };
 
 export type AssemblyTemplateAreaInput = {
@@ -339,6 +408,7 @@ export type AssemblyTemplateCreateInput = {
   name: string;
   procedureDocumentId: string;
   areas: AssemblyTemplateAreaInput[];
+  checkItems?: AssemblyTemplateCheckItemInput[];
 };
 
 export type AssemblyWorkSessionStartInput = {
