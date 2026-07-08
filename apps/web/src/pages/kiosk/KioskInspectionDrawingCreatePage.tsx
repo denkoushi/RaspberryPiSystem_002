@@ -17,6 +17,7 @@ import {
   getResolvedClientKey,
   existsActivePartMeasurementTemplate,
   listInspectionDrawingMeasurementLabelSettings,
+  listKioskInspectionDrawingTemplates,
   listPartMeasurementDrawingOcrCandidates,
   listPartMeasurementVisualTemplates,
   reviseKioskInspectionDrawingTemplate,
@@ -109,6 +110,35 @@ type DrawingOcrCandidateState = {
   candidates: PartMeasurementDrawingOcrCandidateDto[];
   error: string | null;
 };
+
+type VisualLinkedFhincdResult =
+  | { kind: 'none' }
+  | { kind: 'unique'; fhincd: string }
+  | { kind: 'multiple'; fhincds: string[] };
+
+async function resolveVisualLinkedFhincd(
+  visualTemplateId: string,
+  clientKey?: string
+): Promise<VisualLinkedFhincdResult> {
+  const templates = await listKioskInspectionDrawingTemplates({ visualTemplateId }, clientKey);
+  const fhincdsByNormalized = new Map<string, string>();
+  for (const template of templates) {
+    const fhincd = template.fhincd.trim();
+    if (!fhincd) continue;
+    const normalized = fhincd.toUpperCase();
+    if (!fhincdsByNormalized.has(normalized)) {
+      fhincdsByNormalized.set(normalized, fhincd);
+    }
+  }
+  const fhincds = [...fhincdsByNormalized.values()];
+  if (fhincds.length === 0) {
+    return { kind: 'none' };
+  }
+  if (fhincds.length === 1) {
+    return { kind: 'unique', fhincd: fhincds[0]! };
+  }
+  return { kind: 'multiple', fhincds };
+}
 
 export function KioskInspectionDrawingCreatePage() {
   const { templateId } = useParams<{ templateId: string }>();
@@ -439,6 +469,7 @@ export function KioskInspectionDrawingCreatePage() {
   const drawingReplacePendingRef = useRef(false);
   const prevSourceTemplateIdRef = useRef<string | null>(null);
   const prevVisualTemplateIdFromSearchRef = useRef<string | null>(null);
+  const visualLinkedFhincdRequestSeqRef = useRef(0);
   const visualSearchRequestSeqRef = useRef(0);
   const ocrCandidateRequestSeqRef = useRef(0);
 
@@ -456,6 +487,37 @@ export function KioskInspectionDrawingCreatePage() {
     setResourceCds(normalized);
     setResourceCd(normalized[0] ?? '');
   }, []);
+
+  const applyVisualLinkedFhincdResult = useCallback((result: VisualLinkedFhincdResult) => {
+    if (result.kind === 'unique') {
+      setFhincd(result.fhincd);
+      return;
+    }
+    if (result.kind === 'multiple') {
+      setMessage(
+        `選択した図面に複数の品番が紐付いています（${result.fhincds.join('、')}）。品番は自動入力しません。`
+      );
+    }
+  }, []);
+
+  const requestVisualLinkedFhincd = useCallback(
+    (visualTemplateId: string) => {
+      if (isEditing) return;
+      const requestSeq = ++visualLinkedFhincdRequestSeqRef.current;
+      void (async () => {
+        try {
+          const result = await resolveVisualLinkedFhincd(visualTemplateId, clientKey);
+          if (visualLinkedFhincdRequestSeqRef.current !== requestSeq) return;
+          applyVisualLinkedFhincdResult(result);
+        } catch {
+          if (visualLinkedFhincdRequestSeqRef.current === requestSeq) {
+            setMessage('図面は選択しましたが、品番候補を確認できませんでした。');
+          }
+        }
+      })();
+    },
+    [applyVisualLinkedFhincdResult, clientKey, isEditing]
+  );
 
   useEffect(() => {
     if (isEditing || !templateNameAutoMode) return;
@@ -517,6 +579,7 @@ export function KioskInspectionDrawingCreatePage() {
   );
 
   const resetBlankCreateForm = useCallback(() => {
+    visualLinkedFhincdRequestSeqRef.current += 1;
     setSourceTemplateDraft(null);
     setTemplateName('');
     setTemplateNameAutoMode(true);
@@ -579,8 +642,9 @@ export function KioskInspectionDrawingCreatePage() {
       setServerDrawingPath(visual.drawingImageRelativePath);
       setOcrCandidatesByPointId({});
       setSavedSnapshot(null);
+      requestVisualLinkedFhincd(visual.id);
     },
-    [resetLocalPreview]
+    [requestVisualLinkedFhincd, resetLocalPreview]
   );
 
   const clearPointsIfConfirmed = useCallback((): boolean => {
@@ -593,12 +657,15 @@ export function KioskInspectionDrawingCreatePage() {
   const applyPickExistingVisual = useCallback(
     (visual: PartMeasurementVisualTemplateDto): boolean => {
       if (selectedVisualTemplateId === visual.id) {
+        setMessage(null);
         setVisualSource('pickExisting');
         setSelectedVisualLabel(visual.name);
         setServerDrawingPath(visual.drawingImageRelativePath);
+        requestVisualLinkedFhincd(visual.id);
         return true;
       }
       if (!clearPointsIfConfirmed()) return false;
+      setMessage(null);
       resetLocalPreview();
       setVisualSource('pickExisting');
       setSelectedVisualTemplateId(visual.id);
@@ -608,9 +675,10 @@ export function KioskInspectionDrawingCreatePage() {
       setSelectedPointId(null);
       setOcrCandidatesByPointId({});
       guidedTrial.resetTrialState();
+      requestVisualLinkedFhincd(visual.id);
       return true;
     },
-    [clearPointsIfConfirmed, guidedTrial, resetLocalPreview, selectedVisualTemplateId]
+    [clearPointsIfConfirmed, guidedTrial, requestVisualLinkedFhincd, resetLocalPreview, selectedVisualTemplateId]
   );
 
   const applyUploadVisual = useCallback(
@@ -618,6 +686,7 @@ export function KioskInspectionDrawingCreatePage() {
       if (visualSource === 'pickExisting' || points.length > 0) {
         if (!clearPointsIfConfirmed()) return false;
       }
+      visualLinkedFhincdRequestSeqRef.current += 1;
       setVisualSource('upload');
       setSelectedVisualTemplateId(null);
       setSelectedVisualLabel(null);

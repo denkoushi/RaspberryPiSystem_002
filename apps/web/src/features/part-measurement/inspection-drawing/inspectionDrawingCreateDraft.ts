@@ -89,6 +89,9 @@ export type InspectionDrawingCreateDirtySnapshot = {
   points: Array<{
     markerNo: number;
     name: string;
+    threadNominal: string;
+    surfaceSide: string;
+    supplementText: string;
     xRatio: number;
     yRatio: number;
     nominalRaw: string;
@@ -156,6 +159,9 @@ export function buildInspectionDrawingCreateDirtySnapshot(params: {
     points: params.points.map((pt) => ({
       markerNo: pt.markerNo,
       name: normalizeText(pt.name),
+      threadNominal: normalizeText(pt.threadNominal ?? ''),
+      surfaceSide: normalizeText(pt.surfaceSide ?? ''),
+      supplementText: normalizeText(pt.supplementText ?? ''),
       xRatio: normalizeRatio(pt.xRatio),
       yRatio: normalizeRatio(pt.yRatio),
       nominalRaw: normalizeText(pt.nominalRaw),

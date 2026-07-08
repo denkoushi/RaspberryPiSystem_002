@@ -336,6 +336,8 @@ describe('part-measurement templates API', () => {
     expect(byLabel.get('直角度')).toBe('geometric');
     expect(byLabel.get('面粗度')).toBe('geometric');
     expect(byLabel.get('幅')).toBe('dimension');
+    expect(byLabel.get('ネジ穴ピッチ')).toBe('dimension');
+    expect(byLabel.get('穴ピッチ')).toBe('dimension');
   });
 
   it('updates inspection drawing label tolerance settings with manager auth and returns them to kiosk clients', async () => {
@@ -731,6 +733,46 @@ describe('part-measurement templates API', () => {
     const visualFiltered = visualNameList.json().templates as Array<{ id: string }>;
     expect(visualFiltered.some((row) => row.id === tpl.id)).toBe(true);
 
+    const otherUpload = buildMultipartPng('図面B', MIN_PNG);
+    const otherVisualRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': otherUpload.contentType },
+      payload: otherUpload.body
+    });
+    expect(otherVisualRes.statusCode).toBe(200);
+    const otherVid = otherVisualRes.json().visualTemplate.id as string;
+    const otherCreateRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd: `${fhincd}-OTHER`,
+        processGroup: 'cutting',
+        resourceCd: 'RES-V2',
+        name: 'with other visual',
+        visualTemplateId: otherVid,
+        items: validInspectionDrawingItems('L-other')
+      }
+    });
+    expect(otherCreateRes.statusCode).toBe(200);
+    const otherTpl = otherCreateRes.json().template;
+
+    const visualIdList = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/templates?visualTemplateId=${encodeURIComponent(vid)}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(visualIdList.statusCode).toBe(200);
+    const visualIdFiltered = visualIdList.json().templates as Array<{
+      id: string;
+      fhincd: string;
+      visualTemplateId: string | null;
+    }>;
+    expect(visualIdFiltered.some((row) => row.id === tpl.id)).toBe(true);
+    expect(visualIdFiltered.some((row) => row.id === otherTpl.id)).toBe(false);
+    expect(visualIdFiltered.every((row) => row.visualTemplateId === vid)).toBe(true);
+
     const noMarkerRes = await app.inject({
       method: 'POST',
       url: '/api/part-measurement/templates',
@@ -753,6 +795,16 @@ describe('part-measurement templates API', () => {
     });
     expect(noMarkerRes.statusCode).toBe(200);
     const noMarkerTpl = noMarkerRes.json().template;
+    const visualIdListAfterNoMarker = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/templates?visualTemplateId=${encodeURIComponent(vid)}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(visualIdListAfterNoMarker.statusCode).toBe(200);
+    expect(
+      (visualIdListAfterNoMarker.json().templates as Array<{ id: string }>).some((row) => row.id === noMarkerTpl.id)
+    ).toBe(false);
+
     const kioskReject = await app.inject({
       method: 'GET',
       url: `/api/part-measurement/inspection-drawing/templates/${noMarkerTpl.id}`,
@@ -783,7 +835,17 @@ describe('part-measurement templates API', () => {
       }
     });
     expect(reviseRes.statusCode).toBe(200);
+    const revisedTpl = reviseRes.json().template;
+    const visualIdListAfterRevise = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/templates?visualTemplateId=${encodeURIComponent(vid)}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(visualIdListAfterRevise.statusCode).toBe(200);
+    const activeVisualRowsAfterRevise = visualIdListAfterRevise.json().templates as Array<{ id: string }>;
+    expect(activeVisualRowsAfterRevise.some((row) => row.id === revisedTpl.id)).toBe(true);
     const oldId = tpl.id;
+    expect(activeVisualRowsAfterRevise.some((row) => row.id === oldId)).toBe(false);
     const inactiveRevise = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/inspection-drawing/templates/${oldId}/revise`,
@@ -940,6 +1002,22 @@ describe('part-measurement templates API', () => {
     );
     expect(groupRows.length).toBeGreaterThan(0);
     expect(groupRows[0]?.siblingGroup?.activeResourceCds).toEqual(['RES-G1', 'RES-G3', 'RES-G4']);
+
+    const visualFilteredGroupRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/templates?visualTemplateId=${encodeURIComponent(visualTemplateId)}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(visualFilteredGroupRes.statusCode).toBe(200);
+    const visualFilteredGroupRows = (
+      visualFilteredGroupRes.json().templates as Array<{
+        fhincd: string;
+        resourceCd: string;
+        siblingGroupId: string | null;
+      }>
+    ).filter((row) => row.siblingGroupId === siblingGroupId);
+    expect(new Set(visualFilteredGroupRows.map((row) => row.fhincd))).toEqual(new Set([fhincd]));
+    expect(visualFilteredGroupRows.map((row) => row.resourceCd).sort()).toEqual(['RES-G1', 'RES-G3', 'RES-G4']);
   });
 
   it('rolls back inspection drawing sibling group create when one resource collides', async () => {

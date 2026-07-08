@@ -61,16 +61,16 @@ export function InspectionDrawingCreateToolbar({
   const guidedTrialDisabled = testDisabled;
   const saveBlocked = saveDisabled || saveBusy || !onSave;
   const saveStatusClassName = clsx(
-    'inline-flex min-h-9 shrink-0 items-center rounded border px-2 text-[0.9rem] font-semibold',
-    saveStatus === 'dirty' && 'border-amber-300/55 bg-amber-400/15 text-amber-100',
-    saveStatus === 'blocked' && 'border-white/15 bg-white/5 text-white/65',
-    saveStatus === 'saved' && 'border-emerald-300/35 bg-emerald-400/10 text-emerald-100',
-    saveStatus === 'saving' && 'border-cyan-300/45 bg-cyan-400/10 text-cyan-100',
-    saveStatus === 'read_only' && 'border-sky-300/35 bg-sky-400/10 text-sky-100'
+    'inline-flex min-h-9 shrink-0 items-center px-1 text-[0.9rem] font-semibold',
+    saveStatus === 'dirty' && 'text-amber-100',
+    saveStatus === 'blocked' && 'text-white/65',
+    saveStatus === 'saved' && 'text-emerald-100',
+    saveStatus === 'saving' && 'text-cyan-100',
+    saveStatus === 'read_only' && 'text-sky-100'
   );
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
       {showProcessGroup ? (
         <>
           <span className="sr-only">工程</span>
@@ -106,26 +106,6 @@ export function InspectionDrawingCreateToolbar({
       >
         点を配置
       </Button>
-      <Button
-        type="button"
-        variant="primary"
-        aria-pressed={mode === 'test'}
-        className={toggleClass(mode === 'test')}
-        disabled={testDisabled}
-        onClick={() => onModeChange('test')}
-      >
-        テスト入力
-      </Button>
-      <Button
-        type="button"
-        variant="primary"
-        aria-pressed={mode === 'guidedTrial'}
-        className={toggleClass(mode === 'guidedTrial')}
-        disabled={guidedTrialDisabled}
-        onClick={() => onModeChange('guidedTrial')}
-      >
-        ガイド試行
-      </Button>
 
       <Button
         type="button"
@@ -143,23 +123,46 @@ export function InspectionDrawingCreateToolbar({
         </span>
       ) : null}
 
-      {savedPrintPath ? (
-        <Link
-          to={savedPrintPath}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="未保存の変更は反映されません"
-          className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        <Button
+          type="button"
+          variant="primary"
+          aria-pressed={mode === 'test'}
+          className={toggleClass(mode === 'test')}
+          disabled={testDisabled}
+          onClick={() => onModeChange('test')}
         >
-          保存済み帳票
-        </Link>
-      ) : null}
+          テスト入力
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          aria-pressed={mode === 'guidedTrial'}
+          className={toggleClass(mode === 'guidedTrial')}
+          disabled={guidedTrialDisabled}
+          onClick={() => onModeChange('guidedTrial')}
+        >
+          ガイド試行
+        </Button>
 
-      {returnTo && returnLabel ? (
-        <Link to={returnTo} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}>
-          {returnLabel}
-        </Link>
-      ) : null}
+        {savedPrintPath ? (
+          <Link
+            to={savedPrintPath}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="未保存の変更は反映されません"
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}
+          >
+            保存済み帳票
+          </Link>
+        ) : null}
+
+        {returnTo && returnLabel ? (
+          <Link to={returnTo} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}>
+            {returnLabel}
+          </Link>
+        ) : null}
+      </div>
     </div>
   );
 }

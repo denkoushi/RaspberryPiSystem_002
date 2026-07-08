@@ -15,6 +15,7 @@ import {
 } from './inspectionDrawingMarkerStyles';
 import { INSPECTION_DRAWING_ZOOM_DEFAULT } from './inspectionDrawingZoom';
 import { toleranceBoundsFromPoint } from './markerNumbering';
+import { formatInspectionDrawingPointDisplayName } from './measurementPointSupplement';
 import { useZoomedCanvasLayout } from './useZoomedCanvasLayout';
 
 import type { InspectionDrawingPoint } from './types';
@@ -272,6 +273,7 @@ export function InspectionDrawingCanvas({
                 const left = image.offsetX + pt.xRatio * image.width;
                 const top = image.offsetY + pt.yRatio * image.height;
                 const isInputTarget = pt.id === selectedPointId;
+                const displayName = formatInspectionDrawingPointDisplayName(pt, `測定点 ${pt.markerNo}`);
                 return (
                   <div
                     key={pt.id}
@@ -283,7 +285,7 @@ export function InspectionDrawingCanvas({
                   >
                     <button
                       type="button"
-                      aria-label={pt.name || `測定点 ${pt.markerNo}`}
+                      aria-label={displayName}
                       className={inspectionDrawingMarkerButtonClass(status)}
                       onPointerDown={(ev) => {
                         ev.stopPropagation();

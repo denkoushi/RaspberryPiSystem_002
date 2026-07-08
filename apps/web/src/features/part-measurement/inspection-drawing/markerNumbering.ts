@@ -4,6 +4,10 @@ import {
 } from '@raspi-system/shared-types';
 
 import {
+  buildInspectionDrawingMeasurementPoint,
+  parseInspectionDrawingMeasurementPointSupplement
+} from './measurementPointSupplement';
+import {
   dbAbsoluteBoundsToToleranceRawFields,
   formatToleranceRawNumber,
   inferDecimalPlacesFromToleranceRaw,
@@ -39,6 +43,9 @@ export function createInspectionDrawingPoint(
   return {
     id: crypto.randomUUID(),
     name: '',
+    threadNominal: '',
+    surfaceSide: '',
+    supplementText: '',
     markerNo,
     xRatio,
     yRatio,
@@ -62,9 +69,14 @@ export function templateItemToDrawingPoint(
     upperLimit: parseOptionalNumber(item.upperLimit)
   });
   const { legacyAbsoluteBounds, ...raw } = toleranceFields;
+  const supplement = parseInspectionDrawingMeasurementPointSupplement({
+    measurementLabel: item.measurementLabel,
+    measurementPoint: item.measurementPoint
+  });
   return {
     id: item.id,
     name: item.measurementLabel,
+    ...supplement,
     markerNo,
     xRatio: parseOptionalNumber(item.markerXRatio) ?? 0,
     yRatio: parseOptionalNumber(item.markerYRatio) ?? 0,
@@ -226,6 +238,7 @@ export function drawingPointToTemplateItemInput(
   upperLimit: number;
 } {
   const label = pt.name.trim() || `測定点${pt.markerNo}`;
+  const measurementPoint = buildInspectionDrawingMeasurementPoint(label, pt);
   const bounds = resolvePointToleranceBoundsForSave(pt, options);
   if ('error' in bounds) {
     throw new Error(bounds.error);
@@ -251,7 +264,7 @@ export function drawingPointToTemplateItemInput(
     return {
       sortOrder,
       datumSurface: '—',
-      measurementPoint: label,
+      measurementPoint,
       measurementLabel: label,
       displayMarker: String(pt.markerNo),
       unit: null,
@@ -267,7 +280,7 @@ export function drawingPointToTemplateItemInput(
   return {
     sortOrder,
     datumSurface: '—',
-    measurementPoint: label,
+    measurementPoint,
     measurementLabel: label,
     displayMarker: String(pt.markerNo),
     unit: null,

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { InspectionDrawingCreateToolbar } from '../InspectionDrawingCreateToolbar';
 
 describe('InspectionDrawingCreateToolbar', () => {
-  it('renders save status between save and return actions', () => {
+  it('renders save status as plain text and keeps right actions ordered', () => {
     render(
       <MemoryRouter>
         <InspectionDrawingCreateToolbar
@@ -24,14 +24,26 @@ describe('InspectionDrawingCreateToolbar', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('未保存あり')).toBeInTheDocument();
+    const saveStatus = screen.getByText('未保存あり');
+    expect(saveStatus).toBeInTheDocument();
+    expect(saveStatus).not.toHaveClass('rounded');
+    expect(saveStatus).not.toHaveClass('border');
     expect(screen.getByRole('button', { name: '保存' })).toBeEnabled();
     expect(screen.getByRole('link', { name: '保存済み帳票' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '一覧へ戻る' })).toBeInTheDocument();
-    expect(screen.getByText('保存').compareDocumentPosition(screen.getByText('未保存あり'))).toBe(
+    expect(screen.getByText('保存').compareDocumentPosition(saveStatus)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     );
-    expect(screen.getByText('未保存あり').compareDocumentPosition(screen.getByText('一覧へ戻る'))).toBe(
+    expect(saveStatus.compareDocumentPosition(screen.getByText('テスト入力'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(screen.getByText('テスト入力').compareDocumentPosition(screen.getByText('ガイド試行'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(screen.getByText('ガイド試行').compareDocumentPosition(screen.getByText('保存済み帳票'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(screen.getByText('保存済み帳票').compareDocumentPosition(screen.getByText('一覧へ戻る'))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     );
   });

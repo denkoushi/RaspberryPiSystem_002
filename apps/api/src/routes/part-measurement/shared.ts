@@ -270,7 +270,9 @@ export const listTemplatesQuerySchema = z.object({
 
 export const kioskInspectionDrawingTemplatesQuerySchema = listTemplatesQuerySchema.extend({
   /** 図面名の部分一致（大文字小文字無視）。空文字は無視 */
-  visualName: z.string().max(200).optional()
+  visualName: z.string().max(200).optional(),
+  /** 図面テンプレート ID の完全一致。新規作成時の品番自動入力にも使う */
+  visualTemplateId: z.string().uuid().optional()
 });
 
 export const inspectionDrawingToleranceKindSchema = z.enum(['dimension', 'geometric']);

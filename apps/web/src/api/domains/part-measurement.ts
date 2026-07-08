@@ -292,6 +292,7 @@ export async function listKioskInspectionDrawingTemplates(
     resourceCd?: string;
     includeInactive?: boolean;
     visualName?: string;
+    visualTemplateId?: string;
   },
   clientKey?: string
 ): Promise<KioskInspectionDrawingTemplateSummaryDto[]> {

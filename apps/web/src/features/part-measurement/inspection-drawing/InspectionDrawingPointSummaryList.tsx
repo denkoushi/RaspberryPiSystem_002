@@ -12,6 +12,7 @@ import {
   MEASUREMENT_POINT_INPUT_STATUS_LABEL,
   resolveMeasurementPointInputStatus
 } from './measurementPointInputStatus';
+import { formatInspectionDrawingPointDisplayName } from './measurementPointSupplement';
 
 import type { InspectionDrawingPoint } from './types';
 
@@ -81,7 +82,7 @@ export function InspectionDrawingPointSummaryList({
         <div className={listClassName} role="list" aria-label="測定点一覧">
           {sorted.map((pt) => {
             const selected = pt.id === selectedPointId;
-            const displayName = pt.name.trim() || '（名称未選択）';
+            const displayName = formatInspectionDrawingPointDisplayName(pt, '（名称未選択）');
             const inputStatus = showMeasurementStatus ? resolveMeasurementPointInputStatus(pt) : null;
             const testValueDisplay = showMeasurementStatus ? displayRaw(pt.testValue) : null;
             return (

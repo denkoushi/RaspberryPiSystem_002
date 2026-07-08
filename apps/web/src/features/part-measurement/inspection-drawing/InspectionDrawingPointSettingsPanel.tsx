@@ -24,6 +24,10 @@ import {
 } from './inspectionDrawingMeasurementLabelOptions';
 import { InspectionDrawingPointPositionNudge } from './InspectionDrawingPointPositionNudge';
 import { buildGeometricTolerancePointPatch } from './markerNumbering';
+import {
+  INSPECTION_DRAWING_SURFACE_SIDE_OPTIONS,
+  INSPECTION_DRAWING_THREAD_NOMINAL_OPTIONS
+} from './measurementPointSupplement';
 
 import type {
   PartMeasurementDrawingOcrCandidateDto,
@@ -145,6 +149,9 @@ export function InspectionDrawingPointSettingsPanel({
     effectiveMeasurementLabelSettings
   );
   const isGeometricTolerance = toleranceKind === 'geometric';
+  const threadNominal = point.threadNominal ?? '';
+  const surfaceSide = point.surfaceSide ?? '';
+  const supplementText = point.supplementText ?? '';
   const showOcrCandidateRow =
     ocrCandidateLoading ||
     ocrCandidateError ||
@@ -214,6 +221,62 @@ export function InspectionDrawingPointSettingsPanel({
             </select>
           </div>
         </label>
+      </div>
+      <div className={inspectionDrawingPointSettingSingleRowClassName}>
+        <div className="grid min-w-0 gap-1">
+          <span className="text-[1rem] font-semibold">補足</span>
+          <div className="grid grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,1.45fr)] gap-1.5">
+            <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
+              面
+              <div className={inspectionDrawingBoundedSelectShellClassName}>
+                <select
+                  value={surfaceSide}
+                  onChange={(e) => onChange({ surfaceSide: e.target.value })}
+                  className={inspectionDrawingBoundedSelectClassName}
+                  disabled={disabled}
+                  title={surfaceSide || '面なし'}
+                >
+                  <option value="">面なし</option>
+                  {INSPECTION_DRAWING_SURFACE_SIDE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </label>
+            <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
+              呼び径
+              <div className={inspectionDrawingBoundedSelectShellClassName}>
+                <select
+                  value={threadNominal}
+                  onChange={(e) => onChange({ threadNominal: e.target.value })}
+                  className={inspectionDrawingBoundedSelectClassName}
+                  disabled={disabled}
+                  title={threadNominal || '呼び径なし'}
+                >
+                  <option value="">呼び径なし</option>
+                  {INSPECTION_DRAWING_THREAD_NOMINAL_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </label>
+            <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
+              直接入力
+              <Input
+                type="text"
+                value={supplementText}
+                onChange={(e) => onChange({ supplementText: e.target.value })}
+                className={inspectionDrawingPointSettingInputClassName}
+                disabled={disabled}
+                placeholder="例: 2箇所"
+              />
+            </label>
+          </div>
+        </div>
       </div>
       <div className={inspectionDrawingPointSettingSingleRowClassName}>
         <label className={inspectionDrawingPointSettingDualCellClassName}>

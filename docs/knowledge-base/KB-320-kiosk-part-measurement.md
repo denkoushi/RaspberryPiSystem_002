@@ -69,7 +69,7 @@
 | 区分 | 内容 |
 |------|------|
 | **一覧/作成/編集** | キオスクヘッダー **「検査図面」**（アンバー・部品測定タブとは別アクティブ）。URL: `/kiosk/part-measurement/inspection`（一覧ハブ）。一覧から **新規** / **編集** / **履歴**。**新規**は `POST /api/part-measurement/templates`（図面必須・`THREE_KEY`）。**編集保存**は専用 `POST /api/part-measurement/inspection-drawing/templates/:id/revise`（有効版のみ）。**読込**は専用 `GET …/inspection-drawing/templates` / `GET …/:id`（汎用 `GET /templates/:id` はキオスク検査図面編集から使わない）。資源は **表示名付きドロップダウン**（`listResourceOptions`）。品番・資源・工程は編集画面で **表示専用**（改版でキーは変えない）。 |
-| **一覧 API 契約** | `GET /api/part-measurement/inspection-drawing/templates` — クエリ `fhincd`（**部分一致・case-insensitive**）、`processGroup`（`cutting`/`grinding`）、`resourceCd`、`includeInactive`。応答は **要約 DTO**（`itemCount` のみ・全 `items` は載せない）。対象は **本番** `THREE_KEY` + 切削/研削 + `visualTemplateId` あり + `templateSupportsInspectionDrawing`（全項目に図面座標と上下限）。 |
+| **一覧 API 契約** | `GET /api/part-measurement/inspection-drawing/templates` — クエリ `fhincd`（**部分一致・case-insensitive**）、`processGroup`（`cutting`/`grinding`）、`resourceCd`、`includeInactive`、`visualName`、`visualTemplateId`（完全一致）。応答は **要約 DTO**（`itemCount` のみ・全 `items` は載せない）。対象は **本番** `THREE_KEY` + 切削/研削 + `visualTemplateId` あり + `templateSupportsInspectionDrawing`（全項目に図面座標と上下限）。 |
 | **取得 API 契約** | `GET …/inspection-drawing/templates/:id` — 上記条件を満たす本番テンプレのみ。**無効版（履歴）も閲覧可**。条件外は **409**「検査図面編集の対象外」。 |
 | **改版 API 契約** | `POST …/inspection-drawing/templates/:id/revise` — **有効版（`isActive: true`）のみ**。無効版は **409**「無効なテンプレートは編集できません」。内部は既存 `reviseActiveTemplate`（新 `version` 行・旧版 inactive）。 |
 | **一覧 UI** | `KioskInspectionDrawingLibraryPage.tsx` — 品番フィルタは API の部分一致と一致。カードは **有効版を優先表示**（同キーで active があればそれを先頭）。**履歴**は `InspectionDrawingTemplateHistoryDialog`（同系譜の版一覧・閲覧/有効化導線）。 |
@@ -97,7 +97,7 @@
 | 導線 | 操作 | 正本 state / ルート |
 |------|------|---------------------|
 | **雛形から新規** | 一覧有効版カード → **雛形として新規** | `?sourceTemplateId=` → 専用 `GET …/inspection-drawing/templates/:id` で再取得 → `templateToCreateDraft`（**point id は新規採番**） |
-| **既存図面再利用** | 新規作成 → **図面** ボタン → **既存から選択** | `visualSource='pickExisting'` · `visualTemplateId` のみで保存可（upload 不要） |
+| **既存図面再利用** | 新規作成 → **図面** ボタン → **既存から選択** | `visualSource='pickExisting'` · `visualTemplateId` のみで保存可（upload 不要）。関連有効テンプレの品番が一意なら `fhincd` を自動入力し、複数品番なら不整合として自動入力しない |
 | **新規アップロード** | 同上ダイアログ → ファイル選択 | `visualSource='upload'` · `createPartMeasurementVisualTemplate` → `cleanupToken` 保持 |
 | **改版（既存キー）** | 一覧 → **編集** → 保存 | `POST …/inspection-drawing/templates/:id/revise`（新規作成ではない） |
 
@@ -126,6 +126,7 @@
 | `POST /api/part-measurement/visual-templates` | 応答に **`cleanupToken`**（作成直後の未参照回収用） |
 | `DELETE /api/part-measurement/visual-templates/:id` | ヘッダ **`X-Visual-Cleanup-Token` 必須**（トークン不一致は 403） |
 | `GET /api/part-measurement/inspection-drawing/templates?visualName=` | テンプレ一覧を **図面名**（`visualTemplate.name`）で部分一致絞り込み（`fhincd` 等と AND） |
+| `GET /api/part-measurement/inspection-drawing/templates?visualTemplateId=` | テンプレ一覧を **図面 ID** 完全一致で絞り込み。新規作成で既存図面を開いたときの品番自動入力に使う |
 
 **同時作成直列化（本番 THREE_KEY）**:
 
@@ -857,11 +858,13 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 #### 2026-07-08 丸数字設定改善（保存状態・右ペイン・幾何公差上限値） {#検査図面-丸数字設定改善-2026-07-08}
 
 - **作業ブランチ / 代表コミット**: `feature/assembly-lot-serial-workflow` / **`04bb49fe`**（`feat: improve inspection drawing marker settings`）。
-- **変更種別**: Web + shared-types のみ。API / DB / Prisma migration / 保存 API の wire shape は変更しない。
-- **保存状態**: 保存ボタンは **変更あり + 入力有効 + 保存中でない + 閲覧版でない** ときだけ enabled。状態表示は既存1行ツールバー内の **保存ボタン右、一覧へ戻る左** に置き、`保存済み` / `未保存あり` / `入力不足` / `保存中` / `閲覧のみ` を表示する。未保存変更がある内部リンク遷移とブラウザ更新/終了は警告する。一時保存は追加せず、既存の改版保存を確定保存として維持する。
+- **変更種別**: Web + shared-types。2026-07-08 追加改善では API の一覧 query に `visualTemplateId` を追加するが、DB / Prisma migration / 保存 API の wire shape は変更しない。
+- **図面選択時の品番自動入力**: 新規作成で `visualTemplateId` から既存図面を開いた場合、`GET …/inspection-drawing/templates?visualTemplateId=` で関連有効テンプレを取得する。品番が一意なら `fhincd` へ自動入力し、複数品番ならデータ不整合として自動入力せずメッセージ表示する。同一品番の複数資源（兄弟グループ）は一意扱い。
+- **保存状態とツールバー**: 保存ボタンは **変更あり + 入力有効 + 保存中でない + 閲覧版でない** ときだけ enabled。状態表示は既存1行ツールバー内の **保存ボタン右** に **枠なし文字**で置き、`保存済み` / `未保存あり` / `入力不足` / `保存中` / `閲覧のみ` を表示する。`テスト入力` / `ガイド試行` / `保存済み帳票` / `一覧へ戻る` は同じ行の右端グループに置く。未保存変更がある内部リンク遷移とブラウザ更新/終了は警告する。一時保存は追加せず、既存の改版保存を確定保存として維持する。
 - **dirty 判定**: `inspectionDrawingCreateDraft.ts` に保存可否理由・dirty snapshot・状態表示の純粋関数を置く。比較対象から `testValue`、OCR状態、選択点、zoom、メッセージは除外する。新規作成は未保存データとして扱い、編集時だけ読込済みテンプレートを baseline にする。保存成功後は再読込内容で baseline を更新して `保存済み` に戻す。
-- **右ペイン**: 外枠 `lg:w-[17rem]` は維持。名称と基準値/上限値を1行ずつに分け、名称 select は見切れないよう全幅化する。位置調整はタイトル「位置」を出さず、`↑ ↓ ← →` の1行配列。`この点を削除` と `全削除` は横2分割で、`全削除` は確認後に全点・選択・OCR候補・ガイド状態をクリアする。アクティブカードは背景色を維持し、枠線/ring を強くする。
-- **名称候補**: `厚み` を追加。初期種別は寸法公差。
+- **右ペイン**: 外枠 `lg:w-[17rem]` は維持。名称と基準値/上限値を1行ずつに分け、名称 select は見切れないよう全幅化する。名称とは別に **補足** 行を持ち、`面`（`正面` / `背面` / `両面`）、`呼び径`（`M3`〜`M30` の JIS メートルねじ候補）、直接入力を併設する。位置調整はタイトル「位置」を出さず、`↑ ↓ ← →` の1行配列。`この点を削除` と `全削除` は横2分割で、`全削除` は確認後に全点・選択・OCR候補・ガイド状態をクリアする。アクティブカードは背景色を維持し、枠線/ring を強くする。
+- **測定点名称/補足の保存契約**: `measurementLabel` は名称のみ、`measurementPoint` は `名称 呼び径 面 自由補足` で保存する。画面表示は `ネジ穴ピッチ / M10 / 正面` 形式。読込時は `measurementPoint` が `measurementLabel + " "` で始まる場合だけ補足として復元し、既存テンプレで `measurementLabel` 自体に `M10` 等が含まれるものは自動分解しない。
+- **名称候補**: `厚み`、`ネジ穴ピッチ`、`穴ピッチ` を追加。初期種別は寸法公差。
 - **幾何公差**: 入力値を **上限値** とし、合格範囲は **0〜上限値**。保存 payload は `nominalValue=上限値` / `lowerLimit=0` / `upperLimit=上限値`。候補は `0` / `0.001`〜`0.009` / `0.01` / `0.015` / `0.020` / `0.030` / `0.050`。UI変更・OCR反映・保存ペイロード変換は `markerNumbering.ts` の `buildGeometricTolerancePointPatch` / `drawingPointToTemplateItemInput` を通す。
 - **ローカル検証**: Web targeted tests **9 files / 65 tests passed**、`pnpm --filter @raspi-system/web lint`、`pnpm --filter @raspi-system/web build`、`pnpm --filter @raspi-system/shared-types build`、`git diff --check` success。
 - **CI**: GitHub Actions **`28910499400` success**（`lint-build-unit` · `api-db-and-infra` · `security-docker` · `e2e-smoke` · `e2e-tests`）。

@@ -347,6 +347,8 @@ export class PartMeasurementTemplateService {
     includeInactive?: boolean;
     /** 図面名の部分一致（大文字小文字無視） */
     visualName?: string;
+    /** 図面テンプレート ID の完全一致 */
+    visualTemplateId?: string;
   }) {
     const where: Prisma.PartMeasurementTemplateWhereInput = {
       templateScope: 'THREE_KEY',
@@ -365,6 +367,9 @@ export class PartMeasurementTemplateService {
     }
     if (!query.includeInactive) {
       where.isActive = true;
+    }
+    if (query.visualTemplateId) {
+      where.visualTemplateId = query.visualTemplateId;
     }
     const visualNameQ = query.visualName?.trim();
     if (visualNameQ) {
