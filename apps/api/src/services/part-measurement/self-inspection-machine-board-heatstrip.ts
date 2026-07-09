@@ -29,8 +29,9 @@ export function resolveHeatstripCellTone(
 
   const displayValue = formatDecimalValue(value, item.decimalPlaces);
 
+  // THROUGH skips numeric tolerance (same visual class as incomplete limits).
   if (String(item.depthMode ?? 'MEASURED').toUpperCase() === 'THROUGH') {
-    return { tone: 'ok', displayValue };
+    return { tone: 'neutral', displayValue };
   }
 
   if (item.lowerLimit == null || item.upperLimit == null) {
