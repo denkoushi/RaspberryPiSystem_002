@@ -172,10 +172,10 @@ export const inspectionDrawingHeaderBandCenterSlotClassName =
 
 /** 図面ズームボタン（記号のみ・キオスクタップ領域） */
 export const inspectionDrawingCanvasZoomButtonClassName =
-  'min-h-11 min-w-11 px-2 text-[1.25rem] font-semibold leading-none';
+  'min-h-10 min-w-10 !px-2 text-[1rem] font-semibold leading-none';
 
 /** 図面ズーム操作 — ボタン群のみ（中央スロットの flex は HeaderBand が担当） */
-export const inspectionDrawingCanvasZoomControlsClassName = 'flex items-center gap-1';
+export const inspectionDrawingCanvasZoomControlsClassName = 'flex items-center gap-0.5';
 
 /** 右サイドバー — 本番記録など（作成/改版は create 用を使う） */
 export const inspectionDrawingSideAsideClassName =
