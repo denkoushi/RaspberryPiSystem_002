@@ -12,6 +12,8 @@ import {
   assemblyTableSecondaryRowClassName
 } from './AssemblyPaneTableShell';
 import { kioskAssemblyWorkSessionPath } from './assemblyRoutes';
+import { useAssemblyRowExpansion } from './assemblyRowExpansion';
+import { AssemblyRowToggle } from './AssemblyRowToggle';
 import { areaStatusShortText, progressPercent, progressText } from './assemblySessionPresentation';
 import { formatAssemblyTimestamp } from './assemblyUiHelpers';
 
@@ -24,32 +26,32 @@ type Props = {
 };
 
 const WIP_COLUMNS = [
-  { key: 'productNo', label: '製番', widthClassName: 'w-[16%]' },
-  { key: 'targetUnit', label: '機種', widthClassName: 'w-[18%]' },
-  { key: 'area', label: 'エリア・位置', widthClassName: 'w-[28%]' },
-  { key: 'progress', label: '進捗', widthClassName: 'w-[18%]' },
-  { key: 'actions', label: '操作', widthClassName: 'w-[20%]', align: 'right' as const }
+  { key: 'productNo', label: '製番', widthClassName: 'w-[34%]' },
+  { key: 'progress', label: '進捗', widthClassName: 'w-[28%]' },
+  { key: 'actions', label: '操作', widthClassName: 'w-[38%]', align: 'right' as const }
 ];
 
 export function AssemblyWipPane({ sessions, loading, onReload }: Props) {
+  const { isExpanded, toggle } = useAssemblyRowExpansion();
+
   return (
     <section
       aria-labelledby="assembly-wip-pane-heading"
-      className="flex min-h-[12rem] min-w-0 flex-1 flex-col overflow-hidden rounded border border-white/15 bg-slate-950/45 xl:min-h-0"
+      className="flex min-h-[10rem] min-w-0 flex-1 flex-col overflow-hidden rounded border border-white/15 bg-slate-950/45 xl:min-h-0"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-white/10 px-2 py-1.5">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <h2 id="assembly-wip-pane-heading" className="text-[1.22rem] font-bold leading-tight text-white">
+          <div className="flex flex-wrap items-baseline gap-1.5">
+            <h2 id="assembly-wip-pane-heading" className="text-sm font-bold leading-tight text-white">
               仕掛中
             </h2>
-            <span className="text-base font-bold text-emerald-200">{sessions.length}件</span>
+            <span className="text-xs font-bold text-emerald-200">{sessions.length}件</span>
           </div>
         </div>
         <Button
           type="button"
           variant="ghostOnDark"
-          className="min-h-10 shrink-0 !px-3 !py-0 text-sm"
+          className="min-h-10 shrink-0 !px-2.5 !py-0 text-xs"
           disabled={loading}
           onClick={onReload}
         >
@@ -66,24 +68,24 @@ export function AssemblyWipPane({ sessions, loading, onReload }: Props) {
         {sessions.map((session) => {
           const href = kioskAssemblyWorkSessionPath(session.id);
           const areaText = areaStatusShortText(session);
+          const expanded = isExpanded(session.id);
+          const panelId = `assembly-wip-detail-${session.id}`;
           return (
             <Fragment key={session.id}>
               <tr className={assemblyTablePrimaryRowClassName}>
                 <td className={assemblyTablePrimaryCellClassName} title={session.productNo}>
-                  <Link to={href} className="block truncate text-white hover:text-emerald-100">
-                    {session.productNo}
-                  </Link>
+                  <AssemblyRowToggle
+                    expanded={expanded}
+                    onToggle={() => toggle(session.id)}
+                    label={session.productNo}
+                    controlsId={panelId}
+                    className="inline-flex min-w-0 max-w-full items-center gap-1 rounded text-left font-bold text-white hover:text-emerald-100"
+                  />
                 </td>
-                <td className="truncate px-2 pb-0.5 pt-1.5 font-semibold text-white/90" title={session.targetUnit}>
-                  {session.targetUnit}
-                </td>
-                <td className="truncate px-2 pb-0.5 pt-1.5 font-semibold text-white/85" title={areaText}>
-                  {areaText}
-                </td>
-                <td className="px-2 pb-0.5 pt-1.5">
-                  <span className="inline-flex items-center gap-1.5">
+                <td className="px-1.5 py-0.5">
+                  <span className="inline-flex items-center gap-1">
                     <span className="font-bold tabular-nums text-emerald-200">{progressText(session)}</span>
-                    <span className="h-1.5 w-10 overflow-hidden rounded-full bg-white/10">
+                    <span className="h-1 w-8 overflow-hidden rounded-full bg-white/10">
                       <span
                         className="block h-full rounded-full bg-cyan-300"
                         style={{ width: `${progressPercent(session)}%` }}
@@ -91,23 +93,22 @@ export function AssemblyWipPane({ sessions, loading, onReload }: Props) {
                     </span>
                   </span>
                 </td>
-                <td className="px-2 pb-0.5 pt-1.5">
+                <td className="px-1.5 py-0.5">
                   <div className="flex justify-end gap-1">
-                    <Link
-                      to={href}
-                      className={buttonClassName('primary', assemblyTableActionButtonClassName)}
-                    >
+                    <Link to={href} className={buttonClassName('primary', assemblyTableActionButtonClassName)}>
                       再開
                     </Link>
                   </div>
                 </td>
               </tr>
-              <tr className={assemblyTableSecondaryRowClassName}>
-                <td colSpan={5} className={assemblyTableSecondaryCellClassName}>
-                  {session.serialNo} / {session.operatorNameSnapshot} ・ 更新{' '}
-                  {formatAssemblyTimestamp(session.updatedAt)}
-                </td>
-              </tr>
+              {expanded ? (
+                <tr id={panelId} className={assemblyTableSecondaryRowClassName}>
+                  <td colSpan={3} className={assemblyTableSecondaryCellClassName}>
+                    {session.targetUnit} ・ {areaText} ・ {session.serialNo} / {session.operatorNameSnapshot} ・ 更新{' '}
+                    {formatAssemblyTimestamp(session.updatedAt)}
+                  </td>
+                </tr>
+              ) : null}
             </Fragment>
           );
         })}

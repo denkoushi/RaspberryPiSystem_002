@@ -78,7 +78,7 @@ const lot: AssemblyLotSummaryDto = {
 };
 
 describe('AssemblyLotPane', () => {
-  it('renders group and serial rows with start/resume/record actions', () => {
+  it('keeps serial rows collapsed by default and expands on toggle', () => {
     const onStartSerial = vi.fn();
     render(
       <MemoryRouter>
@@ -93,7 +93,15 @@ describe('AssemblyLotPane', () => {
     );
 
     expect(screen.getByRole('table', { name: '登録済みロット' })).toBeInTheDocument();
-    expect(screen.getByText(/ASMTEST-A1 ・ MH-2200 ・ 田中 ・ 作業 1\/3 ・ 承認 0\/3/)).toBeInTheDocument();
+    const toggle = screen.getByRole('button', {
+      name: /ASMTEST-A1 ・ MH-2200 ・ 田中 ・ 作業 1\/3 ・ 承認 0\/3/
+    });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('S-001')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '開始' })).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('S-001')).toBeInTheDocument();
     expect(screen.getByText('S-002')).toBeInTheDocument();
     expect(screen.getByText('S-003')).toBeInTheDocument();

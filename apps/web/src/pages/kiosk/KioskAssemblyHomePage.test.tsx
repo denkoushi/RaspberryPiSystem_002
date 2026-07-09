@@ -241,6 +241,7 @@ describe('KioskAssemblyHomePage', () => {
     renderPage();
 
     expect(await screen.findByText('登録済みロット')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /ASMTEST-A1 ・/ }));
     fireEvent.click(screen.getByRole('button', { name: '開始' }));
 
     await waitFor(() => expect(mockStartAssemblyLotSerial).toHaveBeenCalledWith('lot-1', 'lot-serial-1'));
@@ -250,14 +251,18 @@ describe('KioskAssemblyHomePage', () => {
   it('renders in-progress sessions with links back to the work session', async () => {
     renderPage();
 
-    expect(await screen.findByText('ASM-START-001')).toBeInTheDocument();
-    expect(screen.getByText(/S002 \/ 佐藤/)).toBeInTheDocument();
+    const toggle = await screen.findByRole('button', { name: 'ASM-START-001' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByText('0/1')).toBeInTheDocument();
-    expect(screen.getByText(/#1/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'ASM-START-001' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: '再開' })).toHaveAttribute(
       'href',
       '/kiosk/assembly/work-sessions/session-2'
     );
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(/S002 \/ 佐藤/)).toBeInTheDocument();
+    expect(screen.getByText(/#1/)).toBeInTheDocument();
   });
 
   it('keeps independent seiban and serial keypads including BS and CLR', async () => {

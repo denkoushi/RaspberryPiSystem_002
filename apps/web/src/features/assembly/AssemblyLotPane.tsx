@@ -12,6 +12,8 @@ import {
   assemblyTablePrimaryRowClassName
 } from './AssemblyPaneTableShell';
 import { kioskAssemblyRecordApprovalPath, kioskAssemblyWorkSessionPath } from './assemblyRoutes';
+import { useAssemblyRowExpansion } from './assemblyRowExpansion';
+import { AssemblyRowToggle } from './AssemblyRowToggle';
 import { lotProgressText, serialStatusClassName, serialStatusLabel } from './assemblyStatusPresentation';
 import { formatAssemblyTimestamp } from './assemblyUiHelpers';
 
@@ -26,10 +28,8 @@ type Props = {
 };
 
 const LOT_COLUMNS = [
-  { key: 'productNo', label: '製番', widthClassName: 'w-[18%]' },
-  { key: 'serialNo', label: 'シリアル', widthClassName: 'w-[22%]' },
-  { key: 'status', label: '状態', widthClassName: 'w-[16%]' },
-  { key: 'progress', label: '進捗', widthClassName: 'w-[14%]' },
+  { key: 'serialNo', label: 'シリアル', widthClassName: 'w-[42%]' },
+  { key: 'status', label: '状態', widthClassName: 'w-[28%]' },
   { key: 'actions', label: '操作', widthClassName: 'w-[30%]', align: 'right' as const }
 ];
 
@@ -94,24 +94,26 @@ function SerialAction({
 }
 
 export function AssemblyLotPane({ lots, loading, busySerialId, onReload, onStartSerial }: Props) {
+  const { isExpanded, toggle } = useAssemblyRowExpansion();
+
   return (
     <section
       aria-labelledby="assembly-lot-pane-heading"
-      className="flex min-h-[15rem] min-w-0 flex-1 flex-col overflow-hidden rounded border border-white/15 bg-slate-950/45 xl:min-h-0"
+      className="flex min-h-[10rem] min-w-0 flex-1 flex-col overflow-hidden rounded border border-white/15 bg-slate-950/45 xl:min-h-0"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-white/10 px-2 py-1.5">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <h2 id="assembly-lot-pane-heading" className="text-[1.22rem] font-bold leading-tight text-white">
+          <div className="flex flex-wrap items-baseline gap-1.5">
+            <h2 id="assembly-lot-pane-heading" className="text-sm font-bold leading-tight text-white">
               登録済みロット
             </h2>
-            <span className="text-base font-bold text-cyan-200">{lots.length}件</span>
+            <span className="text-xs font-bold text-cyan-200">{lots.length}件</span>
           </div>
         </div>
         <Button
           type="button"
           variant="ghostOnDark"
-          className="min-h-10 shrink-0 !px-3 !py-0 text-sm"
+          className="min-h-10 shrink-0 !px-2.5 !py-0 text-xs"
           disabled={loading}
           onClick={onReload}
         >
@@ -125,48 +127,59 @@ export function AssemblyLotPane({ lots, loading, busySerialId, onReload, onStart
         empty={lots.length === 0}
         emptyMessage={loading ? 'ロットを読込中…' : '登録済みロットなし'}
       >
-        {lots.map((lot) => (
-          <Fragment key={lot.id}>
-            <tr className={assemblyTableGroupRowClassName}>
-              <td colSpan={5} className="px-2 py-1.5 text-xs font-bold text-cyan-100">
-                <span className="truncate">
-                  {lot.productNo} ・ {lot.targetUnit} ・ {lot.operatorNameSnapshot} ・ {lotProgressText(lot)} ・{' '}
-                  {formatAssemblyTimestamp(lot.updatedAt)}
-                </span>
-              </td>
-            </tr>
-            {lot.serials.map((serial) => {
-              const label = serialStatusLabel(serial);
-              const statusClassName = serialStatusClassName(serial);
-              return (
-                <tr key={serial.id} className={assemblyTablePrimaryRowClassName}>
-                  <td className={`${assemblyTableMutedCellClassName} text-white/45`}>↳</td>
-                  <td className={`${assemblyTablePrimaryCellClassName} tabular-nums`} title={serial.serialNo}>
-                    {serial.serialNo}
-                  </td>
-                  <td className="px-2 pb-0.5 pt-1.5">
-                    <span
-                      className={`inline-flex min-h-7 items-center rounded border px-2 text-[11px] font-bold ${statusClassName}`}
-                    >
-                      {label}
-                    </span>
-                  </td>
-                  <td className={`${assemblyTableMutedCellClassName} text-white/45`}>—</td>
-                  <td className="px-2 pb-0.5 pt-1.5">
-                    <div className="flex justify-end gap-1">
-                      <SerialAction
-                        lotId={lot.id}
-                        serial={serial}
-                        busySerialId={busySerialId}
-                        onStartSerial={onStartSerial}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </Fragment>
-        ))}
+        {lots.map((lot) => {
+          const expanded = isExpanded(lot.id);
+          const panelId = `assembly-lot-serials-${lot.id}`;
+          const groupLabel = `${lot.productNo} ・ ${lot.targetUnit} ・ ${lot.operatorNameSnapshot} ・ ${lotProgressText(lot)} ・ ${formatAssemblyTimestamp(lot.updatedAt)}`;
+          return (
+            <Fragment key={lot.id}>
+              <tr className={assemblyTableGroupRowClassName}>
+                <td colSpan={3} className="px-1.5 py-1 text-[11px] font-bold text-cyan-100">
+                  <AssemblyRowToggle
+                    expanded={expanded}
+                    onToggle={() => toggle(lot.id)}
+                    label={groupLabel}
+                    controlsId={panelId}
+                  />
+                </td>
+              </tr>
+              {expanded
+                ? lot.serials.map((serial, index) => {
+                    const label = serialStatusLabel(serial);
+                    const statusClassName = serialStatusClassName(serial);
+                    return (
+                      <tr
+                        key={serial.id}
+                        id={index === 0 ? panelId : undefined}
+                        className={assemblyTablePrimaryRowClassName}
+                      >
+                        <td className={`${assemblyTablePrimaryCellClassName} tabular-nums`} title={serial.serialNo}>
+                          {serial.serialNo}
+                        </td>
+                        <td className="px-1.5 py-0.5">
+                          <span
+                            className={`inline-flex min-h-6 items-center rounded border px-1.5 text-[10px] font-bold ${statusClassName}`}
+                          >
+                            {label}
+                          </span>
+                        </td>
+                        <td className={`${assemblyTableMutedCellClassName} text-right`}>
+                          <div className="flex justify-end gap-1">
+                            <SerialAction
+                              lotId={lot.id}
+                              serial={serial}
+                              busySerialId={busySerialId}
+                              onStartSerial={onStartSerial}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                : null}
+            </Fragment>
+          );
+        })}
       </AssemblyPaneTableShell>
     </section>
   );

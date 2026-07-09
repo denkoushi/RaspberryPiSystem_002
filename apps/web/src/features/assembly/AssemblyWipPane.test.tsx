@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
@@ -35,7 +35,7 @@ const session: AssemblyWorkSessionSummaryDto = {
 };
 
 describe('AssemblyWipPane', () => {
-  it('renders compact table rows with progress bar and work-session links', () => {
+  it('keeps secondary detail collapsed while resume stays available', () => {
     render(
       <MemoryRouter>
         <AssemblyWipPane sessions={[session]} loading={false} onReload={() => undefined} />
@@ -45,15 +45,18 @@ describe('AssemblyWipPane', () => {
     expect(screen.getByRole('table', { name: '仕掛中' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: '製番' })).toBeInTheDocument();
     expect(screen.getByText('0/1')).toBeInTheDocument();
-    expect(screen.getByText(/ストッパー取付 ・ #1/)).toBeInTheDocument();
-    expect(screen.getByText(/S002 \/ 佐藤/)).toBeInTheDocument();
 
-    expect(screen.getByRole('link', { name: 'ASM-START-001' })).toHaveAttribute(
-      'href',
-      '/kiosk/assembly/work-sessions/session-2'
-    );
+    const toggle = screen.getByRole('button', { name: 'ASM-START-001' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(/ストッパー取付 ・ #1/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/S002 \/ 佐藤/)).not.toBeInTheDocument();
+
     const resume = screen.getByRole('link', { name: '再開' });
     expect(resume).toHaveAttribute('href', '/kiosk/assembly/work-sessions/session-2');
     expect(resume).toHaveClass('min-h-11');
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(/MACHINE-X ・ ストッパー取付 ・ #1 ・ S002 \/ 佐藤/)).toBeInTheDocument();
   });
 });

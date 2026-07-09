@@ -8,7 +8,7 @@ source_of_truth: this file
 related_code: apps/web/src/features/assembly/AssemblyLotPane.tsx, apps/web/src/features/assembly/AssemblyWipPane.tsx, apps/web/src/features/assembly/AssemblyCompletedPane.tsx, apps/web/src/features/assembly/AssemblyPaneTableShell.tsx, apps/web/src/features/assembly/assemblyStatusPresentation.ts, apps/web/src/features/assembly/assemblySessionPresentation.ts, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx
 related_docs: ../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md, ../design-previews/kiosk-assembly-home-table-layout-preview.html, ../design-previews/README.md, ../INDEX.md
 validation: web focused vitest 6 files / 21 tests; web lint; web build; assembly integration 23 tests on temp pgvector/pg15:55436 (disposed); CI 28995897114/28995899024 success; Pi5+StoneBase deploy 20260709-145104-6472/20260709-145454-28187; Phase12 45/0/0
-open_items: on-site visual/touch verification on StoneBase01; deploy remaining Pi4 hosts when requested
+open_items: on-site visual/touch verification on StoneBase01; deploy remaining Pi4 hosts when requested; density follow-up tracked in ../plans/kiosk-assembly-home-dense-3col.md (Decision 7)
 ---
 
 # Kiosk Assembly Home Table Layout
