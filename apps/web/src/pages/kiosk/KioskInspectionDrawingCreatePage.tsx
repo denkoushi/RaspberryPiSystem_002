@@ -859,6 +859,15 @@ export function KioskInspectionDrawingCreatePage() {
     );
   };
 
+  const invalidateOcrCandidatesForPoint = useCallback((pointId: string) => {
+    setOcrCandidatesByPointId((prev) => {
+      if (!(pointId in prev)) return prev;
+      const next = { ...prev };
+      delete next[pointId];
+      return next;
+    });
+  }, []);
+
   const requestOcrCandidatesForPoint = useCallback(
     (point: InspectionDrawingPoint) => {
       const visualId = visualTemplateIdForOcr;
@@ -883,7 +892,9 @@ export function KioskInspectionDrawingCreatePage() {
               xRatio: point.xRatio,
               yRatio: point.yRatio,
               markerNo: point.markerNo,
-              limit: 5
+              limit: 5,
+              measurementLabel: point.name.trim() || null,
+              depthMode: point.depthMode ?? 'measured'
             },
             clientKey
           );
@@ -1471,7 +1482,20 @@ export function KioskInspectionDrawingCreatePage() {
             onSelectPoint={handleSelectPointFromList}
             onPointChange={(patch) => {
               if (!selectedPoint) return;
+              const nextPoint = mergeInspectionDrawingPointPatch(selectedPoint, patch);
               updatePoint(selectedPoint.id, patch);
+              const labelChanged =
+                Object.prototype.hasOwnProperty.call(patch, 'name') ||
+                Object.prototype.hasOwnProperty.call(patch, 'depthMode');
+              const positionChanged =
+                (typeof patch.xRatio === 'number' &&
+                  Math.abs(patch.xRatio - selectedPoint.xRatio) >= 0.002) ||
+                (typeof patch.yRatio === 'number' &&
+                  Math.abs(patch.yRatio - selectedPoint.yRatio) >= 0.002);
+              if (labelChanged || positionChanged) {
+                invalidateOcrCandidatesForPoint(selectedPoint.id);
+                requestOcrCandidatesForPoint(nextPoint);
+              }
             }}
             onRemovePoint={contentReadOnly ? undefined : removeSelected}
             onRemoveAllPoints={contentReadOnly ? undefined : removeAllPoints}

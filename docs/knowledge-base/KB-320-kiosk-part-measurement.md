@@ -240,6 +240,21 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 | 既存図面 | migrationではOCRしない。deploy後に `pnpm --filter @raspi-system/api backfill:part-measurement-drawing-ocr -- --dry-run` で対象確認し、必要件数だけ実行する。 |
 | 失敗時 | retry最大3回。失敗理由はcache行に保存し、手動retry APIまたはbackfill再実行で復帰させる。 |
 
+#### 局所再OCR・深さROI（2026-07-09） {#検査図面-ocr局所候補-2026-07-09}
+
+正本: [Plan](../plans/inspection-drawing-ocr-local-candidates.md) · [ADR-20260709](../decisions/ADR-20260709-inspection-drawing-ocr-local-candidates.md)。フル図面キャッシュ契約 `pm-drawing-ocr-v3` は維持し、候補取得時だけマーカー局所クロップOCRをマージする。
+
+| 項目 | 内容 |
+|------|------|
+| candidates body | 既存 `xRatio`/`yRatio`/`markerNo`/`limit` に加え optional `measurementLabel`・`depthMode`（`measured` \| `through`） |
+| 局所OCR | `DrawingLocalOcrPort`（既定: sharp crop + `ImageOcrLayoutPort`）。失敗時はキャッシュのみへフォールバック |
+| 深さ | 名称が深さ系かつ `depthMode !== through` のとき ROI 拡大・深さ注記（`深サN` 等）を優先 |
+| ランキング | 連結分割（5–6桁等）・小数正規化（`0.030`≡`0.03`）。汎用1桁削除はしない |
+| UI | 名称/`depthMode` 変更後および位置の実質変更後に候補を再取得。候補行に「OCR待ち」は出さない。自動確定なし |
+| flag | `PART_MEASUREMENT_DRAWING_OCR_LOCAL_ENABLED`（既定 ON）· timeout `PART_MEASUREMENT_DRAWING_OCR_LOCAL_TIMEOUT_MS` |
+| 本番 | HEAD **`09a1fe66`** · Detach Pi5/StoneBase **`20260709-223044-17975`** · Pi4×4 **`20260709-224140-20418`** · Phase12 **45/0/0** · [deployment](../guides/deployment.md#inspection-drawing-ocr-local-candidates-2026-07-09) |
+| 残課題 | ROI外の深さ注記、RapidOCR/DGX VLM 本番配線、候補POSTのPi5レイテンシ計測（実測 ~6–8s）・目視タッチ確認 |
+
 ### 検査図面 trio（名称変更・図面名検索・自主検査遷移）（2026-06-09） {#kiosk-inspection-drawing-trio-2026-06-09}
 
 | 項目 | 内容 |

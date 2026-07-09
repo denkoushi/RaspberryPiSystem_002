@@ -42,6 +42,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - AI agent collaboration through agmsg: `docs/guides/agmsg-codex-cursor-collaboration.md`
 - Global document navigation: `docs/INDEX.md`
 - Knowledge-base navigation: `docs/knowledge-base/index.md`
+- Active inspection-drawing OCR candidate improvement: `docs/plans/inspection-drawing-ocr-local-candidates.md`
 
 The index files are navigation only. They must not become narrative logs.
 

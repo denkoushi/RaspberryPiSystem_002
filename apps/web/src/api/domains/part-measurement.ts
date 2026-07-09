@@ -1113,6 +1113,8 @@ export async function listPartMeasurementDrawingOcrCandidates(
     yRatio: number;
     markerNo?: number | null;
     limit?: number;
+    measurementLabel?: string | null;
+    depthMode?: 'measured' | 'through' | null;
   },
   clientKey?: string
 ): Promise<PartMeasurementDrawingOcrCandidateResponseDto> {

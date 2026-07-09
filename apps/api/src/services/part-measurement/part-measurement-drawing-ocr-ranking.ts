@@ -20,7 +20,18 @@ export type PartMeasurementDrawingOcrCandidate = {
   rotation: number;
 };
 
+export type PartMeasurementDrawingOcrRankInput = {
+  xRatio: number;
+  yRatio: number;
+  markerNo?: number | null;
+  limit?: number;
+  measurementLabel?: string | null;
+  depthMode?: 'measured' | 'through' | null;
+};
+
 const NUMERIC_PATTERN = /[+-]?\d+(?:[.,]\d+)?/g;
+const DEPTH_NOTE_PATTERN = /深[さサ]\s*([0-9]+(?:[.,][0-9]+)?)/g;
+const DEPTH_LABEL_PATTERN = /深さ|深サ/;
 
 function normalizeNumericText(raw: string): string | null {
   const normalized = raw.replace(/,/g, '.').trim();
@@ -28,6 +39,20 @@ function normalizeNumericText(raw: string): string | null {
   const asNumber = Number(normalized);
   if (!Number.isFinite(asNumber)) return null;
   return normalized;
+}
+
+/** Canonical form for dedupe/compare: 0.030 -> 0.03, 12.0 -> 12 */
+export function canonicalNumericText(valueText: string): string | null {
+  const normalized = normalizeNumericText(valueText);
+  if (normalized == null) return null;
+  const asNumber = Number(normalized);
+  if (!Number.isFinite(asNumber)) return null;
+  if (Number.isInteger(asNumber)) return String(asNumber);
+  let s = String(asNumber);
+  if (/e/i.test(s)) {
+    s = asNumber.toFixed(6).replace(/\.?0+$/, '');
+  }
+  return s;
 }
 
 function isStackedDimensionLikeToken(token: PartMeasurementDrawingOcrToken): boolean {
@@ -38,16 +63,70 @@ function isStackedDimensionLikeToken(token: PartMeasurementDrawingOcrToken): boo
   return tallBbox || rotatedPass;
 }
 
+/** Split concatenated OCR values such as 210201 -> 210, 3220.05 -> 32, 124.54 -> 124.5 */
+export function splitConcatNumericCandidates(valueText: string): string[] {
+  const normalized = normalizeNumericText(valueText);
+  if (!normalized) return [];
+  const out = new Set<string>([normalized]);
+  const hasDot = normalized.includes('.');
+  const digits = normalized.replace(/[+-.]/g, '');
+
+  // 4-digit integers stay intact here (stacked tall-bbox split is separate).
+  // 5–6 digit concatenations often glue two dimensions (e.g. 210201 -> 210).
+  if (!hasDot && /^\d{5,6}$/.test(digits)) {
+    out.add(digits.slice(0, 2));
+    out.add(digits.slice(0, 3));
+  }
+  if (hasDot) {
+    const unsigned = normalized.replace(/^[+-]/, '');
+    const [intPart = '', frac = ''] = unsigned.split('.');
+    if (frac.length >= 2) {
+      const trimmed = normalizeNumericText(`${intPart}.${frac.slice(0, -1)}`);
+      if (trimmed) out.add(trimmed);
+    }
+    // e.g. 3220.05 -> OCR glued "32" + "20.05"
+    if (/^\d{3,5}$/.test(intPart) && /^0\d+$/.test(frac)) {
+      out.add(intPart.slice(0, 2));
+    }
+  }
+
+  return [...out].map((value) => normalizeNumericText(value)).filter((value): value is string => value != null);
+}
+
+export function extractDepthNoteValues(text: string): string[] {
+  const values: string[] = [];
+  for (const match of text.matchAll(DEPTH_NOTE_PATTERN)) {
+    const normalized = normalizeNumericText(match[1] ?? '');
+    if (normalized) values.push(normalized);
+  }
+  return values;
+}
+
+export function isDepthMeasurementLabel(measurementLabel: string | null | undefined): boolean {
+  if (!measurementLabel) return false;
+  return DEPTH_LABEL_PATTERN.test(measurementLabel);
+}
+
 function extractNumericValues(token: PartMeasurementDrawingOcrToken): string[] {
+  const out = new Set<string>();
   if (isStackedDimensionLikeToken(token)) {
     const digitsOnly = token.text.replace(/\D/g, '');
-    return [digitsOnly.slice(0, 2), digitsOnly.slice(2)].map((value) => normalizeNumericText(value)).filter(
-      (value): value is string => value != null
-    );
+    for (const value of [digitsOnly.slice(0, 2), digitsOnly.slice(2)]) {
+      const normalized = normalizeNumericText(value);
+      if (normalized) out.add(normalized);
+    }
+    return [...out];
   }
-  return Array.from(token.text.matchAll(NUMERIC_PATTERN))
-    .map((match) => normalizeNumericText(match[0]))
-    .filter((value): value is string => value != null);
+
+  for (const match of token.text.matchAll(NUMERIC_PATTERN)) {
+    for (const split of splitConcatNumericCandidates(match[0])) {
+      out.add(split);
+    }
+  }
+  for (const depthValue of extractDepthNoteValues(token.text)) {
+    out.add(depthValue);
+  }
+  return [...out];
 }
 
 function confidencePenalty(confidence: number | null): number {
@@ -58,7 +137,14 @@ function confidencePenalty(confidence: number | null): number {
 
 function markerNumberPenalty(valueText: string, markerNo: number | null | undefined): number {
   if (markerNo == null) return 0;
-  return valueText === String(markerNo) ? 0.3 : 0;
+  const canonical = canonicalNumericText(valueText);
+  return canonical === String(markerNo) ? 0.3 : 0;
+}
+
+function shortDimensionBonus(valueText: string): number {
+  const canonical = canonicalNumericText(valueText);
+  if (!canonical) return 0;
+  return /^[+-]?\d{2,3}(?:\.\d+)?$/.test(canonical) ? -0.008 : 0;
 }
 
 function scoreCandidate(input: {
@@ -68,6 +154,7 @@ function scoreCandidate(input: {
   yRatio: number;
   markerNo?: number | null;
   rawOverlapPenalty?: number;
+  depthNoteBonus?: number;
 }): number {
   const distance = Math.hypot(input.token.xRatio - input.xRatio, input.token.yRatio - input.yRatio);
   const tileBonus = input.token.passKind === 'tile' ? -0.015 : 0;
@@ -80,7 +167,9 @@ function scoreCandidate(input: {
       markerNumberPenalty(input.valueText, input.markerNo) +
       tileBonus +
       preprocessBonus +
-      (input.rawOverlapPenalty ?? 0)
+      shortDimensionBonus(input.valueText) +
+      (input.rawOverlapPenalty ?? 0) +
+      (input.depthNoteBonus ?? 0)
   );
 }
 
@@ -91,13 +180,15 @@ function buildCandidate(input: {
   yRatio: number;
   markerNo?: number | null;
   rawOverlapPenalty?: number;
+  depthNoteBonus?: number;
 }): PartMeasurementDrawingOcrCandidate {
   const distance = Math.hypot(input.token.xRatio - input.xRatio, input.token.yRatio - input.yRatio);
+  const displayValue = canonicalNumericText(input.valueText) ?? input.valueText;
   return {
-    valueText: input.valueText,
+    valueText: displayValue,
     rawText: input.token.text,
     confidence: input.token.confidence,
-    score: scoreCandidate(input),
+    score: scoreCandidate({ ...input, valueText: displayValue }),
     distanceRatio: distance,
     xRatio: input.token.xRatio,
     yRatio: input.token.yRatio,
@@ -155,32 +246,35 @@ function hasConflictingLineSuppressedToken(
 
 export function rankPartMeasurementDrawingOcrCandidates(
   payload: PartMeasurementDrawingOcrPayload,
-  input: {
-    xRatio: number;
-    yRatio: number;
-    markerNo?: number | null;
-    limit?: number;
-  }
+  input: PartMeasurementDrawingOcrRankInput
 ): PartMeasurementDrawingOcrCandidate[] {
   const limit = Math.min(Math.max(input.limit ?? 5, 1), 20);
   const bestByValue = new Map<string, PartMeasurementDrawingOcrCandidate>();
   const lineSuppressedTokens = payload.tokens.filter((token) => token.preprocessKind === 'lineSuppressed');
+  const preferDepthNotes =
+    isDepthMeasurementLabel(input.measurementLabel) && input.depthMode !== 'through';
 
   for (const token of payload.tokens) {
     const values = extractNumericValues(token);
     for (const valueText of values) {
+      const key = canonicalNumericText(valueText) ?? valueText;
       const rawOverlapPenalty = hasConflictingLineSuppressedToken(token, valueText, lineSuppressedTokens) ? 0.16 : 0;
+      const depthNoteBonus =
+        preferDepthNotes && extractDepthNoteValues(token.text).some((v) => canonicalNumericText(v) === key)
+          ? -0.02
+          : 0;
       const candidate = buildCandidate({
         token,
-        valueText,
+        valueText: key,
         xRatio: input.xRatio,
         yRatio: input.yRatio,
         markerNo: input.markerNo,
-        rawOverlapPenalty
+        rawOverlapPenalty,
+        depthNoteBonus
       });
-      const existing = bestByValue.get(valueText);
+      const existing = bestByValue.get(key);
       if (!existing || candidate.score < existing.score) {
-        bestByValue.set(valueText, candidate);
+        bestByValue.set(key, candidate);
       }
     }
   }

@@ -67,7 +67,7 @@ update-frequency: high
 | API関連（Gmail 429調査） | [KB-217-gmail-api-429-early-retry.md](./KB-217-gmail-api-429-early-retry.md) | 1件 | Gmail API 429エラー - クールダウン解除直後の再発 |
 | 生産スケジュール納期管理 | [KB-297-kiosk-due-management-workflow.md](./KB-297-kiosk-due-management-workflow.md) | 1件 | 詳細はリンク先を参照。 |
 | キオスク沉浸式ヘッダー allowlist | [KB-311-kiosk-immersive-header-allowlist.md](./KB-311-kiosk-immersive-header-allowlist.md) | 1件 | **下端中央1/3リビール（2026-05-22 本番・Pi5+Pi4×4）**·`/kiosk/photo` 沉浸式化·Pi4 `_appRef`/Firefox キャッシュ·E2E `revealKioskHeader` 順序·[deployment §下端リビール](../guides/deployment.md#kiosk-bottom-center-header-reveal-2026-05-22)·代表 **`cbeb6bbc`**·Phase12 **43/0/0**·StoneBase01 実機 UI OK |
-| キオスク部品測定記録 | [KB-320-kiosk-part-measurement.md](./KB-320-kiosk-part-measurement.md) | 複数節 | 詳細はリンク先を参照。 |
+| キオスク部品測定記録 | [KB-320-kiosk-part-measurement.md](./KB-320-kiosk-part-measurement.md) | 複数節 | 詳細はリンク先を参照。OCR局所候補: [§2026-07-09](./KB-320-kiosk-part-measurement.md#検査図面-ocr局所候補-2026-07-09) |
 | キオスク要領書（PDF） | [KB-313-kiosk-documents.md](./KB-313-kiosk-documents.md) | 1件 | 詳細はリンク先を参照。 |
 | 吊具マスタ idNum（旧番号） | [KB-312-rigging-idnum-deploy-verification.md](./KB-312-rigging-idnum-deploy-verification.md) | 1件 | `RiggingGear.idNum`（NULL 可・UNIQUE）・管理UI/キオスク吊具持出/CSV・Pi5+raspberrypi4 デプロイ済・`raspi4-robodrill01` は別日再挑戦（SSH timeout） |
 | 持出一覧・サイネージ表記 | [KB-314-kiosk-loan-card-display-labels.md](./KB-314-kiosk-loan-card-display-labels.md) | 1件 | 写真持出 **撮影mode**・端末場所ラベル削除・`PHOTO_LOAN_CARD_PRIMARY_LABEL`・順次デプロイ（Pi5→Pi4×2→`server:signage`）・実機検証（2026-03-26） |

@@ -314,7 +314,9 @@ export const drawingOcrCandidateBodySchema = z.object({
   xRatio: z.number().min(0).max(1),
   yRatio: z.number().min(0).max(1),
   markerNo: z.number().int().min(1).max(999).optional().nullable(),
-  limit: z.number().int().min(1).max(20).optional()
+  limit: z.number().int().min(1).max(20).optional(),
+  measurementLabel: z.string().max(120).optional().nullable(),
+  depthMode: z.enum(['measured', 'through']).optional().nullable()
 });
 
 export const listTemplateCandidatesQuerySchema = z.object({

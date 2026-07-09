@@ -7,14 +7,21 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { getImageOcrLayoutPort } from '../ocr/image-ocr-runtime.js';
+import type { DrawingLocalOcrPort } from './drawing-local-ocr.port.js';
+import {
+  DrawingLocalOcrTesseractAdapter,
+  isDrawingLocalOcrEnabled
+} from './drawing-local-ocr.tesseract.adapter.js';
 import { PartMeasurementDrawingOcrEngine } from './part-measurement-drawing-ocr-engine.js';
 import {
   decodePartMeasurementDrawingOcrPayload,
   encodePartMeasurementDrawingOcrPayload,
   PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_ENCODING,
-  PART_MEASUREMENT_DRAWING_OCR_VERSION
+  PART_MEASUREMENT_DRAWING_OCR_VERSION,
+  type PartMeasurementDrawingOcrPayload
 } from './part-measurement-drawing-ocr-payload.js';
 import {
+  isDepthMeasurementLabel,
   rankPartMeasurementDrawingOcrCandidates,
   type PartMeasurementDrawingOcrCandidate
 } from './part-measurement-drawing-ocr-ranking.js';
@@ -127,7 +134,8 @@ function normalizeQueuePriority(priority: number | undefined): number {
 
 export class PartMeasurementDrawingOcrService {
   constructor(
-    private readonly engine = new PartMeasurementDrawingOcrEngine(getImageOcrLayoutPort())
+    private readonly engine = new PartMeasurementDrawingOcrEngine(getImageOcrLayoutPort()),
+    private readonly localOcr: DrawingLocalOcrPort = new DrawingLocalOcrTesseractAdapter(getImageOcrLayoutPort())
   ) {}
 
   async enqueueVisualTemplate(
@@ -275,6 +283,8 @@ export class PartMeasurementDrawingOcrService {
       yRatio: number;
       markerNo?: number | null;
       limit?: number;
+      measurementLabel?: string | null;
+      depthMode?: 'measured' | 'through' | null;
     }
   ): Promise<PartMeasurementDrawingOcrCandidateResult> {
     const summary = await this.enqueueVisualTemplate(visualTemplateId, {
@@ -293,12 +303,50 @@ export class PartMeasurementDrawingOcrService {
       return { status: 'FAILED', candidates: [], cache: summarizeCache(cache) };
     }
     const payload = await decodePartMeasurementDrawingOcrPayload(cache.payloadCompressed);
-    const candidates = rankPartMeasurementDrawingOcrCandidates(payload, input);
+    const mergedPayload = await this.mergeLocalOcrTokens(visualTemplateId, payload, input);
+    const candidates = rankPartMeasurementDrawingOcrCandidates(mergedPayload, input);
     return {
       status: 'COMPLETED',
       candidates,
       cache: summarizeCache(cache)
     };
+  }
+
+  private async mergeLocalOcrTokens(
+    visualTemplateId: string,
+    payload: PartMeasurementDrawingOcrPayload,
+    input: {
+      xRatio: number;
+      yRatio: number;
+      measurementLabel?: string | null;
+      depthMode?: 'measured' | 'through' | null;
+    }
+  ): Promise<PartMeasurementDrawingOcrPayload> {
+    if (!isDrawingLocalOcrEnabled()) return payload;
+    try {
+      const visual = await prisma.partMeasurementVisualTemplate.findUnique({
+        where: { id: visualTemplateId },
+        select: { drawingImageRelativePath: true }
+      });
+      if (!visual) return payload;
+      const drawing = await PartMeasurementDrawingStorage.readDrawing(visual.drawingImageRelativePath);
+      const depthSearch =
+        isDepthMeasurementLabel(input.measurementLabel) && input.depthMode !== 'through';
+      const localTokens = await this.localOcr.runLocalOcr({
+        imageBytes: drawing.buffer,
+        xRatio: input.xRatio,
+        yRatio: input.yRatio,
+        depthSearch
+      });
+      if (localTokens.length === 0) return payload;
+      return {
+        ...payload,
+        tokens: [...payload.tokens, ...localTokens]
+      };
+    } catch (error) {
+      log.warn({ err: error, visualTemplateId }, 'part_measurement_drawing_ocr_local_failed');
+      return payload;
+    }
   }
 
   async listVisualTemplateIdsForBackfill(options: {
