@@ -184,7 +184,8 @@ export const inspectionDrawingSideAsideClassName =
 /** 右サイドバー — 作成/改版（設定 + 縦一覧） */
 export const inspectionDrawingCreateSideAsideClassName = clsx(
   kioskPanelClassName,
-  'flex min-h-0 w-full shrink-0 flex-col p-1.5 lg:w-[17rem]'
+  // overflow-hidden: 親から有限高さを受けたとき一覧の overflow-y-auto が効くよう拘束する
+  'flex min-h-0 w-full shrink-0 flex-col overflow-hidden p-1.5 lg:w-[17rem]'
 );
 
 /** 自主検査セッション — フラット top-band（作成/改版と同型の密度） */

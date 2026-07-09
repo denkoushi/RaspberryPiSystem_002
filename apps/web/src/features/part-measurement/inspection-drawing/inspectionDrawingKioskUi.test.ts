@@ -5,8 +5,24 @@ import {
   inspectionDrawingCreateMetaChipInputClassName,
   inspectionDrawingCreateMetaChipWideControlClassName,
   inspectionDrawingCreateMetaChipWideInputClassName,
+  inspectionDrawingCreateSideAsideClassName,
+  inspectionDrawingSideAsideClassName,
   isSelfInspectionSessionChromeFocusTarget
 } from './inspectionDrawingKioskUi';
+
+describe('inspectionDrawingCreateSideAsideClassName', () => {
+  it('clips overflow so the measurement point list can scroll inside the pane', () => {
+    expect(inspectionDrawingCreateSideAsideClassName).toContain('min-h-0');
+    expect(inspectionDrawingCreateSideAsideClassName).toContain('overflow-hidden');
+    expect(inspectionDrawingCreateSideAsideClassName).toContain('flex-col');
+    expect(inspectionDrawingCreateSideAsideClassName).toContain('lg:w-[17rem]');
+  });
+
+  it('does not change the production recording sidebar token', () => {
+    expect(inspectionDrawingSideAsideClassName).toContain('lg:w-[20rem]');
+    expect(inspectionDrawingSideAsideClassName).not.toContain('overflow-hidden');
+  });
+});
 
 describe('inspectionDrawingCreateMetaChip input class names', () => {
   it('applies black-on-white overrides to meta chip inputs', () => {
