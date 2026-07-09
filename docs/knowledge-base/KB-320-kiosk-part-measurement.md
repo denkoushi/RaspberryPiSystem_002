@@ -974,6 +974,8 @@ Runbook: [§十字ボタン](../runbooks/kiosk-part-measurement.md#検査図面-
 
 ### キオスク検査図面 作成/改版レイアウト（2026-06-03） {#検査図面-作成改版レイアウト-2026-06-03}
 
+> **2026-07-09 レイアウトリグレッション（ツールバー縦積み・測定点一覧見切れ）**: 詳細正本は [KB-399](./KB-399-inspection-drawing-create-layout-regression.md)。
+
 | 項目 | 内容 |
 |------|------|
 | ブランチ（初版） | **`fix/inspection-drawing-return-navigation-review`**（レイアウト + 戻り先を同一ブランチで積み上げ） |
