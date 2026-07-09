@@ -180,7 +180,8 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     renderPage();
 
     expect(await screen.findByRole('heading', { name: '組立作業' })).toBeInTheDocument();
-    expect(screen.getByText('X軸')).toBeInTheDocument();
+    // session 取得直後は sequence 未解決で fallback になり得るため、configured UI を待つ
+    expect(await screen.findByText('X軸', undefined, { timeout: 5000 })).toBeInTheDocument();
     expect(await screen.findByText(/1\/2ページ/, undefined, { timeout: 5000 })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '次頁' }));
     // CIランナーが遅い場合に1秒のデフォルトwaitForで拾えずフレークするため延長
