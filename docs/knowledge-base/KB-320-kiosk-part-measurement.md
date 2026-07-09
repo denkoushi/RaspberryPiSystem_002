@@ -252,7 +252,8 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 | ランキング | 連結分割（5–6桁等）・小数正規化（`0.030`≡`0.03`）。汎用1桁削除はしない |
 | UI | 名称/`depthMode` 変更後および位置の実質変更後に候補を再取得。候補行に「OCR待ち」は出さない。自動確定なし |
 | flag | `PART_MEASUREMENT_DRAWING_OCR_LOCAL_ENABLED`（既定 ON）· timeout `PART_MEASUREMENT_DRAWING_OCR_LOCAL_TIMEOUT_MS` |
-| 残課題 | ROI外の深さ注記、RapidOCR/DGX VLM 本番配線は対象外 |
+| 本番 | HEAD **`09a1fe66`** · Detach Pi5/StoneBase **`20260709-223044-17975`** · Pi4×4 **`20260709-224140-20418`** · Phase12 **45/0/0** · [deployment](../guides/deployment.md#inspection-drawing-ocr-local-candidates-2026-07-09) |
+| 残課題 | ROI外の深さ注記、RapidOCR/DGX VLM 本番配線、候補POSTのPi5レイテンシ計測（実測 ~6–8s）・目視タッチ確認 |
 
 ### 検査図面 trio（名称変更・図面名検索・自主検査遷移）（2026-06-09） {#kiosk-inspection-drawing-trio-2026-06-09}
 

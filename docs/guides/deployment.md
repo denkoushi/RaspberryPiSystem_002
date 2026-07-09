@@ -10,6 +10,22 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-09 · **検査図面 OCR 局所候補（ランキング + 局所再OCR + 深さROI）** · **API + Web** · **Pi5 + Pi4×5 反映済 / Pi3 対象外**） {#inspection-drawing-ocr-local-candidates-2026-07-09}
+
+- **変更概要（正本）**: [Plan](../plans/inspection-drawing-ocr-local-candidates.md) · [ADR-20260709](../decisions/ADR-20260709-inspection-drawing-ocr-local-candidates.md) · [KB-320 §局所候補](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-ocr局所候補-2026-07-09) · ブランチ **`feat/inspection-drawing-ocr-local-candidates`** · HEAD **`09a1fe66`** · PR [#964](https://github.com/denkoushi/RaspberryPiSystem_002/pull/964)。`pm-drawing-ocr-v3` キャッシュ契約は維持。候補取得時の連結分割/小数正規化、マーカー局所クロップOCR（`DrawingLocalOcrPort`）、optional `measurementLabel`/`depthMode`、名称変更後の候補再取得。**DB / Prisma migration 変更なし**。
+- **CI**: push CI **`29018538261` success** · PR CI **`29018543850` success**（初回は runner cancel → `--failed` 再実行で緑）· CodeQL **`29018543903` success** · Secret scan **`29018543841` success**。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/inspection-drawing-ocr-local-candidates infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` / `raspi4-kensaku-stonebase01` | **`20260709-223044-17975`** | success · Pi5 `ok=135 changed=4` · StoneBase `ok=130 changed=10` · `failed=0` · HEAD **`09a1fe66`** |
+| `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01` | **`20260709-224140-20418`** | success · 4台とも `failed=0` / `unreachable=0` · HEAD **`09a1fe66`** |
+
+- **対象外**: `raspberrypi3`（サイネージ）スキップ。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **OCR smoke**: `/kiosk/part-measurement/inspection` · `/create` · `/library` HTTP **200**。completed cache visual に対する `POST .../ocr/candidates`（`measurementLabel`/`depthMode` 付き）HTTP **200**（外径系 ~8.2s / 深さ系 ~6.2s、候補5件）。配信バンドル `/assets/index-BVbItENU.js` に `measurementLabel` を確認。API に `drawing-local-ocr.*` 配備確認。
+- **実機（目視・タッチ）**: 未実施（次回 StoneBase01 で名称選択後の候補再取得・深さROIを確認）。
+
 ### 補足（2026-07-09 · **検査図面ライブラリ UX（数字テンキー・無効化）+ 深さ「通し」** · **API + Web + migration** · **Pi5 + Pi4×5 反映済 / Pi3 対象外**） {#kiosk-inspection-drawing-library-ux-and-depth-through-2026-07-09}
 
 - **変更概要（正本）**: [Plan](../plans/kiosk-inspection-drawing-library-ux-and-depth-through.md) · [ADR-20260709](../decisions/ADR-20260709-inspection-drawing-depth-through-mode.md) · ブランチ **`feat/kiosk-inspection-drawing-library-ux-and-depth-through`** · 機能 HEAD **`5da92ef9`** · docs HEAD **`5d348592`** · PR [#963](https://github.com/denkoushi/RaspberryPiSystem_002/pull/963)。ライブラリ数字テンキー（0–9/リセット・client-side digit `includes`）・テンプレート「無効」・右ペイン密度改善・深さ `depthMode=THROUGH`（sentinel 0/0・判定スキップ）。migration **`20260709120000_add_part_measurement_depth_mode`**。

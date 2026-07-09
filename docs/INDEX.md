@@ -105,7 +105,7 @@
 
 ### 最新アップデート（2026-07-09 · キオスク検査図面 OCR 局所候補）
 
-- **局所再OCR + 深さROI**: 既存 v3 キャッシュ契約を維持し、候補取得時のランキング改善・マーカー局所クロップ・深さ名称ROIを追加。**正本**: [Plan](./plans/inspection-drawing-ocr-local-candidates.md) · [ADR-20260709](./decisions/ADR-20260709-inspection-drawing-ocr-local-candidates.md) · [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-ocr局所候補-2026-07-09)
+- **局所再OCR + 深さROI**: 既存 v3 キャッシュ契約を維持し、候補取得時のランキング改善・マーカー局所クロップ・深さ名称ROIを追加。**`09a1fe66`** · PR [#964](https://github.com/denkoushi/RaspberryPiSystem_002/pull/964) · Pi5+Pi4×5 反映済 / Pi3 対象外 · Phase12 **45/0/0**。**正本**: [Plan](./plans/inspection-drawing-ocr-local-candidates.md) · [ADR-20260709](./decisions/ADR-20260709-inspection-drawing-ocr-local-candidates.md) · [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-ocr局所候補-2026-07-09) · [Deployment](./guides/deployment.md#inspection-drawing-ocr-local-candidates-2026-07-09)
 
 ### 最新アップデート（2026-07-02 · キオスク検査図面 OCR キャッシュ）
 

@@ -65,4 +65,8 @@ Improve kiosk inspection-drawing nominal-value OCR candidate accuracy without br
 - `pnpm --filter @raspi-system/api test -- part-measurement-drawing-ocr drawing-local-ocr` — passed
 - `pnpm --filter @raspi-system/web test -- InspectionDrawingPointSettingsPanel` — passed
 - Temp Postgres `pgvector/pgvector:pg16` on `:5432`: `prisma migrate deploy` + focused integration `-t 'drawing OCR'` — 2 passed; container removed
+- CI: push **`29018538261`** / PR **`29018543850`** / CodeQL **`29018543903`** / Secret scan **`29018543841`** success
+- Deploy: Pi5+StoneBase **`20260709-223044-17975`**, remaining Pi4×4 **`20260709-224140-20418`**, HEAD **`09a1fe66`**, Pi3 skipped
+- Phase12: **PASS 45 / WARN 0 / FAIL 0**; OCR candidates smoke HTTP 200 (local OCR latency ~6–8s)
 - ADR: [ADR-20260709](../decisions/ADR-20260709-inspection-drawing-ocr-local-candidates.md)
+- Deployment record: [deployment §2026-07-09](../guides/deployment.md#inspection-drawing-ocr-local-candidates-2026-07-09)
