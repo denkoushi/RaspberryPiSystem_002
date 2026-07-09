@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>組立作業ページ — オペレータ向けレイアウト案（プレビュー）</title>
+  <style>
+    :root {
+      --bg: #1e293b;
+      --panel: rgba(15, 23, 42, 0.72);
+      --line: rgba(255, 255, 255, 0.15);
+      --line-soft: rgba(255, 255, 255, 0.1);
+      --text: #f8fafc;
+      --muted: rgba(248, 250, 252, 0.6);
+      --weak: rgba(248, 250, 252, 0.45);
+      --lime: #d9f99d;
+      --emerald: #6ee7b7;
+      --amber: #fde68a;
+      --rose: #fda4af;
+      --btn: #334155;
+      --btn-primary: #2563eb;
+      --btn-danger: #b91c1c;
+      --btn-secondary: #475569;
+      --font: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+
+    body {
+      font-family: var(--font);
+      background: #0b1220;
+      color: var(--text);
+      min-height: 100dvh;
+      padding: 16px;
+    }
+
+    .page-meta {
+      max-width: 1480px;
+      margin: 0 auto 14px;
+    }
+
+    .page-meta h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .page-meta p {
+      margin-top: 6px;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .changes {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      color: var(--lime);
+      background: rgba(217, 249, 157, 0.08);
+    }
+
+    .compare {
+      max-width: 1480px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    @media (min-width: 1280px) {
+      .compare {
+        grid-template-columns: 1fr 1fr;
+        align-items: stretch;
+      }
+    }
+
+    .frame {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .frame-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .frame-label strong {
+      font-size: 0.95rem;
+    }
+
+    .frame-label span {
+      font-size: 0.78rem;
+      color: var(--weak);
+    }
+
+    .kiosk {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      height: 720px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    .bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 8px;
+      flex-shrink: 0;
+    }
+
+    .bar.compact {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      flex-wrap: nowrap;
+      padding: 4px 8px;
+      min-height: 36px;
+      gap: 8px 12px;
+    }
+
+    .title-block h2 {
+      font-size: 1.28rem;
+      font-weight: 700;
+      line-height: 1.15;
+    }
+
+    .bar.compact .title-block {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+      white-space: nowrap;
+    }
+
+    .bar.compact .title-block h2 {
+      font-size: 0.95rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .title-block p {
+      margin-top: 4px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 28rem;
+    }
+
+    .bar.compact .title-block p {
+      margin-top: 0;
+      font-size: 0.72rem;
+      max-width: 16rem;
+    }
+
+    .meta-inline {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 6px 10px;
+      min-width: 0;
+      overflow: hidden;
+      font-size: 0.72rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .meta-inline .sep {
+      width: 1px;
+      height: 12px;
+      flex-shrink: 0;
+      background: var(--line);
+    }
+
+    .meta-inline .accent {
+      color: var(--lime);
+      font-weight: 700;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .bar.compact .actions {
+      flex-wrap: nowrap;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: transparent;
+      color: var(--text);
+      font: 600 0.85rem/1 var(--font);
+      white-space: nowrap;
+    }
+
+    .bar.compact .btn {
+      min-height: 28px;
+      padding: 0 10px;
+      font-size: 0.78rem;
+      border-radius: 6px;
+    }
+
+    .btn.primary {
+      background: var(--btn-primary);
+      border-color: transparent;
+    }
+
+    .btn.secondary {
+      background: var(--btn-secondary);
+      border-color: transparent;
+    }
+
+    .btn.danger {
+      background: var(--btn-danger);
+      border-color: transparent;
+    }
+
+    .btn.ghost-muted {
+      color: var(--weak);
+      border-style: dashed;
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(11rem, 13.5rem);
+      gap: 8px;
+      min-height: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--line-soft);
+      padding: 12px;
+    }
+
+    .panel-head h3 {
+      font-size: 1.02rem;
+      font-weight: 700;
+    }
+
+    .panel-head p {
+      margin-top: 4px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .panel-head .check {
+      margin-top: 4px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--lime);
+    }
+
+    .procedure {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      background:
+        linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+        linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+        #0f172a;
+      background-size: 28px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .procedure-card {
+      width: min(86%, 420px);
+      aspect-ratio: 4 / 3;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #e2e8f0;
+      color: #0f172a;
+      display: grid;
+      place-items: center;
+      position: relative;
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+    }
+
+    .procedure-card strong {
+      font-size: 0.95rem;
+    }
+
+    .marker {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      border: 2px solid #0f172a;
+      display: grid;
+      place-items: center;
+      font-size: 0.65rem;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .marker.ok { background: #86efac; }
+    .marker.now { background: #fde047; }
+    .marker.todo { background: #cbd5e1; }
+
+    .m1 { left: 18%; top: 28%; }
+    .m2 { left: 42%; top: 46%; }
+    .m3 { left: 68%; top: 34%; }
+
+    .height-badge {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.88);
+      color: var(--lime);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 4px 8px;
+    }
+
+    .side {
+      padding: 10px;
+      overflow: auto;
+    }
+
+    .side h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .current {
+      margin-top: 8px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: #020617;
+      padding: 10px;
+    }
+
+    .current .label {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
+    .current .value {
+      margin-top: 2px;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .current .sub {
+      margin-top: 2px;
+      font-size: 0.75rem;
+      color: rgba(248, 250, 252, 0.7);
+    }
+
+    .current .spec {
+      margin-top: 6px;
+      font-size: 0.72rem;
+      color: rgba(248, 250, 252, 0.8);
+    }
+
+    .check-box {
+      margin-top: 8px;
+      border: 1px solid rgba(190, 242, 100, 0.2);
+      border-radius: 8px;
+      background: rgba(132, 204, 22, 0.1);
+      padding: 8px;
+      font-size: 0.75rem;
+    }
+
+    .check-box .t { font-weight: 700; color: #ecfccb; }
+    .check-box .v { margin-top: 2px; color: #f7fee7; }
+
+    .torque-row {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: 1fr 4.2rem;
+      gap: 6px;
+    }
+
+    .torque-row input,
+    .torque-row select {
+      min-height: 40px;
+      border: 0;
+      border-radius: 6px;
+      background: #020617;
+      color: var(--text);
+      padding: 0 8px;
+      font: inherit;
+    }
+
+    .side .btn {
+      width: 100%;
+      margin-top: 6px;
+      min-height: 42px;
+    }
+
+    .side-grid {
+      margin-top: 6px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .side-grid .btn { margin-top: 0; min-height: 36px; font-size: 0.78rem; }
+    .side-grid .span2 { grid-column: 1 / -1; }
+
+    .history {
+      margin-top: 12px;
+    }
+
+    .history h4 {
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .history-list {
+      margin-top: 6px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .history-row {
+      display: grid;
+      grid-template-columns: 1fr 2.6rem 2.4rem;
+      gap: 4px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--line-soft);
+      font-size: 0.68rem;
+    }
+
+    .history-row:last-child { border-bottom: 0; }
+    .history-row .ok { color: var(--emerald); font-weight: 700; }
+    .history-row .muted { color: var(--weak); }
+
+    .note {
+      max-width: 1480px;
+      margin: 14px auto 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.55);
+      padding: 12px 14px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .note strong { color: var(--amber); }
+
+    .dim {
+      opacity: 0.42;
+      text-decoration: line-through;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-meta">
+    <h1>キオスク組立 — 作業開始後ページ レイアウト案（実装なし・プレビューのみ）</h1>
+    <p>
+      対象: 製番登録・シリアル登録後の作業画面（現行タイトル「組立締付作業」）。
+      オペレータ用途のため、管理系ボタンを外し、2段メニューを1段に統合して手順書エリアを縦に広げる案です。
+    </p>
+    <div class="changes">
+      <span class="chip">タイトル → 組立作業</span>
+      <span class="chip">下段メニューを上段へ統合</span>
+      <span class="chip">テンプレ / Excel 削除</span>
+      <span class="chip">上段バー縦寸法 ≈ 半分</span>
+    </div>
+  </div>
+
+  <div class="compare">
+    <!-- BEFORE -->
+    <section class="frame">
+      <div class="frame-label">
+        <strong>現行（Before）</strong>
+        <span>上段バー + 左ペイン見出し = 2段メニュー</span>
+      </div>
+      <div class="kiosk" aria-label="現行レイアウト">
+        <header class="bar">
+          <div class="title-block">
+            <h2>組立締付作業</h2>
+            <p>P-240812 / MODEL-A / 標準手順</p>
+          </div>
+          <div class="actions">
+            <span class="btn">組立トップ</span>
+            <span class="btn">テンプレ</span>
+            <span class="btn">Excel</span>
+          </div>
+        </header>
+
+        <div class="main">
+          <section class="panel">
+            <div class="panel-head">
+              <h3>要領書 / ページ送り</h3>
+              <p>A-01-03</p>
+              <p class="check">必須チェック 1/2</p>
+            </div>
+            <div class="procedure">
+              <div class="procedure-card">
+                <strong>手順書プレースホルダ</strong>
+                <span class="marker ok m1">1</span>
+                <span class="marker now m2">2</span>
+                <span class="marker todo m3">3</span>
+              </div>
+              <div class="height-badge">手順書エリア（狭い）</div>
+            </div>
+          </section>
+
+          <aside class="panel side">
+            <h3>締付</h3>
+            <div class="current">
+              <div class="label">現在</div>
+              <div class="value">A-01-03</div>
+              <div class="sub">エリアA</div>
+              <div class="spec">規定 25 / 下限 22 / 上限 28 N·m</div>
+            </div>
+            <div class="check-box">
+              <div class="t">チェック進捗</div>
+              <div class="v">必須 1/2</div>
+            </div>
+            <div class="torque-row">
+              <input value="" placeholder="トルク値" readonly />
+              <select disabled><option>手入力</option></select>
+            </div>
+            <span class="btn primary">トルク記録</span>
+            <div class="side-grid">
+              <span class="btn secondary">次工程へ</span>
+              <span class="btn danger">やり直し</span>
+              <span class="btn primary span2">作業完了</span>
+            </div>
+            <div class="history">
+              <h4>履歴</h4>
+              <div class="history-list">
+                <div class="history-row">
+                  <div><div>A-01-02</div><div class="muted">07/09 11:20</div></div>
+                  <div>24.8</div>
+                  <div class="ok">OK</div>
+                </div>
+                <div class="history-row">
+                  <div><div>A-01-01</div><div class="muted">07/09 11:18</div></div>
+                  <div>25.1</div>
+                  <div class="ok">OK</div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- AFTER -->
+    <section class="frame">
+      <div class="frame-label">
+        <strong>提案（After）</strong>
+        <span>1段コンパクトバー + 手順書最大化</span>
+      </div>
+      <div class="kiosk" aria-label="提案レイアウト">
+        <header class="bar compact">
+          <div class="title-block">
+            <h2>組立作業</h2>
+            <p>P-240812 / MODEL-A / 標準手順</p>
+          </div>
+          <div class="meta-inline" aria-label="旧下段メニュー統合">
+            <span>要領書</span>
+            <span class="sep" aria-hidden="true"></span>
+            <span>現在 <strong style="color:var(--text)">A-01-03</strong></span>
+            <span class="sep" aria-hidden="true"></span>
+            <span class="accent">必須 1/2</span>
+          </div>
+          <div class="actions">
+            <span class="btn">組立トップ</span>
+          </div>
+        </header>
+
+        <div class="main">
+          <section class="panel">
+            <!-- 下段見出しは上段へ統合済み。ここは手順書のみ -->
+            <div class="procedure">
+              <div class="procedure-card">
+                <strong>手順書プレースホルダ</strong>
+                <span class="marker ok m1">1</span>
+                <span class="marker now m2">2</span>
+                <span class="marker todo m3">3</span>
+              </div>
+              <div class="height-badge">手順書エリア（拡大）</div>
+            </div>
+          </section>
+
+          <aside class="panel side">
+            <h3>締付</h3>
+            <div class="current">
+              <div class="label">現在</div>
+              <div class="value">A-01-03</div>
+              <div class="sub">エリアA</div>
+              <div class="spec">規定 25 / 下限 22 / 上限 28 N·m</div>
+            </div>
+            <div class="check-box">
+              <div class="t">チェック進捗</div>
+              <div class="v">必須 1/2</div>
+            </div>
+            <div class="torque-row">
+              <input value="" placeholder="トルク値" readonly />
+              <select disabled><option>手入力</option></select>
+            </div>
+            <span class="btn primary">トルク記録</span>
+            <div class="side-grid">
+              <span class="btn secondary">次工程へ</span>
+              <span class="btn danger">やり直し</span>
+              <span class="btn primary span2">作業完了</span>
+            </div>
+            <div class="history">
+              <h4>履歴</h4>
+              <div class="history-list">
+                <div class="history-row">
+                  <div><div>A-01-02</div><div class="muted">07/09 11:20</div></div>
+                  <div>24.8</div>
+                  <div class="ok">OK</div>
+                </div>
+                <div class="history-row">
+                  <div><div>A-01-01</div><div class="muted">07/09 11:18</div></div>
+                  <div>25.1</div>
+                  <div class="ok">OK</div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="note">
+    <strong>プレビュー注記（実装禁止）</strong><br />
+    ・After 上段は <strong>1行固定</strong>（タイトル＋品番メタ｜要領書メタ｜組立トップ）。折り返し3段は解消。<br />
+    ・「テンプレ」「Excel」は After から完全削除（オペレータ画面のため）。<br />
+    ・旧・左ペイン見出し（要領書 / 現在箇所 / 必須チェック）は上段中央へ統合し、手順書エリアを縦に確保。<br />
+    ・右ペイン（締付操作）は今回の依頼範囲外のため現行相当のままです。<br />
+    ・根拠コード: <code>apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx</code>
+  </div>
+</body>
+</html>

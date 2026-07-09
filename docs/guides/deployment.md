@@ -10,6 +10,21 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-09 · **組立作業画面オペレータ向けレイアウト + contain-fit** · **Web only** · **Pi5 + Pi4×5 反映済 / Pi3 対象外**） {#kiosk-assembly-work-session-operator-layout-2026-07-09}
+
+- **変更概要（正本）**: [ADR-20260709](../decisions/ADR-20260709-assembly-work-session-operator-layout.md) · ブランチ **`feat/kiosk-assembly-work-session-operator-layout`** · HEAD **`901d3b9e`**。タイトル「組立作業」・1行ヘッダー・テンプレ/Excel UI 削除（Excel API 維持）・左見出し帯削除・手順書を親ペインへ縦横比維持で最大表示（contain-fit）。**API / DB / Prisma migration 変更なし**。
+- **CI**: contain-fit push CI **`28992502583` success**（全5ジョブ）。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-assembly-work-session-operator-layout infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260709-124448-793`**（contain-fit） / 先行 `20260709-121959-3054` | success · `failed=0` · HEAD **`901d3b9e`** |
+| `raspi4-kensaku-stonebase01` | **`20260709-124940-20974`**（contain-fit） / 先行 `20260709-122401-24674` | success · `failed=0` · HEAD **`901d3b9e`** · 実機OK |
+| `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01` | **`20260709-130433-21264`** | success · 4台とも `failed=0` / `unreachable=0` · HEAD **`901d3b9e`** |
+
+- **対象外**: `raspberrypi3`（サイネージ）スキップ。
+- **実機（目視）**: 2026-07-09 ユーザー確認OK（StoneBase01 · 1行ヘッダー・手順書 contain-fit 拡大・テンプレ/Excel 非表示）。
+
 ### 補足（2026-07-09 · **検査図面 作成/改版レイアウト修正（toolbar shrink-0 + aside overflow-hidden）** · **Web only** · **Pi5 + Pi4×5 反映済 / Pi3 対象外**） {#inspection-drawing-create-layout-regression-2026-07-09}
 
 - **変更概要（正本）**: [KB-399](../knowledge-base/KB-399-inspection-drawing-create-layout-regression.md) · HEAD **`4f9a7025`** · fix **`6a265d0e`** / **`2432b4fd`**。**API / DB / Prisma migration 変更なし**。

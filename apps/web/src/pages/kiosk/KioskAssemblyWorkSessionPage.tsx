@@ -4,7 +4,6 @@ import { Link, useParams } from 'react-router-dom';
 import {
   advanceAssemblyArea,
   completeAssemblyWorkSession,
-  downloadAssemblyWorkSessionXlsx,
   getAssemblyWorkSession,
   getAssemblyWorkSessionProcedureSequence,
   recordAssemblyCheck,
@@ -15,9 +14,9 @@ import { Button, buttonClassName } from '../../components/ui/Button';
 import {
   AssemblyProcedureCanvas,
   AssemblyProcedureSequenceViewer,
+  AssemblyWorkSessionHeader,
   currentAssemblyArea,
   currentAssemblyBolt,
-  kioskAssemblyTemplateEditPath,
   KIOSK_ASSEMBLY_HOME_PATH,
   latestStatusByBolt,
   readAssemblyApiErrorMessage,
@@ -213,48 +212,29 @@ export function KioskAssemblyWorkSessionPage() {
     );
   }
 
+  const currentPositionLabel = procedureSequenceLoading
+    ? '要領書を確認中'
+    : currentBolt?.tighteningId ?? (allBoltsComplete ? '全締付完了' : '次工程待ち');
+  const requiredCheckLabel =
+    checkSummary && checkSummary.requiredTotal > 0
+      ? `必須 ${checkSummary.requiredCompleted}/${checkSummary.requiredTotal}`
+      : null;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 p-2">
-        <div className="min-w-0">
-          <h1 className="text-[1.28rem] font-bold leading-tight">組立締付作業</h1>
-          <p className="mt-1 truncate text-sm text-white/60">
-            {session.productNo} / {session.template.modelCode} / {session.template.procedurePattern}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link to={KIOSK_ASSEMBLY_HOME_PATH} className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center')}>
-            組立トップ
-          </Link>
-          <Link
-            to={kioskAssemblyTemplateEditPath(session.template.id)}
-            className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center')}
-          >
-            テンプレ
-          </Link>
-          <Button type="button" variant="ghostOnDark" className="min-h-10" disabled={busy} onClick={() => void downloadAssemblyWorkSessionXlsx(session.id)}>
-            Excel
-          </Button>
-        </div>
-      </div>
+      <AssemblyWorkSessionHeader
+        productNo={session.productNo}
+        modelCode={session.template.modelCode}
+        procedurePattern={session.template.procedurePattern}
+        procedureModeLabel={hasConfiguredProcedureSequence ? '要領書' : '手順書'}
+        currentPositionLabel={currentPositionLabel}
+        requiredCheckLabel={requiredCheckLabel}
+      />
 
       {message ? <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">{message}</p> : null}
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(0,1fr)_minmax(21rem,27rem)] xl:overflow-hidden">
         <section className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
-          <div className="shrink-0 border-b border-white/10 p-3">
-            <h2 className="text-[1.02rem] font-bold">{hasConfiguredProcedureSequence ? '要領書 / ページ送り' : '手順書 / 締付位置'}</h2>
-            <p className="mt-1 text-sm text-white/60">
-              {procedureSequenceLoading
-                ? '要領書を確認中'
-                : currentBolt?.tighteningId ?? (allBoltsComplete ? '全締付完了' : '次工程待ち')}
-            </p>
-            {checkSummary && checkSummary.requiredTotal > 0 ? (
-              <p className="mt-1 text-sm font-semibold text-lime-200">
-                必須チェック {checkSummary.requiredCompleted}/{checkSummary.requiredTotal}
-              </p>
-            ) : null}
-          </div>
           <div className="min-h-0 flex-1">
             {hasConfiguredProcedureSequence && procedureSequence ? (
               <AssemblyProcedureSequenceViewer

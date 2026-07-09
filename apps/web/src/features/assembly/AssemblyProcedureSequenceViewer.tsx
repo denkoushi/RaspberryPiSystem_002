@@ -143,11 +143,12 @@ export function AssemblyProcedureSequenceViewer({
           ))}
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-2">
+      <div className="min-h-0 flex-1 overflow-hidden p-2">
         <AssemblyProcedureImageWithMarkers
-          className="h-full max-h-full w-full max-w-full"
+          fitToParent
+          className="h-full w-full"
           imageContent={
-            <KioskDocumentPageImage pageUrl={pageUrl} alt="" className="h-full max-h-full w-full max-w-full object-contain" />
+            <KioskDocumentPageImage pageUrl={pageUrl} alt="" className="h-full w-full object-contain" />
           }
           bolts={boltMarkers}
           checkItems={checkMarkers}
