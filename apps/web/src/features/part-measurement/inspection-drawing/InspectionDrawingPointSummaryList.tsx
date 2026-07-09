@@ -1,3 +1,4 @@
+import { isInspectionDrawingThroughDepthMode } from '@raspi-system/shared-types';
 import clsx from 'clsx';
 
 import {
@@ -124,6 +125,8 @@ export function InspectionDrawingPointSummaryList({
                         </span>
                       ) : null}
                     </span>
+                  ) : isInspectionDrawingThroughDepthMode(pt.depthMode) ? (
+                    <span className="truncate font-semibold text-cyan-100">通し</span>
                   ) : (
                     <span className="truncate text-white/75">
                       <span className="text-white/50">基準</span> {displayRaw(pt.nominalRaw)}

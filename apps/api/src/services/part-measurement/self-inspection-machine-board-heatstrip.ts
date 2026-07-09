@@ -7,6 +7,7 @@ export type HeatstripToleranceItem = {
   upperLimit: Prisma.Decimal | null;
   nominalValue: Prisma.Decimal | null;
   decimalPlaces: number;
+  depthMode?: 'MEASURED' | 'THROUGH' | string | null;
 };
 
 export type HeatstripCellResolution = {
@@ -27,6 +28,11 @@ export function resolveHeatstripCellTone(
   }
 
   const displayValue = formatDecimalValue(value, item.decimalPlaces);
+
+  // THROUGH skips numeric tolerance (same visual class as incomplete limits).
+  if (String(item.depthMode ?? 'MEASURED').toUpperCase() === 'THROUGH') {
+    return { tone: 'neutral', displayValue };
+  }
 
   if (item.lowerLimit == null || item.upperLimit == null) {
     return { tone: 'neutral', displayValue };

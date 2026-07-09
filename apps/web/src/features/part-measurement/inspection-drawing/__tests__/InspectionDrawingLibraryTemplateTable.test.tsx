@@ -89,12 +89,14 @@ describe('InspectionDrawingLibraryTemplateTable', () => {
 
   it('uses shortened action labels in the secondary row and keeps history lineage keys', () => {
     const onHistoryClick = vi.fn();
+    const onRetireClick = vi.fn();
     render(
       <MemoryRouter>
         <InspectionDrawingLibraryTemplateTable
           templates={[template]}
           resourceNameMap={{}}
           onHistoryClick={onHistoryClick}
+          onRetireClick={onRetireClick}
           lineageGroupKey={(row) => row.id}
           editPath={() => '/edit'}
           printPath={() => '/print'}
@@ -104,18 +106,22 @@ describe('InspectionDrawingLibraryTemplateTable', () => {
     );
 
     expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('ml-auto');
-    expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('w-[7rem]');
+    expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('max-w-[11.5rem]');
     expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('justify-end');
-    for (const label of ['編集', '帳票', '雛形', '履歴']) {
-      const action = screen.getByRole(label === '履歴' ? 'button' : 'link', { name: label });
-      expect(action).toHaveClass('min-h-11');
-      expect(action).toHaveClass('text-xs');
+    for (const label of ['編集', '帳票', '雛形', '履歴', '無効']) {
+      const action = screen.getByRole(
+        label === '履歴' || label === '無効' ? 'button' : 'link',
+        { name: label }
+      );
+      expect(action).toHaveClass('min-h-[30.8px]');
     }
     expect(screen.getByRole('link', { name: '雛形' })).toHaveAttribute('title', '雛形新規');
 
     fireEvent.click(screen.getByRole('button', { name: '履歴' }));
-
     expect(onHistoryClick).toHaveBeenCalledWith('template-1');
+
+    fireEvent.click(screen.getByRole('button', { name: '無効' }));
+    expect(onRetireClick).toHaveBeenCalledWith(expect.objectContaining({ id: 'template-1' }));
   });
 
   it('renders loading empty state', () => {

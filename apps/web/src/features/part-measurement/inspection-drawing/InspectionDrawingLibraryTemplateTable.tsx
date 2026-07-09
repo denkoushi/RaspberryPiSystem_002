@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom';
 
 import { Button, buttonClassName } from '../../../components/ui/Button';
 
+import {
+  inspectionDrawingLibraryRowActionClassName,
+  inspectionDrawingLibraryRowActionsWidthClassName
+} from './inspectionDrawingKioskUi';
 import { InspectionDrawingResourceCdChipList } from './InspectionDrawingResourceCdChipList';
 import { activeResourceCdsForTemplate } from './inspectionDrawingResourceCdHelpers';
 import {
@@ -39,6 +43,7 @@ export type InspectionDrawingLibraryTemplateTableProps = {
   emptyMessage?: string;
   onHistoryClick: (lineageGroupKey: string) => void;
   lineageGroupKey: (template: KioskInspectionDrawingTemplateSummaryDto) => string;
+  onRetireClick?: (template: KioskInspectionDrawingTemplateSummaryDto) => void;
   editPath?: (templateId: string) => string;
   printPath?: (templateId: string) => string;
   createFromSourcePath?: (templateId: string) => string;
@@ -57,6 +62,7 @@ type TemplateTablePaneProps = {
   resourceNameMap: Record<string, string[]>;
   onHistoryClick: (lineageGroupKey: string) => void;
   lineageGroupKey: (template: KioskInspectionDrawingTemplateSummaryDto) => string;
+  onRetireClick?: (template: KioskInspectionDrawingTemplateSummaryDto) => void;
   editPath: (templateId: string) => string;
   printPath?: (templateId: string) => string;
   createFromSourcePath: (templateId: string) => string;
@@ -70,6 +76,7 @@ function TemplateTablePane({
   resourceNameMap,
   onHistoryClick,
   lineageGroupKey,
+  onRetireClick,
   editPath,
   printPath,
   createFromSourcePath,
@@ -132,16 +139,13 @@ function TemplateTablePane({
                           resourceNameMap={resourceNameMap}
                         />
                         <div
-                          className="ml-auto flex w-[7rem] shrink-0 justify-end gap-0.5"
+                          className={inspectionDrawingLibraryRowActionsWidthClassName}
                           data-testid="inspection-template-secondary-actions"
                         >
                           <Link
                             to={editPath(template.id)}
                             state={linkState}
-                            className={buttonClassName(
-                              'primary',
-                              'inline-flex min-h-11 min-w-[1.75rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-xs leading-none whitespace-nowrap'
-                            )}
+                            className={buttonClassName('primary', inspectionDrawingLibraryRowActionClassName)}
                           >
                             編集
                           </Link>
@@ -151,10 +155,7 @@ function TemplateTablePane({
                               target="_blank"
                               rel="noopener noreferrer"
                               title="保存済みテンプレートの帳票プレビュー（未保存の変更は反映されません）"
-                              className={buttonClassName(
-                                'ghostOnDark',
-                                'inline-flex min-h-11 min-w-[1.5rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-xs leading-none whitespace-nowrap'
-                              )}
+                              className={buttonClassName('ghostOnDark', inspectionDrawingLibraryRowActionClassName)}
                             >
                               帳票
                             </Link>
@@ -164,10 +165,7 @@ function TemplateTablePane({
                               to={createFromSourcePath(template.id)}
                               state={linkState}
                               title="雛形新規"
-                              className={buttonClassName(
-                                'ghostOnDark',
-                                'inline-flex min-h-11 min-w-[1.5rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-xs leading-none whitespace-nowrap'
-                              )}
+                              className={buttonClassName('ghostOnDark', inspectionDrawingLibraryRowActionClassName)}
                             >
                               雛形
                             </Link>
@@ -175,11 +173,22 @@ function TemplateTablePane({
                           <Button
                             type="button"
                             variant="ghostOnDark"
-                            className="min-h-11 min-w-[1.5rem] shrink-0 whitespace-nowrap rounded !px-1 !py-0 text-xs leading-none"
+                            className={inspectionDrawingLibraryRowActionClassName}
                             onClick={() => onHistoryClick(lineageGroupKey(template))}
                           >
                             履歴
                           </Button>
+                          {onRetireClick ? (
+                            <Button
+                              type="button"
+                              variant="ghostOnDark"
+                              className={inspectionDrawingLibraryRowActionClassName}
+                              disabled={!template.isActive}
+                              onClick={() => onRetireClick(template)}
+                            >
+                              無効
+                            </Button>
+                          ) : null}
                         </div>
                       </div>
                     </td>
@@ -202,6 +211,7 @@ export function InspectionDrawingLibraryTemplateTable({
   emptyMessage = '条件に合う検査図面はありません。',
   onHistoryClick,
   lineageGroupKey,
+  onRetireClick,
   editPath = kioskInspectionDrawingTemplateEditPath,
   printPath,
   createFromSourcePath = kioskInspectionDrawingCreatePathWithSource,
@@ -229,6 +239,7 @@ export function InspectionDrawingLibraryTemplateTable({
         resourceNameMap={resourceNameMap}
         onHistoryClick={onHistoryClick}
         lineageGroupKey={lineageGroupKey}
+        onRetireClick={onRetireClick}
         editPath={editPath}
         printPath={printPath}
         createFromSourcePath={createFromSourcePath}
@@ -242,6 +253,7 @@ export function InspectionDrawingLibraryTemplateTable({
           resourceNameMap={resourceNameMap}
           onHistoryClick={onHistoryClick}
           lineageGroupKey={lineageGroupKey}
+          onRetireClick={onRetireClick}
           editPath={editPath}
           printPath={printPath}
           createFromSourcePath={createFromSourcePath}

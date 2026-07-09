@@ -1,6 +1,10 @@
 import {
   buildDefaultInspectionDrawingMeasurementLabelSettings,
   buildInspectionDrawingToleranceCandidateValuesForLabel,
+  INSPECTION_DRAWING_DEPTH_MODE_MEASURED,
+  INSPECTION_DRAWING_DEPTH_MODE_THROUGH,
+  isInspectionDrawingDepthLabel,
+  isInspectionDrawingThroughDepthMode,
   resolveInspectionDrawingGeneralToleranceForNominal,
   resolveInspectionDrawingToleranceKindForLabel,
   type InspectionDrawingMeasurementLabelSetting
@@ -13,8 +17,11 @@ import { Input } from '../../../components/ui/Input';
 import {
   inspectionDrawingBoundedSelectClassName,
   inspectionDrawingBoundedSelectShellClassName,
+  inspectionDrawingPointSettingDeleteButtonClassName,
   inspectionDrawingPointSettingDualCellClassName,
   inspectionDrawingPointSettingInputClassName,
+  inspectionDrawingPointSettingNominalInlineClassName,
+  inspectionDrawingPointSettingNominalInputClassName,
   inspectionDrawingPointSettingPanelClassName,
   inspectionDrawingPointSettingSingleRowClassName
 } from './inspectionDrawingKioskUi';
@@ -149,25 +156,46 @@ export function InspectionDrawingPointSettingsPanel({
     effectiveMeasurementLabelSettings
   );
   const isGeometricTolerance = toleranceKind === 'geometric';
+  const showDepthMode = isInspectionDrawingDepthLabel(point.name);
+  const isThrough = showDepthMode && isInspectionDrawingThroughDepthMode(point.depthMode);
+  const toleranceInputsDisabled = disabled || isThrough;
   const threadNominal = point.threadNominal ?? '';
   const surfaceSide = point.surfaceSide ?? '';
   const supplementText = point.supplementText ?? '';
   const showOcrCandidateRow =
-    ocrCandidateLoading ||
-    ocrCandidateError ||
-    ocrCandidates.length > 0 ||
-    ocrCandidateStatus === 'failed';
+    !isThrough &&
+    (ocrCandidateLoading ||
+      ocrCandidateError ||
+      ocrCandidates.length > 0 ||
+      ocrCandidateStatus === 'failed');
   const handleNameChange = (name: string) => {
     const nextKind = resolveInspectionDrawingToleranceKindForLabel(
       name,
       effectiveMeasurementLabelSettings
     );
+    const nextDepthMode = isInspectionDrawingDepthLabel(name)
+      ? point.depthMode ?? INSPECTION_DRAWING_DEPTH_MODE_MEASURED
+      : INSPECTION_DRAWING_DEPTH_MODE_MEASURED;
     onChange({
       name,
+      depthMode: nextDepthMode,
       ...(nextKind === 'geometric'
         ? buildGeometricTolerancePointPatch(point.nominalRaw)
         : {})
     });
+  };
+  const handleDepthModeChange = (next: typeof INSPECTION_DRAWING_DEPTH_MODE_MEASURED | typeof INSPECTION_DRAWING_DEPTH_MODE_THROUGH) => {
+    if (next === INSPECTION_DRAWING_DEPTH_MODE_THROUGH) {
+      onChange({
+        depthMode: next,
+        nominalRaw: '',
+        upperToleranceRaw: '',
+        lowerToleranceRaw: '',
+        legacyAbsoluteBounds: undefined
+      });
+      return;
+    }
+    onChange({ depthMode: next });
   };
   const handleNominalBlur = () => {
     if (toleranceKind !== 'dimension') {
@@ -222,85 +250,119 @@ export function InspectionDrawingPointSettingsPanel({
           </div>
         </label>
       </div>
+      {showDepthMode ? (
+        <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="通し切替">
+          <button
+            type="button"
+            disabled={disabled}
+            className={
+              !isThrough
+                ? 'min-h-8 rounded-md bg-cyan-300 text-[0.82rem] font-extrabold text-cyan-950'
+                : 'min-h-8 rounded-md border border-white/15 bg-slate-950 text-[0.82rem] font-extrabold text-white/60'
+            }
+            onClick={() => handleDepthModeChange(INSPECTION_DRAWING_DEPTH_MODE_MEASURED)}
+          >
+            測定
+          </button>
+          <button
+            type="button"
+            disabled={disabled}
+            className={
+              isThrough
+                ? 'min-h-8 rounded-md bg-cyan-300 text-[0.82rem] font-extrabold text-cyan-950'
+                : 'min-h-8 rounded-md border border-white/15 bg-slate-950 text-[0.82rem] font-extrabold text-white/60'
+            }
+            onClick={() => handleDepthModeChange(INSPECTION_DRAWING_DEPTH_MODE_THROUGH)}
+          >
+            通し
+          </button>
+        </div>
+      ) : null}
       <div className={inspectionDrawingPointSettingSingleRowClassName}>
-        <div className="grid min-w-0 gap-1">
-          <span className="text-[1rem] font-semibold">補足</span>
-          <div className="grid grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,1.45fr)] gap-1.5">
-            <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
-              面
-              <div className={inspectionDrawingBoundedSelectShellClassName}>
-                <select
-                  value={surfaceSide}
-                  onChange={(e) => onChange({ surfaceSide: e.target.value })}
-                  className={inspectionDrawingBoundedSelectClassName}
-                  disabled={disabled}
-                  title={surfaceSide || '面なし'}
-                >
-                  <option value="">面なし</option>
-                  {INSPECTION_DRAWING_SURFACE_SIDE_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </label>
-            <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
-              呼び径
-              <div className={inspectionDrawingBoundedSelectShellClassName}>
-                <select
-                  value={threadNominal}
-                  onChange={(e) => onChange({ threadNominal: e.target.value })}
-                  className={inspectionDrawingBoundedSelectClassName}
-                  disabled={disabled}
-                  title={threadNominal || '呼び径なし'}
-                >
-                  <option value="">呼び径なし</option>
-                  {INSPECTION_DRAWING_THREAD_NOMINAL_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </label>
-            <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
-              直接入力
-              <Input
-                type="text"
-                value={supplementText}
-                onChange={(e) => onChange({ supplementText: e.target.value })}
-                className={inspectionDrawingPointSettingInputClassName}
+        <div className="grid grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,1.45fr)] gap-1.5">
+          <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
+            面
+            <div className={inspectionDrawingBoundedSelectShellClassName}>
+              <select
+                value={surfaceSide}
+                onChange={(e) => onChange({ surfaceSide: e.target.value })}
+                className={inspectionDrawingBoundedSelectClassName}
                 disabled={disabled}
-                placeholder="例: 2箇所"
-              />
-            </label>
-          </div>
+                title={surfaceSide || '面なし'}
+              >
+                <option value="">面なし</option>
+                {INSPECTION_DRAWING_SURFACE_SIDE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </label>
+          <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
+            呼び径
+            <div className={inspectionDrawingBoundedSelectShellClassName}>
+              <select
+                value={threadNominal}
+                onChange={(e) => onChange({ threadNominal: e.target.value })}
+                className={inspectionDrawingBoundedSelectClassName}
+                disabled={disabled}
+                title={threadNominal || '呼び径なし'}
+              >
+                <option value="">呼び径なし</option>
+                {INSPECTION_DRAWING_THREAD_NOMINAL_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </label>
+          <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
+            直接入力
+            <Input
+              type="text"
+              value={supplementText}
+              onChange={(e) => onChange({ supplementText: e.target.value })}
+              className={inspectionDrawingPointSettingInputClassName}
+              disabled={disabled}
+              placeholder="例: 2箇所"
+            />
+          </label>
         </div>
       </div>
       <div className={inspectionDrawingPointSettingSingleRowClassName}>
-        <label className={inspectionDrawingPointSettingDualCellClassName}>
-          <span className="text-[1rem] font-semibold">
-            {isGeometricTolerance ? '上限値' : '基準値'}
-          </span>
-          {isGeometricTolerance ? (
-            <ToleranceCandidateInput
-              value={point.nominalRaw}
-              candidateValues={toleranceCandidateValues}
-              onValueChange={handleUpperLimitChange}
-              disabled={disabled}
-            />
-          ) : (
-            <Input
-              type="text"
-              inputMode="decimal"
-              value={point.nominalRaw}
-              onChange={(e) => onChange({ nominalRaw: e.target.value })}
-              onBlur={handleNominalBlur}
-              className={inspectionDrawingPointSettingInputClassName}
-              disabled={disabled}
-            />
-          )}
+        <div className="grid min-w-0 gap-1">
+          <label className={inspectionDrawingPointSettingNominalInlineClassName}>
+            <span className="shrink-0 text-[1rem] font-semibold">
+              {isGeometricTolerance ? '上限値' : '基準値'}
+            </span>
+            {isGeometricTolerance ? (
+              <div className="w-[7.5rem] shrink-0">
+                <ToleranceCandidateInput
+                  value={point.nominalRaw}
+                  candidateValues={toleranceCandidateValues}
+                  onValueChange={handleUpperLimitChange}
+                  disabled={toleranceInputsDisabled}
+                />
+              </div>
+            ) : (
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={point.nominalRaw}
+                onChange={(e) => onChange({ nominalRaw: e.target.value })}
+                onBlur={handleNominalBlur}
+                className={inspectionDrawingPointSettingNominalInputClassName}
+                disabled={toleranceInputsDisabled}
+              />
+            )}
+          </label>
+          {isThrough ? (
+            <p className="rounded border border-cyan-300/25 bg-cyan-950/40 px-2 py-1 text-[0.82rem] font-semibold text-cyan-100">
+              通し穴として記録します（基準値・公差なし / 判定スキップ）
+            </p>
+          ) : null}
           {showOcrCandidateRow ? (
             <div className="flex min-h-8 flex-wrap items-center gap-1 text-[0.8rem] font-semibold">
               {ocrCandidateLoading ? <span className="text-cyan-100/75">OCR確認中</span> : null}
@@ -322,9 +384,9 @@ export function InspectionDrawingPointSettingsPanel({
               ))}
             </div>
           ) : null}
-        </label>
+        </div>
       </div>
-      {isGeometricTolerance ? (
+      {isThrough ? null : isGeometricTolerance ? (
         <p className="rounded border border-cyan-300/25 bg-cyan-950/40 px-2 py-1 text-[0.92rem] font-semibold text-cyan-100">
           合格範囲 0〜{geometricRangeUpper}
         </p>
@@ -336,7 +398,7 @@ export function InspectionDrawingPointSettingsPanel({
               value={point.upperToleranceRaw}
               candidateValues={toleranceCandidateValues}
               onValueChange={(value) => onChange({ upperToleranceRaw: value })}
-              disabled={disabled}
+              disabled={toleranceInputsDisabled}
             />
           </label>
           <label className="grid gap-1 text-[1rem] font-semibold">
@@ -345,7 +407,7 @@ export function InspectionDrawingPointSettingsPanel({
               value={point.lowerToleranceRaw}
               candidateValues={toleranceCandidateValues}
               onValueChange={(value) => onChange({ lowerToleranceRaw: value })}
-              disabled={disabled}
+              disabled={toleranceInputsDisabled}
             />
           </label>
         </div>
@@ -353,12 +415,24 @@ export function InspectionDrawingPointSettingsPanel({
       {onRemove || onRemoveAll ? (
         <div className={onRemove && onRemoveAll ? 'grid grid-cols-2 gap-1.5' : 'grid grid-cols-1'}>
           {onRemove ? (
-            <Button type="button" variant="secondary" disabled={disabled} onClick={onRemove}>
-              この点を削除
+            <Button
+              type="button"
+              variant="secondary"
+              className={inspectionDrawingPointSettingDeleteButtonClassName}
+              disabled={disabled}
+              onClick={onRemove}
+            >
+              一点削除
             </Button>
           ) : null}
           {onRemoveAll ? (
-            <Button type="button" variant="secondary" disabled={disabled} onClick={onRemoveAll}>
+            <Button
+              type="button"
+              variant="secondary"
+              className={inspectionDrawingPointSettingDeleteButtonClassName}
+              disabled={disabled}
+              onClick={onRemoveAll}
+            >
               全削除
             </Button>
           ) : null}

@@ -24,6 +24,15 @@ describe('resolveHeatstripCellTone', () => {
     ).toEqual({ tone: 'neutral', displayValue: '10' });
   });
 
+  it('returns neutral for THROUGH depth mode without tolerance check', () => {
+    expect(
+      resolveHeatstripCellTone(new Prisma.Decimal('12.0'), {
+        ...item,
+        depthMode: 'THROUGH',
+      })
+    ).toEqual({ tone: 'neutral', displayValue: '12' });
+  });
+
   it('returns out_of_tolerance when value exceeds bounds', () => {
     expect(resolveHeatstripCellTone(new Prisma.Decimal('12.0'), item).tone).toBe('out_of_tolerance');
   });

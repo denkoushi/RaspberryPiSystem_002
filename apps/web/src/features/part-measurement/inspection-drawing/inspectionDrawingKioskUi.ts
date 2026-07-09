@@ -258,6 +258,20 @@ export const inspectionDrawingPointSettingSingleRowClassName =
 /** 測定点設定 — 2 列行の各セル */
 export const inspectionDrawingPointSettingDualCellClassName = 'grid min-w-0 gap-1';
 
+/** 測定点設定 — 基準値ラベル + 狭幅入力の 1 行 */
+export const inspectionDrawingPointSettingNominalInlineClassName =
+  'flex min-w-0 items-center gap-2';
+
+/** 測定点設定 — 基準値/上限値の狭幅入力 */
+export const inspectionDrawingPointSettingNominalInputClassName = clsx(
+  inspectionDrawingPointSettingInputClassName,
+  'w-[7.5rem] shrink-0 !min-h-9 !py-1.5'
+);
+
+/** 測定点設定 — 一点削除 / 全削除（高さ ≈ 半分） */
+export const inspectionDrawingPointSettingDeleteButtonClassName =
+  '!min-h-[22px] !px-2 !py-0 text-[0.78rem] leading-none';
+
 /** 測定点位置微調整 — 右ペイン内 1 行配置 */
 export const inspectionDrawingPointNudgeGridClassName =
   'flex w-full justify-center gap-1';
@@ -266,6 +280,13 @@ export const inspectionDrawingPointNudgeGridClassName =
 export const inspectionDrawingPointNudgeButtonClassName =
   'inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-white/20 bg-white/5 text-[1.1rem] font-bold leading-none text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40';
 
+/** 検査図面ライブラリ行アクション（高さ ×0.7 ≈ 30.8px） */
+export const inspectionDrawingLibraryRowActionClassName =
+  'inline-flex min-h-[30.8px] min-w-[1.5rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-[0.68rem] leading-none whitespace-nowrap';
+
+/** 検査図面ライブラリ行アクション列幅（無効ボタン含む） */
+export const inspectionDrawingLibraryRowActionsWidthClassName =
+  'ml-auto flex w-auto max-w-[11.5rem] shrink-0 justify-end gap-0.5';
 /** 一覧フィルタ — 品番欄幅 */
 export const inspectionDrawingLibraryFilterFhincdWidthClass =
   'w-full shrink-0 sm:w-[13rem]';

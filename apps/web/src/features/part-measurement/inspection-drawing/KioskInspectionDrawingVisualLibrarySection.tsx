@@ -10,6 +10,7 @@ import {
   kioskInputClassName
 } from '../../../features/kiosk/kioskTheme';
 
+import { matchesDigitQuery } from './inspectionDrawingDigitQuery';
 import { InspectionDrawingResourceCdChipList } from './InspectionDrawingResourceCdChipList';
 import { formatVisualLibraryTimestamp } from './inspectionDrawingVisualLibraryHelpers';
 import {
@@ -31,6 +32,8 @@ type Props = {
   /** 図面 ID ごとの資源 CD（未指定時はチップ行を描画しない） */
   resourceCdsByVisualId?: Record<string, string[]>;
   resourceNameMap?: Record<string, string[]>;
+  /** メニューバー数字テンキーのクライアント絞り込み（数字部分一致） */
+  digitQuery?: string;
 };
 
 export function KioskInspectionDrawingVisualLibrarySection({
@@ -39,7 +42,8 @@ export function KioskInspectionDrawingVisualLibrarySection({
   onVisualRenamed,
   previewVisuals,
   resourceCdsByVisualId,
-  resourceNameMap = {}
+  resourceNameMap = {},
+  digitQuery = ''
 }: Props) {
   const clientKey = getResolvedClientKey();
   const isPreview = previewVisuals != null;
@@ -62,10 +66,16 @@ export function KioskInspectionDrawingVisualLibrarySection({
   const searchQuery = isPreview ? previewSearchQuery : apiState.searchQuery;
   const setSearchQuery = isPreview ? setPreviewSearchQuery : apiState.setSearchQuery;
   const debouncedQuery = isPreview ? previewDebouncedQuery : apiState.debouncedQuery;
-  const visuals = isPreview ? previewFilteredVisuals : apiState.visuals;
+  const baseVisuals = isPreview ? previewFilteredVisuals : apiState.visuals;
+  const visuals = useMemo(
+    () => baseVisuals.filter((visual) => matchesDigitQuery(visual.name, digitQuery)),
+    [baseVisuals, digitQuery]
+  );
   const loading = isPreview ? false : apiState.loading;
   const error = isPreview ? null : apiState.error;
   const reload = isPreview ? async () => undefined : apiState.reload;
+  const emptyBecauseDigit = digitQuery.length > 0 && visuals.length === 0;
+  const emptyBecauseName = Boolean(debouncedQuery) && visuals.length === 0;
 
   return (
     <section
@@ -116,7 +126,9 @@ export function KioskInspectionDrawingVisualLibrarySection({
           <p className="py-4 text-center text-[0.88rem] text-white/60">読込中…</p>
         ) : visuals.length === 0 ? (
           <p className="py-4 text-center text-[0.88rem] text-white/60">
-            {debouncedQuery ? '条件に合う図面はありません。' : '登録済み図面はありません。'}
+            {emptyBecauseDigit || emptyBecauseName
+              ? '条件に合う図面はありません。'
+              : '登録済み図面はありません。'}
           </p>
         ) : (
           <table className="w-full table-fixed border-collapse text-left text-xs" aria-label="図面ライブラリ">

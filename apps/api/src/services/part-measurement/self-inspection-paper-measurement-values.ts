@@ -103,9 +103,16 @@ function assertDecimalPlacesWithinLimit(decimalValue: Prisma.Decimal, decimalPla
 }
 
 function isValueWithinTolerance(
-  item: { lowerLimit: Prisma.Decimal | null; upperLimit: Prisma.Decimal | null },
+  item: {
+    lowerLimit: Prisma.Decimal | null;
+    upperLimit: Prisma.Decimal | null;
+    depthMode?: 'MEASURED' | 'THROUGH' | string | null;
+  },
   decimalValue: Prisma.Decimal
 ): boolean {
+  if (String(item.depthMode ?? 'MEASURED').toUpperCase() === 'THROUGH') {
+    return true;
+  }
   if (item.lowerLimit == null || item.upperLimit == null) {
     return false;
   }

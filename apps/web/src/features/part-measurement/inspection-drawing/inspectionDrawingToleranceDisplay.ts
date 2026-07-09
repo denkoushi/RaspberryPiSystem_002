@@ -1,3 +1,5 @@
+import { isInspectionDrawingThroughDepthMode } from '@raspi-system/shared-types';
+
 import { isLegacyAbsoluteOnlyPoint } from './markerNumbering';
 
 import type { InspectionDrawingPoint } from './types';
@@ -19,6 +21,9 @@ export function formatInspectionDrawingToleranceDisplay(
   point: InspectionDrawingPoint,
   options: { includeLegacyReason?: boolean } = {}
 ): string {
+  if (isInspectionDrawingThroughDepthMode(point.depthMode)) {
+    return '通し';
+  }
   if (isLegacyAbsoluteOnlyPoint(point) && point.legacyAbsoluteBounds) {
     const { lowerLimit, upperLimit } = point.legacyAbsoluteBounds;
     const reason = options.includeLegacyReason ? '（基準値未設定）' : '';

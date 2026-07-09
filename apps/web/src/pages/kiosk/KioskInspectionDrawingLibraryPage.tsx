@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { retirePartMeasurementTemplate } from '../../api/client';
 import { useKioskProductionScheduleResources } from '../../api/hooks';
 import { Button, buttonClassName } from '../../components/ui/Button';
 import {
@@ -9,6 +10,7 @@ import {
   kioskPageTitleClassName
 } from '../../features/kiosk/kioskTheme';
 import {
+  InspectionDrawingDigitTenkey,
   InspectionDrawingLibraryFilterBar,
   InspectionDrawingLibraryTemplateTable,
   InspectionDrawingTemplateHistoryDialog,
@@ -18,6 +20,7 @@ import {
   kioskInspectionDrawingTemplateEditPath,
   kioskInspectionDrawingTemplatePrintPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
+  matchesDigitQuery,
   useInspectionDrawingResourceCdsByVisualId,
   useInspectionDrawingTemplateLibrary
 } from '../../features/part-measurement/inspection-drawing';
@@ -51,6 +54,8 @@ export function KioskInspectionDrawingLibraryPage() {
   const [visualUploadOpen, setVisualUploadOpen] = useState(false);
   const [visualLibraryRefreshToken, setVisualLibraryRefreshToken] = useState(0);
   const [resourceCdsMapRefreshToken, setResourceCdsMapRefreshToken] = useState(0);
+  const [digitQuery, setDigitQuery] = useState('');
+  const [retireBusy, setRetireBusy] = useState(false);
   const templateLibrary = useInspectionDrawingTemplateLibrary();
   const resourceCdsByVisualId = useInspectionDrawingResourceCdsByVisualId(
     visualLibraryRefreshToken + resourceCdsMapRefreshToken
@@ -90,8 +95,9 @@ export function KioskInspectionDrawingLibraryPage() {
     () =>
       [...groupedTemplates.values()]
         .map((group) => pickLineageCardRepresentative(group))
-        .filter((row): row is KioskInspectionDrawingTemplateSummaryDto => row != null),
-    [groupedTemplates]
+        .filter((row): row is KioskInspectionDrawingTemplateSummaryDto => row != null)
+        .filter((row) => matchesDigitQuery(row.fhincd, digitQuery)),
+    [digitQuery, groupedTemplates]
   );
   const activeHistoryTemplates = historyGroupKey ? groupedTemplates.get(historyGroupKey) ?? [] : [];
   const activeHistoryTitle =
@@ -110,13 +116,46 @@ export function KioskInspectionDrawingLibraryPage() {
     setResourceCdsMapRefreshToken((token) => token + 1);
   }, [templateLibrary]);
 
+  const handleRetireTemplate = useCallback(
+    async (template: KioskInspectionDrawingTemplateSummaryDto) => {
+      if (
+        !window.confirm(
+          `品番「${template.fhincd}」資源「${template.resourceCd}」の有効版（v${template.version}）を無効化します。この資源の有効版のみ対象です。よろしいですか。`
+        )
+      ) {
+        return;
+      }
+      setRetireBusy(true);
+      setTemplateMessage(null);
+      try {
+        await retirePartMeasurementTemplate(template.id);
+        setTemplateMessage(`テンプレートを無効化しました: ${template.fhincd} / ${template.resourceCd}`);
+        templateLibrary.reload();
+        setResourceCdsMapRefreshToken((token) => token + 1);
+      } catch (error: unknown) {
+        const message =
+          error && typeof error === 'object' && 'response' in error
+            ? String(
+                (error as { response?: { data?: { message?: string } } }).response?.data?.message ??
+                  'テンプレートの無効化に失敗しました。'
+              )
+            : 'テンプレートの無効化に失敗しました。';
+        setTemplateMessage(message);
+      } finally {
+        setRetireBusy(false);
+      }
+    },
+    [templateLibrary]
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 p-2">
-        <div className="min-w-0">
+      <div className="flex h-[60px] flex-nowrap items-center gap-2 overflow-hidden rounded border border-white/15 bg-slate-900/70 p-2">
+        <div className="min-w-0 shrink-0">
           <h1 className={kioskPageTitleClassName}>検査図面</h1>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <InspectionDrawingDigitTenkey value={digitQuery} onChange={setDigitQuery} disabled={retireBusy} />
+        <div className="ml-auto flex shrink-0 flex-nowrap items-center gap-2">
           <Button
             type="button"
             variant="ghostOnDark"
@@ -148,6 +187,7 @@ export function KioskInspectionDrawingLibraryPage() {
           onVisualRenamed={handleVisualRenamed}
           resourceCdsByVisualId={resourceCdsByVisualId}
           resourceNameMap={resourceNameMap}
+          digitQuery={digitQuery}
         />
 
         <section
@@ -201,9 +241,10 @@ export function KioskInspectionDrawingLibraryPage() {
             <InspectionDrawingLibraryTemplateTable
               templates={visibleTemplateRows}
               resourceNameMap={resourceNameMap}
-              busy={templateLibrary.loading}
+              busy={templateLibrary.loading || retireBusy}
               onHistoryClick={setHistoryGroupKey}
               lineageGroupKey={lineageGroupKey}
+              onRetireClick={(template) => void handleRetireTemplate(template)}
               printPath={
                 INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED
                   ? kioskInspectionDrawingTemplatePrintPath

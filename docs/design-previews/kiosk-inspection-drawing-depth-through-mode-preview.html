@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>検査図面 右ペイン — 密度改善 + 通し（プレビュー v2）</title>
+  <style>
+    :root {
+      --bg: #1e293b;
+      --panel: rgba(2, 6, 23, 0.72);
+      --line: rgba(255, 255, 255, 0.15);
+      --line-soft: rgba(255, 255, 255, 0.1);
+      --text: #f8fafc;
+      --muted: rgba(248, 250, 252, 0.62);
+      --weak: rgba(248, 250, 252, 0.42);
+      --cyan: #a5f3fc;
+      --lime: #d9f99d;
+      --amber: #fde68a;
+      --btn-primary: #3b82f6;
+      --input-bg: #fff;
+      --input-fg: #0f172a;
+      --font: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+      --pane-w: 22rem;
+      --delete-h: 22px; /* 現行ボタン高さの約半分 */
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+
+    body {
+      font-family: var(--font);
+      background: #0b1220;
+      color: var(--text);
+      min-height: 100dvh;
+      padding: 16px;
+    }
+
+    .page-meta { max-width: 1180px; margin: 0 auto 12px; }
+    .page-meta h1 { font-size: 1.1rem; font-weight: 700; }
+    .page-meta p {
+      margin-top: 6px;
+      font-size: 0.84rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .chips {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 0.72rem;
+      color: var(--lime);
+      background: rgba(217, 249, 157, 0.08);
+    }
+
+    .chip.note { color: var(--cyan); background: rgba(165, 243, 252, 0.08); }
+    .chip.warn { color: var(--amber); background: rgba(253, 230, 138, 0.08); }
+
+    .compare {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+
+    .frame-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .frame-label strong { font-size: 0.9rem; }
+    .frame-label span { font-size: 0.74rem; color: var(--weak); }
+
+    .stage {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--bg);
+      padding: 10px;
+      display: flex;
+      justify-content: flex-end;
+      min-height: 640px;
+    }
+
+    .pane {
+      width: var(--pane-w);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .nudge {
+      display: flex;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .nudge.grid2 {
+      display: grid;
+      grid-template-columns: repeat(2, 2.75rem);
+      gap: 4px;
+      justify-content: center;
+      width: max-content;
+      margin: 0 auto;
+    }
+
+    .nudge button {
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+      font-size: 1.05rem;
+      font-weight: 800;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .title {
+      font-size: 1.02rem;
+      font-weight: 800;
+    }
+
+    .field { display: grid; gap: 4px; }
+    .label {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .sub {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    select, input[type="text"], .fake-select {
+      width: 100%;
+      min-height: 40px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    select, .fake-select {
+      background: #0f172a;
+      color: #fff;
+      padding: 0 8px;
+    }
+
+    input[type="text"] {
+      background: var(--input-bg);
+      color: var(--input-fg);
+      padding: 0 8px;
+    }
+
+    input:disabled, select:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .supp-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .supp-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.45fr);
+      gap: 6px;
+    }
+
+    .supp-grid label { display: grid; gap: 3px; }
+
+    .nominal-stack { display: grid; gap: 4px; }
+
+    .nominal-inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .nominal-inline .label {
+      flex: 0 0 auto;
+      margin: 0;
+      white-space: nowrap;
+    }
+
+    .nominal-inline input {
+      width: 7.5rem;
+      flex: 0 0 auto;
+      min-height: 36px;
+    }
+
+    .ocr-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .ocr-chip {
+      min-height: 28px;
+      padding: 0 8px;
+      border-radius: 5px;
+      border: 1px solid rgba(103, 232, 249, 0.4);
+      background: rgba(8, 47, 73, 0.7);
+      color: #ecfeff;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .tol-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .tol-grid label { display: grid; gap: 4px; }
+
+    .delete-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .delete-btn {
+      min-height: 44px;
+      border: none;
+      border-radius: 6px;
+      background: var(--btn-primary);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 800;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .after .delete-btn {
+      min-height: var(--delete-h);
+      font-size: 0.78rem;
+    }
+
+    .through-row {
+      display: none;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .after .through-row.show { display: grid; }
+
+    .mode-btn {
+      min-height: 32px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #0f172a;
+      color: var(--muted);
+      font-weight: 800;
+      font-size: 0.82rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .mode-btn.active {
+      background: #67e8f9;
+      color: #083344;
+      border-color: transparent;
+    }
+
+    .list-title {
+      font-size: 0.95rem;
+      font-weight: 800;
+      margin-top: 2px;
+    }
+
+    .list-card {
+      border: 1px solid rgba(56, 189, 248, 0.55);
+      border-radius: 6px;
+      padding: 8px;
+      background: rgba(15, 23, 42, 0.55);
+    }
+
+    .list-card .n { font-size: 0.9rem; font-weight: 800; }
+    .list-card .m { margin-top: 3px; font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+
+    .saved-space {
+      display: none;
+      margin-top: 4px;
+      border: 1px dashed rgba(217, 249, 157, 0.45);
+      border-radius: 6px;
+      padding: 8px;
+      color: var(--lime);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    .after .saved-space { display: block; }
+
+    .notes {
+      max-width: 1180px;
+      margin: 14px auto 0;
+      padding: 12px 14px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.55);
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .notes strong { color: var(--text); }
+    .notes ul { margin: 6px 0 0 1.1rem; }
+    .notes li + li { margin-top: 3px; }
+
+    @media (max-width: 900px) {
+      .compare { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-meta">
+    <h1>検査図面 右ペイン — 密度改善 + 通し（v2）</h1>
+    <p>
+      スクショ現状を Before。After は<strong>十字キー1行</strong>（コード上は既に1行）、
+      <strong>「補足」「深さモード」タイトル削除</strong>、
+      <strong>基準値ラベル+入力を1行・入力は狭幅</strong>、
+      削除ボタン高さ半分・名称を<strong>一点削除 / 全削除</strong>。
+      空いた縦スペースに通し切替を置く。
+    </p>
+    <div class="chips">
+      <span class="chip">十字キー 1行</span>
+      <span class="chip note">補足タイトル削除</span>
+      <span class="chip">基準値 1行化</span>
+      <span class="chip warn">削除ボタン高さ÷2</span>
+    </div>
+  </div>
+
+  <div class="compare">
+    <!-- BEFORE: screenshot-like (2x2 nudge as user sees waste) -->
+    <section>
+      <div class="frame-label">
+        <strong>Before（スクショ相当）</strong>
+        <span>十字が縦に効く · 補足タイトルあり · 基準値が縦積み · 削除ボタン高い</span>
+      </div>
+      <div class="stage">
+        <aside class="pane" aria-label="現行右ペイン">
+          <div class="nudge grid2" aria-hidden="true">
+            <button type="button">↑</button>
+            <button type="button">↓</button>
+            <button type="button">←</button>
+            <button type="button">→</button>
+          </div>
+          <p class="title">測定点の設定（No.1）</p>
+          <div class="field">
+            <span class="label">名称</span>
+            <select disabled><option>ネジ穴深さ</option></select>
+          </div>
+          <div class="field">
+            <span class="supp-title">補足</span>
+            <div class="supp-grid">
+              <label><span class="sub">面</span><div class="fake-select">面なし</div></label>
+              <label><span class="sub">呼び径</span><div class="fake-select">呼び径なし</div></label>
+              <label><span class="sub">直接入力</span><input type="text" disabled /></label>
+            </div>
+          </div>
+          <div class="nominal-stack">
+            <span class="label">基準値</span>
+            <input type="text" value="12.0" disabled />
+            <div class="ocr-row">
+              <button type="button" class="ocr-chip" disabled>88</button>
+              <button type="button" class="ocr-chip" disabled>20</button>
+              <button type="button" class="ocr-chip" disabled>28</button>
+            </div>
+          </div>
+          <div class="tol-grid">
+            <label><span class="label">上限公差</span><input type="text" value="+0.2" disabled /></label>
+            <label><span class="label">下限公差</span><input type="text" value="-0.2" disabled /></label>
+          </div>
+          <div class="delete-row">
+            <button type="button" class="delete-btn" disabled>この点を削除</button>
+            <button type="button" class="delete-btn" disabled>全削除</button>
+          </div>
+          <p class="list-title">測定点一覧</p>
+          <div class="list-card">
+            <div class="n">No.1 ネジ穴深さ</div>
+            <div class="m">基準 12 · 上限 12.2 · 下限 11.8</div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- AFTER -->
+    <section>
+      <div class="frame-label">
+        <strong>After（推奨・操作可）</strong>
+        <span>無駄削除 → 通し切替のスペース確保</span>
+      </div>
+      <div class="stage after">
+        <aside class="pane" aria-label="改善右ペイン">
+          <div class="nudge" role="group" aria-label="測定点の位置調整">
+            <button type="button">↑</button>
+            <button type="button">↓</button>
+            <button type="button">←</button>
+            <button type="button">→</button>
+          </div>
+          <p class="title">測定点の設定（No.1）</p>
+
+          <div class="field">
+            <span class="label">名称</span>
+            <select id="nameSelect">
+              <option>ザグリ穴ピッチ</option>
+              <option selected>ネジ穴深さ</option>
+              <option>深さ</option>
+              <option>外径</option>
+            </select>
+          </div>
+
+          <!-- 深さモード: タイトルなし。名称が深さ系のときだけ表示 -->
+          <div class="through-row show" id="throughRow" role="group" aria-label="通し切替">
+            <button type="button" class="mode-btn active" id="modeMeasured">測定</button>
+            <button type="button" class="mode-btn" id="modeThrough">通し</button>
+          </div>
+
+          <!-- 補足タイトル削除。面/呼び径/直接入力のみ -->
+          <div class="supp-grid">
+            <label>
+              <span class="sub">面</span>
+              <select>
+                <option>面なし</option>
+                <option>正面</option>
+              </select>
+            </label>
+            <label>
+              <span class="sub">呼び径</span>
+              <select>
+                <option>呼び径なし</option>
+                <option selected>M10</option>
+              </select>
+            </label>
+            <label>
+              <span class="sub">直接入力</span>
+              <input id="supplementText" type="text" placeholder="例: 2箇所" />
+            </label>
+          </div>
+
+          <!-- 基準値: ラベル+入力 1行・入力は狭幅 -->
+          <div>
+            <div class="nominal-inline">
+              <span class="label" id="nominalLabel">基準値</span>
+              <input id="nominal" type="text" value="12.0" />
+            </div>
+            <div class="ocr-row" style="margin-top:4px">
+              <button type="button" class="ocr-chip" data-ocr="88">88</button>
+              <button type="button" class="ocr-chip" data-ocr="20">20</button>
+              <button type="button" class="ocr-chip" data-ocr="28">28</button>
+              <button type="button" class="ocr-chip" data-ocr="12">12</button>
+            </div>
+          </div>
+
+          <div class="tol-grid" id="tolGrid">
+            <label><span class="label">上限公差</span><input id="upperTol" type="text" value="+0.2" /></label>
+            <label><span class="label">下限公差</span><input id="lowerTol" type="text" value="-0.2" /></label>
+          </div>
+
+          <div class="delete-row">
+            <button type="button" class="delete-btn">一点削除</button>
+            <button type="button" class="delete-btn">全削除</button>
+          </div>
+
+          <div class="saved-space" id="spaceNote">
+            縦スペース確保先（通し切替・将来ボタン）
+          </div>
+
+          <p class="list-title">測定点一覧</p>
+          <div class="list-card">
+            <div class="n" id="listName">No.1 ネジ穴深さ</div>
+            <div class="m" id="listMeta">基準 12 · 上限 12.2 · 下限 11.8</div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </div>
+
+  <div class="notes">
+    <strong>v2 合意ポイント（右ペイン）</strong>
+    <ul>
+      <li>十字キーは <strong>↑↓←→ の1行</strong>（現行コードの <code>flex</code> 配置に合わせる。2×2 は使わない）。</li>
+      <li><strong>「補足」見出し削除</strong>。面 / 呼び径 / 直接入力の3列はそのまま。</li>
+      <li><strong>「深さモード」見出しは出さない</strong>。深さ/ネジ穴深さのときだけ「測定｜通し」をタイトルなしで表示。</li>
+      <li>基準値は <strong>ラベルと入力を同一行</strong>。入力幅は狭め（≈7.5rem）。OCR候補は入力の下。</li>
+      <li>削除ボタン: 高さ約半分 · 文言 <strong>一点削除 / 全削除</strong>。</li>
+      <li>通し時は基準値・公差をロック。null クリアだけでは判定が壊れるため明示モード。</li>
+    </ul>
+  </div>
+
+  <script>
+    const DEPTH = new Set(["深さ", "ネジ穴深さ"]);
+    let mode = "measured";
+    const saved = { nominal: "12.0", upper: "+0.2", lower: "-0.2", supplement: "" };
+
+    const nameSelect = document.getElementById("nameSelect");
+    const throughRow = document.getElementById("throughRow");
+    const modeMeasured = document.getElementById("modeMeasured");
+    const modeThrough = document.getElementById("modeThrough");
+    const nominal = document.getElementById("nominal");
+    const upperTol = document.getElementById("upperTol");
+    const lowerTol = document.getElementById("lowerTol");
+    const tolGrid = document.getElementById("tolGrid");
+    const supplementText = document.getElementById("supplementText");
+    const listName = document.getElementById("listName");
+    const listMeta = document.getElementById("listMeta");
+    const spaceNote = document.getElementById("spaceNote");
+
+    function isDepth() {
+      return DEPTH.has(nameSelect.value);
+    }
+
+    function setMode(next) {
+      mode = next;
+      modeMeasured.classList.toggle("active", mode === "measured");
+      modeThrough.classList.toggle("active", mode === "through");
+      apply();
+    }
+
+    modeMeasured.addEventListener("click", () => setMode("measured"));
+    modeThrough.addEventListener("click", () => setMode("through"));
+    nameSelect.addEventListener("change", () => {
+      if (!isDepth()) mode = "measured";
+      apply();
+    });
+
+    document.querySelectorAll("[data-ocr]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (mode === "through" && isDepth()) return;
+        nominal.value = btn.getAttribute("data-ocr");
+        apply();
+      });
+    });
+
+    function apply() {
+      const depth = isDepth();
+      throughRow.classList.toggle("show", depth);
+
+      const through = depth && mode === "through";
+      nominal.disabled = through;
+      upperTol.disabled = through;
+      lowerTol.disabled = through;
+      tolGrid.style.opacity = through ? "0.45" : "1";
+
+      listName.textContent = `No.1 ${nameSelect.value}`;
+
+      if (through) {
+        nominal.value = "";
+        upperTol.value = "";
+        lowerTol.value = "";
+        if (!supplementText.value || supplementText.value === saved.supplement) {
+          supplementText.value = "通し";
+        }
+        listMeta.textContent = "規格 通し · 判定スキップ";
+        spaceNote.textContent = "通し選択中 — 基準値/公差ロック";
+      } else {
+        if (supplementText.value === "通し") supplementText.value = saved.supplement;
+        if (!nominal.value) nominal.value = saved.nominal;
+        if (!upperTol.value) upperTol.value = saved.upper;
+        if (!lowerTol.value) lowerTol.value = saved.lower;
+        listMeta.textContent = `基準 ${nominal.value || "—"} · 上限 — · 下限 —`;
+        spaceNote.textContent = depth
+          ? "縦スペース確保先（通し切替を名称直下に配置済）"
+          : "縦スペース確保先（深さ系以外は通し行非表示）";
+      }
+    }
+
+    apply();
+  </script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  createInspectionDrawingPoint,
   drawingPointToTemplateItemInput,
   isLegacyAbsoluteOnlyPoint,
   mergeInspectionDrawingPointPatch,
@@ -257,5 +258,38 @@ describe('markerNumbering', () => {
     );
     expect(saved.lowerLimit).toBe(100.95);
     expect(saved.upperLimit).toBe(101.05);
+  });
+
+  it('saves through depth mode with sentinel limits and reloads as through', () => {
+    const pt = createInspectionDrawingPoint(0.2, 0.4, 3);
+    pt.name = 'ネジ穴深さ';
+    pt.depthMode = 'through';
+    const saved = drawingPointToTemplateItemInput(pt, 0);
+    expect(saved.depthMode).toBe('through');
+    expect(saved.nominalValue).toBeNull();
+    expect(saved.lowerLimit).toBe(0);
+    expect(saved.upperLimit).toBe(0);
+
+    const loaded = templateItemToDrawingPoint({
+      id: 'item-through',
+      sortOrder: 0,
+      datumSurface: '—',
+      measurementPoint: 'ネジ穴深さ',
+      measurementLabel: 'ネジ穴深さ',
+      displayMarker: '3',
+      unit: null,
+      allowNegative: true,
+      decimalPlaces: 3,
+      markerXRatio: '0.2',
+      markerYRatio: '0.4',
+      nominalValue: null,
+      lowerLimit: '0',
+      upperLimit: '0',
+      depthMode: 'through'
+    });
+    expect(loaded.depthMode).toBe('through');
+    expect(loaded.nominalRaw).toBe('');
+    expect(loaded.lowerToleranceRaw).toBe('');
+    expect(loaded.upperToleranceRaw).toBe('');
   });
 });
