@@ -110,6 +110,7 @@ DGX Spark was considered as an OCR worker, but v3 intentionally keeps OCR on the
 2. Let the scheduler finish remaining active-template backfill. If `PROCESSING` remains beyond the stale threshold, use the retry path and inspect `failureReason`.
 3. Add OCR-specific checks to the real-device verification script if marker candidate regressions become common.
 4. Evaluate DGX Spark worker integration only after v3 timing and accuracy are measured in normal production use.
+5. Candidate accuracy follow-up (ranking + request-time local crop OCR + depth ROI) is recorded in [ADR-20260709](./ADR-20260709-inspection-drawing-ocr-local-candidates.md) / [Plan](../plans/inspection-drawing-ocr-local-candidates.md). Cache version remains `pm-drawing-ocr-v3`.
 
 ## References
 

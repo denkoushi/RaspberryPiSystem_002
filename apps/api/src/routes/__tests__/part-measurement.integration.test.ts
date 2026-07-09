@@ -534,17 +534,31 @@ describe('part-measurement templates API', () => {
       }
     });
 
-    const response = await app.inject({
-      method: 'POST',
-      url: `/api/part-measurement/visual-templates/${vid}/ocr/candidates`,
-      headers: { ...createAuthHeader(viewerToken), 'content-type': 'application/json' },
-      payload: { xRatio: 0.2, yRatio: 0.3, markerNo: 2, limit: 5 }
-    });
+    const previousLocalOcr = process.env.PART_MEASUREMENT_DRAWING_OCR_LOCAL_ENABLED;
+    process.env.PART_MEASUREMENT_DRAWING_OCR_LOCAL_ENABLED = 'false';
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/part-measurement/visual-templates/${vid}/ocr/candidates`,
+        headers: { ...createAuthHeader(viewerToken), 'content-type': 'application/json' },
+        payload: {
+          xRatio: 0.2,
+          yRatio: 0.3,
+          markerNo: 2,
+          limit: 5,
+          measurementLabel: '外径',
+          depthMode: 'measured'
+        }
+      });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json().status).toBe('completed');
-    expect(response.json().candidates[0].valueText).toBe('360');
-    expect(response.json().cache.tokenCount).toBe(2);
+      expect(response.statusCode).toBe(200);
+      expect(response.json().status).toBe('completed');
+      expect(response.json().candidates[0].valueText).toBe('360');
+      expect(response.json().cache.tokenCount).toBe(2);
+    } finally {
+      if (previousLocalOcr === undefined) delete process.env.PART_MEASUREMENT_DRAWING_OCR_LOCAL_ENABLED;
+      else process.env.PART_MEASUREMENT_DRAWING_OCR_LOCAL_ENABLED = previousLocalOcr;
+    }
   });
 
   it('treats includeInactive=false as false and only returns inactive visual when true', async () => {

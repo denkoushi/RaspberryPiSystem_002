@@ -107,7 +107,9 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
           xRatio: body.xRatio,
           yRatio: body.yRatio,
           markerNo: body.markerNo,
-          limit: body.limit ?? 5
+          limit: body.limit ?? 5,
+          measurementLabel: body.measurementLabel,
+          depthMode: body.depthMode
         });
         return {
           status: result.status.toLowerCase(),

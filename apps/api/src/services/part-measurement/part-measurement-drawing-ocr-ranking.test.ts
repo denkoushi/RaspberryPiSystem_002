@@ -8,7 +8,12 @@ import {
   type PartMeasurementDrawingOcrPayload,
   type PartMeasurementDrawingOcrToken
 } from './part-measurement-drawing-ocr-payload.js';
-import { rankPartMeasurementDrawingOcrCandidates } from './part-measurement-drawing-ocr-ranking.js';
+import {
+  canonicalNumericText,
+  extractDepthNoteValues,
+  rankPartMeasurementDrawingOcrCandidates,
+  splitConcatNumericCandidates
+} from './part-measurement-drawing-ocr-ranking.js';
 
 function token(
   text: string,
@@ -126,5 +131,48 @@ describe('part measurement drawing OCR ranking', () => {
     );
 
     expect(candidates.map((candidate) => candidate.valueText)).toEqual(['13', '22']);
+  });
+
+  it('splits concatenated OCR values into shorter dimension-like candidates', () => {
+    expect(splitConcatNumericCandidates('210201')).toEqual(expect.arrayContaining(['210201', '210', '21']));
+    expect(splitConcatNumericCandidates('3220.05')).toEqual(expect.arrayContaining(['3220.05', '32']));
+    expect(splitConcatNumericCandidates('124.54')).toEqual(expect.arrayContaining(['124.54', '124.5']));
+    expect(splitConcatNumericCandidates('1180')).toEqual(['1180']);
+
+    const candidates = rankPartMeasurementDrawingOcrCandidates(
+      payload([token('210201', 0.5, 0.5, 80)]),
+      { xRatio: 0.5, yRatio: 0.5, markerNo: 1, limit: 10 }
+    );
+    expect(candidates.map((c) => c.valueText)).toEqual(expect.arrayContaining(['210', '21']));
+  });
+
+  it('dedupes canonical numeric forms such as 0.030 and 0.03', () => {
+    expect(canonicalNumericText('0.030')).toBe('0.03');
+    const candidates = rankPartMeasurementDrawingOcrCandidates(
+      payload([token('0.030', 0.5, 0.5, 90), token('0.03', 0.501, 0.5, 88)]),
+      { xRatio: 0.5, yRatio: 0.5, markerNo: 1, limit: 5 }
+    );
+    expect(candidates.filter((c) => c.valueText === '0.03')).toHaveLength(1);
+  });
+
+  it('extracts depth-note values and prefers them for depth labels', () => {
+    expect(extractDepthNoteValues('深サ8')).toEqual(['8']);
+    expect(extractDepthNoteValues('深さ 12.5')).toEqual(['12.5']);
+
+    const candidates = rankPartMeasurementDrawingOcrCandidates(
+      payload([
+        token('深サ8', 0.52, 0.5, 70),
+        token('25', 0.5, 0.5, 95)
+      ]),
+      {
+        xRatio: 0.5,
+        yRatio: 0.5,
+        markerNo: 3,
+        limit: 5,
+        measurementLabel: 'ネジ穴深さ',
+        depthMode: 'measured'
+      }
+    );
+    expect(candidates.map((c) => c.valueText)).toContain('8');
   });
 });
