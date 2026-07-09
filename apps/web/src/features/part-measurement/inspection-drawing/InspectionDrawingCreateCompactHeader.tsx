@@ -2,7 +2,8 @@ import { InspectionDrawingCreateMetaChipList } from './InspectionDrawingCreateMe
 import { InspectionDrawingCreateVersionBadge } from './InspectionDrawingCreateVersionBadge';
 import {
   inspectionDrawingCreateFlatBandClassName,
-  inspectionDrawingCreateFlatBandItemClassName
+  inspectionDrawingCreateFlatBandItemClassName,
+  inspectionDrawingToolbarSlotClassName
 } from './inspectionDrawingKioskUi';
 
 import type { InspectionDrawingCreateMetadataRowProps } from './InspectionDrawingCreateMetadataRow';
@@ -50,7 +51,7 @@ export function InspectionDrawingCreateCompactHeader({
       ) : null}
       <div
         data-testid="inspection-drawing-create-toolbar-slot"
-        className="min-w-0 flex-1"
+        className={inspectionDrawingToolbarSlotClassName}
       >
         {toolbar}
       </div>
