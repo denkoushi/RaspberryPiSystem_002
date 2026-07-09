@@ -6,7 +6,8 @@ import { InspectionDrawingCreateHeaderBand } from '../InspectionDrawingCreateHea
 import { InspectionDrawingCreateMetadataRow } from '../InspectionDrawingCreateMetadataRow';
 import {
   inspectionDrawingCreateMetadataSlotClassName,
-  inspectionDrawingMetadataGridClassName
+  inspectionDrawingMetadataGridClassName,
+  inspectionDrawingToolbarSlotClassName
 } from '../inspectionDrawingKioskUi';
 
 const drawingSourceControl = (
@@ -71,6 +72,22 @@ describe('InspectionDrawingCreateCompactHeader', () => {
 
     const toolbarSlot = screen.getByTestId('inspection-drawing-create-toolbar-slot');
     expect(toolbarSlot.querySelector('[data-testid="toolbar-root"]')).toBeTruthy();
+  });
+
+  it('keeps toolbar-slot shrink-0 so primary actions stay horizontal', () => {
+    render(
+      <InspectionDrawingCreateCompactHeader
+        metadata={metadataProps}
+        drawingSourceControl={drawingSourceControl}
+        toolbar={<div data-testid="toolbar-root">toolbar</div>}
+      />
+    );
+
+    const toolbarSlot = screen.getByTestId('inspection-drawing-create-toolbar-slot');
+    expect(toolbarSlot).toHaveClass(...inspectionDrawingToolbarSlotClassName.split(' '));
+    expect(toolbarSlot.className).toContain('shrink-0');
+    expect(toolbarSlot.className).not.toContain('flex-1');
+    expect(toolbarSlot.className).not.toContain('min-w-0');
   });
 
   it('applies shrink-0 to version badge as a flat band item', () => {
