@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<!--
+  実装前確認用の使い捨てプレビュー。正本は kiosk-inspection-drawing-layout-preview.html
+  目的: ツールバー崩れ（toolbar-slot の flex-1/min-w-0）と右ペイン測定点一覧の見切れ
+       （aside に overflow 拘束がない）の現状再現と修正案の対比確認。
+-->
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>検査図面レイアウト修正案 — 現状 vs 修正（1280px）</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    html, body {
+      height: 100%;
+      overflow: auto;
+      background: #0f172a;
+    }
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      color: #f8fafc;
+      padding: 1rem;
+    }
+
+    /* —— 切替 UI —— */
+    .preview-chrome {
+      width: 1280px;
+      margin: 0 auto 0.75rem;
+    }
+    .preview-chrome h1 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+      color: #e2e8f0;
+    }
+    .preview-chrome p {
+      font-size: 0.78rem;
+      color: #94a3b8;
+      margin-bottom: 0.5rem;
+      line-height: 1.45;
+    }
+    .tabs {
+      display: flex;
+      gap: 0.35rem;
+      margin-bottom: 0.5rem;
+    }
+    .tab {
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(30,41,59,0.9);
+      color: #e2e8f0;
+      padding: 0.4rem 0.9rem;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .tab[aria-selected="true"] {
+      background: #0ea5e9;
+      border-color: #38bdf8;
+      color: #0f172a;
+    }
+    .note {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      line-height: 1.4;
+      min-height: 2.4em;
+    }
+    .note strong { color: #fbbf24; font-weight: 700; }
+
+    /* —— キオスク枠（1280×720） —— */
+    .frame {
+      width: 1280px;
+      height: 720px;
+      margin: 0 auto;
+      border: 2px solid #475569;
+      border-radius: 4px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+      background: #1e293b;
+    }
+    .app {
+      display: flex;
+      height: 100%;
+      min-height: 0;
+      flex-direction: column;
+      background: #1e293b;
+      color: #fff;
+    }
+    .kiosk-header {
+      height: 2.25rem;
+      flex-shrink: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      background: rgba(15,23,42,0.8);
+      display: flex;
+      align-items: center;
+      padding: 0 0.75rem;
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.45);
+    }
+
+    /* 現状: main が overflow-auto → ページ下方へ押し出し */
+    .main {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      padding: 0.25rem 0.5rem;
+    }
+    .main--broken { overflow: auto; }
+    .main--fixed { overflow: hidden; }
+
+    .page {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding: 0.25rem;
+    }
+    .page--broken { height: auto; min-height: 100%; }
+    .page--fixed { height: 100%; }
+
+    /* —— top-band —— */
+    .top-band {
+      display: flex;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.25rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(15,23,42,0.6);
+      padding: 0.25rem 0.5rem;
+    }
+    .meta-row {
+      display: flex;
+      min-width: 0;
+      flex-shrink: 1;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 0.25rem 0.5rem;
+      list-style: none;
+    }
+    .meta-chip {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.35rem;
+      white-space: nowrap;
+      font-size: 0.9rem;
+    }
+    .meta-chip dt { color: #94a3b8; font-weight: 600; }
+    .meta-chip dd {
+      margin: 0;
+      padding: 0.15rem 0.45rem;
+      border-radius: 0.25rem;
+      background: rgba(2,6,23,0.6);
+      border: 1px solid rgba(255,255,255,0.2);
+      font-size: 0.95rem;
+      max-width: 11rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .badge {
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 0.125rem 0.375rem;
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.55);
+      flex-shrink: 0;
+    }
+    .file-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.55);
+      flex-shrink: 0;
+    }
+    .file-label input { max-width: 7rem; font-size: 0.7rem; color: rgba(255,255,255,0.7); }
+    .zoom-group {
+      display: flex;
+      align-items: center;
+      gap: 0.125rem;
+      flex-shrink: 0;
+    }
+    .btn-icon {
+      min-height: 2.25rem;
+      min-width: 2.25rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: transparent;
+      font-size: 1.125rem;
+      font-weight: 600;
+      line-height: 1;
+      color: rgba(255,255,255,0.9);
+      cursor: default;
+    }
+
+    /* toolbar-slot: 現状 = flex-1 min-w-0 / 修正 = shrink-0 */
+    .toolbar-slot--broken {
+      display: flex;
+      flex: 1 1 0;
+      min-width: 0;
+    }
+    .toolbar-slot--fixed {
+      display: flex;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+    .toolbar {
+      display: flex;
+      width: 100%;
+      min-width: 0;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .toolbar-primary {
+      display: flex;
+      min-width: 0;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .toolbar-secondary {
+      display: flex;
+      margin-left: auto;
+      flex-shrink: 0;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .btn {
+      border-radius: 6px;
+      padding: 0.45rem 0.85rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border: none;
+      cursor: default;
+      white-space: nowrap;
+      min-height: 2.5rem;
+    }
+    .btn-primary { background: #10b981; color: #fff; }
+    .btn-primary.is-inactive { opacity: 0.4; filter: grayscale(1); }
+    .btn-primary:disabled { opacity: 0.4; }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+    .sep-v {
+      display: none;
+      width: 1px;
+      height: 1.5rem;
+      margin: 0 0.25rem;
+      background: rgba(255,255,255,0.2);
+    }
+    @media (min-width: 640px) {
+      .sep-v { display: block; }
+    }
+    .save-status {
+      display: inline-flex;
+      min-height: 2.25rem;
+      flex-shrink: 0;
+      align-items: center;
+      border-radius: 4px;
+      border: 1px solid rgba(251,191,36,0.55);
+      background: rgba(251,191,36,0.15);
+      padding: 0 0.4rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #fef3c7;
+    }
+
+    /* —— workspace —— */
+    .workspace {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      gap: 0.375rem;
+    }
+    .canvas-col {
+      min-height: 0;
+      min-width: 0;
+      flex: 1;
+    }
+    .canvas-viewport {
+      height: 100%;
+      min-height: 0;
+      overflow: auto;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0,0,0,0.4);
+      scrollbar-gutter: stable;
+    }
+    .canvas-inner {
+      display: flex;
+      height: 100%;
+      min-height: 360px;
+      width: 100%;
+      align-items: center;
+      justify-content: center;
+      padding: 0.5rem;
+      position: relative;
+    }
+    .drawing-placeholder {
+      width: 92%;
+      height: 88%;
+      background: #f8fafc;
+      border: 2px solid #334155;
+      border-radius: 2px;
+      position: relative;
+    }
+    .drawing-placeholder::before,
+    .drawing-placeholder::after {
+      content: '';
+      position: absolute;
+      background: #64748b;
+      opacity: 0.5;
+    }
+    .drawing-placeholder::before {
+      left: 8%; right: 8%; top: 50%; height: 1px;
+      border-top: 1px dashed #64748b;
+      background: none;
+    }
+    .drawing-placeholder::after {
+      top: 8%; bottom: 8%; left: 50%; width: 1px;
+      border-left: 1px dashed #64748b;
+      background: none;
+    }
+    .marker {
+      position: absolute;
+      width: 1.75rem;
+      height: 1.75rem;
+      border-radius: 50%;
+      border: 2px solid #0ea5e9;
+      background: rgba(14,165,233,0.15);
+      color: #0369a1;
+      font-size: 0.85rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .marker-1 { left: 62%; top: 28%; }
+    .marker-2 { left: 38%; top: 55%; }
+    .marker-3 { left: 70%; top: 62%; }
+
+    /* —— aside —— */
+    .aside {
+      display: flex;
+      width: 17rem;
+      flex-shrink: 0;
+      flex-direction: column;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(15,23,42,0.85);
+      padding: 0.375rem;
+    }
+    /* 現状: overflow 拘束なし → 親 main の overflow-auto へ押し出し */
+    .aside--broken {
+      min-height: 0;
+      /* overflow なし（バグ再現） */
+    }
+    /* 修正案: overflow-hidden で min-h-0 連鎖を保証 */
+    .aside--fixed {
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .aside-inner {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+    }
+
+    /* 設定パネル（現行: 1列縦積み・高さ厳しい） */
+    .settings-panel {
+      display: grid;
+      flex-shrink: 0;
+      width: 100%;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(15,23,42,0.7);
+    }
+    .settings-title {
+      font-size: 1.02rem;
+      font-weight: 700;
+    }
+    .field {
+      display: grid;
+      gap: 0.25rem;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    .field-sm {
+      display: grid;
+      gap: 0.25rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: rgba(255,255,255,0.7);
+      min-width: 0;
+    }
+    .field input,
+    .field select,
+    .field-sm input,
+    .field-sm select {
+      height: 2.35rem;
+      width: 100%;
+      border-radius: 6px;
+      border: 2px solid #64748b;
+      background: #fff;
+      padding: 0 0.5rem;
+      font-size: 1rem;
+      color: #0f172a;
+    }
+    .supplement-row {
+      display: grid;
+      grid-template-columns: minmax(0,0.85fr) minmax(0,1fr) minmax(0,1.45fr);
+      gap: 0.375rem;
+    }
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      min-height: 1.75rem;
+      align-items: center;
+    }
+    .chip {
+      min-height: 1.75rem;
+      border-radius: 4px;
+      border: 1px solid rgba(103,232,249,0.4);
+      background: rgba(8,51,68,0.7);
+      padding: 0 0.5rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #ecfeff;
+      cursor: default;
+    }
+    .tol-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.375rem;
+    }
+    .nudge-row {
+      display: flex;
+      width: 100%;
+      justify-content: center;
+      gap: 0.25rem;
+    }
+    .nudge-btn {
+      display: inline-flex;
+      min-height: 2.75rem;
+      min-width: 2.75rem;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.05);
+      font-size: 1.1rem;
+      font-weight: 700;
+      line-height: 1;
+      color: rgba(255,255,255,0.9);
+      cursor: default;
+    }
+    .btn-secondary {
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(51,65,85,0.9);
+      padding: 0.45rem 0;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #fff;
+      cursor: default;
+    }
+    .danger-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.375rem;
+    }
+
+    /* 測定点一覧 */
+    .point-list-section {
+      margin-top: 0.375rem;
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      gap: 0.25rem;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      padding-top: 0.375rem;
+    }
+    .point-list-title {
+      flex-shrink: 0;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: rgba(255,255,255,0.5);
+    }
+    .point-list {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      gap: 0.25rem;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+    }
+    .point-card {
+      display: flex;
+      width: 100%;
+      flex-direction: column;
+      gap: 0.125rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(15,23,42,0.6);
+      padding: 0.25rem 0.5rem;
+      text-align: left;
+      font-size: 0.75rem;
+      line-height: 1.35;
+      color: #fff;
+      cursor: default;
+      flex-shrink: 0;
+    }
+    .point-card--selected {
+      border-color: #67e8f9;
+      background: rgba(22,78,99,0.55);
+      box-shadow: 0 0 0 2px #67e8f9;
+    }
+    .point-card .line {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .point-card .no { font-weight: 700; color: rgba(255,255,255,0.8); }
+    .point-card--selected .no { color: #67e8f9; }
+    .point-card .name { margin-left: 0.25rem; font-weight: 600; }
+    .point-card .muted { color: rgba(255,255,255,0.5); }
+    .point-card .values { color: rgba(255,255,255,0.75); }
+    .sep { margin: 0 0.25rem; color: rgba(255,255,255,0.3); }
+
+    .callout {
+      position: absolute;
+      z-index: 2;
+      pointer-events: none;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.2rem 0.45rem;
+      border-radius: 4px;
+      background: rgba(251,191,36,0.95);
+      color: #0f172a;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+    }
+    .callout--toolbar { top: 0.15rem; right: 0.35rem; }
+    .callout--aside { bottom: 0.35rem; left: 0.35rem; }
+    .relative { position: relative; }
+  </style>
+</head>
+<body>
+  <div class="preview-chrome">
+    <h1>キオスク「検査図面」テンプレート作成 — レイアウト修正案プレビュー</h1>
+    <p>
+      ビューポート想定: 1280×720。タブで現状（崩れ再現）と修正案を切替。
+      本体コードは変更していません（この HTML のみ）。
+    </p>
+    <div class="tabs" role="tablist" aria-label="レイアウト状態">
+      <button type="button" class="tab" role="tab" id="tab-broken" aria-selected="true" aria-controls="frame" data-mode="broken">
+        現状（崩れ再現）
+      </button>
+      <button type="button" class="tab" role="tab" id="tab-fixed" aria-selected="false" aria-controls="frame" data-mode="fixed">
+        修正案
+      </button>
+    </div>
+    <p class="note" id="mode-note">
+      <strong>現状:</strong> toolbar-slot が flex:1 / min-width:0 → 緑ボタンが縦積みでヘッダーが高くなる。
+      aside に overflow 拘束がなく、設定パネル（shrink-0）が縦に長いため測定点一覧がページ下方へ押し出されて見切れる。
+    </p>
+  </div>
+
+  <div class="frame" id="frame">
+    <div class="app">
+      <header class="kiosk-header">キオスクヘッダー（プレースホルダ）</header>
+      <main class="main main--broken" id="main">
+        <div class="page page--broken" id="page">
+          <div class="top-band relative" id="top-band">
+            <dl class="meta-row">
+              <div class="meta-chip"><dt>品番</dt><dd>MD100469601</dd></div>
+              <div class="meta-chip"><dt>資源</dt><dd>033 (三井HS3A(25号機) / 横型)</dd></div>
+              <div class="meta-chip"><dt>テンプレ</dt><dd>7161サドル</dd></div>
+              <div class="meta-chip"><dt>検査数</dt><dd>最初と最後</dd></div>
+            </dl>
+            <span class="badge">v2 · 有効</span>
+            <label class="file-label"><span>図面</span><input type="file" disabled /></label>
+            <div class="zoom-group" aria-label="ズーム">
+              <button type="button" class="btn-icon" aria-label="縮小">−</button>
+              <button type="button" class="btn-icon" aria-label="拡大">＋</button>
+              <button type="button" class="btn-icon" aria-label="フィット">□</button>
+            </div>
+            <div class="toolbar-slot--broken" id="toolbar-slot">
+              <div class="toolbar">
+                <div class="toolbar-primary">
+                  <button type="button" class="btn btn-primary">切削</button>
+                  <button type="button" class="btn btn-primary is-inactive">研削</button>
+                  <span class="sep-v" aria-hidden="true"></span>
+                  <button type="button" class="btn btn-primary">点を配置</button>
+                  <button type="button" class="btn btn-primary">保存</button>
+                  <span class="save-status">未保存</span>
+                </div>
+                <div class="toolbar-secondary">
+                  <button type="button" class="btn btn-primary is-inactive">テスト入力</button>
+                  <button type="button" class="btn btn-primary is-inactive">ガイド試行</button>
+                  <a href="#" class="btn btn-ghost" onclick="return false;">一覧へ戻る</a>
+                </div>
+              </div>
+            </div>
+            <span class="callout callout--toolbar" id="callout-toolbar" hidden>緑ボタンが縦積み</span>
+          </div>
+
+          <div class="workspace">
+            <div class="canvas-col">
+              <div class="canvas-viewport">
+                <div class="canvas-inner">
+                  <div class="drawing-placeholder" aria-label="図面プレースホルダ">
+                    <span class="marker marker-1">①</span>
+                    <span class="marker marker-2">②</span>
+                    <span class="marker marker-3">③</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <aside class="aside aside--broken relative" id="aside">
+              <div class="aside-inner">
+                <div class="settings-panel" aria-label="測定点の設定">
+                  <div class="nudge-row" role="group" aria-label="測定点の位置調整">
+                    <button type="button" class="nudge-btn" aria-label="上へ移動">↑</button>
+                    <button type="button" class="nudge-btn" aria-label="下へ移動">↓</button>
+                    <button type="button" class="nudge-btn" aria-label="左へ移動">←</button>
+                    <button type="button" class="nudge-btn" aria-label="右へ移動">→</button>
+                  </div>
+                  <p class="settings-title">測定点の設定（No.1）</p>
+                  <label class="field">名称
+                    <select>
+                      <option>外径</option>
+                      <option>内径</option>
+                      <option>全長</option>
+                    </select>
+                  </label>
+                  <div class="field">
+                    <span>補足</span>
+                    <div class="supplement-row">
+                      <label class="field-sm">面
+                        <select><option>面なし</option><option>A面</option><option>B面</option></select>
+                      </label>
+                      <label class="field-sm">呼び径
+                        <select><option>呼び径なし</option><option>M6</option><option>M8</option></select>
+                      </label>
+                      <label class="field-sm">直接入力
+                        <input value="2箇所" readonly />
+                      </label>
+                    </div>
+                  </div>
+                  <label class="field">基準値
+                    <input value="125.00" readonly />
+                    <div class="chips" aria-label="OCR候補">
+                      <button type="button" class="chip">125.00</button>
+                      <button type="button" class="chip">124.98</button>
+                      <button type="button" class="chip">125.02</button>
+                    </div>
+                  </label>
+                  <div class="tol-row">
+                    <label class="field">上限公差
+                      <input value="+0.10" readonly />
+                    </label>
+                    <label class="field">下限公差
+                      <input value="-0.10" readonly />
+                    </label>
+                  </div>
+                  <div class="danger-row">
+                    <button type="button" class="btn-secondary">この点を削除</button>
+                    <button type="button" class="btn-secondary">全削除</button>
+                  </div>
+                </div>
+
+                <div class="point-list-section">
+                  <p class="point-list-title">測定点一覧</p>
+                  <div class="point-list" role="list" id="point-list">
+                    <button type="button" role="listitem" class="point-card point-card--selected">
+                      <span class="line"><span class="no">No.1</span><span class="name">外径</span></span>
+                      <span class="line values">
+                        <span class="muted">基準</span> 125<span class="sep">·</span>
+                        <span class="muted">上限</span> +0.1<span class="sep">·</span>
+                        <span class="muted">下限</span> -0.1
+                      </span>
+                    </button>
+                    <button type="button" role="listitem" class="point-card">
+                      <span class="line"><span class="no">No.2</span><span class="name">内径</span></span>
+                      <span class="line values">
+                        <span class="muted">基準</span> 80<span class="sep">·</span>
+                        <span class="muted">上限</span> +0.05<span class="sep">·</span>
+                        <span class="muted">下限</span> -0.05
+                      </span>
+                    </button>
+                    <button type="button" role="listitem" class="point-card">
+                      <span class="line"><span class="no">No.3</span><span class="name">全長</span></span>
+                      <span class="line values">
+                        <span class="muted">基準</span> 210<span class="sep">·</span>
+                        <span class="muted">上限</span> +0.2<span class="sep">·</span>
+                        <span class="muted">下限</span> -0.2
+                      </span>
+                    </button>
+                    <button type="button" role="listitem" class="point-card">
+                      <span class="line"><span class="no">No.4</span><span class="name">段差</span></span>
+                      <span class="line values">
+                        <span class="muted">基準</span> 12.5<span class="sep">·</span>
+                        <span class="muted">上限</span> +0.05<span class="sep">·</span>
+                        <span class="muted">下限</span> -0.05
+                      </span>
+                    </button>
+                    <button type="button" role="listitem" class="point-card">
+                      <span class="line"><span class="no">No.5</span><span class="name">面取り</span></span>
+                      <span class="line values">
+                        <span class="muted">基準</span> 1.0<span class="sep">·</span>
+                        <span class="muted">上限</span> +0.2<span class="sep">·</span>
+                        <span class="muted">下限</span> -0.2
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <span class="callout callout--aside" id="callout-aside" hidden>一覧が枠外へ押し出し</span>
+            </aside>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var tabs = document.querySelectorAll('.tab');
+      var main = document.getElementById('main');
+      var page = document.getElementById('page');
+      var toolbarSlot = document.getElementById('toolbar-slot');
+      var aside = document.getElementById('aside');
+      var note = document.getElementById('mode-note');
+      var calloutToolbar = document.getElementById('callout-toolbar');
+      var calloutAside = document.getElementById('callout-aside');
+
+      var notes = {
+        broken:
+          '<strong>現状:</strong> toolbar-slot が flex:1 / min-width:0 → 緑ボタンが縦積みでヘッダーが高くなる。' +
+          ' aside に overflow 拘束がなく、設定パネル（shrink-0）が縦に長いため測定点一覧がページ下方へ押し出されて見切れる。',
+        fixed:
+          '<strong>修正案:</strong> toolbar-slot を flex-shrink:0（inspectionDrawingToolbarSlotClassName）にし 1〜2 行に収める。' +
+          ' aside に overflow:hidden を追加し、設定パネル＋測定点一覧をペイン内に収め、一覧側だけをスクロールする。'
+      };
+
+      function applyMode(mode) {
+        var isFixed = mode === 'fixed';
+
+        main.classList.toggle('main--broken', !isFixed);
+        main.classList.toggle('main--fixed', isFixed);
+        page.classList.toggle('page--broken', !isFixed);
+        page.classList.toggle('page--fixed', isFixed);
+
+        toolbarSlot.className = isFixed ? 'toolbar-slot--fixed' : 'toolbar-slot--broken';
+        aside.className = isFixed
+          ? 'aside aside--fixed relative'
+          : 'aside aside--broken relative';
+
+        calloutToolbar.hidden = isFixed;
+        calloutAside.hidden = isFixed;
+        note.innerHTML = notes[mode];
+
+        tabs.forEach(function (tab) {
+          tab.setAttribute('aria-selected', tab.getAttribute('data-mode') === mode ? 'true' : 'false');
+        });
+
+        // 修正案では一覧先頭へスクロール位置を戻し、スクロール可能であることを見せる
+        var list = document.getElementById('point-list');
+        if (list) list.scrollTop = 0;
+      }
+
+      tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          applyMode(tab.getAttribute('data-mode'));
+        });
+      });
+
+      applyMode('broken');
+    })();
+  </script>
+</body>
+</html>
