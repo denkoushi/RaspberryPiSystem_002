@@ -8,6 +8,12 @@ import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { getImageOcrLayoutPort } from '../ocr/image-ocr-runtime.js';
 import type { DrawingLocalOcrPort } from './drawing-local-ocr.port.js';
+import { DrawingLocalOcrRapidOcrAdapter } from './drawing-local-ocr.rapidocr.adapter.js';
+import {
+  isDrawingLocalRapidOcrEnabled,
+  isWeakLocalOcrCandidates,
+  readRapidOcrWeakScoreThreshold
+} from './drawing-local-ocr-secondary-policy.js';
 import {
   DrawingLocalOcrTesseractAdapter,
   isDrawingLocalOcrEnabled
@@ -135,7 +141,8 @@ function normalizeQueuePriority(priority: number | undefined): number {
 export class PartMeasurementDrawingOcrService {
   constructor(
     private readonly engine = new PartMeasurementDrawingOcrEngine(getImageOcrLayoutPort()),
-    private readonly localOcr: DrawingLocalOcrPort = new DrawingLocalOcrTesseractAdapter(getImageOcrLayoutPort())
+    private readonly localOcr: DrawingLocalOcrPort = new DrawingLocalOcrTesseractAdapter(getImageOcrLayoutPort()),
+    private readonly secondaryLocalOcr: DrawingLocalOcrPort = new DrawingLocalOcrRapidOcrAdapter()
   ) {}
 
   async enqueueVisualTemplate(
@@ -303,8 +310,7 @@ export class PartMeasurementDrawingOcrService {
       return { status: 'FAILED', candidates: [], cache: summarizeCache(cache) };
     }
     const payload = await decodePartMeasurementDrawingOcrPayload(cache.payloadCompressed);
-    const mergedPayload = await this.mergeLocalOcrTokens(visualTemplateId, payload, input);
-    const candidates = rankPartMeasurementDrawingOcrCandidates(mergedPayload, input);
+    const { candidates } = await this.mergeLocalOcrTokensAndRank(visualTemplateId, payload, input);
     return {
       status: 'COMPLETED',
       candidates,
@@ -312,40 +318,94 @@ export class PartMeasurementDrawingOcrService {
     };
   }
 
-  private async mergeLocalOcrTokens(
+  private async mergeLocalOcrTokensAndRank(
     visualTemplateId: string,
     payload: PartMeasurementDrawingOcrPayload,
     input: {
       xRatio: number;
       yRatio: number;
+      markerNo?: number | null;
+      limit?: number;
       measurementLabel?: string | null;
       depthMode?: 'measured' | 'through' | null;
     }
-  ): Promise<PartMeasurementDrawingOcrPayload> {
-    if (!isDrawingLocalOcrEnabled()) return payload;
+  ): Promise<{ payload: PartMeasurementDrawingOcrPayload; candidates: PartMeasurementDrawingOcrCandidate[] }> {
+    if (!isDrawingLocalOcrEnabled()) {
+      return {
+        payload,
+        candidates: rankPartMeasurementDrawingOcrCandidates(payload, input)
+      };
+    }
+
+    const depthSearch =
+      isDepthMeasurementLabel(input.measurementLabel) && input.depthMode !== 'through';
+
+    let primaryPayload = payload;
     try {
       const visual = await prisma.partMeasurementVisualTemplate.findUnique({
         where: { id: visualTemplateId },
         select: { drawingImageRelativePath: true }
       });
-      if (!visual) return payload;
+      if (!visual) {
+        return {
+          payload,
+          candidates: rankPartMeasurementDrawingOcrCandidates(payload, input)
+        };
+      }
       const drawing = await PartMeasurementDrawingStorage.readDrawing(visual.drawingImageRelativePath);
-      const depthSearch =
-        isDepthMeasurementLabel(input.measurementLabel) && input.depthMode !== 'through';
       const localTokens = await this.localOcr.runLocalOcr({
         imageBytes: drawing.buffer,
         xRatio: input.xRatio,
         yRatio: input.yRatio,
         depthSearch
       });
-      if (localTokens.length === 0) return payload;
-      return {
-        ...payload,
-        tokens: [...payload.tokens, ...localTokens]
-      };
+      if (localTokens.length > 0) {
+        primaryPayload = {
+          ...payload,
+          tokens: [...payload.tokens, ...localTokens]
+        };
+      }
+
+      const primaryCandidates = rankPartMeasurementDrawingOcrCandidates(primaryPayload, input);
+      const shouldRunSecondary =
+        isDrawingLocalRapidOcrEnabled() &&
+        isWeakLocalOcrCandidates(primaryCandidates, {
+          depthSearch,
+          weakScoreThreshold: readRapidOcrWeakScoreThreshold()
+        });
+
+      if (!shouldRunSecondary) {
+        return { payload: primaryPayload, candidates: primaryCandidates };
+      }
+
+      try {
+        const secondaryTokens = await this.secondaryLocalOcr.runLocalOcr({
+          imageBytes: drawing.buffer,
+          xRatio: input.xRatio,
+          yRatio: input.yRatio,
+          depthSearch
+        });
+        if (secondaryTokens.length === 0) {
+          return { payload: primaryPayload, candidates: primaryCandidates };
+        }
+        const secondaryPayload: PartMeasurementDrawingOcrPayload = {
+          ...primaryPayload,
+          tokens: [...primaryPayload.tokens, ...secondaryTokens]
+        };
+        return {
+          payload: secondaryPayload,
+          candidates: rankPartMeasurementDrawingOcrCandidates(secondaryPayload, input)
+        };
+      } catch (error) {
+        log.warn({ err: error, visualTemplateId }, 'part_measurement_drawing_ocr_rapidocr_failed');
+        return { payload: primaryPayload, candidates: primaryCandidates };
+      }
     } catch (error) {
       log.warn({ err: error, visualTemplateId }, 'part_measurement_drawing_ocr_local_failed');
-      return payload;
+      return {
+        payload,
+        candidates: rankPartMeasurementDrawingOcrCandidates(payload, input)
+      };
     }
   }
 

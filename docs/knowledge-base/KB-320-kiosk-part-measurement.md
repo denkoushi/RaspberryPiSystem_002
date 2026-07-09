@@ -253,7 +253,20 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 | UI | 名称/`depthMode` 変更後および位置の実質変更後に候補を再取得。候補行に「OCR待ち」は出さない。自動確定なし |
 | flag | `PART_MEASUREMENT_DRAWING_OCR_LOCAL_ENABLED`（既定 ON）· timeout `PART_MEASUREMENT_DRAWING_OCR_LOCAL_TIMEOUT_MS` |
 | 本番 | HEAD **`09a1fe66`** · Detach Pi5/StoneBase **`20260709-223044-17975`** · Pi4×4 **`20260709-224140-20418`** · Phase12 **45/0/0** · [deployment](../guides/deployment.md#inspection-drawing-ocr-local-candidates-2026-07-09) |
-| 残課題 | ROI外の深さ注記、RapidOCR/DGX VLM 本番配線、候補POSTのPi5レイテンシ計測（実測 ~6–8s）・目視タッチ確認 |
+| 残課題 | ROI外の深さ注記、候補POSTのPi5レイテンシ計測（実測 ~6–8s）。RapidOCR 二次エンジンは [§2026-07-10](#検査図面-ocr-rapidocr局所-2026-07-10) |
+
+#### RapidOCR 局所第2エンジン（2026-07-10） {#検査図面-ocr-rapidocr局所-2026-07-10}
+
+正本: [Plan](../plans/inspection-drawing-ocr-rapidocr-local.md) · [ADR-20260710](../decisions/ADR-20260710-inspection-drawing-ocr-rapidocr-local.md)。一次は既存局所 tesseract。候補が弱いときだけ RapidOCR を追加マージする。
+
+| 項目 | 内容 |
+|------|------|
+| 起動条件 | `PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_ENABLED`（**既定 OFF**）かつ弱さ判定 true |
+| 弱さ判定 | 候補0件 / top1 score > 閾値（既定 0.12） / 深さ検索なのに深さ注記根拠なし |
+| 実行形態 | API 内常駐 Python worker（JSON Lines）· `scripts/part-measurement/drawing-local-rapidocr-worker.py` |
+| 失敗時 | warn + 一次候補のまま（HTTP 500 にしない） |
+| イメージ | `Dockerfile.api` に `libgomp1` + `rapidocr==3.8.4` + `onnxruntime==1.20.1` |
+| 残課題 | Pi5 で flag ON 前のレイテンシ確認、offline top5/深さ再計測、DGX は対象外 |
 
 ### 検査図面 trio（名称変更・図面名検索・自主検査遷移）（2026-06-09） {#kiosk-inspection-drawing-trio-2026-06-09}
 

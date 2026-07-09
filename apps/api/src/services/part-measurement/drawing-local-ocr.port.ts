@@ -10,7 +10,8 @@ export type DrawingLocalOcrRequest = {
 
 /**
  * Request-time marker-local OCR. Separate from full-drawing cache engine
- * so RapidOCR/DGX can be swapped later without changing cache contracts.
+ * so RapidOCR (secondary) / future engines can be swapped without changing
+ * cache contracts. Orchestration of primary vs secondary lives in the service.
  */
 export interface DrawingLocalOcrPort {
   runLocalOcr(input: DrawingLocalOcrRequest): Promise<PartMeasurementDrawingOcrToken[]>;
