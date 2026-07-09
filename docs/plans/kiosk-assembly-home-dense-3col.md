@@ -1,14 +1,14 @@
 ---
 title: Kiosk Assembly Home Dense 3-Column Layout
 id: plan-kiosk-assembly-home-dense-3col
-status: active
+status: done
 scope: kiosk assembly home left panes (`/kiosk/assembly`) — density follow-up after table layout
 date: 2026-07-09
 source_of_truth: this file
 related_code: apps/web/src/features/assembly/AssemblyLotPane.tsx, apps/web/src/features/assembly/AssemblyWipPane.tsx, apps/web/src/features/assembly/AssemblyCompletedPane.tsx, apps/web/src/features/assembly/AssemblyPaneTableShell.tsx, apps/web/src/features/assembly/AssemblyRowToggle.tsx, apps/web/src/features/assembly/assemblyRowExpansion.ts, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx
-related_docs: ../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md, ../plans/kiosk-assembly-home-table-layout.md, ../design-previews/kiosk-assembly-home-table-dense-3col-preview.html, ../design-previews/README.md, ../INDEX.md
-validation: web focused vitest 5 files / 18 tests; web lint; web build; assembly integration 23 tests on temp pgvector/pg15:55437 (disposed); CI push 28999503059 / PR 28999505565 success; Pi5+StoneBase deploy 20260709-160731-25664/20260709-161147-1963; Phase12 45/0/0; bundle index-BmrbJKi2.js markers OK
-open_items: on-site visual/touch verification on StoneBase01; deploy remaining Pi4 hosts when requested; merge PR #962 when ready
+related_docs: ../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md, ../plans/kiosk-assembly-home-table-layout.md, ../design-previews/kiosk-assembly-home-table-dense-3col-preview.html, ../design-previews/README.md, ../INDEX.md, ../guides/deployment.md
+validation: web focused vitest 5 files / 18 tests; web lint; web build; assembly integration 23 tests on temp pgvector/pg15:55437 (disposed); CI push 28999503059 / PR 28999505565 success; Pi5+StoneBase deploy 20260709-160731-25664/20260709-161147-1963; remaining Pi4 deploy 20260709-161935-49; Phase12 45/0/0; bundle index-BmrbJKi2.js markers OK; on-site visual/touch OK on StoneBase01
+open_items: none (Pi3 out of scope)
 ---
 
 # Kiosk Assembly Home Dense 3-Column Layout
@@ -42,7 +42,9 @@ Follow-up to the Decision 6 table layout: raise scan density further with a hori
 - [x] Commit / push / PR #962 / CI green
 - [x] Deploy Pi5 + raspi4-kensaku-stonebase01
 - [x] Phase12 + assembly HTTP/API smoke + bundle markers
-- [ ] On-site visual/touch on StoneBase01
+- [x] On-site visual/touch on StoneBase01
+- [x] Deploy remaining Pi4×4 (`raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01`)
+- [x] Docs + merge PR #962
 
 ## Validation Commands
 

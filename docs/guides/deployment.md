@@ -10,21 +10,22 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-### 補足（2026-07-09 · **組立トップ密度改善（3列・開閉・行高0.75）** · **Web only** · **Pi5 + StoneBase 反映済 / 他Pi4・Pi3 未**） {#kiosk-assembly-home-dense-3col-2026-07-09}
+### 補足（2026-07-09 · **組立トップ密度改善（3列・開閉・行高0.75）** · **Web only** · **Pi5 + Pi4×5 反映済 / Pi3 対象外**） {#kiosk-assembly-home-dense-3col-2026-07-09}
 
-- **変更概要（正本）**: [Plan](../plans/kiosk-assembly-home-dense-3col.md) · [ADR-20260707 Decision 7](../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](../design-previews/kiosk-assembly-home-table-dense-3col-preview.html) · ブランチ **`feat/kiosk-assembly-home-dense-3col`** · HEAD **`726cb100`** · PR [#962](https://github.com/denkoushi/RaspberryPiSystem_002/pull/962)。左列 `xl:grid-cols-3`、行本体≈0.75、既定閉じ開閉（ロット＝シリアル／仕掛・完了＝副行・案A）、操作 `min-h-11`。右のロット登録は不変。**API / DB / Prisma migration 変更なし**。
+- **変更概要（正本）**: [Plan](../plans/kiosk-assembly-home-dense-3col.md) · [ADR-20260707 Decision 7](../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](../design-previews/kiosk-assembly-home-table-dense-3col-preview.html) · ブランチ **`feat/kiosk-assembly-home-dense-3col`** · 機能 HEAD **`726cb100`** · PR [#962](https://github.com/denkoushi/RaspberryPiSystem_002/pull/962)。左列 `xl:grid-cols-3`、行本体≈0.75、既定閉じ開閉（ロット＝シリアル／仕掛・完了＝副行・案A）、操作 `min-h-11`。右のロット登録は不変。**API / DB / Prisma migration 変更なし**。
 - **CI**: push CI **`28999503059` success** · PR CI **`28999505565` success** · CodeQL **`28999505569` success** · Secret scan **`28999505584` success**。
 - **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-assembly-home-dense-3col infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
 
 | ホスト | Detach Run ID | 結果 |
 |--------|---------------|------|
 | `raspberrypi5` | **`20260709-160731-25664`** | success · `failed=0` · HEAD **`726cb100`** |
-| `raspi4-kensaku-stonebase01` | **`20260709-161147-1963`** | success · `failed=0` · kiosk-browser restart OK |
+| `raspi4-kensaku-stonebase01` | **`20260709-161147-1963`** | success · `failed=0` · HEAD **`726cb100`** · 実機OK |
+| `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01` | **`20260709-161935-49`** | success · 4台とも `failed=0` / `unreachable=0` · HEAD **`c67ece9a`** |
 
-- **対象外（今回）**: 他 Pi4×4 / `raspberrypi3`（未デプロイ）。
+- **対象外**: `raspberrypi3`（サイネージ）スキップ。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
 - **組立 smoke**: `/kiosk/assembly` · `/kiosk/assembly/record-approvals` · `/kiosk/assembly/library` HTTP **200**。client-key 付き `GET /api/assembly/work-sessions/summary?status=in_progress|completed` · `GET /api/assembly/seiban-candidates` HTTP **200**。配信バンドル `/assets/index-BmrbJKi2.js` に `xl:grid-cols-3` / `登録済みロット` / `仕掛中` / `完了した製品` / `table-fixed` / `min-h-11` / `aria-expanded` を確認。
-- **実機（目視・タッチ）**: 未実施（StoneBase01 で 3列・開閉・操作タップを次回確認）。
+- **実機（目視・タッチ）**: 2026-07-09 ユーザー確認OK（StoneBase01 · 3列・開閉・操作タップ）。
 
 ### 補足（2026-07-09 · **組立トップ 3ペイン表形式（カード→コンパクト表）** · **Web only** · **Pi5 + StoneBase 反映済 / 他Pi4・Pi3 未**） {#kiosk-assembly-home-table-layout-2026-07-09}
 
