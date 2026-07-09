@@ -1,6 +1,7 @@
 export * from './AssemblyCompletedPane';
 export * from './AssemblyKeypad';
 export * from './AssemblyLotPane';
+export * from './AssemblyPaneTableShell';
 export * from './AssemblyStartPane';
 export * from './AssemblyProcedureCanvas';
 export * from './AssemblyProcedureSequenceViewer';
@@ -12,6 +13,8 @@ export * from './AssemblyWorkSessionHeader';
 export * from './AssemblyTemplateHistoryDialog';
 export * from './AssemblyTemplateLibraryTable';
 export * from './assemblyRoutes';
+export * from './assemblySessionPresentation';
+export * from './assemblyStatusPresentation';
 export * from './assemblyTemplateDraft';
 export * from './assemblyUiHelpers';
 export * from './computeContainSize';

@@ -12,6 +12,11 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-09 · 組立トップ 3ペイン表形式 · Pi5+StoneBase 反映済）
+
+- **組立トップ左列をカード→表へ**: 登録済みロット（グループ行＋シリアル行）/ 仕掛中（進捗バー）/ 完了。Web only · HEAD **`a78a36d5`** · Detach **`20260709-145104-6472`** / **`20260709-145454-28187`** · Phase12 **45/0/0**。**正本**: [Plan](./plans/kiosk-assembly-home-table-layout.md) · [ADR Decision 6](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](./design-previews/kiosk-assembly-home-table-layout-preview.html) · [Deployment](./guides/deployment.md#kiosk-assembly-home-table-layout-2026-07-09)
+- **組立トップ密度改善（3列・開閉・行高0.75）**: 左 `xl:grid-cols-3` · 既定閉じ · 操作は `min-h-11` · Web only · HEAD **`726cb100`** · Detach Pi5/StoneBase **`20260709-160731-25664`** / **`20260709-161147-1963`** · 残Pi4 **`20260709-161935-49`** · Phase12 **45/0/0** · 実機OK。**正本**: [Plan](./plans/kiosk-assembly-home-dense-3col.md) · [ADR Decision 7](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](./design-previews/kiosk-assembly-home-table-dense-3col-preview.html) · [Deployment](./guides/deployment.md#kiosk-assembly-home-dense-3col-2026-07-09)
+
 ### 最新アップデート（2026-07-09 · 組立作業画面オペレータ向けレイアウト + contain-fit · 本番反映済 · 実機OK）
 
 - **組立作業セッション UI**: タイトル「組立作業」・1行ヘッダー・テンプレ/Excel ボタン削除（API は維持）・左見出し帯削除・手順書 contain-fit 最大表示。Web only · Pi5+Pi4×5 反映済 / Pi3 対象外。**正本**: [ADR](./decisions/ADR-20260709-assembly-work-session-operator-layout.md) · [Preview](./design-previews/kiosk-assembly-work-session-operator-layout-preview.html) · [Deployment](./guides/deployment.md#kiosk-assembly-work-session-operator-layout-2026-07-09)

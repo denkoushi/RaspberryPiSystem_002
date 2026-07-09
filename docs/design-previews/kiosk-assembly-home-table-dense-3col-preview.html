@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>組立トップ — 3列コンパクト表 + ロット開閉（プレビュー）</title>
+  <style>
+    :root {
+      --bg: #1e293b;
+      --panel: rgba(2, 6, 23, 0.45);
+      --line: rgba(255, 255, 255, 0.15);
+      --line-soft: rgba(255, 255, 255, 0.1);
+      --text: #f8fafc;
+      --muted: rgba(248, 250, 252, 0.6);
+      --weak: rgba(248, 250, 252, 0.45);
+      --cyan: #a5f3fc;
+      --emerald: #6ee7b7;
+      --amber: #fde68a;
+      --lime: #d9f99d;
+      --btn: #334155;
+      --btn-primary: #2563eb;
+      --font: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+
+    body {
+      font-family: var(--font);
+      background: #0b1220;
+      color: var(--text);
+      min-height: 100dvh;
+      padding: 16px;
+    }
+
+    .page-meta { max-width: 1680px; margin: 0 auto 14px; }
+    .page-meta h1 { font-size: 1.15rem; font-weight: 700; }
+    .page-meta p {
+      margin-top: 6px;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .changes {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      color: var(--lime);
+      background: rgba(217, 249, 157, 0.08);
+    }
+
+    .chip.note {
+      color: var(--cyan);
+      background: rgba(165, 243, 252, 0.08);
+    }
+
+    .compare {
+      max-width: 1680px;
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    .frame-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .frame-label strong { font-size: 0.95rem; }
+    .frame-label span { font-size: 0.78rem; color: var(--weak); }
+
+    .kiosk {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      height: 760px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 2px;
+    }
+
+    .header h2 { font-size: 1.02rem; font-weight: 700; }
+
+    .ghost {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 32px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .header-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 15rem;
+      gap: 8px;
+      min-height: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ===== Before: stacked full-width sparse tables ===== */
+    .left-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .pane {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .pane.flex1 { flex: 1; }
+
+    .pane-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 7px 9px;
+      border-bottom: 1px solid var(--line-soft);
+      flex-shrink: 0;
+    }
+
+    .pane-head h3 { font-size: 0.9rem; font-weight: 700; }
+    .count { margin-left: 5px; font-size: 0.78rem; font-weight: 700; color: var(--cyan); }
+    .count.emerald { color: var(--emerald); }
+
+    .pane-body {
+      min-height: 0;
+      flex: 1;
+      overflow: auto;
+      padding: 4px;
+    }
+
+    table.data {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      text-align: left;
+      font-size: 0.72rem;
+    }
+
+    table.data thead {
+      position: sticky;
+      top: 0;
+      background: #0f172a;
+      color: rgba(248, 250, 252, 0.7);
+      z-index: 1;
+    }
+
+    table.data th {
+      padding: 6px 8px;
+      font-weight: 700;
+      border-bottom: 1px solid var(--line-soft);
+      white-space: nowrap;
+    }
+
+    table.data td {
+      padding: 7px 8px;
+      border-top: 1px solid var(--line-soft);
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    table.data tr.group td {
+      background: rgba(15, 23, 42, 0.65);
+      color: var(--cyan);
+      font-weight: 700;
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+
+    table.data tr.secondary td {
+      padding-top: 0;
+      padding-bottom: 7px;
+      color: var(--muted);
+      font-size: 0.68rem;
+      border-top: 0;
+    }
+
+    .mini-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      padding: 0 8px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      background: var(--btn);
+      color: var(--text);
+      font-size: 0.68rem;
+      font-weight: 700;
+    }
+
+    .mini-btn.primary {
+      background: var(--btn-primary);
+      border-color: transparent;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 0 7px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      font-size: 0.65rem;
+      font-weight: 700;
+    }
+
+    .status-pill.wip {
+      border-color: rgba(110, 231, 183, 0.35);
+      background: rgba(16, 185, 129, 0.15);
+      color: #ecfdf5;
+    }
+
+    .status-pill.done {
+      border-color: rgba(253, 230, 138, 0.35);
+      background: rgba(245, 158, 11, 0.15);
+      color: #fef3c7;
+    }
+
+    .status-pill.ok {
+      border-color: rgba(165, 243, 252, 0.35);
+      background: rgba(6, 182, 212, 0.15);
+      color: #cffafe;
+    }
+
+    .status-pill.idle { background: rgba(2, 6, 23, 0.55); }
+
+    .cell-cyan { color: var(--cyan); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .cell-emerald { color: var(--emerald); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    .bar {
+      display: inline-block;
+      width: 36px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      vertical-align: middle;
+      margin-left: 4px;
+    }
+
+    .bar > span {
+      display: block;
+      height: 100%;
+      background: #67e8f9;
+    }
+
+    /* ===== After: 3 columns + compact rows + accordion ===== */
+    .left-cols {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .pane.col {
+      min-height: 0;
+      height: 100%;
+    }
+
+    .pane-head.compact {
+      padding: 5px 7px;
+    }
+
+    .pane-head.compact h3 { font-size: 0.82rem; }
+
+    table.compact {
+      font-size: 0.66rem;
+    }
+
+    table.compact th {
+      padding: 3px 5px;
+      font-size: 0.62rem;
+    }
+
+    table.compact td {
+      padding: 3px 5px;
+      line-height: 1.15;
+    }
+
+    table.compact tr.group td {
+      padding-top: 4px;
+      padding-bottom: 4px;
+      background: rgba(15, 23, 42, 0.72);
+    }
+
+    table.compact tr.secondary td {
+      padding-top: 0;
+      padding-bottom: 3px;
+      font-size: 0.6rem;
+    }
+
+    table.compact .mini-btn {
+      min-height: 44px;
+      padding: 0 8px;
+      font-size: 0.68rem;
+    }
+
+    table.compact .status-pill {
+      min-height: 16px;
+      padding: 0 5px;
+      font-size: 0.58rem;
+    }
+
+    table.compact .bar {
+      width: 28px;
+      height: 3px;
+    }
+
+    .row-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-weight: 700;
+      text-align: left;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .row-toggle:hover { color: #ecfeff; }
+
+    .chev {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      border: 1px solid rgba(165, 243, 252, 0.35);
+      border-radius: 3px;
+      font-size: 0.58rem;
+      line-height: 1;
+      color: var(--cyan);
+      background: rgba(6, 182, 212, 0.12);
+    }
+
+    .lot-meta {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .lot-serials[hidden] { display: none !important; }
+
+    .hint {
+      margin-top: 4px;
+      font-size: 0.62rem;
+      color: var(--weak);
+      font-weight: 600;
+    }
+
+    .start-pane {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 8px;
+    }
+
+    .start-pane h3 { font-size: 0.88rem; font-weight: 700; }
+
+    .fake-input {
+      min-height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: rgba(2, 6, 23, 0.55);
+      padding: 6px 8px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--weak);
+    }
+
+    .primary-cta {
+      margin-top: auto;
+      min-height: 38px;
+      border: 0;
+      border-radius: 6px;
+      background: var(--btn-primary);
+      color: white;
+      font-size: 0.86rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .notes {
+      max-width: 1680px;
+      margin: 18px auto 0;
+      display: grid;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.55);
+    }
+
+    .notes h2 { font-size: 0.95rem; font-weight: 700; }
+    .notes ul {
+      padding-left: 1.15rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .notes li + li { margin-top: 4px; }
+    .notes code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.78em;
+      color: var(--cyan);
+    }
+
+    @media (max-width: 1100px) {
+      .main { grid-template-columns: 1fr; }
+      .left-cols { grid-template-columns: 1fr; }
+      .kiosk { height: auto; min-height: 900px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-meta">
+    <h1>組立トップ — 密度改善案（3列 + 行高0.75 + ロット開閉）</h1>
+    <p>
+      現状の「横幅いっぱいの疎な表」へのフィードバック対応。左を<strong>3列並び</strong>にし、行高を約<strong>0.75倍</strong>に圧縮。
+      ロット／仕掛／完了は <strong>▸/▾</strong> 開閉（<strong>既定は閉じ</strong>）。仕掛・完了は主行常時・副行のみ開閉。
+      操作ボタンは <strong>min-h-11 相当を維持</strong>（行本体だけ薄くする折衷B）。静的モック。After はクリック可。
+    </p>
+    <div class="changes">
+      <span class="chip">左ペインを横3列</span>
+      <span class="chip">行高 ≈ 0.75×（操作は min-h-11）</span>
+      <span class="chip">ロット／仕掛／完了 開閉（既定閉じ）</span>
+      <span class="chip note">実装前プレビュー</span>
+      <span class="chip note">右のロット登録は現状維持</span>
+    </div>
+  </div>
+
+  <div class="compare">
+    <!-- BEFORE -->
+    <section aria-label="現状">
+      <div class="frame-label">
+        <strong>Before — 現状（縦積み・全幅表）</strong>
+        <span>列が横に伸び、1画面に見える件数が少ない</span>
+      </div>
+      <div class="kiosk">
+        <div class="header">
+          <h2>組立</h2>
+          <div class="header-actions">
+            <span class="ghost">手順書ライブラリ</span>
+            <span class="ghost">組立テンプレート</span>
+            <span class="ghost">閲覧順設定</span>
+            <span class="ghost">記録確認</span>
+          </div>
+        </div>
+        <div class="main">
+          <div class="left-stack">
+            <section class="pane flex1">
+              <div class="pane-head">
+                <h3>登録済みロット <span class="count">3件</span></h3>
+                <span class="ghost">再読込</span>
+              </div>
+              <div class="pane-body">
+                <table class="data">
+                  <thead>
+                    <tr>
+                      <th>製番</th><th>シリアル</th><th>状態</th><th>進捗</th><th style="text-align:right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="group"><td colspan="5">A260312 ・ MH-2200 ・ 田中 ・ 作業 1/3 ・ 承認 0/3</td></tr>
+                    <tr><td>↳</td><td>S-001</td><td><span class="status-pill ok">承認済み</span></td><td>—</td><td style="text-align:right"><span class="mini-btn">記録確認</span></td></tr>
+                    <tr><td>↳</td><td>S-002</td><td><span class="status-pill wip">仕掛</span></td><td>—</td><td style="text-align:right"><span class="mini-btn">再開</span></td></tr>
+                    <tr><td>↳</td><td>S-003</td><td><span class="status-pill idle">未着手</span></td><td>—</td><td style="text-align:right"><span class="mini-btn primary">開始</span></td></tr>
+                    <tr class="group"><td colspan="5">B260401 ・ MH-1800 ・ 佐藤 ・ 作業 0/2 ・ 承認 0/2</td></tr>
+                    <tr><td>↳</td><td>S-010</td><td><span class="status-pill idle">未着手</span></td><td>—</td><td style="text-align:right"><span class="mini-btn primary">開始</span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+            <section class="pane flex1">
+              <div class="pane-head">
+                <h3>仕掛中 <span class="count emerald">3件</span></h3>
+                <span class="ghost">再読込</span>
+              </div>
+              <div class="pane-body">
+                <table class="data">
+                  <thead>
+                    <tr><th>製番</th><th>機種</th><th>エリア・位置</th><th>進捗</th><th style="text-align:right">操作</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>A260312</td><td>MH-2200</td><td>エリアB ・ #4</td><td><span class="cell-emerald">4/12</span><span class="bar"><span style="width:33%"></span></span></td><td style="text-align:right"><span class="mini-btn primary">再開</span></td></tr>
+                    <tr class="secondary"><td colspan="5">S-002 / 田中 ・ 更新 7/9 13:52</td></tr>
+                    <tr><td>C260215</td><td>MH-2500</td><td>エリアA ・ #2</td><td><span class="cell-emerald">2/8</span><span class="bar"><span style="width:25%"></span></span></td><td style="text-align:right"><span class="mini-btn primary">再開</span></td></tr>
+                    <tr class="secondary"><td colspan="5">S-021 / 鈴木 ・ 更新 7/9 13:20</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+            <section class="pane flex1">
+              <div class="pane-head">
+                <h3>完了した製品 <span class="count">4件</span></h3>
+                <span class="ghost">再読込</span>
+              </div>
+              <div class="pane-body">
+                <table class="data">
+                  <thead>
+                    <tr><th>製番</th><th>機種</th><th>シリアル</th><th>ロット</th><th>状態</th><th style="text-align:right">操作</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>A260312</td><td>MH-2200</td><td>S-001</td><td class="cell-cyan">3</td><td><span class="status-pill done">未承認</span></td><td style="text-align:right"><span class="mini-btn">記録確認</span></td></tr>
+                    <tr class="secondary"><td colspan="6">作業者 田中 ・ 完了 7/9 13:10</td></tr>
+                    <tr><td>E251230</td><td>MH-1200</td><td>S-100</td><td class="cell-cyan">2</td><td><span class="status-pill ok">承認済み</span></td><td style="text-align:right"><span class="mini-btn">記録確認</span></td></tr>
+                    <tr class="secondary"><td colspan="6">作業者 伊藤 ・ 完了 7/9 10:22</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+          <aside class="start-pane">
+            <h3>ロット登録</h3>
+            <div class="fake-input">製番 / テンキー（現状維持）</div>
+            <div class="primary-cta">ロット登録</div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- AFTER -->
+    <section aria-label="提案">
+      <div class="frame-label">
+        <strong>After — 提案（横3列・行高0.75・開閉）</strong>
+        <span>▸ をクリックして開閉（既定は閉じ・操作ボタンは min-h-11 相当）</span>
+      </div>
+      <div class="kiosk">
+        <div class="header">
+          <h2>組立</h2>
+          <div class="header-actions">
+            <span class="ghost">手順書ライブラリ</span>
+            <span class="ghost">組立テンプレート</span>
+            <span class="ghost">閲覧順設定</span>
+            <span class="ghost">記録確認</span>
+          </div>
+        </div>
+        <div class="main">
+          <div class="left-cols">
+            <!-- LOT COL -->
+            <section class="pane col">
+              <div class="pane-head compact">
+                <h3>登録済みロット <span class="count">3件</span></h3>
+                <span class="ghost">再読込</span>
+              </div>
+              <div class="pane-body">
+                <table class="data compact" aria-label="登録済みロット（開閉）">
+                  <thead>
+                    <tr>
+                      <th style="width:58%">ロット</th>
+                      <th style="width:18%">進捗</th>
+                      <th style="width:24%; text-align:right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- lot 1 collapsed -->
+                    <tr class="group">
+                      <td colspan="3">
+                        <button type="button" class="row-toggle" data-expand="lot-a" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">A260312 ・ MH-2200 ・ 田中</span>
+                        </button>
+                      </td>
+                    </tr>
+                    <tr class="lot-serials" data-expand-panel="lot-a" hidden>
+                      <td>S-001</td>
+                      <td><span class="status-pill ok">承認済</span></td>
+                      <td style="text-align:right"><span class="mini-btn">記録</span></td>
+                    </tr>
+                    <tr class="lot-serials" data-expand-panel="lot-a" hidden>
+                      <td>S-002</td>
+                      <td><span class="status-pill wip">仕掛</span></td>
+                      <td style="text-align:right"><span class="mini-btn">再開</span></td>
+                    </tr>
+                    <tr class="lot-serials" data-expand-panel="lot-a" hidden>
+                      <td>S-003</td>
+                      <td><span class="status-pill idle">未着手</span></td>
+                      <td style="text-align:right"><span class="mini-btn primary">開始</span></td>
+                    </tr>
+
+                    <!-- lot 2 collapsed -->
+                    <tr class="group">
+                      <td colspan="3">
+                        <button type="button" class="row-toggle" data-expand="lot-b" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">B260401 ・ MH-1800 ・ 佐藤</span>
+                        </button>
+                      </td>
+                    </tr>
+                    <tr class="lot-serials" data-expand-panel="lot-b" hidden>
+                      <td>S-010</td>
+                      <td><span class="status-pill idle">未着手</span></td>
+                      <td style="text-align:right"><span class="mini-btn primary">開始</span></td>
+                    </tr>
+                    <tr class="lot-serials" data-expand-panel="lot-b" hidden>
+                      <td>S-011</td>
+                      <td><span class="status-pill idle">未着手</span></td>
+                      <td style="text-align:right"><span class="mini-btn primary">開始</span></td>
+                    </tr>
+
+                    <!-- lot 3 collapsed -->
+                    <tr class="group">
+                      <td colspan="3">
+                        <button type="button" class="row-toggle" data-expand="lot-c" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">C260215 ・ MH-2500 ・ 鈴木</span>
+                        </button>
+                      </td>
+                    </tr>
+                    <tr class="lot-serials" data-expand-panel="lot-c" hidden>
+                      <td>S-021</td>
+                      <td><span class="status-pill wip">仕掛</span></td>
+                      <td style="text-align:right"><span class="mini-btn">再開</span></td>
+                    </tr>
+                    <tr class="lot-serials" data-expand-panel="lot-c" hidden>
+                      <td>S-022</td>
+                      <td><span class="status-pill idle">未着手</span></td>
+                      <td style="text-align:right"><span class="mini-btn primary">開始</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p class="hint">閉じた状態ではロット見出しだけが並ぶ → 件数を多く見せられる</p>
+              </div>
+            </section>
+
+            <!-- WIP COL -->
+            <section class="pane col">
+              <div class="pane-head compact">
+                <h3>仕掛中 <span class="count emerald">5件</span></h3>
+                <span class="ghost">再読込</span>
+              </div>
+              <div class="pane-body">
+                <table class="data compact" aria-label="仕掛中">
+                  <thead>
+                    <tr>
+                      <th style="width:34%">製番</th>
+                      <th style="width:28%">進捗</th>
+                      <th style="width:38%; text-align:right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <button type="button" class="row-toggle" data-expand="wip-a" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">A260312</span>
+                        </button>
+                      </td>
+                      <td><span class="cell-emerald">4/12</span><span class="bar"><span style="width:33%"></span></span></td>
+                      <td style="text-align:right"><span class="mini-btn primary">再開</span></td>
+                    </tr>
+                    <tr class="secondary" data-expand-panel="wip-a" hidden><td colspan="3">MH-2200 ・ エリアB #4 ・ S-002</td></tr>
+                    <tr>
+                      <td>
+                        <button type="button" class="row-toggle" data-expand="wip-c" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">C260215</span>
+                        </button>
+                      </td>
+                      <td><span class="cell-emerald">2/8</span><span class="bar"><span style="width:25%"></span></span></td>
+                      <td style="text-align:right"><span class="mini-btn primary">再開</span></td>
+                    </tr>
+                    <tr class="secondary" data-expand-panel="wip-c" hidden><td colspan="3">MH-2500 ・ エリアA #2 ・ S-021</td></tr>
+                    <tr>
+                      <td>
+                        <button type="button" class="row-toggle" data-expand="wip-d" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">D260108</span>
+                        </button>
+                      </td>
+                      <td><span class="cell-emerald">10/10</span><span class="bar"><span style="width:100%"></span></span></td>
+                      <td style="text-align:right"><span class="mini-btn primary">再開</span></td>
+                    </tr>
+                    <tr class="secondary" data-expand-panel="wip-d" hidden><td colspan="3">MH-1600 ・ 次工程 ・ S-030</td></tr>
+                    <tr>
+                      <td>
+                        <button type="button" class="row-toggle" data-expand="wip-f" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">F260050</span>
+                        </button>
+                      </td>
+                      <td><span class="cell-emerald">1/6</span><span class="bar"><span style="width:17%"></span></span></td>
+                      <td style="text-align:right"><span class="mini-btn primary">再開</span></td>
+                    </tr>
+                    <tr class="secondary" data-expand-panel="wip-f" hidden><td colspan="3">MH-900 ・ エリアA #1 ・ S-040</td></tr>
+                    <tr>
+                      <td>
+                        <button type="button" class="row-toggle" data-expand="wip-g" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">G260088</span>
+                        </button>
+                      </td>
+                      <td><span class="cell-emerald">5/9</span><span class="bar"><span style="width:56%"></span></span></td>
+                      <td style="text-align:right"><span class="mini-btn primary">再開</span></td>
+                    </tr>
+                    <tr class="secondary" data-expand-panel="wip-g" hidden><td colspan="3">MH-3000 ・ エリアC #3 ・ S-050</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- DONE COL -->
+            <section class="pane col">
+              <div class="pane-head compact">
+                <h3>完了した製品 <span class="count">6件</span></h3>
+                <span class="ghost">再読込</span>
+              </div>
+              <div class="pane-body">
+                <table class="data compact" aria-label="完了した製品">
+                  <thead>
+                    <tr>
+                      <th style="width:32%">製番</th>
+                      <th style="width:18%">ロット</th>
+                      <th style="width:22%">状態</th>
+                      <th style="width:28%; text-align:right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <button type="button" class="row-toggle" data-expand="done-a" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">A260312</span>
+                        </button>
+                      </td>
+                      <td class="cell-cyan">3</td>
+                      <td><span class="status-pill done">未承認</span></td>
+                      <td style="text-align:right"><span class="mini-btn">記録</span></td>
+                    </tr>
+                    <tr class="secondary" data-expand-panel="done-a" hidden><td colspan="4">S-001 ・ 田中 ・ 7/9 13:10</td></tr>
+                    <tr>
+                      <td>
+                        <button type="button" class="row-toggle" data-expand="done-e" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">E251230</span>
+                        </button>
+                      </td>
+                      <td class="cell-cyan">2</td>
+                      <td><span class="status-pill ok">承認済</span></td>
+                      <td style="text-align:right"><span class="mini-btn">記録</span></td>
+                    </tr>
+                    <tr class="secondary" data-expand-panel="done-e" hidden><td colspan="4">S-100 ・ 伊藤 ・ 7/9 10:22</td></tr>
+                    <tr>
+                      <td>
+                        <button type="button" class="row-toggle" data-expand="done-f" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">F260101</span>
+                        </button>
+                      </td>
+                      <td class="cell-cyan">4</td>
+                      <td><span class="status-pill done">未承認</span></td>
+                      <td style="text-align:right"><span class="mini-btn">記録</span></td>
+                    </tr>
+                    <tr class="secondary" data-expand-panel="done-f" hidden><td colspan="4">S-200 ・ 山田 ・ 7/8 17:40</td></tr>
+                    <tr>
+                      <td>
+                        <button type="button" class="row-toggle" data-expand="done-g" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">G260050</span>
+                        </button>
+                      </td>
+                      <td class="cell-cyan">1</td>
+                      <td><span class="status-pill ok">承認済</span></td>
+                      <td style="text-align:right"><span class="mini-btn">記録</span></td>
+                    </tr>
+                    <tr class="secondary" data-expand-panel="done-g" hidden><td colspan="4">S-301 ・ 中村 ・ 7/8 16:05</td></tr>
+                    <tr>
+                      <td>
+                        <button type="button" class="row-toggle" data-expand="done-h" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">H260012</span>
+                        </button>
+                      </td>
+                      <td class="cell-cyan">2</td>
+                      <td><span class="status-pill done">未承認</span></td>
+                      <td style="text-align:right"><span class="mini-btn">記録</span></td>
+                    </tr>
+                    <tr class="secondary" data-expand-panel="done-h" hidden><td colspan="4">S-410 ・ 加藤 ・ 7/8 15:20</td></tr>
+                    <tr>
+                      <td>
+                        <button type="button" class="row-toggle" data-expand="done-i" aria-expanded="false">
+                          <span class="chev" aria-hidden="true">▸</span>
+                          <span class="lot-meta">I260099</span>
+                        </button>
+                      </td>
+                      <td class="cell-cyan">3</td>
+                      <td><span class="status-pill ok">承認済</span></td>
+                      <td style="text-align:right"><span class="mini-btn">記録</span></td>
+                    </tr>
+                    <tr class="secondary" data-expand-panel="done-i" hidden><td colspan="4">S-500 ・ 松本 ・ 7/8 14:01</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <aside class="start-pane">
+            <h3>ロット登録</h3>
+            <div class="fake-input">製番 / テンキー（現状維持）</div>
+            <div class="primary-cta">ロット登録</div>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="notes" aria-label="設計メモ">
+    <h2>この案の意図</h2>
+    <ul>
+      <li><strong>横3列</strong>: 左の縦積み3ペインを横並びにして、各ペイン幅を狭め「空いた列余白」を減らす。</li>
+      <li><strong>行高 ≈ 0.75</strong>: 行本体の padding・フォントを約3/4に圧縮。<strong>操作ボタンだけ min-h-11 相当を維持</strong>（折衷B）。</li>
+      <li><strong>開閉（既定閉じ）</strong>: ロットはグループ見出し＋シリアル行。仕掛／完了は<strong>主行常時・副行のみ開閉</strong>（案A）。</li>
+      <li><strong>列の削り</strong>: 3列化に合わせて、仕掛/完了は主情報を主行・詳細を副行に寄せ、操作ラベルも短く（記録/再開）。</li>
+    </ul>
+  </section>
+
+  <script>
+    document.querySelectorAll('.row-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-expand');
+        const open = btn.getAttribute('aria-expanded') === 'true';
+        const next = !open;
+        btn.setAttribute('aria-expanded', String(next));
+        const chev = btn.querySelector('.chev');
+        if (chev) chev.textContent = next ? '▾' : '▸';
+        document.querySelectorAll('[data-expand-panel="' + id + '"]').forEach((row) => {
+          row.hidden = !next;
+        });
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
@@ -51,7 +51,7 @@ const approvedSession: AssemblyWorkSessionSummaryDto = {
 };
 
 describe('AssemblyCompletedPane', () => {
-  it('links completed cards to record approval and shows approval badges', () => {
+  it('keeps secondary detail collapsed while record links stay available', () => {
     render(
       <MemoryRouter>
         <AssemblyCompletedPane
@@ -63,17 +63,29 @@ describe('AssemblyCompletedPane', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('link', { name: /ASM-DONE-001/ })).toHaveAttribute(
+    expect(screen.getByRole('table', { name: '完了した製品' })).toBeInTheDocument();
+
+    const toggle = screen.getByRole('button', { name: 'ASM-DONE-001' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(/作業者 佐藤/)).not.toBeInTheDocument();
+
+    const recordLinks = screen.getAllByRole('link', { name: '記録確認' });
+    expect(recordLinks[0]).toHaveAttribute(
       'href',
       '/kiosk/assembly/record-approvals?sessionId=session-completed-1'
     );
-    expect(screen.getByRole('link', { name: /ASM-DONE-002/ })).toHaveAttribute(
+    expect(recordLinks[1]).toHaveAttribute(
       'href',
       '/kiosk/assembly/record-approvals?sessionId=session-completed-2'
     );
+    expect(recordLinks[0]).toHaveClass('min-h-11');
     expect(screen.getAllByText('未承認')).toHaveLength(1);
     expect(screen.getAllByText('承認済み')).toHaveLength(1);
-    expect(screen.getByText('ロット数 3')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(/S001 ・ MACHINE-X ・ 作業者 佐藤/)).toBeInTheDocument();
   });
 
   it('looks up lot quantity with normalized product number keys', () => {
@@ -88,6 +100,6 @@ describe('AssemblyCompletedPane', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('ロット数 3')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
   });
 });

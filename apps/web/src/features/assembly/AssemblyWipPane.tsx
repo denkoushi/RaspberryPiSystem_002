@@ -1,8 +1,20 @@
+import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 
-import { Button } from '../../components/ui/Button';
+import { Button, buttonClassName } from '../../components/ui/Button';
 
+import {
+  AssemblyPaneTableShell,
+  assemblyTableActionButtonClassName,
+  assemblyTablePrimaryCellClassName,
+  assemblyTablePrimaryRowClassName,
+  assemblyTableSecondaryCellClassName,
+  assemblyTableSecondaryRowClassName
+} from './AssemblyPaneTableShell';
 import { kioskAssemblyWorkSessionPath } from './assemblyRoutes';
+import { useAssemblyRowExpansion } from './assemblyRowExpansion';
+import { AssemblyRowToggle } from './AssemblyRowToggle';
+import { areaStatusShortText, progressPercent, progressText } from './assemblySessionPresentation';
 import { formatAssemblyTimestamp } from './assemblyUiHelpers';
 
 import type { AssemblyWorkSessionSummaryDto } from './types';
@@ -13,43 +25,33 @@ type Props = {
   onReload: () => void;
 };
 
-function progressText(session: AssemblyWorkSessionSummaryDto): string {
-  if (session.totalBoltCount <= 0) return '0/0';
-  return `${session.acceptedBoltCount}/${session.totalBoltCount}`;
-}
-
-function progressPercent(session: AssemblyWorkSessionSummaryDto): number {
-  if (session.totalBoltCount <= 0) return 0;
-  return Math.min(100, Math.max(0, Math.round((session.acceptedBoltCount / session.totalBoltCount) * 100)));
-}
-
-function areaStatusText(session: AssemblyWorkSessionSummaryDto): string {
-  const areaName = session.currentAreaName ?? 'エリア完了';
-  const position = session.currentBoltMarkerNo
-    ? `締付位置 #${session.currentBoltMarkerNo}`
-    : '次工程待ち';
-  return `${areaName} ・ ${position}`;
-}
+const WIP_COLUMNS = [
+  { key: 'productNo', label: '製番', widthClassName: 'w-[34%]' },
+  { key: 'progress', label: '進捗', widthClassName: 'w-[28%]' },
+  { key: 'actions', label: '操作', widthClassName: 'w-[38%]', align: 'right' as const }
+];
 
 export function AssemblyWipPane({ sessions, loading, onReload }: Props) {
+  const { isExpanded, toggle } = useAssemblyRowExpansion();
+
   return (
     <section
       aria-labelledby="assembly-wip-pane-heading"
-      className="flex min-h-[12rem] min-w-0 flex-1 flex-col overflow-hidden rounded border border-white/15 bg-slate-950/45 xl:min-h-0"
+      className="flex min-h-[10rem] min-w-0 flex-1 flex-col overflow-hidden rounded border border-white/15 bg-slate-950/45 xl:min-h-0"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-white/10 px-2 py-1.5">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <h2 id="assembly-wip-pane-heading" className="text-[1.22rem] font-bold leading-tight text-white">
+          <div className="flex flex-wrap items-baseline gap-1.5">
+            <h2 id="assembly-wip-pane-heading" className="text-sm font-bold leading-tight text-white">
               仕掛中
             </h2>
-            <span className="text-base font-bold text-emerald-200">{sessions.length}件</span>
+            <span className="text-xs font-bold text-emerald-200">{sessions.length}件</span>
           </div>
         </div>
         <Button
           type="button"
           variant="ghostOnDark"
-          className="min-h-10 shrink-0 !px-3 !py-0 text-sm"
+          className="min-h-10 shrink-0 !px-2.5 !py-0 text-xs"
           disabled={loading}
           onClick={onReload}
         >
@@ -57,51 +59,60 @@ export function AssemblyWipPane({ sessions, loading, onReload }: Props) {
         </Button>
       </div>
 
-      {sessions.length === 0 ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center p-3">
-          <p className="w-full rounded border border-white/10 bg-slate-900/65 px-3 py-8 text-center text-sm font-semibold text-white/55">
-            {loading ? '仕掛中を読込中…' : '仕掛中なし'}
-          </p>
-        </div>
-      ) : (
-        <div className="grid min-h-0 flex-1 content-start grid-cols-1 gap-2 overflow-y-auto p-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {sessions.map((session) => (
-            <Link
-              key={session.id}
-              to={kioskAssemblyWorkSessionPath(session.id)}
-              className="flex min-h-11 min-w-0 flex-col gap-1 rounded border border-white/10 bg-slate-900/55 px-2.5 py-2 text-white hover:border-emerald-300/40 hover:bg-slate-800"
-            >
-              <div className="flex min-w-0 items-start justify-between gap-2">
-                <span className="min-w-0">
-                  <span className="block truncate text-[1.22rem] font-bold leading-tight">{session.productNo}</span>
-                  <span className="mt-0.5 block truncate text-xs font-semibold text-white/55">
-                    {formatAssemblyTimestamp(session.updatedAt)}
-                  </span>
-                </span>
-                <span className="flex min-h-11 shrink-0 items-center justify-center rounded border border-emerald-300/35 bg-emerald-500/25 px-3 text-sm font-bold text-emerald-50">
-                  再開
-                </span>
-              </div>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-bold text-white/90">{session.targetUnit}</span>
-                <span className="mt-0.5 block truncate text-xs font-semibold text-white/60">
-                  {session.serialNo} / {session.operatorNameSnapshot}
-                </span>
-              </span>
-              <span className="block truncate text-xs font-bold text-white/85">{areaStatusText(session)}</span>
-              <span className="grid gap-1">
-                <span className="text-right text-sm font-bold text-cyan-200">{progressText(session)}</span>
-                <span className="h-2 overflow-hidden rounded-full bg-white/10">
-                  <span
-                    className="block h-full rounded-full bg-gradient-to-r from-emerald-300 to-cyan-300"
-                    style={{ width: `${progressPercent(session)}%` }}
+      <AssemblyPaneTableShell
+        ariaLabel="仕掛中"
+        columns={WIP_COLUMNS}
+        empty={sessions.length === 0}
+        emptyMessage={loading ? '仕掛中を読込中…' : '仕掛中なし'}
+      >
+        {sessions.map((session) => {
+          const href = kioskAssemblyWorkSessionPath(session.id);
+          const areaText = areaStatusShortText(session);
+          const expanded = isExpanded(session.id);
+          const panelId = `assembly-wip-detail-${session.id}`;
+          return (
+            <Fragment key={session.id}>
+              <tr className={assemblyTablePrimaryRowClassName}>
+                <td className={assemblyTablePrimaryCellClassName} title={session.productNo}>
+                  <AssemblyRowToggle
+                    expanded={expanded}
+                    onToggle={() => toggle(session.id)}
+                    label={session.productNo}
+                    controlsId={panelId}
+                    className="inline-flex min-w-0 max-w-full items-center gap-1 rounded text-left font-bold text-white hover:text-emerald-100"
                   />
-                </span>
-              </span>
-            </Link>
-          ))}
-        </div>
-      )}
+                </td>
+                <td className="px-1.5 py-0.5">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="font-bold tabular-nums text-emerald-200">{progressText(session)}</span>
+                    <span className="h-1 w-8 overflow-hidden rounded-full bg-white/10">
+                      <span
+                        className="block h-full rounded-full bg-cyan-300"
+                        style={{ width: `${progressPercent(session)}%` }}
+                      />
+                    </span>
+                  </span>
+                </td>
+                <td className="px-1.5 py-0.5">
+                  <div className="flex justify-end gap-1">
+                    <Link to={href} className={buttonClassName('primary', assemblyTableActionButtonClassName)}>
+                      再開
+                    </Link>
+                  </div>
+                </td>
+              </tr>
+              {expanded ? (
+                <tr id={panelId} className={assemblyTableSecondaryRowClassName}>
+                  <td colSpan={3} className={assemblyTableSecondaryCellClassName}>
+                    {session.targetUnit} ・ {areaText} ・ {session.serialNo} / {session.operatorNameSnapshot} ・ 更新{' '}
+                    {formatAssemblyTimestamp(session.updatedAt)}
+                  </td>
+                </tr>
+              ) : null}
+            </Fragment>
+          );
+        })}
+      </AssemblyPaneTableShell>
     </section>
   );
 }

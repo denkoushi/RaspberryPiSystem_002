@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>組立トップ — 3ペイン表形式レイアウト案（プレビュー）</title>
+  <style>
+    :root {
+      --bg: #1e293b;
+      --panel: rgba(15, 23, 42, 0.72);
+      --panel-soft: rgba(2, 6, 23, 0.45);
+      --line: rgba(255, 255, 255, 0.15);
+      --line-soft: rgba(255, 255, 255, 0.1);
+      --text: #f8fafc;
+      --muted: rgba(248, 250, 252, 0.6);
+      --weak: rgba(248, 250, 252, 0.45);
+      --cyan: #a5f3fc;
+      --emerald: #6ee7b7;
+      --amber: #fde68a;
+      --lime: #d9f99d;
+      --btn: #334155;
+      --btn-primary: #2563eb;
+      --font: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+
+    body {
+      font-family: var(--font);
+      background: #0b1220;
+      color: var(--text);
+      min-height: 100dvh;
+      padding: 16px;
+    }
+
+    .page-meta {
+      max-width: 1560px;
+      margin: 0 auto 14px;
+    }
+
+    .page-meta h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .page-meta p {
+      margin-top: 6px;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .changes {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      color: var(--lime);
+      background: rgba(217, 249, 157, 0.08);
+    }
+
+    .chip.note {
+      color: var(--cyan);
+      background: rgba(165, 243, 252, 0.08);
+    }
+
+    .compare {
+      max-width: 1560px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    @media (min-width: 1280px) {
+      .compare {
+        grid-template-columns: 1fr 1fr;
+        align-items: stretch;
+      }
+    }
+
+    .frame-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .frame-label strong { font-size: 0.95rem; }
+    .frame-label span { font-size: 0.78rem; color: var(--weak); }
+
+    .kiosk {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      height: 820px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 4px 2px;
+    }
+
+    .header h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+
+    .header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .ghost {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text);
+      font-size: 0.78rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 15.5rem;
+      gap: 8px;
+      min-height: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .left {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .pane {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+    }
+
+    .pane.lot { flex: 1.35; }
+    .pane.wip,
+    .pane.done { flex: 1; }
+
+    .pane-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line-soft);
+      flex-shrink: 0;
+    }
+
+    .pane-head h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .count {
+      margin-left: 6px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+
+    .count.emerald { color: var(--emerald); }
+
+    .pane-body {
+      min-height: 0;
+      flex: 1;
+      overflow: auto;
+      padding: 6px;
+    }
+
+    /* ===== Before: cards ===== */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      align-content: start;
+    }
+
+    .card {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-height: 72px;
+      padding: 8px 9px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.55);
+    }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .card-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-sub {
+      font-size: 0.68rem;
+      color: var(--weak);
+      font-weight: 600;
+    }
+
+    .card-meta {
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-line {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: rgba(248, 250, 252, 0.85);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      padding: 0 8px;
+      border-radius: 5px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+
+    .badge.emerald {
+      border-color: rgba(110, 231, 183, 0.35);
+      background: rgba(16, 185, 129, 0.25);
+      color: #ecfdf5;
+    }
+
+    .badge.cyan {
+      border-color: rgba(165, 243, 252, 0.3);
+      background: rgba(6, 182, 212, 0.15);
+      color: #cffafe;
+    }
+
+    .badge.amber {
+      border-color: rgba(253, 230, 138, 0.3);
+      background: rgba(245, 158, 11, 0.15);
+      color: #fef3c7;
+    }
+
+    .progress-bar {
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+    }
+
+    .progress-bar > span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, #6ee7b7, #67e8f9);
+    }
+
+    .lot-card {
+      display: grid;
+      gap: 6px;
+      padding: 8px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.55);
+      margin-bottom: 6px;
+    }
+
+    .serial-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px;
+    }
+
+    .serial-chip {
+      display: grid;
+      gap: 4px;
+      min-height: 52px;
+      padding: 6px 7px;
+      border-radius: 5px;
+      border: 1px solid var(--line);
+      background: rgba(2, 6, 23, 0.55);
+    }
+
+    .serial-chip.in-progress {
+      border-color: rgba(110, 231, 183, 0.35);
+      background: rgba(16, 185, 129, 0.15);
+    }
+
+    .serial-chip.done {
+      border-color: rgba(253, 230, 138, 0.35);
+      background: rgba(245, 158, 11, 0.15);
+    }
+
+    .serial-chip.approved {
+      border-color: rgba(165, 243, 252, 0.35);
+      background: rgba(6, 182, 212, 0.15);
+    }
+
+    .mini-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 26px;
+      padding: 0 8px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      background: var(--btn);
+      color: var(--text);
+      font-size: 0.68rem;
+      font-weight: 700;
+    }
+
+    .mini-btn.primary {
+      background: var(--btn-primary);
+      border-color: transparent;
+    }
+
+    /* ===== After: tables (inspection-drawing style) ===== */
+    .table-wrap {
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: rgba(2, 6, 23, 0.35);
+      padding: 4px;
+    }
+
+    table.data {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      text-align: left;
+      font-size: 0.72rem;
+    }
+
+    table.data thead {
+      position: sticky;
+      top: 0;
+      background: #0f172a;
+      color: rgba(248, 250, 252, 0.7);
+      z-index: 1;
+    }
+
+    table.data th {
+      padding: 6px 8px;
+      font-weight: 700;
+      border-bottom: 1px solid var(--line-soft);
+      white-space: nowrap;
+    }
+
+    table.data th.right,
+    table.data td.right {
+      text-align: right;
+    }
+
+    table.data td {
+      padding: 5px 8px;
+      border-top: 1px solid var(--line-soft);
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    table.data tr.primary td {
+      padding-top: 7px;
+      padding-bottom: 2px;
+      font-weight: 700;
+      color: var(--text);
+      border-top: 1px solid var(--line-soft);
+    }
+
+    table.data tr.primary:first-child td {
+      border-top: 0;
+    }
+
+    table.data tr.secondary td {
+      padding-top: 0;
+      padding-bottom: 6px;
+      color: var(--muted);
+      font-weight: 600;
+      border-top: 0;
+      font-size: 0.68rem;
+    }
+
+    table.data tr.group td {
+      background: rgba(15, 23, 42, 0.65);
+      color: var(--cyan);
+      font-weight: 700;
+      padding-top: 7px;
+      padding-bottom: 5px;
+      border-top: 1px solid var(--line);
+    }
+
+    .cell-strong { font-weight: 700; color: var(--text); }
+    .cell-muted { color: var(--muted); font-weight: 600; }
+    .cell-cyan { color: var(--cyan); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .cell-emerald { color: var(--emerald); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    .row-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 4px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 0 7px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      font-size: 0.65rem;
+      font-weight: 700;
+    }
+
+    .status-pill.idle { background: rgba(2, 6, 23, 0.55); }
+    .status-pill.wip {
+      border-color: rgba(110, 231, 183, 0.35);
+      background: rgba(16, 185, 129, 0.15);
+      color: #ecfdf5;
+    }
+    .status-pill.done {
+      border-color: rgba(253, 230, 138, 0.35);
+      background: rgba(245, 158, 11, 0.15);
+      color: #fef3c7;
+    }
+    .status-pill.ok {
+      border-color: rgba(165, 243, 252, 0.35);
+      background: rgba(6, 182, 212, 0.15);
+      color: #cffafe;
+    }
+
+    .progress-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .progress-inline .bar {
+      width: 42px;
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+    }
+
+    .progress-inline .bar > span {
+      display: block;
+      height: 100%;
+      background: #67e8f9;
+    }
+
+    .start-pane {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      padding: 8px;
+    }
+
+    .start-pane h3 {
+      font-size: 0.9rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .start-block {
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .start-block h4 {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: rgba(248, 250, 252, 0.9);
+    }
+
+    .fake-input {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: rgba(2, 6, 23, 0.55);
+      padding: 6px 8px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .fake-input.muted { color: var(--weak); font-weight: 600; }
+
+    .keypad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+    }
+
+    .key {
+      min-height: 28px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      background: var(--btn);
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .start-footer {
+      margin-top: auto;
+      display: grid;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .summary-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 6px;
+      padding: 8px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.6);
+      font-size: 0.68rem;
+    }
+
+    .summary-row .label { color: var(--weak); font-weight: 600; }
+    .summary-row .value { font-weight: 700; margin-top: 2px; }
+
+    .primary-cta {
+      min-height: 40px;
+      border: 0;
+      border-radius: 6px;
+      background: var(--btn-primary);
+      color: white;
+      font-size: 0.88rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .notes {
+      max-width: 1560px;
+      margin: 18px auto 0;
+      display: grid;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.55);
+    }
+
+    .notes h2 {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .notes ul {
+      padding-left: 1.15rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .notes li + li { margin-top: 4px; }
+
+    .notes code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.78em;
+      color: var(--cyan);
+    }
+  </style>
+</head>
+<body>
+  <div class="page-meta">
+    <h1>組立トップ（/kiosk/assembly）— 3ペイン表形式レイアウト案</h1>
+    <p>
+      左列の「登録済みロット / 仕掛中 / 完了した製品」を、検査図面ライブラリ（
+      <code>InspectionDrawingLibraryTemplateTable</code> /
+      <code>KioskInspectionDrawingVisualLibrarySection</code>
+      ）と同系統の<strong>コンパクト表</strong>へ寄せる実装前プレビュー。右のロット登録ペインは現状維持。
+      静的モックのみ（API 非接続・クリック不可）。
+    </p>
+    <div class="changes">
+      <span class="chip">カード → 表（sticky thead）</span>
+      <span class="chip">情報密度向上</span>
+      <span class="chip">検査図面と同系の text-xs / table-fixed</span>
+      <span class="chip note">ロットはグループ行 + シリアル行</span>
+      <span class="chip note">実装反映済（Web・未デプロイ）</span>
+    </div>
+  </div>
+
+  <div class="compare">
+    <!-- ========== BEFORE ========== -->
+    <section class="frame" aria-label="現状（カード）">
+      <div class="frame-label">
+        <strong>Before — 現状（カード）</strong>
+        <span>余白が多く、同一画面に見える件数が少ない</span>
+      </div>
+      <div class="kiosk">
+        <div class="header">
+          <h2>組立</h2>
+          <div class="header-actions">
+            <span class="ghost">手順書ライブラリ</span>
+            <span class="ghost">組立テンプレート</span>
+            <span class="ghost">閲覧順設定</span>
+            <span class="ghost">記録確認</span>
+          </div>
+        </div>
+        <div class="main">
+          <div class="left">
+            <section class="pane lot">
+              <div class="pane-head">
+                <h3>登録済みロット <span class="count">2件</span></h3>
+                <span class="ghost">再読込</span>
+              </div>
+              <div class="pane-body">
+                <article class="lot-card">
+                  <div class="card-top">
+                    <div>
+                      <div class="card-title">A260312</div>
+                      <div class="card-meta">MH-2200 / 田中</div>
+                    </div>
+                    <div style="text-align:right">
+                      <div class="cell-cyan" style="font-size:0.72rem">作業 1/3 ・ 承認 0/3</div>
+                      <div class="card-sub">7/9 13:40</div>
+                    </div>
+                  </div>
+                  <div class="serial-grid">
+                    <div class="serial-chip approved">
+                      <div class="card-top"><span class="cell-strong">S-001</span><span style="font-size:0.65rem;font-weight:700">承認済み</span></div>
+                      <span class="mini-btn">記録確認</span>
+                    </div>
+                    <div class="serial-chip in-progress">
+                      <div class="card-top"><span class="cell-strong">S-002</span><span style="font-size:0.65rem;font-weight:700">仕掛</span></div>
+                      <span class="mini-btn">再開</span>
+                    </div>
+                    <div class="serial-chip">
+                      <div class="card-top"><span class="cell-strong">S-003</span><span style="font-size:0.65rem;font-weight:700">未着手</span></div>
+                      <span class="mini-btn primary">開始</span>
+                    </div>
+                  </div>
+                </article>
+                <article class="lot-card">
+                  <div class="card-top">
+                    <div>
+                      <div class="card-title">B260401</div>
+                      <div class="card-meta">MH-1800 / 佐藤</div>
+                    </div>
+                    <div style="text-align:right">
+                      <div class="cell-cyan" style="font-size:0.72rem">作業 0/2 ・ 承認 0/2</div>
+                      <div class="card-sub">7/9 11:05</div>
+                    </div>
+                  </div>
+                  <div class="serial-grid">
+                    <div class="serial-chip">
+                      <div class="card-top"><span class="cell-strong">S-010</span><span style="font-size:0.65rem;font-weight:700">未着手</span></div>
+                      <span class="mini-btn primary">開始</span>
+                    </div>
+                    <div class="serial-chip">
+                      <div class="card-top"><span class="cell-strong">S-011</span><span style="font-size:0.65rem;font-weight:700">未着手</span></div>
+                      <span class="mini-btn primary">開始</span>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section class="pane wip">
+              <div class="pane-head">
+                <h3>仕掛中 <span class="count emerald">3件</span></h3>
+                <span class="ghost">再読込</span>
+              </div>
+              <div class="pane-body">
+                <div class="card-grid">
+                  <a class="card" href="#" onclick="return false">
+                    <div class="card-top">
+                      <div>
+                        <div class="card-title">A260312</div>
+                        <div class="card-sub">7/9 13:52</div>
+                      </div>
+                      <span class="badge emerald">再開</span>
+                    </div>
+                    <div class="card-line">MH-2200</div>
+                    <div class="card-meta">S-002 / 田中</div>
+                    <div class="card-line">エリアB ・ 締付位置 #4</div>
+                    <div style="text-align:right;font-size:0.72rem;font-weight:700;color:var(--cyan)">4/12</div>
+                    <div class="progress-bar"><span style="width:33%"></span></div>
+                  </a>
+                  <a class="card" href="#" onclick="return false">
+                    <div class="card-top">
+                      <div>
+                        <div class="card-title">C260215</div>
+                        <div class="card-sub">7/9 13:20</div>
+                      </div>
+                      <span class="badge emerald">再開</span>
+                    </div>
+                    <div class="card-line">MH-2500</div>
+                    <div class="card-meta">S-021 / 鈴木</div>
+                    <div class="card-line">エリアA ・ 締付位置 #2</div>
+                    <div style="text-align:right;font-size:0.72rem;font-weight:700;color:var(--cyan)">2/8</div>
+                    <div class="progress-bar"><span style="width:25%"></span></div>
+                  </a>
+                  <a class="card" href="#" onclick="return false">
+                    <div class="card-top">
+                      <div>
+                        <div class="card-title">D260108</div>
+                        <div class="card-sub">7/9 12:48</div>
+                      </div>
+                      <span class="badge emerald">再開</span>
+                    </div>
+                    <div class="card-line">MH-1600</div>
+                    <div class="card-meta">S-030 / 高橋</div>
+                    <div class="card-line">エリア完了 ・ 次工程待ち</div>
+                    <div style="text-align:right;font-size:0.72rem;font-weight:700;color:var(--cyan)">10/10</div>
+                    <div class="progress-bar"><span style="width:100%"></span></div>
+                  </a>
+                </div>
+              </div>
+            </section>
+
+            <section class="pane done">
+              <div class="pane-head">
+                <h3>完了した製品 <span class="count">4件</span></h3>
+                <span class="ghost">再読込</span>
+              </div>
+              <div class="pane-body">
+                <div class="card-grid">
+                  <a class="card" href="#" onclick="return false">
+                    <div class="card-top">
+                      <div>
+                        <div class="card-title">A260312</div>
+                        <div class="card-sub">7/9 13:10</div>
+                      </div>
+                      <div style="display:grid;gap:4px;justify-items:end">
+                        <span class="badge cyan">完了</span>
+                        <span class="badge amber">未承認</span>
+                      </div>
+                    </div>
+                    <div class="card-line">MH-2200</div>
+                    <div class="card-meta">S-001</div>
+                    <div class="card-top">
+                      <span class="card-line">作業者 田中</span>
+                      <span class="cell-cyan" style="font-size:0.68rem">ロット数 3</span>
+                    </div>
+                  </a>
+                  <a class="card" href="#" onclick="return false">
+                    <div class="card-top">
+                      <div>
+                        <div class="card-title">E251230</div>
+                        <div class="card-sub">7/9 10:22</div>
+                      </div>
+                      <div style="display:grid;gap:4px;justify-items:end">
+                        <span class="badge cyan">完了</span>
+                        <span class="badge emerald">承認済み</span>
+                      </div>
+                    </div>
+                    <div class="card-line">MH-1200</div>
+                    <div class="card-meta">S-100</div>
+                    <div class="card-top">
+                      <span class="card-line">作業者 伊藤</span>
+                      <span class="cell-cyan" style="font-size:0.68rem">ロット数 2</span>
+                    </div>
+                  </a>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <aside class="start-pane" aria-label="ロット登録（現状維持）">
+            <h3>ロット登録</h3>
+            <div class="start-block">
+              <h4>製番</h4>
+              <div class="fake-input">A2603</div>
+              <div class="fake-input muted" style="min-height:48px;font-size:0.68rem">候補 2件（カード行）</div>
+              <div class="keypad">
+                <span class="key">1</span><span class="key">2</span><span class="key">3</span>
+                <span class="key">4</span><span class="key">5</span><span class="key">6</span>
+                <span class="key">7</span><span class="key">8</span><span class="key">9</span>
+                <span class="key">C</span><span class="key">0</span><span class="key">⌫</span>
+              </div>
+            </div>
+            <div class="start-block">
+              <h4>シリアル</h4>
+              <div class="fake-input muted">シリアルNo.</div>
+              <div class="fake-input muted">作業者</div>
+            </div>
+            <div class="start-footer">
+              <div class="summary-row">
+                <div><div class="label">機種名</div><div class="value">未選択</div></div>
+                <div style="text-align:right"><div class="label">ロット数</div><div class="value" style="color:var(--cyan)">-</div></div>
+                <div style="text-align:right"><div class="label">テンプレート</div><div class="value">-</div></div>
+              </div>
+              <div class="primary-cta">ロット登録</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== AFTER ========== -->
+    <section class="frame" aria-label="提案（表形式）">
+      <div class="frame-label">
+        <strong>After — 提案（表形式）</strong>
+        <span>検査図面ライブラリと同系の高密度表</span>
+      </div>
+      <div class="kiosk">
+        <div class="header">
+          <h2>組立</h2>
+          <div class="header-actions">
+            <span class="ghost">手順書ライブラリ</span>
+            <span class="ghost">組立テンプレート</span>
+            <span class="ghost">閲覧順設定</span>
+            <span class="ghost">記録確認</span>
+          </div>
+        </div>
+        <div class="main">
+          <div class="left">
+            <!-- Lot table -->
+            <section class="pane lot">
+              <div class="pane-head">
+                <h3>登録済みロット <span class="count">2件</span></h3>
+                <span class="ghost">再読込</span>
+              </div>
+              <div class="pane-body">
+                <div class="table-wrap">
+                  <table class="data" aria-label="登録済みロット">
+                    <colgroup>
+                      <col style="width:18%" />
+                      <col style="width:22%" />
+                      <col style="width:16%" />
+                      <col style="width:14%" />
+                      <col style="width:30%" />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>製番</th>
+                        <th>シリアル</th>
+                        <th>状態</th>
+                        <th>進捗</th>
+                        <th class="right">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr class="group">
+                        <td colspan="5">A260312 ・ MH-2200 ・ 田中 ・ 作業 1/3 ・ 承認 0/3 ・ 7/9 13:40</td>
+                      </tr>
+                      <tr class="primary">
+                        <td class="cell-muted">↳</td>
+                        <td class="cell-strong">S-001</td>
+                        <td><span class="status-pill ok">承認済み</span></td>
+                        <td class="cell-muted">—</td>
+                        <td class="right"><div class="row-actions"><span class="mini-btn">記録確認</span></div></td>
+                      </tr>
+                      <tr class="primary">
+                        <td class="cell-muted">↳</td>
+                        <td class="cell-strong">S-002</td>
+                        <td><span class="status-pill wip">仕掛</span></td>
+                        <td class="cell-muted">—</td>
+                        <td class="right"><div class="row-actions"><span class="mini-btn">再開</span></div></td>
+                      </tr>
+                      <tr class="primary">
+                        <td class="cell-muted">↳</td>
+                        <td class="cell-strong">S-003</td>
+                        <td><span class="status-pill idle">未着手</span></td>
+                        <td class="cell-muted">—</td>
+                        <td class="right"><div class="row-actions"><span class="mini-btn primary">開始</span></div></td>
+                      </tr>
+                      <tr class="group">
+                        <td colspan="5">B260401 ・ MH-1800 ・ 佐藤 ・ 作業 0/2 ・ 承認 0/2 ・ 7/9 11:05</td>
+                      </tr>
+                      <tr class="primary">
+                        <td class="cell-muted">↳</td>
+                        <td class="cell-strong">S-010</td>
+                        <td><span class="status-pill idle">未着手</span></td>
+                        <td class="cell-muted">—</td>
+                        <td class="right"><div class="row-actions"><span class="mini-btn primary">開始</span></div></td>
+                      </tr>
+                      <tr class="primary">
+                        <td class="cell-muted">↳</td>
+                        <td class="cell-strong">S-011</td>
+                        <td><span class="status-pill idle">未着手</span></td>
+                        <td class="cell-muted">—</td>
+                        <td class="right"><div class="row-actions"><span class="mini-btn primary">開始</span></div></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+
+            <!-- WIP table -->
+            <section class="pane wip">
+              <div class="pane-head">
+                <h3>仕掛中 <span class="count emerald">3件</span></h3>
+                <span class="ghost">再読込</span>
+              </div>
+              <div class="pane-body">
+                <div class="table-wrap">
+                  <table class="data" aria-label="仕掛中">
+                    <colgroup>
+                      <col style="width:16%" />
+                      <col style="width:18%" />
+                      <col style="width:28%" />
+                      <col style="width:18%" />
+                      <col style="width:20%" />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>製番</th>
+                        <th>機種</th>
+                        <th>エリア・位置</th>
+                        <th>進捗</th>
+                        <th class="right">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr class="primary">
+                        <td title="A260312">A260312</td>
+                        <td title="MH-2200">MH-2200</td>
+                        <td title="エリアB ・ 締付位置 #4">エリアB ・ #4</td>
+                        <td>
+                          <span class="progress-inline">
+                            <span class="cell-emerald">4/12</span>
+                            <span class="bar"><span style="width:33%"></span></span>
+                          </span>
+                        </td>
+                        <td class="right"><div class="row-actions"><span class="mini-btn primary">再開</span></div></td>
+                      </tr>
+                      <tr class="secondary">
+                        <td colspan="5">S-002 / 田中 ・ 更新 7/9 13:52</td>
+                      </tr>
+                      <tr class="primary">
+                        <td>C260215</td>
+                        <td>MH-2500</td>
+                        <td>エリアA ・ #2</td>
+                        <td>
+                          <span class="progress-inline">
+                            <span class="cell-emerald">2/8</span>
+                            <span class="bar"><span style="width:25%"></span></span>
+                          </span>
+                        </td>
+                        <td class="right"><div class="row-actions"><span class="mini-btn primary">再開</span></div></td>
+                      </tr>
+                      <tr class="secondary">
+                        <td colspan="5">S-021 / 鈴木 ・ 更新 7/9 13:20</td>
+                      </tr>
+                      <tr class="primary">
+                        <td>D260108</td>
+                        <td>MH-1600</td>
+                        <td>エリア完了 ・ 次工程</td>
+                        <td>
+                          <span class="progress-inline">
+                            <span class="cell-emerald">10/10</span>
+                            <span class="bar"><span style="width:100%"></span></span>
+                          </span>
+                        </td>
+                        <td class="right"><div class="row-actions"><span class="mini-btn primary">再開</span></div></td>
+                      </tr>
+                      <tr class="secondary">
+                        <td colspan="5">S-030 / 高橋 ・ 更新 7/9 12:48</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+
+            <!-- Completed table -->
+            <section class="pane done">
+              <div class="pane-head">
+                <h3>完了した製品 <span class="count">4件</span></h3>
+                <span class="ghost">再読込</span>
+              </div>
+              <div class="pane-body">
+                <div class="table-wrap">
+                  <table class="data" aria-label="完了した製品">
+                    <colgroup>
+                      <col style="width:15%" />
+                      <col style="width:16%" />
+                      <col style="width:14%" />
+                      <col style="width:12%" />
+                      <col style="width:18%" />
+                      <col style="width:25%" />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>製番</th>
+                        <th>機種</th>
+                        <th>シリアル</th>
+                        <th>ロット</th>
+                        <th>状態</th>
+                        <th class="right">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr class="primary">
+                        <td>A260312</td>
+                        <td>MH-2200</td>
+                        <td class="cell-strong">S-001</td>
+                        <td class="cell-cyan">3</td>
+                        <td><span class="status-pill done">未承認</span></td>
+                        <td class="right"><div class="row-actions"><span class="mini-btn">記録確認</span></div></td>
+                      </tr>
+                      <tr class="secondary">
+                        <td colspan="6">作業者 田中 ・ 完了 7/9 13:10</td>
+                      </tr>
+                      <tr class="primary">
+                        <td>E251230</td>
+                        <td>MH-1200</td>
+                        <td class="cell-strong">S-100</td>
+                        <td class="cell-cyan">2</td>
+                        <td><span class="status-pill ok">承認済み</span></td>
+                        <td class="right"><div class="row-actions"><span class="mini-btn">記録確認</span></div></td>
+                      </tr>
+                      <tr class="secondary">
+                        <td colspan="6">作業者 伊藤 ・ 完了 7/9 10:22</td>
+                      </tr>
+                      <tr class="primary">
+                        <td>F260101</td>
+                        <td>MH-900</td>
+                        <td class="cell-strong">S-200</td>
+                        <td class="cell-cyan">4</td>
+                        <td><span class="status-pill done">未承認</span></td>
+                        <td class="right"><div class="row-actions"><span class="mini-btn">記録確認</span></div></td>
+                      </tr>
+                      <tr class="secondary">
+                        <td colspan="6">作業者 山田 ・ 完了 7/8 17:40</td>
+                      </tr>
+                      <tr class="primary">
+                        <td>G260050</td>
+                        <td>MH-3000</td>
+                        <td class="cell-strong">S-301</td>
+                        <td class="cell-cyan">1</td>
+                        <td><span class="status-pill ok">承認済み</span></td>
+                        <td class="right"><div class="row-actions"><span class="mini-btn">記録確認</span></div></td>
+                      </tr>
+                      <tr class="secondary">
+                        <td colspan="6">作業者 中村 ・ 完了 7/8 16:05</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <aside class="start-pane" aria-label="ロット登録（現状維持）">
+            <h3>ロット登録</h3>
+            <div class="start-block">
+              <h4>製番</h4>
+              <div class="fake-input">A2603</div>
+              <div class="fake-input muted" style="min-height:48px;font-size:0.68rem">候補 2件（現状維持）</div>
+              <div class="keypad">
+                <span class="key">1</span><span class="key">2</span><span class="key">3</span>
+                <span class="key">4</span><span class="key">5</span><span class="key">6</span>
+                <span class="key">7</span><span class="key">8</span><span class="key">9</span>
+                <span class="key">C</span><span class="key">0</span><span class="key">⌫</span>
+              </div>
+            </div>
+            <div class="start-block">
+              <h4>シリアル</h4>
+              <div class="fake-input muted">シリアルNo.</div>
+              <div class="fake-input muted">作業者</div>
+            </div>
+            <div class="start-footer">
+              <div class="summary-row">
+                <div><div class="label">機種名</div><div class="value">未選択</div></div>
+                <div style="text-align:right"><div class="label">ロット数</div><div class="value" style="color:var(--cyan)">-</div></div>
+                <div style="text-align:right"><div class="label">テンプレート</div><div class="value">-</div></div>
+              </div>
+              <div class="primary-cta">ロット登録</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="notes" aria-label="設計メモ">
+    <h2>設計メモ（実装前の合意ポイント）</h2>
+    <ul>
+      <li>
+        <strong>対象</strong>: 左列3ペインのみ（
+        <code>AssemblyLotPane</code> /
+        <code>AssemblyWipPane</code> /
+        <code>AssemblyCompletedPane</code>
+        ）。右の <code>AssemblyStartPane</code> は変更しない。
+      </li>
+      <li>
+        <strong>見た目の正本</strong>: 検査図面の
+        <code>w-full table-fixed border-collapse text-xs</code> +
+        sticky <code>thead</code> + 主行/副行（2段）パターン。
+      </li>
+      <li>
+        <strong>仕掛中 / 完了</strong>: 1セッション = 主行（キー列）+ 副行（シリアル・作業者・時刻）。行全体 or 右端ボタンで遷移（現状の Link 相当）。
+      </li>
+      <li>
+        <strong>登録済みロット</strong>: ロット単位のグループ行（製番・機種・作業者・進捗）の下に、シリアル行を並べる。ネストカードをやめて縦に詰める。
+      </li>
+      <li>
+        <strong>タッチ</strong>: 操作ボタンは現状どおり <code>min-h-11</code> 相当を維持（プレビューでは縮小表示）。行タップ領域も確保する。
+      </li>
+      <li>
+        <strong>代替案（未採用）</strong>: ロットをフラットなシリアル一覧だけにする案もあるが、ロット境界が弱くなるため、まずはグループ行案を推奨。
+      </li>
+    </ul>
+  </section>
+</body>
+</html>

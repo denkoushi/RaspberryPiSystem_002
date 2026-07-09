@@ -386,7 +386,7 @@ export function KioskAssemblyHomePage() {
       {message ? <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">{message}</p> : null}
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(0,1fr)_24rem] xl:overflow-hidden 2xl:grid-cols-[minmax(0,1fr)_24.5rem]">
-        <div className="flex min-h-0 min-w-0 flex-col gap-2 xl:min-h-0">
+        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-2 xl:grid-cols-3 xl:overflow-hidden">
           <AssemblyLotPane
             lots={lots}
             loading={lotLoading}
