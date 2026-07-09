@@ -20,7 +20,7 @@ Always running two local engines would worsen the already ~6–8s candidate POST
 1. Keep full-drawing cache and primary local tesseract path unchanged.
 2. Add RapidOCR as a **secondary** local engine behind `DrawingLocalOcrPort`.
 3. Run RapidOCR only when `PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_ENABLED` is on **and** primary candidates are weak (`isWeakLocalOcrCandidates`).
-4. Package RapidOCR as a **persistent Python worker** inside the API image (`rapidocr==3.8.4`, `onnxruntime==1.20.1`, `libgomp1`), spoken to via JSON Lines stdin/stdout.
+4. Package RapidOCR as a **persistent Python worker** inside the API image (`rapidocr==3.8.4`, `onnxruntime==1.20.1`, plus `libgomp1`/`libgl1`/`libglib2.0-0` for OpenCV), spoken to via JSON Lines stdin/stdout.
 5. Default RapidOCR flag **OFF** until Pi5 image rebuild + latency validation.
 6. On RapidOCR failure/timeout/missing install: warn and return primary candidates.
 
