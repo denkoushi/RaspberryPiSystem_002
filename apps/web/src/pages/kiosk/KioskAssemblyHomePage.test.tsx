@@ -251,10 +251,10 @@ describe('KioskAssemblyHomePage', () => {
     renderPage();
 
     expect(await screen.findByText('ASM-START-001')).toBeInTheDocument();
-    expect(screen.getByText('S002 / 佐藤')).toBeInTheDocument();
+    expect(screen.getByText(/S002 \/ 佐藤/)).toBeInTheDocument();
     expect(screen.getByText('0/1')).toBeInTheDocument();
     expect(screen.getByText(/#1/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /ASM-START-001/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'ASM-START-001' })).toHaveAttribute(
       'href',
       '/kiosk/assembly/work-sessions/session-2'
     );

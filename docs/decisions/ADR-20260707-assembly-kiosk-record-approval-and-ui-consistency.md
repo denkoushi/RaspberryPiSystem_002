@@ -11,8 +11,12 @@
   - `apps/web/src/features/assembly/KioskDocumentPageImage.tsx`
   - `apps/web/src/features/assembly/AssemblyWipPane.tsx`
   - `apps/web/src/features/assembly/AssemblyCompletedPane.tsx`
+  - `apps/web/src/features/assembly/AssemblyLotPane.tsx`
+  - `apps/web/src/features/assembly/AssemblyPaneTableShell.tsx`
+  - `apps/web/src/features/assembly/assemblyStatusPresentation.ts`
+  - `apps/web/src/features/assembly/assemblySessionPresentation.ts`
   - `apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx`
-- related_docs: `docs/decisions/ADR-20260707-assembly-procedure-order-library-scope.md`, `docs/knowledge-base/KB-320-kiosk-part-measurement.md`
+- related_docs: `docs/decisions/ADR-20260707-assembly-procedure-order-library-scope.md`, `docs/knowledge-base/KB-320-kiosk-part-measurement.md`, `docs/plans/kiosk-assembly-home-table-layout.md`, `docs/design-previews/kiosk-assembly-home-table-layout-preview.html`
 
 ## Context
 
@@ -36,6 +40,7 @@ Operator feedback on the assembly kiosk (組立):
 5. **Compact layout follow-up (2026-07-07, third whitespace complaint)**: the initial card/detail layouts still spread value groups across the full page width with excess padding. Not a future-proofing design; it was unconstrained default stretching. Fixes:
    - Record approval detail pane: capped at `max-w-[56rem]` (left-aligned, unused width stays background); the metadata `dl` becomes inline label+value pairs (`flex flex-wrap`) instead of a full-width 2-column grid; the area torque table shrinks to content width (`w-fit` / `w-auto`) with tighter cell padding; approval boxes capped at `max-w-md`.
    - Home WIP/completed cards: grid extended to `xl:grid-cols-3 2xl:grid-cols-4` so each card is narrower; inner `gap-2 px-3 py-2.5` tightened to `gap-1 px-2.5 py-2`; the WIP area/bolt-position pair and the completed operator/lot-qty pair are merged into single lines. All fields and `min-h-11` tap targets kept.
+6. **Home left panes → compact tables (2026-07-09)**: Decision 4/5 card grids still left too much whitespace for operator scanning. Replace left-column cards (`AssemblyLotPane` / `AssemblyWipPane` / `AssemblyCompletedPane`) with inspection-drawing-style compact tables (`table-fixed` + sticky `thead` + primary/secondary rows). Lot pane uses a group row per lot plus serial rows; WIP keeps a thin progress bar; action buttons stay `min-h-11`. Right `AssemblyStartPane` unchanged. **Web only; API/DB/DTO unchanged.** Preview: `docs/design-previews/kiosk-assembly-home-table-layout-preview.html`. Plan: `docs/plans/kiosk-assembly-home-table-layout.md`.
 
 ## Alternatives
 
@@ -57,6 +62,7 @@ Operator feedback on the assembly kiosk (組立):
 - The generated migration initially contained unrelated drift statements (DROP of `photo_tool_similarity_gallery` etc.); it was hand-reduced to the new table only and re-verified with `migrate deploy` on a clean database.
 - On-site visual/touch verification passed on 2026-07-07 (user confirmed: preview images, completed-card navigation, NFC approval, approval badges, multi-column panes).
 - Compact layout follow-up (Decision 5): web lint / full vitest (261 files, 1313 tests) / build passed on merged main; visually verified at 1920x1080 via Playwright against a local stack (temp `pgvector/pgvector:pg16` container on 55432 + seeded assembly sessions created through the public API; stack disposed afterwards).
+- Home table layout (Decision 6): web focused vitest (6 files / 21 tests) + lint + build passed; assembly integration suite (23 tests) passed against temp `pgvector/pgvector:pg15` on 55436 after `prisma migrate deploy`; temp container/volume removed. On-site visual/touch verification pending.
 
 ## Open Items
 
