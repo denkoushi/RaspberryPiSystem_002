@@ -10,6 +10,20 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-09 · **組立作業画面オペレータ向けレイアウト** · **Web only** · **Pi5 + stonebase 先行反映**） {#kiosk-assembly-work-session-operator-layout-2026-07-09}
+
+- **変更概要（正本）**: [ADR-20260709](../decisions/ADR-20260709-assembly-work-session-operator-layout.md) · ブランチ **`feat/kiosk-assembly-work-session-operator-layout`** · HEAD **`358c3723`**。タイトル「組立作業」・1行ヘッダー・テンプレ/Excel UI 削除（Excel API 維持）・左見出し帯削除で手順書縦スペース確保。**API / DB / Prisma migration 変更なし**。
+- **CI**: push CI **`28990923327` success**（全5ジョブ）。
+- **本番デプロイ（実績・先行）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-assembly-work-session-operator-layout infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260709-121959-3054`** | success · `ok=135` `changed=4` `failed=0` · Docker rebuild · HEAD **`358c3723`** |
+| `raspi4-kensaku-stonebase01` | **`20260709-122401-24674`** | success · `ok=130` `changed=10` `failed=0` · kiosk/status-agent restart OK |
+
+- **未デプロイ**: 他 Pi4 / Pi3。
+- **実機（目視）**: 未実施（組立作業開始後画面で1行ヘッダー・手順書拡大・テンプレ/Excel 非表示を確認）。
+
 ### 補足（2026-07-09 · **検査図面 作成/改版レイアウト修正（toolbar shrink-0 + aside overflow-hidden）** · **Web only** · **Pi5 + Pi4×5 反映済 / Pi3 対象外**） {#inspection-drawing-create-layout-regression-2026-07-09}
 
 - **変更概要（正本）**: [KB-399](../knowledge-base/KB-399-inspection-drawing-create-layout-regression.md) · HEAD **`4f9a7025`** · fix **`6a265d0e`** / **`2432b4fd`**。**API / DB / Prisma migration 変更なし**。

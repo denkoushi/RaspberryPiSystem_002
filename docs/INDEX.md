@@ -12,9 +12,9 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
-### 計画・設計（2026-07-09 · 組立作業画面オペレータ向けレイアウト · 未デプロイ）
+### 計画・設計（2026-07-09 · 組立作業画面オペレータ向けレイアウト · Pi5+stonebase 先行反映）
 
-- **組立作業セッション UI**: タイトル「組立作業」・1行ヘッダー・テンプレ/Excel ボタン削除（API は維持）・左見出し帯削除で手順書縦スペース確保。**正本**: [ADR](./decisions/ADR-20260709-assembly-work-session-operator-layout.md) · [Preview](./design-previews/kiosk-assembly-work-session-operator-layout-preview.html)
+- **組立作業セッション UI**: タイトル「組立作業」・1行ヘッダー・テンプレ/Excel ボタン削除（API は維持）・左見出し帯削除で手順書縦スペース確保。**正本**: [ADR](./decisions/ADR-20260709-assembly-work-session-operator-layout.md) · [Preview](./design-previews/kiosk-assembly-work-session-operator-layout-preview.html) · [Deployment](./guides/deployment.md#kiosk-assembly-work-session-operator-layout-2026-07-09)
 
 ### 最新アップデート（2026-07-09 · 検査図面 作成/改版レイアウト修正 · 本番反映済 · 実機OK）
 
