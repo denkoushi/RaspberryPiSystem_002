@@ -10,6 +10,22 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-09 · **組立トップ 3ペイン表形式（カード→コンパクト表）** · **Web only** · **Pi5 + StoneBase 反映済 / 他Pi4・Pi3 未**） {#kiosk-assembly-home-table-layout-2026-07-09}
+
+- **変更概要（正本）**: [Plan](../plans/kiosk-assembly-home-table-layout.md) · [ADR-20260707 Decision 6](../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](../design-previews/kiosk-assembly-home-table-layout-preview.html) · ブランチ **`feat/kiosk-assembly-home-table-layout`** · HEAD **`a78a36d5`**。左列（登録済みロット / 仕掛中 / 完了）を検査図面同系の `table-fixed` 表へ。ロットはグループ行＋シリアル行、仕掛中は進捗バー維持、操作 `min-h-11`。右のロット登録は不変。**API / DB / Prisma migration 変更なし**。
+- **CI**: PR [#961](https://github.com/denkoushi/RaspberryPiSystem_002/pull/961) · push CI **`28995897114` success** · PR CI **`28995899024` success**（初回 `e2e-tests` は runner 待ちで cancelled → `--failed` 再実行で pass）。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-assembly-home-table-layout infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260709-145104-6472`** | success · `failed=0` · HEAD **`a78a36d5`** |
+| `raspi4-kensaku-stonebase01` | **`20260709-145454-28187`** | success · `failed=0` · HEAD **`a78a36d5`** |
+
+- **対象外（今回）**: 他 Pi4×4 / `raspberrypi3`（未デプロイ）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **組立 smoke**: `/kiosk/assembly` · `/kiosk/assembly/record-approvals` · `/kiosk/assembly/library` HTTP **200**。client-key 付き `GET /api/assembly/work-sessions/summary?status=in_progress|completed` · `GET /api/assembly/seiban-candidates` HTTP **200**。配信バンドル `/assets/index-CyACk0Sx.js` に `登録済みロット` / `仕掛中` / `完了した製品` / `table-fixed` を確認。
+- **実機（目視・タッチ）**: 未実施（StoneBase01 で表表示・開始/再開/記録確認タップを次回確認）。
+
 ### 補足（2026-07-09 · **組立作業画面オペレータ向けレイアウト + contain-fit** · **Web only** · **Pi5 + Pi4×5 反映済 / Pi3 対象外**） {#kiosk-assembly-work-session-operator-layout-2026-07-09}
 
 - **変更概要（正本）**: [ADR-20260709](../decisions/ADR-20260709-assembly-work-session-operator-layout.md) · ブランチ **`feat/kiosk-assembly-work-session-operator-layout`** · HEAD **`901d3b9e`**。タイトル「組立作業」・1行ヘッダー・テンプレ/Excel UI 削除（Excel API 維持）・左見出し帯削除・手順書を親ペインへ縦横比維持で最大表示（contain-fit）。**API / DB / Prisma migration 変更なし**。

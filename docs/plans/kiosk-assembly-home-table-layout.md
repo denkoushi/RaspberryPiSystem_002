@@ -7,8 +7,8 @@ date: 2026-07-09
 source_of_truth: this file
 related_code: apps/web/src/features/assembly/AssemblyLotPane.tsx, apps/web/src/features/assembly/AssemblyWipPane.tsx, apps/web/src/features/assembly/AssemblyCompletedPane.tsx, apps/web/src/features/assembly/AssemblyPaneTableShell.tsx, apps/web/src/features/assembly/assemblyStatusPresentation.ts, apps/web/src/features/assembly/assemblySessionPresentation.ts, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx
 related_docs: ../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md, ../design-previews/kiosk-assembly-home-table-layout-preview.html, ../design-previews/README.md, ../INDEX.md
-validation: web focused vitest 6 files / 21 tests; web lint; web build; assembly integration 23 tests on temp pgvector/pg15:55436 (disposed)
-open_items: on-site visual/touch verification on Pi kiosk; deploy when requested
+validation: web focused vitest 6 files / 21 tests; web lint; web build; assembly integration 23 tests on temp pgvector/pg15:55436 (disposed); CI 28995897114/28995899024 success; Pi5+StoneBase deploy 20260709-145104-6472/20260709-145454-28187; Phase12 45/0/0
+open_items: on-site visual/touch verification on StoneBase01; deploy remaining Pi4 hosts when requested
 ---
 
 # Kiosk Assembly Home Table Layout
@@ -20,6 +20,7 @@ Raise information density on the assembly home left column by replacing card gri
 ## Decision Summary
 
 - Branch: `feat/kiosk-assembly-home-table-layout`
+- HEAD: `a78a36d5`
 - Presentation helpers live in `features/assembly/` only (no cross-feature table kit)
 - Lot pane: group row + serial rows
 - WIP pane: primary + secondary rows; keep thin progress bar
@@ -37,6 +38,10 @@ Raise information density on the assembly home left column by replacing card gri
 - [x] web lint + build
 - [x] Temp Postgres assembly integration regression + cleanup
 - [x] ADR Decision 6 + this Plan + preview README note + INDEX one-liner
+- [x] Commit / push / PR #961 / CI green
+- [x] Deploy Pi5 + raspi4-kensaku-stonebase01
+- [x] Phase12 + assembly HTTP/API smoke
+- [ ] On-site visual/touch on StoneBase01
 
 ## Validation Commands
 
@@ -54,7 +59,10 @@ pnpm --filter @raspi-system/web build
 
 Temp DB (disposed after run): `pgvector/pgvector:pg15` on `55436`, `prisma migrate deploy`, then `assembly.integration.test.ts` + `assembly-seiban.integration.test.ts`.
 
+Deploy record: `docs/guides/deployment.md#kiosk-assembly-home-table-layout-2026-07-09`.
+
 ## Local Notes JA
 
 - 右ペイン（ロット登録）は変更しない。
 - 見た目合意の静的プレビュー: `docs/design-previews/kiosk-assembly-home-table-layout-preview.html`
+- 他 Pi4 / Pi3 は今回未デプロイ。
