@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - 索引
 tags: [トラブルシューティング, ナレッジベース, 索引]
 audience: [開発者, 運用者]
-last-verified: 2026-07-05
+last-verified: 2026-07-09
 related: [api.md, database.md, ci-cd.md, frontend.md, infrastructure.md]
 category: knowledge-base
 update-frequency: high
@@ -95,6 +95,7 @@ update-frequency: high
 | DGX GB10 NVFP4 カーネルベンチ・Marlin 非互換（業務 27B） | [KB-395-dgx-gb10-nvfp4-kernel-benchmark-and-marlin-incompatibility.md](./KB-395-dgx-gb10-nvfp4-kernel-benchmark-and-marlin-incompatibility.md) | 1件 | C1 baseline **12.41 tok/s** 最速·Marlin は `size_n=96` 非互換で起動不可·control-server 再起動で launcher 反映·MoE 切替が最大レバー（2026-07-05） |
 | キオスク順位ボード・検査導線（方法選択 + plannedQuantity 印刷 + OCR 記録欄 + 記録ページQR + 印刷レイアウト調整） | [KB-390-kiosk-leaderboard-inspection-workflow.md](./KB-390-kiosk-leaderboard-inspection-workflow.md) | 1件 | **`247ab019`**·Web only·Pi5·Detach **`20260615-191941-17013`**·Phase12 **43/0/0**·Pi4 不要 |
 | キオスク検査図面（上下限公差候補選択不可） | [KB-397](./KB-397-inspection-tolerance-datalist-unselectable-kiosk.md) | 1件 | **`589d9d43`**·datalist/showPicker 撤去·候補チップ UI·実機未確認 |
+| キオスク検査図面（作成/改版レイアウト: ツールバー縦積み・測定点一覧見切れ） | [KB-399](./KB-399-inspection-drawing-create-layout-regression.md) | 1件 | **`6a265d0e`**+**`2432b4fd`**·toolbar-slot `shrink-0`·aside `overflow-hidden`·契約テスト+E2E |
 | キオスク組立トップ（ロット数取得不能・手入力フォールバック） | [KB-398](./KB-398-assembly-lot-quantity-source-gap.md) | 1件 | **`63427ad7`**·main **`9afc8f29`**·Web only·Pi5+Pi4×5+Pi3 反映済（Run `20260708-180942-18680`）·実機目視未 |
 | Gmail CSV 取込信頼性（FKOJUNST advisory lock + スケジュール衝突 warning） | [KB-391-gmail-csv-import-reliability.md](./KB-391-gmail-csv-import-reliability.md) | 1件 | **`206241c4`**·API+Web·Pi5 only·Detach **`20260617-105312-14779`**·Phase12 **43/0/0** |
 | DGX Spark 運用理解（メモリ・27B/35B・KPI・モード切替・ワークロード自動調整・業務復帰モデル選択） | [KB-366-dgx-spark-operational-understanding.md](./KB-366-dgx-spark-operational-understanding.md) | 1件 | **2026-05-29**: 35B 写真ラベル cold start / `runtime_ready_timeout`·[§35B photo_label](./KB-366-dgx-spark-operational-understanding.md#35b-photo-label-cold-start-runtime-ready-timeout)。**2026-05-25**: 業務/私用メモリ・KPI vs `gpu-memory-utilization`・運用ガイド vs 保守パネル。**2026-05-28 本番**: 業務復帰で `modelProfileId` 選択·Pi5 Detach **`20260528-184011-18178`**·DGX `scp`+再起動·`/system/model-profiles` **2件**·Phase12 **43/0/0**·[§本番 2026-05-28](./KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-business-return-model-selection) |
