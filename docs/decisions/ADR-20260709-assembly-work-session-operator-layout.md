@@ -28,6 +28,7 @@ MVP historically kept Excel export on this page as a quality-record download. Te
 3. **Remove left-pane heading band** so the procedure viewer/canvas owns the vertical space under the header.
 4. **Remove テンプレ and Excel buttons** from the work-session UI. Template editing remains reachable from the assembly library. Excel API (`GET /assembly/work-sessions/:id/export.xlsx`) and `downloadAssemblyWorkSessionXlsx` remain; no alternate UI affordance in this change.
 5. Right pane (締付 controls), `AssemblyProcedureSequenceViewer` internal toolbar, routes, and KioskLayout immersive policy are unchanged.
+6. **Contain-fit follow-up (2026-07-09)**: the procedure image (configured sequence and single-image fallback) scales to the **largest size that fits the parent pane while preserving aspect ratio** (`computeContainSize` + `ResizeObserver`). Still **one page at a time** — no dual-page / spread layout. Removes the previous `max-h-[calc(100dvh-15rem)]` viewport-based cap on the fallback canvas.
 
 ## Alternatives
 
@@ -44,6 +45,7 @@ MVP historically kept Excel export on this page as a quality-record download. Te
 ## Validation
 
 - `npx vitest run src/pages/kiosk/KioskAssemblyWorkSessionPage.test.tsx` (3 passed): title `組立作業`, 組立トップ present, テンプレ/Excel absent, configured sequence page nav and fallback canvas still work.
+- Contain-fit: `computeContainSize.test.ts` + sequence viewer / work-session tests passed; image uses parent-box contain math (not `100dvh-15rem`).
 - Design preview: `docs/design-previews/kiosk-assembly-work-session-operator-layout-preview.html`
 
 ## Local Notes JA

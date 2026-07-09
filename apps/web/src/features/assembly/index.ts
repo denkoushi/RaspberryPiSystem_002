@@ -14,5 +14,6 @@ export * from './AssemblyTemplateLibraryTable';
 export * from './assemblyRoutes';
 export * from './assemblyTemplateDraft';
 export * from './assemblyUiHelpers';
+export * from './computeContainSize';
 export * from './useAssemblyProcedureLibrary';
 export * from './useAssemblyTemplateLibrary';

@@ -1,9 +1,11 @@
 import clsx from 'clsx';
-import { useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
 
-import type { MouseEvent, ReactNode } from 'react';
+import { computeContainSize } from './computeContainSize';
+
+import type { MouseEvent, ReactNode, RefObject } from 'react';
 
 export type AssemblyCanvasBolt = {
   id: string;
@@ -119,6 +121,62 @@ export function AssemblyMarkerOverlay({
   );
 }
 
+function useContainFitBox(
+  viewportRef: RefObject<HTMLElement | null>,
+  naturalWidth: number,
+  naturalHeight: number
+): { width: number; height: number } {
+  const [box, setBox] = useState({ width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      setBox(computeContainSize(rect.width, rect.height, naturalWidth, naturalHeight));
+    };
+
+    update();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', update);
+      return () => window.removeEventListener('resize', update);
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [viewportRef, naturalWidth, naturalHeight]);
+
+  return box;
+}
+
+function useNaturalSizeFromImg(rootRef: RefObject<HTMLElement | null>, deps: unknown[]): {
+  width: number;
+  height: number;
+} {
+  const [natural, setNatural] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const img = root.querySelector('img');
+    if (!img) return;
+
+    const sync = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        setNatural({ width: img.naturalWidth, height: img.naturalHeight });
+      }
+    };
+
+    sync();
+    img.addEventListener('load', sync);
+    return () => img.removeEventListener('load', sync);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- caller passes explicit dependency list
+  }, deps);
+
+  return natural;
+}
+
 export function AssemblyProcedureCanvas({
   imageRelativePath,
   bolts,
@@ -133,7 +191,10 @@ export function AssemblyProcedureCanvas({
   placementMode = 'bolt',
   className
 }: Props) {
+  const viewportRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const [natural, setNatural] = useState({ width: 0, height: 0 });
+  const fitted = useContainFitBox(viewportRef, natural.width, natural.height);
   const { blobUrl, error } = useProtectedImageBlobUrl(imageRelativePath);
 
   const handleClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -165,22 +226,29 @@ export function AssemblyProcedureCanvas({
   }
 
   return (
-    <div className={clsx('min-h-0 overflow-auto bg-slate-950 p-2', className)}>
-      <div className="relative mx-auto inline-block max-w-full" onClick={handleClick}>
-        {blobUrl ? (
+    <div
+      ref={viewportRef}
+      className={clsx('flex min-h-0 items-center justify-center overflow-hidden bg-slate-950 p-2', className)}
+    >
+      {blobUrl ? (
+        <div
+          className="relative shrink-0"
+          style={fitted.width > 0 ? { width: fitted.width, height: fitted.height } : { maxWidth: '100%', maxHeight: '100%' }}
+          onClick={handleClick}
+        >
           <img
             ref={imageRef}
             src={blobUrl}
             alt=""
-            className="block max-h-[calc(100dvh-15rem)] max-w-full select-none"
+            className="block h-full w-full select-none object-contain"
             draggable={false}
+            onLoad={(event) => {
+              const img = event.currentTarget;
+              if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                setNatural({ width: img.naturalWidth, height: img.naturalHeight });
+              }
+            }}
           />
-        ) : (
-          <div className="flex h-80 w-[42rem] max-w-full items-center justify-center text-sm text-white/60">
-            読み込み中
-          </div>
-        )}
-        {blobUrl ? (
           <AssemblyMarkerOverlay
             bolts={bolts}
             checkItems={checkItems}
@@ -190,8 +258,10 @@ export function AssemblyProcedureCanvas({
             onSelectCheckItem={onSelectCheckItem}
             onToggleCheckItem={onToggleCheckItem}
           />
-        ) : null}
-      </div>
+        </div>
+      ) : (
+        <div className="flex h-80 w-[42rem] max-w-full items-center justify-center text-sm text-white/60">読み込み中</div>
+      )}
     </div>
   );
 }
@@ -206,6 +276,7 @@ export function AssemblyProcedureImageWithMarkers({
   onSelectCheckItem,
   onToggleCheckItem,
   onPlacementClick,
+  fitToParent = false,
   className
 }: {
   imageContent: ReactNode;
@@ -217,13 +288,18 @@ export function AssemblyProcedureImageWithMarkers({
   onSelectCheckItem?: (id: string) => void;
   onToggleCheckItem?: (id: string) => void;
   onPlacementClick?: (xRatio: number, yRatio: number) => void;
+  /** When true, scale the image to the largest size that fits the parent while preserving aspect ratio. */
+  fitToParent?: boolean;
   className?: string;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const natural = useNaturalSizeFromImg(fitToParent ? viewportRef : frameRef, [imageContent, fitToParent]);
+  const fitted = useContainFitBox(viewportRef, natural.width, natural.height);
 
   const handleClick = (event: MouseEvent<HTMLDivElement>) => {
     if (!onPlacementClick) return;
-    const container = containerRef.current;
+    const container = frameRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
     const xRatio = (event.clientX - rect.left) / rect.width;
@@ -232,18 +308,45 @@ export function AssemblyProcedureImageWithMarkers({
     onPlacementClick(xRatio, yRatio);
   };
 
+  if (!fitToParent) {
+    return (
+      <div className={clsx('relative inline-block max-h-full max-w-full', className)} ref={frameRef} onClick={handleClick}>
+        {imageContent}
+        <AssemblyMarkerOverlay
+          bolts={bolts}
+          checkItems={checkItems}
+          selectedBoltId={selectedBoltId}
+          selectedCheckItemId={selectedCheckItemId}
+          onSelectBolt={onSelectBolt}
+          onSelectCheckItem={onSelectCheckItem}
+          onToggleCheckItem={onToggleCheckItem}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className={clsx('relative inline-block max-h-full max-w-full', className)} ref={containerRef} onClick={handleClick}>
-      {imageContent}
-      <AssemblyMarkerOverlay
-        bolts={bolts}
-        checkItems={checkItems}
-        selectedBoltId={selectedBoltId}
-        selectedCheckItemId={selectedCheckItemId}
-        onSelectBolt={onSelectBolt}
-        onSelectCheckItem={onSelectCheckItem}
-        onToggleCheckItem={onToggleCheckItem}
-      />
+    <div
+      ref={viewportRef}
+      className={clsx('flex h-full min-h-0 w-full items-center justify-center overflow-hidden', className)}
+    >
+      <div
+        ref={frameRef}
+        className="relative shrink-0 [&>img]:h-full [&>img]:w-full [&>img]:object-contain [&>div]:h-full [&>div]:w-full"
+        style={fitted.width > 0 ? { width: fitted.width, height: fitted.height } : { maxWidth: '100%', maxHeight: '100%' }}
+        onClick={handleClick}
+      >
+        {imageContent}
+        <AssemblyMarkerOverlay
+          bolts={bolts}
+          checkItems={checkItems}
+          selectedBoltId={selectedBoltId}
+          selectedCheckItemId={selectedCheckItemId}
+          onSelectBolt={onSelectBolt}
+          onSelectCheckItem={onSelectCheckItem}
+          onToggleCheckItem={onToggleCheckItem}
+        />
+      </div>
     </div>
   );
 }
