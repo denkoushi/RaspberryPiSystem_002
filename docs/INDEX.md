@@ -15,7 +15,7 @@
 ### 最新アップデート（2026-07-09 · 組立トップ 3ペイン表形式 · Pi5+StoneBase 反映済）
 
 - **組立トップ左列をカード→表へ**: 登録済みロット（グループ行＋シリアル行）/ 仕掛中（進捗バー）/ 完了。Web only · HEAD **`a78a36d5`** · Detach **`20260709-145104-6472`** / **`20260709-145454-28187`** · Phase12 **45/0/0**。**正本**: [Plan](./plans/kiosk-assembly-home-table-layout.md) · [ADR Decision 6](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](./design-previews/kiosk-assembly-home-table-layout-preview.html) · [Deployment](./guides/deployment.md#kiosk-assembly-home-table-layout-2026-07-09)
-- **組立トップ密度改善（3列・開閉・行高0.75）**: 左 `xl:grid-cols-3` · 既定閉じ · 操作は `min-h-11` · Web only · 未コミット/未デプロイ。**正本**: [Plan](./plans/kiosk-assembly-home-dense-3col.md) · [ADR Decision 7](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](./design-previews/kiosk-assembly-home-table-dense-3col-preview.html)
+- **組立トップ密度改善（3列・開閉・行高0.75）**: 左 `xl:grid-cols-3` · 既定閉じ · 操作は `min-h-11` · Web only · HEAD **`726cb100`** · Detach **`20260709-160731-25664`** / **`20260709-161147-1963`** · Phase12 **45/0/0**。**正本**: [Plan](./plans/kiosk-assembly-home-dense-3col.md) · [ADR Decision 7](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](./design-previews/kiosk-assembly-home-table-dense-3col-preview.html) · [Deployment](./guides/deployment.md#kiosk-assembly-home-dense-3col-2026-07-09)
 
 ### 最新アップデート（2026-07-09 · 組立作業画面オペレータ向けレイアウト + contain-fit · 本番反映済 · 実機OK）
 
