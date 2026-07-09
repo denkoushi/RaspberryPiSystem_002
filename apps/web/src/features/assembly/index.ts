@@ -8,6 +8,7 @@ export * from './AssemblyProcedureLibrarySection';
 export * from './AssemblyProcedureRenameModal';
 export * from './AssemblyProcedureUploadModal';
 export * from './AssemblyWipPane';
+export * from './AssemblyWorkSessionHeader';
 export * from './AssemblyTemplateHistoryDialog';
 export * from './AssemblyTemplateLibraryTable';
 export * from './assemblyRoutes';

@@ -12,16 +12,15 @@ const mockRecordAssemblyTorque = vi.fn();
 const mockAdvanceAssemblyArea = vi.fn();
 const mockRestartAssemblyArea = vi.fn();
 const mockCompleteAssemblyWorkSession = vi.fn();
-const mockDownloadAssemblyWorkSessionXlsx = vi.fn();
 
 vi.mock('../../api/client', () => ({
   getAssemblyWorkSession: (...args: unknown[]) => mockGetAssemblyWorkSession(...args),
   getAssemblyWorkSessionProcedureSequence: (...args: unknown[]) => mockGetProcedureSequence(...args),
   recordAssemblyTorque: (...args: unknown[]) => mockRecordAssemblyTorque(...args),
+  recordAssemblyCheck: vi.fn(),
   advanceAssemblyArea: (...args: unknown[]) => mockAdvanceAssemblyArea(...args),
   restartAssemblyArea: (...args: unknown[]) => mockRestartAssemblyArea(...args),
   completeAssemblyWorkSession: (...args: unknown[]) => mockCompleteAssemblyWorkSession(...args),
-  downloadAssemblyWorkSessionXlsx: (...args: unknown[]) => mockDownloadAssemblyWorkSessionXlsx(...args),
   resolveKioskDocumentPageImageUrl: (path: string) => path
 }));
 
@@ -158,15 +157,29 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     mockAdvanceAssemblyArea.mockReset();
     mockRestartAssemblyArea.mockReset();
     mockCompleteAssemblyWorkSession.mockReset();
-    mockDownloadAssemblyWorkSessionXlsx.mockReset();
     mockGetAssemblyWorkSession.mockResolvedValue(session);
     mockGetProcedureSequence.mockResolvedValue(configuredSequence);
+  });
+
+  it('renders operator header without template or excel actions', async () => {
+    renderPage();
+
+    expect(await screen.findByRole('heading', { name: '組立作業' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '組立トップ' })).toHaveAttribute('href', '/kiosk/assembly');
+    expect(screen.queryByRole('link', { name: 'テンプレ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Excel' })).not.toBeInTheDocument();
+    expect(screen.queryByText('要領書 / ページ送り')).not.toBeInTheDocument();
+    // sequence 解決後にモード文言が「要領書」へ切り替わる（「要領書を確認中」との部分一致を避ける）
+    await waitFor(() => {
+      expect(screen.getByText((_, element) => element?.tagName === 'SPAN' && element.textContent === '要領書')).toBeInTheDocument();
+    });
+    expect(screen.getAllByText('BOLT-1').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders configured PDF procedure sequence with page navigation', async () => {
     renderPage();
 
-    expect(await screen.findByText('要領書 / ページ送り')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '組立作業' })).toBeInTheDocument();
     expect(screen.getByText('X軸')).toBeInTheDocument();
     expect(await screen.findByText(/1\/2ページ/, undefined, { timeout: 5000 })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '次頁' }));
@@ -185,5 +198,6 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
     await waitFor(() => expect(mockGetProcedureSequence).toHaveBeenCalledWith('session-1'));
     expect(await screen.findByText('fallback procedure canvas')).toBeInTheDocument();
+    expect(await screen.findByText('手順書')).toBeInTheDocument();
   });
 });
