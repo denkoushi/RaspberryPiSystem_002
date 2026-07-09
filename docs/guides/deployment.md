@@ -2,13 +2,27 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-07-08
+last-verified: 2026-07-09
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-07-09 · **検査図面 作成/改版レイアウト修正（toolbar shrink-0 + aside overflow-hidden）** · **Web only** · **Pi5 + Pi4×5 反映済 / Pi3 対象外**） {#inspection-drawing-create-layout-regression-2026-07-09}
+
+- **変更概要（正本）**: [KB-399](../knowledge-base/KB-399-inspection-drawing-create-layout-regression.md) · HEAD **`4f9a7025`** · fix **`6a265d0e`** / **`2432b4fd`**。**API / DB / Prisma migration 変更なし**。
+- **本番デプロイ（実績）**:
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260709-104602-7562`** | success · `failed=0` · web 再ビルド · health ok |
+| `raspi4-kensaku-stonebase01` | **`20260709-105025-4697`** | success · `failed=0` · `isMaintenance:false` · 実機OK |
+| `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01` | **`20260709-105823-5556`** | success · 4台とも `failed=0` / `unreachable=0` · すべて `isMaintenance:false` |
+
+- **対象外**: `raspberrypi3`（サイネージ）スキップ。
+- **実機（目視）**: 2026-07-09 ユーザー確認OK（StoneBase01）。未完了なし。
 
 ### 補足（2026-07-08 · **検査図面 工程変更/品番サジェスト/ツールバー右寄せ + 組立トップ 製番検索高速化/指示数ロット数** · **API + Web + migration** · **Pi5 + Pi4×5 + Pi3 反映済**） {#kiosk-inspection-drawing-process-change-assembly-start-speedup-2026-07-08}
 
