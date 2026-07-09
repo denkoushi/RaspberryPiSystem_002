@@ -55,6 +55,8 @@ export {
   type InspectionDrawingLibraryProcessFilter
 } from './InspectionDrawingLibraryFilterBar';
 export { InspectionDrawingLibraryTemplateTable } from './InspectionDrawingLibraryTemplateTable';
+export { InspectionDrawingDigitTenkey } from './InspectionDrawingDigitTenkey';
+export { digitsOf, matchesDigitQuery } from './inspectionDrawingDigitQuery';
 export {
   InspectionDrawingResourceCdSelect,
   type InspectionDrawingResourceCdSelectOption,

@@ -96,7 +96,8 @@ export const templateItemSchema = z.object({
   markerYRatio: z.number().min(0).max(1).optional().nullable(),
   nominalValue: z.number().optional().nullable(),
   lowerLimit: z.number().optional().nullable(),
-  upperLimit: z.number().optional().nullable()
+  upperLimit: z.number().optional().nullable(),
+  depthMode: z.enum(['measured', 'through']).optional().default('measured')
 });
 
 export const templateScopeSchema = z.enum(['three_key', 'fhincd_resource', 'fhinmei_only']);
@@ -515,7 +516,9 @@ export function serializeTemplateItem(item: {
   nominalValue?: unknown;
   lowerLimit?: unknown;
   upperLimit?: unknown;
+  depthMode?: 'MEASURED' | 'THROUGH' | string | null;
 }) {
+  const depthModeRaw = String(item.depthMode ?? 'MEASURED').toUpperCase();
   return {
     id: item.id,
     sortOrder: item.sortOrder,
@@ -530,7 +533,8 @@ export function serializeTemplateItem(item: {
     markerYRatio: decimalToString(item.markerYRatio),
     nominalValue: decimalToString(item.nominalValue),
     lowerLimit: decimalToString(item.lowerLimit),
-    upperLimit: decimalToString(item.upperLimit)
+    upperLimit: decimalToString(item.upperLimit),
+    depthMode: depthModeRaw === 'THROUGH' ? 'through' : 'measured'
   };
 }
 

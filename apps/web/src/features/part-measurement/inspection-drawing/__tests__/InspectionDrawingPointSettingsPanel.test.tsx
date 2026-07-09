@@ -67,11 +67,34 @@ describe('InspectionDrawingPointSettingsPanel', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'この点を削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '一点削除' }));
     fireEvent.click(screen.getByRole('button', { name: '全削除' }));
 
     expect(onRemove).toHaveBeenCalledTimes(1);
     expect(onRemoveAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits the supplement section title while keeping face and thread controls', () => {
+    render(<InspectionDrawingPointSettingsPanel point={point} onChange={vi.fn()} />);
+
+    expect(screen.queryByText('補足')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('面')).toBeInTheDocument();
+    expect(screen.getByLabelText('呼び径')).toBeInTheDocument();
+  });
+
+  it('shows depth mode toggle for ネジ穴深さ and locks tolerances when through', () => {
+    const onChange = vi.fn();
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, name: 'ネジ穴深さ', depthMode: 'through' }}
+        onChange={onChange}
+      />
+    );
+
+    expect(screen.getByRole('group', { name: '通し切替' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '通し' })).toBeInTheDocument();
+    expect(screen.getByLabelText('基準値')).toBeDisabled();
+    expect(screen.queryByLabelText('上限公差')).not.toBeInTheDocument();
   });
 
   it('renders OCR candidate chips and applies selected value', () => {
@@ -378,7 +401,7 @@ describe('InspectionDrawingPointSettingsPanel', () => {
 
     fireEvent.change(screen.getByLabelText('名称'), { target: { value: '穴ピッチ' } });
 
-    expect(onChange).toHaveBeenCalledWith({ name: '穴ピッチ' });
+    expect(onChange).toHaveBeenCalledWith({ name: '穴ピッチ', depthMode: 'measured' });
   });
 
   it('disables supplement controls when disabled', () => {

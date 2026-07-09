@@ -27,6 +27,7 @@
 
 ### 最新アップデート（2026-07-08 · 検査図面 工程変更/品番サジェスト/ボタン右寄せ + 組立トップ 製番検索高速化/指示数ロット数 · 本番反映済）
 
+- **検査図面ライブラリ UX + 通し**: 数字テンキー絞り込み・無効ボタン・右ペイン密度・深さ通し（depthMode）。**正本**: [Plan](./plans/kiosk-inspection-drawing-library-ux-and-depth-through.md) · [ADR](./decisions/ADR-20260709-inspection-drawing-depth-through-mode.md) · [Preview テンキー](./design-previews/kiosk-inspection-drawing-library-retire-and-keypad-preview.html) · [Preview 通し](./design-previews/kiosk-inspection-drawing-depth-through-mode-preview.html)
 - **検査図面と組立トップの改修**: 工程（切削/研削）の系譜一括変更API、品番の生産日程サジェスト、ツールバー右寄せ、製番候補検索の winner 条件除去+式インデックス、ロット数を指示数最頻値（実績フォールバック付き）へ変更。**正本**: [ADR](./decisions/ADR-20260708-kiosk-inspection-drawing-and-assembly-start-improvements.md) · [Deployment](./guides/deployment.md#kiosk-inspection-drawing-process-change-assembly-start-speedup-2026-07-08)
 
 ### 計画・設計（2026-07-08 · 組立統合ワークフロー Phase 1 · schema + 設計正本 · 未デプロイ）

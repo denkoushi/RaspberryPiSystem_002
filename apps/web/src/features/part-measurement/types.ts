@@ -35,6 +35,8 @@ export type PartMeasurementTemplateItemDto = {
   nominalValue: string | null;
   lowerLimit: string | null;
   upperLimit: string | null;
+  /** measured | through（未指定は measured） */
+  depthMode?: 'measured' | 'through';
 };
 
 /** 図面1枚。FIHNCD に紐づけない再利用単位。 */

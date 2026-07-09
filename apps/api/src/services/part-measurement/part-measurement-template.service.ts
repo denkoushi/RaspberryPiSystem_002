@@ -45,6 +45,7 @@ export type TemplateItemInput = {
   nominalValue?: number | null;
   lowerLimit?: number | null;
   upperLimit?: number | null;
+  depthMode?: 'measured' | 'through';
 };
 
 function optionalDecimal(value: number | null | undefined): Prisma.Decimal | null {
@@ -163,6 +164,7 @@ function copyTemplateItemsFromDb(
     nominalValue?: unknown;
     lowerLimit?: unknown;
     upperLimit?: unknown;
+    depthMode?: 'MEASURED' | 'THROUGH' | string | null;
   }>
 ): TemplateItemInput[] {
   return items.map((item) => ({
@@ -178,7 +180,8 @@ function copyTemplateItemsFromDb(
     markerYRatio: item.markerYRatio != null ? Number(item.markerYRatio) : null,
     nominalValue: item.nominalValue != null ? Number(item.nominalValue) : null,
     lowerLimit: item.lowerLimit != null ? Number(item.lowerLimit) : null,
-    upperLimit: item.upperLimit != null ? Number(item.upperLimit) : null
+    upperLimit: item.upperLimit != null ? Number(item.upperLimit) : null,
+    depthMode: String(item.depthMode ?? 'MEASURED').toUpperCase() === 'THROUGH' ? 'through' : 'measured'
   }));
 }
 
@@ -255,7 +258,8 @@ async function insertNextTemplateVersionInTransaction(
             markerYRatio: yRatio != null ? optionalDecimal(yRatio) : null,
             nominalValue: optionalDecimal(item.nominalValue),
             lowerLimit: optionalDecimal(item.lowerLimit),
-            upperLimit: optionalDecimal(item.upperLimit)
+            upperLimit: optionalDecimal(item.upperLimit),
+            depthMode: item.depthMode === 'through' ? 'THROUGH' : 'MEASURED'
           };
         })
       }

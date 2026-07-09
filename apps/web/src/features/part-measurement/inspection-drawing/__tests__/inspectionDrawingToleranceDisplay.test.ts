@@ -54,4 +54,18 @@ describe('inspectionDrawingToleranceDisplay', () => {
       )
     ).toBe('合格範囲 9.95〜10.05（基準値未設定）');
   });
+
+  it('formats through depth mode as 通し', () => {
+    expect(
+      formatInspectionDrawingToleranceDisplay(
+        pointFixture({
+          name: 'ネジ穴深さ',
+          depthMode: 'through',
+          nominalRaw: '',
+          lowerToleranceRaw: '',
+          upperToleranceRaw: ''
+        })
+      )
+    ).toBe('通し');
+  });
 });

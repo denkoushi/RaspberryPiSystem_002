@@ -1993,6 +1993,12 @@ enum PartMeasurementToleranceKind {
   GEOMETRIC
 }
 
+/// 深さ系測定点の判定モード（通し穴は数値公差をスキップ）
+enum PartMeasurementDepthMode {
+  MEASURED
+  THROUGH
+}
+
 /// 部品測定テンプレの登録スコープ（候補抽出・キオスク表示の基準）
 enum PartMeasurementTemplateScope {
   THREE_KEY
@@ -2208,6 +2214,8 @@ model PartMeasurementTemplateItem {
   lowerLimit       Decimal?                  @db.Decimal(18, 6)
   /// 図面中心UI: 上限（任意）
   upperLimit       Decimal?                  @db.Decimal(18, 6)
+  /// 深さ系: MEASURED=数値公差 / THROUGH=通し（判定スキップ、limits は 0/0 sentinel）
+  depthMode        PartMeasurementDepthMode  @default(MEASURED)
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
   template         PartMeasurementTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)

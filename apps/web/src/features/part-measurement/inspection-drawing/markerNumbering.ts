@@ -1,4 +1,9 @@
 import {
+  INSPECTION_DRAWING_DEPTH_MODE_MEASURED,
+  INSPECTION_DRAWING_DEPTH_MODE_THROUGH,
+  INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
+  isInspectionDrawingThroughDepthMode,
+  normalizeInspectionDrawingDepthMode,
   resolveInspectionDrawingToleranceKindForLabel,
   type InspectionDrawingMeasurementLabelSetting
 } from '@raspi-system/shared-types';
@@ -46,6 +51,7 @@ export function createInspectionDrawingPoint(
     threadNominal: '',
     surfaceSide: '',
     supplementText: '',
+    depthMode: INSPECTION_DRAWING_DEPTH_MODE_MEASURED,
     markerNo,
     xRatio,
     yRatio,
@@ -63,11 +69,20 @@ export function templateItemToDrawingPoint(
 ): InspectionDrawingPoint {
   const fromMarker = parseDisplayMarkerAsMarkerNo(item.displayMarker);
   const markerNo = fromMarker ?? item.sortOrder + 1;
-  const toleranceFields = dbAbsoluteBoundsToToleranceRawFields({
-    nominalValue: parseOptionalNumber(item.nominalValue),
-    lowerLimit: parseOptionalNumber(item.lowerLimit),
-    upperLimit: parseOptionalNumber(item.upperLimit)
-  });
+  const depthMode = normalizeInspectionDrawingDepthMode(item.depthMode);
+  const isThrough = depthMode === INSPECTION_DRAWING_DEPTH_MODE_THROUGH;
+  const toleranceFields = isThrough
+    ? {
+        nominalRaw: '',
+        upperToleranceRaw: '',
+        lowerToleranceRaw: '',
+        legacyAbsoluteBounds: undefined
+      }
+    : dbAbsoluteBoundsToToleranceRawFields({
+        nominalValue: parseOptionalNumber(item.nominalValue),
+        lowerLimit: parseOptionalNumber(item.lowerLimit),
+        upperLimit: parseOptionalNumber(item.upperLimit)
+      });
   const { legacyAbsoluteBounds, ...raw } = toleranceFields;
   const supplement = parseInspectionDrawingMeasurementPointSupplement({
     measurementLabel: item.measurementLabel,
@@ -77,6 +92,7 @@ export function templateItemToDrawingPoint(
     id: item.id,
     name: item.measurementLabel,
     ...supplement,
+    depthMode,
     markerNo,
     xRatio: parseOptionalNumber(item.markerXRatio) ?? 0,
     yRatio: parseOptionalNumber(item.markerYRatio) ?? 0,
@@ -174,6 +190,14 @@ export function resolvePointToleranceBoundsForSave(
   pt: InspectionDrawingPoint,
   options: InspectionDrawingPointToleranceOptions = {}
 ): ResolvedPointToleranceBounds | { error: string } {
+  if (isInspectionDrawingThroughDepthMode(pt.depthMode)) {
+    return {
+      kind: 'absolute',
+      nominal: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
+      lowerLimit: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
+      upperLimit: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT
+    };
+  }
   if (pt.legacyAbsoluteBounds && !toleranceFieldsEdited(pt)) {
     if (!pt.nominalRaw.trim()) {
       return {
@@ -236,9 +260,13 @@ export function drawingPointToTemplateItemInput(
   nominalValue: number | null;
   lowerLimit: number;
   upperLimit: number;
+  depthMode: 'measured' | 'through';
 } {
   const label = pt.name.trim() || `測定点${pt.markerNo}`;
   const measurementPoint = buildInspectionDrawingMeasurementPoint(label, pt);
+  const depthMode = isInspectionDrawingThroughDepthMode(pt.depthMode)
+    ? INSPECTION_DRAWING_DEPTH_MODE_THROUGH
+    : INSPECTION_DRAWING_DEPTH_MODE_MEASURED;
   const bounds = resolvePointToleranceBoundsForSave(pt, options);
   if ('error' in bounds) {
     throw new Error(bounds.error);
@@ -260,6 +288,25 @@ export function drawingPointToTemplateItemInput(
     Math.max(pt.decimalPlaces ?? 0, inferredDp)
   );
 
+  if (depthMode === INSPECTION_DRAWING_DEPTH_MODE_THROUGH) {
+    return {
+      sortOrder,
+      datumSurface: '—',
+      measurementPoint,
+      measurementLabel: label,
+      displayMarker: String(pt.markerNo),
+      unit: null,
+      allowNegative: true,
+      decimalPlaces,
+      markerXRatio: pt.xRatio,
+      markerYRatio: pt.yRatio,
+      nominalValue: null,
+      lowerLimit: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
+      upperLimit: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
+      depthMode
+    };
+  }
+
   if (bounds.kind === 'legacyAbsoluteOnly') {
     return {
       sortOrder,
@@ -274,7 +321,8 @@ export function drawingPointToTemplateItemInput(
       markerYRatio: pt.yRatio,
       nominalValue: null,
       lowerLimit: bounds.lowerLimit,
-      upperLimit: bounds.upperLimit
+      upperLimit: bounds.upperLimit,
+      depthMode
     };
   }
   return {
@@ -290,7 +338,8 @@ export function drawingPointToTemplateItemInput(
     markerYRatio: pt.yRatio,
     nominalValue: bounds.nominal,
     lowerLimit: bounds.lowerLimit,
-    upperLimit: bounds.upperLimit
+    upperLimit: bounds.upperLimit,
+    depthMode
   };
 }
 
@@ -298,6 +347,13 @@ export function toleranceBoundsFromPoint(
   pt: InspectionDrawingPoint,
   options: InspectionDrawingPointToleranceOptions = {}
 ): ParsedToleranceBounds | { error: string } {
+  if (isInspectionDrawingThroughDepthMode(pt.depthMode)) {
+    return {
+      nominal: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
+      lowerLimit: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
+      upperLimit: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT
+    };
+  }
   if (pt.legacyAbsoluteBounds && !pt.nominalRaw.trim() && !toleranceFieldsEdited(pt)) {
     const { lowerLimit, upperLimit } = pt.legacyAbsoluteBounds;
     return {

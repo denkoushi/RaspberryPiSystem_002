@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>検査図面ライブラリ — 数字テンキー絞り込み + 無効（プレビュー v2）</title>
+  <style>
+    :root {
+      --bg: #1e293b;
+      --panel: rgba(2, 6, 23, 0.45);
+      --panel-soft: rgba(15, 23, 42, 0.7);
+      --line: rgba(255, 255, 255, 0.15);
+      --line-soft: rgba(255, 255, 255, 0.1);
+      --text: #f8fafc;
+      --muted: rgba(248, 250, 252, 0.6);
+      --weak: rgba(248, 250, 252, 0.45);
+      --cyan: #a5f3fc;
+      --lime: #d9f99d;
+      --amber: #fde68a;
+      --rose: #fda4af;
+      --btn-primary: #2563eb;
+      --font: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+      /* 現行メニューバー外寸: p-2(8) + 内容 min-h-11(44) ≈ 60px */
+      --menubar-pad: 8px;
+      --menubar-inner-h: 44px;
+      --action-h: 30.8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+
+    body {
+      font-family: var(--font);
+      background: #0b1220;
+      color: var(--text);
+      min-height: 100dvh;
+      padding: 16px;
+    }
+
+    .page-meta { max-width: 1680px; margin: 0 auto 12px; }
+    .page-meta h1 { font-size: 1.1rem; font-weight: 700; }
+    .page-meta p {
+      margin-top: 6px;
+      font-size: 0.84rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .chips {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 0.72rem;
+      color: var(--lime);
+      background: rgba(217, 249, 157, 0.08);
+    }
+
+    .chip.note { color: var(--cyan); background: rgba(165, 243, 252, 0.08); }
+    .chip.warn { color: var(--amber); background: rgba(253, 230, 138, 0.08); }
+
+    .compare {
+      max-width: 1680px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .frame-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .frame-label strong { font-size: 0.92rem; }
+    .frame-label span { font-size: 0.76rem; color: var(--weak); }
+
+    .kiosk {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      height: 760px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    /* ===== メニューバー: 現行外寸維持・改行禁止 ===== */
+    .topbar {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 8px;
+      height: calc(var(--menubar-pad) * 2 + var(--menubar-inner-h));
+      padding: var(--menubar-pad);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      overflow: hidden;
+    }
+
+    .topbar h2 {
+      flex: 0 0 auto;
+      font-size: 1.25rem;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .tenkey {
+      display: none;
+      flex: 1 1 auto;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      min-width: 0;
+      height: var(--menubar-inner-h);
+    }
+
+    .after .tenkey { display: flex; }
+
+    .tenkey button {
+      flex: 0 0 auto;
+      width: 34px;
+      height: 34px;
+      border-radius: 5px;
+      border: 1px solid var(--line);
+      background: #020617;
+      color: #fff;
+      font-size: 0.82rem;
+      font-weight: 800;
+      cursor: pointer;
+      font-family: inherit;
+      padding: 0;
+    }
+
+    .tenkey button:hover { background: #1e293b; }
+
+    .tenkey button.reset {
+      width: auto;
+      min-width: 44px;
+      padding: 0 8px;
+      border-color: rgba(253, 230, 138, 0.3);
+      color: var(--amber);
+      font-size: 0.68rem;
+    }
+
+    .tenkey button.active-digit {
+      outline: 2px solid rgba(103, 232, 249, 0.7);
+      background: #083344;
+    }
+
+    .topbar-right {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .ghost, .primary, .action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      font-weight: 700;
+      white-space: nowrap;
+      cursor: pointer;
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--text);
+      font-family: inherit;
+    }
+
+    .ghost {
+      height: var(--menubar-inner-h);
+      padding: 0 12px;
+      font-size: 1.02rem;
+    }
+
+    .primary {
+      height: var(--menubar-inner-h);
+      padding: 0 14px;
+      font-size: 1rem;
+      background: var(--btn-primary);
+      border-color: transparent;
+    }
+
+    .action {
+      min-height: 44px;
+      min-width: 1.5rem;
+      padding: 0 4px;
+      font-size: 0.75rem;
+      line-height: 1;
+    }
+
+    .action.primary-action {
+      background: var(--btn-primary);
+      border-color: transparent;
+    }
+
+    .action.retire {
+      color: var(--rose);
+      border-color: rgba(253, 164, 175, 0.35);
+    }
+
+    .after .action { min-height: var(--action-h); font-size: 0.68rem; }
+
+    .panes {
+      display: grid;
+      grid-template-columns: 31rem minmax(0, 1fr);
+      gap: 8px;
+      min-height: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .pane {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .pane-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .pane-head h3 { font-size: 1.05rem; font-weight: 700; }
+    .count { font-size: 0.82rem; font-weight: 700; color: var(--muted); }
+
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.6);
+    }
+
+    .filter-bar input, .filter-bar select {
+      height: 36px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #0f172a;
+      color: var(--text);
+      padding: 0 8px;
+      font-size: 0.82rem;
+      font-family: inherit;
+    }
+
+    .filter-bar input { width: 8.5rem; }
+    .filter-bar input.synced {
+      border-color: rgba(165, 243, 252, 0.45);
+    }
+
+    .scroll {
+      min-height: 0;
+      flex: 1;
+      overflow: auto;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: rgba(2, 6, 23, 0.4);
+      padding: 6px;
+    }
+
+    .visual-row, .tpl-card {
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.55);
+      margin-bottom: 6px;
+      padding: 8px;
+    }
+
+    .visual-row:last-child, .tpl-card:last-child { margin-bottom: 0; }
+
+    .visual-row {
+      display: grid;
+      grid-template-columns: 3.2rem 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .thumb {
+      width: 3.2rem;
+      height: 2.4rem;
+      border-radius: 4px;
+      background: linear-gradient(135deg, #334155, #0f172a);
+      border: 1px solid var(--line);
+    }
+
+    .name { font-size: 0.88rem; font-weight: 700; }
+    .sub { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
+    .tpl-main {
+      display: grid;
+      grid-template-columns: 1.4fr 0.9fr 0.7fr 0.45fr 0.7fr;
+      gap: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .tpl-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 3px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+      margin-left: auto;
+    }
+
+    .before .tpl-actions { width: 7rem; }
+    .after .tpl-actions { width: auto; max-width: 11.5rem; }
+
+    .chip-cd {
+      display: inline-flex;
+      padding: 1px 6px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      font-size: 0.68rem;
+      color: var(--cyan);
+      background: rgba(165, 243, 252, 0.08);
+    }
+
+    .empty {
+      padding: 24px 8px;
+      text-align: center;
+      color: var(--weak);
+      font-size: 0.88rem;
+    }
+
+    .mark {
+      color: var(--cyan);
+      font-weight: 800;
+    }
+
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      max-width: 22rem;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(253, 230, 138, 0.4);
+      background: rgba(69, 26, 3, 0.95);
+      color: var(--amber);
+      font-size: 0.85rem;
+      font-weight: 700;
+      display: none;
+      z-index: 20;
+    }
+
+    .toast.show { display: block; }
+
+    .dialog-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 30;
+      padding: 16px;
+    }
+
+    .dialog-backdrop.show { display: flex; }
+
+    .dialog {
+      width: min(28rem, 100%);
+      padding: 16px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #0f172a;
+    }
+
+    .dialog h4 { font-size: 1rem; margin-bottom: 8px; }
+    .dialog p { font-size: 0.88rem; color: var(--muted); line-height: 1.5; }
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .notes {
+      max-width: 1680px;
+      margin: 14px auto 0;
+      padding: 12px 14px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.55);
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .notes strong { color: var(--text); }
+    .notes ul { margin: 6px 0 0 1.1rem; }
+    .notes li + li { margin-top: 3px; }
+
+    @media (max-width: 1200px) {
+      .panes { grid-template-columns: 1fr; overflow: auto; }
+      .kiosk { height: auto; min-height: 760px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-meta">
+    <h1>検査図面ライブラリ — 数字テンキー絞り込み + 無効（v2）</h1>
+    <p>
+      メニューバー外寸は現行維持（高さ≈60px・<strong>改行禁止</strong>）。中央は<strong>数字テンキーのみ</strong>（入力欄・タイトル・説明文なし）。
+      部分一致例: <code>7161</code> → <code>7</code> で候補表示 → <code>1</code> でさらに絞り込み。行アクションに無効・高さ×0.7。
+    </p>
+    <div class="chips">
+      <span class="chip">数字のみ · 部分一致</span>
+      <span class="chip note">nowrap · 外寸維持</span>
+      <span class="chip">テンキーのみ（入力欄なし）</span>
+      <span class="chip warn">After 操作可</span>
+    </div>
+  </div>
+
+  <div class="compare">
+    <section>
+      <div class="frame-label">
+        <strong>Before</strong>
+        <span>上バー余白 · 無効なし · min-h-11</span>
+      </div>
+      <div class="kiosk before">
+        <div class="topbar">
+          <h2>検査図面</h2>
+          <div class="topbar-right">
+            <button type="button" class="ghost">部品測定へ</button>
+            <button type="button" class="primary">新規</button>
+          </div>
+        </div>
+        <div class="panes">
+          <section class="pane">
+            <div class="pane-head"><h3>図面ライブラリ</h3><span class="count">5件</span></div>
+            <div class="scroll">
+              <div class="visual-row"><div class="thumb"></div><div><div class="name">7161-A 本体</div><div class="sub">更新 07/08</div></div><button class="action" type="button">改名</button></div>
+              <div class="visual-row"><div class="thumb"></div><div><div class="name">7162 フランジ</div><div class="sub">更新 07/07</div></div><button class="action" type="button">改名</button></div>
+              <div class="visual-row"><div class="thumb"></div><div><div class="name">8100 カバー</div><div class="sub">更新 07/06</div></div><button class="action" type="button">改名</button></div>
+            </div>
+          </section>
+          <section class="pane">
+            <div class="pane-head"><h3>検査図面テンプレート</h3><span class="count">5件</span></div>
+            <div class="filter-bar">
+              <input placeholder="品番" readonly />
+              <input placeholder="図面名" readonly />
+              <select disabled><option>資源CD</option></select>
+            </div>
+            <div class="scroll">
+              <article class="tpl-card">
+                <div class="tpl-main"><span>7161-A</span><span>切削</span><span>R001</span><span>7点</span><span>07/08</span></div>
+                <div class="tpl-actions">
+                  <button class="action primary-action" type="button">編集</button>
+                  <button class="action" type="button">帳票</button>
+                  <button class="action" type="button">雛形</button>
+                  <button class="action" type="button">履歴</button>
+                </div>
+              </article>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="frame-label">
+        <strong>After（操作可）</strong>
+        <span>数字キー押下で両ペイン部分一致 · 無効は確認あり</span>
+      </div>
+      <div class="kiosk after">
+        <div class="topbar">
+          <h2>検査図面</h2>
+          <div class="tenkey" id="tenkey" role="group" aria-label="数字テンキー"></div>
+          <div class="topbar-right">
+            <button type="button" class="ghost">部品測定へ</button>
+            <button type="button" class="primary">新規</button>
+          </div>
+        </div>
+        <div class="panes">
+          <section class="pane">
+            <div class="pane-head">
+              <h3>図面ライブラリ</h3>
+              <span class="count"><span id="visualCount">5</span>件</span>
+            </div>
+            <div class="scroll" id="visualList"></div>
+          </section>
+          <section class="pane">
+            <div class="pane-head">
+              <h3>検査図面テンプレート</h3>
+              <span class="count"><span id="tplCount">5</span>件</span>
+            </div>
+            <div class="filter-bar">
+              <input placeholder="品番" readonly />
+              <input placeholder="図面名" readonly />
+              <select disabled><option>資源CD</option></select>
+            </div>
+            <div class="scroll" id="tplList"></div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="notes">
+    <strong>v2 合意ポイント</strong>
+    <ul>
+      <li>テンキーは <strong>0–9 + リセット</strong> のみ。入力欄・「品番プレフィックス」ラベル・説明文は置かない。</li>
+      <li>マッチは<strong>数字の部分一致</strong>（例: クエリ <code>71</code> → <code>7161</code> / <code>7170</code> にヒット。<code>startsWith</code> ではなく includes）。</li>
+      <li>メニューバーは <code>flex-wrap: nowrap</code>。現行と同じ高さ（pad 8 + 44）。</li>
+      <li>無効は既存 retire API。行ボタン高さ ×0.7。</li>
+    </ul>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+  <div id="dialog" class="dialog-backdrop" role="dialog" aria-modal="true">
+    <div class="dialog">
+      <h4>テンプレートを無効化しますか？</h4>
+      <p id="dialogBody">無効化すると既定の一覧から非表示になります。</p>
+      <div class="dialog-actions">
+        <button type="button" class="ghost" id="dialogCancel" style="height:40px;font-size:0.9rem">キャンセル</button>
+        <button type="button" class="primary" id="dialogConfirm" style="height:40px;background:#be123c">無効にする</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const visuals = [
+      { id: "v1", name: "7161-A 本体", digits: "7161", updated: "07/08" },
+      { id: "v2", name: "7162 フランジ", digits: "7162", updated: "07/07" },
+      { id: "v3", name: "7170 ブラケット", digits: "7170", updated: "07/07" },
+      { id: "v4", name: "8100 カバー", digits: "8100", updated: "07/06" },
+      { id: "v5", name: "M12-BASE", digits: "12", updated: "07/05" }
+    ];
+    let templates = [
+      { id: "t1", fhincd: "7161-A", digits: "7161", process: "切削", resource: "R001", items: 7, updated: "07/08", active: true },
+      { id: "t2", fhincd: "7162", digits: "7162", process: "研削", resource: "R002", items: 5, updated: "07/07", active: true },
+      { id: "t3", fhincd: "7170", digits: "7170", process: "切削", resource: "R003", items: 4, updated: "07/07", active: true },
+      { id: "t4", fhincd: "8100", digits: "8100", process: "切削", resource: "R001", items: 6, updated: "07/06", active: true },
+      { id: "t5", fhincd: "M12-BASE", digits: "12", process: "切削", resource: "R004", items: 9, updated: "07/05", active: true }
+    ];
+
+    let query = "";
+    let pendingRetireId = null;
+    const digitButtons = new Map();
+
+    const tenkey = document.getElementById("tenkey");
+    "7894561230".split("").forEach((d) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = d;
+      b.dataset.digit = d;
+      b.addEventListener("click", () => {
+        query += d;
+        render();
+      });
+      digitButtons.set(d, b);
+      tenkey.appendChild(b);
+    });
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "reset";
+    reset.textContent = "リセット";
+    reset.addEventListener("click", () => {
+      query = "";
+      render();
+    });
+    tenkey.appendChild(reset);
+
+    function digitsOf(text) {
+      return String(text).replace(/\D/g, "");
+    }
+
+    function matchDigits(haystackDigits) {
+      if (!query) return true;
+      return haystackDigits.includes(query);
+    }
+
+    function highlight(name, digits) {
+      if (!query) return escapeHtml(name);
+      const idx = digits.indexOf(query);
+      if (idx < 0) return escapeHtml(name);
+      // 表示名内の数字列を簡易ハイライト（最初の一致数字列）
+      const re = new RegExp(query);
+      return escapeHtml(name).replace(re, (m) => `<span class="mark">${m}</span>`);
+    }
+
+    function render() {
+      const vis = visuals.filter((v) => matchDigits(v.digits) || matchDigits(digitsOf(v.name)));
+      const tpls = templates.filter((t) => t.active && (matchDigits(t.digits) || matchDigits(digitsOf(t.fhincd))));
+
+      document.getElementById("visualCount").textContent = String(vis.length);
+      document.getElementById("tplCount").textContent = String(tpls.length);
+
+      const visualList = document.getElementById("visualList");
+      visualList.innerHTML = vis.length
+        ? vis.map((v) => `
+          <div class="visual-row">
+            <div class="thumb"></div>
+            <div><div class="name">${highlight(v.name, v.digits)}</div><div class="sub">更新 ${v.updated}</div></div>
+            <button class="action" type="button">改名</button>
+          </div>`).join("")
+        : `<p class="empty">条件に合う図面はありません。</p>`;
+
+      const tplList = document.getElementById("tplList");
+      tplList.innerHTML = tpls.length
+        ? tpls.map((t) => `
+          <article class="tpl-card">
+            <div class="tpl-main">
+              <span>${highlight(t.fhincd, t.digits)}</span>
+              <span>${escapeHtml(t.process)}</span>
+              <span><span class="chip-cd">${escapeHtml(t.resource)}</span></span>
+              <span>${t.items}点</span>
+              <span>${t.updated}</span>
+            </div>
+            <div class="tpl-actions">
+              <button class="action primary-action" type="button">編集</button>
+              <button class="action" type="button">帳票</button>
+              <button class="action" type="button">雛形</button>
+              <button class="action" type="button">履歴</button>
+              <button class="action retire" type="button" data-retire="${t.id}">無効</button>
+            </div>
+          </article>`).join("")
+        : `<p class="empty">${query ? "条件に合う検査図面はありません。" : "登録済みテンプレートはありません。"}</p>`;
+
+      tplList.querySelectorAll("[data-retire]").forEach((btn) => {
+        btn.addEventListener("click", () => openRetire(btn.getAttribute("data-retire")));
+      });
+    }
+
+    function openRetire(id) {
+      pendingRetireId = id;
+      const t = templates.find((x) => x.id === id);
+      document.getElementById("dialogBody").textContent =
+        `テンプレート「${t ? t.fhincd : id}」を無効化します。既定一覧から非表示になります。`;
+      document.getElementById("dialog").classList.add("show");
+    }
+
+    document.getElementById("dialogCancel").addEventListener("click", () => {
+      pendingRetireId = null;
+      document.getElementById("dialog").classList.remove("show");
+    });
+
+    document.getElementById("dialogConfirm").addEventListener("click", () => {
+      if (pendingRetireId) {
+        templates = templates.map((t) =>
+          t.id === pendingRetireId ? { ...t, active: false } : t
+        );
+        showToast(`無効化しました（プレビュー）: ${pendingRetireId}`);
+      }
+      pendingRetireId = null;
+      document.getElementById("dialog").classList.remove("show");
+      render();
+    });
+
+    function showToast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => el.classList.remove("show"), 2200);
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    render();
+  </script>
+</body>
+</html>
