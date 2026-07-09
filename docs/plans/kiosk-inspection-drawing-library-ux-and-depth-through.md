@@ -1,14 +1,16 @@
 ---
 title: Kiosk Inspection Drawing Library UX And Depth Through
 id: plan-kiosk-inspection-drawing-library-ux-and-depth-through
-status: active
+status: deployed-partial
 date: 2026-07-09
 branch: feat/kiosk-inspection-drawing-library-ux-and-depth-through
 source_of_truth: true
+validation: Pi5+StoneBase deploy Run 20260709-190355-23640 · verify-phase12 PASS 45 · migration 20260709120000 applied · PR #963
 related_docs:
   - ../design-previews/kiosk-inspection-drawing-library-retire-and-keypad-preview.html
   - ../design-previews/kiosk-inspection-drawing-depth-through-mode-preview.html
   - ../decisions/ADR-20260709-inspection-drawing-depth-through-mode.md
+  - ../guides/deployment.md#kiosk-inspection-drawing-library-ux-and-depth-through-2026-07-09
 ---
 
 # Kiosk Inspection Drawing Library UX And Depth Through
@@ -29,7 +31,10 @@ related_docs:
 ## Open Items
 
 - Visual list `limit: 40` may miss digit matches beyond the page; revisit API digitQuery later if needed
+- On-site touch verification on StoneBase01 (tenkey / retire / through save-reload)
+- Rollout to remaining Pi4 hosts (and Pi3 if needed) after on-site OK
 
 ## Local Notes JA
 
 - 現場語は「通し」。メニューバーは nowrap・外寸維持。テンキーに入力欄・タイトル・説明は置かない。
+- 2026-07-09: Pi5 + StoneBase へデプロイ済。目視タッチは未実施。
