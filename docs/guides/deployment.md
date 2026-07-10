@@ -12,19 +12,19 @@ update-frequency: medium
 
 ### 補足（2026-07-10 · **検査図面 全件数字検索 + 無効ON/OFF** · **API + Web + migration** · **Pi5 + StoneBase01 先行 / 他端末未反映**） {#inspection-drawing-server-digit-search-retire-mode-2026-07-10}
 
-- **変更概要（正本）**: [Plan](../plans/kiosk-inspection-drawing-server-digit-search-retire-mode.md) · ブランチ **`feat/inspection-drawing-server-digit-search-retire-mode`** · 機能/先行デプロイ HEAD **`5ae28450`**。上部テンキーを取得済み40件・品番のクライアント検索から、図面名ASCII数字派生列の全件サーバー検索へ変更。各ペイン40件上限と超過案内、履歴直後の `無効ON/OFF`（既定で行操作をDOM非表示）を追加。migration **`20260710120000_part_measurement_visual_template_search_digits`**。
-- **CI**: push CI [**`29066398307` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29066398307)。`lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` の5ジョブ成功。
+- **変更概要（正本）**: [Plan](../plans/kiosk-inspection-drawing-server-digit-search-retire-mode.md) · ブランチ **`feat/inspection-drawing-server-digit-search-retire-mode`** · 修正/先行デプロイ HEAD **`8b89e241`**。上部テンキーを図面名ASCII数字派生列の全件サーバー検索へ変更。行の「無効」は常時表示し、無効化済み項目は既定非表示、履歴直後の `無効ON/OFF` で表示を切り替える。migration **`20260710120000_part_measurement_visual_template_search_digits`**。
+- **CI**: 修正 push CI [**`29069173447` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29069173447)。`lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` の5ジョブ成功（初回CI `29066398307`も成功）。
 - **先行デプロイ（実績・1台ずつ）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/inspection-drawing-server-digit-search-retire-mode infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
 
 | ホスト | Detach Run ID | 結果 |
 |--------|---------------|------|
-| `raspberrypi5` | **`20260710-123031-4690`** | success · `ok=135 changed=4 failed=0` · Docker API/Web再構築 · migration/status/health成功 · HEAD **`5ae28450`** |
-| `raspi4-kensaku-stonebase01` | **`20260710-124213-28442`** | success · `ok=130 changed=11 failed=0` · kiosk-browser/status-agent再起動成功 · HEAD **`5ae28450`** |
+| `raspberrypi5` | **`20260710-134637-3940`** | success · `ok=135 changed=4 failed=0` · Docker API/Web再構築 · migration/status/health成功 · HEAD **`8b89e241`** |
+| `raspi4-kensaku-stonebase01` | **`20260710-135058-17648`** | success · `ok=130 changed=10 failed=0` · kiosk-browser/status-agent再起動成功 · HEAD **`8b89e241`** |
 
 - **対象外（今回）**: `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01` / `raspberrypi3` は未デプロイ。
 - **DB/API smoke**: migration適用済み。`PartMeasurementVisualTemplate` 23件の `searchDigits` drift **0**、CHECK制約・GIN索引存在。`digitQuery=7161` は図面 **18件** / テンプレート **15件**、内部 `searchDigits` 非公開、不正 `71A` は HTTP **400**。画面とhealthは HTTP **200**。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。StoneBase01は kiosk-browser/status-agent active、Firefox `_appRef=5ae28450`、Pi5:443へ2接続、heartbeat 16秒以内、NFC/barcode-agent Up。
-- **実機（画面）**: Wayland画面キャプチャで検査図面ライブラリの正常描画、図面名テンキー、テンプレート件数、履歴直後の `無効ON`、通常時に行の「無効」が非表示であることを確認。端末に入力自動化ツールが無いため、物理端末上のON/OFFタップは未実施（CI/コンポーネント/DEVプレビュー操作試験は合格）。
+- **実機（自動）**: 修正反映後 `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。Pi5 HEAD一致・health/検査図面HTTP **200**。StoneBase01 HEAD一致、kiosk-browser/status-agent active、Firefox 1プロセス、検査図面HTTP **200**、NFC/barcode-agent Up。
+- **実機（画面）**: 初回反映の実機確認で仕様解釈違い（行の「無効」が消える）を発見し、`8b89e241`で修正。修正後の物理タッチ確認は未実施。CI/コンポーネント試験では、無効ボタン常時表示・OFF時の無効項目非表示・ON時のみ表示・履歴との独立を確認済み。
 
 ### 補足（2026-07-10 · **RapidOCR 局所第2エンジン有効化** · **Ansible env のみ** · **Pi5 のみ**） {#inspection-drawing-ocr-rapidocr-enabled-2026-07-10}
 
