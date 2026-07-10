@@ -10,6 +10,7 @@
 | Loanの返却・取消 | 終端状態は一度だけ、返却と取消は排他 | CHECK制約 | 条件付き `updateMany` |
 | 写真持出 | 同一端末・同一NFCイベントは1件 | 端末ID＋冪等キーの一意制約 | fingerprint照合と敗者ファイル削除 |
 | 自己検査セッション | 同一セッションの更新順序 | PostgreSQL行ロック、CAS | mutation guard |
+| 組立作業セッション | 入力・工程進行・完了・取消の順序 | `AssemblyWorkSession` 行ロック | ロック後に最新詳細を再読込 |
 | 生産順序 | 同一親行・同一スロットの直列化 | 一意制約 | transaction-scoped advisory lock |
 | OCRジョブ | 1ジョブを1ワーカーだけが取得 | 行状態 | `FOR UPDATE SKIP LOCKED` |
 
