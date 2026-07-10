@@ -57,6 +57,7 @@ describe('useInspectionDrawingTemplateLibrary', () => {
         includeInactive: false,
         fhincd: undefined,
         visualName: undefined,
+        digitQuery: undefined,
         processGroup: undefined,
         resourceCd: undefined
       });
@@ -107,10 +108,28 @@ describe('useInspectionDrawingTemplateLibrary', () => {
       includeInactive: false,
       fhincd: undefined,
       visualName: undefined,
+      digitQuery: undefined,
       processGroup: undefined,
       resourceCd: undefined
     });
     expect(result.current.hasActiveFilters).toBe(false);
+  });
+
+  it('passes the shared menubar digit query and history flag to the server', async () => {
+    const { result } = renderHook(() => useInspectionDrawingTemplateLibrary({ digitQuery: '7161' }));
+
+    await waitFor(() =>
+      expect(listTemplatesMock).toHaveBeenCalledWith(
+        expect.objectContaining({ digitQuery: '7161', includeInactive: false })
+      )
+    );
+
+    act(() => result.current.setIncludeInactive(true));
+    await waitFor(() =>
+      expect(listTemplatesMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ digitQuery: '7161', includeInactive: true })
+      )
+    );
   });
 
   it('reloads the current filters without changing them', async () => {

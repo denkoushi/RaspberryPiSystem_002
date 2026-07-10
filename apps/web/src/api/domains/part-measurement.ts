@@ -292,6 +292,7 @@ export async function listKioskInspectionDrawingTemplates(
     resourceCd?: string;
     includeInactive?: boolean;
     visualName?: string;
+    digitQuery?: string;
   },
   clientKey?: string
 ): Promise<KioskInspectionDrawingTemplateSummaryDto[]> {
@@ -1059,6 +1060,7 @@ export async function listPartMeasurementVisualTemplates(
   params?: {
     includeInactive?: boolean;
     q?: string;
+    digitQuery?: string;
     limit?: number;
     sort?: 'name' | 'recentlyUpdated';
   },

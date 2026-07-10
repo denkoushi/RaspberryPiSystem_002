@@ -34,6 +34,9 @@ type Props = {
   onProcessFilterChange: (value: InspectionDrawingLibraryProcessFilter) => void;
   includeInactive: boolean;
   onIncludeInactiveChange: (value: boolean) => void;
+  retireModeEnabled: boolean;
+  onRetireModeChange: (value: boolean) => void;
+  retireModeDisabled?: boolean;
   onReload: () => void;
   onReset: () => void;
   resetDisabled: boolean;
@@ -57,6 +60,9 @@ export function InspectionDrawingLibraryFilterBar({
   onProcessFilterChange,
   includeInactive,
   onIncludeInactiveChange,
+  retireModeEnabled,
+  onRetireModeChange,
+  retireModeDisabled = false,
   onReload,
   onReset,
   resetDisabled,
@@ -131,6 +137,17 @@ export function InspectionDrawingLibraryFilterBar({
         />
         履歴
       </label>
+
+      <Button
+        type="button"
+        variant={retireModeEnabled ? 'danger' : 'ghostOnDark'}
+        aria-pressed={retireModeEnabled}
+        className="min-h-11 min-w-[5.2rem] shrink-0 !px-2 !py-0 text-sm"
+        disabled={retireModeDisabled}
+        onClick={() => onRetireModeChange(!retireModeEnabled)}
+      >
+        {retireModeEnabled ? '無効OFF' : '無効ON'}
+      </Button>
 
       <div className="ml-auto flex shrink-0 items-center justify-start gap-2">
         <button

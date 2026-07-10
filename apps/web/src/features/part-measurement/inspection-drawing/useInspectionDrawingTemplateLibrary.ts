@@ -35,7 +35,12 @@ function hasActiveTemplateFilters(filters: TemplateLibraryFilters): boolean {
   );
 }
 
-export function useInspectionDrawingTemplateLibrary() {
+type Options = {
+  /** 上部数字テンキーの debounce 済み検索値 */
+  digitQuery?: string;
+};
+
+export function useInspectionDrawingTemplateLibrary({ digitQuery = '' }: Options = {}) {
   const [filters, setFilters] = useState<TemplateLibraryFilters>(DEFAULT_FILTERS);
   const [debouncedTextFilters, setDebouncedTextFilters] = useState({
     fhincd: DEFAULT_FILTERS.fhincd,
@@ -71,6 +76,7 @@ export function useInspectionDrawingTemplateLibrary() {
       includeInactive: filters.includeInactive,
       fhincd: debouncedTextFilters.fhincd || undefined,
       visualName: debouncedTextFilters.visualName || undefined,
+      digitQuery: digitQuery || undefined,
       processGroup: filters.processFilter === 'all' ? undefined : filters.processFilter,
       resourceCd: filters.resourceCd || undefined
     })
@@ -92,6 +98,7 @@ export function useInspectionDrawingTemplateLibrary() {
   }, [
     debouncedTextFilters.fhincd,
     debouncedTextFilters.visualName,
+    digitQuery,
     filters.includeInactive,
     filters.processFilter,
     filters.resourceCd,

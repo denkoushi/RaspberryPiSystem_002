@@ -52,7 +52,8 @@ export function KioskInspectionDrawingVisualLibrarySection({
   const apiState = useInspectionDrawingVisualLibrary({
     clientKey,
     refreshToken,
-    enabled: !isPreview
+    enabled: !isPreview,
+    digitQuery
   });
 
   const previewDebouncedQuery = previewSearchQuery.trim();
@@ -66,10 +67,12 @@ export function KioskInspectionDrawingVisualLibrarySection({
   const searchQuery = isPreview ? previewSearchQuery : apiState.searchQuery;
   const setSearchQuery = isPreview ? setPreviewSearchQuery : apiState.setSearchQuery;
   const debouncedQuery = isPreview ? previewDebouncedQuery : apiState.debouncedQuery;
-  const baseVisuals = isPreview ? previewFilteredVisuals : apiState.visuals;
   const visuals = useMemo(
-    () => baseVisuals.filter((visual) => matchesDigitQuery(visual.name, digitQuery)),
-    [baseVisuals, digitQuery]
+    () =>
+      isPreview
+        ? previewFilteredVisuals.filter((visual) => matchesDigitQuery(visual.name, digitQuery))
+        : apiState.visuals,
+    [apiState.visuals, digitQuery, isPreview, previewFilteredVisuals]
   );
   const loading = isPreview ? false : apiState.loading;
   const error = isPreview ? null : apiState.error;
@@ -117,6 +120,11 @@ export function KioskInspectionDrawingVisualLibrarySection({
       </div>
 
       {error ? <p className="text-[0.98rem] font-semibold text-amber-200">{error}</p> : null}
+      {!isPreview && digitQuery.length > 0 && apiState.hasMore ? (
+        <p role="status" className="px-1 text-sm font-semibold text-amber-200">
+          一致する図面が40件を超えています。数字を追加して絞り込んでください。
+        </p>
+      ) : null}
 
       <div
         className="min-h-0 flex-1 overflow-auto rounded border border-white/10 bg-slate-950/40 p-1.5"

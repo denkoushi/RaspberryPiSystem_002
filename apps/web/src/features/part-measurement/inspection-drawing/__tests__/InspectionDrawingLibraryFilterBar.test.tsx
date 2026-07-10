@@ -19,6 +19,8 @@ function renderFilterBar(overrides: Partial<ComponentProps<typeof InspectionDraw
     onProcessFilterChange: vi.fn(),
     includeInactive: false,
     onIncludeInactiveChange: vi.fn(),
+    retireModeEnabled: false,
+    onRetireModeChange: vi.fn(),
     onReload: vi.fn(),
     onReset: vi.fn(),
     resetDisabled: true,
@@ -52,5 +54,24 @@ describe('InspectionDrawingLibraryFilterBar', () => {
 
     expect(screen.getByLabelText('資源CD').parentElement).toHaveClass('w-[19rem]');
     expect(screen.getByLabelText('資源CD').parentElement).not.toHaveClass('w-full');
+  });
+
+  it('renders a controlled retire mode toggle immediately after history', () => {
+    const props = renderFilterBar();
+    const history = screen.getByRole('checkbox').closest('label');
+    const toggle = screen.getByRole('button', { name: '無効ON' });
+
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(history?.nextElementSibling).toBe(toggle);
+    fireEvent.click(toggle);
+    expect(props.onRetireModeChange).toHaveBeenCalledWith(true);
+  });
+
+  it('shows the destructive OFF action while retire mode is enabled', () => {
+    renderFilterBar({ retireModeEnabled: true });
+
+    const toggle = screen.getByRole('button', { name: '無効OFF' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle).toHaveClass('bg-red-600');
   });
 });

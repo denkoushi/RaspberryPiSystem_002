@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { retirePartMeasurementTemplate } from '../../api/client';
@@ -20,7 +20,8 @@ import {
   kioskInspectionDrawingTemplateEditPath,
   kioskInspectionDrawingTemplatePrintPath,
   KIOSK_INSPECTION_DRAWING_CREATE_PATH,
-  matchesDigitQuery,
+  INSPECTION_DRAWING_VISUAL_LIBRARY_LIMIT,
+  INSPECTION_DRAWING_VISUAL_SEARCH_DEBOUNCE_MS,
   useInspectionDrawingResourceCdsByVisualId,
   useInspectionDrawingTemplateLibrary
 } from '../../features/part-measurement/inspection-drawing';
@@ -55,12 +56,22 @@ export function KioskInspectionDrawingLibraryPage() {
   const [visualLibraryRefreshToken, setVisualLibraryRefreshToken] = useState(0);
   const [resourceCdsMapRefreshToken, setResourceCdsMapRefreshToken] = useState(0);
   const [digitQuery, setDigitQuery] = useState('');
+  const [debouncedDigitQuery, setDebouncedDigitQuery] = useState('');
   const [retireBusy, setRetireBusy] = useState(false);
-  const templateLibrary = useInspectionDrawingTemplateLibrary();
+  const retireBusyRef = useRef(false);
+  const [retireModeEnabled, setRetireModeEnabled] = useState(false);
+  const templateLibrary = useInspectionDrawingTemplateLibrary({ digitQuery: debouncedDigitQuery });
   const resourceCdsByVisualId = useInspectionDrawingResourceCdsByVisualId(
     visualLibraryRefreshToken + resourceCdsMapRefreshToken
   );
   const { filters, templates } = templateLibrary;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedDigitQuery(digitQuery);
+    }, INSPECTION_DRAWING_VISUAL_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [digitQuery]);
 
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
@@ -91,13 +102,21 @@ export function KioskInspectionDrawingLibraryPage() {
     }
     return map;
   }, [templates]);
-  const visibleTemplateRows = useMemo(
+  const allVisibleTemplateRows = useMemo(
     () =>
       [...groupedTemplates.values()]
         .map((group) => pickLineageCardRepresentative(group))
-        .filter((row): row is KioskInspectionDrawingTemplateSummaryDto => row != null)
-        .filter((row) => matchesDigitQuery(row.fhincd, digitQuery)),
-    [digitQuery, groupedTemplates]
+        .filter((row): row is KioskInspectionDrawingTemplateSummaryDto => row != null),
+    [groupedTemplates]
+  );
+  const templateDigitSearchHasMore =
+    debouncedDigitQuery.length > 0 && allVisibleTemplateRows.length > INSPECTION_DRAWING_VISUAL_LIBRARY_LIMIT;
+  const visibleTemplateRows = useMemo(
+    () =>
+      debouncedDigitQuery.length > 0
+        ? allVisibleTemplateRows.slice(0, INSPECTION_DRAWING_VISUAL_LIBRARY_LIMIT)
+        : allVisibleTemplateRows,
+    [allVisibleTemplateRows, debouncedDigitQuery]
   );
   const activeHistoryTemplates = historyGroupKey ? groupedTemplates.get(historyGroupKey) ?? [] : [];
   const activeHistoryTitle =
@@ -118,6 +137,7 @@ export function KioskInspectionDrawingLibraryPage() {
 
   const handleRetireTemplate = useCallback(
     async (template: KioskInspectionDrawingTemplateSummaryDto) => {
+      if (retireBusyRef.current) return;
       if (
         !window.confirm(
           `品番「${template.fhincd}」資源「${template.resourceCd}」の有効版（v${template.version}）を無効化します。この資源の有効版のみ対象です。よろしいですか。`
@@ -125,6 +145,7 @@ export function KioskInspectionDrawingLibraryPage() {
       ) {
         return;
       }
+      retireBusyRef.current = true;
       setRetireBusy(true);
       setTemplateMessage(null);
       try {
@@ -142,6 +163,7 @@ export function KioskInspectionDrawingLibraryPage() {
             : 'テンプレートの無効化に失敗しました。';
         setTemplateMessage(message);
       } finally {
+        retireBusyRef.current = false;
         setRetireBusy(false);
       }
     },
@@ -187,7 +209,7 @@ export function KioskInspectionDrawingLibraryPage() {
           onVisualRenamed={handleVisualRenamed}
           resourceCdsByVisualId={resourceCdsByVisualId}
           resourceNameMap={resourceNameMap}
-          digitQuery={digitQuery}
+          digitQuery={debouncedDigitQuery}
         />
 
         <section
@@ -214,11 +236,20 @@ export function KioskInspectionDrawingLibraryPage() {
             onProcessFilterChange={templateLibrary.setProcessFilter}
             includeInactive={filters.includeInactive}
             onIncludeInactiveChange={templateLibrary.setIncludeInactive}
+            retireModeEnabled={retireModeEnabled}
+            onRetireModeChange={setRetireModeEnabled}
+            retireModeDisabled={retireBusy}
             onReload={templateLibrary.reload}
             onReset={templateLibrary.resetFilters}
             resetDisabled={!templateLibrary.hasActiveFilters}
-            busy={templateLibrary.loading}
+            busy={templateLibrary.loading || retireBusy}
           />
+
+          {templateDigitSearchHasMore ? (
+            <p role="status" className="px-1 text-sm font-semibold text-amber-200">
+              一致するテンプレートが40件を超えています。数字を追加して絞り込んでください。
+            </p>
+          ) : null}
 
           {templateLibrary.error ?? templateMessage ? (
             <p className="px-1 text-[1rem] font-semibold text-amber-200">{templateLibrary.error ?? templateMessage}</p>
@@ -244,7 +275,9 @@ export function KioskInspectionDrawingLibraryPage() {
               busy={templateLibrary.loading || retireBusy}
               onHistoryClick={setHistoryGroupKey}
               lineageGroupKey={lineageGroupKey}
-              onRetireClick={(template) => void handleRetireTemplate(template)}
+              onRetireClick={
+                retireModeEnabled ? (template) => void handleRetireTemplate(template) : undefined
+              }
               printPath={
                 INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED
                   ? kioskInspectionDrawingTemplatePrintPath
