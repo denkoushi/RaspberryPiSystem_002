@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
 
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { ApiError } from '../../lib/errors.js';
@@ -37,6 +38,8 @@ export type PartMeasurementVisualTemplateListParams = {
   includeInactive?: boolean;
   /** 図面名の部分一致（大文字小文字無視） */
   q?: string;
+  /** 図面名から抽出済みの ASCII 数字列の部分一致 */
+  digitQuery?: string;
   /** 未指定時は件数制限なし（管理画面の全件一覧互換） */
   limit?: number;
   /** 未指定時は name asc（既存ピッカー・管理画面互換） */
@@ -56,12 +59,16 @@ function resolveVisualTemplateListOrderBy(
 export class PartMeasurementVisualTemplateService {
   async list(params: PartMeasurementVisualTemplateListParams = {}) {
     const q = params.q?.trim();
+    const digitQuery = extractInspectionDrawingAsciiDigits(params.digitQuery);
     const where: Prisma.PartMeasurementVisualTemplateWhereInput = {};
     if (!params.includeInactive) {
       where.isActive = true;
     }
     if (q && q.length > 0) {
       where.name = { contains: q, mode: 'insensitive' };
+    }
+    if (digitQuery.length > 0) {
+      where.searchDigits = { contains: digitQuery };
     }
 
     const take =
@@ -105,6 +112,7 @@ export class PartMeasurementVisualTemplateService {
     return prisma.partMeasurementVisualTemplate.create({
       data: {
         name,
+        searchDigits: extractInspectionDrawingAsciiDigits(name),
         drawingImageRelativePath: path,
         isActive: true
       }
@@ -122,7 +130,10 @@ export class PartMeasurementVisualTemplateService {
     }
     return prisma.partMeasurementVisualTemplate.update({
       where: { id },
-      data: { name: normalizedName }
+      data: {
+        name: normalizedName,
+        searchDigits: extractInspectionDrawingAsciiDigits(normalizedName)
+      }
     });
   }
 

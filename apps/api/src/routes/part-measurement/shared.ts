@@ -269,9 +269,18 @@ export const listTemplatesQuerySchema = z.object({
   includeInactive: z.coerce.boolean().optional()
 });
 
+/** 上部数字テンキー用。空文字はサービス層で未指定として扱う。 */
+export const inspectionDrawingDigitQuerySchema = z
+  .string()
+  .max(200)
+  .regex(/^[0-9]*$/, 'digitQuery は ASCII 数字だけで指定してください')
+  .optional();
+
 export const kioskInspectionDrawingTemplatesQuerySchema = listTemplatesQuerySchema.extend({
   /** 図面名の部分一致（大文字小文字無視）。空文字は無視 */
-  visualName: z.string().max(200).optional()
+  visualName: z.string().max(200).optional(),
+  /** 図面名から抽出した ASCII 数字列の部分一致 */
+  digitQuery: inspectionDrawingDigitQuerySchema
 });
 
 export const changeInspectionDrawingTemplateProcessGroupBodySchema = z.object({

@@ -25,6 +25,7 @@ import {
 
 import {
   optionalQueryTrueOnlyBooleanSchema,
+  inspectionDrawingDigitQuerySchema,
   drawingOcrCandidateBodySchema,
   serializeVisualTemplate,
   serializeDrawingOcrStatus,
@@ -50,6 +51,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
           .object({
             includeInactive: optionalQueryTrueOnlyBooleanSchema,
             q: z.string().optional(),
+            digitQuery: inspectionDrawingDigitQuerySchema,
             limit: z.coerce.number().int().min(1).max(200).optional(),
             sort: z.enum(['name', 'recentlyUpdated']).optional()
           })
@@ -57,6 +59,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
         const list = await visualTemplateService.list({
           includeInactive: q.includeInactive === true,
           q: q.q,
+          digitQuery: q.digitQuery,
           limit: q.limit,
           sort: q.sort
         });

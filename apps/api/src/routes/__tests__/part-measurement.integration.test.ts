@@ -1,4 +1,5 @@
 import { execFile } from 'child_process';
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promisify } from 'util';
 
@@ -666,8 +667,62 @@ describe('part-measurement templates API', () => {
     ]);
   });
 
+  it('searches drawing-name digits across rows outside the latest visual page', async () => {
+    const oldTargetId = randomUUID();
+    const oldDate = new Date('2025-01-01T00:00:00.000Z');
+    await prisma.partMeasurementVisualTemplate.create({
+      data: {
+        id: oldTargetId,
+        name: '図面71-A61',
+        searchDigits: '7161',
+        drawingImageRelativePath: `/api/storage/part-measurement-drawings/${oldTargetId}.png`,
+        isActive: true,
+        createdAt: oldDate,
+        updatedAt: oldDate
+      }
+    });
+    await prisma.partMeasurementVisualTemplate.createMany({
+      data: Array.from({ length: 45 }, (_, index) => {
+        const id = randomUUID();
+        const name = `最近図面-${900000 + index}`;
+        return {
+          id,
+          name,
+          searchDigits: String(900000 + index),
+          drawingImageRelativePath: `/api/storage/part-measurement-drawings/${id}.png`,
+          isActive: true,
+          createdAt: new Date(`2026-01-01T00:${String(index).padStart(2, '0')}:00.000Z`),
+          updatedAt: new Date(`2026-01-01T00:${String(index).padStart(2, '0')}:00.000Z`)
+        };
+      })
+    });
+
+    const latest = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/visual-templates?sort=recentlyUpdated&limit=40',
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(latest.statusCode).toBe(200);
+    expect(latest.json().visualTemplates.some((row: { id: string }) => row.id === oldTargetId)).toBe(false);
+
+    const searched = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/visual-templates?sort=recentlyUpdated&limit=40&digitQuery=7161',
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(searched.statusCode).toBe(200);
+    expect(searched.json().visualTemplates.map((row: { id: string }) => row.id)).toEqual([oldTargetId]);
+
+    const invalid = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/visual-templates?digitQuery=71A61',
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(invalid.statusCode).toBe(400);
+  });
+
   it('creates visual template with PNG (ADMIN) and binds business template', async () => {
-    const { body, contentType } = buildMultipartPng('図面A', MIN_PNG);
+    const { body, contentType } = buildMultipartPng('図面71-A61', MIN_PNG);
     const up = await app.inject({
       method: 'POST',
       url: '/api/part-measurement/visual-templates',
@@ -678,6 +733,9 @@ describe('part-measurement templates API', () => {
     const vid = up.json().visualTemplate.id as string;
     expect(vid).toBeTruthy();
     expect(up.json().visualTemplate.drawingImageRelativePath).toMatch(/part-measurement-drawings/);
+    expect(
+      await prisma.partMeasurementVisualTemplate.findUnique({ where: { id: vid }, select: { searchDigits: true } })
+    ).toEqual({ searchDigits: '7161' });
 
     const fhincd = `VT-${Date.now()}`;
     const createRes = await app.inject({
@@ -738,12 +796,29 @@ describe('part-measurement templates API', () => {
 
     const visualNameList = await app.inject({
       method: 'GET',
-      url: `/api/part-measurement/inspection-drawing/templates?visualName=${encodeURIComponent('図面A')}`,
+      url: `/api/part-measurement/inspection-drawing/templates?visualName=${encodeURIComponent('図面71')}`,
       headers: createAuthHeader(viewerToken)
     });
     expect(visualNameList.statusCode).toBe(200);
     const visualFiltered = visualNameList.json().templates as Array<{ id: string }>;
     expect(visualFiltered.some((row) => row.id === tpl.id)).toBe(true);
+
+    const digitList = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/inspection-drawing/templates?digitQuery=7161',
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(digitList.statusCode).toBe(200);
+    expect((digitList.json().templates as Array<{ id: string }>).some((row) => row.id === tpl.id)).toBe(true);
+
+    const fhincdDigits = fhincd.replace(/[^0-9]/g, '');
+    const partNumberOnlyList = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/inspection-drawing/templates?digitQuery=${fhincdDigits}`,
+      headers: createAuthHeader(viewerToken)
+    });
+    expect(partNumberOnlyList.statusCode).toBe(200);
+    expect((partNumberOnlyList.json().templates as Array<{ id: string }>).some((row) => row.id === tpl.id)).toBe(false);
 
     const noMarkerRes = await app.inject({
       method: 'POST',
