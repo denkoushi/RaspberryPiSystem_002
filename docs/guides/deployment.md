@@ -10,6 +10,23 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-10 · **自主検査ドラフト自動保存・指差し・新規ロック** · **API + Web + migration** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#self-inspection-autosave-callout-template-lock-2026-07-10}
+
+- **変更概要（正本）**: [Plan](../plans/self-inspection-autosave-callout-template-lock.md) · [ADR callout](../decisions/ADR-20260710-inspection-drawing-callout-tip.md) · [ADR draft/confirm](../decisions/ADR-20260710-self-inspection-draft-confirmed.md) · ブランチ **`feat/self-inspection-autosave-callout-template-lock`** · HEAD **`65896edd`** · PR [#968](https://github.com/denkoushi/RaspberryPiSystem_002/pull/968)。任意 callout tip、`DRAFT`/`CONFIRMED` + NFC ゲート自動下書き、同一キー「新規」UI 封鎖。migration **`20260710140000_*`** / **`20260710150000_*`**。
+- **CI**: push/PR CI [**`29073102223` / `29073106643` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions)（lint-build-unit / api-db-and-infra / security-docker / e2e-smoke / e2e-tests）· CodeQL / Secret scan success。
+- **先行デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/self-inspection-autosave-callout-template-lock infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260710-152646-13004`** | success · `ok=135 changed=4 failed=0` · Docker API/Web再構築 · migration/status/health成功 · HEAD **`65896edd`** |
+| `raspi4-kensaku-stonebase01` | **`20260710-153441-29348`** | success · `ok=130 changed=10 failed=0` · kiosk-browser/status-agent再起動 · HEAD **`65896edd`** |
+| `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01` | **`20260710-153839-25381`** | success · 各 `failed=0 unreachable=0` · HEAD **`65896edd`** |
+
+- **対象外（今回）**: `raspberrypi3`（サイネージ）は未デプロイ。
+- **DB**: `_prisma_migrations` に `20260710140000_part_measurement_template_item_callout_tip` / `20260710150000_self_inspection_entry_persistence_status` 適用済み（2026-07-10 06:34 UTC）。`prisma migrate status` = Database schema is up to date。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **実機（画面）**: NFC ゲート・下書き復元・確定・指差し・新規ロックは物理タッチ確認待ち。
+
 ### 補足（2026-07-10 · **検査図面 全件数字検索 + 無効ON/OFF** · **API + Web + migration** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#inspection-drawing-server-digit-search-retire-mode-2026-07-10}
 
 - **変更概要（正本）**: [Plan](../plans/kiosk-inspection-drawing-server-digit-search-retire-mode.md) · ブランチ **`feat/inspection-drawing-server-digit-search-retire-mode`** · 修正/先行デプロイ HEAD **`8b89e241`**。上部テンキーを図面名ASCII数字派生列の全件サーバー検索へ変更。行の「無効」は常時表示し、無効化済み項目は既定非表示、履歴直後の `無効ON/OFF` で表示を切り替える。migration **`20260710120000_part_measurement_visual_template_search_digits`**。

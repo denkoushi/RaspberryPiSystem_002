@@ -1,21 +1,21 @@
 ---
 id: self-inspection-autosave-callout-template-lock
 title: Self-inspection autosave, inspection-drawing callout, template create lock
-status: in_progress
+status: deployed_pending_ui_validation
 date: 2026-07-10
 source_of_truth: true
 related_docs:
   - ../design-previews/kiosk-inspection-drawing-callout-pointer-preview.html
   - ../design-previews/kiosk-self-inspection-autosave-callout-preview.html
   - ../knowledge-base/KB-320-kiosk-part-measurement.md
+  - ../guides/deployment.md#self-inspection-autosave-callout-template-lock-2026-07-10
 related_code:
   - apps/web/src/features/part-measurement/inspection-drawing/
   - apps/web/src/pages/kiosk/KioskSelfInspectionSessionPage.tsx
   - apps/api/src/services/part-measurement/
 open_items:
-  - Phase1–3 implemented on stacked branch `feat/inspection-template-create-lock-ui` (includes callout + autosave + create-lock)
-  - PR / merge / production deploy pending explicit user request
-  - Production Pi validation pending
+  - Physical kiosk UI validation (NFC gate, draft reload, confirm, callout tips, create lock)
+  - Merge PR #968 to main after UI OK
 ---
 
 # Self-inspection autosave / callout / template create lock
