@@ -34,6 +34,7 @@ The inspection-drawing menubar digit keypad originally searched only the 40 visu
 - [x] (2026-07-10) User hardware validation identified the mode interpretation error: the row `無効` action must remain visible, while inactive items are hidden by default and included only during `無効ON`.
 - [x] (2026-07-10) Corrected production and DEV-preview state flow; focused regression tests passed 20/20, Web lint/build passed, and the full Web suite passed 1,380/1,380 tests across 274 files.
 - [x] (2026-07-10) Pushed correction HEAD `8b89e241`; CI `29069173447` passed all five jobs; redeployed only Pi5 (`20260710-134637-3940`) and StoneBase01 (`20260710-135058-17648`) with `failed=0`; Phase12 passed 45/0/0.
+- [x] (2026-07-10) User confirmed the corrected hardware behavior. Deployed the same branch to the remaining four Pi4 kiosks in run `20260710-135944-5667` (`failed=0`, `unreachable=0` for all); Phase12 again passed 45/0/0. Pi3 remains out of scope.
 - [x] (2026-07-10) Updated the prior plan open item, docs index, preview description, and this retrospective.
 - [x] (2026-07-10) Pushed HEAD `5ae28450`; GitHub Actions run `29066398307` passed all five jobs.
 - [x] (2026-07-10) Deployed the canary scope only: Pi5 run `20260710-123031-4690` and StoneBase01 run `20260710-124213-28442`, both `failed=0`.
@@ -72,7 +73,7 @@ Validation used only disposable `pgvector/pgvector:pg15` containers with dynamic
 
 Production validation used push CI run `29066398307`, then serial canary deploys. Pi5 applied the new migration and rebuilt API/Web; StoneBase01 synced the same revision and restarted its kiosk services. Production data had 23 visual rows with zero derivative drift; `7161` returned 18 visual rows and 15 template summaries, while alphanumeric input returned 400 and the internal derivative stayed absent from DTOs. Phase12 passed 45/0/0. A StoneBase Wayland capture confirmed the library, keypad, `無効ON`, and default-hidden row action. No remaining Pi4 or Pi3 host was deployed.
 
-After user hardware validation corrected the inactive-mode meaning, correction HEAD `8b89e241` passed CI `29069173447` and was redeployed serially to the same two canary hosts only. Pi5 run `20260710-134637-3940` and StoneBase01 run `20260710-135058-17648` both finished with `failed=0`; both hosts report the correction HEAD, health and inspection routes return 200, StoneBase kiosk/status services are active, and Phase12 again passed 45/0/0. Physical touch validation of the corrected toggle remains for the operator; no other Pi4 or Pi3 was changed.
+After user hardware validation corrected the inactive-mode meaning, correction HEAD `8b89e241` passed CI `29069173447` and was redeployed serially to Pi5 and StoneBase01. Both runs finished with `failed=0`; both hosts report the correction HEAD, health and inspection routes return 200, StoneBase kiosk/status services are active, and Phase12 passed 45/0/0. The user then confirmed the corrected physical behavior. Remaining Pi4 kiosks (`raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`, `raspi4-sessaku-01`) were deployed in run `20260710-135944-5667`, all with `failed=0` and `unreachable=0`; Phase12 again passed 45/0/0. Pi3 remained out of scope.
 
 ## Context and Orientation
 

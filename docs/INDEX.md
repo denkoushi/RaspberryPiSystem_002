@@ -14,7 +14,7 @@
 
 ### 最新アップデート（2026-07-10 · 検査図面 全件数字検索 + 無効モード · Pi5/StoneBase先行）
 
-- **検査図面名の全件数字検索と安全な無効操作**: 図面名ASCII数字による全件PostgreSQL検索へ変更。行の「無効」は常時表示し、無効化済み項目は既定非表示、`無効ON/OFF`で表示を切り替える。修正HEADをPi5 + StoneBase01へ先行反映済み、他Pi4×4/Pi3は未反映。**正本**: [Plan](./plans/kiosk-inspection-drawing-server-digit-search-retire-mode.md) · [Deployment](./guides/deployment.md#inspection-drawing-server-digit-search-retire-mode-2026-07-10)
+- **検査図面名の全件数字検索と安全な無効操作**: 図面名ASCII数字による全件PostgreSQL検索。行の「無効」は常時表示し、無効化済み項目は既定非表示、`無効ON/OFF`で表示を切り替える。実機確認OK後、Pi5 + Pi4全5台へ反映済み。Pi3は対象外。**正本**: [Plan](./plans/kiosk-inspection-drawing-server-digit-search-retire-mode.md) · [Deployment](./guides/deployment.md#inspection-drawing-server-digit-search-retire-mode-2026-07-10)
 
 ### 最新アップデート（2026-07-09 · 組立トップ 3ペイン表形式 · Pi5+StoneBase 反映済）
 
