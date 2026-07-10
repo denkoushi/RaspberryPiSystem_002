@@ -10,6 +10,21 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-10 · **丸数字/矢視 右ペイン化 + ライブラリ文言整理** · **Web のみ** · **Pi5 + StoneBase 先行**） {#inspection-drawing-mode-row-library-copy-2026-07-10}
+
+- **変更概要**: 作成/改版のモード切替をヘッダーから右ペイン1行（**丸数字 / 矢視** + 矢視あり/なし + 削除）へ移動。ライブラリは「編集」表記・新規無効時の琥珀色注記削除。ブランチ **`feat/self-inspection-autosave-callout-template-lock`** · HEAD **`733eebcb`** · PR [#968](https://github.com/denkoushi/RaspberryPiSystem_002/pull/968)。**DB/migration 変更なし**。
+- **CI**: push/PR CI [**`29076537765` / `29076540842` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions)（全5ジョブ）· CodeQL / Secret scan success。
+- **先行デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/self-inspection-autosave-callout-template-lock infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260710-164110-29712`** | success · `ok=135 changed=4 failed=0` · Web 再構築 · HEAD **`733eebcb`** |
+| `raspi4-kensaku-stonebase01` | **`20260710-164553-12492`** | success · `ok=130 changed=10 failed=0` · kiosk-browser 再起動 · HEAD **`733eebcb`** |
+
+- **対象外（今回）**: 他 Pi4 / `raspberrypi3`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **実機（画面）**: 右ペイン丸数字↔矢視・ライブラリ編集/新規無効の物理タッチ確認待ち。
+
 ### 補足（2026-07-10 · **自主検査ドラフト自動保存・指差し・新規ロック** · **API + Web + migration** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#self-inspection-autosave-callout-template-lock-2026-07-10}
 
 - **変更概要（正本）**: [Plan](../plans/self-inspection-autosave-callout-template-lock.md) · [ADR callout](../decisions/ADR-20260710-inspection-drawing-callout-tip.md) · [ADR draft/confirm](../decisions/ADR-20260710-self-inspection-draft-confirmed.md) · ブランチ **`feat/self-inspection-autosave-callout-template-lock`** · HEAD **`65896edd`** · PR [#968](https://github.com/denkoushi/RaspberryPiSystem_002/pull/968)。任意 callout tip、`DRAFT`/`CONFIRMED` + NFC ゲート自動下書き、同一キー「新規」UI 封鎖。migration **`20260710140000_*`** / **`20260710150000_*`**。

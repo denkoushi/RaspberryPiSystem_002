@@ -57,7 +57,8 @@ const template: KioskInspectionDrawingTemplateSummaryDto = {
   },
   siblingGroupId: null,
   siblingGroup: null,
-  itemCount: 1
+  itemCount: 1,
+  updatedAt: '2026-07-10T00:00:00.000Z'
 };
 
 const inactiveTemplate: KioskInspectionDrawingTemplateSummaryDto = {

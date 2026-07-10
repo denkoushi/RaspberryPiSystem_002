@@ -177,7 +177,8 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
                 template.siblingGroupActiveResourceCds ?? []
               )
             : null,
-          itemCount
+          itemCount,
+          updatedAt: template.updatedAt.toISOString()
         }))
       };
     });

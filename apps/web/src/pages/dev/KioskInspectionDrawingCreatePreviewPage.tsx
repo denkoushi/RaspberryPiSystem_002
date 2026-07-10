@@ -49,7 +49,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
     INSPECTION_DRAWING_PREVIEW_POINTS.map((p) => ({ ...p }))
   );
   const [selectedPointId, setSelectedPointId] = useState<string | null>(INSPECTION_DRAWING_PREVIEW_POINTS[0]?.id ?? null);
-  const { zoom, zoomIn, zoomOut, fitToView, resetZoom, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
+  const { zoom, zoomIn, zoomOut, fitToView, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
 
   const guidedTrial = useInspectionDrawingGuidedTrial({
     enabled: mode === 'guidedTrial',
@@ -89,7 +89,6 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             enabled
             onZoomIn={zoomIn}
             onZoomOut={zoomOut}
-            onResetZoom={resetZoom}
             onFitToView={fitToView}
           />
         }

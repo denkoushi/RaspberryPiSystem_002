@@ -41,7 +41,7 @@ describe('KioskInspectionDrawingVisualLibrarySection', () => {
     expect(screen.getByTestId('inspection-visual-library-scroll')).toHaveClass('min-h-0');
     expect(screen.getByTestId('inspection-visual-library-scroll')).toHaveClass('overflow-auto');
     expect(screen.getByTestId('inspection-visual-name-column')).toHaveClass('w-[60%]');
-    for (const header of ['図面名', '更新', '操作']) {
+    for (const header of ['図面名', '登録', '操作']) {
       expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument();
     }
     expect(screen.getByText('7161テーブル')).toHaveAttribute('title', '7161テーブル');

@@ -148,7 +148,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
             <thead className="sticky top-0 bg-slate-900 text-xs text-white/70">
               <tr className="border-b border-white/10">
                 <th className="px-2 py-1.5 font-bold">図面名</th>
-                <th className="px-2 py-1.5 font-bold">更新</th>
+                <th className="px-2 py-1.5 font-bold">登録</th>
                 <th className="px-2 py-1.5 text-right font-bold">操作</th>
               </tr>
             </thead>
@@ -164,7 +164,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
                         {visual.name}
                       </td>
                       <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 font-semibold text-white/65">
-                        {formatVisualLibraryTimestamp(visual.updatedAt)}
+                        {formatVisualLibraryTimestamp(visual.createdAt)}
                       </td>
                       <td className="px-2 pb-0.5 pt-1.5">
                         <div className="flex justify-end gap-1">

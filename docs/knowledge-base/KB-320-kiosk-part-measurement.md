@@ -913,6 +913,7 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 - **データ**: `PartMeasurementTemplateItem.calloutTipXRatio/YRatio`（nullable）。既存行は null＝指差しなし。
 - **UI**: 右ペイン「丸数字／矢視」モードで先端配置。Canvas SVG 引出線＋同番号バッジ。状態は「矢視 あり/なし」。ナッジ半高・名称ラベル+select 1行。
 - **新規封鎖**: 図面に既存資源テンプレがあるとき図面ライブラリ「新規」を無効化（注記なし・title のみ）。テンプレ行は「編集」。Create の同一 THREE_KEY 衝突メッセージを強化（API 409 は既存）。
+- **一覧日時**: 図面ライブラリ列「登録」=`visual.createdAt`。テンプレ列「更新」=`template.updatedAt`（保存時更新）。矢視のみ変更でも dirty になるよう tip を snapshot に含む。
 - **検証**: Web unit · 一時 Postgres migrate + EXPLAIN（tip 列）。本番デプロイは未。
 
 #### 2026-07-10 自主検査 NFCゲート + 下書き自動保存 + 確定 {#自主検査-nfcゲート-下書き自動保存-2026-07-10}

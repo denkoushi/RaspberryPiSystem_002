@@ -36,7 +36,8 @@ const template: KioskInspectionDrawingTemplateSummaryDto = {
     createdAt: '2026-07-01T07:46:02.229Z',
     updatedAt: '2026-07-01T07:46:02.229Z'
   },
-  itemCount: 12
+  itemCount: 12,
+  updatedAt: '2026-07-02T12:34:00.000Z'
 };
 
 const secondTemplate: KioskInspectionDrawingTemplateSummaryDto = {
@@ -82,6 +83,13 @@ describe('InspectionDrawingLibraryTemplateTable', () => {
     expect(screen.getByText('ABC-123')).toBeInTheDocument();
     expect(screen.getByText('7161テーブル')).toHaveAttribute('title', '7161テーブル');
     expect(screen.getByText('12')).toBeInTheDocument();
+    const templateUpdatedLabel = new Date('2026-07-02T12:34:00.000Z').toLocaleString('ja-JP', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    expect(screen.getAllByText(templateUpdatedLabel).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: '無効' })).not.toBeInTheDocument();
 
     expect(screen.getAllByTestId('inspection-template-resource-chips')[0]).toHaveClass('flex-nowrap');

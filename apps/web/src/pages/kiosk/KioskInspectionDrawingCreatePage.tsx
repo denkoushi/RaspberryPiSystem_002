@@ -1283,7 +1283,6 @@ export function KioskInspectionDrawingCreatePage() {
               enabled={hasDrawingImage}
               onZoomIn={zoomIn}
               onZoomOut={zoomOut}
-              onResetZoom={resetZoom}
               onFitToView={fitToView}
             />
           ) : undefined

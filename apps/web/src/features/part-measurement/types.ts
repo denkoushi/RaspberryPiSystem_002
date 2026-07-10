@@ -131,6 +131,8 @@ export type KioskInspectionDrawingTemplateSummaryDto = {
   siblingGroupId: string | null;
   siblingGroup: PartMeasurementTemplateSiblingGroupDto | null;
   itemCount: number;
+  /** テンプレート保存日時（Prisma @updatedAt） */
+  updatedAt: string;
 };
 
 export type PartMeasurementTemplateDto = {
