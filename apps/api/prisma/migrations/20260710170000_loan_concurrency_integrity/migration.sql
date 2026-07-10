@@ -47,4 +47,3 @@ CREATE UNIQUE INDEX "Loan_active_measuring_instrument_uidx"
 CREATE UNIQUE INDEX "Loan_active_rigging_gear_uidx"
   ON "Loan" ("riggingGearId")
   WHERE "riggingGearId" IS NOT NULL AND "returnedAt" IS NULL AND "cancelledAt" IS NULL;
-

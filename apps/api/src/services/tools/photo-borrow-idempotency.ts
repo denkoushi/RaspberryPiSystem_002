@@ -36,4 +36,3 @@ export async function cleanupUncommittedPhoto(photoUrl: string | null | undefine
   if (!photoUrl) return;
   await PhotoStorage.deletePhoto(photoUrl);
 }
-

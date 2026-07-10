@@ -87,4 +87,3 @@ describe('production order clear concurrency', () => {
     expect(finalAssignment?.orderNumber ?? null).toBe(second.nextOrderNumber ?? null);
   });
 });
-

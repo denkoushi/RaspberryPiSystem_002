@@ -11,4 +11,3 @@ END $$;
 
 CREATE UNIQUE INDEX "MachinePalletItem_uidx_machine_pallet_order"
   ON "MachinePalletItem" ("resourceCd", "palletNo", "displayOrder");
-

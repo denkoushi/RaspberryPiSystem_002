@@ -15,4 +15,3 @@ export const assemblyWorkSessionDetailInclude = {
 export type AssemblyWorkSessionDetail = Prisma.AssemblyWorkSessionGetPayload<{
   include: typeof assemblyWorkSessionDetailInclude;
 }>;
-

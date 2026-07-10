@@ -12,4 +12,3 @@ export async function lockPartMeasurementSheetRow(
     throw new ApiError(404, '記録表が見つかりません');
   }
 }
-

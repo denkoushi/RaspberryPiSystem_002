@@ -4,4 +4,3 @@ ALTER TABLE "Loan"
 
 CREATE UNIQUE INDEX "Loan_photo_borrow_idempotency_uidx"
   ON "Loan" ("clientId", "photoBorrowIdempotencyKey");
-

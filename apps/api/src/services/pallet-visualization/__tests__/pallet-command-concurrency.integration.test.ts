@@ -87,4 +87,3 @@ describe('pallet command concurrency', () => {
     })).toBe(8);
   });
 });
-

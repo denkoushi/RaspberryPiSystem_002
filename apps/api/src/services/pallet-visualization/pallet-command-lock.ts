@@ -26,4 +26,3 @@ export function mapPalletOrderConflict(error: unknown): never {
   }
   throw error;
 }
-
