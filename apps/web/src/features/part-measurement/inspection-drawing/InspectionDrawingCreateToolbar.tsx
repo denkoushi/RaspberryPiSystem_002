@@ -14,7 +14,7 @@ import {
 
 import type { PartMeasurementProcessGroup } from '../types';
 
-export type InspectionDrawingToolbarMode = 'place' | 'test' | 'guidedTrial';
+export type InspectionDrawingToolbarMode = 'place' | 'callout' | 'test' | 'guidedTrial';
 
 type Props = {
   processGroup: PartMeasurementProcessGroup;
@@ -56,7 +56,6 @@ export function InspectionDrawingCreateToolbar({
   const toggleClass = (isActive: boolean) =>
     clsx(inspectionDrawingKioskToggleInactiveClass(isActive), inspectionDrawingKioskDisabledButtonClass);
 
-  const placeDisabled = !hasDrawingImage;
   const testDisabled = !hasDrawingImage || !hasMeasurementPoints;
   const guidedTrialDisabled = testDisabled;
   const saveBlocked = saveDisabled || saveBusy || !onSave;
@@ -99,17 +98,6 @@ export function InspectionDrawingCreateToolbar({
             <span className="mx-1 hidden h-6 w-px bg-white/20 sm:block" aria-hidden />
           </>
         ) : null}
-
-        <Button
-          type="button"
-          variant="primary"
-          aria-pressed={mode === 'place'}
-          className={toggleClass(mode === 'place')}
-          disabled={placeDisabled}
-          onClick={() => onModeChange('place')}
-        >
-          点を配置
-        </Button>
 
         <Button
           type="button"

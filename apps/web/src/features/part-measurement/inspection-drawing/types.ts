@@ -16,6 +16,9 @@ export type InspectionDrawingPoint = {
   /** 画像内の割合 0–1（左上原点） */
   xRatio: number;
   yRatio: number;
+  /** 指差し先端（任意。両方揃ったときのみ描画） */
+  calloutTipXRatio?: number | null;
+  calloutTipYRatio?: number | null;
   nominalRaw: string;
   upperToleranceRaw: string;
   lowerToleranceRaw: string;

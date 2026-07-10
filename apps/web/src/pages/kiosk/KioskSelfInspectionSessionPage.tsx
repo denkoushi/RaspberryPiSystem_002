@@ -12,7 +12,8 @@ import {
   useSelfInspectionRegistrationPolicy,
   useSelfInspectionSession,
   useUpdateSelfInspectionEntry,
-  useUpdateSelfInspectionInspectorEntry
+  useUpdateSelfInspectionInspectorEntry,
+  useUpsertSelfInspectionDraftEntry
 } from '../../api/hooks';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import {
@@ -142,6 +143,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
   const resolveMutation = useResolveSelfInspectionSession();
   const createEntryMutation = useCreateSelfInspectionEntry();
   const updateEntryMutation = useUpdateSelfInspectionEntry();
+  const { mutateAsync: upsertDraftEntry } = useUpsertSelfInspectionDraftEntry();
   const createInspectorEntryMutation = useCreateSelfInspectionInspectorEntry();
   const updateInspectorEntryMutation = useUpdateSelfInspectionInspectorEntry();
   const completeSessionMutation = useCompleteSelfInspectionSession();
@@ -162,8 +164,15 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
   const [draftBoundKey, setDraftBoundKey] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [sessionEmployeeGateUnlocked, setSessionEmployeeGateUnlocked] = useState(false);
+  const [draftAutosaveStatus, setDraftAutosaveStatus] = useState<'idle' | 'pending' | 'saved' | 'unsynced'>(
+    'idle'
+  );
+  const [draftAutosaveAtLabel, setDraftAutosaveAtLabel] = useState<string | null>(null);
   const resolveAttemptedRef = useRef(false);
   const persistInFlightRef = useRef(false);
+  const lastAutosavedDraftKeyRef = useRef<string | null>(null);
+  const seededEmployeeTagRef = useRef<string | null>(null);
   const isActiveRoute = useMatch(
     isInspectorMode
       ? '/kiosk/part-measurement/self-inspection/sessions/:sessionId/inspector'
@@ -211,7 +220,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     },
     [isInspectorMode, isSessionReadOnly, navigate, selectedEntryIndex, session]
   );
-  const { registration, registrationPayload, registrationDirty, hasUnsavedRegistrationDrafts } =
+  const { registration, registrationPayload, registrationDirty, hasUnsavedRegistrationDrafts, seedEmployeeToEmptyEntries } =
     useSelfInspectionNfcRegistration({
     session,
     selectedEntryIndex,
@@ -220,6 +229,123 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     requireMeasuringInstrumentTag,
     onInstrumentTagResolved: handleInstrumentTagResolvedForPreUseInspection
   });
+
+  const sessionEmployeeGateReady = useMemo(() => {
+    if (isInspectorMode || isSessionReadOnly) return true;
+    if (sessionEmployeeGateUnlocked) return true;
+    if (registration.employeeTagUid) return true;
+    return Boolean(session?.entries.some((entry) => Boolean(entry.createdByEmployeeId)));
+  }, [
+    isInspectorMode,
+    isSessionReadOnly,
+    registration.employeeTagUid,
+    session?.entries,
+    sessionEmployeeGateUnlocked
+  ]);
+
+  useEffect(() => {
+    setSessionEmployeeGateUnlocked(false);
+    seededEmployeeTagRef.current = null;
+    lastAutosavedDraftKeyRef.current = null;
+    setDraftAutosaveStatus('idle');
+    setDraftAutosaveAtLabel(null);
+  }, [session?.id]);
+
+  useEffect(() => {
+    if (!session || isInspectorMode || !registration.employeeTagUid) return;
+    setSessionEmployeeGateUnlocked(true);
+    if (seededEmployeeTagRef.current === registration.employeeTagUid) return;
+    seededEmployeeTagRef.current = registration.employeeTagUid;
+    const entryIndices = Array.from(
+      new Set([
+        ...session.entries.map((entry) => entry.entryIndex),
+        selectedEntryIndex,
+        ...Object.keys(draftValuesByEntryIndex).map((key) => Number(key))
+      ])
+    ).filter((entryIndex) => Number.isFinite(entryIndex) && entryIndex >= 0);
+    seedEmployeeToEmptyEntries(entryIndices, {
+      employeeTagUid: registration.employeeTagUid,
+      employeeDisplayName: registration.employeeDisplayName
+    });
+  }, [
+    draftValuesByEntryIndex,
+    isInspectorMode,
+    registration.employeeDisplayName,
+    registration.employeeTagUid,
+    seedEmployeeToEmptyEntries,
+    selectedEntryIndex,
+    session
+  ]);
+
+  useEffect(() => {
+    if (
+      !session ||
+      !isSessionIdentityReady ||
+      isInspectorMode ||
+      isSessionReadOnly ||
+      !sessionEmployeeGateReady ||
+      persistInFlightRef.current
+    ) {
+      return;
+    }
+    const draft = draftValuesByEntryIndex[selectedEntryIndex];
+    if (!draft) return;
+
+    const valuesPayload = session.template.items.map((item) => ({
+      templateItemId: item.id,
+      value: draft[item.id] ?? ''
+    }));
+    const hasAnyValue = valuesPayload.some((row) => String(row.value ?? '').trim().length > 0);
+    const existing = session.entries.find((entry) => entry.entryIndex === selectedEntryIndex);
+    if (!hasAnyValue && !existing && !registration.employeeTagUid) {
+      return;
+    }
+
+    const draftKey = `${session.id}:${selectedEntryIndex}:${JSON.stringify(valuesPayload)}:${registration.employeeTagUid ?? ''}:${registration.measuringInstrumentTagUid ?? ''}`;
+    if (lastAutosavedDraftKeyRef.current === draftKey) return;
+
+    setDraftAutosaveStatus('pending');
+    const timer = window.setTimeout(() => {
+      if (persistInFlightRef.current) return;
+      void upsertDraftEntry({
+          sessionId: session.id,
+          body: {
+            entryIndex: selectedEntryIndex,
+            employeeTagUid: registration.employeeTagUid,
+            measuringInstrumentTagUid: registration.measuringInstrumentTagUid,
+            ifUnmodifiedSince: existing?.updatedAt,
+            values: valuesPayload
+          }
+        })
+        .then(() => {
+          lastAutosavedDraftKeyRef.current = draftKey;
+          const now = new Date();
+          setDraftAutosaveAtLabel(
+            `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
+          );
+          setDraftAutosaveStatus('saved');
+        })
+        .catch(() => {
+          setDraftAutosaveStatus('unsynced');
+        });
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    draftValuesByEntryIndex,
+    isInspectorMode,
+    isSessionIdentityReady,
+    isSessionReadOnly,
+    registration.employeeTagUid,
+    registration.measuringInstrumentTagUid,
+    selectedEntryIndex,
+    session,
+    sessionEmployeeGateReady,
+    upsertDraftEntry
+  ]);
+
   const { workbenchCameraEnabled, toggleWorkbenchCamera } = useSelfInspectionWorkbenchCameraExperiment({
     onLog: (cameraMetrics) => {
       console.debug('[self-inspection workbench camera experiment]', cameraMetrics);
@@ -449,6 +575,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
       entryRegistrationReady: registration.isReady && registration.status !== 'duplicate',
       entryRegistrationDirty: registrationDirty,
       requireMeasuringInstrumentTag,
+      sessionEmployeeGateReady,
       outOfToleranceAcknowledgedByEntryIndex
     };
   }, [
@@ -465,6 +592,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     requireMeasuringInstrumentTag,
     savedDraftByEntryIndex,
     selectedEntryIndex,
+    sessionEmployeeGateReady,
     outOfToleranceAcknowledgedByEntryIndex,
     session
   ]);
@@ -513,7 +641,8 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     );
   }, [draftValuesByEntryIndex, hasUnsavedRegistrationDrafts, savedDraftByEntryIndex, session]);
 
-  const isSessionInputLocked = isSessionReadOnly || isCompletingSession || isEntryFocusFetching;
+  const isSessionInputLocked =
+    isSessionReadOnly || isCompletingSession || isEntryFocusFetching || !sessionEmployeeGateReady;
 
   const resetDestructiveDescriptionText = hasUnsavedDraftChangesForReset
     ? '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。未保存の入力またはNFC読み取りがあります。リセットすると破棄されます。'
@@ -559,6 +688,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
       entryRegistrationReady: registration.isReady && registration.status !== 'duplicate',
       entryRegistrationDirty: registrationDirty,
       requireMeasuringInstrumentTag,
+      sessionEmployeeGateReady,
       outOfToleranceAcknowledgedByEntryIndex
     });
     if (!saveState.enabled) {
@@ -860,7 +990,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
         <div
           className={clsx(
             inspectionDrawingCanvasColumnClassName,
-            'rounded border border-white/15 bg-slate-950/50 p-1'
+            'relative rounded border border-white/15 bg-slate-950/50 p-1'
           )}
         >
           {isDrawingCanvasReady && drawingBlobUrl ? (
@@ -869,10 +999,10 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
               points={activeDraft?.points ?? []}
               mode="test"
               selectedPointId={selectedPoint?.id ?? null}
-              onSelectPoint={handleSelectPointManual}
+              onSelectPoint={sessionEmployeeGateReady ? handleSelectPointManual : () => undefined}
               zoom={zoom}
               fitGeneration={fitGeneration}
-              focusRequest={focusRequest}
+              focusRequest={sessionEmployeeGateReady ? focusRequest : undefined}
               onUserScroll={handleUserScroll}
             />
           ) : drawingPanelPhase === 'loading' ? (
@@ -884,6 +1014,22 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
           ) : (
             <div className="flex flex-1 items-center justify-center text-white/60">図面がありません。</div>
           )}
+          {!sessionEmployeeGateReady ? (
+            <div
+              className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/75 p-4"
+              data-self-inspection-employee-gate
+            >
+              <div className="max-w-md rounded-xl border border-cyan-300/40 bg-slate-900/95 px-5 py-4 text-center shadow-lg">
+                <h3 className="text-lg font-bold text-cyan-100">氏名NFCタグをスキャン</h3>
+                <p className="mt-2 text-sm leading-relaxed text-white/75">
+                  スキャンするまで測定値を選べません。作業者タグをリーダーにかざしてください。
+                </p>
+                <div className="mt-3 inline-flex items-center justify-center rounded-full border border-cyan-300/50 px-4 py-1 text-xs font-semibold tracking-widest text-cyan-200">
+                  NFC
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex min-h-0 min-w-0 flex-col gap-2 xl:w-[360px] xl:shrink-0">
@@ -931,10 +1077,12 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
                     type="button"
                     size="default"
                     pressed={isSelected}
+                    disabled={!sessionEmployeeGateReady}
                     aria-label={isSelected ? `${slot.entrySlotLabel}（選択中）` : slot.entrySlotLabel}
                     onPointerDownCapture={consumeNextBlurGuideAdvance}
                     onPointerDown={consumeNextBlurGuideAdvance}
                     onClick={() => {
+                      if (!sessionEmployeeGateReady) return;
                       handleUserEntrySelect(slot.entryIndex);
                       setSelectedEntryIndex(slot.entryIndex);
                       setEntryIndexPage(selfInspectionEntryPageForEntryIndex(session, slot.entryIndex));
@@ -946,6 +1094,19 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
                 );
               })}
             </div>
+            {!isInspectorMode && sessionEmployeeGateReady ? (
+              <div className="mt-2">
+                {draftAutosaveStatus === 'saved' && draftAutosaveAtLabel ? (
+                  <span className="inline-flex rounded-full border border-lime-300/40 bg-lime-400/10 px-2.5 py-0.5 text-[11px] font-semibold text-lime-100">
+                    下書き 自動保存済 {draftAutosaveAtLabel}
+                  </span>
+                ) : draftAutosaveStatus === 'unsynced' || draftAutosaveStatus === 'pending' ? (
+                  <span className="inline-flex rounded-full border border-amber-300/40 bg-amber-400/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-100">
+                    {draftAutosaveStatus === 'pending' ? '下書き 保存中…' : '下書き 未同期'}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div className="shrink-0">

@@ -13,6 +13,7 @@ import {
   getSelfInspectionInspectorMeasurementSession,
   createSelfInspectionEntry,
   updateSelfInspectionEntry,
+  upsertSelfInspectionDraftEntry,
   createSelfInspectionInspectorEntry,
   updateSelfInspectionInspectorEntry,
   completeSelfInspectionSession,
@@ -163,6 +164,22 @@ export function useCreateSelfInspectionEntry() {
     onSuccess: (entry, variables) => {
       patchSelfInspectionSessionCachesAfterEntrySave(queryClient, variables.sessionId, entry);
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+    }
+  });
+}
+
+export function useUpsertSelfInspectionDraftEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      body
+    }: {
+      sessionId: string;
+      body: Parameters<typeof upsertSelfInspectionDraftEntry>[1];
+    }) => upsertSelfInspectionDraftEntry(sessionId, body),
+    onSuccess: (entry, variables) => {
+      patchSelfInspectionSessionCachesAfterEntrySave(queryClient, variables.sessionId, entry);
     }
   });
 }

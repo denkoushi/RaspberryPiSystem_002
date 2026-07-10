@@ -24,9 +24,8 @@ function processLabel(processGroup: KioskInspectionDrawingTemplateSummaryDto['pr
 }
 
 function updatedLabel(template: KioskInspectionDrawingTemplateSummaryDto): string {
-  const visualUpdatedAt = template.visualTemplate?.updatedAt;
-  if (!visualUpdatedAt) return '図面未設定';
-  return new Date(visualUpdatedAt).toLocaleString('ja-JP', {
+  if (!template.updatedAt) return '—';
+  return new Date(template.updatedAt).toLocaleString('ja-JP', {
     month: 'numeric',
     day: 'numeric',
     hour: '2-digit',
@@ -147,6 +146,7 @@ function TemplateTablePane({
                           <Link
                             to={editPath(template.id)}
                             state={linkState}
+                            title="編集"
                             className={buttonClassName('primary', inspectionDrawingLibraryRowActionClassName)}
                           >
                             編集

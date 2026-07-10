@@ -43,6 +43,8 @@ export type TemplateItemInput = {
   decimalPlaces?: number;
   markerXRatio?: number | null;
   markerYRatio?: number | null;
+  calloutTipXRatio?: number | null;
+  calloutTipYRatio?: number | null;
   nominalValue?: number | null;
   lowerLimit?: number | null;
   upperLimit?: number | null;
@@ -162,6 +164,8 @@ function copyTemplateItemsFromDb(
     decimalPlaces: number;
     markerXRatio?: unknown;
     markerYRatio?: unknown;
+    calloutTipXRatio?: unknown;
+    calloutTipYRatio?: unknown;
     nominalValue?: unknown;
     lowerLimit?: unknown;
     upperLimit?: unknown;
@@ -179,6 +183,8 @@ function copyTemplateItemsFromDb(
     decimalPlaces: item.decimalPlaces,
     markerXRatio: item.markerXRatio != null ? Number(item.markerXRatio) : null,
     markerYRatio: item.markerYRatio != null ? Number(item.markerYRatio) : null,
+    calloutTipXRatio: item.calloutTipXRatio != null ? Number(item.calloutTipXRatio) : null,
+    calloutTipYRatio: item.calloutTipYRatio != null ? Number(item.calloutTipYRatio) : null,
     nominalValue: item.nominalValue != null ? Number(item.nominalValue) : null,
     lowerLimit: item.lowerLimit != null ? Number(item.lowerLimit) : null,
     upperLimit: item.upperLimit != null ? Number(item.upperLimit) : null,
@@ -246,6 +252,8 @@ async function insertNextTemplateVersionInTransaction(
           const dm = item.displayMarker?.trim();
           const xRatio = clampRatio(item.markerXRatio);
           const yRatio = clampRatio(item.markerYRatio);
+          const tipXRatio = clampRatio(item.calloutTipXRatio);
+          const tipYRatio = clampRatio(item.calloutTipYRatio);
           return {
             sortOrder: item.sortOrder,
             datumSurface: item.datumSurface.trim(),
@@ -257,6 +265,8 @@ async function insertNextTemplateVersionInTransaction(
             decimalPlaces: clamped,
             markerXRatio: xRatio != null ? optionalDecimal(xRatio) : null,
             markerYRatio: yRatio != null ? optionalDecimal(yRatio) : null,
+            calloutTipXRatio: tipXRatio != null ? optionalDecimal(tipXRatio) : null,
+            calloutTipYRatio: tipYRatio != null ? optionalDecimal(tipYRatio) : null,
             nominalValue: optionalDecimal(item.nominalValue),
             lowerLimit: optionalDecimal(item.lowerLimit),
             upperLimit: optionalDecimal(item.upperLimit),

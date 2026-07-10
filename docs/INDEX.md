@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 計画（2026-07-10 · 自主検査自動保存 / 指差し / テンプレ新規制限 · 実装済・未デプロイ）
+
+- **自主検査 NFCゲート+下書き自動保存+確定 / 検査図面指差し+密度 / 同一キー新規UI封鎖**: フェーズ実装済（stacked branch）。**正本**: [Plan](./plans/self-inspection-autosave-callout-template-lock.md) · [ADR callout](./decisions/ADR-20260710-inspection-drawing-callout-tip.md) · [ADR draft](./decisions/ADR-20260710-self-inspection-draft-confirmed.md) · [Preview 指差し](./design-previews/kiosk-inspection-drawing-callout-pointer-preview.html) · [Preview 概要](./design-previews/kiosk-self-inspection-autosave-callout-preview.html) · [KB-320 指差し](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-指差し-密度-新規封鎖-2026-07-10) · [KB-320 自動保存](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-nfcゲート-下書き自動保存-2026-07-10)
+
 ### 最新アップデート（2026-07-10 · 検査図面 全件数字検索 + 無効モード · Pi5/StoneBase先行）
 
 - **検査図面名の全件数字検索と安全な無効操作**: 図面名ASCII数字による全件PostgreSQL検索。行の「無効」は常時表示し、無効化済み項目は既定非表示、`無効ON/OFF`で表示を切り替える。実機確認OK後、Pi5 + Pi4全5台へ反映済み。Pi3は対象外。**正本**: [Plan](./plans/kiosk-inspection-drawing-server-digit-search-retire-mode.md) · [Deployment](./guides/deployment.md#inspection-drawing-server-digit-search-retire-mode-2026-07-10)
@@ -644,6 +648,9 @@
 - **配膳スマホ 登録済み部品を探す最終案（空白区切り AND・押下で即検索・登録済みのみ表示・不要ボタンは非表示）（静的プレビュー／実装は `@raspi-system/part-search-core` とキオスク UI で対応）**: [design-previews/mobile-placement-part-keyword-and-search-preview.html](./design-previews/mobile-placement-part-keyword-and-search-preview.html) — [design-previews/README.md](./design-previews/README.md)
 - **リーダー順位ボード（納期ベース・本番 `/kiosk/production-schedule/leader-order-board` の静的プレビュー）**: [design-previews/leader-due-rank-board-preview.html](./design-previews/leader-due-rank-board-preview.html) — 運用・デプロイ記録は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md)（「リーダー順位ボード」節）
 - **部品測定・テンプレート選択（提案UI・静的）**: [design-previews/kiosk-part-measurement-template-picker.html](./design-previews/kiosk-part-measurement-template-picker.html) — [design-previews/README.md](./design-previews/README.md)
+- **自主検査 NFCゲート＋自動保存／指差し記号／テンプレ新規制限（実装前・静的）**: [design-previews/kiosk-self-inspection-autosave-callout-preview.html](./design-previews/kiosk-self-inspection-autosave-callout-preview.html) — [design-previews/README.md](./design-previews/README.md)
+- **検査図面 指差し記号（実機1280×17rem・余白配慮・実装前）**: [design-previews/kiosk-inspection-drawing-callout-pointer-preview.html](./design-previews/kiosk-inspection-drawing-callout-pointer-preview.html) — [design-previews/README.md](./design-previews/README.md)
+- **検査図面 丸数字/矢視右ペイン1行 + ライブラリ文言整理（実装対象）**: [design-previews/kiosk-inspection-drawing-mode-row-and-library-copy-preview.html](./design-previews/kiosk-inspection-drawing-mode-row-and-library-copy-preview.html) — [design-previews/README.md](./design-previews/README.md)
 
 ### キオスク部品測定記録
 

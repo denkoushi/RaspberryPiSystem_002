@@ -9,7 +9,8 @@ import {
   resolveInspectionDrawingToleranceKindForLabel,
   type InspectionDrawingMeasurementLabelSetting
 } from '@raspi-system/shared-types';
-import { useEffect, useState } from 'react';
+import clsx from 'clsx';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -17,8 +18,9 @@ import { Input } from '../../../components/ui/Input';
 import {
   inspectionDrawingBoundedSelectClassName,
   inspectionDrawingBoundedSelectShellClassName,
+  inspectionDrawingPointNameInlineClassName,
+  inspectionDrawingPointNameInlineLabelClassName,
   inspectionDrawingPointSettingDeleteButtonClassName,
-  inspectionDrawingPointSettingDualCellClassName,
   inspectionDrawingPointSettingInputClassName,
   inspectionDrawingPointSettingNominalInlineClassName,
   inspectionDrawingPointSettingNominalInputClassName,
@@ -54,6 +56,8 @@ type Props = {
   ocrCandidateError?: string | null;
   onApplyOcrCandidate?: (valueText: string) => void;
   measurementLabelSettings?: readonly InspectionDrawingMeasurementLabelSetting[];
+  /** 丸数字/矢視モード行（Sidebar が組み立てる） */
+  modeChrome?: ReactNode;
 };
 
 const DEFAULT_MEASUREMENT_LABEL_SETTINGS = buildDefaultInspectionDrawingMeasurementLabelSettings();
@@ -140,7 +144,8 @@ export function InspectionDrawingPointSettingsPanel({
   ocrCandidateLoading = false,
   ocrCandidateError = null,
   onApplyOcrCandidate,
-  measurementLabelSettings
+  measurementLabelSettings,
+  modeChrome
 }: Props) {
   const effectiveMeasurementLabelSettings =
     measurementLabelSettings && measurementLabelSettings.length > 0
@@ -230,26 +235,26 @@ export function InspectionDrawingPointSettingsPanel({
         onChange={onChange}
       />
       <p className="text-[1.02rem] font-bold">測定点の設定（No.{point.markerNo}）</p>
-      <div className={inspectionDrawingPointSettingSingleRowClassName}>
-        <label className={inspectionDrawingPointSettingDualCellClassName}>
-          <span className="text-[1rem] font-semibold">名称</span>
-          <div className={inspectionDrawingBoundedSelectShellClassName}>
-            <select
-              value={point.name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              className={inspectionDrawingBoundedSelectClassName}
-              disabled={disabled}
-              title={point.name || '選択'}
-            >
-              {labelOptions.map((opt) => (
-                <option key={`${opt.value}-${opt.label}`} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </label>
-      </div>
+      {modeChrome}
+      <label className={inspectionDrawingPointNameInlineClassName} title={point.name || '名称'}>
+        <span className={inspectionDrawingPointNameInlineLabelClassName}>名称</span>
+        <div className={clsx(inspectionDrawingBoundedSelectShellClassName, 'min-w-0 flex-1')}>
+          <select
+            value={point.name}
+            onChange={(e) => handleNameChange(e.target.value)}
+            className={inspectionDrawingBoundedSelectClassName}
+            disabled={disabled}
+            aria-label="名称"
+            title={point.name || '選択'}
+          >
+            {labelOptions.map((opt) => (
+              <option key={`${opt.value}-${opt.label}`} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </label>
       {showDepthMode ? (
         <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="通し切替">
           <button

@@ -44,12 +44,12 @@ export function KioskInspectionDrawingCreatePreviewPage() {
     [location.state]
   );
   const [processGroup, setProcessGroup] = useState<PartMeasurementProcessGroup>(scenarioConfig.processGroup);
-  const [mode, setMode] = useState<'place' | 'test' | 'guidedTrial'>('place');
+  const [mode, setMode] = useState<'place' | 'callout' | 'test' | 'guidedTrial'>('place');
   const [points, setPoints] = useState<InspectionDrawingPoint[]>(() =>
     INSPECTION_DRAWING_PREVIEW_POINTS.map((p) => ({ ...p }))
   );
   const [selectedPointId, setSelectedPointId] = useState<string | null>(INSPECTION_DRAWING_PREVIEW_POINTS[0]?.id ?? null);
-  const { zoom, zoomIn, zoomOut, fitToView, resetZoom, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
+  const { zoom, zoomIn, zoomOut, fitToView, fitGeneration, setZoomLevel } = useInspectionDrawingZoom();
 
   const guidedTrial = useInspectionDrawingGuidedTrial({
     enabled: mode === 'guidedTrial',
@@ -89,7 +89,6 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             enabled
             onZoomIn={zoomIn}
             onZoomOut={zoomOut}
-            onResetZoom={resetZoom}
             onFitToView={fitToView}
           />
         }
@@ -148,6 +147,9 @@ export function KioskInspectionDrawingCreatePreviewPage() {
         <aside className={inspectionDrawingCreateSideAsideClassName}>
           <InspectionDrawingPointSidebar
             mode={mode}
+            onModeChange={setMode}
+            hasDrawingImage
+            hasMeasurementPoints={points.length > 0}
             points={points}
             selectedPoint={selectedPoint}
             contentReadOnly={false}

@@ -1,6 +1,7 @@
 import { isInspectionDrawingThroughDepthMode } from '@raspi-system/shared-types';
 import clsx from 'clsx';
 
+import { inspectionDrawingPointHasCalloutTip } from './inspectionDrawingCalloutTip';
 import {
   inspectionDrawingPointSummaryListSidebarCardClassName,
   inspectionDrawingPointSummaryListSidebarCardSelectedClassName,
@@ -108,6 +109,9 @@ export function InspectionDrawingPointSummaryList({
                       No.{pt.markerNo}
                     </span>
                     <span className="ml-1 font-semibold">{displayName}</span>
+                    {inspectionDrawingPointHasCalloutTip(pt) ? (
+                      <span className="ml-1 align-middle text-[0.62rem] font-extrabold text-amber-300">指</span>
+                    ) : null}
                   </span>
                   {showMeasurementStatus ? (
                     <span className="flex min-w-0 items-center justify-between gap-2 text-white/75">

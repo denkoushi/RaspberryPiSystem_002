@@ -94,6 +94,8 @@ export type InspectionDrawingCreateDirtySnapshot = {
     supplementText: string;
     xRatio: number;
     yRatio: number;
+    calloutTipXRatio: number | null;
+    calloutTipYRatio: number | null;
     nominalRaw: string;
     lowerToleranceRaw: string;
     upperToleranceRaw: string;
@@ -132,6 +134,11 @@ function normalizeRatio(raw: number): number {
   return Math.round(raw * 1_000_000) / 1_000_000;
 }
 
+function normalizeOptionalRatio(raw: number | null | undefined): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  return normalizeRatio(raw);
+}
+
 export function buildInspectionDrawingCreateDirtySnapshot(params: {
   templateName: string;
   fhincd: string;
@@ -164,6 +171,8 @@ export function buildInspectionDrawingCreateDirtySnapshot(params: {
       supplementText: normalizeText(pt.supplementText ?? ''),
       xRatio: normalizeRatio(pt.xRatio),
       yRatio: normalizeRatio(pt.yRatio),
+      calloutTipXRatio: normalizeOptionalRatio(pt.calloutTipXRatio),
+      calloutTipYRatio: normalizeOptionalRatio(pt.calloutTipYRatio),
       nominalRaw: normalizeText(pt.nominalRaw),
       lowerToleranceRaw: normalizeText(pt.lowerToleranceRaw),
       upperToleranceRaw: normalizeText(pt.upperToleranceRaw),
@@ -351,5 +360,5 @@ export function inspectionDrawingCreateKeyCollisionMessage(
   if (reason === 'same_as_source') {
     return '流用元と同じ品番・工程・資源CDです。工程または資源CDを変更してください。';
   }
-  return '同一品番・工程・資源CDの有効テンプレートが既にあります。改版する場合は一覧から編集してください。';
+  return '同一品番・工程・資源CDの有効テンプレートが既にあります。新規作成はできません。一覧から「編集」してください。';
 }

@@ -86,12 +86,23 @@ import {
   lockSessionRow,
   validateMeasurementPayload
 } from './self-inspection/mutation-guards.js';
+import { validateDraftMeasurementPayload } from './self-inspection/entry-draft-validation.js';
+import {
+  confirmedEntriesCountSelect,
+  confirmedWhere,
+  isConfirmed,
+  SELF_INSPECTION_ENTRY_PERSISTENCE_CONFIRMED,
+  SELF_INSPECTION_ENTRY_PERSISTENCE_DRAFT
+} from './self-inspection/entry-persistence-status.js';
 import {
   buildRegistrationBackfillData,
   entryRegistrationFromRow,
+  resolveEntryActor,
+  resolveMeasuringInstrumentByTag,
   resolveRegistrationForCreateEntry,
   resolveRegistrationPatchForUpdate
 } from './self-inspection/entry-registration.js';
+import { assertSelfInspectionEntryRegistrationTagUids } from './self-inspection-registration-tag-validation.js';
 import { saveInspectorEntry } from './self-inspection/inspector-entry.js';
 import {
   recordInspectorInstrumentPreUseInspection as recordInspectorInstrumentPreUseInspectionOp,
@@ -213,7 +224,7 @@ export class SelfInspectionService {
 
     const sessionInclude = {
       template: { include: partMeasurementTemplateFullInclude },
-      entries: { select: { entryIndex: true } },
+      entries: { where: confirmedWhere, select: { entryIndex: true } },
       inspectorEntries: {
         select: {
           entryIndex: true,
@@ -226,7 +237,7 @@ export class SelfInspectionService {
         }
       },
       recordApproval: { select: { id: true } },
-      _count: { select: { entries: true } }
+      _count: { select: confirmedEntriesCountSelect }
     } as const;
 
     const session = await prisma.selfInspectionSession.upsert({
@@ -525,7 +536,7 @@ export class SelfInspectionService {
         where: { id: sessionId },
         include: {
           template: { include: partMeasurementTemplateFullInclude },
-          entries: { select: { entryIndex: true } },
+          entries: { where: confirmedWhere, select: { entryIndex: true } },
           inspectorEntries: {
             select: {
               entryIndex: true,
@@ -537,7 +548,7 @@ export class SelfInspectionService {
               }
             }
           },
-          _count: { select: { entries: true } }
+          _count: { select: confirmedEntriesCountSelect }
         }
       });
       if (!updated) {
@@ -573,6 +584,7 @@ export class SelfInspectionService {
             id: true,
             entryIndex: true,
             entrySlotKind: true,
+            persistenceStatus: true,
             createdByEmployeeId: true,
             createdByEmployeeNameSnapshot: true,
             measuringInstrumentId: true,
@@ -609,7 +621,7 @@ export class SelfInspectionService {
           }
         },
         recordApproval: true,
-        _count: { select: { entries: true } }
+        _count: { select: confirmedEntriesCountSelect }
       }
     });
     if (!session) {
@@ -652,6 +664,9 @@ export class SelfInspectionService {
     const templateConfig = templateConfigFromTemplate(session.template);
     const pendingReviewCounts = await loadPendingReviewCountsBySessionIds(prisma, [session.id]);
     const pendingReviewCount = pendingReviewCounts.get(session.id) ?? 0;
+    const confirmedEntryIndices = session.entries
+      .filter((entry) => isConfirmed(entry.persistenceStatus))
+      .map((entry) => entry.entryIndex);
     const inspectorMeasurement = buildInspectorMeasurementCompletion({
       inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt,
       recordApproval: session.recordApproval,
@@ -689,7 +704,7 @@ export class SelfInspectionService {
         completedEntryCount,
         completedAt: session.completedAt,
         pendingReviewCount,
-        entryIndices: session.entries.map((entry) => entry.entryIndex),
+        entryIndices: confirmedEntryIndices,
         completionPolicy: policy
       }),
       startedAt: session.startedAt?.toISOString() ?? null,
@@ -726,6 +741,7 @@ export class SelfInspectionService {
             id: true,
             entryIndex: true,
             entrySlotKind: true,
+            persistenceStatus: true,
             createdByEmployeeId: true,
             createdByEmployeeNameSnapshot: true,
             measuringInstrumentId: true,
@@ -762,7 +778,7 @@ export class SelfInspectionService {
           }
         },
         recordApproval: true,
-        _count: { select: { entries: true } }
+        _count: { select: confirmedEntriesCountSelect }
       }
     });
     if (!session || !session.recordApprovalRequiredAt || !session.inspectorRemeasurementRequiredAt) {
@@ -794,6 +810,9 @@ export class SelfInspectionService {
     const templateConfig = templateConfigFromTemplate(session.template);
     const pendingReviewCounts = await loadPendingReviewCountsBySessionIds(prisma, [session.id]);
     const pendingReviewCount = pendingReviewCounts.get(session.id) ?? 0;
+    const confirmedEntryIndices = session.entries
+      .filter((entry) => isConfirmed(entry.persistenceStatus))
+      .map((entry) => entry.entryIndex);
     const inspectorMeasurement = buildInspectorMeasurementCompletion({
       inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt,
       recordApproval: session.recordApproval,
@@ -832,7 +851,7 @@ export class SelfInspectionService {
         completedEntryCount,
         completedAt: session.completedAt,
         pendingReviewCount,
-        entryIndices: session.entries.map((entry) => entry.entryIndex),
+        entryIndices: confirmedEntryIndices,
         completionPolicy: policy
       }),
       startedAt: session.startedAt?.toISOString() ?? null,
@@ -961,10 +980,13 @@ export class SelfInspectionService {
           registrationPolicy
         );
         const backfillData = buildRegistrationBackfillData(existingAtIndex, registration);
-        if (backfillData) {
+        if (backfillData || !isConfirmed(existingAtIndex.persistenceStatus)) {
           const backfilled = await tx.selfInspectionLotEntry.update({
             where: { id: existingAtIndex.id },
-            data: backfillData,
+            data: {
+              ...(backfillData ?? {}),
+              persistenceStatus: SELF_INSPECTION_ENTRY_PERSISTENCE_CONFIRMED
+            },
             include: { values: true, instrumentUsages: true }
           });
           await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
@@ -988,6 +1010,7 @@ export class SelfInspectionService {
             sessionId,
             entryIndex,
             entrySlotKind: slotKind,
+            persistenceStatus: SELF_INSPECTION_ENTRY_PERSISTENCE_CONFIRMED,
             createdByEmployeeId: registration.createdByEmployeeId,
             createdByEmployeeNameSnapshot: registration.createdByEmployeeNameSnapshot,
             measuringInstrumentId: registration.measuringInstrumentId,
@@ -1029,10 +1052,13 @@ export class SelfInspectionService {
           registrationPolicy
         );
         const backfillData = buildRegistrationBackfillData(raced, racedRegistration);
-        if (backfillData) {
+        if (backfillData || !isConfirmed(raced.persistenceStatus)) {
           const backfilled = await tx.selfInspectionLotEntry.update({
             where: { id: raced.id },
-            data: backfillData,
+            data: {
+              ...(backfillData ?? {}),
+              persistenceStatus: SELF_INSPECTION_ENTRY_PERSISTENCE_CONFIRMED
+            },
             include: { values: true, instrumentUsages: true }
           });
           await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
@@ -1082,6 +1108,7 @@ export class SelfInspectionService {
         where: { id: entryId, sessionId, updatedAt: existingEntry.updatedAt },
         data: {
           updatedAt: new Date(),
+          persistenceStatus: SELF_INSPECTION_ENTRY_PERSISTENCE_CONFIRMED,
           ...registrationPatch
         }
       });
@@ -1115,10 +1142,150 @@ export class SelfInspectionService {
     return result;
   }
 
+  async upsertDraftEntry(
+    sessionId: string,
+    input: {
+      entryIndex: number;
+      values?: SelfInspectionMeasurementPayloadValue[];
+      employeeTagUid?: string | null;
+      measuringInstrumentTagUid?: string | null;
+      ifUnmodifiedSince?: string | null;
+    }
+  ) {
+    const entryIndex = Math.floor(input.entryIndex);
+    const result = await prisma.$transaction(async (tx) => {
+      await lockSessionRow(tx, sessionId);
+      const session = await loadSessionForMutation(tx, sessionId);
+      assertSessionEntryCountWritable(session);
+      await assertInspectorRemeasurementNotStarted(tx, sessionId);
+      const templateConfig = templateConfigFromTemplate(session.template);
+      assertEntryIndexAllowed(templateConfig, session.plannedQuantity, entryIndex);
+      const slotKind = inferEntrySlotKindForIndex(
+        templateConfig,
+        session.plannedQuantity,
+        entryIndex
+      );
+      const values = validateDraftMeasurementPayload(session.template, input.values ?? []);
+
+      const existingEntry = await tx.selfInspectionLotEntry.findUnique({
+        where: {
+          sessionId_entryIndex: {
+            sessionId,
+            entryIndex
+          }
+        },
+        include: { values: true, instrumentUsages: true }
+      });
+
+      await assertSelfInspectionEntryRegistrationTagUids({
+        employeeTagUid: (input.employeeTagUid ?? '').trim() || null,
+        measuringInstrumentTagUid: (input.measuringInstrumentTagUid ?? '').trim() || null
+      });
+
+      let createdByEmployeeId = existingEntry?.createdByEmployeeId ?? null;
+      let createdByEmployeeNameSnapshot = existingEntry?.createdByEmployeeNameSnapshot ?? null;
+      let measuringInstrumentId = existingEntry?.measuringInstrumentId ?? null;
+      let measuringInstrumentManagementNumberSnapshot =
+        existingEntry?.measuringInstrumentManagementNumberSnapshot ?? null;
+      let measuringInstrumentNameSnapshot = existingEntry?.measuringInstrumentNameSnapshot ?? null;
+      let measuringInstrumentTagUidSnapshot =
+        existingEntry?.measuringInstrumentTagUidSnapshot ?? null;
+
+      if (!createdByEmployeeId && (input.employeeTagUid ?? '').trim()) {
+        const actor = await resolveEntryActor(input.employeeTagUid);
+        createdByEmployeeId = actor.createdByEmployeeId;
+        createdByEmployeeNameSnapshot = actor.createdByEmployeeNameSnapshot;
+      }
+      if (!measuringInstrumentId && (input.measuringInstrumentTagUid ?? '').trim()) {
+        const instrument = await resolveMeasuringInstrumentByTag(input.measuringInstrumentTagUid);
+        measuringInstrumentId = instrument.measuringInstrumentId;
+        measuringInstrumentManagementNumberSnapshot =
+          instrument.measuringInstrumentManagementNumberSnapshot;
+        measuringInstrumentNameSnapshot = instrument.measuringInstrumentNameSnapshot;
+        measuringInstrumentTagUidSnapshot = instrument.measuringInstrumentTagUidSnapshot;
+      }
+
+      if (!existingEntry) {
+        const entry = await tx.selfInspectionLotEntry.create({
+          data: {
+            sessionId,
+            entryIndex,
+            entrySlotKind: slotKind,
+            persistenceStatus: SELF_INSPECTION_ENTRY_PERSISTENCE_DRAFT,
+            createdByEmployeeId,
+            createdByEmployeeNameSnapshot,
+            measuringInstrumentId,
+            measuringInstrumentManagementNumberSnapshot,
+            measuringInstrumentNameSnapshot,
+            measuringInstrumentTagUidSnapshot,
+            values: {
+              create: values
+            }
+          },
+          include: {
+            values: true,
+            instrumentUsages: true
+          }
+        });
+        return serializeLotEntry(entry);
+      }
+
+      if (input.ifUnmodifiedSince) {
+        assertEntryUnmodifiedSince(input.ifUnmodifiedSince, existingEntry.updatedAt);
+      }
+
+      const locked = await tx.selfInspectionLotEntry.updateMany({
+        where: {
+          id: existingEntry.id,
+          sessionId,
+          ...(input.ifUnmodifiedSince ? { updatedAt: existingEntry.updatedAt } : {})
+        },
+        data: {
+          updatedAt: new Date(),
+          persistenceStatus: SELF_INSPECTION_ENTRY_PERSISTENCE_DRAFT,
+          createdByEmployeeId,
+          createdByEmployeeNameSnapshot,
+          measuringInstrumentId,
+          measuringInstrumentManagementNumberSnapshot,
+          measuringInstrumentNameSnapshot,
+          measuringInstrumentTagUidSnapshot
+        }
+      });
+      if (locked.count === 0) {
+        throw new ApiError(409, '他端末で更新されています。再読み込みしてください。');
+      }
+
+      await tx.selfInspectionMeasurementValue.deleteMany({ where: { entryId: existingEntry.id } });
+      if (values.length > 0) {
+        await tx.selfInspectionMeasurementValue.createMany({
+          data: values.map((value) => ({
+            entryId: existingEntry.id,
+            templateItemId: value.templateItemId,
+            value: value.value,
+            reviewStatus: value.reviewStatus,
+            outOfToleranceAcknowledgedAt: value.outOfToleranceAcknowledgedAt,
+            approvedAt: value.approvedAt,
+            approvedByUserId: value.approvedByUserId,
+            approvedByUsername: value.approvedByUsername,
+            approvalComment: value.approvalComment
+          }))
+        });
+      }
+
+      const updated = await tx.selfInspectionLotEntry.findUniqueOrThrow({
+        where: { id: existingEntry.id },
+        include: { values: true, instrumentUsages: true }
+      });
+      return serializeLotEntry(updated);
+    });
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+    return result;
+  }
+
   async completeSession(sessionId: string) {
     const sessionInclude = {
       template: { include: partMeasurementTemplateFullInclude },
-      entries: { select: { entryIndex: true } },
+      entries: { where: confirmedWhere, select: { entryIndex: true } },
       inspectorEntries: {
         select: {
           entryIndex: true,
@@ -1131,7 +1298,7 @@ export class SelfInspectionService {
         }
       },
       recordApproval: { select: { id: true } },
-      _count: { select: { entries: true } }
+      _count: { select: confirmedEntriesCountSelect }
     } as const;
 
     const session = await prisma.$transaction(async (tx) => {
@@ -1153,7 +1320,7 @@ export class SelfInspectionService {
       const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
       const templateConfig = templateConfigFromTemplate(existing.template);
       const entryRows = await tx.selfInspectionLotEntry.findMany({
-        where: { sessionId },
+        where: { sessionId, ...confirmedWhere },
         select: { entryIndex: true }
       });
       if (
@@ -1207,6 +1374,7 @@ export class SelfInspectionService {
       where: {
         reviewStatus: 'PENDING',
         entry: {
+          ...confirmedWhere,
           session: {
             recordApprovalWorkflowStartedAt: null
           }
@@ -1259,10 +1427,11 @@ export class SelfInspectionService {
                   }
                 },
                 entries: {
+                  where: confirmedWhere,
                   select: { entryIndex: true }
                 },
                 _count: {
-                  select: { entries: true }
+                  select: confirmedEntriesCountSelect
                 }
               }
             }
@@ -1381,7 +1550,7 @@ export class SelfInspectionService {
     const comment = input.comment?.trim() || null;
     const sessionInclude = {
       template: { include: partMeasurementTemplateFullInclude },
-      entries: { select: { entryIndex: true } },
+      entries: { where: confirmedWhere, select: { entryIndex: true } },
       inspectorEntries: {
         select: {
           entryIndex: true,
@@ -1393,7 +1562,7 @@ export class SelfInspectionService {
           }
         }
       },
-      _count: { select: { entries: true } }
+      _count: { select: confirmedEntriesCountSelect }
     } as const;
 
     const session = await prisma.$transaction(async (tx) => {
@@ -1411,7 +1580,7 @@ export class SelfInspectionService {
       const pendingCount = await tx.selfInspectionMeasurementValue.count({
         where: {
           reviewStatus: 'PENDING',
-          entry: { sessionId }
+          entry: { sessionId, ...confirmedWhere }
         }
       });
       if (pendingCount === 0) {

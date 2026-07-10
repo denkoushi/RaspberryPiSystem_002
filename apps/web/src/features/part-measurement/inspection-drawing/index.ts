@@ -48,6 +48,7 @@ export { InspectionDrawingCreateMetaChip } from './InspectionDrawingCreateMetaCh
 export { InspectionDrawingCreateMetadataRow } from './InspectionDrawingCreateMetadataRow';
 export type { InspectionDrawingCreateMetadataRowProps } from './InspectionDrawingCreateMetadataRow';
 export { InspectionDrawingCreateToolbar } from './InspectionDrawingCreateToolbar';
+export { InspectionDrawingPlaceCalloutModeRow } from './InspectionDrawingPlaceCalloutModeRow';
 export { InspectionDrawingPointSettingsPanel } from './InspectionDrawingPointSettingsPanel';
 export { InspectionDrawingPointSummaryList } from './InspectionDrawingPointSummaryList';
 export { InspectionDrawingPointSidebar } from './InspectionDrawingPointSidebar';
@@ -120,7 +121,12 @@ export {
   type InspectionDrawingPrintRecordEntrySlot,
   type InspectionDrawingPrintViewModel
 } from './inspectionDrawingPrintViewModel';
-export { computePrintMarkerPosition, markerPositionInObjectContainContainer } from './printMarkerLayout';
+export { computePrintMarkerPosition, markerPositionInObjectContainContainer, computePrintCalloutLines } from './printMarkerLayout';
+export {
+  inspectionDrawingPointHasCalloutTip,
+  clearInspectionDrawingCalloutTip,
+  setInspectionDrawingCalloutTip
+} from './inspectionDrawingCalloutTip';
 export { computeObjectContainLayout } from './computeObjectContainLayout';
 
 export {

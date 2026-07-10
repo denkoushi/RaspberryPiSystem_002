@@ -202,7 +202,13 @@ type SelfInspectionNfcRegistrationAction =
       result: SelfInspectionNfcTagResolveResult;
     }
   | { type: 'resolve_failed' }
-  | { type: 'clear_draft_for_entry'; entryIndex: number };
+  | { type: 'clear_draft_for_entry'; entryIndex: number }
+  | {
+      type: 'seed_employee_to_empty_entries';
+      entryIndices: number[];
+      employeeTagUid: string;
+      employeeDisplayName: string | null;
+    };
 
 export const INITIAL_NFC_REGISTRATION_STATE: SelfInspectionNfcRegistrationState = {
   draftByEntryIndex: {},
@@ -305,6 +311,25 @@ export function reduceSelfInspectionNfcRegistrationState(
       }
       const nextDraftByEntryIndex = { ...state.draftByEntryIndex };
       delete nextDraftByEntryIndex[action.entryIndex];
+      return {
+        ...state,
+        draftByEntryIndex: nextDraftByEntryIndex
+      };
+    }
+    case 'seed_employee_to_empty_entries': {
+      let changed = false;
+      const nextDraftByEntryIndex = { ...state.draftByEntryIndex };
+      for (const entryIndex of action.entryIndices) {
+        const current = nextDraftByEntryIndex[entryIndex] ?? EMPTY_DRAFT;
+        if (current.employeeTagUid) continue;
+        changed = true;
+        nextDraftByEntryIndex[entryIndex] = {
+          ...current,
+          employeeTagUid: action.employeeTagUid,
+          employeeDisplayName: action.employeeDisplayName
+        };
+      }
+      if (!changed) return state;
       return {
         ...state,
         draftByEntryIndex: nextDraftByEntryIndex
@@ -467,6 +492,17 @@ export function useSelfInspectionNfcRegistration(options: {
     hasUnsavedRegistrationDrafts,
     clearDraftForEntry: (entryIndex: number) => {
       dispatch({ type: 'clear_draft_for_entry', entryIndex });
+    },
+    seedEmployeeToEmptyEntries: (
+      entryIndices: number[],
+      employee: { employeeTagUid: string; employeeDisplayName: string | null }
+    ) => {
+      dispatch({
+        type: 'seed_employee_to_empty_entries',
+        entryIndices,
+        employeeTagUid: employee.employeeTagUid,
+        employeeDisplayName: employee.employeeDisplayName
+      });
     }
   };
 }

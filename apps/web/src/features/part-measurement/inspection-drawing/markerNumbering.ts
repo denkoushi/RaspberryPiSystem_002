@@ -55,6 +55,8 @@ export function createInspectionDrawingPoint(
     markerNo,
     xRatio,
     yRatio,
+    calloutTipXRatio: null,
+    calloutTipYRatio: null,
     nominalRaw: '',
     upperToleranceRaw: '',
     lowerToleranceRaw: '',
@@ -96,6 +98,8 @@ export function templateItemToDrawingPoint(
     markerNo,
     xRatio: parseOptionalNumber(item.markerXRatio) ?? 0,
     yRatio: parseOptionalNumber(item.markerYRatio) ?? 0,
+    calloutTipXRatio: parseOptionalNumber(item.calloutTipXRatio ?? null),
+    calloutTipYRatio: parseOptionalNumber(item.calloutTipYRatio ?? null),
     ...raw,
     testValue,
     decimalPlaces: item.decimalPlaces,
@@ -257,6 +261,8 @@ export function drawingPointToTemplateItemInput(
   decimalPlaces: number;
   markerXRatio: number;
   markerYRatio: number;
+  calloutTipXRatio: number | null;
+  calloutTipYRatio: number | null;
   nominalValue: number | null;
   lowerLimit: number;
   upperLimit: number;
@@ -300,6 +306,8 @@ export function drawingPointToTemplateItemInput(
       decimalPlaces,
       markerXRatio: pt.xRatio,
       markerYRatio: pt.yRatio,
+      calloutTipXRatio: pt.calloutTipXRatio ?? null,
+      calloutTipYRatio: pt.calloutTipYRatio ?? null,
       nominalValue: null,
       lowerLimit: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
       upperLimit: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
@@ -319,6 +327,8 @@ export function drawingPointToTemplateItemInput(
       decimalPlaces,
       markerXRatio: pt.xRatio,
       markerYRatio: pt.yRatio,
+      calloutTipXRatio: pt.calloutTipXRatio ?? null,
+      calloutTipYRatio: pt.calloutTipYRatio ?? null,
       nominalValue: null,
       lowerLimit: bounds.lowerLimit,
       upperLimit: bounds.upperLimit,
@@ -336,6 +346,8 @@ export function drawingPointToTemplateItemInput(
     decimalPlaces,
     markerXRatio: pt.xRatio,
     markerYRatio: pt.yRatio,
+    calloutTipXRatio: pt.calloutTipXRatio ?? null,
+    calloutTipYRatio: pt.calloutTipYRatio ?? null,
     nominalValue: bounds.nominal,
     lowerLimit: bounds.lowerLimit,
     upperLimit: bounds.upperLimit,

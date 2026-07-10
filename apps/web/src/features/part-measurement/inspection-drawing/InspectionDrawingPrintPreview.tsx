@@ -17,7 +17,7 @@ import {
   type InspectionDrawingPrintViewModel
 } from './inspectionDrawingPrintViewModel';
 import { formatInspectionDrawingPointDisplayName } from './measurementPointSupplement';
-import { computePrintMarkerPosition } from './printMarkerLayout';
+import { computePrintCalloutLines, computePrintMarkerPosition } from './printMarkerLayout';
 
 import type { InspectionDrawingPoint } from './types';
 import type { CSSProperties } from 'react';
@@ -309,6 +309,18 @@ function DrawingPage({
     return map;
   }, [containerHeight, containerWidth, imageNaturalHeight, imageNaturalWidth, viewModel.points]);
 
+  const calloutLines = useMemo(
+    () =>
+      computePrintCalloutLines(
+        viewModel.points,
+        containerWidth,
+        containerHeight,
+        imageNaturalWidth,
+        imageNaturalHeight
+      ),
+    [containerHeight, containerWidth, imageNaturalHeight, imageNaturalWidth, viewModel.points]
+  );
+
   return (
     <article
       className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_1fr] gap-[2.5mm] overflow-hidden bg-white shadow-2xl"
@@ -325,6 +337,41 @@ function DrawingPage({
         style={{ height: `${INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM}mm` }}
       >
         <img src={imageUrl} alt="" className="h-full w-full object-contain" />
+        {calloutLines.length > 0 ? (
+          <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
+            {calloutLines.map((line) => (
+              <g key={`print-callout-${line.markerNo}-${line.tipLeftPercent}`}>
+                <line
+                  x1={`${line.x1Percent}%`}
+                  y1={`${line.y1Percent}%`}
+                  x2={`${line.x2Percent}%`}
+                  y2={`${line.y2Percent}%`}
+                  stroke="#b45309"
+                  strokeWidth="1.2"
+                />
+                <circle
+                  cx={`${line.tipLeftPercent}%`}
+                  cy={`${line.tipTopPercent}%`}
+                  r="3.2"
+                  fill="#fde68a"
+                  stroke="#b45309"
+                  strokeWidth="1"
+                />
+                <text
+                  x={`${line.tipLeftPercent}%`}
+                  y={`${line.tipTopPercent}%`}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize="5"
+                  fontWeight="800"
+                  fill="#0f172a"
+                >
+                  {line.markerNo}
+                </text>
+              </g>
+            ))}
+          </svg>
+        ) : null}
         {viewModel.points.map((point: InspectionDrawingPoint) => {
           const position = markerPositions.get(point.id);
           if (!position) return null;

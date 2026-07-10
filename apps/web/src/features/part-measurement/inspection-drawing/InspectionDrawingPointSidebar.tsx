@@ -1,8 +1,11 @@
+import { clearInspectionDrawingCalloutTip, inspectionDrawingPointHasCalloutTip } from './inspectionDrawingCalloutTip';
+import { InspectionDrawingPlaceCalloutModeRow } from './InspectionDrawingPlaceCalloutModeRow';
 import { InspectionDrawingPointSettingsPanel } from './InspectionDrawingPointSettingsPanel';
 import { InspectionDrawingPointSummaryList } from './InspectionDrawingPointSummaryList';
 import { InspectionDrawingValuePanel } from './InspectionDrawingValuePanel';
 
 import type { InspectionDrawingToolbarMode } from './InspectionDrawingCreateToolbar';
+import type { InspectionDrawingPlaceCalloutMode } from './InspectionDrawingPlaceCalloutModeRow';
 import type {
   PartMeasurementDrawingOcrCandidateDto,
   PartMeasurementDrawingOcrStatus
@@ -12,6 +15,9 @@ import type { InspectionDrawingMeasurementLabelSetting } from '@raspi-system/sha
 
 type Props = {
   mode: InspectionDrawingToolbarMode;
+  onModeChange: (mode: InspectionDrawingPlaceCalloutMode) => void;
+  hasDrawingImage: boolean;
+  hasMeasurementPoints: boolean;
   points: InspectionDrawingPoint[];
   selectedPoint: InspectionDrawingPoint | null;
   contentReadOnly: boolean;
@@ -38,6 +44,9 @@ type Props = {
 /** 作成/改版 — 右ペイン（設定 or テスト入力 + 測定点一覧） */
 export function InspectionDrawingPointSidebar({
   mode,
+  onModeChange,
+  hasDrawingImage,
+  hasMeasurementPoints,
   points,
   selectedPoint,
   contentReadOnly,
@@ -56,12 +65,32 @@ export function InspectionDrawingPointSidebar({
   onApplyOcrCandidate,
   measurementLabelSettings
 }: Props) {
-  const showHistoryPlaceHint = contentReadOnly && mode === 'place' && !selectedPoint;
+  const showHistoryPlaceHint = contentReadOnly && (mode === 'place' || mode === 'callout') && !selectedPoint;
+  const showPlaceCalloutChrome = mode === 'place' || mode === 'callout';
+  const showSettings = showPlaceCalloutChrome && selectedPoint;
+
+  const modeRow = showPlaceCalloutChrome ? (
+    <InspectionDrawingPlaceCalloutModeRow
+      mode={mode}
+      onModeChange={onModeChange}
+      hasDrawingImage={hasDrawingImage}
+      hasMeasurementPoints={hasMeasurementPoints}
+      calloutStatus={
+        selectedPoint
+          ? {
+              hasCallout: inspectionDrawingPointHasCalloutTip(selectedPoint),
+              disabled: contentReadOnly,
+              onClear: () => onPointChange(clearInspectionDrawingCalloutTip())
+            }
+          : null
+      }
+    />
+  ) : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="grid shrink-0 gap-2">
-        {mode === 'place' && selectedPoint ? (
+        {showSettings ? (
           <InspectionDrawingPointSettingsPanel
             point={selectedPoint}
             disabled={contentReadOnly}
@@ -74,12 +103,17 @@ export function InspectionDrawingPointSidebar({
             ocrCandidateError={ocrCandidateError}
             onApplyOcrCandidate={onApplyOcrCandidate}
             measurementLabelSettings={measurementLabelSettings}
+            modeChrome={modeRow}
           />
         ) : null}
 
-        {mode === 'place' && !selectedPoint && !showHistoryPlaceHint ? (
+        {showPlaceCalloutChrome && !selectedPoint ? modeRow : null}
+
+        {showPlaceCalloutChrome && !selectedPoint && !showHistoryPlaceHint ? (
           <p className="px-1 text-[0.92rem] text-white/55">
-            図面上で点を選択するか、一覧から選んでください。
+            {mode === 'callout'
+              ? '測定点を選び、図面上で矢視の先端をタップしてください。'
+              : '図面上で点を選択するか、一覧から選んでください。'}
           </p>
         ) : null}
 

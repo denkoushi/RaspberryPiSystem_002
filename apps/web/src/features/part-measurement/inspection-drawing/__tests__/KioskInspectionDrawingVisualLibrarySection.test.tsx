@@ -41,7 +41,7 @@ describe('KioskInspectionDrawingVisualLibrarySection', () => {
     expect(screen.getByTestId('inspection-visual-library-scroll')).toHaveClass('min-h-0');
     expect(screen.getByTestId('inspection-visual-library-scroll')).toHaveClass('overflow-auto');
     expect(screen.getByTestId('inspection-visual-name-column')).toHaveClass('w-[60%]');
-    for (const header of ['図面名', '更新', '操作']) {
+    for (const header of ['図面名', '登録', '操作']) {
       expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument();
     }
     expect(screen.getByText('7161テーブル')).toHaveAttribute('title', '7161テーブル');
@@ -68,6 +68,13 @@ describe('KioskInspectionDrawingVisualLibrarySection', () => {
     expect(screen.getByText('R001')).toBeInTheDocument();
     expect(screen.getByText('+1')).toBeInTheDocument();
     expect(screen.queryByText('資源CD')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '新規' })).not.toBeInTheDocument();
+    expect(screen.getByText('新規')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByText(/既存テンプレあり/)).not.toBeInTheDocument();
+    expect(screen.getByText('新規')).toHaveAttribute(
+      'title',
+      '有効テンプレあり。右の一覧から編集してください'
+    );
   });
 
   it('does not render a resource chip row when the visual has no mapped resource CDs', () => {

@@ -3,6 +3,10 @@ import type { Prisma, SelfInspectionEntrySlotKind, SelfInspectionMode } from '@p
 import { prisma } from '../../lib/prisma.js';
 import { pickSessionForScheduleRow } from './self-inspection.service.js';
 import {
+  confirmedEntriesCountSelect,
+  confirmedWhere
+} from './self-inspection/entry-persistence-status.js';
+import {
   MAX_DETAIL_MEASUREMENT_POINTS,
   MAX_HEATSTRIP_ENTRY_COLUMNS,
 } from '../signage/self-inspection-machine-board/layout-contracts.js';
@@ -93,6 +97,7 @@ export async function fetchSelfInspectionSessionDetailsByScheduleRowIds(
         },
       },
       entries: {
+        where: confirmedWhere,
         orderBy: { entryIndex: 'asc' },
         take: MAX_HEATSTRIP_ENTRY_COLUMNS,
         select: {
@@ -101,7 +106,7 @@ export async function fetchSelfInspectionSessionDetailsByScheduleRowIds(
           entrySlotKind: true,
         },
       },
-      _count: { select: { entries: true } },
+      _count: { select: confirmedEntriesCountSelect },
     },
   });
 

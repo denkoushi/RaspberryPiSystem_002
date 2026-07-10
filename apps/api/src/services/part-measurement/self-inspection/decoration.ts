@@ -20,6 +20,7 @@ import {
   type SelfInspectionTemplate
 } from './shared.js';
 import { loadPendingReviewCountsBySessionIds } from './serialization.js';
+import { confirmedEntriesCountSelect, confirmedWhere } from './entry-persistence-status.js';
 
 
 export function pickSessionForScheduleRow<
@@ -164,11 +165,12 @@ export async function ensureSelfInspectionSessionsInCache(
         },
       },
       entries: {
+        where: confirmedWhere,
         select: {
           entryIndex: true,
         },
       },
-      _count: { select: { entries: true } },
+      _count: { select: confirmedEntriesCountSelect },
     },
   });
   const pendingReviewCounts = await loadPendingReviewCountsBySessionIds(

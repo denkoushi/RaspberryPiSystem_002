@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>自主検査・検査図面 — 自動保存 / 指差し / 新規制限（デザインプレビュー）</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --stage: #0f172a;
+      --panel: #1e293b;
+      --panel-soft: rgba(15, 23, 42, 0.72);
+      --line: rgba(255, 255, 255, 0.15);
+      --text: #f8fafc;
+      --muted: rgba(248, 250, 252, 0.62);
+      --weak: rgba(248, 250, 252, 0.42);
+      --cyan: #67e8f9;
+      --sky: #38bdf8;
+      --lime: #bef264;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+      --btn: #334155;
+      --font: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      padding: 16px;
+    }
+    .page { max-width: 1180px; margin: 0 auto; }
+    h1 { font-size: 1.15rem; font-weight: 800; }
+    .lead {
+      margin-top: 8px;
+      font-size: 0.86rem;
+      color: var(--muted);
+      line-height: 1.55;
+      max-width: 78ch;
+    }
+    .chips {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 0.72rem;
+      color: var(--lime);
+      background: rgba(190, 242, 100, 0.08);
+    }
+    .chip.note { color: var(--cyan); background: rgba(103, 232, 249, 0.08); }
+    .chip.warn { color: var(--amber); background: rgba(251, 191, 36, 0.1); }
+
+    .toc {
+      margin: 16px 0 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .toc a {
+      color: var(--sky);
+      font-size: 0.82rem;
+      text-decoration: none;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 8px;
+      padding: 6px 10px;
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    section.block {
+      margin-top: 22px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+    .block h2 { font-size: 1rem; font-weight: 800; }
+    .block .desc {
+      margin-top: 6px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.5;
+      max-width: 78ch;
+    }
+
+    .compare {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      align-items: start;
+    }
+    @media (max-width: 920px) {
+      .compare { grid-template-columns: 1fr; }
+    }
+
+    .frame-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .frame-label strong { font-size: 0.88rem; }
+    .frame-label span { font-size: 0.74rem; color: var(--weak); }
+
+    .stage {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--stage);
+      padding: 8px;
+      min-height: 420px;
+    }
+
+    .kiosk {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 8px;
+      min-height: 400px;
+    }
+    @media (max-width: 720px) {
+      .kiosk { grid-template-columns: 1fr; }
+    }
+
+    .canvas {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(180deg, rgba(148, 163, 184, 0.08), transparent 40%),
+        #020617;
+      overflow: hidden;
+      min-height: 380px;
+    }
+    .drawing-fake {
+      position: absolute;
+      inset: 18px 18px 28px;
+      border: 1px dashed rgba(148, 163, 184, 0.35);
+      border-radius: 6px;
+      background:
+        repeating-linear-gradient(
+          -12deg,
+          rgba(51, 65, 85, 0.35),
+          rgba(51, 65, 85, 0.35) 10px,
+          rgba(30, 41, 59, 0.35) 10px,
+          rgba(30, 41, 59, 0.35) 20px
+        );
+    }
+    .part-hole {
+      position: absolute;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 2px solid rgba(226, 232, 240, 0.55);
+      background: rgba(15, 23, 42, 0.55);
+    }
+    .part-hole.a { left: 18%; top: 28%; }
+    .part-hole.b { left: 58%; top: 46%; }
+    .part-hole.c { left: 34%; top: 62%; width: 22px; height: 22px; }
+
+    .marker {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: #0f172a;
+      background: #f8fafc;
+      border: 2px solid #0ea5e9;
+      box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.25);
+      z-index: 3;
+    }
+    .marker.m1 { left: 42%; top: 18%; }
+    .marker.m2 { left: 72%; top: 34%; }
+    .marker.m3 { left: 22%; top: 70%; }
+    .marker.is-active {
+      background: #67e8f9;
+      border-color: #22d3ee;
+      box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.45);
+    }
+
+    .callout-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .callout-label {
+      position: absolute;
+      z-index: 4;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 0.68rem;
+      font-weight: 800;
+      color: #0f172a;
+      background: #fde68a;
+      border: 2px solid #f59e0b;
+    }
+    .callout-label.linked-1 { left: 24%; top: 24%; }
+    .callout-label.linked-2 { left: 63%; top: 52%; }
+    .callout-label.is-active {
+      background: #67e8f9;
+      border-color: #22d3ee;
+    }
+
+    .gate-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      display: grid;
+      place-items: center;
+      background: rgba(2, 6, 23, 0.72);
+      backdrop-filter: blur(1.5px);
+      padding: 16px;
+      text-align: center;
+    }
+    .gate-card {
+      width: min(100%, 320px);
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.95);
+      padding: 18px 16px;
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.15), 0 12px 40px rgba(0,0,0,0.35);
+    }
+    .gate-card h3 { font-size: 1rem; font-weight: 800; color: #e0f2fe; }
+    .gate-card p {
+      margin-top: 8px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .nfc-pulse {
+      margin: 14px auto 0;
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      border: 2px solid rgba(56, 189, 248, 0.7);
+      display: grid;
+      place-items: center;
+      color: var(--sky);
+      font-size: 0.72rem;
+      font-weight: 800;
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.45); }
+      50% { box-shadow: 0 0 0 10px rgba(56, 189, 248, 0); }
+    }
+
+    .side {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(30, 41, 59, 0.72);
+      padding: 8px;
+    }
+    .card h4 {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: rgba(248, 250, 252, 0.8);
+    }
+    .meta-line {
+      margin-top: 4px;
+      font-size: 0.72rem;
+      color: var(--weak);
+    }
+    .status-ok { color: var(--lime); }
+    .status-warn { color: var(--amber); }
+    .status-dim { color: var(--weak); }
+
+    .slots {
+      margin-top: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 0;
+      background: var(--btn);
+      color: var(--text);
+      font: 700 0.82rem/1 var(--font);
+    }
+    .btn.is-disabled {
+      background: rgba(30, 41, 59, 0.55);
+      color: var(--weak);
+    }
+    .btn.is-highlighted {
+      box-shadow: 0 0 0 2px var(--sky), 0 0 10px rgba(56, 189, 248, 0.45);
+    }
+    .btn.is-pressed {
+      outline: 1px solid rgba(248, 250, 252, 0.35);
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 8px;
+      padding: 4px;
+    }
+    .value-box {
+      margin-top: 6px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: #0f172a;
+      min-height: 44px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 1.05rem;
+    }
+    .value-box.is-locked {
+      background: rgba(15, 23, 42, 0.55);
+      color: var(--weak);
+      border-style: dashed;
+    }
+    .hint {
+      margin-top: 6px;
+      font-size: 0.7rem;
+      color: var(--weak);
+      line-height: 1.4;
+    }
+    .autosave-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      border: 1px solid rgba(190, 242, 100, 0.35);
+      color: var(--lime);
+      background: rgba(190, 242, 100, 0.08);
+    }
+    .autosave-pill::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #84cc16;
+    }
+    .autosave-pill.draft {
+      color: var(--amber);
+      border-color: rgba(251, 191, 36, 0.4);
+      background: rgba(251, 191, 36, 0.1);
+    }
+    .autosave-pill.draft::before { background: #f59e0b; }
+
+    .point-list {
+      margin-top: 6px;
+      display: grid;
+      gap: 4px;
+    }
+    .point-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.72rem;
+      padding: 5px 6px;
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.45);
+      color: var(--muted);
+    }
+    .point-row.is-active {
+      background: rgba(56, 189, 248, 0.15);
+      color: #e0f2fe;
+    }
+
+    /* editor callout tools */
+    .editor {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 260px;
+      gap: 8px;
+      min-height: 380px;
+    }
+    .tool-row {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .tool {
+      min-height: 36px;
+      padding: 0 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      font: 700 0.75rem/1 var(--font);
+    }
+    .tool.is-on {
+      border-color: rgba(251, 191, 36, 0.7);
+      background: rgba(251, 191, 36, 0.12);
+      color: #fde68a;
+    }
+    .legend-mini {
+      margin-top: 8px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .legend-mini b { color: #fde68a; }
+
+    /* template library */
+    .lib {
+      display: grid;
+      gap: 8px;
+    }
+    .lib-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(30, 41, 59, 0.65);
+      padding: 10px;
+    }
+    .lib-row h4 { font-size: 0.86rem; }
+    .lib-row p { margin-top: 4px; font-size: 0.74rem; color: var(--muted); }
+    .lib-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+    .banner {
+      border: 1px solid rgba(251, 191, 36, 0.45);
+      background: rgba(251, 191, 36, 0.1);
+      color: #fde68a;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+    .banner.ok {
+      border-color: rgba(190, 242, 100, 0.4);
+      background: rgba(190, 242, 100, 0.08);
+      color: var(--lime);
+    }
+    .footer-note {
+      margin-top: 18px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+      font-size: 0.74rem;
+      color: var(--weak);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>自主検査・検査図面 — UI変更プレビュー</h1>
+    <p class="lead">
+      実装前の静的モック。変更点は (1) 氏名NFC必須ゲート + 自動保存/確定、
+      (2) 必要時だけの指差し記号（丸数字連携）、(3) 同一キー既存テンプレがあるときの新規禁止。
+    </p>
+    <div class="chips">
+      <span class="chip">実装前・クリックなし</span>
+      <span class="chip note">CDNなし / file:// 可</span>
+      <span class="chip warn">本番非接続</span>
+    </div>
+    <div class="toc">
+      <a href="#s1">1. 自主検査セッション</a>
+      <a href="#s2">2. 指差し記号（任意）</a>
+      <a href="#s3">3. テンプレ新規制限</a>
+    </div>
+
+    <!-- ========== 1. Self inspection ========== -->
+    <section class="block" id="s1">
+      <h2>1. 自主検査セッション — NFCゲート → 自動保存 → 確定</h2>
+      <p class="desc">
+        左: 氏名NFC未スキャン。測定値・件選択はロック。右: スキャン後。入力のたびに下書き自動保存。
+        「入力を保存」は確定ボタンに役割変更。
+      </p>
+      <div class="compare">
+        <div>
+          <div class="frame-label">
+            <strong>Before / ゲート中</strong>
+            <span>測定不可</span>
+          </div>
+          <div class="stage">
+            <div class="kiosk">
+              <div class="canvas">
+                <div class="drawing-fake">
+                  <span class="part-hole a"></span>
+                  <span class="part-hole b"></span>
+                  <span class="part-hole c"></span>
+                </div>
+                <span class="marker m1">1</span>
+                <span class="marker m2">2</span>
+                <span class="marker m3">3</span>
+                <div class="gate-overlay">
+                  <div class="gate-card">
+                    <h3>氏名NFCタグをスキャン</h3>
+                    <p>スキャンするまで測定値を選べません。作業者タグをリーダーにかざしてください。</p>
+                    <div class="nfc-pulse">NFC</div>
+                  </div>
+                </div>
+              </div>
+              <div class="side">
+                <div class="card">
+                  <h4>登録</h4>
+                  <p class="meta-line status-warn">氏名 — 未スキャン</p>
+                  <p class="meta-line status-dim">計測機器 — 待機</p>
+                </div>
+                <div class="card">
+                  <h4>入力件（— / 3）</h4>
+                  <div class="slots">
+                    <span class="btn is-disabled">1件目</span>
+                    <span class="btn is-disabled">2件目</span>
+                    <span class="btn is-disabled">最終</span>
+                  </div>
+                </div>
+                <div class="card">
+                  <h4>測定値</h4>
+                  <div class="value-box is-locked">ロック中</div>
+                  <p class="hint">NFC後に候補ボタンが有効化</p>
+                </div>
+                <div class="card">
+                  <div class="actions">
+                    <span class="btn is-disabled">入力を保存</span>
+                    <span class="btn is-disabled">自主検査を完了</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="frame-label">
+            <strong>After / 測定中</strong>
+            <span>下書き自動保存</span>
+          </div>
+          <div class="stage">
+            <div class="kiosk">
+              <div class="canvas">
+                <div class="drawing-fake">
+                  <span class="part-hole a"></span>
+                  <span class="part-hole b"></span>
+                  <span class="part-hole c"></span>
+                </div>
+                <span class="marker m1 is-active">1</span>
+                <span class="marker m2">2</span>
+                <span class="marker m3">3</span>
+              </div>
+              <div class="side">
+                <div class="card">
+                  <h4>登録</h4>
+                  <p class="meta-line status-ok">氏名 山田 太郎</p>
+                  <p class="meta-line status-ok">計測機器 OK</p>
+                </div>
+                <div class="card">
+                  <h4>入力件（2件目 / 3）</h4>
+                  <div class="slots">
+                    <span class="btn">1件目</span>
+                    <span class="btn is-pressed">2件目</span>
+                    <span class="btn">最終</span>
+                  </div>
+                  <span class="autosave-pill draft">下書き 自動保存済 14:22:08</span>
+                </div>
+                <div class="card">
+                  <h4>① 穴径</h4>
+                  <div class="value-box">12.02</div>
+                  <p class="hint">選択/入力のたびに自動保存（下書き）</p>
+                </div>
+                <div class="card">
+                  <div class="actions">
+                    <span class="btn is-highlighted">入力を保存</span>
+                    <span class="btn is-disabled">自主検査を完了</span>
+                  </div>
+                  <p class="hint">「入力を保存」= この件の<strong>確定</strong>。確定後に完了が有効化。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 2. Callouts ========== -->
+    <section class="block" id="s2">
+      <h2>2. 検査図面編集 — 指差し記号（任意・丸数字連携）</h2>
+      <p class="desc">
+        概要のみ。実機1280×17rem・余白不足を踏まえた詳細は
+        <a href="./kiosk-inspection-drawing-callout-pointer-preview.html" style="color:#38bdf8">指差し専用プレビュー</a>
+        （キャンバス主導＋右ペイン1行 / 肥大反例）を参照。
+        丸数字だけでは「どの穴か」が分かりにくいときだけ、引出線＋同じ番号の小バッジを置く。
+      </p>
+      <div class="compare">
+        <div>
+          <div class="frame-label">
+            <strong>Before</strong>
+            <span>丸数字のみ</span>
+          </div>
+          <div class="stage">
+            <div class="editor">
+              <div class="canvas">
+                <div class="drawing-fake">
+                  <span class="part-hole a"></span>
+                  <span class="part-hole b"></span>
+                  <span class="part-hole c"></span>
+                </div>
+                <span class="marker m1">1</span>
+                <span class="marker m2">2</span>
+                <span class="marker m3">3</span>
+              </div>
+              <div class="side">
+                <div class="card">
+                  <h4>測定点</h4>
+                  <div class="point-list">
+                    <div class="point-row"><span>① 穴径</span><span>丸数字のみ</span></div>
+                    <div class="point-row"><span>② ネジ穴</span><span>丸数字のみ</span></div>
+                    <div class="point-row"><span>③ 幅</span><span>丸数字のみ</span></div>
+                  </div>
+                  <p class="legend-mini">穴が近いと、①②がどれか迷う。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="frame-label">
+            <strong>After</strong>
+            <span>①②だけ指差し追加</span>
+          </div>
+          <div class="stage">
+            <div class="editor">
+              <div class="canvas">
+                <div class="drawing-fake">
+                  <span class="part-hole a"></span>
+                  <span class="part-hole b"></span>
+                  <span class="part-hole c"></span>
+                </div>
+                <svg class="callout-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  <!-- ①: tip at hole A -> near marker 1 -->
+                  <defs>
+                    <marker id="arrowHead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                      <path d="M0,0 L6,3 L0,6 Z" fill="#fbbf24" />
+                    </marker>
+                    <marker id="arrowHeadActive" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                      <path d="M0,0 L6,3 L0,6 Z" fill="#67e8f9" />
+                    </marker>
+                  </defs>
+                  <line x1="45" y1="22" x2="24" y2="32" stroke="#67e8f9" stroke-width="1.2" marker-end="url(#arrowHeadActive)" />
+                  <line x1="74" y1="38" x2="64" y2="52" stroke="#fbbf24" stroke-width="1.1" marker-end="url(#arrowHead)" />
+                </svg>
+                <span class="callout-label linked-1 is-active">1</span>
+                <span class="callout-label linked-2">2</span>
+                <span class="marker m1 is-active">1</span>
+                <span class="marker m2">2</span>
+                <span class="marker m3">3</span>
+              </div>
+              <div class="side">
+                <div class="card">
+                  <h4>測定点 / 指差し</h4>
+                  <div class="point-list">
+                    <div class="point-row is-active"><span>① 穴径</span><span>指差しあり</span></div>
+                    <div class="point-row"><span>② ネジ穴</span><span>指差しあり</span></div>
+                    <div class="point-row"><span>③ 幅</span><span>なし</span></div>
+                  </div>
+                  <div class="tool-row">
+                    <span class="tool is-on">指差しを追加</span>
+                    <span class="tool">指差しを削除</span>
+                  </div>
+                  <p class="legend-mini">
+                    矢印の根元に <b>同じ丸数字</b> を表示。<br />
+                    ③のように不要なら置かない。XYの2点は番号ごとに別矢印。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 3. Template create lock ========== -->
+    <section class="block" id="s3">
+      <h2>3. 検査図面ライブラリ — 同一キー既存時は新規禁止</h2>
+      <p class="desc">
+        「図面があるから不可」ではなく、同じ検査テンプレ正本（品番×工程×資源など）が既にある場合に新規を塞ぐ。
+        編集（改版）・雛形として別キー新規は残す。
+      </p>
+      <div class="compare">
+        <div>
+          <div class="frame-label">
+            <strong>Before</strong>
+            <span>新規が常に押せる</span>
+          </div>
+          <div class="stage" style="min-height:auto">
+            <div class="lib">
+              <div class="lib-row">
+                <div>
+                  <h4>ABC-001 / 切削 / R01</h4>
+                  <p>有効版 v3 · 測定点 8 · 更新 2026-07-08</p>
+                </div>
+                <div class="lib-actions">
+                  <span class="btn">編集</span>
+                  <span class="btn">雛形として新規</span>
+                  <span class="btn is-highlighted">新規</span>
+                </div>
+              </div>
+              <p class="hint">同じキーでも新規作成でき、二重正本になりやすい。</p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="frame-label">
+            <strong>After</strong>
+            <span>既存キーは改版へ誘導</span>
+          </div>
+          <div class="stage" style="min-height:auto">
+            <div class="lib">
+              <div class="banner">
+                このキー（ABC-001 / 切削 / R01）には有効テンプレがあります。新規作成はできません。編集（改版）するか、別資源・別工程へ展開してください。
+              </div>
+              <div class="lib-row">
+                <div>
+                  <h4>ABC-001 / 切削 / R01</h4>
+                  <p>有効版 v3 · 測定点 8 · 更新 2026-07-08</p>
+                </div>
+                <div class="lib-actions">
+                  <span class="btn is-highlighted">編集（改版）</span>
+                  <span class="btn">雛形として新規</span>
+                  <span class="btn is-disabled" title="同一キーの有効テンプレがあるため">新規</span>
+                </div>
+              </div>
+              <div class="banner ok">
+                別キー例: 資源 R02 へ展開、工程を研削へ変更、無効化後の作り直しは可。
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <p class="footer-note">
+      正本候補の要件メモ（会話合意）: 氏名NFC必須 → 下書き自動保存 →「入力を保存」で確定 /
+      指差しは任意・測定項目に紐づけ・矢印側にも丸数字表示 /
+      テンプレ新規は同一キー二重正本を禁止。実装時は Plan / ADR に落としてから着手。
+    </p>
+  </div>
+</body>
+</html>

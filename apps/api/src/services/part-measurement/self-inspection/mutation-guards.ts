@@ -9,6 +9,7 @@ import {
   isSelfInspectionLotEntryRegistrationCompleteForPolicy,
   type SelfInspectionRegistrationRequirementPolicy
 } from '../self-inspection-registration-policy.service.js';
+import { confirmedWhere } from './entry-persistence-status.js';
 import {
   assertDecimalPlacesWithinLimit,
   countDecimalPlacesString,
@@ -166,7 +167,7 @@ export async function assertAllEntriesReviewReady(
   template: SelfInspectionTemplate
 ) {
   const entries = await db.selfInspectionLotEntry.findMany({
-    where: { sessionId },
+    where: { sessionId, ...confirmedWhere },
     include: { values: true }
   });
   for (const entry of entries) {
@@ -189,7 +190,7 @@ export async function assertAllEntriesHaveRegistration(
   registrationPolicy: SelfInspectionRegistrationRequirementPolicy
 ) {
   const entries = await db.selfInspectionLotEntry.findMany({
-    where: { sessionId },
+    where: { sessionId, ...confirmedWhere },
     select: {
       entryIndex: true,
       createdByEmployeeId: true,

@@ -10,6 +10,54 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-10 · **矢視 dirty / ズーム100%除去 / 一覧日時** · **API + Web** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#inspection-drawing-callout-dirty-zoom-dates-2026-07-10}
+
+- **変更概要**: 矢視 tip のみ変更でも保存可能（dirty snapshot に `calloutTipXRatio/YRatio`）。ズームの「100%／元サイズ」ボタンを Create/Edit/Preview から除去。図面ライブラリ列「登録」=`visual.createdAt`、テンプレ列「更新」=`template.updatedAt`（`GET .../inspection-drawing/templates`）。ブランチ **`feat/self-inspection-autosave-callout-template-lock`** · HEAD **`eb41870a`** · PR [#968](https://github.com/denkoushi/RaspberryPiSystem_002/pull/968)。**DB/migration 変更なし**。
+- **CI**: push CI [**`29078578001` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29078578001) · PR CI [**`29078580808` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29078580808)（全ジョブ）· CodeQL / Secret scan success。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/self-inspection-autosave-callout-template-lock infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260710-175152-17798`** | success · `ok=135 changed=4 failed=0` · Docker API/Web再構築 · HEAD **`eb41870a`** |
+| `raspi4-kensaku-stonebase01` | **`20260710-175839-6755`** | success · `ok=130 changed=10 failed=0` · kiosk-browser 再起動 · HEAD **`eb41870a`** |
+| `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01` | **`20260710-180300-14478`** | success · 各 `failed=0 unreachable=0` · HEAD **`eb41870a`** |
+
+- **対象外（今回）**: `raspberrypi3`（サイネージ）は未デプロイ。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **実機（smoke）**: 検査図面 `/inspection` `/create` `/library` HTTP **200**。`GET /api/part-measurement/inspection-drawing/templates` に `updatedAt`。配信 Create チャンクに `calloutTipXRatio/YRatio`、Create/Edit/Preview に `onResetZoom` 未配線。ライブラリ配信に列「登録」「更新」。全対象ホスト HEAD **`eb41870a`**。
+
+### 補足（2026-07-10 · **丸数字/矢視 右ペイン化 + ライブラリ文言整理** · **Web のみ** · **Pi5 + StoneBase 先行**） {#inspection-drawing-mode-row-library-copy-2026-07-10}
+
+- **変更概要**: 作成/改版のモード切替をヘッダーから右ペイン1行（**丸数字 / 矢視** + 矢視あり/なし + 削除）へ移動。ライブラリは「編集」表記・新規無効時の琥珀色注記削除。ブランチ **`feat/self-inspection-autosave-callout-template-lock`** · HEAD **`733eebcb`** · PR [#968](https://github.com/denkoushi/RaspberryPiSystem_002/pull/968)。**DB/migration 変更なし**。
+- **CI**: push/PR CI [**`29076537765` / `29076540842` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions)（全5ジョブ）· CodeQL / Secret scan success。
+- **先行デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/self-inspection-autosave-callout-template-lock infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260710-164110-29712`** | success · `ok=135 changed=4 failed=0` · Web 再構築 · HEAD **`733eebcb`** |
+| `raspi4-kensaku-stonebase01` | **`20260710-164553-12492`** | success · `ok=130 changed=10 failed=0` · kiosk-browser 再起動 · HEAD **`733eebcb`** |
+
+- **対象外（今回）**: 他 Pi4 / `raspberrypi3`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **実機（画面）**: 右ペイン丸数字↔矢視・ライブラリ編集/新規無効の物理タッチ確認待ち。
+
+### 補足（2026-07-10 · **自主検査ドラフト自動保存・指差し・新規ロック** · **API + Web + migration** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#self-inspection-autosave-callout-template-lock-2026-07-10}
+
+- **変更概要（正本）**: [Plan](../plans/self-inspection-autosave-callout-template-lock.md) · [ADR callout](../decisions/ADR-20260710-inspection-drawing-callout-tip.md) · [ADR draft/confirm](../decisions/ADR-20260710-self-inspection-draft-confirmed.md) · ブランチ **`feat/self-inspection-autosave-callout-template-lock`** · HEAD **`65896edd`** · PR [#968](https://github.com/denkoushi/RaspberryPiSystem_002/pull/968)。任意 callout tip、`DRAFT`/`CONFIRMED` + NFC ゲート自動下書き、同一キー「新規」UI 封鎖。migration **`20260710140000_*`** / **`20260710150000_*`**。
+- **CI**: push/PR CI [**`29073102223` / `29073106643` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions)（lint-build-unit / api-db-and-infra / security-docker / e2e-smoke / e2e-tests）· CodeQL / Secret scan success。
+- **先行デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/self-inspection-autosave-callout-template-lock infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260710-152646-13004`** | success · `ok=135 changed=4 failed=0` · Docker API/Web再構築 · migration/status/health成功 · HEAD **`65896edd`** |
+| `raspi4-kensaku-stonebase01` | **`20260710-153441-29348`** | success · `ok=130 changed=10 failed=0` · kiosk-browser/status-agent再起動 · HEAD **`65896edd`** |
+| `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01` | **`20260710-153839-25381`** | success · 各 `failed=0 unreachable=0` · HEAD **`65896edd`** |
+
+- **対象外（今回）**: `raspberrypi3`（サイネージ）は未デプロイ。
+- **DB**: `_prisma_migrations` に `20260710140000_part_measurement_template_item_callout_tip` / `20260710150000_self_inspection_entry_persistence_status` 適用済み（2026-07-10 06:34 UTC）。`prisma migrate status` = Database schema is up to date。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **実機（画面）**: NFC ゲート・下書き復元・確定・指差し・新規ロックは物理タッチ確認待ち。
+
 ### 補足（2026-07-10 · **検査図面 全件数字検索 + 無効ON/OFF** · **API + Web + migration** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#inspection-drawing-server-digit-search-retire-mode-2026-07-10}
 
 - **変更概要（正本）**: [Plan](../plans/kiosk-inspection-drawing-server-digit-search-retire-mode.md) · ブランチ **`feat/inspection-drawing-server-digit-search-retire-mode`** · 修正/先行デプロイ HEAD **`8b89e241`**。上部テンキーを図面名ASCII数字派生列の全件サーバー検索へ変更。行の「無効」は常時表示し、無効化済み項目は既定非表示、履歴直後の `無効ON/OFF` で表示を切り替える。migration **`20260710120000_part_measurement_visual_template_search_digits`**。

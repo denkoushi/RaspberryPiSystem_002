@@ -134,7 +134,8 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
         createdAt: '2026-05-30T08:30:00.000Z',
         updatedAt: '2026-05-30T08:30:00.000Z'
       },
-      itemCount: 12
+      itemCount: 12,
+      updatedAt: previewVisualUpdatedAt
     },
     {
       id: 'preview-tpl-active-v2',
@@ -158,7 +159,8 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
       },
       siblingGroupId: null,
       siblingGroup: null,
-      itemCount: 10
+      itemCount: 10,
+      updatedAt: '2026-05-25T10:00:00.000Z'
     },
     {
       id: 'preview-tpl-history',
@@ -182,7 +184,8 @@ export const INSPECTION_DRAWING_PREVIEW_LIBRARY_TEMPLATES: KioskInspectionDrawin
       },
       siblingGroupId: null,
       siblingGroup: null,
-      itemCount: 8
+      itemCount: 8,
+      updatedAt: '2026-05-28T14:00:00.000Z'
     }
   ];
 
@@ -256,6 +259,7 @@ function previewLibraryTemplate(
     },
     siblingGroupId: overrides.siblingGroupId ?? null,
     siblingGroup: overrides.siblingGroup ?? null,
+    updatedAt: previewVisualUpdatedAt,
     ...overrides
   };
 }

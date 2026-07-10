@@ -26,6 +26,7 @@ import {
   selfInspectionEntryIndexParamsSchema,
   selfInspectionCreateEntryBodySchema,
   selfInspectionUpdateEntryBodySchema,
+  selfInspectionUpsertDraftEntryBodySchema,
   selfInspectionCreateInspectorEntryBodySchema,
   selfInspectionUpdateInspectorEntryBodySchema,
   selfInspectionInstrumentPreUseInspectionBodySchema,
@@ -187,6 +188,19 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
         entryIndex: body.entryIndex,
         employeeTagUid: body.employeeTagUid,
         measuringInstrumentTagUid: body.measuringInstrumentTagUid,
+        values: body.values
+      });
+      return { entry };
+    });
+
+    app.post('/part-measurement/self-inspection/sessions/:id/entries/draft', { preHandler: allowWriteKiosk }, async (request) => {
+      const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+      const body = selfInspectionUpsertDraftEntryBodySchema.parse(request.body);
+      const entry = await selfInspectionService.upsertDraftEntry(params.id, {
+        entryIndex: body.entryIndex,
+        employeeTagUid: body.employeeTagUid,
+        measuringInstrumentTagUid: body.measuringInstrumentTagUid,
+        ifUnmodifiedSince: body.ifUnmodifiedSince,
         values: body.values
       });
       return { entry };

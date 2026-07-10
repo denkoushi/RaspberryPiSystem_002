@@ -136,7 +136,7 @@ export function KioskInspectionDrawingCreatePage() {
   const [visualOcrStatus, setVisualOcrStatus] = useState<PartMeasurementDrawingOcrStatusDto | null>(null);
   const [visualOcrLoading, setVisualOcrLoading] = useState(false);
   const [visualOcrError, setVisualOcrError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'place' | 'test' | 'guidedTrial'>('place');
+  const [mode, setMode] = useState<'place' | 'callout' | 'test' | 'guidedTrial'>('place');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [template, setTemplate] = useState<PartMeasurementTemplateDto | null>(null);
@@ -1283,7 +1283,6 @@ export function KioskInspectionDrawingCreatePage() {
               enabled={hasDrawingImage}
               onZoomIn={zoomIn}
               onZoomOut={zoomOut}
-              onResetZoom={resetZoom}
               onFitToView={fitToView}
             />
           ) : undefined
@@ -1422,7 +1421,12 @@ export function KioskInspectionDrawingCreatePage() {
         </div>
       ) : null}
       {keyCollisionMessage ? (
-        <p className="px-1 text-[1rem] font-semibold text-amber-200">{keyCollisionMessage}</p>
+        <div
+          role="status"
+          className="rounded border border-amber-400/45 bg-amber-500/10 px-2 py-1.5 text-[0.95rem] font-semibold text-amber-100"
+        >
+          {keyCollisionMessage}
+        </div>
       ) : null}
       {message ? <p className="px-1 text-[1rem] font-semibold text-amber-200">{message}</p> : null}
       {previewError ? <p className="px-1 text-sm text-red-300">{previewError}</p> : null}
@@ -1449,7 +1453,7 @@ export function KioskInspectionDrawingCreatePage() {
               selectedPointId={selectedPointId}
               onSelectPoint={handleSelectPointFromList}
               onAddPoint={
-                contentReadOnly
+                contentReadOnly || mode !== 'place'
                   ? undefined
                   : (x, y) => {
                       const markerNo = nextAvailableMarkerNo(points);
@@ -1457,6 +1461,16 @@ export function KioskInspectionDrawingCreatePage() {
                       setPoints((prev) => [...prev, pt]);
                       setSelectedPointId(pt.id);
                       requestOcrCandidatesForPoint(pt);
+                    }
+              }
+              onSetCalloutTip={
+                contentReadOnly || mode !== 'callout' || !selectedPointId
+                  ? undefined
+                  : (x, y) => {
+                      updatePoint(selectedPointId, {
+                        calloutTipXRatio: Math.min(1, Math.max(0, x)),
+                        calloutTipYRatio: Math.min(1, Math.max(0, y))
+                      });
                     }
               }
             />
@@ -1476,6 +1490,9 @@ export function KioskInspectionDrawingCreatePage() {
         <aside className={inspectionDrawingCreateSideAsideClassName}>
           <InspectionDrawingPointSidebar
             mode={mode}
+            onModeChange={setMode}
+            hasDrawingImage={hasDrawingImage}
+            hasMeasurementPoints={points.length > 0}
             points={points}
             selectedPoint={selectedPoint}
             contentReadOnly={contentReadOnly}

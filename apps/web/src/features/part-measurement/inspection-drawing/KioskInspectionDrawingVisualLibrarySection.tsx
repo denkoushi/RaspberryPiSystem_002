@@ -148,7 +148,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
             <thead className="sticky top-0 bg-slate-900 text-xs text-white/70">
               <tr className="border-b border-white/10">
                 <th className="px-2 py-1.5 font-bold">図面名</th>
-                <th className="px-2 py-1.5 font-bold">更新</th>
+                <th className="px-2 py-1.5 font-bold">登録</th>
                 <th className="px-2 py-1.5 text-right font-bold">操作</th>
               </tr>
             </thead>
@@ -164,31 +164,44 @@ export function KioskInspectionDrawingVisualLibrarySection({
                         {visual.name}
                       </td>
                       <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 font-semibold text-white/65">
-                        {formatVisualLibraryTimestamp(visual.updatedAt)}
+                        {formatVisualLibraryTimestamp(visual.createdAt)}
                       </td>
                       <td className="px-2 pb-0.5 pt-1.5">
                         <div className="flex justify-end gap-1">
-                          <Link
-                            to={kioskInspectionDrawingCreatePathWithVisual(visual.id)}
-                            state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
-                            title="新規作成"
-                            className={buttonClassName(
-                              'primary',
-                              clsx(kioskButtonPrimaryClassName, 'inline-flex shrink-0 items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap')
+                            {showResourceRow ? (
+                              <span
+                                className={buttonClassName(
+                                  'ghostOnDark',
+                                  'inline-flex shrink-0 cursor-not-allowed items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap opacity-45'
+                                )}
+                                title="有効テンプレあり。右の一覧から編集してください"
+                                aria-disabled="true"
+                              >
+                                新規
+                              </span>
+                            ) : (
+                              <Link
+                                to={kioskInspectionDrawingCreatePathWithVisual(visual.id)}
+                                state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
+                                title="新規作成"
+                                className={buttonClassName(
+                                  'primary',
+                                  clsx(kioskButtonPrimaryClassName, 'inline-flex shrink-0 items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap')
+                                )}
+                              >
+                                新規
+                              </Link>
                             )}
-                          >
-                            新規
-                          </Link>
-                          <button
-                            type="button"
-                            title="名称変更"
-                            className={clsx(kioskButtonSecondaryClassName, 'min-h-11 shrink-0 whitespace-nowrap !px-1.5 !py-0 text-xs leading-none')}
-                            disabled={isPreview}
-                            onClick={() => setRenameTarget(visual)}
-                          >
-                            名称
-                          </button>
-                        </div>
+                            <button
+                              type="button"
+                              title="名称変更"
+                              className={clsx(kioskButtonSecondaryClassName, 'min-h-11 shrink-0 whitespace-nowrap !px-1.5 !py-0 text-xs leading-none')}
+                              disabled={isPreview}
+                              onClick={() => setRenameTarget(visual)}
+                            >
+                              名称
+                            </button>
+                          </div>
                       </td>
                     </tr>
                     {showResourceRow ? (

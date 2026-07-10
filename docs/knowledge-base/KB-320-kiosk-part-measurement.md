@@ -907,6 +907,23 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 
 - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。deployed Web smoke は保存なしで、初期 `入力不足` + 保存 disabled、測定点追加後 `未保存あり` + 保存 enabled、`全削除` / `厚み` / `↑ ↓ ← →`、幾何 `平行度 0.005` の `合格範囲 0〜0.005` を確認。2026-07-08 ユーザー実機検証OK。
 
+#### 2026-07-10 指差し記号 + 右ペイン縦圧縮 + 同一キー新規UI封鎖 {#検査図面-指差し-密度-新規封鎖-2026-07-10}
+
+- **正本**: [Plan](../plans/self-inspection-autosave-callout-template-lock.md) · [ADR callout](../decisions/ADR-20260710-inspection-drawing-callout-tip.md) · [Preview](../design-previews/kiosk-inspection-drawing-callout-pointer-preview.html)
+- **データ**: `PartMeasurementTemplateItem.calloutTipXRatio/YRatio`（nullable）。既存行は null＝指差しなし。
+- **UI**: 右ペイン「丸数字／矢視」モードで先端配置。Canvas SVG 引出線＋同番号バッジ。状態は「矢視 あり/なし」。ナッジ半高・名称ラベル+select 1行。
+- **新規封鎖**: 図面に既存資源テンプレがあるとき図面ライブラリ「新規」を無効化（注記なし・title のみ）。テンプレ行は「編集」。Create の同一 THREE_KEY 衝突メッセージを強化（API 409 は既存）。
+- **一覧日時**: 図面ライブラリ列「登録」=`visual.createdAt`。テンプレ列「更新」=`template.updatedAt`（保存時更新）。矢視のみ変更でも dirty になるよう tip を snapshot に含む。ズーム「100%／元サイズ」は Create/Edit/Preview から除去。
+- **検証**: Web unit · 一時 Postgres migrate + EXPLAIN（tip 列）。本番は Pi5 + Pi4×5（HEAD **`eb41870a`**）· verify PASS 45 · smoke（`updatedAt` / tip dirty / `onResetZoom` 未配線 / 列ラベル）。詳細は [deployment](../guides/deployment.md#inspection-drawing-callout-dirty-zoom-dates-2026-07-10)。
+
+#### 2026-07-10 自主検査 NFCゲート + 下書き自動保存 + 確定 {#自主検査-nfcゲート-下書き自動保存-2026-07-10}
+
+- **正本**: [Plan](../plans/self-inspection-autosave-callout-template-lock.md) · [ADR draft/confirmed](../decisions/ADR-20260710-self-inspection-draft-confirmed.md) · [Preview](../design-previews/kiosk-self-inspection-autosave-callout-preview.html)
+- **データ**: `SelfInspectionLotEntry.persistenceStatus` = `DRAFT` | `CONFIRMED`（既存 backfill CONFIRMED）。
+- **API**: `POST .../entries/draft`（部分値可）。既存 create/update は CONFIRMED（全点必須）。完了・WIP・記録承認は CONFIRMED のみ。
+- **UI**: 氏名NFCまで測定ロック。debounce 下書き自動保存。「入力を保存」=確定。
+- **検証**: API/Web unit · 一時 Postgres migrate + EXPLAIN（persistenceStatus index）。本番は同ブランチで Pi5 + Pi4×5 反映済み（[deployment](../guides/deployment.md#self-inspection-autosave-callout-template-lock-2026-07-10) · 後続 fix [deployment](../guides/deployment.md#inspection-drawing-callout-dirty-zoom-dates-2026-07-10)）。
+
 #### 先行デプロイ（2026-06-03）
 
 | ホスト | Detach Run ID | 実機 |
