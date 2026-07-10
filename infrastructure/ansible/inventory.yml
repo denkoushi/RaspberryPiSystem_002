@@ -101,6 +101,10 @@ all:
           photo_tool_label_first_pass_strict_mode: "{{ vault_photo_tool_label_first_pass_strict_mode | default('false') }}"
           photo_tool_label_first_pass_vision_max_tokens: "{{ vault_photo_tool_label_first_pass_vision_max_tokens | default('') }}"
           photo_tool_label_first_pass_vision_temperature: "{{ vault_photo_tool_label_first_pass_vision_temperature | default('') }}"
+          # 検査図面 OCR RapidOCR 二次エンジン（弱い候補のみ）。Pi5 API のみ有効化。
+          part_measurement_drawing_ocr_rapidocr_enabled: "true"
+          part_measurement_drawing_ocr_rapidocr_timeout_ms: "5000"
+          part_measurement_drawing_ocr_rapidocr_weak_score: "0.12"
           # Web環境変数
           web_api_base_url: "/api"
           web_ws_base_url: "/ws"
