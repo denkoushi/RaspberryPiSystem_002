@@ -261,13 +261,13 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 
 | 項目 | 内容 |
 |------|------|
-| 起動条件 | `PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_ENABLED`（**既定 OFF**）かつ弱さ判定 true |
+| 起動条件 | `PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_ENABLED`（**Pi5 本番 ON** · timeout **20000ms** · weakScore **0.12**）かつ弱さ判定 true |
 | 弱さ判定 | 候補0件 / top1 score > 閾値（既定 0.12） / 深さ検索なのに深さ注記根拠なし |
 | 実行形態 | API 内常駐 Python worker（JSON Lines）· `scripts/part-measurement/drawing-local-rapidocr-worker.py` |
 | 失敗時 | warn + 一次候補のまま（HTTP 500 にしない） |
 | イメージ | `Dockerfile.api` に `libgomp1`/`libgl1`/`libglib2.0-0` + `rapidocr==3.8.4` + `onnxruntime==1.20.1` |
-| 本番 | HEAD **`9811d39a`** · Detach Pi5 **`20260710-083127-2842`** · Phase12 **45/0/0** · RapidOCR flag **OFF** · [deployment](../guides/deployment.md#inspection-drawing-ocr-rapidocr-local-2026-07-10) |
-| 残課題 | Pi5 で flag ON 前のレイテンシ確認、offline top5/深さ再計測、DGX は対象外 |
+| 本番 | 実装 HEAD **`9811d39a`** / enable HEAD **`ba1d781a`** · Detach enable **`20260710-101808-6154`** · timeout20 **`20260710-102238-19166`** · RapidOCR flag **ON** · [deployment enable](../guides/deployment.md#inspection-drawing-ocr-rapidocr-enabled-2026-07-10) |
+| 残課題 | offline top5/深さ再計測、初回暖機レイテンシの運用観察、DGX は対象外 |
 
 ### 検査図面 trio（名称変更・図面名検索・自主検査遷移）（2026-06-09） {#kiosk-inspection-drawing-trio-2026-06-09}
 
