@@ -22,6 +22,7 @@
 | [kiosk-inspection-drawing-depth-through-mode-preview.html](./kiosk-inspection-drawing-depth-through-mode-preview.html) | **検査図面 右ペイン v2** — 十字キー**1行**・**補足/深さモードタイトル削除**・基準値**ラベル+入力1行（狭幅）**・削除ボタン高さ半分で**一点削除/全削除**・通し切替。Before=スクショ相当。**実装前・クリック可** |
 | [kiosk-self-inspection-autosave-callout-preview.html](./kiosk-self-inspection-autosave-callout-preview.html) | **自主検査・検査図面 UI案（概要）** — 氏名NFCゲート＋下書き自動保存/確定、指差し概要、同一キー既存時の新規禁止。**実装前・静的** |
 | [kiosk-inspection-drawing-callout-pointer-preview.html](./kiosk-inspection-drawing-callout-pointer-preview.html) | **検査図面 指差し記号（実機1280×17rem）** — キャンバス主導＋右ペイン1行。ナッジ半高・名称ラベル+select1行。肥大反例つき。**実装前・静的** |
+| [kiosk-inspection-drawing-mode-row-and-library-copy-preview.html](./kiosk-inspection-drawing-mode-row-and-library-copy-preview.html) | **検査図面 調整案** — モード「丸数字/矢視」を右ペイン1行へ、ライブラリは「編集」＋新規無効のみ（注記削除）。**実装対象の静的モック** |
 | [kiosk-part-measurement-template-picker.html](./kiosk-part-measurement-template-picker.html) | **部品測定・テンプレート選択（提案）**（日程固定コンテキスト・候補一覧・図面アイコン＋ホバープレビュー・新規作成導線） |
 | [kiosk-rank-board-card-single-preview.html](./kiosk-rank-board-card-single-preview.html) | **キオスク順位ボード・カード1件**（本番 `LeaderOrderResourceCard` 相当の静的モック。CDN なし） |
 | [kiosk-analytics-bi-dashboard-preview.html](./kiosk-analytics-bi-dashboard-preview.html) | **キオスク集計（`/kiosk/rigging-analytics`）BI レイアウト改善案** — KPI 帯・Top N・当日コンパクト／スクロール不要の静的モック |

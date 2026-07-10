@@ -147,10 +147,10 @@ function TemplateTablePane({
                           <Link
                             to={editPath(template.id)}
                             state={linkState}
-                            title="既存テンプレートを改版"
+                            title="編集"
                             className={buttonClassName('primary', inspectionDrawingLibraryRowActionClassName)}
                           >
-                            編集（改版）
+                            編集
                           </Link>
                           {printPath ? (
                             <Link

@@ -152,6 +152,8 @@ describe('inspectionDrawingCreateDraft', () => {
       activeExists: true
     });
     expect(reason).toBe('active_exists');
+    expect(inspectionDrawingCreateKeyCollisionMessage(reason)).toContain('「編集」');
+    expect(inspectionDrawingCreateKeyCollisionMessage(reason)).not.toContain('編集（改版）');
   });
 
   it('suggests template name from visual library display name and fhincd', () => {

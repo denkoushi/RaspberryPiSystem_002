@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>検査図面 — 点/矢視を右ペイン1行 + ライブラリ文言整理</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: rgba(15, 23, 42, 0.88);
+      --line: rgba(255, 255, 255, 0.15);
+      --text: #f8fafc;
+      --muted: rgba(248, 250, 252, 0.58);
+      --weak: rgba(248, 250, 252, 0.4);
+      --cyan: #67e8f9;
+      --sky: #38bdf8;
+      --lime: #bef264;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+      --font: system-ui, -apple-system, "Hiragino Sans", "Segoe UI", sans-serif;
+      --aside: 17rem;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      padding: 14px;
+    }
+    .page { max-width: 1280px; margin: 0 auto; }
+    h1 { font-size: 1.05rem; font-weight: 800; }
+    .lead {
+      margin-top: 6px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.55;
+      max-width: 95ch;
+    }
+    .chips { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 0.7rem;
+      color: var(--lime);
+      background: rgba(190, 242, 100, 0.08);
+    }
+    .chip.warn { color: var(--amber); background: rgba(251, 191, 36, 0.1); }
+    .chip.note { color: var(--cyan); background: rgba(103, 232, 249, 0.08); }
+    .chip.bad { color: var(--rose); background: rgba(251, 113, 133, 0.1); }
+
+    .opinion {
+      margin-top: 12px;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.08);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.8rem;
+      color: #e0f2fe;
+      line-height: 1.55;
+    }
+    .opinion strong { color: #fff; }
+    .opinion ul { margin: 6px 0 0 1.1rem; }
+    .opinion li { margin: 3px 0; }
+
+    .toc { margin: 12px 0 4px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .toc a {
+      color: var(--sky);
+      font-size: 0.78rem;
+      text-decoration: none;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 8px;
+      padding: 5px 9px;
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    section.block {
+      margin-top: 18px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .block h2 { font-size: 0.95rem; font-weight: 800; }
+    .block .desc {
+      margin-top: 5px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.45;
+      max-width: 95ch;
+    }
+
+    .frame-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 10px 0 6px;
+    }
+    .frame-label strong { font-size: 0.84rem; }
+    .frame-label span { font-size: 0.72rem; color: var(--weak); }
+
+    .kiosk {
+      width: 100%;
+      max-width: 1280px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #1e293b;
+    }
+    .top-band {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(2, 6, 23, 0.35);
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      font-size: 0.68rem;
+      color: var(--muted);
+    }
+    .meta b { color: #fff; font-weight: 700; }
+    .btn {
+      min-height: 28px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(15, 23, 42, 0.7);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 800;
+      padding: 0 8px;
+    }
+    .btn.on {
+      border-color: rgba(103, 232, 249, 0.55);
+      background: rgba(34, 211, 238, 0.18);
+      color: #ecfeff;
+    }
+    .btn.ghost {
+      background: transparent;
+      color: rgba(248,250,252,0.75);
+      font-weight: 700;
+    }
+    .btn.disabled {
+      opacity: 0.42;
+      cursor: not-allowed;
+    }
+    .btn.tiny {
+      min-height: 24px;
+      padding: 0 6px;
+      font-size: 0.68rem;
+    }
+    .workspace {
+      display: grid;
+      grid-template-columns: 1fr var(--aside);
+      min-height: 320px;
+    }
+    .canvas {
+      position: relative;
+      background:
+        linear-gradient(180deg, rgba(15,23,42,0.2), rgba(15,23,42,0.55)),
+        repeating-linear-gradient(0deg, transparent, transparent 19px, rgba(255,255,255,0.03) 20px),
+        #334155;
+      min-height: 320px;
+    }
+    .drawing {
+      position: absolute;
+      inset: 18px 22px 28px 22px;
+      border: 1px dashed rgba(255,255,255,0.2);
+      border-radius: 8px;
+      background: rgba(248,250,252,0.06);
+    }
+    .marker {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      font-size: 0.7rem;
+      font-weight: 900;
+      background: #0f172a;
+      border: 2px solid #67e8f9;
+      color: #ecfeff;
+    }
+    .marker.m1 { left: 42%; top: 28%; }
+    .marker.m2 { left: 62%; top: 48%; }
+    .marker.active { border-color: #fbbf24; box-shadow: 0 0 0 2px rgba(251,191,36,0.25); }
+    .tip {
+      position: absolute;
+      left: 24%;
+      top: 36%;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      font-size: 0.62rem;
+      font-weight: 900;
+      background: #155e75;
+      border: 1px solid #67e8f9;
+      color: #ecfeff;
+    }
+    .hint {
+      position: absolute;
+      left: 10px;
+      bottom: 8px;
+      font-size: 0.68rem;
+      color: rgba(248,250,252,0.55);
+    }
+    aside.pane {
+      border-left: 1px solid var(--line);
+      background: var(--panel);
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .nudge {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 3px;
+    }
+    .nudge button {
+      min-height: 22px;
+      border-radius: 5px;
+      border: 1px solid var(--line);
+      background: rgba(2,6,23,0.45);
+      color: #fff;
+      font-size: 0.65rem;
+      font-weight: 800;
+    }
+    .title {
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+    .mode-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 26px;
+      flex-wrap: nowrap;
+    }
+    .mode-row .status {
+      flex: 1;
+      min-width: 0;
+      font-size: 0.68rem;
+      font-weight: 800;
+      color: #fde68a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .name-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.68rem;
+    }
+    .name-row span { font-weight: 800; color: var(--muted); }
+    .name-row select {
+      flex: 1;
+      min-width: 0;
+      min-height: 26px;
+      border-radius: 5px;
+      border: 1px solid var(--line);
+      background: #020617;
+      color: #fff;
+      font-size: 0.68rem;
+    }
+    .fake {
+      height: 26px;
+      border-radius: 5px;
+      border: 1px solid var(--line);
+      background: rgba(2,6,23,0.5);
+      color: var(--weak);
+      font-size: 0.65rem;
+      display: flex;
+      align-items: center;
+      padding: 0 6px;
+    }
+    .list {
+      margin-top: 4px;
+      border-top: 1px solid var(--line);
+      padding-top: 6px;
+      display: grid;
+      gap: 4px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 5px 6px;
+      font-size: 0.68rem;
+      background: rgba(2,6,23,0.35);
+    }
+    .card.sel { border-color: rgba(251,191,36,0.45); background: rgba(251,191,36,0.08); }
+    .card .vals { color: var(--weak); margin-top: 2px; font-size: 0.62rem; }
+
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 980px) {
+      .compare { grid-template-columns: 1fr; }
+      .workspace { grid-template-columns: 1fr; }
+    }
+
+    .lib {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #1e293b;
+    }
+    .lib-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr;
+      min-height: 220px;
+    }
+    .lib-left, .lib-right {
+      padding: 8px;
+    }
+    .lib-left { border-right: 1px solid var(--line); background: rgba(2,6,23,0.28); }
+    .lib h3 {
+      font-size: 0.78rem;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.7rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 5px 4px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-weight: 700; border-top: 0; }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 4px;
+    }
+    .note-amber {
+      margin-top: 4px;
+      text-align: right;
+      font-size: 0.62rem;
+      font-weight: 700;
+      color: #fde68a;
+      line-height: 1.35;
+    }
+    .strike { text-decoration: line-through; opacity: 0.55; }
+    .alt-row {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .alt-row .sample {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 4px 6px;
+      background: rgba(2,6,23,0.35);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>検査図面 — 点/矢視を右ペイン1行 + ライブラリ文言整理</h1>
+    <p class="lead">
+      実機確認後の調整案。<strong>モード切替をヘッダーから右ペインへ移し</strong>、
+      ライブラリは<strong>「新規」無効化だけ</strong>で足りる、という提案の静的プレビュー。
+    </p>
+    <div class="chips">
+      <span class="chip">実装前・静的</span>
+      <span class="chip note">1280 × 右ペイン 17rem</span>
+      <span class="chip warn">文言「矢視」は要確認</span>
+    </div>
+
+    <div class="opinion">
+      <strong>所見（賛成寄り・1点だけ注意）</strong>
+      <ul>
+        <li><strong>右ペイン1行化は良い</strong> — 「今選んでいる点に対する操作」なので、指差し状態の横にモードがある方が自然。ヘッダーは保存・戻るに集中できる。</li>
+        <li><strong>短名「点」は賛成</strong>。一方 <strong>「矢視」は再混同リスク</strong>（以前の「視線記号」誤解）。現場語として残すなら可だが、短名なら <strong>「指」</strong> の方が意味が直結。下に両案を並べた。</li>
+        <li><strong>未選択時</strong>は設定パネルが消えるため、右ペイン先頭に <strong>点/矢視（または点/指）だけ常時表示</strong>するのが安全（次の丸数字を置く導線を切らない）。</li>
+        <li><strong>「編集（改版）」→「編集」</strong> と <strong>注記削除</strong> は賛成。無効な「新規」＋ title ツールチップで十分。文言が増えるほどタッチ操作の視線が散る。</li>
+      </ul>
+    </div>
+
+    <div class="toc">
+      <a href="#create-after">作成画面 After</a>
+      <a href="#create-before">作成画面 Before</a>
+      <a href="#labels">短名の比較</a>
+      <a href="#library">ライブラリ Before/After</a>
+    </div>
+
+    <section class="block" id="create-after">
+      <h2>1. 作成／改版 — After（推奨）</h2>
+      <p class="desc">
+        ヘッダーから「点を配置／指差し」を外す。右ペインは
+        <strong>丸数字 · 矢視 · 矢視あり · 削除</strong> を1行。未選択時もモード2ボタンは残す。
+      </p>
+      <div class="frame-label">
+        <strong>After · 選択中 No.1 · 矢視 ON</strong>
+        <span>ヘッダーは保存系のみ</span>
+      </div>
+      <div class="kiosk">
+        <div class="top-band">
+          <div class="meta">
+            <span>品番 <b>MD100469601</b></span>
+            <span>資源 <b>033</b></span>
+            <span>工程 <b>切削</b></span>
+          </div>
+          <button type="button" class="btn">保存</button>
+          <button type="button" class="btn ghost">テスト入力</button>
+          <button type="button" class="btn ghost">一覧へ戻る</button>
+        </div>
+        <div class="workspace">
+          <div class="canvas">
+            <div class="drawing">
+              <span class="marker m1 active">1</span>
+              <span class="marker m2">2</span>
+              <span class="tip">1</span>
+            </div>
+            <div class="hint">矢視モード: 穴をタップして先端を置く（選択中 No.1）</div>
+          </div>
+          <aside class="pane" aria-label="右ペイン 17rem">
+            <div class="nudge">
+              <button type="button">↑</button>
+              <button type="button">↓</button>
+              <button type="button">←</button>
+              <button type="button">→</button>
+            </div>
+            <p class="title">測定点の設定（No.1）</p>
+            <div class="mode-row" title="モード + 指差し状態">
+              <button type="button" class="btn tiny">丸数字</button>
+              <button type="button" class="btn tiny on">矢視</button>
+              <span class="status">矢視 あり</span>
+              <button type="button" class="btn tiny">削除</button>
+            </div>
+            <label class="name-row">
+              <span>名称</span>
+              <select><option>穴径</option></select>
+            </label>
+            <div class="fake">基準値 12.0 · 公差 …</div>
+            <div class="list">
+              <div class="card sel"><div>No.1 穴径 · 指</div><div class="vals">基準 12.0</div></div>
+              <div class="card"><div>No.2 ネジ穴</div><div class="vals">基準 8.0</div></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <div class="frame-label" style="margin-top:14px">
+        <strong>After · 未選択（次の丸数字を置く直前）</strong>
+        <span>設定パネルは閉じ、モード行だけ残す</span>
+      </div>
+      <div class="kiosk">
+        <div class="top-band">
+          <div class="meta"><span>品番 <b>MD100469601</b></span></div>
+          <button type="button" class="btn">保存</button>
+          <button type="button" class="btn ghost">一覧へ戻る</button>
+        </div>
+        <div class="workspace">
+          <div class="canvas">
+            <div class="drawing">
+              <span class="marker m1">1</span>
+              <span class="marker m2">2</span>
+              <span class="tip">1</span>
+            </div>
+            <div class="hint">丸数字モード: 図面をタップして次の丸数字を配置</div>
+          </div>
+          <aside class="pane">
+            <div class="mode-row">
+              <button type="button" class="btn tiny on">丸数字</button>
+              <button type="button" class="btn tiny">矢視</button>
+              <span class="status" style="color:var(--weak)">測定点を選択…</span>
+            </div>
+            <p style="font-size:0.72rem;color:var(--muted);line-height:1.4">
+              図面上で点を選択するか、一覧から選んでください。
+            </p>
+            <div class="list">
+              <div class="card"><div>No.1 穴径 · 指</div><div class="vals">基準 12.0</div></div>
+              <div class="card"><div>No.2 ネジ穴</div><div class="vals">基準 8.0</div></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="create-before">
+      <h2>2. 作成／改版 — Before（現行）</h2>
+      <p class="desc">モードはヘッダー。「矢視 あり / 削除」だけが右ペイン。</p>
+      <div class="kiosk">
+        <div class="top-band">
+          <div class="meta"><span>品番 <b>MD100469601</b></span></div>
+          <button type="button" class="btn on">点を配置</button>
+          <button type="button" class="btn">指差し</button>
+          <button type="button" class="btn">保存</button>
+          <button type="button" class="btn ghost">一覧へ戻る</button>
+        </div>
+        <div class="workspace">
+          <div class="canvas">
+            <div class="drawing">
+              <span class="marker m1 active">1</span>
+              <span class="tip">1</span>
+            </div>
+          </div>
+          <aside class="pane">
+            <div class="nudge">
+              <button type="button">↑</button>
+              <button type="button">↓</button>
+              <button type="button">←</button>
+              <button type="button">→</button>
+            </div>
+            <p class="title">測定点の設定（No.1）</p>
+            <div class="mode-row">
+              <span class="status">矢視 あり</span>
+              <button type="button" class="btn tiny">削除</button>
+            </div>
+            <label class="name-row"><span>名称</span><select><option>穴径</option></select></label>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="labels">
+      <h2>3. 短名ラベル比較</h2>
+      <p class="desc">スペース確保はどちらも可。意味の直結度だけ差がある。</p>
+      <div class="alt-row">
+        <span>採用ラベル</span>
+        <span class="sample">
+          <button type="button" class="btn tiny">丸数字</button>
+          <button type="button" class="btn tiny on">矢視</button>
+          <span>矢視 あり</span>
+          <button type="button" class="btn tiny">削除</button>
+        </span>
+      </div>
+      <div class="alt-row">
+        <span>不採用案（短名「指」）</span>
+        <span class="sample">
+          <button type="button" class="btn tiny">丸数字</button>
+          <button type="button" class="btn tiny on">指</button>
+          <span>矢視 あり</span>
+          <button type="button" class="btn tiny">削除</button>
+        </span>
+      </div>
+    </section>
+
+    <section class="block" id="library">
+      <h2>4. ライブラリ — Before / After</h2>
+      <p class="desc">
+        右ペインは「編集（改版）」→「編集」。左ペインの琥珀色注記は削除し、無効な「新規」だけ残す。
+      </p>
+      <div class="compare">
+        <div>
+          <div class="frame-label"><strong>Before</strong><span>注記あり · 編集（改版）</span></div>
+          <div class="lib">
+            <div class="lib-grid">
+              <div class="lib-left">
+                <h3>図面ライブラリ</h3>
+                <table>
+                  <thead><tr><th>図面</th><th></th></tr></thead>
+                  <tbody>
+                    <tr>
+                      <td>7161サドル</td>
+                      <td>
+                        <div class="actions">
+                          <button type="button" class="btn tiny disabled">新規</button>
+                          <button type="button" class="btn tiny ghost">名称</button>
+                        </div>
+                        <p class="note-amber">既存テンプレあり → 右ペインで編集（改版）</p>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="lib-right">
+                <h3>検査図面テンプレート</h3>
+                <table>
+                  <thead><tr><th>キー</th><th></th></tr></thead>
+                  <tbody>
+                    <tr>
+                      <td>MD… / 切削 / 033</td>
+                      <td class="actions">
+                        <button type="button" class="btn tiny">編集（改版）</button>
+                        <button type="button" class="btn tiny ghost">帳票</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="frame-label"><strong>After</strong><span>注記なし · 編集</span></div>
+          <div class="lib">
+            <div class="lib-grid">
+              <div class="lib-left">
+                <h3>図面ライブラリ</h3>
+                <table>
+                  <thead><tr><th>図面</th><th></th></tr></thead>
+                  <tbody>
+                    <tr>
+                      <td>7161サドル</td>
+                      <td>
+                        <div class="actions">
+                          <button type="button" class="btn tiny disabled" title="有効テンプレあり。右の一覧から編集してください">新規</button>
+                          <button type="button" class="btn tiny ghost">名称</button>
+                        </div>
+                        <p class="note-amber strike">（この注記は出さない）</p>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="lib-right">
+                <h3>検査図面テンプレート</h3>
+                <table>
+                  <thead><tr><th>キー</th><th></th></tr></thead>
+                  <tbody>
+                    <tr>
+                      <td>MD… / 切削 / 033</td>
+                      <td class="actions">
+                        <button type="button" class="btn tiny">編集</button>
+                        <button type="button" class="btn tiny ghost">帳票</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

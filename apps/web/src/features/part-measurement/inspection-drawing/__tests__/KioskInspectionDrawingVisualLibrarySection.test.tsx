@@ -70,7 +70,11 @@ describe('KioskInspectionDrawingVisualLibrarySection', () => {
     expect(screen.queryByText('資源CD')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '新規' })).not.toBeInTheDocument();
     expect(screen.getByText('新規')).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByText(/既存テンプレあり/)).toBeInTheDocument();
+    expect(screen.queryByText(/既存テンプレあり/)).not.toBeInTheDocument();
+    expect(screen.getByText('新規')).toHaveAttribute(
+      'title',
+      '有効テンプレあり。右の一覧から編集してください'
+    );
   });
 
   it('does not render a resource chip row when the visual has no mapped resource CDs', () => {

@@ -48,6 +48,7 @@ export { InspectionDrawingCreateMetaChip } from './InspectionDrawingCreateMetaCh
 export { InspectionDrawingCreateMetadataRow } from './InspectionDrawingCreateMetadataRow';
 export type { InspectionDrawingCreateMetadataRowProps } from './InspectionDrawingCreateMetadataRow';
 export { InspectionDrawingCreateToolbar } from './InspectionDrawingCreateToolbar';
+export { InspectionDrawingPlaceCalloutModeRow } from './InspectionDrawingPlaceCalloutModeRow';
 export { InspectionDrawingPointSettingsPanel } from './InspectionDrawingPointSettingsPanel';
 export { InspectionDrawingPointSummaryList } from './InspectionDrawingPointSummaryList';
 export { InspectionDrawingPointSidebar } from './InspectionDrawingPointSidebar';

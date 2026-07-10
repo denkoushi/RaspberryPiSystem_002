@@ -10,19 +10,14 @@ import {
   type InspectionDrawingMeasurementLabelSetting
 } from '@raspi-system/shared-types';
 import clsx from 'clsx';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 
 import {
-  clearInspectionDrawingCalloutTip,
-  inspectionDrawingPointHasCalloutTip
-} from './inspectionDrawingCalloutTip';
-import {
   inspectionDrawingBoundedSelectClassName,
   inspectionDrawingBoundedSelectShellClassName,
-  inspectionDrawingPointCalloutStatusRowClassName,
   inspectionDrawingPointNameInlineClassName,
   inspectionDrawingPointNameInlineLabelClassName,
   inspectionDrawingPointSettingDeleteButtonClassName,
@@ -61,6 +56,8 @@ type Props = {
   ocrCandidateError?: string | null;
   onApplyOcrCandidate?: (valueText: string) => void;
   measurementLabelSettings?: readonly InspectionDrawingMeasurementLabelSetting[];
+  /** 丸数字/矢視モード行（Sidebar が組み立てる） */
+  modeChrome?: ReactNode;
 };
 
 const DEFAULT_MEASUREMENT_LABEL_SETTINGS = buildDefaultInspectionDrawingMeasurementLabelSettings();
@@ -147,7 +144,8 @@ export function InspectionDrawingPointSettingsPanel({
   ocrCandidateLoading = false,
   ocrCandidateError = null,
   onApplyOcrCandidate,
-  measurementLabelSettings
+  measurementLabelSettings,
+  modeChrome
 }: Props) {
   const effectiveMeasurementLabelSettings =
     measurementLabelSettings && measurementLabelSettings.length > 0
@@ -228,7 +226,6 @@ export function InspectionDrawingPointSettingsPanel({
     onChange(buildGeometricTolerancePointPatch(value));
   };
   const geometricRangeUpper = point.nominalRaw.trim() || '-';
-  const hasCallout = inspectionDrawingPointHasCalloutTip(point);
 
   return (
     <div className={inspectionDrawingPointSettingPanelClassName}>
@@ -238,17 +235,7 @@ export function InspectionDrawingPointSettingsPanel({
         onChange={onChange}
       />
       <p className="text-[1.02rem] font-bold">測定点の設定（No.{point.markerNo}）</p>
-      <div className={inspectionDrawingPointCalloutStatusRowClassName}>
-        <span>{hasCallout ? '指差し あり' : '指差し なし'}</span>
-        <button
-          type="button"
-          disabled={disabled || !hasCallout}
-          className="min-h-[26px] rounded border border-amber-300/50 bg-slate-950/55 px-2 text-[0.7rem] font-extrabold text-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
-          onClick={() => onChange(clearInspectionDrawingCalloutTip())}
-        >
-          削除
-        </button>
-      </div>
+      {modeChrome}
       <label className={inspectionDrawingPointNameInlineClassName} title={point.name || '名称'}>
         <span className={inspectionDrawingPointNameInlineLabelClassName}>名称</span>
         <div className={clsx(inspectionDrawingBoundedSelectShellClassName, 'min-w-0 flex-1')}>

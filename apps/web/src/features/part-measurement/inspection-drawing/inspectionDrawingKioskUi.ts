@@ -287,6 +287,10 @@ export const inspectionDrawingPointNameInlineLabelClassName =
 export const inspectionDrawingPointCalloutStatusRowClassName =
   'grid min-h-8 grid-cols-[1fr_auto] items-center gap-1.5 rounded-md border border-amber-300/45 bg-amber-400/10 px-2 text-[0.72rem] font-extrabold text-amber-100';
 
+/** 右ペイン — 丸数字/矢視モード行（状態・削除を同列に載せる） */
+export const inspectionDrawingPlaceCalloutModeRowClassName =
+  'flex min-h-8 min-w-0 flex-nowrap items-center gap-1 rounded-md border border-amber-300/45 bg-amber-400/10 px-1.5';
+
 /** 検査図面ライブラリ行アクション（高さ ×0.7 ≈ 30.8px） */
 export const inspectionDrawingLibraryRowActionClassName =
   'inline-flex min-h-[30.8px] min-w-[1.5rem] shrink-0 items-center justify-center rounded !px-1 !py-0 text-[0.68rem] leading-none whitespace-nowrap';

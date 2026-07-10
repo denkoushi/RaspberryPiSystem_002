@@ -650,6 +650,7 @@
 - **部品測定・テンプレート選択（提案UI・静的）**: [design-previews/kiosk-part-measurement-template-picker.html](./design-previews/kiosk-part-measurement-template-picker.html) — [design-previews/README.md](./design-previews/README.md)
 - **自主検査 NFCゲート＋自動保存／指差し記号／テンプレ新規制限（実装前・静的）**: [design-previews/kiosk-self-inspection-autosave-callout-preview.html](./design-previews/kiosk-self-inspection-autosave-callout-preview.html) — [design-previews/README.md](./design-previews/README.md)
 - **検査図面 指差し記号（実機1280×17rem・余白配慮・実装前）**: [design-previews/kiosk-inspection-drawing-callout-pointer-preview.html](./design-previews/kiosk-inspection-drawing-callout-pointer-preview.html) — [design-previews/README.md](./design-previews/README.md)
+- **検査図面 丸数字/矢視右ペイン1行 + ライブラリ文言整理（実装対象）**: [design-previews/kiosk-inspection-drawing-mode-row-and-library-copy-preview.html](./design-previews/kiosk-inspection-drawing-mode-row-and-library-copy-preview.html) — [design-previews/README.md](./design-previews/README.md)
 
 ### キオスク部品測定記録
 

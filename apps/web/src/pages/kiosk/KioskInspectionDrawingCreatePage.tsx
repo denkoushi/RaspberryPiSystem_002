@@ -1491,6 +1491,9 @@ export function KioskInspectionDrawingCreatePage() {
         <aside className={inspectionDrawingCreateSideAsideClassName}>
           <InspectionDrawingPointSidebar
             mode={mode}
+            onModeChange={setMode}
+            hasDrawingImage={hasDrawingImage}
+            hasMeasurementPoints={points.length > 0}
             points={points}
             selectedPoint={selectedPoint}
             contentReadOnly={contentReadOnly}

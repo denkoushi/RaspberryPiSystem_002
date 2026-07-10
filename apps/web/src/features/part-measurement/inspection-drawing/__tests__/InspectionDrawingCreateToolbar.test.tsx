@@ -39,7 +39,10 @@ describe('InspectionDrawingCreateToolbar', () => {
     const secondary = within(screen.getByTestId('inspection-drawing-create-toolbar-secondary-actions'));
 
     expect(primary.getByRole('button', { name: '切削' })).toBeInTheDocument();
-    expect(primary.getByRole('button', { name: '点を配置' })).toBeInTheDocument();
+    expect(primary.queryByRole('button', { name: '点を配置' })).not.toBeInTheDocument();
+    expect(primary.queryByRole('button', { name: '丸数字' })).not.toBeInTheDocument();
+    expect(primary.queryByRole('button', { name: '指差し' })).not.toBeInTheDocument();
+    expect(primary.queryByRole('button', { name: '矢視' })).not.toBeInTheDocument();
     expect(primary.getByRole('button', { name: '保存' })).toBeInTheDocument();
     expect(primary.getByText('未保存あり')).toBeInTheDocument();
     expect(primary.getByRole('link', { name: '保存済み帳票' })).toBeInTheDocument();

@@ -14,7 +14,7 @@ related_code:
   - apps/web/src/pages/kiosk/KioskSelfInspectionSessionPage.tsx
   - apps/api/src/services/part-measurement/
 open_items:
-  - Physical kiosk UI validation (NFC gate, draft reload, confirm, callout tips, create lock)
+  - Physical kiosk UI validation (NFC gate, draft reload, confirm, callout tips / 丸数字・矢視 row, create lock)
   - Merge PR #968 to main after UI OK
 ---
 

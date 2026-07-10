@@ -167,15 +167,14 @@ export function KioskInspectionDrawingVisualLibrarySection({
                         {formatVisualLibraryTimestamp(visual.updatedAt)}
                       </td>
                       <td className="px-2 pb-0.5 pt-1.5">
-                        <div className="flex flex-col items-end gap-1">
-                          <div className="flex justify-end gap-1">
+                        <div className="flex justify-end gap-1">
                             {showResourceRow ? (
                               <span
                                 className={buttonClassName(
                                   'ghostOnDark',
                                   'inline-flex shrink-0 cursor-not-allowed items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap opacity-45'
                                 )}
-                                title="この図面には有効テンプレートがあります。右の一覧から編集（改版）するか、別キーで雛形新規してください。"
+                                title="有効テンプレあり。右の一覧から編集してください"
                                 aria-disabled="true"
                               >
                                 新規
@@ -203,12 +202,6 @@ export function KioskInspectionDrawingVisualLibrarySection({
                               名称
                             </button>
                           </div>
-                          {showResourceRow ? (
-                            <p className="max-w-[14rem] text-right text-[0.65rem] font-semibold leading-snug text-amber-200/90">
-                              既存テンプレあり → 右ペインで編集（改版）
-                            </p>
-                          ) : null}
-                        </div>
                       </td>
                     </tr>
                     {showResourceRow ? (
