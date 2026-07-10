@@ -30,7 +30,7 @@ related_docs:
 
 ## Open Items
 
-- Visual list `limit: 40` may miss digit matches beyond the page; revisit API digitQuery later if needed
+- [x] Visual list `limit: 40` 外の数字一致: [後続ExecPlan](./kiosk-inspection-drawing-server-digit-search-retire-mode.md) で全図面対象の `digitQuery` サーバー検索へ移行（2026-07-10、未デプロイ）。
 
 ## Local Notes JA
 
