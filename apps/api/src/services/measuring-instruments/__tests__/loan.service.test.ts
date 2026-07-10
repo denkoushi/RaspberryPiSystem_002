@@ -271,7 +271,7 @@ describe('MeasuringInstrumentLoanService', () => {
 
       await expect(
         service.borrow({ instrumentTagUid: '04DE8366BC2A81', employeeTagUid: '04C362E1330289' }),
-      ).rejects.toMatchObject({ statusCode: 400, message: 'この計測機器はすでに貸出中です' });
+      ).rejects.toMatchObject({ statusCode: 409, code: 'ASSET_ALREADY_ON_LOAN', message: 'この計測機器はすでに貸出中です' });
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(mockLoanEventService.recordNfcEvent).not.toHaveBeenCalled();
     });
@@ -299,12 +299,12 @@ describe('MeasuringInstrumentLoanService', () => {
     it('正常に返却処理が完了し、NFCイベントを記録する', async () => {
       vi.mocked(prisma.loan.findUnique).mockResolvedValue(activeLoan as never);
 
-      let txLoanUpdate: ReturnType<typeof vi.fn>;
+      let txLoanUpdateMany: ReturnType<typeof vi.fn>;
       let txInstrumentUpdate: ReturnType<typeof vi.fn>;
       let txTransactionCreate: ReturnType<typeof vi.fn>;
 
       vi.mocked(prisma.$transaction).mockImplementation(async (callback) => {
-        txLoanUpdate = vi.fn().mockResolvedValue(returnedLoan);
+        txLoanUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
         txInstrumentUpdate = vi.fn().mockResolvedValue({
           ...mockInstrument,
           status: MeasuringInstrumentStatus.AVAILABLE,
@@ -315,7 +315,10 @@ describe('MeasuringInstrumentLoanService', () => {
           action: TransactionAction.RETURN,
         });
         return callback({
-          loan: { update: txLoanUpdate },
+          loan: {
+            updateMany: txLoanUpdateMany,
+            findUniqueOrThrow: vi.fn().mockResolvedValue(returnedLoan),
+          },
           measuringInstrument: { update: txInstrumentUpdate },
           transaction: { create: txTransactionCreate },
         } as never);
@@ -332,10 +335,9 @@ describe('MeasuringInstrumentLoanService', () => {
         where: { id: 'loan-123' },
         include: { measuringInstrument: true },
       });
-      expect(txLoanUpdate!).toHaveBeenCalledWith({
-        where: { id: 'loan-123' },
+      expect(txLoanUpdateMany!).toHaveBeenCalledWith({
+        where: { id: 'loan-123', returnedAt: null, cancelledAt: null },
         data: { returnedAt: expect.any(Date), notes: 'return note' },
-        include: { measuringInstrument: true, employee: true, client: true },
       });
       expect(txInstrumentUpdate!).toHaveBeenCalledWith({
         where: { id: 'instrument-123' },
@@ -369,7 +371,10 @@ describe('MeasuringInstrumentLoanService', () => {
       vi.mocked(prisma.$transaction).mockImplementation(async (callback) => {
         txTransactionCreate = vi.fn().mockResolvedValue({ id: 'tx-1' });
         return callback({
-          loan: { update: vi.fn().mockResolvedValue(returnedLoan) },
+          loan: {
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            findUniqueOrThrow: vi.fn().mockResolvedValue(returnedLoan),
+          },
           measuringInstrument: { update: vi.fn().mockResolvedValue(mockInstrument) },
           transaction: { create: txTransactionCreate },
         } as never);
@@ -416,7 +421,8 @@ describe('MeasuringInstrumentLoanService', () => {
       } as never);
 
       await expect(service.return({ loanId: 'loan-123' })).rejects.toMatchObject({
-        statusCode: 400,
+        statusCode: 409,
+        code: 'LOAN_ALREADY_RETURNED',
         message: 'すでに返却済みです',
       });
       expect(prisma.$transaction).not.toHaveBeenCalled();

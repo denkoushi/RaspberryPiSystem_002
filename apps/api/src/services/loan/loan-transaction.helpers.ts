@@ -1,10 +1,10 @@
 import type { Loan, Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
-
-type TransactionClient = Omit<
-  typeof prisma,
-  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
->;
+import {
+  claimActiveLoanTransition,
+  mapActiveLoanCreateError,
+  type LoanTransactionClient,
+} from './loan-concurrency.js';
 
 type ActiveLoanAssetFkField = 'measuringInstrumentId' | 'riggingGearId';
 
@@ -26,25 +26,29 @@ export async function executeAssetBorrowTransaction<TLoan extends { id: string }
     data: Prisma.LoanUncheckedCreateInput;
     include: Prisma.LoanInclude;
   };
-  setAssetInUse: (tx: TransactionClient) => Promise<unknown>;
+  setAssetInUse: (tx: LoanTransactionClient) => Promise<unknown>;
   buildTransactionCreateData: (
     createdLoan: TLoan,
   ) => Prisma.TransactionUncheckedCreateInput;
 }): Promise<TLoan> {
-  return prisma.$transaction(async (tx) => {
-    const createdLoan = (await tx.loan.create({
-      data: params.loanCreate.data,
-      include: params.loanCreate.include,
-    })) as unknown as TLoan;
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const createdLoan = (await tx.loan.create({
+        data: params.loanCreate.data,
+        include: params.loanCreate.include,
+      })) as unknown as TLoan;
 
-    await params.setAssetInUse(tx);
+      await params.setAssetInUse(tx);
 
-    await tx.transaction.create({
-      data: params.buildTransactionCreateData(createdLoan),
+      await tx.transaction.create({
+        data: params.buildTransactionCreateData(createdLoan),
+      });
+
+      return createdLoan;
     });
-
-    return createdLoan;
-  });
+  } catch (error) {
+    mapActiveLoanCreateError(error);
+  }
 }
 
 export async function executeAssetReturnTransaction<TLoan>(params: {
@@ -54,13 +58,19 @@ export async function executeAssetReturnTransaction<TLoan>(params: {
     include: Prisma.LoanInclude;
   };
   assetId: string | null;
-  setAssetAvailable: (tx: TransactionClient, assetId: string) => Promise<unknown>;
+  setAssetAvailable: (tx: LoanTransactionClient, assetId: string) => Promise<unknown>;
   transactionCreate: Prisma.TransactionUncheckedCreateInput;
 }): Promise<TLoan> {
   return prisma.$transaction(async (tx) => {
-    const result = (await tx.loan.update({
-      where: { id: params.loanId },
+    await claimActiveLoanTransition({
+      tx,
+      loanId: params.loanId,
+      transition: 'RETURN',
       data: params.loanUpdate.data,
+    });
+
+    const result = (await tx.loan.findUniqueOrThrow({
+      where: { id: params.loanId },
       include: params.loanUpdate.include,
     })) as unknown as TLoan;
 

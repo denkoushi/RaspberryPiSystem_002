@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 import contextlib
 import logging
 import subprocess
@@ -120,7 +121,9 @@ def create_app(
                 successful_ids: list[int] = []
                 for event_id, payload in events:
                     try:
-                        await websocket.send_json(payload)
+                        payload_with_id = dict(payload)
+                        payload_with_id.setdefault("eventId", event_id)
+                        await websocket.send_json(payload_with_id)
                         successful_ids.append(event_id)
                         await asyncio.sleep(0.05)  # 少し間隔を空ける
                     except Exception:
@@ -145,8 +148,10 @@ async def event_worker(
 ) -> None:
     while True:
         event = await event_queue.get()
-        event_id = queue_store.enqueue(event)
-        event_with_id = dict(event)
+        event_with_key = dict(event)
+        event_with_key.setdefault("eventKey", str(uuid.uuid4()))
+        event_id = queue_store.enqueue(event_with_key)
+        event_with_id = dict(event_with_key)
         event_with_id["eventId"] = event_id
         last_event_holder["event"] = event_with_id
         delivered = await event_manager.broadcast(event_with_id)

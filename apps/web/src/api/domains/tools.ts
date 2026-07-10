@@ -244,11 +244,16 @@ export interface PhotoBorrowPayload {
   photoData: string; // Base64エンコードされたJPEG画像データ
   clientId?: string;
   note?: string | null;
+  idempotencyKey?: string;
 }
 
 export async function photoBorrow(payload: PhotoBorrowPayload, clientKey?: string) {
-  const { data } = await api.post<{ loan: Loan }>('/tools/loans/photo-borrow', payload, {
-    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  const { idempotencyKey, ...body } = payload;
+  const { data } = await api.post<{ loan: Loan }>('/tools/loans/photo-borrow', body, {
+    headers: {
+      ...(clientKey ? { 'x-client-key': clientKey } : {}),
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+    }
   });
   return data.loan;
 }

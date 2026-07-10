@@ -19,6 +19,7 @@ import {
 } from './part-measurement-inspection-drawing-policy.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import { PartMeasurementSessionService } from './part-measurement-session.service.js';
+import { lockPartMeasurementSheetRow } from './part-measurement-sheet-lock.repository.js';
 
 const sheetListInclude = {
   template: { include: partMeasurementTemplateFullInclude },
@@ -192,30 +193,30 @@ export class PartMeasurementSheetService {
     if (!clientDeviceId) {
       throw new ApiError(400, '端末識別が必要です');
     }
-    const sheet = await prisma.partMeasurementSheet.findUnique({ where: { id: sheetId } });
-    if (!sheet) {
-      throw new ApiError(404, '記録表が見つかりません');
-    }
-    if (sheet.status !== 'DRAFT') {
-      throw new ApiError(400, '下書きのみ編集ロックを譲渡できます');
-    }
-    if (isLockValid(sheet) && sheet.editLockClientDeviceId && sheet.editLockClientDeviceId !== clientDeviceId) {
-      if (!confirm) {
-        throw new ApiError(
-          409,
-          '別端末が編集中です。引き継ぎを確認してください。',
-          undefined,
-          'PART_MEASUREMENT_TRANSFER_CONFIRM_REQUIRED'
-        );
+    return prisma.$transaction(async (tx) => {
+      await lockPartMeasurementSheetRow(tx, sheetId);
+      const sheet = await tx.partMeasurementSheet.findUniqueOrThrow({ where: { id: sheetId } });
+      if (sheet.status !== 'DRAFT') {
+        throw new ApiError(400, '下書きのみ編集ロックを譲渡できます');
       }
-    }
-    return prisma.partMeasurementSheet.update({
-      where: { id: sheetId },
-      data: {
-        editLockClientDeviceId: clientDeviceId,
-        editLockExpiresAt: lockExpiryFromNow()
-      },
-      include: sheetFullIncludeWithSession
+      if (isLockValid(sheet) && sheet.editLockClientDeviceId && sheet.editLockClientDeviceId !== clientDeviceId) {
+        if (!confirm) {
+          throw new ApiError(
+            409,
+            '別端末が編集中です。引き継ぎを確認してください。',
+            undefined,
+            'PART_MEASUREMENT_TRANSFER_CONFIRM_REQUIRED'
+          );
+        }
+      }
+      return tx.partMeasurementSheet.update({
+        where: { id: sheetId },
+        data: {
+          editLockClientDeviceId: clientDeviceId,
+          editLockExpiresAt: lockExpiryFromNow()
+        },
+        include: sheetFullIncludeWithSession
+      });
     });
   }
 
@@ -518,19 +519,6 @@ export class PartMeasurementSheetService {
   }
 
   async patch(id: string, input: PatchSheetInput, clientDeviceId?: string | null) {
-    const sheet = await prisma.partMeasurementSheet.findUnique({
-      where: { id },
-      include: { template: { include: partMeasurementTemplateFullInclude } }
-    });
-    if (!sheet) {
-      throw new ApiError(404, '記録表が見つかりません');
-    }
-    if (sheet.status !== 'DRAFT') {
-      throw new ApiError(400, '下書き以外は更新できません');
-    }
-
-    await this.assertDraftEditLock(sheet, clientDeviceId);
-
     let employeeId: string | null | undefined;
     let employeeNameSnapshot: string | null | undefined;
     let touchEmployee = false;
@@ -555,6 +543,15 @@ export class PartMeasurementSheetService {
       input.quantity === undefined ? undefined : input.quantity === null ? null : input.quantity;
 
     await prisma.$transaction(async (tx) => {
+      await lockPartMeasurementSheetRow(tx, id);
+      const lockedSheet = await tx.partMeasurementSheet.findUniqueOrThrow({
+        where: { id },
+        include: { template: { include: partMeasurementTemplateFullInclude } }
+      });
+      if (lockedSheet.status !== 'DRAFT') {
+        throw new ApiError(409, '下書き以外は更新できません', undefined, 'PART_MEASUREMENT_STATE_CONFLICT');
+      }
+      await this.assertDraftEditLock(lockedSheet, clientDeviceId);
       await this.refreshEditLock(tx, id, clientDeviceId ?? undefined);
 
       const data: Prisma.PartMeasurementSheetUpdateInput = {};
@@ -659,84 +656,80 @@ export class PartMeasurementSheetService {
   }
 
   async finalize(id: string, clientDeviceId?: string | null) {
-    const sheet = await prisma.partMeasurementSheet.findUnique({
-      where: { id },
-      include: { template: { include: partMeasurementTemplateFullInclude } }
-    });
-    if (!sheet) {
-      throw new ApiError(404, '記録表が見つかりません');
-    }
-    if (sheet.status !== 'DRAFT') {
-      throw new ApiError(400, '下書きのみ確定できます');
-    }
-
-    await this.assertDraftEditLock(sheet, clientDeviceId);
-
-    if (!sheet.employeeId) {
-      throw new ApiError(400, '確定前に作業者（社員）のNFCを読み取ってください');
-    }
-    if (sheet.quantity === null || sheet.quantity === undefined || sheet.quantity < 1) {
-      throw new ApiError(400, '個数を入力してください');
-    }
-    const items = sheet.template?.items ?? [];
-    if (items.length === 0) {
-      throw new ApiError(400, 'テンプレート項目がありません');
-    }
-
-    const expectedCount = sheet.quantity * items.length;
-    const itemIds = items.map((it) => it.id);
-    const actualCount = await prisma.partMeasurementResult.count({
-      where: {
-        sheetId: id,
-        templateItemId: { in: itemIds },
-        pieceIndex: { gte: 0, lt: sheet.quantity },
-        NOT: { value: null }
+    const sessionId = await prisma.$transaction(async (tx) => {
+      await lockPartMeasurementSheetRow(tx, id);
+      const sheet = await tx.partMeasurementSheet.findUniqueOrThrow({
+        where: { id },
+        include: { template: { include: partMeasurementTemplateFullInclude } }
+      });
+      if (sheet.status !== 'DRAFT') {
+        throw new ApiError(409, '下書きのみ確定できます', undefined, 'PART_MEASUREMENT_STATE_CONFLICT');
       }
-    });
-    if (actualCount < expectedCount) {
-      throw new ApiError(400, '未入力の測定値があります');
-    }
-
-    const sessionId = sheet.sessionId;
-    await prisma.partMeasurementSheet.update({
-      where: { id },
-      data: {
-        status: 'FINALIZED',
-        finalizedAt: new Date(),
-        finalizedByEmployeeId: sheet.employeeId,
-        finalizedByEmployeeNameSnapshot: sheet.employeeNameSnapshot,
-        editLockClientDeviceId: null,
-        editLockExpiresAt: null
+      await this.assertDraftEditLock(sheet, clientDeviceId);
+      if (!sheet.employeeId) {
+        throw new ApiError(400, '確定前に作業者（社員）のNFCを読み取ってください');
       }
+      if (sheet.quantity === null || sheet.quantity === undefined || sheet.quantity < 1) {
+        throw new ApiError(400, '個数を入力してください');
+      }
+      const items = sheet.template?.items ?? [];
+      if (items.length === 0) {
+        throw new ApiError(400, 'テンプレート項目がありません');
+      }
+      const expectedCount = sheet.quantity * items.length;
+      const itemIds = items.map((it) => it.id);
+      const actualCount = await tx.partMeasurementResult.count({
+        where: {
+          sheetId: id,
+          templateItemId: { in: itemIds },
+          pieceIndex: { gte: 0, lt: sheet.quantity },
+          NOT: { value: null }
+        }
+      });
+      if (actualCount < expectedCount) {
+        throw new ApiError(400, '未入力の測定値があります');
+      }
+      await tx.partMeasurementSheet.update({
+        where: { id },
+        data: {
+          status: 'FINALIZED',
+          finalizedAt: new Date(),
+          finalizedByEmployeeId: sheet.employeeId,
+          finalizedByEmployeeNameSnapshot: sheet.employeeNameSnapshot,
+          editLockClientDeviceId: null,
+          editLockExpiresAt: null
+        }
+      });
+      return sheet.sessionId;
     });
     await this.sessions.refreshCompletedAt(sessionId);
     return this.getById(id);
   }
 
   async cancelDraft(id: string, reason: string, clientDeviceId?: string | null) {
-    const sheet = await prisma.partMeasurementSheet.findUnique({ where: { id } });
-    if (!sheet) {
-      throw new ApiError(404, '記録表が見つかりません');
-    }
-    if (sheet.status !== 'DRAFT') {
-      throw new ApiError(400, '下書きのみ取消できます');
-    }
-    await this.assertDraftEditLock(sheet, clientDeviceId);
     const r = reason.trim();
     if (r.length === 0) {
       throw new ApiError(400, '取消理由を入力してください');
     }
 
-    const sessionId = sheet.sessionId;
-    await prisma.partMeasurementSheet.update({
-      where: { id },
-      data: {
-        status: 'CANCELLED',
-        cancelledAt: new Date(),
-        cancelReason: r.slice(0, 2000),
-        editLockClientDeviceId: null,
-        editLockExpiresAt: null
+    const sessionId = await prisma.$transaction(async (tx) => {
+      await lockPartMeasurementSheetRow(tx, id);
+      const sheet = await tx.partMeasurementSheet.findUniqueOrThrow({ where: { id } });
+      if (sheet.status !== 'DRAFT') {
+        throw new ApiError(409, '下書きのみ取消できます', undefined, 'PART_MEASUREMENT_STATE_CONFLICT');
       }
+      await this.assertDraftEditLock(sheet, clientDeviceId);
+      await tx.partMeasurementSheet.update({
+        where: { id },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancelReason: r.slice(0, 2000),
+          editLockClientDeviceId: null,
+          editLockExpiresAt: null
+        }
+      });
+      return sheet.sessionId;
     });
     await this.sessions.refreshCompletedAt(sessionId);
     return this.getById(id);

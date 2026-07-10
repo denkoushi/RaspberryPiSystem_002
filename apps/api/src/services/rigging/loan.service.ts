@@ -11,6 +11,7 @@ import {
   executeAssetReturnTransaction,
   findActiveLoanForAsset,
 } from '../loan/loan-transaction.helpers.js';
+import { activeLoanConflict } from '../loan/loan-concurrency.js';
 
 export interface RiggingBorrowInput {
   riggingTagUid?: string;
@@ -80,7 +81,7 @@ export class RiggingLoanService {
       assetId: gear.id,
     });
     if (existingLoan) {
-      throw new ApiError(400, 'この吊具はすでに貸出中です');
+      throw activeLoanConflict('この吊具はすでに貸出中です');
     }
 
     const gearSnapshot = {
@@ -148,7 +149,10 @@ export class RiggingLoanService {
       throw new ApiError(404, '吊具の貸出が見つかりません');
     }
     if (loan.returnedAt) {
-      throw new ApiError(400, 'すでに返却済みです');
+      throw new ApiError(409, 'すでに返却済みです', undefined, 'LOAN_ALREADY_RETURNED');
+    }
+    if (loan.cancelledAt) {
+      throw new ApiError(409, '取消済みの貸出記録は返却できません', undefined, 'LOAN_ALREADY_CANCELLED');
     }
 
     const updatedLoan = await executeAssetReturnTransaction<LoanWithRelations>({

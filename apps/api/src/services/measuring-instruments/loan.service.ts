@@ -11,6 +11,7 @@ import {
   executeAssetReturnTransaction,
   findActiveLoanForAsset,
 } from '../loan/loan-transaction.helpers.js';
+import { activeLoanConflict } from '../loan/loan-concurrency.js';
 
 export interface InstrumentBorrowInput {
   instrumentTagUid?: string;
@@ -88,7 +89,7 @@ export class MeasuringInstrumentLoanService {
       assetId: instrument.id,
     });
     if (existingLoan) {
-      throw new ApiError(400, 'この計測機器はすでに貸出中です');
+      throw activeLoanConflict('この計測機器はすでに貸出中です');
     }
 
     const instrumentSnapshot = {
@@ -158,7 +159,10 @@ export class MeasuringInstrumentLoanService {
       throw new ApiError(404, '計測機器の貸出が見つかりません');
     }
     if (loan.returnedAt) {
-      throw new ApiError(400, 'すでに返却済みです');
+      throw new ApiError(409, 'すでに返却済みです', undefined, 'LOAN_ALREADY_RETURNED');
+    }
+    if (loan.cancelledAt) {
+      throw new ApiError(409, '取消済みの貸出記録は返却できません', undefined, 'LOAN_ALREADY_CANCELLED');
     }
 
     const updatedLoan = await executeAssetReturnTransaction<LoanWithRelations>({

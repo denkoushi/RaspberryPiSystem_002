@@ -352,7 +352,8 @@ describe('LoanService', () => {
       vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
         const tx = {
           loan: {
-            update: vi.fn().mockResolvedValue(mockReturnedLoan),
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            findUniqueOrThrow: vi.fn().mockResolvedValue(mockReturnedLoan),
           },
           item: {
             update: vi.fn().mockResolvedValue({
@@ -405,7 +406,8 @@ describe('LoanService', () => {
       vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
         const tx = {
           loan: {
-            update: vi.fn().mockResolvedValue(returnedLoan),
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            findUniqueOrThrow: vi.fn().mockResolvedValue(returnedLoan),
           },
           item: {
             update: itemUpdate,
@@ -462,7 +464,8 @@ describe('LoanService', () => {
       vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
         const tx = {
           loan: {
-            update: vi.fn().mockResolvedValue(returnedLoan),
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            findUniqueOrThrow: vi.fn().mockResolvedValue(returnedLoan),
           },
           item: {
             update: itemUpdate,
@@ -590,7 +593,8 @@ describe('LoanService', () => {
       vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
         const tx = {
           loan: {
-            update: vi.fn().mockResolvedValue(cancelledLoan),
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            findUniqueOrThrow: vi.fn().mockResolvedValue(cancelledLoan),
           },
           item: {
             update: itemUpdate,
@@ -644,7 +648,8 @@ describe('LoanService', () => {
       vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => {
         const tx = {
           loan: {
-            update: vi.fn().mockResolvedValue(cancelledLoan),
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            findUniqueOrThrow: vi.fn().mockResolvedValue(cancelledLoan),
           },
           item: {
             update: itemUpdate,
@@ -780,4 +785,3 @@ describe('LoanService', () => {
     });
   });
 });
-

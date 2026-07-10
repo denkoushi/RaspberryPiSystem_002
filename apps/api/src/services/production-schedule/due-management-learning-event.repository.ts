@@ -150,8 +150,11 @@ implements RankingProposalRepository, DecisionEventRepository, OutcomeMetricsRep
     });
   }
 
-  async saveOutcomeEvent(input: OutcomeMetricInput): Promise<void> {
-    await prisma.dueManagementOutcomeEvent.create({
+  async saveOutcomeEvent(
+    input: OutcomeMetricInput,
+    db: Pick<Prisma.TransactionClient, 'dueManagementOutcomeEvent'> = prisma,
+  ): Promise<void> {
+    await db.dueManagementOutcomeEvent.create({
       data: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
         location: input.locationKey,
@@ -171,8 +174,7 @@ implements RankingProposalRepository, DecisionEventRepository, OutcomeMetricsRep
 
 const repository = new PrismaDueManagementLearningEventRepository();
 
-export const dueManagementLearningEventRepository: RankingProposalRepository &
-DecisionEventRepository &
-OutcomeMetricsRepository = repository;
+export const dueManagementLearningEventRepository = repository satisfies
+  RankingProposalRepository & DecisionEventRepository & OutcomeMetricsRepository;
 
 export { computeRankMetrics };

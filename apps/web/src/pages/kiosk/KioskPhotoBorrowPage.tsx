@@ -328,6 +328,7 @@ export function KioskPhotoBorrowPage() {
           employeeTagUid: currentUid,
           photoData: photoData!,
           clientId: resolvedClientId || undefined,
+          idempotencyKey: nfcEvent.eventKey,
         },
       {
         onSuccess: (loan) => {
@@ -517,4 +518,3 @@ export function KioskPhotoBorrowPage() {
     </div>
   );
 }
-

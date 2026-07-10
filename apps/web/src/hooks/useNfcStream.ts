@@ -9,6 +9,7 @@ export interface NfcEvent {
   readerSerial?: string;
   type?: string;
   eventId?: number;
+  eventKey?: string;
 }
 
 const isBrowser = typeof window !== 'undefined';

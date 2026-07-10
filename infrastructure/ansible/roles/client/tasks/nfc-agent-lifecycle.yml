@@ -33,7 +33,7 @@
 - name: Ensure nfc-agent container is up
   ansible.builtin.shell: |
     set -euo pipefail
-    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml up -d nfc-agent
+    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml up -d --build nfc-agent
   args:
     executable: /bin/bash
   register: nfc_agent_up_result

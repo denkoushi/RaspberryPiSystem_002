@@ -242,6 +242,69 @@ describe('assembly torque management API', () => {
     await cleanAssemblySeibanSearchFixtures();
   });
 
+  it('同一作業セッションの同時取消は1件だけ成功する', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey };
+    const document = await uploadPublishedProcedureDocument(app, headers, '競合制御手順');
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: buildTemplatePayload(document.id, {
+        modelCode: 'LOCK-TEST',
+        procedurePattern: '標準',
+        name: '競合制御テンプレート',
+      }),
+    });
+    expect(templateRes.statusCode).toBe(200);
+
+    const startRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: {
+        templateId: templateRes.json().template.id,
+        productNo: 'LOCK-PRODUCT',
+        serialNo: 'LOCK-SERIAL',
+        operatorNameSnapshot: '競合テスト',
+        targetUnit: 'LOCK-UNIT',
+        torqueWrenchId: 'LOCK-WRENCH',
+      },
+    });
+    expect(startRes.statusCode).toBe(200);
+    const sessionId = startRes.json().session.id as string;
+
+    const torqueResponses = await Promise.all(Array.from({ length: 2 }, () => app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/record-torque`,
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: { value: 10, source: 'manual' },
+    })));
+    expect(torqueResponses.filter((response) => response.statusCode === 200)).toHaveLength(1);
+    expect(torqueResponses.filter((response) => response.statusCode === 409)).toHaveLength(1);
+    const torqueRecords = await prisma.assemblyTorqueRecord.findMany({
+      where: { sessionId },
+      orderBy: { attempt: 'asc' },
+    });
+    expect(torqueRecords).toHaveLength(1);
+    expect(torqueRecords[0]!.attempt).toBe(1);
+
+    const responses = await Promise.all(Array.from({ length: 2 }, () => app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/cancel`,
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: { reason: '同時取消' },
+    })));
+
+    expect(responses.filter((response) => response.statusCode === 200)).toHaveLength(1);
+    expect(responses.filter((response) => response.statusCode === 409)).toHaveLength(1);
+    expect(responses.find((response) => response.statusCode === 409)!.json().errorCode)
+      .toBe('ASSEMBLY_SESSION_STATE_CONFLICT');
+    const stored = await prisma.assemblyWorkSession.findUniqueOrThrow({ where: { id: sessionId } });
+    expect(stored.status).toBe('CANCELLED');
+    expect(stored.cancelledAt).not.toBeNull();
+  });
+
   it('runs the MVP flow from procedure upload to Excel export', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey };

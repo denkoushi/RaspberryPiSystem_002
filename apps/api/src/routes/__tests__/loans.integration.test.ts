@@ -98,7 +98,7 @@ describe('POST /api/tools/loans/borrow', () => {
     expect(response.statusCode).toBe(404);
   });
 
-  it('should return 400 for already borrowed item', async () => {
+  it('should return 409 for already borrowed item', async () => {
     const item2 = await createTestItem();
 
     // First borrow
@@ -132,9 +132,42 @@ describe('POST /api/tools/loans/borrow', () => {
     });
 
     // Should fail if item is already borrowed
-    expect(response.statusCode).toBe(400);
+    expect(response.statusCode).toBe(409);
     const body = response.json();
     expect(body.message).toContain('貸出中');
+    expect(body.errorCode).toBe('ASSET_ALREADY_ON_LOAN');
+  });
+
+  it('同一アイテムへの同時貸出は1件だけ成功する', async () => {
+    const requests = Array.from({ length: 8 }, () =>
+      app.inject({
+        method: 'POST',
+        url: '/api/tools/loans/borrow',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-key': clientApiKey,
+        },
+        payload: { itemTagUid, employeeTagUid },
+      }),
+    );
+
+    const responses = await Promise.all(requests);
+    expect(responses.filter((response) => response.statusCode === 200)).toHaveLength(1);
+    expect(responses.filter((response) => response.statusCode === 409)).toHaveLength(7);
+    for (const response of responses.filter((candidate) => candidate.statusCode === 409)) {
+      expect(response.json().errorCode).toBe('ASSET_ALREADY_ON_LOAN');
+    }
+
+    const activeLoans = await prisma.loan.findMany({
+      where: { itemId, returnedAt: null, cancelledAt: null },
+      select: { id: true },
+    });
+    expect(activeLoans).toHaveLength(1);
+    expect(
+      await prisma.transaction.count({
+        where: { loanId: activeLoans[0]!.id, action: 'BORROW' },
+      }),
+    ).toBe(1);
   });
 });
 
@@ -280,4 +313,3 @@ describe('PUT /api/tools/loans/:id/client', () => {
     expect(response.statusCode).toBe(401);
   });
 });
-

@@ -414,6 +414,7 @@ model MachinePalletItem {
   updatedAt          DateTime @updatedAt
 
   @@index([resourceCd, palletNo, displayOrder], map: "MachinePalletItem_idx_machine_pallet_order")
+  @@unique([resourceCd, palletNo, displayOrder], map: "MachinePalletItem_uidx_machine_pallet_order")
   @@index([resourceCd], map: "MachinePalletItem_idx_resource")
 }
 
@@ -615,6 +616,8 @@ model RoleAuditLog {
 }
 
 model Loan {
+  /// Active asset uniqueness and terminal-state validity are enforced by raw SQL migration
+  /// 20260710170000_loan_concurrency_integrity (Prisma cannot represent partial indexes).
   id                      String                    @id @default(uuid())
   itemId                  String?
   measuringInstrumentId   String?
@@ -628,6 +631,8 @@ model Loan {
   notes                   String?
   photoUrl                String? // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
   photoTakenAt            DateTime? // 撮影日時
+  photoBorrowIdempotencyKey String? @db.Uuid
+  photoBorrowRequestFingerprint String? @db.Char(64)
   /// VLM が付与した表示用工具名（写真持出・マスタ Item 非紐づけ）
   photoToolDisplayName    String?
   /// 上記表示名を最後のジョブがどの経路で保存したか（人レビュー列とは独立）
@@ -667,6 +672,7 @@ model Loan {
   @@index([photoTakenAt])
   @@index([photoToolLabelRequested, photoToolDisplayName, photoToolLabelClaimedAt], map: "Loan_photoToolLabel_job_idx")
   @@index([photoToolHumanReviewedByUserId])
+  @@unique([clientId, photoBorrowIdempotencyKey], map: "Loan_photo_borrow_idempotency_uidx")
 }
 
 model Transaction {
