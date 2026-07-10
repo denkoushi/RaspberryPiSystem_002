@@ -1,22 +1,29 @@
 import sharp from 'sharp';
 
-import type { ImageOcrLayoutPort } from '../ocr/ports/image-ocr-layout.port.js';
 import {
   DRAWING_LOCAL_OCR_ROTATIONS,
   listLocalOcrRects,
   mapBboxToOriginalRatios,
-  readLocalOcrTimeoutMs,
   renderLocalOcrPass,
   withTimeout
 } from './drawing-local-ocr-crop.js';
 import type { DrawingLocalOcrPort, DrawingLocalOcrRequest } from './drawing-local-ocr.port.js';
+import {
+  getDrawingLocalRapidOcrWorkerClient,
+  readRapidOcrTimeoutMs,
+  type DrawingLocalRapidOcrWorkerClient
+} from './drawing-local-rapidocr-worker.client.js';
 import type { PartMeasurementDrawingOcrToken } from './part-measurement-drawing-ocr-payload.js';
 
-export class DrawingLocalOcrTesseractAdapter implements DrawingLocalOcrPort {
-  constructor(private readonly layoutOcr: ImageOcrLayoutPort) {}
+export class DrawingLocalOcrRapidOcrAdapter implements DrawingLocalOcrPort {
+  constructor(private readonly worker: DrawingLocalRapidOcrWorkerClient = getDrawingLocalRapidOcrWorkerClient()) {}
 
   async runLocalOcr(input: DrawingLocalOcrRequest): Promise<PartMeasurementDrawingOcrToken[]> {
-    return withTimeout(this.runLocalOcrInner(input), readLocalOcrTimeoutMs(), 'local OCR timed out');
+    return withTimeout(
+      this.runLocalOcrInner(input),
+      readRapidOcrTimeoutMs(),
+      'rapidocr local OCR timed out'
+    );
   }
 
   private async runLocalOcrInner(input: DrawingLocalOcrRequest): Promise<PartMeasurementDrawingOcrToken[]> {
@@ -24,9 +31,11 @@ export class DrawingLocalOcrTesseractAdapter implements DrawingLocalOcrPort {
     const imageWidth = metadata.width ?? 0;
     const imageHeight = metadata.height ?? 0;
     if (imageWidth <= 0 || imageHeight <= 0) {
-      throw new Error('Invalid drawing image dimensions for local OCR');
+      throw new Error('Invalid drawing image dimensions for rapidocr local OCR');
     }
 
+    // RapidOCR is slower; use centered ROI (+ depth annulus) but only rotation 0
+    // to keep secondary latency bounded. Primary tesseract already covers rotations.
     const rects = listLocalOcrRects({
       xRatio: input.xRatio,
       yRatio: input.yRatio,
@@ -34,20 +43,17 @@ export class DrawingLocalOcrTesseractAdapter implements DrawingLocalOcrPort {
       imageWidth,
       imageHeight
     });
+    const rotations = DRAWING_LOCAL_OCR_ROTATIONS.slice(0, 1); // [0]
 
     const tokens: PartMeasurementDrawingOcrToken[] = [];
     let passIndex = 0;
     for (const rect of rects) {
-      for (const rotation of DRAWING_LOCAL_OCR_ROTATIONS) {
+      for (const rotation of rotations) {
         // eslint-disable-next-line no-await-in-loop
         const passImage = await renderLocalOcrPass(input.imageBytes, rect, rotation);
         // eslint-disable-next-line no-await-in-loop
-        const ocr = await this.layoutOcr.runLayoutOcrOnImage({
-          imageBytes: passImage.buffer,
-          mimeType: 'image/jpeg',
-          profile: 'partMeasurementDrawingDimensions'
-        });
-        for (const word of ocr.words) {
+        const words = await this.worker.recognize(passImage.buffer, readRapidOcrTimeoutMs());
+        for (const word of words) {
           if (!/\d/.test(word.text)) continue;
           const ratios = mapBboxToOriginalRatios({
             bbox: word.bbox,
@@ -62,7 +68,7 @@ export class DrawingLocalOcrTesseractAdapter implements DrawingLocalOcrPort {
             text: word.text,
             confidence: word.confidence,
             ...ratios,
-            passId: `local-${passIndex}-r${rotation}`,
+            passId: `rapid-${passIndex}-r${rotation}`,
             passKind: 'tile',
             preprocessKind: 'raw',
             rotation
@@ -73,10 +79,4 @@ export class DrawingLocalOcrTesseractAdapter implements DrawingLocalOcrPort {
     }
     return tokens;
   }
-}
-
-export function isDrawingLocalOcrEnabled(): boolean {
-  const raw = process.env.PART_MEASUREMENT_DRAWING_OCR_LOCAL_ENABLED;
-  if (raw == null || raw.trim() === '') return true;
-  return !['0', 'false', 'off', 'no'].includes(raw.trim().toLowerCase());
 }

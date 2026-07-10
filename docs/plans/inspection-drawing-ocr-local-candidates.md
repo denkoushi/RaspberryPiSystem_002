@@ -16,7 +16,8 @@ validation: >
   API unit (ranking/local adapter/merge), web InspectionDrawingPointSettingsPanel,
   temp pgvector/pg16 integration for drawing OCR candidates (disposed)
 open_items:
-  - RapidOCR / DGX VLM production wiring (out of scope)
+  - RapidOCR local secondary: see [inspection-drawing-ocr-rapidocr-local.md](./inspection-drawing-ocr-rapidocr-local.md) / [ADR-20260710](../decisions/ADR-20260710-inspection-drawing-ocr-rapidocr-local.md)
+  - DGX VLM production wiring (out of scope)
   - Measure candidate POST latency on Pi5 before broad rollout
 ---
 
