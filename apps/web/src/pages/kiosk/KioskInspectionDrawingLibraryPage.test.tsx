@@ -60,6 +60,22 @@ const template: KioskInspectionDrawingTemplateSummaryDto = {
   itemCount: 1
 };
 
+const inactiveTemplate: KioskInspectionDrawingTemplateSummaryDto = {
+  ...template,
+  id: 'template-inactive',
+  fhincd: 'PART-RETIRED',
+  resourceCd: 'R002',
+  name: '無効化済みテンプレート',
+  version: 2,
+  isActive: false,
+  visualTemplateId: 'visual-inactive',
+  visualTemplate: {
+    ...template.visualTemplate!,
+    id: 'visual-inactive',
+    name: '無効化済み図面'
+  }
+};
+
 function renderPage() {
   return render(
     <MemoryRouter>
@@ -78,30 +94,67 @@ describe('KioskInspectionDrawingLibraryPage', () => {
     vi.stubGlobal('confirm', apiMocks.confirm);
   });
 
-  it('keeps retire actions hidden until the page-scoped mode is enabled and preserves mode after success', async () => {
+  it('keeps the retire action visible and uses 無効ON/OFF to show or hide inactive templates', async () => {
+    apiMocks.listTemplates.mockImplementation(({ includeInactive }: { includeInactive?: boolean }) =>
+      Promise.resolve(includeInactive ? [template, inactiveTemplate] : [template])
+    );
     renderPage();
     await screen.findAllByText('図面71-A61');
 
-    expect(screen.queryByRole('button', { name: '無効', exact: true })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '無効', exact: true })).toBeEnabled();
+    expect(screen.queryByText('PART-RETIRED')).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole('button', { name: '無効ON' }));
+    await screen.findByText('PART-RETIRED');
+    expect(screen.getAllByRole('button', { name: '無効', exact: true })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: '無効', exact: true }).filter((button) => button.hasAttribute('disabled'))).toHaveLength(1);
+    expect(apiMocks.listTemplates).toHaveBeenLastCalledWith(
+      expect.objectContaining({ includeInactive: true })
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '無効OFF' }));
+    await waitFor(() => expect(screen.queryByText('PART-RETIRED')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '無効', exact: true })).toBeEnabled();
+    expect(apiMocks.listTemplates).toHaveBeenLastCalledWith(
+      expect.objectContaining({ includeInactive: false })
+    );
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '履歴' }));
+    await waitFor(() =>
+      expect(apiMocks.listTemplates).toHaveBeenLastCalledWith(
+        expect.objectContaining({ includeInactive: true })
+      )
+    );
+    expect(screen.queryByText('PART-RETIRED')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '無効', exact: true })).toBeEnabled();
+  });
+
+  it('keeps confirmation and hides a newly retired template while inactive items are off', async () => {
+    let isRetired = false;
+    apiMocks.listTemplates.mockImplementation(({ includeInactive }: { includeInactive?: boolean }) =>
+      Promise.resolve(isRetired ? (includeInactive ? [{ ...template, isActive: false }] : []) : [template])
+    );
+    apiMocks.retireTemplate.mockImplementation(() => {
+      isRetired = true;
+      return Promise.resolve({});
+    });
+    renderPage();
+    await screen.findAllByText('図面71-A61');
+
     const retireButton = screen.getByRole('button', { name: '無効', exact: true });
-    expect(retireButton).toBeInTheDocument();
 
     apiMocks.confirm.mockReturnValueOnce(false);
     fireEvent.click(retireButton);
     expect(apiMocks.retireTemplate).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: '無効OFF' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '無効ON' })).toHaveAttribute('aria-pressed', 'false');
 
-    fireEvent.click(screen.getByRole('button', { name: '無効', exact: true }));
+    fireEvent.click(retireButton);
     await waitFor(() => expect(apiMocks.retireTemplate).toHaveBeenCalledWith('template-1'));
-    await waitFor(() => expect(screen.getByRole('button', { name: '無効OFF' })).not.toBeDisabled());
-    expect(screen.getByRole('button', { name: '無効', exact: true })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: '無効OFF' }));
-    expect(screen.queryByRole('button', { name: '無効', exact: true })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('PART-9000')).not.toBeInTheDocument());
+    expect(screen.getByText(/テンプレートを無効化しました/)).toBeInTheDocument();
   });
 
-  it('locks retire mode and prevents duplicate retire requests while one is pending', async () => {
+  it('locks the inactive visibility toggle and prevents duplicate retire requests while one is pending', async () => {
     let resolveRetire: (() => void) | undefined;
     apiMocks.retireTemplate.mockImplementation(
       () =>
@@ -111,18 +164,17 @@ describe('KioskInspectionDrawingLibraryPage', () => {
     );
     renderPage();
     await screen.findAllByText('図面71-A61');
-    fireEvent.click(screen.getByRole('button', { name: '無効ON' }));
 
     const retireButton = screen.getByRole('button', { name: '無効', exact: true });
     fireEvent.click(retireButton);
     fireEvent.click(retireButton);
 
     expect(apiMocks.retireTemplate).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: '無効OFF' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '無効ON' })).toBeDisabled();
     expect(retireButton).toBeDisabled();
 
     resolveRetire?.();
-    await waitFor(() => expect(screen.getByRole('button', { name: '無効OFF' })).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: '無効ON' })).not.toBeDisabled());
   });
 
   it('debounces one drawing-name digit query and sends it to both server lists', async () => {

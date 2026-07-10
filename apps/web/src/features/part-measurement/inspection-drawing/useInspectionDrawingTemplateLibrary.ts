@@ -38,9 +38,14 @@ function hasActiveTemplateFilters(filters: TemplateLibraryFilters): boolean {
 type Options = {
   /** 上部数字テンキーの debounce 済み検索値 */
   digitQuery?: string;
+  /** 無効化済みテンプレートを一覧へ表示するため、API取得対象にも含める */
+  showInactiveTemplates?: boolean;
 };
 
-export function useInspectionDrawingTemplateLibrary({ digitQuery = '' }: Options = {}) {
+export function useInspectionDrawingTemplateLibrary({
+  digitQuery = '',
+  showInactiveTemplates = false
+}: Options = {}) {
   const [filters, setFilters] = useState<TemplateLibraryFilters>(DEFAULT_FILTERS);
   const [debouncedTextFilters, setDebouncedTextFilters] = useState({
     fhincd: DEFAULT_FILTERS.fhincd,
@@ -73,7 +78,7 @@ export function useInspectionDrawingTemplateLibrary({ digitQuery = '' }: Options
     setError(null);
 
     void listKioskInspectionDrawingTemplates({
-      includeInactive: filters.includeInactive,
+      includeInactive: filters.includeInactive || showInactiveTemplates,
       fhincd: debouncedTextFilters.fhincd || undefined,
       visualName: debouncedTextFilters.visualName || undefined,
       digitQuery: digitQuery || undefined,
@@ -102,7 +107,8 @@ export function useInspectionDrawingTemplateLibrary({ digitQuery = '' }: Options
     filters.includeInactive,
     filters.processFilter,
     filters.resourceCd,
-    reloadToken
+    reloadToken,
+    showInactiveTemplates
   ]);
 
   const updateFilter = useCallback(<K extends keyof TemplateLibraryFilters>(

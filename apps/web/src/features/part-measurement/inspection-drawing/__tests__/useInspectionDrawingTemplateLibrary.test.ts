@@ -132,6 +132,28 @@ describe('useInspectionDrawingTemplateLibrary', () => {
     );
   });
 
+  it('includes inactive templates while the inactive-item visibility mode is enabled', async () => {
+    const { rerender } = renderHook(
+      ({ showInactiveTemplates }) =>
+        useInspectionDrawingTemplateLibrary({ digitQuery: '7161', showInactiveTemplates }),
+      { initialProps: { showInactiveTemplates: false } }
+    );
+
+    await waitFor(() =>
+      expect(listTemplatesMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ digitQuery: '7161', includeInactive: false })
+      )
+    );
+
+    rerender({ showInactiveTemplates: true });
+
+    await waitFor(() =>
+      expect(listTemplatesMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ digitQuery: '7161', includeInactive: true })
+      )
+    );
+  });
+
   it('reloads the current filters without changing them', async () => {
     const { result } = renderHook(() => useInspectionDrawingTemplateLibrary());
 

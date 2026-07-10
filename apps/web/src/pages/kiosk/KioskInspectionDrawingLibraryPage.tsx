@@ -59,8 +59,11 @@ export function KioskInspectionDrawingLibraryPage() {
   const [debouncedDigitQuery, setDebouncedDigitQuery] = useState('');
   const [retireBusy, setRetireBusy] = useState(false);
   const retireBusyRef = useRef(false);
-  const [retireModeEnabled, setRetireModeEnabled] = useState(false);
-  const templateLibrary = useInspectionDrawingTemplateLibrary({ digitQuery: debouncedDigitQuery });
+  const [showInactiveTemplates, setShowInactiveTemplates] = useState(false);
+  const templateLibrary = useInspectionDrawingTemplateLibrary({
+    digitQuery: debouncedDigitQuery,
+    showInactiveTemplates
+  });
   const resourceCdsByVisualId = useInspectionDrawingResourceCdsByVisualId(
     visualLibraryRefreshToken + resourceCdsMapRefreshToken
   );
@@ -106,8 +109,11 @@ export function KioskInspectionDrawingLibraryPage() {
     () =>
       [...groupedTemplates.values()]
         .map((group) => pickLineageCardRepresentative(group))
-        .filter((row): row is KioskInspectionDrawingTemplateSummaryDto => row != null),
-    [groupedTemplates]
+        .filter(
+          (row): row is KioskInspectionDrawingTemplateSummaryDto =>
+            row != null && (showInactiveTemplates || row.isActive)
+        ),
+    [groupedTemplates, showInactiveTemplates]
   );
   const templateDigitSearchHasMore =
     debouncedDigitQuery.length > 0 && allVisibleTemplateRows.length > INSPECTION_DRAWING_VISUAL_LIBRARY_LIMIT;
@@ -236,9 +242,9 @@ export function KioskInspectionDrawingLibraryPage() {
             onProcessFilterChange={templateLibrary.setProcessFilter}
             includeInactive={filters.includeInactive}
             onIncludeInactiveChange={templateLibrary.setIncludeInactive}
-            retireModeEnabled={retireModeEnabled}
-            onRetireModeChange={setRetireModeEnabled}
-            retireModeDisabled={retireBusy}
+            showInactiveTemplates={showInactiveTemplates}
+            onShowInactiveTemplatesChange={setShowInactiveTemplates}
+            showInactiveTemplatesDisabled={retireBusy}
             onReload={templateLibrary.reload}
             onReset={templateLibrary.resetFilters}
             resetDisabled={!templateLibrary.hasActiveFilters}
@@ -275,9 +281,7 @@ export function KioskInspectionDrawingLibraryPage() {
               busy={templateLibrary.loading || retireBusy}
               onHistoryClick={setHistoryGroupKey}
               lineageGroupKey={lineageGroupKey}
-              onRetireClick={
-                retireModeEnabled ? (template) => void handleRetireTemplate(template) : undefined
-              }
+              onRetireClick={(template) => void handleRetireTemplate(template)}
               printPath={
                 INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED
                   ? kioskInspectionDrawingTemplatePrintPath

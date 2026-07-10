@@ -34,9 +34,9 @@ type Props = {
   onProcessFilterChange: (value: InspectionDrawingLibraryProcessFilter) => void;
   includeInactive: boolean;
   onIncludeInactiveChange: (value: boolean) => void;
-  retireModeEnabled: boolean;
-  onRetireModeChange: (value: boolean) => void;
-  retireModeDisabled?: boolean;
+  showInactiveTemplates: boolean;
+  onShowInactiveTemplatesChange: (value: boolean) => void;
+  showInactiveTemplatesDisabled?: boolean;
   onReload: () => void;
   onReset: () => void;
   resetDisabled: boolean;
@@ -60,9 +60,9 @@ export function InspectionDrawingLibraryFilterBar({
   onProcessFilterChange,
   includeInactive,
   onIncludeInactiveChange,
-  retireModeEnabled,
-  onRetireModeChange,
-  retireModeDisabled = false,
+  showInactiveTemplates,
+  onShowInactiveTemplatesChange,
+  showInactiveTemplatesDisabled = false,
   onReload,
   onReset,
   resetDisabled,
@@ -140,13 +140,13 @@ export function InspectionDrawingLibraryFilterBar({
 
       <Button
         type="button"
-        variant={retireModeEnabled ? 'danger' : 'ghostOnDark'}
-        aria-pressed={retireModeEnabled}
+        variant={showInactiveTemplates ? 'danger' : 'ghostOnDark'}
+        aria-pressed={showInactiveTemplates}
         className="min-h-11 min-w-[5.2rem] shrink-0 !px-2 !py-0 text-sm"
-        disabled={retireModeDisabled}
-        onClick={() => onRetireModeChange(!retireModeEnabled)}
+        disabled={showInactiveTemplatesDisabled}
+        onClick={() => onShowInactiveTemplatesChange(!showInactiveTemplates)}
       >
-        {retireModeEnabled ? '無効OFF' : '無効ON'}
+        {showInactiveTemplates ? '無効OFF' : '無効ON'}
       </Button>
 
       <div className="ml-auto flex shrink-0 items-center justify-start gap-2">

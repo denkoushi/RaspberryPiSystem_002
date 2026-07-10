@@ -45,7 +45,7 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
   const [processFilter, setProcessFilter] = useState<InspectionDrawingLibraryProcessFilter>('all');
   const [includeInactive, setIncludeInactive] = useState(false);
   const [digitQuery, setDigitQuery] = useState('');
-  const [retireModeEnabled, setRetireModeEnabled] = useState(false);
+  const [showInactiveTemplates, setShowInactiveTemplates] = useState(false);
   const [historyGroupKey, setHistoryGroupKey] = useState<string | null>(null);
 
   const resourceNameMap = INSPECTION_DRAWING_PREVIEW_RESOURCE_NAME_MAP;
@@ -55,7 +55,7 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
     const q = fhincd.trim().toLowerCase();
     const visualQ = visualName.trim().toLowerCase();
     return sourceTemplates.filter((template) => {
-      if (!includeInactive && !template.isActive) return false;
+      if (!includeInactive && !showInactiveTemplates && !template.isActive) return false;
       if (q && !template.fhincd.toLowerCase().includes(q)) return false;
       if (visualQ && !template.visualTemplate?.name.toLowerCase().includes(visualQ)) return false;
       if (!matchesDigitQuery(template.visualTemplate?.name, digitQuery)) return false;
@@ -69,7 +69,16 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
       if (processFilter !== 'all' && template.processGroup !== processFilter) return false;
       return true;
     });
-  }, [digitQuery, fhincd, includeInactive, processFilter, resourceCd, sourceTemplates, visualName]);
+  }, [
+    digitQuery,
+    fhincd,
+    includeInactive,
+    processFilter,
+    resourceCd,
+    showInactiveTemplates,
+    sourceTemplates,
+    visualName
+  ]);
 
   const resourceOptions = useMemo(() => {
     const unique = new Set<string>();
@@ -101,8 +110,11 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
     () =>
       [...groupedFiltered.values()]
         .map((group) => pickLineageCardRepresentative(group))
-        .filter((row): row is KioskInspectionDrawingTemplateSummaryDto => row != null),
-    [groupedFiltered]
+        .filter(
+          (row): row is KioskInspectionDrawingTemplateSummaryDto =>
+            row != null && (showInactiveTemplates || row.isActive)
+        ),
+    [groupedFiltered, showInactiveTemplates]
   );
 
   const activeHistoryTemplates = historyGroupKey ? groupedAll.get(historyGroupKey) ?? [] : [];
@@ -176,8 +188,8 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
             onProcessFilterChange={setProcessFilter}
             includeInactive={includeInactive}
             onIncludeInactiveChange={setIncludeInactive}
-            retireModeEnabled={retireModeEnabled}
-            onRetireModeChange={setRetireModeEnabled}
+            showInactiveTemplates={showInactiveTemplates}
+            onShowInactiveTemplatesChange={setShowInactiveTemplates}
             onReload={() => undefined}
             onReset={resetTemplateFilters}
             resetDisabled={!hasActiveTemplateFilters}
@@ -203,7 +215,7 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
               printPath={() => '/dev/kiosk-inspection-drawing-print'}
               createFromSourcePath={() => '/dev/kiosk-inspection-drawing-create'}
               linkState={INSPECTION_DRAWING_DEV_RETURN_TO_LIBRARY_STATE}
-              onRetireClick={retireModeEnabled ? () => undefined : undefined}
+              onRetireClick={() => undefined}
             />
           </div>
         </section>
