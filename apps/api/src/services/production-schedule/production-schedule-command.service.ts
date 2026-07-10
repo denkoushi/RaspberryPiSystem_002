@@ -426,64 +426,88 @@ export async function upsertProductionScheduleOrder(params: {
 
   const rowData = row.rowData as Record<string, unknown>;
   const rowResourceCd = typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD : '';
-  const currentAssignment = await prisma.productionScheduleOrderAssignment.findUnique({
-    where: {
-      csvDashboardRowId_location: {
-        csvDashboardRowId: row.id,
-        location: locationKey
-      }
-    },
-    select: {
-      orderNumber: true,
-      resourceCd: true
-    }
-  });
   if (rowResourceCd && rowResourceCd !== resourceCd) {
     throw new ApiError(400, '資源CDが一致しません');
   }
 
   if (orderNumber === null) {
-    if (isSiteCanonicalLocation) {
-      await prisma.productionScheduleOrderAssignment.deleteMany({
+    await prisma.$transaction(async (tx) => {
+      await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
+      const currentRow = await tx.csvDashboardRow.findFirst({
+        where: { id: row.id, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+        select: { id: true, rowData: true }
+      });
+      if (!currentRow) {
+        throw new ApiError(404, '対象の行が見つかりません');
+      }
+      const lockedAssignment = await tx.productionScheduleOrderAssignment.findUnique({
         where: {
-          csvDashboardRowId: row.id,
-          siteKey,
-          location: { not: locationKey }
+          csvDashboardRowId_location: {
+            csvDashboardRowId: currentRow.id,
+            location: locationKey
+          }
+        },
+        select: { orderNumber: true, resourceCd: true }
+      });
+      if (isSiteCanonicalLocation) {
+        await tx.productionScheduleOrderAssignment.deleteMany({
+          where: {
+            csvDashboardRowId: currentRow.id,
+            siteKey,
+            location: { not: locationKey }
+          }
+        });
+      }
+      await tx.productionScheduleOrderAssignment.deleteMany({
+        where: {
+          csvDashboardRowId: currentRow.id,
+          location: locationKey
         }
       });
-    }
-    await prisma.productionScheduleOrderAssignment.deleteMany({
-      where: {
-        csvDashboardRowId: row.id,
-        location: locationKey
-      }
-    });
-    const fseibanRaw = rowData.FSEIBAN;
-    const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';
-    const isCompleted = rowData.progress === COMPLETED_PROGRESS_VALUE;
-    await dueManagementLearningEventRepository.saveOutcomeEvent({
-      locationKey,
-      eventType: 'manual_order_update',
-      csvDashboardRowId: row.id,
-      fseiban: fseiban.length > 0 ? fseiban : null,
-      isCompleted,
-      occurredAt: new Date(),
-      metadata: {
-        from: 'kiosk_order_update',
-        actorLocation: actorLocationKey ?? locationKey,
-        targetLocation: locationKey,
-        resourceCd,
-        previousResourceCd: currentAssignment?.resourceCd ?? null,
-        previousOrderNumber: currentAssignment?.orderNumber ?? null,
-        nextOrderNumber: null,
-        reorderDelta: null
-      }
+      const lockedRowData = currentRow.rowData as Record<string, unknown>;
+      const fseibanRaw = lockedRowData.FSEIBAN;
+      const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';
+      const isCompleted = lockedRowData.progress === COMPLETED_PROGRESS_VALUE;
+      await dueManagementLearningEventRepository.saveOutcomeEvent({
+        locationKey,
+        eventType: 'manual_order_update',
+        csvDashboardRowId: currentRow.id,
+        fseiban: fseiban.length > 0 ? fseiban : null,
+        isCompleted,
+        occurredAt: new Date(),
+        metadata: {
+          from: 'kiosk_order_update',
+          actorLocation: actorLocationKey ?? locationKey,
+          targetLocation: locationKey,
+          resourceCd,
+          previousResourceCd: lockedAssignment?.resourceCd ?? null,
+          previousOrderNumber: lockedAssignment?.orderNumber ?? null,
+          nextOrderNumber: null,
+          reorderDelta: null
+        }
+      }, tx);
     });
     return { success: true, orderNumber: null };
   }
 
   await prisma.$transaction(async (tx) => {
     await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
+    const currentRow = await tx.csvDashboardRow.findFirst({
+      where: { id: row.id, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: { id: true, rowData: true }
+    });
+    if (!currentRow) {
+      throw new ApiError(404, '対象の行が見つかりません');
+    }
+    const lockedAssignment = await tx.productionScheduleOrderAssignment.findUnique({
+      where: {
+        csvDashboardRowId_location: {
+          csvDashboardRowId: currentRow.id,
+          location: locationKey
+        }
+      },
+      select: { orderNumber: true, resourceCd: true }
+    });
     const splitCount = await tx.productionScheduleOrderSplit.count({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -565,30 +589,30 @@ export async function upsertProductionScheduleOrder(params: {
         }
       });
     }
-  });
-
-  const fseibanRaw = rowData.FSEIBAN;
-  const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';
-  const isCompleted = rowData.progress === COMPLETED_PROGRESS_VALUE;
-  const reorderDelta =
-    typeof currentAssignment?.orderNumber === 'number' ? orderNumber - currentAssignment.orderNumber : null;
-  await dueManagementLearningEventRepository.saveOutcomeEvent({
-    locationKey,
-    eventType: 'manual_order_update',
-    csvDashboardRowId: row.id,
-    fseiban: fseiban.length > 0 ? fseiban : null,
-    isCompleted,
-    occurredAt: new Date(),
-    metadata: {
-      from: 'kiosk_order_update',
-      actorLocation: actorLocationKey ?? locationKey,
-      targetLocation: locationKey,
-      resourceCd,
-      previousResourceCd: currentAssignment?.resourceCd ?? null,
-      previousOrderNumber: currentAssignment?.orderNumber ?? null,
-      nextOrderNumber: orderNumber,
-      reorderDelta
-    }
+    const lockedRowData = currentRow.rowData as Record<string, unknown>;
+    const fseibanRaw = lockedRowData.FSEIBAN;
+    const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';
+    const isCompleted = lockedRowData.progress === COMPLETED_PROGRESS_VALUE;
+    const reorderDelta =
+      typeof lockedAssignment?.orderNumber === 'number' ? orderNumber - lockedAssignment.orderNumber : null;
+    await dueManagementLearningEventRepository.saveOutcomeEvent({
+      locationKey,
+      eventType: 'manual_order_update',
+      csvDashboardRowId: currentRow.id,
+      fseiban: fseiban.length > 0 ? fseiban : null,
+      isCompleted,
+      occurredAt: new Date(),
+      metadata: {
+        from: 'kiosk_order_update',
+        actorLocation: actorLocationKey ?? locationKey,
+        targetLocation: locationKey,
+        resourceCd,
+        previousResourceCd: lockedAssignment?.resourceCd ?? null,
+        previousOrderNumber: lockedAssignment?.orderNumber ?? null,
+        nextOrderNumber: orderNumber,
+        reorderDelta
+      }
+    }, tx);
   });
 
   return { success: true, orderNumber };
