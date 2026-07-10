@@ -10,6 +10,23 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-11 · **複数Pi 4競合制御 + 写真持出冪等性** · **API + Web + NFC agent + migration** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#concurrency-control-and-photo-idempotency-2026-07-11}
+
+- **変更概要（正本）**: [競合制御アーキテクチャ](../architecture/concurrency-control.md) · ブランチ **`fix/production-order-clear-concurrency`** · 機能・配備HEAD **`98848053`** · PR [#969](https://github.com/denkoushi/RaspberryPiSystem_002/pull/969)。貸出の部分ユニーク索引／終端状態CHECK、写真持出の`Idempotency-Key`・NFC `eventKey`、組立行ロック、パレットadvisory lock、測定編集ロック、生産順序クリア直列化を導入。NFC agentは配備時に`--build`を必ず指定し、ホスト更新後も旧イメージを継続利用しない。
+- **CI**: 最終push CI [**`29088682559` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29088682559) · PR CI [**`29088684233` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29088684233) · [CodeQL `29088684142` success](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29088684142) · [Secret scan `29088684432` success](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29088684432)。
+- **DB事前・事後確認**: 本番論理バックアップ `/opt/RaspberryPiSystem_002/backups/predeploy-concurrency-20260710-192258.sql.gz` を`gzip -t`で検証。`Loan`の不正終端、工具／計測機器／吊具の有効貸出重複、`MachinePalletItem`順序重複はいずれも **0件**。`20260710170000_loan_concurrency_integrity`、`20260710180000_photo_borrow_idempotency`、`20260710190000_pallet_display_order_integrity`適用済み。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/production-order-clear-concurrency infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260710-194900-6072`** | success · `ok=135 changed=4 failed=0` · API/Web再構築、migration/status/health成功 · HEAD `93d31484`（後続のAnsible修正により作業ツリーは`98848053`へ同期） |
+| `raspi4-kensaku-stonebase01` | **`20260710-202939-18373`** | success · `ok=130 changed=10 failed=0` · `--build`経路をカナリア検証 · HEAD `98848053` |
+| `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` | **`20260710-203419-23622`** | 3台success（各NFC再構築・kiosk/status-agent再起動成功）後、ユーザー指示により4台目開始前に安全停止 |
+| `raspi4-sessaku-01` | **`20260711-074744-5397`** | success · `ok=123 changed=9 failed=0` · HEAD `98848053` |
+
+- **対象外（今回）**: `raspberrypi3`（サイネージ）は未デプロイ。
+- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 44 / WARN 1 / FAIL 0**。WARNはauto-tuning schedulerの過去ログがローテーション済みであるためで、代替の`PUT global-rank/auto-generate`はHTTP 200。Pi4全5台はHEAD `98848053`、`kiosk-browser.service`／`status-agent.timer` active、NFCコンテナ内の`eventKey`実装とreaderConnected=trueを確認。
+
 ### 補足（2026-07-10 · **矢視 dirty / ズーム100%除去 / 一覧日時** · **API + Web** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#inspection-drawing-callout-dirty-zoom-dates-2026-07-10}
 
 - **変更概要**: 矢視 tip のみ変更でも保存可能（dirty snapshot に `calloutTipXRatio/YRatio`）。ズームの「100%／元サイズ」ボタンを Create/Edit/Preview から除去。図面ライブラリ列「登録」=`visual.createdAt`、テンプレ列「更新」=`template.updatedAt`（`GET .../inspection-drawing/templates`）。ブランチ **`feat/self-inspection-autosave-callout-template-lock`** · HEAD **`eb41870a`** · PR [#968](https://github.com/denkoushi/RaspberryPiSystem_002/pull/968)。**DB/migration 変更なし**。
