@@ -4,6 +4,8 @@ import { createTestClientDevice, createTestEmployee } from './helpers.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 import sharp from 'sharp';
+import { randomUUID } from 'node:crypto';
+import { prisma } from '../../lib/prisma.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -114,7 +116,7 @@ const buildPayload = (overrides: Record<string, unknown> = {}) => ({
     expect(body.loan.itemId).toBeNull(); // 写真撮影持出ではitemIdはNULL
     expect(body.loan.photoUrl).toBeTruthy();
     expect(body.loan.photoTakenAt).toBeTruthy();
-    expect(body.loan.photoUrl).toMatch(/^\/api\/storage\/photos\/\d{4}\/\d{2}\/\d{8}_\d{6}_[a-f0-9-]+\.jpg$/);
+    expect(body.loan.photoUrl).toMatch(/^\/api\/storage\/photos\/\d{4}\/\d{2}\/\d{8}_\d{6}_[a-f0-9-]+_[a-f0-9-]+\.jpg$/);
   });
 
   it('should return 404 for non-existent employee tag', async () => {
@@ -188,10 +190,74 @@ const buildPayload = (overrides: Record<string, unknown> = {}) => ({
     }
   });
 
+  it('同じIdempotency-Keyの再送は同じLoanを返す', async () => {
+    const idempotencyKey = randomUUID();
+    const request = () => app.inject({
+      method: 'POST',
+      url: '/api/tools/loans/photo-borrow',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey,
+        'Idempotency-Key': idempotencyKey,
+      },
+      payload: buildPayload({ note: 'idempotent photo' }),
+    });
+
+    const first = await request();
+    const second = await request();
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(second.json().loan.id).toBe(first.json().loan.id);
+
+    const loans = await prisma.loan.findMany({
+      where: { clientId, photoBorrowIdempotencyKey: idempotencyKey },
+      select: { id: true },
+    });
+    expect(loans).toHaveLength(1);
+    expect(await prisma.transaction.count({ where: { loanId: loans[0]!.id, action: 'BORROW' } })).toBe(1);
+  });
+
+  it('同じIdempotency-Keyの同時再送は1件だけ保存する', async () => {
+    const idempotencyKey = randomUUID();
+    const responses = await Promise.all(Array.from({ length: 4 }, () => app.inject({
+      method: 'POST',
+      url: '/api/tools/loans/photo-borrow',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey,
+        'Idempotency-Key': idempotencyKey,
+      },
+      payload: buildPayload({ note: 'concurrent photo' }),
+    })));
+
+    expect(responses.every((response) => response.statusCode === 200)).toBe(true);
+    expect(new Set(responses.map((response) => response.json().loan.id)).size).toBe(1);
+    expect(await prisma.loan.count({ where: { clientId, photoBorrowIdempotencyKey: idempotencyKey } })).toBe(1);
+  });
+
+  it('同じIdempotency-Keyを異なる内容に再利用すると409を返す', async () => {
+    const idempotencyKey = randomUUID();
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/tools/loans/photo-borrow',
+      headers: { 'Content-Type': 'application/json', 'x-client-key': clientApiKey, 'Idempotency-Key': idempotencyKey },
+      payload: buildPayload({ note: 'first' }),
+    });
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/tools/loans/photo-borrow',
+      headers: { 'Content-Type': 'application/json', 'x-client-key': clientApiKey, 'Idempotency-Key': idempotencyKey },
+      payload: buildPayload({ note: 'different' }),
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(409);
+    expect(second.json().errorCode).toBe('IDEMPOTENCY_KEY_REUSED');
+  });
+
   // 閾値チェックを削除したため、暗い画像でも受け入れるようになった
   // このテストは削除（過去の実装では暗い画像を拒否していたが、ストリーム保持による負荷問題のため削除）
   it.skip('should reject photos that are too dark', async () => {
     // このテストはスキップ（閾値チェックを削除したため、暗い画像でも受け入れる）
   });
 });
-

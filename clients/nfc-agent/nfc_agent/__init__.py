@@ -1,5 +1,5 @@
-"""NFC Agent パッケージ。Milestone 1 時点では雛形のみ。"""
+"""NFC Agent package.
 
-from .main import main
-
-__all__ = ["main"]
+Runtime dependencies are imported by ``nfc_agent.__main__`` so storage and
+configuration modules can be tested without loading FastAPI or the NFC driver.
+"""

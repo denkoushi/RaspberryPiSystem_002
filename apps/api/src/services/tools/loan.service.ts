@@ -13,8 +13,14 @@ import { getPhotoToolLabelScheduler } from './photo-tool-label/photo-tool-label.
 import {
   activeLoanConflict,
   claimActiveLoanTransition,
+  isUniqueConstraintViolation,
   mapActiveLoanCreateError,
 } from '../loan/loan-concurrency.js';
+import {
+  assertMatchingPhotoBorrowRequest,
+  buildPhotoBorrowFingerprint,
+  cleanupUncommittedPhoto,
+} from './photo-borrow-idempotency.js';
 
 export interface BorrowInput {
   itemTagUid: string;
@@ -29,6 +35,7 @@ export interface PhotoBorrowInput {
   photoData: string; // Base64エンコードされたJPEG画像データ
   clientId?: string;
   note?: string | null;
+  idempotencyKey?: string;
 }
 
 export interface ReturnInput {
@@ -322,12 +329,35 @@ export class LoanService {
       throw new ApiError(404, '対象従業員が登録されていません');
     }
 
+    if (input.idempotencyKey && !resolvedClientId) {
+      throw new ApiError(400, 'Idempotency-Keyを使用する場合はクライアント端末の特定が必要です');
+    }
+
+    const imageBuffer = Buffer.from(input.photoData, 'base64');
+    const requestFingerprint = buildPhotoBorrowFingerprint({
+      employeeTagUid: input.employeeTagUid,
+      imageBuffer,
+      note: input.note,
+    });
+
+    if (input.idempotencyKey && resolvedClientId) {
+      const existing = await prisma.loan.findFirst({
+        where: {
+          clientId: resolvedClientId,
+          photoBorrowIdempotencyKey: input.idempotencyKey,
+        },
+        include: { item: true, employee: true, client: true },
+      });
+      if (existing) {
+        assertMatchingPhotoBorrowRequest(existing, requestFingerprint);
+        return existing as LoanWithRelations;
+      }
+    }
+
     // 画像データを処理（Base64エンコードされたJPEG画像データを受け取る）
     let photoPathInfo;
     try {
       // Base64エンコードされた画像データをBufferに変換
-      const imageBuffer = Buffer.from(input.photoData, 'base64');
-      
       const { originalJpeg, thumbnailJpeg } = await preparePhotoAndThumbnailForStorage(imageBuffer);
 
       // 写真を保存
@@ -360,8 +390,10 @@ export class LoanService {
     };
 
     // Loanレコードを作成（itemIdはNULL、photoUrlとphotoTakenAtを設定）
-    const loan = await prisma.$transaction(async (tx) => {
-      const createdLoan = await tx.loan.create({
+    let loan: LoanWithRelations;
+    try {
+      loan = await prisma.$transaction(async (tx) => {
+        const createdLoan = await tx.loan.create({
         data: {
           itemId: null, // Item情報は保存しない
           employeeId: employee.id,
@@ -369,12 +401,14 @@ export class LoanService {
           photoUrl: photoPathInfo.relativePath,
           photoTakenAt: new Date(),
           photoToolLabelRequested: true,
+          photoBorrowIdempotencyKey: input.idempotencyKey,
+          photoBorrowRequestFingerprint: input.idempotencyKey ? requestFingerprint : undefined,
           notes: input.note ?? undefined
         },
         include: { item: true, employee: true, client: true }
       });
 
-      await tx.transaction.create({
+        await tx.transaction.create({
         data: {
           loanId: createdLoan.id,
           action: TransactionAction.BORROW,
@@ -389,8 +423,27 @@ export class LoanService {
         }
       });
 
-      return createdLoan;
-    });
+        return createdLoan as LoanWithRelations;
+      });
+    } catch (error) {
+      try {
+        await cleanupUncommittedPhoto(photoPathInfo.relativePath);
+      } catch (cleanupError) {
+        logger.warn({ err: cleanupError, photoUrl: photoPathInfo.relativePath }, 'Failed to clean uncommitted photo');
+      }
+
+      if (input.idempotencyKey && resolvedClientId && isUniqueConstraintViolation(error)) {
+        const existing = await prisma.loan.findFirst({
+          where: { clientId: resolvedClientId, photoBorrowIdempotencyKey: input.idempotencyKey },
+          include: { item: true, employee: true, client: true },
+        });
+        if (existing) {
+          assertMatchingPhotoBorrowRequest(existing, requestFingerprint);
+          return existing as LoanWithRelations;
+        }
+      }
+      throw error;
+    }
 
     logger.info(
       {

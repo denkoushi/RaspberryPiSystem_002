@@ -75,6 +75,8 @@ await prisma.$transaction(async (tx) => {
 
 **保証方法**:
 - 写真撮影持出（`photoBorrow`）: トランザクション内で写真ファイルを保存 → `Loan.photoUrl` を設定
+
+写真持出APIは任意の `Idempotency-Key` UUIDヘッダーを受け付ける。同じ端末・同じキー・同じ内容の再送は既存Loanを返し、異なる内容でのキー再利用は409となる。
 - Loan削除（`delete`）: `Loan.photoUrl` が存在する場合、写真ファイルも削除
 
 ---

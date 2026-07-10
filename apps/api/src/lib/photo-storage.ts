@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { randomUUID } from 'node:crypto';
 
 import sharp from 'sharp';
 
@@ -74,8 +75,9 @@ export class PhotoStorage {
     const second = String(now.getSeconds()).padStart(2, '0');
 
     const timestamp = `${year}${month}${day}_${hour}${minute}${second}`;
-    const filename = `${timestamp}_${employeeId}.jpg`;
-    const thumbnailFilename = `${timestamp}_${employeeId}_thumb.jpg`;
+    const uniqueSuffix = randomUUID();
+    const filename = `${timestamp}_${employeeId}_${uniqueSuffix}.jpg`;
+    const thumbnailFilename = `${timestamp}_${employeeId}_${uniqueSuffix}_thumb.jpg`;
 
     const yearMonthDir = path.join(year, month);
     const fullPath = path.join(getPhotosDir(), yearMonthDir, filename);
@@ -253,4 +255,3 @@ export class PhotoStorage {
       .toBuffer();
   }
 }
-
