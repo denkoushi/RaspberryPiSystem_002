@@ -120,7 +120,12 @@ export {
   type InspectionDrawingPrintRecordEntrySlot,
   type InspectionDrawingPrintViewModel
 } from './inspectionDrawingPrintViewModel';
-export { computePrintMarkerPosition, markerPositionInObjectContainContainer } from './printMarkerLayout';
+export { computePrintMarkerPosition, markerPositionInObjectContainContainer, computePrintCalloutLines } from './printMarkerLayout';
+export {
+  inspectionDrawingPointHasCalloutTip,
+  clearInspectionDrawingCalloutTip,
+  setInspectionDrawingCalloutTip
+} from './inspectionDrawingCalloutTip';
 export { computeObjectContainLayout } from './computeObjectContainLayout';
 
 export {

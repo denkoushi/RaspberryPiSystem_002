@@ -56,12 +56,13 @@ export function InspectionDrawingPointSidebar({
   onApplyOcrCandidate,
   measurementLabelSettings
 }: Props) {
-  const showHistoryPlaceHint = contentReadOnly && mode === 'place' && !selectedPoint;
+  const showHistoryPlaceHint = contentReadOnly && (mode === 'place' || mode === 'callout') && !selectedPoint;
+  const showSettings = (mode === 'place' || mode === 'callout') && selectedPoint;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="grid shrink-0 gap-2">
-        {mode === 'place' && selectedPoint ? (
+        {showSettings ? (
           <InspectionDrawingPointSettingsPanel
             point={selectedPoint}
             disabled={contentReadOnly}
@@ -77,9 +78,11 @@ export function InspectionDrawingPointSidebar({
           />
         ) : null}
 
-        {mode === 'place' && !selectedPoint && !showHistoryPlaceHint ? (
+        {(mode === 'place' || mode === 'callout') && !selectedPoint && !showHistoryPlaceHint ? (
           <p className="px-1 text-[0.92rem] text-white/55">
-            図面上で点を選択するか、一覧から選んでください。
+            {mode === 'callout'
+              ? '測定点を選び、図面上で指差し先端をタップしてください。'
+              : '図面上で点を選択するか、一覧から選んでください。'}
           </p>
         ) : null}
 

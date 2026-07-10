@@ -33,7 +33,8 @@ export type SelfInspectionActionReason =
   | 'missing_registration'
   | 'incomplete_employee_registration'
   | 'incomplete_registration'
-  | 'canvas_not_ready';
+  | 'canvas_not_ready'
+  | 'session_employee_gate';
 
 export type SelfInspectionActionState = {
   enabled: boolean;
@@ -54,6 +55,7 @@ export type SelfInspectionSessionActionContext = {
   entryRegistrationReady: boolean;
   entryRegistrationDirty: boolean;
   requireMeasuringInstrumentTag: boolean;
+  sessionEmployeeGateReady: boolean;
   outOfToleranceAcknowledgedByEntryIndex?: Record<number, Record<string, boolean>>;
 };
 
@@ -122,6 +124,7 @@ export function resolveSelfInspectionSaveActionState(
   context: SelfInspectionSessionActionContext
 ): SelfInspectionActionState {
   if (context.isSessionReadOnly) return disabledState('read_only');
+  if (!context.sessionEmployeeGateReady) return disabledState('session_employee_gate');
   if (context.isSavingEntry) return disabledState('saving');
   if (context.isCompletingSession) return disabledState('completing');
 
@@ -157,6 +160,7 @@ export function resolveSelfInspectionCompleteActionState(
   context: SelfInspectionSessionActionContext
 ): SelfInspectionActionState {
   if (context.isSessionReadOnly) return disabledState('read_only');
+  if (!context.sessionEmployeeGateReady) return disabledState('session_employee_gate');
   if (context.isSavingEntry) return disabledState('saving');
   if (context.isCompletingSession) return disabledState('completing');
 
@@ -176,7 +180,9 @@ export function resolveSelfInspectionCompleteActionState(
 
   const requiredSlots = listSelfInspectionEntrySlots(context.session);
   for (const slot of requiredSlots) {
-    const saved = context.session.entries.find((entry) => entry.entryIndex === slot.entryIndex);
+    const saved = context.session.entries.find(
+      (entry) => entry.entryIndex === slot.entryIndex && entry.persistenceStatus !== 'draft'
+    );
     if (
       !saved ||
       !isSelfInspectionSavedEntryRegistrationComplete(saved, {
@@ -217,6 +223,7 @@ export function resolveSelfInspectionResumeGuideActionState(
   context: SelfInspectionSessionActionContext
 ): SelfInspectionActionState {
   if (context.isSessionReadOnly) return disabledState('read_only');
+  if (!context.sessionEmployeeGateReady) return disabledState('session_employee_gate');
   if (context.isSavingEntry) return disabledState('saving');
   if (context.isCompletingSession) return disabledState('completing');
   if (!context.isDrawingCanvasReady || !context.guideActionsEnabled) {
@@ -250,6 +257,8 @@ export function selfInspectionActionReasonMessage(
       return '保存処理中です。';
     case 'completing':
       return '完了処理中です。';
+    case 'session_employee_gate':
+      return '氏名NFCタグをスキャンするまで測定できません。';
     case 'no_changes':
       return '保存する変更がありません。';
     case 'incomplete_values':

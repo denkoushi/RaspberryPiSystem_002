@@ -23,6 +23,7 @@ export function applySelfInspectionEntrySaveToSessionCache(
               ...row,
               id: savedEntry.id,
               updatedAt: savedEntry.updatedAt,
+              persistenceStatus: savedEntry.persistenceStatus,
               createdByEmployeeId: savedEntry.createdByEmployeeId,
               createdByEmployeeNameSnapshot: savedEntry.createdByEmployeeNameSnapshot,
               measuringInstrumentId: savedEntry.measuringInstrumentId,
@@ -42,6 +43,7 @@ export function applySelfInspectionEntrySaveToSessionCache(
           entryIndex: savedEntry.entryIndex,
           entrySlotKind: savedEntry.entrySlotKind,
           entrySlotLabel: savedEntry.entrySlotLabel,
+          persistenceStatus: savedEntry.persistenceStatus,
               createdByEmployeeId: savedEntry.createdByEmployeeId,
               createdByEmployeeNameSnapshot: savedEntry.createdByEmployeeNameSnapshot,
               measuringInstrumentId: savedEntry.measuringInstrumentId,
@@ -56,12 +58,15 @@ export function applySelfInspectionEntrySaveToSessionCache(
         }
       ].sort((left, right) => left.entryIndex - right.entryIndex);
 
-  const completedEntryCount = entries.length;
+  const completedEntryCount = entries.filter((entry) => entry.persistenceStatus !== 'draft').length;
   const previousFocusedPendingCount =
-    previous.focusedEntry?.entryIndex === entryIndex
+    previous.focusedEntry?.entryIndex === entryIndex && previous.focusedEntry.persistenceStatus !== 'draft'
       ? previous.focusedEntry.values.filter((value) => value.reviewStatus === 'PENDING').length
       : 0;
-  const savedPendingCount = savedEntry.values.filter((value) => value.reviewStatus === 'PENDING').length;
+  const savedPendingCount =
+    savedEntry.persistenceStatus !== 'draft'
+      ? savedEntry.values.filter((value) => value.reviewStatus === 'PENDING').length
+      : 0;
   const pendingReviewCount = Math.max(
     0,
     (previous.pendingReviewCount ?? 0) - previousFocusedPendingCount + savedPendingCount

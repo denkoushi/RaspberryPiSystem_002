@@ -527,6 +527,27 @@ export async function createSelfInspectionEntry(
   return data.entry;
 }
 
+export async function upsertSelfInspectionDraftEntry(
+  sessionId: string,
+  body: {
+    entryIndex: number;
+    employeeTagUid?: string | null;
+    measuringInstrumentTagUid?: string | null;
+    ifUnmodifiedSince?: string | null;
+    values?: SelfInspectionEntryValuePayload[];
+  },
+  clientKey?: string
+): Promise<SelfInspectionLotEntryDto> {
+  const { data } = await api.post<{ entry: SelfInspectionLotEntryDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/entries/draft`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.entry;
+}
+
 export async function updateSelfInspectionEntry(
   sessionId: string,
   entryId: string,

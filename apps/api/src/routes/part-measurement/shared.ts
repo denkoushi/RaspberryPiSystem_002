@@ -94,6 +94,8 @@ export const templateItemSchema = z.object({
   decimalPlaces: z.number().int().min(0).max(6).optional(),
   markerXRatio: z.number().min(0).max(1).optional().nullable(),
   markerYRatio: z.number().min(0).max(1).optional().nullable(),
+  calloutTipXRatio: z.number().min(0).max(1).optional().nullable(),
+  calloutTipYRatio: z.number().min(0).max(1).optional().nullable(),
   nominalValue: z.number().optional().nullable(),
   lowerLimit: z.number().optional().nullable(),
   upperLimit: z.number().optional().nullable(),
@@ -395,6 +397,14 @@ export const selfInspectionUpdateEntryBodySchema = z.object({
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
 
+export const selfInspectionUpsertDraftEntryBodySchema = z.object({
+  entryIndex: z.number().int().min(0),
+  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
+  ifUnmodifiedSince: z.string().min(1).max(100).optional().nullable(),
+  values: z.array(selfInspectionEntryValueSchema).max(200).optional()
+});
+
 export const selfInspectionCreateInspectorEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
   employeeTagUid: z.string().min(1).max(200).optional().nullable(),
@@ -524,6 +534,8 @@ export function serializeTemplateItem(item: {
   decimalPlaces: number;
   markerXRatio?: unknown;
   markerYRatio?: unknown;
+  calloutTipXRatio?: unknown;
+  calloutTipYRatio?: unknown;
   nominalValue?: unknown;
   lowerLimit?: unknown;
   upperLimit?: unknown;
@@ -542,6 +554,8 @@ export function serializeTemplateItem(item: {
     decimalPlaces: item.decimalPlaces,
     markerXRatio: decimalToString(item.markerXRatio),
     markerYRatio: decimalToString(item.markerYRatio),
+    calloutTipXRatio: decimalToString(item.calloutTipXRatio),
+    calloutTipYRatio: decimalToString(item.calloutTipYRatio),
     nominalValue: decimalToString(item.nominalValue),
     lowerLimit: decimalToString(item.lowerLimit),
     upperLimit: decimalToString(item.upperLimit),

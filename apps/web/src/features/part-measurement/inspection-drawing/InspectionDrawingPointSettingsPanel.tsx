@@ -9,16 +9,23 @@ import {
   resolveInspectionDrawingToleranceKindForLabel,
   type InspectionDrawingMeasurementLabelSetting
 } from '@raspi-system/shared-types';
+import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 
 import {
+  clearInspectionDrawingCalloutTip,
+  inspectionDrawingPointHasCalloutTip
+} from './inspectionDrawingCalloutTip';
+import {
   inspectionDrawingBoundedSelectClassName,
   inspectionDrawingBoundedSelectShellClassName,
+  inspectionDrawingPointCalloutStatusRowClassName,
+  inspectionDrawingPointNameInlineClassName,
+  inspectionDrawingPointNameInlineLabelClassName,
   inspectionDrawingPointSettingDeleteButtonClassName,
-  inspectionDrawingPointSettingDualCellClassName,
   inspectionDrawingPointSettingInputClassName,
   inspectionDrawingPointSettingNominalInlineClassName,
   inspectionDrawingPointSettingNominalInputClassName,
@@ -221,6 +228,7 @@ export function InspectionDrawingPointSettingsPanel({
     onChange(buildGeometricTolerancePointPatch(value));
   };
   const geometricRangeUpper = point.nominalRaw.trim() || '-';
+  const hasCallout = inspectionDrawingPointHasCalloutTip(point);
 
   return (
     <div className={inspectionDrawingPointSettingPanelClassName}>
@@ -230,26 +238,36 @@ export function InspectionDrawingPointSettingsPanel({
         onChange={onChange}
       />
       <p className="text-[1.02rem] font-bold">測定点の設定（No.{point.markerNo}）</p>
-      <div className={inspectionDrawingPointSettingSingleRowClassName}>
-        <label className={inspectionDrawingPointSettingDualCellClassName}>
-          <span className="text-[1rem] font-semibold">名称</span>
-          <div className={inspectionDrawingBoundedSelectShellClassName}>
-            <select
-              value={point.name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              className={inspectionDrawingBoundedSelectClassName}
-              disabled={disabled}
-              title={point.name || '選択'}
-            >
-              {labelOptions.map((opt) => (
-                <option key={`${opt.value}-${opt.label}`} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </label>
+      <div className={inspectionDrawingPointCalloutStatusRowClassName}>
+        <span>{hasCallout ? '指差し あり' : '指差し なし'}</span>
+        <button
+          type="button"
+          disabled={disabled || !hasCallout}
+          className="min-h-[26px] rounded border border-amber-300/50 bg-slate-950/55 px-2 text-[0.7rem] font-extrabold text-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => onChange(clearInspectionDrawingCalloutTip())}
+        >
+          削除
+        </button>
       </div>
+      <label className={inspectionDrawingPointNameInlineClassName} title={point.name || '名称'}>
+        <span className={inspectionDrawingPointNameInlineLabelClassName}>名称</span>
+        <div className={clsx(inspectionDrawingBoundedSelectShellClassName, 'min-w-0 flex-1')}>
+          <select
+            value={point.name}
+            onChange={(e) => handleNameChange(e.target.value)}
+            className={inspectionDrawingBoundedSelectClassName}
+            disabled={disabled}
+            aria-label="名称"
+            title={point.name || '選択'}
+          >
+            {labelOptions.map((opt) => (
+              <option key={`${opt.value}-${opt.label}`} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </label>
       {showDepthMode ? (
         <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="通し切替">
           <button

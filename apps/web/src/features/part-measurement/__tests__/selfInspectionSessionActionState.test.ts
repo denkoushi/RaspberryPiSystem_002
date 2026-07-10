@@ -41,11 +41,58 @@ function makeContext(
     entryRegistrationReady: true,
     entryRegistrationDirty: false,
     requireMeasuringInstrumentTag: true,
+    sessionEmployeeGateReady: true,
     ...overrides
   };
 }
 
 describe('selfInspectionSessionActionState', () => {
+  it('save is disabled when session employee gate is locked', () => {
+    const state = resolveSelfInspectionSaveActionState(
+      makeContext({
+        sessionEmployeeGateReady: false,
+        draftValuesByEntryIndex: { 0: { p1: '10', p2: '11' } },
+        savedDraftByEntryIndex: { 0: { p1: '10', p2: '10' } }
+      })
+    );
+    expect(state.enabled).toBe(false);
+    expect(state.reason).toBe('session_employee_gate');
+    expect(selfInspectionActionReasonMessage(state.reason)).toContain('氏名NFC');
+  });
+
+  it('complete ignores draft-only entries for required slots', () => {
+    const session = makeContext().session;
+    const now = '2026-06-04T00:00:00.000Z';
+    session.entries = [
+      {
+        id: 'e0',
+        entryIndex: 0,
+        entrySlotKind: 'fixed',
+        entrySlotLabel: '1',
+        persistenceStatus: 'draft',
+        createdByEmployeeId: 'emp-1',
+        createdByEmployeeNameSnapshot: 'Tester',
+        measuringInstrumentId: 'inst-1',
+        measuringInstrumentManagementNumberSnapshot: 'MI-001',
+        measuringInstrumentNameSnapshot: 'Caliper',
+        measuringInstrumentTagUidSnapshot: 'inst-tag',
+        instrumentUsages: [],
+        createdAt: now,
+        updatedAt: now,
+        values: []
+      }
+    ];
+    const state = resolveSelfInspectionCompleteActionState(
+      makeContext({
+        session,
+        draftValuesByEntryIndex: { 0: { p1: '10', p2: '10' } },
+        savedDraftByEntryIndex: { 0: { p1: '10', p2: '10' } }
+      })
+    );
+    expect(state.enabled).toBe(false);
+    expect(state.reason).toBe('missing_required_entries');
+  });
+
   it('save is disabled when draft is not dirty', () => {
     const state = resolveSelfInspectionSaveActionState(makeContext());
     expect(state.enabled).toBe(false);
@@ -180,6 +227,7 @@ describe('selfInspectionSessionActionState', () => {
         entryIndex: 0,
         entrySlotKind: 'fixed',
         entrySlotLabel: '1',
+        persistenceStatus: 'confirmed',
         createdByEmployeeId: 'emp-1',
         createdByEmployeeNameSnapshot: 'Tester',
         measuringInstrumentId: 'inst-1',
@@ -195,6 +243,7 @@ describe('selfInspectionSessionActionState', () => {
         entryIndex: 1,
         entrySlotKind: 'fixed',
         entrySlotLabel: '2',
+        persistenceStatus: 'confirmed',
         createdByEmployeeId: 'emp-1',
         createdByEmployeeNameSnapshot: 'Tester',
         measuringInstrumentId: 'inst-1',
@@ -231,6 +280,7 @@ describe('selfInspectionSessionActionState', () => {
         entryIndex: 0,
         entrySlotKind: 'fixed',
         entrySlotLabel: '1',
+        persistenceStatus: 'confirmed',
         createdByEmployeeId: 'emp-1',
         createdByEmployeeNameSnapshot: 'Tester',
         measuringInstrumentId: null,
@@ -246,6 +296,7 @@ describe('selfInspectionSessionActionState', () => {
         entryIndex: 1,
         entrySlotKind: 'fixed',
         entrySlotLabel: '2',
+        persistenceStatus: 'confirmed',
         createdByEmployeeId: 'emp-1',
         createdByEmployeeNameSnapshot: 'Tester',
         measuringInstrumentId: null,
@@ -285,6 +336,7 @@ describe('selfInspectionSessionActionState', () => {
         entryIndex: 0,
         entrySlotKind: 'fixed',
         entrySlotLabel: '1',
+        persistenceStatus: 'confirmed',
         createdByEmployeeId: 'emp-1',
         createdByEmployeeNameSnapshot: 'Tester',
         measuringInstrumentId: 'inst-1',
@@ -300,6 +352,7 @@ describe('selfInspectionSessionActionState', () => {
         entryIndex: 1,
         entrySlotKind: 'fixed',
         entrySlotLabel: '2',
+        persistenceStatus: 'confirmed',
         createdByEmployeeId: 'emp-1',
         createdByEmployeeNameSnapshot: 'Tester',
         measuringInstrumentId: 'inst-1',
@@ -338,6 +391,7 @@ describe('selfInspectionSessionActionState', () => {
         entryIndex: 0,
         entrySlotKind: 'fixed',
         entrySlotLabel: '1',
+        persistenceStatus: 'confirmed',
         createdByEmployeeId: 'emp-1',
         createdByEmployeeNameSnapshot: 'Tester',
         measuringInstrumentId: null,
@@ -353,6 +407,7 @@ describe('selfInspectionSessionActionState', () => {
         entryIndex: 1,
         entrySlotKind: 'fixed',
         entrySlotLabel: '2',
+        persistenceStatus: 'confirmed',
         createdByEmployeeId: 'emp-1',
         createdByEmployeeNameSnapshot: 'Tester',
         measuringInstrumentId: 'inst-1',

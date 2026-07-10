@@ -351,5 +351,5 @@ export function inspectionDrawingCreateKeyCollisionMessage(
   if (reason === 'same_as_source') {
     return '流用元と同じ品番・工程・資源CDです。工程または資源CDを変更してください。';
   }
-  return '同一品番・工程・資源CDの有効テンプレートが既にあります。改版する場合は一覧から編集してください。';
+  return '同一品番・工程・資源CDの有効テンプレートが既にあります。新規作成はできません。一覧から「編集（改版）」してください。';
 }

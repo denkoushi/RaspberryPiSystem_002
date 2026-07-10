@@ -32,6 +32,7 @@ export function makeSelfInspectionLotEntryForTest(
     id: `entry-${overrides.entryIndex}`,
     entrySlotKind: 'fixed',
     entrySlotLabel: String(overrides.entryIndex + 1),
+    persistenceStatus: 'confirmed',
     createdByEmployeeId: null,
     createdByEmployeeNameSnapshot: null,
     measuringInstrumentId: null,

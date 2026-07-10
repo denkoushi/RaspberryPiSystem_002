@@ -255,9 +255,6 @@ export const inspectionDrawingPointSettingDualRowClassName =
 export const inspectionDrawingPointSettingSingleRowClassName =
   'grid min-w-0 grid-cols-1 gap-1.5';
 
-/** 測定点設定 — 2 列行の各セル */
-export const inspectionDrawingPointSettingDualCellClassName = 'grid min-w-0 gap-1';
-
 /** 測定点設定 — 基準値ラベル + 狭幅入力の 1 行 */
 export const inspectionDrawingPointSettingNominalInlineClassName =
   'flex min-w-0 items-center gap-2';
@@ -278,7 +275,17 @@ export const inspectionDrawingPointNudgeGridClassName =
 
 /** 測定点位置微調整 — icon-only 方向ボタン（既存 Button の px-4 を使わない） */
 export const inspectionDrawingPointNudgeButtonClassName =
-  'inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-white/20 bg-white/5 text-[1.1rem] font-bold leading-none text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40';
+  'inline-flex min-h-[1.375rem] min-w-11 items-center justify-center rounded-md border border-white/20 bg-white/5 text-[0.82rem] font-bold leading-none text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40';
+
+/** 名称ラベル + select を1行（17rem aside 内に収める） */
+export const inspectionDrawingPointNameInlineClassName =
+  'flex min-w-0 w-full items-center gap-2';
+
+export const inspectionDrawingPointNameInlineLabelClassName =
+  'shrink-0 whitespace-nowrap text-[0.95rem] font-semibold';
+
+export const inspectionDrawingPointCalloutStatusRowClassName =
+  'grid min-h-8 grid-cols-[1fr_auto] items-center gap-1.5 rounded-md border border-amber-300/45 bg-amber-400/10 px-2 text-[0.72rem] font-extrabold text-amber-100';
 
 /** 検査図面ライブラリ行アクション（高さ ×0.7 ≈ 30.8px） */
 export const inspectionDrawingLibraryRowActionClassName =

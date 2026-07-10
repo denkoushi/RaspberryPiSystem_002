@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 import { evaluateMeasurementValue, parseMeasurementNumber } from './evaluateMeasurement';
+import { inspectionDrawingPointHasCalloutTip } from './inspectionDrawingCalloutTip';
 import {
   computeScrollToCenterMarker,
   pointerClientToImageRatios,
@@ -20,7 +21,7 @@ import { useZoomedCanvasLayout } from './useZoomedCanvasLayout';
 
 import type { InspectionDrawingPoint } from './types';
 
-type Mode = 'place' | 'test';
+type Mode = 'place' | 'callout' | 'test';
 
 type Props = {
   imageUrl: string;
@@ -30,6 +31,8 @@ type Props = {
   onSelectPoint: (id: string) => void;
   /** 未指定時は図面上への新規配置を無効化（閲覧専用） */
   onAddPoint?: (xRatio: number, yRatio: number) => void;
+  /** 指差しモード: 選択中点の先端を置く */
+  onSetCalloutTip?: (xRatio: number, yRatio: number) => void;
   /** 1 = ビューポートにフィット。表示専用（保存座標は ratio のまま） */
   zoom?: number;
   /** 全面表示（fit）操作のたびに増える。スクロール位置リセット用 */
@@ -54,6 +57,7 @@ export function InspectionDrawingCanvas({
   selectedPointId,
   onSelectPoint,
   onAddPoint,
+  onSetCalloutTip,
   zoom = INSPECTION_DRAWING_ZOOM_DEFAULT,
   fitGeneration = 0,
   focusRequest = null,
@@ -159,8 +163,9 @@ export function InspectionDrawingCanvas({
     const viewport = viewportRef.current;
     if (!viewport || !zoomedLayout) return;
 
-    if (mode === 'place') {
-      if (!onAddPoint) return;
+    if (mode === 'place' || mode === 'callout') {
+      if (mode === 'place' && !onAddPoint) return;
+      if (mode === 'callout' && !onSetCalloutTip) return;
       pendingPlaceRef.current = {
         pointerId: e.pointerId,
         startClientX: e.clientX,
@@ -196,7 +201,12 @@ export function InspectionDrawingCanvas({
     if (!shouldConfirmPlacePointFromPointerMovement(maxMovementPx)) return;
 
     const ratios = ratiosAtClient(e.clientX, e.clientY);
-    if (ratios) onAddPoint?.(ratios.xRatio, ratios.yRatio);
+    if (!ratios) return;
+    if (mode === 'callout') {
+      onSetCalloutTip?.(ratios.xRatio, ratios.yRatio);
+      return;
+    }
+    onAddPoint?.(ratios.xRatio, ratios.yRatio);
   };
 
   const handlePlacePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -262,6 +272,82 @@ export function InspectionDrawingCanvas({
               setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
             }}
           />
+          {image ? (
+            <svg
+              className="pointer-events-none absolute inset-0 z-[5] h-full w-full"
+              aria-hidden="true"
+            >
+              <defs>
+                <marker
+                  id="inspection-drawing-callout-arrow"
+                  markerWidth="6"
+                  markerHeight="6"
+                  refX="5"
+                  refY="3"
+                  orient="auto"
+                >
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#f59e0b" />
+                </marker>
+                <marker
+                  id="inspection-drawing-callout-arrow-active"
+                  markerWidth="6"
+                  markerHeight="6"
+                  refX="5"
+                  refY="3"
+                  orient="auto"
+                >
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#22d3ee" />
+                </marker>
+              </defs>
+              {points.map((pt) => {
+                if (!inspectionDrawingPointHasCalloutTip(pt)) return null;
+                const isActive = pt.id === selectedPointId;
+                const tipX = image.offsetX + (pt.calloutTipXRatio as number) * image.width;
+                const tipY = image.offsetY + (pt.calloutTipYRatio as number) * image.height;
+                const markerX = image.offsetX + pt.xRatio * image.width;
+                const markerY = image.offsetY + pt.yRatio * image.height;
+                return (
+                  <line
+                    key={`callout-${pt.id}`}
+                    x1={markerX}
+                    y1={markerY}
+                    x2={tipX}
+                    y2={tipY}
+                    stroke={isActive ? '#22d3ee' : '#f59e0b'}
+                    strokeWidth={isActive ? 2.2 : 1.8}
+                    markerEnd={
+                      isActive
+                        ? 'url(#inspection-drawing-callout-arrow-active)'
+                        : 'url(#inspection-drawing-callout-arrow)'
+                    }
+                  />
+                );
+              })}
+            </svg>
+          ) : null}
+          {image
+            ? points.map((pt) => {
+                if (!inspectionDrawingPointHasCalloutTip(pt)) return null;
+                const isActive = pt.id === selectedPointId;
+                const left = image.offsetX + (pt.calloutTipXRatio as number) * image.width;
+                const top = image.offsetY + (pt.calloutTipYRatio as number) * image.height;
+                return (
+                  <div
+                    key={`tip-badge-${pt.id}`}
+                    className={clsx(
+                      'pointer-events-none absolute z-[6] flex h-[22px] w-[22px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 text-[0.68rem] font-extrabold shadow',
+                      isActive
+                        ? 'border-cyan-400 bg-cyan-300 text-slate-900'
+                        : 'border-amber-500 bg-amber-200 text-slate-900'
+                    )}
+                    style={{ left, top }}
+                    aria-hidden="true"
+                  >
+                    {pt.markerNo}
+                  </div>
+                );
+              })
+            : null}
           {image
             ? points.map((pt) => {
                 const bounds = toleranceBoundsFromPoint(pt);

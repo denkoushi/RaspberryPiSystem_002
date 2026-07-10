@@ -109,7 +109,7 @@ describe('InspectionDrawingLibraryTemplateTable', () => {
     expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('ml-auto');
     expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('max-w-[11.5rem]');
     expect(screen.getByTestId('inspection-template-secondary-actions')).toHaveClass('justify-end');
-    for (const label of ['編集', '帳票', '雛形', '履歴', '無効']) {
+    for (const label of ['編集（改版）', '帳票', '雛形', '履歴', '無効']) {
       const action = screen.getByRole(
         label === '履歴' || label === '無効' ? 'button' : 'link',
         { name: label }

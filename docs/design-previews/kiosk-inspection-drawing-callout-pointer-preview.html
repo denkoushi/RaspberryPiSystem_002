@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>検査図面 指差し記号 — 実機1280×17rem 余白配慮プレビュー</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --kiosk: #1e293b;
+      --panel: rgba(15, 23, 42, 0.8);
+      --line: rgba(255, 255, 255, 0.15);
+      --text: #f8fafc;
+      --muted: rgba(248, 250, 252, 0.55);
+      --weak: rgba(248, 250, 252, 0.4);
+      --cyan: #67e8f9;
+      --sky: #38bdf8;
+      --lime: #bef264;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+      --font: system-ui, -apple-system, "Hiragino Sans", "Segoe UI", sans-serif;
+      --aside: 17rem;
+      --delete-h: 22px;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      padding: 14px;
+    }
+    .page { max-width: 1320px; margin: 0 auto; }
+    h1 { font-size: 1.05rem; font-weight: 800; }
+    .lead {
+      margin-top: 6px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.5;
+      max-width: 90ch;
+    }
+    .chips { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 0.7rem;
+      color: var(--lime);
+      background: rgba(190, 242, 100, 0.08);
+    }
+    .chip.warn { color: var(--amber); background: rgba(251, 191, 36, 0.1); }
+    .chip.note { color: var(--cyan); background: rgba(103, 232, 249, 0.08); }
+    .chip.bad { color: var(--rose); background: rgba(251, 113, 133, 0.1); }
+
+    .principle {
+      margin-top: 12px;
+      border: 1px solid rgba(251, 191, 36, 0.4);
+      background: rgba(251, 191, 36, 0.08);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.8rem;
+      color: #fde68a;
+      line-height: 1.5;
+    }
+    .principle strong { color: #fff; }
+
+    .toc { margin: 12px 0 4px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .toc a {
+      color: var(--sky);
+      font-size: 0.78rem;
+      text-decoration: none;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 8px;
+      padding: 5px 9px;
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    section.block {
+      margin-top: 18px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .block h2 { font-size: 0.95rem; font-weight: 800; }
+    .block .desc {
+      margin-top: 5px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.45;
+      max-width: 95ch;
+    }
+
+    .frame-label {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 10px 0 6px;
+    }
+    .frame-label strong { font-size: 0.84rem; }
+    .frame-label span { font-size: 0.72rem; color: var(--weak); }
+
+    /* ===== Real kiosk shell (1280) ===== */
+    .kiosk-shell {
+      width: 1280px;
+      max-width: 100%;
+      height: 720px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--kiosk);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .kiosk-header {
+      height: 2.25rem;
+      flex-shrink: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      background: rgba(15,23,42,0.85);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      font-size: 0.72rem;
+      color: var(--weak);
+    }
+    .main {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 4px 8px;
+      overflow: hidden;
+    }
+    .page-inner {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 4px;
+    }
+    .top-band {
+      display: flex;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      background: rgba(15,23,42,0.5);
+      padding: 4px 8px;
+    }
+    .meta-row {
+      display: flex;
+      min-width: 0;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 4px 10px;
+      list-style: none;
+    }
+    .meta-chip {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      white-space: nowrap;
+      font-size: 0.82rem;
+    }
+    .meta-chip dt { color: #94a3b8; font-weight: 600; font-size: 0.78rem; }
+    .meta-chip dd {
+      margin: 0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(30,41,59,0.9);
+      border: 1px solid #475569;
+      font-size: 0.84rem;
+      max-width: 9.5rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .badge {
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 2px 6px;
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.55);
+    }
+    .file-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.55);
+    }
+    .zoom-group { display: flex; align-items: center; gap: 2px; }
+    .btn-icon {
+      min-height: 2.1rem;
+      min-width: 2.1rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: transparent;
+      font-size: 1rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.9);
+    }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .btn {
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      border: none;
+      color: #fff;
+      background: #10b981;
+    }
+    .btn.is-mode {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    .btn.is-mode.on {
+      border-color: rgba(251, 191, 36, 0.75);
+      background: rgba(251, 191, 36, 0.15);
+      color: #fde68a;
+    }
+    .btn.ghost {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.9);
+    }
+    .btn:disabled { opacity: 0.4; }
+
+    .workspace {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      gap: 6px;
+    }
+    .canvas-col { min-height: 0; min-width: 0; flex: 1; }
+    .canvas-viewport {
+      position: relative;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0,0,0,0.4);
+    }
+    .drawing {
+      position: absolute;
+      inset: 10px;
+      border-radius: 4px;
+      background:
+        linear-gradient(180deg, #f1f5f9, #e2e8f0);
+      border: 1px solid #94a3b8;
+      overflow: hidden;
+    }
+    .part {
+      position: absolute;
+      left: 14%;
+      top: 18%;
+      width: 72%;
+      height: 64%;
+      border: 2px solid #334155;
+      border-radius: 4px;
+      background:
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 18px,
+          rgba(100, 116, 139, 0.12) 18px,
+          rgba(100, 116, 139, 0.12) 19px
+        );
+    }
+    .hole {
+      position: absolute;
+      border-radius: 50%;
+      border: 2px solid #0f172a;
+      background: #cbd5e1;
+    }
+    .hole.a { left: 22%; top: 28%; width: 42px; height: 42px; }
+    .hole.b { left: 58%; top: 46%; width: 36px; height: 36px; }
+    .hole.c { left: 38%; top: 62%; width: 24px; height: 24px; }
+
+    .marker {
+      position: absolute;
+      z-index: 5;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: #0f172a;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      ring: 2px;
+      border: 2px solid #94a3b8;
+      transform: translate(-50%, -50%);
+    }
+    .marker.m1 { left: 48%; top: 22%; }
+    .marker.m2 { left: 78%; top: 38%; }
+    .marker.m3 { left: 28%; top: 74%; }
+    .marker.is-active {
+      outline: 3px solid #38bdf8;
+      outline-offset: 2px;
+      border-color: #0ea5e9;
+    }
+
+    .callout-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 4;
+    }
+    .tip-badge {
+      position: absolute;
+      z-index: 6;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 0.68rem;
+      font-weight: 800;
+      color: #0f172a;
+      background: #fde68a;
+      border: 2px solid #f59e0b;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    }
+    .tip-badge.is-active {
+      background: #67e8f9;
+      border-color: #22d3ee;
+    }
+    .tip-badge.t1 { left: 26%; top: 34%; }
+    .tip-badge.t2 { left: 62%; top: 52%; }
+
+    .canvas-hint {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      z-index: 7;
+      border-radius: 6px;
+      border: 1px solid rgba(251, 191, 36, 0.45);
+      background: rgba(15, 23, 42, 0.88);
+      color: #fde68a;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 5px 8px;
+      max-width: 70%;
+      line-height: 1.35;
+    }
+
+    /* aside 17rem — real density */
+    .aside {
+      display: flex;
+      min-height: 0;
+      width: var(--aside);
+      flex-shrink: 0;
+      flex-direction: column;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 6px;
+      overflow: hidden;
+    }
+    .settings {
+      display: grid;
+      flex-shrink: 0;
+      gap: 6px;
+    }
+    .nudge {
+      display: grid;
+      grid-template-columns: repeat(4, 2.75rem);
+      gap: 4px;
+      justify-content: center;
+      width: max-content;
+      margin: 0 auto;
+    }
+    .nudge button {
+      min-height: 2.75rem;
+      min-width: 2.75rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(30,41,59,0.9);
+      color: #fff;
+      font-size: 1.05rem;
+      font-weight: 800;
+    }
+    /* 推奨案: ナッジ高さ半分（現行 min-h-11 ≈ 2.75rem → 約 1.375rem） */
+    .ok-shell .nudge button {
+      min-height: 1.375rem;
+      height: 1.375rem;
+      font-size: 0.82rem;
+      border-radius: 5px;
+    }
+    .settings-title { font-size: 1.02rem; font-weight: 800; }
+    .field { display: grid; gap: 3px; }
+    .label { font-size: 1rem; font-weight: 700; }
+    .sub { font-size: 0.82rem; font-weight: 700; color: rgba(255,255,255,0.7); }
+    /* 推奨案: 名称ラベル + select を1行。select は aside 内に収まる幅 */
+    .name-inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      width: 100%;
+    }
+    .name-inline .label {
+      flex: 0 0 auto;
+      white-space: nowrap;
+      font-size: 0.95rem;
+    }
+    .name-inline select {
+      flex: 1 1 auto;
+      min-width: 0;
+      max-width: 100%;
+      width: auto;
+      min-height: 34px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    select, .fake-input {
+      width: 100%;
+      min-height: 36px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: #0f172a;
+      color: #fff;
+      font: 700 0.86rem/1 var(--font);
+      padding: 0 8px;
+    }
+    .fake-input.white {
+      background: #fff;
+      color: #0f172a;
+      min-height: 34px;
+      width: 7.5rem;
+    }
+    .through {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .through button {
+      min-height: 32px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #0f172a;
+      color: var(--muted);
+      font-weight: 800;
+      font-size: 0.82rem;
+    }
+    .through button.on {
+      background: #67e8f9;
+      color: #083344;
+      border-color: transparent;
+    }
+    .supp {
+      display: grid;
+      grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.45fr);
+      gap: 6px;
+    }
+    .nominal {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ocr {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .ocr span {
+      min-height: 28px;
+      padding: 0 8px;
+      border-radius: 5px;
+      border: 1px solid rgba(103, 232, 249, 0.4);
+      background: rgba(8, 47, 73, 0.7);
+      color: #ecfeff;
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+    }
+    .tol {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .delete-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .delete-btn {
+      min-height: var(--delete-h);
+      border: none;
+      border-radius: 6px;
+      background: #3b82f6;
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 800;
+    }
+
+    /* compact callout row — OK */
+    .callout-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6px;
+      align-items: center;
+      min-height: 32px;
+      padding: 0 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(251, 191, 36, 0.45);
+      background: rgba(251, 191, 36, 0.1);
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: #fde68a;
+    }
+    .callout-row button {
+      min-height: 26px;
+      padding: 0 8px;
+      border-radius: 5px;
+      border: 1px solid rgba(251, 191, 36, 0.5);
+      background: rgba(15, 23, 42, 0.55);
+      color: #fde68a;
+      font-size: 0.7rem;
+      font-weight: 800;
+    }
+    .callout-row.none {
+      border-color: rgba(255,255,255,0.15);
+      background: rgba(15, 23, 42, 0.45);
+      color: var(--muted);
+    }
+    .callout-row.none button {
+      border-color: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.85);
+    }
+
+    /* NG bloated panel */
+    .bloated {
+      display: grid;
+      gap: 6px;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px dashed rgba(251, 113, 133, 0.55);
+      background: rgba(251, 113, 133, 0.08);
+    }
+    .bloated h4 {
+      font-size: 0.82rem;
+      color: #fecdd3;
+    }
+    .bloated .xy {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+    }
+    .bloated p {
+      font-size: 0.68rem;
+      color: #fda4af;
+      line-height: 1.35;
+    }
+
+    .list-section {
+      margin-top: 6px;
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      gap: 4px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      padding-top: 6px;
+    }
+    .list-title {
+      flex-shrink: 0;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.5);
+    }
+    .point-list {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      gap: 4px;
+      overflow: hidden;
+    }
+    .point-card {
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(30,41,59,0.9);
+      padding: 4px 8px;
+      font-size: 0.76rem;
+      line-height: 1.3;
+    }
+    .point-card.sel {
+      border-color: rgba(34,211,238,0.8);
+      background: rgba(8,51,68,0.4);
+      box-shadow: 0 0 0 1px rgba(34,211,238,0.45);
+    }
+    .point-card .no { font-weight: 800; color: rgba(255,255,255,0.85); }
+    .point-card.sel .no { color: #67e8f9; }
+    .point-card .vals { color: rgba(255,255,255,0.55); font-size: 0.7rem; }
+    .point-card .tag {
+      display: inline-block;
+      margin-left: 4px;
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: #fbbf24;
+      vertical-align: middle;
+    }
+    .list-crush {
+      margin-top: 4px;
+      border: 1px dashed rgba(251, 113, 133, 0.5);
+      border-radius: 4px;
+      padding: 6px;
+      font-size: 0.68rem;
+      color: #fda4af;
+      text-align: center;
+      line-height: 1.35;
+    }
+    .list-ok {
+      margin-top: 4px;
+      border: 1px dashed rgba(190, 242, 100, 0.4);
+      border-radius: 4px;
+      padding: 6px;
+      font-size: 0.68rem;
+      color: var(--lime);
+      text-align: center;
+      line-height: 1.35;
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    .notes {
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.55);
+      padding: 12px 14px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .notes strong { color: var(--text); }
+    .notes ul { margin: 6px 0 0 1.1rem; }
+    .notes li + li { margin-top: 3px; }
+    .footer-note {
+      margin-top: 12px;
+      font-size: 0.72rem;
+      color: var(--weak);
+      line-height: 1.45;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>検査図面 指差し記号 — 実機レイアウト準拠プレビュー</h1>
+    <p class="lead">
+      対象は作成/改版画面（右ペイン <strong>17rem</strong>・1280×720 想定）。
+      現行の設定パネルはすでに縦が詰まっている（ナッジ・名称・通し・補足・基準値・OCR・公差・削除・一覧）。
+      指差しは<strong>右ペインを膨らませず、キャンバス上で置く</strong>前提。
+    </p>
+    <div class="chips">
+      <span class="chip">実装前・静的</span>
+      <span class="chip note">本番 aside = 17rem</span>
+      <span class="chip warn">右ペイン増設は一覧を押し出す</span>
+      <span class="chip bad">大きな設定ブロック追加は NG</span>
+    </div>
+    <p class="principle">
+      <strong>余白方針:</strong> 指差しの本体はキャンバス（引出線＋同じ番号バッジ）。
+      右ペインは <strong>1行ステータス（あり/なし + 削除）だけ</strong>。
+      配置モードはヘッダーの「点を配置」と同列の <strong>「指差し」モードボタン</strong>で切替（新パネルを増やさない）。
+      さらに縦を稼ぐため、<strong>ナッジ矢印は高さ半分</strong>、<strong>名称ラベル＋ドロップダウンは1行</strong>（ドロップダウンは右ペイン内に収まる幅）。
+    </p>
+    <div class="toc">
+      <a href="#ok">推奨案（余白を守る）</a>
+      <a href="#ng">反例（右ペイン肥大）</a>
+    </div>
+
+    <!-- ========== OK ========== -->
+    <section class="block" id="ok">
+      <h2>推奨案 — キャンバス主導 + 右ペイン1行 + 縦圧縮</h2>
+      <p class="desc">
+        No.1 選択中。指差しモードで穴をタップ → 先端に「1」バッジ、線は丸数字へ。
+        No.3 は指差しなし。ナッジ半高・名称1行化で一覧の可視行をさらに確保。
+      </p>
+      <div class="frame-label">
+        <strong>1280 × 720 · aside 17rem · ナッジ半高 / 名称インライン</strong>
+        <span>OK</span>
+      </div>
+      <div class="kiosk-shell ok-shell">
+        <div class="kiosk-header">キオスクヘッダー（本番相当・高さ固定）</div>
+        <div class="main">
+          <div class="page-inner">
+            <div class="top-band">
+              <dl class="meta-row">
+                <div class="meta-chip"><dt>品番</dt><dd>MD100469601</dd></div>
+                <div class="meta-chip"><dt>資源</dt><dd>033 (三井HS3A…)</dd></div>
+                <div class="meta-chip"><dt>工程</dt><dd>切削</dd></div>
+                <div class="meta-chip"><dt>テンプレ</dt><dd>7161サドル</dd></div>
+                <div class="meta-chip"><dt>検査数</dt><dd>最初と最後</dd></div>
+              </dl>
+              <span class="badge">v2 · 有効</span>
+              <label class="file-label">図面選択</label>
+              <div class="zoom-group">
+                <button type="button" class="btn-icon">−</button>
+                <button type="button" class="btn-icon">＋</button>
+                <button type="button" class="btn-icon">□</button>
+              </div>
+              <div class="toolbar">
+                <button type="button" class="btn is-mode">点を配置</button>
+                <button type="button" class="btn is-mode on">指差し</button>
+                <button type="button" class="btn">保存</button>
+                <button type="button" class="btn ghost">テスト入力</button>
+                <button type="button" class="btn ghost">一覧へ戻る</button>
+              </div>
+            </div>
+
+            <div class="workspace">
+              <div class="canvas-col">
+                <div class="canvas-viewport">
+                  <div class="drawing">
+                    <div class="part">
+                      <span class="hole a"></span>
+                      <span class="hole b"></span>
+                      <span class="hole c"></span>
+                    </div>
+                    <svg class="callout-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                      <defs>
+                        <marker id="ahOk" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+                          <path d="M0,0 L5,2.5 L0,5 Z" fill="#22d3ee" />
+                        </marker>
+                        <marker id="ahOk2" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+                          <path d="M0,0 L5,2.5 L0,5 Z" fill="#f59e0b" />
+                        </marker>
+                      </defs>
+                      <!-- tip near hole A -> marker 1 -->
+                      <line x1="48" y1="22" x2="26" y2="34" stroke="#22d3ee" stroke-width="1.15" marker-end="url(#ahOk)" />
+                      <!-- tip near hole B -> marker 2 -->
+                      <line x1="78" y1="38" x2="62" y2="52" stroke="#f59e0b" stroke-width="1.05" marker-end="url(#ahOk2)" />
+                    </svg>
+                    <span class="tip-badge t1 is-active" title="No.1 の指差し先端">1</span>
+                    <span class="tip-badge t2" title="No.2 の指差し先端">2</span>
+                    <span class="marker m1 is-active">1</span>
+                    <span class="marker m2">2</span>
+                    <span class="marker m3">3</span>
+                  </div>
+                  <div class="canvas-hint">指差しモード: 図面上の穴をタップして先端を置く（選択中 No.1 に紐づく）</div>
+                </div>
+              </div>
+
+              <aside class="aside" aria-label="右ペイン 17rem">
+                <div class="settings">
+                  <div class="nudge" aria-label="位置調整">
+                    <button type="button">↑</button>
+                    <button type="button">↓</button>
+                    <button type="button">←</button>
+                    <button type="button">→</button>
+                  </div>
+                  <p class="settings-title">測定点の設定（No.1）</p>
+
+                  <!-- ONLY new chrome: 1 row -->
+                  <div class="callout-row">
+                    <span>指差し あり</span>
+                    <button type="button">削除</button>
+                  </div>
+
+                  <label class="name-inline" title="名称">
+                    <span class="label">名称</span>
+                    <select aria-label="名称">
+                      <option>穴径</option>
+                      <option>ネジ穴径</option>
+                      <option>幅（長い名称の例）</option>
+                    </select>
+                  </label>
+                  <div class="through" role="group" aria-label="通し切替">
+                    <button type="button" class="on">測定</button>
+                    <button type="button">通し</button>
+                  </div>
+                  <div class="supp">
+                    <label class="field"><span class="sub">面</span><select><option>面なし</option></select></label>
+                    <label class="field"><span class="sub">呼び径</span><select><option>呼び径なし</option></select></label>
+                    <label class="field"><span class="sub">直接入力</span><select><option>2箇所</option></select></label>
+                  </div>
+                  <div class="nominal">
+                    <span class="label">基準値</span>
+                    <span class="fake-input white">12.0</span>
+                  </div>
+                  <div class="ocr">
+                    <span>12.0</span><span>12.00</span><span>+0.05</span>
+                  </div>
+                  <div class="tol">
+                    <label class="field"><span class="sub">上限</span><span class="fake-input white">0.05</span></label>
+                    <label class="field"><span class="sub">下限</span><span class="fake-input white">-0.05</span></label>
+                  </div>
+                  <div class="delete-row">
+                    <button type="button" class="delete-btn">一点削除</button>
+                    <button type="button" class="delete-btn">全削除</button>
+                  </div>
+                </div>
+
+                <div class="list-section">
+                  <p class="list-title">測定点一覧</p>
+                  <div class="point-list">
+                    <div class="point-card sel">
+                      <div><span class="no">No.1</span> 穴径 <span class="tag">指</span></div>
+                      <div class="vals">基準 12.0 · 上限 0.05 · 下限 -0.05</div>
+                    </div>
+                    <div class="point-card">
+                      <div><span class="no">No.2</span> ネジ穴 <span class="tag">指</span></div>
+                      <div class="vals">基準 8.0 · 上限 0.1 · 下限 -0.1</div>
+                    </div>
+                    <div class="point-card">
+                      <div><span class="no">No.3</span> 幅</div>
+                      <div class="vals">基準 125 · 上限 0.1 · 下限 -0.1</div>
+                    </div>
+                    <div class="point-card">
+                      <div><span class="no">No.4</span> 深さ</div>
+                      <div class="vals">基準 6.0 · …</div>
+                    </div>
+                  </div>
+                  <div class="list-ok">ナッジ半高 + 名称1行 + 指差し1行 → 一覧の可視行を確保</div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== NG ========== -->
+    <section class="block" id="ng">
+      <h2>反例 — 右ペインに指差し編集ブロックを足す（余白破壊）</h2>
+      <p class="desc">
+        同じ 17rem に「指差し設定」パネル（座標・プレビュー・説明）を足すと、測定点一覧が潰れる。
+        KB-399 でも設定パネル増が一覧圧迫の原因として記録済み。
+      </p>
+      <div class="frame-label">
+        <strong>同じシェルで、右ペインだけ肥大させた場合</strong>
+        <span>NG</span>
+      </div>
+      <div class="kiosk-shell">
+        <div class="kiosk-header">キオスクヘッダー（本番相当・高さ固定）</div>
+        <div class="main">
+          <div class="page-inner">
+            <div class="top-band">
+              <dl class="meta-row">
+                <div class="meta-chip"><dt>品番</dt><dd>MD100469601</dd></div>
+                <div class="meta-chip"><dt>資源</dt><dd>033</dd></div>
+                <div class="meta-chip"><dt>工程</dt><dd>切削</dd></div>
+              </dl>
+              <div class="toolbar">
+                <button type="button" class="btn">点を配置</button>
+                <button type="button" class="btn">保存</button>
+              </div>
+            </div>
+            <div class="workspace">
+              <div class="canvas-col">
+                <div class="canvas-viewport">
+                  <div class="drawing">
+                    <div class="part">
+                      <span class="hole a"></span>
+                      <span class="hole b"></span>
+                    </div>
+                    <span class="marker m1 is-active">1</span>
+                    <span class="marker m2">2</span>
+                  </div>
+                </div>
+              </div>
+              <aside class="aside">
+                <div class="settings">
+                  <div class="nudge">
+                    <button type="button">↑</button>
+                    <button type="button">↓</button>
+                    <button type="button">←</button>
+                    <button type="button">→</button>
+                  </div>
+                  <p class="settings-title">測定点の設定（No.1）</p>
+                  <label class="field"><span class="label">名称</span><select><option>穴径</option></select></label>
+                  <div class="supp">
+                    <label class="field"><span class="sub">面</span><select><option>面なし</option></select></label>
+                    <label class="field"><span class="sub">呼び径</span><select><option>—</option></select></label>
+                    <label class="field"><span class="sub">直接入力</span><select><option>—</option></select></label>
+                  </div>
+                  <div class="nominal"><span class="label">基準値</span><span class="fake-input white">12.0</span></div>
+                  <div class="tol">
+                    <label class="field"><span class="sub">上限</span><span class="fake-input white">0.05</span></label>
+                    <label class="field"><span class="sub">下限</span><span class="fake-input white">-0.05</span></label>
+                  </div>
+
+                  <div class="bloated">
+                    <h4>指差し設定（追加ブロック）</h4>
+                    <div class="xy">
+                      <label class="field"><span class="sub">先端X</span><span class="fake-input white">0.26</span></label>
+                      <label class="field"><span class="sub">先端Y</span><span class="fake-input white">0.34</span></label>
+                    </div>
+                    <label class="field"><span class="sub">スタイル</span><select><option>矢印</option></select></label>
+                    <p>座標入力・説明・プレビューを右ペインに置くと、一覧がほぼ消える。</p>
+                  </div>
+
+                  <div class="delete-row">
+                    <button type="button" class="delete-btn">一点削除</button>
+                    <button type="button" class="delete-btn">全削除</button>
+                  </div>
+                </div>
+                <div class="list-section">
+                  <p class="list-title">測定点一覧</p>
+                  <div class="point-list">
+                    <div class="point-card sel">
+                      <div><span class="no">No.1</span> 穴径</div>
+                    </div>
+                  </div>
+                  <div class="list-crush">一覧が1件しか見えない / スクロール地獄</div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="notes">
+      <strong>操作フロー（推奨）</strong>
+      <ul>
+        <li>測定点（丸数字）を選択する</li>
+        <li>ヘッダーで「指差し」モードを ON</li>
+        <li>図面上の穴/ネジ穴をタップ → 先端を置く（線は自動で選択中 No. へ）</li>
+        <li>先端付近に<strong>同じ番号バッジ</strong>を表示（連携が目で分かる）</li>
+        <li>不要なら右ペイン1行の「削除」、または先端をドラッグし直し</li>
+        <li>全項目必須にしない。一覧は「指」の小タグだけで有無を示す</li>
+      </ul>
+      <strong style="display:block;margin-top:8px">右ペインの縦圧縮（今回反映）</strong>
+      <ul>
+        <li>↑↓←→ ナッジ: 高さ <strong>半分</strong>（約 1.375rem / 現行 min-h-11 の半分）</li>
+        <li>名称: ラベルとドロップダウンを<strong>1行</strong>。select は <code>flex:1; min-width:0</code> で 17rem 内に収める（はみ出しなし・長い名称は省略）</li>
+      </ul>
+      <strong style="display:block;margin-top:8px">データ（実装時の示唆）</strong>
+      <ul>
+        <li>既存の丸数字中心 <code>xRatio/yRatio</code> はそのまま</li>
+        <li>任意フィールドとして tip 側 ratio（例: <code>calloutTipXRatio/YRatio</code>）を測定項目に紐づけ</li>
+        <li>描画は <code>InspectionDrawingCanvas</code> 上の SVG レイヤ（右ペインに図形UIを置かない）</li>
+      </ul>
+    </div>
+    <p class="footer-note">
+      レイアウト正本: docs/plans/kiosk-inspection-drawing-layout-preview.html ·
+      右ペイン密度: docs/design-previews/kiosk-inspection-drawing-depth-through-mode-preview.html ·
+      余白回帰: KB-399。本プレビューは指差し専用の実装前モック。
+    </p>
+  </div>
+</body>
+</html>

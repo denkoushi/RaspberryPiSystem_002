@@ -22,6 +22,7 @@ function makeEntry() {
     entryIndex: 0,
     entrySlotKind: 'single',
     entrySlotLabel: '1件',
+    persistenceStatus: 'confirmed',
     createdByEmployeeId: 'employee-e2e',
     createdByEmployeeNameSnapshot: 'E2E Tester',
     measuringInstrumentId: null,

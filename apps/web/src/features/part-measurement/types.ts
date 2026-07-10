@@ -32,6 +32,9 @@ export type PartMeasurementTemplateItemDto = {
   /** 図面中心UI: 0–1（任意） */
   markerXRatio: string | null;
   markerYRatio: string | null;
+  /** 指差し先端: 0–1（任意。null=なし） */
+  calloutTipXRatio?: string | null;
+  calloutTipYRatio?: string | null;
   nominalValue: string | null;
   lowerLimit: string | null;
   upperLimit: string | null;
@@ -383,6 +386,7 @@ export type SelfInspectionLotEntryDto = {
   entryIndex: number;
   entrySlotKind: 'single' | 'first' | 'last' | 'fixed';
   entrySlotLabel: string;
+  persistenceStatus: 'draft' | 'confirmed';
   createdByEmployeeId: string | null;
   createdByEmployeeNameSnapshot: string | null;
   inspectorEmployeeId?: string | null;

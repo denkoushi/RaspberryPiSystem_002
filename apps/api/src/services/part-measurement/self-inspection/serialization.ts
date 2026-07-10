@@ -17,6 +17,12 @@ import {
   serializeSelfInspectionMode
 } from '../self-inspection-config.js';
 import {
+  confirmedEntriesCountSelect,
+  confirmedWhere,
+  isConfirmed,
+  serializePersistenceStatus
+} from './entry-persistence-status.js';
+import {
   buildInspectorMeasurementCompletion,
   enrichSessionEntryCountFields,
   isValueWithinTolerance,
@@ -40,6 +46,7 @@ export const listSessionsSummaryInclude = {
     }
   },
   entries: {
+    where: confirmedWhere,
     select: {
       entryIndex: true
     }
@@ -55,7 +62,7 @@ export const listSessionsSummaryInclude = {
       }
     }
   },
-  _count: { select: { entries: true } }
+  _count: { select: confirmedEntriesCountSelect }
 } as const;
 
 export const recordApprovalSessionInclude = {
@@ -66,6 +73,7 @@ export const recordApprovalSessionInclude = {
       id: true,
       entryIndex: true,
       entrySlotKind: true,
+      persistenceStatus: true,
       createdByEmployeeId: true,
       createdByEmployeeNameSnapshot: true,
       measuringInstrumentId: true,
@@ -150,7 +158,7 @@ export const recordApprovalSessionInclude = {
     }
   },
   recordApproval: true,
-  _count: { select: { entries: true } }
+  _count: { select: confirmedEntriesCountSelect }
 } as const;
 
 export type SessionSummarySource = Prisma.SelfInspectionSessionGetPayload<{
@@ -167,6 +175,7 @@ type SessionWithCounts = Prisma.SelfInspectionSessionGetPayload<{
       include: typeof partMeasurementTemplateFullInclude;
     };
     entries: {
+      where: typeof confirmedWhere;
       select: {
         entryIndex: true;
       };
@@ -183,9 +192,7 @@ type SessionWithCounts = Prisma.SelfInspectionSessionGetPayload<{
       };
     };
     _count: {
-      select: {
-        entries: true;
-      };
+      select: typeof confirmedEntriesCountSelect;
     };
   };
 }>;
@@ -202,7 +209,8 @@ export async function loadPendingReviewCountsBySessionIds(
     where: {
       reviewStatus: 'PENDING',
       entry: {
-        sessionId: { in: uniqueSessionIds }
+        sessionId: { in: uniqueSessionIds },
+        ...confirmedWhere
       }
     },
     select: {
@@ -457,7 +465,7 @@ export function buildRecordApprovalReadiness(
 
   for (const slot of requiredSlots) {
     const entry = entriesByIndex.get(slot.entryIndex);
-    if (!entry) {
+    if (!entry || !isConfirmed(entry.persistenceStatus)) {
       missingRequiredEntryCount += 1;
       continue;
     }
@@ -669,6 +677,7 @@ export function serializeLotEntryMeta(entry: {
   id: string;
   entryIndex: number;
   entrySlotKind: import('@prisma/client').SelfInspectionEntrySlotKind;
+  persistenceStatus?: import('@prisma/client').SelfInspectionEntryPersistenceStatus | null;
   createdByEmployeeId: string | null;
   createdByEmployeeNameSnapshot: string | null;
   measuringInstrumentId: string | null;
@@ -685,6 +694,7 @@ export function serializeLotEntryMeta(entry: {
     entryIndex: entry.entryIndex,
     entrySlotKind: slotDto,
     entrySlotLabel: entrySlotLabelFromKind(slotDto, entry.entryIndex),
+    persistenceStatus: serializePersistenceStatus(entry.persistenceStatus),
     createdByEmployeeId: entry.createdByEmployeeId,
     createdByEmployeeNameSnapshot: entry.createdByEmployeeNameSnapshot,
     measuringInstrumentId: entry.measuringInstrumentId,
@@ -719,6 +729,7 @@ export function serializeLotEntry(
     entryIndex: entry.entryIndex,
     entrySlotKind: slotDto,
     entrySlotLabel: entrySlotLabelFromKind(slotDto, entry.entryIndex),
+    persistenceStatus: serializePersistenceStatus(entry.persistenceStatus),
     createdByEmployeeId: entry.createdByEmployeeId,
     createdByEmployeeNameSnapshot: entry.createdByEmployeeNameSnapshot,
     measuringInstrumentId: entry.measuringInstrumentId,

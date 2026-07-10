@@ -44,7 +44,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
     [location.state]
   );
   const [processGroup, setProcessGroup] = useState<PartMeasurementProcessGroup>(scenarioConfig.processGroup);
-  const [mode, setMode] = useState<'place' | 'test' | 'guidedTrial'>('place');
+  const [mode, setMode] = useState<'place' | 'callout' | 'test' | 'guidedTrial'>('place');
   const [points, setPoints] = useState<InspectionDrawingPoint[]>(() =>
     INSPECTION_DRAWING_PREVIEW_POINTS.map((p) => ({ ...p }))
   );

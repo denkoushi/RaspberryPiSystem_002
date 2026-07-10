@@ -167,27 +167,47 @@ export function KioskInspectionDrawingVisualLibrarySection({
                         {formatVisualLibraryTimestamp(visual.updatedAt)}
                       </td>
                       <td className="px-2 pb-0.5 pt-1.5">
-                        <div className="flex justify-end gap-1">
-                          <Link
-                            to={kioskInspectionDrawingCreatePathWithVisual(visual.id)}
-                            state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
-                            title="新規作成"
-                            className={buttonClassName(
-                              'primary',
-                              clsx(kioskButtonPrimaryClassName, 'inline-flex shrink-0 items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap')
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex justify-end gap-1">
+                            {showResourceRow ? (
+                              <span
+                                className={buttonClassName(
+                                  'ghostOnDark',
+                                  'inline-flex shrink-0 cursor-not-allowed items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap opacity-45'
+                                )}
+                                title="この図面には有効テンプレートがあります。右の一覧から編集（改版）するか、別キーで雛形新規してください。"
+                                aria-disabled="true"
+                              >
+                                新規
+                              </span>
+                            ) : (
+                              <Link
+                                to={kioskInspectionDrawingCreatePathWithVisual(visual.id)}
+                                state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
+                                title="新規作成"
+                                className={buttonClassName(
+                                  'primary',
+                                  clsx(kioskButtonPrimaryClassName, 'inline-flex shrink-0 items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap')
+                                )}
+                              >
+                                新規
+                              </Link>
                             )}
-                          >
-                            新規
-                          </Link>
-                          <button
-                            type="button"
-                            title="名称変更"
-                            className={clsx(kioskButtonSecondaryClassName, 'min-h-11 shrink-0 whitespace-nowrap !px-1.5 !py-0 text-xs leading-none')}
-                            disabled={isPreview}
-                            onClick={() => setRenameTarget(visual)}
-                          >
-                            名称
-                          </button>
+                            <button
+                              type="button"
+                              title="名称変更"
+                              className={clsx(kioskButtonSecondaryClassName, 'min-h-11 shrink-0 whitespace-nowrap !px-1.5 !py-0 text-xs leading-none')}
+                              disabled={isPreview}
+                              onClick={() => setRenameTarget(visual)}
+                            >
+                              名称
+                            </button>
+                          </div>
+                          {showResourceRow ? (
+                            <p className="max-w-[14rem] text-right text-[0.65rem] font-semibold leading-snug text-amber-200/90">
+                              既存テンプレあり → 右ペインで編集（改版）
+                            </p>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
