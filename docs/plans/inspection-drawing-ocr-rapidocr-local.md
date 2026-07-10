@@ -17,11 +17,14 @@ related_docs:
   - docs/knowledge-base/KB-320-kiosk-part-measurement.md
 validation: >
   API unit (policy/rapidocr adapter/secondary orchestration/local crop),
-  temp pgvector/pg16 integration for drawing OCR candidates (disposed)
+  temp pgvector/pg16 integration for drawing OCR candidates (disposed),
+  CI green (push 29056790178 / PR 29056791986), Pi5 deploy 20260710-083127-2842,
+  Phase12 45/0/0, OCR candidates smoke with RapidOCR flag OFF
 open_items:
-  - Enable PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_ENABLED on Pi5 after image rebuild + latency check
+  - Enable PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_ENABLED on Pi5 after latency check
   - Re-measure offline top5 / depth subset on production drawings
   - DGX VLM remains out of scope
+  - Merge PR #965 to main (separate instruction)
 ---
 
 # Plan: Inspection Drawing OCR RapidOCR Local Secondary
@@ -73,4 +76,8 @@ Secondary runs when any of:
 - Unit: policy / rapidocr adapter / secondary orchestration / existing local OCR — passed
 - Temp Postgres `pgvector/pgvector:pg16` on `:5432`: migrate + focused integration `-t 'drawing OCR'` — 2 passed; container removed
 - `tsc -p tsconfig.build.json` — passed
+- CI: push **`29056790178`** / PR **`29056791986`** / CodeQL **`29056792027`** / Secret scan **`29056791967`** success
+- Deploy Pi5 only: Detach **`20260710-083127-2842`** · HEAD **`9811d39a`** · Phase12 **45/0/0**
+- OCR smoke (RapidOCR flag unset/OFF): candidates HTTP 200 (~8.4s / ~2.6s); `rapidocr` import OK in API image
 - ADR: [ADR-20260710](../decisions/ADR-20260710-inspection-drawing-ocr-rapidocr-local.md)
+- Deployment record: [deployment §2026-07-10](../guides/deployment.md#inspection-drawing-ocr-rapidocr-local-2026-07-10)

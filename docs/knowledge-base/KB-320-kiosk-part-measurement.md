@@ -265,7 +265,8 @@ Runbook: [§流用導線](../runbooks/kiosk-part-measurement.md#検査図面-流
 | 弱さ判定 | 候補0件 / top1 score > 閾値（既定 0.12） / 深さ検索なのに深さ注記根拠なし |
 | 実行形態 | API 内常駐 Python worker（JSON Lines）· `scripts/part-measurement/drawing-local-rapidocr-worker.py` |
 | 失敗時 | warn + 一次候補のまま（HTTP 500 にしない） |
-| イメージ | `Dockerfile.api` に `libgomp1` + `rapidocr==3.8.4` + `onnxruntime==1.20.1` |
+| イメージ | `Dockerfile.api` に `libgomp1`/`libgl1`/`libglib2.0-0` + `rapidocr==3.8.4` + `onnxruntime==1.20.1` |
+| 本番 | HEAD **`9811d39a`** · Detach Pi5 **`20260710-083127-2842`** · Phase12 **45/0/0** · RapidOCR flag **OFF** · [deployment](../guides/deployment.md#inspection-drawing-ocr-rapidocr-local-2026-07-10) |
 | 残課題 | Pi5 で flag ON 前のレイテンシ確認、offline top5/深さ再計測、DGX は対象外 |
 
 ### 検査図面 trio（名称変更・図面名検索・自主検査遷移）（2026-06-09） {#kiosk-inspection-drawing-trio-2026-06-09}

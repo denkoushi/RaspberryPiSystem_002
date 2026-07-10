@@ -2,13 +2,28 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-07-09
+last-verified: 2026-07-10
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-07-10 · **検査図面 OCR RapidOCR 局所第2エンジン** · **API (+ Dockerfile)** · **Pi5 のみ / Pi4·Pi3 対象外**） {#inspection-drawing-ocr-rapidocr-local-2026-07-10}
+
+- **変更概要（正本）**: [Plan](../plans/inspection-drawing-ocr-rapidocr-local.md) · [ADR-20260710](../decisions/ADR-20260710-inspection-drawing-ocr-rapidocr-local.md) · [KB-320 §RapidOCR](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-ocr-rapidocr局所-2026-07-10) · ブランチ **`feat/inspection-drawing-ocr-rapidocr-local`** · HEAD **`9811d39a`** · PR [#965](https://github.com/denkoushi/RaspberryPiSystem_002/pull/965)。一次は既存局所 tesseract、候補が弱いときだけ RapidOCR 常駐 Python worker を追加。`PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_ENABLED` は **既定 OFF**。`pm-drawing-ocr-v3` 契約維持。**DB / Prisma migration 変更なし**。
+- **CI**: push CI **`29056790178` success**（初回 security-docker は RapidOCR/OpenCV `libGL` 不足 → `libgl1`/`libglib2.0-0` 追加で緑）· PR CI **`29056791986` success** · CodeQL **`29056792027` success** · Secret scan **`29056791967` success**。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/inspection-drawing-ocr-rapidocr-local infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260710-083127-2842`** | success · `ok=135 changed=4` · `failed=0` · HEAD **`9811d39a`** · API イメージ再ビルド（RapidOCR 同梱） |
+
+- **対象外**: Pi4×5 / `raspberrypi3`（API 変更のみのため Pi5 だけで全端末へ反映）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **OCR smoke**: kiosk inspection/create HTTP **200**。API コンテナで `from rapidocr import RapidOCR` OK · worker script 配備確認。`POST .../ocr/candidates`（flag 未設定=OFF）HTTP **200**（外径系 ~8.4s / 深さ系 ~2.6s、候補5件）。二次 orchestration バイトコード配備確認。
+- **残**: RapidOCR flag ON はレイテンシ確認後。main マージは別指示。
 
 ### 補足（2026-07-09 · **検査図面 OCR 局所候補（ランキング + 局所再OCR + 深さROI）** · **API + Web** · **Pi5 + Pi4×5 反映済 / Pi3 対象外**） {#inspection-drawing-ocr-local-candidates-2026-07-09}
 
