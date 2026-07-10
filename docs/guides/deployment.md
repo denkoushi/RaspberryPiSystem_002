@@ -10,6 +10,15 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-10 · **RapidOCR 局所第2エンジン有効化** · **Ansible env のみ** · **Pi5 のみ**） {#inspection-drawing-ocr-rapidocr-enabled-2026-07-10}
+
+- **変更概要**: `PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_ENABLED=true` を Pi5 `docker.env` に永続配線。timeout **20000ms**（depth ROI 複数パス + 初回暖機）。ブランチ **`feat/enable-drawing-ocr-rapidocr`** · HEAD **`ba1d781a`**。
+- **本番デプロイ**: `--limit raspberrypi5`
+  - flag ON: Detach **`20260710-101808-6154`**（HEAD `41492659`）
+  - timeout 20s: Detach **`20260710-102238-19166`**（HEAD **`ba1d781a`**）· `ok=137 changed=6` · `failed=0`
+- **確認**: API コンテナ env `true` / `20000` / `0.12`。candidates HTTP **200**（深さ系 ~8–16s、初回 worker 暖機あり）。5s では二次 timeout→一次フォールバックだったため 20s に変更。
+- **正本**: [Plan](../plans/inspection-drawing-ocr-rapidocr-local.md) · [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-ocr-rapidocr局所-2026-07-10)
+
 ### 補足（2026-07-10 · **検査図面 OCR RapidOCR 局所第2エンジン** · **API (+ Dockerfile)** · **Pi5 のみ / Pi4·Pi3 対象外**） {#inspection-drawing-ocr-rapidocr-local-2026-07-10}
 
 - **変更概要（正本）**: [Plan](../plans/inspection-drawing-ocr-rapidocr-local.md) · [ADR-20260710](../decisions/ADR-20260710-inspection-drawing-ocr-rapidocr-local.md) · [KB-320 §RapidOCR](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-ocr-rapidocr局所-2026-07-10) · ブランチ **`feat/inspection-drawing-ocr-rapidocr-local`** · HEAD **`9811d39a`** · PR [#965](https://github.com/denkoushi/RaspberryPiSystem_002/pull/965)。一次は既存局所 tesseract、候補が弱いときだけ RapidOCR 常駐 Python worker を追加。`PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_ENABLED` は **既定 OFF**。`pm-drawing-ocr-v3` 契約維持。**DB / Prisma migration 変更なし**。
