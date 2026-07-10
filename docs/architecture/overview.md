@@ -126,7 +126,7 @@ RaspberryPiSystem_002/
 
 1. **NFCスキャン**: Pi4でアイテムタグ→従業員タグをスキャン
 2. **WebSocket**: NFCエージェントがUIDをWeb UIに配信
-3. **API呼び出し**: Web UIが`POST /api/tools/borrow`を呼び出し
+3. **API呼び出し**: Web UIが`POST /api/tools/loans/borrow`を呼び出し
 4. **サービス層**: LoanServiceがビジネスロジックを実行
 5. **データベース**: Prismaがトランザクションでデータを更新
 6. **レスポンス**: APIがLoanオブジェクトを返却
@@ -210,4 +210,3 @@ RaspberryPiSystem_002/
 - [モジュール構成](./modules.md)
 - [データベース設計](./database.md)
 - [EXEC_PLAN.md](../../EXEC_PLAN.md) - 全体の進捗とマイルストーン
-

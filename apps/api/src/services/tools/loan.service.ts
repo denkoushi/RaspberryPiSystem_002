@@ -10,6 +10,11 @@ import { resolveClientDeviceId } from '../clients/client-device-resolution.servi
 import { PhotoStorage } from '../../lib/photo-storage.js';
 import { preparePhotoAndThumbnailForStorage } from '../../lib/photo-loan-storage-image.js';
 import { getPhotoToolLabelScheduler } from './photo-tool-label/photo-tool-label.scheduler.js';
+import {
+  activeLoanConflict,
+  claimActiveLoanTransition,
+  mapActiveLoanCreateError,
+} from '../loan/loan-concurrency.js';
 
 export interface BorrowInput {
   itemTagUid: string;
@@ -106,7 +111,7 @@ export class LoanService {
         },
         'Item already on loan',
       );
-      throw new ApiError(400, 'このアイテムはすでに貸出中です');
+      throw activeLoanConflict('このアイテムはすでに貸出中です');
     }
 
     const itemSnapshot = {
@@ -122,36 +127,41 @@ export class LoanService {
       nfcTagUid: employee.nfcTagUid ?? null
     };
 
-    const loan = await prisma.$transaction(async (tx) => {
-      const createdLoan = await tx.loan.create({
-        data: {
-          itemId: item.id,
-          employeeId: employee.id,
-          clientId: resolvedClientId,
-          dueAt: input.dueAt,
-          notes: input.note ?? undefined
-        },
-        include: { item: true, employee: true, client: true }
-      });
+    let loan: LoanWithRelations;
+    try {
+      loan = await prisma.$transaction(async (tx) => {
+        const createdLoan = await tx.loan.create({
+          data: {
+            itemId: item.id,
+            employeeId: employee.id,
+            clientId: resolvedClientId,
+            dueAt: input.dueAt,
+            notes: input.note ?? undefined
+          },
+          include: { item: true, employee: true, client: true }
+        });
 
-      await tx.item.update({ where: { id: item.id }, data: { status: ItemStatus.IN_USE } });
+        await tx.item.update({ where: { id: item.id }, data: { status: ItemStatus.IN_USE } });
 
-      await tx.transaction.create({
-        data: {
-          loanId: createdLoan.id,
-          action: TransactionAction.BORROW,
-          actorEmployeeId: employee.id,
-          clientId: resolvedClientId,
-          details: {
-            note: input.note ?? null,
-            itemSnapshot,
-            employeeSnapshot
+        await tx.transaction.create({
+          data: {
+            loanId: createdLoan.id,
+            action: TransactionAction.BORROW,
+            actorEmployeeId: employee.id,
+            clientId: resolvedClientId,
+            details: {
+              note: input.note ?? null,
+              itemSnapshot,
+              employeeSnapshot
+            }
           }
-        }
-      });
+        });
 
-      return createdLoan;
-    });
+        return createdLoan as LoanWithRelations;
+      });
+    } catch (error) {
+      mapActiveLoanCreateError(error, 'このアイテムはすでに貸出中です');
+    }
 
     logger.info(
       {
@@ -195,7 +205,10 @@ export class LoanService {
     }
     if (loan.returnedAt) {
       logger.warn({ loanId: loan.id, returnedAt: loan.returnedAt }, 'Loan already returned');
-      throw new ApiError(400, 'すでに返却済みです');
+      throw new ApiError(409, 'すでに返却済みです', undefined, 'LOAN_ALREADY_RETURNED');
+    }
+    if (loan.cancelledAt) {
+      throw new ApiError(409, '取消済みの貸出記録は返却できません', undefined, 'LOAN_ALREADY_CANCELLED');
     }
 
     // 写真撮影持出（itemIdがnull）の場合は、アイテムチェックをスキップ
@@ -223,13 +236,18 @@ export class LoanService {
     };
 
     const updatedLoan = await prisma.$transaction(async (tx) => {
-      const loanResult = await tx.loan.update({
-        where: { id: loan.id },
+      await claimActiveLoanTransition({
+        tx,
+        loanId: loan.id,
+        transition: 'RETURN',
         data: {
           returnedAt: new Date(),
           clientId: resolvedClientId ?? loan.clientId,
           notes: input.note ?? loan.notes ?? undefined
-        },
+        }
+      });
+      const loanResult = await tx.loan.findUniqueOrThrow({
+        where: { id: loan.id },
         include: { item: true, employee: true, client: true }
       });
 
@@ -445,13 +463,13 @@ export class LoanService {
     // 既に返却済みの場合は取消できない
     if (loan.returnedAt) {
       logger.warn({ loanId, returnedAt: loan.returnedAt }, 'Cannot cancel returned loan');
-      throw new ApiError(400, '返却済みの貸出記録は取消できません');
+      throw new ApiError(409, '返却済みの貸出記録は取消できません', undefined, 'LOAN_ALREADY_RETURNED');
     }
 
     // 既に取消済みの場合はエラー
     if (loan.cancelledAt) {
       logger.warn({ loanId, cancelledAt: loan.cancelledAt }, 'Loan already cancelled');
-      throw new ApiError(400, 'すでに取消済みです');
+      throw new ApiError(409, 'すでに取消済みです', undefined, 'LOAN_ALREADY_CANCELLED');
     }
 
     if (!loan.employee) {
@@ -474,13 +492,17 @@ export class LoanService {
     };
 
     const updatedLoan = await prisma.$transaction(async (tx) => {
-      // Loanを取消状態に更新
-      const loanResult = await tx.loan.update({
-        where: { id: loan.id },
+      await claimActiveLoanTransition({
+        tx,
+        loanId: loan.id,
+        transition: 'CANCEL',
         data: {
           cancelledAt: new Date(),
           clientId: resolvedClientId ?? loan.clientId,
-        },
+        }
+      });
+      const loanResult = await tx.loan.findUniqueOrThrow({
+        where: { id: loan.id },
         include: { item: true, employee: true, client: true }
       });
 
@@ -603,4 +625,3 @@ export class LoanService {
     });
   }
 }
-

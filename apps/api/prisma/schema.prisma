@@ -615,6 +615,8 @@ model RoleAuditLog {
 }
 
 model Loan {
+  /// Active asset uniqueness and terminal-state validity are enforced by raw SQL migration
+  /// 20260710170000_loan_concurrency_integrity (Prisma cannot represent partial indexes).
   id                      String                    @id @default(uuid())
   itemId                  String?
   measuringInstrumentId   String?

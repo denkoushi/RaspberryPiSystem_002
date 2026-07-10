@@ -45,6 +45,8 @@ update-frequency: medium
 - 返却処理（`return`）: トランザクション内で `Loan.returnedAt` を設定 → `Item.status` を `AVAILABLE` に更新
 - 取消処理（`cancel`）: トランザクション内で `Loan.cancelledAt` を設定 → `Item.status` を `AVAILABLE` に更新
 
+有効貸出は資産IDごとの部分ユニークインデックスでも保護される。返却・取消は有効状態を条件にした更新件数を確認するため、複数端末から同時実行されても一方だけが成功する。
+
 **トランザクション処理**:
 ```typescript
 // 持出処理の例
@@ -92,7 +94,7 @@ AVAILABLE ──[持出処理]──> IN_USE ──[返却処理]──> AVAILAB
 #### 遷移ルール
 
 1. **AVAILABLE → IN_USE**
-   - **トリガー**: `POST /api/tools/borrow`（持出処理）
+   - **トリガー**: `POST /api/tools/loans/borrow`（持出処理）
    - **条件**: 
      - アイテムが存在する
      - アイテムステータスが `AVAILABLE` または `IN_USE`（既存Loanチェックで除外）
@@ -192,9 +194,9 @@ AVAILABLE ──[持出処理]──> IN_USE ──[返却処理]──> AVAILAB
 2. 従業員にNFCタグUIDを設定: `PUT /api/tools/employees/:id` で `nfcTagUid` を更新
 3. 従業員を新規作成: `POST /api/tools/employees` で従業員を作成
 
-#### 4. 既に貸出中（400）
+#### 4. 既に貸出中（409）
 
-**エラー**: `このアイテムはすでに貸出中です`
+**エラー**: `このアイテムはすでに貸出中です`（`errorCode: ASSET_ALREADY_ON_LOAN`）
 
 **原因**:
 - 同じアイテムに対して、未返却のLoanレコードが既に存在する
@@ -631,7 +633,7 @@ chmod -R 755 storage/photos storage/thumbnails
 
 #### 1. アイテムが持出できない
 
-**症状**: `POST /api/tools/borrow` でエラーが発生する
+**症状**: `POST /api/tools/loans/borrow` でエラーが発生する
 
 **確認項目**:
 1. アイテムが存在するか: `GET /api/tools/items?search=<itemCode>`
@@ -943,4 +945,3 @@ ls -lh /opt/backups/photos_backup_*.tar.gz | tail -1
 - [バックアップ・リストア手順](../../guides/backup-and-restore.md) - システム全体のバックアップ・リストア手順
 - [写真撮影持出機能](./photo-loan.md) - 写真撮影持出機能の詳細
 - [NFCリーダーのトラブルシューティング](../../troubleshooting/nfc-reader-issues.md) - NFCリーダーの詳細なトラブルシューティング手順
-

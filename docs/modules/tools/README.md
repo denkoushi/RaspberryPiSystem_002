@@ -35,7 +35,7 @@
 
 ### 貸出・返却
 
-- `POST /api/tools/borrow` - 持出登録（アイテムタグUID + 従業員タグUID）
+- `POST /api/tools/loans/borrow` - 持出登録（アイテムタグUID + 従業員タグUID）
 - `POST /api/tools/return` - 返却登録（loanId）
 - `GET /api/tools/loans/active` - アクティブな貸出一覧取得
 
@@ -153,7 +153,7 @@ apps/api/src/
 
 1. キオスクでアイテムタグをスキャン
 2. 従業員タグをスキャン
-3. `POST /api/tools/borrow` を呼び出し
+3. `POST /api/tools/loans/borrow` を呼び出し
 4. サービス層で以下を実行：
    - アイテム・従業員の存在確認
    - 既存貸出の確認
@@ -280,4 +280,3 @@ GROUP BY l.id;
 - [EXEC_PLAN.md](../../EXEC_PLAN.md) - 全体の進捗とマイルストーン
 - [キオスク工具スキャン重複＆黒画像対策 ExecPlan](../../plans/tool-management-debug-execplan.md) - 既知の問題の詳細調査・対策計画
 - [アーキテクチャ概要](../../architecture/overview.md) - システム全体のアーキテクチャ
-

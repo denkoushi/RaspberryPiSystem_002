@@ -4,6 +4,7 @@ import { ApiError } from '../../../lib/errors.js';
 import { logger } from '../../../lib/logger.js';
 import { prisma } from '../../../lib/prisma.js';
 import type { MeasuringInstrumentLoanEventService } from '../../measuring-instruments/measuring-instrument-loan-event.service.js';
+import { createActiveLoan } from '../../loan/loan-concurrency.js';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../self-inspection-machine-board-cache-invalidation.js';
 import { assertMeasuringInstrumentAvailableForSelfInspection } from '../self-inspection-measuring-instrument-eligibility.js';
 import { assertSelfInspectionEntryRegistrationTagUids } from '../self-inspection-registration-tag-validation.js';
@@ -199,7 +200,7 @@ export async function recordInspectorInstrumentPreUseInspection(
     const inspectedAt = new Date();
     const loan = existingLoan
       ? existingLoan
-      : await tx.loan.create({
+      : await createActiveLoan(tx, {
           data: {
             measuringInstrumentId: instrument.id,
             employeeId: employee.id,
@@ -210,7 +211,7 @@ export async function recordInspectorInstrumentPreUseInspection(
             employee: true,
             client: true
           }
-        });
+        }, 'この計測機器はすでに貸出中です');
 
     if (!existingLoan) {
       await tx.measuringInstrument.update({
@@ -467,7 +468,7 @@ export async function recordInstrumentPreUseInspection(
     const inspectedAt = new Date();
     const loan = existingLoan
       ? existingLoan
-      : await tx.loan.create({
+      : await createActiveLoan(tx, {
           data: {
             measuringInstrumentId: instrument.id,
             employeeId: employee.id,
@@ -478,7 +479,7 @@ export async function recordInstrumentPreUseInspection(
             employee: true,
             client: true
           }
-        });
+        }, 'この計測機器はすでに貸出中です');
 
     if (!existingLoan) {
       await tx.measuringInstrument.update({
