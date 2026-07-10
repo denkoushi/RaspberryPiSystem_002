@@ -12,6 +12,7 @@
 | 自己検査セッション | 同一セッションの更新順序 | PostgreSQL行ロック、CAS | mutation guard |
 | 組立作業セッション | 入力・工程進行・完了・取消の順序 | `AssemblyWorkSession` 行ロック | ロック後に最新詳細を再読込 |
 | パレット操作 | 同一加工機・パレット内の表示順と監査整合 | 表示順一意制約 | パレット単位advisory lock |
+| 部品測定編集 | 1シートの有効編集所有者は1端末 | `PartMeasurementSheet` 行ロック | ロック後に所有者・期限を再検証 |
 | 生産順序 | 同一親行・同一スロットの直列化 | 一意制約 | transaction-scoped advisory lock |
 | OCRジョブ | 1ジョブを1ワーカーだけが取得 | 行状態 | `FOR UPDATE SKIP LOCKED` |
 
