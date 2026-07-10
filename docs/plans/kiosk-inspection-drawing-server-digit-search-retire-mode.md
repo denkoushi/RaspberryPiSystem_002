@@ -2,14 +2,14 @@
 title: Kiosk Inspection Drawing Server Digit Search And Retire Mode
 id: plan-kiosk-inspection-drawing-server-digit-search-retire-mode
 status: completed
-scope: kiosk inspection drawing library (`/kiosk/part-measurement/inspection-drawings`)
+scope: kiosk inspection drawing library (`/kiosk/part-measurement/inspection`)
 date: 2026-07-10
 source_of_truth: this file
 branch: feat/inspection-drawing-server-digit-search-retire-mode
 related_code: apps/api/prisma/schema.prisma, apps/api/src/services/part-measurement/part-measurement-visual-template.service.ts, apps/web/src/pages/kiosk/KioskInspectionDrawingLibraryPage.tsx
 related_docs: ./kiosk-inspection-drawing-library-ux-and-depth-through.md, ../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md
-validation: shared/API/Web lint+build PASS · API unit 13 PASS · Web related 26 PASS · API integration 69 PASS / 2 SKIP · isolated PostgreSQL migration/CHECK/GIN/EXPLAIN PASS · DEV preview smoke PASS
-open_items: none; deployment intentionally out of scope
+validation: local and isolated PostgreSQL PASS · CI 29066398307 success · Pi5/StoneBase01 canary deploy success · Phase12 45/0/0 · StoneBase display PASS
+open_items: remaining Pi4×4 and Pi3 were intentionally not deployed in the canary request; physical ON/OFF tap remains optional
 ---
 
 # Kiosk Inspection Drawing Server Digit Search And Retire Mode
@@ -33,6 +33,9 @@ The inspection-drawing menubar digit keypad currently searches only the 40 visua
 - [x] (2026-07-10) Passed shared/API/Web lint and builds, API unit 13/13, Web related 26/26, and full API integration 69/69 runnable tests (2 environment-dependent PDF tests skipped).
 - [x] (2026-07-10) Confirmed DEV preview interaction: zero retire row buttons by default, 24 while `無効ON`, zero after OFF; `7161` narrowed drawing-name template fixtures from 24 to 16; reset restored them.
 - [x] (2026-07-10) Updated the prior plan open item, docs index, preview description, and this retrospective.
+- [x] (2026-07-10) Pushed HEAD `5ae28450`; GitHub Actions run `29066398307` passed all five jobs.
+- [x] (2026-07-10) Deployed the canary scope only: Pi5 run `20260710-123031-4690` and StoneBase01 run `20260710-124213-28442`, both `failed=0`.
+- [x] (2026-07-10) Passed Phase12 45/0/0, production DB/API smoke, StoneBase runtime/heartbeat checks, and Wayland screen inspection.
 
 ## Surprises & Discoveries
 
@@ -59,11 +62,13 @@ The inspection-drawing menubar digit keypad currently searches only the 40 visua
 
 ## Outcomes & Retrospective
 
-Implemented the approved scope on `feat/inspection-drawing-server-digit-search-retire-mode` without deployment or writes to an existing database. Both list APIs now accept an optional validated `digitQuery`; visual rows use the persisted drawing-name digit derivative and template rows filter through the related visual template, so part-number digits no longer satisfy the menubar query. The Web page debounces the shared query once, caps visible digit-search results at 40, reports overflow, and preserves all existing detail filters.
+Implemented the approved scope on `feat/inspection-drawing-server-digit-search-retire-mode`, then deployed only the user-approved canary scope (`raspberrypi5` and `raspi4-kensaku-stonebase01`). Both list APIs now accept an optional validated `digitQuery`; visual rows use the persisted drawing-name digit derivative and template rows filter through the related visual template, so part-number digits no longer satisfy the menubar query. The Web page debounces the shared query once, caps visible digit-search results at 40, reports overflow, and preserves all existing detail filters.
 
 The retirement action is now absent from the DOM by default and available only in the local page-scoped `無効ON` mode. A synchronous ref lock plus disabled controls prevents duplicate mutations, while cancellation, confirmation, reload, history filtering, and non-persistent mode lifetime retain their prior contracts.
 
 Validation used only disposable `pgvector/pgvector:pg15` containers with dynamically assigned localhost ports and no volume or custom network. All 139 migrations applied, an old-form minimal table backfilled `図面71-A61` to `7161`, NOT NULL and the CHECK constraint rejected drift, and the trigram index existed. PostgreSQL reasonably chose a sequential scan for the compact 20,000-row probe (about 2.9 ms); on 100,000 varied rows the selective query used the GIN Bitmap Index Scan and completed in about 1.7 ms. Full API integration finished with 69 passed and two pre-existing environment-dependent PDF tests skipped. Every temporary container was removed and no matching volume or network remained.
+
+Production validation used push CI run `29066398307`, then serial canary deploys. Pi5 applied the new migration and rebuilt API/Web; StoneBase01 synced the same revision and restarted its kiosk services. Production data had 23 visual rows with zero derivative drift; `7161` returned 18 visual rows and 15 template summaries, while alphanumeric input returned 400 and the internal derivative stayed absent from DTOs. Phase12 passed 45/0/0. A StoneBase Wayland capture confirmed the library, keypad, `無効ON`, and default-hidden row action. No remaining Pi4 or Pi3 host was deployed.
 
 ## Context and Orientation
 
