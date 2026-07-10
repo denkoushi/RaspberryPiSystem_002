@@ -44,6 +44,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Knowledge-base navigation: `docs/knowledge-base/index.md`
 - Active inspection-drawing OCR candidate improvement: `docs/plans/inspection-drawing-ocr-local-candidates.md`
 - Active inspection-drawing OCR RapidOCR local secondary: `docs/plans/inspection-drawing-ocr-rapidocr-local.md`
+- Active self-inspection autosave / callout / template create lock: `docs/plans/self-inspection-autosave-callout-template-lock.md`
 
 The index files are navigation only. They must not become narrative logs.
 
