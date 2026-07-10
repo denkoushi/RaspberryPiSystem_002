@@ -1,7 +1,7 @@
 ---
 id: self-inspection-autosave-callout-template-lock
 title: Self-inspection autosave, inspection-drawing callout, template create lock
-status: deployed_pending_ui_validation
+status: deployed
 date: 2026-07-10
 source_of_truth: true
 related_docs:
@@ -9,13 +9,15 @@ related_docs:
   - ../design-previews/kiosk-self-inspection-autosave-callout-preview.html
   - ../knowledge-base/KB-320-kiosk-part-measurement.md
   - ../guides/deployment.md#self-inspection-autosave-callout-template-lock-2026-07-10
+  - ../guides/deployment.md#inspection-drawing-callout-dirty-zoom-dates-2026-07-10
 related_code:
   - apps/web/src/features/part-measurement/inspection-drawing/
   - apps/web/src/pages/kiosk/KioskSelfInspectionSessionPage.tsx
   - apps/api/src/services/part-measurement/
-open_items:
-  - Physical kiosk UI validation (NFC gate, draft reload, confirm, callout tips / 丸数字・矢視 row, create lock)
-  - Merge PR #968 to main after UI OK
+open_items: []
+validation:
+  - Production Pi5 + Pi4×5 at HEAD eb41870a (Pi3 skipped)
+  - verify-phase12-real PASS 45; smoke updatedAt / calloutTip dirty / no onResetZoom wiring / 登録・更新 columns
 ---
 
 # Self-inspection autosave / callout / template create lock

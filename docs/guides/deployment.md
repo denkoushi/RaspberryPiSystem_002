@@ -10,6 +10,22 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-10 · **矢視 dirty / ズーム100%除去 / 一覧日時** · **API + Web** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#inspection-drawing-callout-dirty-zoom-dates-2026-07-10}
+
+- **変更概要**: 矢視 tip のみ変更でも保存可能（dirty snapshot に `calloutTipXRatio/YRatio`）。ズームの「100%／元サイズ」ボタンを Create/Edit/Preview から除去。図面ライブラリ列「登録」=`visual.createdAt`、テンプレ列「更新」=`template.updatedAt`（`GET .../inspection-drawing/templates`）。ブランチ **`feat/self-inspection-autosave-callout-template-lock`** · HEAD **`eb41870a`** · PR [#968](https://github.com/denkoushi/RaspberryPiSystem_002/pull/968)。**DB/migration 変更なし**。
+- **CI**: push CI [**`29078578001` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29078578001) · PR CI [**`29078580808` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29078580808)（全ジョブ）· CodeQL / Secret scan success。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/self-inspection-autosave-callout-template-lock infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260710-175152-17798`** | success · `ok=135 changed=4 failed=0` · Docker API/Web再構築 · HEAD **`eb41870a`** |
+| `raspi4-kensaku-stonebase01` | **`20260710-175839-6755`** | success · `ok=130 changed=10 failed=0` · kiosk-browser 再起動 · HEAD **`eb41870a`** |
+| `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01` | **`20260710-180300-14478`** | success · 各 `failed=0 unreachable=0` · HEAD **`eb41870a`** |
+
+- **対象外（今回）**: `raspberrypi3`（サイネージ）は未デプロイ。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **実機（smoke）**: 検査図面 `/inspection` `/create` `/library` HTTP **200**。`GET /api/part-measurement/inspection-drawing/templates` に `updatedAt`。配信 Create チャンクに `calloutTipXRatio/YRatio`、Create/Edit/Preview に `onResetZoom` 未配線。ライブラリ配信に列「登録」「更新」。全対象ホスト HEAD **`eb41870a`**。
+
 ### 補足（2026-07-10 · **丸数字/矢視 右ペイン化 + ライブラリ文言整理** · **Web のみ** · **Pi5 + StoneBase 先行**） {#inspection-drawing-mode-row-library-copy-2026-07-10}
 
 - **変更概要**: 作成/改版のモード切替をヘッダーから右ペイン1行（**丸数字 / 矢視** + 矢視あり/なし + 削除）へ移動。ライブラリは「編集」表記・新規無効時の琥珀色注記削除。ブランチ **`feat/self-inspection-autosave-callout-template-lock`** · HEAD **`733eebcb`** · PR [#968](https://github.com/denkoushi/RaspberryPiSystem_002/pull/968)。**DB/migration 変更なし**。
