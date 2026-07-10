@@ -414,6 +414,7 @@ model MachinePalletItem {
   updatedAt          DateTime @updatedAt
 
   @@index([resourceCd, palletNo, displayOrder], map: "MachinePalletItem_idx_machine_pallet_order")
+  @@unique([resourceCd, palletNo, displayOrder], map: "MachinePalletItem_uidx_machine_pallet_order")
   @@index([resourceCd], map: "MachinePalletItem_idx_resource")
 }
 
