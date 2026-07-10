@@ -5,6 +5,7 @@ import { PartMeasurementVisualTemplateService } from './part-measurement-visual-
 const { prismaMock, deleteDrawingMock } = vi.hoisted(() => ({
   prismaMock: {
     partMeasurementVisualTemplate: {
+      create: vi.fn(),
       findMany: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
@@ -42,6 +43,20 @@ describe('PartMeasurementVisualTemplateService.list', () => {
 
     expect(prismaMock.partMeasurementVisualTemplate.findMany).toHaveBeenCalledWith({
       where: { isActive: true, name: { contains: 'alpha', mode: 'insensitive' } },
+      orderBy: [{ name: 'asc' }, { createdAt: 'desc' }],
+      take: 25
+    });
+  });
+
+  it('combines raw name and normalized digit queries', async () => {
+    await service.list({ q: 'alpha', digitQuery: '71-A61', limit: 25 });
+
+    expect(prismaMock.partMeasurementVisualTemplate.findMany).toHaveBeenCalledWith({
+      where: {
+        isActive: true,
+        name: { contains: 'alpha', mode: 'insensitive' },
+        searchDigits: { contains: '7161' }
+      },
       orderBy: [{ name: 'asc' }, { createdAt: 'desc' }],
       take: 25
     });
@@ -115,13 +130,13 @@ describe('PartMeasurementVisualTemplateService.updateName', () => {
     });
     prismaMock.partMeasurementVisualTemplate.update.mockResolvedValue({
       id: 'vt-1',
-      name: '新名'
+      name: '新名71-A61'
     });
 
-    await expect(service.updateName('vt-1', '  新名  ')).resolves.toMatchObject({ name: '新名' });
+    await expect(service.updateName('vt-1', '  新名71-A61  ')).resolves.toMatchObject({ name: '新名71-A61' });
     expect(prismaMock.partMeasurementVisualTemplate.update).toHaveBeenCalledWith({
       where: { id: 'vt-1' },
-      data: { name: '新名' }
+      data: { name: '新名71-A61', searchDigits: '7161' }
     });
   });
 
@@ -144,6 +159,31 @@ describe('PartMeasurementVisualTemplateService.updateName', () => {
       isActive: false
     });
     await expect(service.updateName('vt-inactive', '新名')).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe('PartMeasurementVisualTemplateService.create', () => {
+  const service = new PartMeasurementVisualTemplateService();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.partMeasurementVisualTemplate.create.mockResolvedValue({ id: 'vt-created' });
+  });
+
+  it('stores normalized drawing-name digits with the visual template', async () => {
+    await service.create({
+      name: '  図面71-A61  ',
+      drawingImageRelativePath: '/api/storage/part-measurement-drawings/a.png'
+    });
+
+    expect(prismaMock.partMeasurementVisualTemplate.create).toHaveBeenCalledWith({
+      data: {
+        name: '図面71-A61',
+        searchDigits: '7161',
+        drawingImageRelativePath: '/api/storage/part-measurement-drawings/a.png',
+        isActive: true
+      }
+    });
   });
 });
 

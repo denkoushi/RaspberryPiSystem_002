@@ -82,6 +82,7 @@ describe('InspectionDrawingLibraryTemplateTable', () => {
     expect(screen.getByText('ABC-123')).toBeInTheDocument();
     expect(screen.getByText('7161テーブル')).toHaveAttribute('title', '7161テーブル');
     expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '無効' })).not.toBeInTheDocument();
 
     expect(screen.getAllByTestId('inspection-template-resource-chips')[0]).toHaveClass('flex-nowrap');
     expect(screen.getByText('+1')).toBeInTheDocument();
@@ -136,5 +137,22 @@ describe('InspectionDrawingLibraryTemplateTable', () => {
     );
 
     expect(screen.getByText('読込中…')).toBeInTheDocument();
+  });
+
+  it('disables the retire action while the table is busy', () => {
+    render(
+      <MemoryRouter>
+        <InspectionDrawingLibraryTemplateTable
+          templates={[template]}
+          resourceNameMap={{}}
+          busy
+          onHistoryClick={vi.fn()}
+          onRetireClick={vi.fn()}
+          lineageGroupKey={(row) => row.id}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('button', { name: '無効' })).toBeDisabled();
   });
 });

@@ -1,4 +1,5 @@
 const DIGIT_KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '0'] as const;
+const DIGIT_QUERY_MAX_LENGTH = 200;
 
 type Props = {
   value: string;
@@ -17,7 +18,7 @@ export function InspectionDrawingDigitTenkey({ value, onChange, disabled = false
   return (
     <div
       role="group"
-      aria-label="品番数字テンキー"
+      aria-label="図面名数字テンキー"
       className="flex min-w-0 flex-1 items-center justify-center gap-0.5"
     >
       {DIGIT_KEYS.map((digit) => (
@@ -25,7 +26,7 @@ export function InspectionDrawingDigitTenkey({ value, onChange, disabled = false
           key={digit}
           type="button"
           className={keyClassName}
-          disabled={disabled}
+          disabled={disabled || value.length >= DIGIT_QUERY_MAX_LENGTH}
           onClick={() => onChange(`${value}${digit}`)}
         >
           {digit}

@@ -100,4 +100,26 @@ describe('KioskInspectionDrawingVisualLibrarySection', () => {
     expect(screen.getByText('図面なし資源CD')).toBeInTheDocument();
     expect(screen.queryByText('R002')).not.toBeInTheDocument();
   });
+
+  it('keeps API-free preview digit matching on drawing names', () => {
+    render(
+      <MemoryRouter>
+        <KioskInspectionDrawingVisualLibrarySection
+          previewVisuals={[
+            ...visuals,
+            {
+              ...visuals[0],
+              id: 'visual-2',
+              name: '別図面9000'
+            }
+          ]}
+          digitQuery="7161"
+          onRegisterClick={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('7161テーブル')).toBeInTheDocument();
+    expect(screen.queryByText('別図面9000')).not.toBeInTheDocument();
+  });
 });

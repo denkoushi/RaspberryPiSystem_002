@@ -67,6 +67,7 @@ type TemplateTablePaneProps = {
   printPath?: (templateId: string) => string;
   createFromSourcePath: (templateId: string) => string;
   linkState: object;
+  busy: boolean;
 };
 
 function TemplateTablePane({
@@ -80,7 +81,8 @@ function TemplateTablePane({
   editPath,
   printPath,
   createFromSourcePath,
-  linkState
+  linkState,
+  busy
 }: TemplateTablePaneProps) {
   return (
     <div
@@ -183,7 +185,7 @@ function TemplateTablePane({
                               type="button"
                               variant="ghostOnDark"
                               className={inspectionDrawingLibraryRowActionClassName}
-                              disabled={!template.isActive}
+                              disabled={busy || !template.isActive}
                               onClick={() => onRetireClick(template)}
                             >
                               無効
@@ -244,6 +246,7 @@ export function InspectionDrawingLibraryTemplateTable({
         printPath={printPath}
         createFromSourcePath={createFromSourcePath}
         linkState={linkState}
+        busy={busy}
       />
       {secondTemplates.length > 0 ? (
         <TemplateTablePane
@@ -258,6 +261,7 @@ export function InspectionDrawingLibraryTemplateTable({
           printPath={printPath}
           createFromSourcePath={createFromSourcePath}
           linkState={linkState}
+          busy={busy}
         />
       ) : null}
     </div>

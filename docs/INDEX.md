@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 最新アップデート（2026-07-10 · 検査図面 全件数字検索 + 無効モード · Pi5/StoneBase先行）
+
+- **検査図面名の全件数字検索と安全な無効操作**: 図面名ASCII数字による全件PostgreSQL検索。行の「無効」は常時表示し、無効化済み項目は既定非表示、`無効ON/OFF`で表示を切り替える。実機確認OK後、Pi5 + Pi4全5台へ反映済み。Pi3は対象外。**正本**: [Plan](./plans/kiosk-inspection-drawing-server-digit-search-retire-mode.md) · [Deployment](./guides/deployment.md#inspection-drawing-server-digit-search-retire-mode-2026-07-10)
+
 ### 最新アップデート（2026-07-09 · 組立トップ 3ペイン表形式 · Pi5+StoneBase 反映済）
 
 - **組立トップ左列をカード→表へ**: 登録済みロット（グループ行＋シリアル行）/ 仕掛中（進捗バー）/ 完了。Web only · HEAD **`a78a36d5`** · Detach **`20260709-145104-6472`** / **`20260709-145454-28187`** · Phase12 **45/0/0**。**正本**: [Plan](./plans/kiosk-assembly-home-table-layout.md) · [ADR Decision 6](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](./design-previews/kiosk-assembly-home-table-layout-preview.html) · [Deployment](./guides/deployment.md#kiosk-assembly-home-table-layout-2026-07-09)

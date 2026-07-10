@@ -5,6 +5,7 @@ import { digitsOf, matchesDigitQuery } from '../inspectionDrawingDigitQuery';
 describe('inspectionDrawingDigitQuery', () => {
   it('extracts digits only', () => {
     expect(digitsOf('7161-A')).toBe('7161');
+    expect(digitsOf('71-A61')).toBe('7161');
     expect(digitsOf('M12-BASE')).toBe('12');
     expect(digitsOf('ABC')).toBe('');
     expect(digitsOf(null)).toBe('');

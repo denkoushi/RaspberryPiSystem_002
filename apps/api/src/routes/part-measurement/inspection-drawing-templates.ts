@@ -153,7 +153,8 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
         processGroup,
         resourceCd: q.resourceCd,
         includeInactive: q.includeInactive === true,
-        visualName: q.visualName
+        visualName: q.visualName,
+        digitQuery: q.digitQuery
       });
       return {
         templates: rows.map(({ template, itemCount }) => ({

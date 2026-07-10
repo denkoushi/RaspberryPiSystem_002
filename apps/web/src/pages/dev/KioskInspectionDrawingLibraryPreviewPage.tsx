@@ -5,9 +5,11 @@ import { Button, buttonClassName } from '../../components/ui/Button';
 import {
   InspectionDrawingLibraryFilterBar,
   InspectionDrawingLibraryTemplateTable,
+  InspectionDrawingDigitTenkey,
   InspectionDrawingTemplateHistoryDialog,
   KioskInspectionDrawingVisualLibrarySection,
   KIOSK_INSPECTION_DRAWING_LIBRARY_PATH,
+  matchesDigitQuery,
   type InspectionDrawingLibraryProcessFilter
 } from '../../features/part-measurement/inspection-drawing';
 import {
@@ -42,6 +44,8 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
   const [resourceCd, setResourceCd] = useState('');
   const [processFilter, setProcessFilter] = useState<InspectionDrawingLibraryProcessFilter>('all');
   const [includeInactive, setIncludeInactive] = useState(false);
+  const [digitQuery, setDigitQuery] = useState('');
+  const [showInactiveTemplates, setShowInactiveTemplates] = useState(false);
   const [historyGroupKey, setHistoryGroupKey] = useState<string | null>(null);
 
   const resourceNameMap = INSPECTION_DRAWING_PREVIEW_RESOURCE_NAME_MAP;
@@ -51,9 +55,10 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
     const q = fhincd.trim().toLowerCase();
     const visualQ = visualName.trim().toLowerCase();
     return sourceTemplates.filter((template) => {
-      if (!includeInactive && !template.isActive) return false;
+      if (!includeInactive && !showInactiveTemplates && !template.isActive) return false;
       if (q && !template.fhincd.toLowerCase().includes(q)) return false;
       if (visualQ && !template.visualTemplate?.name.toLowerCase().includes(visualQ)) return false;
+      if (!matchesDigitQuery(template.visualTemplate?.name, digitQuery)) return false;
       if (
         resourceCd &&
         template.resourceCd !== resourceCd &&
@@ -64,7 +69,16 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
       if (processFilter !== 'all' && template.processGroup !== processFilter) return false;
       return true;
     });
-  }, [fhincd, includeInactive, processFilter, resourceCd, sourceTemplates, visualName]);
+  }, [
+    digitQuery,
+    fhincd,
+    includeInactive,
+    processFilter,
+    resourceCd,
+    showInactiveTemplates,
+    sourceTemplates,
+    visualName
+  ]);
 
   const resourceOptions = useMemo(() => {
     const unique = new Set<string>();
@@ -96,8 +110,11 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
     () =>
       [...groupedFiltered.values()]
         .map((group) => pickLineageCardRepresentative(group))
-        .filter((row): row is KioskInspectionDrawingTemplateSummaryDto => row != null),
-    [groupedFiltered]
+        .filter(
+          (row): row is KioskInspectionDrawingTemplateSummaryDto =>
+            row != null && (showInactiveTemplates || row.isActive)
+        ),
+    [groupedFiltered, showInactiveTemplates]
   );
 
   const activeHistoryTemplates = historyGroupKey ? groupedAll.get(historyGroupKey) ?? [] : [];
@@ -121,11 +138,12 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
       productionPath={KIOSK_INSPECTION_DRAWING_LIBRARY_PATH}
       rootClassName="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 p-2">
-        <div className="min-w-0">
+      <div className="flex h-[60px] flex-nowrap items-center gap-2 overflow-hidden rounded border border-white/15 bg-slate-900/70 p-2">
+        <div className="min-w-0 shrink-0">
           <h1 className="text-[1.35rem] font-bold leading-tight">検査図面</h1>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <InspectionDrawingDigitTenkey value={digitQuery} onChange={setDigitQuery} />
+        <div className="ml-auto flex shrink-0 flex-nowrap items-center gap-2">
           <Button type="button" variant="ghostOnDark" className="min-h-11 text-[1.02rem]" disabled>
             部品測定へ
           </Button>
@@ -143,6 +161,7 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
         <KioskInspectionDrawingVisualLibrarySection
           previewVisuals={INSPECTION_DRAWING_PREVIEW_VISUAL_LIBRARY}
           onRegisterClick={() => undefined}
+          digitQuery={digitQuery}
         />
 
         <section
@@ -169,6 +188,8 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
             onProcessFilterChange={setProcessFilter}
             includeInactive={includeInactive}
             onIncludeInactiveChange={setIncludeInactive}
+            showInactiveTemplates={showInactiveTemplates}
+            onShowInactiveTemplatesChange={setShowInactiveTemplates}
             onReload={() => undefined}
             onReset={resetTemplateFilters}
             resetDisabled={!hasActiveTemplateFilters}
@@ -194,6 +215,7 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
               printPath={() => '/dev/kiosk-inspection-drawing-print'}
               createFromSourcePath={() => '/dev/kiosk-inspection-drawing-create'}
               linkState={INSPECTION_DRAWING_DEV_RETURN_TO_LIBRARY_STATE}
+              onRetireClick={() => undefined}
             />
           </div>
         </section>

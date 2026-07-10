@@ -2096,6 +2096,8 @@ model PartMeasurementSession {
 model PartMeasurementVisualTemplate {
   id                       String                    @id @default(uuid())
   name                     String
+  /// 図面名から ASCII 数字だけを連結した検索用派生値。DB CHECK で name との一致を保証する。
+  searchDigits             String
   /// 例: /api/storage/part-measurement-drawings/{uuid}.png
   drawingImageRelativePath String
   isActive                 Boolean                   @default(true)
@@ -2105,6 +2107,7 @@ model PartMeasurementVisualTemplate {
   ocrCaches                PartMeasurementDrawingOcrCache[]
 
   @@index([isActive, name])
+  @@index([searchDigits(ops: raw("gin_trgm_ops"))], type: Gin, map: "PartMeasurementVisualTemplate_searchDigits_trgm_idx")
 }
 
 /// PartMeasurementVisualTemplate の保存済み図面画像から抽出した OCR 派生メタデータ。

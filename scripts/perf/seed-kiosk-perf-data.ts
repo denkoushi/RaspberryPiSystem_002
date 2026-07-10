@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import sharp from 'sharp';
+import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
 
 import { prisma } from '../../apps/api/src/lib/prisma.js';
 import {
@@ -311,9 +312,11 @@ async function seedPartMeasurementData(): Promise<{
     for (let i = 0; i < DRAWING_COUNT; i += 1) {
       const { filename, relativePath } = await createDrawingImage(i);
       drawingFilenames.push(filename);
+      const name = `${PERF_PREFIX}Drawing-${i + 1}`;
       const vt = await prisma.partMeasurementVisualTemplate.create({
         data: {
-          name: `${PERF_PREFIX}Drawing-${i + 1}`,
+          name,
+          searchDigits: extractInspectionDrawingAsciiDigits(name),
           drawingImageRelativePath: relativePath,
           isActive: true,
         },

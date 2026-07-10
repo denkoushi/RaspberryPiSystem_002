@@ -6,6 +6,7 @@ export { KioskInspectionDrawingVisualLibrarySection } from './KioskInspectionDra
 export { KioskInspectionDrawingVisualUploadModal } from './KioskInspectionDrawingVisualUploadModal';
 export {
   INSPECTION_DRAWING_VISUAL_LIBRARY_LIMIT,
+  INSPECTION_DRAWING_VISUAL_LIBRARY_FETCH_LIMIT,
   INSPECTION_DRAWING_VISUAL_PICKER_LIMIT,
   INSPECTION_DRAWING_VISUAL_SEARCH_DEBOUNCE_MS
 } from './inspectionDrawingVisualLibraryConstants';

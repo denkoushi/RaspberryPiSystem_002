@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Prisma } from '@prisma/client';
 import type { PartMeasurementProcessGroup, PartMeasurementTemplateScope, SelfInspectionMode } from '@prisma/client';
+import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
 
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { prisma } from '../../lib/prisma.js';
@@ -351,6 +352,8 @@ export class PartMeasurementTemplateService {
     includeInactive?: boolean;
     /** 図面名の部分一致（大文字小文字無視） */
     visualName?: string;
+    /** 図面名から抽出した ASCII 数字列の部分一致 */
+    digitQuery?: string;
   }) {
     const where: Prisma.PartMeasurementTemplateWhereInput = {
       templateScope: 'THREE_KEY',
@@ -371,10 +374,16 @@ export class PartMeasurementTemplateService {
       where.isActive = true;
     }
     const visualNameQ = query.visualName?.trim();
+    const digitQuery = extractInspectionDrawingAsciiDigits(query.digitQuery);
+    const visualWhere: Prisma.PartMeasurementVisualTemplateWhereInput = {};
     if (visualNameQ) {
-      where.visualTemplate = {
-        is: { name: { contains: visualNameQ, mode: 'insensitive' } }
-      };
+      visualWhere.name = { contains: visualNameQ, mode: 'insensitive' };
+    }
+    if (digitQuery) {
+      visualWhere.searchDigits = { contains: digitQuery };
+    }
+    if (visualNameQ || digitQuery) {
+      where.visualTemplate = { is: visualWhere };
     }
 
     const rows = await prisma.partMeasurementTemplate.findMany({
@@ -946,6 +955,7 @@ export class PartMeasurementTemplateService {
         const vt = await prisma.partMeasurementVisualTemplate.create({
           data: {
             name: params.drawingUpload.displayName.slice(0, 200),
+            searchDigits: extractInspectionDrawingAsciiDigits(params.drawingUpload.displayName.slice(0, 200)),
             drawingImageRelativePath: relativeUrl,
             isActive: true
           }

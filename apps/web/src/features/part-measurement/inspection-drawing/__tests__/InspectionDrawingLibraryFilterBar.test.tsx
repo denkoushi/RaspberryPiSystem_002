@@ -19,6 +19,8 @@ function renderFilterBar(overrides: Partial<ComponentProps<typeof InspectionDraw
     onProcessFilterChange: vi.fn(),
     includeInactive: false,
     onIncludeInactiveChange: vi.fn(),
+    showInactiveTemplates: false,
+    onShowInactiveTemplatesChange: vi.fn(),
     onReload: vi.fn(),
     onReset: vi.fn(),
     resetDisabled: true,
@@ -52,5 +54,24 @@ describe('InspectionDrawingLibraryFilterBar', () => {
 
     expect(screen.getByLabelText('資源CD').parentElement).toHaveClass('w-[19rem]');
     expect(screen.getByLabelText('資源CD').parentElement).not.toHaveClass('w-full');
+  });
+
+  it('renders a controlled inactive-template visibility toggle immediately after history', () => {
+    const props = renderFilterBar();
+    const history = screen.getByRole('checkbox').closest('label');
+    const toggle = screen.getByRole('button', { name: '無効ON' });
+
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(history?.nextElementSibling).toBe(toggle);
+    fireEvent.click(toggle);
+    expect(props.onShowInactiveTemplatesChange).toHaveBeenCalledWith(true);
+  });
+
+  it('shows the highlighted OFF action while inactive templates are visible', () => {
+    renderFilterBar({ showInactiveTemplates: true });
+
+    const toggle = screen.getByRole('button', { name: '無効OFF' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle).toHaveClass('bg-red-600');
   });
 });
