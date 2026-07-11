@@ -19,6 +19,8 @@ A kiosk deployment starts only after every targeted kiosk has displayed maintena
 
 - Observation: ACK persistence must preserve the host file owner, for the same reason discovered in Milestone 1 cleanup.
   Evidence: the config directory is shared into the API container while the deployment wrapper writes as the Pi5 deployment user.
+- Observation: existing kiosks can show maintenance but cannot ACK until their old SPA process reloads the new bundle; the first migration requires the explicit override followed by an ACK recheck.
+  Evidence: Kensaku ACKed after receiving the new bundle, while an untouched `raspberrypi4` timed out before Ansible began.
 
 ## Decision Log
 

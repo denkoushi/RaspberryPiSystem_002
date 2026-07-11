@@ -1219,6 +1219,7 @@ PY
   fi
   echo "[ERROR] Maintenance ACK timeout; deployment will not start" >&2
   clear_pi4_maintenance_flag
+  release_remote_lock
   return 1
 }
 
