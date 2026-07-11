@@ -1077,16 +1077,7 @@ should_enable_kiosk_maintenance() {
   local selected_hosts
   selected_hosts=$(
     ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible -i ${inventory_basename} 'server:clients' --list-hosts ${limit_arg} 2>/dev/null" \
-      | python3 - <<'PY'
-import re, sys
-text = sys.stdin.read()
-hosts = []
-for line in text.splitlines():
-    m = re.match(r'^\s+([A-Za-z0-9_.-]+)\s*$', line)
-    if m:
-        hosts.append(m.group(1))
-print("\n".join(hosts))
-PY
+      | tail -n +2 | awk '{print $1}'
   )
   if [[ -z "${selected_hosts}" ]]; then
     return 1
@@ -1096,13 +1087,7 @@ PY
   local kiosk_hosts
   kiosk_hosts=$(
     ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible-inventory -i ${inventory_basename} --list" \
-      | python3 - <<'PY'
-import json, sys
-data = json.load(sys.stdin)
-hostvars = (data.get("_meta") or {}).get("hostvars") or {}
-kiosk = [h for h, v in hostvars.items() if v.get("manage_kiosk_browser") is True]
-print("\n".join(sorted(kiosk)))
-PY
+      | python3 -c 'import json,sys; data=json.load(sys.stdin); hostvars=(data.get("_meta") or {}).get("hostvars") or {}; print("\n".join(sorted(h for h,v in hostvars.items() if v.get("manage_kiosk_browser") is True)))'
   )
 
   if [[ -z "${kiosk_hosts}" ]]; then
@@ -1574,16 +1559,7 @@ should_enable_kiosk_maintenance() {
   local selected_hosts
   selected_hosts=$(
     ansible -i "${INVENTORY_BASENAME}" 'server:clients' --list-hosts ${limit_arg} 2>/dev/null \
-      | python3 - <<'PY'
-import re, sys
-text = sys.stdin.read()
-hosts = []
-for line in text.splitlines():
-    m = re.match(r'^\s+([A-Za-z0-9_.-]+)\s*$', line)
-    if m:
-        hosts.append(m.group(1))
-print("\n".join(hosts))
-PY
+      | tail -n +2 | awk '{print $1}'
   )
   if [ -z "${selected_hosts}" ]; then
     return 1
@@ -1592,13 +1568,7 @@ PY
   local kiosk_hosts
   kiosk_hosts=$(
     ansible-inventory -i "${INVENTORY_BASENAME}" --list \
-      | python3 - <<'PY'
-import json, sys
-data = json.load(sys.stdin)
-hostvars = (data.get("_meta") or {}).get("hostvars") or {}
-kiosk = [h for h, v in hostvars.items() if v.get("manage_kiosk_browser") is True]
-print("\n".join(sorted(kiosk)))
-PY
+      | python3 -c 'import json,sys; data=json.load(sys.stdin); hostvars=(data.get("_meta") or {}).get("hostvars") or {}; print("\n".join(sorted(h for h,v in hostvars.items() if v.get("manage_kiosk_browser") is True)))'
   )
   if [ -z "${kiosk_hosts}" ]; then
     return 1
