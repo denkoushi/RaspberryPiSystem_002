@@ -45,7 +45,8 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
 - [x] (2026-07-11 11:07+09:00) Deployed the candidate to Pi5 API only (run `20260711-104611-13054`, `failed=0`, health `ok`) and repeated the real six-resource five-run measurement.
 - [x] (2026-07-11 11:07+09:00) Rejected and reverted the concurrent-query candidate: warm median improved, but cold latency and P95 regressed far beyond the allowed gate.
 - [x] (2026-07-11 11:14+09:00) Redeployed the single revert to Pi5 (run `20260711-110834-4092`, `failed=0`), confirmed runtime `7ee667da`, health `ok`, performance logging OFF, and baseline latency recovery.
-- [ ] Select the next measured bottleneck without combining changes; the rejected parallel-read mechanism must not be reintroduced.
+- [x] (2026-07-11 11:20+09:00) Compared the next candidates read-only. Selected the raw-mail portion of `generationTokenInitial` for index-shape validation; resource `584` remains on the previously proven resource-first correlated path.
+- [ ] On a disposable production-shaped database, test one covering-index candidate for the raw-mail revision aggregate with `EXPLAIN (ANALYZE, BUFFERS)`; do not create the index on Pi5 during investigation.
 - [ ] Implement one minimal optimization with focused regression tests.
 - [ ] Repeat the identical benchmark and apply the retain/reject gate.
 - [ ] Run focused and broader API/Web verification for a retained change.
@@ -79,6 +80,10 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
   Evidence: post-deploy direct HTTPS samples on runtime `b8ecdc9f`, after successful Pi5-only deploy run `20260711-104611-13054`.
 - Observation: after the revert deployment, recovery samples were 28.64, 3.77, and 3.88 seconds, matching the pre-change cold/warm pattern (28.01 seconds before profiling and stable 3.66–4.28 seconds after restart).
   Evidence: direct HTTPS samples on runtime `7ee667da`; API health was `ok` and `LEADERBOARD_BOARD_PERF_LOG` was absent from the container environment.
+- Observation: `generationTokenInitial` is dominated by the raw `FKOJUNST_Status` mail revision aggregate, not by the main/auxiliary generation query. On Pi5, main dashboard COUNT plus latest-created aggregation took about 164 ms, while the raw-mail COUNT/MAX query took about 1.55 seconds.
+  Evidence: read-only Pi5 `EXPLAIN (ANALYZE, BUFFERS)`. The raw-mail plan scanned 552,846 dashboard rows, returned 551,741 completed/legacy rows, read 71,499 buffers, scanned 63,879 ingest-run rows, and spent about 433 ms in JIT.
+- Observation: the raw-mail dashboard contains 297,423 legacy rows with no `sourceIngestRunId` and 255,423 rows across 29 referenced runs; therefore replacing the revision with only the latest ingest-run timestamp would miss legacy-row updates and change invalidation semantics.
+  Evidence: read-only Pi5 counts. A direct LEFT JOIN rewrite preserved the result count but was slower, so it is not a candidate.
 
 ## Decision Log
 
@@ -105,6 +110,9 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
   Date/Author: 2026-07-11 / Codex.
 - Decision: reject and revert concurrent residual-summary reads despite the 14.8-percent warm median improvement.
   Rationale: the first canary request rose to 31.40 seconds and the second to 6.22 seconds, violating the P95/cold safety gate. The likely mechanism is extra database contention while both heavyweight reads are cold; preserving predictable first display is more important than the warm gain.
+  Date/Author: 2026-07-11 / Codex.
+- Decision: investigate a covering index for the exact raw-mail revision aggregate before changing generation-token logic or resource-shell SQL.
+  Rationale: the exact aggregate is a measured 1.55-second scan and its current COUNT/MAX/source-run eligibility semantics must remain intact. Resource `584` already uses the Pi5-proven correlated winner shape, while a latest-run-only token would fail to observe legacy-row changes.
   Date/Author: 2026-07-11 / Codex.
 
 ## Outcomes & Retrospective
