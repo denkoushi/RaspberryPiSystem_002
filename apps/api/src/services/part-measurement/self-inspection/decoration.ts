@@ -20,7 +20,7 @@ import {
   type SelfInspectionTemplate
 } from './shared.js';
 import { loadPendingReviewCountsBySessionIds } from './serialization.js';
-import { confirmedEntriesCountSelect, confirmedWhere } from './entry-persistence-status.js';
+import { confirmedEntriesCountSelect, isConfirmed } from './entry-persistence-status.js';
 
 
 export function pickSessionForScheduleRow<
@@ -44,7 +44,7 @@ export type SelfInspectionSessionForDecoration = {
   completedAt: Date | null;
   updatedAt: Date;
   pendingReviewCount?: number;
-  entries: Array<{ entryIndex: number }>;
+  entries: Array<{ entryIndex: number; persistenceStatus?: string }>;
   template: {
     selfInspectionMode: SelfInspectionMode;
     selfInspectionFixedCount: number | null;
@@ -165,9 +165,9 @@ export async function ensureSelfInspectionSessionsInCache(
         },
       },
       entries: {
-        where: confirmedWhere,
         select: {
           entryIndex: true,
+          persistenceStatus: true,
         },
       },
       _count: { select: confirmedEntriesCountSelect },
@@ -270,9 +270,14 @@ function buildLeaderboardDecorationFromSession(
     selfInspectionTemplateId: session.templateId,
     selfInspectionStatus: resolveStatus({
       completedEntryCount: session._count.entries,
+      hasAnyLotEntry: session.entries.length > 0,
       completedAt: session.completedAt,
       pendingReviewCount: session.pendingReviewCount ?? 0,
-      entryIndices: session.entries.map((entry) => entry.entryIndex),
+      entryIndices: session.entries
+        .filter((entry) =>
+          entry.persistenceStatus == null ? true : isConfirmed(entry.persistenceStatus)
+        )
+        .map((entry) => entry.entryIndex),
       completionPolicy: policy
     }),
     selfInspectionEntryPath: `/kiosk/part-measurement/self-inspection/sessions/${session.id}`,

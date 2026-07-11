@@ -86,4 +86,19 @@ describe('applySelfInspectionEntrySaveToSessionCache', () => {
     const updated = applySelfInspectionEntrySaveToSessionCache(entry1Cache, savedEntry, 1);
     expect(updated?.focusedEntry?.entryIndex).toBe(1);
   });
+
+  it('keeps in_progress when only draft entries exist', () => {
+    const draftOnly = sessionFixture([]);
+    const updated = applySelfInspectionEntrySaveToSessionCache(
+      draftOnly,
+      {
+        ...savedEntry,
+        persistenceStatus: 'draft',
+        values: [{ id: 'v1', templateItemId: 'i1', value: '10' }]
+      },
+      1
+    );
+    expect(updated?.status).toBe('in_progress');
+    expect(updated?.completedEntryCount).toBe(0);
+  });
 });

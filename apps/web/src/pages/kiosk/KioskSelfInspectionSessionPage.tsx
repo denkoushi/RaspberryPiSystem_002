@@ -59,6 +59,7 @@ import {
 } from '../../features/part-measurement/selfInspectionSessionDrawingPanelState';
 import { resolveSelfInspectionRequiredEntryCount } from '../../features/part-measurement/selfInspectionSessionEntryCount';
 import { SelfInspectionSessionHeader } from '../../features/part-measurement/SelfInspectionSessionHeader';
+import { shouldAutosaveSelfInspectionDraftEntry } from '../../features/part-measurement/shouldAutosaveSelfInspectionDraftEntry';
 import { usePartMeasurementDrawingBlobUrl, resolveKioskDrawingDisplayWidth } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useSelfInspectionGuidedFocus } from '../../features/part-measurement/useSelfInspectionGuidedFocus';
 import { useSelfInspectionNfcRegistration } from '../../features/part-measurement/useSelfInspectionNfcRegistration';
@@ -297,6 +298,12 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     }));
     const hasAnyValue = valuesPayload.some((row) => String(row.value ?? '').trim().length > 0);
     const existing = session.entries.find((entry) => entry.entryIndex === selectedEntryIndex);
+    const focusedForSelected =
+      session.focusedEntry?.entryIndex === selectedEntryIndex ? session.focusedEntry : null;
+    const persistenceStatus = focusedForSelected?.persistenceStatus ?? existing?.persistenceStatus;
+    if (!shouldAutosaveSelfInspectionDraftEntry(persistenceStatus)) {
+      return;
+    }
     if (!hasAnyValue && !existing && !registration.employeeTagUid) {
       return;
     }
