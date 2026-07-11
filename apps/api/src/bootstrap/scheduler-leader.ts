@@ -56,7 +56,7 @@ export async function startSchedulerRuntime(app: FastifyInstance): Promise<Sched
     } finally {
       try {
         const owner = await readFile(leaseFile, 'utf8');
-        if (owner === token) await unlink(leaseFile);
+        if (owner.replace(/\0/g, '').trim() === token) await unlink(leaseFile);
       } catch {
         // The owner may already have been replaced or removed.
       }
@@ -77,7 +77,7 @@ export async function startSchedulerRuntime(app: FastifyInstance): Promise<Sched
         return false;
       }
       await lease.truncate(0);
-      await lease.writeFile(`${token}\n`);
+      await lease.write(`${token}\n`, 0, 'utf8');
       return true;
     } catch {
       await relinquish();
