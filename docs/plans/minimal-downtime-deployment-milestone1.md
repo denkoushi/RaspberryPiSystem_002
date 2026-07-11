@@ -13,6 +13,9 @@ Operators can deploy one Raspberry Pi 4 kiosk at a time without placing unrelate
 - [x] (2026-07-11) Added revision impact classification and client-only compatibility guard.
 - [ ] Integrate Milestone 1 into production after local and CI validation.
 - [ ] Complete the production canary acceptance before starting Milestone 1.5.
+- [x] (2026-07-11) Canary deployment succeeded on `raspi4-kensaku-stonebase01` with run `20260711-134711-7114`.
+- [x] (2026-07-11) Stopped rollout after the second host exposed root-owned empty state-file handling; no remaining hosts were deployed.
+- [ ] Validate and redeploy the ownership/fail-closed correction before resuming rollout.
 
 ## Surprises & Discoveries
 
@@ -20,6 +23,8 @@ Operators can deploy one Raspberry Pi 4 kiosk at a time without placing unrelate
   Evidence: `clear_pi4_maintenance_flag` uses `rm -f`, and `deploy-staged.yml` uses `state: absent`.
 - Observation: the wrapper cleanup condition is inverted for an in-scope kiosk deployment.
   Evidence: `clear_pi4_maintenance_flag_if_needed` clears only when `should_enable_kiosk_maintenance` is false.
+- Observation: Ansible's delegated cleanup ran with privilege escalation and replaced the state file with a root-owned empty file.
+  Evidence: the next host failed with `PermissionError` writing `/opt/RaspberryPiSystem_002/config/deploy-status.json`.
 
 ## Decision Log
 
@@ -28,6 +33,9 @@ Operators can deploy one Raspberry Pi 4 kiosk at a time without placing unrelate
   Date/Author: 2026-07-11 / Codex.
 - Decision: fail a Pi4-only deployment when the revision diff contains API, Web, shared package, Docker, or Prisma changes unless `--client-only-compatible` is explicit.
   Rationale: these paths require the shared Pi5 server in the current architecture.
+  Date/Author: 2026-07-11 / Codex.
+- Decision: maintenance-state creation is fail-closed and Ansible cleanup runs as the Pi5 deployment user.
+  Rationale: a deployment must never continue after the maintenance state could not be published, and subsequent runs must retain write access.
   Date/Author: 2026-07-11 / Codex.
 
 ## Outcomes & Retrospective
@@ -66,4 +74,4 @@ No production system is modified by local validation.
 
 The state file remains version 2 and keeps `kioskByClient`. Each entry may contain `maintenance`, `startedAt`, `updatedAt`, `runId`, and `phase`. The utility uses only Python's standard library. The impact classifier emits JSON booleans for `server`, `kiosk`, `signage`, and `migration`.
 
-Revision note: 2026-07-11 initial Milestone 1 implementation plan and recorded discoveries.
+Revision note: 2026-07-11 added canary evidence and the root-ownership/fail-closed correction discovered during rollout.

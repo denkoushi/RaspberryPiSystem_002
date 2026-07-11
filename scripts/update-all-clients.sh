@@ -1181,8 +1181,8 @@ set_pi4_maintenance_flag() {
 
   echo "[INFO] Setting kiosk maintenance flag (per-client) on ${REMOTE_HOST}"
   if ! write_deploy_status_v2_on_remote "${inventory_basename}" "${limit_arg}" "${RUN_ID}" "${REMOTE_DEPLOY_STATUS_FILE}"; then
-    echo "[WARN] Could not write deploy-status v2, skipping maintenance flag"
-    return 0
+    echo "[ERROR] Could not write deploy-status v2; refusing to deploy without maintenance state" >&2
+    return 1
   fi
   KIOSK_MAINTENANCE_ENABLED=1
 }

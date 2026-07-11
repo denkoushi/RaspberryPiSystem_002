@@ -22,12 +22,20 @@ def load(path):
 def save(path, data):
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    existing_owner = None
+    try:
+        stat = target.stat()
+        existing_owner = (stat.st_uid, stat.st_gid)
+    except FileNotFoundError:
+        pass
     fd, tmp = tempfile.mkstemp(prefix=f'.{target.name}.', dir=target.parent)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as handle:
             json.dump(data, handle, ensure_ascii=False, separators=(',', ':'))
             handle.flush()
             os.fsync(handle.fileno())
+        if existing_owner is not None:
+            os.chown(tmp, *existing_owner)
         os.replace(tmp, target)
     finally:
         if os.path.exists(tmp):

@@ -237,6 +237,7 @@
           - --run-id
           - "{{ lookup('env', 'RUN_ID') }}"
       delegate_to: "{{ groups['server'][0] }}"
+      become: false
       run_once: true
       changed_when: true
       when:
