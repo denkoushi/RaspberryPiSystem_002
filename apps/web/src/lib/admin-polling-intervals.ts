@@ -5,6 +5,8 @@
 export const POLL_MS = {
   /** メンテナンス状態（deploy-status）。従来 5s から緩和。 */
   deployStatus: 8000,
+  /** メンテナンス開始・解除を早く反映する。 */
+  deployStatusMaintenance: 2000,
   /** システム負荷・温度ヘッダ等 */
   systemInfo: 15000,
   /** サイネージレンダリング進捗 */

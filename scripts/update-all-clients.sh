@@ -94,6 +94,7 @@ PRINT_PLAN=0
 RUN_ID=""
 PROFILE_MODE=0
 CLIENT_ONLY_COMPATIBLE=0
+FORCE_WITHOUT_MAINTENANCE_ACK=0
 LOCAL_LOCK_ACQUIRED=0
 
 while [[ $# -gt 0 ]]; do
@@ -108,6 +109,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --client-only-compatible)
       CLIENT_ONLY_COMPATIBLE=1
+      shift
+      ;;
+    --force-without-maintenance-ack)
+      FORCE_WITHOUT_MAINTENANCE_ACK=1
       shift
       ;;
     --detach)
@@ -1202,6 +1207,36 @@ clear_pi4_maintenance_flag_if_needed() {
   clear_pi4_maintenance_flag
 }
 
+wait_for_maintenance_acks() {
+  if [[ "${KIOSK_MAINTENANCE_ENABLED}" != "1" ]]; then return 0; fi
+  local deadline=$((SECONDS + 30))
+  echo "[INFO] Waiting up to 30s for kiosk maintenance acknowledgements"
+  while (( SECONDS < deadline )); do
+    if ssh ${SSH_OPTS} "${REMOTE_HOST}" "sudo python3 - '${REMOTE_DEPLOY_STATUS_FILE}' '${RUN_ID}'" <<'PY'
+import json, sys
+path, run_id = sys.argv[1:]
+with open(path, encoding='utf-8') as f:
+    data = json.load(f)
+targets = {key for key, value in (data.get('kioskByClient') or {}).items() if value.get('runId') == run_id}
+acked = set(((data.get('acknowledgements') or {}).get(run_id) or {}).keys())
+raise SystemExit(0 if targets and targets <= acked else 1)
+PY
+    then
+      echo "[INFO] All kiosk maintenance acknowledgements received"
+      return 0
+    fi
+    sleep 5
+  done
+  if [[ "${FORCE_WITHOUT_MAINTENANCE_ACK}" == "1" ]]; then
+    echo "[WARN] Maintenance ACK timeout overridden explicitly" >&2
+    send_alert "deploy-maintenance-ack-override" "メンテナンスACK未確認でデプロイを続行します" "runId=${RUN_ID}"
+    return 0
+  fi
+  echo "[ERROR] Maintenance ACK timeout; deployment will not start" >&2
+  clear_pi4_maintenance_flag
+  return 1
+}
+
 clear_server_deployment_flag() {
   if [[ -z "${REMOTE_HOST}" ]]; then
     return 0
@@ -2095,6 +2130,7 @@ if [[ -n "${REMOTE_HOST}" ]]; then
     trap 'release_local_lock' EXIT
   fi
   set_pi4_maintenance_flag
+  wait_for_maintenance_acks || exit_with_error 4 "Maintenance acknowledgement preflight failed."
   clear_server_deployment_flag
   if [[ ${JOB_MODE} -eq 1 ]]; then
     start_remote_job "${RUN_ID}"

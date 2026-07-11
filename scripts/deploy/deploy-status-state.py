@@ -16,7 +16,11 @@ def load(path):
         data = json.loads(Path(path).read_text(encoding='utf-8'))
     except (FileNotFoundError, json.JSONDecodeError):
         data = {}
-    return {'version': 2, 'kioskByClient': dict(data.get('kioskByClient') or {})}
+    data['version'] = 2
+    data['kioskByClient'] = dict(data.get('kioskByClient') or {})
+    if 'acknowledgements' in data:
+        data['acknowledgements'] = dict(data.get('acknowledgements') or {})
+    return data
 
 
 def save(path, data):
@@ -70,6 +74,12 @@ def main():
                 entry.update({'maintenance': True, 'phase': args.phase, 'updatedAt': timestamp})
     else:
         data['kioskByClient'] = {key: value for key, value in entries.items() if value.get('runId') != args.run_id}
+        acknowledgements = dict(data.get('acknowledgements') or {})
+        acknowledgements.pop(args.run_id, None)
+        if acknowledgements:
+            data['acknowledgements'] = acknowledgements
+        else:
+            data.pop('acknowledgements', None)
     save(args.file, data)
 
 

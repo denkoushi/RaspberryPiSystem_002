@@ -72,7 +72,7 @@ export function useDeployStatus() {
   return useQuery({
     queryKey: ['deploy-status'],
     queryFn: getDeployStatus,
-    refetchInterval: POLL_MS.deployStatus, // メンテ状態を比較的早く反映しつつポーリング頻度は緩和
+    refetchInterval: (query) => query.state.data?.isMaintenance ? POLL_MS.deployStatusMaintenance : POLL_MS.deployStatus,
     staleTime: 0, // キャッシュを無効化して常に最新データを取得
     refetchOnWindowFocus: true
   });
