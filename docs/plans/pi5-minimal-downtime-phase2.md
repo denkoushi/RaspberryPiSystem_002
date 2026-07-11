@@ -28,6 +28,8 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
   Evidence: the first local dry run failed with `flock: command not found`; the command now uses an atomic lock directory fallback for development and tests.
 - Observation: memory inspection through `sysctl` is blocked in the managed macOS test sandbox.
   Evidence: `sysctl -n hw.memsize` returned `Operation not permitted`; dry-run now skips resource enforcement while real execution remains fail-closed.
+- Observation: standalone Caddy validation must reproduce the production certificate mount.
+  Evidence: the first Pi5 prepare-only run built both images successfully, then failed safely with `open /srv/certs/cert.pem: no such file or directory`; production API and Web were not replaced.
 
 ## Decision Log
 
@@ -92,4 +94,4 @@ Phase 1.5 production evidence showed all selected Pi4 clients acknowledged maint
 
 The public operator interface is `scripts/deploy/pi5-image-deploy.sh <prepare|switch|rollback|status|cleanup>`. It uses Docker Engine, Docker Compose v2, `curl`, `python3`, and existing repository Dockerfiles. Image names default to `raspi-system-api:<sha>` and `raspi-system-web:<sha>`. Runtime state defaults to `/opt/RaspberryPiSystem_002/logs/deploy/pi5-image-deploy-state.json` and can be redirected in tests with `PI5_DEPLOY_STATE_FILE`.
 
-Revision note (2026-07-11): Initial plan created after inspecting the merged phase-1.5 main branch. The standalone opt-in lifecycle was chosen to preserve the existing production fallback during rollout. The migration guard was narrowed to the release delta after static validation found destructive SQL in historical, already-applied migrations. Local dry-run validation added a portable process-lock fallback and skipped host resource enforcement only in dry-run. The Ansible role now selects the lifecycle only through an explicit default-off variable.
+Revision note (2026-07-11): Initial plan created after inspecting the merged phase-1.5 main branch. The standalone opt-in lifecycle was chosen to preserve the existing production fallback during rollout. The migration guard was narrowed to the release delta after static validation found destructive SQL in historical, already-applied migrations. Local dry-run validation added a portable process-lock fallback and skipped host resource enforcement only in dry-run. The Ansible role now selects the lifecycle only through an explicit default-off variable. The first Pi5 prepare-only run proved fail-closed behavior and added the missing read-only certificate mount to standalone Caddy validation.

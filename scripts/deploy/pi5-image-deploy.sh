@@ -119,7 +119,9 @@ prepare() {
   run docker build -f "$PROJECT_DIR/infrastructure/docker/Dockerfile.api" -t "$api" "$PROJECT_DIR"
   run docker build -f "$PROJECT_DIR/infrastructure/docker/Dockerfile.web" -t "$web" "$PROJECT_DIR"
   run env PI5_API_IMAGE="$api" PI5_WEB_IMAGE="$web" docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" -f "$PHASE2_COMPOSE" config --quiet
-  run docker run --rm "$web" sh -ec 'envsubst < /srv/Caddyfile.local.template > /tmp/Caddyfile && caddy validate --config /tmp/Caddyfile'
+  run docker run --rm \
+    -v "$PROJECT_DIR/certs:/srv/certs:ro" \
+    "$web" sh -ec 'envsubst < /srv/Caddyfile.local.template > /tmp/Caddyfile && caddy validate --config /tmp/Caddyfile'
   if [[ "$DRY_RUN" != "1" ]]; then
     docker rm -f "$candidate_name" >/dev/null 2>&1 || true
     compose "$api" "$web" run -d --no-deps --name "$candidate_name" api >/dev/null
