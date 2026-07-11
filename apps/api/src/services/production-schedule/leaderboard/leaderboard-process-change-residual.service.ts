@@ -208,21 +208,11 @@ export async function fetchLeaderboardProcessChangeResidualSummary(
     params.leaderboardMaterializedBaseWhere
   );
 
-  const [totalBig, representativeSqlRows] = await Promise.all([
-    countResidualRowsByKeys({
-      baseWhere: leaderboardMaterializedBaseWhere,
-      queryWhere,
-      keyRows: residualKeyRows,
-    }),
-    queryResidualRepresentativeRows({
-      baseWhere: leaderboardMaterializedBaseWhere,
-      queryWhere,
-      locationKey: params.locationKey,
-      siteScopedGlobalRankLocation,
-      limit: representativeLimit,
-      keyRows: residualKeyRows,
-    }),
-  ]);
+  const totalBig = await countResidualRowsByKeys({
+    baseWhere: leaderboardMaterializedBaseWhere,
+    queryWhere,
+    keyRows: residualKeyRows,
+  });
   const processChangeResidualTotal = Number(totalBig);
 
   if (processChangeResidualTotal === 0) {
@@ -232,6 +222,15 @@ export async function fetchLeaderboardProcessChangeResidualSummary(
       processChangeResidualRepresentativeLimit: representativeLimit,
     };
   }
+
+  const representativeSqlRows = await queryResidualRepresentativeRows({
+    baseWhere: leaderboardMaterializedBaseWhere,
+    queryWhere,
+    locationKey: params.locationKey,
+    siteScopedGlobalRankLocation,
+    limit: representativeLimit,
+    keyRows: residualKeyRows,
+  });
 
   const processChangeResidualRows = representativeSqlRows.flatMap((sqlRow) => {
     const keys = readRowKeyFields(sqlRow.rowData);
