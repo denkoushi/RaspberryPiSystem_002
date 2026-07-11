@@ -17,11 +17,12 @@ export default defineConfig({
     include: ['src/**/*.{test,spec}.ts'],
     exclude: ['dist/**', 'node_modules/**'],
     coverage: {
-      provider: 'istanbul',
-      reporter: ['text', 'lcov'],
+      provider: 'v8',
+      reporter: ['text', 'lcov', 'json'],
       exclude: ['dist/**', 'src/types/**']
     },
-    // CI環境での詳細なログ出力
-    reporters: process.env.CI ? ['verbose'] : ['default']
+    // CI では全テスト名を列挙せず、失敗と遅いテストを中心に表示する。
+    reporters: ['default'],
+    slowTestThreshold: 1000
   }
 });
