@@ -10,6 +10,15 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-11 · **端末別ローリングデプロイ Milestone 1** · **Pi4全5台反映**） {#per-kiosk-rolling-deploy-milestone1-2026-07-11}
+
+- **標準入口**: 必ず `scripts/update-all-clients.sh` を使用する。AI・人ともに `ansible-playbook` やSSHで直接更新しない。
+- **標準順序**: `--limit <Pi4 1台>` でカナリア更新し、成功確認後も残りを1台ずつ直列更新する。
+- **安全制御**: 差分を server / kiosk / signage / migration に分類し、Pi5必須差分のPi4単独更新を拒否する。互換性を確認済みの場合だけ `--client-only-compatible` を明示する。
+- **メンテナンス状態**: runId単位で原子的に追加・解除し、他runの状態を削除しない。状態を書けなければデプロイを開始しない。失敗runは `failed` として保持する。
+- **本番実績**: PR [#971](https://github.com/denkoushi/RaspberryPiSystem_002/pull/971) · HEAD **`d29d96d8`**。カナリア中にroot所有の空状態ファイルを検出して停止し、所有者保持＋fail-closedへ修正後にCI全成功。Pi4全5台 `failed=0 / unreachable=0`、`kiosk-browser.service` / `status-agent.timer` active、`deploy-status.json` は `kioskByClient: {}`。
+- **正本**: [Milestone 1 ExecPlan](../plans/minimal-downtime-deployment-milestone1.md)。次段階はメンテナンス表示ACKを導入するMilestone 1.5。
+
 ### 補足（2026-07-11 · **自主検査 CONFIRMED 降格防止 + 下書き仕掛中** · **API + Web** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#self-inspection-confirm-guard-wip-draft-2026-07-11}
 
 - **変更概要（正本）**: [Plan](../plans/self-inspection-confirm-guard-wip-draft.md) · [ADR](../decisions/ADR-20260710-self-inspection-draft-confirmed.md) · [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-confirm-guard-wip-draft-2026-07-11) · ブランチ **`fix/self-inspection-confirm-guard-wip-draft`** · HEAD **`b52931bd`** · PR [#970](https://github.com/denkoushi/RaspberryPiSystem_002/pull/970)。CONFIRMED への draft upsert は no-op、autosave は confirmed を送らない、DRAFT のみでも仕掛中 `in_progress`（件数は CONFIRMED のみ）。**DB/migration 変更なし**。
