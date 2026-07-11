@@ -1,6 +1,6 @@
 ---
 id: kiosk-leaderboard-first-display-performance-202607
-status: active
+status: completed
 scope: kiosk leader order board first fresh-row display latency
 date: 2026-07-11
 source_of_truth: true
@@ -15,10 +15,8 @@ related_docs:
   - docs/knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md
   - docs/plans/leaderboard-defer-totals-performance-recovery.md
   - docs/decisions/ADR-20260706-kiosk-display-performance-optimizations.md
-validation: deferred residual summary passed Pi5 and one-Pi4 canary deployment
-open_items:
-  - Confirm the first display and operations on the physical kensakuMain screen.
-  - Obtain explicit approval before deploying to the remaining Pi4 kiosks.
+validation: deferred residual summary passed Pi5 and all five physical Pi4 technical checks
+open_items: []
 ---
 
 # Improve kiosk leaderboard first fresh-row display in small verified steps
@@ -55,7 +53,11 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
 - [x] (2026-07-11 12:35+09:00) Restored `LEADERBOARD_BOARD_PERF_LOG=false`, retained both feature flags ON on Pi5 only, and confirmed API healthy. Pi4 deployment remains stopped at the explicit approval gate.
 - [x] (2026-07-11 12:39+09:00) With explicit approval to waive the optional 24-hour observation period after the user confirmed the Pi5 physical display was clearly faster, deployed only inventory canary `raspberrypi4` (kensakuMain). Run `20260711-123428-30768` exited 0 with `failed=0`, `unreachable=0`.
 - [x] (2026-07-11 12:40+09:00) Confirmed the Pi4 runtime at `20f42e41`, kiosk browser and status timer active, Pi5 Web HTTP 200, and a Pi4-origin six-slot deferred shell HTTP 200 in 2.199 seconds with 300 rows and `residualSummaryDeferred=true`.
-- [ ] Confirm the physical kensakuMain screen and ranking operations before requesting approval for the remaining Pi4 kiosks.
+- [x] (2026-07-11 12:47+09:00) Deployed only `raspi4-robodrill01`; run `20260711-124323-26869` exited 0 with `failed=0`. Physical-Pi request for its six resources returned HTTP 200 in 2.322 seconds with deferred summary active.
+- [x] (2026-07-11 12:52+09:00) Deployed only `raspi4-fjv60-80`; run `20260711-124750-4804` exited 0 with `failed=0`. Physical-Pi request for its six resources returned HTTP 200 in 1.736 seconds with deferred summary active.
+- [x] (2026-07-11 12:57+09:00) Deployed only `raspi4-kensaku-stonebase01`; run `20260711-125228-9004` exited 0 with `failed=0`. Physical-Pi request for its eight resources returned HTTP 200 in 2.062 seconds with deferred summary active.
+- [x] (2026-07-11 13:02+09:00) Deployed only `raspi4-sessaku-01`; run `20260711-125729-24108` exited 0 with `failed=0`. Physical-Pi request returned HTTP 200 in 2.661 seconds with deferred summary active.
+- [x] (2026-07-11 13:03+09:00) Rechecked all five Pi4 hosts: kiosk browser and status timer active. Pi5 API remained healthy, Web remained up, both feature flags remained ON, performance logging remained OFF, and the last 30 minutes contained zero leaderboard errors or snapshot-expiry events.
 
 ## Surprises & Discoveries
 
