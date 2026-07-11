@@ -5,9 +5,10 @@
 正本: [KB-320 §NFCゲート](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-nfcゲート-下書き自動保存-2026-07-10) · [ADR](../decisions/ADR-20260710-self-inspection-draft-confirmed.md)
 
 1. セッション開始後、**氏名NFCタグをスキャン**するまで測定値・入力件はロック。
-2. 測定・選択のたびに **下書きが自動保存**される（失敗時は「未同期」表示）。
+2. 測定・選択のたびに **下書きが自動保存**される（失敗時は「未同期」表示）。**確定済み入力件は自動保存しない**（変更は「入力を保存」）。
 3. **入力を保存**で当該入力件を確定（全測定点必須・登録必須は従来どおり）。
 4. 全 required 件が確定したら完了 / 検査記録確認へ進む（DRAFT のみでは完了不可）。
+5. 仕掛中一覧は **下書きだけのセッションも表示**する。進捗件数は確定（CONFIRMED）のみ。降格事故の詳細は [KB-320 §confirm-guard](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-confirm-guard-wip-draft-2026-07-11) · [Plan](../plans/self-inspection-confirm-guard-wip-draft.md)。
 
 ## 検査図面 指差し（任意 · 2026-07-10）
 

@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 計画（2026-07-11 · 自主検査 confirm guard / 下書き仕掛中 · 本番反映済）
+
+- **CONFIRMED 降格防止 + 下書きも仕掛中表示**: [Plan](./plans/self-inspection-confirm-guard-wip-draft.md) · [ADR](./decisions/ADR-20260710-self-inspection-draft-confirmed.md) · [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-confirm-guard-wip-draft-2026-07-11) · [deployment](./guides/deployment.md#self-inspection-confirm-guard-wip-draft-2026-07-11)
+
 ### 計画（2026-07-10 · 自主検査自動保存 / 指差し / テンプレ新規制限 · 実装済・未デプロイ）
 
 - **自主検査 NFCゲート+下書き自動保存+確定 / 検査図面指差し+密度 / 同一キー新規UI封鎖**: フェーズ実装済（stacked branch）。**正本**: [Plan](./plans/self-inspection-autosave-callout-template-lock.md) · [ADR callout](./decisions/ADR-20260710-inspection-drawing-callout-tip.md) · [ADR draft](./decisions/ADR-20260710-self-inspection-draft-confirmed.md) · [Preview 指差し](./design-previews/kiosk-inspection-drawing-callout-pointer-preview.html) · [Preview 概要](./design-previews/kiosk-self-inspection-autosave-callout-preview.html) · [KB-320 指差し](./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-指差し-密度-新規封鎖-2026-07-10) · [KB-320 自動保存](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-nfcゲート-下書き自動保存-2026-07-10)

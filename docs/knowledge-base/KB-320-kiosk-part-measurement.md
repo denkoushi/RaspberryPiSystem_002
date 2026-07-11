@@ -920,9 +920,19 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 
 - **正本**: [Plan](../plans/self-inspection-autosave-callout-template-lock.md) · [ADR draft/confirmed](../decisions/ADR-20260710-self-inspection-draft-confirmed.md) · [Preview](../design-previews/kiosk-self-inspection-autosave-callout-preview.html)
 - **データ**: `SelfInspectionLotEntry.persistenceStatus` = `DRAFT` | `CONFIRMED`（既存 backfill CONFIRMED）。
-- **API**: `POST .../entries/draft`（部分値可）。既存 create/update は CONFIRMED（全点必須）。完了・WIP・記録承認は CONFIRMED のみ。
+- **API**: `POST .../entries/draft`（部分値可）。既存 create/update は CONFIRMED（全点必須）。完了・進捗件数・記録承認は CONFIRMED のみ。
 - **UI**: 氏名NFCまで測定ロック。debounce 下書き自動保存。「入力を保存」=確定。
 - **検証**: API/Web unit · 一時 Postgres migrate + EXPLAIN（persistenceStatus index）。本番は同ブランチで Pi5 + Pi4×5 反映済み（[deployment](../guides/deployment.md#self-inspection-autosave-callout-template-lock-2026-07-10) · 後続 fix [deployment](../guides/deployment.md#inspection-drawing-callout-dirty-zoom-dates-2026-07-10)）。
+
+#### 2026-07-11 自主検査 CONFIRMED 降格防止 + 下書き仕掛中表示 {#自主検査-confirm-guard-wip-draft-2026-07-11}
+
+- **正本**: [Plan](../plans/self-inspection-confirm-guard-wip-draft.md) · [ADR amendment](../decisions/ADR-20260710-self-inspection-draft-confirmed.md)
+- **症状**: 再開後に仕掛中から消える。記録承認は `入力 0/N・入力途中`。測定値は残るが `DRAFT`。
+- **原因**: draft upsert が CONFIRMED を DRAFT に戻していた。仕掛中は CONFIRMED≥1 のみ表示。
+- **修正**: CONFIRMED への draft は no-op。autosave は confirmed を送らない。entry があれば仕掛中 `in_progress`（件数は CONFIRMED のみ）。
+- **復旧**: 本番自動 UPDATE なし。仕掛中に再表示後「入力を保存」で再確定。
+- **検証**: unit + 一時 Postgres integration + EXPLAIN（`SelfInspectionLotEntry_idx_session_persistence`）。
+- **本番**: Pi5 + Pi4×5 · HEAD **`b52931bd`** · Phase12 **PASS 45** · [deployment](../guides/deployment.md#self-inspection-confirm-guard-wip-draft-2026-07-11) · PR [#970](https://github.com/denkoushi/RaspberryPiSystem_002/pull/970)。
 
 #### 先行デプロイ（2026-06-03）
 

@@ -80,13 +80,16 @@ export function applySelfInspectionEntrySaveToSessionCache(
     pendingReviewCount,
     focusedEntry
   };
+  const hasAnyLotEntry = entries.length > 0;
   const status = previous.completedAt
     ? 'completed'
-    : completedEntryCount <= 0
+    : !hasAnyLotEntry
       ? 'not_started'
-      : pendingReviewCount > 0 && areRequiredSelfInspectionSlotsFilled(nextSessionForStatus)
+      : completedEntryCount > 0 &&
+          pendingReviewCount > 0 &&
+          areRequiredSelfInspectionSlotsFilled(nextSessionForStatus)
         ? 'review_pending'
-      : 'in_progress';
+        : 'in_progress';
 
   return {
     ...previous,

@@ -94,6 +94,7 @@ import {
   SELF_INSPECTION_ENTRY_PERSISTENCE_CONFIRMED,
   SELF_INSPECTION_ENTRY_PERSISTENCE_DRAFT
 } from './self-inspection/entry-persistence-status.js';
+import { resolveDraftUpsertExistingDecision } from './self-inspection/entry-draft-upsert-guard.js';
 import {
   buildRegistrationBackfillData,
   entryRegistrationFromRow,
@@ -702,6 +703,7 @@ export class SelfInspectionService {
       selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
       status: resolveStatus({
         completedEntryCount,
+        hasAnyLotEntry: session.entries.length > 0,
         completedAt: session.completedAt,
         pendingReviewCount,
         entryIndices: confirmedEntryIndices,
@@ -849,6 +851,7 @@ export class SelfInspectionService {
       selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
       status: resolveStatus({
         completedEntryCount,
+        hasAnyLotEntry: session.entries.length > 0,
         completedAt: session.completedAt,
         pendingReviewCount,
         entryIndices: confirmedEntryIndices,
@@ -1230,6 +1233,10 @@ export class SelfInspectionService {
         return serializeLotEntry(entry);
       }
 
+      if (resolveDraftUpsertExistingDecision(existingEntry.persistenceStatus) === 'noop_keep_confirmed') {
+        return serializeLotEntry(existingEntry);
+      }
+
       if (input.ifUnmodifiedSince) {
         assertEntryUnmodifiedSince(input.ifUnmodifiedSince, existingEntry.updatedAt);
       }
@@ -1524,6 +1531,7 @@ export class SelfInspectionService {
             selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
             status: resolveStatus({
               completedEntryCount,
+              hasAnyLotEntry: group.session.entries.length > 0 || completedEntryCount > 0,
               completedAt: group.session.completedAt,
               pendingReviewCount,
               entryIndices: group.session.entries.map((entry) => entry.entryIndex),

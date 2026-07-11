@@ -83,10 +83,23 @@ jobs:
       - name: Build Web
         run: pnpm --filter @raspi-system/web build
 
-  # API + PostgreSQL + 統合テスト + 運用スクリプト（インフラ寄り）
+  # API + PostgreSQL + 統合テスト + 運用スクリプト（開始直後から並列実行）
   api-db-and-infra:
+    name: api-db-and-infra (${{ matrix.shard }})
     runs-on: ubuntu-latest
-    needs: lint-build-unit
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: 1/3
+            shard-id: 1-of-3
+            run-infra: true
+          - shard: 2/3
+            shard-id: 2-of-3
+            run-infra: false
+          - shard: 3/3
+            shard-id: 3-of-3
+            run-infra: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -106,6 +119,9 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Build API
+        # The production build remains a required gate in lint-build-unit. Only the
+        # shard that starts the production server needs to repeat it here.
+        if: matrix.run-infra
         run: pnpm --filter @raspi-system/api build
 
       - name: Start PostgreSQL
@@ -137,7 +153,7 @@ jobs:
           cd apps/api
           docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT 1;"
           BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) \
-            pnpm test:coverage -- --reporter=verbose
+            pnpm test:coverage -- --shard=${{ matrix.shard }} --fileParallelism=true --maxWorkers=1
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           JWT_ACCESS_SECRET: test-access-secret-1234567890
@@ -152,11 +168,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: api-coverage
+          name: api-coverage-${{ matrix.shard-id }}
           path: apps/api/coverage/
           retention-days: 7
 
       - name: Start API server for monitoring tests
+        if: matrix.run-infra
         run: |
           cd apps/api
           NODE_ENV=production pnpm start > /tmp/api-server.log 2>&1 &
@@ -186,11 +203,13 @@ jobs:
           HOST: 0.0.0.0
 
       - name: Test backup/restore scripts
+        if: matrix.run-infra
         run: |
           docker ps | grep postgres-test
           bash scripts/test/backup-restore.test.sh
 
       - name: Install Ansible
+        if: matrix.run-infra
         run: |
           set -euo pipefail
           python3 -m pip install --user ansible-core
@@ -198,12 +217,14 @@ jobs:
           command -v ansible-playbook
 
       - name: Cache Ansible collections
+        if: matrix.run-infra
         uses: actions/cache@v5
         with:
           path: ~/.ansible/collections
           key: ansible-collections-${{ runner.os }}-community-general-v1
 
       - name: Ansible syntax check
+        if: matrix.run-infra
         run: |
           set -euo pipefail
           cd infrastructure/ansible
@@ -242,6 +263,7 @@ jobs:
           fi
 
       - name: Ansible dry-run check (deploy playbook only)
+        if: matrix.run-infra
         run: |
           set -euo pipefail
           cd infrastructure/ansible
@@ -261,6 +283,7 @@ jobs:
           fi
 
       - name: Test monitoring scripts
+        if: matrix.run-infra
         run: |
           API_URL=http://localhost:8080/api pnpm test:monitor || {
             cat /tmp/api-server.log || true
@@ -282,15 +305,26 @@ jobs:
         if: always()
         run: docker stop postgres-test && docker rm postgres-test || true
 
-  # セキュリティスキャンと Docker イメージビルド（lint 通過後、API ジョブと並列可能）
+  # セキュリティスキャンと Docker イメージビルド（開始直後から並列実行）
   security-docker:
+    name: security-docker (${{ matrix.image }})
     runs-on: ubuntu-latest
-    needs: lint-build-unit
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            dockerfile: ./infrastructure/docker/Dockerfile.api
+            tag: raspisys-api:ci
+          - image: web
+            dockerfile: ./infrastructure/docker/Dockerfile.web
+            tag: raspisys-web:ci
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
       - name: Security scan (Trivy fs)
+        if: matrix.image == 'api'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: 'fs'
@@ -305,44 +339,22 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build API image (Buildx) and load
+      - name: Build ${{ matrix.image }} image (Buildx) and load
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./infrastructure/docker/Dockerfile.api
+          file: ${{ matrix.dockerfile }}
           push: false
           load: true
-          tags: raspisys-api:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ matrix.tag }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
-      - name: Build Web image (Buildx) and load
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./infrastructure/docker/Dockerfile.web
-          push: false
-          load: true
-          tags: raspisys-web:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Security scan (Trivy image api)
+      - name: Security scan (Trivy image ${{ matrix.image }})
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: 'image'
-          image-ref: 'raspisys-api:ci'
-          ignore-unfixed: true
-          severity: 'HIGH,CRITICAL'
-          exit-code: '1'
-          scanners: 'vuln'
-          trivyignores: '.trivyignore'
-
-      - name: Security scan (Trivy image web)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
-        with:
-          scan-type: 'image'
-          image-ref: 'raspisys-web:ci'
+          image-ref: ${{ matrix.tag }}
           ignore-unfixed: true
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
@@ -351,7 +363,6 @@ jobs:
 
   e2e-smoke:
     runs-on: ubuntu-latest
-    needs: lint-build-unit
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -416,7 +427,6 @@ jobs:
 
   e2e-tests:
     runs-on: ubuntu-latest
-    needs: [e2e-smoke, api-db-and-infra]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -439,12 +449,6 @@ jobs:
         run: pnpm --filter @raspi-system/api exec prisma generate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-
-      - name: Build API
-        run: pnpm --filter @raspi-system/api build
-
-      - name: Build Web
-        run: pnpm --filter @raspi-system/web build
 
       - name: Start PostgreSQL
         run: |
@@ -506,4 +510,3 @@ jobs:
         run: |
           docker stop postgres-e2e || true
           docker rm postgres-e2e || true
-

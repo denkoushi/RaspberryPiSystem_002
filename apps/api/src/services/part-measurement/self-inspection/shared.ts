@@ -307,6 +307,8 @@ export function buildInspectorMeasurementCompletion(input: {
 export function resolveStatus(input: {
   completedEntryCount: number;
   completedAt: Date | null;
+  /** DRAFT|CONFIRMED いずれかの lot entry が1件以上あるか（仕掛中一覧表示用） */
+  hasAnyLotEntry?: boolean;
   pendingReviewCount?: number;
   entryIndices?: number[];
   completionPolicy?: SessionForEntryCountPolicy;
@@ -314,13 +316,14 @@ export function resolveStatus(input: {
   const {
     completedEntryCount,
     completedAt,
+    hasAnyLotEntry = completedEntryCount > 0,
     pendingReviewCount = 0,
     entryIndices,
     completionPolicy
   } = input;
   if (completedAt) return 'completed';
-  if (completedEntryCount <= 0) return 'not_started';
-  if (pendingReviewCount > 0 && entryIndices && completionPolicy) {
+  if (!hasAnyLotEntry) return 'not_started';
+  if (completedEntryCount > 0 && pendingReviewCount > 0 && entryIndices && completionPolicy) {
     const templateConfig = templateConfigFromTemplate(completionPolicy.template);
     if (isSessionCompletionReady(templateConfig, completionPolicy.plannedQuantity, entryIndices)) {
       return 'review_pending';

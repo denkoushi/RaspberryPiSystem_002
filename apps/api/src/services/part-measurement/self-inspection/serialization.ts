@@ -20,6 +20,7 @@ import {
   confirmedEntriesCountSelect,
   confirmedWhere,
   isConfirmed,
+  SELF_INSPECTION_ENTRY_PERSISTENCE_CONFIRMED,
   serializePersistenceStatus
 } from './entry-persistence-status.js';
 import {
@@ -46,9 +47,9 @@ export const listSessionsSummaryInclude = {
     }
   },
   entries: {
-    where: confirmedWhere,
     select: {
-      entryIndex: true
+      entryIndex: true,
+      persistenceStatus: true
     }
   },
   inspectorEntries: {
@@ -270,11 +271,24 @@ export function serializeSessionSummary(
 ) {
   const policy = sessionForEntryCountPolicy(session);
   const completedEntryCount = session._count.entries;
+  const lotEntries = 'entries' in session ? session.entries : [];
+  const hasAnyLotEntry = lotEntries.length > 0 || completedEntryCount > 0;
+  const confirmedEntryIndices = lotEntries
+    .filter((entry) =>
+      'persistenceStatus' in entry
+        ? isConfirmed(
+            (entry as { persistenceStatus?: string | null }).persistenceStatus ??
+              SELF_INSPECTION_ENTRY_PERSISTENCE_CONFIRMED
+          )
+        : true
+    )
+    .map((entry) => entry.entryIndex);
   const status = resolveStatus({
     completedEntryCount,
+    hasAnyLotEntry,
     completedAt: session.completedAt,
     pendingReviewCount,
-    entryIndices: 'entries' in session ? session.entries.map((entry) => entry.entryIndex) : undefined,
+    entryIndices: confirmedEntryIndices,
     completionPolicy: policy
   });
   const templateConfig = templateConfigFromTemplate(session.template);
