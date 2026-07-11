@@ -15,11 +15,10 @@ related_docs:
   - docs/knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md
   - docs/plans/leaderboard-defer-totals-performance-recovery.md
   - docs/decisions/ADR-20260706-kiosk-display-performance-optimizations.md
-validation: local baseline complete; production-like Pi5 measurement awaiting approval
+validation: deferred residual summary passed Pi5 API canary; Pi4 browser rollout awaiting approval
 open_items:
-  - Capture the current six-slot Pi5 API and Pi4 browser baseline after explicit approval.
-  - Identify the single largest production wall-clock contributor before changing behavior.
-  - Obtain explicit approval before any Pi measurement, runtime setting change, or deploy.
+  - Observe the Pi5 API canary for 24 hours.
+  - Obtain explicit approval before deploying the Web change to one Pi4 kiosk.
 ---
 
 # Improve kiosk leaderboard first fresh-row display in small verified steps
@@ -48,11 +47,13 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
 - [x] (2026-07-11 11:20+09:00) Compared the next candidates read-only. Selected the raw-mail portion of `generationTokenInitial` for index-shape validation; resource `584` remains on the previously proven resource-first correlated path.
 - [x] (2026-07-11 11:30+09:00) Tested the covering-index candidate using Pi5 session-local temporary tables; PostgreSQL did not select the index, so no migration is justified.
 - [x] (2026-07-11 11:31+09:00) Tested the exact production aggregate in a read-only transaction with session-local JIT disabled; execution fell from about 1.55 to 1.04 seconds without changing SQL or result semantics.
-- [ ] Implement a request-local JIT-off boundary for only the raw-mail revision aggregate, then run focused tests and local before/after benchmarks before requesting another Pi5 canary.
-- [ ] Implement one minimal optimization with focused regression tests.
-- [ ] Repeat the identical benchmark and apply the retain/reject gate.
-- [ ] Run focused and broader API/Web verification for a retained change.
-- [ ] Stop before Pi access or deployment and request explicit approval with local evidence.
+- [x] (2026-07-11 11:35+09:00) Chose a larger critical-path change: defer only the process-change residual summary to the existing snapshot-validated continue request, behind API/Web flags that default OFF.
+- [x] (2026-07-11 12:16+09:00) Completed focused API/Web tests, lint, builds, local row/summary equivalence, deployment wiring, and pushed isolated commits through `30c5dbcc`.
+- [x] (2026-07-11 12:23+09:00) Deployed runtime `30c5dbcc` to Pi5 with both flags OFF; deploy run `20260711-121643-28507` exited 0 and API/Web were healthy.
+- [x] (2026-07-11 12:29+09:00) Enabled both flags on Pi5 only and measured the production six-slot API. Warm initial-shell median fell from 4,124 ms to 2,298 ms (44.3 percent); the deep-cold pair fell from 25,445 ms to 2,014 ms.
+- [x] (2026-07-11 12:31+09:00) Mechanically confirmed identical 300 ordered shell row IDs, resource order, and final residual summary (4 identical IDs, limit 20); summary continue returned 200 without snapshot expiry.
+- [x] (2026-07-11 12:35+09:00) Restored `LEADERBOARD_BOARD_PERF_LOG=false`, retained both feature flags ON on Pi5 only, and confirmed API healthy. Pi4 deployment remains stopped at the explicit approval gate.
+- [ ] Observe the Pi5 canary for 24 hours, then request approval for one Pi4 kiosk.
 
 ## Surprises & Discoveries
 
@@ -92,6 +93,12 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
   Evidence: read-only Pi5 `EXPLAIN (ANALYZE, BUFFERS)` followed by `ROLLBACK`.
 - Observation: the 28-second post-deploy cold request overlapped normal kiosk polling and signage rendering, but the surrounding non-leaderboard HTTP requests remained mostly below 145 ms. The request burst therefore does not explain the leaderboard-only 28-second delay. That sample followed a long Docker build and represents a deep DB/OS-cache-cold condition; steady requests returned to about 3–4 seconds.
   Evidence: request-id correlation for the 70-second window around `req-35`; 45 deploy-status, 12 pallet-board, and other kiosk requests completed quickly while leaderboard took 27.95 seconds.
+- Observation: deferring only the residual summary removed the measured dominant phase from first display without changing normal row membership. Five paired Pi5 samples were atomic 25,445/5,483/4,124/3,863/3,906 ms and deferred 2,014/2,600/1,914/1,981/2,298 ms. Excluding the explicitly identified deep-cold first pair, the warm median improved 44.3 percent; including all five, the median improved 52.2 percent.
+  Evidence: direct HTTPS requests on Pi5 runtime `30c5dbcc`, six slots `581,305,589,584,588,586`, page size 50, incomplete-only, no labor, no decorations, deferred totals.
+- Observation: a summary-only continue took 3,346 ms in the equivalence check, but it ran after the 300 fresh rows were already returned. It produced the same residual total 4, the same four ordered IDs, and limit 20, with no snapshot expiry.
+  Evidence: atomic/deferred response fingerprint comparison followed by `leaderboard-board/continue` with `includeResidualSummary=true`.
+- Observation: the two post-restart log lines matched by the broad error scan were one existing OCR missing-file warning and an `errors:0` informational field; no leaderboard or request failure was observed.
+  Evidence: Pi5 API logs after restoring performance logging OFF.
 
 ## Decision Log
 
