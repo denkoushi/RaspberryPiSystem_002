@@ -14,7 +14,7 @@ open_items: [Pi5 gateway bootstrap, five-minute monitor and rollback acceptance,
 
 ## Scope and safety
 
-This runbook is for the opt-in Phase 3 path. Two API/Web pairs run on the Pi5, but only the fixed `gateway` container publishes ports 80 and 443. The existing Phase 2 command remains the fallback. A single Pi5 does not provide redundancy for a gateway or host failure.
+This runbook is for the opt-in Phase 3 path. Two API/Web pairs run on the Pi5, but only the fixed `gateway` container publishes ports 80 and 443. The existing Phase 2 command remains the fallback. A single Pi5 does not provide redundancy for a gateway or host failure. API slots use a shared scheduler lease on `/app/alerts/.pi5-scheduler-leader`, so only one slot runs process-local background jobs at a time.
 
 The first bootstrap is a controlled cutover because the current `docker-web-1` container owns ports 80 and 443. The Blue/Green command never stops that service automatically. Stop or otherwise release the old listener only during an approved maintenance window, then retry the gateway start if it reports a port conflict.
 
@@ -28,9 +28,9 @@ Confirm CI is green, the candidate API and Web images are immutable SHA tags, th
 
 Build and validate the candidate with the Phase 2 command first. Then, during the approved gateway cutover window, from `/opt/RaspberryPiSystem_002` run:
 
-    scripts/deploy/pi5-blue-green.sh bootstrap --confirm-bootstrap --api-image <api-image> --web-image <web-image>
+    scripts/deploy/pi5-blue-green.sh bootstrap --confirm-bootstrap --allow-legacy-scheduler-handoff --api-image <api-image> --web-image <web-image>
 
-The command starts `api-blue` and `web-blue`, validates their API/Caddy health, renders the gateway for Blue, and starts `gateway`. It does not stop the old Web service. Confirm external read-only requests to `/api/system/health` and `/` before treating Blue as active.
+The command stops the legacy API only when the explicit scheduler-handoff flag is supplied, then starts `api-blue` and `web-blue`, validates their API/Caddy health, renders the gateway for Blue, and starts `gateway`. It does not stop the old Web service. Confirm external read-only requests to `/api/system/health` and `/` before treating Blue as active. The shared scheduler lease ensures only one API slot runs background jobs; the first handoff therefore requires the approved maintenance window.
 
 ## Prepare and switch
 

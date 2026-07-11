@@ -1,9 +1,7 @@
 import { buildServer } from './app.js';
 import { logger } from './lib/logger.js';
 import { env } from './config/env.js';
-import { getKioskDocumentGmailScheduler } from './services/kiosk-documents/kiosk-document-gmail.scheduler.js';
-import { getPhotoToolLabelScheduler } from './services/tools/photo-tool-label/photo-tool-label.scheduler.js';
-import { startPostListenSchedulers } from './bootstrap/start-post-listen-schedulers.js';
+import { startSchedulerRuntime } from './bootstrap/scheduler-leader.js';
 import { isCandidateValidationMode } from './bootstrap/candidate-validation.js';
 
 if (process.env['NODE_ENV'] !== 'test') {
@@ -12,8 +10,8 @@ if (process.env['NODE_ENV'] !== 'test') {
       await app.listen({ port: env.PORT, host: env.HOST });
       logger.info({ address: `http://${env.HOST}:${env.PORT}` }, 'API server listening');
 
-      const handles = isCandidateValidationMode() ? null : await startPostListenSchedulers(app);
-      if (handles === null) {
+      const schedulerRuntime = isCandidateValidationMode() ? null : await startSchedulerRuntime(app);
+      if (schedulerRuntime === null) {
         logger.info('Candidate validation mode: background schedulers are disabled');
       }
 
@@ -21,17 +19,7 @@ if (process.env['NODE_ENV'] !== 'test') {
       const shutdown = async (signal: string) => {
         try {
           logger.info({ signal }, 'Shutting down API server');
-          if (handles !== null) {
-            await handles.alertsIngestor.stop();
-            await handles.alertsDbDispatcher.stop();
-            await handles.alertsDispatcher.stop();
-            getKioskDocumentGmailScheduler().stop();
-            handles.kioskDocOcrScheduler.stop();
-            handles.gmailTrashCleanupScheduler.stop();
-            handles.dueManagementTuningOrchestrator.stop();
-            handles.partMeasurementDrawingOcrScheduler.stop();
-            getPhotoToolLabelScheduler().stop();
-          }
+          if (schedulerRuntime !== null) await schedulerRuntime.stop();
           await app.close();
         } catch (err) {
           logger.warn({ err, signal }, 'Failed during shutdown');

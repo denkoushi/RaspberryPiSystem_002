@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 PROJECT_DIR="${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}"
+BASE_COMPOSE="${PI5_BASE_COMPOSE:-${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml}"
 PHASE3_COMPOSE="${PI5_PHASE3_COMPOSE:-${PROJECT_DIR}/infrastructure/docker/docker-compose.phase3.yml}"
 ENV_FILE="${PI5_ENV_FILE:-${PROJECT_DIR}/infrastructure/docker/.env}"
 PHASE2_STATE_FILE="${PI5_PHASE2_STATE_FILE:-${PROJECT_DIR}/logs/deploy/pi5-image-deploy-state.json}"
@@ -25,6 +26,7 @@ MONITOR_INTERVAL="${PI5_BLUE_GREEN_MONITOR_INTERVAL:-2}"
 DRY_RUN="${PI5_BLUE_GREEN_DRY_RUN:-0}"
 HTTP_ONLY="${PI5_BLUE_GREEN_HTTP_ONLY:-0}"
 CONFIRM_BOOTSTRAP=0
+ALLOW_LEGACY_HANDOFF=0
 API_IMAGE=""
 WEB_IMAGE=""
 ROLLBACK_REASON=""
@@ -36,6 +38,7 @@ usage() {
 Usage: pi5-blue-green.sh <status|bootstrap|prepare|switch|rollback|cleanup> [options]
   --api-image IMAGE --web-image IMAGE  candidate images (or Phase 2 candidate state)
   --confirm-bootstrap                  required for the first gateway cutover
+  --allow-legacy-scheduler-handoff     stop the legacy API before first slot startup
   --dry-run                            validate state/config without running Docker
   --reason TEXT                        rollback reason
 EOF
@@ -49,6 +52,7 @@ while (($#)); do
     --api-image) API_IMAGE="${2:-}"; shift 2 ;;
     --web-image) WEB_IMAGE="${2:-}"; shift 2 ;;
     --confirm-bootstrap) CONFIRM_BOOTSTRAP=1; shift ;;
+    --allow-legacy-scheduler-handoff) ALLOW_LEGACY_HANDOFF=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --reason) ROLLBACK_REASON="${2:-}"; shift 2 ;;
     *) die "unknown argument: $1" ;;
@@ -221,7 +225,22 @@ slot_up() {
 bootstrap() {
   ((CONFIRM_BOOTSTRAP == 1)) || die "first bootstrap requires --confirm-bootstrap"
   [[ ! -f "$STATE_FILE" ]] || die "Blue/Green state already exists"
-  resolve_images; resource_guard; render_gateway blue
+  resolve_images; resource_guard
+  if [[ "$DRY_RUN" != 1 ]]; then
+    local legacy_api cid environment
+    cid="$(docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" ps -q api 2>/dev/null || true)"
+    if [[ -n "$cid" ]]; then
+      environment="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$cid")"
+      legacy_api=1
+      grep -q '^PI5_SCHEDULER_LEADER_ENABLED=1$' <<<"$environment" && legacy_api=0
+      if ((legacy_api == 1)); then
+        ((ALLOW_LEGACY_HANDOFF == 1)) || die "legacy API scheduler is active; rerun with --allow-legacy-scheduler-handoff during the approved bootstrap window"
+        log "stopping legacy API before starting the scheduler-leader slot"
+        docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" stop api
+      fi
+    fi
+  fi
+  render_gateway blue
   slot_up blue "$API_IMAGE" "" "$WEB_IMAGE" "" "$WEB_IMAGE"
   compose "$API_IMAGE" "" "$WEB_IMAGE" "" "$WEB_IMAGE" up -d gateway
   gateway_reload

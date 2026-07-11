@@ -72,6 +72,10 @@ services:
       SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}
       # WebRTC機能の有効/無効（trueで有効化）
       WEBRTC_ENABLED: ${WEBRTC_ENABLED:-true}
+      # Blue/Green時だけ共有リースでスケジューラ所有権を選出する
+      PI5_SCHEDULER_LEADER_ENABLED: ${PI5_SCHEDULER_LEADER_ENABLED:-false}
+      PI5_SCHEDULER_LEASE_FILE: ${PI5_SCHEDULER_LEASE_FILE:-/app/alerts/.pi5-scheduler-leader}
+      PI5_SCHEDULER_LEASE_INTERVAL_MS: ${PI5_SCHEDULER_LEASE_INTERVAL_MS:-2000}
     volumes:
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails

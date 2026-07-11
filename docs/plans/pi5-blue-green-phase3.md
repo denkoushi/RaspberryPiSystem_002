@@ -36,6 +36,8 @@ The user-visible proof is that `scripts/deploy/pi5-blue-green.sh status` reports
   Evidence: `docker build -f infrastructure/docker/Dockerfile.web ...` remained at `resolve image config for docker-image://docker.io/docker/dockerfile:1` and was canceled; the hosted `security-docker` CI job remains the authoritative full build check.
 - Observation: Compose interpolates every declared service even when `up` names only one slot.
   Evidence: the first production bootstrap preflight showed that empty inactive-slot image variables would fail the required-image interpolation before any container started. The command now reuses the bootstrap candidate image for inactive-slot validation while still starting only the requested services.
+- Observation: API background schedulers are process-local and several use cron or intervals without a shared database lock.
+  Evidence: `apps/api/src/bootstrap/start-post-listen-schedulers.ts` starts backup, CSV, Gmail, OCR, signage, tuning, alert, and photo schedulers in one process; the common in-process guard only prevents overlap within one process. Phase 3 now adds a shared file lease and refuses the first legacy handoff unless it is explicitly approved.
 
 ## Decision Log
 
@@ -54,10 +56,13 @@ The user-visible proof is that `scripts/deploy/pi5-blue-green.sh status` reports
 - Decision: Resource failure exits before starting any inactive container and prints the Phase 2 fallback command.
   Rationale: a single Pi5 cannot safely double the workload when it has less than 1.5 GB memory or 10 GB disk available.
   Date/Author: 2026-07-11 / Codex
+- Decision: Elect one scheduler owner across Blue/Green API slots using a shared lease file on the existing alerts mount.
+  Rationale: running both process-local scheduler sets against the shared database could duplicate imports, backups, OCR, alerts, and signage jobs. The inactive slot can serve HTTP while waiting for the lease, and it acquires ownership when the old slot is stopped.
+  Date/Author: 2026-07-11 / Codex
 
 ## Outcomes & Retrospective
 
-Repository implementation is complete: private API/Web slots, fixed gateway templates, external-network Compose, atomic state, resource gate, guarded switch/rollback/cleanup, monitor, tests, and operator documentation are present. Shell syntax, state-transition tests, Compose rendering, Caddy adaptation, existing Phase 2 tests, and hosted PR #974 CI all passed. Production bootstrap, five-minute monitor acceptance, reboot restoration, and merge remain separate rollout work because the first bootstrap changes the current process that owns ports 80/443.
+Repository implementation is complete for the gateway path, and a scheduler-owner hardening follow-up is in progress before production bootstrap. The first read-only Pi5 preflight passed resources, network, volumes, and health; Phase 2 candidate images for `d70d18fc` were prepared without stopping production. The bootstrap was intentionally not run because the preflight exposed process-local scheduler duplication; the shared lease implementation must pass CI and be included in the next candidate image first.
 
 ## Context and Orientation
 

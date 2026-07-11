@@ -33,6 +33,9 @@ services:
       DROPBOX_REFRESH_TOKEN: ${DROPBOX_REFRESH_TOKEN:-}
       SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}
       WEBRTC_ENABLED: ${WEBRTC_ENABLED:-true}
+      PI5_SCHEDULER_LEADER_ENABLED: "1"
+      PI5_SCHEDULER_LEASE_FILE: /app/alerts/.pi5-scheduler-leader
+      PI5_SCHEDULER_LEASE_INTERVAL_MS: "2000"
     volumes: &api-volumes
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails

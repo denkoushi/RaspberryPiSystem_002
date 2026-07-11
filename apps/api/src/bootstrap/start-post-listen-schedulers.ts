@@ -15,6 +15,7 @@ import { getPhotoToolLabelScheduler } from '../services/tools/photo-tool-label/p
 import { getPartMeasurementDrawingOcrScheduler } from '../services/part-measurement/part-measurement-drawing-ocr.scheduler.js';
 
 export type PostListenSchedulerHandles = {
+  signageRenderScheduler: FastifyInstance['signageRenderScheduler'];
   alertsIngestor: ReturnType<typeof getAlertsIngestor>;
   alertsDbDispatcher: ReturnType<typeof getAlertsDbDispatcher>;
   alertsDispatcher: ReturnType<typeof getAlertsDispatcher>;
@@ -23,6 +24,22 @@ export type PostListenSchedulerHandles = {
   dueManagementTuningOrchestrator: ReturnType<typeof getDueManagementTuningOrchestrator>;
   partMeasurementDrawingOcrScheduler: ReturnType<typeof getPartMeasurementDrawingOcrScheduler>;
 };
+
+export async function stopPostListenSchedulers(
+  app: FastifyInstance,
+  handles: PostListenSchedulerHandles
+): Promise<void> {
+  await handles.alertsIngestor.stop();
+  await handles.alertsDbDispatcher.stop();
+  await handles.alertsDispatcher.stop();
+  handles.kioskDocOcrScheduler.stop();
+  getKioskDocumentGmailScheduler().stop();
+  handles.gmailTrashCleanupScheduler.stop();
+  handles.dueManagementTuningOrchestrator.stop();
+  handles.partMeasurementDrawingOcrScheduler.stop();
+  getPhotoToolLabelScheduler().stop();
+  app.signageRenderScheduler.stop();
+}
 
 /**
  * listen 完了後のバックグラウンドジョブ起動を一箇所に集約。
@@ -81,6 +98,7 @@ export async function startPostListenSchedulers(app: FastifyInstance): Promise<P
   logger.info('Part measurement drawing OCR scheduler started');
 
   return {
+    signageRenderScheduler: app.signageRenderScheduler,
     alertsIngestor,
     alertsDbDispatcher,
     alertsDispatcher,
