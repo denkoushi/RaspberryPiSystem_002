@@ -93,6 +93,7 @@ STATUS_RUN_ID=""
 PRINT_PLAN=0
 RUN_ID=""
 PROFILE_MODE=0
+CLIENT_ONLY_COMPATIBLE=0
 LOCAL_LOCK_ACQUIRED=0
 
 while [[ $# -gt 0 ]]; do
@@ -103,6 +104,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --profile)
       PROFILE_MODE=1
+      shift
+      ;;
+    --client-only-compatible)
+      CLIENT_ONLY_COMPATIBLE=1
       shift
       ;;
     --detach)
@@ -147,7 +152,7 @@ done
 usage() {
   cat >&2 <<'USAGE'
 Usage:
-  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--profile] [--detach] [--follow]
+  ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--client-only-compatible] [--profile] [--detach] [--follow]
   ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--profile] [--job] [--follow]
   ./scripts/update-all-clients.sh <branch> <inventory_path> [--limit <host_pattern>] [--profile] --foreground
   ./scripts/update-all-clients.sh --attach <run_id>
@@ -1138,12 +1143,25 @@ kiosk_by_client = {}
 for h in in_scope:
     sid = hostvars.get(h, {}).get("status_agent_client_id")
     if sid:
-        kiosk_by_client[sid] = {"maintenance": True, "startedAt": started_at}
+        kiosk_by_client[sid] = {"maintenance": True, "startedAt": started_at, "updatedAt": started_at, "phase": "preparing"}
         if run_id:
             kiosk_by_client[sid]["runId"] = run_id
-out = {"version": 2, "kioskByClient": kiosk_by_client}
-with open(status_file, "w", encoding="utf-8") as f:
+try:
+    with open(status_file, encoding="utf-8") as f:
+        out = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    out = {}
+out["version"] = 2
+existing = out.get("kioskByClient") or {}
+existing.update(kiosk_by_client)
+out["kioskByClient"] = existing
+tmp = status_file + ".tmp." + (run_id or "bootstrap")
+with open(tmp, "w", encoding="utf-8") as f:
     json.dump(out, f, ensure_ascii=False)
+    f.flush()
+    import os
+    os.fsync(f.fileno())
+os.replace(tmp, status_file)
 PY
 }
 
@@ -1162,7 +1180,7 @@ set_pi4_maintenance_flag() {
   [[ -n "${LIMIT_HOSTS}" ]] && limit_arg="${LIMIT_HOSTS}"
 
   echo "[INFO] Setting kiosk maintenance flag (per-client) on ${REMOTE_HOST}"
-  if ! write_deploy_status_v2_on_remote "${inventory_basename}" "${limit_arg}" "" "${REMOTE_DEPLOY_STATUS_FILE}"; then
+  if ! write_deploy_status_v2_on_remote "${inventory_basename}" "${limit_arg}" "${RUN_ID}" "${REMOTE_DEPLOY_STATUS_FILE}"; then
     echo "[WARN] Could not write deploy-status v2, skipping maintenance flag"
     return 0
   fi
@@ -1176,14 +1194,12 @@ clear_pi4_maintenance_flag() {
 
   if [[ "${KIOSK_MAINTENANCE_ENABLED}" == "1" ]]; then
     echo "[INFO] Clearing kiosk maintenance flag on ${REMOTE_HOST}"
-    ssh ${SSH_OPTS} "${REMOTE_HOST}" "rm -f \"${REMOTE_DEPLOY_STATUS_FILE}\"" >/dev/null 2>&1 || true
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "python3 /opt/RaspberryPiSystem_002/scripts/deploy/deploy-status-state.py --file \"${REMOTE_DEPLOY_STATUS_FILE}\" remove-run --run-id \"${RUN_ID}\"" >/dev/null 2>&1 || true
   fi
 }
 
 clear_pi4_maintenance_flag_if_needed() {
-  if ! should_enable_kiosk_maintenance; then
-    clear_pi4_maintenance_flag
-  fi
+  clear_pi4_maintenance_flag
 }
 
 clear_server_deployment_flag() {
@@ -1380,7 +1396,36 @@ print_plan() {
     echo "[PLAN] Command: ansible-playbook -i ${INVENTORY_PATH} ${PLAYBOOK_PATH}"
   fi
 }
+
+deploy_impact_json() {
+  local head_ref="HEAD"
+  git -C "${PROJECT_ROOT}" rev-parse --verify --quiet "${REPO_VERSION}" >/dev/null && head_ref="${REPO_VERSION}"
+  local base_ref
+  base_ref=$(git -C "${PROJECT_ROOT}" merge-base main "${head_ref}" 2>/dev/null || git -C "${PROJECT_ROOT}" rev-parse "${head_ref}^" 2>/dev/null || true)
+  if [[ -z "${base_ref}" ]]; then
+    echo '{"server":true,"kiosk":true,"signage":true,"migration":true,"paths":[],"reason":"base revision unavailable"}'
+    return 0
+  fi
+  python3 "${PROJECT_ROOT}/scripts/deploy/classify-deploy-impact.py" --base "${base_ref}" --head "${head_ref}"
+}
+
+print_and_guard_deploy_impact() {
+  local impact
+  impact=$(deploy_impact_json)
+  echo "[INFO] Deploy impact: $(python3 -c 'import json,sys; d=json.load(sys.stdin); print("server=%s kiosk=%s signage=%s migration=%s files=%d" % (d["server"],d["kiosk"],d["signage"],d["migration"],len(d["paths"])))' <<<"${impact}")"
+  if [[ -n "${LIMIT_HOSTS}" ]] && ! ansible -i "${PROJECT_ROOT}/${INVENTORY_PATH}" server --list-hosts --limit "${LIMIT_HOSTS}" 2>/dev/null | tail -n +2 | grep -q '[^[:space:]]'; then
+    if python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin)["server"] else 1)' <<<"${impact}"; then
+      if [[ "${CLIENT_ONLY_COMPATIBLE}" != "1" ]]; then
+        echo "[ERROR] Selected revision requires Pi5, but --limit excludes the server." >&2
+        echo "        Include raspberrypi5 or explicitly use --client-only-compatible after compatibility review." >&2
+        return 1
+      fi
+      echo "[WARN] Pi5-required changes are being deployed client-only by explicit compatibility override." >&2
+    fi
+  fi
+}
 if [[ ${PRINT_PLAN} -eq 1 ]]; then
+  print_and_guard_deploy_impact || exit 2
   print_plan
   exit 0
 fi
@@ -1561,12 +1606,25 @@ kiosk_by_client = {}
 for h in in_scope:
     sid = hostvars.get(h, {}).get("status_agent_client_id")
     if sid:
-        kiosk_by_client[sid] = {"maintenance": True, "startedAt": started_at}
+        kiosk_by_client[sid] = {"maintenance": True, "startedAt": started_at, "updatedAt": started_at, "phase": "preparing"}
         if run_id:
             kiosk_by_client[sid]["runId"] = run_id
-out = {"version": 2, "kioskByClient": kiosk_by_client}
-with open(status_file, "w", encoding="utf-8") as f:
+try:
+    with open(status_file, encoding="utf-8") as f:
+        out = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    out = {}
+out["version"] = 2
+existing = out.get("kioskByClient") or {}
+existing.update(kiosk_by_client)
+out["kioskByClient"] = existing
+tmp = status_file + ".tmp." + (run_id or "bootstrap")
+with open(tmp, "w", encoding="utf-8") as f:
     json.dump(out, f, ensure_ascii=False)
+    f.flush()
+    import os
+    os.fsync(f.fileno())
+os.replace(tmp, status_file)
 PY
   rm -f "${inv_file}"
   MAINTENANCE_FLAG_SET=1
@@ -1687,8 +1745,14 @@ PY
 cleanup() {
   local exit_code=$?
   echo "${exit_code}" > "${REMOTE_RUN_EXIT}" || true
-  if ! should_enable_kiosk_maintenance; then
-    clear_kiosk_maintenance_flag
+  if [ "${MAINTENANCE_FLAG_SET}" = "1" ] && [ -x /opt/RaspberryPiSystem_002/scripts/deploy/deploy-status-state.py ]; then
+    if [ "${exit_code}" -eq 0 ]; then
+      python3 /opt/RaspberryPiSystem_002/scripts/deploy/deploy-status-state.py \
+        --file "${REMOTE_DEPLOY_STATUS_FILE}" remove-run --run-id "${RUN_ID}" >/dev/null 2>&1 || true
+    else
+      python3 /opt/RaspberryPiSystem_002/scripts/deploy/deploy-status-state.py \
+        --file "${REMOTE_DEPLOY_STATUS_FILE}" set-phase --run-id "${RUN_ID}" --phase failed >/dev/null 2>&1 || true
+    fi
   fi
   LOCK_FILE="${REMOTE_LOCK_FILE}" RUN_ID="${RUN_ID}" /usr/bin/env python3 - <<'PY' >/dev/null 2>&1 || true
 import json
@@ -2008,6 +2072,7 @@ require_remote_host_for_pi5() {
 }
 
 # メイン処理
+print_and_guard_deploy_impact || exit 2
 require_remote_host_for_pi5
 acquire_local_lock
 trap 'release_local_lock' EXIT

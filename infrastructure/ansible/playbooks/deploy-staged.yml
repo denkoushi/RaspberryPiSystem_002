@@ -226,16 +226,24 @@
       register: server_deployment_flag
       run_once: true
 
-    - name: Clear kiosk maintenance flag if deployment succeeded
-      ansible.builtin.file:
-        path: /opt/RaspberryPiSystem_002/config/deploy-status.json
-        state: absent
+    - name: Clear only this deployment run's kiosk maintenance entries if deployment succeeded
+      ansible.builtin.command:
+        argv:
+          - python3
+          - /opt/RaspberryPiSystem_002/scripts/deploy/deploy-status-state.py
+          - --file
+          - /opt/RaspberryPiSystem_002/config/deploy-status.json
+          - remove-run
+          - --run-id
+          - "{{ lookup('env', 'RUN_ID') }}"
       delegate_to: "{{ groups['server'][0] }}"
       run_once: true
+      changed_when: true
       when:
         # Clear flag if deployment succeeded (either server deployment completed OR kiosk-only deployment succeeded)
         - (server_deployment_flag.stat.exists | default(false)) or (server_deployment_flag.stat.exists is defined and not server_deployment_flag.stat.exists)
         - deployment_failed is not defined or not deployment_failed
+        - lookup('env', 'RUN_ID') | length > 0
 
 
 - name: Deploy latest RaspberryPiSystem_002 to Raspberry Pi 3 signage (serial)
@@ -405,4 +413,3 @@
           - "{{ signage_status.stdout | default('signage status skipped') }}"
       when:
         - signage_check is defined
-
