@@ -90,6 +90,8 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
   Evidence: Pi5 temporary-table `EXPLAIN (ANALYZE, BUFFERS)`; all temporary objects were dropped automatically when each session ended.
 - Observation: the same production query in `BEGIN READ ONLY; SET LOCAL jit=off` completed in about 1.04 seconds instead of 1.55 seconds (about 33 percent faster). The original plan spent about 433 ms compiling JIT code; this aggregate runs once and does not amortize that compilation.
   Evidence: read-only Pi5 `EXPLAIN (ANALYZE, BUFFERS)` followed by `ROLLBACK`.
+- Observation: the 28-second post-deploy cold request overlapped normal kiosk polling and signage rendering, but the surrounding non-leaderboard HTTP requests remained mostly below 145 ms. The request burst therefore does not explain the leaderboard-only 28-second delay. That sample followed a long Docker build and represents a deep DB/OS-cache-cold condition; steady requests returned to about 3–4 seconds.
+  Evidence: request-id correlation for the 70-second window around `req-35`; 45 deploy-status, 12 pallet-board, and other kiosk requests completed quickly while leaderboard took 27.95 seconds.
 
 ## Decision Log
 
@@ -122,6 +124,9 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
   Date/Author: 2026-07-11 / Codex.
 - Decision: reject the covering index and select transaction-local `jit=off` for the raw-mail revision aggregate as the next implementation candidate.
   Rationale: the index was not naturally usable, while disabling JIT only for this one exact aggregate reduced measured execution by about one third and preserves the query, revision token inputs, and global database setting.
+  Date/Author: 2026-07-11 / Codex.
+- Decision: hold the sub-second JIT candidate and investigate removing residual-summary completion from the first-row critical path as a separate staged-display design.
+  Rationale: the user requires a larger improvement. In steady Pi5 samples, residual summary alone consumes about 2.1–2.35 seconds and gates otherwise usable fresh resource rows. Separating its delivery has materially larger leverage than further tuning generation-token or resource-shell scans, but requires explicit response/feature-flag design before implementation.
   Date/Author: 2026-07-11 / Codex.
 
 ## Outcomes & Retrospective
