@@ -11,6 +11,7 @@ import * as queryService from '../../production-schedule-query.service.js';
 import * as rowResolver from '../../row-resolver/index.js';
 import * as totalsResolver from '../resolve-leaderboard-board-resource-totals-for-continue.js';
 import { createInMemoryLeaderboardShellSnapshotStore } from '../leaderboard-shell-snapshot.store.js';
+import { buildLeaderboardShellFilterFingerprint } from '../leaderboard-shell-snapshot-fingerprint.js';
 import {
   clearLeaderboardBoardPrefixRowCacheForTests,
   putLeaderboardBoardPrefixRowsInCache,
@@ -506,13 +507,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     });
     const performanceSink = vi.fn();
 
-    vi.spyOn(residualService, 'fetchLeaderboardProcessChangeResidualSummary').mockResolvedValue({
-      processChangeResidualTotal: 1,
-      processChangeResidualRows: [{ id: 'residual-1' } as any],
-      processChangeResidualRepresentativeLimit: 20
-    });
-
-    const result = await continueLeaderboardCompositeBoard(
+    await continueLeaderboardCompositeBoard(
       {
         listParamsBase: {
           queryText: '',
@@ -525,8 +520,7 @@ describe('leaderboard-composite-board generation token prefetch', () => {
           { resourceCd: '2', snapshotId: 'snap-2', cursor: 0, hasMore: true }
         ],
         chunkSize: 160,
-        includeDecorations: false,
-        includeResidualSummary: true
+        includeDecorations: false
       },
       {
         snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 10_000 }),
@@ -551,9 +545,6 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     for (const event of events) {
       expect(event.ok).toBe(true);
     }
-    expect(result.processChangeResidualTotal).toBe(1);
-    expect(result.processChangeResidualRows).toEqual([{ id: 'residual-1' }]);
-    expect(result.processChangeResidualRepresentativeLimit).toBe(20);
   });
 
   it('emits processChangeResidualContext subphase events including revision refresh when materialization observes newer revision', async () => {
@@ -767,7 +758,20 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     const snapshotId = store.create({
       orderedRowIds: ['row-a', 'row-b'],
       partialOrdering: false,
-      filterFingerprint: 'fp-1',
+      filterFingerprint: buildLeaderboardShellFilterFingerprint({
+        locationKey: 'loc-1',
+        siteKey: undefined,
+        queryText: '',
+        productNos: [],
+        machineName: undefined,
+        resourceCds: ['1'],
+        assignedOnlyCds: [],
+        resourceCategory: undefined,
+        hasNoteOnly: false,
+        hasDueDateOnly: false,
+        allowResourceOnly: false,
+        completionFilter: undefined
+      }),
       generationToken: '{"generation":"1"}',
       locationKey: 'loc-1',
       siteKey: undefined
@@ -805,8 +809,13 @@ describe('leaderboard-composite-board generation token prefetch', () => {
       nextCursor: 2,
       hasMore: false
     });
+    vi.spyOn(residualService, 'fetchLeaderboardProcessChangeResidualSummary').mockResolvedValue({
+      processChangeResidualTotal: 1,
+      processChangeResidualRows: [{ id: 'residual-1' } as any],
+      processChangeResidualRepresentativeLimit: 20
+    });
 
-    await continueLeaderboardCompositeBoard(
+    const result = await continueLeaderboardCompositeBoard(
       {
         listParamsBase: {
           queryText: '',
@@ -816,7 +825,8 @@ describe('leaderboard-composite-board generation token prefetch', () => {
         boardResourceCds: ['1'],
         resourceSlices: [{ resourceCd: '1', snapshotId, cursor: 1, hasMore: true }],
         chunkSize: 160,
-        includeDecorations: false
+        includeDecorations: false,
+        includeResidualSummary: true
       },
       { snapshotStore: store }
     );
@@ -826,5 +836,8 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     expect(cached.missingIds).toEqual([]);
     expect(cached.cachedRows.map((row) => row.machineRequiredMinutes)).toEqual([10, 20]);
     expect(cached.cachedRows.map((row) => row.laborRequiredMinutes)).toEqual([0, 0]);
+    expect(result.processChangeResidualTotal).toBe(1);
+    expect(result.processChangeResidualRows).toEqual([{ id: 'residual-1' }]);
+    expect(result.processChangeResidualRepresentativeLimit).toBe(20);
   });
 });

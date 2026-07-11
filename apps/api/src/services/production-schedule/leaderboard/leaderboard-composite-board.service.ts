@@ -40,6 +40,7 @@ import {
   type ProcessChangeResidualStrongEvidenceMaterializationTelemetryEvent
 } from './leaderboard-process-change-residual.materialization.js';
 import { readLeaderboardShellSnapshotGenerationTokenDetails } from './leaderboard-shell-snapshot-generation.js';
+import { buildLeaderboardShellFilterFingerprint } from './leaderboard-shell-snapshot-fingerprint.js';
 import {
   LEADERBOARD_PROCESS_CHANGE_RESIDUAL_REPRESENTATIVE_LIMIT,
   type ProcessChangeResidualEvidence
@@ -787,7 +788,34 @@ export async function continueLeaderboardCompositeBoard(
     )
   ]);
 
-  if (contOutputs.some((o) => o?.snapshotExpired === true)) {
+  const residualSummarySnapshotExpired = includeResidualSummary && params.resourceSlices.some((slice) => {
+    const snapshotId = slice.snapshotId?.trim();
+    if (!snapshotId) return true;
+    const snap = deps.snapshotStore.get(snapshotId);
+    if (!snap) return true;
+    const expectedFingerprint = buildLeaderboardShellFilterFingerprint({
+      locationKey: params.listParamsBase.locationKey,
+      siteKey: params.listParamsBase.siteKey,
+      queryText: params.listParamsBase.queryText ?? '',
+      productNos: params.listParamsBase.productNos ?? [],
+      machineName: params.listParamsBase.machineName,
+      resourceCds: [slice.resourceCd],
+      assignedOnlyCds: params.listParamsBase.assignedOnlyCds ?? [],
+      resourceCategory: params.listParamsBase.resourceCategory,
+      hasNoteOnly: params.listParamsBase.hasNoteOnly === true,
+      hasDueDateOnly: params.listParamsBase.hasDueDateOnly === true,
+      allowResourceOnly: params.listParamsBase.allowResourceOnly ?? false,
+      completionFilter: params.listParamsBase.completionFilter
+    });
+    return (
+      snap.filterFingerprint !== expectedFingerprint ||
+      snap.generationToken !== generationToken ||
+      snap.locationKey !== params.listParamsBase.locationKey ||
+      (snap.siteKey ?? '') !== (params.listParamsBase.siteKey ?? '')
+    );
+  });
+
+  if (residualSummarySnapshotExpired || contOutputs.some((o) => o?.snapshotExpired === true)) {
     emitLeaderboardBoardPerformance(sink, {
       endpoint: 'continue',
       phase: 'requestTotal',
