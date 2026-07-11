@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+SCRIPT="$ROOT/scripts/deploy/pi5-image-deploy.sh"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+assert_contains() { grep -Fq "$2" <<<"$1" || fail "expected '$2' in output: $1"; }
+
+common_env=(
+  PI5_PROJECT_DIR="$ROOT"
+  PI5_BASE_COMPOSE="$ROOT/infrastructure/docker/docker-compose.server.yml"
+  PI5_PHASE2_COMPOSE="$ROOT/infrastructure/docker/docker-compose.phase2.yml"
+  PI5_ENV_FILE="$ROOT/infrastructure/docker/.env.example"
+  PI5_DEPLOY_STATE_FILE="$TMP/state.json"
+  PI5_DEPLOY_LOCK_FILE="$TMP/lock"
+  PI5_DEPLOY_DRY_RUN=1
+  PI5_MIN_FREE_MEMORY_MB=0
+  PI5_MIN_FREE_DISK_GB=0
+)
+
+sha="$(git -C "$ROOT" rev-parse HEAD)"
+output="$(env "${common_env[@]}" "$SCRIPT" prepare --ref "$sha")"
+assert_contains "$output" "candidate prepared"
+[[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["event"])' "$TMP/state.json")" == prepared ]] || fail "state is not prepared"
+
+status="$(env "${common_env[@]}" "$SCRIPT" status)"
+assert_contains "$status" '"event": "prepared"'
+
+if env "${common_env[@]}" "$SCRIPT" prepare --ref short >/dev/null 2>&1; then
+  fail "short SHA was accepted"
+fi
+
+mkdir "$TMP/lock.d"
+if env "${common_env[@]}" "$SCRIPT" status >/dev/null 2>&1; then
+  fail "concurrent lock was ignored"
+fi
+rmdir "$TMP/lock.d"
+
+echo "PASS: pi5 image deployment lifecycle"

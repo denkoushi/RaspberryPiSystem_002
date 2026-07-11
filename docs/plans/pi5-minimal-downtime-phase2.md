@@ -11,8 +11,8 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
 - [x] (2026-07-11 08:35Z) Confirmed the current Compose and Ansible deployment rebuilds and recreates `api` and `web` together.
 - [x] (2026-07-11 08:35Z) Created a clean phase-2 branch and worktree from merged PR #972.
 - [x] (2026-07-11 08:31Z) Added the phase-2 image lifecycle command and Compose image override.
-- [ ] Add shell tests for prepare, guarded switch, rollback, retention, and resource failures.
-- [ ] Connect the command to the existing Pi5 deployment path behind an explicit opt-in flag.
+- [ ] Add shell tests for prepare, guarded switch, rollback, retention, and resource failures (completed: prepare state, invalid SHA, and concurrent lock; remaining: mocked switch failure, rollback, retention, and real resource failure).
+- [x] (2026-07-11 08:34Z) Connected the command to the existing Pi5 deployment path behind the default-off `pi5_minimal_downtime_deploy_enabled` variable.
 - [ ] Add the operator runbook and migration compatibility guard.
 - [ ] Run local validation and CI, then perform a non-switching Pi5 candidate build test.
 
@@ -26,6 +26,8 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
   Evidence: existing migrations contain `DROP INDEX`, `DROP COLUMN`, and temporary-table cleanup statements.
 - Observation: macOS does not provide `flock`, although Pi5 Linux does.
   Evidence: the first local dry run failed with `flock: command not found`; the command now uses an atomic lock directory fallback for development and tests.
+- Observation: memory inspection through `sysctl` is blocked in the managed macOS test sandbox.
+  Evidence: `sysctl -n hw.memsize` returned `Operation not permitted`; dry-run now skips resource enforcement while real execution remains fail-closed.
 
 ## Decision Log
 
@@ -44,7 +46,7 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
 
 ## Outcomes & Retrospective
 
-The standalone lifecycle foundation and explicit image override now exist and pass syntax, whitespace, and prepare dry-run validation. Ansible opt-in wiring, automated failure tests, and real Pi5 candidate validation remain; no phase-2 production switch has been attempted.
+The standalone lifecycle foundation, explicit image override, initial shell tests, and default-off Ansible integration now exist. Shell syntax, whitespace, lifecycle tests, and Ansible syntax validation pass. Mocked rollback/retention tests, documentation, and real Pi5 candidate validation remain; no phase-2 production switch has been attempted.
 
 ## Context and Orientation
 
@@ -90,4 +92,4 @@ Phase 1.5 production evidence showed all selected Pi4 clients acknowledged maint
 
 The public operator interface is `scripts/deploy/pi5-image-deploy.sh <prepare|switch|rollback|status|cleanup>`. It uses Docker Engine, Docker Compose v2, `curl`, `python3`, and existing repository Dockerfiles. Image names default to `raspi-system-api:<sha>` and `raspi-system-web:<sha>`. Runtime state defaults to `/opt/RaspberryPiSystem_002/logs/deploy/pi5-image-deploy-state.json` and can be redirected in tests with `PI5_DEPLOY_STATE_FILE`.
 
-Revision note (2026-07-11): Initial plan created after inspecting the merged phase-1.5 main branch. The standalone opt-in lifecycle was chosen to preserve the existing production fallback during rollout. The migration guard was narrowed to the release delta after static validation found destructive SQL in historical, already-applied migrations. Local dry-run validation also added a portable process-lock fallback.
+Revision note (2026-07-11): Initial plan created after inspecting the merged phase-1.5 main branch. The standalone opt-in lifecycle was chosen to preserve the existing production fallback during rollout. The migration guard was narrowed to the release delta after static validation found destructive SQL in historical, already-applied migrations. Local dry-run validation added a portable process-lock fallback and skipped host resource enforcement only in dry-run. The Ansible role now selects the lifecycle only through an explicit default-off variable.

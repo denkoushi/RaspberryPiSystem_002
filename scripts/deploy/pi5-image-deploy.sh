@@ -87,6 +87,7 @@ require_sha() {
 
 resource_guard() {
   local memory_mb disk_kb disk_gb
+  [[ "$DRY_RUN" == "1" ]] && return 0
   if [[ -r /proc/meminfo ]]; then
     memory_mb="$(awk '/MemAvailable:/ {print int($2/1024)}' /proc/meminfo)"
   else
