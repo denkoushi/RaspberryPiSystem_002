@@ -15,6 +15,9 @@ class DeployStatusStateTest(unittest.TestCase):
                 subprocess.run(['python3', str(SCRIPT), '--file', str(path), *args], check=True)
             run('put', '--run-id', 'a', '--clients', 'one,two')
             run('put', '--run-id', 'b', '--clients', 'three')
+            stored = json.loads(path.read_text())
+            stored['acknowledgements'] = {'a': {'one': {'acknowledgedAt': 'now'}}, 'b': {'three': {'acknowledgedAt': 'now'}}}
+            path.write_text(json.dumps(stored))
             run('set-phase', '--run-id', 'a', '--phase', 'failed')
             data = json.loads(path.read_text())['kioskByClient']
             self.assertEqual(data['one']['phase'], 'failed')
@@ -22,6 +25,9 @@ class DeployStatusStateTest(unittest.TestCase):
             run('remove-run', '--run-id', 'a')
             data = json.loads(path.read_text())['kioskByClient']
             self.assertEqual(set(data), {'three'})
+            stored = json.loads(path.read_text())
+            self.assertNotIn('a', stored['acknowledgements'])
+            self.assertIn('b', stored['acknowledgements'])
 
 
 if __name__ == '__main__':

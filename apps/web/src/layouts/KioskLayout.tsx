@@ -1,9 +1,10 @@
 import { DEFAULT_KIOSK_HEADER_TAB_ORDER, normalizeKioskHeaderTabOrder } from '@raspi-system/shared-types';
 import clsx from 'clsx';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
 import { getResolvedClientKey, setClientKeyHeader } from '../api/client';
+import { acknowledgeDeployStatus } from '../api/domains/system';
 import { useDeployStatus, useKioskCallTargets, useKioskConfig } from '../api/hooks';
 import { KioskHeader } from '../components/kiosk/KioskHeader';
 import { KioskMaintenanceScreen } from '../components/kiosk/KioskMaintenanceScreen';
@@ -31,6 +32,7 @@ export function KioskLayout() {
   const { data: deployStatus } = useDeployStatus();
   const location = useLocation();
   const [showSupportModal, setShowSupportModal] = useState(false);
+  const acknowledgedRunIdRef = useRef<string | null>(null);
   const immersiveKioskLayout = usesKioskImmersiveLayout(location.pathname);
   const headerReveal = useKioskBottomCenterHeaderReveal(immersiveKioskLayout);
   const navTabOrder = normalizeKioskHeaderTabOrder(
@@ -49,6 +51,15 @@ export function KioskLayout() {
       sessionStorage.setItem('kiosk-last-path', path);
     }
   }, [location.pathname]);
+
+  useEffect(() => {
+    const runId = deployStatus?.isMaintenance ? deployStatus.runId : undefined;
+    if (!runId || acknowledgedRunIdRef.current === runId) return;
+    acknowledgedRunIdRef.current = runId;
+    void acknowledgeDeployStatus(runId).catch(() => {
+      acknowledgedRunIdRef.current = null;
+    });
+  }, [deployStatus?.isMaintenance, deployStatus?.runId]);
 
   // メンテナンス中はメンテナンス画面を表示
   if (deployStatus?.isMaintenance) {

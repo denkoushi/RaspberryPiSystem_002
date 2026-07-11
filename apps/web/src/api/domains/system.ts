@@ -27,9 +27,16 @@ export async function getNetworkModeStatus() {
 
 export interface DeployStatus {
   isMaintenance: boolean;
+  runId?: string;
+  phase?: 'preparing' | 'deploying' | 'failed';
+  startedAt?: string;
 }
 
 export async function getDeployStatus(): Promise<DeployStatus> {
   const { data } = await api.get<DeployStatus>('/system/deploy-status');
   return data;
+}
+
+export async function acknowledgeDeployStatus(runId: string): Promise<void> {
+  await api.post('/system/deploy-status/ack', { runId });
 }
