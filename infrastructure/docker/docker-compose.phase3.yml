@@ -1,0 +1,150 @@
+services:
+  api-blue:
+    image: ${PI5_BLUE_API_IMAGE:?PI5_BLUE_API_IMAGE is required}
+    restart: always
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8080/api/system/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
+    env_file:
+      - ${PI5_ENV_FILE:-.env}
+      - ../../apps/api/.env.example
+    environment: &api-environment
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/borrow_return
+      PHOTO_STORAGE_DIR: /app/storage
+      PDF_STORAGE_DIR: /app/storage
+      SIGNAGE_RENDER_DIR: /app/storage/signage-rendered
+      SIGNAGE_PDF_DPI: "240"
+      CAMERA_TYPE: mock
+      ALERTS_DIR: /app/alerts
+      POWER_ACTIONS_DIR: /app/power-actions
+      BACKUP_STORAGE_DIR: /opt/backups
+      DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
+      DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
+      DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
+      DROPBOX_REFRESH_TOKEN: ${DROPBOX_REFRESH_TOKEN:-}
+      SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}
+      WEBRTC_ENABLED: ${WEBRTC_ENABLED:-true}
+    volumes: &api-volumes
+      - photo-storage:/app/storage/photos
+      - thumbnail-storage:/app/storage/thumbnails
+      - pdf-storage:/app/storage/pdfs
+      - pdf-pages-storage:/app/storage/pdf-pages
+      - signage-rendered-storage:/app/storage/signage-rendered
+      - part-measurement-drawings-storage:/app/storage/part-measurement-drawings
+      - assembly-procedure-images-storage:/app/storage/assembly-procedure-images
+      - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
+      - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/alerts:/app/alerts
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/power-actions:/app/power-actions
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/config:/app/config
+      - ${PI5_BACKUP_DIR:-/opt/backups}:/opt/backups
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/apps/api:/app/host/apps/api:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/apps/web:/app/host/apps/web:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker:/app/host/infrastructure/docker:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/clients/nfc-agent:/app/host/clients/nfc-agent:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/app/host/certs:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/ansible:/app/host/infrastructure/ansible:ro
+      - ${PI5_SSH_DIR:-/home/denkon5sd02/.ssh}:/root/.ssh:ro
+      - /sys/class/thermal:/sys/class/thermal:ro
+    networks: [pi5]
+
+  api-green:
+    image: ${PI5_GREEN_API_IMAGE:?PI5_GREEN_API_IMAGE is required}
+    restart: always
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8080/api/system/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
+    env_file:
+      - ${PI5_ENV_FILE:-.env}
+      - ../../apps/api/.env.example
+    environment: *api-environment
+    volumes: *api-volumes
+    networks: [pi5]
+
+  web-blue:
+    image: ${PI5_BLUE_WEB_IMAGE:?PI5_BLUE_WEB_IMAGE is required}
+    restart: always
+    environment: &web-environment
+      SLOT_API_UPSTREAM: api-blue:8080
+      NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.10.224}
+      ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:-"192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32"}
+    volumes: &web-volumes
+      - thumbnail-storage:/srv/storage/thumbnails:ro
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/srv/certs:ro
+      - ${PI5_CADDY_LOG_DIR:-/var/log/caddy}:/var/log/caddy
+    networks: [pi5]
+
+  web-green:
+    image: ${PI5_GREEN_WEB_IMAGE:?PI5_GREEN_WEB_IMAGE is required}
+    restart: always
+    environment:
+      <<: *web-environment
+      SLOT_API_UPSTREAM: api-green:8080
+    volumes: *web-volumes
+    networks: [pi5]
+
+  gateway:
+    image: ${PI5_GATEWAY_IMAGE:?PI5_GATEWAY_IMAGE is required}
+    restart: always
+    environment:
+      GATEWAY_CONFIG_FILE: /srv/bluegreen/Caddyfile
+    volumes:
+      - ${PI5_BLUE_GREEN_CONFIG_DIR:-/opt/RaspberryPiSystem_002/logs/deploy/bluegreen}:/srv/bluegreen
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/srv/certs:ro
+      - ${PI5_CADDY_LOG_DIR:-/var/log/caddy}:/var/log/caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    networks: [pi5]
+
+networks:
+  pi5:
+    external: true
+    name: ${PI5_DOCKER_NETWORK:-docker_default}
+
+volumes:
+  photo-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_photo-storage
+  thumbnail-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_thumbnail-storage
+  pdf-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_pdf-storage
+  pdf-pages-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_pdf-pages-storage
+  signage-rendered-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_signage-rendered-storage
+  part-measurement-drawings-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_part-measurement-drawings-storage
+  assembly-procedure-images-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_assembly-procedure-images-storage
+  measuring-instrument-genres-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_measuring-instrument-genres-storage
+  pallet-machine-illustrations-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_pallet-machine-illustrations-storage

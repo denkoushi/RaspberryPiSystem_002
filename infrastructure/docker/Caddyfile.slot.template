@@ -1,0 +1,44 @@
+# Private Web slot. The fixed gateway is the only process that publishes 80/443.
+{
+  auto_https off
+}
+
+:80 {
+  root * /srv/site
+
+  @api {
+    path /api/* /ws/*
+  }
+  reverse_proxy @api ${SLOT_API_UPSTREAM} {
+    transport http {
+      versions 1.1
+    }
+  }
+
+  handle_path /storage/thumbnails/* {
+    root * /srv/storage/thumbnails
+    file_server
+    header Cache-Control "public, max-age=86400"
+  }
+
+  @spa {
+    not path /api/* /ws/* /storage/*
+    not file
+  }
+  rewrite @spa /index.html
+  file_server
+
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  log {
+    output file /var/log/caddy/access.log {
+      roll_size 5MiB
+      roll_keep 5
+      roll_keep_for 168h
+    }
+  }
+}

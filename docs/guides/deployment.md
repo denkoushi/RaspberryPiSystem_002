@@ -10,12 +10,19 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-### Pi5最小停止デプロイ（Phase 2・実装中） {#pi5-minimal-downtime-phase2}
+### Pi5最小停止デプロイ（Phase 2） {#pi5-minimal-downtime-phase2}
 
 - Pi5のAPI/Webは、現行サービスを動かしたままコミットSHA付き候補イメージを準備・検証し、最後の切替だけを短時間で行う。
 - 既定では従来経路を維持する。`pi5_minimal_downtime_deploy_enabled` は実機のprepare-only検証が完了するまで恒常的に有効化しない。
 - DB変更はExpand/Contractを必須とし、通常デプロイで破壊的migrationの強制許可を使わない。
 - 操作、復旧、受入れの正本は [Pi5 minimal-downtime deployment runbook](../runbooks/pi5-minimal-downtime-deploy.md)、実装進捗は [Phase 2 ExecPlan](../plans/pi5-minimal-downtime-phase2.md) を参照する。
+
+### Pi5 Blue/Greenデプロイ（Phase 3・明示 opt-in） {#pi5-blue-green-phase3}
+
+- `scripts/deploy/pi5-blue-green.sh` が、API/WebのBlue・Greenスロットと固定Caddyゲートウェイを管理する。API/Webスロットはホストポートを公開せず、80/443はゲートウェイだけが公開する。
+- 初回の `bootstrap --confirm-bootstrap` は既存の`docker-web`が80/443を使用しているため、承認済みメンテナンス時間にだけ実行する。既存Phase 2経路を自動停止することはない。
+- 空きメモリ1.5GB、ディスク10GB、ロードアベレージ上限を満たさない場合は開始せず、Phase 2へフォールバックする。切替後5分は旧スロットを保持し、ヘルスチェック失敗時は自動で戻す。
+- 操作・復旧・受入れの正本は [Pi5 Blue/Green deployment runbook](../runbooks/pi5-blue-green-deploy.md)、実装正本は [Phase 3 ExecPlan](../plans/pi5-blue-green-phase3.md)。Phase 3は本番bootstrap受入れ完了まで既定経路にしない。
 
 ### 補足（2026-07-11 · **端末別ローリングデプロイ Milestone 1** · **Pi4全5台反映**） {#per-kiosk-rolling-deploy-milestone1-2026-07-11}
 

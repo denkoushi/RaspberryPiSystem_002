@@ -1258,6 +1258,7 @@
 - **Alerts Dispatcher Phase 1 正本**: [KB-172](./knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) · [local-alerts](./guides/local-alerts.md) · [alerts-platform-phase2](./plans/alerts-platform-phase2.md)。
 
 - **デプロイ安定化機能 正本**: [KB-172](./knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) · [deployment](./guides/deployment.md#デプロイ安定化機能2026-01-17実装) · [deploy-stability plan](./plans/deploy-stability-execplan.md)。
+- **Pi5 Blue/Greenデプロイ Phase 3（明示 opt-in・本番bootstrap待ち）**: [Runbook](./runbooks/pi5-blue-green-deploy.md) · [ExecPlan](./plans/pi5-blue-green-phase3.md)。
 - **最小停止デプロイ Milestone 1**: [端末別ローリング更新 ExecPlan](./plans/minimal-downtime-deployment-milestone1.md)。
 
 ### 🆕 最新アップデート（2026-01-16）
