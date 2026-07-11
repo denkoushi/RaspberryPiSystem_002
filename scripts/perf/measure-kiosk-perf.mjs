@@ -26,7 +26,7 @@ const CLIENT_KEY_STORAGE = 'kiosk-client-key';
 const DEFAULT_OUTPUT = path.join(repoRoot, 'tmp/perf-results/baseline.json');
 const MANIFEST_PATH = path.join(repoRoot, 'tmp/perf-storage/perf-seed-manifest.json');
 
-const RUNS = 3;
+const RUNS = Number.parseInt(process.env.PERF_RUNS ?? '3', 10);
 const execFileAsync = promisify(execFile);
 const NAV_TIMEOUT_MS = 180_000;
 const WAIT_TIMEOUT_MS = 180_000;
@@ -464,7 +464,7 @@ async function measureApiTimings(ids) {
  * @param {Record<string, string>} leaderBoardStorage
  */
 async function measureBrowserScenarios(browser, ids, leaderBoardStorage) {
-  const leaderboardUrl = `${WEB_BASE}/kiosk/production-schedule/leader-order-board`;
+  const leaderboardUrl = `${WEB_BASE}/kiosk/production-schedule/leader-order-board?leaderboardPerf=1`;
   const inspectionUrl = `${WEB_BASE}/kiosk/part-measurement/inspection/edit/${ids.sheetId}`;
   const selfInspectionUrl = `${WEB_BASE}/kiosk/part-measurement/self-inspection/sessions/${ids.selfInspectionSessionId}`;
   const assemblyUrl = `${WEB_BASE}/kiosk/assembly/work-sessions/${ids.assemblyWorkSessionId}`;
