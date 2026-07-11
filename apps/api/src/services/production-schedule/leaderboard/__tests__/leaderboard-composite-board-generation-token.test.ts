@@ -340,6 +340,53 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     expect(performanceSink.mock.calls.map(([event]) => event.phase)).not.toContain('materializedBaseWhere');
   });
 
+  it('defers only residual summary while preserving evidence keys for shell row selection', async () => {
+    vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
+      keys: new Set<string>(['P1\u0000K1\u0000R1']),
+      keyArrays: { productNos: ['P1'], fkojuns: ['K1'], resourceCds: ['R1'] },
+      evidenceByKey: new Map(),
+      rawMailRowsRevision: 'revision-1'
+    });
+    vi.spyOn(generation, 'readLeaderboardShellSnapshotGenerationTokenDetails').mockResolvedValue({
+      generationToken: '{"generation":"1"}',
+      fkojunstStatusMailRowsRevision: 'revision-1'
+    });
+    const residualSummarySpy = vi.spyOn(residualService, 'fetchLeaderboardProcessChangeResidualSummary');
+    const shellSpy = vi.spyOn(queryService, 'listLeaderboardShellProductionScheduleRows').mockResolvedValue({
+      page: 1,
+      pageSize: 50,
+      rows: [{ id: 'row-1', rowData: { FSIGENCD: '1' } }] as any,
+      snapshotId: 'snap-1',
+      nextCursor: 1,
+      hasMore: true
+    });
+
+    const result = await fetchLeaderboardCompositeBoardShell(
+      {
+        listParamsBase: { queryText: '', productNos: [], locationKey: 'loc-1' },
+        boardResourceCds: ['1'],
+        page: 1,
+        pageSize: 50,
+        includeDecorations: false,
+        includeLabor: false,
+        deferTotals: true,
+        deferResidualSummary: true
+      },
+      { snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 10_000 }) }
+    );
+
+    expect(residualSummarySpy).not.toHaveBeenCalled();
+    expect(shellSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        processChangeResidualStrongEvidenceKeys: new Set(['P1\u0000K1\u0000R1'])
+      }),
+      expect.anything()
+    );
+    expect(result.residualSummaryDeferred).toBe(true);
+    expect(result.processChangeResidualTotal).toBeUndefined();
+    expect(result.processChangeResidualRows).toBeUndefined();
+  });
+
   it('emits opt-in performance events for board shell phases', async () => {
     vi.spyOn(rowResolver, 'resolveLeaderboardMaterializedBaseWhere').mockResolvedValue(Prisma.empty);
     vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
@@ -459,7 +506,13 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     });
     const performanceSink = vi.fn();
 
-    await continueLeaderboardCompositeBoard(
+    vi.spyOn(residualService, 'fetchLeaderboardProcessChangeResidualSummary').mockResolvedValue({
+      processChangeResidualTotal: 1,
+      processChangeResidualRows: [{ id: 'residual-1' } as any],
+      processChangeResidualRepresentativeLimit: 20
+    });
+
+    const result = await continueLeaderboardCompositeBoard(
       {
         listParamsBase: {
           queryText: '',
@@ -472,7 +525,8 @@ describe('leaderboard-composite-board generation token prefetch', () => {
           { resourceCd: '2', snapshotId: 'snap-2', cursor: 0, hasMore: true }
         ],
         chunkSize: 160,
-        includeDecorations: false
+        includeDecorations: false,
+        includeResidualSummary: true
       },
       {
         snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 10_000 }),
@@ -497,6 +551,9 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     for (const event of events) {
       expect(event.ok).toBe(true);
     }
+    expect(result.processChangeResidualTotal).toBe(1);
+    expect(result.processChangeResidualRows).toEqual([{ id: 'residual-1' }]);
+    expect(result.processChangeResidualRepresentativeLimit).toBe(20);
   });
 
   it('emits processChangeResidualContext subphase events including revision refresh when materialization observes newer revision', async () => {

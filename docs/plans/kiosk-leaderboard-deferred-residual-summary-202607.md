@@ -29,7 +29,7 @@ The feature is off by default. Existing clients and requests retain the current 
 - [x] (2026-07-11 11:35+09:00) Confirmed residual evidence keys are required on the shell critical path because they exclude suspected rows from normal ranking.
 - [x] (2026-07-11 11:35+09:00) Confirmed only residual summary COUNT and representative-row hydration can be deferred; these account for about 2.1–2.35 seconds on Pi5.
 - [x] (2026-07-11 11:35+09:00) Selected existing `leaderboard-board/continue` as the follow-up transport to avoid another endpoint and reuse snapshot validation.
-- [ ] Implement the API behavior behind an API feature gate that defaults OFF.
+- [x] (2026-07-11 12:00+09:00) Implemented API shell deferral and continue summary attachment behind `LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED=false`; default behavior remains atomic.
 - [ ] Implement Web opt-in behind a build/runtime feature gate that defaults OFF.
 - [ ] Verify final-response equivalence, failure recovery, and local performance.
 - [ ] Request explicit approval before any Pi5 canary deployment.
@@ -112,4 +112,4 @@ Turn the Web opt-in gate OFF first so no new deferred requests are issued. The A
 
 ## Outcomes & Retrospective
 
-Design is complete; no runtime code or production setting has changed. Expected steady-state leverage is removal of the measured 2.1–2.35-second residual summary from the first-row critical path. Actual browser improvement remains to be proven by an implementation behind disabled gates and a separately approved canary.
+API stage is implemented locally behind a disabled-by-default gate; no production setting has changed. Schema/service focused tests, API build, lint, and whitespace checks pass. Web opt-in, pending-state merge/cache handling, end-to-end equivalence, and browser performance measurement remain before any canary approval request.

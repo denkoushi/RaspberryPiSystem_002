@@ -40,6 +40,11 @@ function isLeaderboardBoardPerformanceLogEnabled(): boolean {
   return value === 'true' || value === '1';
 }
 
+function isLeaderboardDeferredResidualSummaryEnabled(): boolean {
+  const value = process.env.LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED?.trim().toLowerCase();
+  return value === 'true' || value === '1';
+}
+
 function createLeaderboardBoardPerformanceSink(request: {
   id?: unknown;
   log: { info: (obj: Record<string, unknown>, message: string) => void };
@@ -323,7 +328,9 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         pageSize,
         includeDecorations: query.includeDecorations,
         includeLabor: query.includeLabor,
-        deferTotals: query.deferTotals
+        deferTotals: query.deferTotals,
+        deferResidualSummary:
+          isLeaderboardDeferredResidualSummaryEnabled() && query.deferResidualSummary
       },
       {
         snapshotStore: deps.leaderboardShellSnapshotStore,
@@ -378,7 +385,9 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         resourceSlices: body.resourceSlices,
         chunkSize,
         includeDecorations: body.includeDecorations,
-        includeLabor: body.includeLabor
+        includeLabor: body.includeLabor,
+        includeResidualSummary:
+          isLeaderboardDeferredResidualSummaryEnabled() && body.includeResidualSummary
       },
       {
         snapshotStore: deps.leaderboardShellSnapshotStore,
