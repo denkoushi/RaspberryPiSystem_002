@@ -13,10 +13,11 @@ common_env=(
   PI5_PROJECT_DIR="$ROOT"
   PI5_BASE_COMPOSE="$ROOT/infrastructure/docker/docker-compose.server.yml"
   PI5_PHASE2_COMPOSE="$ROOT/infrastructure/docker/docker-compose.phase2.yml"
-  PI5_ENV_FILE="$ROOT/infrastructure/docker/.env.example"
+  PI5_ENV_FILE="$ROOT/scripts/deploy/tests/fixtures/pi5-compose.env"
   PI5_DEPLOY_STATE_FILE="$TMP/state.json"
   PI5_DEPLOY_LOCK_FILE="$TMP/lock"
   PI5_DEPLOY_DRY_RUN=1
+  PI5_DEPLOY_TEST_ALLOW_DIRTY_WORKTREE=1
   PI5_MIN_FREE_MEMORY_MB=0
   PI5_MIN_FREE_DISK_GB=0
 )
@@ -28,6 +29,11 @@ assert_contains "$output" "candidate prepared"
 
 status="$(env "${common_env[@]}" "$SCRIPT" status)"
 assert_contains "$status" '"event": "prepared"'
+assert_contains "$status" '"rollbackEligible": false'
+
+if env "${common_env[@]}" "$SCRIPT" rollback >/dev/null 2>&1; then
+  fail "rollback was accepted for a prepared-only candidate"
+fi
 
 for file in \
   "$ROOT/infrastructure/docker/maintenance.html" \

@@ -12,6 +12,8 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
 - [x] (2026-07-11 08:35Z) Created a clean phase-2 branch and worktree from merged PR #972.
 - [x] (2026-07-11 08:31Z) Added the phase-2 image lifecycle command and Compose image override.
 - [x] (2026-07-11 09:12Z) Added Caddy static maintenance-page templates and made the switch path use them before API replacement.
+- [x] (2026-07-11 09:09Z) Ran Pi5 prepare-only validation successfully for commit `d8a272f71ca5119efe5456df4d55a427c12f5f66`; production API and Web remained healthy.
+- [ ] Re-run Pi5 prepare-only validation after the subsequent scheduler-isolation, Compose-build, and rollback-state hardening.
 - [ ] Add shell tests for prepare, guarded switch, rollback, retention, and resource failures (completed: prepare state, invalid SHA, concurrent lock, and maintenance assets; remaining: mocked switch failure, rollback, retention, and real resource failure).
 - [x] (2026-07-11 08:34Z) Connected the command to the existing Pi5 deployment path behind the default-off `pi5_minimal_downtime_deploy_enabled` variable.
 - [x] (2026-07-11 08:38Z) Added the operator runbook and release-delta migration compatibility guard.
@@ -33,6 +35,16 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
   Evidence: the first Pi5 prepare-only run built both images successfully, then failed safely with `open /srv/certs/cert.pem: no such file or directory`; production API and Web were not replaced.
 - Observation: external API health checks cannot be used while a global maintenance page is intentionally responding.
   Evidence: the switch path now checks the newly recreated API from inside its container, then restores external checking after Web returns to normal routing.
+- Observation: HTTP 200 alone does not prove the new Web container replaced the maintenance configuration.
+  Evidence: a maintenance page is also HTTP 200, so switch and rollback now require the static maintenance marker to be absent before accepting Web recovery.
+- Observation: a temporary candidate API container inherited production scheduler behavior.
+  Evidence: API startup calls `startPostListenSchedulers`; candidate validation now explicitly sets `PI5_CANDIDATE_VALIDATION=1`, which starts the health endpoint but suppresses background work against the shared production database.
+- Observation: direct Dockerfile builds omit Compose-provided Web and API build arguments.
+  Evidence: the production Compose definition supplies `VITE_*` and `INSTALL_PLAYWRIGHT_CHROMIUM` arguments; candidate builds now go through the same Compose configuration and include a non-secret environment-file fingerprint in their tag.
+- Observation: Bash `RETURN` traps do not run when a helper calls `exit`.
+  Evidence: candidate API health failure now removes its temporary container explicitly before reporting failure, rather than relying on a function-return trap.
+- Observation: a newly prepared candidate can coexist with an older active/previous switch pair.
+  Evidence: prepare now marks rollback ineligible; manual rollback requires both an eligible completed switch and actual running image identities that match the recorded active pair.
 
 ## Decision Log
 
@@ -51,10 +63,19 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
 - Decision: Enable the maintenance page through a live Caddy reload in the existing Web container instead of recreating Web before API replacement.
   Rationale: the currently active image may predate phase 2 and lacks the page. Caddy's admin reload keeps the public listener alive, lets the old Web container serve a static page during the API replacement, and is cleared when the new Web container starts.
   Date/Author: 2026-07-11 / Codex
+- Decision: Skip legacy Ansible service convergence and migration tasks when the phase-2 lifecycle has already switched the same services.
+  Rationale: executing the base Compose path afterward could recreate tagged candidate containers with the legacy image definition and negate the controlled switch.
+  Date/Author: 2026-07-11 / Codex
+- Decision: Refuse to prepare or switch unless the clean checked-out worktree is exactly the requested commit SHA.
+  Rationale: an image tag is useful for rollback only if it identifies the exact source and build configuration. The candidate tag combines the full commit SHA with a hash of the Compose environment file, without exposing its contents.
+  Date/Author: 2026-07-11 / Codex
+- Decision: Treat prepare and switch as distinct state transitions, and invalidate manual rollback eligibility when a new candidate is prepared.
+  Rationale: this prevents an operator from interpreting an old `previous` pair as the rollback target for an un-switched candidate. A manual rollback additionally verifies the live API and Web image identities before replacing them.
+  Date/Author: 2026-07-11 / Codex
 
 ## Outcomes & Retrospective
 
-The standalone lifecycle foundation, explicit image override, initial shell tests, and default-off Ansible integration now exist. Shell syntax, whitespace, lifecycle tests, and Ansible syntax validation pass. Mocked rollback/retention tests, documentation, and real Pi5 candidate validation remain; no phase-2 production switch has been attempted.
+The standalone lifecycle foundation, explicit image override, initial shell tests, default-off Ansible integration, static maintenance page, scheduler-isolated candidate validation, and rollback state guard now exist. Shell syntax, whitespace, lifecycle tests, API candidate-validation test, API build, and Ansible syntax validation pass. Pi5 prepare-only validation passed before the latest hardening and must be repeated. Mocked rollback/retention tests and a real Pi5 switch/rollback acceptance remain; no phase-2 production switch has been attempted.
 
 ## Context and Orientation
 

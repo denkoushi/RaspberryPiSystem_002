@@ -541,7 +541,7 @@
           - --ref
           - "{{ pi5_candidate_sha_result.stdout }}"
       environment:
-        PI5_MIGRATION_BASE_REF: "{{ repo_head_before | default(pi5_candidate_sha_result.stdout + '^') }}"
+        PI5_MIGRATION_BASE_REF: "{{ repo_prev_head | default(pi5_candidate_sha_result.stdout + '^') }}"
       register: pi5_candidate_prepare_result
       changed_when: true
 
@@ -553,7 +553,7 @@
           - --ref
           - "{{ pi5_candidate_sha_result.stdout }}"
       environment:
-        PI5_MIGRATION_BASE_REF: "{{ repo_head_before | default(pi5_candidate_sha_result.stdout + '^') }}"
+        PI5_MIGRATION_BASE_REF: "{{ repo_prev_head | default(pi5_candidate_sha_result.stdout + '^') }}"
       register: pi5_candidate_switch_result
       changed_when: true
 
@@ -581,7 +581,10 @@
           State: {{ pi5_image_deploy_failure_state.stdout | default('unavailable') }}
   when:
     - pi5_minimal_downtime_deploy_enabled | default(false) | bool
-    - (force_docker_rebuild | default(false) | bool) or (server_docker_build_needed | default(repo_changed) | bool)
+    - >-
+      (force_docker_rebuild | default(false) | bool)
+      or (server_docker_build_needed | default(repo_changed) | bool)
+      or (docker_env_result.changed | default(false))
 
 - name: Force recreate api when Docker .env changed
   ansible.builtin.shell: |
@@ -612,6 +615,7 @@
     docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d api web
   args:
     executable: /bin/bash
+  when: not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
 
 - name: Run Prisma migrations on server (fail-fast)
   block:
@@ -653,6 +657,7 @@
         msg: >
           Prisma migration failed on {{ inventory_hostname }}.
           See captured logs above for details.
+  when: not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
 
 # api/web rebuild 直後は起動直後 memory spike で一時 503 degraded になり得るため、最大約120秒待つ。
 - name: Wait for API health endpoint to recover

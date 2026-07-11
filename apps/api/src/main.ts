@@ -4,6 +4,7 @@ import { env } from './config/env.js';
 import { getKioskDocumentGmailScheduler } from './services/kiosk-documents/kiosk-document-gmail.scheduler.js';
 import { getPhotoToolLabelScheduler } from './services/tools/photo-tool-label/photo-tool-label.scheduler.js';
 import { startPostListenSchedulers } from './bootstrap/start-post-listen-schedulers.js';
+import { isCandidateValidationMode } from './bootstrap/candidate-validation.js';
 
 if (process.env['NODE_ENV'] !== 'test') {
   buildServer()
@@ -11,21 +12,26 @@ if (process.env['NODE_ENV'] !== 'test') {
       await app.listen({ port: env.PORT, host: env.HOST });
       logger.info({ address: `http://${env.HOST}:${env.PORT}` }, 'API server listening');
 
-      const handles = await startPostListenSchedulers(app);
+      const handles = isCandidateValidationMode() ? null : await startPostListenSchedulers(app);
+      if (handles === null) {
+        logger.info('Candidate validation mode: background schedulers are disabled');
+      }
 
       // Graceful shutdown (best-effort)
       const shutdown = async (signal: string) => {
         try {
           logger.info({ signal }, 'Shutting down API server');
-          await handles.alertsIngestor.stop();
-          await handles.alertsDbDispatcher.stop();
-          await handles.alertsDispatcher.stop();
-          getKioskDocumentGmailScheduler().stop();
-          handles.kioskDocOcrScheduler.stop();
-          handles.gmailTrashCleanupScheduler.stop();
-          handles.dueManagementTuningOrchestrator.stop();
-          handles.partMeasurementDrawingOcrScheduler.stop();
-          getPhotoToolLabelScheduler().stop();
+          if (handles !== null) {
+            await handles.alertsIngestor.stop();
+            await handles.alertsDbDispatcher.stop();
+            await handles.alertsDispatcher.stop();
+            getKioskDocumentGmailScheduler().stop();
+            handles.kioskDocOcrScheduler.stop();
+            handles.gmailTrashCleanupScheduler.stop();
+            handles.dueManagementTuningOrchestrator.stop();
+            handles.partMeasurementDrawingOcrScheduler.stop();
+            getPhotoToolLabelScheduler().stop();
+          }
           await app.close();
         } catch (err) {
           logger.warn({ err, signal }, 'Failed during shutdown');

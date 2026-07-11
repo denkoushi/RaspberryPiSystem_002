@@ -60,9 +60,25 @@ path, event, api, web, prev_api, prev_web, result = sys.argv[1:]
 try:
     with open(path, encoding="utf-8") as f: state = json.load(f)
 except (FileNotFoundError, json.JSONDecodeError): state = {"version": 1}
-state.update({"event": event, "updatedAt": datetime.now(timezone.utc).isoformat(),
-              "candidate": {"api": api, "web": web}})
-if prev_api or prev_web: state["previous"] = {"api": prev_api, "web": prev_web}
+candidate = {"api": api, "web": web}
+previous = {"api": prev_api, "web": prev_web}
+state.update({"event": event, "updatedAt": datetime.now(timezone.utc).isoformat(), "candidate": candidate})
+if event == "prepared":
+    # A prepared image has not changed production. Do not let an operator mistake
+    # an older rollback pair for a rollback target for this new candidate.
+    state["rollbackEligible"] = False
+elif event == "switching":
+    state["active"] = previous
+    state["previous"] = previous
+    state["rollbackEligible"] = False
+elif event == "active":
+    state["active"] = candidate
+    state["previous"] = previous
+    state["rollbackEligible"] = True
+elif event == "rolled-back":
+    state["active"] = previous
+    state["previous"] = candidate
+    state["rollbackEligible"] = False
 if result: state["result"] = result
 fd, tmp = tempfile.mkstemp(prefix=".pi5-deploy-", dir=os.path.dirname(path))
 with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -84,6 +100,23 @@ PY
 require_sha() {
   [[ "$REF" =~ ^[0-9a-f]{40}$ ]] || die "--ref must be a full 40-character Git commit SHA"
   git -C "$PROJECT_DIR" cat-file -e "${REF}^{commit}" 2>/dev/null || die "commit is not available locally: $REF"
+  [[ "$(git -C "$PROJECT_DIR" rev-parse HEAD)" == "$REF" ]] || die "checked-out source does not match --ref: $REF"
+  if [[ "$DRY_RUN" != "1" || "${PI5_DEPLOY_TEST_ALLOW_DIRTY_WORKTREE:-0}" != "1" ]]; then
+    git -C "$PROJECT_DIR" diff --quiet || die "repository has unstaged changes; refusing to tag a non-immutable candidate"
+    git -C "$PROJECT_DIR" diff --cached --quiet || die "repository has staged changes; refusing to tag a non-immutable candidate"
+    [[ -z "$(git -C "$PROJECT_DIR" ls-files --others --exclude-standard)" ]] || die "repository has untracked changes; refusing to tag a non-immutable candidate"
+  fi
+}
+
+candidate_tag() {
+  local config_hash
+  [[ -f "$ENV_FILE" ]] || die "Compose environment file is missing: $ENV_FILE"
+  if command -v sha256sum >/dev/null 2>&1; then
+    config_hash="$(sha256sum "$ENV_FILE" | awk '{print $1}')"
+  else
+    config_hash="$(shasum -a 256 "$ENV_FILE" | awk '{print $1}')"
+  fi
+  printf '%s-%s\n' "$REF" "${config_hash:0:12}"
 }
 
 resource_guard() {
@@ -108,17 +141,22 @@ migration_guard() {
     [[ -n "$file" ]] && changed_files+=("$PROJECT_DIR/$file")
   done < <(git -C "$PROJECT_DIR" diff --diff-filter=AM --name-only "$base_ref" "$REF" -- 'apps/api/prisma/migrations/*/migration.sql')
   ((${#changed_files[@]} == 0)) && return 0
-  if grep -Ein '(^|[[:space:]])(DROP[[:space:]]+(TABLE|COLUMN|INDEX)|ALTER[[:space:]].*RENAME|TRUNCATE)([[:space:]]|;)' "${changed_files[@]}" >/dev/null 2>&1; then
+  if grep -Ein '(^|[[:space:]])(DROP[[:space:]]+(TABLE|COLUMN|INDEX|CONSTRAINT|TYPE)|ALTER[[:space:]].*(RENAME|SET[[:space:]]+NOT[[:space:]]+NULL|DROP[[:space:]]+CONSTRAINT)|TRUNCATE|DELETE[[:space:]]+FROM)([[:space:]]|;)' "${changed_files[@]}" >/dev/null 2>&1; then
     die "destructive Prisma migration detected; phase 2 permits Expand-only changes"
   fi
 }
 
 prepare() {
   require_sha; resource_guard; migration_guard
-  local api="${API_REPOSITORY}:${REF}" web="${WEB_REPOSITORY}:${REF}" candidate_name="pi5-api-candidate-${REF:0:12}"
+  local tag api web candidate_name
+  tag="$(candidate_tag)"
+  api="${API_REPOSITORY}:${tag}"; web="${WEB_REPOSITORY}:${tag}"; candidate_name="pi5-api-candidate-${REF:0:12}"
   log "building candidate images while production remains active"
-  run docker build -f "$PROJECT_DIR/infrastructure/docker/Dockerfile.api" -t "$api" "$PROJECT_DIR"
-  run docker build -f "$PROJECT_DIR/infrastructure/docker/Dockerfile.web" -t "$web" "$PROJECT_DIR"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf 'DRY-RUN: PI5_API_IMAGE=%q PI5_WEB_IMAGE=%q docker compose --env-file %q -f %q -f %q build api web\n' "$api" "$web" "$ENV_FILE" "$BASE_COMPOSE" "$PHASE2_COMPOSE"
+  else
+    compose "$api" "$web" build api web
+  fi
   run env PI5_API_IMAGE="$api" PI5_WEB_IMAGE="$web" docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" -f "$PHASE2_COMPOSE" config --quiet
   run docker run --rm \
     -v "$PROJECT_DIR/certs:/srv/certs:ro" \
@@ -131,15 +169,16 @@ prepare() {
     "$web" caddy validate --config /srv/Caddyfile.maintenance.production
   if [[ "$DRY_RUN" != "1" ]]; then
     docker rm -f "$candidate_name" >/dev/null 2>&1 || true
-    compose "$api" "$web" run -d --no-deps --name "$candidate_name" api >/dev/null
-    trap 'docker rm -f "$candidate_name" >/dev/null 2>&1 || true' RETURN
+    compose "$api" "$web" run -d --no-deps -e PI5_CANDIDATE_VALIDATION=1 --name "$candidate_name" api >/dev/null
     for _ in $(seq 1 30); do
       if docker exec "$candidate_name" node -e "fetch('http://127.0.0.1:8080/api/system/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then break; fi
       sleep 2
     done
-    docker exec "$candidate_name" node -e "fetch('http://127.0.0.1:8080/api/system/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" || die "candidate API health check failed"
+    if ! docker exec "$candidate_name" node -e "fetch('http://127.0.0.1:8080/api/system/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+      docker rm -f "$candidate_name" >/dev/null 2>&1 || true
+      die "candidate API health check failed"
+    fi
     docker rm -f "$candidate_name" >/dev/null
-    trap - RETURN
   fi
   atomic_state prepared "$api" "$web" "" "" success
   log "candidate prepared: ${REF}"
@@ -155,6 +194,18 @@ current_image() {
 wait_external() {
   local url="$1"
   for _ in $(seq 1 15); do curl -kfsS --max-time 2 "$url" >/dev/null && return 0; sleep 2; done
+  return 1
+}
+
+wait_web_normal() {
+  local body
+  for _ in $(seq 1 15); do
+    body="$(curl -kfsS --max-time 2 "$WEB_URL" 2>/dev/null || true)"
+    if [[ -n "$body" && "$body" != *"ただいま更新中です"* ]]; then
+      return 0
+    fi
+    sleep 2
+  done
   return 1
 }
 
@@ -208,12 +259,15 @@ restore_images() {
   compose "$api" "$web" up -d --no-build --force-recreate api
   wait_api_internal
   compose "$api" "$web" up -d --no-build --force-recreate web
-  wait_external "$WEB_URL"
+  wait_web_normal
+  wait_external "$HEALTH_URL"
 }
 
 switch_candidate() {
   require_sha; migration_guard
-  local api="${API_REPOSITORY}:${REF}" web="${WEB_REPOSITORY}:${REF}" previous_api previous_web started
+  local tag api web previous_api previous_web started
+  tag="$(candidate_tag)"
+  api="${API_REPOSITORY}:${tag}"; web="${WEB_REPOSITORY}:${tag}"
   [[ "$(read_state_value candidate.api)" == "$api" ]] || die "candidate was not prepared: $api"
   docker image inspect "$api" "$web" >/dev/null || die "candidate image is missing"
   previous_api="$(current_image api)"; previous_web="$(current_image web)"; started="$(date +%s)"
@@ -223,7 +277,7 @@ switch_candidate() {
     compose "$api" "$web" run --rm --no-deps api pnpm prisma migrate deploy && \
     compose "$api" "$web" run --rm --no-deps api pnpm prisma migrate status && \
     compose "$api" "$web" up -d --no-build --force-recreate api && wait_api_internal && \
-    compose "$api" "$web" up -d --no-build --force-recreate web && wait_external "$WEB_URL"
+    compose "$api" "$web" up -d --no-build --force-recreate web && wait_web_normal && wait_external "$HEALTH_URL"
   local rc=$?
   set -e
   if ((rc != 0)); then
@@ -237,11 +291,18 @@ switch_candidate() {
 }
 
 rollback() {
-  local api web candidate_api candidate_web
+  local api web active_api active_web candidate_api candidate_web
+  [[ "$(read_state_value rollbackEligible)" == "True" || "$(read_state_value rollbackEligible)" == "true" ]] || die "rollback is not eligible for the current candidate state"
   api="$(read_state_value previous.api)"; web="$(read_state_value previous.web)"
+  active_api="$(read_state_value active.api)"; active_web="$(read_state_value active.web)"
   candidate_api="$(read_state_value candidate.api)"; candidate_web="$(read_state_value candidate.web)"
+  [[ "$(current_image api)" == "$active_api" ]] || die "running API image does not match the recorded active image; refusing rollback"
+  [[ "$(current_image web)" == "$active_web" ]] || die "running Web image does not match the recorded active image; refusing rollback"
+  if ! enable_maintenance; then
+    log "WARN: maintenance page could not be enabled; continuing with rollback"
+  fi
   restore_images "$api" "$web"
-  atomic_state rolled-back "$candidate_api" "$candidate_web" "$api" "$web" success
+  atomic_state rolled-back "$active_api" "$active_web" "$api" "$web" success
 }
 
 cleanup() {
