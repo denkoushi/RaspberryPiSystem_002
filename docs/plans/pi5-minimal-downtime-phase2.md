@@ -45,6 +45,8 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
   Evidence: candidate API health failure now removes its temporary container explicitly before reporting failure, rather than relying on a function-return trap.
 - Observation: a newly prepared candidate can coexist with an older active/previous switch pair.
   Evidence: prepare now marks rollback ineligible; manual rollback requires both an eligible completed switch and actual running image identities that match the recorded active pair.
+- Observation: maintenance enablement is part of the switch failure domain.
+  Evidence: its failure now returns a normal error to the switch chain, allowing the recorded-image recovery path to run instead of exiting before rollback handling.
 
 ## Decision Log
 

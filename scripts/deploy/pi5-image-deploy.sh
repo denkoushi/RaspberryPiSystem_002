@@ -249,7 +249,10 @@ enable_maintenance() {
   docker cp "$template" "$cid:/tmp/pi5-maintenance.Caddyfile"
   docker exec "$cid" caddy reload --config /tmp/pi5-maintenance.Caddyfile
   status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 5 "$MAINTENANCE_URL" || true)"
-  [[ "$status" == "200" ]] || die "maintenance page did not become reachable (HTTP ${status:-none})"
+  if [[ "$status" != "200" ]]; then
+    log "ERROR: maintenance page did not become reachable (HTTP ${status:-none})"
+    return 1
+  fi
   log "global maintenance page enabled"
 }
 
