@@ -34,6 +34,8 @@ The user-visible proof is that `scripts/deploy/pi5-blue-green.sh status` reports
   Evidence: `docker run --rm -v <config>:/srv:ro caddy:2 caddy validate --config /srv/Caddyfile` returned `Valid configuration` for the HTTP gateway and slot templates; the TLS template passed `caddy adapt`.
 - Observation: a local full Web image build could not reach the Dockerfile frontend resolver in the managed environment.
   Evidence: `docker build -f infrastructure/docker/Dockerfile.web ...` remained at `resolve image config for docker-image://docker.io/docker/dockerfile:1` and was canceled; the hosted `security-docker` CI job remains the authoritative full build check.
+- Observation: Compose interpolates every declared service even when `up` names only one slot.
+  Evidence: the first production bootstrap preflight showed that empty inactive-slot image variables would fail the required-image interpolation before any container started. The command now reuses the bootstrap candidate image for inactive-slot validation while still starting only the requested services.
 
 ## Decision Log
 

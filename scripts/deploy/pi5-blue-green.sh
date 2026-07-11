@@ -128,6 +128,12 @@ resource_guard() {
 
 compose() {
   local ba="$1" ga="$2" bw="$3" gw="$4" gateway="$5"; shift 5
+  # Compose validates all five services even when only one slot is being started.
+  # During bootstrap the inactive slot has no distinct image yet, so reuse the
+  # active candidate image for validation without starting that service.
+  [[ -n "$ga" ]] || ga="$ba"
+  [[ -n "$gw" ]] || gw="$bw"
+  [[ -n "$gateway" ]] || gateway="$bw"
   if [[ "$DRY_RUN" == 1 ]]; then
     printf 'DRY-RUN: docker compose -p %q -f %q' "$COMPOSE_PROJECT" "$PHASE3_COMPOSE"; printf ' %q' "$@"; printf '\n'; return 0
   fi
