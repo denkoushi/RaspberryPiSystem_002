@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import sharp from 'sharp';
-import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
+import { extractInspectionDrawingAsciiDigits } from '../../packages/shared-types/src/part-measurement/inspection-drawing-digit-search.js';
 
 import { prisma } from '../../apps/api/src/lib/prisma.js';
 import {

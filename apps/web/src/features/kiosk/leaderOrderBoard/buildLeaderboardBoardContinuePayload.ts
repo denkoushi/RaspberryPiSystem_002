@@ -25,11 +25,20 @@ export function buildLeaderboardBoardContinuePayload(
   base: KioskProductionScheduleLeaderboardBoardQueryParams,
   board: ProductionScheduleLeaderboardBoardResponse
 ): KioskProductionScheduleLeaderboardBoardContinuePayload {
-  const { page: _p, pageSize: _ps, allowResourceOnly, includeDecorations: _id, deferTotals: _dt, ...rest } = base;
+  const {
+    page: _p,
+    pageSize: _ps,
+    allowResourceOnly,
+    includeDecorations: _id,
+    deferTotals: _dt,
+    deferResidualSummary: _drs,
+    ...rest
+  } = base;
   void _p;
   void _ps;
   void _id;
   void _dt;
+  void _drs;
   const normalizedAllowResourceOnly = coerceLeaderboardContinueBoolean(allowResourceOnly);
   return {
     ...rest,
@@ -37,6 +46,7 @@ export function buildLeaderboardBoardContinuePayload(
       ? { allowResourceOnly: normalizedAllowResourceOnly }
       : {}),
     includeDecorations: false,
+    includeResidualSummary: board.residualSummaryDeferred === true,
     resourceSlices: board.resources.map((r) => {
       const hasSnap = Boolean(r.snapshotId?.trim());
       let cursor: number | undefined;

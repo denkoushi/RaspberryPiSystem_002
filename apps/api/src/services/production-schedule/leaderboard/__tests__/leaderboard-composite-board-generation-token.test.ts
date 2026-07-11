@@ -11,6 +11,7 @@ import * as queryService from '../../production-schedule-query.service.js';
 import * as rowResolver from '../../row-resolver/index.js';
 import * as totalsResolver from '../resolve-leaderboard-board-resource-totals-for-continue.js';
 import { createInMemoryLeaderboardShellSnapshotStore } from '../leaderboard-shell-snapshot.store.js';
+import { buildLeaderboardShellFilterFingerprint } from '../leaderboard-shell-snapshot-fingerprint.js';
 import {
   clearLeaderboardBoardPrefixRowCacheForTests,
   putLeaderboardBoardPrefixRowsInCache,
@@ -338,6 +339,53 @@ describe('leaderboard-composite-board generation token prefetch', () => {
       })
     );
     expect(performanceSink.mock.calls.map(([event]) => event.phase)).not.toContain('materializedBaseWhere');
+  });
+
+  it('defers only residual summary while preserving evidence keys for shell row selection', async () => {
+    vi.spyOn(materialization, 'materializeProcessChangeResidualStrongEvidence').mockResolvedValue({
+      keys: new Set<string>(['P1\u0000K1\u0000R1']),
+      keyArrays: { productNos: ['P1'], fkojuns: ['K1'], resourceCds: ['R1'] },
+      evidenceByKey: new Map(),
+      rawMailRowsRevision: 'revision-1'
+    });
+    vi.spyOn(generation, 'readLeaderboardShellSnapshotGenerationTokenDetails').mockResolvedValue({
+      generationToken: '{"generation":"1"}',
+      fkojunstStatusMailRowsRevision: 'revision-1'
+    });
+    const residualSummarySpy = vi.spyOn(residualService, 'fetchLeaderboardProcessChangeResidualSummary');
+    const shellSpy = vi.spyOn(queryService, 'listLeaderboardShellProductionScheduleRows').mockResolvedValue({
+      page: 1,
+      pageSize: 50,
+      rows: [{ id: 'row-1', rowData: { FSIGENCD: '1' } }] as any,
+      snapshotId: 'snap-1',
+      nextCursor: 1,
+      hasMore: true
+    });
+
+    const result = await fetchLeaderboardCompositeBoardShell(
+      {
+        listParamsBase: { queryText: '', productNos: [], locationKey: 'loc-1' },
+        boardResourceCds: ['1'],
+        page: 1,
+        pageSize: 50,
+        includeDecorations: false,
+        includeLabor: false,
+        deferTotals: true,
+        deferResidualSummary: true
+      },
+      { snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 10_000 }) }
+    );
+
+    expect(residualSummarySpy).not.toHaveBeenCalled();
+    expect(shellSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        processChangeResidualStrongEvidenceKeys: new Set(['P1\u0000K1\u0000R1'])
+      }),
+      expect.anything()
+    );
+    expect(result.residualSummaryDeferred).toBe(true);
+    expect(result.processChangeResidualTotal).toBeUndefined();
+    expect(result.processChangeResidualRows).toBeUndefined();
   });
 
   it('emits opt-in performance events for board shell phases', async () => {
@@ -710,7 +758,20 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     const snapshotId = store.create({
       orderedRowIds: ['row-a', 'row-b'],
       partialOrdering: false,
-      filterFingerprint: 'fp-1',
+      filterFingerprint: buildLeaderboardShellFilterFingerprint({
+        locationKey: 'loc-1',
+        siteKey: undefined,
+        queryText: '',
+        productNos: [],
+        machineName: undefined,
+        resourceCds: ['1'],
+        assignedOnlyCds: [],
+        resourceCategory: undefined,
+        hasNoteOnly: false,
+        hasDueDateOnly: false,
+        allowResourceOnly: false,
+        completionFilter: undefined
+      }),
       generationToken: '{"generation":"1"}',
       locationKey: 'loc-1',
       siteKey: undefined
@@ -748,8 +809,13 @@ describe('leaderboard-composite-board generation token prefetch', () => {
       nextCursor: 2,
       hasMore: false
     });
+    vi.spyOn(residualService, 'fetchLeaderboardProcessChangeResidualSummary').mockResolvedValue({
+      processChangeResidualTotal: 1,
+      processChangeResidualRows: [{ id: 'residual-1' } as any],
+      processChangeResidualRepresentativeLimit: 20
+    });
 
-    await continueLeaderboardCompositeBoard(
+    const result = await continueLeaderboardCompositeBoard(
       {
         listParamsBase: {
           queryText: '',
@@ -759,7 +825,8 @@ describe('leaderboard-composite-board generation token prefetch', () => {
         boardResourceCds: ['1'],
         resourceSlices: [{ resourceCd: '1', snapshotId, cursor: 1, hasMore: true }],
         chunkSize: 160,
-        includeDecorations: false
+        includeDecorations: false,
+        includeResidualSummary: true
       },
       { snapshotStore: store }
     );
@@ -769,5 +836,8 @@ describe('leaderboard-composite-board generation token prefetch', () => {
     expect(cached.missingIds).toEqual([]);
     expect(cached.cachedRows.map((row) => row.machineRequiredMinutes)).toEqual([10, 20]);
     expect(cached.cachedRows.map((row) => row.laborRequiredMinutes)).toEqual([0, 0]);
+    expect(result.processChangeResidualTotal).toBe(1);
+    expect(result.processChangeResidualRows).toEqual([{ id: 'residual-1' }]);
+    expect(result.processChangeResidualRepresentativeLimit).toBe(20);
   });
 });

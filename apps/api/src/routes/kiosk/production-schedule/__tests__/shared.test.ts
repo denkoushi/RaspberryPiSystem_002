@@ -114,6 +114,37 @@ describe('production-schedule route shared helpers', () => {
     ).toBe(true);
   });
 
+  it('残骸 summary 遅延 field は既定 false / 明示 true で解釈する', () => {
+    const queryBase = {
+      boardResourceCds: 'R1',
+      pageSize: '50',
+      allowResourceOnly: 'true'
+    };
+    expect(productionScheduleLeaderboardBoardQuerySchema.parse(queryBase).deferResidualSummary).toBe(false);
+    expect(
+      productionScheduleLeaderboardBoardQuerySchema.parse({
+        ...queryBase,
+        deferResidualSummary: 'true'
+      }).deferResidualSummary
+    ).toBe(true);
+
+    const continueBase = {
+      boardResourceCds: 'R1',
+      pageSize: 160,
+      allowResourceOnly: true,
+      resourceSlices: [{ resourceCd: 'R1', hasMore: false }]
+    };
+    expect(
+      productionScheduleLeaderboardBoardContinueBodySchema.parse(continueBase).includeResidualSummary
+    ).toBe(false);
+    expect(
+      productionScheduleLeaderboardBoardContinueBodySchema.parse({
+        ...continueBase,
+        includeResidualSummary: true
+      }).includeResidualSummary
+    ).toBe(true);
+  });
+
   it('productionScheduleLeaderboardLaborMetadataBodySchema は UUID / split UUID と target scope を受け付ける', () => {
     const uuid = '550e8400-e29b-41d4-a716-446655440000';
     const splitUuid = 'split:550e8400-e29b-41d4-a716-446655440001';

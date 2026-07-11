@@ -809,6 +809,7 @@ export type KioskProductionScheduleLeaderboardBoardQueryParams = KioskProduction
   includeLabor?: boolean;
   /** true のとき初回 shell は exact total を待たず、continue で正確な total に戻す */
   deferTotals?: boolean;
+  deferResidualSummary?: boolean;
 };
 
 export type LeaderboardBoardResourceSliceResponse = {
@@ -831,6 +832,7 @@ export type ProductionScheduleLeaderboardBoardResponse = ProductionScheduleListR
   processChangeResidualTotal?: number;
   processChangeResidualRows?: ProductionScheduleRow[];
   processChangeResidualRepresentativeLimit?: number;
+  residualSummaryDeferred?: true;
 };
 
 export async function getKioskProductionScheduleLeaderboardBoard(
@@ -856,6 +858,7 @@ export type KioskProductionScheduleLeaderboardBoardContinuePayload = Omit<
     hasMore: boolean;
   }>;
   pageSize?: number;
+  includeResidualSummary?: boolean;
 };
 
 export async function postKioskProductionScheduleLeaderboardBoardContinue(

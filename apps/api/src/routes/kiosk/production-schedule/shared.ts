@@ -148,6 +148,16 @@ export const productionScheduleLeaderboardBoardQuerySchema = productionScheduleL
       const s = String(v).trim().toLowerCase();
       return s === 'true' || s === '1';
     }),
+  /** feature gate 有効時のみ、工程変更残骸 summary を continue へ遅延する。 */
+  deferResidualSummary: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((v): boolean => {
+      if (v === undefined) return false;
+      if (typeof v === 'boolean') return v;
+      const s = String(v).trim().toLowerCase();
+      return s === 'true' || s === '1';
+    }),
   ...productionScheduleLeaderboardIncludeDecorationsField,
   ...productionScheduleLeaderboardIncludeLaborField
 });
@@ -163,6 +173,7 @@ export const productionScheduleLeaderboardBoardContinueBodySchema = productionSc
     boardResourceCds: z.string().min(1).max(4000),
     includeDecorations: z.boolean().optional().default(true),
     includeLabor: z.boolean().optional().default(false),
+    includeResidualSummary: z.boolean().optional().default(false),
     resourceSlices: z
       .array(
         z.object({

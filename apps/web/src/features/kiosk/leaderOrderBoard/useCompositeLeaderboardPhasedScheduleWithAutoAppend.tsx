@@ -74,6 +74,8 @@ const SCHEDULE_QUERY_DISABLED = {
 };
 
 const EMPTY_LABOR_METADATA_RESOURCE_CDS: readonly string[] = [];
+const DEFER_RESIDUAL_SUMMARY_ENABLED =
+  import.meta.env.VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED === 'true';
 
 function isLeaderboardLaborRequestEnabled(includeLabor: unknown): boolean {
   return includeLabor === true || includeLabor === 'true';
@@ -209,16 +211,22 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     if (!scheduleEnabled || resourceCdsOrderedKey.length === 0) return undefined;
     const baseParams = JSON.parse(leaderboardPhasedBaseParamsKey) as LeaderboardBoardPhasedBaseFetchParams;
     if (clientFilterEnabled) {
-      return buildLeaderboardBoardBaseFetchParams({
-        phasedBase: baseParams,
-        boardResourceCds: orderedResourceCds
-      });
+      return {
+        ...buildLeaderboardBoardBaseFetchParams({
+          phasedBase: baseParams,
+          boardResourceCds: orderedResourceCds
+        }),
+        ...(DEFER_RESIDUAL_SUMMARY_ENABLED ? { deferResidualSummary: true } : {})
+      };
     }
-    return buildLeaderboardBoardLegacyFetchParams({
-      phasedBase: baseParams,
-      boardResourceCds: orderedResourceCds,
-      seibanOrFilters: stableSeibanOrFilters
-    });
+    return {
+      ...buildLeaderboardBoardLegacyFetchParams({
+        phasedBase: baseParams,
+        boardResourceCds: orderedResourceCds,
+        seibanOrFilters: stableSeibanOrFilters
+      }),
+      ...(DEFER_RESIDUAL_SUMMARY_ENABLED ? { deferResidualSummary: true } : {})
+    };
   }, [
     clientFilterEnabled,
     leaderboardPhasedBaseParamsKey,
@@ -598,7 +606,11 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
             override: appendOverrideRef.current
           })
         );
-        while (!cancelled && runId === appendRunIdRef.current && cur.resources.some((r) => r.hasMore)) {
+        while (
+          !cancelled &&
+          runId === appendRunIdRef.current &&
+          (cur.resources.some((r) => r.hasMore) || cur.residualSummaryDeferred === true)
+        ) {
           setIsAppending(true);
           setAppendError(null);
           const payload = buildLeaderboardBoardContinuePayload(boardQueryParams, cur);
@@ -639,7 +651,12 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
           });
           cur = next;
         }
-        if (!cancelled && runId === appendRunIdRef.current && !cur.resources.some((r) => r.hasMore)) {
+        if (
+          !cancelled &&
+          runId === appendRunIdRef.current &&
+          !cur.resources.some((r) => r.hasMore) &&
+          cur.residualSummaryDeferred !== true
+        ) {
           appendCompleteForParamsKeyRef.current = paramsKey;
           appendCompleteShellFingerprintRef.current = shellFingerprint;
           logClientPerfEvent('append-complete', {

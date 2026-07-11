@@ -84,6 +84,7 @@ export function leaderboardBoardRowsHaveLaborMinutesMetadata(
 export function isCompleteLeaderboardBoardSnapshot(
   board: ProductionScheduleLeaderboardBoardResponse
 ): boolean {
+  if (board.residualSummaryDeferred === true) return false;
   if (board.resources.length === 0) return board.rows.length === board.total;
   const allDone = board.resources.every((r) => !r.hasMore);
   if (!allDone) return false;

@@ -71,6 +71,25 @@ describe('leaderboardBoardCacheRecord', () => {
     ).toBeNull();
   });
 
+  it('残骸 summary pending は完走キャッシュとして保存しない', () => {
+    const b = board({
+      total: 1,
+      rows: [mkCacheRow('a')],
+      residualSummaryDeferred: true,
+      resources: [{ resourceCd: '1', hasMore: false, total: 1, pageSize: 80 }]
+    });
+    expect(isCompleteLeaderboardBoardSnapshot(b)).toBe(false);
+    expect(
+      buildLeaderboardBoardCacheRecord({
+        cacheKey: 'k',
+        siteKey: 's',
+        paramsKey: 'p',
+        board: b,
+        decorations: createEmptyAccumulatedLeaderboardDecorations()
+      })
+    ).toBeNull();
+  });
+
   it('Map 装飾の serialize/deserialize 往復', () => {
     const acc = createEmptyAccumulatedLeaderboardDecorations();
     acc.rowDecorationsById.set('r1', {

@@ -44,6 +44,7 @@ function fingerprintLeaderboardBoardShellScope(
     .join('\u0001');
   const residual = [
     options?.ignoreResourceTotals === true ? '*' : board.total,
+    board.residualSummaryDeferred === true ? 'pending' : 'resolved',
     board.processChangeResidualTotal ?? 0,
     board.processChangeResidualRepresentativeLimit ?? '',
     residualRows

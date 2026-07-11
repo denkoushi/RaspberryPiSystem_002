@@ -22,8 +22,9 @@ export type LeaderboardAppendSessionGateInput = {
  * - 同一 shell 指紋で追補途中（override が shell より行数多い）なら false（refetch 巻き戻し防止）。
  */
 export function shouldBeginLeaderboardAppendSession(input: LeaderboardAppendSessionGateInput): boolean {
-  const hasMore = input.shell.resources.some((r) => r.hasMore);
-  if (!hasMore) return false;
+  const hasPendingWork =
+    input.shell.resources.some((r) => r.hasMore) || input.shell.residualSummaryDeferred === true;
+  if (!hasPendingWork) return false;
 
   if (
     input.appendCompleteForParamsKey === input.paramsKey &&
@@ -51,7 +52,7 @@ export function resolveLeaderboardAppendLoopStartBoard(
   if (
     appendOverride != null &&
     appendOverride.rows.length >= shell.rows.length &&
-    appendOverride.resources.some((r) => r.hasMore)
+    (appendOverride.resources.some((r) => r.hasMore) || appendOverride.residualSummaryDeferred === true)
   ) {
     return appendOverride;
   }
