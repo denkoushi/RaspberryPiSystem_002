@@ -277,8 +277,7 @@ switch_candidate() {
   atomic_state switching "$api" "$web" "$previous_api" "$previous_web"
   set +e
   enable_maintenance && \
-    compose "$api" "$web" run --rm --no-deps api pnpm prisma migrate deploy && \
-    compose "$api" "$web" run --rm --no-deps api pnpm prisma migrate status && \
+  compose "$api" "$web" run --rm --no-deps api sh -lc './node_modules/.bin/prisma migrate deploy && ./node_modules/.bin/prisma migrate status' && \
     compose "$api" "$web" up -d --no-build --force-recreate api && wait_api_internal && \
     compose "$api" "$web" up -d --no-build --force-recreate web && wait_web_normal && wait_external "$HEALTH_URL"
   local rc=$?

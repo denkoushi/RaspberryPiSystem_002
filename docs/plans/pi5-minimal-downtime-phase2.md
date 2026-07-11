@@ -14,6 +14,8 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
 - [x] (2026-07-11 09:12Z) Added Caddy static maintenance-page templates and made the switch path use them before API replacement.
 - [x] (2026-07-11 09:09Z) Ran Pi5 prepare-only validation successfully for commit `d8a272f71ca5119efe5456df4d55a427c12f5f66`; production API and Web remained healthy.
 - [ ] Re-run Pi5 prepare-only validation after the subsequent scheduler-isolation, Compose-build, and rollback-state hardening.
+- [x] (2026-07-11 09:49Z) Switched Pi5 to candidate `0d06b38faabbb2fc5cbfce0832fcc2cccf933ef2`; API/Web health passed and automatic rollback was not needed.
+- [ ] Reduce the first observed switch duration from 94 seconds to the 30-second target by removing Corepack downloads from the switch path, then measure a later safe switch.
 - [ ] Add shell tests for prepare, guarded switch, rollback, retention, and resource failures (completed: prepare state, invalid SHA, concurrent lock, and maintenance assets; remaining: mocked switch failure, rollback, retention, and real resource failure).
 - [x] (2026-07-11 08:34Z) Connected the command to the existing Pi5 deployment path behind the default-off `pi5_minimal_downtime_deploy_enabled` variable.
 - [x] (2026-07-11 08:38Z) Added the operator runbook and release-delta migration compatibility guard.
@@ -47,6 +49,8 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
   Evidence: prepare now marks rollback ineligible; manual rollback requires both an eligible completed switch and actual running image identities that match the recorded active pair.
 - Observation: maintenance enablement is part of the switch failure domain.
   Evidence: its failure now returns a normal error to the switch chain, allowing the recorded-image recovery path to run instead of exiting before rollback handling.
+- Observation: the first successful Pi5 switch took 94 seconds, exceeding the 30-second target.
+  Evidence: logs showed Corepack downloading pnpm twice during `pnpm prisma` commands while the maintenance page was active. The production services recovered healthy, but future switches now call the bundled Prisma executable directly in one temporary migration container.
 
 ## Decision Log
 
@@ -77,7 +81,7 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
 
 ## Outcomes & Retrospective
 
-The standalone lifecycle foundation, explicit image override, initial shell tests, default-off Ansible integration, static maintenance page, scheduler-isolated candidate validation, and rollback state guard now exist. Shell syntax, whitespace, lifecycle tests, API candidate-validation test, API build, and Ansible syntax validation pass. Pi5 prepare-only validation passed before the latest hardening and must be repeated. Mocked rollback/retention tests and a real Pi5 switch/rollback acceptance remain; no phase-2 production switch has been attempted.
+The standalone lifecycle foundation, explicit image override, initial shell tests, default-off Ansible integration, static maintenance page, scheduler-isolated candidate validation, and rollback state guard now exist. Shell syntax, whitespace, lifecycle tests, API candidate-validation test, API build, and Ansible syntax validation pass. Pi5 prepare-only validation passed after hardening, and one Pi5 switch succeeded with API/Web health checks. The measured first switch was 94 seconds because Corepack downloaded pnpm during migration verification; the switch path is being optimized before acceptance. Mocked rollback/retention tests and a measured sub-30-second switch remain.
 
 ## Context and Orientation
 
@@ -123,4 +127,4 @@ Phase 1.5 production evidence showed all selected Pi4 clients acknowledged maint
 
 The public operator interface is `scripts/deploy/pi5-image-deploy.sh <prepare|switch|rollback|status|cleanup>`. It uses Docker Engine, Docker Compose v2, `curl`, `python3`, and existing repository Dockerfiles. Image names default to `raspi-system-api:<sha>` and `raspi-system-web:<sha>`. Runtime state defaults to `/opt/RaspberryPiSystem_002/logs/deploy/pi5-image-deploy-state.json` and can be redirected in tests with `PI5_DEPLOY_STATE_FILE`.
 
-Revision note (2026-07-11): Initial plan created after inspecting the merged phase-1.5 main branch. The standalone opt-in lifecycle was chosen to preserve the existing production fallback during rollout. The migration guard was narrowed to the release delta after static validation found destructive SQL in historical, already-applied migrations. Local dry-run validation added a portable process-lock fallback and skipped host resource enforcement only in dry-run. The Ansible role now selects the lifecycle only through an explicit default-off variable. The first Pi5 prepare-only run proved fail-closed behavior and added the missing read-only certificate mount to standalone Caddy validation. After prepare passed, static Caddy maintenance templates and an internal API-health path were added before attempting any switching.
+Revision note (2026-07-11): Initial plan created after inspecting the merged phase-1.5 main branch. The standalone opt-in lifecycle was chosen to preserve the existing production fallback during rollout. The migration guard was narrowed to the release delta after static validation found destructive SQL in historical, already-applied migrations. Local dry-run validation added a portable process-lock fallback and skipped host resource enforcement only in dry-run. The Ansible role now selects the lifecycle only through an explicit default-off variable. The first Pi5 prepare-only run proved fail-closed behavior and added the missing read-only certificate mount to standalone Caddy validation. After prepare passed, static Caddy maintenance templates and an internal API-health path were added before attempting switching. The first actual switch succeeded but revealed Corepack downloads in the maintenance window; Prisma now runs directly from the image to eliminate that delay.
