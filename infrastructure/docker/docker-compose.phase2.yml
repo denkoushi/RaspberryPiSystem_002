@@ -1,0 +1,7 @@
+services:
+  api:
+    image: ${PI5_API_IMAGE:?PI5_API_IMAGE is required}
+
+  web:
+    image: ${PI5_WEB_IMAGE:?PI5_WEB_IMAGE is required}
+

@@ -522,7 +522,69 @@
         msg: >
           Docker Compose restart failed on {{ inventory_hostname }}.
           See captured logs above for details.
-  when: (force_docker_rebuild | default(false) | bool) or (server_docker_build_needed | default(repo_changed) | bool)
+  when:
+    - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
+    - (force_docker_rebuild | default(false) | bool) or (server_docker_build_needed | default(repo_changed) | bool)
+
+- name: Prepare and switch prebuilt Pi5 images when minimal-downtime deployment is enabled
+  block:
+    - name: Resolve deployed Git commit SHA
+      ansible.builtin.command: git -C {{ repo_path }} rev-parse HEAD
+      register: pi5_candidate_sha_result
+      changed_when: false
+
+    - name: Prepare immutable Pi5 candidate images while current services remain active
+      ansible.builtin.command:
+        argv:
+          - "{{ repo_path }}/scripts/deploy/pi5-image-deploy.sh"
+          - prepare
+          - --ref
+          - "{{ pi5_candidate_sha_result.stdout }}"
+      environment:
+        PI5_MIGRATION_BASE_REF: "{{ repo_prev_head | default(pi5_candidate_sha_result.stdout + '^') }}"
+      register: pi5_candidate_prepare_result
+      changed_when: true
+
+    - name: Switch Pi5 API and Web to prepared images
+      ansible.builtin.command:
+        argv:
+          - "{{ repo_path }}/scripts/deploy/pi5-image-deploy.sh"
+          - switch
+          - --ref
+          - "{{ pi5_candidate_sha_result.stdout }}"
+      environment:
+        PI5_MIGRATION_BASE_REF: "{{ repo_prev_head | default(pi5_candidate_sha_result.stdout + '^') }}"
+      register: pi5_candidate_switch_result
+      changed_when: true
+
+    - name: Record minimal-downtime Docker switch success
+      ansible.builtin.set_fact:
+        docker_restart_summary: >-
+          {{ docker_restart_summary + [
+            {
+              'status': 'ok',
+              'mode': 'pi5-minimal-downtime',
+              'sha': pi5_candidate_sha_result.stdout
+            }
+          ] }}
+  rescue:
+    - name: Capture Pi5 image deployment state after failure
+      ansible.builtin.command: "{{ repo_path }}/scripts/deploy/pi5-image-deploy.sh status"
+      register: pi5_image_deploy_failure_state
+      changed_when: false
+      failed_when: false
+
+    - name: Fail current host due to minimal-downtime deployment failure
+      ansible.builtin.fail:
+        msg: >-
+          Pi5 minimal-downtime deployment failed. The lifecycle command attempted automatic rollback.
+          State: {{ pi5_image_deploy_failure_state.stdout | default('unavailable') }}
+  when:
+    - pi5_minimal_downtime_deploy_enabled | default(false) | bool
+    - >-
+      (force_docker_rebuild | default(false) | bool)
+      or (server_docker_build_needed | default(repo_changed) | bool)
+      or (docker_env_result.changed | default(false))
 
 - name: Force recreate api when Docker .env changed
   ansible.builtin.shell: |
@@ -533,6 +595,7 @@
     executable: /bin/bash
   when:
     - docker_env_result.changed | default(false)
+    - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
 
 - name: Rebuild and recreate web when Docker .env changed (VITE_* build args)
   ansible.builtin.shell: |
@@ -543,6 +606,7 @@
     executable: /bin/bash
   when:
     - docker_env_result.changed | default(false)
+    - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
 
 - name: Ensure api and web containers are running before Prisma migrate
   ansible.builtin.shell: |
@@ -551,6 +615,7 @@
     docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d api web
   args:
     executable: /bin/bash
+  when: not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
 
 - name: Run Prisma migrations on server (fail-fast)
   block:
@@ -592,6 +657,7 @@
         msg: >
           Prisma migration failed on {{ inventory_hostname }}.
           See captured logs above for details.
+  when: not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
 
 # api/web rebuild 直後は起動直後 memory spike で一時 503 degraded になり得るため、最大約120秒待つ。
 - name: Wait for API health endpoint to recover

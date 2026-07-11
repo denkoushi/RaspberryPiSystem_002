@@ -1,0 +1,13 @@
+{
+  email {$CADDY_ADMIN_EMAIL:admin@example.com}
+}
+
+:80 {
+  redir https://{$DOMAIN}{uri} temporary
+}
+
+{$DOMAIN} {
+  root * /tmp/pi5-maintenance
+  rewrite * /index.html
+  file_server
+}
