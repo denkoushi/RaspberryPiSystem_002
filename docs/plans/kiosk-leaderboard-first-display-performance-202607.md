@@ -42,7 +42,9 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
 - [x] (2026-07-11 10:33+09:00) With explicit approval, reproduced a 28.01-second Pi5 API request, temporarily enabled phase logging, captured five stable profiled samples, then restored the log flag to OFF and confirmed API health `ok`.
 - [x] (2026-07-11 10:34+09:00) Selected `processChangeResidualSummary` as the single production contributor and implemented only concurrent COUNT/representative-row reads; focused 17 tests and API build pass.
 - [x] (2026-07-11 10:40+09:00) Repeated the fixed local five-run benchmark. API median improved 59 to 42 ms, while first-row median improved 579 to 552 ms; production-path retain/reject remains pending because the local seed has zero residual evidence and does not exercise the selected phase.
-- [ ] Obtain explicit approval for a Pi5 API-only canary deployment, then repeat the real six-resource five-run measurement and apply the 10-percent/P95/response-equivalence gate.
+- [x] (2026-07-11 11:07+09:00) Deployed the candidate to Pi5 API only (run `20260711-104611-13054`, `failed=0`, health `ok`) and repeated the real six-resource five-run measurement.
+- [x] (2026-07-11 11:07+09:00) Rejected and reverted the concurrent-query candidate: warm median improved, but cold latency and P95 regressed far beyond the allowed gate.
+- [ ] Redeploy the single revert commit to Pi5, confirm health and baseline behavior recovery, then select the next measured bottleneck without combining changes.
 - [ ] Implement one minimal optimization with focused regression tests.
 - [ ] Repeat the identical benchmark and apply the retain/reject gate.
 - [ ] Run focused and broader API/Web verification for a retained change.
@@ -72,6 +74,8 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
   Evidence: `fetchLeaderboardProcessChangeResidualSummary()` performed `countResidualRowsByKeys()` and then `queryResidualRepresentativeRows()` sequentially.
 - Observation: the after-change local benchmark improved `leaderboard-board` median from 59 to 42 ms (28.8 percent) and first-row median from 579 to 552 ms (4.7 percent). The API raw response size remained 661,729 bytes.
   Evidence: `tmp/perf-results/leaderboard-before.json` and `tmp/perf-results/leaderboard-after.json`. This is not a valid production-path acceptance result because the deterministic local seed has zero residual evidence, whereas Pi5 has 219 evidence keys and four returned residual rows.
+- Observation: the Pi5 canary returned the same 225,854-byte response on all five samples, and warm median improved from 3.89 to 3.32 seconds, but samples were 31.40, 6.22, 3.32, 3.19, and 3.17 seconds. The cold/P95 regression is unacceptable.
+  Evidence: post-deploy direct HTTPS samples on runtime `b8ecdc9f`, after successful Pi5-only deploy run `20260711-104611-13054`.
 
 ## Decision Log
 
@@ -95,6 +99,9 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
   Date/Author: 2026-07-11 / Codex.
 - Decision: do not treat the local 4.7-percent first-row change as either production acceptance or rejection; hold the candidate uncommitted until an explicitly approved Pi5 API-only canary.
   Rationale: the selected phase is absent from the local dataset, so the local browser measurement primarily measures unrelated rendering noise. Pi5 is the only available environment that exercises the measured 2.07–2.35-second residual-summary path.
+  Date/Author: 2026-07-11 / Codex.
+- Decision: reject and revert concurrent residual-summary reads despite the 14.8-percent warm median improvement.
+  Rationale: the first canary request rose to 31.40 seconds and the second to 6.22 seconds, violating the P95/cold safety gate. The likely mechanism is extra database contention while both heavyweight reads are cold; preserving predictable first display is more important than the warm gain.
   Date/Author: 2026-07-11 / Codex.
 
 ## Outcomes & Retrospective
