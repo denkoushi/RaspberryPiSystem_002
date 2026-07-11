@@ -17,7 +17,7 @@ The user-visible proof is that `scripts/deploy/pi5-blue-green.sh status` reports
 - [x] (2026-07-11) Add unit-like shell tests for state transitions, resource fallback, lock contention, and gateway rendering.
 - [x] (2026-07-11) Add the Phase 3 runbook and deployment guide/index links.
 - [x] (2026-07-11) Run shell, Compose, Caddy, existing Phase 2, and documentation validation; add the Phase 3 lifecycle test to CI.
-- [ ] Open a separate PR and wait for hosted CI.
+- [x] (2026-07-11) Open draft PR #974 and confirm all hosted CI checks pass.
 - [ ] Production bootstrap and acceptance are intentionally not part of this code PR.
 
 ## Surprises & Discoveries
@@ -55,7 +55,7 @@ The user-visible proof is that `scripts/deploy/pi5-blue-green.sh status` reports
 
 ## Outcomes & Retrospective
 
-Repository implementation is complete: private API/Web slots, fixed gateway templates, external-network Compose, atomic state, resource gate, guarded switch/rollback/cleanup, monitor, tests, and operator documentation are present. Shell syntax, state-transition tests, Compose rendering, and Caddy adaptation passed. Production bootstrap, five-minute monitor acceptance, reboot restoration, and CI review remain separate rollout work because the first bootstrap changes the current process that owns ports 80/443.
+Repository implementation is complete: private API/Web slots, fixed gateway templates, external-network Compose, atomic state, resource gate, guarded switch/rollback/cleanup, monitor, tests, and operator documentation are present. Shell syntax, state-transition tests, Compose rendering, Caddy adaptation, existing Phase 2 tests, and hosted PR #974 CI all passed. Production bootstrap, five-minute monitor acceptance, reboot restoration, and merge remain separate rollout work because the first bootstrap changes the current process that owns ports 80/443.
 
 ## Context and Orientation
 
