@@ -11,6 +11,7 @@ API_REPOSITORY="${PI5_API_IMAGE_REPOSITORY:-raspi-system-api}"
 WEB_REPOSITORY="${PI5_WEB_IMAGE_REPOSITORY:-raspi-system-web}"
 HEALTH_URL="${PI5_HEALTH_URL:-https://127.0.0.1/api/system/health}"
 WEB_URL="${PI5_WEB_URL:-https://127.0.0.1/}"
+MAINTENANCE_URL="${PI5_MAINTENANCE_URL:-https://127.0.0.1/}"
 MIN_FREE_MEMORY_MB="${PI5_MIN_FREE_MEMORY_MB:-768}"
 MIN_FREE_DISK_GB="${PI5_MIN_FREE_DISK_GB:-10}"
 DRY_RUN="${PI5_DEPLOY_DRY_RUN:-0}"
@@ -151,11 +152,55 @@ wait_external() {
   return 1
 }
 
+wait_api_internal() {
+  local cid
+  for _ in $(seq 1 30); do
+    cid="$(docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" ps -q api 2>/dev/null || true)"
+    if [[ -n "$cid" ]] && docker exec "$cid" node -e "fetch('http://127.0.0.1:8080/api/system/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+web_container_id() {
+  local cid
+  cid="$(docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" ps -q web)"
+  [[ -n "$cid" ]] || die "production web service is not running"
+  printf '%s\n' "$cid"
+}
+
+maintenance_template_for_web() {
+  local cid="$1" environment
+  environment="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$cid")"
+  if grep -q '^USE_LOCAL_CERTS=' <<<"$environment"; then
+    printf '%s\n' "$PROJECT_DIR/infrastructure/docker/Caddyfile.maintenance.local"
+  elif grep -q '^DOMAIN=' <<<"$environment"; then
+    printf '%s\n' "$PROJECT_DIR/infrastructure/docker/Caddyfile.maintenance.production"
+  else
+    printf '%s\n' "$PROJECT_DIR/infrastructure/docker/Caddyfile.maintenance.http"
+  fi
+}
+
+enable_maintenance() {
+  local cid template status
+  cid="$(web_container_id)"
+  template="$(maintenance_template_for_web "$cid")"
+  docker exec "$cid" mkdir -p /tmp/pi5-maintenance
+  docker cp "$PROJECT_DIR/infrastructure/docker/maintenance.html" "$cid:/tmp/pi5-maintenance/index.html"
+  docker cp "$template" "$cid:/tmp/pi5-maintenance.Caddyfile"
+  docker exec "$cid" caddy reload --config /tmp/pi5-maintenance.Caddyfile
+  status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 5 "$MAINTENANCE_URL" || true)"
+  [[ "$status" == "200" ]] || die "maintenance page did not become reachable (HTTP ${status:-none})"
+  log "global maintenance page enabled"
+}
+
 restore_images() {
   local api="$1" web="$2"
   log "restoring previous images"
   compose "$api" "$web" up -d --no-build --force-recreate api
-  wait_external "$HEALTH_URL"
+  wait_api_internal
   compose "$api" "$web" up -d --no-build --force-recreate web
   wait_external "$WEB_URL"
 }
@@ -168,9 +213,10 @@ switch_candidate() {
   previous_api="$(current_image api)"; previous_web="$(current_image web)"; started="$(date +%s)"
   atomic_state switching "$api" "$web" "$previous_api" "$previous_web"
   set +e
-  compose "$api" "$web" run --rm --no-deps api pnpm prisma migrate deploy && \
+  enable_maintenance && \
+    compose "$api" "$web" run --rm --no-deps api pnpm prisma migrate deploy && \
     compose "$api" "$web" run --rm --no-deps api pnpm prisma migrate status && \
-    compose "$api" "$web" up -d --no-build --force-recreate api && wait_external "$HEALTH_URL" && \
+    compose "$api" "$web" up -d --no-build --force-recreate api && wait_api_internal && \
     compose "$api" "$web" up -d --no-build --force-recreate web && wait_external "$WEB_URL"
   local rc=$?
   set -e

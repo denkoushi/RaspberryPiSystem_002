@@ -40,12 +40,12 @@ Preparation must finish with `candidate prepared`. During the build, another ter
 
 ## Switch
 
-Only after prepare succeeds, enable global maintenance for the Pi5 switch and run:
+Only after prepare succeeds, run:
 
     export PI5_MIGRATION_BASE_REF=<currently-deployed-full-sha>
     scripts/deploy/pi5-image-deploy.sh switch --ref <candidate-full-sha>
 
-The command applies backward-compatible migration state, replaces API, waits for external API health, replaces Web, and checks the external Web root. It records the previous images before replacement. Remove global maintenance only after both external checks pass. Record observed HTTP interruption; acceptance is 30 seconds or less.
+The command first reloads Caddy in the current Web container with a static Japanese maintenance page. It then applies backward-compatible migration state, replaces API, checks API health inside the new API container, replaces Web, and checks the external Web root. The new Web container starts with ordinary routing, so the maintenance page is removed automatically only after the external check passes. It records the previous images before replacement. Record observed HTTP interruption; acceptance is 30 seconds or less.
 
 ## Failure and rollback
 

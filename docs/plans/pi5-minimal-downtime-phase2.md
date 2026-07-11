@@ -11,6 +11,7 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
 - [x] (2026-07-11 08:35Z) Confirmed the current Compose and Ansible deployment rebuilds and recreates `api` and `web` together.
 - [x] (2026-07-11 08:35Z) Created a clean phase-2 branch and worktree from merged PR #972.
 - [x] (2026-07-11 08:31Z) Added the phase-2 image lifecycle command and Compose image override.
+- [x] (2026-07-11 09:12Z) Added Caddy static maintenance-page templates and made the switch path use them before API replacement.
 - [ ] Add shell tests for prepare, guarded switch, rollback, retention, and resource failures (completed: prepare state, invalid SHA, and concurrent lock; remaining: mocked switch failure, rollback, retention, and real resource failure).
 - [x] (2026-07-11 08:34Z) Connected the command to the existing Pi5 deployment path behind the default-off `pi5_minimal_downtime_deploy_enabled` variable.
 - [x] (2026-07-11 08:38Z) Added the operator runbook and release-delta migration compatibility guard.
@@ -30,6 +31,8 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
   Evidence: `sysctl -n hw.memsize` returned `Operation not permitted`; dry-run now skips resource enforcement while real execution remains fail-closed.
 - Observation: standalone Caddy validation must reproduce the production certificate mount.
   Evidence: the first Pi5 prepare-only run built both images successfully, then failed safely with `open /srv/certs/cert.pem: no such file or directory`; production API and Web were not replaced.
+- Observation: external API health checks cannot be used while a global maintenance page is intentionally responding.
+  Evidence: the switch path now checks the newly recreated API from inside its container, then restores external checking after Web returns to normal routing.
 
 ## Decision Log
 
@@ -44,6 +47,9 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
   Date/Author: 2026-07-11 / Codex
 - Decision: Scan only migration files added or modified between the supplied migration base and candidate SHA.
   Rationale: compatibility policy applies to the new release delta, not already-applied historical migrations. `PI5_MIGRATION_BASE_REF` allows the deploy wrapper to provide the known production commit; the candidate parent is the conservative local default.
+  Date/Author: 2026-07-11 / Codex
+- Decision: Enable the maintenance page through a live Caddy reload in the existing Web container instead of recreating Web before API replacement.
+  Rationale: the currently active image may predate phase 2 and lacks the page. Caddy's admin reload keeps the public listener alive, lets the old Web container serve a static page during the API replacement, and is cleared when the new Web container starts.
   Date/Author: 2026-07-11 / Codex
 
 ## Outcomes & Retrospective
@@ -94,4 +100,4 @@ Phase 1.5 production evidence showed all selected Pi4 clients acknowledged maint
 
 The public operator interface is `scripts/deploy/pi5-image-deploy.sh <prepare|switch|rollback|status|cleanup>`. It uses Docker Engine, Docker Compose v2, `curl`, `python3`, and existing repository Dockerfiles. Image names default to `raspi-system-api:<sha>` and `raspi-system-web:<sha>`. Runtime state defaults to `/opt/RaspberryPiSystem_002/logs/deploy/pi5-image-deploy-state.json` and can be redirected in tests with `PI5_DEPLOY_STATE_FILE`.
 
-Revision note (2026-07-11): Initial plan created after inspecting the merged phase-1.5 main branch. The standalone opt-in lifecycle was chosen to preserve the existing production fallback during rollout. The migration guard was narrowed to the release delta after static validation found destructive SQL in historical, already-applied migrations. Local dry-run validation added a portable process-lock fallback and skipped host resource enforcement only in dry-run. The Ansible role now selects the lifecycle only through an explicit default-off variable. The first Pi5 prepare-only run proved fail-closed behavior and added the missing read-only certificate mount to standalone Caddy validation.
+Revision note (2026-07-11): Initial plan created after inspecting the merged phase-1.5 main branch. The standalone opt-in lifecycle was chosen to preserve the existing production fallback during rollout. The migration guard was narrowed to the release delta after static validation found destructive SQL in historical, already-applied migrations. Local dry-run validation added a portable process-lock fallback and skipped host resource enforcement only in dry-run. The Ansible role now selects the lifecycle only through an explicit default-off variable. The first Pi5 prepare-only run proved fail-closed behavior and added the missing read-only certificate mount to standalone Caddy validation. After prepare passed, static Caddy maintenance templates and an internal API-health path were added before attempting any switching.

@@ -1,0 +1,9 @@
+{
+  auto_https off
+}
+
+:80 {
+  root * /tmp/pi5-maintenance
+  rewrite * /index.html
+  file_server
+}
