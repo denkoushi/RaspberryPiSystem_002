@@ -15,10 +15,10 @@ related_docs:
   - docs/knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md
   - docs/plans/leaderboard-defer-totals-performance-recovery.md
   - docs/decisions/ADR-20260706-kiosk-display-performance-optimizations.md
-validation: deferred residual summary passed Pi5 API canary; Pi4 browser rollout awaiting approval
+validation: deferred residual summary passed Pi5 and one-Pi4 canary deployment
 open_items:
-  - Observe the Pi5 API canary for 24 hours.
-  - Obtain explicit approval before deploying the Web change to one Pi4 kiosk.
+  - Confirm the first display and operations on the physical kensakuMain screen.
+  - Obtain explicit approval before deploying to the remaining Pi4 kiosks.
 ---
 
 # Improve kiosk leaderboard first fresh-row display in small verified steps
@@ -53,7 +53,9 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
 - [x] (2026-07-11 12:29+09:00) Enabled both flags on Pi5 only and measured the production six-slot API. Warm initial-shell median fell from 4,124 ms to 2,298 ms (44.3 percent); the deep-cold pair fell from 25,445 ms to 2,014 ms.
 - [x] (2026-07-11 12:31+09:00) Mechanically confirmed identical 300 ordered shell row IDs, resource order, and final residual summary (4 identical IDs, limit 20); summary continue returned 200 without snapshot expiry.
 - [x] (2026-07-11 12:35+09:00) Restored `LEADERBOARD_BOARD_PERF_LOG=false`, retained both feature flags ON on Pi5 only, and confirmed API healthy. Pi4 deployment remains stopped at the explicit approval gate.
-- [ ] Observe the Pi5 canary for 24 hours, then request approval for one Pi4 kiosk.
+- [x] (2026-07-11 12:39+09:00) With explicit approval to waive the optional 24-hour observation period after the user confirmed the Pi5 physical display was clearly faster, deployed only inventory canary `raspberrypi4` (kensakuMain). Run `20260711-123428-30768` exited 0 with `failed=0`, `unreachable=0`.
+- [x] (2026-07-11 12:40+09:00) Confirmed the Pi4 runtime at `20f42e41`, kiosk browser and status timer active, Pi5 Web HTTP 200, and a Pi4-origin six-slot deferred shell HTTP 200 in 2.199 seconds with 300 rows and `residualSummaryDeferred=true`.
+- [ ] Confirm the physical kensakuMain screen and ranking operations before requesting approval for the remaining Pi4 kiosks.
 
 ## Surprises & Discoveries
 
