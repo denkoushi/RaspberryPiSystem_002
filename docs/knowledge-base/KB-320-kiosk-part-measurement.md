@@ -932,6 +932,7 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 - **修正**: CONFIRMED への draft は no-op。autosave は confirmed を送らない。entry があれば仕掛中 `in_progress`（件数は CONFIRMED のみ）。
 - **復旧**: 本番自動 UPDATE なし。仕掛中に再表示後「入力を保存」で再確定。
 - **検証**: unit + 一時 Postgres integration + EXPLAIN（`SelfInspectionLotEntry_idx_session_persistence`）。
+- **本番**: Pi5 + Pi4×5 · HEAD **`b52931bd`** · Phase12 **PASS 45** · [deployment](../guides/deployment.md#self-inspection-confirm-guard-wip-draft-2026-07-11) · PR [#970](https://github.com/denkoushi/RaspberryPiSystem_002/pull/970)。
 
 #### 先行デプロイ（2026-06-03）
 

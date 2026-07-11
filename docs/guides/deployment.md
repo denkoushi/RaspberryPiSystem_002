@@ -10,6 +10,21 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-07-11 · **自主検査 CONFIRMED 降格防止 + 下書き仕掛中** · **API + Web** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#self-inspection-confirm-guard-wip-draft-2026-07-11}
+
+- **変更概要（正本）**: [Plan](../plans/self-inspection-confirm-guard-wip-draft.md) · [ADR](../decisions/ADR-20260710-self-inspection-draft-confirmed.md) · [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-confirm-guard-wip-draft-2026-07-11) · ブランチ **`fix/self-inspection-confirm-guard-wip-draft`** · HEAD **`b52931bd`** · PR [#970](https://github.com/denkoushi/RaspberryPiSystem_002/pull/970)。CONFIRMED への draft upsert は no-op、autosave は confirmed を送らない、DRAFT のみでも仕掛中 `in_progress`（件数は CONFIRMED のみ）。**DB/migration 変更なし**。
+- **CI**: PR checks 全 success（lint-build-unit / api-db-and-infra / security-docker / e2e-smoke / e2e-tests / CodeQL / gitleaks）。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/self-inspection-confirm-guard-wip-draft infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+
+| ホスト | Detach Run ID | 結果 |
+|--------|---------------|------|
+| `raspberrypi5` | **`20260711-093400-26223`** | success · `ok=135 changed=4 failed=0` · Docker API/Web再構築 · HEAD **`b52931bd`** |
+| `raspi4-kensaku-stonebase01` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01` | **`20260711-094015-24272`** | success · 各 `failed=0 unreachable=0` · kiosk/status-agent 再起動 |
+
+- **対象外（今回）**: `raspberrypi3`（サイネージ）は未デプロイ。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
+- **本番データ**: `0003886271` は FIRST entry が DRAFT・測定値14点残存のまま（自動 UPDATE なし）。仕掛中再表示後に「入力を保存」で再確定。
+
 ### 補足（2026-07-11 · **複数Pi 4競合制御 + 写真持出冪等性** · **API + Web + NFC agent + migration** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#concurrency-control-and-photo-idempotency-2026-07-11}
 
 - **変更概要（正本）**: [競合制御アーキテクチャ](../architecture/concurrency-control.md) · ブランチ **`fix/production-order-clear-concurrency`** · 機能・配備HEAD **`98848053`** · PR [#969](https://github.com/denkoushi/RaspberryPiSystem_002/pull/969)。貸出の部分ユニーク索引／終端状態CHECK、写真持出の`Idempotency-Key`・NFC `eventKey`、組立行ロック、パレットadvisory lock、測定編集ロック、生産順序クリア直列化を導入。NFC agentは配備時に`--build`を必ず指定し、ホスト更新後も旧イメージを継続利用しない。

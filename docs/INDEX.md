@@ -12,9 +12,9 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
-### 計画（2026-07-11 · 自主検査 confirm guard / 下書き仕掛中）
+### 計画（2026-07-11 · 自主検査 confirm guard / 下書き仕掛中 · 本番反映済）
 
-- **CONFIRMED 降格防止 + 下書きも仕掛中表示**: [Plan](./plans/self-inspection-confirm-guard-wip-draft.md) · [ADR](./decisions/ADR-20260710-self-inspection-draft-confirmed.md) · [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-confirm-guard-wip-draft-2026-07-11)
+- **CONFIRMED 降格防止 + 下書きも仕掛中表示**: [Plan](./plans/self-inspection-confirm-guard-wip-draft.md) · [ADR](./decisions/ADR-20260710-self-inspection-draft-confirmed.md) · [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-confirm-guard-wip-draft-2026-07-11) · [deployment](./guides/deployment.md#self-inspection-confirm-guard-wip-draft-2026-07-11)
 
 ### 計画（2026-07-10 · 自主検査自動保存 / 指差し / テンプレ新規制限 · 実装済・未デプロイ）
 

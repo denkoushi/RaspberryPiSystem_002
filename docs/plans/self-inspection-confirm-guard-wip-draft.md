@@ -19,6 +19,8 @@ validation:
   - Temp Postgres (pgvector/pg15 :55434) migrate + integration (confirm→draft no-op; draft-only in_progress)
   - EXPLAIN uses SelfInspectionLotEntry_idx_session_persistence
   - Temp container removed after validation
+  - Production Pi5 + Pi4×5 at HEAD b52931bd (Pi3 skipped); verify-phase12-real PASS 45
+  - PR #970
 ---
 
 # Self-inspection confirm guard + draft WIP
@@ -40,6 +42,8 @@ Operators saw WIP cards disappear after reopening a session and tapping another 
 - Integration (temp DB): confirm then draft upsert stays CONFIRMED; draft-only session listed as `in_progress` with `completedEntryCount=0`
 - EXPLAIN: Index Scan on `SelfInspectionLotEntry_idx_session_persistence`
 - Temp Postgres container/volume cleaned up
+- Production: Detach Pi5 **`20260711-093400-26223`** · Pi4×5 **`20260711-094015-24272`** · Phase12 **PASS 45** · HEAD **`b52931bd`**
+- Deploy record: [deployment](../guides/deployment.md#self-inspection-confirm-guard-wip-draft-2026-07-11)
 
 ## Local Notes JA
 
