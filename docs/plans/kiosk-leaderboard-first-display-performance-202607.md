@@ -46,7 +46,9 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
 - [x] (2026-07-11 11:07+09:00) Rejected and reverted the concurrent-query candidate: warm median improved, but cold latency and P95 regressed far beyond the allowed gate.
 - [x] (2026-07-11 11:14+09:00) Redeployed the single revert to Pi5 (run `20260711-110834-4092`, `failed=0`), confirmed runtime `7ee667da`, health `ok`, performance logging OFF, and baseline latency recovery.
 - [x] (2026-07-11 11:20+09:00) Compared the next candidates read-only. Selected the raw-mail portion of `generationTokenInitial` for index-shape validation; resource `584` remains on the previously proven resource-first correlated path.
-- [ ] On a disposable production-shaped database, test one covering-index candidate for the raw-mail revision aggregate with `EXPLAIN (ANALYZE, BUFFERS)`; do not create the index on Pi5 during investigation.
+- [x] (2026-07-11 11:30+09:00) Tested the covering-index candidate using Pi5 session-local temporary tables; PostgreSQL did not select the index, so no migration is justified.
+- [x] (2026-07-11 11:31+09:00) Tested the exact production aggregate in a read-only transaction with session-local JIT disabled; execution fell from about 1.55 to 1.04 seconds without changing SQL or result semantics.
+- [ ] Implement a request-local JIT-off boundary for only the raw-mail revision aggregate, then run focused tests and local before/after benchmarks before requesting another Pi5 canary.
 - [ ] Implement one minimal optimization with focused regression tests.
 - [ ] Repeat the identical benchmark and apply the retain/reject gate.
 - [ ] Run focused and broader API/Web verification for a retained change.
@@ -84,6 +86,10 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
   Evidence: read-only Pi5 `EXPLAIN (ANALYZE, BUFFERS)`. The raw-mail plan scanned 552,846 dashboard rows, returned 551,741 completed/legacy rows, read 71,499 buffers, scanned 63,879 ingest-run rows, and spent about 433 ms in JIT.
 - Observation: the raw-mail dashboard contains 297,423 legacy rows with no `sourceIngestRunId` and 255,423 rows across 29 referenced runs; therefore replacing the revision with only the latest ingest-run timestamp would miss legacy-row updates and change invalidation semantics.
   Evidence: read-only Pi5 counts. A direct LEFT JOIN rewrite preserved the result count but was slower, so it is not a candidate.
+- Observation: a covering index on `sourceIngestRunId` including `createdAt` and `updatedAt` was not selected on a 552,846-row session-local projection. Forced index-only execution caused 255,423 per-row ingest-run lookups and took about 1.17 seconds, so the index candidate is rejected.
+  Evidence: Pi5 temporary-table `EXPLAIN (ANALYZE, BUFFERS)`; all temporary objects were dropped automatically when each session ended.
+- Observation: the same production query in `BEGIN READ ONLY; SET LOCAL jit=off` completed in about 1.04 seconds instead of 1.55 seconds (about 33 percent faster). The original plan spent about 433 ms compiling JIT code; this aggregate runs once and does not amortize that compilation.
+  Evidence: read-only Pi5 `EXPLAIN (ANALYZE, BUFFERS)` followed by `ROLLBACK`.
 
 ## Decision Log
 
@@ -113,6 +119,9 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
   Date/Author: 2026-07-11 / Codex.
 - Decision: investigate a covering index for the exact raw-mail revision aggregate before changing generation-token logic or resource-shell SQL.
   Rationale: the exact aggregate is a measured 1.55-second scan and its current COUNT/MAX/source-run eligibility semantics must remain intact. Resource `584` already uses the Pi5-proven correlated winner shape, while a latest-run-only token would fail to observe legacy-row changes.
+  Date/Author: 2026-07-11 / Codex.
+- Decision: reject the covering index and select transaction-local `jit=off` for the raw-mail revision aggregate as the next implementation candidate.
+  Rationale: the index was not naturally usable, while disabling JIT only for this one exact aggregate reduced measured execution by about one third and preserves the query, revision token inputs, and global database setting.
   Date/Author: 2026-07-11 / Codex.
 
 ## Outcomes & Retrospective
