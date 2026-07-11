@@ -30,8 +30,9 @@ The feature is off by default. Existing clients and requests retain the current 
 - [x] (2026-07-11 11:35+09:00) Confirmed only residual summary COUNT and representative-row hydration can be deferred; these account for about 2.1–2.35 seconds on Pi5.
 - [x] (2026-07-11 11:35+09:00) Selected existing `leaderboard-board/continue` as the follow-up transport to avoid another endpoint and reuse snapshot validation.
 - [x] (2026-07-11 12:00+09:00) Implemented API shell deferral and continue summary attachment behind `LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED=false`; default behavior remains atomic.
-- [ ] Implement Web opt-in behind a build/runtime feature gate that defaults OFF.
-- [ ] Verify final-response equivalence, failure recovery, and local performance.
+- [x] (2026-07-11 12:06+09:00) Implemented Web opt-in behind `VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED=false`, including pending merge, summary-only continue, append completion, fingerprints, and cache completeness.
+- [x] (2026-07-11 12:12+09:00) Passed API 24 focused tests, Web 67 focused tests, both builds/lints, and `git diff --check`; local atomic/deferred row IDs and final summary matched exactly.
+- [ ] Measure the feature on Pi5/Pi4 canary with production residual evidence; local seed has zero residual evidence and cannot prove the expected 2-second gain.
 - [ ] Request explicit approval before any Pi5 canary deployment.
 
 ## Surprises & Discoveries
@@ -112,4 +113,4 @@ Turn the Web opt-in gate OFF first so no new deferred requests are issued. The A
 
 ## Outcomes & Retrospective
 
-API stage is implemented locally behind a disabled-by-default gate; no production setting has changed. Schema/service focused tests, API build, lint, and whitespace checks pass. Web opt-in, pending-state merge/cache handling, end-to-end equivalence, and browser performance measurement remain before any canary approval request.
+API and Web stages are implemented locally behind disabled-by-default gates; no production setting has changed. The atomic shell and deferred shell returned identical normal row IDs, and the first summary-bearing continue reproduced the atomic summary without snapshot expiry. The local browser median did not improve because its deterministic seed has zero residual evidence and the measured production-only 2.1–2.35-second phase is absent. A separately approved Pi5/Pi4 canary is required for the retain/reject performance gate.
