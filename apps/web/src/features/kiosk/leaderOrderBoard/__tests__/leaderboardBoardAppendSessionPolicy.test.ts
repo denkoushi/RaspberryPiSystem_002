@@ -104,6 +104,23 @@ describe('shouldBeginLeaderboardAppendSession', () => {
       })
     ).toBe(true);
   });
+
+  it('資源続きがなくても残骸 summary pending なら開始する', () => {
+    const shell = { ...board([row('a')], false), residualSummaryDeferred: true as const };
+    expect(
+      shouldBeginLeaderboardAppendSession({
+        paramsKey,
+        appendCompleteForParamsKey: null,
+        appendCompleteShellFingerprint: null,
+        shellFingerprint: fp,
+        lastStartedShellFingerprint: null,
+        shell,
+        appendOverride: null,
+        retryNonce: 0,
+        lastRetryNonceStarted: 0
+      })
+    ).toBe(true);
+  });
 });
 
 describe('resolveLeaderboardAppendLoopStartBoard', () => {

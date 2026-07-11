@@ -118,6 +118,29 @@ describe('buildLeaderboardBoardContinuePayload', () => {
     expect('deferTotals' in payload).toBe(false);
   });
 
+  it('残骸 summary pending のときだけ continue で summary を要求する', () => {
+    const pendingBoard: ProductionScheduleLeaderboardBoardResponse = {
+      page: 1,
+      pageSize: 80,
+      total: 1,
+      rows: [],
+      residualSummaryDeferred: true,
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+    };
+    const pendingPayload = buildLeaderboardBoardContinuePayload(
+      { ...base, deferResidualSummary: true },
+      pendingBoard
+    );
+    expect(pendingPayload.includeResidualSummary).toBe(true);
+    expect('deferResidualSummary' in pendingPayload).toBe(false);
+
+    const resolvedPayload = buildLeaderboardBoardContinuePayload(base, {
+      ...pendingBoard,
+      residualSummaryDeferred: undefined
+    });
+    expect(resolvedPayload.includeResidualSummary).toBe(false);
+  });
+
   it('有限の nextCursor は切り捨てて正の cursor にする', () => {
     const board: ProductionScheduleLeaderboardBoardResponse = {
       page: 1,
