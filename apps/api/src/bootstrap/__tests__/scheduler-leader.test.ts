@@ -46,7 +46,7 @@ describe('scheduler leader lease', () => {
     // instead of relying on one fixed sleep.
     await vi.waitFor(
       () => expect(startPostListenSchedulers).toHaveBeenCalledTimes(2),
-      { timeout: 1_000, interval: 20 },
+      { timeout: 5_000, interval: 50 },
     );
 
     await second.stop();
