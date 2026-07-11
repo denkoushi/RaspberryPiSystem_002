@@ -44,7 +44,8 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
 - [x] (2026-07-11 10:40+09:00) Repeated the fixed local five-run benchmark. API median improved 59 to 42 ms, while first-row median improved 579 to 552 ms; production-path retain/reject remains pending because the local seed has zero residual evidence and does not exercise the selected phase.
 - [x] (2026-07-11 11:07+09:00) Deployed the candidate to Pi5 API only (run `20260711-104611-13054`, `failed=0`, health `ok`) and repeated the real six-resource five-run measurement.
 - [x] (2026-07-11 11:07+09:00) Rejected and reverted the concurrent-query candidate: warm median improved, but cold latency and P95 regressed far beyond the allowed gate.
-- [ ] Redeploy the single revert commit to Pi5, confirm health and baseline behavior recovery, then select the next measured bottleneck without combining changes.
+- [x] (2026-07-11 11:14+09:00) Redeployed the single revert to Pi5 (run `20260711-110834-4092`, `failed=0`), confirmed runtime `7ee667da`, health `ok`, performance logging OFF, and baseline latency recovery.
+- [ ] Select the next measured bottleneck without combining changes; the rejected parallel-read mechanism must not be reintroduced.
 - [ ] Implement one minimal optimization with focused regression tests.
 - [ ] Repeat the identical benchmark and apply the retain/reject gate.
 - [ ] Run focused and broader API/Web verification for a retained change.
@@ -76,6 +77,8 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
   Evidence: `tmp/perf-results/leaderboard-before.json` and `tmp/perf-results/leaderboard-after.json`. This is not a valid production-path acceptance result because the deterministic local seed has zero residual evidence, whereas Pi5 has 219 evidence keys and four returned residual rows.
 - Observation: the Pi5 canary returned the same 225,854-byte response on all five samples, and warm median improved from 3.89 to 3.32 seconds, but samples were 31.40, 6.22, 3.32, 3.19, and 3.17 seconds. The cold/P95 regression is unacceptable.
   Evidence: post-deploy direct HTTPS samples on runtime `b8ecdc9f`, after successful Pi5-only deploy run `20260711-104611-13054`.
+- Observation: after the revert deployment, recovery samples were 28.64, 3.77, and 3.88 seconds, matching the pre-change cold/warm pattern (28.01 seconds before profiling and stable 3.66–4.28 seconds after restart).
+  Evidence: direct HTTPS samples on runtime `7ee667da`; API health was `ok` and `LEADERBOARD_BOARD_PERF_LOG` was absent from the container environment.
 
 ## Decision Log
 
@@ -106,7 +109,7 @@ The target is a reduction of at least 30 percent in the median first-fresh-row t
 
 ## Outcomes & Retrospective
 
-No application runtime behavior has changed. The local measurement foundation now supports an explicit five-run count and enables the existing browser milestone flag. The deterministic seed command also runs again. Current evidence is sufficient to reject speculative Mac-only application changes, but not sufficient to select the current production bottleneck; the next safe action is read-only Pi5/Pi4 measurement after explicit approval.
+No leaderboard application runtime behavior remains changed. The first candidate—parallel residual-summary COUNT and representative-row reads—was deployed only to Pi5, failed the cold/P95 safety gate, and was reverted. Pi5 is healthy and reproduces its prior cold/warm pattern. The retained changes are diagnostics and this ExecPlan only: five-run harness control, existing browser milestone activation, and repair of the deterministic seed command.
 
 ## Context and Orientation
 
