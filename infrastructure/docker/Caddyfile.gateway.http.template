@@ -1,0 +1,20 @@
+# HTTP-only fixed gateway for development and isolated Compose validation.
+{
+  auto_https off
+}
+
+:80 {
+  @api {
+    path /api/* /ws/*
+  }
+  reverse_proxy @api __BLUE_GREEN_API_UPSTREAM__ {
+    transport http {
+      versions 1.1
+    }
+  }
+  reverse_proxy __BLUE_GREEN_WEB_UPSTREAM__ {
+    transport http {
+      versions 1.1
+    }
+  }
+}

@@ -1,0 +1,43 @@
+# Fixed Blue/Green gateway. The deployment command replaces the two placeholders
+# before reloading Caddy. Only this container publishes host ports.
+{
+  auto_https off
+}
+
+:443 {
+  tls /srv/certs/cert.pem /srv/certs/key.pem
+
+  @api {
+    path /api/* /ws/*
+  }
+  reverse_proxy @api __BLUE_GREEN_API_UPSTREAM__ {
+    transport http {
+      versions 1.1
+    }
+  }
+
+  reverse_proxy __BLUE_GREEN_WEB_UPSTREAM__ {
+    transport http {
+      versions 1.1
+    }
+  }
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  log {
+    output file /var/log/caddy/access.log {
+      roll_size 5MiB
+      roll_keep 5
+      roll_keep_for 168h
+    }
+  }
+}
+
+:80 {
+  redir https://{host}{uri} permanent
+}
