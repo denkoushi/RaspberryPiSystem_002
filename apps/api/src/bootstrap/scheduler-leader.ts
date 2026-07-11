@@ -118,8 +118,9 @@ export async function startSchedulerRuntime(app: FastifyInstance): Promise<Sched
   };
 
   await tick();
+  // Keep the timer referenced so a contender cannot be suspended while the
+  // process is waiting for a lease handoff.  The API shutdown path clears it.
   const timer = setInterval(() => void tick(), intervalMs);
-  timer.unref();
 
   return {
     stop: async () => {
