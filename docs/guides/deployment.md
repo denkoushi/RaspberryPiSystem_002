@@ -10,6 +10,13 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### Pi5最小停止デプロイ（Phase 2・実装中） {#pi5-minimal-downtime-phase2}
+
+- Pi5のAPI/Webは、現行サービスを動かしたままコミットSHA付き候補イメージを準備・検証し、最後の切替だけを短時間で行う。
+- 既定では従来経路を維持する。`pi5_minimal_downtime_deploy_enabled` は実機のprepare-only検証が完了するまで恒常的に有効化しない。
+- DB変更はExpand/Contractを必須とし、通常デプロイで破壊的migrationの強制許可を使わない。
+- 操作、復旧、受入れの正本は [Pi5 minimal-downtime deployment runbook](../runbooks/pi5-minimal-downtime-deploy.md)、実装進捗は [Phase 2 ExecPlan](../plans/pi5-minimal-downtime-phase2.md) を参照する。
+
 ### 補足（2026-07-11 · **端末別ローリングデプロイ Milestone 1** · **Pi4全5台反映**） {#per-kiosk-rolling-deploy-milestone1-2026-07-11}
 
 - **標準入口**: 必ず `scripts/update-all-clients.sh` を使用する。AI・人ともに `ansible-playbook` やSSHで直接更新しない。
