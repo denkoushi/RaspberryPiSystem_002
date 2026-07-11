@@ -81,6 +81,9 @@ COPY --from=build /app/apps/web/dist ./site
 COPY infrastructure/docker/Caddyfile ./Caddyfile
 COPY infrastructure/docker/Caddyfile.production ./Caddyfile.production
 COPY infrastructure/docker/Caddyfile.local.template ./Caddyfile.local.template
+COPY infrastructure/docker/Caddyfile.maintenance.http ./Caddyfile.maintenance.http
+COPY infrastructure/docker/Caddyfile.maintenance.local ./Caddyfile.maintenance.local
+COPY infrastructure/docker/Caddyfile.maintenance.production ./Caddyfile.maintenance.production
 COPY infrastructure/docker/maintenance.html ./phase2-maintenance/index.html
 # Caddyfileの選択ロジック:
 # 1. USE_LOCAL_CERTS環境変数が設定されている場合 → Caddyfile.local（自己署名証明書）

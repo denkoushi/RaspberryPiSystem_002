@@ -29,6 +29,14 @@ assert_contains "$output" "candidate prepared"
 status="$(env "${common_env[@]}" "$SCRIPT" status)"
 assert_contains "$status" '"event": "prepared"'
 
+for file in \
+  "$ROOT/infrastructure/docker/maintenance.html" \
+  "$ROOT/infrastructure/docker/Caddyfile.maintenance.local" \
+  "$ROOT/infrastructure/docker/Caddyfile.maintenance.http" \
+  "$ROOT/infrastructure/docker/Caddyfile.maintenance.production"; do
+  [[ -s "$file" ]] || fail "maintenance asset is missing: $file"
+done
+
 if env "${common_env[@]}" "$SCRIPT" prepare --ref short >/dev/null 2>&1; then
   fail "short SHA was accepted"
 fi

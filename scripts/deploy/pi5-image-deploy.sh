@@ -123,6 +123,12 @@ prepare() {
   run docker run --rm \
     -v "$PROJECT_DIR/certs:/srv/certs:ro" \
     "$web" sh -ec 'envsubst < /srv/Caddyfile.local.template > /tmp/Caddyfile && caddy validate --config /tmp/Caddyfile'
+  run docker run --rm \
+    -v "$PROJECT_DIR/certs:/srv/certs:ro" \
+    "$web" caddy validate --config /srv/Caddyfile.maintenance.local
+  run docker run --rm "$web" caddy validate --config /srv/Caddyfile.maintenance.http
+  run docker run --rm -e DOMAIN=maintenance.invalid -e CADDY_ADMIN_EMAIL=admin@maintenance.invalid \
+    "$web" caddy validate --config /srv/Caddyfile.maintenance.production
   if [[ "$DRY_RUN" != "1" ]]; then
     docker rm -f "$candidate_name" >/dev/null 2>&1 || true
     compose "$api" "$web" run -d --no-deps --name "$candidate_name" api >/dev/null

@@ -12,7 +12,7 @@ Pi5 currently rebuilds API and Web images while the production Compose project i
 - [x] (2026-07-11 08:35Z) Created a clean phase-2 branch and worktree from merged PR #972.
 - [x] (2026-07-11 08:31Z) Added the phase-2 image lifecycle command and Compose image override.
 - [x] (2026-07-11 09:12Z) Added Caddy static maintenance-page templates and made the switch path use them before API replacement.
-- [ ] Add shell tests for prepare, guarded switch, rollback, retention, and resource failures (completed: prepare state, invalid SHA, and concurrent lock; remaining: mocked switch failure, rollback, retention, and real resource failure).
+- [ ] Add shell tests for prepare, guarded switch, rollback, retention, and resource failures (completed: prepare state, invalid SHA, concurrent lock, and maintenance assets; remaining: mocked switch failure, rollback, retention, and real resource failure).
 - [x] (2026-07-11 08:34Z) Connected the command to the existing Pi5 deployment path behind the default-off `pi5_minimal_downtime_deploy_enabled` variable.
 - [x] (2026-07-11 08:38Z) Added the operator runbook and release-delta migration compatibility guard.
 - [ ] Run local validation and CI, then perform a non-switching Pi5 candidate build test.
