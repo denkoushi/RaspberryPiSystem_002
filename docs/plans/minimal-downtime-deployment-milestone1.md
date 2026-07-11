@@ -11,11 +11,11 @@ Operators can deploy one Raspberry Pi 4 kiosk at a time without placing unrelate
 - [x] (2026-07-11) Inspected the current per-client deploy-status v2 implementation and staged Ansible flow.
 - [x] (2026-07-11) Added a testable atomic deploy-status state manager.
 - [x] (2026-07-11) Added revision impact classification and client-only compatibility guard.
-- [ ] Integrate Milestone 1 into production after local and CI validation.
-- [ ] Complete the production canary acceptance before starting Milestone 1.5.
+- [x] (2026-07-11) Integrated Milestone 1 after local validation and all PR checks passed.
+- [x] (2026-07-11) Completed production canary acceptance before starting Milestone 1.5.
 - [x] (2026-07-11) Canary deployment succeeded on `raspi4-kensaku-stonebase01` with run `20260711-134711-7114`.
 - [x] (2026-07-11) Stopped rollout after the second host exposed root-owned empty state-file handling; no remaining hosts were deployed.
-- [ ] Validate and redeploy the ownership/fail-closed correction before resuming rollout.
+- [x] (2026-07-11) Validated and deployed the ownership/fail-closed correction to all five Pi4 kiosks.
 
 ## Surprises & Discoveries
 
@@ -40,7 +40,7 @@ Operators can deploy one Raspberry Pi 4 kiosk at a time without placing unrelate
 
 ## Outcomes & Retrospective
 
-Milestone 1 code is implemented locally. Production rollout is intentionally not part of this change; it requires CI success and a separately authorized canary deployment.
+Milestone 1 is complete in production. All five Pi4 kiosks run `d29d96d8`; `kiosk-browser.service` and `status-agent.timer` are active, all rollout runs ended with `failed=0` and `unreachable=0`, and deploy-status v2 contains no stale kiosk entries. The rollout exposed one root-owned state-file issue after the first canary; the rollout stopped, the implementation was changed to preserve ownership and fail closed, CI passed again, and deployment then completed safely.
 
 ## Context and Orientation
 
@@ -74,4 +74,4 @@ No production system is modified by local validation.
 
 The state file remains version 2 and keeps `kioskByClient`. Each entry may contain `maintenance`, `startedAt`, `updatedAt`, `runId`, and `phase`. The utility uses only Python's standard library. The impact classifier emits JSON booleans for `server`, `kiosk`, `signage`, and `migration`.
 
-Revision note: 2026-07-11 added canary evidence and the root-ownership/fail-closed correction discovered during rollout.
+Revision note: 2026-07-11 recorded production completion on all five Pi4 kiosks and closed Milestone 1.
