@@ -41,8 +41,13 @@ describe('scheduler leader lease', () => {
     expect(await readFile(leaseFile, 'utf8')).toMatch(/^\d+:/);
 
     await first.stop();
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(startPostListenSchedulers).toHaveBeenCalledTimes(2);
+    // The handoff is driven by the contender's interval.  Hosted CI can be
+    // busy enough to delay a 10ms timer, so wait for the observable handoff
+    // instead of relying on one fixed sleep.
+    await vi.waitFor(
+      () => expect(startPostListenSchedulers).toHaveBeenCalledTimes(2),
+      { timeout: 1_000, interval: 20 },
+    );
 
     await second.stop();
     expect(stopPostListenSchedulers).toHaveBeenCalledTimes(2);
