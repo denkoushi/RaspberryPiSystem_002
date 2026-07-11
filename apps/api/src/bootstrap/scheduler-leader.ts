@@ -37,6 +37,7 @@ export async function startSchedulerRuntime(app: FastifyInstance): Promise<Sched
   let lease: LeaseHandle | null = null;
   let handles: PostListenSchedulerHandles | null = null;
   let stopping = false;
+  let tickInFlight: Promise<void> | null = null;
 
   const releaseSchedulers = async () => {
     if (!handles) return;
@@ -87,13 +88,17 @@ export async function startSchedulerRuntime(app: FastifyInstance): Promise<Sched
   const tryAcquire = async () => {
     if (lease || stopping) return;
     await mkdir(dirname(leaseFile), { recursive: true });
+    let candidateLease: LeaseHandle | null = null;
     try {
-      lease = await open(leaseFile, 'wx');
-      await lease.writeFile(`${token}\n`);
-      await lease.sync();
+      candidateLease = await open(leaseFile, 'wx');
+      await candidateLease.writeFile(`${token}\n`);
+      await candidateLease.sync();
+      lease = candidateLease;
+      candidateLease = null;
       handles = await startPostListenSchedulers(app);
       logger.info({ leaseFile }, 'Scheduler leader lease acquired');
     } catch (error) {
+      if (candidateLease) await candidateLease.close().catch(() => undefined);
       if (lease) await releaseLease();
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
         logger.warn({ err: error, leaseFile }, 'Scheduler leader lease acquisition failed');
@@ -110,11 +115,18 @@ export async function startSchedulerRuntime(app: FastifyInstance): Promise<Sched
 
   const tick = async () => {
     if (stopping) return;
-    if (lease) {
-      await heartbeat();
-    } else {
-      await tryAcquire();
-    }
+    if (tickInFlight) return tickInFlight;
+    tickInFlight = (async () => {
+      if (stopping) return;
+      if (lease) {
+        await heartbeat();
+      } else {
+        await tryAcquire();
+      }
+    })().finally(() => {
+      tickInFlight = null;
+    });
+    await tickInFlight;
   };
 
   await tick();
@@ -126,6 +138,7 @@ export async function startSchedulerRuntime(app: FastifyInstance): Promise<Sched
     stop: async () => {
       stopping = true;
       clearInterval(timer);
+      if (tickInFlight) await tickInFlight;
       await relinquish();
     },
   };
