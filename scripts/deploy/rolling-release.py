@@ -319,16 +319,61 @@ def record_pi5_release_current(sha: str, candidate: dict[str, Any] | None) -> No
     })
 
 
+def candidate_image_matches_sha(image: Any, sha: str) -> bool:
+    """Accept only the immutable candidate tag produced for this full SHA."""
+    if not isinstance(image, str) or not isinstance(sha, str):
+        return False
+    _repository, separator, tag = image.rpartition(':')
+    return bool(
+        _repository
+        and separator
+        and FULL_SHA_RE.fullmatch(sha)
+        and re.fullmatch(re.escape(sha) + r'-[0-9a-f]{12}', tag)
+    )
+
+
+def marker_candidate_for_sha(marker: dict[str, Any], sha: str) -> dict[str, str] | None:
+    """Return a complete immutable marker candidate, or None on any ambiguity."""
+    candidate = marker.get('candidate')
+    if not isinstance(candidate, dict):
+        return None
+    api, web = candidate.get('api'), candidate.get('web')
+    if not candidate_image_matches_sha(api, sha) or not candidate_image_matches_sha(web, sha):
+        return None
+    return {'api': api, 'web': web}
+
+
+def phase3_matches_marker_candidate(phase3: Any, candidate: dict[str, str]) -> bool:
+    """Require Phase 3 routing and the live slot image pair to match the marker."""
+    if not isinstance(phase3, dict) or phase3.get('runtimeStatus') != 'consistent':
+        return False
+    active_slot = phase3.get('activeSlot')
+    if active_slot not in {'blue', 'green'}:
+        return False
+    gateway = phase3.get('gateway')
+    if not isinstance(gateway, dict) or gateway.get('mode') != 'application' or gateway.get('slot') != active_slot:
+        return False
+    slots = phase3.get('slots')
+    active = slots.get(active_slot) if isinstance(slots, dict) else None
+    images = active.get('images') if isinstance(active, dict) else None
+    return isinstance(images, dict) and images.get('api') == candidate['api'] and images.get('web') == candidate['web']
+
+
 def pi5_already_current(sha: str) -> bool:
-    """Skip B/G only when the success marker and live status both agree (fail-closed)."""
+    """Skip B/G only when marker, immutable images, routing, and live state agree."""
+    if not isinstance(sha, str) or not FULL_SHA_RE.fullmatch(sha):
+        return False
     marker = read_pi5_release_current()
-    if not marker or marker.get('sha') != sha:
+    if not isinstance(marker, dict) or marker.get('sha') != sha:
+        return False
+    candidate = marker_candidate_for_sha(marker, sha)
+    if candidate is None:
         return False
     try:
         phase3 = json.loads(run([str(PHASE3), 'status'], capture=True))
     except Exception:
         return False
-    return phase3.get('runtimeStatus') == 'consistent'
+    return phase3_matches_marker_candidate(phase3, candidate)
 
 
 def ensure_pi5_release(sha: str, state: ReleaseState) -> None:

@@ -84,6 +84,22 @@ assert_contains "$out" "cleaned"
 out="$(env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE1" "$SCRIPT" reconcile)"
 assert_contains "$out" "reconciled"
 
+# status is observation-only, but must not describe a live active slot as
+# consistent when Docker no longer has either of that slot's containers.
+STATE_ACTIVE_CONTAINERS_ABSENT="$TMP/state-active-containers-absent.json"
+STATE_ACTIVE_CONTAINERS_ABSENT_BEFORE="$TMP/state-active-containers-absent-before.json"
+cp "$STATE1" "$STATE_ACTIVE_CONTAINERS_ABSENT"
+cp "$STATE1" "$STATE_ACTIVE_CONTAINERS_ABSENT_BEFORE"
+mkdir -p "$TMP/docker-stub"
+ln -s /usr/bin/true "$TMP/docker-stub/docker"
+if status_output="$(env "${common[@]}" PI5_BLUE_GREEN_DRY_RUN=0 PATH="$TMP/docker-stub:$PATH" \
+  PI5_BLUE_GREEN_STATE_FILE="$STATE_ACTIVE_CONTAINERS_ABSENT" "$SCRIPT" status 2>&1)"; then
+  fail "status accepted an active slot whose containers are absent"
+fi
+assert_contains "$status_output" '"runtimeStatus": "stale"'
+cmp -s "$STATE_ACTIVE_CONTAINERS_ABSENT" "$STATE_ACTIVE_CONTAINERS_ABSENT_BEFORE" \
+  || fail "status mutated state while reporting absent active containers"
+
 STATE2="$TMP/state-resource.json"
 if env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE2" PI5_BLUE_GREEN_TEST_MEMORY_MB=512 "$SCRIPT" bootstrap --confirm-bootstrap --allow-legacy-scheduler-handoff --api-image "$OLD_API" --web-image "$OLD_WEB" >/dev/null 2>&1; then
   fail "resource guard accepted insufficient memory"
