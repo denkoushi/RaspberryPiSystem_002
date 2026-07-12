@@ -543,7 +543,10 @@ gateway_config_validate() {
   if [[ -n "$cid" ]]; then docker exec "$cid" caddy validate --config /srv/bluegreen/Caddyfile >/dev/null; else return 0; fi
 }
 
-gateway_start() { [[ "$DRY_RUN" == 1 ]] && return 0; compose_current up -d gateway; }
+# A failed bootstrap stops the gateway. Reusing that stopped container leaves
+# its Docker port publication/network endpoint stale on Pi5, even though Caddy
+# starts inside it. Always create a fresh fixed-port owner for a new handoff.
+gateway_start() { [[ "$DRY_RUN" == 1 ]] && return 0; compose_current up -d --force-recreate gateway; }
 gateway_reload() { [[ "$DRY_RUN" == 1 ]] && return 0; compose_current exec -T gateway caddy reload --config /srv/bluegreen/Caddyfile; }
 gateway_smoke_url() {
   local url="$1" attempt
