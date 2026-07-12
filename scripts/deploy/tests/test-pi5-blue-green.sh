@@ -223,6 +223,8 @@ grep -Fq 'for attempt in $(seq 1 "$GATEWAY_READY_RETRIES")' "$SCRIPT" \
   || fail "gateway startup smoke does not retry before rollback"
 grep -Fq 'docker rm "$LEGACY_WEB_ID"' "$SCRIPT" \
   || fail "legacy Web container is not removed before gateway port handoff"
+grep -Fq 'compose_current up -d --force-recreate gateway' "$SCRIPT" \
+  || fail "gateway restart can reuse a stale port publication container"
 
 PROD_ENV="$TMP/production.env"
 printf '%s\n' \
