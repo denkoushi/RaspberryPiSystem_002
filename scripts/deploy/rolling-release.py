@@ -26,6 +26,7 @@ STATUS_TOOL = PROJECT / 'scripts/deploy/deploy-status-state.py'
 PHASE3 = PROJECT / 'scripts/deploy/pi5-blue-green.sh'
 CANDIDATE_BUILD = PROJECT / 'scripts/deploy/pi5-candidate-build.sh'
 RUN_DIRECTORY = PROJECT / 'logs/deploy/release-runs'
+PI5_RELEASE_CURRENT = PROJECT / 'logs/deploy/pi5-release-current.json'
 
 
 def utc_now() -> str:
@@ -191,6 +192,46 @@ def wait_for_pi5_stability(state: ReleaseState) -> None:
     state.save()
 
 
+def read_pi5_release_current() -> dict[str, Any] | None:
+    """Return the durable Pi5 success marker, or None when absent/unreadable."""
+    try:
+        payload = json.loads(PI5_RELEASE_CURRENT.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def record_pi5_release_current(sha: str, candidate: dict[str, Any] | None) -> None:
+    """Persist the SHA only after Phase 3 release and stability both succeed."""
+    atomic_json(PI5_RELEASE_CURRENT, {
+        'sha': sha,
+        'candidate': candidate or {},
+        'completedAt': utc_now(),
+    })
+
+
+def pi5_already_current(sha: str) -> bool:
+    """Skip B/G only when the success marker and live status both agree (fail-closed)."""
+    marker = read_pi5_release_current()
+    if not marker or marker.get('sha') != sha:
+        return False
+    try:
+        phase3 = json.loads(run([str(PHASE3), 'status'], capture=True))
+    except Exception:
+        return False
+    return phase3.get('runtimeStatus') == 'consistent'
+
+
+def ensure_pi5_release(sha: str, state: ReleaseState) -> None:
+    if pi5_already_current(sha):
+        state.payload['pi5'] = {'state': 'already-current', 'sha': sha}
+        state.save()
+        return
+    phase3_release(sha, state)
+    wait_for_pi5_stability(state)
+    record_pi5_release_current(sha, (state.payload.get('pi5') or {}).get('candidate'))
+
+
 def rollback_terminal(inventory: str, target_spec: dict[str, str], target: dict[str, Any], run_id: str) -> bool:
     """Restore one failed terminal and decide whether its maintenance may clear."""
     try:
@@ -236,8 +277,7 @@ def _remote_run(args: argparse.Namespace) -> int:
     state.save()
     try:
         if pi5_release_required(args.sha):
-            phase3_release(args.sha, state)
-            wait_for_pi5_stability(state)
+            ensure_pi5_release(args.sha, state)
         else:
             state.payload['pi5'] = {'state': 'not-required'}
             state.save()

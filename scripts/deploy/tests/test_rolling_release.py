@@ -88,5 +88,72 @@ class RollbackStateTest(unittest.TestCase):
         self.assertNotIn('maintenanceClearedAt', target)
 
 
+class Pi5IdempotentSkipTest(unittest.TestCase):
+    def setUp(self):
+        self.sha = 'a' * 40
+        self.state = MODULE.ReleaseState(Path('/tmp/unused-release-state.json'), {})
+        self.state.save = Mock()
+
+    def test_marker_match_and_consistent_skips_with_already_current_state(self):
+        with patch.object(MODULE, 'pi5_already_current', return_value=True) as already, \
+                patch.object(MODULE, 'phase3_release') as release, \
+                patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
+                patch.object(MODULE, 'record_pi5_release_current') as record:
+            MODULE.ensure_pi5_release(self.sha, self.state)
+        already.assert_called_once_with(self.sha)
+        release.assert_not_called()
+        wait.assert_not_called()
+        record.assert_not_called()
+        self.assertEqual(self.state.payload['pi5'], {'state': 'already-current', 'sha': self.sha})
+        self.state.save.assert_called_once()
+
+    def test_marker_mismatch_runs_blue_green(self):
+        with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': 'b' * 40}), \
+                patch.object(MODULE, 'run') as command, \
+                patch.object(MODULE, 'phase3_release') as release, \
+                patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
+                patch.object(MODULE, 'record_pi5_release_current') as record:
+            self.state.payload['pi5'] = {'candidate': {'api': 'api:tag', 'web': 'web:tag'}, 'state': 'stable'}
+            MODULE.ensure_pi5_release(self.sha, self.state)
+        command.assert_not_called()
+        release.assert_called_once_with(self.sha, self.state)
+        wait.assert_called_once_with(self.state)
+        record.assert_called_once_with(self.sha, {'api': 'api:tag', 'web': 'web:tag'})
+
+    def test_missing_marker_runs_blue_green(self):
+        with patch.object(MODULE, 'read_pi5_release_current', return_value=None), \
+                patch.object(MODULE, 'phase3_release') as release, \
+                patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
+                patch.object(MODULE, 'record_pi5_release_current') as record:
+            self.state.payload['pi5'] = {'candidate': {'api': 'api:tag'}, 'state': 'stable'}
+            MODULE.ensure_pi5_release(self.sha, self.state)
+        release.assert_called_once_with(self.sha, self.state)
+        wait.assert_called_once_with(self.state)
+        record.assert_called_once_with(self.sha, {'api': 'api:tag'})
+
+    def test_inconsistent_status_runs_blue_green(self):
+        with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
+                patch.object(MODULE, 'run', return_value=json.dumps({'runtimeStatus': 'stale'})), \
+                patch.object(MODULE, 'phase3_release') as release, \
+                patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
+                patch.object(MODULE, 'record_pi5_release_current') as record:
+            self.state.payload['pi5'] = {'candidate': {'api': 'api:tag'}, 'state': 'stable'}
+            MODULE.ensure_pi5_release(self.sha, self.state)
+        release.assert_called_once_with(self.sha, self.state)
+        wait.assert_called_once_with(self.state)
+        record.assert_called_once_with(self.sha, {'api': 'api:tag'})
+
+    def test_pi5_already_current_requires_marker_and_consistent_status(self):
+        with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
+                patch.object(MODULE, 'run', return_value=json.dumps({'runtimeStatus': 'consistent'})) as command:
+            self.assertTrue(MODULE.pi5_already_current(self.sha))
+        self.assertEqual(command.call_args.args[0], [str(MODULE.PHASE3), 'status'])
+
+    def test_pi5_already_current_fail_closed_on_status_error(self):
+        with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
+                patch.object(MODULE, 'run', side_effect=RuntimeError('status unavailable')):
+            self.assertFalse(MODULE.pi5_already_current(self.sha))
+
+
 if __name__ == '__main__':
     unittest.main()
