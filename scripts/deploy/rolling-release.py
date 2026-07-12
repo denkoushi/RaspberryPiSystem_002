@@ -293,19 +293,106 @@ def pi5_release_required(sha: str) -> bool:
         return True
 
 
+def resolve_release_sha(branch: str) -> tuple[str | None, list[str]]:
+    """Resolve branch SHA without mutating the local checkout (print-plan safe).
+
+    Prefer the remote tip so the plan reflects what a deploy would actually
+    ship; an unfetched local origin/<branch> ref may be stale.
+    """
+    try:
+        output = run(['git', '-C', str(PROJECT), 'ls-remote', 'origin', branch], capture=True).strip()
+        sha = output.split()[0] if output else ''
+        if sha:
+            return sha, []
+    except Exception:
+        pass
+    try:
+        sha = run(['git', '-C', str(PROJECT), 'rev-parse', f'origin/{branch}'], capture=True).strip()
+        if sha:
+            return sha, [f'used local origin/{branch} ref; remote unreachable']
+        return None, [f'could not resolve SHA for branch {branch}']
+    except Exception as error:
+        return None, [f'could not resolve SHA for branch {branch}: {error}']
+
+
+def classify_release_impact(sha: str) -> tuple[dict[str, Any] | None, list[str]]:
+    """Classify deploy impact for audit plans; failures are warnings only."""
+    try:
+        base = run(['git', '-C', str(PROJECT), 'merge-base', 'origin/main', sha], capture=True).strip()
+        result = json.loads(run([
+            'python3', str(PROJECT / 'scripts/deploy/classify-deploy-impact.py'),
+            '--base', base, '--head', sha,
+        ], capture=True))
+        return result, []
+    except Exception as error:
+        return None, [f'classification unavailable: {error}']
+
+
+def resolve_terminal_targets(inventory: str, limit: str) -> tuple[list[dict[str, str]] | None, list[str]]:
+    """Resolve rollout-ordered terminals when local ansible is available."""
+    try:
+        targets = release_targets(inventory_json(inventory), selected_hosts(inventory, limit))
+        return targets, []
+    except Exception:
+        return None, ['ansible-inventory unavailable']
+
+
+def build_print_plan(branch: str, inventory: str, limit: str) -> dict[str, Any]:
+    """Auditable shadow plan for --print-plan; always returns JSON-serializable data."""
+    warnings: list[str] = []
+    sha, sha_warnings = resolve_release_sha(branch)
+    warnings.extend(sha_warnings)
+
+    classification: dict[str, Any] | None = None
+    pi5_required: bool | None = None
+    if sha:
+        classification, class_warnings = classify_release_impact(sha)
+        warnings.extend(class_warnings)
+        if classification is not None:
+            pi5_required = bool(classification.get('server') or classification.get('migration'))
+
+    terminal_targets, target_warnings = resolve_terminal_targets(inventory, limit)
+    warnings.extend(target_warnings)
+    canary_hold = None if terminal_targets is None else should_hold_after_canary(terminal_targets, 0, skip=False)
+
+    return {
+        'mode': 'rolling-release',
+        'branch': branch,
+        'inventory': inventory,
+        'limit': limit or None,
+        'sha': sha,
+        'classification': classification,
+        'pi5Required': pi5_required,
+        'terminalTargets': terminal_targets,
+        'canaryHold': canary_hold,
+        'warnings': warnings,
+    }
+
+
 def _remote_run(args: argparse.Namespace) -> int:
     inventory = str(Path(args.inventory) if Path(args.inventory).is_absolute() else ANSIBLE_DIRECTORY / args.inventory)
     targets = release_targets(inventory_json(inventory), selected_hosts(inventory, args.limit))
-    if not targets:
+    # Empty terminals without --limit means inventory selection is broken.
+    if not targets and not args.limit:
+        raise RuntimeError('no kiosk or signage targets selected')
+    pi5_required = pi5_release_required(args.sha)
+    # --limit may intentionally select zero terminals; only Pi5 work is valid then.
+    if not targets and not pi5_required:
         raise RuntimeError('no kiosk or signage targets selected')
     path = status_file(args.run_id)
     state = ReleaseState(path, {
         'version': 1, 'runId': args.run_id, 'branch': args.branch, 'releaseSha': args.sha,
-        'startedAt': utc_now(), 'state': 'running', 'targets': [{**target, 'state': 'pending'} for target in targets],
+        'startedAt': utc_now(), 'state': 'running',
+        'targets': [{**target, 'state': 'pending'} for target in targets],
+        'plan': {
+            'pi5Required': pi5_required,
+            'targets': [target['host'] for target in targets],
+            'limit': args.limit or None,
+        },
     })
     state.save()
     try:
-        if pi5_release_required(args.sha):
+        if pi5_required:
             ensure_pi5_release(args.sha, state)
         else:
             state.payload['pi5'] = {'state': 'not-required'}
@@ -402,7 +489,7 @@ def local_run(args: argparse.Namespace) -> int:
     if not args.branch or not args.inventory:
         raise RuntimeError('branch and inventory are required')
     if args.print_plan:
-        print(json.dumps({'mode': 'rolling-release', 'branch': args.branch, 'inventory': args.inventory, 'limit': args.limit or None}, ensure_ascii=False))
+        print(json.dumps(build_print_plan(args.branch, args.inventory, args.limit or ''), ensure_ascii=False))
         return 0
     dirty = (
         subprocess.run(['git', '-C', str(PROJECT), 'diff', '--quiet']).returncode != 0
