@@ -1,20 +1,42 @@
 ---
 title: Pi5 single-host Blue/Green deployment runbook
-status: draft
-scope: opt-in production Pi5 API, Web, and fixed Caddy gateway
-date: 2026-07-11
+status: accepted
+scope: production Pi5 API, Web, and fixed Caddy gateway
+date: 2026-07-12
 source_of_truth: docs/runbooks/pi5-blue-green-deploy.md
 related_code: [scripts/deploy/pi5-blue-green.sh, scripts/deploy/pi5-phase3-legacy-guard.sh, infrastructure/docker/docker-compose.phase3.yml, infrastructure/docker/Caddyfile.gateway.template, infrastructure/ansible/templates/pi5-blue-green-reconcile.service.j2]
 related_docs: [../plans/pi5-blue-green-phase3.md, ../runbooks/pi5-minimal-downtime-deploy.md, ../guides/deployment.md]
-validation: shell safety lifecycle, Compose rendering, Caddy route checks, API scheduler fail-closed tests; production bootstrap pending explicit acceptance
-open_items: [Pi5 gateway bootstrap, five-minute monitor and rollback acceptance, reboot restoration on Pi5]
+validation: shell safety lifecycle, Compose rendering, Caddy route checks, API scheduler fail-closed tests, and 2026-07-12 production candidate build/prepare/switch/five-minute monitor/cleanup acceptance
+open_items: []
 ---
 
 # Pi5 single-host Blue/Green deployment runbook
 
 ## Scope and safety
 
-This runbook is for the opt-in Phase 3 path. Two API/Web pairs run on the Pi5, but only the fixed `gateway` container publishes ports 80 and 443. The existing Phase 2 command remains the fallback. A single Pi5 does not provide redundancy for a gateway or host failure.
+This runbook is for the standard Phase 3 path. Two API/Web pairs run on the Pi5, but only the fixed `gateway` container publishes ports 80 and 443. The existing Phase 2 command remains the fallback. A single Pi5 does not provide redundancy for a gateway or host failure.
+
+## Production acceptance record (2026-07-12)
+
+The Phase 3 bootstrap state was already recorded as `bootstrap-success`. The
+normal release acceptance then built immutable API/Web images for
+`95be149fb275ba94387b67c4cb1648e4ca7a6678`, prepared Green while Blue served
+traffic, and ran the candidate migration `status/deploy/status` sequence. The
+database reported 144 migrations and no pending work.
+
+The first prepare attempt refused to start an inactive slot because the load
+average was `3.41`, above the configured maximum `3.00`; no routing or database
+state changed. After the load returned to `2.13`, Green prepared successfully.
+The gateway switched to Green in one second, the five-minute monitor completed
+without an alert or rollback, and `cleanup` removed Blue. The final state is
+`activeSlot=green`, `runtimeStatus=consistent`, `result=cleanup-complete`; the
+public `/api/system/health` endpoint returned `status: ok`.
+
+An intentional bad-candidate, forced rollback, or host-reboot drill was not
+needed to accept the normal production path. Those are optional future
+operational exercises, not release blockers. This remains a single-Pi5 design:
+host failure and power loss require future host redundancy rather than
+Blue/Green recovery.
 
 **While Phase 3 state is live, do not use normal Ansible api/web recreation, `manage-app-configs` handlers that restart compose api/web, Phase 2 `pi5-image-deploy.sh`, or legacy `docker-compose.server.yml` up for api/web.** Those paths are fail-closed by `scripts/deploy/pi5-phase3-legacy-guard.sh` because legacy Web binds 80/443 and would collide with the fixed gateway. Use only `pi5-blue-green.sh` until `reconcile --restore-legacy` (or a completed legacy-restored recovery) returns the host to the conventional path.
 
