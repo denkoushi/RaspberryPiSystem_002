@@ -212,6 +212,12 @@ grep -Fq "'caddyConfigPath': maybe(legacy_caddy_path)" "$SCRIPT" \
   || fail "legacy active Caddyfile path is not durable state"
 grep -Fq 'caddy reload --config "$caddy_path" --adapter caddyfile' "$SCRIPT" \
   || fail "legacy Caddy reload does not use the captured active path"
+grep -Fq 'gateway_smoke_url()' "$SCRIPT" \
+  || fail "gateway startup smoke retry helper is missing"
+grep -Fq 'PI5_BLUE_GREEN_GATEWAY_READY_RETRIES' "$SCRIPT" \
+  || fail "gateway startup retry budget is not configurable"
+grep -Fq 'for attempt in $(seq 1 "$GATEWAY_READY_RETRIES")' "$SCRIPT" \
+  || fail "gateway startup smoke does not retry before rollback"
 
 PROD_ENV="$TMP/production.env"
 printf '%s\n' \
