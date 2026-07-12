@@ -119,7 +119,14 @@
     git remote set-url origin {{ repo_remote | quote }}
     git fetch --all --prune --tags
     git checkout {{ repo_version | quote }}
-    git reset --hard origin/{{ repo_version | quote }}
+    # A rolling release resolves its branch once to a full SHA.  Do not turn
+    # that immutable target back into a moving origin/<branch> reference.
+    if git show-ref --verify --quiet "refs/remotes/origin/{{ repo_version }}"; then
+      git reset --hard "origin/{{ repo_version }}"
+    else
+      git cat-file -e "{{ repo_version }}^{commit}"
+      git reset --hard "{{ repo_version }}"
+    fi
   args:
     executable: /bin/bash
   environment: "{{ git_environment }}"

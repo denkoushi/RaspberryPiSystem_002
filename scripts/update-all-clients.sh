@@ -12,6 +12,9 @@ set -euo pipefail
 #    - localを使う場合は ALLOW_LOCAL_EMERGENCY=1 を明示すること
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ "${ROLLING_RELEASE_V2:-1}" == "1" ]]; then
+  exec python3 "${PROJECT_ROOT}/scripts/deploy/rolling-release.py" "$@"
+fi
 PLAYBOOK_PATH="infrastructure/ansible/playbooks/update-clients.yml"
 HEALTH_PLAYBOOK_PATH="infrastructure/ansible/playbooks/health-check.yml"
 LOG_DIR="${PROJECT_ROOT}/logs"

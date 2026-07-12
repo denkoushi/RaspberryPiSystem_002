@@ -66,6 +66,20 @@
     mode: '0644'
   notify: systemd-tmpfiles
 
+- name: Install renderer for the signage maintenance screen
+  ansible.builtin.apt:
+    name: librsvg2-bin
+    state: present
+    update_cache: true
+
+- name: Deploy signage maintenance screen source
+  ansible.builtin.template:
+    src: signage-maintenance.svg.j2
+    dest: /usr/local/share/signage-maintenance.svg
+    owner: root
+    group: root
+    mode: '0644'
+
 - name: Ensure /run/signage directory exists (via tmpfiles)
   ansible.builtin.command:
     cmd: systemd-tmpfiles --create /etc/tmpfiles.d/signage-lite.conf

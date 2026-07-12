@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { chown, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { chown, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { resolveStatusClientIdFromRawKey } from '../../services/clients/client-device-auth.service.js';
 
 const DEPLOY_STATUS_FILE =
   process.env.DEPLOY_STATUS_FILE_PATH ?? '/app/config/deploy-status.json';
+const DEPLOY_STATUS_LOCK_DIRECTORY = `${DEPLOY_STATUS_FILE}.lock.d`;
 
 /** Raw JSON from deploy-status.json (version 2) */
 interface DeployStatusRawV2 {
@@ -66,7 +67,29 @@ export function normalizeDeployStatusResponse(raw: DeployStatusRawV2 | null, sta
   return { isMaintenance: true, ...(entry.runId ? { runId: entry.runId } : {}), ...(phase ? { phase } : {}), ...(entry.startedAt ? { startedAt: entry.startedAt } : {}) };
 }
 
-async function writeAcknowledgement(raw: DeployStatusRawV2, runId: string, statusClientId: string): Promise<void> {
+async function withDeployStatusLock<T>(operation: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + 10_000;
+  let acquired = false;
+  while (!acquired) {
+    try {
+      await mkdir(DEPLOY_STATUS_LOCK_DIRECTORY);
+      acquired = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || Date.now() >= deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  try {
+    return await operation();
+  } finally {
+    await rm(DEPLOY_STATUS_LOCK_DIRECTORY, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+async function writeAcknowledgement(runId: string, statusClientId: string): Promise<void> {
+  await withDeployStatusLock(async () => {
+    const raw = await readDeployStatusFile();
+    if (!raw) throw new Error('DEPLOY_ACK_RUN_MISMATCH');
   const entry = raw.kioskByClient?.[statusClientId];
   if (!entry || entry.maintenance !== true || entry.runId !== runId) throw new Error('DEPLOY_ACK_RUN_MISMATCH');
   raw.version = 2;
@@ -79,6 +102,7 @@ async function writeAcknowledgement(raw: DeployStatusRawV2, runId: string, statu
   await writeFile(temporary, JSON.stringify(raw), 'utf-8');
   if (owner) await chown(temporary, owner.uid, owner.gid).catch(() => undefined);
   await rename(temporary, DEPLOY_STATUS_FILE);
+  });
 }
 
 export function registerDeployStatusRoute(app: FastifyInstance): void {
@@ -96,10 +120,8 @@ export function registerDeployStatusRoute(app: FastifyInstance): void {
       ? (request.body as { runId: string }).runId.trim()
       : '';
     if (!runId) return reply.code(400).send({ code: 'DEPLOY_ACK_RUN_ID_REQUIRED' });
-    const raw = await readDeployStatusFile();
-    if (!raw) return reply.code(409).send({ code: 'DEPLOY_ACK_RUN_MISMATCH' });
     try {
-      await writeAcknowledgement(raw, runId, statusClientId);
+      await writeAcknowledgement(runId, statusClientId);
       return reply.send({ acknowledged: true, runId });
     } catch {
       return reply.code(409).send({ code: 'DEPLOY_ACK_RUN_MISMATCH' });

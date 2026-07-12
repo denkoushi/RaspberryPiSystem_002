@@ -1,6 +1,8 @@
 # ADR-20260306: 端末別メンテナンス状態（deploy-status v2）
 
-Status: accepted
+Status: superseded
+
+Superseded By: [ADR-20260712: Rolling terminal release orchestration](ADR-20260712-rolling-terminal-release-orchestration.md)
 
 ## Context
 

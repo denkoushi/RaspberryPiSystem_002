@@ -1,0 +1,11 @@
+---
+# Direct application deployment bypasses per-terminal maintenance, rollback and
+# the Phase 3 gateway lifecycle.  Keep the escape hatch explicit for recovery.
+- name: Refuse an application deployment outside the rolling release coordinator
+  ansible.builtin.assert:
+    that:
+      - release_orchestrated | default(false) | bool
+        or release_emergency_override | default(false) | bool
+    fail_msg: >-
+      Direct application deployment is blocked. Use scripts/update-all-clients.sh
+      so the Pi5 Phase 3 lifecycle and per-terminal maintenance are enforced.

@@ -10,6 +10,13 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 標準更新入口（ローリング・端末別メンテナンス）
+
+- 通常のアプリ更新は必ず `scripts/update-all-clients.sh <branch> <inventory>` を使う。これ以外のAnsible application deploy、`scripts/server/deploy*.sh`、legacy Compose更新はfail-closedである。
+- この入口はブランチを不変SHAへ解決し、Pi5が必要な変更ではBlue/Greenの5分安定化後に、Pi4カナリア→残Pi4→Pi3を一台ずつ更新する。
+- 各端末は更新中だけメンテナンス表示となる。失敗端末は直前SHAへ自動復旧し、後続端末は更新しない。`--status <runId>` で端末別の結果を確認する。
+- 実機カナリア・本番受入れは別途明示承認が必要である。実装の正本は [rolling terminal deployment plan](../plans/rolling-terminal-bluegreen-deploy.md)。
+
 ### Pi5最小停止デプロイ（Phase 2） {#pi5-minimal-downtime-phase2}
 
 - Pi5のAPI/Webは、現行サービスを動かしたままコミットSHA付き候補イメージを準備・検証し、最後の切替だけを短時間で行う。

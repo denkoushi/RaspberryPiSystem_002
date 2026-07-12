@@ -22,6 +22,9 @@
     server_services_to_restart:
       - docker  # Docker Composeサービスを再起動するため
   pre_tasks:
+    - name: Require canonical rolling release context
+      ansible.builtin.import_tasks: "../tasks/assert-release-orchestration.yml"
+
     - name: Run common shared preparation tasks
       ansible.builtin.import_role:
         name: common

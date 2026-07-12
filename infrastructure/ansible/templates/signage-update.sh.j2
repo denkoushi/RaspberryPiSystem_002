@@ -4,14 +4,60 @@ set -euo pipefail
 SERVER_URL="{{ signage_server_url | default('https://192.168.128.131') }}"
 CLIENT_KEY="{{ signage_client_key | default('') }}"
 IMAGE_URL="${SERVER_URL%/}/api/signage/current-image"
+DEPLOY_STATUS_URL="${SERVER_URL%/}/api/system/deploy-status"
+DEPLOY_ACK_URL="${SERVER_URL%/}/api/system/deploy-status/ack"
 CACHE_DIR="/run/signage"
 CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
 TEMP_IMAGE="${CACHE_DIR}/current.tmp.jpg"
+MAINTENANCE_SVG="/usr/local/share/signage-maintenance.svg"
 {% if signage_allow_insecure_tls | default(true) %}
 CURL_OPTIONS="-s -f -k"
 {% else %}
 CURL_OPTIONS="-s -f"
 {% endif %}
+
+render_maintenance() {
+  [[ -r "${MAINTENANCE_SVG}" ]] || return 1
+  rsvg-convert -f png -w 1920 -h 1080 "${MAINTENANCE_SVG}" -o "${TEMP_IMAGE}"
+  [[ -s "${TEMP_IMAGE}" ]] || return 1
+  if [[ -f "${CURRENT_IMAGE}" ]]; then
+    cat "${TEMP_IMAGE}" > "${CURRENT_IMAGE}"
+    rm -f "${TEMP_IMAGE}"
+  else
+    mv "${TEMP_IMAGE}" "${CURRENT_IMAGE}"
+  fi
+}
+
+maintenance_run_id() {
+  local body
+  body="$(curl ${CURL_OPTIONS} -H "x-client-key: ${CLIENT_KEY}" --max-time 10 --connect-timeout 5 "${DEPLOY_STATUS_URL}" 2>/dev/null || true)"
+  python3 - <<'PY' "${body}"
+import json, sys
+try:
+    value = json.loads(sys.argv[1])
+except Exception:
+    raise SystemExit(0)
+if value.get('isMaintenance') is True and isinstance(value.get('runId'), str):
+    print(value['runId'])
+PY
+}
+
+acknowledge_maintenance() {
+  local run_id="$1"
+  curl ${CURL_OPTIONS} -X POST -H "Content-Type: application/json" -H "x-client-key: ${CLIENT_KEY}" \
+    --data "{\"runId\":\"${run_id}\"}" --max-time 10 --connect-timeout 5 "${DEPLOY_ACK_URL}" >/dev/null
+}
+
+mkdir -p "${CACHE_DIR}"
+if RUN_ID="$(maintenance_run_id)" && [[ -n "${RUN_ID}" ]]; then
+  if render_maintenance; then
+    acknowledge_maintenance "${RUN_ID}" || true
+    echo "$(date): Deploy maintenance screen displayed for ${RUN_ID}"
+    exit 0
+  fi
+  echo "$(date): Failed to render deploy maintenance screen" >&2
+  exit 1
+fi
 
 # 画像を取得（失敗時は既存画像を保持）
 if curl ${CURL_OPTIONS} -H "x-client-key: ${CLIENT_KEY}" \
@@ -45,4 +91,3 @@ else
   fi
   rm -f "${TEMP_IMAGE}"
 fi
-
