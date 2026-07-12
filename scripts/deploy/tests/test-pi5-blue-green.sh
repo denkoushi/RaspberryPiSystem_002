@@ -197,6 +197,8 @@ grep -Fq 'legacy_compose_restore' "$SCRIPT" || fail "legacy restore does not use
 grep -Fq 'ensure_gateway_maintenance' "$SCRIPT" || fail "bootstrap failure path lacks gateway maintenance retention"
 grep -Fq 'spawn_stability_monitor' "$SCRIPT" || fail "reboot/reconcile monitor resume helper is missing"
 grep -Fq 'Expand-only allow-list' "$SCRIPT" || fail "migration allow-list guard is missing"
+grep -Fq "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" "$SCRIPT" \
+  || fail "candidate migration command does not bypass the API default Node command"
 
 PROD_ENV="$TMP/production.env"
 printf '%s\n' \
