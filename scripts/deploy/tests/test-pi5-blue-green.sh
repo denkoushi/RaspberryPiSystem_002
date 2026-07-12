@@ -52,6 +52,7 @@ out="$(env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE1" "$SCRIPT" bootstra
 assert_contains "$out" "bootstrap completed"
 [[ "$(state "$STATE1" activeSlot)" == blue ]] || fail "blue was not active after bootstrap"
 [[ "$(state "$STATE1" version)" == 2 ]] || fail "state schema is not v2"
+[[ "$(state "$STATE1" legacy.caddyConfigPath)" == /srv/Caddyfile ]] || fail "legacy Caddyfile path was not persisted"
 
 out="$(env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE1" "$SCRIPT" prepare --api-image "$NEW_API" --web-image "$NEW_WEB")"
 assert_contains "$out" "candidate prepared"
@@ -199,6 +200,18 @@ grep -Fq 'spawn_stability_monitor' "$SCRIPT" || fail "reboot/reconcile monitor r
 grep -Fq 'Expand-only allow-list' "$SCRIPT" || fail "migration allow-list guard is missing"
 grep -Fq "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" "$SCRIPT" \
   || fail "candidate migration command does not bypass the API default Node command"
+grep -Fq 'legacy_caddy_config_path()' "$SCRIPT" \
+  || fail "legacy active Caddyfile detection is missing"
+grep -Fq '/srv/Caddyfile.local' "$SCRIPT" \
+  || fail "legacy local-TLS Caddyfile path is not handled"
+grep -Fq '/srv/Caddyfile.production' "$SCRIPT" \
+  || fail "legacy production Caddyfile path is not handled"
+grep -Fq 'LEGACY_MAINTENANCE_LOCAL_CONFIG' "$SCRIPT" \
+  || fail "legacy local-TLS maintenance configuration is not selected"
+grep -Fq "'caddyConfigPath': maybe(legacy_caddy_path)" "$SCRIPT" \
+  || fail "legacy active Caddyfile path is not durable state"
+grep -Fq 'caddy reload --config "$caddy_path" --adapter caddyfile' "$SCRIPT" \
+  || fail "legacy Caddy reload does not use the captured active path"
 
 PROD_ENV="$TMP/production.env"
 printf '%s\n' \

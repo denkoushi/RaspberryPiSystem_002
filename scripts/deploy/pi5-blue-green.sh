@@ -18,8 +18,14 @@ COMPOSE_PROJECT="${PI5_BLUE_GREEN_COMPOSE_PROJECT:-bluegreen}"
 GATEWAY_TEMPLATE="${PI5_GATEWAY_TEMPLATE:-${PROJECT_DIR}/infrastructure/docker/Caddyfile.gateway.template}"
 GATEWAY_HTTP_TEMPLATE="${PI5_GATEWAY_HTTP_TEMPLATE:-${PROJECT_DIR}/infrastructure/docker/Caddyfile.gateway.http.template}"
 GATEWAY_MAINTENANCE_TEMPLATE="${PI5_GATEWAY_MAINTENANCE_TEMPLATE:-${PROJECT_DIR}/infrastructure/docker/Caddyfile.gateway.maintenance.template}"
-LEGACY_NORMAL_CONFIG="${PI5_LEGACY_NORMAL_CONFIG:-${PROJECT_DIR}/infrastructure/docker/Caddyfile}"
-LEGACY_MAINTENANCE_CONFIG="${PI5_LEGACY_MAINTENANCE_CONFIG:-${PROJECT_DIR}/infrastructure/docker/Caddyfile.maintenance.production}"
+# The legacy Web container selects its active Caddyfile at runtime.  Never
+# assume the HTTP file: Pi5 normally uses /srv/Caddyfile.local for local TLS.
+# An explicit maintenance file remains available for tightly controlled custom
+# deployments; otherwise select the matching built-in configuration below.
+LEGACY_MAINTENANCE_CONFIG="${PI5_LEGACY_MAINTENANCE_CONFIG:-}"
+LEGACY_MAINTENANCE_HTTP_CONFIG="${PI5_LEGACY_MAINTENANCE_HTTP_CONFIG:-${PROJECT_DIR}/infrastructure/docker/Caddyfile.maintenance.http}"
+LEGACY_MAINTENANCE_LOCAL_CONFIG="${PI5_LEGACY_MAINTENANCE_LOCAL_CONFIG:-${PROJECT_DIR}/infrastructure/docker/Caddyfile.maintenance.local}"
+LEGACY_MAINTENANCE_PRODUCTION_CONFIG="${PI5_LEGACY_MAINTENANCE_PRODUCTION_CONFIG:-${PROJECT_DIR}/infrastructure/docker/Caddyfile.maintenance.production}"
 API_HEALTH_URL="${PI5_BLUE_GREEN_HEALTH_URL:-https://127.0.0.1/api/system/health}"
 WEB_URL="${PI5_BLUE_GREEN_WEB_URL:-https://127.0.0.1/}"
 KIOSK_HEALTH_URL="${PI5_BLUE_GREEN_KIOSK_HEALTH_URL:-}"
@@ -79,6 +85,7 @@ LEGACY_API_REMOVED=0
 LEGACY_WEB_REMOVED=0
 LEGACY_WEB_MAINTENANCE=0
 LEGACY_NORMAL_CONFIG_B64=""
+LEGACY_CADDY_CONFIG_PATH=""
 
 log() { printf '[%s] %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
@@ -188,6 +195,9 @@ for name in ('blue','green'):
 for key in ('legacy','monitor','migration','gateway'):
     if not isinstance(s.get(key), dict):
         raise SystemExit(f'Blue/Green state has malformed {key} metadata')
+legacy_path = s['legacy'].get('caddyConfigPath')
+if legacy_path not in (None, '/srv/Caddyfile', '/srv/Caddyfile.local', '/srv/Caddyfile.production'):
+    raise SystemExit('Blue/Green state has an unsafe legacy Caddyfile path')
 for key in ('activeSlot','candidateSlot','previousSlot'):
     if s.get(key) not in (None,'blue','green'):
         raise SystemExit(f'Blue/Green state has invalid {key}')
@@ -230,7 +240,7 @@ state_save() {
     "$LEGACY_API_ID" "$LEGACY_WEB_ID" "$LEGACY_API_IMAGE" "$LEGACY_WEB_IMAGE" \
     "$LEGACY_API_RESTART" "$LEGACY_WEB_RESTART" "$LEGACY_API_WAS_RUNNING" "$LEGACY_WEB_WAS_RUNNING" \
     "$LEGACY_API_QUARANTINED" "$LEGACY_WEB_QUARANTINED" "$LEGACY_API_REMOVED" "$LEGACY_WEB_REMOVED" \
-    "$LEGACY_WEB_MAINTENANCE" "$LEGACY_NORMAL_CONFIG_B64" "$MIGRATION_BASE_COMMIT" \
+    "$LEGACY_WEB_MAINTENANCE" "$LEGACY_NORMAL_CONFIG_B64" "$LEGACY_CADDY_CONFIG_PATH" "$MIGRATION_BASE_COMMIT" \
     "$MIGRATION_CANDIDATE_COMMIT" "$MIGRATION_STATUS" "$MIGRATION_CHECKED_AT" "$MIGRATION_APPLIED_AT" <<'PY'
 import json, os, sys, tempfile
 from datetime import datetime, timezone
@@ -239,7 +249,7 @@ from datetime import datetime, timezone
  legacy_api_id,legacy_web_id,legacy_api_image,legacy_web_image,legacy_api_restart,
  legacy_web_restart,legacy_api_running,legacy_web_running,legacy_api_quarantined,
  legacy_web_quarantined,legacy_api_removed,legacy_web_removed,legacy_maintenance,
- legacy_config,migration_base,migration_candidate,migration_status,migration_checked,
+ legacy_config,legacy_caddy_path,migration_base,migration_candidate,migration_status,migration_checked,
  migration_applied) = sys.argv[1:]
 def maybe(v): return v or None
 def flag(v): return v == '1'
@@ -272,6 +282,7 @@ state = {
             'quarantined': flag(legacy_web_quarantined), 'removed': flag(legacy_web_removed),
             'maintenance': flag(legacy_maintenance)},
     'normalConfigB64': maybe(legacy_config),
+    'caddyConfigPath': maybe(legacy_caddy_path),
   },
   'rollbackReason': maybe(reason),
   'result': maybe(result),
@@ -349,6 +360,7 @@ pairs = {
     'LEGACY_WEB_REMOVED': '1' if legacy_web.get('removed') else '0',
     'LEGACY_WEB_MAINTENANCE': '1' if (legacy_web.get('maintenance') or legacy.get('webMaintenance')) else '0',
     'LEGACY_NORMAL_CONFIG_B64': legacy.get('normalConfigB64') or '',
+    'LEGACY_CADDY_CONFIG_PATH': legacy.get('caddyConfigPath') or '',
 }
 for key, value in pairs.items():
     print(f'{key}={shlex.quote(str(value))}')
@@ -608,6 +620,34 @@ slot_up() {
 }
 
 legacy_service_id() { legacy_compose ps -q "$1" 2>/dev/null || true; }
+legacy_web_env_has_value() {
+  local key="$1"
+  docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$LEGACY_WEB_ID" |
+    awk -F= -v key="$key" '$1 == key && length($2) > 0 { found=1; exit } END { exit(found ? 0 : 1) }'
+}
+legacy_caddy_config_path() {
+  # Keep this priority identical to infrastructure/docker/Dockerfile.web.
+  if legacy_web_env_has_value USE_LOCAL_CERTS; then
+    printf '%s\n' '/srv/Caddyfile.local'
+  elif legacy_web_env_has_value DOMAIN; then
+    printf '%s\n' '/srv/Caddyfile.production'
+  else
+    printf '%s\n' '/srv/Caddyfile'
+  fi
+}
+legacy_maintenance_config_path() {
+  local caddy_path="$1"
+  if [[ -n "$LEGACY_MAINTENANCE_CONFIG" ]]; then
+    printf '%s\n' "$LEGACY_MAINTENANCE_CONFIG"
+    return 0
+  fi
+  case "$caddy_path" in
+    /srv/Caddyfile.local) printf '%s\n' "$LEGACY_MAINTENANCE_LOCAL_CONFIG" ;;
+    /srv/Caddyfile.production) printf '%s\n' "$LEGACY_MAINTENANCE_PRODUCTION_CONFIG" ;;
+    /srv/Caddyfile) printf '%s\n' "$LEGACY_MAINTENANCE_HTTP_CONFIG" ;;
+    *) return 1 ;;
+  esac
+}
 legacy_capture() {
   if [[ "$DRY_RUN" == 1 ]]; then
     LEGACY_API_ID='dry-run-legacy-api'; LEGACY_WEB_ID='dry-run-legacy-web'
@@ -617,6 +657,7 @@ legacy_capture() {
     LEGACY_API_WAS_RUNNING=1; LEGACY_WEB_WAS_RUNNING=1
     # Keep dry-run state compact; full Caddyfile capture is for real cutovers only.
     LEGACY_NORMAL_CONFIG_B64='dry-run-captured-normal-caddyfile'
+    LEGACY_CADDY_CONFIG_PATH='/srv/Caddyfile'
     return 0
   fi
   LEGACY_API_ID="$(legacy_service_id api)"; LEGACY_WEB_ID="$(legacy_service_id web)"
@@ -626,8 +667,9 @@ legacy_capture() {
   LEGACY_WEB_RESTART="$(docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' "$LEGACY_WEB_ID")"
   docker_running "$LEGACY_API_ID" && LEGACY_API_WAS_RUNNING=1 || LEGACY_API_WAS_RUNNING=0
   docker_running "$LEGACY_WEB_ID" && LEGACY_WEB_WAS_RUNNING=1 || LEGACY_WEB_WAS_RUNNING=0
-  [[ -f "$LEGACY_NORMAL_CONFIG" ]] || return 1
-  LEGACY_NORMAL_CONFIG_B64="$(base64 < "$LEGACY_NORMAL_CONFIG" | tr -d '\n')"
+  LEGACY_CADDY_CONFIG_PATH="$(legacy_caddy_config_path)" || return 1
+  LEGACY_NORMAL_CONFIG_B64="$(docker exec "$LEGACY_WEB_ID" sh -c "cat '$LEGACY_CADDY_CONFIG_PATH'" | base64 | tr -d '\n')" || return 1
+  [[ -n "$LEGACY_NORMAL_CONFIG_B64" ]]
 }
 
 assert_legacy_port_ownership() {
@@ -642,9 +684,12 @@ legacy_scheduler_readiness() {
 }
 legacy_enable_maintenance() {
   [[ "$DRY_RUN" == 1 ]] && { LEGACY_WEB_MAINTENANCE=1; return 0; }
-  [[ -f "$LEGACY_MAINTENANCE_CONFIG" ]] || return 1
-  docker cp "$LEGACY_MAINTENANCE_CONFIG" "$LEGACY_WEB_ID:/srv/Caddyfile" || return 1
-  docker exec "$LEGACY_WEB_ID" caddy reload --config /srv/Caddyfile || return 1
+  local caddy_path maintenance_config
+  caddy_path="${LEGACY_CADDY_CONFIG_PATH:-$(legacy_caddy_config_path)}"
+  maintenance_config="$(legacy_maintenance_config_path "$caddy_path")" || return 1
+  [[ -f "$maintenance_config" ]] || return 1
+  docker cp "$maintenance_config" "$LEGACY_WEB_ID:$caddy_path" || return 1
+  docker exec "$LEGACY_WEB_ID" caddy reload --config "$caddy_path" --adapter caddyfile || return 1
   LEGACY_WEB_MAINTENANCE=1; maintenance_smoke
 }
 legacy_quarantine() {
@@ -672,8 +717,11 @@ wait_legacy_api() {
 legacy_restore_normal_web_config() {
   [[ "$DRY_RUN" == 1 ]] && { LEGACY_WEB_MAINTENANCE=0; return 0; }
   [[ -n "$LEGACY_NORMAL_CONFIG_B64" ]] || return 1
-  printf '%s' "$LEGACY_NORMAL_CONFIG_B64" | base64 --decode | docker exec -i "$LEGACY_WEB_ID" sh -c 'cat > /srv/Caddyfile' || return 1
-  docker exec "$LEGACY_WEB_ID" caddy reload --config /srv/Caddyfile || return 1
+  local caddy_path
+  caddy_path="${LEGACY_CADDY_CONFIG_PATH:-$(legacy_caddy_config_path)}"
+  case "$caddy_path" in /srv/Caddyfile|/srv/Caddyfile.local|/srv/Caddyfile.production) ;; *) return 1 ;; esac
+  printf '%s' "$LEGACY_NORMAL_CONFIG_B64" | base64 --decode | docker exec -i "$LEGACY_WEB_ID" sh -c "cat > '$caddy_path'" || return 1
+  docker exec "$LEGACY_WEB_ID" caddy reload --config "$caddy_path" --adapter caddyfile || return 1
   LEGACY_WEB_MAINTENANCE=0
 }
 
