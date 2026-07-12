@@ -29,6 +29,14 @@ RUN_DIRECTORY = PROJECT / 'logs/deploy/release-runs'
 PI5_RELEASE_CURRENT = PROJECT / 'logs/deploy/pi5-release-current.json'
 OPERATOR_CANARY_APPROVAL_CLIENT = 'operator-canary-approval'
 DEFAULT_CANARY_HOLD_TIMEOUT = 1800
+# Kiosk-scoped components used to detect barcode-agent-only rollouts.
+KIOSK_SCOPE_COMPONENTS = frozenset({
+    'nfc-agent',
+    'barcode-agent',
+    'status-agent',
+    'kiosk-role',
+    'client-role',
+})
 
 
 def utc_now() -> str:
@@ -282,15 +290,78 @@ def rollback_terminal(inventory: str, target_spec: dict[str, str], target: dict[
 
 def pi5_release_required(sha: str) -> bool:
     """Use the existing path classifier; unknown classification is fail-closed."""
-    try:
-        base = run(['git', '-C', str(PROJECT), 'merge-base', 'origin/main', sha], capture=True).strip()
-        result = json.loads(run([
-            'python3', str(PROJECT / 'scripts/deploy/classify-deploy-impact.py'),
-            '--base', base, '--head', sha,
-        ], capture=True))
-        return bool(result.get('server') or result.get('migration'))
-    except Exception:
+    classification, _ = classify_release_impact(sha)
+    if classification is None:
         return True
+    return bool(classification.get('server') or classification.get('migration'))
+
+
+def apply_auto_minimize(
+    targets: list[dict[str, str]],
+    inventory: dict[str, Any],
+    classification: dict[str, Any] | None,
+) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    """Narrow terminal targets from classification; on doubt, keep or widen scope."""
+    if classification is None:
+        return targets, {
+            'autoMinimize': True,
+            'minimized': False,
+            'excludedHosts': [],
+            'classificationComponents': None,
+            'reason': 'classification unavailable',
+        }
+
+    components = list(classification.get('components') or [])
+    components_set = set(components)
+    if 'unknown' in components_set or 'global' in components_set:
+        # Fail-closed: unknown/global impact must touch every terminal.
+        return targets, {
+            'autoMinimize': True,
+            'minimized': False,
+            'excludedHosts': [],
+            'classificationComponents': sorted(components_set),
+            'reason': 'unknown or global component',
+        }
+
+    include_kiosk = bool(classification.get('kiosk'))
+    include_signage = bool(classification.get('signage'))
+    kiosk_components = components_set & KIOSK_SCOPE_COMPONENTS
+    barcode_only = include_kiosk and kiosk_components == {'barcode-agent'}
+    hostvars = (inventory.get('_meta') or {}).get('hostvars')
+    # Missing hostvars cannot safely decide barcode ownership → keep all kiosks.
+    if barcode_only and not isinstance(hostvars, dict):
+        barcode_only = False
+
+    filtered: list[dict[str, str]] = []
+    for target in targets:
+        terminal_type = target.get('terminalType')
+        if terminal_type == 'kiosk':
+            if not include_kiosk:
+                continue
+            if barcode_only:
+                values = hostvars.get(target['host']) if isinstance(hostvars, dict) else None
+                if not isinstance(values, dict):
+                    # Per-host vars missing: fail-closed keep the kiosk.
+                    filtered.append(target)
+                    continue
+                if values.get('barcode_agent_enabled') is True:
+                    filtered.append(target)
+                continue
+            filtered.append(target)
+        elif terminal_type == 'signage':
+            if include_signage:
+                filtered.append(target)
+        else:
+            filtered.append(target)
+
+    kept = {target['host'] for target in filtered}
+    excluded = [target['host'] for target in targets if target['host'] not in kept]
+    return filtered, {
+        'autoMinimize': True,
+        'minimized': bool(excluded),
+        'excludedHosts': excluded,
+        'classificationComponents': sorted(components_set),
+    }
 
 
 def resolve_release_sha(branch: str) -> tuple[str | None, list[str]]:
@@ -337,7 +408,7 @@ def resolve_terminal_targets(inventory: str, limit: str) -> tuple[list[dict[str,
         return None, ['ansible-inventory unavailable']
 
 
-def build_print_plan(branch: str, inventory: str, limit: str) -> dict[str, Any]:
+def build_print_plan(branch: str, inventory: str, limit: str, *, auto_minimize: bool = False) -> dict[str, Any]:
     """Auditable shadow plan for --print-plan; always returns JSON-serializable data."""
     warnings: list[str] = []
     sha, sha_warnings = resolve_release_sha(branch)
@@ -353,6 +424,24 @@ def build_print_plan(branch: str, inventory: str, limit: str) -> dict[str, Any]:
 
     terminal_targets, target_warnings = resolve_terminal_targets(inventory, limit)
     warnings.extend(target_warnings)
+
+    excluded_hosts: list[str] = []
+    minimized = False
+    classification_components = (
+        list(classification.get('components') or []) if classification is not None else None
+    )
+    if auto_minimize and terminal_targets is not None:
+        try:
+            inventory_data = inventory_json(inventory)
+        except Exception:
+            inventory_data = {}
+        terminal_targets, minimize_meta = apply_auto_minimize(
+            terminal_targets, inventory_data, classification,
+        )
+        excluded_hosts = list(minimize_meta.get('excludedHosts') or [])
+        minimized = bool(minimize_meta.get('minimized'))
+        classification_components = minimize_meta.get('classificationComponents')
+
     canary_hold = None if terminal_targets is None else should_hold_after_canary(terminal_targets, 0, skip=False)
 
     return {
@@ -365,30 +454,67 @@ def build_print_plan(branch: str, inventory: str, limit: str) -> dict[str, Any]:
         'pi5Required': pi5_required,
         'terminalTargets': terminal_targets,
         'canaryHold': canary_hold,
+        'autoMinimize': auto_minimize,
+        'minimized': minimized,
+        'excludedHosts': excluded_hosts,
+        'classificationComponents': classification_components,
         'warnings': warnings,
     }
 
 
 def _remote_run(args: argparse.Namespace) -> int:
     inventory = str(Path(args.inventory) if Path(args.inventory).is_absolute() else ANSIBLE_DIRECTORY / args.inventory)
-    targets = release_targets(inventory_json(inventory), selected_hosts(inventory, args.limit))
+    inventory_data = inventory_json(inventory)
+    targets = release_targets(inventory_data, selected_hosts(inventory, args.limit))
     # Empty terminals without --limit means inventory selection is broken.
     if not targets and not args.limit:
         raise RuntimeError('no kiosk or signage targets selected')
-    pi5_required = pi5_release_required(args.sha)
+
+    classification: dict[str, Any] | None = None
+    plan_minimize: dict[str, Any] = {
+        'autoMinimize': False,
+        'minimized': False,
+        'excludedHosts': [],
+        'classificationComponents': None,
+    }
+    if args.auto_minimize:
+        classification, _ = classify_release_impact(args.sha)
+        targets, plan_minimize = apply_auto_minimize(targets, inventory_data, classification)
+
+    if classification is not None:
+        pi5_required = bool(classification.get('server') or classification.get('migration'))
+    else:
+        pi5_required = pi5_release_required(args.sha)
+
+    plan = {
+        'pi5Required': pi5_required,
+        'targets': [target['host'] for target in targets],
+        'limit': args.limit or None,
+        **plan_minimize,
+    }
+
     # --limit may intentionally select zero terminals; only Pi5 work is valid then.
+    # --auto-minimize may also reduce to zero when only server/migration changed.
     if not targets and not pi5_required:
+        if args.auto_minimize:
+            path = status_file(args.run_id)
+            state = ReleaseState(path, {
+                'version': 1, 'runId': args.run_id, 'branch': args.branch, 'releaseSha': args.sha,
+                'startedAt': utc_now(), 'state': 'success',
+                'targets': [],
+                'pi5': {'state': 'not-required'},
+                'plan': plan,
+            })
+            state.save()
+            return 0
         raise RuntimeError('no kiosk or signage targets selected')
+
     path = status_file(args.run_id)
     state = ReleaseState(path, {
         'version': 1, 'runId': args.run_id, 'branch': args.branch, 'releaseSha': args.sha,
         'startedAt': utc_now(), 'state': 'running',
         'targets': [{**target, 'state': 'pending'} for target in targets],
-        'plan': {
-            'pi5Required': pi5_required,
-            'targets': [target['host'] for target in targets],
-            'limit': args.limit or None,
-        },
+        'plan': plan,
     })
     state.save()
     try:
@@ -489,7 +615,10 @@ def local_run(args: argparse.Namespace) -> int:
     if not args.branch or not args.inventory:
         raise RuntimeError('branch and inventory are required')
     if args.print_plan:
-        print(json.dumps(build_print_plan(args.branch, args.inventory, args.limit or ''), ensure_ascii=False))
+        print(json.dumps(
+            build_print_plan(args.branch, args.inventory, args.limit or '', auto_minimize=args.auto_minimize),
+            ensure_ascii=False,
+        ))
         return 0
     dirty = (
         subprocess.run(['git', '-C', str(PROJECT), 'diff', '--quiet']).returncode != 0
@@ -510,6 +639,8 @@ def local_run(args: argparse.Namespace) -> int:
     hold = f' --canary-hold-timeout {shlex.quote(str(args.canary_hold_timeout))}'
     if args.skip_canary_hold:
         hold += ' --skip-canary-hold'
+    if args.auto_minimize:
+        hold += ' --auto-minimize'
     remote = (
         'cd /opt/RaspberryPiSystem_002 && '
         f'git fetch origin {shlex.quote(args.branch)} && git checkout --detach {shlex.quote(sha)} && '
@@ -558,6 +689,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument('--run-id')
     value.add_argument('--skip-canary-hold', action='store_true')
     value.add_argument('--canary-hold-timeout', type=int, default=DEFAULT_CANARY_HOLD_TIMEOUT)
+    value.add_argument('--auto-minimize', action='store_true')
     return value
 
 

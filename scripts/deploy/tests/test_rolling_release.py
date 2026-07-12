@@ -169,6 +169,7 @@ class CanaryHoldTest(unittest.TestCase):
             'reason': None,
             'skip_canary_hold': False,
             'canary_hold_timeout': 60,
+            'auto_minimize': False,
         }
         values.update(overrides)
         return argparse.Namespace(**values)
@@ -362,6 +363,7 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
             'reason': None,
             'skip_canary_hold': False,
             'canary_hold_timeout': 60,
+            'auto_minimize': False,
         }
         values.update(overrides)
         return argparse.Namespace(**values)
@@ -386,6 +388,10 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
             'pi5Required': True,
             'targets': [],
             'limit': 'raspberrypi5',
+            'autoMinimize': False,
+            'minimized': False,
+            'excludedHosts': [],
+            'classificationComponents': None,
         })
 
     def test_empty_targets_with_limit_fails_when_pi5_not_required(self):
@@ -437,6 +443,10 @@ class PrintPlanShadowTest(unittest.TestCase):
         self.assertIsNone(plan['pi5Required'])
         self.assertIsNone(plan['terminalTargets'])
         self.assertIsNone(plan['canaryHold'])
+        self.assertFalse(plan['autoMinimize'])
+        self.assertFalse(plan['minimized'])
+        self.assertEqual(plan['excludedHosts'], [])
+        self.assertIsNone(plan['classificationComponents'])
         self.assertIn('could not resolve SHA for branch main', plan['warnings'])
         self.assertIn('ansible-inventory unavailable', plan['warnings'])
 
@@ -448,6 +458,7 @@ class PrintPlanShadowTest(unittest.TestCase):
             'signage': False,
             'migration': False,
             'paths': ['apps/api/src/index.ts'],
+            'components': ['server-app'],
         }
         targets = [
             {'host': 'kiosk-canary', 'clientId': 'canary', 'terminalType': 'kiosk'},
@@ -468,7 +479,237 @@ class PrintPlanShadowTest(unittest.TestCase):
         self.assertEqual(plan['terminalTargets'], targets)
         self.assertTrue(plan['canaryHold'])
         self.assertEqual(plan['limit'], 'clients')
+        self.assertFalse(plan['autoMinimize'])
+        self.assertFalse(plan['minimized'])
+        self.assertEqual(plan['excludedHosts'], [])
+        self.assertEqual(plan['classificationComponents'], ['server-app'])
         self.assertEqual(plan['warnings'], [])
+
+
+class AutoMinimizeTest(unittest.TestCase):
+    INVENTORY = {
+        'kiosk_canary': {'hosts': ['kiosk-b']},
+        '_meta': {'hostvars': {
+            'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
+            'kiosk-b': {
+                'manage_kiosk_browser': True,
+                'status_agent_client_id': 'b',
+                'barcode_agent_enabled': True,
+            },
+            'raspberrypi3': {'manage_signage_lite': True, 'status_agent_client_id': 's'},
+        }},
+    }
+
+    ALL_TARGETS = [
+        {'host': 'kiosk-b', 'clientId': 'b', 'terminalType': 'kiosk'},
+        {'host': 'kiosk-a', 'clientId': 'a', 'terminalType': 'kiosk'},
+        {'host': 'raspberrypi3', 'clientId': 's', 'terminalType': 'signage'},
+    ]
+
+    def _args(self, **overrides):
+        values = {
+            'inventory': 'inventory.yml',
+            'limit': '',
+            'run_id': 'run-1',
+            'branch': 'main',
+            'sha': 'a' * 40,
+            'emergency_override': False,
+            'reason': None,
+            'skip_canary_hold': True,
+            'canary_hold_timeout': 60,
+            'auto_minimize': True,
+        }
+        values.update(overrides)
+        return argparse.Namespace(**values)
+
+    def _run_remote(self, *, classification, targets=None, inventory=None, args=None):
+        targets = targets if targets is not None else list(self.ALL_TARGETS)
+        inventory = inventory if inventory is not None else self.INVENTORY
+        played = []
+
+        def playbook(_inventory, host, _sha, _run_id, rollback=False):
+            played.append(host)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            run_directory = Path(temporary)
+            with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
+                    patch.object(MODULE, 'inventory_json', return_value=inventory), \
+                    patch.object(MODULE, 'selected_hosts', return_value=None), \
+                    patch.object(MODULE, 'release_targets', return_value=targets), \
+                    patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
+                    patch.object(MODULE, 'pi5_release_required', return_value=False), \
+                    patch.object(MODULE, 'ensure_pi5_release') as ensure, \
+                    patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    patch.object(MODULE, 'wait_for_ack', return_value=True), \
+                    patch.object(MODULE, 'state_command'), \
+                    patch.object(MODULE, 'prestage_signage_maintenance'), \
+                    patch.object(MODULE, 'playbook', side_effect=playbook), \
+                    patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
+                result = MODULE._remote_run(args or self._args())
+            payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
+        return result, played, payload, ensure
+
+    def test_nfc_agent_excludes_signage_keeps_all_kiosks(self):
+        classification = {
+            'server': False, 'kiosk': True, 'signage': False, 'migration': False,
+            'components': ['nfc-agent'],
+        }
+        result, played, payload, ensure = self._run_remote(classification=classification)
+        self.assertEqual(result, 0)
+        ensure.assert_not_called()
+        self.assertEqual(played, ['kiosk-b', 'kiosk-a'])
+        self.assertEqual(payload['plan']['excludedHosts'], ['raspberrypi3'])
+        self.assertTrue(payload['plan']['minimized'])
+        self.assertEqual(payload['plan']['classificationComponents'], ['nfc-agent'])
+        self.assertTrue(payload['plan']['autoMinimize'])
+
+    def test_barcode_agent_only_keeps_barcode_enabled_hosts(self):
+        classification = {
+            'server': False, 'kiosk': True, 'signage': False, 'migration': False,
+            'components': ['barcode-agent'],
+        }
+        result, played, payload, _ensure = self._run_remote(classification=classification)
+        self.assertEqual(result, 0)
+        self.assertEqual(played, ['kiosk-b'])
+        self.assertEqual(sorted(payload['plan']['excludedHosts']), ['kiosk-a', 'raspberrypi3'])
+        self.assertTrue(payload['plan']['minimized'])
+
+    def test_signage_role_only_excludes_all_kiosks(self):
+        classification = {
+            'server': False, 'kiosk': False, 'signage': True, 'migration': False,
+            'components': ['signage-role'],
+        }
+        result, played, payload, _ensure = self._run_remote(classification=classification)
+        self.assertEqual(result, 0)
+        self.assertEqual(played, ['raspberrypi3'])
+        self.assertEqual(sorted(payload['plan']['excludedHosts']), ['kiosk-a', 'kiosk-b'])
+        self.assertTrue(payload['plan']['minimized'])
+
+    def test_unknown_component_fail_closed_keeps_all_terminals(self):
+        classification = {
+            'server': True, 'kiosk': True, 'signage': True, 'migration': False,
+            'components': ['unknown'],
+        }
+        result, played, payload, ensure = self._run_remote(classification=classification)
+        self.assertEqual(result, 0)
+        ensure.assert_called_once()
+        self.assertEqual(played, ['kiosk-b', 'kiosk-a', 'raspberrypi3'])
+        self.assertEqual(payload['plan']['excludedHosts'], [])
+        self.assertFalse(payload['plan']['minimized'])
+        self.assertEqual(payload['plan'].get('reason'), 'unknown or global component')
+
+    def test_classification_unavailable_fail_closed_keeps_all_terminals(self):
+        result, played, payload, _ensure = self._run_remote(classification=None)
+        self.assertEqual(result, 0)
+        self.assertEqual(played, ['kiosk-b', 'kiosk-a', 'raspberrypi3'])
+        self.assertEqual(payload['plan']['excludedHosts'], [])
+        self.assertFalse(payload['plan']['minimized'])
+        self.assertEqual(payload['plan'].get('reason'), 'classification unavailable')
+        self.assertIsNone(payload['plan']['classificationComponents'])
+
+    def test_server_app_only_runs_pi5_with_zero_terminals(self):
+        classification = {
+            'server': True, 'kiosk': False, 'signage': False, 'migration': False,
+            'components': ['server-app'],
+        }
+        result, played, payload, ensure = self._run_remote(classification=classification)
+        self.assertEqual(result, 0)
+        ensure.assert_called_once()
+        self.assertEqual(played, [])
+        self.assertEqual(payload['targets'], [])
+        self.assertEqual(payload['state'], 'success')
+        self.assertTrue(payload['plan']['pi5Required'])
+        self.assertTrue(payload['plan']['minimized'])
+        self.assertEqual(sorted(payload['plan']['excludedHosts']), ['kiosk-a', 'kiosk-b', 'raspberrypi3'])
+
+    def test_without_auto_minimize_keeps_all_terminals(self):
+        classification = {
+            'server': False, 'kiosk': True, 'signage': False, 'migration': False,
+            'components': ['nfc-agent'],
+        }
+        result, played, payload, ensure = self._run_remote(
+            classification=classification,
+            args=self._args(auto_minimize=False),
+        )
+        self.assertEqual(result, 0)
+        ensure.assert_not_called()
+        self.assertEqual(played, ['kiosk-b', 'kiosk-a', 'raspberrypi3'])
+        self.assertFalse(payload['plan']['autoMinimize'])
+        self.assertFalse(payload['plan']['minimized'])
+        self.assertEqual(payload['plan']['excludedHosts'], [])
+        self.assertIsNone(payload['plan']['classificationComponents'])
+
+    def test_auto_minimize_noop_when_no_pi5_and_no_terminals(self):
+        classification = {
+            'server': False, 'kiosk': False, 'signage': False, 'migration': False,
+            'components': ['neutral'],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            run_directory = Path(temporary)
+            with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
+                    patch.object(MODULE, 'inventory_json', return_value=self.INVENTORY), \
+                    patch.object(MODULE, 'selected_hosts', return_value=None), \
+                    patch.object(MODULE, 'release_targets', return_value=list(self.ALL_TARGETS)), \
+                    patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
+                    patch.object(MODULE, 'ensure_pi5_release') as ensure, \
+                    patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
+                result = MODULE._remote_run(self._args())
+            payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
+        self.assertEqual(result, 0)
+        ensure.assert_not_called()
+        self.assertEqual(payload['state'], 'success')
+        self.assertEqual(payload['pi5'], {'state': 'not-required'})
+        self.assertEqual(payload['targets'], [])
+        self.assertFalse(payload['plan']['pi5Required'])
+
+    def test_local_forwards_auto_minimize(self):
+        captured = {}
+
+        def fake_run(command, **_kwargs):
+            if command[:3] == ['git', '-C', str(MODULE.PROJECT)] and 'rev-parse' in command:
+                return 'a' * 40 + '\n'
+            return ''
+
+        def fake_subprocess_run(command, **_kwargs):
+            if command[:2] == ['git', '-C']:
+                return Mock(returncode=0)
+            if command[0] == 'ssh':
+                captured['remote'] = command[2]
+                return Mock(returncode=0)
+            return Mock(returncode=0)
+
+        args = MODULE.normalize_arguments(MODULE.parser().parse_args([
+            'main', 'infrastructure/ansible/inventory.yml', '--auto-minimize',
+        ]))
+        with patch.object(MODULE, 'run', side_effect=fake_run), \
+                patch.object(MODULE.subprocess, 'run', side_effect=fake_subprocess_run), \
+                patch.dict(MODULE.os.environ, {'RASPI_SERVER_HOST': 'pi5.example'}):
+            MODULE.local_run(args)
+        self.assertIn('--auto-minimize', captured['remote'])
+
+    def test_print_plan_auto_minimize_reports_excluded_hosts(self):
+        sha = 'a' * 40
+        classification = {
+            'server': False, 'kiosk': True, 'signage': False, 'migration': False,
+            'components': ['nfc-agent'],
+        }
+        targets = list(self.ALL_TARGETS)
+        args = MODULE.normalize_arguments(MODULE.parser().parse_args([
+            'main', 'infrastructure/ansible/inventory.yml', '--print-plan', '--auto-minimize',
+        ]))
+        with patch.object(MODULE, 'resolve_release_sha', return_value=(sha, [])), \
+                patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
+                patch.object(MODULE, 'resolve_terminal_targets', return_value=(targets, [])), \
+                patch.object(MODULE, 'inventory_json', return_value=self.INVENTORY), \
+                patch('builtins.print') as printed:
+            self.assertEqual(MODULE.local_run(args), 0)
+        plan = json.loads(printed.call_args.args[0])
+        self.assertTrue(plan['autoMinimize'])
+        self.assertTrue(plan['minimized'])
+        self.assertEqual([t['host'] for t in plan['terminalTargets']], ['kiosk-b', 'kiosk-a'])
+        self.assertEqual(plan['excludedHosts'], ['raspberrypi3'])
+        self.assertEqual(plan['classificationComponents'], ['nfc-agent'])
+        self.assertTrue(plan['canaryHold'])
 
 
 if __name__ == '__main__':
