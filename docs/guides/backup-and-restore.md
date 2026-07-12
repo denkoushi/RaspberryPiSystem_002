@@ -2,7 +2,7 @@
 title: バックアップ・リストア手順
 tags: [運用, バックアップ, PostgreSQL, ラズパイ5]
 audience: [運用者, 開発者]
-last-verified: 2026-06-26
+last-verified: 2026-07-12
 related: [monitoring.md, deployment.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # バックアップ・リストア手順
 
-最終更新: 2026-06-26（Dropbox容量対策と復旧必須ファイル群を反映）
+最終更新: 2026-07-12（Dropbox容量対策、PDF除外、Pi4クライアント設定バックアップを反映）
 
 ## 概要
 
@@ -40,11 +40,11 @@ update-frequency: medium
    - **追加方法**: [バックアップ設定ガイド](./backup-configuration.md#証明書ディレクトリのバックアップ推奨) を参照
 
 4. **復旧必須の永続ファイル**
-   - **場所**: `/opt/RaspberryPiSystem_002/storage/part-measurement-drawings`, `/opt/RaspberryPiSystem_002/storage/measuring-instrument-genres`, `/opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations`, `/opt/RaspberryPiSystem_002/storage/pdfs`
+   - **場所**: `/opt/RaspberryPiSystem_002/storage/part-measurement-drawings`, `/opt/RaspberryPiSystem_002/storage/measuring-instrument-genres`, `/opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations`
    - **バックアップ方法**: `scripts/server/backup.sh`でAPI経由バックアップ（`backup.json`の`directory`ターゲット）
    - **頻度**: 日次（推奨）
    - **保存先**: Dropbox（推奨）
-   - **容量方針**: PDFは`maxBackups: 2`、その他の小容量一次ファイルは`maxBackups: 4`
+   - **容量方針**: 小容量一次ファイルは`maxBackups: 4`。PDFは中核機能に必須ではないため、2GB Dropboxの対象外とする
 
 5. **写真ファイル**
    - **場所**: `/opt/RaspberryPiSystem_002/storage/photos`, `/opt/RaspberryPiSystem_002/storage/thumbnails`
@@ -69,17 +69,22 @@ update-frequency: medium
 | **証明書ファイル** | `/opt/RaspberryPiSystem_002/certs/` | ✅ **必須** | `backup.json`で自動バックアップ設定可能（`kind=directory`, `source=/app/host/certs`） |
 | **IPアドレス設定** | `infrastructure/ansible/group_vars/all.yml` | ⚠️ **推奨** | Ansible変数で管理、リポジトリに含まれる（デバイスごとに異なる値） |
 | **データベース** | Dockerボリューム `db-data` | ✅ **必須** | バックアップスクリプトで自動バックアップ |
-| **復旧必須の永続ファイル** | `/opt/RaspberryPiSystem_002/storage/part-measurement-drawings`, `measuring-instrument-genres`, `pallet-machine-illustrations`, `pdfs` | ✅ **必須** | `backup.json`の`directory`ターゲット + バックアップスクリプトで自動バックアップ |
+| **復旧必須の永続ファイル** | `/opt/RaspberryPiSystem_002/storage/part-measurement-drawings`, `measuring-instrument-genres`, `pallet-machine-illustrations` | ✅ **必須** | `backup.json`の`directory`ターゲット + バックアップスクリプトで自動バックアップ |
 | **写真ファイル** | `/opt/RaspberryPiSystem_002/storage/photos`, `thumbnails` | ⚠️ **容量次第** | 2GB Dropbox運用では本番無効化。必要時は別媒体または保持数を絞って有効化 |
 
 #### Pi4（キオスク）にのみ存在する情報
 
 | 情報の種類 | 場所 | バックアップ | 管理方法 |
 |-----------|------|------------|---------|
-| **環境変数ファイル** | `clients/nfc-agent/.env` | ⚠️ **推奨** | `.env.example`をコピーして作成、Ansibleでデプロイ可能。**現在はAnsible経由のバックアップ機能を実装予定** |
+| **NFCエージェント設定** | `clients/nfc-agent/.env` | ✅ **推奨** | Pi5の`backup.json`に`client-file`ターゲットを登録し、Ansible経由でDropboxへ保存 |
+| **運用ユーザーSSH設定** | `/home/<ユーザー>/.ssh` | ✅ **推奨** | Pi5の`backup.json`に`client-directory`ターゲットを登録 |
+| **Tailscale状態** | `/var/lib/tailscale` | ✅ **推奨** | Pi5の`backup.json`に`client-directory`ターゲットを登録 |
+| **status-agent設定** | `/etc/raspi-status-agent.conf` | ✅ **推奨** | Pi5の`backup.json`に`client-file`ターゲットを登録 |
 | **NFCリーダー設定** | システム設定 | ❌ 不要 | ハードウェア設定、再設定可能 |
 
-**注意**: クライアント端末のファイルは物理的に別マシン上に存在するため、Pi5（サーバー）のAPIから直接アクセスできません。Ansibleを使用してクライアント端末のファイルをPi5に取得してバックアップする機能を実装済みです。
+**本番登録済み端末**: `raspi4-sessaku-01` を含むPi4キオスク5台。各対象は日次（`0 2 * * *`）、Dropbox、保持14日・最大4世代で運用します。クライアント端末のファイルは物理的に別マシン上に存在するため、Ansibleを使用してPi5へ取得してからバックアップします。
+
+PDFの扱い、実機検証結果、Dropbox容量の復旧履歴は [KB: バックアップ・リストア関連](../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712) を正本とします。
 
 **AnsibleとTailscale連携の詳細**:
 - Ansible Playbookは`hosts: "{{ client_host }}"`で実行され、`group_vars/all.yml`の変数（`kiosk_ip`など）が正しく展開されます

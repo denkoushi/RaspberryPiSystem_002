@@ -2,7 +2,7 @@
 title: バックアップ設定ガイド
 tags: [運用, バックアップ, 設定, Dropbox]
 audience: [運用者, 開発者]
-last-verified: 2026-02-08
+last-verified: 2026-07-12
 related: [backup-and-restore.md, dropbox-setup-guide.md, monitoring.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # バックアップ設定ガイド
 
-最終更新: 2026-02-08（バックアップ改善1–4: 自動検証、設定履歴、リストア安全策、性能/計測を追加）
+最終更新: 2026-07-12（バックアップ改善1–4、PDF除外、Pi4クライアント設定バックアップを反映）
 
 ## バックアップ改善1–4（2026-02-08）
 
@@ -64,6 +64,13 @@ sudo journalctl -u backup-verify-quarterly.service -n 200
 ## 概要
 
 本ガイドでは、モジュール化されたバックアップ機能の設定方法を説明します。バックアップ機能は設定ファイルベースで動作し、ローカルストレージまたはDropboxへの自動バックアップをサポートします。
+
+## Pi5本番の現在方針（2026-07-12）
+
+- `/app/storage/pdfs` は `enabled: false`。PDFは中核機能の稼働に必須ではないため、2GB Dropboxの推奨対象から外します。
+- `raspi4-sessaku-01` のNFCエージェント `.env`、運用ユーザーSSH、Tailscale状態、status-agent設定を `client-file` / `client-directory` として登録済みです。
+- 上記クライアント対象は日次（`0 2 * * *`）、Dropbox、保持14日・最大4世代です。
+- 実機検証と容量回復の詳細は [バックアップ・リストア関連KB](../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712) を参照してください。
 
 ## 設定ファイルの場所
 
