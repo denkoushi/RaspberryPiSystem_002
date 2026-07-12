@@ -485,6 +485,7 @@
     - name: Rebuild/Restart docker compose services
       ansible.builtin.shell: |
         set -euo pipefail
+        {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
         cd {{ repo_path }}
         docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build api web
       args:
@@ -589,6 +590,7 @@
 - name: Force recreate api when Docker .env changed
   ansible.builtin.shell: |
     set -euo pipefail
+    {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
     cd {{ repo_path }}
     docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate api
   args:
@@ -600,6 +602,7 @@
 - name: Rebuild and recreate web when Docker .env changed (VITE_* build args)
   ansible.builtin.shell: |
     set -euo pipefail
+    {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
     cd {{ repo_path }}
     docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d --build --force-recreate web
   args:
@@ -611,6 +614,7 @@
 - name: Ensure api and web containers are running before Prisma migrate
   ansible.builtin.shell: |
     set -euo pipefail
+    {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
     cd {{ repo_path }}
     docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d api web
   args:
@@ -741,6 +745,36 @@
 
 - name: Apply status-agent configuration and systemd units
   ansible.builtin.import_tasks: status-agent.yml
+
+
+- name: Resolve deploy user groups for Blue/Green reconcile Docker access
+  ansible.builtin.command:
+    cmd: "id -nG {{ ansible_user }}"
+  register: pi5_bluegreen_deploy_user_groups
+  changed_when: false
+  check_mode: false
+
+- name: Assert deploy user is in the docker group for Blue/Green reconcile
+  ansible.builtin.assert:
+    that:
+      - "'docker' in pi5_bluegreen_deploy_user_groups.stdout.split()"
+    fail_msg: >-
+      Blue/Green reconcile runs as {{ ansible_user }} with SupplementaryGroups=docker.
+      Add {{ ansible_user }} to the docker group before enabling pi5-blue-green-reconcile.service.
+
+- name: Deploy Pi5 Blue/Green boot reconciliation service
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/pi5-blue-green-reconcile.service.j2"
+    dest: /etc/systemd/system/pi5-blue-green-reconcile.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable Pi5 Blue/Green boot reconciliation service
+  ansible.builtin.systemd:
+    name: pi5-blue-green-reconcile.service
+    enabled: true
+    daemon_reload: true
 
 - name: Deploy Pi5 power dispatcher script
   ansible.builtin.template:

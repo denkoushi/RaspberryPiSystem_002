@@ -34,6 +34,12 @@ rollback restores the previous API and Web images recorded in the state file.
 EOF
 }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Fail-closed while Phase 3 Blue/Green owns the gateway path.
+if [[ "${PI5_DEPLOY_SKIP_PHASE3_LEGACY_GUARD:-0}" != 1 ]]; then
+  bash "${SCRIPT_DIR}/pi5-phase3-legacy-guard.sh"
+fi
+
 COMMAND="${1:-}"
 [[ -n "$COMMAND" ]] || { usage; exit 2; }
 shift || true

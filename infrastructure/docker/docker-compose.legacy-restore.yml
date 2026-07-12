@@ -1,0 +1,7 @@
+# Pins legacy api/web to the images captured before Phase 3 bootstrap.
+# Used only by `pi5-blue-green.sh` restore paths with `--no-build`.
+services:
+  api:
+    image: ${PI5_LEGACY_API_IMAGE:?PI5_LEGACY_API_IMAGE is required}
+  web:
+    image: ${PI5_LEGACY_WEB_IMAGE:?PI5_LEGACY_WEB_IMAGE is required}

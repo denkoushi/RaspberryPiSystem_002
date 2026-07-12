@@ -1,0 +1,17 @@
+[Unit]
+Description=Pi5 Blue/Green boot reconciliation
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+ConditionPathExists={{ repo_path }}/logs/deploy/pi5-blue-green-state.json
+
+[Service]
+Type=oneshot
+User={{ ansible_user }}
+SupplementaryGroups=docker
+WorkingDirectory={{ repo_path }}
+ExecStart={{ repo_path }}/scripts/deploy/pi5-blue-green.sh reconcile
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target

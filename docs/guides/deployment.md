@@ -20,8 +20,10 @@ update-frequency: medium
 ### Pi5 Blue/Greenデプロイ（Phase 3・明示 opt-in） {#pi5-blue-green-phase3}
 
 - `scripts/deploy/pi5-blue-green.sh` が、API/WebのBlue・Greenスロットと固定Caddyゲートウェイを管理する。API/Webスロットはホストポートを公開せず、80/443はゲートウェイだけが公開する。
-- 初回の `bootstrap --confirm-bootstrap` は既存の`docker-web`が80/443を使用しているため、承認済みメンテナンス時間にだけ実行する。既存Phase 2経路を自動停止することはない。
-- 空きメモリ1.5GB、ディスク10GB、ロードアベレージ上限を満たさない場合は開始せず、Phase 2へフォールバックする。切替後5分は旧スロットを保持し、ヘルスチェック失敗時は自動で戻す。
+- 初回の `bootstrap --confirm-bootstrap --allow-legacy-scheduler-handoff` は、PR1をPhase 2で反映し、legacy APIの内部readinessがscheduler `leader`かつ `databaseConnection: connected` であることを確認済みの場合だけ、承認済みメンテナンス時間に実行する。legacy Webの静的メンテナンス表示を検証してから、legacy API→Blue leader→legacy Web→固定gatewayの順に可逆切替する。手動で旧Webを停止しない。
+- **Phase 3 state が live の間は、通常 Ansible（api/web recreate）、`manage-app-configs` の compose restart、Phase 2 `pi5-image-deploy.sh`、legacy Compose による api/web 再作成を使わない。** `pi5-phase3-legacy-guard.sh` が fail-closed する。許可されるのは `pi5-blue-green.sh` と、明示的な `reconcile --restore-legacy` 後の通常経路のみ。
+- 空きメモリ1.5GB、ディスク10GB、CPU数の75%未満のロードアベレージ、および強い JWT 秘密情報を満たさない場合は候補起動前に停止し、Phase 2へフォールバックする。切替後5分は旧スロットをscheduler leaderとして保持し、monitor は exclusive lock を握らない。ヘルス/role/metrics異常時は検証済みの旧slotへ自動で戻す。`cleanup` はhandoff確認後に旧slotとlegacyコンテナを除去する。
+- `/api/system/deploy-readiness/internal` はCaddy（HTTP 80 redirect 経路含む）で404となる内部専用契約であり、Blue/Green scriptだけが`docker exec`で確認する。`status` はread-onlyでlive状態とstaleを表示し、`reconcile` は再起動後の安全復旧と monitor 再開、`reconcile --restore-legacy` は保存済み legacy image での緊急復帰に使う。
 - 操作・復旧・受入れの正本は [Pi5 Blue/Green deployment runbook](../runbooks/pi5-blue-green-deploy.md)、実装正本は [Phase 3 ExecPlan](../plans/pi5-blue-green-phase3.md)。Phase 3は本番bootstrap受入れ完了まで既定経路にしない。
 
 ### 補足（2026-07-11 · **端末別ローリングデプロイ Milestone 1** · **Pi4全5台反映**） {#per-kiosk-rolling-deploy-milestone1-2026-07-11}

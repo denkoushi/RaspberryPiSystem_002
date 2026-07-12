@@ -33,6 +33,7 @@ jobs:
           bash -n scripts/server/deploy-detached.sh
           bash -n scripts/deploy/pi5-blue-green.sh
           bash scripts/deploy/tests/test-pi5-blue-green.sh
+          bash scripts/deploy/tests/test-pi5-blue-green-maintenance-container.sh
           bash scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
 
       - name: Security scan (pnpm audit)
