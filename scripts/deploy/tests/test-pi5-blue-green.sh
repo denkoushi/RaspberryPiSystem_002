@@ -216,6 +216,8 @@ grep -Fq 'gateway_smoke_url()' "$SCRIPT" \
   || fail "gateway startup smoke retry helper is missing"
 grep -Fq 'PI5_BLUE_GREEN_GATEWAY_READY_RETRIES' "$SCRIPT" \
   || fail "gateway startup retry budget is not configurable"
+grep -Fq 'GATEWAY_READY_RETRIES="${PI5_BLUE_GREEN_GATEWAY_READY_RETRIES:-60}"' "$SCRIPT" \
+  || fail "gateway startup retry budget does not cover Pi5 port handoff"
 grep -Fq 'for attempt in $(seq 1 "$GATEWAY_READY_RETRIES")' "$SCRIPT" \
   || fail "gateway startup smoke does not retry before rollback"
 
