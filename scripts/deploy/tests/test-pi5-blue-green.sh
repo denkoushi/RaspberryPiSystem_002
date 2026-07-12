@@ -53,6 +53,7 @@ assert_contains "$out" "bootstrap completed"
 [[ "$(state "$STATE1" activeSlot)" == blue ]] || fail "blue was not active after bootstrap"
 [[ "$(state "$STATE1" version)" == 2 ]] || fail "state schema is not v2"
 [[ "$(state "$STATE1" legacy.caddyConfigPath)" == /srv/Caddyfile ]] || fail "legacy Caddyfile path was not persisted"
+[[ "$(state "$STATE1" legacy.web.removed)" == True ]] || fail "bootstrap did not release legacy Web port ownership"
 
 out="$(env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE1" "$SCRIPT" prepare --api-image "$NEW_API" --web-image "$NEW_WEB")"
 assert_contains "$out" "candidate prepared"
@@ -220,6 +221,8 @@ grep -Fq 'GATEWAY_READY_RETRIES="${PI5_BLUE_GREEN_GATEWAY_READY_RETRIES:-60}"' "
   || fail "gateway startup retry budget does not cover Pi5 port handoff"
 grep -Fq 'for attempt in $(seq 1 "$GATEWAY_READY_RETRIES")' "$SCRIPT" \
   || fail "gateway startup smoke does not retry before rollback"
+grep -Fq 'docker rm "$LEGACY_WEB_ID"' "$SCRIPT" \
+  || fail "legacy Web container is not removed before gateway port handoff"
 
 PROD_ENV="$TMP/production.env"
 printf '%s\n' \
