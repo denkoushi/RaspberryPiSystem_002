@@ -14,6 +14,14 @@
 6. Codex/Cursor agmsg連携を使う場合は `docs/guides/agmsg-codex-cursor-collaboration.md`
 7. 関連する KB / Runbook / ADR / Plan
 
+## 本番デプロイの必須ルール（常時適用）
+
+- ユーザーの「Deploy」「デプロイ」「本番反映」は、**標準ローリング更新**を意味する。通常のアプリ更新は必ず `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml` を使う。
+- 実機へ接続する前に、対象ブランチまたは不変SHAと、その対象のCI成功を確認する。対象が会話・PR・依頼から一意に決まらない場合は推測せず質問する。本番実行にはユーザーの明示承認が必要であり、同じ作業中に既に承認済みなら再確認しない。
+- 通常更新で `ansible-playbook` の直接実行、SSHでの個別更新、`scripts/server/deploy*.sh`、legacy Compose、Phase 2 `pi5-image-deploy.sh`、`pi5-blue-green.sh` を直接使わない。オーケストレーターがPi5のBlue/Green切替要否と、Pi4カナリア→残Pi4→Pi3の一台ずつ更新を決める。
+- 実行後は `--status <runId>` でPi5・端末別の結果、保守表示の解除、失敗理由と復旧結果を確認して報告する。失敗時は後続端末へ進めず、Runbookの復旧手順に従う。
+- 詳細な運用・復旧は `docs/guides/deployment.md`、`docs/plans/rolling-terminal-bluegreen-deploy.md`、`docs/runbooks/pi5-blue-green-deploy.md` を正本とする。Pi5本体故障・停電は単体構成の対象外である。
+
 ## ExecPlan（複雑な作業の必須手順）
 
 複雑な機能追加・大きなリファクタは、`.agent/PLANS.md` に従って ExecPlan を作成し、設計→実装→検証の順で進める。
