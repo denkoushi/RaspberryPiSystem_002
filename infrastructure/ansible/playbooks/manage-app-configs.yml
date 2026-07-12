@@ -571,6 +571,8 @@
   handlers:
     - name: restart api
       ansible.builtin.shell: |
+        set -euo pipefail
+        {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
         cd {{ repo_path }}/infrastructure/docker
         docker compose -f docker-compose.server.yml up -d --force-recreate api
       args:
@@ -581,6 +583,8 @@
 
     - name: restart web
       ansible.builtin.shell: |
+        set -euo pipefail
+        {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
         cd {{ repo_path }}/infrastructure/docker
         docker compose -f docker-compose.server.yml up -d --force-recreate web
       args:
@@ -591,6 +595,8 @@
 
     - name: restart docker compose services
       ansible.builtin.shell: |
+        set -euo pipefail
+        {{ repo_path }}/scripts/deploy/pi5-phase3-legacy-guard.sh
         cd {{ repo_path }}/infrastructure/docker
         docker compose -f docker-compose.server.yml up -d --force-recreate api
       when:

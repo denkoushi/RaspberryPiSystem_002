@@ -26,11 +26,15 @@ import { SignageRenderer } from './services/signage/signage.renderer.js';
 import { SignageService } from './services/signage/index.js';
 import { probePlaywrightChromiumAvailability } from './services/signage/loan-grid/playwright/playwright-chromium-availability.js';
 import { refreshProductionScheduleOrderSplitPilotGateCache } from './services/production-schedule/order-split/production-schedule-order-split-feature.js';
+import { createSchedulerRuntimeState } from './bootstrap/scheduler-runtime-state.js';
+import { createDeployReadinessObservability } from './services/system/deploy-readiness-observability.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: env.LOG_LEVEL } });
   registerErrorHandler(app);
   registerRequestLogger(app);
+  app.decorate('schedulerRuntimeState', createSchedulerRuntimeState());
+  app.decorate('deployReadinessObservability', createDeployReadinessObservability());
 
   // NOTE:
   // - 本番は基本的に同一オリジン（リバプロ経由）で運用するため、CORSは不要。

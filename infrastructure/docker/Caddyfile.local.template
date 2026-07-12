@@ -11,6 +11,9 @@
   # 自己署名証明書のパスを指定
   tls /srv/certs/cert.pem /srv/certs/key.pem
 
+  @internal_deploy_readiness path /api/system/deploy-readiness/internal
+  respond @internal_deploy_readiness 404
+
   root * /srv/site
 
   @api {
@@ -59,6 +62,9 @@
 
 # HTTPからHTTPSへのリダイレクト（ポート80）
 :80 {
+  @internal_deploy_readiness path /api/system/deploy-readiness/internal
+  respond @internal_deploy_readiness 404
+
   redir https://{host}{uri} permanent
 }
 

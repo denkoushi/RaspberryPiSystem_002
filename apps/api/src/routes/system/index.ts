@@ -5,6 +5,7 @@ import { registerDebugRoutes } from './debug.js';
 import { registerSystemInfoRoute } from './system-info.js';
 import { registerNetworkModeRoute } from './network-mode.js';
 import { registerDeployStatusRoute } from './deploy-status.js';
+import { registerDeployReadinessRoute } from './deploy-readiness.js';
 import { registerLocalLlmRoutes } from './local-llm.js';
 import { registerStackChanRoutes } from './stackchan.js';
 import { registerDgxResourceRoutes } from './dgx-resource.js';
@@ -16,6 +17,7 @@ export async function registerSystemRoutes(app: FastifyInstance): Promise<void> 
   registerSystemInfoRoute(app);
   registerNetworkModeRoute(app);
   registerDeployStatusRoute(app);
+  registerDeployReadinessRoute(app);
   registerLocalLlmRoutes(app);
   registerStackChanRoutes(app);
   registerDgxResourceRoutes(app);

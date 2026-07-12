@@ -8,11 +8,17 @@
 
 # HTTPからHTTPSへのリダイレクト
 :80 {
+  @internal_deploy_readiness path /api/system/deploy-readiness/internal
+  respond @internal_deploy_readiness 404
+
   redir https://{$DOMAIN}{uri} permanent
 }
 
 # HTTPS設定
 {$DOMAIN} {
+  @internal_deploy_readiness path /api/system/deploy-readiness/internal
+  respond @internal_deploy_readiness 404
+
   root * /srv/site
 
   @api {
@@ -68,4 +74,3 @@
     }
   }
 }
-

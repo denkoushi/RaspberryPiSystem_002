@@ -1,3 +1,4 @@
+# Fixed gateway maintenance page for Phase 3 bootstrap / failure retention.
 {
   auto_https off
 }

@@ -18,6 +18,8 @@ The user-visible proof is that `scripts/deploy/pi5-blue-green.sh status` reports
 - [x] (2026-07-11) Add the Phase 3 runbook and deployment guide/index links.
 - [x] (2026-07-11) Run shell, Compose, Caddy, existing Phase 2, and documentation validation; add the Phase 3 lifecycle test to CI.
 - [x] (2026-07-11) Open draft PR #974 and confirm all hosted CI checks pass.
+- [x] (2026-07-12) Reimplemented P0 failure-path hardening in `pi5-blue-green.sh` (schema v2, bootstrap/switch/reconcile/monitor, legacy restore from captured images, JWT/migration/identity guards, lock separation) plus Phase 3 legacy guard wiring; local shell tests PASS. Production bootstrap still pending explicit acceptance.
+- [x] (2026-07-12) Reimplemented scheduler ownership on PostgreSQL session-scoped advisory locks (`scheduler-leader.ts` + runtime state + deploy-readiness `databaseConnection`), with fail-closed stop of the full post-listen group (including Backup/CSV). Local API unit/lint/build PASS.
 - [ ] Production bootstrap and acceptance are intentionally not part of this code PR.
 
 ## Surprises & Discoveries
@@ -37,7 +39,9 @@ The user-visible proof is that `scripts/deploy/pi5-blue-green.sh status` reports
 - Observation: Compose interpolates every declared service even when `up` names only one slot.
   Evidence: the first production bootstrap preflight showed that empty inactive-slot image variables would fail the required-image interpolation before any container started. The command now reuses the bootstrap candidate image for inactive-slot validation while still starting only the requested services.
 - Observation: API background schedulers are process-local and several use cron or intervals without a shared database lock.
-  Evidence: `apps/api/src/bootstrap/start-post-listen-schedulers.ts` starts backup, CSV, Gmail, OCR, signage, tuning, alert, and photo schedulers in one process; the common in-process guard only prevents overlap within one process. Phase 3 now adds a shared file lease and refuses the first legacy handoff unless it is explicitly approved.
+  Evidence: `apps/api/src/bootstrap/start-post-listen-schedulers.ts` starts backup, CSV, Gmail, OCR, signage, tuning, alert, and photo schedulers in one process; the common in-process guard only prevents overlap within one process. Phase 3 elects one owner via PostgreSQL advisory locks and refuses the first legacy handoff unless it is explicitly approved.
+- Observation: `/tmp/raspi-phase3` uncommitted WIP (advisory-lock scheduler + ~1300-line Blue/Green hardening) was wiped with `/tmp`; the worktree was recreated from the pushed file-lease tip and the lost work was reimplemented from recovery fragments plus the handoff checklist.
+  Evidence: recovery notes under `/tmp/raspi-phase3-recovery/` and the 2026-07-12 reimplementation Progress items.
 
 ## Decision Log
 
@@ -59,10 +63,21 @@ The user-visible proof is that `scripts/deploy/pi5-blue-green.sh status` reports
 - Decision: Elect one scheduler owner across Blue/Green API slots using a shared lease file on the existing alerts mount.
   Rationale: running both process-local scheduler sets against the shared database could duplicate imports, backups, OCR, alerts, and signage jobs. The inactive slot can serve HTTP while waiting for the lease, and it acquires ownership when the old slot is stopped.
   Date/Author: 2026-07-11 / Codex
+- Decision: Replace the shared file lease with a dedicated PostgreSQL client holding a session-scoped advisory lock; on lock/session loss immediately mark standby (`databaseConnection: disconnected`), stop the full post-listen group, and fail closed if stop cannot be proven. Deploy readiness requires `databaseConnection === 'connected'` when schedulers are enabled.
+  Rationale: file-lease heartbeat compared tokens with a trailing newline and thrashed reacquire in hosted CI; advisory locks release automatically on session death and give a stronger single-owner guarantee across slots.
+  Date/Author: 2026-07-12 / Cursor
+  Supersedes: 2026-07-11 shared file lease decision
 
 ## Outcomes & Retrospective
 
 Repository implementation is complete for the gateway path, and a scheduler-owner hardening follow-up is in progress before production bootstrap. The first read-only Pi5 preflight passed resources, network, volumes, and health; Phase 2 candidate images for `d70d18fc` were prepared without stopping production. The bootstrap was intentionally not run because the preflight exposed process-local scheduler duplication; the shared lease implementation must pass CI and be included in the next candidate image first.
+
+### Verification note (2026-07-12)
+
+- `/tmp/raspi-phase3` uncommitted WIP was lost when `/tmp` was wiped; fragments under `/tmp/raspi-phase3-recovery/` were used to reimplement (1) PostgreSQL advisory-lock scheduler + deploy-readiness and (2) P0 Blue/Green failure paths in `pi5-blue-green.sh` (schema v2, bootstrap/switch/reconcile/monitor/legacy restore, JWT/migration/identity guards, Phase 3 legacy guard).
+- Local verification after reimplementation: `bash -n`, Phase 2/3 shell tests, API scheduler/readiness unit (18), API lint, API build, `git diff --check` all PASS. No leftover local Docker containers from the run.
+- Blue/Green bootstrap retains gateway maintenance when legacy restore fails; switch rolls back or maintains on post-cutover state-save failure; the stability monitor no longer holds the exclusive deploy lock; reconcile resumes the monitor after reboot, recovers incomplete bootstrap, restores legacy from captured images, and refuses compose up on rewritten running-slot images. Standard Ansible/Phase 2/legacy Compose remain fail-closed while Phase 3 is live.
+- Hosted CI push and Pi5 bootstrap remain out of scope until explicit approval. No Pi5 bootstrap or field deployment has been run from this worktree.
 
 ## Context and Orientation
 

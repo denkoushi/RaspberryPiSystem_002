@@ -4,6 +4,9 @@
 }
 
 :80 {
+  @internal_deploy_readiness path /api/system/deploy-readiness/internal
+  respond @internal_deploy_readiness 404
+
   @api {
     path /api/* /ws/*
   }

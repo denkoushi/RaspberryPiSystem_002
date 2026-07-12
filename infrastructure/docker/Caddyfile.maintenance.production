@@ -3,11 +3,17 @@
 }
 
 :80 {
+  @internal_deploy_readiness path /api/system/deploy-readiness/internal
+  respond @internal_deploy_readiness 404
+
   redir https://{$DOMAIN}{uri} temporary
 }
 
 {$DOMAIN} {
-  root * /tmp/pi5-maintenance
+  @internal_deploy_readiness path /api/system/deploy-readiness/internal
+  respond @internal_deploy_readiness 404
+
+  root * /srv/phase2-maintenance
   rewrite * /index.html
   file_server
 }

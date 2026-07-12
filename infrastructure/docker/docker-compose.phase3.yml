@@ -1,7 +1,7 @@
 services:
   api-blue:
     image: ${PI5_BLUE_API_IMAGE:?PI5_BLUE_API_IMAGE is required}
-    restart: always
+    restart: unless-stopped
     healthcheck:
       test:
         [
@@ -15,8 +15,8 @@ services:
       retries: 6
       start_period: 90s
     env_file:
-      - ${PI5_ENV_FILE:-.env}
       - ../../apps/api/.env.example
+      - ${PI5_ENV_FILE:-.env}
     environment: &api-environment
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/borrow_return
       PHOTO_STORAGE_DIR: /app/storage
@@ -62,7 +62,7 @@ services:
 
   api-green:
     image: ${PI5_GREEN_API_IMAGE:?PI5_GREEN_API_IMAGE is required}
-    restart: always
+    restart: unless-stopped
     healthcheck:
       test:
         [
@@ -76,15 +76,15 @@ services:
       retries: 6
       start_period: 90s
     env_file:
-      - ${PI5_ENV_FILE:-.env}
       - ../../apps/api/.env.example
+      - ${PI5_ENV_FILE:-.env}
     environment: *api-environment
     volumes: *api-volumes
     networks: [pi5]
 
   web-blue:
     image: ${PI5_BLUE_WEB_IMAGE:?PI5_BLUE_WEB_IMAGE is required}
-    restart: always
+    restart: unless-stopped
     environment: &web-environment
       SLOT_API_UPSTREAM: api-blue:8080
       NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.10.224}
@@ -97,7 +97,7 @@ services:
 
   web-green:
     image: ${PI5_GREEN_WEB_IMAGE:?PI5_GREEN_WEB_IMAGE is required}
-    restart: always
+    restart: unless-stopped
     environment:
       <<: *web-environment
       SLOT_API_UPSTREAM: api-green:8080
@@ -106,7 +106,7 @@ services:
 
   gateway:
     image: ${PI5_GATEWAY_IMAGE:?PI5_GATEWAY_IMAGE is required}
-    restart: always
+    restart: unless-stopped
     environment:
       GATEWAY_CONFIG_FILE: /srv/bluegreen/Caddyfile
     volumes:
