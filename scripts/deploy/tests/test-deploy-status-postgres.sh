@@ -37,6 +37,7 @@ export DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${PORT}/borrow_ret
 export JWT_ACCESS_SECRET='test-access-secret-1234567890'
 export JWT_REFRESH_SECRET='test-refresh-secret-1234567890'
 
+pnpm --dir "$ROOT" --filter @raspi-system/shared-types build
 pnpm --dir "$ROOT/apps/api" exec prisma generate
 pnpm --dir "$ROOT/apps/api" exec prisma migrate deploy
 pnpm --dir "$ROOT/apps/api" exec prisma migrate status
