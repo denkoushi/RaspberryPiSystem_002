@@ -350,5 +350,126 @@ class CanaryHoldTest(unittest.TestCase):
         printed.assert_called_once_with(json.dumps({'runId': 'run-42', 'approved': True}, ensure_ascii=False))
 
 
+class Pi5OnlyRemoteRunTest(unittest.TestCase):
+    def _args(self, **overrides):
+        values = {
+            'inventory': 'inventory.yml',
+            'limit': 'raspberrypi5',
+            'run_id': 'run-1',
+            'branch': 'main',
+            'sha': 'a' * 40,
+            'emergency_override': False,
+            'reason': None,
+            'skip_canary_hold': False,
+            'canary_hold_timeout': 60,
+        }
+        values.update(overrides)
+        return argparse.Namespace(**values)
+
+    def test_empty_targets_with_limit_runs_pi5_only_when_required(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run_directory = Path(temporary)
+            with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
+                    patch.object(MODULE, 'inventory_json', return_value={}), \
+                    patch.object(MODULE, 'selected_hosts', return_value=['raspberrypi5']), \
+                    patch.object(MODULE, 'release_targets', return_value=[]), \
+                    patch.object(MODULE, 'pi5_release_required', return_value=True), \
+                    patch.object(MODULE, 'ensure_pi5_release') as ensure, \
+                    patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
+                result = MODULE._remote_run(self._args())
+            payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
+        self.assertEqual(result, 0)
+        ensure.assert_called_once()
+        self.assertEqual(payload['targets'], [])
+        self.assertEqual(payload['state'], 'success')
+        self.assertEqual(payload['plan'], {
+            'pi5Required': True,
+            'targets': [],
+            'limit': 'raspberrypi5',
+        })
+
+    def test_empty_targets_with_limit_fails_when_pi5_not_required(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run_directory = Path(temporary)
+            with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
+                    patch.object(MODULE, 'inventory_json', return_value={}), \
+                    patch.object(MODULE, 'selected_hosts', return_value=['raspberrypi5']), \
+                    patch.object(MODULE, 'release_targets', return_value=[]), \
+                    patch.object(MODULE, 'pi5_release_required', return_value=False), \
+                    patch.object(MODULE, 'ensure_pi5_release') as ensure:
+                with self.assertRaises(RuntimeError) as raised:
+                    MODULE._remote_run(self._args())
+            self.assertFalse((run_directory / 'run-1.json').exists())
+        self.assertIn('no kiosk or signage targets selected', str(raised.exception))
+        ensure.assert_not_called()
+
+    def test_empty_targets_without_limit_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run_directory = Path(temporary)
+            with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
+                    patch.object(MODULE, 'inventory_json', return_value={}), \
+                    patch.object(MODULE, 'selected_hosts', return_value=None), \
+                    patch.object(MODULE, 'release_targets', return_value=[]), \
+                    patch.object(MODULE, 'pi5_release_required') as required:
+                with self.assertRaises(RuntimeError) as raised:
+                    MODULE._remote_run(self._args(limit=''))
+            self.assertFalse((run_directory / 'run-1.json').exists())
+        self.assertIn('no kiosk or signage targets selected', str(raised.exception))
+        required.assert_not_called()
+
+
+class PrintPlanShadowTest(unittest.TestCase):
+    def test_print_plan_fail_open_with_warnings(self):
+        args = MODULE.normalize_arguments(MODULE.parser().parse_args([
+            'main', 'infrastructure/ansible/inventory.yml', '--print-plan',
+        ]))
+        with patch.object(MODULE, 'resolve_release_sha', return_value=(None, ['could not resolve SHA for branch main'])), \
+                patch.object(MODULE, 'resolve_terminal_targets', return_value=(None, ['ansible-inventory unavailable'])), \
+                patch('builtins.print') as printed:
+            self.assertEqual(MODULE.local_run(args), 0)
+        plan = json.loads(printed.call_args.args[0])
+        self.assertEqual(plan['mode'], 'rolling-release')
+        self.assertEqual(plan['branch'], 'main')
+        self.assertEqual(plan['inventory'], 'infrastructure/ansible/inventory.yml')
+        self.assertIsNone(plan['limit'])
+        self.assertIsNone(plan['sha'])
+        self.assertIsNone(plan['classification'])
+        self.assertIsNone(plan['pi5Required'])
+        self.assertIsNone(plan['terminalTargets'])
+        self.assertIsNone(plan['canaryHold'])
+        self.assertIn('could not resolve SHA for branch main', plan['warnings'])
+        self.assertIn('ansible-inventory unavailable', plan['warnings'])
+
+    def test_print_plan_includes_resolved_targets_and_classification(self):
+        sha = 'a' * 40
+        classification = {
+            'server': True,
+            'kiosk': False,
+            'signage': False,
+            'migration': False,
+            'paths': ['apps/api/src/index.ts'],
+        }
+        targets = [
+            {'host': 'kiosk-canary', 'clientId': 'canary', 'terminalType': 'kiosk'},
+            {'host': 'kiosk-b', 'clientId': 'b', 'terminalType': 'kiosk'},
+        ]
+        args = MODULE.normalize_arguments(MODULE.parser().parse_args([
+            'main', 'infrastructure/ansible/inventory.yml', '--print-plan', '--limit', 'clients',
+        ]))
+        with patch.object(MODULE, 'resolve_release_sha', return_value=(sha, [])), \
+                patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
+                patch.object(MODULE, 'resolve_terminal_targets', return_value=(targets, [])), \
+                patch('builtins.print') as printed:
+            self.assertEqual(MODULE.local_run(args), 0)
+        plan = json.loads(printed.call_args.args[0])
+        self.assertEqual(plan['sha'], sha)
+        self.assertEqual(plan['classification'], classification)
+        self.assertTrue(plan['pi5Required'])
+        self.assertEqual(plan['terminalTargets'], targets)
+        self.assertTrue(plan['canaryHold'])
+        self.assertEqual(plan['limit'], 'clients')
+        self.assertEqual(plan['warnings'], [])
+
+
 if __name__ == '__main__':
     unittest.main()
