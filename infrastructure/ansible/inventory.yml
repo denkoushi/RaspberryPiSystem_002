@@ -365,7 +365,8 @@ all:
     # NOTE: 台数増加時はここを“カナリア1台”に固定し、ロールアウトで除外できるようにする。
     kiosk_canary:
       hosts:
-        raspberrypi4:
+        # barcode-agent を含む最多機能構成のため、実機検証カナリアに採用
+        raspi4-kensaku-stonebase01:
     signage_canary:
       hosts:
         raspberrypi3:
