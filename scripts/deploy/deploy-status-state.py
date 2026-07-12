@@ -94,6 +94,9 @@ def main():
     acknowledge = sub.add_parser('ack')
     acknowledge.add_argument('--run-id', required=True)
     acknowledge.add_argument('--client', required=True)
+    approve = sub.add_parser('approve')
+    approve.add_argument('--run-id', required=True)
+    approve.add_argument('--client', required=True)
     args = parser.parse_args()
     with StatusLock(args.file):
         data = load(args.file)
@@ -120,6 +123,14 @@ def main():
                 raise ValueError('acknowledgement does not match an active terminal maintenance entry')
             acknowledgements = dict(data.get('acknowledgements') or {})
             acknowledgements.setdefault(args.run_id, {})[args.client] = {'acknowledgedAt': timestamp, 'source': 'controller'}
+            data['acknowledgements'] = acknowledgements
+        elif args.command == 'approve':
+            # Operator approval is not a terminal; skip maintenance-entry checks.
+            acknowledgements = dict(data.get('acknowledgements') or {})
+            acknowledgements.setdefault(args.run_id, {})[args.client] = {
+                'acknowledgedAt': timestamp,
+                'source': 'operator',
+            }
             data['acknowledgements'] = acknowledgements
         elif args.command == 'remove-client':
             entry = entries.get(args.client)

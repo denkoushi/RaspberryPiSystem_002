@@ -27,6 +27,8 @@ PHASE3 = PROJECT / 'scripts/deploy/pi5-blue-green.sh'
 CANDIDATE_BUILD = PROJECT / 'scripts/deploy/pi5-candidate-build.sh'
 RUN_DIRECTORY = PROJECT / 'logs/deploy/release-runs'
 PI5_RELEASE_CURRENT = PROJECT / 'logs/deploy/pi5-release-current.json'
+OPERATOR_CANARY_APPROVAL_CLIENT = 'operator-canary-approval'
+DEFAULT_CANARY_HOLD_TIMEOUT = 1800
 
 
 def utc_now() -> str:
@@ -117,6 +119,33 @@ def wait_for_ack(run_id: str, client_id: str, timeout: int = 30) -> bool:
             return True
         time.sleep(5)
     return acknowledgement_received(run_id, client_id)
+
+
+def should_hold_after_canary(targets: list[dict[str, str]], index: int, *, skip: bool) -> bool:
+    """Hold only after the first target when later hosts remain and kiosks are in scope."""
+    if skip or index != 0 or index + 1 >= len(targets):
+        return False
+    return any(target.get('terminalType') == 'kiosk' for target in targets)
+
+
+def wait_for_canary_hold(state: ReleaseState, run_id: str, canary_host: str, timeout: int) -> None:
+    state.payload['canaryHold'] = {
+        'state': 'waiting-verification',
+        'canary': canary_host,
+        'since': utc_now(),
+    }
+    state.save()
+    print(
+        f'Canary verification pending. Approve with: scripts/update-all-clients.sh --approve {run_id}',
+        flush=True,
+    )
+    if not wait_for_ack(run_id, OPERATOR_CANARY_APPROVAL_CLIENT, timeout=timeout):
+        raise RuntimeError(
+            f'canary hold timed out after {timeout}s waiting for operator approval '
+            f'(client={OPERATOR_CANARY_APPROVAL_CLIENT})'
+        )
+    state.payload['canaryHold']['state'] = 'approved'
+    state.save()
 
 
 def prestage_signage_maintenance(inventory: str, host: str, run_id: str, client_id: str) -> None:
@@ -281,7 +310,7 @@ def _remote_run(args: argparse.Namespace) -> int:
         else:
             state.payload['pi5'] = {'state': 'not-required'}
             state.save()
-        for target_spec in targets:
+        for index, target_spec in enumerate(targets):
             target = state.target(target_spec['host'])
             target['previousSha'] = remote_previous_sha(inventory, target_spec['host'])
             target['state'] = 'maintenance-requested'
@@ -314,6 +343,8 @@ def _remote_run(args: argparse.Namespace) -> int:
                 target['completedAt'] = utc_now()
                 state.save()
                 raise RuntimeError(f'rollout stopped after {target_spec["host"]} failed') from error
+            if should_hold_after_canary(targets, index, skip=args.skip_canary_hold):
+                wait_for_canary_hold(state, args.run_id, target_spec['host'], args.canary_hold_timeout)
         state.payload['state'] = 'success'
         state.save()
         return 0
@@ -341,6 +372,23 @@ def remote_run(args: argparse.Namespace) -> int:
             pass
 
 
+def local_approve(run_id: str) -> int:
+    """Record operator canary approval on Pi5 via the same SSH path as --status."""
+    host = os.environ.get('RASPI_SERVER_HOST')
+    if not host:
+        raise RuntimeError('RASPI_SERVER_HOST is required for --approve')
+    remote = (
+        'cd /opt/RaspberryPiSystem_002 && '
+        'python3 scripts/deploy/deploy-status-state.py '
+        '--file config/deploy-status.json approve '
+        f'--run-id {shlex.quote(run_id)} '
+        f'--client {shlex.quote(OPERATOR_CANARY_APPROVAL_CLIENT)}'
+    )
+    subprocess.run(['ssh', host, remote], check=True)
+    print(json.dumps({'runId': run_id, 'approved': True}, ensure_ascii=False))
+    return 0
+
+
 def local_run(args: argparse.Namespace) -> int:
     if args.status:
         host = os.environ.get('RASPI_SERVER_HOST')
@@ -349,6 +397,8 @@ def local_run(args: argparse.Namespace) -> int:
         command = f'cat /opt/RaspberryPiSystem_002/logs/deploy/release-runs/{shlex.quote(args.status)}.json'
         subprocess.run(['ssh', host, command], check=True)
         return 0
+    if args.approve:
+        return local_approve(args.approve)
     if not args.branch or not args.inventory:
         raise RuntimeError('branch and inventory are required')
     if args.print_plan:
@@ -370,12 +420,15 @@ def local_run(args: argparse.Namespace) -> int:
     emergency = ''
     if args.emergency_override:
         emergency = f' --emergency-override --reason {shlex.quote(args.reason)}'
+    hold = f' --canary-hold-timeout {shlex.quote(str(args.canary_hold_timeout))}'
+    if args.skip_canary_hold:
+        hold += ' --skip-canary-hold'
     remote = (
         'cd /opt/RaspberryPiSystem_002 && '
         f'git fetch origin {shlex.quote(args.branch)} && git checkout --detach {shlex.quote(sha)} && '
         f'python3 scripts/deploy/rolling-release.py --remote-run --branch {shlex.quote(args.branch)} '
         f'--sha {shlex.quote(sha)} --inventory {shlex.quote(Path(args.inventory).name)} --run-id {shlex.quote(run_id)} '
-        f'--limit {shlex.quote(args.limit or "")}{emergency}'
+        f'--limit {shlex.quote(args.limit or "")}{emergency}{hold}'
     )
     if args.detach or args.job:
         log_path = f'/opt/RaspberryPiSystem_002/logs/deploy/release-runs/{run_id}.log'
@@ -401,6 +454,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument('--inventory', dest='inventory')
     value.add_argument('--limit', default='')
     value.add_argument('--status')
+    value.add_argument('--approve')
     value.add_argument('--print-plan', '--dry-run', action='store_true')
     # Kept for compatibility with the previous wrapper.  The remote runner
     # records the run state, so callers can continue to use --status.
@@ -415,6 +469,8 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument('--remote-run', action='store_true')
     value.add_argument('--sha')
     value.add_argument('--run-id')
+    value.add_argument('--skip-canary-hold', action='store_true')
+    value.add_argument('--canary-hold-timeout', type=int, default=DEFAULT_CANARY_HOLD_TIMEOUT)
     return value
 
 
