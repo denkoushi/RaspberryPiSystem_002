@@ -1119,6 +1119,9 @@ status_report() {
   local stale=0 slot expected
   load_state_context
   if [[ "$DRY_RUN" != 1 ]]; then
+    if ! is_slot "$ACTIVE_SLOT" || [[ -z "$(slot_container_id "api-${ACTIVE_SLOT}")" || -z "$(slot_container_id "web-${ACTIVE_SLOT}")" ]]; then
+      stale=1
+    fi
     for slot in blue green; do
       if [[ -n "$(slot_container_id "api-${slot}")" || -n "$(slot_container_id "web-${slot}")" ]]; then verify_slot_identity "$slot" || stale=1; fi
     done

@@ -107,6 +107,29 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         self.state = MODULE.ReleaseState(Path('/tmp/unused-release-state.json'), {})
         self.state.save = Mock()
 
+    def marker(self, **overrides):
+        candidate = {
+            'api': f'registry/api:{self.sha}-0123456789ab',
+            'web': f'registry/web:{self.sha}-0123456789ab',
+        }
+        marker = {'sha': self.sha, 'candidate': candidate}
+        marker.update(overrides)
+        return marker
+
+    def phase3_status(self, **overrides):
+        candidate = self.marker()['candidate']
+        status = {
+            'runtimeStatus': 'consistent',
+            'activeSlot': 'blue',
+            'gateway': {'mode': 'application', 'slot': 'blue'},
+            'slots': {
+                'blue': {'images': candidate},
+                'green': {'images': {'api': 'registry/api:previous', 'web': 'registry/web:previous'}},
+            },
+        }
+        status.update(overrides)
+        return status
+
     def test_marker_match_and_consistent_skips_with_already_current_state(self):
         with patch.object(MODULE, 'pi5_already_current', return_value=True) as already, \
                 patch.object(MODULE, 'phase3_release') as release, \
@@ -156,11 +179,40 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         wait.assert_called_once_with(self.state)
         record.assert_called_once_with(self.sha, {'api': 'api:tag'})
 
-    def test_pi5_already_current_requires_marker_and_consistent_status(self):
-        with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
-                patch.object(MODULE, 'run', return_value=json.dumps({'runtimeStatus': 'consistent'})) as command:
+    def test_pi5_already_current_requires_exact_marker_candidate_and_live_slot_match(self):
+        with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+                patch.object(MODULE, 'run', return_value=json.dumps(self.phase3_status())) as command:
             self.assertTrue(MODULE.pi5_already_current(self.sha))
         self.assertEqual(command.call_args.args[0], [str(MODULE.PHASE3), 'status'])
+
+    def test_pi5_already_current_rejects_malformed_marker_without_status_call(self):
+        malformed = {'sha': self.sha, 'candidate': {'api': f'registry/api:{self.sha}-0123456789ab'}}
+        with patch.object(MODULE, 'read_pi5_release_current', return_value=malformed), \
+                patch.object(MODULE, 'run') as command:
+            self.assertFalse(MODULE.pi5_already_current(self.sha))
+        command.assert_not_called()
+
+    def test_pi5_already_current_rejects_candidate_tag_for_another_sha(self):
+        candidate = self.marker()['candidate'].copy()
+        candidate['web'] = f"registry/web:{'b' * 40}-0123456789ab"
+        with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker(candidate=candidate)), \
+                patch.object(MODULE, 'run') as command:
+            self.assertFalse(MODULE.pi5_already_current(self.sha))
+        command.assert_not_called()
+
+    def test_pi5_already_current_rejects_active_slot_image_mismatch(self):
+        status = self.phase3_status()
+        status['slots']['blue']['images']['web'] = 'registry/web:other'
+        with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+                patch.object(MODULE, 'run', return_value=json.dumps(status)):
+            self.assertFalse(MODULE.pi5_already_current(self.sha))
+
+    def test_pi5_already_current_rejects_gateway_slot_mismatch(self):
+        status = self.phase3_status()
+        status['gateway']['slot'] = 'green'
+        with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+                patch.object(MODULE, 'run', return_value=json.dumps(status)):
+            self.assertFalse(MODULE.pi5_already_current(self.sha))
 
     def test_pi5_already_current_fail_closed_on_status_error(self):
         with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \

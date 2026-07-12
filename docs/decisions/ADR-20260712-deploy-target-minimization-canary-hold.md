@@ -50,10 +50,10 @@ classification authority beside Rolling V2.
 
 1. **Pi5 Blue/Green idempotent skip (fail-closed)**  
    On success, record the SHA in Pi5 `logs/deploy/pi5-release-current.json`.  
-   On the next run, if that SHA matches the target and
-   `pi5-blue-green.sh status` reports `runtimeStatus=consistent`, skip Blue/Green
-   and record `pi5: already-current` in run state. Any uncertainty runs Blue/Green
-   as before.
+   On the next run, skip Blue/Green only if the target SHA, immutable marker
+   candidate API/Web tags, `runtimeStatus=consistent`, active slot, application
+   gateway slot, and that slot's API/Web images all match. Any uncertainty runs
+   Blue/Green as before.
 
 2. **Canary hold (default on)**  
    After the first kiosk (canary) succeeds, if further terminals remain, stop with
