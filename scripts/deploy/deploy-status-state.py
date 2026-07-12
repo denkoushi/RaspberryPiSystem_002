@@ -8,8 +8,32 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+OPERATOR_CANARY_APPROVAL_CLIENT = 'operator-canary-approval'
+
+
 def now():
     return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def epoch_now():
+    return int(time.time())
+
+
+def canary_holds(data):
+    value = data.get('canaryHolds')
+    if value is None:
+        value = {}
+        data['canaryHolds'] = value
+    if not isinstance(value, dict):
+        raise ValueError('canary hold state is malformed')
+    return value
+
+
+def canary_hold_for(data, run_id):
+    hold = canary_holds(data).get(run_id)
+    if not isinstance(hold, dict):
+        raise ValueError('canary hold is not pending for this run')
+    return hold
 
 
 def load(path):
@@ -97,7 +121,16 @@ def main():
     approve = sub.add_parser('approve')
     approve.add_argument('--run-id', required=True)
     approve.add_argument('--client', required=True)
+    open_hold = sub.add_parser('open-canary-hold')
+    open_hold.add_argument('--run-id', required=True)
+    open_hold.add_argument('--canary', required=True)
+    open_hold.add_argument('--expires-at', required=True, type=int)
+    hold_state = sub.add_parser('canary-hold-state')
+    hold_state.add_argument('--run-id', required=True)
+    expire_hold = sub.add_parser('expire-canary-hold')
+    expire_hold.add_argument('--run-id', required=True)
     args = parser.parse_args()
+    output = None
     with StatusLock(args.file):
         data = load(args.file)
         entries = data['kioskByClient']
@@ -125,13 +158,47 @@ def main():
             acknowledgements.setdefault(args.run_id, {})[args.client] = {'acknowledgedAt': timestamp, 'source': 'controller'}
             data['acknowledgements'] = acknowledgements
         elif args.command == 'approve':
-            # Operator approval is not a terminal; skip maintenance-entry checks.
-            acknowledgements = dict(data.get('acknowledgements') or {})
-            acknowledgements.setdefault(args.run_id, {})[args.client] = {
-                'acknowledgedAt': timestamp,
-                'source': 'operator',
+            if args.client != OPERATOR_CANARY_APPROVAL_CLIENT:
+                raise ValueError('canary approval client is not allowed')
+            hold = canary_hold_for(data, args.run_id)
+            state = hold.get('state')
+            if state == 'approved':
+                pass
+            elif state != 'waiting-verification':
+                raise ValueError('canary hold is not waiting for verification')
+            elif not isinstance(hold.get('expiresAt'), int) or epoch_now() >= hold['expiresAt']:
+                raise ValueError('canary hold has expired')
+            else:
+                hold.update({
+                    'state': 'approved',
+                    'approvedAt': timestamp,
+                    'approvedBy': args.client,
+                })
+        elif args.command == 'open-canary-hold':
+            if not args.canary.strip():
+                raise ValueError('canary host is required')
+            if args.expires_at <= epoch_now():
+                raise ValueError('canary hold expiry must be in the future')
+            holds = canary_holds(data)
+            if args.run_id in holds:
+                raise ValueError('canary hold already exists for this run')
+            holds[args.run_id] = {
+                'state': 'waiting-verification',
+                'canary': args.canary,
+                'openedAt': timestamp,
+                'expiresAt': args.expires_at,
             }
-            data['acknowledgements'] = acknowledgements
+        elif args.command == 'canary-hold-state':
+            output = json.dumps(canary_hold_for(data, args.run_id), ensure_ascii=False)
+        elif args.command == 'expire-canary-hold':
+            hold = canary_hold_for(data, args.run_id)
+            state = hold.get('state')
+            if state == 'waiting-verification':
+                if not isinstance(hold.get('expiresAt'), int) or epoch_now() < hold['expiresAt']:
+                    raise ValueError('canary hold has not expired')
+                hold.update({'state': 'expired', 'expiredAt': timestamp})
+            elif state not in ('approved', 'expired'):
+                raise ValueError('canary hold is not active')
         elif args.command == 'remove-client':
             entry = entries.get(args.client)
             if entry and entry.get('runId') == args.run_id:
@@ -153,7 +220,10 @@ def main():
                 data['acknowledgements'] = acknowledgements
             else:
                 data.pop('acknowledgements', None)
-        save(args.file, data)
+        if output is None:
+            save(args.file, data)
+    if output is not None:
+        print(output)
 
 
 if __name__ == '__main__':

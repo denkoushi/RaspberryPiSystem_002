@@ -234,7 +234,7 @@ class CanaryHoldTest(unittest.TestCase):
         values.update(overrides)
         return argparse.Namespace(**values)
 
-    def _run_remote(self, targets, *, wait_for_ack, args=None, played=None):
+    def _run_remote(self, targets, *, wait_for_canary_approval, args=None, played=None):
         played = played if played is not None else []
 
         def playbook(_inventory, host, _sha, _run_id, rollback=False):
@@ -248,7 +248,8 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'release_targets', return_value=targets), \
                     patch.object(MODULE, 'pi5_release_required', return_value=False), \
                     patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
-                    patch.object(MODULE, 'wait_for_ack', side_effect=wait_for_ack), \
+                    patch.object(MODULE, 'wait_for_ack', return_value=True), \
+                    patch.object(MODULE, 'wait_for_canary_approval', side_effect=wait_for_canary_approval), \
                     patch.object(MODULE, 'state_command'), \
                     patch.object(MODULE, 'prestage_signage_maintenance'), \
                     patch.object(MODULE, 'playbook', side_effect=playbook), \
@@ -265,16 +266,21 @@ class CanaryHoldTest(unittest.TestCase):
         ]
         hold_calls = []
 
-        def wait_for_ack(run_id, client_id, timeout=30):
-            hold_calls.append((client_id, timeout))
-            return True
+        def wait_for_canary_approval(run_id, timeout):
+            hold_calls.append((run_id, timeout))
+            return {
+                'state': 'approved', 'canary': 'kiosk-canary',
+                'approvedAt': '2026-07-12T00:01:00Z',
+                'approvedBy': MODULE.OPERATOR_CANARY_APPROVAL_CLIENT,
+            }
 
-        result, played, payload = self._run_remote(targets, wait_for_ack=wait_for_ack)
+        result, played, payload = self._run_remote(targets, wait_for_canary_approval=wait_for_canary_approval)
         self.assertEqual(result, 0)
         self.assertEqual(played, ['kiosk-canary', 'kiosk-b'])
-        self.assertIn((MODULE.OPERATOR_CANARY_APPROVAL_CLIENT, 60), hold_calls)
+        self.assertIn(('run-1', 60), hold_calls)
         self.assertEqual(payload['canaryHold']['state'], 'approved')
         self.assertEqual(payload['canaryHold']['canary'], 'kiosk-canary')
+        self.assertEqual(payload['canaryHold']['approvedBy'], MODULE.OPERATOR_CANARY_APPROVAL_CLIENT)
         self.assertEqual(payload['state'], 'success')
 
     def test_canary_hold_timeout_fails_closed_without_remaining_targets(self):
@@ -283,8 +289,11 @@ class CanaryHoldTest(unittest.TestCase):
             {'host': 'kiosk-b', 'clientId': 'b', 'terminalType': 'kiosk'},
         ]
 
-        def wait_for_ack(_run_id, client_id, timeout=30):
-            return client_id != MODULE.OPERATOR_CANARY_APPROVAL_CLIENT
+        def wait_for_canary_approval(_run_id, timeout):
+            raise RuntimeError(
+                f'canary hold timed out after {timeout}s waiting for operator approval '
+                f'(client={MODULE.OPERATOR_CANARY_APPROVAL_CLIENT})'
+            )
 
         played = []
 
@@ -299,7 +308,8 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'release_targets', return_value=targets), \
                     patch.object(MODULE, 'pi5_release_required', return_value=False), \
                     patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
-                    patch.object(MODULE, 'wait_for_ack', side_effect=wait_for_ack), \
+                    patch.object(MODULE, 'wait_for_ack', return_value=True), \
+                    patch.object(MODULE, 'wait_for_canary_approval', side_effect=wait_for_canary_approval), \
                     patch.object(MODULE, 'state_command'), \
                     patch.object(MODULE, 'playbook', side_effect=playbook), \
                     patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
@@ -316,34 +326,34 @@ class CanaryHoldTest(unittest.TestCase):
             {'host': 'kiosk-canary', 'clientId': 'canary', 'terminalType': 'kiosk'},
             {'host': 'kiosk-b', 'clientId': 'b', 'terminalType': 'kiosk'},
         ]
-        hold_clients = []
+        hold_calls = []
 
-        def wait_for_ack(_run_id, client_id, timeout=30):
-            hold_clients.append(client_id)
-            return True
+        def wait_for_canary_approval(run_id, timeout):
+            hold_calls.append((run_id, timeout))
+            return {'state': 'approved'}
 
         result, played, payload = self._run_remote(
             targets,
-            wait_for_ack=wait_for_ack,
+            wait_for_canary_approval=wait_for_canary_approval,
             args=self._args(skip_canary_hold=True),
         )
         self.assertEqual(result, 0)
         self.assertEqual(played, ['kiosk-canary', 'kiosk-b'])
-        self.assertNotIn(MODULE.OPERATOR_CANARY_APPROVAL_CLIENT, hold_clients)
+        self.assertEqual(hold_calls, [])
         self.assertNotIn('canaryHold', payload)
 
     def test_single_canary_target_skips_hold(self):
         targets = [{'host': 'kiosk-canary', 'clientId': 'canary', 'terminalType': 'kiosk'}]
-        hold_clients = []
+        hold_calls = []
 
-        def wait_for_ack(_run_id, client_id, timeout=30):
-            hold_clients.append(client_id)
-            return True
+        def wait_for_canary_approval(run_id, timeout):
+            hold_calls.append((run_id, timeout))
+            return {'state': 'approved'}
 
-        result, played, payload = self._run_remote(targets, wait_for_ack=wait_for_ack)
+        result, played, payload = self._run_remote(targets, wait_for_canary_approval=wait_for_canary_approval)
         self.assertEqual(result, 0)
         self.assertEqual(played, ['kiosk-canary'])
-        self.assertNotIn(MODULE.OPERATOR_CANARY_APPROVAL_CLIENT, hold_clients)
+        self.assertEqual(hold_calls, [])
         self.assertNotIn('canaryHold', payload)
 
     def test_signage_only_skips_hold(self):
@@ -351,17 +361,62 @@ class CanaryHoldTest(unittest.TestCase):
             {'host': 'signage-a', 'clientId': 's1', 'terminalType': 'signage'},
             {'host': 'signage-b', 'clientId': 's2', 'terminalType': 'signage'},
         ]
-        hold_clients = []
+        hold_calls = []
 
-        def wait_for_ack(_run_id, client_id, timeout=30):
-            hold_clients.append(client_id)
-            return True
+        def wait_for_canary_approval(run_id, timeout):
+            hold_calls.append((run_id, timeout))
+            return {'state': 'approved'}
 
-        result, played, payload = self._run_remote(targets, wait_for_ack=wait_for_ack)
+        result, played, payload = self._run_remote(targets, wait_for_canary_approval=wait_for_canary_approval)
         self.assertEqual(result, 0)
         self.assertEqual(played, ['signage-a', 'signage-b'])
-        self.assertNotIn(MODULE.OPERATOR_CANARY_APPROVAL_CLIENT, hold_clients)
+        self.assertEqual(hold_calls, [])
         self.assertNotIn('canaryHold', payload)
+
+    def test_expiry_transition_stops_when_expire_wins(self):
+        waiting = {'state': 'waiting-verification'}
+        expired = {'state': 'expired'}
+        with patch.object(MODULE, 'canary_hold_record', side_effect=[waiting, expired]), \
+                patch.object(MODULE, 'state_command') as state_command, \
+                patch.object(MODULE.time, 'monotonic', side_effect=[0, 60]):
+            with self.assertRaisesRegex(RuntimeError, 'canary hold timed out'):
+                MODULE.wait_for_canary_approval('run-1', 60)
+        state_command.assert_called_once_with('expire-canary-hold', '--run-id', 'run-1')
+
+    def test_expiry_transition_continues_only_when_approval_wins(self):
+        waiting = {'state': 'waiting-verification'}
+        approved = {'state': 'approved', 'approvedBy': MODULE.OPERATOR_CANARY_APPROVAL_CLIENT}
+        with patch.object(MODULE, 'canary_hold_record', side_effect=[waiting, approved]), \
+                patch.object(MODULE, 'state_command') as state_command, \
+                patch.object(MODULE.time, 'monotonic', side_effect=[0, 60]):
+            result = MODULE.wait_for_canary_approval('run-1', 60)
+        self.assertEqual(result, approved)
+        state_command.assert_called_once_with('expire-canary-hold', '--run-id', 'run-1')
+
+    def test_hold_state_is_saved_before_the_pending_gate_is_opened(self):
+        state = MODULE.ReleaseState(Path('/tmp/unused-release-state.json'), {})
+        events = []
+        state.save = Mock(side_effect=lambda: events.append('release-state-save'))
+
+        def state_command(*arguments):
+            events.append(('status-command', arguments))
+
+        with patch.object(MODULE, 'state_command', side_effect=state_command), \
+                patch.object(MODULE, 'wait_for_canary_approval', return_value={'state': 'approved'}), \
+                patch.object(MODULE.time, 'time', return_value=1_800_000_000):
+            MODULE.wait_for_canary_hold(state, 'run-1', 'kiosk-canary', 60)
+
+        self.assertEqual(events[0], 'release-state-save')
+        self.assertEqual(
+            events[1],
+            ('status-command', ('open-canary-hold', '--run-id', 'run-1', '--canary', 'kiosk-canary', '--expires-at', '1800000060')),
+        )
+
+    def test_canary_wait_does_not_consume_legacy_generic_acknowledgements(self):
+        approved = {'state': 'approved', 'approvedBy': MODULE.OPERATOR_CANARY_APPROVAL_CLIENT}
+        with patch.object(MODULE, 'acknowledgement_received', side_effect=AssertionError('legacy ACK must not be read')), \
+                patch.object(MODULE, 'canary_hold_record', return_value=approved):
+            self.assertEqual(MODULE.wait_for_canary_approval('run-1', 60), approved)
 
     def test_local_forwards_canary_hold_flags(self):
         captured = {}

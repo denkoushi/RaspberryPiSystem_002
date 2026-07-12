@@ -60,8 +60,12 @@ classification authority beside Rolling V2.
    `canaryHold: waiting-verification` and wait for operator approval.  
    Approve from another shell via
    `scripts/update-all-clients.sh --approve <runId>`
-   (SSH → `deploy-status-state.py approve` → acknowledgement
-   `operator-canary-approval`).  
+   (SSH → `deploy-status-state.py approve`). The approval is accepted only while
+   the lock-protected `canaryHolds[runId]` gate is
+   `waiting-verification` and before its expiry; it transitions once to
+   `approved`. Pre-issued, stale, generic terminal acknowledgements, and
+   expired/finished holds cannot advance the release. Approval and expiry share
+   the deploy-status lock, so only one terminal transition wins.
    `--canary-hold-timeout` defaults to 1800s; expiry fails closed (no further
    terminals; canary is not rolled back).  
    `--skip-canary-hold` disables the hold. Single-target and signage-only runs
