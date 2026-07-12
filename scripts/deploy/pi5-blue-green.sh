@@ -714,7 +714,16 @@ legacy_quarantine() {
   LEGACY_API_QUARANTINED=1; LEGACY_WEB_QUARANTINED=1
 }
 legacy_stop() { [[ "$DRY_RUN" == 1 ]] && return 0; docker stop "$LEGACY_API_ID" >/dev/null; }
-legacy_stop_web() { [[ "$DRY_RUN" == 1 ]] && return 0; docker stop "$LEGACY_WEB_ID" >/dev/null; }
+legacy_stop_web() {
+  # A stopped legacy Web container remains attached to docker_default with its
+  # 80/443 publication metadata. Remove it after its image and exact normal
+  # Caddyfile have been captured so the fixed gateway becomes the sole port
+  # owner. legacy_restore recreates it from the captured image on any failure.
+  [[ "$DRY_RUN" == 1 ]] && { LEGACY_WEB_REMOVED=1; return 0; }
+  docker stop "$LEGACY_WEB_ID" >/dev/null || return 1
+  docker rm "$LEGACY_WEB_ID" >/dev/null || return 1
+  LEGACY_WEB_REMOVED=1
+}
 wait_host_ports_free() {
   [[ "$DRY_RUN" == 1 ]] && return 0
   local attempt
