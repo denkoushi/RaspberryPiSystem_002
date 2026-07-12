@@ -45,6 +45,20 @@ class DeployStatusStateTest(unittest.TestCase):
             self.assertEqual(stored['kioskByClient']['signage']['terminalType'], 'kiosk')
             self.assertNotIn('acknowledgements', stored)
 
+    def test_approve_records_operator_ack_without_maintenance_entry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'status.json'
+
+            def run(*args):
+                subprocess.run(['python3', str(SCRIPT), '--file', str(path), *args], check=True)
+
+            run('approve', '--run-id', 'run-42', '--client', 'operator-canary-approval')
+            stored = json.loads(path.read_text())
+            self.assertEqual(stored['kioskByClient'], {})
+            ack = stored['acknowledgements']['run-42']['operator-canary-approval']
+            self.assertEqual(ack['source'], 'operator')
+            self.assertIn('acknowledgedAt', ack)
+
 
 if __name__ == '__main__':
     unittest.main()

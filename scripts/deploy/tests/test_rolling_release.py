@@ -1,6 +1,8 @@
+import argparse
 import importlib.util
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -153,6 +155,199 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
                 patch.object(MODULE, 'run', side_effect=RuntimeError('status unavailable')):
             self.assertFalse(MODULE.pi5_already_current(self.sha))
+
+
+class CanaryHoldTest(unittest.TestCase):
+    def _args(self, **overrides):
+        values = {
+            'inventory': 'inventory.yml',
+            'limit': '',
+            'run_id': 'run-1',
+            'branch': 'main',
+            'sha': 'a' * 40,
+            'emergency_override': False,
+            'reason': None,
+            'skip_canary_hold': False,
+            'canary_hold_timeout': 60,
+        }
+        values.update(overrides)
+        return argparse.Namespace(**values)
+
+    def _run_remote(self, targets, *, wait_for_ack, args=None, played=None):
+        played = played if played is not None else []
+
+        def playbook(_inventory, host, _sha, _run_id, rollback=False):
+            played.append(host)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            run_directory = Path(temporary)
+            with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
+                    patch.object(MODULE, 'inventory_json', return_value={}), \
+                    patch.object(MODULE, 'selected_hosts', return_value=None), \
+                    patch.object(MODULE, 'release_targets', return_value=targets), \
+                    patch.object(MODULE, 'pi5_release_required', return_value=False), \
+                    patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    patch.object(MODULE, 'wait_for_ack', side_effect=wait_for_ack), \
+                    patch.object(MODULE, 'state_command'), \
+                    patch.object(MODULE, 'prestage_signage_maintenance'), \
+                    patch.object(MODULE, 'playbook', side_effect=playbook), \
+                    patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
+                result = MODULE._remote_run(args or self._args())
+            state_path = run_directory / 'run-1.json'
+            payload = json.loads(state_path.read_text(encoding='utf-8')) if state_path.exists() else None
+        return result, played, payload
+
+    def test_canary_hold_continues_after_operator_ack(self):
+        targets = [
+            {'host': 'kiosk-canary', 'clientId': 'canary', 'terminalType': 'kiosk'},
+            {'host': 'kiosk-b', 'clientId': 'b', 'terminalType': 'kiosk'},
+        ]
+        hold_calls = []
+
+        def wait_for_ack(run_id, client_id, timeout=30):
+            hold_calls.append((client_id, timeout))
+            return True
+
+        result, played, payload = self._run_remote(targets, wait_for_ack=wait_for_ack)
+        self.assertEqual(result, 0)
+        self.assertEqual(played, ['kiosk-canary', 'kiosk-b'])
+        self.assertIn((MODULE.OPERATOR_CANARY_APPROVAL_CLIENT, 60), hold_calls)
+        self.assertEqual(payload['canaryHold']['state'], 'approved')
+        self.assertEqual(payload['canaryHold']['canary'], 'kiosk-canary')
+        self.assertEqual(payload['state'], 'success')
+
+    def test_canary_hold_timeout_fails_closed_without_remaining_targets(self):
+        targets = [
+            {'host': 'kiosk-canary', 'clientId': 'canary', 'terminalType': 'kiosk'},
+            {'host': 'kiosk-b', 'clientId': 'b', 'terminalType': 'kiosk'},
+        ]
+
+        def wait_for_ack(_run_id, client_id, timeout=30):
+            return client_id != MODULE.OPERATOR_CANARY_APPROVAL_CLIENT
+
+        played = []
+
+        def playbook(_inventory, host, _sha, _run_id, rollback=False):
+            played.append(host)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            run_directory = Path(temporary)
+            with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
+                    patch.object(MODULE, 'inventory_json', return_value={}), \
+                    patch.object(MODULE, 'selected_hosts', return_value=None), \
+                    patch.object(MODULE, 'release_targets', return_value=targets), \
+                    patch.object(MODULE, 'pi5_release_required', return_value=False), \
+                    patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    patch.object(MODULE, 'wait_for_ack', side_effect=wait_for_ack), \
+                    patch.object(MODULE, 'state_command'), \
+                    patch.object(MODULE, 'playbook', side_effect=playbook), \
+                    patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
+                with self.assertRaises(RuntimeError) as raised:
+                    MODULE._remote_run(self._args())
+            payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
+        self.assertIn('canary hold timed out', str(raised.exception))
+        self.assertEqual(played, ['kiosk-canary'])
+        self.assertEqual(payload['canaryHold']['state'], 'waiting-verification')
+        self.assertEqual(payload['state'], 'failed')
+
+    def test_skip_canary_hold_rolls_out_all_targets(self):
+        targets = [
+            {'host': 'kiosk-canary', 'clientId': 'canary', 'terminalType': 'kiosk'},
+            {'host': 'kiosk-b', 'clientId': 'b', 'terminalType': 'kiosk'},
+        ]
+        hold_clients = []
+
+        def wait_for_ack(_run_id, client_id, timeout=30):
+            hold_clients.append(client_id)
+            return True
+
+        result, played, payload = self._run_remote(
+            targets,
+            wait_for_ack=wait_for_ack,
+            args=self._args(skip_canary_hold=True),
+        )
+        self.assertEqual(result, 0)
+        self.assertEqual(played, ['kiosk-canary', 'kiosk-b'])
+        self.assertNotIn(MODULE.OPERATOR_CANARY_APPROVAL_CLIENT, hold_clients)
+        self.assertNotIn('canaryHold', payload)
+
+    def test_single_canary_target_skips_hold(self):
+        targets = [{'host': 'kiosk-canary', 'clientId': 'canary', 'terminalType': 'kiosk'}]
+        hold_clients = []
+
+        def wait_for_ack(_run_id, client_id, timeout=30):
+            hold_clients.append(client_id)
+            return True
+
+        result, played, payload = self._run_remote(targets, wait_for_ack=wait_for_ack)
+        self.assertEqual(result, 0)
+        self.assertEqual(played, ['kiosk-canary'])
+        self.assertNotIn(MODULE.OPERATOR_CANARY_APPROVAL_CLIENT, hold_clients)
+        self.assertNotIn('canaryHold', payload)
+
+    def test_signage_only_skips_hold(self):
+        targets = [
+            {'host': 'signage-a', 'clientId': 's1', 'terminalType': 'signage'},
+            {'host': 'signage-b', 'clientId': 's2', 'terminalType': 'signage'},
+        ]
+        hold_clients = []
+
+        def wait_for_ack(_run_id, client_id, timeout=30):
+            hold_clients.append(client_id)
+            return True
+
+        result, played, payload = self._run_remote(targets, wait_for_ack=wait_for_ack)
+        self.assertEqual(result, 0)
+        self.assertEqual(played, ['signage-a', 'signage-b'])
+        self.assertNotIn(MODULE.OPERATOR_CANARY_APPROVAL_CLIENT, hold_clients)
+        self.assertNotIn('canaryHold', payload)
+
+    def test_local_forwards_canary_hold_flags(self):
+        captured = {}
+
+        def fake_run(command, **_kwargs):
+            if command[:3] == ['git', '-C', str(MODULE.PROJECT)] and 'rev-parse' in command:
+                return 'a' * 40 + '\n'
+            return ''
+
+        def fake_subprocess_run(command, **_kwargs):
+            if command[:2] == ['git', '-C']:
+                return Mock(returncode=0)
+            if command[0] == 'ssh':
+                captured['remote'] = command[2]
+                return Mock(returncode=0)
+            return Mock(returncode=0)
+
+        args = MODULE.normalize_arguments(MODULE.parser().parse_args([
+            'main', 'infrastructure/ansible/inventory.yml',
+            '--skip-canary-hold', '--canary-hold-timeout', '90',
+        ]))
+        with patch.object(MODULE, 'run', side_effect=fake_run), \
+                patch.object(MODULE.subprocess, 'run', side_effect=fake_subprocess_run), \
+                patch.dict(MODULE.os.environ, {'RASPI_SERVER_HOST': 'pi5.example'}):
+            MODULE.local_run(args)
+        self.assertIn('--canary-hold-timeout 90', captured['remote'])
+        self.assertIn('--skip-canary-hold', captured['remote'])
+
+    def test_local_approve_sshes_like_status(self):
+        captured = {}
+
+        def fake_subprocess_run(command, **_kwargs):
+            captured['command'] = command
+            return Mock(returncode=0)
+
+        with patch.object(MODULE.subprocess, 'run', side_effect=fake_subprocess_run), \
+                patch.dict(MODULE.os.environ, {'RASPI_SERVER_HOST': 'pi5.example'}), \
+                patch('builtins.print') as printed:
+            self.assertEqual(MODULE.local_approve('run-42'), 0)
+        self.assertEqual(captured['command'][0], 'ssh')
+        self.assertEqual(captured['command'][1], 'pi5.example')
+        remote = captured['command'][2]
+        self.assertIn('deploy-status-state.py', remote)
+        self.assertIn('approve', remote)
+        self.assertIn('--run-id run-42', remote)
+        self.assertIn('--client operator-canary-approval', remote)
+        printed.assert_called_once_with(json.dumps({'runId': 'run-42', 'approved': True}, ensure_ascii=False))
 
 
 if __name__ == '__main__':
