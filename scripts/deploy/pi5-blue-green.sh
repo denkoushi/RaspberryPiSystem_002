@@ -39,6 +39,8 @@ STABLE_SECONDS="${PI5_BLUE_GREEN_STABLE_SECONDS:-300}"
 MONITOR_INTERVAL="${PI5_BLUE_GREEN_MONITOR_INTERVAL:-2}"
 READINESS_RETRIES="${PI5_BLUE_GREEN_READINESS_RETRIES:-45}"
 READINESS_INTERVAL="${PI5_BLUE_GREEN_READINESS_INTERVAL:-2}"
+GATEWAY_READY_RETRIES="${PI5_BLUE_GREEN_GATEWAY_READY_RETRIES:-15}"
+GATEWAY_READY_INTERVAL="${PI5_BLUE_GREEN_GATEWAY_READY_INTERVAL:-1}"
 DRY_RUN="${PI5_BLUE_GREEN_DRY_RUN:-${DRY_RUN:-0}}"
 HTTP_ONLY="${PI5_BLUE_GREEN_HTTP_ONLY:-0}"
 MIGRATION_BASE_REF="${PI5_BLUE_GREEN_MIGRATION_BASE_REF:-}"
@@ -127,6 +129,8 @@ case "$COMMAND" in
   *) usage; exit 2 ;;
 esac
 ((RESTORE_LEGACY == 0)) || [[ "$COMMAND" == reconcile ]] || die '--restore-legacy is valid only with reconcile'
+[[ "$GATEWAY_READY_RETRIES" =~ ^[1-9][0-9]*$ ]] || die 'gateway readiness retries must be a positive integer'
+[[ "$GATEWAY_READY_INTERVAL" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'gateway readiness interval must be a non-negative number'
 
 lock_cleanup() {
   if ((LOCK_FALLBACK == 1)) && [[ -n "$LOCK_DIR" ]]; then
@@ -538,12 +542,21 @@ gateway_config_validate() {
 
 gateway_start() { [[ "$DRY_RUN" == 1 ]] && return 0; compose_current up -d gateway; }
 gateway_reload() { [[ "$DRY_RUN" == 1 ]] && return 0; compose_current exec -T gateway caddy reload --config /srv/bluegreen/Caddyfile; }
-maintenance_smoke() { [[ "$DRY_RUN" == 1 ]] && return 0; curl -kfsS --max-time 5 "$WEB_URL" >/dev/null; }
+gateway_smoke_url() {
+  local url="$1" attempt
+  [[ "$DRY_RUN" == 1 ]] && return 0
+  for attempt in $(seq 1 "$GATEWAY_READY_RETRIES"); do
+    if curl -kfsS --max-time 5 "$url" >/dev/null; then return 0; fi
+    sleep "$GATEWAY_READY_INTERVAL"
+  done
+  return 1
+}
+maintenance_smoke() { gateway_smoke_url "$WEB_URL"; }
 external_smoke() {
   [[ "$DRY_RUN" == 1 ]] && return 0
-  curl -kfsS --max-time 5 "$API_HEALTH_URL" >/dev/null || return 1
-  curl -kfsS --max-time 5 "$WEB_URL" >/dev/null || return 1
-  [[ -z "$KIOSK_HEALTH_URL" ]] || curl -kfsS --max-time 5 "$KIOSK_HEALTH_URL" >/dev/null || return 1
+  gateway_smoke_url "$API_HEALTH_URL" || return 1
+  gateway_smoke_url "$WEB_URL" || return 1
+  [[ -z "$KIOSK_HEALTH_URL" ]] || gateway_smoke_url "$KIOSK_HEALTH_URL" || return 1
 }
 gateway_points_to() {
   local slot="$1"
