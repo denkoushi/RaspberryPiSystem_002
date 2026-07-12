@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 計画（2026-07-12 · デプロイ対象最小化 / カナリア・ホールド · 実装済・本番 shadow 評価待ち）
+
+- **対象最小化・カナリア・ホールド・Pi5冪等スキップ**: [ADR](./decisions/ADR-20260712-deploy-target-minimization-canary-hold.md) · [Plan](./plans/rolling-terminal-bluegreen-deploy.md) · [deployment](./guides/deployment.md#標準更新入口ローリング端末別メンテナンス)
+
 ### 計画（2026-07-11 · 自主検査 confirm guard / 下書き仕掛中 · 本番反映済）
 
 - **CONFIRMED 降格防止 + 下書きも仕掛中表示**: [Plan](./plans/self-inspection-confirm-guard-wip-draft.md) · [ADR](./decisions/ADR-20260710-self-inspection-draft-confirmed.md) · [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-confirm-guard-wip-draft-2026-07-11) · [deployment](./guides/deployment.md#self-inspection-confirm-guard-wip-draft-2026-07-11)
