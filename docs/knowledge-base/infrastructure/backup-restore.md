@@ -2170,6 +2170,24 @@ ssh denkon5sd02@100.106.158.2 'jq '\''def redact_source: if type == "string" the
 
 **解決状況**: ✅ **解決済み**（2026-06-26）。Gmail upload誤選択、Dropbox 409詳細化、DB gzip化、internal cleanup、写真除外、復旧必須ファイル群のDropbox退避、2GB DropboxでのDB gzip + 必須ファイル保持を実機確認済み。
 
+<a id="backup-restore-20260712"></a>
+
+### 2026-07-12 フォローアップ（2GB再枯渇とキオスク対象の補完）
+- `directory` / `file` ターゲットは、保存時には `DirectoryBackupTarget` / `FileBackupTarget` の `info.source`（basename）をファイル名に使う一方、通常クリーンアップは設定の絶対パスで末尾一致していた。このため保持数・保持日数を超えた世代が削除対象にならず、Dropbox使用量が増え続けた。
+- 通常クリーンアップのターゲット識別を、バックアップパス生成と同じ `BackupTargetFactory.createFromConfig(...).info.source` に統一した。絶対パスの `directory` / `file` に対する回帰テストを追加した。修正は [PR #990](https://github.com/denkoushi/RaspberryPiSystem_002/pull/990)（`fe15d5f6`）でCI全成功後に本番反映した。
+- `/app/storage/pdfs` は中核機能の稼働に必須ではなく、1世代約79MBと容量影響が大きいため、2GB Dropboxの推奨カタログから除外した。本番設定でも `enabled: false` とし、既存PDFバックアップは最新1世代を残して旧7世代（約552.6MB）を削除した。PDFを必要とする場合は再投入、ローカル媒体、または別ストレージで保護する。
+- `raspi4-sessaku-01` で不足していた次の4対象を本番設定へ追加した。各対象は日次（`0 2 * * *`）、Dropbox、保持14日・最大4世代である。
+  - `client-file`: `raspi4-sessaku-01:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env`
+  - `client-directory`: `raspi4-sessaku-01:/home/raspi4-sessaku-01/.ssh`
+  - `client-directory`: `raspi4-sessaku-01:/var/lib/tailscale`
+  - `client-file`: `raspi4-sessaku-01:/etc/raspi-status-agent.conf`
+- 4対象は実機からDropboxへの手動バックアップで `COMPLETED` を確認した（336B、326B、9,676B、1,251B）。`GET /api/backup/config/health/internal` は `healthy`、警告0件となった。
+- Dropbox使用量はPDF旧世代削除前の100.85%（2,165,728,376 / 2,147,483,648B）から、検証後75.12%（1,613,095,831 / 2,147,483,648B）へ低下し、約534MBの空きを確保した。
+- 標準ローリングデプロイ Run ID `20260712-114859-6ddcc1` はPi5 stable、Pi4全5台・Pi3の全端末成功、メンテナンス解除まで確認した。
+
+**残課題**:
+- 手動バックアップ後の保持整理はDropbox全件走査を行うため、既存387ファイルの状態では完了まで約6分以上かかった。転送自体は成功するが、同時刻に対象が集中すると遅延し得るため、一覧APIのページング／一括走査とスケジュール分散を別課題として検討する。
+
 **関連ファイル**:
 - `scripts/server/backup.sh`
 - `apps/api/src/routes/backup/execution.ts`

@@ -5,6 +5,7 @@ import type { BackupKind } from './backup-types.js';
 import type { BackupExecutionResult, BackupProvider } from './backup-execution.service.js';
 import { BackupService } from './backup.service.js';
 import { StorageProviderFactory } from './storage-provider-factory.js';
+import { BackupTargetFactory } from './backup-target-factory.js';
 
 export async function cleanupBackupsAfterManualExecution(params: {
   config: BackupConfig;
@@ -50,22 +51,17 @@ export async function cleanupBackupsAfterManualExecution(params: {
   const backupService = new BackupService(storageProvider);
   const historyService = new BackupHistoryService();
 
-  // 対象ごとのバックアップのみをクリーンアップするため、プレフィックスとフィルタを指定
-  // DatabaseBackupTargetのinfo.sourceはデータベース名のみ（例: "borrow_return"）
-  // 実際のパスは database/<timestamp>/borrow_return となるため、
-  // prefix は kind のみ（database）にして、ファイル名で対象を絞り込む
-  let sourceForPrefix = targetSource;
-  if (targetKind === 'database') {
-    try {
-      const url = new URL(targetSource);
-      sourceForPrefix = url.pathname.replace(/^\//, '') || 'database';
-    } catch {
-      // URL解析に失敗した場合はそのまま使用
-    }
-  }
   const prefix = `${targetKind}`; // 例: "database"
 
   try {
+    // バックアップパス生成と同じターゲット実装から保存時のsource名を取得する。
+    // file/directoryは設定の絶対パスではなくbasenameが保存され、databaseはDB名が保存される。
+    const sourceForPrefix = BackupTargetFactory.createFromConfig(
+      config,
+      targetKind,
+      targetSource,
+      targetConfig.metadata
+    ).info.source;
     const backups = await backupService.listBackups({ prefix });
     const now = new Date();
     const retentionDate = retention.days

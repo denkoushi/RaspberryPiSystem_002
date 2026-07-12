@@ -126,18 +126,6 @@ export function getRecommendedBackupTargetCatalog(): RecommendedBackupTargetSpec
         retention: DEFAULT_RETENTION,
       },
     },
-    {
-      id: 'server-directory-pdfs',
-      message: 'サイネージ・要領書PDFストレージ（ホスト永続ボリューム）',
-      target: {
-        kind: 'directory',
-        source: '/app/storage/pdfs',
-        schedule: DEFAULT_SCHEDULE,
-        enabled: true,
-        storage: DROPBOX,
-        retention: { days: 14, maxBackups: 2 },
-      },
-    },
   ];
 
   const kiosks = PI4_KIOSK_CLIENTS.flatMap((k) => kioskClientSpecs(k.inventoryHost, k.sshHomeUser));

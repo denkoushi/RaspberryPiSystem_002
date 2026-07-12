@@ -16,6 +16,7 @@ update-frequency: medium
 - この入口はブランチを不変SHAへ解決し、Pi5が必要な変更ではBlue/Greenの5分安定化後に、Pi4カナリア→残Pi4→Pi3を一台ずつ更新する。
 - 各端末は更新中だけメンテナンス表示となる。失敗端末は直前SHAへ自動復旧し、後続端末は更新しない。`--status <runId>` で端末別の結果を確認する。
 - 2026-07-12にPi4全5台とPi3全1台のローリング本番受入れ、およびPi5 Blue/Greenの候補作成・切替・5分監視・cleanupを成功完了した。通常更新はこの経路を使う。実装と実績の正本は [rolling terminal deployment plan](../plans/rolling-terminal-bluegreen-deploy.md) と [Pi5 Blue/Green deployment runbook](../runbooks/pi5-blue-green-deploy.md)。
+- **バックアップ保持修正の実績**: PR [#990](https://github.com/denkoushi/RaspberryPiSystem_002/pull/990) · SHA **`fe15d5f6`** · Run ID **`20260712-114859-6ddcc1`**。Pi5 stable、全6端末 success、メンテナンス解除を確認。バックアップ設定の詳細は [バックアップ・リストア関連KB](../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712) を参照する。
 
 ### Pi5最小停止デプロイ（Phase 2） {#pi5-minimal-downtime-phase2}
 

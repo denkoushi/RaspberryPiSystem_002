@@ -22,7 +22,7 @@ describe('backup-recommended-targets.catalog', () => {
     expect(catalog.some((c) => c.id === 'server-directory-part-measurement-drawings')).toBe(true);
     expect(catalog.some((c) => c.id === 'server-directory-measuring-instrument-genres')).toBe(true);
     expect(catalog.some((c) => c.id === 'server-directory-pallet-machine-illustrations')).toBe(true);
-    expect(catalog.some((c) => c.id === 'server-directory-pdfs')).toBe(true);
+    expect(catalog.some((c) => c.id === 'server-directory-pdfs')).toBe(false);
     expect(catalog.some((c) => c.target.source.includes('raspi4-robodrill01:'))).toBe(true);
     expect(catalog.some((c) => c.target.source.includes('/home/tools04/.ssh'))).toBe(true);
     expect(catalog.some((c) => c.target.source.includes('raspi4-sessaku-01:'))).toBe(true);

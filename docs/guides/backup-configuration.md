@@ -2,7 +2,7 @@
 title: バックアップ設定ガイド
 tags: [運用, バックアップ, 設定, Dropbox]
 audience: [運用者, 開発者]
-last-verified: 2026-02-08
+last-verified: 2026-07-12
 related: [backup-and-restore.md, dropbox-setup-guide.md, monitoring.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # バックアップ設定ガイド
 
-最終更新: 2026-02-08（バックアップ改善1–4: 自動検証、設定履歴、リストア安全策、性能/計測を追加）
+最終更新: 2026-07-12（バックアップ改善1–4、PDF除外、Pi4クライアント設定バックアップを反映）
 
 ## バックアップ改善1–4（2026-02-08）
 
@@ -64,6 +64,13 @@ sudo journalctl -u backup-verify-quarterly.service -n 200
 ## 概要
 
 本ガイドでは、モジュール化されたバックアップ機能の設定方法を説明します。バックアップ機能は設定ファイルベースで動作し、ローカルストレージまたはDropboxへの自動バックアップをサポートします。
+
+## Pi5本番の現在方針（2026-07-12）
+
+- `/app/storage/pdfs` は `enabled: false`。PDFは中核機能の稼働に必須ではないため、2GB Dropboxの推奨対象から外します。
+- `raspi4-sessaku-01` のNFCエージェント `.env`、運用ユーザーSSH、Tailscale状態、status-agent設定を `client-file` / `client-directory` として登録済みです。
+- 上記クライアント対象は日次（`0 2 * * *`）、Dropbox、保持14日・最大4世代です。
+- 実機検証と容量回復の詳細は [バックアップ・リストア関連KB](../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712) を参照してください。
 
 ## 設定ファイルの場所
 
@@ -235,7 +242,7 @@ PostgreSQLデータベースをバックアップする場合：
 
 ### 復旧必須ディレクトリバックアップ（Pi5本番）
 
-Pi5本番で環境再構築に必要な永続・一次ファイルは、`directory`ターゲットとしてDropboxへ保存します。2GB Dropbox運用では、DB gzip 5世代に加えて下記を保持する前提です。
+Pi5本番で中核機能の環境再構築に必要な永続・一次ファイルは、`directory`ターゲットとしてDropboxへ保存します。2GB Dropbox運用では、DB gzip世代に加えて下記を保持します。
 
 ```json
 [
@@ -262,14 +269,6 @@ Pi5本番で環境再構築に必要な永続・一次ファイルは、`directo
     "enabled": true,
     "storage": { "provider": "dropbox" },
     "retention": { "days": 14, "maxBackups": 4 }
-  },
-  {
-    "kind": "directory",
-    "source": "/app/storage/pdfs",
-    "schedule": "0 2 * * *",
-    "enabled": true,
-    "storage": { "provider": "dropbox" },
-    "retention": { "days": 14, "maxBackups": 2 }
   }
 ]
 ```
@@ -278,11 +277,11 @@ Pi5本番で環境再構築に必要な永続・一次ファイルは、`directo
 - `part-measurement-drawings`: 部品測定の図面画像。DBから参照される一次ファイルです。
 - `measuring-instrument-genres`: 計測機器ジャンル画像。DBから参照される一次ファイルです。
 - `pallet-machine-illustrations`: パレット可視化の加工機イラスト。DBから参照される一次ファイルです。
-- `pdfs`: サイネージPDF・要領書PDFの本体。`pdf-pages`は再生成可能な派生ファイルのため通常は対象外です。
 
 **容量方針**:
 - `photo-storage`は貸出写真まで完全復旧したい場合の対象です。2GB Dropbox運用では容量保護のためPi5本番で無効化し、必要時は別媒体または保持数を絞って運用します。
-- `pdf-pages`, `signage-rendered`, `thumbnails`は派生ファイルとして扱い、通常はバックアップ対象外です。
+- `/app/storage/pdfs`は要領書・サイネージ閲覧データであり、中核機能の稼働には必須ではありません。2GB Dropboxの推奨対象から外し、必要な場合は再投入、ローカル媒体、または別ストレージで保護します。
+- `pdf-pages`, `signage-rendered`, `thumbnails`は再生成可能な派生ファイルとして扱い、通常はバックアップ対象外です。
 
 ### クライアント端末ファイルバックアップ
 
