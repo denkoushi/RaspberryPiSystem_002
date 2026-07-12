@@ -24,6 +24,8 @@ GLOBAL_PREFIXES = (
     'infrastructure/ansible/group_vars/',
     'infrastructure/ansible/inventory',
 )
+# Provably runtime-irrelevant paths: never require a Pi5 rebuild or terminal work.
+NEUTRAL_PREFIXES = ('docs/', '.cursor/', '.agent/', '.github/', 'AGENTS.md', 'README', 'EXEC_PLAN.md')
 
 
 def _is_server_path(path: str) -> bool:
@@ -39,6 +41,8 @@ def _is_global_path(path: str) -> bool:
 
 
 def _component_for(path: str) -> str:
+    if path.startswith(NEUTRAL_PREFIXES):
+        return 'neutral'
     if path.startswith(MIGRATION_PREFIX):
         return 'migration'
     if _is_server_path(path):
@@ -77,6 +81,9 @@ def classify(paths):
     for path in paths:
         component = _component_for(path)
         components.add(component)
+
+        if component == 'neutral':
+            continue
 
         if component == 'unknown':
             # Fail-closed: unclassified paths expand to all terminal scopes.

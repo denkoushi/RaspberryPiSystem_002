@@ -60,6 +60,19 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertFalse(result['server'])
         self.assertEqual(result['components'], ['signage-role'])
 
+    def test_docs_only_is_neutral(self):
+        result = impact.classify(['docs/guides/deployment.md', 'AGENTS.md', '.github/workflows/ci.yml'])
+        self.assertFalse(result['server'])
+        self.assertFalse(result['kiosk'])
+        self.assertFalse(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(result['components'], ['neutral'])
+
+    def test_neutral_does_not_shadow_real_changes(self):
+        result = impact.classify(['docs/INDEX.md', 'apps/api/src/index.ts'])
+        self.assertTrue(result['server'])
+        self.assertEqual(result['components'], ['neutral', 'server-app'])
+
     def test_unknown_path_fail_closed(self):
         result = impact.classify(['totally/unknown/path.txt'])
         self.assertTrue(result['server'])
