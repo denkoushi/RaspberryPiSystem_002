@@ -120,4 +120,54 @@ describe('cleanupBackupsAfterManualExecution', () => {
       maxCount: 1,
     });
   });
+
+  it.each([
+    {
+      targetKind: 'directory' as const,
+      targetSource: '/app/storage/pdfs',
+      matchingPath: '/backups/directory/2026-07-01T00-00-00-000Z/pdfs',
+      latestPath: '/backups/directory/2026-07-02T00-00-00-000Z/pdfs',
+      unrelatedPath: '/backups/directory/2026-07-01T00-00-00-000Z/other-directory',
+    },
+    {
+      targetKind: 'file' as const,
+      targetSource: '/app/config/backup.json',
+      matchingPath: '/backups/file/2026-07-01T00-00-00-000Z/backup.json',
+      latestPath: '/backups/file/2026-07-02T00-00-00-000Z/backup.json',
+      unrelatedPath: '/backups/file/2026-07-01T00-00-00-000Z/other.json',
+    },
+  ])('deletes old $targetKind backups when target source is an absolute path', async ({
+    targetKind,
+    targetSource,
+    matchingPath,
+    latestPath,
+    unrelatedPath,
+  }) => {
+    listBackupsMock.mockResolvedValue([
+      { path: matchingPath, modifiedAt: new Date('2026-07-01T00:00:00Z') },
+      { path: latestPath, modifiedAt: new Date('2026-07-02T00:00:00Z') },
+      { path: unrelatedPath, modifiedAt: new Date('2026-07-01T00:00:00Z') },
+    ]);
+
+    await cleanupBackupsAfterManualExecution({
+      config: { storage: { provider: 'dropbox', options: {} }, targets: [] } as any,
+      targetConfig: {
+        kind: targetKind,
+        source: targetSource,
+        retention: { maxBackups: 1 },
+      } as any,
+      targetKind,
+      targetSource,
+      protocol: 'https:',
+      host: 'example.local',
+      resolvedProviders: ['dropbox'],
+      results: [{ provider: 'dropbox', success: true, path: latestPath }],
+      onTokenUpdate: vi.fn(),
+    });
+
+    expect(listBackupsMock).toHaveBeenCalledWith({ prefix: targetKind });
+    expect(deleteBackupMock).toHaveBeenCalledTimes(1);
+    expect(deleteBackupMock).toHaveBeenCalledWith(matchingPath);
+    expect(deleteBackupMock).not.toHaveBeenCalledWith(unrelatedPath);
+  });
 });

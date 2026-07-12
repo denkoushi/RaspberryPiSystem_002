@@ -2170,6 +2170,12 @@ ssh denkon5sd02@100.106.158.2 'jq '\''def redact_source: if type == "string" the
 
 **解決状況**: ✅ **解決済み**（2026-06-26）。Gmail upload誤選択、Dropbox 409詳細化、DB gzip化、internal cleanup、写真除外、復旧必須ファイル群のDropbox退避、2GB DropboxでのDB gzip + 必須ファイル保持を実機確認済み。
 
+**2026-07-12 フォローアップ（2GB再枯渇）**:
+- `directory` / `file` ターゲットは、保存時には `DirectoryBackupTarget` / `FileBackupTarget` の `info.source`（basename）をファイル名に使う一方、通常クリーンアップは設定の絶対パスで末尾一致していた。このため保持数・保持日数を超えた世代が削除対象にならず、Dropbox使用量が増え続けた。
+- 通常クリーンアップのターゲット識別を、バックアップパス生成と同じ `BackupTargetFactory.createFromConfig(...).info.source` に統一した。絶対パスの `directory` / `file` に対する回帰テストを追加した。
+- `/app/storage/pdfs` は中核機能の稼働に必須ではなく、1世代約79MBと容量影響が大きいため、2GB Dropboxの推奨カタログから除外した。PDFを必要とする場合は再投入、ローカル媒体、または別ストレージで保護する。
+- リポジトリ変更のみ。本番Piの `backup.json`、既存Dropboxファイル、デプロイ状態は変更していない。既存ターゲットは本番設定で `enabled: false` にする作業が別途必要。
+
 **関連ファイル**:
 - `scripts/server/backup.sh`
 - `apps/api/src/routes/backup/execution.ts`
