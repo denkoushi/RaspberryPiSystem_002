@@ -76,14 +76,18 @@ Rolling V2 additions on the same entry point
   Single-target and signage-only runs skip the hold.
 - **Canary host**: inventory `kiosk_canary` is `raspi4-kensaku-stonebase01`.
 - **Pi5-only runs**: zero terminal targets under `--limit` still succeed when Pi5
-  release is required.
+  release is required, but a `--limit` matching no inventory host fails closed.
 - **Classifier**: `classify-deploy-impact.py` is the sole impact authority
   (`components` plus legacy keys). Docs/tooling paths are `neutral`; unknown
-  paths select all targets. Legacy `impact-analyzer.sh` / `deploy-all.sh` are not
-  used.
+  paths select all targets. Its diff base is the durable last-successful Pi5
+  release marker, not `origin/main`; an unavailable or target-equal base selects
+  all targets and requires Pi5. Legacy `impact-analyzer.sh` / `deploy-all.sh`
+  are not used.
 - **Shadow Plan**: `--print-plan` emits auditable JSON (sha, classification,
   pi5Required, terminalTargets, canaryHold, excludedHosts when minimizing,
-  warnings). Runtime `plan` is visible via `--status`.
+  warnings). It reads the Pi5 marker through `RASPI_SERVER_HOST`; if unavailable,
+  it emits a fail-closed full-scope plan with warnings. Runtime `plan` is visible
+  via `--status`.
 - **`--auto-minimize` (opt-in)**: shrink terminals from classification; default
   remains full fleet. Default-on waits on production shadow evaluation.
 

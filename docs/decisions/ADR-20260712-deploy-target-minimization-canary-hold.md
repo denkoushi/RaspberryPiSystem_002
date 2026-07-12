@@ -84,6 +84,10 @@ classification authority beside Rolling V2.
    `clients/barcode-agent` and `clients/status-agent` are first-class.  
    `docs/` / `.cursor/` / `.agent/` / `.github/` and similar are `neutral`.  
    Unknown paths select all targets (fail-closed).  
+   Classification compares the target SHA with the durable last-successful Pi5
+   release marker, never `origin/main`. A missing, invalid, non-ancestor, or
+   target-equal marker cannot prove terminal state, so it selects all terminals
+   and requires Pi5 (fail-closed).
    Do **not** adopt legacy `impact-analyzer.sh` / `deploy-all.sh` as authority.
 
 6. **Shadow Plan**  
@@ -98,7 +102,8 @@ classification authority beside Rolling V2.
    signage → exclude Pi3; barcode-agent-only → hosts with
    `barcode_agent_enabled: true`.  
    `unknown` / `global` / unclassifiable → all terminals (fail-closed).  
-   Zero terminals and Pi5 not required → no-op success.  
+   Zero terminals from a valid Pi5-only selection and Pi5 not required → no-op
+   success. A zero-match `--limit` is rejected rather than widened to all hosts.
    Default without the flag remains all terminals.  
    Default-on is deferred until production shadow plans match operator judgment
    across several real releases.

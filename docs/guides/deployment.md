@@ -29,14 +29,14 @@ update-frequency: medium
 
 #### Shadow Plan / 対象最小化（`--auto-minimize` は opt-in）
 
-- 実行前の監査: `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --auto-minimize`。JSON に `sha` / `classification` / `pi5Required` / `terminalTargets`（ロールアウト順）/ `canaryHold` / `excludedHosts` / `warnings` が出る。人間の判断と一致するか確認してから本番実行する。
-- 本番で最小化する場合: 同じフラグを実行コマンドに付ける（例: `... --auto-minimize`）。**フラグ無しは従来どおり全端末**。`unknown` / `global` / 分類不能は全端末（fail-closed）。最小化の結果端末ゼロかつ Pi5 不要なら no-op 成功。
+- 実行前の監査: `RASPI_SERVER_HOST` を設定して `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --auto-minimize`。JSON に `sha` / `classification` / `pi5Required` / `terminalTargets`（ロールアウト順）/ `canaryHold` / `excludedHosts` / `warnings` が出る。Pi5成功マーカーを読めない場合もplanは終了せず、警告付きのPi5＋全端末（fail-closed）を示す。人間の判断と一致するか確認してから本番実行する。
+- 本番で最小化する場合: 同じフラグを実行コマンドに付ける（例: `... --auto-minimize`）。**フラグ無しは従来どおり全端末**。分類はPi5の最後に成功したSHAからの差分を使い、そのマーカーが無い・不正・targetと同一の場合はPi5と全端末へfail-closedする。`unknown` / `global` / 分類不能も全端末。最小化の結果端末ゼロかつ Pi5 不要なら no-op 成功。
 - 分類の正本は `scripts/deploy/classify-deploy-impact.py`。旧 `impact-analyzer.sh` / `deploy-all.sh` は使わない。詳細は ADR / Plan を参照。
 - 実行時の選択根拠は state の `plan` に残り、`--status <runId>` で確認できる。
 
 #### Pi5 単独実行と冪等スキップ
 
-- `--limit raspberrypi5`（または端末が0台になる limit）でも、Pi5 リリースが必要なら **Pi5 のみ実行して正常終了**する（従来の `no kiosk or signage targets selected` 失敗は解消済み）。
+- `--limit raspberrypi5` のように有効な対象選択で端末が0台になっても、Pi5 リリースが必要なら **Pi5 のみ実行して正常終了**する。存在しないホストへ一致する `--limit` は、全台へ拡大せずfail-closedで停止する。
 - 同一 SHA を再実行し、Pi5 上の `logs/deploy/pi5-release-current.json` が一致かつ `pi5-blue-green.sh status` の `runtimeStatus=consistent` なら Blue/Green を省略し state に `pi5: already-current` を記録する。不確実なら従来どおり実行（fail-closed）。
 
 ### Pi5最小停止デプロイ（Phase 2） {#pi5-minimal-downtime-phase2}

@@ -43,6 +43,17 @@ class RollingReleaseTargetOrderTest(unittest.TestCase):
         }
         self.assertEqual([item['host'] for item in MODULE.release_targets(inventory, ['signage-a'])], ['signage-a'])
 
+    def test_empty_explicit_selection_never_expands_to_all_terminals(self):
+        inventory = {
+            'kiosk_canary': {'hosts': ['kiosk-b']},
+            '_meta': {'hostvars': {
+                'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
+                'kiosk-b': {'manage_kiosk_browser': True, 'status_agent_client_id': 'b'},
+                'signage-a': {'manage_signage_lite': True, 'status_agent_client_id': 's'},
+            }},
+        }
+        self.assertEqual(MODULE.release_targets(inventory, []), [])
+
     def test_remote_runner_accepts_named_branch_and_inventory(self):
         args = MODULE.normalize_arguments(MODULE.parser().parse_args([
             '--remote-run', '--branch', 'main', '--inventory', 'inventory.yml',
@@ -155,6 +166,55 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
                 patch.object(MODULE, 'run', side_effect=RuntimeError('status unavailable')):
             self.assertFalse(MODULE.pi5_already_current(self.sha))
+
+
+class DeployClassificationBaselineTest(unittest.TestCase):
+    BASE = 'b' * 40
+    TARGET = 'a' * 40
+
+    def test_post_merge_target_uses_persisted_pi5_marker_as_diff_base(self):
+        classification = {
+            'server': True, 'kiosk': False, 'signage': False, 'migration': False,
+            'components': ['server-app'],
+        }
+        with patch.object(MODULE, 'run', side_effect=['', json.dumps(classification)]) as command:
+            result, warnings = MODULE.classify_release_impact(self.TARGET, {'sha': self.BASE})
+        self.assertEqual(result, classification)
+        self.assertEqual(warnings, [])
+        self.assertEqual(
+            command.call_args_list[0].args[0],
+            ['git', '-C', str(MODULE.PROJECT), 'merge-base', '--is-ancestor', self.BASE, self.TARGET],
+        )
+        self.assertEqual(command.call_args_list[1].args[0][-4:], ['--base', self.BASE, '--head', self.TARGET])
+
+    def test_missing_or_invalid_marker_fails_closed_before_running_classifier(self):
+        for marker in (None, {}, {'sha': 'not-a-sha'}):
+            with self.subTest(marker=marker), patch.object(MODULE, 'run') as command:
+                classification, warnings = MODULE.classify_release_impact(self.TARGET, marker)
+            self.assertIsNone(classification)
+            self.assertIn('classification unavailable', warnings[0])
+            command.assert_not_called()
+
+    def test_marker_matching_target_fails_closed_for_terminal_retry(self):
+        with patch.object(MODULE, 'run') as command:
+            classification, warnings = MODULE.classify_release_impact(self.TARGET, {'sha': self.TARGET})
+        self.assertIsNone(classification)
+        self.assertIn('terminal state is not a safe baseline', warnings[0])
+        command.assert_not_called()
+
+    def test_non_ancestor_marker_fails_closed(self):
+        with patch.object(MODULE, 'run', side_effect=RuntimeError('not an ancestor')) as command:
+            classification, warnings = MODULE.classify_release_impact(self.TARGET, {'sha': self.BASE})
+        self.assertIsNone(classification)
+        self.assertIn('not an ancestor of target', warnings[0])
+        command.assert_called_once_with(
+            ['git', '-C', str(MODULE.PROJECT), 'merge-base', '--is-ancestor', self.BASE, self.TARGET],
+            capture=True,
+        )
+
+    def test_pi5_requirement_is_true_when_marker_is_missing(self):
+        with patch.object(MODULE, 'read_pi5_release_current', return_value=None):
+            self.assertTrue(MODULE.pi5_release_required(self.TARGET))
 
 
 class CanaryHoldTest(unittest.TestCase):
@@ -394,6 +454,19 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
             'classificationComponents': None,
         })
 
+    def test_zero_match_limit_fails_instead_of_becoming_a_pi5_only_run(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run_directory = Path(temporary)
+            with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
+                    patch.object(MODULE, 'inventory_json', return_value={}), \
+                    patch.object(MODULE, 'selected_hosts', return_value=[]), \
+                    patch.object(MODULE, 'pi5_release_required', return_value=True), \
+                    patch.object(MODULE, 'ensure_pi5_release') as ensure:
+                with self.assertRaises(RuntimeError) as raised:
+                    MODULE._remote_run(self._args(limit='typo-host'))
+        self.assertIn('--limit selected no hosts', str(raised.exception))
+        ensure.assert_not_called()
+
     def test_empty_targets_with_limit_fails_when_pi5_not_required(self):
         with tempfile.TemporaryDirectory() as temporary:
             run_directory = Path(temporary)
@@ -468,6 +541,7 @@ class PrintPlanShadowTest(unittest.TestCase):
             'main', 'infrastructure/ansible/inventory.yml', '--print-plan', '--limit', 'clients',
         ]))
         with patch.object(MODULE, 'resolve_release_sha', return_value=(sha, [])), \
+                patch.object(MODULE, 'read_plan_pi5_release_current', return_value=({'sha': 'b' * 40}, [])), \
                 patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
                 patch.object(MODULE, 'resolve_terminal_targets', return_value=(targets, [])), \
                 patch('builtins.print') as printed:
@@ -698,6 +772,7 @@ class AutoMinimizeTest(unittest.TestCase):
             'main', 'infrastructure/ansible/inventory.yml', '--print-plan', '--auto-minimize',
         ]))
         with patch.object(MODULE, 'resolve_release_sha', return_value=(sha, [])), \
+                patch.object(MODULE, 'read_plan_pi5_release_current', return_value=({'sha': 'b' * 40}, [])), \
                 patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
                 patch.object(MODULE, 'resolve_terminal_targets', return_value=(targets, [])), \
                 patch.object(MODULE, 'inventory_json', return_value=self.INVENTORY), \

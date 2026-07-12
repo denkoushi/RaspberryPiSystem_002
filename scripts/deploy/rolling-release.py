@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import shlex
 import subprocess
@@ -29,6 +30,7 @@ RUN_DIRECTORY = PROJECT / 'logs/deploy/release-runs'
 PI5_RELEASE_CURRENT = PROJECT / 'logs/deploy/pi5-release-current.json'
 OPERATOR_CANARY_APPROVAL_CLIENT = 'operator-canary-approval'
 DEFAULT_CANARY_HOLD_TIMEOUT = 1800
+FULL_SHA_RE = re.compile(r'^[0-9a-f]{40}$')
 # Kiosk-scoped components used to detect barcode-agent-only rollouts.
 KIOSK_SCOPE_COMPONENTS = frozenset({
     'nfc-agent',
@@ -58,7 +60,9 @@ def atomic_json(path: Path, payload: dict[str, Any]) -> None:
 def release_targets(inventory: dict[str, Any], selected: Iterable[str] | None = None) -> list[dict[str, str]]:
     """Return canary kiosk, remaining kiosks, then signage in inventory order."""
     hosts = (inventory.get('_meta') or {}).get('hostvars') or {}
-    selected_set = set(selected or hosts)
+    # ``None`` means no --limit.  An explicit empty selection is meaningful:
+    # it must never widen a Pi5-only or zero-match limit into a fleet rollout.
+    selected_set = set(hosts if selected is None else selected)
     canary_hosts = set((inventory.get('kiosk_canary') or {}).get('hosts') or [])
     kiosks: list[dict[str, str]] = []
     signage: list[dict[str, str]] = []
@@ -238,6 +242,26 @@ def read_pi5_release_current() -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def read_plan_pi5_release_current() -> tuple[dict[str, Any] | None, list[str]]:
+    """Read the Pi5 success marker for a local shadow plan without changing it."""
+    host = os.environ.get('RASPI_SERVER_HOST')
+    if not host:
+        return None, ['Pi5 release marker unavailable: RASPI_SERVER_HOST is required for classification']
+    try:
+        result = subprocess.run(
+            ['ssh', host, 'cat /opt/RaspberryPiSystem_002/logs/deploy/pi5-release-current.json'],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        payload = json.loads(result.stdout)
+    except Exception as error:
+        return None, [f'Pi5 release marker unavailable: {error}']
+    if not isinstance(payload, dict):
+        return None, ['Pi5 release marker unavailable: marker is not an object']
+    return payload, []
+
+
 def record_pi5_release_current(sha: str, candidate: dict[str, Any] | None) -> None:
     """Persist the SHA only after Phase 3 release and stability both succeed."""
     atomic_json(PI5_RELEASE_CURRENT, {
@@ -290,7 +314,7 @@ def rollback_terminal(inventory: str, target_spec: dict[str, str], target: dict[
 
 def pi5_release_required(sha: str) -> bool:
     """Use the existing path classifier; unknown classification is fail-closed."""
-    classification, _ = classify_release_impact(sha)
+    classification, _ = classify_release_impact(sha, read_pi5_release_current())
     if classification is None:
         return True
     return bool(classification.get('server') or classification.get('migration'))
@@ -386,17 +410,32 @@ def resolve_release_sha(branch: str) -> tuple[str | None, list[str]]:
         return None, [f'could not resolve SHA for branch {branch}: {error}']
 
 
-def classify_release_impact(sha: str) -> tuple[dict[str, Any] | None, list[str]]:
-    """Classify deploy impact for audit plans; failures are warnings only."""
+def classify_release_impact(
+    sha: str,
+    release_marker: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Classify the delta from the durable last-successful Pi5 release.
+
+    ``origin/main`` is deliberately not a baseline: post-merge main releases
+    would compare a commit to itself.  Without a usable durable baseline the
+    caller must retain the full scope and require Pi5 (fail-closed).
+    """
+    base = (release_marker or {}).get('sha')
+    if not isinstance(base, str) or not FULL_SHA_RE.fullmatch(base):
+        return None, ['classification unavailable: last-successful Pi5 release SHA is missing or invalid']
+    if base == sha:
+        # Pi5 can have completed while a later terminal or canary step failed.
+        # A Pi5-only marker cannot prove that every terminal is already current.
+        return None, ['classification unavailable: target matches the Pi5 marker; terminal state is not a safe baseline']
     try:
-        base = run(['git', '-C', str(PROJECT), 'merge-base', 'origin/main', sha], capture=True).strip()
+        run(['git', '-C', str(PROJECT), 'merge-base', '--is-ancestor', base, sha], capture=True)
         result = json.loads(run([
             'python3', str(PROJECT / 'scripts/deploy/classify-deploy-impact.py'),
             '--base', base, '--head', sha,
         ], capture=True))
         return result, []
     except Exception as error:
-        return None, [f'classification unavailable: {error}']
+        return None, [f'classification unavailable: last-successful Pi5 release SHA is not an ancestor of target: {error}']
 
 
 def resolve_terminal_targets(inventory: str, limit: str) -> tuple[list[dict[str, str]] | None, list[str]]:
@@ -417,10 +456,14 @@ def build_print_plan(branch: str, inventory: str, limit: str, *, auto_minimize: 
     classification: dict[str, Any] | None = None
     pi5_required: bool | None = None
     if sha:
-        classification, class_warnings = classify_release_impact(sha)
+        release_marker, marker_warnings = read_plan_pi5_release_current()
+        warnings.extend(marker_warnings)
+        classification, class_warnings = classify_release_impact(sha, release_marker)
         warnings.extend(class_warnings)
         if classification is not None:
             pi5_required = bool(classification.get('server') or classification.get('migration'))
+        else:
+            pi5_required = True
 
     terminal_targets, target_warnings = resolve_terminal_targets(inventory, limit)
     warnings.extend(target_warnings)
@@ -465,7 +508,10 @@ def build_print_plan(branch: str, inventory: str, limit: str, *, auto_minimize: 
 def _remote_run(args: argparse.Namespace) -> int:
     inventory = str(Path(args.inventory) if Path(args.inventory).is_absolute() else ANSIBLE_DIRECTORY / args.inventory)
     inventory_data = inventory_json(inventory)
-    targets = release_targets(inventory_data, selected_hosts(inventory, args.limit))
+    selected = selected_hosts(inventory, args.limit)
+    if args.limit and selected == []:
+        raise RuntimeError(f'--limit selected no hosts: {args.limit}')
+    targets = release_targets(inventory_data, selected)
     # Empty terminals without --limit means inventory selection is broken.
     if not targets and not args.limit:
         raise RuntimeError('no kiosk or signage targets selected')
@@ -478,7 +524,7 @@ def _remote_run(args: argparse.Namespace) -> int:
         'classificationComponents': None,
     }
     if args.auto_minimize:
-        classification, _ = classify_release_impact(args.sha)
+        classification, _ = classify_release_impact(args.sha, read_pi5_release_current())
         targets, plan_minimize = apply_auto_minimize(targets, inventory_data, classification)
 
     if classification is not None:
