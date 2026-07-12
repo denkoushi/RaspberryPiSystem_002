@@ -144,8 +144,8 @@ describe('POST /api/imports/master', () => {
 
   it('should import employees CSV successfully', async () => {
     const formData = new FormData();
-    const emp1 = String(generateTestId(10)).padStart(4, '0');
-    const emp2 = String(generateTestId(11)).padStart(4, '0');
+    const emp1 = await generateUnusedEmployeeCode(10);
+    const emp2 = await generateUnusedEmployeeCode(11);
     // nfcTagUidも一意にするため、タイムスタンプとカウンターを使用
     const uniqueTag1 = `TAG${Date.now()}${testCounter}001`;
     const uniqueTag2 = `TAG${Date.now()}${testCounter}002`;
