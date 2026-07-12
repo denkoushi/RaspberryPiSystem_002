@@ -248,6 +248,7 @@ legacy_restore_cfg="$(PI5_LEGACY_API_IMAGE="$OLD_API" PI5_LEGACY_WEB_IMAGE="$OLD
   -f "$ROOT/infrastructure/docker/docker-compose.legacy-restore.yml" config)"
 assert_contains "$legacy_restore_cfg" "image: $OLD_API"
 assert_contains "$legacy_restore_cfg" "image: $OLD_WEB"
+assert_contains "$legacy_restore_cfg" 'PI5_SCHEDULER_LEADER_ENABLED: "1"'
 
 for caddy_file in \
   infrastructure/docker/Caddyfile.gateway.template \
