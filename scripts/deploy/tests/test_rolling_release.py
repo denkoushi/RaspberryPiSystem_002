@@ -41,6 +41,14 @@ class RollingReleaseTargetOrderTest(unittest.TestCase):
         }
         self.assertEqual([item['host'] for item in MODULE.release_targets(inventory, ['signage-a'])], ['signage-a'])
 
+    def test_remote_runner_accepts_named_branch_and_inventory(self):
+        args = MODULE.normalize_arguments(MODULE.parser().parse_args([
+            '--remote-run', '--branch', 'main', '--inventory', 'inventory.yml',
+            '--sha', 'a' * 40, '--run-id', 'run-1',
+        ]))
+        self.assertEqual(args.branch, 'main')
+        self.assertEqual(args.inventory, 'inventory.yml')
+
 
 class Pi5StabilityMonitorTest(unittest.TestCase):
     def test_waits_for_monitor_then_runs_cleanup_before_terminal_rollout(self):

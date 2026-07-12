@@ -345,8 +345,13 @@ def local_run(args: argparse.Namespace) -> int:
 
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser()
-    value.add_argument('branch', nargs='?')
-    value.add_argument('inventory', nargs='?')
+    value.add_argument('branch_positional', nargs='?')
+    value.add_argument('inventory_positional', nargs='?')
+    # The local wrapper uses positional arguments, while the remote command
+    # names them explicitly to avoid ambiguity after its detached checkout.
+    # Both forms deliberately populate the same destination.
+    value.add_argument('--branch', dest='branch')
+    value.add_argument('--inventory', dest='inventory')
     value.add_argument('--limit', default='')
     value.add_argument('--status')
     value.add_argument('--print-plan', '--dry-run', action='store_true')
@@ -366,8 +371,20 @@ def parser() -> argparse.ArgumentParser:
     return value
 
 
+def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
+    """Accept positional local arguments and named remote arguments safely."""
+    for option, positional in (('branch', 'branch_positional'), ('inventory', 'inventory_positional')):
+        explicit = getattr(args, option)
+        positional_value = getattr(args, positional)
+        if explicit and positional_value and explicit != positional_value:
+            raise RuntimeError(f'conflicting {option} values')
+        setattr(args, option, explicit or positional_value)
+    return args
+
+
 def main() -> int:
     args, unknown = parser().parse_known_args()
+    args = normalize_arguments(args)
     if unknown:
         raise RuntimeError(f'unsupported options in canonical rolling release: {" ".join(unknown)}')
     if args.emergency_override and not args.reason:
