@@ -2,7 +2,7 @@
 title: KB-379 DGX Spark private ComfyUI（FLUX.2 Klein 9B 移行・workflow・NVFP4）
 tags: [DGX Spark, ComfyUI, NVFP4, FLUX.2 Klein, Qwen Image Edit 2511, BFS Head V5, Flux2KleinEnhancer, safetensors, workflow, 最適化]
 audience: [運用者, 開発者]
-last-verified: 2026-06-14
+last-verified: 2026-07-11
 category: knowledge-base
 related:
   - ../runbooks/dgx-private-comfyui.md
@@ -362,6 +362,22 @@ NVFP4 + photoreal tuning で 3分台まで改善（1248×1824）
 ```
 
 **環境メモ（2026-06-13）**: swap 起動時 **72% 使用**。`sudo swapoff -a` は未実施（速度影響の可能性）。ComfyUI **0.22.0** / commit `0077d78`。
+
+#### Phase 1 quality refresh（2026-07-11・マスク無し単一画像編集）
+
+単一画像編集の主経路を再評価し、`phase1_qwen_edit_2511_dgx_flat.json` を **Qwen Image Edit 2511 bf16・非Lightning 8step**へ更新した。入力画像は `FluxKontextImageScale` 後に `TextEncodeQwenImageEditPlus.image1` と `VAEEncode` の両方へ渡す。顔マスク、face crop、別ID画像、PuLID、InsightFace、BFS head swap は Phase 1 に含めない。
+
+同一の安全な入力、英語の局所編集指示、seed `7112026` で比較した。
+
+| 構成 | 結果 | 実測 |
+|------|------|------|
+| Lightning 4step・CFG 1.0 | 微笑みを反映し、構図・服・背景を保持。顔はやや平滑で編集効果が弱い | **約371秒**（cold） |
+| 非Lightning 8step・CFG 3.0 | 微笑みがより明確。人物ID、眼鏡、髪、服、姿勢、背景を維持 | **約376秒**（サービス再起動後） |
+| 非Lightning 20step・CFG 3.0 | モデル切替後に ComfyUI 接続が切れ、復帰後に履歴消失。画像評価前に失敗 | 未完了 |
+
+この実機状態では4stepと8stepの所要時間差がほぼ無く、8stepの方がプロンプト追随が良かったため正本へ採用した。Lightning LoRAノードは削除せず **bypass（node mode `4`）** とし、将来の正常クロック時に高速プレビューとして再比較できるようにした。
+
+実行時の `GET /system_stats` は `--disable-dynamic-vram --reserve-vram 2 --mmap-torch-files` を示し、2026-06-14記録の `--reserve-vram 8 --disable-mmap` と異なる。今回の約6分はworkflow固有の正常性能とは断定せず、低電力固着・起動フラグ・モデル切替時メモリを別途切り分ける。
 
 #### Phase 2 完成（2026-06-14・BFS Head V5 二段 head swap）
 
