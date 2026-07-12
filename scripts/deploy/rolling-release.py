@@ -133,6 +133,49 @@ def wait_for_ack(run_id: str, client_id: str, timeout: int = 30) -> bool:
     return acknowledgement_received(run_id, client_id)
 
 
+def canary_hold_record(run_id: str) -> dict[str, Any]:
+    """Read the lock-protected operator gate rather than generic terminal ACKs."""
+    output = run([
+        'python3', str(STATUS_TOOL), '--file', str(PROJECT / 'config/deploy-status.json'),
+        'canary-hold-state', '--run-id', run_id,
+    ], capture=True)
+    record = json.loads(output)
+    if not isinstance(record, dict):
+        raise RuntimeError('canary hold state is malformed')
+    return record
+
+
+def wait_for_canary_approval(run_id: str, timeout: int) -> dict[str, Any]:
+    """Wait for the one-time canary gate; expiry and approval share one lock."""
+    deadline = time.monotonic() + timeout
+    while True:
+        record = canary_hold_record(run_id)
+        gate_state = record.get('state')
+        if gate_state == 'approved':
+            return record
+        if gate_state == 'expired':
+            raise RuntimeError(
+                f'canary hold timed out after {timeout}s waiting for operator approval '
+                f'(client={OPERATOR_CANARY_APPROVAL_CLIENT})'
+            )
+        if gate_state != 'waiting-verification':
+            raise RuntimeError(f'canary hold entered unexpected state: {gate_state!r}')
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            # `expire-canary-hold` and `approve` transition the same record while
+            # holding StatusLock.  Whichever wins is the only terminal outcome.
+            state_command('expire-canary-hold', '--run-id', run_id)
+            record = canary_hold_record(run_id)
+            if record.get('state') == 'approved':
+                return record
+            raise RuntimeError(
+                f'canary hold timed out after {timeout}s waiting for operator approval '
+                f'(client={OPERATOR_CANARY_APPROVAL_CLIENT})'
+            )
+        time.sleep(min(5, max(1, remaining)))
+
+
 def should_hold_after_canary(targets: list[dict[str, str]], index: int, *, skip: bool) -> bool:
     """Hold only after the first target when later hosts remain and kiosks are in scope."""
     if skip or index != 0 or index + 1 >= len(targets):
@@ -141,22 +184,27 @@ def should_hold_after_canary(targets: list[dict[str, str]], index: int, *, skip:
 
 
 def wait_for_canary_hold(state: ReleaseState, run_id: str, canary_host: str, timeout: int) -> None:
+    if timeout <= 0:
+        raise RuntimeError('canary hold timeout must be greater than zero')
+    expires_at = int(time.time()) + timeout
     state.payload['canaryHold'] = {
         'state': 'waiting-verification',
         'canary': canary_host,
         'since': utc_now(),
+        'expiresAt': expires_at,
     }
     state.save()
+    # The release-run state is written first.  If the gate cannot be opened,
+    # approval remains impossible and the outer release path fails closed.
+    state_command(
+        'open-canary-hold', '--run-id', run_id, '--canary', canary_host,
+        '--expires-at', str(expires_at),
+    )
     print(
         f'Canary verification pending. Approve with: scripts/update-all-clients.sh --approve {run_id}',
         flush=True,
     )
-    if not wait_for_ack(run_id, OPERATOR_CANARY_APPROVAL_CLIENT, timeout=timeout):
-        raise RuntimeError(
-            f'canary hold timed out after {timeout}s waiting for operator approval '
-            f'(client={OPERATOR_CANARY_APPROVAL_CLIENT})'
-        )
-    state.payload['canaryHold']['state'] = 'approved'
+    state.payload['canaryHold'].update(wait_for_canary_approval(run_id, timeout))
     state.save()
 
 

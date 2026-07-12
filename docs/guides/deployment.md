@@ -23,7 +23,7 @@ update-frequency: medium
 1. 通常どおり `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml` を実行する（必要なら `--detach --follow`）。
 2. Pi5（必要な場合）のあと、最初のキオスク（カナリア）が成功すると、後続端末が残っている場合は `canaryHold: waiting-verification` で停止する。単一ターゲットや signage のみの実行ではホールドしない。
 3. カナリア実機を目視・操作で検証する。
-4. **別シェル**から承認する: `./scripts/update-all-clients.sh --approve <runId>`（内部で SSH → `deploy-status-state.py approve` → acknowledgements に `operator-canary-approval`）。承認後、残Pi4→Pi3が続行する。
+4. **別シェル**から承認する: `./scripts/update-all-clients.sh --approve <runId>`。このコマンドは `waiting-verification` の有効期限内ゲートだけを承認する。ホールド前・期限切れ・完了済み run は承認として予約されず失敗するため、`--status <runId>` で待機状態を確認してから実行する。承認後、残Pi4→Pi3が続行する。
 5. `--canary-hold-timeout`（既定 1800 秒）を超えると fail-closed（後続へ進まず失敗。カナリアはロールバックしない）。タイムアウト後は `--status <runId>` で状態を確認し、必要なら同一ブランチ/SHAで再実行する（再実行前に失敗 run のメンテナンス残留がないことを確認する）。
 6. ホールドを無効にする場合のみ `--skip-canary-hold` を付ける（緊急・単発検証向け）。
 

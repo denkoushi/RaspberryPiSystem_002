@@ -72,8 +72,10 @@ Rolling V2 additions on the same entry point
 - **Canary hold (default on)**: after the first kiosk succeeds, if more terminals
   remain, stop with `canaryHold: waiting-verification`. Approve from another
   shell with `--approve <runId>`. Timeout `--canary-hold-timeout` (default 1800s)
-  fails closed without rolling back the canary. Disable with `--skip-canary-hold`.
-  Single-target and signage-only runs skip the hold.
+  fails closed without rolling back the canary. The lock-protected pending gate
+  accepts only in-window approval; old or generic terminal acknowledgements
+  cannot resume a release. Disable with `--skip-canary-hold`. Single-target and
+  signage-only runs skip the hold.
 - **Canary host**: inventory `kiosk_canary` is `raspi4-kensaku-stonebase01`.
 - **Pi5-only runs**: zero terminal targets under `--limit` still succeed when Pi5
   release is required, but a `--limit` matching no inventory host fails closed.
