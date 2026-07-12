@@ -151,7 +151,14 @@ def playbook(inventory: str, host: str, revision: str, run_id: str, *, rollback:
     env = os.environ.copy()
     env.update({'ANSIBLE_REPO_VERSION': revision, 'RUN_ID': run_id, 'RELEASE_ORCHESTRATED': '1'})
     extra = 'release_orchestrated=true release_rollback=' + ('true' if rollback else 'false')
-    run(['ansible-playbook', '-i', inventory, str(ANSIBLE_DIRECTORY / 'playbooks/deploy-staged.yml'), '--limit', host, '-e', extra], env=env)
+    # roles_path and vault_password_file in ansible.cfg are relative to the
+    # Ansible project.  Run from that directory rather than the repository
+    # root so a remote coordinator resolves the same roles as local CI.
+    run(
+        ['ansible-playbook', '-i', inventory, str(ANSIBLE_DIRECTORY / 'playbooks/deploy-staged.yml'), '--limit', host, '-e', extra],
+        cwd=ANSIBLE_DIRECTORY,
+        env=env,
+    )
 
 
 def phase3_release(sha: str, state: ReleaseState) -> None:
