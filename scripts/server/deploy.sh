@@ -12,6 +12,12 @@ LOG_DIR="${PROJECT_DIR}/logs/deploy"
 TS="$(date -u +"%Y-%m-%dT%H-%M-%SZ")"
 LOG_FILE="${LOG_DIR}/deploy-sh-${TS}.log"
 
+# This legacy command recreates api/web directly.  A Phase 3 gateway owns
+# those ports, so make accidental use fail before Git or Docker mutations.
+if [[ -x "${PROJECT_DIR}/scripts/deploy/pi5-phase3-legacy-guard.sh" ]]; then
+  "${PROJECT_DIR}/scripts/deploy/pi5-phase3-legacy-guard.sh"
+fi
+
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }

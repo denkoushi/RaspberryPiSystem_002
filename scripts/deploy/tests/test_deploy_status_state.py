@@ -29,6 +29,22 @@ class DeployStatusStateTest(unittest.TestCase):
             self.assertNotIn('a', stored['acknowledgements'])
             self.assertIn('b', stored['acknowledgements'])
 
+    def test_remove_client_keeps_other_targets_in_the_same_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'status.json'
+
+            def run(*args):
+                subprocess.run(['python3', str(SCRIPT), '--file', str(path), *args], check=True)
+
+            run('put', '--run-id', 'release-1', '--clients', 'kiosk,signage', '--terminal-type', 'kiosk')
+            run('ack', '--run-id', 'release-1', '--client', 'kiosk')
+            run('remove-client', '--run-id', 'release-1', '--client', 'kiosk')
+            stored = json.loads(path.read_text())
+            self.assertEqual(set(stored['kioskByClient']), {'signage'})
+            self.assertEqual(stored['kioskByClient']['signage']['runId'], 'release-1')
+            self.assertEqual(stored['kioskByClient']['signage']['terminalType'], 'kiosk')
+            self.assertNotIn('acknowledgements', stored)
+
 
 if __name__ == '__main__':
     unittest.main()

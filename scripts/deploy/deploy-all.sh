@@ -40,6 +40,12 @@ done
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "${repo_root}"
 
+if [[ "${DEPLOY_EXECUTOR_ENABLE:-0}" == "1" ]]; then
+  echo "[ERROR] deploy-all.sh cannot execute application deployments." >&2
+  echo "[ERROR] Use scripts/update-all-clients.sh for Phase 3 and rolling terminal safety." >&2
+  exit 2
+fi
+
 # --- Lockfile to prevent concurrent deploys ---
 # ロックファイルはプロジェクトディレクトリ内に配置（ユーザー権限で実行可能）
 LOCK_FILE="${DEPLOY_LOCK_FILE:-${repo_root}/logs/deploy/.deployment.lock}"

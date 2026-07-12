@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+if [[ "${DEPLOY_EXECUTOR_ENABLE:-0}" == "1" ]]; then
+  echo "[ERROR] Direct deploy-executor execution is disabled; use scripts/update-all-clients.sh." >&2
+  exit 2
+fi
+
 # deploy-executor: impact-analyzerのJSONを受け取り、デプロイを実行する。
 # 安全のためデフォルトは実行せず "skipped" を返す。DEPLOY_EXECUTOR_ENABLE=1 のとき実行。
 # 実行コマンドは server: scripts/server/deploy.sh、クライアント: ansible-playbook deploy.yml --limit。
@@ -141,4 +146,3 @@ print(json.dumps({
     "note": note
 }, ensure_ascii=False, indent=2))
 PY
-

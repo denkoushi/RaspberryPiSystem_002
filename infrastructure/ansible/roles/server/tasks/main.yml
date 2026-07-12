@@ -525,6 +525,7 @@
           See captured logs above for details.
   when:
     - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
+    - not (pi5_blue_green_deploy_enabled | default(false) | bool)
     - (force_docker_rebuild | default(false) | bool) or (server_docker_build_needed | default(repo_changed) | bool)
 
 - name: Prepare and switch prebuilt Pi5 images when minimal-downtime deployment is enabled
@@ -582,6 +583,47 @@
           State: {{ pi5_image_deploy_failure_state.stdout | default('unavailable') }}
   when:
     - pi5_minimal_downtime_deploy_enabled | default(false) | bool
+    - not (pi5_blue_green_deploy_enabled | default(false) | bool)
+    - >-
+      (force_docker_rebuild | default(false) | bool)
+      or (server_docker_build_needed | default(repo_changed) | bool)
+      or (docker_env_result.changed | default(false))
+
+- name: Prepare and switch Pi5 Blue/Green candidate when canonical release enables Phase 3
+  block:
+    - name: Resolve immutable release SHA
+      ansible.builtin.command: git -C {{ repo_path }} rev-parse HEAD
+      register: pi5_bluegreen_sha
+      changed_when: false
+
+    - name: Build and validate immutable Phase 3 candidate
+      ansible.builtin.command:
+        argv:
+          - "{{ repo_path }}/scripts/deploy/pi5-candidate-build.sh"
+          - --ref
+          - "{{ pi5_bluegreen_sha.stdout }}"
+      environment:
+        PI5_MIGRATION_BASE_REF: "{{ repo_prev_head | default(pi5_bluegreen_sha.stdout + '^') }}"
+
+    - name: Prepare inactive Blue/Green slot
+      ansible.builtin.command: "{{ repo_path }}/scripts/deploy/pi5-blue-green.sh prepare"
+
+    - name: Switch prepared Blue/Green slot
+      ansible.builtin.command: "{{ repo_path }}/scripts/deploy/pi5-blue-green.sh switch"
+  rescue:
+    - name: Capture Phase 3 state after release failure
+      ansible.builtin.command: "{{ repo_path }}/scripts/deploy/pi5-blue-green.sh status"
+      register: pi5_bluegreen_failure_state
+      changed_when: false
+      failed_when: false
+
+    - name: Fail safely after Phase 3 release failure
+      ansible.builtin.fail:
+        msg: >-
+          Pi5 Blue/Green release failed. State:
+          {{ pi5_bluegreen_failure_state.stdout | default('unavailable') }}
+  when:
+    - pi5_blue_green_deploy_enabled | default(false) | bool
     - >-
       (force_docker_rebuild | default(false) | bool)
       or (server_docker_build_needed | default(repo_changed) | bool)
@@ -598,6 +640,7 @@
   when:
     - docker_env_result.changed | default(false)
     - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
+    - not (pi5_blue_green_deploy_enabled | default(false) | bool)
 
 - name: Rebuild and recreate web when Docker .env changed (VITE_* build args)
   ansible.builtin.shell: |
@@ -610,6 +653,7 @@
   when:
     - docker_env_result.changed | default(false)
     - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
+    - not (pi5_blue_green_deploy_enabled | default(false) | bool)
 
 - name: Ensure api and web containers are running before Prisma migrate
   ansible.builtin.shell: |
@@ -619,7 +663,9 @@
     docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.server.yml up -d api web
   args:
     executable: /bin/bash
-  when: not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
+  when:
+    - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
+    - not (pi5_blue_green_deploy_enabled | default(false) | bool)
 
 - name: Run Prisma migrations on server (fail-fast)
   block:
@@ -661,7 +707,9 @@
         msg: >
           Prisma migration failed on {{ inventory_hostname }}.
           See captured logs above for details.
-  when: not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
+  when:
+    - not (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
+    - not (pi5_blue_green_deploy_enabled | default(false) | bool)
 
 # api/web rebuild 直後は起動直後 memory spike で一時 503 degraded になり得るため、最大約120秒待つ。
 - name: Wait for API health endpoint to recover
