@@ -5,7 +5,8 @@
 | ファイル | 状態 |
 |----------|------|
 | `0613_phase2_bfs_head_v5_twostage_headcrop_8step_cfg4_d075.json` | **Phase 2 正本**（2026-06-14）。BFS Head V5 二段 head crop→swap→合成。bf16 + BFS LoRA 8step。warm ~80秒検証済み |
-| `phase1_qwen_edit_2511_dgx_flat.json` | **Phase 1 正本**（2026-06-13）。単一画像プロンプト編集。bf16 + Lightning 4step img2img |
+| `phase1_qwen_edit_2511_dgx_flat.json` | **Phase 1 正本**（2026-07-11 更新）。単一画像プロンプト編集。Qwen Edit 2511 bf16、非Lightning 8step。入力画像を直接 conditioning/latent に使い、顔マスク・別ID画像・head swapは不使用。Lightningノードは高速比較へ戻せるよう bypass で保持 |
+| `phase1_qwen_edit_2511_pose_identity_ref.json` | **追加検証案**（2026-07-11）。Qwen Edit 2511のimage1=編集元、image2=顔ID参照。顔マスク・head swapなし。姿勢変更時のIDドリフトを比較するための非正本 |
 | `0531_flux2_klein_9b_DGXSpark_NEXT_standard_available_models.json` | **FLUX txt2img+参照 基準線**（2026-05-31）。DGX 上に実在するモデルのみ参照。画像編集用途ではない |
 | `0607_flux2_klein_two_reference_no_snofs_initial.json` | **初期実験**（2026-06-07）。人物参照 + 衣装/ポーズ参照を分ける。SNOFS は意図的に未使用 |
 | `0607_flux2_klein_two_reference_weighted_stock_v2.json` | **stock 調整実験**。ID 参照を弱め、衣装/ポーズ参照を強める。追加ノード不要 |

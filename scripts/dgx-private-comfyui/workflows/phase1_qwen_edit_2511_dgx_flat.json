@@ -176,7 +176,7 @@
             ],
             "flags": {},
             "order": 4,
-            "mode": 0,
+            "mode": 4,
             "inputs": [
                 {
                     "localized_name": "\u30e2\u30c7\u30eb",
@@ -565,8 +565,8 @@
             "widgets_values": [
                 519799675599405,
                 "randomize",
-                4,
-                1,
+                8,
+                3,
                 "euler",
                 "simple",
                 1
@@ -649,7 +649,7 @@
             "outputs": [],
             "properties": {},
             "widgets_values": [
-                "Qwen_Edit_2511_DGX"
+                "Qwen_Edit_2511_DGX_Quality8"
             ]
         },
         {
@@ -765,7 +765,7 @@
                 "Node name for S&R": "TextEncodeQwenImageEditPlus"
             },
             "widgets_values": [
-                "彼女を笑顔にする。顔の特徴と構図はそのまま保つ。"
+                "Change only the requested attribute: [describe the edit here]. Preserve the exact same person and facial identity, hairstyle, clothing, body pose, camera angle, framing, background, lighting, colors, and image quality. Do not alter anything else."
             ]
         }
     ],
