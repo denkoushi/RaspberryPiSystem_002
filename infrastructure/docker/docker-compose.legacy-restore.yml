@@ -3,5 +3,10 @@
 services:
   api:
     image: ${PI5_LEGACY_API_IMAGE:?PI5_LEGACY_API_IMAGE is required}
+    # A recovery returns control to legacy until Phase 3 can be retried. Keep
+    # its scheduler as the proven PostgreSQL leader rather than inheriting the
+    # base Compose default (false), which would block the next safe handoff.
+    environment:
+      PI5_SCHEDULER_LEADER_ENABLED: "1"
   web:
     image: ${PI5_LEGACY_WEB_IMAGE:?PI5_LEGACY_WEB_IMAGE is required}
