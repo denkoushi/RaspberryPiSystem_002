@@ -13,10 +13,31 @@ update-frequency: medium
 ### 標準更新入口（ローリング・端末別メンテナンス）
 
 - 通常のアプリ更新は必ず `scripts/update-all-clients.sh <branch> <inventory>` を使う。これ以外のAnsible application deploy、`scripts/server/deploy*.sh`、legacy Compose更新はfail-closedである。
-- この入口はブランチを不変SHAへ解決し、Pi5が必要な変更ではBlue/Greenの5分安定化後に、Pi4カナリア→残Pi4→Pi3を一台ずつ更新する。
+- この入口はブランチを不変SHAへ解決し、Pi5が必要な変更ではBlue/Greenの5分安定化後に、Pi4カナリア→残Pi4→Pi3を一台ずつ更新する。カナリアは inventory の `kiosk_canary`（現行: `raspi4-kensaku-stonebase01`）。
 - 各端末は更新中だけメンテナンス表示となる。失敗端末は直前SHAへ自動復旧し、後続端末は更新しない。`--status <runId>` で端末別の結果を確認する。
-- 2026-07-12にPi4全5台とPi3全1台のローリング本番受入れ、およびPi5 Blue/Greenの候補作成・切替・5分監視・cleanupを成功完了した。通常更新はこの経路を使う。実装と実績の正本は [rolling terminal deployment plan](../plans/rolling-terminal-bluegreen-deploy.md) と [Pi5 Blue/Green deployment runbook](../runbooks/pi5-blue-green-deploy.md)。
+- 2026-07-12にPi4全5台とPi3全1台のローリング本番受入れ、およびPi5 Blue/Greenの候補作成・切替・5分監視・cleanupを成功完了した。通常更新はこの経路を使う。実装と実績の正本は [rolling terminal deployment plan](../plans/rolling-terminal-bluegreen-deploy.md) と [Pi5 Blue/Green deployment runbook](../runbooks/pi5-blue-green-deploy.md)。設計判断は [ADR-20260712-rolling-terminal-release-orchestration](../decisions/ADR-20260712-rolling-terminal-release-orchestration.md) と [ADR-20260712-deploy-target-minimization-canary-hold](../decisions/ADR-20260712-deploy-target-minimization-canary-hold.md)。
 - **バックアップ保持修正の実績**: PR [#990](https://github.com/denkoushi/RaspberryPiSystem_002/pull/990) · SHA **`fe15d5f6`** · Run ID **`20260712-114859-6ddcc1`**。Pi5 stable、全6端末 success、メンテナンス解除を確認。バックアップ設定の詳細は [バックアップ・リストア関連KB](../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712) を参照する。
+
+#### カナリア・ホールド（既定有効 · 2026-07-12）
+
+1. 通常どおり `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml` を実行する（必要なら `--detach --follow`）。
+2. Pi5（必要な場合）のあと、最初のキオスク（カナリア）が成功すると、後続端末が残っている場合は `canaryHold: waiting-verification` で停止する。単一ターゲットや signage のみの実行ではホールドしない。
+3. カナリア実機を目視・操作で検証する。
+4. **別シェル**から承認する: `./scripts/update-all-clients.sh --approve <runId>`（内部で SSH → `deploy-status-state.py approve` → acknowledgements に `operator-canary-approval`）。承認後、残Pi4→Pi3が続行する。
+5. `--canary-hold-timeout`（既定 1800 秒）を超えると fail-closed（後続へ進まず失敗。カナリアはロールバックしない）。タイムアウト後は `--status <runId>` で状態を確認し、必要なら同一ブランチ/SHAで再実行する（再実行前に失敗 run のメンテナンス残留がないことを確認する）。
+6. ホールドを無効にする場合のみ `--skip-canary-hold` を付ける（緊急・単発検証向け）。
+
+#### Shadow Plan / 対象最小化（`--auto-minimize` は opt-in）
+
+- 実行前の監査: `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --auto-minimize`。JSON に `sha` / `classification` / `pi5Required` / `terminalTargets`（ロールアウト順）/ `canaryHold` / `excludedHosts` / `warnings` が出る。人間の判断と一致するか確認してから本番実行する。
+- 本番で最小化する場合: 同じフラグを実行コマンドに付ける（例: `... --auto-minimize`）。**フラグ無しは従来どおり全端末**。`unknown` / `global` / 分類不能は全端末（fail-closed）。最小化の結果端末ゼロかつ Pi5 不要なら no-op 成功。
+- 分類の正本は `scripts/deploy/classify-deploy-impact.py`。旧 `impact-analyzer.sh` / `deploy-all.sh` は使わない。詳細は ADR / Plan を参照。
+- 実行時の選択根拠は state の `plan` に残り、`--status <runId>` で確認できる。
+
+#### Pi5 単独実行と冪等スキップ
+
+- `--limit raspberrypi5`（または端末が0台になる limit）でも、Pi5 リリースが必要なら **Pi5 のみ実行して正常終了**する（従来の `no kiosk or signage targets selected` 失敗は解消済み）。
+- 同一 SHA を再実行し、Pi5 上の `logs/deploy/pi5-release-current.json` が一致かつ `pi5-blue-green.sh status` の `runtimeStatus=consistent` なら Blue/Green を省略し state に `pi5: already-current` を記録する。不確実なら従来どおり実行（fail-closed）。
 
 ### Pi5最小停止デプロイ（Phase 2） {#pi5-minimal-downtime-phase2}
 
@@ -37,7 +58,8 @@ update-frequency: medium
 ### 補足（2026-07-11 · **端末別ローリングデプロイ Milestone 1** · **Pi4全5台反映**） {#per-kiosk-rolling-deploy-milestone1-2026-07-11}
 
 - **標準入口**: 必ず `scripts/update-all-clients.sh` を使用する。AI・人ともに `ansible-playbook` やSSHで直接更新しない。
-- **標準順序**: `--limit <Pi4 1台>` でカナリア更新し、成功確認後も残りを1台ずつ直列更新する。
+- **注記（2026-07-12）**: 下記の手動 `--limit` 一台ずつの順序は Milestone 1 時点の運用である。現行の通常更新は [標準更新入口](#標準更新入口ローリング端末別メンテナンス)（Rolling V2・カナリア・ホールド込み）を使う。
+- **標準順序（Milestone 1 当時）**: `--limit <Pi4 1台>` でカナリア更新し、成功確認後も残りを1台ずつ直列更新する。
 - **安全制御**: 差分を server / kiosk / signage / migration に分類し、Pi5必須差分のPi4単独更新を拒否する。互換性を確認済みの場合だけ `--client-only-compatible` を明示する。
 - **メンテナンス状態**: runId単位で原子的に追加・解除し、他runの状態を削除しない。状態を書けなければデプロイを開始しない。失敗runは `failed` として保持する。
 - **本番実績**: PR [#971](https://github.com/denkoushi/RaspberryPiSystem_002/pull/971) · HEAD **`d29d96d8`**。カナリア中にroot所有の空状態ファイルを検出して停止し、所有者保持＋fail-closedへ修正後にCI全成功。Pi4全5台 `failed=0 / unreachable=0`、`kiosk-browser.service` / `status-agent.timer` active、`deploy-status.json` は `kioskByClient: {}`。
@@ -4539,13 +4561,12 @@ curl http://localhost:8080/api/system/health
   - **強制解除**: メンテ画面が戻らない場合は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照
   - 詳細は [ADR-20260306](../decisions/ADR-20260306-deploy-status-per-client-maintenance.md) / [KB-183](../knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) を参照
 
-**重要（2026-02-07更新）**:
-- **段階展開（カナリア→全台）**を推奨します（Pi4が増えた場合の安全策）
-  - inventoryに `kiosk` / `signage` / `kiosk_canary` / `signage_canary` グループを用意しています
-  - **カナリア成功後はPi4全台を並行デプロイ**、**Pi3は常時単独**の運用を想定しています
-  - `scripts/update-all-clients.sh` のデプロイ後ヘルスチェックは `--limit` に追従します（カナリア時に全台チェックで時間が伸びるのを防止）
+**重要（2026-02-07更新 · 2026-07-12 注記）**:
+- 下記の `--limit` 段階例は **Rolling V2 以前の手動段階展開**の記録である。通常更新は [標準更新入口](#標準更新入口ローリング端末別メンテナンス)（一台ずつ + カナリア・ホールド）を使う。Pi4全台の並行デプロイは標準経路ではない。
+- inventoryに `kiosk` / `signage` / `kiosk_canary` / `signage_canary` グループがある点は現行も有効（`kiosk_canary` は `raspi4-kensaku-stonebase01`）。
+- `scripts/update-all-clients.sh` のデプロイ後ヘルスチェックは `--limit` に追従します。
 
-例（推奨）:
+例（legacy 手動段階・通常は使わない）:
 
 ```bash
 # Stage 0: カナリア（server + kiosk_canary）
