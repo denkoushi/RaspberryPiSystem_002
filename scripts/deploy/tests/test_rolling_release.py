@@ -199,11 +199,13 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         return status
 
     def test_marker_match_and_consistent_skips_with_already_current_state(self):
-        with patch.object(MODULE, 'pi5_already_current', return_value=True) as already, \
+        with patch.object(MODULE, 'recover_expired_pi5_handoff', return_value=False) as recover, \
+                patch.object(MODULE, 'pi5_already_current', return_value=True) as already, \
                 patch.object(MODULE, 'phase3_release') as release, \
                 patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
                 patch.object(MODULE, 'record_pi5_release_current') as record:
             MODULE.ensure_pi5_release(self.sha, self.state)
+        recover.assert_called_once_with(self.state)
         already.assert_called_once_with(self.sha)
         release.assert_not_called()
         wait.assert_not_called()
@@ -214,6 +216,7 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
     def test_marker_mismatch_runs_blue_green(self):
         with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': 'b' * 40}), \
                 patch.object(MODULE, 'run') as command, \
+                patch.object(MODULE, 'recover_expired_pi5_handoff', return_value=False), \
                 patch.object(MODULE, 'phase3_release') as release, \
                 patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
                 patch.object(MODULE, 'record_pi5_release_current') as record:
@@ -226,6 +229,7 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
 
     def test_missing_marker_runs_blue_green(self):
         with patch.object(MODULE, 'read_pi5_release_current', return_value=None), \
+                patch.object(MODULE, 'recover_expired_pi5_handoff', return_value=False), \
                 patch.object(MODULE, 'phase3_release') as release, \
                 patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
                 patch.object(MODULE, 'record_pi5_release_current') as record:
@@ -238,6 +242,7 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
     def test_inconsistent_status_runs_blue_green(self):
         with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
                 patch.object(MODULE, 'run', return_value=json.dumps({'runtimeStatus': 'stale'})), \
+                patch.object(MODULE, 'recover_expired_pi5_handoff', return_value=False), \
                 patch.object(MODULE, 'phase3_release') as release, \
                 patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
                 patch.object(MODULE, 'record_pi5_release_current') as record:
@@ -286,6 +291,170 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
                 patch.object(MODULE, 'run', side_effect=RuntimeError('status unavailable')):
             self.assertFalse(MODULE.pi5_already_current(self.sha))
+
+
+class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
+    def setUp(self):
+        self.sha = 'a' * 40
+        self.state = MODULE.ReleaseState(Path('/tmp/unused-release-state.json'), {})
+        self.state.save = Mock()
+
+    @staticmethod
+    def normal_status():
+        return {
+            'runtimeStatus': 'consistent',
+            'activeSlot': 'green',
+            'previousSlot': None,
+            'candidateSlot': None,
+            'stableUntil': None,
+            'gateway': {'mode': 'application', 'slot': 'green'},
+            'monitor': {'activeSlot': None, 'rollbackSlot': None},
+            'slots': {
+                'green': {'images': {'api': 'registry/api:current', 'web': 'registry/web:current'}},
+                'blue': {'images': {'api': 'registry/api:previous', 'web': 'registry/web:previous'}},
+            },
+        }
+
+    @staticmethod
+    def expired_status(stable_until=1_800_000_000):
+        return {
+            'runtimeStatus': 'consistent',
+            'activeSlot': 'green',
+            'previousSlot': 'blue',
+            'candidateSlot': 'blue',
+            'stableUntil': stable_until,
+            'gateway': {'mode': 'application', 'slot': 'green'},
+            'monitor': {'activeSlot': 'green', 'rollbackSlot': 'blue'},
+            'slots': {
+                'green': {'images': {'api': 'registry/api:current', 'web': 'registry/web:current'}},
+                'blue': {'images': {'api': 'registry/api:previous', 'web': 'registry/web:previous'}},
+            },
+        }
+
+    def test_normal_single_slot_state_is_a_noop(self):
+        with patch.object(MODULE, 'run', return_value=json.dumps(self.normal_status())) as command:
+            self.assertFalse(MODULE.recover_expired_pi5_handoff(self.state))
+        command.assert_called_once_with([str(MODULE.PHASE3), 'status'], capture=True)
+
+    def test_not_initialized_state_is_a_noop(self):
+        with patch.object(MODULE, 'run', return_value=json.dumps({'state': 'not-initialized'})) as command:
+            self.assertFalse(MODULE.recover_expired_pi5_handoff(self.state))
+        command.assert_called_once_with([str(MODULE.PHASE3), 'status'], capture=True)
+
+    def test_expired_consistent_handoff_is_cleaned_before_new_candidate_build(self):
+        events = []
+        responses = iter([
+            json.dumps(self.expired_status()),
+            '',
+            json.dumps(self.normal_status()),
+        ])
+
+        def run(command_line, **_kwargs):
+            if command_line[1] == 'cleanup':
+                events.append('cleanup')
+            return next(responses)
+
+        def released(_sha, _state):
+            self.assertEqual(events, ['cleanup'])
+            events.append('release')
+
+        with patch.object(MODULE, 'pi5_already_current', return_value=False), \
+                patch.object(MODULE, 'run', side_effect=run) as command, \
+                patch.object(MODULE.time, 'time', return_value=1_800_000_001), \
+                patch.object(MODULE, 'phase3_release', side_effect=released) as release, \
+                patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
+                patch.object(MODULE, 'record_pi5_release_current') as record:
+            MODULE.ensure_pi5_release(self.sha, self.state)
+        self.assertEqual(
+            [call.args[0][1] for call in command.call_args_list[:3]],
+            ['status', 'cleanup', 'status'],
+        )
+        self.assertTrue(command.call_args_list[0].kwargs['capture'])
+        self.assertNotIn('capture', command.call_args_list[1].kwargs)
+        self.assertTrue(command.call_args_list[2].kwargs['capture'])
+        release.assert_called_once_with(self.sha, self.state)
+        wait.assert_called_once_with(self.state)
+        record.assert_called_once_with(self.sha, None)
+        self.assertEqual(events, ['cleanup', 'release'])
+        self.assertEqual(self.state.payload['pi5HandoffRecovery'], {
+            'state': 'expired-handoff-cleaned',
+            'activeSlot': 'green',
+            'previousSlot': 'blue',
+            'completedAt': unittest.mock.ANY,
+        })
+        self.state.save.assert_called_once()
+
+    def test_active_prior_window_fails_before_cleanup_or_candidate_build(self):
+        with patch.object(MODULE, 'pi5_already_current') as already, \
+                patch.object(MODULE, 'run', return_value=json.dumps(self.expired_status(stable_until=1_800_000_002))), \
+                patch.object(MODULE.time, 'time', return_value=1_800_000_001), \
+                patch.object(MODULE, 'phase3_release') as release:
+            with self.assertRaisesRegex(RuntimeError, 'stability window is still active'):
+                MODULE.ensure_pi5_release(self.sha, self.state)
+        already.assert_not_called()
+        release.assert_not_called()
+
+    def test_stale_status_fails_closed_without_cleanup(self):
+        stale = self.expired_status()
+        stale['runtimeStatus'] = 'stale'
+        with patch.object(MODULE, 'run', return_value=json.dumps(stale)) as command:
+            with self.assertRaisesRegex(RuntimeError, 'not consistent'):
+                MODULE.recover_expired_pi5_handoff(self.state)
+        command.assert_called_once_with([str(MODULE.PHASE3), 'status'], capture=True)
+
+    def test_status_error_fails_closed_without_cleanup(self):
+        with patch.object(MODULE, 'run', side_effect=RuntimeError('status unavailable')) as command:
+            with self.assertRaisesRegex(RuntimeError, 'status unavailable'):
+                MODULE.recover_expired_pi5_handoff(self.state)
+        command.assert_called_once_with([str(MODULE.PHASE3), 'status'], capture=True)
+
+    def test_cleanup_error_does_not_retry_or_start_candidate_build(self):
+        failure = subprocess.CalledProcessError(1, [str(MODULE.PHASE3), 'cleanup'])
+        with patch.object(MODULE, 'pi5_already_current') as already, \
+                patch.object(MODULE, 'run', side_effect=[json.dumps(self.expired_status()), failure]) as command, \
+                patch.object(MODULE.time, 'time', return_value=1_800_000_001), \
+                patch.object(MODULE, 'phase3_release') as release:
+            with self.assertRaises(subprocess.CalledProcessError):
+                MODULE.ensure_pi5_release(self.sha, self.state)
+        self.assertEqual([call.args[0][1] for call in command.call_args_list], ['status', 'cleanup'])
+        already.assert_not_called()
+        release.assert_not_called()
+
+    def test_postcleanup_state_must_be_normalized_before_candidate_build(self):
+        postcleanup = self.expired_status()
+        with patch.object(MODULE, 'pi5_already_current') as already, \
+                patch.object(MODULE, 'run', side_effect=[
+                    json.dumps(self.expired_status()),
+                    '',
+                    json.dumps(postcleanup),
+                ]) as command, \
+                patch.object(MODULE.time, 'time', return_value=1_800_000_001), \
+                patch.object(MODULE, 'phase3_release') as release:
+            with self.assertRaisesRegex(RuntimeError, 'did not produce a normalized'):
+                MODULE.ensure_pi5_release(self.sha, self.state)
+        self.assertEqual([call.args[0][1] for call in command.call_args_list], ['status', 'cleanup', 'status'])
+        already.assert_not_called()
+        release.assert_not_called()
+
+    def test_expired_recovery_runs_before_same_sha_skip(self):
+        events = []
+
+        def recover(state):
+            self.assertIs(state, self.state)
+            events.append('recovery')
+            return True
+
+        def already(_sha):
+            self.assertEqual(events, ['recovery'])
+            events.append('already-current')
+            return True
+
+        with patch.object(MODULE, 'recover_expired_pi5_handoff', side_effect=recover), \
+                patch.object(MODULE, 'pi5_already_current', side_effect=already), \
+                patch.object(MODULE, 'phase3_release') as release:
+            MODULE.ensure_pi5_release(self.sha, self.state)
+        self.assertEqual(events, ['recovery', 'already-current'])
+        release.assert_not_called()
 
 
 class DeployClassificationBaselineTest(unittest.TestCase):

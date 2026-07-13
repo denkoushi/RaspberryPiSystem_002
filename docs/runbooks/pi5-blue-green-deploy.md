@@ -114,6 +114,16 @@ by issuing a manual mutating command; after it has stopped, inspect `status` and
 follow the recovery path below. The incident and prevention record is
 [KB-400](../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md).
 
+If that coordinator has stopped after an exhausted retry, the next **Pi5-required
+standard rolling release** may recover only an exact expired two-slot handoff:
+consistent runtime, valid distinct active/previous slots, application gateway on
+the active slot, matching monitor slots, and an elapsed `stableUntil`. The
+coordinator runs one direct `cleanup` before same-SHA skipping or candidate
+building, then requires normalized single-slot state before continuing. This
+recovery does not retry a lock conflict; it records `pi5HandoffRecovery` in the
+release state. Any incomplete, stale, future-window, failed-cleanup, or
+non-normalized post-cleanup state stops before terminal rollout.
+
 `status` is read-only: it reports live slot image/health/readiness, gateway target, and legacy quarantine/removal state and marks mismatches as `stale`. `reconcile` (also installed as systemd `pi5-blue-green-reconcile.service` for the deploy user with the `docker` supplementary group) repairs a rebooted active slot, re-applies legacy quarantine, resumes the five-minute monitor when `stableUntil` is still in the future, recovers incomplete `bootstrapping` / `bootstrap-failed` state to legacy or gateway maintenance, and refuses `compose up` when running containers do not match state images. For an emergency fallback, run `reconcile --restore-legacy`; it stops Phase 3 and recreates legacy services from the **captured** legacy images via `docker-compose.legacy-restore.yml` without deleting volumes. If the gateway or host is unavailable after a full legacy restore, the conventional Ansible/Phase 2 path is allowed again; Blue/Green cannot provide host-level redundancy on one Pi5.
 
 ## Alerts
