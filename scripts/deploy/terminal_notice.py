@@ -9,8 +9,10 @@ from __future__ import annotations
 NOTICE_DURATION_SECONDS = 60
 NOTICE_ACK_TIMEOUT_SECONDS = 30
 
-# Compatibility rollout gate.  The activation release changes this to True.
-TERMINAL_PRENOTICE_ENABLED = False
+# The compatibility release has been installed on every Pi4 kiosk.  Keep this
+# as an explicit policy switch so the emergency and terminal-type exceptions
+# remain independently testable.
+TERMINAL_PRENOTICE_ENABLED = True
 
 
 def should_issue_terminal_notice(*, terminal_type: str, emergency_override: bool) -> bool:

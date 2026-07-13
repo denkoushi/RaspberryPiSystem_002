@@ -217,8 +217,8 @@ class TerminalNoticeTest(unittest.TestCase):
         self.assertEqual(target['notice']['state'], 'failed')
         playbook.assert_not_called()
 
-    def test_stage_one_gate_and_emergency_policy_skip_notices(self):
-        self.assertFalse(MODULE.should_issue_terminal_notice(terminal_type='kiosk', emergency_override=False))
+    def test_activation_policy_requires_notices_except_for_emergency_or_signage(self):
+        self.assertTrue(MODULE.should_issue_terminal_notice(terminal_type='kiosk', emergency_override=False))
         self.assertEqual(
             MODULE.terminal_notice_skip_reason(terminal_type='kiosk', emergency_override=True),
             'emergency-override',
@@ -597,6 +597,7 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'release_targets', return_value=targets), \
                     patch.object(MODULE, 'pi5_release_required', return_value=False), \
                     patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'wait_for_canary_approval', side_effect=wait_for_canary_approval), \
                     patch.object(MODULE, 'state_command'), \
@@ -657,6 +658,7 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'release_targets', return_value=targets), \
                     patch.object(MODULE, 'pi5_release_required', return_value=False), \
                     patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'wait_for_canary_approval', side_effect=wait_for_canary_approval), \
                     patch.object(MODULE, 'state_command'), \
@@ -1018,6 +1020,7 @@ class AutoMinimizeTest(unittest.TestCase):
                     patch.object(MODULE, 'pi5_release_required', return_value=False), \
                     patch.object(MODULE, 'ensure_pi5_release') as ensure, \
                     patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command'), \
                     patch.object(MODULE, 'prestage_signage_maintenance'), \
