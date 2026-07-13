@@ -883,7 +883,10 @@ migration_apply_and_verify() {
     # The API image has `node dist/main.js` as its default command.  Use an
     # explicit shell and the installed Prisma binary so Compose does not try to
     # execute `npx` through that Node command during bootstrap/prepare.
-    compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate status' || return 1
+    # `prisma migrate status` intentionally exits non-zero while an expected
+    # candidate migration remains unapplied, so it cannot be the pre-deploy
+    # gate. `migrate deploy` validates Prisma history and applies the guarded
+    # migration atomically; the following status call proves the final state.
     compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate deploy' || return 1
     compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate status' || return 1
     if [[ "$compatibility_slot" == legacy ]]; then legacy_scheduler_readiness || return 1

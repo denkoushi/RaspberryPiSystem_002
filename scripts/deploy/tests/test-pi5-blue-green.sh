@@ -221,8 +221,13 @@ grep -Fq 'finished_at IS NOT NULL AND rolled_back_at IS NULL' "$SCRIPT" \
   || fail "historical migration guard accepts incomplete or rolled-back migrations"
 grep -Fq 'migration_file_checksum' "$SCRIPT" \
   || fail "historical migration guard does not verify file checksum"
+grep -Fq "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate deploy'" "$SCRIPT" \
+  || fail "candidate migration deploy does not bypass the API default Node command"
 grep -Fq "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" "$SCRIPT" \
-  || fail "candidate migration command does not bypass the API default Node command"
+  || fail "candidate migration verification does not bypass the API default Node command"
+deploy_line="$(grep -n -F "./node_modules/.bin/prisma migrate deploy" "$SCRIPT" | head -n1 | cut -d: -f1)"
+status_line="$(grep -n -F "./node_modules/.bin/prisma migrate status" "$SCRIPT" | tail -n1 | cut -d: -f1)"
+(( deploy_line < status_line )) || fail "Prisma migration status runs before deploy"
 grep -Fq 'legacy_caddy_config_path()' "$SCRIPT" \
   || fail "legacy active Caddyfile detection is missing"
 grep -Fq '/srv/Caddyfile.local' "$SCRIPT" \
