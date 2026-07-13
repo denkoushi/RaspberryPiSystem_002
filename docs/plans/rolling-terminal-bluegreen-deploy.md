@@ -6,7 +6,7 @@ date: 2026-07-12
 source_of_truth: docs/plans/rolling-terminal-bluegreen-deploy.md
 related_code: [scripts/deploy/rolling-release.py, scripts/deploy/deploy-status-state.py, scripts/deploy/pi5-candidate-build.sh, scripts/deploy/classify-deploy-impact.py]
 related_docs: [../runbooks/pi5-blue-green-deploy.md, ../guides/deployment.md, ../decisions/ADR-20260712-rolling-terminal-release-orchestration.md, ../decisions/ADR-20260712-deploy-target-minimization-canary-hold.md]
-validation: isolated PostgreSQL, unit tests, shell tests, CI, and 2026-07-12 production rolling-terminal and Pi5 Blue/Green acceptance; target-minimization/canary-hold unit tests only (production shadow evaluation open)
+validation: isolated PostgreSQL, unit tests, shell tests, CI, 2026-07-12 production rolling-terminal and Pi5 Blue/Green acceptance, and 2026-07-13 full rolling release with Pi5 cleanup recovery and operator-approved canary hold; --auto-minimize production shadow evaluation remains open
 open_items:
   - production shadow evaluation of --auto-minimize
   - decide default-on after N successful shadow runs
@@ -93,12 +93,27 @@ Rolling V2 additions on the same entry point
 - **`--auto-minimize` (opt-in)**: shrink terminals from classification; default
   remains full fleet. Default-on waits on production shadow evaluation.
 
+## Production confirmation (2026-07-13)
+
+Standard release `20260713-015951-baab37` deployed immutable revision
+`5806ec78d877e4310f3098f375894e27cdbe409d`. After the predecessor run safely
+recovered the exact expired Pi5 handoff and stopped at the load guard, this run
+completed Pi5 Blue/Green monitoring and cleanup. StoneBase01 paused as the
+canary, proceeded only after explicit operator approval, and all remaining four
+Pi4 kiosks plus `raspberrypi3` signage completed successfully with no terminal
+left in maintenance. The incident and recovery evidence are recorded in
+[KB-400](../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md).
+
+`--auto-minimize` was not enabled for this release. Its production shadow
+evaluation and any default-on decision therefore remain open.
+
 ## Validation
 
 Use a uniquely named local PostgreSQL container, volume and network only. Run
 Prisma deploy/status, API deploy-status integration coverage, and an indexed
 `EXPLAIN (ANALYZE, BUFFERS)` on `ClientDevice.apiKey`; clean those resources in
 an unconditional trap. The rolling-terminal and Pi5 Blue/Green production
-acceptance paths are complete. Target minimization, canary hold, and Pi5
-idempotent skip are covered by automated tests; production shadow evaluation of
-`--auto-minimize` remains open before any default-on decision.
+acceptance paths are complete. Canary hold is also production-confirmed. Target
+minimization and Pi5 idempotent skip are covered by automated tests; production
+shadow evaluation of `--auto-minimize` remains open before any default-on
+decision.

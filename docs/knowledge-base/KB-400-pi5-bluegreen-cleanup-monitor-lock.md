@@ -12,9 +12,8 @@ related_docs:
   - ../runbooks/pi5-blue-green-deploy.md
   - ../guides/deployment.md
   - ../plans/rolling-terminal-bluegreen-deploy.md
-validation: focused shell and rolling-release tests; production confirmation pending an approved release
-open_items:
-  - confirm the bounded cleanup retry on the next approved Pi5 Blue/Green release
+validation: focused shell and rolling-release tests; PR #995/#996 CI; 2026-07-13 approved production confirmation of expired-handoff recovery, bounded cleanup handoff, and complete terminal rollout
+open_items: []
 ---
 
 # KB-400: Pi5 Blue/Green cleanup and monitor lock handoff
@@ -42,6 +41,23 @@ active. It does not retry candidate build, prepare, switch, rollback, or termina
 rollout. A different error or an exhausted retry bound remains fail-closed and
 stops the release before terminal rollout.
 
+## Production Confirmation (2026-07-13)
+
+The next approved standard releases confirmed both the recovery boundary and
+the normal rollout path.
+
+- Run `20260713-015518-ca2c09` recognized the exact expired, consistent
+  two-slot handoff left by the original incident. It recorded
+  `pi5HandoffRecovery=expired-handoff-cleaned`, normalized Pi5 to one active
+  slot, and then stopped at the load guard before a new candidate or any
+  terminal update started.
+- After the load fell, run `20260713-015951-baab37` deployed immutable SHA
+  `5806ec78d877e4310f3098f375894e27cdbe409d`. Pi5 completed Blue/Green
+  monitoring and cleanup with `activeSlot=blue`, `runtimeStatus=consistent`,
+  and `result=cleanup-complete`. The StoneBase01 canary hold received explicit
+  operator approval; all five Pi4 kiosks and `raspberrypi3` signage then
+  completed successfully with no maintenance residue.
+
 ## Operator Recovery
 
 While the coordinator is running, use only `--status`, `--attach`, and the
@@ -67,8 +83,8 @@ fails closed. Do not remove a lock or force cleanup manually.
 
 ## Open Items
 
-- Confirm the repaired handoff during the next explicitly approved Pi5
-  Blue/Green release.
+- None for this incident. Production shadow evaluation of
+  `--auto-minimize` is tracked separately in the rolling-release plan.
 
 ## References
 

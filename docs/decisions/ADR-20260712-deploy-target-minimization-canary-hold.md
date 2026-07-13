@@ -140,9 +140,13 @@ classification authority beside Rolling V2.
 
 - Unit / shell coverage for classify, rolling-release plan/hold/skip, and
   approve acknowledgement paths.
-- **Production acceptance of these behaviors is not done.** Production shadow
-  evaluation of `--print-plan --auto-minimize` against operator judgment remains
-  an open item before any default-on decision.
+- The canary hold/explicit approval and full rolling release were confirmed in
+  production at immutable SHA `5806ec78d877e4310f3098f375894e27cdbe409d` by
+  run `20260713-015951-baab37`; the repaired Pi5 cleanup/recovery path was also
+  confirmed. See [KB-400](../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md).
+- Production shadow evaluation of `--print-plan --auto-minimize` against
+  operator judgment remains required before any default-on decision. This run
+  did not exercise auto-minimize or prove same-SHA skip behavior.
 
 ## References
 
