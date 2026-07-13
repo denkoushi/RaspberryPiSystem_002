@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 SCRIPT = Path(__file__).parents[1] / 'deploy-status-state.py'
@@ -51,6 +52,65 @@ class DeployStatusStateTest(unittest.TestCase):
             self.assertEqual(stored['kioskByClient']['signage']['runId'], 'release-1')
             self.assertEqual(stored['kioskByClient']['signage']['terminalType'], 'kiosk')
             self.assertNotIn('acknowledgements', stored)
+
+    def test_notice_and_maintenance_acknowledgements_are_phase_scoped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'status.json'
+
+            def run(*args):
+                subprocess.run(
+                    ['python3', str(SCRIPT), '--file', str(path), *args], check=True,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+
+            run(
+                'put-notice', '--run-id', 'release-1', '--clients', 'kiosk',
+                '--terminal-type', 'kiosk', '--duration-seconds', '60',
+            )
+            announced = json.loads(path.read_text())['kioskByClient']['kiosk']
+            self.assertFalse(announced['maintenance'])
+            self.assertEqual(announced['phase'], 'notice')
+            self.assertEqual(announced['noticeDurationSeconds'], 60)
+            self.assertNotIn('scheduledAt', announced)
+
+            run('ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'notice')
+            acknowledged = json.loads(path.read_text())
+            scheduled_at = acknowledged['kioskByClient']['kiosk']['scheduledAt']
+            record = acknowledged['acknowledgements']['release-1']['kiosk']
+            self.assertIn('notice', record)
+            self.assertNotIn('maintenance', record)
+            acknowledged_at = datetime.fromisoformat(record['notice']['acknowledgedAt'].replace('Z', '+00:00'))
+            scheduled_datetime = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
+            self.assertEqual((scheduled_datetime - acknowledged_at).total_seconds(), 60)
+
+            # Repeated notice ACKs must not extend the promised minute.
+            run('ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'notice')
+            self.assertEqual(json.loads(path.read_text())['kioskByClient']['kiosk']['scheduledAt'], scheduled_at)
+
+            run('put', '--run-id', 'release-1', '--clients', 'kiosk', '--terminal-type', 'kiosk')
+            run('ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'maintenance')
+            final_record = json.loads(path.read_text())['acknowledgements']['release-1']['kiosk']
+            self.assertIn('notice', final_record)
+            self.assertIn('maintenance', final_record)
+
+            # A cancelled notice must remove only its own terminal entry; an
+            # overlapping run must remain visible and acknowledged.
+            stored = json.loads(path.read_text())
+            stored['kioskByClient']['other-kiosk'] = {
+                'maintenance': False,
+                'runId': 'release-2',
+                'phase': 'notice',
+                'noticeDurationSeconds': 60,
+            }
+            stored['acknowledgements']['release-2'] = {
+                'other-kiosk': {'notice': {'acknowledgedAt': 'now'}}
+            }
+            path.write_text(json.dumps(stored))
+            run('remove-client', '--run-id', 'release-1', '--client', 'kiosk')
+            after_cancel = json.loads(path.read_text())
+            self.assertIn('other-kiosk', after_cancel['kioskByClient'])
+            self.assertEqual(after_cancel['kioskByClient']['other-kiosk']['runId'], 'release-2')
+            self.assertIn('release-2', after_cancel['acknowledgements'])
 
     def test_canary_approval_requires_pending_gate_and_never_uses_generic_ack(self):
         with tempfile.TemporaryDirectory() as directory:

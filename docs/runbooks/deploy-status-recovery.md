@@ -14,6 +14,7 @@
 |------|----------|
 | 対象端末のみメンテ表示 | デプロイ中にその端末がオフラインになり、フラグ解除を取得できなかった |
 | 全キオスクがメンテ表示 | deploy-status.json が残存している（デプロイ失敗/中断時のクリア漏れ） |
+| 対象Pi4に保存通知が残る | 通知ACK待機中にコーディネータが中断した、または通知ACKがタイムアウトした |
 
 ---
 
@@ -36,6 +37,19 @@ ssh denkon5sd02@100.106.158.2 "rm -f /opt/RaspberryPiSystem_002/config/deploy-st
 curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: client-key-raspberrypi4-kiosk1"
 # {"isMaintenance":false} が返ればOK
 ```
+
+通知プロトコル導入後、対象Pi4が保存通知中の場合は次のように返る。`preNotice.scheduledAt` は、端末が通知を描画してACKした時刻から60秒後のUTC時刻である。
+
+```json
+{
+  "isMaintenance": false,
+  "runId": "20260713-120000-abcdef",
+  "preNotice": { "scheduledAt": "2026-07-13T12:01:03.000Z" }
+}
+```
+
+- 通知ACKが30秒以内に届かなかった通常リリースは、Deployを開始せず対象端末の通知を自動解除してfail-closedになる。`--status <runId>` の対象端末に `notice.state: failed` が残ることを確認する。
+- 通知後に `isMaintenance: true` へ遷移した場合は、既存のメンテナンスACK・Deploy・ロールバック手順に従う。ロールバック不能な端末のメンテ表示は安全のため解除しない。
 
 ---
 

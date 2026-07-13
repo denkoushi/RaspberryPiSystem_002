@@ -3,15 +3,31 @@ import { chown, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/pro
 import { dirname } from 'node:path';
 import { resolveStatusClientIdFromRawKey } from '../../services/clients/client-device-auth.service.js';
 
-const DEPLOY_STATUS_FILE =
-  process.env.DEPLOY_STATUS_FILE_PATH ?? '/app/config/deploy-status.json';
-const DEPLOY_STATUS_LOCK_DIRECTORY = `${DEPLOY_STATUS_FILE}.lock.d`;
+function deployStatusFilePath(): string {
+  return process.env.DEPLOY_STATUS_FILE_PATH ?? '/app/config/deploy-status.json';
+}
+
+function deployStatusLockDirectory(): string {
+  return `${deployStatusFilePath()}.lock.d`;
+}
 
 /** Raw JSON from deploy-status.json (version 2) */
 interface DeployStatusRawV2 {
   version?: number;
-  kioskByClient?: Record<string, { maintenance?: boolean; startedAt?: string; updatedAt?: string; runId?: string; phase?: string }>;
-  acknowledgements?: Record<string, Record<string, { acknowledgedAt: string }>>;
+  kioskByClient?: Record<string, {
+    maintenance?: boolean;
+    startedAt?: string;
+    updatedAt?: string;
+    runId?: string;
+    phase?: string;
+    noticeDurationSeconds?: number;
+    scheduledAt?: string;
+  }>;
+  acknowledgements?: Record<string, Record<string, {
+    acknowledgedAt?: string;
+    notice?: { acknowledgedAt: string };
+    maintenance?: { acknowledgedAt: string };
+  }>>;
 }
 
 /** Normalized response for API */
@@ -20,6 +36,13 @@ export interface DeployStatusResponse {
   runId?: string;
   phase?: 'preparing' | 'deploying' | 'failed';
   startedAt?: string;
+  preNotice?: { scheduledAt?: string };
+}
+
+type DeployAcknowledgementPhase = 'notice' | 'maintenance';
+
+interface DeployAcknowledgementResult {
+  scheduledAt?: string;
 }
 
 /**
@@ -42,7 +65,7 @@ async function readDeployStatusFile(): Promise<DeployStatusRawV2 | null> {
   }
 
   try {
-    const content = await readFile(DEPLOY_STATUS_FILE, 'utf-8');
+    const content = await readFile(deployStatusFilePath(), 'utf-8');
     const parsed = JSON.parse(content) as unknown;
     if (parsed && typeof parsed === 'object') {
       return parsed as DeployStatusRawV2;
@@ -60,7 +83,15 @@ async function readDeployStatusFile(): Promise<DeployStatusRawV2 | null> {
 export function normalizeDeployStatusResponse(raw: DeployStatusRawV2 | null, statusClientId: string | null): DeployStatusResponse {
   if (!statusClientId || !raw?.kioskByClient) return { isMaintenance: false };
   const entry = raw.kioskByClient[statusClientId];
-  if (entry?.maintenance !== true) return { isMaintenance: false };
+  if (!entry) return { isMaintenance: false };
+  if (entry.maintenance === false && entry.phase === 'notice') {
+    return {
+      isMaintenance: false,
+      ...(entry.runId ? { runId: entry.runId } : {}),
+      preNotice: { ...(typeof entry.scheduledAt === 'string' ? { scheduledAt: entry.scheduledAt } : {}) }
+    };
+  }
+  if (entry.maintenance !== true) return { isMaintenance: false };
   const phase = ['preparing', 'deploying', 'failed'].includes(entry.phase ?? '')
     ? (entry.phase as DeployStatusResponse['phase'])
     : undefined;
@@ -72,7 +103,7 @@ async function withDeployStatusLock<T>(operation: () => Promise<T>): Promise<T> 
   let acquired = false;
   while (!acquired) {
     try {
-      await mkdir(DEPLOY_STATUS_LOCK_DIRECTORY);
+      await mkdir(deployStatusLockDirectory());
       acquired = true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || Date.now() >= deadline) throw error;
@@ -82,26 +113,75 @@ async function withDeployStatusLock<T>(operation: () => Promise<T>): Promise<T> 
   try {
     return await operation();
   } finally {
-    await rm(DEPLOY_STATUS_LOCK_DIRECTORY, { recursive: true, force: true }).catch(() => undefined);
+    await rm(deployStatusLockDirectory(), { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
-async function writeAcknowledgement(runId: string, statusClientId: string): Promise<void> {
-  await withDeployStatusLock(async () => {
-    const raw = await readDeployStatusFile();
-    if (!raw) throw new Error('DEPLOY_ACK_RUN_MISMATCH');
-  const entry = raw.kioskByClient?.[statusClientId];
-  if (!entry || entry.maintenance !== true || entry.runId !== runId) throw new Error('DEPLOY_ACK_RUN_MISMATCH');
-  raw.version = 2;
+function acknowledgementPhaseRecord(
+  raw: DeployStatusRawV2,
+  runId: string,
+  statusClientId: string
+): NonNullable<DeployStatusRawV2['acknowledgements']>[string][string] {
   raw.acknowledgements ??= {};
   raw.acknowledgements[runId] ??= {};
-  raw.acknowledgements[runId][statusClientId] = { acknowledgedAt: new Date().toISOString() };
-  await mkdir(dirname(DEPLOY_STATUS_FILE), { recursive: true });
-  const temporary = `${DEPLOY_STATUS_FILE}.ack.${process.pid}.${Date.now()}`;
-  const owner = await stat(DEPLOY_STATUS_FILE).catch(() => null);
-  await writeFile(temporary, JSON.stringify(raw), 'utf-8');
-  if (owner) await chown(temporary, owner.uid, owner.gid).catch(() => undefined);
-  await rename(temporary, DEPLOY_STATUS_FILE);
+  const existing = raw.acknowledgements[runId][statusClientId] ?? {};
+  // Keep a concurrent/legacy maintenance acknowledgement valid while adding
+  // phase separation for new notices.
+  if (typeof existing.acknowledgedAt === 'string' && !existing.maintenance) {
+    existing.maintenance = { acknowledgedAt: existing.acknowledgedAt };
+    delete existing.acknowledgedAt;
+  }
+  raw.acknowledgements[runId][statusClientId] = existing;
+  return existing;
+}
+
+function noticeDeadline(
+  entry: NonNullable<DeployStatusRawV2['kioskByClient']>[string],
+  acknowledgedAt: string
+): string {
+  if (typeof entry.scheduledAt === 'string') return entry.scheduledAt;
+  const duration = entry.noticeDurationSeconds;
+  if (typeof duration !== 'number' || !Number.isInteger(duration) || duration <= 0) {
+    throw new Error('DEPLOY_ACK_RUN_MISMATCH');
+  }
+  const acknowledgedAtMilliseconds = Date.parse(acknowledgedAt);
+  if (Number.isNaN(acknowledgedAtMilliseconds)) throw new Error('DEPLOY_ACK_RUN_MISMATCH');
+  const scheduledAt = new Date(acknowledgedAtMilliseconds + duration * 1000).toISOString();
+  entry.scheduledAt = scheduledAt;
+  entry.updatedAt = new Date().toISOString();
+  return scheduledAt;
+}
+
+async function writeAcknowledgement(
+  runId: string,
+  statusClientId: string,
+  phase: DeployAcknowledgementPhase
+): Promise<DeployAcknowledgementResult> {
+  return withDeployStatusLock(async () => {
+    const raw = await readDeployStatusFile();
+    if (!raw) throw new Error('DEPLOY_ACK_RUN_MISMATCH');
+    const entry = raw.kioskByClient?.[statusClientId];
+    if (!entry || entry.runId !== runId) throw new Error('DEPLOY_ACK_RUN_MISMATCH');
+    const isNotice = phase === 'notice';
+    if (isNotice ? (entry.maintenance !== false || entry.phase !== 'notice') : entry.maintenance !== true) {
+      throw new Error('DEPLOY_ACK_RUN_MISMATCH');
+    }
+
+    raw.version = 2;
+    const acknowledgement = acknowledgementPhaseRecord(raw, runId, statusClientId);
+    acknowledgement[phase] ??= { acknowledgedAt: new Date().toISOString() };
+    const acknowledgedAt = acknowledgement[phase]?.acknowledgedAt;
+    if (typeof acknowledgedAt !== 'string') throw new Error('DEPLOY_ACK_RUN_MISMATCH');
+    const scheduledAt = isNotice ? noticeDeadline(entry, acknowledgedAt) : undefined;
+
+    const deployStatusFile = deployStatusFilePath();
+    await mkdir(dirname(deployStatusFile), { recursive: true });
+    const temporary = `${deployStatusFile}.ack.${process.pid}.${Date.now()}`;
+    const owner = await stat(deployStatusFile).catch(() => null);
+    await writeFile(temporary, JSON.stringify(raw), 'utf-8');
+    if (owner) await chown(temporary, owner.uid, owner.gid).catch(() => undefined);
+    await rename(temporary, deployStatusFile);
+    return { ...(scheduledAt ? { scheduledAt } : {}) };
   });
 }
 
@@ -120,9 +200,14 @@ export function registerDeployStatusRoute(app: FastifyInstance): void {
       ? (request.body as { runId: string }).runId.trim()
       : '';
     if (!runId) return reply.code(400).send({ code: 'DEPLOY_ACK_RUN_ID_REQUIRED' });
+    const requestedPhase = (request.body as { phase?: unknown } | null)?.phase;
+    if (requestedPhase !== undefined && requestedPhase !== 'notice' && requestedPhase !== 'maintenance') {
+      return reply.code(400).send({ code: 'DEPLOY_ACK_PHASE_INVALID' });
+    }
+    const phase: DeployAcknowledgementPhase = requestedPhase ?? 'maintenance';
     try {
-      await writeAcknowledgement(runId, statusClientId);
-      return reply.send({ acknowledged: true, runId });
+      const result = await writeAcknowledgement(runId, statusClientId, phase);
+      return reply.send({ acknowledged: true, runId, phase, ...result });
     } catch {
       return reply.code(409).send({ code: 'DEPLOY_ACK_RUN_MISMATCH' });
     }

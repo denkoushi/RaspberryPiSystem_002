@@ -30,6 +30,18 @@ export interface DeployStatus {
   runId?: string;
   phase?: 'preparing' | 'deploying' | 'failed';
   startedAt?: string;
+  preNotice?: {
+    scheduledAt?: string;
+  };
+}
+
+export type DeployAcknowledgementPhase = 'notice' | 'maintenance';
+
+export interface DeployAcknowledgement {
+  acknowledged: true;
+  runId: string;
+  phase: DeployAcknowledgementPhase;
+  scheduledAt?: string;
 }
 
 export async function getDeployStatus(): Promise<DeployStatus> {
@@ -37,6 +49,10 @@ export async function getDeployStatus(): Promise<DeployStatus> {
   return data;
 }
 
-export async function acknowledgeDeployStatus(runId: string): Promise<void> {
-  await api.post('/system/deploy-status/ack', { runId });
+export async function acknowledgeDeployStatus(
+  runId: string,
+  phase: DeployAcknowledgementPhase = 'maintenance'
+): Promise<DeployAcknowledgement> {
+  const { data } = await api.post<DeployAcknowledgement>('/system/deploy-status/ack', { runId, phase });
+  return data;
 }

@@ -27,6 +27,13 @@ update-frequency: medium
 5. `--canary-hold-timeout`（既定 1800 秒）を超えると fail-closed（後続へ進まず失敗。カナリアはロールバックしない）。タイムアウト後は `--status <runId>` で状態を確認し、必要なら同一ブランチ/SHAで再実行する（再実行前に失敗 run のメンテナンス残留がないことを確認する）。
 6. ホールドを無効にする場合のみ `--skip-canary-hold` を付ける（緊急・単発検証向け）。
 
+#### Pi4事前保存通知（60秒・2段階導入）
+
+- 通常のPi4キオスク更新では、メンテナンス画面へ切り替える前に、通常操作を保ったまま「この端末は1分後に更新を開始します。作業内容を保存し、操作を終了してください。」を表示する。通知が描画されてPi4からACKが届いた時刻を基準に60秒待機するため、Pi4が5台ならローリング更新に最低5分加わる。
+- 通知の60秒待機を省略できるのは、理由必須の `--emergency-override` だけである。Pi3サイネージは操作保存の対象外のため、従来どおり即時メンテナンス表示となる。
+- 初回は互換性リリースを先に全Pi4へ配備する。旧ブラウザは `notice` 状態を描画・ACKできないため、このリリースではコーディネータの通知送信を無効にする。全5台の `kiosk-browser.service` 再起動・通常画面復帰・release success を確認してから、次の有効化リリースで通常更新の通知を必須化する。
+- 通知中のAPI応答は `isMaintenance: false` と `preNotice` を返す。メンテナンス中は従来どおり `isMaintenance: true` となるため、旧クライアントへの互換性を保つ。
+
 #### Shadow Plan / 対象最小化（`--auto-minimize` は opt-in）
 
 - 実行前の監査: `RASPI_SERVER_HOST` を設定して `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --auto-minimize`。JSON に `sha` / `classification` / `pi5Required` / `terminalTargets`（ロールアウト順）/ `canaryHold` / `excludedHosts` / `warnings` が出る。Pi5成功マーカーを読めない場合もplanは終了せず、警告付きのPi5＋全端末（fail-closed）を示す。人間の判断と一致するか確認してから本番実行する。

@@ -6,6 +6,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { getResolvedClientKey, setClientKeyHeader } from '../api/client';
 import { acknowledgeDeployStatus } from '../api/domains/system';
 import { useDeployStatus, useKioskCallTargets, useKioskConfig } from '../api/hooks';
+import { KioskDeployPreNotice } from '../components/kiosk/KioskDeployPreNotice';
 import { KioskHeader } from '../components/kiosk/KioskHeader';
 import { KioskMaintenanceScreen } from '../components/kiosk/KioskMaintenanceScreen';
 import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
@@ -32,7 +33,11 @@ export function KioskLayout() {
   const { data: deployStatus } = useDeployStatus();
   const location = useLocation();
   const [showSupportModal, setShowSupportModal] = useState(false);
-  const acknowledgedRunIdRef = useRef<string | null>(null);
+  const acknowledgedRunIdRef = useRef<Record<'notice' | 'maintenance', string | null>>({
+    notice: null,
+    maintenance: null
+  });
+  const [noticeScheduledAt, setNoticeScheduledAt] = useState<{ runId: string; scheduledAt: string } | null>(null);
   const immersiveKioskLayout = usesKioskImmersiveLayout(location.pathname);
   const headerReveal = useKioskBottomCenterHeaderReveal(immersiveKioskLayout);
   const navTabOrder = normalizeKioskHeaderTabOrder(
@@ -54,17 +59,39 @@ export function KioskLayout() {
 
   useEffect(() => {
     const runId = deployStatus?.isMaintenance ? deployStatus.runId : undefined;
-    if (!runId || acknowledgedRunIdRef.current === runId) return;
-    acknowledgedRunIdRef.current = runId;
-    void acknowledgeDeployStatus(runId).catch(() => {
-      acknowledgedRunIdRef.current = null;
+    if (!runId || acknowledgedRunIdRef.current.maintenance === runId) return;
+    acknowledgedRunIdRef.current.maintenance = runId;
+    void acknowledgeDeployStatus(runId, 'maintenance').catch(() => {
+      acknowledgedRunIdRef.current.maintenance = null;
     });
   }, [deployStatus?.isMaintenance, deployStatus?.runId]);
+
+  useEffect(() => {
+    const runId = deployStatus?.preNotice ? deployStatus.runId : undefined;
+    if (!runId || acknowledgedRunIdRef.current.notice === runId) return;
+    acknowledgedRunIdRef.current.notice = runId;
+    void acknowledgeDeployStatus(runId, 'notice')
+      .then((acknowledgement) => {
+        if (acknowledgement.scheduledAt) {
+          setNoticeScheduledAt({ runId, scheduledAt: acknowledgement.scheduledAt });
+        }
+      })
+      .catch(() => {
+        acknowledgedRunIdRef.current.notice = null;
+      });
+  }, [deployStatus?.preNotice, deployStatus?.runId]);
 
   // メンテナンス中はメンテナンス画面を表示
   if (deployStatus?.isMaintenance) {
     return <KioskMaintenanceScreen />;
   }
+
+  const preNoticeRunId = deployStatus?.preNotice ? deployStatus.runId : undefined;
+  const locallyAcknowledgedScheduledAt = noticeScheduledAt && noticeScheduledAt.runId === preNoticeRunId
+    ? noticeScheduledAt.scheduledAt
+    : undefined;
+  const preNoticeScheduledAt = deployStatus?.preNotice?.scheduledAt
+    ?? locallyAcknowledgedScheduledAt;
 
   return (
     <div
@@ -75,6 +102,7 @@ export function KioskLayout() {
     >
       {/* 設定変更を監視してリダイレクト */}
       <KioskRedirect />
+      {deployStatus?.preNotice ? <KioskDeployPreNotice scheduledAt={preNoticeScheduledAt} /> : null}
       {immersiveKioskLayout ? (
         <div
           className={KIOSK_IMMERSIVE_HEADER_HOT_ZONE_CLASS}

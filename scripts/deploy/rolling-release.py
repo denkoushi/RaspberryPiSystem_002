@@ -21,6 +21,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+
+from terminal_notice import (
+    NOTICE_ACK_TIMEOUT_SECONDS,
+    NOTICE_DURATION_SECONDS,
+    should_issue_terminal_notice,
+    terminal_notice_skip_reason,
+)
+
 PROJECT = Path(__file__).resolve().parents[2]
 ANSIBLE_DIRECTORY = PROJECT / 'infrastructure/ansible'
 STATUS_TOOL = PROJECT / 'scripts/deploy/deploy-status-state.py'
@@ -119,21 +130,82 @@ def state_command(*arguments: str) -> None:
     run(['python3', str(STATUS_TOOL), '--file', str(PROJECT / 'config/deploy-status.json'), *arguments])
 
 
-def acknowledgement_received(run_id: str, client_id: str) -> bool:
+def acknowledgement_record(run_id: str, client_id: str) -> dict[str, Any] | None:
     try:
         value = json.loads((PROJECT / 'config/deploy-status.json').read_text(encoding='utf-8'))
     except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    record = ((value.get('acknowledgements') or {}).get(run_id) or {}).get(client_id)
+    return record if isinstance(record, dict) else None
+
+
+def acknowledgement_received(run_id: str, client_id: str, *, phase: str = 'maintenance') -> bool:
+    record = acknowledgement_record(run_id, client_id)
+    if record is None:
         return False
-    return client_id in ((value.get('acknowledgements') or {}).get(run_id) or {})
+    # Existing in-flight maintenance entries use the previous flat record.
+    if phase == 'maintenance' and isinstance(record.get('acknowledgedAt'), str):
+        return True
+    return isinstance(record.get(phase), dict) and isinstance(record[phase].get('acknowledgedAt'), str)
 
 
-def wait_for_ack(run_id: str, client_id: str, timeout: int = 30) -> bool:
+def wait_for_ack(run_id: str, client_id: str, timeout: int = 30, *, phase: str = 'maintenance') -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if acknowledgement_received(run_id, client_id):
+        if acknowledgement_received(run_id, client_id, phase=phase):
             return True
         time.sleep(5)
-    return acknowledgement_received(run_id, client_id)
+    return acknowledgement_received(run_id, client_id, phase=phase)
+
+
+def notice_scheduled_at(run_id: str, client_id: str) -> str | None:
+    try:
+        value = json.loads((PROJECT / 'config/deploy-status.json').read_text(encoding='utf-8'))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    entry = ((value.get('kioskByClient') or {}).get(client_id) or {})
+    scheduled_at = entry.get('scheduledAt') if entry.get('runId') == run_id else None
+    return scheduled_at if isinstance(scheduled_at, str) else None
+
+
+def wait_for_notice_deadline(scheduled_at: str) -> None:
+    try:
+        deadline = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00')).timestamp()
+    except ValueError as error:
+        raise RuntimeError(f'notice schedule is invalid: {scheduled_at!r}') from error
+    while True:
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            return
+        time.sleep(min(5, max(1, remaining)))
+
+
+def deliver_terminal_notice(state: ReleaseState, target_spec: dict[str, str], target: dict[str, Any], run_id: str) -> None:
+    """Display and verify the 60-second save-work notice before maintenance."""
+    target['notice'] = {'state': 'requested', 'requestedAt': utc_now(), 'durationSeconds': NOTICE_DURATION_SECONDS}
+    state.save()
+    state_command(
+        'put-notice', '--run-id', run_id, '--clients', target_spec['clientId'],
+        '--terminal-type', 'kiosk', '--duration-seconds', str(NOTICE_DURATION_SECONDS),
+    )
+    try:
+        if not wait_for_ack(run_id, target_spec['clientId'], NOTICE_ACK_TIMEOUT_SECONDS, phase='notice'):
+            raise RuntimeError(f'pre-deploy notice acknowledgement timed out for {target_spec["host"]}')
+        scheduled_at = notice_scheduled_at(run_id, target_spec['clientId'])
+        if not scheduled_at:
+            raise RuntimeError(f'pre-deploy notice schedule is missing for {target_spec["host"]}')
+        target['notice'].update({'state': 'acknowledged', 'acknowledgedAt': utc_now(), 'scheduledAt': scheduled_at})
+        state.save()
+        wait_for_notice_deadline(scheduled_at)
+        target['notice'].update({'state': 'completed', 'completedAt': utc_now()})
+        state.save()
+    except Exception:
+        # No deployment has begun while the notice is active, so it must not
+        # leave the terminal with an obsolete warning after a failed run.
+        state_command('remove-client', '--run-id', run_id, '--client', target_spec['clientId'])
+        target['notice'].update({'state': 'failed', 'failedAt': utc_now()})
+        state.save()
+        raise
 
 
 def canary_hold_record(run_id: str) -> dict[str, Any]:
@@ -804,13 +876,26 @@ def _remote_run(args: argparse.Namespace) -> int:
         for index, target_spec in enumerate(targets):
             target = state.target(target_spec['host'])
             target['previousSha'] = remote_previous_sha(inventory, target_spec['host'])
+            if should_issue_terminal_notice(
+                terminal_type=target_spec['terminalType'], emergency_override=args.emergency_override,
+            ):
+                deliver_terminal_notice(state, target_spec, target, args.run_id)
+            else:
+                target['notice'] = {
+                    'state': 'skipped',
+                    'reason': terminal_notice_skip_reason(
+                        terminal_type=target_spec['terminalType'], emergency_override=args.emergency_override,
+                    ),
+                    'skippedAt': utc_now(),
+                }
+                state.save()
             target['state'] = 'maintenance-requested'
             target['maintenanceStartedAt'] = utc_now()
             state.save()
             state_command('put', '--run-id', args.run_id, '--clients', target_spec['clientId'], '--terminal-type', target_spec['terminalType'])
             if target_spec['terminalType'] == 'signage':
                 prestage_signage_maintenance(inventory, target_spec['host'], args.run_id, target_spec['clientId'])
-            if not wait_for_ack(args.run_id, target_spec['clientId']):
+            if not wait_for_ack(args.run_id, target_spec['clientId'], phase='maintenance'):
                 if not args.emergency_override:
                     raise RuntimeError(f'maintenance acknowledgement timed out for {target_spec["host"]}')
                 target['ackOverrideReason'] = args.reason

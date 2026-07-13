@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -17,6 +17,24 @@ def now():
 
 def epoch_now():
     return int(time.time())
+
+
+def notice_schedule(timestamp, duration_seconds):
+    acknowledged_at = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+    return (acknowledged_at + timedelta(seconds=duration_seconds)).isoformat().replace('+00:00', 'Z')
+
+
+def acknowledgements_for(data, run_id, client):
+    acknowledgements = dict(data.get('acknowledgements') or {})
+    run_acknowledgements = dict(acknowledgements.get(run_id) or {})
+    record = dict(run_acknowledgements.get(client) or {})
+    # Flat acknowledgement records are the v2 maintenance shape used before
+    # the notice protocol.  Preserve them as a maintenance acknowledgement.
+    if 'acknowledgedAt' in record:
+        record = {'maintenance': record}
+    run_acknowledgements[client] = record
+    acknowledgements[run_id] = run_acknowledgements
+    return acknowledgements, record
 
 
 def canary_holds(data):
@@ -107,6 +125,11 @@ def main():
     put.add_argument('--clients', required=True)
     put.add_argument('--terminal-type', choices=['kiosk', 'signage'])
     put.add_argument('--phase', default='preparing', choices=['preparing', 'deploying', 'failed'])
+    notice = sub.add_parser('put-notice')
+    notice.add_argument('--run-id', required=True)
+    notice.add_argument('--clients', required=True)
+    notice.add_argument('--terminal-type', choices=['kiosk'], required=True)
+    notice.add_argument('--duration-seconds', type=int, required=True)
     phase = sub.add_parser('set-phase')
     phase.add_argument('--run-id', required=True)
     phase.add_argument('--phase', required=True, choices=['preparing', 'deploying', 'failed'])
@@ -118,6 +141,7 @@ def main():
     acknowledge = sub.add_parser('ack')
     acknowledge.add_argument('--run-id', required=True)
     acknowledge.add_argument('--client', required=True)
+    acknowledge.add_argument('--phase', choices=['notice', 'maintenance'], default='maintenance')
     approve = sub.add_parser('approve')
     approve.add_argument('--run-id', required=True)
     approve.add_argument('--client', required=True)
@@ -137,14 +161,26 @@ def main():
         timestamp = now()
         if args.command == 'put':
             for client in filter(None, (value.strip() for value in args.clients.split(','))):
-                previous = entries.get(client) or {}
                 entries[client] = {
                     'maintenance': True,
-                    'startedAt': previous.get('startedAt', timestamp),
+                    'startedAt': timestamp,
                     'updatedAt': timestamp,
                     'runId': args.run_id,
                     'phase': args.phase,
                     **({'terminalType': args.terminal_type} if args.terminal_type else {}),
+                }
+        elif args.command == 'put-notice':
+            if args.duration_seconds <= 0:
+                raise ValueError('notice duration must be greater than zero')
+            for client in filter(None, (value.strip() for value in args.clients.split(','))):
+                entries[client] = {
+                    'maintenance': False,
+                    'noticeStartedAt': timestamp,
+                    'updatedAt': timestamp,
+                    'runId': args.run_id,
+                    'phase': 'notice',
+                    'noticeDurationSeconds': args.duration_seconds,
+                    'terminalType': args.terminal_type,
                 }
         elif args.command == 'set-phase':
             for entry in entries.values():
@@ -152,10 +188,18 @@ def main():
                     entry.update({'maintenance': True, 'phase': args.phase, 'updatedAt': timestamp})
         elif args.command == 'ack':
             entry = entries.get(args.client)
-            if not entry or entry.get('runId') != args.run_id or entry.get('maintenance') is not True:
-                raise ValueError('acknowledgement does not match an active terminal maintenance entry')
-            acknowledgements = dict(data.get('acknowledgements') or {})
-            acknowledgements.setdefault(args.run_id, {})[args.client] = {'acknowledgedAt': timestamp, 'source': 'controller'}
+            if not entry or entry.get('runId') != args.run_id:
+                raise ValueError('acknowledgement does not match an active terminal entry')
+            if args.phase == 'notice':
+                if entry.get('phase') != 'notice' or entry.get('maintenance') is not False:
+                    raise ValueError('notice acknowledgement does not match an active notice entry')
+                if not isinstance(entry.get('scheduledAt'), str):
+                    entry['scheduledAt'] = notice_schedule(timestamp, entry.get('noticeDurationSeconds', 0))
+                    entry['updatedAt'] = timestamp
+            elif entry.get('maintenance') is not True:
+                raise ValueError('maintenance acknowledgement does not match an active terminal maintenance entry')
+            acknowledgements, record = acknowledgements_for(data, args.run_id, args.client)
+            record.setdefault(args.phase, {'acknowledgedAt': timestamp, 'source': 'controller'})
             data['acknowledgements'] = acknowledgements
         elif args.command == 'approve':
             if args.client != OPERATOR_CANARY_APPROVAL_CLIENT:

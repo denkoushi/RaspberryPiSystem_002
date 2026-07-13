@@ -169,6 +169,66 @@ class RollbackStateTest(unittest.TestCase):
         self.assertNotIn('maintenanceClearedAt', target)
 
 
+class TerminalNoticeTest(unittest.TestCase):
+    def _state(self):
+        state = MODULE.ReleaseState(Path('/tmp/unused-release-state.json'), {'targets': []})
+        state.save = Mock()
+        return state
+
+    def test_deliver_notice_waits_for_ack_then_deadline(self):
+        state = self._state()
+        target = {}
+        target_spec = {'host': 'kiosk-a', 'clientId': 'client-a', 'terminalType': 'kiosk'}
+        scheduled_at = '2026-07-13T00:01:00Z'
+        with patch.object(MODULE, 'state_command') as command, \
+                patch.object(MODULE, 'wait_for_ack', return_value=True) as wait_ack, \
+                patch.object(MODULE, 'notice_scheduled_at', return_value=scheduled_at), \
+                patch.object(MODULE, 'wait_for_notice_deadline') as wait_deadline, \
+                patch.object(MODULE, 'utc_now', side_effect=['requested', 'acknowledged', 'completed']):
+            MODULE.deliver_terminal_notice(state, target_spec, target, 'run-1')
+
+        command.assert_called_once_with(
+            'put-notice', '--run-id', 'run-1', '--clients', 'client-a',
+            '--terminal-type', 'kiosk', '--duration-seconds', str(MODULE.NOTICE_DURATION_SECONDS),
+        )
+        wait_ack.assert_called_once_with(
+            'run-1', 'client-a', MODULE.NOTICE_ACK_TIMEOUT_SECONDS, phase='notice',
+        )
+        wait_deadline.assert_called_once_with(scheduled_at)
+        self.assertEqual(target['notice']['state'], 'completed')
+        self.assertEqual(target['notice']['scheduledAt'], scheduled_at)
+
+    def test_notice_ack_timeout_clears_only_the_notice_entry_and_never_deploys(self):
+        state = self._state()
+        target = {}
+        target_spec = {'host': 'kiosk-a', 'clientId': 'client-a', 'terminalType': 'kiosk'}
+        with patch.object(MODULE, 'state_command') as command, \
+                patch.object(MODULE, 'wait_for_ack', return_value=False), \
+                patch.object(MODULE, 'playbook') as playbook, \
+                patch.object(MODULE, 'utc_now', return_value='now'):
+            with self.assertRaisesRegex(RuntimeError, 'pre-deploy notice acknowledgement timed out'):
+                MODULE.deliver_terminal_notice(state, target_spec, target, 'run-1')
+
+        self.assertEqual(command.call_args_list[0].args[0], 'put-notice')
+        self.assertEqual(
+            command.call_args_list[1].args[0],
+            'remove-client',
+        )
+        self.assertEqual(target['notice']['state'], 'failed')
+        playbook.assert_not_called()
+
+    def test_stage_one_gate_and_emergency_policy_skip_notices(self):
+        self.assertFalse(MODULE.should_issue_terminal_notice(terminal_type='kiosk', emergency_override=False))
+        self.assertEqual(
+            MODULE.terminal_notice_skip_reason(terminal_type='kiosk', emergency_override=True),
+            'emergency-override',
+        )
+        self.assertEqual(
+            MODULE.terminal_notice_skip_reason(terminal_type='signage', emergency_override=False),
+            'not-applicable',
+        )
+
+
 class Pi5IdempotentSkipTest(unittest.TestCase):
     def setUp(self):
         self.sha = 'a' * 40
