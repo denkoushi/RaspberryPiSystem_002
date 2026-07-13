@@ -803,8 +803,46 @@ restore_legacy_after_phase3_stop() {
   return 1
 }
 
+migration_file_checksum() {
+  python3 - "$1" <<'PY'
+import hashlib, sys
+with open(sys.argv[1], 'rb') as f:
+    print(hashlib.sha256(f.read()).hexdigest())
+PY
+}
+
+migration_is_expand_only() {
+  python3 - "$1" <<'PY'
+import re,sys
+allowed=re.compile(r'^\s*(CREATE\s+(TABLE|INDEX|UNIQUE\s+INDEX|TYPE|EXTENSION|SEQUENCE|SCHEMA|ENUM)\b|ALTER\s+TABLE\b[\s\S]*?\bADD\s+(COLUMN|CONSTRAINT)\b|COMMENT\s+ON\b)',re.I)
+forbidden=re.compile(r'\b(DROP|RENAME|SET\s+NOT\s+NULL|ALTER\s+COLUMN|TRUNCATE|DELETE\s+FROM)\b',re.I)
+text=open(sys.argv[1],encoding='utf-8').read(); text=re.sub(r'--.*?$','',text,flags=re.M); text=re.sub(r'/\*.*?\*/','',text,flags=re.S)
+for raw in text.split(';'):
+    stmt=raw.strip()
+    if stmt and (not allowed.match(stmt) or forbidden.search(stmt)):
+        raise SystemExit(1)
+PY
+}
+
+# A migration may be restored to source control after it was already applied
+# to the production database. It cannot be Expand-only because the original
+# historical migration can include a one-time data backfill. Permit only that
+# exact, already-completed history: the DB checksum must match the file byte
+# for byte, and a rolled-back or incomplete row never qualifies.
+historical_migration_matches_database() {
+  local candidate_slot="$1" migration_path="$2" migration_name file_checksum database_checksum
+  migration_name="$(basename "$(dirname "$migration_path")")"
+  [[ "$migration_name" =~ ^[0-9]{14}_[a-z0-9_]+$ ]] || return 1
+  file_checksum="$(migration_file_checksum "$migration_path")" || return 1
+  database_checksum="$(
+    compose_current run --rm --no-deps "api-${candidate_slot}" sh -lc \
+      "PGCONNECT_TIMEOUT=10 psql \"\$DATABASE_URL\" -X -Atq -v ON_ERROR_STOP=1 -c \"SELECT checksum FROM \\\"_prisma_migrations\\\" WHERE migration_name = '${migration_name}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY finished_at DESC LIMIT 1\""
+  )" || return 1
+  [[ "$database_checksum" == "$file_checksum" ]]
+}
+
 migration_guard() {
-  local base_image="$1" candidate_image="$2" base_ref candidate_ref
+  local base_image="$1" candidate_image="$2" candidate_slot="$3" base_ref candidate_ref
   if [[ "$DRY_RUN" == 1 ]]; then
     MIGRATION_BASE_COMMIT="$(image_commit "$base_image" 2>/dev/null || true)"
     MIGRATION_CANDIDATE_COMMIT="$(image_commit "$candidate_image" 2>/dev/null || true)"
@@ -827,21 +865,20 @@ migration_guard() {
   modified="$(git -C "$PROJECT_DIR" diff --diff-filter=M --name-only "$base_ref" "$candidate_ref" -- 'apps/api/prisma/migrations/*/migration.sql' || true)"
   [[ -z "$modified" ]] || die 'modified existing migrations are not Expand-only; release refused'
   ((${#changed[@]} == 0)) && return 0
-  python3 - "${changed[@]}" <<'PY' || die 'migration SQL is outside the Expand-only allow-list'
-import re,sys
-allowed=re.compile(r'^\s*(CREATE\s+(TABLE|INDEX|UNIQUE\s+INDEX|TYPE|EXTENSION|SEQUENCE|SCHEMA|ENUM)\b|ALTER\s+TABLE\b[\s\S]*?\bADD\s+(COLUMN|CONSTRAINT)\b|COMMENT\s+ON\b)',re.I)
-forbidden=re.compile(r'\b(DROP|RENAME|SET\s+NOT\s+NULL|ALTER\s+COLUMN|TRUNCATE|DELETE\s+FROM)\b',re.I)
-for path in sys.argv[1:]:
- text=open(path,encoding='utf-8').read(); text=re.sub(r'--.*?$','',text,flags=re.M); text=re.sub(r'/\*.*?\*/','',text,flags=re.S)
- for raw in text.split(';'):
-  stmt=raw.strip()
-  if stmt and (not allowed.match(stmt) or forbidden.search(stmt)): raise SystemExit(f'disallowed statement in {path}: {stmt[:120]}')
-PY
+  local migration
+  for migration in "${changed[@]}"; do
+    if migration_is_expand_only "$migration"; then
+      continue
+    fi
+    historical_migration_matches_database "$candidate_slot" "$migration" \
+      || die 'migration SQL is outside the Expand-only allow-list and is not an exact completed historical migration'
+    log "allowing exact completed historical migration: $(basename "$(dirname "$migration")")"
+  done
 }
 
 migration_apply_and_verify() {
   local candidate="$1" base_image="$2" compatibility_slot="$3"
-  migration_guard "$base_image" "$(slot_api_image "$candidate")" || return 1
+  migration_guard "$base_image" "$(slot_api_image "$candidate")" "$candidate" || return 1
   if [[ "$DRY_RUN" != 1 ]]; then
     # The API image has `node dist/main.js` as its default command.  Use an
     # explicit shell and the installed Prisma binary so Compose does not try to

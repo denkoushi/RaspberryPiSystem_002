@@ -215,6 +215,12 @@ grep -Fq 'legacy_compose_restore' "$SCRIPT" || fail "legacy restore does not use
 grep -Fq 'ensure_gateway_maintenance' "$SCRIPT" || fail "bootstrap failure path lacks gateway maintenance retention"
 grep -Fq 'spawn_stability_monitor' "$SCRIPT" || fail "reboot/reconcile monitor resume helper is missing"
 grep -Fq 'Expand-only allow-list' "$SCRIPT" || fail "migration allow-list guard is missing"
+grep -Fq 'historical_migration_matches_database()' "$SCRIPT" \
+  || fail "completed historical migration checksum guard is missing"
+grep -Fq 'finished_at IS NOT NULL AND rolled_back_at IS NULL' "$SCRIPT" \
+  || fail "historical migration guard accepts incomplete or rolled-back migrations"
+grep -Fq 'migration_file_checksum' "$SCRIPT" \
+  || fail "historical migration guard does not verify file checksum"
 grep -Fq "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" "$SCRIPT" \
   || fail "candidate migration command does not bypass the API default Node command"
 grep -Fq 'legacy_caddy_config_path()' "$SCRIPT" \
