@@ -48,8 +48,12 @@ While the coordinator is running, use only `--status`, `--attach`, and the
 read-only Blue/Green `status`. Do not manually invoke `cleanup`, `rollback`,
 `reconcile`, or another mutating Blue/Green command; doing so breaks the one-owner
 release contract. If the bounded retry ends in failure, wait for the coordinator
-to stop, inspect `status`, and follow the Phase 3 runbook rather than removing a
-lock or forcing cleanup.
+to stop. The next Pi5-required standard rolling release can perform one
+coordinator-owned direct cleanup only when status proves the expired, consistent
+two-slot handoff shape; it then requires normalized single-slot state before any
+same-SHA skip or new candidate build. A lock conflict in this later recovery, or
+any malformed, stale, future-window, cleanup-failure, or non-normalized state,
+fails closed. Do not remove a lock or force cleanup manually.
 
 ## Prevention
 
@@ -57,6 +61,9 @@ lock or forcing cleanup.
 - Keep retry scope exact, bounded, and cleanup-only.
 - Cover lock conflict, successful bounded retry, exhausted retry, and no terminal
   rollout after a cleanup failure in the Phase 3/rolling-release tests.
+- Cover the next-release expired-handoff recovery before both same-SHA skip and
+  candidate build, including failed direct cleanup and failed post-cleanup
+  normalization.
 
 ## Open Items
 

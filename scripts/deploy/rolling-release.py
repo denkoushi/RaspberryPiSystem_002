@@ -417,7 +417,105 @@ def pi5_already_current(sha: str) -> bool:
     return phase3_matches_marker_candidate(phase3, candidate)
 
 
+def phase3_status() -> dict[str, Any]:
+    """Read the Phase 3 status contract, rejecting malformed output."""
+    payload = json.loads(run([str(PHASE3), 'status'], capture=True))
+    if not isinstance(payload, dict):
+        raise RuntimeError('Pi5 Blue/Green status is malformed')
+    return payload
+
+
+def normalized_pi5_phase3_state(phase3: dict[str, Any]) -> bool:
+    """Return whether Phase 3 is a single-slot, post-cleanup state."""
+    active = phase3.get('activeSlot')
+    gateway = phase3.get('gateway')
+    monitor = phase3.get('monitor')
+    slots = phase3.get('slots')
+    active_state = slots.get(active) if isinstance(slots, dict) and isinstance(active, str) else None
+    images = active_state.get('images') if isinstance(active_state, dict) else None
+    return bool(
+        phase3.get('runtimeStatus') == 'consistent'
+        and active in {'blue', 'green'}
+        and phase3.get('previousSlot') is None
+        and phase3.get('candidateSlot') is None
+        and phase3.get('stableUntil') is None
+        and isinstance(gateway, dict)
+        and gateway.get('mode') == 'application'
+        and gateway.get('slot') == active
+        and isinstance(monitor, dict)
+        and monitor.get('activeSlot') is None
+        and monitor.get('rollbackSlot') is None
+        and isinstance(images, dict)
+        and isinstance(images.get('api'), str)
+        and bool(images.get('api'))
+        and isinstance(images.get('web'), str)
+        and bool(images.get('web'))
+    )
+
+
+def recover_expired_pi5_handoff(state: ReleaseState) -> bool:
+    """Complete only a proven-safe expired prior handoff before preparing a new one.
+
+    A release can fail after the five-minute monitor but before the coordinator
+    calls cleanup.  Phase 3 then correctly keeps the public slot as scheduler
+    standby, so another ``prepare`` cannot start.  Only the exact consistent,
+    expired two-slot handoff shape may be completed here; every other state is
+    ambiguous and must stop before candidate build or mutation.
+    """
+    phase3 = phase3_status()
+    if phase3.get('state') == 'not-initialized':
+        return False
+    if phase3.get('runtimeStatus') != 'consistent':
+        raise RuntimeError('Pi5 Blue/Green state is not consistent before release preflight')
+
+    active = phase3.get('activeSlot')
+    previous = phase3.get('previousSlot')
+    candidate = phase3.get('candidateSlot')
+    stable_until = phase3.get('stableUntil')
+    has_prior_handoff = previous is not None or candidate is not None or stable_until is not None
+    if not has_prior_handoff:
+        if normalized_pi5_phase3_state(phase3):
+            return False
+        raise RuntimeError('Pi5 Phase 3 state is not normalized before release preflight')
+
+    gateway = phase3.get('gateway')
+    monitor = phase3.get('monitor')
+    if (
+        active not in {'blue', 'green'}
+        or previous not in {'blue', 'green'}
+        or candidate != previous
+        or previous == active
+        or not isinstance(stable_until, int)
+        or not isinstance(gateway, dict)
+        or gateway.get('mode') != 'application'
+        or gateway.get('slot') != active
+        or not isinstance(monitor, dict)
+        or monitor.get('activeSlot') != active
+        or monitor.get('rollbackSlot') != previous
+    ):
+        raise RuntimeError('Pi5 prior handoff state is incomplete or unsafe; refusing preflight cleanup')
+    if stable_until > int(time.time()):
+        raise RuntimeError('Pi5 prior stability window is still active; refusing new release preflight')
+
+    print('Pi5 prior handoff is expired and consistent; completing cleanup before new candidate build')
+    # The monitor handoff retry is only for the coordinator that created this
+    # window.  A later release must treat any lock conflict as a real competing
+    # mutation and fail closed rather than retrying it as though it were ours.
+    run([str(PHASE3), 'cleanup'])
+    if not normalized_pi5_phase3_state(phase3_status()):
+        raise RuntimeError('Pi5 cleanup did not produce a normalized Phase 3 state')
+    state.payload['pi5HandoffRecovery'] = {
+        'state': 'expired-handoff-cleaned',
+        'activeSlot': active,
+        'previousSlot': previous,
+        'completedAt': utc_now(),
+    }
+    state.save()
+    return True
+
+
 def ensure_pi5_release(sha: str, state: ReleaseState) -> None:
+    recover_expired_pi5_handoff(state)
     if pi5_already_current(sha):
         state.payload['pi5'] = {'state': 'already-current', 'sha': sha}
         state.save()
