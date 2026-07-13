@@ -208,14 +208,26 @@ async function seedSelfInspectionMachineBoardFixture(
     managementNumber: `SIMB-${suffix}`,
     rfidTagUid: `SIMB-INST-${suffix}`,
   });
+  const kioskClient = await createTestClientDevice();
+  const authenticationRes = await app.inject({
+    method: 'POST',
+    url: `/api/part-measurement/self-inspection/sessions/${sessionId}/measurement-actor-authentications`,
+    headers: { 'x-client-key': kioskClient.apiKey },
+    payload: {
+      employeeTagUid: employee.nfcTagUid,
+      measurementMode: 'operator',
+    },
+  });
+  expect(authenticationRes.statusCode).toBe(200);
+  const measurementActorAuthenticationId = authenticationRes.json().authentication.id as string;
 
   const createEntryRes = await app.inject({
     method: 'POST',
     url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-    headers: createAuthHeader(adminToken),
+    headers: { ...createAuthHeader(adminToken), 'x-client-key': kioskClient.apiKey },
     payload: {
       entryIndex: 0,
-      employeeTagUid: employee.nfcTagUid,
+      measurementActorAuthenticationId,
       measuringInstrumentTagUid,
       values: [{ templateItemId, value: '10.01' }],
     },
