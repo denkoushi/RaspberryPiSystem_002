@@ -1,7 +1,6 @@
 import clsx from 'clsx';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
-import { evaluateMeasurementValue, parseMeasurementNumber } from './evaluateMeasurement';
 import { inspectionDrawingPointHasCalloutTip } from './inspectionDrawingCalloutTip';
 import {
   computeScrollToCenterMarker,
@@ -15,7 +14,7 @@ import {
   inspectionDrawingMarkerInputTargetOutlineClass
 } from './inspectionDrawingMarkerStyles';
 import { INSPECTION_DRAWING_ZOOM_DEFAULT } from './inspectionDrawingZoom';
-import { toleranceBoundsFromPoint } from './markerNumbering';
+import { resolveMeasurementPointInputStatus } from './measurementPointInputStatus';
 import { formatInspectionDrawingPointDisplayName } from './measurementPointSupplement';
 import { useZoomedCanvasLayout } from './useZoomedCanvasLayout';
 
@@ -350,12 +349,7 @@ export function InspectionDrawingCanvas({
             : null}
           {image
             ? points.map((pt) => {
-                const bounds = toleranceBoundsFromPoint(pt);
-                const parsed = parseMeasurementNumber(pt.testValue);
-                const status =
-                  'error' in bounds
-                    ? 'empty'
-                    : evaluateMeasurementValue(parsed, bounds.lowerLimit, bounds.upperLimit);
+                const status = resolveMeasurementPointInputStatus(pt);
                 const left = image.offsetX + pt.xRatio * image.width;
                 const top = image.offsetY + pt.yRatio * image.height;
                 const isInputTarget = pt.id === selectedPointId;

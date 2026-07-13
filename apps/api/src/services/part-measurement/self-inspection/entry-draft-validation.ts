@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import type { InspectionResult } from '@prisma/client';
 
 import { ApiError } from '../../../lib/errors.js';
 import {
@@ -13,6 +14,7 @@ import {
 export type NormalizedDraftMeasurementValue = {
   templateItemId: string;
   value: Prisma.Decimal | null;
+  judgementResult: InspectionResult | null;
   reviewStatus: 'NOT_REQUIRED';
   outOfToleranceAcknowledgedAt: null;
   approvedAt: null;
@@ -43,10 +45,35 @@ export function validateDraftMeasurementPayload(
       throw new ApiError(400, '測定点の指定が不正です');
     }
 
+    if (item.valueKind === 'JUDGEMENT') {
+      if (!isBlankValue(value.value)) {
+        throw new ApiError(400, '管用ネジの測定値はOKまたはNGで入力してください');
+      }
+      if (value.judgementResult != null && value.judgementResult !== 'PASS' && value.judgementResult !== 'FAIL') {
+        throw new ApiError(400, '管用ネジのOKまたはNGを選択してください');
+      }
+      normalized.push({
+        templateItemId: value.templateItemId,
+        value: null,
+        judgementResult: value.judgementResult ?? null,
+        reviewStatus: 'NOT_REQUIRED',
+        outOfToleranceAcknowledgedAt: null,
+        approvedAt: null,
+        approvedByUserId: null,
+        approvedByUsername: null,
+        approvalComment: null
+      });
+      continue;
+    }
+    if (value.judgementResult != null) {
+      throw new ApiError(400, '数値測定点にOK/NG判定は入力できません');
+    }
+
     if (isBlankValue(value.value)) {
       normalized.push({
         templateItemId: value.templateItemId,
         value: null,
+        judgementResult: null,
         reviewStatus: 'NOT_REQUIRED',
         outOfToleranceAcknowledgedAt: null,
         approvedAt: null,
@@ -75,6 +102,7 @@ export function validateDraftMeasurementPayload(
     normalized.push({
       templateItemId: value.templateItemId,
       value: decimalValue,
+      judgementResult: null,
       reviewStatus: 'NOT_REQUIRED',
       outOfToleranceAcknowledgedAt: null,
       approvedAt: null,

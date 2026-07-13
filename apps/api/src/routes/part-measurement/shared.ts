@@ -99,7 +99,8 @@ export const templateItemSchema = z.object({
   nominalValue: z.number().optional().nullable(),
   lowerLimit: z.number().optional().nullable(),
   upperLimit: z.number().optional().nullable(),
-  depthMode: z.enum(['measured', 'through']).optional().default('measured')
+  depthMode: z.enum(['measured', 'through']).optional().default('measured'),
+  valueKind: z.enum(['numeric', 'judgement']).optional().default('numeric')
 });
 
 export const templateScopeSchema = z.enum(['three_key', 'fhincd_resource', 'fhinmei_only']);
@@ -379,27 +380,28 @@ export const selfInspectionEntryIndexParamsSchema = z.object({
 
 export const selfInspectionEntryValueSchema = z.object({
   templateItemId: z.string().uuid(),
-  value: z.union([z.string(), z.number(), z.null()]),
+  value: z.union([z.string(), z.number(), z.null()]).optional(),
+  judgementResult: z.enum(['PASS', 'FAIL']).nullable().optional(),
   outOfToleranceAcknowledged: z.boolean().optional()
 });
 
 export const selfInspectionCreateEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
-  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measurementActorAuthenticationId: z.string().uuid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
 
 export const selfInspectionUpdateEntryBodySchema = z.object({
   ifUnmodifiedSince: z.string().min(1).max(100),
-  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measurementActorAuthenticationId: z.string().uuid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
 
 export const selfInspectionUpsertDraftEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
-  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measurementActorAuthenticationId: z.string().uuid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   ifUnmodifiedSince: z.string().min(1).max(100).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).max(200).optional()
@@ -407,7 +409,7 @@ export const selfInspectionUpsertDraftEntryBodySchema = z.object({
 
 export const selfInspectionCreateInspectorEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
-  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measurementActorAuthenticationId: z.string().uuid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
@@ -415,14 +417,19 @@ export const selfInspectionCreateInspectorEntryBodySchema = z.object({
 export const selfInspectionUpdateInspectorEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
   ifUnmodifiedSince: z.string().min(1).max(100),
-  employeeTagUid: z.string().min(1).max(200).optional().nullable(),
+  measurementActorAuthenticationId: z.string().uuid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
 
 export const selfInspectionInstrumentPreUseInspectionBodySchema = z.object({
   instrumentTagUid: z.string().min(1).max(200),
-  employeeTagUid: z.string().min(1).max(200)
+  measurementActorAuthenticationId: z.string().uuid()
+});
+
+export const selfInspectionMeasurementActorAuthenticationBodySchema = z.object({
+  employeeTagUid: z.string().min(1).max(200),
+  measurementMode: z.enum(['operator', 'inspector'])
 });
 
 export const selfInspectionResetSessionBodySchema = z.object({
@@ -540,6 +547,7 @@ export function serializeTemplateItem(item: {
   lowerLimit?: unknown;
   upperLimit?: unknown;
   depthMode?: 'MEASURED' | 'THROUGH' | string | null;
+  valueKind?: 'NUMERIC' | 'JUDGEMENT' | string | null;
 }) {
   const depthModeRaw = String(item.depthMode ?? 'MEASURED').toUpperCase();
   return {
@@ -559,7 +567,8 @@ export function serializeTemplateItem(item: {
     nominalValue: decimalToString(item.nominalValue),
     lowerLimit: decimalToString(item.lowerLimit),
     upperLimit: decimalToString(item.upperLimit),
-    depthMode: depthModeRaw === 'THROUGH' ? 'through' : 'measured'
+    depthMode: depthModeRaw === 'THROUGH' ? 'through' : 'measured',
+    valueKind: String(item.valueKind ?? 'NUMERIC').toUpperCase() === 'JUDGEMENT' ? 'judgement' : 'numeric'
   };
 }
 

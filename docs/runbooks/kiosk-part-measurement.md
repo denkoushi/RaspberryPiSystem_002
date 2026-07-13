@@ -10,6 +10,17 @@
 4. 全 required 件が確定したら完了 / 検査記録確認へ進む（DRAFT のみでは完了不可）。
 5. 仕掛中一覧は **下書きだけのセッションも表示**する。進捗件数は確定（CONFIRMED）のみ。降格事故の詳細は [KB-320 §confirm-guard](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-confirm-guard-wip-draft-2026-07-11) · [Plan](../plans/self-inspection-confirm-guard-wip-draft.md)。
 
+### NFC再認証・管用OK/NG（2026-07-13）
+
+正本: [実装Plan](../plans/self-inspection-actor-auth-pipe-judgement.md) · [ADR](../decisions/ADR-20260710-self-inspection-draft-confirmed.md)
+
+1. 自主検査または検査員再測定の画面を開くたび（WIP再開・直接URL・再読込を含む）、最初に社員NFCタグをスキャンする。保存済みの測定者情報は画面のロック解除に使わない。
+2. 同じ表示中に別の社員タグを読んだ場合は、その人へ安全に交代できる。既存入力件の「最初の測定者／検査員」は書き換えず、以後の自動保存・確定・使用前点検は操作履歴で追跡する。
+3. 計測機器タグは社員認証の代わりにはならない。社員認証後に従来どおり使用前点検へ進む。
+4. 呼び径 **管用** は名称 **ネジ穴深さ** 固定で、数値・公差・測定／通しを使わない。画面で **OK** または **NG** を選択する。NGは公差外承認の対象ではなく、そのまま「入力を保存」で確定できる。検査員再測定が必要な場合も検査員がOK/NGを入力する。
+5. 名称 **キリ穴深さ** は従来のネジ穴深さと同じく **測定**／**通し** を選択する。
+6. 管用OK/NGを含むテンプレートは、今回、紙帳票・OCR取込・通常の数値測定表には使用できない。自主検査の画面で入力する。
+
 ## 検査図面 指差し（任意 · 2026-07-10）
 
 正本: [KB-320 §指差し](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-指差し-密度-新規封鎖-2026-07-10) · [ADR](../decisions/ADR-20260710-inspection-drawing-callout-tip.md)

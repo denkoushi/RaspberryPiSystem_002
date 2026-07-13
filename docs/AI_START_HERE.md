@@ -46,6 +46,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Active inspection-drawing OCR RapidOCR local secondary: `docs/plans/inspection-drawing-ocr-rapidocr-local.md`
 - Active self-inspection autosave / callout / template create lock: `docs/plans/self-inspection-autosave-callout-template-lock.md`
 - Active self-inspection confirm guard + draft WIP: `docs/plans/self-inspection-confirm-guard-wip-draft.md`
+- Active self-inspection NFC actor authentication + pipe OK/NG: `docs/plans/self-inspection-actor-auth-pipe-judgement.md`
 - Active DGX ComfyUI Phase 1 follow-up: `docs/plans/dgx-comfyui-single-image-edit-workflow.md`
 
 The index files are navigation only. They must not become narrative logs.

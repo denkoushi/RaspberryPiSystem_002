@@ -98,13 +98,17 @@ import { resolveDraftUpsertExistingDecision } from './self-inspection/entry-draf
 import {
   buildRegistrationBackfillData,
   entryRegistrationFromRow,
-  resolveEntryActor,
   resolveMeasuringInstrumentByTag,
   resolveRegistrationForCreateEntry,
   resolveRegistrationPatchForUpdate
 } from './self-inspection/entry-registration.js';
 import { assertSelfInspectionEntryRegistrationTagUids } from './self-inspection-registration-tag-validation.js';
 import { saveInspectorEntry } from './self-inspection/inspector-entry.js';
+import {
+  appendMeasurementOperation,
+  createMeasurementActorAuthentication,
+  requireMeasurementActorAuthentication
+} from './self-inspection/measurement-actor-authentication.js';
 import {
   recordInspectorInstrumentPreUseInspection as recordInspectorInstrumentPreUseInspectionOp,
   recordInstrumentPreUseInspection as recordInstrumentPreUseInspectionOp
@@ -232,7 +236,8 @@ export class SelfInspectionService {
           values: {
             select: {
               templateItemId: true,
-              inspectorValue: true
+              inspectorValue: true,
+              inspectorJudgementResult: true
             }
           }
         }
@@ -544,7 +549,8 @@ export class SelfInspectionService {
               values: {
                 select: {
                   templateItemId: true,
-                  inspectorValue: true
+                  inspectorValue: true,
+                  inspectorJudgementResult: true
                 }
               }
             }
@@ -616,7 +622,8 @@ export class SelfInspectionService {
             values: {
               select: {
                 templateItemId: true,
-                inspectorValue: true
+                inspectorValue: true,
+                inspectorJudgementResult: true
               }
             }
           }
@@ -879,7 +886,7 @@ export class SelfInspectionService {
   async createInspectorEntry(sessionId: string, input: {
     entryIndex: number;
     values: SelfInspectionMeasurementPayloadValue[];
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     clientDeviceId?: string | null;
   }) {
@@ -893,7 +900,7 @@ export class SelfInspectionService {
       entryIndex: number;
       ifUnmodifiedSince: string;
       values: SelfInspectionMeasurementPayloadValue[];
-      employeeTagUid?: string | null;
+      measurementActorAuthenticationId: string;
       measuringInstrumentTagUid?: string | null;
       clientDeviceId?: string | null;
     }
@@ -909,16 +916,34 @@ export class SelfInspectionService {
     entryIndexInput: number,
     input: {
       instrumentTagUid: string;
-      employeeTagUid: string;
+      measurementActorAuthenticationId: string;
       clientDeviceId?: string | null;
     }
   ) {
-    return recordInspectorInstrumentPreUseInspectionOp(
+    const actor = await prisma.$transaction((tx) =>
+      requireMeasurementActorAuthentication(tx, {
+        sessionId,
+        authenticationId: input.measurementActorAuthenticationId,
+        mode: 'INSPECTOR',
+        clientDeviceId: input.clientDeviceId
+      })
+    );
+    const result = await recordInspectorInstrumentPreUseInspectionOp(
       this.loanEventService,
       sessionId,
       entryIndexInput,
-      input
+      { ...input, employeeTagUid: actor.employeeNfcTagUidSnapshot }
     );
+    await prisma.$transaction((tx) =>
+      appendMeasurementOperation(tx, {
+        sessionId,
+        authenticationId: actor.id,
+        mode: 'INSPECTOR',
+        entryIndex: Math.floor(entryIndexInput),
+        operationKind: 'INSTRUMENT_PRE_USE'
+      })
+    );
+    return result;
   }
 
   async recordInstrumentPreUseInspection(
@@ -926,33 +951,70 @@ export class SelfInspectionService {
     entryIndexInput: number,
     input: {
       instrumentTagUid: string;
-      employeeTagUid: string;
+      measurementActorAuthenticationId: string;
       clientDeviceId?: string | null;
     }
   ) {
-    return recordInstrumentPreUseInspectionOp(
+    const actor = await prisma.$transaction((tx) =>
+      requireMeasurementActorAuthentication(tx, {
+        sessionId,
+        authenticationId: input.measurementActorAuthenticationId,
+        mode: 'OPERATOR',
+        clientDeviceId: input.clientDeviceId
+      })
+    );
+    const result = await recordInstrumentPreUseInspectionOp(
       this.loanEventService,
       sessionId,
       entryIndexInput,
-      input
+      { ...input, employeeTagUid: actor.employeeNfcTagUidSnapshot }
+    );
+    await prisma.$transaction((tx) =>
+      appendMeasurementOperation(tx, {
+        sessionId,
+        authenticationId: actor.id,
+        mode: 'OPERATOR',
+        entryIndex: Math.floor(entryIndexInput),
+        operationKind: 'INSTRUMENT_PRE_USE'
+      })
+    );
+    return result;
+  }
+
+  async authenticateMeasurementActor(sessionId: string, input: {
+    employeeTagUid: string;
+    measurementMode: 'operator' | 'inspector';
+    clientDeviceId?: string | null;
+  }) {
+    return prisma.$transaction((tx) =>
+      createMeasurementActorAuthentication(tx, sessionId, input)
     );
   }
 
   async createEntry(sessionId: string, input: {
     entryIndex: number;
     values: SelfInspectionMeasurementPayloadValue[];
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     createdByEmployeeId?: string | null;
     createdByEmployeeNameSnapshot?: string | null;
+    clientDeviceId?: string | null;
   }) {
     const entryIndex = Math.floor(input.entryIndex);
     const result = await prisma.$transaction(async (tx) => {
       await lockSessionRow(tx, sessionId);
       const session = await loadSessionForMutation(tx, sessionId);
+      const actor = await requireMeasurementActorAuthentication(tx, {
+        sessionId,
+        authenticationId: input.measurementActorAuthenticationId,
+        mode: 'OPERATOR',
+        clientDeviceId: input.clientDeviceId
+      });
       assertSessionEntryCountWritable(session);
       await assertInspectorRemeasurementNotStarted(tx, sessionId);
       const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
+      input.createdByEmployeeId = actor.employeeId;
+      input.createdByEmployeeNameSnapshot = actor.employeeNameSnapshot;
       const templateConfig = templateConfigFromTemplate(session.template);
       assertEntryIndexAllowed(templateConfig, session.plannedQuantity, entryIndex);
       const slotKind = inferEntrySlotKindForIndex(
@@ -993,6 +1055,7 @@ export class SelfInspectionService {
             include: { values: true, instrumentUsages: true }
           });
           await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
+          await appendMeasurementOperation(tx, { sessionId, authenticationId: actor.id, mode: 'OPERATOR', entryIndex, operationKind: 'ENTRY_CONFIRMED' });
           return serializeLotEntry(backfilled);
         }
         if (!isSelfInspectionLotEntryRegistrationCompleteForPolicy(existingAtIndex, registrationPolicy)) {
@@ -1002,6 +1065,7 @@ export class SelfInspectionService {
           );
         }
         await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
+        await appendMeasurementOperation(tx, { sessionId, authenticationId: actor.id, mode: 'OPERATOR', entryIndex, operationKind: 'ENTRY_CONFIRMED' });
         return serializeLotEntry(existingAtIndex);
       }
 
@@ -1031,6 +1095,7 @@ export class SelfInspectionService {
           }
         });
         await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
+        await appendMeasurementOperation(tx, { sessionId, authenticationId: actor.id, mode: 'OPERATOR', entryIndex, operationKind: 'ENTRY_CONFIRMED' });
         return serializeLotEntry(entry);
       } catch (error) {
         if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
@@ -1065,6 +1130,7 @@ export class SelfInspectionService {
             include: { values: true, instrumentUsages: true }
           });
           await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
+          await appendMeasurementOperation(tx, { sessionId, authenticationId: actor.id, mode: 'OPERATOR', entryIndex, operationKind: 'ENTRY_CONFIRMED' });
           return serializeLotEntry(backfilled);
         }
         if (!isSelfInspectionLotEntryRegistrationCompleteForPolicy(raced, registrationPolicy)) {
@@ -1074,6 +1140,7 @@ export class SelfInspectionService {
           );
         }
         await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
+        await appendMeasurementOperation(tx, { sessionId, authenticationId: actor.id, mode: 'OPERATOR', entryIndex, operationKind: 'ENTRY_CONFIRMED' });
         return serializeLotEntry(raced);
       }
     });
@@ -1087,13 +1154,20 @@ export class SelfInspectionService {
     input: {
       ifUnmodifiedSince: string;
       values: SelfInspectionMeasurementPayloadValue[];
-      employeeTagUid?: string | null;
+      measurementActorAuthenticationId: string;
       measuringInstrumentTagUid?: string | null;
+      clientDeviceId?: string | null;
     }
   ) {
     const result = await prisma.$transaction(async (tx) => {
       await lockSessionRow(tx, sessionId);
       const session = await loadSessionForMutation(tx, sessionId);
+      const actor = await requireMeasurementActorAuthentication(tx, {
+        sessionId,
+        authenticationId: input.measurementActorAuthenticationId,
+        mode: 'OPERATOR',
+        clientDeviceId: input.clientDeviceId
+      });
       assertSessionEntryCountWritable(session);
       await assertInspectorRemeasurementNotStarted(tx, sessionId);
       const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
@@ -1105,7 +1179,15 @@ export class SelfInspectionService {
         throw new ApiError(404, '自主検査入力が見つかりません');
       }
       assertEntryUnmodifiedSince(input.ifUnmodifiedSince, existingEntry.updatedAt);
-      const registrationPatch = await resolveRegistrationPatchForUpdate(existingEntry, input, registrationPolicy);
+      const registrationPatch = await resolveRegistrationPatchForUpdate(
+        existingEntry,
+        {
+          ...input,
+          createdByEmployeeId: actor.employeeId,
+          createdByEmployeeNameSnapshot: actor.employeeNameSnapshot
+        },
+        registrationPolicy
+      );
       const values = validateMeasurementPayload(session.template, input.values, existingEntry.values);
       const locked = await tx.selfInspectionLotEntry.updateMany({
         where: { id: entryId, sessionId, updatedAt: existingEntry.updatedAt },
@@ -1125,6 +1207,7 @@ export class SelfInspectionService {
             entryId,
             templateItemId: value.templateItemId,
             value: value.value,
+            judgementResult: value.judgementResult,
             reviewStatus: value.reviewStatus,
             outOfToleranceAcknowledgedAt: value.outOfToleranceAcknowledgedAt,
             approvedAt: value.approvedAt,
@@ -1135,6 +1218,7 @@ export class SelfInspectionService {
         });
       }
       await markSelfInspectionRecordApprovalRequiredAfterMeasurementSave(tx, sessionId);
+      await appendMeasurementOperation(tx, { sessionId, authenticationId: actor.id, mode: 'OPERATOR', entryIndex: existingEntry.entryIndex, operationKind: 'ENTRY_CONFIRMED' });
       const updated = await tx.selfInspectionLotEntry.findUniqueOrThrow({
         where: { id: entryId },
         include: { values: true, instrumentUsages: true }
@@ -1150,15 +1234,22 @@ export class SelfInspectionService {
     input: {
       entryIndex: number;
       values?: SelfInspectionMeasurementPayloadValue[];
-      employeeTagUid?: string | null;
+      measurementActorAuthenticationId: string;
       measuringInstrumentTagUid?: string | null;
       ifUnmodifiedSince?: string | null;
+      clientDeviceId?: string | null;
     }
   ) {
     const entryIndex = Math.floor(input.entryIndex);
     const result = await prisma.$transaction(async (tx) => {
       await lockSessionRow(tx, sessionId);
       const session = await loadSessionForMutation(tx, sessionId);
+      const actor = await requireMeasurementActorAuthentication(tx, {
+        sessionId,
+        authenticationId: input.measurementActorAuthenticationId,
+        mode: 'OPERATOR',
+        clientDeviceId: input.clientDeviceId
+      });
       assertSessionEntryCountWritable(session);
       await assertInspectorRemeasurementNotStarted(tx, sessionId);
       const templateConfig = templateConfigFromTemplate(session.template);
@@ -1181,7 +1272,7 @@ export class SelfInspectionService {
       });
 
       await assertSelfInspectionEntryRegistrationTagUids({
-        employeeTagUid: (input.employeeTagUid ?? '').trim() || null,
+        employeeTagUid: null,
         measuringInstrumentTagUid: (input.measuringInstrumentTagUid ?? '').trim() || null
       });
 
@@ -1194,10 +1285,9 @@ export class SelfInspectionService {
       let measuringInstrumentTagUidSnapshot =
         existingEntry?.measuringInstrumentTagUidSnapshot ?? null;
 
-      if (!createdByEmployeeId && (input.employeeTagUid ?? '').trim()) {
-        const actor = await resolveEntryActor(input.employeeTagUid);
-        createdByEmployeeId = actor.createdByEmployeeId;
-        createdByEmployeeNameSnapshot = actor.createdByEmployeeNameSnapshot;
+      if (!createdByEmployeeId) {
+        createdByEmployeeId = actor.employeeId;
+        createdByEmployeeNameSnapshot = actor.employeeNameSnapshot;
       }
       if (!measuringInstrumentId && (input.measuringInstrumentTagUid ?? '').trim()) {
         const instrument = await resolveMeasuringInstrumentByTag(input.measuringInstrumentTagUid);
@@ -1230,6 +1320,7 @@ export class SelfInspectionService {
             instrumentUsages: true
           }
         });
+        await appendMeasurementOperation(tx, { sessionId, authenticationId: actor.id, mode: 'OPERATOR', entryIndex, operationKind: 'DRAFT_AUTOSAVED' });
         return serializeLotEntry(entry);
       }
 
@@ -1269,6 +1360,7 @@ export class SelfInspectionService {
             entryId: existingEntry.id,
             templateItemId: value.templateItemId,
             value: value.value,
+            judgementResult: value.judgementResult,
             reviewStatus: value.reviewStatus,
             outOfToleranceAcknowledgedAt: value.outOfToleranceAcknowledgedAt,
             approvedAt: value.approvedAt,
@@ -1283,6 +1375,7 @@ export class SelfInspectionService {
         where: { id: existingEntry.id },
         include: { values: true, instrumentUsages: true }
       });
+      await appendMeasurementOperation(tx, { sessionId, authenticationId: actor.id, mode: 'OPERATOR', entryIndex, operationKind: 'DRAFT_AUTOSAVED' });
       return serializeLotEntry(updated);
     });
     resetSelfInspectionMachineBoardScheduleRowCaches();
@@ -1299,7 +1392,8 @@ export class SelfInspectionService {
           values: {
             select: {
               templateItemId: true,
-              inspectorValue: true
+              inspectorValue: true,
+              inspectorJudgementResult: true
             }
           }
         }
@@ -1565,7 +1659,8 @@ export class SelfInspectionService {
           values: {
             select: {
               templateItemId: true,
-              inspectorValue: true
+              inspectorValue: true,
+              inspectorJudgementResult: true
             }
           }
         }

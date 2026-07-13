@@ -58,7 +58,8 @@ export const listSessionsSummaryInclude = {
       values: {
         select: {
           templateItemId: true,
-          inspectorValue: true
+          inspectorValue: true,
+          inspectorJudgementResult: true
         }
       }
     }
@@ -102,6 +103,7 @@ export const recordApprovalSessionInclude = {
           id: true,
           templateItemId: true,
           value: true,
+          judgementResult: true,
           reviewStatus: true,
           outOfToleranceAcknowledgedAt: true,
           approvedAt: true,
@@ -149,6 +151,8 @@ export const recordApprovalSessionInclude = {
           operatorMeasurementValueId: true,
           operatorValueSnapshot: true,
           inspectorValue: true,
+          operatorJudgementResultSnapshot: true,
+          inspectorJudgementResult: true,
           differenceValue: true,
           judgementStatus: true,
           judgedAt: true,
@@ -188,6 +192,7 @@ type SessionWithCounts = Prisma.SelfInspectionSessionGetPayload<{
           select: {
             templateItemId: true;
             inspectorValue: true;
+            inspectorJudgementResult: true;
           };
         };
       };
@@ -487,7 +492,9 @@ export function buildRecordApprovalReadiness(
     const valuesByItemId = new Map(entry.values.map((value) => [value.templateItemId, value]));
     const hasMissingValue = session.template.items.some((item) => {
       const stored = valuesByItemId.get(item.id);
-      return stored?.value == null;
+      return item.valueKind === 'JUDGEMENT'
+        ? stored?.judgementResult == null
+        : stored?.value == null;
     });
     if (hasMissingValue) {
       incompleteValueEntryCount += 1;
@@ -518,7 +525,9 @@ export function buildRecordApprovalReadiness(
       );
       const hasMissingValue = session.template.items.some((item) => {
         const stored = valuesByItemId.get(item.id);
-        return stored?.inspectorValue == null;
+        return item.valueKind === 'JUDGEMENT'
+          ? stored?.inspectorJudgementResult == null
+          : stored?.inspectorValue == null;
       });
       if (hasMissingValue) {
         inspectorIncompleteValueEntryCount += 1;
@@ -614,6 +623,8 @@ export function serializeRecordApprovalEntryDetail(
       measurementLabel: item.measurementLabel,
       unit: item.unit,
       value: numericValue != null ? String(numericValue) : null,
+      valueKind: item.valueKind === 'JUDGEMENT' ? 'judgement' : 'numeric',
+      judgementResult: stored?.judgementResult ?? null,
       lowerLimit: item.lowerLimit != null ? String(item.lowerLimit) : null,
       upperLimit: item.upperLimit != null ? String(item.upperLimit) : null,
       isWithinTolerance: numericValue != null ? isValueWithinTolerance(item, numericValue) : null,
@@ -623,8 +634,10 @@ export function serializeRecordApprovalEntryDetail(
       updatedAt: stored?.updatedAt.toISOString() ?? null,
       inspectorValueId: inspectorStored?.id ?? null,
       inspectorValue: inspectorStored?.inspectorValue != null ? String(inspectorStored.inspectorValue) : null,
+      inspectorJudgementResult: inspectorStored?.inspectorJudgementResult ?? null,
       operatorValueSnapshot:
         inspectorStored?.operatorValueSnapshot != null ? String(inspectorStored.operatorValueSnapshot) : null,
+      operatorJudgementResultSnapshot: inspectorStored?.operatorJudgementResultSnapshot ?? null,
       differenceValue:
         inspectorStored?.differenceValue != null ? String(inspectorStored.differenceValue) : null,
       inspectorJudgementStatus: inspectorStored?.judgementStatus ?? null,
@@ -633,7 +646,9 @@ export function serializeRecordApprovalEntryDetail(
       inspectorUpdatedAt: inspectorStored?.updatedAt.toISOString() ?? null
     };
   });
-  const hasMissingValue = values.some((value) => value.value == null);
+  const hasMissingValue = values.some((value) =>
+    value.valueKind === 'judgement' ? value.judgementResult == null : value.value == null
+  );
   const registrationComplete = entry
     ? isSelfInspectionLotEntryRegistrationCompleteForPolicy(
         { ...entry, measuringInstrumentUsageCount: entry.instrumentUsages.length },
@@ -722,6 +737,7 @@ export function serializeLotEntryMeta(entry: {
       id: string;
       templateItemId: string;
       value: string | null;
+      judgementResult?: string | null;
       reviewStatus: SelfInspectionMeasurementReviewStatus;
       outOfToleranceAcknowledgedAt: string | null;
       approvedAt: string | null;
@@ -757,6 +773,7 @@ export function serializeLotEntry(
       id: value.id,
       templateItemId: value.templateItemId,
       value: value.value != null ? String(value.value) : null,
+      judgementResult: value.judgementResult ?? null,
       reviewStatus: value.reviewStatus,
       outOfToleranceAcknowledgedAt: value.outOfToleranceAcknowledgedAt?.toISOString() ?? null,
       approvedAt: value.approvedAt?.toISOString() ?? null,
@@ -858,6 +875,7 @@ export function serializeInspectorEntry(
       id: value.id,
       templateItemId: value.templateItemId,
       value: value.inspectorValue != null ? String(value.inspectorValue) : null,
+      judgementResult: value.inspectorJudgementResult ?? null,
       reviewStatus: 'NOT_REQUIRED' as SelfInspectionMeasurementReviewStatus,
       outOfToleranceAcknowledgedAt: null,
       approvedAt: null,
@@ -867,6 +885,7 @@ export function serializeInspectorEntry(
       operatorMeasurementValueId: value.operatorMeasurementValueId,
       operatorValueSnapshot:
         value.operatorValueSnapshot != null ? String(value.operatorValueSnapshot) : null,
+      operatorJudgementResultSnapshot: value.operatorJudgementResultSnapshot ?? null,
       differenceValue: value.differenceValue != null ? String(value.differenceValue) : null,
       judgementStatus: value.judgementStatus,
       judgedAt: value.judgedAt?.toISOString() ?? null,

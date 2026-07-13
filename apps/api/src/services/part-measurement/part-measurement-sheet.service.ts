@@ -138,6 +138,14 @@ function isBlankValue(value: string | number | null | undefined): boolean {
   return false;
 }
 
+function assertNumericOnlyMeasurementTemplate(template: {
+  items: Array<{ valueKind?: string | null }>;
+}) {
+  if (template.items.some((item) => String(item.valueKind ?? 'NUMERIC').toUpperCase() === 'JUDGEMENT')) {
+    throw new ApiError(409, 'OK/NG判定を含むテンプレートは通常の数値測定表・紙帳票では使用できません');
+  }
+}
+
 function countDecimalPlacesString(raw: string): number {
   const s = raw.trim();
   const i = s.indexOf('.');
@@ -320,6 +328,7 @@ export class PartMeasurementSheetService {
         '評価用テンプレートから記録表を作るには POST /part-measurement/inspection-drawing/evaluation-sheets を使用してください'
       );
     }
+    assertNumericOnlyMeasurementTemplate(template);
     if (template.fhincd.trim().toUpperCase() !== input.fhincd.trim().toUpperCase()) {
       throw new ApiError(400, 'テンプレートと品番が一致しません');
     }
@@ -380,6 +389,7 @@ export class PartMeasurementSheetService {
     if (!isInspectionDrawingEvaluationTemplate(template)) {
       throw new ApiError(409, '評価用テンプレートのみこの API で記録表を作成できます');
     }
+    assertNumericOnlyMeasurementTemplate(template);
     if (template.processGroup !== 'CANDIDATE_FHINMEI_ONLY') {
       throw new ApiError(409, '検査図面評価用テンプレートの工程が不正です');
     }
@@ -595,6 +605,9 @@ export class PartMeasurementSheetService {
           include: { template: { include: partMeasurementTemplateFullInclude } }
         });
         const items = template?.template?.items ?? [];
+        if (template?.template) {
+          assertNumericOnlyMeasurementTemplate(template.template);
+        }
         const itemIds = new Set(items.map((i) => i.id));
         const qty = template?.quantity;
 
@@ -673,6 +686,9 @@ export class PartMeasurementSheetService {
         throw new ApiError(400, '個数を入力してください');
       }
       const items = sheet.template?.items ?? [];
+      if (sheet.template) {
+        assertNumericOnlyMeasurementTemplate(sheet.template);
+      }
       if (items.length === 0) {
         throw new ApiError(400, 'テンプレート項目がありません');
       }
@@ -763,6 +779,9 @@ export class PartMeasurementSheetService {
   }
 
   buildSheetCsv(sheet: Awaited<ReturnType<PartMeasurementSheetService['getById']>>): string {
+    if (sheet.template) {
+      assertNumericOnlyMeasurementTemplate(sheet.template);
+    }
     const lines: string[] = [];
     const esc = (v: string | number | null | undefined) => {
       const s = v === null || v === undefined ? '' : String(v);

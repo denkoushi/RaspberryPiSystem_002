@@ -97,6 +97,58 @@ describe('InspectionDrawingPointSettingsPanel', () => {
     expect(screen.queryByLabelText('上限公差')).not.toBeInTheDocument();
   });
 
+  it('shows the same measurement/through controls for キリ穴深さ', () => {
+    render(
+      <InspectionDrawingPointSettingsPanel
+        point={{ ...point, name: 'キリ穴深さ', depthMode: 'measured' }}
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('group', { name: '通し切替' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '測定' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '通し' })).toBeInTheDocument();
+  });
+
+  it('turns 管用 into a fixed ネジ穴深さ OK/NG judgement without numeric or through settings', () => {
+    const onChange = vi.fn();
+    const pipePoint = {
+      ...point,
+      name: 'ネジ穴深さ',
+      threadNominal: '管用',
+      valueKind: 'judgement' as const,
+      nominalRaw: '',
+      upperToleranceRaw: '',
+      lowerToleranceRaw: ''
+    };
+    render(<InspectionDrawingPointSettingsPanel point={pipePoint} onChange={onChange} />);
+
+    expect(screen.getByLabelText('名称')).toBeDisabled();
+    expect(screen.queryByRole('group', { name: '通し切替' })).toBeNull();
+    expect(screen.queryByLabelText('基準値')).toBeNull();
+    expect(screen.queryByLabelText('上限公差')).toBeNull();
+    expect(screen.getByText(/管用ネジ形状をOK\/NGで判定/)).toBeInTheDocument();
+  });
+
+  it('selecting 管用 fixes the judgement configuration in one patch', () => {
+    const onChange = vi.fn();
+    render(<InspectionDrawingPointSettingsPanel point={point} onChange={onChange} />);
+
+    fireEvent.change(screen.getByLabelText('呼び径'), { target: { value: '管用' } });
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadNominal: '管用',
+        name: 'ネジ穴深さ',
+        valueKind: 'judgement',
+        depthMode: 'measured',
+        nominalRaw: '',
+        upperToleranceRaw: '',
+        lowerToleranceRaw: ''
+      })
+    );
+  });
+
   it('renders OCR candidate chips and applies selected value', () => {
     const onApplyOcrCandidate = vi.fn();
 
