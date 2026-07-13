@@ -31,6 +31,9 @@ PI5_RELEASE_CURRENT = PROJECT / 'logs/deploy/pi5-release-current.json'
 OPERATOR_CANARY_APPROVAL_CLIENT = 'operator-canary-approval'
 DEFAULT_CANARY_HOLD_TIMEOUT = 1800
 FULL_SHA_RE = re.compile(r'^[0-9a-f]{40}$')
+CLEANUP_LOCK_CONFLICT = 'another Pi5 Blue/Green operation is running'
+CLEANUP_LOCK_RETRY_TIMEOUT = 30
+CLEANUP_LOCK_RETRY_INTERVAL = 2
 # Kiosk-scoped components used to detect barcode-agent-only rollouts.
 KIOSK_SCOPE_COMPONENTS = frozenset({
     'nfc-agent',
@@ -276,9 +279,47 @@ def wait_for_pi5_stability(state: ReleaseState) -> None:
         if not isinstance(stable_until, int) or stable_until <= int(time.time()):
             break
         time.sleep(min(5, max(1, stable_until - int(time.time()))))
-    run([str(PHASE3), 'cleanup'])
+    cleanup_after_pi5_stability()
     state.payload['pi5']['state'] = 'stable'
     state.save()
+
+
+def cleanup_after_pi5_stability() -> None:
+    """Run Phase 3 cleanup after the monitor releases its inherited flock.
+
+    ``switch`` starts the monitor before its flock-owning process exits. The
+    child inherits that descriptor, so a cleanup launched exactly at the end of
+    the stability window can see a brief, expected lock conflict. Retry only
+    that exact pre-side-effect failure, and re-check lock-free Phase 3 status
+    before each retry. Every other cleanup error remains terminal.
+    """
+    deadline = time.monotonic() + CLEANUP_LOCK_RETRY_TIMEOUT
+    while True:
+        try:
+            stdout = run([str(PHASE3), 'cleanup'], capture=True)
+            if stdout:
+                print(stdout, end='' if stdout.endswith('\n') else '\n')
+            return
+        except subprocess.CalledProcessError as error:
+            stdout = error.stdout or ''
+            stderr = error.stderr or ''
+            if stdout:
+                print(stdout, end='' if stdout.endswith('\n') else '\n')
+            if stderr:
+                print(stderr, end='' if stderr.endswith('\n') else '\n', file=sys.stderr)
+            if CLEANUP_LOCK_CONFLICT not in stderr:
+                raise
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f'Pi5 cleanup remained locked for {CLEANUP_LOCK_RETRY_TIMEOUT}s after stability monitoring',
+                ) from error
+            phase3 = json.loads(run([str(PHASE3), 'status'], capture=True))
+            if phase3.get('runtimeStatus') != 'consistent':
+                raise RuntimeError('Pi5 Blue/Green state became inconsistent while waiting to clean up') from error
+            stable_until = phase3.get('stableUntil')
+            if isinstance(stable_until, int) and stable_until > int(time.time()):
+                raise RuntimeError('Pi5 stability window resumed while waiting to clean up') from error
+            time.sleep(min(CLEANUP_LOCK_RETRY_INTERVAL, max(1, deadline - time.monotonic())))
 
 
 def read_pi5_release_current() -> dict[str, Any] | None:

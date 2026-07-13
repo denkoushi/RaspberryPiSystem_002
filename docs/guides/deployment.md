@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-07-12
+last-verified: 2026-07-13
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -51,7 +51,7 @@ update-frequency: medium
 - `scripts/deploy/pi5-blue-green.sh` が、API/WebのBlue・Greenスロットと固定Caddyゲートウェイを管理する。API/Webスロットはホストポートを公開せず、80/443はゲートウェイだけが公開する。
 - 初回の `bootstrap --confirm-bootstrap --allow-legacy-scheduler-handoff` は、PR1をPhase 2で反映し、legacy APIの内部readinessがscheduler `leader`かつ `databaseConnection: connected` であることを確認済みの場合だけ、承認済みメンテナンス時間に実行する。legacy Webの静的メンテナンス表示を検証してから、legacy API→Blue leader→legacy Web→固定gatewayの順に可逆切替する。手動で旧Webを停止しない。
 - **Phase 3 state が live の間は、通常 Ansible（api/web recreate）、`manage-app-configs` の compose restart、Phase 2 `pi5-image-deploy.sh`、legacy Compose による api/web 再作成を使わない。** `pi5-phase3-legacy-guard.sh` が fail-closed する。許可されるのは `pi5-blue-green.sh` と、明示的な `reconcile --restore-legacy` 後の通常経路のみ。
-- 空きメモリ1.5GB、ディスク10GB、CPU数の75%未満のロードアベレージ、および強い JWT 秘密情報を満たさない場合は候補起動前に停止し、Phase 2へフォールバックする。切替後5分は旧スロットをscheduler leaderとして保持し、monitor は exclusive lock を握らない。ヘルス/role/metrics異常時は検証済みの旧slotへ自動で戻す。`cleanup` はhandoff確認後に旧slotとlegacyコンテナを除去する。
+- 空きメモリ1.5GB、ディスク10GB、CPU数の75%未満のロードアベレージ、および強い JWT 秘密情報を満たさない場合は候補起動前に停止し、Phase 2へフォールバックする。切替後5分は旧スロットをscheduler leaderとして保持し、monitor と coordinator の `cleanup` は直列化する。handoff 時の**正確な lock-conflict**だけは coordinator が最大30秒・cleanup 専用で再試行し、それ以外のエラーまたは上限到達は fail-closed（端末更新へ進まない）。coordinator 実行中は `status`/`--status`/`--attach` だけを使い、手動 `cleanup` / `rollback` / `reconcile` / 別の Blue/Green 操作を実行しない。ヘルス/role/metrics異常時は検証済みの旧slotへ自動で戻す。詳細は [Pi5 Blue/Green deployment runbook](../runbooks/pi5-blue-green-deploy.md#cleanup-and-reboot-check) と [KB-400](../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md)。
 - `/api/system/deploy-readiness/internal` はCaddy（HTTP 80 redirect 経路含む）で404となる内部専用契約であり、Blue/Green scriptだけが`docker exec`で確認する。`status` はread-onlyでlive状態とstaleを表示し、`reconcile` は再起動後の安全復旧と monitor 再開、`reconcile --restore-legacy` は保存済み legacy image での緊急復帰に使う。
 - 操作・復旧・受入れの正本は [Pi5 Blue/Green deployment runbook](../runbooks/pi5-blue-green-deploy.md)、実装正本は [Phase 3 ExecPlan](../plans/pi5-blue-green-phase3.md)。2026-07-12の本番受入れ後、Pi5更新が必要な通常リリースではPhase 3が標準経路である。Pi5本体の故障・停電は単一Pi5の対象外であり、無停止化には将来の2台構成が必要となる。
 
