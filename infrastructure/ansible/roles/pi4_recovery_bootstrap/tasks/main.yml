@@ -1,0 +1,65 @@
+---
+- name: Require explicitly authorized Pi4 recovery
+  ansible.builtin.assert:
+    that:
+      - recovery_authorized | default(false) | bool
+      - repo_version is defined
+      - repo_version is match('^[0-9a-f]{40}$')
+      - ansible_user is defined
+      - ansible_user | length > 0
+    fail_msg: >-
+      Pi4 recovery requires recovery_authorized=true, a full immutable repo_version,
+      and the inventory-defined target user.
+
+- name: Verify bootstrap user has non-interactive sudo
+  ansible.builtin.command: sudo -n true
+  become: false
+  changed_when: false
+
+- name: Install Raspberry Pi OS recovery prerequisites
+  ansible.builtin.apt:
+    name: "{{ recovery_bootstrap_common_packages }}"
+    state: present
+    update_cache: true
+
+- name: Install desktop prerequisites for managed kiosk
+  ansible.builtin.apt:
+    name: "{{ recovery_bootstrap_desktop_package }}"
+    state: present
+  when: manage_kiosk_browser | default(false) | bool
+
+- name: Install browser selected by kiosk inventory
+  ansible.builtin.apt:
+    name: >-
+      {{
+        recovery_bootstrap_firefox_package
+        if (kiosk_browser_engine | default('chromium') | lower) == 'firefox'
+        else recovery_bootstrap_chromium_package
+      }}
+    state: present
+  when: manage_kiosk_browser | default(false) | bool
+
+- name: Enable Docker service
+  ansible.builtin.systemd:
+    name: docker.service
+    enabled: true
+    state: started
+
+- name: Verify Docker Compose is available
+  ansible.builtin.command: docker compose version
+  changed_when: false
+
+- name: Verify graphical desktop prerequisite for kiosk
+  ansible.builtin.stat:
+    path: /etc/xdg/labwc/rc.xml
+  register: recovery_labwc_rc
+  when: manage_kiosk_browser | default(false) | bool
+
+- name: Fail when the required desktop runtime is unavailable
+  ansible.builtin.assert:
+    that:
+      - recovery_labwc_rc.stat.exists
+    fail_msg: >-
+      Raspberry Pi OS Desktop の labwc 設定が見つかりません。
+      Raspberry Pi OS Desktop (64-bit) を使用してください。
+  when: manage_kiosk_browser | default(false) | bool

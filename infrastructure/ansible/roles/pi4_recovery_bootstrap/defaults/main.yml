@@ -1,0 +1,14 @@
+---
+# This role owns only the bare Raspberry Pi OS prerequisites.  Application and
+# device configuration remain in the existing common, client, and kiosk roles.
+recovery_bootstrap_common_packages:
+  - ca-certificates
+  - curl
+  - git
+  - openssh-server
+  - docker.io
+  - docker-compose-plugin
+
+recovery_bootstrap_desktop_package: raspberry-pi-desktop
+recovery_bootstrap_firefox_package: firefox-esr
+recovery_bootstrap_chromium_package: chromium

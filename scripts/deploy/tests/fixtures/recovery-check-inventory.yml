@@ -1,0 +1,11 @@
+all:
+  hosts:
+    raspi4-recovery-check:
+      ansible_connection: local
+      ansible_become: false
+      ansible_user: recovery-check
+      manage_kiosk_browser: true
+      status_agent_client_id: recovery-check-status
+      nfc_agent_client_id: recovery-check-nfc
+      barcode_agent_enabled: false
+      kiosk_url: https://127.0.0.1/kiosk

@@ -12,6 +12,10 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
+### 復旧（2026-07-13 · Pi4 SDカード故障）
+
+- **Pi5によるPi4再構成**: [Runbook](./runbooks/pi4-sd-recovery.md) · [ADR](./decisions/ADR-20260713-pi4-sd-recovery-bootstrap.md) · [ExecPlan](./plans/pi4-sd-recovery-bootstrap.md)
+
 ### 計画（2026-07-12 · デプロイ対象最小化 / カナリア・ホールド · 実装済・本番 shadow 評価待ち）
 
 - **対象最小化・カナリア・ホールド・Pi5冪等スキップ**: [ADR](./decisions/ADR-20260712-deploy-target-minimization-canary-hold.md) · [Plan](./plans/rolling-terminal-bluegreen-deploy.md) · [deployment](./guides/deployment.md#標準更新入口ローリング端末別メンテナンス)
