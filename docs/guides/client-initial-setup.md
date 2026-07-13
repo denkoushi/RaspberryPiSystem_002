@@ -16,6 +16,11 @@ update-frequency: medium
 
 本ドキュメントでは、新規のRaspberry Piクライアント端末（Raspberry Pi 3/4/Zero2W）をシステムに追加する際の初期設定手順を説明します。
 
+**既存Pi4のSDカード故障からの復旧**は新規端末追加ではありません。Pi5で
+[`pi4-sd-recovery.md`](../runbooks/pi4-sd-recovery.md) を使用してください。SDへ
+Raspberry Pi OS Desktop (64-bit) とWi-Fiを書き込む際に、対象端末と同じユーザー名、
+Pi5公開鍵によるSSH、sudoパスワード不要もImagerで設定し、起動後のPi4側作業は行いません。
+
 **Zero 2 W をヘッドレスの棚番エッジ（キオスク UI なし・status-agent 中心）として載せる場合**は、[Zero 2 W 棚番エッジ Runbook](../runbooks/zero2w-tanaban-edge-setup.md) を先に参照してください（`inventory.yml` に自宅端末を載せず、インベントリ断片 + 専用 playbook で Pi 5 から適用する流れ）。
 
 ## 前提条件
@@ -667,4 +672,3 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api | gre
 - [SSH鍵ベース運用ガイド](./ssh-setup.md): SSH鍵認証の詳細な設定方法
 - [運用マニュアル](./operation-manual.md): 日常的な運用手順
 - [クイックスタートガイド](./quick-start-deployment.md): 一括更新と監視のクイックスタート
-

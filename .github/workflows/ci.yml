@@ -251,7 +251,10 @@ jobs:
             "playbooks/rollback.yml"
             "playbooks/restart-services.yml"
             "playbooks/ping.yml"
+            "playbooks/recover-pi4.yml"
+            "playbooks/recover-pi4-verify.yml"
           )
+          python3 ../../scripts/deploy/tests/test_recover_pi4.py
           FAILED=0
           for playbook in "${PLAYBOOKS[@]}"; do
             echo "Checking syntax for $playbook..."
@@ -290,6 +293,10 @@ jobs:
           else
             echo "deploy.yml dry-run OK"
           fi
+          ansible-playbook --check \
+            -i ../../scripts/deploy/tests/fixtures/recovery-check-inventory.yml \
+            playbooks/recover-pi4-verify.yml \
+            -e recovery_authorized=true
 
       - name: Test monitoring scripts
         if: matrix.run-infra

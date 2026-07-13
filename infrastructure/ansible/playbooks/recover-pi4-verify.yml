@@ -1,0 +1,47 @@
+---
+- name: Verify a Pi4 recovered through the Pi5 recovery coordinator
+  hosts: all
+  gather_facts: false
+  become: true
+  pre_tasks:
+    - name: Require recovery verification authorization
+      ansible.builtin.assert:
+        that:
+          - recovery_authorized | default(false) | bool
+          - manage_kiosk_browser | default(false) | bool
+          - status_agent_client_id is defined
+        fail_msg: This verification playbook is only for an authorized Pi4 recovery.
+
+  tasks:
+    - name: Verify kiosk browser service
+      ansible.builtin.command: systemctl is-active kiosk-browser.service
+      changed_when: false
+
+    - name: Verify status agent timer
+      ansible.builtin.command: systemctl is-active status-agent.timer
+      changed_when: false
+
+    - name: Verify NFC agent health endpoint
+      ansible.builtin.uri:
+        url: http://127.0.0.1:7071/api/agent/status
+        method: GET
+        status_code: [200]
+        timeout: 10
+      when: nfc_agent_client_id is defined
+
+    - name: Verify barcode agent health endpoint when enabled
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ barcode_agent_rest_port | default(7072) }}/api/agent/status"
+        method: GET
+        status_code: [200]
+        timeout: 10
+      when: barcode_agent_enabled | default(false) | bool
+
+    - name: Verify kiosk URL is reachable from recovered Pi4
+      ansible.builtin.uri:
+        url: "{{ kiosk_url }}"
+        method: GET
+        validate_certs: false
+        status_code: [200]
+        timeout: 15
+      when: kiosk_url is defined

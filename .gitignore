@@ -17,6 +17,9 @@ infrastructure/docker/.env
 infrastructure/ansible/.vault-pass
 infrastructure/ansible/group_vars/**/vault.yml
 infrastructure/ansible/host_vars/**/vault.yml
+# Pi5-only endpoint selected after a Pi4 SD recovery.  It overrides the static
+# inventory address without committing changing Tailscale IPs.
+infrastructure/ansible/host_vars/**/recovery-runtime.yml
 # ローカル専用: Zero2W エッジの Tailscale IP 等を含むインベントリ断片（.example はコミット）
 infrastructure/ansible/inventory-zero2w-edge-fragment.yml
 # ローカル専用: 私用 Pi5 bridge の接続先・secret を含むインベントリ断片

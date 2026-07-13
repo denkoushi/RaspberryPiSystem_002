@@ -1,0 +1,89 @@
+---
+# A deliberate bare-metal recovery path.  This does not participate in the
+# normal rolling-release coordinator because the failed terminal is already
+# offline and has no deployed application to place in maintenance.
+- name: Recover one inventory-managed Pi4 after SD-card replacement
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+    repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
+    git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
+    git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
+    backup_dir: /opt/backups/configs
+    backup_service_files:
+      - status-agent.service
+      - status-agent.timer
+      - kiosk-browser.service
+      - signage-lite.service
+  pre_tasks:
+    - name: Require recovery coordinator authorization and result path
+      ansible.builtin.assert:
+        that:
+          - recovery_authorized | default(false) | bool
+          - recovery_result_path is defined
+          - recovery_result_path | length > 0
+          - repo_version is defined
+          - repo_version is match('^[0-9a-f]{40}$')
+          - manage_kiosk_browser | default(false) | bool
+          - tailscale_enabled | default(false) | bool
+          - nfc_agent_client_id is defined
+          - nfc_agent_client_secret is defined
+        fail_msg: >-
+          This playbook is only for an authorized, inventory-managed Pi4 kiosk
+          recovery with an immutable release SHA and complete device settings.
+
+  roles:
+    - role: pi4_recovery_bootstrap
+
+  tasks:
+    - name: Recreate shared configuration and join Tailscale
+      ansible.builtin.import_role:
+        name: common
+
+    - name: Recreate status agent and device agents
+      ansible.builtin.import_role:
+        name: client
+
+    - name: Recreate kiosk browser configuration
+      ansible.builtin.import_role:
+        name: kiosk
+
+    - name: Read new Tailscale status as structured JSON
+      ansible.builtin.command: tailscale status --json
+      register: recovery_tailscale_status
+      changed_when: false
+      no_log: true
+
+    - name: Select new Tailscale IPv4 address
+      ansible.builtin.set_fact:
+        recovery_tailscale_ipv4: >-
+          {{
+            ((recovery_tailscale_status.stdout | from_json).Self.TailscaleIPs | default([])
+            | select('match', '^100\\.') | list | first | default(''))
+          }}
+      no_log: true
+
+    - name: Require a new Tailscale IPv4 address
+      ansible.builtin.assert:
+        that:
+          - recovery_tailscale_ipv4 is match('^100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.[0-9]{1,3}\\.[0-9]{1,3}$')
+        fail_msg: Tailscale joined but did not report a valid 100.64.0.0/10 IPv4 address.
+      no_log: true
+
+    - name: Write non-secret recovery result on the Pi5 controller
+      ansible.builtin.copy:
+        dest: "{{ recovery_result_path }}"
+        content: >-
+          {{
+            {
+              'target': inventory_hostname,
+              'tailscaleIpv4': recovery_tailscale_ipv4,
+              'releaseSha': repo_version
+            } | to_nice_json
+          }}
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+      no_log: true
