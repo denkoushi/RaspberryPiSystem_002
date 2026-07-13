@@ -85,7 +85,12 @@ The command validates that the current slot is scheduler `leader` and the candid
 
 ## Automatic and manual rollback
 
-After a switch, a background monitor checks the external API health, Web root, optional `PI5_BLUE_GREEN_KIOSK_HEALTH_URL`, both scheduler roles, and readiness metrics every two seconds until the five-minute deadline. The monitor does **not** hold the exclusive deploy lock, so `status`, manual `rollback`, and `reconcile` remain available. A readiness error rate over `0.05` fails only after at least 20 samples. If configured, `PI5_BLUE_GREEN_ERROR_RATE_URL` is checked too. A failed check rolls back only after proving the previous slot is a healthy scheduler `leader`; otherwise it records a critical alert and leaves routing unchanged for manual recovery.
+After a switch, a background monitor checks the external API health, Web root, optional `PI5_BLUE_GREEN_KIOSK_HEALTH_URL`, both scheduler roles, and readiness metrics every two seconds until the five-minute deadline. Monitor completion and the coordinator's cleanup handoff are serialized: cleanup must not run concurrently with an in-flight monitor. A readiness error rate over `0.05` fails only after at least 20 samples. If configured, `PI5_BLUE_GREEN_ERROR_RATE_URL` is checked too. A failed check rolls back only after proving the previous slot is a healthy scheduler `leader`; otherwise it records a critical alert and leaves routing unchanged for manual recovery.
+
+While the canonical rolling-release coordinator is live, operators may use `status` and
+the release `--status`/`--attach` views, but must not manually run `cleanup`,
+`rollback`, `reconcile`, or another mutating Blue/Green command. This preserves one
+owner for the monitor, cleanup, and terminal-rollout decision.
 
 For a deliberate rollback, inspect state first and then run:
 
@@ -99,6 +104,15 @@ Rollback refuses missing/stale state and proves the target's image, API/Caddy he
 After the stability deadline, stop and remove the previous slot, wait up to the readiness retry limit for the active API to become scheduler `leader`, then remove the quarantined legacy API/Web containers. Images and persistent volumes are not deleted:
 
     scripts/deploy/pi5-blue-green.sh cleanup
+
+The canonical coordinator owns normal cleanup. At the monitor handoff it may retry
+**only** the exact pre-mutation Blue/Green lock-conflict failure for at most 30
+seconds. Each attempt reacquires the lock and reruns cleanup's state, stability,
+image, and scheduler checks. Any other cleanup error, or exhaustion of that bound,
+fails closed and does not advance terminals. Do not work around a live coordinator
+by issuing a manual mutating command; after it has stopped, inspect `status` and
+follow the recovery path below. The incident and prevention record is
+[KB-400](../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md).
 
 `status` is read-only: it reports live slot image/health/readiness, gateway target, and legacy quarantine/removal state and marks mismatches as `stale`. `reconcile` (also installed as systemd `pi5-blue-green-reconcile.service` for the deploy user with the `docker` supplementary group) repairs a rebooted active slot, re-applies legacy quarantine, resumes the five-minute monitor when `stableUntil` is still in the future, recovers incomplete `bootstrapping` / `bootstrap-failed` state to legacy or gateway maintenance, and refuses `compose up` when running containers do not match state images. For an emergency fallback, run `reconcile --restore-legacy`; it stops Phase 3 and recreates legacy services from the **captured** legacy images via `docker-compose.legacy-restore.yml` without deleting volumes. If the gateway or host is unavailable after a full legacy restore, the conventional Ansible/Phase 2 path is allowed again; Blue/Green cannot provide host-level redundancy on one Pi5.
 

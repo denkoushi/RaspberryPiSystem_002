@@ -1,6 +1,7 @@
 import argparse
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -78,6 +79,73 @@ class Pi5StabilityMonitorTest(unittest.TestCase):
         self.assertEqual(command.call_args_list[-1].args[0][1], 'cleanup')
         self.assertEqual(state.payload['pi5']['state'], 'stable')
         state.save.assert_called_once()
+
+    def test_cleanup_lock_conflict_exhausts_the_bounded_retry_window(self):
+        conflict = subprocess.CalledProcessError(
+            1,
+            [str(MODULE.PHASE3), 'cleanup'],
+            stderr=f'[ERROR] {MODULE.CLEANUP_LOCK_CONFLICT}\n',
+        )
+        status = json.dumps({'runtimeStatus': 'consistent', 'stableUntil': 1_800_000_000})
+        with patch.object(MODULE, 'run', side_effect=[conflict, status, conflict]) as command, \
+                patch.object(MODULE.time, 'monotonic', side_effect=[100, 100, 100, 130]), \
+                patch.object(MODULE.time, 'time', return_value=1_800_000_001), \
+                patch.object(MODULE.time, 'sleep') as sleep, \
+                patch('builtins.print'):
+            with self.assertRaisesRegex(RuntimeError, 'cleanup remained locked for 30s'):
+                MODULE.cleanup_after_pi5_stability()
+        self.assertEqual(
+            [call.args[0][1] for call in command.call_args_list],
+            ['cleanup', 'status', 'cleanup'],
+        )
+        sleep.assert_called_once_with(MODULE.CLEANUP_LOCK_RETRY_INTERVAL)
+
+    def test_cleanup_retries_only_the_monitor_lock_conflict_after_consistent_status(self):
+        conflict = subprocess.CalledProcessError(
+            1,
+            [str(MODULE.PHASE3), 'cleanup'],
+            output='cleanup waiting for monitor\n',
+            stderr=f'[ERROR] {MODULE.CLEANUP_LOCK_CONFLICT}\n',
+        )
+        status = json.dumps({'runtimeStatus': 'consistent', 'stableUntil': 1_800_000_000})
+        with patch.object(MODULE, 'run', side_effect=[conflict, status, 'cleanup completed\n']) as command, \
+                patch.object(MODULE.time, 'monotonic', return_value=100), \
+                patch.object(MODULE.time, 'time', return_value=1_800_000_001), \
+                patch.object(MODULE.time, 'sleep') as sleep, \
+                patch('builtins.print') as printed:
+            MODULE.cleanup_after_pi5_stability()
+        self.assertEqual(command.call_args_list[0].args[0], [str(MODULE.PHASE3), 'cleanup'])
+        self.assertEqual(command.call_args_list[1].args[0], [str(MODULE.PHASE3), 'status'])
+        self.assertEqual(command.call_args_list[2].args[0], [str(MODULE.PHASE3), 'cleanup'])
+        self.assertTrue(all(call.kwargs.get('capture') is True for call in command.call_args_list))
+        sleep.assert_called_once_with(MODULE.CLEANUP_LOCK_RETRY_INTERVAL)
+        self.assertEqual(printed.call_count, 3)
+        printed.assert_any_call('cleanup completed\n', end='')
+
+    def test_cleanup_does_not_retry_non_lock_failure(self):
+        failure = subprocess.CalledProcessError(
+            1,
+            [str(MODULE.PHASE3), 'cleanup'],
+            stderr='cleanup health check failed\n',
+        )
+        with patch.object(MODULE, 'run', side_effect=failure) as command, \
+                patch('builtins.print'):
+            with self.assertRaises(subprocess.CalledProcessError):
+                MODULE.cleanup_after_pi5_stability()
+        command.assert_called_once_with([str(MODULE.PHASE3), 'cleanup'], capture=True)
+
+    def test_cleanup_lock_conflict_stops_when_phase3_is_no_longer_consistent(self):
+        conflict = subprocess.CalledProcessError(
+            1,
+            [str(MODULE.PHASE3), 'cleanup'],
+            stderr=f'[ERROR] {MODULE.CLEANUP_LOCK_CONFLICT}\n',
+        )
+        with patch.object(MODULE, 'run', side_effect=[conflict, json.dumps({'runtimeStatus': 'stale'})]) as command, \
+                patch('builtins.print'), patch.object(MODULE.time, 'sleep') as sleep:
+            with self.assertRaisesRegex(RuntimeError, 'became inconsistent'):
+                MODULE.cleanup_after_pi5_stability()
+        self.assertEqual(command.call_count, 2)
+        sleep.assert_not_called()
 
 
 class RollbackStateTest(unittest.TestCase):

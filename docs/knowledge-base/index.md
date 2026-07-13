@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - 索引
 tags: [トラブルシューティング, ナレッジベース, 索引]
 audience: [開発者, 運用者]
-last-verified: 2026-07-09
+last-verified: 2026-07-13
 related: [api.md, database.md, ci-cd.md, frontend.md, infrastructure.md]
 category: knowledge-base
 update-frequency: high
@@ -22,6 +22,7 @@ update-frequency: high
 |---------|---------|------|------|
 | 生産スケジュール（負荷調整・山崩し支援） | [KB-362-kiosk-load-balancing.md](./KB-362-kiosk-load-balancing.md) | 1件 | 3タブ·外注契約整合 **`cd42ebfe`**·Pi5 **`20260527-191646-1476`**·[ADR 外注上限](../decisions/ADR-20260527-load-balancing-outsourcing-limits.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md) |
 | 負荷調整×生産システム突合 | [KB-363-load-balancing-production-system-reconciliation.md](./KB-363-load-balancing-production-system-reconciliation.md) | 1件 | **FSIGENSHOYOYMD** vs 着手日·集計修正 **実装済**（PR #350）·検算 `reconcile-033-may-patterns.mjs` |
+| Pi5 Blue/Green cleanup / monitor lock handoff | [KB-400](./KB-400-pi5-bluegreen-cleanup-monitor-lock.md) | 1件 | **2026-07-13** cleanup handoff lock-conflict。最大30秒のcleanup専用再試行・manual mutation禁止・本番再確認待ち。 |
 | キオスク順位ボード（完了整合・明示 `/completion`・CSV同期） | [KB-375-kiosk-leaderboard-completion-integrity.md](./KB-375-kiosk-leaderboard-completion-integrity.md) | 1件 | **主経路**: `PUT …/completion` + `intent`。**2026-06-01**: 装飾後取りで **完了とフッタ工程チップ**を再同期（[§2026-06-01](./KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync)）。**関連**: [KB-374 §装飾 stale](./KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync) |
 | キオスク順位ボード（装飾API・表示スコープとフッタ winner 整合） | [KB-376-leaderboard-footer-display-scope-winner-alignment.md](./KB-376-leaderboard-footer-display-scope-winner-alignment.md) | 1件 | **`rowIds`>900** でも **hydrate チャンク結合**と **`preferredDisplayRowIds`** で **行と 021 チップの winner** を揃える。**関連**: [KB-375](./KB-375-kiosk-leaderboard-completion-integrity.md)·[ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md) |
 | キオスク順位ボード（資源CDフッタチップ・グレーアウト検証） | [KB-377-kiosk-leaderboard-resource-chip-completion-verification.md](./KB-377-kiosk-leaderboard-resource-chip-completion-verification.md) | 1件 | **`021` 等が未完表示**→ **実効完了（手動 OR FKOJUNST_Status C/X）分解**。**`fkmail` は `C`/`X` のみ完了**、`S`/`R` は未完。**2026-05-26**: CSV差分消失による完了は廃止。スクショ全行 **OCR+DB突合の例**、**JST 暦日窓 SQL の落とし穴**、**伝播完了は仕様外**。**関連**: [KB-376](./KB-376-leaderboard-footer-display-scope-winner-alignment.md)·[KB-370](./KB-370-production-schedule-external-completion-triple-source.md) |
