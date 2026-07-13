@@ -53,6 +53,9 @@ import {
   type PartMeasurementRouteDeps
 } from './shared.js';
 
+// NFC UID の総当たり・認証レコードの過剰作成を防ぎつつ、キオスクの再スキャンを許容する。
+const selfInspectionMeasurementActorAuthenticationRateLimit = { max: 20, timeWindow: '1 minute' };
+
 export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMeasurementRouteDeps): void {
   const {
     allowView,
@@ -73,7 +76,10 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
 
     app.post(
       '/part-measurement/self-inspection/sessions/:id/measurement-actor-authentications',
-      { preHandler: allowWriteKiosk },
+      {
+        preHandler: allowWriteKiosk,
+        config: { rateLimit: selfInspectionMeasurementActorAuthenticationRateLimit }
+      },
       async (request) => {
         const params = selfInspectionSessionIdParamsSchema.parse(request.params);
         const body = selfInspectionMeasurementActorAuthenticationBodySchema.parse(request.body);

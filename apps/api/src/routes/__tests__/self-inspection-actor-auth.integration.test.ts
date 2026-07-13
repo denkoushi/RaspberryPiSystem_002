@@ -219,6 +219,25 @@ describe('self-inspection actor NFC authentication and pipe judgement', () => {
     expect(operations.every((row) => row.operationKind === 'ENTRY_CONFIRMED')).toBe(true);
   });
 
+  it('rate-limits repeated NFC actor authentications per kiosk', async () => {
+    const kiosk = await createTestClientDevice();
+    const employee = await createTestEmployee({ displayName: '認証レート制限測定者' });
+    const { session } = await createSession();
+    const url = `/api/part-measurement/self-inspection/sessions/${session.id}/measurement-actor-authentications`;
+    const options = {
+      headers: { 'x-client-key': kiosk.apiKey },
+      payload: { employeeTagUid: employee.nfcTagUid, measurementMode: 'operator' }
+    };
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const response = await app.inject({ method: 'POST', url, ...options });
+      expect(response.statusCode).toBe(200);
+    }
+
+    const limited = await app.inject({ method: 'POST', url, ...options });
+    expect(limited.statusCode).toBe(429);
+  });
+
   it('stores pipe-thread NG as a direct OK/NG judgement and permits inspector remeasurement', async () => {
     const kiosk = await createTestClientDevice();
     const operator = await createTestEmployee({ displayName: '管用測定者' });
