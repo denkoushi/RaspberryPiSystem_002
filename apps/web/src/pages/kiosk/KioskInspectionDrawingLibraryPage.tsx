@@ -1,14 +1,9 @@
-import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 import { retirePartMeasurementTemplate } from '../../api/client';
 import { useKioskProductionScheduleResources } from '../../api/hooks';
-import { Button, buttonClassName } from '../../components/ui/Button';
-import {
-  kioskButtonPrimaryClassName,
-  kioskPageTitleClassName
-} from '../../features/kiosk/kioskTheme';
+import { kioskPageTitleClassName } from '../../features/kiosk/kioskTheme';
 import {
   InspectionDrawingDigitTenkey,
   InspectionDrawingLibraryFilterBar,
@@ -19,7 +14,6 @@ import {
   KioskInspectionDrawingVisualUploadModal,
   kioskInspectionDrawingTemplateEditPath,
   kioskInspectionDrawingTemplatePrintPath,
-  KIOSK_INSPECTION_DRAWING_CREATE_PATH,
   INSPECTION_DRAWING_VISUAL_LIBRARY_LIMIT,
   INSPECTION_DRAWING_VISUAL_SEARCH_DEBOUNCE_MS,
   useInspectionDrawingResourceCdsByVisualId,
@@ -183,23 +177,6 @@ export function KioskInspectionDrawingLibraryPage() {
           <h1 className={kioskPageTitleClassName}>検査図面</h1>
         </div>
         <InspectionDrawingDigitTenkey value={digitQuery} onChange={setDigitQuery} disabled={retireBusy} />
-        <div className="ml-auto flex shrink-0 flex-nowrap items-center gap-2">
-          <Button
-            type="button"
-            variant="ghostOnDark"
-            className="min-h-11 text-[1.02rem]"
-            onClick={() => void navigate('/kiosk/part-measurement')}
-          >
-            部品測定へ
-          </Button>
-          <Link
-            to={KIOSK_INSPECTION_DRAWING_CREATE_PATH}
-            state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
-            className={buttonClassName('primary', clsx(kioskButtonPrimaryClassName, 'inline-flex items-center text-base'))}
-          >
-            新規
-          </Link>
-        </div>
       </div>
 
       <KioskInspectionDrawingVisualUploadModal

@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 
-import { Button, buttonClassName } from '../../components/ui/Button';
 import {
   InspectionDrawingLibraryFilterBar,
   InspectionDrawingLibraryTemplateTable,
@@ -143,18 +141,6 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
           <h1 className="text-[1.35rem] font-bold leading-tight">検査図面</h1>
         </div>
         <InspectionDrawingDigitTenkey value={digitQuery} onChange={setDigitQuery} />
-        <div className="ml-auto flex shrink-0 flex-nowrap items-center gap-2">
-          <Button type="button" variant="ghostOnDark" className="min-h-11 text-[1.02rem]" disabled>
-            部品測定へ
-          </Button>
-          <Link
-            to="/dev/kiosk-inspection-drawing-create"
-            state={INSPECTION_DRAWING_DEV_RETURN_TO_LIBRARY_STATE}
-            className={buttonClassName('primary', 'inline-flex min-h-11 items-center text-[1.02rem]')}
-          >
-            新規
-          </Link>
-        </div>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-2 overflow-auto 2xl:grid-cols-[31rem_minmax(0,1fr)] 2xl:overflow-hidden">
