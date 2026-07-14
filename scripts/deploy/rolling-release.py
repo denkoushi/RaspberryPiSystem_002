@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -38,9 +39,12 @@ STATUS_TOOL = PROJECT / 'scripts/deploy/deploy-status-state.py'
 PHASE3 = PROJECT / 'scripts/deploy/pi5-blue-green.sh'
 CANDIDATE_BUILD = PROJECT / 'scripts/deploy/pi5-candidate-build.sh'
 RUN_DIRECTORY = PROJECT / 'logs/deploy/release-runs'
+ROLLING_LOCK_DIRECTORY = PROJECT / 'logs/.rolling-terminal-release.lock.d'
 PI5_RELEASE_CURRENT = PROJECT / 'logs/deploy/pi5-release-current.json'
 OPERATOR_CANARY_APPROVAL_CLIENT = 'operator-canary-approval'
 DEFAULT_CANARY_HOLD_TIMEOUT = 1800
+TERMINAL_PLAYBOOK_TIMEOUT_SECONDS = 75 * 60
+TERMINAL_PLAYBOOK_TERM_GRACE_SECONDS = 30
 FULL_SHA_RE = re.compile(r'^[0-9a-f]{40}$')
 CLEANUP_LOCK_CONFLICT = 'another Pi5 Blue/Green operation is running'
 CLEANUP_LOCK_RETRY_TIMEOUT = 30
@@ -53,6 +57,8 @@ KIOSK_SCOPE_COMPONENTS = frozenset({
     'kiosk-role',
     'client-role',
 })
+ACTIVE_RELEASE_LOCK: Path | None = None
+ACTIVE_RELEASE_OWNER: dict[str, Any] | None = None
 
 
 def utc_now() -> str:
@@ -62,6 +68,84 @@ def utc_now() -> str:
 def run(command: list[str], *, cwd: Path = PROJECT, capture: bool = False, env: dict[str, str] | None = None) -> str:
     result = subprocess.run(command, cwd=cwd, check=True, text=True, capture_output=capture, env=env)
     return result.stdout if capture else ''
+
+
+class TerminalPlaybookTimeout(RuntimeError):
+    """A terminal must stay in maintenance when its deployment cannot finish."""
+
+
+def current_boot_id() -> str:
+    try:
+        value = Path('/proc/sys/kernel/random/boot_id').read_text(encoding='utf-8').strip()
+    except OSError as error:
+        raise RuntimeError('could not read the current boot ID') from error
+    if not re.fullmatch(r'[0-9a-f-]{36}', value):
+        raise RuntimeError('current boot ID is malformed')
+    return value
+
+
+def pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def process_group_alive(pgid: int) -> bool:
+    if pgid <= 0:
+        return False
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def terminate_process_group(pgid: int, *, grace_seconds: int = TERMINAL_PLAYBOOK_TERM_GRACE_SECONDS) -> None:
+    """Terminate one isolated group; never signal the coordinator's own group."""
+    if pgid <= 0 or pgid == os.getpgrp() or not process_group_alive(pgid):
+        return
+    os.killpg(pgid, signal.SIGTERM)
+    deadline = time.monotonic() + grace_seconds
+    while process_group_alive(pgid) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    if process_group_alive(pgid):
+        os.killpg(pgid, signal.SIGKILL)
+        deadline = time.monotonic() + 5
+        while process_group_alive(pgid) and time.monotonic() < deadline:
+            time.sleep(0.1)
+    if process_group_alive(pgid):
+        raise RuntimeError(f'process group {pgid} did not terminate')
+
+
+def run_terminal_playbook(command: list[str], *, cwd: Path, env: dict[str, str], timeout_seconds: int = TERMINAL_PLAYBOOK_TIMEOUT_SECONDS) -> None:
+    """Bound a terminal playbook and own its complete process group."""
+    process = subprocess.Popen(command, cwd=cwd, env=env, start_new_session=True)
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command, timeout_seconds)
+            try:
+                return_code = process.wait(timeout=min(15, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                heartbeat_release_lock()
+    except subprocess.TimeoutExpired as error:
+        terminate_process_group(process.pid)
+        raise TerminalPlaybookTimeout(
+            f'terminal playbook exceeded {timeout_seconds}s and was stopped',
+        ) from error
+    if return_code:
+        raise subprocess.CalledProcessError(return_code, command)
 
 
 def atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -103,6 +187,7 @@ class ReleaseState:
     def save(self) -> None:
         self.payload['updatedAt'] = utc_now()
         atomic_json(self.path, self.payload)
+        heartbeat_release_lock()
 
     def target(self, host: str) -> dict[str, Any]:
         for target in self.payload['targets']:
@@ -113,6 +198,77 @@ class ReleaseState:
 
 def status_file(run_id: str) -> Path:
     return RUN_DIRECTORY / f'{run_id}.json'
+
+
+def load_json_object(path: Path) -> dict[str, Any] | None:
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def write_release_lock(lock: Path, owner: dict[str, Any]) -> None:
+    atomic_json(lock / 'owner', owner)
+
+
+def heartbeat_release_lock() -> None:
+    global ACTIVE_RELEASE_OWNER
+    if ACTIVE_RELEASE_LOCK is None or ACTIVE_RELEASE_OWNER is None:
+        return
+    ACTIVE_RELEASE_OWNER['heartbeatAt'] = utc_now()
+    write_release_lock(ACTIVE_RELEASE_LOCK, ACTIVE_RELEASE_OWNER)
+
+
+def interrupted_release_from_reboot(owner: dict[str, Any]) -> None:
+    """Record a reboot interruption without clearing maintenance anywhere."""
+    run_id = owner.get('runId')
+    if not isinstance(run_id, str):
+        return
+    path = status_file(run_id)
+    state = load_json_object(path)
+    if state is not None:
+        state.update({
+            'state': 'interrupted',
+            'interruptedAt': utc_now(),
+            'interruptionReason': 'Pi5 reboot detected while rolling release lock was held',
+        })
+        atomic_json(path, state)
+    evidence = RUN_DIRECTORY / f'{run_id}.previous-boot.log'
+    try:
+        result = subprocess.run(
+            ['journalctl', '-b', '-1', '-k', '--no-pager', '-n', '500'],
+            check=False, text=True, capture_output=True,
+        )
+        evidence.parent.mkdir(parents=True, exist_ok=True)
+        evidence.write_text(result.stdout + result.stderr, encoding='utf-8')
+    except OSError:
+        # Persistent journald is provisioned by Ansible; missing evidence must
+        # not turn a safe lock recovery into a destructive operation.
+        pass
+
+
+def recover_rebooted_release_lock(lock: Path) -> None:
+    """Reap only a lock proven to belong to an earlier boot and dead PID."""
+    owner = load_json_object(lock / 'owner')
+    if owner is None:
+        raise RuntimeError(f'rolling release lock owner is malformed: {lock}')
+    owner_boot = owner.get('bootId')
+    owner_pid = owner.get('pid')
+    if not isinstance(owner_boot, str) or not isinstance(owner_pid, int):
+        raise RuntimeError(f'another rolling terminal release is active: {lock}')
+    if owner_boot == current_boot_id() or pid_alive(owner_pid):
+        raise RuntimeError(f'another rolling terminal release is active: {lock}')
+    interrupted_release_from_reboot(owner)
+    (lock / 'owner').unlink(missing_ok=True)
+    try:
+        lock.rmdir()
+    except FileNotFoundError:
+        # The terminated coordinator may have run its own `finally` cleanup
+        # between our process-group confirmation and this final release.
+        pass
+    except OSError as error:
+        raise RuntimeError('release process exited but its lock directory is not empty') from error
 
 
 def inventory_json(path: str) -> dict[str, Any]:
@@ -319,7 +475,7 @@ def playbook(inventory: str, host: str, revision: str, run_id: str, *, rollback:
     # roles_path and vault_password_file in ansible.cfg are relative to the
     # Ansible project.  Run from that directory rather than the repository
     # root so a remote coordinator resolves the same roles as local CI.
-    run(
+    run_terminal_playbook(
         ['ansible-playbook', '-i', inventory, str(ANSIBLE_DIRECTORY / 'playbooks/deploy-staged.yml'), '--limit', host, '-e', extra],
         cwd=ANSIBLE_DIRECTORY,
         env=env,
@@ -910,6 +1066,19 @@ def _remote_run(args: argparse.Namespace) -> int:
                 target['completedAt'] = utc_now()
                 state_command('remove-client', '--run-id', args.run_id, '--client', target_spec['clientId'])
                 state.save()
+            except TerminalPlaybookTimeout as error:
+                # A timed-out or disconnected terminal cannot be proven to have
+                # its previous revision running.  Do not attempt an automatic
+                # rollback over an unreliable connection and keep maintenance.
+                target['state'] = 'failed'
+                target['failure'] = str(error)
+                target['completedAt'] = utc_now()
+                state_command(
+                    'fail-client', '--run-id', args.run_id,
+                    '--client', target_spec['clientId'], '--reason', str(error),
+                )
+                state.save()
+                raise RuntimeError(f'rollout stopped after {target_spec["host"]} timed out') from error
             except Exception as error:
                 target['state'] = 'rolling-back'
                 target['failure'] = str(error)
@@ -932,20 +1101,88 @@ def _remote_run(args: argparse.Namespace) -> int:
 
 
 def remote_run(args: argparse.Namespace) -> int:
-    lock = PROJECT / 'logs/.rolling-terminal-release.lock.d'
+    global ACTIVE_RELEASE_LOCK, ACTIVE_RELEASE_OWNER
+    lock = ROLLING_LOCK_DIRECTORY
     try:
         lock.mkdir()
-        (lock / 'owner').write_text(json.dumps({'pid': os.getpid(), 'runId': args.run_id, 'startedAt': utc_now()}), encoding='utf-8')
     except FileExistsError as error:
-        raise RuntimeError(f'another rolling terminal release is active: {lock}') from error
+        try:
+            recover_rebooted_release_lock(lock)
+            lock.mkdir()
+        except Exception as recovery_error:
+            raise RuntimeError(f'another rolling terminal release is active: {lock}') from recovery_error
+    owner = {
+        'runId': args.run_id,
+        'pid': os.getpid(),
+        'processGroup': os.getpgrp(),
+        'bootId': current_boot_id(),
+        'startedAt': utc_now(),
+        'heartbeatAt': utc_now(),
+    }
+    write_release_lock(lock, owner)
+    ACTIVE_RELEASE_LOCK, ACTIVE_RELEASE_OWNER = lock, owner
     try:
         return _remote_run(args)
     finally:
+        ACTIVE_RELEASE_LOCK, ACTIVE_RELEASE_OWNER = None, None
         try:
             (lock / 'owner').unlink(missing_ok=True)
             lock.rmdir()
         except OSError:
             pass
+
+
+def active_target_for_cancellation(state: dict[str, Any]) -> dict[str, Any] | None:
+    targets = state.get('targets')
+    if not isinstance(targets, list):
+        return None
+    for target in reversed(targets):
+        if isinstance(target, dict) and target.get('state') in {
+            'maintenance-requested', 'deploying', 'rolling-back',
+        }:
+            return target
+    return None
+
+
+def remote_cancel(args: argparse.Namespace) -> int:
+    """Safely end exactly one release and keep its active terminal in maintenance."""
+    lock = ROLLING_LOCK_DIRECTORY
+    owner = load_json_object(lock / 'owner')
+    if owner is None or owner.get('runId') != args.cancel:
+        raise RuntimeError(f'active rolling release does not match {args.cancel}')
+    pid = owner.get('pid')
+    if not isinstance(pid, int) or not pid_alive(pid):
+        raise RuntimeError('release owner process is absent; use reboot recovery instead of cancel')
+    pgid = owner.get('processGroup')
+    if not isinstance(pgid, int):
+        try:
+            pgid = os.getpgid(pid)
+        except ProcessLookupError as error:
+            raise RuntimeError('release owner process disappeared before cancellation') from error
+    if pgid == os.getpgrp():
+        raise RuntimeError('refusing to cancel a release in the caller process group')
+    terminate_process_group(pgid)
+    if pid_alive(pid) or process_group_alive(pgid):
+        raise RuntimeError('release process did not exit; rolling lock remains held')
+
+    state_path = status_file(args.cancel)
+    state = load_json_object(state_path)
+    if state is not None:
+        target = active_target_for_cancellation(state)
+        if target is not None and isinstance(target.get('clientId'), str):
+            target.update({
+                'state': 'failed', 'completedAt': utc_now(),
+                'failure': f'cancelled: {args.reason}',
+            })
+            state_command('fail-client', '--run-id', args.cancel, '--client', target['clientId'], '--reason', args.reason)
+        state.update({
+            'state': 'cancelled', 'cancelledAt': utc_now(), 'cancelReason': args.reason,
+        })
+        atomic_json(state_path, state)
+    (lock / 'owner').unlink(missing_ok=True)
+    lock.rmdir()
+    print(json.dumps({'runId': args.cancel, 'state': 'cancelled'}, ensure_ascii=False))
+    return 0
 
 
 def local_approve(run_id: str) -> int:
@@ -965,6 +1202,28 @@ def local_approve(run_id: str) -> int:
     return 0
 
 
+def local_cancel(args: argparse.Namespace) -> int:
+    """Bootstrap a cancellation command from the selected branch on Pi5."""
+    branch = args.branch or run(
+        ['git', '-C', str(PROJECT), 'branch', '--show-current'], capture=True,
+    ).strip()
+    if not branch:
+        raise RuntimeError('--cancel requires a checked-out branch or --branch')
+    host = os.environ.get('RASPI_SERVER_HOST')
+    if not host:
+        raise RuntimeError('RASPI_SERVER_HOST is required for --cancel')
+    run(['git', '-C', str(PROJECT), 'fetch', 'origin', branch])
+    sha = run(['git', '-C', str(PROJECT), 'rev-parse', f'origin/{branch}'], capture=True).strip()
+    remote = (
+        'cd /opt/RaspberryPiSystem_002 && '
+        f'git fetch origin {shlex.quote(branch)} && git checkout --detach {shlex.quote(sha)} && '
+        f'python3 scripts/deploy/rolling-release.py --remote-cancel --cancel {shlex.quote(args.cancel)} '
+        f'--reason {shlex.quote(args.reason)}'
+    )
+    subprocess.run(['ssh', host, remote], check=True)
+    return 0
+
+
 def local_run(args: argparse.Namespace) -> int:
     if args.status:
         host = os.environ.get('RASPI_SERVER_HOST')
@@ -975,6 +1234,8 @@ def local_run(args: argparse.Namespace) -> int:
         return 0
     if args.approve:
         return local_approve(args.approve)
+    if args.cancel:
+        return local_cancel(args)
     if not args.branch or not args.inventory:
         raise RuntimeError('branch and inventory are required')
     if args.print_plan:
@@ -1015,7 +1276,7 @@ def local_run(args: argparse.Namespace) -> int:
         log_path = f'/opt/RaspberryPiSystem_002/logs/deploy/release-runs/{run_id}.log'
         detached = (
             f'mkdir -p /opt/RaspberryPiSystem_002/logs/deploy/release-runs && '
-            f'nohup /bin/bash -lc {shlex.quote(remote)} > {shlex.quote(log_path)} 2>&1 & echo $!'
+            f'nohup setsid /bin/bash -lc {shlex.quote(remote)} > {shlex.quote(log_path)} 2>&1 & echo $!'
         )
         subprocess.run(['ssh', host, detached], check=True)
         print(json.dumps({'runId': run_id, 'state': 'started', 'logFile': log_path}, ensure_ascii=False))
@@ -1036,6 +1297,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument('--limit', default='')
     value.add_argument('--status')
     value.add_argument('--approve')
+    value.add_argument('--cancel')
     value.add_argument('--print-plan', '--dry-run', action='store_true')
     # Kept for compatibility with the previous wrapper.  The remote runner
     # records the run state, so callers can continue to use --status.
@@ -1048,6 +1310,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument('--emergency-override', action='store_true')
     value.add_argument('--reason')
     value.add_argument('--remote-run', action='store_true')
+    value.add_argument('--remote-cancel', action='store_true')
     value.add_argument('--sha')
     value.add_argument('--run-id')
     value.add_argument('--skip-canary-hold', action='store_true')
@@ -1074,6 +1337,12 @@ def main() -> int:
         raise RuntimeError(f'unsupported options in canonical rolling release: {" ".join(unknown)}')
     if args.emergency_override and not args.reason:
         raise RuntimeError('--emergency-override requires --reason')
+    if args.cancel and not args.reason:
+        raise RuntimeError('--cancel requires --reason')
+    if args.remote_cancel:
+        if not (args.cancel and args.reason):
+            raise RuntimeError('--remote-cancel requires --cancel and --reason')
+        return remote_cancel(args)
     if args.remote_run:
         if not (args.sha and args.run_id and args.inventory and args.branch):
             raise RuntimeError('--remote-run requires branch, inventory, sha and run-id')

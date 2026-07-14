@@ -133,6 +133,10 @@ def main():
     phase = sub.add_parser('set-phase')
     phase.add_argument('--run-id', required=True)
     phase.add_argument('--phase', required=True, choices=['preparing', 'deploying', 'failed'])
+    fail_client = sub.add_parser('fail-client')
+    fail_client.add_argument('--run-id', required=True)
+    fail_client.add_argument('--client', required=True)
+    fail_client.add_argument('--reason', required=True)
     remove = sub.add_parser('remove-run')
     remove.add_argument('--run-id', required=True)
     remove_client = sub.add_parser('remove-client')
@@ -186,6 +190,16 @@ def main():
             for entry in entries.values():
                 if entry.get('runId') == args.run_id:
                     entry.update({'maintenance': True, 'phase': args.phase, 'updatedAt': timestamp})
+        elif args.command == 'fail-client':
+            entry = entries.get(args.client)
+            if not entry or entry.get('runId') != args.run_id:
+                raise ValueError('failed terminal does not match an active terminal entry')
+            entry.update({
+                'maintenance': True,
+                'phase': 'failed',
+                'failure': args.reason[:1000],
+                'updatedAt': timestamp,
+            })
         elif args.command == 'ack':
             entry = entries.get(args.client)
             if not entry or entry.get('runId') != args.run_id:

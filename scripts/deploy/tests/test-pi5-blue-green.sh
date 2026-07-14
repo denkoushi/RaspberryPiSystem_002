@@ -54,6 +54,11 @@ assert_contains "$out" "bootstrap completed"
 [[ "$(state "$STATE1" version)" == 2 ]] || fail "state schema is not v2"
 [[ "$(state "$STATE1" legacy.caddyConfigPath)" == /srv/Caddyfile ]] || fail "legacy Caddyfile path was not persisted"
 [[ "$(state "$STATE1" legacy.web.removed)" == True ]] || fail "bootstrap did not release legacy Web port ownership"
+[[ "$(python3 - "$STATE1" <<'PY'
+import json, sys
+print(len((json.load(open(sys.argv[1])).get('resource') or {}).get('loadSamples') or []))
+PY
+)" -ge 1 ]] || fail "resource load samples were not recorded"
 
 out="$(env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE1" "$SCRIPT" prepare --api-image "$NEW_API" --web-image "$NEW_WEB")"
 assert_contains "$out" "candidate prepared"
@@ -105,6 +110,13 @@ if env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE2" PI5_BLUE_GREEN_TEST_ME
   fail "resource guard accepted insufficient memory"
 fi
 [[ ! -f "$STATE2" ]] || fail "resource failure wrote active state"
+
+STATE_LOAD="$TMP/state-load.json"
+if env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE_LOAD" PI5_BLUE_GREEN_TEST_LOAD_AVG=9.0 \
+  "$SCRIPT" bootstrap --confirm-bootstrap --allow-legacy-scheduler-handoff --api-image "$OLD_API" --web-image "$OLD_WEB" >/dev/null 2>&1; then
+  fail "resource guard accepted an overloaded Pi5"
+fi
+[[ ! -f "$STATE_LOAD" ]] || fail "load failure wrote active state"
 
 # Malformed state must fail closed.
 STATE_BAD="$TMP/state-bad.json"
@@ -328,6 +340,8 @@ grep -Fq "'acknowledged': False" "$SCRIPT" || fail "Blue/Green alert payload is 
 grep -Fq 'pi5-phase3-legacy-guard.sh' "$ROOT/scripts/deploy/pi5-image-deploy.sh" || fail "Phase 2 script is missing the Phase 3 legacy guard"
 
 VALIDATOR="$ROOT/scripts/deploy/validate-expand-only-migrations.py"
+grep -Fq 'validate_applied_history' "$VALIDATOR" \
+  || fail "migration validator does not verify every applied migration file"
 RESTORED_MIGRATION_DIR="$TMP/20260714000000_restored_history"
 NEW_MIGRATION_DIR="$TMP/20260714000001_new_expand"
 mkdir -p "$RESTORED_MIGRATION_DIR" "$NEW_MIGRATION_DIR"
@@ -347,6 +361,10 @@ printf '%s|%s\n' "$(basename "$RESTORED_MIGRATION_DIR")" "$restored_checksum" \
 if printf '%s|%064d\n' "$(basename "$RESTORED_MIGRATION_DIR")" 0 \
   | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" "$RESTORED_MIGRATION_DIR/migration.sql" >/dev/null 2>&1; then
   fail "applied migration with mismatched checksum was accepted"
+fi
+if printf '%s|%064d\n' 'missing-applied-history' 0 \
+  | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" >/dev/null 2>&1; then
+  fail "missing applied migration was accepted when no new migration exists"
 fi
 printf '\n' | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" "$NEW_MIGRATION_DIR/migration.sql" >/dev/null \
   || fail "new Expand-only migration was rejected"

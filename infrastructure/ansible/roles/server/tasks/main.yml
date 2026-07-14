@@ -3,6 +3,38 @@
   ansible.builtin.set_fact:
     docker_restart_summary: "{{ docker_restart_summary | default([]) }}"
 
+- name: Ensure persistent journal directory exists for deploy recovery
+  ansible.builtin.file:
+    path: /var/log/journal
+    state: directory
+    owner: root
+    group: systemd-journal
+    mode: '2755'
+
+- name: Limit persistent journald storage for deploy recovery
+  ansible.builtin.template:
+    src: journald-deploy-persistence.conf.j2
+    dest: /etc/systemd/journald.conf.d/99-deploy-persistence.conf
+    owner: root
+    group: root
+    mode: '0644'
+  register: deploy_journald_config
+
+- name: Restart journald after deploy persistence configuration
+  ansible.builtin.systemd:
+    name: systemd-journald.service
+    state: restarted
+  when: deploy_journald_config.changed
+
+- name: Collect systemd service facts for optional pstore support
+  ansible.builtin.service_facts:
+
+- name: Enable systemd pstore capture when available
+  ansible.builtin.systemd:
+    name: systemd-pstore.service
+    enabled: true
+  when: "'systemd-pstore.service' in ansible_facts.services"
+
 - name: Validate required API variables
   ansible.builtin.assert:
     that:

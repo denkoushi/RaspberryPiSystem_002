@@ -91,7 +91,9 @@ def parse_args() -> argparse.Namespace:
         help="Pipe-delimited migration_name|checksum rows, or - for stdin",
     )
     parser.add_argument("--migration-root", required=True)
-    parser.add_argument("migrations", nargs="+")
+    # An empty added-migration set is meaningful: every release still verifies
+    # the complete applied history before it trusts the candidate checkout.
+    parser.add_argument("migrations", nargs="*")
     return parser.parse_args()
 
 

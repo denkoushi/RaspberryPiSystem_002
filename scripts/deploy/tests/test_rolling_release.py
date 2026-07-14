@@ -1194,5 +1194,58 @@ class AutoMinimizeTest(unittest.TestCase):
         self.assertTrue(plan['canaryHold'])
 
 
+class RollingReleaseCancellationTest(unittest.TestCase):
+    def test_cancel_only_marks_the_active_terminal_failed_and_keeps_maintenance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            lock = root / 'release.lock.d'
+            lock.mkdir()
+            (lock / 'owner').write_text(json.dumps({
+                'runId': 'run-cancel', 'pid': 1234, 'processGroup': 5678,
+                'bootId': '00000000-0000-0000-0000-000000000000',
+            }), encoding='utf-8')
+            state = {
+                'runId': 'run-cancel', 'state': 'running',
+                'targets': [{'host': 'offline-kiosk', 'clientId': 'fjv', 'state': 'deploying'}],
+            }
+            (root / 'run-cancel.json').write_text(json.dumps(state), encoding='utf-8')
+            args = argparse.Namespace(cancel='run-cancel', reason='operator requested safe stop')
+            with patch.object(MODULE, 'ROLLING_LOCK_DIRECTORY', lock), \
+                    patch.object(MODULE, 'RUN_DIRECTORY', root), \
+                    patch.object(MODULE, 'pid_alive', side_effect=[True, False]), \
+                    patch.object(MODULE, 'process_group_alive', return_value=False), \
+                    patch.object(MODULE, 'terminate_process_group') as terminate, \
+                    patch.object(MODULE, 'state_command') as status, \
+                    patch('builtins.print'):
+                self.assertEqual(MODULE.remote_cancel(args), 0)
+            payload = json.loads((root / 'run-cancel.json').read_text(encoding='utf-8'))
+        terminate.assert_called_once_with(5678)
+        status.assert_called_once_with(
+            'fail-client', '--run-id', 'run-cancel', '--client', 'fjv',
+            '--reason', 'operator requested safe stop',
+        )
+        self.assertEqual(payload['state'], 'cancelled')
+        self.assertEqual(payload['targets'][0]['state'], 'failed')
+
+    def test_rebooted_dead_owner_is_recorded_as_interrupted_without_status_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            lock = root / 'release.lock.d'
+            lock.mkdir()
+            (lock / 'owner').write_text(json.dumps({
+                'runId': 'run-reboot', 'pid': 9999,
+                'bootId': '00000000-0000-0000-0000-000000000000',
+            }), encoding='utf-8')
+            (root / 'run-reboot.json').write_text(json.dumps({'state': 'running'}), encoding='utf-8')
+            with patch.object(MODULE, 'RUN_DIRECTORY', root), \
+                    patch.object(MODULE, 'current_boot_id', return_value='11111111-1111-1111-1111-111111111111'), \
+                    patch.object(MODULE, 'pid_alive', return_value=False), \
+                    patch.object(MODULE.subprocess, 'run', return_value=Mock(stdout='', stderr='')):
+                MODULE.recover_rebooted_release_lock(lock)
+            payload = json.loads((root / 'run-reboot.json').read_text(encoding='utf-8'))
+        self.assertEqual(payload['state'], 'interrupted')
+        self.assertFalse(lock.exists())
+
+
 if __name__ == '__main__':
     unittest.main()

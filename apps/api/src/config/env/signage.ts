@@ -3,6 +3,10 @@ import './load-dotenv.js';
 import { z } from 'zod';
 
 export const signageEnvShape = {
+  // Candidate API validation must not launch a renderer/Chromium worker. The
+  // production default remains enabled; deploy control may pause a live worker
+  // only through its authenticated internal endpoint.
+  SIGNAGE_RENDER_ENABLED: z.coerce.boolean().default(true),
   SIGNAGE_RENDER_INTERVAL_SECONDS: z.coerce.number().min(10).max(3600).default(30),
   // サイネージレンダリングは重い処理になりやすく、APIイベントループを塞ぐとキオスク操作に影響する。
   // 本番はデフォルトで "worker"（別プロセス）に逃がし、開発は従来通り "in_process"。
@@ -21,4 +25,8 @@ export const signageEnvShape = {
   SIGNAGE_LOAN_GRID_ENGINE: z.enum(['svg_legacy', 'playwright_html']).default('svg_legacy'),
   /** Playwright スクリーンショットの deviceScaleFactor（1〜2）。高いほど縁取りが細かいが負荷増 */
   SIGNAGE_PLAYWRIGHT_DEVICE_SCALE_FACTOR: z.coerce.number().min(1).max(2).default(1),
+  // Optional dedicated token for host-local deploy control. Deployments that
+  // have not provisioned it use the existing protected access secret as the
+  // compatibility fallback; the route is still restricted to loopback/Docker.
+  DEPLOY_CONTROL_TOKEN: z.string().min(1).optional(),
 } as const;

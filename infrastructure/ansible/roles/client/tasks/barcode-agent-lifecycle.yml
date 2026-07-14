@@ -16,7 +16,14 @@
 - name: Ensure barcode-agent container is up
   ansible.builtin.shell: |
     set -euo pipefail
-    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode up -d --build barcode-agent
+    cd "{{ repo_path }}"
+    {% if barcode_agent_image_build_needed | default(true) %}
+    docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode up -d --build barcode-agent
+    {% elif barcode_agent_runtime_recreate_needed | default(true) %}
+    docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode up -d --force-recreate --no-build barcode-agent
+    {% else %}
+    docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode up -d --no-build barcode-agent
+    {% endif %}
   args:
     executable: /bin/bash
   register: barcode_agent_up_result

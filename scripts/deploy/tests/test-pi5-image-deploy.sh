@@ -26,6 +26,13 @@ sha="$(git -C "$ROOT" rev-parse HEAD)"
 output="$(env "${common_env[@]}" "$SCRIPT" prepare --ref "$sha")"
 assert_contains "$output" "candidate prepared"
 [[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["event"])' "$TMP/state.json")" == prepared ]] || fail "state is not prepared"
+[[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["build"]["mode"])' "$TMP/state.json")" == built ]] || fail "prepared state did not record the candidate build mode"
+grep -Fq 'SIGNAGE_RENDER_ENABLED=false' "$SCRIPT" || fail "candidate validation does not disable signage rendering"
+grep -Fq 'image_matches_candidate' "$SCRIPT" || fail "candidate image reuse guard is missing"
+grep -Fq 'BUILD_CONFIG_HASH' "$ROOT/infrastructure/docker/Dockerfile.api" || fail "API image is not labelled with its compose configuration hash"
+grep -Fq 'BUILD_CONFIG_HASH' "$ROOT/infrastructure/docker/Dockerfile.web" || fail "Web image is not labelled with its compose configuration hash"
+grep -Fq 'wait_for_stable_load pre-build' "$SCRIPT" || fail "candidate build lacks pre-build stable-load wait"
+grep -Fq 'wait_for_stable_load post-build' "$SCRIPT" || fail "candidate build lacks post-build stable-load wait"
 
 status="$(env "${common_env[@]}" "$SCRIPT" status)"
 assert_contains "$status" '"event": "prepared"'

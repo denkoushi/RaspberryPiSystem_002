@@ -14,9 +14,17 @@ WEB_URL="${PI5_WEB_URL:-https://127.0.0.1/}"
 MAINTENANCE_URL="${PI5_MAINTENANCE_URL:-https://127.0.0.1/}"
 MIN_FREE_MEMORY_MB="${PI5_MIN_FREE_MEMORY_MB:-768}"
 MIN_FREE_DISK_GB="${PI5_MIN_FREE_DISK_GB:-10}"
+MAX_LOAD_AVG="${PI5_CANDIDATE_MAX_LOAD_AVG:-${PI5_BLUE_GREEN_MAX_LOAD_AVG:-}}"
+LOAD_SAMPLE_COUNT="${PI5_CANDIDATE_LOAD_SAMPLE_COUNT:-3}"
+LOAD_SAMPLE_INTERVAL_SECONDS="${PI5_CANDIDATE_LOAD_SAMPLE_INTERVAL_SECONDS:-20}"
+LOAD_WAIT_SECONDS="${PI5_CANDIDATE_LOAD_WAIT_SECONDS:-600}"
 DRY_RUN="${PI5_DEPLOY_DRY_RUN:-0}"
 FORCE_DESTRUCTIVE_MIGRATION=0
 REF=""
+LAST_LOAD_SAMPLES="[]"
+SIGNAGE_CONTAINER_ID=""
+SIGNAGE_PAUSED=0
+LOCK_DIR=""
 
 log() { printf '[%s] %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
@@ -57,14 +65,14 @@ compose() {
 }
 
 atomic_state() {
-  local event="$1" api_image="$2" web_image="$3" previous_api="${4:-}" previous_web="${5:-}" result="${6:-}"
+  local event="$1" api_image="$2" web_image="$3" previous_api="${4:-}" previous_web="${5:-}" result="${6:-}" build_mode="${7:-}"
   mkdir -p "$(dirname "$STATE_FILE")"
-  python3 - "$STATE_FILE" "$event" "$api_image" "$web_image" "$previous_api" "$previous_web" "$result" <<'PY'
+  python3 - "$STATE_FILE" "$event" "$api_image" "$web_image" "$previous_api" "$previous_web" "$result" "$build_mode" "$LAST_LOAD_SAMPLES" <<'PY'
 import json, os, sys, tempfile
 from datetime import datetime, timezone
-path, event, api, web, prev_api, prev_web, result = sys.argv[1:]
+path, event, api, web, prev_api, prev_web, result, build_mode, load_samples = sys.argv[1:]
 try:
-    with open(path, encoding="utf-8") as f: state = json.load(f)
+ with open(path, encoding="utf-8") as f: state = json.load(f)
 except (FileNotFoundError, json.JSONDecodeError): state = {"version": 1}
 candidate = {"api": api, "web": web}
 previous = {"api": prev_api, "web": prev_web}
@@ -86,6 +94,8 @@ elif event == "rolled-back":
     state["previous"] = candidate
     state["rollbackEligible"] = False
 if result: state["result"] = result
+if build_mode:
+ state["build"] = {"mode": build_mode, "loadSamples": json.loads(load_samples)}
 fd, tmp = tempfile.mkstemp(prefix=".pi5-deploy-", dir=os.path.dirname(path))
 with os.fdopen(fd, "w", encoding="utf-8") as f:
     json.dump(state, f, separators=(",", ":")); f.write("\n"); f.flush(); os.fsync(f.fileno())
@@ -114,14 +124,27 @@ require_sha() {
   fi
 }
 
+candidate_config_hash() {
+  # The tag must represent the resolved deployment contract, not source SHA
+  # alone. Include both Compose overlays and the protected environment file so
+  # a changed service setting cannot accidentally reuse an old candidate.
+  [[ -f "$BASE_COMPOSE" ]] || die "Base Compose file is missing: $BASE_COMPOSE"
+  [[ -f "$PHASE2_COMPOSE" ]] || die "Phase 2 Compose file is missing: $PHASE2_COMPOSE"
+  [[ -f "$ENV_FILE" ]] || die "Compose environment file is missing: $ENV_FILE"
+  python3 - "$BASE_COMPOSE" "$PHASE2_COMPOSE" "$ENV_FILE" <<'PY'
+import hashlib, pathlib, sys
+h=hashlib.sha256()
+for raw in sys.argv[1:]:
+    path=pathlib.Path(raw)
+    h.update(str(path).encode('utf-8')); h.update(b'\0')
+    h.update(path.read_bytes()); h.update(b'\0')
+print(h.hexdigest())
+PY
+}
+
 candidate_tag() {
   local config_hash
-  [[ -f "$ENV_FILE" ]] || die "Compose environment file is missing: $ENV_FILE"
-  if command -v sha256sum >/dev/null 2>&1; then
-    config_hash="$(sha256sum "$ENV_FILE" | awk '{print $1}')"
-  else
-    config_hash="$(shasum -a 256 "$ENV_FILE" | awk '{print $1}')"
-  fi
+  config_hash="$(candidate_config_hash)"
   printf '%s-%s\n' "$REF" "${config_hash:0:12}"
 }
 
@@ -139,6 +162,132 @@ resource_guard() {
   ((disk_gb >= MIN_FREE_DISK_GB)) || die "free disk ${disk_gb}GB is below ${MIN_FREE_DISK_GB}GB"
 }
 
+load_value() {
+  if [[ -n "${PI5_CANDIDATE_TEST_LOAD_AVG:-}" ]]; then
+    printf '%s\n' "$PI5_CANDIDATE_TEST_LOAD_AVG"
+  else
+    awk '{print $1; exit}' /proc/loadavg
+  fi
+}
+
+maximum_load() {
+  if [[ -n "$MAX_LOAD_AVG" ]]; then
+    printf '%s\n' "$MAX_LOAD_AVG"
+    return
+  fi
+  local cpu_count
+  cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || true)"
+  [[ "$cpu_count" =~ ^[1-9][0-9]*$ ]] || die 'online CPU count could not be read'
+  awk "BEGIN {printf \"%.2f\", $cpu_count * 0.75}"
+}
+
+wait_for_stable_load() {
+  local stage="$1" maximum load consecutive=0 deadline now samples='[]'
+  [[ "$DRY_RUN" == 1 ]] && { LAST_LOAD_SAMPLES='[]'; log "DRY-RUN: stable load check (${stage})"; return 0; }
+  [[ "$LOAD_SAMPLE_COUNT" =~ ^[1-9][0-9]*$ ]] || die 'load sample count is invalid'
+  [[ "$LOAD_SAMPLE_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]] || die 'load sample interval is invalid'
+  [[ "$LOAD_WAIT_SECONDS" =~ ^[1-9][0-9]*$ ]] || die 'load wait timeout is invalid'
+  maximum="$(maximum_load)"
+  [[ "$maximum" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'maximum load average is invalid'
+  deadline=$(( $(date +%s) + LOAD_WAIT_SECONDS ))
+  while true; do
+    load="$(load_value)"
+    [[ "$load" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'load average could not be read'
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    samples="$(python3 - "$samples" "$now" "$load" "$maximum" <<'PY'
+import json,sys
+items=json.loads(sys.argv[1]); items.append({'at':sys.argv[2], 'load':float(sys.argv[3]), 'maximum':float(sys.argv[4])})
+print(json.dumps(items,separators=(',',':')))
+PY
+)"
+    if awk "BEGIN {exit !($load < $maximum)}"; then
+      consecutive=$((consecutive + 1))
+      log "load sample ${consecutive}/${LOAD_SAMPLE_COUNT} passed at ${stage}: ${load}/${maximum}"
+      if ((consecutive >= LOAD_SAMPLE_COUNT)); then
+        LAST_LOAD_SAMPLES="$samples"
+        return 0
+      fi
+    else
+      consecutive=0
+      log "load sample reset at ${stage}: ${load}/${maximum}"
+    fi
+    if (( $(date +%s) >= deadline )); then
+      LAST_LOAD_SAMPLES="$samples"
+      die "load average did not remain below ${maximum} for ${LOAD_SAMPLE_COUNT} samples within ${LOAD_WAIT_SECONDS}s (${stage})"
+    fi
+    sleep "$LOAD_SAMPLE_INTERVAL_SECONDS"
+  done
+}
+
+image_matches_candidate() {
+  local image="$1" config_hash="$2" revision hash
+  docker image inspect "$image" >/dev/null 2>&1 || return 1
+  revision="$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image" 2>/dev/null || true)"
+  hash="$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.config-hash" }}' "$image" 2>/dev/null || true)"
+  [[ "$revision" == "$REF" && "$hash" == "$config_hash" ]]
+}
+
+deploy_control_token() {
+  local token
+  token="$(awk -F= '$1 == "DEPLOY_CONTROL_TOKEN" {sub(/^[^=]*=/, ""); print; exit}' "$ENV_FILE" 2>/dev/null || true)"
+  [[ -n "$token" ]] || token="$(awk -F= '$1 == "JWT_ACCESS_SECRET" {sub(/^[^=]*=/, ""); print; exit}' "$ENV_FILE" 2>/dev/null || true)"
+  [[ -n "$token" ]] || die 'deploy control token is missing from the protected environment file'
+  printf '%s\n' "$token"
+}
+
+active_api_container() {
+  local slot candidate
+  if [[ -f "${PROJECT_DIR}/logs/deploy/pi5-blue-green-state.json" ]]; then
+    slot="$(python3 - "${PROJECT_DIR}/logs/deploy/pi5-blue-green-state.json" <<'PY' 2>/dev/null || true
+import json,sys
+try:
+  value=json.load(open(sys.argv[1],encoding='utf-8')).get('activeSlot')
+  print(value if value in {'blue','green'} else '')
+except Exception:
+  pass
+PY
+)"
+    if [[ -n "$slot" ]]; then
+      candidate="$(docker ps -q --filter "label=com.docker.compose.service=api-${slot}" | head -1)"
+      [[ -n "$candidate" ]] && { printf '%s\n' "$candidate"; return; }
+    fi
+  fi
+  docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" ps -q api 2>/dev/null | head -1
+}
+
+set_signage_paused() {
+  local action="$1" token status
+  [[ "$DRY_RUN" == 1 ]] && { log "DRY-RUN: ${action} signage renderer"; return 0; }
+  [[ -n "$SIGNAGE_CONTAINER_ID" ]] || SIGNAGE_CONTAINER_ID="$(active_api_container)"
+  [[ -n "$SIGNAGE_CONTAINER_ID" ]] || die 'active API container is unavailable for signage deploy control'
+  token="$(deploy_control_token)"
+  status="$(docker exec -e "DEPLOY_CONTROL_TOKEN=${token}" "$SIGNAGE_CONTAINER_ID" node -e '
+const action=process.argv[1];
+fetch("http://127.0.0.1:8080/api/system/deploy-workload/internal", {method:"POST",headers:{"content-type":"application/json","x-deploy-control-token":process.env.DEPLOY_CONTROL_TOKEN},body:JSON.stringify({action})})
+  .then(async response=>{if(!response.ok) throw new Error(await response.text()); process.stdout.write(await response.text())})
+  .catch(error=>{console.error(error);process.exit(1)})
+' "$action")" || die "could not ${action} signage renderer"
+  log "signage deploy control completed: ${status}"
+}
+
+pause_signage() {
+  set_signage_paused pause-signage
+  SIGNAGE_PAUSED=1
+}
+
+resume_signage() {
+  ((SIGNAGE_PAUSED == 1)) || return 0
+  set_signage_paused resume-signage || log 'WARNING: could not resume signage renderer'
+  SIGNAGE_PAUSED=0
+}
+
+image_deploy_cleanup() {
+  resume_signage
+  if [[ -n "$LOCK_DIR" ]]; then
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+  fi
+}
+
 migration_guard() {
   ((FORCE_DESTRUCTIVE_MIGRATION == 1)) && return 0
   local base_ref="${PI5_MIGRATION_BASE_REF:-${REF}^}" file changed_files=()
@@ -154,14 +303,24 @@ migration_guard() {
 
 prepare() {
   require_sha; resource_guard; migration_guard
-  local tag api web candidate_name
-  tag="$(candidate_tag)"
+  local tag api web candidate_name config_hash build_mode
+  config_hash="$(candidate_config_hash)"
+  tag="${REF}-${config_hash:0:12}"
   api="${API_REPOSITORY}:${tag}"; web="${WEB_REPOSITORY}:${tag}"; candidate_name="pi5-api-candidate-${REF:0:12}"
-  log "building candidate images while production remains active"
-  if [[ "$DRY_RUN" == "1" ]]; then
-    printf 'DRY-RUN: PI5_API_IMAGE=%q PI5_WEB_IMAGE=%q docker compose --env-file %q -f %q -f %q build api web\n' "$api" "$web" "$ENV_FILE" "$BASE_COMPOSE" "$PHASE2_COMPOSE"
+  pause_signage
+  wait_for_stable_load pre-build
+  if [[ "$DRY_RUN" != 1 ]] && image_matches_candidate "$api" "$config_hash" && image_matches_candidate "$web" "$config_hash"; then
+    build_mode=reused
+    log "reusing exact candidate images for ${REF}"
   else
-    compose "$api" "$web" build api web
+    build_mode=built
+    log "building candidate images serially while production remains active"
+    if [[ "$DRY_RUN" == "1" ]]; then
+      printf 'DRY-RUN: PI5_API_IMAGE=%q PI5_WEB_IMAGE=%q docker compose build --build-arg BUILD_COMMIT=%q --build-arg BUILD_CONFIG_HASH=%q api then web\n' "$api" "$web" "$REF" "$config_hash"
+    else
+      compose "$api" "$web" build --build-arg "BUILD_COMMIT=${REF}" --build-arg "BUILD_CONFIG_HASH=${config_hash}" api
+      compose "$api" "$web" build --build-arg "BUILD_COMMIT=${REF}" --build-arg "BUILD_CONFIG_HASH=${config_hash}" web
+    fi
   fi
   run env PI5_API_IMAGE="$api" PI5_WEB_IMAGE="$web" docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" -f "$PHASE2_COMPOSE" config --quiet
   run docker run --rm \
@@ -175,7 +334,7 @@ prepare() {
     "$web" caddy validate --config /srv/Caddyfile.maintenance.production
   if [[ "$DRY_RUN" != "1" ]]; then
     docker rm -f "$candidate_name" >/dev/null 2>&1 || true
-    compose "$api" "$web" run -d --no-deps -e PI5_CANDIDATE_VALIDATION=1 --name "$candidate_name" api >/dev/null
+    compose "$api" "$web" run -d --no-deps -e PI5_CANDIDATE_VALIDATION=1 -e SIGNAGE_RENDER_ENABLED=false --name "$candidate_name" api >/dev/null
     for _ in $(seq 1 30); do
       if docker exec "$candidate_name" node -e "fetch('http://127.0.0.1:8080/api/system/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then break; fi
       sleep 2
@@ -186,7 +345,8 @@ prepare() {
     fi
     docker rm -f "$candidate_name" >/dev/null
   fi
-  atomic_state prepared "$api" "$web" "" "" success
+  wait_for_stable_load post-build
+  atomic_state prepared "$api" "$web" "" "" success "$build_mode"
   log "candidate prepared: ${REF}"
 }
 
@@ -335,8 +495,11 @@ if command -v flock >/dev/null 2>&1; then
 else
   LOCK_DIR="${LOCK_FILE}.d"
   mkdir "$LOCK_DIR" 2>/dev/null || die "another Pi5 image deployment is running"
-  trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 fi
+# One combined EXIT hook is intentionally installed after the lock is held.
+# Do not replace it in prepare: both the signage pause and fallback lock must
+# be cleaned up on every success, failure, and signal path.
+trap image_deploy_cleanup EXIT
 case "$COMMAND" in
   prepare) prepare ;;
   switch) switch_candidate ;;

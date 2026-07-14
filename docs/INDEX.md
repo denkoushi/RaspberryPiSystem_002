@@ -20,6 +20,10 @@
 
 - **非遮蔽Deployカード・組立ズーム／矢視・2行ライブラリ・全件候補**: 実装・ローカル検証済み、未デプロイ。**正本**: [Plan](./plans/kiosk-deploy-notice-assembly-ui.md) · [Assembly Plan](./plans/kiosk-assembly-torque-management-mvp.md) · [ADR](./decisions/ADR-20260714-assembly-marker-callout-and-shared-image-canvas.md)
 
+### 計画（2026-07-14 · Pi5／ローリングDeploy堅牢化）
+
+- **候補再利用・サイネージ一時停止・migration全履歴照合・安全cancel・Pi4差分ビルド**: 本日の途中runを安全に収束し、FJV60/80を保守表示のまま除外して到達可能な4台を再更新する。**正本**: [ExecPlan](./plans/rolling-deploy-resilience.md) · [ADR](./decisions/ADR-20260714-rolling-deploy-resilience.md) · [KB-401](./knowledge-base/KB-401-rolling-deploy-resilience.md) · [Runbook](./runbooks/pi5-blue-green-deploy.md)
+
 ### 最新アップデート（2026-07-14 · 組立トップ 個体別3ペインカード · 実装済・未デプロイ）
 
 - **製番・機種・S/N・進捗を個体カードで統一表示**: `着手前` はロット内S/Nを個別カード化、`仕掛中` / `完了・承認` も同一の閉じた1.5行カードへ統一。上部に登録ロット・仕掛中・承認待ちKPI、カード内の状態ラベルは廃止。右ロット登録とAPI/DBは不変。**正本**: [Plan](./plans/kiosk-assembly-home-unit-cards.md) · [ADR Decision 8](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](./design-previews/kiosk-assembly-home-unit-cards-preview.html)

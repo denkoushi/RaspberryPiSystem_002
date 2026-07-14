@@ -35,6 +35,10 @@ MIN_ERROR_SAMPLES="${PI5_BLUE_GREEN_MIN_ERROR_SAMPLES:-20}"
 MIN_MEMORY_MB="${PI5_BLUE_GREEN_MIN_MEMORY_MB:-1536}"
 MIN_DISK_GB="${PI5_BLUE_GREEN_MIN_DISK_GB:-10}"
 MAX_LOAD_AVG="${PI5_BLUE_GREEN_MAX_LOAD_AVG:-}"
+RESOURCE_LOAD_SAMPLE_COUNT="${PI5_BLUE_GREEN_LOAD_SAMPLE_COUNT:-3}"
+RESOURCE_LOAD_SAMPLE_INTERVAL_SECONDS="${PI5_BLUE_GREEN_LOAD_SAMPLE_INTERVAL_SECONDS:-20}"
+RESOURCE_LOAD_WAIT_SECONDS="${PI5_BLUE_GREEN_LOAD_WAIT_SECONDS:-600}"
+RESOURCE_LAST_LOAD_SAMPLES="[]"
 STABLE_SECONDS="${PI5_BLUE_GREEN_STABLE_SECONDS:-300}"
 MONITOR_INTERVAL="${PI5_BLUE_GREEN_MONITOR_INTERVAL:-2}"
 READINESS_RETRIES="${PI5_BLUE_GREEN_READINESS_RETRIES:-45}"
@@ -248,7 +252,8 @@ state_save() {
     "$LEGACY_API_RESTART" "$LEGACY_WEB_RESTART" "$LEGACY_API_WAS_RUNNING" "$LEGACY_WEB_WAS_RUNNING" \
     "$LEGACY_API_QUARANTINED" "$LEGACY_WEB_QUARANTINED" "$LEGACY_API_REMOVED" "$LEGACY_WEB_REMOVED" \
     "$LEGACY_WEB_MAINTENANCE" "$LEGACY_NORMAL_CONFIG_B64" "$LEGACY_CADDY_CONFIG_PATH" "$MIGRATION_BASE_COMMIT" \
-    "$MIGRATION_CANDIDATE_COMMIT" "$MIGRATION_STATUS" "$MIGRATION_CHECKED_AT" "$MIGRATION_APPLIED_AT" <<'PY'
+    "$MIGRATION_CANDIDATE_COMMIT" "$MIGRATION_STATUS" "$MIGRATION_CHECKED_AT" "$MIGRATION_APPLIED_AT" \
+    "$RESOURCE_LAST_LOAD_SAMPLES" <<'PY'
 import json, os, sys, tempfile
 from datetime import datetime, timezone
 (path,event,active,candidate,previous,blue_api,blue_web,green_api,green_web,
@@ -257,7 +262,7 @@ from datetime import datetime, timezone
  legacy_web_restart,legacy_api_running,legacy_web_running,legacy_api_quarantined,
  legacy_web_quarantined,legacy_api_removed,legacy_web_removed,legacy_maintenance,
  legacy_config,legacy_caddy_path,migration_base,migration_candidate,migration_status,migration_checked,
- migration_applied) = sys.argv[1:]
+ migration_applied,resource_load_samples) = sys.argv[1:]
 def maybe(v): return v or None
 def flag(v): return v == '1'
 def epoch(v): return int(v) if v.isdigit() else None
@@ -280,6 +285,7 @@ state = {
     'status': migration_status, 'checkedAt': maybe(migration_checked),
     'appliedAt': maybe(migration_applied),
   },
+  'resource': {'loadSamples': json.loads(resource_load_samples)},
   'legacy': {
     'api': {'id': maybe(legacy_api_id), 'image': maybe(legacy_api_image),
             'restart': legacy_api_restart, 'wasRunning': flag(legacy_api_running),
@@ -433,11 +439,10 @@ resource_value() {
 
 resource_guard() {
   [[ "${PI5_BLUE_GREEN_SKIP_RESOURCE_GUARD:-0}" == 1 ]] && return 0
-  local memory disk load max_load cpu_count
-  memory="$(resource_value memory)"; disk="$(resource_value disk)"; load="$(resource_value load)"
+  local memory disk max_load cpu_count
+  memory="$(resource_value memory)"; disk="$(resource_value disk)"
   [[ "$memory" =~ ^[0-9]+$ ]] || die 'available memory could not be read'
   [[ "$disk" =~ ^[0-9]+$ ]] || die 'free disk could not be read'
-  [[ "$load" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'load average could not be read'
   if [[ -n "$MAX_LOAD_AVG" ]]; then
     max_load="$MAX_LOAD_AVG"
   else
@@ -446,10 +451,45 @@ resource_guard() {
     max_load="$(awk "BEGIN {printf \"%.2f\", $cpu_count * 0.75}")"
   fi
   [[ "$max_load" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'maximum load average is invalid'
-  awk "BEGIN {exit !($load < $max_load)}" || die "load average ${load} is not below ${max_load}"
   ((memory >= MIN_MEMORY_MB)) || die "available memory ${memory}MB is below ${MIN_MEMORY_MB}MB; use Phase 2"
   ((disk >= MIN_DISK_GB)) || die "free disk ${disk}GB is below ${MIN_DISK_GB}GB; use Phase 2"
-  log "resource gate passed: memory=${memory}MB disk=${disk}GB load=${load}/${max_load}"
+  [[ "$RESOURCE_LOAD_SAMPLE_COUNT" =~ ^[1-9][0-9]*$ ]] || die 'resource load sample count must be a positive integer'
+  [[ "$RESOURCE_LOAD_SAMPLE_INTERVAL_SECONDS" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'resource load sample interval must be non-negative'
+  [[ "$RESOURCE_LOAD_WAIT_SECONDS" =~ ^[1-9][0-9]*$ ]] || die 'resource load wait seconds must be a positive integer'
+
+  local deadline load samples='[]' consecutive=0
+  deadline=$(( $(date +%s) + RESOURCE_LOAD_WAIT_SECONDS ))
+  while :; do
+    load="$(resource_value load)"
+    [[ "$load" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'load average could not be read'
+    samples="$(python3 - "$samples" "$load" "$max_load" <<'PY'
+import json, sys
+samples=json.loads(sys.argv[1]); samples.append({'at': __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(), 'load': float(sys.argv[2]), 'limit': float(sys.argv[3])})
+print(json.dumps(samples[-12:], separators=(',', ':')))
+PY
+)"
+    RESOURCE_LAST_LOAD_SAMPLES="$samples"
+    if awk "BEGIN {exit !($load < $max_load)}"; then
+      consecutive=$((consecutive + 1))
+      if ((consecutive >= RESOURCE_LOAD_SAMPLE_COUNT)); then
+        log "resource gate passed: memory=${memory}MB disk=${disk}GB load=${load}/${max_load} (${consecutive} stable samples)"
+        return 0
+      fi
+    else
+      consecutive=0
+      log "resource guard waiting: load=${load}/${max_load} (need ${RESOURCE_LOAD_SAMPLE_COUNT} consecutive samples)"
+      [[ "$DRY_RUN" != 1 ]] || die "load average ${load} is not below ${max_load} in dry-run resource guard"
+    fi
+    if (( $(date +%s) >= deadline )); then
+      die "load average did not remain below ${max_load} for ${RESOURCE_LOAD_SAMPLE_COUNT} samples within ${RESOURCE_LOAD_WAIT_SECONDS}s"
+    fi
+    if [[ "$DRY_RUN" == 1 ]]; then
+      # Dry-run fixtures must not sleep, while still exercising the same
+      # consecutive-sample contract.
+      continue
+    fi
+    sleep "$RESOURCE_LOAD_SAMPLE_INTERVAL_SECONDS"
+  done
 }
 
 secret_guard() {
@@ -833,7 +873,6 @@ migration_guard() {
   )
   modified="$(git -C "$PROJECT_DIR" diff --diff-filter=M --name-only "$base_ref" "$candidate_ref" -- 'apps/api/prisma/migrations/*/migration.sql' || true)"
   [[ -z "$modified" ]] || die 'modified existing migrations are not Expand-only; release refused'
-  ((${#changed[@]} == 0)) && return 0
   applied_checksums="$(migration_applied_checksums "$candidate")" \
     || die 'could not read applied Prisma migration checksums'
   printf '%s\n' "$applied_checksums" \

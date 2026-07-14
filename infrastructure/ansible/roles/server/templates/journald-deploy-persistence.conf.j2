@@ -1,0 +1,6 @@
+# Preserve prior boot evidence for rolling-deploy recovery without allowing
+# journals to consume an unbounded share of the Pi5 system volume.
+[Journal]
+Storage=persistent
+SystemMaxUse=256M
+SystemKeepFree=512M

@@ -79,8 +79,9 @@ export async function startSchedulerStepGroup(
 }
 
 export function buildPostListenSchedulerDefinitions(app: FastifyInstance): SchedulerStepDefinition[] {
-  return [
-    {
+  const definitions: SchedulerStepDefinition[] = [];
+  if (env.SIGNAGE_RENDER_ENABLED) {
+    definitions.push({
       name: 'signage-render',
       start: () => {
         app.signageRenderScheduler.start();
@@ -92,7 +93,13 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       stop: () => {
         app.signageRenderScheduler.stop();
       },
-    },
+    });
+  } else {
+    logger.info('Signage render scheduler is disabled by environment');
+  }
+
+  return [
+    ...definitions,
     {
       name: 'backup',
       start: async () => {

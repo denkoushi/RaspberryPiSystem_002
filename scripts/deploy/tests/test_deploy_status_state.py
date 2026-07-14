@@ -53,6 +53,29 @@ class DeployStatusStateTest(unittest.TestCase):
             self.assertEqual(stored['kioskByClient']['signage']['terminalType'], 'kiosk')
             self.assertNotIn('acknowledgements', stored)
 
+    def test_fail_client_keeps_only_the_failed_terminal_in_maintenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'status.json'
+
+            def run(*args):
+                subprocess.run(
+                    ['python3', str(SCRIPT), '--file', str(path), *args], check=True,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+
+            run('put', '--run-id', 'release-1', '--clients', 'offline,healthy')
+            run('put', '--run-id', 'release-2', '--clients', 'other')
+            run(
+                'fail-client', '--run-id', 'release-1', '--client', 'offline',
+                '--reason', 'SSH connection timed out',
+            )
+            entries = json.loads(path.read_text())['kioskByClient']
+            self.assertEqual(entries['offline']['phase'], 'failed')
+            self.assertTrue(entries['offline']['maintenance'])
+            self.assertEqual(entries['offline']['failure'], 'SSH connection timed out')
+            self.assertEqual(entries['healthy']['phase'], 'preparing')
+            self.assertEqual(entries['other']['runId'], 'release-2')
+
     def test_notice_and_maintenance_acknowledgements_are_phase_scoped(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'status.json'

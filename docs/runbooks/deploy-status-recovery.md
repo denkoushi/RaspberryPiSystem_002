@@ -20,15 +20,28 @@
 
 ## 2. 復旧手順
 
-### 2.1 強制解除（Pi5上で deploy-status.json を削除）
+### 2.1 標準の安全中断（推奨）
+
+**`deploy-status.json` の削除、`kill`、`pkill`、lock directory の直接削除は行わない。**
+対象runだけを停止し、更新中・到達不能端末の保守表示を維持する標準入口を使う。
 
 ```bash
-# Macから実行（Pi5のTailscale IPで接続）
-ssh denkon5sd02@100.106.158.2 "rm -f /opt/RaspberryPiSystem_002/config/deploy-status.json"
+./scripts/update-all-clients.sh --cancel <runId> --reason 'FJV60/80 is offline; stop safely'
 ```
 
-- 全キオスクのメンテナンス表示が解除される（最大5秒以内にポーリングで反映）
-- デプロイ中に実行しないこと（デプロイ対象端末のメンテ表示が消える）
+- coordinator とそのAnsible子process groupに `TERM`、30秒後に必要な場合のみ`KILL`を送る。
+- 子processが消滅したことを確認してから対象runのlockを解放する。
+- 実行中端末は `phase: failed` として保守表示を**維持**する。成功済み端末や別runの状態は変更しない。
+- Pi5再起動でownerのboot IDが変わった場合も、runは `interrupted` として記録し、保守表示を勝手に解除しない。
+
+### 2.2 取消後の確認
+
+```bash
+./scripts/update-all-clients.sh --status <runId>
+ssh "$RASPI_SERVER_HOST" 'cat /opt/RaspberryPiSystem_002/config/deploy-status.json'
+```
+
+`failed` 端末だけが保守表示を維持し、成功済み端末・未対象端末が書き換わっていないことを確認する。到達不能端末は物理復旧後、専用の標準runで更新と実機確認が成功するまで解除しない。
 
 ### 2.2 確認
 
