@@ -838,7 +838,9 @@ migration_guard() {
     || die 'could not read applied Prisma migration checksums'
   printf '%s\n' "$applied_checksums" \
     | python3 "$PROJECT_DIR/scripts/deploy/validate-expand-only-migrations.py" \
-        --applied-checksums - "${changed[@]}" \
+        --applied-checksums - \
+        --migration-root "$PROJECT_DIR/apps/api/prisma/migrations" \
+        "${changed[@]}" \
     || die 'migration SQL is outside the Expand-only allow-list'
 }
 
@@ -849,7 +851,6 @@ migration_apply_and_verify() {
     # The API image has `node dist/main.js` as its default command.  Use an
     # explicit shell and the installed Prisma binary so Compose does not try to
     # execute `npx` through that Node command during bootstrap/prepare.
-    compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate status' || return 1
     compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate deploy' || return 1
     compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate status' || return 1
     if [[ "$compatibility_slot" == legacy ]]; then legacy_scheduler_readiness || return 1
