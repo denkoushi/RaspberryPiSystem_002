@@ -833,7 +833,6 @@ migration_guard() {
   )
   modified="$(git -C "$PROJECT_DIR" diff --diff-filter=M --name-only "$base_ref" "$candidate_ref" -- 'apps/api/prisma/migrations/*/migration.sql' || true)"
   [[ -z "$modified" ]] || die 'modified existing migrations are not Expand-only; release refused'
-  ((${#changed[@]} == 0)) && return 0
   applied_checksums="$(migration_applied_checksums "$candidate")" \
     || die 'could not read applied Prisma migration checksums'
   printf '%s\n' "$applied_checksums" \

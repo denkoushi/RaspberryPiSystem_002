@@ -328,6 +328,8 @@ grep -Fq "'acknowledged': False" "$SCRIPT" || fail "Blue/Green alert payload is 
 grep -Fq 'pi5-phase3-legacy-guard.sh' "$ROOT/scripts/deploy/pi5-image-deploy.sh" || fail "Phase 2 script is missing the Phase 3 legacy guard"
 
 VALIDATOR="$ROOT/scripts/deploy/validate-expand-only-migrations.py"
+grep -Fq 'validate_applied_history' "$VALIDATOR" \
+  || fail "migration validator does not verify every applied migration file"
 RESTORED_MIGRATION_DIR="$TMP/20260714000000_restored_history"
 NEW_MIGRATION_DIR="$TMP/20260714000001_new_expand"
 mkdir -p "$RESTORED_MIGRATION_DIR" "$NEW_MIGRATION_DIR"
@@ -347,6 +349,13 @@ printf '%s|%s\n' "$(basename "$RESTORED_MIGRATION_DIR")" "$restored_checksum" \
 if printf '%s|%064d\n' "$(basename "$RESTORED_MIGRATION_DIR")" 0 \
   | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" "$RESTORED_MIGRATION_DIR/migration.sql" >/dev/null 2>&1; then
   fail "applied migration with mismatched checksum was accepted"
+fi
+printf '%s|%s\n' "$(basename "$RESTORED_MIGRATION_DIR")" "$restored_checksum" \
+  | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" >/dev/null \
+  || fail "complete applied history was not verified when no new migration exists"
+if printf '%s|%064d\n' 'missing-applied-history' 0 \
+  | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" >/dev/null 2>&1; then
+  fail "missing applied migration was accepted when no new migration exists"
 fi
 printf '\n' | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" "$NEW_MIGRATION_DIR/migration.sql" >/dev/null \
   || fail "new Expand-only migration was rejected"
