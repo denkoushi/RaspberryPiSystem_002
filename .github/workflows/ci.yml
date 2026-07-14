@@ -232,6 +232,10 @@ jobs:
           path: ~/.ansible/collections
           key: ansible-collections-${{ runner.os }}-community-general-v1
 
+      - name: Validate deploy safety contracts
+        if: matrix.run-infra
+        run: bash scripts/deploy/tests/test-deploy-safety-contracts.sh
+
       - name: Ansible syntax check
         if: matrix.run-infra
         run: |
