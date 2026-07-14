@@ -43,10 +43,12 @@ jobs:
             force_full_reason="workflow_dispatch has no stable diff base"
           elif [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
             force_full_reason="event has no stable diff base"
-          elif ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            force_full_reason="base commit is unavailable"
-          else
-            git diff --name-status -z "$BASE_SHA" "$HEAD_SHA" > "$changes_file"
+          elif ! python3 scripts/ci/collect_changed_files.py \
+            --event-name "$EVENT_NAME" \
+            --base-sha "$BASE_SHA" \
+            --head-sha "$HEAD_SHA" \
+            > "$changes_file"; then
+            force_full_reason="stable diff base is unavailable"
           fi
 
           if [[ -n "$force_full_reason" ]]; then
@@ -86,11 +88,10 @@ jobs:
           python3 scripts/deploy/tests/test_deploy_status_state.py
           python3 scripts/deploy/tests/test_classify_deploy_impact.py
           python3 scripts/deploy/tests/test_rolling_release.py
+          python3 scripts/deploy/tests/test-client-agent-lifecycle-baseline.py
           bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
           bash scripts/deploy/tests/test-deploy-status-postgres.sh
           bash scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
-          # Client lifecycle selection is connected with its PR 6 behavior change,
-          # because origin/main does not yet implement build/recreate/no-build selection.
 
       - name: Security scan (pnpm audit)
         run: |
