@@ -85,6 +85,7 @@ jobs:
           bash scripts/deploy/tests/test-pi5-image-deploy.sh
           bash scripts/deploy/tests/test-pi5-blue-green.sh
           bash scripts/deploy/tests/test-pi5-blue-green-maintenance-container.sh
+          python3 scripts/deploy/tests/test_validate_expand_only_migrations.py
           python3 scripts/deploy/tests/test_deploy_status_state.py
           python3 scripts/deploy/tests/test_classify_deploy_impact.py
           python3 scripts/deploy/tests/test_rolling_release.py
