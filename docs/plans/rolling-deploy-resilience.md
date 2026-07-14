@@ -15,7 +15,13 @@ related_docs:
   - ../knowledge-base/KB-401-rolling-deploy-resilience.md
 validation: baseline deploy lifecycle tests passed before implementation
 open_items:
-  - Implement and validate the hardening work before resuming production rollout.
+  - Recover the offline RoboDrill01 kiosk, then update it through its own
+    verified standard run.
+  - Decide whether to update the reachable but deliberately untouched
+    Sessaku-01 kiosk in a separate run after the failed RoboDrill01 run.
+  - Keep Docker build metadata out of the dependency-layer cache key before
+    the next source-changing Pi5 release; same-SHA reuse is working, but a
+    fresh SHA still rebuilds the expensive API dependency layer.
 ---
 
 # Pi5 and terminal rolling deployment resilience
@@ -70,8 +76,22 @@ verified recovery.
   `legacy-api-unavailable`, serially built and cached the candidate, completed
   post-build stable-load sampling, verified all 147 migrations, switched slot,
   and completed the five-minute stability window.
-- [ ] Repair the StoneBase01 canary classification failure, repeat hosted CI,
-  and complete the scoped four-terminal rollout.
+- [x] Split the StoneBase01 change-classification facts, validate the
+  regression locally, and pass all 19 hosted CI checks for `85fe6198`.
+- [x] Pi5 deployed `85fe6198`: signage paused through the protected internal
+  API, the API and Web candidate images built serially once, post-build load
+  sampling passed without a rebuild, all 147 migration checksums matched, and
+  Blue/Green completed its stability window.
+- [x] StoneBase01 and raspberrypi4 deployed `85fe6198` successfully. Both
+  were verified with the kiosk/browser, status-agent, PC/SC, and required
+  NFC/barcode container checks.
+- [x] RoboDrill01 safely failed at the new SSH deadline while entering the NFC
+  lifecycle. Its rollback attempt also could not reach the terminal; it stays
+  in maintenance, the coordinator released its lock, and Sessaku-01 was not
+  touched.
+- [ ] Recover RoboDrill01 and complete its verified update; separately decide
+  whether to update the reachable Sessaku-01 now that the original run has
+  failed closed.
 
 ## Surprises & Discoveries
 
@@ -115,6 +135,18 @@ verified recovery.
   Rationale: the route cannot pause an older process that does not contain it.
   The candidate is built once under the existing bounded 3.00 load contract,
   cached for reuse, and enables pause/resume for all subsequent releases.
+- The `85fe6198` field run confirmed that bounded sampling prevents the
+  self-induced build/retry loop: it waited through post-build load rather than
+  rebuilding. The initial API image build still took about 25 minutes because
+  revision/config labels currently occur before the expensive OS/Python OCR
+  dependency layer in the Dockerfile. Exact-image reuse avoids that cost on a
+  retry of the same SHA, but a future SHA invalidates it. This is recorded as
+  a follow-up cache-layout correction rather than hidden by raising the 3.00
+  load threshold.
+- RoboDrill01 became unreachable during the NFC lifecycle. The new SSH
+  deadline returned a normal Ansible `UNREACHABLE` result, the per-terminal
+  timeout/rollback path marked it failed, retained its maintenance flag, and
+  released the coordinator lock; later terminals were not started.
 - The StoneBase01 canary exposed an Ansible evaluation-order error: one
   `set_fact` task calculated image-build facts and runtime-recreate facts that
   referenced them together. Ansible evaluates that task's expressions before
@@ -131,13 +163,21 @@ verified recovery.
 ## Outcomes & Retrospective
 
 The Pi5 hardening and bootstrap compatibility implementation passed focused
-local checks and both hosted CI runs. Pi5 is now running `19ccd48e` after the
-new load/reuse/migration flow completed successfully. The first StoneBase01
-canary stopped safely at the Ansible change-classification task; it had synced
-the repository but had not reached agent image lifecycle or kiosk-service
-restart. StoneBase01 remains in maintenance. This follow-up splits dependent
-facts into ordered tasks, adds a regression check for that ordering, and must
-pass hosted CI before resuming the scoped rollout.
+local checks and hosted CI. Pi5 is now running `85fe6198`; its protected
+signage pause/resume, serial candidate build, stable-load wait, complete
+migration-history validation, and Blue/Green stability window all completed.
+StoneBase01 and raspberrypi4 also run `85fe6198` and passed service and kiosk
+verification. RoboDrill01 became unreachable after maintenance began and is
+therefore explicitly failed, unreverted, and still in maintenance. The
+fail-closed coordinator did not touch Sessaku-01. FJV60/80 remains in its
+pre-existing maintenance state.
+
+The same-SHA retry path is now safe and does not rebuild candidates. A genuine
+new SHA still has a first-build cost because Docker metadata labels precede an
+expensive dependency layer; moving the metadata layer after stable build
+inputs is the remaining performance follow-up. The 3.00 threshold remains
+unchanged because it is a safety headroom policy, not a source-build cache
+solution.
 
 Focused evidence: `test-pi5-image-deploy.sh` passed; the Phase 3 lifecycle
 passed with the test load sample override; rolling-release 67 tests and
