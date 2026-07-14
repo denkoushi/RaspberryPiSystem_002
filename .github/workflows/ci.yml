@@ -66,6 +66,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          # test-pi5-image-deploy.sh validates migration impact against HEAD^.
+          fetch-depth: 2
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
