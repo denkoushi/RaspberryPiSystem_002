@@ -31,6 +31,19 @@ grep -Fq 'SIGNAGE_RENDER_ENABLED=false' "$SCRIPT" || fail "candidate validation 
 grep -Fq 'image_matches_candidate' "$SCRIPT" || fail "candidate image reuse guard is missing"
 grep -Fq 'BUILD_CONFIG_HASH' "$ROOT/infrastructure/docker/Dockerfile.api" || fail "API image is not labelled with its compose configuration hash"
 grep -Fq 'BUILD_CONFIG_HASH' "$ROOT/infrastructure/docker/Dockerfile.web" || fail "Web image is not labelled with its compose configuration hash"
+python3 - "$ROOT/infrastructure/docker/Dockerfile.api" "$ROOT/infrastructure/docker/Dockerfile.web" <<'PY' || fail "release labels invalidate expensive Docker cache layers"
+import pathlib, sys
+
+api = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+web = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+checks = (
+    (api, "RUN mkdir -p /app/storage/photos", "LABEL org.opencontainers.image.revision=${BUILD_COMMIT}"),
+    (web, "COPY infrastructure/docker/maintenance.html ./phase2-maintenance/index.html", "LABEL org.opencontainers.image.revision=${BUILD_COMMIT}"),
+)
+for text, cacheable_tail, label in checks:
+    if text.index(label) < text.index(cacheable_tail):
+        raise SystemExit(f"metadata label appears before {cacheable_tail}")
+PY
 grep -Fq 'wait_for_stable_load pre-build' "$SCRIPT" || fail "candidate build lacks pre-build stable-load wait"
 grep -Fq 'wait_for_stable_load post-build' "$SCRIPT" || fail "candidate build lacks post-build stable-load wait"
 grep -Fq 'legacy-api-unavailable' "$SCRIPT" || fail "first rollout has no legacy signage-control fallback"

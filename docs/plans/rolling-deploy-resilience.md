@@ -19,9 +19,6 @@ open_items:
     verified standard run.
   - Decide whether to update the reachable but deliberately untouched
     Sessaku-01 kiosk in a separate run after the failed RoboDrill01 run.
-  - Keep Docker build metadata out of the dependency-layer cache key before
-    the next source-changing Pi5 release; same-SHA reuse is working, but a
-    fresh SHA still rebuilds the expensive API dependency layer.
 ---
 
 # Pi5 and terminal rolling deployment resilience
@@ -89,6 +86,9 @@ verified recovery.
   lifecycle. Its rollback attempt also could not reach the terminal; it stays
   in maintenance, the coordinator released its lock, and Sessaku-01 was not
   touched.
+- [x] Move API/Web release metadata labels after SHA-independent runtime
+  layers, and add a regression assertion so future source-changing releases
+  reuse cached OS/OCR, dependency, browser, and Caddy layers.
 - [ ] Recover RoboDrill01 and complete its verified update; separately decide
   whether to update the reachable Sessaku-01 now that the original run has
   failed closed.
@@ -172,12 +172,11 @@ therefore explicitly failed, unreverted, and still in maintenance. The
 fail-closed coordinator did not touch Sessaku-01. FJV60/80 remains in its
 pre-existing maintenance state.
 
-The same-SHA retry path is now safe and does not rebuild candidates. A genuine
-new SHA still has a first-build cost because Docker metadata labels precede an
-expensive dependency layer; moving the metadata layer after stable build
-inputs is the remaining performance follow-up. The 3.00 threshold remains
-unchanged because it is a safety headroom policy, not a source-build cache
-solution.
+The same-SHA retry path is now safe and does not rebuild candidates. Release
+metadata labels now follow the stable API/Web runtime layers, so a genuine new
+SHA retains the cached OS/OCR, production-dependency, browser, and Caddy
+layers as well. The 3.00 threshold remains unchanged because it is a safety
+headroom policy, not a source-build cache solution.
 
 Focused evidence: `test-pi5-image-deploy.sh` passed; the Phase 3 lifecycle
 passed with the test load sample override; rolling-release 67 tests and
