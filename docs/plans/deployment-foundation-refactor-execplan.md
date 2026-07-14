@@ -35,9 +35,8 @@ validation:
   - read-only plans for both production inventories before any approved release
   - one explicitly approved full-fleet acceptance per inventory, followed by a same-SHA no-op plan
 open_items:
-  - complete the queued infrastructure rerun and review before merging draft PR 1004
-  - complete hosted checks and review before merging draft PR 1005
-  - finish review, commit, validate, and publish PR 3 from its independent origin/main worktree
+  - resolve the candidate-wide pending-migration and SQL lexer findings in draft PR 1004, then rerun hosted checks
+  - merge draft PRs 1004, 1005, and 1006 only in order and only after explicit approval
   - implement PR 4 through PR 8 only in sequence from the updated origin/main
   - obtain separate per-inventory approval before any production mutation
   - reintroduce the deferred product work only after deployment-foundation production acceptance
@@ -70,6 +69,7 @@ This work exists because the current release path has accumulated two coordinato
 - [x] (2026-07-14 22:19Z) Published PR 2 as Draft PR #1005 from `agent/ci-deploy-contract-shadow`; head `efa93df4` adds the client-lifecycle baseline and merge-base diff contract, and the branch push still produces no duplicate push-event workflow run.
 - [x] (2026-07-14 22:19Z) Completed PR 2 hosted validation; the latest `ci-required`, `codeql`, `gitleaks`, and all constituent checks are green.
 - [x] (2026-07-14 22:32Z) Completed PR 3 publication and validation at Draft PR #1006; three focused inventory, exact-set rollback, and pre-checkout `flock` commits are published at head `e33ecadb`, and local, Ansible, isolated Linux, and every hosted check passes.
+- [ ] (2026-07-14 22:45Z) Harden PR 1 after independent review found that green checks did not cover base-existing pending migrations, non-additive `ADD COLUMN` forms, or quote-aware SQL parsing; keep Draft PR #1004 blocked until the focused correction and hosted rerun pass.
 - [ ] Merge PR 1, PR 2, and PR 3 in dependency-safe order only after explicit merge approval, refreshing each later branch from the latest `origin/main` without force-pushing PR #1003.
 - [ ] Implement and publish PR 4, the single coordinator and execution backend.
 - [ ] Implement and publish PR 5, durable fleet state and default target minimization.
@@ -108,6 +108,8 @@ This work exists because the current release path has accumulated two coordinato
   Evidence: Draft PR #1005 head `efa93df4` includes that contract, and its latest `ci-required`, `codeql`, `gitleaks`, and constituent checks all pass.
 - Observation: safe detached execution, cooperative cancellation, and job lifecycle reporting share one process-ownership problem that cannot be completed reliably before the transient systemd backend exists.
   Evidence: Draft PR #1006 keeps those operations fail-closed before mutation while its isolated Linux test proves the non-waiting kernel lock is held before checkout.
+- Observation: the first PR 1 hosted suite was green even though the migration validator inspected only Git-added migration paths and stripped comments without understanding SQL quotes.
+  Evidence: independent review reproduced acceptance of a destructive base-existing pending migration and of `COMMENT ON ... 'keep -- text'; DROP TABLE ...`; Draft PR #1004 therefore remains blocked despite its green checks.
 
 ## Decision Log
 
@@ -144,12 +146,15 @@ This work exists because the current release path has accumulated two coordinato
 - Decision: Keep cancel, detach, and job operations fail-closed before mutation in PR 3, and implement their shared lifecycle only with the transient systemd backend in PR 4.
   Rationale: one systemd-owned execution identity is required to avoid false detached-start success, stale process identity, and unsafe cancellation of a mutating child process.
   Date/Author: 2026-07-15 / Codex
+- Decision: Require PR 1 to validate every candidate migration not present in the completed ledger, parse SQL comments and statement boundaries with quote-aware logic, and reject every migration-file Git change except addition.
+  Rationale: an added-path-only allow-list and regex comment stripping can let `migrate deploy` execute unreviewed or hidden incompatible SQL even when checks are green.
+  Date/Author: 2026-07-15 / Codex
 
 ## Outcomes & Retrospective
 
 The program is in progress. Three scoped implementation pull requests are now published as drafts: migration ledger safety in #1004, CI/deploy-contract shadowing in #1005, and critical inventory, rollback, and checkout-lock safety in #1006. No pull request has been merged, and PR 4 through PR 8 remain paused at the explicit merge gate.
 
-PR 1 demonstrates the intended integration style and now has every hosted check green, including the infrastructure-only Trivy rerun. PR 2 proves pull-request-only feature-branch CI, stable required-check names, and the client-lifecycle baseline/merge-base contract at head `efa93df4`; its latest hosted suite is green. PR 3 is published as three focused commits at head `e33ecadb`; local, real Ansible inventory/playbook, isolated Linux critical lock tests, and its complete hosted suite pass. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
+PR 1 demonstrates the intended integration style and its first hosted suite is green, including the infrastructure-only Trivy rerun. It is not merge-ready: independent review found candidate-wide pending-migration and quote-aware SQL-validation gaps, and a focused corrective commit plus hosted rerun are in progress. PR 2 proves pull-request-only feature-branch CI, stable required-check names, and the client-lifecycle baseline/merge-base contract at head `efa93df4`; its latest hosted suite is green. PR 3 is published as three focused commits at head `e33ecadb`; local, real Ansible inventory/playbook, isolated Linux critical lock tests, and its complete hosted suite pass. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
 
 No product deployment, real-device mutation, merge, or production acceptance action has occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
 
@@ -511,3 +516,5 @@ Revision note (2026-07-15, 21:43Z): Updated living status after Draft PR #1005 p
 Revision note (2026-07-15, 22:19Z): Recorded green hosted validation for Draft PRs #1004 and #1005, publication and isolated test evidence for Draft PR #1006, and the decision to keep cancel, detach, and job operations fail-closed until PR 4 provides one transient-systemd execution identity. Reaffirmed that no merge, product deployment, real-device action, or change to open Draft PR #1003 occurred.
 
 Revision note (2026-07-15, 22:32Z): Recorded completion of Draft PR #1006 hosted validation. CodeQL, all three API shards, lint, E2E, gitleaks, and Docker checks are green; the infrastructure shard completed in 9m05s. Merge and real-device gates remain unchanged.
+
+Revision note (2026-07-15, 22:45Z): Recorded the independent PR #1004 migration-gate review. Green checks are retained as evidence, but PR 1 is blocked pending candidate-wide unapplied migration validation, quote-aware SQL parsing, an addition-only migration diff contract, and a fresh hosted run.
