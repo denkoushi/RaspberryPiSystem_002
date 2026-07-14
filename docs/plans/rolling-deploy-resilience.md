@@ -96,6 +96,9 @@ verified recovery.
 - [ ] Recover RoboDrill01 and complete its verified update; separately decide
   whether to update the reachable Sessaku-01 now that the original run has
   failed closed.
+- [ ] Complete the Sessaku-01 update after correcting its pre-sync Git
+  ownership ordering, which made the agent classifier conservatively select
+  a rebuild even though no NFC build input changed.
 
 ## Surprises & Discoveries
 
@@ -151,6 +154,11 @@ verified recovery.
   deadline returned a normal Ansible `UNREACHABLE` result, the per-terminal
   timeout/rollback path marked it failed, retained its maintenance flag, and
   released the coordinator lock; later terminals were not started.
+- Sessaku-01 exposed the remaining classifier prerequisite: when the previous
+  Git revision cannot be read before sync, the diff collection is skipped and
+  the safe fallback selects `--build`. The target had no NFC build-input
+  change, so the standard cancel retained maintenance while the `.git`
+  ownership correction was moved before previous-HEAD capture.
 - The StoneBase01 canary exposed an Ansible evaluation-order error: one
   `set_fact` task calculated image-build facts and runtime-recreate facts that
   referenced them together. Ansible evaluates that task's expressions before

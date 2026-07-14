@@ -27,6 +27,18 @@ def assert_change_classification_is_staged() -> None:
         raise AssertionError('runtime facts must not reference image facts in the same set_fact task')
 
 
+def assert_repo_revision_is_readable_before_classification() -> None:
+    path = ROOT / 'infrastructure/ansible/roles/common/tasks/main.yml'
+    text = path.read_text(encoding='utf-8')
+    ownership_task = '- name: Fix .git directory ownership before reading the current revision'
+    previous_head_task = '- name: Capture current repo HEAD (if exists)'
+    diff_task = '- name: Collect repo diff file list (for docker build decision)'
+    if text.count(ownership_task) != 1:
+        raise AssertionError('the pre-sync .git ownership task must occur exactly once')
+    if not (text.index(ownership_task) < text.index(previous_head_task) < text.index(diff_task)):
+        raise AssertionError('the previous Git revision must be readable before diff classification')
+
+
 def command_template(name: str) -> str:
     path = ROOT / 'infrastructure/ansible/roles/client/tasks' / name
     text = path.read_text(encoding='utf-8')
@@ -54,6 +66,7 @@ def assert_selection(template: str, *, image: bool, recreate: bool, expected: st
 
 def main() -> None:
     assert_change_classification_is_staged()
+    assert_repo_revision_is_readable_before_classification()
     for filename in ('nfc-agent-lifecycle.yml', 'barcode-agent-lifecycle.yml'):
         template = command_template(filename)
         assert_selection(template, image=True, recreate=True, expected='up -d --build')
