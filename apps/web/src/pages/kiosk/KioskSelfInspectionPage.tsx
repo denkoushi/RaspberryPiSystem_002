@@ -546,10 +546,11 @@ export function KioskSelfInspectionPage() {
           </div>
         ) : (
           <>
-            <div className="mb-2 flex items-center justify-between gap-3 text-xs text-white/55">
-              <span>仕掛中（更新の新しい順・全端末共通）</span>
-              {employeeFilter ? <span>氏名: {employeeFilter.displayName}</span> : null}
-            </div>
+            {employeeFilter ? (
+              <div className="mb-2 flex justify-end text-xs text-white/55">
+                <span>氏名: {employeeFilter.displayName}</span>
+              </div>
+            ) : null}
             {wipListTruncated ? (
               <p className="mb-2 rounded border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
                 仕掛中は最新 {wipListLimit} 件まで表示しています。それより古いセッションは検索対象外です。
