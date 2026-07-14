@@ -21,6 +21,8 @@ class RollingReleaseTargetOrderTest(unittest.TestCase):
     def test_canary_then_remaining_kiosks_then_signage(self):
         inventory = {
             'kiosk_canary': {'hosts': ['kiosk-b']},
+            'kiosk': {'hosts': ['kiosk-a', 'kiosk-b']},
+            'signage': {'hosts': ['signage-a']},
             '_meta': {'hostvars': {
                 'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
                 'kiosk-b': {'manage_kiosk_browser': True, 'status_agent_client_id': 'b'},
@@ -36,6 +38,8 @@ class RollingReleaseTargetOrderTest(unittest.TestCase):
     def test_limit_never_reintroduces_non_selected_terminal(self):
         inventory = {
             'kiosk_canary': {'hosts': ['kiosk-b']},
+            'kiosk': {'hosts': ['kiosk-a', 'kiosk-b']},
+            'signage': {'hosts': ['signage-a']},
             '_meta': {'hostvars': {
                 'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
                 'kiosk-b': {'manage_kiosk_browser': True, 'status_agent_client_id': 'b'},
@@ -47,6 +51,8 @@ class RollingReleaseTargetOrderTest(unittest.TestCase):
     def test_empty_explicit_selection_never_expands_to_all_terminals(self):
         inventory = {
             'kiosk_canary': {'hosts': ['kiosk-b']},
+            'kiosk': {'hosts': ['kiosk-a', 'kiosk-b']},
+            'signage': {'hosts': ['signage-a']},
             '_meta': {'hostvars': {
                 'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
                 'kiosk-b': {'manage_kiosk_browser': True, 'status_agent_client_id': 'b'},
@@ -62,6 +68,79 @@ class RollingReleaseTargetOrderTest(unittest.TestCase):
         ]))
         self.assertEqual(args.branch, 'main')
         self.assertEqual(args.inventory, 'inventory.yml')
+
+    def test_group_and_role_claim_mismatch_fails_closed(self):
+        inventory = {
+            'kiosk': {'hosts': ['kiosk-a']},
+            'signage': {'hosts': []},
+            '_meta': {'hostvars': {
+                'kiosk-a': {'manage_signage_lite': True, 'status_agent_client_id': 'a'},
+            }},
+        }
+        with self.assertRaisesRegex(RuntimeError, 'kiosk group does not match'):
+            MODULE.release_targets(inventory)
+
+    def test_duplicate_play_group_membership_fails_closed(self):
+        inventory = {
+            'kiosk': {'hosts': ['terminal-a']},
+            'signage': {'hosts': ['terminal-a']},
+            '_meta': {'hostvars': {
+                'terminal-a': {
+                    'manage_kiosk_browser': True,
+                    'manage_signage_lite': True,
+                    'status_agent_client_id': 'a',
+                },
+            }},
+        }
+        with self.assertRaisesRegex(RuntimeError, 'must be disjoint'):
+            MODULE.release_targets(inventory)
+
+    def test_duplicate_client_id_on_unselected_host_fails_closed(self):
+        inventory = {
+            'kiosk': {'hosts': ['kiosk-a']},
+            'signage': {'hosts': ['signage-a']},
+            '_meta': {'hostvars': {
+                'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'shared'},
+                'signage-a': {'manage_signage_lite': True, 'status_agent_client_id': 'shared'},
+            }},
+        }
+        with self.assertRaisesRegex(RuntimeError, 'duplicate status_agent_client_id'):
+            MODULE.release_targets(inventory, ['kiosk-a'])
+
+    def test_kiosk_canary_outside_kiosk_group_fails_closed(self):
+        inventory = {
+            'kiosk_canary': {'hosts': ['server']},
+            'kiosk': {'hosts': ['kiosk-a']},
+            'signage': {'hosts': []},
+            '_meta': {'hostvars': {
+                'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
+                'server': {},
+            }},
+        }
+        with self.assertRaisesRegex(RuntimeError, 'must belong to the kiosk group'):
+            MODULE.release_targets(inventory)
+
+    def test_malformed_or_duplicate_kiosk_canary_fails_closed(self):
+        for canary, expected in (
+            ([], 'malformed'),
+            ({'hosts': 'kiosk-a'}, 'malformed'),
+            ({'hosts': 0}, 'malformed'),
+            ({'hosts': ['kiosk-a', 'kiosk-a']}, 'duplicate'),
+        ):
+            with self.subTest(canary=canary):
+                inventory = {
+                    'kiosk_canary': canary,
+                    'kiosk': {'hosts': ['kiosk-a']},
+                    'signage': {'hosts': []},
+                    '_meta': {'hostvars': {
+                        'kiosk-a': {
+                            'manage_kiosk_browser': True,
+                            'status_agent_client_id': 'a',
+                        },
+                    }},
+                }
+                with self.assertRaisesRegex(RuntimeError, expected):
+                    MODULE.release_targets(inventory)
 
 
 class Pi5StabilityMonitorTest(unittest.TestCase):
