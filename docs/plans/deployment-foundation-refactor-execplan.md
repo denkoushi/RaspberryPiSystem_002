@@ -69,7 +69,7 @@ This work exists because the current release path has accumulated two coordinato
 - [x] (2026-07-14 22:19Z) Completed PR 1 hosted validation at Draft PR #1004; the infrastructure-only Trivy rerun passed and every check is green.
 - [x] (2026-07-14 22:19Z) Published PR 2 as Draft PR #1005 from `agent/ci-deploy-contract-shadow`; head `efa93df4` adds the client-lifecycle baseline and merge-base diff contract, and the branch push still produces no duplicate push-event workflow run.
 - [x] (2026-07-14 22:19Z) Completed PR 2 hosted validation; the latest `ci-required`, `codeql`, `gitleaks`, and all constituent checks are green.
-- [ ] (2026-07-14 22:19Z) Complete PR 3 at Draft PR #1006 (completed: published three focused inventory, exact-set rollback, and pre-checkout `flock` commits at head `e33ecadb`; local, Ansible, and isolated Linux critical tests pass; remaining: hosted checks and review).
+- [x] (2026-07-14 22:32Z) Completed PR 3 publication and validation at Draft PR #1006; three focused inventory, exact-set rollback, and pre-checkout `flock` commits are published at head `e33ecadb`, and local, Ansible, isolated Linux, and every hosted check passes.
 - [ ] Merge PR 1, PR 2, and PR 3 in dependency-safe order only after explicit merge approval, refreshing each later branch from the latest `origin/main` without force-pushing PR #1003.
 - [ ] Implement and publish PR 4, the single coordinator and execution backend.
 - [ ] Implement and publish PR 5, durable fleet state and default target minimization.
@@ -149,7 +149,7 @@ This work exists because the current release path has accumulated two coordinato
 
 The program is in progress. Three scoped implementation pull requests are now published as drafts: migration ledger safety in #1004, CI/deploy-contract shadowing in #1005, and critical inventory, rollback, and checkout-lock safety in #1006. No pull request has been merged, and PR 4 through PR 8 remain paused at the explicit merge gate.
 
-PR 1 demonstrates the intended integration style and now has every hosted check green, including the infrastructure-only Trivy rerun. PR 2 proves pull-request-only feature-branch CI, stable required-check names, and the client-lifecycle baseline/merge-base contract at head `efa93df4`; its latest hosted suite is green. PR 3 is published as three focused commits at head `e33ecadb`; local, real Ansible inventory/playbook, and isolated Linux critical lock tests pass, while hosted checks remain pending. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
+PR 1 demonstrates the intended integration style and now has every hosted check green, including the infrastructure-only Trivy rerun. PR 2 proves pull-request-only feature-branch CI, stable required-check names, and the client-lifecycle baseline/merge-base contract at head `efa93df4`; its latest hosted suite is green. PR 3 is published as three focused commits at head `e33ecadb`; local, real Ansible inventory/playbook, isolated Linux critical lock tests, and its complete hosted suite pass. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
 
 No product deployment, real-device mutation, merge, or production acceptance action has occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
 
@@ -424,7 +424,7 @@ Current replacement map at this revision:
     PR 3 / #1006:
       three focused commits -> canonical inventory groups, exact-set rollback, pre-checkout flock
       latest head -> e33ecadb
-      test state -> local, real Ansible inventory/playbook, and isolated Linux critical tests green; hosted checks pending
+      test state -> local, real Ansible inventory/playbook, isolated Linux critical, CodeQL, three API shards, lint, E2E, gitleaks, and Docker checks green; infrastructure shard completed in 9m05s
       deferred interface state -> cancel, detach, and job operations fail closed before mutation until PR 4
     PR 4-PR 8: paused at the explicit merge gate
     Product reconstruction: pending deployment-foundation production acceptance
@@ -509,3 +509,5 @@ Revision note (2026-07-15): Created the sole active ExecPlan for the approved ei
 Revision note (2026-07-15, 21:43Z): Updated living status after Draft PR #1005 publication. Recorded the verified absence of duplicate push-event runs, the classifier pass, the depth-two hosted-history correction, PR #1004's runner-disk-only Trivy failure and queued rerun, PR 3's 69-test plus safety-script local result, and the continued absence of real-device actions.
 
 Revision note (2026-07-15, 22:19Z): Recorded green hosted validation for Draft PRs #1004 and #1005, publication and isolated test evidence for Draft PR #1006, and the decision to keep cancel, detach, and job operations fail-closed until PR 4 provides one transient-systemd execution identity. Reaffirmed that no merge, product deployment, real-device action, or change to open Draft PR #1003 occurred.
+
+Revision note (2026-07-15, 22:32Z): Recorded completion of Draft PR #1006 hosted validation. CodeQL, all three API shards, lint, E2E, gitleaks, and Docker checks are green; the infrastructure shard completed in 9m05s. Merge and real-device gates remain unchanged.
