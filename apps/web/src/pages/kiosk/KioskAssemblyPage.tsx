@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import { listAssemblyTemplateSummaries, retireAssemblyTemplate } from '../../api/client';
+import { KioskFilterCombobox } from '../../components/kiosk/KioskFilterCombobox';
 import { Button, buttonClassName } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import {
@@ -12,6 +13,7 @@ import {
   KIOSK_ASSEMBLY_HOME_PATH,
   parseAssemblyLibrarySearch,
   readAssemblyApiErrorMessage,
+  useAssemblyLibraryFilterOptions,
   useAssemblyTemplateLibrary
 } from '../../features/assembly';
 
@@ -39,6 +41,16 @@ export function KioskAssemblyPage() {
   const [actionBusy, setActionBusy] = useState(false);
   const templateLibrary = useAssemblyTemplateLibrary({ refreshToken: templateRefreshToken });
   const { filters, templates } = templateLibrary;
+  const modelCodeOptions = useAssemblyLibraryFilterOptions({
+    field: 'templateModelCode',
+    query: filters.modelCode,
+    includeInactive: filters.includeInactive
+  });
+  const procedureDocumentOptions = useAssemblyLibraryFilterOptions({
+    field: 'templateProcedureDocumentName',
+    query: filters.procedureDocumentName,
+    includeInactive: filters.includeInactive
+  });
 
   useEffect(() => {
     const { focus } = parseAssemblyLibrarySearch(location.search);
@@ -182,11 +194,15 @@ export function KioskAssemblyPage() {
               />
             </div>
             <div className="w-[9rem]">
-              <Input
+              <KioskFilterCombobox
                 value={filters.modelCode}
-                onChange={(e) => templateLibrary.setModelCode(e.target.value)}
-                placeholder="形番/FHINCD"
-                className="min-h-9 px-2 text-[0.86rem]"
+                onChange={templateLibrary.setModelCode}
+                placeholder="型番/FHINCD"
+                ariaLabel="型番/FHINCD"
+                options={modelCodeOptions.options}
+                loading={modelCodeOptions.loading}
+                optionUpdateMode="live"
+                inputClassName="min-h-9 px-2 text-[0.86rem]"
               />
             </div>
             <div className="w-[9rem]">
@@ -198,11 +214,15 @@ export function KioskAssemblyPage() {
               />
             </div>
             <div className="w-[11rem]">
-              <Input
+              <KioskFilterCombobox
                 value={filters.procedureDocumentName}
-                onChange={(e) => templateLibrary.setProcedureDocumentName(e.target.value)}
+                onChange={templateLibrary.setProcedureDocumentName}
                 placeholder="手順書名"
-                className="min-h-9 px-2 text-[0.86rem]"
+                ariaLabel="テンプレートの手順書名"
+                options={procedureDocumentOptions.options}
+                loading={procedureDocumentOptions.loading}
+                optionUpdateMode="live"
+                inputClassName="min-h-9 px-2 text-[0.86rem]"
               />
             </div>
             <label className="flex min-h-9 items-center gap-1 rounded border border-white/20 px-2 text-[0.78rem] font-semibold text-white/80">
@@ -233,8 +253,10 @@ export function KioskAssemblyPage() {
             </Button>
           </div>
 
-          {templateLibrary.error ?? message ? (
-            <p className="px-1 text-[1rem] font-semibold text-amber-200">{templateLibrary.error ?? message}</p>
+          {templateLibrary.error ?? modelCodeOptions.error ?? procedureDocumentOptions.error ?? message ? (
+            <p className="px-1 text-[1rem] font-semibold text-amber-200">
+              {templateLibrary.error ?? modelCodeOptions.error ?? procedureDocumentOptions.error ?? message}
+            </p>
           ) : null}
 
           <AssemblyTemplateHistoryDialog

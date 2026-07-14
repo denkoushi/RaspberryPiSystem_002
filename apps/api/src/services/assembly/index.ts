@@ -1,6 +1,7 @@
 export * from './assembly-check-summary.js';
 export * from './assembly-excel-export.service.js';
 export * from './assembly-identifiers.js';
+export * from './assembly-library-filter-options.service.js';
 export * from './assembly-lot.service.js';
 export * from './assembly-operator-nfc-resolve.service.js';
 export * from './assembly-seiban-lot-quantity.service.js';

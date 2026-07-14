@@ -21,3 +21,4 @@ export * from './assemblyUiHelpers';
 export * from './computeContainSize';
 export * from './useAssemblyProcedureLibrary';
 export * from './useAssemblyTemplateLibrary';
+export * from './useAssemblyLibraryFilterOptions';

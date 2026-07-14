@@ -12,6 +12,7 @@ import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-imag
 import { requireClientDevice } from '../kiosk/shared.js';
 import {
   AssemblyExcelExportService,
+  AssemblyLibraryFilterOptionsService,
   AssemblyLotService,
   AssemblyProcedureOrderService,
   AssemblyProcedureSequenceService,
@@ -48,12 +49,31 @@ const optionalTrueOnlyBooleanSchema = z
 
 const idParamSchema = z.object({ id: z.string().uuid() });
 
+function validateCalloutTipPair(
+  value: { calloutTipXRatio?: number | null; calloutTipYRatio?: number | null },
+  ctx: z.RefinementCtx
+): void {
+  const bothOmitted = value.calloutTipXRatio === undefined && value.calloutTipYRatio === undefined;
+  const bothNull = value.calloutTipXRatio === null && value.calloutTipYRatio === null;
+  const bothNumbers =
+    typeof value.calloutTipXRatio === 'number' && typeof value.calloutTipYRatio === 'number';
+  if (!bothOmitted && !bothNull && !bothNumbers) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: '矢視先端座標はX/Yを両方指定してください',
+      path: ['calloutTipXRatio']
+    });
+  }
+}
+
 const boltInputSchema = z.object({
   sortOrder: z.coerce.number().int().min(0),
   tighteningId: z.string().trim().min(1).max(120),
   markerNo: z.coerce.number().int().min(1).max(999),
   xRatio: z.coerce.number().min(0).max(1),
   yRatio: z.coerce.number().min(0).max(1),
+  calloutTipXRatio: z.coerce.number().min(0).max(1).optional().nullable(),
+  calloutTipYRatio: z.coerce.number().min(0).max(1).optional().nullable(),
   boltSpec: z.string().trim().min(1).max(200),
   nominalTorque: z.coerce.number(),
   lowerLimit: z.coerce.number(),
@@ -62,7 +82,7 @@ const boltInputSchema = z.object({
   kioskDocumentId: z.string().uuid().optional().nullable(),
   assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
   pageIndex: z.coerce.number().int().min(0).optional().nullable()
-});
+}).superRefine(validateCalloutTipPair);
 
 const checkItemInputSchema = z.object({
   markerNo: z.coerce.number().int().min(1).max(999),
@@ -70,11 +90,13 @@ const checkItemInputSchema = z.object({
   required: z.boolean().optional(),
   xRatio: z.coerce.number().min(0).max(1),
   yRatio: z.coerce.number().min(0).max(1),
+  calloutTipXRatio: z.coerce.number().min(0).max(1).optional().nullable(),
+  calloutTipYRatio: z.coerce.number().min(0).max(1).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0),
   kioskDocumentId: z.string().uuid().optional().nullable(),
   assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
   pageIndex: z.coerce.number().int().min(0).optional()
-});
+}).superRefine(validateCalloutTipPair);
 
 const areaInputSchema = z.object({
   sortOrder: z.coerce.number().int().min(0),
@@ -382,6 +404,8 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
       required: item.required,
       xRatio: item.xRatio,
       yRatio: item.yRatio,
+      calloutTipXRatio: item.calloutTipXRatio,
+      calloutTipYRatio: item.calloutTipYRatio,
       sortOrder: item.sortOrder,
       kioskDocumentId: item.kioskDocumentId,
       assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
@@ -408,6 +432,8 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
         markerNo: bolt.markerNo,
         xRatio: decimalToString(bolt.xRatio),
         yRatio: decimalToString(bolt.yRatio),
+        calloutTipXRatio: decimalToString(bolt.calloutTipXRatio),
+        calloutTipYRatio: decimalToString(bolt.calloutTipYRatio),
         boltSpec: bolt.boltSpec,
         nominalTorque: decimalToString(bolt.nominalTorque),
         lowerLimit: decimalToString(bolt.lowerLimit),
@@ -535,6 +561,8 @@ function serializeSession(session: AssemblyWorkSessionDetail, sessionService: As
       required: item.required,
       xRatio: item.xRatio,
       yRatio: item.yRatio,
+      calloutTipXRatio: item.calloutTipXRatio,
+      calloutTipYRatio: item.calloutTipYRatio,
       sortOrder: item.sortOrder,
       kioskDocumentId: item.kioskDocumentId,
       assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
@@ -608,6 +636,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   };
 
   const procedureService = new AssemblyProcedureDocumentService();
+  const libraryFilterOptionsService = new AssemblyLibraryFilterOptionsService();
   const templateService = new AssemblyTemplateService();
   const sessionService = new AssemblyWorkSessionService();
   const lotService = new AssemblyLotService(sessionService);
@@ -665,6 +694,19 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
     const body = procedureOrderSaveBodySchema.parse(request.body);
     const order = await procedureOrderService.save(body);
     return { order: serializeProcedureOrder(order) };
+  });
+
+  app.get('/assembly/library/filter-options', { preHandler: allowView }, async (request) => {
+    const query = z
+      .object({
+        field: z.enum(['templateModelCode', 'templateProcedureDocumentName', 'procedureDocumentName']),
+        q: z.string().trim().max(200).optional(),
+        includeInactive: optionalTrueOnlyBooleanSchema,
+        limit: z.coerce.number().int().min(1).max(100).optional()
+      })
+      .parse(request.query);
+    const options = await libraryFilterOptionsService.list(query);
+    return { options };
   });
 
   app.post('/assembly/procedure-documents/preview', { preHandler: allowWriteKiosk }, async (request, reply) => {

@@ -33,6 +33,13 @@ import {
   templateToDraftAreas,
   templateToDraftCheckItems
 } from '../../features/assembly';
+import {
+  clearImageMarkerCalloutTip,
+  ImageCanvasZoomControls,
+  imageMarkerHasCalloutTip,
+  setImageMarkerCalloutTip,
+  useImageCanvasZoom
+} from '../../features/kiosk/image-canvas';
 
 import type { AssemblyDraftArea, AssemblyDraftBolt, AssemblyDraftCheckItem, AssemblyEditorPageOption } from '../../features/assembly';
 import type { AssemblyProcedureDocumentSummaryDto, AssemblyTemplateDto } from '../../features/assembly/types';
@@ -58,11 +65,14 @@ export function KioskAssemblyTemplateEditorPage() {
   const [selectedBoltId, setSelectedBoltId] = useState<string | null>(null);
   const [selectedCheckItemId, setSelectedCheckItemId] = useState<string | null>(null);
   const [markerMode, setMarkerMode] = useState<'bolt' | 'check'>('bolt');
+  const [placementAction, setPlacementAction] = useState<'place' | 'callout'>('place');
   const [pageOptions, setPageOptions] = useState<AssemblyEditorPageOption[]>([]);
   const [selectedPageKey, setSelectedPageKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const canvasZoom = useImageCanvasZoom();
+  const fitCanvasToView = canvasZoom.fitToView;
 
   const readOnly = Boolean(templateId && loadedTemplate && !loadedTemplate.isActive);
   const selectedDocument = useMemo(
@@ -73,6 +83,12 @@ export function KioskAssemblyTemplateEditorPage() {
   const selectedBolt = selectedArea?.bolts.find((bolt) => bolt.id === selectedBoltId) ?? null;
   const selectedCheckItem = checkItems.find((item) => item.id === selectedCheckItemId) ?? null;
   const selectedPage = pageOptions.find((option) => option.key === selectedPageKey) ?? pageOptions[0] ?? null;
+
+  useEffect(() => {
+    fitCanvasToView();
+    setSelectedBoltId(null);
+    setSelectedCheckItemId(null);
+  }, [fitCanvasToView, selectedPageKey]);
 
   useEffect(() => {
     if (areas.length > 0 && !areas.some((area) => area.id === selectedAreaId)) {
@@ -257,6 +273,17 @@ export function KioskAssemblyTemplateEditorPage() {
     setSelectedBoltId(null);
   };
 
+  const placeSelectedCalloutAt = (xRatio: number, yRatio: number) => {
+    if (readOnly) return;
+    const calloutTip = setImageMarkerCalloutTip(xRatio, yRatio);
+    if (markerMode === 'bolt' && selectedBolt) {
+      setBoltPatch(selectedBolt.id, calloutTip);
+    }
+    if (markerMode === 'check' && selectedCheckItem) {
+      setCheckItemPatch(selectedCheckItem.id, calloutTip);
+    }
+  };
+
   const saveTemplate = async () => {
     if (readOnly) return;
     setBusy(true);
@@ -347,7 +374,7 @@ export function KioskAssemblyTemplateEditorPage() {
               </select>
             </label>
             <label className="grid gap-1 text-xs font-semibold text-white/70">
-              形番/FHINCD
+              型番/FHINCD
               <Input value={modelCode} disabled={busy || readOnly} onChange={(e) => setModelCode(e.target.value)} />
             </label>
             <label className="grid gap-1 text-xs font-semibold text-white/70">
@@ -403,8 +430,19 @@ export function KioskAssemblyTemplateEditorPage() {
 
         <section className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
           <div className="shrink-0 border-b border-white/10 p-3">
-            <h2 className="text-[1.02rem] font-bold">手順書 / マーカー</h2>
-            <p className="mt-1 truncate text-sm text-white/60">{selectedPage?.label ?? selectedDocument?.name ?? '手順書未選択'}</p>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="text-[1.02rem] font-bold">手順書 / マーカー</h2>
+                <p className="mt-1 truncate text-sm text-white/60">{selectedPage?.label ?? selectedDocument?.name ?? '手順書未選択'}</p>
+              </div>
+              <ImageCanvasZoomControls
+                enabled={Boolean(selectedPage?.imageRelativePath ?? selectedDocument?.imageRelativePath)}
+                onZoomIn={canvasZoom.zoomIn}
+                onZoomOut={canvasZoom.zoomOut}
+                onFitToView={canvasZoom.fitToView}
+                controlsClassName="shrink-0 rounded bg-slate-950/70 p-1"
+              />
+            </div>
             <div className="mt-2 grid gap-2">
               <label className="grid gap-1 text-xs font-semibold text-white/70">
                 ページ
@@ -428,7 +466,10 @@ export function KioskAssemblyTemplateEditorPage() {
                   variant={markerMode === 'bolt' ? 'primary' : 'ghostOnDark'}
                   className="min-h-9 !px-2 !py-1 text-xs"
                   disabled={readOnly}
-                  onClick={() => setMarkerMode('bolt')}
+                  onClick={() => {
+                    setMarkerMode('bolt');
+                    setSelectedCheckItemId(null);
+                  }}
                 >
                   締結マーカー
                 </Button>
@@ -437,15 +478,46 @@ export function KioskAssemblyTemplateEditorPage() {
                   variant={markerMode === 'check' ? 'primary' : 'ghostOnDark'}
                   className="min-h-9 !px-2 !py-1 text-xs"
                   disabled={readOnly}
-                  onClick={() => setMarkerMode('check')}
+                  onClick={() => {
+                    setMarkerMode('check');
+                    setSelectedBoltId(null);
+                  }}
                 >
                   チェックマーカー
                 </Button>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-white/55">操作</span>
+                <Button
+                  type="button"
+                  variant={placementAction === 'place' ? 'primary' : 'ghostOnDark'}
+                  className="min-h-9 !px-2 !py-1 text-xs"
+                  disabled={readOnly}
+                  aria-pressed={placementAction === 'place'}
+                  onClick={() => setPlacementAction('place')}
+                >
+                  丸数字
+                </Button>
+                <Button
+                  type="button"
+                  variant={placementAction === 'callout' ? 'primary' : 'ghostOnDark'}
+                  className="min-h-9 !px-2 !py-1 text-xs"
+                  disabled={
+                    readOnly ||
+                    (markerMode === 'bolt' ? !selectedBolt : !selectedCheckItem)
+                  }
+                  aria-pressed={placementAction === 'callout'}
+                  onClick={() => setPlacementAction('callout')}
+                >
+                  矢視
+                </Button>
+              </div>
               <p className="text-[0.72rem] font-semibold text-white/50">
-                {markerMode === 'bolt'
-                  ? '白/シアン: 締結位置。手順書をタップして追加。'
-                  : '緑系: チェック位置。手順書をタップして追加。'}
+                {placementAction === 'callout'
+                  ? '選択中マーカーの矢視先端を手順書上でタップ。'
+                  : markerMode === 'bolt'
+                    ? '白/シアン: 締結位置。手順書をタップして追加。'
+                    : '緑系: チェック位置。手順書をタップして追加。'}
               </p>
             </div>
           </div>
@@ -456,11 +528,27 @@ export function KioskAssemblyTemplateEditorPage() {
               checkItems={visibleCheckItems}
               selectedBoltId={selectedBoltId}
               selectedCheckItemId={selectedCheckItemId}
-              onSelectBolt={setSelectedBoltId}
-              onSelectCheckItem={setSelectedCheckItemId}
-              onAddBolt={readOnly || markerMode !== 'bolt' ? undefined : addBoltAt}
-              onAddCheckItem={readOnly || markerMode !== 'check' ? undefined : addCheckItemAt}
+              onSelectBolt={(id) => {
+                setMarkerMode('bolt');
+                setSelectedBoltId(id);
+                setSelectedCheckItemId(null);
+              }}
+              onSelectCheckItem={(id) => {
+                setMarkerMode('check');
+                setSelectedCheckItemId(id);
+                setSelectedBoltId(null);
+              }}
+              onAddBolt={readOnly || markerMode !== 'bolt' || placementAction !== 'place' ? undefined : addBoltAt}
+              onAddCheckItem={readOnly || markerMode !== 'check' || placementAction !== 'place' ? undefined : addCheckItemAt}
+              onPlaceCallout={
+                readOnly || placementAction !== 'callout' || (markerMode === 'bolt' ? !selectedBolt : !selectedCheckItem)
+                  ? undefined
+                  : placeSelectedCalloutAt
+              }
               placementMode={markerMode}
+              placementAction={placementAction}
+              zoom={canvasZoom.zoom}
+              fitGeneration={canvasZoom.fitGeneration}
               className="h-full"
             />
           </div>
@@ -476,6 +564,20 @@ export function KioskAssemblyTemplateEditorPage() {
                     <div className="text-sm font-bold">丸数字 {selectedBolt.markerNo}</div>
                     <Button type="button" variant="danger" className="min-h-8 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={deleteSelectedBolt}>
                       削除
+                    </Button>
+                  </div>
+                  <div className="flex min-h-9 items-center justify-between gap-2 rounded border border-white/10 bg-slate-950/60 px-2">
+                    <span className="text-xs font-semibold text-white/70">
+                      {imageMarkerHasCalloutTip(selectedBolt) ? '矢視 あり' : '矢視 なし'}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghostOnDark"
+                      className="min-h-8 !px-2 !py-1 text-xs"
+                      disabled={busy || readOnly || !imageMarkerHasCalloutTip(selectedBolt)}
+                      onClick={() => setBoltPatch(selectedBolt.id, clearImageMarkerCalloutTip())}
+                    >
+                      矢視削除
                     </Button>
                   </div>
                   <p className="text-xs text-white/55">
@@ -526,6 +628,20 @@ export function KioskAssemblyTemplateEditorPage() {
                     <div className="text-sm font-bold">チェック {selectedCheckItem.markerNo}</div>
                     <Button type="button" variant="danger" className="min-h-8 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={deleteSelectedCheckItem}>
                       削除
+                    </Button>
+                  </div>
+                  <div className="flex min-h-9 items-center justify-between gap-2 rounded border border-white/10 bg-slate-950/60 px-2">
+                    <span className="text-xs font-semibold text-white/70">
+                      {imageMarkerHasCalloutTip(selectedCheckItem) ? '矢視 あり' : '矢視 なし'}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghostOnDark"
+                      className="min-h-8 !px-2 !py-1 text-xs"
+                      disabled={busy || readOnly || !imageMarkerHasCalloutTip(selectedCheckItem)}
+                      onClick={() => setCheckItemPatch(selectedCheckItem.id, clearImageMarkerCalloutTip())}
+                    >
+                      矢視削除
                     </Button>
                   </div>
                   <label className="grid gap-1 text-xs font-semibold text-white/70">

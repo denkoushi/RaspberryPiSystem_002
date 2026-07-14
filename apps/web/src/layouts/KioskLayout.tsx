@@ -102,7 +102,9 @@ export function KioskLayout() {
     >
       {/* 設定変更を監視してリダイレクト */}
       <KioskRedirect />
-      {deployStatus?.preNotice ? <KioskDeployPreNotice scheduledAt={preNoticeScheduledAt} /> : null}
+      {deployStatus?.preNotice ? (
+        <KioskDeployPreNotice runId={preNoticeRunId} scheduledAt={preNoticeScheduledAt} />
+      ) : null}
       {immersiveKioskLayout ? (
         <div
           className={KIOSK_IMMERSIVE_HEADER_HOT_ZONE_CLASS}
