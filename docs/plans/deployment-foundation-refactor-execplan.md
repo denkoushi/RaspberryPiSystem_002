@@ -35,8 +35,9 @@ validation:
   - read-only plans for both production inventories before any approved release
   - one explicitly approved full-fleet acceptance per inventory, followed by a same-SHA no-op plan
 open_items:
-  - review and merge draft PR 1004 after all required checks pass
-  - complete and publish PR 2 and PR 3 from independent origin/main worktrees
+  - complete the queued infrastructure rerun and review before merging draft PR 1004
+  - complete hosted checks and review before merging draft PR 1005
+  - finish review, commit, validate, and publish PR 3 from its independent origin/main worktree
   - implement PR 4 through PR 8 only in sequence from the updated origin/main
   - obtain separate per-inventory approval before any production mutation
   - reintroduce the deferred product work only after deployment-foundation production acceptance
@@ -64,9 +65,11 @@ This work exists because the current release path has accumulated two coordinato
 
 - [x] (2026-07-14 21:31Z) Recorded the user-approved eight-PR sequence, production freeze, public interfaces, acceptance gates, and PR #1003 supersession policy in this ExecPlan.
 - [x] (2026-07-14 21:31Z) Established `origin/main` commit `38e72080969631ababc7c595ef67daca067d327f` as the initial baseline and confirmed that the remote has no `develop` branch.
-- [x] (2026-07-14 21:31Z) Published PR 1 as Draft PR #1004, `fix(deploy): restore migration ledger safety`, from `agent/deploy-migration-ledger`; it contains four intentionally scoped commits and remains unmerged pending complete hosted CI and review.
-- [ ] (2026-07-14 21:31Z) Complete PR 2 on `agent/ci-deploy-contract-shadow` (completed: workflow and classifier implementation is in progress from the clean baseline; remaining: finish tests, review the diff, run hosted checks, and publish a Draft PR).
-- [ ] (2026-07-14 21:31Z) Complete PR 3 on `agent/deploy-safety-contracts` (completed: Talkplaza inventory correction is in progress from the clean baseline; remaining: rollback, lock, cancel contracts, regression tests, review, hosted checks, and Draft PR publication).
+- [x] (2026-07-14 21:31Z) Published PR 1 as Draft PR #1004, `fix(deploy): restore migration ledger safety`, from `agent/deploy-migration-ledger`; it contains four intentionally scoped commits.
+- [ ] (2026-07-14 21:43Z) Complete PR 1 hosted validation and review (completed: every functional check passed; remaining: the rerun of `security-docker (api)`, whose first attempt failed only because the GitHub runner ran out of disk during Trivy image export, is queued, then review and merge remain).
+- [x] (2026-07-14 21:43Z) Published PR 2 as Draft PR #1005 from `agent/ci-deploy-contract-shadow` with focused commits `f0cadcdd` and `98c3dae4`; the branch push produced no push-event workflow run, and the pull-request classifier job passed.
+- [ ] (2026-07-14 21:43Z) Complete PR 2 hosted validation and review (completed: fixed the newly connected Pi5 lifecycle test's shallow-history failure by using checkout depth two and retested locally; remaining: complete hosted checks, review, and merge).
+- [ ] (2026-07-14 21:43Z) Complete PR 3 on `agent/deploy-safety-contracts` (completed: inventory, rollback, lock, cancel, and regression implementation is under review; all 69 isolated rolling-release tests and the inventory/rollback safety script pass locally; remaining: finish review, commit, rerun the final checks, publish a Draft PR, and complete hosted checks).
 - [ ] Merge PR 1, PR 2, and PR 3 in dependency-safe order after their checks pass, refreshing each later branch from the latest `origin/main` without force-pushing PR #1003.
 - [ ] Implement and publish PR 4, the single coordinator and execution backend.
 - [ ] Implement and publish PR 5, durable fleet state and default target minimization.
@@ -95,6 +98,12 @@ This work exists because the current release path has accumulated two coordinato
   Evidence: `infrastructure/ansible/tasks/rollback-configs.yml` uses `regex_replace('\\.[0-9]+$', '')` over every `*.service.*` file sorted by modification time.
 - Observation: PR 1 can restore migration safety without importing the unrelated recovery, load-gate, lifecycle, and product behavior in `c5d8a4da`.
   Evidence: Draft PR #1004 contains selected source behavior as commits `e1e4f29b`, `b9b6c7d1`, `4b57a494`, and the focused no-new-migration implementation `a06658fb`.
+- Observation: the newly connected Pi5 lifecycle test compares against `HEAD^`, so the default depth-one Actions checkout cannot provide its required migration history.
+  Evidence: PR #1005 initially failed `lint-build-unit` at that test; focused commit `98c3dae4` sets fetch depth two, and the same lifecycle test passed locally afterward.
+- Observation: PR #1005's trigger cleanup works in the published branch, not only in classifier unit tests.
+  Evidence: pushing `agent/ci-deploy-contract-shadow` produced zero push-event runs; CI, CodeQL, and Secret scan were created only for the `pull_request` event, and the classifier job passed.
+- Observation: PR #1004's remaining red job is runner storage exhaustion rather than a functional failure in the migration change.
+  Evidence: all functional checks passed; `security-docker (api)` failed during Trivy image export with `no space left on device`, and its failed-job rerun was queued without a code change.
 
 ## Decision Log
 
@@ -131,9 +140,9 @@ This work exists because the current release path has accumulated two coordinato
 
 ## Outcomes & Retrospective
 
-The program is in progress. The durable outcome so far is a scoped migration-safety Draft PR and an executable sequence that separates urgent repairs from coordinator redesign. No production host, service, database, fleet state, Git checkout, or maintenance flag has been changed by this program.
+The program is in progress. The durable outcome so far is a scoped migration-safety Draft PR, a published CI/deploy-contract shadow Draft PR, and an executable sequence that separates urgent repairs from coordinator redesign. No production host, service, database, fleet state, Git checkout, or maintenance flag has been changed by this program.
 
-PR 1 demonstrates the intended integration style: named migration commits were transplanted in order, one narrow behavior was reimplemented instead of cherry-picking a mixed commit, and local migration/Blue-Green tests passed before publication. PR 2 and PR 3 are isolated on independent worktrees so their diffs cannot contaminate PR #1003 or each other.
+PR 1 demonstrates the intended integration style: named migration commits were transplanted in order, one narrow behavior was reimplemented instead of cherry-picking a mixed commit, and every functional hosted check passed. Its remaining Trivy export rerun is infrastructure follow-up, not authorization to weaken or change the migration code. PR 2 now demonstrates that feature-branch pushes do not duplicate pull-request workflows; its first hosted failure also exposed and corrected the exact Git-history depth required by the Pi5 lifecycle test. PR 3 remains uncommitted while review continues, but 69 rolling-release tests and the isolated inventory/rollback safety script pass locally. The three worktrees remain isolated from PR #1003 and from each other.
 
 At each major merge, update this section with the observable behavior delivered, the checks that passed, any time saved or regression found, and the remaining risk. After the seven-day CI observation, compare actual latency and runner-minute evidence against the thresholds in `Validation and Acceptance`. After PR 8, state whether the old marker, lock, and run formats were fully removed and whether the accepted same-SHA plan is a no-op.
 
@@ -397,8 +406,12 @@ Current replacement map at this revision:
       01999607 -> b9b6c7d1
       284e0bc5 -> 4b57a494
       c5d8a4da migration-only behavior -> a06658fb
-    PR 2: CI baseline and deploy-contract shadow (in progress)
-    PR 3: inventory, rollback, checkout lock, and cancel safety (in progress)
+      hosted state -> functional checks passed; security-docker(api) infrastructure rerun queued
+    PR 2 / #1005:
+      CI baseline and deploy-contract shadow -> f0cadcdd
+      hosted history-depth correction -> 98c3dae4
+      hosted state -> pull_request-only runs observed; classifier passed; remaining checks/review pending
+    PR 3: inventory, rollback, checkout lock, and cancel safety (local tests pass; uncommitted review in progress)
     PR 4-PR 8: pending prior merge gates
     Product reconstruction: pending deployment-foundation production acceptance
 
@@ -478,3 +491,5 @@ GitHub Actions exposes fixed checks `ci-required`, `codeql`, and `gitleaks`. `ci
 - PR #1003 は参照用に残し、merge・force-pushしない。置換PR対応表をコメントしてから `superseded` としてcloseする。
 
 Revision note (2026-07-15): Created the sole active ExecPlan for the approved eight-PR deployment-foundation refactor. It records Draft PR #1004, the in-progress PR 2 and PR 3 branches, the missing baseline client-lifecycle test and its PR 6 deferral, the `38e72080` baseline, the absent `develop` branch, and the explicit prohibition on real-device actions before per-inventory approval.
+
+Revision note (2026-07-15, 21:43Z): Updated living status after Draft PR #1005 publication. Recorded the verified absence of duplicate push-event runs, the classifier pass, the depth-two hosted-history correction, PR #1004's runner-disk-only Trivy failure and queued rerun, PR 3's 69-test plus safety-script local result, and the continued absence of real-device actions.
