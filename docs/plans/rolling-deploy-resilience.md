@@ -36,10 +36,13 @@ After this work, a same-SHA candidate is validated and reused rather than
 rebuilt, the known heavy signage renderer is paused only for candidate build
 and validation, completed migration history is always checksum-verified, and
 the rolling coordinator can cancel or time out a terminal without clearing its
-maintenance state. The user-visible proof is a Pi5 candidate build that waits
-for a stable load below 3.00 instead of repeated rebuilds, plus a terminal
-failure that is durably marked failed and remains in maintenance until an
-explicit verified recovery.
+maintenance state. During the one bootstrap release where the already-running
+API does not yet expose the new internal pause endpoint, the release records
+that limitation and uses the same bounded load gate rather than failing or
+rebuilding. The user-visible proof is a Pi5 candidate build that waits for a
+stable load below 3.00 instead of repeated rebuilds, plus a terminal failure
+that is durably marked failed and remains in maintenance until an explicit
+verified recovery.
 
 ## Progress
 
@@ -81,6 +84,11 @@ explicit verified recovery.
 - The first implementation accidentally replaced the fallback lock cleanup
   trap with the signage-resume trap. A combined EXIT handler now releases both
   resources; the Phase 2 lifecycle regression exposed and verified this path.
+- The first field attempt correctly failed before any Pi5/Pi4 change because
+  the previously deployed API did not yet contain the new signage-control
+  route. The bootstrap-compatible path now records `legacy-api-unavailable`,
+  keeps the old API serving, and relies on the bounded load gate for that one
+  candidate build; all later releases use the protected pause/resume route.
 
 ## Decision Log
 
@@ -94,6 +102,13 @@ explicit verified recovery.
   Rationale: the renderer and Chromium were measured consumers; the other
   workloads were not proven contributors.
   Date/Author: 2026-07-14 / user and Codex
+- Decision: a missing signage-control route on the API that is currently
+  serving is a bootstrap compatibility condition, not a reason to disable
+  safety checks or abort forever.
+  Rationale: the route cannot pause an older process that does not contain it.
+  The candidate is built once under the existing bounded 3.00 load contract,
+  cached for reuse, and enables pause/resume for all subsequent releases.
+  Date/Author: 2026-07-14 / Codex
 - Decision: leave FJV60/80 in maintenance today and update the four reachable
   kiosks after the current run is safely cancelled.
   Rationale: an unreachable terminal cannot prove rollback or normal UI state.

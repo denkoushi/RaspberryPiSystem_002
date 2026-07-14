@@ -36,6 +36,13 @@ validated candidate instead of rebuilding it, and retain maintenance for any
 terminal whose state cannot be verified. Use the canonical cancel command; do
 not kill a coordinator or delete a lock directory by hand.
 
+For the first deployment that introduces the protected signage control route,
+the old API cannot pause its own renderer. The release records
+`legacy-api-unavailable`, keeps that API available, and applies the same
+three-sample load gate to the one cached candidate build. It must not try to
+kill the old renderer from outside its process; later releases use pause and
+resume normally.
+
 ## Deferred FJV60/80 recovery
 
 FJV60/80 remains in maintenance until it is physically reachable, then is

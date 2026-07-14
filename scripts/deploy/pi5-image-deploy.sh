@@ -24,6 +24,11 @@ REF=""
 LAST_LOAD_SAMPLES="[]"
 SIGNAGE_CONTAINER_ID=""
 SIGNAGE_PAUSED=0
+SIGNAGE_CONTROL_EVENTS="[]"
+PREPARE_ACTIVE=0
+PREPARE_API=""
+PREPARE_WEB=""
+PREPARE_BUILD_MODE=""
 LOCK_DIR=""
 
 log() { printf '[%s] %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$*"; }
@@ -67,10 +72,10 @@ compose() {
 atomic_state() {
   local event="$1" api_image="$2" web_image="$3" previous_api="${4:-}" previous_web="${5:-}" result="${6:-}" build_mode="${7:-}"
   mkdir -p "$(dirname "$STATE_FILE")"
-  python3 - "$STATE_FILE" "$event" "$api_image" "$web_image" "$previous_api" "$previous_web" "$result" "$build_mode" "$LAST_LOAD_SAMPLES" <<'PY'
+  python3 - "$STATE_FILE" "$event" "$api_image" "$web_image" "$previous_api" "$previous_web" "$result" "$build_mode" "$LAST_LOAD_SAMPLES" "$SIGNAGE_CONTROL_EVENTS" <<'PY'
 import json, os, sys, tempfile
 from datetime import datetime, timezone
-path, event, api, web, prev_api, prev_web, result, build_mode, load_samples = sys.argv[1:]
+path, event, api, web, prev_api, prev_web, result, build_mode, load_samples, signage_events = sys.argv[1:]
 try:
  with open(path, encoding="utf-8") as f: state = json.load(f)
 except (FileNotFoundError, json.JSONDecodeError): state = {"version": 1}
@@ -96,6 +101,7 @@ elif event == "rolled-back":
 if result: state["result"] = result
 if build_mode:
  state["build"] = {"mode": build_mode, "loadSamples": json.loads(load_samples)}
+state["workloadControl"] = {"signage": {"events": json.loads(signage_events)}}
 fd, tmp = tempfile.mkstemp(prefix=".pi5-deploy-", dir=os.path.dirname(path))
 with os.fdopen(fd, "w", encoding="utf-8") as f:
     json.dump(state, f, separators=(",", ":")); f.write("\n"); f.flush(); os.fsync(f.fileno())
@@ -255,24 +261,74 @@ PY
   docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" ps -q api 2>/dev/null | head -1
 }
 
+record_signage_event() {
+  local action="$1" state="$2" detail="${3:-}"
+  SIGNAGE_CONTROL_EVENTS="$(python3 - "$SIGNAGE_CONTROL_EVENTS" "$action" "$state" "$detail" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+events = json.loads(sys.argv[1])
+events.append({
+    "at": datetime.now(timezone.utc).isoformat(),
+    "action": sys.argv[2],
+    "state": sys.argv[3],
+    "detail": sys.argv[4],
+})
+print(json.dumps(events, separators=(",", ":")))
+PY
+)"
+}
+
 set_signage_paused() {
-  local action="$1" token status
-  [[ "$DRY_RUN" == 1 ]] && { log "DRY-RUN: ${action} signage renderer"; return 0; }
+  local action="$1" token status active_revision
+  if [[ "$DRY_RUN" == 1 ]]; then
+    record_signage_event "$action" "dry-run"
+    log "DRY-RUN: ${action} signage renderer"
+    return 0
+  fi
   [[ -n "$SIGNAGE_CONTAINER_ID" ]] || SIGNAGE_CONTAINER_ID="$(active_api_container)"
-  [[ -n "$SIGNAGE_CONTAINER_ID" ]] || die 'active API container is unavailable for signage deploy control'
+  if [[ -z "$SIGNAGE_CONTAINER_ID" ]]; then
+    record_signage_event "$action" "unavailable" "active API container is unavailable"
+    return 1
+  fi
   token="$(deploy_control_token)"
-  status="$(docker exec -e "DEPLOY_CONTROL_TOKEN=${token}" "$SIGNAGE_CONTAINER_ID" node -e '
+  if status="$(docker exec -e "DEPLOY_CONTROL_TOKEN=${token}" "$SIGNAGE_CONTAINER_ID" node -e '
 const action=process.argv[1];
 fetch("http://127.0.0.1:8080/api/system/deploy-workload/internal", {method:"POST",headers:{"content-type":"application/json","x-deploy-control-token":process.env.DEPLOY_CONTROL_TOKEN},body:JSON.stringify({action})})
   .then(async response=>{if(!response.ok) throw new Error(await response.text()); process.stdout.write(await response.text())})
   .catch(error=>{console.error(error);process.exit(1)})
-' "$action")" || die "could not ${action} signage renderer"
-  log "signage deploy control completed: ${status}"
+' "$action" 2>&1)"; then
+    record_signage_event "$action" "completed" "$status"
+    log "signage deploy control completed: ${status}"
+    return 0
+  fi
+
+  # The very first resilience deployment runs against an older API that cannot
+  # expose this new route yet.  It cannot be paused safely from outside the
+  # process, so retain service availability and use the bounded load gate.  A
+  # prepared candidate is cached, meaning this compatibility path never causes
+  # a rebuild loop; after the switch, subsequent releases use the endpoint.
+  if [[ "$action" == "pause-signage" && "$status" == *"deploy-workload/internal"* \
+    && ( "$status" == *"Not Found"* || "$status" == *'"statusCode":404'* ) ]]; then
+    active_revision="$(docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$SIGNAGE_CONTAINER_ID" 2>/dev/null || true)"
+    if [[ -z "$active_revision" ]]; then
+      record_signage_event "$action" "legacy-api-unavailable" "$status"
+      log "signage control is unavailable in the active legacy API; using bounded load-gate fallback"
+      return 0
+    fi
+    record_signage_event "$action" "failed" "control route is missing from labelled API ${active_revision}: ${status}"
+    printf '%s\n' "signage control route is missing from labelled active API ${active_revision}" >&2
+    return 1
+  fi
+  record_signage_event "$action" "failed" "$status"
+  printf '%s\n' "$status" >&2
+  return 1
 }
 
 pause_signage() {
-  set_signage_paused pause-signage
-  SIGNAGE_PAUSED=1
+  set_signage_paused pause-signage || die 'could not pause signage renderer'
+  # A legacy API has no pause route.  It is deliberately left serving while
+  # the same bounded load gate protects the single bootstrap candidate build.
+  [[ "$SIGNAGE_CONTROL_EVENTS" == *'"state":"legacy-api-unavailable"'* ]] || SIGNAGE_PAUSED=1
 }
 
 resume_signage() {
@@ -282,10 +338,16 @@ resume_signage() {
 }
 
 image_deploy_cleanup() {
-  resume_signage
+  local rc=$?
+  if ((PREPARE_ACTIVE == 1)); then
+    atomic_state failed "$PREPARE_API" "$PREPARE_WEB" "" "" "failure:${rc}" "$PREPARE_BUILD_MODE" || true
+  fi
+  resume_signage || true
   if [[ -n "$LOCK_DIR" ]]; then
     rmdir "$LOCK_DIR" 2>/dev/null || true
   fi
+  trap - EXIT
+  exit "$rc"
 }
 
 migration_guard() {
@@ -307,6 +369,9 @@ prepare() {
   config_hash="$(candidate_config_hash)"
   tag="${REF}-${config_hash:0:12}"
   api="${API_REPOSITORY}:${tag}"; web="${WEB_REPOSITORY}:${tag}"; candidate_name="pi5-api-candidate-${REF:0:12}"
+  PREPARE_ACTIVE=1
+  PREPARE_API="$api"
+  PREPARE_WEB="$web"
   pause_signage
   wait_for_stable_load pre-build
   if [[ "$DRY_RUN" != 1 ]] && image_matches_candidate "$api" "$config_hash" && image_matches_candidate "$web" "$config_hash"; then
@@ -322,6 +387,7 @@ prepare() {
       compose "$api" "$web" build --build-arg "BUILD_COMMIT=${REF}" --build-arg "BUILD_CONFIG_HASH=${config_hash}" web
     fi
   fi
+  PREPARE_BUILD_MODE="$build_mode"
   run env PI5_API_IMAGE="$api" PI5_WEB_IMAGE="$web" docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" -f "$PHASE2_COMPOSE" config --quiet
   run docker run --rm \
     -v "$PROJECT_DIR/certs:/srv/certs:ro" \
@@ -346,7 +412,9 @@ prepare() {
     docker rm -f "$candidate_name" >/dev/null
   fi
   wait_for_stable_load post-build
+  resume_signage
   atomic_state prepared "$api" "$web" "" "" success "$build_mode"
+  PREPARE_ACTIVE=0
   log "candidate prepared: ${REF}"
 }
 

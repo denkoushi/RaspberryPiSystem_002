@@ -33,6 +33,9 @@ grep -Fq 'BUILD_CONFIG_HASH' "$ROOT/infrastructure/docker/Dockerfile.api" || fai
 grep -Fq 'BUILD_CONFIG_HASH' "$ROOT/infrastructure/docker/Dockerfile.web" || fail "Web image is not labelled with its compose configuration hash"
 grep -Fq 'wait_for_stable_load pre-build' "$SCRIPT" || fail "candidate build lacks pre-build stable-load wait"
 grep -Fq 'wait_for_stable_load post-build' "$SCRIPT" || fail "candidate build lacks post-build stable-load wait"
+grep -Fq 'legacy-api-unavailable' "$SCRIPT" || fail "first rollout has no legacy signage-control fallback"
+grep -Fq 'control route is missing from labelled API' "$SCRIPT" || fail "labelled API route regression does not fail closed"
+grep -Fq 'workloadControl' "$SCRIPT" || fail "candidate state does not retain signage control events"
 
 status="$(env "${common_env[@]}" "$SCRIPT" status)"
 assert_contains "$status" '"event": "prepared"'
