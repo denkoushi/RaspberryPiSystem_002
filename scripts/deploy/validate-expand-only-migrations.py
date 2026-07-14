@@ -44,6 +44,22 @@ def load_applied_checksums(stream: TextIO) -> dict[str, str]:
     return applied
 
 
+def file_checksum(path: pathlib.Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def validate_applied_history(
+    migration_root: pathlib.Path, applied: dict[str, str]
+) -> None:
+    for migration_name, expected_checksum in applied.items():
+        path = migration_root / migration_name / "migration.sql"
+        if not path.is_file():
+            raise ValueError(f"applied migration is missing from candidate: {migration_name}")
+        actual_checksum = file_checksum(path)
+        if actual_checksum != expected_checksum:
+            raise ValueError(f"applied migration checksum mismatch: {migration_name}")
+
+
 def validate_migration(path: pathlib.Path, applied: dict[str, str]) -> None:
     raw = path.read_bytes()
     migration_name = path.parent.name
@@ -74,6 +90,7 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Pipe-delimited migration_name|checksum rows, or - for stdin",
     )
+    parser.add_argument("--migration-root", required=True)
     parser.add_argument("migrations", nargs="+")
     return parser.parse_args()
 
@@ -86,6 +103,7 @@ def main() -> int:
         else:
             with open(args.applied_checksums, encoding="utf-8") as stream:
                 applied = load_applied_checksums(stream)
+        validate_applied_history(pathlib.Path(args.migration_root), applied)
         for migration in args.migrations:
             validate_migration(pathlib.Path(migration), applied)
     except (OSError, UnicodeError, ValueError) as error:

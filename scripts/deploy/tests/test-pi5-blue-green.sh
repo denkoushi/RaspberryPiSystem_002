@@ -221,6 +221,8 @@ grep -Fq 'validate-expand-only-migrations.py' "$SCRIPT" \
   || fail "migration recovery guard does not use the shared validator"
 grep -Fq "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" "$SCRIPT" \
   || fail "candidate migration command does not bypass the API default Node command"
+[[ "$(grep -Fc "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" "$SCRIPT")" -eq 1 ]] \
+  || fail "candidate migration flow must run status only after migrate deploy"
 grep -Fq 'legacy_caddy_config_path()' "$SCRIPT" \
   || fail "legacy active Caddyfile detection is missing"
 grep -Fq '/srv/Caddyfile.local' "$SCRIPT" \
@@ -336,17 +338,17 @@ import hashlib, pathlib, sys
 print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
 PY
 )"
-if printf '\n' | python3 "$VALIDATOR" --applied-checksums - "$RESTORED_MIGRATION_DIR/migration.sql" >/dev/null 2>&1; then
+if printf '\n' | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" "$RESTORED_MIGRATION_DIR/migration.sql" >/dev/null 2>&1; then
   fail "disallowed unapplied migration was accepted"
 fi
 printf '%s|%s\n' "$(basename "$RESTORED_MIGRATION_DIR")" "$restored_checksum" \
-  | python3 "$VALIDATOR" --applied-checksums - "$RESTORED_MIGRATION_DIR/migration.sql" >/dev/null \
+  | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" "$RESTORED_MIGRATION_DIR/migration.sql" >/dev/null \
   || fail "applied migration with matching checksum was not accepted"
 if printf '%s|%064d\n' "$(basename "$RESTORED_MIGRATION_DIR")" 0 \
-  | python3 "$VALIDATOR" --applied-checksums - "$RESTORED_MIGRATION_DIR/migration.sql" >/dev/null 2>&1; then
+  | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" "$RESTORED_MIGRATION_DIR/migration.sql" >/dev/null 2>&1; then
   fail "applied migration with mismatched checksum was accepted"
 fi
-printf '\n' | python3 "$VALIDATOR" --applied-checksums - "$NEW_MIGRATION_DIR/migration.sql" >/dev/null \
+printf '\n' | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" "$NEW_MIGRATION_DIR/migration.sql" >/dev/null \
   || fail "new Expand-only migration was rejected"
 
 echo "PASS: pi5 blue/green safety lifecycle"
