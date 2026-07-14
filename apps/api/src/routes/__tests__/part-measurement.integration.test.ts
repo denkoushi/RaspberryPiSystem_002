@@ -179,6 +179,26 @@ async function createInstrumentWithInspectionItem(input: {
   return { instrument, rfidTagUid, inspectionItem };
 }
 
+async function authenticateSelfInspectionActor(input: {
+  app: Awaited<ReturnType<typeof buildServer>>;
+  sessionId: string;
+  employeeTagUid: string;
+  clientKey: string;
+  measurementMode?: 'operator' | 'inspector';
+}): Promise<string> {
+  const response = await input.app.inject({
+    method: 'POST',
+    url: `/api/part-measurement/self-inspection/sessions/${input.sessionId}/measurement-actor-authentications`,
+    headers: { 'x-client-key': input.clientKey },
+    payload: {
+      employeeTagUid: input.employeeTagUid,
+      measurementMode: input.measurementMode ?? 'operator'
+    }
+  });
+  expect(response.statusCode).toBe(200);
+  return response.json().authentication.id as string;
+}
+
 function buildMultipartPng(name: string, png: Buffer): { body: Buffer; contentType: string } {
   return buildMultipartDrawingFile(name, png, { filename: 't.png', contentType: 'image/png' });
 }
@@ -2813,9 +2833,15 @@ describe('part-measurement templates API', () => {
       rfidTagUid: `INST-SELF-${Date.now()}`
     });
     const entryRegistrationTags = {
-      employeeTagUid: auditEmployee.nfcTagUid,
       measuringInstrumentTagUid: instrumentTagUid
     };
+    const operatorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId,
+      employeeTagUid: auditEmployee.nfcTagUid,
+      clientKey: kioskClient.apiKey
+    });
+    const kioskWriteHeaders = { ...createAuthHeader(adminToken), 'x-client-key': kioskClient.apiKey };
 
     await prisma.productionScheduleOrderSupplement.deleteMany({
       where: { csvDashboardRowId: scheduleRowId }
@@ -2860,10 +2886,10 @@ describe('part-measurement templates API', () => {
     const createEntryRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 0,
-        employeeTagUid: auditEmployee.nfcTagUid,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.01' }]
       }
     });
@@ -2889,10 +2915,10 @@ describe('part-measurement templates API', () => {
     const auditedUpdateRes = await app.inject({
       method: 'PATCH',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${firstEntryId}`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         ifUnmodifiedSince: createEntryRes.json().entry.updatedAt as string,
-        employeeTagUid: auditEmployee.nfcTagUid,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.01' }]
       }
     });
@@ -2985,9 +3011,10 @@ describe('part-measurement templates API', () => {
     const idempotentRetryRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 0,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.01' }]
       }
     });
@@ -2997,9 +3024,10 @@ describe('part-measurement templates API', () => {
     const negativeValueRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 1,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         ...entryRegistrationTags,
         values: [{ templateItemId, value: '-1' }]
       }
@@ -3009,9 +3037,10 @@ describe('part-measurement templates API', () => {
     const outOfToleranceRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 1,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         ...entryRegistrationTags,
         values: [{ templateItemId, value: '10.5' }]
       }
@@ -3022,9 +3051,10 @@ describe('part-measurement templates API', () => {
     const numericPrecisionRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 1,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         ...entryRegistrationTags,
         values: [{ templateItemId, value: 10.001 }]
       }
@@ -3097,10 +3127,10 @@ describe('part-measurement templates API', () => {
     const secondEntryMissingInstrumentWhenRequiredRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 1,
-        employeeTagUid: auditEmployee.nfcTagUid,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.5', outOfToleranceAcknowledged: true }]
       }
     });
@@ -3110,9 +3140,10 @@ describe('part-measurement templates API', () => {
     const secondEntryRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 1,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         ...entryRegistrationTags,
         values: [{ templateItemId, value: '10.5', outOfToleranceAcknowledged: true }]
       }
@@ -3149,9 +3180,10 @@ describe('part-measurement templates API', () => {
     const fillSecondRegistrationRes = await app.inject({
       method: 'PATCH',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${secondEntryId}`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         ifUnmodifiedSince: secondEntryWithoutRegistration.updatedAt.toISOString(),
+        measurementActorAuthenticationId: operatorAuthenticationId,
         ...entryRegistrationTags,
         values: [{ templateItemId, value: '10.5', outOfToleranceAcknowledged: true }]
       }
@@ -3174,9 +3206,10 @@ describe('part-measurement templates API', () => {
     const duplicateIndexRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         entryIndex: 0,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.02' }]
       }
     });
@@ -3316,6 +3349,20 @@ describe('part-measurement templates API', () => {
       displayName: 'Self Inspection Inspector',
       nfcTagUid: `EMP-INSPECTOR-${Date.now()}`
     });
+    const operatorInspectorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId,
+      employeeTagUid: auditEmployee.nfcTagUid,
+      clientKey: kioskClient.apiKey,
+      measurementMode: 'inspector'
+    });
+    const inspectorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId,
+      employeeTagUid: inspectorEmployee.nfcTagUid,
+      clientKey: kioskClient.apiKey,
+      measurementMode: 'inspector'
+    });
 
     const sameEmployeeInspectorRes = await app.inject({
       method: 'POST',
@@ -3323,7 +3370,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         entryIndex: 0,
-        employeeTagUid: auditEmployee.nfcTagUid,
+        measurementActorAuthenticationId: operatorInspectorAuthenticationId,
         values: [{ templateItemId, value: '10.01' }]
       }
     });
@@ -3336,7 +3383,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         entryIndex: 0,
-        employeeTagUid: inspectorEmployee.nfcTagUid,
+        measurementActorAuthenticationId: inspectorAuthenticationId,
         values: [{ templateItemId, value: '10.02' }]
       }
     });
@@ -3349,10 +3396,10 @@ describe('part-measurement templates API', () => {
     const operatorUpdateAfterInspectorStartRes = await app.inject({
       method: 'PATCH',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${firstEntryId}`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         ifUnmodifiedSince: auditedUpdateRes.json().entry.updatedAt as string,
-        employeeTagUid: auditEmployee.nfcTagUid,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.02' }]
       }
     });
@@ -3375,7 +3422,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         entryIndex: 1,
-        employeeTagUid: inspectorEmployee.nfcTagUid,
+        measurementActorAuthenticationId: inspectorAuthenticationId,
         values: [{ templateItemId, value: '10.51', outOfToleranceAcknowledged: true }]
       }
     });
@@ -3604,9 +3651,10 @@ describe('part-measurement templates API', () => {
     const updateAfterCompleteRes = await app.inject({
       method: 'PATCH',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/${detailRes.json().session.entries[0].id}`,
-      headers: createAuthHeader(adminToken),
+      headers: kioskWriteHeaders,
       payload: {
         ifUnmodifiedSince: detailRes.json().session.entries[0].updatedAt as string,
+        measurementActorAuthenticationId: operatorAuthenticationId,
         values: [{ templateItemId, value: '10.00' }]
       }
     });
@@ -3696,6 +3744,12 @@ describe('part-measurement templates API', () => {
       managementNumber: `MI-PREUSE-B-${Date.now()}`,
       rfidTagUid: `INST-PREUSE-B-${Date.now()}`
     });
+    const measurementActorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId: session.id,
+      employeeTagUid: employee.nfcTagUid,
+      clientKey: kioskClient.apiKey
+    });
 
     const firstRes = await app.inject({
       method: 'POST',
@@ -3703,7 +3757,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         instrumentTagUid: firstInstrument.rfidTagUid,
-        employeeTagUid: employee.nfcTagUid
+        measurementActorAuthenticationId
       }
     });
     expect(firstRes.statusCode).toBe(200);
@@ -3737,7 +3791,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         instrumentTagUid: secondInstrument.rfidTagUid,
-        employeeTagUid: employee.nfcTagUid
+        measurementActorAuthenticationId
       }
     });
     expect(secondRes.statusCode).toBe(200);
@@ -3756,7 +3810,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         instrumentTagUid: secondInstrument.rfidTagUid,
-        employeeTagUid: employee.nfcTagUid
+        measurementActorAuthenticationId
       }
     });
     expect(duplicateRes.statusCode).toBe(200);
@@ -3836,6 +3890,12 @@ describe('part-measurement templates API', () => {
       where: { id: { in: [reusableInstrument.instrument.id, blockedInstrument.instrument.id] } },
       data: { status: 'IN_USE' }
     });
+    const measurementActorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId: session.id,
+      employeeTagUid: employee.nfcTagUid,
+      clientKey: kioskClient.apiKey
+    });
 
     const reuseRes = await app.inject({
       method: 'POST',
@@ -3843,7 +3903,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         instrumentTagUid: reusableInstrument.rfidTagUid,
-        employeeTagUid: employee.nfcTagUid
+        measurementActorAuthenticationId
       }
     });
     expect(reuseRes.statusCode).toBe(200);
@@ -3871,7 +3931,7 @@ describe('part-measurement templates API', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         instrumentTagUid: blockedInstrument.rfidTagUid,
-        employeeTagUid: employee.nfcTagUid
+        measurementActorAuthenticationId
       }
     });
     expect(blockedRes.statusCode).toBe(409);
@@ -3984,14 +4044,21 @@ describe('part-measurement templates API', () => {
       managementNumber: `MI-SELF-LEGACY-${Date.now()}`,
       rfidTagUid: `INST-SELF-LEGACY-${Date.now()}`
     });
+    const kioskClient = await createTestClientDevice();
+    const measurementActorAuthenticationId = await authenticateSelfInspectionActor({
+      app,
+      sessionId,
+      employeeTagUid: employee.nfcTagUid,
+      clientKey: kioskClient.apiKey
+    });
 
     const createEntryRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: { ...createAuthHeader(adminToken), 'x-client-key': kioskClient.apiKey },
       payload: {
         entryIndex: 0,
-        employeeTagUid: employee.nfcTagUid,
+        measurementActorAuthenticationId,
         measuringInstrumentTagUid: instrumentTagUid,
         values: [{ templateItemId, value: '10.5', outOfToleranceAcknowledged: true }]
       }
@@ -3999,7 +4066,6 @@ describe('part-measurement templates API', () => {
     expect(createEntryRes.statusCode).toBe(200);
     expect(createEntryRes.json().entry.values[0]?.reviewStatus).toBe('PENDING');
 
-    const kioskClient = await createTestClientDevice();
     const recordApprovalListRes = await app.inject({
       method: 'GET',
       url: '/api/part-measurement/self-inspection/record-approvals?state=active',

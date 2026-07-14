@@ -19,6 +19,10 @@ import {
 } from './mutation-guards.js';
 import { resolveInspectorRegistrationForSave } from './entry-registration.js';
 import {
+  appendMeasurementOperation,
+  requireMeasurementActorAuthentication
+} from './measurement-actor-authentication.js';
+import {
   loadInspectorEntryForSerialization,
   serializeInspectorEntry
 } from './serialization.js';
@@ -29,7 +33,7 @@ export async function saveInspectorEntry(
   input: {
     entryIndex: number;
     values: SelfInspectionMeasurementPayloadValue[];
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     clientDeviceId?: string | null;
   },
@@ -42,6 +46,12 @@ export async function saveInspectorEntry(
   const result = await prisma.$transaction(async (tx) => {
     await lockSessionRow(tx, sessionId);
     const session = await loadSessionForMutation(tx, sessionId);
+    const actor = await requireMeasurementActorAuthentication(tx, {
+      sessionId,
+      authenticationId: input.measurementActorAuthenticationId,
+      mode: 'INSPECTOR',
+      clientDeviceId: input.clientDeviceId
+    });
     assertSessionEntryCountWritable(session);
     if (!session.recordApprovalRequiredAt || !session.inspectorRemeasurementRequiredAt) {
       throw new ApiError(409, 'オペレータの自主検査記録保存後に検査員再測定を開始してください');
@@ -85,7 +95,7 @@ export async function saveInspectorEntry(
     );
     for (const item of session.template.items) {
       const operatorValue = operatorValuesByItemId.get(item.id);
-      if (operatorValue?.value == null) {
+      if (item.valueKind === 'JUDGEMENT' ? operatorValue?.judgementResult == null : operatorValue?.value == null) {
         throw new ApiError(409, 'オペレータの測定値が未登録のため検査員再測定できません');
       }
     }
@@ -123,7 +133,13 @@ export async function saveInspectorEntry(
       tx,
       existingEntry,
       operatorEntry,
-      input,
+      {
+        ...input,
+        inspectorEmployeeId: actor.employeeId,
+        inspectorEmployeeCodeSnapshot: actor.employeeCodeSnapshot,
+        inspectorEmployeeNameSnapshot: actor.employeeNameSnapshot,
+        inspectorEmployeeNfcTagUidSnapshot: actor.employeeNfcTagUidSnapshot
+      },
       registrationPolicy
     );
     const clientDevice = input.clientDeviceId
@@ -168,14 +184,17 @@ export async function saveInspectorEntry(
       data: values.map((value) => {
         const operatorValue = operatorValuesByItemId.get(value.templateItemId);
         const operatorValueSnapshot = operatorValue?.value ?? null;
+        const operatorJudgementResultSnapshot = operatorValue?.judgementResult ?? null;
         return {
           inspectorEntryId: savedEntry.id,
           templateItemId: value.templateItemId,
           operatorMeasurementValueId: operatorValue?.id ?? null,
           operatorValueSnapshot,
           inspectorValue: value.value,
+          operatorJudgementResultSnapshot,
+          inspectorJudgementResult: value.judgementResult,
           differenceValue:
-            operatorValueSnapshot != null ? value.value.minus(operatorValueSnapshot) : null,
+            operatorValueSnapshot != null && value.value != null ? value.value.minus(operatorValueSnapshot) : null,
           judgementStatus: 'NOT_EVALUATED' as const
         };
       })
@@ -183,6 +202,13 @@ export async function saveInspectorEntry(
     await tx.selfInspectionSession.update({
       where: { id: sessionId },
       data: { updatedAt: new Date() }
+    });
+    await appendMeasurementOperation(tx, {
+      sessionId,
+      authenticationId: actor.id,
+      mode: 'INSPECTOR',
+      entryIndex,
+      operationKind: 'ENTRY_CONFIRMED'
     });
 
     const serializedEntry = await loadInspectorEntryForSerialization(tx, savedEntry.id);

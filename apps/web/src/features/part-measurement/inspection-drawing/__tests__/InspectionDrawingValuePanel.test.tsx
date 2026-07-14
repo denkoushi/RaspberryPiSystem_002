@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { InspectionDrawingValuePanel } from '../InspectionDrawingValuePanel';
 
@@ -79,5 +79,36 @@ describe('InspectionDrawingValuePanel', () => {
     expect(container.querySelector('.text-2xl')).toBeNull();
     expect(container.querySelector('.grid.grid-cols-2')).toBeNull();
     expect(screen.getByText('測定値')).toBeInTheDocument();
+  });
+
+  it('uses OK/NG buttons only for a pipe-thread judgement and commits NG directly', () => {
+    const onValueChange = vi.fn();
+    const onCommitValue = vi.fn();
+    render(
+      <InspectionDrawingValuePanel
+        point={makePoint({
+          name: 'ネジ穴深さ',
+          threadNominal: '管用',
+          valueKind: 'judgement',
+          nominalRaw: '',
+          lowerToleranceRaw: '',
+          upperToleranceRaw: ''
+        })}
+        valueInputMode="self_inspection_options"
+        onValueChange={onValueChange}
+        onCommitValue={onCommitValue}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'NG' })).toBeInTheDocument();
+    expect(screen.queryByText('測定値選択')).toBeNull();
+    expect(screen.queryByText('測定値（直接入力）')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'NG' }));
+    expect(onValueChange).toHaveBeenCalledWith('FAIL');
+    expect(onCommitValue).toHaveBeenCalledWith(
+      expect.objectContaining({ value: 'FAIL', source: 'dropdown' })
+    );
   });
 });

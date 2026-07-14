@@ -126,6 +126,7 @@ model Employee {
   partMeasurementSheetsFinalized PartMeasurementSheet[] @relation("PartMeasurementSheetFinalizedBy")
   selfInspectionLotEntries SelfInspectionLotEntry[]
   selfInspectionInspectorEntries SelfInspectionInspectorEntry[] @relation("SelfInspectionInspectorEntryEmployee")
+  selfInspectionMeasurementActorAuthentications SelfInspectionMeasurementActorAuthentication[] @relation("SelfInspectionMeasurementActorAuthenticationEmployee")
   selfInspectionRecordApprovals SelfInspectionRecordApproval[] @relation("SelfInspectionRecordApprover")
   assemblyWorkSessionRecordApprovals AssemblyWorkSessionApproval[] @relation("AssemblyWorkSessionRecordApprover")
 }
@@ -334,6 +335,7 @@ model ClientDevice {
   selfInspectionSessions  SelfInspectionSession[]
   selfInspectionPaperReports SelfInspectionPaperReport[]
   selfInspectionInspectorEntries SelfInspectionInspectorEntry[]
+  selfInspectionMeasurementActorAuthentications SelfInspectionMeasurementActorAuthentication[] @relation("SelfInspectionMeasurementActorAuthenticationClientDevice")
   selfInspectionRecordApprovals SelfInspectionRecordApproval[]
   assemblyWorkSessionRecordApprovals AssemblyWorkSessionApproval[]
   mobilePlacementEvents   MobilePlacementEvent[]
@@ -2060,6 +2062,23 @@ enum SelfInspectionMeasurementReviewStatus {
   APPROVED
 }
 
+/// 自主検査テンプレート項目の入力意味。数値とOK/NG判定を混在させない。
+enum PartMeasurementValueKind {
+  NUMERIC
+  JUDGEMENT
+}
+
+enum SelfInspectionMeasurementActorMode {
+  OPERATOR
+  INSPECTOR
+}
+
+enum SelfInspectionMeasurementOperationKind {
+  DRAFT_AUTOSAVED
+  ENTRY_CONFIRMED
+  INSTRUMENT_PRE_USE
+}
+
 enum SelfInspectionInspectorMeasurementJudgementStatus {
   NOT_EVALUATED
 }
@@ -2234,6 +2253,8 @@ model PartMeasurementTemplateItem {
   upperLimit       Decimal?                  @db.Decimal(18, 6)
   /// 深さ系: MEASURED=数値公差 / THROUGH=通し（判定スキップ、limits は 0/0 sentinel）
   depthMode        PartMeasurementDepthMode  @default(MEASURED)
+  /// NUMERIC=従来の測定値、JUDGEMENT=管用ネジ形状のOK/NG判定
+  valueKind        PartMeasurementValueKind  @default(NUMERIC)
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
   template         PartMeasurementTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
@@ -2676,6 +2697,8 @@ model SelfInspectionSession {
   inspectorEntries   SelfInspectionInspectorEntry[]
   paperReports       SelfInspectionPaperReport[]
   recordApproval     SelfInspectionRecordApproval?
+  measurementActorAuthentications SelfInspectionMeasurementActorAuthentication[]
+  measurementOperations SelfInspectionMeasurementOperation[]
 
   @@index([productNo, processGroup, resourceCd], map: "SelfInspectionSession_idx_business_lookup")
   @@index([scheduleRowId], map: "SelfInspectionSession_idx_schedule_row")
@@ -2739,6 +2762,8 @@ model SelfInspectionMeasurementValue {
   entryId                       String
   templateItemId                String
   value                         Decimal?                                @db.Decimal(18, 6)
+  /// valueKind=JUDGEMENT のときだけ使用するOK/NG判定
+  judgementResult               InspectionResult?
   reviewStatus                  SelfInspectionMeasurementReviewStatus   @default(NOT_REQUIRED)
   outOfToleranceAcknowledgedAt  DateTime?
   approvedAt                    DateTime?
@@ -2816,6 +2841,8 @@ model SelfInspectionInspectorMeasurementValue {
   operatorMeasurementValueId String?
   operatorValueSnapshot      Decimal?                                              @db.Decimal(18, 6)
   inspectorValue             Decimal?                                              @db.Decimal(18, 6)
+  operatorJudgementResultSnapshot InspectionResult?
+  inspectorJudgementResult  InspectionResult?
   differenceValue            Decimal?                                              @db.Decimal(18, 6)
   judgementStatus            SelfInspectionInspectorMeasurementJudgementStatus      @default(NOT_EVALUATED)
   judgedAt                   DateTime?
@@ -2831,6 +2858,46 @@ model SelfInspectionInspectorMeasurementValue {
   @@index([templateItemId], map: "SelfInspectionInspectorValue_idx_template_item")
   @@index([operatorMeasurementValueId], map: "SelfInspectionInspectorValue_idx_operator_value")
   @@index([judgementStatus], map: "SelfInspectionInspectorValue_idx_judgement_status")
+}
+
+/// 画面を開くたびの測定者／検査員NFC認証。Reactの一時状態とは別に監査証跡を保持する。
+model SelfInspectionMeasurementActorAuthentication {
+  id                         String                              @id @default(uuid())
+  sessionId                  String
+  mode                       SelfInspectionMeasurementActorMode
+  employeeId                 String?
+  employeeCodeSnapshot       String
+  employeeNameSnapshot       String
+  employeeNfcTagUidSnapshot  String
+  clientDeviceId             String?
+  clientDeviceNameSnapshot   String?
+  authenticatedAt            DateTime                            @default(now())
+  createdAt                  DateTime                            @default(now())
+  session                    SelfInspectionSession               @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  employee                   Employee?                           @relation("SelfInspectionMeasurementActorAuthenticationEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  clientDevice               ClientDevice?                       @relation("SelfInspectionMeasurementActorAuthenticationClientDevice", fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  operations                 SelfInspectionMeasurementOperation[]
+
+  @@index([sessionId, mode, authenticatedAt], map: "SelfInspectionActorAuth_idx_session_mode_authenticated")
+  @@index([clientDeviceId, authenticatedAt], map: "SelfInspectionActorAuth_idx_client_authenticated")
+  @@index([employeeId, authenticatedAt], map: "SelfInspectionActorAuth_idx_employee_authenticated")
+}
+
+/// 自主検査の自動保存・確定・機器使用前点検を、実行時のNFC認証へ追記する監査履歴。
+model SelfInspectionMeasurementOperation {
+  id               String                                  @id @default(uuid())
+  sessionId        String
+  authenticationId String
+  mode             SelfInspectionMeasurementActorMode
+  entryIndex       Int?
+  operationKind    SelfInspectionMeasurementOperationKind
+  occurredAt       DateTime                                @default(now())
+  createdAt        DateTime                                @default(now())
+  session          SelfInspectionSession                   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  authentication   SelfInspectionMeasurementActorAuthentication @relation(fields: [authenticationId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId, mode, entryIndex, occurredAt], map: "SelfInspectionOperation_idx_session_mode_entry_occurred")
+  @@index([authenticationId, occurredAt], map: "SelfInspectionOperation_idx_auth_occurred")
 }
 
 model SelfInspectionRecordApproval {

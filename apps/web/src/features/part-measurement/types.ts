@@ -40,6 +40,8 @@ export type PartMeasurementTemplateItemDto = {
   upperLimit: string | null;
   /** measured | through（未指定は measured） */
   depthMode?: 'measured' | 'through';
+  /** numeric=数値公差、judgement=管用ネジ形状のOK/NG */
+  valueKind?: 'numeric' | 'judgement';
 };
 
 /** 図面1枚。FIHNCD に紐づけない再利用単位。 */
@@ -321,6 +323,7 @@ export type SelfInspectionMeasurementValueDto = {
   id: string;
   templateItemId: string;
   value: string | null;
+  judgementResult?: 'PASS' | 'FAIL' | null;
   reviewStatus: SelfInspectionMeasurementReviewStatus;
   outOfToleranceAcknowledgedAt: string | null;
   approvedAt: string | null;
@@ -329,6 +332,7 @@ export type SelfInspectionMeasurementValueDto = {
   approvalComment: string | null;
   operatorMeasurementValueId?: string | null;
   operatorValueSnapshot?: string | null;
+  operatorJudgementResultSnapshot?: 'PASS' | 'FAIL' | null;
   differenceValue?: string | null;
   judgementStatus?: SelfInspectionInspectorMeasurementJudgementStatus;
   judgedAt?: string | null;
@@ -338,7 +342,8 @@ export type SelfInspectionMeasurementValueDto = {
 
 export type SelfInspectionEntryValuePayload = {
   templateItemId: string;
-  value: string | number | null;
+  value?: string | number | null;
+  judgementResult?: 'PASS' | 'FAIL' | null;
   outOfToleranceAcknowledged?: boolean;
 };
 
@@ -354,7 +359,9 @@ export type SelfInspectionOutOfToleranceReviewValueDto = {
   measurementPoint: string;
   measurementLabel: string;
   unit: string | null;
+  valueKind?: 'numeric' | 'judgement';
   value: string | null;
+  judgementResult?: 'PASS' | 'FAIL' | null;
   lowerLimit: string | null;
   upperLimit: string | null;
   outOfToleranceAcknowledgedAt: string | null;
@@ -430,7 +437,9 @@ export type SelfInspectionRecordApprovalEntryValueDto = {
   measurementPoint: string;
   measurementLabel: string;
   unit: string | null;
+  valueKind?: 'numeric' | 'judgement';
   value: string | null;
+  judgementResult?: 'PASS' | 'FAIL' | null;
   lowerLimit: string | null;
   upperLimit: string | null;
   isWithinTolerance: boolean | null;
@@ -440,7 +449,9 @@ export type SelfInspectionRecordApprovalEntryValueDto = {
   updatedAt: string | null;
   inspectorValueId: string | null;
   inspectorValue: string | null;
+  inspectorJudgementResult?: 'PASS' | 'FAIL' | null;
   operatorValueSnapshot: string | null;
+  operatorJudgementResultSnapshot?: 'PASS' | 'FAIL' | null;
   differenceValue: string | null;
   inspectorJudgementStatus: SelfInspectionInspectorMeasurementJudgementStatus | null;
   inspectorJudgedAt: string | null;

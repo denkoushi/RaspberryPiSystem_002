@@ -140,6 +140,30 @@ describe('selfInspectionSessionActionState', () => {
     expect(state.reason).toBeNull();
   });
 
+  it('allows a pipe-thread NG judgement without numeric out-of-tolerance acknowledgement', () => {
+    const judgementItem = makeSelfInspectionTemplateItemForTest({
+      id: 'pipe',
+      sortOrder: 0,
+      measurementLabel: 'ネジ穴深さ',
+      measurementPoint: 'ネジ穴深さ 管用',
+      valueKind: 'judgement',
+      nominalValue: null,
+      lowerLimit: null,
+      upperLimit: null
+    });
+    const session = makeSelfInspectionSessionDetailForTest({ items: [judgementItem] });
+    const state = resolveSelfInspectionSaveActionState(
+      makeContext({
+        session,
+        draftValuesByEntryIndex: { 0: { pipe: 'FAIL' } },
+        savedDraftByEntryIndex: { 0: { pipe: '' } },
+        requireMeasuringInstrumentTag: false
+      })
+    );
+
+    expect(state).toEqual({ enabled: true, reason: null });
+  });
+
   it('save is disabled while session completion is in flight', () => {
     const state = resolveSelfInspectionSaveActionState(
       makeContext({

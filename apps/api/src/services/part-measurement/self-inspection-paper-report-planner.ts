@@ -32,6 +32,7 @@ type TemplateForPaperReport = {
       | 'markerYRatio'
       | 'lowerLimit'
       | 'upperLimit'
+      | 'valueKind'
     >
   >;
   visualTemplate?: { drawingImageRelativePath: string } | null;
@@ -48,13 +49,14 @@ export function assertTemplateSupportsSelfInspectionPaperReport(
   }
   const unsupported = template.items.some(
     (item) =>
+      item.valueKind === 'JUDGEMENT' ||
       item.markerXRatio == null ||
       item.markerYRatio == null ||
       item.lowerLimit == null ||
       item.upperLimit == null
   );
   if (unsupported) {
-    throw new ApiError(409, '図面座標と上下限がある測定点のみ紙帳票を発行できます');
+    throw new ApiError(409, 'OK/NG判定を含むテンプレートは紙帳票を発行できません');
   }
 }
 

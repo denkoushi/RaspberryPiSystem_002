@@ -507,11 +507,31 @@ export async function resolveSelfInspectionNfcTagUid(
   return data.result;
 }
 
+export type SelfInspectionMeasurementActorAuthenticationDto = {
+  id: string;
+  measurementMode: 'operator' | 'inspector';
+  employee: { id: string; employeeCode: string; displayName: string };
+  authenticatedAt: string;
+};
+
+export async function authenticateSelfInspectionMeasurementActor(
+  sessionId: string,
+  body: { employeeTagUid: string; measurementMode: 'operator' | 'inspector' },
+  clientKey?: string
+): Promise<SelfInspectionMeasurementActorAuthenticationDto> {
+  const { data } = await api.post<{ authentication: SelfInspectionMeasurementActorAuthenticationDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/measurement-actor-authentications`,
+    body,
+    { headers: clientKey ? { 'x-client-key': clientKey } : undefined }
+  );
+  return data.authentication;
+}
+
 export async function createSelfInspectionEntry(
   sessionId: string,
   body: {
     entryIndex: number;
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     values: SelfInspectionEntryValuePayload[];
   },
@@ -531,7 +551,7 @@ export async function upsertSelfInspectionDraftEntry(
   sessionId: string,
   body: {
     entryIndex: number;
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     ifUnmodifiedSince?: string | null;
     values?: SelfInspectionEntryValuePayload[];
@@ -553,7 +573,7 @@ export async function updateSelfInspectionEntry(
   entryId: string,
   body: {
     ifUnmodifiedSince: string;
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     values: SelfInspectionEntryValuePayload[];
   },
@@ -573,7 +593,7 @@ export async function createSelfInspectionInspectorEntry(
   sessionId: string,
   body: {
     entryIndex: number;
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     values: SelfInspectionEntryValuePayload[];
   },
@@ -595,7 +615,7 @@ export async function updateSelfInspectionInspectorEntry(
   body: {
     entryIndex: number;
     ifUnmodifiedSince: string;
-    employeeTagUid?: string | null;
+    measurementActorAuthenticationId: string;
     measuringInstrumentTagUid?: string | null;
     values: SelfInspectionEntryValuePayload[];
   },
@@ -616,7 +636,7 @@ export async function recordSelfInspectionInstrumentPreUseInspection(
   entryIndex: number,
   body: {
     instrumentTagUid: string;
-    employeeTagUid: string;
+    measurementActorAuthenticationId: string;
   },
   clientKey?: string
 ): Promise<{
@@ -645,7 +665,7 @@ export async function recordSelfInspectionInspectorInstrumentPreUseInspection(
   entryIndex: number,
   body: {
     instrumentTagUid: string;
-    employeeTagUid: string;
+    measurementActorAuthenticationId: string;
   },
   clientKey?: string
 ): Promise<{

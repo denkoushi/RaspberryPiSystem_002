@@ -161,19 +161,22 @@ export function InspectionDrawingPointSettingsPanel({
     effectiveMeasurementLabelSettings
   );
   const isGeometricTolerance = toleranceKind === 'geometric';
-  const showDepthMode = isInspectionDrawingDepthLabel(point.name);
+  const isPipeThreadJudgement = point.threadNominal === '管用';
+  const showDepthMode = !isPipeThreadJudgement && isInspectionDrawingDepthLabel(point.name);
   const isThrough = showDepthMode && isInspectionDrawingThroughDepthMode(point.depthMode);
   const toleranceInputsDisabled = disabled || isThrough;
   const threadNominal = point.threadNominal ?? '';
   const surfaceSide = point.surfaceSide ?? '';
   const supplementText = point.supplementText ?? '';
   const showOcrCandidateRow =
+    !isPipeThreadJudgement &&
     !isThrough &&
     (ocrCandidateLoading ||
       ocrCandidateError ||
       ocrCandidates.length > 0 ||
       ocrCandidateStatus === 'failed');
   const handleNameChange = (name: string) => {
+    if (isPipeThreadJudgement) return;
     const nextKind = resolveInspectionDrawingToleranceKindForLabel(
       name,
       effectiveMeasurementLabelSettings
@@ -188,6 +191,30 @@ export function InspectionDrawingPointSettingsPanel({
         ? buildGeometricTolerancePointPatch(point.nominalRaw)
         : {})
     });
+  };
+  const handleThreadNominalChange = (threadNominal: string) => {
+    if (threadNominal === '管用') {
+      onChange({
+        threadNominal,
+        name: 'ネジ穴深さ',
+        valueKind: 'judgement',
+        depthMode: INSPECTION_DRAWING_DEPTH_MODE_MEASURED,
+        nominalRaw: '',
+        upperToleranceRaw: '',
+        lowerToleranceRaw: '',
+        legacyAbsoluteBounds: undefined
+      });
+      return;
+    }
+    if (point.valueKind === 'judgement' || point.threadNominal === '管用') {
+      onChange({
+        threadNominal,
+        valueKind: 'numeric',
+        depthMode: INSPECTION_DRAWING_DEPTH_MODE_MEASURED
+      });
+      return;
+    }
+    onChange({ threadNominal });
   };
   const handleDepthModeChange = (next: typeof INSPECTION_DRAWING_DEPTH_MODE_MEASURED | typeof INSPECTION_DRAWING_DEPTH_MODE_THROUGH) => {
     if (next === INSPECTION_DRAWING_DEPTH_MODE_THROUGH) {
@@ -243,7 +270,7 @@ export function InspectionDrawingPointSettingsPanel({
             value={point.name}
             onChange={(e) => handleNameChange(e.target.value)}
             className={inspectionDrawingBoundedSelectClassName}
-            disabled={disabled}
+            disabled={disabled || isPipeThreadJudgement}
             aria-label="名称"
             title={point.name || '選択'}
           >
@@ -309,7 +336,7 @@ export function InspectionDrawingPointSettingsPanel({
             <div className={inspectionDrawingBoundedSelectShellClassName}>
               <select
                 value={threadNominal}
-                onChange={(e) => onChange({ threadNominal: e.target.value })}
+                onChange={(e) => handleThreadNominalChange(e.target.value)}
                 className={inspectionDrawingBoundedSelectClassName}
                 disabled={disabled}
                 title={threadNominal || '呼び径なし'}
@@ -336,6 +363,11 @@ export function InspectionDrawingPointSettingsPanel({
           </label>
         </div>
       </div>
+      {isPipeThreadJudgement ? (
+        <p className="rounded border border-cyan-300/25 bg-cyan-950/40 px-2 py-2 text-[0.9rem] font-semibold text-cyan-100">
+          管用ネジ形状をOK/NGで判定します。数値の基準値・公差・測定／通しは設定しません。
+        </p>
+      ) : (
       <div className={inspectionDrawingPointSettingSingleRowClassName}>
         <div className="grid min-w-0 gap-1">
           <label className={inspectionDrawingPointSettingNominalInlineClassName}>
@@ -391,7 +423,8 @@ export function InspectionDrawingPointSettingsPanel({
           ) : null}
         </div>
       </div>
-      {isThrough ? null : isGeometricTolerance ? (
+      )}
+      {isPipeThreadJudgement || isThrough ? null : isGeometricTolerance ? (
         <p className="rounded border border-cyan-300/25 bg-cyan-950/40 px-2 py-1 text-[0.92rem] font-semibold text-cyan-100">
           合格範囲 0〜{geometricRangeUpper}
         </p>

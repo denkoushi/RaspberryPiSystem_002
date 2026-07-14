@@ -7,6 +7,7 @@ source_of_truth: true
 related_docs:
   - ../plans/self-inspection-autosave-callout-template-lock.md
   - ../plans/self-inspection-confirm-guard-wip-draft.md
+  - ../plans/self-inspection-actor-auth-pipe-judgement.md
   - ../design-previews/kiosk-self-inspection-autosave-callout-preview.html
   - ../knowledge-base/KB-320-kiosk-part-measurement.md
 related_code:
@@ -29,6 +30,7 @@ Operators lose in-progress measurements on refresh. Confirm must remain strict (
 - Session NFC gate: first employee tag unlocks measurement; confirm still uses per-entry registration (copy first employee into empty later drafts)
 - Debounced autosave (~400ms) to draft API;「入力を保存」= confirm
 - **Amendment (2026-07-11)**: draft upsert on an existing CONFIRMED entry is a **no-op** (no demotion). Autosave must not target confirmed entries. WIP **list** includes sessions with any lot entry (DRAFT or CONFIRMED) as `in_progress`; WIP **progress counts** remain CONFIRMED-only. Details: [Plan](../plans/self-inspection-confirm-guard-wip-draft.md).
+- **Amendment (2026-07-13)**: entry ownership no longer unlocks a newly opened kiosk screen. Each page display keeps a server-issued NFC authentication ID only in browser memory; every draft, confirm, inspector remeasurement, and pre-use instrument update validates its session/mode/client-device binding. A later employee scan is permitted, but the first owner snapshot on an entry remains immutable and later operations are written to durable history. Pipe threads (`ネジ穴深さ / 管用`) are an explicit `JUDGEMENT` value kind using `PASS`/`FAIL`, never a numeric tolerance review. Details: [Plan](../plans/self-inspection-actor-auth-pipe-judgement.md).
 
 ## Alternatives
 

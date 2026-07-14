@@ -175,8 +175,23 @@ function DetailTable({
         <tbody>
           {session.requiredEntries.flatMap((entry) =>
             entry.values.map((value, valueIndex) => {
-              const outOfTolerance = value.isWithinTolerance === false;
-              const missing = value.value == null;
+              const isJudgement = value.valueKind === 'judgement';
+              const outOfTolerance = !isJudgement && value.isWithinTolerance === false;
+              const missing = isJudgement ? value.judgementResult == null : value.value == null;
+              const operatorDisplay = isJudgement
+                ? value.judgementResult === 'PASS'
+                  ? 'OK'
+                  : value.judgementResult === 'FAIL'
+                    ? 'NG'
+                    : '未入力'
+                : value.value ?? '未入力';
+              const inspectorDisplay = isJudgement
+                ? value.inspectorJudgementResult === 'PASS'
+                  ? 'OK'
+                  : value.inspectorJudgementResult === 'FAIL'
+                    ? 'NG'
+                    : '未入力'
+                : value.inspectorValue ?? '未入力';
               const instrumentUsages = entry.entry?.instrumentUsages ?? [];
               const inspectorInstrumentUsages = entry.inspectorEntry?.instrumentUsages ?? [];
               const legacyInstrumentLabel =
@@ -271,21 +286,21 @@ function DetailTable({
                     <div className="text-xs text-white/50">{value.measurementPoint}</div>
                   </td>
                   <td className={clsx('px-3 py-2 font-mono', outOfTolerance ? 'text-red-100' : missing ? 'text-amber-100' : 'text-white')}>
-                    {value.value ?? '未入力'}
-                    {value.value && value.unit ? ` ${value.unit}` : ''}
+                    {operatorDisplay}
+                    {!isJudgement && value.value && value.unit ? ` ${value.unit}` : ''}
                   </td>
-                  <td className={clsx('px-3 py-2 font-mono', value.inspectorValue == null ? 'text-amber-100' : 'text-sky-100')}>
-                    {value.inspectorValue ?? '未入力'}
-                    {value.inspectorValue && value.unit ? ` ${value.unit}` : ''}
+                  <td className={clsx('px-3 py-2 font-mono', (isJudgement ? value.inspectorJudgementResult : value.inspectorValue) == null ? 'text-amber-100' : 'text-sky-100')}>
+                    {inspectorDisplay}
+                    {!isJudgement && value.inspectorValue && value.unit ? ` ${value.unit}` : ''}
                   </td>
                   <td className="px-3 py-2 font-mono text-white/75">
-                    {value.differenceValue ?? '-'}
+                    {isJudgement ? '—' : value.differenceValue ?? '-'}
                   </td>
                   <td className="px-3 py-2 text-white/75">
                     {inspectorJudgementLabel(value.inspectorJudgementStatus)}
                   </td>
                   <td className="px-3 py-2 font-mono text-white/75">
-                    {value.lowerLimit ?? '-'} - {value.upperLimit ?? '-'}
+                    {isJudgement ? 'OK/NG判定' : `${value.lowerLimit ?? '-'} - ${value.upperLimit ?? '-'}`}
                   </td>
                 </tr>
               );
