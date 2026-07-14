@@ -62,6 +62,24 @@ update-frequency: medium
 - `/api/system/deploy-readiness/internal` はCaddy（HTTP 80 redirect 経路含む）で404となる内部専用契約であり、Blue/Green scriptだけが`docker exec`で確認する。`status` はread-onlyでlive状態とstaleを表示し、`reconcile` は再起動後の安全復旧と monitor 再開、`reconcile --restore-legacy` は保存済み legacy image での緊急復帰に使う。
 - 操作・復旧・受入れの正本は [Pi5 Blue/Green deployment runbook](../runbooks/pi5-blue-green-deploy.md)、実装正本は [Phase 3 ExecPlan](../plans/pi5-blue-green-phase3.md)。2026-07-12の本番受入れ後、Pi5更新が必要な通常リリースではPhase 3が標準経路である。Pi5本体の故障・停電は単一Pi5の対象外であり、無停止化には将来の2台構成が必要となる。
 
+### 補足（2026-07-14 · **自主検査 表形式・選択検索・氏名NFC検索** · **API + Web** · **Pi5 + Pi4全5台反映 / Pi3対象外**） {#kiosk-self-inspection-table-nfc-2026-07-14}
+
+- **変更概要（正本）**: [Plan](../plans/kiosk-self-inspection-table-nfc.md) · [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) · [Runbook](../runbooks/kiosk-part-measurement.md) · ブランチ **`feat/kiosk-self-inspection-table-nfc`** · 配備SHA **`ed7e96340b1cd08b7cf363501232766c1b73c3b5`** · draft PR [#1001](https://github.com/denkoushi/RaspberryPiSystem_002/pull/1001)。自主検査を1/2/3ペインの表へ変更し、描画行由来の編集可能ドロップダウン、従業員ID一致の氏名NFC絞込み、60px一行ヘッダーを追加。検査図面ヘッダーの「部品測定へ」「新規」を削除。**DB/Prisma migration変更なし**。
+- **アプリケーションCI**: push CI [**`29303572819` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29303572819) · PR CI [**`29303574400` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29303574400) · [CodeQL `29303574398` success](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29303574398) · [Secret scan `29303574454` success](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29303574454)（全19チェック成功）。
+- **安全停止の実績**: run **`20260714-025516-f3b4b9`** はPi5 load 5.94/3.00のresource gateで切替前に停止し、端末更新なし。run **`20260714-030543-22c12e`** はPi5とStoneBase01まで成功したが、実画面に残存説明文を発見したためカナリアを承認せず、残4台を未変更のままタイムアウト終了。説明文を除いた `ed7e9634` で再CI・再デプロイした。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-self-inspection-table-nfc infrastructure/ansible/inventory.yml --limit 'server:kiosk' --auto-minimize --detach --follow`
+
+| ホスト | Rolling Run ID | 結果 |
+|--------|----------------|------|
+| `raspberrypi5` | **`20260714-034857-6330ec`** | success · Blue/Green active **green** · 5分監視とcleanup完了 · `runtimeStatus=consistent` · migration 144件適用済み |
+| `raspi4-kensaku-stonebase01` | **`20260714-034857-6330ec`** | success · `ok=130 changed=10 failed=0 unreachable=0` · 実画面カナリア承認後に後続開始 |
+| `raspberrypi4` / `raspi4-fjv60-80` / `raspi4-robodrill01` / `raspi4-sessaku-01` | **`20260714-034857-6330ec`** | 4台success · 各 `ok=123 changed=9 failed=0 unreachable=0` · HEAD **`ed7e9634`** |
+
+- **対象外（明示limit）**: `raspberrypi3`（サイネージ）は未デプロイ。直前Pi5マーカーがsquash-merge系譜のため自動分類が保守的にPi3を含めたので、機能差分を確認して `server:kiosk` を明示した。
+- **実機（画面）**: StoneBase01のWayland実画面を1920x1080で取得し、自主検査の3ペイン表、60px一行ヘッダー、移動票／氏名スキャン、記録承認、2コンボボックス、説明文消失を確認。一時画像・操作ログは削除し、通常キオスク画面へ復帰。
+- **実機（サービス/API）**: Pi4全5台で HEAD `ed7e9634`、`kiosk-browser.service` / `status-agent.timer` / `pcscd.service` active、NFCコンテナUp。本番自主検査一覧はHTTP 200、`listLimit=200`、`truncated=false`、全件に `participantEmployees` と `participantEmployeeNames` の配列を確認。rolling / Blue/Green lockは解放済み。
+- **Phase 12注記**: `verify-phase12-real.sh` は **PASS 43 / WARN 1 / FAIL 1**。WARNはschedulerログ0件（代替PUTは200）。FAILはPhase 3稼働後も停止済みlegacy Compose `api`へmigration statusを問い合わせる検証器の誤判定で、active Green APIへ直接実行すると `144 migrations found` / `Database schema is up to date!`。アプリ・DB・端末の実障害ではない。
+
 ### 補足（2026-07-14 · **組立トップ 個体別3ペインカード + KPI** · **Web only** · **Pi5 反映済 / Pi4・Pi3 対象外**） {#kiosk-assembly-home-unit-cards-2026-07-14}
 
 - **変更概要（正本）**: [Plan](../plans/kiosk-assembly-home-unit-cards.md) · [ADR-20260707 Decision 8](../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](../design-previews/kiosk-assembly-home-unit-cards-preview.html) · ブランチ **`feat/kiosk-assembly-unit-cards`** · 配備 SHA **`05d29d118f3cd63e687f4d16f397ecc0bf1ffdb0`** · PR [#1000](https://github.com/denkoushi/RaspberryPiSystem_002/pull/1000)。組立トップを `着手前` / `仕掛中` / `完了・承認` の個体別カードへ統一し、着手前は S/N ごとに1カード、カードは既定閉じ・展開時のみ詳細/操作を表示する。上部バーに `登録ロット` / `仕掛中` / `承認待ち` KPIを置き、機種名は省略せず折返す。右のロット登録、API、DB、Prisma migration は変更なし。

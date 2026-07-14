@@ -676,8 +676,10 @@ cd apps/web && pnpm exec vitest run \
 
 ### 仕様（再開用）
 
-- **自主検査タブ**: 検索なしで全端末共通の **仕掛中**（`status=in_progress`・`updatedAt desc`・最大 200 件）を **6列グリッド**（`md:grid-cols-4` / `xl:grid-cols-6`）で表示。カードに **測定者氏名（複数・entryIndex 昇順・重複除去）** を含む。検索入力あり時は従来の `selfInspectionEligibleOnly` 候補検索。再開は `/kiosk/part-measurement/self-inspection/sessions/:id`。
-- **API**: `GET /api/part-measurement/self-inspection/sessions?status=in_progress` は **`x-client-key` のみ**でも可（`productNo`/`resourceCd` 不要）。レスポンスは `{ sessions, listLimit, truncated }`（`take+1` で省略判定）。各 session に **`participantEmployeeNames: string[]`**（entry 登録済み氏名の集約。一覧は **entries 全件 include せず** DB 集約クエリで取得）を含む。`resolve-or-create` は **新規作成時は空配列**、**既存セッション解決時は登録済み氏名**を返す。`complete` 応答も登録済み氏名を返す。
+- **自主検査タブ**: 検索なしで全端末共通の **仕掛中**（`status=in_progress` + `review_pending`・`updatedAt desc`・最大 200 件）を2段表で表示。1280px以上は2ペイン、1536px以上は3ペイン。検索入力あり時は従来の `selfInspectionEligibleOnly` 候補検索。再開は `/kiosk/part-measurement/self-inspection/sessions/:id`。
+- **API**: `GET /api/part-measurement/self-inspection/sessions?status=in_progress` は **`x-client-key` のみ**でも可（`productNo`/`resourceCd` 不要）。レスポンスは `{ sessions, listLimit, truncated }`（`take+1` で省略判定）。各sessionに互換表示用 **`participantEmployeeNames: string[]`** とNFC検索用 **`participantEmployees: Array<{ employeeId, displayName }>`** を含む。一覧は **entries全件includeせず** DB集約クエリで取得する。
+- **検索UI**: 製造order番号など／資源CDは手入力 + dropdown。dropdown候補は開いた時点の描画行だけ。選択・手入力は従来の候補検索、移動票スキャンだけが製造order完全一致検索。
+- **氏名NFC**: 「氏名スキャン」は既存検索条件を解除し、最大200件の仕掛を参加従業員IDで絞る。未知・重複・計測機器タグでは絞り込まない。
 - **タブ順**: 全端末共通 `KioskHeaderTabOrderConfig`（`scopeKey=shared`）。管理 **`/admin/kiosk-settings`**。キオスクは `GET /api/kiosk/config` の `navTabOrder`。サイネージ・管理・問い合わせ・電源は固定。
 - **共有型**: `packages/shared-types/src/kiosk/kiosk-header-tab-order.ts`（`normalizeKioskHeaderTabOrder`）。
 
@@ -705,10 +707,13 @@ cd apps/web && pnpm exec vitest run \
 
 ### 手動確認（Pi4/Pi5）
 
-1. **自主検査** タブ初期表示で仕掛中一覧（検索欄はタイトルバー内）。1 文字検索で「2 文字以上」警告。
-2. 仕掛中 **再開** から既存セッションへ入室できること。
-3. 管理 **`/admin/kiosk-settings`** でタブ順変更 → 保存 → キオスクヘッダーに反映（`navTabOrder`）。
-4. 納期管理・通話・サイネージ固定部が維持されること。
+1. **自主検査** タブで上辺が60px・1行、説明文と可視ラベルなし、1280pxで2ペイン・1536px以上で3ペインになること。
+2. 製造order／資源dropdownに現在の描画行由来の値だけが出ること。手入力と選択は候補検索へ切り替わり、1文字検索は「2文字以上」警告になること。
+3. 移動票スキャンが製造order完全一致になり、資源併用で候補1件なら検査方法dialogが自動表示されること。
+4. 氏名スキャンで他の検索欄が空になり、同姓同名でも読み取った従業員IDを含む仕掛だけが残ること。未知・機器タグはエラー表示だけで一覧を絞らないこと。
+5. 仕掛の **再開**、**検査員測定**、**記録確認** から既存画面へ入室できること。DRAFTのみの仕掛も表示し、進捗件数はCONFIRMEDのみであること。
+6. **検査図面** 上辺に「部品測定へ」「新規」がなく、数字テンキー、行の「雛形」、編集・ビジュアル登録が残ること。
+7. 管理 **`/admin/kiosk-settings`** のタブ順変更と、納期管理・通話・サイネージ固定部が維持されること。
 
 ### 未完了
 

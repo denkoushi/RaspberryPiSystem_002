@@ -288,6 +288,11 @@ export type SelfInspectionSessionSummaryDto = {
   pendingReviewCount: number;
   /** entry 登録済み測定者氏名（entryIndex 昇順・重複除去） */
   participantEmployeeNames: string[];
+  /** NFC 検索用の測定者 ID・氏名（entryIndex 昇順・従業員 ID 重複除去） */
+  participantEmployees?: Array<{
+    employeeId: string;
+    displayName: string;
+  }>;
   selfInspectionMode: SelfInspectionMode;
   selfInspectionFixedCount: number | null;
   /** API 互換（fixed_count 時は fixedCount と同値） */

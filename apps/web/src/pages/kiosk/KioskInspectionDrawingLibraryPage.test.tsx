@@ -95,6 +95,16 @@ describe('KioskInspectionDrawingLibraryPage', () => {
     vi.stubGlobal('confirm', apiMocks.confirm);
   });
 
+  it('removes only the two title-bar navigation buttons', async () => {
+    renderPage();
+    await screen.findAllByText('図面71-A61');
+
+    expect(screen.queryByRole('button', { name: '部品測定へ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '新規' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: '図面名数字テンキー' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '雛形' })).toBeInTheDocument();
+  });
+
   it('keeps the retire action visible and uses 無効ON/OFF to show or hide inactive templates', async () => {
     apiMocks.listTemplates.mockImplementation(({ includeInactive }: { includeInactive?: boolean }) =>
       Promise.resolve(includeInactive ? [template, inactiveTemplate] : [template])

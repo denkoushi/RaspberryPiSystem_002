@@ -2918,6 +2918,9 @@ describe('part-measurement templates API', () => {
     expect(resolveExistingRes.statusCode).toBe(200);
     expect(resolveExistingRes.json().session.id).toBe(sessionId);
     expect(resolveExistingRes.json().session.participantEmployeeNames).toEqual(['Self Inspection Operator']);
+    expect(resolveExistingRes.json().session.participantEmployees).toEqual([
+      { employeeId: auditEmployee.id, displayName: 'Self Inspection Operator' }
+    ]);
 
     const detailWithValuesRes = await app.inject({
       method: 'GET',
@@ -3047,6 +3050,9 @@ describe('part-measurement templates API', () => {
     );
     expect(listedSession).toBeTruthy();
     expect(listedSession?.participantEmployeeNames).toEqual(['Self Inspection Operator']);
+    expect(listedSession?.participantEmployees).toEqual([
+      { employeeId: auditEmployee.id, displayName: 'Self Inspection Operator' }
+    ]);
 
     const listInProgressKioskKeyOnlyRes = await app.inject({
       method: 'GET',
@@ -3501,6 +3507,9 @@ describe('part-measurement templates API', () => {
     expect(approveRes.json().session.pendingReviewCount).toBe(0);
     expect(approveRes.json().session.completedAt).toBeTruthy();
     expect(approveRes.json().session.participantEmployeeNames).toEqual(['Self Inspection Operator']);
+    expect(approveRes.json().session.participantEmployees).toEqual([
+      { employeeId: auditEmployee.id, displayName: 'Self Inspection Operator' }
+    ]);
     const completedAtAfterFirst = approveRes.json().session.completedAt as string;
 
     const approvalRow = await prisma.selfInspectionRecordApproval.findUnique({
@@ -3568,6 +3577,10 @@ describe('part-measurement templates API', () => {
     });
     expect(completeAgainRes.statusCode).toBe(200);
     expect(completeAgainRes.json().session.completedAt).toBe(completedAtAfterFirst);
+    expect(completeAgainRes.json().session.participantEmployeeNames).toEqual(['Self Inspection Operator']);
+    expect(completeAgainRes.json().session.participantEmployees).toEqual([
+      { employeeId: auditEmployee.id, displayName: 'Self Inspection Operator' }
+    ]);
 
     const sessionAfterCompleteRes = await app.inject({
       method: 'GET',
@@ -3631,6 +3644,8 @@ describe('part-measurement templates API', () => {
     expect(resetRes.json().newSession.expectedEntryCount).toBe(2);
     expect(resetRes.json().newSession.recordApprovalRequiredAt).toBeNull();
     expect(resetRes.json().newSession.recordApprovalWorkflowStartedAt).toBeTruthy();
+    expect(resetRes.json().newSession.participantEmployeeNames).toEqual([]);
+    expect(resetRes.json().newSession.participantEmployees).toEqual([]);
 
     const resetRecordApprovalListRes = await app.inject({
       method: 'GET',
@@ -4015,6 +4030,12 @@ describe('part-measurement templates API', () => {
     expect(approveRes.json().session.status).toBe('completed');
     expect(approveRes.json().session.pendingReviewCount).toBe(0);
     expect(approveRes.json().session.completedAt).toBeTruthy();
+    expect(approveRes.json().session.participantEmployeeNames).toEqual([
+      'Legacy Self Inspection Operator'
+    ]);
+    expect(approveRes.json().session.participantEmployees).toEqual([
+      { employeeId: employee.id, displayName: 'Legacy Self Inspection Operator' }
+    ]);
   });
 
   it('rejects self-inspection resolve when sample size exceeds planned quantity', async () => {

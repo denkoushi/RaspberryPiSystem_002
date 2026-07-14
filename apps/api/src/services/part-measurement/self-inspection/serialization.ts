@@ -2,8 +2,12 @@ import { Prisma } from '@prisma/client';
 import type { PartMeasurementProcessGroup, SelfInspectionMeasurementReviewStatus } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
-import { collectParticipantEmployeeNames } from '../self-inspection-participant-names.js';
-import { loadParticipantEmployeeNamesBySessionIds } from '../self-inspection-participant-names.query.js';
+import {
+  collectParticipantEmployeeNames,
+  collectParticipantEmployees,
+  type SelfInspectionParticipantEmployee
+} from '../self-inspection-participant-names.js';
+import { loadParticipantSummariesBySessionIds } from '../self-inspection-participant-names.query.js';
 import {
   isSelfInspectionLotEntryRegistrationCompleteForPolicy,
   type SelfInspectionRegistrationRequirementPolicy
@@ -259,6 +263,8 @@ export function serializeResetNewSession(session: {
     machineName: session.machineName,
     plannedQuantity: session.plannedQuantity,
     expectedEntryCount: session.expectedEntryCount,
+    participantEmployeeNames: [],
+    participantEmployees: [],
     recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
     recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null
   };
@@ -267,7 +273,8 @@ export function serializeResetNewSession(session: {
 export function serializeSessionSummary(
   session: SessionSummarySource | SessionWithCounts,
   participantEmployeeNames: string[] = [],
-  pendingReviewCount = 0
+  pendingReviewCount = 0,
+  participantEmployees: SelfInspectionParticipantEmployee[] = []
 ) {
   const policy = sessionForEntryCountPolicy(session);
   const completedEntryCount = session._count.entries;
@@ -322,6 +329,7 @@ export function serializeSessionSummary(
     completedEntryCount,
     pendingReviewCount,
     participantEmployeeNames,
+    participantEmployees,
     selfInspectionMode: serializeSelfInspectionMode(session.template.selfInspectionMode),
     selfInspectionFixedCount: resolveTemplateFixedCount(templateConfig),
     selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
@@ -343,14 +351,16 @@ export function serializeSessionSummary(
 export async function serializeSessionSummaryWithAggregatedParticipantNames(
   session: SessionSummarySource | SessionWithCounts
 ) {
-  const [participantNamesBySessionId, pendingReviewCounts] = await Promise.all([
-    loadParticipantEmployeeNamesBySessionIds([session.id]),
+  const [participantSummariesBySessionId, pendingReviewCounts] = await Promise.all([
+    loadParticipantSummariesBySessionIds([session.id]),
     loadPendingReviewCountsBySessionIds(prisma, [session.id])
   ]);
+  const participantSummary = participantSummariesBySessionId.get(session.id);
   return serializeSessionSummary(
     session,
-    participantNamesBySessionId.get(session.id) ?? [],
-    pendingReviewCounts.get(session.id) ?? 0
+    participantSummary?.participantEmployeeNames ?? [],
+    pendingReviewCounts.get(session.id) ?? 0,
+    participantSummary?.participantEmployees ?? []
   );
 }
 
@@ -570,7 +580,8 @@ export function serializeRecordApprovalSessionListItem(
   const summary = serializeSessionSummary(
     session,
     collectParticipantEmployeeNames(session.entries),
-    readiness.pendingReviewCount
+    readiness.pendingReviewCount,
+    collectParticipantEmployees(session.entries)
   );
   return {
     ...summary,

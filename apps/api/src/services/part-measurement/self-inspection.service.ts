@@ -10,8 +10,11 @@ import { verifyProductionScheduleRowOrThrow } from '../production-schedule/verif
 import { MeasuringInstrumentLoanEventService } from '../measuring-instruments/measuring-instrument-loan-event.service.js';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from './self-inspection-machine-board-cache-invalidation.js';
 import { markSelfInspectionRecordApprovalRequiredAfterMeasurementSave } from './self-inspection-record-approval-saved-gate.js';
-import { collectParticipantEmployeeNames } from './self-inspection-participant-names.js';
-import { loadParticipantEmployeeNamesBySessionIds } from './self-inspection-participant-names.query.js';
+import {
+  collectParticipantEmployeeNames,
+  collectParticipantEmployees
+} from './self-inspection-participant-names.js';
+import { loadParticipantSummariesBySessionIds } from './self-inspection-participant-names.query.js';
 import {
   getSelfInspectionRegistrationPolicy,
   isSelfInspectionLotEntryRegistrationCompleteForPolicy
@@ -302,17 +305,19 @@ export class SelfInspectionService {
     const truncated = rows.length > LIST_SESSIONS_MAX;
     const boundedRows = truncated ? rows.slice(0, LIST_SESSIONS_MAX) : rows;
     const sessionIds = boundedRows.map((row) => row.id);
-    const [participantNamesBySessionId, pendingReviewCounts] = await Promise.all([
-      loadParticipantEmployeeNamesBySessionIds(sessionIds),
+    const [participantSummariesBySessionId, pendingReviewCounts] = await Promise.all([
+      loadParticipantSummariesBySessionIds(sessionIds),
       loadPendingReviewCountsBySessionIds(prisma, sessionIds)
     ]);
-    const summaries = boundedRows.map((row) =>
-      serializeSessionSummary(
+    const summaries = boundedRows.map((row) => {
+      const participantSummary = participantSummariesBySessionId.get(row.id);
+      return serializeSessionSummary(
         row,
-        participantNamesBySessionId.get(row.id) ?? [],
-        pendingReviewCounts.get(row.id) ?? 0
-      )
-    );
+        participantSummary?.participantEmployeeNames ?? [],
+        pendingReviewCounts.get(row.id) ?? 0,
+        participantSummary?.participantEmployees ?? []
+      );
+    });
     const sessions =
       query.status === 'in_progress'
         ? summaries.filter((row) => row.status === 'in_progress')
@@ -558,14 +563,16 @@ export class SelfInspectionService {
       return updated;
     });
     resetSelfInspectionMachineBoardScheduleRowCaches();
-    const [participantNamesBySessionId, pendingReviewCounts] = await Promise.all([
-      loadParticipantEmployeeNamesBySessionIds([session.id]),
+    const [participantSummariesBySessionId, pendingReviewCounts] = await Promise.all([
+      loadParticipantSummariesBySessionIds([session.id]),
       loadPendingReviewCountsBySessionIds(prisma, [session.id])
     ]);
+    const participantSummary = participantSummariesBySessionId.get(session.id);
     return serializeSessionSummary(
       session,
-      participantNamesBySessionId.get(session.id) ?? [],
-      pendingReviewCounts.get(session.id) ?? 0
+      participantSummary?.participantEmployeeNames ?? [],
+      pendingReviewCounts.get(session.id) ?? 0,
+      participantSummary?.participantEmployees ?? []
     );
   }
 
@@ -698,6 +705,7 @@ export class SelfInspectionService {
       completedEntryCount,
       pendingReviewCount,
       participantEmployeeNames: collectParticipantEmployeeNames(session.entries),
+      participantEmployees: collectParticipantEmployees(session.entries),
       selfInspectionMode: serializeSelfInspectionMode(session.template.selfInspectionMode),
       selfInspectionFixedCount: resolveTemplateFixedCount(templateConfig),
       selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
@@ -846,6 +854,7 @@ export class SelfInspectionService {
       completedEntryCount,
       pendingReviewCount,
       participantEmployeeNames: collectParticipantEmployeeNames(session.entries),
+      participantEmployees: collectParticipantEmployees(session.entries),
       selfInspectionMode: serializeSelfInspectionMode(session.template.selfInspectionMode),
       selfInspectionFixedCount: resolveTemplateFixedCount(templateConfig),
       selfInspectionSampleSize: resolveTemplateFixedCount(templateConfig),
@@ -1365,14 +1374,16 @@ export class SelfInspectionService {
       return completed;
     });
     resetSelfInspectionMachineBoardScheduleRowCaches();
-    const [participantNamesBySessionId, pendingReviewCounts] = await Promise.all([
-      loadParticipantEmployeeNamesBySessionIds([session.id]),
+    const [participantSummariesBySessionId, pendingReviewCounts] = await Promise.all([
+      loadParticipantSummariesBySessionIds([session.id]),
       loadPendingReviewCountsBySessionIds(prisma, [session.id])
     ]);
+    const participantSummary = participantSummariesBySessionId.get(session.id);
     return serializeSessionSummary(
       session,
-      participantNamesBySessionId.get(session.id) ?? [],
-      pendingReviewCounts.get(session.id) ?? 0
+      participantSummary?.participantEmployeeNames ?? [],
+      pendingReviewCounts.get(session.id) ?? 0,
+      participantSummary?.participantEmployees ?? []
     );
   }
 
@@ -1644,14 +1655,16 @@ export class SelfInspectionService {
     });
 
     resetSelfInspectionMachineBoardScheduleRowCaches();
-    const [participantNamesBySessionId, pendingReviewCounts] = await Promise.all([
-      loadParticipantEmployeeNamesBySessionIds([session.id]),
+    const [participantSummariesBySessionId, pendingReviewCounts] = await Promise.all([
+      loadParticipantSummariesBySessionIds([session.id]),
       loadPendingReviewCountsBySessionIds(prisma, [session.id])
     ]);
+    const participantSummary = participantSummariesBySessionId.get(session.id);
     return serializeSessionSummary(
       session,
-      participantNamesBySessionId.get(session.id) ?? [],
-      pendingReviewCounts.get(session.id) ?? 0
+      participantSummary?.participantEmployeeNames ?? [],
+      pendingReviewCounts.get(session.id) ?? 0,
+      participantSummary?.participantEmployees ?? []
     );
   }
 

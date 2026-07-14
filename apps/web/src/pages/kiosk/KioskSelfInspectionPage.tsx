@@ -1,37 +1,39 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-import { issueSelfInspectionPaperReport } from '../../api/client';
 import {
-  useKioskProductionSchedule,
-  useSelfInspectionSessions
-} from '../../api/hooks';
-import { buttonClassName, Button } from '../../components/ui/Button';
+  issueSelfInspectionPaperReport,
+  resolveSelfInspectionNfcTagUid
+} from '../../api/client';
+import { useKioskProductionSchedule, useSelfInspectionSessions } from '../../api/hooks';
+import { Button } from '../../components/ui/Button';
 import { useKeyboardWedgeScan } from '../../features/barcode-scan';
 import {
   kioskButtonPrimaryClassName,
   kioskButtonSecondaryClassName,
-  kioskInputClassName,
-  kioskMetaTextClassName,
   kioskPageTitleClassName,
   kioskPanelClassName
 } from '../../features/kiosk/kioskTheme';
 import { kioskInspectionDrawingPaperReportPrintPath } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 import { normalizeManufacturingOrderScanText } from '../../features/part-measurement/manufacturingOrderScan';
+import { SelfInspectionFilterCombobox } from '../../features/part-measurement/SelfInspectionFilterCombobox';
+import { KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH } from '../../features/part-measurement/selfInspectionRoutes';
+import { SelfInspectionTable } from '../../features/part-measurement/SelfInspectionTable';
 import {
-  KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
-  kioskSelfInspectionInspectorSessionPath,
-  kioskSelfInspectionSessionPath
-} from '../../features/part-measurement/selfInspectionRoutes';
-import { presentSelfInspectionWipCard } from '../../features/part-measurement/selfInspectionWipCardPresentation';
+  buildProductFilterOptions,
+  buildResourceFilterOptions,
+  presentSelfInspectionCandidateRow,
+  presentSelfInspectionSessionRow
+} from '../../features/part-measurement/selfInspectionTableModel';
 import {
   SelfInspectionWorkflowModal,
   type SelfInspectionWorkflowTarget
 } from '../../features/part-measurement/SelfInspectionWorkflowModal';
+import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { ProductionScheduleRow } from '../../api/client';
-import type { SelfInspectionSessionSummaryDto, SelfInspectionStatus } from '../../features/part-measurement/types';
+import type { SelfInspectionStatus } from '../../features/part-measurement/types';
 
 const CANDIDATE_PAGE_SIZE = 50;
 const CANDIDATE_SEARCH_DEBOUNCE_MS = 400;
@@ -42,6 +44,11 @@ const CANDIDATE_MIN_TEXT_SEARCH_LENGTH = 2;
 type ScanStatus = {
   kind: 'waiting' | 'success' | 'error';
   message: string;
+};
+
+type EmployeeFilter = {
+  employeeId: string;
+  displayName: string;
 };
 
 type SelfInspectionCandidateRow = SelfInspectionWorkflowTarget & {
@@ -81,95 +88,11 @@ function getPaperReportIssueErrorMessage(error: unknown): string {
     : '紙帳票の発行に失敗しました。';
 }
 
-function statusLabel(status: SelfInspectionStatus | null) {
-  if (status === 'completed') return '完了';
-  if (status === 'review_pending') return '承認待ち';
-  if (status === 'in_progress') return '入力中';
-  return '未開始';
-}
-
-function SessionWipCard({ session }: { session: SelfInspectionSessionSummaryDto }) {
-  const inspectorState = session.inspectorMeasurementState;
-  const isInspectorRemeasurementActive =
-    Boolean(session.inspectorRemeasurementRequiredAt) &&
-    (inspectorState === 'pending' || inspectorState === 'in_progress');
-  const isInspectorRemeasurementComplete =
-    Boolean(session.inspectorRemeasurementRequiredAt) && inspectorState === 'complete';
-  const actionPath = isInspectorRemeasurementActive
-    ? kioskSelfInspectionInspectorSessionPath(session.id)
-    : isInspectorRemeasurementComplete && session.recordApprovalRequiredAt
-      ? KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH
-      : kioskSelfInspectionSessionPath(session.id);
-  const actionLabel = isInspectorRemeasurementActive
-    ? '検査員測定'
-    : isInspectorRemeasurementComplete && session.recordApprovalRequiredAt
-      ? '記録確認'
-      : '再開';
-  const badgeLabel = isInspectorRemeasurementActive
-    ? '検査員待ち'
-    : isInspectorRemeasurementComplete && session.recordApprovalRequiredAt
-      ? '確認待ち'
-      : statusLabel(session.status);
-  const card = presentSelfInspectionWipCard({
-    productNo: session.productNo,
-    fhincd: session.fhincd,
-    fhinmei: session.fhinmei,
-    resourceCd: session.resourceCd,
-    plannedQuantity: session.plannedQuantity,
-    fseiban: session.fseiban,
-    completedEntryCount: session.completedEntryCount,
-    requiredEntryCount: session.requiredEntryCount,
-    participantEmployeeNames: session.participantEmployeeNames ?? []
-  });
-
-  return (
-    <section className={clsx(kioskPanelClassName, 'flex min-w-0 flex-col gap-1.5 p-2')}>
-      <div className="flex min-w-0 items-start justify-between gap-1">
-        <div className="min-w-0 flex-1">
-          <p className="line-clamp-1 text-base font-bold" title={card.productNo}>
-            {card.productNo}
-          </p>
-          <p className="line-clamp-2 text-xs leading-snug text-white/70" title={card.metaLine}>
-            {card.metaLine}
-          </p>
-          {card.fseibanLine ? (
-            <p className={clsx(kioskMetaTextClassName, 'line-clamp-1')} title={card.fseibanLine}>
-              {card.fseibanLine}
-            </p>
-          ) : null}
-          <p
-            className={clsx(kioskMetaTextClassName, 'line-clamp-2 leading-snug')}
-            title={card.participantNamesTitle ?? undefined}
-          >
-            氏名 {card.participantNamesLine}
-          </p>
-        </div>
-        <span
-          className={clsx(
-            'shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold',
-            session.status === 'review_pending' || isInspectorRemeasurementActive || isInspectorRemeasurementComplete
-              ? 'bg-red-400/20 text-red-100'
-              : 'bg-yellow-400/20 text-yellow-200'
-          )}
-        >
-          {badgeLabel}
-        </span>
-      </div>
-      <p className={kioskMetaTextClassName}>
-        {isInspectorRemeasurementActive || isInspectorRemeasurementComplete
-          ? `検査員 ${session.inspectorCompletedRequiredEntryCount}/${session.inspectorRequiredEntryCount} 件`
-          : `進捗 ${card.progressLine}`}
-      </p>
-      <div className="flex flex-wrap gap-1">
-        <Link
-          to={actionPath}
-          className={buttonClassName('primary', clsx(kioskButtonPrimaryClassName, 'inline-flex w-full items-center justify-center text-sm'))}
-        >
-          {actionLabel}
-        </Link>
-      </div>
-    </section>
-  );
+function nfcResolveErrorMessage(kind: 'duplicate' | 'instrument' | 'instrument_unavailable' | 'unknown'): string {
+  if (kind === 'instrument') return '氏名タグではありません。計測機器タグが読み取られました。';
+  if (kind === 'instrument_unavailable') return '氏名タグではありません。使用不可の計測機器タグです。';
+  if (kind === 'duplicate') return '同じUIDの登録が複数あるため氏名を特定できません。';
+  return '未登録の氏名タグです。';
 }
 
 export function KioskSelfInspectionPage() {
@@ -180,12 +103,16 @@ export function KioskSelfInspectionPage() {
   const [debouncedProductNo, setDebouncedProductNo] = useState('');
   const [debouncedResourceCd, setDebouncedResourceCd] = useState('');
   const [scannedProductNo, setScannedProductNo] = useState('');
-  const [scanArmed, setScanArmed] = useState(false);
+  const [movementScanArmed, setMovementScanArmed] = useState(false);
+  const [nameScanArmed, setNameScanArmed] = useState(false);
+  const [employeeFilter, setEmployeeFilter] = useState<EmployeeFilter | null>(null);
   const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
   const [inspectionWorkflowTarget, setInspectionWorkflowTarget] = useState<SelfInspectionCandidateRow | null>(null);
   const [page, setPage] = useState(1);
   const scanFocusRef = useRef<HTMLDivElement | null>(null);
   const autoOpenedScanKeyRef = useRef<string | null>(null);
+  const lastNameNfcEventKeyRef = useRef<string | null>(null);
+  const nfcEvent = useNfcStream(nameScanArmed);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -246,79 +173,160 @@ export function KioskSelfInspectionPage() {
     [scheduleQuery.data?.rows]
   );
 
-  const wipSessions = useMemo(
+  const wipListLimit = Math.min(
+    wipSessionsQuery.data?.listLimit ?? 200,
+    reviewPendingSessionsQuery.data?.listLimit ?? 200
+  );
+  const mergedWipSessions = useMemo(
     () =>
       [...(reviewPendingSessionsQuery.data?.sessions ?? []), ...(wipSessionsQuery.data?.sessions ?? [])]
         .filter((session, index, sessions) => sessions.findIndex((row) => row.id === session.id) === index)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [reviewPendingSessionsQuery.data?.sessions, wipSessionsQuery.data?.sessions]
   );
-  const wipListTruncated =
-    wipSessionsQuery.data?.truncated === true || reviewPendingSessionsQuery.data?.truncated === true;
-  const wipListLimit = Math.min(
-    wipSessionsQuery.data?.listLimit ?? 200,
-    reviewPendingSessionsQuery.data?.listLimit ?? 200
+  const wipSessions = useMemo(
+    () => mergedWipSessions.slice(0, wipListLimit),
+    [mergedWipSessions, wipListLimit]
   );
+  const filteredWipSessions = useMemo(
+    () =>
+      employeeFilter
+        ? wipSessions.filter((session) =>
+            (session.participantEmployees ?? []).some(
+              (participant) => participant.employeeId === employeeFilter.employeeId
+            )
+          )
+        : wipSessions,
+    [employeeFilter, wipSessions]
+  );
+  const displayedFilterSources = hasSearchInput ? rows : filteredWipSessions;
+  const productOptions = useMemo(
+    () => buildProductFilterOptions(displayedFilterSources),
+    [displayedFilterSources]
+  );
+  const resourceOptions = useMemo(
+    () => buildResourceFilterOptions(displayedFilterSources),
+    [displayedFilterSources]
+  );
+  const candidateTableRows = useMemo(() => rows.map(presentSelfInspectionCandidateRow), [rows]);
+  const wipTableRows = useMemo(
+    () => filteredWipSessions.map(presentSelfInspectionSessionRow),
+    [filteredWipSessions]
+  );
+  const wipListTruncated =
+    wipSessionsQuery.data?.truncated === true ||
+    reviewPendingSessionsQuery.data?.truncated === true ||
+    mergedWipSessions.length > wipListLimit;
   const hasMore = scheduleQuery.data?.hasMore === true;
 
+  const clearEmployeeFilter = useCallback(() => {
+    setEmployeeFilter(null);
+    setNameScanArmed(false);
+    lastNameNfcEventKeyRef.current = null;
+  }, []);
+
+  const handleProductFilterChange = useCallback(
+    (value: string) => {
+      clearEmployeeFilter();
+      setProductNo(value);
+      setScannedProductNo('');
+      setMovementScanArmed(false);
+      setScanStatus(null);
+      autoOpenedScanKeyRef.current = null;
+      setPage(1);
+    },
+    [clearEmployeeFilter]
+  );
+
+  const handleResourceFilterChange = useCallback(
+    (value: string) => {
+      clearEmployeeFilter();
+      setResourceCd(value);
+      setMovementScanArmed(false);
+      setScanStatus(null);
+      autoOpenedScanKeyRef.current = null;
+      setPage(1);
+    },
+    [clearEmployeeFilter]
+  );
+
   const focusScanReceiver = useCallback(() => {
-    if (typeof window === 'undefined') return;
     window.setTimeout(() => scanFocusRef.current?.focus(), 0);
   }, []);
 
-  const handleStartScan = useCallback(() => {
-    setScanArmed(true);
+  const handleStartMovementScan = useCallback(() => {
+    clearEmployeeFilter();
+    setMovementScanArmed(true);
     setScanStatus({
       kind: 'waiting',
-      message: 'スキャン待ちです。移動票の製造order番号を読み取ってください。'
+      message: '移動票の製造order番号を読み取ってください。'
     });
-    if (typeof document !== 'undefined') {
-      const activeElement = document.activeElement;
-      if (activeElement instanceof HTMLElement) {
-        activeElement.blur();
-      }
-    }
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) activeElement.blur();
     focusScanReceiver();
-  }, [focusScanReceiver]);
+  }, [clearEmployeeFilter, focusScanReceiver]);
 
-  const handleCancelScan = useCallback(() => {
-    setScanArmed(false);
-    setScanStatus(null);
-  }, []);
-
-  const handleScan = useCallback((rawText: string) => {
+  const handleMovementScan = useCallback((rawText: string) => {
     const normalized = normalizeManufacturingOrderScanText(rawText);
-    setScanArmed(false);
+    setMovementScanArmed(false);
     autoOpenedScanKeyRef.current = null;
 
     if (!normalized) {
-      setScanStatus({
-        kind: 'error',
-        message: 'スキャン値が空です。移動票の製造order番号を読み取り直してください。'
-      });
+      setScanStatus({ kind: 'error', message: 'スキャン値が空です。移動票を読み取り直してください。' });
       return;
     }
-
     setProductNo(normalized);
     setDebouncedProductNo(normalized);
     setScannedProductNo(normalized);
-    setScanStatus({
-      kind: 'success',
-      message: `読み取りました: ${normalized}`
-    });
+    setScanStatus({ kind: 'success', message: `移動票: ${normalized}` });
     setPage(1);
   }, []);
 
   useKeyboardWedgeScan({
-    active: scanArmed,
-    onScan: handleScan,
+    active: movementScanArmed,
+    onScan: handleMovementScan,
     minChars: 4
   });
+
+  const handleStartNameScan = useCallback(() => {
+    setMovementScanArmed(false);
+    setProductNo('');
+    setResourceCd('');
+    setDebouncedProductNo('');
+    setDebouncedResourceCd('');
+    setScannedProductNo('');
+    setEmployeeFilter(null);
+    autoOpenedScanKeyRef.current = null;
+    lastNameNfcEventKeyRef.current = null;
+    setPage(1);
+    setNameScanArmed(true);
+    setScanStatus({ kind: 'waiting', message: '氏名NFCタグを読み取ってください。' });
+  }, []);
+
+  useEffect(() => {
+    if (!nameScanArmed || !nfcEvent?.uid) return;
+    const eventKey = nfcEvent.eventKey ?? `${nfcEvent.eventId ?? ''}:${nfcEvent.uid}:${nfcEvent.timestamp}`;
+    if (lastNameNfcEventKeyRef.current === eventKey) return;
+    lastNameNfcEventKeyRef.current = eventKey;
+    setNameScanArmed(false);
+
+    void resolveSelfInspectionNfcTagUid(nfcEvent.uid)
+      .then((result) => {
+        if (result.kind === 'employee') {
+          setEmployeeFilter({ employeeId: result.employee.id, displayName: result.employee.displayName });
+          setScanStatus({ kind: 'success', message: `氏名: ${result.employee.displayName}` });
+          return;
+        }
+        setScanStatus({ kind: 'error', message: nfcResolveErrorMessage(result.kind) });
+      })
+      .catch(() => {
+        setScanStatus({ kind: 'error', message: '氏名タグの照合に失敗しました。' });
+      });
+  }, [nameScanArmed, nfcEvent]);
 
   useEffect(() => {
     if (!hasScannedProductFilter || !trimmedResourceCd || scheduleQuery.isFetching) return;
     if (rows.length !== 1) return;
-
     const row = rows[0];
     const autoOpenKey = `${exactScannedProductNo}\0${trimmedResourceCd}\0${row.id}`;
     if (autoOpenedScanKeyRef.current === autoOpenKey) return;
@@ -369,104 +377,108 @@ export function KioskSelfInspectionPage() {
     [inspectionPaperPrintReturnTo, navigate]
   );
 
-  const handleRecordApprovalNavigate = () => {
-    navigate(KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH);
-  };
+  const handleClear = useCallback(() => {
+    setProductNo('');
+    setResourceCd('');
+    setDebouncedProductNo('');
+    setDebouncedResourceCd('');
+    setScannedProductNo('');
+    setMovementScanArmed(false);
+    setNameScanArmed(false);
+    setEmployeeFilter(null);
+    setScanStatus(null);
+    autoOpenedScanKeyRef.current = null;
+    lastNameNfcEventKeyRef.current = null;
+    setPage(1);
+  }, []);
 
   const scanStatusClassName =
     scanStatus?.kind === 'error'
       ? 'border-rose-400/40 bg-rose-400/10 text-rose-100'
       : scanStatus?.kind === 'success'
         ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-100'
-        : 'border-cyan-400/40 bg-cyan-400/10 text-cyan-100';
+        : scanStatus
+          ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-100'
+          : 'border-transparent text-white/40';
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 bg-slate-800 p-3 text-white">
-      <div className={clsx(kioskPanelClassName, 'p-3')}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className={kioskPageTitleClassName}>自主検査</h1>
-            <p className="mt-1 text-sm text-white/70">
-              仕掛中（全端末共通）を表示します。検索で新規開始の候補を絞り込めます。
-            </p>
-          </div>
-          <div className="flex min-w-0 flex-wrap items-end gap-2">
-            <button
-              type="button"
-              className={scanArmed ? kioskButtonPrimaryClassName : kioskButtonSecondaryClassName}
-              onClick={scanArmed ? handleCancelScan : handleStartScan}
-            >
-              {scanArmed ? 'スキャン中止' : '移動票スキャン'}
-            </button>
-            <button
-              type="button"
-              className={kioskButtonSecondaryClassName}
-              onClick={handleRecordApprovalNavigate}
-            >
-              検査記録確認
-            </button>
-            <label className="grid min-w-[12rem] max-w-xs flex-1 gap-1 text-sm">
-              <span className="text-white/70">製造order / 製番 / 品番</span>
-              <input
-                className={kioskInputClassName}
-                value={productNo}
-                onChange={(e) => {
-                  setProductNo(e.target.value);
-                  setScannedProductNo('');
-                  setScanStatus(null);
-                  autoOpenedScanKeyRef.current = null;
-                  setPage(1);
-                }}
-                placeholder="製造order・製番・品番"
-              />
-            </label>
-            <label className="grid w-[7rem] gap-1 text-sm">
-              <span className="text-white/70">資源CD</span>
-              <input
-                className={kioskInputClassName}
-                value={resourceCd}
-                onChange={(e) => {
-                  setResourceCd(e.target.value);
-                  autoOpenedScanKeyRef.current = null;
-                  setPage(1);
-                }}
-                placeholder="581"
-              />
-            </label>
-            <Button
-              type="button"
-              variant="ghostOnDark"
-              className="min-h-11"
-              onClick={() => {
-                setProductNo('');
-                setResourceCd('');
-                setScannedProductNo('');
-                setScanArmed(false);
-                setScanStatus(null);
-                autoOpenedScanKeyRef.current = null;
-                setPage(1);
-              }}
-            >
-              クリア
-            </Button>
-          </div>
+    <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
+      <div className={clsx(kioskPanelClassName, 'flex h-[60px] shrink-0 flex-nowrap items-center gap-2 px-2')}>
+        <h1 className={clsx(kioskPageTitleClassName, 'shrink-0 whitespace-nowrap')}>自主検査</h1>
+        <button
+          type="button"
+          className={movementScanArmed ? kioskButtonPrimaryClassName : kioskButtonSecondaryClassName}
+          onClick={() => {
+            if (movementScanArmed) {
+              setMovementScanArmed(false);
+              setScanStatus(null);
+            } else {
+              handleStartMovementScan();
+            }
+          }}
+        >
+          {movementScanArmed ? 'スキャン中止' : '移動票スキャン'}
+        </button>
+        <button
+          type="button"
+          className={nameScanArmed ? kioskButtonPrimaryClassName : kioskButtonSecondaryClassName}
+          onClick={() => {
+            if (nameScanArmed) {
+              setNameScanArmed(false);
+              setScanStatus(null);
+            } else {
+              handleStartNameScan();
+            }
+          }}
+        >
+          {nameScanArmed ? 'スキャン中止' : '氏名スキャン'}
+        </button>
+        <button
+          type="button"
+          className={kioskButtonSecondaryClassName}
+          onClick={() => navigate(KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH)}
+        >
+          記録承認
+        </button>
+        <SelfInspectionFilterCombobox
+          ariaLabel="製造order / 製番 / 品番"
+          value={productNo}
+          placeholder="製造order・製番・品番"
+          options={productOptions}
+          className="w-[15rem]"
+          dropdownClassName="w-[28rem]"
+          onChange={handleProductFilterChange}
+          onSelect={handleProductFilterChange}
+        />
+        <SelfInspectionFilterCombobox
+          ariaLabel="資源CD"
+          value={resourceCd}
+          placeholder="581"
+          options={resourceOptions}
+          className="w-[7.5rem]"
+          dropdownClassName="w-[10rem]"
+          onChange={handleResourceFilterChange}
+          onSelect={handleResourceFilterChange}
+        />
+        <Button type="button" variant="ghostOnDark" className="min-h-11 shrink-0 px-3" onClick={handleClear}>
+          クリア
+        </Button>
+        <div
+          ref={scanFocusRef}
+          tabIndex={-1}
+          role="status"
+          aria-live="polite"
+          title={scanStatus?.message}
+          className={clsx(
+            'min-w-[7rem] flex-1 truncate rounded border px-2 py-1 text-xs font-semibold outline-none',
+            scanStatusClassName
+          )}
+        >
+          {scanStatus?.message ?? ''}
         </div>
-        {scanStatus ? (
-          <div
-            ref={scanFocusRef}
-            tabIndex={-1}
-            role="status"
-            aria-live="polite"
-            className={clsx('mt-3 rounded border px-3 py-2 text-sm font-semibold outline-none', scanStatusClassName)}
-          >
-            {scanStatus.message}
-          </div>
-        ) : (
-          <div ref={scanFocusRef} tabIndex={-1} className="sr-only" aria-hidden />
-        )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto rounded border border-white/15 bg-slate-950/45 p-3">
+      <main className="min-h-0 flex-1 overflow-auto rounded border border-white/15 bg-slate-950/45 p-2">
         {hasSearchInput ? (
           isTextSearchTooShort ? (
             <div className="py-12 text-center text-white/60">
@@ -486,46 +498,20 @@ export function KioskSelfInspectionPage() {
             </div>
           ) : (
             <>
-              <p className="mb-2 text-xs text-white/55">検索結果（開始 / 再開候補）</p>
-              <p className="mb-2 text-xs text-white/55">
-                {page} ページ目（1 ページ {CANDIDATE_PAGE_SIZE} 件）
-                {hasMore ? ' — さらに候補がある可能性があります' : ''}
-              </p>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-4 xl:grid-cols-6">
-                {rows.map((row) => (
-                  <section key={row.id} className={clsx(kioskPanelClassName, 'grid min-w-0 gap-2 p-3')}>
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-base font-bold">{row.productNo}</p>
-                        <p className="line-clamp-2 text-xs text-white/70">
-                          {row.fhincd} / {row.fhinmei} / {row.resourceCd} / 指示数{' '}
-                          {row.plannedQuantity ?? '—'}
-                        </p>
-                        <p className="truncate text-xs text-white/55">製番 {row.fseiban}</p>
-                      </div>
-                      {row.status ? (
-                        <span className="rounded bg-cyan-500/20 px-2 py-1 text-xs font-semibold text-cyan-200">
-                          {statusLabel(row.status)}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className={clsx(
-                          row.status === 'in_progress' || row.status === 'completed'
-                            ? kioskButtonPrimaryClassName
-                            : buttonClassName('ghostOnDark'),
-                          'inline-flex w-full min-h-11 items-center justify-center text-base'
-                        )}
-                        onClick={() => setInspectionWorkflowTarget(row)}
-                      >
-                        検査方法を選択
-                      </button>
-                    </div>
-                  </section>
-                ))}
+              <div className="mb-2 flex items-center justify-between gap-3 text-xs text-white/55">
+                <span>検索結果（開始 / 再開候補）</span>
+                <span>
+                  {page} ページ目（1ページ {CANDIDATE_PAGE_SIZE}件）
+                  {hasMore ? ' — 続きあり' : ''}
+                </span>
               </div>
+              <SelfInspectionTable
+                rows={candidateTableRows}
+                onCandidateSelect={(id) => {
+                  const target = rows.find((row) => row.id === id);
+                  if (target) setInspectionWorkflowTarget(target);
+                }}
+              />
               {hasMore || page > 1 ? (
                 <div className="mt-3 flex flex-wrap justify-center gap-2">
                   <Button
@@ -552,26 +538,28 @@ export function KioskSelfInspectionPage() {
           )
         ) : (wipSessionsQuery.isLoading || reviewPendingSessionsQuery.isLoading) && wipSessions.length === 0 ? (
           <div className="py-12 text-center text-white/60">仕掛中を読込中…</div>
-        ) : wipSessions.length === 0 ? (
+        ) : filteredWipSessions.length === 0 ? (
           <div className="py-12 text-center text-white/60">
-            仕掛中の自主検査はありません。検索して新規開始できます。
+            {employeeFilter
+              ? `氏名「${employeeFilter.displayName}」の仕掛中自主検査はありません。`
+              : '仕掛中の自主検査はありません。検索して新規開始できます。'}
           </div>
         ) : (
           <>
-            <p className="mb-2 text-xs text-white/55">仕掛中（更新の新しい順・全端末共通）</p>
+            {employeeFilter ? (
+              <div className="mb-2 flex justify-end text-xs text-white/55">
+                <span>氏名: {employeeFilter.displayName}</span>
+              </div>
+            ) : null}
             {wipListTruncated ? (
               <p className="mb-2 rounded border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
-                仕掛中は最新 {wipListLimit} 件まで表示しています。それより古いセッションは検索で絞り込んでください。
+                仕掛中は最新 {wipListLimit} 件まで表示しています。それより古いセッションは検索対象外です。
               </p>
             ) : null}
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-4 xl:grid-cols-6">
-              {wipSessions.map((session) => (
-                <SessionWipCard key={session.id} session={session} />
-              ))}
-            </div>
+            <SelfInspectionTable rows={wipTableRows} onCandidateSelect={() => undefined} />
           </>
         )}
-      </div>
+      </main>
       <SelfInspectionWorkflowModal
         target={inspectionWorkflowTarget}
         onClose={() => setInspectionWorkflowTarget(null)}

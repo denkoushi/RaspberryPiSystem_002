@@ -934,6 +934,17 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 - **検証**: unit + 一時 Postgres integration + EXPLAIN（`SelfInspectionLotEntry_idx_session_persistence`）。
 - **本番**: Pi5 + Pi4×5 · HEAD **`b52931bd`** · Phase12 **PASS 45** · [deployment](../guides/deployment.md#self-inspection-confirm-guard-wip-draft-2026-07-11) · PR [#970](https://github.com/denkoushi/RaspberryPiSystem_002/pull/970)。
 
+#### 2026-07-14 自主検査一覧テーブル + 選択検索 + 氏名NFC検索 {#自主検査-一覧テーブル-氏名nfc-2026-07-14}
+
+- **正本**: [ExecPlan](../plans/kiosk-self-inspection-table-nfc.md)。
+- **一覧レイアウト**: カードを2段の表行へ変更。1280–1535pxは2ペイン、1536px以上は3ペイン、1280px未満は1ペイン。並びは `updatedAt desc` の連続チャンクで、最大200件・打ち切り警告を維持。
+- **上辺**: 高さ60px・折返しなし。説明文と検索欄の可視ラベルを削除し、placeholder + `aria-label` で識別。「移動票スキャン」「氏名スキャン」「記録承認」、検索2欄、クリア、1行ステータスを配置。
+- **選択検索**: 製造order番号など／資源CDは手入力可能なcombobox。開いた時点で描画中の行だけをsnapshot候補にする。選択後も従来の生産計画候補検索（`q` / `resourceCds`）を使用し、移動票だけが `productNos` 完全一致・資源併用1件自動遷移を行う。
+- **氏名検索**: 既存NFC streamと `POST .../nfc-tags/resolve` を再利用。氏名スキャンは製造order／資源条件を解除し、読み込み済み仕掛を `employeeId` 完全一致で絞る。移動票・氏名スキャンは相互排他。
+- **API互換追加**: セッション要約へ `participantEmployees: Array<{ employeeId, displayName }>` を追加。既存 `participantEmployeeNames` は維持。IDなしの履歴氏名は表示には残るがNFC検索対象外。同姓同名はIDで区別する。
+- **DB**: 既存 `SelfInspectionLotEntry.createdByEmployeeId` を使用するためmigrationなし。一覧集約SQLはentry全件includeを行わず、セッションID制約下で氏名・従業員IDの先頭出現をまとめて取得。
+- **検査図面**: 一覧上辺の「部品測定へ」「新規」を削除。行の「雛形」、編集、ビジュアル登録、既存作成URLは維持。
+
 #### 先行デプロイ（2026-06-03）
 
 | ホスト | Detach Run ID | 実機 |
