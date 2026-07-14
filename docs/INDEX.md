@@ -16,6 +16,10 @@
 
 - **Pi5によるPi4再構成**: [Runbook](./runbooks/pi4-sd-recovery.md) · [ADR](./decisions/ADR-20260713-pi4-sd-recovery-bootstrap.md) · [ExecPlan](./plans/pi4-sd-recovery-bootstrap.md)
 
+### 最新アップデート（2026-07-14 · 組立トップ 個体別3ペインカード · 実装済・未デプロイ）
+
+- **製番・機種・S/N・進捗を個体カードで統一表示**: `着手前` はロット内S/Nを個別カード化、`仕掛中` / `完了・承認` も同一の閉じた1.5行カードへ統一。上部に登録ロット・仕掛中・承認待ちKPI、カード内の状態ラベルは廃止。右ロット登録とAPI/DBは不変。**正本**: [Plan](./plans/kiosk-assembly-home-unit-cards.md) · [ADR Decision 8](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](./design-previews/kiosk-assembly-home-unit-cards-preview.html)
+
 ### 計画（2026-07-12 · デプロイ対象最小化 / カナリア・ホールド · 実装済・本番 shadow 評価待ち）
 
 - **対象最小化・カナリア・ホールド・Pi5冪等スキップ**: [ADR](./decisions/ADR-20260712-deploy-target-minimization-canary-hold.md) · [Plan](./plans/rolling-terminal-bluegreen-deploy.md) · [deployment](./guides/deployment.md#標準更新入口ローリング端末別メンテナンス)

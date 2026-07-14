@@ -51,55 +51,25 @@ const approvedSession: AssemblyWorkSessionSummaryDto = {
 };
 
 describe('AssemblyCompletedPane', () => {
-  it('keeps secondary detail collapsed while record links stay available', () => {
+  it('does not expose approval status labels on cards and opens record confirmation per item', () => {
     render(
       <MemoryRouter>
-        <AssemblyCompletedPane
-          sessions={[completedSession, approvedSession]}
-          loading={false}
-          onReload={() => undefined}
-          lotQtyByProductNo={{ 'ASM-DONE-001': 3 }}
-        />
+        <AssemblyCompletedPane sessions={[completedSession, approvedSession]} loading={false} onReload={() => undefined} />
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('table', { name: '完了した製品' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '完了・承認' })).toBeInTheDocument();
+    expect(screen.getAllByText('進捗 1/1 (100%)')).toHaveLength(2);
+    expect(screen.queryByText('未承認')).not.toBeInTheDocument();
+    expect(screen.queryByText('承認済み')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '記録確認' })).not.toBeInTheDocument();
 
-    const toggle = screen.getByRole('button', { name: 'ASM-DONE-001' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText(/作業者 佐藤/)).not.toBeInTheDocument();
-
-    const recordLinks = screen.getAllByRole('link', { name: '記録確認' });
-    expect(recordLinks[0]).toHaveAttribute(
-      'href',
-      '/kiosk/assembly/record-approvals?sessionId=session-completed-1'
-    );
-    expect(recordLinks[1]).toHaveAttribute(
-      'href',
-      '/kiosk/assembly/record-approvals?sessionId=session-completed-2'
-    );
-    expect(recordLinks[0]).toHaveClass('min-h-11');
-    expect(screen.getAllByText('未承認')).toHaveLength(1);
-    expect(screen.getAllByText('承認済み')).toHaveLength(1);
-    expect(screen.getByText('3')).toBeInTheDocument();
-
+    const toggle = screen.getByRole('button', { name: 'ASM-DONE-001・S001 の詳細を開く' });
     fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText(/S001 ・ MACHINE-X ・ 作業者 佐藤/)).toBeInTheDocument();
-  });
 
-  it('looks up lot quantity with normalized product number keys', () => {
-    render(
-      <MemoryRouter>
-        <AssemblyCompletedPane
-          sessions={[{ ...completedSession, productNo: ' asm-done-001 ' }]}
-          loading={false}
-          onReload={() => undefined}
-          lotQtyByProductNo={{ 'ASM-DONE-001': 3 }}
-        />
-      </MemoryRouter>
-    );
-
-    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('締結進捗')).toBeInTheDocument();
+    const record = screen.getByRole('link', { name: '記録確認' });
+    expect(record).toHaveAttribute('href', '/kiosk/assembly/record-approvals?sessionId=session-completed-1');
+    expect(record).toHaveClass('min-h-11');
   });
 });

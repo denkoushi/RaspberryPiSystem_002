@@ -81,6 +81,10 @@ export function KioskAssemblyHomePage() {
   const normalizedSerialDraft = useMemo(() => normalizeSerialIdentifier(serialDraft), [serialDraft]);
   const selectedProductNoKey = selectedCandidate ? normalizeAssemblyUpperIdentifier(selectedCandidate.fseiban) : null;
   const selectedLotQty = selectedProductNoKey ? (lotQtyByProductNo[selectedProductNoKey] ?? null) : null;
+  const pendingApprovalCount = useMemo(
+    () => completedSessions.filter((session) => session.approval == null).length,
+    [completedSessions]
+  );
   const autoLotQty =
     selectedLotQty != null && Number.isFinite(selectedLotQty) && Number.isInteger(selectedLotQty) && selectedLotQty > 0
       ? selectedLotQty
@@ -354,8 +358,21 @@ export function KioskAssemblyHomePage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 p-2">
-        <h1 className="text-[1.35rem] font-bold leading-tight">組立</h1>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h1 className="text-[1.35rem] font-bold leading-tight">組立状況</h1>
+          <div className="flex flex-wrap items-center gap-1.5" aria-label="組立状況のKPI">
+            <span className="inline-flex min-h-8 items-center rounded border border-cyan-300/30 bg-cyan-500/10 px-2 text-xs font-bold text-cyan-100">
+              登録ロット {lots.length}
+            </span>
+            <span className="inline-flex min-h-8 items-center rounded border border-emerald-300/30 bg-emerald-500/10 px-2 text-xs font-bold text-emerald-100">
+              仕掛中 {sessions.length}
+            </span>
+            <span className="inline-flex min-h-8 items-center rounded border border-amber-300/30 bg-amber-500/10 px-2 text-xs font-bold text-amber-100">
+              承認待ち {pendingApprovalCount}
+            </span>
+          </div>
+        </div>
+        <nav className="flex flex-wrap items-center gap-2" aria-label="組立メニュー">
           <Link
             to={kioskAssemblyLibraryPath({ focus: 'procedures' })}
             className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
@@ -380,7 +397,7 @@ export function KioskAssemblyHomePage() {
           >
             記録確認
           </Link>
-        </div>
+        </nav>
       </div>
 
       {message ? <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">{message}</p> : null}
@@ -399,7 +416,6 @@ export function KioskAssemblyHomePage() {
             sessions={completedSessions}
             loading={completedLoading}
             onReload={() => void reloadCompletedSessions()}
-            lotQtyByProductNo={lotQtyByProductNo}
           />
         </div>
         <AssemblyStartPane

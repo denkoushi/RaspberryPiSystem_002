@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>組立トップ — 個体別3ペインカード</title>
+  <style>
+    :root { --bg:#1e293b; --panel:#0f1d31; --line:rgba(255,255,255,.16); --soft:rgba(255,255,255,.1); --text:#f8fafc; --muted:#b8c5d8; --cyan:#67e8f9; --green:#6ee7b7; --amber:#fde68a; font-family:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:#08111f; color:var(--text); padding:16px; }
+    .kiosk { max-width:1760px; min-height:760px; margin:auto; display:flex; flex-direction:column; gap:8px; padding:8px; background:var(--bg); border:1px solid var(--line); border-radius:12px; }
+    .header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:8px; border:1px solid var(--line); border-radius:8px; background:rgba(15,29,49,.85); }
+    .head-left,.nav,.kpis { display:flex; align-items:center; flex-wrap:wrap; gap:7px; }
+    h1 { margin:0 4px 0 0; font-size:1.35rem; }
+    .kpi,.nav a { min-height:32px; display:inline-flex; align-items:center; border:1px solid var(--line); border-radius:6px; padding:0 10px; font-size:.78rem; font-weight:700; text-decoration:none; color:var(--text); }
+    .kpi.cyan { color:var(--cyan); border-color:rgba(103,232,249,.32); background:rgba(6,182,212,.1); }
+    .kpi.green { color:var(--green); border-color:rgba(110,231,183,.32); background:rgba(16,185,129,.1); }
+    .kpi.amber { color:var(--amber); border-color:rgba(253,230,138,.32); background:rgba(245,158,11,.1); }
+    .nav a { color:#dce7f5; }
+    main { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 24rem; gap:8px; }
+    .panes { min-height:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .pane,.register { overflow:hidden; border:1px solid var(--line); border-radius:8px; background:rgba(2,6,23,.5); }
+    .pane { display:flex; min-height:0; flex-direction:column; }
+    .pane-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px; border-bottom:1px solid var(--soft); }
+    .pane h2 { margin:0; font-size:1rem; }
+    .count,.reload { font-size:.76rem; font-weight:700; }
+    .count.cyan { color:var(--cyan); } .count.green { color:var(--green); } .count.amber { color:var(--amber); }
+    .reload { min-height:32px; padding:0 9px; border:1px solid var(--line); border-radius:5px; color:var(--text); background:transparent; }
+    .items { overflow:auto; padding:5px; display:grid; align-content:start; gap:5px; }
+    details { overflow:hidden; border:1px solid var(--line); border-radius:6px; background:rgba(2,6,23,.45); }
+    summary { list-style:none; cursor:pointer; }
+    summary::-webkit-details-marker { display:none; }
+    .summary-top { min-height:44px; display:flex; align-items:center; gap:7px; padding:0 8px; font-size:.75rem; font-weight:700; white-space:nowrap; }
+    .product { min-width:0; overflow:hidden; text-overflow:ellipsis; flex:1; }
+    .serial,.progress { flex:0 0 auto; } .cyan .progress { color:var(--cyan); } .green .progress { color:var(--green); } .amber .progress { color:var(--amber); }
+    .chevron { display:inline-flex; align-items:center; justify-content:center; width:44px; min-height:44px; margin-left:auto; border-left:1px solid var(--soft); font-size:1rem; }
+    details[open] .chevron { transform:rotate(90deg); }
+    .machine { margin:0; padding:2px 8px; border-top:1px solid var(--soft); color:#d8e2f0; font-size:.7rem; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+    .detail { padding:9px; border-top:1px solid var(--soft); background:rgba(15,29,49,.65); }
+    dl { display:grid; grid-template-columns:auto minmax(0,1fr); gap:5px 10px; margin:0; font-size:.72rem; line-height:1.35; }
+    dt { color:#9eafc5; } dd { margin:0; font-weight:700; overflow-wrap:anywhere; }
+    .action { display:flex; align-items:center; justify-content:center; min-height:44px; margin-top:9px; border:1px solid var(--line); border-radius:5px; font-size:.84rem; font-weight:700; }
+    .action.start { background:#059669; } .action.resume { background:#2563eb; } .action.record { color:var(--cyan); background:rgba(6,182,212,.12); }
+    .bar { height:2px; } .cyan .bar { background:var(--cyan); } .green .bar { background:var(--green); } .amber .bar { background:var(--amber); }
+    .register { padding:12px; background:var(--panel); }
+    .register h2 { margin:0 0 14px; font-size:1rem; }
+    label { display:block; margin-top:10px; color:var(--muted); font-size:.72rem; font-weight:700; }
+    .field { min-height:38px; display:flex; align-items:center; margin-top:4px; padding:0 9px; border:1px solid var(--line); border-radius:5px; background:#08111f; font-size:.82rem; }
+    .keypad { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; margin-top:12px; }
+    .key { min-height:34px; display:flex; align-items:center; justify-content:center; border:1px solid var(--line); border-radius:4px; color:var(--muted); font-size:.76rem; }
+    .register-button { min-height:44px; display:flex; align-items:center; justify-content:center; margin-top:14px; border-radius:5px; background:#334155; color:#a8b6c8; font-size:.86rem; font-weight:700; }
+    @media (max-width:1100px) { main { grid-template-columns:1fr; } .register { display:none; } }
+    @media (max-width:800px) { .panes { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="kiosk">
+    <header class="header">
+      <div class="head-left">
+        <h1>組立状況</h1>
+        <div class="kpis">
+          <span class="kpi cyan">登録ロット 3</span>
+          <span class="kpi green">仕掛中 2</span>
+          <span class="kpi amber">承認待ち 1</span>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="#">手順書ライブラリ</a><a href="#">組立テンプレート</a><a href="#">閲覧順設定</a><a href="#">記録確認</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="panes" aria-label="組立ステータス">
+        <section class="pane cyan">
+          <header class="pane-head"><div><h2>着手前 <span class="count cyan">3件</span></h2></div><button class="reload">再読込</button></header>
+          <div class="items">
+            <details><summary><div class="summary-top"><span class="product">製番 B260401</span><span class="serial">S/N S-010</span><span class="progress">進捗 0%</span><span class="chevron">›</span></div><p class="machine">機種 MH-2200 搬送装置</p></summary><div class="detail"><dl><dt>ロット数量</dt><dd>2個</dd><dt>作業者</dt><dd>田中</dd><dt>テンプレート</dt><dd>MH-2200 標準 v3</dd><dt>トルクレンチ</dt><dd>CEM20N3X10D-BTLA</dd><dt>登録</dt><dd>7/14 08:20</dd></dl><div class="action start">開始</div></div><div class="bar" style="width:0%"></div></details>
+            <details><summary><div class="summary-top"><span class="product">製番 B260401</span><span class="serial">S/N S-011</span><span class="progress">進捗 0%</span><span class="chevron">›</span></div><p class="machine">機種 MH-2200 搬送装置</p></summary><div class="detail"><dl><dt>ロット数量</dt><dd>2個</dd><dt>作業者</dt><dd>田中</dd><dt>テンプレート</dt><dd>MH-2200 標準 v3</dd></dl><div class="action start">開始</div></div><div class="bar" style="width:0%"></div></details>
+            <details><summary><div class="summary-top"><span class="product">製番 A260312</span><span class="serial">S/N S-001</span><span class="progress">進捗 0%</span><span class="chevron">›</span></div><p class="machine">機種 長い名称でも必要なときだけこの下段を折り返して全文を表示</p></summary><div class="detail"><dl><dt>ロット数量</dt><dd>1個</dd><dt>作業者</dt><dd>佐藤</dd><dt>テンプレート</dt><dd>標準 v2</dd></dl><div class="action start">開始</div></div><div class="bar" style="width:0%"></div></details>
+          </div>
+        </section>
+
+        <section class="pane green">
+          <header class="pane-head"><h2>仕掛中 <span class="count green">2件</span></h2><button class="reload">再読込</button></header>
+          <div class="items">
+            <details><summary><div class="summary-top"><span class="product">製番 B260402</span><span class="serial">S/N S-003</span><span class="progress">進捗 5/12 (42%)</span><span class="chevron">›</span></div><p class="machine">機種 MH-2200 搬送装置</p></summary><div class="detail"><dl><dt>現在</dt><dd>本体組立 ・ 締付位置 #6</dd><dt>作業者</dt><dd>鈴木</dd><dt>テンプレート</dt><dd>MH-2200 標準 v3</dd><dt>開始</dt><dd>7/14 08:55</dd><dt>更新</dt><dd>7/14 09:12</dd></dl><div class="action resume">再開</div></div><div class="bar" style="width:42%"></div></details>
+            <details><summary><div class="summary-top"><span class="product">製番 A260315</span><span class="serial">S/N S-018</span><span class="progress">進捗 2/8 (25%)</span><span class="chevron">›</span></div><p class="machine">機種 小型治具ユニット</p></summary><div class="detail"><dl><dt>現在</dt><dd>カバー取付 ・ 締付位置 #3</dd><dt>作業者</dt><dd>佐藤</dd></dl><div class="action resume">再開</div></div><div class="bar" style="width:25%"></div></details>
+          </div>
+        </section>
+
+        <section class="pane amber">
+          <header class="pane-head"><h2>完了・承認 <span class="count amber">2件</span></h2><button class="reload">再読込</button></header>
+          <div class="items">
+            <details><summary><div class="summary-top"><span class="product">製番 A260312</span><span class="serial">S/N S-001</span><span class="progress">進捗 12/12 (100%)</span><span class="chevron">›</span></div><p class="machine">機種 小型治具ユニット</p></summary><div class="detail"><dl><dt>締結進捗</dt><dd>12/12 (100%)</dd><dt>作業者</dt><dd>佐藤</dd><dt>テンプレート</dt><dd>小型治具 標準 v2</dd><dt>完了</dt><dd>7/14 08:10</dd></dl><div class="action record">記録確認</div></div><div class="bar" style="width:100%"></div></details>
+            <details><summary><div class="summary-top"><span class="product">製番 A260311</span><span class="serial">S/N S-008</span><span class="progress">進捗 8/8 (100%)</span><span class="chevron">›</span></div><p class="machine">機種 小型治具ユニット</p></summary><div class="detail"><dl><dt>締結進捗</dt><dd>8/8 (100%)</dd><dt>作業者</dt><dd>田中</dd><dt>完了</dt><dd>7/14 07:45</dd></dl><div class="action record">記録確認</div></div><div class="bar" style="width:100%"></div></details>
+          </div>
+        </section>
+      </section>
+
+      <aside class="register">
+        <h2>ロット登録</h2>
+        <label>製番</label><div class="field">B260401</div>
+        <label>機種</label><div class="field">MH-2200 搬送装置</div>
+        <label>シリアルNo.追加</label><div class="field">S-012</div>
+        <div class="keypad"><span class="key">1</span><span class="key">2</span><span class="key">3</span><span class="key">BS</span><span class="key">4</span><span class="key">5</span><span class="key">6</span><span class="key">CLR</span></div>
+        <label>作業者</label><div class="field">田中</div>
+        <div class="register-button">ロット登録</div>
+      </aside>
+    </main>
+  </div>
+</body>
+</html>
