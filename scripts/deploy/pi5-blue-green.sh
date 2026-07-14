@@ -5,6 +5,7 @@
 set -euo pipefail
 
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+source "$(dirname "$SCRIPT_PATH")/lib/migration-gate.sh"
 PROJECT_DIR="${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}"
 BASE_COMPOSE="${PI5_BASE_COMPOSE:-${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml}"
 PHASE3_COMPOSE="${PI5_PHASE3_COMPOSE:-${PROJECT_DIR}/infrastructure/docker/docker-compose.phase3.yml}"
@@ -803,8 +804,15 @@ restore_legacy_after_phase3_stop() {
   return 1
 }
 
+migration_applied_checksums() {
+  local candidate="$1"
+  compose_current run --rm --no-deps "api-${candidate}" sh -lc \
+    'PGCONNECT_TIMEOUT=10 psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -AtF "|" -c "SELECT migration_name, checksum FROM \"_prisma_migrations\" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name"'
+}
+
 migration_guard() {
-  local base_image="$1" candidate_image="$2" base_ref candidate_ref
+  local base_image="$1" candidate="$2" candidate_image base_ref candidate_ref
+  candidate_image="$(slot_api_image "$candidate")"
   if [[ "$DRY_RUN" == 1 ]]; then
     MIGRATION_BASE_COMMIT="$(image_commit "$base_image" 2>/dev/null || true)"
     MIGRATION_CANDIDATE_COMMIT="$(image_commit "$candidate_image" 2>/dev/null || true)"
@@ -820,33 +828,18 @@ migration_guard() {
   [[ "$base_ref" =~ ^[0-9a-f]{40}$ ]] || die 'migration base commit is unknown'
   git -C "$PROJECT_DIR" cat-file -e "${base_ref}^{commit}" 2>/dev/null || die "migration base commit unavailable: $base_ref"
   git -C "$PROJECT_DIR" cat-file -e "${candidate_ref}^{commit}" 2>/dev/null || die "candidate commit unavailable: $candidate_ref"
-  local changed=() modified
-  while IFS= read -r migration; do [[ -n "$migration" ]] && changed+=("$PROJECT_DIR/$migration"); done < <(
-    git -C "$PROJECT_DIR" diff --diff-filter=A --name-only "$base_ref" "$candidate_ref" -- 'apps/api/prisma/migrations/*/migration.sql'
-  )
-  modified="$(git -C "$PROJECT_DIR" diff --diff-filter=M --name-only "$base_ref" "$candidate_ref" -- 'apps/api/prisma/migrations/*/migration.sql' || true)"
-  [[ -z "$modified" ]] || die 'modified existing migrations are not Expand-only; release refused'
-  ((${#changed[@]} == 0)) && return 0
-  python3 - "${changed[@]}" <<'PY' || die 'migration SQL is outside the Expand-only allow-list'
-import re,sys
-allowed=re.compile(r'^\s*(CREATE\s+(TABLE|INDEX|UNIQUE\s+INDEX|TYPE|EXTENSION|SEQUENCE|SCHEMA|ENUM)\b|ALTER\s+TABLE\b[\s\S]*?\bADD\s+(COLUMN|CONSTRAINT)\b|COMMENT\s+ON\b)',re.I)
-forbidden=re.compile(r'\b(DROP|RENAME|SET\s+NOT\s+NULL|ALTER\s+COLUMN|TRUNCATE|DELETE\s+FROM)\b',re.I)
-for path in sys.argv[1:]:
- text=open(path,encoding='utf-8').read(); text=re.sub(r'--.*?$','',text,flags=re.M); text=re.sub(r'/\*.*?\*/','',text,flags=re.S)
- for raw in text.split(';'):
-  stmt=raw.strip()
-  if stmt and (not allowed.match(stmt) or forbidden.search(stmt)): raise SystemExit(f'disallowed statement in {path}: {stmt[:120]}')
-PY
+  migration_gate_validate \
+    "$PROJECT_DIR" "$base_ref" "$candidate_ref" migration_applied_checksums "$candidate" \
+    || die 'migration ledger or SQL is outside the Expand-only contract'
 }
 
 migration_apply_and_verify() {
   local candidate="$1" base_image="$2" compatibility_slot="$3"
-  migration_guard "$base_image" "$(slot_api_image "$candidate")" || return 1
+  migration_guard "$base_image" "$candidate" || return 1
   if [[ "$DRY_RUN" != 1 ]]; then
     # The API image has `node dist/main.js` as its default command.  Use an
     # explicit shell and the installed Prisma binary so Compose does not try to
     # execute `npx` through that Node command during bootstrap/prepare.
-    compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate status' || return 1
     compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate deploy' || return 1
     compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate status' || return 1
     if [[ "$compatibility_slot" == legacy ]]; then legacy_scheduler_readiness || return 1
