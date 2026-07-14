@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-07-13
+last-verified: 2026-07-14
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -61,6 +61,19 @@ update-frequency: medium
 - 空きメモリ1.5GB、ディスク10GB、CPU数の75%未満のロードアベレージ、および強い JWT 秘密情報を満たさない場合は候補起動前に停止し、Phase 2へフォールバックする。切替後5分は旧スロットをscheduler leaderとして保持し、monitor と coordinator の `cleanup` は直列化する。handoff 時の**正確な lock-conflict**だけは coordinator が最大30秒・cleanup 専用で再試行し、それ以外のエラーまたは上限到達は fail-closed（端末更新へ進まない）。coordinator 実行中は `status`/`--status`/`--attach` だけを使い、手動 `cleanup` / `rollback` / `reconcile` / 別の Blue/Green 操作を実行しない。ヘルス/role/metrics異常時は検証済みの旧slotへ自動で戻す。詳細は [Pi5 Blue/Green deployment runbook](../runbooks/pi5-blue-green-deploy.md#cleanup-and-reboot-check) と [KB-400](../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md)。
 - `/api/system/deploy-readiness/internal` はCaddy（HTTP 80 redirect 経路含む）で404となる内部専用契約であり、Blue/Green scriptだけが`docker exec`で確認する。`status` はread-onlyでlive状態とstaleを表示し、`reconcile` は再起動後の安全復旧と monitor 再開、`reconcile --restore-legacy` は保存済み legacy image での緊急復帰に使う。
 - 操作・復旧・受入れの正本は [Pi5 Blue/Green deployment runbook](../runbooks/pi5-blue-green-deploy.md)、実装正本は [Phase 3 ExecPlan](../plans/pi5-blue-green-phase3.md)。2026-07-12の本番受入れ後、Pi5更新が必要な通常リリースではPhase 3が標準経路である。Pi5本体の故障・停電は単一Pi5の対象外であり、無停止化には将来の2台構成が必要となる。
+
+### 補足（2026-07-14 · **組立トップ 個体別3ペインカード + KPI** · **Web only** · **Pi5 反映済 / Pi4・Pi3 対象外**） {#kiosk-assembly-home-unit-cards-2026-07-14}
+
+- **変更概要（正本）**: [Plan](../plans/kiosk-assembly-home-unit-cards.md) · [ADR-20260707 Decision 8](../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](../design-previews/kiosk-assembly-home-unit-cards-preview.html) · ブランチ **`feat/kiosk-assembly-unit-cards`** · 配備 SHA **`05d29d118f3cd63e687f4d16f397ecc0bf1ffdb0`** · PR [#1000](https://github.com/denkoushi/RaspberryPiSystem_002/pull/1000)。組立トップを `着手前` / `仕掛中` / `完了・承認` の個体別カードへ統一し、着手前は S/N ごとに1カード、カードは既定閉じ・展開時のみ詳細/操作を表示する。上部バーに `登録ロット` / `仕掛中` / `承認待ち` KPIを置き、機種名は省略せず折返す。右のロット登録、API、DB、Prisma migration は変更なし。
+- **CI**: push CI [**`29297575970` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29297575970) · PR CI [**`29297586039` success**](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29297586039) · [CodeQL `29297586051` success](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29297586051) · [Secret scan `29297586055` success](https://github.com/denkoushi/RaspberryPiSystem_002/actions/runs/29297586055)（全19チェック成功）。
+- **本番デプロイ（実績）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-assembly-unit-cards infrastructure/ansible/inventory.yml --auto-minimize --detach --follow`
+
+| ホスト | Rolling Run ID | 結果 |
+|--------|----------------|------|
+| `raspberrypi5` | **`20260714-011243-34da18`** | success · Pi5 Blue/Green **`stable`** · release SHA **`05d29d118f3cd63e687f4d16f397ecc0bf1ffdb0`** |
+
+- **対象外（自動最小化）**: `raspi4-kensaku-stonebase01` / `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-sessaku-01` / `raspberrypi3`。差分分類は `neutral` / `server-app`、端末対象は0台のためカナリア・ホールドは発生しない。
+- **実機（目視・操作）**: 2026-07-14 ユーザー確認OK。
 
 ### 補足（2026-07-11 · **端末別ローリングデプロイ Milestone 1** · **Pi4全5台反映**） {#per-kiosk-rolling-deploy-milestone1-2026-07-11}
 

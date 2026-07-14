@@ -6,7 +6,7 @@ scope: kiosk assembly home (`/kiosk/assembly`) — per-unit cards in the three l
 date: 2026-07-14
 source_of_truth: this file
 related_code: apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx, apps/web/src/features/assembly/AssemblyItemCard.tsx, apps/web/src/features/assembly/AssemblyItemPane.tsx, apps/web/src/features/assembly/assemblyHomeItemPresentation.ts, apps/web/src/features/assembly/AssemblyLotPane.tsx, apps/web/src/features/assembly/AssemblyWipPane.tsx, apps/web/src/features/assembly/AssemblyCompletedPane.tsx
-related_docs: ../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md, ../design-previews/kiosk-assembly-home-unit-cards-preview.html, ../design-previews/README.md, ../INDEX.md
+related_docs: ../decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md, ../design-previews/kiosk-assembly-home-unit-cards-preview.html, ../design-previews/README.md, ../guides/deployment.md#kiosk-assembly-home-unit-cards-2026-07-14, ../INDEX.md
 validation: focused web vitest 6 files / 18 tests; full web vitest passed; web lint; web build; assembly integration 19 tests + seiban-lot-quantity service 5 tests on isolated pgvector/pg15:55440 (disposed); migration history SQL + AssemblyLot/AssemblyWorkSession EXPLAIN (ANALYZE, BUFFERS) on isolated pgvector/pg15:55439 (disposed)
 open_items: none
 ---
@@ -42,4 +42,6 @@ Run focused Web tests, Web lint, and Web build. For API regression, start a uniq
 
 ## Outcomes
 
-Focused Web tests (6 files / 18 tests), full Web Vitest, lint, and production build passed. The API assembly integration suite (19 tests) and seiban-lot-quantity service suite (5 tests) passed against a fresh temporary `pgvector/pgvector:pg15` database on localhost port 55440, which was removed by the shell trap. The full migration chain applied cleanly to a separate fresh temporary database on port 55439. `EXPLAIN (ANALYZE, BUFFERS)` confirmed the empty-test-data lot listing is a short sequential scan and the status-filtered WIP listing uses `AssemblyWorkSession_idx_status_updated` backward. No deployment is included in this change.
+Focused Web tests (6 files / 18 tests), full Web Vitest, lint, and production build passed. The API assembly integration suite (19 tests) and seiban-lot-quantity service suite (5 tests) passed against a fresh temporary `pgvector/pgvector:pg15` database on localhost port 55440, which was removed by the shell trap. The full migration chain applied cleanly to a separate fresh temporary database on port 55439. `EXPLAIN (ANALYZE, BUFFERS)` confirmed the empty-test-data lot listing is a short sequential scan and the status-filtered WIP listing uses `AssemblyWorkSession_idx_status_updated` backward.
+
+Production deployment completed through the standard rolling release on 2026-07-14: run `20260714-011243-34da18` released SHA `05d29d118f3cd63e687f4d16f397ecc0bf1ffdb0` to Pi5 and reached `success` / `stable`. The audited `--auto-minimize` plan classified the change as `neutral` / `server-app`, so all Pi4 kiosks and Pi3 signage were excluded and no canary hold was required. The user completed physical verification successfully.
