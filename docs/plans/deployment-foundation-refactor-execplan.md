@@ -35,7 +35,6 @@ validation:
   - read-only plans for both production inventories before any approved release
   - one explicitly approved full-fleet acceptance per inventory, followed by a same-SHA no-op plan
 open_items:
-  - resolve the candidate-wide pending-migration and SQL lexer findings in draft PR 1004, then rerun hosted checks
   - merge draft PRs 1004, 1005, and 1006 only in order and only after explicit approval
   - implement PR 4 through PR 8 only in sequence from the updated origin/main
   - obtain separate per-inventory approval before any production mutation
@@ -64,12 +63,12 @@ This work exists because the current release path has accumulated two coordinato
 
 - [x] (2026-07-14 21:31Z) Recorded the user-approved eight-PR sequence, production freeze, public interfaces, acceptance gates, and PR #1003 supersession policy in this ExecPlan.
 - [x] (2026-07-14 21:31Z) Established `origin/main` commit `38e72080969631ababc7c595ef67daca067d327f` as the initial baseline and confirmed that the remote has no `develop` branch.
-- [x] (2026-07-14 21:31Z) Published PR 1 as Draft PR #1004, `fix(deploy): restore migration ledger safety`, from `agent/deploy-migration-ledger`; it contains four intentionally scoped commits.
+- [x] (2026-07-14 21:31Z) Published PR 1 as Draft PR #1004, `fix(deploy): restore migration ledger safety`, from `agent/deploy-migration-ledger`; it initially contained four intentionally scoped commits and now has one additional independent-review hardening commit.
 - [x] (2026-07-14 22:19Z) Completed PR 1 hosted validation at Draft PR #1004; the infrastructure-only Trivy rerun passed and every check is green.
 - [x] (2026-07-14 22:19Z) Published PR 2 as Draft PR #1005 from `agent/ci-deploy-contract-shadow`; head `efa93df4` adds the client-lifecycle baseline and merge-base diff contract, and the branch push still produces no duplicate push-event workflow run.
 - [x] (2026-07-14 22:19Z) Completed PR 2 hosted validation; the latest `ci-required`, `codeql`, `gitleaks`, and all constituent checks are green.
 - [x] (2026-07-14 22:32Z) Completed PR 3 publication and validation at Draft PR #1006; three focused inventory, exact-set rollback, and pre-checkout `flock` commits are published at head `e33ecadb`, and local, Ansible, isolated Linux, and every hosted check passes.
-- [ ] (2026-07-14 22:45Z) Harden PR 1 after independent review found that green checks did not cover base-existing pending migrations, non-additive `ADD COLUMN` forms, or quote-aware SQL parsing; keep Draft PR #1004 blocked until the focused correction and hosted rerun pass.
+- [x] (2026-07-14 23:10Z) Hardened PR 1 at head `d755a679`: the gate now validates the candidate-wide commit-object ledger, permits only A-status migration changes, uses quote-aware SQL parsing plus a built-in type allow-list, passes 22 focused tests and two independent reviews with no P1/P2 blocker, and has a green 11-of-11 hosted rerun with zero failures or skips.
 - [ ] Merge PR 1, PR 2, and PR 3 in dependency-safe order only after explicit merge approval, refreshing each later branch from the latest `origin/main` without force-pushing PR #1003.
 - [ ] Implement and publish PR 4, the single coordinator and execution backend.
 - [ ] Implement and publish PR 5, durable fleet state and default target minimization.
@@ -109,7 +108,9 @@ This work exists because the current release path has accumulated two coordinato
 - Observation: safe detached execution, cooperative cancellation, and job lifecycle reporting share one process-ownership problem that cannot be completed reliably before the transient systemd backend exists.
   Evidence: Draft PR #1006 keeps those operations fail-closed before mutation while its isolated Linux test proves the non-waiting kernel lock is held before checkout.
 - Observation: the first PR 1 hosted suite was green even though the migration validator inspected only Git-added migration paths and stripped comments without understanding SQL quotes.
-  Evidence: independent review reproduced acceptance of a destructive base-existing pending migration and of `COMMENT ON ... 'keep -- text'; DROP TABLE ...`; Draft PR #1004 therefore remains blocked despite its green checks.
+  Evidence: independent review reproduced acceptance of a destructive base-existing pending migration and of `COMMENT ON ... 'keep -- text'; DROP TABLE ...`; corrective commit `d755a679` now validates every candidate migration from immutable commit objects and its hosted rerun is green.
+- Observation: SQL quote markers need identifier-boundary checks for both ASCII and Unicode continuations, and a user-defined domain can smuggle constraints or defaults through an otherwise nullable `ADD COLUMN` form.
+  Evidence: adversarial tests reproduced `$tag$` boundary bypasses after ASCII and Unicode combining/joiner characters plus custom/domain type bypasses. Commit `d755a679` rejects them and applies the same conservative identifier-boundary rule to `E'...'` prefixes.
 
 ## Decision Log
 
@@ -146,15 +147,15 @@ This work exists because the current release path has accumulated two coordinato
 - Decision: Keep cancel, detach, and job operations fail-closed before mutation in PR 3, and implement their shared lifecycle only with the transient systemd backend in PR 4.
   Rationale: one systemd-owned execution identity is required to avoid false detached-start success, stale process identity, and unsafe cancellation of a mutating child process.
   Date/Author: 2026-07-15 / Codex
-- Decision: Require PR 1 to validate every candidate migration not present in the completed ledger, parse SQL comments and statement boundaries with quote-aware logic, and reject every migration-file Git change except addition.
-  Rationale: an added-path-only allow-list and regex comment stripping can let `migrate deploy` execute unreviewed or hidden incompatible SQL even when checks are green.
+- Decision: Require PR 1 to validate every candidate migration from the immutable candidate commit object, parse SQL comments and statement boundaries with ASCII- and Unicode-aware quote boundaries, allow only built-in types for nullable constraint-free `ADD COLUMN`, and reject every migration-file Git change except A status.
+  Rationale: an added-path-only allow-list, regex comment stripping, or a user-defined domain can let `migrate deploy` execute unreviewed, hidden, or implicitly constrained SQL even when checks are green.
   Date/Author: 2026-07-15 / Codex
 
 ## Outcomes & Retrospective
 
 The program is in progress. Three scoped implementation pull requests are now published as drafts: migration ledger safety in #1004, CI/deploy-contract shadowing in #1005, and critical inventory, rollback, and checkout-lock safety in #1006. No pull request has been merged, and PR 4 through PR 8 remain paused at the explicit merge gate.
 
-PR 1 demonstrates the intended integration style and its first hosted suite is green, including the infrastructure-only Trivy rerun. It is not merge-ready: independent review found candidate-wide pending-migration and quote-aware SQL-validation gaps, and a focused corrective commit plus hosted rerun are in progress. PR 2 proves pull-request-only feature-branch CI, stable required-check names, and the client-lifecycle baseline/merge-base contract at head `efa93df4`; its latest hosted suite is green. PR 3 is published as three focused commits at head `e33ecadb`; local, real Ansible inventory/playbook, isolated Linux critical lock tests, and its complete hosted suite pass. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
+PR 1 now validates the complete candidate commit-object ledger at head `d755a679`, enforces addition-only migration diffs, and applies a quote-aware conservative SQL allow-list. Its 22 focused tests, real 144-base/146-candidate ledger check, adversarial matrix, two independent reviews, and 11-of-11 hosted rerun pass. PR 2 proves pull-request-only feature-branch CI, stable required-check names, and the client-lifecycle baseline/merge-base contract at head `efa93df4`; its latest hosted suite is green. PR 3 is published as three focused commits at head `e33ecadb`; local, real Ansible inventory/playbook, isolated Linux critical lock tests, and its complete hosted suite pass. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
 
 No product deployment, real-device mutation, merge, or production acceptance action has occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
 
@@ -190,9 +191,11 @@ Before a later milestone begins, its prerequisites must be merged or the branch 
 
 ### Milestone 1: Restore the migration ledger in PR 1
 
-PR 1 is already published as Draft PR #1004 from `agent/deploy-migration-ledger`. Preserve its focused four-commit structure. The first three commits transplant only source commits `4a5d64a8`, then `01999607`, then `284e0bc5`, in that order. They restore two migration files known to have been applied, teach reconciliation to accept the restored history, and apply pending Expand-only migrations before status is trusted.
+PR 1 is already published as Draft PR #1004 from `agent/deploy-migration-ledger`. Preserve the provenance of its first four focused commits and keep the independent-review hardening as a fifth commit. The first three commits transplant only source commits `4a5d64a8`, then `01999607`, then `284e0bc5`, in that order. They restore two migration files known to have been applied, teach reconciliation to accept the restored history, and apply pending Expand-only migrations before status is trusted.
 
 The fourth commit reimplements only the `c5d8a4da` behavior that validates every applied migration and checksum even when there are zero new migrations. It must not import the rest of `c5d8a4da`. `scripts/deploy/validate-expand-only-migrations.py` must accept an empty list of new migration paths while still checking the full repository history supplied by the caller. `scripts/deploy/pi5-blue-green.sh` must never return early merely because the candidate introduces no new migration.
+
+The fifth commit is the focused correction from independent review: read every migration from the immutable candidate commit object, enforce the applied/candidate set and checksum contract, reject non-addition migration diffs, and parse the conservative SQL allow-list without quote, comment, domain-type, or Unicode-boundary bypasses.
 
 Tests in `scripts/deploy/tests/test-pi5-blue-green.sh` must cover a restored applied migration, an applied ledger entry missing from the repository, a checksum mismatch, a non-Expand-only new migration, and a release with zero new migrations. The implementation must never execute a down migration. SQL that is not compatible with the old API must fail before candidate activation.
 
@@ -420,7 +423,10 @@ Current replacement map at this revision:
       01999607 -> b9b6c7d1
       284e0bc5 -> 4b57a494
       c5d8a4da migration-only behavior -> a06658fb
-      hosted state -> every check green, including the infrastructure-only security-docker(api) rerun
+      independent-review hardening -> d755a679
+      latest head -> d755a679, with candidate commit-object ledger, A-only diff, quote-aware parsing, and built-in type allow-list
+      focused evidence -> 22 tests passed; 144 base / 146 candidate migrations verified; 19 rejects / 7 allows passed; two independent reviews found no remaining P1/P2 blocker
+      hosted state -> 11/11 success, 0 failures/skips; API shards 8m12s / 7m30s / 7m28s, lint 5m16s, CodeQL 2m33s, gitleaks 15s, security API 4m33s
     PR 2 / #1005:
       CI baseline and deploy-contract shadow -> f0cadcdd
       hosted history-depth correction -> 98c3dae4
@@ -518,3 +524,5 @@ Revision note (2026-07-15, 22:19Z): Recorded green hosted validation for Draft P
 Revision note (2026-07-15, 22:32Z): Recorded completion of Draft PR #1006 hosted validation. CodeQL, all three API shards, lint, E2E, gitleaks, and Docker checks are green; the infrastructure shard completed in 9m05s. Merge and real-device gates remain unchanged.
 
 Revision note (2026-07-15, 22:45Z): Recorded the independent PR #1004 migration-gate review. Green checks are retained as evidence, but PR 1 is blocked pending candidate-wide unapplied migration validation, quote-aware SQL parsing, an addition-only migration diff contract, and a fresh hosted run.
+
+Revision note (2026-07-15, 23:10Z): Recorded resolution of the PR #1004 review blocker at head `d755a679`. The candidate-wide immutable ledger, A-only migration diff, quote-aware ASCII/Unicode boundaries, and built-in type allow-list pass 22 focused tests, two independent reviews, and a hosted rerun with 11 of 11 checks successful and no failures or skips. Merge and real-device gates remain unchanged.
