@@ -10,6 +10,23 @@ from jinja2 import Environment
 ROOT = Path(__file__).resolve().parents[3]
 
 
+def assert_change_classification_is_staged() -> None:
+    path = ROOT / 'infrastructure/ansible/roles/common/tasks/main.yml'
+    text = path.read_text(encoding='utf-8')
+    image_task = '- name: Classify client agent image changes'
+    runtime_task = '- name: Classify client agent runtime changes'
+    image_start = text.index(image_task)
+    runtime_start = text.index(runtime_task)
+    if image_start >= runtime_start:
+        raise AssertionError('agent image change classification must precede runtime classification')
+    image_block = text[image_start:runtime_start]
+    if (
+        'nfc_agent_runtime_recreate_needed:' in image_block
+        or 'barcode_agent_runtime_recreate_needed:' in image_block
+    ):
+        raise AssertionError('runtime facts must not reference image facts in the same set_fact task')
+
+
 def command_template(name: str) -> str:
     path = ROOT / 'infrastructure/ansible/roles/client/tasks' / name
     text = path.read_text(encoding='utf-8')
@@ -36,6 +53,7 @@ def assert_selection(template: str, *, image: bool, recreate: bool, expected: st
 
 
 def main() -> None:
+    assert_change_classification_is_staged()
     for filename in ('nfc-agent-lifecycle.yml', 'barcode-agent-lifecycle.yml'):
         template = command_template(filename)
         assert_selection(template, image=True, recreate=True, expected='up -d --build')

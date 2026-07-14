@@ -175,7 +175,7 @@
         or (repo_diff_files_raw.rc | default(0)) != 0
       }}
 
-- name: Classify client agent image and runtime changes
+- name: Classify client agent image changes
   ansible.builtin.set_fact:
     nfc_agent_image_build_needed: >-
       {{
@@ -191,6 +191,9 @@
         or (repo_changed_files | select('match', '^infrastructure/docker/Dockerfile\.barcode-agent$') | list | length > 0)
         or (repo_changed_files | select('match', '^infrastructure/docker/docker-compose\.client\.yml$') | list | length > 0)
       }}
+
+- name: Classify client agent runtime changes
+  ansible.builtin.set_fact:
     nfc_agent_runtime_recreate_needed: >-
       {{
         nfc_agent_image_build_needed | bool

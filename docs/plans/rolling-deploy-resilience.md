@@ -64,7 +64,14 @@ verified recovery.
   all 147 migrations, `migrate status`, 147/147 SHA-256 checksum rows, and
   `EXPLAIN (ANALYZE, BUFFERS)` for the checksum lookup succeeded; uniquely
   named container, volume, and network were removed and their absence checked.
-- [ ] Complete full API/Web validation, hosted CI, and field validation.
+- [x] Hosted CI passed for `c5d8a4da` and bootstrap compatibility follow-up
+  `19ccd48e` (all 19 required checks on each SHA).
+- [x] Pi5 deployed `19ccd48e`: the legacy bootstrap path recorded
+  `legacy-api-unavailable`, serially built and cached the candidate, completed
+  post-build stable-load sampling, verified all 147 migrations, switched slot,
+  and completed the five-minute stability window.
+- [ ] Repair the StoneBase01 canary classification failure, repeat hosted CI,
+  and complete the scoped four-terminal rollout.
 
 ## Surprises & Discoveries
 
@@ -108,6 +115,13 @@ verified recovery.
   Rationale: the route cannot pause an older process that does not contain it.
   The candidate is built once under the existing bounded 3.00 load contract,
   cached for reuse, and enables pause/resume for all subsequent releases.
+- The StoneBase01 canary exposed an Ansible evaluation-order error: one
+  `set_fact` task calculated image-build facts and runtime-recreate facts that
+  referenced them together. Ansible evaluates that task's expressions before
+  publishing its facts, so `barcode_agent_image_build_needed` was undefined.
+  The release stopped before the client agent lifecycle or kiosk services were
+  changed. The terminal remains in maintenance while the classification is
+  split into two ordered tasks and revalidated.
   Date/Author: 2026-07-14 / Codex
 - Decision: leave FJV60/80 in maintenance today and update the four reachable
   kiosks after the current run is safely cancelled.
@@ -116,10 +130,14 @@ verified recovery.
 
 ## Outcomes & Retrospective
 
-Implementation is complete locally. Focused deploy lifecycle, rolling
-coordinator, deploy-status, client-agent command-selection, API route, and
-Ansible syntax validation are complete; full workspace checks and hosted CI
-remain before production cancellation and the scoped re-release.
+The Pi5 hardening and bootstrap compatibility implementation passed focused
+local checks and both hosted CI runs. Pi5 is now running `19ccd48e` after the
+new load/reuse/migration flow completed successfully. The first StoneBase01
+canary stopped safely at the Ansible change-classification task; it had synced
+the repository but had not reached agent image lifecycle or kiosk-service
+restart. StoneBase01 remains in maintenance. This follow-up splits dependent
+facts into ordered tasks, adds a regression check for that ordering, and must
+pass hosted CI before resuming the scoped rollout.
 
 Focused evidence: `test-pi5-image-deploy.sh` passed; the Phase 3 lifecycle
 passed with the test load sample override; rolling-release 67 tests and
