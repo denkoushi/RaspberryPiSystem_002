@@ -4,7 +4,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SCRIPT="$ROOT/scripts/deploy/pi5-image-deploy.sh"
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+LOCK_HOLDER_PID=""
+cleanup() {
+  if [[ -n "$LOCK_HOLDER_PID" ]]; then
+    kill "$LOCK_HOLDER_PID" >/dev/null 2>&1 || true
+    wait "$LOCK_HOLDER_PID" 2>/dev/null || true
+  fi
+  rm -rf "$TMP"
+}
+trap cleanup EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 assert_contains() { grep -Fq "$2" <<<"$1" || fail "expected '$2' in output: $1"; }
@@ -47,10 +55,26 @@ if env "${common_env[@]}" "$SCRIPT" prepare --ref short >/dev/null 2>&1; then
   fail "short SHA was accepted"
 fi
 
-mkdir "$TMP/lock.d"
-if env "${common_env[@]}" "$SCRIPT" status >/dev/null 2>&1; then
-  fail "concurrent lock was ignored"
+if command -v flock >/dev/null 2>&1; then
+  flock "$TMP/lock" /bin/sh -c 'touch "$1"; while :; do sleep 1; done' sh "$TMP/flock-ready" &
+  LOCK_HOLDER_PID=$!
+  for _ in {1..50}; do
+    [[ -f "$TMP/flock-ready" ]] && break
+    sleep 0.1
+  done
+  [[ -f "$TMP/flock-ready" ]] || fail "kernel lock holder did not start"
+  if env "${common_env[@]}" "$SCRIPT" status >/dev/null 2>&1; then
+    fail "concurrent kernel lock was ignored"
+  fi
+  kill "$LOCK_HOLDER_PID" >/dev/null 2>&1 || true
+  wait "$LOCK_HOLDER_PID" 2>/dev/null || true
+  LOCK_HOLDER_PID=""
+else
+  mkdir "$TMP/lock.d"
+  if env "${common_env[@]}" "$SCRIPT" status >/dev/null 2>&1; then
+    fail "concurrent fallback lock was ignored"
+  fi
+  rmdir "$TMP/lock.d"
 fi
-rmdir "$TMP/lock.d"
 
 echo "PASS: pi5 image deployment lifecycle"

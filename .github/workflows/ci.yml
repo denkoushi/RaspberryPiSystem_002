@@ -10,18 +10,67 @@ concurrency:
 
 on:
   push:
-    branches: [main, develop, 'feature/**', 'feat/**', 'fix/**', 'refactor/**', 'chore/**']
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
+  change-classification:
+    name: change-classification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code with history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Test change classifier
+        run: python3 -m unittest discover -s scripts/ci/tests -p 'test_*.py'
+
+      - name: Report shadow change classification
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          changes_file="$(mktemp)"
+          trap 'rm -f "$changes_file"' EXIT
+
+          force_full_reason=""
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            force_full_reason="workflow_dispatch has no stable diff base"
+          elif [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            force_full_reason="event has no stable diff base"
+          elif ! python3 scripts/ci/collect_changed_files.py \
+            --event-name "$EVENT_NAME" \
+            --base-sha "$BASE_SHA" \
+            --head-sha "$HEAD_SHA" \
+            > "$changes_file"; then
+            force_full_reason="stable diff base is unavailable"
+          fi
+
+          if [[ -n "$force_full_reason" ]]; then
+            python3 scripts/ci/classify_changes.py \
+              --format markdown \
+              --force-full-reason "$force_full_reason" \
+              < "$changes_file" >> "$GITHUB_STEP_SUMMARY"
+          else
+            python3 scripts/ci/classify_changes.py \
+              --format markdown \
+              < "$changes_file" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   # Fast feedback: lint, workspace builds, package-level tests (no Docker DB)
   lint-build-unit:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          # test-pi5-image-deploy.sh validates migration impact against HEAD^.
+          fetch-depth: 2
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -33,12 +82,14 @@ jobs:
           bash -n scripts/server/deploy-detached.sh
           bash -n scripts/deploy/pi5-blue-green.sh
           bash -n scripts/deploy/pi5-candidate-build.sh
+          bash scripts/deploy/tests/test-pi5-image-deploy.sh
           bash scripts/deploy/tests/test-pi5-blue-green.sh
           bash scripts/deploy/tests/test-pi5-blue-green-maintenance-container.sh
           python3 scripts/deploy/tests/test_validate_expand_only_migrations.py
           python3 scripts/deploy/tests/test_deploy_status_state.py
           python3 scripts/deploy/tests/test_classify_deploy_impact.py
           python3 scripts/deploy/tests/test_rolling_release.py
+          python3 scripts/deploy/tests/test-client-agent-lifecycle-baseline.py
           bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
           bash scripts/deploy/tests/test-deploy-status-postgres.sh
           bash scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
@@ -245,6 +296,7 @@ jobs:
           export ANSIBLE_ROLES_PATH="$(pwd)/roles"
           PLAYBOOKS=(
             "playbooks/deploy.yml"
+            "playbooks/deploy-staged.yml"
             "playbooks/update-clients.yml"
             "playbooks/health-check.yml"
             "playbooks/manage-system-configs.yml"
@@ -256,6 +308,13 @@ jobs:
             "playbooks/recover-pi4-verify.yml"
           )
           python3 ../../scripts/deploy/tests/test_recover_pi4.py
+
+          for inventory in inventory.yml inventory-talkplaza.yml; do
+            echo "Parsing inventory $inventory..."
+            ansible-inventory -i "$inventory" --list > "/tmp/${inventory%.yml}.json"
+            python3 -m json.tool "/tmp/${inventory%.yml}.json" > /dev/null
+          done
+
           FAILED=0
           for playbook in "${PLAYBOOKS[@]}"; do
             echo "Checking syntax for $playbook..."
@@ -271,6 +330,18 @@ jobs:
               fi
             fi
           done
+          echo "Checking deploy-staged.yml with inventory-talkplaza.yml..."
+          if ansible-playbook --syntax-check playbooks/deploy-staged.yml -i inventory-talkplaza.yml > /tmp/ansible-syntax-check.log 2>&1; then
+            echo "OK playbooks/deploy-staged.yml (inventory-talkplaza.yml)"
+          else
+            if grep -qE "(vault password|ERROR.*vault)" /tmp/ansible-syntax-check.log && ! grep -qE "(syntax error|YAML|parse error)" /tmp/ansible-syntax-check.log; then
+              echo "WARN playbooks/deploy-staged.yml skipped (vault decrypt only)"
+            else
+              echo "FAIL playbooks/deploy-staged.yml (inventory-talkplaza.yml)"
+              cat /tmp/ansible-syntax-check.log
+              FAILED=1
+            fi
+          fi
           if [ $FAILED -eq 1 ]; then
             exit 1
           fi
@@ -527,3 +598,40 @@ jobs:
         run: |
           docker stop postgres-e2e || true
           docker rm postgres-e2e || true
+
+  ci-required:
+    name: ci-required
+    if: ${{ always() }}
+    needs:
+      - change-classification
+      - lint-build-unit
+      - api-db-and-infra
+      - security-docker
+      - e2e-smoke
+      - e2e-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every CI job to pass
+        env:
+          CHANGE_CLASSIFICATION: ${{ needs['change-classification'].result }}
+          LINT_BUILD_UNIT: ${{ needs['lint-build-unit'].result }}
+          API_DB_AND_INFRA: ${{ needs['api-db-and-infra'].result }}
+          SECURITY_DOCKER: ${{ needs['security-docker'].result }}
+          E2E_SMOKE: ${{ needs['e2e-smoke'].result }}
+          E2E_TESTS: ${{ needs['e2e-tests'].result }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for result in \
+            "change-classification=$CHANGE_CLASSIFICATION" \
+            "lint-build-unit=$LINT_BUILD_UNIT" \
+            "api-db-and-infra=$API_DB_AND_INFRA" \
+            "security-docker=$SECURITY_DOCKER" \
+            "e2e-smoke=$E2E_SMOKE" \
+            "e2e-tests=$E2E_TESTS"; do
+            echo "$result"
+            if [[ "${result#*=}" != "success" ]]; then
+              failed=1
+            fi
+          done
+          exit "$failed"

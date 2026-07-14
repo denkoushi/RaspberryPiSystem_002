@@ -2,9 +2,9 @@ name: CodeQL
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -17,42 +17,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  analyze:
+  codeql:
     name: codeql
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [javascript-typescript]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Setup pnpm workspace
-        uses: ./.github/actions/setup-pnpm-monorepo
-
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: ${{ matrix.language }}
-
-      - name: Build shared packages
-        run: |
-          pnpm --filter @raspi-system/shared-types build
-          pnpm --filter @raspi-system/part-search-core build
-          pnpm --filter @raspi-system/shelf-layout-core build
-
-      - name: Generate Prisma Client
-        run: pnpm --filter @raspi-system/api exec prisma generate
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-
-      - name: Build API
-        run: pnpm --filter @raspi-system/api build
-
-      - name: Build Web
-        run: pnpm --filter @raspi-system/web build
+          languages: javascript-typescript
+          build-mode: none
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4

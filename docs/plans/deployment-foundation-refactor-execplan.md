@@ -35,7 +35,7 @@ validation:
   - read-only plans for both production inventories before any approved release
   - one explicitly approved full-fleet acceptance per inventory, followed by a same-SHA no-op plan
 open_items:
-  - merge draft PRs 1004, 1005, and 1006 only in order and only after explicit approval
+  - "merge PRs 1005 and 1006 in order under the user's explicit approval of #1007 and #1004 -> #1005 -> #1006"
   - implement PR 4 through PR 8 only in sequence from the updated origin/main
   - obtain separate per-inventory approval before any production mutation
   - reintroduce the deferred product work only after deployment-foundation production acceptance
@@ -69,7 +69,9 @@ This work exists because the current release path has accumulated two coordinato
 - [x] (2026-07-14 22:19Z) Completed PR 2 hosted validation; the latest `ci-required`, `codeql`, `gitleaks`, and all constituent checks are green.
 - [x] (2026-07-14 22:32Z) Completed PR 3 publication and validation at Draft PR #1006; three focused inventory, exact-set rollback, and pre-checkout `flock` commits are published at head `e33ecadb`, and local, Ansible, isolated Linux, and every hosted check passes.
 - [x] (2026-07-14 23:10Z) Hardened PR 1 at head `d755a679`: the gate now validates the candidate-wide commit-object ledger, permits only A-status migration changes, uses quote-aware SQL parsing plus a built-in type allow-list, passes 22 focused tests and two independent reviews with no P1/P2 blocker, and has a green 11-of-11 hosted rerun with zero failures or skips.
-- [ ] Merge PR 1, PR 2, and PR 3 in dependency-safe order only after explicit merge approval, refreshing each later branch from the latest `origin/main` without force-pushing PR #1003.
+- [x] (2026-07-14 23:27Z) Merged the living ExecPlan PR #1007 with merge commit `3ea5d442` after 11 of 11 checks passed; the docs-only run took 8m23s wall time and about 39m46s of summed reported check time.
+- [x] (2026-07-14 23:36Z) Refreshed PR 1 from that main, reran 11 of 11 checks successfully at head `83fbb379`, and merged PR #1004 with merge commit `d9abaa6e` under the user's explicit ordered-merge approval.
+- [ ] Merge PR 2 and PR 3 in dependency-safe order under the same explicit approval, refreshing each branch from the latest `origin/main` without force-pushing PR #1003.
 - [ ] Implement and publish PR 4, the single coordinator and execution backend.
 - [ ] Implement and publish PR 5, durable fleet state and default target minimization.
 - [ ] Implement and publish PR 6, unified Pi5 and terminal executors, health checks, acknowledgements, and rollback.
@@ -153,11 +155,11 @@ This work exists because the current release path has accumulated two coordinato
 
 ## Outcomes & Retrospective
 
-The program is in progress. Three scoped implementation pull requests are now published as drafts: migration ledger safety in #1004, CI/deploy-contract shadowing in #1005, and critical inventory, rollback, and checkout-lock safety in #1006. No pull request has been merged, and PR 4 through PR 8 remain paused at the explicit merge gate.
+The program is in progress. The living ExecPlan in #1007 and migration ledger safety in #1004 are merged. CI/deploy-contract shadowing in #1005 and critical inventory, rollback, and checkout-lock safety in #1006 remain open while they are refreshed and revalidated in that order. PR 4 through PR 8 remain paused until the ordered merge gate finishes.
 
-PR 1 now validates the complete candidate commit-object ledger at head `d755a679`, enforces addition-only migration diffs, and applies a quote-aware conservative SQL allow-list. Its 22 focused tests, real 144-base/146-candidate ledger check, adversarial matrix, two independent reviews, and 11-of-11 hosted rerun pass. PR 2 proves pull-request-only feature-branch CI, stable required-check names, and the client-lifecycle baseline/merge-base contract at head `efa93df4`; its latest hosted suite is green. PR 3 is published as three focused commits at head `e33ecadb`; local, real Ansible inventory/playbook, isolated Linux critical lock tests, and its complete hosted suite pass. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
+Merged PR 1 validates the complete candidate commit-object ledger, enforces addition-only migration diffs, and applies a quote-aware conservative SQL allow-list. Its 22 focused tests, real 144-base/146-candidate ledger check, adversarial matrix, two independent reviews, and both hosted suites passed. PR 2 proves pull-request-only feature-branch CI, stable required-check names, and the client-lifecycle baseline/merge-base contract; it is being refreshed from merge commit `d9abaa6e`. PR 3 remains published as three focused commits at head `e33ecadb`; local, real Ansible inventory/playbook, isolated Linux critical lock tests, and its complete hosted suite pass. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
 
-No product deployment, real-device mutation, merge, or production acceptance action has occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
+No product deployment, real-device mutation, or production acceptance action has occurred. Only the explicitly approved repository merges #1007 and #1004 have occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
 
 At each major merge, update this section with the observable behavior delivered, the checks that passed, any time saved or regression found, and the remaining risk. After the seven-day CI observation, compare actual latency and runner-minute evidence against the thresholds in `Validation and Acceptance`. After PR 8, state whether the old marker, lock, and run formats were fully removed and whether the accepted same-SHA plan is a no-op.
 
@@ -424,14 +426,16 @@ Current replacement map at this revision:
       284e0bc5 -> 4b57a494
       c5d8a4da migration-only behavior -> a06658fb
       independent-review hardening -> d755a679
-      latest head -> d755a679, with candidate commit-object ledger, A-only diff, quote-aware parsing, and built-in type allow-list
+      reviewed implementation head -> d755a679, with candidate commit-object ledger, A-only diff, quote-aware parsing, and built-in type allow-list
+      refreshed PR head -> 83fbb379; merged -> d9abaa6e
       focused evidence -> 22 tests passed; 144 base / 146 candidate migrations verified; 19 rejects / 7 allows passed; two independent reviews found no remaining P1/P2 blocker
-      hosted state -> 11/11 success, 0 failures/skips; API shards 8m12s / 7m30s / 7m28s, lint 5m16s, CodeQL 2m33s, gitleaks 15s, security API 4m33s
+      hosted state -> both suites 11/11 success; final refreshed suite slowest API shard 8m34s
     PR 2 / #1005:
       CI baseline and deploy-contract shadow -> f0cadcdd
       hosted history-depth correction -> 98c3dae4
-      latest head -> efa93df4, including client-lifecycle baseline and merge-base diff coverage
-      hosted state -> ci-required, codeql, gitleaks, and every constituent check green
+      reviewed implementation head -> efa93df4, including client-lifecycle baseline and merge-base diff coverage
+      refreshed from main d9abaa6e -> merge commit 5b1744aa
+      hosted state -> pre-refresh ci-required, codeql, gitleaks, and every constituent check green; refreshed rerun pending
     PR 3 / #1006:
       three focused commits -> canonical inventory groups, exact-set rollback, pre-checkout flock
       latest head -> e33ecadb
@@ -515,14 +519,16 @@ GitHub Actions exposes fixed checks `ci-required`, `codeql`, and `gitleaks`. `ci
 - 本番で「故障注入」や「意図的rollback」は実施しない。隔離テストで確認する。
 - PR #1003 は参照用に残し、merge・force-pushしない。置換PR対応表をコメントしてから `superseded` としてcloseする。
 
-Revision note (2026-07-15): Created the sole active ExecPlan for the approved eight-PR deployment-foundation refactor. It records Draft PR #1004, the in-progress PR 2 and PR 3 branches, the missing baseline client-lifecycle test and its PR 6 deferral, the `38e72080` baseline, the absent `develop` branch, and the explicit prohibition on real-device actions before per-inventory approval.
+Revision note (2026-07-14): Created the sole active ExecPlan for the approved eight-PR deployment-foundation refactor. It records Draft PR #1004, the in-progress PR 2 and PR 3 branches, the missing baseline client-lifecycle test and its PR 6 deferral, the `38e72080` baseline, the absent `develop` branch, and the explicit prohibition on real-device actions before per-inventory approval.
 
-Revision note (2026-07-15, 21:43Z): Updated living status after Draft PR #1005 publication. Recorded the verified absence of duplicate push-event runs, the classifier pass, the depth-two hosted-history correction, PR #1004's runner-disk-only Trivy failure and queued rerun, PR 3's 69-test plus safety-script local result, and the continued absence of real-device actions.
+Revision note (2026-07-14, 21:43Z): Updated living status after Draft PR #1005 publication. Recorded the verified absence of duplicate push-event runs, the classifier pass, the depth-two hosted-history correction, PR #1004's runner-disk-only Trivy failure and queued rerun, PR 3's 69-test plus safety-script local result, and the continued absence of real-device actions.
 
-Revision note (2026-07-15, 22:19Z): Recorded green hosted validation for Draft PRs #1004 and #1005, publication and isolated test evidence for Draft PR #1006, and the decision to keep cancel, detach, and job operations fail-closed until PR 4 provides one transient-systemd execution identity. Reaffirmed that no merge, product deployment, real-device action, or change to open Draft PR #1003 occurred.
+Revision note (2026-07-14, 22:19Z): Recorded green hosted validation for Draft PRs #1004 and #1005, publication and isolated test evidence for Draft PR #1006, and the decision to keep cancel, detach, and job operations fail-closed until PR 4 provides one transient-systemd execution identity. Reaffirmed that no merge, product deployment, real-device action, or change to open Draft PR #1003 occurred.
 
-Revision note (2026-07-15, 22:32Z): Recorded completion of Draft PR #1006 hosted validation. CodeQL, all three API shards, lint, E2E, gitleaks, and Docker checks are green; the infrastructure shard completed in 9m05s. Merge and real-device gates remain unchanged.
+Revision note (2026-07-14, 22:32Z): Recorded completion of Draft PR #1006 hosted validation. CodeQL, all three API shards, lint, E2E, gitleaks, and Docker checks are green; the infrastructure shard completed in 9m05s. Merge and real-device gates remain unchanged.
 
-Revision note (2026-07-15, 22:45Z): Recorded the independent PR #1004 migration-gate review. Green checks are retained as evidence, but PR 1 is blocked pending candidate-wide unapplied migration validation, quote-aware SQL parsing, an addition-only migration diff contract, and a fresh hosted run.
+Revision note (2026-07-14, 22:45Z): Recorded the independent PR #1004 migration-gate review. Green checks are retained as evidence, but PR 1 is blocked pending candidate-wide unapplied migration validation, quote-aware SQL parsing, an addition-only migration diff contract, and a fresh hosted run.
 
-Revision note (2026-07-15, 23:10Z): Recorded resolution of the PR #1004 review blocker at head `d755a679`. The candidate-wide immutable ledger, A-only migration diff, quote-aware ASCII/Unicode boundaries, and built-in type allow-list pass 22 focused tests, two independent reviews, and a hosted rerun with 11 of 11 checks successful and no failures or skips. Merge and real-device gates remain unchanged.
+Revision note (2026-07-14, 23:10Z): Recorded resolution of the PR #1004 review blocker at head `d755a679`. The candidate-wide immutable ledger, A-only migration diff, quote-aware ASCII/Unicode boundaries, and built-in type allow-list pass 22 focused tests, two independent reviews, and a hosted rerun with 11 of 11 checks successful and no failures or skips. Merge and real-device gates remain unchanged.
+
+Revision note (2026-07-14, 23:36Z): Recorded the user's ordered-merge approval, the merge of ExecPlan PR #1007 at `3ea5d442`, and the refresh, 11-of-11 hosted rerun, and merge of migration PR #1004 at `d9abaa6e`. PR #1005 is now refreshing from that main; no product deployment, real-device mutation, or change to Draft PR #1003 occurred.
