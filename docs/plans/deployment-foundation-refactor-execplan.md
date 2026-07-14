@@ -66,11 +66,11 @@ This work exists because the current release path has accumulated two coordinato
 - [x] (2026-07-14 21:31Z) Recorded the user-approved eight-PR sequence, production freeze, public interfaces, acceptance gates, and PR #1003 supersession policy in this ExecPlan.
 - [x] (2026-07-14 21:31Z) Established `origin/main` commit `38e72080969631ababc7c595ef67daca067d327f` as the initial baseline and confirmed that the remote has no `develop` branch.
 - [x] (2026-07-14 21:31Z) Published PR 1 as Draft PR #1004, `fix(deploy): restore migration ledger safety`, from `agent/deploy-migration-ledger`; it contains four intentionally scoped commits.
-- [ ] (2026-07-14 21:43Z) Complete PR 1 hosted validation and review (completed: every functional check passed; remaining: the rerun of `security-docker (api)`, whose first attempt failed only because the GitHub runner ran out of disk during Trivy image export, is queued, then review and merge remain).
-- [x] (2026-07-14 21:43Z) Published PR 2 as Draft PR #1005 from `agent/ci-deploy-contract-shadow` with focused commits `f0cadcdd` and `98c3dae4`; the branch push produced no push-event workflow run, and the pull-request classifier job passed.
-- [ ] (2026-07-14 21:43Z) Complete PR 2 hosted validation and review (completed: fixed the newly connected Pi5 lifecycle test's shallow-history failure by using checkout depth two and retested locally; remaining: complete hosted checks, review, and merge).
-- [ ] (2026-07-14 21:43Z) Complete PR 3 on `agent/deploy-safety-contracts` (completed: inventory, rollback, lock, cancel, and regression implementation is under review; all 69 isolated rolling-release tests and the inventory/rollback safety script pass locally; remaining: finish review, commit, rerun the final checks, publish a Draft PR, and complete hosted checks).
-- [ ] Merge PR 1, PR 2, and PR 3 in dependency-safe order after their checks pass, refreshing each later branch from the latest `origin/main` without force-pushing PR #1003.
+- [x] (2026-07-14 22:19Z) Completed PR 1 hosted validation at Draft PR #1004; the infrastructure-only Trivy rerun passed and every check is green.
+- [x] (2026-07-14 22:19Z) Published PR 2 as Draft PR #1005 from `agent/ci-deploy-contract-shadow`; head `efa93df4` adds the client-lifecycle baseline and merge-base diff contract, and the branch push still produces no duplicate push-event workflow run.
+- [x] (2026-07-14 22:19Z) Completed PR 2 hosted validation; the latest `ci-required`, `codeql`, `gitleaks`, and all constituent checks are green.
+- [ ] (2026-07-14 22:19Z) Complete PR 3 at Draft PR #1006 (completed: published three focused inventory, exact-set rollback, and pre-checkout `flock` commits at head `e33ecadb`; local, Ansible, and isolated Linux critical tests pass; remaining: hosted checks and review).
+- [ ] Merge PR 1, PR 2, and PR 3 in dependency-safe order only after explicit merge approval, refreshing each later branch from the latest `origin/main` without force-pushing PR #1003.
 - [ ] Implement and publish PR 4, the single coordinator and execution backend.
 - [ ] Implement and publish PR 5, durable fleet state and default target minimization.
 - [ ] Implement and publish PR 6, unified Pi5 and terminal executors, health checks, acknowledgements, and rollback.
@@ -102,8 +102,12 @@ This work exists because the current release path has accumulated two coordinato
   Evidence: PR #1005 initially failed `lint-build-unit` at that test; focused commit `98c3dae4` sets fetch depth two, and the same lifecycle test passed locally afterward.
 - Observation: PR #1005's trigger cleanup works in the published branch, not only in classifier unit tests.
   Evidence: pushing `agent/ci-deploy-contract-shadow` produced zero push-event runs; CI, CodeQL, and Secret scan were created only for the `pull_request` event, and the classifier job passed.
-- Observation: PR #1004's remaining red job is runner storage exhaustion rather than a functional failure in the migration change.
-  Evidence: all functional checks passed; `security-docker (api)` failed during Trivy image export with `no space left on device`, and its failed-job rerun was queued without a code change.
+- Observation: PR #1004's only hosted failure was transient runner storage exhaustion, not a migration regression, and the rerun recovered without a code change.
+  Evidence: `security-docker (api)` first failed during Trivy image export with `no space left on device`; its failed-job rerun passed, leaving every check green.
+- Observation: the PR 2 shadow can exercise client lifecycle selection from a stable baseline and merge-base diff without importing the final executor behavior reserved for PR 6.
+  Evidence: Draft PR #1005 head `efa93df4` includes that contract, and its latest `ci-required`, `codeql`, `gitleaks`, and constituent checks all pass.
+- Observation: safe detached execution, cooperative cancellation, and job lifecycle reporting share one process-ownership problem that cannot be completed reliably before the transient systemd backend exists.
+  Evidence: Draft PR #1006 keeps those operations fail-closed before mutation while its isolated Linux test proves the non-waiting kernel lock is held before checkout.
 
 ## Decision Log
 
@@ -125,8 +129,8 @@ This work exists because the current release path has accumulated two coordinato
 - Decision: Keep terminal deployment serial, the five-minute Blue/Green stability window, and the sixty-second notice interval.
   Rationale: these are accepted safety and shop-floor behavior; this program removes duplicated work without shortening the observation or operator warning.
   Date/Author: 2026-07-15 / User
-- Decision: Defer the hosted client lifecycle test connection from PR 2 to PR 6 because the executable lifecycle contract is absent on the baseline.
-  Rationale: inventing a static placeholder, skip, or expected failure in PR 2 would create a green check with no protected behavior. PR 6 must reconstruct the real final behavior and add the test to hosted CI immediately.
+- Decision: Connect the client-lifecycle baseline and merge-base diff contract in PR 2, while leaving reconstruction of the final client executor behavior and its complete hosted contract to PR 6.
+  Rationale: PR 2 can protect the real pre-sync diff input without inventing a placeholder executor; PR 6 still owns behavior reconstructed from `c5d8a4da`, `85fe6198`, and `1f64d5b4`.
   Date/Author: 2026-07-15 / Codex
 - Decision: Make the coordinator the only rollback decision-maker and prohibit database down migrations.
   Rationale: nested rollback obscures final state, while rolling a database schema backward can make already-running API versions unsafe. Only backward-compatible Expand-only migrations are allowed.
@@ -137,12 +141,17 @@ This work exists because the current release path has accumulated two coordinato
 - Decision: Stop after CI and read-only planning and request explicit approval separately for each inventory before any production mutation.
   Rationale: repository implementation approval does not implicitly authorize changing either physical fleet.
   Date/Author: 2026-07-15 / User
+- Decision: Keep cancel, detach, and job operations fail-closed before mutation in PR 3, and implement their shared lifecycle only with the transient systemd backend in PR 4.
+  Rationale: one systemd-owned execution identity is required to avoid false detached-start success, stale process identity, and unsafe cancellation of a mutating child process.
+  Date/Author: 2026-07-15 / Codex
 
 ## Outcomes & Retrospective
 
-The program is in progress. The durable outcome so far is a scoped migration-safety Draft PR, a published CI/deploy-contract shadow Draft PR, and an executable sequence that separates urgent repairs from coordinator redesign. No production host, service, database, fleet state, Git checkout, or maintenance flag has been changed by this program.
+The program is in progress. Three scoped implementation pull requests are now published as drafts: migration ledger safety in #1004, CI/deploy-contract shadowing in #1005, and critical inventory, rollback, and checkout-lock safety in #1006. No pull request has been merged, and PR 4 through PR 8 remain paused at the explicit merge gate.
 
-PR 1 demonstrates the intended integration style: named migration commits were transplanted in order, one narrow behavior was reimplemented instead of cherry-picking a mixed commit, and every functional hosted check passed. Its remaining Trivy export rerun is infrastructure follow-up, not authorization to weaken or change the migration code. PR 2 now demonstrates that feature-branch pushes do not duplicate pull-request workflows; its first hosted failure also exposed and corrected the exact Git-history depth required by the Pi5 lifecycle test. PR 3 remains uncommitted while review continues, but 69 rolling-release tests and the isolated inventory/rollback safety script pass locally. The three worktrees remain isolated from PR #1003 and from each other.
+PR 1 demonstrates the intended integration style and now has every hosted check green, including the infrastructure-only Trivy rerun. PR 2 proves pull-request-only feature-branch CI, stable required-check names, and the client-lifecycle baseline/merge-base contract at head `efa93df4`; its latest hosted suite is green. PR 3 is published as three focused commits at head `e33ecadb`; local, real Ansible inventory/playbook, and isolated Linux critical lock tests pass, while hosted checks remain pending. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
+
+No product deployment, real-device mutation, merge, or production acceptance action has occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
 
 At each major merge, update this section with the observable behavior delivered, the checks that passed, any time saved or regression found, and the remaining risk. After the seven-day CI observation, compare actual latency and runner-minute evidence against the thresholds in `Validation and Acceptance`. After PR 8, state whether the old marker, lock, and run formats were fully removed and whether the accepted same-SHA plan is a no-op.
 
@@ -406,13 +415,18 @@ Current replacement map at this revision:
       01999607 -> b9b6c7d1
       284e0bc5 -> 4b57a494
       c5d8a4da migration-only behavior -> a06658fb
-      hosted state -> functional checks passed; security-docker(api) infrastructure rerun queued
+      hosted state -> every check green, including the infrastructure-only security-docker(api) rerun
     PR 2 / #1005:
       CI baseline and deploy-contract shadow -> f0cadcdd
       hosted history-depth correction -> 98c3dae4
-      hosted state -> pull_request-only runs observed; classifier passed; remaining checks/review pending
-    PR 3: inventory, rollback, checkout lock, and cancel safety (local tests pass; uncommitted review in progress)
-    PR 4-PR 8: pending prior merge gates
+      latest head -> efa93df4, including client-lifecycle baseline and merge-base diff coverage
+      hosted state -> ci-required, codeql, gitleaks, and every constituent check green
+    PR 3 / #1006:
+      three focused commits -> canonical inventory groups, exact-set rollback, pre-checkout flock
+      latest head -> e33ecadb
+      test state -> local, real Ansible inventory/playbook, and isolated Linux critical tests green; hosted checks pending
+      deferred interface state -> cancel, detach, and job operations fail closed before mutation until PR 4
+    PR 4-PR 8: paused at the explicit merge gate
     Product reconstruction: pending deployment-foundation production acceptance
 
 An example fleet state shape is:
@@ -493,3 +507,5 @@ GitHub Actions exposes fixed checks `ci-required`, `codeql`, and `gitleaks`. `ci
 Revision note (2026-07-15): Created the sole active ExecPlan for the approved eight-PR deployment-foundation refactor. It records Draft PR #1004, the in-progress PR 2 and PR 3 branches, the missing baseline client-lifecycle test and its PR 6 deferral, the `38e72080` baseline, the absent `develop` branch, and the explicit prohibition on real-device actions before per-inventory approval.
 
 Revision note (2026-07-15, 21:43Z): Updated living status after Draft PR #1005 publication. Recorded the verified absence of duplicate push-event runs, the classifier pass, the depth-two hosted-history correction, PR #1004's runner-disk-only Trivy failure and queued rerun, PR 3's 69-test plus safety-script local result, and the continued absence of real-device actions.
+
+Revision note (2026-07-15, 22:19Z): Recorded green hosted validation for Draft PRs #1004 and #1005, publication and isolated test evidence for Draft PR #1006, and the decision to keep cancel, detach, and job operations fail-closed until PR 4 provides one transient-systemd execution identity. Reaffirmed that no merge, product deployment, real-device action, or change to open Draft PR #1003 occurred.
