@@ -1,4 +1,5 @@
 import argparse
+import fcntl
 import importlib.util
 import json
 import subprocess
@@ -1271,6 +1272,191 @@ class AutoMinimizeTest(unittest.TestCase):
         self.assertEqual(plan['excludedHosts'], ['raspberrypi3'])
         self.assertEqual(plan['classificationComponents'], ['nfc-agent'])
         self.assertTrue(plan['canaryHold'])
+
+
+class RollingReleaseKernelLockTest(unittest.TestCase):
+    @staticmethod
+    def _args(**overrides):
+        values = {
+            'branch': 'main',
+            'inventory': 'infrastructure/ansible/inventory.yml',
+            'limit': '',
+            'emergency_override': False,
+            'reason': None,
+            'skip_canary_hold': False,
+            'canary_hold_timeout': 60,
+            'auto_minimize': False,
+        }
+        values.update(overrides)
+        return argparse.Namespace(**values)
+
+    def test_remote_command_locks_before_fetch_checkout_and_runner(self):
+        command = MODULE.locked_remote_release_command(
+            self._args(), 'a' * 40, 'run-1', remote_project=Path('/tmp/release checkout'),
+        )
+        lock_position = command.index('/usr/bin/flock -n')
+        self.assertLess(lock_position, command.index('git fetch'))
+        self.assertLess(lock_position, command.index('git checkout'))
+        self.assertLess(lock_position, command.index('--remote-run'))
+        self.assertLess(command.index('mkdir'), command.index('git fetch'))
+        self.assertLess(command.index('.rolling-terminal-release.lock.d'), command.index('git fetch'))
+        self.assertIn('ROLLING_RELEASE_LOCK_HELD=1', command)
+        self.assertIn('/tmp/release checkout/.git/rolling-release.lock', command)
+
+    def test_remote_runner_rejects_missing_outer_lock_before_state_mutation(self):
+        args = argparse.Namespace(run_id='run-unlocked')
+        with patch.dict(MODULE.os.environ, {}, clear=True), \
+                patch.object(MODULE, '_remote_run') as remote_run, \
+                patch.object(MODULE, 'atomic_json') as atomic_json:
+            with self.assertRaisesRegex(RuntimeError, 'requires the outer kernel release lock'):
+                MODULE.remote_run(args)
+        remote_run.assert_not_called()
+        atomic_json.assert_not_called()
+
+    @unittest.skipUnless(
+        Path('/usr/bin/flock').exists() and Path('/usr/bin/setsid').exists(),
+        'Linux util-linux flock/setsid are required',
+    )
+    def test_rejected_contender_cannot_change_checkout_or_create_run_state(self):
+        def git(*arguments, cwd=None, capture=False):
+            result = subprocess.run(
+                ['git', *arguments], cwd=cwd, check=True, text=True,
+                capture_output=capture,
+            )
+            return result.stdout.strip() if capture else ''
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            origin = root / 'origin.git'
+            source = root / 'source'
+            checkout = root / 'checkout'
+            git('init', '--bare', str(origin))
+            git('init', str(source))
+            git('config', 'user.email', 'deploy-test@example.invalid', cwd=source)
+            git('config', 'user.name', 'Deploy Test', cwd=source)
+            (source / 'version.txt').write_text('one\n', encoding='utf-8')
+            git('add', 'version.txt', cwd=source)
+            git('commit', '-m', 'initial', cwd=source)
+            git('branch', '-M', 'main', cwd=source)
+            git('remote', 'add', 'origin', str(origin), cwd=source)
+            git('push', '-u', 'origin', 'main', cwd=source)
+            git('clone', '--branch', 'main', str(origin), str(checkout))
+            before = git('rev-parse', 'HEAD', cwd=checkout, capture=True)
+            before_remote = git(
+                'rev-parse', 'refs/remotes/origin/main', cwd=checkout, capture=True,
+            )
+            (source / 'version.txt').write_text('two\n', encoding='utf-8')
+            git('commit', '-am', 'second', cwd=source)
+            git('push', 'origin', 'main', cwd=source)
+            desired = git('rev-parse', 'HEAD', cwd=source, capture=True)
+            self.assertNotEqual(before, desired)
+
+            command = MODULE.locked_remote_release_command(
+                self._args(), desired, 'run-contender', remote_project=checkout,
+            )
+            lock_path = checkout / '.git/rolling-release.lock'
+            with lock_path.open('a+', encoding='utf-8') as lock_handle:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                result = subprocess.run(
+                    ['/bin/bash', '-lc', command], text=True, capture_output=True,
+                )
+            after = git('rev-parse', 'HEAD', cwd=checkout, capture=True)
+            after_remote = git(
+                'rev-parse', 'refs/remotes/origin/main', cwd=checkout, capture=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(after, before)
+            self.assertEqual(after_remote, before_remote)
+            self.assertFalse(
+                (checkout / 'logs/deploy/release-runs/run-contender.json').exists(),
+            )
+
+
+class RollingReleaseCancellationTest(unittest.TestCase):
+    def test_cancel_fails_closed_before_git_ssh_or_signal_and_keeps_local_head(self):
+        before = subprocess.run(
+            ['git', '-C', str(MODULE.PROJECT), 'rev-parse', 'HEAD'],
+            check=True, text=True, capture_output=True,
+        ).stdout.strip()
+        args = MODULE.normalize_arguments(MODULE.parser().parse_args([
+            '--cancel', 'run-42', '--reason', 'operator requested safe stop',
+        ]))
+        with patch.object(MODULE, 'run') as git_or_command, \
+                patch.object(MODULE.subprocess, 'run') as subprocess_run, \
+                patch.object(MODULE.os, 'kill') as signal_process:
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r'--cancel is disabled.*systemd/cooperative backend.*--status run-42',
+            ):
+                MODULE.local_run(args)
+        git_or_command.assert_not_called()
+        subprocess_run.assert_not_called()
+        signal_process.assert_not_called()
+
+        after = subprocess.run(
+            ['git', '-C', str(MODULE.PROJECT), 'rev-parse', 'HEAD'],
+            check=True, text=True, capture_output=True,
+        ).stdout.strip()
+        self.assertEqual(after, before)
+
+    def test_cancel_cli_is_nonzero_and_explains_the_deferred_backend(self):
+        result = subprocess.run(
+            [
+                'python3', str(SCRIPT), '--cancel', 'run-42',
+                '--reason', 'operator requested safe stop',
+            ],
+            cwd=MODULE.PROJECT, text=True, capture_output=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('--cancel is disabled', result.stderr)
+        self.assertIn('systemd/cooperative backend', result.stderr)
+        self.assertIn('--status run-42', result.stderr)
+
+    def test_cancel_takes_precedence_over_status_approve_and_remote_run(self):
+        conflicts = (
+            ['--status', 'other-run'],
+            ['--approve', 'other-run'],
+            [
+                '--remote-run', '--branch', 'main', '--inventory', 'inventory.yml',
+                '--sha', 'a' * 40, '--run-id', 'other-run',
+            ],
+        )
+        for conflicting_options in conflicts:
+            with self.subTest(options=conflicting_options):
+                argv = [
+                    str(SCRIPT), '--cancel', 'run-42', '--reason', 'safe stop',
+                    *conflicting_options,
+                ]
+                with patch.object(MODULE.sys, 'argv', argv), \
+                        patch.object(MODULE, 'run') as git_or_command, \
+                        patch.object(MODULE.subprocess, 'run') as subprocess_run, \
+                        patch.object(MODULE, 'remote_run') as remote_run, \
+                        patch.object(MODULE, 'local_approve') as approve, \
+                        patch.object(MODULE.os, 'kill') as signal_process:
+                    with self.assertRaisesRegex(RuntimeError, '--cancel is disabled'):
+                        MODULE.main()
+                git_or_command.assert_not_called()
+                subprocess_run.assert_not_called()
+                remote_run.assert_not_called()
+                approve.assert_not_called()
+                signal_process.assert_not_called()
+
+    def test_detach_and_job_fail_before_git_or_ssh(self):
+        for option in ('--detach', '--job'):
+            with self.subTest(option=option):
+                args = MODULE.normalize_arguments(MODULE.parser().parse_args([
+                    'main', 'infrastructure/ansible/inventory.yml', option,
+                ]))
+                with patch.object(MODULE, 'run') as git_or_command, \
+                        patch.object(MODULE.subprocess, 'run') as subprocess_run:
+                    with self.assertRaisesRegex(
+                        RuntimeError,
+                        'disabled until the locked systemd backend is available',
+                    ):
+                        MODULE.local_run(args)
+                git_or_command.assert_not_called()
+                subprocess_run.assert_not_called()
 
 
 if __name__ == '__main__':

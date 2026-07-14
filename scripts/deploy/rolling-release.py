@@ -33,6 +33,7 @@ from terminal_notice import (
 )
 
 PROJECT = Path(__file__).resolve().parents[2]
+REMOTE_PROJECT = Path('/opt/RaspberryPiSystem_002')
 ANSIBLE_DIRECTORY = PROJECT / 'infrastructure/ansible'
 STATUS_TOOL = PROJECT / 'scripts/deploy/deploy-status-state.py'
 PHASE3 = PROJECT / 'scripts/deploy/pi5-blue-green.sh'
@@ -45,6 +46,7 @@ FULL_SHA_RE = re.compile(r'^[0-9a-f]{40}$')
 CLEANUP_LOCK_CONFLICT = 'another Pi5 Blue/Green operation is running'
 CLEANUP_LOCK_RETRY_TIMEOUT = 30
 CLEANUP_LOCK_RETRY_INTERVAL = 2
+ROLLING_RELEASE_LOCK_ENV = 'ROLLING_RELEASE_LOCK_HELD'
 # Kiosk-scoped components used to detect barcode-agent-only rollouts.
 KIOSK_SCOPE_COMPONENTS = frozenset({
     'nfc-agent',
@@ -982,20 +984,56 @@ def _remote_run(args: argparse.Namespace) -> int:
 
 
 def remote_run(args: argparse.Namespace) -> int:
-    lock = PROJECT / 'logs/.rolling-terminal-release.lock.d'
-    try:
-        lock.mkdir()
-        (lock / 'owner').write_text(json.dumps({'pid': os.getpid(), 'runId': args.run_id, 'startedAt': utc_now()}), encoding='utf-8')
-    except FileExistsError as error:
-        raise RuntimeError(f'another rolling terminal release is active: {lock}') from error
-    try:
-        return _remote_run(args)
-    finally:
-        try:
-            (lock / 'owner').unlink(missing_ok=True)
-            lock.rmdir()
-        except OSError:
-            pass
+    if os.environ.get(ROLLING_RELEASE_LOCK_ENV) != '1':
+        raise RuntimeError('--remote-run requires the outer kernel release lock')
+    return _remote_run(args)
+
+
+def locked_remote_release_command(
+    args: argparse.Namespace,
+    sha: str,
+    run_id: str,
+    *,
+    remote_project: Path = REMOTE_PROJECT,
+) -> str:
+    """Build a remote command whose first deployment action is kernel locking."""
+    runner = [
+        'env', f'{ROLLING_RELEASE_LOCK_ENV}=1',
+        'python3', 'scripts/deploy/rolling-release.py', '--remote-run',
+        '--branch', args.branch,
+        '--sha', sha,
+        '--inventory', Path(args.inventory).name,
+        '--run-id', run_id,
+        '--limit', args.limit or '',
+        '--canary-hold-timeout', str(args.canary_hold_timeout),
+    ]
+    if args.emergency_override:
+        runner.extend(['--emergency-override', '--reason', args.reason])
+    if args.skip_canary_hold:
+        runner.append('--skip-canary-hold')
+    if args.auto_minimize:
+        runner.append('--auto-minimize')
+    # Transitional bridge for origin/main's directory lock. A pre-existing
+    # directory is never removed here: stale ownership remains fail-closed
+    # until PR 4 replaces both mechanisms with the durable systemd backend.
+    legacy_lock = remote_project / 'logs/.rolling-terminal-release.lock.d'
+    legacy_guard = (
+        f'legacy_lock={shlex.quote(str(legacy_lock))}; '
+        'if ! mkdir "$legacy_lock"; then exit 75; fi; '
+        'trap \'rmdir "$legacy_lock"\' EXIT'
+    )
+    release_steps = ' && '.join((
+        shlex.join(['git', 'fetch', 'origin', args.branch]),
+        shlex.join(['git', 'checkout', '--detach', sha]),
+        shlex.join(runner),
+    ))
+    body = f'{legacy_guard}; {release_steps}'
+    lock_file = remote_project / '.git/rolling-release.lock'
+    return (
+        f'cd {shlex.quote(str(remote_project))} && '
+        f'/usr/bin/flock -n {shlex.quote(str(lock_file))} '
+        f'/usr/bin/setsid --wait /bin/bash -lc {shlex.quote(body)}'
+    )
 
 
 def local_approve(run_id: str) -> int:
@@ -1015,7 +1053,19 @@ def local_approve(run_id: str) -> int:
     return 0
 
 
+def local_cancel(args: argparse.Namespace) -> int:
+    """Fail closed until PR 4 provides cooperative systemd cancellation."""
+    raise RuntimeError(
+        '--cancel is disabled until the systemd/cooperative backend is available; '
+        f'use --status {args.cancel} and follow the current recovery runbook'
+    )
+
+
 def local_run(args: argparse.Namespace) -> int:
+    if args.cancel:
+        return local_cancel(args)
+    if args.detach or args.job:
+        raise RuntimeError('--detach and --job are disabled until the locked systemd backend is available')
     if args.status:
         host = os.environ.get('RASPI_SERVER_HOST')
         if not host:
@@ -1046,30 +1096,7 @@ def local_run(args: argparse.Namespace) -> int:
     if not host:
         raise RuntimeError('RASPI_SERVER_HOST is required for a rolling release')
     run_id = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S') + '-' + secrets.token_hex(3)
-    emergency = ''
-    if args.emergency_override:
-        emergency = f' --emergency-override --reason {shlex.quote(args.reason)}'
-    hold = f' --canary-hold-timeout {shlex.quote(str(args.canary_hold_timeout))}'
-    if args.skip_canary_hold:
-        hold += ' --skip-canary-hold'
-    if args.auto_minimize:
-        hold += ' --auto-minimize'
-    remote = (
-        'cd /opt/RaspberryPiSystem_002 && '
-        f'git fetch origin {shlex.quote(args.branch)} && git checkout --detach {shlex.quote(sha)} && '
-        f'python3 scripts/deploy/rolling-release.py --remote-run --branch {shlex.quote(args.branch)} '
-        f'--sha {shlex.quote(sha)} --inventory {shlex.quote(Path(args.inventory).name)} --run-id {shlex.quote(run_id)} '
-        f'--limit {shlex.quote(args.limit or "")}{emergency}{hold}'
-    )
-    if args.detach or args.job:
-        log_path = f'/opt/RaspberryPiSystem_002/logs/deploy/release-runs/{run_id}.log'
-        detached = (
-            f'mkdir -p /opt/RaspberryPiSystem_002/logs/deploy/release-runs && '
-            f'nohup /bin/bash -lc {shlex.quote(remote)} > {shlex.quote(log_path)} 2>&1 & echo $!'
-        )
-        subprocess.run(['ssh', host, detached], check=True)
-        print(json.dumps({'runId': run_id, 'state': 'started', 'logFile': log_path}, ensure_ascii=False))
-        return 0
+    remote = locked_remote_release_command(args, sha, run_id)
     subprocess.run(['ssh', host, remote], check=True)
     return 0
 
@@ -1086,6 +1113,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument('--limit', default='')
     value.add_argument('--status')
     value.add_argument('--approve')
+    value.add_argument('--cancel')
     value.add_argument('--print-plan', '--dry-run', action='store_true')
     # Kept for compatibility with the previous wrapper.  The remote runner
     # records the run state, so callers can continue to use --status.
@@ -1122,6 +1150,12 @@ def main() -> int:
     args = normalize_arguments(args)
     if unknown:
         raise RuntimeError(f'unsupported options in canonical rolling release: {" ".join(unknown)}')
+    if args.cancel and not args.reason:
+        raise RuntimeError('--cancel requires --reason')
+    if args.cancel:
+        return local_cancel(args)
+    if args.detach or args.job:
+        raise RuntimeError('--detach and --job are disabled until the locked systemd backend is available')
     if args.emergency_override and not args.reason:
         raise RuntimeError('--emergency-override requires --reason')
     if args.remote_run:
