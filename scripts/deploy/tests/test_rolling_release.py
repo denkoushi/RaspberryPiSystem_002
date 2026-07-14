@@ -566,6 +566,27 @@ class DeployClassificationBaselineTest(unittest.TestCase):
             self.assertTrue(MODULE.pi5_release_required(self.TARGET))
 
 
+class ClientOnlyCompatibilityTest(unittest.TestCase):
+    INVENTORY = {
+        'server': {'hosts': ['raspberrypi5']},
+    }
+
+    def test_requires_a_nonempty_terminal_only_selection(self):
+        with self.assertRaisesRegex(RuntimeError, 'non-empty terminal-only'):
+            MODULE.validate_client_only_compatibility(self.INVENTORY, None, '')
+        with self.assertRaisesRegex(RuntimeError, 'selected no hosts'):
+            MODULE.validate_client_only_compatibility(self.INVENTORY, [], 'raspi4-sessaku-01')
+        with self.assertRaisesRegex(RuntimeError, 'exclude the Pi5'):
+            MODULE.validate_client_only_compatibility(
+                self.INVENTORY, ['raspberrypi5'], 'raspberrypi5',
+            )
+
+    def test_accepts_an_explicit_terminal_only_selection(self):
+        MODULE.validate_client_only_compatibility(
+            self.INVENTORY, ['raspi4-sessaku-01'], 'raspi4-sessaku-01',
+        )
+
+
 class CanaryHoldTest(unittest.TestCase):
     def _args(self, **overrides):
         values = {
@@ -854,6 +875,7 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
             'pi5Required': True,
             'targets': [],
             'limit': 'raspberrypi5',
+            'pi5CompatibilityOverride': False,
             'autoMinimize': False,
             'minimized': False,
             'excludedHosts': [],
@@ -1002,7 +1024,7 @@ class AutoMinimizeTest(unittest.TestCase):
         values.update(overrides)
         return argparse.Namespace(**values)
 
-    def _run_remote(self, *, classification, targets=None, inventory=None, args=None):
+    def _run_remote(self, *, classification, targets=None, inventory=None, args=None, selected=None):
         targets = targets if targets is not None else list(self.ALL_TARGETS)
         inventory = inventory if inventory is not None else self.INVENTORY
         played = []
@@ -1014,7 +1036,7 @@ class AutoMinimizeTest(unittest.TestCase):
             run_directory = Path(temporary)
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value=inventory), \
-                    patch.object(MODULE, 'selected_hosts', return_value=None), \
+                    patch.object(MODULE, 'selected_hosts', return_value=selected), \
                     patch.object(MODULE, 'release_targets', return_value=targets), \
                     patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
                     patch.object(MODULE, 'pi5_release_required', return_value=False), \
@@ -1043,6 +1065,30 @@ class AutoMinimizeTest(unittest.TestCase):
         self.assertTrue(payload['plan']['minimized'])
         self.assertEqual(payload['plan']['classificationComponents'], ['nfc-agent'])
         self.assertTrue(payload['plan']['autoMinimize'])
+
+    def test_explicit_client_only_compatibility_skips_pi5_and_records_reason(self):
+        classification = {
+            'server': True, 'kiosk': True, 'signage': True, 'migration': False,
+            'components': ['unknown'],
+        }
+        inventory = {**self.INVENTORY, 'server': {'hosts': ['raspberrypi5']}}
+        args = self._args(limit='kiosk-a', client_only_compatible=True)
+        result, played, payload, ensure = self._run_remote(
+            classification=classification,
+            targets=[{'host': 'kiosk-a', 'clientId': 'a', 'terminalType': 'kiosk'}],
+            inventory=inventory,
+            args=args,
+            selected=['kiosk-a'],
+        )
+        self.assertEqual(result, 0)
+        ensure.assert_not_called()
+        self.assertEqual(played, ['kiosk-a'])
+        self.assertFalse(payload['plan']['pi5Required'])
+        self.assertTrue(payload['plan']['pi5CompatibilityOverride'])
+        self.assertEqual(payload['pi5'], {
+            'state': 'not-required',
+            'reason': 'explicit-client-only-compatible',
+        })
 
     def test_barcode_agent_only_keeps_barcode_enabled_hosts(self):
         classification = {

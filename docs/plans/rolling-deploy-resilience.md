@@ -93,9 +93,8 @@ verified recovery.
   fresh-SHA candidate completed in under three minutes with the expensive
   runtime layers cached, then completed migration validation, Blue/Green
   switch, signage resume, and the five-minute stability window.
-- [ ] Recover RoboDrill01 and complete its verified update; separately decide
-  whether to update the reachable Sessaku-01 now that the original run has
-  failed closed.
+- [x] Leave RoboDrill01 and FJV60/80 in maintenance today; select only the
+  reachable Sessaku-01 for a separate verified update.
 - [ ] Complete the Sessaku-01 update after correcting its pre-sync Git
   ownership ordering, which made the agent classifier conservatively select
   a rebuild even though no NFC build input changed.
@@ -159,6 +158,11 @@ verified recovery.
   the safe fallback selects `--build`. The target had no NFC build-input
   change, so the standard cancel retained maintenance while the `.git`
   ownership correction was moved before previous-HEAD capture.
+- The existing `--client-only-compatible` option only passed the local impact
+  warning; it was not forwarded to the canonical coordinator. Without a
+  correction, a Sessaku-only retry would still update Pi5. The option now
+  requires an explicit non-empty terminal-only limit that excludes Pi5, is
+  verified again on Pi5, and records its use in the release state.
 - The StoneBase01 canary exposed an Ansible evaluation-order error: one
   `set_fact` task calculated image-build facts and runtime-recreate facts that
   referenced them together. Ansible evaluates that task's expressions before
@@ -171,6 +175,13 @@ verified recovery.
   kiosks after the current run is safely cancelled.
   Rationale: an unreachable terminal cannot prove rollback or normal UI state.
   Date/Author: 2026-07-14 / user
+- Decision: retry only Sessaku-01 with the explicit client-only compatibility
+  contract; do not touch Pi5, FJV60/80, or RoboDrill01 in that run.
+  Rationale: this source change repairs terminal-side deployment preparation,
+  while Pi5 already runs the latest runtime release. The override has two
+  independent checks that the selected inventory limit is non-empty and
+  excludes the Pi5 server, and it is written to the run record.
+  Date/Author: 2026-07-14 / user and Codex
 
 ## Outcomes & Retrospective
 

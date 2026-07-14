@@ -282,6 +282,19 @@ def selected_hosts(path: str, limit: str) -> list[str] | None:
     return [line.strip() for line in output.splitlines() if line.strip() and not line.lstrip().startswith('hosts')]
 
 
+def validate_client_only_compatibility(inventory: dict[str, Any], selected: list[str] | None, limit: str) -> None:
+    """Require an explicit terminal-only selection before skipping Pi5 work."""
+    if not limit or selected is None:
+        raise RuntimeError('--client-only-compatible requires a non-empty terminal-only --limit')
+    if not selected:
+        raise RuntimeError('--client-only-compatible selected no hosts')
+    server_hosts = set((inventory.get('server') or {}).get('hosts') or [])
+    if not server_hosts:
+        raise RuntimeError('could not resolve the Pi5 server group for --client-only-compatible')
+    if server_hosts.intersection(selected):
+        raise RuntimeError('--client-only-compatible must exclude the Pi5 server')
+
+
 def state_command(*arguments: str) -> None:
     run(['python3', str(STATUS_TOOL), '--file', str(PROJECT / 'config/deploy-status.json'), *arguments])
 
@@ -907,7 +920,14 @@ def resolve_terminal_targets(inventory: str, limit: str) -> tuple[list[dict[str,
         return None, ['ansible-inventory unavailable']
 
 
-def build_print_plan(branch: str, inventory: str, limit: str, *, auto_minimize: bool = False) -> dict[str, Any]:
+def build_print_plan(
+    branch: str,
+    inventory: str,
+    limit: str,
+    *,
+    auto_minimize: bool = False,
+    client_only_compatible: bool = False,
+) -> dict[str, Any]:
     """Auditable shadow plan for --print-plan; always returns JSON-serializable data."""
     warnings: list[str] = []
     sha, sha_warnings = resolve_release_sha(branch)
@@ -924,6 +944,9 @@ def build_print_plan(branch: str, inventory: str, limit: str, *, auto_minimize: 
             pi5_required = bool(classification.get('server') or classification.get('migration'))
         else:
             pi5_required = True
+
+    if client_only_compatible:
+        pi5_required = False
 
     terminal_targets, target_warnings = resolve_terminal_targets(inventory, limit)
     warnings.extend(target_warnings)
@@ -961,6 +984,7 @@ def build_print_plan(branch: str, inventory: str, limit: str, *, auto_minimize: 
         'minimized': minimized,
         'excludedHosts': excluded_hosts,
         'classificationComponents': classification_components,
+        'pi5CompatibilityOverride': client_only_compatible,
         'warnings': warnings,
     }
 
@@ -992,10 +1016,16 @@ def _remote_run(args: argparse.Namespace) -> int:
     else:
         pi5_required = pi5_release_required(args.sha)
 
+    client_only_compatible = bool(getattr(args, 'client_only_compatible', False))
+    if client_only_compatible:
+        validate_client_only_compatibility(inventory_data, selected, args.limit)
+        pi5_required = False
+
     plan = {
         'pi5Required': pi5_required,
         'targets': [target['host'] for target in targets],
         'limit': args.limit or None,
+        'pi5CompatibilityOverride': client_only_compatible,
         **plan_minimize,
     }
 
@@ -1027,7 +1057,10 @@ def _remote_run(args: argparse.Namespace) -> int:
         if pi5_required:
             ensure_pi5_release(args.sha, state)
         else:
-            state.payload['pi5'] = {'state': 'not-required'}
+            state.payload['pi5'] = {
+                'state': 'not-required',
+                **({'reason': 'explicit-client-only-compatible'} if client_only_compatible else {}),
+            }
             state.save()
         for index, target_spec in enumerate(targets):
             target = state.target(target_spec['host'])
@@ -1238,9 +1271,20 @@ def local_run(args: argparse.Namespace) -> int:
         return local_cancel(args)
     if not args.branch or not args.inventory:
         raise RuntimeError('branch and inventory are required')
+    client_only_compatible = bool(getattr(args, 'client_only_compatible', False))
+    if client_only_compatible:
+        compatibility_inventory = inventory_json(args.inventory)
+        compatibility_selected = selected_hosts(args.inventory, args.limit)
+        validate_client_only_compatibility(compatibility_inventory, compatibility_selected, args.limit)
     if args.print_plan:
         print(json.dumps(
-            build_print_plan(args.branch, args.inventory, args.limit or '', auto_minimize=args.auto_minimize),
+            build_print_plan(
+                args.branch,
+                args.inventory,
+                args.limit or '',
+                auto_minimize=args.auto_minimize,
+                client_only_compatible=client_only_compatible,
+            ),
             ensure_ascii=False,
         ))
         return 0
@@ -1265,12 +1309,13 @@ def local_run(args: argparse.Namespace) -> int:
         hold += ' --skip-canary-hold'
     if args.auto_minimize:
         hold += ' --auto-minimize'
+    compatibility = ' --client-only-compatible' if client_only_compatible else ''
     remote = (
         'cd /opt/RaspberryPiSystem_002 && '
         f'git fetch origin {shlex.quote(args.branch)} && git checkout --detach {shlex.quote(sha)} && '
         f'python3 scripts/deploy/rolling-release.py --remote-run --branch {shlex.quote(args.branch)} '
         f'--sha {shlex.quote(sha)} --inventory {shlex.quote(Path(args.inventory).name)} --run-id {shlex.quote(run_id)} '
-        f'--limit {shlex.quote(args.limit or "")}{emergency}{hold}'
+        f'--limit {shlex.quote(args.limit or "")}{compatibility}{emergency}{hold}'
     )
     if args.detach or args.job:
         log_path = f'/opt/RaspberryPiSystem_002/logs/deploy/release-runs/{run_id}.log'
