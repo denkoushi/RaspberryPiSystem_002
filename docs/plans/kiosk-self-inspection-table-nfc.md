@@ -20,6 +20,10 @@ The two filter fields still accept typing and still search production-schedule c
 - [x] (2026-07-14 11:20 JST) Applied all 144 migrations and ran participant SQL, `EXPLAIN (ANALYZE, BUFFERS)`, and 71 related integration tests in uniquely named disposable Postgres resources, then verified complete cleanup.
 - [x] (2026-07-14 11:21 JST) Passed responsive Playwright acceptance at 1280x760, 1536x864, and 1920x1080 plus the inspection-drawing acceptance check; visually inspected all four screenshots.
 - [x] (2026-07-14 11:41 JST) Passed the final full API and Web test suites and completed lint, build, browser, and diff checks after all contract assertions were added.
+- [x] (2026-07-14 12:45 JST) Committed and pushed the implementation, opened draft PR #1001, and confirmed all 19 push/PR/CodeQL/secret-scan checks on application commit `ed7e9634`.
+- [x] (2026-07-14 13:04 JST) Held the first StoneBase01 canary after its real screen exposed one remaining explanatory string, removed that string, reran the focused Web/Playwright/lint/build checks, and pushed the corrective commit without approving the remaining terminals.
+- [x] (2026-07-14 13:32 JST) Completed production rolling run `20260714-034857-6330ec`: Pi5 Blue/Green switched to green and stabilized, StoneBase01 passed the explicit canary gate, and all five Pi4 kiosks reached `ed7e9634` with zero final Ansible failures or unreachable hosts. Pi3 signage was intentionally excluded.
+- [x] (2026-07-14 13:36 JST) Rechecked the actual 1920x1080 StoneBase01 screen, all five kiosk/NFC service stacks, the production session-summary API, the active Green API migration status, Pi5 runtime consistency, and release-lock cleanup.
 
 ## Surprises & Discoveries
 
@@ -37,6 +41,14 @@ The two filter fields still accept typing and still search production-schedule c
   Evidence: the strengthened disposable-DB integration assertion initially received `undefined`; adding both empty arrays to that serializer made all 71 related tests pass.
 - Observation: one disposable Prisma migration launch returned an intermittent schema-engine error before applying data changes.
   Evidence: the installed trap removed its unique container, volume, and network; a fresh uniquely named retry applied all 144 migrations and passed. No existing Docker or database resource was contacted.
+- Observation: the durable Pi5 success marker was not an ancestor of the new feature base because the preceding release used a squash-merge topology, so automatic impact minimization conservatively included signage.
+  Evidence: the unbounded shadow plan warned and selected Pi3. Comparing the marker and target showed only deployment-document divergence outside the functional base; the production run therefore used the explicit `server:kiosk` limit and kept Pi3 untouched.
+- Observation: the first deployment attempt stopped before any switch because the Pi5 one-minute load average was 5.94, above its 3.00 resource gate.
+  Evidence: run `20260714-025516-f3b4b9` failed at the pre-switch load gate. After load returned to 2.29, the retry passed the same gate; no Pi4 terminal had been entered and no active slot had changed in the failed run.
+- Observation: automated layout acceptance did not catch a second copy of the old explanatory text in the production-data branch.
+  Evidence: the real StoneBase01 Wayland screenshot after run `20260714-030543-22c12e` still showed `仕掛中（更新の新しい順・全端末共通）`. The canary was not approved, the remaining four terminals stayed unchanged, and commit `ed7e9634` removed the final copy before the successful release.
+- Observation: `verify-phase12-real.sh` still checks Prisma through the stopped legacy Compose `api` service after a Phase 3 Blue/Green cutover.
+  Evidence: its summary was PASS 43 / WARN 1 / FAIL 1 solely because `docker-compose.server.yml` reported `service "api" is not running`. Direct execution in the active `bluegreen-api-green-1` container found all 144 migrations and reported `Database schema is up to date!`; Blue/Green state was `runtimeStatus: consistent`, migration `applied`, and both deployment locks were free.
 
 ## Decision Log
 
@@ -58,6 +70,12 @@ The two filter fields still accept typing and still search production-schedule c
 - Decision: Do not add a migration or ADR.
   Rationale: the required employee ID is already persisted, the public change is backward-compatible, and no new architectural or persistence boundary was introduced.
   Date/Author: 2026-07-14 / Codex
+- Decision: Limit production deployment to `server:kiosk` rather than accepting the conservative signage target from the topology-warning plan.
+  Rationale: the feature changes the API/Web kiosk application but not signage, and the explicit limit preserved the requested production scope while still deploying Pi5 before every kiosk. The final warning-free shadow plan listed Pi5 and exactly five kiosks.
+  Date/Author: 2026-07-14 / Codex
+- Decision: Treat the real canary screen as a release gate and redeploy a corrected immutable SHA instead of approving the first successful Ansible run.
+  Rationale: the visible explanatory copy violated the acceptance criteria even though tests and services were green. Holding the rollout limited exposure to one kiosk and allowed all remaining terminals to receive only the corrected SHA.
+  Date/Author: 2026-07-14 / Codex
 
 ## Outcomes & Retrospective
 
@@ -65,7 +83,11 @@ The requested behavior is implemented on `feat/kiosk-self-inspection-table-nfc`.
 
 Employee participation is now serialized consistently through list, resolve, complete, reset, out-of-tolerance approval, and record-approval results. Same-name employees remain distinct by ID; deleted historical employees remain displayable by their name snapshot but cannot match NFC search. No migration was generated.
 
-All requested automated gates passed. The implementation also includes a deterministic Playwright acceptance test, which makes future layout regressions observable without a production database. No deployment, push, pull request, merge, or existing database/Docker resource mutation was performed.
+All requested automated gates passed. The implementation also includes a deterministic Playwright acceptance test, which makes future layout regressions observable without a production database. Commits `3a784d5a` and `ed7e9634` were pushed to `feat/kiosk-self-inspection-table-nfc`, and draft PR #1001 remains unmerged.
+
+Production rolling run `20260714-034857-6330ec` completed successfully on Pi5 and all five Pi4 kiosks. The active Green API/Web slot is consistent and cleaned, all terminals run `ed7e9634`, and Pi3 signage was not changed. The production API returned the additive and legacy participant arrays together with `listLimit=200`; the active API reported all 144 migrations current. On StoneBase01, a Wayland capture of the real 1920x1080 display confirmed the compact one-line header, three table panes, both scanners, both editable dropdowns, and removal of the explanatory copy. The temporary captures and navigation logs were deleted and the kiosk was returned to its normal screen.
+
+The canary gate materially improved the result: it caught a string that the mocked browser acceptance did not exercise, and the remaining four kiosks never received that intermediate SHA. The only unresolved operational note is that the general Phase 12 verifier's migration check still targets the stopped legacy Compose service after Blue/Green activation; direct active-slot verification passed, so this is a verifier-maintenance issue rather than an application or database failure.
 
 ## Context and Orientation
 
