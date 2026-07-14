@@ -89,6 +89,10 @@ verified recovery.
 - [x] Move API/Web release metadata labels after SHA-independent runtime
   layers, and add a regression assertion so future source-changing releases
   reuse cached OS/OCR, dependency, browser, and Caddy layers.
+- [x] Deploy `99cd44a6` to Pi5 only after all 19 hosted checks passed. The
+  fresh-SHA candidate completed in under three minutes with the expensive
+  runtime layers cached, then completed migration validation, Blue/Green
+  switch, signage resume, and the five-minute stability window.
 - [ ] Recover RoboDrill01 and complete its verified update; separately decide
   whether to update the reachable Sessaku-01 now that the original run has
   failed closed.
@@ -177,6 +181,13 @@ metadata labels now follow the stable API/Web runtime layers, so a genuine new
 SHA retains the cached OS/OCR, production-dependency, browser, and Caddy
 layers as well. The 3.00 threshold remains unchanged because it is a safety
 headroom policy, not a source-build cache solution.
+
+The `99cd44a6` Pi5-only field release verified the cache-layout correction:
+the candidate built in under three minutes (rather than the previous roughly
+25-minute fresh-SHA build), all post-build load samples remained below 3.00,
+and the standard five-minute Blue/Green window completed with public health,
+database, and Playwright checks healthy. No kiosk was included in that
+Pi5-only run.
 
 Focused evidence: `test-pi5-image-deploy.sh` passed; the Phase 3 lifecycle
 passed with the test load sample override; rolling-release 67 tests and
