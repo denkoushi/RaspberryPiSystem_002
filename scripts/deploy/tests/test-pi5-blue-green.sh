@@ -214,10 +214,10 @@ grep -Fq 'refusing compose up (possible rewritten state)' "$SCRIPT" || fail "rec
 grep -Fq 'legacy_compose_restore' "$SCRIPT" || fail "legacy restore does not use captured images"
 grep -Fq 'ensure_gateway_maintenance' "$SCRIPT" || fail "bootstrap failure path lacks gateway maintenance retention"
 grep -Fq 'spawn_stability_monitor' "$SCRIPT" || fail "reboot/reconcile monitor resume helper is missing"
-grep -Fq 'Expand-only allow-list' "$SCRIPT" || fail "migration allow-list guard is missing"
+grep -Fq 'migration_gate_validate' "$SCRIPT" || fail "migration ledger gate is missing"
 grep -Fq 'finished_at IS NOT NULL AND rolled_back_at IS NULL' "$SCRIPT" \
   || fail "migration recovery guard does not restrict checksums to completed, non-rolled-back rows"
-grep -Fq 'validate-expand-only-migrations.py' "$SCRIPT" \
+grep -Fq 'validate-expand-only-migrations.py' "$ROOT/scripts/deploy/lib/migration-gate.sh" \
   || fail "migration recovery guard does not use the shared validator"
 grep -Fq "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" "$SCRIPT" \
   || fail "candidate migration command does not bypass the API default Node command"
@@ -328,36 +328,67 @@ grep -Fq "'acknowledged': False" "$SCRIPT" || fail "Blue/Green alert payload is 
 grep -Fq 'pi5-phase3-legacy-guard.sh' "$ROOT/scripts/deploy/pi5-image-deploy.sh" || fail "Phase 2 script is missing the Phase 3 legacy guard"
 
 VALIDATOR="$ROOT/scripts/deploy/validate-expand-only-migrations.py"
-grep -Fq 'validate_applied_history' "$VALIDATOR" \
-  || fail "migration validator does not verify every applied migration file"
-RESTORED_MIGRATION_DIR="$TMP/20260714000000_restored_history"
-NEW_MIGRATION_DIR="$TMP/20260714000001_new_expand"
-mkdir -p "$RESTORED_MIGRATION_DIR" "$NEW_MIGRATION_DIR"
-printf '%s\n' 'WITH rows AS (SELECT 1) UPDATE "Example" SET "value" = 1;' >"$RESTORED_MIGRATION_DIR/migration.sql"
-printf '%s\n' 'ALTER TABLE "Example" ADD COLUMN "note" TEXT;' >"$NEW_MIGRATION_DIR/migration.sql"
-restored_checksum="$(python3 - "$RESTORED_MIGRATION_DIR/migration.sql" <<'PY'
+MIGRATION_GATE="$ROOT/scripts/deploy/lib/migration-gate.sh"
+grep -Fq 'load_candidate_migrations' "$VALIDATOR" \
+  || fail "migration validator does not enumerate the candidate commit ledger"
+grep -Fq 'migration_gate_validate' "$SCRIPT" \
+  || fail "Blue/Green migration guard does not use the shared ledger gate"
+
+GATE_REPO="$TMP/migration-gate-repo"
+git init -q "$GATE_REPO"
+git -C "$GATE_REPO" config user.name 'Migration Gate Test'
+git -C "$GATE_REPO" config user.email 'migration-gate@example.invalid'
+GATE_MIGRATION_NAME='20260714000000_zero_new'
+GATE_MIGRATION="$GATE_REPO/apps/api/prisma/migrations/$GATE_MIGRATION_NAME/migration.sql"
+mkdir -p "$(dirname "$GATE_MIGRATION")" "$GATE_REPO/scripts/deploy"
+printf '%s\n' 'ALTER TABLE "Example" ADD COLUMN "note" TEXT;' >"$GATE_MIGRATION"
+printf '%s\n' 'provider = "postgresql"' >"$GATE_REPO/apps/api/prisma/migrations/migration_lock.toml"
+git -C "$GATE_REPO" add apps/api/prisma/migrations
+git -C "$GATE_REPO" commit -qm 'migration gate fixture'
+GATE_COMMIT="$(git -C "$GATE_REPO" rev-parse HEAD)"
+GATE_CHECKSUM="$(python3 - "$GATE_MIGRATION" <<'PY'
 import hashlib, pathlib, sys
 print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
 PY
 )"
-if printf '\n' | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" "$RESTORED_MIGRATION_DIR/migration.sql" >/dev/null 2>&1; then
-  fail "disallowed unapplied migration was accepted"
+cp "$VALIDATOR" "$GATE_REPO/scripts/deploy/validate-expand-only-migrations.py"
+# shellcheck source=../lib/migration-gate.sh
+source "$MIGRATION_GATE"
+ledger_for_zero_new() { printf '%s|%s\n' "$GATE_MIGRATION_NAME" "$GATE_CHECKSUM"; }
+ledger_empty() { :; }
+ledger_failure() { return 23; }
+ledger_missing() { printf '%s|%064d\n' '20260714000000_missing' 0; }
+ledger_mismatch() { printf '%s|%064d\n' "$GATE_MIGRATION_NAME" 0; }
+GATE_TMPDIR="$TMP/migration-gate-tmp"
+mkdir -p "$GATE_TMPDIR"
+assert_gate_temp_empty() {
+  [[ -z "$(find "$GATE_TMPDIR" -mindepth 1 -maxdepth 1 -print -quit)" ]] \
+    || fail "migration gate left a ledger snapshot behind"
+}
+
+TMPDIR="$GATE_TMPDIR" migration_gate_validate \
+  "$GATE_REPO" "$GATE_COMMIT" "$GATE_COMMIT" ledger_for_zero_new >/dev/null \
+  || fail "zero-new guard path did not verify the complete applied ledger"
+assert_gate_temp_empty
+printf '%s\n' 'DROP TABLE "Example";' >"$GATE_MIGRATION"
+TMPDIR="$GATE_TMPDIR" migration_gate_validate \
+  "$GATE_REPO" "$GATE_COMMIT" "$GATE_COMMIT" ledger_empty >/dev/null \
+  || fail "migration guard trusted dirty worktree bytes instead of the candidate commit"
+assert_gate_temp_empty
+if TMPDIR="$GATE_TMPDIR" migration_gate_validate \
+  "$GATE_REPO" "$GATE_COMMIT" "$GATE_COMMIT" ledger_failure >/dev/null 2>&1; then
+  fail "migration guard accepted a failed applied-ledger query"
 fi
-printf '%s|%s\n' "$(basename "$RESTORED_MIGRATION_DIR")" "$restored_checksum" \
-  | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" "$RESTORED_MIGRATION_DIR/migration.sql" >/dev/null \
-  || fail "applied migration with matching checksum was not accepted"
-if printf '%s|%064d\n' "$(basename "$RESTORED_MIGRATION_DIR")" 0 \
-  | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" "$RESTORED_MIGRATION_DIR/migration.sql" >/dev/null 2>&1; then
-  fail "applied migration with mismatched checksum was accepted"
+assert_gate_temp_empty
+if TMPDIR="$GATE_TMPDIR" migration_gate_validate \
+  "$GATE_REPO" "$GATE_COMMIT" "$GATE_COMMIT" ledger_missing >/dev/null 2>&1; then
+  fail "zero-new migration guard accepted a missing applied migration"
 fi
-printf '%s|%s\n' "$(basename "$RESTORED_MIGRATION_DIR")" "$restored_checksum" \
-  | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" >/dev/null \
-  || fail "complete applied history was not verified when no new migration exists"
-if printf '%s|%064d\n' 'missing-applied-history' 0 \
-  | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" >/dev/null 2>&1; then
-  fail "missing applied migration was accepted when no new migration exists"
+assert_gate_temp_empty
+if TMPDIR="$GATE_TMPDIR" migration_gate_validate \
+  "$GATE_REPO" "$GATE_COMMIT" "$GATE_COMMIT" ledger_mismatch >/dev/null 2>&1; then
+  fail "zero-new migration guard accepted an applied checksum mismatch"
 fi
-printf '\n' | python3 "$VALIDATOR" --applied-checksums - --migration-root "$TMP" "$NEW_MIGRATION_DIR/migration.sql" >/dev/null \
-  || fail "new Expand-only migration was rejected"
+assert_gate_temp_empty
 
 echo "PASS: pi5 blue/green safety lifecycle"

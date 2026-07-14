@@ -5,6 +5,7 @@
 set -euo pipefail
 
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+source "$(dirname "$SCRIPT_PATH")/lib/migration-gate.sh"
 PROJECT_DIR="${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}"
 BASE_COMPOSE="${PI5_BASE_COMPOSE:-${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml}"
 PHASE3_COMPOSE="${PI5_PHASE3_COMPOSE:-${PROJECT_DIR}/infrastructure/docker/docker-compose.phase3.yml}"
@@ -810,7 +811,7 @@ migration_applied_checksums() {
 }
 
 migration_guard() {
-  local base_image="$1" candidate="$2" candidate_image base_ref candidate_ref applied_checksums
+  local base_image="$1" candidate="$2" candidate_image base_ref candidate_ref
   candidate_image="$(slot_api_image "$candidate")"
   if [[ "$DRY_RUN" == 1 ]]; then
     MIGRATION_BASE_COMMIT="$(image_commit "$base_image" 2>/dev/null || true)"
@@ -827,20 +828,9 @@ migration_guard() {
   [[ "$base_ref" =~ ^[0-9a-f]{40}$ ]] || die 'migration base commit is unknown'
   git -C "$PROJECT_DIR" cat-file -e "${base_ref}^{commit}" 2>/dev/null || die "migration base commit unavailable: $base_ref"
   git -C "$PROJECT_DIR" cat-file -e "${candidate_ref}^{commit}" 2>/dev/null || die "candidate commit unavailable: $candidate_ref"
-  local changed=() modified
-  while IFS= read -r migration; do [[ -n "$migration" ]] && changed+=("$PROJECT_DIR/$migration"); done < <(
-    git -C "$PROJECT_DIR" diff --diff-filter=A --name-only "$base_ref" "$candidate_ref" -- 'apps/api/prisma/migrations/*/migration.sql'
-  )
-  modified="$(git -C "$PROJECT_DIR" diff --diff-filter=M --name-only "$base_ref" "$candidate_ref" -- 'apps/api/prisma/migrations/*/migration.sql' || true)"
-  [[ -z "$modified" ]] || die 'modified existing migrations are not Expand-only; release refused'
-  applied_checksums="$(migration_applied_checksums "$candidate")" \
-    || die 'could not read applied Prisma migration checksums'
-  printf '%s\n' "$applied_checksums" \
-    | python3 "$PROJECT_DIR/scripts/deploy/validate-expand-only-migrations.py" \
-        --applied-checksums - \
-        --migration-root "$PROJECT_DIR/apps/api/prisma/migrations" \
-        "${changed[@]}" \
-    || die 'migration SQL is outside the Expand-only allow-list'
+  migration_gate_validate \
+    "$PROJECT_DIR" "$base_ref" "$candidate_ref" migration_applied_checksums "$candidate" \
+    || die 'migration ledger or SQL is outside the Expand-only contract'
 }
 
 migration_apply_and_verify() {
