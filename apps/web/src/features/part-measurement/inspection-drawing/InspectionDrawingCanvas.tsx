@@ -1,8 +1,9 @@
 import clsx from 'clsx';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
+import { ImageMarkerCalloutOverlay } from '../../kiosk/image-canvas';
+
 import { evaluateMeasurementValue, parseMeasurementNumber } from './evaluateMeasurement';
-import { inspectionDrawingPointHasCalloutTip } from './inspectionDrawingCalloutTip';
 import {
   computeScrollToCenterMarker,
   pointerClientToImageRatios,
@@ -273,81 +274,14 @@ export function InspectionDrawingCanvas({
             }}
           />
           {image ? (
-            <svg
-              className="pointer-events-none absolute inset-0 z-[5] h-full w-full"
-              aria-hidden="true"
-            >
-              <defs>
-                <marker
-                  id="inspection-drawing-callout-arrow"
-                  markerWidth="6"
-                  markerHeight="6"
-                  refX="5"
-                  refY="3"
-                  orient="auto"
-                >
-                  <path d="M0,0 L6,3 L0,6 Z" fill="#f59e0b" />
-                </marker>
-                <marker
-                  id="inspection-drawing-callout-arrow-active"
-                  markerWidth="6"
-                  markerHeight="6"
-                  refX="5"
-                  refY="3"
-                  orient="auto"
-                >
-                  <path d="M0,0 L6,3 L0,6 Z" fill="#22d3ee" />
-                </marker>
-              </defs>
-              {points.map((pt) => {
-                if (!inspectionDrawingPointHasCalloutTip(pt)) return null;
-                const isActive = pt.id === selectedPointId;
-                const tipX = image.offsetX + (pt.calloutTipXRatio as number) * image.width;
-                const tipY = image.offsetY + (pt.calloutTipYRatio as number) * image.height;
-                const markerX = image.offsetX + pt.xRatio * image.width;
-                const markerY = image.offsetY + pt.yRatio * image.height;
-                return (
-                  <line
-                    key={`callout-${pt.id}`}
-                    x1={markerX}
-                    y1={markerY}
-                    x2={tipX}
-                    y2={tipY}
-                    stroke={isActive ? '#22d3ee' : '#f59e0b'}
-                    strokeWidth={isActive ? 2.2 : 1.8}
-                    markerEnd={
-                      isActive
-                        ? 'url(#inspection-drawing-callout-arrow-active)'
-                        : 'url(#inspection-drawing-callout-arrow)'
-                    }
-                  />
-                );
-              })}
-            </svg>
+            <ImageMarkerCalloutOverlay
+              items={points}
+              selectedId={selectedPointId}
+              image={image}
+              contentWidth={zoomedLayout.contentWidth}
+              contentHeight={zoomedLayout.contentHeight}
+            />
           ) : null}
-          {image
-            ? points.map((pt) => {
-                if (!inspectionDrawingPointHasCalloutTip(pt)) return null;
-                const isActive = pt.id === selectedPointId;
-                const left = image.offsetX + (pt.calloutTipXRatio as number) * image.width;
-                const top = image.offsetY + (pt.calloutTipYRatio as number) * image.height;
-                return (
-                  <div
-                    key={`tip-badge-${pt.id}`}
-                    className={clsx(
-                      'pointer-events-none absolute z-[6] flex h-[22px] w-[22px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 text-[0.68rem] font-extrabold shadow',
-                      isActive
-                        ? 'border-cyan-400 bg-cyan-300 text-slate-900'
-                        : 'border-amber-500 bg-amber-200 text-slate-900'
-                    )}
-                    style={{ left, top }}
-                    aria-hidden="true"
-                  >
-                    {pt.markerNo}
-                  </div>
-                );
-              })
-            : null}
           {image
             ? points.map((pt) => {
                 const bounds = toleranceBoundsFromPoint(pt);

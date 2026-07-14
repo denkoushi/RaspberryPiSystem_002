@@ -178,6 +178,25 @@ export async function listAssemblyTemplateSummaries(params?: {
   return data.templates;
 }
 
+export type AssemblyLibraryFilterField =
+  | 'templateModelCode'
+  | 'templateProcedureDocumentName'
+  | 'procedureDocumentName';
+
+export async function listAssemblyLibraryFilterOptions(params: {
+  field: AssemblyLibraryFilterField;
+  q?: string;
+  includeInactive?: boolean;
+  limit?: number;
+}) {
+  const qs = new URLSearchParams({ field: params.field });
+  if (params.q) qs.set('q', params.q);
+  if (params.includeInactive) qs.set('includeInactive', 'true');
+  if (params.limit) qs.set('limit', String(params.limit));
+  const { data } = await api.get<{ options: string[] }>(`/assembly/library/filter-options?${qs.toString()}`);
+  return data.options;
+}
+
 export async function createAssemblyTemplate(payload: AssemblyTemplateCreateInput) {
   const { data } = await api.post<{ template: AssemblyTemplateDto }>('/assembly/templates', payload);
   return data.template;

@@ -6,8 +6,8 @@ scope: kiosk assembly torque management, seiban start flow, work-in-progress vis
 date: 2026-07-06
 source_of_truth: this file
 related_code: apps/api/src/routes/assembly/index.ts, apps/api/src/routes/kiosk-documents.ts, apps/api/src/routes/kiosk/assembly-procedure-order-auth.ts, apps/api/src/routes/storage/assembly-procedure-images.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx, apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx, infrastructure/docker/docker-compose.server.yml, infrastructure/ansible/roles/server/tasks/main.yml
-related_docs: ../INDEX.md, ../guides/deployment.md
-validation: local Docker Postgres, GitHub Actions CI 28642360918 and 28650944516/28650941078, limited deployment run 20260703-183241-22704, user real-device acceptance 2026-07-03, seiban start flow CI/deploy/Phase12, procedure order viewer CI/deploy/Phase12, WIP-first UI CI 28829668364, Pi5/Pi4 deployment 2026-07-07, Phase12 45/0/0
+related_docs: ../INDEX.md, ../guides/deployment.md, ./kiosk-deploy-notice-assembly-ui.md, ../decisions/ADR-20260714-assembly-marker-callout-and-shared-image-canvas.md
+validation: local Docker Postgres, GitHub Actions CI 28642360918 and 28650944516/28650941078, limited deployment run 20260703-183241-22704, user real-device acceptance 2026-07-03, seiban start flow CI/deploy/Phase12, procedure order viewer CI/deploy/Phase12, WIP-first UI CI 28829668364, Pi5/Pi4 deployment 2026-07-07, Phase12 45/0/0, 2026-07-14 callout/library UI isolated DB and local verification
 open_items: Bluetooth torque-agent, PDF viewing completion tracking, NFC serial scan, completed work-session history/search enhancements
 ---
 
@@ -29,7 +29,7 @@ This is separate from part measurement and self-inspection. The implementation r
 
 ## Current State
 
-- Latest working branch before merge: `feat/kiosk-assembly-wip-first-ui`.
+- Latest local implementation branch: `feat/kiosk-deploy-notice-assembly-ui`, based on `origin/main`; implemented and verified locally on 2026-07-14, not deployed.
 - Latest deployed implementation branch: `feat/kiosk-assembly-wip-first-ui`.
 - Latest deployed runtime commit: `3a8c9e41` (`fix(assembly): prioritize kiosk wip pane`).
 - Latest deployed PR before this branch: `#957`.
@@ -107,6 +107,7 @@ Assembly data is stored in dedicated Prisma models:
 - `AssemblyTemplate`: active/versioned template keyed by `modelCode + procedurePattern + version`.
 - `AssemblyTemplateArea`: process/area/unit grouping with manual area advancement.
 - `AssemblyTemplateBolt`: numbered tightening point with coordinate and torque limits.
+- `AssemblyTemplateCheckItem`: numbered required/optional assembly check marker.
 - `AssemblyWorkSession`: product/session identity and current position.
 - `AssemblyTorqueRecord`: accepted OK, recorded NG, and ignored duplicate inputs.
 - `AssemblyAreaRestartLog`: area restart history.
@@ -117,6 +118,8 @@ Summary-list indexes were added in migration `20260703150000_assembly_summary_in
 The seiban start flow adds migration `20260706170000_assembly_seiban_start_flow` with a normal lookup index on `AssemblyWorkSession(productNo, serialNo, status, updatedAt)`. It intentionally does not add a partial unique constraint because existing data can contain duplicates and the first phase only needs deterministic resume behavior.
 
 The procedure order viewer adds migration `20260706193000_assembly_procedure_order_viewer` with `AssemblyProcedureOrderSet(machineNameKey)` unique lookup and `AssemblyProcedureOrderItem(setId, sortOrder)` ordering indexes. `AssemblyProcedureOrderItem.kioskDocumentId` references `KioskDocument(id)` with `ON DELETE RESTRICT`; the document delete route also returns HTTP 409 before deleting PDF/page files when a document is used by assembly viewing order.
+
+Migration `20260714120000_assembly_marker_callout_tips` adds nullable paired callout-tip ratios to both `AssemblyTemplateBolt` and `AssemblyTemplateCheckItem`. Existing markers remain callout-free, no rows are backfilled, and no index is added. Bolt ratios keep the existing decimal/string response convention; check ratios remain floating-point numbers.
 
 ### API
 
@@ -130,6 +133,9 @@ The summary endpoints added for scalable management UI are:
 
 - `GET /api/assembly/procedure-documents/summary`
 - `GET /api/assembly/templates/summary`
+- `GET /api/assembly/library/filter-options`
+  - Returns case-insensitively trimmed, deduplicated, sorted candidates for template 型番, template procedure-document name, or active procedure-library name.
+  - Candidate queries are independent of the 200-row summary limit; template fields follow `includeInactive`, and procedure-library names are always active-only.
 
 The seiban start flow adds:
 
@@ -166,6 +172,8 @@ Routes:
 
 The management page follows the inspection drawing management pattern: table-based procedure library, table-based template list, separate template editor, and separate work screen. The operator top page keeps the work-start path short and leaves the vertical screen space for search, serial entry, and WIP visibility.
 
+The 2026-07-14 library/editor update uses two rows per procedure/template item so long procedure names and 型番 remain readable while actions stay on one right-aligned row. 型番 and both procedure-name filters use an accessible common combobox that preserves free input and refreshes candidates from the complete assembly dataset. The editor reuses domain-neutral image-canvas `− / ＋ / □` controls (0.5–2.5, 0.25 steps), scroll-based zoom, and 10px drag suppression. Bolt and check markers can each have an optional same-number callout line/tip; the work-session view renders saved callouts without intercepting marker operations.
+
 Procedure documents use a `削除` action instead of a `無効化` action. The delete action is disabled when any template references the document. If unused, the API deletes both the DB row and the stored image file.
 
 The procedure order settings page does not upload PDFs. Operators/admins search existing enabled `KioskDocument` records, add them to a machine-name order, move them up/down, edit labels, remove items, and save. The work-session screen uses the configured sequence when available, with separate previous/next page and previous/next document controls. Tightening input, area advancement, restart, completion, history, and Excel export remain unchanged.
@@ -197,10 +205,15 @@ DEV preview routes:
 - Existing `KioskDocument` PDF records are the source of truth. Assembly stores ordering and labels only.
 - Referenced `KioskDocument` rows cannot be deleted; the API returns HTTP 409 while the document is used by an assembly procedure order.
 - Viewing order does not gate torque progress. If no valid configured PDF sequence is available, the work screen keeps showing the existing single procedure image and torque work continues.
+- Bolt/check callout tips are optional. X/Y must both be numbers in 0–1 or both null/omitted; revisions copy them, and templates without callouts remain compatible.
+- User-facing assembly labels and Excel headings use `型番`; the internal `modelCode`, DB columns, and JSON keys remain unchanged.
 
 ## Validation Results
 
 Local validation before push:
+
+- Deploy notice / assembly library-editor update on 2026-07-14 (not deployed):
+  - Implementation decisions and complete isolated-DB/API/Web/Playwright evidence are recorded once in [the focused implementation Plan](./kiosk-deploy-notice-assembly-ui.md).
 
 - WIP-first UI refinement on 2026-07-07:
   - `pnpm --filter @raspi-system/web test -- KioskAssemblyHomePage.test.tsx assemblyRoutes.test.ts`: passed, 2 files / 9 tests.

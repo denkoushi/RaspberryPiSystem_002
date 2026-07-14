@@ -2386,7 +2386,7 @@ model AssemblyProcedureOrderItem {
   @@index([assemblyProcedureDocumentId], map: "AssemblyProcedureOrderItem_idx_assembly_document")
 }
 
-/// 組立トルク管理: 形番/FHINCD + 手順パターンごとの締付テンプレート。
+/// 組立トルク管理: 型番/FHINCD + 手順パターンごとの締付テンプレート。
 model AssemblyTemplate {
   id                  String                    @id @default(uuid())
   modelCode           String
@@ -2438,6 +2438,8 @@ model AssemblyTemplateBolt {
   markerNo                      Int
   xRatio                        Decimal                    @db.Decimal(10, 8)
   yRatio                        Decimal                    @db.Decimal(10, 8)
+  calloutTipXRatio              Decimal?                   @db.Decimal(10, 8)
+  calloutTipYRatio              Decimal?                   @db.Decimal(10, 8)
   /// 省略/null 時はテンプレート procedureDocument の先頭ページ
   kioskDocumentId               String?
   assemblyProcedureDocumentId   String?
@@ -2470,6 +2472,8 @@ model AssemblyTemplateCheckItem {
   required                    Boolean                    @default(true)
   xRatio                      Float
   yRatio                      Float
+  calloutTipXRatio            Float?
+  calloutTipYRatio            Float?
   kioskDocumentId             String?
   assemblyProcedureDocumentId String?
   pageIndex                   Int                        @default(0)

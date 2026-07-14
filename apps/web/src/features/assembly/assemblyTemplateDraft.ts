@@ -213,6 +213,8 @@ export function createAssemblyBoltAt(
     markerNo: index + 1,
     xRatio,
     yRatio,
+    calloutTipXRatio: null,
+    calloutTipYRatio: null,
     boltSpec: 'M6x30',
     nominalTorque: 90,
     lowerLimit: 81,
@@ -238,6 +240,8 @@ export function createAssemblyCheckItemAt(
     required: true,
     xRatio,
     yRatio,
+    calloutTipXRatio: null,
+    calloutTipYRatio: null,
     sortOrder: index,
     kioskDocumentId: pageRef?.source === 'kiosk_document' ? pageRef.documentId : null,
     assemblyProcedureDocumentId: pageRef?.source === 'assembly_procedure_document' ? pageRef.documentId : null,
@@ -266,6 +270,8 @@ export function dtoBoltToDraft(bolt: AssemblyTemplateBoltDto): AssemblyDraftBolt
     markerNo: bolt.markerNo,
     xRatio: toNumber(bolt.xRatio),
     yRatio: toNumber(bolt.yRatio),
+    calloutTipXRatio: bolt.calloutTipXRatio == null ? null : toNumber(bolt.calloutTipXRatio),
+    calloutTipYRatio: bolt.calloutTipYRatio == null ? null : toNumber(bolt.calloutTipYRatio),
     boltSpec: bolt.boltSpec,
     nominalTorque: toNumber(bolt.nominalTorque),
     lowerLimit: toNumber(bolt.lowerLimit),
@@ -285,6 +291,8 @@ export function dtoCheckItemToDraft(item: AssemblyTemplateCheckItemDto): Assembl
     required: item.required,
     xRatio: item.xRatio,
     yRatio: item.yRatio,
+    calloutTipXRatio: item.calloutTipXRatio ?? null,
+    calloutTipYRatio: item.calloutTipYRatio ?? null,
     sortOrder: item.sortOrder,
     kioskDocumentId: item.kioskDocumentId,
     assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
@@ -314,6 +322,8 @@ export function draftAreasToInput(areas: AssemblyDraftArea[]): AssemblyTemplateA
       markerNo: bolt.markerNo,
       xRatio: bolt.xRatio,
       yRatio: bolt.yRatio,
+      calloutTipXRatio: bolt.calloutTipXRatio ?? null,
+      calloutTipYRatio: bolt.calloutTipYRatio ?? null,
       boltSpec: bolt.boltSpec,
       nominalTorque: bolt.nominalTorque,
       lowerLimit: bolt.lowerLimit,
@@ -333,6 +343,8 @@ export function draftCheckItemsToInput(checkItems: AssemblyDraftCheckItem[]): As
     required: item.required ?? true,
     xRatio: item.xRatio,
     yRatio: item.yRatio,
+    calloutTipXRatio: item.calloutTipXRatio ?? null,
+    calloutTipYRatio: item.calloutTipYRatio ?? null,
     sortOrder: index,
     kioskDocumentId: item.kioskDocumentId ?? null,
     assemblyProcedureDocumentId: item.assemblyProcedureDocumentId ?? null,
@@ -362,6 +374,8 @@ export function filterDraftBoltsForPage(
         markerNo: bolt.markerNo,
         xRatio: bolt.xRatio,
         yRatio: bolt.yRatio,
+        calloutTipXRatio: bolt.calloutTipXRatio ?? null,
+        calloutTipYRatio: bolt.calloutTipYRatio ?? null,
         label: bolt.tighteningId,
         status: 'pending' as const
       }))
@@ -380,6 +394,8 @@ export function filterDraftCheckItemsForPage(
       markerNo: item.markerNo,
       xRatio: item.xRatio,
       yRatio: item.yRatio,
+      calloutTipXRatio: item.calloutTipXRatio ?? null,
+      calloutTipYRatio: item.calloutTipYRatio ?? null,
       label: item.label ?? null,
       required: item.required ?? true,
       checked: false
@@ -393,6 +409,8 @@ export function draftToCanvasBolts(areas: AssemblyDraftArea[]): AssemblyCanvasBo
       markerNo: bolt.markerNo,
       xRatio: bolt.xRatio,
       yRatio: bolt.yRatio,
+      calloutTipXRatio: bolt.calloutTipXRatio ?? null,
+      calloutTipYRatio: bolt.calloutTipYRatio ?? null,
       label: bolt.tighteningId,
       status: 'pending' as const
     }))
@@ -412,6 +430,8 @@ export function templateToCanvasBolts(
         markerNo: bolt.markerNo,
         xRatio: toNumber(bolt.xRatio),
         yRatio: toNumber(bolt.yRatio),
+        calloutTipXRatio: bolt.calloutTipXRatio == null ? null : toNumber(bolt.calloutTipXRatio),
+        calloutTipYRatio: bolt.calloutTipYRatio == null ? null : toNumber(bolt.calloutTipYRatio),
         label: bolt.tighteningId,
         status: statusByBolt.get(bolt.id) ?? 'pending'
       }))
@@ -434,6 +454,8 @@ export function sessionCheckItemsToCanvas(
       markerNo: item.markerNo,
       xRatio: item.xRatio,
       yRatio: item.yRatio,
+      calloutTipXRatio: item.calloutTipXRatio ?? null,
+      calloutTipYRatio: item.calloutTipYRatio ?? null,
       label: item.label ?? null,
       required: item.required,
       checked: item.record?.checked ?? false
