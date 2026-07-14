@@ -35,28 +35,27 @@ const session: AssemblyWorkSessionSummaryDto = {
 };
 
 describe('AssemblyWipPane', () => {
-  it('keeps secondary detail collapsed while resume stays available', () => {
+  it('keeps detail and resume action collapsed until its individual card is opened', () => {
     render(
       <MemoryRouter>
         <AssemblyWipPane sessions={[session]} loading={false} onReload={() => undefined} />
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('table', { name: '仕掛中' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '製番' })).toBeInTheDocument();
-    expect(screen.getByText('0/1')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: '仕掛中' })).toBeInTheDocument();
+    expect(screen.getByText('S/N S002')).toBeInTheDocument();
+    expect(screen.getByText('進捗 0/1 (0%)')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '再開' })).not.toBeInTheDocument();
 
-    const toggle = screen.getByRole('button', { name: 'ASM-START-001' });
+    const toggle = screen.getByRole('button', { name: 'ASM-START-001・S002 の詳細を開く' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText(/ストッパー取付 ・ #1/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/S002 \/ 佐藤/)).not.toBeInTheDocument();
+    fireEvent.click(toggle);
 
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('現在')).toBeInTheDocument();
+    expect(screen.getByText('ストッパー取付 ・ 締付位置 #1')).toBeInTheDocument();
     const resume = screen.getByRole('link', { name: '再開' });
     expect(resume).toHaveAttribute('href', '/kiosk/assembly/work-sessions/session-2');
     expect(resume).toHaveClass('min-h-11');
-
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText(/MACHINE-X ・ ストッパー取付 ・ #1 ・ S002 \/ 佐藤/)).toBeInTheDocument();
   });
 });

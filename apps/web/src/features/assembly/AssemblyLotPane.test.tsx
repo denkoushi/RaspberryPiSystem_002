@@ -10,9 +10,9 @@ const lot: AssemblyLotSummaryDto = {
   id: 'lot-1',
   templateId: 'template-1',
   productNo: 'ASMTEST-A1',
-  expectedQuantity: 3,
-  registeredSerialCount: 3,
-  notStartedCount: 1,
+  expectedQuantity: 4,
+  registeredSerialCount: 4,
+  notStartedCount: 2,
   inProgressCount: 1,
   completedCount: 1,
   cancelledCount: 0,
@@ -62,10 +62,23 @@ const lot: AssemblyLotSummaryDto = {
       approval: null
     },
     {
-      id: 'serial-new',
+      id: 'serial-new-1',
       lotId: 'lot-1',
       sortOrder: 2,
       serialNo: 'S-003',
+      status: 'not_started',
+      workSessionId: null,
+      startedAt: null,
+      completedAt: null,
+      cancelledAt: null,
+      updatedAt: '2026-07-06T00:01:00.000Z',
+      approval: null
+    },
+    {
+      id: 'serial-new-2',
+      lotId: 'lot-1',
+      sortOrder: 3,
+      serialNo: 'S-004',
       status: 'not_started',
       workSessionId: null,
       startedAt: null,
@@ -78,7 +91,7 @@ const lot: AssemblyLotSummaryDto = {
 };
 
 describe('AssemblyLotPane', () => {
-  it('keeps serial rows collapsed by default and expands on toggle', () => {
+  it('renders one collapsed card per not-started serial and starts only the expanded card', () => {
     const onStartSerial = vi.fn();
     render(
       <MemoryRouter>
@@ -92,32 +105,26 @@ describe('AssemblyLotPane', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('table', { name: '登録済みロット' })).toBeInTheDocument();
-    const toggle = screen.getByRole('button', {
-      name: /ASMTEST-A1 ・ MH-2200 ・ 田中 ・ 作業 1\/3 ・ 承認 0\/3/
-    });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText('S-001')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '着手前' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: '着手前' })).toBeInTheDocument();
+    expect(screen.getByText('S/N S-003')).toBeInTheDocument();
+    expect(screen.getByText('S/N S-004')).toBeInTheDocument();
+    expect(screen.queryByText('S/N S-001')).not.toBeInTheDocument();
+    expect(screen.queryByText('S/N S-002')).not.toBeInTheDocument();
+    expect(screen.queryByText('未着手')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '開始' })).not.toBeInTheDocument();
 
+    const toggle = screen.getByRole('button', { name: 'ASMTEST-A1・S-003 の詳細を開く' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(toggle);
+
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('S-001')).toBeInTheDocument();
-    expect(screen.getByText('S-002')).toBeInTheDocument();
-    expect(screen.getByText('S-003')).toBeInTheDocument();
+    expect(screen.getByText('ロット数量')).toBeInTheDocument();
+    expect(screen.getByText('4個')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '開始' })).toHaveClass('min-h-11');
+    expect(screen.getAllByText('機種 MH-2200')[0]).toHaveClass('break-words');
 
-    const startButton = screen.getByRole('button', { name: '開始' });
-    expect(startButton).toHaveClass('min-h-11');
-    fireEvent.click(startButton);
-    expect(onStartSerial).toHaveBeenCalledWith('lot-1', 'serial-new');
-
-    expect(screen.getByRole('link', { name: '再開' })).toHaveAttribute(
-      'href',
-      '/kiosk/assembly/work-sessions/session-wip'
-    );
-    expect(screen.getByRole('link', { name: '記録確認' })).toHaveAttribute(
-      'href',
-      '/kiosk/assembly/record-approvals?sessionId=session-done'
-    );
+    fireEvent.click(screen.getByRole('button', { name: '開始' }));
+    expect(onStartSerial).toHaveBeenCalledWith('lot-1', 'serial-new-1');
   });
 });
