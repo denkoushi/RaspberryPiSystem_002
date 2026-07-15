@@ -1018,6 +1018,7 @@ def locked_remote_release_command(
     # until PR 4 replaces both mechanisms with the durable systemd backend.
     legacy_lock = remote_project / 'logs/.rolling-terminal-release.lock.d'
     legacy_guard = (
+        f'mkdir -p {shlex.quote(str(legacy_lock.parent))}; '
         f'legacy_lock={shlex.quote(str(legacy_lock))}; '
         'if ! mkdir "$legacy_lock"; then exit 75; fi; '
         'trap \'rmdir "$legacy_lock"\' EXIT'

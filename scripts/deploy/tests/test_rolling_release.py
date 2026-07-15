@@ -1298,6 +1298,7 @@ class RollingReleaseKernelLockTest(unittest.TestCase):
         self.assertLess(lock_position, command.index('git fetch'))
         self.assertLess(lock_position, command.index('git checkout'))
         self.assertLess(lock_position, command.index('--remote-run'))
+        self.assertLess(command.index('mkdir -p'), command.index('mkdir "$legacy_lock"'))
         self.assertLess(command.index('mkdir'), command.index('git fetch'))
         self.assertLess(command.index('.rolling-terminal-release.lock.d'), command.index('git fetch'))
         self.assertIn('ROLLING_RELEASE_LOCK_HELD=1', command)
@@ -1312,6 +1313,69 @@ class RollingReleaseKernelLockTest(unittest.TestCase):
                 MODULE.remote_run(args)
         remote_run.assert_not_called()
         atomic_json.assert_not_called()
+
+    @unittest.skipUnless(
+        Path('/usr/bin/flock').exists() and Path('/usr/bin/setsid').exists(),
+        'Linux util-linux flock/setsid are required',
+    )
+    def test_successful_outer_lock_creates_missing_legacy_lock_parent(self):
+        def git(*arguments, cwd=None, capture=False):
+            result = subprocess.run(
+                ['git', *arguments], cwd=cwd, check=True, text=True,
+                capture_output=capture,
+            )
+            return result.stdout.strip() if capture else ''
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            origin = root / 'origin.git'
+            source = root / 'source'
+            checkout = root / 'checkout'
+            git('init', '--bare', str(origin))
+            git('init', str(source))
+            git('config', 'user.email', 'deploy-test@example.invalid', cwd=source)
+            git('config', 'user.name', 'Deploy Test', cwd=source)
+            runner = source / 'scripts/deploy/rolling-release.py'
+            runner.parent.mkdir(parents=True)
+            runner.write_text(
+                'from pathlib import Path\n'
+                'import os\n'
+                'assert os.environ["ROLLING_RELEASE_LOCK_HELD"] == "1"\n'
+                'Path("runner-called").write_text("ok\\n", encoding="utf-8")\n',
+                encoding='utf-8',
+            )
+            (source / 'version.txt').write_text('one\n', encoding='utf-8')
+            git('add', '.', cwd=source)
+            git('commit', '-m', 'initial', cwd=source)
+            git('branch', '-M', 'main', cwd=source)
+            git('remote', 'add', 'origin', str(origin), cwd=source)
+            git('push', '-u', 'origin', 'main', cwd=source)
+            git('clone', '--branch', 'main', str(origin), str(checkout))
+
+            (source / 'version.txt').write_text('two\n', encoding='utf-8')
+            git('commit', '-am', 'second', cwd=source)
+            git('push', 'origin', 'main', cwd=source)
+            desired = git('rev-parse', 'HEAD', cwd=source, capture=True)
+
+            self.assertFalse((checkout / 'logs').exists())
+            command = MODULE.locked_remote_release_command(
+                self._args(), desired, 'run-success', remote_project=checkout,
+            )
+            result = subprocess.run(
+                ['/bin/bash', '-lc', command], text=True, capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                git('rev-parse', 'HEAD', cwd=checkout, capture=True), desired,
+            )
+            self.assertTrue((checkout / 'logs').is_dir())
+            self.assertFalse(
+                (checkout / 'logs/.rolling-terminal-release.lock.d').exists(),
+            )
+            self.assertEqual(
+                (checkout / 'runner-called').read_text(encoding='utf-8'), 'ok\n',
+            )
 
     @unittest.skipUnless(
         Path('/usr/bin/flock').exists() and Path('/usr/bin/setsid').exists(),
