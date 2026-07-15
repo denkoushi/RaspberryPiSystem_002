@@ -1,0 +1,395 @@
+#!/usr/bin/env python3
+"""Standalone pre-checkout bootstrap for a transient release unit.
+
+This file intentionally imports only the Python standard library and does not
+use ``__file__``.  The local systemd adapter sends this exact trusted source to
+the Pi5 as ``python3 -c`` so the first release containing this package does not
+depend on the Pi5's old checkout already having the module.
+"""
+from __future__ import annotations
+
+import fcntl
+import json
+import os
+import re
+import signal
+import stat
+import subprocess
+import sys
+from pathlib import Path, PurePosixPath
+from typing import Any, Callable, Mapping, Sequence
+
+
+EX_OK = 0
+EX_SOFTWARE = 70
+EX_TEMPFAIL = 75
+EX_CONFIG = 78
+EX_CANCELLED = 130
+PROTOCOL_PATH = Path("scripts/deploy/rolling_release/PROTOCOL")
+PROTOCOL_VALUE = "raspi-rolling-release-v1\n"
+NEW_RUN_ID_RE = re.compile(r'^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$')
+FULL_SHA_RE = re.compile(r'^[0-9a-f]{40}$')
+UNIT_PREFIX = 'raspi-release-'
+UNIT_SUFFIX = '.service'
+EXPECTED_KEYS = frozenset({
+    'version',
+    'project',
+    'runId',
+    'unitName',
+    'branch',
+    'sha',
+    'inventory',
+    'limit',
+    'canaryHoldTimeout',
+    'emergencyOverride',
+    'reason',
+    'skipCanaryHold',
+    'autoMinimize',
+})
+FORBIDDEN_REF_CHARACTERS = frozenset(' ~^:?*[\\')
+
+
+class BootstrapConfigError(ValueError):
+    """The controller supplied a malformed or unsafe bootstrap contract."""
+
+
+class CancellationLatch:
+    """A signal-safe flag; the control file remains cancellation authority."""
+
+    def __init__(self) -> None:
+        self.requested = False
+
+    def handle(self, _signum: int, _frame: Any) -> None:
+        self.requested = True
+
+
+def _require_string(
+    payload: Mapping[str, Any],
+    key: str,
+    *,
+    maximum: int,
+    allow_empty: bool = False,
+) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or '\x00' in value or len(value) > maximum:
+        raise BootstrapConfigError(f'{key} is malformed or too long')
+    if not allow_empty and not value:
+        raise BootstrapConfigError(f'{key} is required')
+    return value
+
+
+def _valid_branch(branch: str) -> bool:
+    if not branch or branch.startswith(('-', '/', '.')) or branch.endswith(('/', '.')):
+        return False
+    if branch == '@' or '..' in branch or '//' in branch or '@{' in branch:
+        return False
+    if any(component.endswith('.lock') or component.startswith('.') for component in branch.split('/')):
+        return False
+    if any(ord(character) < 32 or ord(character) == 127 for character in branch):
+        return False
+    return not any(character in FORBIDDEN_REF_CHARACTERS for character in branch)
+
+
+def parse_spec(raw: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise BootstrapConfigError('bootstrap specification is not valid JSON') from error
+    if not isinstance(payload, dict) or set(payload) != EXPECTED_KEYS:
+        raise BootstrapConfigError('bootstrap specification fields do not match version 1')
+    if payload.get('version') != 1 or type(payload.get('version')) is not int:
+        raise BootstrapConfigError('unsupported bootstrap specification version')
+
+    project = _require_string(payload, 'project', maximum=4096)
+    if not os.path.isabs(project) or os.path.normpath(project) != project:
+        raise BootstrapConfigError('project must be a normalized absolute path')
+    run_id = _require_string(payload, 'runId', maximum=80)
+    if not NEW_RUN_ID_RE.fullmatch(run_id):
+        raise BootstrapConfigError('runId must use YYYYMMDD-HHMMSS-<6 lowercase hex>')
+    unit_name = _require_string(payload, 'unitName', maximum=128)
+    if unit_name != f'{UNIT_PREFIX}{run_id}{UNIT_SUFFIX}':
+        raise BootstrapConfigError('unitName does not match runId')
+    branch = _require_string(payload, 'branch', maximum=255)
+    if not _valid_branch(branch):
+        raise BootstrapConfigError('branch is not a valid Git ref')
+    sha = _require_string(payload, 'sha', maximum=40)
+    if not FULL_SHA_RE.fullmatch(sha):
+        raise BootstrapConfigError('sha must be 40 lowercase hexadecimal characters')
+
+    inventory = _require_string(payload, 'inventory', maximum=1000)
+    inventory_path = PurePosixPath(inventory)
+    if (
+        inventory_path.is_absolute()
+        or str(inventory_path) != inventory
+        or any(part in ('', '.', '..') for part in inventory_path.parts)
+    ):
+        raise BootstrapConfigError('inventory must be a normalized relative path')
+    _require_string(payload, 'limit', maximum=1000, allow_empty=True)
+
+    timeout = payload.get('canaryHoldTimeout')
+    if type(timeout) is not int or timeout <= 0:
+        raise BootstrapConfigError('canaryHoldTimeout must be a positive integer')
+    for key in ('emergencyOverride', 'skipCanaryHold', 'autoMinimize'):
+        if type(payload.get(key)) is not bool:
+            raise BootstrapConfigError(f'{key} must be boolean')
+    reason = payload.get('reason')
+    if reason is not None:
+        if not isinstance(reason, str) or '\x00' in reason or len(reason) > 1000:
+            raise BootstrapConfigError('reason is malformed or too long')
+        if not payload['emergencyOverride']:
+            raise BootstrapConfigError('reason is only valid with emergencyOverride')
+    if payload['emergencyOverride'] and not (reason and reason.strip()):
+        raise BootstrapConfigError('emergencyOverride requires a reason')
+    if payload['skipCanaryHold'] and not (
+        payload['emergencyOverride'] and reason and reason.strip()
+    ):
+        raise BootstrapConfigError(
+            'skipCanaryHold requires emergencyOverride and a reason'
+        )
+    return payload
+
+
+def control_file(spec: Mapping[str, Any]) -> str:
+    return os.path.join(
+        str(spec['project']),
+        'logs',
+        'deploy',
+        'release-runs',
+        f'{spec["runId"]}.control.json',
+    )
+
+
+def lock_file(spec: Mapping[str, Any]) -> str:
+    return os.path.join(str(spec['project']), '.git', 'rolling-release.lock')
+
+
+def remote_arguments(spec: Mapping[str, Any]) -> list[str]:
+    arguments = [
+        '/usr/bin/python3',
+        os.path.join(str(spec['project']), 'scripts', 'deploy', 'rolling-release.py'),
+        '--remote-run',
+        '--branch',
+        str(spec['branch']),
+        '--sha',
+        str(spec['sha']),
+        '--inventory',
+        str(spec['inventory']),
+        '--run-id',
+        str(spec['runId']),
+        '--limit',
+        str(spec['limit']),
+        '--canary-hold-timeout',
+        str(spec['canaryHoldTimeout']),
+    ]
+    if spec['emergencyOverride']:
+        arguments.extend(['--emergency-override', '--reason', str(spec['reason'])])
+    if spec['skipCanaryHold']:
+        arguments.append('--skip-canary-hold')
+    if spec['autoMinimize']:
+        arguments.append('--auto-minimize')
+    return arguments
+
+
+def _default_run(
+    argv: Sequence[str],
+    *,
+    cwd: str,
+    capture_output: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        list(argv),
+        cwd=cwd,
+        text=True,
+        capture_output=capture_output,
+        check=False,
+    )
+
+
+def _exit_code(completed: Any) -> int:
+    value = getattr(completed, 'returncode', None)
+    return value if type(value) is int and 0 < value <= 255 else 1
+
+
+def execute(
+    spec: Mapping[str, Any],
+    *,
+    run_command: Callable[..., Any] = _default_run,
+    execve: Callable[[str, Sequence[str], Mapping[str, str]], Any] = os.execve,
+    signal_requested: Callable[[], bool] = lambda: False,
+    environ: Mapping[str, str] | None = None,
+) -> int:
+    """Own the kernel lock before every fetch, checkout, or coordinator write."""
+    project = str(spec['project'])
+    cancellation_path = control_file(spec)
+    lock_path = lock_file(spec)
+    lock_fd: int | None = None
+    original_cwd = os.getcwd()
+    changed_directory = False
+    pre_exec_signal_handler: Any = None
+    signal_ignored_for_exec = False
+
+    def cancelled() -> bool:
+        # lexists also stops for a broken or malicious symlink: malformed
+        # cancellation state can never make a release continue.
+        # SIGUSR1 is deliberately only a wake-up hint.  The durable control
+        # record is the sole authority, so a stray signal cannot cancel a run.
+        signal_requested()
+        return os.path.lexists(cancellation_path)
+
+    try:
+        try:
+            flags = os.O_WRONLY | os.O_CREAT | getattr(os, 'O_CLOEXEC', 0)
+            flags |= getattr(os, 'O_NOFOLLOW', 0)
+            lock_fd = os.open(lock_path, flags, 0o600)
+        except OSError as error:
+            print(f'[ERROR] could not open rolling-release lock: {error}', file=sys.stderr)
+            return EX_TEMPFAIL
+        if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
+            print('[ERROR] rolling-release lock path is not a regular file', file=sys.stderr)
+            return EX_TEMPFAIL
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError):
+            return EX_TEMPFAIL
+
+        if cancelled():
+            return EX_CANCELLED
+
+        before = run_command(
+            ['/usr/bin/git', 'status', '--porcelain=v1', '--untracked-files=normal'],
+            cwd=project,
+            capture_output=True,
+        )
+        if getattr(before, 'returncode', 1) != 0:
+            return _exit_code(before)
+        if str(getattr(before, 'stdout', '')).strip():
+            print('[ERROR] remote worktree is not clean; refusing release checkout', file=sys.stderr)
+            return EX_CONFIG
+        if cancelled():
+            return EX_CANCELLED
+
+        fetch = run_command(
+            ['/usr/bin/git', 'fetch', '--no-tags', 'origin', str(spec['branch'])],
+            cwd=project,
+            capture_output=False,
+        )
+        if getattr(fetch, 'returncode', 1) != 0:
+            return _exit_code(fetch)
+        if cancelled():
+            return EX_CANCELLED
+
+        commit = run_command(
+            ['/usr/bin/git', 'cat-file', '-e', f'{spec["sha"]}^{{commit}}'],
+            cwd=project,
+            capture_output=False,
+        )
+        if getattr(commit, 'returncode', 1) != 0:
+            return _exit_code(commit)
+        if cancelled():
+            return EX_CANCELLED
+
+        checkout = run_command(
+            ['/usr/bin/git', 'checkout', '--detach', str(spec['sha'])],
+            cwd=project,
+            capture_output=False,
+        )
+        if getattr(checkout, 'returncode', 1) != 0:
+            return _exit_code(checkout)
+        if cancelled():
+            return EX_CANCELLED
+
+        head = run_command(
+            ['/usr/bin/git', 'rev-parse', 'HEAD'],
+            cwd=project,
+            capture_output=True,
+        )
+        if getattr(head, 'returncode', 1) != 0:
+            return _exit_code(head)
+        if str(getattr(head, 'stdout', '')).strip() != spec['sha']:
+            print('[ERROR] checked-out HEAD does not match the immutable release SHA', file=sys.stderr)
+            return EX_CONFIG
+        if cancelled():
+            return EX_CANCELLED
+
+        after = run_command(
+            ['/usr/bin/git', 'status', '--porcelain=v1', '--untracked-files=normal'],
+            cwd=project,
+            capture_output=True,
+        )
+        if getattr(after, 'returncode', 1) != 0:
+            return _exit_code(after)
+        if str(getattr(after, 'stdout', '')).strip():
+            print('[ERROR] checked-out release worktree is not clean', file=sys.stderr)
+            return EX_CONFIG
+        if cancelled():
+            return EX_CANCELLED
+
+        try:
+            protocol = (project / PROTOCOL_PATH).read_text(encoding='utf-8')
+        except (OSError, UnicodeError):
+            protocol = ''
+        if protocol != PROTOCOL_VALUE:
+            print(
+                '[ERROR] target release does not support the rolling-release v1 protocol',
+                file=sys.stderr,
+            )
+            return EX_CONFIG
+        if cancelled():
+            return EX_CANCELLED
+
+        os.set_inheritable(lock_fd, True)
+        environment = dict(os.environ if environ is None else environ)
+        environment.update({
+            'ROLLING_RELEASE_LOCK_FD': str(lock_fd),
+            'ROLLING_RELEASE_LOCK_PATH': lock_path,
+            'ROLLING_RELEASE_CONTROL_FILE': cancellation_path,
+            'ROLLING_RELEASE_UNIT': str(spec['unitName']),
+            'ROLLING_RELEASE_PROTOCOL': '1',
+        })
+        arguments = remote_arguments(spec)
+        os.chdir(project)
+        changed_directory = True
+        # A caught signal disposition is reset to the default across execve.
+        # Ignore SIGUSR1 during the tiny exec-to-coordinator-handler window;
+        # ignored dispositions survive execve, and the coordinator replaces it
+        # with its cooperative handler before its first control checkpoint.
+        pre_exec_signal_handler = signal.getsignal(signal.SIGUSR1)
+        signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+        signal_ignored_for_exec = True
+        execve(arguments[0], arguments, environment)
+        return EX_SOFTWARE
+    finally:
+        # Reached only when an injected/failing execve did not replace us.
+        if signal_ignored_for_exec:
+            signal.signal(signal.SIGUSR1, pre_exec_signal_handler)
+        if changed_directory:
+            os.chdir(original_cwd)
+        if lock_fd is not None:
+            try:
+                os.close(lock_fd)
+            except OSError:
+                pass
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if len(arguments) != 1:
+        print('[ERROR] bootstrap requires exactly one JSON specification', file=sys.stderr)
+        return EX_CONFIG
+    try:
+        spec = parse_spec(arguments[0])
+    except BootstrapConfigError as error:
+        print(f'[ERROR] {error}', file=sys.stderr)
+        return EX_CONFIG
+
+    latch = CancellationLatch()
+    previous = signal.getsignal(signal.SIGUSR1)
+    signal.signal(signal.SIGUSR1, latch.handle)
+    try:
+        return execute(spec, signal_requested=lambda: latch.requested)
+    finally:
+        signal.signal(signal.SIGUSR1, previous)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

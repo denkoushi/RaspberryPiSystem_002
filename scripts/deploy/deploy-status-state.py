@@ -264,6 +264,10 @@ def main():
                 data['acknowledgements'] = acknowledgements
             else:
                 data.pop('acknowledgements', None)
+            holds = canary_holds(data)
+            holds.pop(args.run_id, None)
+            if not holds:
+                data.pop('canaryHolds', None)
         if output is None:
             save(args.file, data)
     if output is not None:

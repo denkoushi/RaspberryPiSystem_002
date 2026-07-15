@@ -2,6 +2,7 @@ import argparse
 import fcntl
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,33 @@ assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
+
+
+class ReleaseStateReferenceTest(unittest.TestCase):
+    def test_target_reference_remains_live_across_multiple_saves(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(
+            MODULE, 'utc_now', return_value='2026-07-15T00:00:00Z'
+        ):
+            path = Path(temporary) / 'run-1.json'
+            state = MODULE.ReleaseState(path, {
+                'version': 1,
+                'runId': 'run-1',
+                'state': 'running',
+                'targets': [{'host': 'kiosk-a', 'state': 'pending'}],
+            })
+            state.save()
+            target = state.target('kiosk-a')
+            target['state'] = 'deploying'
+            state.save()
+            self.assertIs(target, state.payload['targets'][0])
+            target.update({'state': 'success', 'newSha': 'a' * 40})
+            state.payload['state'] = 'success'
+            state.save()
+
+            persisted = json.loads(path.read_text(encoding='utf-8'))
+
+        self.assertEqual(persisted['targets'][0]['state'], 'success')
+        self.assertEqual(persisted['targets'][0]['newSha'], 'a' * 40)
 
 
 class RollingReleaseTargetOrderTest(unittest.TestCase):
@@ -704,7 +732,11 @@ class CanaryHoldTest(unittest.TestCase):
                 'approvedBy': MODULE.OPERATOR_CANARY_APPROVAL_CLIENT,
             }
 
-        result, played, payload = self._run_remote(targets, wait_for_canary_approval=wait_for_canary_approval)
+        result, played, payload = self._run_remote(
+            targets,
+            wait_for_canary_approval=wait_for_canary_approval,
+            args=self._args(limit='kiosk'),
+        )
         self.assertEqual(result, 0)
         self.assertEqual(played, ['kiosk-canary', 'kiosk-b'])
         self.assertIn(('run-1', 60), hold_calls)
@@ -712,6 +744,9 @@ class CanaryHoldTest(unittest.TestCase):
         self.assertEqual(payload['canaryHold']['canary'], 'kiosk-canary')
         self.assertEqual(payload['canaryHold']['approvedBy'], MODULE.OPERATOR_CANARY_APPROVAL_CLIENT)
         self.assertEqual(payload['state'], 'success')
+        self.assertEqual(payload['limitHosts'], 'kiosk')
+        self.assertEqual(payload['exitCode'], 0)
+        self.assertEqual(payload['endedAt'], payload['completedAt'])
 
     def test_canary_hold_timeout_fails_closed_without_remaining_targets(self):
         targets = [
@@ -771,7 +806,102 @@ class CanaryHoldTest(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(played, ['kiosk-canary', 'kiosk-b'])
         self.assertEqual(hold_calls, [])
+
+    def test_cancel_after_first_terminal_never_starts_the_second(self):
+        targets = [
+            {'host': 'signage-a', 'clientId': 'a', 'terminalType': 'signage'},
+            {'host': 'signage-b', 'clientId': 'b', 'terminalType': 'signage'},
+        ]
+        played = []
+        with tempfile.TemporaryDirectory() as temporary:
+            run_directory = Path(temporary)
+
+            def playbook(_inventory, host, _sha, _run_id, rollback=False):
+                played.append(host)
+                control = run_directory / 'run-1.control.json'
+                control.write_text(
+                    json.dumps({
+                        'version': 1,
+                        'runId': 'run-1',
+                        'unitName': 'raspi-release-run-1.service',
+                        'requestedAt': '2026-07-12T00:00:00Z',
+                        'requestedBy': 'operator-cli',
+                        'reason': 'stop between terminals',
+                    }),
+                    encoding='utf-8',
+                )
+
+            with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
+                    patch.object(MODULE, 'inventory_json', return_value={}), \
+                    patch.object(MODULE, 'selected_hosts', return_value=None), \
+                    patch.object(MODULE, 'release_targets', return_value=targets), \
+                    patch.object(MODULE, 'pi5_release_required', return_value=False), \
+                    patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
+                    patch.object(MODULE, 'wait_for_ack', return_value=True), \
+                    patch.object(MODULE, 'state_command') as state_command, \
+                    patch.object(MODULE, 'prestage_signage_maintenance'), \
+                    patch.object(MODULE, 'playbook', side_effect=playbook), \
+                    patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
+                result = MODULE._remote_run(self._args())
+            payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(result, 130)
+        self.assertEqual(played, ['signage-a'])
+        self.assertEqual(payload['state'], 'cancelled')
+        self.assertEqual(payload['exitCode'], 130)
+        self.assertEqual(payload['targets'][1]['state'], 'pending')
+        self.assertEqual(payload['cancellationCleanup']['state'], 'success')
+        self.assertIn(
+            unittest.mock.call('remove-run', '--run-id', 'run-1'),
+            state_command.call_args_list,
+        )
         self.assertNotIn('canaryHold', payload)
+
+    def test_cancel_cleanup_failure_is_a_failed_run_not_a_clean_cancel(self):
+        targets = [
+            {'host': 'signage-a', 'clientId': 'a', 'terminalType': 'signage'},
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            run_directory = Path(temporary)
+
+            def playbook(_inventory, _host, _sha, _run_id, rollback=False):
+                (run_directory / 'run-1.control.json').write_text(
+                    json.dumps({
+                        'version': 1,
+                        'runId': 'run-1',
+                        'unitName': 'raspi-release-run-1.service',
+                        'requestedAt': '2026-07-12T00:00:00Z',
+                        'requestedBy': 'operator-cli',
+                        'reason': 'stop safely',
+                    }),
+                    encoding='utf-8',
+                )
+
+            def state_command(*arguments):
+                if arguments[0] == 'remove-run':
+                    raise RuntimeError('deploy-status cleanup unavailable')
+
+            with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
+                    patch.object(MODULE, 'inventory_json', return_value={}), \
+                    patch.object(MODULE, 'selected_hosts', return_value=None), \
+                    patch.object(MODULE, 'release_targets', return_value=targets), \
+                    patch.object(MODULE, 'pi5_release_required', return_value=False), \
+                    patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
+                    patch.object(MODULE, 'wait_for_ack', return_value=True), \
+                    patch.object(MODULE, 'state_command', side_effect=state_command), \
+                    patch.object(MODULE, 'prestage_signage_maintenance'), \
+                    patch.object(MODULE, 'playbook', side_effect=playbook), \
+                    patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
+                result = MODULE._remote_run(self._args())
+            payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(result, 1)
+        self.assertEqual(payload['state'], 'failed')
+        self.assertEqual(payload['exitCode'], 1)
+        self.assertEqual(payload['cancellationCleanup']['state'], 'failed')
+        self.assertIn('cleanup unavailable', payload['failure'])
 
     def test_single_canary_target_skips_hold(self):
         targets = [{'host': 'kiosk-canary', 'clientId': 'canary', 'terminalType': 'kiosk'}]
@@ -850,51 +980,21 @@ class CanaryHoldTest(unittest.TestCase):
             self.assertEqual(MODULE.wait_for_canary_approval('run-1', 60), approved)
 
     def test_local_forwards_canary_hold_flags(self):
-        captured = {}
-
-        def fake_run(command, **_kwargs):
-            if command[:3] == ['git', '-C', str(MODULE.PROJECT)] and 'rev-parse' in command:
-                return 'a' * 40 + '\n'
-            return ''
-
-        def fake_subprocess_run(command, **_kwargs):
-            if command[:2] == ['git', '-C']:
-                return Mock(returncode=0)
-            if command[0] == 'ssh':
-                captured['remote'] = command[2]
-                return Mock(returncode=0)
-            return Mock(returncode=0)
-
         args = MODULE.normalize_arguments(MODULE.parser().parse_args([
             'main', 'infrastructure/ansible/inventory.yml',
             '--skip-canary-hold', '--canary-hold-timeout', '90',
+            '--emergency-override', '--reason', 'approved incident response',
         ]))
-        with patch.object(MODULE, 'run', side_effect=fake_run), \
-                patch.object(MODULE.subprocess, 'run', side_effect=fake_subprocess_run), \
-                patch.dict(MODULE.os.environ, {'RASPI_SERVER_HOST': 'pi5.example'}):
-            MODULE.local_run(args)
-        self.assertIn('--canary-hold-timeout 90', captured['remote'])
-        self.assertIn('--skip-canary-hold', captured['remote'])
+        with patch.object(MODULE.release_application, 'launch', return_value=0) as launch:
+            self.assertEqual(MODULE.local_run(args), 0)
+        launch.assert_called_once_with(args, runtime=MODULE)
+        self.assertEqual(args.canary_hold_timeout, 90)
+        self.assertTrue(args.skip_canary_hold)
 
     def test_local_approve_sshes_like_status(self):
-        captured = {}
-
-        def fake_subprocess_run(command, **_kwargs):
-            captured['command'] = command
-            return Mock(returncode=0)
-
-        with patch.object(MODULE.subprocess, 'run', side_effect=fake_subprocess_run), \
-                patch.dict(MODULE.os.environ, {'RASPI_SERVER_HOST': 'pi5.example'}), \
-                patch('builtins.print') as printed:
+        with patch.object(MODULE.release_application, 'approve', return_value=0) as approve:
             self.assertEqual(MODULE.local_approve('run-42'), 0)
-        self.assertEqual(captured['command'][0], 'ssh')
-        self.assertEqual(captured['command'][1], 'pi5.example')
-        remote = captured['command'][2]
-        self.assertIn('deploy-status-state.py', remote)
-        self.assertIn('approve', remote)
-        self.assertIn('--run-id run-42', remote)
-        self.assertIn('--client operator-canary-approval', remote)
-        printed.assert_called_once_with(json.dumps({'runId': 'run-42', 'approved': True}, ensure_ascii=False))
+        approve.assert_called_once_with('run-42', runtime=MODULE)
 
 
 class Pi5OnlyRemoteRunTest(unittest.TestCase):
@@ -950,7 +1050,10 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
                     patch.object(MODULE, 'ensure_pi5_release') as ensure:
                 with self.assertRaises(RuntimeError) as raised:
                     MODULE._remote_run(self._args(limit='typo-host'))
+            payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
         self.assertIn('--limit selected no hosts', str(raised.exception))
+        self.assertEqual(payload['state'], 'failed')
+        self.assertEqual(payload['limitHosts'], 'typo-host')
         ensure.assert_not_called()
 
     def test_empty_targets_with_limit_fails_when_pi5_not_required(self):
@@ -964,8 +1067,9 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
                     patch.object(MODULE, 'ensure_pi5_release') as ensure:
                 with self.assertRaises(RuntimeError) as raised:
                     MODULE._remote_run(self._args())
-            self.assertFalse((run_directory / 'run-1.json').exists())
+            payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
         self.assertIn('no kiosk or signage targets selected', str(raised.exception))
+        self.assertEqual(payload['state'], 'failed')
         ensure.assert_not_called()
 
     def test_empty_targets_without_limit_fails_closed(self):
@@ -978,8 +1082,9 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
                     patch.object(MODULE, 'pi5_release_required') as required:
                 with self.assertRaises(RuntimeError) as raised:
                     MODULE._remote_run(self._args(limit=''))
-            self.assertFalse((run_directory / 'run-1.json').exists())
+            payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
         self.assertIn('no kiosk or signage targets selected', str(raised.exception))
+        self.assertEqual(payload['state'], 'failed')
         required.assert_not_called()
 
 
@@ -1224,29 +1329,13 @@ class AutoMinimizeTest(unittest.TestCase):
         self.assertFalse(payload['plan']['pi5Required'])
 
     def test_local_forwards_auto_minimize(self):
-        captured = {}
-
-        def fake_run(command, **_kwargs):
-            if command[:3] == ['git', '-C', str(MODULE.PROJECT)] and 'rev-parse' in command:
-                return 'a' * 40 + '\n'
-            return ''
-
-        def fake_subprocess_run(command, **_kwargs):
-            if command[:2] == ['git', '-C']:
-                return Mock(returncode=0)
-            if command[0] == 'ssh':
-                captured['remote'] = command[2]
-                return Mock(returncode=0)
-            return Mock(returncode=0)
-
         args = MODULE.normalize_arguments(MODULE.parser().parse_args([
             'main', 'infrastructure/ansible/inventory.yml', '--auto-minimize',
         ]))
-        with patch.object(MODULE, 'run', side_effect=fake_run), \
-                patch.object(MODULE.subprocess, 'run', side_effect=fake_subprocess_run), \
-                patch.dict(MODULE.os.environ, {'RASPI_SERVER_HOST': 'pi5.example'}):
-            MODULE.local_run(args)
-        self.assertIn('--auto-minimize', captured['remote'])
+        with patch.object(MODULE.release_application, 'launch', return_value=0) as launch:
+            self.assertEqual(MODULE.local_run(args), 0)
+        launch.assert_called_once_with(args, runtime=MODULE)
+        self.assertTrue(args.auto_minimize)
 
     def test_print_plan_auto_minimize_reports_excluded_hosts(self):
         sha = 'a' * 40
@@ -1275,254 +1364,86 @@ class AutoMinimizeTest(unittest.TestCase):
 
 
 class RollingReleaseKernelLockTest(unittest.TestCase):
-    @staticmethod
-    def _args(**overrides):
-        values = {
-            'branch': 'main',
-            'inventory': 'infrastructure/ansible/inventory.yml',
-            'limit': '',
-            'emergency_override': False,
-            'reason': None,
-            'skip_canary_hold': False,
-            'canary_hold_timeout': 60,
-            'auto_minimize': False,
-        }
-        values.update(overrides)
-        return argparse.Namespace(**values)
-
-    def test_remote_command_locks_before_fetch_checkout_and_runner(self):
-        command = MODULE.locked_remote_release_command(
-            self._args(), 'a' * 40, 'run-1', remote_project=Path('/tmp/release checkout'),
-        )
-        lock_position = command.index('/usr/bin/flock -n')
-        self.assertLess(lock_position, command.index('git fetch'))
-        self.assertLess(lock_position, command.index('git checkout'))
-        self.assertLess(lock_position, command.index('--remote-run'))
-        self.assertLess(lock_position, command.index('mkdir -p'))
-        self.assertLess(command.index('mkdir -p'), command.index('mkdir "$legacy_lock"'))
-        self.assertLess(command.index('mkdir'), command.index('git fetch'))
-        self.assertLess(command.index('.rolling-terminal-release.lock.d'), command.index('git fetch'))
-        self.assertIn('ROLLING_RELEASE_LOCK_HELD=1', command)
-        self.assertIn('/tmp/release checkout/.git/rolling-release.lock', command)
-
-    def test_remote_runner_rejects_missing_outer_lock_before_state_mutation(self):
+    def test_remote_runner_rejects_missing_inherited_lock_before_coordinator(self):
         args = argparse.Namespace(run_id='run-unlocked')
         with patch.dict(MODULE.os.environ, {}, clear=True), \
-                patch.object(MODULE, '_remote_run') as remote_run, \
-                patch.object(MODULE, 'atomic_json') as atomic_json:
-            with self.assertRaisesRegex(RuntimeError, 'requires the outer kernel release lock'):
+                patch.object(MODULE, '_remote_run') as remote_run:
+            with self.assertRaisesRegex(RuntimeError, 'descriptor is missing'):
                 MODULE.remote_run(args)
         remote_run.assert_not_called()
-        atomic_json.assert_not_called()
 
-    @unittest.skipUnless(
-        Path('/usr/bin/flock').exists() and Path('/usr/bin/setsid').exists(),
-        'Linux util-linux flock/setsid are required',
-    )
-    def test_successful_outer_lock_creates_missing_legacy_lock_parent(self):
-        def git(*arguments, cwd=None, capture=False):
-            result = subprocess.run(
-                ['git', *arguments], cwd=cwd, check=True, text=True,
-                capture_output=capture,
-            )
-            return result.stdout.strip() if capture else ''
+    def test_legacy_remote_shell_command_builder_is_absent(self):
+        self.assertFalse(hasattr(MODULE, 'locked_remote_release_command'))
 
+    def test_remote_runner_requires_protocol_and_exact_systemd_identity(self):
+        run_id = 'run-locked'
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            origin = root / 'origin.git'
-            source = root / 'source'
-            checkout = root / 'checkout'
-            git('init', '--bare', str(origin))
-            git('init', str(source))
-            git('config', 'user.email', 'deploy-test@example.invalid', cwd=source)
-            git('config', 'user.name', 'Deploy Test', cwd=source)
-            runner = source / 'scripts/deploy/rolling-release.py'
-            runner.parent.mkdir(parents=True)
-            runner.write_text(
-                'from pathlib import Path\n'
-                'import os\n'
-                'assert os.environ["ROLLING_RELEASE_LOCK_HELD"] == "1"\n'
-                'Path("runner-called").write_text("ok\\n", encoding="utf-8")\n',
-                encoding='utf-8',
-            )
-            (source / 'version.txt').write_text('one\n', encoding='utf-8')
-            git('add', '.', cwd=source)
-            git('commit', '-m', 'initial', cwd=source)
-            git('branch', '-M', 'main', cwd=source)
-            git('remote', 'add', 'origin', str(origin), cwd=source)
-            git('push', '-u', 'origin', 'main', cwd=source)
-            git('clone', '--branch', 'main', str(origin), str(checkout))
-
-            (source / 'version.txt').write_text('two\n', encoding='utf-8')
-            git('commit', '-am', 'second', cwd=source)
-            git('push', 'origin', 'main', cwd=source)
-            desired = git('rev-parse', 'HEAD', cwd=source, capture=True)
-
-            self.assertFalse((checkout / 'logs').exists())
-            command = MODULE.locked_remote_release_command(
-                self._args(), desired, 'run-success', remote_project=checkout,
-            )
-            result = subprocess.run(
-                ['/bin/bash', '-lc', command], text=True, capture_output=True,
-            )
-
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(
-                git('rev-parse', 'HEAD', cwd=checkout, capture=True), desired,
-            )
-            self.assertTrue((checkout / 'logs').is_dir())
-            self.assertFalse(
-                (checkout / 'logs/.rolling-terminal-release.lock.d').exists(),
-            )
-            self.assertEqual(
-                (checkout / 'runner-called').read_text(encoding='utf-8'), 'ok\n',
-            )
-
-    @unittest.skipUnless(
-        Path('/usr/bin/flock').exists() and Path('/usr/bin/setsid').exists(),
-        'Linux util-linux flock/setsid are required',
-    )
-    def test_rejected_contender_cannot_change_checkout_or_create_run_state(self):
-        def git(*arguments, cwd=None, capture=False):
-            result = subprocess.run(
-                ['git', *arguments], cwd=cwd, check=True, text=True,
-                capture_output=capture,
-            )
-            return result.stdout.strip() if capture else ''
-
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            origin = root / 'origin.git'
-            source = root / 'source'
-            checkout = root / 'checkout'
-            git('init', '--bare', str(origin))
-            git('init', str(source))
-            git('config', 'user.email', 'deploy-test@example.invalid', cwd=source)
-            git('config', 'user.name', 'Deploy Test', cwd=source)
-            (source / 'version.txt').write_text('one\n', encoding='utf-8')
-            git('add', 'version.txt', cwd=source)
-            git('commit', '-m', 'initial', cwd=source)
-            git('branch', '-M', 'main', cwd=source)
-            git('remote', 'add', 'origin', str(origin), cwd=source)
-            git('push', '-u', 'origin', 'main', cwd=source)
-            git('clone', '--branch', 'main', str(origin), str(checkout))
-            before = git('rev-parse', 'HEAD', cwd=checkout, capture=True)
-            before_remote = git(
-                'rev-parse', 'refs/remotes/origin/main', cwd=checkout, capture=True,
-            )
-            (source / 'version.txt').write_text('two\n', encoding='utf-8')
-            git('commit', '-am', 'second', cwd=source)
-            git('push', 'origin', 'main', cwd=source)
-            desired = git('rev-parse', 'HEAD', cwd=source, capture=True)
-            self.assertNotEqual(before, desired)
-
-            command = MODULE.locked_remote_release_command(
-                self._args(), desired, 'run-contender', remote_project=checkout,
-            )
-            lock_path = checkout / '.git/rolling-release.lock'
-            with lock_path.open('a+', encoding='utf-8') as lock_handle:
-                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                result = subprocess.run(
-                    ['/bin/bash', '-lc', command], text=True, capture_output=True,
-                )
-            after = git('rev-parse', 'HEAD', cwd=checkout, capture=True)
-            after_remote = git(
-                'rev-parse', 'refs/remotes/origin/main', cwd=checkout, capture=True,
-            )
-
-            self.assertNotEqual(result.returncode, 0)
-            self.assertEqual(after, before)
-            self.assertEqual(after_remote, before_remote)
-            self.assertFalse((checkout / 'logs').exists())
-            self.assertFalse(
-                (checkout / 'logs/deploy/release-runs/run-contender.json').exists(),
-            )
+            project = Path(temporary)
+            (project / '.git').mkdir()
+            lock_path = project / '.git/rolling-release.lock'
+            descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            environment = {
+                'ROLLING_RELEASE_LOCK_FD': str(descriptor),
+                'ROLLING_RELEASE_LOCK_PATH': str(lock_path),
+                'ROLLING_RELEASE_CONTROL_FILE': str(
+                    project / f'logs/deploy/release-runs/{run_id}.control.json'
+                ),
+                'ROLLING_RELEASE_UNIT': f'raspi-release-{run_id}.service',
+                'ROLLING_RELEASE_PROTOCOL': '1',
+                'INVOCATION_ID': 'a' * 32,
+            }
+            args = argparse.Namespace(run_id=run_id)
+            with patch.object(MODULE, 'PROJECT', project), \
+                    patch.dict(MODULE.os.environ, environment, clear=True), \
+                    patch.object(
+                        MODULE.systemd_backend,
+                        'validate_current_execution_identity',
+                    ) as identity, \
+                    patch.object(MODULE, '_remote_run', return_value=0) as execute:
+                self.assertEqual(MODULE.remote_run(args), 0)
+            identity.assert_called_once_with(run_id, 'a' * 32)
+            execute.assert_called_once_with(args)
+            with self.assertRaises(OSError):
+                os.fstat(descriptor)
 
 
 class RollingReleaseCancellationTest(unittest.TestCase):
-    def test_cancel_fails_closed_before_git_ssh_or_signal_and_keeps_local_head(self):
-        before = subprocess.run(
-            ['git', '-C', str(MODULE.PROJECT), 'rev-parse', 'HEAD'],
-            check=True, text=True, capture_output=True,
-        ).stdout.strip()
+    def test_cancel_is_a_cooperative_public_operation(self):
         args = MODULE.normalize_arguments(MODULE.parser().parse_args([
             '--cancel', 'run-42', '--reason', 'operator requested safe stop',
         ]))
-        with patch.object(MODULE, 'run') as git_or_command, \
-                patch.object(MODULE.subprocess, 'run') as subprocess_run, \
-                patch.object(MODULE.os, 'kill') as signal_process:
-            with self.assertRaisesRegex(
-                RuntimeError,
-                r'--cancel is disabled.*systemd/cooperative backend.*--status run-42',
-            ):
-                MODULE.local_run(args)
-        git_or_command.assert_not_called()
-        subprocess_run.assert_not_called()
-        signal_process.assert_not_called()
-
-        after = subprocess.run(
-            ['git', '-C', str(MODULE.PROJECT), 'rev-parse', 'HEAD'],
-            check=True, text=True, capture_output=True,
-        ).stdout.strip()
-        self.assertEqual(after, before)
-
-    def test_cancel_cli_is_nonzero_and_explains_the_deferred_backend(self):
-        result = subprocess.run(
-            [
-                'python3', str(SCRIPT), '--cancel', 'run-42',
-                '--reason', 'operator requested safe stop',
-            ],
-            cwd=MODULE.PROJECT, text=True, capture_output=True,
+        with patch.object(
+            MODULE.release_application, 'cancel', return_value=0,
+        ) as cancel:
+            self.assertEqual(MODULE.local_run(args), 0)
+        cancel.assert_called_once_with(
+            'run-42', 'operator requested safe stop', runtime=MODULE,
         )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('--cancel is disabled', result.stderr)
-        self.assertIn('systemd/cooperative backend', result.stderr)
-        self.assertIn('--status run-42', result.stderr)
 
-    def test_cancel_takes_precedence_over_status_approve_and_remote_run(self):
-        conflicts = (
-            ['--status', 'other-run'],
-            ['--approve', 'other-run'],
-            [
-                '--remote-run', '--branch', 'main', '--inventory', 'inventory.yml',
-                '--sha', 'a' * 40, '--run-id', 'other-run',
-            ],
-        )
-        for conflicting_options in conflicts:
-            with self.subTest(options=conflicting_options):
-                argv = [
-                    str(SCRIPT), '--cancel', 'run-42', '--reason', 'safe stop',
-                    *conflicting_options,
-                ]
-                with patch.object(MODULE.sys, 'argv', argv), \
-                        patch.object(MODULE, 'run') as git_or_command, \
-                        patch.object(MODULE.subprocess, 'run') as subprocess_run, \
-                        patch.object(MODULE, 'remote_run') as remote_run, \
-                        patch.object(MODULE, 'local_approve') as approve, \
-                        patch.object(MODULE.os, 'kill') as signal_process:
-                    with self.assertRaisesRegex(RuntimeError, '--cancel is disabled'):
-                        MODULE.main()
-                git_or_command.assert_not_called()
-                subprocess_run.assert_not_called()
-                remote_run.assert_not_called()
-                approve.assert_not_called()
-                signal_process.assert_not_called()
-
-    def test_detach_and_job_fail_before_git_or_ssh(self):
-        for option in ('--detach', '--job'):
+    def test_conflicting_control_operations_fail_before_execution(self):
+        for option in ('--status', '--approve'):
             with self.subTest(option=option):
-                args = MODULE.normalize_arguments(MODULE.parser().parse_args([
-                    'main', 'infrastructure/ansible/inventory.yml', option,
-                ]))
-                with patch.object(MODULE, 'run') as git_or_command, \
-                        patch.object(MODULE.subprocess, 'run') as subprocess_run:
-                    with self.assertRaisesRegex(
-                        RuntimeError,
-                        'disabled until the locked systemd backend is available',
-                    ):
-                        MODULE.local_run(args)
-                git_or_command.assert_not_called()
-                subprocess_run.assert_not_called()
+                with self.assertRaisesRegex(RuntimeError, 'mutually exclusive'):
+                    MODULE.normalize_arguments(MODULE.parser().parse_args([
+                        '--cancel', 'run-42', '--reason', 'safe stop',
+                        option, 'other-run',
+                    ]))
+
+    def test_detach_is_retained_and_job_is_retired(self):
+        args = MODULE.normalize_arguments(MODULE.parser().parse_args([
+            'main', 'infrastructure/ansible/inventory.yml', '--detach',
+        ]))
+        with patch.object(
+            MODULE.release_application, 'launch', return_value=0,
+        ) as launch:
+            self.assertEqual(MODULE.local_run(args), 0)
+        launch.assert_called_once_with(args, runtime=MODULE)
+
+        with self.assertRaisesRegex(RuntimeError, '--job is retired; use --detach'):
+            MODULE.normalize_arguments(MODULE.parser().parse_args([
+                'main', 'infrastructure/ansible/inventory.yml', '--job',
+            ]))
 
 
 if __name__ == '__main__':
