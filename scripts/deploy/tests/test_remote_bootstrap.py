@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import fcntl
+import io
 import json
 import os
 import signal
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.deploy.rolling_release import bootstrap
 from scripts.deploy.rolling_release.models import LaunchSpec
@@ -30,6 +32,7 @@ class RecordingRun:
         self.dirty = dirty
         self.calls: list[tuple[tuple[str, ...], str, bool]] = []
         self.lock_was_held: list[bool] = []
+        self.fleet_lock_was_held: list[bool] = []
         self.after_call = None
 
     def __call__(self, argv, *, cwd, capture_output=False):
@@ -47,6 +50,20 @@ class RecordingRun:
         finally:
             os.close(descriptor)
         self.lock_was_held.append(blocked)
+        fleet_descriptor = os.open(
+            self.project / 'logs/deploy/fleet-release-state.lock', os.O_WRONLY
+        )
+        fleet_blocked = False
+        try:
+            try:
+                fcntl.flock(fleet_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                fleet_blocked = True
+            else:
+                fcntl.flock(fleet_descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(fleet_descriptor)
+        self.fleet_lock_was_held.append(fleet_blocked)
         if self.after_call is not None:
             self.after_call(command)
         if command[1:3] == ('rev-parse', 'HEAD'):
@@ -67,8 +84,15 @@ class RemoteBootstrapTest(unittest.TestCase):
         protocol.parent.mkdir(parents=True)
         protocol.write_text(bootstrap.PROTOCOL_VALUE, encoding='utf-8')
         self.original_cwd = Path.cwd()
+        self.identity_patch = patch.object(
+            bootstrap,
+            'read_local_server_client_id',
+            return_value='raspberrypi5-server',
+        )
+        self.identity_patch.start()
 
     def tearDown(self) -> None:
+        self.identity_patch.stop()
         os.chdir(self.original_cwd)
         self.temporary.cleanup()
 
@@ -78,6 +102,7 @@ class RemoteBootstrapTest(unittest.TestCase):
             'branch': 'main',
             'sha': SHA,
             'inventory': 'inventory.yml',
+            'expected_server_client_id': 'raspberrypi5-server',
             'limit': '',
         }
         values.update(overrides)
@@ -95,10 +120,30 @@ class RemoteBootstrapTest(unittest.TestCase):
             descriptor = int(environment['ROLLING_RELEASE_LOCK_FD'])
             self.assertTrue(os.get_inheritable(descriptor))
             self.assertEqual(os.fstat(descriptor).st_ino, os.stat(self.project / '.git/rolling-release.lock').st_ino)
+            fleet_descriptor = int(environment['ROLLING_RELEASE_FLEET_LOCK_FD'])
+            self.assertTrue(os.get_inheritable(fleet_descriptor))
+            self.assertEqual(
+                os.fstat(fleet_descriptor).st_ino,
+                os.stat(self.project / 'logs/deploy/fleet-release-state.lock').st_ino,
+            )
+            self.assertEqual(
+                os.stat(self.project / '.git/rolling-release.lock').st_mode & 0o777,
+                0o600,
+            )
+            self.assertEqual(
+                os.stat(self.project / 'logs/deploy/fleet-release-state.lock').st_mode & 0o777,
+                0o600,
+            )
             raise ExecIntercept
 
         with self.assertRaises(ExecIntercept):
-            bootstrap.execute(self.spec(), run_command=runner, execve=fake_exec, environ={'BASE': '1'})
+            bootstrap.execute(
+                self.spec(),
+                run_command=runner,
+                execve=fake_exec,
+                environ={'BASE': '1'},
+                server_client_id_reader=lambda: 'raspberrypi5-server',
+            )
 
         self.assertEqual(
             [call[0][1:3] for call in runner.calls],
@@ -112,16 +157,21 @@ class RemoteBootstrapTest(unittest.TestCase):
             ],
         )
         self.assertEqual(runner.lock_was_held, [True] * 6)
+        self.assertEqual(runner.fleet_lock_was_held, [True] * 6)
         self.assertEqual(invoked['path'], '/usr/bin/python3')
         self.assertIs(invoked['sigusr1_handler'], signal.SIG_IGN)
         self.assertIs(signal.getsignal(signal.SIGUSR1), original_handler)
         self.assertEqual(invoked['cwd'].resolve(), self.project.resolve())
         self.assertEqual(Path.cwd().resolve(), self.original_cwd.resolve())
         self.assertNotIn('ROLLING_RELEASE_LOCK_HELD', invoked['environment'])
-        self.assertEqual(invoked['environment']['ROLLING_RELEASE_PROTOCOL'], '1')
+        self.assertEqual(invoked['environment']['ROLLING_RELEASE_PROTOCOL'], '2')
         self.assertEqual(
             invoked['environment']['ROLLING_RELEASE_LOCK_PATH'],
             str(self.project / '.git/rolling-release.lock'),
+        )
+        self.assertEqual(
+            invoked['environment']['ROLLING_RELEASE_FLEET_LOCK_PATH'],
+            str(self.project / 'logs/deploy/fleet-release-state.lock'),
         )
         self.assertEqual(
             invoked['environment']['ROLLING_RELEASE_CONTROL_FILE'],
@@ -150,7 +200,26 @@ class RemoteBootstrapTest(unittest.TestCase):
         self.assertEqual(result, bootstrap.EX_TEMPFAIL)
         self.assertEqual(runner.calls, [])
         self.assertEqual(executed, [])
-        self.assertFalse((self.project / 'logs').exists())
+        self.assertTrue((self.project / 'logs/deploy/fleet-release-state.lock').is_file())
+        self.assertFalse((self.project / 'logs/deploy/fleet-release-state.json').exists())
+        self.assertFalse((self.project / 'logs/deploy/release-runs').exists())
+
+    def test_fleet_lock_contender_stops_before_compatibility_lock_and_git(self):
+        fleet_lock = self.project / 'logs/deploy/fleet-release-state.lock'
+        fleet_lock.parent.mkdir(parents=True)
+        descriptor = os.open(fleet_lock, os.O_WRONLY | os.O_CREAT, 0o600)
+        runner = RecordingRun(self.project)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = bootstrap.execute(self.spec(), run_command=runner)
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
+
+        self.assertEqual(result, bootstrap.EX_TEMPFAIL)
+        self.assertEqual(runner.calls, [])
+        self.assertFalse((self.project / '.git/rolling-release.lock').exists())
+        self.assertFalse((self.project / 'logs/deploy/fleet-release-state.json').exists())
 
     def test_lock_symlink_fails_before_git_without_modifying_target(self):
         lock_path = self.project / '.git/rolling-release.lock'
@@ -209,7 +278,9 @@ class RemoteBootstrapTest(unittest.TestCase):
             os.close(descriptor)
 
         self.assertEqual(completed.returncode, bootstrap.EX_TEMPFAIL, completed.stderr)
-        self.assertFalse((self.project / 'logs').exists())
+        self.assertTrue((self.project / 'logs/deploy/fleet-release-state.lock').is_file())
+        self.assertFalse((self.project / 'logs/deploy/fleet-release-state.json').exists())
+        self.assertFalse((self.project / 'logs/deploy/release-runs').exists())
 
     def test_cancel_arriving_during_fetch_stops_before_commit_or_checkout(self):
         spec = self.spec()
@@ -316,7 +387,9 @@ class RemoteBootstrapTest(unittest.TestCase):
         self.assertEqual(executed, [])
 
     def test_target_without_current_protocol_cannot_exec_an_old_coordinator(self):
-        (self.project / bootstrap.PROTOCOL_PATH).unlink()
+        (self.project / bootstrap.PROTOCOL_PATH).write_text(
+            'raspi-rolling-release-v1\n', encoding='utf-8'
+        )
         runner = RecordingRun(self.project)
         executed = []
 
@@ -384,12 +457,14 @@ class RemoteBootstrapTest(unittest.TestCase):
                 branch='main',
                 sha=sha,
                 inventory='inventory.yml',
+                expected_server_client_id='raspberrypi5-server',
             ).bootstrap_payload(str(project))
             executed = []
 
             result = bootstrap.execute(
                 spec,
                 execve=lambda *arguments: executed.append(arguments),
+                server_client_id_reader=lambda: 'raspberrypi5-server',
             )
 
             self.assertEqual(result, bootstrap.EX_CONFIG)
@@ -439,6 +514,40 @@ class RemoteBootstrapTest(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(bootstrap.BootstrapConfigError):
                 bootstrap.parse_spec(json.dumps(invalid))
         self.assertEqual(bootstrap.main(['{}']), bootstrap.EX_CONFIG)
+
+    def test_wrong_server_identity_stops_before_every_git_command(self):
+        runner = RecordingRun(self.project)
+
+        result = bootstrap.execute(
+            self.spec(),
+            run_command=runner,
+            server_client_id_reader=lambda: 'talkplaza-pi5-server',
+        )
+
+        self.assertEqual(result, bootstrap.EX_CONFIG)
+        self.assertEqual(runner.calls, [])
+
+    def test_client_key_in_config_is_never_emitted(self):
+        config = self.project / 'raspi-status-agent.conf'
+        secret = 'must-never-appear-client-key'
+        config.write_text(
+            'CLIENT_ID="raspberrypi5-server"\n'
+            f'CLIENT_KEY="{secret}"\n',
+            encoding='utf-8',
+        )
+        self.assertEqual(
+            bootstrap.read_local_server_client_id(str(config)),
+            'raspberrypi5-server',
+        )
+        stderr = io.StringIO()
+        with patch('sys.stderr', stderr):
+            result = bootstrap.execute(
+                self.spec(),
+                run_command=RecordingRun(self.project),
+                server_client_id_reader=lambda: 'talkplaza-pi5-server',
+            )
+        self.assertEqual(result, bootstrap.EX_CONFIG)
+        self.assertNotIn(secret, stderr.getvalue())
 
 
 if __name__ == '__main__':

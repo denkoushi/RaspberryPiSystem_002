@@ -1,7 +1,7 @@
 ---
 title: Pi4 SD-card recovery through Pi5
 status: accepted
-scope: inventory-managed Pi4 kiosk whose SD card was replaced after corruption or failure
+scope: explicitly enabled standard-site Pi4 kiosk whose SD card was replaced after corruption or failure
 date: 2026-07-13
 source_of_truth: docs/runbooks/pi4-sd-recovery.md
 related_code:
@@ -24,6 +24,10 @@ Use this runbook only when an existing, inventory-managed Pi4 kiosk has a
 failed or corrupted SD card. It rebuilds the Pi4 from the Pi5's active immutable
 release and existing Inventory/Vault values. It is not a new-client setup and
 does not register a new `ClientDevice`.
+
+The current recovery path is limited to standard-site hosts with
+`pi4_recovery_enabled: true` and Tailscale enabled. Talkplaza LAN/DNS recovery
+is not supported by this runbook and requires a separate ADR and procedure.
 
 Run the recovery command on the Pi5 only. Normal application releases still use
 `scripts/update-all-clients.sh`; do not use this command for a healthy terminal

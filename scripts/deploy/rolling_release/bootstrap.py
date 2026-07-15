@@ -26,7 +26,7 @@ EX_TEMPFAIL = 75
 EX_CONFIG = 78
 EX_CANCELLED = 130
 PROTOCOL_PATH = Path("scripts/deploy/rolling_release/PROTOCOL")
-PROTOCOL_VALUE = "raspi-rolling-release-v1\n"
+PROTOCOL_VALUE = "raspi-rolling-release-v2\n"
 NEW_RUN_ID_RE = re.compile(r'^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$')
 FULL_SHA_RE = re.compile(r'^[0-9a-f]{40}$')
 UNIT_PREFIX = 'raspi-release-'
@@ -39,12 +39,14 @@ EXPECTED_KEYS = frozenset({
     'branch',
     'sha',
     'inventory',
+    'expectedServerClientId',
     'limit',
     'canaryHoldTimeout',
     'emergencyOverride',
     'reason',
     'skipCanaryHold',
     'autoMinimize',
+    'fullFleet',
 })
 FORBIDDEN_REF_CHARACTERS = frozenset(' ~^:?*[\\')
 
@@ -96,8 +98,8 @@ def parse_spec(raw: str) -> dict[str, Any]:
     except (TypeError, json.JSONDecodeError) as error:
         raise BootstrapConfigError('bootstrap specification is not valid JSON') from error
     if not isinstance(payload, dict) or set(payload) != EXPECTED_KEYS:
-        raise BootstrapConfigError('bootstrap specification fields do not match version 1')
-    if payload.get('version') != 1 or type(payload.get('version')) is not int:
+        raise BootstrapConfigError('bootstrap specification fields do not match version 2')
+    if payload.get('version') != 2 or type(payload.get('version')) is not int:
         raise BootstrapConfigError('unsupported bootstrap specification version')
 
     project = _require_string(payload, 'project', maximum=4096)
@@ -125,13 +127,20 @@ def parse_spec(raw: str) -> dict[str, Any]:
     ):
         raise BootstrapConfigError('inventory must be a normalized relative path')
     _require_string(payload, 'limit', maximum=1000, allow_empty=True)
+    server_client_id = _require_string(payload, 'expectedServerClientId', maximum=128)
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}', server_client_id):
+        raise BootstrapConfigError('expectedServerClientId is malformed')
 
     timeout = payload.get('canaryHoldTimeout')
     if type(timeout) is not int or timeout <= 0:
         raise BootstrapConfigError('canaryHoldTimeout must be a positive integer')
-    for key in ('emergencyOverride', 'skipCanaryHold', 'autoMinimize'):
+    for key in ('emergencyOverride', 'skipCanaryHold', 'autoMinimize', 'fullFleet'):
         if type(payload.get(key)) is not bool:
             raise BootstrapConfigError(f'{key} must be boolean')
+    if payload['fullFleet'] and payload['autoMinimize']:
+        raise BootstrapConfigError('fullFleet cannot be combined with autoMinimize')
+    if payload['fullFleet'] and payload['limit']:
+        raise BootstrapConfigError('fullFleet cannot be combined with limit')
     reason = payload.get('reason')
     if reason is not None:
         if not isinstance(reason, str) or '\x00' in reason or len(reason) > 1000:
@@ -163,6 +172,28 @@ def lock_file(spec: Mapping[str, Any]) -> str:
     return os.path.join(str(spec['project']), '.git', 'rolling-release.lock')
 
 
+def fleet_lock_file(spec: Mapping[str, Any]) -> str:
+    return os.path.join(
+        str(spec['project']), 'logs', 'deploy', 'fleet-release-state.lock'
+    )
+
+
+def _open_nonblocking_lock(path: str) -> int:
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | getattr(os, 'O_CLOEXEC', 0)
+    flags |= getattr(os, 'O_NOFOLLOW', 0)
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise OSError(f'lock path is not a regular file: {path}')
+        os.fchmod(descriptor, 0o600)
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BaseException:
+        os.close(descriptor)
+        raise
+    return descriptor
+
+
 def remote_arguments(spec: Mapping[str, Any]) -> list[str]:
     arguments = [
         '/usr/bin/python3',
@@ -176,6 +207,8 @@ def remote_arguments(spec: Mapping[str, Any]) -> list[str]:
         str(spec['inventory']),
         '--run-id',
         str(spec['runId']),
+        '--expected-server-client-id',
+        str(spec['expectedServerClientId']),
         '--limit',
         str(spec['limit']),
         '--canary-hold-timeout',
@@ -187,7 +220,38 @@ def remote_arguments(spec: Mapping[str, Any]) -> list[str]:
         arguments.append('--skip-canary-hold')
     if spec['autoMinimize']:
         arguments.append('--auto-minimize')
+    if spec['fullFleet']:
+        arguments.append('--full-fleet')
     return arguments
+
+
+def read_local_server_client_id(
+    path: str = '/etc/raspi-status-agent.conf',
+) -> str:
+    """Read one non-secret identity without following a substituted config."""
+
+    flags = os.O_RDONLY | getattr(os, 'O_CLOEXEC', 0) | getattr(os, 'O_NOFOLLOW', 0)
+    descriptor = os.open(path, flags)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise OSError('status-agent config is not a regular file')
+        payload = os.read(descriptor, 65537)
+    finally:
+        os.close(descriptor)
+    if len(payload) > 65536:
+        raise OSError('status-agent config is too large')
+    text = payload.decode('utf-8')
+    pattern = re.compile(
+        r'''^[ \t]*CLIENT_ID[ \t]*=[ \t]*(?:"([A-Za-z0-9][A-Za-z0-9._:-]{0,127})"|'([A-Za-z0-9][A-Za-z0-9._:-]{0,127})'|([A-Za-z0-9][A-Za-z0-9._:-]{0,127}))[ \t]*(?:#.*)?$'''
+    )
+    values = [
+        next(value for value in match.groups() if value is not None)
+        for line in text.splitlines()
+        if (match := pattern.fullmatch(line)) is not None
+    ]
+    if len(values) != 1:
+        raise OSError('status-agent CLIENT_ID is missing or duplicated')
+    return values[0]
 
 
 def _default_run(
@@ -217,12 +281,15 @@ def execute(
     execve: Callable[[str, Sequence[str], Mapping[str, str]], Any] = os.execve,
     signal_requested: Callable[[], bool] = lambda: False,
     environ: Mapping[str, str] | None = None,
+    server_client_id_reader: Callable[[], str] | None = None,
 ) -> int:
     """Own the kernel lock before every fetch, checkout, or coordinator write."""
     project = str(spec['project'])
     cancellation_path = control_file(spec)
     lock_path = lock_file(spec)
+    fleet_lock_path = fleet_lock_file(spec)
     lock_fd: int | None = None
+    fleet_lock_fd: int | None = None
     original_cwd = os.getcwd()
     changed_directory = False
     pre_exec_signal_handler: Any = None
@@ -238,22 +305,28 @@ def execute(
 
     try:
         try:
-            flags = os.O_WRONLY | os.O_CREAT | getattr(os, 'O_CLOEXEC', 0)
-            flags |= getattr(os, 'O_NOFOLLOW', 0)
-            lock_fd = os.open(lock_path, flags, 0o600)
-        except OSError as error:
-            print(f'[ERROR] could not open rolling-release lock: {error}', file=sys.stderr)
-            return EX_TEMPFAIL
-        if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
-            print('[ERROR] rolling-release lock path is not a regular file', file=sys.stderr)
-            return EX_TEMPFAIL
-        try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except (BlockingIOError, OSError):
+            # The fleet lock is the durable authority introduced in PR 5.
+            # The .git lock remains held during the compatibility interval and
+            # is removed only after accepted production migration in PR 8.
+            fleet_lock_fd = _open_nonblocking_lock(fleet_lock_path)
+            lock_fd = _open_nonblocking_lock(lock_path)
+        except (BlockingIOError, OSError) as error:
+            print(f'[ERROR] could not acquire rolling-release locks: {error}', file=sys.stderr)
             return EX_TEMPFAIL
 
         if cancelled():
             return EX_CANCELLED
+
+        try:
+            server_client_id = (
+                server_client_id_reader or read_local_server_client_id
+            )()
+        except (OSError, UnicodeError) as error:
+            print(f'[ERROR] remote Pi5 identity is unavailable: {error}', file=sys.stderr)
+            return EX_CONFIG
+        if server_client_id != spec['expectedServerClientId']:
+            print('[ERROR] remote Pi5 identity does not match the selected inventory', file=sys.stderr)
+            return EX_CONFIG
 
         before = run_command(
             ['/usr/bin/git', 'status', '--porcelain=v1', '--untracked-files=normal'],
@@ -325,12 +398,12 @@ def execute(
             return EX_CANCELLED
 
         try:
-            protocol = (project / PROTOCOL_PATH).read_text(encoding='utf-8')
+            protocol = (Path(project) / PROTOCOL_PATH).read_text(encoding='utf-8')
         except (OSError, UnicodeError):
             protocol = ''
         if protocol != PROTOCOL_VALUE:
             print(
-                '[ERROR] target release does not support the rolling-release v1 protocol',
+                '[ERROR] target release does not support the fleet-state rolling-release v2 protocol',
                 file=sys.stderr,
             )
             return EX_CONFIG
@@ -338,13 +411,16 @@ def execute(
             return EX_CANCELLED
 
         os.set_inheritable(lock_fd, True)
+        os.set_inheritable(fleet_lock_fd, True)
         environment = dict(os.environ if environ is None else environ)
         environment.update({
             'ROLLING_RELEASE_LOCK_FD': str(lock_fd),
             'ROLLING_RELEASE_LOCK_PATH': lock_path,
+            'ROLLING_RELEASE_FLEET_LOCK_FD': str(fleet_lock_fd),
+            'ROLLING_RELEASE_FLEET_LOCK_PATH': fleet_lock_path,
             'ROLLING_RELEASE_CONTROL_FILE': cancellation_path,
             'ROLLING_RELEASE_UNIT': str(spec['unitName']),
-            'ROLLING_RELEASE_PROTOCOL': '1',
+            'ROLLING_RELEASE_PROTOCOL': '2',
         })
         arguments = remote_arguments(spec)
         os.chdir(project)
@@ -367,6 +443,11 @@ def execute(
         if lock_fd is not None:
             try:
                 os.close(lock_fd)
+            except OSError:
+                pass
+        if fleet_lock_fd is not None:
+            try:
+                os.close(fleet_lock_fd)
             except OSError:
                 pass
 

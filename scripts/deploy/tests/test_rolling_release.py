@@ -1,5 +1,7 @@
 import argparse
+from contextlib import ExitStack, contextmanager
 import fcntl
+import io
 import importlib.util
 import json
 import os
@@ -17,6 +19,138 @@ assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
+
+
+TARGET_SHA = 'a' * 40
+BASE_SHA = 'b' * 40
+
+
+def _verified_fleet_record(role, sha=BASE_SHA):
+    record = {
+        'role': role,
+        'desiredSha': sha,
+        'currentSha': sha,
+        'previousSha': None,
+        'evidence': 'verified',
+        'verifiedAt': '2026-07-12T00:00:00Z',
+        'lastRunId': 'prior-run',
+    }
+    if role == 'server':
+        record.update({
+            'activeSlot': 'blue',
+            'apiImage': f'api:{sha}-0123456789ab',
+            'webImage': f'web:{sha}-0123456789ab',
+            'configDigest': 'sha256:' + 'c' * 64,
+            'migrationDigest': 'sha256:' + 'd' * 64,
+        })
+    return record
+
+
+@contextmanager
+def fleet_execution_contract(targets, classification, inventory):
+    """Adapt legacy facade-flow tests to the authoritative fleet contract."""
+
+    terminal_targets = [
+        {**target, 'role': target['terminalType']}
+        for target in targets
+    ]
+    all_hosts = [{'host': 'raspberrypi5', 'role': 'server'}, *terminal_targets]
+    fleet = {
+        host['host']: _verified_fleet_record(host['role'])
+        for host in all_hosts
+    }
+    initial_fleet = {
+        'generation': 1,
+        'activeRun': {
+            'runId': 'run-1',
+            'status': 'running',
+            'desiredSha': TARGET_SHA,
+            'inventory': 'inventory.yml',
+            'startedAt': '2026-07-12T00:00:00Z',
+            'kind': 'release',
+        },
+        'lastRun': None,
+        'fleet': fleet,
+    }
+    generation = {'value': 1}
+
+    def transition(*_args, **_kwargs):
+        generation['value'] += 1
+        return {'generation': generation['value']}
+
+    def build_scope(**kwargs):
+        decisions = MODULE.plan_target_decisions(
+            all_hosts,
+            fleet,
+            kwargs['sha'],
+            {BASE_SHA: classification},
+            inventory,
+            full_fleet=kwargs['full_fleet'],
+        )
+        plan = MODULE.release_planner.build_fleet_plan_payload(
+            release_sha=kwargs['sha'],
+            decisions=decisions,
+            full_fleet=kwargs['full_fleet'],
+            limit=kwargs['limit'],
+            canary_hold_policy=MODULE.should_hold_after_canary,
+        )
+        target_hosts = {
+            decision['host']
+            for decision in decisions
+            if decision['targeted'] and decision['role'] in {'kiosk', 'signage'}
+        }
+        selected = [target for target in terminal_targets if target['host'] in target_hosts]
+        plan['terminalTargets'] = selected
+        plan['autoMinimize'] = kwargs['auto_minimize_alias']
+        plan['classificationComponents'] = (
+            None if classification is None else sorted(classification.get('components') or [])
+        )
+        return plan, selected, {BASE_SHA: classification}, []
+
+    pi5_observation = {
+        'currentSha': TARGET_SHA,
+        'activeSlot': 'green',
+        'apiImage': f'api:{TARGET_SHA}-0123456789ab',
+        'webImage': f'web:{TARGET_SHA}-0123456789ab',
+        'configDigest': 'sha256:' + 'e' * 64,
+        'migrationDigest': 'sha256:' + 'f' * 64,
+    }
+    ensure = Mock()
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(MODULE, 'fleet_begin_run', return_value=(initial_fleet, None))
+        )
+        stack.enter_context(patch.object(MODULE, 'fleet_mark_unknown', side_effect=transition))
+        stack.enter_context(patch.object(MODULE, 'fleet_mark_verified', side_effect=transition))
+        stack.enter_context(patch.object(MODULE, 'fleet_finish_run', side_effect=transition))
+        stack.enter_context(patch.object(MODULE, 'release_hosts', return_value=all_hosts))
+        stack.enter_context(
+            patch.object(
+                MODULE,
+                'inventory_server_identity',
+                return_value={
+                    'host': 'raspberrypi5',
+                    'clientId': 'raspberrypi5-server',
+                },
+            )
+        )
+        stack.enter_context(patch.object(MODULE, 'build_fleet_scope', side_effect=build_scope))
+        stack.enter_context(patch.object(MODULE, 'ensure_pi5_release', ensure))
+        stack.enter_context(
+            patch.object(MODULE, 'observe_pi5_evidence', return_value=pi5_observation)
+        )
+        stack.enter_context(
+            patch.object(
+                MODULE,
+                'observe_terminal_evidence',
+                side_effect=lambda _inventory, _host, _role: {
+                    'currentSha': TARGET_SHA,
+                    'services': ['required.service'],
+                },
+            )
+        )
+        stack.enter_context(patch.object(MODULE, 'record_pi5_release_current'))
+        yield ensure
 
 
 class ReleaseStateReferenceTest(unittest.TestCase):
@@ -94,6 +228,7 @@ class RollingReleaseTargetOrderTest(unittest.TestCase):
         args = MODULE.normalize_arguments(MODULE.parser().parse_args([
             '--remote-run', '--branch', 'main', '--inventory', 'inventory.yml',
             '--sha', 'a' * 40, '--run-id', 'run-1',
+            '--expected-server-client-id', 'raspberrypi5-server',
         ]))
         self.assertEqual(args.branch, 'main')
         self.assertEqual(args.inventory, 'inventory.yml')
@@ -393,7 +528,7 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         command.assert_not_called()
         release.assert_called_once_with(self.sha, self.state)
         wait.assert_called_once_with(self.state)
-        record.assert_called_once_with(self.sha, {'api': 'api:tag', 'web': 'web:tag'})
+        record.assert_not_called()
 
     def test_missing_marker_runs_blue_green(self):
         with patch.object(MODULE, 'read_pi5_release_current', return_value=None), \
@@ -405,7 +540,7 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
             MODULE.ensure_pi5_release(self.sha, self.state)
         release.assert_called_once_with(self.sha, self.state)
         wait.assert_called_once_with(self.state)
-        record.assert_called_once_with(self.sha, {'api': 'api:tag'})
+        record.assert_not_called()
 
     def test_inconsistent_status_runs_blue_green(self):
         with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
@@ -418,7 +553,7 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
             MODULE.ensure_pi5_release(self.sha, self.state)
         release.assert_called_once_with(self.sha, self.state)
         wait.assert_called_once_with(self.state)
-        record.assert_called_once_with(self.sha, {'api': 'api:tag'})
+        record.assert_not_called()
 
     def test_pi5_already_current_requires_exact_marker_candidate_and_live_slot_match(self):
         with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
@@ -542,7 +677,7 @@ class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
         self.assertTrue(command.call_args_list[2].kwargs['capture'])
         release.assert_called_once_with(self.sha, self.state)
         wait.assert_called_once_with(self.state)
-        record.assert_called_once_with(self.sha, None)
+        record.assert_not_called()
         self.assertEqual(events, ['cleanup', 'release'])
         self.assertEqual(self.state.payload['pi5HandoffRecovery'], {
             'state': 'expired-handoff-cleaned',
@@ -652,11 +787,12 @@ class DeployClassificationBaselineTest(unittest.TestCase):
             self.assertIn('classification unavailable', warnings[0])
             command.assert_not_called()
 
-    def test_marker_matching_target_fails_closed_for_terminal_retry(self):
+    def test_matching_verified_baseline_is_a_neutral_classification(self):
         with patch.object(MODULE, 'run') as command:
             classification, warnings = MODULE.classify_release_impact(self.TARGET, {'sha': self.TARGET})
-        self.assertIsNone(classification)
-        self.assertIn('terminal state is not a safe baseline', warnings[0])
+        self.assertEqual(classification['components'], ['neutral'])
+        self.assertFalse(any(classification[key] for key in ('server', 'kiosk', 'signage', 'migration')))
+        self.assertEqual(warnings, [])
         command.assert_not_called()
 
     def test_non_ancestor_marker_fails_closed(self):
@@ -673,8 +809,53 @@ class DeployClassificationBaselineTest(unittest.TestCase):
         with patch.object(MODULE, 'read_pi5_release_current', return_value=None):
             self.assertTrue(MODULE.pi5_release_required(self.TARGET))
 
+    def test_unknown_fleet_server_never_falls_back_to_compat_marker(self):
+        unknown = _verified_fleet_record('server', self.BASE)
+        unknown.update({
+            'evidence': 'unknown',
+            'verifiedAt': None,
+            'activeSlot': None,
+            'apiImage': None,
+            'webImage': None,
+            'configDigest': None,
+            'migrationDigest': None,
+        })
+        fleet_state = {
+            'generation': 2,
+            'activeRun': None,
+            'lastRun': None,
+            'fleet': {'raspberrypi5': unknown},
+        }
+        with patch.object(MODULE, 'read_fleet_release_state', return_value=fleet_state), \
+                patch.object(MODULE.pi5_backend, 'read_pi5_release_current') as marker:
+            self.assertIsNone(MODULE.read_pi5_release_current())
+        marker.assert_not_called()
+
+    def test_multiple_server_records_disable_skip_without_blocking_repair(self):
+        fleet_state = {
+            'generation': 3,
+            'activeRun': None,
+            'lastRun': None,
+            'fleet': {
+                'old-pi5': _verified_fleet_record('server', self.BASE),
+                'raspberrypi5': _verified_fleet_record('server', self.TARGET),
+            },
+        }
+        with patch.object(MODULE, 'read_fleet_release_state', return_value=fleet_state), \
+                patch.object(MODULE.pi5_backend, 'read_pi5_release_current') as marker:
+            self.assertIsNone(MODULE.read_pi5_release_current())
+        marker.assert_not_called()
+
 
 class CanaryHoldTest(unittest.TestCase):
+    TERMINAL_CLASSIFICATION = {
+        'server': False,
+        'kiosk': True,
+        'signage': True,
+        'migration': False,
+        'components': ['terminal-test'],
+    }
+
     def _args(self, **overrides):
         values = {
             'inventory': 'inventory.yml',
@@ -687,6 +868,8 @@ class CanaryHoldTest(unittest.TestCase):
             'skip_canary_hold': False,
             'canary_hold_timeout': 60,
             'auto_minimize': False,
+            'full_fleet': False,
+            'expected_server_client_id': 'raspberrypi5-server',
         }
         values.update(overrides)
         return argparse.Namespace(**values)
@@ -702,9 +885,8 @@ class CanaryHoldTest(unittest.TestCase):
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value={}), \
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
-                    patch.object(MODULE, 'release_targets', return_value=targets), \
-                    patch.object(MODULE, 'pi5_release_required', return_value=False), \
-                    patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    fleet_execution_contract(targets, self.TERMINAL_CLASSIFICATION, {}), \
+                    patch.object(MODULE, 'remote_previous_sha', return_value=BASE_SHA), \
                     patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'wait_for_canary_approval', side_effect=wait_for_canary_approval), \
@@ -770,9 +952,8 @@ class CanaryHoldTest(unittest.TestCase):
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value={}), \
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
-                    patch.object(MODULE, 'release_targets', return_value=targets), \
-                    patch.object(MODULE, 'pi5_release_required', return_value=False), \
-                    patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    fleet_execution_contract(targets, self.TERMINAL_CLASSIFICATION, {}), \
+                    patch.object(MODULE, 'remote_previous_sha', return_value=BASE_SHA), \
                     patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'wait_for_canary_approval', side_effect=wait_for_canary_approval), \
@@ -834,9 +1015,8 @@ class CanaryHoldTest(unittest.TestCase):
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value={}), \
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
-                    patch.object(MODULE, 'release_targets', return_value=targets), \
-                    patch.object(MODULE, 'pi5_release_required', return_value=False), \
-                    patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    fleet_execution_contract(targets, self.TERMINAL_CLASSIFICATION, {}), \
+                    patch.object(MODULE, 'remote_previous_sha', return_value=BASE_SHA), \
                     patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command') as state_command, \
@@ -885,9 +1065,8 @@ class CanaryHoldTest(unittest.TestCase):
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value={}), \
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
-                    patch.object(MODULE, 'release_targets', return_value=targets), \
-                    patch.object(MODULE, 'pi5_release_required', return_value=False), \
-                    patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    fleet_execution_contract(targets, self.TERMINAL_CLASSIFICATION, {}), \
+                    patch.object(MODULE, 'remote_previous_sha', return_value=BASE_SHA), \
                     patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command', side_effect=state_command), \
@@ -1010,6 +1189,7 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
             'skip_canary_hold': False,
             'canary_hold_timeout': 60,
             'auto_minimize': False,
+            'expected_server_client_id': 'raspberrypi5-server',
         }
         values.update(overrides)
         return argparse.Namespace(**values)
@@ -1020,9 +1200,17 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value={}), \
                     patch.object(MODULE, 'selected_hosts', return_value=['raspberrypi5']), \
-                    patch.object(MODULE, 'release_targets', return_value=[]), \
-                    patch.object(MODULE, 'pi5_release_required', return_value=True), \
-                    patch.object(MODULE, 'ensure_pi5_release') as ensure, \
+                    fleet_execution_contract(
+                        [],
+                        {
+                            'server': True,
+                            'kiosk': False,
+                            'signage': False,
+                            'migration': False,
+                            'components': ['server-app'],
+                        },
+                        {},
+                    ) as ensure, \
                     patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
                 result = MODULE._remote_run(self._args())
             payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
@@ -1030,15 +1218,9 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
         ensure.assert_called_once()
         self.assertEqual(payload['targets'], [])
         self.assertEqual(payload['state'], 'success')
-        self.assertEqual(payload['plan'], {
-            'pi5Required': True,
-            'targets': [],
-            'limit': 'raspberrypi5',
-            'autoMinimize': False,
-            'minimized': False,
-            'excludedHosts': [],
-            'classificationComponents': None,
-        })
+        self.assertTrue(payload['plan']['pi5Required'])
+        self.assertEqual(payload['plan']['targetHosts'], ['raspberrypi5'])
+        self.assertEqual(payload['plan']['limit'], 'raspberrypi5')
 
     def test_zero_match_limit_fails_instead_of_becoming_a_pi5_only_run(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -1046,73 +1228,161 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value={}), \
                     patch.object(MODULE, 'selected_hosts', return_value=[]), \
-                    patch.object(MODULE, 'pi5_release_required', return_value=True), \
-                    patch.object(MODULE, 'ensure_pi5_release') as ensure:
+                    fleet_execution_contract([], None, {}) as ensure:
                 with self.assertRaises(RuntimeError) as raised:
                     MODULE._remote_run(self._args(limit='typo-host'))
-            payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
+            run_state_exists = (run_directory / 'run-1.json').exists()
         self.assertIn('--limit selected no hosts', str(raised.exception))
-        self.assertEqual(payload['state'], 'failed')
-        self.assertEqual(payload['limitHosts'], 'typo-host')
+        self.assertFalse(run_state_exists)
         ensure.assert_not_called()
 
-    def test_empty_targets_with_limit_fails_when_pi5_not_required(self):
+    def test_empty_targets_with_limit_is_a_noop_when_pi5_is_verified_unaffected(self):
         with tempfile.TemporaryDirectory() as temporary:
             run_directory = Path(temporary)
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value={}), \
                     patch.object(MODULE, 'selected_hosts', return_value=['raspberrypi5']), \
-                    patch.object(MODULE, 'release_targets', return_value=[]), \
-                    patch.object(MODULE, 'pi5_release_required', return_value=False), \
-                    patch.object(MODULE, 'ensure_pi5_release') as ensure:
-                with self.assertRaises(RuntimeError) as raised:
-                    MODULE._remote_run(self._args())
+                    fleet_execution_contract(
+                        [],
+                        {
+                            'server': False,
+                            'kiosk': False,
+                            'signage': False,
+                            'migration': False,
+                            'components': ['neutral'],
+                        },
+                        {},
+                    ) as ensure:
+                result = MODULE._remote_run(self._args())
             payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
-        self.assertIn('no kiosk or signage targets selected', str(raised.exception))
-        self.assertEqual(payload['state'], 'failed')
+        self.assertEqual(result, 0)
+        self.assertEqual(payload['state'], 'success')
+        self.assertEqual(payload['plan']['targetHosts'], [])
         ensure.assert_not_called()
 
-    def test_empty_targets_without_limit_fails_closed(self):
+    def test_empty_inventory_scope_without_limit_can_be_a_verified_noop(self):
         with tempfile.TemporaryDirectory() as temporary:
             run_directory = Path(temporary)
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value={}), \
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
-                    patch.object(MODULE, 'release_targets', return_value=[]), \
-                    patch.object(MODULE, 'pi5_release_required') as required:
-                with self.assertRaises(RuntimeError) as raised:
-                    MODULE._remote_run(self._args(limit=''))
+                    fleet_execution_contract(
+                        [],
+                        {
+                            'server': False,
+                            'kiosk': False,
+                            'signage': False,
+                            'migration': False,
+                            'components': ['neutral'],
+                        },
+                        {},
+                    ) as ensure:
+                result = MODULE._remote_run(self._args(limit=''))
             payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
-        self.assertIn('no kiosk or signage targets selected', str(raised.exception))
-        self.assertEqual(payload['state'], 'failed')
-        required.assert_not_called()
+        self.assertEqual(result, 0)
+        self.assertEqual(payload['state'], 'success')
+        ensure.assert_not_called()
 
 
 class PrintPlanShadowTest(unittest.TestCase):
-    def test_print_plan_fail_open_with_warnings(self):
+    def test_print_plan_fails_closed_when_target_sha_is_unavailable(self):
         args = MODULE.normalize_arguments(MODULE.parser().parse_args([
             'main', 'infrastructure/ansible/inventory.yml', '--print-plan',
         ]))
-        with patch.object(MODULE, 'resolve_release_sha', return_value=(None, ['could not resolve SHA for branch main'])), \
-                patch.object(MODULE, 'resolve_terminal_targets', return_value=(None, ['ansible-inventory unavailable'])), \
-                patch('builtins.print') as printed:
-            self.assertEqual(MODULE.local_run(args), 0)
-        plan = json.loads(printed.call_args.args[0])
-        self.assertEqual(plan['mode'], 'rolling-release')
-        self.assertEqual(plan['branch'], 'main')
-        self.assertEqual(plan['inventory'], 'infrastructure/ansible/inventory.yml')
-        self.assertIsNone(plan['limit'])
-        self.assertIsNone(plan['sha'])
-        self.assertIsNone(plan['classification'])
-        self.assertIsNone(plan['pi5Required'])
-        self.assertIsNone(plan['terminalTargets'])
-        self.assertIsNone(plan['canaryHold'])
-        self.assertFalse(plan['autoMinimize'])
-        self.assertFalse(plan['minimized'])
-        self.assertEqual(plan['excludedHosts'], [])
-        self.assertIsNone(plan['classificationComponents'])
-        self.assertIn('could not resolve SHA for branch main', plan['warnings'])
-        self.assertIn('ansible-inventory unavailable', plan['warnings'])
+        with patch.object(
+            MODULE,
+            'resolve_release_sha',
+            return_value=(None, ['could not resolve SHA for branch main']),
+        ), patch.object(MODULE, 'inventory_json') as inventory:
+            with self.assertRaisesRegex(RuntimeError, 'could not resolve SHA'):
+                MODULE.local_run(args)
+        inventory.assert_not_called()
+
+    def test_print_plan_inventory_failure_precedes_remote_fleet_read(self):
+        fleet_read = Mock()
+        with patch.object(MODULE, 'resolve_release_sha', return_value=(TARGET_SHA, [])), \
+                patch.object(MODULE, 'validate_print_plan_checkout'), \
+                patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
+                patch.object(MODULE, 'inventory_json', side_effect=RuntimeError('vault unavailable')), \
+                patch.object(MODULE, 'read_plan_fleet_release_state', fleet_read):
+            with self.assertRaisesRegex(RuntimeError, 'vault unavailable'):
+                MODULE.build_print_plan('main', 'inventory.yml', '')
+        fleet_read.assert_not_called()
+
+    def test_print_plan_wrong_site_precedes_remote_fleet_read(self):
+        inventory_data = {
+            'server': {'hosts': ['raspberrypi5']},
+            'kiosk': {'hosts': []},
+            'signage': {'hosts': []},
+            'kiosk_canary': {'hosts': []},
+            '_meta': {'hostvars': {'raspberrypi5': {}}},
+        }
+        fleet_read = Mock()
+        with patch.object(MODULE, 'resolve_release_sha', return_value=(TARGET_SHA, [])), \
+                patch.object(MODULE, 'validate_print_plan_checkout'), \
+                patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
+                patch.object(MODULE, 'inventory_json', return_value=inventory_data), \
+                patch.object(MODULE, 'selected_hosts', return_value=None), \
+                patch.object(
+                    MODULE,
+                    'validate_print_plan_server_identity',
+                    side_effect=RuntimeError('wrong Pi5 site'),
+                ), \
+                patch.object(MODULE, 'read_plan_fleet_release_state', fleet_read):
+            with self.assertRaisesRegex(RuntimeError, 'wrong Pi5 site'):
+                MODULE.build_print_plan('main', 'inventory.yml', '')
+        fleet_read.assert_not_called()
+
+    def test_active_run_widens_print_plan_to_all_unknown_hosts(self):
+        inventory_data = {
+            'server': {'hosts': ['raspberrypi5']},
+            'kiosk': {'hosts': ['kiosk-a']},
+            'signage': {'hosts': []},
+            'kiosk_canary': {'hosts': ['kiosk-a']},
+            '_meta': {'hostvars': {
+                'raspberrypi5': {},
+                'kiosk-a': {
+                    'manage_kiosk_browser': True,
+                    'status_agent_client_id': 'kiosk-a',
+                },
+            }},
+        }
+        active = {
+            'generation': 4,
+            'activeRun': {'runId': 'crashed-run'},
+            'lastRun': None,
+            'fleet': {
+                'raspberrypi5': _verified_fleet_record('server', TARGET_SHA),
+                'kiosk-a': _verified_fleet_record('kiosk', TARGET_SHA),
+            },
+        }
+        with patch.object(MODULE, 'resolve_release_sha', return_value=(TARGET_SHA, [])), \
+                patch.object(MODULE, 'validate_print_plan_checkout'), \
+                patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
+                patch.object(MODULE, 'inventory_json', return_value=inventory_data), \
+                patch.object(MODULE, 'selected_hosts', return_value=None), \
+                patch.object(
+                    MODULE,
+                    'validate_print_plan_server_identity',
+                    return_value={'host': 'raspberrypi5', 'clientId': 'raspberrypi5-server'},
+                ), \
+                patch.object(MODULE, 'read_plan_fleet_release_state', return_value=(active, [])):
+            plan = MODULE.build_print_plan('main', 'inventory.yml', '')
+
+        self.assertEqual(plan['targetHosts'], ['raspberrypi5', 'kiosk-a'])
+        self.assertTrue(all(host['evidence'] == 'unknown' for host in plan['hosts']))
+        self.assertTrue(any('crashed-run' in warning for warning in plan['warnings']))
+
+    def test_standard_inventory_paths_are_canonicalized_from_repo_root(self):
+        for relative in (
+            'infrastructure/ansible/inventory.yml',
+            'infrastructure/ansible/inventory-talkplaza.yml',
+        ):
+            with self.subTest(inventory=relative):
+                self.assertEqual(
+                    Path(MODULE.canonical_print_plan_inventory(relative)),
+                    MODULE.PROJECT / relative,
+                )
 
     def test_print_plan_includes_resolved_targets_and_classification(self):
         sha = 'a' * 40
@@ -1128,33 +1398,237 @@ class PrintPlanShadowTest(unittest.TestCase):
             {'host': 'kiosk-canary', 'clientId': 'canary', 'terminalType': 'kiosk'},
             {'host': 'kiosk-b', 'clientId': 'b', 'terminalType': 'kiosk'},
         ]
+        inventory_data = {
+            'server': {'hosts': ['raspberrypi5']},
+            'kiosk': {'hosts': ['kiosk-canary', 'kiosk-b']},
+            'signage': {'hosts': []},
+            'kiosk_canary': {'hosts': ['kiosk-canary']},
+            '_meta': {'hostvars': {
+                'raspberrypi5': {},
+                'kiosk-canary': {
+                    'manage_kiosk_browser': True,
+                    'status_agent_client_id': 'canary',
+                },
+                'kiosk-b': {
+                    'manage_kiosk_browser': True,
+                    'status_agent_client_id': 'b',
+                },
+            }},
+        }
+        fleet_state = {
+            'generation': 1,
+            'activeRun': None,
+            'lastRun': None,
+            'fleet': {
+                'raspberrypi5': _verified_fleet_record('server'),
+                'kiosk-canary': _verified_fleet_record('kiosk'),
+                'kiosk-b': _verified_fleet_record('kiosk'),
+            },
+        }
         args = MODULE.normalize_arguments(MODULE.parser().parse_args([
-            'main', 'infrastructure/ansible/inventory.yml', '--print-plan', '--limit', 'clients',
+            'main', 'infrastructure/ansible/inventory.yml', '--print-plan',
         ]))
         with patch.object(MODULE, 'resolve_release_sha', return_value=(sha, [])), \
-                patch.object(MODULE, 'read_plan_pi5_release_current', return_value=({'sha': 'b' * 40}, [])), \
+                patch.object(MODULE, 'validate_print_plan_checkout'), \
+                patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
+                patch.object(
+                    MODULE,
+                    'validate_print_plan_server_identity',
+                    return_value={'host': 'raspberrypi5', 'clientId': 'raspberrypi5-server'},
+                ), \
                 patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
-                patch.object(MODULE, 'resolve_terminal_targets', return_value=(targets, [])), \
+                patch.object(MODULE, 'inventory_json', return_value=inventory_data), \
+                patch.object(MODULE, 'selected_hosts', return_value=None), \
+                patch.object(MODULE, 'read_plan_fleet_release_state', return_value=(fleet_state, [])), \
                 patch('builtins.print') as printed:
             self.assertEqual(MODULE.local_run(args), 0)
         plan = json.loads(printed.call_args.args[0])
         self.assertEqual(plan['sha'], sha)
         self.assertEqual(plan['classification'], classification)
         self.assertTrue(plan['pi5Required'])
-        self.assertEqual(plan['terminalTargets'], targets)
-        self.assertTrue(plan['canaryHold'])
-        self.assertEqual(plan['limit'], 'clients')
+        self.assertEqual(plan['terminalTargets'], [])
+        self.assertFalse(plan['canaryHold'])
+        self.assertIsNone(plan['limit'])
         self.assertFalse(plan['autoMinimize'])
-        self.assertFalse(plan['minimized'])
-        self.assertEqual(plan['excludedHosts'], [])
+        self.assertTrue(plan['minimized'])
+        self.assertEqual(plan['excludedHosts'], ['kiosk-canary', 'kiosk-b'])
         self.assertEqual(plan['classificationComponents'], ['server-app'])
+        self.assertEqual(plan['serverIdentity']['clientId'], 'raspberrypi5-server')
         self.assertEqual(plan['warnings'], [])
+
+    def test_print_plan_remote_state_uses_the_shared_server_transport(self):
+        transport = Mock()
+        transport.run.return_value = Mock(
+            returncode=0,
+            stdout=json.dumps({
+                'generation': 0,
+                'activeRun': None,
+                'lastRun': None,
+                'fleet': {},
+            }),
+            stderr='',
+        )
+        with patch.object(
+            MODULE.release_application,
+            'build_server_transport',
+            return_value=('denkon5sd02', transport),
+        ) as build:
+            state, warnings = MODULE.read_plan_fleet_release_state()
+
+        build.assert_called_once_with(MODULE)
+        transport.run.assert_called_once_with([
+            'cat', '/opt/RaspberryPiSystem_002/logs/deploy/fleet-release-state.json'
+        ])
+        self.assertEqual(state['generation'], 0)
+        self.assertEqual(warnings, [])
+
+
+class FleetScopeLimitTest(unittest.TestCase):
+    INVENTORY = {
+        'server': {'hosts': ['raspberrypi5']},
+        'kiosk': {'hosts': ['kiosk-a', 'kiosk-b']},
+        'signage': {'hosts': []},
+        'kiosk_canary': {'hosts': ['kiosk-a']},
+        '_meta': {'hostvars': {
+            'raspberrypi5': {},
+            'kiosk-a': {
+                'manage_kiosk_browser': True,
+                'status_agent_client_id': 'a',
+            },
+            'kiosk-b': {
+                'manage_kiosk_browser': True,
+                'status_agent_client_id': 'b',
+            },
+        }},
+    }
+    FLEET = {
+        'generation': 1,
+        'activeRun': None,
+        'lastRun': None,
+        'fleet': {
+            'raspberrypi5': _verified_fleet_record('server'),
+            'kiosk-a': _verified_fleet_record('kiosk'),
+            'kiosk-b': _verified_fleet_record('kiosk'),
+        },
+    }
+
+    def test_limit_cannot_exclude_a_required_pi5_change(self):
+        classification = {
+            'server': True,
+            'kiosk': True,
+            'signage': False,
+            'migration': False,
+            'components': ['server-app', 'kiosk-role'],
+        }
+        with patch.object(
+            MODULE, 'classify_release_impact', return_value=(classification, [])
+        ):
+            with self.assertRaisesRegex(RuntimeError, 'excludes required Pi5'):
+                MODULE.build_fleet_scope(
+                    sha=TARGET_SHA,
+                    inventory_data=self.INVENTORY,
+                    fleet_state=self.FLEET,
+                    selected=['kiosk-b'],
+                    limit='kiosk-b',
+                    full_fleet=False,
+                    auto_minimize_alias=False,
+                )
+
+    def test_limit_can_narrow_terminals_when_pi5_is_verified_unaffected(self):
+        classification = {
+            'server': False,
+            'kiosk': True,
+            'signage': False,
+            'migration': False,
+            'components': ['kiosk-role'],
+        }
+        with patch.object(
+            MODULE, 'classify_release_impact', return_value=(classification, [])
+        ):
+            plan, targets, _classifications, warnings = MODULE.build_fleet_scope(
+                sha=TARGET_SHA,
+                inventory_data=self.INVENTORY,
+                fleet_state=self.FLEET,
+                selected=['kiosk-b'],
+                limit='kiosk-b',
+                full_fleet=False,
+                auto_minimize_alias=False,
+            )
+
+        self.assertEqual([target['host'] for target in targets], ['kiosk-b'])
+        self.assertEqual(plan['targetHosts'], ['kiosk-b'])
+        self.assertIn('raspberrypi5', plan['excludedHosts'])
+        self.assertEqual(warnings, [])
+
+    def test_limit_cannot_exclude_an_unknown_terminal(self):
+        fleet = {**self.FLEET, 'fleet': dict(self.FLEET['fleet'])}
+        fleet['fleet']['kiosk-a'] = {
+            **fleet['fleet']['kiosk-a'],
+            'evidence': 'unknown',
+            'verifiedAt': None,
+        }
+        classification = {
+            'server': False,
+            'kiosk': True,
+            'signage': False,
+            'migration': False,
+            'components': ['kiosk-role'],
+        }
+        with patch.object(
+            MODULE, 'classify_release_impact', return_value=(classification, [])
+        ):
+            with self.assertRaisesRegex(RuntimeError, 'unknown-evidence hosts: kiosk-a'):
+                MODULE.build_fleet_scope(
+                    sha=TARGET_SHA,
+                    inventory_data=self.INVENTORY,
+                    fleet_state=fleet,
+                    selected=['kiosk-b'],
+                    limit='kiosk-b',
+                    full_fleet=False,
+                    auto_minimize_alias=False,
+                )
+
+    def test_print_plan_propagates_zero_match_limit_failure(self):
+        with patch.object(MODULE, 'resolve_release_sha', return_value=(TARGET_SHA, [])), \
+                patch.object(MODULE, 'validate_print_plan_checkout'), \
+                patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
+                patch.object(MODULE, 'validate_print_plan_server_identity', return_value={'host': 'raspberrypi5', 'clientId': 'raspberrypi5-server'}), \
+                patch.object(MODULE, 'inventory_json', return_value=self.INVENTORY), \
+                patch.object(MODULE, 'selected_hosts', return_value=[]), \
+                patch.object(MODULE, 'read_plan_fleet_release_state', return_value=(self.FLEET, [])):
+            with self.assertRaisesRegex(RuntimeError, 'selected no hosts'):
+                MODULE.build_print_plan(
+                    'main', 'inventory.yml', 'missing-host'
+                )
+
+    def test_print_plan_propagates_required_pi5_exclusion(self):
+        classification = {
+            'server': True,
+            'kiosk': True,
+            'signage': False,
+            'migration': False,
+            'components': ['server-app', 'kiosk-role'],
+        }
+        with patch.object(MODULE, 'resolve_release_sha', return_value=(TARGET_SHA, [])), \
+                patch.object(MODULE, 'validate_print_plan_checkout'), \
+                patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
+                patch.object(MODULE, 'validate_print_plan_server_identity', return_value={'host': 'raspberrypi5', 'clientId': 'raspberrypi5-server'}), \
+                patch.object(MODULE, 'inventory_json', return_value=self.INVENTORY), \
+                patch.object(MODULE, 'selected_hosts', return_value=['kiosk-b']), \
+                patch.object(MODULE, 'read_plan_fleet_release_state', return_value=(self.FLEET, [])), \
+                patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])):
+            with self.assertRaisesRegex(RuntimeError, 'excludes required Pi5'):
+                MODULE.build_print_plan('main', 'inventory.yml', 'kiosk-b')
 
 
 class AutoMinimizeTest(unittest.TestCase):
     INVENTORY = {
+        'server': {'hosts': ['raspberrypi5']},
+        'kiosk': {'hosts': ['kiosk-a', 'kiosk-b']},
+        'signage': {'hosts': ['raspberrypi3']},
         'kiosk_canary': {'hosts': ['kiosk-b']},
         '_meta': {'hostvars': {
+            'raspberrypi5': {},
             'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
             'kiosk-b': {
                 'manage_kiosk_browser': True,
@@ -1183,6 +1657,7 @@ class AutoMinimizeTest(unittest.TestCase):
             'skip_canary_hold': True,
             'canary_hold_timeout': 60,
             'auto_minimize': True,
+            'expected_server_client_id': 'raspberrypi5-server',
         }
         values.update(overrides)
         return argparse.Namespace(**values)
@@ -1200,11 +1675,8 @@ class AutoMinimizeTest(unittest.TestCase):
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value=inventory), \
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
-                    patch.object(MODULE, 'release_targets', return_value=targets), \
-                    patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
-                    patch.object(MODULE, 'pi5_release_required', return_value=False), \
-                    patch.object(MODULE, 'ensure_pi5_release') as ensure, \
-                    patch.object(MODULE, 'remote_previous_sha', return_value='old-sha'), \
+                    fleet_execution_contract(targets, classification, inventory) as ensure, \
+                    patch.object(MODULE, 'remote_previous_sha', return_value=BASE_SHA), \
                     patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command'), \
@@ -1224,7 +1696,10 @@ class AutoMinimizeTest(unittest.TestCase):
         self.assertEqual(result, 0)
         ensure.assert_not_called()
         self.assertEqual(played, ['kiosk-b', 'kiosk-a'])
-        self.assertEqual(payload['plan']['excludedHosts'], ['raspberrypi3'])
+        self.assertEqual(
+            payload['plan']['excludedHosts'],
+            ['raspberrypi5', 'raspberrypi3'],
+        )
         self.assertTrue(payload['plan']['minimized'])
         self.assertEqual(payload['plan']['classificationComponents'], ['nfc-agent'])
         self.assertTrue(payload['plan']['autoMinimize'])
@@ -1237,7 +1712,10 @@ class AutoMinimizeTest(unittest.TestCase):
         result, played, payload, _ensure = self._run_remote(classification=classification)
         self.assertEqual(result, 0)
         self.assertEqual(played, ['kiosk-b'])
-        self.assertEqual(sorted(payload['plan']['excludedHosts']), ['kiosk-a', 'raspberrypi3'])
+        self.assertEqual(
+            sorted(payload['plan']['excludedHosts']),
+            ['kiosk-a', 'raspberrypi3', 'raspberrypi5'],
+        )
         self.assertTrue(payload['plan']['minimized'])
 
     def test_signage_role_only_excludes_all_kiosks(self):
@@ -1248,7 +1726,10 @@ class AutoMinimizeTest(unittest.TestCase):
         result, played, payload, _ensure = self._run_remote(classification=classification)
         self.assertEqual(result, 0)
         self.assertEqual(played, ['raspberrypi3'])
-        self.assertEqual(sorted(payload['plan']['excludedHosts']), ['kiosk-a', 'kiosk-b'])
+        self.assertEqual(
+            sorted(payload['plan']['excludedHosts']),
+            ['kiosk-a', 'kiosk-b', 'raspberrypi5'],
+        )
         self.assertTrue(payload['plan']['minimized'])
 
     def test_unknown_component_fail_closed_keeps_all_terminals(self):
@@ -1262,7 +1743,9 @@ class AutoMinimizeTest(unittest.TestCase):
         self.assertEqual(played, ['kiosk-b', 'kiosk-a', 'raspberrypi3'])
         self.assertEqual(payload['plan']['excludedHosts'], [])
         self.assertFalse(payload['plan']['minimized'])
-        self.assertEqual(payload['plan'].get('reason'), 'unknown or global component')
+        self.assertTrue(
+            all('unknown' in host['targetReason'] for host in payload['plan']['hosts'])
+        )
 
     def test_classification_unavailable_fail_closed_keeps_all_terminals(self):
         result, played, payload, _ensure = self._run_remote(classification=None)
@@ -1270,7 +1753,12 @@ class AutoMinimizeTest(unittest.TestCase):
         self.assertEqual(played, ['kiosk-b', 'kiosk-a', 'raspberrypi3'])
         self.assertEqual(payload['plan']['excludedHosts'], [])
         self.assertFalse(payload['plan']['minimized'])
-        self.assertEqual(payload['plan'].get('reason'), 'classification unavailable')
+        self.assertTrue(
+            all(
+                host['targetReason'] == 'classification unavailable'
+                for host in payload['plan']['hosts']
+            )
+        )
         self.assertIsNone(payload['plan']['classificationComponents'])
 
     def test_server_app_only_runs_pi5_with_zero_terminals(self):
@@ -1288,7 +1776,7 @@ class AutoMinimizeTest(unittest.TestCase):
         self.assertTrue(payload['plan']['minimized'])
         self.assertEqual(sorted(payload['plan']['excludedHosts']), ['kiosk-a', 'kiosk-b', 'raspberrypi3'])
 
-    def test_without_auto_minimize_keeps_all_terminals(self):
+    def test_default_minimization_does_not_require_the_compatibility_alias(self):
         classification = {
             'server': False, 'kiosk': True, 'signage': False, 'migration': False,
             'components': ['nfc-agent'],
@@ -1299,11 +1787,14 @@ class AutoMinimizeTest(unittest.TestCase):
         )
         self.assertEqual(result, 0)
         ensure.assert_not_called()
-        self.assertEqual(played, ['kiosk-b', 'kiosk-a', 'raspberrypi3'])
+        self.assertEqual(played, ['kiosk-b', 'kiosk-a'])
         self.assertFalse(payload['plan']['autoMinimize'])
-        self.assertFalse(payload['plan']['minimized'])
-        self.assertEqual(payload['plan']['excludedHosts'], [])
-        self.assertIsNone(payload['plan']['classificationComponents'])
+        self.assertTrue(payload['plan']['minimized'])
+        self.assertEqual(
+            payload['plan']['excludedHosts'],
+            ['raspberrypi5', 'raspberrypi3'],
+        )
+        self.assertEqual(payload['plan']['classificationComponents'], ['nfc-agent'])
 
     def test_auto_minimize_noop_when_no_pi5_and_no_terminals(self):
         classification = {
@@ -1315,9 +1806,9 @@ class AutoMinimizeTest(unittest.TestCase):
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value=self.INVENTORY), \
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
-                    patch.object(MODULE, 'release_targets', return_value=list(self.ALL_TARGETS)), \
-                    patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
-                    patch.object(MODULE, 'ensure_pi5_release') as ensure, \
+                    fleet_execution_contract(
+                        list(self.ALL_TARGETS), classification, self.INVENTORY
+                    ) as ensure, \
                     patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
                 result = MODULE._remote_run(self._args())
             payload = json.loads((run_directory / 'run-1.json').read_text(encoding='utf-8'))
@@ -1332,10 +1823,14 @@ class AutoMinimizeTest(unittest.TestCase):
         args = MODULE.normalize_arguments(MODULE.parser().parse_args([
             'main', 'infrastructure/ansible/inventory.yml', '--auto-minimize',
         ]))
-        with patch.object(MODULE.release_application, 'launch', return_value=0) as launch:
+        with patch.object(
+            MODULE.release_application, 'launch', return_value=0
+        ) as launch, patch('sys.stderr', new_callable=io.StringIO) as stderr:
             self.assertEqual(MODULE.local_run(args), 0)
         launch.assert_called_once_with(args, runtime=MODULE)
         self.assertTrue(args.auto_minimize)
+        self.assertEqual(stderr.getvalue().count('--auto-minimize'), 1)
+        self.assertIn('minimization is now the default', stderr.getvalue())
 
     def test_print_plan_auto_minimize_reports_excluded_hosts(self):
         sha = 'a' * 40
@@ -1348,17 +1843,41 @@ class AutoMinimizeTest(unittest.TestCase):
             'main', 'infrastructure/ansible/inventory.yml', '--print-plan', '--auto-minimize',
         ]))
         with patch.object(MODULE, 'resolve_release_sha', return_value=(sha, [])), \
-                patch.object(MODULE, 'read_plan_pi5_release_current', return_value=({'sha': 'b' * 40}, [])), \
+                patch.object(MODULE, 'validate_print_plan_checkout'), \
+                patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
+                patch.object(
+                    MODULE,
+                    'validate_print_plan_server_identity',
+                    return_value={'host': 'raspberrypi5', 'clientId': 'raspberrypi5-server'},
+                ), \
                 patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
-                patch.object(MODULE, 'resolve_terminal_targets', return_value=(targets, [])), \
                 patch.object(MODULE, 'inventory_json', return_value=self.INVENTORY), \
+                patch.object(MODULE, 'selected_hosts', return_value=None), \
+                patch.object(
+                    MODULE,
+                    'read_plan_fleet_release_state',
+                    return_value=(
+                        {
+                            'generation': 1,
+                            'activeRun': None,
+                            'lastRun': None,
+                            'fleet': {
+                                'raspberrypi5': _verified_fleet_record('server'),
+                                'kiosk-b': _verified_fleet_record('kiosk'),
+                                'kiosk-a': _verified_fleet_record('kiosk'),
+                                'raspberrypi3': _verified_fleet_record('signage'),
+                            },
+                        },
+                        [],
+                    ),
+                ), \
                 patch('builtins.print') as printed:
             self.assertEqual(MODULE.local_run(args), 0)
         plan = json.loads(printed.call_args.args[0])
         self.assertTrue(plan['autoMinimize'])
         self.assertTrue(plan['minimized'])
         self.assertEqual([t['host'] for t in plan['terminalTargets']], ['kiosk-b', 'kiosk-a'])
-        self.assertEqual(plan['excludedHosts'], ['raspberrypi3'])
+        self.assertEqual(plan['excludedHosts'], ['raspberrypi5', 'raspberrypi3'])
         self.assertEqual(plan['classificationComponents'], ['nfc-agent'])
         self.assertTrue(plan['canaryHold'])
 
@@ -1383,14 +1902,22 @@ class RollingReleaseKernelLockTest(unittest.TestCase):
             lock_path = project / '.git/rolling-release.lock'
             descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fleet_lock_path = project / 'logs/deploy/fleet-release-state.lock'
+            fleet_lock_path.parent.mkdir(parents=True)
+            fleet_descriptor = os.open(
+                fleet_lock_path, os.O_RDWR | os.O_CREAT, 0o600
+            )
+            fcntl.flock(fleet_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
             environment = {
                 'ROLLING_RELEASE_LOCK_FD': str(descriptor),
                 'ROLLING_RELEASE_LOCK_PATH': str(lock_path),
+                'ROLLING_RELEASE_FLEET_LOCK_FD': str(fleet_descriptor),
+                'ROLLING_RELEASE_FLEET_LOCK_PATH': str(fleet_lock_path),
                 'ROLLING_RELEASE_CONTROL_FILE': str(
                     project / f'logs/deploy/release-runs/{run_id}.control.json'
                 ),
                 'ROLLING_RELEASE_UNIT': f'raspi-release-{run_id}.service',
-                'ROLLING_RELEASE_PROTOCOL': '1',
+                'ROLLING_RELEASE_PROTOCOL': '2',
                 'INVOCATION_ID': 'a' * 32,
             }
             args = argparse.Namespace(run_id=run_id)
@@ -1406,6 +1933,8 @@ class RollingReleaseKernelLockTest(unittest.TestCase):
             execute.assert_called_once_with(args)
             with self.assertRaises(OSError):
                 os.fstat(descriptor)
+            with self.assertRaises(OSError):
+                os.fstat(fleet_descriptor)
 
 
 class RollingReleaseCancellationTest(unittest.TestCase):

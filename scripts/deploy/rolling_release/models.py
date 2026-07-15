@@ -84,12 +84,14 @@ class LaunchSpec:
     branch: str
     sha: str
     inventory: str
+    expected_server_client_id: str
     limit: str = ''
     canary_hold_timeout: int = 1800
     emergency_override: bool = False
     reason: str | None = None
     skip_canary_hold: bool = False
     auto_minimize: bool = False
+    full_fleet: bool = False
 
     @property
     def unit_name(self) -> str:
@@ -101,13 +103,25 @@ class LaunchSpec:
         if not isinstance(self.sha, str) or not FULL_SHA_RE.fullmatch(self.sha):
             raise ValueError('release SHA must be 40 lowercase hexadecimal characters')
         validate_inventory(self.inventory)
+        if not isinstance(self.expected_server_client_id, str) or not re.fullmatch(
+            r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}', self.expected_server_client_id
+        ):
+            raise ValueError('expected server client ID is malformed')
         validate_text(self.limit, name='limit', maximum=1000)
         if type(self.canary_hold_timeout) is not int or self.canary_hold_timeout <= 0:
             raise ValueError('canary hold timeout must be greater than zero')
         if type(self.emergency_override) is not bool:
             raise ValueError('emergency override must be boolean')
-        if type(self.skip_canary_hold) is not bool or type(self.auto_minimize) is not bool:
+        if (
+            type(self.skip_canary_hold) is not bool
+            or type(self.auto_minimize) is not bool
+            or type(self.full_fleet) is not bool
+        ):
             raise ValueError('release flags must be boolean')
+        if self.full_fleet and self.auto_minimize:
+            raise ValueError('full fleet cannot be combined with the auto-minimize alias')
+        if self.full_fleet and self.limit:
+            raise ValueError('full fleet cannot be combined with a limit')
         if self.reason is not None:
             validate_text(self.reason, name='reason', maximum=1000)
             if not self.emergency_override:
@@ -127,19 +141,21 @@ class LaunchSpec:
         if os.path.normpath(remote_project) != remote_project or '\x00' in remote_project:
             raise ValueError('remote project must be a normalized absolute path')
         return {
-            'version': 1,
+            'version': 2,
             'project': remote_project,
             'runId': self.run_id,
             'unitName': self.unit_name,
             'branch': self.branch,
             'sha': self.sha,
             'inventory': self.inventory,
+            'expectedServerClientId': self.expected_server_client_id,
             'limit': self.limit,
             'canaryHoldTimeout': self.canary_hold_timeout,
             'emergencyOverride': self.emergency_override,
             'reason': self.reason,
             'skipCanaryHold': self.skip_canary_hold,
             'autoMinimize': self.auto_minimize,
+            'fullFleet': self.full_fleet,
         }
 
 

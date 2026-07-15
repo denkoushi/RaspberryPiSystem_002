@@ -23,12 +23,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+
+from rolling_release.fleet_state import (
+    FleetLock,
+    FleetLockBusyError,
+    FleetStateError,
+    FleetStateStore,
+)
+from rolling_release.bootstrap import read_local_server_client_id
+from rolling_release.lock import RunLock, RunLockBusyError, RunLockError
+
 
 PROJECT = Path(__file__).resolve().parents[2]
 ANSIBLE_DIRECTORY = PROJECT / 'infrastructure' / 'ansible'
 DEFAULT_INVENTORY = ANSIBLE_DIRECTORY / 'inventory.yml'
 FULL_SHA_RE = re.compile(r'^[0-9a-f]{40}$')
-PI4_HOST_RE = re.compile(r'^(?:raspberrypi4|raspi4-[a-z0-9-]+)$')
+RECOVERY_HOST_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,79}$')
 RUN_ID_RE = re.compile(r'^[a-z0-9][a-z0-9-]{2,79}$')
 
 
@@ -37,7 +50,13 @@ class RecoveryError(RuntimeError):
 
 
 class CommandRunner(Protocol):
-    def run(self, command: list[str], *, capture: bool = True) -> str:
+    def run(
+        self,
+        command: list[str],
+        *,
+        capture: bool = True,
+        cwd: Path | None = None,
+    ) -> str:
         """Run a local Pi5 command and return stdout when requested."""
 
 
@@ -46,7 +65,13 @@ class SubprocessRunner:
         self.project = project
         self.ansible_directory = project / 'infrastructure' / 'ansible'
 
-    def run(self, command: list[str], *, capture: bool = True) -> str:
+    def run(
+        self,
+        command: list[str],
+        *,
+        capture: bool = True,
+        cwd: Path | None = None,
+    ) -> str:
         environment = os.environ.copy()
         # Existing deployment wrappers run Ansible from infrastructure/ansible.
         # The recovery coordinator uses absolute paths, so preserve that role and
@@ -55,7 +80,7 @@ class SubprocessRunner:
         environment['ANSIBLE_ROLES_PATH'] = str(self.ansible_directory / 'roles')
         completed = subprocess.run(
             command,
-            cwd=self.project,
+            cwd=cwd or self.project,
             check=True,
             text=True,
             capture_output=capture,
@@ -79,6 +104,7 @@ class Target:
 class Release:
     sha: str
     active_slot: str
+    source: str = 'fleet-state'
 
 
 @dataclass(frozen=True)
@@ -193,12 +219,16 @@ class RecoveryCoordinator:
         runner: CommandRunner | None = None,
         device_model_reader: Callable[[], str] | None = None,
         tcp_reachable: Callable[[str, int], bool] | None = None,
+        server_client_id_reader: Callable[[], str] | None = None,
     ) -> None:
         self.project = project.resolve()
         self.inventory = inventory.resolve()
         self.runner = runner or SubprocessRunner(self.project)
         self.device_model_reader = device_model_reader or self._read_device_model
         self.tcp_reachable = tcp_reachable or self._tcp_reachable
+        self.server_client_id_reader = (
+            server_client_id_reader or read_local_server_client_id
+        )
 
     def _read_device_model(self) -> str:
         try:
@@ -217,6 +247,18 @@ class RecoveryCoordinator:
     def runtime_override_path(self, target: str) -> Path:
         return self.project / 'infrastructure' / 'ansible' / 'host_vars' / target / 'recovery-runtime.yml'
 
+    def fleet_state_path(self) -> Path:
+        return self.project / 'logs' / 'deploy' / 'fleet-release-state.json'
+
+    def fleet_lock_path(self) -> Path:
+        return self.project / 'logs' / 'deploy' / 'fleet-release-state.lock'
+
+    def fleet_store(self) -> FleetStateStore:
+        return FleetStateStore(self.fleet_state_path(), lock_path=self.fleet_lock_path())
+
+    def compatibility_lock_path(self) -> Path:
+        return self.project / '.git' / 'rolling-release.lock'
+
     def load_runtime_override(self, target: str) -> dict[str, Any] | None:
         path = self.runtime_override_path(target)
         if not path.exists():
@@ -230,7 +272,10 @@ class RecoveryCoordinator:
         return payload
 
     def inventory_data(self) -> dict[str, Any]:
-        output = self.runner.run(['ansible-inventory', '-i', str(self.inventory), '--list'])
+        output = self.runner.run(
+            ['ansible-inventory', '-i', str(self.inventory), '--list'],
+            cwd=self.project / 'infrastructure' / 'ansible',
+        )
         try:
             payload = json.loads(output)
         except json.JSONDecodeError as error:
@@ -243,7 +288,11 @@ class RecoveryCoordinator:
         hosts = ((inventory.get('_meta') or {}).get('hostvars') or {})
         values = hosts.get(target_name)
         kiosk_hosts = (inventory.get('kiosk') or {}).get('hosts') or []
-        if not isinstance(values, dict) or target_name not in kiosk_hosts or not PI4_HOST_RE.fullmatch(target_name):
+        if (
+            not isinstance(values, dict)
+            or target_name not in kiosk_hosts
+            or not RECOVERY_HOST_RE.fullmatch(target_name)
+        ):
             raise RecoveryError(f'{target_name!r} is not a supported, inventory-managed Pi4 kiosk')
 
         missing = [
@@ -253,6 +302,10 @@ class RecoveryCoordinator:
         ]
         if missing:
             raise RecoveryError(f'{target_name!r} is missing recovery inventory values: {", ".join(missing)}')
+        if values.get('pi4_recovery_enabled') is not True:
+            raise RecoveryError(
+                f'{target_name!r} does not enable the Tailscale Pi4 recovery capability'
+            )
         if values.get('tailscale_enabled') is not True or values.get('manage_kiosk_browser') is not True:
             raise RecoveryError(f'{target_name!r} must have Tailscale and kiosk browser management enabled')
 
@@ -275,17 +328,45 @@ class RecoveryCoordinator:
             kiosk_url=values['kiosk_url'],
         ), override is not None
 
-    def resolve_active_release(self) -> Release:
+    def resolve_active_release(self, expected_server_host: str) -> Release:
         try:
-            marker = json.loads((self.project / 'logs/deploy/pi5-release-current.json').read_text(encoding='utf-8'))
-        except (OSError, json.JSONDecodeError) as error:
-            raise RecoveryError('Pi5 release marker is unavailable or invalid') from error
-        sha = marker.get('sha') if isinstance(marker, dict) else None
-        candidate = marker.get('candidate') if isinstance(marker, dict) else None
-        if not isinstance(sha, str) or not FULL_SHA_RE.fullmatch(sha):
-            raise RecoveryError('Pi5 release marker has no immutable full SHA')
-        if not isinstance(candidate, dict) or not image_matches_sha(candidate.get('api'), sha) or not image_matches_sha(candidate.get('web'), sha):
-            raise RecoveryError('Pi5 release marker does not prove immutable API/Web images')
+            fleet_state = self.fleet_store().read_only()
+        except FleetStateError as error:
+            raise RecoveryError('fleet release state is unavailable or invalid') from error
+
+        pristine = bool(
+            fleet_state.get('generation') == 0
+            and fleet_state.get('activeRun') is None
+            and fleet_state.get('lastRun') is None
+            and not fleet_state.get('fleet')
+        )
+        if pristine:
+            raise RecoveryError(
+                'fleet release state is not seeded; run an approved full-fleet release before Pi4 recovery'
+            )
+        if fleet_state.get('activeRun') is not None:
+            raise RecoveryError('fleet release state has an active run; release authority is ambiguous')
+        server = fleet_state['fleet'].get(expected_server_host)
+        if (
+            not isinstance(server, dict)
+            or server.get('role') != 'server'
+            or server.get('evidence') != 'verified'
+        ):
+            raise RecoveryError(
+                'fleet release state has no verified inventory server evidence'
+            )
+        sha = server.get('currentSha')
+        candidate = {'api': server.get('apiImage'), 'web': server.get('webImage')}
+        expected_slot = server.get('activeSlot')
+        source = 'fleet-state'
+        if (
+            not isinstance(sha, str)
+            or not FULL_SHA_RE.fullmatch(sha)
+            or not image_matches_sha(candidate.get('api'), sha)
+            or not image_matches_sha(candidate.get('web'), sha)
+            or expected_slot not in {'blue', 'green'}
+        ):
+            raise RecoveryError('verified fleet server evidence does not prove an immutable release')
 
         output = self.runner.run([str(self.project / 'scripts/deploy/pi5-blue-green.sh'), 'status'])
         try:
@@ -299,6 +380,7 @@ class RecoveryCoordinator:
         if (
             status.get('runtimeStatus') != 'consistent'
             or active_slot not in {'blue', 'green'}
+            or (expected_slot is not None and active_slot != expected_slot)
             or not isinstance(gateway, dict)
             or gateway.get('mode') != 'application'
             or gateway.get('slot') != active_slot
@@ -306,18 +388,56 @@ class RecoveryCoordinator:
             or active_images.get('api') != candidate.get('api')
             or active_images.get('web') != candidate.get('web')
         ):
-            raise RecoveryError('Pi5 Blue/Green state does not prove the marker release is active')
-        return Release(sha=sha, active_slot=active_slot)
+            raise RecoveryError(f'Pi5 Blue/Green state does not prove the {source} release is active')
+        return Release(sha=sha, active_slot=active_slot, source=source)
 
-    def build_plan(self, target_name: str, bootstrap_host: str) -> RecoveryPlan:
+    def validate_inventory_server_identity(
+        self, inventory: dict[str, Any]
+    ) -> str:
+        server_hosts = (inventory.get('server') or {}).get('hosts') or []
+        if (
+            not isinstance(server_hosts, list)
+            or len(server_hosts) != 1
+            or not isinstance(server_hosts[0], str)
+            or not server_hosts[0]
+        ):
+            raise RecoveryError('inventory server group must contain exactly one host')
+        server_values = ((inventory.get('_meta') or {}).get('hostvars') or {}).get(
+            server_hosts[0]
+        )
+        expected_client_id = (
+            server_values.get('status_agent_client_id')
+            if isinstance(server_values, dict)
+            else None
+        )
+        if not isinstance(expected_client_id, str) or not re.fullmatch(
+            r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}', expected_client_id
+        ):
+            raise RecoveryError('inventory server has no safe status_agent_client_id')
+        try:
+            actual_client_id = self.server_client_id_reader()
+        except (OSError, UnicodeError) as error:
+            raise RecoveryError('local Pi5 CLIENT_ID could not be verified') from error
+        if actual_client_id != expected_client_id:
+            raise RecoveryError('local Pi5 does not match the selected inventory server identity')
+        return server_hosts[0]
+
+    def build_plan(
+        self,
+        target_name: str,
+        bootstrap_host: str,
+        *,
+        inventory_data: dict[str, Any] | None = None,
+    ) -> RecoveryPlan:
         bootstrap = parse_ipv4(bootstrap_host, field='bootstrap host')
         if bootstrap in ipaddress.ip_network('100.64.0.0/10'):
             raise RecoveryError('bootstrap host must be a temporary LAN IPv4 address, not a Tailscale address')
-        inventory = self.inventory_data()
+        inventory = inventory_data if inventory_data is not None else self.inventory_data()
         target, override_exists = self.resolve_target(target_name, inventory)
         if str(bootstrap) == target.original_host:
             raise RecoveryError('bootstrap host must differ from the stale production endpoint')
-        release = self.resolve_active_release()
+        server_host = self.validate_inventory_server_identity(inventory)
+        release = self.resolve_active_release(server_host)
         return RecoveryPlan(target=target, bootstrap_host=str(bootstrap), release=release, runtime_override_exists=override_exists)
 
     def assert_pi5(self) -> None:
@@ -356,7 +476,7 @@ class RecoveryCoordinator:
             '-e', f'repo_version={plan.release.sha}',
             '-e', f'ansible_host={plan.bootstrap_host}',
             '-e', f'recovery_result_path={result_path}',
-        ], capture=False)
+        ], capture=False, cwd=self.project / 'infrastructure' / 'ansible')
 
     def _read_result(self, path: Path, plan: RecoveryPlan) -> str:
         try:
@@ -386,15 +506,32 @@ class RecoveryCoordinator:
         })
         return path
 
-    def validate_recovered_terminal(self, plan: RecoveryPlan) -> None:
+    def validate_recovered_terminal(self, plan: RecoveryPlan) -> str:
         user = plan.target.user
-        if self._ssh_identity(self.runtime_override_endpoint(plan.target.host), user) != user:
+        endpoint = self.runtime_override_endpoint(plan.target.host)
+        if self._ssh_identity(endpoint, user) != user:
             raise RecoveryError('new Tailscale endpoint authenticated as an unexpected user')
-        self.runner.run(['ansible', '-i', str(self.inventory), plan.target.host, '-m', 'ping'], capture=False)
+        self.runner.run(
+            ['ansible', '-i', str(self.inventory), plan.target.host, '-m', 'ping'],
+            capture=False,
+            cwd=self.project / 'infrastructure' / 'ansible',
+        )
         self.runner.run([
             'ansible-playbook', '-i', str(self.inventory), str(self.project / 'infrastructure/ansible/playbooks/recover-pi4-verify.yml'),
             '--limit', plan.target.host, '-e', 'recovery_authorized=true',
-        ], capture=False)
+        ], capture=False, cwd=self.project / 'infrastructure' / 'ansible')
+        observed_sha = self.runner.run([
+            'ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', f'{user}@{endpoint}',
+            'git', '-C', '/opt/RaspberryPiSystem_002', 'rev-parse', 'HEAD',
+        ]).strip()
+        if observed_sha != plan.release.sha:
+            raise RecoveryError('recovered terminal HEAD does not match the active release SHA')
+        for service in ('kiosk-browser.service', 'status-agent.timer'):
+            self.runner.run([
+                'ansible', '-i', str(self.inventory), plan.target.host, '-b', '-m', 'command',
+                '-a', f'systemctl is-active --quiet {service}',
+            ], cwd=self.project / 'infrastructure' / 'ansible')
+        return observed_sha
 
     def runtime_override_endpoint(self, target: str) -> str:
         override = self.load_runtime_override(target)
@@ -404,32 +541,144 @@ class RecoveryCoordinator:
         return endpoint
 
     def execute(self, target_name: str, bootstrap_host: str, reason: str, run_id: str | None = None) -> RecoveryState:
-        self.assert_pi5()
         generated_run_id = run_id or f"pi4-recovery-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
-        state = self.create_state(target_name, bootstrap_host, generated_run_id, reason)
-        result_path = self.project / 'logs' / 'recovery' / f'{generated_run_id}-ansible-result.json'
+        if not RUN_ID_RE.fullmatch(generated_run_id):
+            raise RecoveryError('run ID must contain only lower-case letters, digits, and hyphens')
+
+        fleet_lock = FleetLock(self.fleet_lock_path(), blocking=False)
         try:
-            plan = self.build_plan(target_name, bootstrap_host)
-            state.transition('preflight-complete', releaseSha=plan.release.sha)
-            if self.tcp_reachable(plan.target.original_host, 22):
-                raise RecoveryError('previous production endpoint still accepts TCP/22; refusing possible duplicate terminal')
-            if self._ssh_identity(plan.bootstrap_host, plan.target.user) != plan.target.user:
-                raise RecoveryError('bootstrap host does not authenticate as the target inventory user')
-            state.transition('bootstrap-configuring')
-            self._run_bootstrap_playbook(plan, result_path)
-            tailscale_ip = self._read_result(result_path, plan)
-            state.transition('tailscale-endpoint-observed', tailscaleIpv4=tailscale_ip)
-            override_path = self.write_runtime_override(plan, generated_run_id, tailscale_ip)
-            state.transition('runtime-endpoint-saved', runtimeOverride=str(override_path))
-            state.transition('validating')
-            self.validate_recovered_terminal(plan)
-            state.transition('completed', completedAt=utc_now())
-            return state
-        except Exception as error:
-            state.transition('failed', failure=redact_error(error))
-            if isinstance(error, RecoveryError):
-                raise
-            raise RecoveryError('recovery command failed; inspect the Pi5 recovery state log') from error
+            lease = fleet_lock.acquire()
+        except FleetLockBusyError as error:
+            raise RecoveryError('another fleet release or Pi4 recovery is already running') from error
+        except (FleetStateError, OSError) as error:
+            raise RecoveryError('fleet release lock is unavailable; recovery did not start') from error
+
+        compatibility_lock = RunLock(self.compatibility_lock_path(), blocking=False)
+        try:
+            compatibility_lock.acquire()
+        except RunLockBusyError as error:
+            fleet_lock.release()
+            raise RecoveryError(
+                'a compatibility rolling release is already running'
+            ) from error
+        except (RunLockError, OSError) as error:
+            fleet_lock.release()
+            raise RecoveryError(
+                'compatibility release lock is unavailable; recovery did not start'
+            ) from error
+
+        legacy_state: RecoveryState | None = None
+        fleet_state: dict[str, Any] | None = None
+        fleet_active = False
+        plan: RecoveryPlan | None = None
+        store = self.fleet_store()
+        try:
+            try:
+                self.assert_pi5()
+                inventory_data = self.inventory_data()
+                self.validate_inventory_server_identity(inventory_data)
+                fleet_state = store.read_only()
+                stale_run = fleet_state.get('activeRun')
+                if isinstance(stale_run, dict):
+                    fleet_state = store.abandon_active_run(
+                        stale_run['runId'],
+                        expected_generation=fleet_state['generation'],
+                        lease=lease,
+                    )
+                plan = self.build_plan(
+                    target_name,
+                    bootstrap_host,
+                    inventory_data=inventory_data,
+                )
+                fleet_state = store.read_only()
+                fleet_state = store.begin_run(
+                    generated_run_id,
+                    plan.release.sha,
+                    str(self.inventory),
+                    expected_generation=fleet_state['generation'],
+                    kind='pi4-recovery',
+                    lease=lease,
+                )
+                fleet_active = True
+                fleet_state = store.mark_host_unknown(
+                    plan.target.host,
+                    'kiosk',
+                    plan.release.sha,
+                    generated_run_id,
+                    expected_generation=fleet_state['generation'],
+                    lease=lease,
+                )
+
+                # Compatibility state is deliberately written only after the
+                # durable fleet run and target evidence are fail-closed.
+                legacy_state = self.create_state(target_name, bootstrap_host, generated_run_id, reason)
+                result_path = self.project / 'logs' / 'recovery' / f'{generated_run_id}-ansible-result.json'
+                legacy_state.transition('preflight-complete', releaseSha=plan.release.sha)
+                if self.tcp_reachable(plan.target.original_host, 22):
+                    raise RecoveryError('previous production endpoint still accepts TCP/22; refusing possible duplicate terminal')
+                if self._ssh_identity(plan.bootstrap_host, plan.target.user) != plan.target.user:
+                    raise RecoveryError('bootstrap host does not authenticate as the target inventory user')
+                legacy_state.transition('bootstrap-configuring')
+                self._run_bootstrap_playbook(plan, result_path)
+                tailscale_ip = self._read_result(result_path, plan)
+                legacy_state.transition('tailscale-endpoint-observed', tailscaleIpv4=tailscale_ip)
+                override_path = self.write_runtime_override(plan, generated_run_id, tailscale_ip)
+                legacy_state.transition('runtime-endpoint-saved', runtimeOverride=str(override_path))
+                legacy_state.transition('validating')
+                observed_sha = self.validate_recovered_terminal(plan)
+                fleet_state = store.mark_host_verified(
+                    plan.target.host,
+                    'kiosk',
+                    plan.release.sha,
+                    observed_sha,
+                    generated_run_id,
+                    expected_generation=fleet_state['generation'],
+                    lease=lease,
+                )
+                fleet_state = store.finish_run(
+                    generated_run_id,
+                    'success',
+                    expected_generation=fleet_state['generation'],
+                    lease=lease,
+                )
+                fleet_active = False
+                legacy_state.transition('completed', completedAt=utc_now())
+                return legacy_state
+            except Exception as error:
+                if fleet_active:
+                    assert fleet_state is not None
+                    assert plan is not None
+                    try:
+                        fleet_state = store.mark_host_unknown(
+                            plan.target.host,
+                            'kiosk',
+                            plan.release.sha,
+                            generated_run_id,
+                            expected_generation=fleet_state['generation'],
+                            lease=lease,
+                        )
+                        fleet_state = store.finish_run(
+                            generated_run_id,
+                            'failed',
+                            expected_generation=fleet_state['generation'],
+                            lease=lease,
+                        )
+                        fleet_active = False
+                    except Exception as finish_error:
+                        raise RecoveryError(
+                            'fleet release state could not record recovery failure; '
+                            'legacy recovery state was left non-terminal'
+                        ) from finish_error
+                if legacy_state is not None:
+                    legacy_state.transition('failed', failure=redact_error(error))
+                if isinstance(error, RecoveryError):
+                    raise
+                if isinstance(error, FleetStateError):
+                    raise RecoveryError('fleet release state update failed; recovery did not continue') from error
+                raise RecoveryError('recovery command failed; inspect the Pi5 recovery state log') from error
+        finally:
+            compatibility_lock.release()
+            fleet_lock.release()
 
 
 def parser() -> argparse.ArgumentParser:

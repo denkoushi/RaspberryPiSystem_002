@@ -11,6 +11,102 @@ MinimizePolicy = Callable[
     tuple[list[Target], dict[str, Any]],
 ]
 CanaryHoldPolicy = Callable[..., bool]
+HOST_DECISION_FIELDS = (
+    'host',
+    'role',
+    'desiredSha',
+    'currentSha',
+    'evidence',
+    'targetReason',
+    'targeted',
+)
+
+
+def _public_host_decision(decision: dict[str, Any]) -> dict[str, Any]:
+    return {
+        'host': decision['host'],
+        'role': decision['role'],
+        'desiredSha': decision['desiredSha'],
+        'currentSha': decision['currentSha'],
+        'evidence': decision['evidence'],
+        'reason': decision['targetReason'],
+    }
+
+
+def build_fleet_plan_payload(
+    *,
+    release_sha: str,
+    decisions: list[dict[str, Any]],
+    full_fleet: bool,
+    limit: str,
+    canary_hold_policy: CanaryHoldPolicy,
+) -> dict[str, Any]:
+    """Compose the fleet-aware public and persisted planning snapshot.
+
+    ``decisions`` is already ordered by policy.  This function never re-sorts
+    hosts, so the same inventory, evidence and classifications produce byte-
+    stable target and explanation order at both print-plan and run time.
+    """
+    if type(full_fleet) is not bool:
+        raise TypeError('full_fleet must be boolean')
+    if not isinstance(decisions, list):
+        raise TypeError('decisions must be a list')
+
+    hosts: list[dict[str, Any]] = []
+    targeted: list[dict[str, Any]] = []
+    excluded: list[dict[str, Any]] = []
+    terminal_targets: list[dict[str, str]] = []
+    seen: set[str] = set()
+    server_count = 0
+    for original in decisions:
+        if not isinstance(original, dict):
+            raise ValueError('host decision is malformed')
+        if not set(HOST_DECISION_FIELDS) <= set(original):
+            raise ValueError('host decision is incomplete')
+        host = original['host']
+        role = original['role']
+        if not isinstance(host, str) or not host or host in seen:
+            raise ValueError('host decision identity is malformed or duplicated')
+        if role not in {'server', 'kiosk', 'signage'}:
+            raise ValueError('host decision role is unsupported')
+        if type(original['targeted']) is not bool:
+            raise ValueError('host decision target flag must be boolean')
+        seen.add(host)
+        server_count += int(role == 'server')
+
+        decision = {key: original[key] for key in HOST_DECISION_FIELDS}
+        hosts.append(decision)
+        public = _public_host_decision(decision)
+        if decision['targeted']:
+            targeted.append(public)
+            if role in {'kiosk', 'signage'}:
+                terminal_targets.append({'host': host, 'terminalType': role})
+        else:
+            excluded.append(public)
+    if decisions and server_count != 1:
+        raise ValueError('fleet plan must contain exactly one server decision')
+
+    canary_hold = (
+        False
+        if not terminal_targets
+        else canary_hold_policy(terminal_targets, 0, skip=False)
+    )
+    return {
+        'desiredSha': release_sha,
+        'fullFleet': full_fleet,
+        'limit': limit or None,
+        'pi5Required': any(
+            decision['role'] == 'server' and decision['targeted']
+            for decision in hosts
+        ),
+        'targets': targeted,
+        'excluded': excluded,
+        'hosts': hosts,
+        'targetHosts': [decision['host'] for decision in targeted],
+        'excludedHosts': [decision['host'] for decision in excluded],
+        'minimized': bool(excluded),
+        'canaryHold': canary_hold,
+    }
 
 
 def plan_terminal_scope(

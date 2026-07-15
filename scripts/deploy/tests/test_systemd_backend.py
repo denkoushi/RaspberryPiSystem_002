@@ -49,6 +49,7 @@ class SystemdBackendTest(unittest.TestCase):
             'branch': 'main',
             'sha': SHA,
             'inventory': 'inventory.yml',
+            'expected_server_client_id': 'raspberrypi5-server',
         }
         values.update(overrides)
         return LaunchSpec(**values)
@@ -99,6 +100,17 @@ class SystemdBackendTest(unittest.TestCase):
         payload = bootstrap.parse_spec(base64.b64decode(remote[-1]).decode('utf-8'))
         self.assertEqual(payload['runId'], RUN_ID)
         self.assertEqual(payload['sha'], SHA)
+        self.assertFalse(payload['fullFleet'])
+
+    def test_full_fleet_survives_the_systemd_bootstrap_contract(self):
+        backend, runner = self.backend()
+
+        backend.start(self.spec(full_fleet=True), wait=False)
+
+        remote = self.remote_argv(runner)
+        payload = bootstrap.parse_spec(base64.b64decode(remote[-1]).decode('utf-8'))
+        self.assertTrue(payload['fullFleet'])
+        self.assertIn('--full-fleet', bootstrap.remote_arguments(payload))
 
     def test_detach_omits_wait_but_still_waits_for_unit_start(self):
         backend, runner = self.backend()

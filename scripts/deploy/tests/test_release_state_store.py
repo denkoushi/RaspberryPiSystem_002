@@ -118,6 +118,23 @@ class RunStateStoreTest(unittest.TestCase):
         self.assertEqual(finished['endedAt'], finished['completedAt'])
         self.assertEqual(self.store.read_state('run-1')['state'], 'cancelled')
 
+    def test_terminal_hook_observes_arbitrated_state_under_the_run_lock(self):
+        self.store.create_state('run-1', {'state': 'running'})
+        self.store.request_cancel('run-1', 'operator stop')
+        observed = []
+
+        def finish_fleet(effective_state):
+            observed.append(effective_state)
+            return {'fleetGeneration': 9}
+
+        finished = self.store.finish_state(
+            'run-1', 'success', before_persist=finish_fleet
+        )
+
+        self.assertEqual(observed, ['cancelled'])
+        self.assertEqual(finished['state'], 'cancelled')
+        self.assertEqual(finished['fleetGeneration'], 9)
+
     def test_success_wins_when_terminal_state_is_persisted_before_cancel(self):
         self.store.create_state('run-1', {'state': 'running'})
         finished = self.store.finish_state('run-1', 'success')

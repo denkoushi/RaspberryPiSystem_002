@@ -36,10 +36,20 @@ from rolling_release import coordinator as release_coordinator
 from rolling_release import planner as release_planner
 from rolling_release import policy as release_policy
 from rolling_release.backends import ansible as ansible_backend
+from rolling_release.backends import evidence as evidence_backend
 from rolling_release.backends import pi5 as pi5_backend
 from rolling_release.backends import systemd as systemd_backend
 from rolling_release.cancellation import CancellationToken, token_from_environment
-from rolling_release.lock import validate_inherited_release_lock
+from rolling_release.fleet_state import (
+    FleetLease,
+    FleetStateStore,
+    empty_fleet_state,
+    parse_fleet_state_json,
+)
+from rolling_release.lock import (
+    validate_inherited_fleet_lock,
+    validate_inherited_release_lock,
+)
 from rolling_release.models import unit_name_for
 from rolling_release.state import RunStateStore, TERMINAL_STATES
 
@@ -52,6 +62,8 @@ PHASE3 = PROJECT / "scripts/deploy/pi5-blue-green.sh"
 CANDIDATE_BUILD = PROJECT / "scripts/deploy/pi5-candidate-build.sh"
 RUN_DIRECTORY = PROJECT / "logs/deploy/release-runs"
 PI5_RELEASE_CURRENT = PROJECT / "logs/deploy/pi5-release-current.json"
+FLEET_RELEASE_STATE = PROJECT / "logs/deploy/fleet-release-state.json"
+FLEET_RELEASE_LOCK = PROJECT / "logs/deploy/fleet-release-state.lock"
 OPERATOR_CANARY_APPROVAL_CLIENT = "operator-canary-approval"
 DEFAULT_CANARY_HOLD_TIMEOUT = release_cli.DEFAULT_CANARY_HOLD_TIMEOUT
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -60,6 +72,8 @@ CLEANUP_LOCK_RETRY_TIMEOUT = 30
 CLEANUP_LOCK_RETRY_INTERVAL = 2
 KIOSK_SCOPE_COMPONENTS = release_policy.KIOSK_SCOPE_COMPONENTS
 _ACTIVE_CANCELLATION_TOKEN: CancellationToken | None = None
+_ACTIVE_FLEET_LEASE: FleetLease | None = None
+_PREVIOUS_SHA_UNSET = object()
 
 
 def _runtime() -> Any:
@@ -117,12 +131,177 @@ def apply_auto_minimize(
     return release_policy.apply_auto_minimize(targets, inventory, classification)
 
 
+def release_hosts(
+    inventory: dict[str, Any], selected: Iterable[str] | None = None
+) -> list[dict[str, str]]:
+    return release_policy.release_hosts(inventory, selected)
+
+
+def inventory_server_identity(inventory: dict[str, Any]) -> dict[str, str]:
+    return release_policy.server_identity(inventory)
+
+
+def validate_print_plan_checkout(sha: str) -> None:
+    release_application.require_checkout_sha(sha, runtime=_runtime())
+
+
+def validate_print_plan_server_identity(
+    inventory: dict[str, Any],
+) -> dict[str, str]:
+    return release_application.validate_remote_server_identity(
+        inventory, runtime=_runtime()
+    )
+
+
+def canonical_print_plan_inventory(inventory: str) -> str:
+    relative = release_application._remote_inventory(inventory, runtime=_runtime())
+    return str(ANSIBLE_DIRECTORY / relative)
+
+
+def plan_target_decisions(
+    targets: list[dict[str, Any]],
+    fleet: dict[str, Any],
+    release_sha: str,
+    classifications_by_sha: dict[str, dict[str, Any] | None],
+    inventory: dict[str, Any],
+    *,
+    full_fleet: bool,
+) -> list[dict[str, Any]]:
+    return release_policy.plan_target_decisions(
+        targets,
+        fleet,
+        release_sha,
+        classifications_by_sha,
+        inventory,
+        full_fleet=full_fleet,
+    )
+
+
+def _fleet_store() -> FleetStateStore:
+    return FleetStateStore(FLEET_RELEASE_STATE, lock_path=FLEET_RELEASE_LOCK)
+
+
+def _fleet_lease() -> FleetLease:
+    if _ACTIVE_FLEET_LEASE is None:
+        raise RuntimeError("authoritative fleet lease is not active")
+    return _ACTIVE_FLEET_LEASE
+
+
+def read_fleet_release_state() -> dict[str, Any]:
+    return _fleet_store().read_only()
+
+
+def read_plan_fleet_release_state() -> tuple[dict[str, Any], list[str]]:
+    try:
+        _remote_user, transport = release_application.build_server_transport(_runtime())
+        result = transport.run(
+            ["cat", "/opt/RaspberryPiSystem_002/logs/deploy/fleet-release-state.json"]
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "remote read failed").strip()
+            raise RuntimeError(detail)
+        return parse_fleet_state_json(result.stdout, source="remote fleet state"), []
+    except Exception as error:
+        return empty_fleet_state(), [f"fleet state unavailable: {error}"]
+
+
+def fleet_begin_run(run_id: str, desired_sha: str, inventory: str) -> tuple[dict[str, Any], str | None]:
+    store = _fleet_store()
+    state = store.read_only()
+    abandoned: str | None = None
+    active = state.get("activeRun")
+    if isinstance(active, dict):
+        active_id = active.get("runId")
+        if isinstance(active_id, str):
+            state = store.abandon_active_run(
+                active_id,
+                expected_generation=state["generation"],
+                lease=_fleet_lease(),
+            )
+            abandoned = active_id
+    state = store.begin_run(
+        run_id,
+        desired_sha,
+        inventory,
+        expected_generation=state["generation"],
+        kind="release",
+        lease=_fleet_lease(),
+    )
+    return state, abandoned
+
+
+def fleet_mark_unknown(host: str, role: str, desired_sha: str, run_id: str) -> dict[str, Any]:
+    store = _fleet_store()
+    state = store.read_only()
+    return store.mark_host_unknown(
+        host,
+        role,
+        desired_sha,
+        run_id,
+        expected_generation=state["generation"],
+        lease=_fleet_lease(),
+    )
+
+
+def fleet_mark_verified(
+    host: str,
+    role: str,
+    desired_sha: str,
+    current_sha: str,
+    run_id: str,
+    *,
+    previous_sha: str | None | object = _PREVIOUS_SHA_UNSET,
+    observation: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    store = _fleet_store()
+    state = store.read_only()
+    observed = observation or {}
+    options: dict[str, Any] = {
+        "active_slot": observed.get("activeSlot"),
+        "api_image": observed.get("apiImage"),
+        "web_image": observed.get("webImage"),
+        "config_digest": observed.get("configDigest"),
+        "migration_digest": observed.get("migrationDigest"),
+        "expected_generation": state["generation"],
+        "lease": _fleet_lease(),
+    }
+    if previous_sha is not _PREVIOUS_SHA_UNSET:
+        options["previous_sha"] = previous_sha
+    return store.mark_host_verified(
+        host,
+        role,
+        desired_sha,
+        current_sha,
+        run_id,
+        **options,
+    )
+
+
+def fleet_finish_run(run_id: str, status: str) -> dict[str, Any]:
+    store = _fleet_store()
+    state = store.read_only()
+    return store.finish_run(
+        run_id,
+        status,
+        expected_generation=state["generation"],
+        lease=_fleet_lease(),
+    )
+
+
+def observe_terminal_evidence(inventory: str, host: str, role: str) -> dict[str, Any]:
+    return evidence_backend.observe_terminal(inventory, host, role, runtime=_runtime())
+
+
+def observe_pi5_evidence(expected_sha: str | None) -> dict[str, Any]:
+    return evidence_backend.observe_pi5(expected_sha, runtime=_runtime())
+
+
 @dataclass
 class ReleaseState:
     path: Path
     payload: dict[str, Any]
 
-    def save(self) -> None:
+    def save(self, *, before_terminal_persist: Any | None = None) -> None:
         run_id = str(self.payload.get("runId") or self.path.stem)
         self.payload.setdefault("runId", run_id)
         self.payload.setdefault("version", 1)
@@ -133,7 +312,12 @@ class ReleaseState:
             saved = store.create_state(run_id, self.payload)
         elif requested_state in TERMINAL_STATES:
             changes = {key: value for key, value in self.payload.items() if key != "state"}
-            saved = store.finish_state(run_id, requested_state, changes=changes)
+            saved = store.finish_state(
+                run_id,
+                requested_state,
+                changes=changes,
+                before_persist=before_terminal_persist,
+            )
         else:
             saved = store.update_state(run_id, lambda _current: self.payload)
         # Keep the payload object graph stable. Helpers retain a target
@@ -440,7 +624,47 @@ def cleanup_after_pi5_stability() -> None:
 
 
 def read_pi5_release_current() -> dict[str, Any] | None:
-    return pi5_backend.read_pi5_release_current(runtime=_runtime())
+    # Fleet evidence is authoritative. The legacy marker remains an explicit
+    # compatibility fallback until PR 8 removes it after production acceptance.
+    fleet_state = read_fleet_release_state()
+    fleet = fleet_state.get("fleet") or {}
+    servers = [
+        record
+        for record in fleet.values()
+        if isinstance(record, dict) and record.get("role") == "server"
+    ]
+    if len(servers) > 1:
+        # Inventory planning names the current server authority. This legacy
+        # compatibility read has no inventory argument, so competing/stale
+        # records cannot safely prove an idempotent skip. Return no marker and
+        # let the normal live Pi5 execution/verification path repair evidence.
+        return None
+    if servers and servers[0].get("evidence") == "verified":
+        record = servers[0]
+        return {
+            "sha": record.get("currentSha"),
+            "candidate": {
+                "api": record.get("apiImage"),
+                "web": record.get("webImage"),
+            },
+            "completedAt": record.get("verifiedAt"),
+            "compatibility": {"source": "fleet-release-state"},
+        }
+    # The marker may seed the migration only before fleet state exists. Once
+    # any durable fleet transition or host record exists, absence of verified
+    # server evidence is authoritative and must not be overwritten by it.
+    if not (
+        fleet_state.get("generation") == 0
+        and fleet_state.get("activeRun") is None
+        and fleet_state.get("lastRun") is None
+        and not fleet
+    ):
+        return None
+    marker = pi5_backend.read_pi5_release_current(runtime=_runtime())
+    if isinstance(marker, dict):
+        marker = dict(marker)
+        marker["compatibility"] = {"source": "pi5-release-current"}
+    return marker
 
 
 def read_plan_pi5_release_current() -> tuple[dict[str, Any] | None, list[str]]:
@@ -517,9 +741,14 @@ def classify_release_impact(
             "classification unavailable: last-successful Pi5 release SHA is missing or invalid"
         ]
     if base == sha:
-        return None, [
-            "classification unavailable: target matches the Pi5 marker; terminal state is not a safe baseline"
-        ]
+        return {
+            "server": False,
+            "kiosk": False,
+            "signage": False,
+            "migration": False,
+            "paths": [],
+            "components": ["neutral"],
+        }, []
     try:
         run(
             ["git", "-C", str(PROJECT), "merge-base", "--is-ancestor", base, sha],
@@ -562,46 +791,170 @@ def resolve_terminal_targets(
         return None, ["ansible-inventory unavailable"]
 
 
+def classify_fleet_baselines(
+    sha: str, fleet_state: dict[str, Any]
+) -> tuple[dict[str, dict[str, Any] | None], list[str]]:
+    classifications: dict[str, dict[str, Any] | None] = {}
+    warnings: list[str] = []
+    fleet = fleet_state.get("fleet") if isinstance(fleet_state, dict) else {}
+    if not isinstance(fleet, dict):
+        return classifications, ["fleet evidence is malformed"]
+    for host, record in fleet.items():
+        if not isinstance(record, dict) or record.get("evidence") != "verified":
+            continue
+        current = record.get("currentSha")
+        if not isinstance(current, str) or not FULL_SHA_RE.fullmatch(current):
+            continue
+        if current in classifications:
+            continue
+        classification, current_warnings = classify_release_impact(sha, {"sha": current})
+        classifications[current] = classification
+        warnings.extend(f"{host}: {warning}" for warning in current_warnings)
+    return classifications, warnings
+
+
+def build_fleet_scope(
+    *,
+    sha: str,
+    inventory_data: dict[str, Any],
+    fleet_state: dict[str, Any],
+    selected: list[str] | None,
+    limit: str,
+    full_fleet: bool,
+    auto_minimize_alias: bool,
+) -> tuple[dict[str, Any], list[dict[str, str]], dict[str, dict[str, Any] | None], list[str]]:
+    all_hosts = release_hosts(inventory_data)
+    classifications, warnings = classify_fleet_baselines(sha, fleet_state)
+    decisions = plan_target_decisions(
+        all_hosts,
+        fleet_state.get("fleet") or {},
+        sha,
+        classifications,
+        inventory_data,
+        full_fleet=full_fleet,
+    )
+
+    if selected is not None:
+        if not selected:
+            raise RuntimeError(f"--limit selected no hosts: {limit}")
+        # Validate that the Ansible limit cannot smuggle a non-release host
+        # into the deployment candidate universe.
+        release_hosts(inventory_data, selected)
+        selected_set = set(selected)
+        server = next(decision for decision in decisions if decision["role"] == "server")
+        if server["targeted"] and server["host"] not in selected_set:
+            raise RuntimeError(
+                f"--limit excludes required Pi5 server host {server['host']}: {limit}"
+            )
+        unknown_outside = [
+            decision["host"]
+            for decision in decisions
+            if decision["targeted"]
+            and decision["evidence"] != "verified"
+            and decision["host"] not in selected_set
+        ]
+        if unknown_outside:
+            raise RuntimeError(
+                "--limit excludes required unknown-evidence hosts: "
+                + ", ".join(unknown_outside)
+            )
+        for decision in decisions:
+            if decision["host"] not in selected_set:
+                decision["targeted"] = False
+                decision["targetReason"] = "outside explicit --limit"
+
+    plan = release_planner.build_fleet_plan_payload(
+        release_sha=sha,
+        decisions=decisions,
+        full_fleet=full_fleet,
+        limit=limit,
+        canary_hold_policy=should_hold_after_canary,
+    )
+    target_by_host = {target["host"]: target for target in all_hosts}
+    terminal_targets = [
+        target_by_host[decision["host"]]
+        for decision in decisions
+        if decision["targeted"] and decision["role"] in {"kiosk", "signage"}
+    ]
+    plan["terminalTargets"] = terminal_targets
+    plan["autoMinimize"] = auto_minimize_alias
+    components = {
+        component
+        for classification in classifications.values()
+        if isinstance(classification, dict)
+        for component in classification.get("components") or []
+        if isinstance(component, str)
+    }
+    plan["classificationComponents"] = sorted(components) if components else None
+    return plan, terminal_targets, classifications, warnings
+
+
 def build_print_plan(
-    branch: str, inventory: str, limit: str, *, auto_minimize: bool = False
+    branch: str,
+    inventory: str,
+    limit: str,
+    *,
+    auto_minimize: bool = False,
+    full_fleet: bool = False,
 ) -> dict[str, Any]:
     warnings: list[str] = []
     sha, current_warnings = resolve_release_sha(branch)
     warnings.extend(current_warnings)
-    classification: dict[str, Any] | None = None
-    pi5_required: bool | None = None
-    if sha:
-        marker, marker_warnings = read_plan_pi5_release_current()
-        warnings.extend(marker_warnings)
-        classification, classification_warnings = classify_release_impact(sha, marker)
-        warnings.extend(classification_warnings)
-        pi5_required = release_policy.requires_pi5_release(classification)
-    terminal_targets, target_warnings = resolve_terminal_targets(inventory, limit)
-    warnings.extend(target_warnings)
-    inventory_data: dict[str, Any] = {}
-    if auto_minimize and terminal_targets is not None:
-        try:
-            inventory_data = inventory_json(inventory)
-        except Exception:
-            pass
-    scope = release_planner.plan_terminal_scope(
-        terminal_targets,
-        inventory_data,
-        classification,
-        auto_minimize=auto_minimize,
-        minimize_policy=apply_auto_minimize,
-        canary_hold_policy=should_hold_after_canary,
+    if not isinstance(sha, str) or not FULL_SHA_RE.fullmatch(sha):
+        detail = "; ".join(current_warnings) or f"could not resolve SHA for branch {branch}"
+        raise RuntimeError(detail)
+    validate_print_plan_checkout(sha)
+    local_inventory = canonical_print_plan_inventory(inventory)
+    inventory_data = inventory_json(local_inventory)
+    selected = selected_hosts(local_inventory, limit)
+    server_identity = validate_print_plan_server_identity(inventory_data)
+    fleet_state, fleet_warnings = read_plan_fleet_release_state()
+    warnings.extend(fleet_warnings)
+    active_run = fleet_state.get("activeRun")
+    if isinstance(active_run, dict):
+        active_id = active_run.get("runId")
+        warnings.append(
+            "fleet state has an active run"
+            + (f" {active_id}" if isinstance(active_id, str) else "")
+            + "; treating every inventory host as unknown"
+        )
+        # A live run can still change every record, while a stale run must be
+        # reconciled by the next lock-owning execution.  A read-only plan stays
+        # useful and safe by widening to the complete unknown fleet.  The
+        # kernel fleet lock prevents a concurrent launch from reaching Git.
+        fleet_state = empty_fleet_state()
+    scope, _terminal_targets, classifications, scope_warnings = build_fleet_scope(
+        sha=sha,
+        inventory_data=inventory_data,
+        fleet_state=fleet_state,
+        selected=selected,
+        limit=limit,
+        full_fleet=full_fleet,
+        auto_minimize_alias=auto_minimize,
     )
-    return release_planner.build_print_plan_payload(
+    warnings.extend(scope_warnings)
+    server_record = next(
+        (
+            record
+            for record in (fleet_state.get("fleet") or {}).values()
+            if isinstance(record, dict) and record.get("role") == "server"
+        ),
+        None,
+    )
+    server_sha = server_record.get("currentSha") if isinstance(server_record, dict) else None
+    classification = classifications.get(server_sha) if isinstance(server_sha, str) else None
+    payload = release_planner.build_print_plan_payload(
         branch=branch,
         inventory=inventory,
         limit=limit,
         sha=sha,
         classification=classification,
-        pi5_required=pi5_required,
+        pi5_required=scope.get("pi5Required"),
         terminal_scope=scope,
         warnings=warnings,
     )
+    payload["serverIdentity"] = server_identity
+    return payload
 
 
 def _remote_run(args: argparse.Namespace) -> int:
@@ -619,9 +972,14 @@ def _remote_run(args: argparse.Namespace) -> int:
 
 
 def remote_run(args: argparse.Namespace) -> int:
-    descriptor = validate_inherited_release_lock(PROJECT)
+    global _ACTIVE_FLEET_LEASE
+    fleet_lease = validate_inherited_fleet_lock(PROJECT)
+    descriptor: int | None = None
+    previous_fleet_lease = _ACTIVE_FLEET_LEASE
+    _ACTIVE_FLEET_LEASE = fleet_lease
     try:
-        if os.environ.get("ROLLING_RELEASE_PROTOCOL") != "1":
+        descriptor = validate_inherited_release_lock(PROJECT)
+        if os.environ.get("ROLLING_RELEASE_PROTOCOL") != "2":
             raise RuntimeError("rolling-release protocol identity is missing")
         expected_unit = unit_name_for(args.run_id)
         if os.environ.get("ROLLING_RELEASE_UNIT") != expected_unit:
@@ -633,7 +991,10 @@ def remote_run(args: argparse.Namespace) -> int:
         token_from_environment(PROJECT, args.run_id)
         return _remote_run(args)
     finally:
-        os.close(descriptor)
+        _ACTIVE_FLEET_LEASE = previous_fleet_lease
+        if descriptor is not None:
+            os.close(descriptor)
+        fleet_lease.release()
 
 
 def local_approve(run_id: str) -> int:
@@ -651,6 +1012,12 @@ def local_run(args: argparse.Namespace) -> int:
         return local_approve(args.approve)
     if args.cancel:
         return local_cancel(args)
+    if args.auto_minimize:
+        print(
+            "[WARN] --auto-minimize is a compatibility alias; "
+            "target minimization is now the default",
+            file=sys.stderr,
+        )
     if args.print_plan:
         print(
             json.dumps(
@@ -659,6 +1026,7 @@ def local_run(args: argparse.Namespace) -> int:
                     args.inventory,
                     args.limit or "",
                     auto_minimize=args.auto_minimize,
+                    full_fleet=args.full_fleet,
                 ),
                 ensure_ascii=False,
             )

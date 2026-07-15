@@ -4,7 +4,7 @@ title: Pi4 SD-card recovery through Pi5 bootstrap and local endpoint override
 status: accepted
 date: 2026-07-13
 source_of_truth: true
-scope: inventory-managed Pi4 kiosk recovery after SD-card replacement
+scope: explicitly enabled standard-site Pi4 kiosk recovery after SD-card replacement
 related_code:
   - scripts/deploy/recover-pi4.py
   - infrastructure/ansible/playbooks/recover-pi4.yml
@@ -44,6 +44,11 @@ the target's inventory contract and the immutable SHA currently active on Pi5.
 Its confirmed `run` command refuses an online old endpoint, configures the
 fresh Pi4 through a dedicated playbook, then verifies the new Tailscale address
 and services.
+
+Eligibility is explicit per host: the inventory must set
+`pi4_recovery_enabled: true` and use the standard Tailscale recovery model.
+Talkplaza's LAN/DNS recovery is outside this ADR and remains fail-closed until
+a separate site-specific decision and implementation exist.
 
 The coordinator reuses `common`, `client`, and `kiosk` Ansible roles after a
 small bootstrap role installs operating-system prerequisites. This keeps NFC,

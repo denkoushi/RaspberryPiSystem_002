@@ -330,4 +330,3 @@ def ensure_pi5_release(sha: str, state: Any, *, runtime: Runtime) -> None:
         return
     runtime.phase3_release(sha, state)
     runtime.wait_for_pi5_stability(state)
-    runtime.record_pi5_release_current(sha, (state.payload.get("pi5") or {}).get("candidate"))

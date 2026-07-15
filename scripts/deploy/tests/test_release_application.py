@@ -7,7 +7,7 @@ import re
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from scripts.deploy.rolling_release import application
 from scripts.deploy.rolling_release.backends.command import CommandResult
@@ -28,6 +28,19 @@ class Runtime:
     def run(command, *, capture=False):
         return SHA if capture and "rev-parse" in command else ""
 
+    @staticmethod
+    def inventory_json(_inventory):
+        return {
+            "server": {"hosts": ["raspberrypi5"]},
+            "_meta": {
+                "hostvars": {
+                    "raspberrypi5": {
+                        "status_agent_client_id": "raspberrypi5-server"
+                    }
+                }
+            },
+        }
+
 
 def release_args(*, detach=False):
     return argparse.Namespace(
@@ -39,6 +52,7 @@ def release_args(*, detach=False):
         reason=None,
         skip_canary_hold=False,
         auto_minimize=False,
+        full_fleet=False,
         detach=detach,
     )
 
@@ -70,6 +84,15 @@ class FakeControl:
         return {"runId": run_id, "approved": True}
 
 
+class RecordingCommandRunner:
+    def __init__(self):
+        self.argv = None
+
+    def run(self, argv, **_kwargs):
+        self.argv = tuple(argv)
+        return CommandResult(self.argv, 0, stdout="{}")
+
+
 class ReleaseApplicationTest(unittest.TestCase):
     def launch(self, *, detach=False, start_result=None, observed=None, observe_error=None):
         systemd = FakeSystemd(start_result)
@@ -81,16 +104,85 @@ class ReleaseApplicationTest(unittest.TestCase):
             patch.object(application, "build_backends", return_value=(systemd, control)),
             patch.object(
                 application,
+                "validate_remote_server_identity",
+                return_value={
+                    "host": "raspberrypi5",
+                    "clientId": "raspberrypi5-server",
+                },
+            ),
+            patch.object(
+                application,
                 "observe",
                 side_effect=observe_error,
                 return_value=observed or {"runId": RUN_ID, "state": "success"},
             ),
         )
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patch(
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch(
             "sys.stdout", new_callable=io.StringIO
         ) as stdout:
             outcome = application.launch(release_args(detach=detach), runtime=Runtime)
         return outcome, stdout.getvalue(), systemd, control
+
+    def test_branch_advance_after_plan_stops_before_unit_submission(self):
+        systemd = FakeSystemd()
+        control = FakeControl()
+        runtime = type(
+            "AdvancedRuntime",
+            (Runtime,),
+            {
+                "run": staticmethod(
+                    lambda command, capture=False: (
+                        SHA
+                        if capture and command[-1] == "origin/main"
+                        else ("b" * 40 if capture and command[-1] == "HEAD" else "")
+                    )
+                )
+            },
+        )
+        with patch.object(application, "_require_clean_worktree"), patch.object(
+            application, "_remote_inventory", return_value="inventory.yml"
+        ), patch.object(application, "build_backends", return_value=(systemd, control)):
+            with self.assertRaisesRegex(RuntimeError, "local HEAD does not match"):
+                application.launch(release_args(), runtime=runtime)
+        self.assertEqual(systemd.events, [])
+
+    def test_wrong_remote_site_stops_before_systemd_submission(self):
+        systemd = FakeSystemd()
+        control = FakeControl()
+        with patch.object(application, "_require_clean_worktree"), patch.object(
+            application, "_remote_inventory", return_value="inventory.yml"
+        ), patch.object(
+            application,
+            "read_remote_server_client_id",
+            return_value="talkplaza-pi5-server",
+        ), patch.object(
+            application, "build_backends", return_value=(systemd, control)
+        ) as backends:
+            with self.assertRaisesRegex(RuntimeError, "does not match"):
+                application.launch(release_args(), runtime=Runtime)
+
+        backends.assert_not_called()
+        self.assertEqual(systemd.events, [])
+
+    def test_remote_identity_probe_returns_only_client_id_and_never_requests_key(self):
+        transport = SimpleNamespace(
+            run=Mock(
+                return_value=CommandResult(
+                    ("ssh",), 0, stdout="raspberrypi5-server\n"
+                )
+            )
+        )
+        with patch.object(
+            application,
+            "build_server_transport",
+            return_value=("denkon5sd02", transport),
+        ):
+            value = application.read_remote_server_client_id(runtime=Runtime)
+
+        self.assertEqual(value, "raspberrypi5-server")
+        command = transport.run.call_args.args[0]
+        self.assertNotIn("CLIENT_KEY", "\n".join(command))
+        self.assertNotIn("cat", command)
 
     def test_detach_returns_run_id_after_unit_acceptance(self):
         outcome, output, systemd, _control = self.launch(detach=True)
@@ -132,6 +224,41 @@ class ReleaseApplicationTest(unittest.TestCase):
         ), patch("sys.stdout", new_callable=io.StringIO):
             self.assertEqual(application.cancel(RUN_ID, "safe stop", runtime=Runtime), 0)
         self.assertEqual(events, ["control", "signal"])
+
+    def test_server_transport_normalizes_ip_and_honors_configured_options(self):
+        runtime = SimpleNamespace(
+            os=SimpleNamespace(
+                environ={
+                    "RASPI_SERVER_HOST": "100.64.1.2",
+                    "RASPI_SERVER_SSH_OPTS": "-o ServerAliveInterval=7 -p 2222",
+                }
+            )
+        )
+        runner = RecordingCommandRunner()
+
+        remote_user, transport = application.build_server_transport(
+            runtime, runner=runner
+        )
+        transport.run(["cat", "/tmp/state.json"])
+
+        self.assertEqual(remote_user, application.DEFAULT_REMOTE_USER)
+        self.assertEqual(
+            runner.argv,
+            (
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "ConnectTimeout=15",
+                "-o",
+                "ServerAliveInterval=7",
+                "-p",
+                "2222",
+                "--",
+                f"{application.DEFAULT_REMOTE_USER}@100.64.1.2",
+                "cat /tmp/state.json",
+            ),
+        )
 
 
 if __name__ == "__main__":

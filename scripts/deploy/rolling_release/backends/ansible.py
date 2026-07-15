@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from typing import Any, Protocol
 
 
@@ -32,16 +33,31 @@ class Runtime(Protocol):
 
 
 def inventory_json(path: str, *, runtime: Runtime) -> dict[str, Any]:
-    return json.loads(runtime.run(["ansible-inventory", "-i", path, "--list"], capture=True))
+    return json.loads(
+        runtime.run(
+            ["ansible-inventory", "-i", path, "--list"],
+            cwd=runtime.ANSIBLE_DIRECTORY,
+            capture=True,
+        )
+    )
 
 
 def selected_hosts(path: str, limit: str, *, runtime: Runtime) -> list[str] | None:
     if not limit:
         return None
-    output = runtime.run(
-        ["ansible", "-i", path, "server:clients", "--list-hosts", "--limit", limit],
-        capture=True,
-    )
+    try:
+        output = runtime.run(
+            ["ansible", "-i", path, "server:clients", "--list-hosts", "--limit", limit],
+            cwd=runtime.ANSIBLE_DIRECTORY,
+            capture=True,
+        )
+    except subprocess.CalledProcessError as error:
+        combined = "\n".join(
+            value for value in (error.stdout, error.stderr) if isinstance(value, str)
+        )
+        if "hosts (0)" in combined:
+            return []
+        raise
     return [
         line.strip()
         for line in output.splitlines()
@@ -69,7 +85,8 @@ def prestage_signage_maintenance(
             "apt",
             "-a",
             "name=librsvg2-bin state=present update_cache=yes",
-        ]
+        ],
+        cwd=runtime.ANSIBLE_DIRECTORY,
     )
     runtime.run(
         [
@@ -82,7 +99,8 @@ def prestage_signage_maintenance(
             "copy",
             "-a",
             f"src={source} dest=/usr/local/share/signage-maintenance.svg mode=0644",
-        ]
+        ],
+        cwd=runtime.ANSIBLE_DIRECTORY,
     )
     command = (
         "set -e; mkdir -p /run/signage; "
@@ -93,7 +111,10 @@ def prestage_signage_maintenance(
         "rm -f /run/signage/current.tmp.jpg; "
         "else mv /run/signage/current.tmp.jpg /run/signage/current.jpg; fi"
     )
-    runtime.run(["ansible", "-i", inventory, host, "-b", "-m", "shell", "-a", command])
+    runtime.run(
+        ["ansible", "-i", inventory, host, "-b", "-m", "shell", "-a", command],
+        cwd=runtime.ANSIBLE_DIRECTORY,
+    )
     runtime.state_command("ack", "--run-id", run_id, "--client", client_id)
 
 
@@ -110,6 +131,7 @@ def remote_previous_sha(inventory: str, host: str, *, runtime: Runtime) -> str:
             "-a",
             "git -C /opt/RaspberryPiSystem_002 rev-parse HEAD",
         ],
+        cwd=runtime.ANSIBLE_DIRECTORY,
         capture=True,
     )
     for line in output.splitlines():

@@ -36,6 +36,25 @@ class RollingReleaseCliContractTest(unittest.TestCase):
         args = parse("main", "infrastructure/ansible/inventory.yml", "--dry-run")
         self.assertTrue(args.print_plan)
 
+    def test_full_fleet_is_explicit_and_excludes_narrowing_options(self):
+        args = parse("main", "infrastructure/ansible/inventory.yml", "--full-fleet")
+        self.assertTrue(args.full_fleet)
+        with self.assertRaisesRegex(UsageError, "--limit"):
+            parse(
+                "main",
+                "infrastructure/ansible/inventory.yml",
+                "--full-fleet",
+                "--limit",
+                "kiosk",
+            )
+        with self.assertRaisesRegex(UsageError, "auto-minimize"):
+            parse(
+                "main",
+                "infrastructure/ansible/inventory.yml",
+                "--full-fleet",
+                "--auto-minimize",
+            )
+
     def test_retired_options_exit_contract_names_a_replacement(self):
         cases = (
             (("--follow",), "--status RUN_ID"),
@@ -74,6 +93,7 @@ class RollingReleaseCliContractTest(unittest.TestCase):
             ("--status", "run-42", "--limit", "kiosk"),
             ("--status", "run-42", "--sha", "a" * 40),
             ("--approve", "run-42", "--auto-minimize"),
+            ("--status", "run-42", "--full-fleet"),
             ("--status", "run-42", "--canary-hold-timeout", "1800"),
             (
                 "--cancel",
@@ -128,6 +148,8 @@ class RollingReleaseCliContractTest(unittest.TestCase):
             "a" * 40,
             "--run-id",
             "run-42",
+            "--expected-server-client-id",
+            "raspberrypi5-server",
         )
         self.assertTrue(args.remote_run)
 

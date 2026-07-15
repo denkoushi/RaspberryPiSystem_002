@@ -20,7 +20,7 @@ fi
 if grep -R -q 'ROLLING_RELEASE_LOCK_HELD' "${ROOT}/scripts/deploy/rolling_release"; then
   fail "legacy boolean lock fallback remains in the coordinator package"
 fi
-test "$(cat "${ROOT}/scripts/deploy/rolling_release/PROTOCOL")" = "raspi-rolling-release-v1" \
+test "$(cat "${ROOT}/scripts/deploy/rolling_release/PROTOCOL")" = "raspi-rolling-release-v2" \
   || fail "rolling-release protocol marker is missing"
 
 set +e
