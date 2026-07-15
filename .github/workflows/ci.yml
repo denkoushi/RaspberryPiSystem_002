@@ -710,6 +710,9 @@ jobs:
       - e2e-tests
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout aggregate validator
+        uses: actions/checkout@v6
+
       - name: Require every selected CI job to pass
         env:
           CHANGE_CLASSIFICATION: ${{ needs['change-classification'].result }}

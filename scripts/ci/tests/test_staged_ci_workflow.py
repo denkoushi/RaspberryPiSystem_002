@@ -84,6 +84,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "e2e-tests",
         ):
             self.assertIn(f"      - {dependency}\n", aggregate)
+        self.assertIn("uses: actions/checkout@v6", aggregate)
         self.assertIn("scripts/ci/validate_required_results.py", aggregate)
         self.assertIn('"api=$API_SELECTED:$API_RESULT"', aggregate)
         self.assertNotIn("lint-build-unit", CI)
