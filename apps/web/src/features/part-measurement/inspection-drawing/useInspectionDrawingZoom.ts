@@ -1,46 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useImageCanvasZoom } from '../../kiosk/image-canvas';
 
-import {
-  clampInspectionDrawingZoom,
-  INSPECTION_DRAWING_ZOOM_DEFAULT,
-  INSPECTION_DRAWING_ZOOM_STEP,
-  stepInspectionDrawingZoom
-} from './inspectionDrawingZoom';
+import { INSPECTION_DRAWING_ZOOM_DEFAULT } from './inspectionDrawingZoom';
 
 export function useInspectionDrawingZoom(initialZoom = INSPECTION_DRAWING_ZOOM_DEFAULT) {
-  const [zoom, setZoom] = useState(initialZoom);
-  const [fitGeneration, setFitGeneration] = useState(0);
-
-  const zoomIn = useCallback(() => {
-    setZoom((current) => stepInspectionDrawingZoom(current, INSPECTION_DRAWING_ZOOM_STEP));
-  }, []);
-
-  const zoomOut = useCallback(() => {
-    setZoom((current) => stepInspectionDrawingZoom(current, -INSPECTION_DRAWING_ZOOM_STEP));
-  }, []);
-
-  const fitToView = useCallback(() => {
-    setZoom(INSPECTION_DRAWING_ZOOM_DEFAULT);
-    setFitGeneration((n) => n + 1);
-  }, []);
-
-  const resetZoom = useCallback(() => {
-    setZoom(INSPECTION_DRAWING_ZOOM_DEFAULT);
-    setFitGeneration(0);
-  }, []);
-
-  const setZoomLevel = useCallback((value: number) => {
-    setZoom(clampInspectionDrawingZoom(value));
-  }, []);
-
-  return {
-    zoom,
-    zoomIn,
-    zoomOut,
-    fitToView,
-    resetZoom,
-    setZoomLevel,
-    /** 全面表示時にキャンバスへスクロールリセットを伝える世代カウンタ */
-    fitGeneration
-  };
+  return useImageCanvasZoom(initialZoom);
 }

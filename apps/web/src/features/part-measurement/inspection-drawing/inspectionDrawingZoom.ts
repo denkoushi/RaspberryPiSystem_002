@@ -1,18 +1,18 @@
-/** 図面キャンバスの表示倍率（1 = ビューポートにフィット） */
-export const INSPECTION_DRAWING_ZOOM_MIN = 0.5;
-export const INSPECTION_DRAWING_ZOOM_MAX = 2.5;
-export const INSPECTION_DRAWING_ZOOM_STEP = 0.25;
-export const INSPECTION_DRAWING_ZOOM_DEFAULT = 1;
+import {
+  IMAGE_CANVAS_ZOOM_DEFAULT,
+  IMAGE_CANVAS_ZOOM_MAX,
+  IMAGE_CANVAS_ZOOM_MIN,
+  IMAGE_CANVAS_ZOOM_STEP,
+  clampImageCanvasZoom,
+  stepImageCanvasZoom
+} from '../../kiosk/image-canvas';
 
-export function clampInspectionDrawingZoom(value: number): number {
-  return Math.min(INSPECTION_DRAWING_ZOOM_MAX, Math.max(INSPECTION_DRAWING_ZOOM_MIN, value));
-}
-
-export function stepInspectionDrawingZoom(current: number, delta: number): number {
-  return clampInspectionDrawingZoom(
-    Math.round((current + delta) / INSPECTION_DRAWING_ZOOM_STEP) * INSPECTION_DRAWING_ZOOM_STEP
-  );
-}
+export const INSPECTION_DRAWING_ZOOM_MIN = IMAGE_CANVAS_ZOOM_MIN;
+export const INSPECTION_DRAWING_ZOOM_MAX = IMAGE_CANVAS_ZOOM_MAX;
+export const INSPECTION_DRAWING_ZOOM_STEP = IMAGE_CANVAS_ZOOM_STEP;
+export const INSPECTION_DRAWING_ZOOM_DEFAULT = IMAGE_CANVAS_ZOOM_DEFAULT;
+export const clampInspectionDrawingZoom = clampImageCanvasZoom;
+export const stepInspectionDrawingZoom = stepImageCanvasZoom;
 
 /** fit 基準（{@link INSPECTION_DRAWING_ZOOM_DEFAULT}）から step 数ぶん進めた表示倍率（clamp 済み） */
 export function resolveInspectionDrawingZoomFromDefaultSteps(steps: number): number {
