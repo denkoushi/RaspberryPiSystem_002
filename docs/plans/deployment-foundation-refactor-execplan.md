@@ -35,8 +35,7 @@ validation:
   - read-only plans for both production inventories before any approved release
   - one explicitly approved full-fleet acceptance per inventory, followed by a same-SHA no-op plan
 open_items:
-  - "merge PR 1006 under the user's explicit approval of #1007 and #1004 -> #1005 -> #1006"
-  - implement PR 4 through PR 8 only in sequence from the updated origin/main
+  - publish and validate PR 5, then implement PR 6 through PR 8 only in sequence from the updated origin/main
   - obtain separate per-inventory approval before any production mutation
   - reintroduce the deferred product work only after deployment-foundation production acceptance
 supersedes: []
@@ -76,8 +75,10 @@ This work exists because the current release path has accumulated two coordinato
 - [x] (2026-07-15 00:23Z) Diagnosed the refreshed PR 3 hosted failure as npm's retired legacy audit endpoint returning HTTP 410 to pnpm 9; every deployment, Linux lock, inventory, Ansible, API, E2E, CodeQL, gitleaks, Docker, and non-audit check passed. With explicit approval, replaced only the audit client with pinned pnpm 11.4 on Node 22 so the required critical gate uses the bulk advisory endpoint without `--ignore-registry-errors`.
 - [x] (2026-07-15 00:40Z) Reran PR 3 at exact head `f98aebf2`; hosted run `29379111287` passed every deployment, Linux lock, inventory, Ansible, API, E2E, CodeQL, gitleaks, audit, and Docker check, then PR #1006 merged as `0b24be7f` under the user's ordered approval.
 - [x] (2026-07-15 02:14Z) Implemented PR 4 locally from merged `origin/main`: one strict shell wrapper, one package coordinator, transient-systemd foreground/detach/control lifecycle, atomic per-run state/control, cooperative cancellation, legacy run-status read compatibility, and refusal stubs for four alternate deployment entrances. The complete deploy Python suite passes 222 tests; the single-entrypoint and Ansible safety contracts also pass, and three independent reviews report no remaining Blocker/P1/P2.
-- [ ] Publish PR 4 and complete hosted validation without any real-device action.
-- [ ] Implement and publish PR 5, durable fleet state and default target minimization.
+- [x] (2026-07-15 03:57Z) Published PR 4 as Draft PR #1008 at exact head `c22da822`, completed the hosted suite with 12 successes and one neutral auxiliary CodeQL skip, then merged it under explicit approval as `ccdc624a`. No real-device action occurred.
+- [x] (2026-07-15 04:22Z) Implemented and independently hardened PR 5 locally from merged `ccdc624a`: strict generation-checked fleet state, pre-checkout fleet lock plus compatibility lock, live-evidence seeding, default host-specific minimization, `--full-fleet`, warning-only `--auto-minimize`, new-state-first dual writes, and Pi4 recovery on the same state/lock. Review corrections make service probes independent, prohibit `--limit` from excluding unknown evidence, restrict legacy-marker fallback to genuinely pre-fleet state, bind Pi5 source digests to the matching checkout release, classify both sides of renames, and require the fleet-capable v2 bootstrap protocol. The deploy Python suite passes 295 tests and all isolated deployment shell contracts pass.
+- [x] (2026-07-15 06:03Z) Closed the final PR 5 review findings before publication: launch and plan require the exact resolved target checkout, a non-secret inventory `status_agent_client_id` binds every Pi5 operation to the intended site before state or Git mutation, an active run makes a read-only plan conservatively report the entire inventory as unknown, and deploy-status now has one Python writer protected by a crash-safe kernel lock. Pi4 recovery is an explicit per-host capability for the five standard Tailscale kiosks and remains unavailable at Talkplaza. The final local evidence is 321/321 deploy tests, 16/16 shell contracts plus lifecycle and maintenance checks, 10/10 isolated PostgreSQL API tests, API lint/type checks, and two final reviews with no P1/P2.
+- [ ] Publish PR 5 and complete hosted validation without any real-device action.
 - [ ] Implement and publish PR 6, unified Pi5 and terminal executors, health checks, acknowledgements, and rollback.
 - [ ] Implement and publish PR 7, conditional CI enforcement and the `main` ruleset.
 - [ ] Complete the separately approved production acceptance sequence, including the initial full fleet and the same-SHA no-op proof.
@@ -121,6 +122,22 @@ This work exists because the current release path has accumulated two coordinato
   Evidence: independent review reproduced acceptance of a destructive base-existing pending migration and of `COMMENT ON ... 'keep -- text'; DROP TABLE ...`; corrective commit `d755a679` now validates every candidate migration from immutable commit objects and its hosted rerun is green.
 - Observation: SQL quote markers need identifier-boundary checks for both ASCII and Unicode continuations, and a user-defined domain can smuggle constraints or defaults through an otherwise nullable `ADD COLUMN` form.
   Evidence: adversarial tests reproduced `$tag$` boundary bypasses after ASCII and Unicode combining/joiner characters plus custom/domain type bypasses. Commit `d755a679` rejects them and applies the same conservative identifier-boundary rule to `E'...'` prefixes.
+- Observation: the Pi5 bootstrap must check out the target coordinator SHA before planning, while its active API/Web images may legitimately remain at an older release SHA for a terminal-only change.
+  Evidence: treating checkout HEAD as the Pi5 runtime baseline made every such change appear to require Pi5. PR 5 verifies checkout identity independently and derives runtime `currentSha` from the two matching active image tags. If an unverified baseline has a different checkout SHA, its checkout-derived config and migration-source digests cannot be attributed to the active release, so evidence remains `unknown` and Pi5 stays in scope. Post-release verification requires checkout plus both images to equal the target.
+- Observation: Pi4 recovery can race a pre-PR-5 coordinator if it takes only the new fleet lock during the compatibility window.
+  Evidence: the pre-PR-5 process knows only `.git/rolling-release.lock`. PR 5 recovery therefore takes the fleet lock first and the compatibility lock second, matching bootstrap order; PR 8 removes the second lock only after accepted migration.
+- Observation: one multi-unit `systemctl is-active` call is not proof that every required unit is active.
+  Evidence: systemd may return success when at least one named unit is active. PR 5 probes each required terminal service independently and promotes evidence only after every command succeeds.
+- Observation: default minimization makes rename detection and stale protocol compatibility safety-critical.
+  Evidence: Git rename detection can report only a neutral destination path for a runtime-file move, and the PR 4 protocol marker did not prove fleet-state support. PR 5 classifies `git diff --no-renames` so both deletion and addition are considered, and bumps the immutable target/bootstrap/coordinator contract to `raspi-rolling-release-v2`.
+- Observation: a directory-created cross-language lock cannot recover safely from SIGKILL without a race-prone stale-owner protocol.
+  Evidence: the former Node and Python deploy-status writers could strand `.lock.d` after a crash, while owner-based directory reclamation introduces a compare-and-swap race. PR 5 makes the Python helper the only writer and delegates API acknowledgements to it; a persistent regular lock inode with kernel `flock` releases automatically on process exit or reboot.
+- Observation: moving acknowledgement writes behind one helper also moves every protocol validation into that helper.
+  Evidence: final fresh review reproduced a malformed notice with no duration being accepted at zero seconds after Node's former positive-integer check was removed. The Python writer now requires an exact positive integer before creating any acknowledgement, and Python/API regressions prove missing, null, boolean, string, fractional, zero, and negative durations return failure without changing state.
+- Observation: a valid Pi5 SSH endpoint and repository SHA do not prove that the operator selected the intended inventory site.
+  Evidence: both inventories may expose a server reachable with the same deployment account. PR 5 reads only non-secret `CLIENT_ID` from status-agent configuration before Git or fleet-state mutation and requires it to equal the target-tree inventory's server client ID; secret keys are never printed or transported by this probe.
+- Observation: a group-level recovery capability silently opts future kiosk hosts into destructive bare-metal recovery.
+  Evidence: an adversarial Raspberry Pi 3 fixture inherited `pi4_recovery_enabled: true` from kiosk vars. The capability now exists only on the five named standard-site Pi4 hosts, and Talkplaza plus any newly added kiosk fail closed unless reviewed and explicitly opted in.
 
 ## Decision Log
 
@@ -175,16 +192,36 @@ This work exists because the current release path has accumulated two coordinato
 - Decision: Retain explicit read-only adapters for unlocked pre-PR-4 run JSON and the older `ansible-update-*.status.json` format until PR 8, while validating locked current-format records strictly.
   Rationale: existing run IDs must remain inspectable during migration, but legacy tolerance must never weaken the new state/control corruption checks or create files during status reads.
   Date/Author: 2026-07-15 / Codex
+- Decision: Define the Pi5 host record's `currentSha` as the immutable release SHA shared by its active API and Web images, while checking bootstrap checkout HEAD separately.
+  Rationale: coordinator code must run from the requested target before scope is known, but that checkout alone does not mean the live server release changed. Checkout-derived digests are verified only when checkout and active image release agree; otherwise evidence is unknown. Post-release verification requires checkout, API image, and Web image to agree exactly.
+  Date/Author: 2026-07-15 / Codex
+- Decision: Write authoritative fleet transitions before the corresponding compatibility marker or per-run snapshot, and downgrade a host to `unknown` before every mutating attempt or rollback.
+  Rationale: a crash can leave old evidence behind only if compatibility data leads the authoritative state. New-state-first ordering makes the next plan conservatively include any ambiguous host.
+  Date/Author: 2026-07-15 / Codex
+- Decision: Permit the Pi5 compatibility marker only when fleet state is pristine, and reject any ambiguous or non-inventory server authority in Pi4 recovery.
+  Rationale: once a fleet transition exists, `unknown`, an active run, or competing server records are authoritative uncertainty and an older marker cannot safely replace them.
+  Date/Author: 2026-07-15 / Codex
+- Decision: Bind every launch, read-only plan, and recovery to both the exact resolved target checkout and the target inventory's non-secret Pi5 client identity before using release state or mutating Git.
+  Rationale: branch-name intent, SSH reachability, and a clean repository are insufficient proof of immutable bytes or physical-site identity. A mismatched or missing client ID must stop without exposing `CLIENT_KEY`.
+  Date/Author: 2026-07-15 / Codex
+- Decision: Use `scripts/deploy/deploy-status-state.py` as the sole deploy-status writer and let the API invoke it without a shell; serialize all writers with a persistent regular-file kernel lock.
+  Rationale: one implementation preserves acknowledgement semantics and atomic replacement, while `flock` has automatic crash/reboot release and avoids unsafe stale-directory deletion.
+  Date/Author: 2026-07-15 / Codex
+- Decision: Treat a concurrently active fleet run as unknown for every host in `--print-plan`, and require recovery capabilities per host rather than by inherited group.
+  Rationale: read-only planning cannot make a stable exclusion decision while another run is changing evidence, and destructive recovery eligibility must never expand implicitly when inventory membership changes.
+  Date/Author: 2026-07-15 / Codex
 
 ## Outcomes & Retrospective
 
-The program is in progress. The living ExecPlan in #1007, migration ledger safety in #1004, CI/deploy-contract shadowing in #1005, and critical inventory/rollback/checkout-lock safety in #1006 are merged in the approved order. PR 4 is implemented and locally validated but not yet published; PR 5 through PR 8 remain pending.
+The program is in progress. The living ExecPlan in #1007, migration ledger safety in #1004, CI/deploy-contract shadowing in #1005, critical inventory/rollback/checkout-lock safety in #1006, and single-coordinator foundation in #1008 are merged in the approved order. PR 5 is locally implemented and validated; PR 5 publication and PR 6 through PR 8 remain pending.
 
 Merged PR 1 validates the complete candidate commit-object ledger, enforces addition-only migration diffs, and applies a quote-aware conservative SQL allow-list. Its 22 focused tests, real 144-base/146-candidate ledger check, adversarial matrix, two independent reviews, and both hosted suites passed. Merged PR 2 proves pull-request-only feature-branch CI, stable required-check names, the shadow classifier, and the client-lifecycle baseline/merge-base contract; its refreshed suite passed with no duplicate feature-branch push run. Merged PR 3 delivers canonical inventory groups, exact-run rollback selection, and checkout-before-lock prevention; final hosted run `29379111287` passed completely after the approved isolated audit-client repair.
 
-PR 4 removes the 2,000-line hidden shell coordinator and all four alternate mutating entrances, while preserving the public wrapper and legacy status reads. A systemd-owned bootstrap locks before every Git operation, refuses dirty or old-protocol targets, verifies the exact systemd invocation, then execs the package coordinator. Foreground, detach, status, approval, and cooperative cancellation share one state/control model. Local evidence is 222 deploy Python tests plus the single-entrypoint and Ansible safety contracts; three independent final reviews found no remaining Blocker/P1/P2.
+Merged PR 4 removes the 2,000-line hidden shell coordinator and all four alternate mutating entrances, while preserving the public wrapper and legacy status reads. A systemd-owned bootstrap locks before every Git operation, refuses dirty or old-protocol targets, verifies the exact systemd invocation, then execs the package coordinator. Foreground, detach, status, approval, and cooperative cancellation share one state/control model. Exact head `c22da822` passed its hosted suite and merged as `ccdc624a`.
 
-No product deployment, real-device mutation, or production acceptance action has occurred. Only the explicitly approved repository merges #1007, #1004, #1005, and #1006 have occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
+Local PR 5 adds a strict `generation`/`activeRun`/`lastRun`/`fleet` record, generation-CAS writes with file and directory fsync, image-to-SHA schema checks, and non-following state reads. Planning uses only verified per-host baselines, includes missing or unknown evidence, minimizes by default, explains every target, and refuses an explicit limit that would hide unknown evidence. The bootstrap and Pi4 recovery share the new lock while retaining the old lock in a fixed order for migration, and v2 protocol identity prevents a stale PR 4 coordinator from running without fleet transitions. Exact target checkout and non-secret site identity are proven before release-state use or mutation. New fleet state always precedes the compatibility marker and run snapshot; that marker is read only before fleet state exists. Deploy-status acknowledgement writes are delegated from the API to one Python writer under kernel `flock`. The isolated suite passes 321 tests, both real inventories resolve in server-canary-kiosk-signage order, all deployment safety shell contracts pass, and the isolated PostgreSQL API contract passes 10 tests.
+
+No product deployment, real-device mutation, or production acceptance action has occurred. Only the explicitly approved repository merges #1007, #1004, #1005, #1006, and #1008 have occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
 
 At each major merge, update this section with the observable behavior delivered, the checks that passed, any time saved or regression found, and the remaining risk. After the seven-day CI observation, compare actual latency and runner-minute evidence against the thresholds in `Validation and Acceptance`. After PR 8, state whether the old marker, lock, and run formats were fully removed and whether the accepted same-SHA plan is a no-op.
 
@@ -274,9 +311,9 @@ Create `logs/deploy/fleet-release-state.json` as the only release-decision sourc
 
 Every host record contains `role`, `desiredSha`, `currentSha`, `previousSha`, `evidence`, `verifiedAt`, and `lastRunId`. The Pi5 record additionally contains `activeSlot`, `apiImage`, `webImage`, `configDigest`, and `migrationDigest`. Use atomic temporary-file replacement under the common fleet lock. Only live verification may set `evidence` to `verified`. Unreachable hosts, timeouts, interrupted runs, partial success, and failed rollback must set or retain `unknown`.
 
-Seed state only for a host whose live Git HEAD and required services were checked. For the Pi5, also check the active Blue/Green slot, API/Web image identities, configuration digest, migration digest, and authenticated readiness. Never seed from inventory declarations, old log text, or an assumed branch. `--print-plan` is strictly read-only and must not create or update the fleet state file.
+Seed state only for a host whose live Git HEAD and required services were checked. For the Pi5, also check the checkout identity, active Blue/Green slot, API/Web image identities, configuration digest, and migration-source digest. Authenticated endpoint and device readiness evidence are added in PR 6. Never seed from inventory declarations, old log text, or an assumed branch. `--print-plan` is strictly read-only and must not create or update the fleet state file.
 
-Make target minimization the default. Exclude a host only when its durable evidence is `verified` for the desired release and role-specific digests. Add `--full-fleet` to force every inventory host into scope. Keep `--auto-minimize` temporarily as a warning-emitting alias for default behavior; remove it after successful production acceptance in PR 8. Do not transplant `--client-only-compatible` from PR #1003. If a Pi5-required difference is present and `--limit` excludes Pi5, fail closed before execution.
+Make target minimization the default. Exclude a host only when its durable evidence is `verified` for the desired release and role-specific digests. Add `--full-fleet` to force every inventory host into scope. Keep `--auto-minimize` temporarily as a warning-emitting alias for default behavior; remove it after successful production acceptance in PR 8. Do not transplant `--client-only-compatible` from PR #1003. If a Pi5-required difference is present and `--limit` excludes Pi5, or if any unknown-evidence host falls outside an explicit limit, fail closed before execution.
 
 During the compatibility interval, dual-write the old Pi5 release marker and old run snapshot after the new state write succeeds. Reads prefer the new fleet state and use legacy data only through an explicit compatibility adapter. Pi4 recovery must acquire the same fleet lock and update the same fleet state so recovery cannot race a release.
 
@@ -479,8 +516,18 @@ Current replacement map at this revision:
       state/control -> separate atomic JSON files, per-run flock, first cancel reason immutable, terminal/cancel race linearized, read-only legacy status adapters retained
       retired paths -> server deploy, detached deploy, deploy-executor, and deploy-all are side-effect-free exit-2 refusal stubs; direct Ansible emergency bypass removed
       local evidence -> 222 deploy Python tests, single-entrypoint contract, Ansible/inventory safety contract, Python/Bash syntax, and three independent reviews with no remaining Blocker/P1/P2
+      final PR head -> c22da82285d213c8b10ce7552672c447239e598a; merged -> ccdc624af9f168f5fee40cf25a0a9b507e091ddc
+      hosted state -> runs 29384459577 / 29384459580 / 29384459587; 12 successes, zero failures, one neutral skipped auxiliary CodeQL job
+    PR 5:
+      branch -> agent/deploy-durable-fleet-state, based on merged ccdc624a
+      authority -> logs/deploy/fleet-release-state.json with strict schema, generation CAS, synced atomic replacement, and logs/deploy/fleet-release-state.lock
+      planning -> verified host-specific Git baselines, default role-aware minimization, deterministic reasons, --full-fleet, and fail-closed Pi5 exclusion under --limit
+      evidence -> terminal HEAD plus required services; Pi5 checkout identity, matching active image release SHA, active slot, config digest, and migration-source digest
+      transitions -> begin/abandon, pre-mutation unknown, post-observation verified, rollback drift, and new-state-first success/failed/cancelled/interrupted finalization
+      compatibility -> legacy Pi5 marker and per-run snapshot written only after fleet state; bootstrap and Pi4 recovery hold fleet then compatibility lock
+      local evidence -> 321 deploy Python tests, 16 shell contracts plus lifecycle and maintenance checks, 10 isolated PostgreSQL API tests, API lint/type checks, both real inventories parsed with strict release-host ordering, Python syntax, diff check, and two final reviews with no P1/P2
       publication/hosted state -> pending
-    PR 5-PR 8: pending in approved order
+    PR 6-PR 8: pending in approved order
     Product reconstruction: pending deployment-foundation production acceptance
 
 An example fleet state shape is:
@@ -491,7 +538,11 @@ An example fleet state shape is:
       "lastRun": {
         "runId": "20260715-063000-a1b2c3",
         "status": "success",
-        "desiredSha": "0123456789abcdef0123456789abcdef01234567"
+        "desiredSha": "0123456789abcdef0123456789abcdef01234567",
+        "inventory": "infrastructure/ansible/inventory.yml",
+        "startedAt": "2026-07-15T06:30:00Z",
+        "endedAt": "2026-07-15T06:42:00Z",
+        "kind": "release"
       },
       "fleet": {
         "raspberrypi5": {
@@ -503,10 +554,10 @@ An example fleet state shape is:
           "verifiedAt": "2026-07-14T21:30:00Z",
           "lastRunId": "20260715-063000-a1b2c3",
           "activeSlot": "green",
-          "apiImage": "raspisys-api:0123456789ab",
-          "webImage": "raspisys-web:0123456789ab",
-          "configDigest": "sha256:example-config",
-          "migrationDigest": "sha256:example-migrations"
+          "apiImage": "raspisys-api:0123456789abcdef0123456789abcdef01234567-aaaaaaaaaaaa",
+          "webImage": "raspisys-web:0123456789abcdef0123456789abcdef01234567-bbbbbbbbbbbb",
+          "configDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "migrationDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         }
       }
     }
@@ -579,3 +630,9 @@ Revision note (2026-07-15, 00:04Z): Aligned the PR 2 client-lifecycle and PR 3 c
 Revision note (2026-07-15, 00:23Z): Recorded the first refreshed PR #1006 hosted run. Every deployment and Linux lock contract passed, but npm's retired legacy endpoint returned HTTP 410 to pnpm 9 and correctly failed `lint-build-unit` plus `ci-required`. After explicit approval, isolated the audit on pinned pnpm 11.4 and Node 22, retained the required critical gate and high advisory, added a static no-fail-open contract, and verified the bulk audit locally with no high or critical advisory.
 
 Revision note (2026-07-15, 02:14Z): Recorded the fully green final PR #1006 run `29379111287` and merge at `0b24be7f`, then documented the locally complete PR 4 single-coordinator implementation. PR 4 now has one systemd execution identity, atomic state/control, cooperative cancellation, strict immutable-target checks, explicit legacy status compatibility, no alternate mutating entrypoint, 222 passing deploy Python tests, passing shell/Ansible safety contracts, and three independent reviews with no remaining Blocker/P1/P2. No product deployment, real-device mutation, or change to Draft PR #1003 occurred.
+
+Revision note (2026-07-15, 03:57Z): Recorded PR #1008 exact head `c22da822`, its fully green hosted validation, and merge as `ccdc624a`, then documented the locally complete PR 5 durable fleet-state implementation. The new plan distinguishes Pi5 checkout identity from active image release identity, minimizes only from verified host evidence, writes unknown before mutation, orders authoritative state before compatibility data, and gives Pi4 recovery the same fleet lock/state plus the transitional compatibility lock. The deploy Python suite passes 285 fixture-only tests and both real inventories pass the safety contract. No product deployment, real-device mutation, production acceptance, or change to Draft PR #1003 occurred.
+
+Revision note (2026-07-15, 04:22Z): Recorded the PR 5 independent-review corrections: independent service probes, fail-closed limits for unknown evidence, pre-fleet-only marker fallback, exact inventory server authority for recovery, source-digest release attribution, rename-safe classification, canonical print-plan SSH behavior, safety-error propagation, and a fleet-capable v2 target protocol. The deploy Python suite now passes 295 tests and all isolated deployment shell contracts pass. Publication remains pending; no SSH, product deployment, real-device mutation, production acceptance, or change to Draft PR #1003 occurred.
+
+Revision note (2026-07-15, 06:03Z): Recorded the final PR 5 hardening and validation: exact target-tree binding, non-secret Pi5 site identity, conservative active-run planning, absent-only evidence seeding, one crash-safe deploy-status writer with strict notice-duration validation, explicit per-host Pi4 recovery capability, 321/321 deploy tests, all shell contracts, and 10/10 isolated PostgreSQL API tests. Two final reviews report no P1/P2. Publication remains pending; no SSH, product deployment, real-device mutation, production acceptance, or change to Draft PR #1003 occurred.
